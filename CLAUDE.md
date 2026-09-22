@@ -22,9 +22,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
 - `strokes.py`: sculpting on the surface. A stroke's path is addressed on the kit-expanded, stroke-free body
   (out from a bone axis, or a raycast), resampled on a Catmull-Rom curve and re-seated, and becomes a
   "displace" or "flatten" blob: an op "modify" primitive (`sdf.MODS`) that reshapes the field combined so far
-  instead of unioning a shape. Displacement is depth * profile(distance across the surface / width), so it
-  follows curvature. Width/depth ease between control points (smoothstep): linear interpolation kinks the
-  surface at every control point. Modifiers make the field steeper than 1 (`Prim.lip`); `evaluate` widens its
+  instead of unioning a shape. A stroke is a normalised sum of dabs along its densely resampled path (each
+  depth * profile(distance across the surface / width)), like a sculpt brush: measuring from the nearest point
+  of the polyline instead kinks the surface at every sample (stripes in raking light/curvature). Seated paths
+  and normals are Gaussian-smoothed along the path (normals over lids/nostrils swing and streak deep strokes).
+  Width/depth ease between control points (smoothstep). Modifiers make the field steeper than 1 (`Prim.lip`); `evaluate` widens its
   band by the max lip.
 - `render.py` + `blender_render.py`: headless Blender workbench/matcap renders, contact sheet with rulers.
   `look(strokes=True)` draws stroke paths (visibility by raycasting the field); `shading="raking"` uses a

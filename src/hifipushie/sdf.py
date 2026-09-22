@@ -100,36 +100,36 @@ def _path_closest(q: np.ndarray, P: np.ndarray):
     return j, tj, a[j] + tj[:, None] * d[j]
 
 
-def _lerp(v: np.ndarray, j: np.ndarray, t: np.ndarray) -> np.ndarray:
-    if len(v) == 1:
-        return np.broadcast_to(v[0], (len(j), *v.shape[1:]))
-    t = t.reshape(-1, *([1] * (v.ndim - 1)))
-    return v[j] + t * (v[np.minimum(j + 1, len(v) - 1)] - v[j])
+def mod_displace(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.ndarray:
+    """A stroke: push the surface out (depth > 0, clay) or in (depth < 0, crease) along its normal.
 
-
-def mod_displace(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 16384) -> np.ndarray:
-    """A stroke: push the surface out (depth > 0, clay) or in (depth < 0, crease) along its normal, by
-    depth * profile(distance from the path / width). Distance is measured across the surface (the normal
-    component is left out), so the bump follows the surface's curvature and has no edges of its own.
-    It fades out past `reach` along the normal, so it doesn't print through to the far side of a limb."""
-    P, N, W, D = pr["pts"], pr["nrm"], pr["width"], pr["depth"]
+    Like a sculpting brush, a stroke is a dense trail of dabs, summed: each sample i of the path adds
+    depth_i * profile(distance across the surface / width_i), weighted by the arc length it stands for and
+    normalised so a long straight stroke reaches `depth`. Distance is measured across the surface (each
+    sample's normal component left out), so the bump follows curvature. A sum of smooth dabs is smooth
+    everywhere (measuring from the nearest point of a polyline instead kinks the surface at every sample,
+    which shows as stripes), and the trail tapers off naturally over about a width at each end.
+    Each dab fades out past `reach` along its normal, so it doesn't print through to the far side of a limb."""
+    P, N, W, D, ds = pr["pts"], pr["nrm"], pr["width"], pr["depth"], pr["ds"]
     prof = PROFILES[pr["profile"]][0]
+    H = pr["reach"]
+    gain = D * ds / (W * pr["norm"]) if len(P) > 1 else D  # a single point is one dab at full depth
     flat = p.reshape(-1, 3)
     c0 = cur.reshape(-1)
-    out = np.empty_like(c0)
+    out = c0.copy()
+    R = np.maximum(W, 2 * H)
     for s in range(0, len(flat), chunk):
         q = flat[s:s + chunk].astype(np.float64)
-        j, t, c = _path_closest(q, P)
-        n = _lerp(N, j, t)
-        n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-        r = q - c
-        h = (r * n).sum(1)
-        lat = np.linalg.norm(r - h[:, None] * n, axis=1)
-        w, dep = _lerp(W, j, t), _lerp(D, j, t)
-        x = np.minimum(lat / w, 1.0)
-        H = pr["reach"]
-        fade = 1 - _smoothstep(np.clip((np.abs(h) - H) / H, 0, 1))
-        out[s:s + chunk] = c0[s:s + chunk] - dep * prof(x) * fade
+        lo, hi = q.min(0), q.max(0)
+        near = np.flatnonzero(np.all((P > lo - R[:, None]) & (P < hi + R[:, None]), axis=1))
+        if not len(near):
+            continue
+        r = q[:, None, :] - P[near][None]                        # (m, k, 3)
+        h = (r * N[near][None]).sum(-1)
+        lat = np.sqrt(np.maximum((r * r).sum(-1) - h * h, 0.0)) / W[near]
+        k = np.where(lat < 1.0, prof(np.minimum(lat, 1.0)), 0.0)
+        k *= 1 - _smoothstep(np.clip((np.abs(h) - H) / H, 0, 1))
+        out[s:s + chunk] = c0[s:s + chunk] - k @ gain[near]
     return out.reshape(cur.shape)
 
 

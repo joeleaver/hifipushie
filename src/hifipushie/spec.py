@@ -262,7 +262,12 @@ def _modifier(name: str, bl: dict, c: np.ndarray) -> Prim:
         if prof not in PROFILES:
             raise SpecError(f"stroke {name!r}: unknown profile {prof!r} (have {', '.join(PROFILES)})")
         reach = float(max(W.max(), 2 * np.abs(D).max()))
-        params = {"pts": P, "nrm": N, "width": W, "depth": D, "profile": prof, "reach": reach}
+        seg = np.linalg.norm(np.diff(P, axis=0), axis=1) if len(P) > 1 else np.zeros(0)
+        ds = np.concatenate([seg, [0.0]]) / 2 + np.concatenate([[0.0], seg]) / 2  # arc length per sample
+        v = np.linspace(-1, 1, 2001)
+        norm = float(np.trapezoid(PROFILES[prof][0](np.abs(v)), v))  # a dab's integral along a straight trail
+        params = {"pts": P, "nrm": N / np.linalg.norm(N, axis=1, keepdims=True), "width": W, "depth": D,
+                  "profile": prof, "reach": reach, "ds": ds, "norm": norm}
         R = float(max(W.max(), 2 * reach))
         lo, hi = P.min(0) - R, P.max(0) + R
         lip = 1.0 + float((np.abs(D) / W).max()) * PROFILES[prof][1] + float(np.abs(D).max()) * 1.5 / reach

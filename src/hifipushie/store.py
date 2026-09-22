@@ -15,7 +15,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 6  # bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 7  # bump when meshing changes, so cached builds are redone
 
 
 def _dir(name: str) -> Path:
@@ -78,14 +78,14 @@ def apply_ops(spec: dict, ops: list[dict]) -> dict:
             raise ValueError(f"bad kind {kind!r}")
         match o.get("op"):
             case "set":
-                cur = s[kind].setdefault(o["name"], {})
+                cur = s.setdefault(kind, {}).setdefault(o["name"], {})
                 for k, v in o["value"].items():
                     if v is None:
                         cur.pop(k, None)
                     else:
                         cur[k] = v
             case "delete":
-                if s[kind].pop(o["name"], None) is None:
+                if s.get(kind, {}).pop(o["name"], None) is None:
                     raise ValueError(f"no {kind[:-1]} {o['name']!r}")
             case "rename":
                 s[kind][o["to"]] = s[kind].pop(o["name"])

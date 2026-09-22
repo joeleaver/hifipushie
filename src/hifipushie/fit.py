@@ -251,7 +251,9 @@ class FitResult:
 
 def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GROUPS, only=None, lock=(),
         iterations: int = 20, max_step: float = 0.02, stiffness: float = 0.05,
-        resolution: int = 160) -> FitResult:
+        resolution: int = 160, pin=()) -> FitResult:
+    """pin: individual scalars to hold, as (kind, name, field, index), e.g. ("joints", "knee.L", "pos", 2) for a
+    joint whose height a plan landmark fixes."""
     spec = copy.deepcopy(spec)
     grid0 = sdf.evaluate(compile_prims(spec), resolution)
     # refs: view -> mask, or (mask, world placement) for references with world coordinates (plans)
@@ -259,7 +261,8 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
     for v, m in refs.items():
         mask, world = m if isinstance(m, tuple) else (m, None)
         targets.append(make_target(v, grid0, mask, align, world))
-    params = parameters(spec, groups, only, set(lock))
+    pinned = {tuple(p) for p in pin}
+    params = [p for p in parameters(spec, groups, only, set(lock)) if p not in pinned]
     if not params:
         raise ValueError("nothing to fit: no free parameters")
     theta0 = np.array([_get(spec, p) for p in params])

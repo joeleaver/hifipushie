@@ -27,6 +27,14 @@ instead of cutting a chord.
   repeat: {"count": n, "shift": {"t": dt, "around": deg, "offset": [x,y,z]}, "scale": f}
           n copies; copy i has every control point shifted by i*shift and width/depth scaled by f**i.
 
+  scatter: {"count": n, "seed": 0, "t": [lo, hi], "around": [lo, hi], "offset": [[x0,y0,z0], [x1,y1,z1]],
+           "scale": [lo, hi], "spacing": m}
+          n copies at random places: on bone addresses t and around are drawn from the ranges (so "around":
+          [-90, 90] covers half the limb); on "at" addresses a random offset inside the box is added. Each
+          copy's width/depth is scaled by a random factor; copies closer than `spacing` are rejected.
+          Warts, pores, scales, bumps. Named <name>_s<i>. A ".L" scatter mirrors exactly; give a centre name
+          and address both sides (".R" bones exist) for an asymmetric one.
+
 Strokes displace the surface rather than adding shapes: each moves the existing skin along its normal
 by depth * profile(distance across the surface / width), so it follows curvature and never leaves flaps
 or seams. Overlapping strokes add up, like clay. They don't reach through to the far side of a limb.
@@ -220,6 +228,19 @@ def _per_point(st: dict, key: str, n: int, default, name: str) -> np.ndarray:
     return v
 
 
+def _smooth_along(S: np.ndarray, V: np.ndarray, sigma: np.ndarray, unit: bool = True) -> np.ndarray:
+    """Gaussian average of per-sample values V along the path (sigma in arc length, per sample).
+    Used on the normals (over ~ a stroke width) and the positions (half that). The displacement is measured
+    across the surface from the path and relative to its normals, so sample-to-sample wobble, a normal off
+    by a few degrees over a lid or nostril or a seated point off by a tenth of a millimetre, shows up in
+    raking light and curvature as streaks across the stroke."""
+    s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(S, axis=0), axis=1))])
+    sig = np.maximum(sigma, 1e-6)[:, None]
+    w = np.exp(-0.5 * ((s[:, None] - s[None, :]) / sig) ** 2)
+    out = (w @ V) / w.sum(1, keepdims=True)
+    return _unit(out) if unit else out
+
+
 def _generate(base: dict, strokes: dict) -> dict:
     surf = Surface(base)
     gen = {"blobs": {}}
@@ -229,15 +250,60 @@ def _generate(base: dict, strokes: dict) -> dict:
             raise SpecError(f"stroke {name!r}: unknown op {op!r} (have {', '.join(OPS)})")
         stem, sfx = (name[:-2], ".L") if name.endswith(".L") else (name, "")
         pts = _points(name, st)
+        if st.get("scatter"):
+            _scatter(surf, gen, name, op, st, pts, stem, sfx)
+            continue
         rep = st.get("repeat") or {}
         count = int(rep.get("count", 1))
         for i in range(count):
             scale = float(rep.get("scale", 1.0)) ** i
             prefix = f"{stem}_r{i}" if count > 1 else stem
-            group = None
             _one(surf, gen, f"{name} copy {i}" if count > 1 else name, op, st,
-                 _shift(pts, rep.get("shift", {}), i), scale, prefix, sfx, group)
+                 _shift(pts, rep.get("shift", {}), i), scale, prefix, sfx, None)
     return gen
+
+
+def _scatter(surf: Surface, gen: dict, name: str, op: str, st: dict, pts: list[dict], stem: str, sfx: str):
+    """Copies of the stroke at random places: bone addresses get t / around drawn from the given ranges,
+    "at" addresses a random offset within the given box; sizes scale by a random factor; copies closer
+    than `spacing` (between their first points, on the surface) are rejected."""
+    sc = st["scatter"]
+    rng = np.random.default_rng(int(sc.get("seed", 0)))
+    count = int(sc.get("count", 10))
+    spacing = float(sc.get("spacing", 0.0))
+    lo_s, hi_s = sc.get("scale", [1.0, 1.0])
+    placed: list[np.ndarray] = []
+    tries = 0
+    while len(placed) < count and tries < 30 * count:
+        tries += 1
+        dt = rng.uniform(*sc["t"]) if "t" in sc else None
+        da = rng.uniform(*sc["around"]) if "around" in sc else None
+        box = np.asarray(sc.get("offset", [[0, 0, 0], [0, 0, 0]]), float)
+        do = rng.uniform(box[0], box[1])
+        moved = []
+        for pt in pts:
+            q = dict(pt)
+            if "bone" in q:  # t / around: absolute positions drawn from the ranges (a path keeps its shape)
+                if dt is not None:
+                    q["t"] = float(q.get("t", 0.5)) - float(pts[0].get("t", 0.5)) + dt
+                if da is not None:
+                    q["around"] = float(q.get("around", 0.0)) - float(pts[0].get("around", 0.0)) + da
+            else:
+                q["offset"] = (np.asarray(q.get("offset", [0, 0, 0]), float) + do).tolist()
+            moved.append(q)
+        try:
+            first = _seat(surf, moved[0], f"stroke {name} scatter")
+        except SpecError:
+            continue  # this draw missed the surface; try another
+        if any(np.linalg.norm(first - q) < spacing for q in placed):
+            continue
+        placed.append(first)
+        i = len(placed) - 1
+        _one(surf, gen, f"{name} scatter {i}", op, st, moved, float(rng.uniform(lo_s, hi_s)),
+             f"{stem}_s{i}", sfx, None)
+    if len(placed) < count:
+        raise SpecError(f"stroke {name!r}: only fit {len(placed)} of {count} scattered copies "
+                        f"{spacing} apart; widen the ranges or lower spacing/count")
 
 
 def _one(surf: Surface, gen: dict, what: str, op: str, st: dict, pts: list[dict], scale: float,
@@ -264,7 +330,8 @@ def _one(surf: Surface, gen: dict, what: str, op: str, st: dict, pts: list[dict]
         # Positions follow a Catmull-Rom curve through the control points and width/depth ease in and out
         # of each one (smoothstep): linear interpolation would kink the surface across the stroke at every
         # control point, which reads as a crease line.
-        step = 0.35 * float(width.min())
+        length = float(np.linalg.norm(np.diff(S, axis=0), axis=1).sum())
+        step = max(0.25 * float(width.min()), length / 300)
         ext = np.concatenate([2 * S[:1] - S[1:2], S, 2 * S[-1:] - S[-2:-1]])
         Ps, Ns, W, D = [S[0]], [N[0]], [width[0]], [depth[0]]
         for i in range(n - 1):
@@ -284,6 +351,7 @@ def _one(surf: Surface, gen: dict, what: str, op: str, st: dict, pts: list[dict]
             reach = np.full(len(S) - 2, step * 4 + float(np.linalg.norm(S[-1] - S[0])) * 0.25)
             S[inner] = surf.nearest_along(S[inner], N[inner], reach, f"stroke {what}")
             N[inner] = surf.normals(S[inner])
+        S, N = _smooth_along(S, S, 0.5 * width, unit=False), _smooth_along(S, N, width)
     sign = 1.0 if op == "clay" else -1.0
     gen["blobs"][f"{prefix}{sfx}"] = {
         "shape": "displace", "at": [0, 0, 0], "pts": [_r(q) for q in S], "nrm": [_r(v) for v in N],

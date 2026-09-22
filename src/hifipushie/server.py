@@ -322,11 +322,16 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
     named in `only`; `only`/`lock` take joint, bone and blob names. max_step caps any move per iteration (m);
     stiffness is a spring toward the starting values (higher = more conservative).
     Block out the body plan by hand first: fitting is local and can't fix a missing or misplaced limb.
-    against: "refs", "plan" (fit the blockout onto the plan's outlines, placed exactly) or "auto" (the plan
-    if there is one). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
+    against: "refs", "plan" (fit the blockout onto the plan's outlines, placed exactly; joints tied to plan
+    landmarks keep their planned height) or "auto" (the plan if there is one). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
     refs = _refs(name, views, against)
-    res = fitmod.fit(store.load(name), refs, align, tuple(params or fitmod.GROUPS), only, tuple(lock or ()),
-                     iterations, max_step, stiffness, resolution)
+    spec = store.load(name)
+    pin = []
+    if any(w is not None for _, w in refs.values()):  # fitting to the plan: its landmarks fix joint heights
+        pin = [("joints", lm["joint"], "pos", 2) for lm in (spec["plan"].get("landmarks") or {}).values()
+               if lm.get("joint") in spec["joints"]]
+    res = fitmod.fit(spec, refs, align, tuple(params or fitmod.GROUPS), only, tuple(lock or ()),
+                     iterations, max_step, stiffness, resolution, pin)
     ver = store.save(name, res.spec, "fit " + " ".join(
         f"{v} {res.iou_before[v]:.3f}->{res.iou_after[v]:.3f}" for v in refs))
     out = []
