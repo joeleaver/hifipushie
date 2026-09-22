@@ -107,9 +107,11 @@ class Placement:
         return np.stack([(row + 0.5 - self.row0) / self.scale - 0.5, (col + 0.5 - self.col0) / self.scale - 0.5])
 
 
-def place(model: dict, ref: np.ndarray, fit: str = "auto") -> Placement:
+def place(model: dict, ref: np.ndarray, fit: str = "auto", world=None) -> Placement:
     """Put the reference on the model's silhouette canvas (padded by a third on each side).
-    model: {"mask", "u": (u0,u1), "v": (v0,v1)} from sdf.silhouettes."""
+    model: {"mask", "u": (u0,u1), "v": (v0,v1)} from sdf.silhouettes. world = (u0, v1, px): the reference
+    already has world coordinates (a plan): its pixel (row, col) edge sits at u0 + col*px, v1 - row*px, and it
+    is placed exactly there (fit is ignored)."""
     m = model["mask"]
     u0, u1 = model["u"]
     v0, v1 = model["v"]
@@ -117,7 +119,14 @@ def place(model: dict, ref: np.ndarray, fit: str = "auto") -> Placement:
     pad = max(m.shape) // 3
     M = np.pad(m, pad)
     crop = _crop(ref)
-    p = Placement(M, M, u0 - pad * px, v1 + pad * px, px, crop, *align(M, crop, fit))
+    if world is not None:
+        rr, cc = np.where(ref)
+        U, V = world[0] + cc.min() * world[2], world[1] - rr.min() * world[2]
+        cu0, cv1 = u0 - pad * px, v1 + pad * px
+        p = Placement(M, M, cu0, cv1, px, crop, (cv1 - V) / px + 0.5, (U - cu0) / px + 0.5, world[2] / px)
+        fit = "world"
+    else:
+        p = Placement(M, M, u0 - pad * px, v1 + pad * px, px, crop, *align(M, crop, fit))
     rows, cols = np.indices(M.shape)
     uv = np.stack([p.u0 + cols * px, p.v1 - rows * px], -1)
     img = crop.astype(np.uint8)
@@ -157,10 +166,11 @@ def diff_image(M: np.ndarray, R: np.ndarray, width: int = 480):
     return im, (y0, y1, x0, x1)
 
 
-def compare(model: dict, ref: np.ndarray, fit: str = "auto", bands: int = 12):
+def compare(model: dict, ref: np.ndarray, fit: str = "auto", bands: int = 12, world=None):
     """model: {"mask", "u": (u0,u1), "v": (v0,v1)} from sdf.silhouettes (world extents of the mask).
     Returns (iou, diff_image, report_text). Band errors are in world units."""
-    p = place(model, ref, fit)
+    p = place(model, ref, fit, world)
+    fit = "world (exact)" if world is not None else fit
     M, R, u0, v1, px = p.M, p.R, p.u0, p.v1, p.px
     iou = _iou(M, R)
     diff, (y0, y1, x0, x1) = diff_image(M, R)

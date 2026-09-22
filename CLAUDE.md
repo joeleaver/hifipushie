@@ -35,6 +35,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   continuous transform onto the full-res image), diff image, band tables.
 - `fit.py`: silhouette auto-fit. Levenberg-Marquardt on a symmetric outline chamfer; Jacobian columns come from
   `field_at(clip=False)` at each outline point's closest-approach depth (envelope theorem), so no autodiff.
+- `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,
+  sections. `reference()` rasterises a view with its world placement; `compare.place(world=...)` puts it on
+  the model canvas exactly (no scale search), so `check`/`compare`/`fit` with against="plan" measure real
+  size errors. Workflow stages (plan → blockout → secondary forms → detail) are in the server INSTRUCTIONS.
 - `store.py`: `workspace/<model>/spec.json` + `history/`, build cache keyed by spec hash.
 - `server.py`: MCP tools (mcp 2.x `MCPServer`, not v1 FastMCP).
 

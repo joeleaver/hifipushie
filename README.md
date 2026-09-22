@@ -14,12 +14,13 @@ silhouette overlap and reports edge errors in world units.
 |---|---|
 | `put_model` / `get_model` / `list_models` | create or replace a spec, read it back with measurements |
 | `edit_model` | batch edits: set / delete / rename / move joints / scale radii |
-| `look` | build + clay contact sheet (front, side, top, 3/4 …); `focus` + `zoom` for close-ups, rebuilt at full resolution |
+| `look` | build + clay contact sheet (front, side, top, 3/4 …); `focus` + `zoom` for close-ups, rebuilt at full resolution; `shading` raking / curvature to judge form; `strokes=True` draws stroke paths |
 | `kit_reference` | parameters of the `hand` and `face` kits (fingers; eyes with lids, brows, nose, lips, cheeks) |
 | `strokes` (in the spec) | sculpt on the surface: clay / crease / flatten along paths addressed from the skeleton, with profiles for edge hardness and `repeat` for sets (wrinkles); they displace the skin, so they follow curvature and move with the bones |
 | `measure` | cross-section sizes as numbers: axis-to-surface distances along a bone chain, or every part in slices across X/Y/Z |
+| `set_plan` / `check` | draw a 2D blockout plan first (front/side outlines from ellipses, capsules and polygons; landmark heights; planned sections), then check the model against it at every stage: silhouette diff in exact world units, landmark joints, section widths/depths |
 | `set_reference` / `compare` | reference silhouettes → IoU, red/blue diff image, band tables of edge errors |
-| `fit` | auto-adjust joints, radii and blobs so the silhouettes match the references (saved as a new version) |
+| `fit` | auto-adjust joints, radii and blobs so the silhouettes match the references or the plan (saved as a new version) |
 | `history` / `revert` | every change is checkpointed |
 | `export` | OBJ for Blender or printing |
 
@@ -79,6 +80,7 @@ Models live in `workspace/<name>/` under the directory the server runs in (overr
 - `examples/fox.json`: a complete quadruped
 - `examples/goblin.json`: a biped using the hand and face kits
 - `examples/goblin_sculpt.json`: the goblin with strokes (arm muscles, forehead wrinkles)
+- `examples/troll.json`: a troll made with the plan workflow (plan + fitted blockout, no detail yet)
 
 Load one with `uv run hifipushie-import examples/fox.json` (the model is named after the file, or pass a
 name as a second argument), or just ask Claude to load it.

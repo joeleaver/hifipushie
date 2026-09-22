@@ -71,8 +71,8 @@ def _resample(contours, spacing: float, min_len: float) -> np.ndarray:
     return np.concatenate(pts) if pts else np.zeros((0, 2))
 
 
-def make_target(view: str, grid: sdf.Grid, ref: np.ndarray, align: str) -> Target:
-    pl = cmp.place(sdf.silhouettes(grid)[view], ref, align)
+def make_target(view: str, grid: sdf.Grid, ref: np.ndarray, align: str, world=None) -> Target:
+    pl = cmp.place(sdf.silhouettes(grid)[view], ref, align, world)
     pad = max(pl.ref.shape) // 3
     img = np.pad(pl.ref, pad)
     sd = np.where(img, 0.5 - ndimage.distance_transform_edt(img), ndimage.distance_transform_edt(~img) - 0.5)
@@ -254,7 +254,11 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         resolution: int = 160) -> FitResult:
     spec = copy.deepcopy(spec)
     grid0 = sdf.evaluate(compile_prims(spec), resolution)
-    targets = [make_target(v, grid0, m, align) for v, m in refs.items()]
+    # refs: view -> mask, or (mask, world placement) for references with world coordinates (plans)
+    targets = []
+    for v, m in refs.items():
+        mask, world = m if isinstance(m, tuple) else (m, None)
+        targets.append(make_target(v, grid0, mask, align, world))
     params = parameters(spec, groups, only, set(lock))
     if not params:
         raise ValueError("nothing to fit: no free parameters")

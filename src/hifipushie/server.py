@@ -14,6 +14,7 @@ from PIL import Image as PILImage
 from . import compare as cmp
 from . import fit as fitmod
 from . import measure as meas
+from . import plan as planmod
 from . import render, store
 from .spec import empty_spec, summarize
 
@@ -56,7 +57,17 @@ kit_reference documents them fully.
 Close-ups (look with focus + zoom) rebuild just that region at full resolution: use them to judge
 faces and hands.
 
-Workflow: put_model (block out the whole body plan) -> look -> edit_model in small batches -> look ...
+Workflow, in stages; after each, run check (and look) and fix before moving on. Going back is fine.
+  1. Plan: set_plan with front and side outlines (2D ellipses/capsules/polys in world units), landmark heights
+     (chin, shoulders, navel, crotch, knees... in head heights) and a few sections (width x depth at the
+     chest, waist, hips, thigh). Look at the returned sheet and get the proportions right here, where it's
+     cheap. With reference art, trace the plan from it.
+  2. Blockout: put_model with the skeleton and big masses; tie landmarks to joints; then fit (against the
+     plan) and check until silhouettes, landmarks and sections agree.
+  3. Secondary forms: strokes for muscle masses, fat pads and planes; judge with look shading="raking" /
+     "curvature" and strokes=True; check again (strokes shouldn't break the silhouette).
+  4. Detail: creases, wrinkles, repeats and scatters, in close-ups.
+Without a plan: put_model -> look -> edit_model in small batches -> look ...
 If you have reference art, set_reference per view then compare. Once the body plan is right, fit
 auto-adjusts joints, radii and blobs to the reference outlines; use compare's band tables for what fit can't
 do (missing parts, wrong topology).
@@ -73,8 +84,17 @@ def _png(im: PILImage.Image) -> Image:
     return Image(data=buf.getvalue(), format="png")
 
 
-def _refs(name: str, views: list[str] | None) -> dict:
-    """Reference masks by view (all configured views when views is None)."""
+def _refs(name: str, views: list[str] | None, against: str = "auto") -> dict:
+    """Reference silhouettes by view: {view: (mask, world placement or None)}. against="plan" uses the model's
+    plan (placed exactly in world units), "refs" the images from set_reference, "auto" the plan if there is one."""
+    plan = store.load(name).get("plan")
+    if against == "plan" or (against == "auto" and plan and plan.get("views")):
+        if not plan:
+            raise ValueError("this model has no plan; use set_plan first")
+        views = views or [v for v in ("front", "side", "top") if planmod.bounds(plan, v) is not None]
+        return {v: planmod.reference(plan, v) for v in views}
+    if against not in ("auto", "refs"):
+        raise ValueError('against must be "auto", "plan" or "refs"')
     cfg_p = store.refs_dir(name) / "refs.json"
     cfg = json.loads(cfg_p.read_text()) if cfg_p.exists() else {}
     views = views or list(cfg)
@@ -83,7 +103,7 @@ def _refs(name: str, views: list[str] | None) -> dict:
     for v in views:
         if v not in cfg:
             raise ValueError(f"no reference for view {v!r}")
-    return {v: cmp.reference_mask(cfg[v]["path"], cfg[v]["flip"], cfg[v]["threshold"]) for v in views}
+    return {v: (cmp.reference_mask(cfg[v]["path"], cfg[v]["flip"], cfg[v]["threshold"]), None) for v in views}
 
 
 def _spec_arg(spec) -> dict:
@@ -105,9 +125,9 @@ def get_model(name: str) -> str:
 
 @mcp.tool(structured_output=False)
 def kit_reference() -> str:
-    """Parameters and defaults for the kits (hand, face) and for strokes (clay, crease, flatten)."""
+    """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten) and plans."""
     from . import kits, strokes
-    return kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__
+    return kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPLANS\n" + planmod.__doc__
 
 
 @mcp.tool(structured_output=False)
@@ -273,16 +293,19 @@ def set_reference(name: str, view: str, image_path: str, flip: bool = False, thr
 
 
 @mcp.tool(structured_output=False)
-def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolution: int = 160):
+def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolution: int = 160,
+            against: str = "auto"):
     """Compare model silhouettes to the references. Per view: IoU, a diff image
     (grey = match, red = model has extra, blue = model is missing) and band tables of edge errors
     in world units, which tell you which joint/blob to move and by how much.
     fit: "auto" searches the reference scale/offset for best overlap, so only shape differences remain
-    (absolute size is ignored); "height"/"width" instead match that dimension, bottom-aligned."""
+    (absolute size is ignored); "height"/"width" instead match that dimension, bottom-aligned.
+    against: "refs" (set_reference images), "plan" (the model's plan, placed exactly: no rescaling), or "auto"
+    (the plan if there is one)."""
     store.build(name, resolution)
     out = []
-    for v, ref in _refs(name, views).items():
-        iou, diff, report = cmp.compare(store.silhouette(name, v), ref, fit)
+    for v, (ref, world) in _refs(name, views, against).items():
+        iou, diff, report = cmp.compare(store.silhouette(name, v), ref, fit, world=world)
         out += [_png(diff), f"[{v}] {report}"]
     return out
 
@@ -290,7 +313,8 @@ def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolu
 @mcp.tool(structured_output=False)
 def fit(name: str, views: list[str] | None = None, only: list[str] | None = None,
         lock: list[str] | None = None, params: list[str] | None = None, iterations: int = 20,
-        max_step: float = 0.02, stiffness: float = 0.05, align: str = "auto", resolution: int = 160):
+        max_step: float = 0.02, stiffness: float = 0.05, align: str = "auto", resolution: int = 160,
+        against: str = "auto"):
     """Auto-fit the model to its reference silhouettes and save the result as a new version.
     Moves joints, joint/bone radii, blob offsets and blob sizes (params: any of "pos", "r", "offset",
     "size") to minimise the distance between model and reference outlines. Only what the given views can
@@ -298,8 +322,9 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
     named in `only`; `only`/`lock` take joint, bone and blob names. max_step caps any move per iteration (m);
     stiffness is a spring toward the starting values (higher = more conservative).
     Block out the body plan by hand first: fitting is local and can't fix a missing or misplaced limb.
-    Returns the diff images, IoU before/after and every change; `revert` undoes it."""
-    refs = _refs(name, views)
+    against: "refs", "plan" (fit the blockout onto the plan's outlines, placed exactly) or "auto" (the plan
+    if there is one). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
+    refs = _refs(name, views, against)
     res = fitmod.fit(store.load(name), refs, align, tuple(params or fitmod.GROUPS), only, tuple(lock or ()),
                      iterations, max_step, stiffness, resolution)
     ver = store.save(name, res.spec, "fit " + " ".join(
@@ -309,6 +334,49 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
         out += [_png(im), f"[{v}] IoU {res.iou_before[v]:.3f} -> {res.iou_after[v]:.3f}"]
     out.append(f"saved {name} v{ver}\n" + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
     return out
+
+
+@mcp.tool(structured_output=False)
+def set_plan(name: str, plan: dict, note: str = ""):
+    """Set (or replace) a model's plan: the 2D blockout you model against. Creates the model if it doesn't
+    exist. Returns the plan drawn with rulers, so you can check proportions before modelling anything.
+    plan = {"views": {"front"|"side"|"top": {"shapes": {name: shape}}}, "landmarks": {name: {"z", "joint"?}},
+            "sections": {name: {"z", "near": [x, y], "width", "depth"}}}
+    shape = {"ellipse": [cu, cv, ru, rv], "rot"?} | {"capsule": [u0, v0, u1, v1], "r": r | [r0, r1]} |
+            {"poly": [[u, v], ...], "smooth"?: true}, plus "op": "subtract" to cut out. u, v are the view's
+    world axes (front X,Z; side Y,Z with the creature facing -Y; top X,Y); ".L" shapes mirror in front/top.
+    kit_reference has the details."""
+    plan = _spec_arg(plan)
+    planmod.validate(plan)
+    try:
+        spec = store.load(name)
+    except ValueError:
+        spec = empty_spec()
+    spec = {**spec, "plan": plan}
+    v = store.save(name, spec, note or "set_plan")
+    views = [x for x in ("front", "side", "top") if planmod.bounds(plan, x) is not None]
+    return [_png(planmod.sheet(plan, views)), f"saved {name} v{v} with a plan ({', '.join(views)})"]
+
+
+@mcp.tool(structured_output=False)
+def check(name: str, resolution: int = 160):
+    """Check the model against its plan: per view, the plan against the model's silhouette (grey = both,
+    blue = plan only: the model is missing it, red = the model sticks out); IoU and edge-error bands in world units (placed exactly, no rescaling); landmark joints vs
+    their planned heights; planned sections vs measured width and depth. Run it after every stage."""
+    spec = store.load(name)
+    plan = spec.get("plan")
+    if not plan:
+        raise ValueError("this model has no plan; use set_plan first")
+    store.build(name, resolution)
+    refs = _refs(name, None, "plan")
+    lines, outlines = [], {}
+    for v, (ref, world) in refs.items():
+        sil = store.silhouette(name, v)
+        outlines[v] = (sil["mask"], sil["u"], sil["v"])
+        _, _, report = cmp.compare(sil, ref, world=world, bands=10)
+        lines.append(f"[{v}] " + report.replace("alignment: fit=world (exact); ", ""))
+    lines += planmod.check_numbers(spec, plan)
+    return [_png(planmod.sheet(plan, list(refs), outlines=outlines)), "\n".join(lines)]
 
 
 @mcp.tool(structured_output=False)
