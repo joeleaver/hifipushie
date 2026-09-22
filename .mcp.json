@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "hifipushie": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "/home/joe/dev/hifipushie", "run", "hifipushie-mcp"]
+    }
+  }
+}

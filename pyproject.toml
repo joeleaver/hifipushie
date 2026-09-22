@@ -1,0 +1,23 @@
+[project]
+name = "hifipushie"
+version = "0.1.0"
+description = "An MCP server that lets an LLM sculpt characters and creatures"
+readme = "README.md"
+authors = [
+    { name = "Joe Leaver", email = "joe@joeleaver.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.2.0",
+    "numpy>=2.5.3",
+    "pillow>=12.3.0",
+    "scikit-image>=0.26.0",
+    "scipy>=1.18.1",
+]
+
+[project.scripts]
+hifipushie-mcp = "hifipushie.server:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"

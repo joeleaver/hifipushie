@@ -1,0 +1,48 @@
+{
+ "symmetry": true,
+ "blend": 0.03,
+ "joints": {
+  "pelvis": {"pos": [0, 0.17, 0.36], "r": 0.085},
+  "chest": {"pos": [0, -0.12, 0.38], "r": 0.105},
+  "neck": {"pos": [0, -0.22, 0.48], "r": 0.065},
+  "head": {"pos": [0, -0.28, 0.58], "r": 0.075},
+  "snout": {"pos": [0, -0.44, 0.535], "r": 0.022},
+  "shoulder.L": {"pos": [0.07, -0.13, 0.33], "r": 0.05},
+  "elbow.L": {"pos": [0.07, -0.11, 0.19], "r": 0.034},
+  "fwrist.L": {"pos": [0.07, -0.13, 0.05], "r": 0.024},
+  "fpaw.L": {"pos": [0.07, -0.17, 0.022], "r": 0.026},
+  "hip.L": {"pos": [0.07, 0.17, 0.34], "r": 0.065},
+  "knee.L": {"pos": [0.075, 0.09, 0.2], "r": 0.04},
+  "hock.L": {"pos": [0.07, 0.2, 0.1], "r": 0.026},
+  "hpaw.L": {"pos": [0.07, 0.16, 0.022], "r": 0.026},
+  "tail0": {"pos": [0, 0.25, 0.37], "r": 0.035},
+  "tail1": {"pos": [0, 0.4, 0.3], "r": 0.075},
+  "tail2": {"pos": [0, 0.56, 0.24], "r": 0.06},
+  "tail3": {"pos": [0, 0.67, 0.25], "r": 0.015}
+ },
+ "bones": {
+  "spine": {"a": "pelvis", "b": "chest"},
+  "neck": {"a": "chest", "b": "neck"},
+  "head": {"a": "neck", "b": "head"},
+  "muzzle": {"a": "head", "b": "snout", "r_a": 0.05},
+  "upperarm.L": {"a": "shoulder.L", "b": "elbow.L"},
+  "forearm.L": {"a": "elbow.L", "b": "fwrist.L", "blend": 0.01},
+  "fpaw.L": {"a": "fwrist.L", "b": "fpaw.L", "blend": 0.01},
+  "thigh.L": {"a": "hip.L", "b": "knee.L"},
+  "shin.L": {"a": "knee.L", "b": "hock.L", "blend": 0.01},
+  "hindfoot.L": {"a": "hock.L", "b": "hpaw.L", "blend": 0.01},
+  "tail_a": {"a": "tail0", "b": "tail1"},
+  "tail_b": {"a": "tail1", "b": "tail2"},
+  "tail_c": {"a": "tail2", "b": "tail3"}
+ },
+ "blobs": {
+  "skull": {"at": "head", "size": [0.085, 0.08, 0.075]},
+  "cheek.L": {"at": "head", "offset": [0.06, 0.0, -0.035], "size": [0.05, 0.045, 0.04]},
+  "ear.L": {"at": "head", "offset": [0.05, 0.02, 0.09], "size": [0.035, 0.012, 0.07], "rot": [0, 20, 0], "blend": 0.015},
+  "ruff": {"at": "chest", "offset": [0, -0.06, -0.02], "size": [0.085, 0.08, 0.1]},
+  "haunch.L": {"at": "hip.L", "offset": [0.005, 0, -0.02], "size": [0.055, 0.09, 0.09]},
+  "eye_socket.L": {"at": "head", "offset": [0.045, -0.07, 0.015], "size": [0.022, 0.022, 0.02], "op": "subtract", "blend": 0.01},
+  "eye.L": {"at": "head", "offset": [0.043, -0.066, 0.015], "size": [0.017, 0.017, 0.017], "layer": 1, "blend": 0.004},
+  "nose": {"at": "snout", "offset": [0, -0.005, 0.008], "size": [0.02, 0.016, 0.015], "layer": 1, "blend": 0.008}
+ }
+}
