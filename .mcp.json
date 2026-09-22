@@ -3,7 +3,7 @@
     "hifipushie": {
       "type": "stdio",
       "command": "uv",
-      "args": ["--directory", "/home/joe/dev/hifipushie", "run", "hifipushie-mcp"]
+      "args": ["run", "hifipushie-mcp"]
     }
   }
 }

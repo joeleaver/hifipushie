@@ -23,10 +23,66 @@ silhouette overlap and reports edge errors in world units.
 | `history` / `revert` | every change is checkpointed |
 | `export` | OBJ for Blender or printing |
 
-## Setup
+## Install
 
-Needs `uv` and Blender (headless, for rendering; override the binary with `HIFIPUSHIE_BLENDER`).
-The repo's `.mcp.json` registers the server for Claude Code sessions opened here.
-Models live in `workspace/<name>/` (override with `HIFIPUSHIE_HOME`).
+You need:
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (it fetches Python 3.12+ and the dependencies itself)
+- [Blender](https://www.blender.org/download/) 4.1 or newer, used headless for the clay renders (tested on 5.1).
+  hifipushie runs `blender` from your `PATH`; if it isn't there (the macOS app usually isn't), set
+  `HIFIPUSHIE_BLENDER` to the executable, e.g. `/Applications/Blender.app/Contents/MacOS/Blender`.
 
-See `examples/fox.json` for a complete creature, and `examples/goblin.json` for one using the hand and face kits, and `examples/goblin_sculpt.json` for the goblin with strokes (arm muscles, forehead wrinkles).
+```bash
+git clone https://github.com/joeleaver/hifipushie.git
+cd hifipushie
+uv sync
+```
+
+Check that rendering works (builds the example goblin and writes a contact sheet):
+
+```bash
+uv run hifipushie-import examples/goblin.json
+uv run python -c "from hifipushie import server; open('goblin.png', 'wb').write(server.look('goblin')[0].data)"
+```
+
+### Claude Code
+
+The repo's `.mcp.json` registers the server for sessions started in this directory:
+
+```bash
+claude
+```
+
+Approve the `hifipushie` server when asked (or check it with `/mcp`). Then ask for a creature, e.g.
+"make a small dragon with hifipushie", or "load examples/goblin_sculpt.json and show me the face".
+
+### Other MCP clients (Claude Desktop, etc.)
+
+Point the client at the checkout with an absolute path, and give models a fixed home:
+
+```json
+{
+  "mcpServers": {
+    "hifipushie": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/hifipushie", "run", "hifipushie-mcp"],
+      "env": {"HIFIPUSHIE_HOME": "/path/to/hifipushie/workspace"}
+    }
+  }
+}
+```
+
+## Models and examples
+
+Models live in `workspace/<name>/` under the directory the server runs in (override with `HIFIPUSHIE_HOME`):
+`spec.json` plus every earlier version in `history/`. `workspace/` is git-ignored.
+
+- `examples/fox.json`: a complete quadruped
+- `examples/goblin.json`: a biped using the hand and face kits
+- `examples/goblin_sculpt.json`: the goblin with strokes (arm muscles, forehead wrinkles)
+
+Load one with `uv run hifipushie-import examples/fox.json` (the model is named after the file, or pass a
+name as a second argument), or just ask Claude to load it.
+
+## License
+
+MIT

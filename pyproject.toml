@@ -7,6 +7,7 @@ authors = [
     { name = "Joe Leaver", email = "joe@joeleaver.com" }
 ]
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
     "mcp>=2.2.0",
     "numpy>=2.5.3",
@@ -17,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 hifipushie-mcp = "hifipushie.server:main"
+hifipushie-import = "hifipushie.server:import_main"
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]

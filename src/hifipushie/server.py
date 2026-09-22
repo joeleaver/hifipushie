@@ -265,5 +265,17 @@ def main():
     mcp.run()
 
 
+def import_main():
+    """hifipushie-import FILE [NAME]: save a spec JSON file (e.g. examples/goblin.json) as a model."""
+    import sys
+    args = sys.argv[1:]
+    if not 1 <= len(args) <= 2 or args[0] in ("-h", "--help"):
+        sys.exit("usage: hifipushie-import FILE.json [NAME]   (NAME defaults to the file's name)")
+    src = Path(args[0])
+    name = args[1] if len(args) > 1 else src.stem
+    print(put_model(name, json.loads(src.read_text()), f"imported from {src.name}").split("\n")[0],
+          f"-> {store.HOME / name}")
+
+
 if __name__ == "__main__":
     main()
