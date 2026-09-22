@@ -136,14 +136,18 @@ def edit_model(name: str, ops: list[dict], note: str = "") -> str:
 @mcp.tool(structured_output=False)
 def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool = False,
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
-         matcap: str = "clay_studio.exr"):
+         matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay"):
     """Build the mesh and return a clay contact sheet.
     views: any of front, side, top, three_quarter (default set), back, left, three_quarter_back, below.
     All panels share one scale; front/side/top get rulers in world units (grid=True adds grid lines).
     focus=[x,y,z] + zoom>1 for close-ups (e.g. the face). resolution = voxels across the longest axis
     (160 is quick; 256-320 for detail). In a close-up, resolution counts across the region around the
     focus instead, so small features (lids, lips, fingers) get proportionally finer voxels; parts outside
-    that region are left out."""
+    that region are left out. strokes=True draws every stroke's path on the views (orange clay, blue crease,
+    green flatten, named at their start; hidden parts left out): check placement before judging form.
+    shading: "clay" (soft studio matcap), "raking" (one low light from the left: shows shallow forms, planes
+    and dents the clay hides), "curvature" (warm = convex, cool = concave, grey = flat, stronger = tighter:
+    an evenly tinted area is blobby; crisp forms show as bright lines)."""
     if focus is not None and zoom > 1:
         full_bounds = store.extent(name)  # sets the view scale, as in a full look
         frames = render.view_frames(full_bounds, views or render.DEFAULT_VIEWS, focus, zoom)
@@ -154,13 +158,82 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         meta = store.build(name, resolution)
         frames = render.view_frames(np.array(meta["bounds"]), views or render.DEFAULT_VIEWS, focus, zoom)
         full_bounds = meta["bounds"]
-    imgs = render.render_views(Path(meta["mesh"]), frames, size, matcap)
+    mesh = Path(meta["mesh"])
+    if shading == "raking":
+        matcap = str(render.raking_matcap(store.HOME / "raking_matcap.png"))
+    elif shading == "curvature":
+        mesh = _curvature_mesh(name, mesh, meta["voxel"], full_bounds)
+    elif shading != "clay":
+        raise ValueError('shading must be "clay", "raking" or "curvature"')
+    imgs = render.render_views(mesh, frames, size, matcap)
+    if strokes:
+        paths = _stroke_paths(store.load(name), frames)
+        imgs = [render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
     sheet = render.contact_sheet(imgs, frames, grid)
     lo, hi = full_bounds
     dims = [round(h - l, 3) for l, h in zip(lo, hi)]
     info = (f"{name}: {meta['verts']} verts, voxel {meta['voxel']:.4f}, built in {meta['seconds']}s | "
             f"size X{dims[0]} Y{dims[1]} Z{dims[2]}")
     return [_png(sheet), info]
+
+
+def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
+    """The built mesh plus per-vertex curvature colours (Laplacian of the exact field)."""
+    from . import sdf
+    from .spec import compile_prims
+    z = dict(np.load(mesh))
+    prims = compile_prims(store.load(name))
+    v = z["verts"].astype(np.float64)
+    h = 0.75 * voxel
+    lap = -6 * sdf.field_at(prims, v)
+    for k in range(3):
+        e = np.zeros(3)
+        e[k] = h
+        lap += sdf.field_at(prims, v + e) + sdf.field_at(prims, v - e)
+    lap /= h * h
+    size = float(np.max(np.asarray(bounds[1]) - np.asarray(bounds[0])))
+    z["colors"] = render.curvature_colours(lap, size, voxel)
+    out = mesh.with_name(mesh.stem + "_curv.npz")
+    np.savez(out, **z)
+    return out
+
+
+def _stroke_paths(spec: dict, frames: list[dict]) -> list[dict]:
+    """Every stroke's seated path (mirrored ones too), with per-view visibility: a point counts as hidden
+    when the ray from just off the finished surface toward the camera enters the body."""
+    from . import sdf
+    from .spec import compile_prims, expand_mirror
+    s = expand_mirror(spec)
+    prims = compile_prims(spec)
+    stored = spec.get("strokes") or {}
+    out = []
+    for bname, bl in s["blobs"].items():
+        if bl.get("shape") not in ("displace", "flatten"):
+            continue
+        base = bname[:-2] if bname.endswith((".L", ".R")) else bname
+        stem, _, rep = base.rpartition("_r")
+        src = next((k for k in stored if k in (bname, base + ".L", base, stem, stem + ".L")), None)
+        st = stored.get(src, {})
+        op = "flatten" if bl["shape"] == "flatten" else ("clay" if np.min(bl["depth"]) >= 0 and np.max(bl["depth"]) > 0 else "crease")
+        count = int((st.get("repeat") or {}).get("count", 1))
+        label = None
+        if not bname.endswith(".R"):
+            label = src if count == 1 else (f"{src} x{count}" if rep == "0" else None)
+        P = np.asarray(bl["pts"], float) + np.asarray(bl.get("at", [0, 0, 0]), float)
+        N = np.asarray(bl["nrm"], float)
+        if len(N) != len(P):
+            N = np.broadcast_to(N[0], P.shape)
+        span = float(np.ptp(P, axis=0).max()) + 0.5
+        vis = {}
+        for f in frames:
+            dv = np.asarray(f["dir"], float)
+            dv /= np.linalg.norm(dv)
+            lift = 0.01 + 0.02 * np.abs(np.asarray(bl.get("depth", [0.0]), float)).max()
+            ts = np.linspace(0.0, span, 200)
+            rays = (P + N * lift)[:, None, :] + ts[None, :, None] * dv
+            vis[f["name"]] = ~(sdf.field_at(prims, rays) < 0).any(axis=1)
+        out.append({"label": label, "op": op, "pts": P, "vis": vis})
+    return out
 
 
 @mcp.tool(structured_output=False)

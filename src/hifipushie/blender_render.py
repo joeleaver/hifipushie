@@ -31,6 +31,9 @@ me.update()
 me.shade_smooth()
 if "normals" in data:  # exact field normals: shading doesn't show the voxel grid
     me.normals_split_custom_set_from_vertices(data["normals"].astype(np.float64))
+if "colors" in data:  # per-vertex colours (the curvature view)
+    attr = me.color_attributes.new("col", "FLOAT_COLOR", "POINT")
+    attr.data.foreach_set("color", data["colors"].astype(np.float32).ravel())
 ob = bpy.data.objects.new("creature", me)
 bpy.context.scene.collection.objects.link(ob)
 
@@ -40,8 +43,16 @@ scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
 scene.render.film_transparent = False
 sh = scene.display.shading
 sh.light = "MATCAP"
-sh.studio_light = job.get("matcap", "clay_studio.exr")
+matcap = job.get("matcap", "clay_studio.exr")
+custom = None
+if "/" in matcap:  # a matcap image of our own (e.g. the raking light), not one Blender ships
+    custom = bpy.context.preferences.studio_lights.load(matcap, "MATCAP")
+    matcap = custom.name
+sh.studio_light = matcap
 sh.color_type = "SINGLE"
+if "colors" in data:
+    sh.light = "STUDIO"
+    sh.color_type = "VERTEX"
 sh.show_cavity = job.get("cavity", True)
 sh.cavity_type = "BOTH"
 sh.show_object_outline = True
@@ -68,3 +79,5 @@ for v in job["views"]:
     cam_data.ortho_scale = v["scale"]
     scene.render.filepath = v["out"]
     bpy.ops.render.render(write_still=True)
+if custom is not None:
+    bpy.context.preferences.studio_lights.remove(custom)

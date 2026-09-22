@@ -111,6 +111,7 @@ def expand(spec: dict) -> dict:
     out = copy.deepcopy(spec)
     out.pop("kits")
     base = copy.deepcopy(out)  # the body without kits: what face features are seated on
+    base.pop("strokes", None)  # (strokes come later, and may be anchored on kit features)
     for name, kit in kits.items():
         o = _Out(out, name)
         match kit.get("type"):

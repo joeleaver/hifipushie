@@ -27,6 +27,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   surface at every control point. Modifiers make the field steeper than 1 (`Prim.lip`); `evaluate` widens its
   band by the max lip.
 - `render.py` + `blender_render.py`: headless Blender workbench/matcap renders, contact sheet with rulers.
+  `look(strokes=True)` draws stroke paths (visibility by raycasting the field); `shading="raking"` uses a
+  generated low-side-light matcap, `"curvature"` colours vertices by the field's Laplacian (convex warm).
+  `smin` is cubic (C2): the quadratic one left curvature jumps at every fillet edge, visible in highlights.
 - `measure.py`: cross-sections of the exact field (`sdf.field_at`): rays from a bone axis, or world-axis slices.
 - `compare.py`: reference mask extraction, placement (FFT shift search per scale + sub-pixel refine, kept as a
   continuous transform onto the full-res image), diff image, band tables.

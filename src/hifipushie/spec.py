@@ -151,10 +151,13 @@ class SpecError(ValueError):
 
 
 def resolve_point(spec: dict, at) -> np.ndarray:
-    if isinstance(at, str):
-        if at not in spec["joints"]:
-            raise SpecError(f"unknown joint {at!r}")
-        return np.array(spec["joints"][at]["pos"], float)
+    if isinstance(at, str):  # a joint, or a blob's centre (e.g. a kit feature like face_nose_wing.L)
+        if at in spec["joints"]:
+            return np.array(spec["joints"][at]["pos"], float)
+        bl = spec.get("blobs", {}).get(at)
+        if bl is None or bl.get("at") == at:
+            raise SpecError(f"unknown joint or blob {at!r}")
+        return resolve_point(spec, bl.get("at", [0, 0, 0])) + np.array(bl.get("offset", [0, 0, 0]), float)
     if isinstance(at, dict):
         bone = spec["bones"].get(at["bone"])
         if bone is None:

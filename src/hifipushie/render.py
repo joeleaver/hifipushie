@@ -119,3 +119,80 @@ def contact_sheet(images: list[Image.Image], frames: list[dict], grid: bool = Fa
     for i, p in enumerate(panels):
         sheet.paste(p, ((i % cols) * pw, (i // cols) * ph))
     return sheet
+
+
+def raking_matcap(path: Path, size: int = 256) -> Path:
+    """A matcap lit by one low light from the viewer's left and a little above, so the light grazes
+    surfaces facing the camera: shallow bumps, planes and dents show up that a soft studio matcap hides."""
+    u = (np.arange(size) + 0.5) / size * 2 - 1
+    x, y = np.meshgrid(u, -u)
+    z = np.sqrt(np.clip(1 - x * x - y * y, 0, 1))
+
+    def lam(L):
+        L = np.asarray(L, float) / np.linalg.norm(L)
+        return np.clip(x * L[0] + y * L[1] + z * L[2], 0, 1)
+    # key low from the left, a weak fill from the right so the shadow side keeps its shape
+    v = 0.1 + 0.85 * lam([-0.85, 0.35, 0.4]) + 0.18 * lam([0.7, 0.1, 0.7])
+    img = (np.clip(np.stack([v * 1.0, v * 0.97, v * 0.93], -1), 0, 1) * 255).astype(np.uint8)
+    img[x * x + y * y > 1] = 0
+    Image.fromarray(img).save(path)
+    return path
+
+
+def curvature_colours(lap: np.ndarray, size: float, voxel: float) -> np.ndarray:
+    """Colour vertices by mean curvature (lap = Laplacian of the field, = 2/r on a sphere of radius r).
+    Warm = convex, cool = concave, grey = flatter than a quarter of the model; saturation grows on a log
+    scale down to radius ~2 voxels, so a crisp crease and a broad swell both read."""
+    r = 2.0 / np.maximum(np.abs(lap), 1e-9)
+    r_ref, r_min = 0.25 * size, 2.0 * voxel
+    t = np.clip(np.log(r_ref / r) / np.log(r_ref / r_min), 0.0, 1.0)[:, None]
+    grey = np.array([0.62, 0.62, 0.62])
+    warm, cool = np.array([0.95, 0.35, 0.12]), np.array([0.12, 0.4, 0.95])
+    tip = np.where((lap > 0)[:, None], warm, cool)
+    rgb = grey + t * (tip - grey)
+    return np.concatenate([rgb, np.ones((len(rgb), 1))], 1)
+
+
+STROKE_COLOURS = {"clay": (255, 150, 40), "crease": (40, 200, 255), "flatten": (90, 230, 120)}
+
+
+def project(frame: dict, pts: np.ndarray, size: int) -> np.ndarray:
+    """World points -> pixel (x, y) in a view's image (same camera as blender_render.py)."""
+    d, up = np.asarray(frame["dir"], float), np.asarray(frame["up"], float)
+    d /= np.linalg.norm(d)
+    right = np.cross(up, d)
+    right /= np.linalg.norm(right)
+    up = np.cross(d, right)
+    q = np.asarray(pts, float) - np.asarray(frame["center"], float)
+    s = frame["scale"]
+    return np.stack([(q @ right / s + 0.5) * size, (0.5 - q @ up / s) * size], -1)
+
+
+def draw_strokes(img: Image.Image, frame: dict, strokes: list[dict]) -> Image.Image:
+    """Draw stroke paths on a rendered view: colour by op, name at the start, hidden parts left out.
+    strokes: [{"label": str | None, "op": "clay"|"crease"|"flatten", "pts": (K, 3), "vis": {view: (K,) bool}}]"""
+    img = img.copy()
+    d = ImageDraw.Draw(img)
+    W = img.width
+    placed: list[tuple] = []  # label boxes so far: nudge new ones down until they don't overlap
+    for st in strokes:
+        xy = project(frame, st["pts"], W)
+        vis = st["vis"][frame["name"]]
+        col = STROKE_COLOURS[st["op"]]
+        if len(xy) == 1 or st["op"] == "flatten":
+            for (x, y), v in zip(xy, vis):
+                if v:
+                    d.ellipse([x - 4, y - 4, x + 4, y + 4], outline=col, width=2)
+        for k in range(len(xy) - 1):
+            if vis[k] and vis[k + 1]:
+                d.line([tuple(xy[k]), tuple(xy[k + 1])], fill=col, width=2)
+        if st["label"] and vis.any():
+            x, y = xy[np.flatnonzero(vis)[0]]
+            x0, y0, x1, y1 = d.textbbox((x + 5, y - 14), st["label"], font=FONT, stroke_width=2)
+            while any(x0 < b[2] and b[0] < x1 and y0 < b[3] and b[1] < y1 for b in placed):
+                y0, y1 = y0 + 8, y1 + 8
+            placed.append((x0, y0, x1, y1))
+            if y0 > y - 14 + 4:
+                d.line([(x, y), (x0, y0 + 7)], fill=col, width=1)
+            d.text((x0, y0), st["label"], fill=col, font=FONT, stroke_width=2, stroke_fill=(20, 20, 20))
+    return img

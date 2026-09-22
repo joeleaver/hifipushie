@@ -14,10 +14,12 @@ FAR = 1.0  # field value where no primitive reaches; only its sign matters there
 
 
 def smin(a, b, k):
+    """Smooth union, cubic: curvature stays continuous where a blend starts (the quadratic form is only
+    C1, which leaves a faint edge in the highlights along every fillet boundary)."""
     if k <= 0:
         return np.minimum(a, b)
     h = np.maximum(k - np.abs(a - b), 0.0) / k
-    return np.minimum(a, b) - h * h * k * 0.25
+    return np.minimum(a, b) - h * h * h * k * (1.0 / 6.0)
 
 
 def sd_cone(p: np.ndarray, pr: dict) -> np.ndarray:
