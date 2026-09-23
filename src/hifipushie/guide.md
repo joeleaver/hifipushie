@@ -184,8 +184,13 @@ solid clothing, eyeball backs) are removed first.
 - Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
   variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
   these; the export preview (Cycles) does.
-- `triangles` ~15k suits a hero creature; 5k for a crowd; a furnished building 50-100k. `texture=1024` for
-  quick checks, 2048 to ship.
+- `triangles` (drawn: a prefab counts once per instance) ~15k suits a hero creature; 5k for a crowd; a
+  furnished building 50-100k. `texture=1024` for quick checks, 2048 to ship.
+- Prefabs with 2+ instances export once: one mesh (a primitive per part) and one set of texels, placed by a
+  glTF node per instance, meshed in a box of their own (finer than the scene's voxel when small). Each is baked
+  at its first instance (its paint, AO and sky as it stands there), so every chair gets that chair's grime. When
+  copies must differ (one chair by the fire, sooty), set `prefabs.<p>.export: "unique"` or make it a second
+  prefab. `lumpy`/`chips` on prefab elements are the same on every instance, in look too.
 - Triangles follow geometric error, not area: one decimation of all parts together decides each part's share,
   so flat walls get few and small round things (eyes, pots, pillows) enough; every part gets at least
   max(300, triangles/100). Steer it per part with `parts.<p>.triangle_weight` (x its share).
@@ -193,10 +198,11 @@ solid clothing, eyeball backs) are removed first.
   as sharp, four times the atlas area). `parts.<p>.texel_focus: [{"at": "head", "radius": 0.15, "density":
   2.5}]` gives a region more (a character's face: the troll's went from 1.5 to 0.8 mm/texel at 1024).
 - Read the log: the atlas fill and mm/texel per part. A creature fits one atlas (troll ~58% filled); a big
-  environment doesn't (the cabin's 380 m^2 of logs and shingles gives ~30 mm/texel on one 1024 atlas). Give
-  parts their own atlas with `parts.<p>.atlas: "interior"` (one material each in the GLB), or
-  `export_asset(atlases=n)` to split the rest by load; keep what's seen close up (interior, props) apart from
-  what's big and seen from afar.
+  environment doesn't (the cabin's 380 m^2 of logs and shingles gives ~30 mm/texel on one 1024 atlas). For
+  environments ask for a density: `export_asset(texel_density=512, texture=2048)` opens as many atlases as it
+  takes (texels per metre x each part's `texel_density`; 512/m = 2 mm/texel, for close interiors; 256/m for
+  walls seen from a few metres), each the smallest power of two that holds its parts, a prefab's parts together.
+  `parts.<p>.atlas: "interior"` still pins a part to a named atlas; `atlases=n` is the manual split.
 - Detail thinner than about a voxel at the export resolution (22 mm shingles at 256 across a 6 m cabin) makes
   a broken high mesh: inverted faces and normals the bake can't use. Those texels keep the low-poly surface
   (the log says how many per part). Build at a higher resolution or make the detail thicker.

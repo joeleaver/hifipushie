@@ -75,8 +75,7 @@ def expand(spec: dict) -> dict:
         s = copy.deepcopy(spec)
         weather = s.pop("weather", None) or []
         insts = s.get("instances") or {}
-        for i, w in enumerate(weather):  # instances are weathered whole (a chair leans, its legs don't wander)
-            _weather_instances(s, insts, w, i)
+        insts = _weathered(insts, weather)  # instances are weathered whole (a chair leans, its legs don't wander)
         for inst, d in insts.items():
             _place(s, inst, d)
         s.pop("instances", None)
@@ -89,6 +88,36 @@ def expand(spec: dict) -> dict:
             _weather_elements(s, w, i, whole)
         _CACHE[key] = s
     return copy.deepcopy(_CACHE[key])
+
+
+def _weathered(insts: dict, weather: list) -> dict:
+    insts = copy.deepcopy(insts)
+    for i, w in enumerate(weather):
+        _weather_instances(insts, w, i)
+    return insts
+
+
+def placements(spec: dict) -> dict:
+    """Every placed instance after weathering: {instance: {"use": prefab, "at", "rot", "scale", "mirror": bool}}.
+    An instance named ".L" also places its mirror image ".R" (mirror: reflected across X after the placement)."""
+    out = {}
+    for inst, d in _weathered(spec.get("instances") or {}, spec.get("weather") or []).items():
+        pl = {"use": d["use"], "at": d.get("at", [0, 0, 0]), "rot": d.get("rot", [0, 0, 0]),
+              "scale": float(d.get("scale", 1.0)), "mirror": False}
+        out[inst] = pl
+        if inst.endswith(".L"):
+            out[inst[:-2] + ".R"] = {**pl, "mirror": True}
+    return out
+
+
+def world_of(pl: dict) -> np.ndarray:
+    """4x4 local -> world matrix (Blender axes) of a placement from `placements`."""
+    M = np.eye(4)
+    M[:3, :3] = euler_matrix(pl["rot"]) * pl["scale"]
+    M[:3, 3] = pl["at"]
+    if pl["mirror"]:
+        M = np.diag([-1.0, 1, 1, 1]) @ M
+    return M
 
 
 def _has_arrays(spec: dict) -> bool:
@@ -123,6 +152,12 @@ def _place(s: dict, inst: str, d: dict) -> None:
     def T(p):
         return at + R @ (sc * np.asarray(p, float))
 
+    # world -> prefab frame, so noise on the element (lumpy, chips) is the same on every instance
+    m, t = R.T / sc, -R.T @ at / sc
+
+    def frame_of(n):
+        return {"name": f"{d['use']}/{n}", "m": [_r(r) for r in m], "t": _r(t)}
+
     def part_of(el):
         p = el.get("part", "body")
         if isinstance(parts, str):
@@ -134,7 +169,8 @@ def _place(s: dict, inst: str, d: dict) -> None:
     for jn, j in local["joints"].items():
         s["joints"][nm(jn)] = {**j, "pos": _r(T(j["pos"])), "r": float(j.get("r", 0.05)) * sc}
     for bn, b in local["bones"].items():
-        nb = {**b, "a": nm(b["a"]), "b": nm(b["b"]), "part": part_of(b), "tags": [*b.get("tags", []), *tags]}
+        nb = {**b, "a": nm(b["a"]), "b": nm(b["b"]), "part": part_of(b), "tags": [*b.get("tags", []), *tags],
+              "instance": inst, "local": frame_of(bn)}
         for k in ("r_a", "r_b", "blend", "join", "hollow"):
             if b.get(k) is not None:
                 nb[k] = float(b[k]) * sc
@@ -146,7 +182,7 @@ def _place(s: dict, inst: str, d: dict) -> None:
             nb["targets"] = [nm(t) for t in b["targets"]]
         s["bones"][nm(bn)] = nb
     for bn, bl in local["blobs"].items():
-        nb = {**bl, "part": part_of(bl), "tags": [*bl.get("tags", []), *tags]}
+        nb = {**bl, "part": part_of(bl), "tags": [*bl.get("tags", []), *tags], "instance": inst, "local": frame_of(bn)}
         a = bl.get("at", [0, 0, 0])
         if isinstance(a, str):
             nb["at"] = nm(a)
@@ -289,7 +325,7 @@ def _u(rng, amp) -> np.ndarray:
     return rng.uniform(-1, 1, 3) * np.broadcast_to(np.asarray(amp, float), (3,))
 
 
-def _weather_instances(s: dict, insts: dict, w: dict, i: int) -> None:
+def _weather_instances(insts: dict, w: dict, i: int) -> None:
     tags = w.get("tags") or []
     for inst, d in insts.items():
         stem = inst[:-2] if inst.endswith(".L") else inst

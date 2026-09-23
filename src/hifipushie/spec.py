@@ -60,6 +60,15 @@ def _mirror_rot(r):
     return [r[0], -r[1], -r[2]]
 
 
+def _mirror_local(el: dict, out: dict) -> None:
+    """A mirrored instance element: its instance is the ".R" one, and its prefab frame reflects across X."""
+    if el.get("instance"):
+        out["instance"] = _mname(el["instance"])
+    if el.get("local"):
+        lc = el["local"]
+        out["local"] = {**lc, "m": [[-r[0], r[1], r[2]] for r in lc["m"]]}
+
+
 def _tree_copy(x):
     """Copy the dict/list structure but share leaf lists of numbers (points, sizes, paths): nothing downstream
     mutates those in place, and deep-copying a model with dozens of expanded strokes dominated compile time."""
@@ -105,6 +114,7 @@ def expand_mirror(spec: dict) -> dict:
                 out["bones"][m]["group"] = _mname(b["group"])
             if b.get("targets"):
                 out["bones"][m]["targets"] = [_mname(t) for t in b["targets"]]
+            _mirror_local(b, out["bones"][m])
 
     for name, bl in spec.get("blobs", {}).items():
         m = mirror_name(name)
@@ -129,6 +139,7 @@ def expand_mirror(spec: dict) -> dict:
             nb["group"] = _mname(bl["group"])
         if bl.get("targets"):
             nb["targets"] = [_mname(t) for t in bl["targets"]]
+        _mirror_local(bl, nb)
         out["blobs"][m] = nb
     return out
 
@@ -172,6 +183,7 @@ class Prim:
     join: float = 0.0
     lip: float = 1.0  # modifiers: how much steeper than a distance field they can make the field
     part: str = "body"  # which separate mesh it belongs to; parts are fields of their own, hard-unioned
+    instance: str | None = None  # the prefab instance it came from (assemble); export shares their meshes
 
 
 class SpecError(ValueError):
@@ -273,6 +285,7 @@ def _compile(spec: dict) -> list[Prim]:
     for p, el in zip(prims, els):
         p.group, p.join = el.get("group"), float(el.get("join", 0.0))
         p.part = el.get("part") or "body"
+        p.instance = el.get("instance")
     prims = _csg(s, prims, els)
     return _parts(prims, s.get("parts") or {}, k_default)
 
@@ -305,6 +318,12 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     by_name = {p.name: p for p in prims}
     out = []
     for p, el in zip(prims, els):
+        lc = el.get("local")  # an instance's element: noise in its prefab's frame, seeded by the prefab element
+        frame = None
+        if lc and (el.get("lumpy") or el.get("chips")):
+            m = np.asarray(lc["m"], float)
+            frame = (m, np.asarray(lc["t"], float), float(abs(np.linalg.det(m)) ** (-1 / 3)))
+        seed0 = zlib.crc32((lc["name"] if lc else p.name).encode()) % 9973
         if el.get("lumpy"):
             lp = el["lumpy"]
             lp = {"amount": float(lp)} if isinstance(lp, (int, float)) else lp
@@ -312,8 +331,9 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
             sc = float(lp.get("scale", max(8 * amt, 0.02)))
             if p.kind not in SHAPES:
                 raise SpecError(f"{p.name!r}: lumpy works on bones and shaped blobs")
-            wrap(p).params["lumpy"] = (amt, sc, int(lp.get("seed", zlib.crc32(p.name.encode()) % 9973)), int(lp.get("octaves", 3)))
-            p.lo, p.hi = p.lo - amt, p.hi + amt
+            wrap(p).params["lumpy"] = (amt, sc, int(lp.get("seed", seed0)), int(lp.get("octaves", 3)))
+            grow = amt * (frame[2] if frame else 1.0)
+            p.lo, p.hi = p.lo - grow, p.hi + grow
         if el.get("chips"):
             ch = el["chips"]
             ch = {"depth": float(ch)} if isinstance(ch, (int, float)) else ch
@@ -327,8 +347,9 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
             where = ch.get("where", "edges")
             if where not in ("edges", "all"):
                 raise SpecError(f"{p.name!r}: chips where is \"edges\" or \"all\"")
-            wrap(p).params["chips"] = (depth, sc, lo, w, int(ch.get("seed", zlib.crc32(p.name.encode()) % 9973) + 7),
-                                       where == "edges")
+            wrap(p).params["chips"] = (depth, sc, lo, w, int(ch.get("seed", seed0) + 7), where == "edges")
+        if frame is not None:
+            p.params["frame"] = frame
         if el.get("hollow"):
             if p.kind not in SHAPES:
                 raise SpecError(f"{p.name!r}: hollow works on bones and shaped blobs")

@@ -184,22 +184,27 @@ def sd_cylinder(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 def sd_csg(p: np.ndarray, pr: dict) -> np.ndarray:
-    """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts."""
+    """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts.
+    An instance's element takes its noise (lumpy, chips) in the prefab's frame ("frame": world -> prefab m, t and
+    the instance's scale), so every instance of a prefab is the same shape."""
     d = SDF[pr["kind"]](p, pr["p"])
+    fr = pr.get("frame")
+    q, s = (p, 1.0) if fr is None else (p @ fr[0].T + fr[1], fr[2])
     if pr.get("lumpy"):  # knots, axe marks, an uneven stone: noise on the surface itself (amount << scale)
         from .noise import fbm
         amt, sc, seed, octv = pr["lumpy"]
-        d = d + amt * (2.0 * fbm(p.reshape(-1, 3), sc, octv, seed).reshape(d.shape) - 1.0)
+        d = d + s * amt * (2.0 * fbm(q.reshape(-1, 3), sc, octv, seed).reshape(d.shape) - 1.0)
     if pr.get("chips"):  # chunks knocked out: noise above a threshold carves up to `depth`, steep-walled
         from .noise import fbm
         depth, sc, lo, w, seed, edges = pr["chips"]
-        c = fbm(p.reshape(-1, 3), sc, 3, seed).reshape(d.shape)
+        c = fbm(q.reshape(-1, 3), sc, 3, seed).reshape(d.shape)
         t = np.clip((c - lo) / w, 0.0, 1.0)
-        carve = depth * t * t * (3 - 2 * t)
+        carve = s * depth * t * t * (3 - 2 * t)
         if edges:  # mostly on edges and corners: the element's own convexity (Laplacian over a chip's size)
-            h = 0.5 * sc
+            h = 0.5 * sc * s
             base = SDF[pr["kind"]]
-            lap = sum(base(p + h * e, pr["p"]) + base(p - h * e, pr["p"]) for e in np.eye(3)) - 6 * d
+            axes = np.eye(3) if fr is None else fr[0] * s  # the prefab's axes, so instances chip alike
+            lap = sum(base(p + h * e, pr["p"]) + base(p - h * e, pr["p"]) for e in axes) - 6 * d
             carve = carve * np.clip(lap / (1.2 * h), 0.0, 1.0)
         d = np.maximum(d, d + carve)
     if pr["hollow"]:

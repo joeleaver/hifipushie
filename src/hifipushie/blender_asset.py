@@ -2,11 +2,11 @@
 
 blender -b --factory-startup --python blender_asset.py -- job.json
 Jobs:
-  {"mode": "lowpoly", "mesh": high.npz, "out": low.npz, "triangles": n, "min_part": n, "texture": px,
-   "margin": px, "angle": deg, "cone": deg, "symmetry": bool,
+  {"mode": "lowpoly", "mesh": high.npz, "out": low.npz, "triangles": n, "min_part": n,
+   "textures": {atlas index: px}, "margins": {atlas index: px}, "angle": deg, "cone": deg, "symmetry": bool,
    "parts": {name: {"weight": triangle weight, "density": relative texels per metre, "atlas": index,
-                    "focus": [[x, y, z, radius, density]]}}}
-      Decimates all parts together to `triangles` (quadric collapse, mirrored across X), which sets each part's
+                    "focus": [[x, y, z, radius, density]], "copies": instances drawn (1)}}}
+      Decimates all parts together to `triangles` drawn (quadric collapse, mirrored across X), which sets each part's
       share; weights and the floor adjust those, and a part whose budget moved or whose mirrored collapse folded
       triangles over is decimated again on its own. Then per atlas: smart-projects its parts, cuts islands at
       focus regions, merges islands too thin or small to be worth their margin into a neighbour (when the
@@ -208,10 +208,11 @@ def _charts(bm, texel, cone_deg, min_width=6.0, min_area=100.0, group=None):
     return members, nsum, changed
 
 
-def _unwrap_atlas(obs, cfg, job):
+def _unwrap_atlas(obs, cfg, job, atlas):
     """Smart project, merge poor islands, project merged charts along their mean normal, scale every island to
     its part's density, pack. All objects in `obs` share the atlas."""
-    size, margin = job["texture"], job["margin"] / job["texture"]
+    size = job["textures"][str(atlas)]
+    margin = job["margins"][str(atlas)] / size
     bpy.ops.object.select_all(action="DESELECT")
     for ob in obs:
         ob.select_set(True)
@@ -312,18 +313,19 @@ def _reduce(name, V, F, ratio, symmetry):
     return ob, False
 
 
-def budgets(counts, faces, weights, total, floor):
+def budgets(counts, faces, weights, total, floor, copies=None):
     """Triangles per part: the joint decimation's counts (what each part needs for one geometric error everywhere)
-    scaled by each part's weight and renormalised to `total`, but at least `floor` (or all it has) and never more
-    than it has."""
+    scaled by each part's weight and renormalised so the triangles drawn (a part's count x its copies: a shared
+    prefab's instances) come to `total`, but at least `floor` (or all it has) and never more than it has."""
+    copies = copies or {}
     share = {pn: weights[pn] * max(counts.get(pn, 0), 1) for pn in faces}
     fixed = {}
     for _ in range(len(share) + 1):
         free = [pn for pn in share if pn not in fixed]
         if not free:
             break
-        left = max(total - sum(fixed.values()), 0)
-        tot = sum(share[pn] for pn in free)
+        left = max(total - sum(fixed[pn] * copies.get(pn, 1) for pn in fixed), 0)
+        tot = sum(share[pn] * copies.get(pn, 1) for pn in free)
         want = {pn: left * share[pn] / tot for pn in free}
         lo = {pn: min(floor, faces[pn]) for pn in free}
         clamp = {pn: lo[pn] if w < lo[pn] else faces[pn] for pn, w in want.items() if w < lo[pn] or w > faces[pn]}
@@ -357,7 +359,8 @@ def lowpoly(job):
         pid_of[pidx[pn]] = k
     joint = _mesh("joint", V, F)
     joint.data.attributes.new("pid", "INT", "FACE").data.foreach_set("value", pid_of[fpart[keep]].astype(np.int32))
-    ratio = min(1.0, total / len(F))
+    copies = {pn: int(cfg[pn].get("copies", 1)) for pn in names}
+    ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))  # drawn triangles: prefabs per copy
     if ratio < 1.0:
         _decimate(joint, ratio, sym)
     _clean(joint)
@@ -372,7 +375,8 @@ def lowpoly(job):
     #    unless its budget moved or the mirrored collapse folded some of its triangles over (Blender skips its
     #    fold check for mirrored collapses; on flat faces they turn over and render black): then it is
     #    decimated again on its own
-    want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, int(job.get("min_part", 300)))
+    want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, int(job.get("min_part", 300)),
+                   copies)
     obs, info = [], {}
     for k, pn in enumerate(names):
         Vh, Fh = _sub(verts, faces, fpart == pidx[pn])
@@ -395,8 +399,8 @@ def lowpoly(job):
     for ob in obs:
         ob.data.uv_layers.new(name="UVMap")
         atlases.setdefault(cfg[ob.name]["atlas"], []).append(ob)
-    for group in atlases.values():
-        for pn, s in _unwrap_atlas(group, cfg, job).items():
+    for ai, group in atlases.items():
+        for pn, s in _unwrap_atlas(group, cfg, job, ai).items():
             info[pn].update(s)
     t2 = time.time()
 
@@ -427,8 +431,8 @@ def lowpoly(job):
 def preview(job):
     _clear()
     bpy.ops.import_scene.gltf(filepath=job["glb"])
-    for ob in list(bpy.data.objects):  # parts left out, e.g. the roof and walls to see an interior
-        if any(ob.name == h or ob.name.endswith("_" + h) for h in job.get("hide", [])):
+    for ob in list(bpy.data.objects):  # parts (or instances, prefabs) left out, e.g. the roof to see an interior
+        if any(ob.name == h or ob.name.endswith("_" + h) or ob.get("prefab") == h for h in job.get("hide", [])):
             bpy.data.objects.remove(ob)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"

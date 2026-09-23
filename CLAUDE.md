@@ -78,7 +78,19 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first
   sub-layer under the material's name. Tune materials on `workspace/swatches` (panel + ball per material).
-- `asset.py` + `blender_asset.py`: game-ready export. `prune_hidden` drops faces buried in another part. Blender
+- `asset.py` + `blender_asset.py`: game-ready export. `split` decides what is meshed: the model's parts minus the
+  instances of shared prefabs (2+ instances, `prefabs.<p>.export` not "unique"), plus each shared prefab's parts
+  ("<prefab>/<part>") from its bake instance (first unmirrored), by `Prim.instance` (set from the element's
+  "instance" key, which `assemble._place` writes with a "local" world->prefab frame; lumpy/chips noise runs in
+  that frame and is seeded by the prefab element, so instances are identical, mirrored ones too). Prefabs mesh
+  in their own box (`mesh_parts`, voxel down to their size / resolution). Projection uses the export part's
+  stream (`ctx["streams"]`); AO, sky and paint use the whole model (`ctx["full"]`, model part names), so a
+  prefab is painted as it stands at its bake instance. `write_glb` puts a prefab in one mesh (a primitive per
+  part, its frame) with a node per instance (TRS, mirrored = negative x scale, extras.prefab); `triangles` counts
+  drawn triangles (`budgets` weighs parts by copies). `texel_density` (texels/m): `density_groups` bins units
+  (a prefab's parts together) first-fit by load at a guessed pack fill (`FILL`), Blender unwraps with per-atlas
+  sizes (`textures`/`margins` in the job), then each atlas takes the smallest power of two meeting the density;
+  an atlas that can't at `texture` triggers one regroup with the measured fill. `prune_hidden` drops faces buried in another part. Blender
   decimates all parts together once (quadric error decides each part's share: area shares starved small round
   parts next to big walls), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the
   joint result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check
@@ -146,26 +158,17 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
-## Next session: environment export, then rebuild the cabin
+## Next session: rebuild the cabin
 
 Agreed with the user (2026-09-23). Everything the cabin test exposed is built except these two export pieces.
 
-**1. Environment export** (`asset.py`, `blender_asset.py`, `write_glb`):
-- **Prefab instances share one mesh and one texture set.** Today every instance is baked as unique geometry
-  and texels. `assemble` names instance elements `<instance>/<element>` and tags them with the instance and
-  prefab. Export each prefab once (its elements' parts, in its local frame), and write one glTF node per
-  instance with the instance transform (at/rot/scale; Blender Z-up -> glTF Y-up as elsewhere) pointing at the
-  shared mesh. Weathered instances (spec["weather"]) only move as rigid bodies, so they still share.
-  Element-level differences (vary/lumpy/chips on a prefab's own elements) are identical across instances by
-  construction. Paint that varies per instance (e.g. `near` one instance, `sky`/`ao` differing by placement)
-  is the catch: decide per prefab: share (bake the prefab once, in a neutral setting or at its first
-  instance) or unique (bake per instance). Default: share, and say so in the log. Report the saving.
-- **Density-driven atlasing.** `export_asset(texel_density=px_per_m, max_texture=2048)`: group parts (by
-  `parts.<p>.atlas`, else by material family / part) and open as many atlases as needed to meet the target
-  at the max size. Today's `atlases=n` and per-part `atlas` are the manual version. Keep `texel_focus`.
-- Validate with the Khronos validator, preview with `asset.preview(hide=...)` and interior cameras.
-- Later, not now: a tiling-material export for engines (tileable textures from the material library with world
-  UVs, plus low-res unique masks). Needs an engine-side shader; glTF can't blend the layers.
+**1. Environment export: done** (2026-09-23): prefab instancing (one mesh + texels per prefab, a node per
+instance, baked at the first instance; `prefabs.<p>.export: "unique"` opts out) and `texel_density` atlasing.
+Tested on `hstest` and `insttest` (stools with lumpy/chips, a mirrored `.L` instance, weather), 0 validator
+errors. Open: flat parts keep too many triangles in the joint decimation (a 5x4 m floor box ~2000 tris; alone
+it goes to 124): needs a coplanar-region dissolve before the collapse (spawned as its own task).
+Later, not now: a tiling-material export for engines (tileable textures from the material library with world
+UVs, plus low-res unique masks). Needs an engine-side shader; glTF can't blend the layers.
 
 **2. Rebuild the cabin from scratch** with everything built this session. Don't patch the old one: it's a
 ~650-element spec emitted by a Python script (`workspace/cabin/notes/build_cabin.py`, its spec `cabin.json`,
@@ -221,7 +224,7 @@ stacks, breakup, painted height, coverage and per-layer mask feedback, coloured 
 vary/flip/jitter, tags), hard-surface solids (box, cylinder, hollow, targeted cuts, flat bone ends, bow, lumpy,
 chips), the imperfection stage (story, check's realism audit, weather ops), interior viewing (look hide/only
 parts, clip, perspective cameras; clearance tool), game-ready export (export_asset: joint decimation with
-per-part weights, packed atlases with texel density/focus, texel-exact PBR maps, GLB), the playbook
+per-part weights, packed atlases with texel density/focus, texel-exact PBR maps, GLB; prefab instancing, density-driven atlases), the playbook
 (`guide.md` via the `guide` tool, `.claude/skills/hifipushie`), and performance passes.
 `examples/troll.json` is the reference character.
 
@@ -230,7 +233,7 @@ painted height in `look` is vertex-normal tilt only; thickness is ready for a su
 it; AO is broad (grime recipes use ao [0.55, 0.3] + tight cavity).
 
 Next, roughly in priority order:
-1. Environment export, then the cabin rebuild: see "Next session" above.
+1. The cabin rebuild: see "Next session" above.
    Remaining cabin-test friction not yet addressed: painting huge meshes for look is slow (hide/clip/camera
    looks paint only what's shown; per-layer mask caching would help full looks); log end grain can't show
    rings (world noise has no per-log axis: an "along the element" pattern option); saddle notches are manual
