@@ -41,14 +41,62 @@ def _blender(job: dict, timeout: float = 600):
             raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
 
 
-def lowpoly(high: Path, out: Path, triangles: int, texture: int) -> dict:
-    """Decimate + unwrap in Blender; returns {part: {verts, corner_vert, uv, normal, tangent, sign}}."""
-    _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "triangles": int(triangles),
-              "min_part": 300, "margin": 6.0 / texture})
+def margin_px(texture: int) -> int:
+    """Gap between UV islands in texels: enough for bilinear filtering and the first mips (dilation fills it)."""
+    return max(2, texture // 512)
+
+
+def min_part(triangles: int) -> int:
+    """No part gets fewer triangles than this (or all it has): eyes, teeth, pots stay round."""
+    return max(300, triangles // 100)
+
+
+def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, texture: int) -> tuple[dict, dict]:
+    """Decimate + unwrap in Blender. cfg: {part: {"weight": triangle weight, "density": texel density,
+    "atlas": index}}. Returns ({part: {verts, corner_vert, uv, normal, tangent, sign, atlas}}, info from Blender:
+    per part the joint decimation's count, the budget and whether it came out mirrored; timings)."""
+    _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles),
+              "min_part": min_part(triangles), "texture": int(texture), "margin": margin_px(texture)}, timeout=3600)
     z = np.load(out)
     names = [str(n) for n in z["part_names"]]
-    return {pn: {k: z[f"{i}_{k}"] for k in ("verts", "corner_vert", "uv", "normal", "tangent", "sign")}
-            for i, pn in enumerate(names)}
+    parts = {pn: {k: z[f"{i}_{k}"] for k in ("verts", "corner_vert", "uv", "normal", "tangent", "sign")}
+             for i, pn in enumerate(names)}
+    for pn, a in zip(names, z["atlas"]):
+        parts[pn]["atlas"] = int(a)
+    return parts, json.loads(str(z["info"]))
+
+
+def part_areas(mesh: Path) -> dict:
+    """Surface area (m^2) of each part of a built mesh that has any faces."""
+    z = np.load(mesh)
+    V, F = z["verts"].astype(np.float64), z["faces"]
+    fpart = z["part"][F[:, 0]]
+    area = np.linalg.norm(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]), axis=1) / 2
+    return {pn: float(area[fpart == i].sum()) for i, pn in enumerate(str(n) for n in z["part_names"])
+            if (fpart == i).any()}
+
+
+def _weight(defs: dict, pn: str, key: str) -> float:
+    w = float((defs.get(pn) or {}).get(key, 1.0))
+    if w <= 0:
+        raise ValueError(f"parts.{pn}.{key} must be > 0")
+    return w
+
+
+def atlas_groups(spec: dict, areas: dict, atlases: int) -> dict:
+    """Atlas name per part. A part's own "atlas" (any name) wins; the others share atlas "0", or with atlases > 1
+    are split into that many ("0", "1", ...) by texture load (area x texel_density^2), largest first into the
+    lightest."""
+    defs = spec.get("parts") or {}
+    out = {pn: str(defs[pn]["atlas"]) for pn in areas if (defs.get(pn) or {}).get("atlas") is not None}
+    rest = sorted((pn for pn in areas if pn not in out),
+                  key=lambda pn: -areas[pn] * _weight(defs, pn, "texel_density") ** 2)
+    load = [0.0] * max(1, int(atlases))
+    for pn in rest:
+        i = int(np.argmin(load))
+        out[pn] = str(i)
+        load[i] += areas[pn] * _weight(defs, pn, "texel_density") ** 2
+    return out
 
 
 def prune_hidden(spec: dict, mesh: Path, out: Path, voxel: float, log: list) -> Path:
@@ -68,19 +116,21 @@ def prune_hidden(spec: dict, mesh: Path, out: Path, voxel: float, log: list) -> 
     return out
 
 
-def rasterize(parts: dict, size: int):
-    """Which triangle covers each texel and where: (tri id per texel or -1, barycentrics, per-triangle part
-    index and corner offset). Texel (x, y) of the PNG (row 0 at the top) is uv ((x + .5) / size, 1 - (y + .5) / size)."""
+def rasterize(parts: dict, size: int, atlas: int | None = None):
+    """Which triangle covers each texel and where: (texel rows and columns, triangle id, barycentrics, part index
+    of every triangle). Triangle ids and part indices count over all parts in order; only the parts on `atlas`
+    (None: all) are drawn. Texel (x, y) of the PNG (row 0 at the top) is uv ((x + .5) / size, 1 - (y + .5) / size)."""
     img = Image.new("I", (size, size), -1)
     d = ImageDraw.Draw(img)
-    uvs, tpart = [], []
+    uvs, tpart, draw = [], [], []
     for pi, p in enumerate(parts.values()):
         uvs.append(p["uv"].reshape(-1, 3, 2))
         tpart.append(np.full(len(uvs[-1]), pi))
+        draw.append(np.full(len(uvs[-1]), atlas is None or p.get("atlas", 0) == atlas))
     uv = np.concatenate(uvs).astype(np.float64)
     px = np.stack([uv[..., 0] * size, (1 - uv[..., 1]) * size], -1)
-    for t, tri in enumerate(px):
-        d.polygon([tuple(q) for q in tri], fill=t)
+    for t in np.flatnonzero(np.concatenate(draw)):
+        d.polygon([tuple(q) for q in px[t]], fill=int(t))
     tid = np.asarray(img, np.int64)
     ys, xs = np.nonzero(tid >= 0)
     t = tid[ys, xs]
@@ -115,11 +165,11 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
-def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
-    """Every map as float arrays (size, size, k), plus the height range."""
+def bake(spec: dict, parts: dict, size: int, voxel: float, log: list, atlas: int | None = None) -> dict:
+    """Every map of one atlas (None: all parts) as float arrays (size, size, k), plus the height range."""
     t0 = time.time()
     names = list(parts)
-    (ys, xs), tri, bary, tpart = rasterize(parts, size)
+    (ys, xs), tri, bary, tpart = rasterize(parts, size, atlas)
     log.append(f"rasterized {len(tri)} texels ({len(tri) / size ** 2:.0%} of the atlas) in {time.time() - t0:.1f}s")
 
     def interp(key):
@@ -139,22 +189,25 @@ def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
     t1 = time.time()
     for pi, pn in enumerate(names):
         sel = np.flatnonzero(part == pi)
+        if not len(sel):
+            continue
         x, g = surface.newton(streams[pn], X[sel], h, voxel)
-        # a texel that wandered off (onto another sheet, or out of a thin gap) keeps the low-poly surface
-        bad = (np.linalg.norm(x - P[sel], axis=1) > 6 * voxel) | ((_unit(g) * Nl[sel]).sum(1) < 0.2)
+        # a texel that wandered off (onto the far side of a thin sheet, or out of a thin gap) keeps the low-poly
+        # surface. Steep but outward normals (a shingle's butt end, a board's edge) are real detail: keep those.
+        bad = (np.linalg.norm(x - P[sel], axis=1) > 6 * voxel) | ((_unit(g) * Nl[sel]).sum(1) < -0.2)
         x[bad], g[bad] = P[sel][bad], Nl[sel][bad]
         X[sel], G[sel] = x, _unit(g)
         if bad.any():
             log.append(f"  {pn}: {bad.mean():.2%} of texels kept the low-poly surface (projection went astray)")
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
     t3 = time.time()
-    ao_map = _ao_map(spec, parts, streams, size, voxel)
+    ao_map = _ao_map(spec, parts, streams, size, voxel, atlas)
     log.append(f"ambient occlusion (at {size // 2 if size >= 1024 else size}^2) in {time.time() - t3:.1f}s")
 
     t2 = time.time()
     base = paint.part_defaults(spec, names, part)
     pts = surface.Points(spec, X, G, part, names, voxel, cache={"ao": ao_map[ys, xs, 0]}, streams=streams)
-    c = _corners(parts, "pos")
+    c = _corners(parts, "pos")[np.unique(tri)]  # the atlas's triangles: surface per texel
     texel = np.sqrt(np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2 / max(len(tri), 1))
     pts.footprint = texel
     masks: dict = {}
@@ -170,6 +223,9 @@ def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
 
     height = ((X - P) * Nl).sum(1)
     tn = np.stack([(G * T).sum(1), (G * B).sum(1), (G * Nl).sum(1)], -1)
+    # a normal map can't point below its surface: detail steeper than 90 deg is bent to the horizon
+    tn[:, 2] = np.maximum(tn[:, 2], 0.02)
+    tn = _unit(tn)
     filled = np.zeros((size, size), bool)
     filled[ys, xs] = True
     hr = float(max(np.abs(height).max(), 1e-4))
@@ -190,17 +246,19 @@ def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
     return {"maps": maps, "height_range": hr, "coverage": len(tri) / size ** 2}
 
 
-def _ao_map(spec: dict, parts: dict, streams: dict, size: int, voxel: float) -> np.ndarray:
+def _ao_map(spec: dict, parts: dict, streams: dict, size: int, voxel: float, atlas: int | None = None) -> np.ndarray:
     """The AO map: occlusion is soft, so above 1024 it's computed at half the texture's resolution and scaled up
     (a quarter of the cost; it's the slowest map). Points are projected onto the exact surface as for the rest."""
     small = size // 2 if size >= 1024 else size
-    (ys, xs), tri, bary, tpart = rasterize(parts, small)
+    (ys, xs), tri, bary, tpart = rasterize(parts, small, atlas)
     names = list(parts)
     P = np.einsum("nk,nkc->nc", bary, _corners(parts, "pos")[tri])
     N = _unit(np.einsum("nk,nkc->nc", bary, _corners(parts, "normal")[tri]))
     part = tpart[tri]
     for pi, pn in enumerate(names):
         sel = np.flatnonzero(part == pi)
+        if not len(sel):
+            continue
         P[sel] = surface.newton(streams[pn], P[sel], 0.1 * voxel, voxel, iterations=2)[0]
     ao = surface.ao(list(streams.values()), P, N, voxel)
     img = np.ones((small, small))
@@ -248,7 +306,9 @@ def _safe_unit(v: np.ndarray, fallback) -> np.ndarray:
     return np.where(n > 1e-9, v / np.maximum(n, 1e-12), np.asarray(fallback, float))
 
 
-def write_glb(path: Path, name: str, parts: dict, images: dict[str, Path]):
+def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]]):
+    """One mesh per part, one material per atlas: atlases is [(atlas name, {basecolor, orm, normal, specular: png})]
+    in atlas index order; each part uses the material of its "atlas" index."""
     bin_ = bytearray()
     views, accessors = [], []
 
@@ -264,40 +324,41 @@ def write_glb(path: Path, name: str, parts: dict, images: dict[str, Path]):
         accessors.append(acc)
         return len(accessors) - 1
 
-    img_idx = {}
-    for key, p in images.items():
+    # the images go into the buffer first: they are views 0..n-1, and texture i shows image i
+    images = [p for _, imgs in atlases for p in imgs.values()]
+    for p in images:
         while len(bin_) % 4:
             bin_.append(0)
         raw = Path(p).read_bytes()
         views.append({"buffer": 0, "byteOffset": len(bin_), "byteLength": len(raw)})
         bin_.extend(raw)
-        img_idx[key] = len(img_idx)
+    materials, k = [], 0
+    for an, imgs in atlases:
+        ti = {key: k + i for i, key in enumerate(imgs)}
+        k += len(imgs)
+        materials.append({
+            "name": f"{name}_material" if len(atlases) == 1 else f"{name}_{an}_material",
+            "pbrMetallicRoughness": {"baseColorTexture": {"index": ti["basecolor"]},
+                                     "metallicRoughnessTexture": {"index": ti["orm"]},
+                                     "metallicFactor": 1.0, "roughnessFactor": 1.0},
+            "normalTexture": {"index": ti["normal"]},
+            "occlusionTexture": {"index": ti["orm"]},
+            # specular 0..1 in the texture's alpha; 0.5 = F0 0.04 (dielectric default), as Blender's IOR level
+            "extensions": {"KHR_materials_specular": {"specularTexture": {"index": ti["specular"]},
+                                                      "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]}},
+        })
     meshes, nodes = [], []
     for pn, p in parts.items():
         pos, nrm, tan, uv, idx = _gltf_vertices(p)
         prim = {"attributes": {"POSITION": add(pos, 34962, 5126, "VEC3", True), "NORMAL": add(nrm, 34962, 5126, "VEC3"),
                                "TANGENT": add(tan, 34962, 5126, "VEC4"), "TEXCOORD_0": add(uv, 34962, 5126, "VEC2")},
-                "indices": add(idx, 34963, 5125, "SCALAR"), "material": 0}
+                "indices": add(idx, 34963, 5125, "SCALAR"), "material": int(p.get("atlas", 0))}
         meshes.append({"name": pn, "primitives": [prim]})
         nodes.append({"name": f"{name}_{pn}", "mesh": len(meshes) - 1})
-    tex = {k: {"source": i, "sampler": 0} for k, i in img_idx.items()}
-    textures = [tex[k] for k in images]
-    ti = {k: i for i, k in enumerate(images)}
-    material = {
-        "name": f"{name}_material",
-        "pbrMetallicRoughness": {"baseColorTexture": {"index": ti["basecolor"]},
-                                 "metallicRoughnessTexture": {"index": ti["orm"]},
-                                 "metallicFactor": 1.0, "roughnessFactor": 1.0},
-        "normalTexture": {"index": ti["normal"]},
-        "occlusionTexture": {"index": ti["orm"]},
-        # specular 0..1 in the texture's alpha; 0.5 = F0 0.04 (dielectric default), as Blender's IOR level
-        "extensions": {"KHR_materials_specular": {"specularTexture": {"index": ti["specular"]},
-                                                  "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]}},
-    }
     doc = {"asset": {"version": "2.0", "generator": "hifipushie"}, "scene": 0,
            "scenes": [{"nodes": list(range(len(nodes)))}], "nodes": nodes, "meshes": meshes,
-           "materials": [material], "textures": textures, "samplers": [{"magFilter": 9729, "minFilter": 9987}],
-           # the images went into the buffer first: they are views 0..len(images)-1
+           "materials": materials, "textures": [{"source": i, "sampler": 0} for i in range(len(images))],
+           "samplers": [{"magFilter": 9729, "minFilter": 9987}],
            "images": [{"bufferView": i, "mimeType": "image/png"} for i in range(len(images))],
            "accessors": accessors, "bufferViews": views, "buffers": [{"byteLength": 0}],
            "extensionsUsed": ["KHR_materials_specular"]}
@@ -312,56 +373,111 @@ def write_glb(path: Path, name: str, parts: dict, images: dict[str, Path]):
         f.write(struct.pack("<II", len(bin_), 0x004E4942) + bytes(bin_))
 
 
-def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256) -> dict:
-    """Build, decimate + unwrap, bake every map, write PNGs, asset.glb and asset.json into out_dir."""
+def texel_sizes(parts: dict, texture: int) -> dict:
+    """Per part: surface area, uv area (fraction of its atlas) and the texel size it got (mm per texel)."""
+    out = {}
+    for pn, p in parts.items():
+        c = p["verts"][p["corner_vert"]].reshape(-1, 3, 3).astype(np.float64)
+        a3 = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2
+        u = p["uv"].reshape(-1, 3, 2).astype(np.float64)
+        e1, e2 = u[:, 1] - u[:, 0], u[:, 2] - u[:, 0]
+        auv = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]).sum() / 2
+        out[pn] = {"area_m2": float(a3), "uv_fill": float(auv),
+                   "mm_per_texel": float(1000 * np.sqrt(a3 / max(auv, 1e-20)) / texture)}
+    return out
+
+
+def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
+           atlases: int = 1) -> dict:
+    """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
+    Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
+    the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own. atlases > 1 splits
+    the other parts over that many atlases (each `texture`^2, its own material in the GLB)."""
     log = []
     t = time.time()
     meta = store.build(name, resolution)
     spec = store.load(name)
+    defs = spec.get("parts") or {}
     out_dir.mkdir(parents=True, exist_ok=True)
     high = prune_hidden(spec, Path(meta["mesh"]), out_dir / "high.npz", meta["voxel"], log)
-    parts = lowpoly(high, out_dir / "lowpoly.npz", triangles, texture)
+    areas = part_areas(high)
+    group = atlas_groups(spec, areas, atlases)
+    names = sorted(set(group.values()), key=lambda g: (not g.isdigit(), int(g) if g.isdigit() else 0, g))
+    cfg = {pn: {"weight": _weight(defs, pn, "triangle_weight"), "density": _weight(defs, pn, "texel_density"),
+                "atlas": names.index(group[pn])} for pn in areas}
+    t1 = time.time()
+    parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, texture)
     high.unlink()
     ntri = sum(len(p["corner_vert"]) // 3 for p in parts.values())
-    log.append(f"low poly: {ntri} triangles ({', '.join(f'{k} {len(p['corner_vert']) // 3}' for k, p in parts.items())}) "
-               f"in {time.time() - t:.1f}s")
-    res = bake(spec, parts, texture, meta["voxel"], log)
-    maps = res["maps"]
-    files = {}
-    for key in ("basecolor", "normal", "orm", "roughness", "metallic", "specular", "ao"):
-        files[key] = out_dir / f"{name}_{key}.png"
-        _png(files[key], maps[key])
-    files["height"] = out_dir / f"{name}_height.png"
-    _png(files["height"], maps["height"], bits=16)
-    # glTF reads specular from the alpha channel of its texture
-    spec_rgba = out_dir / f"{name}_specular_gltf.png"
-    a = (np.clip(maps["specular"][..., 0], 0, 1) * 255 + 0.5).astype(np.uint8)
-    Image.fromarray(np.stack([np.full_like(a, 255)] * 3 + [a], -1), "RGBA").save(spec_rgba)
+    log.append(f"low poly: {ntri} triangles in {time.time() - t1:.1f}s (joint decimation {binfo['joint_s']:.1f}s, "
+               f"per-part {binfo['decimate_s'] - binfo['joint_s']:.1f}s, unwrap + pack {binfo['unwrap_s']:.1f}s)")
+    sizes = texel_sizes(parts, texture)
+    report = {}
+    for pn, p in parts.items():
+        report[pn] = {"triangles": len(p["corner_vert"]) // 3, "atlas": names[p["atlas"]],
+                      "mm_per_texel": round(sizes[pn]["mm_per_texel"], 2), "area_m2": round(sizes[pn]["area_m2"], 3),
+                      "islands": binfo["parts"][pn].get("islands"), "error_share": binfo["parts"][pn]["joint_count"], "mirrored": binfo["parts"][pn]["symmetric"],
+                      "texel_density": cfg[pn]["density"], "triangle_weight": _weight(defs, pn, "triangle_weight")}
+    for ai, an in enumerate(names):
+        fill = sum(sizes[pn]["uv_fill"] for pn, p in parts.items() if p["atlas"] == ai)
+        log.append(f"atlas {an}: {fill:.0%} of {texture}^2 filled; " + ", ".join(
+            f"{pn} {r['triangles']} tris {r['mm_per_texel']:.1f} mm/texel" for pn, r in report.items()
+            if r["atlas"] == an))
+    atlas_files, maps_info, heights, cover = [], {}, {}, {}
+    for ai, an in enumerate(names):
+        stem = name if len(names) == 1 else f"{name}_{an}"
+        if len(names) > 1:
+            log.append(f"atlas {an}:")
+        res = bake(spec, parts, texture, meta["voxel"], log, ai)
+        maps = res["maps"]
+        files = {}
+        for key in ("basecolor", "normal", "orm", "roughness", "metallic", "specular", "ao"):
+            files[key] = out_dir / f"{stem}_{key}.png"
+            _png(files[key], maps[key])
+        files["height"] = out_dir / f"{stem}_height.png"
+        _png(files["height"], maps["height"], bits=16)
+        # glTF reads specular from the alpha channel of its texture
+        spec_rgba = out_dir / f"{stem}_specular_gltf.png"
+        a = (np.clip(maps["specular"][..., 0], 0, 1) * 255 + 0.5).astype(np.uint8)
+        Image.fromarray(np.stack([np.full_like(a, 255)] * 3 + [a], -1), "RGBA").save(spec_rgba)
+        atlas_files.append((an, {"basecolor": files["basecolor"], "orm": files["orm"], "normal": files["normal"],
+                                 "specular": spec_rgba}))
+        maps_info[an] = {k: str(v) for k, v in files.items()}
+        heights[an] = res["height_range"]
+        cover[an] = res["coverage"]
     glb = out_dir / f"{name}.glb"
-    write_glb(glb, name, parts, {"basecolor": files["basecolor"], "orm": files["orm"], "normal": files["normal"],
-                                 "specular": spec_rgba})
-    spec_rgba.unlink()
+    write_glb(glb, name, parts, atlas_files)
+    for _, f in atlas_files:
+        f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()
     allv = np.concatenate([p["verts"] for p in parts.values()])
-    info = {"glb": str(glb), "triangles": ntri, "bounds_blender": [allv.min(0).tolist(), allv.max(0).tolist()], "texture": texture, "height_range_m": res["height_range"],
-            "maps": {k: str(v) for k, v in files.items()},
+    info = {"glb": str(glb), "triangles": ntri, "bounds_blender": [allv.min(0).tolist(), allv.max(0).tolist()],
+            "texture": texture, "height_range_m": max(heights.values()),
+            "maps": maps_info[names[0]],
+            "atlases": {an: {"maps": maps_info[an], "height_range_m": heights[an], "coverage": round(cover[an], 3),
+                             "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for an in names},
+            "parts": report,
             "conventions": {"up": "+Y (glTF)", "front": "+Z", "units": "metres", "normal_map": "OpenGL (+Y), MikkTSpace",
-                            "height": "0.5 = low-poly surface, 0/1 = -/+ height_range_m along the normal",
+                            "height": "0.5 = low-poly surface, 0/1 = -/+ height_range_m (per atlas) along the normal",
                             "orm": "R ambient occlusion, G roughness, B metallic",
-                            "specular": "0.5 = F0 0.04 (Blender's IOR level)"},
+                            "specular": "0.5 = F0 0.04 (Blender's IOR level)",
+                            "materials": "one per atlas, in the order of 'atlases'"},
             "seconds": round(time.time() - t, 1), "log": log}
     (out_dir / f"{name}.json").write_text(json.dumps(info, indent=1))
     return info
 
 
-def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0) -> Image.Image:
+def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
+            hide: list[str] | None = None) -> Image.Image:
     """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
-    Views as in look; the GLB is Y up, so the cameras are turned to match."""
+    Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
+    walls, to see an interior)."""
     bounds = np.array(json.loads(glb.with_suffix(".json").read_text())["bounds_blender"])
     with tempfile.TemporaryDirectory(prefix="hifipushie-prev-") as tmp:
         frames = render.view_frames(bounds, views, focus, zoom)
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
-        _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples})
+        _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
+                  "hide": list(hide or [])})
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
     return render.contact_sheet(imgs, frames)
