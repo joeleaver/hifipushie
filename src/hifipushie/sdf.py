@@ -152,7 +152,16 @@ def mod_flatten(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
     return (c0 + wgt * (shaved - c0)).reshape(cur.shape)
 
 
-SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box}
+def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
+    """Another part's surface pushed out by `offset` (clothing). Solid by default: the inside is hidden in
+    the part below, and a thin sheet a voxel or two thick would alias. With `thickness`, only the layer from
+    offset - thickness to offset. Its own region primitives are intersected with it afterwards."""
+    fb = field_at(pr["prims"], p, margin=pr["offset"] + 0.01)
+    out = fb - pr["offset"]
+    return out if not pr["thickness"] else np.maximum(out, pr["offset"] - pr["thickness"] - fb)
+
+
+SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "shell": sd_shell}
 MODS = {"displace": mod_displace, "flatten": mod_flatten}  # op "modify": reshape what's been combined so far
 
 
@@ -194,15 +203,23 @@ def _merge(hits: list[np.ndarray], ds: list[np.ndarray], tail: tuple, join: floa
 
 
 def combine(cur: np.ndarray, d: np.ndarray, p: Prim) -> np.ndarray:
-    return smin(cur, d, p.blend) if p.op == "add" else -smin(-cur, d, p.blend)
+    if p.op == "add":
+        return smin(cur, d, p.blend)
+    if p.op == "intersect":  # keep only what's inside d (a clothing part's region)
+        return -smin(-cur, -d, p.blend)
+    return -smin(-cur, d, p.blend)
 
 
-def evaluate(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=None) -> Grid:
-    """Sample the field on a grid, exactly only in blocks the surface can pass through.
+def streams(prims: list[Prim]) -> list[list[Prim]]:
+    """Primitives split by part, in order. Each part is its own field; the model is their hard union."""
+    out: dict[str, list[Prim]] = {}
+    for p in prims:
+        out.setdefault(p.part, []).append(p)
+    return list(out.values())
 
-    The field is (close to) 1-Lipschitz, so a block whose centre value exceeds its half-diagonal holds
-    no surface; those blocks just take the centre value, which is all marching cubes needs (the sign).
-    box=(lo, hi) limits the grid to that region (for close-ups); the cut is capped where it crosses the body."""
+
+def frame(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=None):
+    """Grid placement (lo, voxel, shape) covering every part's additive primitives, optionally cut to box."""
     adds = [p for p in prims if p.op == "add"]
     if not adds:
         raise ValueError("nothing to build: no additive primitives")
@@ -213,9 +230,24 @@ def evaluate(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=No
         if np.any(hi <= lo):
             raise ValueError("the close-up box doesn't touch the model")
     voxel = float((hi - lo).max() / resolution)
-    shape = np.ceil((hi - lo) / voxel).astype(int) + 1
-    nb = -(-shape // BLOCK)
+    return lo, voxel, np.ceil((hi - lo) / voxel).astype(int) + 1
 
+
+def evaluate(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=None, at=None) -> Grid:
+    """Sample the field on a grid, exactly only in blocks the surface can pass through.
+
+    The field is (close to) 1-Lipschitz, so a block whose centre value exceeds its half-diagonal holds
+    no surface; those blocks just take the centre value, which is all marching cubes needs (the sign).
+    box=(lo, hi) limits the grid to that region (for close-ups); the cut is capped where it crosses the body.
+    at=(lo, voxel, shape) from frame() puts the grid exactly there (to mesh parts on one shared grid).
+    Several parts: each is evaluated on its own and the results hard-unioned."""
+    lo, voxel, shape = at if at is not None else frame(prims, resolution, pad, box)
+    fields = [_evaluate_part(ps, lo, voxel, shape) for ps in streams(prims)]
+    return Grid(fields[0] if len(fields) == 1 else np.minimum.reduce(fields), lo, voxel)
+
+
+def _evaluate_part(prims: list[Prim], lo: np.ndarray, voxel: float, shape) -> np.ndarray:
+    nb = -(-shape // BLOCK)
     B = BLOCK
     corner = lo + voxel * B * np.stack(np.meshgrid(*[np.arange(n) for n in nb], indexing="ij"), -1)
     half_diag = voxel * (B - 1) * np.sqrt(3) / 2
@@ -246,6 +278,13 @@ def evaluate(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=No
                 if len(hit):
                     hits.append(hit)
                     ds.append(SDF[p.kind](a_lo[hit, None, None, None, :] + local, p.params).astype(np.float32))
+            if unit[-1].op == "intersect":  # outside every region primitive's reach is outside the region
+                d = np.full((len(active), B, B, B), FAR, np.float32)
+                if hits:
+                    h, dh = _merge(hits, ds, (B, B, B), unit[0].join)
+                    d[h] = dh
+                vals = combine(vals, d, unit[-1])
+                continue
             if not hits:
                 continue
             h, d = _merge(hits, ds, (B, B, B), unit[0].join)
@@ -253,15 +292,18 @@ def evaluate(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=No
         blocks[tuple(active.T)] = vals
 
     field = blocks.transpose(0, 3, 1, 4, 2, 5).reshape(nb * B)
-    field = np.ascontiguousarray(field[:shape[0], :shape[1], :shape[2]])
-    return Grid(field, lo, voxel)
+    return np.ascontiguousarray(field[:shape[0], :shape[1], :shape[2]])
 
 
 def field_at(prims: list[Prim], pts: np.ndarray, clip: bool = True, margin: float = 0.0) -> np.ndarray:
     """Exact combined field at arbitrary points (..., 3), combined in the same order as evaluate().
     clip=False evaluates every primitive everywhere, so far from the shape the value is a real distance
     rather than FAR (slower; the fitter needs it to pull toward parts the model is missing).
-    margin widens the clipping, so values within `margin` of the surface are real distances too."""
+    margin widens the clipping, so values within `margin` of the surface are real distances too.
+    Several parts: the hard union of each part's field."""
+    parts = streams(prims)
+    if len(parts) > 1:
+        return np.minimum.reduce([field_at(ps, pts, clip, margin) for ps in parts])
     flat = pts.reshape(-1, 3)
     out = np.full(len(flat), FAR if clip else np.inf)
     for unit in units(prims):
@@ -281,6 +323,13 @@ def field_at(prims: list[Prim], pts: np.ndarray, clip: bool = True, margin: floa
             if len(near):
                 hits.append(near)
                 ds.append(SDF[p.kind](flat[near], p.params))
+        if unit[-1].op == "intersect":
+            d = np.full(len(flat), FAR)
+            if hits:
+                h, dh = _merge(hits, ds, (), unit[0].join)
+                d[h] = dh
+            out = combine(out, d, unit[-1])
+            continue
         if not hits:
             continue
         h, d = _merge(hits, ds, (), unit[0].join)

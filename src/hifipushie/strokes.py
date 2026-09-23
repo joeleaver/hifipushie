@@ -22,6 +22,7 @@ instead of cutting a chord.
           "round": a dome with a visible rim.         "flat": a plateau, flat top with a soft rim (planes).
   soft, blend (flatten): width of the fade-out ring beyond `width` (0.8*width), rounding where the plane
           meets the surface (0.2*width).
+  part:   the part it shapes and is laid on (default "body"); e.g. folds on a "vest" shell part.
   layer:  strokes apply after everything else in their layer (default 0), in the order given; later layers
           (the face kit's lids, lips, eyeballs) sit on top unaffected.
   repeat: {"count": n, "shift": {"t": dt, "around": deg, "offset": [x,y,z]}, "scale": f}
@@ -93,13 +94,62 @@ def expand(spec: dict) -> dict:
     return out
 
 
-class Surface:
-    """Raycasts against the (mirrored) body without strokes."""
+def without_seated(spec: dict) -> dict:
+    """A copy without strokes, surface-seated joints and whatever hangs on them: the model those are laid on."""
+    base = copy.deepcopy(spec)
+    base.pop("strokes", None)
+    on = {n for n, j in (base.get("joints") or {}).items() if "on" in j}
+    for n in on:
+        base["joints"].pop(n)
+    base["bones"] = {k: b for k, b in base.get("bones", {}).items() if b["a"] not in on and b["b"] not in on}
+    base["blobs"] = {k: b for k, b in base.get("blobs", {}).items()
+                     if not (isinstance(b.get("at"), str) and b["at"] in on)}
+    return base
 
-    def __init__(self, base: dict):
+
+def seat_joints(spec: dict) -> dict:
+    """Resolve joints given as {"on": surface address, "lift"?: m along the normal, "shift"?: [x,y,z], "r"}
+    into ordinary joints. They're seated on the model without them (and without anything hung on them, and
+    without strokes), so a tusk rooted on the lip follows the lip when the face changes."""
+    on = {n: j for n, j in (spec.get("joints") or {}).items() if "on" in j}
+    if not on:
+        return spec
+    out = copy.deepcopy(spec)
+    key = "joints:" + hashlib.sha1(json.dumps(out, sort_keys=True, default=float).encode()).hexdigest()
+    if key not in _CACHE:
+        base = without_seated(out)
+        from .spec import compile_prims
+        prims = compile_prims(base)
+        surfs: dict[str, Surface] = {}
+        pos = {}
+        for n, j in on.items():
+            addr = dict(j["on"])
+            part = addr.pop("part", None) or "body"
+            if part not in surfs:
+                surfs[part] = Surface(base, part, prims)
+            sp = _seat(surfs[part], addr, f"joint {n!r}")
+            nrm = surfs[part].normals(sp)[0]
+            pos[n] = _r(sp + nrm * float(j.get("lift", 0.0)) + np.asarray(j.get("shift", [0, 0, 0]), float))
+        if len(_CACHE) > 64:
+            _CACHE.clear()
+        _CACHE[key] = pos
+    for n, xyz in _CACHE[key].items():
+        j = out["joints"][n]
+        out["joints"][n] = {"pos": xyz, "r": j.get("r", 0.05)}
+    return out
+
+
+class Surface:
+    """Raycasts against one part of the (mirrored) model without strokes (default: the body)."""
+
+    def __init__(self, base: dict, part: str = "body", prims=None):
         from .spec import compile_prims, expand_mirror
         self.spec = expand_mirror(base)
-        self.prims = compile_prims(base)
+        allp = compile_prims(base) if prims is None else prims
+        self.all = allp
+        self.prims = [p for p in allp if p.part == part]
+        if not self.prims:
+            raise SpecError(f"no part {part!r} to lay strokes on")
         adds = [p for p in self.prims if p.op == "add"]
         self.span = float(np.linalg.norm(np.max([p.hi for p in adds], 0) - np.min([p.lo for p in adds], 0)))
 
@@ -122,14 +172,15 @@ class Surface:
 
     def exit(self, origin: np.ndarray, d: np.ndarray, what: str) -> np.ndarray:
         """Where a ray from inside the body, heading along d, first leaves it."""
-        us = np.linspace(0.0, self.span, 800)
+        us = np.linspace(0.0, self.span, 1600)
         f = self.f(origin + us[:, None] * d)
-        if f[0] >= 0:
-            raise SpecError(f"{what}: the bone axis at {_r(origin)} is outside the body")
-        out = np.flatnonzero(f >= 0)
+        inside = np.flatnonzero(f < 0)  # a shell part (clothing) starts outside, around the body
+        if not len(inside):
+            raise SpecError(f"{what}: nothing of this part along {_r(d)} from {_r(origin)}")
+        out = np.flatnonzero(f[inside[0]:] >= 0)
         if not len(out):
             raise SpecError(f"{what}: no surface along {_r(d)} from {_r(origin)}")
-        k = out[0]
+        k = inside[0] + out[0]
         return self._bisect(origin[None] + us[k - 1] * d, origin[None] + us[k] * d)[0]
 
     def entry(self, point: np.ndarray, facing: np.ndarray, what: str) -> np.ndarray:
@@ -242,9 +293,15 @@ def _smooth_along(S: np.ndarray, V: np.ndarray, sigma: np.ndarray, unit: bool = 
 
 
 def _generate(base: dict, strokes: dict) -> dict:
-    surf = Surface(base)
+    from .spec import compile_prims
+    prims = compile_prims(base)
+    surfs: dict[str, Surface] = {}
     gen = {"blobs": {}}
     for name, st in strokes.items():
+        part = st.get("part") or "body"
+        if part not in surfs:
+            surfs[part] = Surface(base, part, prims)
+        surf = surfs[part]
         op = st.get("op", "clay")
         if op not in OPS:
             raise SpecError(f"stroke {name!r}: unknown op {op!r} (have {', '.join(OPS)})")
@@ -314,6 +371,8 @@ def _one(surf: Surface, gen: dict, what: str, op: str, st: dict, pts: list[dict]
     width = _per_point(st, "width", n, 0.01, what) * scale
     depth = _per_point(st, "depth", n, 0.004, what) * scale
     extra = {"layer": int(st["layer"])} if st.get("layer") else {}
+    if st.get("part"):
+        extra["part"] = st["part"]
 
     if op == "flatten":
         nrm = _unit(N.mean(0))

@@ -107,20 +107,40 @@
    "r": 0.005
   },
   "tusk0.L": {
-   "pos": [
-    0.03,
-    -0.203,
-    0.776
-   ],
-   "r": 0.0065
+   "r": 0.0065,
+   "on": {
+    "at": "face_mouth_corner.L",
+    "offset": [
+     -0.02,
+     0,
+     -0.006
+    ]
+   },
+   "lift": -0.003
   },
   "tusk1.L": {
+   "r": 0.0015,
+   "on": {
+    "at": "face_mouth_corner.L",
+    "offset": [
+     -0.02,
+     0,
+     -0.006
+    ]
+   },
+   "shift": [
+    0.007,
+    -0.01,
+    0.027
+   ]
+  },
+  "hem.L": {
    "pos": [
-    0.037,
-    -0.212,
-    0.803
+    0.097,
+    -0.018,
+    0.255
    ],
-   "r": 0.0015
+   "r": 0.1
   }
  },
  "bones": {
@@ -183,7 +203,14 @@
    "a": "tusk0.L",
    "b": "tusk1.L",
    "layer": 2,
-   "blend": 0.002
+   "blend": 0.002,
+   "part": "teeth"
+  },
+  "shorts_leg.L": {
+   "a": "hip.L",
+   "b": "hem.L",
+   "r_a": 0.11,
+   "part": "shorts"
   }
  },
  "blobs": {
@@ -252,6 +279,34 @@
     0.14868,
     0.15153
    ]
+  },
+  "shorts_hips": {
+   "at": "pelvis",
+   "offset": [
+    0,
+    0,
+    -0.085
+   ],
+   "size": [
+    0.24,
+    0.2,
+    0.075
+   ],
+   "part": "shorts"
+  },
+  "belt_band": {
+   "at": "pelvis",
+   "offset": [
+    0,
+    0,
+    -0.035
+   ],
+   "size": [
+    0.26,
+    0.22,
+    0.013
+   ],
+   "part": "belt"
   }
  },
  "plan": {
@@ -625,7 +680,8 @@
     "sink": 0.35,
     "upper": 0.45,
     "lower": 0.25,
-    "tilt": -6
+    "tilt": -6,
+    "part": "eyes"
    },
    "brows": {
     "at": [
@@ -1427,6 +1483,73 @@
     0.0,
     0.009,
     0.0
+   ]
+  },
+  "shorts_folds.L": {
+   "op": "crease",
+   "part": "shorts",
+   "profile": "soft",
+   "path": [
+    {
+     "bone": "shorts_leg.L",
+     "t": 0.55,
+     "side": [
+      0,
+      -1,
+      0
+     ],
+     "around": -60
+    },
+    {
+     "t": 0.8,
+     "around": -40
+    }
+   ],
+   "width": 0.006,
+   "depth": [
+    0.0,
+    0.003
+   ],
+   "repeat": {
+    "count": 4,
+    "shift": {
+     "around": 30,
+     "t": 0.03
+    }
+   }
+  }
+ },
+ "parts": {
+  "eyes": {
+   "color": [
+    0.95,
+    0.93,
+    0.86
+   ]
+  },
+  "teeth": {
+   "color": [
+    0.93,
+    0.88,
+    0.72
+   ]
+  },
+  "shorts": {
+   "shell": "body",
+   "offset": 0.007,
+   "color": [
+    0.55,
+    0.42,
+    0.3
+   ]
+  },
+  "belt": {
+   "shell": "shorts",
+   "offset": 0.006,
+   "color": [
+    0.33,
+    0.24,
+    0.17
    ]
   }
  }

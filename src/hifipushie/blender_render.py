@@ -31,9 +31,10 @@ me.update()
 me.shade_smooth()
 if "normals" in data:  # exact field normals: shading doesn't show the voxel grid
     me.normals_split_custom_set_from_vertices(data["normals"].astype(np.float64))
-if "colors" in data:  # per-vertex colours (the curvature view)
+colors = data["colors"] if "colors" in data else (data["part_colors"] if "part_colors" in data else None)
+if colors is not None:  # the curvature view, or a clay colour per part
     attr = me.color_attributes.new("col", "FLOAT_COLOR", "POINT")
-    attr.data.foreach_set("color", data["colors"].astype(np.float32).ravel())
+    attr.data.foreach_set("color", colors.astype(np.float32).ravel())
 ob = bpy.data.objects.new("creature", me)
 bpy.context.scene.collection.objects.link(ob)
 
@@ -50,9 +51,10 @@ if "/" in matcap:  # a matcap image of our own (e.g. the raking light), not one 
     matcap = custom.name
 sh.studio_light = matcap
 sh.color_type = "SINGLE"
+if colors is not None:
+    sh.color_type = "VERTEX"
 if "colors" in data:
     sh.light = "STUDIO"
-    sh.color_type = "VERTEX"
 sh.show_cavity = job.get("cavity", True)
 sh.cavity_type = "BOTH"
 sh.show_object_outline = True

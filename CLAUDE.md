@@ -37,6 +37,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   continuous transform onto the full-res image), diff image, band tables.
 - `fit.py`: silhouette auto-fit. Levenberg-Marquardt on a symmetric outline chamfer; Jacobian columns come from
   `field_at(clip=False)` at each outline point's closest-approach depth (envelope theorem), so no autodiff.
+- Parts: every element has a `part` (default "body"); `sdf.streams` splits prims by part, each part is its own
+  field (evaluate/field_at hard-union them) and its own mesh (`store.build` meshes each on one shared grid,
+  npz carries `part`/`part_names`/`part_colors`, OBJ export writes one object per part). A shell part
+  (`spec["parts"][name] = {"shell": base, "offset"}`) is its base part's field pushed out (`sd_shell`),
+  intersected (op "intersect") with the union of its layer-0 adds. Solid on purpose: thin sheets alias.
+- Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
+  them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,
   sections. `reference()` rasterises a view with its world placement; `compare.place(world=...)` puts it on
   the model canvas exactly (no scale search), so `check`/`compare`/`fit` with against="plan" measure real

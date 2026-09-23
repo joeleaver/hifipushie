@@ -9,7 +9,8 @@ Spec shape (all lengths in metres):
     {
       "symmetry": true,
       "blend": 0.03,                        # default smooth-union radius
-      "joints": {"hip.L": {"pos": [x, y, z], "r": 0.06}},
+      "joints": {"hip.L": {"pos": [x, y, z], "r": 0.06}},   # or {"on": surface address (see strokes.py),
+                                                            #     "lift", "shift", "r"}: seated on the model
       "bones":  {"thigh.L": {"a": "hip.L", "b": "knee.L",
                              "r_a": null, "r_b": null,   # override joint radii
                              "flat": [1, 1],             # cross-section scale (width, height)
@@ -61,7 +62,7 @@ def _mirror_rot(r):
 def expand_mirror(spec: dict) -> dict:
     """Return a copy of spec with kits and strokes expanded and every ".L" element mirrored to ".R"."""
     from . import kits, strokes
-    spec = strokes.expand(kits.expand(spec))
+    spec = strokes.expand(strokes.seat_joints(kits.expand(spec)))
     out = copy.deepcopy(spec)
     for kind in KINDS:
         out.setdefault(kind, {})
@@ -132,8 +133,8 @@ def bone_frame(a: np.ndarray, b: np.ndarray, up=None) -> np.ndarray:
 @dataclass
 class Prim:
     name: str
-    kind: str  # "cone" | "ellipsoid" | "lids" | "box" | "displace" | "flatten"
-    op: str  # "add" | "subtract" | "modify"
+    kind: str  # "cone" | "ellipsoid" | "lids" | "box" | "displace" | "flatten" | "shell"
+    op: str  # "add" | "subtract" | "intersect" | "modify"
     blend: float
     layer: int
     lo: np.ndarray  # AABB
@@ -144,6 +145,7 @@ class Prim:
     group: str | None = None  # consecutive members are joined first (by `join`), then blended in once
     join: float = 0.0
     lip: float = 1.0  # modifiers: how much steeper than a distance field they can make the field
+    part: str = "body"  # which separate mesh it belongs to; parts are fields of their own, hard-unioned
 
 
 class SpecError(ValueError):
@@ -217,9 +219,56 @@ def compile_prims(spec: dict) -> list[Prim]:
 
     for p, el in zip(prims, [*s["bones"].values(), *s["blobs"].values()]):
         p.group, p.join = el.get("group"), float(el.get("join", 0.0))
-    prims.sort(key=lambda p: (p.layer, {"add": 0, "subtract": 1, "modify": 2}[p.op], p.group or ""))
-    _set_reach(prims)
-    return prims
+        p.part = el.get("part") or "body"
+    return _parts(prims, s.get("parts") or {}, k_default)
+
+
+OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}
+
+
+def _parts(prims: list[Prim], defs: dict, k_default: float) -> list[Prim]:
+    """Order primitives part by part (body first, shells after the part they follow), each part sorted and
+    clipped on its own. A shell part ({"shell": base, "offset", "thickness"?}) is its base part's surface pushed
+    out by offset (solid; or only a layer `thickness` deep), cut to the union of its own layer-0 additive
+    primitives (its region); its higher-layer adds (buttons, a buckle) and its strokes go on top."""
+    by_part: dict[str, list[Prim]] = {}
+    for p in prims:
+        by_part.setdefault(p.part, []).append(p)
+    for name, d in defs.items():
+        if d.get("shell"):
+            by_part.setdefault(name, [])
+    done: dict[str, list[Prim]] = {}
+    pending = sorted(by_part, key=lambda n: (n != "body", n))
+    while pending:
+        progressed = False
+        for name in list(pending):
+            d = defs.get(name) or {}
+            base = d.get("shell")
+            if base and base not in done:
+                if base not in by_part:
+                    raise SpecError(f"part {name!r}: shell of unknown part {base!r}")
+                continue
+            ps = list(by_part[name])
+            if base:
+                off, th = float(d.get("offset", 0.006)), float(d.get("thickness") or 0.0)
+                bp = done[base]
+                badds = [q for q in bp if q.op == "add"]
+                pad = off
+                shell = Prim(f"{name}:shell", "shell", "add", k_default, 0,
+                             np.min([q.lo for q in badds], 0) - pad, np.max([q.hi for q in badds], 0) + pad,
+                             {"prims": bp, "offset": off, "thickness": th}, part=name)
+                for q in ps:  # the region: layer-0 adds, unioned (by `blend`) then intersected with the shell
+                    if q.op == "add" and q.layer == 0:
+                        q.op, q.group, q.join = "intersect", f"region:{name}", float(d.get("blend", 0.01))
+                ps.insert(0, shell)
+            ps.sort(key=lambda p: (p.layer, OP_ORDER[p.op], p.group or ""))
+            _set_reach(ps)
+            done[name] = ps
+            pending.remove(name)
+            progressed = True
+        if not progressed:
+            raise SpecError(f"parts {pending}: shells form a cycle")
+    return [p for ps in done.values() for p in ps]
 
 
 def _lids(name: str, bl: dict, c: np.ndarray, rot: np.ndarray, k: float) -> Prim:

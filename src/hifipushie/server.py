@@ -32,6 +32,11 @@ Spec:
   blobs:  {name: {"at": joint | [x,y,z] | {"bone": name, "t": 0..1}, "offset"?: [x,y,z] (world axes),
                   "size": [rx,ry,rz] (semi-axes), "rot"?: [deg x,y,z], "blend"?, "op"?, "layer"?}}  ellipsoid
   kits:   {name: {"type": "hand" | "face", ...}}   parametric parts that expand into joints/bones/blobs
+  parts:  {name: {"shell"?: base part, "offset"?, "color"?}}; any element takes "part": name (default "body").
+          Each part is a separate mesh (and material later): eyes, teeth, clothing. A shell part is its base
+          pushed out by offset, cut to its own layer-0 adds (a garment's region); strokes on it make folds.
+  joints may be {"on": surface address (as for strokes), "lift", "shift", "r"}: seated on the surface
+          (a tusk rooted on the lip, a horn on the skull), following it when the model changes.
   strokes: {name: {"op": "clay" | "crease" | "flatten", "path": [surface points], "width", "depth", ...}}
           sculpting on the surface itself (see below)
   top level: "blend" (default smooth-union radius, ~0.02-0.05 for a 1m creature), "symmetry".

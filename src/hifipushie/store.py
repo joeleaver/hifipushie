@@ -15,7 +15,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 7  # bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 8  # bump when meshing changes, so cached builds are redone
 
 
 def _dir(name: str) -> Path:
@@ -135,19 +135,51 @@ def build(name: str, resolution: int = 160, box=None) -> dict:
         return json.loads(meta_p.read_text())
     t = time.time()
     prims = specmod.compile_prims(spec)
-    grid = sdf.evaluate(prims, resolution, box=box)
-    verts, faces = sdf.mesh(grid)
-    verts, normals = sdf.project(prims, verts, faces, grid.voxel)
-    np.savez(mesh_p, verts=verts, faces=faces, normals=normals)
+    lo, voxel, shape = sdf.frame(prims, resolution, box=box)
+    defs = spec.get("parts") or {}
+    V, F, N, P, C, fields, names, empty = [], [], [], [], [], [], [], []
+    for i, ps in enumerate(sdf.streams(prims)):  # each part meshed on its own, on one shared grid
+        name = ps[0].part
+        f = sdf.evaluate(ps, at=(lo, voxel, shape)).field
+        fields.append(f)
+        try:
+            v, fc = sdf.mesh(sdf.Grid(f, lo, voxel))
+        except ValueError:
+            empty.append(name)  # nothing of it inside this grid (or its region misses the base)
+            continue
+        v, n = sdf.project(ps, v, fc, voxel)
+        F.append(fc + sum(len(x) for x in V))
+        V.append(v)
+        N.append(n)
+        P.append(np.full(len(v), len(names), np.int16))
+        C.append(np.tile(part_colour(name, defs, len(names)), (len(v), 1)))
+        names.append(name)
+    if not V:
+        raise ValueError("field has no interior: the shape is empty")
+    verts, faces, normals = np.concatenate(V), np.concatenate(F), np.concatenate(N)
+    np.savez(mesh_p, verts=verts, faces=faces, normals=normals, part=np.concatenate(P),
+             part_names=np.array(names), part_colors=np.concatenate(C))
+    grid = sdf.Grid(np.minimum.reduce(fields), lo, voxel)
     if box is None:
         sil = sdf.silhouettes(grid)
         np.savez_compressed(sil_p, **{f"{k}_mask": v["mask"] for k, v in sil.items()},
                             **{f"{k}_uv": np.array([*v["u"], *v["v"]]) for k, v in sil.items()})
     lo, hi = verts.min(0), verts.max(0)
     meta = {"key": key, "mesh": str(mesh_p), "verts": len(verts), "faces": len(faces),
-            "voxel": grid.voxel, "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2)}
+            "voxel": grid.voxel, "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2),
+            "parts": names, "empty_parts": empty}
     meta_p.write_text(json.dumps(meta))
     return meta
+
+
+PALETTE = [(0.9, 0.9, 0.9), (0.62, 0.72, 0.9), (0.9, 0.68, 0.55), (0.66, 0.85, 0.66), (0.88, 0.8, 0.55),
+           (0.8, 0.65, 0.88)]
+
+
+def part_colour(name: str, defs: dict, index: int) -> np.ndarray:
+    """RGBA for a part's clay: its "color" from spec["parts"], else a palette entry (the body stays neutral)."""
+    rgb = (defs.get(name) or {}).get("color") or PALETTE[index % len(PALETTE)]
+    return np.array([*rgb[:3], 1.0], np.float32)
 
 
 def extent(name: str) -> np.ndarray:
@@ -164,15 +196,16 @@ def silhouette(name: str, view: str) -> dict:
 
 def export_obj(name: str, path: Path) -> Path:
     z = np.load(_dir(name) / "build" / "mesh.npz")
+    faces = z["faces"]
+    part = z["part"][faces[:, 0]] if "part" in z else np.zeros(len(faces), int)
+    names = [str(n) for n in z["part_names"]] if "part_names" in z else [name]
     with open(path, "w") as f:
-        f.write(f"# hifipushie {name}\no {name}\n")
+        f.write(f"# hifipushie {name}: one object per part ({', '.join(names)})\n")
         np.savetxt(f, z["verts"], fmt="v %.5f %.5f %.5f")
-        if "normals" in z:
-            np.savetxt(f, z["normals"], fmt="vn %.4f %.4f %.4f")
-            fi = np.repeat(z["faces"] + 1, 2, axis=1)
-            np.savetxt(f, fi, fmt="f %d//%d %d//%d %d//%d")
-        else:
-            np.savetxt(f, z["faces"] + 1, fmt="f %d %d %d")
+        np.savetxt(f, z["normals"], fmt="vn %.4f %.4f %.4f")
+        for i, pn in enumerate(names):
+            f.write(f"o {name}_{pn}\n")
+            np.savetxt(f, np.repeat(faces[part == i] + 1, 2, axis=1), fmt="f %d//%d %d//%d %d//%d")
     return path
 
 

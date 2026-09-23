@@ -23,7 +23,8 @@ face: {"head": joint (anchor); feature positions "at" are offsets from it in wor
   eyes:   {"at", "r", "sink": fraction of r the ball's centre sits below the skin (0.25),
            "upper"/"lower": how much each lid covers, 0..1 (0.35 / 0.15; both 0 = no lids),
            "width": eye-corner half-width / r (0.85), "lid": thickness, "tilt": deg (outer corner up),
-           "socket": radius ratio of a carved socket (0 = none), "dir"}
+           "socket": radius ratio of a carved socket (0 = none), "part": put the eyeballs in their own
+           part (a separate mesh and material, e.g. "eyes"), "dir"}
   brows:  {"at", "size": [half-length, depth, half-height], "angle": deg (outer end up), "proud", "dir"}
   cheeks: {"at", "size", "proud", "dir"}          chin: {"at", "size", "proud"}
   nose:   {"at": root on the surface, "length", "droop": deg below "dir", "r": tip radius,
@@ -32,6 +33,7 @@ face: {"head": joint (anchor); feature positions "at" are offsets from it in wor
            "upper"/"lower": lip radius, "pout": how far lips stand out (fraction of radius, 0.35),
            "depth": of the cavity behind an open mouth}
   "blend": default blend for face parts. Layers: skin features 0, lids and lips 1, eyeballs 2.
+Any kit: "part" puts everything it generates in that part.
 """
 
 from __future__ import annotations
@@ -110,8 +112,10 @@ def expand(spec: dict) -> dict:
         return spec
     out = copy.deepcopy(spec)
     out.pop("kits")
-    base = copy.deepcopy(out)  # the body without kits: what face features are seated on
-    base.pop("strokes", None)  # (strokes come later, and may be anchored on kit features)
+    # the body without kits (nor strokes and surface-seated joints, which come later and may be anchored on
+    # kit features): what face features are seated on
+    from .strokes import without_seated
+    base = without_seated(out)
     for name, kit in kits.items():
         o = _Out(out, name)
         match kit.get("type"):
@@ -121,6 +125,10 @@ def expand(spec: dict) -> dict:
                 _face(base, name, kit, o)
             case other:
                 raise KitError(f"kit {name!r}: unknown type {other!r} (have {', '.join(TYPES)})")
+        if kit.get("part"):  # everything the kit makes goes in that part (unless it chose one itself)
+            for kind in ("bones", "blobs"):
+                for el in getattr(o, kind).values():
+                    el.setdefault("part", kit["part"])
         for kind in ("joints", "bones", "blobs"):
             out.setdefault(kind, {}).update(getattr(o, kind))
     return out
@@ -317,7 +325,8 @@ def _face(base: dict, name: str, k: dict, o: _Out):
         s, _, facing = seat(f, [0.4 * R, 0, 0.15 * R], "eyes", surf2)
         c = s - facing * r * float(f.get("sink", 0.25))
         F = _frame(facing, float(f.get("tilt", 0.0)))
-        o.blob(f"{fb}_eye.L", at=_r(c), size=_r([r] * 3), layer=2, blend=round(0.3 * r, 5))
+        o.blob(f"{fb}_eye.L", at=_r(c), size=_r([r] * 3), layer=2, blend=round(0.3 * r, 5),
+               **({"part": f["part"]} if f.get("part") else {}))
         if (sock := float(f.get("socket", 0.0))) > 0:
             o.blob(f"{fb}_socket.L", at=_r(c), size=_r([sock * r] * 3), op="subtract",
                    blend=round(0.25 * r, 5))
