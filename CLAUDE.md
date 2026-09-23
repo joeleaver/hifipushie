@@ -146,20 +146,52 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
-## Procedural painting (done 2026-09-23) and what's left
+## Next session: environment export, then rebuild the cabin
 
-Substance-style layers work identically on vertices (`look`) and texels (`export_asset`): field inputs
-(`surface.Points`), mask stacks with blend modes/breakup/levels/invert/blur, ao/thickness/cells generators, noise
-warp/stretch, painted `height` (normal + height maps), `look(paint_layer=)`. Presets stayed recipes in the paint
-docstring (edge wear = convex cavity + breakup, grime = ao max concave, dust = facing up + breakup): generic
-generators beat named templates. `examples/troll.json` shows all of it. Tested on troll and goblin.
-Open ends:
-- Bake time at 2048 on the troll: ~290 s (AO 130 s, paint 52 s, painted height 57 s: the height layers run 4 more
-  times). Per-layer mask caching, or evaluating height layers once on a slightly bigger stencil, would help.
-- Painted height in `look` is only vertex-normal tilt at vertex spacing; fine relief is judged in the export.
-- Thickness is ready for subsurface (a thickness map / SSS colour in the GLB) but nothing exports it yet.
-- AO is broad (whole faces read 0.4-0.7): grime recipes use ao [0.55, 0.3] plus tight cavity. An AO with a
-  shorter reach (a crevice detector) might be worth a parameter.
+Agreed with the user (2026-09-23). Everything the cabin test exposed is built except these two export pieces.
+
+**1. Environment export** (`asset.py`, `blender_asset.py`, `write_glb`):
+- **Prefab instances share one mesh and one texture set.** Today every instance is baked as unique geometry
+  and texels. `assemble` names instance elements `<instance>/<element>` and tags them with the instance and
+  prefab. Export each prefab once (its elements' parts, in its local frame), and write one glTF node per
+  instance with the instance transform (at/rot/scale; Blender Z-up -> glTF Y-up as elsewhere) pointing at the
+  shared mesh. Weathered instances (spec["weather"]) only move as rigid bodies, so they still share.
+  Element-level differences (vary/lumpy/chips on a prefab's own elements) are identical across instances by
+  construction. Paint that varies per instance (e.g. `near` one instance, `sky`/`ao` differing by placement)
+  is the catch: decide per prefab: share (bake the prefab once, in a neutral setting or at its first
+  instance) or unique (bake per instance). Default: share, and say so in the log. Report the saving.
+- **Density-driven atlasing.** `export_asset(texel_density=px_per_m, max_texture=2048)`: group parts (by
+  `parts.<p>.atlas`, else by material family / part) and open as many atlases as needed to meet the target
+  at the max size. Today's `atlases=n` and per-part `atlas` are the manual version. Keep `texel_focus`.
+- Validate with the Khronos validator, preview with `asset.preview(hide=...)` and interior cameras.
+- Later, not now: a tiling-material export for engines (tileable textures from the material library with world
+  UVs, plus low-res unique masks). Needs an engine-side shader; glTF can't blend the layers.
+
+**2. Rebuild the cabin from scratch** with everything built this session. Don't patch the old one: it's a
+~650-element spec emitted by a Python script (`workspace/cabin/notes/build_cabin.py`, its spec `cabin.json`,
+kept for reference; its friction log is summarised in the roadmap below). The new one should be a readable
+spec:
+- a `story` first (age, climate, use, directions, events), and every imperfection following from it;
+- log walls as bone `array`s with `vary` (butt/top radii), `flip: "alternate"`, `bow`, `lumpy`,
+  `"ends": "flat"`, jitter; notched corners with targeted cuts; chinking; window/door openings as `targets`
+  cuts through the wall logs only;
+- furniture as `prefabs` + `instances` (chairs, stools, shelves, crockery), turned a few degrees and knocked
+  about by `weather`;
+- hard surfaces with `box`/`cylinder`, `hollow` pots, `round` edges;
+- materials (planks floor, wood logs with end grain, stone hearth/foundation with a little moss, cloth
+  bedding, rust/metal stove), weathering from the story (weather side, `sky` for rain vs shelter, soot above
+  the stove, a worn path door -> stove/table, polish on the table edge);
+- **restraint** (user feedback on the porch: "all the elements are right" but "a little heavy-handed"): sag
+  ~1% of span, lean ~1 deg, weathering layers at opacity ~0.15-0.3;
+- judge with `look(camera=...)` at eye height inside, `clip` plans, `clearance` for the door and paths,
+  `check` (realism audit), then `export_asset` + preview.
+Reference models from this session in the workspace (git-ignored): `porch2` (story + weather at the right
+strength; script `workspace/porch2/build_porch.py`), `logtest` (perfect vs varied log corner,
+`build_logtest.py`), `swatches` (one panel + ball per material), `hstest` (prefabs, arrays, hollow, targets).
+`cabin_budget` / `troll_budget` are export-test copies and can be deleted.
+
+Parallel agents: give each its own git worktree (Agent `isolation: "worktree"`); `.claude/worktrees/` is
+git-ignored. An agent working in the main tree sees code change under its feet.
 
 Validate every exported GLB with the Khronos validator (gives 0 errors today). In the scratchpad:
 `npm init -y && npm i gltf-validator`, then a 3-line `v.mjs`: `import v from 'gltf-validator'`,
@@ -183,17 +215,27 @@ server, test by calling `server.*` functions directly (see below) or restart the
 ## Status and roadmap
 Done: skeleton + blobs, kits (face, hand), fit, plan workflow (set_plan/check), strokes (summed dabs; repeat,
 scatter; overlay/raking/curvature views), parts (separate meshes, clothing shells), surface-seated joints,
-paint (layers with path/near/facing/axis/cavity/noise/ao/thickness/cells generators, mask stacks, breakup,
-painted height, coverage and per-layer mask feedback, coloured OBJ),
-game-ready export (export_asset: low poly, atlas, texel-exact PBR maps, GLB),
-the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifipushie`), and a performance
-pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
+paint (layers with path/near/facing/axis/cavity/noise/ao/thickness/cells/tiles/weave/sky generators, mask
+stacks, breakup, painted height, coverage and per-layer mask feedback, coloured OBJ), a material library
+(cloth, leather, wood, planks, brick, stone, metal, rust, moss), repetition (prefabs/instances, arrays with
+vary/flip/jitter, tags), hard-surface solids (box, cylinder, hollow, targeted cuts, flat bone ends, bow, lumpy,
+chips), the imperfection stage (story, check's realism audit, weather ops), interior viewing (look hide/only
+parts, clip, perspective cameras; clearance tool), game-ready export (export_asset: joint decimation with
+per-part weights, packed atlases with texel density/focus, texel-exact PBR maps, GLB), the playbook
+(`guide.md` via the `guide` tool, `.claude/skills/hifipushie`), and performance passes.
+`examples/troll.json` is the reference character.
+
+Older notes on paint: bake time at 2048 on the troll ~290 s before the field_at chunking fix (AO was most of it);
+painted height in `look` is vertex-normal tilt only; thickness is ready for a subsurface map but nothing exports
+it; AO is broad (grime recipes use ao [0.55, 0.3] + tight cavity).
 
 Next, roughly in priority order:
-1. Export for environments (agreed): prefab instances share one mesh + texture set in the GLB (nodes), and
-   density-driven atlasing (target px/m + max size -> as many atlases as needed, grouped by material/part).
-   Then redo the cabin with prefabs, arrays + variation, materials, a story and weather (the imperfection
-   stage exists now: story, check's audit, weather ops, chips, sky). Later: tiling-material export for engines.
+1. Environment export, then the cabin rebuild: see "Next session" above.
+   Remaining cabin-test friction not yet addressed: painting huge meshes for look is slow (hide/clip/camera
+   looks paint only what's shown; per-layer mask caching would help full looks); log end grain can't show
+   rings (world noise has no per-log axis: an "along the element" pattern option); saddle notches are manual
+   cuts; glass has no transparency (a part "alpha"/transmission in the GLB material); per-layer grain
+   direction needs a layer per orientation (an `along: element` option for stretch/dir).
    Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, deliberate UV seams (log walls
    unwrap as strips).
 2. Part tools: check that parts don't cut into each other (looking at one part alone: `look(only_parts=)`).
