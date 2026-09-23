@@ -128,11 +128,68 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     insts = [{"name": inst, "prefab": pf, "matrix": M.tolist()}
              for pf, d in ctx["prefabs"].items() for inst, M in d["instances"].items()]
     log.append(f"{len(objs)} objects ({meshed} meshed, {len(objs) - meshed} from the cache), {len(insts)} instances")
-    prog = _paint_inputs(spec, ctx, objs, cache, log)
+    prog = _paint_inputs(spec, ctx, objs, insts, cache, log)
     return objs, insts, prog
 
 
-def _paint_inputs(spec: dict, ctx: dict, objs: list, cache: Path, log: list) -> dict | None:
+RAYTRACED = ("ao", "sky")  # inputs Cycles measures (the rest are ours: curvature is exact from the field)
+# AO as ours (cones out to 3 steps of 0.008 x the model size). Sky reaches past the whole model: a roof shelters
+# however high it is (ours stopped at 0.3 x, so interior walls read as open to the sky). x model size.
+RT = {"ao_distance": 0.024, "sky_distance": 2.0, "samples": 32, "smooth": 2}
+CALIBRATION = json.loads(Path(__file__).with_name("input_quantiles.json").read_text()) \
+    if Path(__file__).with_name("input_quantiles.json").exists() else {}
+
+
+def _smooth(v: np.ndarray, faces: np.ndarray, rounds: int = 2) -> np.ndarray:
+    """Each vertex halfway to its neighbours' mean, a few rounds: Cycles' per-vertex estimate (32 rays) is
+    noisier than neighbouring vertices differ, and paint ramps turn that into speckle."""
+    import scipy.sparse as sp
+    i = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
+    j = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
+    A = sp.coo_matrix((np.ones(2 * len(i)), (np.r_[i, j], np.r_[j, i])), (len(v), len(v))).tocsr()
+    A.data[:] = 1.0
+    deg = np.maximum(np.asarray(A.sum(1)).ravel(), 1)
+    for _ in range(rounds):
+        v = 0.5 * v + 0.5 * (A @ v) / deg
+    return v
+
+
+def calibrate(key: str, v: np.ndarray) -> np.ndarray:
+    """Cycles' openness mapped onto the distribution of ours (a quantile curve, like noise), so the ranges in
+    specs keep their meaning."""
+    c = CALIBRATION.get(key)
+    return v if c is None else np.interp(v, c[0], c[1])
+
+
+def raytraced(objs: list, insts: list, ctx: dict, cache: Path, geo: str, log: list, device: str = "CPU") -> dict:
+    """AO and sky openness per vertex of every object by Cycles (`blender_scene.bake_inputs`), smoothed and
+    calibrated: {key: {"ao", "sky"}}. Cached per object on the whole geometry (every object occludes)."""
+    from .surface import model_size
+    size = model_size(list(ctx["full"].values()))
+    job = {"mode": "bake_inputs", "ao_distance": RT["ao_distance"] * size, "sky_distance": RT["sky_distance"] * size,
+           "samples": RT["samples"], "device": device}
+    k = hashlib.sha1((geo + json.dumps([job, CALIBRATION, 1], sort_keys=True)).encode()).hexdigest()[:12]
+    files = {o["key"]: cache / f"{o['hash']}_rt_{k}.npz" for o in objs}
+    if not all(f.exists() for f in files.values()):
+        t = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            job.update(out=tmp, instances=insts, objects=[
+                {"key": o["key"], "mesh": o["mesh"], "prefab": o["prefab"],
+                 "bake": ctx["prefabs"][o["prefab"]]["bake"] if o["prefab"] else None} for o in objs])
+            _blender(job, 3600)
+            for o in objs:
+                with np.load(Path(tmp) / (o["key"].replace("/", "__") + ".npz")) as z, np.load(o["mesh"]) as m:
+                    np.savez(files[o["key"]], **{n: calibrate(n, _smooth(z[n].astype(np.float64), m["faces"], RT["smooth"]))
+                                                .astype(np.float32) for n in RAYTRACED})
+        log.append(f"Cycles AO and sky for {len(objs)} objects: {time.time() - t:.1f}s")
+    out = {}
+    for key, f in files.items():
+        with np.load(f) as z:
+            out[key] = {n: z[n] for n in z.files}
+    return out
+
+
+def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, log: list) -> dict | None:
     """The paint program, and each object's per-vertex inputs (cached: AO and sky depend on every object, so
     the key is the whole geometry plus what the program measures)."""
     from . import paintnodes
@@ -146,17 +203,23 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, cache: Path, log: list) -> 
     from .surface import INPUTS_VERSION
     # two caches: the field inputs (AO, sky: slow) change only with the geometry; the measured masks with it and
     # their own definitions. The packed attribute file per object is assembled from both (cheap).
-    fkey = hashlib.sha1((geo.hexdigest() + json.dumps([prog["inputs"], INPUTS_VERSION])).encode()).hexdigest()[:12]
+    ours = [k for k in prog["inputs"] if k not in RAYTRACED]
+    fkey = hashlib.sha1((geo.hexdigest() + json.dumps([ours, INPUTS_VERSION])).encode()).hexdigest()[:12]
+    # the ray traced inputs join in the masks key (masks can read them), so the packed file follows them too
     mkey = hashlib.sha1((geo.hexdigest() + json.dumps(prog["fallbacks"], sort_keys=True, default=str)
-                         + str(INPUTS_VERSION)).encode()).hexdigest()[:12]
+                         + str(INPUTS_VERSION) + json.dumps([RT, CALIBRATION])).encode()).hexdigest()[:12]
     key = hashlib.sha1((fkey + mkey + json.dumps(prog["packing"], sort_keys=True)).encode()).hexdigest()[:12]
     todo = [o for o in objs if not (cache / f"{o['hash']}_in_{key}.npz").exists()]
+    # ray traced inputs: needed by the program itself, or by a mask we measure (a blurred or mirrored entry)
+    rt = raytraced(objs, insts, ctx, cache, geo.hexdigest(), log) if todo and (
+        set(prog["inputs"]) & set(RAYTRACED) or any(k in json.dumps(prog["fallbacks"], default=str)
+                                                    for k in RAYTRACED)) else {}
     names = list(ctx["full"])
     groups: dict = {}  # measured at each object's own voxel: curvature and AO steps scale with it
     for o in todo:
         groups.setdefault(o["voxel"], []).append(o)
     for voxel, todo in groups.items():
-        P, N, part, sl = [], [], [], []
+        P, N, part, sl, given = [], [], [], [], {}
         for o in todo:
             z = np.load(o["mesh"])
             v, n = z["verts"].astype(np.float64), z["normals"].astype(np.float64)
@@ -167,11 +230,14 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, cache: Path, log: list) -> 
                 n = n @ M0[:3, :3].T
                 n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
             sl.append((sum(len(x) for x in P), len(v)))
+            for k in rt.get(o["key"], {}):
+                given.setdefault(k, []).append(rt[o["key"]][k])
             P.append(v)
             N.append(n)
             part.append(np.full(len(v), names.index(o["part"])))
         P, N, part = np.concatenate(P), np.concatenate(N), np.concatenate(part)
-        vals = {}
+        given = {k: np.concatenate(v).astype(np.float64) for k, v in given.items()}
+        vals = {k: v.astype(np.float32) for k, v in given.items()}
         for what, k in (("field", fkey), ("masks", mkey)):
             files = [cache / f"{o['hash']}_{what}_{k}.npz" for o in todo]
             if all(f.exists() for f in files):
@@ -180,7 +246,7 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, cache: Path, log: list) -> 
                         for name in zz.files:
                             vals.setdefault(name, np.zeros(len(P), np.float32))[a:a + n] = zz[name]
                 continue
-            got = paintnodes.measure(spec, prog, P, N, part, names, voxel, ctx["full"], what)
+            got = paintnodes.measure(spec, prog, P, N, part, names, voxel, ctx["full"], what, given)
             for f, (a, n) in zip(files, sl):
                 np.savez(f, **{name: v[a:a + n] for name, v in got.items()})
             vals.update(got)
@@ -310,8 +376,11 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
     bp = blend_path(name)
     frames = []
     if views:
-        z = np.load(store.build(name, 128)["mesh"])  # bounds for the orthographic views
-        frames += render.view_frames(z["verts"], views)
+        from .spec import compile_prims, geometry
+        adds = [p for p in compile_prims(geometry(store.load(name))) if p.op == "add"]  # bounds for the ortho views
+        lo, hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+        lo, hi = lo - 0.06 * (hi - lo), hi + 0.06 * (hi - lo)
+        frames += render.view_frames(np.array([[(lo, hi)[(i >> k) & 1][k] for k in range(3)] for i in range(8)]), views)
     for i, c in enumerate(cameras or []):
         frames.append(render.camera_frame(c, i))
     with tempfile.TemporaryDirectory() as tmp:

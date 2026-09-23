@@ -203,9 +203,16 @@ the .blend come back as spec edits).
   cone): sees sky through windows/eaves at an angle. Needs retuning of `sky` ranges, not just a curve.
 
 **Plan, in order:**
-1. Adopt Cycles AO + sky in `scene.sync` (replace `measure(..., "field")` for ao/sky; keep curvature ours:
-   exact from the field, 12 s). Calibrate AO (quantile curve, as for noise) and retune the cabin's `sky`
-   ranges; show the user moss/dust/grime masks old vs new side by side before switching.
+1. DONE (2026-09-23): `scene.sync` takes ao/sky from Cycles (`scene.raytraced` -> `blender_scene.bake_inputs`, which
+   builds its own scene from the cached meshes, prefabs at every instance; cached per object as `_rt_<key>`;
+   settings in `scene.RT`). Per-vertex values are smoothed (2 rounds halfway to the neighbour mean: 32 rays are
+   noisier than neighbouring vertices differ). AO goes through `input_quantiles.json` (Cycles -> ours, fitted on
+   the cabin's 1.1M vertices). Sky is raw Cycles (cosine upper hemisphere, reach 2 x model size): ours stopped
+   at 0.3 x, so interior walls read as open sky (weather/rust inside the cabin); a vertical surface tops out
+   near 0.5 now, so ranges on walls/pipes want ~half what they had (cabin's rain_grey, pipe_rust retuned).
+   Masks measured by our code (blur, ".L") read the Cycles values too (`measure(given=)`). Sync of the cabin
+   150 s vs 304 s. `scene.look(show_layer=)` now shows the mask glowing orange on lit clay (a material by its
+   name shows its first sub-layer). Still ours: `look`'s per-vertex paint and the texel bake (`surface.ao/sky`).
 2. Grain direction per element (the furniture "speckle" the user saw, also on the counter/"sink" unit): the
    wood material assumes one world `dir` per layer, so every face along it becomes end grain with dotted
    rings. Measure a per-vertex grain direction from each vertex's own primitive (bone axis, box's longest

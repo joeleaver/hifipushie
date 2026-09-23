@@ -321,7 +321,8 @@ class _Nodes:
 
 def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None):
     """A part's material: its base channels, then every layer on it mixed in by opacity x mask. show: a layer
-    name: the material shows only that layer's mask, grey 0..1 (0 where the layer isn't on this part)."""
+    name: the material shows only that layer's mask, glowing orange 0..1 on grey clay (0 where the layer isn't on
+    this part). A material's name shows its first sub-layer (its main coverage)."""
     name = f"part:{part}"
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     if show is None and m.get("hp_prog") == prog_hash:
@@ -331,12 +332,17 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         t = m.node_tree
         t.nodes.clear()
         N = _Nodes(t, quantiles, packing)
-        ly = next((ly for ly in layers if ly["name"] == show), None)
+        ly = next((ly for ly in layers if ly["name"] == show or ly["name"].startswith(show + ":")), None)
         mask = N.stack(ly["entries"]) if ly else 0.0
-        em = N.node("ShaderNodeEmission")
-        N._in(em.inputs["Color"], N.math("MAXIMUM", N.math("MINIMUM", mask, 1.0), 0.0) if ly else (0.0, 0.0, 0.0, 1.0))
+        # lit grey clay, the mask glowing orange on it: the shape reads where the mask is 0
+        bsdf = N.node("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Base Color"].default_value = (0.18, 0.18, 0.18, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.8
+        bsdf.inputs["Emission Color"].default_value = (1.0, 0.35, 0.05, 1.0)
+        if ly:
+            N._in(bsdf.inputs["Emission Strength"], N.math("MULTIPLY", N.math("MAXIMUM", N.math("MINIMUM", mask, 1.0), 0.0), 2.5))
         out = N.node("ShaderNodeOutputMaterial")
-        t.links.new(em.outputs[0], out.inputs[0])
+        t.links.new(bsdf.outputs[0], out.inputs[0])
         m["hp_prog"] = "debug"
         return m
     m.use_nodes = True
@@ -636,44 +642,48 @@ def _device(scene, device):
 
 def bake_inputs(job):
     """AO and sky openness per vertex by Cycles ray tracing, baked as emission into colour attributes, every
-    object in one bake per pass (a bake call rebuilds the scene's BVH and shaders: once, not per object). Scene
-    objects bake where they are; a prefab's parts bake on a stand-in at its bake instance (that instance
-    hidden, so the stand-in doesn't occlude itself). Writes <out>/<key>.npz {ao, sky} and prints timings."""
+    object in one bake per pass (a bake call rebuilds the scene's BVH and shaders: once, not per object). Builds
+    its own scene from the objects' meshes (no .blend): scene objects where they are, a prefab's parts at every
+    instance (linked duplicates: they all occlude), baked at the bake instance. Writes <out>/<key>.npz {ao, sky}
+    (by vertex, in the mesh file's order) and prints timings."""
     import os
     import time
     t0 = time.time()
-    _open(job["blend"])
+    for ob in list(bpy.data.objects):
+        bpy.data.objects.remove(ob)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     _device(scene, job.get("device", "CPU"))
     scene.cycles.samples = 1
     scene.render.bake.target = "VERTEX_COLORS"
     vl = bpy.context.view_layer
-    size = job["size"]
-    passes = {"ao": _ao_override(0.024 * size, False, job.get("samples", 32)),
-              "sky": _ao_override(0.3 * size, True, job.get("samples", 32))}
-    inst = {ob["hp_instance"]: ob for ob in bpy.data.objects if ob.get("hp_instance")}
+    passes = {"ao": _ao_override(job["ao_distance"], False, job.get("samples", 32)),
+              "sky": _ao_override(job["sky_distance"], True, job.get("samples", 32))}
+    by_pf = {}
+    for i in job["instances"]:
+        by_pf.setdefault(i["prefab"], []).append(i)
     targets = {}
     for o in job["objects"]:
-        src = next(ob for ob in bpy.data.objects if ob.get("hp_key") == o["key"])
-        if o.get("prefab"):  # a stand-in at the bake instance, sharing the mesh data
-            t = bpy.data.objects.new("hp_bake_standin", src.data)
-            scene.collection.objects.link(t)
-            t.matrix_world = inst[o["bake"]].matrix_world
-            inst[o["bake"]].hide_render = True
-            targets[o["key"]] = t
-        else:
-            targets[o["key"]] = src
-    for t in targets.values():
-        me = t.data
-        attr = me.color_attributes.get("hp_bake") or me.color_attributes.new("hp_bake", "FLOAT_COLOR", "POINT")
+        me = _mesh(o["key"], o["mesh"])
+        attr = me.color_attributes.new("hp_bake", "FLOAT_COLOR", "POINT")
         me.color_attributes.active_color = attr
+        if not o.get("prefab"):
+            ob = bpy.data.objects.new(o["key"], me)
+            scene.collection.objects.link(ob)
+            targets[o["key"]] = ob
+            continue
+        for i in by_pf[o["prefab"]]:
+            ob = bpy.data.objects.new(f"{o['key']}@{i['name']}", me)
+            scene.collection.objects.link(ob)
+            ob.matrix_world = _matrix(i["matrix"])
+            if i["name"] == o["bake"]:
+                targets[o["key"]] = ob
     times = {"load": round(time.time() - t0, 1)}
     res = {k: {} for k in targets}
     os.makedirs(job["out"], exist_ok=True)
     for name, mat in passes.items():
         vl.material_override = mat
-        for ob in vl.objects:
+        for ob in scene.objects:
             ob.select_set(False)
         for t in targets.values():
             t.select_set(True)

@@ -212,17 +212,20 @@ def _attrs(entries: list) -> set:
 
 
 def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.ndarray, names: list[str],
-            voxel: float, streams: dict, what: str = "all") -> dict:
+            voxel: float, streams: dict, what: str = "all", given: dict | None = None) -> dict:
     """Every per-vertex input the program needs, at these points (world positions and normals; part = index
     into names, the model's part names): {attr: (n,) float32}. what: "field" (ao, sky, curvature, thickness:
-    they depend on the geometry only), "masks" (the measured masks and distances) or "all"."""
+    they depend on the geometry only), "masks" (the measured masks and distances) or "all". given: inputs
+    measured elsewhere (Cycles' ao and sky), used as they are, by masks too."""
     import sys
     import time
     from .surface import Points
-    pts = Points(spec, pos, nrm, part, names, voxel, streams=streams)
+    pts = Points(spec, pos, nrm, part, names, voxel, cache=dict(given or {}), streams=streams)
     times = {}
     out = {}
     for k in (prog["inputs"] if what in ("all", "field") else []):
+        if k in (given or {}):
+            continue
         t = time.time()
         out[k] = pts.get(k).astype(np.float32)
         times[k] = time.time() - t
