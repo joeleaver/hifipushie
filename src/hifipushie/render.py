@@ -58,6 +58,25 @@ def view_frames(verts: np.ndarray, views: list[str], focus=None, zoom: float = 1
     return out
 
 
+def camera_frame(cam: dict, index: int = 0) -> dict:
+    """A perspective panel from {"eye": [x,y,z], "target": [x,y,z], "fov"?: degrees across (default 70),
+    "up"?, "name"?} (eye and target already resolved to 3D). No rulers: sizes vary with depth."""
+    eye, target = np.asarray(cam["eye"], float), np.asarray(cam["target"], float)
+    d = eye - target
+    if np.linalg.norm(d) < 1e-9:
+        raise ValueError("camera eye and target are the same point")
+    d /= np.linalg.norm(d)
+    up = np.asarray(cam.get("up", [0, 0, 1]), float)
+    if np.linalg.norm(np.cross(up, d)) < 1e-6:  # looking straight up or down: screen up is +Y
+        up = np.array([0.0, 1.0, 0.0])
+    fov = float(cam.get("fov", 70))
+    if not 5 <= fov <= 150:
+        raise ValueError("camera fov must be between 5 and 150 degrees")
+    return {"name": cam.get("name") or (f"camera {index + 1}" if index else "camera"), "dir": d.tolist(),
+            "up": up.tolist(), "eye": eye.tolist(), "center": target.tolist(), "fov": fov,
+            "near": float(cam.get("near", 0.01)), "scale": None, "axes": None}
+
+
 class _Blender:
     """One headless Blender kept running between looks (render jobs go in on stdin), so a look doesn't pay
     for Blender's startup. Restarted if it dies; one job at a time."""
@@ -106,13 +125,15 @@ _BLENDER = _Blender()
 
 
 def render_views(mesh_npz: Path, frames: list[dict], size: int, matcap: str, cavity: bool = True,
-                 flat: bool = False) -> list[Image.Image]:
+                 flat: bool = False, extra: list[Path] = ()) -> list[Image.Image]:
+    """One image per frame. extra: further meshes drawn with the model (section caps)."""
     with tempfile.TemporaryDirectory(prefix="hifipushie-") as tmp:
         for f in frames:
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         job = Path(tmp) / "job.json"
         job.write_text(json.dumps({"mesh": str(mesh_npz), "size": size, "matcap": matcap, "cavity": cavity,
-                                   "flat": flat, "views": frames}))
+                                   "flat": flat, "views": frames,
+                                   "extra": [str(e) for e in extra]}))
         try:
             _BLENDER.render(job)
         except (RuntimeError, OSError):  # fall back to a one-off Blender, which reports its own errors
@@ -140,6 +161,10 @@ def _panel(img: Image.Image, frame: dict, grid: bool) -> Image.Image:
     out.paste(img, (m, 20))
     d = ImageDraw.Draw(out)
     d.text((m + 4, 3), frame["name"], fill=(235, 235, 235), font=FONT)
+    if "eye" in frame:
+        e = ", ".join(f"{x:.2f}" for x in frame["eye"])
+        d.text((m + 4 + d.textlength(frame["name"], font=FONT) + 10, 3),
+               f"perspective {frame['fov']:.0f}° from ({e}), no rulers", fill=(160, 160, 170), font=FONT)
     axes = frame["axes"]
     if axes is None:
         return out
@@ -224,7 +249,7 @@ STROKE_COLOURS = {"clay": (255, 150, 40), "crease": (40, 200, 255), "flatten": (
 
 
 def project(frame: dict, pts: np.ndarray, size: int) -> np.ndarray:
-    """World points -> pixel (x, y) in a view's image (same camera as blender_render.py)."""
+    """World points -> pixel (x, y) in an orthographic view's image (same camera as blender_render.py)."""
     d, up = np.asarray(frame["dir"], float), np.asarray(frame["up"], float)
     d /= np.linalg.norm(d)
     right = np.cross(up, d)

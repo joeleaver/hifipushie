@@ -32,6 +32,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `look(strokes=True)` draws stroke paths (visibility by raycasting the field); `shading="raking"` uses a
   generated low-side-light matcap, `"curvature"` colours vertices by the field's Laplacian (convex warm).
   `smin` is cubic (C2): the quadratic one left curvature jumps at every fillet edge, visible in highlights.
+  `look(hide_parts/only_parts/clip)` goes through `store.view_mesh` (`<stem>_view.npz`: a face subset, verts
+  beyond a clip plane pulled onto it, `src` = indices into the base mesh) and `store.section_caps` (grid cells
+  on each plane inside a shown part's exact field, part colour darkened; shell parts only fill what solid parts
+  don't, so clothes cut as a rim), loaded by Blender as an extra object. `camera` panels are perspective
+  (`render.camera_frame`, `blender_render` switches the camera type per view; no rulers, no stroke overlay);
+  an eye [x, y] stands on `measure.stand_height`. Camera-only looks also cull faces outside the frusta.
+  `store.painted` on a view mesh slices the whole mesh's paint if it's current, else paints only the subset
+  (inputs sliced from `mesh_inputs.npz` when current). `measure.clearance` (tool `clearance`): walkability
+  from vertical columns of `field_at` (floors, headroom), a capsule clearance test and horizontal width rays.
 - `measure.py`: cross-sections of the exact field (`sdf.field_at`): rays from a bone axis, or world-axis slices.
 - `compare.py`: reference mask extraction, placement (FFT shift search per scale + sub-pixel refine, kept as a
   continuous transform onto the full-res image), diff image, band tables.
@@ -160,7 +169,7 @@ pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference mod
 Next, roughly in priority order:
 1. Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, texel density per
    part (the face deserves more atlas than the back), UV seams placed deliberately rather than smart project.
-2. Part tools: look at one part alone; check that parts don't cut into each other.
+2. Part tools: check that parts don't cut into each other (looking at one part alone: `look(only_parts=)`).
 3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
 4. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
    full build's block grid so PartGrid can reuse blocks.

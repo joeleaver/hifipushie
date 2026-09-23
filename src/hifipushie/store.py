@@ -252,7 +252,21 @@ def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
                 return out
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
-    meta = json.loads((mesh.parent / ("meta.json" if mesh.stem == "mesh" else "closeup_meta.json")).read_text())
+    meta = json.loads((mesh.parent / ("meta.json" if mesh.stem.startswith("mesh") else
+                                      "closeup_meta.json")).read_text())
+    src, base = z.pop("src", None), z.pop("base", None)  # a view_mesh: a subset of the base mesh's vertices
+    z.pop("frame_bounds", None)
+    if src is not None:  # the whole mesh painted already (and current): take the subset's colours from it
+        bmesh = Path(str(base))
+        bout = bmesh.with_name(bmesh.stem + ("_paint.npz" if layer is None else "_mask.npz"))
+        if bmesh.exists() and bout.exists():
+            with np.load(bout) as zb:
+                if str(zb["stamp"]) == f"{bmesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}:{layer}":
+                    z["part_colors"], z["normals"] = zb["part_colors"][src], zb["normals"][src]
+                    z["coverage"], z["coverage_of"] = zb["coverage"], np.array("all")
+                    z["stamp"] = np.array(stamp)
+                    np.savez(out, **z)
+                    return out
     inputs = mesh.with_name(mesh.stem + "_inputs.npz")
     istamp = str(mesh.stat().st_mtime_ns)
     cache: dict = {}
@@ -260,6 +274,13 @@ def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
         with np.load(inputs) as zi:
             if str(zi["stamp"]) == istamp:
                 cache = {k: zi[k] for k in zi.files if k != "stamp"}
+    if src is not None and not cache:  # the whole mesh's inputs, if they're current, cover the subset too
+        bmesh = Path(str(base))
+        binputs = bmesh.with_name(bmesh.stem + "_inputs.npz")
+        if bmesh.exists() and binputs.exists():
+            with np.load(binputs) as zi:
+                if str(zi["stamp"]) == str(bmesh.stat().st_mtime_ns):
+                    cache = {k: zi[k][src] for k in zi.files if k != "stamp"}
     had = set(cache)
     stats: dict = {}
     masks: dict = {}
@@ -278,7 +299,169 @@ def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
     z["part_colors"] = np.concatenate([rgb, np.ones((len(rgb), 1))], 1).astype(np.float32)
     z["stamp"] = np.array(stamp)
     z["coverage"] = np.array(json.dumps(stats))
+    z["coverage_of"] = np.array("all" if src is None else "shown")
     np.savez(out, **z)
+    return out
+
+
+def coverage_of(painted_mesh: Path) -> str:
+    """"all" when the coverage numbers are over the whole model, "shown" when over a view's subset only."""
+    with np.load(painted_mesh) as z:
+        return str(z["coverage_of"]) if "coverage_of" in z else "all"
+
+
+def clip_planes(clip) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Section planes as (point, unit normal); everything on the side the normal points into is cut away.
+    clip: {"z": h} (drop above z = h; also "x", "y"), {"-y": c} (drop below y = c, i.e. the front of a model
+    facing -Y; also "-x", "-z"), {"point": [x,y,z], "normal": [x,y,z]}, or a list of these (all applied)."""
+    if not clip:
+        return []
+    out = []
+    for c in (clip if isinstance(clip, list) else [clip]):
+        if not isinstance(c, dict):
+            raise ValueError(f"bad clip {c!r}: use {{'z': 2.2}}, {{'-y': 0}} or {{'point': [...], 'normal': [...]}}")
+        if "normal" in c:
+            n = np.asarray(c["normal"], float)
+            if n.shape != (3,) or np.linalg.norm(n) < 1e-9:
+                raise ValueError("clip normal must be a non-zero [x, y, z]")
+            out.append((np.asarray(c.get("point", [0, 0, 0]), float), n / np.linalg.norm(n)))
+            continue
+        for k, v in c.items():
+            ax = k.lstrip("+-").lower()
+            if ax not in ("x", "y", "z"):
+                raise ValueError(f"bad clip key {k!r}: x, y, z, -x, -y, -z, or point + normal")
+            n = np.eye(3)["xyz".index(ax)] * (-1.0 if k.startswith("-") else 1.0)
+            out.append((np.abs(n) * float(v), n))
+    return out
+
+
+def view_mesh(mesh: Path, keep_parts: list[str] | None, planes, frusta: list[dict] | None = None) -> Path:
+    """The mesh with only some parts and/or cut by section planes (`clip_planes`), as <stem>_view.npz, cached
+    by mesh + filter. Faces wholly beyond a plane go; vertices beyond it on the faces that stay are pulled onto
+    it, so the cut edge is straight. frusta: perspective camera frames (render.camera_frame); faces outside
+    all of them go too (nothing else would see them, so there's nothing to paint there). Keeps every
+    per-vertex array (paint, curvature colours) and records the base mesh and each vertex's index in it
+    ("src", so painting can reuse the base mesh's paint or inputs), and the bounds of the kept parts before
+    cutting ("frame_bounds", to frame the views)."""
+    out = mesh.with_name(mesh.stem + "_view.npz")
+    stamp = json.dumps([mesh.stat().st_mtime_ns, str(mesh), keep_parts,
+                        [[p.tolist(), n.tolist()] for p, n in planes],
+                        [[f["eye"], f["dir"], f["up"], f["fov"]] for f in frusta or []]])
+    if out.exists():
+        with np.load(out) as z:
+            if "stamp" in z and str(z["stamp"]) == stamp:
+                return out
+    z = dict(np.load(mesh))
+    nv = len(z["verts"])
+    names = [str(n) for n in z["part_names"]]
+    verts, faces = z["verts"].astype(np.float64), z["faces"]
+    keep_v = (np.ones(nv, bool) if keep_parts is None else
+              np.isin(z["part"], [names.index(p) for p in keep_parts if p in names]))
+    if not keep_v.any():
+        raise ValueError("none of the parts to show are in this build")
+    fb = np.array([verts[keep_v].min(0), verts[keep_v].max(0)])
+    keep_f = keep_v[faces[:, 0]]
+    for p, n in planes:
+        s = (verts - p) @ n
+        far = s > 0
+        keep_f &= ~far[faces].all(1)
+        used = np.zeros(nv, bool)
+        used[faces[keep_f]] = True
+        mv = far & used
+        verts[mv] -= s[mv, None] * n
+    if frusta:
+        seen = np.zeros(nv, bool)
+        for fr in frusta:
+            d, up = np.asarray(fr["dir"], float), np.asarray(fr["up"], float)
+            right = np.cross(up, d)
+            right /= np.linalg.norm(right)
+            up = np.cross(d, right)
+            q = verts - np.asarray(fr["eye"], float)
+            depth = -(q @ d)
+            lim = depth * np.tan(np.radians(fr["fov"]) / 2) * 1.05 + 0.05  # a little slack at the edges
+            seen |= (depth > -0.05) & (np.abs(q @ right) <= lim) & (np.abs(q @ up) <= lim)
+        keep_f &= seen[faces].any(1)
+    if not keep_f.any():
+        raise ValueError("the clip removes everything shown")
+    used = np.zeros(nv, bool)
+    used[faces[keep_f]] = True
+    src = np.flatnonzero(used)
+    remap = np.full(nv, -1, np.int64)
+    remap[src] = np.arange(len(src))
+    res = {k: (a[src] if k not in ("part_names", "faces") and a.ndim and len(a) == nv else a)
+           for k, a in z.items() if k not in ("stamp", "coverage")}
+    res["verts"] = verts[src].astype(z["verts"].dtype)
+    res["faces"] = remap[faces[keep_f]].astype(faces.dtype)
+    np.savez(out, **res, src=src, base=np.array(str(mesh)), frame_bounds=fb, stamp=np.array(stamp))
+    return out
+
+
+def section_caps(name: str, view: Path, planes, keep_parts: list[str] | None, voxel: float) -> Path | None:
+    """Flat caps where the section planes cut solid parts, so cut walls read as solid (and the insides of the
+    kept parts don't show through): cells of a grid on each plane (half a voxel, at most 1200 across the shown
+    parts' extent) whose centre is inside a shown part's exact field, coloured by that part's clay darkened.
+    Cached next to the view mesh. None when nothing solid is cut."""
+    out = view.with_name(view.stem + "_caps.npz")
+    with np.load(view) as z:
+        stamp = str(z["stamp"])
+        fb = z["frame_bounds"]
+        names = [str(n) for n in z["part_names"]]
+        pc = z["part_colors"][:, :3]
+        part = z["part"]
+    if out.exists():
+        with np.load(out) as zc:
+            if str(zc["stamp"]) == stamp:
+                return out if len(zc["faces"]) else None
+    spec = load(name)
+    streams = {ps[0].part: ps for ps in sdf.streams(specmod.compile_prims(spec))}
+    shown = [p for p in names if (keep_parts is None or p in keep_parts) and p in streams]
+    defs = spec.get("parts") or {}
+    colour = {}
+    for i, pn in enumerate(names):
+        sel = np.flatnonzero(part == i)
+        colour[pn] = (pc[sel[0]] if len(sel) else part_colour(pn, spec.get("parts") or {}, i)[:3]) * 0.55
+    box = np.array([[x, y, w] for x in (fb[0][0], fb[1][0]) for y in (fb[0][1], fb[1][1])
+                    for w in (fb[0][2], fb[1][2])])
+    V, F, C, N = [], [], [], []
+    for k, (p, n) in enumerate(planes):
+        u = np.cross(n, np.eye(3)[int(np.argmin(np.abs(n)))])
+        u /= np.linalg.norm(u)
+        v = np.cross(n, u)  # u x v = n: quads wound counter-clockwise seen from the removed side
+        cu, cv = (box - p) @ u, (box - p) @ v
+        h = max(voxel / 2, (cu.max() - cu.min()) / 1200, (cv.max() - cv.min()) / 1200)
+        iu = np.arange(np.floor(cu.min() / h), np.ceil(cu.max() / h))
+        iv = np.arange(np.floor(cv.min() / h), np.ceil(cv.max() / h))
+        gu, gv = np.meshgrid(iu, iv, indexing="ij")
+        ctr = p + ((gu + 0.5) * h)[..., None] * u + ((gv + 0.5) * h)[..., None] * v
+        ok = np.all((ctr >= fb[0] - voxel) & (ctr <= fb[1] + voxel), axis=-1)
+        for j, (q, m) in enumerate(planes):
+            if j != k:
+                ok &= (ctr - q) @ m <= 0
+        idx = np.flatnonzero(ok.ravel())
+        pts = ctr.reshape(-1, 3)[idx]
+        best, who = np.zeros(len(pts)), np.full(len(pts), -1)
+        shells = {p for p in shown if (defs.get(p) or {}).get("shell")}
+        for i, pn in sorted(enumerate(shown), key=lambda t: t[1] in shells):  # solid parts first
+            f = sdf.field_at(streams[pn], pts)
+            hit = (f < best) if pn not in shells else ((f < 0) & (who < 0))  # a shell is solid: only its rim
+            best[hit], who[hit] = f[hit], i
+        for i, pn in enumerate(shown):
+            cell = idx[who == i]
+            if not len(cell):
+                continue
+            ci, cj = np.unravel_index(cell, gu.shape)
+            q0 = sum(len(x) for x in V) + 4 * np.arange(len(cell))
+            V.append(np.stack([p + ((iu[ci] + du) * h)[:, None] * u + ((iv[cj] + dv) * h)[:, None] * v
+                               for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1))], 1).reshape(-1, 3))
+            F.append(np.concatenate([np.stack([q0, q0 + 1, q0 + 2], 1), np.stack([q0, q0 + 2, q0 + 3], 1)]))
+            C.append(np.tile([*colour[pn], 1.0], (4 * len(cell), 1)))
+            N.append(np.tile(n, (4 * len(cell), 1)))
+    if not V:
+        np.savez(out, verts=np.zeros((0, 3), np.float32), faces=np.zeros((0, 3), np.int32), stamp=np.array(stamp))
+        return None
+    np.savez(out, verts=np.concatenate(V).astype(np.float32), faces=np.concatenate(F).astype(np.int32),
+             normals=np.concatenate(N).astype(np.float32), part_colors=np.concatenate(C).astype(np.float32),
+             stamp=np.array(stamp))
     return out
 
 
