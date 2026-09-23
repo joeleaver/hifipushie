@@ -133,6 +133,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   the model canvas exactly (no scale search), so `check`/`compare`/`fit` with against="plan" measure real
   size errors. Workflow stages (plan → blockout → secondary forms → detail) are in the server INSTRUCTIONS.
 - `store.py`: `workspace/<model>/spec.json` + `history/`, build cache keyed by spec hash.
+- `scene.py` + `blender_scene.py` + `paintnodes.py`: the live Blender scene (see "Next session"): per-object
+  meshing and content cache, paint compiled to shader nodes, pull/sync round trip, EEVEE looks, Cycles bakes.
 - `server.py`: MCP tools (mcp 2.x `MCPServer`, not v1 FastMCP).
 
 ## Performance (keep these properties when changing things)
@@ -161,40 +163,79 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
-## Next session: rebuild the cabin
+## Next session: the Blender scene becomes the pipeline
 
-Agreed with the user (2026-09-23). Everything the cabin test exposed is built except these two export pieces.
+Agreed with the user (2026-09-23): lean on Blender's strengths instead of maintaining our own versions of what it
+does best-in-class (ray-traced AO/sky, shading, baking, viewing). The spec stays the source of truth and what the
+model reasons in; Blender holds the derived scene, renders it, bakes it, and lets the user look and edit.
+User's words: "we can lean on blender's strengths", and on AO/sky even without a speed win: worth it "so we
+don't end up maintaining a code path that's already best-in-class". They want two-way editing (their tweaks in
+the .blend come back as spec edits).
 
-**1. Environment export: done** (2026-09-23): prefab instancing (one mesh + texels per prefab, a node per
-instance, baked at the first instance; `prefabs.<p>.export: "unique"` opts out) and `texel_density` atlasing.
-Tested on `hstest` and `insttest` (stools with lumpy/chips, a mirrored `.L` instance, weather), 0 validator
-errors. Open: flat parts keep too many triangles in the joint decimation (a 5x4 m floor box ~2000 tris; alone
-it goes to 124): needs a coplanar-region dissolve before the collapse (spawned as its own task).
-Later, not now: a tiling-material export for engines (tileable textures from the material library with world
-UVs, plus low-res unique masks). Needs an engine-side shader; glTF can't blend the layers.
+**The spike (done, `3ca1d04` + later commits), on `workspace/cabin2`:**
+- `scene.py` / `blender_scene.py`: `workspace/<model>/scene.blend` derived from the spec. One object per part
+  and per shared prefab (prefabs meshed once in their own frame, voxel = thinnest feature / 2.5 via
+  `scene.thinnest`; collection instances). Meshes cached by content (`scene_cache/<hash>.npz`); scene parts
+  on a lattice fixed in space so unrelated edits don't move it. No-op sync 1.5 s; editing the stove re-meshed
+  only `metal` (1.6 s). Headless EEVEE works on the Radeon 890M (0.3 s/frame warm; shader compile 10-35 s for
+  the cabin's ~180 expanded layers). `scene.look(show_layer=)` renders one layer's mask, per pixel.
+- Round trip (`scene.pull`, run first in every `sync`): moved/turned/scaled instances come back as instance
+  edits with the weather's offsets taken back out (spec + weather lands where the person put it); exposed
+  paint numbers (a spec-level layer's opacity, colour, and its entries' ranges / noise scale / within / axis
+  from-to: named `hp:<json path>` Value/RGB nodes) come back too. Each node stores `hp_set` (what the sync
+  wrote) and only values moved from it count, so spec edits made elsewhere aren't clobbered.
+- `paintnodes.py`: paint layers (materials expanded) compile to a node program per part. Nodes: noise (Blender
+  noise remapped through a quantile curve to our fbm's distribution, `noise_quantiles.json`, so spec ranges
+  keep their meaning), tiles (triplanar, stagger, per-tile id), cells (Voronoi F1/F2/colour), facing, axis,
+  ramps (smoothstep), breakup, levels, invert, blends, per-channel mixing (linear colour), Principled out.
+  Measured per vertex by our code: ao, sky, curvature, `near` distances, paths, weave, blurred entries, ".L"
+  layers; packed three to a FLOAT_VECTOR attribute per part (`hp0`, `hp1`...): a GPU shader reads ~16 vertex
+  attributes and more fails to compile (magenta). Inputs are measured at each object's own voxel, where its
+  bake instance stands (`wpos`/`wnrm` attributes), cached in two keys: field inputs (geometry only) and
+  measured masks (geometry + their definitions).
+- Cycles bake of a part's node material onto the export low poly (`blender_scene.bake`, selected-to-active):
+  logs basecolor 1024^2 in 4.4 s vs 758 s for our texel bake, and cleaner.
+- `blender_scene.bake_inputs`: AO and sky by Cycles (AO shader node; sky = AO node with the normal forced up,
+  distance 0.3 x model size), baked as emission to vertex colours, all objects in one bake per pass, prefabs on
+  a stand-in at the bake instance. 1.08M verts: CPU 168 s, GPU(HIP) 175 s, ours ~190 s: no speed win (the iGPU
+  isn't faster than 12 cores; AO needs tens of rays per point). AO correlates 0.88 with ours (Cycles reads more
+  open: calibrate); sky only 0.64 rank-correlated: a different measurement (full upper hemisphere vs our 35 deg
+  cone): sees sky through windows/eaves at an angle. Needs retuning of `sky` ranges, not just a curve.
 
-**2. Rebuild the cabin from scratch** with everything built this session. Don't patch the old one: it's a
-~650-element spec emitted by a Python script (`workspace/cabin/notes/build_cabin.py`, its spec `cabin.json`,
-kept for reference; its friction log is summarised in the roadmap below). The new one should be a readable
-spec:
-- a `story` first (age, climate, use, directions, events), and every imperfection following from it;
-- log walls as bone `array`s with `vary` (butt/top radii), `flip: "alternate"`, `bow`, `lumpy`,
-  `"ends": "flat"`, jitter; notched corners with targeted cuts; chinking; window/door openings as `targets`
-  cuts through the wall logs only;
-- furniture as `prefabs` + `instances` (chairs, stools, shelves, crockery), turned a few degrees and knocked
-  about by `weather`;
-- hard surfaces with `box`/`cylinder`, `hollow` pots, `round` edges;
-- materials (planks floor, wood logs with end grain, stone hearth/foundation with a little moss, cloth
-  bedding, rust/metal stove), weathering from the story (weather side, `sky` for rain vs shelter, soot above
-  the stove, a worn path door -> stove/table, polish on the table edge);
-- **restraint** (user feedback on the porch: "all the elements are right" but "a little heavy-handed"): sag
-  ~1% of span, lean ~1 deg, weathering layers at opacity ~0.15-0.3;
-- judge with `look(camera=...)` at eye height inside, `clip` plans, `clearance` for the door and paths,
-  `check` (realism audit), then `export_asset` + preview.
-Reference models from this session in the workspace (git-ignored): `porch2` (story + weather at the right
-strength; script `workspace/porch2/build_porch.py`), `logtest` (perfect vs varied log corner,
-`build_logtest.py`), `swatches` (one panel + ball per material), `hstest` (prefabs, arrays, hollow, targets).
-`cabin_budget` / `troll_budget` are export-test copies and can be deleted.
+**Plan, in order:**
+1. Adopt Cycles AO + sky in `scene.sync` (replace `measure(..., "field")` for ao/sky; keep curvature ours:
+   exact from the field, 12 s). Calibrate AO (quantile curve, as for noise) and retune the cabin's `sky`
+   ranges; show the user moss/dust/grime masks old vs new side by side before switching.
+2. Grain direction per element (the furniture "speckle" the user saw, also on the counter/"sink" unit): the
+   wood material assumes one world `dir` per layer, so every face along it becomes end grain with dotted
+   rings. Measure a per-vertex grain direction from each vertex's own primitive (bone axis, box's longest
+   side, cylinder axis) as an attribute; wood nodes stretch along it and take end grain from it. `dir:
+   "element"` in the spec. Same attribute feeds the export bake.
+3. Per-part resolution (voxel from thinnest feature, as prefabs already do) for scene parts: the basin/pot
+   (14 mm walls at a 25 mm voxel) and glass mesh broken. A part with one thin element goes fine throughout:
+   cap it and log which element set it.
+4. Export paint from Cycles bakes of the node materials (basecolor, roughness, metallic, specular; AO map by a
+   Cycles AO bake); our `asset.bake` keeps the geometry maps (normal, height by exact projection).
+5. MCP tools: `sync`, scene-based `look`, `pull`; then retire the per-vertex paint path in `look`, and
+   `surface.ao`/`surface.sky`.
+Also: material rebuild on any paint change rebuilds every part (~55 s): hash per part. Interior is dark in
+EEVEE (no GI set up: try raytracing / world light / a fill). Push the scene into the user's running Blender over
+the Blender MCP (port 9876; wasn't running today) so they see edits live. Hand-painted masks (a `painted`
+generator from a surface point cloud, survives re-meshing) are the next round-trip feature.
+
+**Found on the way (fixed and committed):** `surface.laplacian` used clipped `field_at`, exact only within a
+primitive's blend reach, so near thin boards with small blends one stencil sample came back as 1.0 m: curvature
+~1400/m on flat tops, cavity masks everywhere (also in the old look and exports). `assemble.select` and paint
+`near` took only an array's first copy when given the array's name (copy 0 is named like the tag). Array
+`vary` on a blob's size was overwritten. Paths can't address interior walls (a path point's ray comes from
+outside the model and hits the outer wall first): use axis masks there, or add an "inside" address later.
+
+**The cabin (paused until the pipeline settles):** `workspace/cabin2`, a readable hand-written spec, source in
+`workspace/cabin2_src.json` (story, log arrays with vary/flip/bow/lumpy/flat ends, chinking, targeted door and
+window cuts, board gables trimmed by roof-plane cuts, shingle-course arrays, sagging beams, window/chair/stool/
+table/cup/bowl/jar prefabs, stove, bed, counter, rug, firewood, ~35 paint layers). Clearance through the door
+passes (0.91 m). Old script-built cabin kept in `workspace/cabin` for reference. Remaining cabin work after the
+pipeline: wood grain per element, thin parts, restraint pass on weathering, export.
 
 Parallel agents: give each its own git worktree (Agent `isolation: "worktree"`); `.claude/worktrees/` is
 git-ignored. An agent working in the main tree sees code change under its feet.
@@ -236,7 +277,7 @@ painted height in `look` is vertex-normal tilt only; thickness is ready for a su
 it; AO is broad (grime recipes use ao [0.55, 0.3] + tight cavity).
 
 Next, roughly in priority order:
-1. The cabin rebuild: see "Next session" above.
+1. The Blender scene pipeline, then the cabin: see "Next session" above.
    Remaining cabin-test friction not yet addressed: painting huge meshes for look is slow (hide/clip/camera
    looks paint only what's shown; per-layer mask caching would help full looks); log end grain can't show
    rings (world noise has no per-log axis: an "along the element" pattern option); saddle notches are manual

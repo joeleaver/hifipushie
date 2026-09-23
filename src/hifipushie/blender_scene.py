@@ -601,5 +601,95 @@ def bake(job):
     print("@@baked", json.dumps(out))
 
 
+def _ao_override(distance, up, samples):
+    """A material that emits the AO node's openness: around the surface normal, or looking straight up."""
+    m = bpy.data.materials.new("hp_ao_up" if up else "hp_ao")
+    m.use_nodes = True
+    t = m.node_tree
+    t.nodes.clear()
+    ao = t.nodes.new("ShaderNodeAmbientOcclusion")
+    ao.samples = samples
+    ao.inputs["Distance"].default_value = distance
+    ao.inputs["Color"].default_value = (1, 1, 1, 1)
+    if up:
+        cmb = t.nodes.new("ShaderNodeCombineXYZ")
+        cmb.inputs[2].default_value = 1.0
+        t.links.new(cmb.outputs[0], ao.inputs["Normal"])
+    em = t.nodes.new("ShaderNodeEmission")
+    out = t.nodes.new("ShaderNodeOutputMaterial")
+    t.links.new(ao.outputs["Color"], em.inputs["Color"])
+    t.links.new(em.outputs[0], out.inputs[0])
+    return m
+
+
+def _device(scene, device):
+    if device == "GPU":
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+        prefs.compute_device_type = "HIP"
+        prefs.get_devices()
+        for d in prefs.devices:
+            d.use = d.type != "CPU"
+        scene.cycles.device = "GPU"
+    else:
+        scene.cycles.device = "CPU"
+
+
+def bake_inputs(job):
+    """AO and sky openness per vertex by Cycles ray tracing, baked as emission into colour attributes, every
+    object in one bake per pass (a bake call rebuilds the scene's BVH and shaders: once, not per object). Scene
+    objects bake where they are; a prefab's parts bake on a stand-in at its bake instance (that instance
+    hidden, so the stand-in doesn't occlude itself). Writes <out>/<key>.npz {ao, sky} and prints timings."""
+    import os
+    import time
+    t0 = time.time()
+    _open(job["blend"])
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    _device(scene, job.get("device", "CPU"))
+    scene.cycles.samples = 1
+    scene.render.bake.target = "VERTEX_COLORS"
+    vl = bpy.context.view_layer
+    size = job["size"]
+    passes = {"ao": _ao_override(0.024 * size, False, job.get("samples", 32)),
+              "sky": _ao_override(0.3 * size, True, job.get("samples", 32))}
+    inst = {ob["hp_instance"]: ob for ob in bpy.data.objects if ob.get("hp_instance")}
+    targets = {}
+    for o in job["objects"]:
+        src = next(ob for ob in bpy.data.objects if ob.get("hp_key") == o["key"])
+        if o.get("prefab"):  # a stand-in at the bake instance, sharing the mesh data
+            t = bpy.data.objects.new("hp_bake_standin", src.data)
+            scene.collection.objects.link(t)
+            t.matrix_world = inst[o["bake"]].matrix_world
+            inst[o["bake"]].hide_render = True
+            targets[o["key"]] = t
+        else:
+            targets[o["key"]] = src
+    for t in targets.values():
+        me = t.data
+        attr = me.color_attributes.get("hp_bake") or me.color_attributes.new("hp_bake", "FLOAT_COLOR", "POINT")
+        me.color_attributes.active_color = attr
+    times = {"load": round(time.time() - t0, 1)}
+    res = {k: {} for k in targets}
+    os.makedirs(job["out"], exist_ok=True)
+    for name, mat in passes.items():
+        vl.material_override = mat
+        for ob in vl.objects:
+            ob.select_set(False)
+        for t in targets.values():
+            t.select_set(True)
+        vl.objects.active = next(iter(targets.values()))
+        t1 = time.time()
+        bpy.ops.object.bake(type="EMIT", target="VERTEX_COLORS")
+        times[name] = round(time.time() - t1, 1)
+        for k, t in targets.items():
+            a = np.empty(len(t.data.vertices) * 4, np.float32)
+            t.data.color_attributes["hp_bake"].data.foreach_get("color", a)
+            res[k][name] = a.reshape(-1, 4)[:, 0].copy()
+    vl.material_override = None
+    for k, r in res.items():
+        np.savez(os.path.join(job["out"], k.replace("/", "__") + ".npz"), **r)
+    print("@@times", json.dumps(times))
+
+
 job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
-{"pull": pull, "sync": sync, "render": render, "bake": bake}[job["mode"]](job)
+{"pull": pull, "sync": sync, "render": render, "bake": bake, "bake_inputs": bake_inputs}[job["mode"]](job)
