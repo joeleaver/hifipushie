@@ -1,6 +1,6 @@
 # hifipushie
 
-An MCP server that lets an LLM ("hifi") sculpt ("push") characters and creatures.
+An MCP server that lets an LLM sculpt characters and creatures.
 
 Instead of driving a mouse or writing raw mesh code, the model describes a creature as a
 **skeleton with SDF blobs hung on it**: joints and bones (round cones) plus ellipsoid masses,
