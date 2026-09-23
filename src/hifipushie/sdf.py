@@ -456,16 +456,24 @@ def field_at(prims: list[Prim], pts: np.ndarray, clip: bool = True, margin: floa
     if pts.size == 0:  # e.g. a shell's base evaluated for a close-up block holding none of its points
         return np.full(pts.shape[:-1], FAR if clip else np.inf)
     parts = streams(prims)
-    if len(parts) > 1:
-        return np.minimum.reduce([field_at(ps, pts, clip, margin) for ps in parts])
     flat = pts.reshape(-1, 3)
     if not clip:
+        if len(parts) > 1:
+            return np.minimum.reduce([field_at(ps, pts, clip, margin) for ps in parts])
         return _field_serial(prims, flat, clip, margin).reshape(pts.shape[:-1])
     out = np.empty(len(flat))
 
-    def work(idx):
+    def work(idx):  # points sorted and chunked once; each part culled and evaluated per chunk
         q = flat[idx]
-        out[idx] = _field_serial(_cull(prims, q.min(0), q.max(0), margin), q, clip, margin)
+        lo, hi = q.min(0), q.max(0)
+        v = None
+        for ps in parts:
+            culled = _cull(ps, lo, hi, margin)
+            if not culled:
+                continue
+            f = _field_serial(culled, q, clip, margin)
+            v = f if v is None else np.minimum(v, f)
+        out[idx] = FAR if v is None else v
 
     _run(work, _chunks(flat, 4096))
     return out.reshape(pts.shape[:-1])
