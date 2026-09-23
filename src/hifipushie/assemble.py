@@ -394,9 +394,7 @@ def select(s: dict, names, kinds=("bones", "blobs")) -> list[str]:
     (an expanded spec). Unknown names are returned as they are, for the caller to report."""
     out = []
     for n in ([names] if isinstance(names, str) else names):
-        if any(n in s.get(k, {}) for k in kinds):
-            out.append(n)
-            continue
-        hits = [e for k in kinds for e, el in s.get(k, {}).items() if n in (el.get("tags") or [])]
+        # an array's first copy keeps the array's name, which is also the tag of every copy: take both
+        hits = [e for k in kinds for e, el in s.get(k, {}).items() if e == n or n in (el.get("tags") or [])]
         out += hits if hits else [n]
     return list(dict.fromkeys(out))

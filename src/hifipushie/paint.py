@@ -547,21 +547,41 @@ def _axis_mask(spec: dict, name: str, ax: dict, v: np.ndarray) -> np.ndarray:
     return _ramp(v @ d, float(ax["from"]), float(ax["to"]))
 
 
+_TAGS: dict[str, set] = {}
+
+
+def _tag_names(spec: dict) -> set:
+    """Every tag in the expanded spec (an array's first copy is named like its tag)."""
+    import hashlib
+    import json
+    from .spec import expand_mirror, geometry
+    key = hashlib.sha1(json.dumps(geometry(spec), sort_keys=True, default=float).encode()).hexdigest()
+    if key not in _TAGS:
+        if len(_TAGS) > 16:
+            _TAGS.pop(next(iter(_TAGS)))
+        s = expand_mirror(spec)
+        _TAGS[key] = {t for k in ("bones", "blobs") for el in s.get(k, {}).values() for t in el.get("tags") or []}
+    return _TAGS[key]
+
+
 def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
     from . import sdf
     from .spec import compile_prims
     want = [ly["near"]] if isinstance(ly["near"], str) else list(ly["near"])
     prims = {p.name: p for p in compile_prims(spec)}
+    tagged = _tag_names(spec)
     for w in list(want):  # a kit name stands for everything it generates (hand.L -> hand_*.L)
         if w in (spec.get("kits") or {}) and w not in prims:
             stem, sfx = (w[:-2], w[-2:]) if w.endswith((".L", ".R")) else (w, "")
             want.remove(w)
             want += [n for n, p in prims.items() if n.startswith(stem + "_") and n.endswith(sfx) and p.kind in sdf.SDF
                      and p.kind != "shell" and p.op == "add"]
-    if any(w not in prims for w in want):  # tags: instances, arrays, "tags" lists
+    if any(w not in prims or w in tagged for w in want):  # tags: instances, arrays, "tags" lists
         from .assemble import select
         from .spec import expand_mirror
-        want = select(expand_mirror(spec), want)
+        asked = set(want)
+        # a tag's members include targeted cuts, which are folded into their targets (no primitive of their own)
+        want = [w for w in select(expand_mirror(spec), want) if w in prims or w in asked]
     missing = [w for w in want if w not in prims]
     if missing:
         raise SpecError(f"paint {name!r}: no bone or blob {missing} (kit output names are listed by get_model)")
