@@ -45,9 +45,18 @@ Masks (generators, each 0..1 per point):
            "range", "stretch"}: 3D Voronoi. edges = F2-F1, 0 on the borders (default range [0.15, 0]: lines
            between cells: scales, plates, cracked skin); distance = from each cell's centre (range [0.35, 0.1]
            = a bump per cell: warts, pebbles); id = a random 0..1 per cell (colour jitter, patchy scales).
+  tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
+           "mode": "gaps" (1 in the joints, fading over "bevel") | "bevel" (0 at a joint rising to 1: a tile's
+           rounded face, for height) | "id" (random per tile)}: bricks, planks, flagstones, shingles.
+  weave:   {"scale": thread spacing (m), "dir"}: plain weave, 1 on the crown of the upper thread (height, shading).
+           Threads need ~4 texels (or vertices) across to show; finer ones fade to an even mid value.
+           tiles and weave are 2D patterns laid on the three axis planes, blended by the normal (triplanar).
   noise also takes "warp" (0..2: the lookup displaced by another noise: torn, swirly grunge instead of round
            blobs) and "stretch": {"dir": [x,y,z], "factor": 6} (features that much longer that way: streaks,
            drips with [0,0,1], wood grain, fur direction). Noise and cells are solid 3D: no UV seams.
+
+Materials: {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone" | "metal" | "rust", ...}
+expands into ready-made layers (see MATERIALS below): start there, then add your own layers on top.
 
 Mask stack: "mask": [entry, ...] builds a mask in steps, after any flat keys above (which multiply). Each entry
 is one generator (any of the keys above, with its parameters inside the entry, e.g. {"path": [...], "width":
@@ -126,15 +135,28 @@ def colour(c, what: str = "color") -> np.ndarray:
     return v[:3]
 
 
-GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "ao", "thickness", "mask")
+GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
 ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur")
 
 
-def validate(spec: dict) -> None:
+def layers(spec: dict) -> dict:
+    """The spec's paint layers with material layers expanded into their sub-layers (materials.py), in order."""
+    from . import materials
+    out = {}
     for name, ly in (spec.get("paint") or {}).items():
+        if "material" in ly:
+            for sub, sl in materials.expand(name, ly, GENERATORS, PARAMS):
+                out[sub] = sl
+        else:
+            out[name] = ly
+    return out
+
+
+def validate(spec: dict) -> None:
+    for name, ly in layers(spec).items():
         if not any(c in ly for c in (*CHANNELS, "height")):
             raise SpecError(f"paint {name!r}: needs at least one of {', '.join(CHANNELS)}, height")
         if "height" in ly and not isinstance(ly["height"], (int, float)):
@@ -145,7 +167,7 @@ def validate(spec: dict) -> None:
             if c in ly and not 0 <= float(ly[c]) <= 1:
                 raise SpecError(f"paint {name!r}: {c} is 0..1")
         flat = {g: ly[g] for g in GENERATORS if g in ly and g != "mask"}
-        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
+        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "_of", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
         if unknown:
             raise SpecError(f"paint {name!r}: unknown keys {sorted(unknown)}")
         for g in flat:
@@ -182,6 +204,10 @@ def _check_stack(name: str, stack) -> None:
 
 
 def _check_generator(name: str, g: str, e: dict) -> None:
+    if g in ("tiles", "weave") and not isinstance(e[g], dict):
+        raise SpecError(f"paint {name!r}: {g} is an object of parameters")
+    if g == "tiles" and e[g].get("mode", "gaps") not in ("gaps", "bevel", "id"):
+        raise SpecError(f"paint {name!r}: tiles mode is \"gaps\", \"bevel\" or \"id\"")
     if g == "cells" and (not isinstance(e[g], dict) or e[g].get("mode", "edges") not in ("edges", "distance", "id")):
         raise SpecError(f"paint {name!r}: cells is {{\"scale\", \"mode\": \"edges\" | \"distance\" | \"id\", ...}}")
     if g == "cavity" and e[g] not in ("concave", "convex"):
@@ -213,13 +239,13 @@ def bump(spec: dict, pts, eps: float, masks: dict | None = None):
     layer has height. The slope comes from central differences `eps` apart across the surface (4 more
     evaluations of the height layers). masks: the layers' masks at pts, if apply_channels already made them."""
     from .surface import _frame, unit
-    layers = {k: ly for k, ly in (spec.get("paint") or {}).items() if ly.get("height")}
-    if not layers:
+    hl = {k: ly for k, ly in layers(spec).items() if ly.get("height")}
+    if not hl:
         return None
 
     def height(p, given=None):
         h = np.zeros(len(p))
-        for name, ly in layers.items():
+        for name, ly in hl.items():
             if given is not None and name in given:
                 h += float(ly["height"]) * given[name]
                 continue
@@ -253,23 +279,23 @@ def apply_channels(spec: dict, pts, base: dict, stats: dict | None = None, masks
     """Paint every channel in `base` ({"color": (n, 3), "roughness": (n, 1), ...}) at arbitrary surface points
     (a surface.Points: mesh vertices, or texels of a baked texture). masks, if given, gets each layer's mask
     over all points (0 off its parts)."""
-    layers = spec.get("paint") or {}
     out = {c: np.array(v, float) for c, v in base.items()}
-    if not layers:
+    if not spec.get("paint"):
         return out
     validate(spec)
-    for name, ly in layers.items():
+    for name, ly in layers(spec).items():
         parts = ly.get("part", "body")
         parts = pts.part_names if parts == "*" else ([parts] if isinstance(parts, str) else parts)
         idx = np.flatnonzero(np.isin(pts.part, [pts.part_names.index(p) for p in parts if p in pts.part_names]))
         if not len(idx):
             if stats is not None:
-                stats[name] = None
+                stats[ly.get("_of") or name] = None
             continue  # e.g. a close-up that doesn't reach that part
         m = layer_mask(spec, name, ly, _View(pts, idx))
-        if stats is not None:
+        of = ly.get("_of")
+        if stats is not None and (of is None or of not in stats):  # a material reports its first sub-layer
             seen = pts.get("hidden")[idx] < 0.5  # skin under clothes or in an eye socket doesn't count
-            stats[name] = float((m[seen] >= 0.5).mean()) if seen.any() else 0.0
+            stats[of or name] = float((m[seen] >= 0.5).mean()) if seen.any() else 0.0
         if masks is not None:
             masks[name] = np.zeros(len(pts))
             masks[name][idx] = m
@@ -312,7 +338,9 @@ class _View:
         for rr, aa in zip(r, a):
             here = self.pts.__class__(self.pts.spec, P, N, self.pts.part[self.idx], self.pts.part_names,
                                       self.pts.voxel, streams=self.pts._streams)
+            here.footprint = self.pts.footprint
             moved = here.moved(P + rr * (np.cos(aa) * U + np.sin(aa) * V))
+            moved.footprint = self.pts.footprint
             views.append(_View(moved, np.arange(len(P)), self.mirror))
         return views, w / w.sum()
 
@@ -457,6 +485,16 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         r0, r1 = e.get("radius", [0.03, 0.006])
         curv = view.get("curvature")
         return _ramp(-curv if e["cavity"] == "concave" else curv, 1 / r0, 1 / r1)
+    if gen == "tiles":
+        t = e["tiles"]
+        return _planar(lambda u, w: _tiles(u, w, t), v, n, t.get("dir"))
+    if gen == "weave":
+        w = e["weave"]
+        sc = float(w.get("scale", 0.0025))
+        val = _planar(lambda a, b: _weave(a, b, sc), v, n, w.get("dir"))
+        # threads under ~3 points across can't be resolved: fade to the average instead of aliasing (like a mip)
+        k = float(np.clip((sc / max(view.pts.footprint, 1e-9) - 2.0) / 2.0, 0, 1))
+        return 0.55 + k * (val - 0.55)
     if gen in ("ao", "thickness"):
         a, b = e[gen]
         return _ramp(view.get(gen), float(a), float(b))
@@ -566,6 +604,64 @@ def _path_mask(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) ->
         k *= _ramp((n[sel][:, None, :] * N[j]).sum(-1), 0.0, 0.3)  # skin facing the path's way: no print-through
         out[sel] = np.maximum(out[sel], np.clip((k * gain[j]).sum(1), 0, 1))
     return out
+
+
+_AXES = np.eye(3)
+_IN_PLANE = ([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0])  # default long axis on each axis plane
+
+
+def _planar(fn, v: np.ndarray, n: np.ndarray, d=None, sharp: float = 6.0) -> np.ndarray:
+    """A 2D pattern fn(u, w) laid on the three axis planes and blended by how much the normal faces each
+    (triplanar): exact on walls and floors, soft where a curved surface turns. u runs along `d` (projected
+    into the plane; default horizontal on walls, X on floors), w across it."""
+    wts = np.abs(n) ** sharp
+    wts /= np.maximum(wts.sum(1, keepdims=True), 1e-12)
+    out = np.zeros(len(v))
+    for ax in range(3):
+        sel = np.flatnonzero(wts[:, ax] > 1e-3)
+        if not len(sel):
+            continue
+        a = _AXES[ax]
+        dd = np.asarray(d if d is not None else _IN_PLANE[ax], float)
+        dd = dd - (dd @ a) * a
+        if np.linalg.norm(dd) < 0.3:  # the given direction is (nearly) this plane's normal
+            dd = np.asarray(_IN_PLANE[ax], float)
+        dd /= np.linalg.norm(dd)
+        e = np.cross(a, dd)
+        out[sel] += wts[sel, ax] * fn(v[sel] @ dd, v[sel] @ e)
+    return out
+
+
+def _tiles(u: np.ndarray, w: np.ndarray, t: dict) -> np.ndarray:
+    """Running-bond tiles, "size": [along, across] (m), rows shifted by "offset" (0.5; "random"), joints "gap"
+    wide. mode "gaps": 1 in the joints, fading over "bevel" (gap / 2); "bevel": 0 at the joint rising to 1
+    over "bevel" (a tile's rounded face, for height); "id": a random 0..1 per tile."""
+    L, H = (float(x) for x in t.get("size", [0.2, 0.1]))
+    gap = float(t.get("gap", 0.005))
+    bev = float(t.get("bevel", 0.5 * gap))
+    seed = int(t.get("seed", 0))
+    row = np.floor(w / H)
+    off = t.get("offset", 0.5)
+    shift = _hash(row.astype(np.int64), np.zeros_like(row, np.int64), np.zeros_like(row, np.int64), seed + 31) \
+        if off == "random" else row * float(off)
+    uu = u / L + shift
+    col = np.floor(uu)
+    fu, fw = uu - col, w / H - row
+    dist = np.minimum.reduce([fu * L, (1 - fu) * L, fw * H, (1 - fw) * H])
+    mode = t.get("mode", "gaps")
+    if mode == "id":
+        return _hash(col.astype(np.int64), row.astype(np.int64), np.zeros_like(row, np.int64), seed + 13)
+    edge = _ramp(dist, gap / 2, gap / 2 + max(bev, 1e-6))
+    return 1 - edge if mode == "gaps" else edge
+
+
+def _weave(u: np.ndarray, w: np.ndarray, s: float) -> np.ndarray:
+    """Plain weave, threads `s` apart: 1 on the crown of the thread on top, 0 in the holes."""
+    fu, fw = u / s - np.floor(u / s), w / s - np.floor(w / s)
+    over = (np.floor(u / s) + np.floor(w / s)) % 2 == 0
+    warp = np.sqrt(np.maximum(np.sin(np.pi * fw), 0)) * (0.55 + 0.45 * np.sin(np.pi * fu))
+    weft = np.sqrt(np.maximum(np.sin(np.pi * fu), 0)) * (0.55 + 0.45 * np.sin(np.pi * fw))
+    return np.where(over, np.maximum(warp, 0.5 * weft), np.maximum(weft, 0.5 * warp))
 
 
 def _stretch(v: np.ndarray, nz: dict) -> np.ndarray:

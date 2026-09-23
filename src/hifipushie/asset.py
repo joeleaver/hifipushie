@@ -154,12 +154,13 @@ def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
     t2 = time.time()
     base = paint.part_defaults(spec, names, part)
     pts = surface.Points(spec, X, G, part, names, voxel, cache={"ao": ao_map[ys, xs, 0]}, streams=streams)
+    c = _corners(parts, "pos")
+    texel = np.sqrt(np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2 / max(len(tri), 1))
+    pts.footprint = texel
     masks: dict = {}
     ch = paint.apply_channels(spec, pts, base, masks=masks)
     log.append(f"painted in {time.time() - t2:.1f}s")
     # painted height: into the height map, and its slope tilts the normals (texel-sized differences)
-    c = _corners(parts, "pos")
-    texel = np.sqrt(np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2 / max(len(tri), 1))
     t4 = time.time()
     b = paint.bump(spec, pts, 0.5 * texel, masks)
     if b is not None:

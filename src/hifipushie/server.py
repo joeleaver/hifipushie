@@ -168,8 +168,9 @@ def get_model(name: str) -> str:
 @mcp.tool(structured_output=False)
 def kit_reference() -> str:
     """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten), paint and plans."""
-    from . import kits, strokes
+    from . import kits, materials, strokes
     return (kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
+            + "\n\nMATERIALS\n" + materials.__doc__
             + "\n\nPLANS\n" + planmod.__doc__)
 
 

@@ -65,6 +65,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   bake). Coverage counts only points not `hidden`. Colours are sRGB everywhere in the spec; `blender_render`
   converts part/paint colours to linear for the colour attribute. OBJ export writes `v x y z r g b` (Blender
   reads it). `look(shading="flat")` is unlit colour.
+- `materials.py`: `{"material": ...}` paint layers expand (`paint.layers`) into sub-layers `<name>:<sub>` built
+  only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
+  layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first
+  sub-layer under the material's name. Tune materials on `workspace/swatches` (panel + ball per material).
 - `asset.py` + `blender_asset.py`: game-ready export. `prune_hidden` drops faces buried in another part; Blender
   decimates each part, smart-projects one shared atlas and hands back per-corner uv/normal/MikkTSpace tangent.
   `bake` rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface (`surface.newton`,

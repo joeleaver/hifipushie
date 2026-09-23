@@ -242,8 +242,8 @@ def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
     spec = load(name)
     if not spec.get("paint"):
         return mesh
-    if layer is not None and layer not in spec["paint"]:
-        raise ValueError(f"no paint layer {layer!r} (have {', '.join(spec['paint'])})")
+    if layer is not None and layer not in paint.layers(spec):
+        raise ValueError(f"no paint layer {layer!r} (have {', '.join(paint.layers(spec))})")
     out = mesh.with_name(mesh.stem + ("_paint.npz" if layer is None else "_mask.npz"))
     stamp = f"{mesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}:{layer}"
     if out.exists():

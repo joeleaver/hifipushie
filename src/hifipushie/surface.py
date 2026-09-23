@@ -31,6 +31,7 @@ class Points:
         self.part = np.asarray(part)
         self.cache = {} if cache is None else cache
         self._streams = streams
+        self.footprint = self.voxel  # how far apart the points are (m): texel size in a bake, ~voxel on a mesh
 
     def __len__(self):
         return len(self.pos)
@@ -76,8 +77,10 @@ class Points:
             if len(sel) and pn in self.streams:
                 f = sdf.field_at(self.streams[pn], pos[sel])
                 pos[sel] -= np.clip(f, -2 * self.voxel, 2 * self.voxel)[:, None] * self.normal[sel]
-        return Points(self.spec, pos, self.normal, self.part, self.part_names, self.voxel,
-                      cache=dict(self.cache) if keep_inputs else None, streams=self._streams)
+        out = Points(self.spec, pos, self.normal, self.part, self.part_names, self.voxel,
+                     cache=dict(self.cache) if keep_inputs else None, streams=self._streams)
+        out.footprint = self.footprint
+        return out
 
 
 def hidden(streams: dict, X: np.ndarray, part: np.ndarray, part_names: list[str], voxel: float) -> np.ndarray:

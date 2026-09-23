@@ -112,6 +112,10 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   on an entry lets noise eat into it crisply: convex cavity + breakup = edge wear, ao + breakup = grime,
   facing up + breakup = dust. `kit_reference` (PAINT) has the recipes. Keep each effect its own layer, and
   look at it alone with `look(paint_layer="grime")` (false colour: purple 0, yellow 1) before judging colour.
+- **Materials first for props and clothing:** `{"material": "planks", "part": "floor"}` (or cloth, leather,
+  wood, brick, stone, metal, rust) expands into base colour, pattern, relief, wear and dirt layers; masks on
+  it confine it, `color`/`scale`/`wear`/`dirt`/`dir` tune it. Tiles and weaves are laid out triplanar: clean on
+  flat walls and floors, blended on curved surfaces, so orient `dir` along the grain or rows.
 - **Relief without sculpting:** `"height": -0.001` on a cells layer grooves the scale borders; `0.002` on a
   cells-distance layer raises warts. It lands in the exported normal and height maps at texel resolution;
   `look` only tilts vertex normals, so judge it in a close-up with `shading="raking"` and in the export
