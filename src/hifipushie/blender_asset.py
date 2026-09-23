@@ -2,12 +2,14 @@
 
 blender -b --factory-startup --python blender_asset.py -- job.json
 Jobs:
-  {"mode": "lowpoly", "mesh": high.npz, "out": low.npz, "triangles": n, "min_part": n,
+  {"mode": "lowpoly", "mesh": high.npz, "out": low.npz, "triangles": n, "min_part": n, "voxel": scene voxel,
    "textures": {atlas index: px}, "margins": {atlas index: px}, "angle": deg, "cone": deg, "symmetry": bool,
    "parts": {name: {"weight": triangle weight, "density": relative texels per metre, "atlas": index,
                     "focus": [[x, y, z, radius, density]], "copies": instances drawn (1)}}}
-      Decimates all parts together to `triangles` drawn (quadric collapse, mirrored across X), which sets each part's
-      share; weights and the floor adjust those, and a part whose budget moved or whose mirrored collapse folded
+      Flat regions (faces within 0.5 deg of a seed face's normal and a quarter voxel of its plane) are dissolved
+      to ngons and retriangulated first, so the collapse spends nothing on them. Then decimates all parts together
+      to `triangles` drawn (quadric collapse, mirrored across X), which sets each part's share; weights and the
+      floor (shrunk by the part's flat share) adjust those, and a part whose budget moved or whose mirrored collapse folded
       triangles over is decimated again on its own. Then per atlas: smart-projects its parts, cuts islands at
       focus regions, merges islands too thin or small to be worth their margin into a neighbour (when the
       merged chart still faces one way), scales every island to its density and packs them `margin` texels
@@ -102,6 +104,260 @@ def _clean(ob):
     ob.modifiers.new("tri", "TRIANGULATE")
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.modifier_apply(modifier="tri")
+
+
+# ---- planar pre-pass -------------------------------------------------------------------------------------------
+# Blender's collapse keeps roughly a fixed fraction of every part's faces, so a flat wall kept thousands of
+# triangles with zero error while round things starved. Flat regions are dissolved to ngons first, so the collapse
+# only spends its budget where the surface bends.
+
+def _components(n, a, b):
+    """Connected component label per node (min node index) of the graph with edges (a, b): hooking plus pointer
+    jumping, a few passes over the edges instead of a Python BFS."""
+    lab = np.arange(n)
+    while True:
+        la, lb = lab[a], lab[b]
+        hi, lo = np.maximum(la, lb), np.minimum(la, lb)
+        diff = hi != lo
+        if not diff.any():
+            return lab
+        np.minimum.at(lab, hi[diff], lo[diff])
+        while True:
+            nxt = lab[lab]
+            if (nxt == lab).all():
+                break
+            lab = nxt
+
+
+def _neighbours(indptr, nbr, f):
+    """(source, neighbour) pairs of the faces `f` in a CSR adjacency."""
+    cnt = indptr[f + 1] - indptr[f]
+    src = np.repeat(f, cnt)
+    off = np.arange(cnt.sum()) - np.repeat(np.cumsum(cnt) - cnt, cnt)
+    return src, nbr[np.repeat(indptr[f], cnt) + off]
+
+
+def planar_regions(V, F, plane_tol, angle_deg=0.5, min_faces=8, rounds=40):
+    """Region label per face (-1: none) for groups of connected faces that lie on one plane: every face's normal
+    within `angle_deg` of its region's SEED face and its centre within `plane_tol` of the seed's plane. Testing
+    against the seed rather than neighbour to neighbour keeps gently curved organic surfaces from chaining into
+    one region. Regions are disks (V - E + F = 1: ones with holes, like a wall round a window, are split), so each
+    dissolves to one simple ngon."""
+    nf = len(F)
+    e1, e2 = V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]
+    nrm = np.cross(e1, e2)
+    area = np.linalg.norm(nrm, axis=1)
+    tiny = area < 1e-12
+    nrm = nrm / np.maximum(area, 1e-30)[:, None]
+    cen = V[F].mean(1)
+    cos_t = np.cos(np.radians(angle_deg))
+
+    # manifold edges (exactly two faces) as face pairs
+    he = F[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
+    key = np.minimum(he[:, 0], he[:, 1]).astype(np.int64) * len(V) + np.maximum(he[:, 0], he[:, 1])
+    order = np.argsort(key, kind="stable")
+    ks = key[order]
+    first = np.r_[True, ks[1:] != ks[:-1]]
+    run = np.diff(np.r_[np.flatnonzero(first), len(ks)])
+    start = np.flatnonzero(first)[run == 2]
+    fa, fb = order[start] // 3, order[start + 1] // 3
+
+    def fits(f, n0, c0):
+        """Faces `f` against reference normals/centres: parallel (degenerate faces skip that) and in plane."""
+        par = (nrm[f] * n0).sum(1) > cos_t
+        return (par | tiny[f]) & (np.abs(((cen[f] - c0) * n0).sum(1)) < plane_tol)
+
+    ok = fits(fa, nrm[fb], cen[fb]) & fits(fb, nrm[fa], cen[fa])
+    ok &= ~(tiny[fa] & tiny[fb])
+    a, b = np.r_[fa[ok], fb[ok]], np.r_[fb[ok], fa[ok]]
+    o = np.argsort(a, kind="stable")
+    a, b = a[o], b[o]
+    indptr = np.searchsorted(a, np.arange(nf + 1))
+
+    label = np.full(nf, -1)
+    pool = np.zeros(nf, bool)
+    pool[a] = True
+    nreg = 0
+    for _ in range(rounds):
+        sel = pool[a] & pool[b]
+        comp = _components(nf, a[sel], b[sel])
+        size = np.bincount(comp[pool], minlength=nf)
+        big = pool & (size[comp] >= min_faces) & ~tiny
+        if not big.any():
+            break
+        # seed per component: the face nearest its area-weighted mean normal (the dominant plane)
+        fi = np.flatnonzero(big)
+        mn = np.zeros((nf, 3))
+        np.add.at(mn, comp[fi], nrm[fi] * area[fi, None])
+        score = (nrm[fi] * mn[comp[fi]]).sum(1)
+        o = np.lexsort((-score, comp[fi]))
+        seeds = fi[o][np.r_[True, comp[fi][o][1:] != comp[fi][o][:-1]]]
+        rid = nreg + np.arange(len(seeds))
+        sn, sc = nrm[seeds], cen[seeds]
+        label[seeds] = rid
+        pool[seeds] = False
+        front = seeds
+        while len(front):
+            src, nb = _neighbours(indptr, b, front)
+            m = pool[nb] & (comp[nb] == comp[src])
+            src, nb = src[m], nb[m]
+            r = label[src] - nreg
+            m = fits(nb, sn[r], sc[r])
+            nb, r = nb[m], r[m]
+            nb, i = np.unique(nb, return_index=True)
+            label[nb] = r[i] + nreg
+            pool[nb] = False
+            front = nb
+        nreg += len(seeds)
+
+    # disks only: split regions whose Euler characteristic isn't 1 across their longest extent, re-split pieces
+    for _ in range(8):
+        label = _relabel(label, fa, fb)
+        chi = _euler(F, label, fa, fb)
+        bad = np.flatnonzero(chi != 1)
+        if not len(bad):
+            break
+        fi = np.flatnonzero(np.isin(label, bad))
+        lr = label[fi]
+        cnt = np.bincount(lr)[lr][:, None]
+        mid = np.zeros((label.max() + 1, 3))
+        np.add.at(mid, lr, cen[fi])
+        d = cen[fi] - mid[lr] / cnt
+        cov = np.zeros((label.max() + 1, 3, 3))
+        np.add.at(cov, lr, d[:, :, None] * d[:, None, :])
+        axis = np.linalg.eigh(cov)[1][:, :, -1]
+        side = (d * axis[lr]).sum(1) > 0
+        label[fi[side]] += label.max() + 1
+    else:
+        label = _relabel(label, fa, fb)
+        label[np.isin(label, np.flatnonzero(_euler(F, label, fa, fb) != 1))] = -1
+    size = np.bincount(label[label >= 0], minlength=max(label.max() + 1, 1))
+    label[(label >= 0) & (size[np.maximum(label, 0)] < min_faces)] = -1
+    return _relabel(label, fa, fb)
+
+
+def _relabel(label, fa, fb):
+    """Split every region into its connected pieces and number them 0..n-1 (-1 stays)."""
+    m = (label[fa] == label[fb]) & (label[fa] >= 0)
+    comp = _components(len(label), fa[m], fb[m])
+    comp[label < 0] = -1
+    u, inv = np.unique(comp, return_inverse=True)
+    return inv - (1 if u[0] == -1 else 0)
+
+
+def _euler(F, label, fa, fb):
+    """V - E + F of every region (1 for a disk). Edges: three per face less the ones two of its faces share."""
+    n = label.max() + 1
+    if n <= 0:
+        return np.zeros(0, int)
+    fi = np.flatnonzero(label >= 0)
+    lr = label[fi]
+    nfc = np.bincount(lr, minlength=n)
+    inner = np.bincount(label[fa][(label[fa] == label[fb]) & (label[fa] >= 0)], minlength=n)
+    k = np.sort((np.repeat(lr, 3).astype(np.int64) * (F.max() + 1) + F[fi].ravel()))
+    nv = np.bincount(k[np.r_[True, k[1:] != k[:-1]]] // (F.max() + 1), minlength=n)
+    return nv - (3 * nfc - inner) + nfc
+
+
+def _loops(F, label):
+    """Each region's boundary as one vertex loop, wound like its faces: (region per loop, loop start, loop length,
+    vertices), for the regions whose boundary is one simple loop (every boundary vertex left once) enclosing at
+    least one interior vertex (a strip of faces with none gains nothing from being dissolved)."""
+    n = label.max() + 1
+    fi = np.flatnonzero(label >= 0)
+    hs = F[fi][:, [0, 1, 2]].ravel()
+    ht = F[fi][:, [1, 2, 0]].ravel()
+    hr = np.repeat(label[fi], 3).astype(np.int64)
+    nv = F.max() + 1
+    fwd = (hr * nv + hs) * nv + ht
+    twin = (hr * nv + ht) * nv + hs
+    fs = np.sort(fwd)
+    pos = np.minimum(np.searchsorted(fs, twin), len(fs) - 1)
+    bd = fs[pos] != twin  # boundary: the reverse half-edge isn't in the region
+    bs, bt, br = hs[bd], ht[bd], hr[bd]
+    # the region's vertices, and whether each boundary vertex is left exactly once
+    kv = np.sort(hr * nv + hs)
+    nvert = np.bincount(kv[np.r_[True, kv[1:] != kv[:-1]]] // nv, minlength=n)
+    start = br * nv + bs
+    o = np.argsort(start, kind="stable")
+    bs, bt, br, start = bs[o], bt[o], br[o], start[o]
+    dup = np.r_[start[1:] == start[:-1], False] | np.r_[False, start[1:] == start[:-1]]
+    ok = np.ones(n, bool)
+    ok[br[dup]] = False
+    nb = np.bincount(br, minlength=n)
+    ok &= nvert > nb  # an interior vertex
+    # successor of each boundary half-edge: the one leaving its end vertex in the same region
+    succ = np.searchsorted(start, br * nv + bt)
+    succ = np.minimum(succ, len(start) - 1)
+    bad = start[succ] != br * nv + bt
+    ok[br[bad]] = False
+    succ[bad] = np.flatnonzero(bad)
+    # list ranking by pointer doubling: steps from each half-edge to the one before its region's head
+    m = len(start)
+    head = np.full(n, m)
+    np.minimum.at(head, br, np.arange(m))
+    nxt = succ.copy()
+    end = nxt == head[br]
+    nxt[end] = np.flatnonzero(end)
+    dist = (~end).astype(np.int64)
+    for _ in range(int(np.ceil(np.log2(max(nb.max(), 2)))) + 1):
+        dist += dist[nxt]
+        nxt = nxt[nxt]
+    ok[br[(nxt[nxt] != nxt) | (dist[head[br]] + 1 != nb[br])]] = False  # more than one loop
+    keep = ok[br]
+    o = np.lexsort((-dist[keep], br[keep]))
+    verts = bs[keep][o]
+    regs = np.flatnonzero(ok & (nb > 0))
+    length = nb[regs]
+    return regs, np.r_[0, np.cumsum(length)[:-1]], length, verts
+
+
+def _flatten(ob, plane_tol):
+    """Dissolve the object's planar regions (`planar_regions`) to ngons and triangulate them again. The mesh is
+    rebuilt in numpy (bmesh's dissolve is quadratic in region size: 25 s on a 380k-face stone part). A face
+    attribute "pid" (the part id) survives: a region never spans two parts, they share no vertices. Returns the
+    face count and which of the input faces were dissolved."""
+    V, F = _tri_arrays(ob)
+    none = np.zeros(len(F), bool)
+    if plane_tol <= 0:
+        return len(F), none
+    label = planar_regions(V, F, plane_tol)
+    if label.max() < 0:
+        return len(F), none
+    regs, lstart, length, lverts = _loops(F, label)
+    if not len(regs):
+        return len(F), none
+    me = ob.data
+    pid = None
+    if "pid" in me.attributes:
+        pid = np.empty(len(F), np.int32)
+        me.attributes["pid"].data.foreach_get("value", pid)
+    gone = np.isin(label, regs)
+    kept = np.flatnonzero(~gone)
+    rep = np.full(label.max() + 1, -1)
+    rep[label[gone]] = np.flatnonzero(gone)  # a face of each region, for its attributes
+    loops = np.r_[F[kept].ravel(), lverts]
+    sizes = np.r_[np.full(len(kept), 3), length]
+    used = np.unique(loops)
+    remap = np.full(len(V), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    new = bpy.data.meshes.new(me.name)
+    new.vertices.add(len(used))
+    new.vertices.foreach_set("co", V[used].astype(np.float32).ravel())
+    new.loops.add(len(loops))
+    new.loops.foreach_set("vertex_index", remap[loops].astype(np.int32))
+    new.polygons.add(len(sizes))
+    new.polygons.foreach_set("loop_start", np.r_[0, np.cumsum(sizes)[:-1]].astype(np.int32))
+    new.update(calc_edges=True)
+    if pid is not None:
+        new.attributes.new("pid", "INT", "FACE").data.foreach_set("value", np.r_[pid[kept], pid[rep[regs]]])
+    ob.data = new
+    bpy.data.meshes.remove(me)
+    tri = ob.modifiers.new("tri", "TRIANGULATE")
+    tri.quad_method, tri.ngon_method = "BEAUTY", "BEAUTY"
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.modifier_apply(modifier="tri")
+    return len(new.polygons), gone
 
 
 # ---- charts ----------------------------------------------------------------------------------------------------
@@ -296,27 +552,31 @@ def _sub(verts, faces, sel):
     return verts[used].astype(np.float64), remap[fc]
 
 
-def _reduce(name, V, F, ratio, symmetry):
-    """Collapse-decimate (V, F) to `ratio` of its faces. Mirrored across X when asked, unless that turns triangles
-    over: Blender's mirrored collapses skip its fold check, and on flat faces they fold (black triangles)."""
+def _reduce(name, V, F, target, symmetry, plane_tol):
+    """Collapse-decimate (V, F) to `target` faces, after dissolving its flat regions (`_flatten`). Mirrored across X
+    when asked, unless that turns triangles over: Blender's mirrored collapses skip its fold check, and on flat faces
+    they fold (black triangles)."""
     ob = _mesh(name, V, F)
-    if ratio >= 1.0:
+    n = _flatten(ob, plane_tol)[0]
+    if target >= n:
         return ob, False
     if symmetry:
-        _decimate(ob, ratio, True)
+        flat = ob.data.copy()
+        _decimate(ob, target / n, True)
         tree = BVHTree.FromPolygons(V.tolist(), F.tolist(), all_triangles=True)
         if _folded(ob, tree, _face_normals(V, F)[0]) == 0:
+            bpy.data.meshes.remove(flat)
             return ob, True
-        bpy.data.objects.remove(ob)
-        ob = _mesh(name, V, F)
-    _decimate(ob, ratio, False)
+        old, ob.data = ob.data, flat
+        bpy.data.meshes.remove(old)
+    _decimate(ob, target / n, False)
     return ob, False
 
 
 def budgets(counts, faces, weights, total, floor, copies=None):
     """Triangles per part: the joint decimation's counts (what each part needs for one geometric error everywhere)
     scaled by each part's weight and renormalised so the triangles drawn (a part's count x its copies: a shared
-    prefab's instances) come to `total`, but at least `floor` (or all it has) and never more than it has."""
+    prefab's instances) come to `total`, but at least its `floor` (or all it has) and never more than it has."""
     copies = copies or {}
     share = {pn: weights[pn] * max(counts.get(pn, 0), 1) for pn in faces}
     fixed = {}
@@ -327,7 +587,7 @@ def budgets(counts, faces, weights, total, floor, copies=None):
         left = max(total - sum(fixed[pn] * copies.get(pn, 1) for pn in fixed), 0)
         tot = sum(share[pn] * copies.get(pn, 1) for pn in free)
         want = {pn: left * share[pn] / tot for pn in free}
-        lo = {pn: min(floor, faces[pn]) for pn in free}
+        lo = {pn: min(floor[pn], faces[pn]) for pn in free}
         clamp = {pn: lo[pn] if w < lo[pn] else faces[pn] for pn, w in want.items() if w < lo[pn] or w > faces[pn]}
         fixed.update(clamp or want)
         if not clamp:
@@ -361,8 +621,19 @@ def lowpoly(job):
     joint.data.attributes.new("pid", "INT", "FACE").data.foreach_set("value", pid_of[fpart[keep]].astype(np.int32))
     copies = {pn: int(cfg[pn].get("copies", 1)) for pn in names}
     ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))  # drawn triangles: prefabs per copy
+    flat_frac = {pn: 0.0 for pn in names}
+    plane_tol = 0.25 * float(job.get("voxel", 0.0))
     if ratio < 1.0:
-        _decimate(joint, ratio, sym)
+        # flat regions go to ngons first (they cost nothing), then the collapse ratio counts what's left
+        n, flat = _flatten(joint, plane_tol)
+        pids = pid_of[fpart[keep]]
+        flat_frac = {pn: float(flat[pids == k].mean()) for k, pn in enumerate(names)}
+        fp = np.empty(n, np.int32)
+        joint.data.attributes["pid"].data.foreach_get("value", fp)
+        nfaces = {pn: int((fp == k).sum()) for k, pn in enumerate(names)}
+        ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))
+        if ratio < 1.0:
+            _decimate(joint, ratio, sym)
     _clean(joint)
     Vj, Fj = _tri_arrays(joint)
     jpart = np.empty(len(Fj), np.int32)
@@ -375,8 +646,9 @@ def lowpoly(job):
     #    unless its budget moved or the mirrored collapse folded some of its triangles over (Blender skips its
     #    fold check for mirrored collapses; on flat faces they turn over and render black): then it is
     #    decimated again on its own
-    want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, int(job.get("min_part", 300)),
-                   copies)
+    #    The floor keeps round things round, so it shrinks with the part's flat share: a box needs no floor.
+    floor = {pn: int(round(int(job.get("min_part", 300)) * (1 - flat_frac[pn]))) for pn in names}
+    want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, floor, copies)
     obs, info = [], {}
     for k, pn in enumerate(names):
         Vh, Fh = _sub(verts, faces, fpart == pidx[pn])
@@ -388,11 +660,11 @@ def lowpoly(job):
                 bpy.data.objects.remove(ob)
                 redo, s = True, False
         if redo:
-            ob, s = _reduce(pn, Vh, Fh, want[pn] / len(Fh), s)
+            ob, s = _reduce(pn, Vh, Fh, want[pn], s, plane_tol)
             _clean(ob)
         ob.data.shade_smooth()
         obs.append(ob)
-        info[pn] = {"symmetric": s, "joint_count": counts[pn], "budget": want[pn]}
+        info[pn] = {"symmetric": s, "joint_count": counts[pn], "budget": want[pn], "flat": round(flat_frac[pn], 3)}
     t1b = time.time()
 
     atlases = {}

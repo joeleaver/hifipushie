@@ -56,13 +56,14 @@ def min_part(triangles: int) -> int:
     return max(300, triangles // 100)
 
 
-def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict) -> tuple[dict, dict]:
+def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel: float = 0.0) -> tuple[dict, dict]:
     """Decimate + unwrap in Blender. cfg: {part: {"weight": triangle weight, "density": texel density,
-    "atlas": index}}, sizes: {atlas index: texels}. Returns ({part: {verts, corner_vert, uv, normal, tangent, sign,
+    "atlas": index}}, sizes: {atlas index: texels}, voxel: the scene voxel (flat regions within a quarter of it
+    are dissolved before the collapse). Returns ({part: {verts, corner_vert, uv, normal, tangent, sign,
     atlas}}, info from Blender: per part the joint decimation's count, the budget and whether it came out mirrored;
     timings)."""
     _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles),
-              "min_part": min_part(triangles), "textures": {str(a): int(t) for a, t in sizes.items()},
+              "min_part": min_part(triangles), "voxel": float(voxel), "textures": {str(a): int(t) for a, t in sizes.items()},
               "margins": {str(a): margin_px(int(t)) for a, t in sizes.items()}}, timeout=3600)
     z = np.load(out)
     names = [str(n) for n in z["part_names"]]
@@ -638,7 +639,7 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
                     "atlas": names.index(group[pn]), "focus": focus[pn],
                     "copies": len(ctx["prefabs"][pf_of[pn]]["instances"]) if pn in pf_of else 1} for pn in areas}
         t1 = time.time()
-        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes)
+        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"])
         if not texel_density:
             break
         # the size each atlas needs for every part to get its density, now that it's packed

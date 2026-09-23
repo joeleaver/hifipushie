@@ -90,7 +90,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   drawn triangles (`budgets` weighs parts by copies). `texel_density` (texels/m): `density_groups` bins units
   (a prefab's parts together) first-fit by load at a guessed pack fill (`FILL`), Blender unwraps with per-atlas
   sizes (`textures`/`margins` in the job), then each atlas takes the smallest power of two meeting the density;
-  an atlas that can't at `texture` triggers one regroup with the measured fill. `prune_hidden` drops faces buried in another part. Blender
+  an atlas that can't at `texture` triggers one regroup with the measured fill. `prune_hidden` drops faces buried in another part.
+  Flat regions are dissolved first (`planar_regions`, numpy: grown against the SEED face's normal and plane, so gentle
+  organic curvature never chains; disks only; `_flatten` rebuilds the mesh with one ngon per region, since bmesh's
+  dissolve was quadratic), and a part's triangle floor shrinks with its flat share. Blender
   decimates all parts together once (quadric error decides each part's share: area shares starved small round
   parts next to big walls), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the
   joint result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check
