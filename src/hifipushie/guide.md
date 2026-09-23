@@ -125,7 +125,7 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
 
 ### Game-ready export
 
-`export_asset(name, out_dir)` writes a GLB plus every map as its own PNG (basecolor, normal, roughness, metallic,
+`export_asset(name, out_dir)` writes a GLB plus every map (per atlas) as its own PNG (basecolor, normal, roughness, metallic,
 specular, ao, orm, 16-bit height) and a json with the conventions. Nothing is baked from a high-poly mesh: every
 texel is projected onto the exact surface, so detail the low poly drops (warts, wrinkles, creases) lives in the
 normal and height maps, and paint is as sharp as the texture. Faces buried inside another part (skin under
@@ -133,8 +133,24 @@ solid clothing, eyeball backs) are removed first.
 - Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
   variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
   these; the export preview (Cycles) does.
-- `triangles` ~15k suits a hero creature; 5k for a crowd. `texture=1024` for quick checks, 2048 to ship.
-- Judge the preview and a face close-up (`asset.preview` focus/zoom) for seams and the normal map's read.
+- `triangles` ~15k suits a hero creature; 5k for a crowd; a furnished building 50-100k. `texture=1024` for
+  quick checks, 2048 to ship.
+- Triangles follow geometric error, not area: one decimation of all parts together decides each part's share,
+  so flat walls get few and small round things (eyes, pots, pillows) enough; every part gets at least
+  max(300, triangles/100). Steer it per part with `parts.<p>.triangle_weight` (x its share).
+- Texels: every part gets the same texels per metre unless `parts.<p>.texel_density` says otherwise (2 = twice
+  as sharp, four times the atlas area). `parts.<p>.texel_focus: [{"at": "head", "radius": 0.15, "density":
+  2.5}]` gives a region more (a character's face: the troll's went from 1.5 to 0.8 mm/texel at 1024).
+- Read the log: the atlas fill and mm/texel per part. A creature fits one atlas (troll ~58% filled); a big
+  environment doesn't (the cabin's 380 m^2 of logs and shingles gives ~30 mm/texel on one 1024 atlas). Give
+  parts their own atlas with `parts.<p>.atlas: "interior"` (one material each in the GLB), or
+  `export_asset(atlases=n)` to split the rest by load; keep what's seen close up (interior, props) apart from
+  what's big and seen from afar.
+- Detail thinner than about a voxel at the export resolution (22 mm shingles at 256 across a 6 m cabin) makes
+  a broken high mesh: inverted faces and normals the bake can't use. Those texels keep the low-poly surface
+  (the log says how many per part). Build at a higher resolution or make the detail thicker.
+- Judge the preview and close-ups (`asset.preview` focus/zoom; `hide=["roof", "walls"]` to see inside) for
+  seams and the normal map's read.
 
 ## 6. When something looks wrong
 

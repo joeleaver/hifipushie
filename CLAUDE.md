@@ -69,16 +69,29 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first
   sub-layer under the material's name. Tune materials on `workspace/swatches` (panel + ball per material).
-- `asset.py` + `blender_asset.py`: game-ready export. `prune_hidden` drops faces buried in another part; Blender
-  decimates each part, smart-projects one shared atlas and hands back per-corner uv/normal/MikkTSpace tangent.
-  `bake` rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface (`surface.newton`,
-  converged texels dropped), reads normal (tangent space against the exported low-poly frame), height (along
-  the low-poly normal), paint channels (`paint.apply_channels`: color/roughness/metallic/specular), and AO
-  (`surface.ao`, baked at half res and passed on to paint), then painted height (`paint.bump`, texel-sized steps).
-  Maps are dilated (EDT nearest fill). `write_glb` writes glTF by hand (Y up: x, z, -y; uv v flipped; ORM; specular
-  in the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04).
-  `preview` renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the AO map
-  itself too.
+- `asset.py` + `blender_asset.py`: game-ready export. `prune_hidden` drops faces buried in another part. Blender
+  decimates all parts together once (quadric error decides each part's share: area shares starved small round
+  parts next to big walls), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the
+  joint result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check
+  when mirroring: black triangles on flat faces), then it is decimated alone. Per atlas (`parts.<p>.atlas`,
+  `atlases=n` by load): smart project, `_charts` merges islands too thin/small for their margin into a neighbour
+  if the chart stays within a 75 deg normal cone (re-projected along its mean normal), `texel_focus` spheres cut
+  their own islands, every island is scaled to its density, pack (CONCAVE, margin = texture/512 texels as an
+  exact fraction; the old "scaled" margin around thousands of islands left the cabin atlas 6% full). Hands back
+  per-corner uv/normal/MikkTSpace tangent and each part's atlas; the json reports mm/texel per part.
+  `bake` (per atlas) rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface
+  (`surface.newton`, converged texels dropped; a texel falls back to the low poly only if it moved > 6 voxels or
+  its exact normal faces away, dot < -0.2: steep outward detail like shingle butts is real), reads normal
+  (tangent space against the exported low-poly frame, z >= 0.02), height (along the low-poly normal), paint
+  channels (`paint.apply_channels`: color/roughness/metallic/specular), and AO (`surface.ao`, baked at half res
+  and passed on to paint), then painted height (`paint.bump`, texel-sized steps). Maps are dilated (EDT nearest
+  fill). `write_glb` writes glTF by hand (one material per atlas; Y up: x, z, -y; uv v flipped; ORM; specular in
+  the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04). `preview`
+  (`hide=` parts) renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the
+  AO map itself too. Sub-voxel detail (the cabin's 22 mm shingles at 24 mm voxels) makes a broken high mesh
+  (inverted faces); those texels fall back, the log counts them per part. Open: log walls unwrap as many thin
+  strips (the cabin atlas tops out near 36% filled); cylinders want one chart each, which needs a disk-topology
+  check before merging past the normal cone.
 - Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
   them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,

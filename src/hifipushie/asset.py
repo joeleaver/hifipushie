@@ -1,4 +1,8 @@
-"""Game-ready export: a low-poly mesh with one UV atlas and PBR textures baked from the exact model.
+"""Game-ready export: a low-poly mesh with UV atlases and PBR textures baked from the exact model.
+
+Triangles per part follow geometric error (one joint decimation), scaled by parts.<p>.triangle_weight; texels
+per metre follow parts.<p>.texel_density and texel_focus regions; parts.<p>.atlas / atlases=n split the parts
+over several atlases, each with its own maps and GLB material.
 
 Nothing is baked from a high-poly mesh. Each texel's point on the low-poly surface is projected onto the exact
 field, and every map is read there:
@@ -9,8 +13,8 @@ field, and every map is read there:
                 detail is limited by the texture, not by the build voxel
   ao            ambient occlusion from the field of all parts (cheap SDF cone samples along the normal)
   orm           glTF packing: R = ao, G = roughness, B = metallic
-Plus asset.glb (glTF 2.0, Y up, the creature facing +Z, one mesh per part, one material with base colour,
-ORM, normal and KHR_materials_specular) and asset.json describing all of it.
+Plus asset.glb (glTF 2.0, Y up, the creature facing +Z, one mesh per part, one material per atlas with base
+colour, ORM, normal and KHR_materials_specular) and asset.json describing all of it (mm/texel per part).
 """
 
 from __future__ import annotations

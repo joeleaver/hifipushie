@@ -492,26 +492,34 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
-                 preview: bool = True, save: str | None = None):
-    """Export a game-ready asset: a low-poly mesh (about `triangles`, decimated per part, one shared UV atlas)
-    and PBR textures baked from the exact model at `texture`^2 texels: basecolor, normal (tangent space,
-    MikkTSpace, OpenGL/glTF green-up), roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic,
-    glTF packing) and height (16-bit; low poly + height = the sculpt; its range is in the json). Writes
-    <name>.glb (glTF 2.0: Y up, facing +Z, metres, one mesh per part, one material with KHR_materials_specular),
-    the PNGs and <name>.json (conventions, sizes, timings) into out_dir.
+                 atlases: int = 1, preview: bool = True, hide: list[str] | None = None, save: str | None = None):
+    """Export a game-ready asset: a low-poly mesh (about `triangles`, one mesh per part), UV atlases and PBR
+    textures baked from the exact model at `texture`^2 texels: basecolor, normal (tangent space, MikkTSpace,
+    OpenGL/glTF green-up), roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic, glTF packing)
+    and height (16-bit; low poly + height = the sculpt; its range is in the json). Writes <name>.glb (glTF 2.0:
+    Y up, facing +Z, metres, one material per atlas with KHR_materials_specular), the PNGs and <name>.json
+    (conventions, per part: triangles, mm per texel, islands; timings) into out_dir.
     Every texel is projected onto the exact surface, so sculpted detail the low poly drops lands in the normal
     and height maps, and paint is as sharp as the texture (not limited by the build voxel). Roughness,
     metallic and specular come from paint layers and part settings (kit_reference, PAINT).
-    preview: render the exported GLB with Cycles (as an engine would load it) to check the textures.
-    Takes about a minute at 2048 (texture=1024 for quick checks)."""
+    Budgets: triangles go where one joint decimation of all parts puts them (geometric error, so flat walls get
+    few and small round parts enough; every part gets at least max(300, triangles/100)). Per part in
+    spec["parts"][p]: "triangle_weight" (x its share), "texel_density" (x its texels per metre), "texel_focus":
+    [{"at": point | joint | blob, "radius": m, "density": w}] (islands there get w x more: a character's face),
+    "atlas": name (its own atlas and material, e.g. "interior"). atlases=n splits the remaining parts over n
+    atlases by texture load. Check the log's mm/texel per part and the atlas fill; a big environment wants
+    several atlases (or 2048+) where a creature fits one.
+    preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
+    parts left out of it (e.g. roof and walls, to see an interior).
+    Takes one to a few minutes at 2048 (texture=1024 for quick checks)."""
     from . import asset
-    info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution)
-    text = (f"wrote {info['glb']}: {info['triangles']} triangles, {texture}^2 maps, height range "
-            f"+-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n" + "\n".join(info["log"])
-            + "\nmaps: " + ", ".join(Path(v).name for v in info["maps"].values()))
+    info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases)
+    text = (f"wrote {info['glb']}: {info['triangles']} triangles, {len(info['atlases'])} x {texture}^2 atlas, "
+            f"height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n" + "\n".join(info["log"])
+            + "\nmaps: " + ", ".join(Path(v).name for a in info["atlases"].values() for v in a["maps"].values()))
     if not preview:
         return text
-    im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS)
+    im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide)
     return [_out(im, save), text]
 
 

@@ -2,16 +2,20 @@
 
 blender -b --factory-startup --python blender_asset.py -- job.json
 Jobs:
-  {"mode": "lowpoly", "mesh": high.npz, "out": low.npz, "texture": px, "margin": px, "angle": deg, "cone": deg,
-   "parts": {name: {"triangles": n, "density": relative texels per metre, "atlas": index}}}
-      Decimates each part to its own triangle budget (quadric collapse, mirrored across X unless that folds
-      triangles over), then per atlas: smart-projects its parts, merges islands too thin or small to be worth
-      their margin into a neighbour (when the merged chart still faces one way), scales every island to its
-      part's texel density and packs them with a margin of `margin` texels. Writes, per part, the vertices and
-      per-corner uv / normal / MikkTSpace tangent + bitangent sign (exactly what the textures are baked against
-      and the GLB carries) and the atlas it went to.
-  {"mode": "preview", "glb": path, "views": [{"dir", "up", "center", "scale", "out"}], "size": px}
-      Imports the GLB and renders it with Cycles under a simple light rig, to check the textured asset.
+  {"mode": "lowpoly", "mesh": high.npz, "out": low.npz, "triangles": n, "min_part": n, "texture": px,
+   "margin": px, "angle": deg, "cone": deg, "symmetry": bool,
+   "parts": {name: {"weight": triangle weight, "density": relative texels per metre, "atlas": index,
+                    "focus": [[x, y, z, radius, density]]}}}
+      Decimates all parts together to `triangles` (quadric collapse, mirrored across X), which sets each part's
+      share; weights and the floor adjust those, and a part whose budget moved or whose mirrored collapse folded
+      triangles over is decimated again on its own. Then per atlas: smart-projects its parts, cuts islands at
+      focus regions, merges islands too thin or small to be worth their margin into a neighbour (when the
+      merged chart still faces one way), scales every island to its density and packs them `margin` texels
+      apart. Writes, per part, the vertices and per-corner uv / normal / MikkTSpace tangent + bitangent sign
+      (exactly what the textures are baked against and the GLB carries), its atlas, and an info json.
+  {"mode": "preview", "glb": path, "views": [{"dir", "up", "center", "scale", "out"}], "size": px, "hide": [part]}
+      Imports the GLB (minus the hidden parts) and renders it with Cycles under a simple light rig, to check the
+      textured asset.
 """
 
 import json
@@ -95,7 +99,7 @@ def _clean(ob):
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_area() < 1e-12], context="FACES")
     bm.to_mesh(ob.data)
     bm.free()
-    tri = ob.modifiers.new("tri", "TRIANGULATE")
+    ob.modifiers.new("tri", "TRIANGULATE")
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.modifier_apply(modifier="tri")
 
@@ -291,16 +295,10 @@ def _sub(verts, faces, sel):
     return verts[used].astype(np.float64), remap[fc]
 
 
-def _reduce(name, V, F, ratio, symmetry, fattr=None):
+def _reduce(name, V, F, ratio, symmetry):
     """Collapse-decimate (V, F) to `ratio` of its faces. Mirrored across X when asked, unless that turns triangles
-    over: Blender's mirrored collapses skip its fold check, and on flat faces they fold (black triangles).
-    fattr: an int per face, kept through the decimation as the face attribute "pid"."""
-    def make():
-        ob = _mesh(name, V, F)
-        if fattr is not None:
-            ob.data.attributes.new("pid", "INT", "FACE").data.foreach_set("value", np.asarray(fattr, np.int32))
-        return ob
-    ob = make()
+    over: Blender's mirrored collapses skip its fold check, and on flat faces they fold (black triangles)."""
+    ob = _mesh(name, V, F)
     if ratio >= 1.0:
         return ob, False
     if symmetry:
@@ -309,7 +307,7 @@ def _reduce(name, V, F, ratio, symmetry, fattr=None):
         if _folded(ob, tree, _face_normals(V, F)[0]) == 0:
             return ob, True
         bpy.data.objects.remove(ob)
-        ob = make()
+        ob = _mesh(name, V, F)
     _decimate(ob, ratio, False)
     return ob, False
 
