@@ -213,11 +213,14 @@ the .blend come back as spec edits).
    Masks measured by our code (blur, ".L") read the Cycles values too (`measure(given=)`). Sync of the cabin
    150 s vs 304 s. `scene.look(show_layer=)` now shows the mask glowing orange on lit clay (a material by its
    name shows its first sub-layer). Still ours: `look`'s per-vertex paint and the texel bake (`surface.ao/sky`).
-2. Grain direction per element (the furniture "speckle" the user saw, also on the counter/"sink" unit): the
-   wood material assumes one world `dir` per layer, so every face along it becomes end grain with dotted
-   rings. Measure a per-vertex grain direction from each vertex's own primitive (bone axis, box's longest
-   side, cylinder axis) as an attribute; wood nodes stretch along it and take end grain from it. `dir:
-   "element"` in the spec. Same attribute feeds the export bake.
+2. DONE (2026-09-23): grain per element. `surface.grain`: each point's element = the nearest additive primitive of
+   its own part (its base SDF, cuts ignored), axis from `surface.element_axis` (bone axis; box/ellipsoid longest
+   side; cylinder axis if taller than wide, else across); a box face wider than `surface.PANEL` (0.25 m) both
+   ways is a panel, grain along its longer side (the counter's side isn't end grain). `grain_seed` (crc of the
+   element name) offsets the pattern per element. Paint: `stretch.dir: "element"`, `facing: "element"` (|n.axis|);
+   materials wood/planks/metal/rust take `dir: "element"` (planks keep board rows on world axes). Nodes: a
+   `grain` FLOAT_VECTOR attribute (`scene.VECTOR_INPUTS`) + packed `grain_seed`. The cabin's wood layers use it
+   (one logs layer, one timber layer). Next: end-grain rings need a radial coordinate from the element's axis.
 3. Per-part resolution (voxel from thinnest feature, as prefabs already do) for scene parts: the basin/pot
    (14 mm walls at a 25 mm voxel) and glass mesh broken. A part with one thin element goes fine throughout:
    cap it and log which element set it.

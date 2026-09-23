@@ -167,6 +167,9 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   wood, brick, stone, metal, rust) expands into base colour, pattern, relief, wear and dirt layers; masks on
   it confine it, `color`/`scale`/`wear`/`dirt`/`dir` tune it. Tiles and weaves are laid out triplanar: clean on
   flat walls and floors, blended on curved surfaces, so orient `dir` along the grain or rows.
+  For anything built of many pieces (log walls, furniture, frames, firewood) give wood `"dir": "element"`: the
+  grain follows each log, leg, rail and board, each its own piece of pattern, end grain on each piece's cut ends.
+  One layer does a whole part; no layer per orientation.
 - **Relief without sculpting:** `"height": -0.001` on a cells layer grooves the scale borders; `0.002` on a
   cells-distance layer raises warts. It lands in the exported normal and height maps at texel resolution;
   `look` only tilts vertex normals, so judge it in a close-up with `shading="raking"` and in the export

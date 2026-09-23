@@ -8,6 +8,9 @@ layer = {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone"
 Common parameters: "color" (the main colour, sRGB), "scale" (multiplies every pattern size, 1), "wear" and
 "dirt" (0..1, 0.3: opacity of the edge-wear and grime sub-layers), "seed", and "dir" (a world direction for the
 pattern's long axis: threads, grain, rows of bricks or planks; default: horizontal on walls, X on floors).
+"dir": "element" (wood, planks, metal, rust): the grain follows each element's own long axis (every log, leg,
+rung and board its own way, and its own piece of the pattern), end grain on each element's cut ends; planks
+keep their board rows on world axes.
 Sub-layers are named "<layer>:<sub>" (look(paint_layer="walls:mortar") shows one); coverage is reported for
 the material's own confining mask.
 
@@ -112,7 +115,8 @@ def _grain(p, s, dir_):
             ("knots", {"color": shade(p["color"], 0.45), "opacity": 0.8, "mask": [
                 {"cells": {"scale": 0.3 * s, "mode": "distance", "range": [0.09, 0.05], "seed": p["seed"] + 2,
                            "stretch": {"dir": dir_, "factor": 1.6}}},
-                {"cells": {"scale": 0.3 * s, "mode": "id", "range": [0.7, 0.75], "seed": p["seed"] + 2},
+                {"cells": {"scale": 0.3 * s, "mode": "id", "range": [0.7, 0.75], "seed": p["seed"] + 2,
+                           "stretch": {"dir": dir_, "factor": 1.6}},  # the same cells as the distance above
                  "blend": "multiply"}]})]
 
 
@@ -122,6 +126,12 @@ def _default_dir(p, fallback):
 
 def _end_grain(p, s, d):
     """Cut ends (faces along the grain) are paler and speckled: end grain reads at a glance on logs and beams."""
+    if d == "element":  # either end of each element
+        chk = {"noise": {"scale": 0.02 * s, "octaves": 2, "range": [0.7, 0.73], "seed": p["seed"] + 21}}
+        return [("end_grain", {"color": shade(p["color"], 1.3), "roughness": 0.85, "mask": [
+                    {"facing": "element", "range": [0.75, 0.95]}]}),
+                ("end_checks", {"color": shade(p["color"], 0.6), "opacity": 0.5, "mask": [
+                    chk, {"facing": "element", "range": [0.75, 0.95], "blend": "multiply"}]})]
     nd = [-float(x) for x in d]
     return [("end_grain", {"color": shade(p["color"], 1.3), "roughness": 0.85, "mask": [
                 {"facing": d, "range": [0.75, 0.95]}, {"facing": nd, "range": [0.75, 0.95], "blend": "max"}]}),
@@ -143,7 +153,7 @@ def _planks(p, s):
     d = _default_dir(p, [1, 0, 0])
     L, W = (float(x) * s for x in p.get("size", [1.2, 0.14]))
     gap = float(p.get("gap", 0.004)) * s
-    t = {"size": [L, W], "gap": gap, "offset": 1 / 3, "dir": d, "seed": p["seed"]}
+    t = {"size": [L, W], "gap": gap, "offset": 1 / 3, "dir": None if d == "element" else d, "seed": p["seed"]}
     return ([("base", {"color": p["color"], "roughness": 0.7, "specular": 0.4}),
              ("boards", {"color": shade(p["color"], 0.78), "opacity": 0.6, "mask": [
                  {"tiles": {**t, "mode": "id"}, "levels": [0.2, 1.0]}]}),
@@ -276,6 +286,8 @@ def expand(name: str, ly: dict, generator_keys, confine_params) -> list[tuple[st
         raise SpecError(f"paint {name!r}: unknown keys {sorted(unknown)} for material {mat!r} "
                         f"(its parameters: {', '.join(COMMON + PARAMS[mat])})")
     p = {k: ly[k] for k in (*COMMON, *PARAMS[mat]) if k in ly}
+    if p.get("dir") == "element" and mat not in ("wood", "planks", "metal", "rust"):
+        raise SpecError(f"paint {name!r}: dir \"element\" is for wood, planks, metal and rust; {mat} takes [x, y, z]")
     p.setdefault("color", DEFAULT_COLOR[mat])
     p.setdefault("seed", 0)
     p["wear"] = float(p.get("wear", 0.3))  # restrained by default: weathering should be noticed second

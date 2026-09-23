@@ -132,6 +132,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     return objs, insts, prog
 
 
+VECTOR_INPUTS = ("grain",)  # per-vertex vectors: an attribute each, not packed
 RAYTRACED = ("ao", "sky")  # inputs Cycles measures (the rest are ours: curvature is exact from the field)
 # AO as ours (cones out to 3 steps of 0.008 x the model size). Sky reaches past the whole model: a roof shelters
 # however high it is (ours stopped at 0.3 x, so interior walls read as open to the sky). x model size.
@@ -244,7 +245,7 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
                 for f, (a, n) in zip(files, sl):
                     with np.load(f) as zz:
                         for name in zz.files:
-                            vals.setdefault(name, np.zeros(len(P), np.float32))[a:a + n] = zz[name]
+                            vals.setdefault(name, np.zeros((len(P),) + zz[name].shape[1:], np.float32))[a:a + n] = zz[name]
                 continue
             got = paintnodes.measure(spec, prog, P, N, part, names, voxel, ctx["full"], what, given)
             for f, (a, n) in zip(files, sl):
@@ -256,8 +257,9 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
             packs = {}  # a GPU shader reads ~16 vertex attributes: scalars go three to a vector
             for attr, (pk, ch) in prog["packing"].get(o["part"], {}).items():
                 packs.setdefault(pk, np.zeros((n, 3), np.float32))[:, ch] = vals[attr][a:a + n]
+            vec = {k: vals[k][a:a + n] for k in VECTOR_INPUTS if k in vals}  # their own vector attributes
             np.savez(cache / f"{o['hash']}_in_{key}.npz", wpos=P[a:a + n].astype(np.float32),
-                     wnrm=N[a:a + n].astype(np.float32), **packs)
+                     wnrm=N[a:a + n].astype(np.float32), **packs, **vec)
     for o in objs:
         o["inputs"] = str(cache / f"{o['hash']}_in_{key}.npz")
         o["hash"] = f"{o['hash']}:{key}"

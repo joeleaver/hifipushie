@@ -121,6 +121,18 @@ class _Nodes:
         n["hp_set"] = float(v)  # what the spec said: a later pull reports only what a person changed from it
         return n.outputs[0]
 
+    def stretch(self, q, st):
+        """paint._stretch: squashed along a direction, or along the vertex's element (then offset by its seed)."""
+        if st[0] == "grain":
+            _, f, seed = st
+            g = self.attr("grain", True)
+            q = self.vmath("SUBTRACT", q, self.vmath("SCALE", g, scale=self.math(
+                "MULTIPLY", self.vmath("DOT_PRODUCT", q, g), 1 - 1 / f)))
+            return self.vmath("ADD", q, self.vmath("SCALE", [97.3, 61.7, 83.1], scale=self.attr(seed)))
+        dx, dy, dz, f = st
+        along = self.vmath("DOT_PRODUCT", q, [dx, dy, dz])
+        return self.vmath("SUBTRACT", q, self.vmath("SCALE", [dx, dy, dz], scale=self.math("MULTIPLY", along, 1 - 1 / f)))
+
     def ramp(self, x, a, b):
         """0 at a, 1 at b (either order), smoothstep between: paint._ramp."""
         n = self.node("ShaderNodeMapRange", clamp=True)
@@ -202,7 +214,11 @@ class _Nodes:
     def gen(self, e):
         g = e["gen"]
         if g == "facing":
-            d = self.vmath("DOT_PRODUCT", self.vmath("NORMALIZE", self.attr("wnrm", True)), e["dir"])
+            if e["dir"] == "grain":  # along the vertex's element, either way
+                d = self.math("ABSOLUTE", self.vmath("DOT_PRODUCT", self.vmath("NORMALIZE", self.attr("wnrm", True)),
+                                                     self.attr("grain", True)))
+            else:
+                d = self.vmath("DOT_PRODUCT", self.vmath("NORMALIZE", self.attr("wnrm", True)), e["dir"])
             return self.ramp(d, self.exposed(e, "range0", e["range"][0]), self.exposed(e, "range1", e["range"][1]))
         if g == "axis":
             d = self.math("ADD", self.vmath("DOT_PRODUCT", self.attr("wpos", True), e["dir"]), e["offset"])
@@ -210,9 +226,7 @@ class _Nodes:
         if g == "noise":
             q = self.attr("wpos", True)
             if e["stretch"]:
-                dx, dy, dz, f = e["stretch"]
-                along = self.vmath("DOT_PRODUCT", q, [dx, dy, dz])
-                q = self.vmath("SUBTRACT", q, self.vmath("SCALE", [dx, dy, dz], scale=self.math("MULTIPLY", along, 1 - 1 / f)))
+                q = self.stretch(q, e["stretch"])
             scale = self.exposed(e, "scale", e["scale"])
             if e["warp"]:  # displace the lookup by another noise (3 channels): torn grunge
                 wn = self.node("ShaderNodeTexNoise", noise_dimensions="3D")
@@ -239,9 +253,7 @@ class _Nodes:
         if g == "cells":
             q = self.attr("wpos", True)
             if e["stretch"]:
-                dx, dy, dz, f = e["stretch"]
-                along = self.vmath("DOT_PRODUCT", q, [dx, dy, dz])
-                q = self.vmath("SUBTRACT", q, self.vmath("SCALE", [dx, dy, dz], scale=self.math("MULTIPLY", along, 1 - 1 / f)))
+                q = self.stretch(q, e["stretch"])
             q = self.vmath("ADD", q, [e["seed"] * 31.7, e["seed"] * 17.3, e["seed"] * 23.9])
 
             def vor(feature):

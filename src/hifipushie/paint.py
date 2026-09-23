@@ -25,7 +25,8 @@ Masks (generators, each 0..1 per point):
            own surface is inside the blended skin, so "within" ~ the blend radius covers its whole footprint.
   facing:  [x, y, z]: by how much the skin faces that way (normal . dir), ramping from "range"[0] to "range"[1]
            (default [0, 0.7]). [0, 0, 1] with a dark colour darkens the back; [0, 0, -1] lightens the belly
-           (countershading).
+           (countershading). "element": along the point's own element's long axis, either way (|normal . axis|):
+           the cut ends of logs, beams and boards (end grain).
   axis:    {"dir": [x, y, z], "from": a, "to": b} ramps 0 -> 1 as position . dir goes from a to b (world metres),
            or {"bone": name, "from": t0, "to": t1} along a bone (0 at its start joint, 1 at its end; outside the
            range it clamps): tail tips, gloved hands, socks, fading limbs. It ramps across the whole part (the
@@ -56,7 +57,9 @@ Masks (generators, each 0..1 per point):
            tiles and weave are 2D patterns laid on the three axis planes, blended by the normal (triplanar).
   noise also takes "warp" (0..2: the lookup displaced by another noise: torn, swirly grunge instead of round
            blobs) and "stretch": {"dir": [x,y,z], "factor": 6} (features that much longer that way: streaks,
-           drips with [0,0,1], wood grain, fur direction). Noise and cells are solid 3D: no UV seams.
+           drips with [0,0,1], wood grain, fur direction). "dir": "element" stretches along each point's own
+           element (a log's, a leg's, a board's long axis) and gives every element its own piece of the
+           pattern: grain that follows each piece of a chair. Noise and cells are solid 3D: no UV seams.
 
 Materials: {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone" | "metal" | "rust" | "moss", ...}
 expands into ready-made layers (see MATERIALS below): start there, then add your own layers on top.
@@ -485,20 +488,22 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         return _path_mask(spec, tag, {**e, "part": view.pts.part_names[int(np.argmax(counts))]}, v, n)
     if gen == "near":
         return _near_mask(spec, name, e, v)
-    if gen == "facing":  # a direction, or one of the story's named directions ("weather", "sun")
+    if gen == "facing":  # a direction, or one of the story's named directions ("weather", "sun"), or "element"
         from .realism import direction
         lo, hi = e.get("range", [0.0, 0.7])
+        if e["facing"] == "element":
+            return _ramp(np.abs((n * _grain(view)[0]).sum(1)), lo, hi)
         return _ramp(n @ direction(spec, e["facing"], f"paint {name!r}"), lo, hi)
     if gen == "axis":
         return _axis_mask(spec, name, e["axis"], v)
     if gen == "noise":
         nz = e["noise"]
         lo, hi = nz.get("range", [0.45, 0.6])
-        return _ramp(noise(v, nz), lo, hi)
+        return _ramp(noise(v, nz, _grain(view) if _along(nz) else None), lo, hi)
     if gen == "cells":
         c = e["cells"]
         mode = c.get("mode", "edges")
-        val = cells(_stretch(v, c), float(c.get("scale", 0.03)), mode, float(c.get("jitter", 1.0)), int(c.get("seed", 0)))
+        val = cells(_stretch(v, c, _grain(view) if _along(c) else None), float(c.get("scale", 0.03)), mode, float(c.get("jitter", 1.0)), int(c.get("seed", 0)))
         lo, hi = c.get("range", {"edges": [0.15, 0.0], "distance": [0.35, 0.1], "id": [0.0, 1.0]}[mode])
         return _ramp(val, lo, hi)
     if gen == "cavity":
@@ -708,20 +713,38 @@ def _weave(u: np.ndarray, w: np.ndarray, s: float) -> np.ndarray:
     return np.where(over, np.maximum(warp, 0.5 * weft), np.maximum(weft, 0.5 * warp))
 
 
-def _stretch(v: np.ndarray, nz: dict) -> np.ndarray:
-    """Positions squashed along "stretch": {"dir", "factor"}, so features come out `factor` times longer that way."""
+GRAIN_OFFSET = np.array([97.3, 61.7, 83.1])  # x an element's grain_seed: each element its own piece of pattern
+
+
+def _along(nz: dict) -> bool:
+    return (nz.get("stretch") or {}).get("dir") == "element"
+
+
+def _grain(view) -> tuple:
+    """The view's points' element axes (mirrored with the view) and element seeds."""
+    g = view.get("grain")
+    return (g * MIRROR if view.mirror else g), view.get("grain_seed")
+
+
+def _stretch(v: np.ndarray, nz: dict, grain: tuple | None = None) -> np.ndarray:
+    """Positions squashed along "stretch": {"dir", "factor"}, so features come out `factor` times longer that way.
+    dir "element": along each point's own element axis (grain = (axes, seeds)), offset by its element's seed."""
     st = nz.get("stretch")
     if not st:
         return v
+    if st.get("dir") == "element":
+        g, seed = grain
+        v = v - (1 - 1 / float(st.get("factor", 6.0))) * (v * g).sum(1)[:, None] * g
+        return v + seed[:, None] * GRAIN_OFFSET[None]
     d = np.asarray(st.get("dir", [0, 0, 1]), float)
     d /= np.linalg.norm(d)
     return v - (1 - 1 / float(st.get("factor", 6.0))) * (v @ d)[:, None] * d[None]
 
 
-def noise(v: np.ndarray, nz: dict) -> np.ndarray:
+def noise(v: np.ndarray, nz: dict, grain: tuple | None = None) -> np.ndarray:
     """A noise generator's raw 0..1 value: fbm, optionally stretched (streaks) and domain-warped (grunge)."""
     scale, octaves, seed = float(nz.get("scale", 0.03)), int(nz.get("octaves", 3)), int(nz.get("seed", 0))
-    q = _stretch(v, nz)
+    q = _stretch(v, nz, grain)
     warp = float(nz.get("warp", 0.0))
     if warp:  # displace the lookup by another noise: swirly, torn-looking grunge instead of round blobs
         off = np.stack([fbm(q, scale, 2, seed + 11 + 7 * k) for k in range(3)], 1) - 0.5

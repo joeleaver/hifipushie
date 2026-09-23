@@ -50,6 +50,16 @@ class _Compiler:
         self.where[name] |= set(parts)
         return name
 
+    def stretch(self, st):
+        """[dx, dy, dz, factor], or ["grain", factor, seed attr] along each vertex's element (paint._stretch)."""
+        if not st:
+            return None
+        if st.get("dir") == "element":
+            self.inputs |= {"grain", "grain_seed"}
+            return ["grain", float(st.get("factor", 6.0)), "grain_seed"]
+        d = np.asarray(st.get("dir", [0, 0, 1]), float)
+        return [*(d / np.linalg.norm(d)), float(st.get("factor", 6.0))]
+
     def entry(self, e: dict, name: str, tag: str, path: list | None, layer: str | None = None) -> dict:
         """One stack entry as a node program entry. name: the stack's name as paint's _stack sees it (a nested
         mask's is its parent entry's tag); layer: the top-level layer it belongs to. path: its place in the spec
@@ -73,6 +83,9 @@ class _Compiler:
             lo, hi = e.get("range", [0.0, 0.7])
             if path:
                 out["expose"] = {"range0": path + ["range", 0], "range1": path + ["range", 1]}
+            if e["facing"] == "element":  # |normal . the element's axis|: a per-vertex vector attribute
+                self.inputs.add("grain")
+                return {**out, "gen": "facing", "dir": "grain", "range": [lo, hi]}
             return {**out, "gen": "facing", "dir": np.asarray(direction(self.spec, e["facing"], name), float).tolist(),
                     "range": [lo, hi]}
         if gen == "axis":
@@ -100,8 +113,7 @@ class _Compiler:
                                  "range1": path + ["noise", "range", 1]}
             return {**out, "gen": "noise", "scale": float(nz.get("scale", 0.03)), "octaves": int(nz.get("octaves", 3)),
                     "seed": int(nz.get("seed", 0)), "warp": float(nz.get("warp", 0.0)),
-                    "stretch": None if not st else [*np.asarray(st.get("dir", [0, 0, 1]), float) /
-                                                    np.linalg.norm(st.get("dir", [0, 0, 1])), float(st.get("factor", 6.0))],
+                    "stretch": self.stretch(st),
                     "range": list(nz.get("range", [0.45, 0.6]))}
         if gen == "tiles":  # laid on the three axis planes, u along the direction, w across (paint._planar)
             t = e["tiles"]
@@ -125,8 +137,7 @@ class _Compiler:
             st = c.get("stretch")
             return {**out, "gen": "cells", "scale": float(c.get("scale", 0.03)), "mode": mode,
                     "jitter": float(c.get("jitter", 1.0)), "seed": int(c.get("seed", 0)),
-                    "stretch": None if not st else [*np.asarray(st.get("dir", [0, 0, 1]), float) /
-                                                    np.linalg.norm(st.get("dir", [0, 0, 1])), float(st.get("factor", 6.0))],
+                    "stretch": self.stretch(st),
                     "range": list(c.get("range", {"edges": [0.15, 0.0], "distance": [0.35, 0.1], "id": [0.0, 1.0]}[mode]))}
         if gen in ("ao", "sky", "thickness"):
             self.inputs.add(gen)
@@ -206,6 +217,8 @@ def _attrs(entries: list) -> set:
     for e in entries:
         if e.get("attr"):
             out.add(e["attr"])
+        if (e.get("stretch") or [None])[0] == "grain":  # each element's own piece of the pattern
+            out.add(e["stretch"][2])
         if e.get("gen") == "mask":
             out |= _attrs(e["entries"])
     return out

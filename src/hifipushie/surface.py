@@ -7,6 +7,9 @@ Points holds a set of surface points (mesh vertices or baked texels): position, 
   sky         how open the point is to the sky above (1 = open, 0 = roofed over), reaching much further than
               AO: rain, sun and snow reach it or they don't (`sky`)
   hidden      1 where the point is buried inside another part
+  grain       the long axis of the element the point belongs to (unit vector, sign arbitrary): wood grain,
+              brushed metal, per board and log (`grain`); grain_seed: 0..1 per element, so parallel boards
+              don't share one continuous pattern
 Each is computed once for the whole set and kept in `cache`, which the caller may prefill (the bake passes the
 AO it already computed) or persist (store keeps a mesh's inputs next to it, so repainting doesn't redo AO).
 """
@@ -18,7 +21,7 @@ import numpy as np
 from . import sdf
 
 FIELD_INPUTS = ("ao", "curvature", "thickness", "sky")
-INPUTS_VERSION = 2  # bump when how any input is measured changes: cached inputs (store.painted) are redone
+INPUTS_VERSION = 3  # bump when how any input is measured changes: cached inputs (store.painted) are redone
 
 
 def unit(v):
@@ -55,6 +58,9 @@ class Points:
                 self.cache[key] = sky(list(self.streams.values()), self.pos, self.normal, self.voxel)
             elif key == "hidden":
                 self.cache[key] = hidden(self.streams, self.pos, self.part, self.part_names, self.voxel)
+            elif key in ("grain", "grain_seed"):
+                self.cache["grain"], self.cache["grain_seed"] = grain(self.streams, self.pos, self.part,
+                                                                      self.part_names, self.voxel)
             else:
                 out = np.zeros(len(self))
                 for i, pn in enumerate(self.part_names):
@@ -187,6 +193,65 @@ def sky(streams: list, X: np.ndarray, N: np.ndarray, voxel: float, samples: int 
     vis = np.clip(f / (0.35 * depths[None, None]), 0, 1).min(2)
     w = np.array([w for _, w in dirs])
     return vis @ w / w.sum()
+
+
+def element_axis(p) -> np.ndarray:
+    """A primitive's long axis (world, unit): a bone's axis, a box's or ellipsoid's longest side, a cylinder's
+    axis if it's taller than wide, else across it (a round table top's grain runs across the disc)."""
+    pr, kind = (p.params["p"], p.params["kind"]) if p.kind == "csg" else (p.params, p.kind)
+    if kind == "cone":
+        return np.asarray(pr["frame"][1], float)
+    if kind in ("box", "ellipsoid", "lids"):
+        return np.asarray(pr["rot"], float)[:, int(np.argmax(pr["size"]))]
+    if kind == "cylinder":
+        rx, ry, hz = pr["size"]
+        return np.asarray(pr["rot"], float)[:, 2 if hz >= max(rx, ry) else (0 if rx >= ry else 1)]
+    return np.array([0.0, 0.0, 1.0])
+
+
+PANEL = 0.25  # m: a box face wider than this both ways is a panel (a cabinet's side), not a piece's end grain
+
+
+def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: float):
+    """Each point's element (the additive primitive of its own part whose surface is nearest) and that
+    element's long axis, plus a 0..1 seed hashed from its name: ((n, 3), (n,)). On a box face wider than PANEL
+    both ways the grain runs along the face's longer side instead (a cabinet built of panels)."""
+    import zlib
+    g = np.tile(np.array([0.0, 0.0, 1.0]), (len(X), 1))
+    seed = np.zeros(len(X))
+    for i, pn in enumerate(names):
+        sel = np.flatnonzero(part == i)
+        if not len(sel) or pn not in streams:
+            continue
+        P = X[sel]
+        best = np.full(len(sel), np.inf)
+        for p in streams[pn]:
+            if p.op != "add" or p.kind in ("shell", "displace", "flatten"):
+                continue
+            pad = 3 * voxel + float(np.max(p.reach)) if np.ndim(p.reach) else 3 * voxel + float(p.reach)
+            near = np.flatnonzero(np.all((P >= p.lo - pad) & (P <= p.hi + pad), 1))
+            if not len(near):
+                continue
+            pr, kind = (p.params["p"], p.params["kind"]) if p.kind == "csg" else (p.params, p.kind)
+            d = np.abs(sdf.SDF[kind](P[near], pr))  # the element's own shape: cuts and noise don't move its axis
+            win = d < best[near]
+            if not win.any():
+                continue
+            k = near[win]
+            best[k] = d[win]
+            g[sel[k]] = element_axis(p)
+            if kind == "box":  # a face too big to be a piece of wood's end is a panel: grain along its longer side
+                rot, size = np.asarray(pr["rot"], float), np.asarray(pr["size"], float)
+                q = (P[k] - pr["c"]) @ rot
+                face = np.argmax(np.abs(q) / size, 1)
+                ext = np.stack([np.delete(2 * size, f) for f in range(3)])  # each face's two extents
+                idx = np.stack([np.delete(np.arange(3), f) for f in range(3)])
+                big = (ext.min(1) > PANEL)[face]
+                if big.any():
+                    along = idx[face, np.argmax(ext[face], 1)]
+                    g[sel[k[big]]] = rot[:, along[big]].T
+            seed[sel[k]] = (zlib.crc32(p.name.encode()) % 10007) / 10007
+    return g / np.linalg.norm(g, axis=1, keepdims=True), seed
 
 
 def thickness(prims, X: np.ndarray, N: np.ndarray, voxel: float, size: float, samples: int = 10,
