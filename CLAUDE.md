@@ -224,9 +224,11 @@ the .blend come back as spec edits).
    materials wood/planks/metal/rust take `dir: "element"` (planks keep board rows on world axes). Nodes: a
    `grain` FLOAT_VECTOR attribute (`scene.VECTOR_INPUTS`) + packed `grain_seed`. The cabin's wood layers use it
    (one logs layer, one timber layer). Next: end-grain rings need a radial coordinate from the element's axis.
-3. Per-part resolution (voxel from thinnest feature, as prefabs already do) for scene parts: the basin/pot
-   (14 mm walls at a 25 mm voxel) and glass mesh broken. A part with one thin element goes fine throughout:
-   cap it and log which element set it.
+3. DONE (2026-09-23): per-part voxel for scene parts (`scene.part_voxel`): 2.5 voxels across each element's
+   thinnest feature and 8 along its length, never coarser than the scene voxel nor finer than a quarter of it;
+   the sync log names the element that set it. Cabin: metal 6.2 mm (pot/basin walls, capped), furniture 9.6,
+   glass 13.8 (lantern), door/trim 16, roof 17.6 (424k verts), 1.57M verts total (1.1M before), cold sync
+   ~3 min with the Cycles bake. Basin moved onto the counter top (it was sunk into it).
 4. Export paint from Cycles bakes of the node materials (basecolor, roughness, metallic, specular; AO map by a
    Cycles AO bake); our `asset.bake` keeps the geometry maps (normal, height by exact projection).
 5. MCP tools: `sync`, scene-based `look`, `pull`; then retire the per-vertex paint path in `look`, and

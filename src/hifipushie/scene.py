@@ -73,6 +73,24 @@ def thinnest(ps: list) -> float:
     return float(t) if np.isfinite(t) else 0.05
 
 
+def part_voxel(ps: list, voxel: float) -> tuple[float, str]:
+    """A scene part's voxel: fine enough for its thinnest element (2.5 voxels across its thinnest feature, 8
+    along its whole length: a lantern's glass, a basin's wall), never coarser than the scene voxel nor finer than
+    a quarter of it (one thin element makes the whole part fine). Returns (voxel, why)."""
+    need, why = voxel, ""
+    for p in ps:
+        if p.op != "add" or p.kind in ("shell", "displace", "flatten"):
+            continue
+        t, ext = thinnest([p]), float(np.max(p.hi - p.lo))
+        v = min(t / 2.5, ext / 8)
+        if v < need:
+            need, why = v, f"{p.name}: {t * 1000:.0f} mm thin, {ext * 1000:.0f} mm long"
+    floor = voxel / 4
+    if need < floor:
+        why += f"; capped at {floor * 1000:.1f} mm"
+    return float(np.round(max(need, floor), 4)), why
+
+
 def _frame(ps: list, voxel: float, pad: float = 0.03):
     """A grid around a stream's primitives, snapped to a lattice of `voxel` fixed in space."""
     own = [q for q in ps if q.kind != "shell" and q.op in ("add", "intersect")]
@@ -95,8 +113,11 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     objs, meshed = [], 0
     for key, ps in ctx["streams"].items():
         pf = pf_of.get(key)
-        if pf is None:
-            fr = _frame(ps, vx)
+        if pf is None:  # a scene part: its own voxel, from its thinnest element
+            pv, why = part_voxel(ps, vx)
+            if why:
+                log.append(f"{key}: {pv * 1000:.1f} mm voxel ({why})")
+            fr = _frame(ps, pv)
         else:  # a prefab: one voxel for all its parts, from its thinnest feature (a cup's wall, a chair's slat)
             own = [q for k in ctx["prefabs"][pf]["parts"] for q in ctx["streams"][k]]
             ext = float((np.max([q.hi for q in own if q.op == "add"], 0) -
