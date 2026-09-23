@@ -211,7 +211,8 @@
     0.085,
     0.058,
     0.048
-   ]
+   ],
+   "blend": 0.055
   },
   "ribcage": {
    "at": "chest",
@@ -1151,6 +1152,280 @@
    "depth": [
     0.0,
     0.012,
+    0.0
+   ]
+  },
+  "warts_head": {
+   "op": "clay",
+   "profile": "round",
+   "path": [
+    {
+     "bone": "head",
+     "t": 0.5,
+     "side": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0055,
+   "depth": 0.0025,
+   "scatter": {
+    "count": 14,
+    "seed": 3,
+    "t": [
+     0.2,
+     1.0
+    ],
+    "around": [
+     -160,
+     160
+    ],
+    "scale": [
+     0.6,
+     1.4
+    ],
+    "spacing": 0.018
+   }
+  },
+  "warts_back": {
+   "op": "clay",
+   "profile": "round",
+   "path": [
+    {
+     "bone": "collar.L",
+     "t": 0.5,
+     "side": [
+      0,
+      1,
+      1
+     ]
+    }
+   ],
+   "width": 0.006,
+   "depth": 0.0025,
+   "scatter": {
+    "count": 8,
+    "seed": 7,
+    "t": [
+     0.2,
+     0.9
+    ],
+    "around": [
+     -70,
+     70
+    ],
+    "scale": [
+     0.6,
+     1.3
+    ],
+    "spacing": 0.025
+   }
+  },
+  "warts_back_r": {
+   "op": "clay",
+   "profile": "round",
+   "path": [
+    {
+     "bone": "collar.R",
+     "t": 0.5,
+     "side": [
+      0,
+      1,
+      1
+     ]
+    }
+   ],
+   "width": 0.006,
+   "depth": 0.0025,
+   "scatter": {
+    "count": 6,
+    "seed": 11,
+    "t": [
+     0.2,
+     0.9
+    ],
+    "around": [
+     -70,
+     70
+    ],
+    "scale": [
+     0.6,
+     1.3
+    ],
+    "spacing": 0.025
+   }
+  },
+  "forehead": {
+   "op": "crease",
+   "path": [
+    {
+     "at": "head",
+     "offset": [
+      -0.04,
+      0,
+      0.058
+     ]
+    },
+    {
+     "offset": [
+      0,
+      0,
+      0.063
+     ]
+    },
+    {
+     "offset": [
+      0.04,
+      0,
+      0.058
+     ]
+    }
+   ],
+   "width": 0.0045,
+   "depth": [
+    0.0006,
+    0.0018,
+    0.0006
+   ],
+   "repeat": {
+    "count": 2,
+    "shift": {
+     "offset": [
+      0,
+      0,
+      0.011
+     ]
+    },
+    "scale": 0.8
+   }
+  },
+  "frown.L": {
+   "op": "crease",
+   "path": [
+    {
+     "at": "head",
+     "offset": [
+      0.008,
+      0,
+      0.022
+     ]
+    },
+    {
+     "offset": [
+      0.011,
+      0,
+      0.04
+     ]
+    }
+   ],
+   "width": 0.005,
+   "depth": [
+    0.0025,
+    0.0008
+   ]
+  },
+  "eyebag.L": {
+   "op": "clay",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "offset": [
+      -0.012,
+      0,
+      -0.016
+     ]
+    },
+    {
+     "offset": [
+      0.0,
+      0,
+      -0.02
+     ]
+    },
+    {
+     "offset": [
+      0.013,
+      0,
+      -0.016
+     ]
+    }
+   ],
+   "width": [
+    0.006,
+    0.008,
+    0.006
+   ],
+   "depth": [
+    0.0,
+    0.004,
+    0.0
+   ]
+  },
+  "toes.L": {
+   "op": "crease",
+   "path": [
+    {
+     "bone": "foot.L",
+     "t": 0.72,
+     "side": [
+      0,
+      0,
+      1
+     ],
+     "around": -28
+    },
+    {
+     "t": 1.05
+    }
+   ],
+   "width": 0.006,
+   "depth": [
+    0.0,
+    0.005
+   ],
+   "repeat": {
+    "count": 3,
+    "shift": {
+     "around": 28
+    }
+   }
+  },
+  "cheek.L": {
+   "op": "clay",
+   "path": [
+    {
+     "at": "head",
+     "offset": [
+      0.03,
+      0,
+      -0.012
+     ]
+    },
+    {
+     "offset": [
+      0.055,
+      0,
+      -0.03
+     ]
+    },
+    {
+     "offset": [
+      0.068,
+      0,
+      -0.055
+     ]
+    }
+   ],
+   "width": [
+    0.018,
+    0.024,
+    0.018
+   ],
+   "depth": [
+    0.0,
+    0.009,
     0.0
    ]
   }

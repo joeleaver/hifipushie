@@ -80,7 +80,7 @@ Models live in `workspace/<name>/` under the directory the server runs in (overr
 - `examples/fox.json`: a complete quadruped
 - `examples/goblin.json`: a biped using the hand and face kits
 - `examples/goblin_sculpt.json`: the goblin with strokes (arm muscles, forehead wrinkles)
-- `examples/troll.json`: a troll made with the plan workflow (plan + fitted blockout, no detail yet)
+- `examples/troll.json`: a troll made with the plan workflow, all four stages (plan, fitted blockout, strokes for secondary forms, scattered warts and wrinkles)
 
 Load one with `uv run hifipushie-import examples/fox.json` (the model is named after the file, or pass a
 name as a second argument), or just ask Claude to load it.
