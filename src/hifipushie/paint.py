@@ -3,9 +3,14 @@
 spec["paint"] = {name: layer, ...}: layers apply in order, each over the colour so far (every part starts
 from its clay colour, spec["parts"][p]["color"]). Paint never changes geometry, so repainting doesn't rebuild.
 
-layer = {"color": [r, g, b] (0..1, sRGB, as you'd pick it) | "#rrggbb", "opacity": 0..1 (1),
+layer = {"color": [r, g, b] (0..1, sRGB, as you'd pick it) | "#rrggbb", "roughness", "metallic", "specular": 0..1,
+         (any of these channels; a layer changes only the ones it gives), "opacity": 0..1 (1),
          "part": name | [names] | "*" (default "body"), plus any of the masks below, multiplied together.
          No mask = the whole part.}
+Each part starts from spec["parts"][p]: "color" (clay palette), "roughness" (0.6), "metallic" (0), "specular"
+(0.5 = the usual 4% reflectance of skin, cloth, plastic). These show in exported game assets (export_asset), not
+in the clay views: wet lips roughness 0.2, skin 0.5-0.6, cloth 0.8-0.9 with specular 0.3, metal buckles
+metallic 1 with roughness 0.3, eyes roughness 0.05 with specular 0.7.
 
 Masks (each 0..1 per vertex):
   path:    surface addresses exactly as for strokes ({"bone", "t", "side", "around"} or {"at", "offset", "dir"},
@@ -50,6 +55,7 @@ import numpy as np
 from .spec import SpecError
 
 MIRROR = np.array([-1.0, 1.0, 1.0])
+CHANNELS = ("color", "roughness", "metallic", "specular")
 VERSION = 1  # bump when painting output changes, so cached painted meshes are redone
 
 
@@ -68,10 +74,14 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 def validate(spec: dict) -> None:
     for name, ly in (spec.get("paint") or {}).items():
-        if "color" not in ly:
-            raise SpecError(f"paint {name!r}: needs a \"color\"")
-        colour(ly["color"], f"paint {name!r}")
-        unknown = set(ly) - {"color", "opacity", "part", "path", "width", "profile", "repeat", "scatter", "near",
+        if not any(c in ly for c in CHANNELS):
+            raise SpecError(f"paint {name!r}: needs at least one of {', '.join(CHANNELS)}")
+        if "color" in ly:
+            colour(ly["color"], f"paint {name!r}")
+        for c in ("roughness", "metallic", "specular"):
+            if c in ly and not 0 <= float(ly[c]) <= 1:
+                raise SpecError(f"paint {name!r}: {c} is 0..1")
+        unknown = set(ly) - {*CHANNELS, "opacity", "part", "path", "width", "profile", "repeat", "scatter", "near",
                              "within", "soft", "facing", "range", "axis", "cavity", "radius", "noise"}
         if unknown:
             raise SpecError(f"paint {name!r}: unknown keys {sorted(unknown)}")
@@ -89,12 +99,31 @@ def apply(spec: dict, verts: np.ndarray, normals: np.ndarray, part: np.ndarray, 
           base: np.ndarray, voxel: float, stats: dict | None = None) -> np.ndarray:
     """Painted sRGB colours (n, 3) for a built mesh, starting from `base` (each vertex's part clay colour).
     stats, if given, gets each layer's coverage: the fraction of its parts' vertices it paints at least half."""
+    return apply_channels(spec, verts, normals, part, part_names, {"color": base[:, :3]}, voxel, stats)["color"]
+
+
+def part_defaults(spec: dict, part_names: list[str], part: np.ndarray) -> dict:
+    """Every channel's starting value per point, from its part's definition."""
+    from .store import part_colour
+    defs = spec.get("parts") or {}
+    col = np.array([part_colour(p, defs, i)[:3] for i, p in enumerate(part_names)])
+    rough = np.array([float((defs.get(p) or {}).get("roughness", 0.6)) for p in part_names])
+    metal = np.array([float((defs.get(p) or {}).get("metallic", 0.0)) for p in part_names])
+    spec_ = np.array([float((defs.get(p) or {}).get("specular", 0.5)) for p in part_names])
+    return {"color": col[part], "roughness": rough[part][:, None], "metallic": metal[part][:, None],
+            "specular": spec_[part][:, None]}
+
+
+def apply_channels(spec: dict, verts: np.ndarray, normals: np.ndarray, part: np.ndarray, part_names: list[str],
+                   base: dict, voxel: float, stats: dict | None = None) -> dict:
+    """Paint every channel in `base` ({"color": (n, 3), "roughness": (n, 1), ...}) at arbitrary surface points
+    (verts with their normals and part index): mesh vertices, or texels of a baked texture."""
     from . import sdf
     from .spec import compile_prims
     layers = spec.get("paint") or {}
-    rgb = np.array(base[:, :3], float)
+    out = {c: np.array(v, float) for c, v in base.items()}
     if not layers:
-        return rgb
+        return out
     validate(spec)
     verts = verts.astype(np.float64)
     normals = normals.astype(np.float64)
@@ -130,9 +159,12 @@ def apply(spec: dict, verts: np.ndarray, normals: np.ndarray, part: np.ndarray, 
         m = np.clip(m, 0, 1)
         if stats is not None:
             stats[name] = float((m >= 0.5).mean())
-        a = float(ly.get("opacity", 1.0)) * m
-        rgb[idx] += a[:, None] * (colour(ly["color"])[None] - rgb[idx])
-    return rgb
+        a = (float(ly.get("opacity", 1.0)) * m)[:, None]
+        for c, arr in out.items():
+            if c in ly:
+                val = colour(ly[c]) if c == "color" else np.array([float(ly[c])])
+                arr[idx] += a * (val[None] - arr[idx])
+    return out
 
 
 def laplacian(prims, pts: np.ndarray, voxel: float) -> np.ndarray:

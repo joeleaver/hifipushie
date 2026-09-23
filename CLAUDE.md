@@ -51,6 +51,16 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   ".L" layers take the max of the mask at the vertex and its mirror. Colours are sRGB everywhere in the spec;
   `blender_render` converts part/paint colours to linear for the colour attribute. OBJ export writes
   `v x y z r g b` (Blender reads it). `look(shading="flat")` is unlit colour.
+- `asset.py` + `blender_asset.py`: game-ready export. `prune_hidden` drops faces buried in another part; Blender
+  decimates each part, smart-projects one shared atlas and hands back per-corner uv/normal/MikkTSpace tangent.
+  `bake` rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface (`_newton`,
+  converged texels dropped), reads normal (tangent space against the exported low-poly frame), height (along
+  the low-poly normal), paint channels (`paint.apply_channels`: color/roughness/metallic/specular), and AO
+  (`_ao`: hemisphere of SDF cone samples over all parts, normalised so an open plane is 1; baked at half res).
+  Maps are dilated (EDT nearest fill). `write_glb` writes glTF by hand (Y up: x, z, -y; uv v flipped; ORM; specular
+  in the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04).
+  `preview` renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the AO map
+  itself too.
 - Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
   them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,
@@ -104,13 +114,18 @@ server, test by calling `server.*` functions directly (see below) or restart the
 Done: skeleton + blobs, kits (face, hand), fit, plan workflow (set_plan/check), strokes (summed dabs; repeat,
 scatter; overlay/raking/curvature views), parts (separate meshes, clothing shells), surface-seated joints,
 paint (vertex-colour layers with path/near/facing/axis/cavity/noise masks, coverage feedback, coloured OBJ),
+game-ready export (export_asset: low poly, atlas, texel-exact PBR maps, GLB),
 the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifipushie`), and a performance
 pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
 
 Next, roughly in priority order:
-1. Paint follow-ups: vertex colour can't be finer than a voxel, so fine markings need a texture (UVs from
-   the mesh, or bake close-up-resolution colour into one); roughness/material per layer; a paint overlay
-   (like strokes=True) showing each layer's mask in false colour.
+1. Substance-Painter-style procedural painting (the user asked for it): generators from mesh maps (edge wear
+   from convexity, dirt from AO, thickness, dust from above), a mask stack (blend modes, levels, invert, blur),
+   patterns (cells/scales, streaks, grunge, triplanar), and a paint "height" channel feeding normal + height
+   maps. Paint is already evaluated per texel in the bake, so these land at texture resolution. Also a paint
+   overlay (like strokes=True) showing a layer's mask in false colour.
+   Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, texel density per part
+   (the face deserves more atlas than the back), UV seams placed deliberately rather than smart project.
 2. Part tools: look at one part alone; check that parts don't cut into each other.
 3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
 4. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the

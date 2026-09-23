@@ -106,6 +106,19 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 
+### Game-ready export
+
+`export_asset(name, out_dir)` writes a GLB plus every map as its own PNG (basecolor, normal, roughness, metallic,
+specular, ao, orm, 16-bit height) and a json with the conventions. Nothing is baked from a high-poly mesh: every
+texel is projected onto the exact surface, so detail the low poly drops (warts, wrinkles, creases) lives in the
+normal and height maps, and paint is as sharp as the texture. Faces buried inside another part (skin under
+solid clothing, eyeball backs) are removed first.
+- Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
+  variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
+  these; the export preview (Cycles) does.
+- `triangles` ~15k suits a hero creature; 5k for a crowd. `texture=1024` for quick checks, 2048 to ship.
+- Judge the preview and a face close-up (`asset.preview` focus/zoom) for seams and the normal map's read.
+
 ## 6. When something looks wrong
 
 - Don't guess and pile on fixes. Isolate: render the region with `shading="curvature"`, and remove
