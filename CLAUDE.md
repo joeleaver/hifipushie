@@ -83,15 +83,28 @@ Call the tool functions directly: `uv run python -c "from hifipushie import serv
 
 OpenBLAS is capped at 4 threads in `__init__.py`: uncapped, 100x100 solves take ~300 ms on a 24-core box.
 
-## Roadmap (next, roughly in priority order)
-1. ~~Auto-fit~~ done (`fit`). Possible follow-ups: soft priors (keep paws/ears proportioned), fitting
-   `flat`/`rot`, re-placing the reference between rounds.
-2. Surface picking: grid-labelled render → raycast a cell to a 3D surface point.
-3. Sculpt pass on the baked mesh: deterministic strokes (inflate/crease/smooth/flatten) along 3D paths,
-   on named regions, symmetric.
-4. ~~Face/hand kits~~ done (`kits.py`). Follow-ups: ears (needs a leaf/blade primitive: `flat` cones
-   are round), muzzle for snouted faces, pupils/iris, lips follow cheek lumps a little too faithfully.
-5. Adaptive resolution near small features. Projection + gradient normals fixed most aliasing; what's
-   left is topology the grid can't hold (sub-voxel wedges, e.g. where an eyeball meets its socket).
-   Needs real local refinement (finer blocks where the band is thin), or a model-side fix.
-6. Skeleton → Blender armature for posing; push the result into a live Blender session.
+## How we work
+Experimental: build a small piece, test it on a real model (troll, goblin, fox), judge honestly from renders,
+pivot when it isn't paying off, and say what tooling would help. Send renders to the user as files
+(`look(save=...)` / SendUserFile): tool images aren't visible to them. Commit to `main` and push when a piece
+works (the repo is public: github.com/joeleaver/hifipushie; `workspace/` is git-ignored, shareable models go
+in `examples/`). The MCP server running in a session has the code from when it started: after changing the
+server, test by calling `server.*` functions directly (see below) or restart the session.
+
+## Status and roadmap
+Done: skeleton + blobs, kits (face, hand), fit, plan workflow (set_plan/check), strokes (summed dabs; repeat,
+scatter; overlay/raking/curvature views), parts (separate meshes, clothing shells), surface-seated joints,
+the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifipushie`), and a performance
+pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
+
+Next, roughly in priority order:
+1. Painting/texturing: parts give per-part materials; next is colour painted on the surface (vertex colours
+   or a texture), ideally with the same addressing as strokes (paint along a path, fill a region).
+2. Part tools: look at one part alone; check that parts don't cut into each other.
+3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
+4. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
+   full build's block grid so PartGrid can reuse blocks.
+5. Face kit features read as stuck-on balls (cheeks, nose); strokes did better for brows/cheeks. Consider
+   softer kit blends or stroke-based features.
+6. Older ideas: ears need a leaf/blade primitive; adaptive resolution near small features; skeleton →
+   Blender armature for posing; soft priors in fit.
