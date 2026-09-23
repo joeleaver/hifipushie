@@ -1,0 +1,100 @@
+# hifipushie playbook
+
+How to get good results, learned the hard way. Read it once before modelling; come back to the section
+you're in.
+
+## 0. Seeing and showing
+
+- `look`, `check` and `set_plan` return images to you. The person you're working with may not see tool
+  images: pass `save="/path/file.png"` and share the file when they should see progress.
+- Judge from the right view. Clay (default) for overall read; `shading="raking"` for masses, planes and
+  shallow forms (clay hides them); `shading="curvature"` for blobbiness (an evenly tinted area is a blob)
+  and for defects (stripes, speckle, kinks); `strokes=True` to check *where* strokes are before judging
+  *what* they look like. Close-ups (`focus` + `zoom` 3-6) rebuild just that region at full resolution:
+  judge faces, hands and every detail there, never from a full-body render.
+- A close-up box cuts the model: flat caps where it crosses the body are the cut, not holes.
+
+## 1. Work in stages, and check after each
+
+1. **Plan** (`set_plan`): front and side outlines from ellipses, capsules and polygons in world units,
+   landmark heights (crown, chin, shoulder, elbow, wrist, hip, knee, ankle), and 3-4 sections (width x
+   depth at chest, belly, thigh...). Look at the sheet and fix proportions here: it costs one edit.
+   Keep arms visibly apart from the torso in the front view, or the silhouette reads as one slab.
+   Section `near` picks the slice part; add `"x": [lo, hi]` when arms touch the torso at that height.
+2. **Blockout** (`put_model`): read joints straight off the plan, tie landmarks to joints
+   (`"joint": "knee.L"`), then `fit` (against the plan; landmark joints keep their heights) and `check`.
+   Aim for IoU > 0.95 and sections within ~5% before going on. Add kits (face, hands) here.
+3. **Secondary forms** (strokes): muscle masses, fat pads, planes, big folds. `check` again: strokes
+   shouldn't move the silhouette much.
+4. **Detail** (strokes with repeat/scatter, in close-ups): wrinkles, creases, warts, pores.
+5. **Parts** (clothing, eyes, teeth) can come in at 2-4; they're separate meshes.
+
+Going back is fine and cheap (history/revert). Expect the plan-vs-model IoU to drop a little as kits and
+details add things the plan never drew (nose, ears, fingers).
+
+## 2. Blockout pitfalls
+
+- A joint whose radius is bigger than the bones meeting there shows as a ball (elbows, knees). Taper
+  bones (`r_a`/`r_b`) and let the joint be no bigger than its bones.
+- Blend is ~0.02-0.05 for a 1 m creature; small blends (0.01-0.025) on limb joints keep them from
+  melting, big ones on the torso. Chains (tails, tentacles) go in one `group` with a small `join`.
+- Kit faces sit on the head's surface. A jaw blob that sticks out past the skull swallows a drooping
+  nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
+- Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
+  for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
+- Separate digits (toes, extra fingers, horns, tusks) are geometry, not strokes. Put them in the blockout
+  (bones, the hand kit) and root attachments on the surface with seated joints (`"on"`, below).
+
+## 3. Strokes
+
+Strokes displace the existing skin along its normal: a stroke is a trail of dabs summed along a path
+addressed on the surface. Rules that matter:
+
+- **Broad and shallow.** Muscle masses on a 3 cm-radius limb: width 15-45 mm, depth 3-12 mm. Deep and
+  narrow strokes read as stuck-on panels.
+- **Taper depth to 0 at the ends** of masses (`"depth": [0, 0.01, 0]`). Full depth at the ends makes pills
+  and sausages; the natural end taper is only about one width.
+- **Profiles:** `soft` for masses (default for clay), `sharp` for crisp creases (default for crease),
+  `round` for warts/knuckles, `flat` for deliberate planes. `flat` on a muscle makes a plate with a rim.
+- **Creases need width >= 3 voxels** at the resolution you judge them at, or they break into cracks.
+  At full-body 256 a voxel is ~4 mm on a 1 m model; in a close-up it's ~1-2 mm.
+- **Address from the skeleton:** `{"bone": b, "t": 0..1, "side": [x,y,z], "around": deg}`; later points
+  inherit (`{"t": 0.9}`). For faces, anchor on kit features: `{"at": "face_mouth_corner.L", "offset": ...}`,
+  `face_nose_root`, `face_eye.L` (get_model lists generated names). Raw head-relative coordinates are
+  where placement goes wrong.
+- **Always check placement with `look(strokes=True)`** (orange clay, blue crease, green flatten) before
+  judging form. Then raking for the masses, curvature for defects.
+- Strokes apply after everything else in their layer. Keep body strokes on layer 0; a stroke on layer 1
+  near the eyes also pushes the lids off the eyeballs.
+- `repeat` lays out sets (forehead wrinkles, toes' grooves, ribs); `scatter` places random copies within
+  ranges with a size range and min spacing (warts, pores). A ".L" scatter mirrors exactly: use a centre
+  name addressing both sides (".R" bones exist) for asymmetry.
+- What strokes can't do: split geometry (toes), make overhangs, or fix proportions. Those are blockout.
+
+## 4. Parts
+
+- Every element takes `"part"` (default `"body"`); each part is its own mesh and colour, exported as
+  its own OBJ object. Kits take `"part"`; the face kit's `eyes.part` makes separate eyeballs.
+- Clothing: `"parts": {"shorts": {"shell": "body", "offset": 0.007, "color": [r,g,b]}}`, then blobs/bones
+  with `"part": "shorts"` mark where it exists (their union cuts the shell), strokes with
+  `"part": "shorts"` make folds, and a belt can be a shell of the shorts. Shells are solid (the inside is
+  hidden in the body); offsets of 1.5+ voxels at your judging resolution.
+- Seated joints root attachments on the surface: `{"on": {"at": "face_mouth_corner.L", "offset": [...]},
+  "lift": -0.003, "r": 0.0065}` for a tusk's root, and the same address with `"shift": [dx,dy,dz]` for its
+  tip. They follow the surface when the face or body changes.
+
+## 5. When something looks wrong
+
+- Don't guess and pile on fixes. Isolate: render the region with `shading="curvature"`, and remove
+  suspects one at a time (strokes are easy to delete and restore via history) until the defect goes.
+- Stripes or speckle across a stroke: its path crosses busy features (lids, nostrils) or it is very deep
+  for its width; widen it, make it shallower, or move the path.
+- Cracks and zigzags: something is thinner than ~2 voxels at that resolution (a crease, a shell, a lid
+  gap). Widen it or look closer.
+- A "hollow" or flat grey cap at the edge of a close-up is the close-up box cut.
+
+## 6. Resolution and time
+
+- `look` at 160-200 while blocking out, 256-300 for full-body judgement, close-ups at 200-240.
+- Builds with many strokes take tens of seconds for close-ups; batch several edits per `edit_model`
+  and look once, like a sculptor stepping back, rather than one stroke at a time.

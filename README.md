@@ -12,6 +12,7 @@ silhouette overlap and reports edge errors in world units.
 
 | tool | what it does |
 |---|---|
+| `guide` | the playbook: working in stages, stroke and parts rules, judging renders, diagnosing artifacts (read it first) |
 | `put_model` / `get_model` / `list_models` | create or replace a spec, read it back with measurements |
 | `edit_model` | batch edits: set / delete / rename / move joints / scale radii |
 | `look` | build + clay contact sheet (front, side, top, 3/4 …); `focus` + `zoom` for close-ups, rebuilt at full resolution; `shading` raking / curvature to judge form; `strokes=True` draws stroke paths |
@@ -22,7 +23,7 @@ silhouette overlap and reports edge errors in world units.
 | `set_reference` / `compare` | reference silhouettes → IoU, red/blue diff image, band tables of edge errors |
 | `fit` | auto-adjust joints, radii and blobs so the silhouettes match the references or the plan (saved as a new version) |
 | `history` / `revert` | every change is checkpointed |
-| `export` | OBJ for Blender or printing |
+| `export` | OBJ for Blender or printing, one object per part |
 
 ## Install
 
@@ -53,7 +54,8 @@ The repo's `.mcp.json` registers the server for sessions started in this directo
 claude
 ```
 
-Approve the `hifipushie` server when asked (or check it with `/mcp`). Then ask for a creature, e.g.
+Approve the `hifipushie` server when asked (or check it with `/mcp`). The repo also ships a Claude Code skill
+(`.claude/skills/hifipushie`) that points Claude at the playbook (`guide` tool) whenever you ask for a model. Then ask for a creature, e.g.
 "make a small dragon with hifipushie", or "load examples/goblin_sculpt.json and show me the face".
 
 ### Other MCP clients (Claude Desktop, etc.)

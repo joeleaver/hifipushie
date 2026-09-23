@@ -21,6 +21,7 @@ from .spec import empty_spec, summarize
 INSTRUCTIONS = """\
 hifipushie models characters and creatures as a skeleton (joints + bones) with SDF blobs hung on it,
 smooth-blended into one surface, meshed, and rendered as clay for you to look at.
+Call `guide` once before modelling: it's the playbook (stages, stroke rules, parts, what goes wrong).
 
 Conventions: metres, Blender axes. Z up, the creature FACES -Y, its left side is +X.
 Names ending ".L" are auto-mirrored to ".R" across X, so store only the centre line and the left side.
@@ -111,8 +112,24 @@ def _refs(name: str, views: list[str] | None, against: str = "auto") -> dict:
     return {v: (cmp.reference_mask(cfg[v]["path"], cfg[v]["flip"], cfg[v]["threshold"]), None) for v in views}
 
 
+def _out(im: PILImage.Image, save: str | None) -> Image:
+    """The image for the tool result, also written to `save` (a path) when given."""
+    if save:
+        path = Path(save).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        im.save(path)
+    return _png(im)
+
+
 def _spec_arg(spec) -> dict:
     return json.loads(spec) if isinstance(spec, str) else spec
+
+
+@mcp.tool(structured_output=False)
+def guide() -> str:
+    """The hifipushie playbook: how to work in stages (plan, blockout, secondary forms, detail), rules for
+    strokes and parts, how to judge renders and diagnose artifacts. Read it before modelling."""
+    return (Path(__file__).with_name("guide.md")).read_text()
 
 
 @mcp.tool(structured_output=False)
@@ -161,7 +178,7 @@ def edit_model(name: str, ops: list[dict], note: str = "") -> str:
 @mcp.tool(structured_output=False)
 def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool = False,
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
-         matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay"):
+         matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", save: str | None = None):
     """Build the mesh and return a clay contact sheet.
     views: any of front, side, top, three_quarter (default set), back, left, three_quarter_back, below.
     All panels share one scale; front/side/top get rulers in world units (grid=True adds grid lines).
@@ -172,7 +189,8 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     green flatten, named at their start; hidden parts left out): check placement before judging form.
     shading: "clay" (soft studio matcap), "raking" (one low light from the left: shows shallow forms, planes
     and dents the clay hides), "curvature" (warm = convex, cool = concave, grey = flat, stronger = tighter:
-    an evenly tinted area is blobby; crisp forms show as bright lines)."""
+    an evenly tinted area is blobby; crisp forms show as bright lines).
+    save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     if focus is not None and zoom > 1:
         full_bounds = store.extent(name)  # sets the view scale, as in a full look
         frames = render.view_frames(full_bounds, views or render.DEFAULT_VIEWS, focus, zoom)
@@ -199,7 +217,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     dims = [round(h - l, 3) for l, h in zip(lo, hi)]
     info = (f"{name}: {meta['verts']} verts, voxel {meta['voxel']:.4f}, built in {meta['seconds']}s | "
             f"size X{dims[0]} Y{dims[1]} Z{dims[2]}")
-    return [_png(sheet), info]
+    return [_out(sheet, save), info + (f" | saved {save}" if save else "")]
 
 
 def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
@@ -347,7 +365,7 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
 
 
 @mcp.tool(structured_output=False)
-def set_plan(name: str, plan: dict, note: str = ""):
+def set_plan(name: str, plan: dict, note: str = "", save: str | None = None):
     """Set (or replace) a model's plan: the 2D blockout you model against. Creates the model if it doesn't
     exist. Returns the plan drawn with rulers, so you can check proportions before modelling anything.
     plan = {"views": {"front"|"side"|"top": {"shapes": {name: shape}}}, "landmarks": {name: {"z", "joint"?}},
@@ -365,11 +383,11 @@ def set_plan(name: str, plan: dict, note: str = ""):
     spec = {**spec, "plan": plan}
     v = store.save(name, spec, note or "set_plan")
     views = [x for x in ("front", "side", "top") if planmod.bounds(plan, x) is not None]
-    return [_png(planmod.sheet(plan, views)), f"saved {name} v{v} with a plan ({', '.join(views)})"]
+    return [_out(planmod.sheet(plan, views), save), f"saved {name} v{v} with a plan ({', '.join(views)})"]
 
 
 @mcp.tool(structured_output=False)
-def check(name: str, resolution: int = 160):
+def check(name: str, resolution: int = 160, save: str | None = None):
     """Check the model against its plan: per view, the plan against the model's silhouette (grey = both,
     blue = plan only: the model is missing it, red = the model sticks out); IoU and edge-error bands in world units (placed exactly, no rescaling); landmark joints vs
     their planned heights; planned sections vs measured width and depth. Run it after every stage."""
@@ -386,7 +404,7 @@ def check(name: str, resolution: int = 160):
         _, _, report = cmp.compare(sil, ref, world=world, bands=10)
         lines.append(f"[{v}] " + report.replace("alignment: fit=world (exact); ", ""))
     lines += planmod.check_numbers(spec, plan)
-    return [_png(planmod.sheet(plan, list(refs), outlines=outlines)), "\n".join(lines)]
+    return [_out(planmod.sheet(plan, list(refs), outlines=outlines), save), "\n".join(lines)]
 
 
 @mcp.tool(structured_output=False)
