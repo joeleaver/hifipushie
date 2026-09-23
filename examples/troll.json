@@ -141,6 +141,22 @@
     0.255
    ],
    "r": 0.1
+  },
+  "buckle_at": {
+   "on": {
+    "at": [
+     0,
+     -0.3,
+     0.386
+    ],
+    "dir": [
+     0,
+     -1,
+     0
+    ]
+   },
+   "lift": 0.006,
+   "r": 0.01
   }
  },
  "bones": {
@@ -299,14 +315,46 @@
    "offset": [
     0,
     0,
-    -0.035
+    -0.04
    ],
    "size": [
-    0.26,
-    0.22,
-    0.013
+    0.35,
+    0.35,
+    0.018
    ],
-   "part": "belt"
+   "part": "belt",
+   "shape": "box",
+   "round": 0.002
+  },
+  "buckle": {
+   "shape": "box",
+   "at": "buckle_at",
+   "size": [
+    0.026,
+    0.005,
+    0.022
+   ],
+   "round": 0.004,
+   "layer": 1,
+   "part": "belt",
+   "blend": 0.004
+  },
+  "shorts_waist_cut": {
+   "shape": "box",
+   "at": "pelvis",
+   "offset": [
+    0,
+    0,
+    0.082
+   ],
+   "size": [
+    0.4,
+    0.4,
+    0.1
+   ],
+   "op": "subtract",
+   "part": "shorts",
+   "blend": 0.003
   }
  },
  "plan": {
@@ -1485,36 +1533,74 @@
     0.0
    ]
   },
-  "shorts_folds.L": {
+  "crotch_folds.L": {
    "op": "crease",
    "part": "shorts",
    "profile": "soft",
    "path": [
     {
      "bone": "shorts_leg.L",
-     "t": 0.55,
+     "t": 0.3,
      "side": [
-      0,
       -1,
+      -0.6,
       0
-     ],
-     "around": -60
+     ]
     },
     {
-     "t": 0.8,
-     "around": -40
+     "t": 0.05,
+     "side": [
+      0.4,
+      -1,
+      0
+     ]
     }
    ],
-   "width": 0.006,
+   "width": 0.01,
    "depth": [
-    0.0,
-    0.003
+    0.004,
+    0.0005
    ],
    "repeat": {
-    "count": 4,
+    "count": 2,
     "shift": {
-     "around": 30,
-     "t": 0.03
+     "t": 0.12,
+     "around": 10
+    }
+   }
+  },
+  "knee_folds.L": {
+   "op": "crease",
+   "part": "shorts",
+   "profile": "soft",
+   "path": [
+    {
+     "bone": "shorts_leg.L",
+     "t": 0.82,
+     "side": [
+      0,
+      1,
+      0
+     ],
+     "around": -55
+    },
+    {
+     "around": 0
+    },
+    {
+     "around": 55
+    }
+   ],
+   "width": 0.009,
+   "depth": [
+    0,
+    0.0035,
+    0
+   ],
+   "repeat": {
+    "count": 2,
+    "shift": {
+     "t": 0.08
     }
    }
   }
@@ -1536,16 +1622,17 @@
   },
   "shorts": {
    "shell": "body",
-   "offset": 0.007,
+   "offset": 0.014,
    "color": [
     0.55,
     0.42,
     0.3
-   ]
+   ],
+   "blend": 0.004
   },
   "belt": {
    "shell": "shorts",
-   "offset": 0.006,
+   "offset": 0.007,
    "color": [
     0.33,
     0.24,
@@ -1648,6 +1735,15 @@
       "from": 0.74,
       "to": 0.78
      }
+    },
+    {
+     "near": [
+      "face"
+     ],
+     "within": 0.01,
+     "soft": 0.035,
+     "invert": true,
+     "blend": "multiply"
     }
    ]
   },
@@ -1688,17 +1784,17 @@
   },
   "edge_wear": {
    "color": "#aab27c",
-   "opacity": 0.7,
+   "opacity": 0.4,
    "mask": [
     {
      "cavity": "convex",
      "radius": [
-      0.05,
-      0.012
+      0.03,
+      0.01
      ],
      "breakup": {
       "amount": 0.35,
-      "scale": 0.012,
+      "scale": 0.008,
       "sharpness": 0.7
      }
     }
@@ -1802,6 +1898,15 @@
       "to": 0.78
      },
      "blend": "multiply"
+    },
+    {
+     "near": [
+      "face"
+     ],
+     "within": 0.01,
+     "soft": 0.035,
+     "invert": true,
+     "blend": "multiply"
     }
    ]
   },
@@ -1828,6 +1933,15 @@
       ],
       "seed": 9
      },
+     "blend": "multiply"
+    },
+    {
+     "near": [
+      "face"
+     ],
+     "within": 0.01,
+     "soft": 0.035,
+     "invert": true,
      "blend": "multiply"
     }
    ]
@@ -1947,21 +2061,6 @@
    "part": "belt",
    "metallic": 1,
    "roughness": 0.3,
-   "path": [
-    {
-     "at": [
-      0,
-      -0.3,
-      0.39
-     ],
-     "dir": [
-      0,
-      -1,
-      0
-     ]
-    }
-   ],
-   "width": 0.035,
    "mask": [
     {
      "noise": {
@@ -1975,7 +2074,12 @@
      "blend": "multiply",
      "weight": 0.4
     }
-   ]
+   ],
+   "near": [
+    "buckle"
+   ],
+   "within": 0.002,
+   "soft": 0.002
   }
  }
 }
