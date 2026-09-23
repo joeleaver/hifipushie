@@ -55,7 +55,7 @@ Masks (generators, each 0..1 per point):
            blobs) and "stretch": {"dir": [x,y,z], "factor": 6} (features that much longer that way: streaks,
            drips with [0,0,1], wood grain, fur direction). Noise and cells are solid 3D: no UV seams.
 
-Materials: {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone" | "metal" | "rust", ...}
+Materials: {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone" | "metal" | "rust" | "moss", ...}
 expands into ready-made layers (see MATERIALS below): start there, then add your own layers on top.
 
 Mask stack: "mask": [entry, ...] builds a mask in steps, after any flat keys above (which multiply). Each entry

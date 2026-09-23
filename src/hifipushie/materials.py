@@ -2,7 +2,7 @@
 relief, wear, dirt), like a kit expands into bones. Everything they use is a plain generator, so a material is
 a starting point you can read (get_model doesn't show the expansion, but this list does) and rebuild by hand.
 
-layer = {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone" | "metal" | "rust",
+layer = {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone" | "metal" | "rust" | "moss",
          "part", "opacity" (scales every sub-layer), any masks (flat keys or a "mask" stack: they confine the
          whole material, e.g. "near" a bone, a "path"), plus the material's parameters below.}
 Common parameters: "color" (the main colour, sRGB), "scale" (multiplies every pattern size, 1), "wear" and
@@ -24,10 +24,13 @@ flat walls and floors, a soft blend where a curved surface turns from one plane 
   brick    color "#8a4a32", "mortar": colour ("#b3aa98"), "size": [w, h] (m, [0.215, 0.065]), "gap" (0.01):
            running bond, recessed mortar, per-brick tone, chipped edges with wear.
   stone    color "#7d7a72", "mortar" ("#9a9488"), "size" (m, stone diameter 0.14), "gap" (0.012), "moss"
-           (0..1, 0): irregular stones (voronoi), domed faces, recessed joints; fieldstone walls, cobbles,
+           (0..1, 0: the moss material, on tops, in joints and sheltered spots): irregular stones (voronoi), domed faces, recessed joints; fieldstone walls, cobbles,
            chimneys, hearths.
   metal    color "#9a9a9a", "roughness" (0.35): metallic, roughness variation, fine directional scratches,
            bright worn edges, dark grime in cavities. Iron, steel, pots, buckles ("color" "#c8a96a" for brass).
+  moss     "amount" (0..1, 0.6: how far it spreads, not how see-through it is): opaque cushions of moss with
+           clumpy edges, raised and fuzzy, yellower tips and dry patches, on upward-facing and sheltered skin.
+           Paint it after the material underneath (roofs, logs, rocks), confined as you like.
   rust     metal + "rust" (0..1, 0.5): patches of flaking rust (dull, rough, slightly raised) where it's
            occluded and at random.
 """
@@ -41,9 +44,10 @@ from .spec import SpecError
 COMMON = ("color", "scale", "wear", "dirt", "seed", "dir")
 PARAMS = {"cloth": ("thread",), "leather": ("grain",), "wood": (), "planks": ("size", "gap"),
           "brick": ("mortar", "size", "gap"), "stone": ("mortar", "size", "gap", "moss"),
-          "metal": ("roughness",), "rust": ("roughness", "rust")}
+          "metal": ("roughness",), "rust": ("roughness", "rust"), "moss": ("amount",)}
 DEFAULT_COLOR = {"cloth": "#6b5a45", "leather": "#5a3a24", "wood": "#8a6240", "planks": "#8a6240",
-                 "brick": "#8a4a32", "stone": "#7d7a72", "metal": "#9a9a9a", "rust": "#8a8a86"}
+                 "brick": "#8a4a32", "stone": "#7d7a72", "metal": "#9a9a9a", "rust": "#8a8a86",
+                 "moss": "#34491c"}
 
 
 def _rgb(c):
@@ -174,13 +178,44 @@ def _stone(p, s):
            ("mortar", {"color": p.get("mortar", "#9a9488"), "roughness": 0.95, "mask": [
                {"cells": {**c, "mode": "edges", "range": [g, 0.6 * g]}}]}),
            ("wear", _wear(p, s, 1.2)), ("dirt", _dirt(p, s))]
-    if float(p.get("moss", 0)) > 0:
-        out.append(("moss", {"color": "#4f6a2a", "roughness": 0.95, "opacity": float(p["moss"]), "mask": [
-            {"facing": [0, 0, 1], "range": [0.2, 0.8]},  # tops, and a little in the joints of walls
-            {"cells": {**c, "mode": "edges", "range": [2.5 * g, g]}, "blend": "max", "weight": 0.15},
-            {"facing": [0, 0, 1], "range": [-0.6, 0.0], "blend": "multiply"},  # never on overhangs
-            {"levels": [0, 1], "breakup": {"amount": 0.4, "scale": 0.04 * s, "seed": p["seed"] + 8}}]}))
+    if float(p.get("moss", 0)) > 0:  # on tops, in the joints, where it's sheltered
+        out += moss_layers(p, s, float(p["moss"]), [
+            {"facing": [0, 0, 1], "range": [0.0, 0.8]},
+            {"cells": {**c, "mode": "edges", "range": [2.0 * g, 0.8 * g]}, "blend": "max", "weight": 0.35},
+            {"ao": [0.9, 0.55], "blend": "max", "weight": 0.35},
+            {"facing": [0, 0, 1], "range": [-0.6, 0.0], "blend": "multiply"}])
     return out
+
+
+def moss_layers(p, s, amount: float, where: list) -> list:
+    """Moss where `where` (a mask stack: how likely moss is) is strong, spreading further with amount 0..1.
+    Moss is opaque and grows in small cushions, so the edge is a threshold broken up by clumps (never a
+    fade: that reads as spray paint), raised, fuzzy, dark green with yellower tips and dry patches."""
+    sd = int(p.get("seed", 0))
+    clump = {"cells": {"scale": 0.007 * s, "mode": "distance", "range": [0.6, 0.1], "seed": sd + 11}}
+    lo = 0.72 - 0.45 * amount
+    cover = list(where) + [
+        {"noise": {"scale": 0.06 * s, "range": [0.25, 0.75], "seed": sd + 12}, "blend": "multiply", "weight": 0.5},
+        {**clump, "blend": "overlay", "weight": 0.55},
+        {"levels": [lo, lo + 0.06]}]
+    inside = {"mask": cover, "blend": "multiply"}
+    return [("moss", {"color": "#34491c", "roughness": 1.0, "specular": 0.2, "metallic": 0.0, "height": 0.0025 * s,
+                      "mask": cover}),
+            ("moss_tips", {"color": "#72873a", "opacity": 0.75, "height": 0.001 * s, "mask": [
+                {"cells": {"scale": 0.007 * s, "mode": "distance", "range": [0.4, 0.05], "seed": sd + 11}},
+                inside]}),
+            ("moss_fuzz", {"color": "#243614", "opacity": 0.6, "height": 0.0005 * s, "mask": [
+                {"noise": {"scale": 0.0015 * s, "octaves": 2, "range": [0.45, 0.65], "seed": sd + 13}}, inside]}),
+            ("moss_dry", {"color": "#8c8a48", "opacity": 0.45, "mask": [
+                {"noise": {"scale": 0.035 * s, "range": [0.58, 0.75], "seed": sd + 14}}, inside]})]
+
+
+def _moss(p, s):
+    """Moss as a material of its own: on top of whatever it's painted over, on upward and sheltered skin."""
+    return moss_layers(p, s, float(p.get("amount", 0.6)), [
+        {"facing": [0, 0, 1], "range": [-0.1, 0.7]},
+        {"ao": [0.9, 0.5], "blend": "max", "weight": 0.5},
+        {"cavity": "concave", "radius": [0.03, 0.008], "blend": "max", "weight": 0.5}])
 
 
 def _metal(p, s):
@@ -212,7 +247,7 @@ def _rust(p, s):
 
 
 BUILD = {"cloth": _cloth, "leather": _leather, "wood": _wood, "planks": _planks, "brick": _brick, "stone": _stone,
-         "metal": _metal, "rust": _rust}
+         "metal": _metal, "rust": _rust, "moss": _moss}
 
 
 def expand(name: str, ly: dict, generator_keys, confine_params) -> list[tuple[str, dict]]:
