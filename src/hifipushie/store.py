@@ -233,15 +233,19 @@ def coverage(painted_mesh: Path) -> dict:
         return json.loads(str(z["coverage"])) if "coverage" in z else {}
 
 
-def painted(name: str, mesh: Path) -> Path:
+def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
     """The built mesh with the spec's paint in part_colors (sRGB), cached next to it by mesh and paint.
-    Without paint layers, the mesh itself."""
-    from . import paint
+    Without paint layers, the mesh itself. layer: instead show that layer's mask in false colour.
+    The vertices' field inputs (AO, curvature, thickness) are kept in <mesh>_inputs.npz until the mesh changes,
+    so repainting doesn't recompute them."""
+    from . import paint, render
     spec = load(name)
     if not spec.get("paint"):
         return mesh
-    out = mesh.with_name(mesh.stem + "_paint.npz")
-    stamp = f"{mesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}"
+    if layer is not None and layer not in spec["paint"]:
+        raise ValueError(f"no paint layer {layer!r} (have {', '.join(spec['paint'])})")
+    out = mesh.with_name(mesh.stem + ("_paint.npz" if layer is None else "_mask.npz"))
+    stamp = f"{mesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}:{layer}"
     if out.exists():
         with np.load(out) as z:
             if "stamp" in z and str(z["stamp"]) == stamp:
@@ -249,8 +253,28 @@ def painted(name: str, mesh: Path) -> Path:
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
     meta = json.loads((mesh.parent / ("meta.json" if mesh.stem == "mesh" else "closeup_meta.json")).read_text())
+    inputs = mesh.with_name(mesh.stem + "_inputs.npz")
+    istamp = str(mesh.stat().st_mtime_ns)
+    cache: dict = {}
+    if inputs.exists():
+        with np.load(inputs) as zi:
+            if str(zi["stamp"]) == istamp:
+                cache = {k: zi[k] for k in zi.files if k != "stamp"}
+    had = set(cache)
     stats: dict = {}
-    rgb = paint.apply(spec, z["verts"], z["normals"], z["part"], names, z["part_colors"], meta["voxel"], stats)
+    masks: dict = {}
+    rgb = paint.apply(spec, z["verts"], z["normals"], z["part"], names, z["part_colors"], meta["voxel"], stats,
+                      cache, masks)
+    if layer is None:
+        from .surface import Points
+        b = paint.bump(spec, Points(spec, z["verts"], z["normals"], z["part"], names, meta["voxel"], cache),
+                       0.3 * meta["voxel"], masks)
+        if b is not None:  # painted height can't move vertices here: it shows in the shading only
+            z["normals"] = b[1].astype(z["normals"].dtype)
+    if set(cache) - had:
+        np.savez(inputs, stamp=np.array(istamp), **cache)
+    if layer is not None:
+        rgb = render.mask_colours(masks.get(layer, np.zeros(len(rgb))))
     z["part_colors"] = np.concatenate([rgb, np.ones((len(rgb), 1))], 1).astype(np.float32)
     z["stamp"] = np.array(stamp)
     z["coverage"] = np.array(json.dumps(stats))

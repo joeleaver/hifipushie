@@ -86,8 +86,10 @@ addressed on the surface. Rules that matter:
 
 ## 5. Paint
 
-Paint is vertex colour laid on the finished surface: `spec["paint"]` layers, applied in order over each
-part's clay colour (`parts[p].color`). It never touches geometry, so a paint edit re-renders in a few seconds.
+Paint is colour (and roughness, metallic, specular, height) laid on the finished surface: `spec["paint"]`
+layers, applied in order over each part's clay colour (`parts[p].color`). Every mask is evaluated per point,
+at mesh vertices in `look` and at every texel in `export_asset`, so the same spec gives the same result, only
+sharper in the export. It never touches geometry, so a paint edit re-renders in a few seconds.
 Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
 
 - **Work like a painter, broad to fine:** a base colour per part (a layer with no mask), then big zones
@@ -103,6 +105,17 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
 - Judge with `shading="flat"` (unlit colour: exactly what you painted) and the clay view (how it reads with
   form). Paint can't be finer than the mesh: ~1 voxel full-body, finer in close-ups; markings a few mm wide
   need a close-up to judge.
+- **Weathering comes from the surface, not from placing it by hand** (Substance-style smart masks). A layer's
+  `"mask": [...]` stack combines generators with blend modes: `ao` (occluded places), `cavity` (creases /
+  ridges), `thickness` (thin ears, fingers), `facing`, `noise` (`warp` for torn grunge, `stretch` for
+  streaks and drips), `cells` (voronoi: scales, cracks, plates, warts), plus paths and regions. `breakup`
+  on an entry lets noise eat into it crisply: convex cavity + breakup = edge wear, ao + breakup = grime,
+  facing up + breakup = dust. `kit_reference` (PAINT) has the recipes. Keep each effect its own layer, and
+  look at it alone with `look(paint_layer="grime")` (false colour: purple 0, yellow 1) before judging colour.
+- **Relief without sculpting:** `"height": -0.001` on a cells layer grooves the scale borders; `0.002` on a
+  cells-distance layer raises warts. It lands in the exported normal and height maps at texel resolution;
+  `look` only tilts vertex normals, so judge it in a close-up with `shading="raking"` and in the export
+  preview. Sculpt forms bigger than a few voxels with strokes instead.
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 

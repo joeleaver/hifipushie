@@ -208,6 +208,18 @@ def curvature_colours(lap: np.ndarray, size: float, voxel: float) -> np.ndarray:
     return np.concatenate([rgb, np.ones((len(rgb), 1))], 1)
 
 
+_VIRIDIS = np.array([[0.267, 0.005, 0.329], [0.229, 0.322, 0.546], [0.128, 0.567, 0.551], [0.369, 0.789, 0.383],
+                     [0.993, 0.906, 0.144]])
+
+
+def mask_colours(m: np.ndarray) -> np.ndarray:
+    """A paint mask 0..1 per vertex in false colour (viridis: purple 0, teal 0.5, yellow 1), sRGB (n, 3)."""
+    t = np.clip(m, 0, 1) * (len(_VIRIDIS) - 1)
+    i = np.minimum(t.astype(int), len(_VIRIDIS) - 2)
+    f = (t - i)[:, None]
+    return _VIRIDIS[i] * (1 - f) + _VIRIDIS[i + 1] * f
+
+
 STROKE_COLOURS = {"clay": (255, 150, 40), "crease": (40, 200, 255), "flatten": (90, 230, 120)}
 
 

@@ -17,7 +17,7 @@ from . import fit as fitmod
 from . import measure as meas
 from . import paint as paintmod
 from . import plan as planmod
-from . import render, store
+from . import render, store, surface
 from .spec import empty_spec, summarize
 
 INSTRUCTIONS = """\
@@ -44,7 +44,8 @@ Spec:
           sculpting on the surface itself (see below)
   paint:   {name: {"color": [r,g,b] | "#rrggbb", "opacity"?, "part"?, masks...}} colour layers applied in order
           over each part's clay colour; masks (multiplied): path (surface addresses, like strokes), near
-          (elements or a kit), facing (normal direction), axis (world or along a bone), cavity, noise.
+          (elements or a kit), facing (normal direction), axis (world or along a bone), cavity, noise, ao,
+          thickness, cells; or a "mask" stack with blend modes, breakup, levels, blur. "height" adds relief.
           Paint never changes geometry, so repainting is quick (see below).
   top level: "blend" (default smooth-union radius, ~0.02-0.05 for a 1m creature), "symmetry".
 Combination order: by layer, adds before subtracts within a layer. Use layer 1 for things that must sit
@@ -68,9 +69,13 @@ Keep them broad and shallow relative to the part (a few mm on a 3 cm arm); width
 kit_reference documents them fully.
 Paint colours the finished surface (vertex colours, exported in the OBJ): base colour, countershading
 (facing), markings along surface paths (with repeat/scatter for stripes and spots), regions around elements
-(near: "hand.L", "face_eye.L"), dirt in creases (cavity), mottling (noise). ".L" layers mirror. Judge it with
-look(shading="flat") (unlit colour) and the clay view; look reports each layer's coverage, so a layer that
-paints NOTHING is misaddressed. kit_reference documents it fully.
+(near: "hand.L", "face_eye.L"), dirt in creases (cavity), mottling (noise), and procedural weathering from
+the surface itself: a "mask" stack combines generators (ao, cavity, thickness, facing, noise with warp/stretch,
+voronoi cells, paths...) with blend modes, and "breakup" turns them into edge wear, grime and dust. A layer's
+"height" adds fine relief (pores, scales, cracks) to the exported normal/height maps. ".L" layers mirror. Judge
+with look(shading="flat") (unlit colour) and the clay view, and look(paint_layer=...) to see one layer's mask;
+look reports each layer's coverage, so a layer that paints NOTHING is misaddressed. kit_reference documents it
+fully, with recipes.
 export_asset makes the game-ready version: low poly + one UV atlas + PBR maps (basecolor, normal, roughness,
 metallic, specular, ao, orm, height) baked texel by texel from the exact model, and a GLB; paint layers carry
 roughness/metallic/specular too. Check its Cycles preview (and close-ups of the face) before calling it done.
@@ -195,7 +200,7 @@ def edit_model(name: str, ops: list[dict], note: str = "") -> str:
 def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool = False,
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
          matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", paint: bool = True,
-         save: str | None = None):
+         paint_layer: str | None = None, save: str | None = None):
     """Build the mesh and return a clay contact sheet.
     views: any of front, side, top, three_quarter (default set), back, left, three_quarter_back, below.
     All panels share one scale; front/side/top get rulers in world units (grid=True adds grid lines).
@@ -208,6 +213,8 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     and dents the clay hides), "curvature" (warm = convex, cool = concave, grey = flat, stronger = tighter:
     an evenly tinted area is blobby; crisp forms show as bright lines), "flat" (unlit colour: judge paint).
     paint: show the spec's paint layers (default); False shows plain clay per part.
+    paint_layer: show that one layer's mask in false colour instead (purple 0, teal 0.5, yellow 1), to see
+    where a mask stack lands before judging colours.
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     if focus is not None and zoom > 1:
         full_bounds = store.extent(name)  # sets the view scale, as in a full look
@@ -228,7 +235,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         raise ValueError('shading must be "clay", "raking", "curvature" or "flat"')
     painted = ""
     if shading != "curvature" and paint:
-        mesh = store.painted(name, mesh)
+        mesh = store.painted(name, mesh, paint_layer)
         cov = store.coverage(mesh)
         if cov:
             painted = " | paint coverage: " + ", ".join(
@@ -260,7 +267,7 @@ def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
     lap = np.zeros(len(z["verts"]))
     for i, pn in enumerate(names):
         sel = np.flatnonzero(part == i)
-        lap[sel] = paintmod.laplacian(streams[pn], z["verts"][sel].astype(np.float64), voxel)
+        lap[sel] = surface.laplacian(streams[pn], z["verts"][sel].astype(np.float64), voxel)
     size = float(np.max(np.asarray(bounds[1]) - np.asarray(bounds[0])))
     z["colors"] = render.curvature_colours(lap, size, voxel)
     np.savez(out, **z)

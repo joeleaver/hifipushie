@@ -20,6 +20,8 @@ Call the hifipushie `guide` tool first and follow it: it is the full playbook. T
    strokes only push skin in and out.
 6. **Parts** for anything with its own material: eyes, teeth, clothing (solid shells cut to a region).
 7. **Paint** (`spec["paint"]` layers) last, broad to fine: base, countershading (`facing`), regions (`near`),
-   markings (`path`), breakup (`noise`, `cavity`). Judge with `shading="flat"`; check look's coverage line.
+   markings (`path`), breakup (`noise`, `cavity`), then weathering as mask stacks (`ao`, `cavity`, `cells`,
+   `breakup`: edge wear, grime, dust; recipes in kit_reference) and `height` for fine relief. Judge with
+   `shading="flat"`, each mask alone with `look(paint_layer=...)`; check look's coverage line.
 8. **When something looks wrong,** isolate it (remove suspects one at a time, curvature view) before
    changing anything; don't stack speculative fixes.

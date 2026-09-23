@@ -1,18 +1,19 @@
-"""Paint: colour laid on the built surface, one vertex colour per mesh vertex.
+"""Paint: colour and surface channels laid on the built surface, evaluated per point: every mesh vertex in look,
+every texel in export_asset.
 
 spec["paint"] = {name: layer, ...}: layers apply in order, each over the colour so far (every part starts
 from its clay colour, spec["parts"][p]["color"]). Paint never changes geometry, so repainting doesn't rebuild.
 
 layer = {"color": [r, g, b] (0..1, sRGB, as you'd pick it) | "#rrggbb", "roughness", "metallic", "specular": 0..1,
          (any of these channels; a layer changes only the ones it gives), "opacity": 0..1 (1),
-         "part": name | [names] | "*" (default "body"), plus any of the masks below, multiplied together.
-         No mask = the whole part.}
+         "part": name | [names] | "*" (default "body"), "height": m (relief, see below), plus any of the masks
+         below as flat keys (multiplied together) and/or a "mask" stack (below). No mask = the whole part.}
 Each part starts from spec["parts"][p]: "color" (clay palette), "roughness" (0.6), "metallic" (0), "specular"
 (0.5 = the usual 4% reflectance of skin, cloth, plastic). These show in exported game assets (export_asset), not
 in the clay views: wet lips roughness 0.2, skin 0.5-0.6, cloth 0.8-0.9 with specular 0.3, metal buckles
 metallic 1 with roughness 0.3, eyes roughness 0.05 with specular 0.7.
 
-Masks (each 0..1 per vertex):
+Masks (generators, each 0..1 per point):
   path:    surface addresses exactly as for strokes ({"bone", "t", "side", "around"} or {"at", "offset", "dir"},
            later points inheriting), with "width" (half-width, m; a number or one per control point) and
            "profile": "flat" (default: solid with a soft rim) | "soft" | "round" | "sharp". One point = a spot.
@@ -36,12 +37,62 @@ Masks (each 0..1 per vertex):
   noise:   {"scale": m (feature size, 0.03), "range": [lo, hi] (0.45, 0.6), "octaves": 3, "seed": 0}: fractal
            noise thresholded softly between lo and hi. Mottling, blotches, patches; narrow ranges give crisp
            patches, wide ones soft variation. Combine with other masks to confine it.
+  ao:      [a, b]: ambient occlusion (1 open, 0 enclosed, all parts occluding each other) ramped 0 at a to 1 at b,
+           e.g. [0.95, 0.6]: 1 in armpits, under the jaw, where clothes meet skin. Grime, dirt, darkening.
+  thickness: [a, b] (m): how far the part goes on behind the skin, e.g. [0.04, 0.012]: 1 on ears, fingers, the
+           nose wings (thin, backlit: reddish for subsurface later). Thick bodies read as ~0.08 * model size.
+  cells:   {"scale": m (cell size, 0.03), "mode": "edges" | "distance" | "id", "jitter": 0..1 (1), "seed",
+           "range", "stretch"}: 3D Voronoi. edges = F2-F1, 0 on the borders (default range [0.15, 0]: lines
+           between cells: scales, plates, cracked skin); distance = from each cell's centre (range [0.35, 0.1]
+           = a bump per cell: warts, pebbles); id = a random 0..1 per cell (colour jitter, patchy scales).
+  noise also takes "warp" (0..2: the lookup displaced by another noise: torn, swirly grunge instead of round
+           blobs) and "stretch": {"dir": [x,y,z], "factor": 6} (features that much longer that way: streaks,
+           drips with [0,0,1], wood grain, fur direction). Noise and cells are solid 3D: no UV seams.
+
+Mask stack: "mask": [entry, ...] builds a mask in steps, after any flat keys above (which multiply). Each entry
+is one generator (any of the keys above, with its parameters inside the entry, e.g. {"path": [...], "width":
+0.01} or {"ao": [0.95, 0.6]}, or {"mask": [...]} for a nested stack), combined with the mask so far by
+  "blend": "multiply" (default) | "add" | "subtract" | "min" | "max" | "screen" | "overlay" | "replace",
+  "weight": 0..1 (1): how much of the blend to apply.
+The first generator starts the mask (its blend is ignored). Any entry may also take, applied to its own value
+before blending (or, in an entry with no generator, to the mask so far):
+  "breakup": amount | {"amount": 0.5, "scale": 0.03, "sharpness": 0.5, "octaves", "seed"}: noise shifts the
+           threshold, so the mask is eaten into irregularly and crisply rather than faded. This is what turns
+           cavity/ao/facing into weathering (see the recipes).
+  "levels": [lo, hi] or [lo, hi, gamma]: remap lo..hi to 0..1 (contrast; gamma > 1 grows the mask).
+  "invert": true.
+  "blur": m: average over a disc of that radius across the surface. Only points near a change are resampled,
+           but it evaluates the blurred part 12 times there: blur cheap generators (path, near, noise).
+
+Recipes (on their own layers, usually one colour/roughness each):
+  edge wear   {"cavity": "convex", "radius": [0.05, 0.012], "breakup": {"amount": 0.35, "scale": 0.012,
+              "sharpness": 0.7}}: pale chipped skin on brows, knuckles, nose; bare metal on armour edges.
+  grime       [{"ao": [0.8, 0.45], "breakup": {"amount": 0.3, "scale": 0.04}},
+              {"cavity": "concave", "radius": [0.04, 0.01], "blend": "max"}]: dirt in folds and occluded places.
+              How occluded "occluded" is depends on the pose (arms close to the body are dark all along):
+              check the mask with look(paint_layer=...) and tighten the ao range rather than lowering opacity.
+  dust, moss  [{"facing": [0, 0, 1], "range": [0.3, 0.9], "breakup": 0.4}, {"ao": [0.5, 0.9]}]: on top
+              surfaces, not in the sheltered ones.
+  cloth grunge [{"noise": {"scale": 0.05, "warp": 1.2, "range": [0.45, 0.75]}}, {"ao": [0.9, 0.5],
+              "blend": "screen"}]; drips: {"noise": {"scale": 0.02, "stretch": {"dir": [0,0,1], "factor": 8},
+              "range": [0.6, 0.75]}} times an "axis" band.
+  scales      {"cells": {"scale": 0.02}} with "height": -0.001 (grooves between them); warts: cells "distance"
+              with "height": 0.002, confined by noise.
+
+Height: a layer's "height": m (+ out of the surface) times its mask adds relief without geometry. In exports
+(export_asset) it goes into the height map and tilts the normal map at texel resolution: pores, scales, weave.
+look shows it only in the shading (the vertex normals tilt), at the build's vertex spacing, so judge fine relief
+in close-ups with shading="raking", and in the export's preview. A layer may have height and no colour.
+
+Feedback: look(paint_layer="name") shows that layer's final mask in false colour (purple 0, yellow 1). The
+coverage numbers count only visible skin (not what's buried under clothes).
 
 Symmetry: a layer named ".L" is mirrored (its masks, noise included, evaluated at the vertex and at its mirror
-image, whichever is stronger); a centre-named layer isn't, so asymmetric markings are plain names.
+image, whichever is stronger); a centre-named layer isn't, so asymmetric markings are plain names. AO,
+cavity and thickness are always the point's own.
 
-Colour detail can't be finer than the mesh: about one voxel (see look's info line). Judge colour with
-look(shading="flat") (unlit colour) as well as the clay views.
+Colour detail can't be finer than the mesh in look: about one voxel (see look's info line); exports paint every
+texel. Judge colour with look(shading="flat") (unlit colour) as well as the clay views.
 """
 
 from __future__ import annotations
@@ -56,7 +107,7 @@ from .spec import SpecError
 
 MIRROR = np.array([-1.0, 1.0, 1.0])
 CHANNELS = ("color", "roughness", "metallic", "specular")
-VERSION = 1  # bump when painting output changes, so cached painted meshes are redone
+VERSION = 2  # bump when painting output changes, so cached painted meshes are redone
 
 
 def colour(c, what: str = "color") -> np.ndarray:
@@ -72,21 +123,69 @@ def colour(c, what: str = "color") -> np.ndarray:
     return v[:3]
 
 
+GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "ao", "thickness", "mask")
+PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
+          "cavity": ("radius",)}
+BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
+ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur")
+
+
 def validate(spec: dict) -> None:
     for name, ly in (spec.get("paint") or {}).items():
-        if not any(c in ly for c in CHANNELS):
-            raise SpecError(f"paint {name!r}: needs at least one of {', '.join(CHANNELS)}")
+        if not any(c in ly for c in (*CHANNELS, "height")):
+            raise SpecError(f"paint {name!r}: needs at least one of {', '.join(CHANNELS)}, height")
+        if "height" in ly and not isinstance(ly["height"], (int, float)):
+            raise SpecError(f"paint {name!r}: height is a number (m, + out of the surface, times the mask)")
         if "color" in ly:
             colour(ly["color"], f"paint {name!r}")
         for c in ("roughness", "metallic", "specular"):
             if c in ly and not 0 <= float(ly[c]) <= 1:
                 raise SpecError(f"paint {name!r}: {c} is 0..1")
-        unknown = set(ly) - {*CHANNELS, "opacity", "part", "path", "width", "profile", "repeat", "scatter", "near",
-                             "within", "soft", "facing", "range", "axis", "cavity", "radius", "noise"}
+        flat = {g: ly[g] for g in GENERATORS if g in ly and g != "mask"}
+        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
         if unknown:
             raise SpecError(f"paint {name!r}: unknown keys {sorted(unknown)}")
-        if "cavity" in ly and ly["cavity"] not in ("concave", "convex"):
-            raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
+        for g in flat:
+            _check_generator(name, g, ly)
+        if "mask" in ly:
+            _check_stack(name, ly["mask"])
+
+
+def _check_stack(name: str, stack) -> None:
+    if not isinstance(stack, list):
+        raise SpecError(f"paint {name!r}: mask is a list of entries, e.g. [{{\"ao\": [0.9, 0.5]}}, "
+                        f"{{\"noise\": {{}}, \"blend\": \"multiply\"}}]")
+    for i, e in enumerate(stack):
+        where = f"paint {name!r} mask[{i}]"
+        if not isinstance(e, dict):
+            raise SpecError(f"{where}: an entry is an object")
+        gens = [g for g in GENERATORS if g in e]
+        if len(gens) > 1:
+            raise SpecError(f"{where}: one generator per entry, got {gens}")
+        allowed = {*ENTRY_OPS, *gens, *(PARAMS.get(gens[0], ()) if gens else ())}
+        unknown = set(e) - allowed
+        if unknown:
+            raise SpecError(f"{where}: unknown keys {sorted(unknown)} (allowed here: {sorted(allowed)})")
+        if not gens and not any(k in e for k in ("levels", "invert", "blur")):
+            raise SpecError(f"{where}: needs a generator ({', '.join(GENERATORS)}) or an op (levels, invert, blur)")
+        if gens:
+            _check_generator(name, gens[0], e)
+            if gens[0] == "mask":
+                _check_stack(name, e["mask"])
+        if e.get("blend", "multiply") not in BLENDS:
+            raise SpecError(f"{where}: blend is one of {', '.join(BLENDS)}")
+        if "levels" in e and not (isinstance(e["levels"], list) and len(e["levels"]) in (2, 3)):
+            raise SpecError(f"{where}: levels is [lo, hi] or [lo, hi, gamma]")
+
+
+def _check_generator(name: str, g: str, e: dict) -> None:
+    if g == "cells" and (not isinstance(e[g], dict) or e[g].get("mode", "edges") not in ("edges", "distance", "id")):
+        raise SpecError(f"paint {name!r}: cells is {{\"scale\", \"mode\": \"edges\" | \"distance\" | \"id\", ...}}")
+    if g == "cavity" and e[g] not in ("concave", "convex"):
+        raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
+    if g in ("ao", "thickness") and not (isinstance(e[g], list) and len(e[g]) == 2):
+        raise SpecError(f"paint {name!r}: {g} is [value at 0, value at 1], e.g. " +
+                        ("[0.9, 0.5] (1 in occluded places)" if g == "ao" else "[0.03, 0.01] (1 where thin)"))
 
 
 def key(spec: dict) -> str:
@@ -96,10 +195,43 @@ def key(spec: dict) -> str:
 
 
 def apply(spec: dict, verts: np.ndarray, normals: np.ndarray, part: np.ndarray, part_names: list[str],
-          base: np.ndarray, voxel: float, stats: dict | None = None) -> np.ndarray:
+          base: np.ndarray, voxel: float, stats: dict | None = None, cache: dict | None = None,
+          masks: dict | None = None) -> np.ndarray:
     """Painted sRGB colours (n, 3) for a built mesh, starting from `base` (each vertex's part clay colour).
-    stats, if given, gets each layer's coverage: the fraction of its parts' vertices it paints at least half."""
-    return apply_channels(spec, verts, normals, part, part_names, {"color": base[:, :3]}, voxel, stats)["color"]
+    stats, if given, gets each layer's coverage: the fraction of its parts' vertices it paints at least half.
+    cache: the vertices' field inputs (surface.Points), filled in as layers need them."""
+    from .surface import Points
+    pts = Points(spec, verts, normals, part, part_names, voxel, cache)
+    return apply_channels(spec, pts, {"color": base[:, :3]}, stats, masks)["color"]
+
+
+def bump(spec: dict, pts, eps: float, masks: dict | None = None):
+    """Painted height (layers' "height" times their mask, summed; m) and the normals it tilts, or None when no
+    layer has height. The slope comes from central differences `eps` apart across the surface (4 more
+    evaluations of the height layers). masks: the layers' masks at pts, if apply_channels already made them."""
+    from .surface import _frame, unit
+    layers = {k: ly for k, ly in (spec.get("paint") or {}).items() if ly.get("height")}
+    if not layers:
+        return None
+
+    def height(p, given=None):
+        h = np.zeros(len(p))
+        for name, ly in layers.items():
+            if given is not None and name in given:
+                h += float(ly["height"]) * given[name]
+                continue
+            parts = ly.get("part", "body")
+            parts = p.part_names if parts == "*" else ([parts] if isinstance(parts, str) else parts)
+            idx = np.flatnonzero(np.isin(p.part, [p.part_names.index(q) for q in parts if q in p.part_names]))
+            if len(idx):
+                h[idx] += float(ly["height"]) * layer_mask(spec, name, ly, _View(p, idx))
+        return h
+
+    h0 = height(pts, masks)
+    T, B = _frame(pts.normal)
+    d = [height(pts.moved(pts.pos + s * eps * D, keep_inputs=True)) for D in (T, B) for s in (1, -1)]
+    dT, dB = (d[0] - d[1]) / (2 * eps), (d[2] - d[3]) / (2 * eps)
+    return h0, unit(pts.normal - dT[:, None] * T - dB[:, None] * B)
 
 
 def part_defaults(spec: dict, part_names: list[str], part: np.ndarray) -> dict:
@@ -114,51 +246,30 @@ def part_defaults(spec: dict, part_names: list[str], part: np.ndarray) -> dict:
             "specular": spec_[part][:, None]}
 
 
-def apply_channels(spec: dict, verts: np.ndarray, normals: np.ndarray, part: np.ndarray, part_names: list[str],
-                   base: dict, voxel: float, stats: dict | None = None) -> dict:
+def apply_channels(spec: dict, pts, base: dict, stats: dict | None = None, masks: dict | None = None) -> dict:
     """Paint every channel in `base` ({"color": (n, 3), "roughness": (n, 1), ...}) at arbitrary surface points
-    (verts with their normals and part index): mesh vertices, or texels of a baked texture."""
-    from . import sdf
-    from .spec import compile_prims
+    (a surface.Points: mesh vertices, or texels of a baked texture). masks, if given, gets each layer's mask
+    over all points (0 off its parts)."""
     layers = spec.get("paint") or {}
     out = {c: np.array(v, float) for c, v in base.items()}
     if not layers:
         return out
     validate(spec)
-    verts = verts.astype(np.float64)
-    normals = normals.astype(np.float64)
-    lap_cache: dict[int, np.ndarray] = {}
-    streams = None
     for name, ly in layers.items():
         parts = ly.get("part", "body")
-        parts = part_names if parts == "*" else ([parts] if isinstance(parts, str) else parts)
-        idx = np.flatnonzero(np.isin(part, [part_names.index(p) for p in parts if p in part_names]))
+        parts = pts.part_names if parts == "*" else ([parts] if isinstance(parts, str) else parts)
+        idx = np.flatnonzero(np.isin(pts.part, [pts.part_names.index(p) for p in parts if p in pts.part_names]))
         if not len(idx):
             if stats is not None:
                 stats[name] = None
             continue  # e.g. a close-up that doesn't reach that part
-        v, n = verts[idx], normals[idx]
-        m = _masks(spec, name, ly, v, n)
-        if name.endswith(".L"):
-            m = np.maximum(m, _masks(spec, name, ly, v * MIRROR, n * MIRROR))
-        if "cavity" in ly:
-            if streams is None:
-                streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(spec))}
-            lap = np.zeros(len(idx))
-            for pi in np.unique(part[idx]):
-                sel = part[idx] == pi
-                k = int(pi)
-                if k not in lap_cache:
-                    whole = np.flatnonzero(part == pi)
-                    lap_cache[k] = np.zeros(len(verts))
-                    lap_cache[k][whole] = laplacian(streams[part_names[k]], verts[whole], voxel)
-                lap[sel] = lap_cache[k][idx[sel]]
-            r0, r1 = ly.get("radius", [0.03, 0.006])
-            curv = (-lap if ly["cavity"] == "concave" else lap) / 2  # 1/r on a sphere of radius r
-            m = m * _ramp(curv, 1 / r0, 1 / r1)
-        m = np.clip(m, 0, 1)
+        m = layer_mask(spec, name, ly, _View(pts, idx))
         if stats is not None:
-            stats[name] = float((m >= 0.5).mean())
+            seen = pts.get("hidden")[idx] < 0.5  # skin under clothes or in an eye socket doesn't count
+            stats[name] = float((m[seen] >= 0.5).mean()) if seen.any() else 0.0
+        if masks is not None:
+            masks[name] = np.zeros(len(pts))
+            masks[name][idx] = m
         a = (float(ly.get("opacity", 1.0)) * m)[:, None]
         for c, arr in out.items():
             if c in ly:
@@ -167,13 +278,189 @@ def apply_channels(spec: dict, verts: np.ndarray, normals: np.ndarray, part: np.
     return out
 
 
-def laplacian(prims, pts: np.ndarray, voxel: float) -> np.ndarray:
-    """Laplacian of the exact field at pts (= 2/r on a sphere of radius r), one 7-point stencil evaluation."""
-    from . import sdf
-    h = 0.75 * voxel
-    st = np.array([[0, 0, 0], [h, 0, 0], [-h, 0, 0], [0, h, 0], [0, -h, 0], [0, 0, h], [0, 0, -h]])
-    f = sdf.field_at(prims, pts[:, None, :] + st[None])
-    return (f[:, 1:].sum(1) - 6 * f[:, 0]) / (h * h)
+class _View:
+    """Some of a Points set (idx), possibly mirrored across X: positions and normals as a mask sees them.
+    Field inputs (ao, curvature, thickness) are always the point's own, mirrored or not."""
+
+    def __init__(self, pts, idx: np.ndarray, mirror: bool = False):
+        self.pts, self.idx, self.mirror = pts, idx, mirror
+        self.v = pts.pos[idx] * MIRROR if mirror else pts.pos[idx]
+        self.n = pts.normal[idx] * MIRROR if mirror else pts.normal[idx]
+
+    def __len__(self):
+        return len(self.idx)
+
+    def get(self, key: str) -> np.ndarray:
+        return self.pts.get(key)[self.idx]
+
+    def mirrored(self) -> "_View":
+        return _View(self.pts, self.idx, not self.mirror)
+
+    def jittered(self, radius: float, k: int = 12):
+        """k copies of these points moved across the surface (a Vogel disc of `radius`, Gaussian weights)."""
+        from .surface import _frame
+        P, N = self.pts.pos[self.idx], self.pts.normal[self.idx]
+        U, V = _frame(N)
+        i = np.arange(k) + 0.5
+        r = radius * np.sqrt(i / k)
+        a = i * 2.39996323  # golden angle
+        w = np.exp(-2 * (r / radius) ** 2)
+        views = []
+        for rr, aa in zip(r, a):
+            here = self.pts.__class__(self.pts.spec, P, N, self.pts.part[self.idx], self.pts.part_names,
+                                      self.pts.voxel, streams=self.pts._streams)
+            moved = here.moved(P + rr * (np.cos(aa) * U + np.sin(aa) * V))
+            views.append(_View(moved, np.arange(len(P)), self.mirror))
+        return views, w / w.sum()
+
+
+def _tag(name: str, i) -> str:
+    """A stack entry's own name (paths seat as strokes named after it), keeping a ".L" suffix at the end."""
+    if i is None:
+        return name
+    stem, sfx = (name[:-2], name[-2:]) if name.endswith((".L", ".R")) else (name, "")
+    return f"{stem}~{i}{sfx}"
+
+
+def layer_mask(spec: dict, name: str, ly: dict, view: _View) -> np.ndarray:
+    """A layer's mask: its flat keys (each a generator, multiplied), then its "mask" stack, 0..1. A ".L" layer
+    takes the stronger of the mask at the point and at its mirror image."""
+    stack = [{g: ly[g], **{k: ly[k] for k in PARAMS.get(g, ()) if k in ly}} for g in GENERATORS
+             if g in ly and g != "mask"]
+    tags = [None] * len(stack)
+    if "mask" in ly:
+        stack += ly["mask"]
+        tags += list(range(len(ly["mask"])))
+    m = _stack(spec, name, stack, tags, view)
+    if name.endswith(".L"):
+        m = np.maximum(m, _stack(spec, name, stack, tags, view.mirrored()))
+    return np.clip(m, 0, 1)
+
+
+def _stack(spec: dict, name: str, stack: list, tags: list, view: _View) -> np.ndarray:
+    m = None
+    for j, (e, tag) in enumerate(zip(stack, tags)):
+        gen = next((g for g in GENERATORS if g in e), None)
+        if gen is None:  # an op on the mask so far
+            if m is None:
+                m = np.ones(len(view))
+            if "blur" in e:
+                m = _blurred(lambda v: _stack(spec, name, stack[:j], tags[:j], v), view, float(e["blur"]), m)
+            m = _post(m, e, view)
+            continue
+        g = _generate(spec, name, gen, e, _tag(name, tag), view)
+        if "blur" in e:
+            g = _blurred(lambda v: _generate(spec, name, gen, e, _tag(name, tag), v), view, float(e["blur"]), g)
+        g = _post(g, e, view)
+        mode = e.get("blend", "multiply")
+        if m is None:
+            m = g  # the first generator starts the mask
+            continue
+        b = _blend(mode, m, g)
+        wgt = float(e.get("weight", 1.0))
+        m = np.clip(m + wgt * (b - m), 0, 1)
+    return np.ones(len(view)) if m is None else m
+
+
+def _blurred(fn, view: _View, radius: float, m0: np.ndarray) -> np.ndarray:
+    """fn (a mask at a view's points) averaged over a disc of `radius` across the surface. m0 is fn unblurred:
+    only points whose neighbourhood isn't constant in it get sampled (a cell grid of size radius finds them)."""
+    if radius <= 0 or not len(view):
+        return m0
+    cell = np.floor(view.v / radius).astype(np.int64)
+    keys, inv = np.unique(cell, axis=0, return_inverse=True)
+    inv = inv.ravel()
+    lo = np.full(len(keys), np.inf)
+    hi = np.full(len(keys), -np.inf)
+    np.minimum.at(lo, inv, m0)
+    np.maximum.at(hi, inv, m0)
+    code = lambda c: (c[:, 0] * 2_000_003 + c[:, 1]) * 2_000_029 + c[:, 2]  # noqa: E731
+    kc = code(keys)
+    order = np.argsort(kc)
+    nlo, nhi = lo.copy(), hi.copy()
+    for off in np.array(np.meshgrid([-1, 0, 1], [-1, 0, 1], [-1, 0, 1])).reshape(3, -1).T:
+        q = code(keys + off)
+        at = np.clip(np.searchsorted(kc, q, sorter=order), 0, len(kc) - 1)
+        hit = kc[order[at]] == q
+        nlo[hit] = np.minimum(nlo[hit], lo[order[at[hit]]])
+        nhi[hit] = np.maximum(nhi[hit], hi[order[at[hit]]])
+    varying = np.flatnonzero((nhi - nlo)[inv] > 1e-4)
+    out = m0.copy()
+    if len(varying):
+        sub = _View(view.pts, view.idx[varying], view.mirror)
+        views, w = sub.jittered(radius)
+        out[varying] = sum(wi * fn(v) for v, wi in zip(views, w))
+    return out
+
+
+def _post(g: np.ndarray, e: dict, view: _View) -> np.ndarray:
+    if "breakup" in e:  # noise shifts the threshold: edges chip, grime gathers in blotches
+        b = e["breakup"]
+        b = {"amount": float(b)} if isinstance(b, (int, float)) else b
+        n = fbm(view.v, float(b.get("scale", 0.03)), int(b.get("octaves", 3)), int(b.get("seed", 0)))
+        s = 0.5 * (1 - min(max(float(b.get("sharpness", 0.5)), 0.0), 0.98))
+        g = _ramp(g + float(b.get("amount", 0.5)) * (2 * n - 1), 0.5 - s, 0.5 + s)
+    if "levels" in e:
+        lv = e["levels"]
+        lo, hi = float(lv[0]), float(lv[1])
+        g = np.clip((g - lo) / (hi - lo if hi != lo else 1e-9), 0, 1) ** (1 / float(lv[2]) if len(lv) > 2 else 1)
+    if e.get("invert"):
+        g = 1 - g
+    return g
+
+
+def _blend(mode: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    if mode == "multiply":
+        return a * b
+    if mode == "add":
+        return a + b
+    if mode == "subtract":
+        return a - b
+    if mode == "min":
+        return np.minimum(a, b)
+    if mode == "max":
+        return np.maximum(a, b)
+    if mode == "screen":
+        return 1 - (1 - a) * (1 - b)
+    if mode == "overlay":
+        return np.where(a < 0.5, 2 * a * b, 1 - 2 * (1 - a) * (1 - b))
+    return b  # replace
+
+
+def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -> np.ndarray:
+    """One generator's 0..1 value at the view's points."""
+    v, n = view.v, view.n
+    if gen == "path":
+        return _path_mask(spec, tag, e, v, n)
+    if gen == "near":
+        return _near_mask(spec, name, e, v)
+    if gen == "facing":
+        d = np.asarray(e["facing"], float)
+        lo, hi = e.get("range", [0.0, 0.7])
+        return _ramp(n @ (d / np.linalg.norm(d)), lo, hi)
+    if gen == "axis":
+        return _axis_mask(spec, name, e["axis"], v)
+    if gen == "noise":
+        nz = e["noise"]
+        lo, hi = nz.get("range", [0.45, 0.6])
+        return _ramp(noise(v, nz), lo, hi)
+    if gen == "cells":
+        c = e["cells"]
+        mode = c.get("mode", "edges")
+        val = cells(_stretch(v, c), float(c.get("scale", 0.03)), mode, float(c.get("jitter", 1.0)), int(c.get("seed", 0)))
+        lo, hi = c.get("range", {"edges": [0.15, 0.0], "distance": [0.35, 0.1], "id": [0.0, 1.0]}[mode])
+        return _ramp(val, lo, hi)
+    if gen == "cavity":
+        r0, r1 = e.get("radius", [0.03, 0.006])
+        curv = view.get("curvature")
+        return _ramp(-curv if e["cavity"] == "concave" else curv, 1 / r0, 1 / r1)
+    if gen in ("ao", "thickness"):
+        a, b = e[gen]
+        return _ramp(view.get(gen), float(a), float(b))
+    if gen == "mask":
+        sub = e["mask"]
+        return _stack(spec, tag, sub, list(range(len(sub))), view)
+    raise SpecError(f"paint {name!r}: unknown generator {gen!r}")
 
 
 def _ramp(x, a, b):
@@ -181,25 +468,6 @@ def _ramp(x, a, b):
     d = np.asarray(b - a, float)
     t = np.clip((x - a) / np.where(d == 0, 1e-12, d), 0, 1)
     return t * t * (3 - 2 * t)
-
-
-def _masks(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
-    m = np.ones(len(v))
-    if "path" in ly:
-        m *= _path_mask(spec, name, ly, v, n)
-    if "near" in ly:
-        m *= _near_mask(spec, name, ly, v)
-    if "facing" in ly:
-        d = np.asarray(ly["facing"], float)
-        lo, hi = ly.get("range", [0.0, 0.7])
-        m *= _ramp(n @ (d / np.linalg.norm(d)), lo, hi)
-    if "axis" in ly:
-        m *= _axis_mask(spec, name, ly["axis"], v)
-    if "noise" in ly:
-        nz = ly["noise"]
-        lo, hi = nz.get("range", [0.45, 0.6])
-        m *= _ramp(fbm(v, float(nz.get("scale", 0.03)), int(nz.get("octaves", 3)), int(nz.get("seed", 0))), lo, hi)
-    return m
 
 
 def _axis_mask(spec: dict, name: str, ax: dict, v: np.ndarray) -> np.ndarray:
@@ -295,6 +563,49 @@ def _path_mask(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) ->
         k *= _ramp((n[sel][:, None, :] * N[j]).sum(-1), 0.0, 0.3)  # skin facing the path's way: no print-through
         out[sel] = np.maximum(out[sel], np.clip((k * gain[j]).sum(1), 0, 1))
     return out
+
+
+def _stretch(v: np.ndarray, nz: dict) -> np.ndarray:
+    """Positions squashed along "stretch": {"dir", "factor"}, so features come out `factor` times longer that way."""
+    st = nz.get("stretch")
+    if not st:
+        return v
+    d = np.asarray(st.get("dir", [0, 0, 1]), float)
+    d /= np.linalg.norm(d)
+    return v - (1 - 1 / float(st.get("factor", 6.0))) * (v @ d)[:, None] * d[None]
+
+
+def noise(v: np.ndarray, nz: dict) -> np.ndarray:
+    """A noise generator's raw 0..1 value: fbm, optionally stretched (streaks) and domain-warped (grunge)."""
+    scale, octaves, seed = float(nz.get("scale", 0.03)), int(nz.get("octaves", 3)), int(nz.get("seed", 0))
+    q = _stretch(v, nz)
+    warp = float(nz.get("warp", 0.0))
+    if warp:  # displace the lookup by another noise: swirly, torn-looking grunge instead of round blobs
+        off = np.stack([fbm(q, scale, 2, seed + 11 + 7 * k) for k in range(3)], 1) - 0.5
+        q = q + (2 * warp * scale) * off
+    return fbm(q, scale, octaves, seed)
+
+
+def cells(v: np.ndarray, scale: float, mode: str = "edges", jitter: float = 1.0, seed: int = 0) -> np.ndarray:
+    """3D Voronoi on a jittered lattice, `scale` apart: "edges" F2 - F1 (0 on the borders between cells, in
+    units of scale), "distance" F1 (0 at each cell's centre), "id" a random 0..1 per cell."""
+    q = v / scale
+    base = np.floor(q).astype(np.int64)
+    f1 = np.full(len(q), np.inf)
+    f2 = np.full(len(q), np.inf)
+    ident = np.zeros(len(q))
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                c = base + np.array([dx, dy, dz])
+                pt = c + 0.5 + jitter * (np.stack([_hash(c[:, 0], c[:, 1], c[:, 2], seed + 17 * k)
+                                                   for k in range(3)], 1) - 0.5)
+                d = np.linalg.norm(q - pt, axis=1)
+                closer = d < f1
+                f2 = np.where(closer, f1, np.minimum(f2, d))
+                ident = np.where(closer, _hash(c[:, 0], c[:, 1], c[:, 2], seed + 99), ident)
+                f1 = np.where(closer, d, f1)
+    return {"edges": f2 - f1, "distance": f1, "id": ident}[mode]
 
 
 def _hash(ix, iy, iz, seed: int) -> np.ndarray:

@@ -42,21 +42,35 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   npz carries `part`/`part_names`/`part_colors`, OBJ export writes one object per part). A shell part
   (`spec["parts"][name] = {"shell": base, "offset"}`) is its base part's field pushed out (`sd_shell`),
   intersected (op "intersect") with the union of its layer-0 adds. Solid on purpose: thin sheets alias.
-- `paint.py`: `spec["paint"]` colour layers, evaluated per vertex of the built mesh (`store.painted` writes
-  `mesh_paint.npz`, stamped by mesh mtime + paint/parts hash + `paint.VERSION`), so paint never rebuilds.
-  `spec.geometry` strips paint and plan before expansion/compilation: keep it that way, or every paint edit
-  re-seats strokes and rebuilds. Masks multiply: path (seated with the stroke machinery, `strokes._generate`,
-  as a sum of dabs; faces-the-same-way test stops print-through), near (primitives' own SDFs; kit names expand
-  to `<stem>_*<sfx>`), facing, axis, cavity (field Laplacian), noise (value fBm on rotated lattices).
-  ".L" layers take the max of the mask at the vertex and its mirror. Colours are sRGB everywhere in the spec;
-  `blender_render` converts part/paint colours to linear for the colour attribute. OBJ export writes
-  `v x y z r g b` (Blender reads it). `look(shading="flat")` is unlit colour.
+- `surface.py`: `Points`, a set of surface points (mesh vertices or baked texels) with position/normal/part and
+  lazily computed field inputs: `ao` (hemisphere of SDF cone samples over all parts, normalised so an open plane
+  is 1, all samples in one `field_at` call), `curvature` (field Laplacian / 2), `thickness` (depth where rays
+  along -normal leave the part), `hidden` (buried in another part). `store.painted` keeps a mesh's inputs in
+  `mesh_inputs.npz` (stamped by mesh mtime), so repaints don't redo AO (~6 s on the troll); the bake prefills
+  `ao` from its AO map. `moved` drops offset points back onto the surface with one field step (blur, bump).
+- `paint.py`: `spec["paint"]` layers, evaluated per point (`apply_channels` on a `surface.Points`): vertices in
+  `store.painted` (`mesh_paint.npz`, stamped by mesh mtime + paint/parts hash + `paint.VERSION`; `layer=` writes
+  `mesh_mask.npz`, one layer's mask in false colour, for `look(paint_layer=)`), texels in the bake, so paint never
+  rebuilds. `spec.geometry` strips paint and plan before expansion/compilation: keep it that way, or every paint
+  edit re-seats strokes and rebuilds. A layer's mask (`layer_mask`) is a stack: flat keys become leading
+  multiply entries, then `"mask": [...]`; each entry is one generator (`_generate`: path seated with the stroke
+  machinery, `strokes._generate`, as a sum of dabs with a faces-the-same-way test against print-through; near
+  (primitives' own SDFs; kit names expand to `<stem>_*<sfx>`); facing; axis; cavity; noise (value fBm on rotated
+  lattices, optional stretch/domain warp); cells (3D Voronoi F1/F2/id); ao; thickness; nested mask) then
+  `_post` (breakup = noise-shifted threshold, levels, invert), then blended. `blur` averages at jittered points
+  (`_View.jittered`) but only where a cell grid of the unblurred mask shows variation (`_blurred`): keep that,
+  it's 10x. ".L" layers take the max of the stack at the point and its mirror (`_View` mirrors position and
+  normal; field inputs stay the point's own). `bump`: layers' `height` x mask summed, slope by central
+  differences across the surface, tilts normals (vertex normals in look, the normal map + height map in the
+  bake). Coverage counts only points not `hidden`. Colours are sRGB everywhere in the spec; `blender_render`
+  converts part/paint colours to linear for the colour attribute. OBJ export writes `v x y z r g b` (Blender
+  reads it). `look(shading="flat")` is unlit colour.
 - `asset.py` + `blender_asset.py`: game-ready export. `prune_hidden` drops faces buried in another part; Blender
   decimates each part, smart-projects one shared atlas and hands back per-corner uv/normal/MikkTSpace tangent.
-  `bake` rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface (`_newton`,
+  `bake` rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface (`surface.newton`,
   converged texels dropped), reads normal (tangent space against the exported low-poly frame), height (along
   the low-poly normal), paint channels (`paint.apply_channels`: color/roughness/metallic/specular), and AO
-  (`_ao`: hemisphere of SDF cone samples over all parts, normalised so an open plane is 1; baked at half res).
+  (`surface.ao`, baked at half res and passed on to paint), then painted height (`paint.bump`, texel-sized steps).
   Maps are dilated (EDT nearest fill). `write_glb` writes glTF by hand (Y up: x, z, -y; uv v flipped; ORM; specular
   in the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04).
   `preview` renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the AO map
@@ -96,35 +110,19 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
-## Plan: procedural painting (next session)
+## Procedural painting (done 2026-09-23) and what's left
 
-Goal: Substance-style smart materials on top of `paint.py`, evaluated per point, so they work identically for
-`look` (mesh vertices) and `export_asset` (texels, at texture resolution). Order of work, testing each step on
-the troll (skin dirt, edge wear on brow/knuckles, grungy shorts, a metal belt buckle) and then the goblin:
-
-1. **Inputs refactor.** `paint.apply_channels` gets a lazily computed `inputs` object per point set: position,
-   normal, part, plus on demand `ao` (move `asset._ao` into a shared module), `curvature` (`paint.laplacian`,
-   exists), `thickness` (the same cone sampling as AO but along -normal, inside the part). The bake already
-   computes AO: pass it in rather than recomputing (AO is the slowest map, ~66 s at 2048 on the troll).
-2. **Mask stack.** A layer's `"mask": [...]` list: each entry is a generator or an op on the running mask,
-   e.g. `{"ao": [lo, hi]}`, `{"noise": {...}, "blend": "multiply|add|subtract|min|max|screen|overlay"}`,
-   `{"levels": [lo, hi, gamma]}`, `{"invert": true}`, `{"blur": m}`. Keep today's flat keys (path, near,
-   facing, axis, cavity, noise) working as shorthand for a multiply-only stack; don't break the examples.
-   Blur: supersample the mask at jittered points in the tangent plane (resolution independent, works on
-   vertices and texels alike) rather than image-space blur, which would bleed across UV seams.
-3. **Generators** built from the inputs: edge wear (convexity + noise breakup), dirt/grime (AO + cavity),
-   dust/moss from above (facing up + AO), thickness (ears, fingers glow for subsurface later), wet/dry.
-   Maybe named presets later ("smart masks"), but first as plain parameterised generators.
-4. **Patterns**: voronoi cells (F2-F1 for scales/plates, cell id for per-cell colour jitter), streaks (noise
-   stretched along a direction, e.g. gravity drips), grunge (fbm with domain warp). All our noise is solid
-   3D in world space, so no UV seams and no triplanar needed (triplanar only matters for image textures).
-5. **Height channel**: a layer's `"height": m` (times its mask) adds to the height map, and the normal map is
-   perturbed by its gradient (finite differences of painted height at x +- e*T, x +- e*B: 4 extra paint
-   evaluations, only for layers with height). Pores, scales, fabric weave that the sculpt doesn't have.
-   `look` can't show it as geometry; show it at least in shading (bump in the vertex normals, or say so).
-6. **Feedback**: `look(paint_layer="name")` renders that layer's mask in false colour (the coverage line
-   exists); keep the per-layer coverage numbers.
-7. **Docs**: paint docstring (kit_reference), guide.md section 5, the skill, this file.
+Substance-style layers work identically on vertices (`look`) and texels (`export_asset`): field inputs
+(`surface.Points`), mask stacks with blend modes/breakup/levels/invert/blur, ao/thickness/cells generators, noise
+warp/stretch, painted `height` (normal + height maps), `look(paint_layer=)`. Presets stayed recipes in the paint
+docstring (edge wear = convex cavity + breakup, grime = ao max concave, dust = facing up + breakup): generic
+generators beat named templates. `examples/troll.json` shows all of it. Tested on troll and goblin.
+Open ends:
+- Bake time at 2048 on the troll: ~290 s (AO 130 s, paint 52 s, painted height 57 s: the height layers run 4 more
+  times). Per-layer mask caching, or evaluating height layers once on a slightly bigger stencil, would help.
+- Painted height in `look` is only vertex-normal tilt at vertex spacing; fine relief is judged in the export.
+- Thickness is ready for subsurface (a thickness map / SSS colour in the GLB) but nothing exports it yet.
+- AO ranges depend on pose (arms near the body read occluded all along): recipes use [0.8, 0.45].
 
 Validate every exported GLB with the Khronos validator (gives 0 errors today). In the scratchpad:
 `npm init -y && npm i gltf-validator`, then a 3-line `v.mjs`: `import v from 'gltf-validator'`,
@@ -148,14 +146,14 @@ server, test by calling `server.*` functions directly (see below) or restart the
 ## Status and roadmap
 Done: skeleton + blobs, kits (face, hand), fit, plan workflow (set_plan/check), strokes (summed dabs; repeat,
 scatter; overlay/raking/curvature views), parts (separate meshes, clothing shells), surface-seated joints,
-paint (vertex-colour layers with path/near/facing/axis/cavity/noise masks, coverage feedback, coloured OBJ),
+paint (layers with path/near/facing/axis/cavity/noise/ao/thickness/cells generators, mask stacks, breakup,
+painted height, coverage and per-layer mask feedback, coloured OBJ),
 game-ready export (export_asset: low poly, atlas, texel-exact PBR maps, GLB),
 the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifipushie`), and a performance
 pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
 
 Next, roughly in priority order:
-1. **Next session: Substance-Painter-style procedural painting** (agreed with the user). Plan below.
-   Asset follow-ups after that: rig (armature from the skeleton + skin weights), LODs, FBX, texel density per
+1. Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, texel density per
    part (the face deserves more atlas than the back), UV seams placed deliberately rather than smart project.
 2. Part tools: look at one part alone; check that parts don't cut into each other.
 3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).

@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import paint, render, sdf, store
+from . import paint, render, sdf, store, surface
 from .spec import compile_prims
 
 SCRIPT = Path(__file__).with_name("blender_asset.py")
@@ -57,14 +57,7 @@ def prune_hidden(spec: dict, mesh: Path, out: Path, voxel: float, log: list) -> 
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
     streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(spec))}
-    v = z["verts"].astype(np.float64)
-    hidden = np.zeros(len(v), bool)
-    for i, pn in enumerate(names):
-        sel = np.flatnonzero(z["part"] == i)
-        others = [streams[o] for o in names if o != pn]
-        if others and len(sel):
-            f = np.min([sdf.field_at(ps, v[sel]) for ps in others], axis=0)
-            hidden[sel] = f < -0.5 * voxel
+    hidden = surface.hidden(streams, z["verts"].astype(np.float64), z["part"], names, voxel) > 0.5
     faces = z["faces"]
     keep = ~hidden[faces].all(1)
     dropped = {pn: int((~keep & (z["part"][faces[:, 0]] == i)).sum()) for i, pn in enumerate(names)}
@@ -111,25 +104,6 @@ def _corners(parts: dict, key: str) -> np.ndarray:
     return np.concatenate(out).astype(np.float64)
 
 
-def _newton(prims, x: np.ndarray, h: float, voxel: float, iterations: int = 6):
-    """Newton-step points onto the part's zero set (steps capped at 2 voxels); points stop once they move less
-    than a thousandth of a voxel. Returns the points and the field gradient there."""
-    x = x.copy()
-    g = np.zeros_like(x)
-    todo = np.arange(len(x))
-    for _ in range(iterations):
-        if not len(todo):
-            break
-        f, g[todo] = sdf.value_gradient(prims, x[todo], h)
-        step = (f / np.maximum((g[todo] ** 2).sum(1), 1e-12))[:, None] * g[todo]
-        n = np.linalg.norm(step, axis=1, keepdims=True)
-        x[todo] -= step * np.minimum(1.0, 2 * voxel / np.maximum(n, 1e-12))
-        todo = todo[n[:, 0] > 1e-3 * voxel]
-    if len(todo):
-        g[todo] = sdf.value_gradient(prims, x[todo], h)[1]
-    return x, g
-
-
 def _dilate(img: np.ndarray, filled: np.ndarray) -> np.ndarray:
     """Fill empty texels from the nearest filled one, so filtering and mips don't pull in background at seams."""
     from scipy import ndimage
@@ -165,7 +139,7 @@ def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
     t1 = time.time()
     for pi, pn in enumerate(names):
         sel = np.flatnonzero(part == pi)
-        x, g = _newton(streams[pn], X[sel], h, voxel)
+        x, g = surface.newton(streams[pn], X[sel], h, voxel)
         # a texel that wandered off (onto another sheet, or out of a thin gap) keeps the low-poly surface
         bad = (np.linalg.norm(x - P[sel], axis=1) > 6 * voxel) | ((_unit(g) * Nl[sel]).sum(1) < 0.2)
         x[bad], g[bad] = P[sel][bad], Nl[sel][bad]
@@ -173,17 +147,27 @@ def bake(spec: dict, parts: dict, size: int, voxel: float, log: list) -> dict:
         if bad.any():
             log.append(f"  {pn}: {bad.mean():.2%} of texels kept the low-poly surface (projection went astray)")
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
-    height = ((X - P) * Nl).sum(1)
-
-    t2 = time.time()
-    base = paint.part_defaults(spec, names, part)
-    ch = paint.apply_channels(spec, X, G, part, names, base, voxel)
-    log.append(f"painted in {time.time() - t2:.1f}s")
-
     t3 = time.time()
     ao_map = _ao_map(spec, parts, streams, size, voxel)
     log.append(f"ambient occlusion (at {size // 2 if size >= 1024 else size}^2) in {time.time() - t3:.1f}s")
 
+    t2 = time.time()
+    base = paint.part_defaults(spec, names, part)
+    pts = surface.Points(spec, X, G, part, names, voxel, cache={"ao": ao_map[ys, xs, 0]}, streams=streams)
+    masks: dict = {}
+    ch = paint.apply_channels(spec, pts, base, masks=masks)
+    log.append(f"painted in {time.time() - t2:.1f}s")
+    # painted height: into the height map, and its slope tilts the normals (texel-sized differences)
+    c = _corners(parts, "pos")
+    texel = np.sqrt(np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2 / max(len(tri), 1))
+    t4 = time.time()
+    b = paint.bump(spec, pts, 0.5 * texel, masks)
+    if b is not None:
+        X = X + b[0][:, None] * G  # the height map measures to the painted surface
+        G = b[1]
+        log.append(f"painted height (texel {texel * 1000:.2f} mm) in {time.time() - t4:.1f}s")
+
+    height = ((X - P) * Nl).sum(1)
     tn = np.stack([(G * T).sum(1), (G * B).sum(1), (G * Nl).sum(1)], -1)
     filled = np.zeros((size, size), bool)
     filled[ys, xs] = True
@@ -216,8 +200,8 @@ def _ao_map(spec: dict, parts: dict, streams: dict, size: int, voxel: float) -> 
     part = tpart[tri]
     for pi, pn in enumerate(names):
         sel = np.flatnonzero(part == pi)
-        P[sel] = _newton(streams[pn], P[sel], 0.1 * voxel, voxel, iterations=2)[0]
-    ao = _ao(list(streams.values()), P, N, voxel)
+        P[sel] = surface.newton(streams[pn], P[sel], 0.1 * voxel, voxel, iterations=2)[0]
+    ao = surface.ao(list(streams.values()), P, N, voxel)
     img = np.ones((small, small))
     img[ys, xs] = ao
     filled = np.zeros((small, small), bool)
@@ -226,34 +210,6 @@ def _ao_map(spec: dict, parts: dict, streams: dict, size: int, voxel: float) -> 
     if small != size:
         img = np.asarray(Image.fromarray(img.astype(np.float32), "F").resize((size, size), Image.BILINEAR))
     return img[..., None].astype(np.float64)
-
-
-def _ao(streams: list, X: np.ndarray, N: np.ndarray, voxel: float, samples: int = 3, ring: int = 6) -> np.ndarray:
-    """SDF ambient occlusion over the hemisphere: along the normal and a ring of directions tilted 50 deg from it,
-    how open each is (the narrowest field / distance ratio of a few steps out, like a cone's soft shadow),
-    cosine-weighted. Every part occludes every other: a sleeve darkens the arm under it."""
-    size = 0.0
-    for ps in streams:
-        adds = [p for p in ps if p.op == "add"]
-        size = max(size, float(np.max(np.max([p.hi for p in adds], 0) - np.min([p.lo for p in adds], 0))))
-    step = 0.008 * size
-    ref = np.where(np.abs(N[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
-    U = _unit(np.cross(N, ref))
-    V = np.cross(N, U)
-    tilt = np.radians(50)
-    dirs = [(N, 1.0)] + [(np.cos(tilt) * N + np.sin(tilt) * (np.cos(a) * U + np.sin(a) * V), np.cos(tilt))
-                         for a in np.linspace(0, 2 * np.pi, ring, endpoint=False) + 0.3]
-    total, wsum = np.zeros(len(X)), 0.0
-    for D, w in dirs:
-        vis = np.ones(len(X))
-        for i in range(1, samples + 1):
-            d = i * step
-            q = X + D * d + N * (0.25 * voxel)
-            f = np.min([sdf.field_at(ps, q) for ps in streams], axis=0)
-            vis = np.minimum(vis, np.clip(f / (d * w), 0, 1))  # over an open plane f = d cos(tilt): fully lit
-        total += w * vis
-        wsum += w
-    return np.clip(total / wsum, 0, 1)
 
 
 def _png(path: Path, img: np.ndarray, srgb_input: bool = True, bits: int = 8):
