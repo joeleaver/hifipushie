@@ -531,6 +531,13 @@ def render(job):
             _paint_material(part, base, [ly for ly in prog["layers"] if part in ly["parts"] or "*" in ly["parts"]],
                             prog["quantiles"], None, prog["packing"].get(part, {}), show=job["show_layer"])
     scene.render.engine = "BLENDER_EEVEE"
+    # ray-traced reflections and indirect light: without them everything indoors reflects the open sky (glossy
+    # jars and cups get a bright rim) and rooms get no bounce light
+    ee = scene.eevee
+    ee.use_raytracing = True
+    ee.ray_tracing_method = "SCREEN"
+    ee.use_fast_gi = True
+    ee.fast_gi_method = "GLOBAL_ILLUMINATION"
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
     scene.render.film_transparent = False
     scene.view_settings.view_transform = "AgX"

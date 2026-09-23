@@ -236,8 +236,9 @@ the .blend come back as spec edits).
    Cycles AO bake); our `asset.bake` keeps the geometry maps (normal, height by exact projection).
 5. MCP tools: `sync`, scene-based `look`, `pull`; then retire the per-vertex paint path in `look`, and
    `surface.ao`/`surface.sky`.
-Also: material rebuild on any paint change rebuilds every part (~55 s): hash per part. Interior is dark in
-EEVEE (no GI set up: try raytracing / world light / a fill). Push the scene into the user's running Blender over
+Also: material rebuild on any paint change rebuilds every part (~55 s): hash per part. `scene.look` renders
+EEVEE with screen-space ray tracing + fast GI (without it glossy things indoors reflect the open sky: jars had
+glowing rims); a 4-camera look went ~15 s -> ~77 s. Push the scene into the user's running Blender over
 the Blender MCP (port 9876; wasn't running today) so they see edits live. Hand-painted masks (a `painted`
 generator from a surface point cloud, survives re-meshing) are the next round-trip feature.
 
