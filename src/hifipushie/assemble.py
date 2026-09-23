@@ -263,7 +263,7 @@ def _arrays(s: dict):
                     moved = centre + t  # rotations turn about the centre (or pivot, folded into t)
                     c["at"] = _r(moved)
                     c.pop("offset", None)
-                    c["size"] = _r(np.asarray(base.get("size", [0.05] * 3), float) * f)
+                    c["size"] = _r(np.asarray(c.get("size", [0.05] * 3), float) * f)  # varied size, if any
                     c["rot"] = _euler_of(R @ euler_matrix(base.get("rot", [0, 0, 0])))
                     s["blobs"][cn] = c
     return s

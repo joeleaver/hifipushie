@@ -18,6 +18,7 @@ import numpy as np
 from . import sdf
 
 FIELD_INPUTS = ("ao", "curvature", "thickness", "sky")
+INPUTS_VERSION = 2  # bump when how any input is measured changes: cached inputs (store.painted) are redone
 
 
 def unit(v):
@@ -131,7 +132,9 @@ def laplacian(prims, pts: np.ndarray, voxel: float) -> np.ndarray:
     """Laplacian of the exact field at pts (= 2/r on a sphere of radius r), one 7-point stencil evaluation."""
     h = 0.75 * voxel
     st = np.array([[0, 0, 0], [h, 0, 0], [-h, 0, 0], [0, h, 0], [0, -h, 0], [0, 0, h], [0, 0, -h]])
-    f = sdf.field_at(prims, pts[:, None, :] + st[None])
+    # exact values out to the stencil (clipped evaluation is only exact within a primitive's blend reach: a
+    # sample h off a thin board with a small blend came back as the "far away" value, curvature ~1/mm on flat tops)
+    f = sdf.field_at(prims, pts[:, None, :] + st[None], margin=2 * h)
     return (f[:, 1:].sum(1) - 6 * f[:, 0]) / (h * h)
 
 

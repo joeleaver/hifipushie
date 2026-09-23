@@ -283,7 +283,8 @@ def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
                     np.savez(out, **z)
                     return out
     inputs = mesh.with_name(mesh.stem + "_inputs.npz")
-    istamp = str(mesh.stat().st_mtime_ns)
+    from .surface import INPUTS_VERSION
+    istamp = f"{mesh.stat().st_mtime_ns}:{INPUTS_VERSION}"
     cache: dict = {}
     if inputs.exists():
         with np.load(inputs) as zi:
@@ -294,7 +295,7 @@ def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
         binputs = bmesh.with_name(bmesh.stem + "_inputs.npz")
         if bmesh.exists() and binputs.exists():
             with np.load(binputs) as zi:
-                if str(zi["stamp"]) == str(bmesh.stat().st_mtime_ns):
+                if str(zi["stamp"]) == f"{bmesh.stat().st_mtime_ns}:{INPUTS_VERSION}":
                     cache = {k: zi[k][src] for k in zi.files if k != "stamp"}
     had = set(cache)
     stats: dict = {}

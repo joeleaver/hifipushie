@@ -123,7 +123,7 @@ from .spec import SpecError
 
 MIRROR = np.array([-1.0, 1.0, 1.0])
 CHANNELS = ("color", "roughness", "metallic", "specular")
-VERSION = 2  # bump when painting output changes, so cached painted meshes are redone
+VERSION = 3  # bump when painting output changes, so cached painted meshes are redone
 
 
 def colour(c, what: str = "color") -> np.ndarray:
