@@ -1583,16 +1583,73 @@
    ],
    "opacity": 0.7
   },
-  "mottle": {
+  "tone": {
    "color": "#5d6b3e",
+   "opacity": 0.35,
    "noise": {
-    "scale": 0.04,
+    "scale": 0.15,
     "range": [
-     0.5,
-     0.6
-    ]
-   },
-   "opacity": 0.6
+     0.3,
+     0.8
+    ],
+    "seed": 4
+   }
+  },
+  "plate_jitter": {
+   "color": "#4c5a33",
+   "opacity": 0.35,
+   "mask": [
+    {
+     "cells": {
+      "scale": 0.025,
+      "mode": "id",
+      "range": [
+       0.3,
+       1.0
+      ],
+      "seed": 1
+     }
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "from": 0.78,
+      "to": 0.74
+     }
+    }
+   ]
+  },
+  "plate_jitter_head": {
+   "color": "#4c5a33",
+   "opacity": 0.3,
+   "mask": [
+    {
+     "cells": {
+      "scale": 0.011,
+      "mode": "id",
+      "range": [
+       0.3,
+       1.0
+      ],
+      "seed": 1
+     }
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "from": 0.74,
+      "to": 0.78
+     }
+    }
+   ]
   },
   "crease_dirt": {
    "color": "#2e2a1e",
@@ -1602,6 +1659,50 @@
     0.008
    ],
    "opacity": 0.7
+  },
+  "grime": {
+   "color": "#2b261a",
+   "opacity": 0.6,
+   "roughness": 0.85,
+   "part": "*",
+   "mask": [
+    {
+     "ao": [
+      0.5,
+      0.25
+     ],
+     "breakup": {
+      "amount": 0.3,
+      "scale": 0.04
+     }
+    },
+    {
+     "cavity": "concave",
+     "radius": [
+      0.02,
+      0.006
+     ],
+     "blend": "max"
+    }
+   ]
+  },
+  "edge_wear": {
+   "color": "#aab27c",
+   "opacity": 0.7,
+   "mask": [
+    {
+     "cavity": "convex",
+     "radius": [
+      0.05,
+      0.012
+     ],
+     "breakup": {
+      "amount": 0.35,
+      "scale": 0.012,
+      "sharpness": 0.7
+     }
+    }
+   ]
   },
   "stripe.L": {
    "color": "#3b2f25",
@@ -1634,71 +1735,173 @@
    ],
    "within": 0.02
   },
-  "grime": {
-   "color": "#2b261a",
-   "opacity": 0.75,
-   "roughness": 0.85,
+  "scales": {
+   "color": "#3e4a2c",
+   "opacity": 0.45,
+   "height": -0.0015,
    "mask": [
     {
-     "ao": [
-      0.85,
-      0.5
-     ],
-     "breakup": {
-      "amount": 0.3,
-      "scale": 0.04
+     "cells": {
+      "scale": 0.025,
+      "range": [
+       0.12,
+       0.02
+      ]
      }
     },
     {
-     "cavity": "concave",
-     "radius": [
-      0.04,
-      0.01
+     "facing": [
+      0,
+      -0.3,
+      -1
      ],
-     "blend": "max"
+     "range": [
+      0,
+      0.8
+     ],
+     "invert": true,
+     "blend": "multiply",
+     "weight": 0.6
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "from": 0.78,
+      "to": 0.74
+     },
+     "blend": "multiply"
     }
    ]
   },
-  "edge_wear": {
-   "color": "#aab27c",
-   "opacity": 0.7,
+  "scales_head": {
+   "color": "#3e4a2c",
+   "opacity": 0.35,
+   "height": -0.0008,
    "mask": [
     {
-     "cavity": "convex",
-     "radius": [
-      0.05,
-      0.012
-     ],
-     "breakup": {
-      "amount": 0.35,
-      "scale": 0.012,
-      "sharpness": 0.7
+     "cells": {
+      "scale": 0.011,
+      "range": [
+       0.12,
+       0.02
+      ]
      }
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "from": 0.74,
+      "to": 0.78
+     },
+     "blend": "multiply"
+    }
+   ]
+  },
+  "warts": {
+   "height": 0.002,
+   "color": "#6f7a4a",
+   "mask": [
+    {
+     "cells": {
+      "scale": 0.012,
+      "mode": "distance",
+      "range": [
+       0.35,
+       0.1
+      ]
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.04,
+      "range": [
+       0.55,
+       0.7
+      ],
+      "seed": 9
+     },
+     "blend": "multiply"
     }
    ]
   },
   "shorts_grunge": {
    "color": "#3b2c1e",
    "part": "shorts",
-   "opacity": 0.7,
+   "opacity": 0.5,
    "roughness": 0.95,
    "mask": [
     {
      "noise": {
-      "scale": 0.05,
-      "warp": 1.2,
+      "scale": 0.09,
+      "warp": 1.5,
       "range": [
-       0.45,
-       0.75
-      ]
+       0.5,
+       0.8
+      ],
+      "seed": 17
      }
     },
     {
      "ao": [
-      0.9,
-      0.5
+      0.8,
+      0.45
      ],
      "blend": "screen"
+    }
+   ]
+  },
+  "shorts_weave": {
+   "color": "#4a3a28",
+   "part": "shorts",
+   "opacity": 0.25,
+   "height": 0.0004,
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.004,
+      "octaves": 1,
+      "stretch": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "factor": 5
+      },
+      "range": [
+       0.35,
+       0.65
+      ],
+      "seed": 21
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.004,
+      "octaves": 1,
+      "stretch": {
+       "dir": [
+        1,
+        0,
+        0
+       ],
+       "factor": 5
+      },
+      "range": [
+       0.35,
+       0.65
+      ],
+      "seed": 22
+     },
+     "blend": "max"
     }
    ]
   },
@@ -1739,33 +1942,6 @@
     }
    ]
   },
-  "back_scales": {
-   "color": "#3e4a2c",
-   "opacity": 0.5,
-   "mask": [
-    {
-     "cells": {
-      "scale": 0.025,
-      "range": [
-       0.12,
-       0.02
-      ]
-     }
-    },
-    {
-     "facing": [
-      0,
-      0.6,
-      0.8
-     ],
-     "range": [
-      0.2,
-      0.8
-     ]
-    }
-   ],
-   "height": -0.0015
-  },
   "buckle": {
    "color": "#b8a47a",
    "part": "belt",
@@ -1798,45 +1974,6 @@
      },
      "blend": "multiply",
      "weight": 0.4
-    }
-   ]
-  },
-  "warts": {
-   "height": 0.002,
-   "color": "#6f7a4a",
-   "mask": [
-    {
-     "cells": {
-      "scale": 0.012,
-      "mode": "distance",
-      "range": [
-       0.35,
-       0.1
-      ]
-     }
-    },
-    {
-     "noise": {
-      "scale": 0.04,
-      "range": [
-       0.5,
-       0.65
-      ],
-      "seed": 9
-     },
-     "blend": "multiply"
-    },
-    {
-     "facing": [
-      0,
-      0,
-      1
-     ],
-     "range": [
-      -0.2,
-      0.5
-     ],
-     "blend": "multiply"
     }
    ]
   }

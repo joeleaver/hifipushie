@@ -122,7 +122,8 @@ Open ends:
   times). Per-layer mask caching, or evaluating height layers once on a slightly bigger stencil, would help.
 - Painted height in `look` is only vertex-normal tilt at vertex spacing; fine relief is judged in the export.
 - Thickness is ready for subsurface (a thickness map / SSS colour in the GLB) but nothing exports it yet.
-- AO ranges depend on pose (arms near the body read occluded all along): recipes use [0.8, 0.45].
+- AO is broad (whole faces read 0.4-0.7): grime recipes use ao [0.55, 0.3] plus tight cavity. An AO with a
+  shorter reach (a crevice detector) might be worth a parameter.
 
 Validate every exported GLB with the Khronos validator (gives 0 errors today). In the scratchpad:
 `npm init -y && npm i gltf-validator`, then a 3-line `v.mjs`: `import v from 'gltf-validator'`,

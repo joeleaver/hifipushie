@@ -67,10 +67,13 @@ before blending (or, in an entry with no generator, to the mask so far):
 Recipes (on their own layers, usually one colour/roughness each):
   edge wear   {"cavity": "convex", "radius": [0.05, 0.012], "breakup": {"amount": 0.35, "scale": 0.012,
               "sharpness": 0.7}}: pale chipped skin on brows, knuckles, nose; bare metal on armour edges.
-  grime       [{"ao": [0.8, 0.45], "breakup": {"amount": 0.3, "scale": 0.04}},
+  grime       [{"ao": [0.55, 0.3], "breakup": {"amount": 0.3, "scale": 0.04}},
               {"cavity": "concave", "radius": [0.04, 0.01], "blend": "max"}]: dirt in folds and occluded places.
-              How occluded "occluded" is depends on the pose (arms close to the body are dark all along):
-              check the mask with look(paint_layer=...) and tighten the ao range rather than lowering opacity.
+              AO is broad (it reaches ~2% of the model size): a whole face between brow, cheeks and nose, or arms
+              close to the body, read 0.4-0.7. Keep grime to ao < ~0.5 and let tight cavity do the creases;
+              check the mask with look(paint_layer=...) and tighten the range rather than lowering opacity.
+  plate/tone  per-cell tone jitter {"cells": {"scale": s, "mode": "id", "range": [0.3, 1]}} at the scales' own
+              size reads as skin; crisp noise blotches (narrow noise range) read as camouflage.
   dust, moss  [{"facing": [0, 0, 1], "range": [0.3, 0.9], "breakup": 0.4}, {"ao": [0.5, 0.9]}]: on top
               surfaces, not in the sheltered ones.
   cloth grunge [{"noise": {"scale": 0.05, "warp": 1.2, "range": [0.45, 0.75]}}, {"ao": [0.9, 0.5],
