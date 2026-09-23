@@ -19,5 +19,7 @@ Call the hifipushie `guide` tool first and follow it: it is the full playbook. T
 5. **Geometry vs strokes:** separate digits, tusks and horns are geometry (bones, kits, seated joints);
    strokes only push skin in and out.
 6. **Parts** for anything with its own material: eyes, teeth, clothing (solid shells cut to a region).
-7. **When something looks wrong,** isolate it (remove suspects one at a time, curvature view) before
+7. **Paint** (`spec["paint"]` layers) last, broad to fine: base, countershading (`facing`), regions (`near`),
+   markings (`path`), breakup (`noise`, `cavity`). Judge with `shading="flat"`; check look's coverage line.
+8. **When something looks wrong,** isolate it (remove suspects one at a time, curvature view) before
    changing anything; don't stack speculative fixes.

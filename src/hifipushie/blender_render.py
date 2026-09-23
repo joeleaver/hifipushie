@@ -36,6 +36,10 @@ def run(job):
         me.normals_split_custom_set_from_vertices(data["normals"].astype(np.float64))
     colors = data["colors"] if "colors" in data else (data["part_colors"] if "part_colors" in data else None)
     if colors is not None:  # the curvature view, or a clay colour per part
+        colors = colors.astype(np.float64)
+        if "colors" not in data:  # part/paint colours are sRGB, as picked; the attribute is linear
+            rgb = colors[:, :3]
+            colors[:, :3] = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
         attr = me.color_attributes.new("col", "FLOAT_COLOR", "POINT")
         attr.data.foreach_set("color", colors.astype(np.float32).ravel())
     ob = bpy.data.objects.new("creature", me)
@@ -58,7 +62,9 @@ def run(job):
         sh.color_type = "VERTEX"
     if "colors" in data:
         sh.light = "STUDIO"
-    sh.show_cavity = job.get("cavity", True)
+    if job.get("flat"):  # unlit colour, to judge paint
+        sh.light = "FLAT"
+    sh.show_cavity = job.get("cavity", True) and not job.get("flat")
     sh.cavity_type = "BOTH"
     sh.show_object_outline = True
     scene.world = scene.world or bpy.data.worlds.new("w")

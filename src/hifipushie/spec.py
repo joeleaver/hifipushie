@@ -73,10 +73,16 @@ def _numeric(v) -> bool:
     return isinstance(v, list) and all(isinstance(e, (int, float)) or _numeric(e) for e in v)
 
 
+def geometry(spec: dict) -> dict:
+    """The spec without what doesn't shape the surface (paint, plan), so editing those doesn't rebuild or
+    re-seat anything."""
+    return {k: v for k, v in spec.items() if k not in ("paint", "plan")} if "paint" in spec or "plan" in spec else spec
+
+
 def expand_mirror(spec: dict) -> dict:
     """Return a copy of spec with kits and strokes expanded and every ".L" element mirrored to ".R"."""
     from . import kits, strokes
-    spec = strokes.expand(strokes.seat_joints(kits.expand(spec)))
+    spec = strokes.expand(strokes.seat_joints(kits.expand(geometry(spec))))
     out = _tree_copy(spec)
     for kind in KINDS:
         out.setdefault(kind, {})
@@ -192,6 +198,7 @@ def compile_prims(spec: dict) -> list[Prim]:
     raycast the body to seat themselves. Treat the result as read-only."""
     import hashlib
     import json
+    spec = geometry(spec)
     key = hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()
     if key not in _COMPILED:
         if len(_COMPILED) > 32:

@@ -42,6 +42,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   npz carries `part`/`part_names`/`part_colors`, OBJ export writes one object per part). A shell part
   (`spec["parts"][name] = {"shell": base, "offset"}`) is its base part's field pushed out (`sd_shell`),
   intersected (op "intersect") with the union of its layer-0 adds. Solid on purpose: thin sheets alias.
+- `paint.py`: `spec["paint"]` colour layers, evaluated per vertex of the built mesh (`store.painted` writes
+  `mesh_paint.npz`, stamped by mesh mtime + paint/parts hash + `paint.VERSION`), so paint never rebuilds.
+  `spec.geometry` strips paint and plan before expansion/compilation: keep it that way, or every paint edit
+  re-seats strokes and rebuilds. Masks multiply: path (seated with the stroke machinery, `strokes._generate`,
+  as a sum of dabs; faces-the-same-way test stops print-through), near (primitives' own SDFs; kit names expand
+  to `<stem>_*<sfx>`), facing, axis, cavity (field Laplacian), noise (value fBm on rotated lattices).
+  ".L" layers take the max of the mask at the vertex and its mirror. Colours are sRGB everywhere in the spec;
+  `blender_render` converts part/paint colours to linear for the colour attribute. OBJ export writes
+  `v x y z r g b` (Blender reads it). `look(shading="flat")` is unlit colour.
 - Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
   them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,
@@ -94,12 +103,14 @@ server, test by calling `server.*` functions directly (see below) or restart the
 ## Status and roadmap
 Done: skeleton + blobs, kits (face, hand), fit, plan workflow (set_plan/check), strokes (summed dabs; repeat,
 scatter; overlay/raking/curvature views), parts (separate meshes, clothing shells), surface-seated joints,
+paint (vertex-colour layers with path/near/facing/axis/cavity/noise masks, coverage feedback, coloured OBJ),
 the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifipushie`), and a performance
 pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
 
 Next, roughly in priority order:
-1. Painting/texturing: parts give per-part materials; next is colour painted on the surface (vertex colours
-   or a texture), ideally with the same addressing as strokes (paint along a path, fill a region).
+1. Paint follow-ups: vertex colour can't be finer than a voxel, so fine markings need a texture (UVs from
+   the mesh, or bake close-up-resolution colour into one); roughness/material per layer; a paint overlay
+   (like strokes=True) showing each layer's mask in false colour.
 2. Part tools: look at one part alone; check that parts don't cut into each other.
 3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
 4. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the

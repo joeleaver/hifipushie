@@ -37,6 +37,8 @@ def load(name: str) -> dict:
 
 def save(name: str, spec: dict, note: str = "") -> int:
     specmod.compile_prims(spec)  # validate before writing
+    from . import paint
+    paint.validate(spec)
     d = _dir(name)
     (d / "history").mkdir(parents=True, exist_ok=True)
     version = len(list((d / "history").glob("*.json"))) + 1
@@ -74,7 +76,7 @@ def apply_ops(spec: dict, ops: list[dict]) -> dict:
     s = copy.deepcopy(spec)
     for o in ops:
         kind = o.get("kind")
-        if kind is not None and kind not in specmod.KINDS:
+        if kind is not None and kind not in (*specmod.KINDS, "paint", "parts"):
             raise ValueError(f"bad kind {kind!r}")
         match o.get("op"):
             case "set":
@@ -175,7 +177,7 @@ def build(name: str, resolution: int = 160, box=None) -> dict:
                             **{f"{k}_uv": np.array([*v["u"], *v["v"]]) for k, v in sil.items()})
     lo, hi = verts.min(0), verts.max(0)
     meta = {"key": key, "mesh": str(mesh_p), "verts": len(verts), "faces": len(faces),
-            "voxel": voxel, "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2),
+            "voxel": float(voxel), "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2),
             "parts": names, "empty_parts": empty, "rebuilt_parts": redone}
     meta_p.write_text(json.dumps(meta))
     return meta
@@ -225,6 +227,37 @@ def _mesh_part(prims, field, lo, voxel, boxes, st):
     return vp, fc, n, sdf.silhouettes(sdf.Grid(field, lo, voxel))
 
 
+def coverage(painted_mesh: Path) -> dict:
+    """Per paint layer, the fraction of its parts it covers (None: none of its parts in this build)."""
+    with np.load(painted_mesh) as z:
+        return json.loads(str(z["coverage"])) if "coverage" in z else {}
+
+
+def painted(name: str, mesh: Path) -> Path:
+    """The built mesh with the spec's paint in part_colors (sRGB), cached next to it by mesh and paint.
+    Without paint layers, the mesh itself."""
+    from . import paint
+    spec = load(name)
+    if not spec.get("paint"):
+        return mesh
+    out = mesh.with_name(mesh.stem + "_paint.npz")
+    stamp = f"{mesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}"
+    if out.exists():
+        with np.load(out) as z:
+            if "stamp" in z and str(z["stamp"]) == stamp:
+                return out
+    z = dict(np.load(mesh))
+    names = [str(n) for n in z["part_names"]]
+    meta = json.loads((mesh.parent / ("meta.json" if mesh.stem == "mesh" else "closeup_meta.json")).read_text())
+    stats: dict = {}
+    rgb = paint.apply(spec, z["verts"], z["normals"], z["part"], names, z["part_colors"], meta["voxel"], stats)
+    z["part_colors"] = np.concatenate([rgb, np.ones((len(rgb), 1))], 1).astype(np.float32)
+    z["stamp"] = np.array(stamp)
+    z["coverage"] = np.array(json.dumps(stats))
+    np.savez(out, **z)
+    return out
+
+
 def extent(name: str) -> np.ndarray:
     """The model's bounding box from its primitives, without building: [lo, hi]."""
     adds = [p for p in specmod.compile_prims(load(name)) if p.op == "add"]
@@ -238,13 +271,15 @@ def silhouette(name: str, view: str) -> dict:
 
 
 def export_obj(name: str, path: Path) -> Path:
-    z = np.load(_dir(name) / "build" / "mesh.npz")
+    """OBJ with one object per part and vertex colours (paint, or each part's clay colour) as "v x y z r g b",
+    which Blender's importer reads into a colour attribute."""
+    z = np.load(painted(name, _dir(name) / "build" / "mesh.npz"))
     faces = z["faces"]
     part = z["part"][faces[:, 0]] if "part" in z else np.zeros(len(faces), int)
     names = [str(n) for n in z["part_names"]] if "part_names" in z else [name]
     with open(path, "w") as f:
         f.write(f"# hifipushie {name}: one object per part ({', '.join(names)})\n")
-        np.savetxt(f, z["verts"], fmt="v %.5f %.5f %.5f")
+        np.savetxt(f, np.concatenate([z["verts"], z["part_colors"][:, :3]], 1), fmt="v %.5f %.5f %.5f %.4f %.4f %.4f")
         np.savetxt(f, z["normals"], fmt="vn %.4f %.4f %.4f")
         for i, pn in enumerate(names):
             f.write(f"o {name}_{pn}\n")

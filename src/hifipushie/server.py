@@ -15,6 +15,7 @@ from PIL import Image as PILImage
 from . import compare as cmp
 from . import fit as fitmod
 from . import measure as meas
+from . import paint as paintmod
 from . import plan as planmod
 from . import render, store
 from .spec import empty_spec, summarize
@@ -41,6 +42,10 @@ Spec:
           (a tusk rooted on the lip, a horn on the skull), following it when the model changes.
   strokes: {name: {"op": "clay" | "crease" | "flatten", "path": [surface points], "width", "depth", ...}}
           sculpting on the surface itself (see below)
+  paint:   {name: {"color": [r,g,b] | "#rrggbb", "opacity"?, "part"?, masks...}} colour layers applied in order
+          over each part's clay colour; masks (multiplied): path (surface addresses, like strokes), near
+          (elements or a kit), facing (normal direction), axis (world or along a bone), cavity, noise.
+          Paint never changes geometry, so repainting is quick (see below).
   top level: "blend" (default smooth-union radius, ~0.02-0.05 for a 1m creature), "symmetry".
 Combination order: by layer, adds before subtracts within a layer. Use layer 1 for things that must sit
 on top of carved areas (eyeballs in sockets). Bones/blobs sharing a "group" (e.g. the segments of a tail
@@ -61,6 +66,11 @@ its edge is). clay = muscle masses, fat pads, ridges; crease = folds, wrinkles, 
 "repeat" lays out a set (wrinkles, ribs) from one entry. They follow the surface and move with the bones.
 Keep them broad and shallow relative to the part (a few mm on a 3 cm arm); widths under ~2 voxels alias.
 kit_reference documents them fully.
+Paint colours the finished surface (vertex colours, exported in the OBJ): base colour, countershading
+(facing), markings along surface paths (with repeat/scatter for stripes and spots), regions around elements
+(near: "hand.L", "face_eye.L"), dirt in creases (cavity), mottling (noise). ".L" layers mirror. Judge it with
+look(shading="flat") (unlit colour) and the clay view; look reports each layer's coverage, so a layer that
+paints NOTHING is misaddressed. kit_reference documents it fully.
 Close-ups (look with focus + zoom) rebuild just that region at full resolution: use them to judge
 faces and hands.
 
@@ -74,6 +84,7 @@ Workflow, in stages; after each, run check (and look) and fix before moving on. 
   3. Secondary forms: strokes for muscle masses, fat pads and planes; judge with look shading="raking" /
      "curvature" and strokes=True; check again (strokes shouldn't break the silhouette).
   4. Detail: creases, wrinkles, repeats and scatters, in close-ups.
+  5. Paint: base colours per part, then broad zones (countershading, limbs), then markings, then dirt/mottling.
 Without a plan: put_model -> look -> edit_model in small batches -> look ...
 If you have reference art, set_reference per view then compare. Once the body plan is right, fit
 auto-adjusts joints, radii and blobs to the reference outlines; use compare's band tables for what fit can't
@@ -148,9 +159,10 @@ def get_model(name: str) -> str:
 
 @mcp.tool(structured_output=False)
 def kit_reference() -> str:
-    """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten) and plans."""
+    """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten), paint and plans."""
     from . import kits, strokes
-    return kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPLANS\n" + planmod.__doc__
+    return (kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
+            + "\n\nPLANS\n" + planmod.__doc__)
 
 
 @mcp.tool(structured_output=False)
@@ -164,7 +176,7 @@ def put_model(name: str, spec: dict, note: str = "") -> str:
 @mcp.tool(structured_output=False)
 def edit_model(name: str, ops: list[dict], note: str = "") -> str:
     """Apply a batch of edits atomically. Ops:
-    {"op":"set","kind":"joints|bones|blobs|kits|strokes","name":n,"value":{...}}  merge fields, creates if new; a null field removes it
+    {"op":"set","kind":"joints|bones|blobs|kits|strokes|paint|parts","name":n,"value":{...}}  merge fields, creates if new; a null field removes it
     {"op":"delete","kind":...,"name":n}
     {"op":"rename","kind":...,"name":n,"to":m}  joint/bone renames update references
     {"op":"move","joints":[names],"delta":[dx,dy,dz]}   shift a group of joints (e.g. a whole leg)
@@ -179,7 +191,8 @@ def edit_model(name: str, ops: list[dict], note: str = "") -> str:
 @mcp.tool(structured_output=False)
 def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool = False,
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
-         matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", save: str | None = None):
+         matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", paint: bool = True,
+         save: str | None = None):
     """Build the mesh and return a clay contact sheet.
     views: any of front, side, top, three_quarter (default set), back, left, three_quarter_back, below.
     All panels share one scale; front/side/top get rulers in world units (grid=True adds grid lines).
@@ -190,7 +203,8 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     green flatten, named at their start; hidden parts left out): check placement before judging form.
     shading: "clay" (soft studio matcap), "raking" (one low light from the left: shows shallow forms, planes
     and dents the clay hides), "curvature" (warm = convex, cool = concave, grey = flat, stronger = tighter:
-    an evenly tinted area is blobby; crisp forms show as bright lines).
+    an evenly tinted area is blobby; crisp forms show as bright lines), "flat" (unlit colour: judge paint).
+    paint: show the spec's paint layers (default); False shows plain clay per part.
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     if focus is not None and zoom > 1:
         full_bounds = store.extent(name)  # sets the view scale, as in a full look
@@ -207,9 +221,16 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         matcap = str(render.raking_matcap(store.HOME / "raking_matcap.png"))
     elif shading == "curvature":
         mesh = _curvature_mesh(name, mesh, meta["voxel"], full_bounds)
-    elif shading != "clay":
-        raise ValueError('shading must be "clay", "raking" or "curvature"')
-    imgs = render.render_views(mesh, frames, size, matcap)
+    elif shading not in ("clay", "flat"):
+        raise ValueError('shading must be "clay", "raking", "curvature" or "flat"')
+    painted = ""
+    if shading != "curvature" and paint:
+        mesh = store.painted(name, mesh)
+        cov = store.coverage(mesh)
+        if cov:
+            painted = " | paint coverage: " + ", ".join(
+                f"{k} {'-' if v is None else ('NOTHING' if v == 0 else f'{v:.1%}')}" for k, v in cov.items())
+    imgs = render.render_views(mesh, frames, size, matcap, flat=shading == "flat")
     if strokes:
         paths = _stroke_paths(store.load(name), frames, Path(meta["mesh"]), meta["voxel"], size)
         imgs = [render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
@@ -218,7 +239,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     dims = [round(h - l, 3) for l, h in zip(lo, hi)]
     info = (f"{name}: {meta['verts']} verts, voxel {meta['voxel']:.4f}, built in {meta['seconds']}s | "
             f"size X{dims[0]} Y{dims[1]} Z{dims[2]}")
-    return [_out(sheet, save), info + (f" | saved {save}" if save else "")]
+    return [_out(sheet, save), info + painted + (f" | saved {save}" if save else "")]
 
 
 def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
@@ -233,13 +254,10 @@ def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
     streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(store.load(name)))}
     names = [str(n) for n in z.get("part_names", ["body"])]
     part = z["part"] if "part" in z else np.zeros(len(z["verts"]), int)
-    h = 0.75 * voxel
-    stencil = np.array([[0, 0, 0], [h, 0, 0], [-h, 0, 0], [0, h, 0], [0, -h, 0], [0, 0, h], [0, 0, -h]])
     lap = np.zeros(len(z["verts"]))
     for i, pn in enumerate(names):
         sel = np.flatnonzero(part == i)
-        f = sdf.field_at(streams[pn], z["verts"][sel].astype(np.float64)[:, None, :] + stencil[None])
-        lap[sel] = (f[:, 1:].sum(1) - 6 * f[:, 0]) / (h * h)
+        lap[sel] = paintmod.laplacian(streams[pn], z["verts"][sel].astype(np.float64), voxel)
     size = float(np.max(np.asarray(bounds[1]) - np.asarray(bounds[0])))
     z["colors"] = render.curvature_colours(lap, size, voxel)
     np.savez(out, **z)

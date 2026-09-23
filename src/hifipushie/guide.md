@@ -28,6 +28,7 @@ you're in.
    shouldn't move the silhouette much.
 4. **Detail** (strokes with repeat/scatter, in close-ups): wrinkles, creases, warts, pores.
 5. **Parts** (clothing, eyes, teeth) can come in at 2-4; they're separate meshes.
+6. **Paint** last (section 5): it doesn't change the shape, so it can't break earlier stages.
 
 Going back is fine and cheap (history/revert). Expect the plan-vs-model IoU to drop a little as kits and
 details add things the plan never drew (nose, ears, fingers).
@@ -83,7 +84,29 @@ addressed on the surface. Rules that matter:
   "lift": -0.003, "r": 0.0065}` for a tusk's root, and the same address with `"shift": [dx,dy,dz]` for its
   tip. They follow the surface when the face or body changes.
 
-## 5. When something looks wrong
+## 5. Paint
+
+Paint is vertex colour laid on the finished surface: `spec["paint"]` layers, applied in order over each
+part's clay colour (`parts[p].color`). It never touches geometry, so a paint edit re-renders in a few seconds.
+Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
+
+- **Work like a painter, broad to fine:** a base colour per part (a layer with no mask), then big zones
+  (`facing` for countershading: dark back `[0, 0.6, 0.8]`, pale belly `[0, -0.3, -1]`), then regions
+  (`near` elements or a kit name: `"hand.L"`, `"face_eye.L"`, with `within` ~ the blend radius), then
+  markings (`path`, addressed exactly like strokes; `repeat`/`scatter` for stripes and spots), then
+  breakup (`noise` for mottling, `cavity: "concave"` for dirt in creases) at partial opacity.
+- **Masks multiply**, so confine a broad mask with a local one: an `axis` along a bone ramps across the
+  whole part (the feet lie past a forearm's end too), so a glove is `near: ["forearm.L", "hand.L"]` plus
+  the axis ramp.
+- **Check coverage** in `look`'s info line: a layer covering NOTHING is misaddressed; one covering far more
+  than you meant has a mask too loose (`within`, `range`).
+- Judge with `shading="flat"` (unlit colour: exactly what you painted) and the clay view (how it reads with
+  form). Paint can't be finer than the mesh: ~1 voxel full-body, finer in close-ups; markings a few mm wide
+  need a close-up to judge.
+- Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
+  also paints the eyeball if the eyeball is in the body part.
+
+## 6. When something looks wrong
 
 - Don't guess and pile on fixes. Isolate: render the region with `shading="curvature"`, and remove
   suspects one at a time (strokes are easy to delete and restore via history) until the defect goes.
@@ -93,7 +116,7 @@ addressed on the surface. Rules that matter:
   gap). Widen it or look closer.
 - A "hollow" or flat grey cap at the edge of a close-up is the close-up box cut.
 
-## 6. Resolution and time
+## 7. Resolution and time
 
 - `look` at 160-200 while blocking out, 256-300 for full-body judgement, close-ups at 200-240.
 - Builds with many strokes take tens of seconds for close-ups; batch several edits per `edit_model`

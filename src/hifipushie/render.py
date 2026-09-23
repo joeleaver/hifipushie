@@ -105,13 +105,14 @@ class _Blender:
 _BLENDER = _Blender()
 
 
-def render_views(mesh_npz: Path, frames: list[dict], size: int, matcap: str, cavity: bool = True) -> list[Image.Image]:
+def render_views(mesh_npz: Path, frames: list[dict], size: int, matcap: str, cavity: bool = True,
+                 flat: bool = False) -> list[Image.Image]:
     with tempfile.TemporaryDirectory(prefix="hifipushie-") as tmp:
         for f in frames:
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         job = Path(tmp) / "job.json"
         job.write_text(json.dumps({"mesh": str(mesh_npz), "size": size, "matcap": matcap, "cavity": cavity,
-                                   "views": frames}))
+                                   "flat": flat, "views": frames}))
         try:
             _BLENDER.render(job)
         except (RuntimeError, OSError):  # fall back to a one-off Blender, which reports its own errors

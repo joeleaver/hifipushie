@@ -1552,5 +1552,87 @@
     0.17
    ]
   }
+ },
+ "paint": {
+  "skin": {
+   "color": "#7a8a58"
+  },
+  "back_dark": {
+   "color": "#4f5a38",
+   "facing": [
+    0,
+    0.6,
+    0.8
+   ],
+   "range": [
+    -0.1,
+    0.8
+   ],
+   "opacity": 0.8
+  },
+  "belly_light": {
+   "color": "#b3a979",
+   "facing": [
+    0,
+    -0.3,
+    -1
+   ],
+   "range": [
+    0,
+    0.8
+   ],
+   "opacity": 0.7
+  },
+  "mottle": {
+   "color": "#5d6b3e",
+   "noise": {
+    "scale": 0.04,
+    "range": [
+     0.5,
+     0.6
+    ]
+   },
+   "opacity": 0.6
+  },
+  "crease_dirt": {
+   "color": "#2e2a1e",
+   "cavity": "concave",
+   "radius": [
+    0.04,
+    0.008
+   ],
+   "opacity": 0.7
+  },
+  "stripe.L": {
+   "color": "#3b2f25",
+   "path": [
+    {
+     "bone": "upperarm.L",
+     "t": 0.2,
+     "side": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "t": 0.8
+    }
+   ],
+   "width": 0.012
+  },
+  "hands.L": {
+   "color": "#6b5040",
+   "axis": {
+    "bone": "forearm.L",
+    "from": 0.7,
+    "to": 1.0
+   },
+   "near": [
+    "forearm.L",
+    "hand.L"
+   ],
+   "within": 0.02
+  }
  }
 }
