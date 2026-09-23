@@ -105,11 +105,31 @@ class _Out:
         self._put("blobs", self.blobs, name, kw)
 
 
+_CACHE: dict[str, dict] = {}
+
+
 def expand(spec: dict) -> dict:
-    """Return a copy of spec with every kit replaced by the elements it generates."""
+    """Return a copy of spec with every kit replaced by the elements it generates (cached by content,
+    ignoring strokes, which kits never see: the face kit's raycasts cost more than everything else here)."""
     kits = spec.get("kits") or {}
     if not kits:
         return spec
+    import hashlib
+    import json
+    bare = {k: v for k, v in spec.items() if k != "strokes"}
+    key = hashlib.sha1(json.dumps(bare, sort_keys=True, default=float).encode()).hexdigest()
+    if key not in _CACHE:
+        if len(_CACHE) > 32:
+            _CACHE.pop(next(iter(_CACHE)))
+        _CACHE[key] = _expand(bare)
+    out = copy.deepcopy(_CACHE[key])
+    if "strokes" in spec:
+        out["strokes"] = copy.deepcopy(spec["strokes"])
+    return out
+
+
+def _expand(spec: dict) -> dict:
+    kits = spec["kits"]
     out = copy.deepcopy(spec)
     out.pop("kits")
     # the body without kits (nor strokes and surface-seated joints, which come later and may be anchored on

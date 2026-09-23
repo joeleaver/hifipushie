@@ -15,7 +15,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 8  # bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 9  # bump when meshing changes, so cached builds are redone
 
 
 def _dir(name: str) -> Path:
@@ -137,37 +137,46 @@ def build(name: str, resolution: int = 160, box=None) -> dict:
     prims = specmod.compile_prims(spec)
     lo, voxel, shape = sdf.frame(prims, resolution, box=box)
     defs = spec.get("parts") or {}
-    V, F, N, P, C, fields, names, empty = [], [], [], [], [], [], [], []
-    for i, ps in enumerate(sdf.streams(prims)):  # each part meshed on its own, on one shared grid
-        name = ps[0].part
-        f = sdf.evaluate(ps, at=(lo, voxel, shape)).field
-        fields.append(f)
-        try:
-            v, fc = sdf.mesh(sdf.Grid(f, lo, voxel))
-        except ValueError:
-            empty.append(name)  # nothing of it inside this grid (or its region misses the base)
+    live = _LIVE.setdefault((name, "full" if box is None else "closeup"), {})
+    V, F, N, P, C, sils, names, empty, redone = [], [], [], [], [], [], [], [], []
+    changed: dict[str, list] = {}
+    for ps in sdf.streams(prims):  # each part meshed on its own, on one shared grid
+        pname = ps[0].part
+        st = live.setdefault(pname, {"grid": sdf.PartGrid(), "mesh": None})
+        base = (defs.get(pname) or {}).get("shell")
+        grow = float((defs.get(pname) or {}).get("offset", 0.006)) + 2 * voxel
+        extra = [(a - grow, b + grow) for a, b in changed.get(base, [])]  # where its base part changed
+        f, boxes = st["grid"].update(ps, (lo, voxel, shape), extra)
+        changed[pname] = boxes
+        if boxes or st["mesh"] is None:
+            st["mesh"] = _mesh_part(ps, f, lo, voxel, boxes, st)
+            redone.append(pname)
+        if st["mesh"] is False:
+            empty.append(pname)  # nothing of it inside this grid (or its region misses the base)
             continue
-        v, n = sdf.project(ps, v, fc, voxel)
+        v, fc, n, sil = st["mesh"]
+        sils.append(sil)
         F.append(fc + sum(len(x) for x in V))
         V.append(v)
         N.append(n)
         P.append(np.full(len(v), len(names), np.int16))
-        C.append(np.tile(part_colour(name, defs, len(names)), (len(v), 1)))
-        names.append(name)
+        C.append(np.tile(part_colour(pname, defs, len(names)), (len(v), 1)))
+        names.append(pname)
+    for gone in set(live) - {ps[0].part for ps in sdf.streams(prims)}:
+        live.pop(gone)
     if not V:
         raise ValueError("field has no interior: the shape is empty")
     verts, faces, normals = np.concatenate(V), np.concatenate(F), np.concatenate(N)
     np.savez(mesh_p, verts=verts, faces=faces, normals=normals, part=np.concatenate(P),
              part_names=np.array(names), part_colors=np.concatenate(C))
-    grid = sdf.Grid(np.minimum.reduce(fields), lo, voxel)
     if box is None:
-        sil = sdf.silhouettes(grid)
+        sil = {k: {**sils[0][k], "mask": np.logical_or.reduce([x[k]["mask"] for x in sils])} for k in sils[0]}
         np.savez_compressed(sil_p, **{f"{k}_mask": v["mask"] for k, v in sil.items()},
                             **{f"{k}_uv": np.array([*v["u"], *v["v"]]) for k, v in sil.items()})
     lo, hi = verts.min(0), verts.max(0)
     meta = {"key": key, "mesh": str(mesh_p), "verts": len(verts), "faces": len(faces),
-            "voxel": grid.voxel, "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2),
-            "parts": names, "empty_parts": empty}
+            "voxel": voxel, "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2),
+            "parts": names, "empty_parts": empty, "rebuilt_parts": redone}
     meta_p.write_text(json.dumps(meta))
     return meta
 
@@ -180,6 +189,40 @@ def part_colour(name: str, defs: dict, index: int) -> np.ndarray:
     """RGBA for a part's clay: its "color" from spec["parts"], else a palette entry (the body stays neutral)."""
     rgb = (defs.get(name) or {}).get("color") or PALETTE[index % len(PALETTE)]
     return np.array([*rgb[:3], 1.0], np.float32)
+
+
+# Per model: each part's grid and mesh from the last build, so the next build redoes only what changed.
+# Lives as long as the process (the MCP server); a fresh process just builds everything once.
+_LIVE: dict[tuple, dict] = {}
+
+
+def _mesh_part(prims, field, lo, voxel, boxes, st):
+    """Mesh one part and project it onto the exact surface, reusing the projection of every vertex that sits
+    where it sat last build (same smoothed position) outside the regions that changed."""
+    try:
+        v, fc = sdf.mesh(sdf.Grid(field, lo, voxel))
+    except ValueError:
+        st["proj"] = None
+        return False
+    keys = np.round(v.astype(np.float64) / (voxel * 1e-4)).astype(np.int64)
+    reuse = None
+    old = st.get("proj")
+    if old is not None:
+        okeys, ov, og = old
+        kv = keys.view([("x", np.int64), ("y", np.int64), ("z", np.int64)]).ravel()
+        ok_ = okeys.view([("x", np.int64), ("y", np.int64), ("z", np.int64)]).ravel()
+        order = np.argsort(ok_)
+        pos = np.clip(np.searchsorted(ok_[order], kv), 0, len(ok_) - 1)
+        match = ok_[order][pos] == kv
+        near = np.zeros(len(v), bool)
+        for a, b in boxes:
+            near |= np.all((v >= a - voxel) & (v <= b + voxel), axis=1)
+        mask = match & ~near
+        src = order[pos[mask]]
+        reuse = (mask, ov[src], og[src])
+    vp, n, (rv, rg) = sdf.project(prims, v, fc, voxel, reuse=reuse, keep=True)
+    st["proj"] = (keys, rv, rg)
+    return vp, fc, n, sdf.silhouettes(sdf.Grid(field, lo, voxel))
 
 
 def extent(name: str) -> np.ndarray:

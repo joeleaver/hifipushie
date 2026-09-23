@@ -80,12 +80,7 @@ def expand(spec: dict) -> dict:
         return spec
     out = copy.deepcopy(spec)
     out.pop("strokes")
-    key = hashlib.sha1(json.dumps([out, strokes], sort_keys=True, default=float).encode()).hexdigest()
-    if key not in _CACHE:
-        if len(_CACHE) > 64:
-            _CACHE.clear()
-        _CACHE[key] = _generate(out, strokes)
-    for kind, items in _CACHE[key].items():
+    for kind, items in _generate(out, strokes).items():
         have = out.setdefault(kind, {})
         for n, v in items.items():
             if n in have:
@@ -115,7 +110,8 @@ def seat_joints(spec: dict) -> dict:
     if not on:
         return spec
     out = copy.deepcopy(spec)
-    key = "joints:" + hashlib.sha1(json.dumps(out, sort_keys=True, default=float).encode()).hexdigest()
+    key = "joints:" + hashlib.sha1(json.dumps({k: v for k, v in out.items() if k != "strokes"},
+                                              sort_keys=True, default=float).encode()).hexdigest()
     if key not in _CACHE:
         base = without_seated(out)
         from .spec import compile_prims
@@ -293,31 +289,46 @@ def _smooth_along(S: np.ndarray, V: np.ndarray, sigma: np.ndarray, unit: bool = 
 
 
 def _generate(base: dict, strokes: dict) -> dict:
+    """What every stroke generates. Cached per stroke (keyed on the model it's laid on and the stroke
+    itself), so editing one stroke re-seats only that one, and the surface is only built if anything missed."""
     from .spec import compile_prims
-    prims = compile_prims(base)
+    base_key = hashlib.sha1(json.dumps(base, sort_keys=True, default=float).encode()).hexdigest()
+    prims = None
     surfs: dict[str, Surface] = {}
     gen = {"blobs": {}}
     for name, st in strokes.items():
-        part = st.get("part") or "body"
-        if part not in surfs:
-            surfs[part] = Surface(base, part, prims)
-        surf = surfs[part]
-        op = st.get("op", "clay")
-        if op not in OPS:
-            raise SpecError(f"stroke {name!r}: unknown op {op!r} (have {', '.join(OPS)})")
-        stem, sfx = (name[:-2], ".L") if name.endswith(".L") else (name, "")
-        pts = _points(name, st)
-        if st.get("scatter"):
-            _scatter(surf, gen, name, op, st, pts, stem, sfx)
-            continue
-        rep = st.get("repeat") or {}
-        count = int(rep.get("count", 1))
-        for i in range(count):
-            scale = float(rep.get("scale", 1.0)) ** i
-            prefix = f"{stem}_r{i}" if count > 1 else stem
-            _one(surf, gen, f"{name} copy {i}" if count > 1 else name, op, st,
-                 _shift(pts, rep.get("shift", {}), i), scale, prefix, sfx, None)
+        key = base_key + hashlib.sha1(json.dumps([name, st], sort_keys=True, default=float).encode()).hexdigest()
+        if key not in _CACHE:
+            if prims is None:
+                prims = compile_prims(base)
+            part = st.get("part") or "body"
+            if part not in surfs:
+                surfs[part] = Surface(base, part, prims)
+            one = {"blobs": {}}
+            _generate_one(surfs[part], one, name, st)
+            if len(_CACHE) > 4000:
+                _CACHE.clear()
+            _CACHE[key] = one
+        gen["blobs"].update(_CACHE[key]["blobs"])
     return gen
+
+
+def _generate_one(surf: "Surface", gen: dict, name: str, st: dict):
+    op = st.get("op", "clay")
+    if op not in OPS:
+        raise SpecError(f"stroke {name!r}: unknown op {op!r} (have {', '.join(OPS)})")
+    stem, sfx = (name[:-2], ".L") if name.endswith(".L") else (name, "")
+    pts = _points(name, st)
+    if st.get("scatter"):
+        _scatter(surf, gen, name, op, st, pts, stem, sfx)
+        return
+    rep = st.get("repeat") or {}
+    count = int(rep.get("count", 1))
+    for i in range(count):
+        scale = float(rep.get("scale", 1.0)) ** i
+        prefix = f"{stem}_r{i}" if count > 1 else stem
+        _one(surf, gen, f"{name} copy {i}" if count > 1 else name, op, st,
+             _shift(pts, rep.get("shift", {}), i), scale, prefix, sfx, None)
 
 
 def _scatter(surf: Surface, gen: dict, name: str, op: str, st: dict, pts: list[dict], stem: str, sfx: str):

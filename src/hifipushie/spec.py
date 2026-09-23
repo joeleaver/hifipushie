@@ -59,11 +59,25 @@ def _mirror_rot(r):
     return [r[0], -r[1], -r[2]]
 
 
+def _tree_copy(x):
+    """Copy the dict/list structure but share leaf lists of numbers (points, sizes, paths): nothing downstream
+    mutates those in place, and deep-copying a model with dozens of expanded strokes dominated compile time."""
+    if isinstance(x, dict):
+        return {k: _tree_copy(v) for k, v in x.items()}
+    if isinstance(x, list) and any(isinstance(v, (dict, list)) and not _numeric(v) for v in x):
+        return [_tree_copy(v) for v in x]
+    return x
+
+
+def _numeric(v) -> bool:
+    return isinstance(v, list) and all(isinstance(e, (int, float)) or _numeric(e) for e in v)
+
+
 def expand_mirror(spec: dict) -> dict:
     """Return a copy of spec with kits and strokes expanded and every ".L" element mirrored to ".R"."""
     from . import kits, strokes
     spec = strokes.expand(strokes.seat_joints(kits.expand(spec)))
-    out = copy.deepcopy(spec)
+    out = _tree_copy(spec)
     for kind in KINDS:
         out.setdefault(kind, {})
     if not spec.get("symmetry", True):
@@ -71,12 +85,12 @@ def expand_mirror(spec: dict) -> dict:
 
     for name, j in spec.get("joints", {}).items():
         if (m := mirror_name(name)) and m not in spec["joints"]:
-            out["joints"][m] = {**copy.deepcopy(j), "pos": _mirror_vec(j["pos"])}
+            out["joints"][m] = {**_tree_copy(j), "pos": _mirror_vec(j["pos"])}
 
     for name, b in spec.get("bones", {}).items():
         m = mirror_name(name)
         if m and m not in spec["bones"]:
-            out["bones"][m] = {**copy.deepcopy(b), "a": _mname(b["a"]), "b": _mname(b["b"])}
+            out["bones"][m] = {**_tree_copy(b), "a": _mname(b["a"]), "b": _mname(b["b"])}
             if b.get("up"):
                 out["bones"][m]["up"] = _mirror_vec(b["up"])
             if b.get("group"):
@@ -86,7 +100,7 @@ def expand_mirror(spec: dict) -> dict:
         m = mirror_name(name)
         if not m or m in spec["blobs"]:
             continue
-        nb = copy.deepcopy(bl)
+        nb = _tree_copy(bl)
         at = bl.get("at")
         if isinstance(at, str):
             nb["at"] = _mname(at)
@@ -169,8 +183,24 @@ def resolve_point(spec: dict, at) -> np.ndarray:
     return np.array(at, float)
 
 
+_COMPILED: dict[str, list] = {}
+
+
 def compile_prims(spec: dict) -> list[Prim]:
-    """Mirror, resolve and turn a spec into an ordered list of SDF primitives."""
+    """Mirror, resolve and turn a spec into an ordered list of SDF primitives. Cached by content: one edit
+    and look compiles the same spec several times (validate, summarise, bounds, build), and kits and strokes
+    raycast the body to seat themselves. Treat the result as read-only."""
+    import hashlib
+    import json
+    key = hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()
+    if key not in _COMPILED:
+        if len(_COMPILED) > 32:
+            _COMPILED.pop(next(iter(_COMPILED)))
+        _COMPILED[key] = _compile(spec)
+    return _COMPILED[key]
+
+
+def _compile(spec: dict) -> list[Prim]:
     s = expand_mirror(spec)
     k_default = float(s.get("blend", 0.03))
     prims: list[Prim] = []
@@ -289,6 +319,31 @@ def _lids(name: str, bl: dict, c: np.ndarray, rot: np.ndarray, k: float) -> Prim
     return Prim(name, "lids", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ro, c + ro, params, reach=1.0)
 
 
+_NORMS: dict[str, float] = {}
+_TREES: dict[bytes, object] = {}
+
+
+def _profile_norm(prof: str) -> float:
+    """A dab's integral along a straight trail (per unit width), which normalises a stroke to its depth."""
+    if prof not in _NORMS:
+        from .sdf import PROFILES
+        v = np.linspace(-1, 1, 2001)
+        _NORMS[prof] = float(np.trapezoid(PROFILES[prof][0](np.abs(v)), v))
+    return _NORMS[prof]
+
+
+def _tree(P: np.ndarray):
+    """KD-tree over a stroke's samples, reused while the stroke doesn't move."""
+    import hashlib
+    from scipy.spatial import cKDTree
+    key = hashlib.sha1(np.ascontiguousarray(P).tobytes()).digest()
+    if key not in _TREES:
+        if len(_TREES) > 2000:
+            _TREES.clear()
+        _TREES[key] = cKDTree(P)
+    return _TREES[key]
+
+
 def _modifier(name: str, bl: dict, c: np.ndarray) -> Prim:
     """Stroke output: {"shape": "displace", "pts", "nrm", "width", "depth" (per point), "profile"} or
     {"shape": "flatten", "pts": 1-2 plane points, "nrm": [normal], "width", "soft", "height", "blend"}.
@@ -310,13 +365,18 @@ def _modifier(name: str, bl: dict, c: np.ndarray) -> Prim:
         from .sdf import PROFILES
         if prof not in PROFILES:
             raise SpecError(f"stroke {name!r}: unknown profile {prof!r} (have {', '.join(PROFILES)})")
-        reach = float(max(W.max(), 2 * np.abs(D).max()))
+        # full strength within `reach` of the path along the normal, fading to nothing at twice that: enough to
+        # cover the displaced surface (|depth| away) with a gentle fade, without reaching through thin parts
+        reach = float(max(2 * np.abs(D).max(), 0.25 * W.max(), 1e-3))
         seg = np.linalg.norm(np.diff(P, axis=0), axis=1) if len(P) > 1 else np.zeros(0)
         ds = np.concatenate([seg, [0.0]]) / 2 + np.concatenate([[0.0], seg]) / 2  # arc length per sample
-        v = np.linspace(-1, 1, 2001)
-        norm = float(np.trapezoid(PROFILES[prof][0](np.abs(v)), v))  # a dab's integral along a straight trail
+        norm = _profile_norm(prof)
+        radius = float(np.hypot(W.max(), 2 * reach))  # a dab can reach a point this far away, at most
+        step = float(ds[ds > 0].min()) if (ds > 0).any() else 1.0
         params = {"pts": P, "nrm": N / np.linalg.norm(N, axis=1, keepdims=True), "width": W, "depth": D,
-                  "profile": prof, "reach": reach, "ds": ds, "norm": norm}
+                  "profile": prof, "reach": reach, "ds": ds, "norm": norm,
+                  "radius": radius, "k": int(min(len(P), 2 * radius / step + 4))}
+        params["tree"] = _tree(P)
         R = float(max(W.max(), 2 * reach))
         lo, hi = P.min(0) - R, P.max(0) + R
         lip = 1.0 + float((np.abs(D) / W).max()) * PROFILES[prof][1] + float(np.abs(D).max()) * 1.5 / reach

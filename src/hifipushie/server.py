@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -210,7 +211,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         raise ValueError('shading must be "clay", "raking" or "curvature"')
     imgs = render.render_views(mesh, frames, size, matcap)
     if strokes:
-        paths = _stroke_paths(store.load(name), frames)
+        paths = _stroke_paths(store.load(name), frames, Path(meta["mesh"]), meta["voxel"], size)
         imgs = [render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
     sheet = render.contact_sheet(imgs, frames, grid)
     lo, hi = full_bounds
@@ -221,29 +222,33 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
 
 
 def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
-    """The built mesh plus per-vertex curvature colours (Laplacian of the exact field)."""
+    """The built mesh plus per-vertex curvature colours (Laplacian of the exact field, each part's vertices
+    against that part alone, all 7 samples in one evaluation). Cached next to the mesh until it's rebuilt."""
     from . import sdf
     from .spec import compile_prims
+    out = mesh.with_name(mesh.stem + "_curv.npz")
+    if out.exists() and out.stat().st_mtime >= mesh.stat().st_mtime:
+        return out
     z = dict(np.load(mesh))
-    prims = compile_prims(store.load(name))
-    v = z["verts"].astype(np.float64)
+    streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(store.load(name)))}
+    names = [str(n) for n in z.get("part_names", ["body"])]
+    part = z["part"] if "part" in z else np.zeros(len(z["verts"]), int)
     h = 0.75 * voxel
-    lap = -6 * sdf.field_at(prims, v)
-    for k in range(3):
-        e = np.zeros(3)
-        e[k] = h
-        lap += sdf.field_at(prims, v + e) + sdf.field_at(prims, v - e)
-    lap /= h * h
+    stencil = np.array([[0, 0, 0], [h, 0, 0], [-h, 0, 0], [0, h, 0], [0, -h, 0], [0, 0, h], [0, 0, -h]])
+    lap = np.zeros(len(z["verts"]))
+    for i, pn in enumerate(names):
+        sel = np.flatnonzero(part == i)
+        f = sdf.field_at(streams[pn], z["verts"][sel].astype(np.float64)[:, None, :] + stencil[None])
+        lap[sel] = (f[:, 1:].sum(1) - 6 * f[:, 0]) / (h * h)
     size = float(np.max(np.asarray(bounds[1]) - np.asarray(bounds[0])))
     z["colors"] = render.curvature_colours(lap, size, voxel)
-    out = mesh.with_name(mesh.stem + "_curv.npz")
     np.savez(out, **z)
     return out
 
 
-def _stroke_paths(spec: dict, frames: list[dict]) -> list[dict]:
-    """Every stroke's seated path (mirrored ones too), with per-view visibility: a point counts as hidden
-    when the ray from just off the finished surface toward the camera enters the body."""
+def _stroke_paths(spec: dict, frames: list[dict], mesh=None, voxel: float = 0.0, size: int = 448) -> list[dict]:
+    """Every stroke's seated path (mirrored ones too), with per-view visibility: a point is hidden when the
+    built mesh is nearer the camera there (by more than the stroke's own height and a little slack)."""
     from . import sdf
     from .spec import compile_prims, expand_mirror
     s = expand_mirror(spec)
@@ -254,29 +259,55 @@ def _stroke_paths(spec: dict, frames: list[dict]) -> list[dict]:
         if bl.get("shape") not in ("displace", "flatten"):
             continue
         base = bname[:-2] if bname.endswith((".L", ".R")) else bname
-        stem, _, rep = base.rpartition("_r")
-        src = next((k for k in stored if k in (bname, base + ".L", base, stem, stem + ".L")), None)
+        copy = re.fullmatch(r"(.+)_([rs])(\d+)", base)  # a repeat (_r<i>) or scatter (_s<i>) copy
+        stem = copy.group(1) if copy else base
+        src = next((k for k in (base + ".L", base, stem + ".L", stem) if k in stored and
+                    (k in (base, base + ".L") or copy)), None)
         st = stored.get(src, {})
         op = "flatten" if bl["shape"] == "flatten" else ("clay" if np.min(bl["depth"]) >= 0 and np.max(bl["depth"]) > 0 else "crease")
-        count = int((st.get("repeat") or {}).get("count", 1))
+        count = int((st.get("repeat") or st.get("scatter") or {}).get("count", 1))
         label = None
-        if not bname.endswith(".R"):
-            label = src if count == 1 else (f"{src} x{count}" if rep == "0" else None)
+        if not bname.endswith(".R") and src:
+            first = copy is None or copy.group(3) == "0"
+            label = (src if count == 1 else f"{src} x{count}") if first else None
         P = np.asarray(bl["pts"], float) + np.asarray(bl.get("at", [0, 0, 0]), float)
         N = np.asarray(bl["nrm"], float)
         if len(N) != len(P):
             N = np.broadcast_to(N[0], P.shape)
-        span = float(np.ptp(P, axis=0).max()) + 0.5
-        vis = {}
+        height = float(np.abs(np.asarray(bl.get("depth", [0.0]), float)).max())
+        out.append({"label": label, "op": op, "pts": P, "height": height, "vis": {}})
+    if out and mesh is not None:  # depth-test against the built mesh, splatted into a z-buffer per view
+        z = np.load(mesh)
+        verts = z["verts"].astype(np.float64)
+        tol = 2.5 * voxel
         for f in frames:
-            dv = np.asarray(f["dir"], float)
-            dv /= np.linalg.norm(dv)
-            lift = 0.01 + 0.02 * np.abs(np.asarray(bl.get("depth", [0.0]), float)).max()
-            ts = np.linspace(0.0, span, 200)
-            rays = (P + N * lift)[:, None, :] + ts[None, :, None] * dv
-            vis[f["name"]] = ~(sdf.field_at(prims, rays) < 0).any(axis=1)
-        out.append({"label": label, "op": op, "pts": P, "vis": vis})
+            zbuf, depth_of = _zbuffer(verts, f, size)
+            for o in out:
+                xy = np.clip(render.project(f, o["pts"], size).round().astype(int), 0, size - 1)
+                slack = tol + o["height"]
+                o["vis"][f["name"]] = depth_of(o["pts"]) >= zbuf[xy[:, 1], xy[:, 0]] - slack
+    for o in out:
+        o.pop("start", None)
+        o.pop("height", None)
     return out
+
+
+def _zbuffer(verts: np.ndarray, frame: dict, size: int):
+    """Nearest-surface depth per pixel of a view, from the mesh's vertices (dense enough at build
+    resolutions to cover every pixel once dilated a little), and the depth function it uses."""
+    from scipy import ndimage
+    d = np.asarray(frame["dir"], float)
+    d /= np.linalg.norm(d)
+    c = np.asarray(frame["center"], float)
+
+    def depth_of(pts):
+        return (np.asarray(pts, float) - c) @ d  # larger = nearer the camera
+
+    xy = render.project(frame, verts, size).round().astype(int)
+    ok = np.all((xy >= 0) & (xy < size), axis=1)
+    zbuf = np.full((size, size), -np.inf)
+    np.maximum.at(zbuf, (xy[ok, 1], xy[ok, 0]), depth_of(verts[ok]))
+    return ndimage.maximum_filter(zbuf, size=3), depth_of
 
 
 @mcp.tool(structured_output=False)

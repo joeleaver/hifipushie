@@ -165,12 +165,16 @@ def _closest_depth(prims, uv: np.ndarray, axes, grid: sdf.Grid):
     lo = grid.origin[da]
     n = grid.field.shape[da]
     depths = lo + grid.voxel * np.arange(n)
-    pts = np.zeros((len(uv), n, 3))
-    pts[..., ua], pts[..., va], pts[..., da] = uv[:, :1], uv[:, 1:], depths
-    f = sdf.field_at(prims, pts, clip=False)
+    # coarse: the lowest point along each ray from the grid just built for this very model (trilinear; exact
+    # near the surface, block-constant further out), then refine with the exact field around it
+    coords = np.zeros((3, len(uv), n))
+    coords[ua] = ((uv[:, 0] - grid.origin[ua]) / grid.voxel)[:, None]
+    coords[va] = ((uv[:, 1] - grid.origin[va]) / grid.voxel)[:, None]
+    coords[da] = np.arange(n)[None, :]
+    f = ndimage.map_coordinates(grid.field, coords.reshape(3, -1), order=1, mode="nearest").reshape(len(uv), n)
     d0 = depths[f.argmin(axis=1)]
-    fine = d0[:, None] + grid.voxel * np.linspace(-1.0, 1.0, 9)
-    pts = np.zeros((len(uv), 9, 3))
+    fine = d0[:, None] + grid.voxel * np.linspace(-4.0, 4.0, 17)
+    pts = np.zeros((len(uv), 17, 3))
     pts[..., ua], pts[..., va], pts[..., da] = uv[:, :1], uv[:, 1:], fine
     f = sdf.field_at(prims, pts, clip=False)
     k = f.argmin(axis=1)
@@ -222,17 +226,45 @@ def evaluate(spec: dict, theta: np.ndarray, targets: list[Target], resolution: i
                  np.concatenate(ws), energy, iou)
 
 
+def freeze(spec: dict) -> dict:
+    """The model with kits, surface-seated joints and strokes expanded once into plain elements, so the
+    hundreds of perturbed copies a fit compiles don't each re-seat them (a face kit and dozens of strokes
+    made one iteration take minutes). Details stay where they are while the blockout moves; the fitted
+    values are then applied to the real model, whose details regenerate."""
+    from . import kits, strokes
+    out = strokes.expand(strokes.seat_joints(kits.expand(spec)))
+    out.pop("kits", None)
+    out.pop("strokes", None)
+    return out
+
+
 def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
     """d(residual)/dθ: the outline's outward motion is -(df/dθ)/|∇f|, and residuals are + when sticking out."""
     spec = copy.deepcopy(st.spec)
-    f0 = sdf.field_at(compile_prims(spec), st.P, clip=False)
+    base = compile_prims(spec)
+    f0 = sdf.field_at(base, st.P, clip=False)
+    fp0 = {sdf.fingerprint(q): q for q in base}
+    kmax = max([q.blend for q in base] + [0.0])
     J = np.zeros((len(st.P), len(params)))
     for k, p in enumerate(params):
         v = _get(spec, p)
         _set(spec, p, v + eps)
-        f1 = sdf.field_at(compile_prims(spec), st.P, clip=False)
+        prims = compile_prims(spec)
         _set(spec, p, v)
-        J[:, k] = -(f1 - f0) / eps / st.gn
+        fp1 = {sdf.fingerprint(q): q for q in prims}
+        changed = [fp1[f] for f in fp1.keys() - fp0.keys()] + [fp0[f] for f in fp0.keys() - fp1.keys()]
+        # a perturbation only moves the field where a changed primitive is (nearly) the surface: an add
+        # within a few blend radii of the current value, anything else within its box
+        hit = np.zeros(len(st.P), bool)
+        for q in changed:
+            if q.op == "add":
+                hit |= sdf.SDF[q.kind](st.P, q.params) < f0 + 3 * kmax + 1e-3
+            else:
+                m = (0.0 if q.op == "modify" else float(np.max(q.reach))) + kmax
+                hit |= np.all((st.P >= q.lo - m) & (st.P <= q.hi + m), axis=1)
+        idx = np.flatnonzero(hit)
+        if len(idx):
+            J[idx, k] = -(sdf.field_at(prims, st.P[idx], clip=False) - f0[idx]) / eps / st.gn[idx]
     return J
 
 
@@ -254,7 +286,8 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         resolution: int = 160, pin=()) -> FitResult:
     """pin: individual scalars to hold, as (kind, name, field, index), e.g. ("joints", "knee.L", "pos", 2) for a
     joint whose height a plan landmark fixes."""
-    spec = copy.deepcopy(spec)
+    original = copy.deepcopy(spec)
+    spec = freeze(original)
     grid0 = sdf.evaluate(compile_prims(spec), resolution)
     # refs: view -> mask, or (mask, world placement) for references with world coordinates (plans)
     targets = []
@@ -262,7 +295,9 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         mask, world = m if isinstance(m, tuple) else (m, None)
         targets.append(make_target(v, grid0, mask, align, world))
     pinned = {tuple(p) for p in pin}
-    params = [p for p in parameters(spec, groups, only, set(lock)) if p not in pinned]
+    seated = {n for n, j in original.get("joints", {}).items() if "on" in j}
+    params = [p for p in parameters(spec, groups, only, set(lock) | seated)
+              if p not in pinned and p[1] in original.get(p[0], {})]  # the model's own elements only
     if not params:
         raise ValueError("nothing to fit: no free parameters")
     theta0 = np.array([_get(spec, p) for p in params])
@@ -309,6 +344,9 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         if gain < 2e-3:
             break
 
+    result = copy.deepcopy(original)  # the fitted values on the real model: its kits and strokes regenerate
+    for p, v in zip(params, st.theta):
+        _set(result, p, round(float(v), 5))
     changes = []
     moved = {}
     for p, a, b in zip(params, theta0, st.theta):
@@ -322,9 +360,9 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
             d = [0.0, 0.0, 0.0]
             for i, a, b in vals:
                 d[i] = b - a
-            new = [round(v, 3) for v in st.spec[kind][name][field]]
+            new = [round(v, 3) for v in result[kind][name][field]]
             changes.append(f"{kind[:-1]} {name}.{field}: moved [{d[0]:+.3f},{d[1]:+.3f},{d[2]:+.3f}] -> {new}")
-    return FitResult(st.spec, iou_before, st.iou, changes, log, targets, st.grid)
+    return FitResult(result, iou_before, st.iou, changes, log, targets, st.grid)
 
 
 def diff_images(res: FitResult):

@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import math
 import os
+import queue
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -56,6 +58,53 @@ def view_frames(verts: np.ndarray, views: list[str], focus=None, zoom: float = 1
     return out
 
 
+class _Blender:
+    """One headless Blender kept running between looks (render jobs go in on stdin), so a look doesn't pay
+    for Blender's startup. Restarted if it dies; one job at a time."""
+
+    def __init__(self):
+        self.proc = None
+        self.lines: queue.Queue = queue.Queue()
+        self.lock = threading.Lock()
+
+    def _start(self):
+        self.proc = subprocess.Popen([BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--", "--serve"],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     text=True, bufsize=1)
+        self.lines = queue.Queue()
+        out, q = self.proc.stdout, self.lines
+
+        def pump():
+            for line in out:
+                q.put(line)
+            q.put(None)
+        threading.Thread(target=pump, daemon=True).start()
+
+    def render(self, job: Path, timeout: float = 300):
+        with self.lock:
+            if self.proc is None or self.proc.poll() is not None:
+                self._start()
+            self.proc.stdin.write(f"{job}\n")
+            self.proc.stdin.flush()
+            log = []
+            while True:
+                try:
+                    line = self.lines.get(timeout=timeout)
+                except queue.Empty:
+                    self.proc.kill()
+                    raise RuntimeError("blender render timed out")
+                if line is None:
+                    raise RuntimeError("blender exited:\n" + "".join(log[-60:]))
+                if line.startswith("@@done"):
+                    return
+                if line.startswith("@@error"):
+                    raise RuntimeError("blender render failed: " + line[8:] + "".join(log[-60:]))
+                log.append(line)
+
+
+_BLENDER = _Blender()
+
+
 def render_views(mesh_npz: Path, frames: list[dict], size: int, matcap: str, cavity: bool = True) -> list[Image.Image]:
     with tempfile.TemporaryDirectory(prefix="hifipushie-") as tmp:
         for f in frames:
@@ -63,11 +112,16 @@ def render_views(mesh_npz: Path, frames: list[dict], size: int, matcap: str, cav
         job = Path(tmp) / "job.json"
         job.write_text(json.dumps({"mesh": str(mesh_npz), "size": size, "matcap": matcap, "cavity": cavity,
                                    "views": frames}))
-        r = subprocess.run([BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--", str(job)],
-                           capture_output=True, text=True, timeout=300)
+        try:
+            _BLENDER.render(job)
+        except (RuntimeError, OSError):  # fall back to a one-off Blender, which reports its own errors
+            r = subprocess.run([BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--", str(job)],
+                               capture_output=True, text=True, timeout=300)
+            if r.returncode:
+                raise RuntimeError(f"blender render failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
         missing = [f["out"] for f in frames if not Path(f["out"]).exists()]
-        if r.returncode or missing:
-            raise RuntimeError(f"blender render failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
+        if missing:
+            raise RuntimeError(f"blender wrote no image for {missing}")
         return [Image.open(f["out"]).convert("RGB") for f in frames]
 
 
