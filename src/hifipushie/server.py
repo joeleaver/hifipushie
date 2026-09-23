@@ -101,6 +101,8 @@ If you have reference art, set_reference per view then compare. Once the body pl
 auto-adjusts joints, radii and blobs to the reference outlines; use compare's band tables for what fit can't
 do (missing parts, wrong topology).
 Renders can mislead about thickness; measure gives cross-section widths along a bone chain or world axis.
+look can hide parts, clip with a plane (floor plans, cross-sections) and add perspective cameras (inside a
+room); clearance checks walkable floor, headroom and door widths of environments.
 Every change is checkpointed; history/revert let you experiment freely.
 """
 
@@ -211,7 +213,8 @@ def edit_model(name: str, ops: list[dict], note: str = "") -> str:
 def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool = False,
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
          matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", paint: bool = True,
-         paint_layer: str | None = None, save: str | None = None):
+         paint_layer: str | None = None, hide_parts: list[str] | None = None, only_parts: list[str] | None = None,
+         clip: dict | list[dict] | None = None, camera: dict | list[dict] | None = None, save: str | None = None):
     """Build the mesh and return a clay contact sheet.
     views: any of front, side, top, three_quarter (default set), back, left, three_quarter_back, below.
     All panels share one scale; front/side/top get rulers in world units (grid=True adds grid lines).
@@ -226,17 +229,36 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     paint: show the spec's paint layers (default); False shows plain clay per part.
     paint_layer: show that one layer's mask in false colour instead (purple 0, teal 0.5, yellow 1), to see
     where a mask stack lands before judging colours.
+    hide_parts / only_parts: leave those parts out / show only those (no rebuild): the body under clothes, the
+    inside of a house without its roof, one part alone. With only_parts the views frame the parts shown.
+    clip: cut the model with a plane and drop what's beyond it, e.g. {"z": 2.2} drops everything above
+    z = 2.2 (a plan view of a house: use views=["top"]; a torso cross-section), {"-y": 0} drops everything
+    with y < 0 (the front half, seen from the front), {"x": 0} the +X half; any plane: {"point": [x,y,z],
+    "normal": [x,y,z]} drops the side the normal points into; a list applies several. Cut solids get flat
+    caps in their part's colour, darkened, so walls read as walls. Views keep the uncut model's framing.
+    camera: a perspective panel from inside or around the model: {"eye": [x,y,z], "target": [x,y,z],
+    "fov"?: degrees across (default 70), "name"?}. eye [x, y] stands a person there: on the lowest floor with
+    1.8 m of headroom, eye 1.6 m above it ("eye_height" to change); target [x, y] looks level at eye height.
+    A list gives several panels. Alone it replaces the default views (views adds orthographic ones back).
+    Perspective panels have no rulers (sizes change with depth) and no stroke overlay.
+    Paint is evaluated only on what's shown when parts are hidden or clipped; coverage then counts only that.
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
+    cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
+    cams = [_resolve_camera(name, c) for c in cams]
+    cam_frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
+    names_ = views or ([] if cams else render.DEFAULT_VIEWS)
+    planes = store.clip_planes(clip)
     if focus is not None and zoom > 1:
         full_bounds = store.extent(name)  # sets the view scale, as in a full look
-        frames = render.view_frames(full_bounds, views or render.DEFAULT_VIEWS, focus, zoom)
+        frames = render.view_frames(full_bounds, names_ or render.DEFAULT_VIEWS[:1], focus, zoom)
         half = 0.8 * frames[0]["scale"]
+        frames = frames[:len(names_)]
         f = np.asarray(focus, float)
         meta = store.build(name, resolution, box=(f - half, f + half))
     else:
         meta = store.build(name, resolution)
-        frames = render.view_frames(np.array(meta["bounds"]), views or render.DEFAULT_VIEWS, focus, zoom)
         full_bounds = meta["bounds"]
+        frames = None
     mesh = Path(meta["mesh"])
     if shading == "raking":
         matcap = str(render.raking_matcap(store.HOME / "raking_matcap.png"))
@@ -244,23 +266,74 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         mesh = _curvature_mesh(name, mesh, meta["voxel"], full_bounds)
     elif shading not in ("clay", "flat"):
         raise ValueError('shading must be "clay", "raking", "curvature" or "flat"')
+    keep = None
+    if hide_parts or only_parts:
+        with np.load(meta["mesh"]) as z:
+            built = [str(n) for n in z["part_names"]]
+        allp = sorted(set(built) | set(meta.get("empty_parts", [])))
+        bad = [p for p in (hide_parts or []) + (only_parts or []) if p not in allp]
+        if bad:
+            raise ValueError(f"no part(s) {bad}; parts: {allp}")
+        keep = [p for p in built if (not only_parts or p in only_parts) and p not in (hide_parts or [])]
+    extra, shown = [], ""
+    frusta = cam_frames if cam_frames and not names_ else None  # only cameras: paint only what they can see
+    if keep is not None or planes or frusta:
+        mesh = store.view_mesh(mesh, keep, planes, frusta)
+        with np.load(mesh) as z:
+            nshown, fb = len(z["verts"]), z["frame_bounds"]
+        shown = f" | showing {nshown} verts" + (f" of parts {', '.join(keep)}" if keep is not None else "")
+        shown += " (in the cameras' view)" if frusta else ""
+        if planes:
+            caps = store.section_caps(name, mesh, planes, keep, meta["voxel"])
+            extra = [caps] if caps else []
+            shown += ", clipped" + ("" if caps else " (no solid cut: no caps)")
+    if frames is None:  # with only_parts, frame what's shown
+        frames = render.view_frames(fb if only_parts else np.array(full_bounds), names_, focus, zoom)
     painted = ""
     if shading != "curvature" and paint:
         mesh = store.painted(name, mesh, paint_layer)
         cov = store.coverage(mesh)
         if cov:
-            painted = " | paint coverage: " + ", ".join(
-                f"{k} {'-' if v is None else ('NOTHING' if v == 0 else f'{v:.1%}')}" for k, v in cov.items())
-    imgs = render.render_views(mesh, frames, size, matcap, flat=shading == "flat")
+            of = " (of what's shown)" if store.coverage_of(mesh) == "shown" else ""
+            painted = (" | paint coverage" + of + ": " + ", ".join(
+                f"{k} {'-' if v is None else ('NOTHING' if v == 0 else f'{v:.1%}')}" for k, v in cov.items()))
+    frames = frames + cam_frames
+    imgs = render.render_views(mesh, frames, size, matcap, flat=shading == "flat", extra=extra)
     if strokes:
-        paths = _stroke_paths(store.load(name), frames, Path(meta["mesh"]), meta["voxel"], size)
-        imgs = [render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
+        ortho = [f for f in frames if "eye" not in f]
+        paths = _stroke_paths(store.load(name), ortho, mesh if shown else Path(meta["mesh"]), meta["voxel"], size,
+                              keep)
+        imgs = [im if "eye" in f else render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
     sheet = render.contact_sheet(imgs, frames, grid)
     lo, hi = full_bounds
     dims = [round(h - l, 3) for l, h in zip(lo, hi)]
     info = (f"{name}: {meta['verts']} verts, voxel {meta['voxel']:.4f}, built in {meta['seconds']}s | "
             f"size X{dims[0]} Y{dims[1]} Z{dims[2]}")
-    return [_out(sheet, save), info + painted + (f" | saved {save}" if save else "")]
+    for f, c in zip(cam_frames, cams):
+        info += (f" | {f['name']}: eye ({', '.join(f'{x:.2f}' for x in f['eye'])}) -> target "
+                 f"({', '.join(f'{x:.2f}' for x in f['center'])}), fov {f['fov']:.0f}" + c.get("_note", ""))
+    return [_out(sheet, save), info + shown + painted + (f" | saved {save}" if save else "")]
+
+
+def _resolve_camera(name: str, cam: dict) -> dict:
+    """Fill in a camera's 2D eye (a person standing there: floor + eye_height) and 2D target (level gaze)."""
+    if not isinstance(cam, dict) or "eye" not in cam or "target" not in cam:
+        raise ValueError('camera needs {"eye": [x, y, z] or [x, y], "target": [x, y, z] or [x, y], "fov"?: deg}')
+    cam = dict(cam)
+    eye, target = [float(x) for x in cam["eye"]], [float(x) for x in cam["target"]]
+    if len(eye) == 2:
+        floor = meas.stand_height(store.load(name), *eye)
+        if floor is None:
+            floor, cam["_note"] = 0.0, " (no floor there: eye height above z = 0)"
+        else:
+            cam["_note"] = f" (standing on the floor at z = {floor:.2f})"
+        eye.append(floor + float(cam.get("eye_height", 1.6)))
+    if len(target) == 2:
+        target.append(eye[2])
+    if len(eye) != 3 or len(target) != 3:
+        raise ValueError("camera eye and target are [x, y, z] or [x, y]")
+    cam["eye"], cam["target"] = eye, target
+    return cam
 
 
 def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
@@ -285,9 +358,11 @@ def _curvature_mesh(name: str, mesh: Path, voxel: float, bounds) -> Path:
     return out
 
 
-def _stroke_paths(spec: dict, frames: list[dict], mesh=None, voxel: float = 0.0, size: int = 448) -> list[dict]:
+def _stroke_paths(spec: dict, frames: list[dict], mesh=None, voxel: float = 0.0, size: int = 448,
+                  parts: list[str] | None = None) -> list[dict]:
     """Every stroke's seated path (mirrored ones too), with per-view visibility: a point is hidden when the
-    built mesh is nearer the camera there (by more than the stroke's own height and a little slack)."""
+    built mesh is nearer the camera there (by more than the stroke's own height and a little slack).
+    parts: only strokes on these parts (the others are hidden in this look)."""
     from . import sdf
     from .spec import compile_prims, expand_mirror
     s = expand_mirror(spec)
@@ -295,7 +370,8 @@ def _stroke_paths(spec: dict, frames: list[dict], mesh=None, voxel: float = 0.0,
     stored = spec.get("strokes") or {}
     out = []
     for bname, bl in s["blobs"].items():
-        if bl.get("shape") not in ("displace", "flatten"):
+        if bl.get("shape") not in ("displace", "flatten") or (parts is not None and
+                                                                bl.get("part", "body") not in parts):
             continue
         base = bname[:-2] if bname.endswith((".L", ".R")) else bname
         copy = re.fullmatch(r"(.+)_([rs])(\d+)", base)  # a repeat (_r<i>) or scatter (_s<i>) copy
@@ -361,6 +437,25 @@ def measure(name: str, along: str | list[str], samples: int = 11, lo: float | No
     separate part in each slice with its ranges on the other two axes, e.g. "y" gives body width and
     height from nose to tail, "z" shows where the legs merge into the body."""
     return meas.measure(store.load(name), along, samples, lo, hi)
+
+
+@mcp.tool(structured_output=False)
+def clearance(name: str, region: list[list[float]] | None = None, path: list[list[float]] | None = None,
+              floor: float | None = None, height: float = 1.8, radius: float = 0.25, step: float = 0.2,
+              spacing: float | None = None) -> str:
+    """Can a person walk here? Walkability of an environment from the exact field (vertical and horizontal rays;
+    independent of build resolution). Give one of:
+    region = [[x0, y0], [x1, y1]]: a top-view character map over that floor area ('.' a person fits, ',' floor
+    and headroom but within `radius` of a wall or object, 'h' headroom below `height`, '#' blocked: wall,
+    furniture, or less than half the height free, ' ' no floor at that level) plus walkable area, floor
+    flatness (spread, largest step between neighbouring cells) and least headroom. `spacing` defaults to ~60
+    columns across.
+    path = [[x, y], ...]: along the polyline every 5 cm, floor height, headroom and clear width (rays left and
+    right of the direction of travel at five heights above the floor), a table every 25 cm plus the narrowest
+    point and a verdict: does a person `height` tall and 2 x `radius` wide pass (doors: walk a path through).
+    floor: the level to stand on (z); default the most common height with `height` of free space above it.
+    step: floor bumps up to this count as floor (thresholds, rugs); more is an obstacle or a step."""
+    return meas.clearance(store.load(name), region, path, floor, height, radius, step, spacing)
 
 
 @mcp.tool(structured_output=False)

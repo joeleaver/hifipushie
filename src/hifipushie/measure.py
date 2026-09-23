@@ -139,3 +139,210 @@ def measure(spec: dict, along, samples: int = 11, lo: float | None = None,
         return along_axis(spec, along.lower(), samples, lo, hi)
     bones = [along] if isinstance(along, str) else list(along)
     return along_bones(spec, bones, samples)
+
+
+# --- walkability: floors, headroom and clear width, from vertical and horizontal rays through the exact field ---
+
+DZ = 0.02  # vertical sampling step (m); crossings are refined linearly
+
+
+def _bounds(prims):
+    adds = [p for p in prims if p.op == "add"]
+    return np.min([p.lo for p in adds], axis=0), np.max([p.hi for p in adds], axis=0)
+
+
+def _column(prims, xy: np.ndarray, zlo: float, zhi: float):
+    """Field along vertical lines at xy (n, 2) from zlo to zhi: (zs, f (n, len(zs)))."""
+    zs = np.arange(zlo, zhi + DZ, DZ)
+    pts = np.empty((len(xy), len(zs), 3))
+    pts[..., :2] = xy[:, None, :]
+    pts[..., 2] = zs[None, :]
+    return zs, field_at(prims, pts)
+
+
+def _crossings(zs, f):
+    """Per column: tops (solid below, air above) and bottoms (air below, solid above), linearly refined."""
+    tops, bottoms = [], []
+    for fi in f:
+        ii = fi < 0
+        k = np.flatnonzero(ii[:-1] != ii[1:])
+        z = zs[k] + (zs[k + 1] - zs[k]) * fi[k] / (fi[k] - fi[k + 1])
+        tops.append(z[ii[k]])
+        bottoms.append(z[~ii[k]])
+    return tops, bottoms
+
+
+def _stand(tops, bottoms, zhi, height):
+    """Per column, the lowest top with `height` of air above it (or open up to zhi); nan where there's none."""
+    out = np.full(len(tops), np.nan)
+    for i, (t, b) in enumerate(zip(tops, bottoms)):
+        for z in t:
+            above = b[b > z]
+            if (above[0] if len(above) else zhi) - z >= height:
+                out[i] = z
+                break
+    return out
+
+
+def _level(stand):
+    """The most common standing height (2 cm bins): the floor, when the caller didn't give one."""
+    ok = stand[~np.isnan(stand)]
+    if not len(ok):
+        return None
+    vals, counts = np.unique(np.round(ok / 0.02).astype(int), return_counts=True)
+    return float(vals[np.argmax(counts)] * 0.02)
+
+
+def stand_height(spec: dict, x: float, y: float, height: float = 1.8) -> float | None:
+    """The floor a person stands on at (x, y): the lowest surface with `height` of free space above it."""
+    prims = compile_prims(spec)
+    lo, hi = _bounds(prims)
+    zs, f = _column(prims, np.array([[x, y]], float), float(lo[2]) - 0.05, float(hi[2]) + 0.05)
+    z = _stand(*_crossings(zs, f), float(hi[2]) + 0.05, height)[0]
+    return None if np.isnan(z) else float(z)
+
+
+def _classify(prims, xy, level, height, radius, step, zhi, cols=None):
+    """Per column near the floor level: floor z (nan if none), headroom (inf: open above), and a map character:
+    '.' a person fits, ',' floor and headroom but within `radius` of something, 'h' headroom < height,
+    '#' blocked (solid through the floor level, or less than half the height free), ' ' no floor there."""
+    zs, f = cols or _column(prims, xy, level - step - 0.05, zhi)
+    tops, bottoms = _crossings(zs, f)
+    floor, head = np.full(len(xy), np.nan), np.full(len(xy), np.nan)
+    ch = np.full(len(xy), " ")
+    k_hi = min(int(np.searchsorted(zs, level + step)), len(zs) - 1)
+    for i, (t, b) in enumerate(zip(tops, bottoms)):
+        near = t[(t >= level - step) & (t <= level + step)]
+        if not len(near):
+            ch[i] = "#" if f[i, k_hi] < 0 else " "
+            continue
+        floor[i] = near.max()
+        above = b[b > floor[i]]
+        head[i] = (above[0] if len(above) else np.inf) - floor[i]
+        ch[i] = "#" if head[i] < 0.5 * height else ("h" if head[i] < height else ".")
+    # the body: a capsule from above step height to the top of the head, `radius` clear all round
+    body = np.flatnonzero(ch == ".")
+    if len(body):
+        hz = np.linspace(step + radius, max(step + radius, height - radius), 6)
+        pts = np.empty((len(body), len(hz), 3))
+        pts[..., :2] = xy[body, None, :]
+        pts[..., 2] = floor[body, None] + hz[None, :]
+        ch[body[field_at(prims, pts).min(1) < radius]] = ","
+    return floor, head, ch
+
+
+def _auto_level(prims, xy, lo, zhi, height):
+    """The floor level and the columns it was found from (reused to classify)."""
+    zs, f = _column(prims, xy, float(lo[2]) - 0.05, zhi)
+    return _level(_stand(*_crossings(zs, f), zhi, height)), (zs, f)
+
+
+def clearance(spec: dict, region=None, path=None, floor: float | None = None, height: float = 1.8,
+              radius: float = 0.25, step: float = 0.2, spacing: float | None = None) -> str:
+    """Walkability over a floor region (a character map + numbers) or along a path (floor, headroom and clear
+    width per sample, the bottleneck, and whether a person passes). See server.clearance."""
+    prims = compile_prims(spec)
+    lo, hi = _bounds(prims)
+    zhi = float(hi[2]) + 0.05
+    if (region is None) == (path is None):
+        raise ValueError("give either region [[x0, y0], [x1, y1]] or path [[x, y], ...]")
+    if path is not None:
+        return _walk(prims, np.asarray(path, float)[:, :2], floor, height, radius, step, lo, zhi)
+    (x0, y0), (x1, y1) = np.sort(np.asarray(region, float)[:, :2], axis=0)
+    spacing = float(spacing or max(0.05, round(max(x1 - x0, y1 - y0) / 60, 3)))
+    xs, ys = np.arange(x0, x1 + 1e-9, spacing), np.arange(y1, y0 - 1e-9, -spacing)  # rows from +Y down
+    gx, gy = np.meshgrid(xs, ys)
+    xy = np.stack([gx.ravel(), gy.ravel()], 1)
+    how, cols = "given", None
+    if floor is None:
+        floor, cols = _auto_level(prims, xy, lo, zhi, height)
+        if floor is None:
+            return f"no floor anywhere in the region with {height} m of headroom"
+        how = "the most common standing height in the region"
+    fz, head, ch = _classify(prims, xy, floor, height, radius, step, zhi, cols)
+    grid = ch.reshape(gx.shape)
+    walk = ch == "."
+    lines = [f"clearance over x {x0:.2f}..{x1:.2f}, y {y0:.2f}..{y1:.2f} every {spacing:.3f} m; floor level "
+             f"{floor:.3f} ({how}); person {height} m tall, {radius} m radius, steps up to {step} m",
+             f"walkable {walk.sum() * spacing ** 2:.2f} m² ({walk.mean():.0%} of cells); tight (within {radius} m of "
+             f"something) {(ch == ',').mean():.0%}; low headroom {(ch == 'h').mean():.0%}; blocked "
+             f"{(ch == '#').mean():.0%}; no floor at that level {(ch == ' ').mean():.0%}"]
+    if walk.any():
+        fw = fz[walk]
+        g = fz.reshape(gx.shape)
+        pairs = [(np.abs(np.diff(g, axis=a)), (np.diff(grid == ".", axis=a) == 0) &
+                  (grid[1:, :] == "." if a == 0 else grid[:, 1:] == ".")) for a in (0, 1)]
+        worst = max((d[o].max() for d, o in pairs if o.any()), default=0.0)
+        hw = head[walk].min()
+        lines.append(f"walkable floor z {fw.min():.3f}..{fw.max():.3f} (spread {np.ptp(fw) * 1000:.0f} mm, sd "
+                     f"{fw.std() * 1000:.0f} mm); largest step between neighbouring walkable cells "
+                     f"{worst * 1000:.0f} mm; least headroom over it {'open' if np.isinf(hw) else f'{hw:.2f} m'}")
+    low = np.flatnonzero(ch == "h")
+    if len(low):
+        i = low[np.argmin(head[low])]
+        lines.append(f"lowest headroom {head[i]:.2f} m at ({xy[i, 0]:.2f}, {xy[i, 1]:.2f})")
+    ticks = "".join("|" if np.floor(x / 0.5 + 1e-9) != np.floor((x - spacing) / 0.5 + 1e-9) else " " for x in xs)
+    lines += ["map, top view (+Y up, +X right): '.' walkable, ',' tight, 'h' headroom < height, '#' blocked, "
+              f"' ' no floor; '|' marks every 0.5 m of x (first column x = {xs[0]:.2f})",
+              "        " + ticks]
+    lines += [f"{y:+7.2f} " + "".join(grid[r]) for r, y in enumerate(ys)]
+    return "\n".join(lines)
+
+
+def _walk(prims, P, floor, height, radius, step, lo, zhi):
+    """Along a path: floor, headroom and clear width every 5 cm; the bottleneck and whether a person passes."""
+    if len(P) < 2:
+        raise ValueError("a path needs at least two points")
+    seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+    sc = np.concatenate([[0], np.cumsum(seg)])
+    s = np.arange(0, sc[-1] + 1e-9, 0.05)
+    xy = np.stack([np.interp(s, sc, P[:, 0]), np.interp(s, sc, P[:, 1])], 1)
+    k = np.clip(np.searchsorted(sc, s, side="right") - 1, 0, len(seg) - 1)
+    fwd = (P[k + 1] - P[k]) / np.maximum(seg[k], 1e-9)[:, None]
+    left = np.stack([-fwd[:, 1], fwd[:, 0]], 1)
+    cols = None
+    if floor is None:
+        floor, cols = _auto_level(prims, xy, lo, zhi, height)
+        if floor is None:
+            return f"no floor along the path with {height} m of headroom"
+    fz, head, ch = _classify(prims, xy, floor, height, radius, step, zhi, cols)
+    hz = np.linspace(step + 0.05, height - 0.05, 5)  # heights above the floor for the width rays
+    rs = np.arange(0.0, 2.0 + 1e-9, 0.01)
+    base = np.where(np.isnan(fz), floor, fz)
+    reach = {}
+    for sgn in (1, -1):
+        pts = np.empty((len(xy), len(hz), len(rs), 3))
+        pts[..., :2] = xy[:, None, None, :] + sgn * left[:, None, None, :] * rs[None, None, :, None]
+        pts[..., 2] = base[:, None, None] + hz[None, :, None]
+        inside = field_at(prims, pts) < 0
+        reach[sgn] = np.where(inside.any(-1), rs[inside.argmax(-1)], rs[-1])  # (n, heights)
+    both = reach[1] + reach[-1]
+    width = both.min(1)
+    worst = int(np.argmin(width))
+    lines = [f"walk along {len(P)} points, {sc[-1]:.2f} m; floor level {floor:.3f}; person {height} m tall, "
+             f"{radius} m radius, steps up to {step} m. width = clear distance left + right of the path at "
+             f"{', '.join(f'{h:.2f}' for h in hz)} m above the floor (the least; each side capped at 2 m)",
+             "      s       x       y    floor  headroom  width   left  right"]
+    for i in range(len(xy)):
+        if i % 5 and i not in (worst, len(xy) - 1) and ch[i] == ch[i - 1]:  # every 25 cm, and where it changes
+            continue
+        hd = "open" if np.isinf(head[i]) else ("-" if np.isnan(head[i]) else f"{head[i]:.2f}")
+        fl = "-" if np.isnan(fz[i]) else f"{fz[i]:.3f}"
+        j = int(np.argmin(both[i]))
+        note = {"#": "BLOCKED", "h": "LOW", ",": "tight", " ": "NO FLOOR"}.get(str(ch[i]), "")
+        lines.append(f"  {s[i]:5.2f}  {xy[i, 0]:+6.2f}  {xy[i, 1]:+6.2f}  {fl:>7}  {hd:>7}  {width[i]:5.2f}  "
+                     f"{reach[1][i, j]:5.2f}  {reach[-1][i, j]:5.2f}  {note}{'  <- narrowest' if i == worst else ''}")
+    ok = ~np.isnan(fz)
+    stepmax = float(np.abs(np.diff(fz[ok])).max()) if ok.sum() > 1 else 0.0
+    headmin = float(np.nanmin(head)) if ok.any() else float("nan")
+    passes = (not np.isin(ch, ["#", "h", " "]).any()) and width.min() >= 2 * radius and stepmax <= step
+    lines.append(f"narrowest {width[worst]:.2f} m at s = {s[worst]:.2f} ({xy[worst, 0]:+.2f}, {xy[worst, 1]:+.2f}); "
+                 f"lowest headroom {'open' if np.isinf(headmin) else f'{headmin:.2f} m'}; largest step "
+                 f"{stepmax * 1000:.0f} mm; samples blocked {(ch == '#').sum()}, low {(ch == 'h').sum()}, "
+                 f"no floor {(ch == ' ').sum()} of {len(ch)}")
+    why = [w for w, bad in (("blocked", (ch == "#").any()), ("low headroom", (ch == "h").any()),
+                            ("no floor", (ch == " ").any()), ("too narrow", width.min() < 2 * radius),
+                            (f"a step over {step} m", stepmax > step)) if bad]
+    lines.append(f"a person {height} m tall and {2 * radius:.2f} m wide "
+                 + ("PASSES" if passes else f"does NOT pass ({', '.join(why)})"))
+    return "\n".join(lines)

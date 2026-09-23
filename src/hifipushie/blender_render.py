@@ -3,9 +3,10 @@
 Invoked as: blender -b --factory-startup --python blender_render.py -- job.json
 or, kept running: ... -- --serve, reading one job path per line on stdin and answering "@@done" or
 "@@error <message>" on stdout (saves Blender's startup on every look).
-Job: {"mesh": "x.npz", "size": 512, "matcap": "...", "views": [
+Job: {"mesh": "x.npz", "extra": ["caps.npz"]?, "size": 512, "matcap": "...", "views": [
         {"name": "front", "dir": [0,-1,0], "up": [0,0,1], "center": [...], "scale": 1.2, "out": "front.png"}]}
-"dir" points from the target toward the camera.
+"dir" points from the target toward the camera. A view with "eye" and "fov" (degrees) is a perspective camera
+at the eye instead (looking along -dir). "extra" meshes (e.g. section caps) are loaded as further objects.
 """
 
 import json
@@ -16,14 +17,12 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 
-def run(job):
-    for coll in (bpy.data.objects, bpy.data.meshes, bpy.data.cameras):
-        for item in list(coll):
-            coll.remove(item)
-    data = np.load(job["mesh"])
+def _load(path, name):
+    """A mesh npz as an object with smooth custom normals and a colour attribute (if it has colours)."""
+    data = np.load(path)
     verts, faces = data["verts"], data["faces"]
 
-    me = bpy.data.meshes.new("creature")
+    me = bpy.data.meshes.new(name)
     me.vertices.add(len(verts))
     me.vertices.foreach_set("co", verts.ravel())
     me.loops.add(faces.size)
@@ -42,8 +41,18 @@ def run(job):
             colors[:, :3] = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
         attr = me.color_attributes.new("col", "FLOAT_COLOR", "POINT")
         attr.data.foreach_set("color", colors.astype(np.float32).ravel())
-    ob = bpy.data.objects.new("creature", me)
+    ob = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(ob)
+    return colors is not None, "colors" in data
+
+
+def run(job):
+    for coll in (bpy.data.objects, bpy.data.meshes, bpy.data.cameras):
+        for item in list(coll):
+            coll.remove(item)
+    colored, curvature = _load(job["mesh"], "creature")
+    for i, extra in enumerate(job.get("extra") or []):
+        _load(extra, f"extra{i}")
 
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_WORKBENCH"
@@ -58,9 +67,9 @@ def run(job):
         matcap = custom.name
     sh.studio_light = matcap
     sh.color_type = "SINGLE"
-    if colors is not None:
+    if colored:
         sh.color_type = "VERTEX"
-    if "colors" in data:
+    if curvature:
         sh.light = "STUDIO"
     if job.get("flat"):  # unlit colour, to judge paint
         sh.light = "FLAT"
@@ -84,10 +93,18 @@ def run(job):
         up = Vector(v["up"])
         right = up.cross(d).normalized()  # camera looks along -d
         up = d.cross(right).normalized()
-        center = Vector(v["center"])
         rot = Matrix((right, up, d)).transposed()
-        cam.matrix_world = Matrix.Translation(center + d * 50) @ rot.to_4x4()
-        cam_data.ortho_scale = v["scale"]
+        if "eye" in v:  # perspective, from inside the model if need be
+            cam_data.type = "PERSP"
+            cam_data.sensor_fit = "HORIZONTAL"
+            cam_data.angle = np.radians(v["fov"])
+            cam_data.clip_start = v.get("near", 0.01)
+            cam.matrix_world = Matrix.Translation(Vector(v["eye"])) @ rot.to_4x4()
+        else:
+            cam_data.type = "ORTHO"
+            cam_data.clip_start = 0.001
+            cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ rot.to_4x4()
+            cam_data.ortho_scale = v["scale"]
         scene.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
     if custom is not None:
