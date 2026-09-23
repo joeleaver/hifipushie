@@ -96,6 +96,41 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
+## Plan: procedural painting (next session)
+
+Goal: Substance-style smart materials on top of `paint.py`, evaluated per point, so they work identically for
+`look` (mesh vertices) and `export_asset` (texels, at texture resolution). Order of work, testing each step on
+the troll (skin dirt, edge wear on brow/knuckles, grungy shorts, a metal belt buckle) and then the goblin:
+
+1. **Inputs refactor.** `paint.apply_channels` gets a lazily computed `inputs` object per point set: position,
+   normal, part, plus on demand `ao` (move `asset._ao` into a shared module), `curvature` (`paint.laplacian`,
+   exists), `thickness` (the same cone sampling as AO but along -normal, inside the part). The bake already
+   computes AO: pass it in rather than recomputing (AO is the slowest map, ~66 s at 2048 on the troll).
+2. **Mask stack.** A layer's `"mask": [...]` list: each entry is a generator or an op on the running mask,
+   e.g. `{"ao": [lo, hi]}`, `{"noise": {...}, "blend": "multiply|add|subtract|min|max|screen|overlay"}`,
+   `{"levels": [lo, hi, gamma]}`, `{"invert": true}`, `{"blur": m}`. Keep today's flat keys (path, near,
+   facing, axis, cavity, noise) working as shorthand for a multiply-only stack; don't break the examples.
+   Blur: supersample the mask at jittered points in the tangent plane (resolution independent, works on
+   vertices and texels alike) rather than image-space blur, which would bleed across UV seams.
+3. **Generators** built from the inputs: edge wear (convexity + noise breakup), dirt/grime (AO + cavity),
+   dust/moss from above (facing up + AO), thickness (ears, fingers glow for subsurface later), wet/dry.
+   Maybe named presets later ("smart masks"), but first as plain parameterised generators.
+4. **Patterns**: voronoi cells (F2-F1 for scales/plates, cell id for per-cell colour jitter), streaks (noise
+   stretched along a direction, e.g. gravity drips), grunge (fbm with domain warp). All our noise is solid
+   3D in world space, so no UV seams and no triplanar needed (triplanar only matters for image textures).
+5. **Height channel**: a layer's `"height": m` (times its mask) adds to the height map, and the normal map is
+   perturbed by its gradient (finite differences of painted height at x +- e*T, x +- e*B: 4 extra paint
+   evaluations, only for layers with height). Pores, scales, fabric weave that the sculpt doesn't have.
+   `look` can't show it as geometry; show it at least in shading (bump in the vertex normals, or say so).
+6. **Feedback**: `look(paint_layer="name")` renders that layer's mask in false colour (the coverage line
+   exists); keep the per-layer coverage numbers.
+7. **Docs**: paint docstring (kit_reference), guide.md section 5, the skill, this file.
+
+Validate every exported GLB with the Khronos validator (gives 0 errors today). In the scratchpad:
+`npm init -y && npm i gltf-validator`, then a 3-line `v.mjs`: `import v from 'gltf-validator'`,
+`await v.validateBytes(new Uint8Array(fs.readFileSync(path)))`, print `.issues`. Blender's importer
+ignores glTF occlusion, so the Cycles preview can't show AO: look at the ORM/AO PNGs themselves.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.
@@ -119,13 +154,9 @@ the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifip
 pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
 
 Next, roughly in priority order:
-1. Substance-Painter-style procedural painting (the user asked for it): generators from mesh maps (edge wear
-   from convexity, dirt from AO, thickness, dust from above), a mask stack (blend modes, levels, invert, blur),
-   patterns (cells/scales, streaks, grunge, triplanar), and a paint "height" channel feeding normal + height
-   maps. Paint is already evaluated per texel in the bake, so these land at texture resolution. Also a paint
-   overlay (like strokes=True) showing a layer's mask in false colour.
-   Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, texel density per part
-   (the face deserves more atlas than the back), UV seams placed deliberately rather than smart project.
+1. **Next session: Substance-Painter-style procedural painting** (agreed with the user). Plan below.
+   Asset follow-ups after that: rig (armature from the skeleton + skin weights), LODs, FBX, texel density per
+   part (the face deserves more atlas than the back), UV seams placed deliberately rather than smart project.
 2. Part tools: look at one part alone; check that parts don't cut into each other.
 3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
 4. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
