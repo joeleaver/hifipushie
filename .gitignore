@@ -2,3 +2,4 @@ __pycache__/
 .venv/
 workspace/*/build/
 workspace/
+.claude/worktrees/

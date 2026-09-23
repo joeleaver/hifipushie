@@ -101,6 +101,8 @@ def expand_mirror(spec: dict) -> dict:
                 out["bones"][m]["up"] = _mirror_vec(b["up"])
             if b.get("group"):
                 out["bones"][m]["group"] = _mname(b["group"])
+            if b.get("targets"):
+                out["bones"][m]["targets"] = [_mname(t) for t in b["targets"]]
 
     for name, bl in spec.get("blobs", {}).items():
         m = mirror_name(name)
@@ -123,6 +125,8 @@ def expand_mirror(spec: dict) -> dict:
                 nb[key] = [_mirror_vec(v) for v in bl[key]]
         if bl.get("group"):
             nb["group"] = _mname(bl["group"])
+        if bl.get("targets"):
+            nb["targets"] = [_mname(t) for t in bl["targets"]]
         out["blobs"][m] = nb
     return out
 
@@ -242,7 +246,13 @@ def _compile(spec: dict) -> list[Prim]:
         if bl.get("shape") in ("displace", "flatten"):
             prims.append(_modifier(name, bl, c))
             continue
-        ext = np.abs(rot) @ size  # AABB of the rotated ellipsoid (or box)
+        ext = np.abs(rot) @ size  # AABB of the rotated ellipsoid (or box, or cylinder)
+        if bl.get("shape") == "cylinder":
+            rnd = min(float(bl.get("round", 0.0)), float(size.min()))
+            prims.append(Prim(name, "cylinder", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
+                              {"c": c, "size": size, "rot": rot, "round": rnd},
+                              reach=max(size[0], size[1]) / min(size[0], size[1])))  # exact when round
+            continue
         if bl.get("shape") == "box":
             rnd = min(float(bl.get("round", 0.0)), float(size.min()))
             prims.append(Prim(name, "box", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
@@ -254,10 +264,52 @@ def _compile(spec: dict) -> list[Prim]:
                           # inside the ellipsoid scaled by 1 + k / min(size)
                           reach=ext / size.min()))
 
-    for p, el in zip(prims, [*s["bones"].values(), *s["blobs"].values()]):
+    els = [*s["bones"].values(), *s["blobs"].values()]
+    for p, el in zip(prims, els):
         p.group, p.join = el.get("group"), float(el.get("join", 0.0))
         p.part = el.get("part") or "body"
+    prims = _csg(s, prims, els)
     return _parts(prims, s.get("parts") or {}, k_default)
+
+
+def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
+    """Element-level solids: "hollow": t keeps only a wall t thick inside an element's surface, and a subtract
+    or intersect with "targets": [names or tags] shapes only those elements (a pot's opening doesn't bite
+    the shelf it stands on). Both wrap the target primitive (kind "csg"); the cut isn't a primitive itself."""
+    from .assemble import select
+    wrapped: dict[str, Prim] = {}
+
+    def wrap(p: Prim) -> Prim:
+        if p.kind != "csg":
+            p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+            p.kind = "csg"
+        return p
+
+    by_name = {p.name: p for p in prims}
+    out = []
+    for p, el in zip(prims, els):
+        if el.get("hollow"):
+            if p.kind not in SHAPES:
+                raise SpecError(f"{p.name!r}: hollow works on bones and shaped blobs")
+            wrap(p).params["hollow"] = float(el["hollow"])
+    for p, el in zip(prims, els):
+        if not el.get("targets"):
+            out.append(p)
+            continue
+        if p.op not in ("subtract", "intersect"):
+            raise SpecError(f"{p.name!r}: \"targets\" is for op subtract or intersect")
+        names = select(s, el["targets"])
+        missing = [n for n in names if n not in by_name]
+        if missing:
+            raise SpecError(f"{p.name!r}: targets {missing} aren't bones, blobs or tags")
+        for n in names:
+            t = wrap(by_name[n])
+            t.params["cuts"].append((p.op, p.kind, p.params, float(p.blend)))
+            wrapped[n] = t
+    return out
+
+
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "lids", "csg")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}

@@ -159,6 +159,30 @@ def mod_flatten(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
     return (c0 + wgt * (shaved - c0)).reshape(cur.shape)
 
 
+def sd_cylinder(p: np.ndarray, pr: dict) -> np.ndarray:
+    """Cylinder along its local z: radii size[0], size[1] (elliptical if they differ: then a lower bound),
+    half-height size[2], edges rounded by `round`."""
+    q = (p - pr["c"]) @ pr["rot"]
+    rx, ry, hz = pr["size"]
+    rnd = pr["round"]
+    r = min(rx, ry)
+    radial = np.hypot(q[..., 0] * (r / rx), q[..., 1] * (r / ry)) - (r - rnd)
+    axial = np.abs(q[..., 2]) - (hz - rnd)
+    out = np.hypot(np.maximum(radial, 0.0), np.maximum(axial, 0.0))
+    return out + np.minimum(np.maximum(radial, axial), 0.0) - rnd
+
+
+def sd_csg(p: np.ndarray, pr: dict) -> np.ndarray:
+    """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts."""
+    d = SDF[pr["kind"]](p, pr["p"])
+    if pr["hollow"]:
+        d = np.maximum(d, -d - pr["hollow"])
+    for op, kind, params, k in pr["cuts"]:
+        c = SDF[kind](p, params)
+        d = -smin(-d, c, k) if op == "subtract" else -smin(-d, -c, k)
+    return d
+
+
 def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
     """Another part's surface pushed out by `offset` (clothing). Solid by default: the inside is hidden in
     the part below, and a thin sheet a voxel or two thick would alias. With `thickness`, only the layer from
@@ -168,7 +192,8 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
     return out if not pr["thickness"] else np.maximum(out, pr["offset"] - pr["thickness"] - fb)
 
 
-SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "shell": sd_shell}
+SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
+       "csg": sd_csg, "shell": sd_shell}
 MODS = {"displace": mod_displace, "flatten": mod_flatten}  # op "modify": reshape what's been combined so far
 
 

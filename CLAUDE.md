@@ -79,6 +79,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   in the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04).
   `preview` renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the AO map
   itself too.
+- `assemble.py`: prefabs/instances and element `array`s expand into plain joints/bones/blobs before kits
+  (`kits.expand` calls `assemble.expand`, content-cached), so everything downstream sees ordinary elements.
+  `select` resolves names/tags (instances, arrays and `tags` lists are tags). `spec._csg` wraps a primitive as
+  kind "csg" (`sdf.sd_csg`) for `hollow` and for subtract/intersect elements with `targets` (the cut is folded
+  into each target, not a primitive of its own). Cuts only raise the field, so bounds/reach stay the target's.
 - Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
   them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,

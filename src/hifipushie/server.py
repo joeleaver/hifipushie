@@ -47,6 +47,9 @@ Spec:
           (elements or a kit), facing (normal direction), axis (world or along a bone), cavity, noise, ao,
           thickness, cells; or a "mask" stack with blend modes, breakup, levels, blur. "height" adds relief.
           Paint never changes geometry, so repainting is quick (see below).
+  prefabs + instances: reusable pieces placed with a transform; "array" on a bone or blob repeats it (logs,
+          planks, legs), with jitter; "tags" name groups; box/cylinder shapes, "hollow", cuts with "targets".
+          kit_reference (REPETITION AND SOLIDS) documents them. Props and environments work too.
   top level: "blend" (default smooth-union radius, ~0.02-0.05 for a 1m creature), "symmetry".
 Combination order: by layer, adds before subtracts within a layer. Use layer 1 for things that must sit
 on top of carved areas (eyeballs in sockets). Bones/blobs sharing a "group" (e.g. the segments of a tail
@@ -165,11 +168,18 @@ def get_model(name: str) -> str:
     return summarize(spec) + "\n\n" + json.dumps(spec, indent=1)
 
 
+SOLIDS = """Hard-surface pieces (blobs): "shape": "box" | "cylinder" (size [rx, ry, half-height], along its local
+z; "rot" to turn it) with "round": edge radius; any bone or blob may be "hollow": t (only a wall t thick inside its
+surface: pots, cups, pipes, a boat hull). A subtract or intersect element with "targets": [names or tags] cuts
+only those elements (a pot's opening, a window through the wall logs, a drawer's recess) instead of everything
+in its part and layer. Walls thinner than ~2 voxels break up at the build resolution: judge them in close-ups."""
+
+
 @mcp.tool(structured_output=False)
 def kit_reference() -> str:
     """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten), paint and plans."""
-    from . import kits, materials, strokes
-    return (kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
+    from . import assemble, kits, materials, strokes
+    return ("REPETITION AND SOLIDS\n" + assemble.__doc__ + "\n" + SOLIDS + "\n\n" + kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
             + "\n\nMATERIALS\n" + materials.__doc__
             + "\n\nPLANS\n" + planmod.__doc__)
 

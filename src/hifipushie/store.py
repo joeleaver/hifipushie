@@ -70,7 +70,7 @@ def version_spec(name: str, version: int) -> dict:
 def apply_ops(spec: dict, ops: list[dict]) -> dict:
     """Edit ops:
       {"op": "set", "kind": "joints|bones|blobs", "name": n, "value": {...}}   merge fields (creates if new)
-      {"op": "delete", "kind": ..., "name": n}
+      {"op": "delete", "kind": ..., "name": n}   or {"op": "delete", "tag": t} (every bone/blob tagged t)
       {"op": "rename", "kind": ..., "name": n, "to": m}   (joint renames update references)
       {"op": "move", "joints": [names], "delta": [dx, dy, dz]}
       {"op": "scale_r", "joints": [names], "factor": f}
@@ -79,7 +79,7 @@ def apply_ops(spec: dict, ops: list[dict]) -> dict:
     s = copy.deepcopy(spec)
     for o in ops:
         kind = o.get("kind")
-        if kind is not None and kind not in (*specmod.KINDS, "paint", "parts"):
+        if kind is not None and kind not in (*specmod.KINDS, "paint", "parts", "prefabs", "instances"):
             raise ValueError(f"bad kind {kind!r}")
         match o.get("op"):
             case "set":
@@ -90,7 +90,16 @@ def apply_ops(spec: dict, ops: list[dict]) -> dict:
                     else:
                         cur[k] = v
             case "delete":
-                if s.get(kind, {}).pop(o["name"], None) is None:
+                if "tag" in o:  # every stored bone/blob carrying that tag
+                    gone = [(k, n) for k in (kind,) if k for n, el in list(s.get(k, {}).items())
+                            if o["tag"] in (el.get("tags") or [])] if kind else \
+                        [(k, n) for k in ("bones", "blobs") for n, el in list(s.get(k, {}).items())
+                         if o["tag"] in (el.get("tags") or [])]
+                    if not gone:
+                        raise ValueError(f"nothing tagged {o['tag']!r}")
+                    for k, n in gone:
+                        del s[k][n]
+                elif s.get(kind, {}).pop(o["name"], None) is None:
                     raise ValueError(f"no {kind[:-1]} {o['name']!r}")
             case "rename":
                 s[kind][o["to"]] = s[kind].pop(o["name"])

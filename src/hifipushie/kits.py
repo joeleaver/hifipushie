@@ -110,7 +110,10 @@ _CACHE: dict[str, dict] = {}
 
 def expand(spec: dict) -> dict:
     """Return a copy of spec with every kit replaced by the elements it generates (cached by content,
-    ignoring strokes, which kits never see: the face kit's raycasts cost more than everything else here)."""
+    ignoring strokes, which kits never see: the face kit's raycasts cost more than everything else here).
+    Prefab instances and arrays (assemble.py) are expanded first."""
+    from . import assemble
+    spec = assemble.expand(spec)
     kits = spec.get("kits") or {}
     if not kits:
         return spec

@@ -539,6 +539,10 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
             want.remove(w)
             want += [n for n, p in prims.items() if n.startswith(stem + "_") and n.endswith(sfx) and p.kind in sdf.SDF
                      and p.kind != "shell" and p.op == "add"]
+    if any(w not in prims for w in want):  # tags: instances, arrays, "tags" lists
+        from .assemble import select
+        from .spec import expand_mirror
+        want = select(expand_mirror(spec), want)
     missing = [w for w in want if w not in prims]
     if missing:
         raise SpecError(f"paint {name!r}: no bone or blob {missing} (kit output names are listed by get_model)")

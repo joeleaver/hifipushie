@@ -84,6 +84,16 @@ addressed on the surface. Rules that matter:
   "lift": -0.003, "r": 0.0065}` for a tusk's root, and the same address with `"shift": [dx,dy,dz]` for its
   tip. They follow the surface when the face or body changes.
 
+## 4b. Props and environments
+
+- Build a repeated thing once: `prefabs` (a chair in its own frame) placed by `instances` (at, rot, scale,
+  part); `array` on an element for rows and grids (logs, planks, shingles, legs), with `jitter`. Don't write a
+  script that emits hundreds of elements: the spec stays readable and one edit changes every copy.
+- `tags` (and instance / array names, which are tags automatically) stand for all their members in paint
+  `near`, cut `targets` and `delete`.
+- Hard surfaces: `box` and `cylinder` blobs with `round`, `hollow` for vessels, and cuts with `targets` so an
+  opening only bites what it should. Keep walls >= 2 voxels at the resolution you judge at.
+
 ## 5. Paint
 
 Paint is colour (and roughness, metallic, specular, height) laid on the finished surface: `spec["paint"]`
