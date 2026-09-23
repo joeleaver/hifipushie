@@ -125,7 +125,7 @@ class _Nodes:
         """paint._stretch: squashed along a direction, or along the vertex's element (then offset by its seed)."""
         if st[0] == "grain":
             _, f, seed = st
-            g = self.attr("grain", True)
+            g = self.vmath("NORMALIZE", self.attr("grain", True))  # its length is the end-grain weight
             q = self.vmath("SUBTRACT", q, self.vmath("SCALE", g, scale=self.math(
                 "MULTIPLY", self.vmath("DOT_PRODUCT", q, g), 1 - 1 / f)))
             return self.vmath("ADD", q, self.vmath("SCALE", [97.3, 61.7, 83.1], scale=self.attr(seed)))

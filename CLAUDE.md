@@ -223,7 +223,10 @@ the .blend come back as spec edits).
    element name) offsets the pattern per element. Paint: `stretch.dir: "element"`, `facing: "element"` (|n.axis|);
    materials wood/planks/metal/rust take `dir: "element"` (planks keep board rows on world axes). Nodes: a
    `grain` FLOAT_VECTOR attribute (`scene.VECTOR_INPUTS`) + packed `grain_seed`. The cabin's wood layers use it
-   (one logs layer, one timber layer). Next: end-grain rings need a radial coordinate from the element's axis.
+   (one logs layer, one timber layer). The grain vector's length is `surface.end_weight` (cross-section chunkiness:
+   1 for logs/legs/beams, 0 for slabs and boards): facing "element" reads it, stretch normalises it, so table-top,
+   seat and board edges aren't pale checked end grain. Next: end-grain rings need a radial coordinate.
+   Materials rebuild when `blender_scene.py` changes too (its hash is in the program hash).
 3. DONE (2026-09-23): per-part voxel for scene parts (`scene.part_voxel`): 2.5 voxels across each element's
    thinnest feature and 8 along its length, never coarser than the scene voxel nor finer than a quarter of it;
    the sync log names the element that set it. Cabin: metal 6.2 mm (pot/basin walls, capped), furniture 9.6,

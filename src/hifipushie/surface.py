@@ -7,7 +7,8 @@ Points holds a set of surface points (mesh vertices or baked texels): position, 
   sky         how open the point is to the sky above (1 = open, 0 = roofed over), reaching much further than
               AO: rain, sun and snow reach it or they don't (`sky`)
   hidden      1 where the point is buried inside another part
-  grain       the long axis of the element the point belongs to (unit vector, sign arbitrary): wood grain,
+  grain       the long axis of the element the point belongs to (sign arbitrary, length = how much its ends
+              read as end grain: 1 on logs and legs, 0 on slabs and boards): wood grain,
               brushed metal, per board and log (`grain`); grain_seed: 0..1 per element, so parallel boards
               don't share one continuous pattern
 Each is computed once for the whole set and kept in `cache`, which the caller may prefill (the bake passes the
@@ -21,7 +22,7 @@ import numpy as np
 from . import sdf
 
 FIELD_INPUTS = ("ao", "curvature", "thickness", "sky")
-INPUTS_VERSION = 3  # bump when how any input is measured changes: cached inputs (store.painted) are redone
+INPUTS_VERSION = 4  # bump when how any input is measured changes: cached inputs (store.painted) are redone
 
 
 def unit(v):
@@ -212,9 +213,30 @@ def element_axis(p) -> np.ndarray:
 PANEL = 0.25  # m: a box face wider than this both ways is a panel (a cabinet's side), not a piece's end grain
 
 
+def end_weight(p) -> float:
+    """How much a primitive's ends read as end grain, by how chunky its cross-section is (least / other side
+    across the grain): 1 for logs, legs, beams (ratio >= 0.5), 0 for slabs and boards (<= 0.25): a table
+    top's or a board's edge is finished wood, not a sawn, checked log end."""
+    pr, kind = (p.params["p"], p.params["kind"]) if p.kind == "csg" else (p.params, p.kind)
+    if kind == "cone":
+        fw, fh = pr["flat"]
+        r = min(fw, fh) / max(fw, fh)
+    elif kind == "cylinder":
+        rx, ry, hz = pr["size"]
+        r = min(rx, ry) / max(rx, ry) if hz >= max(rx, ry) else hz / min(rx, ry)
+    elif kind in ("box", "ellipsoid", "lids"):
+        a, b, _ = np.sort(np.asarray(pr["size"], float))
+        r = a / b
+    else:
+        return 1.0
+    t = float(np.clip((r - 0.25) / 0.25, 0.0, 1.0))
+    return t * t * (3 - 2 * t)
+
+
 def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: float):
     """Each point's element (the additive primitive of its own part whose surface is nearest) and that
-    element's long axis, plus a 0..1 seed hashed from its name: ((n, 3), (n,)). On a box face wider than PANEL
+    element's long axis, plus a 0..1 seed hashed from its name: ((n, 3), (n,)). The axis's length is the
+    element's `end_weight` (at least 1e-3): facing "element" reads |n . grain|, stretch only its direction. On a box face wider than PANEL
     both ways the grain runs along the face's longer side instead (a cabinet built of panels)."""
     import zlib
     g = np.tile(np.array([0.0, 0.0, 1.0]), (len(X), 1))
@@ -239,7 +261,7 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
                 continue
             k = near[win]
             best[k] = d[win]
-            g[sel[k]] = element_axis(p)
+            g[sel[k]] = element_axis(p) * max(end_weight(p), 1e-3)
             if kind == "box":  # a face too big to be a piece of wood's end is a panel: grain along its longer side
                 rot, size = np.asarray(pr["rot"], float), np.asarray(pr["size"], float)
                 q = (P[k] - pr["c"]) @ rot
@@ -249,9 +271,9 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
                 big = (ext.min(1) > PANEL)[face]
                 if big.any():
                     along = idx[face, np.argmax(ext[face], 1)]
-                    g[sel[k[big]]] = rot[:, along[big]].T
+                    g[sel[k[big]]] = rot[:, along[big]].T * max(end_weight(p), 1e-3)
             seed[sel[k]] = (zlib.crc32(p.name.encode()) % 10007) / 10007
-    return g / np.linalg.norm(g, axis=1, keepdims=True), seed
+    return g, seed
 
 
 def thickness(prims, X: np.ndarray, N: np.ndarray, voxel: float, size: float, samples: int = 10,

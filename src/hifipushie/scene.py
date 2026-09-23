@@ -382,7 +382,9 @@ def sync(name: str, resolution: int = 256) -> dict:
         d = defs.get(o["part"]) or {}
         bases[o["part"]] = {"color": list(o["color"][:3]), "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5))}
-    ph = hashlib.sha1(json.dumps([prog, bases, 2], sort_keys=True, default=str).encode()).hexdigest()[:12]  # 2: hp_set
+    # materials are rebuilt when the program, the bases or the code that builds their nodes change
+    ph = hashlib.sha1(json.dumps([prog, bases, hashlib.sha1(SCRIPT.read_bytes()).hexdigest()], sort_keys=True,
+                                 default=str).encode()).hexdigest()[:12]
     out = _blender({"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
                     "program": prog, "bases": bases, "prog_hash": ph})
     made = next((json.loads(line[7:]) for line in out.splitlines() if line.startswith("@@made")), [])

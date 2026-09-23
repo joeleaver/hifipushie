@@ -734,6 +734,7 @@ def _stretch(v: np.ndarray, nz: dict, grain: tuple | None = None) -> np.ndarray:
         return v
     if st.get("dir") == "element":
         g, seed = grain
+        g = g / np.linalg.norm(g, axis=1, keepdims=True)  # its length is the end-grain weight
         v = v - (1 - 1 / float(st.get("factor", 6.0))) * (v * g).sum(1)[:, None] * g
         return v + seed[:, None] * GRAIN_OFFSET[None]
     d = np.asarray(st.get("dir", [0, 0, 1]), float)
