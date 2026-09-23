@@ -128,6 +128,10 @@ faces with no deviation, clean paint. Give every model a `story` (age, climate, 
 - **Set dressing, if it's a place:** nothing free-standing is square to the room; things are in a state of
   use (a pot on the stove, a blanket thrown back, a book open, boots by the door); clutter collects where
   people leave things (shelves, corners, the table), not evenly.
+- **Restraint:** weathering should be noticed second, after the form. Sag is centimetres over metres
+  (2-3 cm on a 3 m beam), a lean about a degree, furniture a few degrees off square, grime and bleaching a
+  shift of tone (opacity ~0.15-0.3), not a new colour. Heavy-handed ageing reads as fake as none: push it
+  until it reads, then back off by a third.
 - Run `check`: it lists what still looks too perfect. The warnings are prompts, not rules: a machined part
   should be exact, a log wall shouldn't.
 

@@ -6,7 +6,7 @@ layer = {"material": "cloth" | "leather" | "wood" | "planks" | "brick" | "stone"
          "part", "opacity" (scales every sub-layer), any masks (flat keys or a "mask" stack: they confine the
          whole material, e.g. "near" a bone, a "path"), plus the material's parameters below.}
 Common parameters: "color" (the main colour, sRGB), "scale" (multiplies every pattern size, 1), "wear" and
-"dirt" (0..1: opacity of the edge-wear and grime sub-layers), "seed", and "dir" (a world direction for the
+"dirt" (0..1, 0.3: opacity of the edge-wear and grime sub-layers), "seed", and "dir" (a world direction for the
 pattern's long axis: threads, grain, rows of bricks or planks; default: horizontal on walls, X on floors).
 Sub-layers are named "<layer>:<sub>" (look(paint_layer="walls:mortar") shows one); coverage is reported for
 the material's own confining mask.
@@ -278,8 +278,8 @@ def expand(name: str, ly: dict, generator_keys, confine_params) -> list[tuple[st
     p = {k: ly[k] for k in (*COMMON, *PARAMS[mat]) if k in ly}
     p.setdefault("color", DEFAULT_COLOR[mat])
     p.setdefault("seed", 0)
-    p["wear"] = float(p.get("wear", 0.5))
-    p["dirt"] = float(p.get("dirt", 0.5))
+    p["wear"] = float(p.get("wear", 0.3))  # restrained by default: weathering should be noticed second
+    p["dirt"] = float(p.get("dirt", 0.3))
     subs = BUILD[mat](p, float(p.get("scale", 1.0)))
     conf = [{g: ly[g], **{k: ly[k] for k in confine_params.get(g, ()) if k in ly}} for g in generator_keys
             if g in ly and g != "mask"] + list(ly.get("mask") or [])

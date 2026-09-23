@@ -15,6 +15,10 @@ Directions named here can be used by paint wherever a direction is taken: {"faci
 darkens the weather side, {"facing": "sun"} bleaches the sunny side. Everything else is for you: turn each event
 into geometry (weather ops, lumpy, chips, bow, a moved chair) and paint (grime, wear paths, soot, drips).
 
+Restraint: weathering should be noticed second, after the form. Real sag is centimetres over metres, a
+lean a degree or so, furniture a few degrees off square, grime and bleaching a shift of tone rather than a new
+colour (layer opacities ~0.15-0.3). Push it until it reads, then back off by a third.
+
 check(name) runs audit(): it warns about a missing story, arrays of identical copies at even spacing, things
 lined up with the world axes, identical repeated parts, big flat surfaces with no deviation, and paint without
 wear or dirt. Warnings are prompts, not rules: a machined part should be perfect; a log wall shouldn't.
