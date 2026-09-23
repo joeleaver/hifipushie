@@ -101,6 +101,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (inverted faces); those texels fall back, the log counts them per part. Open: log walls unwrap as many thin
   strips (the cabin atlas tops out near 36% filled); cylinders want one chart each, which needs a disk-topology
   check before merging past the normal cone.
+- `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
+  named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
+  `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
+  wrapper (`sdf.sd_csg`; chips weighted to edges by the element's own Laplacian). `surface.sky` is the upward
+  openness input (rain, sun, shelter).
 - `assemble.py`: prefabs/instances and element `array`s expand into plain joints/bones/blobs before kits
   (`kits.expand` calls `assemble.expand`, content-cached), so everything downstream sees ordinary elements.
   `select` resolves names/tags (instances, arrays and `tags` lists are tags). `spec._csg` wraps a primitive as
@@ -185,9 +190,10 @@ the playbook (`guide.md`, served by the `guide` tool, plus `.claude/skills/hifip
 pass (edit + look ~3 s on the troll). `examples/troll.json` is the reference model for all of it.
 
 Next, roughly in priority order:
-1. Imperfection as a workflow stage (agreed with the user): spec["story"], a perfection audit in check,
-   weathering ops by tag (sag, lean, settle), edge erosion, damage scatters, cause-driven paint (drips under
-   eaves, soot, traffic wear, sun bleaching), set-dressing rules. Then redo the cabin with materials + story.
+1. Export for environments (agreed): prefab instances share one mesh + texture set in the GLB (nodes), and
+   density-driven atlasing (target px/m + max size -> as many atlases as needed, grouped by material/part).
+   Then redo the cabin with prefabs, arrays + variation, materials, a story and weather (the imperfection
+   stage exists now: story, check's audit, weather ops, chips, sky). Later: tiling-material export for engines.
    Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, deliberate UV seams (log walls
    unwrap as strips).
 2. Part tools: check that parts don't cut into each other (looking at one part alone: `look(only_parts=)`).

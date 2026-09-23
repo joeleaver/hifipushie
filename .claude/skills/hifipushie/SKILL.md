@@ -23,5 +23,8 @@ Call the hifipushie `guide` tool first and follow it: it is the full playbook. T
    markings (`path`), breakup (`noise`, `cavity`), then weathering as mask stacks (`ao`, `cavity`, `cells`,
    `breakup`: edge wear, grime, dust; recipes in kit_reference) and `height` for fine relief. Judge with
    `shading="flat"`, each mask alone with `look(paint_layer=...)`; check look's coverage line.
-8. **When something looks wrong,** isolate it (remove suspects one at a time, curvature view) before
+8. **History:** every model gets a `story` (age, climate, use, directions, events) and each event becomes
+   geometry (weather ops, lumpy, chips, things out of place) and paint (weather side, sky, wear paths).
+   Perfect copies, axis-aligned furniture and flat unmarked faces read as CG: `check` flags them.
+9. **When something looks wrong,** isolate it (remove suspects one at a time, curvature view) before
    changing anything; don't stack speculative fixes.

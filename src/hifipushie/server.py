@@ -96,7 +96,10 @@ Workflow, in stages; after each, run check (and look) and fix before moving on. 
   3. Secondary forms: strokes for muscle masses, fat pads and planes; judge with look shading="raking" /
      "curvature" and strokes=True; check again (strokes shouldn't break the silhouette).
   4. Detail: creases, wrinkles, repeats and scatters, in close-ups.
-  5. Paint: base colours per part, then broad zones (countershading, limbs), then markings, then dirt/mottling.
+  5. History: the spec's "story" (age, climate, use, directions, events), turned into geometry: weather ops
+     (sag, lean, settle, jitter), lumpy, chips, things out of place. Nothing real is pristine; check audits it.
+  6. Paint: base colours per part, then broad zones (countershading, limbs), then markings, then dirt/mottling,
+     weathering from the story (facing the weather side, sky-exposed vs sheltered, wear paths).
 Without a plan: put_model -> look -> edit_model in small batches -> look ...
 If you have reference art, set_reference per view then compare. Once the body plan is right, fit
 auto-adjusts joints, radii and blobs to the reference outlines; use compare's band tables for what fit can't
@@ -176,7 +179,10 @@ z; "rot" to turn it) with "round": edge radius; any bone or blob may be "hollow"
 surface: pots, cups, pipes, a boat hull). "ends": "flat" on a bone cuts it square at its joints (sawn logs, beams, dowels; {"flat": r} rounds
 the edge by r) instead of the round caps. "bow" on a bone: [sideways, up] metres (or one number, up) of sag at
 mid-length, a bent log or a sagging beam. "lumpy" on any bone or blob: {"amount": m, "scale": m (8 x amount),
-"seed"} noise on the surface itself (knots, axe marks, uneven stone); keep amount well under scale. A subtract or intersect element with "targets": [names or tags] cuts
+"seed"} noise on the surface itself (knots, axe marks, uneven stone); keep amount well under scale. "chips":
+{"depth": m, "scale": m (6 x depth), "amount": 0..1 (0.15), "where": "edges" (default: corners and edges,
+where things get knocked) | "all" (dents and gouges anywhere), "seed"} knocks chunks out of the surface:
+chipped stone and brick, worn step edges, gouged wood. A subtract or intersect element with "targets": [names or tags] cuts
 only those elements (a pot's opening, a window through the wall logs, a drawer's recess) instead of everything
 in its part and layer. Walls thinner than ~2 voxels break up at the build resolution: judge them in close-ups."""
 
@@ -185,7 +191,8 @@ in its part and layer. Walls thinner than ~2 voxels break up at the build resolu
 def kit_reference() -> str:
     """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten), paint and plans."""
     from . import assemble, kits, materials, strokes
-    return ("REPETITION AND SOLIDS\n" + assemble.__doc__ + "\n" + SOLIDS + "\n\n" + kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
+    from . import realism
+    return ("REALISM\n" + realism.__doc__ + "\n\nREPETITION AND SOLIDS\n" + assemble.__doc__ + "\n" + SOLIDS + "\n\n" + kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
             + "\n\nMATERIALS\n" + materials.__doc__
             + "\n\nPLANS\n" + planmod.__doc__)
 
@@ -559,11 +566,17 @@ def set_plan(name: str, plan: dict, note: str = "", save: str | None = None):
 def check(name: str, resolution: int = 160, save: str | None = None):
     """Check the model against its plan: per view, the plan against the model's silhouette (grey = both,
     blue = plan only: the model is missing it, red = the model sticks out); IoU and edge-error bands in world units (placed exactly, no rescaling); landmark joints vs
-    their planned heights; planned sections vs measured width and depth. Run it after every stage."""
+    their planned heights; planned sections vs measured width and depth. Run it after every stage.
+    Always also audits realism: missing story, identical copies at even spacing, things square to the axes,
+    identical parts, big perfectly flat faces, paint without wear or dirt (works without a plan too)."""
+    from . import realism
     spec = store.load(name)
+    warn = realism.audit(spec)
+    realism_txt = ("\n\nREALISM (too perfect to be real?):\n" + "\n".join(f"- {w}" for w in warn)) if warn else \
+        "\n\nREALISM: no perfection warnings"
     plan = spec.get("plan")
     if not plan:
-        raise ValueError("this model has no plan; use set_plan first")
+        return "no plan to check against (set_plan)." + realism_txt
     store.build(name, resolution)
     refs = _refs(name, None, "plan")
     lines, outlines = [], {}
@@ -573,7 +586,7 @@ def check(name: str, resolution: int = 160, save: str | None = None):
         _, _, report = cmp.compare(sil, ref, world=world, bands=10)
         lines.append(f"[{v}] " + report.replace("alignment: fit=world (exact); ", ""))
     lines += planmod.check_numbers(spec, plan)
-    return [_out(planmod.sheet(plan, list(refs), outlines=outlines), save), "\n".join(lines)]
+    return [_out(planmod.sheet(plan, list(refs), outlines=outlines), save), "\n".join(lines) + realism_txt]
 
 
 @mcp.tool(structured_output=False)

@@ -4,6 +4,8 @@ Points holds a set of surface points (mesh vertices or baked texels): position, 
   ao          ambient occlusion 0..1 (1 = open), from all parts' fields (`ao`)
   curvature   mean curvature (1/m, 1/r on a sphere of radius r; convex > 0), from the part's own field
   thickness   how far (m) the part goes on behind the point, against the normal (`thickness`)
+  sky         how open the point is to the sky above (1 = open, 0 = roofed over), reaching much further than
+              AO: rain, sun and snow reach it or they don't (`sky`)
   hidden      1 where the point is buried inside another part
 Each is computed once for the whole set and kept in `cache`, which the caller may prefill (the bake passes the
 AO it already computed) or persist (store keeps a mesh's inputs next to it, so repainting doesn't redo AO).
@@ -15,7 +17,7 @@ import numpy as np
 
 from . import sdf
 
-FIELD_INPUTS = ("ao", "curvature", "thickness")
+FIELD_INPUTS = ("ao", "curvature", "thickness", "sky")
 
 
 def unit(v):
@@ -48,6 +50,8 @@ class Points:
         if key not in self.cache:
             if key == "ao":
                 self.cache[key] = ao(list(self.streams.values()), self.pos, self.normal, self.voxel)
+            elif key == "sky":
+                self.cache[key] = sky(list(self.streams.values()), self.pos, self.normal, self.voxel)
             elif key == "hidden":
                 self.cache[key] = hidden(self.streams, self.pos, self.part, self.part_names, self.voxel)
             else:
@@ -162,6 +166,24 @@ def ao(streams: list, X: np.ndarray, N: np.ndarray, voxel: float, samples: int =
     vis = np.clip(f / np.array(den)[None], 0, 1).reshape(len(X), len(dirs), samples).min(2)
     w = np.array([w for _, w in dirs])
     return np.clip(vis @ w / w.sum(), 0, 1)
+
+
+def sky(streams: list, X: np.ndarray, N: np.ndarray, voxel: float, samples: int = 6, ring: int = 6) -> np.ndarray:
+    """Openness to the sky: rays up (straight and a ring 35 deg off vertical) marched out to 0.3 x the model
+    size (a roof, an eave, a table top over the point all count), each scored like an AO cone (field over
+    distance), cosine-weighted. Points on down-facing skin still look up, from just outside themselves."""
+    size = model_size(streams)
+    reach = 0.3 * size
+    depths = reach * (np.arange(1, samples + 1) / samples) ** 1.6
+    up = np.broadcast_to(np.array([0.0, 0.0, 1.0]), X.shape)
+    dirs = _cone(up, 35, ring)
+    prims = [p for ps in streams for p in ps]
+    start = X + N * (1.5 * voxel)
+    q = np.stack([start + D * d for D, _ in dirs for d in depths], 1)
+    f = sdf.field_at(prims, q).reshape(len(X), len(dirs), samples)
+    vis = np.clip(f / (0.35 * depths[None, None]), 0, 1).min(2)
+    w = np.array([w for _, w in dirs])
+    return vis @ w / w.sum()
 
 
 def thickness(prims, X: np.ndarray, N: np.ndarray, voxel: float, size: float, samples: int = 10,

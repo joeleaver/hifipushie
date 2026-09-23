@@ -40,7 +40,10 @@ you're in.
    shouldn't move the silhouette much.
 4. **Detail** (strokes with repeat/scatter, in close-ups): wrinkles, creases, warts, pores.
 5. **Parts** (clothing, eyes, teeth) can come in at 2-4; they're separate meshes.
-6. **Paint** last (section 5): it doesn't change the shape, so it can't break earlier stages.
+6. **History** (section 5b): write `spec["story"]` at the start, and before paint turn each event into
+   geometry: weather ops, sag, lean, lumpy, chips, things moved out of place. `check` audits perfection.
+7. **Paint** last (section 5): it doesn't change the shape, so it can't break earlier stages. Weather it from
+   the story too.
 
 Going back is fine and cheap (history/revert). Expect the plan-vs-model IoU to drop a little as kits and
 details add things the plan never drew (nose, ears, fingers).
@@ -108,6 +111,25 @@ addressed on the surface. Rules that matter:
   `near`, cut `targets` and `delete`.
 - Hard surfaces: `box` and `cylinder` blobs with `round`, `hollow` for vessels, and cuts with `targets` so an
   opening only bites what it should. Keep walls >= 2 voxels at the resolution you judge at.
+
+## 5b. History: nothing real is pristine
+
+Perfect things read as CG at a glance: identical copies at even spacing, everything square to the axes, flat
+faces with no deviation, clean paint. Give every model a `story` (age, climate, use, named `directions` like
+"weather" and "sun", and events), then make each event visible, in geometry first and paint second:
+- **Time and gravity:** `weather` ops by tag: beams and floors `sag`, posts `lean`, stones `settle`, and
+  `lumpy` surfaces. Arrays get `vary`/`jitter`/`flip` (see 4b).
+- **Use and misuse:** `chips` on edges that get knocked (steps, table edges, stone corners), worn paths
+  (paint `path` with wear), polish where hands go (`near` + low roughness), furniture pushed out of place
+  (`weather` jitter on instances: chairs pulled out, a rug askew, a door ajar).
+- **Weather:** the story's "weather" side darker and streaked (`facing: "weather"` + stretched noise),
+  exposed tops rain-washed grey or mossy (`sky` open), sheltered places dusty (`sky` closed), drips below
+  sills and nails, sun bleaching (`facing: "sun"`).
+- **Set dressing, if it's a place:** nothing free-standing is square to the room; things are in a state of
+  use (a pot on the stove, a blanket thrown back, a book open, boots by the door); clutter collects where
+  people leave things (shelves, corners, the table), not evenly.
+- Run `check`: it lists what still looks too perfect. The warnings are prompts, not rules: a machined part
+  should be exact, a log wall shouldn't.
 
 ## 5. Paint
 

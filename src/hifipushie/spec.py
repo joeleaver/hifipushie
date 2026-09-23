@@ -75,9 +75,10 @@ def _numeric(v) -> bool:
 
 
 def geometry(spec: dict) -> dict:
-    """The spec without what doesn't shape the surface (paint, plan), so editing those doesn't rebuild or
+    """The spec without what doesn't shape the surface (paint, plan, story), so editing those doesn't rebuild or
     re-seat anything."""
-    return {k: v for k, v in spec.items() if k not in ("paint", "plan")} if "paint" in spec or "plan" in spec else spec
+    skip = ("paint", "plan", "story")
+    return {k: v for k, v in spec.items() if k not in skip} if any(k in spec for k in skip) else spec
 
 
 def expand_mirror(spec: dict) -> dict:
@@ -313,6 +314,21 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
                 raise SpecError(f"{p.name!r}: lumpy works on bones and shaped blobs")
             wrap(p).params["lumpy"] = (amt, sc, int(lp.get("seed", zlib.crc32(p.name.encode()) % 9973)), int(lp.get("octaves", 3)))
             p.lo, p.hi = p.lo - amt, p.hi + amt
+        if el.get("chips"):
+            ch = el["chips"]
+            ch = {"depth": float(ch)} if isinstance(ch, (int, float)) else ch
+            depth = float(ch.get("depth", 0.006))
+            sc = float(ch.get("scale", max(6 * depth, 0.02)))
+            cover = min(max(float(ch.get("amount", 0.15)), 0.0), 0.9)  # roughly the fraction of surface chipped
+            lo = 0.5 + 0.35 * (1 - 2 * cover)
+            w = max(0.03, 1.5 * depth / sc)  # keeps the carved field's slope near 1
+            if p.kind not in SHAPES:
+                raise SpecError(f"{p.name!r}: chips work on bones and shaped blobs")
+            where = ch.get("where", "edges")
+            if where not in ("edges", "all"):
+                raise SpecError(f"{p.name!r}: chips where is \"edges\" or \"all\"")
+            wrap(p).params["chips"] = (depth, sc, lo, w, int(ch.get("seed", zlib.crc32(p.name.encode()) % 9973) + 7),
+                                       where == "edges")
         if el.get("hollow"):
             if p.kind not in SHAPES:
                 raise SpecError(f"{p.name!r}: hollow works on bones and shaped blobs")
@@ -500,6 +516,8 @@ def summarize(spec: dict) -> str:
         d = hi - lo
         lines.append(f"approx bounds: width(X) {d[0]:.3f}  length(Y) {d[1]:.3f}  height(Z) {d[2]:.3f}"
                      f"  | min {np.round(lo, 3).tolist()} max {np.round(hi, 3).tolist()}")
+    from .realism import summary as story_summary
+    lines.append(story_summary(spec))
     lines.append(f"{len(spec.get('joints', {}))} joints, {len(spec.get('bones', {}))} bones, "
                  f"{len(spec.get('blobs', {}))} blobs stored ({len(prims)} primitives after mirroring)")
     for name, b in spec.get("bones", {}).items():

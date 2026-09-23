@@ -39,6 +39,9 @@ Masks (generators, each 0..1 per point):
            patches, wide ones soft variation. Combine with other masks to confine it.
   ao:      [a, b]: ambient occlusion (1 open, 0 enclosed, all parts occluding each other) ramped 0 at a to 1 at b,
            e.g. [0.95, 0.6]: 1 in armpits, under the jaw, where clothes meet skin. Grime, dirt, darkening.
+  sky:     [a, b]: openness to the sky above (1 open, 0 under a roof, eave, table or overhang), reaching far
+           beyond AO. [0.6, 0.2] = sheltered (dust, cobwebs, dry dirt under eaves); [0.5, 0.9] = exposed
+           (rain-washed, sun-bleached, moss and lichen on tops, snow).
   thickness: [a, b] (m): how far the part goes on behind the skin, e.g. [0.04, 0.012]: 1 on ears, fingers, the
            nose wings (thin, backlit: reddish for subsurface later). Thick bodies read as ~0.08 * model size.
   cells:   {"scale": m (cell size, 0.03), "mode": "edges" | "distance" | "id", "jitter": 0..1 (1), "seed",
@@ -136,7 +139,8 @@ def colour(c, what: str = "color") -> np.ndarray:
     return v[:3]
 
 
-GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "mask")
+GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
+              "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -213,7 +217,7 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         raise SpecError(f"paint {name!r}: cells is {{\"scale\", \"mode\": \"edges\" | \"distance\" | \"id\", ...}}")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
-    if g in ("ao", "thickness") and not (isinstance(e[g], list) and len(e[g]) == 2):
+    if g in ("ao", "thickness", "sky") and not (isinstance(e[g], list) and len(e[g]) == 2):
         raise SpecError(f"paint {name!r}: {g} is [value at 0, value at 1], e.g. " +
                         ("[0.9, 0.5] (1 in occluded places)" if g == "ao" else "[0.03, 0.01] (1 where thin)"))
 
@@ -233,7 +237,8 @@ _CODE = _code_hash()
 
 def key(spec: dict) -> str:
     """What painted colours depend on besides the mesh (and the painting code)."""
-    return hashlib.sha1(json.dumps([spec.get("paint"), spec.get("parts"), _CODE], sort_keys=True,
+    return hashlib.sha1(json.dumps([spec.get("paint"), spec.get("parts"), (spec.get("story") or {}).get("directions"),
+                                    _CODE], sort_keys=True,
                                    default=float).encode()).hexdigest()[:12]
 
 
@@ -480,10 +485,10 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         return _path_mask(spec, tag, {**e, "part": view.pts.part_names[int(np.argmax(counts))]}, v, n)
     if gen == "near":
         return _near_mask(spec, name, e, v)
-    if gen == "facing":
-        d = np.asarray(e["facing"], float)
+    if gen == "facing":  # a direction, or one of the story's named directions ("weather", "sun")
+        from .realism import direction
         lo, hi = e.get("range", [0.0, 0.7])
-        return _ramp(n @ (d / np.linalg.norm(d)), lo, hi)
+        return _ramp(n @ direction(spec, e["facing"], f"paint {name!r}"), lo, hi)
     if gen == "axis":
         return _axis_mask(spec, name, e["axis"], v)
     if gen == "noise":
@@ -510,7 +515,7 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         # threads under ~3 points across can't be resolved: fade to the average instead of aliasing (like a mip)
         k = float(np.clip((sc / max(view.pts.footprint, 1e-9) - 2.0) / 2.0, 0, 1))
         return 0.55 + k * (val - 0.55)
-    if gen in ("ao", "thickness"):
+    if gen in ("ao", "thickness", "sky"):
         a, b = e[gen]
         return _ramp(view.get(gen), float(a), float(b))
     if gen == "mask":

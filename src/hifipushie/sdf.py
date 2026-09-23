@@ -190,6 +190,18 @@ def sd_csg(p: np.ndarray, pr: dict) -> np.ndarray:
         from .noise import fbm
         amt, sc, seed, octv = pr["lumpy"]
         d = d + amt * (2.0 * fbm(p.reshape(-1, 3), sc, octv, seed).reshape(d.shape) - 1.0)
+    if pr.get("chips"):  # chunks knocked out: noise above a threshold carves up to `depth`, steep-walled
+        from .noise import fbm
+        depth, sc, lo, w, seed, edges = pr["chips"]
+        c = fbm(p.reshape(-1, 3), sc, 3, seed).reshape(d.shape)
+        t = np.clip((c - lo) / w, 0.0, 1.0)
+        carve = depth * t * t * (3 - 2 * t)
+        if edges:  # mostly on edges and corners: the element's own convexity (Laplacian over a chip's size)
+            h = 0.5 * sc
+            base = SDF[pr["kind"]]
+            lap = sum(base(p + h * e, pr["p"]) + base(p - h * e, pr["p"]) for e in np.eye(3)) - 6 * d
+            carve = carve * np.clip(lap / (1.2 * h), 0.0, 1.0)
+        d = np.maximum(d, d + carve)
     if pr["hollow"]:
         d = np.maximum(d, -d - pr["hollow"])
     for op, kind, params, k in pr["cuts"]:
