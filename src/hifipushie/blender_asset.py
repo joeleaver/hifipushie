@@ -120,7 +120,7 @@ def _islands(bm):
     return np.array([find(i) for i in range(len(bm.faces))])
 
 
-def _charts(bm, texel, cone_deg, min_width=6.0, min_area=100.0):
+def _charts(bm, texel, cone_deg, min_width=6.0, min_area=100.0, group=None):
     """Islands from the seams, with the poor ones merged: an island narrower than `min_width` texels (2 area /
     perimeter) or smaller than `min_area` texels^2 costs more in margin than it holds, so it joins the neighbour
     it shares the most boundary with, as long as every face of the merged chart stays within `cone_deg` of the
@@ -172,7 +172,8 @@ def _charts(bm, texel, cone_deg, min_width=6.0, min_area=100.0):
                 m = nsum[k] + nsum[o]
                 nm = np.linalg.norm(m)
                 idx = np.concatenate([members[k], members[o]])
-                if nm < 1e-12 or (N[idx] @ (m / nm)).min() < cosc:
+                if nm < 1e-12 or (N[idx] @ (m / nm)).min() < cosc or (
+                        group is not None and group[members[k][0]] != group[members[o][0]]):
                     continue
                 ln, es = shared.pop((min(k, o), max(k, o)))
                 for ei in es:
@@ -228,9 +229,24 @@ def _unwrap_atlas(obs, cfg, job):
         bm = bmesh.from_edit_mesh(ob.data)
         bm.faces.ensure_lookup_table()
         uvl = bm.loops.layers.uv.verify()
-        members, nsum, changed = _charts(bm, texel, job.get("cone", 75))
+        # focus regions (a face, a hand): faces whose centre is inside one get its density; seams along their
+        # edge so no island straddles it, and no merging across it
+        focus = cfg[ob.name].get("focus") or []
+        group = np.full(len(bm.faces), -1)
+        if focus:
+            cen = np.array([f.calc_center_median() for f in bm.faces]).reshape(-1, 3)
+            for gi, (x, y, zz, r, _) in enumerate(focus):
+                inside = np.linalg.norm(cen - [x, y, zz], axis=1) <= r
+                group[inside & (group < 0)] = gi
+            for e in bm.edges:
+                lf = e.link_faces
+                if len(lf) == 2 and group[lf[0].index] != group[lf[1].index]:
+                    e.seam = True
+        members, nsum, changed = _charts(bm, texel, job.get("cone", 75), group=group)
         for k, idx in members.items():
             faces = [bm.faces[i] for i in idx]
+            g = group[idx[0]]
+            dk = d * (focus[g][4] if g >= 0 else 1.0)
             if k in changed:  # merged: project along the chart's mean normal
                 m = nsum[k] / np.linalg.norm(nsum[k])
                 ref = np.array([0.0, 0.0, 1.0]) if abs(m[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
@@ -248,7 +264,7 @@ def _unwrap_atlas(obs, cfg, job):
                 q = [lp[uvl].uv for lp in f.loops]
                 auv += abs((q[1] - q[0]).cross(q[2] - q[0])) / 2
             if auv > 1e-20 and a3 > 0:
-                s = d * math.sqrt(a3 / auv)
+                s = dk * math.sqrt(a3 / auv)
                 for f in faces:
                     for lp in f.loops:
                         lp[uvl].uv = lp[uvl].uv * s

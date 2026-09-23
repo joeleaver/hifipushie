@@ -83,6 +83,26 @@ def _weight(defs: dict, pn: str, key: str) -> float:
     return w
 
 
+def focus_regions(spec: dict, pn: str) -> list:
+    """parts.<p>.texel_focus: [{"at": point | joint | blob | {"bone", "t"}, "radius": m, "density": w}] as
+    [[x, y, z, radius, density]]: islands inside get `density` times the part's own (the face of a character)."""
+    items = (spec.get("parts", {}).get(pn) or {}).get("texel_focus") or []
+    if isinstance(items, dict):
+        items = [items]
+    if not items:
+        return []
+    from .spec import expand_mirror, resolve_point
+    full = expand_mirror(spec)
+    out = []
+    for it in items:
+        c = resolve_point(full, it["at"])
+        r, w = float(it.get("radius", 0.1)), float(it.get("density", 2.0))
+        if r <= 0 or w <= 0:
+            raise ValueError(f"parts.{pn}.texel_focus: radius and density must be > 0")
+        out.append([float(c[0]), float(c[1]), float(c[2]), r, w])
+    return out
+
+
 def atlas_groups(spec: dict, areas: dict, atlases: int) -> dict:
     """Atlas name per part. A part's own "atlas" (any name) wins; the others share atlas "0", or with atlases > 1
     are split into that many ("0", "1", ...) by texture load (area x texel_density^2), largest first into the
@@ -373,17 +393,25 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         f.write(struct.pack("<II", len(bin_), 0x004E4942) + bytes(bin_))
 
 
-def texel_sizes(parts: dict, texture: int) -> dict:
-    """Per part: surface area, uv area (fraction of its atlas) and the texel size it got (mm per texel)."""
+def texel_sizes(parts: dict, texture: int, focus: dict | None = None) -> dict:
+    """Per part: surface area, uv area (fraction of its atlas) and the texel size it got (mm per texel), plus
+    the texel size inside each of its focus regions ({part: [[x, y, z, r, w]]})."""
     out = {}
     for pn, p in parts.items():
         c = p["verts"][p["corner_vert"]].reshape(-1, 3, 3).astype(np.float64)
-        a3 = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2
+        a3 = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1) / 2
         u = p["uv"].reshape(-1, 3, 2).astype(np.float64)
         e1, e2 = u[:, 1] - u[:, 0], u[:, 2] - u[:, 0]
-        auv = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]).sum() / 2
-        out[pn] = {"area_m2": float(a3), "uv_fill": float(auv),
-                   "mm_per_texel": float(1000 * np.sqrt(a3 / max(auv, 1e-20)) / texture)}
+        auv = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) / 2
+
+        def mm(sel):
+            return float(1000 * np.sqrt(a3[sel].sum() / max(auv[sel].sum(), 1e-20)) / texture)
+        out[pn] = {"area_m2": float(a3.sum()), "uv_fill": float(auv.sum()), "mm_per_texel": mm(slice(None))}
+        regions = (focus or {}).get(pn) or []
+        if regions:
+            cen = c.mean(1)
+            out[pn]["focus_mm_per_texel"] = [round(mm(np.linalg.norm(cen - f[:3], axis=1) <= f[3]), 2)
+                                             for f in regions]
     return out
 
 
@@ -404,25 +432,30 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     group = atlas_groups(spec, areas, atlases)
     names = sorted(set(group.values()), key=lambda g: (not g.isdigit(), int(g) if g.isdigit() else 0, g))
     cfg = {pn: {"weight": _weight(defs, pn, "triangle_weight"), "density": _weight(defs, pn, "texel_density"),
-                "atlas": names.index(group[pn])} for pn in areas}
+                "atlas": names.index(group[pn]), "focus": focus_regions(spec, pn)} for pn in areas}
     t1 = time.time()
     parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, texture)
     high.unlink()
     ntri = sum(len(p["corner_vert"]) // 3 for p in parts.values())
     log.append(f"low poly: {ntri} triangles in {time.time() - t1:.1f}s (joint decimation {binfo['joint_s']:.1f}s, "
                f"per-part {binfo['decimate_s'] - binfo['joint_s']:.1f}s, unwrap + pack {binfo['unwrap_s']:.1f}s)")
-    sizes = texel_sizes(parts, texture)
+    sizes = texel_sizes(parts, texture, {pn: cfg[pn]["focus"] for pn in parts})
     report = {}
     for pn, p in parts.items():
+        b = binfo["parts"][pn]
         report[pn] = {"triangles": len(p["corner_vert"]) // 3, "atlas": names[p["atlas"]],
                       "mm_per_texel": round(sizes[pn]["mm_per_texel"], 2), "area_m2": round(sizes[pn]["area_m2"], 3),
-                      "islands": binfo["parts"][pn].get("islands"), "error_share": binfo["parts"][pn]["joint_count"], "mirrored": binfo["parts"][pn]["symmetric"],
-                      "texel_density": cfg[pn]["density"], "triangle_weight": _weight(defs, pn, "triangle_weight")}
+                      "islands": b.get("islands"), "joint_decimation_share": b["joint_count"],
+                      "mirrored": b["symmetric"], "texel_density": cfg[pn]["density"],
+                      "triangle_weight": _weight(defs, pn, "triangle_weight")}
+        if "focus_mm_per_texel" in sizes[pn]:
+            report[pn]["focus_mm_per_texel"] = sizes[pn]["focus_mm_per_texel"]
     for ai, an in enumerate(names):
         fill = sum(sizes[pn]["uv_fill"] for pn, p in parts.items() if p["atlas"] == ai)
         log.append(f"atlas {an}: {fill:.0%} of {texture}^2 filled; " + ", ".join(
-            f"{pn} {r['triangles']} tris {r['mm_per_texel']:.1f} mm/texel" for pn, r in report.items()
-            if r["atlas"] == an))
+            f"{pn} {r['triangles']} tris {r['mm_per_texel']:.1f} mm/texel"
+            + (f" (focus {', '.join(f'{v:.1f}' for v in r['focus_mm_per_texel'])})" if "focus_mm_per_texel" in r else "")
+            for pn, r in report.items() if r["atlas"] == an))
     atlas_files, maps_info, heights, cover = [], {}, {}, {}
     for ai, an in enumerate(names):
         stem = name if len(names) == 1 else f"{name}_{an}"
