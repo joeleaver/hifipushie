@@ -174,10 +174,11 @@ def density_groups(units: dict, loads: dict, fixed: dict, max_texture: int, fill
     return out
 
 
-def split(spec: dict, resolution: int, instancing: bool, log: list) -> dict:
+def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: int = 2) -> dict:
     """What gets meshed and baked: the model's parts, minus the instances of shared prefabs, plus one copy of each
     shared prefab's parts (named "<prefab>/<part>") taken from its bake instance (the first unmirrored one).
-    A prefab is shared when it has 2+ instances, unless prefabs.<p>.export is "unique" (then its instances are
+    A prefab is shared when it has `min_share`+ instances (the scene uses 1: every instance is a movable object),
+    unless prefabs.<p>.export is "unique" (then its instances are
     baked into the scene like any element). Returns {"streams": {export part: prims}, "origin": {export part:
     model part}, "frames": {export part: (lo, voxel, shape)}, "voxel": scene voxel, "full": {model part: prims}
     (the whole model: AO, sky and paint context), "prefabs": {prefab: {"bake": instance, "instances": {instance:
@@ -194,11 +195,11 @@ def split(spec: dict, resolution: int, instancing: bool, log: list) -> dict:
         mode = ((spec.get("prefabs") or {}).get(pf) or {}).get("export", "share")
         if mode not in ("share", "unique"):
             raise ValueError(f"prefabs.{pf}.export is \"share\" or \"unique\"")
-        if mode == "unique" or len(insts) < 2:
+        if mode == "unique" or len(insts) < min_share:
             log.append(f"prefab {pf}: {len(insts)} instance(s) baked into the scene"
                        + (" (export: unique)" if mode == "unique" else ""))
             continue
-        bake = next(i for i in insts if not pls[i]["mirror"])
+        bake = next((i for i in insts if not pls[i]["mirror"]), insts[0])
         shared[pf] = {"bake": bake, "instances": {i: assemble.world_of(pls[i]) for i in insts}, "parts": []}
     owner = {inst: pf for pf, d in shared.items() for inst in d["instances"]}
     xs, origin = {}, {}

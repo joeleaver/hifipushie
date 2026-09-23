@@ -399,7 +399,10 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
 
 def _mesh(name, path):
     z = np.load(path)
-    verts, faces = z["verts"], z["faces"]
+    return _mesh_from(name, z["verts"], z["faces"], z["normals"] if "normals" in z else None)
+
+
+def _mesh_from(name, verts, faces, normals=None):
     me = bpy.data.meshes.new(name)
     me.vertices.add(len(verts))
     me.vertices.foreach_set("co", verts.astype(np.float32).ravel())
@@ -409,9 +412,29 @@ def _mesh(name, path):
     me.polygons.foreach_set("loop_start", np.arange(0, faces.size, 3, dtype=np.int32))
     me.update()
     me.shade_smooth()
-    if "normals" in z:
-        me.normals_split_custom_set_from_vertices(z["normals"].astype(np.float64))
+    if normals is not None:
+        me.normals_split_custom_set_from_vertices(normals.astype(np.float64))
     return me
+
+
+def _split(path, subset):
+    """An object's mesh arrays as two sets of faces: those touching `subset` (vertex indices; None = all: to bake)
+    and the rest (occluders only). Returns (V, N, target faces, rest faces)."""
+    z = np.load(path)
+    V, F, N = z["verts"], z["faces"], z["normals"]
+    if subset is None:
+        return V, N, F, F[:0]
+    mark = np.zeros(len(V), bool)
+    mark[np.asarray(subset, np.int64)] = True
+    hit = mark[F].any(1)
+    return V, N, F[hit], F[~hit]
+
+
+def _compact(V, N, F):
+    used = np.unique(F)
+    remap = np.full(len(V), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    return V[used], N[used], remap[F], used
 
 
 def _inputs(me, path):
@@ -626,23 +649,30 @@ def bake(job):
     print("@@baked", json.dumps(out))
 
 
-def _ao_override(distance, up, samples):
-    """A material that emits the AO node's openness: around the surface normal, or looking straight up."""
-    m = bpy.data.materials.new("hp_ao_up" if up else "hp_ao")
+def _ao_override(ao_distance, sky_distance, samples):
+    """A material that emits both openings in one colour: red = AO around the surface normal, green = sky
+    (AO looking straight up), so one bake measures both (each bake call has ~20 s of fixed cost)."""
+    m = bpy.data.materials.new("hp_ao_sky")
     m.use_nodes = True
     t = m.node_tree
     t.nodes.clear()
-    ao = t.nodes.new("ShaderNodeAmbientOcclusion")
-    ao.samples = samples
-    ao.inputs["Distance"].default_value = distance
-    ao.inputs["Color"].default_value = (1, 1, 1, 1)
-    if up:
-        cmb = t.nodes.new("ShaderNodeCombineXYZ")
-        cmb.inputs[2].default_value = 1.0
-        t.links.new(cmb.outputs[0], ao.inputs["Normal"])
+    outs = []
+    for dist, up in ((ao_distance, False), (sky_distance, True)):
+        ao = t.nodes.new("ShaderNodeAmbientOcclusion")
+        ao.samples = samples
+        ao.inputs["Distance"].default_value = dist
+        ao.inputs["Color"].default_value = (1, 1, 1, 1)
+        if up:
+            cmb = t.nodes.new("ShaderNodeCombineXYZ")
+            cmb.inputs[2].default_value = 1.0
+            t.links.new(cmb.outputs[0], ao.inputs["Normal"])
+        outs.append(ao.outputs["AO"])
+    rgb = t.nodes.new("ShaderNodeCombineColor")
+    t.links.new(outs[0], rgb.inputs[0])
+    t.links.new(outs[1], rgb.inputs[1])
     em = t.nodes.new("ShaderNodeEmission")
     out = t.nodes.new("ShaderNodeOutputMaterial")
-    t.links.new(ao.outputs["Color"], em.inputs["Color"])
+    t.links.new(rgb.outputs[0], em.inputs["Color"])
     t.links.new(em.outputs[0], out.inputs[0])
     return m
 
@@ -660,11 +690,15 @@ def _device(scene, device):
 
 
 def bake_inputs(job):
-    """AO and sky openness per vertex by Cycles ray tracing, baked as emission into colour attributes, every
-    object in one bake per pass (a bake call rebuilds the scene's BVH and shaders: once, not per object). Builds
-    its own scene from the objects' meshes (no .blend): scene objects where they are, a prefab's parts at every
-    instance (linked duplicates: they all occlude), baked at the bake instance. Writes <out>/<key>.npz {ao, sky}
-    (by vertex, in the mesh file's order) and prints timings."""
+    """AO and sky openness per vertex by Cycles, baked as emission into a colour attribute (red AO, green sky). No
+    input depends on where anything movable stands (an engine lights the assets; baked shadows of a chair on the
+    floor would be wrong the moment it moves):
+      1. the building (objects that aren't prefab instances): AO and sky among its own parts, props absent;
+      2. props' AO: each prefab (all its parts) alone, parked in a slot far from everything: self-occlusion only;
+      3. props' sky: at their bake instance under the building (whether rain reaches them where they stand).
+    Everything baked in a pass is ONE mesh in world space (Cycles bakes selected objects one by one with seconds
+    of set-up each). An object with a "subset" (vertex indices) bakes only the faces touching it; the rest of it
+    stays as an occluder. Writes <out>/<key>.npz {idx (vertex indices in the mesh file), ao, sky}."""
     import os
     import time
     t0 = time.time()
@@ -676,47 +710,91 @@ def bake_inputs(job):
     scene.cycles.samples = 1
     scene.render.bake.target = "VERTEX_COLORS"
     vl = bpy.context.view_layer
-    passes = {"ao": _ao_override(job["ao_distance"], False, job.get("samples", 32)),
-              "sky": _ao_override(job["sky_distance"], True, job.get("samples", 32))}
-    by_pf = {}
-    for i in job["instances"]:
-        by_pf.setdefault(i["prefab"], []).append(i)
-    targets = {}
+    mat = _ao_override(job["ao_distance"], job["sky_distance"], job.get("samples", 32))
+    mats = {i["name"]: np.asarray(i["matrix"], float) for i in job["instances"]}
+    slot = 3.0 * job["sky_distance"] + 10.0
+    groups = {"static": [], "slot": [], "real": []}  # target pieces: (key, V, N, F, used)
+    rests = {"static": [], "slot": [], "real": []}  # occluder objects
+
+    def xform(V, N, M, shift=None):
+        v = V @ M[:3, :3].T + M[:3, 3]
+        n = N @ np.linalg.inv(M[:3, :3])
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        if shift is not None:
+            v = v + shift
+        return v, n
+
+    def occluder(where, name, V, N, F):
+        if len(F):
+            v, n, f, _ = _compact(V, N, F)
+            ob = bpy.data.objects.new(name, _mesh_from(name, v, f, n))
+            scene.collection.objects.link(ob)
+            rests[where].append(ob)
+    pf_slot = {}
     for o in job["objects"]:
-        me = _mesh(o["key"], o["mesh"])
-        attr = me.color_attributes.new("hp_bake", "FLOAT_COLOR", "POINT")
-        me.color_attributes.active_color = attr
+        sub = o.get("subset")
+        if isinstance(sub, str):
+            sub = np.load(sub)
+        V, N, F_t, F_r = _split(o["mesh"], sub)
         if not o.get("prefab"):
-            ob = bpy.data.objects.new(o["key"], me)
-            scene.collection.objects.link(ob)
-            targets[o["key"]] = ob
+            occluder("static", o["key"] + "_rest", V, N, F_r)
+            if len(F_t):
+                groups["static"].append((o["key"], V, N, F_t))
             continue
-        for i in by_pf[o["prefab"]]:
-            ob = bpy.data.objects.new(f"{o['key']}@{i['name']}", me)
-            scene.collection.objects.link(ob)
-            ob.matrix_world = _matrix(i["matrix"])
-            if i["name"] == o["bake"]:
-                targets[o["key"]] = ob
+        M = mats[o["bake"]]
+        k = pf_slot.setdefault(o["prefab"], len(pf_slot) + 1)
+        for where, shift in (("slot", np.array([k * slot, 0.0, 0.0])), ("real", None)):
+            v, n = xform(V.astype(np.float64), N.astype(np.float64), M, shift)
+            occluder(where, f"{o['key']}_rest_{where}", v, n, F_r)
+            if len(F_t):
+                groups[where].append((o["key"], v, n, F_t))
+
+    def merged(where):
+        if not groups[where]:
+            return None, {}
+        tv, tn, tf, spans = [], [], [], {}
+        for key, V, N, F in groups[where]:
+            v, n, f, used = _compact(V, N, F)
+            base = sum(len(x) for x in tv)
+            spans[key] = (base, len(v), used)
+            tv.append(v)
+            tn.append(n)
+            tf.append(f + base)
+        me = _mesh_from("hp_targets_" + where, np.concatenate(tv), np.concatenate(tf), np.concatenate(tn))
+        me.color_attributes.active_color = me.color_attributes.new("hp_bake", "FLOAT_COLOR", "POINT")
+        ob = bpy.data.objects.new("hp_targets_" + where, me)
+        scene.collection.objects.link(ob)
+        return ob, spans
+    tgt = {w: merged(w) for w in groups}
     times = {"load": round(time.time() - t0, 1)}
-    res = {k: {} for k in targets}
-    os.makedirs(job["out"], exist_ok=True)
-    for name, mat in passes.items():
-        vl.material_override = mat
-        for ob in scene.objects:
-            ob.select_set(False)
-        for t in targets.values():
-            t.select_set(True)
-        vl.objects.active = next(iter(targets.values()))
+    vl.material_override = mat
+    res = {}
+    # pass: (target set, occluder sets visible, which channels it gives)
+    for where, visible, chans in (("static", ("static",), ("ao", "sky")), ("slot", ("slot",), ("ao",)),
+                                  ("real", ("static", "real"), ("sky",))):
+        ob, spans = tgt[where]
+        if ob is None:
+            continue
+        show = {ob} | {x for w in visible for x in rests[w]} | {tgt[w][0] for w in visible if tgt[w][0] is not None}
+        for x in scene.objects:
+            x.hide_render = x not in show
+            x.select_set(False)
+        ob.select_set(True)
+        vl.objects.active = ob
         t1 = time.time()
         bpy.ops.object.bake(type="EMIT", target="VERTEX_COLORS")
-        times[name] = round(time.time() - t1, 1)
-        for k, t in targets.items():
-            a = np.empty(len(t.data.vertices) * 4, np.float32)
-            t.data.color_attributes["hp_bake"].data.foreach_get("color", a)
-            res[k][name] = a.reshape(-1, 4)[:, 0].copy()
+        times[where] = round(time.time() - t1, 1)
+        a = np.empty(len(ob.data.vertices) * 4, np.float32)
+        ob.data.color_attributes["hp_bake"].data.foreach_get("color", a)
+        a = a.reshape(-1, 4)
+        for key, (b0, n, used) in spans.items():
+            r = res.setdefault(key, {"idx": used})
+            for c in chans:
+                r[c] = a[b0:b0 + n, 0 if c == "ao" else 1].copy()
     vl.material_override = None
-    for k, r in res.items():
-        np.savez(os.path.join(job["out"], k.replace("/", "__") + ".npz"), **r)
+    os.makedirs(job["out"], exist_ok=True)
+    for key, r in res.items():
+        np.savez(os.path.join(job["out"], key.replace("/", "__") + ".npz"), **r)
     print("@@times", json.dumps(times))
 
 

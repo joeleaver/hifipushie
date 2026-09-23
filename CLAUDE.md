@@ -206,16 +206,19 @@ the .blend come back as spec edits).
   cone): sees sky through windows/eaves at an angle. Needs retuning of `sky` ranges, not just a curve.
 
 **Plan, in order:**
-1. DONE (2026-09-23): `scene.sync` takes ao/sky from Cycles (`scene.raytraced` -> `blender_scene.bake_inputs`, which
-   builds its own scene from the cached meshes, prefabs at every instance; cached per object as `_rt_<key>`;
-   settings in `scene.RT`). Per-vertex values are smoothed (2 rounds halfway to the neighbour mean: 32 rays are
-   noisier than neighbouring vertices differ). AO goes through `input_quantiles.json` (Cycles -> ours, fitted on
-   the cabin's 1.1M vertices). Sky is raw Cycles (cosine upper hemisphere, reach 2 x model size): ours stopped
-   at 0.3 x, so interior walls read as open sky (weather/rust inside the cabin); a vertical surface tops out
-   near 0.5 now, so ranges on walls/pipes want ~half what they had (cabin's rain_grey, pipe_rust retuned).
-   Masks measured by our code (blur, ".L") read the Cycles values too (`measure(given=)`). Sync of the cabin
-   150 s vs 304 s. `scene.look(show_layer=)` now shows the mask glowing orange on lit clay (a material by its
-   name shows its first sub-layer). Still ours: `look`'s per-vertex paint and the texel bake (`surface.ao/sky`).
+1. DONE (2026-09-23): `scene.sync` takes ao/sky from Cycles (`scene.raytraced` -> `blender_scene.bake_inputs`).
+   Agreed with the user: nothing baked may depend on where movable things stand ("the engine would light them"):
+   the building (non-instance prims) shades itself; every prefab instance is its own object (`split(min_share=1)`)
+   and shades only itself (AO pass with each prefab parked in its own far slot); a prop's sky is taken at its bake
+   instance under the building (props do shelter each other's sky there: minor, noted). Three passes in one
+   Blender run, each pass's targets merged into ONE mesh (Cycles bakes selected objects one by one with seconds of
+   set-up each: 22 objects took 116-141 s, merged 18-32 s). Incremental: building prims are diffed against
+   `scene_cache/rt_state.json`; only vertices a change can reach (`_near_change`: AO reach, or under it in a 45 deg
+   cone) are re-baked, the rest of the object stays as occluder. Per-vertex values smoothed (2 rounds), AO through
+   `input_quantiles.json`; sky raw, reach 2 x model size (interior walls read sheltered); walls top out near 0.5.
+   Inputs are keyed per object and packed files named by content, so only changed objects are replaced in Blender.
+   Moving a prop: 1.6 s sync; moving a prefab's bake instance re-bakes that prefab only (~13 s); cold ~110 s.
+   `scene.clashes(spec, inst)` / `clear_of(name, inst)`: a moved instance cutting into something is logged by pull.
 2. DONE (2026-09-23): grain per element. `surface.grain`: each point's element = the nearest additive primitive of
    its own part (its base SDF, cuts ignored), axis from `surface.element_axis` (bone axis; box/ellipsoid longest
    side; cylinder axis if taller than wide, else across); a box face wider than `surface.PANEL` (0.25 m) both

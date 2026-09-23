@@ -104,7 +104,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     """The scene's objects (meshed or from the cache) and instances, from the current spec."""
     log = [] if log is None else log
     spec = store.load(name)
-    ctx = asset.split(spec, resolution, True, log)
+    ctx = asset.split(spec, resolution, True, log, min_share=1)  # every instance its own movable object
     vx = float(np.round(ctx["voxel"], 3))  # a round voxel: resolution edits that don't change it keep the cache
     cache = store._dir(name) / "scene_cache"
     cache.mkdir(exist_ok=True)
@@ -183,107 +183,197 @@ def calibrate(key: str, v: np.ndarray) -> np.ndarray:
     return v if c is None else np.interp(v, c[0], c[1])
 
 
-def raytraced(objs: list, insts: list, ctx: dict, cache: Path, geo: str, log: list, device: str = "CPU") -> dict:
+def _world(o: dict, ctx: dict):
+    """An object's vertices and normals in the world, where it stands (a prefab: at its bake instance)."""
+    z = np.load(o["mesh"])
+    v, n = z["verts"].astype(np.float64), z["normals"].astype(np.float64)
+    if o["prefab"]:
+        d = ctx["prefabs"][o["prefab"]]
+        M0 = d["instances"][d["bake"]]
+        v = v @ M0[:3, :3].T + M0[:3, 3]
+        n = n @ M0[:3, :3].T
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    return v, n
+
+
+def _placed(o: dict, ctx: dict) -> str:
+    """An object's identity including where it stands (a prefab's mesh key is its definition alone)."""
+    if not o["prefab"]:
+        return o["hash"]
+    d = ctx["prefabs"][o["prefab"]]
+    return o["hash"] + hashlib.sha1(np.round(d["instances"][d["bake"]], 6).tobytes()).hexdigest()[:8]
+
+
+def _near_change(v: np.ndarray, boxes: list, reach: float) -> np.ndarray:
+    """Vertices whose AO or sky a change in these boxes can reach: within `reach` of a box (AO), or under it
+    within a 45 degree cone plus `reach` (what's overhead shades the sky)."""
+    hit = np.zeros(len(v), bool)
+    for lo, hi in boxes:
+        hit |= np.all((v >= lo - reach) & (v <= hi + reach), 1)
+        m = reach + np.clip(hi[2] - v[:, 2], 0, 2.0)
+        hit |= (v[:, 2] <= hi[2] + reach) & np.all((v[:, :2] >= lo[:2] - m[:, None]) & (v[:, :2] <= hi[:2] + m[:, None]), 1)
+    return hit
+
+
+def raytraced(objs: list, insts: list, ctx: dict, cache: Path, log: list, device: str = "CPU") -> dict:
     """AO and sky openness per vertex of every object by Cycles (`blender_scene.bake_inputs`), smoothed and
-    calibrated: {key: {"ao", "sky"}}. Cached per object on the whole geometry (every object occludes)."""
+    calibrated: {key: {"ao", "sky"}}. Only the building (primitives that aren't prefab instances) occludes other
+    things; a prop shades only itself, so moving one changes nothing else. Incremental: the building's
+    primitives are diffed against the last bake (rt_state.json) and only its vertices a change can reach are
+    baked again (`_near_change`); a prop bakes again when its bake instance moves or the building changes over it.
+    Each object's values carry a stamp (its entry in the state) that changes whenever they do."""
     from .surface import model_size
     size = model_size(list(ctx["full"].values()))
     job = {"mode": "bake_inputs", "ao_distance": RT["ao_distance"] * size, "sky_distance": RT["sky_distance"] * size,
            "samples": RT["samples"], "device": device}
-    k = hashlib.sha1((geo + json.dumps([job, CALIBRATION, 1], sort_keys=True)).encode()).hexdigest()[:12]
-    files = {o["key"]: cache / f"{o['hash']}_rt_{k}.npz" for o in objs}
-    if not all(f.exists() for f in files.values()):
+    pkey = hashlib.sha1(json.dumps([job, 5], sort_keys=True).encode()).hexdigest()[:12]
+    raw_dir = cache / "rt"
+    raw_dir.mkdir(exist_ok=True)
+    sf = cache / "rt_state.json"
+    state = json.loads(sf.read_text()) if sf.exists() else {}
+    fps = {sdf.fingerprint(p): [p.lo.tolist(), p.hi.tolist()]
+           for ps in ctx["full"].values() for p in ps if p.instance is None}  # the building
+    same = state.get("params") == pkey
+    old = state.get("prims", {}) if same else {}
+    boxes = [np.asarray(old[f], float) for f in set(old) - set(fps)] + \
+            [np.asarray(fps[f], float) for f in set(fps) - set(old)]
+    raw_of = {o["key"]: raw_dir / (o["key"].replace("/", "__") + ".npz") for o in objs}
+    stamps = dict(state.get("stamps", {})) if same else {}
+    reach = 1.5 * job["ao_distance"]
+    todo, n_bake = [], 0
+    for o in objs:
+        whole = not same or state.get("objects", {}).get(o["key"]) != _placed(o, ctx) or not raw_of[o["key"]].exists()
+        if not whole and boxes:
+            near = _near_change(_world(o, ctx)[0], boxes, reach)
+            whole = bool(o["prefab"]) and near.any()  # a prop is small: again whole
+            sub = None if whole else np.flatnonzero(near)
+        else:
+            sub = None if whole else np.zeros(0, np.int64)
+        n_bake += len(np.load(o["mesh"])["verts"]) if sub is None else len(sub)
+        todo.append(sub)
+    if any(sub is None or len(sub) for sub in todo):
         t = time.time()
         with tempfile.TemporaryDirectory() as tmp:
-            job.update(out=tmp, instances=insts, objects=[
-                {"key": o["key"], "mesh": o["mesh"], "prefab": o["prefab"],
-                 "bake": ctx["prefabs"][o["prefab"]]["bake"] if o["prefab"] else None} for o in objs])
-            _blender(job, 3600)
-            for o in objs:
-                with np.load(Path(tmp) / (o["key"].replace("/", "__") + ".npz")) as z, np.load(o["mesh"]) as m:
-                    np.savez(files[o["key"]], **{n: calibrate(n, _smooth(z[n].astype(np.float64), m["faces"], RT["smooth"]))
-                                                .astype(np.float32) for n in RAYTRACED})
-        log.append(f"Cycles AO and sky for {len(objs)} objects: {time.time() - t:.1f}s")
+            jobs = []
+            for o, sub in zip(objs, todo):
+                j = {"key": o["key"], "mesh": o["mesh"], "prefab": o["prefab"],
+                     "bake": ctx["prefabs"][o["prefab"]]["bake"] if o["prefab"] else None}
+                if sub is not None:
+                    j["subset"] = str(Path(tmp) / (o["key"].replace("/", "__") + "_subset.npy"))
+                    np.save(j["subset"], sub)
+                jobs.append(j)
+            job.update(out=tmp, instances=insts, objects=jobs)
+            out = _blender(job, 3600)
+            bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
+            for o, sub in zip(objs, todo):
+                f = Path(tmp) / (o["key"].replace("/", "__") + ".npz")
+                if not f.exists():
+                    continue
+                with np.load(f) as z, np.load(o["mesh"]) as m:
+                    if sub is None:
+                        raw = {n: z[n] for n in RAYTRACED}
+                    else:
+                        with np.load(raw_of[o["key"]]) as r0:
+                            raw = {n: r0[n].copy() for n in RAYTRACED}
+                        for n in RAYTRACED:
+                            raw[n][z["idx"]] = z[n]
+                    final = {n: calibrate(n, _smooth(raw[n].astype(np.float64), m["faces"], RT["smooth"]))
+                             .astype(np.float32) for n in RAYTRACED}
+                np.savez(raw_of[o["key"]], **raw, **{f"final_{n}": v for n, v in final.items()})
+                stamps[o["key"]] = hashlib.sha1(b"".join(np.round(final[n], 4).tobytes() for n in RAYTRACED)).hexdigest()[:10]
+        log.append(f"Cycles AO and sky: {n_bake} vertices baked"
+                   f"{'' if all(s is None for s in todo) else f' ({len(boxes)} building primitives changed)'}, "
+                   f"{time.time() - t:.1f}s (blender {bt})")
+    sf.write_text(json.dumps({"params": pkey, "prims": fps, "stamps": stamps,
+                              "objects": {o["key"]: _placed(o, ctx) for o in objs}}))
     out = {}
-    for key, f in files.items():
-        with np.load(f) as z:
-            out[key] = {n: z[n] for n in z.files}
+    for o in objs:
+        with np.load(raw_of[o["key"]]) as z:
+            out[o["key"]] = {n: z[f"final_{n}"] for n in RAYTRACED}
+        out[o["key"]]["stamp"] = stamps.get(o["key"], "")
     return out
 
 
 def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, log: list) -> dict | None:
-    """The paint program, and each object's per-vertex inputs (cached: AO and sky depend on every object, so
-    the key is the whole geometry plus what the program measures)."""
+    """The paint program, and each object's per-vertex inputs, from three caches: our field inputs (curvature,
+    thickness, grain: the object's own geometry where it stands), Cycles' AO and sky (`raytraced`: the building
+    shades, props only themselves) and the measured masks (the object, the building and their definitions). An
+    object's packed file is named by its content, so the scene replaces only objects whose inputs changed, and
+    moving a prop re-measures at most that prop."""
     from . import paintnodes
+    from .surface import INPUTS_VERSION
     if not spec.get("paint"):
         return None
     t = time.time()
     prog = paintnodes.compile(spec)
-    geo = hashlib.sha1(json.dumps(sorted(o["hash"] for o in objs)).encode())
-    for pf, d in ctx["prefabs"].items():  # where a prefab is baked matters for its AO and sky
-        geo.update(np.round(d["instances"][d["bake"]], 6).tobytes())
-    from .surface import INPUTS_VERSION
-    # two caches: the field inputs (AO, sky: slow) change only with the geometry; the measured masks with it and
-    # their own definitions. The packed attribute file per object is assembled from both (cheap).
     ours = [k for k in prog["inputs"] if k not in RAYTRACED]
-    fkey = hashlib.sha1((geo.hexdigest() + json.dumps([ours, INPUTS_VERSION])).encode()).hexdigest()[:12]
-    # the ray traced inputs join in the masks key (masks can read them), so the packed file follows them too
-    mkey = hashlib.sha1((geo.hexdigest() + json.dumps(prog["fallbacks"], sort_keys=True, default=str)
-                         + str(INPUTS_VERSION) + json.dumps([RT, CALIBRATION])).encode()).hexdigest()[:12]
-    key = hashlib.sha1((fkey + mkey + json.dumps(prog["packing"], sort_keys=True)).encode()).hexdigest()[:12]
-    todo = [o for o in objs if not (cache / f"{o['hash']}_in_{key}.npz").exists()]
-    # ray traced inputs: needed by the program itself, or by a mask we measure (a blurred or mirrored entry)
-    rt = raytraced(objs, insts, ctx, cache, geo.hexdigest(), log) if todo and (
-        set(prog["inputs"]) & set(RAYTRACED) or any(k in json.dumps(prog["fallbacks"], default=str)
-                                                    for k in RAYTRACED)) else {}
+    building = hashlib.sha1(json.dumps(sorted(_placed(o, ctx) for o in objs if not o["prefab"])).encode()).hexdigest()
+    prog_id = hashlib.sha1(json.dumps([prog["fallbacks"], prog["packing"], ours, INPUTS_VERSION, RT, CALIBRATION],
+                                      sort_keys=True, default=str).encode()).hexdigest()[:12]
+    last = cache / "inputs_state.json"
+    st = json.loads(last.read_text()) if last.exists() else {}
+    run = hashlib.sha1(json.dumps([building, prog_id, sorted(_placed(o, ctx) for o in objs)]).encode()).hexdigest()[:12]
+    if st.get("run") == run and all(Path((st.get("objects") or {}).get(o["key"], "")).exists() for o in objs):
+        for o in objs:  # nothing that inputs depend on changed since the last sync
+            o["inputs"] = st["objects"][o["key"]]
+            o["hash"] = f"{o['hash']}:{Path(o['inputs']).stem.split('_in_')[-1]}"
+        return prog
+    needs_rt = set(prog["inputs"]) & set(RAYTRACED) or any(
+        k in json.dumps(prog["fallbacks"], default=str) for k in RAYTRACED)
+    rt = raytraced(objs, insts, ctx, cache, log) if needs_rt else {}
     names = list(ctx["full"])
-    groups: dict = {}  # measured at each object's own voxel: curvature and AO steps scale with it
-    for o in todo:
-        groups.setdefault(o["voxel"], []).append(o)
-    for voxel, todo in groups.items():
-        P, N, part, sl, given = [], [], [], [], {}
-        for o in todo:
-            z = np.load(o["mesh"])
-            v, n = z["verts"].astype(np.float64), z["normals"].astype(np.float64)
-            if o["prefab"]:  # measured where the bake instance stands, as the export bakes it
-                d = ctx["prefabs"][o["prefab"]]
-                M0 = d["instances"][d["bake"]]
-                v = v @ M0[:3, :3].T + M0[:3, 3]
-                n = n @ M0[:3, :3].T
-                n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-            sl.append((sum(len(x) for x in P), len(v)))
-            for k in rt.get(o["key"], {}):
-                given.setdefault(k, []).append(rt[o["key"]][k])
-            P.append(v)
-            N.append(n)
-            part.append(np.full(len(v), names.index(o["part"])))
-        P, N, part = np.concatenate(P), np.concatenate(N), np.concatenate(part)
-        given = {k: np.concatenate(v).astype(np.float64) for k, v in given.items()}
-        vals = {k: v.astype(np.float32) for k, v in given.items()}
-        for what, k in (("field", fkey), ("masks", mkey)):
-            files = [cache / f"{o['hash']}_{what}_{k}.npz" for o in todo]
-            if all(f.exists() for f in files):
-                for f, (a, n) in zip(files, sl):
-                    with np.load(f) as zz:
-                        for name in zz.files:
-                            vals.setdefault(name, np.zeros((len(P),) + zz[name].shape[1:], np.float32))[a:a + n] = zz[name]
-                continue
+
+    def key(*parts):
+        return hashlib.sha1(json.dumps(parts, default=str).encode()).hexdigest()[:12]
+    ffile = {o["key"]: cache / f"{o['hash']}_field_{key(_placed(o, ctx), ours, INPUTS_VERSION)}.npz" for o in objs}
+    # masks (near distances, paths, blurred and mirrored entries) read the building and the object's own inputs
+    mfile = {o["key"]: cache / f"{o['hash']}_masks_{key(_placed(o, ctx), building, prog_id, rt.get(o['key'], {}).get('stamp'))}.npz"
+             for o in objs}
+    for what, files in (("field", ffile), ("masks", mfile)):
+        groups: dict = {}  # measured at each object's own voxel: curvature and AO steps scale with it
+        for o in objs:
+            if not files[o["key"]].exists():
+                groups.setdefault(o["voxel"], []).append(o)
+        for voxel, group in groups.items():
+            P, N, part, sl, given = [], [], [], [], {}
+            for o in group:
+                v, n = _world(o, ctx)
+                sl.append((sum(len(x) for x in P), len(v)))
+                for k in RAYTRACED:
+                    if k in rt.get(o["key"], {}):
+                        given.setdefault(k, []).append(rt[o["key"]][k])
+                P.append(v)
+                N.append(n)
+                part.append(np.full(len(v), names.index(o["part"])))
+            P, N, part = np.concatenate(P), np.concatenate(N), np.concatenate(part)
+            given = {k: np.concatenate(v).astype(np.float64) for k, v in given.items()}
             got = paintnodes.measure(spec, prog, P, N, part, names, voxel, ctx["full"], what, given)
-            for f, (a, n) in zip(files, sl):
-                np.savez(f, **{name: v[a:a + n] for name, v in got.items()})
-            vals.update(got)
-            log.append(f"measured {what} for {len(todo)} objects at {voxel * 1000:.1f} mm ({len(P)} vertices), "
+            for o, (a, n) in zip(group, sl):
+                np.savez(files[o["key"]], **{name: v[a:a + n] for name, v in got.items()})
+            log.append(f"measured {what} for {len(group)} objects at {voxel * 1000:.1f} mm ({len(P)} vertices), "
                        f"{time.time() - t:.1f}s so far")
-        for o, (a, n) in zip(todo, sl):
-            packs = {}  # a GPU shader reads ~16 vertex attributes: scalars go three to a vector
-            for attr, (pk, ch) in prog["packing"].get(o["part"], {}).items():
-                packs.setdefault(pk, np.zeros((n, 3), np.float32))[:, ch] = vals[attr][a:a + n]
-            vec = {k: vals[k][a:a + n] for k in VECTOR_INPUTS if k in vals}  # their own vector attributes
-            np.savez(cache / f"{o['hash']}_in_{key}.npz", wpos=P[a:a + n].astype(np.float32),
-                     wnrm=N[a:a + n].astype(np.float32), **packs, **vec)
+    made = {}
     for o in objs:
-        o["inputs"] = str(cache / f"{o['hash']}_in_{key}.npz")
-        o["hash"] = f"{o['hash']}:{key}"
+        v, n = _world(o, ctx)
+        vals = {k: rt[o["key"]][k] for k in RAYTRACED if k in rt.get(o["key"], {})}
+        for f in (ffile[o["key"]], mfile[o["key"]]):
+            with np.load(f) as z:
+                vals.update({k: z[k] for k in z.files})
+        packs = {}  # a GPU shader reads ~16 vertex attributes: scalars go three to a vector
+        for attr, (pk, ch) in prog["packing"].get(o["part"], {}).items():
+            packs.setdefault(pk, np.zeros((len(v), 3), np.float32))[:, ch] = vals[attr]
+        vec = {k: vals[k].astype(np.float32) for k in VECTOR_INPUTS if k in vals}  # their own vector attributes
+        arrays = {"wpos": v.astype(np.float32), "wnrm": n.astype(np.float32), **packs, **vec}
+        h = hashlib.sha1()
+        for k in sorted(arrays):
+            h.update(k.encode() + np.round(arrays[k], 4).tobytes())
+        f = cache / f"{o['hash']}_in_{h.hexdigest()[:12]}.npz"
+        if not f.exists():
+            np.savez(f, **arrays)
+        o["inputs"] = str(f)
+        o["hash"] = f"{o['hash']}:{h.hexdigest()[:12]}"
+        made[o["key"]] = str(f)
+    last.write_text(json.dumps({"run": run, "objects": made}))
     return prog
 
 
@@ -324,7 +414,79 @@ def pull(name: str, log: list | None = None) -> dict:
         changes[inst] = new
         log.append(f"{inst}: {json.dumps(new)} (from the scene)")
     store.save(name, spec, "from the Blender scene: " + ", ".join(changes))
+    for inst in moved:  # a person's move can land an instance inside something: say so
+        hit = clashes(spec, inst)
+        if hit:
+            log.append(f"{inst} now cuts into " + ", ".join(f"{n} ({d * 1000:.0f} mm)" for d, n in hit[:4])
+                       + ": move it in the scene, or `scene.clear_of(name, instance)` slides it out")
     return changes
+
+
+def _clash_setup(spec: dict, inst: str, voxel: float, tol: float):
+    """The instance's inside (grid points over its box, and how deep each is) and everything else's prims."""
+    from .spec import compile_prims, geometry
+    prims = compile_prims(geometry(spec))
+    own = [p for p in prims if p.instance == inst]
+    if not own:
+        return None
+    adds = [p for p in own if p.op == "add"]
+    lo, hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+    ax = [np.arange(a, b + voxel, voxel) for a, b in zip(lo, hi)]
+    P = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
+    fo = sdf.field_at(own, P)
+    inside = fo < -tol
+    return P[inside], -fo[inside], [p for p in prims if p.instance != inst]
+
+
+def _clash_at(P, depth_own, rest, tol: float, shift=np.zeros(3), names: bool = True) -> list:
+    """Clashes of the instance's inside points moved by `shift` with the rest: [(depth, element)], deepest first
+    (names=False: just [(depth, None)] if it clashes, for searches)."""
+    Q = P + shift
+    if not len(Q):
+        return []
+    near = [p for p in rest if p.op == "add" and np.all(p.hi >= Q.min(0)) and np.all(p.lo <= Q.max(0))]
+    if not near:
+        return []
+    depth = np.minimum(depth_own, -sdf.field_at(near, Q))
+    deep = np.flatnonzero(depth > tol)
+    if not names:
+        return [(float(depth.max()), None)] if len(deep) else []
+    out = {}
+    for i in deep[np.argsort(depth[deep])[-300:]]:  # name each clash by the other element nearest the point
+        el = min(near, key=lambda p: float(sdf.SDF[p.kind](Q[i:i + 1], p.params)[0]))
+        out[el.name] = max(out.get(el.name, 0.0), float(depth[i]))
+    return sorted(((d, n) for n, d in out.items()), reverse=True)
+
+
+def clashes(spec: dict, inst: str, voxel: float = 0.005, tol: float = 0.003) -> list:
+    """Where an instance cuts into anything else: on a grid over its box, points inside both its own field and
+    the rest's; depth = how far inside both. Returns [(depth m, the other element)], deepest first, over tol."""
+    st = _clash_setup(spec, inst, voxel, tol)
+    return [] if st is None else _clash_at(*st, tol)
+
+
+def clear_of(name: str, inst: str, step: float = 0.005, reach: float = 0.25, log: list | None = None) -> dict | None:
+    """Slide an instance the least distance sideways (8 directions in the ground plane, `step` apart) until it cuts
+    into nothing, keeping its rotation. Its inside is sampled once and tested shifted. Saves and returns the new
+    instance, or None if it was clear already or nothing within reach works."""
+    log = [] if log is None else log
+    spec = store.load(name)
+    tol = 0.003
+    st = _clash_setup(spec, inst, 0.01, tol)  # searched on a 1 cm grid, the answer checked at 5 mm
+    fine = _clash_setup(spec, inst, 0.005, tol)
+    if st is None or not _clash_at(*fine, tol, names=False):
+        return None
+    d0 = spec["instances"][inst]
+    for r in np.arange(step, reach + 1e-9, step):
+        for a in np.radians(np.arange(0, 360, 45)):
+            t = r * np.array([np.cos(a), np.sin(a), 0.0])
+            if not _clash_at(*st, tol, t, names=False) and not _clash_at(*fine, tol, t, names=False):
+                at = np.asarray(d0.get("at", [0, 0, 0]), float) + t
+                spec["instances"][inst] = {**d0, "at": [round(float(x), 3) for x in at]}
+                store.save(name, spec, f"{inst} slid {r * 1000:.0f} mm clear of what it cut into")
+                log.append(f"{inst}: at {spec['instances'][inst]['at']} ({r * 1000:.0f} mm)")
+                return spec["instances"][inst]
+    return None
 
 
 def _at(spec, path):
@@ -368,7 +530,8 @@ def _pull_params(spec: dict, params: dict, log: list) -> dict:
 
 
 def sync(name: str, resolution: int = 256) -> dict:
-    """Pull a person's edits, then bring scene.blend in line with the spec. Returns timings and the log."""
+    """Pull a person's edits, then bring scene.blend in line with the spec. Returns timings and the log.
+    Moving a prop re-measures at most that prop (nothing depends on where props stand)."""
     t = time.time()
     log: list = []
     pulled = pull(name, log)
