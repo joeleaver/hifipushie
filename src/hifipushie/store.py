@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -15,7 +16,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 10  # bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 11  # bump when meshing changes, so cached builds are redone
 
 
 def _dir(name: str) -> Path:
@@ -146,13 +147,25 @@ def build(name: str, resolution: int = 160, box=None) -> dict:
     bd.mkdir(exist_ok=True)
     mesh_p, sil_p, meta_p = ((bd / "mesh.npz", bd / "sil.npz", bd / "meta.json") if box is None else
                              (bd / "closeup.npz", None, bd / "closeup_meta.json"))
-    if meta_p.exists() and json.loads(meta_p.read_text()).get("key") == key and mesh_p.exists():
-        return json.loads(meta_p.read_text())
+    lkey = (name, "full" if box is None else "closeup")
+    with _LOCKS_GUARD:
+        lock = _LOCKS.setdefault(lkey, threading.Lock())
+    with lock:  # MCP tools run on worker threads: two builds of one model must not share its live grids at once
+        if meta_p.exists() and json.loads(meta_p.read_text()).get("key") == key and mesh_p.exists():
+            return json.loads(meta_p.read_text())
+        try:
+            return _build(spec, key, resolution, box, lkey, mesh_p, sil_p, meta_p)
+        except BaseException:
+            _LIVE.pop(lkey, None)  # grids or meshes may be half updated: the next build starts cold
+            raise
+
+
+def _build(spec, key, resolution, box, lkey, mesh_p, sil_p, meta_p) -> dict:
     t = time.time()
     prims = specmod.compile_prims(spec)
     lo, voxel, shape = sdf.frame(prims, resolution, box=box)
     defs = spec.get("parts") or {}
-    live = _LIVE.setdefault((name, "full" if box is None else "closeup"), {})
+    live = _LIVE.setdefault(lkey, {})
     V, F, N, P, C, sils, names, empty, redone = [], [], [], [], [], [], [], [], []
     changed: dict[str, list] = {}
     for ps in sdf.streams(prims):  # each part meshed on its own, on one shared grid
@@ -211,6 +224,8 @@ def part_colour(name: str, defs: dict, index: int) -> np.ndarray:
 # Per model: each part's grid and mesh from the last build, so the next build redoes only what changed.
 # Lives as long as the process (the MCP server); a fresh process just builds everything once.
 _LIVE: dict[tuple, dict] = {}
+_LOCKS: dict[tuple, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
 
 
 def _mesh_part(prims, field, lo, voxel, boxes, st):

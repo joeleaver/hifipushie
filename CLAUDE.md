@@ -146,6 +146,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `store._LIVE` holds these per model plus each part's projected mesh; `_mesh_part` re-meshes and reuses the
   projection of every vertex at the same (quantised) position outside the changed boxes. Incremental builds
   must equal cold builds: compare faces/verts after any change here.
+  `PartGrid` records its grid key/fingerprints only after its blocks are filled, and `store.build` holds a
+  per-model lock (MCP tools run on worker threads) and drops `_LIVE` if a build fails: a half-updated grid
+  (unwritten `np.empty` blocks) meshed into millions of vertices and NaNs that Taubin spread (cabin2, gable).
 - `project` uses a tetrahedral stencil (value + gradient in 4 evaluations) and drops converged vertices.
 - Displacement strokes query only nearby dab samples (KD-tree, `k` nearest within `radius`).
 - Caches keyed by content: `compile_prims`, kit expansion, each stroke's seating, seated joints, KD-trees.

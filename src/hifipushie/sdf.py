@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import threading
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -349,7 +350,6 @@ class PartGrid:
             m = grow + (0.0 if q.op == "modify" else float(np.max(q.reach)))
             fps[fingerprint(q)] = (q.lo - m, q.hi + m)
         if at_key != self.at_key:
-            self.at_key = at_key
             self.blocks = np.empty((*nb, B, B, B), np.float32)
             redo = np.ones(tuple(nb), bool)
             boxes = [(lo, lo + voxel * (np.asarray(shape) - 1))]
@@ -361,9 +361,13 @@ class PartGrid:
             redo = np.zeros(tuple(nb), bool)
             for blo, bhi in boxes:
                 redo |= np.all((b_hi >= blo) & (b_lo <= bhi), axis=-1)
-        self.fps = fps
+        # The grid only claims to match (at_key, fps) once its blocks are filled: an update cut short (an
+        # exception, a cancelled tool call) must not leave the next one trusting unwritten memory, whose random
+        # signs mesh into millions of vertices and whose NaNs Taubin smoothing spreads.
+        self.at_key = None
         if redo.any():
             self._redo(prims, lo, voxel, np.argwhere(redo), half_diag)
+        self.at_key, self.fps = at_key, fps
         field = self.blocks.transpose(0, 3, 1, 4, 2, 5).reshape(nb * B)
         return np.ascontiguousarray(field[:shape[0], :shape[1], :shape[2]]), boxes
 
@@ -563,6 +567,9 @@ def taubin(verts: np.ndarray, faces: np.ndarray, iterations: int = 6, lam: float
 
 def mesh(grid: Grid, smooth: int = 6):
     f = grid.field
+    if not np.isfinite(f).all():  # a bug upstream; one NaN here becomes thousands of NaN vertices after Taubin
+        warnings.warn(f"{np.count_nonzero(~np.isfinite(f))} non-finite field values meshed as outside")
+        f = np.where(np.isfinite(f), f, FAR)
     if f.min() >= 0:
         raise ValueError("field has no interior: the shape is empty")
     # Pad with outside values so the surface is always closed.
@@ -635,7 +642,8 @@ def project(prims: list[Prim], verts: np.ndarray, faces: np.ndarray, voxel: floa
         g[todo] = value_gradient(prims, v[todo], h)[1]
     raw = (v.copy(), g.copy()) if keep else None  # what a later build can reuse (before the fix-up below)
     normals = g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
-    bad = (vertex_normals(v, faces) * normals).sum(1) < 0.5
+    # (a NaN compares False, so non-finite projections are caught explicitly and keep their mesh position)
+    bad = ~((vertex_normals(v, faces) * normals).sum(1) >= 0.5) | ~np.isfinite(v).all(1)
     v[bad] = v0[bad]
     normals[bad] = vertex_normals(v, faces)[bad]
     if keep:
