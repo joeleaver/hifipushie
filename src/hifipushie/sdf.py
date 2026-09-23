@@ -428,6 +428,8 @@ def field_at(prims: list[Prim], pts: np.ndarray, clip: bool = True, margin: floa
     rather than FAR (slower; the fitter needs it to pull toward parts the model is missing).
     margin widens the clipping, so values within `margin` of the surface are real distances too.
     Several parts: the hard union of each part's field."""
+    if pts.size == 0:  # e.g. a shell's base evaluated for a close-up block holding none of its points
+        return np.full(pts.shape[:-1], FAR if clip else np.inf)
     parts = streams(prims)
     if len(parts) > 1:
         return np.minimum.reduce([field_at(ps, pts, clip, margin) for ps in parts])

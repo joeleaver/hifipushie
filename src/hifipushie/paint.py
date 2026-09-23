@@ -461,8 +461,9 @@ def _blend(mode: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
 def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -> np.ndarray:
     """One generator's 0..1 value at the view's points."""
     v, n = view.v, view.n
-    if gen == "path":
-        return _path_mask(spec, tag, e, v, n)
+    if gen == "path":  # seated on the part these points are on (the layer's, even from inside a mask stack)
+        counts = np.bincount(view.pts.part[view.idx], minlength=len(view.pts.part_names))
+        return _path_mask(spec, tag, {**e, "part": view.pts.part_names[int(np.argmax(counts))]}, v, n)
     if gen == "near":
         return _near_mask(spec, name, e, v)
     if gen == "facing":

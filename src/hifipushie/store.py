@@ -36,9 +36,12 @@ def load(name: str) -> dict:
 
 
 def save(name: str, spec: dict, note: str = "") -> int:
+    from . import paint, strokes
+    strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
     specmod.compile_prims(spec)  # validate before writing
-    from . import paint
     paint.validate(spec)
+    for pn, d in (spec.get("parts") or {}).items():
+        part_colour(pn, spec["parts"], 0)
     d = _dir(name)
     (d / "history").mkdir(parents=True, exist_ok=True)
     version = len(list((d / "history").glob("*.json"))) + 1
@@ -189,7 +192,9 @@ PALETTE = [(0.9, 0.9, 0.9), (0.62, 0.72, 0.9), (0.9, 0.68, 0.55), (0.66, 0.85, 0
 
 def part_colour(name: str, defs: dict, index: int) -> np.ndarray:
     """RGBA for a part's clay: its "color" from spec["parts"], else a palette entry (the body stays neutral)."""
-    rgb = (defs.get(name) or {}).get("color") or PALETTE[index % len(PALETTE)]
+    from .paint import colour
+    c = (defs.get(name) or {}).get("color")
+    rgb = colour(c, f"parts.{name}.color") if c is not None else PALETTE[index % len(PALETTE)]
     return np.array([*rgb[:3], 1.0], np.float32)
 
 

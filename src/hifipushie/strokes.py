@@ -9,7 +9,8 @@ each other), seated by raycasting the field:
       the bone counts; default up), turned `around` degrees about the bone (right hand, a -> b).
   {"at": joint | [x,y,z] | {"bone", "t"}, "offset": [x,y,z], "dir": [x,y,z]}
       where a ray through at+offset arriving along -dir first hits (dir default [0,-1,0]: seen from the front).
-Keys a point leaves out are taken from the point before it (of the same kind), so
+Keys a point leaves out are taken from the point before it (of the same kind; a new "at" point without
+"dir" keeps the last one's), so
   [{"bone": "forearm.L", "t": 0.1, "side": [0, 1, 0]}, {"t": 0.9}]  runs down the back of the forearm.
 Between control points the path is resampled and every sample re-seated, so it follows the surface
 instead of cutting a chord.
@@ -227,8 +228,32 @@ def _points(name: str, st: dict) -> list[dict]:
             if not pts:
                 raise SpecError(f"stroke {name!r}: the first point needs \"bone\" or \"at\"")
             pt = {**pts[-1], **pt}
+        elif "at" in pt and "dir" not in pt:  # a new raycast point keeps the view direction of the last one
+            prev = next((q for q in reversed(pts) if "at" in q), None)
+            if prev is not None and "dir" in prev:
+                pt = {**pt, "dir": prev["dir"]}
         pts.append(dict(pt))
     return pts
+
+
+def check(spec: dict) -> None:
+    """Static checks of every stroke (and paint path) that don't need the surface: control points and
+    per-point lists. Seating can only fail later, at build time."""
+    for coll in ("strokes", "paint"):
+        for name, st in (spec.get(coll) or {}).items():
+            entries = [st] + [e for e in (st.get("mask") or []) if isinstance(e, dict)]
+            for e in entries:
+                if "path" not in e:
+                    continue
+                what = f"{'stroke' if coll == 'strokes' else 'paint'} {name!r}"
+                if not isinstance(e["path"], list):
+                    raise SpecError(f"{what}: path is a list of surface points")
+                pts = _points(name, e)
+                for key in ("width", "depth"):
+                    v = e.get(key)
+                    if isinstance(v, list) and len(v) != len(pts):
+                        raise SpecError(f"{what}: {key} has {len(v)} values for {len(pts)} control points "
+                                        f"(give one number, or one per point)")
 
 
 def _shift(pts: list[dict], shift: dict, i: int) -> list[dict]:
