@@ -17,7 +17,8 @@ flat walls and floors, a soft blend where a curved surface turns from one plane 
   cloth    color "#6b5a45", "thread": weave spacing (m, 0.004; needs ~4 texels, finer fades to flat), dir: plain weave relief, thread shading,
            slight fading; roughness 0.9, specular 0.3. Shirts, sacks, blankets, trousers.
   leather  color "#5a3a24", "grain" (m, 0.0025): pebbled grain, darker creases, polished (smoother, lighter) wear.
-  wood     color "#8a6240", dir = grain: streaky grain with fine relief, growth lines, a few knots. Carved or
+  wood     color "#8a6240", dir = grain: streaky grain with fine relief, growth lines, a few knots, pale
+           checked end grain on cut ends. Carved or
            solid wooden things; "planks" for boards.
   planks   wood + boards "size": [length, width] (m, [1.2, 0.14]), "gap" (0.004), rows staggered by a third,
            each board its own tone. Floors, walls, tabletops, crates.
@@ -119,10 +120,23 @@ def _default_dir(p, fallback):
     return p.get("dir", fallback)
 
 
+def _end_grain(p, s, d):
+    """Cut ends (faces along the grain) are paler and speckled: end grain reads at a glance on logs and beams."""
+    nd = [-float(x) for x in d]
+    return [("end_grain", {"color": shade(p["color"], 1.3), "roughness": 0.85, "mask": [
+                {"facing": d, "range": [0.75, 0.95]}, {"facing": nd, "range": [0.75, 0.95], "blend": "max"}]}),
+            ("end_checks", {"color": shade(p["color"], 0.6), "opacity": 0.5, "mask": [
+                {"noise": {"scale": 0.02 * s, "octaves": 2, "range": [0.7, 0.73], "seed": p["seed"] + 21}},
+                {"facing": d, "range": [0.75, 0.95], "blend": "multiply"}]}),
+            ("end_checks2", {"color": shade(p["color"], 0.6), "opacity": 0.5, "mask": [
+                {"noise": {"scale": 0.02 * s, "octaves": 2, "range": [0.7, 0.73], "seed": p["seed"] + 21}},
+                {"facing": nd, "range": [0.75, 0.95], "blend": "multiply"}]})]
+
+
 def _wood(p, s):
     d = _default_dir(p, [1, 0, 0])
     return ([("base", {"color": p["color"], "roughness": 0.7, "specular": 0.4})] + _grain(p, s, d)
-            + [("wear", _wear(p, s, 1.25, roughness=0.5)), ("dirt", _dirt(p, s))])
+            + _end_grain(p, s, d) + [("wear", _wear(p, s, 1.25, roughness=0.5)), ("dirt", _dirt(p, s))])
 
 
 def _planks(p, s):
@@ -255,7 +269,8 @@ def expand(name: str, ly: dict, generator_keys, confine_params) -> list[tuple[st
     mat = ly["material"]
     if mat not in BUILD:
         raise SpecError(f"paint {name!r}: unknown material {mat!r} (have {', '.join(BUILD)})")
-    allowed = {"material", "part", "opacity", "mask", *COMMON, *PARAMS[mat], *generator_keys, *confine_params}
+    allowed = {"material", "part", "opacity", "mask", *COMMON, *PARAMS[mat], *generator_keys,
+               *(k for ks in confine_params.values() for k in ks)}
     unknown = set(ly) - allowed
     if unknown:
         raise SpecError(f"paint {name!r}: unknown keys {sorted(unknown)} for material {mat!r} "

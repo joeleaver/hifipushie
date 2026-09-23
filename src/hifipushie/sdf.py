@@ -30,6 +30,11 @@ def sd_cone(p: np.ndarray, pr: dict) -> np.ndarray:
     """Round cone along a bone, with an optionally elliptical cross-section."""
     q = (p - pr["a"]) @ pr["frame"].T  # columns: width, axis, height
     fw, fh = pr["flat"]
+    bw, bh = pr.get("bow", (0.0, 0.0))
+    if bw or bh:  # a bowed log: the cross-section's centre follows a parabola, 0 at the ends, `bow` mid-way
+        t = np.clip(q[..., 1] / pr["len"], 0.0, 1.0)
+        sag = 4.0 * t * (1.0 - t)
+        q = np.stack([q[..., 0] - bw * sag, q[..., 1], q[..., 2] - bh * sag], -1)
     x, y, z = q[..., 0] / fw, q[..., 1], q[..., 2] / fh
     r1, r2, h = pr["ra"], pr["rb"], pr["len"]
     b = np.clip((r1 - r2) / h, -0.999, 0.999)
@@ -38,6 +43,12 @@ def sd_cone(p: np.ndarray, pr: dict) -> np.ndarray:
     k = -b * qx + a * y
     d = np.where(k < 0.0, np.sqrt(qx * qx + y * y) - r1,
                  np.where(k > a * h, np.sqrt(qx * qx + (y - h) ** 2) - r2, a * qx + b * y - r1))
+    if pr.get("cut"):  # flat ends at the joints (sawn logs, beams, dowels), edges rounded by `cut`
+        rc = pr["cut"]
+        side = np.where(k < 0.0, qx - r1, np.where(k > a * h, qx - r2, d))  # the flank, continued past the ends
+        cap = np.abs(y - 0.5 * h) - 0.5 * h
+        e0, e1 = side + rc, cap + rc
+        d = np.hypot(np.maximum(e0, 0.0), np.maximum(e1, 0.0)) + np.minimum(np.maximum(e0, e1), 0.0) - rc
     return d * min(fw, fh, 1.0)
 
 
@@ -175,6 +186,10 @@ def sd_cylinder(p: np.ndarray, pr: dict) -> np.ndarray:
 def sd_csg(p: np.ndarray, pr: dict) -> np.ndarray:
     """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts."""
     d = SDF[pr["kind"]](p, pr["p"])
+    if pr.get("lumpy"):  # knots, axe marks, an uneven stone: noise on the surface itself (amount << scale)
+        from .noise import fbm
+        amt, sc, seed, octv = pr["lumpy"]
+        d = d + amt * (2.0 * fbm(p.reshape(-1, 3), sc, octv, seed).reshape(d.shape) - 1.0)
     if pr["hollow"]:
         d = np.maximum(d, -d - pr["hollow"])
     for op, kind, params, k in pr["cuts"]:

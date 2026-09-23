@@ -172,7 +172,10 @@ def get_model(name: str) -> str:
 
 SOLIDS = """Hard-surface pieces (blobs): "shape": "box" | "cylinder" (size [rx, ry, half-height], along its local
 z; "rot" to turn it) with "round": edge radius; any bone or blob may be "hollow": t (only a wall t thick inside its
-surface: pots, cups, pipes, a boat hull). A subtract or intersect element with "targets": [names or tags] cuts
+surface: pots, cups, pipes, a boat hull). "ends": "flat" on a bone cuts it square at its joints (sawn logs, beams, dowels; {"flat": r} rounds
+the edge by r) instead of the round caps. "bow" on a bone: [sideways, up] metres (or one number, up) of sag at
+mid-length, a bent log or a sagging beam. "lumpy" on any bone or blob: {"amount": m, "scale": m (8 x amount),
+"seed"} noise on the surface itself (knots, axe marks, uneven stone); keep amount well under scale. A subtract or intersect element with "targets": [names or tags] cuts
 only those elements (a pot's opening, a window through the wall logs, a drawer's recess) instead of everything
 in its part and layer. Walls thinner than ~2 voxels break up at the build resolution: judge them in close-ups."""
 

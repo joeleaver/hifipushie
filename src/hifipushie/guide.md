@@ -101,6 +101,9 @@ addressed on the surface. Rules that matter:
 - Build a repeated thing once: `prefabs` (a chair in its own frame) placed by `instances` (at, rot, scale,
   part); `array` on an element for rows and grids (logs, planks, shingles, legs), with `jitter`. Don't write a
   script that emits hundreds of elements: the spec stays readable and one edit changes every copy.
+- Nothing made by hand or grown is uniform. Give arrays `vary` (per-copy ranges for any number: radii,
+  bow, size), `flip` (logs alternate butt ends course to course), `jitter`; bones `bow` and `"ends": "flat"`
+  for sawn timber; `lumpy` for knots and axe marks. Identical copies at even spacing read as CG at once.
 - `tags` (and instance / array names, which are tags automatically) stand for all their members in paint
   `near`, cut `targets` and `delete`.
 - Hard surfaces: `box` and `cylinder` blobs with `round`, `hollow` for vessels, and cuts with `targets` so an

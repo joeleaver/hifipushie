@@ -13,6 +13,9 @@ blobs before kits and mirroring, so everything downstream (strokes, paint, parts
   "array" on a bone or blob: {"count": n, "offset": [dx, dy, dz] (per copy), "rot": [deg] (per copy, about
                "pivot", default the element's own centre), "jitter": {"offset": [jx, jy, jz], "rot": [deg],
                "size": fraction}, "seed": 0}, or a list of those for a grid (each applied to all copies so far).
+               Per copy, "vary": {key: [lo, hi]} draws any numeric field (lists per component) from a range:
+               {"r_a": [0.13, 0.17], "r_b": [0.10, 0.13], "bow": [[-0.02, -0.01], [0.02, 0.01]]}; "flip":
+               "alternate" | "random" turns a bone end for end (butt ends alternating course by course).
                Copy 0 keeps the element's name; the others are "<name>#<i>" (".L" stays at the end); all are
                tagged with the element's name. Logs, planks, shingles, fence posts, a ring of stones.
 
@@ -171,27 +174,38 @@ def _arrays(s: dict):
                 copies = [(np.eye(3), np.zeros(3), 1.0)]
             for st in steps:
                 copies = _step(name, st, copies, centre)
+            vary = {k: v for st in steps for k, v in (st.get("vary") or {}).items()}
+            flip = next((st["flip"] for st in steps if st.get("flip")), None)
+            rng = np.random.default_rng(int(steps[0].get("seed", 0)) + 1000)
             s[kind][name] = base
             for i, (R, t, f) in enumerate(copies):
                 cn = name if i == 0 else f"{stem}#{i}{sfx}"
+                varied = {k: _draw(rng, lo_hi, name, k) for k, lo_hi in vary.items()}
+                flipped = flip == "alternate" and i % 2 == 1 or flip == "random" and rng.random() < 0.5
                 if kind == "bones":
                     ja, jb = s["joints"][el["a"]], s["joints"][el["b"]]
                     pa, pb = (centre + R @ (p - centre) + t for p in (a0, b0))
-                    na, nbn = (el["a"], el["b"]) if i == 0 else (f"{stem}#{i}~a{sfx}", f"{stem}#{i}~b{sfx}")
-                    if i:
-                        s["joints"][na] = {**ja, "pos": _r(pa), "r": float(ja.get("r", 0.05)) * f}
-                        s["joints"][nbn] = {**jb, "pos": _r(pb), "r": float(jb.get("r", 0.05)) * f}
-                        c = {**base, "a": na, "b": nbn}
-                        for k in ("r_a", "r_b"):
-                            if base.get(k) is not None:
-                                c[k] = float(base[k]) * f
-                        if base.get("up"):
-                            c["up"] = _r(R @ np.asarray(base["up"], float))
-                        s["bones"][cn] = c
+                    ra = float(base["r_a"]) if base.get("r_a") is not None else float(ja.get("r", 0.05))
+                    rb = float(base["r_b"]) if base.get("r_b") is not None else float(jb.get("r", 0.05))
+                    c = {**base, "r_a": ra * f, "r_b": rb * f, **varied}
+                    if base.get("up"):
+                        c["up"] = _r(R @ np.asarray(base["up"], float))
+                    if flipped:  # butt end the other way: swap the ends and their radii
+                        pa, pb = pb, pa
+                        c["r_a"], c["r_b"] = c["r_b"], c["r_a"]
+                    na, nbn = (f"{stem}~a{sfx}", f"{stem}~b{sfx}") if i == 0 else (f"{stem}#{i}~a{sfx}",
+                                                                                  f"{stem}#{i}~b{sfx}")
+                    if i == 0 and not vary and not flipped:
+                        continue  # the element as written
+                    s["joints"][na] = {**ja, "pos": _r(pa), "r": c["r_a"]}
+                    s["joints"][nbn] = {**jb, "pos": _r(pb), "r": c["r_b"]}
+                    s["bones"][cn] = {**c, "a": na, "b": nbn}
                 else:
                     if i == 0:
+                        if varied:
+                            s["blobs"][name] = {**base, **varied}
                         continue
-                    c = dict(base)
+                    c = {**base, **varied}
                     moved = centre + t  # rotations turn about the centre (or pivot, folded into t)
                     c["at"] = _r(moved)
                     c.pop("offset", None)
@@ -199,6 +213,16 @@ def _arrays(s: dict):
                     c["rot"] = _euler_of(R @ euler_matrix(base.get("rot", [0, 0, 0])))
                     s["blobs"][cn] = c
     return s
+
+
+def _draw(rng, lo_hi, name: str, key: str):
+    """A value uniformly between lo and hi (numbers, or lists of numbers drawn per component)."""
+    if not (isinstance(lo_hi, list) and len(lo_hi) == 2):
+        raise SpecError(f"{name!r}: array vary {key!r} is [lo, hi]")
+    lo, hi = lo_hi
+    if isinstance(lo, list):
+        return [round(float(rng.uniform(a, b)), 6) for a, b in zip(lo, hi)]
+    return round(float(rng.uniform(lo, hi)), 6)
 
 
 def _blob_centre(s: dict, name: str, el: dict) -> np.ndarray:

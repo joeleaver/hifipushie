@@ -115,6 +115,7 @@ import json
 
 import numpy as np
 
+from .noise import _hash, fbm  # noqa: F401  (fbm is used by materials and tests too)
 from .spec import SpecError
 
 MIRROR = np.array([-1.0, 1.0, 1.0])
@@ -217,9 +218,22 @@ def _check_generator(name: str, g: str, e: dict) -> None:
                         ("[0.9, 0.5] (1 in occluded places)" if g == "ao" else "[0.03, 0.01] (1 where thin)"))
 
 
+def _code_hash() -> str:
+    """The painting code itself (this module, materials, noise, surface inputs): a recipe change repaints."""
+    from pathlib import Path
+    here = Path(__file__).parent
+    h = hashlib.sha1()
+    for f in ("paint.py", "materials.py", "noise.py", "surface.py"):
+        h.update((here / f).read_bytes())
+    return h.hexdigest()[:8]
+
+
+_CODE = _code_hash()
+
+
 def key(spec: dict) -> str:
-    """What painted colours depend on besides the mesh."""
-    return hashlib.sha1(json.dumps([spec.get("paint"), spec.get("parts")], sort_keys=True,
+    """What painted colours depend on besides the mesh (and the painting code)."""
+    return hashlib.sha1(json.dumps([spec.get("paint"), spec.get("parts"), _CODE], sort_keys=True,
                                    default=float).encode()).hexdigest()[:12]
 
 
@@ -710,54 +724,6 @@ def cells(v: np.ndarray, scale: float, mode: str = "edges", jitter: float = 1.0,
                 ident = np.where(closer, _hash(c[:, 0], c[:, 1], c[:, 2], seed + 99), ident)
                 f1 = np.where(closer, d, f1)
     return {"edges": f2 - f1, "distance": f1, "id": ident}[mode]
-
-
-def _hash(ix, iy, iz, seed: int) -> np.ndarray:
-    """Pseudo-random 0..1 per integer lattice point."""
-    h = (ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791) ^ (seed * 2654435761)
-    h = h.astype(np.uint64)
-    h ^= h >> np.uint64(13)
-    h *= np.uint64(0x5bd1e995)
-    h ^= h >> np.uint64(15)
-    return (h & np.uint64(0xFFFFFF)).astype(np.float64) / float(0xFFFFFF)
-
-
-def _value_noise(p: np.ndarray, seed: int) -> np.ndarray:
-    i = np.floor(p).astype(np.int64)
-    f = p - i
-    u = f * f * f * (f * (f * 6 - 15) + 10)  # quintic fade: no creases at lattice planes
-    out = np.zeros(len(p))
-    for dx in (0, 1):
-        for dy in (0, 1):
-            for dz in (0, 1):
-                w = (np.where(dx, u[:, 0], 1 - u[:, 0]) * np.where(dy, u[:, 1], 1 - u[:, 1])
-                     * np.where(dz, u[:, 2], 1 - u[:, 2]))
-                out += w * _hash(i[:, 0] + dx, i[:, 1] + dy, i[:, 2] + dz, seed)
-    return out
-
-
-def _rotations(n: int) -> list[np.ndarray]:
-    rng = np.random.default_rng(7)
-    out = []
-    for _ in range(n):
-        q, r = np.linalg.qr(rng.normal(size=(3, 3)))
-        out.append(q * np.sign(np.diag(r)))
-    return out
-
-
-_ROT = _rotations(8)
-
-
-def fbm(p: np.ndarray, scale: float, octaves: int = 3, seed: int = 0) -> np.ndarray:
-    """Fractal value noise in 0..1 (mean ~0.5) with features about `scale` across."""
-    out, amp, total = np.zeros(len(p)), 1.0, 0.0
-    q = p / scale
-    for o in range(max(1, octaves)):  # each octave on its own rotated lattice: no axis-aligned blocks
-        out += amp * _value_noise(q @ _ROT[o % len(_ROT)] * (2 ** o), seed + 101 * o)
-        total += amp
-        amp *= 0.5
-    # summed octaves bunch up around 0.5; stretch back to roughly 0..1
-    return np.clip(0.5 + (out / total - 0.5) * (1.0 + 0.6 * (octaves - 1)), 0, 1)
 
 
 def srgb_to_linear(c: np.ndarray) -> np.ndarray:

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import copy
 import math
+import zlib
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -227,11 +228,14 @@ def _compile(spec: dict) -> list[Prim]:
         rb = float(b.get("r_b") or s["joints"][b["b"]].get("r", 0.05))
         flat = b.get("flat") or [1.0, 1.0]
         k = float(b["blend"]) if b.get("blend") is not None else k_default
-        R = max(ra, rb) * max(1.0, *flat)
+        bow = b.get("bow") or [0.0, 0.0]
+        bow = [0.0, float(bow)] if isinstance(bow, (int, float)) else [float(bow[0]), float(bow[1])]
+        R = max(ra, rb) * max(1.0, *flat) + float(np.hypot(*bow))
         lo, hi = np.minimum(a, bb) - R, np.maximum(a, bb) + R
         prims.append(Prim(name, "cone", b.get("op", "add"), k, int(b.get("layer", 0)), lo, hi,
                           {"a": a, "frame": bone_frame(a, bb, b.get("up")), "len": float(np.linalg.norm(bb - a)),
-                           "ra": ra, "rb": rb, "flat": [float(f) for f in flat]},
+                           "ra": ra, "rb": rb, "flat": [float(f) for f in flat], "bow": tuple(bow),
+                           "cut": _cut(name, b)},
                           # sd_cone scales distances by min(flat, 1), so a blend reaches that much further
                           reach=1.0 / min(*flat, 1.0)))
 
@@ -272,6 +276,18 @@ def _compile(spec: dict) -> list[Prim]:
     return _parts(prims, s.get("parts") or {}, k_default)
 
 
+def _cut(name: str, b: dict) -> float:
+    """Flat ends for a bone ("ends": "flat" or {"flat": edge radius}): 0 = the usual round caps."""
+    e = b.get("ends")
+    if e in (None, "round"):
+        return 0.0
+    if e == "flat":
+        return 0.004
+    if isinstance(e, dict) and "flat" in e:
+        return max(float(e["flat"]), 1e-4)
+    raise SpecError(f"bone {name!r}: ends is \"round\", \"flat\" or {{\"flat\": edge radius}}")
+
+
 def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     """Element-level solids: "hollow": t keeps only a wall t thick inside an element's surface, and a subtract
     or intersect with "targets": [names or tags] shapes only those elements (a pot's opening doesn't bite
@@ -288,6 +304,15 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     by_name = {p.name: p for p in prims}
     out = []
     for p, el in zip(prims, els):
+        if el.get("lumpy"):
+            lp = el["lumpy"]
+            lp = {"amount": float(lp)} if isinstance(lp, (int, float)) else lp
+            amt = float(lp.get("amount", 0.004))
+            sc = float(lp.get("scale", max(8 * amt, 0.02)))
+            if p.kind not in SHAPES:
+                raise SpecError(f"{p.name!r}: lumpy works on bones and shaped blobs")
+            wrap(p).params["lumpy"] = (amt, sc, int(lp.get("seed", zlib.crc32(p.name.encode()) % 9973)), int(lp.get("octaves", 3)))
+            p.lo, p.hi = p.lo - amt, p.hi + amt
         if el.get("hollow"):
             if p.kind not in SHAPES:
                 raise SpecError(f"{p.name!r}: hollow works on bones and shaped blobs")
