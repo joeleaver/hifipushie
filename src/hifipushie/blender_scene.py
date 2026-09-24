@@ -713,7 +713,7 @@ def bake_maps(job):
     by_key = {ob["hp_key"]: ob for ob in bpy.data.objects if ob.get("hp_key")}
     highs = {}
     for pt in job["parts"]:
-        src = by_key[pt["key"]]
+        src = by_key[pt.get("scene_key", pt["key"])]  # a part split for the atlases bakes from its whole
         if pt.get("matrix") is not None:  # a prefab's part: its mesh at the bake instance
             ob = bpy.data.objects.new(pt["key"] + "@bake", src.data)
             scene.collection.objects.link(ob)

@@ -288,8 +288,11 @@ primitives, 33 prefabs, 65 instances, 46 layers) took 29:49 from nothing to a pa
 export (31 of it Cycles map bakes). The wishlist from it was built the next day: early validation, `walls`,
 instances `"on"`, `"between"` seams, `check` doorways, `look(instances=True)` facing arrows, `random` paint,
 cameras off furniture, per-part live scene grids, the bake fix (export 55 -> 25 min). `workspace/cabin5`
-(source `cabin5_src.py`) is cabin4 rebuilt with them. Still open from that list: splitting a part too big for
-one atlas; low poly (~8 min) and per-atlas projection (~8 min) are now most of an export.
+(source `cabin5_src.py`) is cabin4 rebuilt with them. Exports also split a part too big for one atlas at the
+asked density into slabs (`asset.split_big`: "roof~2", sharing seam vertices so the joint decimation keeps them
+joined; cfg "split" stops lowpoly re-decimating one alone; bake_maps bakes each from its part's scene object via
+"scene_key"), and a regroup re-unwraps without re-decimating (`<out>/lowpoly_decimated.npz`, keyed on what the
+decimation depends on). cabin5 at 256/m: 40 atlases, 41 min, 250 MB; projection (per texel Newton) is most of it.
 
 **The cabin (paused until the pipeline settles):** `workspace/cabin2`, a readable hand-written spec, source in
 `workspace/cabin2_src.json` (story, log arrays with vary/flip/bow/lumpy/flat ends, chinking, targeted door and

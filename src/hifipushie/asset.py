@@ -64,9 +64,16 @@ def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel
     are dissolved before the collapse). Returns ({part: {verts, corner_vert, uv, normal, tangent, sign,
     atlas}}, info from Blender: per part the joint decimation's count, the budget and whether it came out mirrored;
     timings)."""
+    import hashlib
+    st = high.stat()
+    # what the decimation depends on (not the atlases): a regroup for other atlas sizes re-unwraps only
+    key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, int(triangles), float(voxel),
+                                   {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()}],
+                                  sort_keys=True, default=str).encode()).hexdigest()
     _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles),
               "min_part": min_part(triangles), "voxel": float(voxel), "textures": {str(a): int(t) for a, t in sizes.items()},
-              "margins": {str(a): margin_px(int(t)) for a, t in sizes.items()}}, timeout=3600)
+              "margins": {str(a): margin_px(int(t)) for a, t in sizes.items()},
+              "decimated": {"path": str(out.with_name(out.stem + "_decimated.npz")), "key": key}}, timeout=3600)
     z = np.load(out)
     names = [str(n) for n in z["part_names"]]
     parts = {pn: {k: z[f"{i}_{k}"] for k in ("verts", "corner_vert", "uv", "normal", "tangent", "sign")}
@@ -283,6 +290,53 @@ def mesh_parts(ctx: dict, out: Path) -> Path:
     return out
 
 
+def split_big(mesh: Path, ctx: dict, rel: dict, texture: int, log: list) -> None:
+    """A part (not a prefab's) that wants more texels than one `texture` atlas holds at its density is cut into
+    slabs of equal load along its longest side ("roof~0", "roof~1", ...), each an export part of its own on the
+    same exact surface (ctx streams, frames and origin copied), so each can take an atlas. The slabs keep the
+    vertices they share on the high mesh, so the joint decimation keeps them joined (lowpoly never re-decimates
+    them alone: `split` in their cfg)."""
+    z = dict(np.load(mesh))
+    V, F, part = z["verts"].astype(np.float64), z["faces"], z["part"].copy()
+    names = [str(n) for n in z["part_names"]]
+    fpart = part[F[:, 0]]
+    c = V[F]
+    area = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1) / 2
+    cap = texture ** 2 * FILL
+    pf_parts = {pn for d in ctx["prefabs"].values() for pn in d["parts"]}
+    changed = False
+    for i, pn in enumerate(list(names)):
+        sel = fpart == i
+        load = float(area[sel].sum()) * rel.get(pn, 1.0) ** 2
+        if pn in pf_parts or not sel.any() or load <= cap:
+            continue
+        k = int(np.ceil(load / cap))
+        cen = c[sel].mean(1)
+        ax = int(np.argmax(np.ptp(cen, 0)))
+        order = np.argsort(cen[:, ax])
+        cum = np.cumsum(area[sel][order]) / area[sel].sum()
+        cuts = [float(cen[order[np.searchsorted(cum, j / k)], ax]) for j in range(1, k)]
+        vids = np.unique(F[sel])
+        grp = np.searchsorted(cuts, V[vids, ax])
+        new = [f"{pn}~{j}" for j in range(k)]
+        idx = [i] + [len(names) + j for j in range(k - 1)]
+        names[i] = new[0]
+        names += new[1:]
+        part[vids] = np.asarray(idx, part.dtype)[grp]
+        for n in new:
+            for key in ("streams", "frames", "origin"):
+                ctx[key][n] = ctx[key][pn]
+        for key in ("streams", "frames", "origin"):
+            ctx[key].pop(pn)
+        ctx.setdefault("split", {}).update({n: pn for n in new})
+        log.append(f"{pn}: {load / cap:.1f} atlases' worth of texels at its density ({FILL:.0%} packed): split into "
+                   f"{k} along {'xyz'[ax]} ({', '.join(new)})")
+        changed = True
+    if changed:
+        z["part"], z["part_names"] = part, np.array(names)
+        np.savez(mesh, **z)
+
+
 def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
     """Drop faces buried inside another part (skin under solid clothing shells, the back of an eyeball in its
     socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space."""
@@ -457,8 +511,8 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
             np.savez(f, verts=p["verts"], corner_vert=p["corner_vert"], uv=p["uv"], normal=p["normal"])
             pf = next((q for q, dd in ctx["prefabs"].items() if pn in dd["parts"]), None)
             M = ctx["prefabs"][pf]["instances"][ctx["prefabs"][pf]["bake"]].tolist() if pf else None
-            jobs.append({"key": pn, "low": str(f), "atlas": p["atlas"], "extrusion": out_, "ray": out_ + in_,
-                         "matrix": M})
+            jobs.append({"key": pn, "scene_key": ctx.get("split", {}).get(pn, pn), "low": str(f), "atlas": p["atlas"],
+                         "extrusion": out_, "ray": out_ + in_, "matrix": M})
         t = time.time()
         out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
                               "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES},
@@ -656,6 +710,9 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     high = mesh_parts(ctx, out_dir / "high.npz")
     log.append(f"meshed {len(ctx['streams'])} parts in {time.time() - tm:.1f}s (scene voxel {ctx['voxel'] * 1000:.1f} mm)")
     prune_hidden(ctx, high, log)
+    if texel_density:
+        split_big(high, ctx, {pn: _weight(defs, origin[pn], "texel_density") * texel_density for pn in ctx["streams"]},
+                  texture, log)
     areas = part_areas(high)
 
     def w(pn, key):
@@ -668,7 +725,8 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     units: dict[str, list] = {}
     for pn in areas:  # a prefab's parts go on one atlas together (one material per instance where possible)
         units.setdefault(pf_of.get(pn, pn), []).append(pn)
-    if texel_density:  # say now, not after the bake, which parts can't get the density asked for
+    if texel_density:  # say now, not after the bake, which parts can't get the density asked for (a prefab too
+        # big for an atlas: scene parts were split above)
         for u, pns in units.items():
             need = sum(loads[pn] for pn in pns)
             cap = texture ** 2 * FILL
@@ -686,7 +744,7 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
         sizes = {ai: min(texture, _pow2(np.sqrt(sum(loads[pn] for pn in areas if group[pn] == an) / fill)))
                  if texel_density else texture for ai, an in enumerate(names)}
         cfg = {pn: {"weight": w(pn, "triangle_weight"), "density": w(pn, "texel_density"),
-                    "atlas": names.index(group[pn]), "focus": focus[pn],
+                    "atlas": names.index(group[pn]), "focus": focus[pn], "split": pn in ctx.get("split", {}),
                     "copies": len(ctx["prefabs"][pf_of[pn]]["instances"]) if pn in pf_of else 1} for pn in areas}
         t1 = time.time()
         parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"])

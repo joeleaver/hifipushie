@@ -229,10 +229,13 @@ solid clothing, eyeball backs) are removed first.
   takes (texels per metre x each part's `texel_density`; 512/m = 2 mm/texel, for close interiors; 256/m for
   walls seen from a few metres), each the smallest power of two that holds its parts, a prefab's parts together.
   `parts.<p>.atlas: "interior"` still pins a part to a named atlas; `atlases=n` is the manual split.
-  A part that can't reach the density on one atlas (a whole log wall or roof) is named at the start of the log
-  with what it will get: split it into parts (north and south roof), or give it a lower `texel_density`.
-- A furnished four-room cabin (100k triangles, 14 atlases at 2048, 256/m) exports in ~25 min: low poly ~8,
-  per-atlas projection ~8, Cycles paint/AO bake ~2. Progress goes to workspace/<model>/progress.log.
+  A part too big for one atlas at that density (a whole log wall, a roof, the ground) is cut into slabs along
+  its longest side ("roof~0", "roof~1", ...: the log says so), an atlas's worth each; `hide=["roof"]` hides all
+  of them. A prefab can't be split: the log names one that won't reach the density.
+- Density costs texels, texels cost time and file size: the furnished four-room cabin (100k triangles) at 256/m
+  is ~40 atlases of 2048 (250 MB GLB) and ~40 min; at 128/m about a quarter of the texels. Low poly ~8 min,
+  per-atlas projection most of the rest, the Cycles paint/AO bake a few minutes. Progress goes to
+  workspace/<model>/progress.log.
 - Detail thinner than about a voxel at the export resolution (22 mm shingles at 256 across a 6 m cabin) makes
   a broken high mesh: inverted faces and normals the bake can't use. Those texels keep the low-poly surface
   (the log says how many per part). Build at a higher resolution or make the detail thicker.

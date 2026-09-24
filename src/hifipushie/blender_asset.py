@@ -21,6 +21,7 @@ Jobs:
 """
 
 import json
+import os
 import math
 import sys
 import time
@@ -47,6 +48,32 @@ def _mesh(name, verts, faces):
     me.loops.foreach_set("vertex_index", faces.astype(np.int32).ravel())
     me.polygons.add(len(faces))
     me.polygons.foreach_set("loop_start", np.arange(0, faces.size, 3, dtype=np.int32))
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def _poly_arrays(ob):
+    """(verts, loop vertex indices, loop starts) of an object: its polygons as they are (ngons too)."""
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    vi = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get("vertex_index", vi)
+    ls = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get("loop_start", ls)
+    return co.reshape(-1, 3), vi, ls
+
+
+def _poly_mesh(name, verts, loops, starts):
+    me = bpy.data.meshes.new(name)
+    me.vertices.add(len(verts))
+    me.vertices.foreach_set("co", np.asarray(verts, np.float32).ravel())
+    me.loops.add(len(loops))
+    me.loops.foreach_set("vertex_index", np.asarray(loops, np.int32))
+    me.polygons.add(len(starts))
+    me.polygons.foreach_set("loop_start", np.asarray(starts, np.int32))
     me.update()
     ob = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(ob)
@@ -598,6 +625,17 @@ def budgets(counts, faces, weights, total, floor, copies=None):
 def lowpoly(job):
     _clear()
     t0 = time.time()
+    dec = job.get("decimated")  # {"path", "key"}: the decimated parts of an earlier call with the same inputs
+    if dec and os.path.exists(dec["path"]):
+        c = np.load(dec["path"])
+        if str(c["key"]) == dec["key"]:
+            info = json.loads(str(c["info"]))
+            obs = []
+            for i, pn in enumerate(str(n) for n in c["names"]):
+                ob = _poly_mesh(pn, c[f"{i}_V"], c[f"{i}_L"], c[f"{i}_S"])
+                ob.data.shade_smooth()
+                obs.append(ob)
+            return _unwrap_and_save(job, obs, info, t0, float(c["t1"]), float(c["t1b"]), cached=True)
     z = np.load(job["mesh"])
     verts, faces, part = z["verts"], z["faces"], z["part"]
     all_names = [str(n) for n in z["part_names"]]
@@ -653,6 +691,8 @@ def lowpoly(job):
     for k, pn in enumerate(names):
         Vh, Fh = _sub(verts, faces, fpart == pidx[pn])
         redo, s = abs(want[pn] - counts[pn]) > 0.1 * max(counts[pn], 1), sym and ratio < 1.0
+        if cfg[pn].get("split"):  # a slab of a split part: alone, its cut edges would open a crack
+            redo = False
         if not redo:
             ob = _mesh(pn, *_sub(Vj, Fj, jpart == k))
             if s and _folded(ob, BVHTree.FromPolygons(Vh.tolist(), Fh.tolist(), all_triangles=True),
@@ -666,7 +706,18 @@ def lowpoly(job):
         obs.append(ob)
         info[pn] = {"symmetric": s, "joint_count": counts[pn], "budget": want[pn], "flat": round(flat_frac[pn], 3)}
     t1b = time.time()
+    if dec:  # the unwrap may be redone with other atlases (a regroup): keep the decimation
+        arrays = {}
+        for i, ob in enumerate(obs):
+            arrays[f"{i}_V"], arrays[f"{i}_L"], arrays[f"{i}_S"] = _poly_arrays(ob)
+        np.savez(dec["path"], key=np.array(dec["key"]), names=np.array([ob.name for ob in obs]),
+                 info=np.array(json.dumps(info)), t1=np.array(t1 - t0), t1b=np.array(t1b - t0), **arrays)
+    return _unwrap_and_save(job, obs, info, t0, t1 - t0, t1b - t0)
 
+
+def _unwrap_and_save(job, obs, info, t0, joint_s, decimate_s, cached=False):
+    cfg = job["parts"]
+    t1b = time.time()
     atlases = {}
     for ob in obs:
         ob.data.uv_layers.new(name="UVMap")
@@ -677,8 +728,8 @@ def lowpoly(job):
     t2 = time.time()
 
     out = {"part_names": np.array([ob.name for ob in obs]), "atlas": np.array([cfg[ob.name]["atlas"] for ob in obs]),
-           "info": np.array(json.dumps({"parts": info, "joint_s": t1 - t0, "decimate_s": t1b - t0,
-                                        "unwrap_s": t2 - t1b, "unwrap": TIMES}))}
+           "info": np.array(json.dumps({"parts": info, "joint_s": joint_s, "decimate_s": decimate_s,
+                                        "unwrap_s": t2 - t1b, "unwrap": TIMES, "decimation_cached": cached}))}
     for i, ob in enumerate(obs):
         me = ob.data
         me.calc_tangents(uvmap="UVMap")
@@ -704,7 +755,9 @@ def preview(job):
     _clear()
     bpy.ops.import_scene.gltf(filepath=job["glb"])
     for ob in list(bpy.data.objects):  # parts (or instances, prefabs) left out, e.g. the roof to see an interior
-        if any(ob.name == h or ob.name.endswith("_" + h) or ob.get("prefab") == h for h in job.get("hide", [])):
+        # a part split for the atlases ("roof~2") goes with its part's name
+        base = ob.name.split("~")[0]
+        if any(n == h or n.endswith("_" + h) or ob.get("prefab") == h for h in job.get("hide", []) for n in (ob.name, base)):
             bpy.data.objects.remove(ob)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
