@@ -1,18 +1,16 @@
 """What paint (and the bake) can know about a point on the surface, computed lazily from the exact field.
 
 Points holds a set of surface points (mesh vertices or baked texels): position, normal, part, and on demand
-  ao          ambient occlusion 0..1 (1 = open), from all parts' fields (`ao`)
+  ao, sky     ambient occlusion and openness to the sky (0..1): measured by Cycles in the Blender scene
+              (scene.raytraced) and passed in through `cache`; asking for them otherwise is an error
   curvature   mean curvature (1/m, 1/r on a sphere of radius r; convex > 0), from the part's own field
   thickness   how far (m) the part goes on behind the point, against the normal (`thickness`)
-  sky         how open the point is to the sky above (1 = open, 0 = roofed over), reaching much further than
-              AO: rain, sun and snow reach it or they don't (`sky`)
   hidden      1 where the point is buried inside another part
   grain       the long axis of the element the point belongs to (sign arbitrary, length = how much its ends
               read as end grain: 1 on logs and legs, 0 on slabs and boards): wood grain,
               brushed metal, per board and log (`grain`); grain_seed: 0..1 per element, so parallel boards
               don't share one continuous pattern
-Each is computed once for the whole set and kept in `cache`, which the caller may prefill (the bake passes the
-AO it already computed) or persist (store keeps a mesh's inputs next to it, so repainting doesn't redo AO).
+Each is computed once for the whole set and kept in `cache`, which the caller may prefill.
 """
 
 from __future__ import annotations
@@ -22,7 +20,7 @@ import numpy as np
 from . import sdf
 
 FIELD_INPUTS = ("ao", "curvature", "thickness", "sky")
-INPUTS_VERSION = 4  # bump when how any input is measured changes: cached inputs (store.painted) are redone
+INPUTS_VERSION = 4  # bump when how any input is measured changes: the scene's cached inputs are redone
 
 
 def unit(v):
@@ -53,10 +51,9 @@ class Points:
 
     def get(self, key: str) -> np.ndarray:
         if key not in self.cache:
-            if key == "ao":
-                self.cache[key] = ao(list(self.streams.values()), self.pos, self.normal, self.voxel)
-            elif key == "sky":
-                self.cache[key] = sky(list(self.streams.values()), self.pos, self.normal, self.voxel)
+            if key in ("ao", "sky"):
+                raise KeyError(f"{key} is measured by Cycles in the Blender scene (scene.raytraced) and passed in "
+                               f"(Points(cache=...)); there's no SDF estimate of it any more")
             elif key == "hidden":
                 self.cache[key] = hidden(self.streams, self.pos, self.part, self.part_names, self.voxel)
             elif key in ("grain", "grain_seed"):
@@ -157,43 +154,6 @@ def _cone(N, tilt_deg: float, ring: int):
     t = np.radians(tilt_deg)
     return [(N, 1.0)] + [(np.cos(t) * N + np.sin(t) * (np.cos(a) * U + np.sin(a) * V), np.cos(t))
                          for a in np.linspace(0, 2 * np.pi, ring, endpoint=False) + 0.3]
-
-
-def ao(streams: list, X: np.ndarray, N: np.ndarray, voxel: float, samples: int = 3, ring: int = 6) -> np.ndarray:
-    """SDF ambient occlusion over the hemisphere: along the normal and a ring of directions tilted 50 deg from it,
-    how open each is (the narrowest field / distance ratio of a few steps out, like a cone's soft shadow),
-    cosine-weighted. Every part occludes every other: a sleeve darkens the arm under it."""
-    step = 0.008 * model_size(streams)
-    dirs = _cone(N, 50, ring)
-    prims = [p for ps in streams for p in ps]
-    q, den = [], []
-    for D, w in dirs:
-        for i in range(1, samples + 1):
-            d = i * step
-            q.append(X + D * d + N * (0.25 * voxel))
-            den.append(d * w)
-    f = sdf.field_at(prims, np.stack(q, 1))  # (n, dirs * samples): one call, so it all goes on the pool
-    vis = np.clip(f / np.array(den)[None], 0, 1).reshape(len(X), len(dirs), samples).min(2)
-    w = np.array([w for _, w in dirs])
-    return np.clip(vis @ w / w.sum(), 0, 1)
-
-
-def sky(streams: list, X: np.ndarray, N: np.ndarray, voxel: float, samples: int = 6, ring: int = 6) -> np.ndarray:
-    """Openness to the sky: rays up (straight and a ring 35 deg off vertical) marched out to 0.3 x the model
-    size (a roof, an eave, a table top over the point all count), each scored like an AO cone (field over
-    distance), cosine-weighted. Points on down-facing skin still look up, from just outside themselves."""
-    size = model_size(streams)
-    reach = 0.3 * size
-    depths = reach * (np.arange(1, samples + 1) / samples) ** 1.6
-    up = np.broadcast_to(np.array([0.0, 0.0, 1.0]), X.shape)
-    dirs = _cone(up, 35, ring)
-    prims = [p for ps in streams for p in ps]
-    start = X + N * (1.5 * voxel)
-    q = np.stack([start + D * d for D, _ in dirs for d in depths], 1)
-    f = sdf.field_at(prims, q).reshape(len(X), len(dirs), samples)
-    vis = np.clip(f / (0.35 * depths[None, None]), 0, 1).min(2)
-    w = np.array([w for _, w in dirs])
-    return vis @ w / w.sum()
 
 
 def element_axis(p) -> np.ndarray:

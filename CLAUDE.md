@@ -38,8 +38,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   don't, so clothes cut as a rim), loaded by Blender as an extra object. `camera` panels are perspective
   (`render.camera_frame`, `blender_render` switches the camera type per view; no rulers, no stroke overlay);
   an eye [x, y] stands on `measure.stand_height`. Camera-only looks also cull faces outside the frusta.
-  `store.painted` on a view mesh slices the whole mesh's paint if it's current, else paints only the subset
-  (inputs sliced from `mesh_inputs.npz` when current). `measure.clearance` (tool `clearance`): walkability
+  Painted looks go to the Blender scene (`scene.look`, see "Next session"); these views are clay per part.
+  `measure.clearance` (tool `clearance`): walkability
   from vertical columns of `field_at` (floors, headroom), a capsule clearance test and horizontal width rays.
 - `measure.py`: cross-sections of the exact field (`sdf.field_at`): rays from a bone axis, or world-axis slices.
 - `compare.py`: reference mask extraction, placement (FFT shift search per scale + sub-pixel refine, kept as a
@@ -52,15 +52,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (`spec["parts"][name] = {"shell": base, "offset"}`) is its base part's field pushed out (`sd_shell`),
   intersected (op "intersect") with the union of its layer-0 adds. Solid on purpose: thin sheets alias.
 - `surface.py`: `Points`, a set of surface points (mesh vertices or baked texels) with position/normal/part and
-  lazily computed field inputs: `ao` (hemisphere of SDF cone samples over all parts, normalised so an open plane
-  is 1, all samples in one `field_at` call), `curvature` (field Laplacian / 2), `thickness` (depth where rays
-  along -normal leave the part), `hidden` (buried in another part). `store.painted` keeps a mesh's inputs in
-  `mesh_inputs.npz` (stamped by mesh mtime), so repaints don't redo AO (~6 s on the troll); the bake prefills
-  `ao` from its AO map. `moved` drops offset points back onto the surface with one field step (blur, bump).
-- `paint.py`: `spec["paint"]` layers, evaluated per point (`apply_channels` on a `surface.Points`): vertices in
-  `store.painted` (`mesh_paint.npz`, stamped by mesh mtime + paint/parts hash + `paint.VERSION`; `layer=` writes
-  `mesh_mask.npz`, one layer's mask in false colour, for `look(paint_layer=)`), texels in the bake, so paint never
-  rebuilds. `spec.geometry` strips paint and plan before expansion/compilation: keep it that way, or every paint
+  lazily computed field inputs: `curvature` (field Laplacian / 2), `thickness` (depth where rays along -normal
+  leave the part), `hidden` (buried in another part), `grain`/`grain_seed` (element axis). `ao` and `sky` come
+  from Cycles (the scene) through `cache`. `moved` drops offset points back onto the surface with one field step.
+- `paint.py`: `spec["paint"]` layers. Most generators compile to shader nodes (`paintnodes`); what nodes can't
+  do (paths, near distances, blur, ".L" mirroring, weave) is evaluated per point here (`layer_mask`,
+  `_generate` on a `surface.Points`) and handed to the scene as vertex attributes. Paint never rebuilds geometry. `spec.geometry` strips paint and plan before expansion/compilation: keep it that way, or every paint
   edit re-seats strokes and rebuilds. A layer's mask (`layer_mask`) is a stack: flat keys become leading
   multiply entries, then `"mask": [...]`; each entry is one generator (`_generate`: path seated with the stroke
   machinery, `strokes._generate`, as a sum of dabs with a faces-the-same-way test against print-through; near
@@ -107,9 +104,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (`surface.newton`, converged texels dropped; a texel falls back to the low poly only if it moved > 6 voxels or
   its exact normal faces away, dot < -0.2: steep outward detail like shingle butts is real), reads normal
   (tangent space against the exported low-poly frame, z >= 0.02), height (along the low-poly normal), paint
-  channels (`paint.apply_channels`: color/roughness/metallic/specular), and AO (`surface.ao`, baked at half res
-  and passed on to paint), then painted height (`paint.bump`, texel-sized steps). Maps are dilated (EDT nearest
-  fill). `write_glb` writes glTF by hand (one material per atlas; Y up: x, z, -y; uv v flipped; ORM; specular in
+  channels, AO and painted height from the Blender scene (`scene_maps`, see "Next session" step 4). Maps are
+  dilated (EDT nearest fill). `write_glb` writes glTF by hand (one material per atlas; Y up: x, z, -y; uv v flipped; ORM; specular in
   the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04). `preview`
   (`hide=` parts) renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the
   AO map itself too. Sub-voxel detail (the cabin's 22 mm shingles at 24 mm voxels) makes a broken high mesh
@@ -235,10 +231,24 @@ the .blend come back as spec edits).
    the sync log names the element that set it. Cabin: metal 6.2 mm (pot/basin walls, capped), furniture 9.6,
    glass 13.8 (lantern), door/trim 16, roof 17.6 (424k verts), 1.57M verts total (1.1M before), cold sync
    ~3 min with the Cycles bake. Basin moved onto the counter top (it was sunk into it).
-4. Export paint from Cycles bakes of the node materials (basecolor, roughness, metallic, specular; AO map by a
-   Cycles AO bake); our `asset.bake` keeps the geometry maps (normal, height by exact projection).
-5. MCP tools: `sync`, scene-based `look`, `pull`; then retire the per-vertex paint path in `look`, and
-   `surface.ao`/`surface.sky`.
+4. DONE (2026-09-23): the export's paint and AO maps are Cycles bakes from the scene (`asset.scene_maps` ->
+   `blender_scene.bake_maps`): selected-to-active per part (only its own scene mesh selected, so a log never
+   picks up the chinking), cage from how far the low poly strays from the exact surface (probed at triangle
+   centres and edge midpoints), passes color / rms (roughness, metallic, specular) / ao (the scene's `ao_raw`
+   vertex attribute: Cycles AO, uncalibrated, each asset's own) / height (painted relief: the materials sum
+   height x mask into an `hp_height` node that also drives a Bump node, so EEVEE shows it). Texels whose ray
+   misses (alpha 0) are filled from neighbours and counted in the log (~5% on the cabin). Normal and height
+   stay ours (exact projection), tilted by the baked relief's slope in texture space. Cabin at 2048: 709 s
+   (low poly ~180, maps ~350: 4 passes x ~23 parts, per-part set-up dominates; merging parts per pass where
+   they can't see each other is the next speed-up), was 1129 (710 of it our per-texel painted height).
+   Export and scene both split with `min_share=1`: every instance is a movable prefab (the table too).
+5. DONE (2026-09-23): MCP tools `sync`, `pull`; `look` renders painted views from the scene (EEVEE, hide/only
+   parts, cameras, flat, paint_layer = the scene's show_layer with coverage counted from the render: surface
+   pixels by alpha, lit where r - b > 30); geometric views (raking, curvature, strokes, clip, close-ups) are clay
+   per part. Retired: `store.painted`/`coverage` (the OBJ export carries part colours), `surface.ao`/`sky`
+   (Points raises for them unless passed in), the export's per-texel paint/AO (`_ao_map`, apply_channels in bake).
+   The scene now always bakes AO (painted or not: the export needs it). paint.py's mask code stays: the scene
+   measures paths, near distances, blurred and mirrored masks with it.
 Also: material rebuild on any paint change rebuilds every part (~55 s): hash per part. `scene.look` renders
 EEVEE with screen-space ray tracing + fast GI (without it glossy things indoors reflect the open sky: jars had
 glowing rims); a 4-camera look went ~15 s -> ~77 s. Push the scene into the user's running Blender over
@@ -308,10 +318,18 @@ Next, roughly in priority order:
    Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, deliberate UV seams (log walls
    unwrap as strips).
 2. Part tools: check that parts don't cut into each other (looking at one part alone: `look(only_parts=)`).
-3. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
-4. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
+3. Topology for characters (discussed 2026-09-23, for when we return to organic shapes): decimation stays for
+   environments/props (adaptive, keeps hard edges, quads buy nothing on static meshes; QuadriFlow would spend
+   uniform quads on flat walls and chokes on many-piece parts: at most a per-part option for static organic
+   pieces someone will sculpt further). Deforming meshes need loops (around limbs, extra at joints, rings at
+   eyes/mouth), which decimation can't give. Plan: skeleton-driven quads (Blender's Skin modifier over our joint
+   graph + radii, joint rings added, projected onto the exact field, relaxed; face kit templates for eye/mouth
+   rings); skin weights nearly free (each ring belongs to a bone). First a spike on the troll: skin-modifier topology
+   vs QuadriFlow vs decimation, with a test bend at elbow/knee.
+4. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
+5. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
    full build's block grid so PartGrid can reuse blocks.
-5. Face kit features read as stuck-on balls (cheeks, nose); strokes did better for brows/cheeks. Consider
+6. Face kit features read as stuck-on balls (cheeks, nose); strokes did better for brows/cheeks. Consider
    softer kit blends or stroke-based features.
-6. Older ideas: ears need a leaf/blade primitive; adaptive resolution near small features; skeleton →
+7. Older ideas: ears need a leaf/blade primitive; adaptive resolution near small features; skeleton →
    Blender armature for posing; soft priors in fit.

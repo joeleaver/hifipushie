@@ -188,6 +188,7 @@ class _Compiler:
                             "weight": 1.0, "post": {}, "expose": {}}]
         parts = ly.get("part", "body")
         return {"name": name, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
+                "height": float(ly.get("height", 0.0)),
                 "opacity": float(ly.get("opacity", 1.0)), "entries": entries, "expose": expose}
 
 

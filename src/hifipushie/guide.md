@@ -151,8 +151,8 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
 - **Masks multiply**, so confine a broad mask with a local one: an `axis` along a bone ramps across the
   whole part (the feet lie past a forearm's end too), so a glove is `near: ["forearm.L", "hand.L"]` plus
   the axis ramp.
-- **Check coverage** in `look`'s info line: a layer covering NOTHING is misaddressed; one covering far more
-  than you meant has a mask too loose (`within`, `range`).
+- **Check coverage** with `look(paint_layer=...)`: its info line gives the share of the surface in view the
+  layer lands on. NOTHING means misaddressed; far more than you meant means a mask too loose (`within`, `range`).
 - Judge with `shading="flat"` (unlit colour: exactly what you painted) and the clay view (how it reads with
   form). Paint can't be finer than the mesh: ~1 voxel full-body, finer in close-ups; markings a few mm wide
   need a close-up to judge.

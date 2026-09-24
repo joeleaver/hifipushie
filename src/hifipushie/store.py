@@ -257,90 +257,6 @@ def _mesh_part(prims, field, lo, voxel, boxes, st):
     return vp, fc, n, sdf.silhouettes(sdf.Grid(field, lo, voxel))
 
 
-def coverage(painted_mesh: Path) -> dict:
-    """Per paint layer, the fraction of its parts it covers (None: none of its parts in this build)."""
-    with np.load(painted_mesh) as z:
-        return json.loads(str(z["coverage"])) if "coverage" in z else {}
-
-
-def painted(name: str, mesh: Path, layer: str | None = None) -> Path:
-    """The built mesh with the spec's paint in part_colors (sRGB), cached next to it by mesh and paint.
-    Without paint layers, the mesh itself. layer: instead show that layer's mask in false colour.
-    The vertices' field inputs (AO, curvature, thickness) are kept in <mesh>_inputs.npz until the mesh changes,
-    so repainting doesn't recompute them."""
-    from . import paint, render
-    spec = load(name)
-    if not spec.get("paint"):
-        return mesh
-    if layer is not None and layer not in paint.layers(spec):
-        raise ValueError(f"no paint layer {layer!r} (have {', '.join(paint.layers(spec))})")
-    out = mesh.with_name(mesh.stem + ("_paint.npz" if layer is None else "_mask.npz"))
-    stamp = f"{mesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}:{layer}"
-    if out.exists():
-        with np.load(out) as z:
-            if "stamp" in z and str(z["stamp"]) == stamp:
-                return out
-    z = dict(np.load(mesh))
-    names = [str(n) for n in z["part_names"]]
-    meta = json.loads((mesh.parent / ("meta.json" if mesh.stem.startswith("mesh") else
-                                      "closeup_meta.json")).read_text())
-    src, base = z.pop("src", None), z.pop("base", None)  # a view_mesh: a subset of the base mesh's vertices
-    z.pop("frame_bounds", None)
-    if src is not None:  # the whole mesh painted already (and current): take the subset's colours from it
-        bmesh = Path(str(base))
-        bout = bmesh.with_name(bmesh.stem + ("_paint.npz" if layer is None else "_mask.npz"))
-        if bmesh.exists() and bout.exists():
-            with np.load(bout) as zb:
-                if str(zb["stamp"]) == f"{bmesh.stat().st_mtime_ns}:{paint.key(spec)}:{paint.VERSION}:{layer}":
-                    z["part_colors"], z["normals"] = zb["part_colors"][src], zb["normals"][src]
-                    z["coverage"], z["coverage_of"] = zb["coverage"], np.array("all")
-                    z["stamp"] = np.array(stamp)
-                    np.savez(out, **z)
-                    return out
-    inputs = mesh.with_name(mesh.stem + "_inputs.npz")
-    from .surface import INPUTS_VERSION
-    istamp = f"{mesh.stat().st_mtime_ns}:{INPUTS_VERSION}"
-    cache: dict = {}
-    if inputs.exists():
-        with np.load(inputs) as zi:
-            if str(zi["stamp"]) == istamp:
-                cache = {k: zi[k] for k in zi.files if k != "stamp"}
-    if src is not None and not cache:  # the whole mesh's inputs, if they're current, cover the subset too
-        bmesh = Path(str(base))
-        binputs = bmesh.with_name(bmesh.stem + "_inputs.npz")
-        if bmesh.exists() and binputs.exists():
-            with np.load(binputs) as zi:
-                if str(zi["stamp"]) == f"{bmesh.stat().st_mtime_ns}:{INPUTS_VERSION}":
-                    cache = {k: zi[k][src] for k in zi.files if k != "stamp"}
-    had = set(cache)
-    stats: dict = {}
-    masks: dict = {}
-    rgb = paint.apply(spec, z["verts"], z["normals"], z["part"], names, z["part_colors"], meta["voxel"], stats,
-                      cache, masks)
-    if layer is None:
-        from .surface import Points
-        b = paint.bump(spec, Points(spec, z["verts"], z["normals"], z["part"], names, meta["voxel"], cache),
-                       0.3 * meta["voxel"], masks)
-        if b is not None:  # painted height can't move vertices here: it shows in the shading only
-            z["normals"] = b[1].astype(z["normals"].dtype)
-    if set(cache) - had:
-        np.savez(inputs, stamp=np.array(istamp), **cache)
-    if layer is not None:
-        rgb = render.mask_colours(masks.get(layer, np.zeros(len(rgb))))
-    z["part_colors"] = np.concatenate([rgb, np.ones((len(rgb), 1))], 1).astype(np.float32)
-    z["stamp"] = np.array(stamp)
-    z["coverage"] = np.array(json.dumps(stats))
-    z["coverage_of"] = np.array("all" if src is None else "shown")
-    np.savez(out, **z)
-    return out
-
-
-def coverage_of(painted_mesh: Path) -> str:
-    """"all" when the coverage numbers are over the whole model, "shown" when over a view's subset only."""
-    with np.load(painted_mesh) as z:
-        return str(z["coverage_of"]) if "coverage_of" in z else "all"
-
-
 def clip_planes(clip) -> list[tuple[np.ndarray, np.ndarray]]:
     """Section planes as (point, unit normal); everything on the side the normal points into is cut away.
     clip: {"z": h} (drop above z = h; also "x", "y"), {"-y": c} (drop below y = c, i.e. the front of a model
@@ -509,15 +425,17 @@ def silhouette(name: str, view: str) -> dict:
 
 
 def export_obj(name: str, path: Path) -> Path:
-    """OBJ with one object per part and vertex colours (paint, or each part's clay colour) as "v x y z r g b",
-    which Blender's importer reads into a colour attribute."""
-    z = np.load(painted(name, _dir(name) / "build" / "mesh.npz"))
+    """OBJ with one object per part and each part's clay colour per vertex as "v x y z r g b", which Blender's
+    importer reads into a colour attribute. Paint lives in the Blender scene (sync) and the GLB (export_asset)."""
+    z = np.load(_dir(name) / "build" / "mesh.npz")
     faces = z["faces"]
-    part = z["part"][faces[:, 0]] if "part" in z else np.zeros(len(faces), int)
+    vpart = z["part"] if "part" in z else np.zeros(len(z["verts"]), int)
+    part = vpart[faces[:, 0]]
     names = [str(n) for n in z["part_names"]] if "part_names" in z else [name]
+    cols = z["part_colors"][vpart, :3] if "part_colors" in z else np.full((len(z["verts"]), 3), 0.7)
     with open(path, "w") as f:
         f.write(f"# hifipushie {name}: one object per part ({', '.join(names)})\n")
-        np.savetxt(f, np.concatenate([z["verts"], z["part_colors"][:, :3]], 1), fmt="v %.5f %.5f %.5f %.4f %.4f %.4f")
+        np.savetxt(f, np.concatenate([z["verts"], cols], 1), fmt="v %.5f %.5f %.5f %.4f %.4f %.4f")
         np.savetxt(f, z["normals"], fmt="vn %.4f %.4f %.4f")
         for i, pn in enumerate(names):
             f.write(f"o {name}_{pn}\n")

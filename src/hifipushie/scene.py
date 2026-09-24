@@ -153,6 +153,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     return objs, insts, prog
 
 
+LAYOUT = 2  # what an object's packed inputs file holds (2: ao_raw for the export's AO map): bump on change
 VECTOR_INPUTS = ("grain",)  # per-vertex vectors: an attribute each, not packed
 RAYTRACED = ("ao", "sky")  # inputs Cycles measures (the rest are ours: curvature is exact from the field)
 # AO as ours (cones out to 3 steps of 0.008 x the model size). Sky reaches past the whole model: a roof shelters
@@ -226,7 +227,7 @@ def raytraced(objs: list, insts: list, ctx: dict, cache: Path, log: list, device
     size = model_size(list(ctx["full"].values()))
     job = {"mode": "bake_inputs", "ao_distance": RT["ao_distance"] * size, "sky_distance": RT["sky_distance"] * size,
            "samples": RT["samples"], "device": device}
-    pkey = hashlib.sha1(json.dumps([job, 5], sort_keys=True).encode()).hexdigest()[:12]
+    pkey = hashlib.sha1(json.dumps([job, 6], sort_keys=True).encode()).hexdigest()[:12]
     raw_dir = cache / "rt"
     raw_dir.mkdir(exist_ok=True)
     sf = cache / "rt_state.json"
@@ -277,8 +278,9 @@ def raytraced(objs: list, insts: list, ctx: dict, cache: Path, log: list, device
                             raw = {n: r0[n].copy() for n in RAYTRACED}
                         for n in RAYTRACED:
                             raw[n][z["idx"]] = z[n]
-                    final = {n: calibrate(n, _smooth(raw[n].astype(np.float64), m["faces"], RT["smooth"]))
-                             .astype(np.float32) for n in RAYTRACED}
+                    sm = {n: _smooth(raw[n].astype(np.float64), m["faces"], RT["smooth"]) for n in RAYTRACED}
+                    final = {n: calibrate(n, sm[n]).astype(np.float32) for n in RAYTRACED}
+                    final["ao_raw"] = sm["ao"].astype(np.float32)  # the export's AO map: Cycles' own, uncalibrated
                 np.savez(raw_of[o["key"]], **raw, **{f"final_{n}": v for n, v in final.items()})
                 stamps[o["key"]] = hashlib.sha1(b"".join(np.round(final[n], 4).tobytes() for n in RAYTRACED)).hexdigest()[:10]
         log.append(f"Cycles AO and sky: {n_bake} vertices baked"
@@ -289,7 +291,7 @@ def raytraced(objs: list, insts: list, ctx: dict, cache: Path, log: list, device
     out = {}
     for o in objs:
         with np.load(raw_of[o["key"]]) as z:
-            out[o["key"]] = {n: z[f"final_{n}"] for n in RAYTRACED}
+            out[o["key"]] = {n: z[f"final_{n}"] for n in (*RAYTRACED, "ao_raw")}
         out[o["key"]]["stamp"] = stamps.get(o["key"], "")
     return out
 
@@ -302,13 +304,12 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
     moving a prop re-measures at most that prop."""
     from . import paintnodes
     from .surface import INPUTS_VERSION
-    if not spec.get("paint"):
-        return None
     t = time.time()
     prog = paintnodes.compile(spec)
     ours = [k for k in prog["inputs"] if k not in RAYTRACED]
     building = hashlib.sha1(json.dumps(sorted(_placed(o, ctx) for o in objs if not o["prefab"])).encode()).hexdigest()
-    prog_id = hashlib.sha1(json.dumps([prog["fallbacks"], prog["packing"], ours, INPUTS_VERSION, RT, CALIBRATION],
+    prog_id = hashlib.sha1(json.dumps([prog["fallbacks"], prog["packing"], ours, INPUTS_VERSION, RT, CALIBRATION,
+                                       LAYOUT],
                                       sort_keys=True, default=str).encode()).hexdigest()[:12]
     last = cache / "inputs_state.json"
     st = json.loads(last.read_text()) if last.exists() else {}
@@ -318,9 +319,7 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
             o["inputs"] = st["objects"][o["key"]]
             o["hash"] = f"{o['hash']}:{Path(o['inputs']).stem.split('_in_')[-1]}"
         return prog
-    needs_rt = set(prog["inputs"]) & set(RAYTRACED) or any(
-        k in json.dumps(prog["fallbacks"], default=str) for k in RAYTRACED)
-    rt = raytraced(objs, insts, ctx, cache, log) if needs_rt else {}
+    rt = raytraced(objs, insts, ctx, cache, log)  # always: the export's AO map comes from it, paint or not
     names = list(ctx["full"])
 
     def key(*parts):
@@ -364,6 +363,8 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
             packs.setdefault(pk, np.zeros((len(v), 3), np.float32))[:, ch] = vals[attr]
         vec = {k: vals[k].astype(np.float32) for k in VECTOR_INPUTS if k in vals}  # their own vector attributes
         arrays = {"wpos": v.astype(np.float32), "wnrm": n.astype(np.float32), **packs, **vec}
+        if "ao_raw" in rt.get(o["key"], {}):  # a plain attribute: baked into the export's AO map
+            arrays["ao_raw"] = rt[o["key"]]["ao_raw"]
         h = hashlib.sha1()
         for k in sorted(arrays):
             h.update(k.encode() + np.round(arrays[k], 4).tobytes())
@@ -557,16 +558,26 @@ def sync(name: str, resolution: int = 256) -> dict:
 
 
 def look(name: str, views: list[str] | None = None, cameras: list[dict] | None = None, size: int = 640,
-         save: str | None = None, show_layer: str | None = None):
+         save: str | None = None, show_layer: str | None = None, hide_parts: list[str] | None = None,
+         only_parts: list[str] | None = None, flat: bool = False):
     """Render the saved scene with EEVEE: named views (as look) and/or perspective cameras {"eye": [x,y,z],
-    "target", "fov"}."""
+    "target", "fov"}. show_layer: one paint layer's mask, orange on grey clay. hide_parts / only_parts: leave
+    parts out (prefab parts too, in every instance); with only_parts the views frame what's shown. flat: unlit
+    base colour."""
     from PIL import Image
+    from .spec import compile_prims, geometry
     bp = blend_path(name)
+    spec = store.load(name)
+    prims = [p for p in compile_prims(geometry(spec)) if p.op == "add"]
+    allp = sorted({p.part for p in prims})
+    bad = [p for p in (hide_parts or []) + (only_parts or []) if p not in allp]
+    if bad:
+        raise ValueError(f"no part(s) {bad}; parts: {allp}")
+    hide = [p for p in allp if (only_parts and p not in only_parts) or p in (hide_parts or [])]
     frames = []
     if views:
-        from .spec import compile_prims, geometry
-        adds = [p for p in compile_prims(geometry(store.load(name))) if p.op == "add"]  # bounds for the ortho views
-        lo, hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+        shown = [p for p in prims if p.part not in hide] or prims  # bounds for the ortho views
+        lo, hi = np.min([p.lo for p in shown], 0), np.max([p.hi for p in shown], 0)
         lo, hi = lo - 0.06 * (hi - lo), hi + 0.06 * (hi - lo)
         frames += render.view_frames(np.array([[(lo, hi)[(i >> k) & 1][k] for k in range(3)] for i in range(8)]), views)
     for i, c in enumerate(cameras or []):
@@ -575,17 +586,32 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         for f in frames:
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         t = time.time()
-        job = {"mode": "render", "blend": str(bp), "views": frames, "size": size}
-        if show_layer:  # that layer's mask alone, grey (needs the program: compile it again)
-            from . import paintnodes
-            spec = store.load(name)
+        job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat}
+        if show_layer:  # that layer's mask alone (needs the program: compile it again)
+            from . import paint, paintnodes
+            names = list(paint.layers(spec))
+            if not any(n == show_layer or n.startswith(show_layer + ":") for n in names):
+                raise ValueError(f"no paint layer {show_layer!r}; layers: {', '.join(names)}")
             defs = spec.get("parts") or {}
             job.update(show_layer=show_layer, program=paintnodes.compile(spec),
                        bases={p: {"color": [0.5] * 3, "roughness": 0.6, "metallic": 0.0, "specular": 0.5}
                               for p in list(defs) + ["body"]})
         _blender(job)
-        imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
+        imgs = [Image.open(f["out"]) for f in frames]
+    cover = None
+    if show_layer:  # the mask glows orange: the share of the surface in view where it's on (alpha: surface)
+        lit = seen = 0
+        bg = Image.new("RGBA", imgs[0].size, (140, 150, 165, 255))
+        for i, im in enumerate(imgs):
+            a = np.asarray(im.convert("RGBA"), np.float64)
+            surf = a[..., 3] > 127
+            seen += surf.sum()
+            lit += (surf & (a[..., 0] - a[..., 2] > 30)).sum()  # AgX desaturates the orange: r - b peaks ~85
+            imgs[i] = Image.alpha_composite(bg, im.convert("RGBA"))
+        cover = lit / max(seen, 1)
+    imgs = [im.convert("RGB") for im in imgs]
     sheet = render.contact_sheet(imgs, frames)
     if save:
         sheet.save(save)
+    look.coverage = cover
     return sheet, round(time.time() - t, 1)

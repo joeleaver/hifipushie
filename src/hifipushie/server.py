@@ -75,14 +75,17 @@ Paint colours the finished surface (vertex colours, exported in the OBJ): base c
 (near: "hand.L", "face_eye.L"), dirt in creases (cavity), mottling (noise), and procedural weathering from
 the surface itself: a "mask" stack combines generators (ao, cavity, thickness, facing, noise with warp/stretch,
 voronoi cells, paths...) with blend modes, and "breakup" turns them into edge wear, grime and dust. A layer's
-"height" adds fine relief (pores, scales, cracks) to the exported normal/height maps. ".L" layers mirror. Judge
-with look(shading="flat") (unlit colour) and the clay view, and look(paint_layer=...) to see one layer's mask;
-look reports each layer's coverage, so a layer that paints NOTHING is misaddressed. kit_reference documents it
-fully, with recipes.
+"height" adds fine relief (pores, scales, cracks) to the exported normal/height maps. ".L" layers mirror. Painted
+looks render the model's Blender scene (EEVEE, paint as shader nodes, per pixel); judge with look(shading="flat")
+(unlit colour) and look(paint_layer=...) to see one layer's mask (orange on grey clay): a layer that lights up
+nowhere is misaddressed. kit_reference documents it fully, with recipes.
+The Blender scene (workspace/<model>/scene.blend, `sync`) is the model's live, editable form: a person can open
+it, move props and tweak exposed paint numbers, and `pull` / the next sync / look brings those edits back into
+the spec. AO and sky there are per asset: a prop shades only itself, the building only itself.
 export_asset makes the game-ready version: low poly + UV atlases (per-part texel density, texel_focus for
 faces, triangle_weight) + PBR maps (basecolor, normal, roughness,
-metallic, specular, ao, orm, height) baked texel by texel from the exact model, and a GLB; paint layers carry
-roughness/metallic/specular too. Check its Cycles preview (and close-ups of the face) before calling it done.
+metallic, specular, ao, orm, height) and a GLB: normal and height texel by texel from the exact model, paint and AO
+baked by Cycles from the Blender scene; paint layers carry roughness/metallic/specular too. Check its Cycles preview (and close-ups of the face) before calling it done.
 Close-ups (look with focus + zoom) rebuild just that region at full resolution: use them to judge
 faces and hands.
 
@@ -252,10 +255,33 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     1.8 m of headroom, eye 1.6 m above it ("eye_height" to change); target [x, y] looks level at eye height.
     A list gives several panels. Alone it replaces the default views (views adds orthographic ones back).
     Perspective panels have no rulers (sizes change with depth) and no stroke overlay.
-    Paint is evaluated only on what's shown when parts are hidden or clipped; coverage then counts only that.
+    Painted looks (paint=True, shading "clay" or "flat", no strokes/clip/close-up) are rendered from the model's
+    Blender scene (synced first: see `sync`) in EEVEE with real lights; paint_layer then shows that layer's
+    mask glowing orange on grey clay. The geometric views (raking, curvature, strokes, clip, close-ups) show
+    plain clay per part.
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
+    geometric = strokes or clip or (focus is not None and zoom > 1) or shading not in ("clay", "flat")
+    if paint and not geometric and store.load(name).get("paint"):
+        from . import scene
+        r = scene.sync(name)
+        sheet, secs = scene.look(name, views or ([] if cams else render.DEFAULT_VIEWS), cams, size, None,
+                                 paint_layer, hide_parts, only_parts, flat=shading == "flat")
+        if save:
+            sheet.save(save)
+        notes = [l for l in r["log"] if "cuts into" in l or "from the scene" in l or "scene:" in l]
+        if paint_layer:
+            c = scene.look.coverage
+            notes.insert(0, f"{paint_layer} covers " + ("NOTHING in view: misaddressed?" if c < 0.0005 else
+                                                        f"{c:.1%} of the surface in view"))
+        info = (f"{name}: scene look (EEVEE, painted) in {secs}s, sync {sum(r['seconds'].values()):.1f}s"
+                + (f" | {'; '.join(notes)}" if notes else ""))
+        for f, c in zip([render.camera_frame(c, i) for i, c in enumerate(cams)], cams):
+            info += (f" | {f['name']}: eye ({', '.join(f'{x:.2f}' for x in f['eye'])}) -> target "
+                     f"({', '.join(f'{x:.2f}' for x in f['center'])}), fov {f['fov']:.0f}" + c.get("_note", ""))
+        return [_out(sheet, save), info + (f" | saved {save}" if save else "")]
+    paint = paint and bool(store.load(name).get("paint"))  # geometric views: clay per part (noted)
     cam_frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
     names_ = views or ([] if cams else render.DEFAULT_VIEWS)
     planes = store.clip_planes(clip)
@@ -300,14 +326,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
             shown += ", clipped" + ("" if caps else " (no solid cut: no caps)")
     if frames is None:  # with only_parts, frame what's shown
         frames = render.view_frames(fb if only_parts else np.array(full_bounds), names_, focus, zoom)
-    painted = ""
-    if shading != "curvature" and paint:
-        mesh = store.painted(name, mesh, paint_layer)
-        cov = store.coverage(mesh)
-        if cov:
-            of = " (of what's shown)" if store.coverage_of(mesh) == "shown" else ""
-            painted = (" | paint coverage" + of + ": " + ", ".join(
-                f"{k} {'-' if v is None else ('NOTHING' if v == 0 else f'{v:.1%}')}" for k, v in cov.items()))
+    painted = " | clay per part (paint shows in painted looks: no strokes, clip or close-up)" if paint else ""
     frames = frames + cam_frames
     imgs = render.render_views(mesh, frames, size, matcap, flat=shading == "flat", extra=extra)
     if strokes:
@@ -604,6 +623,33 @@ def revert(name: str, version: int) -> str:
 
 
 @mcp.tool(structured_output=False)
+def sync(name: str, resolution: int = 256) -> str:
+    """Bring the model's Blender scene (workspace/<model>/scene.blend) in line with the spec, after taking back
+    what a person changed in it (moved/turned/scaled instances, exposed paint numbers: see `pull`). One object
+    per part and per prefab (collection instances), paint as shader nodes, AO and sky baked by Cycles (each
+    asset shades only itself; props never shade the building). Only what changed is redone: moving a prop is
+    ~2 s, a paint change rebuilds materials (~30-60 s), new geometry is meshed and measured. Open the .blend in
+    Blender to look around and edit; the next sync or look brings the edits back."""
+    from . import scene
+    r = scene.sync(name, resolution)
+    return (f"{r['blend']} synced in {sum(r['seconds'].values()):.1f}s ({', '.join(f'{k} {v}s' for k, v in r['seconds'].items())})\n"
+            + "\n".join(r["log"]))
+
+
+@mcp.tool(structured_output=False)
+def pull(name: str) -> str:
+    """Take back what a person changed in the model's Blender scene, without re-syncing it: instances they moved,
+    turned or scaled become instance edits (the story's weather offsets taken back out), and exposed paint
+    numbers (a layer's opacity and colour, mask ranges, noise scale, near distances; nodes named hp:...) come
+    back into the spec. Only values changed from what the last sync wrote count. Reports instances that now cut
+    into something (scene.clear_of slides one out)."""
+    from . import scene
+    log = []
+    changes = scene.pull(name, log)
+    return (json.dumps(changes) if changes else "nothing changed in the scene") + ("\n" + "\n".join(log) if log else "")
+
+
+@mcp.tool(structured_output=False)
 def export(name: str, path: str, resolution: int = 256) -> str:
     """Build at the given resolution and write an OBJ (Z up, metres). Import it into Blender with
     bpy.ops.wm.obj_import(filepath=..., forward_axis='Y', up_axis='Z')."""
@@ -623,9 +669,11 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     one material per atlas with KHR_materials_specular), the PNGs and <name>.json (conventions, per part:
     triangles, mm per texel, islands; per prefab: instances and savings; timings) into out_dir.
     Every texel is projected onto the exact surface, so sculpted detail the low poly drops lands in the normal
-    and height maps, and paint is as sharp as the texture (not limited by the build voxel). Roughness,
-    metallic and specular come from paint layers and part settings (kit_reference, PAINT).
-    Instancing (default on): a prefab with 2+ instances is exported once (mesh "<prefab>", parts "<prefab>/<part>",
+    and height maps. The paint maps (basecolor, roughness, metallic, specular) and the AO map are baked by Cycles
+    from the model's Blender scene (synced first), per pixel from its shader nodes; AO is each asset's own (a
+    prop never shadows the building or another prop: the engine lights them). Roughness, metallic and specular
+    come from paint layers and part settings (kit_reference, PAINT).
+    Instancing (default on): every prefab (even with one instance: a movable asset) is exported once (mesh "<prefab>", parts "<prefab>/<part>",
     meshed in its own box at up to `resolution` voxels across it) with a glTF node per instance (extras.prefab),
     and baked once, at its first instance (paint, AO, sky as it stands there). prefabs.<p>.export = "unique" bakes
     its instances into the scene instead (when paint must differ per copy). `triangles` counts drawn triangles.

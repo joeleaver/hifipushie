@@ -365,9 +365,14 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     col.default_value = (*_lin(base["color"]), 1.0)
     ch = {"roughness": float(base["roughness"]), "metallic": float(base["metallic"]),
           "specular": float(base["specular"])}
+    height = None  # painted relief (paint.bump): the layers' height x mask, summed (m)
     for i, ly in enumerate(layers):
         N.x = 400 * (i + 1)
         mask = N.stack(ly["entries"])
+        if ly.get("height"):
+            hm = N.math("MULTIPLY", N.math("MAXIMUM", N.math("MINIMUM", mask, 1.0), 0.0), ly["height"]) \
+                if not isinstance(mask, float) else ly["height"] * mask
+            height = hm if height is None else N.math("ADD", height, hm)
         op = N.value(ly["opacity"], "hp:" + json.dumps(ly["expose"]["opacity"])) if "opacity" in ly["expose"] else ly["opacity"]
         a = N.math("MULTIPLY", op, mask if not isinstance(mask, float) else mask)
         a = N.math("MAXIMUM", N.math("MINIMUM", a, 1.0), 0.0)
@@ -392,6 +397,14 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     N._in(bsdf.inputs["Roughness"], ch["roughness"])
     N._in(bsdf.inputs["Metallic"], ch["metallic"])
     N._in(bsdf.inputs["Specular IOR Level"], ch["specular"])
+    if height is not None:  # shading shows the relief; the export bakes the height itself (_emit "height")
+        hn = N.node("ShaderNodeMath", operation="ADD", name="hp_height")
+        N._in(hn.inputs[0], height)
+        hn.inputs[1].default_value = 0.0
+        bump = N.node("ShaderNodeBump")
+        bump.inputs["Distance"].default_value = 1.0
+        t.links.new(hn.outputs[0], bump.inputs["Height"])
+        t.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
     t.links.new(bsdf.outputs[0], out.inputs[0])
     m["hp_prog"] = prog_hash
     return m
@@ -553,6 +566,14 @@ def render(job):
         for part, base in job["bases"].items():
             _paint_material(part, base, [ly for ly in prog["layers"] if part in ly["parts"] or "*" in ly["parts"]],
                             prog["quantiles"], None, prog["packing"].get(part, {}), show=job["show_layer"])
+    hide = set(job.get("hide") or ())
+    for ob in bpy.data.objects:  # parts left out (scene objects and prefab sources alike: instances follow)
+        if ob.get("hp_part") in hide:
+            ob.hide_render = True
+    if job.get("flat"):  # unlit colour: each material's base colour straight out
+        for m in bpy.data.materials:
+            if m.get("hp_prog") and m.node_tree:
+                _emit(m, "color")
     scene.render.engine = "BLENDER_EEVEE"
     # ray-traced reflections and indirect light: without them everything indoors reflects the open sky (glossy
     # jars and cups get a bright rim) and rooms get no bounce light
@@ -562,8 +583,9 @@ def render(job):
     ee.use_fast_gi = True
     ee.fast_gi_method = "GLOBAL_ILLUMINATION"
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
-    scene.render.film_transparent = False
-    scene.view_settings.view_transform = "AgX"
+    scene.render.film_transparent = bool(job.get("show_layer"))  # alpha: surface vs sky, for coverage
+    scene.render.image_settings.color_mode = "RGBA" if job.get("show_layer") else "RGB"
+    scene.view_settings.view_transform = "Standard" if job.get("flat") else "AgX"
     scene.world = scene.world or bpy.data.worlds.new("w")
     scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get("Background")
@@ -597,18 +619,11 @@ def render(job):
         bpy.ops.render.render(write_still=True)
 
 
-def bake(job):
-    """Bake a part's material (base colour, roughness) from its scene object onto a low-poly mesh with UVs, by
-    Cycles "selected to active": each texel's ray hits the scene mesh and evaluates its shader there."""
-    import time
-    _open(job["blend"])
-    scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.device = job.get("device", "CPU")
-    scene.cycles.samples = job.get("samples", 4)
-    z = np.load(job["low"])
-    me = bpy.data.meshes.new("low")
+def _low(name, path):
+    """A low-poly export part from its npz (verts, corner_vert, uv, normal per corner) as an object with UVs."""
+    z = np.load(path)
     V, C, UV = z["verts"], z["corner_vert"], z["uv"]
+    me = bpy.data.meshes.new(name)
     me.vertices.add(len(V))
     me.vertices.foreach_set("co", V.astype(np.float32).ravel())
     me.loops.add(len(C))
@@ -617,36 +632,133 @@ def bake(job):
     me.polygons.foreach_set("loop_start", np.arange(0, len(C), 3, dtype=np.int32))
     me.update()
     me.shade_smooth()
-    uvl = me.uv_layers.new(name="UVMap")
-    uvl.data.foreach_set("uv", UV.astype(np.float32).ravel())
-    low = bpy.data.objects.new("low", me)
-    scene.collection.objects.link(low)
-    high = next(o for o in bpy.data.objects if o.get("hp_key") == job["key"])
-    for o in bpy.context.view_layer.objects:
-        o.select_set(False)
-    high.select_set(True)
-    low.select_set(True)
-    bpy.context.view_layer.objects.active = low
-    out = {}
-    for what, kind, filter_ in (("basecolor", "DIFFUSE", {"COLOR"}), ("roughness", "ROUGHNESS", set())):
-        img = bpy.data.images.new(what, job["size"], job["size"], float_buffer=False)
-        img.colorspace_settings.name = "sRGB" if what == "basecolor" else "Non-Color"
-        mat = bpy.data.materials.new(f"bake_{what}")
-        mat.use_nodes = True
-        tn = mat.node_tree.nodes.new("ShaderNodeTexImage")
-        tn.image = img
-        mat.node_tree.nodes.active = tn
-        me.materials.clear()
-        me.materials.append(mat)
-        t = time.time()
-        bpy.ops.object.bake(type=kind, pass_filter=filter_, use_selected_to_active=True,
-                            cage_extrusion=job.get("extrusion", 0.03), max_ray_distance=job.get("ray", 0.06),
-                            margin=job.get("margin", 4), target="IMAGE_TEXTURES")
-        img.filepath_raw = job["out"] + f"_{what}.png"
-        img.file_format = "PNG"
-        img.save()
-        out[what] = round(time.time() - t, 1)
-    print("@@baked", json.dumps(out))
+    me.normals_split_custom_set(z["normal"].astype(np.float64))  # rays leave along the exported normals
+    me.uv_layers.new(name="UVMap").data.foreach_set("uv", UV.astype(np.float32).ravel())
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+HEIGHT_SCALE = 25.0  # painted height baked as 0.5 + h x 25: +-20 mm fits in 0..1
+
+
+def _emit(mat, what):
+    """Point a part material's output at an emission of one thing it computes: "color" (the base colour), "rms"
+    (roughness, metallic, specular as RGB), "ao" (the ao_raw vertex attribute) or "height" (painted relief in m,
+    as 0.5 + height x HEIGHT_SCALE)."""
+    t = mat.node_tree
+    bsdf = next(n for n in t.nodes if n.type == "BSDF_PRINCIPLED")
+    out = next(n for n in t.nodes if n.type == "OUTPUT_MATERIAL")
+    em = t.nodes.get("hp_bake_em") or t.nodes.new("ShaderNodeEmission")
+    em.name = "hp_bake_em"
+    em.inputs["Strength"].default_value = 1.0
+
+    def feed(sock, name):
+        inp = bsdf.inputs[name]
+        if inp.is_linked:
+            t.links.new(inp.links[0].from_socket, sock)
+        else:
+            v = inp.default_value
+            sock.default_value = tuple(v) if hasattr(v, "__len__") and len(sock.default_value) == len(v) else v
+    for link in list(em.inputs["Color"].links):
+        t.links.remove(link)
+    if what == "color":
+        feed(em.inputs["Color"], "Base Color")
+    else:
+        cc = t.nodes.get("hp_bake_cc") or t.nodes.new("ShaderNodeCombineColor")
+        cc.name = "hp_bake_cc"
+        if what == "rms":
+            for i, name in enumerate(("Roughness", "Metallic", "Specular IOR Level")):
+                for link in list(cc.inputs[i].links):
+                    t.links.remove(link)
+                feed(cc.inputs[i], name)
+        elif what == "height":
+            hn = t.nodes.get("hp_height")
+            sc = t.nodes.get("hp_bake_hs") or t.nodes.new("ShaderNodeMath")
+            sc.name, sc.operation = "hp_bake_hs", "MULTIPLY_ADD"
+            sc.inputs[1].default_value, sc.inputs[2].default_value = HEIGHT_SCALE, 0.5
+            if hn is not None:
+                t.links.new(hn.outputs[0], sc.inputs[0])
+            else:
+                sc.inputs[0].default_value = 0.0
+            for i in range(3):
+                t.links.new(sc.outputs[0], cc.inputs[i])
+        else:
+            at = t.nodes.get("hp_bake_ao") or t.nodes.new("ShaderNodeAttribute")
+            at.name, at.attribute_type, at.attribute_name = "hp_bake_ao", "GEOMETRY", "ao_raw"
+            for i in range(3):
+                t.links.new(at.outputs["Fac"], cc.inputs[i])
+        t.links.new(cc.outputs[0], em.inputs["Color"])
+    t.links.new(em.outputs[0], out.inputs["Surface"])
+
+
+def bake_maps(job):
+    """The export's paint maps from the scene's materials, by Cycles "selected to active": each texel's ray from
+    the low poly (along its exported normal, from `extrusion` out, up to `ray`) hits its own part's scene mesh
+    and evaluates the material there. Per atlas, three float images: color (linear), rms (roughness, metallic,
+    specular) and ao (the scene's raw Cycles AO, which only the part's own asset casts). One part at a time, only
+    its own scene mesh selected, so a log never picks up the chinking beside it. Writes <out>/atlas<i>.npz
+    {color, rms, ao} (rows top first, as the PNGs) and prints timings."""
+    import time
+    t0 = time.time()
+    _open(job["blend"])
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    _device(scene, job.get("device", "CPU"))
+    scene.cycles.samples = job.get("samples", 4)
+    scene.render.bake.use_clear = False
+    scene.render.bake.margin = 0  # our own dilation fills around every island afterwards
+    by_key = {ob["hp_key"]: ob for ob in bpy.data.objects if ob.get("hp_key")}
+    highs = {}
+    for pt in job["parts"]:
+        src = by_key[pt["key"]]
+        if pt.get("matrix") is not None:  # a prefab's part: its mesh at the bake instance
+            ob = bpy.data.objects.new(pt["key"] + "@bake", src.data)
+            scene.collection.objects.link(ob)
+            from mathutils import Matrix
+            ob.matrix_world = Matrix(pt["matrix"])
+            highs[pt["key"]] = ob
+        else:
+            highs[pt["key"]] = src
+    imgs = {}
+    WHAT = ("color", "rms", "ao", "height")
+    for ai, size in job["atlases"].items():
+        for what in WHAT:
+            im = bpy.data.images.new(f"a{ai}_{what}", size, size, alpha=True, float_buffer=True)
+            im.colorspace_settings.name = "Non-Color"
+            im.generated_color = (0, 0, 0, 0)
+            imgs[(ai, what)] = im
+    lows = {pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
+    bm = bpy.data.materials.new("hp_bake_target")
+    bm.use_nodes = True
+    tex = bm.node_tree.nodes.new("ShaderNodeTexImage")
+    bm.node_tree.nodes.active = tex
+    for low in lows.values():
+        low.data.materials.append(bm)
+    times = {}
+    for what in WHAT:
+        for m in {mat for ob in highs.values() for mat in ob.data.materials if mat}:
+            _emit(m, what)
+        t1 = time.time()
+        for pt in job["parts"]:
+            tex.image = imgs[(str(pt["atlas"]), what)]
+            for ob in scene.objects:
+                ob.select_set(False)
+            highs[pt["key"]].select_set(True)
+            lows[pt["key"]].select_set(True)
+            bpy.context.view_layer.objects.active = lows[pt["key"]]
+            bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=pt["extrusion"],
+                                max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES")
+        times[what] = round(time.time() - t1, 1)
+    for ai, size in job["atlases"].items():
+        out = {}
+        for what in WHAT:
+            a = np.empty(size * size * 4, np.float32)
+            imgs[(ai, what)].pixels.foreach_get(a)
+            out[what] = a.reshape(size, size, 4)[::-1]  # Blender's rows start at the bottom
+        np.savez(f"{job['out']}/atlas{ai}.npz", **out)
+    times["total"] = round(time.time() - t0, 1)
+    print("@@times", json.dumps(times))
 
 
 def _ao_override(ao_distance, sky_distance, samples):
@@ -799,4 +911,4 @@ def bake_inputs(job):
 
 
 job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
-{"pull": pull, "sync": sync, "render": render, "bake": bake, "bake_inputs": bake_inputs}[job["mode"]](job)
+{"pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}[job["mode"]](job)

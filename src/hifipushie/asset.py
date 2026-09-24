@@ -5,14 +5,16 @@ per metre follow parts.<p>.texel_density and texel_focus regions; a texel densit
 needed (or parts.<p>.atlas / atlases=n split the parts by hand), each with its own maps and GLB material.
 Prefabs with 2+ instances are meshed and baked once (at their first instance) and placed by a node per instance.
 
-Nothing is baked from a high-poly mesh. Each texel's point on the low-poly surface is projected onto the exact
-field, and every map is read there:
-  normal        tangent-space (MikkTSpace, OpenGL / glTF convention: green = +V), from the field's gradient
-  height        signed distance from the low-poly surface to the exact one along the low-poly normal (m);
-                low poly + height reproduces the sculpt. 16-bit PNG, 0.5 = 0, +-`height_range` m at 0 / 1.
-  basecolor, roughness, metallic, specular   from paint (paint.apply_channels) at the exact point, so paint
-                detail is limited by the texture, not by the build voxel
-  ao            ambient occlusion from the field of all parts (cheap SDF cone samples along the normal)
+Geometry is never baked from a high-poly mesh: each texel's point on the low-poly surface is projected onto the
+exact field, and read there:
+  normal        tangent-space (MikkTSpace, OpenGL / glTF convention: green = +V), from the field's gradient,
+                tilted by the painted relief's slope
+  height        signed distance from the low-poly surface to the exact one along the low-poly normal (m), plus
+                the painted relief; low poly + height reproduces the sculpt. 16-bit PNG, 0.5 = 0,
+                +-`height_range` m at 0 / 1.
+Paint and AO come from the model's Blender scene (`scene_maps`), baked by Cycles onto the low poly per pixel:
+  basecolor, roughness, metallic, specular   the scene's shader nodes (paint layers compiled by paintnodes)
+  ao            the scene's Cycles AO: each asset's own (a prop never shadows the building or another prop)
   orm           glTF packing: R = ao, G = roughness, B = metallic
 Plus asset.glb (glTF 2.0, Y up, the creature facing +Z, one mesh per part, one material per atlas with base
 colour, ORM, normal and KHR_materials_specular) and asset.json describing all of it (mm/texel per part).
@@ -30,7 +32,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import assemble, paint, render, sdf, store, surface
+from . import assemble, render, sdf, store, surface
 from .spec import compile_prims
 
 SCRIPT = Path(__file__).with_name("blender_asset.py")
@@ -323,10 +325,10 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
-def bake(spec: dict, parts: dict, size: int, ctx: dict, log: list, atlas: int | None = None) -> dict:
+def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given: dict) -> dict:
     """Every map of one atlas (None: all parts) as float arrays (size, size, k), plus the height range. Each
-    texel is projected onto its export part's own field; AO, sky and paint see the whole model (ctx["full"])."""
-    voxel = ctx["voxel"]
+    texel is projected onto its export part's own field (normal, height); given: the maps Cycles baked from the
+    scene (`scene_maps`: color linear, rms, ao, height; rows top first) for paint, AO and painted relief."""
     t0 = time.time()
     names = list(parts)
     (ys, xs), tri, bary, tpart = rasterize(parts, size, atlas)
@@ -359,29 +361,31 @@ def bake(spec: dict, parts: dict, size: int, ctx: dict, log: list, atlas: int | 
         if bad.any():
             log.append(f"  {pn}: {bad.mean():.2%} of texels kept the low-poly surface (projection went astray)")
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
-    t3 = time.time()
-    ao_map = _ao_map(parts, ctx, size, atlas)
-    log.append(f"ambient occlusion (at {size // 2 if size >= 1024 else size}^2) in {time.time() - t3:.1f}s")
+    # texels whose ray found no scene mesh (alpha 0) take their nearest baked neighbour
+    baked = given["color"][..., 3] > 0.5
+    miss = ~baked[ys, xs]
+    if miss.any():
+        log.append(f"  {miss.mean():.2%} of texels found no scene mesh along their ray: filled from neighbours")
+        given = {k: _dilate(v, baked) for k, v in given.items()}
 
-    t2 = time.time()
-    # paint sees model parts: a prefab's "chair/wood" is painted as "wood"
-    mnames = list(dict.fromkeys(ctx["origin"][pn] for pn in names))
-    mpart = np.array([mnames.index(ctx["origin"][pn]) for pn in names])[part]
-    base = paint.part_defaults(spec, mnames, mpart)
-    pts = surface.Points(spec, X, G, mpart, mnames, voxel, cache={"ao": ao_map[ys, xs, 0]}, streams=ctx["full"])
     c = _corners(parts, "pos")[np.unique(tri)]  # the atlas's triangles: surface per texel
     texel = np.sqrt(np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2 / max(len(tri), 1))
-    pts.footprint = texel
-    masks: dict = {}
-    ch = paint.apply_channels(spec, pts, base, masks=masks)
-    log.append(f"painted in {time.time() - t2:.1f}s")
-    # painted height: into the height map, and its slope tilts the normals (texel-sized differences)
-    t4 = time.time()
-    b = paint.bump(spec, pts, 0.5 * texel, masks)
-    if b is not None:
-        X = X + b[0][:, None] * G  # the height map measures to the painted surface
-        G = b[1]
-        log.append(f"painted height (texel {texel * 1000:.2f} mm) in {time.time() - t4:.1f}s")
+    lin = given["color"][ys, xs, :3].astype(np.float64)
+    srgb = np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055)
+    rms = given["rms"][ys, xs].astype(np.float64)
+    ch = {"color": srgb, "roughness": rms[:, :1], "metallic": rms[:, 1:2], "specular": rms[:, 2:3]}
+    if "height" in given:
+        # painted height baked by Cycles (0.5 + h x 25); its slope across the texture tilts the normal: u runs
+        # along the tangent, v (up the texture, rows down) along the bitangent, a texel is `texel` metres
+        hi = (given["height"][..., 0].astype(np.float64) - 0.5) / 25.0
+        if np.abs(hi[ys, xs]).max() > 1e-6:
+            hp = np.pad(hi, 1, mode="edge")
+            du = (hp[1:-1, 2:] - hp[1:-1, :-2]) / (2 * texel)
+            dv = -(hp[2:, 1:-1] - hp[:-2, 1:-1]) / (2 * texel)
+            h0 = hi[ys, xs]
+            X = X + h0[:, None] * G  # the height map measures to the painted surface
+            G = _unit(G - du[ys, xs][:, None] * T - dv[ys, xs][:, None] * B)  # B is signed: +v
+            log.append(f"painted height from the scene's bake (texel {texel * 1000:.2f} mm)")
 
     height = ((X - P) * Nl).sum(1)
     tn = np.stack([(G * T).sum(1), (G * B).sum(1), (G * Nl).sum(1)], -1)
@@ -401,38 +405,47 @@ def bake(spec: dict, parts: dict, size: int, ctx: dict, log: list, atlas: int | 
     put("roughness", ch["roughness"], 0.6)
     put("metallic", ch["metallic"], 0.0)
     put("specular", ch["specular"], 0.5)
-    maps["ao"] = ao_map
+    maps["ao"] = _dilate(given["ao"][..., :1].astype(np.float64), filled)
     put("normal", tn * 0.5 + 0.5, 0.5)
     put("height", (height / hr * 0.5 + 0.5)[:, None], 0.5)
     maps["orm"] = np.concatenate([maps["ao"], maps["roughness"], maps["metallic"]], -1)
     return {"maps": maps, "height_range": hr, "coverage": len(tri) / size ** 2}
 
 
-def _ao_map(parts: dict, ctx: dict, size: int, atlas: int | None = None) -> np.ndarray:
-    """The AO map: occlusion is soft, so above 1024 it's computed at half the texture's resolution and scaled up
-    (a quarter of the cost; it's the slowest map). Points are projected onto the exact surface as for the rest;
-    occlusion comes from the whole model (every instance)."""
-    small = size // 2 if size >= 1024 else size
-    (ys, xs), tri, bary, tpart = rasterize(parts, small, atlas)
-    names = list(parts)
-    P = np.einsum("nk,nkc->nc", bary, _corners(parts, "pos")[tri])
-    N = _unit(np.einsum("nk,nkc->nc", bary, _corners(parts, "normal")[tri]))
-    part = tpart[tri]
-    for pi, pn in enumerate(names):
-        sel = np.flatnonzero(part == pi)
-        if not len(sel):
-            continue
-        vx = ctx["frames"][pn][1]
-        P[sel] = surface.newton(ctx["streams"][pn], P[sel], 0.1 * vx, vx, iterations=2)[0]
-    ao = surface.ao(list(ctx["full"].values()), P, N, ctx["voxel"])
-    img = np.ones((small, small))
-    img[ys, xs] = ao
-    filled = np.zeros((small, small), bool)
-    filled[ys, xs] = True
-    img = _dilate(img, filled)
-    if small != size:
-        img = np.asarray(Image.fromarray(img.astype(np.float32), "F").resize((size, size), Image.BILINEAR))
-    return img[..., None].astype(np.float64)
+def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, log: list) -> dict:
+    """The paint and AO maps of every atlas, baked by Cycles from the model's Blender scene (synced first) onto
+    the low poly: {atlas: {"color" (linear), "rms", "ao"}}. Each part's rays reach as far as its low poly strays
+    from the exact surface."""
+    import tempfile
+    from . import scene
+    t = time.time()
+    scene.sync(name, resolution)
+    log.append(f"scene synced in {time.time() - t:.1f}s")
+    with tempfile.TemporaryDirectory(prefix="hifipushie-maps-") as tmp:
+        jobs = []
+        for pn, p in parts.items():
+            vx = ctx["frames"][pn][1]
+            c = p["verts"][p["corner_vert"]].reshape(-1, 3, 3).astype(np.float64)  # vertices sit on the surface:
+            probe = np.concatenate([c.mean(1), (c + np.roll(c, 1, 1)).reshape(-1, 3) / 2])  # faces stray between
+            d = sdf.field_at(ctx["streams"][pn], probe, clip=False)
+            out_ = max(float(-np.min(d)), 0.0) * 1.5 + 2 * vx  # the exact surface outside the low poly
+            in_ = max(float(np.max(d)), 0.0) * 1.5 + 2 * vx  # and inside it
+            f = Path(tmp) / f"low{len(jobs)}.npz"
+            np.savez(f, verts=p["verts"], corner_vert=p["corner_vert"], uv=p["uv"], normal=p["normal"])
+            pf = next((q for q, dd in ctx["prefabs"].items() if pn in dd["parts"]), None)
+            M = ctx["prefabs"][pf]["instances"][ctx["prefabs"][pf]["bake"]].tolist() if pf else None
+            jobs.append({"key": pn, "low": str(f), "atlas": p["atlas"], "extrusion": out_, "ray": out_ + in_,
+                         "matrix": M})
+        t = time.time()
+        out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
+                              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": 4}, 3600)
+        bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
+        log.append(f"paint and AO maps baked by Cycles from the scene in {time.time() - t:.1f}s ({bt})")
+        res = {}
+        for ai in sizes:
+            with np.load(Path(tmp) / f"atlas{ai}.npz") as z:
+                res[ai] = {k: z[k] for k in z.files}
+    return res
 
 
 def _png(path: Path, img: np.ndarray, srgb_input: bool = True, bits: int = 8):
@@ -605,13 +618,15 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     atlases of `texture`^2 split the parts by load.
     instancing: prefabs with 2+ instances are one mesh and one set of texels, placed by a node per instance
     (prefabs.<p>.export = "unique" bakes a prefab's instances into the scene instead). `triangles` counts the
-    triangles drawn (a prefab's once per instance); the file holds fewer."""
+    triangles drawn (a prefab's once per instance); the file holds fewer. With instancing every instance is a
+    movable asset (a prefab of one instance too), as in the Blender scene. The paint and AO maps are baked by
+    Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects)."""
     log = []
     t = time.time()
     spec = store.load(name)
     defs = spec.get("parts") or {}
     out_dir.mkdir(parents=True, exist_ok=True)
-    ctx = split(spec, resolution, instancing, log)
+    ctx = split(spec, resolution, instancing, log, min_share=1)
     origin = ctx["origin"]
     tm = time.time()
     high = mesh_parts(ctx, out_dir / "high.npz")
@@ -684,11 +699,12 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
             + (f" (focus {', '.join(f'{v:.1f}' for v in r['focus_mm_per_texel'])})" if "focus_mm_per_texel" in r else "")
             for pn, r in report.items() if r["atlas"] == an))
     atlas_files, maps_info, heights, cover = [], {}, {}, {}
+    given = scene_maps(name, parts, sizes, ctx, resolution, log)
     for ai, an in enumerate(names):
         stem = name if len(names) == 1 else f"{name}_{an}"
         if len(names) > 1:
             log.append(f"atlas {an}:")
-        res = bake(spec, parts, sizes[ai], ctx, log, ai)
+        res = bake(parts, sizes[ai], ctx, log, ai, given[ai])
         maps = res["maps"]
         files = {}
         for key in ("basecolor", "normal", "orm", "roughness", "metallic", "specular", "ao"):
