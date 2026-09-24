@@ -202,6 +202,63 @@ def stand_height(spec: dict, x: float, y: float, height: float = 1.8) -> float |
     return None if np.isnan(z) else float(z)
 
 
+def stand_spot(spec: dict, x: float, y: float, height: float = 1.8, reach: float = 1.5):
+    """Where a person asked to stand at (x, y) stands: (x, y, floor z, note). On the floor there, unless the spot
+    is under something (a table: less than `height` above the floor) or on top of furniture (a counter, a bed:
+    0.25-1.3 m above the floor around it): then the nearest spot within `reach` on the surrounding floor with
+    the headroom, a hand's width clear, rather than on top of the furniture. "The floor around" is the lowest height a
+    quarter of the spots within `reach` stand at. A loft or gallery (higher than
+    that) is stood on. floor z is None when there is no floor at all."""
+    prims = compile_prims(spec)
+    lo, hi = _bounds(prims)
+    zlo, zhi = float(lo[2]) - 0.05, float(hi[2]) + 0.05
+
+    def floors(xy):  # per column: the lowest top with `height` of air above it (seams under 10 cm aren't air)
+        zs, f = _column(prims, xy, zlo, zhi)
+        out = []
+        for t, b in zip(*_crossings(zs, f)):
+            z = None
+            for zt in t:
+                ab = b[b > zt]
+                gap = (ab[0] if len(ab) else zhi) - zt
+                if gap >= height:
+                    z = float(zt)
+                    break
+            out.append(z)
+        return out
+
+    here = floors(np.array([[x, y]], float))[0]
+    rings = np.arange(0.1, reach + 1e-9, 0.1)
+    ang = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    xy = np.array([[x + r * np.cos(a), y + r * np.sin(a)] for r in rings for a in ang])
+    fl = floors(xy)
+    rad = np.repeat(rings, len(ang))  # each ring sample stands for an area ~ its radius
+    zs_ok = [z for z in fl if z is not None]
+    w_ok = np.array([r for z, r in zip(fl, rad) if z is not None])
+    if not zs_ok:
+        return x, y, here, ""
+    # the floor around: the lowest height (15 cm bins: a rug is floor) at least a quarter of the ring stands at;
+    # not simply the lowest (the ground outside a raised floor), nor the most common (a big bed)
+    zb = np.round(np.asarray(zs_ok) / 0.15).astype(int)
+    vals = np.unique(zb)
+    share = np.array([w_ok[zb == v].sum() for v in vals]) / rad.sum()
+    low = float(np.min(np.asarray(zs_ok)[zb == vals[share >= 0.25].min()])) if (share >= 0.25).any() else min(zs_ok)
+    if here is not None and (here - low < 0.25 or here - low > 1.3):
+        return x, y, here, ""
+    good = [i for i, z in enumerate(fl) if z is not None and z - low < 0.25]
+    i = good[0]  # rings go outwards: the first good one is the nearest
+    p, zf = xy[i], fl[i]
+    d = p - [x, y]
+    step = p + 0.15 * d / np.linalg.norm(d)  # a hand's width clear of the edge
+    z3 = floors(step[None])[0]
+    if z3 is not None and z3 - low < 0.25:
+        p, zf = step, z3
+    why = "on top of something" if here is not None else "under something"
+    return (float(p[0]), float(p[1]), float(zf),
+            f"({x:.2f}, {y:.2f}) is {why}" + (f" at z = {here:.2f}" if here is not None else "")
+            + f": stepped {np.hypot(*(p - [x, y])):.2f} m to ({p[0]:.2f}, {p[1]:.2f})")
+
+
 def _classify(prims, xy, level, height, radius, step, zhi, cols=None):
     """Per column near the floor level: floor z (nan if none), headroom (inf: open above), and a map character:
     '.' a person fits, ',' floor and headroom but within `radius` of something, 'h' headroom < height,
@@ -346,3 +403,74 @@ def _walk(prims, P, floor, height, radius, step, lo, zhi):
     lines.append(f"a person {height} m tall and {2 * radius:.2f} m wide "
                  + ("PASSES" if passes else f"does NOT pass ({', '.join(why)})"))
     return "\n".join(lines)
+
+
+def doorways(spec: dict, min_height: float = 1.6) -> list[dict]:
+    """Door openings: box cuts with targets (subtract), taller than `min_height`, whose bottom is within 0.3 m of
+    the floor through them. [{"name", "at" (floor centre), "across" (unit, horizontal, through the wall), "width",
+    "height"}]."""
+    from .assemble import expand
+    from .spec import euler_matrix
+    s = expand_mirror(expand(spec))
+    out = []
+    for n, b in (s.get("blobs") or {}).items():
+        if b.get("op") != "subtract" or not b.get("targets") or b.get("shape", "ellipsoid") != "box":
+            continue
+        sz = np.asarray(b["size"], float)
+        R = euler_matrix(b.get("rot", [0, 0, 0]))
+        if abs(R[2, 2]) < 0.99 or 2 * sz[2] < min_height:  # tilted: a roof cut, not a door
+            continue
+        c = resolve_point(s, b["at"]) + np.asarray(b.get("offset", [0, 0, 0]), float)
+        ax = 0 if sz[0] < sz[1] else 1  # the thin horizontal axis runs through the wall
+        across = R[:, ax] * np.array([1, 1, 0])
+        across /= np.linalg.norm(across)
+        x, y, z, _ = stand_spot(spec, float(c[0]), float(c[1]), height=min_height)
+        bottom = c[2] - sz[2]
+        if z is None or bottom - z > 0.3:
+            continue
+        out.append({"name": n, "at": [float(c[0]), float(c[1]), float(z)], "across": across.tolist(),
+                    "width": float(2 * sz[1 - ax]), "height": float(c[2] + sz[2] - z)})
+    return out
+
+
+def check_doorways(spec: dict, height: float = 1.8, radius: float = 0.25) -> list[str]:
+    """Walk a person through every doorway (1 m either side of the wall): one line each, and for a blocked one the
+    element in the way (a door swung across it, furniture)."""
+    prims = compile_prims(spec)
+    lo, hi = _bounds(prims)
+    lines = []
+    for d in doorways(spec):
+        c, a = np.asarray(d["at"]), np.asarray(d["across"])
+        note = ""
+        for reach in (1.0, 0.5):  # no floor at the ends only: the ground outside isn't modelled; walk just through
+            path = np.stack([c[:2] - reach * a[:2], c[:2] + reach * a[:2]])
+            rep = _walk(prims, path, None, height, radius, 0.2, lo, float(hi[2]) + 0.05)
+            verdict = rep.splitlines()[-1]
+            if "PASSES" in verdict or verdict.rstrip(")").split("(")[-1] != "no floor":
+                break
+            note = f" (no floor {reach:.1f} m out on one side: the ground there isn't modelled; walked {0.5:.1f} m either side)"
+        narrow = next(l for l in rep.splitlines() if l.startswith("narrowest"))
+        ok = "PASSES" in verdict
+        line = f"{d['name']} ({d['width']:.2f} x {d['height']:.2f} m opening at ({c[0]:.2f}, {c[1]:.2f})): " + (
+            "passes, " + narrow.split(";")[0] + (note if "PASSES" in verdict and note else "") if ok
+            else verdict.split("does NOT pass")[1].strip() + "; " + narrow)
+        if not ok and "no floor" != verdict.rstrip(")").split("(")[-1]:  # name what's in the way
+            ts = np.linspace(0, 1, 21)
+            pts = np.array([[*(path[0] + t * (path[1] - path[0])), c[2] + h] for t in ts for h in (0.4, 0.9, 1.4)])
+            best = None
+            for p in prims:
+                if p.op != "add" or p.part in ("floor",):
+                    continue
+                if np.any(p.hi < pts.min(0) - radius) or np.any(p.lo > pts.max(0) + radius):
+                    continue
+                from .sdf import SDF
+                if p.kind not in SDF:
+                    continue
+                dmin = float(SDF[p.kind](pts, p.params).min())
+                if best is None or dmin < best[0]:
+                    best = (dmin, p.name)
+            if best and best[0] < radius:
+                who = best[1].split("/")[0] if "/" in best[1] else best[1]
+                line += f"; in the way: {who} ({best[1]}, {max(best[0], 0) * 100:.0f} cm from the path)"
+        lines.append(("ok       " if ok else "BLOCKED  ") + line)
+    return lines

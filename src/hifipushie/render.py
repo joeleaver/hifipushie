@@ -260,6 +260,31 @@ def project(frame: dict, pts: np.ndarray, size: int) -> np.ndarray:
     return np.stack([(q @ right / s + 0.5) * size, (0.5 - q @ up / s) * size], -1)
 
 
+def draw_instances(img: Image.Image, frame: dict, marks: list[dict]) -> Image.Image:
+    """Mark placed instances on an orthographic view: a dot at the origin, an arrow along its front (a prefab's
+    local -Y, the way creatures face) and its name. marks: [{"label", "at": (3,), "front": (3,) unit}]."""
+    img = img.copy()
+    d = ImageDraw.Draw(img)
+    W = img.width
+    placed: list[tuple] = []
+    for m in marks:
+        at, fr = np.asarray(m["at"], float), np.asarray(m["front"], float)
+        a, b = project(frame, np.stack([at, at + 0.35 * fr]), W)
+        col = (255, 210, 60)
+        d.ellipse([a[0] - 3, a[1] - 3, a[0] + 3, a[1] + 3], fill=col)
+        if np.hypot(*(b - a)) > 4:  # the front seen end-on (towards or away from the viewer) has no arrow
+            d.line([tuple(a), tuple(b)], fill=col, width=2)
+            u = (b - a) / np.hypot(*(b - a))
+            n = np.array([-u[1], u[0]])
+            d.polygon([tuple(b + 6 * u), tuple(b - 3 * u + 5 * n), tuple(b - 3 * u - 5 * n)], fill=col)
+        x0, y0, x1, y1 = d.textbbox((a[0] + 5, a[1] + 2), m["label"], font=FONT, stroke_width=2)
+        while any(x0 < q[2] and q[0] < x1 and y0 < q[3] and q[1] < y1 for q in placed):
+            y0, y1 = y0 + 8, y1 + 8
+        placed.append((x0, y0, x1, y1))
+        d.text((x0, y0), m["label"], fill=col, font=FONT, stroke_width=2, stroke_fill=(20, 20, 20))
+    return img
+
+
 def draw_strokes(img: Image.Image, frame: dict, strokes: list[dict]) -> Image.Image:
     """Draw stroke paths on a rendered view: colour by op, name at the start, hidden parts left out.
     strokes: [{"label": str | None, "op": "clay"|"crease"|"flatten", "pts": (K, 3), "vis": {view: (K,) bool}}]"""

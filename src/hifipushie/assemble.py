@@ -6,10 +6,15 @@ blobs before kits and mirroring, so everything downstream (strokes, paint, parts
                with its origin on the floor under the seat centre, facing -Y). "symmetry": true mirrors its
                own ".L" elements across its local X first.
   "instances": {name: {"use": prefab, "at": [x, y, z], "rot": [deg x, y, z] (0), "scale": s (1),
-                       "part": name | {prefab part: part} (keep the prefab's), "tags": [...]}}
+                       "part": name | {prefab part: part} (keep the prefab's), "tags": [...],
+                       "on": element | tag | instance | [names], "lift": m}}
                a placed copy. Its elements are named "<instance>/<element>" and tagged with the instance
                and prefab names, so paint "near", "targets" and deletes can take "chair1" or "chair" for all
                of them. An instance named ".L" is mirrored whole (a pair of bedside tables).
+               "on": set the instance down on those elements' top surface at its x, y (its z is ignored; "lift"
+               raises it): a cup "on": "table1/top", a jar on "shelf#1", books on "bookshelf1/shelf#2". Found
+               after everything else is placed (on instances too, in order), and again whenever the support
+               moves, so props stay put on furniture that's moved or resized. Prefab origins go on the floor.
   "array" on a bone or blob: {"count": n, "offset": [dx, dy, dz] (per copy), "rot": [deg] (per copy, about
                "pivot", default the element's own centre), "jitter": {"offset": [jx, jy, jz], "rot": [deg],
                "size": fraction}, "seed": 0}, or a list of those for a grid (each applied to all copies so far).
@@ -26,6 +31,24 @@ blobs before kits and mirroring, so everything downstream (strokes, paint, parts
              instance tag) move as a whole: a chair pushed askew, a table sunk into a soft floor. Write one
              entry per event in the story ("the porch settled", "the ridge beam sags", "the chairs get pushed
              around"). Deterministic per seed.
+
+"walls": {name: {"path": [[x, y], ...], "height": m (2.4), "thickness": m (0.1), "base": z (0), "style": "boards"
+             (vertical boards, "board": width 0.15, each a little different) | "solid", "part", "tags", "lumpy",
+             "openings": [{"at": metres along the path | [x, y] (the nearest point of the path), "width" (0.9),
+             "height" (2.0 for doors), "sill" (0: a doorway; 0.9 for a window), "name", "frame": prefab (origin
+             at the bottom centre of the opening, facing -Y), "window": prefab (origin at the opening's centre),
+             "door": prefab (hinge at its origin, the leaf along local +X), "hinge": "left" | "right" (the end
+             nearer the path's start or its end), "swing": "left" | "right" (the side of the wall it opens to,
+             walking along the path), "open": deg (0 closed)}]}}
+             a partition or plain wall in one entry: boards (or a box) along each straight run, a box cut per
+             opening targeted at this wall only, and the frame, window and door placed and turned to fit. The
+             pieces are ordinary elements and instances ("<wall>_<opening>_door", tagged with the wall and the
+             opening) and check walks a person through every door opening. Log walls stay arrays of bones with
+             their own cuts.
+"between" on a bone: {"between": array, "depth": m, "inset": m, "part", "tags", "lumpy"} fills the seam between
+             neighbouring copies of a bone array (course above course): one flat bone per pair along their
+             mid-line, bowed as they are and as tall as their gap, `depth` either side of it (default 3/4 of their
+             radius: recessed). Chinking between logs, mortar between rails. "inset" stops it short of the ends.
 
 "tags": [...] on any bone or blob groups elements under names of your choice ("logs", "furniture"). Anywhere a
 list of element names is taken (paint "near", a cut's "targets", delete with "tag") a tag stands for its members.
@@ -60,34 +83,217 @@ def _r(v) -> list[float]:
 
 
 _CACHE: dict[str, dict] = {}
+_ON: dict[str, dict] = {}  # expand's content key -> {instance: its resolved "at"} for instances placed "on"
 
 
 def expand(spec: dict) -> dict:
     """The spec with instances and arrays expanded (a new dict; the input is left alone). Cached by content."""
-    if not spec.get("instances") and not _has_arrays(spec) and not spec.get("weather"):
+    if not spec.get("instances") and not _has_arrays(spec) and not spec.get("weather") and not spec.get("walls"):
         return spec
     import hashlib
     import json
     key = hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()
     if key not in _CACHE:
         if len(_CACHE) > 16:
-            _CACHE.pop(next(iter(_CACHE)))
+            k = next(iter(_CACHE))
+            _CACHE.pop(k)
+            _ON.pop(k, None)
         s = copy.deepcopy(spec)
+        _walls(s)
         weather = s.pop("weather", None) or []
         insts = s.get("instances") or {}
         insts = _weathered(insts, weather)  # instances are weathered whole (a chair leans, its legs don't wander)
         for inst, d in insts.items():
-            _place(s, inst, d)
+            if "on" not in d:
+                _place(s, inst, d)
+        s = _arrays(s)
+        _ON[key] = _place_on(s, {i: d for i, d in insts.items() if "on" in d})
         s.pop("instances", None)
         s.pop("prefabs", None)
-        s = _arrays(s)
+        s.pop("_arrays_of", None)
         whole = set()
         for inst, d in insts.items():
             whole |= {inst[:-2] if inst.endswith(".L") else inst, d.get("use"), *d.get("tags", [])}
         for i, w in enumerate(weather):
+            tags = w.get("tags") or []
+            bad = [t for t in ([tags] if isinstance(tags, str) else tags) if t not in whole and not any(
+                e == t or t in (el.get("tags") or []) for k in ("bones", "blobs") for e, el in s.get(k, {}).items())]
+            if bad:
+                raise SpecError(f"weather[{i}]: tags {bad} match no element, instance, prefab or tag")
             _weather_elements(s, w, i, whole)
         _CACHE[key] = s
     return copy.deepcopy(_CACHE[key])
+
+
+WALL_KEYS = {"path", "height", "thickness", "base", "style", "board", "part", "tags", "openings", "lumpy", "round",
+             "seed", "blend", "chips"}
+OPENING_KEYS = {"at", "width", "height", "sill", "door", "hinge", "open", "swing", "frame", "window", "part", "name"}
+
+
+def _walls(s: dict) -> None:
+    """spec["walls"] -> ordinary blobs (a box, or a row of boards, per straight run), box cuts for the openings
+    (targeted at the wall only) and instances: a frame and a window in each opening, a door hung on its hinge.
+    Everything is tagged with the wall's name; openings are named "<wall>_<name or i>"."""
+    walls = s.pop("walls", None) or {}
+    for wn, w in walls.items():
+        where = f"wall {wn!r}"
+        bad = set(w) - WALL_KEYS
+        if bad:
+            raise SpecError(f"{where}: unknown keys {sorted(bad)} (allowed: {sorted(WALL_KEYS)})")
+        path = np.asarray(w.get("path") or [], float)
+        if path.ndim != 2 or len(path) < 2 or path.shape[1] < 2:
+            raise SpecError(f"{where}: path is [[x, y], [x, y], ...] (2+ points)")
+        path = path[:, :2]
+        H, T = float(w.get("height", 2.4)), float(w.get("thickness", 0.1))
+        z0 = float(w.get("base", 0.0))
+        style = w.get("style", "boards")
+        if style not in ("boards", "solid"):
+            raise SpecError(f"{where}: style is \"boards\" or \"solid\"")
+        part, tags = w.get("part", "body"), [*w.get("tags", []), wn]
+        common = {k: w[k] for k in ("lumpy", "round", "blend", "chips") if k in w}
+        seglen = np.linalg.norm(np.diff(path, axis=0), axis=1)
+        if np.any(seglen < 1e-6):
+            raise SpecError(f"{where}: two path points in the same place")
+        starts = np.concatenate([[0.0], np.cumsum(seglen)])
+        for i, L in enumerate(seglen):
+            u = (path[i + 1] - path[i]) / L
+            ang = float(np.degrees(np.arctan2(u[1], u[0])))
+            en = f"{wn}" if len(seglen) == 1 else f"{wn}_{i}"
+            if style == "solid":
+                mid = (path[i] + path[i + 1]) / 2
+                s.setdefault("blobs", {})[en] = {"shape": "box", "at": _r([*mid, z0 + H / 2]),
+                                                  "size": _r([L / 2 + T / 2, T / 2, H / 2]), "rot": [0, 0, round(ang, 4)],
+                                                  "part": part, "tags": tags, **common}
+            else:
+                bw = float(w.get("board", 0.15))
+                n = max(1, int(round(L / bw)))
+                step = L / n
+                c0 = path[i] + u * step / 2
+                s.setdefault("blobs", {})[en] = {
+                    "shape": "box", "at": _r([*c0, z0 + H / 2]), "size": _r([step / 2 - 0.001, T / 2, H / 2]),
+                    "rot": [0, 0, round(ang, 4)], "part": part, "tags": tags, "round": w.get("round", 0.005),
+                    **{k: v for k, v in common.items() if k != "round"},
+                    "array": {"count": n, "offset": _r([*(u * step), 0]), "seed": int(w.get("seed", 0)) + i,
+                              "vary": {"size": [_r([step / 2 - 0.004, T / 2 * 0.94, H / 2 - 0.004]),
+                                                _r([step / 2 - 0.001, T / 2, H / 2])]}}}
+        for k, op in enumerate(w.get("openings") or []):
+            _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part)
+
+
+def _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part) -> None:
+    where = f"wall {wn!r} opening {k}"
+    bad = set(op) - OPENING_KEYS
+    if bad:
+        raise SpecError(f"{where}: unknown keys {sorted(bad)} (allowed: {sorted(OPENING_KEYS)})")
+    at = op.get("at")
+    if isinstance(at, (int, float)):
+        d = float(at)
+    elif isinstance(at, list) and len(at) >= 2:  # the nearest point of the path to [x, y]
+        best = None
+        for i, L in enumerate(seglen):
+            u = (path[i + 1] - path[i]) / L
+            t = float(np.clip((np.asarray(at[:2], float) - path[i]) @ u, 0, L))
+            dist = np.linalg.norm(path[i] + u * t - np.asarray(at[:2], float))
+            if best is None or dist < best[0]:
+                best = (dist, starts[i] + t)
+        d = best[1]
+    else:
+        raise SpecError(f"{where}: at is metres along the wall's path, or [x, y] near it")
+    i = int(np.clip(np.searchsorted(starts, d, side="right") - 1, 0, len(seglen) - 1))
+    u = (path[i + 1] - path[i]) / seglen[i]
+    nrm = np.array([-u[1], u[0]])  # the wall's left side, walking along the path
+    ang = float(np.degrees(np.arctan2(u[1], u[0])))
+    c = path[i] + u * (d - starts[i])
+    door = op.get("door")
+    width = float(op.get("width", 0.9))
+    height = float(op.get("height", 2.0 if door or op.get("sill") is None else 1.0))
+    sill = float(op.get("sill", 0.0))
+    if not (0 <= sill and sill + height <= H + 1e-6):
+        raise SpecError(f"{where}: sill {sill} + height {height} doesn't fit the wall's height {H}")
+    on = f"{wn}_{op.get('name', k)}"
+    s.setdefault("blobs", {})[f"cut_{on}"] = {
+        "shape": "box", "at": _r([*c, z0 + sill + height / 2]), "size": _r([width / 2, T / 2 + 0.05, height / 2]),
+        "rot": [0, 0, round(ang, 4)], "op": "subtract", "blend": 0, "targets": [wn]}
+    insts = s.setdefault("instances", {})
+    tags = [wn, on]
+    if op.get("frame"):
+        insts[f"{on}_frame"] = {"use": op["frame"], "at": _r([*c, z0 + sill]), "rot": [0, 0, round(ang, 4)], "tags": tags}
+    if op.get("window"):
+        insts[f"{on}_window"] = {"use": op["window"], "at": _r([*c, z0 + sill + height / 2]),
+                                 "rot": [0, 0, round(ang, 4)], "tags": tags}
+    if door:
+        hinge = op.get("hinge", "left")
+        swing = op.get("swing", "left")
+        if hinge not in ("left", "right") or swing not in ("left", "right"):
+            raise SpecError(f"{where}: hinge and swing are \"left\" or \"right\": the hinge at the opening's end "
+                            f"nearer the path's start (left) or end (right); the door opens towards the wall's left "
+                            f"or right side, walking along the path")
+        # the door prefab: hinge at its origin, the leaf along local +x, closed across the opening
+        side = 1.0 if swing == "left" else -1.0
+        if hinge == "left":
+            hp, base_ang, turn = c - u * (width / 2), ang, side
+        else:
+            hp, base_ang, turn = c + u * (width / 2), ang + 180.0, -side
+        a = float(op.get("open", 0.0))
+        hp = hp + nrm * side * (T / 2 if a else 0.0)  # an open door stands at the face it swings into
+        insts[f"{on}_door"] = {"use": door, "at": _r([*hp, z0 + sill + 0.005]),
+                               "rot": [0, 0, round(base_ang + turn * a, 4)], "tags": [*tags, "doors"]}
+
+
+def _place_on(s: dict, todo: dict) -> dict:
+    """Place instances given "on": set down on the top of the named elements (or tags, instances) at their x, y,
+    in dependency order (a cup on a table that is itself an instance), after everything else and arrays.
+    Returns {instance: resolved at}."""
+    placed = {}
+    while todo:
+        ready = [i for i, d in todo.items() if not any(
+            n in todo or n.split("/")[0] in todo for n in ([d["on"]] if isinstance(d["on"], str) else d["on"]))]
+        if not ready:
+            raise SpecError(f"instances {sorted(todo)}: \"on\" goes round in a circle")
+        for inst in ready:
+            d = dict(todo.pop(inst))
+            at = [float(v) for v in d.get("at", [0, 0, 0])]
+            z = top_of(s, d["on"], at[0], at[1], f"instance {inst!r}")
+            d["at"] = [at[0], at[1], z + float(d.get("lift", 0.0))]
+            placed[inst] = d["at"]
+            _place(s, inst, d)
+        _arrays(s)
+    return placed
+
+
+def top_of(s: dict, names, x: float, y: float, who: str = "") -> float:
+    """The top surface of the named elements (tags, instances) at (x, y), cuts into them included: the highest
+    point where a vertical line there leaves them. s: a spec with instances placed and arrays expanded."""
+    from .sdf import field_at
+    from .spec import compile_prims
+    names = [names] if isinstance(names, str) else list(names)
+    members = [n for n in select(s, names) if n in s.get("bones", {}) or n in s.get("blobs", {})]
+    if not members:
+        raise SpecError(f"{who}: \"on\" {names} names no element, tag or instance")
+    mset = set(members)
+    mini = {"joints": s.get("joints", {}), "bones": {}, "blobs": {}, "parts": s.get("parts") or {},
+            "symmetry": False, "blend": s.get("blend", 0.03)}
+    for kind in ("bones", "blobs"):
+        for n, el in (s.get(kind) or {}).items():
+            cuts_it = el.get("targets") and mset & set(select(s, el["targets"]))
+            if n in mset or cuts_it:
+                mini[kind][n] = {k: v for k, v in el.items() if k not in ("array",)}
+                at = el.get("at")
+                if isinstance(at, dict) and at.get("bone") in s.get("bones", {}):
+                    mini["bones"].setdefault(at["bone"], s["bones"][at["bone"]])
+    prims = [p for p in compile_prims(mini) if p.name in mset]
+    lo = np.min([p.lo for p in prims], 0)
+    hi = np.max([p.hi for p in prims], 0)
+    zs = np.arange(hi[2] + 0.02, lo[2] - 0.02, -0.002)
+    f = field_at(prims, np.stack([np.full_like(zs, x), np.full_like(zs, y), zs], 1))
+    inside = np.flatnonzero(f < 0)
+    if not len(inside):
+        raise SpecError(f"{who}: ({x:.3f}, {y:.3f}) isn't over {names} (they span x {lo[0]:.2f}..{hi[0]:.2f}, "
+                        f"y {lo[1]:.2f}..{hi[1]:.2f})")
+    k = inside[0]  # first sample inside, coming down: refine between it and the one above
+    if k == 0:
+        return float(zs[0])
+    return float(zs[k - 1] + (zs[k] - zs[k - 1]) * f[k - 1] / (f[k - 1] - f[k]))
 
 
 def _weathered(insts: dict, weather: list) -> dict:
@@ -101,8 +307,14 @@ def placements(spec: dict) -> dict:
     """Every placed instance after weathering: {instance: {"use": prefab, "at", "rot", "scale", "mirror": bool}}.
     An instance named ".L" also places its mirror image ".R" (mirror: reflected across X after the placement)."""
     out = {}
+    on = {}
+    if any("on" in d for d in (spec.get("instances") or {}).values()):
+        import hashlib
+        import json
+        expand(spec)
+        on = _ON[hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()]
     for inst, d in _weathered(spec.get("instances") or {}, spec.get("weather") or []).items():
-        pl = {"use": d["use"], "at": d.get("at", [0, 0, 0]), "rot": d.get("rot", [0, 0, 0]),
+        pl = {"use": d["use"], "at": on.get(inst, d.get("at", [0, 0, 0])), "rot": d.get("rot", [0, 0, 0]),
               "scale": float(d.get("scale", 1.0)), "mirror": False}
         out[inst] = pl
         if inst.endswith(".L"):
@@ -121,7 +333,7 @@ def world_of(pl: dict) -> np.ndarray:
 
 
 def _has_arrays(spec: dict) -> bool:
-    return any("array" in el for kind in ("bones", "blobs") for el in (spec.get(kind) or {}).values())
+    return any("array" in el or "between" in el for kind in ("bones", "blobs") for el in (spec.get(kind) or {}).values())
 
 
 # ---- prefabs ---------------------------------------------------------------------------------------------------
@@ -137,6 +349,7 @@ def _place(s: dict, inst: str, d: dict) -> None:
         if local.get(k):
             raise SpecError(f"prefab {d['use']!r}: {k} aren't supported inside prefabs yet")
     local = _arrays(local) or local
+    local.pop("_arrays_of", None)
     if local["symmetry"]:
         local = expand_mirror({**local, "symmetry": True})
     if any("on" in j for j in local["joints"].values()):
@@ -214,6 +427,7 @@ def _arrays(s: dict):
             if "array" not in el:
                 continue
             steps = el["array"] if isinstance(el["array"], list) else [el["array"]]
+            s.setdefault("_arrays_of", {})[name] = steps
             base = {k: v for k, v in el.items() if k != "array"}
             base["tags"] = [*el.get("tags", []), name]
             stem, sfx = (name[:-2], name[-2:]) if name.endswith((".L", ".R")) else (name, "")
@@ -266,7 +480,76 @@ def _arrays(s: dict):
                     c["size"] = _r(np.asarray(c.get("size", [0.05] * 3), float) * f)  # varied size, if any
                     c["rot"] = _euler_of(R @ euler_matrix(base.get("rot", [0, 0, 0])))
                     s["blobs"][cn] = c
+    for name, el in list((s.get("bones") or {}).items()):
+        if "between" in el:
+            _between(s, name, el)
     return s
+
+
+def _between(s: dict, name: str, el: dict) -> None:
+    """A bone {"between": array, "depth": m, "inset": m, ...} becomes one flat bone per pair of neighbouring
+    copies of that array (neighbours along its first step's offset: stacked logs course by course): along the
+    mid-line of the pair, bowed as they are on average, as tall as the gap between their axes and `depth` deep
+    either side of it (a recessed seam: chinking, mortar between rails, the gap between boards). `inset`
+    trims each end (stop at the corner posts)."""
+    from .spec import bone_frame, resolve_point
+    src = s["bones"].get(el["between"])
+    members = [n for n in select(s, [el["between"]]) if n in s["bones"] and "between" not in s["bones"][n]]
+    if src is None and not members:
+        raise SpecError(f"bone {name!r}: between {el['between']!r} names no bone array")
+    steps = (s.get("_arrays_of") or {}).get(el["between"])
+    if not steps:
+        raise SpecError(f"bone {name!r}: {el['between']!r} isn't an array of bones")
+    off = np.asarray((steps if isinstance(steps, list) else [steps])[0].get("offset", [0, 0, 0]), float)
+    logs = []
+    for n in members:
+        b = s["bones"][n]
+        pa, pb = resolve_point(s, b["a"]), resolve_point(s, b["b"])
+        ra = float(b.get("r_a") or s["joints"][b["a"]].get("r", 0.05))
+        rb = float(b.get("r_b") or s["joints"][b["b"]].get("r", 0.05))
+        F = bone_frame(pa, pb, b.get("up"))
+        bow = b.get("bow") or [0.0, 0.0]
+        bow = [0.0, float(bow)] if isinstance(bow, (int, float)) else [float(bow[0]), float(bow[1])]
+        mid = bow[0] * F[0] + bow[1] * F[2]  # where the bow puts the axis half-way, in world space
+        logs.append([pa, pb, ra, rb, mid])
+    d0 = logs[0][1] - logs[0][0]
+    for L in logs:  # all one way round (flipped copies too)
+        if (L[1] - L[0]) @ d0 < 0:
+            L[0], L[1], L[2], L[3] = L[1], L[0], L[3], L[2]
+    cen = np.array([(L[0] + L[1]) / 2 for L in logs])
+    base = {k: v for k, v in el.items() if k not in ("between", "depth", "inset", "array")}
+    base["tags"] = [*el.get("tags", []), name]
+    inset = float(el.get("inset", 0.0))
+    made = 0
+    del s["bones"][name]
+    for k, L in enumerate(logs):
+        target = cen[k] + off
+        j = int(np.argmin(np.linalg.norm(cen - target, axis=1)))
+        if j == k or np.linalg.norm(cen[j] - target) > 0.5 * np.linalg.norm(off):
+            continue
+        M = logs[j]
+        a, b = (L[0] + M[0]) / 2, (L[1] + M[1]) / 2
+        ax = (b - a) / np.linalg.norm(b - a)
+        a, b = a + inset * ax, b - inset * ax
+        F = bone_frame(a, b)
+        h = F[2]
+        ra = abs((M[0] - L[0]) @ h) / 2
+        rb = abs((M[1] - L[1]) @ h) / 2
+        if min(ra, rb) < 1e-4:
+            continue
+        mid = (L[4] + M[4]) / 2
+        depth = float(el.get("depth", 0.75 * (L[2] + L[3]) / 2))
+        r = (ra + rb) / 2
+        cn = name if made == 0 else f"{name}#{made}"
+        ra, rb = round(float(ra), 6), round(float(rb), 6)
+        s["joints"][f"{cn}~a"] = {"pos": _r(a), "r": ra}
+        s["joints"][f"{cn}~b"] = {"pos": _r(b), "r": rb}
+        s["bones"][cn] = {**base, "a": f"{cn}~a", "b": f"{cn}~b", "r_a": ra, "r_b": rb,
+                          "flat": [round(float(depth / r), 4), 1.0], "bow": [round(float(mid @ F[0]), 6),
+                                                                            round(float(mid @ F[2]), 6)]}
+        made += 1
+    if not made:
+        raise SpecError(f"bone {name!r}: no neighbouring copies of {el['between']!r} to fill between")
 
 
 def _draw(rng, lo_hi, name: str, key: str):

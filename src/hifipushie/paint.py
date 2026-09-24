@@ -49,6 +49,11 @@ Masks (generators, each 0..1 per point):
            "range", "stretch"}: 3D Voronoi. edges = F2-F1, 0 on the borders (default range [0.15, 0]: lines
            between cells: scales, plates, cracked skin); distance = from each cell's centre (range [0.35, 0.1]
            = a bump per cell: warts, pebbles); id = a random 0..1 per cell (colour jitter, patchy scales).
+  random:  {"range": [lo, hi] (default [0, 1]), "seed"}: one random 0..1 value per element (each book, board,
+           stone, log and array copy its own), ramped between lo and hi: a narrow range is a threshold, so
+           layers stacked with rising ones ([0.25, 0.26], [0.5, 0.51], [0.75, 0.76], each over the last) give a
+           quarter of the books on a shelf each colour; a wide range with low opacity jitters every board's tone. A prefab's instances
+           share one bake, so they share their values; make copies differ with an array inside the prefab.
   tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
            "mode": "gaps" (1 in the joints, fading over "bevel") | "bevel" (0 at a joint rising to 1: a tile's
            rounded face, for height) | "id" (random per tile)}: bricks, planks, flagstones, shingles.
@@ -143,7 +148,7 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
-              "mask")
+              "random", "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -184,6 +189,49 @@ def validate(spec: dict) -> None:
             _check_stack(name, ly["mask"])
 
 
+def _nears(ly: dict):
+    """Every "near" a layer (or a mask stack entry) names, nested stacks included."""
+    if "near" in ly:
+        yield ly["near"]
+    for e in ly.get("mask") or []:
+        if isinstance(e, dict):
+            yield from _nears(e)
+
+
+def check_refs(spec: dict, prims: list) -> None:
+    """Names paint points at must exist: each "near" resolves to primitives, each "part" is a part of the model.
+    Checked when the spec is saved, not minutes into a sync or export."""
+    from .paintnodes import resolve_near
+    from .spec import expand_mirror
+    by_name = {p.name: p for p in prims}
+    expanded = None
+    parts = {p.part for p in prims} | set(spec.get("parts") or {}) | {"body"}
+    els = {**(spec.get("bones") or {}), **(spec.get("blobs") or {})}
+    for name, ly in layers(spec).items():
+        lp = ly.get("part", "body")
+        for pn in ([lp] if isinstance(lp, str) else lp):
+            if pn != "*" and pn not in parts:
+                raise SpecError(f"paint {name!r}: no part {pn!r} (parts: {', '.join(sorted(parts))})")
+        for near in _nears(ly):
+            if expanded is None:
+                expanded = expand_mirror(spec)
+            got, missing = resolve_near(spec, near, by_name, expanded)
+            asked = [near] if isinstance(near, str) else list(near)
+            empty = [a for a in asked if a not in by_name and not any(g == a or g.startswith((a + "/", a + "#"))
+                                                                        for g in got)] if not got else missing
+            bad = sorted(set(missing) | set(empty))
+            if not bad:
+                continue
+            why = []
+            for b in bad:
+                el = els.get(b)
+                if el is not None and el.get("op") in ("subtract", "intersect") and el.get("targets"):
+                    why.append(f"{b!r} is a cut, folded into its targets {el['targets']}: it has no surface of "
+                               f"its own to be near; name what it cuts, or elements beside the cut")
+            raise SpecError(f"paint {name!r}: near names nothing for {bad}" + (": " + "; ".join(why) if why else
+                            " (element, tag, instance, array or kit names)"))
+
+
 def _check_stack(name: str, stack) -> None:
     if not isinstance(stack, list):
         raise SpecError(f"paint {name!r}: mask is a list of entries, e.g. [{{\"ao\": [0.9, 0.5]}}, "
@@ -218,6 +266,8 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         raise SpecError(f"paint {name!r}: tiles mode is \"gaps\", \"bevel\" or \"id\"")
     if g == "cells" and (not isinstance(e[g], dict) or e[g].get("mode", "edges") not in ("edges", "distance", "id")):
         raise SpecError(f"paint {name!r}: cells is {{\"scale\", \"mode\": \"edges\" | \"distance\" | \"id\", ...}}")
+    if g == "random" and not (isinstance(e[g], dict) and set(e[g]) <= {"range", "seed"}):
+        raise SpecError(f"paint {name!r}: random is {{\"range\"?: [lo, hi], \"seed\"?: n}}: one value per element")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
     if g in ("ao", "thickness", "sky") and not (isinstance(e[g], list) and len(e[g]) == 2):
@@ -523,10 +573,20 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
     if gen in ("ao", "thickness", "sky"):
         a, b = e[gen]
         return _ramp(view.get(gen), float(a), float(b))
+    if gen == "random":
+        r = e["random"]
+        lo, hi = r.get("range", [0.0, 1.0])
+        return _ramp(element_random(view.get("grain_seed"), int(r.get("seed", 0))), float(lo), float(hi))
     if gen == "mask":
         sub = e["mask"]
         return _stack(spec, tag, sub, list(range(len(sub))), view)
     raise SpecError(f"paint {name!r}: unknown generator {gen!r}")
+
+
+def element_random(seed: np.ndarray, salt: int = 0) -> np.ndarray:
+    """A uniform 0..1 value per element from its grain_seed (a hash of its name), different for each salt."""
+    x = np.sin(np.asarray(seed, np.float64) * 12989.8 + salt * 78.233 + 0.5) * 43758.5453
+    return x - np.floor(x)
 
 
 def _ramp(x, a, b):

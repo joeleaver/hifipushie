@@ -279,23 +279,33 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
     return out
 
 
-def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
-    """Distance to the named elements' own surfaces (as paint's near measures it, before within/soft)."""
+def resolve_near(spec: dict, near, prims: dict | None = None, expanded: dict | None = None) -> tuple[list[str], list[str]]:
+    """The primitives a paint "near" names (elements, tags, instances, arrays, kits): (resolved, unknown)."""
     from . import sdf
     from .spec import compile_prims
     want = [near] if isinstance(near, str) else list(near)
-    prims = {p.name: p for p in compile_prims(spec)}
+    if prims is None:
+        prims = {p.name: p for p in compile_prims(spec)}
     from .assemble import select
     from .spec import expand_mirror
     asked = set(want)
-    want = [w for w in select(expand_mirror(spec), want) if w in prims or w in asked]
+    want = [w for w in select(expanded if expanded is not None else expand_mirror(spec), want)
+            if w in prims or w in asked]
     for w in list(want):  # kit names
         if w in (spec.get("kits") or {}) and w not in prims:
             stem, sfx = (w[:-2], w[-2:]) if w.endswith((".L", ".R")) else (w, "")
             want.remove(w)
             want += [n for n, p in prims.items() if n.startswith(stem + "_") and n.endswith(sfx)
                      and p.kind in sdf.SDF and p.kind != "shell" and p.op == "add"]
-    missing = [w for w in want if w not in prims]
+    return [w for w in want if w in prims], [w for w in want if w not in prims]
+
+
+def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
+    """Distance to the named elements' own surfaces (as paint's near measures it, before within/soft)."""
+    from . import sdf
+    from .spec import compile_prims
+    prims = {p.name: p for p in compile_prims(spec)}
+    want, missing = resolve_near(spec, near, prims)
     if missing:
         raise SpecError(f"paint {lname!r}: no bone or blob {missing}")
     d = np.full(len(pos), np.inf)

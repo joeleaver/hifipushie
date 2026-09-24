@@ -16,7 +16,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 11  # bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 12  # bump when meshing changes, so cached builds are redone
 
 
 def _dir(name: str) -> Path:
@@ -40,8 +40,9 @@ def save(name: str, spec: dict, note: str = "") -> int:
     from . import paint, realism, strokes
     realism.validate(spec)
     strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
-    specmod.compile_prims(spec)  # validate before writing
+    prims = specmod.compile_prims(spec)  # validate before writing
     paint.validate(spec)
+    paint.check_refs(spec, prims)  # names paint points at: here, not minutes into a sync
     for pn, d in (spec.get("parts") or {}).items():
         part_colour(pn, spec["parts"], 0)
     d = _dir(name)

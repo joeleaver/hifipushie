@@ -365,7 +365,12 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
         if missing:
             raise SpecError(f"{p.name!r}: targets {missing} aren't bones, blobs or tags")
         for n in names:
-            t = wrap(by_name[n])
+            q = by_name[n]
+            m = max(float(p.blend), float(q.blend)) + 0.01
+            if p.op == "subtract" and (np.any(p.lo - m > q.hi) or np.any(p.hi + m < q.lo)):
+                continue  # a cut nowhere near this target can't shape it: leave it out (and its fingerprint alone,
+                # so moving a window re-meshes only the logs around it)
+            t = wrap(q)
             t.params["cuts"].append((p.op, p.kind, p.params, float(p.blend)))
             wrapped[n] = t
     return out
@@ -542,6 +547,9 @@ def summarize(spec: dict) -> str:
     lines.append(f"{len(spec.get('joints', {}))} joints, {len(spec.get('bones', {}))} bones, "
                  f"{len(spec.get('blobs', {}))} blobs stored ({len(prims)} primitives after mirroring)")
     for name, b in spec.get("bones", {}).items():
+        if "between" in b:
+            lines.append(f"  bone {name}: between the copies of {b['between']}")
+            continue
         a, bb = resolve_point(s, b["a"]), resolve_point(s, b["b"])
         lines.append(f"  bone {name}: {b['a']} -> {b['b']}  len {np.linalg.norm(bb - a):.3f}")
     if spec.get("strokes"):

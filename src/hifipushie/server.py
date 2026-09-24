@@ -228,7 +228,8 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
          matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", paint: bool = True,
          paint_layer: str | None = None, hide_parts: list[str] | None = None, only_parts: list[str] | None = None,
-         clip: dict | list[dict] | None = None, camera: dict | list[dict] | None = None, save: str | None = None):
+         clip: dict | list[dict] | None = None, camera: dict | list[dict] | None = None, instances: bool = False,
+         save: str | None = None):
     """Build the mesh and return a clay contact sheet.
     views: any of front, side, top, three_quarter (default set), back, left, three_quarter_back, below.
     All panels share one scale; front/side/top get rulers in world units (grid=True adds grid lines).
@@ -259,10 +260,13 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     Blender scene (synced first: see `sync`) in EEVEE with real lights; paint_layer then shows that layer's
     mask glowing orange on grey clay. The geometric views (raking, curvature, strokes, clip, close-ups) show
     plain clay per part.
+    instances=True marks every placed prefab instance on the orthographic views: a dot at its origin, an arrow
+    along its front (the prefab's local -Y: build prefabs facing -Y, like creatures) and its name. With a top
+    view (and a clip) it's the floor plan with which way each piece of furniture faces.
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
-    geometric = strokes or clip or (focus is not None and zoom > 1) or shading not in ("clay", "flat")
+    geometric = strokes or instances or clip or (focus is not None and zoom > 1) or shading not in ("clay", "flat")
     if paint and not geometric and store.load(name).get("paint"):
         from . import scene
         r = scene.sync(name)
@@ -334,6 +338,14 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         paths = _stroke_paths(store.load(name), ortho, mesh if shown else Path(meta["mesh"]), meta["voxel"], size,
                               keep)
         imgs = [im if "eye" in f else render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
+    if instances:
+        from . import assemble
+        marks = []
+        for inst, pl in assemble.placements(store.load(name)).items():
+            M = assemble.world_of(pl)
+            fr = M[:3, :3] @ [0.0, -1.0, 0.0]
+            marks.append({"label": inst, "at": M[:3, 3], "front": fr / (np.linalg.norm(fr) or 1)})
+        imgs = [im if "eye" in f else render.draw_instances(im, f, marks) for im, f in zip(imgs, frames)]
     sheet = render.contact_sheet(imgs, frames, grid)
     lo, hi = full_bounds
     dims = [round(h - l, 3) for l, h in zip(lo, hi)]
@@ -352,11 +364,12 @@ def _resolve_camera(name: str, cam: dict) -> dict:
     cam = dict(cam)
     eye, target = [float(x) for x in cam["eye"]], [float(x) for x in cam["target"]]
     if len(eye) == 2:
-        floor = meas.stand_height(store.load(name), *eye)
+        x, y, floor, moved = meas.stand_spot(store.load(name), *eye)
         if floor is None:
             floor, cam["_note"] = 0.0, " (no floor there: eye height above z = 0)"
         else:
-            cam["_note"] = f" (standing on the floor at z = {floor:.2f})"
+            cam["_note"] = f" (standing on the floor at z = {floor:.2f}" + (f"; {moved})" if moved else ")")
+            eye[:2] = [x, y]
         eye.append(floor + float(cam.get("eye_height", 1.6)))
     if len(target) == 2:
         target.append(eye[2])
@@ -587,12 +600,17 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     blue = plan only: the model is missing it, red = the model sticks out); IoU and edge-error bands in world units (placed exactly, no rescaling); landmark joints vs
     their planned heights; planned sections vs measured width and depth. Run it after every stage.
     Always also audits realism: missing story, identical copies at even spacing, things square to the axes,
-    identical parts, big perfectly flat faces, paint without wear or dirt (works without a plan too)."""
+    identical parts, big perfectly flat faces, paint without wear or dirt (works without a plan too).
+    And walks a person through every doorway (box cuts with targets reaching the floor, 1.6 m+ tall): a door
+    swung across the opening, furniture in the way, a step too high; names what blocks it."""
     from . import realism
     spec = store.load(name)
     warn = realism.audit(spec)
     realism_txt = ("\n\nREALISM (too perfect to be real?):\n" + "\n".join(f"- {w}" for w in warn)) if warn else \
         "\n\nREALISM: no perfection warnings"
+    doors = meas.check_doorways(spec)
+    if doors:
+        realism_txt += "\n\nDOORWAYS (a person 1.8 m tall, 0.5 m wide walked 1 m through each):\n" + "\n".join(doors)
     plan = spec.get("plan")
     if not plan:
         return "no plan to check against (set_plan)." + realism_txt

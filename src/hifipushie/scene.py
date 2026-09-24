@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from . import asset, assemble, render, sdf, store
-from .spec import euler_matrix
+from .spec import SpecError, euler_matrix
 
 SCRIPT = Path(__file__).with_name("blender_scene.py")
 
@@ -32,15 +32,37 @@ def blend_path(name: str) -> Path:
     return store._dir(name) / "scene.blend"
 
 
-def _blender(job: dict, timeout: float = 900) -> str:
+def _blender(job: dict, timeout: float = 900, progress=None) -> str:
+    """Run blender_scene.py on a job. progress(line) gets each "@@progress" line as Blender prints it."""
     with tempfile.TemporaryDirectory(prefix="hifipushie-scene-") as tmp:
         p = Path(tmp) / "job.json"
         p.write_text(json.dumps(job))
-        r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
-                            "--python", str(SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
-        if r.returncode:
-            raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
-        return r.stdout
+        cmd = [render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(SCRIPT), "--", str(p)]
+        if progress is None:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            out, err, code = r.stdout, r.stderr, r.returncode
+        else:
+            import threading
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            errs = []
+            t = threading.Thread(target=lambda: errs.append(proc.stderr.read()), daemon=True)
+            t.start()
+            lines = []
+            timer = threading.Timer(timeout, proc.kill)
+            timer.start()
+            try:
+                for line in proc.stdout:
+                    lines.append(line)
+                    if line.startswith("@@progress"):
+                        progress(line[11:].rstrip())
+                code = proc.wait()
+            finally:
+                timer.cancel()
+            t.join(5)
+            out, err = "".join(lines), "".join(errs)
+        if code:
+            raise RuntimeError(f"blender failed:\n{out[-3000:]}\n{err[-3000:]}")
+        return out
 
 
 def _hash(ps: list, frame, extra: str = "") -> str:
@@ -100,6 +122,23 @@ def _frame(ps: list, voxel: float, pad: float = 0.03):
     return a, voxel, np.ceil((b - a) / voxel).astype(int) + 1
 
 
+# Per model, per scene part: its block grid and projected mesh from the last sync (like store._LIVE), so an edit
+# to a big part (a window cut into the logs) re-meshes only the blocks the change can reach. Grids of fine-voxel
+# parts are big: a model keeps at most LIVE_CELLS of them (the most recently used), the rest mesh cold.
+_LIVE: dict[str, dict] = {}
+LIVE_CELLS = 750_000_000  # ~3 GB of float32 per model
+
+
+def _live_grid(name: str, key: str, fr) -> dict:
+    parts = _LIVE.setdefault(name, {})
+    st = parts.pop(key, None) or {"grid": sdf.PartGrid()}
+    parts[key] = st  # most recently used last
+    st["cells"] = int(np.prod(np.asarray(fr[2], np.int64) + sdf.BLOCK))
+    while sum(p.get("cells", 0) for p in parts.values()) > LIVE_CELLS and len(parts) > 1:
+        parts.pop(next(iter(parts)))
+    return st
+
+
 def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[list, list]:
     """The scene's objects (meshed or from the cache) and instances, from the current spec."""
     log = [] if log is None else log
@@ -132,8 +171,17 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
         f = cache / f"{h}.npz"
         if not f.exists():
             lo, v, shape = fr
-            field, _ = sdf.PartGrid().update(ps, fr)
-            m = store._mesh_part(ps, field, lo, v, [], {})
+            if pf is None:  # a scene part: keep its grid, so an edit re-meshes only the blocks it can reach
+                st = _live_grid(name, key, fr)
+                try:
+                    field, boxes = st["grid"].update(ps, fr)
+                    m = store._mesh_part(ps, field, lo, v, boxes, st)
+                except BaseException:
+                    _LIVE.get(name, {}).pop(key, None)  # possibly half updated: start that part cold next time
+                    raise
+            else:
+                field, _ = sdf.PartGrid().update(ps, fr)
+                m = store._mesh_part(ps, field, lo, v, [], {})
             if m is False:
                 continue
             verts, faces, normals, _ = m
@@ -412,6 +460,17 @@ def pull(name: str, log: list | None = None) -> dict:
         if abs(sc - float(d.get("scale", 1.0))) > 1e-4:
             new["scale"] = round(sc, 4)
         spec["instances"][inst] = {**d, **new}
+        if "on" in d:  # slid along its support: it stays "on" it; lifted, lowered or moved off it: where it was put
+            off = abs(float(M[2, 3]) - float(pls[inst]["at"][2])) > 0.01
+            if not off:
+                try:
+                    assemble.expand(spec)
+                except SpecError:
+                    off = True
+            if off:
+                new["at"] = assemble._r(M[:3, 3] - np.append(d_at[:2], 0.0))
+                spec["instances"][inst] = {k: v for k, v in {**d, **new}.items() if k not in ("on", "lift")}
+                log.append(f"{inst}: no longer set down \"on\" {d['on']} (moved off it in the scene)")
         changes[inst] = new
         log.append(f"{inst}: {json.dumps(new)} (from the scene)")
     store.save(name, spec, "from the Blender scene: " + ", ".join(changes))
