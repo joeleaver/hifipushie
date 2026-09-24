@@ -315,13 +315,14 @@ def _evaluate_part(prims: list[Prim], lo: np.ndarray, voxel: float, shape) -> np
     return PartGrid().update(prims, (lo, voxel, shape))[0]
 
 
-def fingerprint(p: Prim) -> str:
+def fingerprint(p: Prim, cuts: bool = True) -> str:
     """Content hash of a primitive: equal fingerprints give equal field contributions. A shell's base part
-    is left out (the shell part inherits its base's changed regions instead)."""
+    is left out (the shell part inherits its base's changed regions instead). cuts=False: without the targeted
+    cuts folded into it (the same shape before cutting)."""
     h = hashlib.sha1(repr((p.name, p.kind, p.op, p.blend, p.layer, p.group, p.join, p.part, p.lip)).encode())
     for k in sorted(p.params):
         v = p.params[k]
-        if k in ("prims", "tree"):
+        if k in ("prims", "tree") or (k == "cuts" and not cuts):
             continue
         h.update(k.encode())
         h.update(np.ascontiguousarray(v).tobytes() if isinstance(v, np.ndarray) else repr(v).encode())

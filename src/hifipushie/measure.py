@@ -204,11 +204,11 @@ def stand_height(spec: dict, x: float, y: float, height: float = 1.8) -> float |
 
 def stand_spot(spec: dict, x: float, y: float, height: float = 1.8, reach: float = 1.5):
     """Where a person asked to stand at (x, y) stands: (x, y, floor z, note). On the floor there, unless the spot
-    is under something (a table: less than `height` above the floor) or on top of furniture (a counter, a bed:
-    0.25-1.3 m above the floor around it): then the nearest spot within `reach` on the surrounding floor with
-    the headroom, a hand's width clear, rather than on top of the furniture. "The floor around" is the lowest height a
-    quarter of the spots within `reach` stand at. A loft or gallery (higher than
-    that) is stood on. floor z is None when there is no floor at all."""
+    is under something (a table: less than `height` above the floor) or on top of furniture: a surface the floor
+    drops away from, 0.25-1.3 m, in most directions (a bed, a table, a counter against a wall), unlike a raised
+    floor or a doorstep, which drops away on one side. Then the nearest spot within `reach` on that lower floor
+    with the headroom, a hand's width clear. A loft (higher than 1.3 m) is stood on. floor z is None when there
+    is no floor at all."""
     prims = compile_prims(spec)
     lo, hi = _bounds(prims)
     zlo, zhi = float(lo[2]) - 0.05, float(hi[2]) + 0.05
@@ -220,8 +220,7 @@ def stand_spot(spec: dict, x: float, y: float, height: float = 1.8, reach: float
             z = None
             for zt in t:
                 ab = b[b > zt]
-                gap = (ab[0] if len(ab) else zhi) - zt
-                if gap >= height:
+                if (ab[0] if len(ab) else zhi) - zt >= height:
                     z = float(zt)
                     break
             out.append(z)
@@ -232,26 +231,28 @@ def stand_spot(spec: dict, x: float, y: float, height: float = 1.8, reach: float
     ang = np.linspace(0, 2 * np.pi, 24, endpoint=False)
     xy = np.array([[x + r * np.cos(a), y + r * np.sin(a)] for r in rings for a in ang])
     fl = floors(xy)
-    rad = np.repeat(rings, len(ang))  # each ring sample stands for an area ~ its radius
-    zs_ok = [z for z in fl if z is not None]
-    w_ok = np.array([r for z, r in zip(fl, rad) if z is not None])
-    if not zs_ok:
+    grid = np.array([np.nan if z is None else z for z in fl]).reshape(len(rings), len(ang))
+    if here is not None:
+        drop = here - grid  # per ring and direction: how far the floor there is below this spot
+        seen = ~np.all(np.isnan(grid), 0)  # directions with any floor (not straight into a wall)
+        down = np.any((drop >= 0.25) & (drop <= 1.3), 0)
+        if not seen.any() or down[seen].mean() < 0.7:
+            return x, y, here, ""
+        target = lambda z: here - z >= 0.25 and here - z <= 1.3
+    else:  # under something: the floor with headroom nearest to the lowest one around
+        if np.all(np.isnan(grid)):
+            return x, y, None, ""
+        zmin = float(np.nanmin(grid))
+        target = lambda z: z - zmin < 0.25
+    good = [i for i, z in enumerate(fl) if z is not None and target(z)]
+    if not good:
         return x, y, here, ""
-    # the floor around: the lowest height (15 cm bins: a rug is floor) at least a quarter of the ring stands at;
-    # not simply the lowest (the ground outside a raised floor), nor the most common (a big bed)
-    zb = np.round(np.asarray(zs_ok) / 0.15).astype(int)
-    vals = np.unique(zb)
-    share = np.array([w_ok[zb == v].sum() for v in vals]) / rad.sum()
-    low = float(np.min(np.asarray(zs_ok)[zb == vals[share >= 0.25].min()])) if (share >= 0.25).any() else min(zs_ok)
-    if here is not None and (here - low < 0.25 or here - low > 1.3):
-        return x, y, here, ""
-    good = [i for i, z in enumerate(fl) if z is not None and z - low < 0.25]
     i = good[0]  # rings go outwards: the first good one is the nearest
     p, zf = xy[i], fl[i]
     d = p - [x, y]
     step = p + 0.15 * d / np.linalg.norm(d)  # a hand's width clear of the edge
     z3 = floors(step[None])[0]
-    if z3 is not None and z3 - low < 0.25:
+    if z3 is not None and target(z3):
         p, zf = step, z3
     why = "on top of something" if here is not None else "under something"
     return (float(p[0]), float(p[1]), float(zf),
@@ -424,7 +425,7 @@ def doorways(spec: dict, min_height: float = 1.6) -> list[dict]:
         ax = 0 if sz[0] < sz[1] else 1  # the thin horizontal axis runs through the wall
         across = R[:, ax] * np.array([1, 1, 0])
         across /= np.linalg.norm(across)
-        x, y, z, _ = stand_spot(spec, float(c[0]), float(c[1]), height=min_height)
+        z = stand_height(spec, float(c[0]), float(c[1]), height=min_height)  # the floor in the opening itself
         bottom = c[2] - sz[2]
         if z is None or bottom - z > 0.3:
             continue
@@ -448,7 +449,8 @@ def check_doorways(spec: dict, height: float = 1.8, radius: float = 0.25) -> lis
             verdict = rep.splitlines()[-1]
             if "PASSES" in verdict or verdict.rstrip(")").split("(")[-1] != "no floor":
                 break
-            note = f" (no floor {reach:.1f} m out on one side: the ground there isn't modelled; walked {0.5:.1f} m either side)"
+            note = (f" (no floor at the opening's level {reach:.1f} m out on one side: steps down, or no ground "
+                    f"modelled; walked 0.5 m either side)")
         narrow = next(l for l in rep.splitlines() if l.startswith("narrowest"))
         ok = "PASSES" in verdict
         line = f"{d['name']} ({d['width']:.2f} x {d['height']:.2f} m opening at ({c[0]:.2f}, {c[1]:.2f})): " + (

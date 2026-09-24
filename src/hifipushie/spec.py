@@ -184,6 +184,7 @@ class Prim:
     lip: float = 1.0  # modifiers: how much steeper than a distance field they can make the field
     part: str = "body"  # which separate mesh it belongs to; parts are fields of their own, hard-unioned
     instance: str | None = None  # the prefab instance it came from (assemble); export shares their meshes
+    cut_boxes: tuple = ()  # (fingerprint, lo, hi) of each targeted cut folded into it: where a moved cut changes it
 
 
 class SpecError(ValueError):
@@ -372,6 +373,8 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
                 # so moving a window re-meshes only the logs around it)
             t = wrap(q)
             t.params["cuts"].append((p.op, p.kind, p.params, float(p.blend)))
+            from .sdf import fingerprint
+            t.cut_boxes = (*t.cut_boxes, (fingerprint(p), p.lo - m, p.hi + m))
             wrapped[n] = t
     return out
 

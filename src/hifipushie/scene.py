@@ -255,11 +255,14 @@ def _placed(o: dict, ctx: dict) -> str:
 
 def _near_change(v: np.ndarray, boxes: list, reach: float) -> np.ndarray:
     """Vertices whose AO or sky a change in these boxes can reach: within `reach` of a box (AO), or under it
-    within a 45 degree cone plus `reach` (what's overhead shades the sky)."""
+    within a 45 degree cone plus `reach` (what's overhead shades the sky). The cone starts at the box's bottom:
+    sky openness is weighted around straight up, so a change beside a point, at its own height (a door moved
+    along a wall), barely moves it; what's above it does (a roof, a beam). Measured from the top, a door cut's
+    2 m of height re-baked everything within 2 m of it: 1.9M vertices for a 15 cm move."""
     hit = np.zeros(len(v), bool)
     for lo, hi in boxes:
         hit |= np.all((v >= lo - reach) & (v <= hi + reach), 1)
-        m = reach + np.clip(hi[2] - v[:, 2], 0, 2.0)
+        m = reach + np.clip(lo[2] - v[:, 2], 0, 2.0)
         hit |= (v[:, 2] <= hi[2] + reach) & np.all((v[:, :2] >= lo[:2] - m[:, None]) & (v[:, :2] <= hi[:2] + m[:, None]), 1)
     return hit
 
@@ -280,12 +283,27 @@ def raytraced(objs: list, insts: list, ctx: dict, cache: Path, log: list, device
     raw_dir.mkdir(exist_ok=True)
     sf = cache / "rt_state.json"
     state = json.loads(sf.read_text()) if sf.exists() else {}
-    fps = {sdf.fingerprint(p): [p.lo.tolist(), p.hi.tolist()]
-           for ps in ctx["full"].values() for p in ps if p.instance is None}  # the building
+    # the building: per primitive its box, name, its fingerprint without cuts and its cuts' boxes, so a board
+    # whose only change is a door cut moving along it counts as changed where the cut was and is, not all over
+    fps = {sdf.fingerprint(p): [p.lo.tolist(), p.hi.tolist(), p.name, sdf.fingerprint(p, cuts=False),
+                                {c[0]: [c[1].tolist(), c[2].tolist()] for c in p.cut_boxes}]
+           for ps in ctx["full"].values() for p in ps if p.instance is None}
     same = state.get("params") == pkey
     old = state.get("prims", {}) if same else {}
-    boxes = [np.asarray(old[f], float) for f in set(old) - set(fps)] + \
-            [np.asarray(fps[f], float) for f in set(fps) - set(old)]
+    gone, new_ = set(old) - set(fps), set(fps) - set(old)
+    by_name = {old[f][2]: f for f in gone if len(old[f]) == 5}
+    boxes = []
+    for f in new_:
+        e = fps[f]
+        g = by_name.pop(e[2], None)
+        if g is not None and old[g][3] == e[3]:  # the same shape, cut differently: where the cuts differ
+            oc, nc = old[g][4], e[4]
+            boxes += [np.asarray(oc[c], float) for c in set(oc) - set(nc)] + \
+                     [np.asarray(nc[c], float) for c in set(nc) - set(oc)]
+            gone.discard(g)
+        else:
+            boxes.append(np.asarray(e[:2], float))
+    boxes += [np.asarray(old[f][:2], float) for f in gone]
     raw_of = {o["key"]: raw_dir / (o["key"].replace("/", "__") + ".npz") for o in objs}
     stamps = dict(state.get("stamps", {})) if same else {}
     reach = 1.5 * job["ao_distance"]
@@ -446,6 +464,19 @@ def pull(name: str, log: list | None = None) -> dict:
     pls = assemble.placements(spec)
     for inst, m in moved.items():
         d = (spec.get("instances") or {}).get(inst)
+        fw = (pls.get(inst) or {}).get("from_wall")
+        if d is None and fw:  # a wall's door: its swing goes back into the opening's "open"; the rest is the wall's
+            wn, k, kind = fw[:3]
+            M = np.asarray(m)
+            if kind == "door":
+                rz = float(np.degrees(np.arctan2(M[1, 0], M[0, 0])))
+                a = ((rz - fw[3]) * fw[4] + 180.0) % 360.0 - 180.0
+                spec["walls"][wn]["openings"][k]["open"] = round(max(a, 0.0), 1)
+                changes[inst] = {"open": round(max(a, 0.0), 1)}
+                log.append(f"{inst}: wall {wn!r} opening {k} now open {max(a, 0.0):.0f} deg (from the scene)")
+            else:
+                log.append(f"{inst}: moved in the scene, but it's placed by wall {wn!r}: move the opening in the spec")
+            continue
         if d is None:
             log.append(f"{inst}: moved in the scene, but it's the mirror of a '.L' instance: move that one")
             continue
@@ -454,7 +485,9 @@ def pull(name: str, log: list | None = None) -> dict:
         sc = float(np.cbrt(np.linalg.det(L)))
         rot_user = np.asarray(assemble._euler_of(L / sc))
         # the weather moved it from the spec's placement by these offsets; take them back out
-        d_at = np.asarray(pls[inst]["at"], float) - np.asarray(d.get("at", [0, 0, 0]), float)
+        at0 = list(d.get("at", [0, 0, 0]))
+        at0 = at0 + [0.0] * (3 - len(at0))  # "on" instances may give [x, y]
+        d_at = np.asarray(pls[inst]["at"], float) - np.asarray(at0, float)
         d_rot = np.asarray(pls[inst]["rot"], float) - np.asarray(d.get("rot", [0, 0, 0]), float)
         new = {"at": assemble._r(M[:3, 3] - d_at), "rot": [round(float(v), 3) for v in rot_user - d_rot]}
         if abs(sc - float(d.get("scale", 1.0))) > 1e-4:
@@ -471,6 +504,9 @@ def pull(name: str, log: list | None = None) -> dict:
                 new["at"] = assemble._r(M[:3, 3] - np.append(d_at[:2], 0.0))
                 spec["instances"][inst] = {k: v for k, v in {**d, **new}.items() if k not in ("on", "lift")}
                 log.append(f"{inst}: no longer set down \"on\" {d['on']} (moved off it in the scene)")
+            else:  # still on it: only x, y are the person's; z stays found
+                new["at"] = new["at"][:2]
+                spec["instances"][inst] = {**d, **new}
         changes[inst] = new
         log.append(f"{inst}: {json.dumps(new)} (from the scene)")
     store.save(name, spec, "from the Blender scene: " + ", ".join(changes))

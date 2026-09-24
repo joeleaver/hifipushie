@@ -111,6 +111,25 @@ addressed on the surface. Rules that matter:
   `near`, cut `targets` and `delete`.
 - Hard surfaces: `box` and `cylinder` blobs with `round`, `hollow` for vessels, and cuts with `targets` so an
   opening only bites what it should. Keep walls >= 2 voxels at the resolution you judge at.
+- Prefabs face -Y (their front is local -Y, like a creature), origin on the floor under them (a door's at its
+  hinge, the leaf along +X). `look(views=["top"], clip={"z": 2}, instances=True)` is the floor plan with an arrow
+  on every instance's front: check it after placing furniture. Nothing else shows a dresser facing the wall.
+- Partitions and plain walls are `walls`: a path, a height, boards or solid, and `openings` that cut the wall and
+  hang the frame, window and door (hinge side, swing side, angle open). One entry per wall, not a board array,
+  cuts, frame and door instances written by hand.
+- Set props down with `"on"`: a cup `"on": "table1/top"`, jars on `"shelf#1"`, books on `"bookshelf1/shelf#2"`,
+  an apple on the bowl it's in, a barrel on the ground. Give `at` as [x, y]; the z is found (and follows the
+  furniture when it moves). Name the element (`table1/top`, `shelf#1`), not the whole piece: the top of a dresser
+  with a plate rack is the rack.
+- Seams between repeated members (chinking between logs, mortar between rails) are a bone `{"between": array,
+  "inset"}`: it follows every copy's bow and gap. A flat slab behind irregular logs either peeks through as
+  ragged streaks or bulges out.
+- Small loose props (bread, a book, a cup) are prefabs even when there's one: a prefab meshes in its own box at
+  a voxel for its size, while an element in a big part shares that part's voxel (the bread came out at 30 mm).
+- `check` walks a person through every door opening and names what blocks it (a door swung across the
+  doorway, a chair). Model some ground (a big box, part "ground", lumpy) if there are props outside.
+- Cameras: `eye: [x, y]` stands a person there; asked to stand on a counter, bed or table, they step off onto the
+  floor beside it (the info line says so). Give a 3D eye to put the camera anywhere.
 
 ## 5b. History: nothing real is pristine
 
@@ -170,6 +189,10 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   For anything built of many pieces (log walls, furniture, frames, firewood) give wood `"dir": "element"`: the
   grain follows each log, leg, rail and board, each its own piece of pattern, end grain on each piece's cut ends.
   One layer does a whole part; no layer per orientation.
+- **One value per element:** `{"random": {"range": [lo, hi], "seed"}}` is 0..1 per element (every book, board,
+  stone, array copy). Stack layers with rising narrow ranges ([0.25, 0.26], [0.5, 0.51], [0.75, 0.76]) for a
+  quarter of the books in each colour; a wide range at low opacity for board-to-board tone. Prefab instances
+  share one bake, so they share values.
 - **Relief without sculpting:** `"height": -0.001` on a cells layer grooves the scale borders; `0.002` on a
   cells-distance layer raises warts. It lands in the exported normal and height maps at texel resolution;
   `look` only tilts vertex normals, so judge it in a close-up with `shading="raking"` and in the export
@@ -206,6 +229,10 @@ solid clothing, eyeball backs) are removed first.
   takes (texels per metre x each part's `texel_density`; 512/m = 2 mm/texel, for close interiors; 256/m for
   walls seen from a few metres), each the smallest power of two that holds its parts, a prefab's parts together.
   `parts.<p>.atlas: "interior"` still pins a part to a named atlas; `atlases=n` is the manual split.
+  A part that can't reach the density on one atlas (a whole log wall or roof) is named at the start of the log
+  with what it will get: split it into parts (north and south roof), or give it a lower `texel_density`.
+- A furnished four-room cabin (100k triangles, 14 atlases at 2048, 256/m) exports in ~25 min: low poly ~8,
+  per-atlas projection ~8, Cycles paint/AO bake ~2. Progress goes to workspace/<model>/progress.log.
 - Detail thinner than about a voxel at the export resolution (22 mm shingles at 256 across a 6 m cabin) makes
   a broken high mesh: inverted faces and normals the bake can't use. Those texels keep the low-poly surface
   (the log says how many per part). Build at a higher resolution or make the detail thicker.

@@ -42,6 +42,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `measure.clearance` (tool `clearance`): walkability
   from vertical columns of `field_at` (floors, headroom), a capsule clearance test and horizontal width rays.
 - `measure.py`: cross-sections of the exact field (`sdf.field_at`): rays from a bone axis, or world-axis slices.
+  `stand_spot` (cameras' [x, y] eyes): the floor there, stepping off furniture (a surface the floor drops away
+  from 0.25-1.3 m in 70%+ of directions: not a doorstep or raised floor) or from under a table. `doorways` (box
+  cuts with targets, 1.6 m+, reaching the floor) and `check_doorways` (a person walked through each, the element
+  in the way named): part of `check`.
 - `compare.py`: reference mask extraction, placement (FFT shift search per scale + sub-pixel refine, kept as a
   continuous transform onto the full-res image), diff image, band tables.
 - `fit.py`: silhouette auto-fit. Levenberg-Marquardt on a symmetric outline chamfer; Jacobian columns come from
@@ -122,6 +126,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `select` resolves names/tags (instances, arrays and `tags` lists are tags). `spec._csg` wraps a primitive as
   kind "csg" (`sdf.sd_csg`) for `hollow` and for subtract/intersect elements with `targets` (the cut is folded
   into each target, not a primitive of its own). Cuts only raise the field, so bounds/reach stay the target's.
+  A subtract is folded only into targets its box (+ blend) overlaps: every log carrying every window cut made
+  moving one window re-mesh the whole wall (the scene's per-part grids diff primitive fingerprints).
+  Order in `expand`: `_walls` (spec["walls"] -> board/box blobs, targeted box cuts, frame/window/door instances
+  tagged "from_wall" so `placements` and `scene.pull` know them; pull writes a swung door back as the opening's
+  "open"), instances without "on" placed, arrays (then `_between`: flat bones between neighbouring copies of a
+  bone array, found along its first step's offset; `_arrays_of` remembers the steps during expansion),
+  then "on" instances (`_place_on`, dependency order; `top_of` raycasts a mini-spec of the named elements plus
+  cuts into them; resolved positions go to `_ON[key]` so `placements` agrees), then weather on elements.
+  `placements` pads [x, y] ats and includes wall-generated instances.
 - Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
   them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,
@@ -131,6 +144,14 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
 - `store.py`: `workspace/<model>/spec.json` + `history/`, build cache keyed by spec hash.
 - `scene.py` + `blender_scene.py` + `paintnodes.py`: the live Blender scene (see "Next session"): per-object
   meshing and content cache, paint compiled to shader nodes, pull/sync round trip, EEVEE looks, Cycles bakes.
+  Scene parts keep their block grids between syncs (`scene._LIVE`, `LIVE_CELLS` budget per model, most recently
+  used kept): an edit re-meshes the blocks it reaches (moving a door: 1.0 s, cold 5.5 s; must equal cold).
+  Cycles bakes use emissive materials: every such material needs `cycles.emission_sampling = "NONE"`, or each
+  bake call builds a light tree over every triangle (10M on cabin4, ~5 s a call). `bake_maps` renders only the
+  part and its low poly per call, 1 sample, passes color / rms / aoh (red ao_raw, green painted height).
+- Paint validation at save (`paint.check_refs`): every `near` resolves, every layer `part` exists (a cut named
+  in near has no surface: folded into its targets). Weather tags must match something (`assemble.expand`).
+  `random` generator: `paint.element_random(grain_seed)`, measured per vertex in the scene (not a native node).
 - `server.py`: MCP tools (mcp 2.x `MCPServer`, not v1 FastMCP).
 
 ## Performance (keep these properties when changing things)
@@ -261,6 +282,14 @@ primitive's blend reach, so near thin boards with small blends one stencil sampl
 `near` took only an array's first copy when given the array's name (copy 0 is named like the tag). Array
 `vary` on a blob's size was overwritten. Paths can't address interior walls (a path point's ray comes from
 outside the model and hits the outer wall first): use axis masks there, or add an "inside" address later.
+
+**The four-room cabin test (2026-09-23/24):** `workspace/cabin4` (source `workspace/cabin4_src.py`: 765
+primitives, 33 prefabs, 65 instances, 46 layers) took 29:49 from nothing to a painted scene, then 55 min to
+export (31 of it Cycles map bakes). The wishlist from it was built the next day: early validation, `walls`,
+instances `"on"`, `"between"` seams, `check` doorways, `look(instances=True)` facing arrows, `random` paint,
+cameras off furniture, per-part live scene grids, the bake fix (export 55 -> 25 min). `workspace/cabin5`
+(source `cabin5_src.py`) is cabin4 rebuilt with them. Still open from that list: splitting a part too big for
+one atlas; low poly (~8 min) and per-atlas projection (~8 min) are now most of an export.
 
 **The cabin (paused until the pipeline settles):** `workspace/cabin2`, a readable hand-written spec, source in
 `workspace/cabin2_src.json` (story, log arrays with vary/flip/bow/lumpy/flat ends, chinking, targeted door and

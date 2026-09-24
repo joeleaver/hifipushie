@@ -705,7 +705,8 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.
     preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
     parts, instances or prefabs left out of it (e.g. roof and walls, to see an interior).
-    Takes one to a few minutes at 2048 (texture=1024 for quick checks)."""
+    Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
+    furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
                         instancing)

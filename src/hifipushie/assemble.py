@@ -12,7 +12,8 @@ blobs before kits and mirroring, so everything downstream (strokes, paint, parts
                and prefab names, so paint "near", "targets" and deletes can take "chair1" or "chair" for all
                of them. An instance named ".L" is mirrored whole (a pair of bedside tables).
                "on": set the instance down on those elements' top surface at its x, y (its z is ignored; "lift"
-               raises it): a cup "on": "table1/top", a jar on "shelf#1", books on "bookshelf1/shelf#2". Found
+               raises it): a cup "on": "table1/top", a jar on "shelf#1", books on "bookshelf1/shelf#2" (an
+               element's name means that element: "shelf" is an array's first copy; a tag, all it tags). Found
                after everything else is placed (on instances too, in order), and again whenever the support
                moves, so props stay put on furniture that's moved or resized. Prefab origins go on the floor.
   "array" on a bone or blob: {"count": n, "offset": [dx, dy, dz] (per copy), "rot": [deg] (per copy, about
@@ -217,10 +218,11 @@ def _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part) -> None:
     insts = s.setdefault("instances", {})
     tags = [wn, on]
     if op.get("frame"):
-        insts[f"{on}_frame"] = {"use": op["frame"], "at": _r([*c, z0 + sill]), "rot": [0, 0, round(ang, 4)], "tags": tags}
+        insts[f"{on}_frame"] = {"use": op["frame"], "at": _r([*c, z0 + sill]), "rot": [0, 0, round(ang, 4)], "tags": tags,
+                                "from_wall": [wn, k, "frame"]}
     if op.get("window"):
         insts[f"{on}_window"] = {"use": op["window"], "at": _r([*c, z0 + sill + height / 2]),
-                                 "rot": [0, 0, round(ang, 4)], "tags": tags}
+                                 "rot": [0, 0, round(ang, 4)], "tags": tags, "from_wall": [wn, k, "window"]}
     if door:
         hinge = op.get("hinge", "left")
         swing = op.get("swing", "left")
@@ -237,7 +239,8 @@ def _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part) -> None:
         a = float(op.get("open", 0.0))
         hp = hp + nrm * side * (T / 2 if a else 0.0)  # an open door stands at the face it swings into
         insts[f"{on}_door"] = {"use": door, "at": _r([*hp, z0 + sill + 0.005]),
-                               "rot": [0, 0, round(base_ang + turn * a, 4)], "tags": [*tags, "doors"]}
+                               "rot": [0, 0, round(base_ang + turn * a, 4)], "tags": [*tags, "doors"],
+                               "from_wall": [wn, k, "door", round(base_ang, 4), turn]}
 
 
 def _place_on(s: dict, todo: dict) -> dict:
@@ -267,7 +270,10 @@ def top_of(s: dict, names, x: float, y: float, who: str = "") -> float:
     from .sdf import field_at
     from .spec import compile_prims
     names = [names] if isinstance(names, str) else list(names)
-    members = [n for n in select(s, names) if n in s.get("bones", {}) or n in s.get("blobs", {})]
+    els = {**s.get("bones", {}), **s.get("blobs", {})}
+    # an element's own name means that element (an array's copy 0 is named like the array, whose name also tags
+    # every copy: "shelf" is the first shelf, not all of them); anything else is a tag or an instance
+    members = [m for n in names for m in ([n] if n in els else select(s, [n])) if m in els]
     if not members:
         raise SpecError(f"{who}: \"on\" {names} names no element, tag or instance")
     mset = set(members)
@@ -298,6 +304,10 @@ def top_of(s: dict, names, x: float, y: float, who: str = "") -> float:
 
 def _weathered(insts: dict, weather: list) -> dict:
     insts = copy.deepcopy(insts)
+    for d in insts.values():  # "on" instances may give only [x, y]: their z is found later
+        at = d.get("at")
+        if isinstance(at, list) and len(at) == 2:
+            d["at"] = [*at, 0.0]
     for i, w in enumerate(weather):
         _weather_instances(insts, w, i)
     return insts
@@ -308,13 +318,17 @@ def placements(spec: dict) -> dict:
     An instance named ".L" also places its mirror image ".R" (mirror: reflected across X after the placement)."""
     out = {}
     on = {}
+    if spec.get("walls"):  # doors, frames and windows the walls place
+        w = {"walls": copy.deepcopy(spec["walls"]), "blobs": {}, "instances": {}}
+        _walls(w)
+        spec = {**spec, "instances": {**w["instances"], **(spec.get("instances") or {})}}
     if any("on" in d for d in (spec.get("instances") or {}).values()):
         import hashlib
         import json
         expand(spec)
         on = _ON[hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()]
     for inst, d in _weathered(spec.get("instances") or {}, spec.get("weather") or []).items():
-        pl = {"use": d["use"], "at": on.get(inst, d.get("at", [0, 0, 0])), "rot": d.get("rot", [0, 0, 0]),
+        pl = {"use": d["use"], "at": on.get(inst, d.get("at", [0, 0, 0])), "from_wall": d.get("from_wall"), "rot": d.get("rot", [0, 0, 0]),
               "scale": float(d.get("scale", 1.0)), "mirror": False}
         out[inst] = pl
         if inst.endswith(".L"):
