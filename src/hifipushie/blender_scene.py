@@ -643,15 +643,17 @@ HEIGHT_SCALE = 25.0  # painted height baked as 0.5 + h x 25: +-20 mm fits in 0..
 
 
 def _emit(mat, what):
-    """Point a part material's output at an emission of one thing it computes: "color" (the base colour), "rms"
-    (roughness, metallic, specular as RGB), "ao" (the ao_raw vertex attribute) or "height" (painted relief in m,
-    as 0.5 + height x HEIGHT_SCALE)."""
+    """Point a part material's output at an emission of what it computes: "color" (the base colour), "rms"
+    (roughness, metallic, specular as RGB) or "aoh" (red: the ao_raw vertex attribute, green: painted relief in m
+    as 0.5 + height x HEIGHT_SCALE). Emission sampling is off: an emissive material otherwise makes every
+    triangle a light, and Cycles builds a light tree over millions of them on every bake call (~5 s each)."""
     t = mat.node_tree
     bsdf = next(n for n in t.nodes if n.type == "BSDF_PRINCIPLED")
     out = next(n for n in t.nodes if n.type == "OUTPUT_MATERIAL")
     em = t.nodes.get("hp_bake_em") or t.nodes.new("ShaderNodeEmission")
     em.name = "hp_bake_em"
     em.inputs["Strength"].default_value = 1.0
+    mat.cycles.emission_sampling = "NONE"
 
     def feed(sock, name):
         inp = bsdf.inputs[name]
@@ -672,7 +674,7 @@ def _emit(mat, what):
                 for link in list(cc.inputs[i].links):
                     t.links.remove(link)
                 feed(cc.inputs[i], name)
-        elif what == "height":
+        elif what == "aoh":  # red: the ao_raw vertex attribute, green: painted height (as for "height")
             hn = t.nodes.get("hp_height")
             sc = t.nodes.get("hp_bake_hs") or t.nodes.new("ShaderNodeMath")
             sc.name, sc.operation = "hp_bake_hs", "MULTIPLY_ADD"
@@ -681,13 +683,13 @@ def _emit(mat, what):
                 t.links.new(hn.outputs[0], sc.inputs[0])
             else:
                 sc.inputs[0].default_value = 0.0
-            for i in range(3):
-                t.links.new(sc.outputs[0], cc.inputs[i])
-        else:
             at = t.nodes.get("hp_bake_ao") or t.nodes.new("ShaderNodeAttribute")
             at.name, at.attribute_type, at.attribute_name = "hp_bake_ao", "GEOMETRY", "ao_raw"
-            for i in range(3):
-                t.links.new(at.outputs["Fac"], cc.inputs[i])
+            for link in list(cc.inputs[2].links):
+                t.links.remove(link)
+            t.links.new(at.outputs["Fac"], cc.inputs[0])
+            t.links.new(sc.outputs[0], cc.inputs[1])
+            cc.inputs[2].default_value = 0.0
         t.links.new(cc.outputs[0], em.inputs["Color"])
     t.links.new(em.outputs[0], out.inputs["Surface"])
 
@@ -721,7 +723,7 @@ def bake_maps(job):
         else:
             highs[pt["key"]] = src
     imgs = {}
-    WHAT = ("color", "rms", "ao", "height")
+    WHAT = ("color", "rms", "aoh")  # ao and painted height share a pass (red, green)
     for ai, size in job["atlases"].items():
         for what in WHAT:
             im = bpy.data.images.new(f"a{ai}_{what}", size, size, alpha=True, float_buffer=True)
@@ -735,20 +737,27 @@ def bake_maps(job):
     bm.node_tree.nodes.active = tex
     for low in lows.values():
         low.data.materials.append(bm)
+    # Each bake call syncs every renderable object to Cycles (BVH and all): render only the pair being baked.
+    # Rays only ever hit the selected high mesh, so what the others would add is set-up time, not texels.
+    everything = list(scene.objects)
     times = {}
     for what in WHAT:
         for m in {mat for ob in highs.values() for mat in ob.data.materials if mat}:
             _emit(m, what)
         t1 = time.time()
-        for pt in job["parts"]:
-            tex.image = imgs[(str(pt["atlas"]), what)]
-            for ob in scene.objects:
+        for i, pt in enumerate(job["parts"]):
+            hi, lo = highs[pt["key"]], lows[pt["key"]]
+            for ob in everything:
+                ob.hide_render = ob is not hi and ob is not lo
                 ob.select_set(False)
-            highs[pt["key"]].select_set(True)
-            lows[pt["key"]].select_set(True)
-            bpy.context.view_layer.objects.active = lows[pt["key"]]
+            hi.hide_render = lo.hide_render = False
+            tex.image = imgs[(str(pt["atlas"]), what)]
+            hi.select_set(True)
+            lo.select_set(True)
+            bpy.context.view_layer.objects.active = lo
             bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=pt["extrusion"],
                                 max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES")
+            print(f"@@progress {what} {i + 1}/{len(job['parts'])} {pt['key']} {time.time() - t1:.0f}s", flush=True)
         times[what] = round(time.time() - t1, 1)
     for ai, size in job["atlases"].items():
         out = {}
@@ -756,6 +765,9 @@ def bake_maps(job):
             a = np.empty(size * size * 4, np.float32)
             imgs[(ai, what)].pixels.foreach_get(a)
             out[what] = a.reshape(size, size, 4)[::-1]  # Blender's rows start at the bottom
+        aoh = out.pop("aoh")
+        out["ao"] = aoh[..., [0, 0, 0, 3]]
+        out["height"] = aoh[..., [1, 1, 1, 3]]
         np.savez(f"{job['out']}/atlas{ai}.npz", **out)
     times["total"] = round(time.time() - t0, 1)
     print("@@times", json.dumps(times))
@@ -763,9 +775,11 @@ def bake_maps(job):
 
 def _ao_override(ao_distance, sky_distance, samples):
     """A material that emits both openings in one colour: red = AO around the surface normal, green = sky
-    (AO looking straight up), so one bake measures both (each bake call has ~20 s of fixed cost)."""
+    (AO looking straight up), so one bake measures both (each bake call has ~20 s of fixed cost). Emission
+    sampling off: every triangle of an emissive material is otherwise a light in a tree Cycles rebuilds per call."""
     m = bpy.data.materials.new("hp_ao_sky")
     m.use_nodes = True
+    m.cycles.emission_sampling = "NONE"
     t = m.node_tree
     t.nodes.clear()
     outs = []

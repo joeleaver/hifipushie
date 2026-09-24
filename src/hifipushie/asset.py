@@ -147,6 +147,29 @@ def texture_loads(mesh: Path, density: dict, focus: dict) -> dict:
     return out
 
 
+class _Log(list):
+    """The export log, echoed as it grows (stderr and workspace/<model>/progress.log, with the elapsed time) so a
+    long export isn't silent until it returns."""
+
+    def __init__(self, name: str):
+        super().__init__()
+        self.t0 = time.time()
+        self.path = store.HOME / name / "progress.log"
+        self.path.write_text("")
+
+    def note(self, line: str):
+        import sys
+        msg = f"[{time.time() - self.t0:6.0f}s] {line}"
+        print(msg, file=sys.stderr, flush=True)
+        with open(self.path, "a") as f:
+            f.write(msg + "\n")
+
+    def append(self, line):
+        super().append(line)
+        self.note(str(line))
+
+
+BAKE_SAMPLES = 1  # emission bakes: one sample per texel (4 cost 4x and changed nothing measurable)
 FILL = 0.6  # the fraction of an atlas the packed islands fill: a first guess, corrected from the first unwrap
 
 
@@ -438,7 +461,8 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
                          "matrix": M})
         t = time.time()
         out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
-                              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": 4}, 3600)
+                              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES},
+                             3 * 3600, progress=getattr(log, "note", None))
         bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
         log.append(f"paint and AO maps baked by Cycles from the scene in {time.time() - t:.1f}s ({bt})")
         res = {}
@@ -621,7 +645,7 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     triangles drawn (a prefab's once per instance); the file holds fewer. With instancing every instance is a
     movable asset (a prefab of one instance too), as in the Blender scene. The paint and AO maps are baked by
     Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects)."""
-    log = []
+    log = _Log(name)
     t = time.time()
     spec = store.load(name)
     defs = spec.get("parts") or {}
@@ -644,6 +668,16 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     units: dict[str, list] = {}
     for pn in areas:  # a prefab's parts go on one atlas together (one material per instance where possible)
         units.setdefault(pf_of.get(pn, pn), []).append(pn)
+    if texel_density:  # say now, not after the bake, which parts can't get the density asked for
+        for u, pns in units.items():
+            need = sum(loads[pn] for pn in pns)
+            cap = texture ** 2 * FILL
+            if need > cap:
+                got = texel_density * np.sqrt(cap / need)
+                area = sum(loads[pn] / rel[pn] ** 2 for pn in pns)
+                log.append(f"{u}: {area:.0f} m^2 of surface wants {np.sqrt(need / FILL):.0f}^2 texels at "
+                           f"{texel_density:g}/m, more than one {texture}^2 atlas holds: expect ~{got:.0f}/m "
+                           f"(split it into parts, raise texture, or give it a lower texel_density)")
     fill = FILL
     for attempt in range(2):
         group = density_groups(units, loads, fixed, texture, fill) if texel_density else atlas_groups(
