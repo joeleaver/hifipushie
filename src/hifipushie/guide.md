@@ -154,7 +154,11 @@ The rules above (restraint, centimetre sag, subtle grime) are for realism. A sty
   patterns (planks tiles on a shingled roof) for flat colour with a tone per piece (`random`) and shadow lines
   (`ao`). A thick roof slab needs its shingles on top of it, not at the old offset.
 - `workspace/cabin_toon.py` builds cabin5 at three levels (storybook, cartoon, toybox) as a worked example.
-- Still missing for cartoon silhouettes: boxes can't bend (a sagging roof, a bowed wall), and there is no taper.
+- The silhouette is what reads as cartoon, and parts alone can't give it: `style.shape.deform` bends the whole
+  building (deform.py): "sag" (a ridge that dips), "bulge" (walls that belly out), "taper" (a base wider than the
+  eaves), "lean", "twist", "wobble" (a hand-drawn waver). Prefab instances stay rigid and ride the bend (props
+  "on" a table ride with the table). Rigid windows and door frames in a bent wall can sit a little off their
+  bent openings at strong settings. A deformed build costs ~2-3x an undeformed one.
 
 ## 5b. History: nothing real is pristine
 
