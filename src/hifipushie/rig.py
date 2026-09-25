@@ -8,9 +8,13 @@ hang from the bone nearest to them.
 
 Skin weights come from the bones' own round cones: at each vertex, every bone's exact distance (`sdf.field_at` of
 that one primitive: thickness counts, so a thick thigh claims the flesh a thin bone axis would lose), weighted
-exp(-(d - d_nearest) / falloff) with the falloff half the bone's radius, among the nearest bone's family (two steps of parents,
-children, siblings), smoothed over the mesh, the four strongest kept and normalised. Blobs (a belly, a head) go with the bones they sit on. Parts (clothes, eyes) are skinned to the same
-bones.
+exp(-(d - d_nearest) / falloff) with the falloff half the radius of the thinner of the bone and the nearest one (the
+fat torso's own radius spread it halfway down the upper arm: the raised arm bent mid-bicep), among the nearest bone's
+family (two steps of parents, children, siblings), smoothed over the mesh, the four strongest kept and normalised.
+Where a limb continues through a joint (collar -> upper arm -> forearm), each cone stops at the plane bisecting the
+two bones, so the collar's round end doesn't claim the top of the upper arm. Blobs (a belly, a head) go with the bones
+they sit on and aren't cut. Parts (clothes, eyes) are skinned to the same bones. A limb fused to the body (the
+goblin's arms blend into its belly) webs when raised whatever the weights: model limbs clear of the torso.
 """
 
 from __future__ import annotations
@@ -116,11 +120,14 @@ def weights(bones: list[dict], verts: np.ndarray, faces: np.ndarray | None = Non
     then averaged with the vertices around (`smooth` rounds over the faces' edges) so that where one bone's flesh
     meets another's the weights blend instead of stepping (a crease down the chest when an arm lifts)."""
     V = np.asarray(verts, np.float64)
-    D = np.stack([np.min([sdf.field_at([p], V, clip=False) for p in b["prims"]], 0) for b in bones], 1)
-    fall = np.array([max(falloff * (b["falloff_r"] if "falloff_r" in b else
-                                    0.5 * (b["prim"].params["ra"] + b["prim"].params["rb"])), 1e-3) for b in bones])
+    D = np.stack([np.min([_flesh(p, b.get("cuts", ()), V) for p in b["prims"]], 0) for b in bones], 1)
+    r = np.array([b["falloff_r"] if "falloff_r" in b else 0.5 * (b["prim"].params["ra"] + b["prim"].params["rb"])
+                  for b in bones])
+    near = D.argmin(1)
+    # the blend's width is set by the thinner bone: the fat torso's own radius would spread it down the arm
+    fall = np.maximum(falloff * np.minimum(r[None, :], r[near][:, None]), 1e-3)
     d0 = D.min(1, keepdims=True)
-    W = np.exp(-(D - d0) / fall[None])
+    W = np.exp(-(D - d0) / fall)
     # a vertex blends only between its nearest bone and that bone's family (two steps of parents, children and
     # siblings): unrelated
     # bones that happen to be near (a tusk by the jaw, the other thigh) would crowd the four kept and step
@@ -143,6 +150,16 @@ def weights(bones: list[dict], verts: np.ndarray, faces: np.ndarray | None = Non
     Wk[Wk < 0.01 * Wk[:, :1]] = 0.0
     Wk /= Wk.sum(1, keepdims=True)
     return J.astype(np.int64), _settle(J, Wk, faces, smooth)
+
+
+def _flesh(p, cuts, V: np.ndarray) -> np.ndarray:
+    """A flesh primitive's distance; a bone's cone stops at its joints' planes ({"cuts": [(point, normal)]}, keeping
+    the -normal side). Blobs aren't cut: a belly on the spine would lose its sides to a hanging arm."""
+    d = sdf.field_at([p], V, clip=False)
+    if p.kind == "cone":
+        for q, n in cuts:
+            d = np.maximum(d, (V - q) @ n)
+    return d
 
 
 def _settle(J: np.ndarray, W: np.ndarray, faces, rounds: int) -> np.ndarray:
@@ -378,20 +395,24 @@ def _segments(rb: list[dict]):
 
 
 def _cone_piece(p, a: np.ndarray, b: np.ndarray, t0: float, t1: float):
-    """The part of a bone's cone between t0 and t1 along it (radii interpolated): a rig bone's own flesh where it
-    lies along the modelling bone."""
+    """The part of a bone's cone between t0 and t1 along it (a -> b, radii interpolated): a rig bone's own flesh where
+    it lies along the modelling bone. The skeleton walk can reach a bone from its far end (the goblin's arms, from
+    the hand), so a -> b may run against the cone's own axis: the piece is laid along the cone's axis either way."""
     import copy
     q = copy.copy(p)
     pr = dict(p.params)
     L = pr["len"]
     ra, rb = pr["ra"], pr["rb"]
-    pr["a"] = a + t0 * (b - a)
+    if np.linalg.norm(a - pr["a"]) > np.linalg.norm(b - pr["a"]):  # reached from the cone's far end
+        t0, t1 = 1.0 - t1, 1.0 - t0
+    ax = pr["frame"][1]
+    s, e = pr["a"] + t0 * L * ax, pr["a"] + t1 * L * ax
+    pr["a"] = s
     pr["len"] = max((t1 - t0) * L, 1e-4)
     pr["ra"], pr["rb"] = ra + t0 * (rb - ra), ra + t1 * (rb - ra)
     pr["cut"] = 0.0
     q.params = pr
-    lo = np.minimum(pr["a"], a + t1 * (b - a)) - max(ra, rb) * 2
-    q.lo, q.hi = lo, np.maximum(pr["a"], a + t1 * (b - a)) + max(ra, rb) * 2
+    q.lo, q.hi = np.minimum(s, e) - max(ra, rb) * 2, np.maximum(s, e) + max(ra, rb) * 2
     return q
 
 
@@ -450,6 +471,22 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
         while par >= 0 and par not in pos:
             par = rb[par]["parent"]
         carry[n]["parent"] = pos.get(par, -1)
+    for n, i in enumerate(ids):  # where a chain continues through a joint, parent and child flesh meet at the plane
+        pn = carry[n]["parent"]  # bisecting the two bones (the elbow's crease), so a collar's round end doesn't
+        if pn < 0:  # reach over the top of the upper arm
+            continue
+        (a0, a1), (b0, b1) = seg[ids[pn]], seg[i]
+        la, lb = np.linalg.norm(a1 - a0), np.linalg.norm(b1 - b0)
+        if la < 1e-3 or lb < 1e-3 or np.linalg.norm(a1 - b0) > 1e-6:
+            continue
+        if carry[pn]["prim"].name == carry[n]["prim"].name:  # pieces of one cone (the spine) keep blending softly
+            continue
+        nrm = (a1 - a0) / la + (b1 - b0) / lb
+        if np.linalg.norm(nrm) < 1e-6:
+            continue
+        nrm /= np.linalg.norm(nrm)
+        carry[pn].setdefault("cuts", []).append((b0, nrm))
+        carry[n].setdefault("cuts", []).append((b0, -nrm))
     for c in carry:
         if "ra" not in c["prim"].params:  # a blob-only bone: its falloff from the blob's size
             sz = float(np.min(c["prim"].hi - c["prim"].lo)) / 2
