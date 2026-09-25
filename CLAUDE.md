@@ -333,6 +333,54 @@ Validate every exported GLB with the Khronos validator (gives 0 errors today). I
 `await v.validateBytes(new Uint8Array(fs.readFileSync(path)))`, print `.issues`. Blender's importer
 ignores glTF occlusion, so the Cycles preview can't show AO: look at the ORM/AO PNGs themselves.
 
+## Terrain (experimental; branch claude/terrain-llm-vocabulary-a74fe1)
+
+Goal (the user's, 2026-09-25): terrain an LLM can author in designer language, not raise/lower/flatten brushes.
+Three scales kept apart: the *implied world* (the brief's kind of terrain at real size), the *level footprint*
+(compressed: game levels shrink distances), the *player* (exact: 1.8 m, trees, tracks). Design intent is
+authoritative; realism fills in between and never moves what the designer placed. Five rounds of blind tests
+(fresh agents given only `terrain_guide.md` and a prose brief) drove everything; ledger on the Overboard card
+"Terrain: an LLM vocabulary..." (project hifipushie).
+
+Modules (separate from the creature pipeline; heightfield, not SDF):
+- `terrain.py`: spec normalisation (units, "30%" values), skeleton (peaks, cols, open/closed ridges with wander,
+  rivers), base from three harmonic fields (t, floor, crest) plus automatic divides and ribs, basins (floor ramps by
+  relative distance to the drain; walls are real mountainsides: width per stretch from the crest behind, average
+  slope, tiered cliff bands, `character`), lone hills as domes, tilt, landforms (lake with ring/downhill/no dam,
+  fan, moraine, terrace), lakes filled to their own level, report, map/mask-sheet/Cycles views, export.
+- `terrain_world.py`: terrain kinds with real reference ranges, compression (c = frame / real width, heights by
+  sqrt c; small kinds and small frames crop), heights chosen when left out, player-scale detail. Unknown kinds raise
+  `Questions` for the designer (their answers define the kind, saved to `workspace/terrain/kinds.json`).
+- `terrain_design.py`: zones, passes (a notch that ends where it daylights; descents are routes), walls, sites (pads
+  with fall/overlooks), routes (least-cost on 32 headings, graded, carved; explain failures), cover masks and tree
+  instances, sight lines (from across a site), realism check, intent.
+- `terrain_forms.py`: canyons cut into a plateau through horizontal strata, mesas, river water, fords, rim addresses.
+- `terrain_erode.py`: fastscapelib (dependency) stream power + diffusion after the design, protected places, heights
+  restored at large scale, per-cell hardness (cliffs stand), thermal slumping. Blender has no terrain erosion.
+- `blender_terrain.py`: Cycles preview (tree instances, water, ground beyond the frame).
+- `terrain_guide.md`: the user-facing vocabulary (what blind agents read). Run: `examples/terrain_run.py <spec>
+  [--no3d] [--export]` (exit 3 = questions for the designer).
+
+Lessons worth keeping: a report must measure the *built* ground, never restate the plan (a pass "ramp" sat over a
+65 m cliff; strata "ledges" were 40-52 deg); unbounded reaches bite (lake banks, pad banks and pass ramps each once
+shaved or buried whole mountains); erosion scaled to the geology cuts trenches across a game level (cap it in
+metres); whole walls as steep as "unclimbable" read as curtains (put the steepness in cliff bands); when a result
+regresses, bisect by building one spec at each commit and diffing heights.
+
+**Next session: plan C (agreed 2026-09-25), then maybe A (more forms per kind) and B (realism: SDF cliffs).**
+1. Trust leaks and bugs from round 5: canyon strata report from built slopes; "see the peak" by how far the summit
+   rises above the crest behind it (not its flanks); the skyline check denied visible mesas; a route near a 60 m ford
+   told it needs a bridge; a shore address landing on a river contradicts itself; the downhill pond dam still has an
+   uphill rim; `walls.average` capped at min_slope - 5 silently; `rises_toward` should take compass words; `intent`
+   as a list crashes; view eyes inside the ground; steep river water renders as a vertical sheet; mesa tops draw as
+   donuts on the map; embankment sawtooth.
+2. Export: Unity `.raw` (+ heights offset to 0, terrain size), tree layers out of the splats, playable/walls masks
+   always, fords and river water surface/width in meta, site fall/plane in meta.
+3. Questions flow: allow mixtures ("crater + coast"), ask about shape, say up front what can't be built (no sea yet).
+4. MCP tools in `server.py` (mcp 2.x MCPServer): `set_terrain` (spec + history under `workspace/terrain/<name>/`),
+   `look_terrain` (map, masks, views as images), `check_terrain` (the report; questions returned as data),
+   `export_terrain`; the guide through the existing `guide` tool. Then a blind round through the MCP tools.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.
