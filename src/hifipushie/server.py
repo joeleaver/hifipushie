@@ -602,7 +602,8 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     Always also audits realism: missing story, identical copies at even spacing, things square to the axes,
     identical parts, big perfectly flat faces, paint without wear or dirt (works without a plan too).
     And walks a person through every doorway (box cuts with targets reaching the floor, 1.6 m+ tall): a door
-    swung across the opening, furniture in the way, a step too high; names what blocks it."""
+    swung across the opening, furniture in the way, a step too high; names what blocks it. And lists props
+    (instances) cutting into anything else, how deep and into what (a chair pushed into a table leg)."""
     from . import realism
     spec = store.load(name)
     warn = realism.audit(spec)
@@ -615,6 +616,9 @@ def check(name: str, resolution: int = 160, save: str | None = None):
         notes = assemble.NOTES.get(hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest())
         if notes:
             realism_txt += "\n\nSCATTER:\n" + "\n".join(f"- {n}" for n in notes)
+    cl = meas.prop_clashes(spec)
+    if cl:
+        realism_txt += "\n\nCLASHES (props cutting into something):\n" + "\n".join(f"- {c}" for c in cl)
     doors = meas.check_doorways(spec)
     if doors:
         realism_txt += "\n\nDOORWAYS (a person 1.8 m tall, 0.5 m wide walked 1 m through each):\n" + "\n".join(doors)

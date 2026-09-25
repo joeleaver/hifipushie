@@ -143,6 +143,11 @@ addressed on the surface. Rules that matter:
   a voxel for its size, while an element in a big part shares that part's voxel (the bread came out at 30 mm).
 - `check` walks a person through every door opening and names what blocks it (a door swung across the
   doorway, a chair). Model some ground (a big box, part "ground", lumpy) if there are props outside.
+- `check` also lists props cutting into anything ("chair3 cuts 45 mm into table1/leg#2"): fix them by moving the
+  prop, not by ignoring the list. Mark what's made to sit into things `prefabs.<p>.embed: true` (window and door
+  frames in their walls) and parts that give `parts.<p>.soft: true` (rugs, bedding, cushions: feet sink into them).
+  Moving one thing to fix a clash can make another (a stool moved into the bathroom doorway): read the doorways
+  too.
 - Cameras: `eye: [x, y]` stands a person there; asked to stand on a counter, bed or table, they step off onto the
   floor beside it (the info line says so). Give a 3D eye to put the camera anywhere.
 

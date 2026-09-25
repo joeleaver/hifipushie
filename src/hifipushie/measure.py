@@ -476,3 +476,50 @@ def check_doorways(spec: dict, height: float = 1.8, radius: float = 0.25) -> lis
                 line += f"; in the way: {who} ({best[1]}, {max(best[0], 0) * 100:.0f} cm from the path)"
         lines.append(("ok       " if ok else "BLOCKED  ") + line)
     return lines
+
+
+def prop_clashes(spec: dict, voxel: float = 0.015, tol: float = 0.008) -> list[str]:
+    """Every placed instance (furniture, props, doors) checked for cutting into anything else: its inside sampled
+    on a grid, the points also inside something else at least `tol` deep. "chair3 cuts 45 mm into table1/leg#2".
+    Contact isn't a clash: things set down "on" a support, or touching, stay under tol. A prefab made to sit into
+    things (a window or door frame in its wall: prefabs.<p>.embed = true) isn't checked, and parts that give
+    (parts.<p>.soft = true: rugs, bedding, cushions) aren't clashed into."""
+    from .assemble import placements
+    from .sdf import SDF
+    prims = compile_prims(spec)
+    pls = placements(spec)
+    embed = {inst for inst, pl in pls.items() if ((spec.get("prefabs") or {}).get(pl["use"]) or {}).get("embed")}
+    soft = {pn for pn, d in (spec.get("parts") or {}).items() if (d or {}).get("soft")}
+    by_inst: dict[str, list] = {}
+    for p in prims:
+        if p.instance is not None and p.instance not in embed:
+            by_inst.setdefault(p.instance, []).append(p)
+    lines = []
+    for inst in sorted(by_inst):
+        own = by_inst[inst]
+        adds = [p for p in own if p.op == "add"]
+        if not adds:
+            continue
+        lo, hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+        near = [p for p in prims if p.instance != inst and p.op == "add" and p.part not in soft
+                and np.all(p.hi >= lo) and np.all(p.lo <= hi)]
+        if not near:
+            continue
+        ax = [np.arange(a + voxel / 2, b, voxel) for a, b in zip(lo, hi)]
+        P = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
+        fo = field_at(own, P)
+        P, dep = P[fo < -tol], -fo[fo < -tol]
+        if not len(P):
+            continue
+        fr = field_at(near, P)
+        depth = np.minimum(dep, -fr)
+        deep = np.flatnonzero(depth > tol)
+        if not len(deep):
+            continue
+        worst = {}
+        for i in deep[np.argsort(depth[deep])[-60:]]:
+            el = min(near, key=lambda p: float(SDF[p.kind](P[i:i + 1], p.params)[0]))
+            worst[el.name] = max(worst.get(el.name, 0.0), float(depth[i]))
+        top = sorted(worst.items(), key=lambda t: -t[1])[:3]
+        lines.append(f"{inst} cuts " + ", ".join(f"{d * 1000:.0f} mm into {n}" for n, d in top))
+    return lines

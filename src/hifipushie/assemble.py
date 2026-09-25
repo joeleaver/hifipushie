@@ -247,7 +247,14 @@ def _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part) -> None:
         else:
             hp, base_ang, turn = c + u * (width / 2), ang + 180.0, -side
         a = float(op.get("open", 0.0))
-        hp = hp + nrm * side * (T / 2 if a else 0.0)  # an open door stands at the face it swings into
+        # an open door stands in front of the face it swings into (and of its frame's jambs), its leaf (~2 cm
+        # half-thick) clear of them
+        face = T / 2
+        fp = (s.get("prefabs") or {}).get(op.get("frame") or "")
+        for b in ((fp or {}).get("blobs") or {}).values():
+            if isinstance(b.get("at"), list) and b.get("op", "add") == "add":
+                face = max(face, abs(float(b["at"][1])) + float(np.asarray(b.get("size", [0, 0, 0]), float)[1]))
+        hp = hp + nrm * side * ((face + 0.025) if a else 0.0)
         insts[f"{on}_door"] = {"use": door, "at": _r([*hp, z0 + sill + 0.005]),
                                "rot": [0, 0, round(base_ang + turn * a, 4)], "tags": [*tags, "doors"],
                                "from_wall": [wn, k, "door", round(base_ang, 4), turn]}
