@@ -233,6 +233,9 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   stone, array copy). Stack layers with rising narrow ranges ([0.25, 0.26], [0.5, 0.51], [0.75, 0.76]) for a
   quarter of the books in each colour; a wide range at low opacity for board-to-board tone. Prefab instances
   share one bake, so they share values.
+- **Dust and other "tops" masks on small round props:** a `facing` range starting low (0.3-0.5) wraps the mask over
+  rounded rims and lids, and its breakup tears the edge: the lids read crumpled. Start it high ([0.85, 0.98]) so
+  only flat tops take it; look at the layer alone on a small prop before judging.
 - **Relief without sculpting:** `"height": -0.001` on a cells layer grooves the scale borders; `0.002` on a
   cells-distance layer raises warts. It lands in the exported normal and height maps at texel resolution;
   `look` only tilts vertex normals, so judge it in a close-up with `shading="raking"` and in the export
