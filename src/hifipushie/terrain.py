@@ -229,8 +229,10 @@ class Terrain:
                 raise ValueError(f"unknown point {ref!r}: ridges pass through peaks, cols, 'line@0.4' or [x, y, z]")
             xy, h = self.points[ref]
             return np.array([*xy, h])
-        if len(ref) != 3:
-            raise ValueError(f"a ridge point needs a height: [x, y, z], got {ref}")
+        if len(ref) == 2 or ref[2] is None:  # a height left out: chosen from the kind, like a peak's
+            z = self.world["base"] + 0.85 * self.world["relief"]
+            self.filled.append(f"ridge point [{ref[0]:.0f}, {ref[1]:.0f}] h {z:.0f} m")
+            return np.array([ref[0], ref[1], z], float)
         return np.array(ref, float)
 
     def _ridges(self):
@@ -695,6 +697,13 @@ class Terrain:
         k = int(np.argmax((pts - c) @ d))
         return pts[k], self.height(pts[k]), d
 
+    def summit(self, name):
+        """A peak's built height: the highest ground within its own top (map, report and probes all use this)."""
+        xy, _ = self.points[name]
+        p = (self.spec.get("peaks") or {}).get(name) or (self.spec.get("cols") or {}).get(name) or {}
+        r = max(float(p.get("radius", 0)), 40 * self.k, 1.5 * self.cell)
+        return float(self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) <= r].max())
+
     def height(self, xy, H=None):
         H = self.H if H is None else H
         return float(self.sample(np.atleast_2d(xy), H)[0])
@@ -880,8 +889,7 @@ class Terrain:
         from . import terrain_world
         out = terrain_world.report(self) + ["peaks/cols (authored -> built):"]
         for n, (xy, h) in self.points.items():
-            top = self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) < max(40 * self.k, self.cell)].max()
-            out.append(f"  {n}: {h:.0f} m -> {top:.0f} m")
+            out.append(f"  {n}: {h:.0f} m -> {self.summit(n):.0f} m")
         for L in self.lines.values():
             if L.kind != "river":
                 continue
@@ -995,14 +1003,20 @@ class Terrain:
         out = Path(out_dir)
         (out / "masks").mkdir(parents=True, exist_ok=True)
         ny, nx = self.H.shape
-        k = (size - 1) / (max(nx, ny) - 1) if size else 1.0
-        shape = (int(round((ny - 1) * k)) + 1, int(round((nx - 1) * k)) + 1)  # exactly `size` on the longer side
+        n = max(nx, ny)
+        k = (size - 1) / (n - 1) if size else 1.0
+        # engines want square heightmaps (Unity 2^n+1): a non-square frame is padded on its short side with the edge
+        # continued, and meta.json says which part is the level
+        pad = (n - ny, n - nx) if size else (0, 0)
+        shape = (size, size) if size else (ny, nx)
 
         def grid(a, order=1):
             a = a[::-1].astype(np.float32)
+            if size and any(pad):
+                a = np.pad(a, ((0, pad[0]), (0, pad[1])), mode="edge")
             if not size:
                 return a
-            yy, xx = np.meshgrid(np.linspace(0, ny - 1, shape[0]), np.linspace(0, nx - 1, shape[1]), indexing="ij")
+            yy, xx = np.meshgrid(np.linspace(0, n - 1, shape[0]), np.linspace(0, n - 1, shape[1]), indexing="ij")
             return ndimage.map_coordinates(a, [yy, xx], order=order, mode="nearest").astype(np.float32)
 
         H = grid(self.H, 3)
@@ -1014,7 +1028,30 @@ class Terrain:
             Image.fromarray((np.clip(grid(m), 0, 1) * 255).astype(np.uint8)).save(out / "masks" / f"{name}.png")
 
         for name, m in self.cover.items():
-            mask(name, m)
+            mask(name, m)  # densities (for trees, detail), each 0..1 on its own
+        # splat weights: layers painted in order, each over what's below; "ground" is what's left; they sum to 1
+        names = list(self.cover)
+        rest = np.ones(self.X.shape)
+        weights = {}
+        for name in reversed(names):
+            weights[name] = self.cover[name] * rest
+            rest = rest * (1 - self.cover[name])
+        weights["ground"] = rest
+        order = names + ["ground"]
+        for i in range(0, len(order), 4):
+            chans = [grid(weights[nm]) for nm in order[i:i + 4]]
+            while len(chans) < 4:
+                chans.append(np.zeros_like(chans[0]))
+            rgba = (np.clip(np.stack(chans, -1), 0, 1) * 255).astype(np.uint8)
+            Image.fromarray(rgba, "RGBA").save(out / f"splat{i // 4}.png")
+        from . import terrain_design as design
+        inst = design.trees(self)
+        with open(out / "trees.csv", "w") as f:
+            f.write("x,y,z,kind,layer\n")
+            layers = getattr(self, "tree_layers", {})
+            for x, y, z, li in inst:
+                nm, kind = layers.get(int(li), ("", ""))
+                f.write(f"{x:.2f},{y:.2f},{z:.2f},{kind},{nm}\n")
         mask("water", ~np.isnan(self.water))
         if "routes" in self.masks:
             mask("roads", self.masks["routes"])
@@ -1033,6 +1070,12 @@ class Terrain:
         cell = self.cell / k
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
                 "north_up": True, "pixel_0_0": "north-west corner",
+                "height_png": "16-bit, linear: height = lo + value / 65535 * (hi - lo)",
+                "level_pixels": [int(round((nx - 1) * k)) + 1, int(round((ny - 1) * k)) + 1],
+                "padded": "the level is the top-left part; the rest continues its edges" if any(pad) else "",
+                "splat": {f"splat{i // 4}.png": order[i:i + 4] for i in range(0, len(order), 4)},
+                "trees": "trees.csv (x, y, z, kind, layer), world metres",
+                "rivers": {n: np.c_[L.xy, L.h][::4].round(2).tolist() for n, L in self.lines.items() if L.kind == "river"},
                 "cover": {n: (self.spec.get("cover") or {}).get(n, {}).get("type", n) for n in self.cover},
                 "lakes": {n: {"level": lk["level"], "at": lk["xy"]} for n, lk in self.lakes.items()},
                 "sites": {n: {"at": s["xy"], "level": s["level"], "radius": s["radius"]} for n, s in self.sites.items()},
@@ -1181,11 +1224,10 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
         for name, s in T.sites.items():
             x, y = to_px(*s["xy"])
             r = s["radius"] / T.cell * sc
-            d.rectangle([x - r, y - r, x + r, y + r], outline=(160, 40, 160), width=2)
+            d.ellipse([x - r, y - r, x + r, y + r], outline=(160, 40, 160), width=2)
             label(s["xy"], f"{name} {s['level']:.0f}", (110, 20, 110))
         for name, (xy, h) in T.points.items():
-            top = T.H[np.hypot(T.X - xy[0], T.Y - xy[1]) < 40].max()
-            label(xy, f"{name} {top:.0f}")
+            label(xy, f"{name} {T.summit(name):.0f}")
         for Lr in T.lines.values():
             if Lr.kind == "river":
                 label(Lr.at(0.5)[0], Lr.name, (20, 60, 150))
@@ -1254,11 +1296,7 @@ def write_mesh(T: Terrain, path, step: int = 1):
     faces = np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, e], 1)])
     col = ground_colours(T)[::step, ::step].reshape(-1, 3)
     col = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
-    trees = {}
-    for name, m in T.cover.items():
-        kind = design.tree_kind(T, name)
-        if kind:
-            trees[kind] = np.maximum(trees.get(kind, 0), m[::step, ::step].ravel())
+    inst = design.trees(T)  # the same instances the export writes
     Wt = T.water[::step, ::step]
     wet = ~np.isnan(Wt)
     wv = verts.copy()
@@ -1267,7 +1305,9 @@ def write_mesh(T: Terrain, path, step: int = 1):
     wf = np.concatenate([np.stack([a, b, c], 1)[q], np.stack([a, c, e], 1)[q]])
     np.savez(path, verts=verts.astype(np.float32), faces=faces.astype(np.int32), colors=col.astype(np.float32),
              wverts=wv.astype(np.float32), wfaces=wf.astype(np.int32),
-             **{f"trees_{k}": v.astype(np.float32) for k, v in trees.items()})
+             tree_xyz=inst[:, :3].astype(np.float32),
+             tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
+             span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))), base=np.float32(T.H.min()))
 
 
 def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24):

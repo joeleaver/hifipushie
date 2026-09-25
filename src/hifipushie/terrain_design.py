@@ -42,7 +42,7 @@ COVER_TYPES = {
     "sand":      {"slope": [0, 15], "color": [0.78, 0.71, 0.52]},
     "mud":       {"slope": [0, 10], "color": [0.33, 0.27, 0.19]},
     "orchard":   {"slope": [0, 20], "avoid": ["water", "routes", "sites"], "rows": 6, "color": [0.30, 0.42, 0.16],
-                  "trees": "broadleaf"},
+                  "trees": "fruit"},
 }
 
 
@@ -225,12 +225,15 @@ def _pass(T, name, p):
     end = np.where(u >= 0, ends[0], ends[1])
     ln = np.where(u >= 0, lens[0], lens[1])
     ramp = floor + (end - floor) * np.clip(np.abs(u) / ln, 0, 1)
-    target = ramp + np.clip(np.abs(w) - half, 0, None) * math.tan(math.radians(p.get("sides", 60)))
+    off = np.clip(np.abs(w) - half, 0, None)
+    cut = ramp + off * math.tan(math.radians(p.get("sides", 60)))  # the flanks above the way
+    fill = ramp - off * math.tan(math.radians(35))  # an embankment where the ground falls below it (the way is built:
+    # cutting only left the ramp promised in the report over a 65 m cliff the basin wall had there)
     reach = smoothstep(ln * 1.05, ln * 0.9, np.abs(u))
-    T.H = np.where(reach > 0, T.H * (1 - reach) + np.minimum(T.H, target) * reach, T.H)
+    T.H = np.where(reach > 0, T.H * (1 - reach) + np.clip(T.H, fill, cut) * reach, T.H)
     corridor = (reach > 0) & (np.abs(w) < half + 3 * T.cell)
     T.passes[name] = {"xy": c.tolist(), "floor": floor, "ridge": L.name, "width": 2 * half, "grades": grades,
-                      "lengths": lens, "corridor": corridor}
+                      "lengths": lens, "corridor": corridor, "axis": nrm.tolist(), "max_grade": maxg or 1.0}
 
 
 def rugged(T):
@@ -349,7 +352,7 @@ _OFFS = [(0, 1), (1, 0), (1, 1), (1, -1), (1, 2), (2, 1), (2, -1), (1, -2),
          (1, 3), (3, 1), (3, -1), (1, -3), (2, 3), (3, 2), (3, -2), (2, -3)]  # 32 headings: steep slopes need near-contour ones
 
 
-def _path(T, H, cell, a, b, maxg, blocked):
+def _path(T, H, cell, a, b, maxg, blocked, reach_only=False):
     """Least-cost grid path from a to b (row, col) on 32 headings; edges steeper than 1.2 x maxg are left out,
     gentler ones cost more as they near the limit, so the search winds (switchbacks) where it must."""
     ny, nx = H.shape
@@ -368,6 +371,8 @@ def _path(T, H, cell, a, b, maxg, blocked):
             rows.append(p[ok]); cols.append(q[ok]); wts.append(wt[ok])
     G = coo_matrix((np.concatenate(wts), (np.concatenate(rows), np.concatenate(cols))), shape=(ny * nx, ny * nx)).tocsr()
     dist, pred = dijkstra(G, indices=idx[a], return_predecessors=True)
+    if reach_only:
+        return (np.isfinite(dist).reshape(ny, nx), b) if not np.isfinite(dist[idx[b]]) else None
     if not np.isfinite(dist[idx[b]]):
         return None
     out, k = [], idx[b]
@@ -397,6 +402,7 @@ def _route(T, name, r):
         ca, cb = [T.address(x)[0] for x in (a, b)]
         ga, gb = [(int(round((c[1] - T.ys[0]) / cell)), int(round((c[0] - T.xs[0]) / cell))) for c in (ca, cb)]
         path = None
+        strict = _path(T, H, cell, ga, gb, maxg * 0.95, blocked, reach_only=True)  # how far the asked grade gets
         for relax in (1.0, 1.4, 2.0, 3.0):
             bl = blocked.copy()
             bl[ga] = bl[gb] = False
@@ -412,8 +418,20 @@ def _route(T, name, r):
         leg[0], leg[-1] = ca, cb
         pts.append(leg if not pts else leg[1:])
     if relaxed > 1:
-        T.warnings.append(f"route {name!r}: nothing within {100 * maxg:.0f}% connects its stops; searched at "
-                          f"{100 * maxg * relaxed:.0f}% (the carve then eases what it can)")
+        msg = (f"route {name!r}: nothing within {100 * maxg:.0f}% connects its stops; searched at "
+               f"{100 * maxg * relaxed:.0f}% (the carve then eases what it can)")
+        if strict is not None:  # say where the asked grade runs out and what's in the way
+            reach, (gy, gx) = strict
+            yy, xx = np.nonzero(reach)
+            end = np.array([T.xs[0] + gx * cell, T.ys[0] + gy * cell])
+            k = int(np.argmin(np.hypot(T.xs[0] + xx * cell - end[0], T.ys[0] + yy * cell - end[1])))
+            near = np.array([T.xs[0] + xx[k] * cell, T.ys[0] + yy[k] * cell])
+            dz = T.height(end) - T.height(near)
+            dd = max(float(np.linalg.norm(end - near)), 1.0)
+            msg += (f". At {100 * maxg:.0f}% it gets as far as [{near[0]:.0f}, {near[1]:.0f}], {dd:.0f} m short; from "
+                    f"there the ground {'rises' if dz > 0 else 'falls'} {abs(dz):.0f} m to the stop ({100 * abs(dz) / dd:.0f}% "
+                    f"straight): lower/raise the stop, add a 'via' where it can wind, or allow a steeper grade")
+        T.warnings.append(msg)
     xy = np.vstack(pts)
     # smooth the staircase of grid steps, then resample evenly
     xy = np.vstack([xy[:1], (xy[:-2] + 2 * xy[1:-1] + xy[2:]) / 4, xy[-1:]])  # once: more cuts switchback corners
@@ -459,6 +477,10 @@ def _route(T, name, r):
     if max(cut, fill) > 15:
         T.warnings.append(f"route {name!r} cuts {cut:.0f} m / fills {fill:.0f} m somewhere: a trench or embankment; "
                           f"a gentler max_grade, a 'via' point, or accept it")
+    straight = sum(float(np.linalg.norm(T.address(b)[0] - T.address(a)[0])) for a, b in zip(stops[:-1], stops[1:]))
+    if length > 3 * max(straight, 1.0):
+        T.warnings.append(f"route {name!r} is {length:.0f} m for {straight:.0f} m as the crow flies: it's detouring "
+                          f"round something; check the map for what, or add a 'via'")
     s, _ = _arclen(xy)
     T.routes[name] = Line(name, "route", xy, h, s, {"length": length, "max_grade": maxg, "width": width,
                                                    "cut": cut, "fill": fill})
@@ -530,6 +552,8 @@ def cover(T) -> dict:
             sc = user if user else br.get("scale", 100) * T.k  # the type defaults are landscape-scale
             n = noise.fbm(pts, sc, 3, seed=41 + k).reshape(T.X.shape)
             m *= np.clip(1 + br["amount"] * 4 * (n - 0.5), 0, 1)
+        if not c.get("under_water") and "water" not in c.get("avoid", []):
+            m *= np.isnan(T.water)  # nothing grows under water unless asked ("under_water": true)
         for a in c.get("avoid", []):
             if a == "water":
                 wet = ~np.isnan(T.water)
@@ -549,6 +573,38 @@ def cover(T) -> dict:
 
 
 TREES_PER_M2 = 0.02  # the preview's (and a reasonable engine's) density at mask 1: one tree per 50 m2
+
+
+def trees(T, limit=250_000):
+    """Tree instances (x, y, z, kind, layer) for every tree layer: a jittered grid a tree apart, each point kept with
+    the mask's probability; an orchard's points sit on its rows (so rows read as rows, in the preview and the engine)."""
+    rng = np.random.default_rng(11)
+    out = []
+    (x0, y0), (x1, y1) = T.spec["extent"]
+    for li, (name, m) in enumerate(T.cover.items()):
+        c = _spec_cover(T, name)
+        kind = c.get("trees")
+        if not kind or m.max() <= 0:
+            continue
+        if c.get("rows"):
+            step = float(c.get("spacing", c["rows"]))
+            gx, gy = np.meshgrid(np.arange(x0, x1, step / 2), np.arange(y0, y1, step / 2))
+            pts = np.stack([gx.ravel(), gy.ravel()], 1) + rng.normal(0, 0.15, (gx.size, 2))
+            keep = T.sample(pts, m) > 0.75  # on the rows' centres only
+        else:
+            step = 1 / math.sqrt(TREES_PER_M2)
+            gx, gy = np.meshgrid(np.arange(x0, x1, step), np.arange(y0, y1, step))
+            pts = np.stack([gx.ravel(), gy.ravel()], 1) + rng.uniform(-0.45, 0.45, (gx.size, 2)) * step
+            keep = rng.random(len(pts)) < T.sample(pts, m)
+        pts = pts[keep]
+        out.append(np.c_[pts, T.sample(pts), np.full(len(pts), li)])
+        T.tree_layers = getattr(T, "tree_layers", {}) | {li: (name, kind)}
+    if not out:
+        return np.zeros((0, 4))
+    allp = np.vstack(out)
+    if len(allp) > limit:
+        allp = allp[rng.choice(len(allp), limit, replace=False)]
+    return allp
 
 
 # ---------------------------------------------------------------- report and intent
@@ -619,9 +675,21 @@ def report(T):
                    f"{np.percentile(fl, 98):.0f} m, drains to [{b['falls'][0]:.0f}, {b['falls'][1]:.0f}]; "
                    f"walls {b['width']:.0f} m wide, averaging {b['avg']:.0f} deg with a {b['band']:.0f} m cliff band")
     for name, p in T.passes.items():
-        out.append(f"pass {name}: through {p['ridge']} at [{p['xy'][0]:.0f}, {p['xy'][1]:.0f}], saddle at "
-                   f"{T.height(np.array(p['xy'])):.0f} m, {p['width']:.0f} m wide, ramps "
-                   + " and ".join(f"{100 * g:.0f}% over {n:.0f} m" for g, n in zip(p["grades"], p["lengths"])))
+        c, ax = np.array(p["xy"]), np.array(p["axis"])
+        sides = []
+        worst = None
+        for sgn, n in ((1, p["lengths"][0]), (-1, p["lengths"][1])):  # measured on the ground as built, not the plan
+            xy = c + sgn * ax * np.arange(0, n, T.cell / 2)[:, None]
+            g = _grades(T, xy)
+            k = int(np.argmax(g))
+            sides.append(f"{100 * g.max():.0f}% at worst over {n:.0f} m")
+            if g.max() > p["max_grade"] * 1.1 and (worst is None or g.max() > worst[0]):
+                worst = (g.max(), xy[k])
+        line = (f"pass {name}: through {p['ridge']} at [{c[0]:.0f}, {c[1]:.0f}], saddle at {T.height(c):.0f} m, "
+                f"{p['width']:.0f} m wide; built ramps " + " and ".join(sides))
+        if worst:
+            line += f" FAIL: {100 * worst[0]:.0f}% at [{worst[1][0]:.0f}, {worst[1][1]:.0f}]"
+        out.append(line)
     for name, s in T.sites.items():
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
@@ -842,9 +910,12 @@ def intent(T):
                     unit = "%" if isinstance(tgt, str) and tgt in T.lakes else " m showing"
                     fmt = (lambda v: f"{100 * v:.0f}%") if unit == "%" else (lambda v: f"{v:.0f} m showing")
                     best = max(got, key=lambda g: g[1])
-                    out.append(f"intent {name}: {tgt} from {src}: seen from {len(ok)} of {len(got)} spots across it "
-                               f"(centre {fmt(got[0][1])}, best {best[0]} {fmt(best[1])}; eye {eye:g} m)"
-                               + ("" if ok else " FAIL"))
+                    line = (f"intent {name}: {tgt} from {src}: seen from {len(ok)} of {len(got)} spots across it "
+                            f"(centre {fmt(got[0][1])}, best {best[0]} {fmt(best[1])}; eye {eye:g} m)" + ("" if ok else " FAIL"))
+                    if it.get("skyline") and unit != "%":
+                        sk = sight(T, spots[0][1].tolist(), tgt, eye).get("skyline")
+                        line += "; on the skyline" if sk else "; NOT on the skyline (higher ground behind it) FAIL"
+                    out.append(line)
                     continue
                 if isinstance(tgt, str) and tgt in T.lakes:
                     f = lake_seen(T, src, tgt, eye)
@@ -852,7 +923,10 @@ def intent(T):
                     continue
                 r = sight(T, src, tgt, eye)
                 if r["visible"] > want:
-                    s = f"intent {name}: {tgt} visible, {r['visible']:.0f} m of it showing above what's in front ({r['dist']:.0f} m away)"
+                    s = (f"intent {name}: {tgt} visible, {r['visible']:.0f} m of it showing above what's in front "
+                         f"({r['dist']:.0f} m away)") if "skyline" in r else (
+                        f"intent {name}: {tgt} visible (the sight line clears the ground by {r['visible']:.0f} m; "
+                        f"{r['dist']:.0f} m away)")
                     if "skyline" in r:
                         s += ", on the skyline" if r["skyline"] else ", against higher ground behind"
                     if it.get("skyline") and not r.get("skyline", True):

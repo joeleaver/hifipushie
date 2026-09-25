@@ -41,6 +41,11 @@ def _proto(kind):
     if kind == "conifer":
         bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=3.0, depth=13, location=(0, 0, 9))
         col = (0.025, 0.07, 0.03, 1)
+    elif kind == "fruit":  # orchard trees: small, round, low trunk
+        parts[0].scale = (0.6, 0.6, 0.45)
+        parts[0].location = (0, 0, 0.9)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=2.2, location=(0, 0, 3.2))
+        col = (0.09, 0.16, 0.04, 1)
     else:
         bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=4.5, location=(0, 0, 7.5))
         col = (0.07, 0.13, 0.03, 1)
@@ -61,6 +66,30 @@ def _proto(kind):
     ob.hide_render = True
     ob.location = (0, 0, -1e4)
     return ob
+
+
+def _instance(points_ob, kind):
+    """A tree on every vertex of points_ob, with a random size and turn."""
+    ng = bpy.data.node_groups.new("inst_" + kind, "GeometryNodeTree")
+    ng.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    ng.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    N, L = ng.nodes, ng.links
+    gi, go = N.new("NodeGroupInput"), N.new("NodeGroupOutput")
+    inst = N.new("GeometryNodeInstanceOnPoints")
+    info = N.new("GeometryNodeObjectInfo")
+    info.inputs["Object"].default_value = _proto(kind)
+    L.new(gi.outputs[0], inst.inputs["Points"])
+    L.new(info.outputs["Geometry"], inst.inputs["Instance"])
+    size = N.new("FunctionNodeRandomValue")
+    size.data_type = "FLOAT"
+    size.inputs[2].default_value, size.inputs[3].default_value = 0.7, 1.3
+    L.new(size.outputs[1], inst.inputs["Scale"])
+    turn = N.new("FunctionNodeRandomValue")
+    turn.data_type = "FLOAT_VECTOR"
+    turn.inputs[1].default_value = (0, 0, 6.283)
+    L.new(turn.outputs[0], inst.inputs["Rotation"])
+    L.new(inst.outputs["Instances"], go.inputs[0])
+    points_ob.modifiers.new("trees", "NODES").node_group = ng
 
 
 def _scatter(ground, kinds, per_m2=0.02):
@@ -120,12 +149,23 @@ def run(job):
     nt.links.new(attr.outputs["Color"], bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = 0.9
     ground.data.materials.append(m)
-    kinds = [k[len("trees_"):] for k in d.files if k.startswith("trees_")]
-    for k in kinds:
-        a = ground.data.attributes.new("trees_" + k, "FLOAT", "POINT")
-        a.data.foreach_set("value", d["trees_" + k].astype(np.float32))
-    if kinds:
-        _scatter(ground, kinds)
+    if "tree_xyz" in d.files and len(d["tree_xyz"]):  # the same tree instances the export writes
+        for kind in sorted(set(d["tree_kind"].tolist())):
+            pts = d["tree_xyz"][d["tree_kind"] == kind]
+            me = bpy.data.meshes.new("trees_" + kind)
+            me.vertices.add(len(pts))
+            me.vertices.foreach_set("co", pts.astype(np.float64).ravel())
+            ob = bpy.data.objects.new("trees_" + kind, me)
+            bpy.context.scene.collection.objects.link(ob)
+            _instance(ob, kind)
+    # ground beyond the frame, so the horizon isn't the sky's dark underside (it read as a sea)
+    span = float(d["span"]) if "span" in d.files else 4000.0
+    plane = _mesh("beyond", np.array([[-20, -20, 0], [21, -20, 0], [21, 21, 0], [-20, 21, 0]], float) * span
+                  + [0, 0, float(d["base"]) - 1 if "base" in d.files else 0], np.array([[0, 1, 2], [0, 2, 3]]))
+    pm = bpy.data.materials.new("beyond")
+    pm.use_nodes = True
+    pm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.16, 0.2, 0.1, 1)
+    plane.data.materials.append(pm)
     if len(d["wfaces"]):
         water = _mesh("water", d["wverts"], d["wfaces"])
         wm = bpy.data.materials.new("water")
