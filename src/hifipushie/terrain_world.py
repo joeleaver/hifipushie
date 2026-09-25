@@ -51,33 +51,176 @@ KINDS = {
 }
 
 
-def kind_of(name):
+DESCRIBE = {
+    "alpine_valley": "a valley between high mountains, forested lower slopes, rocky tops",
+    "cirque": "a steep mountain bowl, often with a small lake",
+    "canyon": "a deep cut into flat high ground, with cliffs",
+    "hills": "rolling hills you'd walk over",
+    "farmland": "gentle farmland, fields and a farmstead",
+    "plateau": "flat high ground ending in cliffs (mesas, buttes)",
+    "crater": "a round crater or caldera",
+    "coast": "a shoreline: beach, bay or sea cliffs",
+    "dunes": "sand dunes",
+    "moor": "open upland: broad, bare, rolling",
+}
+
+# the designer decides what they want in their own terms; each answer means numbers behind the scenes
+QUESTIONS = [
+    {"id": "size", "question": "How big should it feel to cross on foot?", "options": {
+        "a minute or two": dict(across=250), "a few minutes": dict(across=600),
+        "ten minutes": dict(across=1500), "a long trek": dict(across=5000)}},
+    {"id": "height", "question": "How dramatic is the height?", "options": {
+        "gentle rises": dict(relief=0.03, face=(6, 2, 12), steep=0.0),
+        "hills you'd climb": dict(relief=0.08, face=(15, 8, 25), steep=0.01),
+        "mountains": dict(relief=0.25, face=(32, 25, 40), steep=0.12),
+        "sheer walls": dict(relief=0.3, face=(60, 45, 85), steep=0.35)}},
+    {"id": "underfoot", "question": "What's it like underfoot?", "options": {
+        "soft and smooth": dict(bumps=0.3, gully=0.5, crag=10.0),
+        "grassy and bumpy": dict(bumps=1.0, gully=2.0, crag=20.0),
+        "rocky and broken": dict(bumps=3.0, gully=8.0, crag=30.0)}},
+    {"id": "bottom", "question": "What's at the lowest point?", "options": {
+        "dry ground": dict(floor=0.3, water="none"), "a river": dict(floor=0.2, water="river"),
+        "a lake": dict(floor=0.3, water="lake"), "the sea": dict(floor=0.4, water="sea")}},
+    {"id": "enclosed", "question": "Can the player walk out, or is it closed in?", "options": {
+        "open": dict(enclosed="open"), "partly closed in": dict(enclosed="partly"),
+        "closed in (you can't climb out)": dict(enclosed="closed")}},
+]
+
+
+class Questions(Exception):
+    """The spec needs the designer to decide something. `questions` is for relaying to them, not for answering here."""
+
+    def __init__(self, why, questions):
+        super().__init__(why)
+        self.why = why
+        self.questions = questions
+
+    def text(self):
+        out = [f"QUESTIONS FOR THE DESIGNER ({self.why}). Ask them; don't answer for them. Put their answers in "
+               f"\"world\": {{\"answers\": {{...}}}}:"]
+        for q in self.questions:
+            out.append(f"  {q['id']}: {q['question']}")
+            for o, means in q["options"].items():
+                out.append(f"      - \"{o}\"" + (f"  ({means})" if isinstance(means, str) and means else ""))
+        return "\n".join(out)
+
+
+def _user_kinds():
+    import json
+    import os
+    from pathlib import Path
+    p = Path(os.environ.get("HIFI_TERRAIN_KINDS", "workspace/terrain/kinds.json"))
+    return (json.loads(p.read_text()) if p.exists() else {}), p
+
+
+def _norm(n):
+    return " ".join(str(n).lower().replace("_", " ").split())
+
+
+def kind_of(name, spec_kinds=None):
+    """A kind by its exact name or alias: built in, defined in the spec ("kinds"), or saved from earlier answers.
+    Anything else is a question for the designer, never a guess ("river valley" used to become an alpine valley)."""
     if not name:
         return None
-    n = str(name).lower().replace("_", " ").strip()
-    if n.replace(" ", "_") in KINDS:
-        return n.replace(" ", "_")
-    for k, v in KINDS.items():
-        if n in v["words"]:
-            return k
-    for k, v in KINDS.items():  # a word inside a longer phrase ("a small alpine valley")
-        if any(w in n for w in v["words"]):
-            return k
-    raise ValueError(f"unknown terrain kind {name!r}: one of {sorted(KINDS)} (or words like "
-                     + ", ".join(repr(w) for w in ("glen", "gorge", "farmstead", "mesa", "caldera")) + ")")
+    n = _norm(name)
+    user, _ = _user_kinds()
+    for table in (KINDS, spec_kinds or {}, user):
+        for k, v in table.items():
+            if n == _norm(k) or n in [_norm(w) for w in v.get("words", ())]:
+                if table is not KINDS:
+                    KINDS.setdefault(k, {**v, "words": tuple(v.get("words", ()))})
+                return k
+    return None
+
+
+def ask_about(name):
+    """Questions to define an unknown kind: is it one of the known ones (partial matches first), and if not, what the
+    designer wants it to be like."""
+    n = _norm(name)
+    near = [k for k, v in KINDS.items() if any(w in n or n in w for w in (_norm(k), *map(_norm, v.get("words", ()))))]
+    order = near + [k for k in KINDS if k not in near]
+    is_q = {"id": "is", "question": f"Is \"{name}\" one of these, or something new?",
+            "options": {**{k.replace("_", " "): DESCRIBE.get(k, "") + (" (closest by name)" if k in near else "")
+                           for k in order}, "something new": "answer the questions below"}}
+    return [is_q] + [{"id": q["id"], "question": q["question"], "options": {o: "" for o in q["options"]}} for q in QUESTIONS]
+
+
+def from_answers(name, answers):
+    """A kind from the designer's answers. Returns (kind key, missing question ids)."""
+    if answers.get("is") and _norm(answers["is"]) != "something new":
+        k = kind_of(answers["is"])
+        if k:
+            return k, []
+    kind = {"words": (_norm(name),), "answers": dict(answers)}
+    missing = []
+    for q in QUESTIONS:
+        a = answers.get(q["id"])
+        opt = None
+        if a is not None:
+            a = _norm(a)
+            opt = next((o for o in q["options"] if _norm(o) == a or _norm(o).startswith(a) or a in _norm(o)), None)
+        if opt is None:
+            missing.append(q["id"])
+            continue
+        kind.update(q["options"][opt])
+    if missing:
+        return None, missing
+    across = kind.pop("across")
+    rel = kind.pop("relief") * across
+    kind.update(across=(across * 0.5, across * 2, across), relief=(rel * 0.5, rel * 2, rel), game=across)
+    key = _norm(name).replace(" ", "_")
+    KINDS[key] = kind
+    return key, []
+
+
+def save_kind(key):
+    import json
+    user, path = _user_kinds()
+    if key in user:
+        return None
+    k = dict(KINDS[key])
+    k["words"] = list(k.get("words", ()))
+    user[key] = k
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(user, indent=1))
+    return path
 
 
 def game_across(spec) -> float | None:
     """The frame size for "units": "none" when the spec names a kind: its typical game footprint."""
-    k = kind_of((spec.get("world") or {}).get("kind"))
+    w = spec.get("world") or {}
+    try:
+        k = resolve_kind(w, spec.get("kinds"))
+    except Questions:
+        return None
     return KINDS[k]["game"] if k else None
+
+
+def resolve_kind(w, spec_kinds=None):
+    """The kind key for a "world" block, from its name, the spec's own kinds, saved kinds, or the designer's answers;
+    raises Questions when the designer has to decide."""
+    name = w.get("kind")
+    if not name:
+        return None
+    k = kind_of(name, spec_kinds)
+    if k:
+        return k
+    answers = w.get("answers") or {}
+    if answers:
+        k, missing = from_answers(name, answers)
+        if k:
+            return k
+        qs = [q for q in ask_about(name) if q["id"] in missing]
+        raise Questions(f"\"{name}\" still needs: {', '.join(missing)}", qs)
+    raise Questions(f"\"{name}\" isn't a kind the tool knows", ask_about(name))
 
 
 def resolve(T) -> dict:
     """The world in use: kind, compression (horizontal, vertical), relief and face slope for the level, player-scale
     detail. Without a kind: no compression reasoning, generic detail (what the compiler did before)."""
     w = T.spec.get("world") or {}
-    k = kind_of(w.get("kind"))
+    k = resolve_kind(w, T.spec.get("kinds"))
+    T.new_kind = k if (k and "answers" in KINDS[k]) else None
     if not k:
         return {"kind": None, "c": 1.0, "cv": 1.0, "relief": 0.25 * T.size, "face": 32.0, "face_max": 40.0,
                 "steep": 0.12, "bumps": 2.0 * T.k ** 0.5, "gully": 6.0, "crag": 80 * T.k, "base": float(w.get("base", 0)),
@@ -97,7 +240,7 @@ def resolve(T) -> dict:
     return {"kind": k, "c": c, "cv": cv, "relief": K["relief"][2] * cv, "face": min(wanted, fhi), "face_wanted": wanted,
             "face_max": fhi, "steep": K["steep"], "bumps": K["bumps"], "gully": K["gully"], "crag": K["crag"],
             "base": float(w.get("base", 0)), "real_across": K["across"][2], "real_relief": K["relief"][2],
-            "floor": K["floor"]}
+            "floor": K.get("floor", 0.3)}
 
 
 def fill_heights(T):
@@ -124,11 +267,21 @@ def report(T) -> list[str]:
     W = T.world
     if not W["kind"]:
         return ["world: no kind given, so no real-world yardstick (\"world\": {\"kind\": \"alpine valley\"} etc.)"]
-    out = [f"world: {W['kind'].replace('_', ' ')} (real ones ~{W['real_across'] / 1000:.1f} km across, "
+    src = " (from the designer's answers: " + ", ".join(f"{a}={v}" for a, v in KINDS[W["kind"]]["answers"].items()) + ")" \
+        if "answers" in KINDS[W["kind"]] else ""
+    out = [f"world: {W['kind'].replace('_', ' ')}{src} (real ones ~{W['real_across'] / 1000:.1f} km across, "
            f"~{W['real_relief']:.0f} m relief); this level is at {W['c']:.2f} horizontal, {W['cv']:.2f} vertical scale: "
            f"~{W['relief']:.0f} m relief, faces averaging {W['face']:.0f} deg"
            + (f" (compression would ask {W['face_wanted']:.0f}: the rest goes into cliff bands)"
               if W["face_wanted"] > W["face"] + 1 else "")]
     if T.filled:
         out.append("world: heights chosen for you: " + ", ".join(T.filled))
+    K = KINDS[W["kind"]]
+    hints = {"river": "rivers", "lake": "a lake landform (a basin's falls_to)", "none": "",
+             "sea": "no sea in the vocabulary yet: a lake at the base level reaching the frame's edge is the nearest"}
+    if K.get("water") and hints.get(K["water"]):
+        out.append(f"world: the designer said the lowest point is {K['water']}: use {hints[K['water']]}")
+    if K.get("enclosed") == "closed":
+        out.append("world: the designer said it's closed in: a basin inside a closed ridge (its walls are unclimbable), "
+                   "with a pass if the player enters")
     return out

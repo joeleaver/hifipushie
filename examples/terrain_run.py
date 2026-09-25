@@ -10,7 +10,14 @@ src = Path(sys.argv[1])
 out = src.parent if "workspace" in src.parts else Path("workspace/terrain")  # outputs beside the spec
 out.mkdir(parents=True, exist_ok=True)
 t0 = time.time()
-T = terrain.load(src)
+from hifipushie.terrain_world import Questions, save_kind
+try:
+    T = terrain.load(src)
+except Questions as q:  # the designer has to decide something: relay these to them
+    print(q.text())
+    sys.exit(3)
+if T.new_kind:
+    print("saved the new kind for next time:", save_kind(T.new_kind) or "(already saved)")
 print(f"compiled {time.time() - t0:.1f}s")
 print(T.report())
 terrain.map_image(T).save(out / f"{src.stem}_map.png")
