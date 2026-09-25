@@ -51,6 +51,9 @@ Masks (generators, each 0..1 per point):
            "range", "stretch"}: 3D Voronoi. edges = F2-F1, 0 on the borders (default range [0.15, 0]: lines
            between cells: scales, plates, cracked skin); distance = from each cell's centre (range [0.35, 0.1]
            = a bump per cell: warts, pebbles); id = a random 0..1 per cell (colour jitter, patchy scales).
+  rings:   {"spacing": m (0.006), "warp": 0..1 (0.5), "range": [lo, hi] ([0.75, 0.9]), "seed"}: growth rings round
+           each element's own axis (a log, a beam, a leg): 1 on the ring lines. Confine to end grain with
+           {"facing": "element"}; the wood material's end grain has them.
   random:  {"range": [lo, hi] (default [0, 1]), "seed"}: one random 0..1 value per element (each book, board,
            stone, log and array copy its own), ramped between lo and hi: a narrow range is a threshold, so
            layers stacked with rising ones ([0.25, 0.26], [0.5, 0.51], [0.75, 0.76], each over the last) give a
@@ -150,7 +153,7 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
-              "random", "mask")
+              "random", "rings", "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -326,6 +329,8 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         raise SpecError(f"paint {name!r}: tiles mode is \"gaps\", \"bevel\" or \"id\"")
     if g == "cells" and (not isinstance(e[g], dict) or e[g].get("mode", "edges") not in ("edges", "distance", "id")):
         raise SpecError(f"paint {name!r}: cells is {{\"scale\", \"mode\": \"edges\" | \"distance\" | \"id\", ...}}")
+    if g == "rings" and not (isinstance(e[g], dict) and set(e[g]) <= {"spacing", "warp", "range", "seed"}):
+        raise SpecError(f"paint {name!r}: rings is {{\"spacing\"?: m, \"warp\"?: 0..1, \"range\"?: [lo, hi], \"seed\"?}}")
     if g == "random" and not (isinstance(e[g], dict) and set(e[g]) <= {"range", "seed"}):
         raise SpecError(f"paint {name!r}: random is {{\"range\"?: [lo, hi], \"seed\"?: n}}: one value per element")
     if g == "cavity" and e[g] not in ("concave", "convex"):
@@ -633,6 +638,15 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
     if gen in ("ao", "thickness", "sky"):
         a, b = e[gen]
         return _ramp(view.get(gen), float(a), float(b))
+    if gen == "rings":
+        r = e["rings"]
+        sp = float(r.get("spacing", 0.006))
+        rad = np.linalg.norm(view.get("radial"), axis=1)
+        seed = view.get("grain_seed")
+        wob = float(r.get("warp", 0.5)) * sp * (2 * noise(v, {"scale": 8 * sp, "octaves": 2, "seed": int(r.get("seed", 0))}) - 1)
+        ph = (rad + seed * 7.31 * sp + wob) / sp
+        lo, hi = r.get("range", [0.75, 0.9])
+        return _ramp(0.5 + 0.5 * np.cos(2 * np.pi * ph), float(lo), float(hi))
     if gen == "random":
         r = e["random"]
         lo, hi = r.get("range", [0.0, 1.0])

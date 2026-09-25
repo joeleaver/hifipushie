@@ -56,9 +56,9 @@ class Points:
                                f"(Points(cache=...)); there's no SDF estimate of it any more")
             elif key == "hidden":
                 self.cache[key] = hidden(self.streams, self.pos, self.part, self.part_names, self.voxel)
-            elif key in ("grain", "grain_seed"):
-                self.cache["grain"], self.cache["grain_seed"] = grain(self.streams, self.pos, self.part,
-                                                                      self.part_names, self.voxel)
+            elif key in ("grain", "grain_seed", "radial"):
+                self.cache["grain"], self.cache["grain_seed"], self.cache["radial"] = grain(
+                    self.streams, self.pos, self.part, self.part_names, self.voxel)  # radial: (n, 3) offsets
             else:
                 out = np.zeros(len(self))
                 for i, pn in enumerate(self.part_names):
@@ -195,12 +195,15 @@ def end_weight(p) -> float:
 
 def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: float):
     """Each point's element (the additive primitive of its own part whose surface is nearest) and that
-    element's long axis, plus a 0..1 seed hashed from its name: ((n, 3), (n,)). The axis's length is the
+    element's long axis, a 0..1 seed hashed from its name, and the offset from its axis line (growth rings: its
+    length is the radius): ((n, 3), (n,), (n, 3)). The axis's length is the
     element's `end_weight` (at least 1e-3): facing "element" reads |n . grain|, stretch only its direction. On a box face wider than PANEL
     both ways the grain runs along the face's longer side instead (a cabinet built of panels)."""
     import zlib
     g = np.tile(np.array([0.0, 0.0, 1.0]), (len(X), 1))
     seed = np.zeros(len(X))
+    radial = np.zeros((len(X), 3))  # offset from the element's own axis line (linear in position, so it
+    # interpolates exactly across a triangle; its length is the ring radius): growth rings on cut ends
     for i, pn in enumerate(names):
         sel = np.flatnonzero(part == i)
         if not len(sel) or pn not in streams:
@@ -226,7 +229,11 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
                 continue
             k = near[win]
             best[k] = d[win]
-            g[sel[k]] = element_axis(p) * max(end_weight(p), 1e-3)
+            ax = element_axis(p)
+            g[sel[k]] = ax * max(end_weight(p), 1e-3)
+            c0 = np.asarray(pr["a"] if kind == "cone" else pr.get("c", Pn[win].mean(0)), float)
+            q = Pn[win] - c0
+            radial[sel[k]] = q - np.outer(q @ ax, ax)
             if kind == "box":  # a face too big to be a piece of wood's end is a panel: grain along its longer side
                 rot, size = np.asarray(pr["rot"], float), np.asarray(pr["size"], float)
                 q = (Pn[win] - pr["c"]) @ rot
@@ -238,7 +245,7 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
                     along = idx[face, np.argmax(ext[face], 1)]
                     g[sel[k[big]]] = rot[:, along[big]].T * max(end_weight(p), 1e-3)
             seed[sel[k]] = (zlib.crc32(p.name.encode()) % 10007) / 10007
-    return g, seed
+    return g, seed, radial
 
 
 def thickness(prims, X: np.ndarray, N: np.ndarray, voxel: float, size: float, samples: int = 10,

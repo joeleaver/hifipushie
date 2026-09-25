@@ -253,7 +253,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
 
 
 LAYOUT = 2  # what an object's packed inputs file holds (2: ao_raw for the export's AO map): bump on change
-VECTOR_INPUTS = ("grain",)  # per-vertex vectors: an attribute each, not packed
+VECTOR_INPUTS = ("grain", "radial")  # per-vertex vectors: an attribute each, not packed
 RAYTRACED = ("ao", "sky")  # inputs Cycles measures (the rest are ours: curvature is exact from the field)
 # AO as ours (cones out to 3 steps of 0.008 x the model size). Sky reaches past the whole model: a roof shelters
 # however high it is (ours stopped at 0.3 x, so interior walls read as open to the sky). x model size.

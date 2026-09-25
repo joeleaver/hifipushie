@@ -130,7 +130,11 @@ def _end_grain(p, s, d):
         chk = {"noise": {"scale": 0.02 * s, "octaves": 2, "range": [0.7, 0.73], "seed": p["seed"] + 21}}
         return [("end_grain", {"color": shade(p["color"], 1.3), "roughness": 0.85, "mask": [
                     {"facing": "element", "range": [0.75, 0.95]}]}),
-                ("end_checks", {"color": shade(p["color"], 0.6), "opacity": 0.5, "mask": [
+                # ~12 mm apart: finer aliases into moire at the distances a log end is usually seen from
+                ("end_rings", {"color": shade(p["color"], 0.72), "opacity": 0.5, "height": -0.0002, "mask": [
+                    {"rings": {"spacing": 0.012 * s, "warp": 0.45, "range": [0.7, 0.92], "seed": p["seed"] + 31}},
+                    {"facing": "element", "range": [0.8, 0.97], "blend": "multiply"}]}),
+                ("end_checks", {"color": shade(p["color"], 0.6), "opacity": 0.3, "mask": [
                     chk, {"facing": "element", "range": [0.75, 0.95], "blend": "multiply"}]})]
     nd = [-float(x) for x in d]
     return [("end_grain", {"color": shade(p["color"], 1.3), "roughness": 0.85, "mask": [

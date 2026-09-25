@@ -26,7 +26,7 @@ import numpy as np
 from . import paint
 from .spec import SpecError
 
-NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells"}
+NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings"}
 QUANTILES = json.loads(Path(__file__).with_name("noise_quantiles.json").read_text())
 
 
@@ -144,6 +144,12 @@ class _Compiler:
             if path:
                 out["expose"] = {"range0": path + [gen, 0], "range1": path + [gen, 1]}
             return {**out, "gen": "input", "attr": gen, "range": [float(e[gen][0]), float(e[gen][1])]}
+        if gen == "rings":  # the distance from each element's axis is measured; the rings are drawn per pixel
+            r = e["rings"]
+            self.inputs |= {"radial", "grain_seed"}
+            return {**out, "gen": "rings", "vec_attr": "radial", "seed_attr": "grain_seed",
+                    "spacing": float(r.get("spacing", 0.006)), "warp": float(r.get("warp", 0.5)),
+                    "seed": int(r.get("seed", 0)), "range": [float(x) for x in r.get("range", [0.75, 0.9])]}
         if gen == "cavity":
             self.inputs.add("curvature")
             r0, r1 = e.get("radius", [0.03, 0.006])
@@ -220,6 +226,8 @@ def _attrs(entries: list) -> set:
             out.add(e["attr"])
         if (e.get("stretch") or [None])[0] == "grain":  # each element's own piece of the pattern
             out.add(e["stretch"][2])
+        if e.get("seed_attr"):
+            out.add(e["seed_attr"])
         if e.get("gen") == "mask":
             out |= _attrs(e["entries"])
     return out

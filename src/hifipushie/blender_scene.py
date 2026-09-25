@@ -99,7 +99,7 @@ class _Nodes:
             self._in(n.inputs[1], b)
         if scale is not None:
             self._in(n.inputs["Scale"], scale)
-        return n.outputs["Value"] if op == "DOT_PRODUCT" else n.outputs["Vector"]
+        return n.outputs["Value"] if op in ("DOT_PRODUCT", "LENGTH", "DISTANCE") else n.outputs["Vector"]
 
     def attr(self, name, vector=False):
         """A vector attribute (wpos, wnrm), or a scalar input: one channel of its pack (packing: name -> [pack,
@@ -277,6 +277,15 @@ class _Nodes:
                 self._in(sep.inputs[0], f1.outputs["Color"])
                 val = sep.outputs[0]
             return self.ramp(val, e["range"][0], e["range"][1])
+        if g == "rings":  # paint "rings": cos of (distance from the element's axis + its seed + a wobble) / spacing
+            sp = e["spacing"]
+            wob = self.math("MULTIPLY", self.math("SUBTRACT", self.math("MULTIPLY", self.noise(self.attr("wpos", True), 8 * sp, 2, e["seed"]), 2.0), 1.0),
+                            e["warp"] * sp)
+            rad = self.vmath("LENGTH", self.attr(e["vec_attr"], True))  # per pixel: circles, not triangle facets
+            ph = self.math("DIVIDE", self.math("ADD", self.math("ADD", rad,
+                                                                self.math("MULTIPLY", self.attr(e["seed_attr"]), 7.31 * sp)), wob), sp)
+            v = self.math("ADD", 0.5, self.math("MULTIPLY", 0.5, self.math("COSINE", self.math("MULTIPLY", ph, 2 * np.pi))))
+            return self.ramp(v, e["range"][0], e["range"][1])
         if g == "input":
             x = self.attr(e["attr"])
             if e.get("sign", 1.0) != 1.0:
