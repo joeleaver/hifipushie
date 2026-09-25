@@ -153,7 +153,8 @@ def run(job):
     sun.rotation_euler = (np.radians(62), 0, np.radians(-35))  # low, from the south-west
     scene.collection.objects.link(sun)
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
-    cam.data.clip_start, cam.data.clip_end = 1, 20000
+    span = float(np.ptp(d["verts"][:, :2], axis=0).max())
+    cam.data.clip_start, cam.data.clip_end = max(0.05, span / 20000), span * 5
     scene.collection.objects.link(cam)
     scene.camera = cam
     for v in job["views"]:

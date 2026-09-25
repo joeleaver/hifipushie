@@ -20,4 +20,5 @@ sheet = terrain.mask_sheet(T)
 if sheet is not None:
     sheet.save(out / f"{src.stem}_masks.png")
 if "--export" in sys.argv:
-    print("exported", T.export(out / f"{src.stem}_export"))
+    size = (T.spec.get("export") or {}).get("size")
+    print("exported", T.export(out / f"{src.stem}_export", size=size))

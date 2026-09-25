@@ -60,21 +60,21 @@ def region(T, r) -> np.ndarray:
             return np.ones(shape)
         if r == "centre":
             return (np.hypot((T.X - mx) / (x1 - x0), (T.Y - my) / (y1 - y0)) < 0.25).astype(float)
+        # compass regions have soft edges (a tenth of the frame): a straight hard line reads as a map, not a place
+        soft = 0.05 * max(x1 - x0, y1 - y0)
+        north, east = smoothstep(my - soft, my + soft, T.Y), smoothstep(mx - soft, mx + soft, T.X)
         if r.startswith("quadrant:"):
             q = r.split(":")[1]
-            m = np.ones(shape, bool)
-            m &= (T.Y >= my) if "n" in q else (T.Y < my)
-            m &= (T.X >= mx) if "e" in q else (T.X < mx)
-            return m.astype(float)
+            return (north if "n" in q else 1 - north) * (east if "e" in q else 1 - east)
         half = r.split(":")[1] if r.startswith("half:") else r
         if half in ("north", "n"):
-            return (T.Y >= my).astype(float)
+            return north
         if half in ("south", "s"):
-            return (T.Y < my).astype(float)
+            return 1 - north
         if half in ("east", "e"):
-            return (T.X >= mx).astype(float)
+            return east
         if half in ("west", "w"):
-            return (T.X < mx).astype(float)
+            return 1 - east
         raise ValueError(f"unknown region {r!r}")
     if isinstance(r, list):
         return np.max([region(T, x) for x in r], axis=0)
@@ -102,11 +102,12 @@ def region(T, r) -> np.ndarray:
         meet(a)
     if "near" in r:
         xy = T.address(r["near"])[0]
-        meet(smoothstep(r.get("radius", 200) * 1.1, r.get("radius", 200) * 0.9, np.hypot(T.X - xy[0], T.Y - xy[1])))
+        rad = r.get("radius", 200 * T.k)
+        meet(smoothstep(rad * 1.1, rad * 0.9, np.hypot(T.X - xy[0], T.Y - xy[1])))
     if "above" in r:
-        meet(smoothstep(r["above"] - 15, r["above"] + 15, T.H))
+        meet(smoothstep(r["above"] - 15 * T.k, r["above"] + 15 * T.k, T.H))
     if "below" in r:
-        meet(smoothstep(r["below"] + 15, r["below"] - 15, T.H))
+        meet(smoothstep(r["below"] + 15 * T.k, r["below"] - 15 * T.k, T.H))
     if "slope" in r:
         lo, hi = r["slope"]
         s = T._slope()
@@ -145,23 +146,107 @@ def centroid(T, m):
 # ---------------------------------------------------------------- walls, sites, routes
 
 def apply(T):
+    for name, p in (T.spec.get("passes") or {}).items():
+        _pass(T, name, p)
+    for name, b in T.basins.items():  # a basin's wall is its own inner face: only checked, never raised
+        spec = (T.spec.get("basins") or {})[name].get("walls", {})
+        T.walls[name] = {"inside": b["floor"], "band": b["width"], "raised": 0.0, "basin": True,
+                         "spec": {"min_slope": b["min_slope"], "height": spec.get("height", 30),
+                                  "except": spec.get("except", []) + list(T.passes), "gap": spec.get("gap", 90 * T.k)}}
     for name, w in (T.spec.get("walls") or {}).items():
         _wall(T, name, w)
     for name, s in (T.spec.get("sites") or {}).items():
         _site(T, name, s)
     for name, r in (T.spec.get("routes") or {}).items():
         _route(T, name, r)
-    for name, w in (T.spec.get("walls") or {}).items():  # sites and routes may have eaten into a wall
+    for name in T.walls:  # checked last: sites and routes may have eaten into a wall
         _check_wall(T, name)
 
 
 def _gaps(T, w):
     g = np.ones(T.X.shape)
     for a in w.get("except", []):
+        if a in T.passes:  # a pass is exempt along its whole corridor
+            g = np.minimum(g, 1 - ndimage.binary_dilation(T.passes[a]["corridor"], iterations=2))
+            continue
         xy = T.address(a)[0]
-        r = w.get("gap", 80)
+        r = w.get("gap", 80 * T.k)
         g = np.minimum(g, smoothstep(r * 0.6, r * 1.4, np.hypot(T.X - xy[0], T.Y - xy[1])))
     return g
+
+
+def _pass(T, name, p):
+    """A saddle through a ridge: a corridor `width` wide, highest (`floor`) where it crosses the crest, ramping
+    straight down to the ground `length` metres out on each side, flanked by `sides`-degree walls. Cuts only."""
+    xy = T.address(p["at"])[0]
+    ridges = [L for L in T.lines.values() if L.kind == "ridge"] if not p.get("through") else [T.lines[p["through"]]]
+    L = min(ridges, key=lambda L: cKDTree(L.xy).query(xy)[0])
+    i = int(cKDTree(L.xy).query(xy)[1])
+    c = L.xy[i]
+    tan = L.xy[min(i + 2, len(L.xy) - 1)] - L.xy[max(i - 2, 0)]
+    tan /= np.linalg.norm(tan)
+    nrm = np.array([-tan[1], tan[0]])
+    walls = [b["width"] for b in T.basins.values()]  # a pass through a basin rim spans its wall
+    length = float(p.get("length", (max(walls) if walls else 300 * T.k) + 80 * T.k))
+    ends = [T.height(c + nrm * length), T.height(c - nrm * length)]
+    floor = float(p.get("floor", max(ends) + 2))
+    maxg = p.get("max_grade", 0.15)  # a pass is for walking through: each ramp lengthens until it's this gentle
+    lens = [length, length]
+    if maxg:
+        for k, sgn in enumerate((1, -1)):
+            for _ in range(6):
+                e = T.height(c + sgn * nrm * lens[k])
+                if abs(e - floor) / lens[k] <= maxg * 1.02 or lens[k] > 4 * length:
+                    break
+                lens[k] = abs(e - floor) / maxg
+        ends = [T.height(c + nrm * lens[0]), T.height(c - nrm * lens[1])]
+    if floor < max(ends) - 1:
+        T.warnings.append(f"pass {name!r}: its floor {floor:.0f} m is below the ground {length:.0f} m out "
+                          f"({max(ends):.0f} m): it dips, and water would pool in it; a floor >= {max(ends):.0f} m makes a saddle")
+    grades = [abs(e - floor) / n for e, n in zip(ends, lens)]
+    if maxg and max(grades) > maxg * 1.05:
+        T.warnings.append(f"pass {name!r}: a ramp is {100 * max(grades):.0f}% (want {100 * maxg:.0f}%): the ground drops "
+                          f"too far too soon on that side (the frame's edge?); raise the ground there, open the edge, "
+                          f"or accept a steeper approach")
+    v = np.stack([T.X - c[0], T.Y - c[1]], -1)
+    u, w = v @ nrm, v @ tan  # across the ridge, along it
+    half = float(p.get("width", min(60, 0.03 * T.size))) / 2
+    end = np.where(u >= 0, ends[0], ends[1])
+    ln = np.where(u >= 0, lens[0], lens[1])
+    ramp = floor + (end - floor) * np.clip(np.abs(u) / ln, 0, 1)
+    target = ramp + np.clip(np.abs(w) - half, 0, None) * math.tan(math.radians(p.get("sides", 60)))
+    reach = smoothstep(ln * 1.05, ln * 0.9, np.abs(u))
+    T.H = np.where(reach > 0, T.H * (1 - reach) + np.minimum(T.H, target) * reach, T.H)
+    corridor = (reach > 0) & (np.abs(w) < half + 3 * T.cell)
+    T.passes[name] = {"xy": c.tolist(), "floor": floor, "ridge": L.name, "width": 2 * half, "grades": grades,
+                      "lengths": lens, "corridor": corridor}
+
+
+def rugged(T):
+    """Ruggedness as geometry, not paint: crags (ridged noise) and ledges (the ground stepped into benches and risers)
+    in patches, scaled by `amount` over a zone, optionally ramped by a gradient. Rock cover then finds the steep bits."""
+    pts = np.c_[T.P, np.zeros(len(T.P))]
+    for k, (name, g) in enumerate((T.spec.get("rugged") or {}).items()):
+        R = np.full(T.X.shape, float(g.get("amount", 0.6)))
+        if "in" in g:
+            R *= region(T, g["in"])
+        if "gradient" in g:
+            gr = g["gradient"]
+            a, b = T.address(gr["from"])[0], T.address(gr["to"])[0]
+            ax = b - a
+            u = np.clip(((T.P - a) @ ax) / (ax @ ax), 0, 1).reshape(T.X.shape)
+            v0, v1 = gr.get("range", [0, 1])
+            R *= v0 + (v1 - v0) * u
+        sc = float(g.get("scale", 80 * T.k))
+        crag = 1 - np.abs(2 * noise.fbm(pts, sc, 3, seed=61 + k) - 1)
+        fine = noise.fbm(pts, sc / 3, 2, seed=62 + k)
+        T.H += R * (0.25 * sc * (crag.reshape(T.X.shape) - 0.5) + 0.06 * sc * (fine.reshape(T.X.shape) - 0.5))
+        step = float(g.get("ledges", 0.15 * sc))
+        if step > 0:
+            f = T.H / step
+            stepped = (np.floor(f) + smoothstep(0.65, 1.0, f - np.floor(f))) * step  # flat benches, steep risers
+            patch = smoothstep(0.45, 0.6, noise.fbm(pts, 2.5 * sc, 2, seed=63 + k).reshape(T.X.shape))
+            T.H += R * patch * (stepped - T.H)
 
 
 def _wall(T, name, w):
@@ -224,7 +309,7 @@ def _site(T, name, s):
     dist = np.hypot(T.X - xy[0], T.Y - xy[1])
     inside = dist <= r
     shore = isinstance(ref, str) and ref.endswith("_shore")
-    wet = ~np.isnan(T.water) & (dist < r + 200)
+    wet = ~np.isnan(T.water) & (dist < r + 200 * T.k)
     if "level" in s:
         level = float(s["level"])
     elif shore and wet.any():  # a lakeside pad: just above the water, cut into the bank behind
@@ -350,6 +435,8 @@ def _route(T, name, r):
         half = max(width / 2, 0.75 * T.cell)  # narrower than the grid can't be flat on it
         bank = np.clip(np.abs(T.H - hr) / math.tan(math.radians(34)), 4.0, 40.0)
         w = np.where(near, smoothstep(half + bank, half, d), 0)
+        if "sites" in T.masks:  # a road arrives at a site; it doesn't bury or trench it
+            w *= 1 - T.masks["sites"]
         before = T.H.copy()
         T.H = T.H * (1 - w) + hr * w
         cut, fill = float((before - T.H).max()), float((T.H - before).max())
@@ -418,7 +505,9 @@ def cover(T) -> dict:
             m *= smoothstep(within, within * 0.6, d)
         br = c.get("breakup")
         if br and br.get("amount"):
-            n = noise.fbm(pts, br.get("scale", 100), 3, seed=41 + k).reshape(T.X.shape)
+            user = ((T.spec.get("cover") or {})[name].get("breakup") or {}).get("scale")
+            sc = user if user else br.get("scale", 100) * T.k  # the type defaults are landscape-scale
+            n = noise.fbm(pts, sc, 3, seed=41 + k).reshape(T.X.shape)
             m *= np.clip(1 + br["amount"] * 4 * (n - 0.5), 0, 1)
         for a in c.get("avoid", []):
             if a == "water":
@@ -437,6 +526,15 @@ def cover(T) -> dict:
 
 def report(T):
     out = []
+    for name, b in T.basins.items():
+        fl = T.H[b["floor"]]
+        out.append(f"basin {name}: floor {b['floor'].sum() * T.cell ** 2 / 1e6:.2f} km2 from {fl.min():.0f} to "
+                   f"{np.percentile(fl, 98):.0f} m, drains to [{b['falls'][0]:.0f}, {b['falls'][1]:.0f}]; "
+                   f"walls {b['width']:.0f} m wide")
+    for name, p in T.passes.items():
+        out.append(f"pass {name}: through {p['ridge']} at [{p['xy'][0]:.0f}, {p['xy'][1]:.0f}], saddle at "
+                   f"{T.height(np.array(p['xy'])):.0f} m, {p['width']:.0f} m wide, ramps "
+                   + " and ".join(f"{100 * g:.0f}% over {n:.0f} m" for g, n in zip(p["grades"], p["lengths"])))
     for name, s in T.sites.items():
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
@@ -507,9 +605,11 @@ def _target(T, ref):
     """Where to aim at: a peak's summit, a lake's surface, else 2 m above the ground."""
     xy, h, _ = T.address(ref)
     if isinstance(ref, str) and (ref in T.points or ref.startswith("highest")):
-        near = np.hypot(T.X - xy[0], T.Y - xy[1]) < 40
-        k = np.argmax(np.where(near, T.H, -np.inf))
-        return T.P[k], float(T.H.ravel()[k]), 40.0, True
+        rad = max(40 * T.k, 1.5 * T.cell)
+        own = ((T.spec.get("peaks") or {}).get(ref) or {}).get("radius", 0.02 * T.size)
+        rad = max(rad, 1.2 * own)  # a rounded summit's own near edge isn't in the way of seeing it
+        near = np.hypot(T.X - xy[0], T.Y - xy[1]) < rad
+        return xy, float(T.H[near].max()), rad, True  # aim over the summit's middle at its top height
 
     return xy, h + 2, T.cell * 2, False
 
@@ -554,13 +654,31 @@ def sight(T, eye_ref, tgt_ref, eye_height=1.7):
     n = max(3, int(D / (T.cell / 2)))
     u = np.linspace(0, 1, n)[1:-1]
     dd = u * D
-    keep = (dd > 5) & (dd < D - skip)
-    p = exy + (txy - exy) * u[keep, None]
-    ground = T.sample(p)
-    need = e + (ground - e) * D / dd[keep]  # the target height a sight line over each sample needs
-    k = int(np.argmax(need)) if len(need) else 0
-    need_max = float(need.max()) if len(need) else -np.inf
-    res = {"visible": top - need_max, "block": p[k] if len(need) else None, "dist": D}
+    if summit:
+        # a hill's own flanks are the hill: from below a rounded top you only ever see its shoulder. What shows is
+        # how far its silhouette (the highest sight line into its own ground) rises above everything in front of it.
+        near = dd > 5
+        p = exy + (txy - exy) * u[near, None]
+        g = T.sample(p)
+        # the target's own mass: back along the line from it to where the ground has fallen halfway to the lowest
+        half = (top + g.min()) / 2
+        low = np.nonzero(g < half)[0]
+        zone = max(skip, D - dd[near][low[-1]]) if len(low) else D
+        ang = (g - e) / dd[near]
+        own = dd[near] >= D - zone
+        sil = max(ang[own].max() if own.any() else -np.inf, (top - e) / D)
+        front = ang[~own].max() if (~own).any() else -np.inf
+        k = int(np.argmax(np.where(~own, ang, -np.inf))) if (~own).any() else 0
+        res = {"visible": (sil - front) * D, "block": p[k] if (~own).any() else None, "dist": D}
+        top = e + sil * D
+    else:
+        keep = (dd > 5) & (dd < D - skip)
+        p = exy + (txy - exy) * u[keep, None]
+        ground = T.sample(p)
+        need = e + (ground - e) * D / dd[keep]  # the target height a sight line over each sample needs
+        k = int(np.argmax(need)) if len(need) else 0
+        need_max = float(need.max()) if len(need) else -np.inf
+        res = {"visible": top - need_max, "block": p[k] if len(need) else None, "dist": D}
     if summit:  # on the skyline: nothing beyond it rises above the line of sight to its top
         beyond = exy + (txy - exy) * np.linspace(1.02, 4, 200)[:, None]
         (x0, y0), (x1, y1) = T.spec["extent"]
@@ -581,9 +699,19 @@ def intent(T):
             xy, h, _ = T.address(it["at"])
             if isinstance(it["at"], str) and it["at"] in T.sites:
                 h = T.sites[it["at"]]["level"]
-            rivers = [L for L in T.lines.values() if L.kind == "river"]
-            lvls = [(L.name, L.h[cKDTree(L.xy).query(xy)[1]], cKDTree(L.xy).query(xy)[0]) for L in rivers]
-            lvls += [(n, lk["level"], np.linalg.norm(np.array(lk["xy"]) - xy)) for n, lk in T.lakes.items()]
+            lvls = []
+            for L in (L for L in T.lines.values() if L.kind == "river"):
+                dry = np.isnan(T.water.ravel()[_cells(T, L.xy)])  # a river's reach under a lake is the lake
+                if dry.any():
+                    q = cKDTree(L.xy[dry]).query(xy)
+                    lvls.append((L.name, L.h[dry][q[1]], q[0]))
+            for n, lk in T.lakes.items():
+                wet = T.lake_id == lk["id"]
+                if wet.any():
+                    lvls.append((n, lk["level"], np.hypot(T.X[wet] - xy[0], T.Y[wet] - xy[1]).min()))
+            if not lvls:
+                out.append(f"intent {name}: no water to be above")
+                continue
             wname, wl, _ = min(lvls, key=lambda x: x[2])
             ok = h - wl >= it["above_flood"]
             out.append(f"intent {name}: {h - wl:.0f} m above {wname} (want >= {it['above_flood']}) {'OK' if ok else 'FAIL'}")
@@ -608,7 +736,7 @@ def intent(T):
                     continue
                 r = sight(T, it["from"], tgt)
                 if r["visible"] > want:
-                    s = f"intent {name}: {tgt} visible, top {r['visible']:.0f} m showing ({r['dist']:.0f} m away)"
+                    s = f"intent {name}: {tgt} visible, {r['visible']:.0f} m of it showing above what's in front ({r['dist']:.0f} m away)"
                     if "skyline" in r:
                         s += ", on the skyline" if r["skyline"] else ", against higher ground behind"
                     if it.get("skyline") and not r.get("skyline", True):
