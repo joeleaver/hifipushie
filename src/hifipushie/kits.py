@@ -20,7 +20,8 @@ foot: {"ankle": joint, "ball": joint under the ball of the foot (default "toe.L"
        from the ankle), "dir": [x,y,z] the toes point (default ankle -> ball, level), "size": [length heel to ball,
        width, thickness] of the foot's body, "toes": count (5), "length": longest (big) toe, "lengths": per-toe
        ratios (big toe first, it's on the inner side), "r": toe radius at its base (the big toe x1.35), "taper",
-       (the foot is a body from heel to ball, a wide ball across its front where the toes root, and a heel pad)
+       (the foot's body is a flattened cone sloping from in front of the ankle down to the ball, the toes lie on the
+       ground rooted in it, their tops continuing its top; plus a heel pad)
        "spread": fan (deg), "curl": down-bend at each toe joint (deg), "heel": heel pad radius (0 = none), "blend"}
        Toes are digits like fingers (foot_t1_0.L ... foot_t1_3.L; "foot_t1.L" is the big toe's group), so strokes,
        paint and measure address them the same way; the rig skins them to the toe bone.
@@ -256,39 +257,42 @@ def _foot(spec: dict, name: str, k: dict, o: _Out):
     L, Wd, T = k.get("size") or [2.6 * ra, 1.9 * ra, 1.1 * ra]
     B = _joint(spec, name, ball)[0] if ball in spec.get("joints", {}) else A + f * L * 0.75 - up * ra * 0.6
     sole = min(B[2], A[2] - ra)  # the ground under the foot
-    heel = A - f * 0.3 * ra
-    mid = 0.5 * (heel + B)
-    mid[2] = sole + T / 2
-    R = np.stack([t, f, up], 1)
-    o.blob(f"{base}_body{sfx}", at=_r(mid), size=_r([Wd / 2, float(np.linalg.norm((B - heel)[:2])) / 2 + 0.1 * ra,
-                                                     T / 2]), rot=_euler(R), blend=round(0.5 * T, 5))
-    bp = B.copy()  # the ball of the foot: its widest part, where the toes root
-    bp[2] = sole + 0.42 * T
-    o.blob(f"{base}_ball{sfx}", at=_r(bp), size=_r([Wd / 2, 0.45 * ra, 0.42 * T]), rot=_euler(R),
-           blend=round(0.5 * T, 5))
-    hr = float(k.get("heel", 0.55 * ra))
-    if hr > 0:
-        hp = heel.copy()
-        hp[2] = sole + hr
-        o.blob(f"{base}_heel{sfx}", at=_r(hp), size=_r([hr * 0.9, hr, hr]), blend=round(0.6 * hr, 5))
     nt = int(k.get("toes", 5))
     ratios = k.get("lengths") or TOE_RATIOS.get(nt) or [1.0] * nt
     if len(ratios) != nt:
         raise KitError(f"kit {name!r}: {nt} toes but {len(ratios)} lengths")
-    tlen = float(k.get("length", 0.6 * ra))
-    tr = float(k.get("r", min(0.33 * ra, 0.95 * Wd / max(nt, 1) / 2.1)))
+    tlen = float(k.get("length", 0.55 * ra))
+    tr = float(k.get("r", min(0.3 * ra, 0.95 * Wd / max(nt, 1) / 2.1)))
     taper = float(k.get("taper", 0.8))
-    spread = float(k.get("spread", 14.0))
-    curl = float(k.get("curl", 12.0))
+    spread = float(k.get("spread", 8.0))
+    curl = float(k.get("curl", 8.0))
     kb = float(k.get("blend", 0.5 * tr))
+    # the foot's body: a flattened cone from in front of the ankle down to the ball, so its top slopes down
+    # into the toes and the ball is only as tall as the toes are thick (toes continue the foot, they don't
+    # sprout from the middle of its front)
+    rbc = 1.15 * tr
+    w = float(np.clip((Wd / 2) / rbc, 1.0, 1.6))  # wider flattens the instep into a rim round the ankle
+    j0 = A + f * 0.2 * ra
+    j0[2] = sole + 0.5 * ra
+    j1 = B + f * 0.1 * ra
+    j1[2] = sole + rbc
+    o.joint(f"{base}_instep{sfx}", j0, 0.5 * ra)
+    o.joint(f"{base}_ball{sfx}", j1, rbc)
+    o.bone(f"{base}_body{sfx}", f"{base}_instep{sfx}", f"{base}_ball{sfx}", r_a=round(0.5 * ra, 5),
+           r_b=round(rbc, 5), flat=[round(w, 3), 1.0], up=[0.0, 0.0, 1.0], blend=round(0.6 * rbc, 5))
+    hr = float(k.get("heel", 0.55 * ra))
+    if hr > 0:
+        hp = A - f * 0.3 * ra
+        hp[2] = sole + hr
+        o.blob(f"{base}_heel{sfx}", at=_r(hp), size=_r([hr * 0.9, hr, hr]), blend=round(0.6 * hr, 5))
     for i in range(nt):
         frac = 0.5 if nt == 1 else i / (nt - 1)  # 0 = big toe (inner side), 1 = little toe
-        across = (0.5 - frac) * Wd * 0.75
-        r0 = tr * (1.35 if i == 0 and nt > 2 else 1.0)
-        d = _rot_about(up, -spread * (0.5 - frac)) @ f  # fan out
-        p = B + f * 0.2 * ra + t * across  # rooted inside the ball of the foot
-        p[2] = sole + max(r0, 0.4 * T)
-        _digit(o, f"{base}_t{i + 1}", sfx, p, d, -up, tlen * float(ratios[i]), TOE_SEGMENTS, curl * 3,
+        across = (0.5 - frac) * Wd * 0.72
+        r0 = tr * (1.3 if i == 0 and nt > 2 else 1.0)
+        d = _rot_about(up, -spread * (0.5 - frac)) @ f  # fan out a little
+        p = B + t * across  # rooted inside the ball, lying on the ground
+        p[2] = sole + r0
+        _digit(o, f"{base}_t{i + 1}", sfx, p, d, -up, tlen * float(ratios[i]) + 0.1 * ra, TOE_SEGMENTS, curl * 3,
                r0, r0 * taper, kb)
 
 
