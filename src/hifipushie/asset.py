@@ -637,6 +637,15 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
     return res
 
 
+def write_fbx(glb: Path, fbx: Path) -> None:
+    """The GLB as FBX for Unity and Unreal (skeleton, skin, textures embedded): `blender_fbx.py`."""
+    r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
+                        "--python", str(Path(__file__).with_name("blender_fbx.py")), "--", str(glb), str(fbx)],
+                       capture_output=True, text=True, timeout=900)
+    if r.returncode or not fbx.exists():
+        raise RuntimeError(f"fbx export failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
+
+
 def _png(path: Path, img: np.ndarray, srgb_input: bool = True, bits: int = 8):
     a = np.clip(img, 0, 1)
     if bits == 16:
@@ -858,7 +867,8 @@ def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
 
 
 def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
-           atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False) -> dict:
+           atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False,
+           fbx: bool = False) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
     the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own.
@@ -998,6 +1008,10 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
                    f"{bones[0]['name']!r}), {len(rigged['weights'])} parts skinned, {time.time() - tr:.1f}s")
     write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged)
+    if fbx:  # the same asset as FBX, for engines' skinned-mesh import
+        tf = time.time()
+        write_fbx(glb, glb.with_suffix(".fbx"))
+        log.append(f"wrote {glb.with_suffix('.fbx').name} in {time.time() - tf:.1f}s")
     for _, f in atlas_files:
         f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()

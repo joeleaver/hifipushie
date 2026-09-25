@@ -743,7 +743,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
-                 hide: list[str] | None = None, save: str | None = None, rig: bool = False):
+                 hide: list[str] | None = None, save: str | None = None, rig: bool = False, fbx: bool = False):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
     roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic, glTF packing) and height (16-bit; low
@@ -772,12 +772,13 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     rig: an armature from the skeleton (a joint per additive bone, rooted at "pelvis"/"hips" or the skeleton's
     middle) and the parts skinned to it (4 weights per vertex from each bone's own cone and the blobs on it,
     blended within the nearest bone's family): characters. Decimated triangles bend less cleanly than modelled
-    edge loops at elbows and knees; check a pose (`rig.pose`) before relying on it.
+    edge loops at elbows and knees; judge it with the `rig` tool first. fbx: also <name>.fbx (Blender converts the
+    GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing, rig)
+                        instancing, rig, fbx)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"
