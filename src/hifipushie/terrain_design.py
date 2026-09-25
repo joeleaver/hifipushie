@@ -187,8 +187,10 @@ def _gaps(T, w):
 
 
 def _pass(T, name, p):
-    """A saddle through a ridge: a corridor `width` wide, highest (`floor`) where it crosses the crest, ramping
-    straight down to the ground `length` metres out on each side, flanked by `sides`-degree walls. Cuts only."""
+    """A notch through a ridge: a way `width` wide, highest (`floor`) on the crest, falling at `max_grade` both ways
+    until it daylights (the ground drops below it), flanked by `sides`-degree walls. It notches the crest mass only:
+    the descent beyond is the routes' job (they can switchback). A fixed-length ramp ran kilometres across a basin,
+    built a causeway, and drowned the lake it crossed."""
     xy = T.address(p["at"])[0]
     ridges = [L for L in T.lines.values() if L.kind == "ridge"] if not p.get("through") else [T.lines[p["through"]]]
     L = min(ridges, key=lambda L: cKDTree(L.xy).query(xy)[0])
@@ -197,43 +199,45 @@ def _pass(T, name, p):
     tan = L.xy[min(i + 2, len(L.xy) - 1)] - L.xy[max(i - 2, 0)]
     tan /= np.linalg.norm(tan)
     nrm = np.array([-tan[1], tan[0]])
-    walls = [b["width"] for b in T.basins.values()]  # a pass through a basin rim spans its wall
-    length = float(p.get("length", (max(walls) if walls else 300 * T.k) + 80 * T.k))
-    ends = [T.height(c + nrm * length), T.height(c - nrm * length)]
-    floor = float(p.get("floor", max(ends) + 2))
-    maxg = p.get("max_grade", 0.15)  # a pass is for walking through: each ramp lengthens until it's this gentle
-    lens = [length, length]
-    if maxg:
-        for k, sgn in enumerate((1, -1)):
-            for _ in range(6):
-                e = T.height(c + sgn * nrm * lens[k])
-                if abs(e - floor) / lens[k] <= maxg * 1.02 or lens[k] > 4 * length:
-                    break
-                lens[k] = abs(e - floor) / maxg
-        ends = [T.height(c + nrm * lens[0]), T.height(c - nrm * lens[1])]
-    if floor < max(ends) - 1:
-        T.warnings.append(f"pass {name!r}: its floor {floor:.0f} m is below the ground {length:.0f} m out "
-                          f"({max(ends):.0f} m): it dips, and water would pool in it; a floor >= {max(ends):.0f} m makes a saddle")
-    grades = [abs(e - floor) / n for e, n in zip(ends, lens)]
-    if maxg and max(grades) > maxg * 1.05:
-        T.warnings.append(f"pass {name!r}: a ramp is {100 * max(grades):.0f}% (want {100 * maxg:.0f}%): the ground drops "
-                          f"too far too soon on that side (the frame's edge?); raise the ground there, open the edge, "
-                          f"or accept a steeper approach")
+    maxg = float(p.get("max_grade", 0.15))
+    half = float(p.get("width", min(60, 0.03 * T.size))) / 2
+    look = float(p.get("length", 600 * T.k + 200))
+    us = np.arange(0, 4 * look, T.cell / 2)
+    near = [T.height(c + sgn * nrm * min(look / 3, 150 * T.k + 50)) for sgn in (1, -1)]
+    floor = float(p.get("floor", max(near) + 2))  # default: just above the higher side, close in
+    lens, ends, reach_ok = [], [], []
+    for sgn in (1, -1):
+        g = T.sample(c + sgn * nrm * us[:, None])
+        ramp = floor - maxg * us
+        # it ends where it daylights (ground below the way) or leaves the crest (ground no higher than the saddle)
+        below = np.nonzero((g <= ramp + 0.5) | (g <= floor + 1.0))[0]
+        below = below[us[below] > 2 * T.cell]
+        if len(below):
+            lens.append(float(us[below[0]]) + 2 * T.cell)
+            ends.append(float(us[below[0]]))
+            reach_ok.append(True)
+        else:  # the ground never drops below a way at this grade within reach: it would need to wind (a route)
+            lens.append(float(us[-1]))
+            ends.append(float(us[-1]))
+            reach_ok.append(False)
     v = np.stack([T.X - c[0], T.Y - c[1]], -1)
     u, w = v @ nrm, v @ tan  # across the ridge, along it
-    half = float(p.get("width", min(60, 0.03 * T.size))) / 2
-    end = np.where(u >= 0, ends[0], ends[1])
     ln = np.where(u >= 0, lens[0], lens[1])
-    ramp = floor + (end - floor) * np.clip(np.abs(u) / ln, 0, 1)
+    ramp = floor - maxg * np.abs(u)
     off = np.clip(np.abs(w) - half, 0, None)
     cut = ramp + off * math.tan(math.radians(p.get("sides", 60)))  # the flanks above the way
-    fill = ramp - off * math.tan(math.radians(35))  # an embankment where the ground falls below it (the way is built:
-    # cutting only left the ramp promised in the report over a 65 m cliff the basin wall had there)
-    reach = smoothstep(ln * 1.05, ln * 0.9, np.abs(u))
-    T.H = np.where(reach > 0, T.H * (1 - reach) + np.clip(T.H, fill, cut) * reach, T.H)
+    fill = np.minimum(ramp - off * math.tan(math.radians(35)), T.H + float(p.get("fill_max", 3.0)))  # small hollows only
+    reach = smoothstep(ln + 3 * T.cell, ln, np.abs(u))
+    T.H = np.where(reach > 0, T.H * (1 - reach) + np.clip(T.H, np.minimum(fill, cut), cut) * reach, T.H)
     corridor = (reach > 0) & (np.abs(w) < half + 3 * T.cell)
-    T.passes[name] = {"xy": c.tolist(), "floor": floor, "ridge": L.name, "width": 2 * half, "grades": grades,
-                      "lengths": lens, "corridor": corridor, "axis": nrm.tolist(), "max_grade": maxg or 1.0}
+    for sgn, ok, n in zip((1, -1), reach_ok, lens):
+        if not ok:
+            T.warnings.append(f"pass {name!r}: on its {'left' if sgn > 0 else 'right'} side the ground doesn't fall "
+                              f"below a {100 * maxg:.0f}% way within {n:.0f} m: that side needs a winding route "
+                              f"(\"routes\" from the pass), not a straight ramp")
+    T.passes[name] = {"xy": c.tolist(), "floor": floor, "ridge": L.name, "width": 2 * half, "grades": [maxg, maxg],
+                      "lengths": [min(n, us[-1]) for n in lens], "ends": ends, "corridor": corridor,
+                      "axis": nrm.tolist(), "max_grade": maxg}
 
 
 def rugged(T):
@@ -489,9 +493,12 @@ def _route(T, name, r):
         T.warnings.append(f"route {name!r} cuts {cut:.0f} m / fills {fill:.0f} m somewhere: a trench or embankment; "
                           f"a gentler max_grade, a 'via' point, or accept it")
     straight = sum(float(np.linalg.norm(T.address(b)[0] - T.address(a)[0])) for a, b in zip(stops[:-1], stops[1:]))
-    if length > 3 * max(straight, 1.0):
-        T.warnings.append(f"route {name!r} is {length:.0f} m for {straight:.0f} m as the crow flies: it's detouring "
-                          f"round something; check the map for what, or add a 'via'")
+    climb = abs(float(h[-1] - h[0]))
+    need = max(straight, climb / maxg)  # winding down a 700 m wall at 15% needs 4.7 km: that's not a detour
+    if length > 2 * max(need, 1.0):
+        T.warnings.append(f"route {name!r} is {length:.0f} m where {need:.0f} m would do (the crow flies {straight:.0f} m, "
+                          f"the climb needs {climb / maxg:.0f} m at its grade): it's detouring round something; check "
+                          f"the map for what, or add a 'via'")
     s, _ = _arclen(xy)
     T.routes[name] = Line(name, "route", xy, h, s, {"length": length, "max_grade": maxg, "width": width,
                                                    "cut": cut, "fill": fill})
@@ -694,15 +701,18 @@ def report(T):
         c, ax = np.array(p["xy"]), np.array(p["axis"])
         sides = []
         worst = None
-        for sgn, n in ((1, p["lengths"][0]), (-1, p["lengths"][1])):  # measured on the ground as built, not the plan
-            xy = c + sgn * ax * np.arange(0, n, T.cell / 2)[:, None]
-            g = _grades(T, xy)
+        for sgn, n, side in ((1, p["ends"][0], "left"), (-1, p["ends"][1], "right")):  # measured as built
+            xy = c + sgn * ax * np.arange(0, max(n, 2 * T.cell), T.cell / 2)[:, None]  # the way itself, to its end
+            g = _grades(T, xy, window=min(20.0, max(n, T.cell)))
             k = int(np.argmax(g))
-            sides.append(f"{100 * g.max():.0f}% at worst over {n:.0f} m")
+            beyond = c + sgn * ax * np.arange(n, n + 60 * T.k + 40, T.cell / 2)[:, None]
+            gb = _grades(T, beyond).max() if len(beyond) > 4 else 0
+            sides.append(f"{side} {n:.0f} m at up to {100 * g.max():.0f}%, then the ground runs on at "
+                         f"{100 * gb:.0f}%" + (" (a route continues)" if gb > p["max_grade"] else ""))
             if g.max() > p["max_grade"] * 1.1 and (worst is None or g.max() > worst[0]):
                 worst = (g.max(), xy[k])
         line = (f"pass {name}: through {p['ridge']} at [{c[0]:.0f}, {c[1]:.0f}], saddle at {T.height(c):.0f} m, "
-                f"{p['width']:.0f} m wide; built ramps " + " and ".join(sides))
+                f"{p['width']:.0f} m wide; the way: " + "; ".join(sides))
         if worst:
             line += f" FAIL: {100 * worst[0]:.0f}% at [{worst[1][0]:.0f}, {worst[1][1]:.0f}]"
         out.append(line)

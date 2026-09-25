@@ -422,17 +422,27 @@ class Terrain:
         s = (1 - self.round) * s + self.round * (1 - (1 - s) ** 2)
         self.hard = np.zeros(self.X.shape, bool)  # rock that resists erosion (cliff bands)
         self.hardness = np.ones(self.X.shape)  # erodibility factor: 1 soil ... ~0 rock that stands
-        for b in self.basins.values():  # basin walls get a mountainside's profile
+        for b in self.basins.values():  # basin walls get a mountainside's profile, and a character
             prof = self._wall_profile(b)
             u = np.linspace(0, 1, len(prof))
-            s = np.where(b["wall"], np.interp(self.t, u, prof), s)
-            # the band wanders up and down the face (one even ring read as a built wall)
+            t = self.t
+            if b["character"] in ("buttressed", "broken", "tiered"):
+                # buttresses and couloirs: along the ring the face's profile shifts out and in, so rock ribs stand
+                # proud between gullies (a smooth face read as drapery; ~900 m apart they read as lobes, not ribs)
+                spacing = max(0.4 * b["width"], 80 * self.k)
+                a1 = b["arc"] / spacing
+                n1 = noise.fbm(np.c_[a1.ravel(), np.zeros((a1.size, 2))], 1.0, 3, seed=73).reshape(self.X.shape)
+                amp = {"buttressed": 0.3, "broken": 0.45, "tiered": 0.15}[b["character"]]
+                t = np.clip(t + amp * (2 * n1 - 1) * np.sin(np.pi * np.clip(t, 0, 1)), 0, 1)
+            s = np.where(b["wall"], np.interp(t, u, prof), s)
+            # the band(s) wander up and down the face (one even ring read as a built wall)
             pts = np.c_[self.P, np.zeros(len(self.P))]
             shift = 0.12 * (2 * noise.fbm(pts, 500 * self.k, 2, seed=71).reshape(self.X.shape) - 1)
-            at = b["band_at"] + shift  # (breaking it too made climbable gaps: "unclimbable" wins that one)
-            band = b["wall"] & (self.t >= at - 0.03) & (self.t <= at + b["_ft"] + 0.03)
-            self.hard |= band
-            self.hardness = np.where(band, 0.2, self.hardness)  # (0 made a palisade: the band stood, all else went)
+            for at0 in b["_bands"]:
+                at = at0 + shift  # (breaking a band made climbable gaps: "unclimbable" wins that one)
+                band = b["wall"] & (t >= at - 0.03) & (t <= at + b["_ft"] + 0.03)
+                self.hard |= band
+                self.hardness = np.where(band, 0.2, self.hardness)  # (0 made a palisade: it stood, all else went)
         H = self.floor + np.maximum(self.crest - self.floor, 0) * s
         tilt = self.spec.get("tilt")  # the whole frame leans: {"down": "south" | bearing deg, "grade": 0.07}
         if tilt:
@@ -453,9 +463,13 @@ class Terrain:
         wgt = rest * (0.45 + 0.75 * smoothstep(0.0, 0.3, t) - 0.35 * smoothstep(0.75, 1.0, t))
         steep = math.tan(math.radians(min(b["min_slope"] + 14, 80)))  # margin: erosion and the grid soften it
         ft = min(0.4, (b["band"] / steep) / max(b["relief"] / math.tan(math.radians(b["avg"])), 1e-6))  # its share of the width
-        inband = (t >= b["band_at"]) & (t < b["band_at"] + ft)
-        wgt = np.where(inband, steep, wgt)
-        b["_ft"] = ft
+        n_bands = b["bands"] or (3 if b["character"] == "tiered" else 1)
+        ats = [b["band_at"]] if n_bands == 1 else list(np.linspace(0.2, 0.75, n_bands))
+        if n_bands > 1:
+            ft = ft / n_bands ** 0.5  # several thinner bands: each still `band` tall is too much; share it
+        for at in ats:
+            wgt = np.where((t >= at) & (t < at + ft), steep, wgt)
+        b["_ft"], b["_bands"] = ft, ats
         s = np.r_[0, np.cumsum((wgt[1:] + wgt[:-1]) / 2)]
         return s / s[-1]
 
@@ -514,6 +528,7 @@ class Terrain:
         # each stretch of wall is as wide as the crest behind it needs at that slope (a big peak has a big footprint;
         # one width from the lowest crest made the high stretches 58 deg)
         dist, near = cKDTree(L.xy).query(self.P)
+        arc = np.r_[0, np.cumsum(np.linalg.norm(np.diff(L.xy, axis=0), axis=1))][near].reshape(self.X.shape)
         crest_here = ndimage.gaussian_filter(L.h[near].reshape(self.X.shape), 150 * self.k / self.cell)
         need = np.maximum(3 * self.cell, (crest_here - hi) / math.tan(math.radians(avg)))
         if "width" in w:
@@ -548,7 +563,8 @@ class Terrain:
         band = float(w.get("height", max(30.0, 0.08 * (crest_min - hi))))  # the cliff band's height
         self.basins[name] = {"floor": F, "wall": wall, "inside": inside, "width": width, "lo": lo, "hi": hi,
                              "min_slope": slope, "falls": fx.tolist(), "band": band, "avg": avg,
-                             "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3))}
+                             "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3)),
+                             "arc": arc, "character": w.get("character", "tiered"), "bands": int(w.get("bands", 0))}
         return F, fl, PROFILES.get(w.get("profile", "straight"), 1.0)
 
     def _ribs(self, high_fix, low_fix):
