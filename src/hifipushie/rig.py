@@ -296,12 +296,16 @@ def humanoid(spec: dict) -> list[dict] | None:
 
 
 def chains(spec: dict) -> list[dict]:
-    """spec["rig"] = {"type": "chains", "root": joint, "chains": {name: {"from": parent chain or "root",
-    "joints": [spec joints, first to last]}}}: bones "<name>_01"... along each chain; a chain's first joint hangs
-    from its parent chain's nearest joint. The last joint of a chain is an end (no weight)."""
+    """spec["rig"] = {"type": "chains", "root": joint, "chains": {name: {"from": parent chain (default: the
+    root), "joints": [spec joints or [x, y, z], first to last]}}}: a weightless "root" bone on the ground under the
+    root joint (root motion), then per chain bones "<name>_01", "<name>_02"... from each joint to the next and a
+    "<name>_end" leaf at the last. A chain hangs from its parent chain's bone nearest its first joint (a neck
+    starting where the spine ends hangs from the spine's last bone, no duplicate)."""
     s = expand_mirror(spec)
     r = spec["rig"]
-    bones = [{"name": "root", "head": _joint(s, r["root"]), "parent": -1, "end": False, "src": str(r["root"])}]
+    r0 = _joint(s, r["root"])
+    bones = [{"name": "root", "head": np.array([r0[0], r0[1], 0.0]), "parent": -1, "end": False,
+              "noweight": True, "src": "ground under " + str(r["root"])}]
     idx = {"root": [0]}
     todo = dict(r["chains"])
     while todo:
@@ -311,13 +315,20 @@ def chains(spec: dict) -> list[dict]:
         for n in done:
             c = todo.pop(n)
             pts = [_joint(s, j) for j in c["joints"]]
-            par = min(idx[c.get("from", "root")], key=lambda i: np.linalg.norm(bones[i]["head"] - pts[0]))
+            if len(pts) < 2:
+                raise ValueError(f"rig chain {n!r} needs two joints or more")
+            cand = idx[c.get("from", "root")]
+            # the nearest bone of the parent chain; at a joint two share, the later one (legs from the chest bone)
+            par = min(cand, key=lambda i: (round(float(_seg_dist(pts[0], bones[i]["head"],
+                                                                  bones[i].get("tail", bones[i]["head"]))), 2), -i))
             idx[n] = []
             for k, p in enumerate(pts):
-                bones.append({"name": f"{n}_{k + 1:02d}", "head": p, "parent": par, "end": k == len(pts) - 1,
-                              "src": str(c["joints"][k])})
+                end = k == len(pts) - 1
+                bones.append({"name": f"{n}_end" if end else f"{n}_{k + 1:02d}", "head": p, "parent": par,
+                              "end": end, "src": str(c["joints"][k]), **({} if end else {"tail": pts[k + 1]})})
                 par = len(bones) - 1
-                idx[n].append(par)
+                if not end:
+                    idx[n].append(par)
     return bones
 
 
@@ -329,7 +340,7 @@ def test_pose(bones: list[dict]) -> dict:
         want = {"LeftForeArm": ([1, 0, 0], -75), "RightArm": ([0, 1, 0], 45), "LeftUpLeg": ([1, 0, 0], -35),
                 "RightLeg": ([1, 0, 0], 60), "Spine1": ([0, 1, 0], 12), "Neck": ([0, 0, 1], 25)}
         return {PREFIX + k: v for k, v in want.items() if PREFIX + k in names}
-    return {b["name"]: ([1, 0, 0], 35) for b in bones if b["name"].endswith("_02") and not b["end"]}
+    return {b["name"]: ([1, 0, 0], 35) for b in bones if b["name"].endswith("_02")}
 
 
 def rig_bones(spec: dict) -> list[dict]:
@@ -351,7 +362,10 @@ def _segments(rb: list[dict]):
             kids.setdefault(b["parent"], []).append(i)
     seg = {}
     for i, b in enumerate(rb):
-        if b["end"]:
+        if b["end"] or b.get("noweight"):
+            continue
+        if "tail" in b:
+            seg[i] = (b["head"], b["tail"])
             continue
         ch = kids.get(i, [])
         if ch:  # the child that continues the chain: the one straightest ahead (Spine2 -> Neck, not a clavicle)

@@ -676,7 +676,7 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         frames = render.view_frames(P, ["front", "side"])
         img = render.contact_sheet(render.render_views(f, frames, size, "clay_studio.exr"), frames)
     used = np.bincount(J[W > 0.01], minlength=len(bones))
-    empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"]]
+    empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"] and not b.get("noweight")]
     text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}); posed: "
             + ", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items())]
     text += [f"  {b['name']} <- {b.get('src', '?')}" + (" (end)" if b["end"] else "")
