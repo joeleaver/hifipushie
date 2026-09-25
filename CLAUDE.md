@@ -183,6 +183,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
 - `store.py`: `workspace/<model>/spec.json` + `history/`, build cache keyed by spec hash.
 - `scene.py` + `blender_scene.py` + `paintnodes.py`: the live Blender scene (see "Next session"): per-object
   meshing and content cache, paint compiled to shader nodes, pull/sync round trip, EEVEE looks, Cycles bakes.
+  The scene cache is pruned every sync (`scene.prune_cache`): files none of the last 3 syncs used are deleted
+  (content-named files piled up: cabin5's cache was 8.8 GB, 714 MB after). Headless saves keep no scene.blend1.
   Scene parts keep their block grids between syncs (`scene._LIVE`, `LIVE_CELLS` budget per model, most recently
   used kept): an edit re-meshes the blocks it reaches (moving a door: 1.0 s, cold 5.5 s; must equal cold).
   Cycles bakes use emissive materials: every such material needs `cycles.emission_sampling = "NONE"`, or each

@@ -641,6 +641,8 @@ def sync(job):
                 if lc is not None:
                     lc.exclude = True
     bpy.context.scene.render.engine = "BLENDER_EEVEE"
+    if not job.get("live"):  # no scene.blend1 (the scene is derived, the spec is the source); a person's own
+        bpy.context.preferences.filepaths.save_version = 0  # Blender keeps its preferences
     bpy.ops.wm.save_as_mainfile(filepath=job["blend"], compress=False)
     print("@@made", json.dumps(made))
 
