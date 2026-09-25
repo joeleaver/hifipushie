@@ -184,6 +184,28 @@ def sd_cylinder(p: np.ndarray, pr: dict) -> np.ndarray:
     return out + np.minimum(np.maximum(radial, axial), 0.0) - rnd
 
 
+def sd_blade(p: np.ndarray, pr: dict) -> np.ndarray:
+    """A thin sheet (ear, leaf, fin, feather, blade) in its local frame: across x (half width size[0]), along y
+    (half length size[1]), thickness z (half size[2]), edges fully rounded. The outline is an almond, narrowed
+    toward +y by `taper` (0..1: the tip's width is 1 - taper of the base's), cupped (`cup` m: the side edges lift
+    toward +z, an ear's hollow) and bent (`bend` m: the +y tip lifts toward +z). Bent sheets are evaluated in
+    the bent frame and the field divided by the bend's largest stretch, so it never over-estimates distance."""
+    q = (p - pr["c"]) @ pr["rot"]
+    W, L, T = pr["size"]
+    taper, cup, bend = pr.get("taper", 0.0), pr.get("cup", 0.0), pr.get("bend", 0.0)
+    x, y, z = q[..., 0], q[..., 1], q[..., 2]
+    yl = np.clip(y / L, -1.0, 1.0)
+    z = z - cup * (x / W) ** 2 - bend * ((yl + 1) / 2) ** 2
+    a = W * np.maximum(1.0 - taper * (yl + 1) / 2, 0.05) - T  # the flat core's outline, T inside the edge
+    b = L - T
+    k0 = np.hypot(x / a, y / b)
+    k1 = np.hypot(x / a ** 2, y / b ** 2)
+    e = k0 * (k0 - 1.0) / np.maximum(k1, 1e-12)  # ~signed distance to the core's outline in the sheet's plane
+    h = np.abs(z)
+    d = np.hypot(np.maximum(e, 0.0), h) + np.minimum(np.maximum(e, h), 0.0) - T
+    return d / pr.get("lip", 1.0)
+
+
 def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray:
     """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts.
     An instance's element takes its noise (lumpy, chips) in the prefab's frame ("frame": world -> prefab m, t and
@@ -235,6 +257,7 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
+       "blade": sd_blade,
        "csg": sd_csg, "shell": sd_shell}
 MODS = {"displace": mod_displace, "flatten": mod_flatten}  # op "modify": reshape what's been combined so far
 

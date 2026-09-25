@@ -73,7 +73,7 @@ def skeleton(spec: dict) -> list[dict]:
         b["prims"] = [b["prim"]]
     for n, bl in s["blobs"].items():
         pr = prims.get(n)
-        if pr is None or pr.kind not in ("ellipsoid", "box", "cylinder", "lids", "csg"):
+        if pr is None or pr.kind not in ("ellipsoid", "box", "cylinder", "blade", "lids", "csg"):
             continue
         at = bl.get("at")
         if isinstance(at, dict) and at.get("bone") in index:

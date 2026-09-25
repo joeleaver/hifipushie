@@ -137,7 +137,7 @@ def thinnest(ps: list) -> float:
             continue
         pr = p.params["p"] if p.kind == "csg" else p.params
         kind = p.params["kind"] if p.kind == "csg" else p.kind
-        if kind in ("box", "cylinder", "ellipsoid"):
+        if kind in ("box", "cylinder", "ellipsoid", "blade"):
             t = min(t, 2 * float(np.min(pr["size"])))
         elif kind == "cone":
             t = min(t, 2 * min(pr["ra"], pr["rb"]) * min(1.0, *pr["flat"]))

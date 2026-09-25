@@ -58,6 +58,9 @@ details add things the plan never drew (nose, ears, fingers).
   nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
+- Ears, leaves, fins, feathers, blades: a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
+  point, `cup` for an ear's hollow, `bend` for a curling tip), rotated so its local y runs root to tip and its
+  local z faces the way the hollow opens. A cone reads as a spike, and an ellipsoid as a lump.
 - Separate digits (toes, extra fingers, horns, tusks) are geometry, not strokes. Put them in the blockout
   (bones, the hand kit) and root attachments on the surface with seated joints (`"on"`, below).
 

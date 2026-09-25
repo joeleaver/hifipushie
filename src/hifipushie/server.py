@@ -33,7 +33,10 @@ Spec:
   bones:  {name: {"a": joint, "b": joint, "r_a"?, "r_b"?, "flat"?: [width_scale, height_scale],
                   "blend"?, "op"?: "add"|"subtract", "layer"?: int, "group"?: str, "join"?: m}}   round cone
   blobs:  {name: {"at": joint | [x,y,z] | {"bone": name, "t": 0..1}, "offset"?: [x,y,z] (world axes),
-                  "size": [rx,ry,rz] (semi-axes), "rot"?: [deg x,y,z], "blend"?, "op"?, "layer"?}}  ellipsoid
+                  "size": [rx,ry,rz] (semi-axes), "rot"?: [deg x,y,z], "blend"?, "op"?, "layer"?}}  ellipsoid;
+          "shape": "blade": a thin rounded sheet (ears, leaves, fins, feathers), size [half width, half length
+          (along local y), half thickness], "taper" 0..1 (narrower tip), "cup" m (edges lift to +z: an ear's
+          hollow), "bend" m (the +y tip lifts to +z)
   kits:   {name: {"type": "hand" | "face", ...}}   parametric parts that expand into joints/bones/blobs
   parts:  {name: {"shell"?: base part, "offset"?, "color"?}}; any element takes "part": name (default "body").
           Each part is a separate mesh (and material later): eyes, teeth, clothing. A shell part is its base

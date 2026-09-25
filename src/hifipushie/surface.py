@@ -167,6 +167,8 @@ def element_axis(p) -> np.ndarray:
     if kind == "cylinder":
         rx, ry, hz = pr["size"]
         return np.asarray(pr["rot"], float)[:, 2 if hz >= max(rx, ry) else (0 if rx >= ry else 1)]
+    if kind == "blade":  # along its length (a leaf's midrib, a feather's shaft)
+        return np.asarray(pr["rot"], float)[:, 1]
     return np.array([0.0, 0.0, 1.0])
 
 
@@ -187,6 +189,8 @@ def end_weight(p) -> float:
     elif kind in ("box", "ellipsoid", "lids"):
         a, b, _ = np.sort(np.asarray(pr["size"], float))
         r = a / b
+    elif kind == "blade":  # a sheet: no end grain
+        return 0.0
     else:
         return 1.0
     t = float(np.clip((r - 0.25) / 0.25, 0.0, 1.0))

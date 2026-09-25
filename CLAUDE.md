@@ -405,5 +405,5 @@ Next, roughly in priority order:
    full build's block grid so PartGrid can reuse blocks.
 6. Face kit features read as stuck-on balls (cheeks, nose); strokes did better for brows/cheeks. Consider
    softer kit blends or stroke-based features.
-7. Older ideas: ears need a leaf/blade primitive; adaptive resolution near small features; skeleton →
+7. Older ideas: (blade primitive: done 2026-09-25, `sdf.sd_blade`); adaptive resolution near small features; skeleton →
    Blender armature for posing; soft priors in fit.
