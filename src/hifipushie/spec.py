@@ -87,7 +87,12 @@ def geometry(spec: dict) -> dict:
     """The spec without what doesn't shape the surface (paint, plan, story), so editing those doesn't rebuild or
     re-seat anything."""
     skip = ("paint", "plan", "story")
-    return {k: v for k, v in spec.items() if k not in skip} if any(k in spec for k in skip) else spec
+    if not any(k in spec for k in skip) and not (spec.get("style") or {}).get("paint"):
+        return spec
+    out = {k: v for k, v in spec.items() if k not in skip}
+    if (spec.get("style") or {}).get("paint"):  # a paint style doesn't shape anything either
+        out["style"] = {k: v for k, v in spec["style"].items() if k != "paint"}
+    return out
 
 
 def expand_mirror(spec: dict) -> dict:

@@ -639,7 +639,9 @@ def sync(name: str, resolution: int = 256) -> dict:
     bases = {}
     for o in objs:
         d = defs.get(o["part"]) or {}
-        bases[o["part"]] = {"color": list(o["color"][:3]), "roughness": float(d.get("roughness", 0.6)),
+        from .paint import style_rgb
+        rgb = style_rgb(o["color"][:3], (spec.get("style") or {}).get("paint") or {})
+        bases[o["part"]] = {"color": [float(x) for x in rgb], "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5))}
     ph = part_hashes(prog, bases)
     out = _blender({"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,

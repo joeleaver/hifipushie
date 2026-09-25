@@ -89,7 +89,8 @@ _ON: dict[str, dict] = {}  # expand's content key -> {instance: its resolved "at
 
 def expand(spec: dict) -> dict:
     """The spec with instances and arrays expanded (a new dict; the input is left alone). Cached by content."""
-    if not spec.get("instances") and not _has_arrays(spec) and not spec.get("weather") and not spec.get("walls"):
+    if not spec.get("instances") and not _has_arrays(spec) and not spec.get("weather") and not spec.get("walls") \
+            and not (spec.get("style") or {}).get("shape"):
         return spec
     import hashlib
     import json
@@ -101,6 +102,7 @@ def expand(spec: dict) -> dict:
             _ON.pop(k, None)
         s = copy.deepcopy(spec)
         _walls(s)
+        _style_shape(s)
         weather = s.pop("weather", None) or []
         insts = s.get("instances") or {}
         insts = _weathered(insts, weather)  # instances are weathered whole (a chair leans, its legs don't wander)
@@ -241,6 +243,93 @@ def _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part) -> None:
         insts[f"{on}_door"] = {"use": door, "at": _r([*hp, z0 + sill + 0.005]),
                                "rot": [0, 0, round(base_ang + turn * a, 4)], "tags": [*tags, "doors"],
                                "from_wall": [wn, k, "door", round(base_ang, 4), turn]}
+
+
+STYLE_SHAPE = ("round", "lumpy", "chips", "blend", "bow", "chunk")
+
+
+def _style_shape(s: dict) -> None:
+    """spec["style"]["shape"]: how far the whole model leaves realism, applied to every element (prefabs' too)
+    before arrays and weather: "round" x every box and cylinder's edge radius (capped just under its smallest
+    half-size: soft, toy-like edges), "lumpy" {"amount": x, "scale": x} (0 amount: smooth), "chips" x depth
+    (0: none), "blend" x every element's own blend (softer joins), "bow" x every bone's bow and array bow ranges
+    (wonkier logs and beams), "chunk" k: thin things thicken: every box or cylinder half-size and every bone
+    radius under 6 cm grows by up to k, never past 6 cm (chair legs, table tops, rails, handles, boards: toy-like
+    furniture), in place."""
+    st = (s.get("style") or {}).get("shape") or {}
+    if not st:
+        return
+    bad = set(st) - set(STYLE_SHAPE)
+    if bad:
+        raise SpecError(f"style.shape: unknown keys {sorted(bad)} (have {', '.join(STYLE_SHAPE)})")
+    kr, kb, kw = float(st.get("round", 1.0)), float(st.get("blend", 1.0)), float(st.get("bow", 1.0))
+    lp = st.get("lumpy") or {}
+    ka, ks = float(lp.get("amount", 1.0)), float(lp.get("scale", 1.0))
+    kc = float(st.get("chips", 1.0))
+
+    kc_ = float(st.get("chunk", 1.0))
+
+    def thick(v: float) -> float:
+        return v if v >= 0.06 or kc_ <= 1 else min(v * kc_, max(v, 0.06))
+
+    def one(el: dict, kind: str) -> None:
+        if kc_ > 1 and (el.get("op", "add") == "add" or el.get("targets")):  # openings grow with their vessels
+            if kind == "blobs" and el.get("shape") in ("box", "cylinder") and "size" in el:
+                el["size"] = [round(thick(float(v)), 5) for v in el["size"]]
+                if (el.get("array") or {}) and not isinstance(el["array"], list) and "size" in (el["array"].get("vary") or {}):
+                    el["array"]["vary"]["size"] = [[round(thick(float(v)), 5) for v in b] for b in el["array"]["vary"]["size"]]
+                for stp in (el["array"] if isinstance(el.get("array"), list) else []):
+                    if "size" in (stp.get("vary") or {}):
+                        stp["vary"]["size"] = [[round(thick(float(v)), 5) for v in b] for b in stp["vary"]["size"]]
+            if kind == "bones":
+                for k in ("r_a", "r_b"):
+                    if el.get(k) is not None:
+                        el[k] = round(thick(float(el[k])), 5)
+        if kind == "blobs" and el.get("shape") in ("box", "cylinder") and el.get("op", "add") == "add":
+            size = np.asarray(el.get("size", [0.05] * 3), float)
+            r = float(el.get("round") or (0.004 if kr > 1 else 0.0)) * kr  # sharp boxes get softened too
+            el["round"] = round(min(r, 0.95 * float(size.min())), 5)
+        if el.get("blend") is not None and el.get("op", "add") == "add" and float(el["blend"]) > 0:
+            el["blend"] = float(el["blend"]) * kb
+        lu = el.get("lumpy")
+        if lu:
+            lu = {"amount": float(lu)} if isinstance(lu, (int, float)) else dict(lu)
+            if ka == 0:
+                el.pop("lumpy")
+            else:
+                lu["amount"] = float(lu.get("amount", 0.004)) * ka
+                if "scale" in lu:
+                    lu["scale"] = float(lu["scale"]) * ks
+                else:
+                    lu["scale"] = max(8 * float(lu["amount"]) / ka, 0.02) * ks
+                el["lumpy"] = lu
+        ch = el.get("chips")
+        if ch:
+            if kc == 0:
+                el.pop("chips")
+            else:
+                ch = {"depth": float(ch)} if isinstance(ch, (int, float)) else dict(ch)
+                ch["depth"] = float(ch.get("depth", 0.006)) * kc
+                el["chips"] = ch
+        if kind == "bones" and kw != 1.0:
+            if el.get("bow") is not None:
+                el["bow"] = (np.asarray(el["bow"], float) * kw).tolist() if isinstance(el["bow"], list) else float(el["bow"]) * kw
+            for stp in (el.get("array") if isinstance(el.get("array"), list) else [el["array"]] if el.get("array") else []):
+                if "bow" in (stp.get("vary") or {}):
+                    stp["vary"]["bow"] = (np.asarray(stp["vary"]["bow"], float) * kw).tolist()
+
+    for kind in ("bones", "blobs"):
+        for el in (s.get(kind) or {}).values():
+            one(el, kind)
+    for pf in (s.get("prefabs") or {}).values():
+        for kind in ("bones", "blobs"):
+            for el in (pf.get(kind) or {}).values():
+                one(el, kind)
+    if kc_ > 1:  # bones take their radii from their joints unless they give r_a / r_b
+        for sp in [s, *(s.get("prefabs") or {}).values()]:
+            for j in (sp.get("joints") or {}).values():
+                if "r" in j:
+                    j["r"] = round(thick(float(j["r"])), 5)
 
 
 def _place_on(s: dict, todo: dict) -> dict:

@@ -156,19 +156,77 @@ ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur")
 
 
 def layers(spec: dict) -> dict:
-    """The spec's paint layers with material layers expanded into their sub-layers (materials.py), in order."""
+    """The spec's paint layers with material layers expanded into their sub-layers (materials.py), in order, with
+    the spec's paint style applied (`style_layer`)."""
     from . import materials
+    st = (spec.get("style") or {}).get("paint") or {}
     out = {}
     for name, ly in (spec.get("paint") or {}).items():
         if "material" in ly:
+            if st:
+                ly = dict(ly)
+                ly["scale"] = float(ly.get("scale", 1.0)) * float(st.get("pattern", 1.0))
+                for k in ("wear", "dirt"):
+                    ly[k] = float(ly.get(k, 0.3)) * float(st.get("weathering", 1.0))
             for sub, sl in materials.expand(name, ly, GENERATORS, PARAMS):
-                out[sub] = sl
+                out[sub] = style_layer(sl, st, patterns=False)
         else:
-            out[name] = ly
+            out[name] = style_layer(ly, st)
     return out
 
 
+STYLE_PAINT = ("saturation", "value", "pattern", "weathering")
+
+
+def style_layer(ly: dict, st: dict, patterns: bool = True) -> dict:
+    """A layer as the paint style has it: colours through `style_rgb`, pattern sizes (noise, cells, tiles, weave)
+    times style "pattern" (materials take it as their "scale" instead)."""
+    if not st:
+        return ly
+    ly = dict(ly)
+    if "color" in ly:
+        ly["color"] = style_rgb(colour(ly["color"], "color"), st).tolist()
+    k = float(st.get("pattern", 1.0))
+    if patterns and k != 1.0:
+        ly = _scale_patterns(ly, k)
+    return ly
+
+
+def _scale_patterns(e: dict, k: float) -> dict:
+    e = dict(e)
+    for g in ("noise", "cells", "weave"):
+        if isinstance(e.get(g), dict):
+            v = dict(e[g])
+            v["scale"] = float(v.get("scale", {"noise": 0.03, "cells": 0.03, "weave": 0.0025}[g])) * k
+            e[g] = v
+    if isinstance(e.get("tiles"), dict):
+        v = dict(e["tiles"])
+        v["size"] = [float(x) * k for x in v.get("size", [0.2, 0.1])]
+        e["tiles"] = v
+    if isinstance(e.get("mask"), list):
+        e["mask"] = [_scale_patterns(m, k) if isinstance(m, dict) else m for m in e["mask"]]
+    return e
+
+
+def style_rgb(rgb, st: dict) -> np.ndarray:
+    """An sRGB colour as the paint style has it: saturation and value (brightness) scaled in HSV."""
+    import colorsys
+    if not st or (float(st.get("saturation", 1.0)) == 1.0 and float(st.get("value", 1.0)) == 1.0):
+        return np.asarray(rgb, float)[:3]
+    h, sat, v = colorsys.rgb_to_hsv(*[float(x) for x in np.asarray(rgb, float)[:3]])
+    sat = min(1.0, sat * float(st.get("saturation", 1.0)))
+    v = min(1.0, v * float(st.get("value", 1.0)))
+    return np.array(colorsys.hsv_to_rgb(h, sat, v))
+
+
 def validate(spec: dict) -> None:
+    st = spec.get("style") or {}
+    bad = set(st) - {"name", "shape", "paint"}
+    if bad:
+        raise SpecError(f"style: unknown keys {sorted(bad)} (have name, shape, paint)")
+    bad = set(st.get("paint") or {}) - set(STYLE_PAINT)
+    if bad:
+        raise SpecError(f"style.paint: unknown keys {sorted(bad)} (have {', '.join(STYLE_PAINT)})")
     for name, ly in layers(spec).items():
         if not any(c in ly for c in (*CHANNELS, "height")):
             raise SpecError(f"paint {name!r}: needs at least one of {', '.join(CHANNELS)}, height")

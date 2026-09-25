@@ -140,6 +140,22 @@ addressed on the surface. Rules that matter:
 - Cameras: `eye: [x, y]` stands a person there; asked to stand on a counter, bed or table, they step off onto the
   floor beside it (the info line says so). Give a 3D eye to put the camera anywhere.
 
+## 5c. Style: how far from realism
+
+The rules above (restraint, centimetre sag, subtle grime) are for realism. A stylised model says so in
+`spec["style"]`, and most of the look still comes from choices you make in the spec:
+- `style.shape`: "round" x every box/cylinder edge radius, "chunk" k (thin legs, tops, rails, handles and boards
+  thicken up to k, never past 6 cm; their openings too), "lumpy" {"amount", "scale"} (0: smooth), "chips" x,
+  "bow" x, "blend" x. Rebuilds geometry.
+- `style.paint`: "saturation", "value" (HSV, every colour and part base), "pattern" x every pattern size (grain,
+  stones, planks, noise), "weathering" x materials' wear and dirt. Paint only: no rebuild.
+- Proportions are yours: fewer, fatter members (7-9 logs, not 13), steeper roofs with thick slabs and big
+  overhangs, oversized doors and windows, a leaning chimney, a coloured door and trim. Swap busy realistic
+  patterns (planks tiles on a shingled roof) for flat colour with a tone per piece (`random`) and shadow lines
+  (`ao`). A thick roof slab needs its shingles on top of it, not at the old offset.
+- `workspace/cabin_toon.py` builds cabin5 at three levels (storybook, cartoon, toybox) as a worked example.
+- Still missing for cartoon silhouettes: boxes can't bend (a sagging roof, a bowed wall), and there is no taper.
+
 ## 5b. History: nothing real is pristine
 
 Perfect things read as CG at a glance: identical copies at even spacing, everything square to the axes, flat
