@@ -34,8 +34,8 @@ COVER_TYPES = {
     "deciduous": {"slope": [0, 36], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
                   "color": [0.24, 0.34, 0.12], "trees": "broadleaf"},
     "rock":      {"slope": [40, 90], "breakup": {"scale": 60, "amount": 0.3}, "color": [0.45, 0.43, 0.40]},
-    "scree":     {"slope": [30, 40], "breakup": {"scale": 40, "amount": 0.3}, "color": [0.58, 0.54, 0.47]},
-    "grass":     {"slope": [0, 38], "avoid": ["water"], "color": [0.45, 0.56, 0.26]},
+    "scree":     {"slope": [32, 42], "density": 0.7, "breakup": {"scale": 60, "amount": 0.6}, "color": [0.58, 0.54, 0.47]},
+    "grass":     {"slope": [0, 42], "avoid": ["water"], "color": [0.45, 0.56, 0.26]},
     "meadow":    {"slope": [0, 25], "avoid": ["water", "routes"], "breakup": {"scale": 80, "amount": 0.3},
                   "color": [0.55, 0.62, 0.30]},
     "snow":      {"slope": [0, 45], "color": [0.94, 0.95, 0.97]},
@@ -246,7 +246,7 @@ def rugged(T):
             u = np.clip(((T.P - a) @ ax) / (ax @ ax), 0, 1).reshape(T.X.shape)
             v0, v1 = gr.get("range", [0, 1])
             R *= v0 + (v1 - v0) * u
-        sc = float(g.get("scale", 80 * T.k))
+        sc = float(g.get("scale", T.world["crag"] if T.world["kind"] else 80 * T.k))  # player-scale crags
         crag = 1 - np.abs(2 * noise.fbm(pts, sc, 3, seed=61 + k) - 1)
         fine = noise.fbm(pts, sc / 3, 2, seed=62 + k)
         T.H += R * (0.25 * sc * (crag.reshape(T.X.shape) - 0.5) + 0.06 * sc * (fine.reshape(T.X.shape) - 0.5))
@@ -544,9 +544,11 @@ def realism(T):
     land = np.isnan(T.water)
     sl = T._slope()[land]
     f30, f45, f60 = (sl > 30).mean(), (sl > 45).mean(), (sl > 60).mean()
+    W = T.world
+    real45 = W["steep"] if W["kind"] else REAL["over_45"]
+    what = f"a real {W['kind'].replace('_', ' ')}" if W["kind"] else "rugged real mountains"
     out = [f"realism: median slope {np.median(sl):.0f} deg; {100 * f30:.0f}% of the ground over 30 deg, "
-           f"{100 * f45:.0f}% over 45, {100 * f60:.0f}% over 60 (rugged real mountains: about "
-           f"{100 * REAL['over_30']:.0f}%, {100 * REAL['over_45']:.0f}%, {100 * REAL['over_60']:.0f}%)"]
+           f"{100 * f45:.0f}% over 45, {100 * f60:.0f}% over 60 ({what}: about {100 * real45:.0f}% over 45)"]
     for name, b in T.basins.items():
         inner = T._slope()[b["inside"] & land]
         out.append(f"realism: inside basin {name}: {100 * (inner > 45).mean():.0f}% over 45 deg, "
@@ -558,12 +560,18 @@ def realism(T):
     if (T._slope()[ring & land] > 45).mean() > 0.3 and isinstance(T.spec.get("border"), (int, float, dict)):
         T.warnings.append("the frame's edge is fixed low close to high ground, so the ground falls off it in cliffs "
                           "(a moat around the level); open the edge (\"border\": \"open\") or fix it higher")
-    if f30 < 0.2:  # gentle country: the mountain comparison doesn't apply
+    if not W["kind"] and f30 < 0.2:  # gentle country: the mountain comparison doesn't apply
         out[0] = f"realism: median slope {np.median(sl):.0f} deg; {100 * f30:.0f}% of the ground over 30 deg (gentle country)"
-    elif f45 > 2 * REAL["over_45"] or f60 > 3 * REAL["over_60"]:
-        T.warnings.append(f"steeper than real terrain: {100 * f45:.0f}% of the ground is over 45 deg (real mountains: "
-                          f"~{100 * REAL['over_45']:.0f}%); faces steep all the way down read as draped curtains. Lower "
-                          f"the relief, widen the frame, or give walls cliff bands rather than steepness everywhere")
+    elif f45 > 2 * real45 + 0.02:
+        T.warnings.append(f"steeper than {what}: {100 * f45:.0f}% of the ground is over 45 deg (~{100 * real45:.0f}% in "
+                          f"reality); faces steep all the way down read as draped curtains. Lower the relief, widen the "
+                          f"frame, or give walls cliff bands rather than steepness everywhere")
+    if W["kind"]:
+        mean_face = float(np.mean(sl[sl > 5])) if (sl > 5).any() else 0.0
+        lo_f, hi_f = __import__("hifipushie.terrain_world", fromlist=["K"]).KINDS[W["kind"]]["face"][1:]
+        if W["kind"] and not lo_f * 0.5 <= mean_face <= hi_f * 1.25:
+            T.warnings.append(f"slopes average {mean_face:.0f} deg where there's any slope; a {W['kind'].replace('_', ' ')} "
+                              f"is more like {lo_f:.0f}-{hi_f:.0f}: check the relief against the frame")
     for name, b in T.basins.items():
         need = b["relief"] / math.tan(math.radians(b["avg"]))
         across = 2 * math.sqrt(b["inside"].sum() / math.pi) * T.cell  # the ring's rough diameter
@@ -571,7 +579,7 @@ def realism(T):
         out.append(f"realism: basin {name}: {b['relief']:.0f} m from floor edge to lowest crest at {b['avg']:.0f} deg "
                    f"needs {need:.0f} m of mountainside; the ring is ~{across:.0f} m across, leaving "
                    f"{100 * floor_share:.0f}% of it as floor")
-        if floor_share < 0.35:
+        if floor_share < 0.6 * T.world["floor"]:  # (alpine valleys really are ~25% floor)
             T.warnings.append(f"basin {name!r}: its walls leave only {100 * floor_share:.0f}% of the ring as floor. The "
                               f"relief ({b['relief']:.0f} m) is big for a ring ~{across:.0f} m across: lower the crest, "
                               f"widen the ring/frame, or make the walls steeper rock (\"walls\": {{\"average\": 45}}: "

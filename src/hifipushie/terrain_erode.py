@@ -93,7 +93,7 @@ def erode(T):
     relief = float(np.percentile(H0, 98) - np.percentile(H0, 2))
     # mean lowering to reach, then stop. Capped in metres: in a game level (compressed geometry) erosion scaled to the
     # implied geology cut 20-30 m flutes, trenches across the player's space. "detail" scales the cap.
-    target = strength * min(0.035 * relief, 6.0 * float(cfg.get("detail", 1.0)))
+    target = strength * min(0.035 * relief, T.world["gully"] * float(cfg.get("detail", 1.0)))
     # soil creeps, rock cliffs (the hard bands) do not
     D = float(cfg.get("soften", 0.1)) * T.k ** 2
     diff = fs.DiffusionADIEroder(grid, np.where(keep, 0.0, np.where(T.hard, 0.2 * D, D)))  # rock creeps slower

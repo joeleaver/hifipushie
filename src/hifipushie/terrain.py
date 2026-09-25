@@ -42,7 +42,8 @@ RELIEF_CAP = 600.0  # texture/lumpiness scale with relief up to this: beyond it 
 UNITS = {"m": 1.0, "km": 1000.0, "cm": 0.01, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344}
 # every number in a spec is a length (converted with the units) unless its key is one of these
 NOT_LENGTHS = {"slope", "min_slope", "sides", "max_grade", "grade", "amount", "density", "range", "fov", "lobes",
-               "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k"}
+               "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k",
+               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "spacing_rows"}
 HEIGHT_KEYS = {"h", "level", "floor", "elevation", "above", "below", "border", "height", "depth", "freeboard",
                "above_water", "hanging", "relief"}
 REFERENCE_SIZE = 4000.0  # landscape defaults were tuned on 4 km scenes; they scale with the frame (Terrain.k)
@@ -59,7 +60,8 @@ def normalise(spec: dict) -> dict:
     size = max(x1 - x0, y1 - y0)
     unit = spec.get("units", "m")
     if unit == "none":
-        mu = float(spec.get("across", 2000.0)) / size
+        from .terrain_world import game_across
+        mu = float(spec.get("across") or game_across(spec) or 2000.0) / size
     elif unit in UNITS:
         mu = UNITS[unit]
     else:
@@ -181,6 +183,9 @@ class Terrain:
         self.size = max(x1 - x0, y1 - y0)
         self.k = self.size / REFERENCE_SIZE  # landscape defaults (noise, ribs, erosion scales) scale with the frame
         self.cell = c = float(spec.get("cell", self.size / 400))
+        from . import terrain_world as world
+        self.world = world.resolve(self)  # the kind of terrain, its compression, player-scale detail
+        world.fill_heights(self)
         self.xs = np.arange(x0, x1 + c / 2, c)
         self.ys = np.arange(y0, y1 + c / 2, c)
         self.X, self.Y = np.meshgrid(self.xs, self.ys)  # [iy, ix]
@@ -806,9 +811,21 @@ class Terrain:
         relief = np.minimum(np.maximum(self.crest - self.floor, 0), RELIEF_CAP * self.k)
         steep = np.clip(self._slope() / 35, 0, 1)
         rough = (0.3 + 0.7 * steep) * np.clip(self.t, 0, 1) ** 0.7  # rock high and steep; floors stay smooth
+        crestward = 1 - 0.7 * smoothstep(0.85, 1.0, self.t)  # lumps right on a crest read as pinnacles
+        W = self.world
+        if W["kind"]:
+            # landform structure (spur-and-gully systems a few hundred metres apart): part of the proportions, so it
+            # scales with the level; wide and moderate (deep narrow flutes were the problem, not structure)
+            land = 1 - np.abs(2 * noise.fbm(pts, 0.06 * self.size, 3, seed=3) - 1)
+            self.H += rough * crestward * 0.02 * relief * 2 * (land.reshape(self.X.shape) - 0.5)
+            # player-scale roughness: metres, by the kind of terrain, never by the relief
+            ridged = 1 - np.abs(2 * noise.fbm(pts, 3 * W["crag"], 3, seed=4) - 1)
+            fine = noise.fbm(pts, 1.1 * W["crag"], 2, seed=5)
+            self.H += rough * crestward * W["bumps"] * 2 * (ridged.reshape(self.X.shape) - 0.5)
+            self.H += rough * 0.4 * W["bumps"] * 2 * (fine.reshape(self.X.shape) - 0.5)
+            return
         ridged = 1 - np.abs(2 * noise.fbm(pts, 120 * self.k, 3, seed=3) - 1)
         gully = noise.fbm(pts, 45 * self.k, 2, seed=5)
-        crestward = 1 - 0.7 * smoothstep(0.85, 1.0, self.t)  # lumps right on a crest read as pinnacles
         self.H += rough * 0.03 * relief * crestward * (ridged.reshape(self.X.shape) - 0.5)
         self.H += rough * 4 * self.k * (gully.reshape(self.X.shape) - 0.5)
 
@@ -820,7 +837,8 @@ class Terrain:
 
     def report(self) -> str:
         from . import terrain_design as design
-        out = ["peaks/cols (authored -> built):"]
+        from . import terrain_world
+        out = terrain_world.report(self) + ["peaks/cols (authored -> built):"]
         for n, (xy, h) in self.points.items():
             top = self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) < max(40 * self.k, self.cell)].max()
             out.append(f"  {n}: {h:.0f} m -> {top:.0f} m")
@@ -863,8 +881,9 @@ class Terrain:
         u = self.units
         head = ""
         if u["assumed"]:
-            head = (f"scale: no units given, so the frame was taken as {self.size:.0f} m across "
-                    f"(1 unit = {u['mu']:.3g} m); set \"units\" or \"across\" to change it. Report in units.\n")
+            why = f"a typical {self.world['kind'].replace('_', ' ')} level" if self.world["kind"] else "a default"
+            head = (f"scale: no units given, so the frame was taken as {self.size:.0f} m across ({why}; "
+                    f"1 unit = {u['mu']:.3g} m); set \"units\" or \"across\" to change it. Report in units.\n")
         if u["mu"] == 1.0 and not u["assumed"]:
             return text
         import re
