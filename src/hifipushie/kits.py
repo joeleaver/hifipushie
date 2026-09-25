@@ -16,6 +16,15 @@ hand: {"wrist": joint, "dir": [x,y,z] fingers point (default: along the bone end
        "spread": fan angle across all fingers (deg), "curl": bend at each finger joint (deg, or a list
        per finger), "thumb": false | {"length", "r", "angle": deg out from the palm, "curl"}, "blend"}
 
+foot: {"ankle": joint, "ball": joint under the ball of the foot (default "toe.L"; without it the foot runs "dir"
+       from the ankle), "dir": [x,y,z] the toes point (default ankle -> ball, level), "size": [length heel to ball,
+       width, thickness] of the foot's body, "toes": count (5), "length": longest (big) toe, "lengths": per-toe
+       ratios (big toe first, it's on the inner side), "r": toe radius at its base (the big toe x1.35), "taper",
+       (the foot is a body from heel to ball, a wide ball across its front where the toes root, and a heel pad)
+       "spread": fan (deg), "curl": down-bend at each toe joint (deg), "heel": heel pad radius (0 = none), "blend"}
+       Toes are digits like fingers (foot_t1_0.L ... foot_t1_3.L; "foot_t1.L" is the big toe's group), so strokes,
+       paint and measure address them the same way; the rig skins them to the toe bone.
+
 face: {"head": joint (anchor); feature positions "at" are offsets from it in world axes (left side for
        paired features), seated onto the head's actual surface along "dir" (default [0,-1,0], i.e. seen
        from the front). The head is everything except kits, so seating follows edits to the skull.
@@ -45,7 +54,7 @@ import numpy as np
 
 from .spec import SpecError
 
-TYPES = ("hand", "face")
+TYPES = ("hand", "foot", "face")
 
 
 class KitError(SpecError):
@@ -144,6 +153,8 @@ def _expand(spec: dict) -> dict:
         match kit.get("type"):
             case "hand":
                 _hand(out, name, kit, o)
+            case "foot":
+                _foot(out, name, kit, o)
             case "face":
                 _face(base, name, kit, o)
             case other:
@@ -219,6 +230,66 @@ def _hand(spec: dict, name: str, k: dict, o: _Out):
         d = _unit(_rot_about(n, ang) @ a + 0.35 * n)  # out to the thumb side and a little palm-ward
         _digit(o, f"{base}_th", sfx, W + a * L * 0.2 + t * Wd * 0.38, d, n, tlen, (0.4, 0.33, 0.27),
                float(th.get("curl", 10.0)) * 2, tr * 1.25, tr * taper, kb)
+
+
+TOE_RATIOS = {1: [1.0], 2: [1.0, 0.8], 3: [1.0, 0.85, 0.7], 4: [1.0, 0.85, 0.75, 0.6],
+              5: [1.0, 0.85, 0.75, 0.65, 0.55]}
+TOE_SEGMENTS = (0.5, 0.3, 0.2)
+
+
+def _foot(spec: dict, name: str, k: dict, o: _Out):
+    base, sfx = _base(name)
+    ankle = k.get("ankle") or f"ankle{sfx}"
+    A, ra = _joint(spec, name, ankle)
+    # proportioned to the leg as it arrives: a thick shin makes a big foot even over a thin ankle joint
+    ra = max([ra] + [float(b.get("r_b") or ra) for b in spec.get("bones", {}).values() if b.get("b") == ankle])
+    ball = k.get("ball") or f"toe{sfx}"
+    up = np.array([0.0, 0.0, 1.0])
+    if "dir" in k:
+        f = _unit(np.asarray(k["dir"], float))
+    elif ball in spec.get("joints", {}):
+        f = _unit(_joint(spec, name, ball)[0] - A)
+    else:
+        raise KitError(f"kit {name!r}: give \"dir\" or a \"ball\" joint (no {ball!r})")
+    f = _unit(f - up * (f @ up))  # level
+    t = _unit(np.cross(f, up))  # across the foot, toward the inside (for a left foot, -X)
+    L, Wd, T = k.get("size") or [2.6 * ra, 1.9 * ra, 1.1 * ra]
+    B = _joint(spec, name, ball)[0] if ball in spec.get("joints", {}) else A + f * L * 0.75 - up * ra * 0.6
+    sole = min(B[2], A[2] - ra)  # the ground under the foot
+    heel = A - f * 0.3 * ra
+    mid = 0.5 * (heel + B)
+    mid[2] = sole + T / 2
+    R = np.stack([t, f, up], 1)
+    o.blob(f"{base}_body{sfx}", at=_r(mid), size=_r([Wd / 2, float(np.linalg.norm((B - heel)[:2])) / 2 + 0.1 * ra,
+                                                     T / 2]), rot=_euler(R), blend=round(0.5 * T, 5))
+    bp = B.copy()  # the ball of the foot: its widest part, where the toes root
+    bp[2] = sole + 0.42 * T
+    o.blob(f"{base}_ball{sfx}", at=_r(bp), size=_r([Wd / 2, 0.45 * ra, 0.42 * T]), rot=_euler(R),
+           blend=round(0.5 * T, 5))
+    hr = float(k.get("heel", 0.55 * ra))
+    if hr > 0:
+        hp = heel.copy()
+        hp[2] = sole + hr
+        o.blob(f"{base}_heel{sfx}", at=_r(hp), size=_r([hr * 0.9, hr, hr]), blend=round(0.6 * hr, 5))
+    nt = int(k.get("toes", 5))
+    ratios = k.get("lengths") or TOE_RATIOS.get(nt) or [1.0] * nt
+    if len(ratios) != nt:
+        raise KitError(f"kit {name!r}: {nt} toes but {len(ratios)} lengths")
+    tlen = float(k.get("length", 0.6 * ra))
+    tr = float(k.get("r", min(0.33 * ra, 0.95 * Wd / max(nt, 1) / 2.1)))
+    taper = float(k.get("taper", 0.8))
+    spread = float(k.get("spread", 14.0))
+    curl = float(k.get("curl", 12.0))
+    kb = float(k.get("blend", 0.5 * tr))
+    for i in range(nt):
+        frac = 0.5 if nt == 1 else i / (nt - 1)  # 0 = big toe (inner side), 1 = little toe
+        across = (0.5 - frac) * Wd * 0.75
+        r0 = tr * (1.35 if i == 0 and nt > 2 else 1.0)
+        d = _rot_about(up, -spread * (0.5 - frac)) @ f  # fan out
+        p = B + f * 0.2 * ra + t * across  # rooted inside the ball of the foot
+        p[2] = sole + max(r0, 0.4 * T)
+        _digit(o, f"{base}_t{i + 1}", sfx, p, d, -up, tlen * float(ratios[i]), TOE_SEGMENTS, curl * 3,
+               r0, r0 * taper, kb)
 
 
 def _digit(o: _Out, prefix: str, sfx: str, p: np.ndarray, d: np.ndarray, palm: np.ndarray, length: float,

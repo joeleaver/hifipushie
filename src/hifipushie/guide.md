@@ -61,6 +61,9 @@ details add things the plan never drew (nose, ears, fingers).
 - Ears, leaves, fins, feathers, blades: a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
   point, `cup` for an ear's hollow, `bend` for a curling tip), rotated so its local y runs root to tip and its
   local z faces the way the hollow opens. A cone reads as a spike, and an ellipsoid as a lump.
+- Toes: the foot kit (`{"type": "foot", "ankle": "ankle.L", "ball": "toe.L"}`) makes the foot's body, ball, heel and
+  toes. Drop a capsule "foot" bone it replaces, and any toe-groove strokes on it. Sizes follow the leg arriving
+  at the ankle.
 - Separate digits (toes, extra fingers, horns, tusks) are geometry, not strokes. Put them in the blockout
   (bones, the hand kit) and root attachments on the surface with seated joints (`"on"`, below).
 

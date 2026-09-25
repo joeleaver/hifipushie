@@ -400,7 +400,7 @@ Next, roughly in priority order:
    graph + radii, joint rings added, projected onto the exact field, relaxed; face kit templates for eye/mouth
    rings); skin weights nearly free (each ring belongs to a bone). First a spike on the troll: skin-modifier topology
    vs QuadriFlow vs decimation, with a test bend at elbow/knee.
-4. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
+4. Feet/toes: DONE (2026-09-25): the foot kit (`kits._foot`: body, ball, heel, toes as `_digit`s).
 5. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
    full build's block grid so PartGrid can reuse blocks.
 6. Face kit features read as stuck-on balls (cheeks, nose); strokes did better for brows/cheeks. Consider
