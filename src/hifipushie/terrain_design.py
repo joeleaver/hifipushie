@@ -321,6 +321,10 @@ def _site(T, name, s):
     r = float(s.get("radius", 60))
     if isinstance(ref, str) and ref.endswith("_shore"):
         xy = xy + d * (r + s.get("setback", 5))
+    rim = isinstance(ref, str) and "_rim" in ref.split("@")[0]
+    if rim:  # d points into the canyon: back from the lip, on the plateau, looking in
+        xy = xy - d * (r + s.get("setback", 3))
+        s = {**s, "level": s.get("level", T.height(xy + -d * r))}
     dist = np.hypot(T.X - xy[0], T.Y - xy[1])
     inside = dist <= r
     shore = isinstance(ref, str) and ref.endswith("_shore")
@@ -338,6 +342,8 @@ def _site(T, name, s):
     bank = np.clip(np.abs(T.H - level) / math.tan(math.radians(35)), shoulder, shoulder + r)  # capped: beyond, a cliff
     w = smoothstep(r + bank, r, dist)
     before = T.H.copy()
+    if rim:  # a lookout on a rim: cut to the plateau, never fill out over the lip (the fill mound hid the view)
+        w = np.where(T.H >= level, w, 0)
     T.H = T.H * (1 - w) + level * w
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
                      "fill": float((T.H - before).max())}
@@ -352,7 +358,7 @@ _OFFS = [(0, 1), (1, 0), (1, 1), (1, -1), (1, 2), (2, 1), (2, -1), (1, -2),
          (1, 3), (3, 1), (3, -1), (1, -3), (2, 3), (3, 2), (3, -2), (2, -3)]  # 32 headings: steep slopes need near-contour ones
 
 
-def _path(T, H, cell, a, b, maxg, blocked, reach_only=False):
+def _path(T, H, cell, a, b, maxg, blocked, reach_only=False, penalty=None):
     """Least-cost grid path from a to b (row, col) on 32 headings; edges steeper than 1.2 x maxg are left out,
     gentler ones cost more as they near the limit, so the search winds (switchbacks) where it must."""
     ny, nx = H.shape
@@ -367,6 +373,8 @@ def _path(T, H, cell, a, b, maxg, blocked, reach_only=False):
         g = np.abs(H.ravel()[B] - H.ravel()[A]) / length
         ok = (g <= maxg) & ~blocked.ravel()[A] & ~blocked.ravel()[B]
         wt = length * (1 + 3 * (g / (0.85 * maxg)) ** 2) + 0.2 * length  # slack below the limit: smoothing adds grade
+        if penalty is not None:
+            wt = wt + penalty.ravel()[B]
         for p, q in ((A, B), (B, A)):
             rows.append(p[ok]); cols.append(q[ok]); wts.append(wt[ok])
     G = coo_matrix((np.concatenate(wts), (np.concatenate(rows), np.concatenate(cols))), shape=(ny * nx, ny * nx)).tocsr()
@@ -391,7 +399,10 @@ def _route(T, name, r):
     # judge grades on ground smoothed over ~30 m: the carve evens out bumps smaller than that anyway
     H = ndimage.gaussian_filter(T.H, 30 / T.cell / 2)[::f, ::f]
     cell = T.cell * f
-    blocked = ~np.isnan(T.water[::f, ::f])
+    lakes = getattr(T, "lake_id", np.zeros(T.X.shape, int)) > 0
+    blocked = lakes[::f, ::f].copy()
+    river = getattr(T, "river_water", np.zeros(T.X.shape, bool)) & ~getattr(T, "ford_mask", np.zeros(T.X.shape, bool))
+    penalty = ndimage.binary_dilation(river, iterations=f)[::f, ::f] * 40.0 * cell  # wading/bridging costs: use fords
     for a in r.get("avoid", []):
         blocked |= region(T, a)[::f, ::f] > 0.5
     if r.get("stay_in"):
@@ -402,11 +413,11 @@ def _route(T, name, r):
         ca, cb = [T.address(x)[0] for x in (a, b)]
         ga, gb = [(int(round((c[1] - T.ys[0]) / cell)), int(round((c[0] - T.xs[0]) / cell))) for c in (ca, cb)]
         path = None
-        strict = _path(T, H, cell, ga, gb, maxg * 0.95, blocked, reach_only=True)  # how far the asked grade gets
+        strict = _path(T, H, cell, ga, gb, maxg * 0.95, blocked, reach_only=True, penalty=penalty)  # how far the asked grade gets
         for relax in (1.0, 1.4, 2.0, 3.0):
             bl = blocked.copy()
             bl[ga] = bl[gb] = False
-            path = _path(T, H, cell, ga, gb, maxg * relax * 0.95, bl)
+            path = _path(T, H, cell, ga, gb, maxg * relax * 0.95, bl, penalty=penalty)
             if path is not None:
                 relaxed = max(relaxed, relax)
                 break
@@ -674,6 +685,11 @@ def report(T):
         out.append(f"basin {name}: floor {b['floor'].sum() * T.cell ** 2 / 1e6:.2f} km2 from {fl.min():.0f} to "
                    f"{np.percentile(fl, 98):.0f} m, drains to [{b['falls'][0]:.0f}, {b['falls'][1]:.0f}]; "
                    f"walls {b['width']:.0f} m wide, averaging {b['avg']:.0f} deg with a {b['band']:.0f} m cliff band")
+    for name, c in getattr(T, "canyons", {}).items():
+        out.append(f"canyon {name}: {c['depth']:.0f} m deep at its deepest, {2 * c['half']:.0f} m rim to rim, floor "
+                   f"{c['floor']:.0f} m; walls in horizontal strata: cliffs over ledges at {c['ledge']:.0f} deg, talus at the foot")
+    for name, m in getattr(T, "mesas", {}).items():
+        out.append(f"mesa {name}: top {m['top']:.0f} m, {2 * m['radius']:.0f} m across")
     for name, p in T.passes.items():
         c, ax = np.array(p["xy"]), np.array(p["axis"])
         sides = []
@@ -705,6 +721,18 @@ def report(T):
                    f"{turns} switchbacks, steepest 20 m {100 * g.max():.0f}% (limit {100 * R.props['max_grade']:.0f}%) "
                    + ("OK" if ok else f"FAIL at [{R.xy[worst, 0]:.0f}, {R.xy[worst, 1]:.0f}]")
                    + f"; cut up to {R.props['cut']:.0f} m, fill {R.props['fill']:.0f} m")
+        rw = getattr(T, "river_water", None)
+        if rw is not None and rw.any():
+            wet = rw.ravel()[_cells(T, R.xy)] & ~T.ford_mask.ravel()[_cells(T, R.xy)]
+            atford = T.ford_mask.ravel()[_cells(T, R.xy)]
+            if atford.any():
+                out.append(f"    crosses at a ford: " + ", ".join(n for n, fd in T.fords.items()
+                                                                   if np.hypot(*(R.xy - fd["xy"]).T).min() < fd["width"] * 1.5))
+            if wet.any():
+                lab, n = ndimage.label(wet)
+                spots = [R.xy[lab == k].mean(0) for k in range(1, n + 1)]
+                out.append(f"    crosses river water at " + ", ".join(f"[{x:.0f}, {y:.0f}]" for x, y in spots)
+                           + ": needs a bridge (or add a ford there)")
         off = np.abs(T.sample(R.xy) - R.h) > 1.0  # the ground under the road isn't the road: legs crowd each other
         if off.any():
             lab, n = ndimage.label(off)
@@ -907,8 +935,11 @@ def intent(T):
                             v = sight(T, xy.tolist(), tgt, eye)["visible"]
                             got.append((label, v, v > want))
                     ok = [g for g in got if g[2]]
-                    unit = "%" if isinstance(tgt, str) and tgt in T.lakes else " m showing"
-                    fmt = (lambda v: f"{100 * v:.0f}%") if unit == "%" else (lambda v: f"{v:.0f} m showing")
+                    lake = isinstance(tgt, str) and tgt in T.lakes
+                    summit = isinstance(tgt, str) and (tgt in T.points or tgt.startswith("highest"))
+                    unit = "%" if lake else " m showing"
+                    fmt = ((lambda v: f"{100 * v:.0f}%") if lake else (lambda v: f"{v:.0f} m showing") if summit else
+                           (lambda v: f"clear by {v:.0f} m" if v > 0 else f"blocked, {-v:.0f} m short"))
                     best = max(got, key=lambda g: g[1])
                     line = (f"intent {name}: {tgt} from {src}: seen from {len(ok)} of {len(got)} spots across it "
                             f"(centre {fmt(got[0][1])}, best {best[0]} {fmt(best[1])}; eye {eye:g} m)" + ("" if ok else " FAIL"))

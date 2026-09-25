@@ -202,11 +202,17 @@ class Terrain:
         self.routes: dict[str, Line] = {}
         self.walls: dict[str, dict] = {}
         self.passes: dict[str, dict] = {}
+        self.canyons, self.mesas, self.fords = {}, {}, {}
         self.masks: dict[str, np.ndarray] = {}   # what each design element occupies (sites, routes, ...)
         self.water = np.full(self.X.shape, np.nan)
         self._ridges()
         self._rivers()
         self.H = self._base()
+        from . import terrain_forms as forms
+        forms.carve(self)  # canyons cut into the plateau, mesas stood on it
+        for c in self.canyons.values():  # water ends in a canyon's river: base level for erosion
+            m, _ = self._stamp(self.lines[c["river"]], c["floor"] / 2)
+            self._fixed_river |= m
         self.H0 = self.H.copy()
         self._texture()
         design.rugged(self)
@@ -352,7 +358,9 @@ class Terrain:
         high_fix, high, crest = np.zeros(shape, bool), np.zeros(shape), np.zeros(shape)
         self._fixed_river = np.zeros(shape, bool)
         river_id = np.zeros(shape, int)
-        rivers = [L for L in self.lines.values() if L.kind == "river"]
+        from .terrain_forms import canyon_rivers
+        cut = canyon_rivers(self.spec)
+        rivers = [L for L in self.lines.values() if L.kind == "river" and L.name not in cut]
         for k, L in enumerate(rivers, 1):
             m, i = self._stamp(L, L.props["floor"] / 2)
             if L.props["hanging"]:  # the lip: leave the last stretch free, so the step is steep, not a wall
@@ -413,6 +421,7 @@ class Terrain:
         s = self.t ** self.prof
         s = (1 - self.round) * s + self.round * (1 - (1 - s) ** 2)
         self.hard = np.zeros(self.X.shape, bool)  # rock that resists erosion (cliff bands)
+        self.hardness = np.ones(self.X.shape)  # erodibility factor: 1 soil ... ~0 rock that stands
         for b in self.basins.values():  # basin walls get a mountainside's profile
             prof = self._wall_profile(b)
             u = np.linspace(0, 1, len(prof))
@@ -421,7 +430,9 @@ class Terrain:
             pts = np.c_[self.P, np.zeros(len(self.P))]
             shift = 0.12 * (2 * noise.fbm(pts, 500 * self.k, 2, seed=71).reshape(self.X.shape) - 1)
             at = b["band_at"] + shift  # (breaking it too made climbable gaps: "unclimbable" wins that one)
-            self.hard |= b["wall"] & (self.t >= at - 0.03) & (self.t <= at + b["_ft"] + 0.03)
+            band = b["wall"] & (self.t >= at - 0.03) & (self.t <= at + b["_ft"] + 0.03)
+            self.hard |= band
+            self.hardness = np.where(band, 0.2, self.hardness)  # (0 made a palisade: the band stood, all else went)
         H = self.floor + np.maximum(self.crest - self.floor, 0) * s
         tilt = self.spec.get("tilt")  # the whole frame leans: {"down": "south" | bearing deg, "grade": 0.07}
         if tilt:
@@ -648,6 +659,15 @@ class Terrain:
             k = int(np.argmax(np.where(m, self.H, -np.inf)))
             xy = self.P[k]
             return xy, self.height(xy), None
+        if "_rim" in ref.split("@")[0] and "." in ref and ref.split(".")[0] in getattr(self, "canyons", {}):
+            from .terrain_forms import rim_address
+            return rim_address(self, ref)
+        if ref in getattr(self, "fords", {}):
+            xy = np.array(self.fords[ref]["xy"])
+            return xy, self.height(xy), None
+        if ref in getattr(self, "mesas", {}):
+            xy = np.array(self.mesas[ref]["xy"])
+            return xy, self.height(xy), None
         if ref.endswith("_shore") and "." in ref:
             lake, side = ref.rsplit(".", 1)
             return self._shore(lake, side[:-len("_shore")])
@@ -853,6 +873,8 @@ class Terrain:
             lk.update(area=wet.sum() * self.cell ** 2, depth=float((level - self.H[wet]).max()) if wet.any() else 0)
             shore = ndimage.binary_dilation(wet) & ~wet
             lk["freeboard"] = float(self.H[shore].min() - level) if shore.any() else 0
+        from . import terrain_forms as forms
+        forms.water(self)
 
     # ------------------------------------------------ processes
     def _texture(self):
@@ -1145,8 +1167,15 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
     from . import terrain_design as design
     slope = T._slope()
     hn = (T.H - T.H.min()) / max(np.ptp(T.H), 1)
-    grass = np.array([0.40, 0.47, 0.26]) * (1 - 0.3 * hn[..., None]) + np.array([0.10, 0.07, 0.02]) * hn[..., None]
-    rock = np.array([0.36, 0.34, 0.31]) + 0.06 * hn[..., None]
+    arid = T.world["kind"] in ("canyon", "dunes", "plateau")
+    bare = np.array([0.66, 0.52, 0.36]) if arid else np.array([0.40, 0.47, 0.26])  # bare ground: sandstone or grass
+    grass = bare * (1 - 0.3 * hn[..., None]) + np.array([0.10, 0.07, 0.02]) * hn[..., None]
+    rock = (np.array([0.58, 0.38, 0.26]) if arid else np.array([0.36, 0.34, 0.31])) + 0.06 * hn[..., None]
+    if arid and getattr(T, "canyons", None):
+        cy = next(iter(T.canyons.values()))
+        per = max(cy["depth"] / 7, 4.0)  # colour bands through the strata, level all along the canyon
+        band = 0.5 + 0.5 * np.sin(2 * np.pi * T.H / per) + 0.25 * np.sin(2 * np.pi * T.H / (per * 0.37))
+        rock = rock * (0.8 + 0.25 * band[..., None]) + np.array([0.08, 0.02, -0.02]) * (band[..., None] - 0.5)
     w = smoothstep(28, 40, slope)[..., None]
     c = grass * (1 - w) + rock * w
     if cover:
@@ -1300,7 +1329,9 @@ def write_mesh(T: Terrain, path, step: int = 1):
     Wt = T.water[::step, ::step]
     wet = ~np.isnan(Wt)
     wv = verts.copy()
-    wv[:, 2] = np.where(wet.ravel(), Wt.ravel(), np.nanmax(np.where(wet, Wt, np.nan)) if wet.any() else 0)
+    if wet.any():
+        _, (iy, ix) = ndimage.distance_transform_edt(~wet, return_indices=True)  # levels differ along a river
+        wv[:, 2] = Wt[iy, ix].ravel()
     q = (wet[:-1, :-1] | wet[:-1, 1:] | wet[1:, 1:] | wet[1:, :-1]).ravel()
     wf = np.concatenate([np.stack([a, b, c], 1)[q], np.stack([a, c, e], 1)[q]])
     np.savez(path, verts=verts.astype(np.float32), faces=faces.astype(np.int32), colors=col.astype(np.float32),

@@ -96,7 +96,7 @@ def erode(T):
     target = strength * min(0.035 * relief, T.world["gully"] * float(cfg.get("detail", 1.0)))
     # soil creeps, rock cliffs (the hard bands) do not
     D = float(cfg.get("soften", 0.1)) * T.k ** 2
-    diff = fs.DiffusionADIEroder(grid, np.where(keep, 0.0, np.where(T.hard, 0.2 * D, D)))  # rock creeps slower
+    diff = fs.DiffusionADIEroder(grid, np.where(keep, 0.0, T.hardness * D))  # rock creeps slower
     area = np.empty_like(H0)
     E = H0.copy()
     talus = float(cfg.get("talus", 38))
@@ -104,7 +104,7 @@ def erode(T):
     # multiple-flow routing divides by slope: on dead-flat ground (pads, plains) 0/0 turned every cell into NaN
     jitter = np.random.default_rng(3).random(H0.shape) * 1e-3
     for steps in range(1, 80):
-        K = np.where(keep, 0.0, k0 * strata_factor(T, E, cfg.get("strata")) * np.where(T.hard, 0.2, 1.0))
+        K = np.where(keep, 0.0, k0 * strata_factor(T, E, cfg.get("strata")) * T.hardness)
         spl = fs.SPLEroder(graph, K, 0.45, 1.0)
         graph.update_routes(E + jitter)
         graph.accumulate(area, 1.0)

@@ -277,10 +277,10 @@ def report(T) -> list[str]:
     if T.filled:
         out.append("world: heights chosen for you: " + ", ".join(T.filled))
     K = KINDS[W["kind"]]
-    hints = {"river": "rivers", "lake": "a lake landform (a basin's falls_to)", "none": "",
-             "sea": "no sea in the vocabulary yet: a lake at the base level reaching the frame's edge is the nearest"}
+    hints = {"river": "use rivers", "lake": "use a lake landform (a basin's falls_to)", "none": "",
+             "sea": "there's no sea in the vocabulary yet; the nearest is a lake at the base level reaching the frame's edge"}
     if K.get("water") and hints.get(K["water"]):
-        out.append(f"world: the designer said the lowest point is {K['water']}: use {hints[K['water']]}")
+        out.append(f"world: the designer said the lowest point is {K['water']}: {hints[K['water']]}")
     if K.get("enclosed") == "closed":
         out.append("world: the designer said it's closed in: a basin inside a closed ridge (its walls are unclimbable), "
                    "with a pass if the player enters")
