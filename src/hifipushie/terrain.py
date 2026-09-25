@@ -10,11 +10,13 @@ Pipeline (oldest first, like a history):
     switches. Then "divides": where two rivers have no ridge between them, the medial line between them becomes a
     rounded crest rising from their floors at their valleys' side grade (else the ground between is a ramp), and
     the fields are solved again.
- 3. texture and dissection (coarse-grid stream power, upsampled), capped so big relief doesn't grow pinnacles.
+ 3. texture (capped so big relief doesn't grow pinnacles) and rugged ground.
  4. landforms (lake basins carve to a level and dam it, fans, moraines, terraces); overlaps are reported.
- 5. design (terrain_design): walls, sites, routes: they reshape the ground, in that order.
- 6. lakes fill to their own level (not a global depression fill: an enclosed valley isn't one big lake).
- 7. cover masks from the final ground.
+ 5. design (terrain_design): passes, walls, sites, routes: they reshape the ground, in that order.
+ 6. erosion (terrain_erode: fastscapelib stream power, strata, thermal), with designed places protected and the
+    authored large-scale heights restored; then walls are checked.
+ 7. lakes fill to their own level (not a global depression fill: an enclosed valley isn't one big lake).
+ 8. cover masks from the final ground.
 """
 
 from __future__ import annotations
@@ -170,6 +172,7 @@ def _same(a, b):
 class Terrain:
     def __init__(self, spec: dict):
         from . import terrain_design as design
+        from .terrain_erode import erode
         self.source = spec
         spec = normalise(spec)
         self.spec = spec
@@ -201,11 +204,12 @@ class Terrain:
         self.H = self._base()
         self.H0 = self.H.copy()
         self._texture()
-        self._dissect()
         design.rugged(self)
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         design.apply(self)
+        erode(self)  # after the design: its places are protected, and lakes are where water ends
+        design.check(self)
         self._fill_lakes()
         self.cover = design.cover(self)
 
@@ -395,8 +399,34 @@ class Terrain:
             solve()
         s = self.t ** self.prof
         s = (1 - self.round) * s + self.round * (1 - (1 - s) ** 2)
+        self.hard = np.zeros(self.X.shape, bool)  # rock that resists erosion (cliff bands)
+        for b in self.basins.values():  # basin walls get a mountainside's profile
+            prof = self._wall_profile(b)
+            u = np.linspace(0, 1, len(prof))
+            s = np.where(b["wall"], np.interp(self.t, u, prof), s)
+            # the band wanders up and down the face (one even ring read as a built wall)
+            pts = np.c_[self.P, np.zeros(len(self.P))]
+            shift = 0.12 * (2 * noise.fbm(pts, 500 * self.k, 2, seed=71).reshape(self.X.shape) - 1)
+            at = b["band_at"] + shift  # (breaking it too made climbable gaps: "unclimbable" wins that one)
+            self.hard |= b["wall"] & (self.t >= at - 0.03) & (self.t <= at + b["_ft"] + 0.03)
         H = self.floor + np.maximum(self.crest - self.floor, 0) * s
         return self._hills(H)
+
+    def _wall_profile(self, b):
+        """Height fraction s(t) across a basin wall, t from the floor's edge (0) to the crest (1): a concave scree foot,
+        one cliff band at `band_at` (its height `band`, at min_slope + 14 deg), steady slopes above easing to the crest.
+        Built as slope weights (the band's weight is its steepness), so the whole face averages its intended slope."""
+        n = 512
+        t = np.linspace(0, 1, n)
+        rest = math.tan(math.radians(b["avg"]))
+        wgt = rest * (0.45 + 0.75 * smoothstep(0.0, 0.3, t) - 0.35 * smoothstep(0.75, 1.0, t))
+        steep = math.tan(math.radians(min(b["min_slope"] + 14, 80)))  # margin: erosion and the grid soften it
+        ft = min(0.4, (b["band"] / steep) / max(b["relief"] / math.tan(math.radians(b["avg"])), 1e-6))  # its share of the width
+        inband = (t >= b["band_at"]) & (t < b["band_at"] + ft)
+        wgt = np.where(inband, steep, wgt)
+        b["_ft"] = ft
+        s = np.r_[0, np.cumsum((wgt[1:] + wgt[:-1]) / 2)]
+        return s / s[-1]
 
     def _hills(self, H):
         """Lone peaks as domes on the ground beneath: a rounded top of `radius`, flanks falling at about `flanks`
@@ -446,13 +476,23 @@ class Terrain:
         lo, hi = b.get("floor", [None, None])
         crest_min = float(np.percentile(L.h, 5))  # passes will notch lower; they're exempt
         w = b.get("walls", {})
-        slope = float(w.get("min_slope", 40)) + 4  # a margin: texture and erosion soften it
-        width = float(w.get("width", max(3 * self.cell, (crest_min - hi) / math.tan(math.radians(slope)))))
-        depth = ndimage.distance_transform_edt(inside) * self.cell
-        F = depth >= width
+        # a real mountainside averages 25-40 deg: a scree foot, cliff band(s), easier upper slopes. "Unclimbable" needs
+        # only one band steep and tall enough, not the whole face (that read as a draped curtain)
+        slope = float(w.get("min_slope", 45))
+        avg = min(float(w.get("average", 32)), slope - 5)
+        # each stretch of wall is as wide as the crest behind it needs at that slope (a big peak has a big footprint;
+        # one width from the lowest crest made the high stretches 58 deg)
+        dist, near = cKDTree(L.xy).query(self.P)
+        crest_here = ndimage.gaussian_filter(L.h[near].reshape(self.X.shape), 150 * self.k / self.cell)
+        need = np.maximum(3 * self.cell, (crest_here - hi) / math.tan(math.radians(avg)))
+        if "width" in w:
+            need = np.full(self.X.shape, float(w["width"]))
+        F = inside & (dist.reshape(self.X.shape) >= need)
+        F = ndimage.binary_opening(F, iterations=2)
+        width = float(np.median(need[inside & ~F])) if (inside & ~F).any() else float(need.mean())
         if not F.any():
             raise ValueError(f"basin {name!r}: walls {width:.0f} m wide leave no floor; lower the floor's high end "
-                             f"or the wall slope, or widen the ring")
+                             f"or the crest, or widen the ring")
         fx = self._early_xy(b["falls_to"]) if b.get("falls_to") else np.array(
             [self.X[F].mean(), self.Y[F].mean()])
         lfs = self.spec.get("landforms") or {}
@@ -474,8 +514,10 @@ class Terrain:
         fl = lo + (hi - lo) * np.clip(u, 0, 1) ** p
         self._fixed_river |= sink  # water ends here: base level for erosion
         wall = inside & ~F
+        band = float(w.get("height", max(30.0, 0.08 * (crest_min - hi))))  # the cliff band's height
         self.basins[name] = {"floor": F, "wall": wall, "inside": inside, "width": width, "lo": lo, "hi": hi,
-                             "min_slope": slope - 4, "falls": fx.tolist()}
+                             "min_slope": slope, "falls": fx.tolist(), "band": band, "avg": avg,
+                             "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3))}
         return F, fl, PROFILES.get(w.get("profile", "straight"), 1.0)
 
     def _ribs(self, high_fix, low_fix):
@@ -663,7 +705,8 @@ class Terrain:
         true_d = np.hypot(self.X - xy[0], self.Y - xy[1])
         lobe = noise.fbm(np.c_[self.P, np.full(len(self.P), 7.0)], 0.9 * r, 2, seed=int(xy[0] + xy[1]) % 1000)
         d = true_d + lf.get("lobes", 0.3) * r * 2 * (lobe.reshape(self.X.shape) - 0.5)
-        level = float(lf["level"]) if "level" in lf else self.height(xy)
+        drains = [b for b in self.basins.values() if np.allclose(b["falls"], xy)]
+        level = float(lf["level"]) if "level" in lf else (drains[0]["lo"] if drains else self.height(xy))
         depth = float(lf.get("depth", 10))
         target = np.where(d < r, level - depth * np.clip(1 - (d / r) ** 2, 0, 1) ** 1.5 - 0.3,
                           level - 0.3 + 0.35 * (d - r))  # shore banks at ~19 deg rather than a step
@@ -768,29 +811,6 @@ class Terrain:
         crestward = 1 - 0.7 * smoothstep(0.85, 1.0, self.t)  # lumps right on a crest read as pinnacles
         self.H += rough * 0.03 * relief * crestward * (ridged.reshape(self.X.shape) - 0.5)
         self.H += rough * 4 * self.k * (gully.reshape(self.X.shape) - 0.5)
-
-    def _dissect(self):
-        """Side streams cutting the slopes between the authored rivers (which stay put: they are base level).
-        Stream power runs on a coarser grid (D8 on the fine grid scratches one-cell, eight-direction rills) and its
-        erosion is upsampled smoothly; a lumpiness first gives flow somewhere to converge (on planar slopes it runs
-        in parallel stripes)."""
-        d = self.spec.get("dissection", {"strength": 1.0})
-        if not d or not d.get("strength"):
-            return
-        f = int(d.get("coarse", 4))
-        relief = np.minimum(np.maximum(self.crest - self.floor, 0), RELIEF_CAP * self.k)
-        pts = np.c_[self.P, np.zeros(len(self.P))]
-        pert = sum(a * (noise.fbm(pts, sc * self.k, 3, seed=s) - 0.5) for a, sc, s in [(1, 500, 11), (0.5, 180, 12)])
-        amp = d.get("lumpy", 0.08) * relief * np.clip(self.t * 3, 0, 1) * (1 - 0.7 * smoothstep(0.85, 1.0, self.t)) + 3.0 * self.k
-        H = self.H + amp * pert.reshape(self.X.shape) * ~self._fixed_river
-        Hc = H[::f, ::f]
-        base = self._fixed_river[::f, ::f].copy()
-        base[0, :] = base[-1, :] = base[:, 0] = base[:, -1] = True
-        E, _ = stream_power(Hc, self.cell * f, base, steps=int(d.get("age", 40)), k=0.006 * d["strength"],
-                            diffuse=d.get("soften", 0.02))
-        delta = ndimage.zoom(E - Hc, f, order=3)[:H.shape[0], :H.shape[1]]
-        delta = np.pad(delta, ((0, H.shape[0] - delta.shape[0]), (0, H.shape[1] - delta.shape[1])), mode="edge")
-        self.H = H + delta
 
     # ------------------------------------------------ measuring
     def _slope(self, H=None):
@@ -1005,26 +1025,6 @@ def _accumulate(rec, levels, cell):
     for lv in reversed(levels[1:]):
         np.add.at(acc, rec[lv], acc[lv])
     return acc
-
-
-def stream_power(H, cell, base, steps=40, k=0.004, m=0.5, diffuse=0.15):
-    """Fluvial dissection: implicit stream-power incision (Braun & Willett 2013, n = 1) toward fixed base-level
-    cells, plus a little hillslope diffusion. Returns the eroded surface and the final drainage area."""
-    H = H.copy().ravel()
-    fixed = base.ravel()
-    shape = base.shape
-    A = np.zeros(H.size)
-    for _ in range(steps):
-        rec, dist, levels = _receivers(H.reshape(shape), cell, base)
-        A = _accumulate(rec, levels, cell)
-        F = k * A ** m / np.maximum(dist, 1e-9)
-        for lv in levels[1:]:
-            lv = lv[~fixed[lv]]
-            H[lv] = (H[lv] + F[lv] * H[rec[lv]]) / (1 + F[lv])
-        if diffuse:
-            G = H.reshape(shape)
-            H = np.where(fixed, H, (G + diffuse * ndimage.laplace(G, mode="nearest")).ravel())
-    return H.reshape(shape), A.reshape(shape)
 
 
 # ---------------------------------------------------------------- views

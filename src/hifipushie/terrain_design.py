@@ -27,15 +27,15 @@ from .terrain import Line, _arclen, _area, smoothstep
 NAMED_REGIONS = ("everywhere", "centre", "north", "south", "east", "west")
 
 COVER_TYPES = {
-    "forest":    {"slope": [0, 38], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
+    "forest":    {"slope": [0, 40], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
                   "color": [0.12, 0.25, 0.11], "trees": "conifer"},
-    "conifer":   {"slope": [0, 38], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
+    "conifer":   {"slope": [0, 42], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
                   "color": [0.10, 0.22, 0.12], "trees": "conifer"},
-    "deciduous": {"slope": [0, 32], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
+    "deciduous": {"slope": [0, 36], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
                   "color": [0.24, 0.34, 0.12], "trees": "broadleaf"},
-    "rock":      {"slope": [32, 90], "breakup": {"scale": 60, "amount": 0.3}, "color": [0.45, 0.43, 0.40]},
-    "scree":     {"slope": [24, 36], "breakup": {"scale": 40, "amount": 0.3}, "color": [0.58, 0.54, 0.47]},
-    "grass":     {"slope": [0, 30], "avoid": ["water"], "color": [0.45, 0.56, 0.26]},
+    "rock":      {"slope": [40, 90], "breakup": {"scale": 60, "amount": 0.3}, "color": [0.45, 0.43, 0.40]},
+    "scree":     {"slope": [30, 40], "breakup": {"scale": 40, "amount": 0.3}, "color": [0.58, 0.54, 0.47]},
+    "grass":     {"slope": [0, 38], "avoid": ["water"], "color": [0.45, 0.56, 0.26]},
     "meadow":    {"slope": [0, 25], "avoid": ["water", "routes"], "breakup": {"scale": 80, "amount": 0.3},
                   "color": [0.55, 0.62, 0.30]},
     "snow":      {"slope": [0, 45], "color": [0.94, 0.95, 0.97]},
@@ -165,7 +165,10 @@ def apply(T):
         _site(T, name, s)
     for name, r in (T.spec.get("routes") or {}).items():
         _route(T, name, r)
-    for name in T.walls:  # checked last: sites and routes may have eaten into a wall
+
+
+def check(T):
+    for name in T.walls:  # checked last: sites, routes and erosion all change the ground
         _check_wall(T, name)
 
 
@@ -531,13 +534,63 @@ def cover(T) -> dict:
 
 # ---------------------------------------------------------------- report and intent
 
-def report(T):
-    out = []
+# what real landscapes look like, for the realism check: share of ground steeper than 30 / 45 / 60 deg in rugged
+# mountain terrain (alpine DEMs), and the slope real mountainsides average
+REAL = {"over_30": 0.35, "over_45": 0.12, "over_60": 0.03, "face": (25, 40)}
+
+
+def realism(T):
+    """Slope statistics against real terrain, and whether each basin's relief fits its ring at a realistic slope."""
+    land = np.isnan(T.water)
+    sl = T._slope()[land]
+    f30, f45, f60 = (sl > 30).mean(), (sl > 45).mean(), (sl > 60).mean()
+    out = [f"realism: median slope {np.median(sl):.0f} deg; {100 * f30:.0f}% of the ground over 30 deg, "
+           f"{100 * f45:.0f}% over 45, {100 * f60:.0f}% over 60 (rugged real mountains: about "
+           f"{100 * REAL['over_30']:.0f}%, {100 * REAL['over_45']:.0f}%, {100 * REAL['over_60']:.0f}%)"]
     for name, b in T.basins.items():
+        inner = T._slope()[b["inside"] & land]
+        out.append(f"realism: inside basin {name}: {100 * (inner > 45).mean():.0f}% over 45 deg, "
+                   f"{100 * (inner > 60).mean():.0f}% over 60")
+    edge = np.zeros(T.X.shape, bool)
+    edge[:, :3] = edge[:, -3:] = True
+    edge[:3, :] = edge[-3:, :] = True
+    ring = ndimage.binary_dilation(edge, iterations=max(3, int(0.08 * T.size / T.cell)))
+    if (T._slope()[ring & land] > 45).mean() > 0.3 and isinstance(T.spec.get("border"), (int, float, dict)):
+        T.warnings.append("the frame's edge is fixed low close to high ground, so the ground falls off it in cliffs "
+                          "(a moat around the level); open the edge (\"border\": \"open\") or fix it higher")
+    if f30 < 0.2:  # gentle country: the mountain comparison doesn't apply
+        out[0] = f"realism: median slope {np.median(sl):.0f} deg; {100 * f30:.0f}% of the ground over 30 deg (gentle country)"
+    elif f45 > 2 * REAL["over_45"] or f60 > 3 * REAL["over_60"]:
+        T.warnings.append(f"steeper than real terrain: {100 * f45:.0f}% of the ground is over 45 deg (real mountains: "
+                          f"~{100 * REAL['over_45']:.0f}%); faces steep all the way down read as draped curtains. Lower "
+                          f"the relief, widen the frame, or give walls cliff bands rather than steepness everywhere")
+    for name, b in T.basins.items():
+        need = b["relief"] / math.tan(math.radians(b["avg"]))
+        across = 2 * math.sqrt(b["inside"].sum() / math.pi) * T.cell  # the ring's rough diameter
+        floor_share = b["floor"].sum() / max(b["inside"].sum(), 1)
+        out.append(f"realism: basin {name}: {b['relief']:.0f} m from floor edge to lowest crest at {b['avg']:.0f} deg "
+                   f"needs {need:.0f} m of mountainside; the ring is ~{across:.0f} m across, leaving "
+                   f"{100 * floor_share:.0f}% of it as floor")
+        if floor_share < 0.35:
+            T.warnings.append(f"basin {name!r}: its walls leave only {100 * floor_share:.0f}% of the ring as floor. The "
+                              f"relief ({b['relief']:.0f} m) is big for a ring ~{across:.0f} m across: lower the crest, "
+                              f"widen the ring/frame, or make the walls steeper rock (\"walls\": {{\"average\": 45}}: "
+                              f"granite-like; real alpine faces average 25-40 deg)")
+    return out
+
+
+def report(T):
+    out = realism(T)
+    for name, b in T.basins.items():
+        on_wall = [n for n, lk in T.lakes.items() if b["wall"][_ij(T, np.array(lk["xy"]))]]
+        on_wall += [n for n, st in T.sites.items() if b["wall"][_ij(T, np.array(st["xy"]))]]
+        if on_wall:
+            T.warnings.append(f"{', '.join(on_wall)} stand(s) on basin {name!r}'s wall, not its floor: its walls take "
+                              f"{b['width']:.0f} m (a {b['avg']:.0f} deg mountainside), so the floor is smaller than the ring")
         fl = T.H[b["floor"]]
         out.append(f"basin {name}: floor {b['floor'].sum() * T.cell ** 2 / 1e6:.2f} km2 from {fl.min():.0f} to "
                    f"{np.percentile(fl, 98):.0f} m, drains to [{b['falls'][0]:.0f}, {b['falls'][1]:.0f}]; "
-                   f"walls {b['width']:.0f} m wide")
+                   f"walls {b['width']:.0f} m wide, averaging {b['avg']:.0f} deg with a {b['band']:.0f} m cliff band")
     for name, p in T.passes.items():
         out.append(f"pass {name}: through {p['ridge']} at [{p['xy'][0]:.0f}, {p['xy'][1]:.0f}], saddle at "
                    f"{T.height(np.array(p['xy'])):.0f} m, {p['width']:.0f} m wide, ramps "

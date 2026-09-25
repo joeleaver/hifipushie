@@ -182,6 +182,25 @@ wheels = [
 ]
 
 [[package]]
+name = "fastscapelib"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/50/45c85efe569d553e4d7752533a3a338a114310b3a04b62a42f5883d88ac2/fastscapelib-0.3.0.tar.gz", hash = "sha256:bc7084b4bfd4ce2e156064f7fe14708082779d501d9f54ee8ec9526b0626ab8e", size = 727450, upload-time = "2025-06-25T15:06:52.896Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/62/0037a4fe13ff46664059b647b3782e7625afa7a0b7b88a0cb8cc8112163f/fastscapelib-0.3.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:bbfe2f4a8cd9bbc14e6599715330cab2c12816e92330a1e3231fc80230ed2a67", size = 509502, upload-time = "2025-06-25T15:06:41.86Z" },
+    { url = "https://files.pythonhosted.org/packages/96/a7/02a6ae6c18f6cf6e73574773c7917a51427c94323e6b602e92e0abb2d7ff/fastscapelib-0.3.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:942a71ae289fd5b0914d3a6531808f0452774369db4aac7c6c41a011f6b12bb1", size = 449080, upload-time = "2025-06-25T15:06:43.422Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/d8/0ede8e555e9efc5de30196f42453bec2667752ef0a7a11a7ee8cc54950cf/fastscapelib-0.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5a0d3539d261f4958d76429c0f4150c97459d7a8fbf0af2b7523f83487a4987d", size = 486577, upload-time = "2025-06-25T15:06:44.666Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/ed/dec9bfa3ab3c6ed2dd0ffb34d082bf2141d76b60551521164fcd53193021/fastscapelib-0.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:2bbb02b20ee97cc845fc3eb96917adac951838c72e039494d20ba866c41a8f61", size = 418797, upload-time = "2025-06-25T15:06:46.175Z" },
+    { url = "https://files.pythonhosted.org/packages/01/66/99f39477d55a3c7632993045497cda517ca826f35dff368746d028954059/fastscapelib-0.3.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:e3676cd3e4254df4070554e2f1de8b5efb3b00b599c80b948584f9b0231d81a6", size = 509568, upload-time = "2025-06-25T15:06:47.326Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/20/4fa593d4565a53fd356d0c84601f88532c526c9349398db03daca2ac2131/fastscapelib-0.3.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:3368aefb9608664a28ee750d0e772e4b19e0db7702182d3ad3b25e2a84259b61", size = 449168, upload-time = "2025-06-25T15:06:48.676Z" },
+    { url = "https://files.pythonhosted.org/packages/35/4a/8ed9df395a955ffe58f19e33973eb5abfc579124a1b72383dabbf0d6cb0c/fastscapelib-0.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:87bac3b8efdc6e373d7376a5e98d404e3593352f4a54dfa4b7a5679b700c2472", size = 486807, upload-time = "2025-06-25T15:06:49.92Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/be/c4e3caea8d61e8ce495f65b6fbeda6793a35eb55cd06e2091abf4056cdb6/fastscapelib-0.3.0-cp313-cp313-win_amd64.whl", hash = "sha256:2ce5acb4ffbb96bfd6c0e6f351f843776eb797a7a0d4c1b299e2ab8f7f8478ba", size = 418749, upload-time = "2025-06-25T15:06:51.421Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -195,6 +214,7 @@ name = "hifipushie"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastscapelib" },
     { name = "mcp" },
     { name = "numpy" },
     { name = "pillow" },
@@ -204,6 +224,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastscapelib", specifier = ">=0.3.0" },
     { name = "mcp", specifier = ">=2.2.0" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "pillow", specifier = ">=12.3.0" },

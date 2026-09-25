@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
+    "fastscapelib>=0.3.0",
     "mcp>=2.2.0",
     "numpy>=2.5.3",
     "pillow>=12.3.0",
