@@ -75,8 +75,9 @@ def thermal(H, cell, talus_deg, keep, iters=20, rate=0.25):
 
 def erode(T):
     import fastscapelib as fs
-    cfg = T.spec.get("erosion", T.spec.get("dissection", {"strength": 1.0}))
-    strength = float(cfg.get("strength", 1.0)) if cfg else 0.0
+    cfg = T.spec.get("erosion", T.spec.get("dissection"))
+    cfg = {} if cfg is None else cfg  # (an empty dict means the defaults, not "off")
+    strength = float(cfg.get("strength", 1.0))
     if not strength:
         return
     H0 = T.H.copy()
@@ -90,8 +91,12 @@ def erode(T):
     # K scales with the frame (drainage area grows with its square) so a tile erodes like a valley does
     k0 = 5e-5 * (4000.0 / T.size) ** 0.9
     relief = float(np.percentile(H0, 98) - np.percentile(H0, 2))
-    target = 0.035 * strength * relief  # mean lowering to reach, then stop
-    diff = fs.DiffusionADIEroder(grid, np.where(keep, 0.0, 0.01 * T.k ** 2))
+    # mean lowering to reach, then stop. Capped in metres: in a game level (compressed geometry) erosion scaled to the
+    # implied geology cut 20-30 m flutes, trenches across the player's space. "detail" scales the cap.
+    target = strength * min(0.035 * relief, 6.0 * float(cfg.get("detail", 1.0)))
+    # soil creeps, rock cliffs (the hard bands) do not
+    D = float(cfg.get("soften", 0.1)) * T.k ** 2
+    diff = fs.DiffusionADIEroder(grid, np.where(keep, 0.0, np.where(T.hard, 0.2 * D, D)))  # rock creeps slower
     area = np.empty_like(H0)
     E = H0.copy()
     talus = float(cfg.get("talus", 38))
