@@ -16,6 +16,7 @@ Jobs:
 """
 
 import json
+import time
 import sys
 
 import bpy
@@ -579,6 +580,10 @@ def sync(job):
     print("@@made", json.dumps(made))
 
 
+RENDER_SAMPLES = 64  # EEVEE's default
+RT_SCALE = 1
+
+
 def render(job):
     _open(job["blend"])
     scene = bpy.context.scene
@@ -603,6 +608,8 @@ def render(job):
     ee.ray_tracing_method = "SCREEN"
     ee.use_fast_gi = True
     ee.fast_gi_method = "GLOBAL_ILLUMINATION"
+    ee.taa_render_samples = int(job.get("samples", RENDER_SAMPLES))
+    ee.ray_tracing_options.resolution_scale = str(job.get("rt_scale", RT_SCALE))  # 1 full, 2 half, ...
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
     scene.render.film_transparent = bool(job.get("show_layer"))  # alpha: surface vs sky, for coverage
     scene.render.image_settings.color_mode = "RGBA" if job.get("show_layer") else "RGB"
@@ -637,7 +644,9 @@ def render(job):
             cam_data.ortho_scale = v["scale"]
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ rot
         scene.render.filepath = v["out"]
+        t = time.time()
         bpy.ops.render.render(write_still=True)
+        print(f"@@frame {time.time() - t:.2f}", flush=True)
 
 
 def _low(name, path):

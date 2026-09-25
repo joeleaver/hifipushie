@@ -759,7 +759,11 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         for f in frames:
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         t = time.time()
-        job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat}
+        # 16 EEVEE samples look the same as the default 64 (mean 0.3/255 apart on cabin5) in half the time; glass
+        # refracting the room behind it wants more
+        glass = any((d or {}).get("transmission") or (d or {}).get("alpha", 1) < 1 for d in (spec.get("parts") or {}).values())
+        job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
+               "samples": 32 if glass else 16}
         if show_layer:  # that layer's mask alone (needs the program: compile it again)
             from . import paint, paintnodes
             names = list(paint.layers(spec))
