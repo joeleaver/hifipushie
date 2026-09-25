@@ -43,7 +43,7 @@ UNITS = {"m": 1.0, "km": 1000.0, "cm": 0.01, "ft": 0.3048, "yd": 0.9144, "mi": 1
 # every number in a spec is a length (converted with the units) unless its key is one of these
 NOT_LENGTHS = {"slope", "min_slope", "sides", "max_grade", "grade", "amount", "density", "range", "fov", "lobes",
                "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k",
-               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "spacing_rows"}
+               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along"}
 HEIGHT_KEYS = {"h", "level", "floor", "elevation", "above", "below", "border", "height", "depth", "freeboard",
                "above_water", "hanging", "relief"}
 REFERENCE_SIZE = 4000.0  # landscape defaults were tuned on 4 km scenes; they scale with the frame (Terrain.k)
@@ -374,10 +374,16 @@ class Terrain:
         # floor makes a walled mesa) but a dome raised on whatever ground is there, after the base (_hills)
         on_ridge = {p for r in (self.spec.get("ridges") or {}).values() for p in r["through"] if isinstance(p, str)}
         self._lone = [n for n in self.points if n not in on_ridge]
-        if not low_fix.any():
+        plain = not low_fix.any() and not high_fix.any()  # a tile of open ground: a plain at the base height (+ tilt, hills)
+        if not low_fix.any() and not plain:
             raise ValueError("nothing low: add a river or a basin, or give the frame's edge a height (\"border\")")
 
         def solve():
+            if plain:
+                base = self.world["base"]
+                self.floor, self.prof = np.full(shape, base), prof
+                self.crest, self.round, self.t = self.floor.copy(), np.zeros(shape), np.zeros(shape)
+                return
             self.floor, self.prof = self._solve(low_fix, [low, prof])
             if high_fix.any():
                 t, = self._solve(low_fix | high_fix, [np.where(high_fix, 1.0, 0.0)])
@@ -415,6 +421,13 @@ class Terrain:
             at = b["band_at"] + shift  # (breaking it too made climbable gaps: "unclimbable" wins that one)
             self.hard |= b["wall"] & (self.t >= at - 0.03) & (self.t <= at + b["_ft"] + 0.03)
         H = self.floor + np.maximum(self.crest - self.floor, 0) * s
+        tilt = self.spec.get("tilt")  # the whole frame leans: {"down": "south" | bearing deg, "grade": 0.07}
+        if tilt:
+            down = tilt.get("down", "south")
+            b = math.radians({"north": 0, "east": 90, "south": 180, "west": 270}.get(down, down if isinstance(down, (int, float)) else 180))
+            (x0, y0), (x1, y1) = self.spec["extent"]
+            along = (self.X - (x0 + x1) / 2) * math.sin(b) + (self.Y - (y0 + y1) / 2) * math.cos(b)
+            H = H - float(tilt.get("grade", 0.05)) * along  # lower toward `down`
         return self._hills(H)
 
     def _wall_profile(self, b):
@@ -618,6 +631,16 @@ class Terrain:
         if ref in self.points:
             xy = self.points[ref][0]
             return xy, self.height(xy), None
+        if ref.startswith("edge:"):  # "edge:w" (its middle) or "edge:w@0.3" (from the south / west end), just inside
+            side, _, f = ref[5:].partition("@")
+            f = float(f) if f else 0.5
+            (x0, y0), (x1, y1) = self.spec["extent"]
+            m = 2 * self.cell
+            xy = {"w": (x0 + m, y0 + f * (y1 - y0)), "e": (x1 - m, y0 + f * (y1 - y0)),
+                  "s": (x0 + f * (x1 - x0), y0 + m), "n": (x0 + f * (x1 - x0), y1 - m)}[side[0]]
+            xy = np.array(xy, float)
+            inward = {"w": (1, 0), "e": (-1, 0), "s": (0, 1), "n": (0, -1)}[side[0]]
+            return xy, self.height(xy), np.array(inward, float)
         if ref == "highest" or ref.startswith("highest:"):
             m = design.region(self, ref.split(":", 1)[1]) > 0.5 if ":" in ref else np.ones(self.X.shape, bool)
             k = int(np.argmax(np.where(m, self.H, -np.inf)))
@@ -717,9 +740,26 @@ class Terrain:
                           level - 0.3 + 0.35 * (d - r))  # shore banks at ~19 deg rather than a step
         reach = smoothstep(1.6 * r, 1.1 * r, true_d)  # the bank only reshapes the shore, not the hills around it
         self.H = self.H * (1 - reach) + np.minimum(self.H, self._smooth(target, 10 * self.k)) * reach
-        if lf.get("dam", True):
+        dam = lf.get("dam", True)
+        if dam == "downhill":  # a farm pond: one straight bank across the slope on its low side
+            gy, gx = np.gradient(ndimage.gaussian_filter(self.H, r / self.cell), self.cell)
+            iy, ix = int(round((xy[1] - self.ys[0]) / self.cell)), int(round((xy[0] - self.xs[0]) / self.cell))
+            down = -np.array([gx[iy, ix], gy[iy, ix]])
+            down = down / (np.linalg.norm(down) + 1e-12)
+            v = np.stack([self.X - xy[0], self.Y - xy[1]], -1)
+            u, w = v @ down, v @ np.array([-down[1], down[0]])
+            crest = level + lf.get("freeboard", 1.5)
+            top = float(lf.get("crest_width", max(3.0, 0.1 * r)))
+            bank = smoothstep(top / 2 + 2.5 * (crest - np.minimum(self.H, crest)) + 1e-6, top / 2, np.abs(u - 1.05 * r))
+            bank *= smoothstep(1.6 * r, 1.2 * r, np.abs(w))
+            self.H = np.maximum(self.H, self.H * (1 - bank) + crest * bank)
+            # wings: along the contour the ground sits right at the water level, so the ends need a low lift too
+            wing = smoothstep(0.35 * r, 0.1 * r, np.abs(d - 1.15 * r)) * (true_d < 1.6 * r)
+            self.H += wing * np.clip(level + 0.5 - self.H, 0, None)
+        elif dam:
             rim = smoothstep(0.45 * r, 0.12 * r, np.abs(d - 1.2 * r)) * (true_d < 1.8 * r)  # solid: a thin crest leaks
             self.H += rim * np.clip(level + lf.get("freeboard", 1.5) - self.H, 0, None)
+        # dam false: a natural lake, holding only what the ground holds (the report says if it leaks)
         self.lakes[name] = {"xy": xy.tolist(), "level": level, "r": r, "id": len(self.lakes) + 1}
         lf["_centre"] = xy.tolist()
 
@@ -906,10 +946,10 @@ class Terrain:
         base = ~np.isnan(self.water)
         base[[0, -1], :] = base[:, [0, -1]] = True
         rec, dist, levels = _receivers(H, self.cell, base)
-        from skimage.morphology import reconstruction
-        seed = np.full(H.shape, H.max())
-        seed[[0, -1], :], seed[:, [0, -1]] = H[[0, -1], :], H[:, [0, -1]]
-        depth = reconstruction(seed, H, method="erosion") - H  # how deep water would stand (depression fill)
+        import fastscapelib as fs  # its priority flood (skimage's reconstruction was pathologically slow on a tilt)
+        grid = fs.RasterGrid(list(H.shape), [self.cell, self.cell], fs.NodeStatus.FIXED_VALUE)
+        filled = fs.FlowGraph(grid, [fs.SingleFlowRouter(), fs.PFloodSinkResolver()]).update_routes(H.copy())
+        depth = np.asarray(filled).reshape(H.shape) - H  # how deep water would stand (depression fill)
         hollows = (depth > 1.0) & np.isnan(self.water)
         hollows = ndimage.binary_opening(hollows)  # specks of a cell or two aren't worth a line
         lab_h, n_h = ndimage.label(hollows)

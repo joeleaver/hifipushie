@@ -41,6 +41,8 @@ COVER_TYPES = {
     "snow":      {"slope": [0, 45], "color": [0.94, 0.95, 0.97]},
     "sand":      {"slope": [0, 15], "color": [0.78, 0.71, 0.52]},
     "mud":       {"slope": [0, 10], "color": [0.33, 0.27, 0.19]},
+    "orchard":   {"slope": [0, 20], "avoid": ["water", "routes", "sites"], "rows": 6, "color": [0.30, 0.42, 0.16],
+                  "trees": "broadleaf"},
 }
 
 
@@ -513,6 +515,15 @@ def cover(T) -> dict:
                 xy = T.address(what)[0]
                 d = np.hypot(T.X - xy[0], T.Y - xy[1])
             m *= smoothstep(within, within * 0.6, d)
+        if c.get("rows"):  # an orchard or plantation: trees in rows `rows` metres apart, along contours or an axis
+            along = c.get("along", "contour")
+            if along == "contour":
+                u = T.H / max(float(np.mean(np.hypot(*np.gradient(T.H, T.cell)))) + 1e-3, 1e-3)  # ~distance across the slope
+            else:
+                ang = math.radians({"east": 90, "west": 90, "north": 0, "south": 0}.get(along, float(along) if
+                                   isinstance(along, (int, float)) else 0))
+                u = T.X * math.cos(ang) - T.Y * math.sin(ang)
+            m *= smoothstep(0.55, 0.85, 0.5 + 0.5 * np.cos(2 * np.pi * u / float(c["rows"])))
         br = c.get("breakup")
         if br and br.get("amount"):
             user = ((T.spec.get("cover") or {})[name].get("breakup") or {}).get("scale")
@@ -528,8 +539,16 @@ def cover(T) -> dict:
                     m *= 1 - T.masks[a]
             else:
                 m *= 1 - region(T, a)
-        out[name] = np.clip(m, 0, 1)
+        m = np.clip(m, 0, 1)
+        if c.get("count") and c.get("trees"):  # "a few trees": scale the density so about this many stand
+            expect = m.sum() * T.cell ** 2 * TREES_PER_M2
+            if expect > 0:
+                m = np.clip(m * c["count"] / expect, 0, 1)
+        out[name] = m
     return out
+
+
+TREES_PER_M2 = 0.02  # the preview's (and a reasonable engine's) density at mask 1: one tree per 50 m2
 
 
 # ---------------------------------------------------------------- report and intent
@@ -682,6 +701,10 @@ def _target(T, ref):
     return xy, h + 2, T.cell * 2, False
 
 
+def _compass(a):
+    return ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][int(round(a / (math.pi / 4))) % 8] + " side"
+
+
 def _eye(T, eye_ref, eye_height):
     exy, eh, _ = T.address(eye_ref)
     if isinstance(eye_ref, str) and eye_ref in T.sites:
@@ -796,13 +819,38 @@ def intent(T):
                        + ("OK" if ok else f"FAIL at [{xy[w, 0]:.0f}, {xy[w, 1]:.0f}], {d[w]:.0f} m along "
                                           f"(a route would wind there: use \"routes\")"))
         if "see" in it:
+            eye = float(it.get("eye", 1.7))
+            src = it["from"]
+            spots = None
+            if isinstance(src, str) and src in T.sites:  # a place, not a point: try the eye across it
+                st = T.sites[src]
+                c = np.array(st["xy"])
+                spots = [("centre", c)] + [(_compass(a), c + 0.7 * st["radius"] * np.array([math.sin(a), math.cos(a)]))
+                                           for a in np.radians(np.arange(0, 360, 45))]
             for tgt in it["see"]:
                 want = it.get("min_visible", 0)
+                if spots:
+                    got = []
+                    for label, xy in spots:
+                        if isinstance(tgt, str) and tgt in T.lakes:
+                            v = lake_seen(T, xy.tolist(), tgt, eye)
+                            got.append((label, v, v > 0))
+                        else:
+                            v = sight(T, xy.tolist(), tgt, eye)["visible"]
+                            got.append((label, v, v > want))
+                    ok = [g for g in got if g[2]]
+                    unit = "%" if isinstance(tgt, str) and tgt in T.lakes else " m showing"
+                    fmt = (lambda v: f"{100 * v:.0f}%") if unit == "%" else (lambda v: f"{v:.0f} m showing")
+                    best = max(got, key=lambda g: g[1])
+                    out.append(f"intent {name}: {tgt} from {src}: seen from {len(ok)} of {len(got)} spots across it "
+                               f"(centre {fmt(got[0][1])}, best {best[0]} {fmt(best[1])}; eye {eye:g} m)"
+                               + ("" if ok else " FAIL"))
+                    continue
                 if isinstance(tgt, str) and tgt in T.lakes:
-                    f = lake_seen(T, it["from"], tgt)
+                    f = lake_seen(T, src, tgt, eye)
                     out.append(f"intent {name}: {tgt}: {100 * f:.0f}% of its surface visible" + ("" if f > 0 else " FAIL"))
                     continue
-                r = sight(T, it["from"], tgt)
+                r = sight(T, src, tgt, eye)
                 if r["visible"] > want:
                     s = f"intent {name}: {tgt} visible, {r['visible']:.0f} m of it showing above what's in front ({r['dist']:.0f} m away)"
                     if "skyline" in r:

@@ -6,6 +6,37 @@ and cover masks. You never paint heights. Where you want a specific landform (a 
 you can drop down and write it; otherwise the compiler fills in plausible ground (drainage, spurs, gullies)
 between what you placed, and never moves anything you placed.
 
+## The world: what kind of terrain, and how compressed
+Start every spec with the kind of terrain the brief describes:
+```json
+"world": {"kind": "alpine valley", "compression": "auto", "base": 0}
+```
+Kinds:
+- `alpine valley` (also valley, glen, mountains)
+- `cirque` (corrie, tarn, mountain lake)
+- `canyon` (gorge, ravine)
+- `hills`
+- `farmland` (farm, farmstead, meadow, pasture, tile)
+- `plateau` (mesa, butte)
+- `crater` (caldera, volcano)
+- `coast` (beach, sea cliffs)
+- `dunes` (desert)
+- `moor` (highland, upland)
+
+Game levels compress real landscapes: a 4 km level is an alpine valley at about 0.6 scale. The compiler keeps three
+scales apart:
+- **The kind's proportions**, compressed. Distances shrink by `c` = your frame / the kind's real width; heights
+  shrink less (√c), so mountains still feel tall. The extra steepness that costs goes into cliff bands, not into
+  every slope.
+- **Player-scale detail**, never compressed: erosion depth, surface roughness, crags, trees and tracks are real
+  metres.
+- **Heights you leave out** (a peak without `h`, a basin without `floor`) are chosen to fit the kind at that
+  compression. The report lists them.
+
+The report opens with the kind, its compression, and what was chosen. The realism check compares slopes against
+the kind. Small kinds (farmland) and frames much smaller than the kind are treated as a *piece* of it (no
+compression). With `"units": "none"`, the frame is taken as the kind's typical level size.
+
 ## Scale and units
 - `"extent": [[x0, y0], [x1, y1]]` is the frame. Axes: x east, y north, z up.
 - `"units"`: `"m"` (default), `"km"`, `"ft"`, `"yd"`, `"mi"`, or `"none"`. With `"none"` the numbers are only
@@ -17,6 +48,8 @@ between what you placed, and never moves anything you placed.
   - for heights (h, level, floor, elevation, border, ...), 30% of `"relief"` (default: a quarter of the frame)
 - `"cell"` is the grid spacing (default: frame / 400). Everything else scales with the frame: a 250 m tile and a
   4 km valley use the same words.
+- **tilt**: `{"down": "south" | bearing deg, "grade": 0.07}` leans the whole frame (a south-facing slope). A tile
+  with no ridges, rivers or basins is open ground at `world.base`, plus tilt and hills.
 - **Frame edge**: `"border": 150` fixes the whole edge at that height. `{"n": 150, "s": "open", ...}` does it per
   side. An open side isn't fixed, so the ground carries on as it goes (the default).
 
@@ -26,7 +59,9 @@ between what you placed, and never moves anything you placed.
 - **cols** (low points on a ridge) have the same shape.
 - **ridges** `{"name": {"through": [peak/col | "ridge@0.4" | [x, y, z], ...], "crest": "arete" | "rounded"}}`. A
   ridge that ends where it starts is **closed**: a ring round a basin or crater.
-- **basins**: a valley floor inside a closed ridge.
+- **basins**: a valley floor inside a closed ridge. Its walls are real mountainsides: they average the kind's face
+  slope, with a hard cliff band that makes them unclimbable, and each stretch is as wide as the crest behind it
+  needs. So high rims take room, and the report says how much floor is left.
   ```
   {"name": {"inside": "<closed ridge>", "floor": [low, high], "falls_to": address,
             "shape": "bowl" | "flat" | "open",
@@ -54,9 +89,11 @@ between what you placed, and never moves anything you placed.
   ```
   Between two rivers with no ridge between them, the compiler adds a divide.
 - **landforms**:
-  - `lake {"at", "radius", "level"?, "depth", "lobes"?: 0..0.5, "dam"?: true}`: a basin carved below its level,
-    with a rim that holds the water where the ground is lower. Without `level` it fills to the ground at its centre.
-    `lobes: 0` gives a round shore.
+  - `lake {"at", "radius", "level"?, "depth", "lobes"?: 0..0.5, "dam"?: true | "downhill" | false}`: a basin carved
+    below its level. `dam: true` puts a rim all round where the ground is lower. `"downhill"` is a farm pond: one
+    straight bank across the slope. `false` is a natural lake that holds only what the ground holds. Without `level`
+    it fills to the ground at its centre (a basin's drain lake: the basin floor's low end). `lobes: 0` gives a round
+    shore.
   - `fan {"at": "river.mouth", "radius", "height"}`
   - `moraine {"across": "river@0.8", "height", "width"}`
   - `terrace {"along": river, "from", "to", "side": "left" | "right", "height", "width"}` (banks: left and right
@@ -92,12 +129,15 @@ between what you placed, and never moves anything you placed.
    "near": {"what": "water" | address, "within": m}, "breakup": {"scale": m, "amount": 0..1},
    "avoid": ["water", "routes", "sites", zone...], "color": "#rrggbb"}
   ```
-  Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
+  `orchard` plants rows (`"rows": 6` m apart, `"along": "contour" | "east" | "north"`). `"count": 6` on any tree
+  layer scales it to about that many trees ("a few trees"). Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
   32 deg), and anything you give overrides them.
 - **intent** (checks; nothing is changed):
   - `{"at": address, "above_flood": m}`
   - `{"path": [addresses], "max_grade": g}` (straight legs)
-  - `{"from": address, "see": [addresses], "min_visible": m, "skyline": true}`. For a peak or hill: how many metres
+  - `{"from": address, "see": [addresses], "min_visible": m, "skyline": true, "eye": 1.7}`. From a **site**, it tries
+    the eye at the centre and at eight spots across the site, and reports how many see the target (a level pad's own
+    edge can hide what's below it from the middle). For a peak or hill: how many metres
     of it rise above everything in front of it (its own flanks count as it), and whether it stands against the
     sky. For a lake: the share of its surface you see.
 - `"probe": [addresses]` reports the ground height and slope at each place.
@@ -109,6 +149,8 @@ between what you placed, and never moves anything you placed.
 - `"river@0.4"`, `"ridge@0.4"`, `"route@0.5"` (fraction along it)
 - `"lake.west_shore"` (also north/south/east/northeast/...)
 - `"highest"`, `"highest:<zone>"`
+- `"edge:w"` (the middle of the west edge), `"edge:s@0.3"` (30% along it from the west or south end), just inside
+  the frame
 - a zone name or `"quadrant:ne"` (its centre)
 - `[x, y]`, or `{"from": address, "offset": [dx, dy]}`
 

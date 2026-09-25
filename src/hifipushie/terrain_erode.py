@@ -101,13 +101,18 @@ def erode(T):
     E = H0.copy()
     talus = float(cfg.get("talus", 38))
     steps = 0
+    # multiple-flow routing divides by slope: on dead-flat ground (pads, plains) 0/0 turned every cell into NaN
+    jitter = np.random.default_rng(3).random(H0.shape) * 1e-3
     for steps in range(1, 80):
         K = np.where(keep, 0.0, k0 * strata_factor(T, E, cfg.get("strata")) * np.where(T.hard, 0.2, 1.0))
         spl = fs.SPLEroder(graph, K, 0.45, 1.0)
-        graph.update_routes(E)
+        graph.update_routes(E + jitter)
         graph.accumulate(area, 1.0)
         e1 = spl.erode(E, area, 1000.0)
         E = E - e1 - diff.erode(E - e1, 1000.0)
+        if not np.isfinite(E).all():
+            T.warnings.append("erosion went numerically wrong and was skipped (please report the spec)")
+            return
         if steps % 2 == 0:  # gully sides relax as they're cut (only hard rock, the cliff bands, stands steeper)
             E = thermal(E, T.cell, talus, keep | base | T.hard, iters=6)
         if np.mean(H0 - E) >= target:
