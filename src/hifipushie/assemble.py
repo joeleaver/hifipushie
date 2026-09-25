@@ -85,12 +85,14 @@ def _r(v) -> list[float]:
 
 _CACHE: dict[str, dict] = {}
 _ON: dict[str, dict] = {}  # expand's content key -> {instance: its resolved "at"} for instances placed "on"
+_SCATTERED: dict[str, dict] = {}  # expand's content key -> the instances spec["scatter"] generated
+NOTES: dict[str, list] = {}  # expand's content key -> things worth telling (scatter that didn't all fit)
 
 
 def expand(spec: dict) -> dict:
     """The spec with instances and arrays expanded (a new dict; the input is left alone). Cached by content."""
     if not spec.get("instances") and not _has_arrays(spec) and not spec.get("weather") and not spec.get("walls") \
-            and not (spec.get("style") or {}).get("shape"):
+            and not (spec.get("style") or {}).get("shape") and not spec.get("scatter"):
         return spec
     import hashlib
     import json
@@ -100,6 +102,8 @@ def expand(spec: dict) -> dict:
             k = next(iter(_CACHE))
             _CACHE.pop(k)
             _ON.pop(k, None)
+            _SCATTERED.pop(k, None)
+            NOTES.pop(k, None)
         s = copy.deepcopy(spec)
         _walls(s)
         _style_shape(s)
@@ -110,10 +114,14 @@ def expand(spec: dict) -> dict:
             if "on" not in d:
                 _place(s, inst, d)
         s = _arrays(s)
+        _SCATTERED[key] = _scatter(s, insts)
+        insts = {**insts, **_weathered(_SCATTERED[key], weather)}
         _ON[key] = _place_on(s, {i: d for i, d in insts.items() if "on" in d}, insts)
         s.pop("instances", None)
+        s.pop("scatter", None)
         s.pop("prefabs", None)
         s.pop("_arrays_of", None)
+        NOTES[key] = s.pop("_notes", [])
         whole = set()
         for inst, d in insts.items():
             whole |= {inst[:-2] if inst.endswith(".L") else inst, d.get("use"), *d.get("tags", [])}
@@ -342,6 +350,163 @@ def _deformed(spec: dict, at) -> np.ndarray:
     return at + displacement(ops, at[None])[0]
 
 
+SCATTER_KEYS = {"use", "on", "count", "area", "spacing", "rot", "scale", "seed", "tags", "part"}
+
+
+def footprint(pf: dict) -> float:
+    """A prefab's rough radius across the floor (m): how far its pieces reach from its origin, sideways."""
+    r = 0.02
+    for b in (pf.get("blobs") or {}).values():
+        if b.get("op", "add") != "add" or not isinstance(b.get("at"), list):
+            continue
+        size = np.asarray(b.get("size", [0.05] * 3), float)
+        reach = float(np.hypot(*b["at"][:2])) + float(max(size[:2]))
+        for st in (b["array"] if isinstance(b.get("array"), list) else [b["array"]] if b.get("array") else []):
+            reach += float(np.hypot(*np.asarray(st.get("offset", [0, 0, 0]), float)[:2])) * (int(st.get("count", 1)) - 1)
+        r = max(r, reach)
+    for j in (pf.get("joints") or {}).values():
+        if isinstance(j.get("pos"), list):
+            r = max(r, float(np.hypot(*j["pos"][:2])) + float(j.get("r", 0.02)))
+    return r
+
+
+def _scatter(s: dict, insts: dict) -> dict:
+    """spec["scatter"]: {name: {"use": prefab | [prefabs] | {prefab: weight}, "on": support, "count": n,
+    "area": [[x0, y0], [x1, y1]] (default: the support's extent), "spacing": m (clear gap between pieces, 0.01),
+    "rot": [lo, hi] deg about Z (0..360), "scale": [lo, hi], "seed", "tags", "part"}} -> instances "<name>#i", each
+    set down "on" the support where all of its footprint is over it (nothing hangs off an edge), apart from each
+    other and from what already stands there. Fewer than `count` if they don't fit (the log says so)."""
+    out = {}
+    for name in sorted(s.get("scatter") or {}):
+        sc = s["scatter"][name]
+        where = f"scatter {name!r}"
+        bad = set(sc) - SCATTER_KEYS
+        if bad:
+            raise SpecError(f"{where}: unknown keys {sorted(bad)} (allowed: {sorted(SCATTER_KEYS)})")
+        use = sc.get("use")
+        if isinstance(use, str):
+            use = {use: 1.0}
+        elif isinstance(use, list):
+            use = {u: 1.0 for u in use}
+        if not use or not isinstance(use, dict):
+            raise SpecError(f"{where}: use is a prefab, a list of prefabs or {{prefab: weight}}")
+        pfs = s.get("prefabs") or {}
+        missing = [u for u in use if u not in pfs]
+        if missing:
+            raise SpecError(f"{where}: no prefab {missing}")
+        if "on" not in sc:
+            raise SpecError(f"{where}: needs \"on\" (a support: an element, tag or instance)")
+        names = [sc["on"]] if isinstance(sc["on"], str) else list(sc["on"])
+        rng = np.random.default_rng(int(sc.get("seed", 0)) + 7919)
+        kinds, weights = list(use), np.asarray([float(w) for w in use.values()])
+        weights = weights / weights.sum()
+        rad = {u: footprint(pfs[u]) for u in kinds}
+        lo_s, hi_s = sc.get("scale", [1.0, 1.0])
+        r0, r1 = sc.get("rot", [0.0, 360.0])
+        gap = float(sc.get("spacing", 0.01))
+        if sc.get("area"):
+            (x0, y0), (x1, y1) = np.sort(np.asarray(sc["area"], float)[:, :2], axis=0)
+        else:
+            els = {**s.get("bones", {}), **s.get("blobs", {})}
+            members = [m for n in names for m in ([n] if n in els else select(s, [n])) if m in els]
+            if not members:
+                raise SpecError(f"{where}: \"on\" {names} names nothing")
+            box = _support_box(s, members)
+            (x0, y0), (x1, y1) = box[0][:2], box[1][:2]
+        # what already stands on this support
+        taken = []
+        for d in insts.values():
+            if d.get("on") == sc["on"] and isinstance(d.get("at"), list):
+                taken.append((float(d["at"][0]), float(d["at"][1]), rad.get(d.get("use"), footprint(pfs.get(d.get("use"), {})))))
+        clear = _Clearance(s, names, (x0, y0), (x1, y1))
+        n, tries = int(sc.get("count", 1)), 0
+        made = 0
+        while made < n and tries < 60 * n:
+            tries += 1
+            u = kinds[int(rng.choice(len(kinds), p=weights))]
+            k = float(rng.uniform(lo_s, hi_s))
+            r = rad[u] * k
+            x, y = float(rng.uniform(x0 + r, x1 - r)) if x1 - x0 > 2 * r else (x0 + x1) / 2, \
+                float(rng.uniform(y0 + r, y1 - r)) if y1 - y0 > 2 * r else (y0 + y1) / 2
+            if any(np.hypot(x - tx, y - ty) < r + tr + gap for tx, ty, tr in taken):
+                continue
+            try:  # over the support at its centre and all round its footprint, at one height (not across a step)
+                zs = [top_of(s, names, x + dx, y + dy, where, bent=False) for dx, dy in
+                      [(0, 0)] + [(0.8 * r * np.cos(a), 0.8 * r * np.sin(a)) for a in np.linspace(0, 2 * np.pi, 6, endpoint=False)]]
+            except SpecError:
+                continue
+            if max(zs) - min(zs) > 0.02:
+                continue
+            if not clear.free(x, y, zs[0], r, height(pfs[u]) * k):  # a plate rack, a lamp, the wall behind
+                continue
+            taken.append((x, y, r))
+            d = {"use": u, "at": [round(x, 4), round(y, 4)], "rot": [0, 0, round(float(rng.uniform(r0, r1)), 2)],
+                 "on": sc["on"], "tags": [name, *sc.get("tags", [])]}
+            if k != 1.0:
+                d["scale"] = round(k, 4)
+            if sc.get("part"):
+                d["part"] = sc["part"]
+            out[f"{name}#{made}"] = d
+            made += 1
+        if made < n:
+            s.setdefault("_notes", []).append(f"{where}: {made} of {n} fitted on {names}")
+    return out
+
+
+def height(pf: dict) -> float:
+    """A prefab's rough height above its origin (m)."""
+    h = 0.02
+    for b in (pf.get("blobs") or {}).values():
+        if b.get("op", "add") == "add" and isinstance(b.get("at"), list):
+            h = max(h, float(b["at"][2]) + float(np.asarray(b.get("size", [0.05] * 3), float)[2]))
+    for j in (pf.get("joints") or {}).values():
+        if isinstance(j.get("pos"), list):
+            h = max(h, float(j["pos"][2]) + float(j.get("r", 0.02)))
+    return h
+
+
+class _Clearance:
+    """Is the room above a spot on a support free (nothing else there: the rest of a dresser, a wall, a
+    lamp)? The elements around the support's area, compiled once per scatter entry."""
+
+    def __init__(self, s: dict, names: list, lo, hi, pad: float = 0.6):
+        from .spec import compile_prims
+        els = {**s.get("bones", {}), **s.get("blobs", {})}
+        support = {m for n in names for m in ([n] if n in els else select(s, [n])) if m in els}
+        joints = s.get("joints", {})
+
+        def xy(el):
+            if isinstance(el.get("at"), list):
+                return [el["at"][:2]]
+            if "a" in el:
+                return [joints[j]["pos"][:2] for j in (el["a"], el["b"]) if isinstance(joints.get(j, {}).get("pos"), list)]
+            return []
+        near = {k: el for k, el in els.items() if k not in support and el.get("op", "add") == "add"
+                and any(lo[0] - pad - 3 <= p[0] <= hi[0] + pad + 3 and lo[1] - pad - 3 <= p[1] <= hi[1] + pad + 3
+                        for p in xy(el))}
+        mini = {"joints": joints, "parts": s.get("parts") or {}, "symmetry": False, "blend": s.get("blend", 0.03),
+                "bones": {k: {kk: v for kk, v in el.items() if kk != "targets"} for k, el in near.items() if "a" in el},
+                "blobs": {k: {kk: v for kk, v in el.items() if kk != "targets"} for k, el in near.items() if "a" not in el}}
+        self.prims = [p for p in compile_prims(mini) if p.op == "add"] if near else []
+
+    def free(self, x: float, y: float, z: float, r: float, h: float) -> bool:
+        if not self.prims:
+            return True
+        from .sdf import field_at
+        ring = [(0.0, 0.0)] + [(0.85 * r * np.cos(a), 0.85 * r * np.sin(a)) for a in np.linspace(0, 2 * np.pi, 8, endpoint=False)]
+        pts = np.array([[x + dx, y + dy, z + dz] for dx, dy in ring for dz in np.linspace(0.015, max(h, 0.03), 4)])
+        return bool(field_at(self.prims, pts).min() > 0.004)
+
+
+def _support_box(s: dict, members: list) -> tuple:
+    from .spec import compile_prims
+    mini = {"joints": s.get("joints", {}), "bones": {m: s["bones"][m] for m in members if m in s.get("bones", {})},
+            "blobs": {m: {k: v for k, v in s["blobs"][m].items() if k != "targets"} for m in members if m in s.get("blobs", {})},
+            "parts": s.get("parts") or {}, "symmetry": False, "blend": s.get("blend", 0.03)}
+    ps = [p for p in compile_prims(mini) if p.op == "add"]
+    return np.min([p.lo for p in ps], 0), np.max([p.hi for p in ps], 0)
+
+
 def _place_on(s: dict, todo: dict, insts: dict | None = None) -> dict:
     """Place instances given "on": set down on the top of the named elements (or tags, instances) at their x, y,
     in dependency order (a cup on a table that is itself an instance), after everything else and arrays.
@@ -469,18 +634,24 @@ def _weathered(insts: dict, weather: list) -> dict:
 
 def placements(spec: dict) -> dict:
     """Every placed instance after weathering: {instance: {"use": prefab, "at", "rot", "scale", "mirror": bool}}.
-    An instance named ".L" also places its mirror image ".R" (mirror: reflected across X after the placement)."""
+    An instance named ".L" also places its mirror image ".R" (mirror: reflected across X after the placement).
+    Includes what walls place (doors, frames, windows) and what spec["scatter"] lays out."""
     out = {}
     on = {}
+    extra = {}
     if spec.get("walls"):  # doors, frames and windows the walls place
         w = {"walls": copy.deepcopy(spec["walls"]), "blobs": {}, "instances": {}}
         _walls(w)
-        spec = {**spec, "instances": {**w["instances"], **(spec.get("instances") or {})}}
-    if any("on" in d for d in (spec.get("instances") or {}).values()):
+        extra.update(w["instances"])
+    if spec.get("scatter") or any("on" in d for d in (spec.get("instances") or {}).values()) or \
+            any("on" in d for d in extra.values()):
         import hashlib
         import json
-        expand(spec)
-        on = _ON[hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()]
+        key = hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()
+        expand(spec)  # one expansion of this spec: where "on" props landed, what scatter laid out
+        on = _ON.get(key, {})
+        extra.update(copy.deepcopy(_SCATTERED.get(key, {})))
+    spec = {**spec, "instances": {**extra, **(spec.get("instances") or {})}}
     for inst, d in _weathered(spec.get("instances") or {}, spec.get("weather") or []).items():
         pl = {"use": d["use"], "at": list(on[inst]) if inst in on else _deformed(spec, d.get("at", [0, 0, 0])).tolist(),
               "from_wall": d.get("from_wall"), "rot": d.get("rot", [0, 0, 0]),

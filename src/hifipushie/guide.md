@@ -121,6 +121,12 @@ addressed on the surface. Rules that matter:
   an apple on the bowl it's in, a barrel on the ground. Give `at` as [x, y]; the z is found (and follows the
   furniture when it moves). Name the element (`table1/top`, `shelf#1`), not the whole piece: the top of a dresser
   with a plate rack is the rack.
+- Clutter: `spec["scatter"]` = {name: {"use": {prefab: weight}, "on": support, "count", "area", "spacing", "rot",
+  "scale", "seed", "tags"}} lays out instances "on" a shelf, a tabletop or the floor: whole footprints over the
+  support, clear of each other, of props already there and of anything above (a plate rack, a wall). `check`
+  says when fewer fitted. Footprints are circles round each prefab's origin (a skillet claims its handle's
+  reach), so a crowded counter takes nothing more. Paint scattered props by prefab name (`near: ["apple"]`):
+  a tag you gave hand-placed ones isn't on them.
 - Seams between repeated members (chinking between logs, mortar between rails) are a bone `{"between": array,
   "inset"}`: it follows every copy's bow and gap. A flat slab behind irregular logs either peeks through as
   ragged streaks or bulges out.

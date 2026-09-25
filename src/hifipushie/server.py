@@ -608,6 +608,13 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     warn = realism.audit(spec)
     realism_txt = ("\n\nREALISM (too perfect to be real?):\n" + "\n".join(f"- {w}" for w in warn)) if warn else \
         "\n\nREALISM: no perfection warnings"
+    if spec.get("scatter"):
+        import hashlib
+        from . import assemble
+        assemble.expand(spec)
+        notes = assemble.NOTES.get(hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest())
+        if notes:
+            realism_txt += "\n\nSCATTER:\n" + "\n".join(f"- {n}" for n in notes)
     doors = meas.check_doorways(spec)
     if doors:
         realism_txt += "\n\nDOORWAYS (a person 1.8 m tall, 0.5 m wide walked 1 m through each):\n" + "\n".join(doors)
