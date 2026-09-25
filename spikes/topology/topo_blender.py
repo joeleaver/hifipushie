@@ -111,6 +111,18 @@ def render(job):
     w.use_even_offset = False
     w.use_relative_offset = False
     w.use_replace = True
+    for i, ring in enumerate(job.get("rings") or []):  # closed polylines drawn as red tubes
+        cu = bpy.data.curves.new(f"ring{i}", "CURVE")
+        cu.dimensions = "3D"
+        cu.bevel_depth = job.get("ring_width", 0.0025)
+        sp = cu.splines.new("POLY")
+        sp.points.add(len(ring) - 1)
+        for k, q in enumerate(ring):
+            sp.points[k].co = (q[0], q[1], q[2], 1)
+        sp.use_cyclic_u = True
+        ro = bpy.data.objects.new(f"ring{i}", cu)
+        ro.color = (0.9, 0.1, 0.1, 1)
+        bpy.context.scene.collection.objects.link(ro)
     ob.color = (0.85, 0.85, 0.85, 1)
     wire.color = (0.08, 0.09, 0.12, 1)
     scene = bpy.context.scene

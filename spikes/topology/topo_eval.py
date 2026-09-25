@@ -184,7 +184,7 @@ VIEWS = [("front", [0, -1, 0], None, 1.15, False), ("front wire", [0, -1, 0], No
          ("L hand", [0.2, -1, 0.2], "LeftHand", 0.2, True)]
 
 
-def posed_row(name, V, L, S, out_dir, size=480):
+def posed_row(name, V, L, S, out_dir, size=480, rings=()):
     """Skin with the rig weights, pose with the test pose, render the views; returns the images."""
     out_dir = Path(out_dir)
     T = tris(V, L, S)
@@ -199,7 +199,8 @@ def posed_row(name, V, L, S, out_dir, size=480):
             foc = AT["Head"] + np.array([0, -0.05, 0.06])
         vs.append({"dir": d, "up": [0, 0, 1], "center": np.asarray(foc).tolist(), "scale": scale, "wire": wire,
                    "out": str(out_dir / f"{name}_{vn.replace(' ', '_')}.png")})
-    blender({"mode": "render", "mesh": str(out_dir / f"{name}_posed.npz"), "views": vs, "size": size}, out_dir)
+    blender({"mode": "render", "mesh": str(out_dir / f"{name}_posed.npz"), "views": vs, "size": size,
+             "rings": [PV[r].tolist() for r in rings]}, out_dir)
     return [Image.open(v["out"]).convert("RGB") for v in vs]
 
 

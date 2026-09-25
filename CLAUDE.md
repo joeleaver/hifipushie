@@ -263,9 +263,18 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
 - Decimation: the best detail per triangle (face, fingers, ears), but slivers along the limbs kink at elbow and knee.
 - The dip on top of the raised shoulder is the same on every mesh, the dense one too: that's the weights (linear
   blend skinning), not topology.
-- Open (ask the user): make sized QuadriFlow the character low poly (vendored patched build, per-part option,
-  decimation for rigid parts and for thin ones QuadriFlow drops, like the ears), and whether to take on the
-  shoulder weights next.
+- The user saw it first: QuadriFlow's quads aren't loops. `topo_loops.ring_check` (walk quad edge loops from the
+  crease): skin mesh rings at all 4 elbows/knees; plain and sized QuadriFlow at 1-2 of 4, the rest spirals (open
+  walks of 100-400 edges). Judge loops with the ring check, not by eye.
+- Joint loops as features (patch `QF_FEATURES`: crease planes sliced into the high mesh, their edges constrained
+  like boundaries: orientation + position): 4/4 rings exactly on the crease (0.1 mm), and the loops beside them close
+  too (15/16 at +-0.6 and +-1.2 limb radii) with parallel flow, no poles against the ring. Three constrained loops a
+  joint (0 and +-0.6 r) break at 5k (constraints closer than the quad size: the lattice can't fit) and work at 10k
+  (4/4, error mean 1.33 mm, decimation 1.36). Rule: constrained loops no closer than ~1.5 local edges; at low
+  budgets the crease loop alone, its neighbours follow.
+- Open: shoulders and hips (ball joints: a plane isn't the right curve; unconstrained there is a grid over the
+  deltoid), the face (eye and mouth rings are curves, not planes: generalise features to polylines cut into the
+  mesh), thin parts QuadriFlow drops (ears), then the shoulder weights.
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**
