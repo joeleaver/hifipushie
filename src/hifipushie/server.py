@@ -642,6 +642,51 @@ def check(name: str, resolution: int = 160, save: str | None = None):
 
 
 @mcp.tool(structured_output=False)
+def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None):
+    """The export rig, a separate step over the modelling skeleton (spec bones stay for modelling): fits it,
+    skins the model and renders a test pose (front and side), so weights are judged before export_asset(rig=True).
+    Humanoids (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
+    names (mixamorig:Hips ... LeftHandIndex4, fingers from the hand kit): Mixamo animations, Unity Humanoid and
+    Unreal's IK retargeter map it as is. spec["rig"] = {"joints": {"LeftShoulder": joint or [x, y, z], ...}} moves
+    a rig joint; {"type": "chains", "root": joint, "chains": {"spine": {"joints": [...]}, "tail": {"from": "spine",
+    "joints": [...]}, "leg_front.L": {...}}} gives any creature clean named chains ("<chain>_01"...). pose:
+    {rig bone: [[axis x, y, z], degrees]} instead of the default test pose. Rest pose = as modelled."""
+    from . import rig as rigmod
+    spec = store.load(name)
+    try:
+        bones = rigmod.rig_bones(spec)
+    except ValueError as e:
+        return str(e)
+    meta = store.build(name, resolution)
+    z = np.load(meta["mesh"])
+    V, F = z["verts"].astype(np.float64), z["faces"]
+    J, W = rigmod.rig_weights(spec, bones, V, F)
+    turns = {k: (v[0], v[1]) for k, v in pose.items()} if pose else rigmod.test_pose(bones)
+    P = rigmod.pose(bones, V, J, W, turns)
+    fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
+    N = np.zeros_like(P)
+    for k in range(3):
+        np.add.at(N, F[:, k], fn)
+    N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-12
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / "posed.npz"
+        np.savez(f, verts=P.astype(np.float32), faces=F, normals=N.astype(np.float32),
+                 **{k: z[k] for k in ("part", "part_names", "part_colors")})
+        frames = render.view_frames(P, ["front", "side"])
+        img = render.contact_sheet(render.render_views(f, frames, size, "clay_studio.exr"), frames)
+    used = np.bincount(J[W > 0.01], minlength=len(bones))
+    empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"]]
+    text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}); posed: "
+            + ", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items())]
+    text += [f"  {b['name']} <- {b.get('src', '?')}" + (" (end)" if b["end"] else "")
+             + (f", child of {bones[b['parent']]['name']}" if b["parent"] >= 0 else " (root)") for b in bones]
+    if empty:
+        text.append("bones that got no skin: " + ", ".join(empty))
+    return [_out(img, save), "\n".join(text)]
+
+
+@mcp.tool(structured_output=False)
 def history(name: str) -> str:
     """List saved versions of a model."""
     return "\n".join(f"v{h['version']}  {h['time']}  {h['note']}" for h in store.history(name))
@@ -698,7 +743,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
-                 hide: list[str] | None = None, save: str | None = None):
+                 hide: list[str] | None = None, save: str | None = None, rig: bool = False):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
     roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic, glTF packing) and height (16-bit; low
@@ -724,11 +769,15 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.
     preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
     parts, instances or prefabs left out of it (e.g. roof and walls, to see an interior).
+    rig: an armature from the skeleton (a joint per additive bone, rooted at "pelvis"/"hips" or the skeleton's
+    middle) and the parts skinned to it (4 weights per vertex from each bone's own cone and the blobs on it,
+    blended within the nearest bone's family): characters. Decimated triangles bend less cleanly than modelled
+    edge loops at elbows and knees; check a pose (`rig.pose`) before relying on it.
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing)
+                        instancing, rig)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"

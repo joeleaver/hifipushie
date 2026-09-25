@@ -291,6 +291,22 @@ solid clothing, eyeball backs) are removed first.
 - Judge the preview and close-ups (`asset.preview` focus/zoom; `hide=["roof", "walls"]` to see inside) for
   seams and the normal map's read.
 
+
+### Rigging characters
+
+The skeleton you model with is not the rig. Tusks, lip chains and a shorts leg are modelling bones. The export rig
+is a separate, standard skeleton, and the `rig` tool fits it and skins the model:
+- **Humanoids** (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
+  names, with fingers from the hand kit. Mixamo animations, Unity Humanoid and Unreal's IK retargeter map it as is.
+  Keep those joint names on anything humanoid.
+- **Other creatures:** give `spec["rig"] = {"type": "chains", "root": "pelvis", "chains": {"spine": {"joints":
+  [...]}, "tail": {"from": "spine", "joints": [...]}, "leg_front.L": {...}}}`: clean named chains.
+- **Check the pose.** Run `rig` and look at its test pose (elbow, shoulder, hip, knee, spine, head). Look for tears,
+  lumps left behind and creases. Move a rig joint with `spec["rig"]["joints"]` (e.g. the clavicle,
+  "LeftShoulder"). Then `export_asset(..., rig=True)`.
+- **Limits:** decimated triangles bend less cleanly than modelled edge loops. The rest pose is as modelled (arms
+  down); retargeters handle that with their retarget pose.
+
 ## 6. When something looks wrong
 
 - Don't guess and pile on fixes. Isolate: render the region with `shading="curvature"`, and remove

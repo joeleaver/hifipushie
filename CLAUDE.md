@@ -100,20 +100,25 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (a prefab's parts together) first-fit by load at a guessed pack fill (`FILL`), Blender unwraps with per-atlas
   sizes (`textures`/`margins` in the job), then each atlas takes the smallest power of two meeting the density;
   an atlas that can't at `texture` triggers one regroup with the measured fill. `prune_hidden` drops faces buried in another part.
-  Flat regions are dissolved first (`planar_regions`, numpy: grown against the SEED face's normal and plane, so gentle
-  organic curvature never chains; disks only; `_flatten` rebuilds the mesh with one ngon per region, since bmesh's
-  dissolve was quadratic), and a part's triangle floor shrinks with its flat share. Blender
-  decimates all parts together once (quadric error decides each part's share: area shares starved small round
-  parts next to big walls), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the
-  joint result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check
-  when mirroring: black triangles on flat faces), then it is decimated alone. Per atlas (`parts.<p>.atlas`,
+  Flat regions are dissolved first (`planar.planar_regions`, numpy: grown against the SEED face's normal and plane,
+  so gentle organic curvature never chains; disks only; one ngon per region), per part in a process pool before
+  Blender starts (`asset.flatten_parts`, cached as `lowpoly_flat.npz`: 258 s -> 18 s on cabin5), and a part's
+  triangle floor shrinks with its flat share. Worker Blenders (`blender_asset.reduce`, up to 8) collapse every part
+  on its own to 80x its average share (`PRE`), then one joint collapse of all parts decides each part's share
+  (quadric error: area shares starved small round parts next to big walls; the pre-collapse keeps the full joint's
+  shares within ~3%), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the joint
+  result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check when
+  mirroring: black triangles on flat faces), then workers decimate it alone from its pre-collapsed mesh. The joint
+  result undershoots the drawn target ~2x (it can't see that cups are drawn 18 times), so nearly every part is
+  redone: that's expected. Low poly on cabin5: ~13 min -> ~2 min. Per atlas (`parts.<p>.atlas`,
   `atlases=n` by load): smart project, `_charts` merges islands too thin/small for their margin into a neighbour
   if the chart stays within a 75 deg normal cone (re-projected along its mean normal), `texel_focus` spheres cut
   their own islands, every island is scaled to its density, pack (CONCAVE, margin = texture/512 texels as an
   exact fraction; the old "scaled" margin around thousands of islands left the cabin atlas 6% full). Hands back
   per-corner uv/normal/MikkTSpace tangent and each part's atlas; the json reports mm/texel per part.
   `bake` (per atlas) rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface
-  (`surface.newton`, converged texels dropped; a texel falls back to the low poly only if it moved > 6 voxels or
+  (`asset._project`: every 4th texel both ways by `surface.newton` from the low poly, the rest from the offset
+  interpolated off the anchors of their own uv island (`uv_islands`), 1.6-2x faster; a texel falls back to the low poly only if it moved > 6 voxels or
   its exact normal faces away, dot < -0.2: steep outward detail like shingle butts is real), reads normal
   (tangent space against the exported low-poly frame, z >= 0.02), height (along the low-poly normal), paint
   channels, AO and painted height from the Blender scene (`scene_maps`, see "Next session" step 4). Maps are
@@ -130,6 +135,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   worked: dropped. Ray misses (~5%) are 84% edge texels (centre outside the triangle: Blender bakes centres only,
   dilation fills them); the rest are low-poly faces bridging gaps (between books, slats, window frames), logged
   per part.
+- `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
+  Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
+  modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit
+  fingers as Thumb/Index/Middle/Ring/Pinky 1-4, legs, ToeBase, *_End) to pelvis/chest/neck/head/limb joints (Neck
+  at shoulder height, clavicles 20% out from it; `spec["rig"]["joints"]` overrides); `chains` for other creatures
+  (`spec["rig"] = {"type": "chains", "root", "chains": {name: {"from", "joints"}}}`). `rig_weights`: each rig bone
+  gets flesh: the piece of a modelling cone it lies along (`_cone_piece`: Spine/Spine1/Spine2 split the spine
+  cone), modelling bones inside its segment, the rest by the nearest rig segment to their middle, blobs by their
+  middle; empty rig bones get a thin cone. Then `weights` on the rig tree: exact per-flesh distance,
+  exp(-(d - d_min) / (0.5 r)), limited to the nearest bone's family within two steps (unrelated bones crowding the
+  4 slots made cracks), smoothed over the mesh, top 4, then `_settle` (smoothing with each vertex's 4 fixed, so a
+  dropped bone fades instead of stepping: hairline cracks). Judge with the `rig` tool (test pose, front/side);
+  export_asset(rig=True) writes the joints (identity rotations at their heads, rest pose as modelled) and skin.
+  `spec.geometry` strips `rig`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
