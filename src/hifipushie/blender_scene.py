@@ -16,6 +16,7 @@ Jobs:
 """
 
 import json
+import os
 import time
 import sys
 
@@ -473,11 +474,26 @@ def _compact(V, N, F):
     return V[used], N[used], remap[F], used
 
 
+def _paint_sum(v):
+    """What a hand-painted attribute held when the sync wrote it: pull counts it as painted only if it changed."""
+    import hashlib
+    return hashlib.sha1(np.round(np.asarray(v, np.float32), 3).tobytes()).hexdigest()[:16]
+
+
 def _inputs(me, path):
-    """Per-vertex paint inputs (ao, sky, distances, world position and normal...) as mesh attributes."""
+    """Per-vertex paint inputs (ao, sky, distances, world position and normal...) as mesh attributes; masks to
+    paint by hand ("hp_paint:<layer>") as colour attributes for Vertex Paint (white = 1)."""
     z = np.load(path)
     for k in z.files:
         a = z[k].astype(np.float32)
+        if k.startswith("hp_paint:"):
+            at = me.color_attributes.new(k, "FLOAT_COLOR", "POINT")
+            rgba = np.ones((len(a), 4), np.float32)
+            rgba[:, :3] = a[:, None]
+            at.data.foreach_set("color", rgba.ravel())
+            me[f"hp_sum:{k[9:]}"] = _paint_sum(a)
+            me.color_attributes.active_color = at
+            continue
         if a.ndim == 2:
             at = me.attributes.new(k, "FLOAT_VECTOR", "POINT")
             at.data.foreach_set("vector", a.ravel())
@@ -519,7 +535,47 @@ def pull(job):
                     continue
             params.setdefault(n.name[3:], []).append(
                 [round(float(x), 4) for x in _srgb(v)] if n.type == "RGB" else round(float(v), 5))
-    json.dump({"moved": moved, "params": params}, open(job["out"], "w"))
+    json.dump({"moved": moved, "params": params, "painted": _pull_painted(os.path.dirname(job["out"]))},
+              open(job["out"], "w"))
+
+
+def _pull_painted(folder):
+    """Hand-painted masks: for every layer whose "hp_paint:<layer>" attribute changed on any object since the sync
+    wrote it, every object's points (world position and normal where it stands, value, voxel) in one file."""
+    found = {}
+    for ob in bpy.data.objects:
+        if ob.type != "MESH" or ob.get("hp_key") is None:
+            continue
+        me = ob.data
+        for at in me.color_attributes:
+            if not at.name.startswith("hp_paint:") or "wpos" not in me.attributes:
+                continue
+            c = np.empty(len(at.data) * 4, np.float32)
+            at.data.foreach_get("color", c)
+            val = c.reshape(-1, 4)[:, :3].mean(1)
+            if at.domain == "CORNER":  # one made by hand: average each vertex's corners
+                vi = np.empty(len(me.loops), np.int32)
+                me.loops.foreach_get("vertex_index", vi)
+                val = np.bincount(vi, val, len(me.vertices)) / np.maximum(np.bincount(vi, None, len(me.vertices)), 1)
+            ly = at.name[9:]
+            found.setdefault(ly, []).append((me, val, _paint_sum(val) != me.get(f"hp_sum:{ly}"),
+                                             float(ob.get("hp_voxel", 0.01))))
+    out = {}
+    for i, (ly, items) in enumerate(found.items()):
+        if not any(changed for _, _, changed, _ in items):
+            continue
+        P, N, V, S = [], [], [], []
+        for me, val, _, vx in items:
+            for key, dst in (("wpos", P), ("wnrm", N)):
+                a = np.empty(len(me.vertices) * 3, np.float32)
+                me.attributes[key].data.foreach_get("vector", a)
+                dst.append(a.reshape(-1, 3))
+            V.append(val)
+            S.append(np.full(len(val), vx, np.float32))
+        f = os.path.join(folder, f"painted{i}.npz")
+        np.savez(f, pos=np.concatenate(P), nrm=np.concatenate(N), val=np.concatenate(V), spacing=np.concatenate(S))
+        out[ly] = f
+    return out
 
 
 def sync(job):
@@ -555,7 +611,7 @@ def sync(job):
         if o.get("inputs"):
             _inputs(me, o["inputs"])
         ob = bpy.data.objects.new(key, me)
-        ob["hp_key"], ob["hp_hash"], ob["hp_part"] = key, o["hash"], o["part"]
+        ob["hp_key"], ob["hp_hash"], ob["hp_part"], ob["hp_voxel"] = key, o["hash"], o["part"], o["voxel"]
         ob.data.materials.append(bpy.data.materials.get(f"part:{o['part']}") or _material(o["part"], o["color"]))
         (_coll(f"prefab:{o['prefab']}", hide=True) if o.get("prefab") else parts).objects.link(ob)
         made.append(key)

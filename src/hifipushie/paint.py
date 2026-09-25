@@ -59,6 +59,11 @@ Masks (generators, each 0..1 per point):
            layers stacked with rising ones ([0.25, 0.26], [0.5, 0.51], [0.75, 0.76], each over the last) give a
            quarter of the books on a shelf each colour; a wide range with low opacity jitters every board's tone. A prefab's instances
            share one bake, so they share their values; make copies differ with an array inside the prefab.
+  painted: "<id>" | "new": a mask a person painted by hand in the Blender scene. `sync` gives the objects of
+           the layer's parts a colour attribute "hp_paint:<layer>" showing it; they paint it in Vertex Paint
+           (white = 1) and `pull` stores it as a point cloud (workspace/_painted/<id>.npz: it survives
+           re-meshing, and each spec in history keeps its own) and writes the new id here. "new" starts an empty
+           one. Works in mask stacks like any generator (levels, breakup, blur on it).
   tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
            "mode": "gaps" (1 in the joints, fading over "bevel") | "bevel" (0 at a joint rising to 1: a tile's
            rounded face, for height) | "id" (random per tile)}: bricks, planks, flagstones, shingles.
@@ -128,6 +133,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -153,7 +159,7 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
-              "random", "rings", "mask")
+              "random", "rings", "painted", "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -333,6 +339,9 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         raise SpecError(f"paint {name!r}: rings is {{\"spacing\"?: m, \"warp\"?: 0..1, \"range\"?: [lo, hi], \"seed\"?}}")
     if g == "random" and not (isinstance(e[g], dict) and set(e[g]) <= {"range", "seed"}):
         raise SpecError(f"paint {name!r}: random is {{\"range\"?: [lo, hi], \"seed\"?: n}}: one value per element")
+    if g == "painted" and not (isinstance(e[g], str) and (e[g] == "new" or painted_path(e[g]).exists())):
+        raise SpecError(f"paint {name!r}: painted is the id of a hand-painted mask (a point cloud `pull` stores "
+                        f"under {painted_path('<id>')}), or \"new\" to start one; {e[g]!r} isn't one")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
     if g in ("ao", "thickness", "sky") and not (isinstance(e[g], list) and len(e[g]) == 2):
@@ -651,10 +660,107 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         r = e["random"]
         lo, hi = r.get("range", [0.0, 1.0])
         return _ramp(element_random(view.get("grain_seed"), int(r.get("seed", 0))), float(lo), float(hi))
+    if gen == "painted":
+        return painted_values(e["painted"], v, n)
     if gen == "mask":
         sub = e["mask"]
         return _stack(spec, tag, sub, list(range(len(sub))), view)
     raise SpecError(f"paint {name!r}: unknown generator {gen!r}")
+
+
+# ---- hand-painted masks -----------------------------------------------------------------------------------------
+# A mask a person painted in the Blender scene (a colour attribute "hp_paint:<layer>", see scene.pull) is kept as a
+# point cloud on the surface (world position, normal, value 0..1, the spacing it was painted at), content-addressed
+# under workspace/_painted/<id>.npz, so it survives re-meshing and every spec in history keeps its own.
+
+def painted_path(pid: str) -> Path:
+    from . import store
+    return store.HOME / "_painted" / f"{pid}.npz"
+
+
+def hand_painted(spec: dict) -> dict:
+    """The spec's layers with a hand-painted mask: {layer: (id or "new", parts)}; the id is the layer's flat
+    "painted" key, else its mask stack's first painted entry."""
+    out = {}
+    for name, ly in (spec.get("paint") or {}).items():
+        pid = ly.get("painted") or next((e["painted"] for e in ly.get("mask") or []
+                                         if isinstance(e, dict) and "painted" in e), None)
+        if pid:
+            parts = ly.get("part", "body")
+            out[name] = (pid, [parts] if isinstance(parts, str) else list(parts))
+    return out
+
+
+def set_painted(spec: dict, layer: str, pid: str) -> None:
+    """Point the layer's hand-painted entry (as `hand_painted` finds it) at a new cloud, or add one as a flat key."""
+    ly = spec["paint"][layer]
+    if "painted" in ly:
+        ly["painted"] = pid
+        return
+    for e in ly.get("mask") or []:
+        if isinstance(e, dict) and "painted" in e:
+            e["painted"] = pid
+            return
+    ly["painted"] = pid
+
+
+def save_painted(pos: np.ndarray, nrm: np.ndarray, val: np.ndarray, spacing: np.ndarray) -> str:
+    """Store a painted mask (points with value > 0, plus the zeros next to them so it fades out where the person
+    stopped; spacing: each point's mesh voxel) and return its id."""
+    import hashlib
+    from scipy.spatial import cKDTree
+    val = np.clip(np.asarray(val, np.float64), 0, 1)
+    spacing = np.broadcast_to(np.asarray(spacing, np.float64), val.shape)
+    on = val > 1e-3
+    keep = on.copy()
+    if on.any() and (~on).any():
+        d, _ = cKDTree(pos[on]).query(pos[~on], distance_upper_bound=3 * float(spacing.max()))
+        keep[np.flatnonzero(~on)[d < 3 * spacing[~on]]] = True
+    arrays = {"pos": np.asarray(pos, np.float32)[keep], "nrm": np.asarray(nrm, np.float32)[keep],
+              "val": val.astype(np.float32)[keep], "spacing": spacing.astype(np.float32)[keep]}
+    h = hashlib.sha1()
+    for k in sorted(arrays):
+        h.update(k.encode() + np.round(arrays[k], 5).tobytes())
+    pid = h.hexdigest()[:16]
+    f = painted_path(pid)
+    if not f.exists():
+        f.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(f, **arrays)
+    return pid
+
+
+_PAINTED: dict = {}
+
+
+def painted_values(pid: str, v: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """A painted mask at surface points: the painted points within two of their spacings that face the same way,
+    weighted by distance (so it doesn't bleed through a thin board to the other side). 0 where nothing was
+    painted."""
+    from scipy.spatial import cKDTree
+    if pid == "new":
+        return np.zeros(len(v))
+    if pid not in _PAINTED:
+        f = painted_path(pid)
+        if not f.exists():
+            raise SpecError(f"hand-painted mask {pid!r} is missing ({f})")
+        with np.load(f) as z:
+            c = {k: z[k] for k in z.files}
+        c["tree"] = cKDTree(c["pos"]) if len(c["pos"]) else None
+        _PAINTED[pid] = c
+    c = _PAINTED[pid]
+    out = np.zeros(len(v))
+    if c["tree"] is None:
+        return out
+    d, i = c["tree"].query(v, k=8, distance_upper_bound=2.0 * float(c["spacing"].max()))
+    ok = np.isfinite(d)
+    i = np.where(ok, i, 0)
+    r = 2.0 * c["spacing"][i].astype(np.float64)
+    face = np.clip(np.einsum("nkc,nc->nk", c["nrm"][i].astype(np.float64), n) * 2 - 0.4, 0, 1)
+    w = np.where(ok & (d < r), (1 - np.minimum(d, r) / r) ** 2 * face, 0.0)
+    ws = w.sum(1)
+    has = ws > 1e-9
+    out[has] = (w[has] * c["val"][i][has]).sum(1) / ws[has]
+    return out
 
 
 def element_random(seed: np.ndarray, salt: int = 0) -> np.ndarray:

@@ -240,6 +240,12 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   cells-distance layer raises warts. It lands in the exported normal and height maps at texel resolution;
   `look` only tilts vertex normals, so judge it in a close-up with `shading="raking"` and in the export
   preview. Sculpt forms bigger than a few voxels with strokes instead.
+- **Painted by hand:** when a mask is easier to paint than to describe (a worn path across a floor, a stain where
+  someone set a pot down), give the layer `"painted": "new"` and `sync`. Every object of the layer's parts gets a
+  colour attribute `hp_paint:<layer>`. The person (or you, over the Blender MCP) paints it in Vertex Paint, white =
+  1. The next `pull`/`sync` stores it as a point cloud and writes its id into the layer. It survives re-meshing
+  and model edits nearby, and works in stacks like any generator: multiply it with `noise` breakup so the painted
+  edge isn't the brush's.
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 

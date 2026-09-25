@@ -75,6 +75,14 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   bake). Coverage counts only points not `hidden`. Colours are sRGB everywhere in the spec; `blender_render`
   converts part/paint colours to linear for the colour attribute. OBJ export writes `v x y z r g b` (Blender
   reads it). `look(shading="flat")` is unlit colour.
+- Hand-painted masks (`paint` generator `"painted": id | "new"`): a point cloud (world pos, normal, value, the
+  painting object's voxel) content-addressed in `workspace/_painted/<id>.npz`, evaluated per point by
+  `paint.painted_values` (8 nearest within 2 spacings, facing-gated so thin boards don't print through).
+  `scene._paint_inputs` writes each object of the layer's parts an `hp_paint:<layer>` array; `blender_scene._inputs`
+  makes it a POINT FLOAT_COLOR attribute (Vertex Paint, white = 1) and stores its checksum on the mesh
+  (`hp_sum:<layer>`); `blender_scene._pull_painted` sends every object's points for any layer whose checksum
+  moved, `scene._pull_painted` saves the cloud and writes the id (`paint.set_painted`). Prefab paint sits where
+  the bake instance stands (world coords): moving that instance leaves the paint behind.
 - `materials.py`: `{"material": ...}` paint layers expand (`paint.layers`) into sub-layers `<name>:<sub>` built
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first
@@ -113,9 +121,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   the alpha of an extra texture, KHR_materials_specular with specularColorFactor 2 so 0.5 = F0 0.04). `preview`
   (`hide=` parts) renders the GLB in Cycles through Blender's importer, which ignores glTF occlusion: check the
   AO map itself too. Sub-voxel detail (the cabin's 22 mm shingles at 24 mm voxels) makes a broken high mesh
-  (inverted faces); those texels fall back, the log counts them per part. Open: log walls unwrap as many thin
-  strips (the cabin atlas tops out near 36% filled); cylinders want one chart each, which needs a disk-topology
-  check before merging past the normal cone.
+  (inverted faces); those texels fall back, the log counts them per part. After the cone merge, `_grow` joins
+  charts sharing >= 30% of the shorter perimeter when the union is a disk (Euler characteristic 1: a log's strips
+  join but never close into a tube), unwrapped conformally together, kept if `_stretch` <= 1.08 (30% fewer islands,
+  fill 58 -> 60% at 8k). What limits fill is each island's texel footprint (rasterised + margin), not strips: at
+  2048 / 24 mm texels thousands of tiny and 1-2 texel wide islands (chinking, cups) cap every packer near 45%.
+  xatlas (tried 2026-09-25) mixed islands up when packed together (0.0.11 binding) and gained ~10% where it
+  worked: dropped. Ray misses (~5%) are 84% edge texels (centre outside the triangle: Blender bakes centres only,
+  dilation fills them); the rest are low-poly faces bridging gaps (between books, slats, window frames), logged
+  per part.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -284,8 +298,7 @@ the .blend come back as spec edits).
 Also: material rebuild on any paint change rebuilds every part (~55 s): hash per part. `scene.look` renders
 EEVEE with screen-space ray tracing + fast GI (without it glossy things indoors reflect the open sky: jars had
 glowing rims); a 4-camera look went ~15 s -> ~77 s. Push the scene into the user's running Blender over
-the Blender MCP (port 9876; wasn't running today) so they see edits live. Hand-painted masks (a `painted`
-generator from a surface point cloud, survives re-meshing) are the next round-trip feature.
+the Blender MCP (port 9876; wasn't running today) so they see edits live. Hand-painted masks: DONE (2026-09-25).
 
 **Found on the way (fixed and committed):** `surface.laplacian` used clipped `field_at`, exact only within a
 primitive's blend reach, so near thin boards with small blends one stencil sample came back as 1.0 m: curvature
@@ -358,8 +371,7 @@ Next, roughly in priority order:
    rings (world noise has no per-log axis: an "along the element" pattern option); saddle notches are manual
    cuts; glass has no transparency (a part "alpha"/transmission in the GLB material); per-layer grain
    direction needs a layer per orientation (an `along: element` option for stretch/dir).
-   Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX, deliberate UV seams (log walls
-   unwrap as strips).
+   Asset follow-ups: rig (armature from the skeleton + skin weights), LODs, FBX.
 2. Part tools: check that parts don't cut into each other (looking at one part alone: `look(only_parts=)`).
 3. Topology for characters (discussed 2026-09-23, for when we return to organic shapes): decimation stays for
    environments/props (adaptive, keeps hard edges, quads buy nothing on static meshes; QuadriFlow would spend

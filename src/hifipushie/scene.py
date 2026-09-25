@@ -428,9 +428,11 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
     prog_id = hashlib.sha1(json.dumps([prog["fallbacks"], prog["packing"], ours, INPUTS_VERSION, RT, CALIBRATION,
                                        LAYOUT],
                                       sort_keys=True, default=str).encode()).hexdigest()[:12]
+    from .paint import hand_painted, painted_values
+    hand = hand_painted(spec)  # layers painted by hand: each object on their parts carries an attribute to paint
     last = cache / "inputs_state.json"
     st = json.loads(last.read_text()) if last.exists() else {}
-    run = hashlib.sha1(json.dumps([building, prog_id, sorted(_placed(o, ctx) for o in objs)]).encode()).hexdigest()[:12]
+    run = hashlib.sha1(json.dumps([building, prog_id, sorted(_placed(o, ctx) for o in objs), hand]).encode()).hexdigest()[:12]
     if st.get("run") == run and all(Path((st.get("objects") or {}).get(o["key"], "")).exists() for o in objs):
         for o in objs:  # nothing that inputs depend on changed since the last sync
             o["inputs"] = st["objects"][o["key"]]
@@ -482,6 +484,9 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
         arrays = {"wpos": v.astype(np.float32), "wnrm": n.astype(np.float32), **packs, **vec}
         if "ao_raw" in rt.get(o["key"], {}):  # a plain attribute: baked into the export's AO map
             arrays["ao_raw"] = rt[o["key"]]["ao_raw"]
+        for ly, (pid, parts) in hand.items():  # a colour attribute to paint, showing the mask as it stands
+            if "*" in parts or o["part"] in parts:
+                arrays[f"hp_paint:{ly}"] = painted_values(pid, v, n).astype(np.float32)
         h = hashlib.sha1()
         for k in sorted(arrays):
             h.update(k.encode() + np.round(arrays[k], 4).tobytes())
@@ -511,9 +516,10 @@ def pull(name: str, log: list | None = None) -> dict:
         else:
             _blender(job)
         got = json.loads(out.read_text())
+        spec = store.load(name)
+        changes = _pull_params(spec, got["params"], log)
+        changes.update(_pull_painted(spec, got.get("painted") or {}, log))
     moved = got["moved"]
-    spec = store.load(name)
-    changes = _pull_params(spec, got["params"], log)
     if not moved:
         if changes:
             store.save(name, spec, "paint from the Blender scene: " + ", ".join(changes))
@@ -679,6 +685,28 @@ def _pull_params(spec: dict, params: dict, log: list) -> dict:
         x[path[-1]] = val
         changes[".".join(str(k) for k in path[1:])] = val
         log.append(f"paint {'.'.join(str(k) for k in path[1:])}: {cur} -> {val} (from the scene)")
+    return changes
+
+
+def _pull_painted(spec: dict, painted: dict, log: list) -> dict:
+    """Masks a person painted in the scene (the objects' "hp_paint:<layer>" colour attributes, each file every
+    object's points for one layer), stored as point clouds and put into their layers."""
+    from . import paint
+    changes = {}
+    for ly, f in painted.items():
+        if ly not in (spec.get("paint") or {}):
+            log.append(f"hp_paint:{ly} was painted in the scene, but the spec has no paint layer {ly!r}: add one "
+                       f"(with \"painted\": \"new\") and paint again")
+            continue
+        with np.load(f) as z:
+            pid = paint.save_painted(z["pos"], z["nrm"], z["val"], z["spacing"])
+        if paint.hand_painted(spec).get(ly, (None,))[0] == pid:  # pulled already (the scene not synced since)
+            continue
+        paint.set_painted(spec, ly, pid)
+        changes[f"{ly}.painted"] = pid
+        with np.load(paint.painted_path(pid)) as z:
+            n, on = len(z["val"]), int((z["val"] > 0.5).sum())
+        log.append(f"paint {ly}: hand-painted mask {pid} ({on} points over half, {n} kept) from the scene")
     return changes
 
 
