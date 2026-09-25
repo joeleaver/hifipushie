@@ -124,6 +124,15 @@ addressed on the surface. Rules that matter:
 - Seams between repeated members (chinking between logs, mortar between rails) are a bone `{"between": array,
   "inset"}`: it follows every copy's bow and gap. A flat slab behind irregular logs either peeks through as
   ragged streaks or bulges out.
+- Vessels and fixtures (tubs, basins, sinks, jugs, pots): the body is ONE shape that already has the form (a
+  round cone lying along the tub, widest near the rim: raise its axis and stretch its section down with `flat`;
+  a half ellipsoid for a basin; a rounded box for a sink), `hollow`, with a box cut targeted at it to open the
+  top. A rolled rim is the same shape grown a little, hollowed thicker and cut to a band at the rim height: a rim
+  of a different shape floats beside the body with a dark gap. Set it down with `"on"` (a bowl whose centre
+  was put by hand sank into the stand and showed the wood through its bottom), and a set-in sink needs its hole
+  cut through the counter's body as well as its top. Judge thin walls in a close-up or the painted scene
+  (prefabs mesh at their own voxel): a whole-model clay view shreds 9 mm walls. `examples/fixtures.json`
+  has a clawfoot tub, a washbasin, a jug, a set-in sink and a hand pump to start from.
 - Small loose props (bread, a book, a cup) are prefabs even when there's one: a prefab meshes in its own box at
   a voxel for its size, while an element in a big part shares that part's voxel (the bread came out at 30 mm).
 - `check` walks a person through every door opening and names what blocks it (a door swung across the

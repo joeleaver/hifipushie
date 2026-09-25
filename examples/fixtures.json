@@ -1,0 +1,1063 @@
+{
+ "symmetry": false,
+ "blend": 0.004,
+ "parts": {
+  "enamel": {
+   "color": "#e4e0d4"
+  },
+  "metal": {
+   "color": "#2e2c2a"
+  },
+  "furniture": {
+   "color": "#8a6644"
+  },
+  "floor": {
+   "color": "#9a7650"
+  }
+ },
+ "prefabs": {
+  "clawfoot_tub": {
+   "joints": {
+    "t0": {
+     "pos": [
+      -0.44,
+      0,
+      0.58
+     ],
+     "r": 0.36
+    },
+    "t1": {
+     "pos": [
+      0.46,
+      0,
+      0.57
+     ],
+     "r": 0.33
+    },
+    "l0": {
+     "pos": [
+      -0.44,
+      0,
+      0.58
+     ],
+     "r": 0.38
+    },
+    "l1": {
+     "pos": [
+      0.46,
+      0,
+      0.57
+     ],
+     "r": 0.35
+    },
+    "f0": {
+     "pos": [
+      -0.42,
+      -0.2,
+      0.2
+     ],
+     "r": 0.035
+    },
+    "g0": {
+     "pos": [
+      -0.5,
+      -0.26,
+      0.04
+     ],
+     "r": 0.03
+    },
+    "f1": {
+     "pos": [
+      -0.42,
+      0.2,
+      0.2
+     ],
+     "r": 0.035
+    },
+    "g1": {
+     "pos": [
+      -0.5,
+      0.26,
+      0.04
+     ],
+     "r": 0.03
+    },
+    "f2": {
+     "pos": [
+      0.4,
+      -0.19,
+      0.2
+     ],
+     "r": 0.035
+    },
+    "g2": {
+     "pos": [
+      0.48,
+      -0.25,
+      0.04
+     ],
+     "r": 0.03
+    },
+    "f3": {
+     "pos": [
+      0.4,
+      0.19,
+      0.2
+     ],
+     "r": 0.035
+    },
+    "g3": {
+     "pos": [
+      0.48,
+      0.25,
+      0.04
+     ],
+     "r": 0.03
+    },
+    "p0": {
+     "pos": [
+      0.64,
+      0,
+      0.5
+     ],
+     "r": 0.016
+    },
+    "p1": {
+     "pos": [
+      0.64,
+      0,
+      0.78
+     ],
+     "r": 0.014
+    },
+    "p2": {
+     "pos": [
+      0.56,
+      0,
+      0.84
+     ],
+     "r": 0.013
+    },
+    "p3": {
+     "pos": [
+      0.5,
+      0,
+      0.78
+     ],
+     "r": 0.012
+    }
+   },
+   "bones": {
+    "body": {
+     "a": "t0",
+     "b": "t1",
+     "part": "enamel",
+     "flat": [
+      1.0,
+      1.25
+     ],
+     "hollow": 0.022,
+     "tags": [
+      "tub"
+     ]
+    },
+    "rim": {
+     "a": "l0",
+     "b": "l1",
+     "part": "enamel",
+     "flat": [
+      1.0,
+      1.25
+     ],
+     "hollow": 0.045,
+     "tags": [
+      "tub"
+     ]
+    },
+    "leg0": {
+     "a": "f0",
+     "b": "g0",
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "leg1": {
+     "a": "f1",
+     "b": "g1",
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "leg2": {
+     "a": "f2",
+     "b": "g2",
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "leg3": {
+     "a": "f3",
+     "b": "g3",
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "tap0": {
+     "a": "p0",
+     "b": "p1",
+     "part": "metal",
+     "group": "tap",
+     "tags": [
+      "tap"
+     ]
+    },
+    "tap1": {
+     "a": "p1",
+     "b": "p2",
+     "part": "metal",
+     "group": "tap",
+     "tags": [
+      "tap"
+     ]
+    },
+    "tap2": {
+     "a": "p2",
+     "b": "p3",
+     "part": "metal",
+     "group": "tap",
+     "tags": [
+      "tap"
+     ]
+    }
+   },
+   "blobs": {
+    "open": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      1.13
+     ],
+     "size": [
+      1.2,
+      0.6,
+      0.5
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "body"
+     ]
+    },
+    "rim_top": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      1.13
+     ],
+     "size": [
+      1.2,
+      0.6,
+      0.5
+     ],
+     "op": "subtract",
+     "blend": 0.012,
+     "targets": [
+      "rim"
+     ]
+    },
+    "rim_under": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      0.09999999999999998
+     ],
+     "size": [
+      1.2,
+      0.6,
+      0.5
+     ],
+     "op": "subtract",
+     "blend": 0.012,
+     "targets": [
+      "rim"
+     ]
+    },
+    "claw0": {
+     "at": "g0",
+     "size": [
+      0.045,
+      0.04,
+      0.035
+     ],
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "claw1": {
+     "at": "g1",
+     "size": [
+      0.045,
+      0.04,
+      0.035
+     ],
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "claw2": {
+     "at": "g2",
+     "size": [
+      0.045,
+      0.04,
+      0.035
+     ],
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "claw3": {
+     "at": "g3",
+     "size": [
+      0.045,
+      0.04,
+      0.035
+     ],
+     "part": "metal",
+     "tags": [
+      "tub_feet"
+     ]
+    },
+    "tap_foot": {
+     "shape": "cylinder",
+     "at": [
+      0.64,
+      0,
+      0.5
+     ],
+     "size": [
+      0.035,
+      0.035,
+      0.03
+     ],
+     "part": "metal",
+     "round": 0.01,
+     "tags": [
+      "tap"
+     ]
+    },
+    "handle": {
+     "shape": "box",
+     "at": [
+      0.64,
+      0,
+      0.72
+     ],
+     "size": [
+      0.012,
+      0.05,
+      0.008
+     ],
+     "part": "metal",
+     "round": 0.004,
+     "tags": [
+      "tap"
+     ]
+    },
+    "plug": {
+     "shape": "cylinder",
+     "at": [
+      -0.25,
+      0,
+      0.085
+     ],
+     "size": [
+      0.03,
+      0.03,
+      0.006
+     ],
+     "part": "metal",
+     "round": 0.003
+    }
+   }
+  },
+  "wash_basin": {
+   "blobs": {
+    "bowl": {
+     "at": [
+      0,
+      0,
+      0.11
+     ],
+     "size": [
+      0.19,
+      0.19,
+      0.1
+     ],
+     "hollow": 0.009,
+     "part": "enamel",
+     "tags": [
+      "basin"
+     ]
+    },
+    "open": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      0.21000000000000002
+     ],
+     "size": [
+      0.3,
+      0.3,
+      0.1
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "bowl"
+     ]
+    },
+    "lip": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.105
+     ],
+     "size": [
+      0.2,
+      0.2,
+      0.008
+     ],
+     "part": "enamel",
+     "round": 0.006,
+     "hollow": 0.012,
+     "tags": [
+      "basin"
+     ]
+    },
+    "lip_open": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.105
+     ],
+     "size": [
+      0.182,
+      0.182,
+      0.02
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "lip"
+     ]
+    },
+    "foot": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.012
+     ],
+     "size": [
+      0.07,
+      0.07,
+      0.012
+     ],
+     "part": "enamel",
+     "round": 0.004
+    }
+   }
+  },
+  "jug": {
+   "joints": {
+    "h0": {
+     "pos": [
+      -0.06,
+      0,
+      0.22
+     ],
+     "r": 0.009
+    },
+    "h1": {
+     "pos": [
+      -0.11,
+      0,
+      0.19
+     ],
+     "r": 0.009
+    },
+    "h2": {
+     "pos": [
+      -0.115,
+      0,
+      0.12
+     ],
+     "r": 0.009
+    },
+    "h3": {
+     "pos": [
+      -0.075,
+      0,
+      0.08
+     ],
+     "r": 0.009
+    }
+   },
+   "bones": {
+    "handle0": {
+     "a": "h0",
+     "b": "h1",
+     "part": "enamel",
+     "group": "handle",
+     "join": 0.004
+    },
+    "handle1": {
+     "a": "h1",
+     "b": "h2",
+     "part": "enamel",
+     "group": "handle",
+     "join": 0.004
+    },
+    "handle2": {
+     "a": "h2",
+     "b": "h3",
+     "part": "enamel",
+     "group": "handle",
+     "join": 0.004
+    }
+   },
+   "blobs": {
+    "belly": {
+     "at": [
+      0,
+      0,
+      0.1
+     ],
+     "size": [
+      0.085,
+      0.085,
+      0.1
+     ],
+     "part": "enamel",
+     "hollow": 0.006,
+     "tags": [
+      "jug"
+     ]
+    },
+    "neck": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.2
+     ],
+     "size": [
+      0.055,
+      0.055,
+      0.05
+     ],
+     "part": "enamel",
+     "round": 0.01,
+     "hollow": 0.006,
+     "tags": [
+      "jug"
+     ]
+    },
+    "spout": {
+     "at": [
+      0.055,
+      0,
+      0.245
+     ],
+     "size": [
+      0.04,
+      0.03,
+      0.012
+     ],
+     "rot": [
+      0,
+      -20,
+      0
+     ],
+     "part": "enamel",
+     "hollow": 0.005,
+     "tags": [
+      "jug"
+     ]
+    },
+    "base": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.01
+     ],
+     "size": [
+      0.06,
+      0.06,
+      0.01
+     ],
+     "part": "enamel",
+     "round": 0.004
+    },
+    "open": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.29
+     ],
+     "size": [
+      0.045,
+      0.045,
+      0.05
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "neck",
+      "belly"
+     ]
+    },
+    "spout_open": {
+     "shape": "box",
+     "at": [
+      0.06,
+      0,
+      0.27
+     ],
+     "size": [
+      0.04,
+      0.028,
+      0.02
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "spout",
+      "neck"
+     ]
+    },
+    "inside": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.12
+     ],
+     "size": [
+      0.07,
+      0.07,
+      0.08
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "neck"
+     ]
+    }
+   }
+  },
+  "counter_sink": {
+   "blobs": {
+    "basin": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      -0.07
+     ],
+     "size": [
+      0.24,
+      0.17,
+      0.09
+     ],
+     "part": "enamel",
+     "round": 0.05,
+     "hollow": 0.01,
+     "tags": [
+      "sink"
+     ]
+    },
+    "open": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      0.06
+     ],
+     "size": [
+      0.3,
+      0.25,
+      0.06
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "basin"
+     ]
+    },
+    "rim": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      0.008
+     ],
+     "size": [
+      0.27,
+      0.2,
+      0.008
+     ],
+     "part": "enamel",
+     "round": 0.007,
+     "tags": [
+      "sink"
+     ]
+    },
+    "rim_open": {
+     "shape": "box",
+     "at": [
+      0,
+      0,
+      0.008
+     ],
+     "size": [
+      0.23,
+      0.16,
+      0.03
+     ],
+     "op": "subtract",
+     "blend": 0,
+     "targets": [
+      "rim"
+     ],
+     "round": 0.04
+    },
+    "drain": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      -0.152
+     ],
+     "size": [
+      0.025,
+      0.025,
+      0.004
+     ],
+     "part": "metal",
+     "round": 0.002
+    }
+   }
+  },
+  "hand_pump": {
+   "joints": {
+    "s0": {
+     "pos": [
+      0,
+      -0.05,
+      0.3
+     ],
+     "r": 0.024
+    },
+    "s1": {
+     "pos": [
+      0,
+      -0.2,
+      0.26
+     ],
+     "r": 0.017
+    },
+    "k0": {
+     "pos": [
+      0,
+      0.04,
+      0.43
+     ],
+     "r": 0.013
+    },
+    "k1": {
+     "pos": [
+      0,
+      0.22,
+      0.52
+     ],
+     "r": 0.011
+    },
+    "k2": {
+     "pos": [
+      0,
+      0.42,
+      0.56
+     ],
+     "r": 0.013
+    }
+   },
+   "bones": {
+    "spout": {
+     "a": "s0",
+     "b": "s1",
+     "part": "metal",
+     "tags": [
+      "pump"
+     ]
+    },
+    "lever0": {
+     "a": "k0",
+     "b": "k1",
+     "part": "metal",
+     "group": "lever",
+     "tags": [
+      "pump"
+     ]
+    },
+    "lever1": {
+     "a": "k1",
+     "b": "k2",
+     "part": "metal",
+     "group": "lever",
+     "tags": [
+      "pump"
+     ]
+    }
+   },
+   "blobs": {
+    "base": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.02
+     ],
+     "size": [
+      0.07,
+      0.07,
+      0.02
+     ],
+     "part": "metal",
+     "round": 0.008,
+     "tags": [
+      "pump"
+     ]
+    },
+    "column": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.2
+     ],
+     "size": [
+      0.062,
+      0.062,
+      0.18
+     ],
+     "part": "metal",
+     "round": 0.01,
+     "tags": [
+      "pump"
+     ]
+    },
+    "collar": {
+     "shape": "cylinder",
+     "at": [
+      0,
+      0,
+      0.38
+     ],
+     "size": [
+      0.07,
+      0.07,
+      0.015
+     ],
+     "part": "metal",
+     "round": 0.006,
+     "tags": [
+      "pump"
+     ]
+    },
+    "cap": {
+     "at": [
+      0,
+      0,
+      0.4
+     ],
+     "size": [
+      0.06,
+      0.06,
+      0.04
+     ],
+     "part": "metal",
+     "tags": [
+      "pump"
+     ]
+    },
+    "pivot": {
+     "shape": "box",
+     "at": [
+      0,
+      0.05,
+      0.42
+     ],
+     "size": [
+      0.015,
+      0.025,
+      0.03
+     ],
+     "part": "metal",
+     "round": 0.006,
+     "tags": [
+      "pump"
+     ]
+    }
+   }
+  }
+ },
+ "blobs": {
+  "floor": {
+   "shape": "box",
+   "at": [
+    0,
+    0,
+    -0.05
+   ],
+   "size": [
+    2.2,
+    1.2,
+    0.05
+   ],
+   "part": "floor"
+  },
+  "stand_top": {
+   "shape": "box",
+   "at": [
+    1.2,
+    0.5,
+    0.8
+   ],
+   "size": [
+    0.4,
+    0.25,
+    0.02
+   ],
+   "part": "furniture",
+   "round": 0.005
+  },
+  "counter": {
+   "shape": "box",
+   "at": [
+    1.2,
+    -0.6,
+    0.43
+   ],
+   "size": [
+    0.6,
+    0.25,
+    0.43
+   ],
+   "part": "furniture",
+   "round": 0.01
+  },
+  "counter_top": {
+   "shape": "box",
+   "at": [
+    1.2,
+    -0.6,
+    0.885
+   ],
+   "size": [
+    0.64,
+    0.29,
+    0.025
+   ],
+   "part": "furniture",
+   "round": 0.006
+  },
+  "sink_hole": {
+   "shape": "box",
+   "at": [
+    1.0,
+    -0.6,
+    0.8
+   ],
+   "size": [
+    0.235,
+    0.165,
+    0.13
+   ],
+   "op": "subtract",
+   "blend": 0,
+   "targets": [
+    "counter_top",
+    "counter"
+   ],
+   "round": 0.04
+  }
+ },
+ "instances": {
+  "tub": {
+   "use": "clawfoot_tub",
+   "at": [
+    -0.9,
+    0,
+    0
+   ]
+  },
+  "basin": {
+   "use": "wash_basin",
+   "at": [
+    1.1,
+    0.5
+   ],
+   "on": "stand_top"
+  },
+  "jug": {
+   "use": "jug",
+   "at": [
+    1.4,
+    0.55
+   ],
+   "on": "stand_top",
+   "rot": [
+    0,
+    0,
+    150
+   ]
+  },
+  "sink": {
+   "use": "counter_sink",
+   "at": [
+    1.0,
+    -0.6,
+    0.91
+   ]
+  },
+  "pump": {
+   "use": "hand_pump",
+   "at": [
+    1.33,
+    -0.62
+   ],
+   "on": "counter_top",
+   "rot": [
+    0,
+    0,
+    -90
+   ]
+  }
+ }
+}

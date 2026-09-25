@@ -284,6 +284,8 @@ def top_of(s: dict, names, x: float, y: float, who: str = "") -> float:
             cuts_it = el.get("targets") and mset & set(select(s, el["targets"]))
             if n in mset or cuts_it:
                 mini[kind][n] = {k: v for k, v in el.items() if k not in ("array",)}
+                if cuts_it:  # only what it cuts among the support (the rest isn't in this small spec)
+                    mini[kind][n]["targets"] = sorted(cuts_it)
                 at = el.get("at")
                 if isinstance(at, dict) and at.get("bone") in s.get("bones", {}):
                     mini["bones"].setdefault(at["bone"], s["bones"][at["bone"]])
