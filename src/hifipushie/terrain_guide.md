@@ -207,6 +207,13 @@ Outputs go to `workspace/terrain/`:
   - `splat*.png`: RGBA weights that sum to 1
   - `trees.csv`: tree instances (x, y, z, kind, layer)
   - `meta.json`: extent, height encoding, sites, passes, routes and rivers with heights
+- With `--export`, `<stem>_export/` holds:
+  - the heightmap (`height.npy` float32, and 16-bit `height.png`)
+  - square at the engine size, padded if the frame isn't square
+  - density masks per layer, plus water, roads, playable and walls masks
+  - `splat*.png`: RGBA weights that sum to 1
+  - `trees.csv`: tree instances (x, y, z, kind, layer)
+  - `meta.json`: extent, height encoding, sites, passes, routes and rivers with heights
 - `<view name>.png`: the views, with trees instanced from forest masks.
 
 Read the images, not just the report. The report is in your units and ends with WARNINGS: read them.
