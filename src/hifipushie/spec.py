@@ -293,7 +293,34 @@ def _compile(spec: dict) -> list[Prim]:
         p.part = el.get("part") or "body"
         p.instance = el.get("instance")
     prims = _csg(s, prims, els)
+    prims = _deform(s, prims)
     return _parts(prims, s.get("parts") or {}, k_default)
+
+
+def _deform(s: dict, prims: list[Prim]) -> list[Prim]:
+    """style.shape.deform: every primitive of the building (not prefab instances, not strokes or shells) is
+    evaluated through the deformation (deform.py), inside the csg wrapper so cuts and noise bend with it; boxes
+    grow by the largest displacement, and the field is divided by the deformation's stretch."""
+    ops = ((s.get("style") or {}).get("shape") or {}).get("deform")
+    if not ops:
+        return prims
+    from . import deform
+    deform.validate(ops)
+    todo = [p for p in prims if p.instance is None and p.op in ("add", "subtract", "intersect")
+            and p.kind in SHAPES]
+    if not todo:
+        return prims
+    lo = np.min([p.lo for p in todo], 0) - 0.5
+    hi = np.max([p.hi for p in todo], 0) + 0.5
+    lip, reach = deform.stretch(ops, lo, hi)
+    for p in todo:
+        if p.kind != "csg":
+            p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+            p.kind = "csg"
+        p.params["warp"] = (ops, lip)
+        p.lo, p.hi = p.lo - reach, p.hi + reach
+        p.reach = np.asarray(p.reach, float) * lip
+    return prims
 
 
 def _cut(name: str, b: dict) -> float:

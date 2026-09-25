@@ -184,10 +184,19 @@ def sd_cylinder(p: np.ndarray, pr: dict) -> np.ndarray:
     return out + np.minimum(np.maximum(radial, axial), 0.0) - rnd
 
 
-def sd_csg(p: np.ndarray, pr: dict) -> np.ndarray:
+def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray:
     """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts.
     An instance's element takes its noise (lumpy, chips) in the prefab's frame ("frame": world -> prefab m, t and
-    the instance's scale), so every instance of a prefab is the same shape."""
+    the instance's scale), so every instance of a prefab is the same shape. With "warp" (deform.py: the model's
+    style deformation), everything is evaluated at the undeformed point and the field divided by its stretch."""
+    wp = pr.get("warp")
+    if wp is not None:
+        if pre is not None:  # the caller undeformed these points once for all its primitives
+            p = pre
+        else:
+            from .deform import undeform
+            sh = p.shape
+            p = undeform(wp[0], p.reshape(-1, 3)).reshape(sh)
     d = SDF[pr["kind"]](p, pr["p"])
     fr = pr.get("frame")
     q, s = (p, 1.0) if fr is None else (p @ fr[0].T + fr[1], fr[2])
@@ -213,7 +222,7 @@ def sd_csg(p: np.ndarray, pr: dict) -> np.ndarray:
     for op, kind, params, k in pr["cuts"]:
         c = SDF[kind](p, params)
         d = -smin(-d, c, k) if op == "subtract" else -smin(-d, -c, k)
-    return d
+    return d if wp is None else d / wp[1]
 
 
 def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
@@ -395,10 +404,35 @@ class PartGrid:
         self.blocks[tuple(a_idx.T)] = vals
 
 
+class _Undeformed:
+    """Points undeformed once per deformation (deform.py) and shared by every deformed primitive evaluated on
+    them: undoing the bend per primitive made a deformed cabin build ~9x slower."""
+
+    def __init__(self, pts):
+        self.pts, self.cache = pts, {}
+
+    def of(self, p: Prim, idx):
+        wp = p.params.get("warp") if p.kind == "csg" else None
+        if wp is None:
+            return None
+        k = id(wp[0])
+        if k not in self.cache:
+            from .deform import undeform
+            sh = self.pts.shape
+            self.cache[k] = undeform(wp[0], self.pts.reshape(-1, 3)).reshape(sh)
+        return self.cache[k][idx]
+
+
+def _sd(p: Prim, pts, und: "_Undeformed", idx):
+    pre = und.of(p, idx)
+    return SDF[p.kind](pts, p.params) if pre is None else sd_csg(pts, p.params, pre)
+
+
 def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag: float) -> np.ndarray:
     """Field values in a set of blocks (their low corners a_lo), all of one part's primitives in order."""
     B = BLOCK
     vals = np.full((len(a_lo), B, B, B), FAR, np.float32)
+    und = _Undeformed(a_lo[:, None, None, None, :] + local)
     for unit in units(prims):
         if unit[0].op == "modify":
             p = unit[0]
@@ -414,7 +448,7 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             hit = hit[SDF[p.kind](a_lo[hit] + voxel * (B - 1) / 2, p.params) <= p.inert + 1.5 * half_diag]
             if len(hit):
                 hits.append(hit)
-                ds.append(SDF[p.kind](a_lo[hit, None, None, None, :] + local, p.params).astype(np.float32))
+                ds.append(_sd(p, a_lo[hit, None, None, None, :] + local, und, hit).astype(np.float32))
         if unit[-1].op == "intersect":  # outside every region primitive's reach is outside the region
             d = np.full((len(a_lo), B, B, B), FAR, np.float32)
             if hits:
@@ -518,6 +552,7 @@ def field_at(prims: list[Prim], pts: np.ndarray, clip: bool = True, margin: floa
 
 def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float) -> np.ndarray:
     out = np.full(len(flat), FAR if clip else np.inf)
+    und = _Undeformed(flat)
     for unit in units(prims):
         if unit[0].op == "modify":
             p = unit[0]
@@ -534,7 +569,7 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
                 near = np.arange(len(flat))
             if len(near):
                 hits.append(near)
-                ds.append(SDF[p.kind](flat[near], p.params))
+                ds.append(_sd(p, flat[near], und, near))
         if unit[-1].op == "intersect":
             d = np.full(len(flat), FAR)
             if hits:

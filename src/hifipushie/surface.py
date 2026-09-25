@@ -215,7 +215,12 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
             if not len(near):
                 continue
             pr, kind = (p.params["p"], p.params["kind"]) if p.kind == "csg" else (p.params, p.kind)
-            d = np.abs(sdf.SDF[kind](P[near], pr))  # the element's own shape: cuts and noise don't move its axis
+            Pn = P[near]
+            wp = p.params.get("warp") if p.kind == "csg" else None
+            if wp is not None:  # a deformed model: the element's own shape is where the point was before bending
+                from .deform import undeform
+                Pn = undeform(wp[0], Pn)
+            d = np.abs(sdf.SDF[kind](Pn, pr))  # the element's own shape: cuts and noise don't move its axis
             win = d < best[near]
             if not win.any():
                 continue
@@ -224,7 +229,7 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
             g[sel[k]] = element_axis(p) * max(end_weight(p), 1e-3)
             if kind == "box":  # a face too big to be a piece of wood's end is a panel: grain along its longer side
                 rot, size = np.asarray(pr["rot"], float), np.asarray(pr["size"], float)
-                q = (P[k] - pr["c"]) @ rot
+                q = (Pn[win] - pr["c"]) @ rot
                 face = np.argmax(np.abs(q) / size, 1)
                 ext = np.stack([np.delete(2 * size, f) for f in range(3)])  # each face's two extents
                 idx = np.stack([np.delete(np.arange(3), f) for f in range(3)])

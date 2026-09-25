@@ -110,7 +110,7 @@ def expand(spec: dict) -> dict:
             if "on" not in d:
                 _place(s, inst, d)
         s = _arrays(s)
-        _ON[key] = _place_on(s, {i: d for i, d in insts.items() if "on" in d})
+        _ON[key] = _place_on(s, {i: d for i, d in insts.items() if "on" in d}, insts)
         s.pop("instances", None)
         s.pop("prefabs", None)
         s.pop("_arrays_of", None)
@@ -245,7 +245,7 @@ def _opening(s, wn, w, k, op, path, seglen, starts, H, T, z0, part) -> None:
                                "from_wall": [wn, k, "door", round(base_ang, 4), turn]}
 
 
-STYLE_SHAPE = ("round", "lumpy", "chips", "blend", "bow", "chunk")
+STYLE_SHAPE = ("round", "lumpy", "chips", "blend", "bow", "chunk", "deform")
 
 
 def _style_shape(s: dict) -> None:
@@ -332,11 +332,25 @@ def _style_shape(s: dict) -> None:
                     j["r"] = round(thick(float(j["r"])), 5)
 
 
-def _place_on(s: dict, todo: dict) -> dict:
+def _deformed(spec: dict, at) -> np.ndarray:
+    """Where a rigid instance's origin goes under the style deformation (deform.py): it rides the bend."""
+    ops = ((spec.get("style") or {}).get("shape") or {}).get("deform")
+    at = np.asarray(at, float)
+    if not ops:
+        return at
+    from .deform import displacement
+    return at + displacement(ops, at[None])[0]
+
+
+def _place_on(s: dict, todo: dict, insts: dict | None = None) -> dict:
     """Place instances given "on": set down on the top of the named elements (or tags, instances) at their x, y,
     in dependency order (a cup on a table that is itself an instance), after everything else and arrays.
-    Returns {instance: resolved at}."""
+    Returns {instance: its origin in the world (after any style deformation)}.
+    Under a style deformation a prop on an instance rides with it as one rigid piece (the plates carried with the
+    dresser), and a prop on the building (a shelf, the counter, the ground) lands where the bend puts it."""
     placed = {}
+    insts = insts or {}
+    bent = bool(((s.get("style") or {}).get("shape") or {}).get("deform"))
     while todo:
         ready = [i for i, d in todo.items() if not any(
             n in todo or n.split("/")[0] in todo for n in ([d["on"]] if isinstance(d["on"], str) else d["on"]))]
@@ -345,15 +359,61 @@ def _place_on(s: dict, todo: dict) -> dict:
         for inst in ready:
             d = dict(todo.pop(inst))
             at = [float(v) for v in d.get("at", [0, 0, 0])]
-            z = top_of(s, d["on"], at[0], at[1], f"instance {inst!r}")
-            d["at"] = [at[0], at[1], z + float(d.get("lift", 0.0))]
+            lift = float(d.get("lift", 0.0))
+            who = f"instance {inst!r}"
+            names = [d["on"]] if isinstance(d["on"], str) else list(d["on"])
+            els = {**s.get("bones", {}), **s.get("blobs", {})}  # props placed this pass (a bowl for its apples) too
+            members = [m for n in names for m in ([n] if n in els else select(s, [n])) if m in els]
+            carriers = {els[m].get("instance") for m in members}
+            if bent and len(carriers) == 1 and None not in carriers:
+                sup = carriers.pop()  # carried by an instance: its displacement, rigidly
+                if sup in placed:
+                    src = insts.get(sup, {}).get("at", [0, 0, 0])
+                    carry = np.asarray(placed[sup], float) - _pad3(src)
+                else:
+                    src = _pad3(insts.get(sup, {}).get("at", [0, 0, 0]))
+                    carry = _deformed(s, src) - src
+                wx, wy = at[0] + carry[0], at[1] + carry[1]
+                world = [wx, wy, top_of(s, names, wx, wy, who) + lift]
+            elif bent:
+                zu = _solve_on(s, names, at[0], at[1], lift, who)
+                world = _deformed(s, [at[0], at[1], zu]).tolist()
+            else:
+                world = [at[0], at[1], top_of(s, names, at[0], at[1], who) + lift]
+            d["at"] = [float(v) for v in world]
+            d["_world"] = True  # already where it stands: no further deformation
             placed[inst] = d["at"]
             _place(s, inst, d)
         _arrays(s)
     return placed
 
 
-def top_of(s: dict, names, x: float, y: float, who: str = "") -> float:
+def _pad3(at) -> np.ndarray:
+    a = [float(v) for v in at]
+    return np.asarray(a + [0.0] * (3 - len(a)))
+
+
+def _solve_on(s: dict, names, x: float, y: float, lift: float, who: str) -> float:
+    """The (undeformed) height of a prop set down on `names` at x, y. Under a style deformation the prop lands
+    where its origin is bent to, and the support is bent too (or, an instance, carried rigidly): look where it
+    lands and solve for the height that bends onto the top found, from a few starting heights (the lookup must
+    hit a narrow shelf, whose bent position depends on its height)."""
+    if not ((s.get("style") or {}).get("shape") or {}).get("deform"):
+        return top_of(s, names, x, y, who) + lift
+    err = None
+    for z0 in (None, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5):
+        try:
+            zu = (top_of(s, names, x, y, who, bent=False) + lift) if z0 is None else z0
+            for _ in range(4):
+                pd = _deformed(s, [x, y, zu])
+                zu = top_of(s, names, float(pd[0]), float(pd[1]), who) + lift - (float(pd[2]) - zu)
+            return zu
+        except SpecError as e:
+            err = e
+    raise err
+
+
+def top_of(s: dict, names, x: float, y: float, who: str = "", bent: bool = True) -> float:
     """The top surface of the named elements (tags, instances) at (x, y), cuts into them included: the highest
     point where a vertical line there leaves them. s: a spec with instances placed and arrays expanded."""
     from .sdf import field_at
@@ -368,6 +428,9 @@ def top_of(s: dict, names, x: float, y: float, who: str = "") -> float:
     mset = set(members)
     mini = {"joints": s.get("joints", {}), "bones": {}, "blobs": {}, "parts": s.get("parts") or {},
             "symmetry": False, "blend": s.get("blend", 0.03)}
+    dfm = ((s.get("style") or {}).get("shape") or {}).get("deform")
+    if dfm and bent:  # the support as it stands, bent (its elements' own style changes are already applied)
+        mini["style"] = {"shape": {"deform": dfm}}
     for kind in ("bones", "blobs"):
         for n, el in (s.get(kind) or {}).items():
             cuts_it = el.get("targets") and mset & set(select(s, el["targets"]))
@@ -419,7 +482,8 @@ def placements(spec: dict) -> dict:
         expand(spec)
         on = _ON[hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest()]
     for inst, d in _weathered(spec.get("instances") or {}, spec.get("weather") or []).items():
-        pl = {"use": d["use"], "at": on.get(inst, d.get("at", [0, 0, 0])), "from_wall": d.get("from_wall"), "rot": d.get("rot", [0, 0, 0]),
+        pl = {"use": d["use"], "at": list(on[inst]) if inst in on else _deformed(spec, d.get("at", [0, 0, 0])).tolist(),
+              "from_wall": d.get("from_wall"), "rot": d.get("rot", [0, 0, 0]),
               "scale": float(d.get("scale", 1.0)), "mirror": False}
         out[inst] = pl
         if inst.endswith(".L"):
@@ -460,6 +524,8 @@ def _place(s: dict, inst: str, d: dict) -> None:
     if any("on" in j for j in local["joints"].values()):
         raise SpecError(f"prefab {d['use']!r}: seated joints (\"on\") aren't supported inside prefabs")
     at = np.asarray(d.get("at", [0, 0, 0]), float)
+    if not d.get("_world"):
+        at = _deformed(s, at)
     R = euler_matrix(d.get("rot", [0, 0, 0]))
     sc = float(d.get("scale", 1.0))
     stem, sfx = (inst[:-2], ".L") if inst.endswith(".L") else (inst, "")
