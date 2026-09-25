@@ -7,7 +7,7 @@ from pathlib import Path
 from hifipushie import terrain
 
 src = Path(sys.argv[1])
-out = Path("workspace/terrain")
+out = src.parent if "workspace" in src.parts else Path("workspace/terrain")  # outputs beside the spec
 out.mkdir(parents=True, exist_ok=True)
 t0 = time.time()
 T = terrain.load(src)

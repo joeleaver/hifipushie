@@ -22,7 +22,7 @@ from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
 from . import noise
-from .terrain import Line, _arclen, smoothstep
+from .terrain import Line, _arclen, _area, smoothstep
 
 NAMED_REGIONS = ("everywhere", "centre", "north", "south", "east", "west")
 
@@ -54,6 +54,12 @@ def region(T, r) -> np.ndarray:
     if isinstance(r, str):
         if r in T.zones:
             return region(T, T.zones[r])
+        if r == "water":
+            return (~np.isnan(T.water)).astype(float)
+        if r in ("routes", "sites"):
+            return T.masks.get(r, np.zeros(shape))
+        if r in T.lakes and hasattr(T, "lake_id"):
+            return (T.lake_id == T.lakes[r]["id"]).astype(float)
         if r.startswith("zone:"):
             return region(T, T.zones[r[5:]])
         if r == "everywhere":
@@ -246,6 +252,7 @@ def rugged(T):
             f = T.H / step
             stepped = (np.floor(f) + smoothstep(0.65, 1.0, f - np.floor(f))) * step  # flat benches, steep risers
             patch = smoothstep(0.45, 0.6, noise.fbm(pts, 2.5 * sc, 2, seed=63 + k).reshape(T.X.shape))
+            patch *= smoothstep(40, 25, T._slope())  # on walls, stepped risers stacked into organ pipes
             T.H += R * patch * (stepped - T.H)
 
 
@@ -564,7 +571,7 @@ def report(T):
         for xy, length, steep in W["climbable"][:5]:
             out.append(f"    climbable: {length:.0f} m near [{xy[0]:.0f}, {xy[1]:.0f}] (steepest {steep:.0f} deg)")
     for name, m in T.cover.items():
-        line = f"cover {name}: {m.sum() * T.cell ** 2 / 1e4:.0f} ha equivalent ({100 * m.mean():.0f}% of the frame)"
+        line = f"cover {name}: {_area(m.sum() * T.cell ** 2)} equivalent ({100 * m.mean():.0f}% of the frame)"
         zs = [z for z in T.zones][:4]
         if zs:
             line += "; " + ", ".join(f"{z} {100 * (m * region(T, z)).sum() / max(region(T, z).sum(), 1):.0f}%" for z in zs)

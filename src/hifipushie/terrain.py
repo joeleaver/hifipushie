@@ -361,28 +361,22 @@ class Terrain:
                 m, i = self._stamp(L, 0)
                 high_fix |= m; high[m] = L.h[i[m]]; crest[m] = L.props["crest"]
                 low_fix &= ~m  # a ridge reaching the frame's edge stays a ridge
-        # a peak no ridge passes through stands alone (a hill, a knoll): a small rounded summit of its own
+        # a peak no ridge passes through stands alone (a hill, a knoll): not a constraint (a fixed disk next to a fixed
+        # floor makes a walled mesa) but a dome raised on whatever ground is there, after the base (_hills)
         on_ridge = {p for r in (self.spec.get("ridges") or {}).values() for p in r["through"] if isinstance(p, str)}
-        for n, (xy, h) in self.points.items():
-            if n in on_ridge:
-                continue
-            rad = float(((self.spec.get("peaks") or {}).get(n) or (self.spec.get("cols") or {}).get(n) or {}).get(
-                "radius", max(0.02 * self.size, 1.5 * self.cell)))
-            m = np.hypot(self.X - xy[0], self.Y - xy[1]) <= rad
-            high_fix |= m; high[m] = h; crest[m] = 1.0
-            low_fix &= ~m
-        if not high_fix.any():
-            raise ValueError("nothing high: add a peak or a ridge (the ground rises from low ground to crests)")
+        self._lone = [n for n in self.points if n not in on_ridge]
+        if not low_fix.any():
+            raise ValueError("nothing low: add a river or a basin, or give the frame's edge a height (\"border\")")
 
         def solve():
-            t, = self._solve(low_fix | high_fix, [np.where(high_fix, 1.0, 0.0)])
-            self.floor, self.prof = self._solve(low_fix, [low, prof]) if low_fix.any() else (
-                np.full(shape, low[low_fix].min() if low_fix.any() else 0.0), prof)
-            self.crest, self.round = self._solve(high_fix, [high, crest])
-            self.t = np.clip(t, 0, 1)
+            self.floor, self.prof = self._solve(low_fix, [low, prof])
+            if high_fix.any():
+                t, = self._solve(low_fix | high_fix, [np.where(high_fix, 1.0, 0.0)])
+                self.crest, self.round = self._solve(high_fix, [high, crest])
+                self.t = np.clip(t, 0, 1)
+            else:  # no ridges at all (a tile of rolling ground, hills only): the low ground is the ground
+                self.crest, self.round, self.t = self.floor.copy(), np.zeros(shape), np.zeros(shape)
 
-        if not low_fix.any():
-            raise ValueError("nothing low: add a river or give the frame's edge a height (\"border\")")
         solve()
         self.divides = []
         extra = []
@@ -390,7 +384,7 @@ class Terrain:
             add = self._divides(rivers, river_id, high_fix)
             if add is not None:
                 extra.append(add)
-        if self.spec.get("ribs", True):
+        if self.spec.get("ribs", True) and high_fix.any():
             add = self._ribs(high_fix, low_fix)
             if add is not None:
                 extra.append(add)
@@ -401,7 +395,26 @@ class Terrain:
             solve()
         s = self.t ** self.prof
         s = (1 - self.round) * s + self.round * (1 - (1 - s) ** 2)
-        return self.floor + np.maximum(self.crest - self.floor, 0) * s
+        H = self.floor + np.maximum(self.crest - self.floor, 0) * s
+        return self._hills(H)
+
+    def _hills(self, H):
+        """Lone peaks as domes on the ground beneath: a rounded top of `radius`, flanks falling at about `flanks`
+        degrees (default 18) to the surrounding ground. Their footprint is protected from basin floors and such."""
+        for n in self._lone:
+            xy, h = self.points[n]
+            p = (self.spec.get("peaks") or {}).get(n) or (self.spec.get("cols") or {}).get(n) or {}
+            d = np.hypot(self.X - xy[0], self.Y - xy[1])
+            under = self.height(xy, H)
+            rise = h - under
+            if rise <= 0:
+                self.warnings.append(f"hill {n!r} ({h:.0f} m) is below the ground there ({under:.0f} m): it adds nothing")
+                continue
+            top = float(p.get("radius", max(0.02 * self.size, 1.5 * self.cell)))
+            foot = top + rise / math.tan(math.radians(p.get("flanks", 18)))
+            u = np.clip((d - top) / (foot - top), 0, 1)
+            H = H + rise * 0.5 * (1 + np.cos(np.pi * u)) * (d < foot)  # a smooth dome: level top, soft foot
+        return H
 
     def _early_xy(self, ref):
         """An address resolved before any ground exists (for the skeleton): points, lines, landform centres."""
@@ -452,6 +465,11 @@ class Terrain:
         d_sink = ndimage.distance_transform_edt(~sink) * self.cell
         d_edge = ndimage.distance_transform_edt(F) * self.cell
         u = ndimage.gaussian_filter(d_sink / np.maximum(d_sink + d_edge, 1e-6), 3)
+        if b.get("rises_toward"):  # the floor tilts: mostly along the drain -> this address, a little toward every edge
+            tx = self._early_xy(b["rises_toward"])
+            ax = tx - fx
+            along = np.clip(((self.P - fx) @ ax) / (ax @ ax), 0, 1).reshape(self.X.shape)
+            u = 0.75 * along + 0.25 * u
         p = {"bowl": 1.0, "flat": 2.5, "open": 0.7}[b.get("shape", "bowl")]  # flat: level, tipping up at the edge
         fl = lo + (hi - lo) * np.clip(u, 0, 1) ** p
         self._fixed_river |= sink  # water ends here: base level for erosion
@@ -899,10 +917,14 @@ class Terrain:
         (out / "masks").mkdir(parents=True, exist_ok=True)
         ny, nx = self.H.shape
         k = (size - 1) / (max(nx, ny) - 1) if size else 1.0
+        shape = (int(round((ny - 1) * k)) + 1, int(round((nx - 1) * k)) + 1)  # exactly `size` on the longer side
 
         def grid(a, order=1):
             a = a[::-1].astype(np.float32)
-            return ndimage.zoom(a, k, order=order) if size else a
+            if not size:
+                return a
+            yy, xx = np.meshgrid(np.linspace(0, ny - 1, shape[0]), np.linspace(0, nx - 1, shape[1]), indexing="ij")
+            return ndimage.map_coordinates(a, [yy, xx], order=order, mode="nearest").astype(np.float32)
 
         H = grid(self.H, 3)
         lo, hi = float(H.min()), float(H.max())
@@ -923,9 +945,12 @@ class Terrain:
             playable = np.maximum(playable, W["inside"])
             s = ndimage.distance_transform_edt(~W["inside"]) * self.cell
             walls = np.maximum(walls, (s > 0) & (s <= W["band"] + self.cell))
+        gates = np.zeros(self.X.shape, bool)
+        for p in self.passes.values():
+            gates |= p["corridor"]
         if self.walls:
-            mask("playable", playable)
-            mask("walls", walls)
+            mask("playable", np.maximum(playable, gates))  # the way in is part of the level
+            mask("walls", walls * ~gates)  # and isn't blocked
         cell = self.cell / k
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
                 "north_up": True, "pixel_0_0": "north-west corner",
