@@ -401,6 +401,15 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     N._in(bsdf.inputs["Roughness"], ch["roughness"])
     N._in(bsdf.inputs["Metallic"], ch["metallic"])
     N._in(bsdf.inputs["Specular IOR Level"], ch["specular"])
+    tr, al = float(base.get("transmission", 0.0)), float(base.get("alpha", 1.0))
+    if tr > 0:  # glass: light through it (EEVEE refracts with ray tracing; dithered so it sorts per pixel)
+        bsdf.inputs["Transmission Weight"].default_value = tr
+        bsdf.inputs["IOR"].default_value = float(base.get("ior", 1.45))
+        m.use_raytrace_refraction = True
+        m.surface_render_method = "DITHERED"
+    if al < 1:  # see-through by coverage (a fade, a gauze curtain)
+        bsdf.inputs["Alpha"].default_value = al
+        m.surface_render_method = "BLENDED"
     if height is not None:  # shading shows the relief; the export bakes the height itself (_emit "height")
         hn = N.node("ShaderNodeMath", operation="ADD", name="hp_height")
         N._in(hn.inputs[0], height)

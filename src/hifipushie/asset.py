@@ -582,11 +582,13 @@ def _trs(M: np.ndarray) -> dict:
 
 
 def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]],
-              prefabs: dict | None = None):
+              prefabs: dict | None = None, looks: dict | None = None):
     """One mesh per part, one material per atlas: atlases is [(atlas name, {basecolor, orm, normal, specular: png})]
     in atlas index order; each part uses the material of its "atlas" index. A shared prefab (prefabs: {prefab:
     {"bake", "instances": {instance: local -> world}, "parts"}}) is one mesh, a primitive per part in its own
-    frame, and a node per instance (extras.prefab names it)."""
+    frame, and a node per instance (extras.prefab names it). looks: {part: {"transmission", "ior", "alpha"}}: such a
+    part gets a variant of its atlas's material (same textures) with KHR_materials_transmission + KHR_materials_ior
+    (glass) or alpha blending."""
     bin_ = bytearray()
     views, accessors = [], []
 
@@ -625,23 +627,48 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
             "extensions": {"KHR_materials_specular": {"specularTexture": {"index": ti["specular"]},
                                                       "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]}},
         })
+    used = ["KHR_materials_specular"]
+    variants = {}
+
+    def material_of(pn, p):
+        ai = int(p.get("atlas", 0))
+        lk = (looks or {}).get(pn)
+        if not lk:
+            return ai
+        key = (ai, json.dumps(lk, sort_keys=True))
+        if key not in variants:
+            m = json.loads(json.dumps(materials[ai]))
+            m["name"] = f"{m['name']}_{pn.split('/')[-1].split('~')[0]}"
+            if lk.get("transmission"):
+                m["extensions"]["KHR_materials_transmission"] = {"transmissionFactor": float(lk["transmission"])}
+                m["extensions"]["KHR_materials_ior"] = {"ior": float(lk.get("ior", 1.45))}
+                for e in ("KHR_materials_transmission", "KHR_materials_ior"):
+                    if e not in used:
+                        used.append(e)
+            if lk.get("alpha", 1.0) < 1.0:
+                m["alphaMode"] = "BLEND"
+                m["pbrMetallicRoughness"]["baseColorFactor"] = [1.0, 1.0, 1.0, float(lk["alpha"])]
+            m["doubleSided"] = True
+            materials.append(m)
+            variants[key] = len(materials) - 1
+        return variants[key]
     meshes, nodes = [], []
 
-    def primitive(p):
+    def primitive(p, pn=None):
         pos, nrm, tan, uv, idx = _gltf_vertices(p)
         return {"attributes": {"POSITION": add(pos, 34962, 5126, "VEC3", True), "NORMAL": add(nrm, 34962, 5126, "VEC3"),
                                "TANGENT": add(tan, 34962, 5126, "VEC4"), "TEXCOORD_0": add(uv, 34962, 5126, "VEC2")},
-                "indices": add(idx, 34963, 5125, "SCALAR"), "material": int(p.get("atlas", 0))}
+                "indices": add(idx, 34963, 5125, "SCALAR"), "material": material_of(pn, p)}
     prefabs = prefabs or {}
     in_prefab = {pn for d in prefabs.values() for pn in d["parts"]}
     for pn, p in parts.items():
         if pn in in_prefab:
             continue
-        meshes.append({"name": pn, "primitives": [primitive(p)]})
+        meshes.append({"name": pn, "primitives": [primitive(p, pn)]})
         nodes.append({"name": f"{name}_{pn}", "mesh": len(meshes) - 1})
     for pf, d in prefabs.items():
         M0 = d["instances"][d["bake"]]
-        meshes.append({"name": pf, "primitives": [primitive(_local(parts[pn], M0)) for pn in d["parts"] if pn in parts]})
+        meshes.append({"name": pf, "primitives": [primitive(_local(parts[pn], M0), pn) for pn in d["parts"] if pn in parts]})
         for inst, M in d["instances"].items():
             nodes.append({"name": inst, "mesh": len(meshes) - 1, **_trs(M), "extras": {"prefab": pf}})
     doc = {"asset": {"version": "2.0", "generator": "hifipushie"}, "scene": 0,
@@ -650,7 +677,7 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
            "samplers": [{"magFilter": 9729, "minFilter": 9987}],
            "images": [{"bufferView": i, "mimeType": "image/png"} for i in range(len(images))],
            "accessors": accessors, "bufferViews": views, "buffers": [{"byteLength": 0}],
-           "extensionsUsed": ["KHR_materials_specular"]}
+           "extensionsUsed": used}
     while len(bin_) % 4:
         bin_.append(0)
     doc["buffers"][0]["byteLength"] = len(bin_)
@@ -814,7 +841,9 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
         heights[an] = res["height_range"]
         cover[an] = res["coverage"]
     glb = out_dir / f"{name}.glb"
-    write_glb(glb, name, parts, atlas_files, ctx["prefabs"])
+    looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
+             for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
+    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks)
     for _, f in atlas_files:
         f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()

@@ -9,7 +9,9 @@ layer = {"color": [r, g, b] (0..1, sRGB, as you'd pick it) | "#rrggbb", "roughne
          "part": name | [names] | "*" (default "body"), "height": m (relief, see below), plus any of the masks
          below as flat keys (multiplied together) and/or a "mask" stack (below). No mask = the whole part.}
 Each part starts from spec["parts"][p]: "color" (clay palette), "roughness" (0.6), "metallic" (0), "specular"
-(0.5 = the usual 4% reflectance of skin, cloth, plastic). These show in exported game assets (export_asset), not
+(0.5 = the usual 4% reflectance of skin, cloth, plastic), and for see-through parts "transmission" (0..1: glass,
+light through it; with "ior", 1.45) or "alpha" (0..1: coverage, a fade); in the scene and the GLB (a material of
+its own sharing its atlas: KHR_materials_transmission + ior, or alpha blend). These show in exported game assets (export_asset), not
 in the clay views: wet lips roughness 0.2, skin 0.5-0.6, cloth 0.8-0.9 with specular 0.3, metal buckles
 metallic 1 with roughness 0.3, eyes roughness 0.05 with specular 0.7.
 

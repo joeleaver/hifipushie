@@ -699,7 +699,8 @@ def sync(name: str, resolution: int = 256) -> dict:
         from .paint import style_rgb
         rgb = style_rgb(o["color"][:3], (spec.get("style") or {}).get("paint") or {})
         bases[o["part"]] = {"color": [float(x) for x in rgb], "roughness": float(d.get("roughness", 0.6)),
-                            "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5))}
+                            "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5)),
+                            **{k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}}
     ph = part_hashes(prog, bases)
     job = {"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
            "program": prog, "bases": bases, "prog_hash": ph}
