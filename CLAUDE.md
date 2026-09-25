@@ -137,6 +137,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `placements` pads [x, y] ats and includes wall-generated instances.
 - Joints can be `{"on": address, "lift", "shift"}`: `strokes.seat_joints` seats them on the model without
   them (`strokes.without_seated`, also what kits and strokes seat on, to avoid cycles).
+- Style (`spec["style"]`, guide 5c): `style.shape` is applied in `assemble._style_shape` (round, chunk, lumpy, chips,
+  bow, blend on every element and prefab) and `spec._deform` (`deform.py`: sag/bulge/taper/lean/twist/wobble; building
+  primitives are evaluated through the csg wrapper at the undeformed point, field / stretch; `sdf._Undeformed`
+  undeforms each point set once; prefab instances stay rigid and ride the bend, "on" props ride their carrier).
+  `style.paint` is applied in `paint.layers` (HSV, pattern scale, materials' wear/dirt) and to part bases in
+  `scene.sync`; `spec.geometry` strips it. Worked example: `workspace/cabin_toon.py` (storybook/cartoon/toybox).
 - `plan.py`: the 2D blockout plan (`spec["plan"]`): per-view unions of 2D shapes in world units, landmarks,
   sections. `reference()` rasterises a view with its world placement; `compare.place(world=...)` puts it on
   the model canvas exactly (no scale search), so `check`/`compare`/`fit` with against="plan" measure real
