@@ -32,6 +32,57 @@ def blend_path(name: str) -> Path:
     return store._dir(name) / "scene.blend"
 
 
+LIVE_PORT = int(__import__("os").environ.get("BLENDER_MCP_PORT", "9876"))
+
+
+def _live_call(code: str, timeout: float = 600.0, port: int | None = None) -> dict | None:
+    """Run Python in a person's running Blender over the Blender MCP add-on's socket (JSON + NUL). None when
+    no Blender is listening."""
+    import socket
+    try:
+        with socket.create_connection(("localhost", port or LIVE_PORT), timeout=1.0) as sock:
+            sock.settimeout(timeout)
+            sock.sendall(json.dumps({"type": "execute", "code": code, "strict_json": False}).encode() + b"\0")
+            buf = bytearray()
+            while b"\0" not in buf:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+    except OSError:
+        return None
+    if not buf:
+        return None
+    return json.loads(bytes(buf).partition(b"\0")[0].decode())
+
+
+def live_session(name: str) -> bool:
+    """Is the model's scene.blend open in a person's running Blender (the Blender MCP add-on listening)? Then
+    syncs and pulls happen in that session, so edits show as they're made and theirs come back unsaved."""
+    r = _live_call("import bpy\nresult = {'file': bpy.data.filepath}", timeout=5.0)
+    if not r or r.get("status") != "ok":
+        return False
+    f = (r.get("result") or {}).get("file") or ""
+    return bool(f) and Path(f).resolve() == blend_path(name).resolve()
+
+
+def _blender_live(job: dict) -> str:
+    """blender_scene's job, run inside the live session (it imports the module; nothing is opened or reloaded
+    from disk, and a sync saves the session to scene.blend so headless renders see it)."""
+    code = ("import sys, importlib, json\n"
+            f"sys.path.insert(0, {str(SCRIPT.parent)!r})\n"
+            "import blender_scene as B\n"
+            "importlib.reload(B)\n"
+            f"B.MODES[{job['mode']!r}](json.loads({json.dumps({**job, 'live': True})!r}))\n"
+            "result = {}")
+    r = _live_call(code, timeout=3600.0)
+    if r is None:
+        raise RuntimeError("the live Blender session went away")
+    if r.get("status") != "ok":
+        raise RuntimeError(f"live Blender failed: {r.get('message')}\n{r.get('stderr', '')[-2000:]}")
+    return str(r.get("stdout") or "")
+
+
 def _blender(job: dict, timeout: float = 900, progress=None) -> str:
     """Run blender_scene.py on a job. progress(line) gets each "@@progress" line as Blender prints it."""
     with tempfile.TemporaryDirectory(prefix="hifipushie-scene-") as tmp:
@@ -445,14 +496,20 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
 
 
 def pull(name: str, log: list | None = None) -> dict:
-    """Instance edits a person made in the saved scene, applied to the spec. Returns {instance: new placement}."""
+    """Instance edits a person made in the scene, applied to the spec: from their running Blender when it has the
+    scene open (`live_session`), else from the saved file. Returns {instance: new placement}."""
     log = [] if log is None else log
     bp = blend_path(name)
     if not bp.exists():
         return {}
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "pull.json"
-        _blender({"mode": "pull", "blend": str(bp), "out": str(out)})
+        job = {"mode": "pull", "blend": str(bp), "out": str(out)}
+        if live_session(name):  # the person's running Blender: their unsaved moves and tweaks, as they are
+            _blender_live(job)
+            log.append("pulled from the live Blender session")
+        else:
+            _blender(job)
         got = json.loads(out.read_text())
     moved = got["moved"]
     spec = store.load(name)
@@ -644,8 +701,12 @@ def sync(name: str, resolution: int = 256) -> dict:
         bases[o["part"]] = {"color": [float(x) for x in rgb], "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5))}
     ph = part_hashes(prog, bases)
-    out = _blender({"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
-                    "program": prog, "bases": bases, "prog_hash": ph})
+    job = {"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
+           "program": prog, "bases": bases, "prog_hash": ph}
+    live = live_session(name)
+    out = _blender_live(job) if live else _blender(job)
+    if live:
+        log.append("synced into the live Blender session (and saved it to scene.blend)")
     made = next((json.loads(line[7:]) for line in out.splitlines() if line.startswith("@@made")), [])
     rebuilt = next((json.loads(line[10:]) for line in out.splitlines() if line.startswith("@@rebuilt")), [])
     log.append(f"scene: {len(made)} objects replaced ({', '.join(made[:8])}{'...' if len(made) > 8 else ''})"

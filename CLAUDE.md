@@ -158,6 +158,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
 - Paint validation at save (`paint.check_refs`): every `near` resolves, every layer `part` exists (a cut named
   in near has no surface: folded into its targets). Weather tags must match something (`assemble.expand`).
   `random` generator: `paint.element_random(grain_seed)`, measured per vertex in the scene (not a native node).
+- Live Blender: `scene.live_session(name)` asks the Blender MCP add-on's socket (JSON + NUL, port 9876 or
+  $BLENDER_MCP_PORT) whether the person's running Blender has this scene.blend open; then `scene.pull`/`sync` run
+  `blender_scene` inside it (`_blender_live`: imports the module, `live: True` skips opening the file; a sync saves
+  the session). `blender_scene` dispatches only when run as a script. Test with a headless add-on server:
+  `blender -b workspace/<m>/scene.blend --command blender_mcp --port 9877` + `BLENDER_MCP_PORT=9877`.
 - `server.py`: MCP tools (mcp 2.x `MCPServer`, not v1 FastMCP).
 
 ## Performance (keep these properties when changing things)

@@ -23,8 +23,12 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 
-def _open(path):
+def _open(path, live=False):
+    """Open the scene file (headless). In a live session (a person's running Blender, which has this file open)
+    the scene is already the one in memory: nothing to open."""
     import os
+    if live:
+        return
     if os.path.exists(path):
         bpy.ops.wm.open_mainfile(filepath=path)
     else:
@@ -472,7 +476,8 @@ def _srgb(c):
 
 
 def pull(job):
-    _open(job["blend"])
+    _open(job["blend"], job.get("live"))
+    bpy.context.view_layer.update()  # a live session's moves reach matrix_world only after an update
     moved, params = {}, {}
     for ob in bpy.data.objects:
         if ob.get("hp_instance") and ob.get("hp_matrix"):
@@ -499,7 +504,7 @@ def pull(job):
 
 
 def sync(job):
-    _open(job["blend"])
+    _open(job["blend"], job.get("live"))
     prog = job.get("program")
     rebuilt = []
     if prog:
@@ -931,5 +936,8 @@ def bake_inputs(job):
     print("@@times", json.dumps(times))
 
 
-job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
-{"pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}[job["mode"]](job)
+MODES = {"pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
+
+if __name__ == "__main__" and "--" in sys.argv:  # run as a script by headless Blender; imported in a live session
+    job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
+    MODES[job["mode"]](job)

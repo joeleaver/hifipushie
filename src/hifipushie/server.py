@@ -646,8 +646,11 @@ def sync(name: str, resolution: int = 256) -> str:
     what a person changed in it (moved/turned/scaled instances, exposed paint numbers: see `pull`). One object
     per part and per prefab (collection instances), paint as shader nodes, AO and sky baked by Cycles (each
     asset shades only itself; props never shade the building). Only what changed is redone: moving a prop is
-    ~2 s, a paint change rebuilds materials (~30-60 s), new geometry is meshed and measured. Open the .blend in
-    Blender to look around and edit; the next sync or look brings the edits back."""
+    ~2 s, a paint change rebuilds only the parts it touches (a few s), new geometry is meshed and measured. Open the
+    .blend in Blender to look around and edit; the next sync or look brings the edits back.
+    Live: when the person's running Blender has this scene.blend open with the Blender MCP add-on's server started
+    (port 9876, or $BLENDER_MCP_PORT), sync and pull run inside that session: changes appear in their viewport as
+    they're made, their unsaved moves and tweaks come back, and the session is saved to scene.blend afterwards."""
     from . import scene
     r = scene.sync(name, resolution)
     return (f"{r['blend']} synced in {sum(r['seconds'].values()):.1f}s ({', '.join(f'{k} {v}s' for k, v in r['seconds'].items())})\n"
@@ -660,7 +663,8 @@ def pull(name: str) -> str:
     turned or scaled become instance edits (the story's weather offsets taken back out), and exposed paint
     numbers (a layer's opacity and colour, mask ranges, noise scale, near distances; nodes named hp:...) come
     back into the spec. Only values changed from what the last sync wrote count. Reports instances that now cut
-    into something (scene.clear_of slides one out)."""
+    into something (scene.clear_of slides one out). Reads the person's running Blender when it has the scene open
+    (unsaved edits too), else the saved file."""
     from . import scene
     log = []
     changes = scene.pull(name, log)
