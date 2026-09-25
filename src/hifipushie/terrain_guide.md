@@ -65,11 +65,14 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
   ```
   {"name": {"inside": "<closed ridge>", "floor": [low, high], "falls_to": address,
             "shape": "bowl" | "flat" | "open",
-            "walls": {"min_slope": 45, "profile": "straight" | "concave" | "convex", "height": m, "except": [...]}}}
+            "rises_toward"?: address,
+            "walls": {"min_slope": 45, "height": m, "average"?: deg, "except": [...]}}}
   ```
   - The floor rises from `low` at `falls_to` (usually a lake) to `high` at its edge, and all water drains there.
-  - Between the floor's edge and the crest is the basin's wall: the mountainside itself, as wide as `min_slope`
-    allows. It's checked like a wall (share of the edge that holds, climbable spots).
+    `rises_toward` tilts it: mostly rising toward that address ("the terrain climbs north").
+  - Between the floor's edge and the crest is the basin's wall: the mountainside itself. It averages `average`
+    degrees (default: the kind's), with a cliff band `height` metres tall at `min_slope`+ that makes it unclimbable.
+    It's checked like a wall (share of the edge that holds, climbable spots).
   - Passes through its ridge are exempt.
   - An enclosed basin would, in reality, fill with water to its lowest rim. The report says so; the lake keeps its
     own level.
@@ -102,9 +105,11 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
   `{"name": {"in": zone, "gradient"?: {"from", "to", "range": [a, b]}, "amount": 0..1, "scale"?: m, "ledges"?: m}}`.
   Rock cover then finds the steep bits. Use it for "rocky", "craggy" or "broken ground".
 - The compiler adds on its own: **divides** between rivers, **ribs** (short spurs down from ridges), a slight
-  **wander** to ridges between summits, and **dissection** (stream erosion). Peaks lose a little height to erosion;
-  the report shows authored against built heights. `"ribs": false`, `"divides": false` and `"dissection":
-  {"strength": 0}` turn these off.
+  **wander** to ridges between summits, and **erosion** after your design is placed (drainage networks, scree,
+  cliff bands from harder rock). Erosion never touches sites, routes, passes or lake shores, and the large-scale
+  heights you set are kept.
+  `"erosion": {"strength": 1, "detail": 1, "strata": {"spacing": m, "hard": 0..1, "dip": deg, "dip_toward": deg},
+  "talus": deg}` tunes it. `{"strength": 0}` turns it off, and `"ribs": false` / `"divides": false` turn those off.
 
 ## Places, routes and walls
 - **zones**: named regions, used everywhere below and as addresses. They can be:
