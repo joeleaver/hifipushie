@@ -242,21 +242,30 @@ the foot kit (fixed after the user saw toes sprouting mid-foot: the instep must 
 and scene-cache pruning. Rig standards are in memory (`rig-standards`): Mixamo-compatible humanoids, clean chains,
 the rig separate from the modelling bones.
 
-**Next: the character topology spike** (card "Character topology: skeleton-driven quads (spike)", roadmap item 3).
-Rigging works, and now the mesh is the weak link. Decimated triangles have no edge loops at elbows, knees, eyes or
-mouth, so the troll pinches where a raised arm meets the shoulder (`rig` test pose).
-- On `workspace/troll`, compare three meshes with the same `rig.pose` bend at elbow, knee and shoulder, rendered
-  front and side:
-  - Blender's Skin modifier over our joint graph and radii, with extra rings at joints, projected onto the exact
-    field (`sdf.project` / `surface.newton`) and relaxed;
-  - QuadriFlow;
-  - today's decimation.
-- Judge from the renders:
-  - does the shoulder or elbow still pinch?
-  - are the loops where bones bend?
-  - triangle cost for the same silhouette error.
-- If skin-modifier quads win, skin weights get nearly free (each ring belongs to a rig bone), and face kit
-  templates would add eye and mouth rings later.
+**Character topology spike: results (2026-09-25, `spikes/topology/`, README there).** Troll body, `rig.test_pose`,
+the same `rig_weights` on every mesh; error = field -> mesh distance, by region (rest / head / hands).
+- Skin modifier over the rig graph (+ skull, ears; radii by rays; rings at bending joints; shot onto the field along
+  normals, relaxed): DROPPED. Its limbs were the cleanest, but hubs break (chest with neck + clavicles: a
+  self-intersecting hull even after dropping the crowding nodes and building it thin; the arm/torso junction
+  shreds at 8 segments around), every limb gets the same ring count (4 x 2^subsurf: fingers as many as the torso),
+  and the head is a projected sphere with no vertices for nose or brow (63 mm max error).
+- Blender QuadriFlow: clean quads flowing along the limbs, the best bends; beats decimation on broad forms per
+  triangle (rest 1.2 vs 1.45 mm at 10k), but density is uniform: head and hands need ~4x the triangles (hands 2.2
+  vs 0.9 mm at 10k). At 5k: mitten hands, and a web under the raised arm (big quads across the armpit take
+  blended arm/torso weights). Loses the thin blade ears.
+- QuadriFlow with our sizing field (patched build: `QF_SIZING` file of relative edge lengths; the stock `rho` is
+  always 1, its `-adaptive` isn't density; also fixes a comma-operator bug in subdivide.cpp). Sizing = edge <=
+  0.5 / max principal curvature (normal turn along edges: mean curvature cancels on a face's saddles and left the
+  face coarser than the belly), shortened near bending joints, clamped 0.25-1.6, normalised to the budget, one
+  calibration rerun. Head and hands 1.6-2x better than plain at the same budget, no armpit web, a readable face
+  at 5k. Overall close to decimation (10k: mean 1.67 vs 1.36 mm, max 21 vs 10). Clenched fingers still merge
+  and the ears are still lost.
+- Decimation: the best detail per triangle (face, fingers, ears), but slivers along the limbs kink at elbow and knee.
+- The dip on top of the raised shoulder is the same on every mesh, the dense one too: that's the weights (linear
+  blend skinning), not topology.
+- Open (ask the user): make sized QuadriFlow the character low poly (vendored patched build, per-part option,
+  decimation for rigid parts and for thin ones QuadriFlow drops, like the ears), and whether to take on the
+  shoulder weights next.
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**
