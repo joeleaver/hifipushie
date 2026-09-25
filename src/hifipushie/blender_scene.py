@@ -501,10 +501,17 @@ def pull(job):
 def sync(job):
     _open(job["blend"])
     prog = job.get("program")
+    rebuilt = []
     if prog:
+        ph = job["prog_hash"]
         for part, base in job["bases"].items():
+            h = ph.get(part) if isinstance(ph, dict) else ph  # per part: only parts whose layers changed rebuild
+            m = bpy.data.materials.get(f"part:{part}")
+            if m is None or m.get("hp_prog") != h:
+                rebuilt.append(part)
             _paint_material(part, base, [ly for ly in prog["layers"] if part in ly["parts"] or "*" in ly["parts"]],
-                            prog["quantiles"], job["prog_hash"], prog["packing"].get(part, {}))
+                            prog["quantiles"], h, prog["packing"].get(part, {}))
+    print("@@rebuilt", json.dumps(rebuilt))
     parts = _coll("parts")
     insts = _coll("instances")
     want = {o["key"]: o for o in job["objects"]}

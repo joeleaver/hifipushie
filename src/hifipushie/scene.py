@@ -641,15 +641,29 @@ def sync(name: str, resolution: int = 256) -> dict:
         d = defs.get(o["part"]) or {}
         bases[o["part"]] = {"color": list(o["color"][:3]), "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5))}
-    # materials are rebuilt when the program, the bases or the code that builds their nodes change
-    ph = hashlib.sha1(json.dumps([prog, bases, hashlib.sha1(SCRIPT.read_bytes()).hexdigest()], sort_keys=True,
-                                 default=str).encode()).hexdigest()[:12]
+    ph = part_hashes(prog, bases)
     out = _blender({"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
                     "program": prog, "bases": bases, "prog_hash": ph})
     made = next((json.loads(line[7:]) for line in out.splitlines() if line.startswith("@@made")), [])
-    log.append(f"scene: {len(made)} objects replaced ({', '.join(made[:8])}{'...' if len(made) > 8 else ''})")
+    rebuilt = next((json.loads(line[10:]) for line in out.splitlines() if line.startswith("@@rebuilt")), [])
+    log.append(f"scene: {len(made)} objects replaced ({', '.join(made[:8])}{'...' if len(made) > 8 else ''})"
+               + (f"; materials rebuilt: {', '.join(rebuilt)}" if rebuilt else ""))
     return {"blend": str(blend_path(name)), "pulled": pulled, "log": log,
             "seconds": {"pull": round(t1 - t, 1), "mesh": round(t2 - t1, 1), "blender": round(time.time() - t2, 1)}}
+
+
+def part_hashes(prog: dict | None, bases: dict) -> dict:
+    """Per part, what its material is built from: the layers on it, its packed inputs, its base channels, the
+    noise quantiles and the node-building code. A part's material is rebuilt only when its own hash changes (one
+    hash for all rebuilt every part on any paint edit: ~30-60 s on the cabin, plus shader compiles)."""
+    code = hashlib.sha1(SCRIPT.read_bytes()).hexdigest()
+    out = {}
+    for part, base in bases.items():
+        layers = [ly for ly in (prog or {}).get("layers", []) if part in ly["parts"] or "*" in ly["parts"]]
+        out[part] = hashlib.sha1(json.dumps([layers, (prog or {}).get("packing", {}).get(part, {}),
+                                             (prog or {}).get("quantiles"), base, code], sort_keys=True,
+                                            default=str).encode()).hexdigest()[:12]
+    return out
 
 
 def look(name: str, views: list[str] | None = None, cameras: list[dict] | None = None, size: int = 640,
