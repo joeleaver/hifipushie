@@ -229,7 +229,54 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
-## Next session: the Blender scene becomes the pipeline
+## Next session (agreed 2026-09-25): character topology spike
+
+**Where things stand.** 2026-09-25 closed these backlog cards on Overboard (project "hifipushie"):
+- painted looks with clip planes and close-ups;
+- export quality (edge vs interior ray misses, chart growing);
+- hand-painted masks;
+- export time (the flatten pool, pre-collapse workers, parallel unwrap, anchor-interpolated projection).
+
+It also added the rig step (`rig.py`, the `rig` tool, `export_asset(rig=True, fbx=True)`), the blade primitive,
+the foot kit (fixed after the user saw toes sprouting mid-foot: the instep must slope into toes lying on the ground)
+and scene-cache pruning. Rig standards are in memory (`rig-standards`): Mixamo-compatible humanoids, clean chains,
+the rig separate from the modelling bones.
+
+**Next: the character topology spike** (card "Character topology: skeleton-driven quads (spike)", roadmap item 3).
+Rigging works, and now the mesh is the weak link. Decimated triangles have no edge loops at elbows, knees, eyes or
+mouth, so the troll pinches where a raised arm meets the shoulder (`rig` test pose).
+- On `workspace/troll`, compare three meshes with the same `rig.pose` bend at elbow, knee and shoulder, rendered
+  front and side:
+  - Blender's Skin modifier over our joint graph and radii, with extra rings at joints, projected onto the exact
+    field (`sdf.project` / `surface.newton`) and relaxed;
+  - QuadriFlow;
+  - today's decimation.
+- Judge from the renders:
+  - does the shoulder or elbow still pinch?
+  - are the loops where bones bend?
+  - triangle cost for the same silhouette error.
+- If skin-modifier quads win, skin weights get nearly free (each ring belongs to a rig bone), and face kit
+  templates would add eye and mouth rings later.
+- Decimation stays for environments and props either way.
+
+**Then, in the order the user saw them:**
+1. **Rig check in a real engine:** the rigged goblin FBX in Unity or Unreal with a Mixamo animation. This decides
+   whether we need a T-pose rest or bone orientations; joints are currently unrotated, rest pose as modelled. It
+   needs the user or an engine on this machine.
+2. **Export time** (card "Export time: texel projection and Cycles map bake"): at 256/m texel projection is
+   ~26 min and the Cycles map bake ~15 min. Skip texels on triangles already on the surface (probe each triangle
+   on a voxel lattice). Find why the roof's shingle-array field is slow. Merge parts per Cycles pass. Benchmark
+   with nothing else running.
+3. **Face kit quality:** cheeks and nose read as stuck-on balls.
+4. **Cabin:** the weathering restraint pass, then its final export.
+
+**Gotchas from 2026-09-25:**
+- Keep heavy exports alone on the machine, or the timings mean nothing.
+- Exports and scene caches can fill the disk. The scratchpad lives in /tmp, which is on the root disk: clear old
+  export folders.
+- Background shell jobs can start minutes after launch.
+
+## The Blender scene becomes the pipeline (2026-09-23, done)
 
 Agreed with the user (2026-09-23): lean on Blender's strengths instead of maintaining our own versions of what it
 does best-in-class (ray-traced AO/sky, shading, baking, viewing). The spec stays the source of truth and what the
