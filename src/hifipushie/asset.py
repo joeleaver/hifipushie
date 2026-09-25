@@ -378,9 +378,11 @@ def rasterize(parts: dict, size: int, atlas: int | None = None):
     den = np.where(np.abs(den) < 1e-12, 1e-12, den)
     w1 = (v2[:, 0] * v1[:, 1] - v1[:, 0] * v2[:, 1]) / den
     w2 = (v0[:, 0] * v2[:, 1] - v2[:, 0] * v0[:, 1]) / den
-    bary = np.clip(np.stack([1 - w1 - w2, w1, w2], -1), 0, 1)
+    raw = np.stack([1 - w1 - w2, w1, w2], -1)
+    inside = (raw >= -1e-6).all(1)  # the texel's centre lies in its triangle (edge texels PIL adds don't)
+    bary = np.clip(raw, 0, 1)
     bary /= bary.sum(1, keepdims=True)
-    return (ys, xs), t, bary, np.concatenate(tpart)
+    return (ys, xs), t, bary, np.concatenate(tpart), inside
 
 
 def _corners(parts: dict, key: str) -> np.ndarray:
@@ -408,7 +410,7 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     scene (`scene_maps`: color linear, rms, ao, height; rows top first) for paint, AO and painted relief."""
     t0 = time.time()
     names = list(parts)
-    (ys, xs), tri, bary, tpart = rasterize(parts, size, atlas)
+    (ys, xs), tri, bary, tpart, inside = rasterize(parts, size, atlas)
     log.append(f"rasterized {len(tri)} texels ({len(tri) / size ** 2:.0%} of the atlas) in {time.time() - t0:.1f}s")
 
     def interp(key):
@@ -443,6 +445,11 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     miss = ~baked[ys, xs]
     if miss.any():
         log.append(f"  {miss.mean():.2%} of texels found no scene mesh along their ray: filled from neighbours")
+        log.append(f"    {(miss & ~inside).sum() / miss.sum():.0%} of them are edge texels (centre outside its triangle)")
+        for pi, pn in enumerate(names):
+            m = (miss & inside)[part == pi]
+            if m.size and m.mean() > 0.005:
+                log.append(f"    {pn}: {m.mean():.1%} of its texels missed inside their triangle")
         given = {k: _dilate(v, baked) for k, v in given.items()}
 
     c = _corners(parts, "pos")[np.unique(tri)]  # the atlas's triangles: surface per texel

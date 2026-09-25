@@ -12,7 +12,8 @@ Jobs:
       floor (shrunk by the part's flat share) adjust those, and a part whose budget moved or whose mirrored collapse folded
       triangles over is decimated again on its own. Then per atlas: smart-projects its parts, cuts islands at
       focus regions, merges islands too thin or small to be worth their margin into a neighbour (when the
-      merged chart still faces one way), scales every island to its density and packs them `margin` texels
+      merged chart still faces one way), joins neighbours sharing a long border when their union is a disk that
+      unwraps evenly (`_grow`), scales every island to its density and packs them `margin` texels
       apart. Writes, per part, the vertices and per-corner uv / normal / MikkTSpace tangent + bitangent sign
       (exactly what the textures are baked against and the GLB carries), its atlas, and an info json.
   {"mode": "preview", "glb": path, "views": [{"dir", "up", "center", "scale", "out"}], "size": px, "hide": [part]}
@@ -491,6 +492,125 @@ def _charts(bm, texel, cone_deg, min_width=6.0, min_area=100.0, group=None):
     return members, nsum, changed
 
 
+def _disk(faces) -> bool:
+    """A chart can be unwrapped in one piece without cutting it when it is a disk: one boundary, no holes
+    (Euler characteristic V - E + F = 1). Merging round a log would close it into a tube (0)."""
+    vs, es = set(), set()
+    for f in faces:
+        vs.update(v.index for v in f.verts)
+        es.update(e.index for e in f.edges)
+    return len(vs) - len(es) + len(faces) == 1
+
+
+def _stretch(bm, uvl, idx):
+    """How unevenly an unwrapped chart spends its texels: area-weighted mean of (r + 1/r) / 2 over its faces,
+    r = uv area / surface area normalised over the chart (1 = even), and whether any face turned over."""
+    a3, au = [], []
+    for i in idx:
+        q = [lp[uvl].uv for lp in bm.faces[i].loops]
+        au.append(sum((q[j] - q[0]).cross(q[j + 1] - q[0]) for j in range(1, len(q) - 1)) / 2)
+        a3.append(bm.faces[i].calc_area())
+    a3, au = np.array(a3), np.array(au)
+    if au.sum() < 0:
+        au = -au
+    if a3.sum() <= 0 or au.sum() <= 0:
+        return np.inf, True
+    flipped = au[a3 > 1e-12 * a3.sum()].min(initial=1.0) <= 0
+    r = np.maximum(au / au.sum(), 1e-12) / np.maximum(a3 / a3.sum(), 1e-12)
+    return float((a3 * (r + 1 / r) / 2).sum() / a3.sum()), bool(flipped)
+
+
+def _grow(obs, state, limit, share=0.3, rounds=12):
+    """Join neighbouring charts that share a long border (a log's strips, a pot's wedges): each round pairs every
+    chart with the neighbour it shares most of its perimeter with (at least `share` of the shorter one's),
+    keeps pairs whose union is a disk, unwraps them all at once (conformal, along the seams) and accepts the
+    ones that come out even (`_stretch` <= limit, nothing turned over); the rest get their seams and uvs back.
+    Returns the number of joins per object. Accepted charts keep their unwrap (not projected flat)."""
+    grown = {ob.name: 0 for ob in obs}
+    for _ in range(rounds):
+        trial = {}
+        for ob in obs:
+            members, group = state[ob.name]
+            bm = bmesh.from_edit_mesh(ob.data)
+            bm.faces.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            uvl = bm.loops.layers.uv.verify()
+            chart = {}
+            for k, idx in members.items():
+                for i in idx:
+                    chart[int(i)] = k
+            per, shared = {k: 0.0 for k in members}, {}
+            for e in bm.edges:
+                lf = e.link_faces
+                if len(lf) == 1:
+                    per[chart[lf[0].index]] += e.calc_length()
+                elif len(lf) == 2:
+                    a, b = chart[lf[0].index], chart[lf[1].index]
+                    if a != b:
+                        ln = e.calc_length()
+                        per[a] += ln
+                        per[b] += ln
+                        s = shared.setdefault((min(a, b), max(a, b)), [0.0, []])
+                        s[0] += ln
+                        s[1].append(e.index)
+            cand = sorted(((ln / max(min(per[a], per[b]), 1e-12), a, b, es) for (a, b), (ln, es) in shared.items()),
+                          key=lambda c: -c[0])
+            used, pairs = set(), []
+            for ratio, a, b, es in cand:
+                if ratio < share:
+                    break
+                if a in used or b in used or group[members[a][0]] != group[members[b][0]]:
+                    continue
+                idx = np.concatenate([members[a], members[b]])
+                if not _disk([bm.faces[i] for i in idx]):
+                    continue
+                used.update((a, b))
+                old = {int(i): [lp[uvl].uv.copy() for lp in bm.faces[i].loops] for i in idx}
+                for ei in es:
+                    bm.edges[ei].seam = False
+                pairs.append((a, b, idx, es, old))
+            for f in bm.faces:
+                f.select = False
+            for p in pairs:
+                for i in p[2]:
+                    bm.faces[i].select = True
+            bm.select_flush_mode()
+            bmesh.update_edit_mesh(ob.data)
+            trial[ob.name] = pairs
+        if not any(trial.values()):
+            break
+        bpy.ops.uv.unwrap(method="CONFORMAL", margin=0.0, correct_aspect=True)
+        accepted = 0
+        for ob in obs:
+            members, group = state[ob.name]
+            bm = bmesh.from_edit_mesh(ob.data)
+            bm.faces.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            uvl = bm.loops.layers.uv.verify()
+            for a, b, idx, es, old in trial[ob.name]:
+                st, flipped = _stretch(bm, uvl, idx)
+                if st <= limit and not flipped:
+                    members[b] = idx
+                    del members[a]
+                    grown[ob.name] += 1
+                    accepted += 1
+                    continue
+                for ei in es:
+                    bm.edges[ei].seam = True
+                for i, uvs in old.items():
+                    for lp, uv in zip(bm.faces[i].loops, uvs):
+                        lp[uvl].uv = uv
+            bmesh.update_edit_mesh(ob.data)
+        if not accepted:
+            break
+    for ob in obs:
+        bm = bmesh.from_edit_mesh(ob.data)
+        for f in bm.faces:
+            f.select = True
+        bmesh.update_edit_mesh(ob.data)
+    return grown
+
+
 def _unwrap_atlas(obs, cfg, job, atlas):
     """Smart project, merge poor islands, project merged charts along their mean normal, scale every island to
     its part's density, pack. All objects in `obs` share the atlas."""
@@ -510,7 +630,7 @@ def _unwrap_atlas(obs, cfg, job, atlas):
     tb = time.time()
     # texel size (density-weighted metres) the atlas would have at half fill: what "thin" and "small" refer to
     load = sum(cfg[ob.name]["density"] ** 2 * sum(p.area for p in ob.data.polygons) for ob in obs)
-    stats = {}
+    stats, state = {}, {}
     for ob in obs:
         d = cfg[ob.name]["density"]
         texel = math.sqrt(load / 0.5) / size / d
@@ -531,20 +651,30 @@ def _unwrap_atlas(obs, cfg, job, atlas):
                 if len(lf) == 2 and group[lf[0].index] != group[lf[1].index]:
                     e.seam = True
         members, nsum, changed = _charts(bm, texel, job.get("cone", 75), group=group)
+        for k in changed:  # merged: project along the chart's mean normal
+            m = nsum[k] / np.linalg.norm(nsum[k])
+            ref = np.array([0.0, 0.0, 1.0]) if abs(m[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+            u = np.cross(m, ref)
+            u /= np.linalg.norm(u)
+            v = np.cross(m, u)
+            for i in members[k]:
+                for lp in bm.faces[i].loops:
+                    co = np.array(lp.vert.co)
+                    lp[uvl].uv = (float(co @ u), float(co @ v))
+        bmesh.update_edit_mesh(ob.data)
+        state[ob.name] = (members, group)
+    grown = _grow(obs, state, job.get("stretch", 1.08), job.get("share", 0.3)) if job.get("grow", True) else {}
+    for ob in obs:
+        d = cfg[ob.name]["density"]
+        focus = cfg[ob.name].get("focus") or []
+        members, group = state[ob.name]
+        bm = bmesh.from_edit_mesh(ob.data)
+        bm.faces.ensure_lookup_table()
+        uvl = bm.loops.layers.uv.verify()
         for k, idx in members.items():
             faces = [bm.faces[i] for i in idx]
             g = group[idx[0]]
             dk = d * (focus[g][4] if g >= 0 else 1.0)
-            if k in changed:  # merged: project along the chart's mean normal
-                m = nsum[k] / np.linalg.norm(nsum[k])
-                ref = np.array([0.0, 0.0, 1.0]) if abs(m[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
-                u = np.cross(m, ref)
-                u /= np.linalg.norm(u)
-                v = np.cross(m, u)
-                for f in faces:
-                    for lp in f.loops:
-                        co = np.array(lp.vert.co)
-                        lp[uvl].uv = (float(co @ u), float(co @ v))
             # scale the island so its uv area is its surface area times density^2 (pack keeps relative scale)
             a3 = sum(f.calc_area() for f in faces)
             auv = 0.0
@@ -556,7 +686,7 @@ def _unwrap_atlas(obs, cfg, job, atlas):
                 for f in faces:
                     for lp in f.loops:
                         lp[uvl].uv = lp[uvl].uv * s
-        stats[ob.name] = {"islands": len(members)}
+        stats[ob.name] = {"islands": len(members), "grown": grown.get(ob.name, 0)}
         bmesh.update_edit_mesh(ob.data)
     tc = time.time()
     bpy.ops.uv.select_all(action="SELECT")
