@@ -368,6 +368,19 @@ def section_caps(name: str, view: Path, planes, keep_parts: list[str] | None, vo
     for i, pn in enumerate(names):
         sel = np.flatnonzero(part == i)
         colour[pn] = (pc[sel[0]] if len(sel) else part_colour(pn, spec.get("parts") or {}, i)[:3]) * 0.55
+    V, F, C, N = cap_arrays(streams, shown, defs, colour, planes, fb, voxel)
+    if not V:
+        np.savez(out, verts=np.zeros((0, 3), np.float32), faces=np.zeros((0, 3), np.int32), stamp=np.array(stamp))
+        return None
+    np.savez(out, verts=np.concatenate(V).astype(np.float32), faces=np.concatenate(F).astype(np.int32),
+             normals=np.concatenate(N).astype(np.float32), part_colors=np.concatenate(C).astype(np.float32),
+             stamp=np.array(stamp))
+    return out
+
+
+def cap_arrays(streams: dict, shown: list, defs: dict, colour: dict, planes, fb, voxel: float):
+    """Cap quads where the planes cut the shown parts' solids (see section_caps): lists of (verts, faces, colours,
+    normals) arrays, empty if nothing is cut. colour: {part: rgb}."""
     box = np.array([[x, y, w] for x in (fb[0][0], fb[1][0]) for y in (fb[0][1], fb[1][1])
                     for w in (fb[0][2], fb[1][2])])
     V, F, C, N = [], [], [], []
@@ -404,13 +417,7 @@ def section_caps(name: str, view: Path, planes, keep_parts: list[str] | None, vo
             F.append(np.concatenate([np.stack([q0, q0 + 1, q0 + 2], 1), np.stack([q0, q0 + 2, q0 + 3], 1)]))
             C.append(np.tile([*colour[pn], 1.0], (4 * len(cell), 1)))
             N.append(np.tile(n, (4 * len(cell), 1)))
-    if not V:
-        np.savez(out, verts=np.zeros((0, 3), np.float32), faces=np.zeros((0, 3), np.int32), stamp=np.array(stamp))
-        return None
-    np.savez(out, verts=np.concatenate(V).astype(np.float32), faces=np.concatenate(F).astype(np.int32),
-             normals=np.concatenate(N).astype(np.float32), part_colors=np.concatenate(C).astype(np.float32),
-             stamp=np.array(stamp))
-    return out
+    return V, F, C, N
 
 
 def extent(name: str) -> np.ndarray:

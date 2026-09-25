@@ -732,11 +732,13 @@ def part_hashes(prog: dict | None, bases: dict) -> dict:
 
 def look(name: str, views: list[str] | None = None, cameras: list[dict] | None = None, size: int = 640,
          save: str | None = None, show_layer: str | None = None, hide_parts: list[str] | None = None,
-         only_parts: list[str] | None = None, flat: bool = False):
+         only_parts: list[str] | None = None, flat: bool = False, clip=None, focus=None, zoom: float = 1.0):
     """Render the saved scene with EEVEE: named views (as look) and/or perspective cameras {"eye": [x,y,z],
     "target", "fov"}. show_layer: one paint layer's mask, orange on grey clay. hide_parts / only_parts: leave
     parts out (prefab parts too, in every instance); with only_parts the views frame what's shown. flat: unlit
-    base colour."""
+    base colour. clip (as look): everything beyond the planes is left out of the render (the materials turn
+    transparent there) and the cut solids get flat caps, their part's colour darkened. focus + zoom: the named
+    views framed on that point, zoom times closer (painted close-ups at the scene's mesh resolution)."""
     from PIL import Image
     from .spec import compile_prims, geometry
     bp = blend_path(name)
@@ -752,7 +754,8 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         shown = [p for p in prims if p.part not in hide] or prims  # bounds for the ortho views
         lo, hi = np.min([p.lo for p in shown], 0), np.max([p.hi for p in shown], 0)
         lo, hi = lo - 0.06 * (hi - lo), hi + 0.06 * (hi - lo)
-        frames += render.view_frames(np.array([[(lo, hi)[(i >> k) & 1][k] for k in range(3)] for i in range(8)]), views)
+        frames += render.view_frames(np.array([[(lo, hi)[(i >> k) & 1][k] for k in range(3)] for i in range(8)]), views,
+                                     focus, zoom if focus is not None else 1.0)
     for i, c in enumerate(cameras or []):
         frames.append(render.camera_frame(c, i))
     with tempfile.TemporaryDirectory() as tmp:
@@ -764,6 +767,24 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         glass = any((d or {}).get("transmission") or (d or {}).get("alpha", 1) < 1 for d in (spec.get("parts") or {}).values())
         job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
                "samples": 32 if glass else 16}
+        planes = store.clip_planes(clip)
+        if planes:  # cut in the render only; caps where solids are cut, so walls read as walls
+            job["clip"] = [[np.asarray(p, float).tolist(), np.asarray(n, float).tolist()] for p, n in planes]
+            streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(geometry(spec)))}
+            shown = [pn for pn in streams if pn not in hide]
+            defs = spec.get("parts") or {}
+            from .paint import style_rgb
+            colour = {pn: style_rgb(store.part_colour(pn, defs, i)[:3], (spec.get("style") or {}).get("paint") or {}) * 0.55
+                      for i, pn in enumerate(streams)}
+            allp_ = [p for p in compile_prims(geometry(spec)) if p.op == "add"]
+            fb = np.array([np.min([p.lo for p in allp_], 0), np.max([p.hi for p in allp_], 0)])
+            voxel = float((fb[1] - fb[0]).max()) / 900
+            V, F, C, N = store.cap_arrays(streams, shown, defs, colour, planes, fb, voxel)
+            if V:
+                cp = Path(tmp) / "caps.npz"
+                np.savez(cp, verts=np.concatenate(V).astype(np.float32), faces=np.concatenate(F).astype(np.int32),
+                         colors=np.concatenate(C).astype(np.float32))
+                job["caps"] = str(cp)
         if show_layer:  # that layer's mask alone (needs the program: compile it again)
             from . import paint, paintnodes
             names = list(paint.layers(spec))

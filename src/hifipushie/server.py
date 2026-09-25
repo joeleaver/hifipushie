@@ -256,22 +256,26 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     1.8 m of headroom, eye 1.6 m above it ("eye_height" to change); target [x, y] looks level at eye height.
     A list gives several panels. Alone it replaces the default views (views adds orthographic ones back).
     Perspective panels have no rulers (sizes change with depth) and no stroke overlay.
-    Painted looks (paint=True, shading "clay" or "flat", no strokes/clip/close-up) are rendered from the model's
+    Painted looks (paint=True, shading "clay" or "flat", no strokes; clip and close-ups too) are rendered from the model's
     Blender scene (synced first: see `sync`) in EEVEE with real lights; paint_layer then shows that layer's
-    mask glowing orange on grey clay. The geometric views (raking, curvature, strokes, clip, close-ups) show
-    plain clay per part.
+    mask glowing orange on grey clay. Painted clips leave out what's beyond the plane (it casts no shadow either)
+    and cap the cut solids; painted close-ups frame the scene's own meshes. The geometric views (raking,
+    curvature, strokes, instances) show plain clay per part; shading="clay" with paint=False gives clay clips and
+    close-ups at the build resolution.
     instances=True marks every placed prefab instance on the orthographic views: a dot at its origin, an arrow
     along its front (the prefab's local -Y: build prefabs facing -Y, like creatures) and its name. With a top
     view (and a clip) it's the floor plan with which way each piece of furniture faces.
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
-    geometric = strokes or instances or clip or (focus is not None and zoom > 1) or shading not in ("clay", "flat")
+    geometric = strokes or instances or shading not in ("clay", "flat")  # clip and close-ups render painted too
     if paint and not geometric and store.load(name).get("paint"):
         from . import scene
         r = scene.sync(name)
-        sheet, secs = scene.look(name, views or ([] if cams else render.DEFAULT_VIEWS), cams, size, None,
-                                 paint_layer, hide_parts, only_parts, flat=shading == "flat")
+        closeup = focus is not None and zoom > 1
+        sheet, secs = scene.look(name, views or ([] if cams else (render.DEFAULT_VIEWS[:1] if closeup else render.DEFAULT_VIEWS)),
+                                 cams, size, None, paint_layer, hide_parts, only_parts, flat=shading == "flat",
+                                 clip=clip, focus=focus if closeup else None, zoom=zoom)
         if save:
             sheet.save(save)
         notes = [l for l in r["log"] if "cuts into" in l or "from the scene" in l or "scene:" in l]

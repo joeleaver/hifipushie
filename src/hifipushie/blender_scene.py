@@ -589,6 +589,48 @@ def sync(job):
     print("@@made", json.dumps(made))
 
 
+def _clip_material(m, planes):
+    """Everything of this material beyond any plane ([point, normal]: the side the normal points into) renders
+    transparent: a section view without touching the meshes."""
+    nt = m.node_tree
+    out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None) or \
+        next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+    if out is None or not out.inputs["Surface"].is_linked:
+        return
+    src = out.inputs["Surface"].links[0].from_socket
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    cut = None
+    for p, n in planes:
+        sub = nt.nodes.new("ShaderNodeVectorMath")
+        sub.operation = "SUBTRACT"
+        nt.links.new(geo.outputs["Position"], sub.inputs[0])
+        sub.inputs[1].default_value = p
+        dot = nt.nodes.new("ShaderNodeVectorMath")
+        dot.operation = "DOT_PRODUCT"
+        nt.links.new(sub.outputs["Vector"], dot.inputs[0])
+        dot.inputs[1].default_value = n
+        gt = nt.nodes.new("ShaderNodeMath")
+        gt.operation = "GREATER_THAN"
+        nt.links.new(dot.outputs["Value"], gt.inputs[0])
+        gt.inputs[1].default_value = 0.0
+        if cut is None:
+            cut = gt.outputs[0]
+        else:
+            mx = nt.nodes.new("ShaderNodeMath")
+            mx.operation = "MAXIMUM"
+            nt.links.new(cut, mx.inputs[0])
+            nt.links.new(gt.outputs[0], mx.inputs[1])
+            cut = mx.outputs[0]
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(cut, mix.inputs["Fac"])
+    nt.links.new(src, mix.inputs[1])
+    nt.links.new(tr.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    m.surface_render_method = "DITHERED"
+    m.use_transparent_shadow = True  # what's cut away casts no shadow (the roof over a floor plan)
+
+
 RENDER_SAMPLES = 64  # EEVEE's default
 RT_SCALE = 1
 
@@ -609,6 +651,24 @@ def render(job):
         for m in bpy.data.materials:
             if m.get("hp_prog") and m.node_tree:
                 _emit(m, "color")
+    if job.get("clip"):  # section planes: every material turns transparent beyond them (this render only)
+        for m in bpy.data.materials:
+            if m.node_tree is not None:
+                _clip_material(m, job["clip"])
+    if job.get("caps"):  # flat fills where solids are cut, their part's colour darkened
+        z = np.load(job["caps"])
+        me = _mesh_from("hp_caps", z["verts"], z["faces"])
+        col = me.color_attributes.new("hp_cap", "FLOAT_COLOR", "POINT")
+        col.data.foreach_set("color", z["colors"].astype(np.float32).ravel())
+        cm = bpy.data.materials.new("hp_caps")
+        cm.use_nodes = True
+        nt = cm.node_tree
+        at = nt.nodes.new("ShaderNodeAttribute")
+        at.attribute_name = "hp_cap"
+        nt.links.new(at.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+        nt.nodes["Principled BSDF"].inputs["Roughness"].default_value = 1.0
+        me.materials.append(cm)
+        scene.collection.objects.link(bpy.data.objects.new("hp_caps", me))
     scene.render.engine = "BLENDER_EEVEE"
     # ray-traced reflections and indirect light: without them everything indoors reflects the open sky (glossy
     # jars and cups get a bright rim) and rooms get no bounce light
@@ -630,6 +690,8 @@ def render(job):
     bg.inputs["Strength"].default_value = 0.6
     ld = bpy.data.lights.new("hp_sun", "SUN")
     ld.energy, ld.angle = 3.5, 0.05
+    if job.get("clip"):  # a section: what's cut away would still cast the sun's shadow (EEVEE's shadow pass
+        ld.use_shadow = False  # doesn't see the clip), striping a floor plan with the roof's shadow
     sun = bpy.data.objects.new("hp_sun", ld)
     scene.collection.objects.link(sun)
     sun.rotation_euler = Vector(job.get("sun", [-0.4, -0.7, 0.6])).to_track_quat("Z", "Y").to_euler()
