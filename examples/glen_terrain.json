@@ -1,0 +1,248 @@
+{
+ "name": "glen",
+ "story": "A glaciated glen. Ice filled the main valley and carved a U-shaped trough from the cirque under Ben Ard eastward; the side stream from the Bealach was left hanging above the trough and now falls into it. The glacier's snout stood near the lower end and left a moraine across the valley. A village sits on a terrace above the flood plain; a track climbs from it over the Bealach.",
+ "extent": [
+  [
+   0,
+   0
+  ],
+  [
+   4000,
+   3000
+  ]
+ ],
+ "cell": 10,
+ "border": 150,
+ "peaks": {
+  "ben_ard": {
+   "at": [
+    1000,
+    2550
+   ],
+   "h": 1100
+  },
+  "carn_mor": {
+   "at": [
+    900,
+    800
+   ],
+   "h": 1000
+  },
+  "sgurr_dubh": {
+   "at": [
+    2900,
+    2350
+   ],
+   "h": 950
+  }
+ },
+ "cols": {
+  "bealach": {
+   "at": [
+    2000,
+    2450
+   ],
+   "h": 700
+  },
+  "head_col": {
+   "at": [
+    450,
+    1650
+   ],
+   "h": 880
+  }
+ },
+ "ridges": {
+  "north_ridge": {
+   "through": [
+    "ben_ard",
+    "bealach",
+    "sgurr_dubh",
+    [
+     3950,
+     2250,
+     380
+    ]
+   ],
+   "crest": "arete"
+  },
+  "head_wall": {
+   "through": [
+    "ben_ard",
+    "head_col",
+    "carn_mor"
+   ],
+   "crest": "arete"
+  },
+  "south_ridge": {
+   "through": [
+    "carn_mor",
+    [
+     2000,
+     650,
+     820
+    ],
+    [
+     3000,
+     550,
+     640
+    ],
+    [
+     3950,
+     500,
+     330
+    ]
+   ],
+   "crest": "rounded"
+  },
+  "beag_spur": {
+   "through": [
+    "north_ridge@0.62",
+    [
+     2450,
+     1950,
+     640
+    ],
+    [
+     2400,
+     1700,
+     470
+    ]
+   ],
+   "crest": "rounded"
+  }
+ },
+ "rivers": {
+  "allt_mor": {
+   "source": [
+    950,
+    1700,
+    640
+   ],
+   "through": [
+    [
+     1600,
+     1550
+    ],
+    [
+     2400,
+     1400
+    ],
+    [
+     3200,
+     1300
+    ]
+   ],
+   "mouth": [
+    3990,
+    1250,
+    120
+   ],
+   "valley": {
+    "profile": "U",
+    "floor": 180
+   }
+  },
+  "allt_beag": {
+   "source": [
+    2050,
+    2250,
+    600
+   ],
+   "through": [
+    [
+     2200,
+     1850
+    ]
+   ],
+   "into": "allt_mor",
+   "hanging": 90,
+   "valley": {
+    "profile": "V",
+    "floor": 20
+   }
+  }
+ },
+ "landforms": {
+  "tarn": {
+   "type": "lake",
+   "at": "allt_mor.source",
+   "radius": 170,
+   "depth": 15
+  },
+  "beag_fan": {
+   "type": "fan",
+   "at": "allt_beag.mouth",
+   "radius": 260,
+   "height": 18
+  },
+  "snout_moraine": {
+   "type": "moraine",
+   "across": "allt_mor@0.9",
+   "height": 22,
+   "width": 90
+  },
+  "village_terrace": {
+   "type": "terrace",
+   "along": "allt_mor",
+   "from": 0.62,
+   "to": 0.82,
+   "side": "left",
+   "height": 25,
+   "width": 160
+  }
+ },
+ "texture": {
+  "rock": "granite",
+  "glaciated": true
+ },
+ "intent": {
+  "village": {
+   "at": "village_terrace",
+   "above_flood": 8
+  },
+  "track": {
+   "path": [
+    "village_terrace",
+    "bealach"
+   ],
+   "max_grade": 0.12
+  },
+  "view": {
+   "from": "village_terrace",
+   "see": [
+    "ben_ard",
+    "tarn"
+   ]
+  }
+ },
+ "views": [
+  {
+   "name": "glen_up",
+   "eye": [
+    3700,
+    1150,
+    330
+   ],
+   "look": "allt_mor@0.2",
+   "fov": 55
+  },
+  {
+   "name": "glen_hanging",
+   "eye": [
+    2700,
+    1100,
+    480
+   ],
+   "look": "allt_beag@0.6",
+   "fov": 50
+  },
+  {
+   "name": "glen_down",
+   "eye": "head_col",
+   "lift": 60,
+   "look": "allt_mor@0.85",
+   "fov": 60
+  }
+ ]
+}
