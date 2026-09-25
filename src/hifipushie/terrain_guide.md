@@ -37,6 +37,13 @@ The report opens with the kind, its compression, and what was chosen. The realis
 the kind. Small kinds (farmland) and frames much smaller than the kind are treated as a *piece* of it (no
 compression). With `"units": "none"`, the frame is taken as the kind's typical level size.
 
+**A kind the tool doesn't know** ("fjord", "badlands"...) isn't guessed. The run stops (exit code 3) and prints
+QUESTIONS FOR THE DESIGNER: is it one of the known kinds, how big it should feel, how dramatic the height is, what's
+underfoot, what's at the lowest point, and whether it's closed in. **Ask the designer; don't answer for them.** Put
+their answers in `"world": {"kind": "fjord", "answers": {"size": "a long trek", ...}}`. The kind is then defined
+from the answers, recorded in the report, and saved (`workspace/terrain/kinds.json`), so the next spec can just say
+`"kind": "fjord"`.
+
 ## Scale and units
 - `"extent": [[x0, y0], [x1, y1]]` is the frame. Axes: x east, y north, z up.
 - `"units"`: `"m"` (default), `"km"`, `"ft"`, `"yd"`, `"mi"`, or `"none"`. With `"none"` the numbers are only
@@ -73,6 +80,8 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
   - Between the floor's edge and the crest is the basin's wall: the mountainside itself. It averages `average`
     degrees (default: the kind's), with a cliff band `height` metres tall at `min_slope`+ that makes it unclimbable.
     It's checked like a wall (share of the edge that holds, climbable spots).
+  - `walls.character`: `"tiered"` (default: stacked cliff bands with benches, light buttresses), `"buttressed"`
+    (rock ribs between couloirs), `"broken"`, `"smooth"`. `walls.bands`: how many cliff bands.
   - Passes through its ridge are exempt.
   - An enclosed basin would, in reality, fill with water to its lowest rim. The report says so; the lake keeps its
     own level.
@@ -81,10 +90,27 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
   {"name": {"at": address near the ridge, "through"?: ridge, "floor"?: m, "width": m,
             "max_grade": 0.15, "sides": deg}}
   ```
-  - It's highest where it crosses the crest and ramps down to the ground on both sides, lengthening each ramp until
-    it's `max_grade`.
+  - It notches the crest: the way is highest on the crest and falls at `max_grade` both ways until it daylights (the
+    ground drops away below it). The descent beyond is a **route's** job, since routes switchback. The report says
+    how long the way is on each side and how steep the ground runs on beyond it.
   - Without `floor`, the saddle sits just above the higher side.
   - It's a gap in any wall it crosses.
+- **canyons**: cut into a plateau (the plateau is `world.base`, or `rim`).
+  ```
+  {"name": {"river": river, "rim"?: m, "width": m rim to rim, "floor": m,
+            "strata"?: {"bands": 3, "cliff": deg, "talus": m}}}
+  ```
+  - The river gives the path and the floor heights. The walls climb through horizontal strata: each band a cliff
+    over a ledge, with talus at the foot. The bands sit at the same elevation all along the canyon, and the ledge
+    slope is solved so the walls meet the rim at your width.
+  - A side canyon is a canyon on a river that flows `"into"` the main one.
+  - Rim addresses: `"canyon.west_rim@0.4"` (also east/north/south/left/right) is on the lip, 40% along the canyon. A
+    site there is a lookout: it sits back on the plateau at plateau height and never builds out over the lip.
+- **mesas**: `{"name": {"at", "top": m, "radius": m, "cliff": deg, "talus": 0.4}}`: a flat top, a cliff, and a talus
+  apron.
+- **fords**: `{"name": {"on": "river@0.5", "width": m, "depth": m}}`: a shallow crossing. Rivers carry water; routes
+  cross at fords, and anywhere else the report says a bridge is needed. River water width: `rivers.x.water` (0 for a
+  dry bed).
 - **rivers** (optional detail):
   ```
   {"name": {"source": [x, y, z], "through": [[x, y] or [x, y, z]], "mouth": [x, y, z] | "into": river,
@@ -118,8 +144,9 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
   - `{"polygon": [[x, y]...]}`, `{"near": address, "radius": m}`
   - `{"above": m}`, `{"below": m}`, `{"slope": [lo, hi]}`
   - `{"all": [...]}`, `{"any": [...]}`, `{"not": zone}`, `"feather": m`
-- **sites**: flat pads (village, farmyard, camp, spawn). `{"at": address, "radius": m, "level"?: m,
-  "above_water"?: m}`. With a shore address (`"lake.west_shore"`) the pad sits inland of that point, just above the
+- **sites**: pads (village, farmyard, camp, spawn). `{"at": address, "radius": m, "level"?: m, "above_water"?: m,
+  "fall"?: 0.02, "toward"?: address | "south", "overlooks"?: address}`. `overlooks` picks the gentlest fall toward
+  the target that lets most of the pad see it (a dead-level pad's own edge hides what's below it from its middle). With a shore address (`"lake.west_shore"`) the pad sits inland of that point, just above the
   water. The report gives its level and how far it cuts into or builds out of the slope (a warning over 25 m).
 - **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search).
   `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone}`.
@@ -173,6 +200,13 @@ Outputs go to `workspace/terrain/`:
   red), routes (orange), sites (purple squares), walls (dark dots on the edge, bright red where climbable), names
   and a cover legend.
 - `<stem>_masks.png`: each cover mask alone (white = dense).
+- With `--export`, `<stem>_export/` holds:
+  - the heightmap (`height.npy` float32, and 16-bit `height.png`)
+  - square at the engine size, padded if the frame isn't square
+  - density masks per layer, plus water, roads, playable and walls masks
+  - `splat*.png`: RGBA weights that sum to 1
+  - `trees.csv`: tree instances (x, y, z, kind, layer)
+  - `meta.json`: extent, height encoding, sites, passes, routes and rivers with heights
 - `<view name>.png`: the views, with trees instanced from forest masks.
 
 Read the images, not just the report. The report is in your units and ends with WARNINGS: read them.

@@ -348,9 +348,41 @@ def _site(T, name, s):
     before = T.H.copy()
     if rim:  # a lookout on a rim: cut to the plateau, never fill out over the lip (the fill mound hid the view)
         w = np.where(T.H >= level, w, 0)
-    T.H = T.H * (1 - w) + level * w
+
+    def surface(fall, dvec):  # a pad that falls gently toward dvec (real yards drain; a dead-level one blinds its middle)
+        return level - fall * ((T.X - xy[0]) * dvec[0] + (T.Y - xy[1]) * dvec[1])
+
+    fall, dvec, note = float(s.get("fall", 0.0)), np.array([0.0, 0.0]), ""
+    if s.get("toward"):
+        tw = s["toward"]
+        dvec = {"north": (0, 1), "south": (0, -1), "east": (1, 0), "west": (-1, 0)}.get(tw) if isinstance(tw, str) else None
+        dvec = np.array(dvec, float) if dvec is not None else T.address(tw)[0] - xy
+        dvec = dvec / (np.linalg.norm(dvec) + 1e-12)
+        fall = fall or 0.02
+    if s.get("overlooks"):  # choose the gentlest fall toward the target that lets most of the pad see it
+        tgt = s["overlooks"]
+        dvec = T.address(tgt)[0] - xy
+        dvec = dvec / (np.linalg.norm(dvec) + 1e-12)
+        spots = [xy] + [xy + 0.7 * r * np.array([math.sin(a), math.cos(a)]) for a in np.radians(np.arange(0, 360, 45))]
+        best = None
+        keep_h = T.H
+        for f in (0.0, 0.02, 0.04, 0.06, 0.08, 0.1):
+            T.H = keep_h * (1 - w) + surface(f, dvec) * w
+            seen = sum((lake_seen(T, p_.tolist(), tgt) > 0) if tgt in T.lakes else
+                       (sight(T, p_.tolist(), tgt)["visible"] > 0) for p_ in spots)
+            if best is None or seen > best[1]:
+                best = (f, seen)
+            if seen >= 6:
+                break
+        T.H = keep_h
+        fall = best[0]
+        note = f"; falls {100 * fall:.0f}% toward {tgt} so {best[1]} of 9 spots across it see it"
+        if best[1] < 6:
+            T.warnings.append(f"site {name!r} overlooks {tgt!r} from only {best[1]} of 9 spots even falling "
+                              f"{100 * fall:.0f}%: raise it, move it nearer the edge, or move the target")
+    T.H = T.H * (1 - w) + surface(fall, dvec) * w
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
-                     "fill": float((T.H - before).max())}
+                     "fill": float((T.H - before).max()), "note": note}
     if max(T.sites[name]["cut"], T.sites[name]["fill"]) > 25:
         T.warnings.append(f"site {name!r} is dug {T.sites[name]['cut']:.0f} m into / built {T.sites[name]['fill']:.0f} m "
                           f"out of the slope: it stands against a cliff or on a mound; move it or give it a level")
@@ -720,7 +752,7 @@ def report(T):
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
         out.append(f"site {name}: pad {2 * s['radius']:.0f} m across at {s['level']:.0f} m, centre "
-                   f"[{s['xy'][0]:.0f}, {s['xy'][1]:.0f}]; cut {s['cut']:.0f} m, fill {s['fill']:.0f} m"
+                   f"[{s['xy'][0]:.0f}, {s['xy'][1]:.0f}]; cut {s['cut']:.0f} m, fill {s['fill']:.0f} m{s.get('note', '')}"
                    + (f"; edge {dw:.0f} m from water" if dw is not None else ""))
     for name, R in T.routes.items():
         g = _grades(T, R.xy, h=R.h)  # the road as built (its own graded profile)
