@@ -301,6 +301,12 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
   loops placed from the anatomy (the cap's and folds' edges are the armhole); sheets skinned smoothly along their
   length (four pieces hand over in steps: a fold on the pec's edge when the arm lifts); the pit still streaks under a
   raised arm (LBS, as before anatomy). Face rings, ears QuadriFlow drops, the QuadriFlow stall: still open.
+- Loops from the anatomy (2026-09-26, `anatomy.loop_planes`, `spikes/topology/topo_anat.py`): hinge crease planes
+  constrained alone give exact rings (elbows, knees, ankles 0.0 mm; 8.4k tris, mean 1.55 mm). Limb-root planes
+  (through the cap top and both pits) cut open curves (they run onto the torso at the pit); slid down the limb to
+  the first closed cut (shoulder 0.6 r, hip 0.4 r) they close, but constraining them breaks other loops, differently
+  left and right and per budget: QuadriFlow's integer layout drops feature loops unreliably past a few. Sized runs also
+  overshoot their face target ~4x with cuts (the calibration rerun then lands on a coarse lattice).
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**

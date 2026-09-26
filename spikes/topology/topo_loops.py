@@ -48,7 +48,7 @@ def joint_planes(names=tuple(JOINTS), offsets=(0.0,)):
     return out
 
 
-def slice_mesh(V, F, planes, reach=2.2):
+def slice_mesh(V, F, planes, reach=2.2, closed_only=False):
     """Cut each plane into the mesh where it crosses within reach x the limb radius of its point; returns
     (V, F, [(label, p, n, R)]) with R the radius that holds just the loop around the limb (the component of the
     cut nearest the point)."""
@@ -112,6 +112,8 @@ def slice_mesh(V, F, planes, reach=2.2):
         deg = np.bincount(e[comp[e[:, 0]] == best].ravel(), minlength=len(V))[mine]
         print(f"{lab}: loop of {len(mine)} verts, closed={bool((deg == 2).all())}, R {Rc * 1000:.0f} mm"
               + (f", {len(others)} other on-plane verts inside R" if len(others) else ""))
+        if closed_only and not (deg == 2).all():
+            continue
         feats.append((lab, p, n, Rc))
     return V, F, feats
 
