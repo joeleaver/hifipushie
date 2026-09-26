@@ -14,9 +14,13 @@ import json
 import re
 import threading
 import time
+import warnings
 from pathlib import Path
 
 from . import store
+
+warnings.filterwarnings("ignore", message="Mean of empty slice")  # (an empty region reports n/a, not numpy's noise)
+warnings.filterwarnings("ignore", message="invalid value encountered")
 
 _LOCKS: dict[str, threading.Lock] = {}
 _BUILT: dict[str, tuple[str, object]] = {}  # name -> (spec hash, Terrain)

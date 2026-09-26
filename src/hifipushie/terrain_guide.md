@@ -106,7 +106,7 @@ and the `"story"`.
   - It's a gap in any wall it crosses.
 - **canyons**: cut into a plateau (the plateau is `world.base`, or `rim`).
   ```
-  {"name": {"river": river, "rim"?: m, "width": m rim to rim, "floor": m,
+  {"name": {"river": river, "rim"?: m, "width": m rim to rim, "floor": m (the floor's WIDTH; its heights come from the river),
             "strata"?: {"bands": 3, "cliff": deg, "talus": m}}}
   ```
   - The river gives the path and the floor heights. The walls climb through horizontal strata: each band a cliff

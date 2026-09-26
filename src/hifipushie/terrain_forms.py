@@ -64,6 +64,9 @@ def _canyon(T, name, c):
     rim = float(c.get("rim", T.world["base"]))
     half = float(c.get("width", 800)) / 2
     fh = float(c.get("floor", 60)) / 2
+    if fh >= 0.8 * half:
+        raise ValueError(f"canyon {name!r}: floor {2 * fh:.0f} m is its floor's width (not a height), and it must be "
+                         f"well under the rim-to-rim width {2 * half:.0f} m; the floor's heights come from its river")
     lo = float(L.h.min())
     z, cot, talus_h, ledge_deg, fits = _strata(T, lo, rim, c.get("strata") or {}, half, fh)
     if not fits:
@@ -75,7 +78,10 @@ def _canyon(T, name, c):
     near = np.isfinite(d)
     # the rim's plan wanders: alcoves and buttresses, a few hundred metres apart
     pts = np.c_[T.P, np.zeros(len(T.P))]
-    wob = (noise.fbm(pts, 0.35 * half, 3, seed=81).reshape(T.X.shape) - 0.5) * 0.5 * half
+    # (alcoves at least about the wall's height apart, and wandering by a share of the wall's run, not of the canyon's
+    # half-width: a 520 m canyon's rim noise shredded its walls into spires)
+    run = max(half - fh, 3 * T.cell)
+    wob = (noise.fbm(pts, max(0.35 * half, 1.2 * (rim - lo)), 2, seed=81).reshape(T.X.shape) - 0.5) * 0.5 * min(half, run)
     dd = np.where(near, np.maximum(d + wob, 0), np.inf) - fh
     hf = L.h[i]  # this section's floor
     # the run from this floor: talus first (from the local floor, whatever stratum it's in), then the strata above

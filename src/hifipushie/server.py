@@ -804,26 +804,31 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     except Questions as q:
         return tt.questions_data(q)
     d = tt._dir(name)
+    ver = len(tt.history(name))  # files carry the version they show (a later look doesn't overwrite them)
     out, notes = [], []
     if map:
         im = terrain.map_image(T, px=size)
-        out.append(_out(im, str(d / "map.png")))
+        out.append(_out(im, str(d / f"map_v{ver}.png")))
+        notes.append(f"map: {d / f'map_v{ver}.png'}")
     if masks:
         sheet = terrain.mask_sheet(T)
         if sheet is None:
             notes.append("no cover layers, so no masks")
         else:
-            out.append(_out(sheet, str(d / "masks.png")))
+            out.append(_out(sheet, str(d / f"masks_v{ver}.png")))
+            notes.append(f"masks: {d / f'masks_v{ver}.png'}")
     vs = list(views or []) + (list(T.spec.get("views") or []) if spec_views else [])
     if vs:
         for i, v in enumerate(vs):
             v.setdefault("name", f"view{i + 1}")
             if not re.fullmatch(r"[A-Za-z0-9_\-]+", v["name"]):
                 raise ValueError(f"view name {v['name']!r}: letters, digits, _ and - only")
+        for v in vs:
+            v["name"] = f"{v['name']}_v{ver}"
         for pth in terrain.render(T, d / "views", vs):
             out.append(_out(PILImage.open(pth), None))
+            notes.append(f"view: {pth}")
         notes += T.view_notes
-    notes.append(f"files in {d}")
     return out + ["\n".join(notes)]
 
 

@@ -109,9 +109,14 @@ def region(T, r) -> np.ndarray:
         a[rr, cc] = 1
         meet(a)
     if "near" in r:
-        xy = T.address(r["near"])[0]
         rad = r.get("radius", 200 * T.k)
-        meet(smoothstep(rad * 1.1, rad * 0.9, np.hypot(T.X - xy[0], T.Y - xy[1])))
+        ln = T.lines.get(r["near"]) or T.routes.get(r["near"]) if isinstance(r["near"], str) else None
+        if ln is not None:  # near a ridge, river or route: along its whole length
+            dist = cKDTree(ln.xy).query(T.P)[0].reshape(T.X.shape)
+        else:
+            xy = T.address(r["near"])[0]
+            dist = np.hypot(T.X - xy[0], T.Y - xy[1])
+        meet(smoothstep(rad * 1.1, rad * 0.9, dist))
     if "above" in r:
         meet(smoothstep(r["above"] - 15 * T.k, r["above"] + 15 * T.k, T.H))
     if "below" in r:
@@ -408,7 +413,8 @@ def _site(T, name, s):
         spots = [xy] + [xy + 0.7 * r * np.array([math.sin(a), math.cos(a)]) for a in np.radians(np.arange(0, 360, 45))]
         best = None
         keep_h = T.H
-        for f in (0.0, 0.02, 0.04, 0.06, 0.08, 0.1):
+        asked = float(s.get("fall", 0.0))  # a fall the designer gave is the least it gets
+        for f in [asked] + [f for f in (0.02, 0.04, 0.06, 0.08, 0.1) if f > asked]:
             T.H = keep_h * (1 - w) + surface(f, dvec) * w
             seen = sum((lake_seen(T, p_.tolist(), tgt) > 0) if tgt in T.lakes else
                        (sight(T, p_.tolist(), tgt)["visible"] > 0) for p_ in spots)
@@ -418,10 +424,13 @@ def _site(T, name, s):
                 break
         T.H = keep_h
         fall = best[0]
-        note = f"; falls {100 * fall:.0f}% toward {tgt} so {best[1]} of 9 spots across it see it"
+        note = f"; falls {100 * fall:.0f}% toward {tgt} so {best[1]} of 9 spots across it see it" + (
+            f" (asked {100 * asked:.0f}%)" if abs(fall - asked) > 1e-6 and asked else "")
         if best[1] < 6:
             T.warnings.append(f"site {name!r} overlooks {tgt!r} from only {best[1]} of 9 spots even falling "
                               f"{100 * fall:.0f}%: raise it, move it nearer the edge, or move the target")
+    if fall and not note:
+        note = f"; falls {100 * fall:.0f}% toward " + (s["toward"] if isinstance(s.get("toward"), str) else "its low side")
     T.H = T.H * (1 - w) + surface(fall, dvec) * w
     _earthworks(T, w)
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
@@ -592,6 +601,10 @@ def _route(T, name, r):
         half = max(width / 2, 0.75 * T.cell)  # narrower than the grid can't be flat on it
         bank = np.clip(np.abs(T.H - hr) / math.tan(math.radians(34)), 4.0, 40.0)
         w = np.where(near, smoothstep(half + bank, half, d), 0)
+        # earthworks have a limit: past ~25 m of cut or fill a road is a bridge or a tunnel, not a causeway (a 65 m fill
+        # built a tongue out over a canyon); left as it is, and the report says where
+        deep = float(r.get("max_earthworks", 25.0))
+        w *= smoothstep(deep + 5, deep, np.abs(T.H - hr))
         if "sites" in T.masks:  # a road arrives at a site; it doesn't bury or trench it
             w *= 1 - T.masks["sites"]
         before = T.H.copy()
@@ -614,7 +627,7 @@ def _route(T, name, r):
                           f"the map for what, or add a 'via'")
     s, _ = _arclen(xy)
     T.routes[name] = Line(name, "route", xy, h, s, {"length": length, "max_grade": maxg, "width": width,
-                                                   "cut": cut, "fill": fill})
+                                                   "cut": cut, "fill": fill, "relaxed": relaxed})
 
 
 # ---------------------------------------------------------------- cover
@@ -812,9 +825,11 @@ def report(T):
         m = measure_canyon(T, name)
         w = f"{m['width'][0]:.0f}-{m['width'][1]:.0f} m rim to rim" if m["width"] else "rim to rim not measurable"
         (cs, cf), (ls, lf) = m["cliff"], m["ledge"]
+        strata = (f"cliff strata median {cs:.0f} deg ({100 * cf:.0f}% over 60), ledges median {ls:.0f} deg"
+                  if np.isfinite(cs) and np.isfinite(ls) else "no strata could be built (too narrow or too shallow for "
+                  "its bands: its walls are talus slopes)")
         out.append(f"canyon {name} (measured): {m['depth'] or 0:.0f} m deep at its deepest, {w} (asked "
-                   f"{2 * c['half']:.0f}); cliff strata median {cs:.0f} deg ({100 * cf:.0f}% over 60), ledges median "
-                   f"{ls:.0f} deg, talus at the foot")
+                   f"{2 * c['half']:.0f}); {strata}, talus at the foot")
         if np.isfinite(cs) and cs < 50:
             T.warnings.append(f"canyon {name!r}: its cliff strata stand at only {cs:.0f} deg as built (the grid and "
                               f"erosion soften them): they read as steep slopes, not cliffs; a finer cell sharpens them")
@@ -840,7 +855,8 @@ def report(T):
                          f"{100 * gb:.0f}%" + (" (a route continues)" if gb > p["max_grade"] else ""))
             if g.max() > p["max_grade"] * 1.1 and (worst is None or g.max() > worst[0]):
                 worst = (g.max(), xy[k])
-        line = (f"pass {name}: through {p['ridge']} at [{c[0]:.0f}, {c[1]:.0f}], saddle at {T.height(c):.0f} m, "
+        line = (f"pass {name}: through {p['ridge']} at [{c[0]:.0f}, {c[1]:.0f}], saddle at {T.height(c):.0f} m as built"
+                + (f" (planned {p['floor']:.0f})" if abs(T.height(c) - p["floor"]) > 3 else "") + ", "
                 f"{p['width']:.0f} m wide; the way: " + "; ".join(sides))
         if worst:
             line += f" FAIL: {100 * worst[0]:.0f}% at [{worst[1][0]:.0f}, {worst[1][1]:.0f}]"
@@ -852,14 +868,26 @@ def report(T):
                    f"[{s['xy'][0]:.0f}, {s['xy'][1]:.0f}]; cut {s['cut']:.0f} m, fill {s['fill']:.0f} m{s.get('note', '')}"
                    + (f"; edge {dw:.0f} m from water" if dw is not None else ""))
     for name, R in T.routes.items():
-        g = _grades(T, R.xy, h=R.h)  # the road as built (its own graded profile)
+        # the road as built: the ground under its centre line after every carve, not its own planned profile (that
+        # always met the limit, so the line said OK where the warnings said nothing connects at that grade)
+        g = _grades(T, R.xy)
         ok = g.max() <= R.props["max_grade"] + 0.01
         turns = _switchbacks(R.xy)
         worst = int(np.argmax(g))
+        verdict = "OK" if ok else f"FAIL at [{R.xy[worst, 0]:.0f}, {R.xy[worst, 1]:.0f}]"
+        if R.props.get("relaxed", 1) > 1:
+            verdict += (f" (no way at {100 * R.props['max_grade']:.0f}% exists on the ground: it was found at "
+                        f"{100 * R.props['max_grade'] * R.props['relaxed']:.0f}% and graded by cutting and filling)")
         out.append(f"route {name}: {R.props['length']:.0f} m, climbs {np.abs(np.diff(R.h)).sum():.0f} m, "
-                   f"{turns} switchbacks, steepest 20 m {100 * g.max():.0f}% (limit {100 * R.props['max_grade']:.0f}%) "
-                   + ("OK" if ok else f"FAIL at [{R.xy[worst, 0]:.0f}, {R.xy[worst, 1]:.0f}]")
-                   + f"; cut up to {R.props['cut']:.0f} m, fill {R.props['fill']:.0f} m")
+                   f"{turns} switchbacks, steepest 20 m as built {100 * g.max():.0f}% (limit "
+                   f"{100 * R.props['max_grade']:.0f}%) {verdict}; cut up to {R.props['cut']:.0f} m, fill "
+                   f"{R.props['fill']:.0f} m")
+        for end, k in (("start", 0), ("end", -1)):
+            gap = float(R.h[k] - T.sample(R.xy[k:k + 1] if k == 0 else R.xy[-1:])[0])
+            if abs(gap) > 3:
+                out.append(f"    its graded bed {'ends' if k else 'starts'} {abs(gap):.0f} m {'above' if gap > 0 else 'below'} "
+                           f"the ground at its {end}: the last stretch there is a drop no road at its grade could make "
+                           f"(a cliff band in the way: move the stop, or allow a steeper grade)")
         rw = getattr(T, "river_water", None)
         if rw is not None and rw.any():
             # each stretch of the road in river water is one crossing; it's a ford crossing if any of it is in a ford
@@ -884,8 +912,9 @@ def report(T):
         if off.any():
             lab, n = ndimage.label(off)
             spots = sorted(((lab == k).sum(), k) for k in range(1, n + 1))[::-1][:3]
-            out.append(f"    ground and road disagree over {off.sum() * R.props['length'] / len(R.xy):.0f} m (switchback legs"
-                       f" too close to carve both): " + ", ".join(
+            out.append(f"    ground and road disagree by over 1 m along {off.sum() * R.props['length'] / len(R.xy):.0f} m "
+                       f"(over 25 m of cut or fill is left for a bridge or tunnel; or legs pass close, or a later carve "
+                       f"changed the ground): " + ", ".join(
                            f"[{R.xy[lab == k][:, 0].mean():.0f}, {R.xy[lab == k][:, 1].mean():.0f}]" for _, k in spots))
     for name, W in T.walls.items():
         out.append(f"wall {name} (measured): {W['length'] / 1000:.1f} km of edge, {100 * W['fraction']:.0f}% at least "
@@ -900,9 +929,9 @@ def report(T):
         if zs:
             line += "; " + ", ".join(f"{z} {100 * (m * region(T, z)).sum() / max(region(T, z).sum(), 1):.0f}%" for z in zs)
         out.append(line)
-    for a in (T.spec.get("probe") or []):
+    for a in (T.spec.get("probe") or []):  # the finished ground: after sites, roads and erosion
         xy, h, _ = T.address(a)
-        out.append(f"probe {a}: [{xy[0]:.0f}, {xy[1]:.0f}] ground {h:.0f} m, slope {T._slope()[_ij(T, xy)]:.0f} deg")
+        out.append(f"probe {a}: [{xy[0]:.0f}, {xy[1]:.0f}] ground as built {h:.0f} m, slope {T._slope()[_ij(T, xy)]:.0f} deg")
     return out
 
 
@@ -959,14 +988,17 @@ def _eye(T, eye_ref, eye_height):
     return exy, eh + eye_height
 
 
-def lake_seen(T, eye_ref, lake, eye_height=1.7):
-    """The share of a lake's surface visible from the eye (sampled water cells, each tested by a sight line)."""
+def lake_seen(T, eye_ref, lake, eye_height=1.7, angles=False):
+    """The share of a lake's surface visible from the eye (sampled water cells, each tested by a sight line); with
+    angles, also how tall the visible water stands in the view (degrees from its nearest to its farthest seen point:
+    at a grazing angle a lake can be 40% "seen" and still be a hairline) and how far below the horizon it lies."""
     exy, e = _eye(T, eye_ref, eye_height)
     wet = np.nonzero((T.lake_id == T.lakes[lake]["id"]).ravel())[0]
     if not len(wet):
-        return 0.0
+        return (0.0, 0.0, 0.0) if angles else 0.0
     pick = wet[np.linspace(0, len(wet) - 1, min(300, len(wet))).astype(int)]
     seen = 0
+    dips = []
     for k in pick:
         txy, top = T.P[k], T.lakes[lake]["level"]
         D = float(np.linalg.norm(txy - exy))
@@ -975,7 +1007,12 @@ def lake_seen(T, eye_ref, lake, eye_height=1.7):
         p = exy + (txy - exy) * u[:, None]
         g = np.where(np.isnan(T.water.ravel()[_cells(T, p)]), T.sample(p), -np.inf)  # water doesn't block water
         line = e + (top - e) * u
-        seen += not (g > line + 0.05).any()
+        ok = not (g > line + 0.05).any()
+        seen += ok
+        if ok:
+            dips.append(math.degrees(math.atan2(e - top, D)))
+    if angles:
+        return seen / len(pick), (max(dips) - min(dips)) if dips else 0.0, min(dips) if dips else 0.0
     return seen / len(pick)
 
 
@@ -1013,7 +1050,8 @@ def sight(T, eye_ref, tgt_ref, eye_height=1.7):
         if isinstance(tgt_ref, str) and tgt_ref in getattr(T, "mesas", {}):
             from .terrain_forms import measure_mesa
             base = top - measure_mesa(T, tgt_ref)["rise"]
-        res = {"visible": e + sil * D - max(e + front * D, base), "block": p[k] if (~own).any() else None, "dist": D}
+        res = {"visible": e + sil * D - max(e + front * D, base), "block": p[k] if (~own).any() else None, "dist": D,
+               "base": base}
         top = e + sil * D
     else:
         keep = (dd > 5) & (dd < D - skip)
@@ -1037,7 +1075,9 @@ def sight(T, eye_ref, tgt_ref, eye_height=1.7):
         # (from 60% of the way out: ground beside the eye is its own foreground, not the crest beside the peak)
         beside = [_skyline(T, exy, e, txy + sgn * side * lateral - exy, 0.6 * D) for sgn in (1, -1)]
         around = max(max(beside), behind)  # the higher shoulder: a peak reads against whichever side is higher
-        res["standout"] = (top_ang - around) * D
+        # never more than its own height above its foot (sea or open sky beside it isn't a skyline: an island's
+        # summit "stood 2956 m above the skyline" on a 750 m island)
+        res["standout"] = min((top_ang - around) * D, top - res["base"])
     return res
 
 
@@ -1115,11 +1155,11 @@ def _see(T, name, it):
         got = []
         for label, xy in spots:
             if lake:
-                v = lake_seen(T, xy, tgt, eye)
-                got.append((label, v, v > 0, None))
+                v, tall, dip = lake_seen(T, xy, tgt, eye, angles=True)
+                got.append((label, v, v > 0, None, tall, dip))
             else:
                 r = sight(T, xy, tgt, eye)
-                got.append((label, r["visible"], r["visible"] > want, r))
+                got.append((label, r["visible"], r["visible"] > want, r, 0, 0))
         ok = [g for g in got if g[2]]
         summit = not lake and "standout" in got[0][3]
         fmt = ((lambda v: f"{100 * v:.0f}% of its surface") if lake else (lambda v: f"{v:.0f} m of it showing") if summit
@@ -1128,6 +1168,12 @@ def _see(T, name, it):
         where = f"from {src}" + (f": seen from {len(ok)} of {len(got)} spots across it (centre {fmt(got[0][1])}, best "
                                  f"{best[0]} {fmt(best[1])})" if len(spots) > 1 else f": {fmt(got[0][1])}")
         line = f"intent {name}: {tgt} {where}; eye {eye:g} m" + ("" if ok else " FAIL")
+        if lake and ok:
+            b = max(got, key=lambda g: g[4])
+            line += (f"; the water seen stands {got[0][4]:.1f} deg tall in the view from the centre ({b[4]:.1f} at best, "
+                     f"{b[0]}), its far edge {b[5]:.1f} deg below the horizon")
+            if b[4] < 1.0:
+                line += " (a thin strip at eye level: lower the water relative to the eye, or bring it closer)"
         r = got[0][3]
         if not ok and r is not None and r.get("block") is not None:
             b = r["block"]

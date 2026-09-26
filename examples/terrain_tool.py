@@ -25,7 +25,10 @@ if tool not in TOOLS:
     sys.exit(f"unknown tool {tool!r}: {TOOLS}")
 arg = sys.argv[2] if len(sys.argv) > 2 else "{}"
 args = json.loads(Path(arg[1:]).read_text() if arg.startswith("@") else arg)
-out = getattr(server, tool)(**args)
+try:
+    out = getattr(server, tool)(**args)
+except (ValueError, KeyError) as e:  # as the MCP client would see it: the message, not a traceback
+    sys.exit(f"ERROR: {e}")
 from hifipushie import terrain_tools as tt
 if not isinstance(out, list):
     out = [out]
@@ -37,6 +40,6 @@ for o in out:
         k += 1
         d = tt._dir(args["name"]) / "returned"
         d.mkdir(parents=True, exist_ok=True)
-        p = d / f"{tool}_{k}.png"
+        p = d / f"{tool}_v{len(tt.history(args['name']))}_{k}.png"
         p.write_bytes(o.data)
         print(f"[image {k}: {p}]")

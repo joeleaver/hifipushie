@@ -636,7 +636,14 @@ class Terrain:
         r = 0.5 * lfs[b["falls_to"]]["radius"] if isinstance(b.get("falls_to"), str) and b["falls_to"] in lfs else 60.0 * self.k
         sink = (np.hypot(self.X - fx[0], self.Y - fx[1]) < r) & F
         if not sink.any():
-            raise ValueError(f"basin {name!r}: falls_to {b.get('falls_to')!r} isn't on the basin floor")
+            fy, fxx = np.nonzero(F)
+            c = [float(self.xs[fxx].mean()), float(self.ys[fy].mean())]
+            dmin = float(np.hypot(self.X[F] - fx[0], self.Y[F] - fx[1]).min())
+            raise ValueError(f"basin {name!r}: falls_to {b.get('falls_to')!r} at [{fx[0]:.0f}, {fx[1]:.0f}] isn't on the "
+                             f"basin floor: the walls take the ground there. The floor spans x {self.xs[fxx].min():.0f}-"
+                             f"{self.xs[fxx].max():.0f}, y {self.ys[fy].min():.0f}-{self.ys[fy].max():.0f} (centre "
+                             f"[{c[0]:.0f}, {c[1]:.0f}]), {dmin:.0f} m from it: move it onto the floor, or lower the floor's "
+                             f"high end / the crest so the walls take less room")
         # the floor ramps by relative distance, drain -> edge (harmonic from a small drain is logarithmic: a flat
         # plateau with the drain sunk in a funnel)
         d_sink = ndimage.distance_transform_edt(~sink) * self.cell
@@ -798,6 +805,9 @@ class Terrain:
             name, end = ref.rsplit(".", 1)
             xy, h, tan = self.lines[name].at(0.0 if end == "source" else 1.0)
             return xy, self.height(xy), tan
+        if ref in self.lines or ref in self.routes:  # a line by name: its middle (the whole line for "near" zones)
+            xy, h, tan = (self.lines.get(ref) or self.routes[ref]).at(0.5)
+            return xy, self.height(xy), tan
         if ref in (self.spec.get("landforms") or {}):
             lf = self.spec["landforms"][ref]
             xy = np.array(lf["_centre"], float) if "_centre" in lf else self._early_xy(ref)  # not built yet
@@ -873,27 +883,29 @@ class Terrain:
         target = np.where(d < r, level - depth * np.clip(1 - (d / r) ** 2, 0, 1) ** 1.5 - 0.3,
                           level - 0.3 + 0.35 * (d - r))  # shore banks at ~19 deg rather than a step
         reach = smoothstep(1.6 * r, 1.1 * r, true_d)  # the bank only reshapes the shore, not the hills around it
+        before = self.H
         self.H = self.H * (1 - reach) + np.minimum(self.H, self._smooth(target, 10 * self.k)) * reach
+        dug = (before - self.H > 20) & (before > level + 20) & (d < r)
+        if dug.sum() * self.cell ** 2 > 0.05 * math.pi * r * r:  # a lake is a dug-out disk: say when that ate land
+            self.warnings.append(f"lake {name!r}: its disk ({r:.0f} m radius) dug out {_area(dug.sum() * self.cell ** 2)} "
+                                 f"of ground standing over 20 m above its level (up to {float((before - self.H).max()):.0f} m "
+                                 f"deep): a lake is a basin dug to its level everywhere inside its radius. Make it smaller "
+                                 f"or move it off the high ground (there's no sea yet for water around land)")
         dam = lf.get("dam", True)
-        if dam == "downhill":  # a farm pond: one straight bank across the slope on its low side
-            gy, gx = np.gradient(ndimage.gaussian_filter(self.H, r / self.cell), self.cell)
-            iy, ix = int(round((xy[1] - self.ys[0]) / self.cell)), int(round((xy[0] - self.xs[0]) / self.cell))
-            down = -np.array([gx[iy, ix], gy[iy, ix]])
-            down = down / (np.linalg.norm(down) + 1e-12)
-            v = np.stack([self.X - xy[0], self.Y - xy[1]], -1)
-            u, w = v @ down, v @ np.array([-down[1], down[0]])
-            crest = level + lf.get("freeboard", 1.5)
+        if dam:
+            # an embankment wherever the ground (before digging) was below the crest: its inner face rises from the
+            # water's edge, a level top, an outer face at 1:2.5 down to the ground. On a slope that is a bank across the
+            # downhill side only ("downhill": a farm pond); uphill the dug bank is the shore. (A ring raised on the dug
+            # ground left an uphill rim; a separate berm below the pond left a trough and spilled at its ends)
+            crest = level + float(lf.get("freeboard", 1.0 if dam == "downhill" else 1.5))
             top = float(lf.get("crest_width", max(3.0, 0.1 * r)))
-            bank = smoothstep(top / 2 + 2.5 * (crest - np.minimum(self.H, crest)) + 1e-6, top / 2, np.abs(u - 1.05 * r))
-            bank *= smoothstep(1.6 * r, 1.2 * r, np.abs(w))
-            self.H = np.maximum(self.H, self.H * (1 - bank) + crest * bank)
-            # wings: along the contour the ground sits right at the water level, so the ends need a low lift too
-            # (the downhill half only: a ring all round left a lip on the uphill side too)
-            wing = smoothstep(0.35 * r, 0.1 * r, np.abs(d - 1.15 * r)) * (true_d < 1.6 * r) * smoothstep(-0.4 * r, 0.1 * r, u)
-            self.H += wing * np.clip(level + 0.5 - self.H, 0, None)
-        elif dam:
-            rim = smoothstep(0.45 * r, 0.12 * r, np.abs(d - 1.2 * r)) * (true_d < 1.8 * r)  # solid: a thin crest leaks
-            self.H += rim * np.clip(level + lf.get("freeboard", 1.5) - self.H, 0, None)
+            rise = crest - (level - 0.3)
+            d_in = r + 2.0 * rise
+            bank = np.where(d < r, -np.inf, np.where(d < d_in, level - 0.3 + (d - r) / 2.0,
+                                                     np.where(d < d_in + top, crest, crest - (d - d_in - top) / 2.5)))
+            low = self._smooth(before, 2 * self.cell) < crest
+            fill = np.where(low & (true_d < 3 * r), np.minimum(bank, crest), -np.inf)
+            self.H = np.maximum(self.H, fill)
         # dam false: a natural lake, holding only what the ground holds (the report says if it leaks)
         self.lakes[name] = {"xy": xy.tolist(), "level": level, "r": r, "id": len(self.lakes) + 1}
         lf["_centre"] = xy.tolist()
@@ -966,14 +978,33 @@ class Terrain:
                 continue
             ids = np.unique(lab[near])
             wet = np.isin(lab, ids[ids > 0])
-            if (wet & (d > 2.5 * r)).any() or wet[[0, -1], :].any() or wet[:, [0, -1]].any():
+            def spills(w):
+                return (w & (d > 2.5 * r)).any() or w[[0, -1], :].any() or w[:, [0, -1]].any()
+
+            if spills(wet):
+                # water finds its own level: the highest that stays in its basin (cropping it at a radius left water
+                # standing over land at the crop)
                 edge = wet & (d > 1.3 * r)
                 k = np.argmin(np.where(edge, d, np.inf))
-                self.warnings.append(f"lake {name!r} at {level:.0f} m would spill out near "
-                                     f"[{self.P[k, 0]:.0f}, {self.P[k, 1]:.0f}]: kept within {1.3 * r:.0f} m; "
-                                     f"raise the ground there or lower the level")
-                wet &= d <= 1.3 * r
-                wet = ndimage.binary_opening(wet)
+                lo_l, hi_l = float(self.H[near].min()), level
+                for _ in range(14):
+                    mid = (lo_l + hi_l) / 2
+                    lab2, _ = ndimage.label(self.H < mid)
+                    ids2 = np.unique(lab2[near & (self.H < mid)])
+                    w2 = np.isin(lab2, ids2[ids2 > 0])
+                    lo_l, hi_l = (mid, hi_l) if not spills(w2) else (lo_l, mid)
+                self.warnings.append(f"lake {name!r} at {level:.0f} m would spill out near [{self.P[k, 0]:.0f}, "
+                                     f"{self.P[k, 1]:.0f}]: its water stands at {lo_l:.1f} m, the most its basin holds; "
+                                     f"dam it (\"dam\": true), move it, or lower the level")
+                level = lk["level"] = lo_l
+                below = self.H < level
+                lab, _ = ndimage.label(below)
+                near = (d < max(r / 3, 2 * self.cell)) & below
+                if not near.any():
+                    lk.update(area=0, depth=0)
+                    continue
+                ids = np.unique(lab[near])
+                wet = np.isin(lab, ids[ids > 0])
             self.water[wet] = level
             self.lake_id[wet] = lk["id"]
             lk.update(area=wet.sum() * self.cell ** 2, depth=float((level - self.H[wet]).max()) if wet.any() else 0)
@@ -1016,8 +1047,11 @@ class Terrain:
         from . import terrain_design as design
         from . import terrain_world
         out = terrain_world.report(self) + ["peaks/cols (authored -> built):"]
+        cols = self.spec.get("cols") or {}
         for n, (xy, h) in self.points.items():
-            out.append(f"  {n}: {h:.0f} m -> {self.summit(n):.0f} m")
+            built = self.height(xy) if n in cols else self.summit(n)
+            out.append(f"  {n}: {h:.0f} m -> {built:.0f} m" + (" (a pass notches it)" if any(
+                np.hypot(*(np.array(p["xy"]) - xy)) < p["width"] + 3 * self.cell for p in self.passes.values()) else ""))
         for L in self.lines.values():
             if L.kind != "river":
                 continue
@@ -1254,7 +1288,8 @@ class Terrain:
                                "falls_toward": st.get("toward", [0, 0]),
                                "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)"}
                           for nm, st in self.sites.items()},
-                "passes": {nm: {"at": p["xy"], "floor": p["floor"], "width": p["width"]} for nm, p in self.passes.items()},
+                "passes": {nm: {"at": p["xy"], "saddle": round(self.height(np.array(p["xy"])), 2), "width": p["width"]}
+                           for nm, p in self.passes.items()},
                 "routes": {nm: {"width": L.props["width"], "points_xyz": np.c_[L.xy, L.h][::2].round(2).tolist()}
                            for nm, L in self.routes.items()}}
         (out / "meta.json").write_text(json.dumps(meta, indent=1))
@@ -1416,8 +1451,11 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
             r = s["radius"] / T.cell * sc
             d.ellipse([x - r, y - r, x + r, y + r], outline=(160, 40, 160), width=2)
             label(s["xy"], f"{name} {s['level']:.0f}", (110, 20, 110))
-        for name, (xy, h) in T.points.items():
-            label(xy, f"{name} {T.summit(name):.0f}")
+        cols = T.spec.get("cols") or {}
+        for name, (xy, h) in T.points.items():  # a col is labelled with the ground at it, a peak with its top
+            label(xy, f"{name} {(T.height(xy) if name in cols else T.summit(name)):.0f}")
+        for name, p in T.passes.items():
+            label(p["xy"], f"{name} {T.height(np.array(p['xy'])):.0f}", (150, 70, 0))
         for name, m in getattr(T, "mesas", {}).items():
             label(m["xy"], f"{name} {float(np.median(T.H[m['topmask']])):.0f}")
         for Lr in T.lines.values():
@@ -1463,7 +1501,15 @@ def mask_sheet(T: Terrain, px: int = 360):
         v = (0.25 * shade + 0.75 * np.clip(m, 0, 1))[::-1]
         im = Image.fromarray((v * 255).astype(np.uint8)).convert("RGB")
         im = im.resize((px, int(im.height * px / im.width)), Image.LANCZOS)
-        ImageDraw.Draw(im).text((8, 6), f"{name} ({100 * m.mean():.0f}%)", fill=(255, 60, 60), font=_font(16),
+        from . import terrain_design as design
+        c = (T.spec.get("cover") or {}).get(name, {})
+        lab = (f"{name} (~{c['count']} trees; each dot is one)" if c.get("count") and design.tree_kind(T, name)
+               else f"{name} ({100 * m.mean():.0f}%)")
+        if c.get("count") and design.tree_kind(T, name):  # a few trees' density is too faint to see: draw the mask full
+            v = (0.25 * shade + 0.75 * np.clip(m / max(m.max(), 1e-6), 0, 1))[::-1]
+            im = Image.fromarray((v * 255).astype(np.uint8)).convert("RGB")
+            im = im.resize((px, int(im.height * px / im.width)), Image.LANCZOS)
+        ImageDraw.Draw(im).text((8, 6), lab, fill=(255, 60, 60), font=_font(16),
                                 stroke_width=2, stroke_fill=(0, 0, 0))
         tiles.append(im)
     if not tiles:
@@ -1527,6 +1573,20 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
                                 f"to {floor + 1.7:.0f} m")
             ez = floor + 1.7
         txy, th, _ = T.address(v["look"])
+        # and not facing a wall: the first stretch toward what it looks at must clear the ground (an eye clear of the
+        # ground under it but a few metres from a cliff rendered black)
+        dvec = np.array(txy) - np.array(exy)
+        dist = float(np.linalg.norm(dvec))
+        if dist > 1:
+            ds = np.arange(T.cell, min(60.0, 0.3 * dist), T.cell / 2)
+            if len(ds):
+                pts = np.array(exy) + dvec / dist * ds[:, None]
+                ray = ez + (th - ez) * ds / dist
+                need = float((T.sample(pts) + 1.0 - ray).max())
+                if need > 0:
+                    T.view_notes.append(f"view {v['name']!r}: the ground just ahead toward {v['look']!r} was in the way: "
+                                        f"the eye was raised {need:.0f} m to see past it")
+                    ez += need
         jobs.append({"eye": [*exy, ez], "look": [*txy, th], "fov": v.get("fov", 60),
                      "out": str(out_dir / f"{v['name']}.png")})
     job = out_dir / "job.json"
