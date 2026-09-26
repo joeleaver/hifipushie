@@ -367,19 +367,28 @@ shaved or buried whole mountains); erosion scaled to the geology cuts trenches a
 metres); whole walls as steep as "unclimbable" read as curtains (put the steepness in cliff bands); when a result
 regresses, bisect by building one spec at each commit and diffing heights.
 
-**Next session: plan C (agreed 2026-09-25), then maybe A (more forms per kind) and B (realism: SDF cliffs).**
-1. Trust leaks and bugs from round 5: canyon strata report from built slopes; "see the peak" by how far the summit
-   rises above the crest behind it (not its flanks); the skyline check denied visible mesas; a route near a 60 m ford
-   told it needs a bridge; a shore address landing on a river contradicts itself; the downhill pond dam still has an
-   uphill rim; `walls.average` capped at min_slope - 5 silently; `rises_toward` should take compass words; `intent`
-   as a list crashes; view eyes inside the ground; steep river water renders as a vertical sheet; mesa tops draw as
-   donuts on the map; embankment sawtooth.
-2. Export: Unity `.raw` (+ heights offset to 0, terrain size), tree layers out of the splats, playable/walls masks
-   always, fords and river water surface/width in meta, site fall/plane in meta.
-3. Questions flow: allow mixtures ("crater + coast"), ask about shape, say up front what can't be built (no sea yet).
-4. MCP tools in `server.py` (mcp 2.x MCPServer): `set_terrain` (spec + history under `workspace/terrain/<name>/`),
-   `look_terrain` (map, masks, views as images), `check_terrain` (the report; questions returned as data),
-   `export_terrain`; the guide through the existing `guide` tool. Then a blind round through the MCP tools.
+- `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
+  history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
+  questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
+  functions from a shell (for sessions whose MCP server predates the tools).
+
+More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
+eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
+basin walls came out 9 deg steeper than asked (sized from the floor's high end: now per stretch from where the floor
+meets them); the wall check passed any 2 m step (now the tallest steep run along each outward ray; walls are built
+taller by ~0.6 cell of rise because the grid rounds lip and foot). Binary erosion protection makes pillars at its edge:
+protect earthworks in proportion (`masks["earthworks"]`). Keeping hard cliff cells from creeping made pinnacles
+(scattered hard cells stand): restore designed forms after erosion instead.
+
+**Plan C (agreed 2026-09-25): C1-C4 done on branch `terrain-plan-c`; C5 (blind round through the tools) next.**
+1. DONE: trust leaks and bugs from round 5 (every report number measured; see lessons above; peaks report how far their
+   top stands above the skyline beside/behind them, `min_prominence`).
+2. DONE: export (Unity `.raw` + size/position, tree layers out of the splats, masks always, rivers' water, fords, site
+   planes in meta).
+3. DONE: questions (mixtures "crater + coast", a shape question, what can't be built said first; answers in the
+   designer's words matched to options).
+4. DONE: MCP tools.
+Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
