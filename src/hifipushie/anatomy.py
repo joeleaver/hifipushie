@@ -20,6 +20,14 @@ The frame is the limb's direction d, "out" (away from the body's centre joint, a
 across both). Beside the body (s = 1: the limb runs back along the body from the end it's rooted at, an arm, held out or
 not) or leaving its end (s = -1: a leg, a quadruped's legs under a level spine), from the limb's direction against
 the body's axis at the root (the hub's thickest centre-line neighbour to the hub). Sizes follow the limb's radius r at the root.
+Hinge: every joint inside a limb's chain (elbow, knee, ankle; a fox's hock). A bony point sits on the extensor side,
+the convex side of the rest bend in the body's plane of front and back (mammal limbs flex there; an arm hanging out
+from the body bends sideways at rest, which isn't flexion): the olecranon, the kneecap, the heel. It's close under
+the skin: small, crisp (a small blend). The limb's bones slim at the joint (flesh thins over joints). A straight limb
+has no side to put it on: none, unless "point" gives the direction.
+A limb's bones are joined in one group ("join", x the thinnest hinge's radius: 0.15, a root param) and blended into
+the body once: blended one by one they swell all round every joint.
+Hinge params: "off", "point" ([x, y, z] extensor side), "size" (1), "narrow" (0.9).
 Root params: "off", "bulk" (all sizes, 1), "cap" (1), "insert" (where the cap inserts, fraction of the first bone,
 0.45), "front" (1), "back" (1), "blend" (x r, 0.4), "narrow" (the bones' radius at the joint, x r: 0.8), "part"
 (the generated masses in a part of their own, to look at them).
@@ -125,9 +133,65 @@ def _expand(spec: dict) -> dict:
             continue
         o = _Out(out, f"anatomy {root['joint']}")
         _limb_root(out, surf, root, p, o)
+        _one_form(out, root, conf.get(root["joint"], {}))
+        for i in range(1, len(root["chain"]) - 1):
+            h = root["chain"][i]
+            hp = {**{k: v for k, v in conf.items() if not isinstance(v, dict) and k in ("part",)}, **conf.get(h, {})}
+            if not hp.get("off"):
+                _hinge(out, root["chain"][i - 1], h, root["chain"][i + 1], hp, o)
         for kind in ("joints", "bones"):
             out.setdefault(kind, {}).update(getattr(o, kind))
     return out
+
+
+def _one_form(spec: dict, root: dict, p: dict):
+    """A limb is one continuous form: its bones joined in a group (small join) and blended into the body once. Blended
+    one by one, two cones overlapping at a joint swell all round it (the smooth minimum adds where they coincide)."""
+    ch = root["chain"]
+    names = [n for n, bb in spec["bones"].items() if bb.get("op", "add") == "add" and not bb.get("group")
+             and any({bb["a"], bb["b"]} == {ch[i], ch[i + 1]} for i in range(len(ch) - 1))]
+    if len(names) < 2:
+        return
+    b, sfx = _base(root["joint"])
+    r = min(_rad(spec, j) for j in ch[1:-1]) if len(ch) > 2 else _rad(spec, ch[0])
+    join = round(float(p.get("join", 0.15)) * r, 5)
+    first = list(spec["bones"]).index(names[0])
+    moved = {n: spec["bones"].pop(n) for n in names}
+    for bb in moved.values():
+        bb["group"], bb["join"] = f"{b}_limb{sfx}", join
+    items = list(spec["bones"].items())
+    spec["bones"] = dict(items[:first] + list(moved.items()) + items[first:])
+
+
+def _hinge(spec: dict, a: str, j: str, c: str, p: dict, o: _Out):
+    """A bony point on the hinge's extensor side, and the joint's bones slimmed (see the module docstring)."""
+    b, sfx = _base(j)
+    A, K, Cc = _pos(spec, a), _pos(spec, j), _pos(spec, c)
+    d1, d2 = _unit(K - A), _unit(Cc - K)
+    if "point" in p:
+        e = np.asarray(p["point"], float)
+    else:
+        e = d1 - d2
+        e[0] = 0.0  # in the plane of front and back
+    e = e - d2 * (e @ d2)
+    if np.linalg.norm(e) < 0.05:  # straight at rest: no side to put it on
+        return
+    e = _unit(e)
+    r = _rad(spec, j)
+    narrow = float(p.get("narrow", 0.9))
+    for bb in spec["bones"].values():
+        if bb.get("op", "add") == "add" and not bb.get("group") and j in (bb["a"], bb["b"]) and \
+                bb.get("part", "body") == "body":
+            end = "r_a" if bb["a"] == j else "r_b"
+            bb[end] = round(narrow * float(bb.get(end) or r), 5)
+    size = float(p.get("size", 1.0))
+    part = p.get("part")
+    extra = {"part": part} if part else {}
+    # a flattened knob just proud of the slimmed joint, a little along the lower bone (the olecranon, the kneecap)
+    o.joint(f"{b}_point_a{sfx}", K + e * 0.6 * r - d2 * 0.15 * r, 0.32 * r * size)
+    o.joint(f"{b}_point_b{sfx}", K + e * 0.6 * r + d2 * 0.25 * r, 0.26 * r * size)
+    o.bone(f"{b}_point{sfx}", f"{b}_point_a{sfx}", f"{b}_point_b{sfx}", flat=[1.0, 0.7], up=_r(e),
+           blend=round(0.3 * r, 5), **extra)
 
 
 def _exit(surf: _Surface, q: np.ndarray, direction: np.ndarray, reach: float = 0.6):

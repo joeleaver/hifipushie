@@ -27,6 +27,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   no front sheet. The joint's bones slim to 0.8 r there. Sheet origins are seated by a ray from inside the torso
   (`_exit`; from outside the fox's glute landed on its tail). Expands after kits, before strokes (`expand_mirror`,
   `fit`, `paint`). Tried on troll, goblin (arms moved clear of the belly: `goblin_anat`), fox (`*_bare` / `*_anat`).
+  Hinges (every joint inside a limb chain): a small crisp bony point on the extensor side (rest bend projected onto
+  the front-back plane: an arm hanging out from the body bends sideways, which isn't flexion), bones slimmed 0.9.
+  Each limb's bones become one group (join 0.15 x the thinnest hinge), blended into the body once: one by one they
+  swelled all round every joint. `spec._compile` gives every group member the group's first blend/join: the
+  evaluator culls per chunk, so a group with mixed blends blended differently chunk to chunk (dotted seams).
 - `strokes.py`: sculpting on the surface. A stroke's path is addressed on the kit-expanded, stroke-free body
   (out from a bone axis, or a raycast), resampled on a Catmull-Rom curve and re-seated, and becomes a
   "displace" or "flatten" blob: an op "modify" primitive (`sdf.MODS`) that reshapes the field combined so far

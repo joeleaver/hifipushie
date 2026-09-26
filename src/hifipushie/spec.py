@@ -305,6 +305,11 @@ def _compile(spec: dict) -> list[Prim]:
         p.group, p.join = el.get("group"), float(el.get("join", 0.0))
         p.part = el.get("part") or "body"
         p.instance = el.get("instance")
+    first: dict = {}  # a group blends into the body once, by its first member's blend and join: every member carries
+    for p in prims:  # them, or a chunk that culls the first member blends by another's (seams at chunk edges)
+        if p.group:
+            g = first.setdefault(p.group, p)
+            p.blend, p.join = g.blend, g.join
     prims = _csg(s, prims, els)
     prims = _deform(s, prims)
     return _parts(prims, s.get("parts") or {}, k_default)
