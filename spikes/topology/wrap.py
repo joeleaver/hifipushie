@@ -420,6 +420,65 @@ def untangle(V, L, S, prims, voxel, regions, dom, keep, passes=12):
     return V
 
 
+def digit_tubes(V, L, S, Pt, joints, sx, prims, kd):
+    """Template fingers and thumbs cut at their base loops; the model's digits as generated tubes (tubes.py)."""
+    import tubes
+    J = json.load(open(joints))
+    Jt = mirror({k: np.array(v, float) for k, v in J.items() if not k.startswith("_")})
+    faces, nb, ef = tubes.quad_topology(L, S)
+    loops, digits = {}, {}
+    for side, sg in (("L", 1.0), ("R", -1.0)):
+        names = [(f"finger{k}", f"hand_f{k}") for k in range(1, 5)] + [("thumb", "hand_th")]
+        for tn, mn in names:
+            if f"{tn}_0.{side}" not in Jt:
+                continue
+            ch = np.array([Jt[f"{tn}_{j}.{side}"] for j in range(4)])
+            ax = (ch[-1] - ch[0]) / np.linalg.norm(ch[-1] - ch[0])
+            near_tip = np.flatnonzero(np.linalg.norm(Pt - ch[-1], axis=1) < 0.03)
+            tip = int(near_tip[np.argmax((Pt[near_tip] - ch[0]) @ ax)])
+            loop = tubes.base_loop(Pt, faces, nb, ef, ch[0], ax, tip)
+            if loop is None:
+                print(f"  {tn}.{side}: no base loop")
+                continue
+            key = f"{tn}.{side}"
+            loops[key] = (loop, tip)
+            if f"{mn}_0.{side}" in sx["joints"]:
+                C = np.array([np.array(sx["joints"][f"{mn}_{j}.{side}"]["pos"], float) for j in range(4)])
+                own = [p for p in prims if p.name.startswith(mn + "_") and p.name.endswith("." + side)]
+                ring = V[loop]
+                r = float(sx["joints"][f"{mn}_1.{side}"].get("r", 0.01))
+                spacing = 2 * np.pi * r / len(loop)  # square quads round the model's finger
+                digits[key] = tubes.tube(ring, C, own or prims, r, spacing)
+                print(f"  {key}: loop of {len(loop)}, tube of {len(digits[key][0]) - 1} rings on {mn}")
+            else:
+                print(f"  {key}: loop of {len(loop)}, capped (the model has no {mn})")
+    Vn, fl = tubes.stitch(V, faces, loops, digits)
+    L2, S2 = np.array([v for f in fl for v in f]), np.array([len(f) for f in fl])
+    # the palm meets the moved loops: a few rings of vertices round each loop relaxed onto the surface, loops fixed
+    E = edges(L2, S2)
+    nbl = [[] for _ in range(len(Vn))]
+    for a, b in E:
+        nbl[a].append(b); nbl[b].append(a)
+    from scipy.spatial import cKDTree
+    ring_pts = np.array([d[0][0] for d in digits.values()]).reshape(-1, 3)
+    fixed = np.zeros(len(Vn), bool)
+    if len(ring_pts):
+        fixed[cKDTree(Vn).query(ring_pts)[1]] = True
+    zone = fixed.copy()
+    for _ in range(4):
+        zone[[j for i in np.flatnonzero(zone) for j in nbl[i]]] = True
+    # tubes themselves (vertices added after the template's) stay as generated
+    zone[len(V) - sum(len(t) for t in []):] = zone[len(V) - sum(len(t) for t in []):]
+    move = zone & ~fixed
+    deg = np.bincount(E.ravel(), minlength=len(Vn))
+    for _ in range(20):
+        acc = np.zeros_like(Vn)
+        np.add.at(acc, E[:, 0], Vn[E[:, 1]]); np.add.at(acc, E[:, 1], Vn[E[:, 0]])
+        Vn[move] += 0.5 * (acc[move] / np.maximum(deg[move], 1)[:, None] - Vn[move])
+        Vn[move] = surface.newton(prims, Vn[move], 0.002, 0.004, iterations=4)[0]
+    return Vn, L2, S2
+
+
 if __name__ == "__main__":
     model, tpl, joints, out = sys.argv[1:5]
     Wd, L, S, prims, regions, dom = wrap(model, tpl, joints, out, face=sys.argv[5] if len(sys.argv) > 5 else None)
@@ -442,6 +501,8 @@ if __name__ == "__main__":
     from scipy.spatial import cKDTree
     kd = cKDTree(Pt)
     gone = np.zeros(len(Pt), bool)
+    if __import__("os").environ.get("TUBES", "1") == "1":
+        fv = {}  # replaced by tubes or capped: nothing to smooth away
     for name, idx in fv.items():
         k = int(name[6:])
         if f"hand_f{k}_0.L" not in sx["joints"]:  # the model has fewer fingers: this one folds into the palm
@@ -466,6 +527,8 @@ if __name__ == "__main__":
     V, missed = fit(Wd, L, S, prims, meta["voxel"], regions, dom, keep=keep,
                     V_warped=Wd if __import__("os").environ.get("SHAPE_RELAX", "0") == "1" else None)
     V = untangle(V, L, S, prims, meta["voxel"], regions, dom, keep)
+    if __import__("os").environ.get("TUBES", "1") == "1":
+        V, L, S = digit_tubes(V, L, S, Pt, joints, sx, prims, kd)
     np.savez(Path(out) / "wrapped.npz", verts=V, loops=L, sizes=S)
     f = np.abs(sdf.field_at(prims, V, margin=0.05)) * 1000
     print(f"wrapped {len(V)} verts; {missed} missed the surface; |field| mean {f.mean():.2f} p95 {np.percentile(f, 95):.2f} max {f.max():.1f} mm")

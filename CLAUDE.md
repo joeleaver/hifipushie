@@ -325,8 +325,15 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
   (`male_stylized_joints.json`) and mapped onto the hand kit's chains, missing fingers smoothed into the palm.
   Goblin: body, arms, legs, face clean; its blade ears are lost (the template's ears are human). Hands are the open
   problem: the troll's fat fingers touch (no gaps for the template's finger sides: stubs), the goblin's thin ones
-  collapse into strings. Next idea: fingers (and blade ears, tails) as generated tubes with rings at the knuckles,
-  stitched to the template's palm, instead of wrapping the template's fingers.
+  collapse into strings. Fixed by digit tubes (`spikes/topology/tubes.py`): each template digit is cut at the
+  closed quad loop nearest its base (every 45 deg sector round the axis, cutting off < 400 verts), the loop is moved
+  onto the model's finger a finger radius past the knuckle, rings (the loop's count, angles carried along the
+  chain, spacing = circumference / count, extra rings either side of each knuckle) are placed by rays from the kit's
+  chain onto that digit's own prims (touching fingers keep their sides), a 45 deg ring and a quad fan close the tip;
+  template digits the model lacks are capped; 4 rings of palm round each loop relaxed onto the surface. Result, all
+  quads: troll 12.6k, goblin 13.0k faces, 10/10 joint rings, hand error < 1 mm, clean in the rig test pose.
+  Open: blade ears (goblin: lost, most of its 3.1 mm mean error), eye-corner tangles, a small tangle at a capped
+  finger's web, then a lower-poly version and wiring into export_asset/rig.
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**
