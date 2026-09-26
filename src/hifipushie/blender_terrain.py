@@ -164,15 +164,22 @@ def run(job):
                   + [0, 0, float(d["base"]) - 1 if "base" in d.files else 0], np.array([[0, 1, 2], [0, 2, 3]]))
     pm = bpy.data.materials.new("beyond")
     pm.use_nodes = True
-    pm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.16, 0.2, 0.1, 1)
+    sea = float(d["sea"]) if "sea" in d.files else float("nan")
+    b = pm.node_tree.nodes["Principled BSDF"]
+    if np.isfinite(sea):  # a sea runs on past the frame: the plane is water at its level
+        plane.location.z = sea - 0.3 - (float(d["base"]) - 1)  # (coincident with the water mesh, both rendered black)
+        b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)
+        b.inputs["Roughness"].default_value = 0.08
+    else:
+        b.inputs["Base Color"].default_value = (0.16, 0.2, 0.1, 1)
     plane.data.materials.append(pm)
     if len(d["wfaces"]):
         water = _mesh("water", d["wverts"], d["wfaces"])
         wm = bpy.data.materials.new("water")
         wm.use_nodes = True
         b = wm.node_tree.nodes["Principled BSDF"]
-        b.inputs["Base Color"].default_value = (0.02, 0.05, 0.07, 1)
-        b.inputs["Roughness"].default_value = 0.05
+        b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)  # water scatters light back up (darker read as black from above)
+        b.inputs["Roughness"].default_value = 0.08
         water.data.materials.append(wm)
 
     scene = bpy.context.scene

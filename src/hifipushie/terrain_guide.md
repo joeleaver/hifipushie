@@ -41,7 +41,7 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
 and roughness come from the most dramatic.
 
 **A kind the tool doesn't know** ("fjord", "badlands"...) isn't guessed. The run stops (exit code 3) and prints
-QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no sea yet, no volcano forms,
+QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no tides or waves, no volcano forms,
 no caves or overhangs, no glaciers...): tell the designer that before anything else. The questions: is it like one of the
 known kinds or a mix of them (optional), how big it should feel, how dramatic the height is, what's underfoot, what's at
 the lowest point, whether it's closed in, and its overall shape. **Ask the designer; don't answer for them**, and let them
@@ -117,6 +117,30 @@ and the `"story"`.
     site there is a lookout: it sits back on the plateau at plateau height and never builds out over the lip.
 - **mesas**: `{"name": {"at", "top": m, "radius": m, "cliff": deg, "talus": 0.4}}`: a flat caprock top, a cliff,
   and a talus apron. A mesa is an address and a sight target (its top).
+- **sea**: water below a level out to the frame's edge, and the coast where land meets it.
+  ```
+  "sea": {"level": 0, "land"?: zone, "wander": 0.3, "depth": 30, "shore": "rocky" | "beach" | "cliffs",
+          "cliffs"?: {"height": m | [lo, hi], "except": [addresses/zones/coves], "only": [...]},
+          "beaches"?: {name: {"at": address, "length": m}},
+          "coves"?: {name: {"at": address | "south", "width": m, "depth": m, "beach": true, "apron": m}}}
+  ```
+  - Where the sea is: outside the `land` zone (an island: `{"near": [x, y], "radius": m}`; a coast: `"north"`), or
+    without one, the ground below `level` that reaches the frame's edge (tilt the frame down toward the sea).
+  - The coastline wanders a little (`wander`, 0 to keep the zone's outline). The seabed shelves down to `depth`.
+  - Shore forms, per stretch: **rocky** (the land dropping into the water), **beach** (the land graded down to sand at
+    the water), **cliffs** (the land ending in a ~70 deg face; where the land is lower than the asked height it ramps up
+    to the cliff top from inland, never a rim with lower ground behind). `cliffs` with `except`/`only` picks stretches;
+    an address inland (a headland's peak) means the coast nearest it.
+  - The cliffs' height is the land's height where it meets the sea: a peak whose flanks reach past the coast makes
+    cliffs as tall as the flank there (the report measures them and warns). Size the land and the peaks together.
+  - **Coves** bite a horseshoe bay into the land at a compass side or the coast nearest an address: a mouth narrower
+    than the bay, headlands either side, a beach at the head and behind it an `apron` of gentle ground (default a third
+    of the width) walled by a steep scar: room for a harbour. A cove is an address; a site `"at": "cove"` stands on its
+    apron just above the water.
+  - The sea is a lake named `"sea"` to everything else: `"sea.south_shore"` (the coast on the land's south side),
+    `"see": ["sea"]`, water in the export. Zones `"beach"`, `"cliffs"`, `"coast"` and `"sea"` work in cover
+    (`{"type": "sand", "in": "beach"}`) and routes.
+  - Views and sight lines from out at sea stand on the water.
 - **fords**: `{"name": {"on": "river@0.5", "width": m, "depth": m}}`: a shallow crossing. Rivers carry water; routes
   cross at fords, and anywhere else the report says a bridge is needed. River water width: `rivers.x.water` (0 for a
   dry bed); steep reaches narrow to a torrent a few metres wide.

@@ -59,7 +59,7 @@ DESCRIBE = {
     "farmland": "gentle farmland, fields and a farmstead",
     "plateau": "flat high ground ending in cliffs (mesas, buttes)",
     "crater": "a round crater or caldera",
-    "coast": "a shoreline: beach, bay or sea cliffs",
+    "coast": "a shoreline: beach, bay or sea cliffs (a \"sea\" with its shore)",
     "dunes": "sand dunes",
     "moor": "open upland: broad, bare, rolling",
 }
@@ -97,14 +97,14 @@ SHAPES = {
     "cone": "a lone peak with a big radius and gentle flanks; a crater is a basin inside a small closed ridge on top",
     "cut": "a plateau at world.base with canyons cut along rivers, mesas standing on it",
     "rolling": "lone hills (peaks with no ridge) and a tilt, with rugged patches",
-    "shore": "a lake at the base level reaching the frame's edge stands in for the water (there's no sea yet)",
+    "shore": "a \"sea\" with a land zone (a coast: \"north\"; an island: near a point) and its shore forms",
 }
 
 # what the vocabulary can't build yet: said up front, before anyone spends a round on it
 LIMITS = [
-    (("sea", "ocean", "coast", "beach", "island", "bay", "tide", "fjord", "seashore", "atoll", "lagoon", "reef"),
-     "no sea yet: water is lakes and rivers; a lake at the base level reaching the frame's edge stands in for it, "
-     "with no beaches, waves or shoreline forms (a wall around the water can make sea cliffs)"),
+    (("tide", "tides", "surf", "reef", "lagoon", "atoll"),
+     "the sea is a still surface at one level: no tides, surf or waves, and no reefs or lagoons of their own (a reef "
+     "would be a shallow rim of land; a lagoon a lake inside it)"),
     (("volcano", "volcanic", "lava", "cone", "caldera"),
      "no volcano forms yet: no cone profile, lava flows or crater rims of their own; a lone peak with a basin inside a "
      "small closed ridge is the nearest, and a lava flow is a rounded ridge with rock cover"),
@@ -392,7 +392,7 @@ def report(T) -> list[str]:
         if w not in T.warnings:
             T.warnings.append(w)
     hints = {"river": "use rivers", "lake": "use a lake landform (a basin's falls_to)", "none": "",
-             "sea": "there's no sea in the vocabulary yet; the nearest is a lake at the base level reaching the frame's edge"}
+             "sea": "use \"sea\" (a level, the land zone, and its shore: cliffs, beaches, coves)"}
     if K.get("water") and hints.get(K["water"]):
         out.append(f"world: the designer said the lowest point is {K['water']}: {hints[K['water']]}")
     if K.get("enclosed") == "closed":

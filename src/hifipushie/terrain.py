@@ -267,6 +267,8 @@ class Terrain:
         self.H0 = self.H.copy()
         self._texture()
         design.rugged(self)
+        from . import terrain_sea
+        terrain_sea.apply(self)  # the sea and its coast: before lakes, sites and routes, which use its shores
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         design.apply(self)
@@ -805,6 +807,9 @@ class Terrain:
             name, end = ref.rsplit(".", 1)
             xy, h, tan = self.lines[name].at(0.0 if end == "source" else 1.0)
             return xy, self.height(xy), tan
+        if getattr(self, "sea", None) and ref in self.sea["coves"]:  # a cove: the middle of its bay
+            xy = np.array(self.sea["coves"][ref]["xy"])
+            return xy, self.height(xy), np.array(self.sea["coves"][ref]["inland"])
         if ref in self.lines or ref in self.routes:  # a line by name: its middle (the whole line for "near" zones)
             xy, h, tan = (self.lines.get(ref) or self.routes[ref]).at(0.5)
             return xy, self.height(xy), tan
@@ -826,6 +831,14 @@ class Terrain:
         wet = ~np.isnan(self.water) & (self.lake_id == self.lakes[lake]["id"])
         if not wet.any():
             raise ValueError(f"lake {lake!r} holds no water, so it has no shore")
+        if self.lakes[lake].get("sea"):  # the sea's north shore: the coast on the land's north side; inland from there
+            land = self.sea["land"]
+            coast = wet & ndimage.binary_dilation(~wet & land)
+            pts = np.stack([self.X[coast], self.Y[coast]], 1)
+            c = np.array([self.X[land].mean(), self.Y[land].mean()])
+            k = int(np.argmax((pts - c) @ d))
+            inland = c - pts[k]
+            return pts[k], self.height(pts[k]), inland / (np.linalg.norm(inland) + 1e-9)
         edge = wet & ~ndimage.binary_erosion(wet)
         pts = np.stack([self.X[edge], self.Y[edge]], 1)
         c = np.array([self.X[wet].mean(), self.Y[wet].mean()])
@@ -890,7 +903,7 @@ class Terrain:
             self.warnings.append(f"lake {name!r}: its disk ({r:.0f} m radius) dug out {_area(dug.sum() * self.cell ** 2)} "
                                  f"of ground standing over 20 m above its level (up to {float((before - self.H).max()):.0f} m "
                                  f"deep): a lake is a basin dug to its level everywhere inside its radius. Make it smaller "
-                                 f"or move it off the high ground (there's no sea yet for water around land)")
+                                 f"or move it off the high ground (for water around land use 'sea')")
         dam = lf.get("dam", True)
         if dam:
             # an embankment wherever the ground (before digging) was below the crest: its inner face rises from the
@@ -965,6 +978,13 @@ class Terrain:
         self.lake_id = np.zeros(self.X.shape, int)
         self.warnings = [w for w in self.warnings if not w.startswith("lake ")]  # this runs twice
         for name, lk in self.lakes.items():
+            if lk.get("sea"):
+                from . import terrain_sea
+                wet = terrain_sea.fill(self, lk) & np.isnan(self.water)
+                self.water[wet] = lk["level"]
+                self.lake_id[wet] = lk["id"]
+                lk.update(area=wet.sum() * self.cell ** 2, depth=float((lk["level"] - self.H[wet]).max()) if wet.any() else 0)
+                continue
             xy, level, r = np.array(lk["xy"]), lk["level"], lk["r"]
             d = np.hypot(self.X - xy[0], self.Y - xy[1])
             below = self.H < level
@@ -1075,7 +1095,11 @@ class Terrain:
             out.append(f"ribs (automatic): {self.rib_count} spurs off the ridges")
         for (a, b), length, top in self.divides:
             out.append(f"divide (automatic) between {a} and {b}: {length:.0f} m of crest, up to {top:.0f} m")
+        from . import terrain_sea
+        out += terrain_sea.report(self)
         for name, lk in self.lakes.items():
+            if lk.get("sea"):
+                continue
             out.append(f"lake {name}: level {lk['level']:.0f} m, {lk.get('area', 0) / 1e4:.1f} ha, "
                        f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water")
         out += design.report(self)
@@ -1283,7 +1307,8 @@ class Terrain:
                 "fords": {nm: {"at": f["xy"], "river": f["river"], "width": f["width"], "depth": f["depth"],
                                "bed": round(self.height(f["xy"]), 2)} for nm, f in getattr(self, "fords", {}).items()},
                 "cover": {nm: (self.spec.get("cover") or {}).get(nm, {}).get("type", nm) for nm in self.cover},
-                "lakes": {nm: {"level": lk["level"], "at": lk["xy"]} for nm, lk in self.lakes.items()},
+                "lakes": {nm: {"level": lk["level"], "at": lk["xy"], **({"sea": True} if lk.get("sea") else {})}
+                          for nm, lk in self.lakes.items()},
                 "sites": {nm: {"at": st["xy"], "level": st["level"], "radius": st["radius"], "fall": st.get("fall", 0.0),
                                "falls_toward": st.get("toward", [0, 0]),
                                "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)"}
@@ -1547,7 +1572,8 @@ def write_mesh(T: Terrain, path, step: int = 1):
              wverts=wv.astype(np.float32), wfaces=wf.astype(np.int32),
              tree_xyz=inst[:, :3].astype(np.float32),
              tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
-             span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))), base=np.float32(T.H.min()))
+             span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))), base=np.float32(T.H.min()),
+             sea=np.float32(T.sea["level"] if getattr(T, "sea", None) else np.nan))
 
 
 def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24):
@@ -1563,6 +1589,10 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
         exy, eh, _ = T.address(v["eye"])
         if isinstance(v["eye"], list) and len(v["eye"]) == 3:
             eh = v["eye"][2]
+        wl = T.water.ravel()[int(np.clip(round((exy[1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1)) * len(T.xs)
+                                           + int(np.clip(round((exy[0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))]
+        if np.isfinite(wl) and not (isinstance(v["eye"], list) and len(v["eye"]) == 3):
+            eh = max(eh, float(wl))  # over water the eye stands on its surface, not on the bed (it rendered underwater)
         ez = eh + v.get("lift", 2)
         # never inside the ground: at least a person's eye above the highest ground within a few cells (on a slope the
         # ground beside the eye is higher than under it, and the near plane cut through it)

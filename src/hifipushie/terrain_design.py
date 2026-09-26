@@ -58,6 +58,9 @@ def region(T, r) -> np.ndarray:
             return region(T, T.zones[r])
         if r == "water":
             return (~np.isnan(T.water)).astype(float)
+        if r in ("sea", "beach", "cliffs", "coast") and getattr(T, "sea", None):
+            from .terrain_sea import regions
+            return regions(T, r)
         if r in ("routes", "sites"):
             return T.masks.get(r, np.zeros(shape))
         if r in T.lakes and hasattr(T, "lake_id"):
@@ -361,7 +364,12 @@ def _site(T, name, s):
     xy, _, d = T.address(ref)
     r = float(s.get("radius", 60))
     shore_lake = None
-    if isinstance(ref, str) and ref.endswith("_shore"):
+    sea = getattr(T, "sea", None)
+    if isinstance(ref, str) and sea and ref in sea["coves"]:  # in a cove: at its head, just inland of its beach
+        cv = sea["coves"][ref]
+        xy = np.array(cv["head"]) + np.array(cv["inland"]) * (r + s.get("setback", 5))
+        shore_lake, d = "sea", np.array(cv["inland"])
+    elif isinstance(ref, str) and ref.endswith("_shore"):
         shore_lake = ref.rsplit(".", 1)[0]
         xy = _shore_pad(T, name, shore_lake, xy, d, r + s.get("setback", 5), r + max(20.0, 0.5 * r))
     rim = isinstance(ref, str) and "_rim" in ref.split("@")[0]
@@ -985,6 +993,9 @@ def _eye(T, eye_ref, eye_height):
     exy, eh, _ = T.address(eye_ref)
     if isinstance(eye_ref, str) and eye_ref in T.sites:
         eh = T.sites[eye_ref]["level"]
+    wl = T.water.ravel()[_cells(T, np.atleast_2d(exy))[0]]
+    if np.isfinite(wl):  # from a boat: on the water, not the bed
+        eh = max(eh, float(wl))
     return exy, eh + eye_height
 
 
@@ -1040,7 +1051,9 @@ def sight(T, eye_ref, tgt_ref, eye_height=1.7):
         low = np.nonzero(g < half)[0]
         zone = max(skip, D - dd[near][low[-1]]) if len(low) else D
         ang = (g - e) / dd[near]
-        own = dd[near] >= D - zone
+        # (the far half at most: from the target's own flank, the slope right in front of the eye is foreground, not
+        # its silhouette: it had an island's summit "2176 m above the skyline")
+        own = dd[near] >= max(D - zone, 0.5 * D)
         sil = max(ang[own].max() if own.any() else -np.inf, (top - e) / D)
         front = ang[~own].max() if (~own).any() else -np.inf
         k = int(np.argmax(np.where(~own, ang, -np.inf))) if (~own).any() else 0
@@ -1162,7 +1175,8 @@ def _see(T, name, it):
                 got.append((label, r["visible"], r["visible"] > want, r, 0, 0))
         ok = [g for g in got if g[2]]
         summit = not lake and "standout" in got[0][3]
-        fmt = ((lambda v: f"{100 * v:.0f}% of its surface") if lake else (lambda v: f"{v:.0f} m of it showing") if summit
+        fmt = ((lambda v: f"{100 * v:.0f}% of its surface") if lake else
+               (lambda v: f"{v:.0f} m of it showing" if v > 0 else "hidden") if summit
                else (lambda v: f"clear by {v:.0f} m" if v > 0 else f"blocked, {-v:.0f} m short"))
         best = max(got, key=lambda g: g[1])
         where = f"from {src}" + (f": seen from {len(ok)} of {len(got)} spots across it (centre {fmt(got[0][1])}, best "
