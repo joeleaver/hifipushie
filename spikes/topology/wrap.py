@@ -9,6 +9,8 @@ import numpy as np
 from hifipushie import sdf, store, surface
 from hifipushie.spec import compile_prims, expand_mirror, resolve_point
 
+FINGER_SEGS = [(f"finger{k}_{j}.L", f"finger{k}_{j + 1}.L") for k in range(1, 6) for j in range(3)] + \
+              [(f"thumb_{j}.L", f"thumb_{j + 1}.L") for j in range(3)]
 SEGS = [("pelvis", "chest"), ("chest", "neck"), ("neck", "head"), ("chest", "shoulder.L"), ("shoulder.L", "elbow.L"),
         ("elbow.L", "wrist.L"), ("wrist.L", "hand_end.L"), ("hip.L", "knee.L"),
         ("knee.L", "ankle.L"), ("ankle.L", "toe.L")]
@@ -28,7 +30,7 @@ def mirror(J):
 
 def segments(J):
     out = []
-    for a, b in SEGS:
+    for a, b in SEGS + FINGER_SEGS:
         for sa, sb in ((a, b), (a.replace(".L", ".R"), b.replace(".L", ".R"))) if ".L" in a + b else ((a, b),):
             if sa in J and sb in J:
                 out.append((sa, sb))
@@ -39,6 +41,18 @@ def seg_dist(P, a, b):
     ab = b - a
     t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
     return np.linalg.norm(a + t[:, None] * ab - P, axis=1), t
+
+
+def model_name(k):
+    """Template joint name -> the model's: fingers to the hand kit's chains, the thumb to its thumb."""
+    import re
+    m = re.fullmatch(r"finger(\d)_(\d)(\.[LR])", k)
+    if m:
+        return f"hand_f{m[1]}_{m[2]}{m[3]}"
+    m = re.fullmatch(r"thumb_(\d)(\.[LR])", k)
+    if m:
+        return f"hand_th_{m[1]}{m[2]}"
+    return k
 
 
 def rot_between(u, v):
@@ -111,12 +125,16 @@ def wrap(model, tpl_npz, tpl_joints, out_dir, relax_rounds=15, sigma=0.8, face=N
     prims = [p for p in compile_prims(spec) if p.part == "body"]
     z = np.load(tpl_npz)
     P, L, S = z["verts"].astype(float), z["loops"], z["sizes"]
-    Jt = mirror({k: np.array(v, float) for k, v in json.load(open(tpl_joints)).items()})
-    Jm = {k: resolve_point(s, k) for k in Jt if k in s["joints"]}
-    # hands: a point past the wrist along the forearm, a hand's length on
+    Jt = mirror({k: np.array(v, float) for k, v in json.load(open(tpl_joints)).items() if not k.startswith("_")})
+    Jm = {k: resolve_point(s, model_name(k)) for k in Jt if model_name(k) in s["joints"]}
+    # the palm: wrist to the middle knuckle (the template's second finger, the model's second or only finger)
     for side in "LR":
-        if f"wrist.{side}" in Jt and f"elbow.{side}" in Jt:
-            for J, src in ((Jt, "tpl"), (Jm, "model")):
+        mk = next((f"hand_f{k}_0.{side}" for k in (2, 1) if f"hand_f{k}_0.{side}" in s["joints"]), None)
+        if f"finger2_0.{side}" in Jt and mk:
+            Jt[f"hand_end.{side}"] = Jt[f"finger2_0.{side}"]
+            Jm[f"hand_end.{side}"] = resolve_point(s, mk)
+        elif f"wrist.{side}" in Jt and f"elbow.{side}" in Jt:
+            for J in (Jt, Jm):
                 w, e = J[f"wrist.{side}"], J[f"elbow.{side}"]
                 J[f"hand_end.{side}"] = w + unit(w - e) * 0.45 * np.linalg.norm(w - e)
     segs = [sg for sg in segments(Jt) if sg[0] in Jm and sg[1] in Jm]
@@ -347,7 +365,10 @@ def fit(V, L, S, prims, voxel, regions=None, dom=None, reach=0.12, rounds=int(__
         dv -= (dv * N).sum(1, keepdims=True) * N
         # interiors (mouth bag, sockets) aren't projected but move with their neighbours: held still, the lids
         # round them stretched into big faces
-        V = np.where(keep[:, None], V + 0.5 * lap(V), newton(V + 0.5 * dv, 6))
+        # the whole body now: every vertex is near its own region, and a region's surface can be buried in another
+        # (a finger's cone inside the palm), which left vertices inside and slivers hanging off them
+        V = np.where(keep[:, None], V + 0.5 * lap(V),
+                     surface.newton(prims, V + 0.5 * dv, voxel * 0.125, voxel, iterations=6)[0])
     return V, int((~ok).sum())
 
 
@@ -394,10 +415,7 @@ def untangle(V, L, S, prims, voxel, regions, dom, keep, passes=12):
             np.add.at(acc, E[:, 0], V[E[:, 1]])
             np.add.at(acc, E[:, 1], V[E[:, 0]])
             V[m] += 0.5 * (acc[m] / np.maximum(deg[m], 1)[:, None] - V[m])
-        for k, reg in enumerate(regions):
-            mk = m & (dom == k)
-            if mk.any():
-                V[mk] = surface.newton(reg or prims, V[mk], voxel * 0.125, voxel, iterations=8)[0]
+        V[m] = surface.newton(prims, V[m], voxel * 0.125, voxel, iterations=8)[0]
         print(f"  untangle pass {it}: {bad.sum()} faces turned, {m.sum()} verts smoothed")
     return V
 
@@ -409,7 +427,7 @@ if __name__ == "__main__":
     sx = expand_mirror(store.load(model))
     if not any(n.startswith("foot_t") for n in sx["joints"]):  # no toes on the model: smooth the template's away
         Pt = np.load(tpl)["verts"]
-        Jt = mirror({k: np.array(v, float) for k, v in json.load(open(joints)).items()})
+        Jt = mirror({k: np.array(v, float) for k, v in json.load(open(joints)).items() if not k.startswith("_")})
         toe = np.zeros(len(Pt), bool)
         for side in "LR":
             a, t = Jt[f"ankle.{side}"], Jt[f"toe.{side}"]
@@ -419,6 +437,20 @@ if __name__ == "__main__":
             toe |= ((Pt - t) @ dirn > -0.02) & (Pt[:, 2] < 0.09) & (np.sign(Pt[:, 0]) == np.sign(t[0]))
         Wd = smooth_away(Wd, L, S, toe)
         print(f"toes smoothed away: {toe.sum()} verts")
+    fv = json.load(open(joints)).get("_finger_verts", {})
+    Pt = np.load(tpl)["verts"]
+    from scipy.spatial import cKDTree
+    kd = cKDTree(Pt)
+    gone = np.zeros(len(Pt), bool)
+    for name, idx in fv.items():
+        k = int(name[6:])
+        if f"hand_f{k}_0.L" not in sx["joints"]:  # the model has fewer fingers: this one folds into the palm
+            idx = np.array(idx)
+            gone[idx] = True
+            gone[kd.query(Pt[idx] * [-1, 1, 1])[1]] = True
+    if gone.any():
+        Wd = smooth_away(Wd, L, S, gone, rounds=80)
+        print(f"fingers smoothed away: {gone.sum()} verts")
     head = [k for k, sg in enumerate(SEGS_USED) if sg[1] in ("head", "neck")]
     inside = sdf.field_at(prims, Wd, margin=0.05) < -0.01
     keep = inside & np.isin(dom, head)
