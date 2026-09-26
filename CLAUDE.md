@@ -380,7 +380,12 @@ taller by ~0.6 cell of rise because the grid rounds lip and foot). Binary erosio
 protect earthworks in proportion (`masks["earthworks"]`). Keeping hard cliff cells from creeping made pinnacles
 (scattered hard cells stand): restore designed forms after erosion instead.
 
-**Plan C (agreed 2026-09-25): C1-C4 done on branch `terrain-plan-c`; C5 (blind round through the tools) next.**
+**Plan C (agreed 2026-09-25): done 2026-09-26 on branch `terrain-plan-c`.** C5, the blind round through the tools
+(valley, farm, canyon, island; `workspace/c5_*/`), found layouts land and edits are easy, but at eye level none reads as
+its brief (smooth caldera walls, dome peaks, no sea or cone, a featureless plateau), plus trust leaks since fixed (see the
+Overboard card). Roads are judged as built with earthworks capped at 25 m, so several mountain roads now honestly FAIL:
+they need breaks through cliff bands (plan A). Next, in the order the round asked: sea and coast, volcano cone, route
+breaks through cliffs, peak forms and wall structure, surroundings beyond the frame.
 1. DONE: trust leaks and bugs from round 5 (every report number measured; see lessons above; peaks report how far their
    top stands above the skyline beside/behind them, `min_prominence`).
 2. DONE: export (Unity `.raw` + size/position, tree layers out of the splats, masks always, rivers' water, fords, site
