@@ -318,6 +318,15 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
   neck), eyelids tangle, the mouth interior pokes through the lips, toes collapse on club feet, two flaps behind
   the armpits; hands need finger correspondences (the goblin has 3 fingers); a quadruped needs its own template;
   25k tris is dense for a game (un-subdividing the template isn't clean).
+  Then (2026-09-26): toes smoothed away on toeless feet; `untangle` (turned faces smoothed and re-projected: armpit
+  and mouth-corner spikes gone); template eye openings follow instead of projecting (the troll's squint opening is
+  ~4x2 template quads: still a small tangle); region-limited projection only for the first placement, whole body
+  after (a finger cone buried in the palm left vertices inside); template finger/thumb chains measured
+  (`male_stylized_joints.json`) and mapped onto the hand kit's chains, missing fingers smoothed into the palm.
+  Goblin: body, arms, legs, face clean; its blade ears are lost (the template's ears are human). Hands are the open
+  problem: the troll's fat fingers touch (no gaps for the template's finger sides: stubs), the goblin's thin ones
+  collapse into strings. Next idea: fingers (and blade ears, tails) as generated tubes with rings at the knuckles,
+  stitched to the template's palm, instead of wrapping the template's fingers.
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**
