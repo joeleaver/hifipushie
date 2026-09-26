@@ -1116,11 +1116,17 @@ class Terrain:
                            f"[{self.xs[xx].mean():.0f}, {self.ys[yy].mean():.0f}]")
         if n:
             sizes = ndimage.maximum(area, lab, range(1, n + 1))
-            for k in np.argsort(-sizes)[:3]:
+            said = []
+            for k in np.argsort(-sizes):
                 yy, xx = np.nonzero(lab == k + 1)
                 j = np.argmax(area[yy, xx])
-                out.append(f"  unauthored stream draining {_area(area[yy[j], xx[j]])} at "
-                           f"[{self.xs[xx[j]]:.0f}, {self.ys[yy[j]]:.0f}]")
+                p = np.array([self.xs[xx[j]], self.ys[yy[j]]])
+                if any(np.linalg.norm(p - q) < 100 * self.k for q in said):  # one stream, not three reports of it
+                    continue
+                said.append(p)
+                out.append(f"  unauthored stream draining {_area(area[yy[j], xx[j]])} at [{p[0]:.0f}, {p[1]:.0f}]")
+                if len(said) == 3:
+                    break
         return out
 
     def export(self, out_dir, size: int | None = None, engine: str | None = None):

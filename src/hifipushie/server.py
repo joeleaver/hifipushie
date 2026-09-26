@@ -111,6 +111,11 @@ Renders can mislead about thickness; measure gives cross-section widths along a 
 look can hide parts, clip with a plane (floor plans, cross-sections) and add perspective cameras (inside a
 room); clearance checks walkable floor, headroom and door widths of environments.
 Every change is checkpointed; history/revert let you experiment freely.
+
+Terrain (landscapes and game levels) is separate: a height field described in a level designer's words (a basin, a
+pass, a village site, a road, forest here, "this must be visible from there"). Read guide(topic="terrain"), then
+set_terrain -> check_terrain / look_terrain -> set_terrain(patch=...) ... -> export_terrain. When the world's kind is one
+the tool doesn't know, it returns questions for the designer: ask them, don't answer them yourself.
 """
 
 mcp = MCPServer("hifipushie", instructions=INSTRUCTIONS)
@@ -158,9 +163,15 @@ def _spec_arg(spec) -> dict:
 
 
 @mcp.tool(structured_output=False)
-def guide() -> str:
+def guide(topic: str = "") -> str:
     """The hifipushie playbook: how to work in stages (plan, blockout, secondary forms, detail), rules for
-    strokes and parts, how to judge renders and diagnose artifacts. Read it before modelling."""
+    strokes and parts, how to judge renders and diagnose artifacts. Read it before modelling.
+    topic="terrain": the terrain vocabulary (landscapes and game levels in a level designer's words: world kinds,
+    basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools."""
+    if topic.strip().lower() == "terrain":
+        return (Path(__file__).with_name("terrain_guide.md")).read_text()
+    if topic:
+        raise ValueError('topic is "" (the modelling playbook) or "terrain"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -738,6 +749,119 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
         return text
     im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide)
     return [_out(im, save), text]
+
+
+# ---------------------------------------------------------------- terrain
+
+@mcp.tool(structured_output=False)
+def set_terrain(name: str, spec: dict | None = None, patch: dict | None = None, note: str = "") -> str:
+    """Create or change a terrain (a landscape or game level described in a designer's words: guide(topic="terrain")
+    has the vocabulary). `spec` replaces the whole spec; `patch` merges into the stored one (objects merge key by key,
+    null deletes: {"sites": {"camp": {"radius": 30}}, "cover": {"old": null}}). Every version is kept
+    (terrain_history). Builds it and returns the report (in the spec's units, WARNINGS last), or, when its kind needs
+    the designer to decide something, the questions as JSON: relay them, don't answer them."""
+    from . import terrain_tools as tt
+    if spec is None and patch is None:
+        raise ValueError("give spec (the whole spec) or patch (changes to merge into it)")
+    if spec is not None:
+        new = _spec_arg(spec)
+    else:
+        try:
+            base = tt.load(name)
+        except ValueError:
+            base = {}
+        new = tt.merge(base, _spec_arg(patch))
+    if "extent" not in new:
+        raise ValueError('a terrain needs "extent": [[x0, y0], [x1, y1]] (see guide(topic="terrain"))')
+    from . import terrain
+    terrain.normalise(new)  # cheap checks (units, named sections) before saving
+    v = tt.save(name, new, note or ("set_terrain" if spec is not None else "patch"))
+    return f"saved terrain {name} v{v}\n" + tt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def check_terrain(name: str) -> str:
+    """The terrain's report, measured on the built ground: the world kind and its compression, peaks as built,
+    rivers and their banks, basins and walls (how much of each edge is unclimbable, climbable spots), passes, sites
+    (cut/fill), routes (grades, switchbacks, crossings: fords or bridges), cover shares, intent checks (sight lines,
+    skyline, flood heights, grades), drainage, WARNINGS last. Questions for the designer come back as JSON."""
+    from . import terrain_tools as tt
+    return tt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[dict] | None = None,
+                 spec_views: bool = False, size: int = 1100):
+    """Images of a terrain. map: north-up hillshade with cover colours, contours, rivers, ridges, routes, sites,
+    walls (red where climbable), names and a scale bar. masks: each cover mask alone (white = dense). views:
+    perspective renders (Cycles, with trees and water; ~30 s + ~10 s a view): [{"name", "eye": address | [x, y, z],
+    "lift": m, "look": address, "fov": deg}]; spec_views=True renders the spec's own "views". Files are also written to
+    workspace/terrain/<name>/. Read the images, not just the report."""
+    from . import terrain, terrain_tools as tt
+    from .terrain_world import Questions
+    try:
+        T = tt.build(name)
+    except Questions as q:
+        return tt.questions_data(q)
+    d = tt._dir(name)
+    out, notes = [], []
+    if map:
+        im = terrain.map_image(T, px=size)
+        out.append(_out(im, str(d / "map.png")))
+    if masks:
+        sheet = terrain.mask_sheet(T)
+        if sheet is None:
+            notes.append("no cover layers, so no masks")
+        else:
+            out.append(_out(sheet, str(d / "masks.png")))
+    vs = list(views or []) + (list(T.spec.get("views") or []) if spec_views else [])
+    if vs:
+        for i, v in enumerate(vs):
+            v.setdefault("name", f"view{i + 1}")
+            if not re.fullmatch(r"[A-Za-z0-9_\-]+", v["name"]):
+                raise ValueError(f"view name {v['name']!r}: letters, digits, _ and - only")
+        for pth in terrain.render(T, d / "views", vs):
+            out.append(_out(PILImage.open(pth), None))
+        notes += T.view_notes
+    notes.append(f"files in {d}")
+    return out + ["\n".join(notes)]
+
+
+@mcp.tool(structured_output=False)
+def export_terrain(name: str, size: int | None = None, engine: str | None = None, out_dir: str | None = None) -> str:
+    """Write the terrain for an engine (default workspace/terrain/<name>/export/): height (.npy float32 absolute,
+    16-bit .png and Unity .raw offset to 0), masks per cover layer plus water, roads, sites, playable and walls,
+    splat weights for the ground layers, trees.csv, and meta.json (heights, the Unity terrain size and position,
+    sites with their planes, passes, routes, rivers with water surface and width, fords, lakes). size: an engine
+    grid (Unity 257/513/1025/2049, Unreal 505/1009/2017); engine="unity" picks 2^n+1 if no size. Defaults from the
+    spec's "export"."""
+    from . import terrain_tools as tt
+    from .terrain_world import Questions
+    try:
+        T = tt.build(name)
+    except Questions as q:
+        return tt.questions_data(q)
+    cfg = T.spec.get("export") or {}
+    path = T.export(Path(out_dir).expanduser() if out_dir else tt._dir(name) / "export",
+                    size=size or cfg.get("size"), engine=engine or cfg.get("engine"))
+    meta = json.loads((path / "meta.json").read_text())
+    files = sorted(str(p.relative_to(path)) for p in path.rglob("*") if p.is_file())
+    return (f"exported {name} to {path}: {meta['size'][0]} x {meta['size'][1]}, heights {meta['height_range'][0]:.1f} "
+            f"to {meta['height_range'][1]:.1f} m; Unity terrain size {[round(v, 1) for v in meta['unity']['terrain_size']]} "
+            f"at {[round(v, 1) for v in meta['unity']['position']]}\nfiles: " + ", ".join(files))
+
+
+@mcp.tool(structured_output=False)
+def terrain_history(name: str, revert_to: int | None = None) -> str:
+    """List a terrain's versions, or restore one (saved as a new version, so nothing is lost). With no name
+    ("" ), lists the terrains."""
+    from . import terrain_tools as tt
+    if not name:
+        return json.dumps(tt.list_terrains())
+    if revert_to is not None:
+        v = tt.save(name, tt.version_spec(name, revert_to), f"revert to v{revert_to}")
+        return f"terrain {name} v{v} = v{revert_to}\n" + tt.report(name)
+    return "\n".join(f"v{h['version']}  {h['time']}  {h['note']}" for h in tt.history(name))
 
 
 def main():

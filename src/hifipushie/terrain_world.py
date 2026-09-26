@@ -162,7 +162,8 @@ def _user_kinds():
     import json
     import os
     from pathlib import Path
-    p = Path(os.environ.get("HIFI_TERRAIN_KINDS", "workspace/terrain/kinds.json"))
+    from .store import HOME
+    p = Path(os.environ.get("HIFI_TERRAIN_KINDS") or HOME / "terrain" / "kinds.json")
     return (json.loads(p.read_text()) if p.exists() else {}), p
 
 

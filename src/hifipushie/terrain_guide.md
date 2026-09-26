@@ -205,12 +205,21 @@ perspective renders. The eye stands on the ground at an address; `lift` raises i
 raised to stand clear of it (the run says so).
 
 ## Running
+Through the MCP tools (a terrain lives in `workspace/terrain/<name>/`, every version kept):
+- `set_terrain(name, spec=...)` saves and builds it and returns the report; `set_terrain(name, patch=...)` merges a
+  change into the stored spec (objects merge key by key, `null` deletes), so edits stay small.
+- `check_terrain(name)`: the report again. `look_terrain(name, map=True, masks=True, views=[...])`: the images
+  (views take ~30 s plus ~10 s each). `export_terrain(name, size=1025, engine="unity")`. `terrain_history(name,
+  revert_to=3)`.
+- Questions for the designer come back as JSON from any of them.
+
+Or from a shell:
 ```
 uv run python examples/terrain_run.py <your.json>            # report + map + mask sheet + 3D views (~1-2 min)
 uv run python examples/terrain_run.py <your.json> --no3d     # report + map + mask sheet (~20 s)
-uv run python examples/terrain_run.py <your.json> --export   # also the engine files (height, masks, meta.json)
+uv run python examples/terrain_run.py <your.json> --export   # also the engine files
 ```
-Outputs go to `workspace/terrain/`:
+The shell run writes its outputs beside the spec:
 - `<stem>_map.png`: north-up hillshade with cover colours and contours. It shows rivers (blue), ridges (dashed
   red), routes (orange), sites (purple squares), walls (dark dots on the edge, bright red where climbable), names
   and a cover legend.
