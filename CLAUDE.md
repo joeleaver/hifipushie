@@ -504,6 +504,13 @@ regresses, bisect by building one spec at each commit and diffing heights.
   Two blind rounds (island, Cornish coast, `workspace/s1_*`, `s2_*`): the big shapes read (a cone with a crater lake
   and wave-cut cliffs); what still looks fake is eye-level character (plaster-smooth scars and cliffs, no stacks,
   ledges or boulders; domes for peaks; lava as a tan bump), and trails fail at cove scars (routes through cliffs).
+- Route breaks (`terrain_design._breaks`, `_cut_break`): cliffs over 50 deg are walls to the route search (30 m
+  smoothing hid them), except around the stops; where they close a route off, the barrier is the gap between what each
+  end reaches at its grade, broken where lowest, thinnest and nearest the way: switchback legs along the cliff (as long
+  as its top and foot run on, dry; its own downhill direction, not the line between the two points), benches with rock
+  cut between, capped near the step's height; rolled back if it doesn't open the way. Many dead ends on the way there:
+  steps along a relaxed path (fragile), fixed short legs (a 1 km trench), the frame's edge as a barrier, pairs far off
+  the route. Roads are planned at 0.92 of their limit.
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
