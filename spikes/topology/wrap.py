@@ -175,6 +175,8 @@ def wrap(model, tpl_npz, tpl_joints, out_dir, relax_rounds=15, sigma=0.8, face=N
         return out, W
 
     out, W = apply(P)
+    TPL_VERTS[:] = [P]
+    s_prims[:] = [prims]
     if face is not None:  # the face: a radial-basis displacement carrying template landmarks onto the model's
         out = face_warp(out, P, apply, face, s)
     np.savez(out_dir / "warped.npz", verts=out, loops=L, sizes=S)
@@ -193,6 +195,19 @@ def wrap(model, tpl_npz, tpl_joints, out_dir, relax_rounds=15, sigma=0.8, face=N
 
 FACE_MODEL = {"eye.L": "face_eye.L", "nose_tip": "face_nose_tip", "mouth": "face_mouth_line_0",
               "mouth_corner.L": "face_mouth_corner.L", "ear_tip.L": "ear1.L"}
+
+
+TPL_VERTS: list = []
+s_prims: list = []
+
+
+def _front(prims, p):
+    """The model's front surface at p's x, z (a ray along +y from in front)."""
+    t = np.linspace(-0.4, 0.2, 1200)
+    pts = np.tile(p, (len(t), 1)); pts[:, 1] = p[1] + t
+    f = sdf.field_at(prims, pts, margin=0.02)
+    k = np.flatnonzero(f < 0)
+    return pts[k[0]] if len(k) else None
 
 
 def face_warp(out, P, apply, face_json, s):
@@ -217,6 +232,28 @@ def face_warp(out, P, apply, face_json, s):
                 continue
             src.append(p_)
             dst.append(tgt)
+    ring = f.get("eye_ring")
+    if ring and "face_lids.L" in s["blobs"]:  # scale the eye region: a ring round the template's eye goes to one
+        # scaled by the ratio of lid openings, so the opening shrinks with its loops instead of being crushed
+        Pt = TPL_VERTS[0]
+        for side, sg in (("L", 1.0), ("R", -1.0)):
+            c0 = np.array(f["landmarks"]["eye.L"], float) * [sg, 1, 1]
+            lid = s["blobs"][f"face_lids.{side}"]
+            c1 = resolve_point(s, lid["at"])
+            k = float(lid.get("width", 0.85)) * float(lid["r"]) / ring["open_halfwidth"]
+            for a in np.linspace(0, 2 * np.pi, ring["n"], endpoint=False):
+                d = ring["radius"] * np.array([np.cos(a), 0.0, np.sin(a)])
+                p0 = c0 + d
+                near = Pt[np.hypot(Pt[:, 0] - p0[0], Pt[:, 2] - p0[2]) < 0.004]
+                if not len(near):
+                    continue
+                p0[1] = near[:, 1].min()  # on the template's front surface
+                p1 = c1 + k * d
+                hit = _front(s_prims[0], p1)
+                if hit is None:
+                    continue
+                src.append(p0)
+                dst.append(hit)
     src = np.array(src, float)
     ws, _ = apply(src)
     disp = np.array(dst) - ws
@@ -314,16 +351,89 @@ def fit(V, L, S, prims, voxel, regions=None, dom=None, reach=0.12, rounds=int(__
     return V, int((~ok).sum())
 
 
+def smooth_away(V, L, S, mask, rounds=40):
+    """Smooth a region of the warped template into a plain form (its other vertices fixed): a feature the model
+    doesn't have (toes over a club foot) would otherwise be crushed onto its surface."""
+    E = edges(L, S)
+    deg = np.bincount(E.ravel(), minlength=len(V))
+    V = V.copy()
+    for _ in range(rounds):
+        acc = np.zeros_like(V)
+        np.add.at(acc, E[:, 0], V[E[:, 1]])
+        np.add.at(acc, E[:, 1], V[E[:, 0]])
+        V[mask] += 0.6 * (acc[mask] / np.maximum(deg[mask], 1)[:, None] - V[mask])
+    return V
+
+
+def untangle(V, L, S, prims, voxel, regions, dom, keep, passes=12):
+    """Faces turned against the surface (tangles at eye and mouth corners, folds in a tight crease): smooth their
+    vertices and a ring around them, re-project onto their regions, until none are left (or passes run out)."""
+    T = tris(L, S)
+    E = edges(L, S)
+    deg = np.bincount(E.ravel(), minlength=len(V))
+    nb = [[] for _ in range(len(V))]
+    for a, b in E:
+        nb[a].append(b)
+        nb[b].append(a)
+    for it in range(passes):
+        fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
+        fn /= np.linalg.norm(fn, axis=1, keepdims=True) + 1e-12
+        g = sdf.gradient(prims, V[T].mean(1), 1e-4)
+        g /= np.linalg.norm(g, axis=1, keepdims=True) + 1e-12
+        bad = (fn * g).sum(1) < 0.2
+        bad &= ~keep[T].any(1)
+        if not bad.any():
+            break
+        m = np.zeros(len(V), bool)
+        m[T[bad].ravel()] = True
+        for _ in range(2):  # and two rings around them
+            m[[j for i in np.flatnonzero(m) for j in nb[i]]] = True
+        m &= ~keep
+        for _ in range(4):
+            acc = np.zeros_like(V)
+            np.add.at(acc, E[:, 0], V[E[:, 1]])
+            np.add.at(acc, E[:, 1], V[E[:, 0]])
+            V[m] += 0.5 * (acc[m] / np.maximum(deg[m], 1)[:, None] - V[m])
+        for k, reg in enumerate(regions):
+            mk = m & (dom == k)
+            if mk.any():
+                V[mk] = surface.newton(reg or prims, V[mk], voxel * 0.125, voxel, iterations=8)[0]
+        print(f"  untangle pass {it}: {bad.sum()} faces turned, {m.sum()} verts smoothed")
+    return V
+
+
 if __name__ == "__main__":
     model, tpl, joints, out = sys.argv[1:5]
     Wd, L, S, prims, regions, dom = wrap(model, tpl, joints, out, face=sys.argv[5] if len(sys.argv) > 5 else None)
     meta = store.build(model, 160)
+    sx = expand_mirror(store.load(model))
+    if not any(n.startswith("foot_t") for n in sx["joints"]):  # no toes on the model: smooth the template's away
+        Pt = np.load(tpl)["verts"]
+        Jt = mirror({k: np.array(v, float) for k, v in json.load(open(joints)).items()})
+        toe = np.zeros(len(Pt), bool)
+        for side in "LR":
+            a, t = Jt[f"ankle.{side}"], Jt[f"toe.{side}"]
+            dirn = t - a
+            dirn[2] = 0
+            dirn /= np.linalg.norm(dirn)
+            toe |= ((Pt - t) @ dirn > -0.02) & (Pt[:, 2] < 0.09) & (np.sign(Pt[:, 0]) == np.sign(t[0]))
+        Wd = smooth_away(Wd, L, S, toe)
+        print(f"toes smoothed away: {toe.sum()} verts")
     head = [k for k, sg in enumerate(SEGS_USED) if sg[1] in ("head", "neck")]
     inside = sdf.field_at(prims, Wd, margin=0.05) < -0.01
     keep = inside & np.isin(dom, head)
+    if len(sys.argv) > 5:  # the template's eye openings (lid margins and the tunnel behind): follow, don't project
+        fj = json.load(open(sys.argv[5]))
+        if "eye_open" in fj:
+            Pt = np.load(tpl)["verts"]
+            e = np.array(fj["landmarks"]["eye.L"], float)
+            for c in (e, e * [-1, 1, 1]):
+                q = Pt - c
+                keep |= (np.hypot(q[:, 0], q[:, 2]) < fj["eye_open"]) & (q[:, 1] < 0.01)
     print(f"kept inside (mouth, sockets): {keep.sum()}")
     V, missed = fit(Wd, L, S, prims, meta["voxel"], regions, dom, keep=keep,
                     V_warped=Wd if __import__("os").environ.get("SHAPE_RELAX", "0") == "1" else None)
+    V = untangle(V, L, S, prims, meta["voxel"], regions, dom, keep)
     np.savez(Path(out) / "wrapped.npz", verts=V, loops=L, sizes=S)
     f = np.abs(sdf.field_at(prims, V, margin=0.05)) * 1000
     print(f"wrapped {len(V)} verts; {missed} missed the surface; |field| mean {f.mean():.2f} p95 {np.percentile(f, 95):.2f} max {f.max():.1f} mm")
