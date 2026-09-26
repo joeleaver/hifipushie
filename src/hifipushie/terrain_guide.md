@@ -76,10 +76,12 @@ from the answers, recorded in the report, and saved (`workspace/terrain/kinds.js
             "walls": {"min_slope": 45, "height": m, "average"?: deg, "except": [...]}}}
   ```
   - The floor rises from `low` at `falls_to` (usually a lake) to `high` at its edge, and all water drains there.
-    `rises_toward` tilts it: mostly rising toward that address ("the terrain climbs north").
+    `rises_toward` tilts it: mostly rising toward that address or compass direction (`"north"`, `"ne"`, ...).
   - Between the floor's edge and the crest is the basin's wall: the mountainside itself. It averages `average`
     degrees (default: the kind's), with a cliff band `height` metres tall at `min_slope`+ that makes it unclimbable.
-    It's checked like a wall (share of the edge that holds, climbable spots).
+    `average` can be at most `min_slope` + 8 (the band must stay steeper than the face around it; the report says if
+    it was capped). Each stretch of wall is sized from where the floor actually meets it, so a low floor edge gets a
+    wider wall. It's checked like a wall (share of the edge that holds, climbable spots).
   - `walls.character`: `"tiered"` (default: stacked cliff bands with benches, light buttresses), `"buttressed"`
     (rock ribs between couloirs), `"broken"`, `"smooth"`. `walls.bands`: how many cliff bands.
   - Passes through its ridge are exempt.
@@ -106,11 +108,11 @@ from the answers, recorded in the report, and saved (`workspace/terrain/kinds.js
   - A side canyon is a canyon on a river that flows `"into"` the main one.
   - Rim addresses: `"canyon.west_rim@0.4"` (also east/north/south/left/right) is on the lip, 40% along the canyon. A
     site there is a lookout: it sits back on the plateau at plateau height and never builds out over the lip.
-- **mesas**: `{"name": {"at", "top": m, "radius": m, "cliff": deg, "talus": 0.4}}`: a flat top, a cliff, and a talus
-  apron.
+- **mesas**: `{"name": {"at", "top": m, "radius": m, "cliff": deg, "talus": 0.4}}`: a flat caprock top, a cliff,
+  and a talus apron. A mesa is an address and a sight target (its top).
 - **fords**: `{"name": {"on": "river@0.5", "width": m, "depth": m}}`: a shallow crossing. Rivers carry water; routes
   cross at fords, and anywhere else the report says a bridge is needed. River water width: `rivers.x.water` (0 for a
-  dry bed).
+  dry bed); steep reaches narrow to a torrent a few metres wide.
 - **rivers** (optional detail):
   ```
   {"name": {"source": [x, y, z], "through": [[x, y] or [x, y, z]], "mouth": [x, y, z] | "into": river,
@@ -152,7 +154,8 @@ from the answers, recorded in the report, and saved (`workspace/terrain/kinds.js
   `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone}`.
 - **walls**: unclimbable edges around a zone where no basin gives you one.
   `{"around": zone, "min_slope": 45, "height": m, "except": [addresses or passes]}`. The ground just outside is
-  raised to make them.
+  raised to make them (a little taller than `height`: the grid rounds a wall's lip and foot). The check walks straight
+  out from each point of the edge and measures the tallest stretch at least `min_slope` steep: it must reach `height`.
 - **cover**: masks for the engine, density or weight 0..1 per layer.
   ```
   {"type": forest | conifer | deciduous | rock | scree | grass | meadow | snow | sand | mud,
@@ -167,13 +170,17 @@ from the answers, recorded in the report, and saved (`workspace/terrain/kinds.js
 - **intent** (checks; nothing is changed):
   - `{"at": address, "above_flood": m}`
   - `{"path": [addresses], "max_grade": g}` (straight legs)
-  - `{"from": address, "see": [addresses], "min_visible": m, "skyline": true, "eye": 1.7}`. From a **site**, it tries
-    the eye at the centre and at eight spots across the site, and reports how many see the target (a level pad's own
-    edge can hide what's below it from the middle). For a peak or hill: how many metres
-    of it rise above everything in front of it (its own flanks count as it), and whether it stands against the
-    sky. For a lake: the share of its surface you see.
+  - `{"from": address, "see": [addresses], "min_visible": m, "min_prominence": m, "skyline": true, "eye": 1.7}`. From
+    a **site**, it tries the eye at the centre and at eight spots across the site, and reports how many see the target
+    (a level pad's own edge can hide what's below it from the middle). For a peak, hill or mesa: how many metres of it
+    show above what's in front of it (down to its own foot), **how far its top stands above the skyline beside and
+    behind it** (a peak on a ring of mountains can be all "showing" and still not stand out: `min_prominence` checks
+    this), and whether it's on the skyline (nothing behind it higher). For a lake: the share of its surface you see.
 - `"probe": [addresses]` reports the ground height and slope at each place.
 - `"export": {"size": 513}` resamples the export to an engine grid (Unity 257/513/1025/2049; Unreal 505/1009/2017).
+
+Sections of named things (peaks, sites, routes, intent, ...) are objects keyed by name; a list of objects is accepted too
+(each named by its `"name"`, else `intent_1`, ...). Free text goes in `"story"`, `"notes"` or `"wishes"`.
 
 **Addresses:**
 - a peak/col/landform/site/pass name
@@ -187,7 +194,8 @@ from the answers, recorded in the report, and saved (`workspace/terrain/kinds.js
 - `[x, y]`, or `{"from": address, "offset": [dx, dy]}`
 
 `"views": [{"name": "file_stem", "eye": address | [x, y, z], "lift": m, "look": address, "fov": deg}]` are
-perspective renders. The eye stands on the ground at an address; `lift` raises it.
+perspective renders. The eye stands on the ground at an address; `lift` raises it. An eye in or against the ground is
+raised to stand clear of it (the run says so).
 
 ## Running
 ```
@@ -200,13 +208,6 @@ Outputs go to `workspace/terrain/`:
   red), routes (orange), sites (purple squares), walls (dark dots on the edge, bright red where climbable), names
   and a cover legend.
 - `<stem>_masks.png`: each cover mask alone (white = dense).
-- With `--export`, `<stem>_export/` holds:
-  - the heightmap (`height.npy` float32, and 16-bit `height.png`)
-  - square at the engine size, padded if the frame isn't square
-  - density masks per layer, plus water, roads, playable and walls masks
-  - `splat*.png`: RGBA weights that sum to 1
-  - `trees.csv`: tree instances (x, y, z, kind, layer)
-  - `meta.json`: extent, height encoding, sites, passes, routes and rivers with heights
 - With `--export`, `<stem>_export/` holds:
   - the heightmap (`height.npy` float32, and 16-bit `height.png`)
   - square at the engine size, padded if the frame isn't square

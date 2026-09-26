@@ -23,8 +23,9 @@ from .terrain import smoothstep
 
 def protected(T) -> np.ndarray:
     keep = np.zeros(T.X.shape, bool)
-    for m in T.masks.values():
-        keep |= m > 0.05
+    for k, m in T.masks.items():
+        if k != "earthworks":  # (banks are kept softly, in proportion: see erode)
+            keep |= m > 0.05
     for p in T.passes.values():
         keep |= p["corridor"]
     return ndimage.binary_dilation(keep, iterations=2)
@@ -127,5 +128,8 @@ def erode(T):
     margin = max(3, int(round(0.03 * T.size / T.cell)))
     shores = ndimage.binary_dilation(wet, iterations=margin) if wet.any() else wet
     w = ndimage.gaussian_filter((keep | shores).astype(float), 1.5)
+    # pad and road banks come back as built in proportion to how much they reshaped the ground: gullies cut into a
+    # fill slope read as a sawtooth, but keeping a bank's faint outer edge whole left pillars where all around eroded
+    w = np.maximum(w, T.masks.get("earthworks", np.zeros(w.shape)))
     T.H = E * (1 - w) + H0 * w
     T.erosion = {"steps": steps, "lowered": lowered, "k": k0}

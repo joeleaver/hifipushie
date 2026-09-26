@@ -55,7 +55,7 @@ def normalise(spec: dict) -> dict:
     width/height for positions ([x, y] lists), of the frame's longer side for other lengths, of `relief` (default a
     quarter of the frame) for heights."""
     import copy
-    spec = copy.deepcopy(spec)
+    spec = _named(copy.deepcopy(spec))
     (x0, y0), (x1, y1) = [[_pct(v, None) if not isinstance(v, str) else 0 for v in p] for p in spec["extent"]]
     size = max(x1 - x0, y1 - y0)
     unit = spec.get("units", "m")
@@ -69,7 +69,7 @@ def normalise(spec: dict) -> dict:
     relief = spec.get("relief", 0.25 * size)
 
     def conv(v, key, axis=None):
-        if isinstance(v, str) and v.endswith("%"):
+        if isinstance(v, str) and v.endswith("%") and _number(v[:-1]):  # free text ending in "%" stays text
             f = float(v[:-1]) / 100
             if key in HEIGHT_KEYS:
                 v = f * relief
@@ -97,7 +97,9 @@ def normalise(spec: dict) -> dict:
             return out
         return v
 
-    out = walk({k: v for k, v in spec.items() if k not in ("units", "across", "relief", "export")})
+    text = {k: spec[k] for k in TEXT_KEYS if k in spec}  # prose: never converted
+    out = walk({k: v for k, v in spec.items() if k not in ("units", "across", "relief", "export", *TEXT_KEYS)})
+    out.update(text)
     out["export"] = spec.get("export", {})
     out["_units"] = {"name": unit if unit != "none" else "units", "mu": mu, "assumed": unit == "none"}
     return out
@@ -107,9 +109,58 @@ def _pct(v, _):
     return v
 
 
+def _number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
+TEXT_KEYS = ("name", "story", "notes", "wishes", "brief")
+NAMED = ("peaks", "cols", "ridges", "rivers", "basins", "passes", "canyons", "mesas", "fords", "landforms", "zones",
+         "sites", "routes", "walls", "cover", "rugged", "intent")
+
+
+def _named(spec):
+    """Sections of named things are dicts; a list is accepted (items named by their "name" key, else "<section>_1"...).
+    Anything else is an error that says what was expected."""
+    for sec in NAMED:
+        v = spec.get(sec)
+        if v is None or isinstance(v, dict):
+            continue
+        if not isinstance(v, list) or not all(isinstance(x, dict) for x in v):
+            raise ValueError(f"{sec!r} must be an object of named entries ({{\"name\": {{...}}}}), not {type(v).__name__}")
+        out = {}
+        for i, x in enumerate(v, 1):
+            x = dict(x)
+            out[str(x.pop("name", None) or f"{sec.rstrip('s')}_{i}")] = x
+        spec[sec] = out
+    return spec
+
+
 def _area(a):
     """An area in words at any scale (the report's unit conversion understands m2, ha and km2)."""
     return f"{a / 1e6:.2f} km2" if a >= 1e6 else f"{a / 1e4:.1f} ha" if a >= 1e4 else f"{a:.0f} m2"
+
+
+COMPASS = {"north": 0, "north-east": 45, "east": 90, "south-east": 135, "south": 180, "south-west": 225, "west": 270,
+           "north-west": 315}
+
+
+def compass(word):
+    """A unit [x, y] vector for a compass word ("north", "ne", "south-west", "southwest"), else None."""
+    if not isinstance(word, str):
+        return None
+    w = word.lower().replace("_", "-").replace(" ", "-")
+    short = {"n": "north", "s": "south", "e": "east", "w": "west", "ne": "north-east", "nw": "north-west",
+             "se": "south-east", "sw": "south-west"}
+    w = short.get(w, w)
+    for k, deg in COMPASS.items():
+        if w in (k, k.replace("-", "")):
+            a = math.radians(deg)
+            return np.array([math.sin(a), math.cos(a)])
+    return None
 
 
 def smoothstep(e0, e1, x):
@@ -220,6 +271,7 @@ class Terrain:
         self._fill_lakes()  # lake shores are addresses sites use
         design.apply(self)
         erode(self)  # after the design: its places are protected, and lakes are where water ends
+        forms.settle(self)  # caprocks stay flat
         design.check(self)
         self._fill_lakes()
         self.cover = design.cover(self)
@@ -462,11 +514,15 @@ class Terrain:
         rest = math.tan(math.radians(b["avg"]))
         wgt = rest * (0.45 + 0.75 * smoothstep(0.0, 0.3, t) - 0.35 * smoothstep(0.75, 1.0, t))
         steep = math.tan(math.radians(min(b["min_slope"] + 14, 80)))  # margin: erosion and the grid soften it
-        ft = min(0.4, (b["band"] / steep) / max(b["relief"] / math.tan(math.radians(b["avg"])), 1e-6))  # its share of the width
+        # each band is `band` tall plus the grid's rounding at its lip and foot (the check measures the tallest steep
+        # stretch: tiered bands sharing the height made "unclimbable" walls of 17 m steps)
+        tall = b["band"] + 0.6 * self.cell * steep
+        width = max(b["relief"] / math.tan(math.radians(b["avg"])), 1e-6)
+        ft = min(0.4, (tall / steep) / width)  # one band's share of the width
         n_bands = b["bands"] or (3 if b["character"] == "tiered" else 1)
         ats = [b["band_at"]] if n_bands == 1 else list(np.linspace(0.2, 0.75, n_bands))
-        if n_bands > 1:
-            ft = ft / n_bands ** 0.5  # several thinner bands: each still `band` tall is too much; share it
+        if n_bands * ft > 0.6:  # no room for them all at full height: shorter bands (the wall check will say so)
+            ft = 0.6 / n_bands
         for at in ats:
             wgt = np.where((t >= at) & (t < at + ft), steep, wgt)
         b["_ft"], b["_bands"] = ft, ats
@@ -506,7 +562,14 @@ class Terrain:
         if "." in ref:
             name, end = ref.rsplit(".", 1)
             return self.lines[name].at(0.0 if end == "source" else 1.0)[0]
-        raise ValueError(f"can't place {ref!r} before the ground exists: use a peak, col, landform, line or [x, y]")
+        if ref in self.zones or ref.startswith("quadrant:"):
+            from . import terrain_design as design
+            try:
+                return design.centroid(self, design.region(self, ref))
+            except (AttributeError, ValueError):  # a zone defined by the ground (above/below/slope) isn't there yet
+                pass
+        raise ValueError(f"can't place {ref!r} before the ground exists: use a compass direction (\"north\"), a peak, "
+                         f"col, landform, line, a zone drawn on the map, or [x, y]")
 
     def _basin(self, name, b):
         """A valley floor inside a closed ridge: a bowl from `floor` [low, high] that drains to `falls_to`, and between
@@ -524,7 +587,13 @@ class Terrain:
         # a real mountainside averages 25-40 deg: a scree foot, cliff band(s), easier upper slopes. "Unclimbable" needs
         # only one band steep and tall enough, not the whole face (that read as a draped curtain)
         slope = float(w.get("min_slope", 45))
-        avg = min(float(w.get("average", 32)), slope - 5)
+        avg = float(w.get("average", 32))
+        if avg > slope + 8:  # the cliff band (min_slope + 14) must stay steeper than the face around it
+            asked = "average" in (((self.source.get("basins") or {}).get(name) or {}).get("walls") or {})
+            self.warnings.append(f"basin {name!r}: " + ("walls.average" if asked else "the kind's face slope")
+                                 + f" {avg:.0f} deg is steeper than its cliff band allows (min_slope {slope:.0f} + 8): "
+                                 f"built at {slope + 8:.0f}; raise min_slope for steeper walls")
+            avg = slope + 8
         # each stretch of wall is as wide as the crest behind it needs at that slope (a big peak has a big footprint;
         # one width from the lowest crest made the high stretches 58 deg)
         dist, near = cKDTree(L.xy).query(self.P)
@@ -535,10 +604,32 @@ class Terrain:
             need = np.full(self.X.shape, float(w["width"]))
         F = inside & (dist.reshape(self.X.shape) >= need)
         F = ndimage.binary_opening(F, iterations=2)
+        if "width" not in w and F.any() and lo is not None and hi is not None and hi > lo:
+            # the face starts at the floor's edge, which is lower than `hi` where the floor is low (by the drain, or on
+            # the low side of a tilted floor): size those stretches for their real relief (sized from `hi`, a wall
+            # asked at 45 deg came out 54)
+            fl0 = self._floor_heights(b, F, lo, hi, name)
+            _, (fy, fx_) = ndimage.distance_transform_edt(~F, return_indices=True)
+            edge_h = fl0[fy, fx_]
+            need = np.maximum(3 * self.cell, (crest_here - edge_h) / math.tan(math.radians(avg)))
+            F = inside & (dist.reshape(self.X.shape) >= need)
+            F = ndimage.binary_opening(F, iterations=2)
         width = float(np.median(need[inside & ~F])) if (inside & ~F).any() else float(need.mean())
         if not F.any():
             raise ValueError(f"basin {name!r}: walls {width:.0f} m wide leave no floor; lower the floor's high end "
                              f"or the crest, or widen the ring")
+        fl, fx, sink = self._floor_heights(b, F, lo, hi, name, full=True)
+        self._fixed_river |= sink  # water ends here: base level for erosion
+        wall = inside & ~F
+        band = float(w.get("height", max(30.0, 0.08 * (crest_min - hi))))  # the cliff band's height
+        self.basins[name] = {"floor": F, "wall": wall, "inside": inside, "width": width, "lo": lo, "hi": hi,
+                             "min_slope": slope, "falls": fx.tolist(), "band": band, "avg": avg,
+                             "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3)),
+                             "arc": arc, "character": w.get("character", "tiered"), "bands": int(w.get("bands", 0))}
+        return F, fl, PROFILES.get(w.get("profile", "straight"), 1.0)
+
+    def _floor_heights(self, b, F, lo, hi, name, full=False):
+        """A basin floor's heights over the grid (meaningful on F): from `lo` at the drain to `hi` at the floor's edge."""
         fx = self._early_xy(b["falls_to"]) if b.get("falls_to") else np.array(
             [self.X[F].mean(), self.Y[F].mean()])
         lfs = self.spec.get("landforms") or {}
@@ -552,20 +643,18 @@ class Terrain:
         d_edge = ndimage.distance_transform_edt(F) * self.cell
         u = ndimage.gaussian_filter(d_sink / np.maximum(d_sink + d_edge, 1e-6), 3)
         if b.get("rises_toward"):  # the floor tilts: mostly along the drain -> this address, a little toward every edge
-            tx = self._early_xy(b["rises_toward"])
-            ax = tx - fx
+            rt = b["rises_toward"]
+            cd = compass(rt)
+            if cd is not None:  # a direction: rising across the whole floor that way
+                proj = (self.P - fx) @ cd
+                ax = cd * max(float(proj[F.ravel()].max()), self.cell)
+            else:
+                ax = self._early_xy(rt) - fx
             along = np.clip(((self.P - fx) @ ax) / (ax @ ax), 0, 1).reshape(self.X.shape)
             u = 0.75 * along + 0.25 * u
         p = {"bowl": 1.0, "flat": 2.5, "open": 0.7}[b.get("shape", "bowl")]  # flat: level, tipping up at the edge
         fl = lo + (hi - lo) * np.clip(u, 0, 1) ** p
-        self._fixed_river |= sink  # water ends here: base level for erosion
-        wall = inside & ~F
-        band = float(w.get("height", max(30.0, 0.08 * (crest_min - hi))))  # the cliff band's height
-        self.basins[name] = {"floor": F, "wall": wall, "inside": inside, "width": width, "lo": lo, "hi": hi,
-                             "min_slope": slope, "falls": fx.tolist(), "band": band, "avg": avg,
-                             "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3)),
-                             "arc": arc, "character": w.get("character", "tiered"), "bands": int(w.get("bands", 0))}
-        return F, fl, PROFILES.get(w.get("profile", "straight"), 1.0)
+        return (fl, fx, sink) if full else fl
 
     def _ribs(self, high_fix, low_fix):
         """Spurs running down from every ridge at irregular spacing: they break long mountain walls into
@@ -799,7 +888,8 @@ class Terrain:
             bank *= smoothstep(1.6 * r, 1.2 * r, np.abs(w))
             self.H = np.maximum(self.H, self.H * (1 - bank) + crest * bank)
             # wings: along the contour the ground sits right at the water level, so the ends need a low lift too
-            wing = smoothstep(0.35 * r, 0.1 * r, np.abs(d - 1.15 * r)) * (true_d < 1.6 * r)
+            # (the downhill half only: a ring all round left a lip on the uphill side too)
+            wing = smoothstep(0.35 * r, 0.1 * r, np.abs(d - 1.15 * r)) * (true_d < 1.6 * r) * smoothstep(-0.4 * r, 0.1 * r, u)
             self.H += wing * np.clip(level + 0.5 - self.H, 0, None)
         elif dam:
             rim = smoothstep(0.45 * r, 0.12 * r, np.abs(d - 1.2 * r)) * (true_d < 1.8 * r)  # solid: a thin crest leaks
@@ -1233,12 +1323,20 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
     def to_px(x, y):
         return ((x - T.xs[0]) / T.cell * sc, (ny - 1 - (y - T.ys[0]) / T.cell) * sc)
 
+    flat = T._slope() < 1.5  # a contour wandering over dead-flat ground (a mesa's caprock, a pad) is noise: a false ring
+    for m in getattr(T, "mesas", {}).values():
+        flat |= ndimage.binary_dilation(m["topmask"], iterations=1)
     for lev in np.arange(math.ceil(H.min() / contour) * contour, H.max(), contour):
         index = int(round(lev / contour)) % 5 == 0
         for cnt in measure.find_contours(H, lev):
-            pts = [(c[1] * sc, (ny - 1 - c[0]) * sc) for c in cnt[::2]]
-            if len(pts) > 1:
-                d.line(pts, fill=(60, 40, 20) if index else (95, 75, 50), width=2 if index else 1)
+            cnt = cnt[::2]
+            on = ~flat[np.clip(np.round(cnt[:, 0]).astype(int), 0, ny - 1),
+                       np.clip(np.round(cnt[:, 1]).astype(int), 0, H.shape[1] - 1)]
+            lab, n = ndimage.label(on)
+            for k in range(1, n + 1):
+                pts = [(c[1] * sc, (ny - 1 - c[0]) * sc) for c in cnt[lab == k]]
+                if len(pts) > 1:
+                    d.line(pts, fill=(60, 40, 20) if index else (95, 75, 50), width=2 if index else 1)
     for Lr in T.lines.values():
         pts = [to_px(*p) for p in Lr.xy[::2]]
         if Lr.kind == "river":
@@ -1273,6 +1371,8 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
             label(s["xy"], f"{name} {s['level']:.0f}", (110, 20, 110))
         for name, (xy, h) in T.points.items():
             label(xy, f"{name} {T.summit(name):.0f}")
+        for name, m in getattr(T, "mesas", {}).items():
+            label(m["xy"], f"{name} {float(np.median(T.H[m['topmask']])):.0f}")
         for Lr in T.lines.values():
             if Lr.kind == "river":
                 label(Lr.at(0.5)[0], Lr.name, (20, 60, 150))
@@ -1365,12 +1465,22 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
     mesh = out_dir / "terrain_mesh.npz"
     write_mesh(T, mesh)
     jobs = []
+    T.view_notes = []
     for v in views:
         exy, eh, _ = T.address(v["eye"])
         if isinstance(v["eye"], list) and len(v["eye"]) == 3:
             eh = v["eye"][2]
+        ez = eh + v.get("lift", 2)
+        # never inside the ground: at least a person's eye above the highest ground within a few cells (on a slope the
+        # ground beside the eye is higher than under it, and the near plane cut through it)
+        near = np.hypot(T.X - exy[0], T.Y - exy[1]) <= 2.5 * T.cell
+        floor = float(T.H[near].max()) if near.any() else T.height(exy)
+        if ez < floor + 1.0:
+            T.view_notes.append(f"view {v['name']!r}: the eye was {floor - ez:+.1f} m against the ground there: raised "
+                                f"to {floor + 1.7:.0f} m")
+            ez = floor + 1.7
         txy, th, _ = T.address(v["look"])
-        jobs.append({"eye": [*exy, eh + v.get("lift", 2)], "look": [*txy, th], "fov": v.get("fov", 60),
+        jobs.append({"eye": [*exy, ez], "look": [*txy, th], "fov": v.get("fov", 60),
                      "out": str(out_dir / f"{v['name']}.png")})
     job = out_dir / "job.json"
     job.write_text(json.dumps({"mesh": str(mesh), "views": jobs, "size": size, "samples": samples}))

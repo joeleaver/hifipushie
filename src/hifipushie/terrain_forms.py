@@ -87,13 +87,43 @@ def _canyon(T, name, c):
     zz = np.minimum(zz, rim)
     cut = near & (zz < T.H)
     T.H = np.where(cut, zz, T.H)
+    T._canyon_plan = np.where(cut, zz, getattr(T, "_canyon_plan", np.full(T.X.shape, np.nan)))
     wall = cut & (dd > 0)
     steep = np.interp(zz, z, cot) < 0.5  # cliff strata (cot < 0.5: steeper than ~63 deg) stand as hard rock
     cliffs = wall & steep & (dd > run_t)
     T.hard = T.hard | cliffs
     T.hardness = np.where(cliffs, 0.03, T.hardness)  # canyon cliffs stand: strong rock, not soil
     T.canyons[name] = {"river": L.name, "rim": rim, "half": half, "floor": 2 * fh, "ledge": ledge_deg,
-                       "depth": rim - lo}
+                       "depth": rim - lo, "wall": wall, "cliffs": cliffs,
+                       "ledges": wall & ~steep & (dd > run_t)}
+
+
+def measure_canyon(T, name):
+    """The canyon as built: depth, rim-to-rim width at sections along it, and the slopes of its cliff and ledge strata
+    (each wall cell's stratum from its built elevation). Never the plan's numbers."""
+    cy = T.canyons[name]
+    L = T.lines[cy["river"]]
+    widths, depths = [], []
+    for f in np.linspace(0.1, 0.9, 9):
+        xy, _, tan = L.at(f)
+        nrm = np.array([-tan[1], tan[0]])
+        ds = np.arange(0, 1.7 * cy["half"] + 10 * T.cell, T.cell / 2)
+        floor = T.height(xy)
+        sides = []
+        for sgn in (1, -1):
+            hs = T.sample(xy + sgn * nrm * ds[:, None])
+            plateau = float(np.median(hs[-8:]))
+            up = np.nonzero(hs >= plateau - max(3.0, 0.03 * (plateau - floor)))[0]
+            sides.append((ds[up[0]] if len(up) else np.nan, plateau))
+        if all(np.isfinite(d) for d, _ in sides):
+            widths.append(sides[0][0] + sides[1][0])
+            depths.append(min(p for _, p in sides) - floor)
+    slope = T._slope()
+    dry = np.isnan(T.water)
+    # where the plan put each cliff band and ledge, how steep the built ground is there
+    q = lambda m: (float(np.median(slope[m])), float((slope[m] > 60).mean())) if m.sum() > 5 else (float("nan"), 0.0)
+    return {"width": (min(widths), max(widths)) if widths else None, "depth": max(depths) if depths else None,
+            "cliff": q(cy["cliffs"] & dry), "ledge": q(cy["ledges"] & dry)}
 
 
 def _mesa(T, name, m):
@@ -117,7 +147,61 @@ def _mesa(T, name, m):
     ring = (d > r) & (d <= r + run_c)
     T.hard = T.hard | ring
     T.hardness = np.where(ring, 0.03, T.hardness)
-    T.mesas = getattr(T, "mesas", {}) | {name: {"xy": xy.tolist(), "top": top, "radius": r}}
+    T.hardness = np.where(d <= r, 0.05, T.hardness)  # a caprock: the top stays flat (a soft top eroded into a dome)
+    foot = r + run_c + talus / math.tan(TALUS)
+    T.mesas = getattr(T, "mesas", {}) | {name: {"xy": xy.tolist(), "top": top, "radius": r, "topmask": d <= r,
+                                                "ring": ring, "foot": foot}}
+
+
+def settle(T):
+    """After texture and erosion: canyon walls go back to their strata, keeping a few metres of the erosion's detail
+    (eroded freely they became sand-draped mounds: cliffs built at 74 deg measured 51; kept from creeping they stood as
+    pinnacles), except where a route or site was carved into them. A mesa's top is its caprock, flat to within the
+    kind's surface roughness."""
+    plan = getattr(T, "_canyon_plan", None)
+    if plan is not None:
+        from .terrain_erode import protected
+        b = T.world["bumps"]
+        on = np.isfinite(plan) & ~protected(T) & np.isnan(T.water)
+        w = ndimage.gaussian_filter(on.astype(float), 1.0) * on
+        near = np.where(np.isfinite(plan), plan, T.H)
+        T.H = T.H * (1 - w) + (near + np.clip(T.H - near, -2 * b, b)) * w
+        # the wandering rim plan closes some alcoves at ledge level into pits (erosion had silted them up; restoring
+        # the strata reopened one 53 m deep): fill closed hollows in the walls to their spill level, as sediment would
+        import fastscapelib as fs
+        wet = ~np.isnan(T.water)
+        status = {(int(a), int(c)): fs.NodeStatus.FIXED_VALUE for a, c in zip(*np.nonzero(wet))}
+        grid = fs.RasterGrid(list(T.H.shape), [T.cell, T.cell], fs.NodeStatus.FIXED_VALUE, status)
+        filled = np.asarray(fs.FlowGraph(grid, [fs.SingleFlowRouter(), fs.PFloodSinkResolver()])
+                            .update_routes(T.H.copy())).reshape(T.H.shape)
+        beds = np.zeros(T.X.shape, bool)  # (a road's own bed or a pad isn't filled over; its banks may be)
+        for k in ("routes", "sites"):
+            if k in T.masks:
+                beds |= T.masks[k] > 0.05
+        # hollows touching the walls: pockets in them, and gullies erosion cut through a wall that the restored wall
+        # now dams
+        hol, _ = ndimage.label((filled - T.H > 0.05) & ~wet)
+        ids = np.unique(hol[ndimage.binary_dilation(np.isfinite(plan), iterations=2)])
+        fill = np.isin(hol, ids[ids > 0]) & ~beds
+        T.H = np.where(fill, np.maximum(T.H, filled), T.H)
+    for m in getattr(T, "mesas", {}).values():
+        b = min(0.3, 0.3 * T.world["bumps"])
+        T.H = np.where(m["topmask"], np.clip(T.H, m["top"] - b, m["top"] + b), T.H)
+
+
+def measure_mesa(T, name):
+    m = T.mesas[name]
+    xy = np.array(m["xy"])
+    top = float(np.median(T.H[m["topmask"]]))
+    near = np.hypot(T.X - xy[0], T.Y - xy[1]) < 1.5 * m["radius"]
+    flat = near & (np.abs(T.H - top) < 2.0)
+    lab, _ = ndimage.label(flat)
+    k = lab[m["topmask"] & flat]
+    area = (lab == np.bincount(k).argmax()).sum() * T.cell ** 2 if len(k) and k.max() > 0 else 0.0
+    ang = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    around = xy + 1.15 * m["foot"] * np.c_[np.cos(ang), np.sin(ang)]
+    return {"top": top, "across": 2 * math.sqrt(area / math.pi), "cliff": float(np.median(T._slope()[m["ring"]])),
+            "rise": top - float(np.median(T.sample(around)))}
 
 
 def rim_address(T, ref):
@@ -161,9 +245,16 @@ def water(T):
         wd = r.get("water", max(3.0, min(L.props["floor"] / 3, 25.0)))
         if not wd:
             continue
+        # steep reaches carry a torrent, not a pool: the water narrows with the grade (a 25 m wide sheet of water
+        # stood down a 66% volcano flank), to a few metres at 20%+
+        step = np.linalg.norm(np.diff(L.xy, axis=0), axis=1)
+        grade = np.r_[np.abs(np.diff(L.h)) / np.maximum(step, 1e-6), 0]
+        grade = ndimage.uniform_filter1d(grade, max(3, int(30 / max(float(np.mean(step)), 1e-3))), mode="nearest")
+        width = np.where(grade > 0.04, np.maximum(2.0, wd * np.clip((0.2 - grade) / 0.16, 0, 1)), wd)
         d, i = cKDTree(L.xy).query(T.P, distance_upper_bound=wd)
         d, i = d.reshape(T.X.shape), np.minimum(i, len(L.xy) - 1).reshape(T.X.shape)
-        wet = np.isfinite(d) & np.isnan(T.water)
+        wet = np.isfinite(d) & np.isnan(T.water) & (d <= np.maximum(width[i], 0.75 * T.cell))
+        wd = np.maximum(width[i], 0.75 * T.cell)
         level = L.h[i] + 0.2
         depth = 1.0
         for _, fxy, fw, fd in fords:

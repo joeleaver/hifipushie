@@ -23,6 +23,7 @@ print(T.report())
 terrain.map_image(T).save(out / f"{src.stem}_map.png")
 if "--no3d" not in sys.argv and T.spec.get("views"):
     print(terrain.render(T, out, T.spec["views"]))
+    print("\n".join(T.view_notes))
 sheet = terrain.mask_sheet(T)
 if sheet is not None:
     sheet.save(out / f"{src.stem}_masks.png")
