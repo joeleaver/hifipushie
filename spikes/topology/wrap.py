@@ -252,7 +252,7 @@ def vnormals(V, T):
     return N / (np.linalg.norm(N, axis=1, keepdims=True) + 1e-12)
 
 
-def fit(V, L, S, prims, voxel, regions=None, dom=None, reach=0.12, rounds=15, keep=None):
+def fit(V, L, S, prims, voxel, regions=None, dom=None, reach=0.12, rounds=int(__import__("os").environ.get("RELAX", 50)), keep=None, V_warped=None):
     """Shoot every vertex along its normal to the nearest zero crossing of its region's surface, then relax along
     the surface and re-project."""
     T = tris(L, S)
@@ -292,15 +292,25 @@ def fit(V, L, S, prims, voxel, regions=None, dom=None, reach=0.12, rounds=15, ke
     V[~ok & ~keep] = newton(V, 40)[~ok & ~keep]
     V = np.where(keep[:, None], V0, newton(V, 8))
     deg = np.bincount(E.ravel(), minlength=len(V))
+
+    def lap(X):
+        acc = np.zeros_like(X)
+        np.add.at(acc, E[:, 0], X[E[:, 1]])
+        np.add.at(acc, E[:, 1], X[E[:, 0]])
+        return acc / np.maximum(deg, 1)[:, None] - X
+    # relax toward the template's own spacing (its dense rings round the eyes and mouth, its packing in creases):
+    # each vertex keeps its offset from its neighbours' average as warped, and loses only what projecting added
+    L_w = lap(V_warped) if V_warped is not None else 0.0
     for _ in range(rounds):
         acc = np.zeros_like(V)
         np.add.at(acc, E[:, 0], V[E[:, 1]])
         np.add.at(acc, E[:, 1], V[E[:, 0]])
         N = vnormals(V, T)
-        dv = acc / np.maximum(deg, 1)[:, None] - V
+        dv = lap(V) - L_w
         dv -= (dv * N).sum(1, keepdims=True) * N
-        dv_full = acc / np.maximum(deg, 1)[:, None] - V
-        V = np.where(keep[:, None], V + 0.5 * dv_full, newton(V + 0.5 * dv, 6))
+        # interiors (mouth bag, sockets) aren't projected but move with their neighbours: held still, the lids
+        # round them stretched into big faces
+        V = np.where(keep[:, None], V + 0.5 * lap(V), newton(V + 0.5 * dv, 6))
     return V, int((~ok).sum())
 
 
@@ -312,7 +322,8 @@ if __name__ == "__main__":
     inside = sdf.field_at(prims, Wd, margin=0.05) < -0.01
     keep = inside & np.isin(dom, head)
     print(f"kept inside (mouth, sockets): {keep.sum()}")
-    V, missed = fit(Wd, L, S, prims, meta["voxel"], regions, dom, keep=keep)
+    V, missed = fit(Wd, L, S, prims, meta["voxel"], regions, dom, keep=keep,
+                    V_warped=Wd if __import__("os").environ.get("SHAPE_RELAX", "0") == "1" else None)
     np.savez(Path(out) / "wrapped.npz", verts=V, loops=L, sizes=S)
     f = np.abs(sdf.field_at(prims, V, margin=0.05)) * 1000
     print(f"wrapped {len(V)} verts; {missed} missed the surface; |field| mean {f.mean():.2f} p95 {np.percentile(f, 95):.2f} max {f.max():.1f} mm")
