@@ -383,8 +383,8 @@ def _site(T, name, s):
         shore_lake = ref.rsplit(".", 1)[0]
         xy = _shore_pad(T, name, shore_lake, xy, d, r + s.get("setback", 5), r + max(20.0, 0.5 * r))
     rim = isinstance(ref, str) and "_rim" in ref.split("@")[0]
-    if rim:  # d points into the canyon: back from the lip, on the plateau, looking in
-        xy = xy - d * (r + s.get("setback", 3))
+    if rim:  # d points into the canyon: back from the lip, on the plateau, looking in ("lip": its edge at the lip)
+        xy = xy - d * ((0.35 * r if s.get("lip") else r) + s.get("setback", 0 if s.get("lip") else 3))
         s = {**s, "level": s.get("level", T.height(xy + -d * r))}
     dist = np.hypot(T.X - xy[0], T.Y - xy[1])
     inside = dist <= r
@@ -541,7 +541,7 @@ def _grid(T, r, cliffs=True):
     """The search grid for a route: ground smoothed over ~30 m (the carve evens out smaller bumps anyway), except
     where earthworks already shaped it (a break's benches smoothed away are a cliff again), and what blocks it."""
     f = 2 if T.X.size > 90_000 else 1
-    sm = ndimage.gaussian_filter(T.H, 30 / T.cell / 2)
+    sm = ndimage.gaussian_filter(T.H, float(r.get("smooth", 30.0)) / T.cell / 2)  # (12 m: better on some, worse on others)
     ew = T.masks.get("earthworks", np.zeros(T.X.shape))
     H = np.where(ew > 0.5, T.H, sm)[::f, ::f]
     cell = T.cell * f
@@ -824,8 +824,11 @@ def _route(T, name, r):
         w = np.where(near, smoothstep(half + bank, half, d), 0)
         # earthworks have a limit: past ~25 m of cut or fill a road is a bridge or a tunnel, not a causeway (a 65 m fill
         # built a tongue out over a canyon); left as it is, and the report says where
+        # cut up to 25 m (a cutting); fill at the way's own scale: a 2 m mule trail doesn't stand on a 25 m bank (it
+        # made knife-edge fins)
         deep = float(r.get("max_earthworks", 25.0))
-        w *= smoothstep(deep + 5, deep, np.abs(T.H - hr))
+        tall = float(r.get("max_fill", deep))  # (a 6-12 m default made trails fail down gullies: fins are the lesser evil)
+        w *= np.where(hr > T.H, smoothstep(tall + 3, tall, hr - T.H), smoothstep(deep + 5, deep, T.H - hr))
         if hasattr(T, "pads"):  # a road arrives at a site; it doesn't bury or trench the pad (its bank it grades through:
             w *= 1 - T.pads  # left alone, the bank stood as a step where every road met its pad)
         before = T.H.copy()
@@ -1393,6 +1396,8 @@ def _see(T, name, it, hide=False):
         c = np.array(st["xy"])
         spots = [("centre", c.tolist())] + [(_compass(a), (c + 0.7 * st["radius"] * np.array([math.sin(a), math.cos(a)])).tolist())
                                             for a in np.radians(np.arange(0, 360, 45))]
+        # only spots on the pad: one over a lip's drop would be an eye in the air
+        spots = [sp for sp in spots if T.height(np.array(sp[1])) > st["level"] - 3] or spots[:1]
     want = it.get("min_visible", 0)
     prom = it.get("min_prominence")
     for tgt in it["see"]:

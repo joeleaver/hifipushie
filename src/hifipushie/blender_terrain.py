@@ -173,6 +173,13 @@ def run(job):
     else:
         b.inputs["Base Color"].default_value = (0.16, 0.2, 0.1, 1)
     plane.data.materials.append(pm)
+    if "markers" in d.files and len(d["markers"]):  # sites as thin red poles, to judge what a view sees
+        mk = bpy.data.materials.new("marker")
+        mk.use_nodes = True
+        mk.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.8, 0.05, 0.03, 1)
+        for x, y, z in d["markers"]:
+            bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.6, depth=12, location=(float(x), float(y), float(z) + 6))
+            bpy.context.object.data.materials.append(mk)
     if len(d["wfaces"]):
         water = _mesh("water", d["wverts"], d["wfaces"])
         wm = bpy.data.materials.new("water")

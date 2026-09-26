@@ -115,8 +115,9 @@ and the `"story"`.
     over a ledge, with talus at the foot. The bands sit at the same elevation all along the canyon, and the ledge
     slope is solved so the walls meet the rim at your width.
   - A side canyon is a canyon on a river that flows `"into"` the main one.
-  - Rim addresses: `"canyon.west_rim@0.4"` (also east/north/south/left/right) is on the lip, 40% along the canyon. A
-    site there is a lookout: it sits back on the plateau at plateau height and never builds out over the lip.
+  - Rim addresses: `"canyon.west_rim@0.4"` (also east/north/south/left/right) is on the lip, 40% along the canyon from
+    its river's source. A site there is a lookout: it sits back on the plateau at plateau height and never builds out
+    over the lip; `"lip": true` brings it forward so its middle is at the lip (a viewpoint that sees in).
 - **mesas**: `{"name": {"at", "top": m, "radius": m, "cliff": deg, "talus": 0.4}}`: a flat caprock top, a cliff,
   and a talus apron. A mesa is an address and a sight target (its top).
 - **sea**: water below a level out to the frame's edge, and the coast where land meets it.
@@ -195,7 +196,7 @@ and the `"story"`.
   water. The report gives its level and how far it cuts into or builds out of the slope (a warning over 25 m).
 - **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search).
   `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone,
-  "max_earthworks": 25}`. Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
+  "max_earthworks": 25, "max_fill": m}` (`max_fill` limits banks alone, for a trail that shouldn't stand on one; it may then fail its grade). Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
   report judges the road on the ground as built and says where it fails, where its bed ends off its stop (a cliff band
   in the way), and when no way at its grade existed at all.
   - Cliffs (over 50 deg) are walls to a route. Where they close a route's stops off from each other, it cuts a **break**:
@@ -285,6 +286,7 @@ The shell run writes its outputs beside the spec:
   - `trees.csv`: tree instances (x, y, z, kind, layer)
   - `meta.json`: extent, height encoding, sites with their planes (level, fall, direction), passes, routes, rivers
     with their bed and water (surface height and width per point), fords, lakes
-- `<view name>.png`: the views, with trees instanced from forest masks.
+- `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
+  by a thin red pole 12 m tall (to judge what a view sees).
 
 Read the images, not just the report. The report is in your units and ends with WARNINGS: read them.

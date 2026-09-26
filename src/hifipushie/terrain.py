@@ -1177,6 +1177,7 @@ class Terrain:
                 if np.linalg.norm(p - xy) < max(1.5 * float(pk.get(n, {}).get("radius", 0)), 200 * self.k, 5 * self.cell)]
         near += [L.name for L in self.lines.values() if L.kind == "ridge"
                  and cKDTree(L.xy).query(xy)[0] < max(150 * self.k, 4 * self.cell)]
+        near += [n for n, m in getattr(self, "mesas", {}).items() if np.linalg.norm(np.array(m["xy"]) - xy) < 1.3 * m["radius"]]
         top_authored = max([h for _, h in self.points.values()] + [float(L.h.max()) for L in self.lines.values()
                                                                    if L.kind == "ridge"] + [-np.inf])
         if near:
@@ -1455,6 +1456,9 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
             col = np.array(design.cover_colour(T, name))
             a = np.clip(m, 0, 1)[..., None]  # density 1 covers the ground (at 85% black sand showed as grass)
             c = c * (1 - a) + col * a
+    if "routes" in T.masks:  # the way itself: a worn, pale track (roads didn't show in any view)
+        rd = np.clip(T.masks["routes"], 0, 1)[..., None] * 0.8
+        c = c * (1 - rd) + (np.array([0.55, 0.47, 0.36]) if not arid else np.array([0.78, 0.66, 0.5])) * rd
     c[~np.isnan(T.water)] = [0.16, 0.28, 0.38]
     return c
 
@@ -1632,7 +1636,8 @@ def write_mesh(T: Terrain, path, step: int = 1):
              tree_xyz=inst[:, :3].astype(np.float32),
              tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
              span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))), base=np.float32(T.H.min()),
-             sea=np.float32(T.sea["level"] if getattr(T, "sea", None) else np.nan))
+             sea=np.float32(T.sea["level"] if getattr(T, "sea", None) else np.nan),
+             markers=np.array([[*st["xy"], st["level"]] for st in T.sites.values()], np.float32).reshape(-1, 3))
 
 
 def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24):

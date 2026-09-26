@@ -82,6 +82,8 @@ def _canyon(T, name, c):
     # half-width: a 520 m canyon's rim noise shredded its walls into spires)
     run = max(half - fh, 3 * T.cell)
     wob = (noise.fbm(pts, max(0.35 * half, 1.2 * (rim - lo)), 2, seed=81).reshape(T.X.shape) - 0.5) * 0.5 * min(half, run)
+    # the wander is the rim's and the walls', never the floor's: it had pushed a floor off its river (a ford at a cliff)
+    wob = wob * smoothstep(fh, fh + 0.4 * run, np.where(np.isfinite(d), d, 1e9))
     dd = np.where(near, np.maximum(d + wob, 0), np.inf) - fh
     hf = L.h[i]  # this section's floor
     # the run from this floor: talus first (from the local floor, whatever stratum it's in), then the strata above
@@ -118,7 +120,7 @@ def measure_canyon(T, name):
         sides = []
         for sgn in (1, -1):
             hs = T.sample(xy + sgn * nrm * ds[:, None])
-            plateau = float(np.median(hs[-8:]))
+            plateau = float(np.percentile(hs[int(0.65 * len(hs)):], 25))  # (a mesa out there isn't the rim)
             up = np.nonzero(hs >= plateau - max(3.0, 0.03 * (plateau - floor)))[0]
             sides.append((ds[up[0]] if len(up) else np.nan, plateau))
         if all(np.isfinite(d) for d, _ in sides):
