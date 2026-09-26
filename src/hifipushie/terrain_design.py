@@ -460,6 +460,7 @@ def _site(T, name, s):
                           f"out of the slope: it stands against a cliff or on a mound; move it or give it a level")
     T.masks.setdefault("sites", np.zeros(T.X.shape))
     T.masks["sites"] = np.maximum(T.masks["sites"], smoothstep(r + 8, r, dist))
+    T.pads = np.maximum(getattr(T, "pads", np.zeros(T.X.shape)), smoothstep(r, r - 2 * T.cell, dist))
 
 
 def _earthworks(T, w):
@@ -798,14 +799,15 @@ def _route(T, name, r):
     ds = length / (n - 1)
     ground = T.sample(xy)
     h = ndimage.gaussian_filter1d(ground, 30 / ds, mode="nearest")
+    gp = 0.92 * maxg  # planned with slack under the limit: planned at it, half a metre of ground left it at 24% on 20
     for _ in range(30):  # grade limit both ways, pulled back toward the ground
         for i in range(1, n):
-            h[i] = np.clip(h[i], h[i - 1] - maxg * step[i - 1], h[i - 1] + maxg * step[i - 1])
+            h[i] = np.clip(h[i], h[i - 1] - gp * step[i - 1], h[i - 1] + gp * step[i - 1])
         for i in range(n - 2, -1, -1):
-            h[i] = np.clip(h[i], h[i + 1] - maxg * step[i], h[i + 1] + maxg * step[i])
+            h[i] = np.clip(h[i], h[i + 1] - gp * step[i], h[i + 1] + gp * step[i])
         h = 0.8 * h + 0.2 * ndimage.gaussian_filter1d(ground, 10 / ds, mode="nearest")
     for i in range(1, n):
-        h[i] = np.clip(h[i], h[i - 1] - maxg * step[i - 1], h[i - 1] + maxg * step[i - 1])
+        h[i] = np.clip(h[i], h[i - 1] - gp * step[i - 1], h[i - 1] + gp * step[i - 1])
     if r.get("carve", True):
         # each cell follows the leg nearest in 3D (plan distance + height): where switchback legs pass close,
         # plan distance alone gave cells between them the other leg's height
@@ -824,8 +826,8 @@ def _route(T, name, r):
         # built a tongue out over a canyon); left as it is, and the report says where
         deep = float(r.get("max_earthworks", 25.0))
         w *= smoothstep(deep + 5, deep, np.abs(T.H - hr))
-        if "sites" in T.masks:  # a road arrives at a site; it doesn't bury or trench it
-            w *= 1 - T.masks["sites"]
+        if hasattr(T, "pads"):  # a road arrives at a site; it doesn't bury or trench the pad (its bank it grades through:
+            w *= 1 - T.pads  # left alone, the bank stood as a step where every road met its pad)
         before = T.H.copy()
         T.H = T.H * (1 - w) + hr * w
         _earthworks(T, w)
