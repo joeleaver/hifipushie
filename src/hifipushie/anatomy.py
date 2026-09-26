@@ -156,6 +156,47 @@ def _expand(spec: dict) -> dict:
     return out
 
 
+def loop_planes(spec: dict) -> list[dict]:
+    """Where a deforming mesh wants its edge loops, from the same lore: [{"label", "joint", "point", "normal", "r"}].
+    A limb root's loop is the plane through three landmarks the rule places: over the joint (the top of the cap),
+    the front pit and the back pit (armpit folds; at a hip the groin and the glute fold), so it runs the way an
+    armhole runs. A hinge's is the plane bisecting its two bones (the crease). spec: kit-expanded, as limb_roots."""
+    out = []
+    for root in limb_roots(spec):
+        j = root["joint"]
+        J, N, C = _pos(spec, j), _pos(spec, root["next"]), _pos(spec, root["centre"])
+        r = _rad(spec, j)
+        L1 = float(np.linalg.norm(N - J))
+        d = _unit(N - J)
+        o_ = J - C
+        o_ = _unit(o_ - d * (o_ @ d))
+        fr = np.cross(d, o_)
+        fr = _unit(fr if fr @ [0, -1, 0] >= 0 else -fr)
+        top = J - d * 0.3 * r + o_ * 0.6 * r
+        beside = _beside(spec, root, d)
+        pf = J + d * (0.2 if beside else 0.15) * L1 + fr * 0.3 * r - o_ * 0.5 * r
+        pb = J + d * (0.18 if beside else 0.35) * L1 - fr * 0.3 * r - o_ * 0.5 * r
+        nrm = np.cross(pf - top, pb - top)
+        nrm = _unit(nrm if nrm @ d >= 0 else -nrm)
+        out.append({"label": j, "joint": j, "point": (top + pf + pb) / 3, "normal": nrm, "r": r})
+        ch = root["chain"]
+        for i in range(1, len(ch) - 1):
+            A, K, Cc = _pos(spec, ch[i - 1]), _pos(spec, ch[i]), _pos(spec, ch[i + 1])
+            nrm = _unit(_unit(K - A) + _unit(Cc - K))
+            out.append({"label": ch[i], "joint": ch[i], "point": K, "normal": nrm, "r": _rad(spec, ch[i])})
+    return out
+
+
+def _beside(spec: dict, root: dict, d: np.ndarray) -> bool:
+    """A limb hanging beside the body (an arm) rather than leaving the body's end (a leg): see _limb_root."""
+    C = _pos(spec, root["centre"])
+    nb = [bb["b"] if bb["a"] == root["centre"] else bb["a"] for bb in spec["bones"].values()
+          if root["centre"] in (bb["a"], bb["b"]) and bb.get("op", "add") == "add" and not bb.get("group")]
+    nb = [q for q in nb if q in spec["joints"] and "pos" in spec["joints"][q] and abs(_pos(spec, q)[0]) < CENTRE * _rad(spec, q)]
+    end = _unit(C - _pos(spec, max(nb, key=lambda q: _rad(spec, q)))) if nb else -d
+    return bool(d @ end < -0.5)
+
+
 def digit_fans(spec: dict) -> list[dict]:
     """[{"kit": "hand.L", "digits": [[root, k1, k2, ..., tip] joint names, across the fan], "thumb": [...] | None}]
     from the kits' digit chains (joints <prefix>_0<sfx> .. <prefix>_N<sfx>)."""
@@ -333,11 +374,7 @@ def _limb_root(spec: dict, surf: _Surface, root: dict, p: dict, o: _Out):
     # beside the body (an arm: it runs back along the body from the end it's rooted at) or leaving the body's end (a
     # leg; a quadruped's legs, across a level spine). The body's end direction at the root: from the hub's thickest
     # centre-line neighbour (the torso's other end) to the hub. s = 1 beside, -1 leaving
-    nb = [bb["b"] if bb["a"] == root["centre"] else bb["a"] for bb in spec["bones"].values()
-          if root["centre"] in (bb["a"], bb["b"]) and bb.get("op", "add") == "add" and not bb.get("group")]
-    nb = [q for q in nb if q in spec["joints"] and "pos" in spec["joints"][q] and abs(_pos(spec, q)[0]) < 0.25 * _rad(spec, q)]
-    end = _unit(C - _pos(spec, max(nb, key=lambda q: _rad(spec, q)))) if nb else -d
-    s = 1.0 if d @ end < -0.5 else -1.0
+    s = 1.0 if _beside(spec, root, d) else -1.0
     # a limb hanging beside the body (an arm) is framed by sheets of like weight in front and behind (pec, lat); a
     # limb leaving the body's end (a leg, a quadruped's leg) is driven from behind: the back mass dominates (glute,
     # triceps), the front is only a fold, the side cap is smaller
