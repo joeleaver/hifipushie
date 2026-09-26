@@ -437,7 +437,7 @@ Validate every exported GLB with the Khronos validator (gives 0 errors today). I
 `await v.validateBytes(new Uint8Array(fs.readFileSync(path)))`, print `.issues`. Blender's importer
 ignores glTF occlusion, so the Cycles preview can't show AO: look at the ORM/AO PNGs themselves.
 
-## Terrain (experimental; branch claude/terrain-llm-vocabulary-a74fe1)
+## Terrain (experimental; merged to main 2026-09-26)
 
 Goal (the user's, 2026-09-25): terrain an LLM can author in designer language, not raise/lower/flatten brushes.
 Three scales kept apart: the *implied world* (the brief's kind of terrain at real size), the *level footprint*
@@ -484,7 +484,7 @@ taller by ~0.6 cell of rise because the grid rounds lip and foot). Binary erosio
 protect earthworks in proportion (`masks["earthworks"]`). Keeping hard cliff cells from creeping made pinnacles
 (scattered hard cells stand): restore designed forms after erosion instead.
 
-**Plan C (agreed 2026-09-25): done 2026-09-26 on branch `terrain-plan-c`.** C5, the blind round through the tools
+**Plan C (agreed 2026-09-25): done 2026-09-26.** C5, the blind round through the tools
 (valley, farm, canyon, island; `workspace/c5_*/`), found layouts land and edits are easy, but at eye level none reads as
 its brief (smooth caldera walls, dome peaks, no sea or cone, a featureless plateau), plus trust leaks since fixed (see the
 Overboard card). Roads are judged as built with earthworks capped at 25 m, so several mountain roads now honestly FAIL:
