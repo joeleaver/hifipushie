@@ -231,8 +231,8 @@ def freeze(spec: dict) -> dict:
     hundreds of perturbed copies a fit compiles don't each re-seat them (a face kit and dozens of strokes
     made one iteration take minutes). Details stay where they are while the blockout moves; the fitted
     values are then applied to the real model, whose details regenerate."""
-    from . import kits, strokes
-    out = strokes.expand(strokes.seat_joints(kits.expand(spec)))
+    from . import anatomy, kits, strokes
+    out = strokes.expand(strokes.seat_joints(anatomy.expand(kits.expand(spec))))
     out.pop("kits", None)
     out.pop("strokes", None)
     return out

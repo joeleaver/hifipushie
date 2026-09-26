@@ -97,8 +97,8 @@ def geometry(spec: dict) -> dict:
 
 def expand_mirror(spec: dict) -> dict:
     """Return a copy of spec with kits and strokes expanded and every ".L" element mirrored to ".R"."""
-    from . import kits, strokes
-    spec = strokes.expand(strokes.seat_joints(kits.expand(geometry(spec))))
+    from . import anatomy, kits, strokes
+    spec = strokes.expand(strokes.seat_joints(anatomy.expand(kits.expand(geometry(spec)))))
     out = _tree_copy(spec)
     for kind in KINDS:
         out.setdefault(kind, {})

@@ -449,9 +449,17 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
                 flesh[i].append(_cone_piece(p, h, t, t0, t1))
             continue
         inside = [q for q in range(len(ids)) if _seg_dist(h, A[q], B[q]) < tol and _seg_dist(t, A[q], B[q]) < tol]
-        # else the rig bone nearest its middle: a curled finger's pieces find their phalanx, a tusk the head
-        q = inside[0] if inside else int(np.argmin(_seg_dist(0.5 * (h + t), A, B)))
-        flesh[ids[q]].append(p)
+        if inside:  # a curled finger's pieces find their phalanx
+            flesh[ids[inside[0]]].append(p)
+            continue
+        # else each quarter of it goes to the rig bone nearest that quarter's middle: a tusk is all the head's, but a
+        # sheet from the ribs to the arm (a lat) blends from the chest to the arm instead of dragging the ribs along
+        near = [int(np.argmin(_seg_dist(h + (k + 0.5) / 4 * (t - h), A, B))) for k in range(4)]
+        if len(set(near)) == 1:
+            flesh[ids[near[0]]].append(p)
+        else:
+            for k, q in enumerate(near):
+                flesh[ids[q]].append(_cone_piece(p, h, t, k / 4, (k + 1) / 4))
     for q, i in enumerate(ids):  # nothing of its own: a cone along its segment, as thick as its neighbours
         if not flesh[i]:
             have = [n for n, j in enumerate(ids) if any(x.kind == "cone" and "rb" in x.params for x in flesh[j])]

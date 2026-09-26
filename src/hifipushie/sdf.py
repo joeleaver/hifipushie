@@ -33,8 +33,10 @@ def sd_cone(p: np.ndarray, pr: dict) -> np.ndarray:
     fw, fh = pr["flat"]
     bw, bh = pr.get("bow", (0.0, 0.0))
     if bw or bh:  # a bowed log: the cross-section's centre follows a parabola, 0 at the ends, `bow` mid-way
-        t = np.clip(q[..., 1] / pr["len"], 0.0, 1.0)
-        sag = 4.0 * t * (1.0 - t)
+        # the centre line is a parabola along the bone and runs on along its tangent past the ends: clamped flat
+        # there, its slope jumped at each end plane and a crease crossed any surface near one (a bowed shoulder cap)
+        t = q[..., 1] / pr["len"]
+        sag = np.where(t < 0.0, 4.0 * t, np.where(t > 1.0, 4.0 * (1.0 - t), 4.0 * t * (1.0 - t)))
         q = np.stack([q[..., 0] - bw * sag, q[..., 1], q[..., 2] - bh * sag], -1)
     x, y, z = q[..., 0] / fw, q[..., 1], q[..., 2] / fh
     r1, r2, h = pr["ra"], pr["rb"], pr["len"]

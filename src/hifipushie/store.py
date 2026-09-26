@@ -16,7 +16,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 12  # bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 13  # bump when meshing changes, so cached builds are redone
 
 
 def _dir(name: str) -> Path:

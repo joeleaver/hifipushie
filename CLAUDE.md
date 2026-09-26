@@ -19,6 +19,14 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   Kit defaults keep details a few voxels wide at close-up resolution: sub-voxel creases render as zigzags.
   Chains (fingers, lips) are many short segments in one `group` (`sdf.units`): joined by hard min (or a
   small `join`), then blended into the body once. Per-segment smooth unions bulge at every joint.
+- `anatomy.py`: modelling lore by joint type instead of a kit per body part (`spec["anatomy"] = {}` opts in; per-joint
+  overrides). Limb roots are found from the skeleton (side chains of 2+ bones: next to a centre hub, or the chain's
+  inner end). Each gets a cap (one bowed, flattened bone over the joint's outer side: separate heads read as lumps),
+  and, beside the body (limb runs back along the body's axis: arms), pec/lat sheets ending on the limb's inner side
+  (the pit's folds); leaving the body's end (legs, a quadruped's legs), a round bowed mass behind (glute, triceps) and
+  no front sheet. The joint's bones slim to 0.8 r there. Sheet origins are seated by a ray from inside the torso
+  (`_exit`; from outside the fox's glute landed on its tail). Expands after kits, before strokes (`expand_mirror`,
+  `fit`, `paint`). Tried on troll, goblin (arms moved clear of the belly: `goblin_anat`), fox (`*_bare` / `*_anat`).
 - `strokes.py`: sculpting on the surface. A stroke's path is addressed on the kit-expanded, stroke-free body
   (out from a bone axis, or a raycast), resampled on a Catmull-Rom curve and re-seated, and becomes a
   "displace" or "flatten" blob: an op "modify" primitive (`sdf.MODS`) that reshapes the field combined so far
@@ -272,9 +280,19 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
   joint (0 and +-0.6 r) break at 5k (constraints closer than the quad size: the lattice can't fit) and work at 10k
   (4/4, error mean 1.33 mm, decimation 1.36). Rule: constrained loops no closer than ~1.5 local edges; at low
   budgets the crease loop alone, its neighbours follow.
-- Open: shoulders and hips (ball joints: a plane isn't the right curve; unconstrained there is a grid over the
-  deltoid), the face (eye and mouth rings are curves, not planes: generalise features to polylines cut into the
-  mesh), thin parts QuadriFlow drops (ears), then the shoulder weights.
+- Shoulders (2026-09-26): a plane can't cut an armhole (a hanging arm's plane runs into the torso). Loops on the level
+  curves of a harmonic field from the rig weights (patch `QF_FEATURE_IDS`: per-vertex curve ids, carried through
+  QuadriFlow's subdivision) exposed bad weights instead: the arm owned 42% of its own shoulder (the collar cone's
+  round end over the upper arm; the torso's radius set the blend width; the goblin's arm flesh sat 39 mm outside the
+  arm: `_cone_piece` ignored bones reached from their far end). Fixed in `rig.py` (bisector cuts, thinner-bone blend
+  width, piece direction; bones off every rig segment split in quarters). But constrained QuadriFlow runs on those
+  level curves stall in the integer stage (>10 min, elbows/knees too; plane cuts took seconds): unresolved.
+- The user then called the real problem: shoulders were balls pasted on bodies (troll and goblin), bad geometry to
+  rig. Asked for general modelling lore rather than kits: `anatomy.py` (see Layout). Next: the hinge rule (bony
+  point on the extensor side, flexor crease, flesh narrowing at the joint); hands and feet as presets over it;
+  loops placed from the anatomy (the cap's and folds' edges are the armhole); sheets skinned smoothly along their
+  length (four pieces hand over in steps: a fold on the pec's edge when the arm lifts); the pit still streaks under a
+  raised arm (LBS, as before anatomy). Face rings, ears QuadriFlow drops, the QuadriFlow stall: still open.
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**

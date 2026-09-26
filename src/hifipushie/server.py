@@ -38,6 +38,11 @@ Spec:
           (along local y), half thickness], "taper" 0..1 (narrower tip), "cup" m (edges lift to +z: an ear's
           hollow), "bend" m (the +y tip lifts to +z)
   kits:   {name: {"type": "hand" | "face", ...}}   parametric parts that expand into joints/bones/blobs
+  anatomy: {} turns on modelling lore by joint type (found from the skeleton): every limb root (shoulder, hip, a
+          quadruped's legs) gets a cap over the joint (deltoid, glute flare), the pit's folds (pec/lat beside the
+          body) or a round mass behind (glute, triceps, for a limb leaving the body's end), and the joint's bones
+          slim to bone size there, so limbs aren't balls plugged into the body. Per joint: {"shoulder.L": {"bulk",
+          "cap", "front", "back", "insert", "narrow", "blend", "off"}}. Model limbs clear of the torso for rigging.
   parts:  {name: {"shell"?: base part, "offset"?, "color"?}}; any element takes "part": name (default "body").
           Each part is a separate mesh (and material later): eyes, teeth, clothing. A shell part is its base
           pushed out by offset, cut to its own layer-0 adds (a garment's region); strokes on it make folds.

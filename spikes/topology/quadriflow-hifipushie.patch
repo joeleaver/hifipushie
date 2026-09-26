@@ -1,5 +1,5 @@
 diff --git a/src/main.cpp b/src/main.cpp
-index 18bc406..0836d22 100644
+index 18bc406..4d807ff 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
 @@ -1,3 +1,4 @@
@@ -11,7 +11,7 @@ index 18bc406..0836d22 100644
      t2 = GetCurrentTime64();
      printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
  
-+    if (getenv("QF_FEATURES")) {  // hifipushie: feature loops constrain orientation and position like boundaries
++    if (getenv("QF_FEATURES") || getenv("QF_FEATURE_IDS")) {  // hifipushie: feature loops constrain orientation and position like boundaries
 +        Hierarchy& mRes = field.hierarchy;
 +        mRes.clearConstraints();
 +        int n = 0;
@@ -61,7 +61,7 @@ index 1c59ad0..f918417 100644
              entries[i][i] = lambda;
          }
 diff --git a/src/parametrizer-mesh.cpp b/src/parametrizer-mesh.cpp
-index 19effe9..2a8806f 100644
+index 19effe9..dce6800 100644
 --- a/src/parametrizer-mesh.cpp
 +++ b/src/parametrizer-mesh.cpp
 @@ -1,3 +1,5 @@
@@ -70,10 +70,18 @@ index 19effe9..2a8806f 100644
  #include "config.hpp"
  #include "dedge.hpp"
  #include "field-math.hpp"
-@@ -51,6 +53,12 @@ void Parametrizer::Initialize(int faces) {
+@@ -51,6 +53,20 @@ void Parametrizer::Initialize(int faces) {
      for (int i = 0; i < V.cols(); ++i) {
          rho[i] = 1;
      }
++    if (const char* fn = getenv("QF_FEATURE_IDS")) {  // hifipushie: feature curve id per input vertex
++        extern std::vector<int> g_feature_id;
++        g_feature_id.assign(V.cols(), -1);
++        FILE* f = fopen(fn, "r");
++        for (int i = 0; i < V.cols() && f; ++i)
++            if (fscanf(f, "%d", &g_feature_id[i]) != 1) break;
++        if (f) fclose(f);
++    }
 +    if (const char* fn = getenv("QF_SIZING")) {  // hifipushie: relative edge length per input vertex
 +        FILE* f = fopen(fn, "r");
 +        for (int i = 0; i < V.cols() && f; ++i)
@@ -83,10 +91,22 @@ index 19effe9..2a8806f 100644
  #ifdef PERFORMANCE_TEST
      scale = sqrt(surface_area / (V.cols() * 10));
  #else
-@@ -123,6 +131,28 @@ void Parametrizer::ComputeMeshStatus() {
+@@ -123,6 +139,40 @@ void Parametrizer::ComputeMeshStatus() {
  
  void Parametrizer::ComputeSharpEdges() {
      sharp_edges.resize(F.cols() * 3, 0);
++    extern std::vector<int> g_feature_id;
++    if (!g_feature_id.empty()) {  // hifipushie: edges joining two vertices of the same feature curve
++        int count = 0;
++        for (int i = 0; i < F.cols() * 3; ++i) {
++            int a = g_feature_id[F(i % 3, i / 3)], b = g_feature_id[F((i + 1) % 3, i / 3)];
++            if (a >= 0 && a == b) {
++                sharp_edges[i] = 1;
++                ++count;
++            }
++        }
++        printf("feature half-edges: %d\n", count);
++    }
 +    if (const char* fn = getenv("QF_FEATURES")) {  // hifipushie: feature loops, as planes cut into the mesh
 +        FILE* f = fopen(fn, "r");
 +        double p[3], n[3], r;
@@ -113,15 +133,28 @@ index 19effe9..2a8806f 100644
      if (flag_preserve_boundary) {
          for (int i = 0; i < sharp_edges.size(); ++i) {
 diff --git a/src/subdivide.cpp b/src/subdivide.cpp
-index c408bbc..a01eaac 100644
+index c408bbc..70adb59 100644
 --- a/src/subdivide.cpp
 +++ b/src/subdivide.cpp
-@@ -71,7 +71,7 @@ void subdivide(MatrixXi &F, MatrixXd &V, VectorXd& rho, VectorXi &V2E, VectorXi
+@@ -10,6 +10,8 @@
+ 
+ namespace qflow {
+ 
++std::vector<int> g_feature_id;  // hifipushie: feature curve id per vertex (-1 none), carried through subdivision
++
+ void subdivide(MatrixXi &F, MatrixXd &V, VectorXd& rho, VectorXi &V2E, VectorXi &E2E, VectorXi &boundary,
+                VectorXi &nonmanifold, double maxLength) {
+     typedef std::pair<double, int> Edge;
+@@ -71,7 +73,11 @@ void subdivide(MatrixXi &F, MatrixXd &V, VectorXd& rho, VectorXi &V2E, VectorXi
  
          /* Update V */
          V.col(vn) = (V.col(v0) + V.col(v1)) * 0.5f;
 -        rho[vn] = 0.5f * (rho[v0], rho[v1]);
 +        rho[vn] = 0.5f * (rho[v0] + rho[v1]);
++        if (!g_feature_id.empty()) {
++            if ((int)g_feature_id.size() <= vn) g_feature_id.resize(vn + 1, -1);
++            g_feature_id[vn] = g_feature_id[v0] == g_feature_id[v1] ? g_feature_id[v0] : -1;
++        }
          nonmanifold[vn] = false;
          boundary[vn] = is_boundary;
  

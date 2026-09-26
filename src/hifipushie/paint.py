@@ -858,9 +858,9 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
 
 def _seated_paths(spec: dict, name: str, ly: dict) -> list[dict]:
     """The layer's path seated on the surface, as stroke samples (pts, nrm, width per sample), one per copy."""
-    from . import kits, strokes
+    from . import anatomy, kits, strokes
     from .spec import geometry
-    base = strokes.seat_joints(kits.expand(geometry(spec)))
+    base = strokes.seat_joints(anatomy.expand(kits.expand(geometry(spec))))
     base = copy.copy(base)
     base.pop("strokes", None)
     st = {"op": "clay", "path": ly["path"], "width": ly.get("width", 0.01), "depth": 0.001}
