@@ -133,6 +133,9 @@ def render(job):
     sh.studio_light = "clay_studio.exr"
     sh.color_type = "OBJECT"
     sh.show_cavity = False
+    if job.get("xray"):
+        sh.show_xray = True
+        sh.xray_alpha = job["xray"]
     scene.world = scene.world or bpy.data.worlds.new("w")
     scene.world.color = (0.22, 0.23, 0.26)
     scene.view_settings.view_transform = "Standard"

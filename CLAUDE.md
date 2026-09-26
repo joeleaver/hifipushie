@@ -307,6 +307,17 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
   the first closed cut (shoulder 0.6 r, hip 0.4 r) they close, but constraining them breaks other loops, differently
   left and right and per budget: QuadriFlow's integer layout drops feature loops unreliably past a few. Sized runs also
   overshoot their face target ~4x with cuts (the calibration rerun then lands on a coarse lattice).
+- Template wrap (2026-09-26, the user agreed; `spikes/topology/wrap.py`, template notes in `spikes/topology/template/`):
+  Blender Studio's CC0 "Human Base Meshes" stylized male (12.5k quads, A-pose) carried onto troll_anat through
+  matching skeletons (per segment: rotation, stretch, radius ratio per angle at 5 stations along the bone; hands and
+  feet scaled uniformly by wrist/ankle thickness), face landmarks by a Gaussian RBF (face kit eyes, nose tip, mouth,
+  ear joints), shot along normals onto each vertex's own region (the target prims nearest its segment and the
+  neighbours: hands landed on thighs otherwise), relaxed. Deep interiors in the face (mouth bag, eye sockets) are
+  kept, not projected. Result: 10/10 closed rings at shoulders, hips, elbows, knees, ankles, symmetric; the shoulder
+  deforms with a real armhole loop; mean error 1.85 mm. Open: ears (human ears onto blade ears make flaps by the
+  neck), eyelids tangle, the mouth interior pokes through the lips, toes collapse on club feet, two flaps behind
+  the armpits; hands need finger correspondences (the goblin has 3 fingers); a quadruped needs its own template;
+  25k tris is dense for a game (un-subdividing the template isn't clean).
 - Decimation stays for environments and props either way.
 
 **Then, in the order the user saw them:**

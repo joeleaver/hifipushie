@@ -3,3 +3,5 @@
 !*.py
 !*.patch
 !README.md
+!template/
+!template/*.json
