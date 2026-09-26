@@ -833,8 +833,14 @@ def set_terrain(name: str, spec: dict | None = None, patch: dict | None = None, 
         raise ValueError('a terrain needs "extent": [[x0, y0], [x1, y1]] (see guide(topic="terrain"))')
     from . import terrain
     terrain.normalise(new)  # cheap checks (units, named sections) before saving
+    prev = tt.load(name) if (tt._dir(name) / "spec.json").exists() else None
     v = tt.save(name, new, note or ("set_terrain" if spec is not None else "patch"))
-    return f"saved terrain {name} v{v}\n" + tt.report(name)
+    try:
+        rep = tt.report(name)
+    except Exception:  # a spec that doesn't build isn't kept: the version and spec.json go back as they were
+        tt.unsave(name, v, prev)
+        raise
+    return f"saved terrain {name} v{v}\n" + rep
 
 
 @mcp.tool(structured_output=False)

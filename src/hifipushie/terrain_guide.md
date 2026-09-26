@@ -68,8 +68,10 @@ and the `"story"`.
   side. An open side isn't fixed, so the ground carries on as it goes (the default).
 
 ## The big shapes
-- **peaks** `{"name": {"at": [x, y], "h": z, "radius"?: m}}`. A peak on no ridge is a lone hill or knoll with a
-  rounded top of that radius.
+- **peaks** `{"name": {"at": [x, y], "h": z, "radius"?: m}}`. A peak on no ridge is a lone hill or knoll: `radius`
+  is its rounded TOP (not its footprint); its flanks fall at `flanks` degrees (default 18) to the ground, or give its
+  footprint directly with `base_radius`. The report ends with the frame's highest ground and warns when it's nothing
+  you placed.
 - **cols** (low points on a ridge) have the same shape.
 - **ridges** `{"name": {"through": [peak/col | "ridge@0.4" | [x, y, z], ...], "crest": "arete" | "rounded"}}`. A
   ridge that ends where it starts is **closed**: a ring round a basin or crater.
@@ -121,11 +123,14 @@ and the `"story"`.
   ```
   "sea": {"level": 0, "land"?: zone, "wander": 0.3, "depth": 30, "shore": "rocky" | "beach" | "cliffs",
           "cliffs"?: {"height": m | [lo, hi], "except": [addresses/zones/coves], "only": [...]},
-          "beaches"?: {name: {"at": address, "length": m}},
-          "coves"?: {name: {"at": address | "south", "width": m, "depth": m, "beach": true, "apron": m}}}
+          "beaches"?: {name: {"at": address, "length": m, "at_foot": false, "width": 35}},
+          "coves"?: {name: {"at": address | "south", "width": m, "depth": m, "beach": true, "apron": m,
+                            "valley": river | address}}}
   ```
   - Where the sea is: outside the `land` zone (an island: `{"near": [x, y], "radius": m}`; a coast: `"north"`), or
     without one, the ground below `level` that reaches the frame's edge (tilt the frame down toward the sea).
+  - The sea is the low ground the land falls to: an island needs no `border`, and a ring of peaks (a crater) inside
+    the land slopes down to the sea all round, a cone.
   - The coastline wanders a little (`wander`, 0 to keep the zone's outline). The seabed shelves down to `depth`.
   - Shore forms, per stretch: **rocky** (the land dropping into the water), **beach** (the land graded down to sand at
     the water), **cliffs** (the land ending in a ~70 deg face; where the land is lower than the asked height it ramps up
@@ -133,13 +138,17 @@ and the `"story"`.
     an address inland (a headland's peak) means the coast nearest it.
   - The cliffs' height is the land's height where it meets the sea: a peak whose flanks reach past the coast makes
     cliffs as tall as the flank there (the report measures them and warns). Size the land and the peaks together.
+  - **Beaches** go on the coast nearest their `at`. A beach grades the land down to the water; with `"at_foot": true`
+    the cliff stays and a strip of sand `width` metres wide lies at its foot (a hidden cove beach).
   - **Coves** bite a horseshoe bay into the land at a compass side or the coast nearest an address: a mouth narrower
     than the bay, headlands either side, a beach at the head and behind it an `apron` of gentle ground (default a third
     of the width) walled by a steep scar: room for a harbour. A cove is an address; a site `"at": "cove"` stands on its
-    apron just above the water.
+    apron just above the water. `"valley"`: the cove is the drowned mouth of a valley (a river or an address): the scar
+    opens toward it at a road's grade, so a lane can come down to the harbour.
   - The sea is a lake named `"sea"` to everything else: `"sea.south_shore"` (the coast on the land's south side),
-    `"see": ["sea"]`, water in the export. Zones `"beach"`, `"cliffs"`, `"coast"` and `"sea"` work in cover
-    (`{"type": "sand", "in": "beach"}`) and routes.
+    `"see": ["sea"]` (or a cove: its water), water in the export. Zones `"beach"`, `"cliffs"`, `"coast"` and `"sea"`
+    work in cover (`{"type": "sand", "in": "beach"}`), rugged and routes; `{"near": "sea", "radius": m}` is within that
+    distance of its water.
   - Views and sight lines from out at sea stand on the water.
 - **fords**: `{"name": {"on": "river@0.5", "width": m, "depth": m}}`: a shallow crossing. Rivers carry water; routes
   cross at fords, and anywhere else the report says a bridge is needed. River water width: `rivers.x.water` (0 for a

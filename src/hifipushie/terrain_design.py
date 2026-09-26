@@ -114,8 +114,12 @@ def region(T, r) -> np.ndarray:
     if "near" in r:
         rad = r.get("radius", 200 * T.k)
         ln = T.lines.get(r["near"]) or T.routes.get(r["near"]) if isinstance(r["near"], str) else None
+        lk = T.lakes.get(r["near"]) if isinstance(r["near"], str) else None
+        wet = (T.lake_id == lk["id"]) if lk is not None and hasattr(T, "lake_id") else None
         if ln is not None:  # near a ridge, river or route: along its whole length
             dist = cKDTree(ln.xy).query(T.P)[0].reshape(T.X.shape)
+        elif wet is not None and wet.any():  # near a lake or the sea: its water's edge (a point far out at sea found
+            dist = ndimage.distance_transform_edt(~wet) * T.cell  # nothing on land)
         else:
             xy = T.address(r["near"])[0]
             dist = np.hypot(T.X - xy[0], T.Y - xy[1])
@@ -424,7 +428,9 @@ def _site(T, name, s):
         asked = float(s.get("fall", 0.0))  # a fall the designer gave is the least it gets
         for f in [asked] + [f for f in (0.02, 0.04, 0.06, 0.08, 0.1) if f > asked]:
             T.H = keep_h * (1 - w) + surface(f, dvec) * w
-            seen = sum((lake_seen(T, p_.tolist(), tgt) > 0) if tgt in T.lakes else
+            cove = getattr(T, "sea", None) and tgt in T.sea["coves"]
+            seen = sum((lake_seen(T, p_.tolist(), "sea", mask=T.sea["coves"][tgt]["mask"]) > 0) if cove else
+                       (lake_seen(T, p_.tolist(), tgt) > 0) if tgt in T.lakes else
                        (sight(T, p_.tolist(), tgt)["visible"] > 0) for p_ in spots)
             if best is None or seen > best[1]:
                 best = (f, seen)
@@ -999,12 +1005,13 @@ def _eye(T, eye_ref, eye_height):
     return exy, eh + eye_height
 
 
-def lake_seen(T, eye_ref, lake, eye_height=1.7, angles=False):
+def lake_seen(T, eye_ref, lake, eye_height=1.7, angles=False, mask=None):
     """The share of a lake's surface visible from the eye (sampled water cells, each tested by a sight line); with
     angles, also how tall the visible water stands in the view (degrees from its nearest to its farthest seen point:
     at a grazing angle a lake can be 40% "seen" and still be a hairline) and how far below the horizon it lies."""
     exy, e = _eye(T, eye_ref, eye_height)
-    wet = np.nonzero((T.lake_id == T.lakes[lake]["id"]).ravel())[0]
+    wet = (T.lake_id == T.lakes[lake]["id"]) if mask is None else (T.lake_id == T.lakes[lake]["id"]) & mask
+    wet = np.nonzero(wet.ravel())[0]
     if not len(wet):
         return (0.0, 0.0, 0.0) if angles else 0.0
     pick = wet[np.linspace(0, len(wet) - 1, min(300, len(wet))).astype(int)]
@@ -1017,6 +1024,7 @@ def lake_seen(T, eye_ref, lake, eye_height=1.7, angles=False):
         dd = u * D
         p = exy + (txy - exy) * u[:, None]
         g = np.where(np.isnan(T.water.ravel()[_cells(T, p)]), T.sample(p), -np.inf)  # water doesn't block water
+        g = np.where(dd < 1.5 * T.cell, -np.inf, g)  # the ground the eye stands on isn't in the way (a crater rim hid its lake)
         line = e + (top - e) * u
         ok = not (g > line + 0.05).any()
         seen += ok
@@ -1164,11 +1172,13 @@ def _see(T, name, it):
     want = it.get("min_visible", 0)
     prom = it.get("min_prominence")
     for tgt in it["see"]:
-        lake = isinstance(tgt, str) and tgt in T.lakes
+        cove = isinstance(tgt, str) and getattr(T, "sea", None) is not None and tgt in T.sea["coves"]
+        lake = isinstance(tgt, str) and (tgt in T.lakes or cove)
         got = []
         for label, xy in spots:
-            if lake:
-                v, tall, dip = lake_seen(T, xy, tgt, eye, angles=True)
+            if lake:  # (a cove is the sea's water in its bay)
+                v, tall, dip = (lake_seen(T, xy, "sea", eye, angles=True, mask=T.sea["coves"][tgt]["mask"]) if cove
+                                else lake_seen(T, xy, tgt, eye, angles=True))
                 got.append((label, v, v > 0, None, tall, dip))
             else:
                 r = sight(T, xy, tgt, eye)

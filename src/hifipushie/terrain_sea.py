@@ -153,10 +153,19 @@ def apply(T):
     for name, cv in coves.items():
         if (S.get("coves") or {})[name].get("beach", True):
             beaches[f"{name}_beach"] = {"at": cv["head"], "length": 0.8 * cv["width"]}
+    foot = np.zeros(T.X.shape)  # beaches at the foot of the cliffs: the cliff stays, sand lies below it
+    foot_w = []
     for name, b in beaches.items():
         L = float(b.get("length", 150 * k))
         xy = T.address(b["at"])[0]
-        wb = np.maximum(wb, smoothstep(0.6 * L, 0.4 * L, np.hypot(T.X - xy[0], T.Y - xy[1])))
+        cpts = np.stack([T.X[coast], T.Y[coast]], 1)  # on the coast nearest the address (an inland point missed it)
+        xy = cpts[int(np.argmin(np.linalg.norm(cpts - xy, axis=1)))]
+        m = smoothstep(0.6 * L, 0.4 * L, np.hypot(T.X - xy[0], T.Y - xy[1]))
+        if b.get("at_foot"):
+            foot = np.maximum(foot, m)
+            foot_w.append((m, float(b.get("width", 35.0))))
+        else:
+            wb = np.maximum(wb, m)
     # smooth the choice along the coast, then carry it inland and offshore from each cell's nearest coast point
     smooth = max(1.5, 40 * k / T.cell)
     wc_c = ndimage.gaussian_filter(np.where(coast, wc, 0.0), smooth) / np.maximum(
@@ -164,6 +173,11 @@ def apply(T):
     wb_c = ndimage.gaussian_filter(np.where(coast, wb, 0.0), smooth) / np.maximum(
         ndimage.gaussian_filter(coast.astype(float), smooth), 1e-6)
     wc, wb = np.clip(wc_c[cy, cx], 0, 1), np.clip(wb_c[cy, cx], 0, 1)
+    if foot.any():
+        foot_c = ndimage.gaussian_filter(np.where(coast, foot, 0.0), smooth) / np.maximum(
+            ndimage.gaussian_filter(coast.astype(float), smooth), 1e-6)
+        foot = np.clip(foot_c[cy, cx], 0, 1)
+        wc = np.maximum(wc, foot)  # the cliff stands behind its foot beach
     wc = np.minimum(wc, 1 - wb)
     if shore == "beach":  # a beach coast: wherever it isn't cliffs
         wb = np.maximum(wb, 1 - wc)
@@ -192,9 +206,23 @@ def apply(T):
     # rocky: the land as it is, kept dry at the shore, dropping into the water
     rocky = np.where(sd > 0, np.maximum(H, level + 0.4 + 0.2 * sd), np.minimum(H, level - 0.8 + 0.8 * sd))
     onshore = wc * raised + wb * beach_land + (1 - wc - wb) * rocky
-    offshore = np.maximum(sea_floor, wc * cliff_face + wb * np.minimum(beach, level - 0.6) + (1 - wc - wb) * -np.inf)
-    offshore = np.where(np.isfinite(offshore), offshore, sea_floor)
-    new = np.where(sd > 0, onshore, np.minimum(offshore, np.where(sd > -3 * T.cell, level - 0.3, np.inf)))
+    # offshore of a cliff its face stands in the water, from the top down to the sea floor (clamping the first cells
+    # offshore under the water had made every cliff a plumb wall at the coastline)
+    below = np.minimum(sea_floor, np.where(sd > -3 * T.cell, level - 0.3, np.inf))
+    offshore = wc * np.maximum(cliff_face, sea_floor) + wb * np.minimum(np.maximum(beach, sea_floor), level - 0.6) \
+        + (1 - wc - wb) * below
+    # beaches at the foot of cliffs: a strip of sand below the face, the cliff standing behind it
+    if foot.any():
+        run = np.maximum(top_here - level, 0) / math.tan(CLIFF)
+        fw = np.full(T.X.shape, 35.0)
+        for m, w in foot_w:
+            fw = np.where(m > 0.3, w, fw)
+        x = (-sd - run) / fw  # 0 at the face's foot, 1 at the sand's seaward edge
+        # dry sand most of the way out (1.8 -> 1.0 m), then shelving into the water
+        sand = np.where(x < 0.75, level + 1.8 - 1.07 * x, level + 1.0 - 7.0 * (x - 0.75))
+        offshore = np.where(foot > 0.5, np.where(x < 0, np.maximum(cliff_face, sand), np.maximum(sand, sea_floor)),
+                            offshore)
+    new = np.where(sd > 0, onshore, offshore)
     # a cove's head: a gentle apron behind its beach (the floor of the old collapse, room for a harbour), walled by the
     # scar where it meets higher ground; only ever cut down, and only inland of the head
     for name, cv in coves.items():
@@ -208,14 +236,25 @@ def apply(T):
         # a headwall steeper than any flank, so it meets the ground within a short run (at 38 deg it ran up a 28 deg
         # cone to the summit)
         scar = floor + math.tan(math.radians(62)) * np.maximum(dist - ap, 0)
+        opening = (S.get("coves") or {})[name].get("valley")
+        if opening:  # the drowned mouth of a valley: the scar opens toward it, a road can come down (10%)
+            tgt = T.address(opening)[0] if not (isinstance(opening, str) and opening in T.lines) else None
+            line = T.lines[opening].xy if tgt is None else np.linspace(hd, tgt, 50)
+            from scipy.spatial import cKDTree
+            dl = cKDTree(line).query(T.P)[0].reshape(T.X.shape)
+            half = 0.25 * cv["width"]
+            gentle = floor + 0.10 * np.maximum(dist - ap, 0)
+            open_w = smoothstep(2 * half, half, dl)
+            scar = scar * (1 - open_w) + np.maximum(gentle, scar * 0 + gentle) * open_w
         new = np.where((sd > 0) & ahead, np.minimum(new, scar), new)
         cv["apron"] = ap
-    new = np.where(sd > 0, np.maximum(new, level + 0.3), np.minimum(new, level - 0.3))  # the coastline is where it is
+    cliffish = (wc > 0.5) | (foot > 0.5)  # (a cliff's face and its foot's sand stand offshore of the coastline)
+    new = np.where(sd > 0, np.maximum(new, level + 0.3), np.where(cliffish, new, np.minimum(new, level - 0.3)))
     T.H = new
     face = (sd < 0) & (sd > -((hi_h + depth) / math.tan(CLIFF) + 2 * T.cell)) & (wc > 0.5)
     T.hard |= face
     T.hardness = np.where(face, np.minimum(T.hardness, 0.05), T.hardness)
-    T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "coves": coves, "want": want,
+    T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "foot": foot, "coves": coves, "want": want,
              "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches)}
     T.masks.setdefault("coast", np.zeros(T.X.shape))
     T.masks["coast"] = np.maximum(T.masks["coast"], smoothstep(4 * T.cell, 0, np.abs(sd)))
@@ -239,8 +278,9 @@ def regions(T, name):
     if name == "sea":
         return (~np.isnan(T.water) & (T.lake_id == T.lakes["sea"]["id"])).astype(float)
     if name == "beach":
-        return (S["wb"] * smoothstep(S["beach_width"] * 1.6, S["beach_width"], S["sd"]) * (S["sd"] > -S["beach_width"])
-                * np.isnan(T.water))
+        graded = S["wb"] * smoothstep(S["beach_width"] * 1.6, S["beach_width"], S["sd"]) * (S["sd"] > -S["beach_width"])
+        at_foot = (S["foot"] > 0.5) & (S["sd"] < 0) & (T.H < S["level"] + 2.5)  # sand below the cliffs
+        return np.maximum(graded, at_foot) * np.isnan(T.water)
     if name == "cliffs":
         return S["wc"] * smoothstep(-4 * T.cell, 0, S["sd"]) * smoothstep(3 * T.cell, 0, S["sd"])
     if name == "coast":
@@ -278,12 +318,13 @@ def report(T):
                               f"(up to {h.max():.0f}): the land is that high where it meets the sea (a peak's flanks reaching "
                               f"past the coast). Widen the land, or let the peak's flanks come lower (a wider radius or "
                               f"gentler flanks); the tool won't cut the land down under what you placed")
-    bc = coast & (S["wb"] > 0.5)
+    bc = coast & ((S["wb"] > 0.5) | (S["foot"] > 0.5))
     if bc.any():
         # dry ground within 2.5 m of the water, next to the beach coast: its area over the beach's length is its width
-        low = np.isnan(T.water) & (T.H - S["level"] < 2.5) & (S["wb"] > 0.5) & (S["sd"] < 6 * S["beach_width"])
+        low = (np.isnan(T.water) & (T.H - S["level"] < 2.5) & ((S["wb"] > 0.5) | (S["foot"] > 0.5))
+               & (S["sd"] < 6 * S["beach_width"]))
         lab, _ = ndimage.label(low)
-        ids = np.unique(lab[bc & low])
+        ids = np.unique(lab[ndimage.binary_dilation(bc, iterations=int(4 + 60 / T.cell)) & low])
         sand = np.isin(lab, ids[ids > 0]).sum() * T.cell ** 2
         length = bc.sum() * T.cell
         out.append(f"beaches (measured): {length:.0f} m of beach coast; the dry sand within 2.5 m of the water averages "

@@ -74,6 +74,16 @@ def save(name: str, spec: dict, note: str = "") -> int:
     return version
 
 
+def unsave(name: str, version: int, prev: dict | None):
+    """Take back a version that didn't build."""
+    d = _dir(name)
+    (d / "history" / f"{version:04d}.json").unlink(missing_ok=True)
+    if prev is None:
+        (d / "spec.json").unlink(missing_ok=True)
+    else:
+        (d / "spec.json").write_text(json.dumps(prev, indent=1))
+
+
 def history(name: str) -> list[dict]:
     out = []
     for p in sorted((_dir(name) / "history").glob("*.json")):

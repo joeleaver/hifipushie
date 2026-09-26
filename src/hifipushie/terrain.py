@@ -266,9 +266,9 @@ class Terrain:
             self._fixed_river |= m
         self.H0 = self.H.copy()
         self._texture()
-        design.rugged(self)
         from . import terrain_sea
         terrain_sea.apply(self)  # the sea and its coast: before lakes, sites and routes, which use its shores
+        design.rugged(self)  # (after the sea: its zones, "cliffs" and "coast", are places to make rugged)
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         design.apply(self)
@@ -438,6 +438,24 @@ class Terrain:
         # floor makes a walled mesa) but a dome raised on whatever ground is there, after the base (_hills)
         on_ridge = {p for r in (self.spec.get("ridges") or {}).values() for p in r["through"] if isinstance(p, str)}
         self._lone = [n for n in self.points if n not in on_ridge]
+        sea = self.spec.get("sea")
+        if sea:  # the sea is low ground: the land falls to it (a ring of peaks with nothing low around it stood as a
+            # plateau at its basin floor's height)
+            lvl = float(sea.get("level", 0.0))
+            if "land" in sea:
+                from . import terrain_design as design
+                try:
+                    out = design.region(self, sea["land"]) < 0.5
+                except (AttributeError, ValueError):  # a land zone made from the ground itself: not yet
+                    out = None
+                if out is not None:
+                    out &= ~high_fix
+                    low_fix |= out
+                    low[out] = lvl - 0.5 * float(sea.get("depth", 30.0))
+            elif not low_fix.any():
+                for sl in ((0, slice(None)), (-1, slice(None)), (slice(None), 0), (slice(None), -1)):
+                    low_fix[sl] = True
+                    low[sl] = lvl - float(sea.get("depth", 30.0))
         plain = not low_fix.any() and not high_fix.any()  # a tile of open ground: a plain at the base height (+ tilt, hills)
         if not low_fix.any() and not plain:
             raise ValueError("nothing low: add a river or a basin, or give the frame's edge a height (\"border\")")
@@ -545,6 +563,8 @@ class Terrain:
                 continue
             top = float(p.get("radius", max(0.02 * self.size, 1.5 * self.cell)))
             foot = top + rise / math.tan(math.radians(p.get("flanks", 18)))
+            if p.get("base_radius"):  # its footprint, given directly: the flanks follow
+                foot = max(float(p["base_radius"]), top + self.cell)
             u = np.clip((d - top) / (foot - top), 0, 1)
             H = H + rise * 0.5 * (1 + np.cos(np.pi * u)) * (d < foot)  # a smooth dome: level top, soft foot
         return H
@@ -853,7 +873,9 @@ class Terrain:
         return float(self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) <= r].max())
 
     def height(self, xy, H=None):
-        H = self.H if H is None else H
+        H = getattr(self, "H", None) if H is None else H
+        if H is None:  # before the ground exists (zones for the base itself): no height yet
+            return float("nan")
         return float(self.sample(np.atleast_2d(xy), H)[0])
 
     def sample(self, xy, H=None):
@@ -1103,6 +1125,7 @@ class Terrain:
             out.append(f"lake {name}: level {lk['level']:.0f} m, {lk.get('area', 0) / 1e4:.1f} ha, "
                        f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water")
         out += design.report(self)
+        out += self._highest()
         out += self._drainage()
         out += design.intent(self)
         if self.warnings:
@@ -1133,6 +1156,27 @@ class Terrain:
         text = re.sub(r"(-?[\d.]+) m2\b", lambda m: f"{num(float(m[1]), True)} sq {name}", text)
         text = re.sub(r"(-?[\d.]+) m\b", lambda m: f"{num(m[1])} {name}", text)
         return head + text
+
+    def _highest(self):
+        """The frame's highest ground, and whether it's something the designer placed (the export's height range showed
+        an unauthored 134 m ridge in a coast of 70 m clifftops)."""
+        k = int(np.argmax(self.H))
+        xy, z = self.P[k], float(self.H.ravel()[k])
+        line = f"highest ground: {z:.0f} m at [{xy[0]:.0f}, {xy[1]:.0f}]"
+        pk = {**(self.spec.get("cols") or {}), **(self.spec.get("peaks") or {})}
+        near = [n for n, (p, h) in self.points.items()
+                if np.linalg.norm(p - xy) < max(1.5 * float(pk.get(n, {}).get("radius", 0)), 200 * self.k, 5 * self.cell)]
+        near += [L.name for L in self.lines.values() if L.kind == "ridge"
+                 and cKDTree(L.xy).query(xy)[0] < max(150 * self.k, 4 * self.cell)]
+        top_authored = max([h for _, h in self.points.values()] + [float(L.h.max()) for L in self.lines.values()
+                                                                   if L.kind == "ridge"] + [-np.inf])
+        if near:
+            return [line + f" ({', '.join(near[:2])})"]
+        self.warnings.append(line + " is nothing you placed" + (f", {z - top_authored:.0f} m above your highest point"
+                                                             if np.isfinite(top_authored) and z > top_authored else "")
+                             + ": the tilt, a frame edge or automatic divides/ribs made it; probe it, or lower it with "
+                               "\"border\" or the tilt")
+        return [line + " (unauthored)"]
 
     def _drainage(self):
         """Pits (water can't leave, not a lake) and big unauthored streams (flow gathering away from the rivers)."""
