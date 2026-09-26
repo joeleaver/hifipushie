@@ -198,6 +198,12 @@ and the `"story"`.
   "max_earthworks": 25}`. Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
   report judges the road on the ground as built and says where it fails, where its bed ends off its stop (a cliff band
   in the way), and when no way at its grade existed at all.
+  - Cliffs (over 50 deg) are walls to a route. Where they close a route's stops off from each other, it cuts a **break**:
+    switchback legs at the route's grade across the cliff where it is lowest and nearest the way, as long as the cliff
+    runs on beside the crossing, the ground shaped into benches with rock cut between them (a canyon wall trail).
+    Breaks that don't open a way are taken out again. `"max_break": 250` (tallest cliff to break), `"leg": m` (longest
+    leg), `"breaks": false` (none: a road that must go round). A cove's scar walls in its apron: open the cove's
+    `"valley"` toward where the route goes.
 - **walls**: unclimbable edges around a zone where no basin gives you one.
   `{"around": zone, "min_slope": 45, "height": m, "except": [addresses or passes]}`. The ground just outside is
   raised to make them (a little taller than `height`: the grid rounds a wall's lip and foot). The check walks straight
