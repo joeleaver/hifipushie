@@ -84,22 +84,75 @@ QUESTIONS = [
     {"id": "enclosed", "question": "Can the player walk out, or is it closed in?", "options": {
         "open": dict(enclosed="open"), "partly closed in": dict(enclosed="partly"),
         "closed in (you can't climb out)": dict(enclosed="closed")}},
+    {"id": "shape", "question": "What's its overall shape, seen from above?", "options": {
+        "a long valley between ridges": dict(shape="valley"), "a bowl or ring": dict(shape="bowl"),
+        "one big mountain or cone": dict(shape="cone"), "high flat ground cut by gorges": dict(shape="cut"),
+        "open rolling ground": dict(shape="rolling"), "a strip along water": dict(shape="shore")}},
+]
+
+# how each shape is built from the vocabulary (said in the report, so the spec's author reaches for the right nouns)
+SHAPES = {
+    "valley": "rivers down the middle with ridges either side (or a basin inside a closed ridge, open at one end by a pass)",
+    "bowl": "a basin inside a closed ridge (its walls are the mountainsides), a lake as its falls_to",
+    "cone": "a lone peak with a big radius and gentle flanks; a crater is a basin inside a small closed ridge on top",
+    "cut": "a plateau at world.base with canyons cut along rivers, mesas standing on it",
+    "rolling": "lone hills (peaks with no ridge) and a tilt, with rugged patches",
+    "shore": "a lake at the base level reaching the frame's edge stands in for the water (there's no sea yet)",
+}
+
+# what the vocabulary can't build yet: said up front, before anyone spends a round on it
+LIMITS = [
+    (("sea", "ocean", "coast", "beach", "island", "bay", "tide", "fjord", "seashore", "atoll", "lagoon", "reef"),
+     "no sea yet: water is lakes and rivers; a lake at the base level reaching the frame's edge stands in for it, "
+     "with no beaches, waves or shoreline forms (a wall around the water can make sea cliffs)"),
+    (("volcano", "volcanic", "lava", "cone", "caldera"),
+     "no volcano forms yet: no cone profile, lava flows or crater rims of their own; a lone peak with a basin inside a "
+     "small closed ridge is the nearest, and a lava flow is a rounded ridge with rock cover"),
+    (("cave", "arch", "overhang", "tunnel"),
+     "the ground is a height field: no caves, arches, overhangs or natural bridges"),
+    (("glacier", "ice", "icefall", "crevasse"), "no glaciers: snow and ice are cover layers only"),
+    (("dune", "erg"), "no dune forms: sand is a cover, dunes would be hand-placed hills"),
+    (("waterfall", "cascade"), "no falling water: a hanging river makes the step, the water doesn't fall"),
+    (("swamp", "marsh", "bog", "wetland", "delta"), "no wetland forms: mud cover and shallow lakes (fans for deltas)"),
+    (("city", "town", "castle", "building", "ruin", "ruins"), "no buildings: sites are the flat pads they stand on"),
 ]
 
 
-class Questions(Exception):
-    """The spec needs the designer to decide something. `questions` is for relaying to them, not for answering here."""
+def limits(*texts) -> list[str]:
+    """What can't be built, for the words in these texts (a kind's name, the designer's answers, the story)."""
+    import re
+    words = set(re.findall(r"[a-z]+", " ".join(_norm(t) for t in texts if t)))
+    out = []
+    for keys, why in LIMITS:
+        hit = [k for k in keys if k in words]
+        if hit and why not in out:
+            out.append(f"{why} (you said \"{hit[0]}\")")
+    return out
 
-    def __init__(self, why, questions):
+
+class Questions(Exception):
+    """The spec needs the designer to decide something. `questions` is for relaying to them, not for answering here;
+    `cant` says what the tool can't build of what they asked for."""
+
+    def __init__(self, why, questions, cant=()):
         super().__init__(why)
         self.why = why
         self.questions = questions
+        self.cant = list(cant)
+
+    def data(self):
+        return {"why": self.why, "cant_build": self.cant,
+                "questions": [{"id": q["id"], "question": q["question"], "options": list(q["options"]),
+                               "optional": bool(q.get("optional"))} for q in self.questions],
+                "answer_in": "world.answers: {id: option or the designer's own words}"}
 
     def text(self):
-        out = [f"QUESTIONS FOR THE DESIGNER ({self.why}). Ask them; don't answer for them. Put their answers in "
-               f"\"world\": {{\"answers\": {{...}}}}:"]
+        out = [f"QUESTIONS FOR THE DESIGNER ({self.why}). Ask them in their own terms; don't answer for them. Put their "
+               f"answers in \"world\": {{\"answers\": {{...}}}}:"]
+        if self.cant:
+            out.insert(0, "TELL THE DESIGNER FIRST, what can't be built yet:\n" + "\n".join(f"  - {c}" for c in self.cant))
         for q in self.questions:
-            out.append(f"  {q['id']}: {q['question']}")
+            out.append(f"  {q['id']}: {q['question']}" + (" (optional)" if q.get("optional") else ""))
             for o, means in q["options"].items():
                 out.append(f"      - \"{o}\"" + (f"  ({means})" if isinstance(means, str) and means else ""))
         return "\n".join(out)
@@ -123,6 +176,10 @@ def kind_of(name, spec_kinds=None):
     if not name:
         return None
     n = _norm(name)
+    parts = _mixture(n)
+    if parts:
+        keys = [kind_of(p_, spec_kinds) for p_ in parts]
+        return mix(keys) if all(keys) else None
     user, _ = _user_kinds()
     for table in (KINDS, spec_kinds or {}, user):
         for k, v in table.items():
@@ -133,21 +190,66 @@ def kind_of(name, spec_kinds=None):
     return None
 
 
+def _mixture(n):
+    """"crater + coast", "canyon and mesas", "hills with a lake"? The parts, or None for a single name."""
+    import re
+    parts = [x.strip() for x in re.split(r"\s*(?:\+|&|/|,|\band\b|\bwith\b|\bplus\b)\s*", n) if x.strip()]
+    return parts if len(parts) > 1 else None
+
+
+def mix(keys):
+    """A kind made of several (the first is the main one: its size and floor). Heights and roughness take the most
+    dramatic of them; slopes span them all."""
+    keys = list(dict.fromkeys(keys))
+    if len(keys) == 1:
+        return keys[0]
+    key = "+".join(keys)
+    if key in KINDS:
+        return key
+    Ks = [KINDS[k] for k in keys]
+    main = Ks[0]
+    face = (max(K["face"][0] for K in Ks), min(K["face"][1] for K in Ks), max(K["face"][2] for K in Ks))
+    KINDS[key] = {**main, "face": face, "relief": max((K["relief"] for K in Ks), key=lambda r: r[2]),
+                  "steep": max(K["steep"] for K in Ks), "bumps": max(K["bumps"] for K in Ks),
+                  "gully": max(K["gully"] for K in Ks), "crag": max(K["crag"] for K in Ks),
+                  "crop": all(K.get("crop") for K in Ks), "mix": keys,
+                  "words": (" + ".join(k.replace("_", " ") for k in keys),)}
+    return key
+
+
 def ask_about(name):
     """Questions to define an unknown kind: is it one of the known ones (partial matches first), and if not, what the
     designer wants it to be like."""
     n = _norm(name)
     near = [k for k, v in KINDS.items() if any(w in n or n in w for w in (_norm(k), *map(_norm, v.get("words", ()))))]
     order = near + [k for k in KINDS if k not in near]
-    is_q = {"id": "is", "question": f"Is \"{name}\" one of these, or something new?",
-            "options": {**{k.replace("_", " "): DESCRIBE.get(k, "") + (" (closest by name)" if k in near else "")
-                           for k in order}, "something new": "answer the questions below"}}
+    is_q = {"id": "is", "optional": True,
+            "question": f"Is \"{name}\" like one of these, or a mix of them (\"crater + coast\")? If not, skip this and "
+                        f"answer the rest in your own words",
+            "options": {k.replace("_", " "): DESCRIBE.get(k, "") + (" (closest by name)" if k in near else "")
+                        for k in order}}
     return [is_q] + [{"id": q["id"], "question": q["question"], "options": {o: "" for o in q["options"]}} for q in QUESTIONS]
+
+
+STOP = {"a", "an", "the", "of", "it", "is", "and", "or", "to", "in", "on", "you", "i", "its", "like", "very", "quite",
+        "bit", "more", "less", "with", "that", "be", "should", "feel", "some", "kind"}
+
+
+def match(answer, options):
+    """The option an answer means: the same words, a prefix, or failing that the most words in common (the designer
+    answers in their own words: "rocky" -> "rocky and broken", "a big old volcano" -> "one big mountain or cone")."""
+    a = _norm(answer)
+    for o in options:
+        if _norm(o) == a or _norm(o).startswith(a) or a in _norm(o):
+            return o
+    aw = {w.rstrip("s") for w in a.split() if w not in STOP}
+    best = max(options, key=lambda o: len(aw & {w.rstrip("s") for w in _norm(o).split() if w not in STOP}))
+    return best if aw & {w.rstrip("s") for w in _norm(best).split() if w not in STOP} else None
 
 
 def from_answers(name, answers):
     """A kind from the designer's answers. Returns (kind key, missing question ids)."""
-    if answers.get("is") and _norm(answers["is"]) != "something new":
+    if answers.get("is") and _norm(answers["is"]) not in ("something new", "none", "no", "skip"):
         k = kind_of(answers["is"])
         if k:
             return k, []
@@ -157,8 +259,7 @@ def from_answers(name, answers):
         a = answers.get(q["id"])
         opt = None
         if a is not None:
-            a = _norm(a)
-            opt = next((o for o in q["options"] if _norm(o) == a or _norm(o).startswith(a) or a in _norm(o)), None)
+            opt = match(a, q["options"])
         if opt is None:
             missing.append(q["id"])
             continue
@@ -211,8 +312,9 @@ def resolve_kind(w, spec_kinds=None):
         if k:
             return k
         qs = [q for q in ask_about(name) if q["id"] in missing]
-        raise Questions(f"\"{name}\" still needs: {', '.join(missing)}", qs)
-    raise Questions(f"\"{name}\" isn't a kind the tool knows", ask_about(name))
+        raise Questions(f"\"{name}\" still needs: {', '.join(missing)}", qs,
+                        limits(name, *map(str, answers.values())))
+    raise Questions(f"\"{name}\" isn't a kind the tool knows", ask_about(name), limits(name))
 
 
 def resolve(T) -> dict:
@@ -277,6 +379,14 @@ def report(T) -> list[str]:
     if T.filled:
         out.append("world: heights chosen for you: " + ", ".join(T.filled))
     K = KINDS[W["kind"]]
+    if K.get("mix"):
+        out.append("world: a mix of " + " + ".join(k.replace("_", " ") for k in K["mix"]) + f" ({K['mix'][0].replace('_', ' ')}"
+                   " sets the size; heights and roughness from the most dramatic)")
+    if K.get("shape") in SHAPES:
+        out.append(f"world: the designer's shape, {K['shape']}, is built as {SHAPES[K['shape']]}")
+    cant = limits(W["kind"], *map(str, (K.get("answers") or {}).values()), T.spec.get("story", ""))
+    for c in cant:
+        out.append(f"world: CAN'T BUILD YET: {c}")
     hints = {"river": "use rivers", "lake": "use a lake landform (a basin's falls_to)", "none": "",
              "sea": "there's no sea in the vocabulary yet; the nearest is a lake at the base level reaching the frame's edge"}
     if K.get("water") and hints.get(K["water"]):

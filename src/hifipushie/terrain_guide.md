@@ -37,12 +37,19 @@ The report opens with the kind, its compression, and what was chosen. The realis
 the kind. Small kinds (farmland) and frames much smaller than the kind are treated as a *piece* of it (no
 compression). With `"units": "none"`, the frame is taken as the kind's typical level size.
 
+**Mixtures:** `"kind": "crater + coast"` (also "and", "with", ",") mixes known kinds: the first sets the size, heights
+and roughness come from the most dramatic.
+
 **A kind the tool doesn't know** ("fjord", "badlands"...) isn't guessed. The run stops (exit code 3) and prints
-QUESTIONS FOR THE DESIGNER: is it one of the known kinds, how big it should feel, how dramatic the height is, what's
-underfoot, what's at the lowest point, and whether it's closed in. **Ask the designer; don't answer for them.** Put
-their answers in `"world": {"kind": "fjord", "answers": {"size": "a long trek", ...}}`. The kind is then defined
-from the answers, recorded in the report, and saved (`workspace/terrain/kinds.json`), so the next spec can just say
-`"kind": "fjord"`.
+QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no sea yet, no volcano forms,
+no caves or overhangs, no glaciers...): tell the designer that before anything else. The questions: is it like one of the
+known kinds or a mix of them (optional), how big it should feel, how dramatic the height is, what's underfoot, what's at
+the lowest point, whether it's closed in, and its overall shape. **Ask the designer; don't answer for them**, and let them
+answer in their own words (they're matched to the nearest option). Put their answers in
+`"world": {"kind": "fjord", "answers": {"size": "a long trek", ...}}`. The kind is then defined from the answers,
+recorded in the report (with how its shape is built from the vocabulary), and saved (`workspace/terrain/kinds.json`),
+so the next spec can just say `"kind": "fjord"`. The report also says what can't be built of the kind, the answers
+and the `"story"`.
 
 ## Scale and units
 - `"extent": [[x0, y0], [x1, y1]]` is the frame. Axes: x east, y north, z up.
