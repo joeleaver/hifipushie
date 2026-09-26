@@ -175,8 +175,14 @@ def apply(T):
                                   "except": spec.get("except", []) + list(T.passes), "gap": spec.get("gap", 90 * T.k)}}
     for name, w in (T.spec.get("walls") or {}).items():
         _wall(T, name, w)
-    for name, s in (T.spec.get("sites") or {}).items():
-        _site(T, name, s)
+    # sites in dependency order: one that overlooks or falls toward another is built after it (key order mattered)
+    todo = dict(T.spec.get("sites") or {})
+    while todo:
+        ready = [n for n, s in todo.items()
+                 if not any(isinstance(s.get(k), str) and s.get(k) in todo and s.get(k) != n
+                            for k in ("at", "overlooks", "toward"))]
+        for n in ready or list(todo)[:1]:  # (a cycle: build in the given order)
+            _site(T, n, todo.pop(n))
     for name, r in (T.spec.get("routes") or {}).items():
         _route(T, name, r)
 
@@ -976,7 +982,13 @@ def _switchbacks(xy, span=30.0):
 
 
 def _target(T, ref):
-    """Where to aim at: a peak's summit, a lake's surface, else 2 m above the ground."""
+    """Where to aim at: a peak's summit, a lake's surface, {"at": address, "height": m} (a tower: its top), else 2 m
+    above the ground."""
+    if isinstance(ref, dict) and "at" in ref:
+        xy, h, _ = T.address(ref["at"])
+        if isinstance(ref["at"], str) and ref["at"] in T.sites:
+            h = T.sites[ref["at"]]["level"]
+        return xy, h + float(ref.get("height", 2.0)), T.cell * 2, False
     xy, h, _ = T.address(ref)
     if isinstance(ref, str) and ref in getattr(T, "mesas", {}):  # a mesa: its caprock's top, its whole top is itself
         m = T.mesas[ref]
@@ -1102,6 +1114,10 @@ def sight(T, eye_ref, tgt_ref, eye_height=1.7):
     return res
 
 
+def _label(tgt):
+    return f"{tgt['at']} (+{tgt.get('height', 2):g} m)" if isinstance(tgt, dict) and "at" in tgt else str(tgt)
+
+
 def _skyline(T, exy, e, direction, start):
     """The highest elevation angle of the ground along a bearing from the eye, from `start` metres out to the frame's
     edge (-inf where there is none)."""
@@ -1153,10 +1169,12 @@ def intent(T):
                                           f"(a route would wind there: use \"routes\")"))
         if "see" in it:
             out += _see(T, name, it)
+        if "hide" in it:  # the other way round: must NOT be seen from there (a hidden beach, a secret path)
+            out += _see(T, name, {**it, "see": it["hide"]}, hide=True)
     return out
 
 
-def _see(T, name, it):
+def _see(T, name, it, hide=False):
     """intent "see": from a place (a site: the eye at its centre and eight spots across it) to each target: whether the
     sight line clears the ground; for a summit or mesa how many metres of it show above what's in front and how far it
     stands above the skyline beside and behind it ("min_prominence"); for a lake the share of its surface seen."""
@@ -1184,6 +1202,11 @@ def _see(T, name, it):
                 r = sight(T, xy, tgt, eye)
                 got.append((label, r["visible"], r["visible"] > want, r, 0, 0))
         ok = [g for g in got if g[2]]
+        if hide:
+            line = (f"intent {name}: {_label(tgt)} hidden from {src}: " + ("seen from none of the spots OK" if not ok else
+                    f"FAIL: seen from {len(ok)} of {len(got)} spots (" + ", ".join(g[0] for g in ok[:4]) + ")"))
+            out.append(line)
+            continue
         summit = not lake and "standout" in got[0][3]
         fmt = ((lambda v: f"{100 * v:.0f}% of its surface") if lake else
                (lambda v: f"{v:.0f} m of it showing" if v > 0 else "hidden") if summit
@@ -1191,7 +1214,7 @@ def _see(T, name, it):
         best = max(got, key=lambda g: g[1])
         where = f"from {src}" + (f": seen from {len(ok)} of {len(got)} spots across it (centre {fmt(got[0][1])}, best "
                                  f"{best[0]} {fmt(best[1])})" if len(spots) > 1 else f": {fmt(got[0][1])}")
-        line = f"intent {name}: {tgt} {where}; eye {eye:g} m" + ("" if ok else " FAIL")
+        line = f"intent {name}: {_label(tgt)} {where}; eye {eye:g} m" + ("" if ok else " FAIL")
         if lake and ok:
             b = max(got, key=lambda g: g[4])
             line += (f"; the water seen stands {got[0][4]:.1f} deg tall in the view from the centre ({b[4]:.1f} at best, "

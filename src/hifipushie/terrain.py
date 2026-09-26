@@ -452,10 +452,12 @@ class Terrain:
                     out &= ~high_fix
                     low_fix |= out
                     low[out] = lvl - 0.5 * float(sea.get("depth", 30.0))
-            elif not low_fix.any():
+            elif not low_fix.any() and high_fix.any():  # ridges with nothing low: the frame's edges at the land's base
+                # (a plain stays a plain at world.base with its tilt: pinning the edges at the sea floor had ignored the
+                # base and put a coast's farmland at 0 m)
                 for sl in ((0, slice(None)), (-1, slice(None)), (slice(None), 0), (slice(None), -1)):
                     low_fix[sl] = True
-                    low[sl] = lvl - float(sea.get("depth", 30.0))
+                    low[sl] = self.world["base"]
         plain = not low_fix.any() and not high_fix.any()  # a tile of open ground: a plain at the base height (+ tilt, hills)
         if not low_fix.any() and not plain:
             raise ValueError("nothing low: add a river or a basin, or give the frame's edge a height (\"border\")")
@@ -827,6 +829,9 @@ class Terrain:
             name, end = ref.rsplit(".", 1)
             xy, h, tan = self.lines[name].at(0.0 if end == "source" else 1.0)
             return xy, self.height(xy), tan
+        if getattr(self, "sea", None) and ref in self.sea.get("beach_at", {}):  # a named beach: its middle on the coast
+            xy = np.array(self.sea["beach_at"][ref])
+            return xy, self.height(xy), None
         if getattr(self, "sea", None) and ref in self.sea["coves"]:  # a cove: the middle of its bay
             xy = np.array(self.sea["coves"][ref]["xy"])
             return xy, self.height(xy), np.array(self.sea["coves"][ref]["inland"])
@@ -869,7 +874,8 @@ class Terrain:
         """A peak's built height: the highest ground within its own top (map, report and probes all use this)."""
         xy, _ = self.points[name]
         p = (self.spec.get("peaks") or {}).get(name) or (self.spec.get("cols") or {}).get(name) or {}
-        r = max(float(p.get("radius", 0)), 40 * self.k, 1.5 * self.cell)
+        # within half its top's radius (on a tilt, higher ground uphill inside the whole radius read as its summit)
+        r = max(0.5 * float(p.get("radius", 0)), min(40 * self.k, 3 * self.cell), 1.5 * self.cell)
         return float(self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) <= r].max())
 
     def height(self, xy, H=None):
@@ -1110,7 +1116,10 @@ class Terrain:
                     wall = hs[: top + 1]
                     lo = int(np.argmax(wall > h + 0.15 * (hs[top] - h)))
                     hi = int(np.argmax(wall > h + 0.85 * (hs[top] - h)))
-                    slope = math.degrees(math.atan((wall[hi] - wall[lo]) / max((hi - lo) * self.cell, 1)))
+                    if hi > lo:
+                        slope = math.degrees(math.atan((wall[hi] - wall[lo]) / ((hi - lo) * self.cell)))
+                    else:  # a short, steep bank: the whole rise over its whole run ("18 m over 10 m (0 deg)" before)
+                        slope = math.degrees(math.atan((hs[top] - h) / max(ds[top], self.cell)))
                     prof.append(f"{hs[top] - h:.0f} m over {ds[top]:.0f} m ({slope:.0f} deg)")
                 out.append(f"    @{s:.2f}: floor {L.h[np.searchsorted(L.s, s)]:.0f} m; left bank rises {prof[0]}, right {prof[1]}")
         if getattr(self, "rib_count", 0):
@@ -1198,6 +1207,12 @@ class Terrain:
                 m, _ = self._stamp(L, L.props["floor"] / 2 + 80 * self.k)
                 near |= m
         stray = (area > 250_000 * self.k ** 2) & ~near & np.isnan(self.water)
+        for sn, st in self.sites.items():  # water running through a pad: it floods the village (unwarned before)
+            pad = np.hypot(self.X - st["xy"][0], self.Y - st["xy"][1]) <= st["radius"]
+            big = pad & (area > 100_000 * self.k ** 2) & np.isnan(self.water)
+            if big.any():
+                self.warnings.append(f"site {sn!r}: a stream draining {_area(float(area[big].max()))} runs through the pad: "
+                                     f"move the site, give the stream a river, or accept a culvert")
         lab, n = ndimage.label(stray)
         out = [f"drainage: {n_h} hollows over 1 m deep outside lakes (would hold water)"]
         if n_h:
@@ -1438,7 +1453,7 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
     if cover:
         for name, m in T.cover.items():
             col = np.array(design.cover_colour(T, name))
-            a = 0.85 * np.clip(m, 0, 1)[..., None]
+            a = np.clip(m, 0, 1)[..., None]  # density 1 covers the ground (at 85% black sand showed as grass)
             c = c * (1 - a) + col * a
     c[~np.isnan(T.water)] = [0.16, 0.28, 0.38]
     return c

@@ -131,6 +131,9 @@ and the `"story"`.
     without one, the ground below `level` that reaches the frame's edge (tilt the frame down toward the sea).
   - The sea is the low ground the land falls to: an island needs no `border`, and a ring of peaks (a crater) inside
     the land slopes down to the sea all round, a cone.
+  - A coast without a `land` zone: the land is `world.base` (plus `tilt` and hills), and the sea is wherever that is
+    below `level` and reaches the frame's edge. Clifftop farmland at 60 m falling south: `"base": 60`, a tilt down to
+    the south steep enough to bring the ground below the sea level before the frame's edge (or a `land` zone).
   - The coastline wanders a little (`wander`, 0 to keep the zone's outline). The seabed shelves down to `depth`.
   - Shore forms, per stretch: **rocky** (the land dropping into the water), **beach** (the land graded down to sand at
     the water), **cliffs** (the land ending in a ~70 deg face; where the land is lower than the asked height it ramps up
@@ -207,6 +210,8 @@ and the `"story"`.
    "near": {"what": "water" | address, "within": m}, "breakup": {"scale": m, "amount": 0..1},
    "avoid": ["water", "routes", "sites", zone...], "color": "#rrggbb"}
   ```
+  Layers are painted in order, each over the ones before it (the map, the views and the export's splats agree): put
+  broad ground (grass) first and what must show on top of it (sand on the beach, lava rock) after, or `avoid` it.
   `orchard` plants rows (`"rows": 6` m apart, `"along": "contour" | "east" | "north"`). `"count": 6` on any tree
   layer scales it to about that many trees ("a few trees"). Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
   32 deg), and anything you give overrides them.
@@ -218,7 +223,10 @@ and the `"story"`.
     (a level pad's own edge can hide what's below it from the middle). For a peak, hill or mesa: how many metres of it
     show above what's in front of it (down to its own foot), **how far its top stands above the skyline beside and
     behind it** (a peak on a ring of mountains can be all "showing" and still not stand out: `min_prominence` checks
-    this), and whether it's on the skyline (nothing behind it higher). For a lake: the share of its surface you see.
+    this), and whether it's on the skyline (nothing behind it higher). For a lake (or a cove): the share of its surface
+    you see and how tall the water stands in the view. A target can be `{"at": address, "height": 25}`: something built
+    there (a lighthouse tower), aimed at its top.
+  - `{"from": address, "hide": [targets]}`: the other way round, each must NOT be seen from there (a hidden beach).
 - `"probe": [addresses]` reports the ground height and slope at each place.
 - `"export": {"size": 513}` resamples the export to an engine grid (Unity 257/513/1025/2049; Unreal 505/1009/2017).
 
@@ -234,6 +242,7 @@ Sections of named things (peaks, sites, routes, intent, ...) are objects keyed b
 - `"edge:w"` (the middle of the west edge), `"edge:s@0.3"` (30% along it from the west or south end), just inside
   the frame
 - a zone name or `"quadrant:ne"` (its centre)
+- a ridge, river or route by name (its middle); a sea's cove or named beach
 - `[x, y]`, or `{"from": address, "offset": [dx, dy]}`
 
 `"views": [{"name": "file_stem", "eye": address | [x, y, z], "lift": m, "look": address, "fov": deg}]` are

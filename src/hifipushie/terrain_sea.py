@@ -155,11 +155,13 @@ def apply(T):
             beaches[f"{name}_beach"] = {"at": cv["head"], "length": 0.8 * cv["width"]}
     foot = np.zeros(T.X.shape)  # beaches at the foot of the cliffs: the cliff stays, sand lies below it
     foot_w = []
+    beach_at = {}
     for name, b in beaches.items():
         L = float(b.get("length", 150 * k))
         xy = T.address(b["at"])[0]
         cpts = np.stack([T.X[coast], T.Y[coast]], 1)  # on the coast nearest the address (an inland point missed it)
         xy = cpts[int(np.argmin(np.linalg.norm(cpts - xy, axis=1)))]
+        beach_at[name] = xy.tolist()
         m = smoothstep(0.6 * L, 0.4 * L, np.hypot(T.X - xy[0], T.Y - xy[1]))
         if b.get("at_foot"):
             foot = np.maximum(foot, m)
@@ -244,7 +246,10 @@ def apply(T):
             dl = cKDTree(line).query(T.P)[0].reshape(T.X.shape)
             half = 0.25 * cv["width"]
             gentle = floor + 0.10 * np.maximum(dist - ap, 0)
-            open_w = smoothstep(2 * half, half, dl)
+            # only near the cove: the apron and a headwall's run beyond it (aimed at a crater's rim, it cut a trench
+            # all the way up and breached the rim)
+            reach = ap + 1.5 * cv["width"]
+            open_w = smoothstep(2 * half, half, dl) * smoothstep(reach, 0.8 * reach, dist)
             scar = scar * (1 - open_w) + np.maximum(gentle, scar * 0 + gentle) * open_w
         new = np.where((sd > 0) & ahead, np.minimum(new, scar), new)
         cv["apron"] = ap
@@ -255,6 +260,7 @@ def apply(T):
     T.hard |= face
     T.hardness = np.where(face, np.minimum(T.hardness, 0.05), T.hardness)
     T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "foot": foot, "coves": coves, "want": want,
+             "beach_at": beach_at,
              "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches)}
     T.masks.setdefault("coast", np.zeros(T.X.shape))
     T.masks["coast"] = np.maximum(T.masks["coast"], smoothstep(4 * T.cell, 0, np.abs(sd)))
