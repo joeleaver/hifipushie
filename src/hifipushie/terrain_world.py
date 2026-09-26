@@ -388,6 +388,9 @@ def report(T) -> list[str]:
     cant = limits(W["kind"], *map(str, (K.get("answers") or {}).values()), T.spec.get("story", ""))
     for c in cant:
         out.append(f"world: CAN'T BUILD YET: {c}")
+        w = f"can't build yet (tell the designer): {c}"
+        if w not in T.warnings:
+            T.warnings.append(w)
     hints = {"river": "use rivers", "lake": "use a lake landform (a basin's falls_to)", "none": "",
              "sea": "there's no sea in the vocabulary yet; the nearest is a lake at the base level reaching the frame's edge"}
     if K.get("water") and hints.get(K["water"]):
