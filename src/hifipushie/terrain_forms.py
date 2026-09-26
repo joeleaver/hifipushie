@@ -269,7 +269,15 @@ def water(T):
         d, i = d.reshape(T.X.shape), np.minimum(i, len(L.xy) - 1).reshape(T.X.shape)
         wet = np.isfinite(d) & np.isnan(T.water) & (d <= np.maximum(width[i], 0.75 * T.cell))
         wd = np.maximum(width[i], 0.75 * T.cell)
-        level = L.h[i] + 0.2
+        # a river leaving a lake runs over the lake's dam at the lake's level: its bed carved at its own profile cut
+        # the dam and drained a tarn to nothing
+        hl = L.h.copy()
+        for lk in T.lakes.values():
+            if lk.get("area", 1) == 0:
+                continue
+            near = np.hypot(*(L.xy - np.array(lk["xy"])).T) < 1.5 * lk["r"]
+            hl = np.where(near, np.maximum(hl, lk["level"]), hl)
+        level = hl[i] + 0.2
         depth = 1.0
         for _, fxy, fw, fd in fords:
             nearf = np.hypot(T.X - fxy[0], T.Y - fxy[1]) < fw

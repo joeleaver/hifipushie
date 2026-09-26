@@ -158,7 +158,10 @@ and the `"story"`.
   the target that lets most of the pad see it (a dead-level pad's own edge hides what's below it from its middle). With a shore address (`"lake.west_shore"`) the pad sits inland of that point, just above the
   water. The report gives its level and how far it cuts into or builds out of the slope (a warning over 25 m).
 - **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search).
-  `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone}`.
+  `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone,
+  "max_earthworks": 25}`. Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
+  report judges the road on the ground as built and says where it fails, where its bed ends off its stop (a cliff band
+  in the way), and when no way at its grade existed at all.
 - **walls**: unclimbable edges around a zone where no basin gives you one.
   `{"around": zone, "min_slope": 45, "height": m, "except": [addresses or passes]}`. The ground just outside is
   raised to make them (a little taller than `height`: the grid rounds a wall's lip and foot). The check walks straight
