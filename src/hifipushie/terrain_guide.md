@@ -199,6 +199,9 @@ and the `"story"`.
   "max_earthworks": 25, "max_fill": m}` (`max_fill` limits banks alone, for a trail that shouldn't stand on one; it may then fail its grade). Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
   report judges the road on the ground as built and says where it fails, where its bed ends off its stop (a cliff band
   in the way), and when no way at its grade existed at all.
+  - Routes are planned on the ground nearly as built (each step may be a metre off its grade, which the carve evens
+    out) at 85% of their limit, so what the plan promises the built road keeps; switchback legs too close for a bank
+    between them are pushed apart where the ground allows (the report says where it doesn't).
   - Cliffs (over 50 deg) are walls to a route. Where they close a route's stops off from each other, it cuts a **break**:
     switchback legs at the route's grade across the cliff where it is lowest and nearest the way, as long as the cliff
     runs on beside the crossing, the ground shaped into benches with rock cut between them (a canyon wall trail).

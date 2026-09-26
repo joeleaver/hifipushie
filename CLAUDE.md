@@ -519,7 +519,13 @@ regresses, bisect by building one spec at each commit and diffing heights.
   as its top and foot run on, dry; its own downhill direction, not the line between the two points), benches with rock
   cut between, capped near the step's height; rolled back if it doesn't open the way. Many dead ends on the way there:
   steps along a relaxed path (fragile), fixed short legs (a 1 km trench), the frame's edge as a barrier, pairs far off
-  the route. Roads are planned at 0.92 of their limit.
+  the route. Planner rebuild (2026-09-26): the search runs on the full-resolution grid (every other cell hid one-cell
+  cliff bands) over ground smoothed ~6 m with a 1 m bump allowance per step (30 m smoothing hid 45 deg risers: plans
+  went where no road could be built), roads are planned at 0.85 of the limit, the grid path is NOT smoothed (every
+  smoothing tried moved turns off the checked ground, over lips and down risers), crowded switchback legs (closer
+  than their beds plus a 45 deg bank) are blocked and re-planned. Same pass rate on the test set, worst cases far
+  smaller (mean as-built/limit 4.9 -> 2.6); roads are longer and jaggier (grid staircase). Next if routes matter
+  more: a road planner in (x, y, road height) state so earthworks are part of the plan.
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
