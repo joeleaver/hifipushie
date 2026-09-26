@@ -479,6 +479,14 @@ shaved or buried whole mountains); erosion scaled to the geology cuts trenches a
 metres); whole walls as steep as "unclimbable" read as curtains (put the steepness in cliff bands); when a result
 regresses, bisect by building one spec at each commit and diffing heights.
 
+- `terrain_sea.py`: the sea (below a level, outside a `land` zone or the low ground reaching the frame's edge; it is
+  low ground for the base, so a crater ring inside the land becomes a cone) and its coast as a continuous signed
+  distance (re-cut from cells, cliffs were a staircase): shore forms per stretch (rocky, beach, cliffs at ~70 deg
+  leaning into the water, beaches at a cliff's foot), coves (horseshoe bays with a beach, an apron and a scar at the
+  head, optionally opening toward a valley). The sea is a lake named "sea" downstream (shores, sight lines, export).
+  Two blind rounds (island, Cornish coast, `workspace/s1_*`, `s2_*`): the big shapes read (a cone with a crater lake
+  and wave-cut cliffs); what still looks fake is eye-level character (plaster-smooth scars and cliffs, no stacks,
+  ledges or boulders; domes for peaks; lava as a tan bump), and trails fail at cove scars (routes through cliffs).
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
