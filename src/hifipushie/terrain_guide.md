@@ -208,13 +208,16 @@ Outputs go to `workspace/terrain/`:
   red), routes (orange), sites (purple squares), walls (dark dots on the edge, bright red where climbable), names
   and a cover legend.
 - `<stem>_masks.png`: each cover mask alone (white = dense).
-- With `--export`, `<stem>_export/` holds:
-  - the heightmap (`height.npy` float32, and 16-bit `height.png`)
+- With `--export`, `<stem>_export/` holds (`"export": {"size": 1025, "engine": "unity"}` in the spec):
+  - the heightmap: `height.npy` (float32, absolute metres), `height.png` (16-bit) and `height.raw` (Unity: 16-bit
+    little-endian, first row south), both offset to 0; `meta.json` "unity" gives the terrain size and position
   - square at the engine size, padded if the frame isn't square
-  - density masks per layer, plus water, roads, playable and walls masks
-  - `splat*.png`: RGBA weights that sum to 1
+  - density masks per cover layer, plus water, roads, sites, playable and walls masks (always written: with no walls,
+    playable is the dry ground a person can walk)
+  - `splat*.png`: RGBA weights for the ground layers that sum to 1 (tree layers are instances, not in the splats)
   - `trees.csv`: tree instances (x, y, z, kind, layer)
-  - `meta.json`: extent, height encoding, sites, passes, routes and rivers with heights
+  - `meta.json`: extent, height encoding, sites with their planes (level, fall, direction), passes, routes, rivers
+    with their bed and water (surface height and width per point), fords, lakes
 - `<view name>.png`: the views, with trees instanced from forest masks.
 
 Read the images, not just the report. The report is in your units and ends with WARNINGS: read them.

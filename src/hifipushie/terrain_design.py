@@ -425,7 +425,7 @@ def _site(T, name, s):
     T.H = T.H * (1 - w) + surface(fall, dvec) * w
     _earthworks(T, w)
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
-                     "fill": float((T.H - before).max()), "note": note}
+                     "fill": float((T.H - before).max()), "note": note, "fall": fall, "toward": dvec.tolist()}
     if max(T.sites[name]["cut"], T.sites[name]["fill"]) > 25:
         T.warnings.append(f"site {name!r} is dug {T.sites[name]['cut']:.0f} m into / built {T.sites[name]['fill']:.0f} m "
                           f"out of the slope: it stands against a cliff or on a mound; move it or give it a level")

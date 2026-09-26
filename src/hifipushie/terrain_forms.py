@@ -231,13 +231,21 @@ def rim_address(T, ref):
     return out, T.height(out), -sgn * nrm
 
 
+def _cells(T, p):
+    iy = np.clip(np.round((p[:, 1] - T.ys[0]) / T.cell).astype(int), 0, len(T.ys) - 1)
+    ix = np.clip(np.round((p[:, 0] - T.xs[0]) / T.cell).astype(int), 0, len(T.xs) - 1)
+    return iy * len(T.xs) + ix
+
+
 def water(T):
     """Rivers carry water (a channel a metre or so deep) except where they're dry; fords are wide and shallow."""
     fords = []
     for name, f in (T.spec.get("fords") or {}).items():
         xy, _, _ = T.address(f["on"])
         fords.append((name, xy, float(f.get("width", 15)), float(f.get("depth", 0.3))))
-    T.fords = {n: {"xy": xy.tolist(), "width": w} for n, xy, w, _ in fords}
+    T.fords = {n: {"xy": xy.tolist(), "width": w, "depth": dp,
+                   "river": (T.spec.get("fords") or {})[n]["on"].split("@")[0]} for n, xy, w, dp in fords}
+    T.river_water_lines = {}
     T.river_water = np.zeros(T.X.shape, bool)
     T.ford_mask = np.zeros(T.X.shape, bool)
     for L in (L for L in T.lines.values() if L.kind == "river"):
@@ -265,3 +273,5 @@ def water(T):
         T.H = np.where(wet, np.minimum(T.H, bed), T.H)
         T.water = np.where(wet, level, T.water)
         T.river_water |= wet
+        under = ~np.isnan(T.water.ravel()[_cells(T, L.xy)]) & ~T.river_water.ravel()[_cells(T, L.xy)]
+        T.river_water_lines[L.name] = {"xy": L.xy, "level": L.h + 0.2, "width": np.where(under, 0.0, width)}

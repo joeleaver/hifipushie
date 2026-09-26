@@ -29,4 +29,4 @@ if sheet is not None:
     sheet.save(out / f"{src.stem}_masks.png")
 if "--export" in sys.argv:
     size = (T.spec.get("export") or {}).get("size")
-    print("exported", T.export(out / f"{src.stem}_export", size=size))
+    print("exported", T.export(out / f"{src.stem}_export", size=size, engine=(T.spec.get("export") or {}).get("engine")))

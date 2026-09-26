@@ -1123,15 +1123,21 @@ class Terrain:
                            f"[{self.xs[xx[j]]:.0f}, {self.ys[yy[j]]:.0f}]")
         return out
 
-    def export(self, out_dir, size: int | None = None):
-        """For an engine, north-up: height (float32 .npy, and 16-bit PNG with its range in meta.json), an 8-bit mask
-        per cover layer, water, roads (plus road polylines with heights), playable floors and wall faces. `size`
-        resamples to an engine grid (Unity 513/1025/2049, Unreal 505/1009/2017) along the longer side."""
+    def export(self, out_dir, size: int | None = None, engine: str | None = None):
+        """For an engine, north-up: height (float32 .npy absolute, 16-bit PNG and a Unity .raw both offset to 0 with the
+        range in meta.json), an 8-bit density mask per cover layer, water, roads, sites, playable and walls masks,
+        splat weights for the ground layers (tree layers are instances, not ground textures), trees.csv, and meta.json
+        with everything placed (sites with their planes, passes, routes, rivers with their water, fords, lakes).
+        `size` resamples to an engine grid along the longer side (Unity 257/513/1025/2049: 2^n + 1; Unreal 505/1009/
+        2017); `engine` "unity" picks the next 2^n + 1 when no size is given."""
         from PIL import Image
+        from . import terrain_design as design
         out = Path(out_dir)
         (out / "masks").mkdir(parents=True, exist_ok=True)
         ny, nx = self.H.shape
         n = max(nx, ny)
+        if not size and engine == "unity":
+            size = 2 ** math.ceil(math.log2(max(n - 1, 32))) + 1
         k = (size - 1) / (n - 1) if size else 1.0
         # engines want square heightmaps (Unity 2^n+1): a non-square frame is padded on its short side with the edge
         # continued, and meta.json says which part is the level
@@ -1150,29 +1156,32 @@ class Terrain:
         H = grid(self.H, 3)
         lo, hi = float(H.min()), float(H.max())
         np.save(out / "height.npy", H)
-        Image.fromarray(((H - lo) / (hi - lo) * 65535).astype(np.uint16)).save(out / "height.png")
+        q = np.round((H - lo) / max(hi - lo, 1e-6) * 65535).astype(np.uint16)
+        Image.fromarray(q).save(out / "height.png")
+        # Unity's RAW import: 16-bit little-endian ("Windows" byte order), first row = the south edge (z = 0)
+        q[::-1].astype("<u2").tofile(out / "height.raw")
 
         def mask(name, m):
             Image.fromarray((np.clip(grid(m), 0, 1) * 255).astype(np.uint8)).save(out / "masks" / f"{name}.png")
 
         for name, m in self.cover.items():
             mask(name, m)  # densities (for trees, detail), each 0..1 on its own
-        # splat weights: layers painted in order, each over what's below; "ground" is what's left; they sum to 1
-        names = list(self.cover)
+        # splat weights for the ground layers, painted in order, each over what's below; "ground" is what's left; they
+        # sum to 1. Tree layers are instances (trees.csv) and stay out: a forest's weight had painted its ground green
+        ground = [nm for nm in self.cover if not design.tree_kind(self, nm)]
         rest = np.ones(self.X.shape)
         weights = {}
-        for name in reversed(names):
+        for name in reversed(ground):
             weights[name] = self.cover[name] * rest
             rest = rest * (1 - self.cover[name])
         weights["ground"] = rest
-        order = names + ["ground"]
+        order = ground + ["ground"]
         for i in range(0, len(order), 4):
             chans = [grid(weights[nm]) for nm in order[i:i + 4]]
             while len(chans) < 4:
                 chans.append(np.zeros_like(chans[0]))
             rgba = (np.clip(np.stack(chans, -1), 0, 1) * 255).astype(np.uint8)
             Image.fromarray(rgba, "RGBA").save(out / f"splat{i // 4}.png")
-        from . import terrain_design as design
         inst = design.trees(self)
         with open(out / "trees.csv", "w") as f:
             f.write("x,y,z,kind,layer\n")
@@ -1180,36 +1189,68 @@ class Terrain:
             for x, y, z, li in inst:
                 nm, kind = layers.get(int(li), ("", ""))
                 f.write(f"{x:.2f},{y:.2f},{z:.2f},{kind},{nm}\n")
-        mask("water", ~np.isnan(self.water))
-        if "routes" in self.masks:
-            mask("roads", self.masks["routes"])
-        walls = np.zeros(self.X.shape)
-        playable = np.zeros(self.X.shape)
+        dry = np.isnan(self.water)
+        mask("water", ~dry)
+        roads = self.masks.get("routes", np.zeros(self.X.shape))
+        mask("roads", roads)
+        mask("sites", self.masks.get("sites", np.zeros(self.X.shape)))
+        walls, inside = np.zeros(self.X.shape), np.zeros(self.X.shape, bool)
         for W in self.walls.values():
-            playable = np.maximum(playable, W["inside"])
+            inside |= W["inside"]
             s = ndimage.distance_transform_edt(~W["inside"]) * self.cell
             walls = np.maximum(walls, (s > 0) & (s <= W["band"] + self.cell))
         gates = np.zeros(self.X.shape, bool)
         for p in self.passes.values():
             gates |= p["corridor"]
-        if self.walls:
-            mask("playable", np.maximum(playable, gates))  # the way in is part of the level
-            mask("walls", walls * ~gates)  # and isn't blocked
+        ways = gates | (roads > 0.5)  # the way in is the road as built, not only the pass's straight notch
+        walkable = dry & (self._slope() <= 45)
+        # playable: inside the walls (and along the roads and passes that lead in); with no walls, walkable dry ground
+        playable = (inside | ways) if self.walls else (walkable | ways)
+        mask("playable", playable & (dry | ways))
+        mask("walls", walls * ~ways)
         cell = self.cell / k
+        (x0, y0), (x1, y1) = self.spec["extent"]
+        span = (n - 1) * self.cell  # the square the grid covers (padded frames reach past the level)
+        rivers = {}
+        for nm, L in self.lines.items():
+            if L.kind != "river":
+                continue
+            rw = getattr(self, "river_water_lines", {}).get(nm)
+            pts = [[*map(float, xy), float(h)] for xy, h in zip(L.xy[::4], L.h[::4])]
+            river = {"bed_xyz": [[round(v, 2) for v in p] for p in pts]}
+            if rw is not None:
+                river["water"] = [[round(float(x), 2), round(float(y), 2), round(float(z), 2), round(float(w), 2)]
+                                  for (x, y), z, w in zip(rw["xy"][::4], rw["level"][::4], rw["width"][::4])]
+            rivers[nm] = river
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
                 "north_up": True, "pixel_0_0": "north-west corner",
-                "height_png": "16-bit, linear: height = lo + value / 65535 * (hi - lo)",
+                "height_npy": "float32, absolute metres, north-up",
+                "height_png": "16-bit, north-up, offset to 0: height = lo + value / 65535 * (hi - lo)",
+                "unity": {"raw": "height.raw", "resolution": H.shape[0], "depth": 16, "byte_order": "Windows (little-endian)",
+                          "flip_vertically": False, "rows": "first row is the south edge",
+                          "terrain_size": [span, hi - lo, span], "position": [x0, lo, y1 - span],
+                          "axes": "Unity x = east, z = north, y = up"},
                 "level_pixels": [int(round((nx - 1) * k)) + 1, int(round((ny - 1) * k)) + 1],
                 "padded": "the level is the top-left part; the rest continues its edges" if any(pad) else "",
                 "splat": {f"splat{i // 4}.png": order[i:i + 4] for i in range(0, len(order), 4)},
-                "trees": "trees.csv (x, y, z, kind, layer), world metres",
-                "rivers": {n: np.c_[L.xy, L.h][::4].round(2).tolist() for n, L in self.lines.items() if L.kind == "river"},
-                "cover": {n: (self.spec.get("cover") or {}).get(n, {}).get("type", n) for n in self.cover},
-                "lakes": {n: {"level": lk["level"], "at": lk["xy"]} for n, lk in self.lakes.items()},
-                "sites": {n: {"at": s["xy"], "level": s["level"], "radius": s["radius"]} for n, s in self.sites.items()},
-                "passes": {n: {"at": p["xy"], "floor": p["floor"], "width": p["width"]} for n, p in self.passes.items()},
-                "routes": {n: {"width": L.props["width"], "points_xyz": np.c_[L.xy, L.h][::2].round(2).tolist()}
-                           for n, L in self.routes.items()}}
+                "masks": {"water": "open water", "roads": "road beds", "sites": "site pads", "walls": "wall faces",
+                          "playable": "inside the walls and along the ways in" if self.walls else
+                          "dry ground a person can walk (45 deg or less) and the roads",
+                          **{nm: "density 0..1" for nm in self.cover}},
+                "trees": "trees.csv (x, y, z, kind, layer), world metres; tree layers aren't in the splats",
+                "rivers": rivers, "rivers_water": "per point [x, y, water surface z, water width m] (0 where it's dry "
+                                                  "or in a lake)",
+                "fords": {nm: {"at": f["xy"], "river": f["river"], "width": f["width"], "depth": f["depth"],
+                               "bed": round(self.height(f["xy"]), 2)} for nm, f in getattr(self, "fords", {}).items()},
+                "cover": {nm: (self.spec.get("cover") or {}).get(nm, {}).get("type", nm) for nm in self.cover},
+                "lakes": {nm: {"level": lk["level"], "at": lk["xy"]} for nm, lk in self.lakes.items()},
+                "sites": {nm: {"at": st["xy"], "level": st["level"], "radius": st["radius"], "fall": st.get("fall", 0.0),
+                               "falls_toward": st.get("toward", [0, 0]),
+                               "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)"}
+                          for nm, st in self.sites.items()},
+                "passes": {nm: {"at": p["xy"], "floor": p["floor"], "width": p["width"]} for nm, p in self.passes.items()},
+                "routes": {nm: {"width": L.props["width"], "points_xyz": np.c_[L.xy, L.h][::2].round(2).tolist()}
+                           for nm, L in self.routes.items()}}
         (out / "meta.json").write_text(json.dumps(meta, indent=1))
         return out
 
