@@ -297,10 +297,11 @@ def _foot(spec: dict, name: str, k: dict, o: _Out):
 
 
 def _digit(o: _Out, prefix: str, sfx: str, p: np.ndarray, d: np.ndarray, palm: np.ndarray, length: float,
-           shares, bend: float, r0: float, r1: float, blend: float, sub: int = 3):
+           shares, bend: float, r0: float, r1: float, blend: float, sub: int = 1):
     """A finger as a smooth arc curling toward the palm by `bend` degrees in total, radius tapering
-    linearly with length. Built from short segments joined by hard min in one group, so there are no
-    blend bulges and no visible kinks. Joints prefix_0..prefix_N mark the knuckles; prefix_S_m are the
+    linearly with length. One bone per phalanx in one group joined by hard min: the finger creases only at its real
+    joints, where it bends. Several short segments per phalanx left a faint ring at each boundary (hard min) or a
+    swelling (a join blend: the smooth minimum adds where overlapping cones nearly coincide). Joints prefix_0..prefix_N mark the knuckles; prefix_S_m are the
     in-between points."""
     axis = np.cross(d, palm)
     step_turn = bend / (len(shares) * sub)

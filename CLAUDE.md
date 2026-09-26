@@ -32,6 +32,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   Each limb's bones become one group (join 0.15 x the thinnest hinge), blended into the body once: one by one they
   swelled all round every joint. `spec._compile` gives every group member the group's first blend/join: the
   evaluator culls per chunk, so a group with mixed blends blended differently chunk to chunk (dotted seams).
+  Digit fans (the kits' `<kit>_f<n>_<k>` / `_th_` chains): knuckles on the back (the palm side is where the digits
+  curl), webs between neighbours, a pad before the roots, a thenar pad. `kits._digit` now makes one bone per phalanx
+  (hard min): three short segments per phalanx left a ring at each boundary, and a join blend swelled there instead.
 - `strokes.py`: sculpting on the surface. A stroke's path is addressed on the kit-expanded, stroke-free body
   (out from a bone axis, or a raycast), resampled on a Catmull-Rom curve and re-seated, and becomes a
   "displace" or "flatten" blob: an op "modify" primitive (`sdf.MODS`) that reshapes the field combined so far

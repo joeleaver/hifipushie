@@ -28,6 +28,11 @@ has no side to put it on: none, unless "point" gives the direction.
 A limb's bones are joined in one group ("join", x the thinnest hinge's radius: 0.15, a root param) and blended into
 the body once: blended one by one they swell all round every joint.
 Hinge params: "off", "point" ([x, y, z] extensor side), "size" (1), "narrow" (0.9).
+Digits: a fan of digit chains on one mass (the hand and foot kits' "<kit>_f1.L" ... chains, "<kit>_th.L" the opposed
+thumb): a crisp knuckle on the back of each digit's root (the metacarpal heads) and smaller ones at its joints; a web
+between neighbouring digits on the palm side, a third of the way up the first bone; a pad across the palm before
+the roots; a pad at the opposed digit's base. The palm side is where the digits curl. Params under the kit's name
+({"hand.L": {...}}): "off", "knuckles", "webs", "pads" (sizes, 1).
 Root params: "off", "bulk" (all sizes, 1), "cap" (1), "insert" (where the cap inserts, fraction of the first bone,
 0.45), "front" (1), "back" (1), "blend" (x r, 0.4), "narrow" (the bones' radius at the joint, x r: 0.8), "part"
 (the generated masses in a part of their own, to look at them).
@@ -127,6 +132,13 @@ def _expand(spec: dict) -> dict:
     base = copy.deepcopy(out)
     from .strokes import without_seated
     surf = _Surface(without_seated(base))
+    for fan in digit_fans(out):
+        fp = conf.get(fan["kit"], {})
+        if not fp.get("off"):
+            o = _Out(out, f"anatomy {fan['kit']}")
+            _digits(out, fan, {**{k: v for k, v in conf.items() if k == "part"}, **fp}, o)
+            for kind in ("joints", "bones", "blobs"):
+                out.setdefault(kind, {}).update(getattr(o, kind))
     for root in limb_roots(out):
         p = {**{k: v for k, v in conf.items() if not isinstance(v, dict)}, **conf.get(root["joint"], {})}
         if p.get("off"):
@@ -142,6 +154,92 @@ def _expand(spec: dict) -> dict:
         for kind in ("joints", "bones"):
             out.setdefault(kind, {}).update(getattr(o, kind))
     return out
+
+
+def digit_fans(spec: dict) -> list[dict]:
+    """[{"kit": "hand.L", "digits": [[root, k1, k2, ..., tip] joint names, across the fan], "thumb": [...] | None}]
+    from the kits' digit chains (joints <prefix>_0<sfx> .. <prefix>_N<sfx>)."""
+    import re
+    J = spec.get("joints", {})
+    chains: dict = {}
+    for n in J:
+        m = re.fullmatch(r"(.+?)_(f\d+|t\d+|th)_(\d+)(\.L|\.R)?", n)
+        if m:
+            chains.setdefault((m[1], m[2], m[4] or ""), {})[int(m[3])] = n
+    fans: dict = {}
+    for (base, dig, sfx), js in chains.items():
+        if 0 not in js or len(js) < 3:
+            continue
+        seq = [js[k] for k in sorted(js)]
+        f = fans.setdefault((base, sfx), {"kit": base + sfx, "digits": [], "thumb": None})
+        if dig == "th":
+            f["thumb"] = seq
+        else:
+            f["digits"].append((int(dig[1:]), seq))
+    out = []
+    for f in fans.values():
+        if len(f["digits"]) >= 2:
+            f["digits"] = [seq for _, seq in sorted(f["digits"])]
+            out.append(f)
+    return out
+
+
+def _digits(spec: dict, fan: dict, p: dict, o: _Out):
+    kit, digits = fan["kit"], fan["digits"]
+    b, sfx = _base(kit)
+    part = p.get("part")
+    extra = {"part": part} if part else {}
+    P = lambda j: _pos(spec, j)
+    flex = []
+    for seq in digits + ([fan["thumb"]] if fan["thumb"] else []):
+        d0, d1 = _unit(P(seq[1]) - P(seq[0])), _unit(P(seq[-1]) - P(seq[-2]))
+        f = d1 - d0 * (d1 @ d0)
+        flex.append(f)
+    n = _unit(sum(flex[:len(digits)]))  # the palm side: where the digits curl, on average
+    kn, wb, pd = (float(p.get(key, 1.0)) for key in ("knuckles", "webs", "pads"))
+    for i, seq in enumerate(digits + ([fan["thumb"]] if fan["thumb"] else [])):
+        r0 = _rad(spec, seq[0])
+        d = _unit(P(seq[1]) - P(seq[0]))
+        e = _unit(-(n - d * (n @ d)))  # the back of the digit
+        tag = seq[0].rsplit("_", 1)[0].removesuffix(sfx)
+        for k, j in enumerate(seq[:-1]):  # the root's knuckle, then smaller ones at the digit's joints
+            if kn <= 0:
+                continue
+            rj = _rad(spec, j)
+            scale = (0.55 if k == 0 else 0.4) * kn
+            dj = _unit(P(seq[k + 1]) - P(j))
+            ej = _unit(e - dj * (e @ dj))
+            o.joint(f"{tag}_kn{k}a{sfx}", P(j) + ej * 0.55 * rj - dj * 0.1 * rj, scale * rj)
+            o.joint(f"{tag}_kn{k}b{sfx}", P(j) + ej * 0.55 * rj + dj * 0.25 * rj, 0.8 * scale * rj)
+            o.bone(f"{tag}_kn{k}{sfx}", f"{tag}_kn{k}a{sfx}", f"{tag}_kn{k}b{sfx}", flat=[1.0, 0.7], up=_r(ej),
+                   blend=round(0.25 * rj, 5), **extra)
+    if wb > 0:
+        for i in range(len(digits) - 1):
+            A, B = digits[i], digits[i + 1]
+            ra, rb = _rad(spec, A[0]), _rad(spec, B[0])
+            m0 = 0.5 * (P(A[0]) + P(B[0])) + n * 0.25 * (ra + rb)
+            m1 = 0.5 * (P(A[0]) + 0.3 * (P(A[1]) - P(A[0])) + P(B[0]) + 0.3 * (P(B[1]) - P(B[0]))) + n * 0.2 * (ra + rb)
+            w = 0.5 * np.linalg.norm(P(A[0]) - P(B[0]))
+            o.joint(f"{b}_web{i}a{sfx}", m0, w * wb)
+            o.joint(f"{b}_web{i}b{sfx}", m1, 0.7 * w * wb)
+            o.bone(f"{b}_web{i}{sfx}", f"{b}_web{i}a{sfx}", f"{b}_web{i}b{sfx}", flat=[1.0, 0.35], up=_r(n),
+                   blend=round(0.3 * min(ra, rb), 5), **extra)
+    if pd > 0:
+        first, last = digits[0], digits[-1]
+        back = _unit(sum(_unit(P(sq[0]) - P(sq[1])) for sq in digits))  # toward the wrist
+        r = np.mean([_rad(spec, sq[0]) for sq in digits])
+        o.joint(f"{b}_pad_a{sfx}", P(first[0]) + back * 0.6 * r + n * 0.45 * r, 0.6 * r * pd)
+        o.joint(f"{b}_pad_b{sfx}", P(last[0]) + back * 0.6 * r + n * 0.45 * r, 0.55 * r * pd)
+        o.bone(f"{b}_pad{sfx}", f"{b}_pad_a{sfx}", f"{b}_pad_b{sfx}", flat=[1.0, 0.6], up=_r(n),
+               blend=round(0.6 * r, 5), **extra)
+        if fan["thumb"]:
+            th = fan["thumb"]
+            rt = _rad(spec, th[0])
+            base = P(th[0]) + (P(th[0]) - P(th[1])) * 0.3 + n * 0.5 * rt
+            o.joint(f"{b}_thenar_a{sfx}", base, 0.8 * rt * pd)
+            o.joint(f"{b}_thenar_b{sfx}", P(th[1]) + n * 0.35 * rt, 0.55 * rt * pd)
+            o.bone(f"{b}_thenar{sfx}", f"{b}_thenar_a{sfx}", f"{b}_thenar_b{sfx}", flat=[1.0, 0.7], up=_r(n),
+                   blend=round(0.6 * rt, 5), **extra)
 
 
 def _one_form(spec: dict, root: dict, p: dict):
