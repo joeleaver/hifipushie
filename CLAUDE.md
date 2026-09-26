@@ -19,6 +19,14 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   Kit defaults keep details a few voxels wide at close-up resolution: sub-voxel creases render as zigzags.
   Chains (fingers, lips) are many short segments in one `group` (`sdf.units`): joined by hard min (or a
   small `join`), then blended into the body once. Per-segment smooth unions bulge at every joint.
+- `anatomy.py`: modelling lore by joint type instead of a kit per body part (`spec["anatomy"] = {}` opts in; per-joint
+  overrides). Limb roots are found from the skeleton (side chains of 2+ bones: next to a centre hub, or the chain's
+  inner end). Each gets a cap (one bowed, flattened bone over the joint's outer side: separate heads read as lumps),
+  and, beside the body (limb runs back along the body's axis: arms), pec/lat sheets ending on the limb's inner side
+  (the pit's folds); leaving the body's end (legs, a quadruped's legs), a round bowed mass behind (glute, triceps) and
+  no front sheet. The joint's bones slim to 0.8 r there. Sheet origins are seated by a ray from inside the torso
+  (`_exit`; from outside the fox's glute landed on its tail). Expands after kits, before strokes (`expand_mirror`,
+  `fit`, `paint`). Tried on troll, goblin (arms moved clear of the belly: `goblin_anat`), fox (`*_bare` / `*_anat`).
 - `strokes.py`: sculpting on the surface. A stroke's path is addressed on the kit-expanded, stroke-free body
   (out from a bone axis, or a raycast), resampled on a Catmull-Rom curve and re-seated, and becomes a
   "displace" or "flatten" blob: an op "modify" primitive (`sdf.MODS`) that reshapes the field combined so far
@@ -100,20 +108,25 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (a prefab's parts together) first-fit by load at a guessed pack fill (`FILL`), Blender unwraps with per-atlas
   sizes (`textures`/`margins` in the job), then each atlas takes the smallest power of two meeting the density;
   an atlas that can't at `texture` triggers one regroup with the measured fill. `prune_hidden` drops faces buried in another part.
-  Flat regions are dissolved first (`planar_regions`, numpy: grown against the SEED face's normal and plane, so gentle
-  organic curvature never chains; disks only; `_flatten` rebuilds the mesh with one ngon per region, since bmesh's
-  dissolve was quadratic), and a part's triangle floor shrinks with its flat share. Blender
-  decimates all parts together once (quadric error decides each part's share: area shares starved small round
-  parts next to big walls), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the
-  joint result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check
-  when mirroring: black triangles on flat faces), then it is decimated alone. Per atlas (`parts.<p>.atlas`,
+  Flat regions are dissolved first (`planar.planar_regions`, numpy: grown against the SEED face's normal and plane,
+  so gentle organic curvature never chains; disks only; one ngon per region), per part in a process pool before
+  Blender starts (`asset.flatten_parts`, cached as `lowpoly_flat.npz`: 258 s -> 18 s on cabin5), and a part's
+  triangle floor shrinks with its flat share. Worker Blenders (`blender_asset.reduce`, up to 8) collapse every part
+  on its own to 80x its average share (`PRE`), then one joint collapse of all parts decides each part's share
+  (quadric error: area shares starved small round parts next to big walls; the pre-collapse keeps the full joint's
+  shares within ~3%), then `budgets` applies `triangle_weight` and a floor; a part keeps its piece of the joint
+  result unless its budget moved or the mirrored collapse folded triangles (Blender skips its fold check when
+  mirroring: black triangles on flat faces), then workers decimate it alone from its pre-collapsed mesh. The joint
+  result undershoots the drawn target ~2x (it can't see that cups are drawn 18 times), so nearly every part is
+  redone: that's expected. Low poly on cabin5: ~13 min -> ~2 min. Per atlas (`parts.<p>.atlas`,
   `atlases=n` by load): smart project, `_charts` merges islands too thin/small for their margin into a neighbour
   if the chart stays within a 75 deg normal cone (re-projected along its mean normal), `texel_focus` spheres cut
   their own islands, every island is scaled to its density, pack (CONCAVE, margin = texture/512 texels as an
   exact fraction; the old "scaled" margin around thousands of islands left the cabin atlas 6% full). Hands back
   per-corner uv/normal/MikkTSpace tangent and each part's atlas; the json reports mm/texel per part.
   `bake` (per atlas) rasterises triangle ids (PIL "I" polygons), projects each texel onto its part's exact surface
-  (`surface.newton`, converged texels dropped; a texel falls back to the low poly only if it moved > 6 voxels or
+  (`asset._project`: every 4th texel both ways by `surface.newton` from the low poly, the rest from the offset
+  interpolated off the anchors of their own uv island (`uv_islands`), 1.6-2x faster; a texel falls back to the low poly only if it moved > 6 voxels or
   its exact normal faces away, dot < -0.2: steep outward detail like shingle butts is real), reads normal
   (tangent space against the exported low-poly frame, z >= 0.02), height (along the low-poly normal), paint
   channels, AO and painted height from the Blender scene (`scene_maps`, see "Next session" step 4). Maps are
@@ -130,6 +143,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   worked: dropped. Ray misses (~5%) are 84% edge texels (centre outside the triangle: Blender bakes centres only,
   dilation fills them); the rest are low-poly faces bridging gaps (between books, slats, window frames), logged
   per part.
+- `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
+  Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
+  modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit
+  fingers as Thumb/Index/Middle/Ring/Pinky 1-4, legs, ToeBase, *_End) to pelvis/chest/neck/head/limb joints (Neck
+  at shoulder height, clavicles 20% out from it; `spec["rig"]["joints"]` overrides); `chains` for other creatures
+  (`spec["rig"] = {"type": "chains", "root", "chains": {name: {"from", "joints"}}}`). `rig_weights`: each rig bone
+  gets flesh: the piece of a modelling cone it lies along (`_cone_piece`: Spine/Spine1/Spine2 split the spine
+  cone), modelling bones inside its segment, the rest by the nearest rig segment to their middle, blobs by their
+  middle; empty rig bones get a thin cone. Then `weights` on the rig tree: exact per-flesh distance,
+  exp(-(d - d_min) / (0.5 r)), limited to the nearest bone's family within two steps (unrelated bones crowding the
+  4 slots made cracks), smoothed over the mesh, top 4, then `_settle` (smoothing with each vertex's 4 fixed, so a
+  dropped bone fades instead of stepping: hairline cracks). Judge with the `rig` tool (test pose, front/side);
+  export_asset(rig=True) writes the joints (identity rotations at their heads, rest pose as modelled) and skin.
+  `spec.geometry` strips `rig`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -164,6 +191,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
 - `store.py`: `workspace/<model>/spec.json` + `history/`, build cache keyed by spec hash.
 - `scene.py` + `blender_scene.py` + `paintnodes.py`: the live Blender scene (see "Next session"): per-object
   meshing and content cache, paint compiled to shader nodes, pull/sync round trip, EEVEE looks, Cycles bakes.
+  The scene cache is pruned every sync (`scene.prune_cache`): files none of the last 3 syncs used are deleted
+  (content-named files piled up: cabin5's cache was 8.8 GB, 714 MB after). Headless saves keep no scene.blend1.
   Scene parts keep their block grids between syncs (`scene._LIVE`, `LIVE_CELLS` budget per model, most recently
   used kept): an edit re-meshes the blocks it reaches (moving a door: 1.0 s, cold 5.5 s; must equal cold).
   Cycles bakes use emissive materials: every such material needs `cycles.emission_sampling = "NONE"`, or each
@@ -208,7 +237,82 @@ Bump `store.BUILD_VERSION` whenever meshing output changes; the build cache is k
 spec + resolution. `look` with focus + zoom builds only a box around the focus (`build(box=...)`, its own
 `closeup.npz`), with `resolution` counted across that box.
 
-## Next session: the Blender scene becomes the pipeline
+## Next session (agreed 2026-09-25): character topology spike
+
+**Where things stand.** 2026-09-25 closed these backlog cards on Overboard (project "hifipushie"):
+- painted looks with clip planes and close-ups;
+- export quality (edge vs interior ray misses, chart growing);
+- hand-painted masks;
+- export time (the flatten pool, pre-collapse workers, parallel unwrap, anchor-interpolated projection).
+
+It also added the rig step (`rig.py`, the `rig` tool, `export_asset(rig=True, fbx=True)`), the blade primitive,
+the foot kit (fixed after the user saw toes sprouting mid-foot: the instep must slope into toes lying on the ground)
+and scene-cache pruning. Rig standards are in memory (`rig-standards`): Mixamo-compatible humanoids, clean chains,
+the rig separate from the modelling bones.
+
+**Character topology spike: results (2026-09-25, `spikes/topology/`, README there).** Troll body, `rig.test_pose`,
+the same `rig_weights` on every mesh; error = field -> mesh distance, by region (rest / head / hands).
+- Skin modifier over the rig graph (+ skull, ears; radii by rays; rings at bending joints; shot onto the field along
+  normals, relaxed): DROPPED. Its limbs were the cleanest, but hubs break (chest with neck + clavicles: a
+  self-intersecting hull even after dropping the crowding nodes and building it thin; the arm/torso junction
+  shreds at 8 segments around), every limb gets the same ring count (4 x 2^subsurf: fingers as many as the torso),
+  and the head is a projected sphere with no vertices for nose or brow (63 mm max error).
+- Blender QuadriFlow: clean quads flowing along the limbs, the best bends; beats decimation on broad forms per
+  triangle (rest 1.2 vs 1.45 mm at 10k), but density is uniform: head and hands need ~4x the triangles (hands 2.2
+  vs 0.9 mm at 10k). At 5k: mitten hands, and a web under the raised arm (big quads across the armpit take
+  blended arm/torso weights). Loses the thin blade ears.
+- QuadriFlow with our sizing field (patched build: `QF_SIZING` file of relative edge lengths; the stock `rho` is
+  always 1, its `-adaptive` isn't density; also fixes a comma-operator bug in subdivide.cpp). Sizing = edge <=
+  0.5 / max principal curvature (normal turn along edges: mean curvature cancels on a face's saddles and left the
+  face coarser than the belly), shortened near bending joints, clamped 0.25-1.6, normalised to the budget, one
+  calibration rerun. Head and hands 1.6-2x better than plain at the same budget, no armpit web, a readable face
+  at 5k. Overall close to decimation (10k: mean 1.67 vs 1.36 mm, max 21 vs 10). Clenched fingers still merge
+  and the ears are still lost.
+- Decimation: the best detail per triangle (face, fingers, ears), but slivers along the limbs kink at elbow and knee.
+- The dip on top of the raised shoulder is the same on every mesh, the dense one too: that's the weights (linear
+  blend skinning), not topology.
+- The user saw it first: QuadriFlow's quads aren't loops. `topo_loops.ring_check` (walk quad edge loops from the
+  crease): skin mesh rings at all 4 elbows/knees; plain and sized QuadriFlow at 1-2 of 4, the rest spirals (open
+  walks of 100-400 edges). Judge loops with the ring check, not by eye.
+- Joint loops as features (patch `QF_FEATURES`: crease planes sliced into the high mesh, their edges constrained
+  like boundaries: orientation + position): 4/4 rings exactly on the crease (0.1 mm), and the loops beside them close
+  too (15/16 at +-0.6 and +-1.2 limb radii) with parallel flow, no poles against the ring. Three constrained loops a
+  joint (0 and +-0.6 r) break at 5k (constraints closer than the quad size: the lattice can't fit) and work at 10k
+  (4/4, error mean 1.33 mm, decimation 1.36). Rule: constrained loops no closer than ~1.5 local edges; at low
+  budgets the crease loop alone, its neighbours follow.
+- Shoulders (2026-09-26): a plane can't cut an armhole (a hanging arm's plane runs into the torso). Loops on the level
+  curves of a harmonic field from the rig weights (patch `QF_FEATURE_IDS`: per-vertex curve ids, carried through
+  QuadriFlow's subdivision) exposed bad weights instead: the arm owned 42% of its own shoulder (the collar cone's
+  round end over the upper arm; the torso's radius set the blend width; the goblin's arm flesh sat 39 mm outside the
+  arm: `_cone_piece` ignored bones reached from their far end). Fixed in `rig.py` (bisector cuts, thinner-bone blend
+  width, piece direction; bones off every rig segment split in quarters). But constrained QuadriFlow runs on those
+  level curves stall in the integer stage (>10 min, elbows/knees too; plane cuts took seconds): unresolved.
+- The user then called the real problem: shoulders were balls pasted on bodies (troll and goblin), bad geometry to
+  rig. Asked for general modelling lore rather than kits: `anatomy.py` (see Layout). Next: the hinge rule (bony
+  point on the extensor side, flexor crease, flesh narrowing at the joint); hands and feet as presets over it;
+  loops placed from the anatomy (the cap's and folds' edges are the armhole); sheets skinned smoothly along their
+  length (four pieces hand over in steps: a fold on the pec's edge when the arm lifts); the pit still streaks under a
+  raised arm (LBS, as before anatomy). Face rings, ears QuadriFlow drops, the QuadriFlow stall: still open.
+- Decimation stays for environments and props either way.
+
+**Then, in the order the user saw them:**
+1. **Rig check in a real engine:** the rigged goblin FBX in Unity or Unreal with a Mixamo animation. This decides
+   whether we need a T-pose rest or bone orientations; joints are currently unrotated, rest pose as modelled. It
+   needs the user or an engine on this machine.
+2. **Export time** (card "Export time: texel projection and Cycles map bake"): at 256/m texel projection is
+   ~26 min and the Cycles map bake ~15 min. Skip texels on triangles already on the surface (probe each triangle
+   on a voxel lattice). Find why the roof's shingle-array field is slow. Merge parts per Cycles pass. Benchmark
+   with nothing else running.
+3. **Face kit quality:** cheeks and nose read as stuck-on balls.
+4. **Cabin:** the weathering restraint pass, then its final export.
+
+**Gotchas from 2026-09-25:**
+- Keep heavy exports alone on the machine, or the timings mean nothing.
+- Exports and scene caches can fill the disk. The scratchpad lives in /tmp, which is on the root disk: clear old
+  export folders.
+- Background shell jobs can start minutes after launch.
+
+## The Blender scene becomes the pipeline (2026-09-23, done)
 
 Agreed with the user (2026-09-23): lean on Blender's strengths instead of maintaining our own versions of what it
 does best-in-class (ray-traced AO/sky, shading, baking, viewing). The spec stays the source of truth and what the
@@ -443,10 +547,10 @@ Next, roughly in priority order:
    graph + radii, joint rings added, projected onto the exact field, relaxed; face kit templates for eye/mouth
    rings); skin weights nearly free (each ring belongs to a bone). First a spike on the troll: skin-modifier topology
    vs QuadriFlow vs decimation, with a test bend at elbow/knee.
-4. Feet/toes: strokes can't split digits; needs a foot kit or bones per toe (the troll's feet are capsules).
+4. Feet/toes: DONE (2026-09-25): the foot kit (`kits._foot`: body, ball, heel, toes as `_digit`s).
 5. Close-ups at a new focus rebuild from scratch (~5 s): the grid moves. Could snap close-up boxes to the
    full build's block grid so PartGrid can reuse blocks.
 6. Face kit features read as stuck-on balls (cheeks, nose); strokes did better for brows/cheeks. Consider
    softer kit blends or stroke-based features.
-7. Older ideas: ears need a leaf/blade primitive; adaptive resolution near small features; skeleton →
+7. Older ideas: (blade primitive: done 2026-09-25, `sdf.sd_blade`); adaptive resolution near small features; skeleton →
    Blender armature for posing; soft priors in fit.

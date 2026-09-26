@@ -267,8 +267,18 @@ def _nears(ly: dict):
             yield from _nears(e)
 
 
+def _gens(ly: dict, key: str):
+    """Every value of generator `key` a layer (or a mask stack entry) gives, nested stacks included."""
+    if key in ly:
+        yield ly[key]
+    for e in ly.get("mask") or []:
+        if isinstance(e, dict):
+            yield from _gens(e, key)
+
+
 def check_refs(spec: dict, prims: list) -> None:
-    """Names paint points at must exist: each "near" resolves to primitives, each "part" is a part of the model.
+    """Names paint points at must exist: each "near" resolves to primitives, each "part" is a part of the model,
+    each axis bone is a bone.
     Checked when the spec is saved, not minutes into a sync or export."""
     from .paintnodes import resolve_near
     from .spec import expand_mirror
@@ -299,6 +309,12 @@ def check_refs(spec: dict, prims: list) -> None:
                                f"its own to be near; name what it cuts, or elements beside the cut")
             raise SpecError(f"paint {name!r}: near names nothing for {bad}" + (": " + "; ".join(why) if why else
                             " (element, tag, instance, array or kit names)"))
+        for ax in _gens(ly, "axis"):
+            if isinstance(ax, dict) and "bone" in ax:
+                if expanded is None:
+                    expanded = expand_mirror(spec)
+                if ax["bone"] not in expanded["bones"]:
+                    raise SpecError(f"paint {name!r}: axis bone {ax['bone']!r} doesn't exist (removed or renamed?)")
 
 
 def _check_stack(name: str, stack) -> None:
@@ -842,9 +858,9 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
 
 def _seated_paths(spec: dict, name: str, ly: dict) -> list[dict]:
     """The layer's path seated on the surface, as stroke samples (pts, nrm, width per sample), one per copy."""
-    from . import kits, strokes
+    from . import anatomy, kits, strokes
     from .spec import geometry
-    base = strokes.seat_joints(kits.expand(geometry(spec)))
+    base = strokes.seat_joints(anatomy.expand(kits.expand(geometry(spec))))
     base = copy.copy(base)
     base.pop("strokes", None)
     st = {"op": "clay", "path": ly["path"], "width": ly.get("width", 0.01), "depth": 0.001}

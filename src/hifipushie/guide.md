@@ -58,6 +58,12 @@ details add things the plan never drew (nose, ears, fingers).
   nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
+- Ears, leaves, fins, feathers, blades: a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
+  point, `cup` for an ear's hollow, `bend` for a curling tip), rotated so its local y runs root to tip and its
+  local z faces the way the hollow opens. A cone reads as a spike, and an ellipsoid as a lump.
+- Toes: the foot kit (`{"type": "foot", "ankle": "ankle.L", "ball": "toe.L"}`) makes the foot's body, ball, heel and
+  toes. Drop a capsule "foot" bone it replaces, and any toe-groove strokes on it. Sizes follow the leg arriving
+  at the ankle.
 - Separate digits (toes, extra fingers, horns, tusks) are geometry, not strokes. Put them in the blockout
   (bones, the hand kit) and root attachments on the surface with seated joints (`"on"`, below).
 
@@ -290,6 +296,22 @@ solid clothing, eyeball backs) are removed first.
   (the log says how many per part). Build at a higher resolution or make the detail thicker.
 - Judge the preview and close-ups (`asset.preview` focus/zoom; `hide=["roof", "walls"]` to see inside) for
   seams and the normal map's read.
+
+
+### Rigging characters
+
+The skeleton you model with is not the rig. Tusks, lip chains and a shorts leg are modelling bones. The export rig
+is a separate, standard skeleton, and the `rig` tool fits it and skins the model:
+- **Humanoids** (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
+  names, with fingers from the hand kit. Mixamo animations, Unity Humanoid and Unreal's IK retargeter map it as is.
+  Keep those joint names on anything humanoid.
+- **Other creatures:** give `spec["rig"] = {"type": "chains", "root": "pelvis", "chains": {"spine": {"joints":
+  [...]}, "tail": {"from": "spine", "joints": [...]}, "leg_front.L": {...}}}`: clean named chains.
+- **Check the pose.** Run `rig` and look at its test pose (elbow, shoulder, hip, knee, spine, head). Look for tears,
+  lumps left behind and creases. Move a rig joint with `spec["rig"]["joints"]` (e.g. the clavicle,
+  "LeftShoulder"). Then `export_asset(..., rig=True)`.
+- **Limits:** decimated triangles bend less cleanly than modelled edge loops. The rest pose is as modelled (arms
+  down); retargeters handle that with their retarget pose.
 
 ## 6. When something looks wrong
 

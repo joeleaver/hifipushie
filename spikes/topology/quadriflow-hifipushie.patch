@@ -1,0 +1,160 @@
+diff --git a/src/main.cpp b/src/main.cpp
+index 18bc406..4d807ff 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "config.hpp"
+ #include "field-math.hpp"
+ #include "optimizer.hpp"
+@@ -56,6 +57,28 @@ int main(int argc, char** argv) {
+     t2 = GetCurrentTime64();
+     printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
+ 
++    if (getenv("QF_FEATURES") || getenv("QF_FEATURE_IDS")) {  // hifipushie: feature loops constrain orientation and position like boundaries
++        Hierarchy& mRes = field.hierarchy;
++        mRes.clearConstraints();
++        int n = 0;
++        for (uint32_t i = 0; i < 3 * mRes.mF.cols(); ++i) {
++            if (!field.sharp_edges[i]) continue;
++            uint32_t i0 = mRes.mF(i % 3, i / 3);
++            uint32_t i1 = mRes.mF((i + 1) % 3, i / 3);
++            Vector3d p0 = mRes.mV[0].col(i0), p1 = mRes.mV[0].col(i1);
++            Vector3d edge = p1 - p0;
++            if (edge.squaredNorm() > 0) {
++                edge.normalize();
++                mRes.mCO[0].col(i0) = p0;
++                mRes.mCO[0].col(i1) = p1;
++                mRes.mCQ[0].col(i0) = mRes.mCQ[0].col(i1) = edge;
++                mRes.mCQw[0][i0] = mRes.mCQw[0][i1] = mRes.mCOw[0][i0] = mRes.mCOw[0][i1] = 1.0;
++                ++n;
++            }
++        }
++        mRes.propagateConstraints();
++        printf("feature constraints: %d\n", n);
++    }
+     if (field.flag_preserve_boundary) {
+         printf("Add boundary constrains...\n");
+         Hierarchy& mRes = field.hierarchy;
+diff --git a/src/optimizer.cpp b/src/optimizer.cpp
+index 1c59ad0..f918417 100644
+--- a/src/optimizer.cpp
++++ b/src/optimizer.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "optimizer.hpp"
+ 
+ #include <Eigen/Sparse>
+@@ -160,12 +161,12 @@ void Optimizer::optimize_scale(Hierarchy& mRes, VectorXd& rho, int adaptive) {
+             for (int j = 0; j < 2; ++j) {
+                 S(j, i) = 1.0;
+                 double sc1 = std::max(0.75 * S(j, i), rho[i] * 1.0 / mRes.mScale);
+-                S(j, i) = std::min(S(j, i), sc1);
++                S(j, i) = getenv("QF_SIZING") ? rho[i] : std::min(S(j, i), sc1);
+             }
+         }
+ 
+         std::vector<std::map<int, double>> entries(V.cols() * 2);
+-        double lambda = 1;
++        double lambda = getenv("QF_SIZING") ? atof(getenv("QF_LAMBDA") ? getenv("QF_LAMBDA") : "10") : 1;
+         for (int i = 0; i < entries.size(); ++i) {
+             entries[i][i] = lambda;
+         }
+diff --git a/src/parametrizer-mesh.cpp b/src/parametrizer-mesh.cpp
+index 19effe9..dce6800 100644
+--- a/src/parametrizer-mesh.cpp
++++ b/src/parametrizer-mesh.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++#include <cstdio>
+ #include "config.hpp"
+ #include "dedge.hpp"
+ #include "field-math.hpp"
+@@ -51,6 +53,20 @@ void Parametrizer::Initialize(int faces) {
+     for (int i = 0; i < V.cols(); ++i) {
+         rho[i] = 1;
+     }
++    if (const char* fn = getenv("QF_FEATURE_IDS")) {  // hifipushie: feature curve id per input vertex
++        extern std::vector<int> g_feature_id;
++        g_feature_id.assign(V.cols(), -1);
++        FILE* f = fopen(fn, "r");
++        for (int i = 0; i < V.cols() && f; ++i)
++            if (fscanf(f, "%d", &g_feature_id[i]) != 1) break;
++        if (f) fclose(f);
++    }
++    if (const char* fn = getenv("QF_SIZING")) {  // hifipushie: relative edge length per input vertex
++        FILE* f = fopen(fn, "r");
++        for (int i = 0; i < V.cols() && f; ++i)
++            if (fscanf(f, "%lf", &rho[i]) != 1) break;
++        if (f) fclose(f);
++    }
+ #ifdef PERFORMANCE_TEST
+     scale = sqrt(surface_area / (V.cols() * 10));
+ #else
+@@ -123,6 +139,40 @@ void Parametrizer::ComputeMeshStatus() {
+ 
+ void Parametrizer::ComputeSharpEdges() {
+     sharp_edges.resize(F.cols() * 3, 0);
++    extern std::vector<int> g_feature_id;
++    if (!g_feature_id.empty()) {  // hifipushie: edges joining two vertices of the same feature curve
++        int count = 0;
++        for (int i = 0; i < F.cols() * 3; ++i) {
++            int a = g_feature_id[F(i % 3, i / 3)], b = g_feature_id[F((i + 1) % 3, i / 3)];
++            if (a >= 0 && a == b) {
++                sharp_edges[i] = 1;
++                ++count;
++            }
++        }
++        printf("feature half-edges: %d\n", count);
++    }
++    if (const char* fn = getenv("QF_FEATURES")) {  // hifipushie: feature loops, as planes cut into the mesh
++        FILE* f = fopen(fn, "r");
++        double p[3], n[3], r;
++        int count = 0;
++        while (f && fscanf(f, "%lf %lf %lf %lf %lf %lf %lf", p, p + 1, p + 2, n, n + 1, n + 2, &r) == 7) {
++            Vector3d P((p[0] - normalize_offset[0]) / normalize_scale, (p[1] - normalize_offset[1]) / normalize_scale,
++                       (p[2] - normalize_offset[2]) / normalize_scale);
++            Vector3d N(n[0], n[1], n[2]);
++            N.normalize();
++            double R = r / normalize_scale, eps = 2e-5;
++            for (int i = 0; i < F.cols() * 3; ++i) {
++                Vector3d a = V.col(F(i % 3, i / 3)), b = V.col(F((i + 1) % 3, i / 3));
++                if (std::abs((a - P).dot(N)) < eps && std::abs((b - P).dot(N)) < eps && (a - P).norm() < R &&
++                    (b - P).norm() < R) {
++                    sharp_edges[i] = 1;
++                    ++count;
++                }
++            }
++        }
++        if (f) fclose(f);
++        printf("feature half-edges: %d\n", count);
++    }
+ 
+     if (flag_preserve_boundary) {
+         for (int i = 0; i < sharp_edges.size(); ++i) {
+diff --git a/src/subdivide.cpp b/src/subdivide.cpp
+index c408bbc..70adb59 100644
+--- a/src/subdivide.cpp
++++ b/src/subdivide.cpp
+@@ -10,6 +10,8 @@
+ 
+ namespace qflow {
+ 
++std::vector<int> g_feature_id;  // hifipushie: feature curve id per vertex (-1 none), carried through subdivision
++
+ void subdivide(MatrixXi &F, MatrixXd &V, VectorXd& rho, VectorXi &V2E, VectorXi &E2E, VectorXi &boundary,
+                VectorXi &nonmanifold, double maxLength) {
+     typedef std::pair<double, int> Edge;
+@@ -71,7 +73,11 @@ void subdivide(MatrixXi &F, MatrixXd &V, VectorXd& rho, VectorXi &V2E, VectorXi
+ 
+         /* Update V */
+         V.col(vn) = (V.col(v0) + V.col(v1)) * 0.5f;
+-        rho[vn] = 0.5f * (rho[v0], rho[v1]);
++        rho[vn] = 0.5f * (rho[v0] + rho[v1]);
++        if (!g_feature_id.empty()) {
++            if ((int)g_feature_id.size() <= vn) g_feature_id.resize(vn + 1, -1);
++            g_feature_id[vn] = g_feature_id[v0] == g_feature_id[v1] ? g_feature_id[v0] : -1;
++        }
+         nonmanifold[vn] = false;
+         boundary[vn] = is_boundary;
+ 

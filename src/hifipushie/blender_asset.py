@@ -139,253 +139,19 @@ def _clean(ob):
 # triangles with zero error while round things starved. Flat regions are dissolved to ngons first, so the collapse
 # only spends its budget where the surface bends.
 
-def _components(n, a, b):
-    """Connected component label per node (min node index) of the graph with edges (a, b): hooking plus pointer
-    jumping, a few passes over the edges instead of a Python BFS."""
-    lab = np.arange(n)
-    while True:
-        la, lb = lab[a], lab[b]
-        hi, lo = np.maximum(la, lb), np.minimum(la, lb)
-        diff = hi != lo
-        if not diff.any():
-            return lab
-        np.minimum.at(lab, hi[diff], lo[diff])
-        while True:
-            nxt = lab[lab]
-            if (nxt == lab).all():
-                break
-            lab = nxt
-
-
-def _neighbours(indptr, nbr, f):
-    """(source, neighbour) pairs of the faces `f` in a CSR adjacency."""
-    cnt = indptr[f + 1] - indptr[f]
-    src = np.repeat(f, cnt)
-    off = np.arange(cnt.sum()) - np.repeat(np.cumsum(cnt) - cnt, cnt)
-    return src, nbr[np.repeat(indptr[f], cnt) + off]
-
-
-def planar_regions(V, F, plane_tol, angle_deg=0.5, min_faces=8, rounds=40):
-    """Region label per face (-1: none) for groups of connected faces that lie on one plane: every face's normal
-    within `angle_deg` of its region's SEED face and its centre within `plane_tol` of the seed's plane. Testing
-    against the seed rather than neighbour to neighbour keeps gently curved organic surfaces from chaining into
-    one region. Regions are disks (V - E + F = 1: ones with holes, like a wall round a window, are split), so each
-    dissolves to one simple ngon."""
-    nf = len(F)
-    e1, e2 = V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]
-    nrm = np.cross(e1, e2)
-    area = np.linalg.norm(nrm, axis=1)
-    tiny = area < 1e-12
-    nrm = nrm / np.maximum(area, 1e-30)[:, None]
-    cen = V[F].mean(1)
-    cos_t = np.cos(np.radians(angle_deg))
-
-    # manifold edges (exactly two faces) as face pairs
-    he = F[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
-    key = np.minimum(he[:, 0], he[:, 1]).astype(np.int64) * len(V) + np.maximum(he[:, 0], he[:, 1])
-    order = np.argsort(key, kind="stable")
-    ks = key[order]
-    first = np.r_[True, ks[1:] != ks[:-1]]
-    run = np.diff(np.r_[np.flatnonzero(first), len(ks)])
-    start = np.flatnonzero(first)[run == 2]
-    fa, fb = order[start] // 3, order[start + 1] // 3
-
-    def fits(f, n0, c0):
-        """Faces `f` against reference normals/centres: parallel (degenerate faces skip that) and in plane."""
-        par = (nrm[f] * n0).sum(1) > cos_t
-        return (par | tiny[f]) & (np.abs(((cen[f] - c0) * n0).sum(1)) < plane_tol)
-
-    ok = fits(fa, nrm[fb], cen[fb]) & fits(fb, nrm[fa], cen[fa])
-    ok &= ~(tiny[fa] & tiny[fb])
-    a, b = np.r_[fa[ok], fb[ok]], np.r_[fb[ok], fa[ok]]
-    o = np.argsort(a, kind="stable")
-    a, b = a[o], b[o]
-    indptr = np.searchsorted(a, np.arange(nf + 1))
-
-    label = np.full(nf, -1)
-    pool = np.zeros(nf, bool)
-    pool[a] = True
-    nreg = 0
-    for _ in range(rounds):
-        sel = pool[a] & pool[b]
-        comp = _components(nf, a[sel], b[sel])
-        size = np.bincount(comp[pool], minlength=nf)
-        big = pool & (size[comp] >= min_faces) & ~tiny
-        if not big.any():
-            break
-        # seed per component: the face nearest its area-weighted mean normal (the dominant plane)
-        fi = np.flatnonzero(big)
-        mn = np.zeros((nf, 3))
-        np.add.at(mn, comp[fi], nrm[fi] * area[fi, None])
-        score = (nrm[fi] * mn[comp[fi]]).sum(1)
-        o = np.lexsort((-score, comp[fi]))
-        seeds = fi[o][np.r_[True, comp[fi][o][1:] != comp[fi][o][:-1]]]
-        rid = nreg + np.arange(len(seeds))
-        sn, sc = nrm[seeds], cen[seeds]
-        label[seeds] = rid
-        pool[seeds] = False
-        front = seeds
-        while len(front):
-            src, nb = _neighbours(indptr, b, front)
-            m = pool[nb] & (comp[nb] == comp[src])
-            src, nb = src[m], nb[m]
-            r = label[src] - nreg
-            m = fits(nb, sn[r], sc[r])
-            nb, r = nb[m], r[m]
-            nb, i = np.unique(nb, return_index=True)
-            label[nb] = r[i] + nreg
-            pool[nb] = False
-            front = nb
-        nreg += len(seeds)
-
-    # disks only: split regions whose Euler characteristic isn't 1 across their longest extent, re-split pieces
-    for _ in range(8):
-        label = _relabel(label, fa, fb)
-        chi = _euler(F, label, fa, fb)
-        bad = np.flatnonzero(chi != 1)
-        if not len(bad):
-            break
-        fi = np.flatnonzero(np.isin(label, bad))
-        lr = label[fi]
-        cnt = np.bincount(lr)[lr][:, None]
-        mid = np.zeros((label.max() + 1, 3))
-        np.add.at(mid, lr, cen[fi])
-        d = cen[fi] - mid[lr] / cnt
-        cov = np.zeros((label.max() + 1, 3, 3))
-        np.add.at(cov, lr, d[:, :, None] * d[:, None, :])
-        axis = np.linalg.eigh(cov)[1][:, :, -1]
-        side = (d * axis[lr]).sum(1) > 0
-        label[fi[side]] += label.max() + 1
-    else:
-        label = _relabel(label, fa, fb)
-        label[np.isin(label, np.flatnonzero(_euler(F, label, fa, fb) != 1))] = -1
-    size = np.bincount(label[label >= 0], minlength=max(label.max() + 1, 1))
-    label[(label >= 0) & (size[np.maximum(label, 0)] < min_faces)] = -1
-    return _relabel(label, fa, fb)
-
-
-def _relabel(label, fa, fb):
-    """Split every region into its connected pieces and number them 0..n-1 (-1 stays)."""
-    m = (label[fa] == label[fb]) & (label[fa] >= 0)
-    comp = _components(len(label), fa[m], fb[m])
-    comp[label < 0] = -1
-    u, inv = np.unique(comp, return_inverse=True)
-    return inv - (1 if u[0] == -1 else 0)
-
-
-def _euler(F, label, fa, fb):
-    """V - E + F of every region (1 for a disk). Edges: three per face less the ones two of its faces share."""
-    n = label.max() + 1
-    if n <= 0:
-        return np.zeros(0, int)
-    fi = np.flatnonzero(label >= 0)
-    lr = label[fi]
-    nfc = np.bincount(lr, minlength=n)
-    inner = np.bincount(label[fa][(label[fa] == label[fb]) & (label[fa] >= 0)], minlength=n)
-    k = np.sort((np.repeat(lr, 3).astype(np.int64) * (F.max() + 1) + F[fi].ravel()))
-    nv = np.bincount(k[np.r_[True, k[1:] != k[:-1]]] // (F.max() + 1), minlength=n)
-    return nv - (3 * nfc - inner) + nfc
-
-
-def _loops(F, label):
-    """Each region's boundary as one vertex loop, wound like its faces: (region per loop, loop start, loop length,
-    vertices), for the regions whose boundary is one simple loop (every boundary vertex left once) enclosing at
-    least one interior vertex (a strip of faces with none gains nothing from being dissolved)."""
-    n = label.max() + 1
-    fi = np.flatnonzero(label >= 0)
-    hs = F[fi][:, [0, 1, 2]].ravel()
-    ht = F[fi][:, [1, 2, 0]].ravel()
-    hr = np.repeat(label[fi], 3).astype(np.int64)
-    nv = F.max() + 1
-    fwd = (hr * nv + hs) * nv + ht
-    twin = (hr * nv + ht) * nv + hs
-    fs = np.sort(fwd)
-    pos = np.minimum(np.searchsorted(fs, twin), len(fs) - 1)
-    bd = fs[pos] != twin  # boundary: the reverse half-edge isn't in the region
-    bs, bt, br = hs[bd], ht[bd], hr[bd]
-    # the region's vertices, and whether each boundary vertex is left exactly once
-    kv = np.sort(hr * nv + hs)
-    nvert = np.bincount(kv[np.r_[True, kv[1:] != kv[:-1]]] // nv, minlength=n)
-    start = br * nv + bs
-    o = np.argsort(start, kind="stable")
-    bs, bt, br, start = bs[o], bt[o], br[o], start[o]
-    dup = np.r_[start[1:] == start[:-1], False] | np.r_[False, start[1:] == start[:-1]]
-    ok = np.ones(n, bool)
-    ok[br[dup]] = False
-    nb = np.bincount(br, minlength=n)
-    ok &= nvert > nb  # an interior vertex
-    # successor of each boundary half-edge: the one leaving its end vertex in the same region
-    succ = np.searchsorted(start, br * nv + bt)
-    succ = np.minimum(succ, len(start) - 1)
-    bad = start[succ] != br * nv + bt
-    ok[br[bad]] = False
-    succ[bad] = np.flatnonzero(bad)
-    # list ranking by pointer doubling: steps from each half-edge to the one before its region's head
-    m = len(start)
-    head = np.full(n, m)
-    np.minimum.at(head, br, np.arange(m))
-    nxt = succ.copy()
-    end = nxt == head[br]
-    nxt[end] = np.flatnonzero(end)
-    dist = (~end).astype(np.int64)
-    for _ in range(int(np.ceil(np.log2(max(nb.max(), 2)))) + 1):
-        dist += dist[nxt]
-        nxt = nxt[nxt]
-    ok[br[(nxt[nxt] != nxt) | (dist[head[br]] + 1 != nb[br])]] = False  # more than one loop
-    keep = ok[br]
-    o = np.lexsort((-dist[keep], br[keep]))
-    verts = bs[keep][o]
-    regs = np.flatnonzero(ok & (nb > 0))
-    length = nb[regs]
-    return regs, np.r_[0, np.cumsum(length)[:-1]], length, verts
-
-
-def _flatten(ob, plane_tol):
-    """Dissolve the object's planar regions (`planar_regions`) to ngons and triangulate them again. The mesh is
-    rebuilt in numpy (bmesh's dissolve is quadratic in region size: 25 s on a 380k-face stone part). A face
-    attribute "pid" (the part id) survives: a region never spans two parts, they share no vertices. Returns the
-    face count and which of the input faces were dissolved."""
-    V, F = _tri_arrays(ob)
-    none = np.zeros(len(F), bool)
-    if plane_tol <= 0:
-        return len(F), none
-    label = planar_regions(V, F, plane_tol)
-    if label.max() < 0:
-        return len(F), none
-    regs, lstart, length, lverts = _loops(F, label)
-    if not len(regs):
-        return len(F), none
-    me = ob.data
-    pid = None
-    if "pid" in me.attributes:
-        pid = np.empty(len(F), np.int32)
-        me.attributes["pid"].data.foreach_get("value", pid)
-    gone = np.isin(label, regs)
-    kept = np.flatnonzero(~gone)
-    rep = np.full(label.max() + 1, -1)
-    rep[label[gone]] = np.flatnonzero(gone)  # a face of each region, for its attributes
-    loops = np.r_[F[kept].ravel(), lverts]
-    sizes = np.r_[np.full(len(kept), 3), length]
-    used = np.unique(loops)
-    remap = np.full(len(V), -1, np.int64)
-    remap[used] = np.arange(len(used))
-    new = bpy.data.meshes.new(me.name)
-    new.vertices.add(len(used))
-    new.vertices.foreach_set("co", V[used].astype(np.float32).ravel())
-    new.loops.add(len(loops))
-    new.loops.foreach_set("vertex_index", remap[loops].astype(np.int32))
-    new.polygons.add(len(sizes))
-    new.polygons.foreach_set("loop_start", np.r_[0, np.cumsum(sizes)[:-1]].astype(np.int32))
-    new.update(calc_edges=True)
+def _flat_mesh(name, V, L, S, pid=None):
+    """A part's polygons (its flat regions as single ngons, from `planar.flatten`, run before Blender starts)
+    triangulated again: the collapse then spends nothing on flat walls. `pid`: a part id per polygon, kept as a face
+    attribute through the triangulation."""
+    ob = _poly_mesh(name, V, L, np.r_[0, np.cumsum(S)[:-1]])
+    ob.data.update(calc_edges=True)
     if pid is not None:
-        new.attributes.new("pid", "INT", "FACE").data.foreach_set("value", np.r_[pid[kept], pid[rep[regs]]])
-    ob.data = new
-    bpy.data.meshes.remove(me)
+        ob.data.attributes.new("pid", "INT", "FACE").data.foreach_set("value", np.asarray(pid, np.int32))
     tri = ob.modifiers.new("tri", "TRIANGULATE")
     tri.quad_method, tri.ngon_method = "BEAUTY", "BEAUTY"
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.modifier_apply(modifier="tri")
-    return len(new.polygons), gone
+    return ob
 
 
 # ---- charts ----------------------------------------------------------------------------------------------------
@@ -698,6 +464,8 @@ def _unwrap_atlas(obs, cfg, job, atlas):
 
 
 TIMES = []
+PRE, PRE_MIN = 80, 1500  # parts are first collapsed on their own to 80x their average share (at least 1500):
+# the joint collapse then keeps the shares the full-resolution one gives within ~3% (cabin5), in ~1/6 the time
 
 
 def _sub(verts, faces, sel):
@@ -709,12 +477,12 @@ def _sub(verts, faces, sel):
     return verts[used].astype(np.float64), remap[fc]
 
 
-def _reduce(name, V, F, target, symmetry, plane_tol):
-    """Collapse-decimate (V, F) to `target` faces, after dissolving its flat regions (`_flatten`). Mirrored across X
-    when asked, unless that turns triangles over: Blender's mirrored collapses skip its fold check, and on flat faces
-    they fold (black triangles)."""
-    ob = _mesh(name, V, F)
-    n = _flatten(ob, plane_tol)[0]
+def _reduce(name, poly, V, F, target, symmetry):
+    """Collapse-decimate a part (`poly`: its flattened polygons, (V, F): its triangles, for the fold check) to
+    `target` faces. Mirrored across X when asked, unless that turns triangles over: Blender's mirrored collapses skip
+    its fold check, and on flat faces they fold (black triangles)."""
+    ob = _flat_mesh(name, *poly[:3])
+    n = len(ob.data.polygons)
     if target >= n:
         return ob, False
     if symmetry:
@@ -780,28 +548,55 @@ def lowpoly(job):
     # 1. one quadric decimation of all parts together: it spends triangles where they cut the geometric error
     #    most, so flat walls get few and small round things enough (area shares starve those). Parts share no
     #    vertices, so collapses never merge them; a face attribute carries the part through.
-    keep = np.isin(fpart, [pidx[pn] for pn in names])
-    V, F = _sub(verts, faces, keep)
-    pid_of = np.full(len(all_names), -1)
-    for k, pn in enumerate(names):
-        pid_of[pidx[pn]] = k
-    joint = _mesh("joint", V, F)
-    joint.data.attributes.new("pid", "INT", "FACE").data.foreach_set("value", pid_of[fpart[keep]].astype(np.int32))
     copies = {pn: int(cfg[pn].get("copies", 1)) for pn in names}
     ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))  # drawn triangles: prefabs per copy
     flat_frac = {pn: 0.0 for pn in names}
-    plane_tol = 0.25 * float(job.get("voxel", 0.0))
-    if ratio < 1.0:
-        # flat regions go to ngons first (they cost nothing), then the collapse ratio counts what's left
-        n, flat = _flatten(joint, plane_tol)
-        pids = pid_of[fpart[keep]]
-        flat_frac = {pn: float(flat[pids == k].mean()) for k, pn in enumerate(names)}
+    _, polys = _part_arrays(job)
+    pre_file = None
+    if ratio >= 1.0:  # nothing to decimate: the parts as they are
+        keep = np.isin(fpart, [pidx[pn] for pn in names])
+        pid_of = np.full(len(all_names), -1)
+        for k, pn in enumerate(names):
+            pid_of[pidx[pn]] = k
+        joint = _mesh("joint", *_sub(verts, faces, keep))
+        joint.data.attributes.new("pid", "INT", "FACE").data.foreach_set("value", pid_of[fpart[keep]].astype(np.int32))
+    else:
+        # flat regions are ngons already (`planar.flatten`: they cost nothing). Every part is first collapsed on
+        # its own to PRE times its average share (parallel workers), so the joint collapse, which decides the
+        # shares, runs on a few hundred thousand triangles instead of millions
+        tf = time.time()
+        nf, source = {}, {}
+        for pn in names:
+            v, lp, sz, gone = polys(pn)
+            nf[pn] = int((np.asarray(sz) - 2).sum())
+            flat_frac[pn] = float(np.mean(gone)) if len(gone) else 0.0
+            source[pn] = (v, lp, sz)
+        r = total / sum(nf[pn] * copies[pn] for pn in names)
+        pre = {pn: [max(int(job.get("pre_min", PRE_MIN)), int(job.get("pre", PRE) * r * nf[pn])), sym] for pn in names}
+        pre = {pn: t for pn, t in pre.items() if t[0] < 0.8 * nf[pn]}
+        for pn, (v, lp, sz, _) in _reduce_parts(job, pre).items():
+            source[pn] = (v, lp, sz)
+        print(f"@@t pre-decimated {len(pre)} parts {time.time() - tf:.1f}s", flush=True)
+        tf = time.time()
+        Vs, Ls, Ss, Ps, off = [], [], [], [], 0
+        for k, pn in enumerate(names):
+            v, lp, sz = source[pn]
+            Vs.append(v)
+            Ls.append(np.asarray(lp, np.int64) + off)
+            Ss.append(sz)
+            Ps.append(np.full(len(sz), k))
+            off += len(v)
+        joint = _flat_mesh("joint", np.concatenate(Vs), np.concatenate(Ls), np.concatenate(Ss), np.concatenate(Ps))
+        n = len(joint.data.polygons)
         fp = np.empty(n, np.int32)
         joint.data.attributes["pid"].data.foreach_get("value", fp)
         nfaces = {pn: int((fp == k).sum()) for k, pn in enumerate(names)}
         ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))
         if ratio < 1.0:
             _decimate(joint, ratio, sym)
+        print(f"@@t joint {n} faces {time.time() - tf:.1f}s", flush=True)
+        pre_file = os.path.join(os.path.dirname(os.path.abspath(job["out"])), "lowpoly_pre.npz")
+        np.savez(pre_file, **{f"{pn}|{k}": a for pn in pre for k, a in zip("VLS", source[pn])})
     _clean(joint)
     Vj, Fj = _tri_arrays(joint)
     jpart = np.empty(len(Fj), np.int32)
@@ -817,24 +612,32 @@ def lowpoly(job):
     #    The floor keeps round things round, so it shrinks with the part's flat share: a box needs no floor.
     floor = {pn: int(round(int(job.get("min_part", 300)) * (1 - flat_frac[pn]))) for pn in names}
     want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, floor, copies)
-    obs, info = [], {}
+    obs, info, redo_parts = {}, {}, {}
     for k, pn in enumerate(names):
-        Vh, Fh = _sub(verts, faces, fpart == pidx[pn])
         redo, s = abs(want[pn] - counts[pn]) > 0.1 * max(counts[pn], 1), sym and ratio < 1.0
         if cfg[pn].get("split"):  # a slab of a split part: alone, its cut edges would open a crack
             redo = False
         if not redo:
             ob = _mesh(pn, *_sub(Vj, Fj, jpart == k))
+            Vh, Fh = _sub(verts, faces, fpart == pidx[pn])
             if s and _folded(ob, BVHTree.FromPolygons(Vh.tolist(), Fh.tolist(), all_triangles=True),
                              _face_normals(Vh, Fh)[0]) > 0:
                 bpy.data.objects.remove(ob)
                 redo, s = True, False
+            else:
+                obs[pn] = ob
         if redo:
-            ob, s = _reduce(pn, Vh, Fh, want[pn], s, plane_tol)
-            _clean(ob)
+            redo_parts[pn] = [int(want[pn]), bool(s)]
+        info[pn] = {"joint_count": counts[pn], "budget": want[pn], "flat": round(flat_frac[pn], 3), "symmetric": s}
+    # 3. the parts decimated again on their own: independent, so in parallel Blender processes
+    for pn, (v, lp, sz, s) in _reduce_parts(job, redo_parts, pre_file).items():
+        obs[pn] = _flat_mesh(pn, v, lp, sz)
+        info[pn]["symmetric"] = s
+    if pre_file:
+        os.remove(pre_file)
+    obs = [obs[pn] for pn in names]
+    for ob in obs:
         ob.data.shade_smooth()
-        obs.append(ob)
-        info[pn] = {"symmetric": s, "joint_count": counts[pn], "budget": want[pn], "flat": round(flat_frac[pn], 3)}
     t1b = time.time()
     if dec:  # the unwrap may be redone with other atlases (a regroup): keep the decimation
         arrays = {}
@@ -845,39 +648,200 @@ def lowpoly(job):
     return _unwrap_and_save(job, obs, info, t0, t1 - t0, t1b - t0)
 
 
+def _part_arrays(job):
+    """The high mesh's triangles and the flattened polygons, per part: (triangles of, polygons of)."""
+    z = np.load(job["mesh"])
+    verts, faces, part = z["verts"], z["faces"], z["part"]
+    all_names = [str(n) for n in z["part_names"]]
+    fpart = part[faces[:, 0]]
+    fl = np.load(job["flat"]) if job.get("flat") else None
+    flat_of = {str(n): i for i, n in enumerate(fl["names"])} if fl is not None else {}
+
+    def tris(pn):
+        return _sub(verts, faces, fpart == all_names.index(pn))
+
+    def polys(pn):
+        """The part's flattened polygons (vertices, loop vertices, loop sizes, which triangles were dissolved)."""
+        if pn in flat_of:
+            i = flat_of[pn]
+            return fl[f"{i}_V"], fl[f"{i}_L"], fl[f"{i}_S"], fl[f"{i}_gone"]
+        Vh, Fh = tris(pn)
+        return Vh, Fh.ravel(), np.full(len(Fh), 3), np.zeros(len(Fh), bool)
+    return tris, polys
+
+
+def reduce(job):
+    """Worker: decimate some parts on their own ({part: [target, symmetric]}), from `source` (an npz of earlier
+    results, "<part>|V/L/S") where it has them, else from their flattened polygons; save their polygons."""
+    _clear()
+    tris, polys = _part_arrays(job)
+    src = np.load(job["source"]) if job.get("source") else None
+    arrays, sym = {}, {}
+    for i, (pn, (target, s)) in enumerate(job["parts"].items()):
+        tr = time.time()
+        Vh, Fh = tris(pn)
+        poly = (src[f"{pn}|V"], src[f"{pn}|L"], src[f"{pn}|S"]) if src is not None and f"{pn}|V" in src.files \
+            else polys(pn)
+        ob, sym[pn] = _reduce(pn, poly, Vh, Fh, target, s)
+        _clean(ob)
+        V, L, st = _poly_arrays(ob)
+        arrays[f"{i}_V"], arrays[f"{i}_L"], arrays[f"{i}_S"] = V, L, np.diff(np.r_[st, len(L)])
+        bpy.data.objects.remove(ob)
+        print(f"@@t reduce {pn} {int((np.asarray(poly[2]) - 2).sum())} -> {target}: {time.time() - tr:.1f}s", flush=True)
+    np.savez(job["out"], names=np.array(list(job["parts"])), sym=np.array(json.dumps(sym)), **arrays)
+
+
+def _reduce_parts(job, parts, source=None):
+    """{part: (vertices, loop vertices, loop sizes, symmetric)} for parts decimated on their own (from `source`, see
+    `reduce`), spread over worker Blender processes (biggest parts first, each to the least loaded worker)."""
+    import subprocess
+    import tempfile
+    if not parts:
+        return {}
+    z = np.load(job["mesh"])
+    all_names = [str(n) for n in z["part_names"]]
+    size = dict(zip(all_names, np.bincount(z["part"][z["faces"][:, 0]], minlength=len(all_names)).tolist()))
+    n = max(1, min(len(parts), int(job.get("workers", min(8, max(1, (os.cpu_count() or 4) // 2))))))
+    load, groups = [0] * n, [dict() for _ in range(n)]
+    for pn in sorted(parts, key=lambda pn: -size.get(pn, 0)):
+        i = int(np.argmin(load))
+        groups[i][pn] = parts[pn]
+        load[i] += size.get(pn, 0)
+    out = {}
+    with tempfile.TemporaryDirectory(prefix="hifipushie-reduce-") as tmp:
+        procs = []
+        for i, g in enumerate(groups):
+            if not g:
+                continue
+            w = {"mode": "reduce", "mesh": job["mesh"], "flat": job.get("flat"), "parts": g, "source": source,
+                 "out": os.path.join(tmp, f"r{i}.npz")}
+            jp = os.path.join(tmp, f"r{i}.json")
+            json.dump(w, open(jp, "w"))
+            procs.append((subprocess.Popen([bpy.app.binary_path, "-b", "--factory-startup", "--python-exit-code", "1",
+                                            "--python", os.path.abspath(__file__), "--", jp],
+                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True), w))
+        for p, w in procs:
+            log, _ = p.communicate()
+            for line in log.splitlines():
+                if line.startswith("@@t"):
+                    print(line, flush=True)
+            if p.returncode:
+                raise RuntimeError(f"decimation worker failed:\n{log[-3000:]}")
+            r = np.load(w["out"])
+            sym = json.loads(str(r["sym"]))
+            for i, pn in enumerate(str(x) for x in r["names"]):
+                out[pn] = (r[f"{i}_V"], r[f"{i}_L"], r[f"{i}_S"], sym[pn])
+    return out
+
+
+def _object_arrays(ob) -> dict:
+    """What the export bakes against and the GLB carries: vertices and per-corner vertex / uv / normal /
+    MikkTSpace tangent + bitangent sign."""
+    me = ob.data
+    me.calc_tangents(uvmap="UVMap")
+    nl = len(me.loops)
+    vi = np.empty(nl, np.int32)
+    me.loops.foreach_get("vertex_index", vi)
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    uv = np.empty(nl * 2, np.float32)
+    me.uv_layers["UVMap"].data.foreach_get("uv", uv)
+    nrm = np.empty(nl * 3, np.float32)
+    me.loops.foreach_get("normal", nrm)
+    tan = np.empty(nl * 3, np.float32)
+    me.loops.foreach_get("tangent", tan)
+    sgn = np.empty(nl, np.float32)
+    me.loops.foreach_get("bitangent_sign", sgn)
+    return {"verts": co.reshape(-1, 3), "corner_vert": vi, "uv": uv.reshape(-1, 2), "normal": nrm.reshape(-1, 3),
+            "tangent": tan.reshape(-1, 3), "sign": sgn}
+
+
+def unwrap(job):
+    """Worker: unwrap and pack some atlases (`only`: atlas indices) from the decimation cache, save each part's
+    arrays (`_object_arrays`), its stats and the timings."""
+    _clear()
+    c = np.load(job["decimated"]["path"])
+    cfg = job["parts"]
+    only = set(job["only"])
+    atlases = {}
+    for i, pn in enumerate(str(n) for n in c["names"]):
+        if cfg[pn]["atlas"] in only:
+            ob = _poly_mesh(pn, c[f"{i}_V"], c[f"{i}_L"], c[f"{i}_S"])
+            ob.data.shade_smooth()
+            ob.data.uv_layers.new(name="UVMap")
+            atlases.setdefault(cfg[pn]["atlas"], []).append(ob)
+    out, stats = {}, {}
+    for ai, group in atlases.items():
+        stats.update(_unwrap_atlas(group, cfg, job, ai))
+        for ob in group:
+            out.update({f"{ob.name}|{k}": v for k, v in _object_arrays(ob).items()})
+    np.savez(job["out"], stats=np.array(json.dumps(stats)), times=np.array(json.dumps(TIMES)), **out)
+
+
+def _unwrap_parallel(job, atlases):
+    """{part: arrays}, stats and timings of the atlases unwrapped by worker Blender processes (heaviest atlases
+    first, each to the least loaded worker): the pack is ~50 s an atlas, and a density export has dozens."""
+    import subprocess
+    import tempfile
+    n = max(1, min(len(atlases), int(job.get("workers", min(8, max(1, (os.cpu_count() or 4) // 2))))))
+    load, groups = [0] * n, [[] for _ in range(n)]
+    for ai in sorted(atlases, key=lambda a: -sum(len(ob.data.polygons) for ob in atlases[a])):
+        i = int(np.argmin(load))
+        groups[i].append(ai)
+        load[i] += sum(len(ob.data.polygons) for ob in atlases[ai])
+    arrays, stats, times = {}, {}, []
+    with tempfile.TemporaryDirectory(prefix="hifipushie-unwrap-") as tmp:
+        procs = []
+        for i, g in enumerate(groups):
+            if not g:
+                continue
+            w = {**job, "mode": "unwrap", "only": g, "out": os.path.join(tmp, f"u{i}.npz")}
+            jp = os.path.join(tmp, f"u{i}.json")
+            json.dump(w, open(jp, "w"))
+            procs.append((subprocess.Popen([bpy.app.binary_path, "-b", "--factory-startup", "--python-exit-code", "1",
+                                            "--python", os.path.abspath(__file__), "--", jp],
+                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True), w))
+        for p, w in procs:
+            log, _ = p.communicate()
+            if p.returncode:
+                raise RuntimeError(f"unwrap worker failed:\n{log[-3000:]}")
+            r = np.load(w["out"])
+            stats.update(json.loads(str(r["stats"])))
+            times += json.loads(str(r["times"]))
+            for key in r.files:
+                if "|" in key:
+                    pn, k = key.rsplit("|", 1)
+                    arrays.setdefault(pn, {})[k] = r[key]
+    return arrays, stats, times
+
+
 def _unwrap_and_save(job, obs, info, t0, joint_s, decimate_s, cached=False):
     cfg = job["parts"]
     t1b = time.time()
     atlases = {}
     for ob in obs:
-        ob.data.uv_layers.new(name="UVMap")
         atlases.setdefault(cfg[ob.name]["atlas"], []).append(ob)
-    for ai, group in atlases.items():
-        for pn, s in _unwrap_atlas(group, cfg, job, ai).items():
-            info[pn].update(s)
+    dec = job.get("decimated")
+    if len(atlases) > 1 and dec and os.path.exists(dec["path"]):  # independent atlases: in parallel
+        arrays, stats, times = _unwrap_parallel(job, atlases)
+        TIMES.extend(times)
+    else:
+        arrays, stats = {}, {}
+        for ob in obs:
+            ob.data.uv_layers.new(name="UVMap")
+        for ai, group in atlases.items():
+            stats.update(_unwrap_atlas(group, cfg, job, ai))
+        for ob in obs:
+            arrays[ob.name] = _object_arrays(ob)
+    for pn, st in stats.items():
+        info[pn].update(st)
     t2 = time.time()
 
     out = {"part_names": np.array([ob.name for ob in obs]), "atlas": np.array([cfg[ob.name]["atlas"] for ob in obs]),
            "info": np.array(json.dumps({"parts": info, "joint_s": joint_s, "decimate_s": decimate_s,
                                         "unwrap_s": t2 - t1b, "unwrap": TIMES, "decimation_cached": cached}))}
     for i, ob in enumerate(obs):
-        me = ob.data
-        me.calc_tangents(uvmap="UVMap")
-        nl = len(me.loops)
-        vi = np.empty(nl, np.int32)
-        me.loops.foreach_get("vertex_index", vi)
-        co = np.empty(len(me.vertices) * 3, np.float32)
-        me.vertices.foreach_get("co", co)
-        uv = np.empty(nl * 2, np.float32)
-        me.uv_layers["UVMap"].data.foreach_get("uv", uv)
-        nrm = np.empty(nl * 3, np.float32)
-        me.loops.foreach_get("normal", nrm)
-        tan = np.empty(nl * 3, np.float32)
-        me.loops.foreach_get("tangent", tan)
-        sgn = np.empty(nl, np.float32)
-        me.loops.foreach_get("bitangent_sign", sgn)
-        out.update({f"{i}_verts": co.reshape(-1, 3), f"{i}_corner_vert": vi, f"{i}_uv": uv.reshape(-1, 2),
-                    f"{i}_normal": nrm.reshape(-1, 3), f"{i}_tangent": tan.reshape(-1, 3), f"{i}_sign": sgn})
+        out.update({f"{i}_{k}": v for k, v in arrays[ob.name].items()})
     np.savez(job["out"], **out)
 
 
@@ -927,4 +891,4 @@ def preview(job):
 
 
 job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
-{"lowpoly": lowpoly, "preview": preview}[job["mode"]](job)
+{"lowpoly": lowpoly, "reduce": reduce, "unwrap": unwrap, "preview": preview}[job["mode"]](job)

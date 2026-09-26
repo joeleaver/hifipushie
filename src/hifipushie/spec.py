@@ -86,7 +86,7 @@ def _numeric(v) -> bool:
 def geometry(spec: dict) -> dict:
     """The spec without what doesn't shape the surface (paint, plan, story), so editing those doesn't rebuild or
     re-seat anything."""
-    skip = ("paint", "plan", "story")
+    skip = ("paint", "plan", "story", "rig")
     if not any(k in spec for k in skip) and not (spec.get("style") or {}).get("paint"):
         return spec
     out = {k: v for k, v in spec.items() if k not in skip}
@@ -97,8 +97,8 @@ def geometry(spec: dict) -> dict:
 
 def expand_mirror(spec: dict) -> dict:
     """Return a copy of spec with kits and strokes expanded and every ".L" element mirrored to ".R"."""
-    from . import kits, strokes
-    spec = strokes.expand(strokes.seat_joints(kits.expand(geometry(spec))))
+    from . import anatomy, kits, strokes
+    spec = strokes.expand(strokes.seat_joints(anatomy.expand(kits.expand(geometry(spec)))))
     out = _tree_copy(spec)
     for kind in KINDS:
         out.setdefault(kind, {})
@@ -276,6 +276,19 @@ def _compile(spec: dict) -> list[Prim]:
                               {"c": c, "size": size, "rot": rot, "round": rnd},
                               reach=max(size[0], size[1]) / min(size[0], size[1])))  # exact when round
             continue
+        if bl.get("shape") == "blade":
+            W, L, T = (float(v) for v in size)
+            cup, bend = float(bl.get("cup", 0.0)), float(bl.get("bend", 0.0))
+            if T <= 0 or T * 2 > min(W, L):
+                raise SpecError(f"blob {name!r}: a blade's size is [half width, half length, half thickness], "
+                                f"thickness under the width and length")
+            lip = float(np.sqrt(1 + (2 * cup / W) ** 2 + (bend / L) ** 2))
+            ext = np.abs(rot) @ (size + np.array([0.0, 0.0, abs(cup) + abs(bend)]))
+            prims.append(Prim(name, "blade", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
+                              {"c": c, "size": size, "rot": rot, "taper": float(bl.get("taper", 0.0)), "cup": cup,
+                               "bend": bend, "lip": lip},
+                              reach=lip * max(W, L) / T))  # a thin sheet under-reports distance off its edge
+            continue
         if bl.get("shape") == "box":
             rnd = min(float(bl.get("round", 0.0)), float(size.min()))
             prims.append(Prim(name, "box", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
@@ -411,7 +424,7 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     return out
 
 
-SHAPES = ("cone", "ellipsoid", "box", "cylinder", "lids", "csg")
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}

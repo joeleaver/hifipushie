@@ -23,6 +23,7 @@ colour, ORM, normal and KHR_materials_specular) and asset.json describing all of
 from __future__ import annotations
 
 import json
+import os
 import struct
 import subprocess
 import tempfile
@@ -70,7 +71,8 @@ def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel
     key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, int(triangles), float(voxel),
                                    {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()}],
                                   sort_keys=True, default=str).encode()).hexdigest()
-    _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles),
+    flat = flatten_parts(high, out.with_name(out.stem + "_flat.npz"), list(cfg), 0.25 * float(voxel))
+    _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles), "flat": flat,
               "min_part": min_part(triangles), "voxel": float(voxel), "textures": {str(a): int(t) for a, t in sizes.items()},
               "margins": {str(a): margin_px(int(t)) for a, t in sizes.items()},
               "decimated": {"path": str(out.with_name(out.stem + "_decimated.npz")), "key": key}}, timeout=3600)
@@ -81,6 +83,45 @@ def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel
     for pn, a in zip(names, z["atlas"]):
         parts[pn]["atlas"] = int(a)
     return parts, json.loads(str(z["info"]))
+
+
+def flatten_parts(high: Path, path: Path, names: list, plane_tol: float) -> str:
+    """Every part's flat regions dissolved to ngons (`planar.flatten`), in parallel processes, saved for the
+    Blender job (per part i: {i}_V, {i}_L loop vertices, {i}_S loop sizes, {i}_gone). Kept while the mesh and
+    tolerance are the same."""
+    import hashlib
+    from concurrent.futures import ProcessPoolExecutor
+    from . import planar
+    st = high.stat()
+    key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, plane_tol, sorted(names)]).encode()).hexdigest()
+    if path.exists():
+        with np.load(path) as z:
+            if str(z["key"]) == key:
+                return str(path)
+    z = np.load(high)
+    V, F, part = z["verts"], z["faces"], z["part"]
+    all_names = [str(n) for n in z["part_names"]]
+    fpart = part[F[:, 0]]
+    todo, jobs = [], []
+    for pn in names:
+        sel = fpart == all_names.index(pn) if pn in all_names else np.zeros(len(F), bool)
+        if not sel.any():
+            continue
+        used = np.unique(F[sel])
+        remap = np.full(len(V), -1, np.int64)
+        remap[used] = np.arange(len(used))
+        todo.append(pn)
+        jobs.append((V[used], remap[F[sel]], plane_tol))
+    order = sorted(range(len(jobs)), key=lambda i: -len(jobs[i][1]))  # biggest first: they set the wall time
+    with ProcessPoolExecutor(max_workers=max(1, min(len(jobs), (os.cpu_count() or 4) - 1))) as ex:
+        got = dict(zip(order, ex.map(planar._flatten_job, [jobs[i] for i in order])))
+    arrays = {"key": np.array(key), "names": np.array(todo)}
+    for i in range(len(todo)):
+        Vn, L, S, gone = got[i]
+        arrays.update({f"{i}_V": Vn.astype(np.float32), f"{i}_L": L.astype(np.int32), f"{i}_S": S.astype(np.int32),
+                       f"{i}_gone": gone})
+    np.savez(path, **arrays)
+    return str(path)
 
 
 def part_areas(mesh: Path) -> dict:
@@ -385,6 +426,68 @@ def rasterize(parts: dict, size: int, atlas: int | None = None):
     return (ys, xs), t, bary, np.concatenate(tpart), inside
 
 
+def uv_islands(parts: dict) -> np.ndarray:
+    """UV island id per triangle (over all parts, in order): triangles joined across edges whose two corners have
+    the same vertices and uvs on both sides."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    keys, tris = [], []
+    t0 = 0
+    for pi, p in enumerate(parts.values()):
+        cv = p["corner_vert"].reshape(-1, 3).astype(np.int64)
+        uv = np.round(p["uv"].reshape(-1, 3, 2) * 2 ** 20).astype(np.int64)
+        for a, b in ((0, 1), (1, 2), (2, 0)):
+            swap = cv[:, a] > cv[:, b]
+            va, vb = np.where(swap, cv[:, b], cv[:, a]), np.where(swap, cv[:, a], cv[:, b])
+            ua, ub = np.where(swap[:, None], uv[:, b], uv[:, a]), np.where(swap[:, None], uv[:, a], uv[:, b])
+            keys.append(np.column_stack([np.full(len(cv), pi), va, vb, ua, ub]))
+            tris.append(t0 + np.arange(len(cv)))
+        t0 += len(cv)
+    keys, tris = np.concatenate(keys), np.concatenate(tris)
+    _, inv = np.unique(keys, axis=0, return_inverse=True)
+    inv = inv.ravel()
+    order = np.argsort(inv, kind="stable")
+    same = inv[order][1:] == inv[order][:-1]  # consecutive triangles sharing an edge key
+    a, b = tris[order][:-1][same], tris[order][1:][same]
+    g = coo_matrix((np.ones(len(a)), (a, b)), shape=(t0, t0))
+    return connected_components(g, directed=False)[1]
+
+
+def _project(prims, P: np.ndarray, ys: np.ndarray, xs: np.ndarray, island: np.ndarray, vx: float, step: int = 4):
+    """surface.newton for texels, cheaper: every `step`-th texel (both ways) is projected from the low poly; the
+    rest start from their low-poly point moved by the offset interpolated from the anchors around them (on their
+    own uv island), a step or two from converged. Where the low poly lies near the surface that is the point a
+    start from the low poly finds; where it strays (bridged gaps, rounded-off corners) the nearest surface is
+    ambiguous and the two may differ, equally on the surface (cabin5 at 6 mm texels: residuals the same or
+    lower, 1.6-2x faster)."""
+    anc = (ys % step == 0) & (xs % step == 0)
+    X, G = P.copy(), np.zeros_like(P)
+    if anc.sum() < 16 or anc.mean() > 0.5:
+        return surface.newton(prims, P, 0.1 * vx, vx)
+    X[anc], G[anc] = surface.newton(prims, P[anc], 0.1 * vx, vx)
+    # the anchors' offsets on a grid, with their islands
+    gy, gx = ys[anc] // step, xs[anc] // step
+    H, W = gy.max() + 2, gx.max() + 2
+    k = np.full((H, W), -1, np.int64)
+    k[gy, gx] = np.flatnonzero(anc)
+    rest = np.flatnonzero(~anc)
+    cy, cx = ys[rest] // step, xs[rest] // step
+    u, v = (xs[rest] % step) / step, (ys[rest] % step) / step
+    off, wsum = np.zeros((len(rest), 3)), np.zeros(len(rest))
+    for dy, dx, w in ((0, 0, (1 - u) * (1 - v)), (0, 1, u * (1 - v)), (1, 0, (1 - u) * v), (1, 1, u * v)):
+        yy, xx = np.minimum(cy + dy, H - 1), np.minimum(cx + dx, W - 1)
+        a = k[yy, xx]
+        ok = (a >= 0) & (island[np.maximum(a, 0)] == island[rest])
+        w = np.where(ok, w, 0.0)
+        off += w[:, None] * (X[np.maximum(a, 0)] - P[np.maximum(a, 0)])
+        wsum += w
+    has = wsum > 1e-9
+    start = P[rest].copy()
+    start[has] += off[has] / wsum[has, None]
+    X[rest], G[rest] = surface.newton(prims, start, 0.1 * vx, vx)
+    return X, G
+
+
 def _corners(parts: dict, key: str) -> np.ndarray:
     out = []
     for p in parts.values():
@@ -426,12 +529,13 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     # project onto the exact surface of the texel's own part
     X, G = P.copy(), Nl.copy()
     t1 = time.time()
+    island = uv_islands(parts)[tri]
     for pi, pn in enumerate(names):
         sel = np.flatnonzero(part == pi)
         if not len(sel):
             continue
         vx = ctx["frames"][pn][1]
-        x, g = surface.newton(ctx["streams"][pn], X[sel], 0.1 * vx, vx)
+        x, g = _project(ctx["streams"][pn], X[sel], ys[sel], xs[sel], island[sel], vx)
         # a texel that wandered off (onto the far side of a thin sheet, or out of a thin gap) keeps the low-poly
         # surface. Steep but outward normals (a shingle's butt end, a board's edge) are real detail: keep those.
         bad = (np.linalg.norm(x - P[sel], axis=1) > 6 * vx) | ((_unit(g) * Nl[sel]).sum(1) < -0.2)
@@ -533,6 +637,15 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
     return res
 
 
+def write_fbx(glb: Path, fbx: Path) -> None:
+    """The GLB as FBX for Unity and Unreal (skeleton, skin, textures embedded): `blender_fbx.py`."""
+    r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
+                        "--python", str(Path(__file__).with_name("blender_fbx.py")), "--", str(glb), str(fbx)],
+                       capture_output=True, text=True, timeout=900)
+    if r.returncode or not fbx.exists():
+        raise RuntimeError(f"fbx export failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
+
+
 def _png(path: Path, img: np.ndarray, srgb_input: bool = True, bits: int = 8):
     a = np.clip(img, 0, 1)
     if bits == 16:
@@ -559,7 +672,7 @@ def _gltf_vertices(p: dict):
     uv = np.stack([p["uv"][first, 0], 1 - p["uv"][first, 1]], -1)  # glTF uv origin is the top left
     t4 = np.concatenate([tan, p["sign"][first, None]], 1)
     return (pos.astype(np.float32), nrm.astype(np.float32), np.ascontiguousarray(t4, np.float32),
-            uv.astype(np.float32), inv.ravel().astype(np.uint32))
+            uv.astype(np.float32), inv.ravel().astype(np.uint32), c[first])
 
 
 def _safe_unit(v: np.ndarray, fallback) -> np.ndarray:
@@ -589,13 +702,15 @@ def _trs(M: np.ndarray) -> dict:
 
 
 def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]],
-              prefabs: dict | None = None, looks: dict | None = None):
+              prefabs: dict | None = None, looks: dict | None = None, rig: dict | None = None):
     """One mesh per part, one material per atlas: atlases is [(atlas name, {basecolor, orm, normal, specular: png})]
     in atlas index order; each part uses the material of its "atlas" index. A shared prefab (prefabs: {prefab:
     {"bake", "instances": {instance: local -> world}, "parts"}}) is one mesh, a primitive per part in its own
     frame, and a node per instance (extras.prefab names it). looks: {part: {"transmission", "ior", "alpha"}}: such a
     part gets a variant of its atlas's material (same textures) with KHR_materials_transmission + KHR_materials_ior
-    (glass) or alpha blending."""
+    (glass) or alpha blending. rig: {"bones": [{"name", "head" (Blender axes), "parent"}], "weights": {part: (bone
+    indices (verts, 4), weights (verts, 4))}}: a joint node per bone under a "rig" node (at its head, parents first),
+    one skin, and the parts with weights skinned to it (`rig.py`)."""
     bin_ = bytearray()
     views, accessors = [], []
 
@@ -661,25 +776,56 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         return variants[key]
     meshes, nodes = [], []
 
+    skinned = (rig or {}).get("weights") or {}
+    nb = len((rig or {}).get("bones") or [])
+
     def primitive(p, pn=None):
-        pos, nrm, tan, uv, idx = _gltf_vertices(p)
-        return {"attributes": {"POSITION": add(pos, 34962, 5126, "VEC3", True), "NORMAL": add(nrm, 34962, 5126, "VEC3"),
-                               "TANGENT": add(tan, 34962, 5126, "VEC4"), "TEXCOORD_0": add(uv, 34962, 5126, "VEC2")},
-                "indices": add(idx, 34963, 5125, "SCALAR"), "material": material_of(pn, p)}
+        pos, nrm, tan, uv, idx, src = _gltf_vertices(p)
+        attrs = {"POSITION": add(pos, 34962, 5126, "VEC3", True), "NORMAL": add(nrm, 34962, 5126, "VEC3"),
+                 "TANGENT": add(tan, 34962, 5126, "VEC4"), "TEXCOORD_0": add(uv, 34962, 5126, "VEC2")}
+        if pn in skinned:
+            J, W = skinned[pn]
+            J, W = np.asarray(J)[src], np.asarray(W, np.float32)[src]
+            W = W / W.sum(1, keepdims=True)
+            J = np.where(W > 0, J, 0)  # unused slots: joint 0 at weight 0
+            attrs["JOINTS_0"] = add(np.ascontiguousarray(J, np.uint8 if nb <= 256 else np.uint16), 34962,
+                                    5121 if nb <= 256 else 5123, "VEC4")
+            attrs["WEIGHTS_0"] = add(np.ascontiguousarray(W, np.float32), 34962, 5126, "VEC4")
+        return {"attributes": attrs, "indices": add(idx, 34963, 5125, "SCALAR"), "material": material_of(pn, p)}
     prefabs = prefabs or {}
     in_prefab = {pn for d in prefabs.values() for pn in d["parts"]}
+    skins, top = [], []
+    if nb:  # the armature: a node per bone at its head, relative to its parent's head; the skin's joints
+        bones = rig["bones"]
+        base = len(nodes)
+        head = np.array([_Z_TO_Y @ np.asarray(b["head"], float) for b in bones])
+        for i, b in enumerate(bones):
+            ref = head[b["parent"]] if b["parent"] >= 0 else np.zeros(3)
+            nodes.append({"name": b["name"], "translation": (head[i] - ref).tolist()})
+        for i, b in enumerate(bones):
+            if b["parent"] >= 0:
+                nodes[base + b["parent"]].setdefault("children", []).append(base + i)
+        nodes.append({"name": "rig", "children": [base + i for i, b in enumerate(bones) if b["parent"] < 0]})
+        top.append(len(nodes) - 1)
+        ibm = np.tile(np.eye(4, dtype=np.float32), (nb, 1, 1))
+        ibm[:, :3, 3] = -head  # bind pose: every joint unrotated at its head
+        skins.append({"name": f"{name}_rig", "joints": list(range(base, base + nb)), "skeleton": len(nodes) - 1,
+                      "inverseBindMatrices": add(np.ascontiguousarray(ibm.transpose(0, 2, 1)).reshape(nb, 16),
+                                                 None, 5126, "MAT4")})
     for pn, p in parts.items():
         if pn in in_prefab:
             continue
         meshes.append({"name": pn, "primitives": [primitive(p, pn)]})
-        nodes.append({"name": f"{name}_{pn}", "mesh": len(meshes) - 1})
+        nodes.append({"name": f"{name}_{pn}", "mesh": len(meshes) - 1, **({"skin": 0} if pn in skinned else {})})
+        top.append(len(nodes) - 1)
     for pf, d in prefabs.items():
         M0 = d["instances"][d["bake"]]
         meshes.append({"name": pf, "primitives": [primitive(_local(parts[pn], M0), pn) for pn in d["parts"] if pn in parts]})
         for inst, M in d["instances"].items():
             nodes.append({"name": inst, "mesh": len(meshes) - 1, **_trs(M), "extras": {"prefab": pf}})
+            top.append(len(nodes) - 1)
     doc = {"asset": {"version": "2.0", "generator": "hifipushie"}, "scene": 0,
-           "scenes": [{"nodes": list(range(len(nodes)))}], "nodes": nodes, "meshes": meshes,
+           "scenes": [{"nodes": top}], "nodes": nodes, "meshes": meshes, **({"skins": skins} if skins else {}),
            "materials": materials, "textures": [{"source": i, "sampler": 0} for i in range(len(images))],
            "samplers": [{"magFilter": 9729, "minFilter": 9987}],
            "images": [{"bufferView": i, "mimeType": "image/png"} for i in range(len(images))],
@@ -721,7 +867,8 @@ def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
 
 
 def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
-           atlases: int = 1, texel_density: float | None = None, instancing: bool = True) -> dict:
+           atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False,
+           fbx: bool = False) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
     the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own.
@@ -850,7 +997,21 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
     glb = out_dir / f"{name}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
-    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks)
+    rigged = None
+    if rig:  # an armature from the skeleton, the parts (not prefabs) skinned to it
+        from . import rig as rigmod
+        tr = time.time()
+        bones = rigmod.rig_bones(spec)
+        rigged = {"bones": bones, "weights": {
+            pn: rigmod.rig_weights(spec, bones, p["verts"], p["corner_vert"].reshape(-1, 3), smooth=3)
+            for pn, p in parts.items() if pn not in pf_of}}
+        log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
+                   f"{bones[0]['name']!r}), {len(rigged['weights'])} parts skinned, {time.time() - tr:.1f}s")
+    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged)
+    if fbx:  # the same asset as FBX, for engines' skinned-mesh import
+        tf = time.time()
+        write_fbx(glb, glb.with_suffix(".fbx"))
+        log.append(f"wrote {glb.with_suffix('.fbx').name} in {time.time() - tf:.1f}s")
     for _, f in atlas_files:
         f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()

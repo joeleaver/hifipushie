@@ -137,7 +137,7 @@ def thinnest(ps: list) -> float:
             continue
         pr = p.params["p"] if p.kind == "csg" else p.params
         kind = p.params["kind"] if p.kind == "csg" else p.kind
-        if kind in ("box", "cylinder", "ellipsoid"):
+        if kind in ("box", "cylinder", "ellipsoid", "blade"):
             t = min(t, 2 * float(np.min(pr["size"])))
         elif kind == "cone":
             t = min(t, 2 * min(pr["ra"], pr["rb"]) * min(1.0, *pr["flat"]))
@@ -249,7 +249,33 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
              for pf, d in ctx["prefabs"].items() for inst, M in d["instances"].items()]
     log.append(f"{len(objs)} objects ({meshed} meshed, {len(objs) - meshed} from the cache), {len(insts)} instances")
     prog = _paint_inputs(spec, ctx, objs, insts, cache, log)
+    used = {o["mesh"] for o in objs} | {o["inputs"] for o in objs if o.get("inputs")}
+    st = cache / "inputs_state.json"
+    if st.exists():  # the field and mask files of the last full measuring run: the next edit reuses them
+        used |= set(json.loads(st.read_text()).get("files", []))
+    freed = prune_cache(cache, used)
+    if freed:
+        log.append(f"scene cache: {freed / 1e9:.2f} GB of files no recent sync used deleted")
     return objs, insts, prog
+
+
+KEEP_SYNCS = 3  # the scene cache keeps what the last few syncs used (a quick undo stays cheap) and no more
+
+
+def prune_cache(cache: Path, used: set) -> int:
+    """Delete the cache's content-named files (meshes, measured inputs, masks) that none of the last KEEP_SYNCS
+    syncs used: every edit writes new ones, and unpruned the cabin's cache grew to 8.8 GB. Returns bytes freed."""
+    log_f = cache / "used.json"
+    recent = json.loads(log_f.read_text()) if log_f.exists() else []
+    recent = (recent + [sorted(Path(u).name for u in used)])[-KEEP_SYNCS:]
+    log_f.write_text(json.dumps(recent))
+    keep = {n for r in recent for n in r}
+    freed = 0
+    for f in cache.glob("*.npz"):
+        if f.name not in keep:
+            freed += f.stat().st_size
+            f.unlink()
+    return freed
 
 
 LAYOUT = 2  # what an object's packed inputs file holds (2: ao_raw for the export's AO map): bump on change
@@ -496,7 +522,8 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
         o["inputs"] = str(f)
         o["hash"] = f"{o['hash']}:{h.hexdigest()[:12]}"
         made[o["key"]] = str(f)
-    last.write_text(json.dumps({"run": run, "objects": made}))
+    last.write_text(json.dumps({"run": run, "objects": made,
+                                "files": sorted(str(f) for fs in (ffile, mfile) for f in fs.values())}))
     return prog
 
 
