@@ -291,3 +291,164 @@ def water(T):
         T.river_water |= wet
         under = ~np.isnan(T.water.ravel()[_cells(T, L.xy)]) & ~T.river_water.ravel()[_cells(T, L.xy)]
         T.river_water_lines[L.name] = {"xy": L.xy, "level": L.h + 0.2, "width": np.where(under, 0.0, width)}
+
+
+# ---------------------------------------------------------------- peak forms
+
+PEAK_FORMS = {  # arête slope for arêtes the ridges don't give, faces added up to this many, cirque hollows
+    "pyramid": dict(arete=32.0, faces=4, hollow=0.0),
+    "horn": dict(arete=40.0, faces=3, hollow=0.14),
+}
+
+
+def default_form(T):
+    """Alpine kinds stand their summits as pyramids (a dome read as a hill); everything else keeps the old shape."""
+    kind = T.world.get("kind") or ""
+    return "pyramid" if any(k in kind for k in ("alpine", "cirque")) else None
+
+
+def peak_forms(T, H):
+    """Carve summits into their form: faces between arêtes, a point at the top. Each ridge leaving a peak is an arête at
+    that ridge's own fall (so the ridge carries on unbroken); more arêtes fill the gaps up to the form's face count.
+    Inside a sector the face is the plane through the summit and its two arêtes (continuous across them); a horn's
+    faces are hollowed into cirques between sharp arêtes. The ground is cut down to the form, and raised to it near the
+    top only (never a wall stood on low ground). Records T.peak_forms for the report and T.settle_mask."""
+    T.peak_forms = {}
+    dflt = default_form(T)
+    for name, p in (T.spec.get("peaks") or {}).items():
+        form = p.get("form", dflt)
+        if not form or form == "dome":
+            continue
+        if form not in PEAK_FORMS:
+            raise ValueError(f"peak {name!r}: form {form!r}: use one of {sorted(PEAK_FORMS) + ['dome']}")
+        F = PEAK_FORMS[form]
+        c, h = T.points[name]
+        floor = float(np.percentile(H[np.hypot(T.X - c[0], T.Y - c[1]) < 0.15 * T.size], 5))
+        rise = h - floor
+        if rise <= 0:
+            continue
+        g_def = math.tan(math.radians(float(p.get("arete", F["arete"]))))
+        aretes = []  # (bearing, tan of its fall)
+        for L in T.lines.values():
+            if L.kind != "ridge":
+                continue
+            dd = np.hypot(*(L.xy - c).T)
+            i = int(np.argmin(dd))
+            if dd[i] > 3 * T.cell:
+                continue
+            n = len(L.xy)
+            closed = L.props.get("closed")
+            reach = int(0.8 * rise / 0.5 / (T.cell / 2))  # samples out to where a 27 deg arête would reach the floor
+            for sgn in (-1, 1):
+                idx = i + sgn * np.arange(1, reach)
+                idx = idx % n if closed else idx[(idx >= 0) & (idx < n)]
+                if len(idx) < 4:
+                    continue
+                dist = np.hypot(*(L.xy[idx] - c).T)
+                far = dist > max(0.12 * rise / 0.6, 3 * T.cell)  # (past its levelled top)
+                if not far.any():
+                    continue
+                # the arête falls no faster than the ridge itself anywhere along it: its plane never cuts the ridge
+                # (a col 48 m low); from the summit it falls at the ridge's gentlest average fall
+                fall = float(np.min((h - L.h[idx][far]) / dist[far]))
+                v = L.xy[idx[min(4, len(idx) - 1)]] - c
+                aretes.append((math.atan2(v[0], v[1]) % (2 * math.pi), float(np.clip(fall, 0.2, 1.2))))
+        aretes.sort()
+        n_faces = int(p.get("faces", F["faces"]))
+        rng = np.random.default_rng(_seed(name))
+        if not aretes:
+            a0 = rng.uniform(0, 2 * math.pi)
+            aretes = [((a0 + 2 * math.pi * i / n_faces) % (2 * math.pi), g_def) for i in range(n_faces)]
+        # fill the widest gaps until there are enough faces and no sector is wider than 150 deg
+        while len(aretes) < n_faces or max(_gaps(aretes)) > math.radians(150):
+            gaps = _gaps(aretes)
+            k = int(np.argmax(gaps))
+            b = (aretes[k][0] + gaps[k] / 2 + rng.uniform(-0.15, 0.15) * gaps[k]) % (2 * math.pi)
+            aretes.append((b, g_def))
+            aretes.sort()
+        # the form is the upper part of the mountain: the faces run down ~70% of its rise (carving whole mountainsides
+        # down low arêtes cut across the valley floor)
+        Rc = min(0.8 * rise / float(np.median([g for _, g in aretes])), 0.35 * T.size)
+        dx, dy = T.X - c[0], T.Y - c[1]
+        r = np.hypot(dx, dy)
+        th = np.arctan2(dx, dy) % (2 * math.pi)
+        bear = np.array([a for a, _ in aretes])
+        tg = np.array([g for _, g in aretes])
+        j = (np.searchsorted(bear, th, side="right") - 1) % len(bear)  # the sector: from arête j to j+1
+        j1 = (j + 1) % len(bear)
+        e0x, e0y = np.sin(bear[j]), np.cos(bear[j])
+        e1x, e1y = np.sin(bear[j1]), np.cos(bear[j1])
+        det = e0x * e1y - e0y * e1x
+        a = (dx * e1y - dy * e1x) / det
+        b = (e0x * dy - e0y * dx) / det
+        z = h - np.maximum(a, 0) * tg[j] - np.maximum(b, 0) * tg[j1]
+        span = (bear[j1] - bear[j]) % (2 * math.pi)
+        t_ang = ((th - bear[j]) % (2 * math.pi)) / np.maximum(span, 1e-6)
+        hollow = F["hollow"] * float(p.get("hollow", 1.0))
+        if hollow:
+            u = np.clip(r / Rc, 0, 1)
+            z = z - hollow * rise * np.sin(np.pi * t_ang) ** 1.5 * 4 * u * (1 - u)
+        # other ridges, peaks and cols near it stand: the faces can't cut into their flanks (a big peak's face cut a
+        # neighbouring col 110 m down)
+        others = [(L.xy, L.h) for L in T.lines.values() if L.kind == "ridge"
+                  and np.hypot(*(L.xy - c).T).min() > 3 * T.cell]
+        own_pts = [(np.array([q]), np.array([hq])) for n2, (q, hq) in T.points.items()
+                   if n2 != name and np.linalg.norm(q - c) > 3 * T.cell]
+        if others or own_pts:
+            from scipy.spatial import cKDTree
+            pts = np.vstack([a for a, _ in others + own_pts])
+            hs = np.concatenate([b for _, b in others + own_pts])
+            dd, ii = cKDTree(pts).query(T.P, distance_upper_bound=0.5 * Rc)
+            ok = np.isfinite(dd)
+            guard = np.full(len(T.P), -np.inf)
+            guard[ok] = hs[np.minimum(ii[ok], len(hs) - 1)] - dd[ok] * math.tan(math.radians(35))
+            z = np.maximum(z, guard.reshape(T.X.shape))
+        w_cut = smoothstep(Rc, 0.6 * Rc, r) * smoothstep(h - 0.8 * rise, h - 0.5 * rise, H)
+        w_raise = smoothstep(0.45 * Rc, 0.12 * Rc, r)
+        Hn = H * (1 - w_cut) + np.minimum(H, z) * w_cut
+        Hn = Hn + np.maximum(z - Hn, 0) * w_raise
+        # carving leaves hollows where the faces meet uncut ground: fill them to their lip, as scree and a tarn's silt
+        # would (a cirque floor, not a 100 m pit)
+        # (only hollows the carving made: a basin's floor inside the zone is a hollow already and stays one)
+        from skimage.morphology import reconstruction
+        zone = w_cut > 0.02
+        top = max(Hn.max(), H.max())
+        before = reconstruction(np.where(zone, top, H), H, method="erosion") - H
+        after = reconstruction(np.where(zone, top, Hn), Hn, method="erosion") - Hn
+        new_hollow = zone & (after > before + 0.5)
+        lab, _ = ndimage.label(new_hollow)
+        old = np.unique(lab[(before > 0.5) & new_hollow])
+        new_hollow &= ~np.isin(lab, old[old > 0])
+        H = np.where(new_hollow, Hn + after, Hn)
+        T.settle_mask = np.maximum(getattr(T, "settle_mask", np.zeros(T.X.shape)), w_cut)
+        ar = (np.minimum(t_ang, 1 - t_ang) * span * r < 1.5 * T.cell) & (r < 0.7 * Rc)  # the arêtes stand
+        T.hard |= ar
+        T.hardness = np.where(ar, np.minimum(T.hardness, 0.2), T.hardness)
+        T.peak_forms[name] = {"form": form, "xy": c.tolist(), "h": h, "Rc": Rc, "aretes": aretes}
+    return H
+
+
+def _gaps(aretes):
+    b = [a for a, _ in aretes]
+    return [((b[(i + 1) % len(b)] - b[i]) % (2 * math.pi)) or 2 * math.pi for i in range(len(b))]
+
+
+def _seed(name):
+    import zlib
+    return zlib.crc32(name.encode()) % 100000
+
+
+def measure_peak(T, name):
+    """As built: how far the ground falls in the first stretch from the summit (a dome barely falls), the faces' median
+    slope, and how many arêtes run down from it."""
+    pf = T.peak_forms[name]
+    c = np.array(pf["xy"])
+    top = T.summit(name)
+    r = np.hypot(T.X - c[0], T.Y - c[1])
+    near = max(3 * T.cell, 0.1 * pf["Rc"])
+    ring = (r > 0.8 * near) & (r < 1.2 * near)
+    fall = top - float(np.median(T.H[ring]))
+    slope = T._slope()
+    faces = (r > 0.15 * pf["Rc"]) & (r < 0.55 * pf["Rc"])
+    return {"fall": fall, "at": near, "faces": float(np.median(slope[faces])) if faces.any() else float("nan"),
+            "aretes": len(pf["aretes"])}

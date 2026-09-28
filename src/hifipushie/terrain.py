@@ -44,7 +44,8 @@ UNITS = {"m": 1.0, "km": 1000.0, "cm": 0.01, "ft": 0.3048, "yd": 0.9144, "mi": 1
 NOT_LENGTHS = {"slope", "min_slope", "sides", "max_grade", "grade", "amount", "density", "range", "fov", "lobes",
                "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k",
                "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along",
-               "gullies", "head", "reach", "top_slope", "walls", "front", "toward", "breach"}
+               "gullies", "head", "reach", "top_slope", "walls", "front", "toward", "breach", "stacks", "faces", "hollow",
+               "arete", "buttresses", "ledges", "boulders"}
 HEIGHT_KEYS = {"h", "level", "floor", "elevation", "above", "below", "border", "height", "depth", "freeboard",
                "above_water", "hanging", "relief"}
 REFERENCE_SIZE = 4000.0  # landscape defaults were tuned on 4 km scenes; they scale with the frame (Terrain.k)
@@ -278,6 +279,8 @@ class Terrain:
         forms.settle(self)  # caprocks stay flat
         from . import terrain_volcano
         terrain_volcano.settle(self, pre)  # volcano forms keep their shape; erosion adds detail
+        from . import terrain_rock
+        terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)
         self._fill_lakes()
         self.cover = design.cover(self)
@@ -530,7 +533,9 @@ class Terrain:
             along = (self.X - (x0 + x1) / 2) * math.sin(b) + (self.Y - (y0 + y1) / 2) * math.cos(b)
             H = H - float(tilt.get("grade", 0.05)) * along  # lower toward `down`
         from . import terrain_volcano
-        return terrain_volcano.build(self, self._hills(H))  # volcanoes stand on the base, as large-scale ground
+        H = terrain_volcano.build(self, self._hills(H))  # volcanoes stand on the base, as large-scale ground
+        from .terrain_forms import peak_forms
+        return peak_forms(self, H)  # summits carved to their form (pyramid, horn)
 
     def _wall_profile(self, b):
         """Height fraction s(t) across a basin wall, t from the floor's edge (0) to the crest (1): a concave scree foot,
@@ -1111,9 +1116,15 @@ class Terrain:
         from . import terrain_world
         out = terrain_world.report(self) + ["peaks/cols (authored -> built):"]
         cols = self.spec.get("cols") or {}
+        from .terrain_forms import measure_peak
         for n, (xy, h) in self.points.items():
             built = self.height(xy) if n in cols else self.summit(n)
-            out.append(f"  {n}: {h:.0f} m -> {built:.0f} m" + (" (a pass notches it)" if any(
+            form = ""
+            if n in getattr(self, "peak_forms", {}):
+                m = measure_peak(self, n)
+                form = (f"; {self.peak_forms[n]['form']}: falls {m['fall']:.0f} m in its first {m['at']:.0f} m, "
+                        f"{m['aretes']} arêtes, faces median {m['faces']:.0f} deg")
+            out.append(f"  {n}: {h:.0f} m -> {built:.0f} m" + form + (" (a pass notches it)" if any(
                 np.hypot(*(np.array(p["xy"]) - xy)) < p["width"] + 3 * self.cell for p in self.passes.values()) else ""))
         for L in self.lines.values():
             if L.kind != "river":
@@ -1143,8 +1154,12 @@ class Terrain:
             out.append(f"divide (automatic) between {a} and {b}: {length:.0f} m of crest, up to {top:.0f} m")
         from . import terrain_sea
         out += terrain_sea.report(self)
-        from . import terrain_volcano
+        from . import terrain_volcano, terrain_rock
         out += terrain_volcano.report(self)
+        rk = terrain_rock.measure(self)
+        if rk:
+            out.append(f"rock faces (measured): {rk['face_km2'] * 100:.1f} ha over 45 deg; {100 * rk['turned']:.0f}% of it "
+                       f"turned over 25 deg from the face's line (buttress and couloir sides; a smooth face is ~0%)")
         for name, lk in self.lakes.items():
             if lk.get("sea"):
                 continue

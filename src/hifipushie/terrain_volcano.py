@@ -112,6 +112,8 @@ def build(T, H):
         for cn, c in (V["collapses"]).items():
             H, m, deb = _collapse(T, name, cn, c, H)
             T.vzones[cn] = m
+            cl = V["collapses"][cn]
+            T.vzones[cn + ".walls"], T.vzones[cn + ".floor"] = cl["wall"], m & ~cl["wall"]
             debris |= deb
         for fn, f in (v.get("flows") or {}).items():
             H, m = _flow(T, name, fn, f, H)
@@ -283,13 +285,17 @@ def _collapse(T, vname, name, c, H):
     zf = np.interp(al, axis, prof - fall, left=prof[0] - fall[0], right=prof[-1])
     z_head = float(prof[0] - fall[0])
     zf = zf + 0.02 * rise * (noise.fbm(pts, 0.15 * W, 2, seed=sd + 1).reshape(T.X.shape) - 0.5)
-    C = zf + np.maximum(e, 0) * math.tan(walls)
+    sea = T.spec.get("sea")
+    if sea:  # (a floor reaching past the footprint sank under the sea and flooded: it ends at the shore instead)
+        zf = np.maximum(zf, float(sea.get("level", 0.0)) + 1.5)
+    # the walls fall from the ground at the outline inward at `walls` to the floor: `width` is rim to rim (measured
+    # from the floor's edge, gentler walls had spread the scar 300 m wider and into the crater)
+    C = np.where(e >= 0, np.inf, np.maximum(zf, H + e * math.tan(walls)))
     C = np.where(al > reach, np.inf, C)  # (beyond the mouth nothing is cut: a trench across the plain otherwise)
-    C = np.where(al < head - 0.1 * W, np.maximum(C, zf + (head - 0.1 * W - al) * math.tan(walls)), C)
     Hn = np.minimum(H, C)
     cut = H - Hn
     scar = cut > 0.5
-    wall = scar & (e > -2 * T.cell) & (cut > 0.1 * float(c.get("depth", 0.3 * rise)))
+    wall = scar & (Hn > zf + 1.0)  # (the floor is what reached the floor; the rest is wall)
     T.hard |= wall
     T.hardness = np.where(wall, 0.2, T.hardness)
     deb = np.zeros(T.X.shape, bool)
@@ -311,6 +317,11 @@ def _collapse(T, vname, name, c, H):
             bump[m] += hgt[i] * np.exp(-r2[m])
         Hn = Hn + bump
         deb = bump > 0.1 * hgt.mean()
+    if "_floor" not in c and V["depth"] > 0 and (scar & (np.hypot(vx, vy) < V["rc"])).any():
+        need = min(0.9, (V["rc"] + 0.2 * W) / R + 0.05)
+        T.warnings.append(f"collapse {name!r}: its headwall breaks through {vname!r}'s crater rim (the crater drains "
+                          f"through it; a crater lake won't hold): move its head out (head {need:.2f} or more) or "
+                          f"narrow it")
     V["collapses"][name] = {"a": a.tolist(), "W": W, "head": head, "reach": reach, "scar": scar, "wall": wall,
                             "z_head": z_head, "debris": deb, "floor_xy": (centre + a * (0.5 * (head + reach))).tolist()}
     return Hn, scar, deb
@@ -432,7 +443,7 @@ def _flow(T, vname, name, f, H):
     T.hardness = np.where(on, 0.05, T.hardness)  # young lava: erosion barely touches it
     T.hard |= on & (dist > 0.8 * hw[i])  # (its margins and front stand steep)
     T.lines[name] = Line(name, "flow", xy, zc, s, {"length": L, "width": width})
-    V["flows"][name] = {"xy": xy, "hw": hw, "thick": thick, "front": math.degrees(front), "mask": on, "length": L,
+    V["flows"][name] = {"xy": xy, "hw": hw, "thick": thick, "pre": H.copy(), "front": math.degrees(front), "mask": on, "length": L,
                         "vent": p.tolist(), "delta": delta}
     return Hn, on
 
@@ -441,10 +452,10 @@ def settle(T, pre):
     """After erosion: a volcano's designed forms (gullies, rim, scars, flows) come back as they were before it, keeping
     the erosion's detail within the kind's gully depth (eroded freely, 20 m gullies were diffused into soft drapery and
     the rim lost 20-30 m)."""
-    if not getattr(T, "volcanoes", None):
+    if not getattr(T, "volcanoes", None) and getattr(T, "settle_mask", None) is None:
         return
     from .terrain_erode import protected
-    on = np.zeros(T.X.shape, bool)
+    on = getattr(T, "settle_mask", np.zeros(T.X.shape)) > 0.05  # (peak forms too)
     for V in T.volcanoes.values():
         on |= V["footprint"]
         for cl in V["collapses"].values():
@@ -486,9 +497,20 @@ def report(T) -> list[str]:
         if V["rc"] > 2.5 * T.cell and V["depth"] > 0:
             floor = float(np.percentile(T.H[V["crater"]], 3)) if V["crater"].any() else float("nan")
             wet = V["crater"] & ~np.isnan(T.water)
-            line += (f"; crater {2 * np.median(rims):.0f} m across rim to rim, floor {floor:.0f} m, "
-                     f"{np.median(tops) - floor:.0f} m deep below the rim's median ({tops.min() - floor:.0f} at its lowest "
-                     f"point)" + (f", water at {float(np.nanmax(T.water[wet])):.0f} m" if wet.any() else ""))
+            low = int(np.argmin(tops))
+            lw = _bearing(dirs[low])
+            if wet.any():  # (the lake bed isn't the floor people see: the water is)
+                lvl = float(np.nanmax(T.water[wet]))
+                dry = V["crater"] & np.isnan(T.water)
+                line += (f"; crater {2 * np.median(rims):.0f} m across rim to rim, a lake at {lvl:.0f} m "
+                         f"({lvl - floor:.0f} m deep, {wet.sum() * T.cell ** 2 / 1e4:.1f} ha), {np.median(tops) - lvl:.0f} m "
+                         f"below the rim's median; the rim is lowest at {tops.min():.0f} m on its {lw} side (the water "
+                         f"would spill there)" + ("" if dry.sum() < 3 else ""))
+                floor = lvl
+            else:
+                line += (f"; crater {2 * np.median(rims):.0f} m across rim to rim, floor {floor:.0f} m, "
+                         f"{np.median(tops) - floor:.0f} m deep below the rim's median; the rim is lowest at "
+                         f"{tops.min():.0f} m on its {lw} side")
             wallm = V["crater"] & (T.H > floor + 0.2 * (np.median(tops) - floor))
             if wallm.sum() > 5:
                 line += f"; inner walls median {np.median(slope[wallm]):.0f} deg"
@@ -521,7 +543,11 @@ def report(T) -> list[str]:
             fl_m = cl["scar"] & (np.hypot(T.X - (hxy[0] + a[0] * 0.6 * cl["W"]), T.Y - (hxy[1] + a[1] * 0.6 * cl["W"]))
                                  < 0.25 * cl["W"])
             head_h = float(np.median(T.H[ring]) - np.median(T.H[fl_m])) if ring.any() and fl_m.any() else float("nan")
-            wid = cl["scar"].sum() * T.cell ** 2 / max(cl["reach"] - cl["head"], T.cell)
+            mid = c + a * (cl["head"] + 0.5 * cl["W"])  # rim to rim across its head's middle
+            pa = np.array([-a[1], a[0]])
+            ds = np.arange(-1.5 * cl["W"], 1.5 * cl["W"], T.cell / 2)
+            on_l = cl["scar"].ravel()[_cells(T, mid + ds[:, None] * pa)]
+            wid = (np.ptp(np.nonzero(on_l)[0]) * T.cell / 2) if on_l.any() else 0.0
             out.append(f"  collapse {cn}: opens toward {_bearing(a)}, ~{wid:.0f} m wide, headwall {head_h:.0f} m "
                        f"above its floor, walls median {np.median(slope[wal]) if wal.sum() > 5 else float('nan'):.0f} "
                        f"deg" + (f"; debris {cl['debris'].sum() * T.cell ** 2 / 1e4:.1f} ha of hummocks"
@@ -533,13 +559,13 @@ def report(T) -> list[str]:
                 why = "reached the sea" if fl["delta"] > T.cell else "ran out of slope (ponded) or reached the frame's edge"
                 T.warnings.append(f"flow {fn!r}: {fl['length']:.0f} m of the asked {asked:.0f} m: it {why}")
             out.append(f"  flow {fn}: {fl['length']:.0f} m long from [{fl['vent'][0]:.0f}, {fl['vent'][1]:.0f}], "
-                       f"{m['width'][0]:.0f}-{m['width'][1]:.0f} m wide, stands {m['proud'][0]:.0f}-{m['proud'][1]:.0f} m "
-                       f"above the ground beside it (median {m['proud_med']:.0f}), margins median {m['margin']:.0f} deg, "
-                       f"front {m['front']:.0f} m high" + (f"; a lava delta {fl['delta']:.0f} m into the sea"
+                       f"{m['width'][0]:.0f}-{m['width'][1]:.0f} m wide, {m['depth']:.0f} m deep over the ground it buried "
+                       f"(up to {m['depth_hi']:.0f}), its edges stand {m['step']:.0f} m thick at "
+                       f"{m['margin']:.0f} deg, its front {m['front']:.0f} m" + (f"; a lava delta {fl['delta']:.0f} m into the sea"
                                                           if fl["delta"] > T.cell else ""))
-            if m["proud_med"] < 2:
-                T.warnings.append(f"flow {fn!r}: it hardly stands above the ground beside it (median "
-                                  f"{m['proud_med']:.1f} m): it filled a gully; thicken it for a flow that reads")
+            if m["step"] < 2:
+                T.warnings.append(f"flow {fn!r}: its margins hardly step down to the ground beside it (median "
+                                  f"{m['step']:.1f} m): it filled a gully; thicken it for a flow that reads")
     return out
 
 
@@ -550,14 +576,16 @@ def _bearing(a):
 
 
 def measure_flow(T, fl):
-    """Width (where the lava is on top), how far its surface stands above the ground beside it (both sides at 1.6 half
-    widths, the lower), margin slopes, and the front's height, at stations along it."""
+    """As built: its width at stations along it (where the lava is on top), how deep it lies over the ground it buried
+    (the final ground minus the ground before it; its delta on the sea bed apart), how thick it is along its edge (the
+    step you see at its margins) and at its front, and the margins' slope. (Comparing its middle with the ground 1.6
+    half-widths away had read an 18 m flow as standing 60-81 m on a cone's flank.)"""
     xy, hw, m = fl["xy"], fl["hw"], fl["mask"]
     slope = T._slope()
     tan = np.gradient(xy, axis=0)
     tan /= np.linalg.norm(tan, axis=1, keepdims=True) + 1e-9
     nrm = np.c_[-tan[:, 1], tan[:, 0]]
-    widths, proud = [], []
+    widths, steps = [], []
     for j in np.linspace(0.1 * len(xy), 0.9 * len(xy), 12).astype(int):
         ds = np.arange(-2.5 * hw[j], 2.5 * hw[j], T.cell / 2)
         line = xy[j] + ds[:, None] * nrm[j]
@@ -565,20 +593,21 @@ def measure_flow(T, fl):
         if onl.sum() < 2:
             continue
         widths.append(onl.sum() * T.cell / 2)
-        hs = T.sample(line)
-        mid = hs[np.abs(ds) < 0.3 * hw[j]]
-        beside = hs[np.abs(ds) > 1.6 * hw[j]]
-        if len(mid) and len(beside):
-            proud.append(float(np.median(mid) - np.median(np.sort(beside)[: max(1, len(beside) // 2)])))
+    sea = T.spec.get("sea")
+    land = m & (fl["pre"] > (float(sea.get("level", 0.0)) if sea else -np.inf))  # (not its delta, built on the sea bed)
+    thick = T.H - fl["pre"]
+    depth = thick[land] if land.any() else np.zeros(1)
     edge = m & ~ndimage.binary_erosion(m, iterations=2)
-    toe = xy[-1]
-    ahead = toe + tan[-1] * (np.arange(0, 6 * max(hw[-1], T.cell), T.cell / 2) - 2 * hw[-1])[:, None]
-    hs = T.sample(ahead)
+    # the margins and the front: how thick the lava is along its edge (the step you see), over the ground it covers
+    rim_band = land & ~ndimage.binary_erosion(m, iterations=3)
+    toe = np.hypot(T.X - xy[-1][0], T.Y - xy[-1][1]) < 1.5 * hw[-1]
+    steps = [float(np.median(thick[rim_band]))] if rim_band.any() else []
+    front = float(np.median(thick[rim_band & toe])) if (rim_band & toe).any() else float("nan")
     return {"width": (min(widths), max(widths)) if widths else (0, 0),
-            "proud": (min(proud), max(proud)) if proud else (0, 0),
-            "proud_med": float(np.median(proud)) if proud else 0.0,
+            "depth": float(np.median(depth)), "depth_hi": float(np.percentile(depth, 90)),
+            "step": float(np.median(steps)) if steps else 0.0,
             "margin": float(np.median(slope[edge])) if edge.sum() > 5 else float("nan"),
-            "front": float(hs.max() - hs[-1])}
+            "front": front}
 
 
 def _cells(T, p):

@@ -148,6 +148,11 @@ def run(job):
     attr.attribute_name = "col"
     nt.links.new(attr.outputs["Color"], bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = 0.9
+    # ground is matte: the default specular sheen at grazing angles (every view from a boat or a valley floor) lifted
+    # dark cover to grey-brown (black lava read as brown rock)
+    for k in ("Specular IOR Level", "Specular"):
+        if k in bsdf.inputs:
+            bsdf.inputs[k].default_value = 0.12
     ground.data.materials.append(m)
     if "tree_xyz" in d.files and len(d["tree_xyz"]):  # the same tree instances the export writes
         for kind in sorted(set(d["tree_kind"].tolist())):

@@ -72,6 +72,13 @@ and the `"story"`.
   is its rounded TOP (not its footprint); its flanks fall at `flanks` degrees (default 18) to the ground, or give its
   footprint directly with `base_radius`. The report ends with the frame's highest ground and warns when it's nothing
   you placed.
+  - `"form"`: `"pyramid"` (planar faces between arêtes, a point on top; the default in alpine valleys and cirques),
+    `"horn"` (steeper, three faces hollowed into cirques between sharp arêtes: a Matterhorn), `"dome"` (rounded: the
+    default elsewhere). Each ridge leaving the peak is one of its arêtes, at that ridge's own fall; more are added up
+    to `"faces"` (pyramid 4, horn 3). The form carves the upper part of the mountain and never cuts into a
+    neighbouring ridge, col or peak. `"arete"`: slope in degrees of the added arêtes; `"hollow"`: 0..1, how deep a
+    horn's cirques are. The report says how far each summit falls in its first stretch (a dome barely falls), its
+    arêtes and its faces' slope.
 - **cols** (low points on a ridge) have the same shape.
 - **ridges** `{"name": {"through": [peak/col | "ridge@0.4" | [x, y, z], ...], "crest": "arete" | "rounded"}}`. A
   ridge that ends where it starts is **closed**: a ring round a basin or crater.
@@ -139,16 +146,19 @@ and the `"story"`.
   - The crater's walls fall at `walls` to a flat floor `depth` below the rim. `lake` fills it (true: a quarter of its
     depth; or a level). `breach` opens the rim toward a side (a breached crater holds no lake).
   - **gullies**: radial valleys between ribs, from just below the rim to the foot (default 0.6 on a strato cone).
-  - **collapses**: a horseshoe amphitheatre in the flank opening toward `toward`: `width` wide, its floor `depth` below
-    the flank under the headwall, rising to meet the flank at `reach` (share of the footprint's radius from the
-    centre; `head` is where the headwall stands), steep walls, and hummocky debris spread beyond its mouth.
+  - **collapses**: a horseshoe amphitheatre in the flank opening toward `toward`: `width` rim to rim, its floor `depth`
+    below the flank under the headwall, rising to meet the flank at `reach` (share of the footprint's radius from the
+    centre; `head` is where the headwall stands), walls at `walls` deg falling from the rim to the floor, and hummocky
+    debris spread beyond its mouth. With a sea its floor ends at the shore (put a cove at it for a harbour). The report
+    warns if the headwall breaks into the crater (it drains a crater lake): move `head` out.
   - **flows**: lava runs downhill from its vent on the ground as built (down gullies, into scars) for `length` metres:
     a sheet `thick` metres deep with steep margins and front, levees, pressure ridges and a lobed toe. Where the ground
     beside it is higher it fills the hollow. Reaching the sea it builds a lava delta. The report measures how far each
     stands above the ground beside it: a flow that doesn't stand proud doesn't read.
   - Addresses: the volcano's name (its top: a sight target), `"<name>.crater"`, `"<name>_rim@0.25"` (on the rim, a
     quarter of the way round clockwise from north), each flow (`"flow@0.5"`), each collapse (its floor). Zones: each
-    flow, `"lava"` (every flow), `"<name>.crater"`, each collapse, `"debris"`: cover them (`{"type": "rock", "in":
+    flow, `"lava"` (every flow), `"<name>.crater"`, each collapse (and `"<collapse>.walls"`, `"<collapse>.floor"`),
+    `"debris"`: cover them, and name them in `cliffs.except` (`{"type": "rock", "in":
     "lava", "slope": [0, 90], "color": "#2b2826"}`).
   - A volcanic island: `"world": {"kind": "volcanic island", "base": -40}` (the sea floor) and `"sea": {"level": 0}`
     with no `land` zone: the coast is wherever the cone rises out of the water.
@@ -172,6 +182,9 @@ and the `"story"`.
     the water), **cliffs** (the land ending in a ~70 deg face; where the land is lower than the asked height it ramps up
     to the cliff top from inland, never a rim with lower ground behind). `cliffs` with `except`/`only` picks stretches;
     an address inland (a headland's peak) means the coast nearest it.
+  - Below the cliffs: a wave-cut platform of rocks awash (`cliffs.platform`: m out from the face's foot, 0 for none)
+    and sea stacks standing off the face (`cliffs.stacks`: how many; default about one per 350 m of cliff coast, up
+    to 8; 0 for none). The report counts them and their heights.
   - The cliffs' height is the land's height where it meets the sea: a peak whose flanks reach past the coast makes
     cliffs as tall as the flank there (the report measures them and warns). Size the land and the peaks together.
   - **Beaches** go on the coast nearest their `at`. A beach grades the land down to the water; with `"at_foot": true`
@@ -205,6 +218,12 @@ and the `"story"`.
   - `moraine {"across": "river@0.8", "height", "width"}`
   - `terrace {"along": river, "from", "to", "side": "left" | "right", "height", "width"}` (banks: left and right
     looking downstream)
+- **rock**: every steep face (sea cliffs, basin and canyon walls, mesas, scars, craters) gets rock character on its
+  own: buttresses and couloirs along it (the face moved in and out, so its lip and foot are notched and it stays as
+  steep and tall), ledges where the face is gentle enough for a tread, and a boulder foot below it.
+  `"rock": {"buttresses": 0..1, "ledges": 0..1, "boulders": 0..1, "scale": m}` tunes it (defaults 1, 0.6, 1, the
+  kind's crag size); `"rock": false` turns it off. Never on routes, sites or water. The report measures how broken the
+  faces are (the share of steep ground turned away from its face's line: a smooth wall is ~0%).
 - **rugged**: ruggedness as geometry (crags, and ledges of benches and risers, in patches).
   `{"name": {"in": zone, "gradient"?: {"from", "to", "range": [a, b]}, "amount": 0..1, "scale"?: m, "ledges"?: m}}`.
   Rock cover then finds the steep bits. Use it for "rocky", "craggy" or "broken ground".

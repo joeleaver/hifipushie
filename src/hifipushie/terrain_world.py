@@ -114,7 +114,7 @@ LIMITS = [
     (("dune", "erg"), "no dune forms: sand is a cover, dunes would be hand-placed hills"),
     (("waterfall", "cascade"), "no falling water: a hanging river makes the step, the water doesn't fall"),
     (("swamp", "marsh", "bog", "wetland", "delta"), "no wetland forms: mud cover and shallow lakes (fans for deltas)"),
-    (("city", "town", "castle", "building", "ruin", "ruins"), "no buildings: sites are the flat pads they stand on"),
+    (("city", "town", "castle", "buildings", "houses", "ruin", "ruins"), "no buildings: sites are the flat pads they stand on"),
 ]
 
 

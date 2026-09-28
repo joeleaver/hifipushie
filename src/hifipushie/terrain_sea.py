@@ -77,7 +77,8 @@ def _near(T, refs, reach, coves=None, sd=None):
             grow = ndimage.distance_transform_edt(~coves[a]["mask"]) * T.cell
             m = np.maximum(m, smoothstep(1.3 * reach, 0.7 * reach, grow))
             continue
-        if isinstance(a, str) and (a in T.zones or a.startswith("quadrant:")) or isinstance(a, dict):
+        if isinstance(a, str) and (a in T.zones or a.startswith("quadrant:") or a in getattr(T, "vzones", {})) \
+                or isinstance(a, dict):
             m = np.maximum(m, design.region(T, a))
             continue
         xy = T.address(a)[0]
@@ -253,6 +254,46 @@ def apply(T):
             scar = scar * (1 - open_w) + np.maximum(gentle, scar * 0 + gentle) * open_w
         new = np.where((sd > 0) & ahead, np.minimum(new, scar), new)
         cv["apron"] = ap
+    # below the cliffs: a wave-cut platform (rocks awash, a band out from the face's foot), and sea stacks standing off
+    # the face (a smooth wall straight into deep water read as a dam)
+    run = np.maximum(top_here - level, 0) / math.tan(CLIFF)
+    out_of_foot = -sd - run  # metres seaward of the face's foot
+    pw = float(cl.get("platform", max(3 * T.cell, 25 * k)))
+    stacks = []
+    if pw > 0:
+        rocks = noise.fbm(np.c_[T.P, np.full(len(T.P), 19.0)], 1.6 * T.cell, 3, seed=151).reshape(T.X.shape)
+        fade = smoothstep(pw, 0.3 * pw, out_of_foot) * (out_of_foot > -T.cell)
+        plat = level - 1.2 + 2.2 * rocks - 0.8 * np.clip(out_of_foot / pw, 0, 1)
+        new = np.where((sd < 0) & (wc > 0.5) & (foot < 0.5), np.maximum(new, np.where(fade > 0, plat * fade + new * (1 - fade), new)), new)
+    by, bx = np.nonzero(coast & (wc > 0.5) & (foot < 0.5))
+    n_st = int(cl.get("stacks", min(8, int(len(by) * T.cell / 350)))) if len(by) else 0
+    if n_st > 0:
+        rng = np.random.default_rng(161)
+        pick = rng.choice(len(by), size=min(n_st * 6, len(by)), replace=False)
+        # the sea side of the coast at each pick: down the signed distance's gradient
+        gy, gx = np.gradient(sd)
+        for j in pick:
+            if len(stacks) >= n_st:
+                break
+            y, x = by[j], bx[j]
+            p = np.array([T.X[y, x], T.Y[y, x]])
+            if any(np.linalg.norm(p - np.array(s0["xy"])) < 120 * k + 8 * T.cell for s0 in stacks):
+                continue
+            nrm = -np.array([gx[y, x], gy[y, x]])
+            nrm /= np.linalg.norm(nrm) + 1e-9
+            top = float(top_here[y, x])
+            hgt = (top - level) * rng.uniform(0.45, 0.95)
+            r = max(2 * T.cell, rng.uniform(0.15, 0.35) * (top - level))
+            c = p + nrm * (float(run[y, x]) + rng.uniform(1.2, 3.0) * r)
+            d = np.hypot(T.X - c[0], T.Y - c[1])
+            d = d * (1 + 0.3 * (noise.fbm(np.c_[T.P, np.full(len(T.P), 23.0 + len(stacks))], 0.8 * r, 2,
+                                          seed=171 + len(stacks)).reshape(T.X.shape) - 0.5))
+            st = np.where(d < r, level + hgt - 0.05 * hgt * (d / r) ** 2,
+                          level + hgt - (d - r) * math.tan(math.radians(78)))
+            ok = (sd < 0) & (st > new)
+            new = np.where(ok, st, new)
+            T.hard |= ok & (st > level)
+            stacks.append({"xy": c.tolist(), "height": hgt, "radius": r})
     cliffish = (wc > 0.5) | (foot > 0.5)  # (a cliff's face and its foot's sand stand offshore of the coastline)
     new = np.where(sd > 0, np.maximum(new, level + 0.3), np.where(cliffish, new, np.minimum(new, level - 0.3)))
     T.H = new
@@ -260,7 +301,7 @@ def apply(T):
     T.hard |= face
     T.hardness = np.where(face, np.minimum(T.hardness, 0.05), T.hardness)
     T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "foot": foot, "coves": coves, "want": want,
-             "beach_at": beach_at,
+             "beach_at": beach_at, "stacks": stacks,
              "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches)}
     T.masks.setdefault("coast", np.zeros(T.X.shape))
     T.masks["coast"] = np.maximum(T.masks["coast"], smoothstep(4 * T.cell, 0, np.abs(sd)))
@@ -335,6 +376,13 @@ def report(T):
         length = bc.sum() * T.cell
         out.append(f"beaches (measured): {length:.0f} m of beach coast; the dry sand within 2.5 m of the water averages "
                    f"{sand / max(length, 1):.0f} m wide")
+    if S.get("stacks"):
+        hs = []
+        for st in S["stacks"]:
+            c = np.array(st["xy"])
+            near = np.hypot(T.X - c[0], T.Y - c[1]) < st["radius"]
+            hs.append(float(T.H[near].max() - S["level"]) if near.any() else 0.0)
+        out.append(f"sea stacks: {len(hs)} standing {min(hs):.0f}-{max(hs):.0f} m out of the water off the cliffs")
     for name, cv in S["coves"].items():
         m = cv["mask"] & wet
         out.append(f"cove {name}: {_area(m.sum() * T.cell ** 2)} of sheltered water, {cv['depth']:.0f} m deep into the "

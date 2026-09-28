@@ -1140,6 +1140,14 @@ def report(T):
     for name, s in T.sites.items():
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
+        sea = getattr(T, "sea", None)
+        if sea is not None:
+            iy = int(np.clip(round((s["xy"][1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1))
+            ix = int(np.clip(round((s["xy"][0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))
+            if sea["sd"][iy, ix] < 0:  # (a pad built out into the sea on a fill mound had read "edge 8 m from water")
+                T.warnings.append(f"site {name!r}: its centre is {-sea['sd'][iy, ix]:.0f} m out to sea of the coastline: the "
+                                  f"pad stands on {s['fill']:.0f} m of fill in the water. Move it inland, or put the "
+                                  f"cove/beach where it should stand")
         out.append(f"site {name}: pad {2 * s['radius']:.0f} m across at {s['level']:.0f} m, centre "
                    f"[{s['xy'][0]:.0f}, {s['xy'][1]:.0f}]; cut {s['cut']:.0f} m, fill {s['fill']:.0f} m{s.get('note', '')}"
                    + (f"; edge {dw:.0f} m from water" if dw is not None else ""))
@@ -1151,6 +1159,9 @@ def report(T):
         turns = _switchbacks(R.xy)
         worst = int(np.argmax(g))
         verdict = "OK" if ok else f"FAIL at [{R.xy[worst, 0]:.0f}, {R.xy[worst, 1]:.0f}]"
+        if not ok:  # (a FAIL had no warning at all)
+            T.warnings.append(f"route {name!r} FAILS its grade as built: {100 * g.max():.0f}% at [{R.xy[worst, 0]:.0f}, "
+                              f"{R.xy[worst, 1]:.0f}] (limit {100 * R.props['max_grade']:.0f}%)")
         if R.props.get("relaxed", 1) > 1:
             verdict += (f" (no way at {100 * R.props['max_grade']:.0f}% exists on the ground: it was found at "
                         f"{100 * R.props['max_grade'] * R.props['relaxed']:.0f}% and graded by cutting and filling)")
