@@ -161,6 +161,30 @@ def _scatter(ground, kinds, per_m2=0.02):
     mod.node_group = ng
 
 
+def _water_material(name):
+    wm = bpy.data.materials.new(name)
+    wm.use_nodes = True
+    b = wm.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)  # water scatters light back up (darker read as black from above)
+    b.inputs["Roughness"].default_value = 0.25
+    # a light swell: noise bump on the normal (a dead-flat surface was a perfect mirror)
+    nt = wm.node_tree
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (0.25, 0.6, 0.25)  # (in metres: ripples ~4 m long; 30 m swells were too gentle to show)
+    nz = nt.nodes.new("ShaderNodeTexNoise")
+    nz.inputs["Scale"].default_value = 1.0
+    nz.inputs["Detail"].default_value = 6.0
+    bp = nt.nodes.new("ShaderNodeBump")
+    bp.inputs["Strength"].default_value = 1.0
+    bp.inputs["Distance"].default_value = 0.4
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], nz.inputs["Vector"])
+    nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
+    nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+    return wm
+
+
 def run(job):
     for coll in (bpy.data.objects, bpy.data.meshes, bpy.data.cameras, bpy.data.lights, bpy.data.node_groups):
         for item in list(coll):
@@ -180,6 +204,40 @@ def run(job):
     for k in ("Specular IOR Level", "Specular"):
         if k in bsdf.inputs:
             bsdf.inputs[k].default_value = 0.12
+    # steep faces get a rock material's relief, as an engine's cliff material would: level beds and joints in the normal
+    # (a heightfield face is smooth below its cell; faces read as plaster from close by)
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (0.08, 0.08, 0.9)  # stretched along the level: beds a metre or so apart
+    nz = nt.nodes.new("ShaderNodeTexNoise")
+    nz.inputs["Scale"].default_value = 1.0
+    nz.inputs["Detail"].default_value = 4.0
+    nz.inputs["Roughness"].default_value = 0.65
+    vo = nt.nodes.new("ShaderNodeTexVoronoi")  # joints: blocks a few metres across
+    vo.feature = "DISTANCE_TO_EDGE"
+    vo.inputs["Scale"].default_value = 0.35
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    steep = nt.nodes.new("ShaderNodeMapRange")  # 0 on flat ground, 1 on faces steeper than ~60 deg
+    steep.inputs["From Min"].default_value, steep.inputs["From Max"].default_value = 0.8, 0.5
+    add = nt.nodes.new("ShaderNodeMath")
+    add.operation = "ADD"
+    jt = nt.nodes.new("ShaderNodeMath")
+    jt.operation = "MULTIPLY"
+    jt.inputs[1].default_value = 1.5
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Distance"].default_value = 0.25
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], nz.inputs["Vector"])
+    nt.links.new(tc.outputs["Object"], vo.inputs["Vector"])
+    nt.links.new(vo.outputs["Distance"], jt.inputs[0])
+    nt.links.new(nz.outputs["Fac"], add.inputs[0])
+    nt.links.new(jt.outputs[0], add.inputs[1])
+    nt.links.new(geo.outputs["Normal"], sep.inputs["Vector"])
+    nt.links.new(sep.outputs["Z"], steep.inputs["Value"])
+    nt.links.new(steep.outputs["Result"], bump.inputs["Strength"])
+    nt.links.new(add.outputs[0], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
     ground.data.materials.append(m)
     if "tree_xyz" in d.files and len(d["tree_xyz"]):  # the same tree instances the export writes
         for kind in sorted(set(d["tree_kind"].tolist())):
@@ -232,8 +290,8 @@ def run(job):
     b = pm.node_tree.nodes["Principled BSDF"]
     if np.isfinite(sea):  # a sea runs on past the frame: the plane is water at its level
         plane.location.z = sea - 0.3 - (float(d["base"]) - 1)  # (coincident with the water mesh, both rendered black)
-        b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)
-        b.inputs["Roughness"].default_value = 0.08
+        # the same water as in the frame (a glossier plane read as a pale shelf beside the frame's own sea)
+        pm = _water_material("beyond_water")
     else:  # the edge's own colours carried out
         at = pm.node_tree.nodes.new("ShaderNodeAttribute")
         at.attribute_name = "col"
@@ -298,26 +356,9 @@ def run(job):
     if len(d["wfaces"]):
         foam = d["wfoam"] if "wfoam" in d.files else None
         water = _mesh("water", d["wverts"], d["wfaces"], None if foam is None else np.repeat(foam[:, None], 3, 1))
-        wm = bpy.data.materials.new("water")
-        wm.use_nodes = True
-        b = wm.node_tree.nodes["Principled BSDF"]
-        b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)  # water scatters light back up (darker read as black from above)
-        b.inputs["Roughness"].default_value = 0.25
-        # a light swell: noise bump on the normal (a dead-flat surface was a perfect mirror)
+        wm = _water_material("water")
         nt = wm.node_tree
-        tc = nt.nodes.new("ShaderNodeTexCoord")
-        mp = nt.nodes.new("ShaderNodeMapping")
-        mp.inputs["Scale"].default_value = (0.25, 0.6, 0.25)  # (in metres: ripples ~4 m long; 30 m swells were too gentle to show)
-        nz = nt.nodes.new("ShaderNodeTexNoise")
-        nz.inputs["Scale"].default_value = 1.0
-        nz.inputs["Detail"].default_value = 6.0
-        bp = nt.nodes.new("ShaderNodeBump")
-        bp.inputs["Strength"].default_value = 1.0
-        bp.inputs["Distance"].default_value = 0.4
-        nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
-        nt.links.new(mp.outputs["Vector"], nz.inputs["Vector"])
-        nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
-        nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+        b = nt.nodes["Principled BSDF"]
         if foam is not None:  # surf where it's shallow: white, rough
             at = nt.nodes.new("ShaderNodeAttribute")
             at.attribute_name = "col"
@@ -365,7 +406,7 @@ def run(job):
         b, h = np.radians(v.get("sun", (225, 28)))  # where the sun is: compass bearing, height (terrain_sun picks it)
         toward = Vector((np.cos(h) * np.sin(b), np.cos(h) * np.cos(b), np.sin(h)))
         sun.rotation_euler = (-toward).to_track_quat("-Z", "Y").to_euler()
-        sky.sun_elevation, sky.sun_rotation = h, -b  # the sky's glow on the sun's side (Nishita: rotation 0 = north)
+        sky.sun_elevation, sky.sun_rotation = h, b  # the sky's glow and disc on the sun's side (5.1: rotation = bearing)
         scene.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
 

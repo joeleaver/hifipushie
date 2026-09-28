@@ -102,12 +102,18 @@ def region(T, r) -> np.ndarray:
     if "inside" in r:
         from skimage.draw import polygon
         L = T.lines[r["inside"]]
-        if not L.props.get("closed"):
-            raise ValueError(f"region inside {r['inside']!r}: that ridge isn't closed (end it where it starts)")
-        rr, cc = polygon((L.xy[:, 1] - T.ys[0]) / T.cell, (L.xy[:, 0] - T.xs[0]) / T.cell, shape)
-        a = np.zeros(shape)
-        a[rr, cc] = 1
-        meet(a)
+        opened = [b for n, b in getattr(T, "basins", {}).items()
+                  if (T.spec.get("basins") or {}).get(n, {}).get("inside") == r["inside"]]
+        if not L.props.get("closed") and opened:  # a horseshoe opening to a side: its basin's inside
+            meet(opened[0]["inside"].astype(float))
+        elif not L.props.get("closed"):
+            raise ValueError(f"region inside {r['inside']!r}: that ridge isn't closed (end it where it starts), and no "
+                             f"basin opens it to a side")
+        else:
+            rr, cc = polygon((L.xy[:, 1] - T.ys[0]) / T.cell, (L.xy[:, 0] - T.xs[0]) / T.cell, shape)
+            a = np.zeros(shape)
+            a[rr, cc] = 1
+            meet(a)
     if "polygon" in r:
         from skimage.draw import polygon
         p = np.array(r["polygon"], float)
@@ -177,6 +183,8 @@ def apply(T):
         T.walls[name] = {"inside": b["floor"], "band": b["width"], "raised": 0.0, "basin": True,
                          "spec": {"min_slope": b["min_slope"], "height": spec.get("height", 30),
                                   "except": spec.get("except", []) + list(T.passes), "gap": spec.get("gap", 90 * T.k)}}
+        if b.get("mouth") is not None:
+            T.walls[name]["mouth"] = b["mouth"]
     for name, w in (T.spec.get("walls") or {}).items():
         _wall(T, name, w)
     # sites in dependency order: one that overlooks or falls toward another is built after it (key order mattered)
@@ -287,7 +295,12 @@ def rugged(T):
         sc = float(g.get("scale", T.world["crag"] if T.world["kind"] else 80 * T.k))  # player-scale crags
         crag = 1 - np.abs(2 * noise.fbm(pts, sc, 3, seed=61 + k) - 1)
         fine = noise.fbm(pts, sc / 3, 2, seed=62 + k)
-        T.H += R * (0.25 * sc * (crag.reshape(T.X.shape) - 0.5) + 0.06 * sc * (fine.reshape(T.X.shape) - 0.5))
+        lumps = 0.25 * sc * (crag.reshape(T.X.shape) - 0.5) + 0.06 * sc * (fine.reshape(T.X.shape) - 0.5)
+        # crags are blocks with flat faces, not round knolls and bowls: the noise cut into planes (ridged noise left a
+        # round pit between every pair of crests: a pocked, melted-cheese face)
+        from .terrain_rock import facets
+        blocky, _ = facets(T, lumps, max(0.7 * sc, 3 * T.cell), tilt=0.25, seed=64 + k, crease=0.06)
+        T.H += R * blocky
         step = float(g.get("ledges", 0.15 * sc))
         if step > 0:
             f = T.H / step
@@ -333,6 +346,9 @@ def _check_wall(T, name):
     boundary = inside & ~ndimage.binary_erosion(inside)
     boundary[[0, -1], :] = boundary[:, [0, -1]] = False
     gap = _gaps(T, w) < 0.5
+    if W.get("mouth") is not None:  # a valley open to a side: past the horseshoe's ends is its mouth, not a wall
+        cd, beyond = W["mouth"]
+        gap |= (T.X * cd[0] + T.Y * cd[1]) > beyond
     # along the outward ray from each boundary point: the tallest stretch at least min_slope steep must rise `height`
     # (checking only the steepest slope anywhere outside counted a 2 m step as unclimbable)
     tall, steepest = _steep_runs(T, inside, boundary, w.get("min_slope", 50), W["band"] + 3 * T.cell)

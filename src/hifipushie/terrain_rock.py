@@ -88,6 +88,8 @@ def facets(T, H, size, tilt=0.12, seed=0, crease=0.18):
     b[~ok] = 0
     A = A + np.eye(3) * 1e-6 * size ** 2
     coef = np.linalg.solve(A, b[..., None])[..., 0]  # z = a dx + b dy + c, per cell
+    fit = coef[i1, 0] * dx + coef[i1, 1] * dy + coef[i1, 2]  # (before the tip below)
+    rms = np.sqrt(np.bincount(i1, (z - fit) ** 2, minlength=n) / np.maximum(S1, 1))
     coef[:, :2] += rng.normal(0, tilt, (n, 2))
     coef[:, 2] += rng.normal(0, 0.15 * tilt * size, n)
 
@@ -97,7 +99,10 @@ def facets(T, H, size, tilt=0.12, seed=0, crease=0.18):
     w2 = 0.5 * smoothstep(crease * size, 0, d[:, 1] - d[:, 0])
     good = ok[idx[:, 0]] & ok[idx[:, 1]]
     out = np.where(good, (1 - w2) * p1 + w2 * p2, z)
-    return out.reshape(H.shape)
+    # a cell that isn't near a plane (a small cliff with its top and foot in one cell) is left alone: its plane was the
+    # average, a 50 deg ramp through a 70 deg face
+    keep = np.exp(-(((1 - w2) * rms[idx[:, 0]] + w2 * rms[idx[:, 1]]) / (0.1 * size)) ** 2)
+    return out.reshape(H.shape), keep.reshape(H.shape)
 
 
 def walls_mask(T):
@@ -154,16 +159,23 @@ def apply(T):
         pts2 = np.stack([s.ravel() / (5 * L), q.ravel() / (20 * L), np.full(s.size, 3.0)], 1)
         n2 = noise.fbm(pts2, 1.0, 2, seed=212).reshape(H.shape)
         # full strength on cliffs; a mountainside of 40-50 deg gets a third (it had raindrop dimples all over)
-        amp = b_amt * max(0.4 * crag, 1.0 * T.cell) * (0.35 + 0.65 * smoothstep(45, 65, slope))
+        # the shift is smooth across the whole face and a little past its lip and foot, and the ground is resampled, not
+        # cross-faded: fading the shifted face into the unshifted by the local slope bevelled every lip and foot into a
+        # 50 deg ramp (a 21 m sea cliff at 70 deg became 9 m of face under a 12 m drape)
+        A0 = b_amt * max(0.4 * crag, 1.0 * T.cell)
+        sig = max(1.0, 0.6 * A0 / T.cell)
+        sb = ndimage.gaussian_filter(steep, sig)
+        zone_s = np.clip(1.5 * sb, 0, 1) * ~keep
+        cliffness = ndimage.gaussian_filter(steep * smoothstep(45, 65, slope), sig) / np.maximum(sb, 1e-6)
+        amp = A0 * (0.35 + 0.65 * np.clip(cliffness, 0, 1))
         # (ribs vary in strength along the face: evenly fluted walls read as organ pipes)
         n3 = noise.fbm(np.stack([sw.ravel() / (2.5 * L), q.ravel() / (15 * L), np.full(s.size, 4.0)], 1), 1.0, 2,
                        seed=215).reshape(H.shape)
         delta = amp * ((0.2 + 1.8 * n3 ** 1.5) * (ridged - 0.5) + 1.6 * (n2 - 0.5))  # metres, + = face out
         # sample the ground a horizontal distance delta uphill (+: higher ground brought out: a buttress)
-        yy = (T.Y - T.ys[0] + ny * delta * zone) / T.cell
-        xx = (T.X - T.xs[0] + nx * delta * zone) / T.cell
-        shifted = ndimage.map_coordinates(H, [yy, xx], order=1, mode="nearest")
-        H = H * (1 - zone) + shifted * zone
+        yy = (T.Y - T.ys[0] + ny * delta * zone_s) / T.cell
+        xx = (T.X - T.xs[0] + nx * delta * zone_s) / T.cell
+        H = ndimage.map_coordinates(H, [yy, xx], order=1, mode="nearest")
 
     l_amt = float(cfg.get("ledges", 0.25))
     if l_amt > 0:
@@ -188,7 +200,9 @@ def apply(T):
         w = np.clip(f_amt * w, 0, 1)
         if w.max() > 0.05:
             before = H
-            H = H * (1 - w) + facets(T, H, fsize, tilt=0.35, seed=217, crease=0.08) * w
+            fz, planar = facets(T, H, fsize, tilt=0.35, seed=217, crease=0.08)
+            w = w * planar
+            H = H * (1 - w) + fz * w
             # tipped planes meeting can close small hollows on a face (pits: 9 -> 56 per km2 on b2_alps' cliffs): fill
             # the ones the faceting made (a designed hollow was there before and stays)
             from skimage.morphology import reconstruction
@@ -199,6 +213,20 @@ def apply(T):
             seed_b[1:-1, 1:-1] = before.max()
             was = reconstruction(seed_b, before, method="erosion") - before
             H = H + np.where((w > 0.05) & (fill > was + 0.05) & (fill < 0.3 * fsize), fill - was, 0)
+
+    bd = float(cfg.get("bedding", 1.0))
+    if bd > 0:
+        # bedding on cliffs: the face stepped into near-vertical risers and narrow sills a cell deep, a few metres apart,
+        # level along the face (a 70 deg face with nothing across it read as a curtain draped down to the water). Needs
+        # a riser of several cells' height, so only where the cell is small against the step
+        step = max(2.0, 6.0 * T.cell)  # (a sill must be a couple of cells deep: 3 m beds on a 1 m grid were sub-cell)
+        dip = (noise.fbm(np.c_[T.P, np.full(len(T.P), 6.0)], 25 * step, 2, seed=218).reshape(H.shape) - 0.5) * 0.8 * step
+        th = noise.fbm(np.c_[T.P, np.full(len(T.P), 8.0)], 6 * step, 2, seed=219).reshape(H.shape)  # beds come and go
+        z = (H + dip) / step
+        k = np.floor(z)
+        stair = (k + smoothstep(0.45, 1.0, z - k)) * step - dip
+        w = bd * 0.9 * smoothstep(55, 68, slope) * zone * smoothstep(0.42, 0.52, th) * ~walls_mask(T)
+        H = H * (1 - w) + stair * w
 
     bo = float(cfg.get("boulders", 1.0))
     foot_m = np.zeros(H.shape, bool)
@@ -238,7 +266,7 @@ def measure(T):
     from skimage.morphology import reconstruction
     seed = T.H.copy()
     seed[1:-1, 1:-1] = T.H.max()
-    pit = (reconstruction(seed, T.H, method="erosion") - T.H) > 0.1 * T.cell
+    pit = (reconstruction(seed, T.H, method="erosion") - T.H) > max(0.5, 0.1 * T.cell)  # (deeper than half a metre)
     _, n_pits = ndimage.label(pit & face)
     lap = np.abs(ndimage.laplace(T.H))[face] / T.cell
     return {"face_km2": face.sum() * T.cell ** 2 / 1e6, "turned": float((d[face] > math.radians(25)).mean()),
