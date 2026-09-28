@@ -119,6 +119,11 @@ def erode(T):
         if np.mean(H0 - E) >= target:
             break
     E = thermal(E, T.cell, talus, keep | base | T.hard, iters=25)
+    # no single cut deeper than twice the kind's gully depth (the mean was capped, the deepest wasn't: a 10 m wedge
+    # crossed a coast headland whose whole relief was 25 m), eased so the cap leaves no flat-bottomed trench
+    cap = 2.0 * T.world["gully"] * float(cfg.get("detail", 1.0))
+    cut = H0 - E
+    E = H0 - np.where(cut > 0, cap * np.tanh(cut / cap), cut)
     lowered = float(np.mean(H0 - E))
     if cfg.get("keep_heights", True):  # restore the designed large-scale heights; keep the erosion's detail
         lp = 0.06 * T.size / T.cell

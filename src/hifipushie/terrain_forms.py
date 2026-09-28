@@ -269,19 +269,38 @@ def water(T):
         grade = np.r_[np.abs(np.diff(L.h)) / np.maximum(step, 1e-6), 0]
         grade = ndimage.uniform_filter1d(grade, max(3, int(30 / max(float(np.mean(step)), 1e-3))), mode="nearest")
         width = np.where(grade > 0.04, np.maximum(2.0, wd * np.clip((0.2 - grade) / 0.16, 0, 1)), wd)
-        d, i = cKDTree(L.xy).query(T.P, distance_upper_bound=wd)
+        reach = max(3 * T.cell, 30.0)  # (the banks: graded down to the water within this)
+        d, i = cKDTree(L.xy).query(T.P, distance_upper_bound=wd + reach)
         d, i = d.reshape(T.X.shape), np.minimum(i, len(L.xy) - 1).reshape(T.X.shape)
         wet = np.isfinite(d) & np.isnan(T.water) & (d <= np.maximum(width[i], 0.75 * T.cell))
         wd = np.maximum(width[i], 0.75 * T.cell)
         # a river leaving a lake runs over the lake's dam at the lake's level: its bed carved at its own profile cut
         # the dam and drained a tarn to nothing
         hl = L.h.copy()
+        # the water never stands above its banks: where the ground beside the channel is lower than the river's profile
+        # the level follows the banks down (still falling downstream); a river above its floor rendered as a raised slab
+        # with stepped edges
+        bank = np.isfinite(d) & (d > wd) & (d <= wd + 2 * T.cell) & np.isnan(T.water)
+        bmin = np.full(len(L.xy), np.inf)
+        np.minimum.at(bmin, i[bank], T.H[bank])
+        bmin = -ndimage.maximum_filter1d(-bmin, 9, mode="nearest")  # (a few points either way: one low cell isn't a bank)
+        hl = np.where(np.isfinite(bmin), np.minimum(hl, bmin - 0.3), hl)
+        hl = np.minimum.accumulate(hl)
         for lk in T.lakes.values():
             if lk.get("area", 1) == 0:
                 continue
             near = np.hypot(*(L.xy - np.array(lk["xy"])).T) < 1.5 * lk["r"]
             hl = np.where(near, np.maximum(hl, lk["level"]), hl)
         level = hl[i] + 0.2
+        # banks graded down to the water (1:3) where the floor stands above it, never a one-cell trench wall; sites and
+        # routes keep their ground
+        keep = np.zeros(T.X.shape, bool)
+        for m_ in ("sites", "routes"):
+            if m_ in T.masks:
+                keep |= T.masks[m_] > 0.05
+        slope_bank = level + 0.3 + 0.33 * np.maximum(d - wd, 0)
+        gb = np.isfinite(d) & (d > wd) & np.isnan(T.water) & ~keep & (L.name not in canyon_rivers(T.spec))
+        T.H = np.where(gb, np.minimum(T.H, np.maximum(slope_bank, T.H - 0.33 * reach)), T.H)
         depth = 1.0
         for _, fxy, fw, fd in fords:
             nearf = np.hypot(T.X - fxy[0], T.Y - fxy[1]) < fw
@@ -292,7 +311,7 @@ def water(T):
         T.water = np.where(wet, level, T.water)
         T.river_water |= wet
         under = ~np.isnan(T.water.ravel()[_cells(T, L.xy)]) & ~T.river_water.ravel()[_cells(T, L.xy)]
-        T.river_water_lines[L.name] = {"xy": L.xy, "level": L.h + 0.2, "width": np.where(under, 0.0, width)}
+        T.river_water_lines[L.name] = {"xy": L.xy, "level": hl + 0.2, "width": np.where(under, 0.0, width)}
 
 
 # ---------------------------------------------------------------- peak forms

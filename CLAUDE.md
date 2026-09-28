@@ -611,16 +611,44 @@ regresses, bisect by building one spec at each commit and diffing heights.
 - Blind rounds 2026-09-28 (`workspace/terrain/b1_volcano`, `b2_alps`, `b2_coast`; testers ran from this worktree while
   the agent developed in a scratch copy of `src/` on PYTHONPATH): the volcano, the horn and the stacks read only after
   the fixes that followed each round (collapse width, flow measure, arête slope near the top, stacks placeable and
-  broken). Still open: a basin must be a closed ring (a valley open to the south needs cols outside the frame), lake
+  broken). Still open then (most since done, see Terrain2 below): a basin must be a closed ring, lake
   levels vs sites on their shores, village pads always on mounds, rugged barely visible on domes, sea cliffs 2 cells
   wide in plan (soft vertical drapes), horns still near-symmetric, no cairns/markers, lighting fixed from the SW.
-- `terrain_sun.py` (2026-09-28, the user's decision): each view's sun. "auto" (default) casts rays from the eye across
-  the frame (visible ground, weighted by the image angle it fills), scores side suns (45-135 deg off the line of sight,
-  12-40 deg high) by shade contrast between neighbours along each ray (x4) plus overall, with cast shadows, docked when
-  over 30% of the view is in shadow. `views[].sun` / spec `"sun"`: side, bearing, {"from", "height"}, "morning"...
-  The run notes each view's sun and warns on flat (behind the eye, >135 deg) or against-the-light suns. The Sky
-  texture's sun follows (Blender 5.1 multiple scattering: `sun_rotation = -bearing`, 0 = north; checked on the sky's
-  glow). The fixed SW sun had hidden b2_alps' pyramid faces and east-wall buttresses (render 17).
+- `terrain_sun.py` (2026-09-28, the user's decision): each view's sun. "auto" (default) builds a small image of the
+  view (a ray per column, the ground point each pixel lands on; water left out: sea views had been scored on the
+  seabed), shades it with each side sun (45-135 deg off the line of sight, 12-40 deg high, cast shadows) and scores
+  neighbour-pixel contrast x3 plus overall, docked when >30% is dark or all of it dim. `views[].sun` / spec `"sun"`:
+  side, bearing, {"from", "height"}, "morning"... The run notes each view's sun and warns on flat (behind the eye,
+  >135 deg) or against-the-light suns. The Sky texture's sun follows (Blender 5.1: `sun_rotation = bearing`; `-bearing`
+  put the sun disc in frame on the wrong side). The fixed SW sun had hidden b2_alps' pyramid faces (render 17).
+- Terrain2 (2026-09-28, branch worktree-agent-a671e877e8eeb1ea4, renders 17-21):
+  - Rock (`terrain_rock`): noise ribs read as melted wax and round pits (main's read of 17). Now: chiselled ribs
+    (`_chisel`: piecewise-linear across the face, V couloirs); `facets` (a plane least-squares fitted per jittered
+    cell, tipped, creased with its neighbour; weighted by how planar the ground was: a plane over a small cliff and its
+    clifftop was a 50 deg ramp through a 70 deg face, the "drape"); pits the faceting closes are filled; buttress shift
+    resamples the ground, never cross-fades (the fade bevelled every lip and foot); `bedding` on cliffs >55 deg (steps
+    of max(2 m, 6 cells): 3 m beds on a 1 m grid were sub-cell, rms 0.24 m, invisible); scree `aprons` (cones at 33 deg
+    below cliffs, in patches, sized to the face). Rugged crags are `facets` of the noise. Report: pits/km2 (> max(0.5 m,
+    0.1 cell), rubble left out), roundness (median |laplacian| x cell), apron area. Views: a rock bump on faces >~55 deg
+    (Voronoi joints at two sizes + stretched noise beds) in the ground material: sub-cell relief, like an engine's
+    cliff material.
+  - `terrain_detail.py`: `detail` (auto 2 with sea cliffs or cliffs < 3 cells across, fine side <= 1100). After erosion,
+    `refine` resamples EVERY grid-shaped array on T (walks vars, dicts, lists; heights cubic in range, masks/ids nearest,
+    NaN arrays nearest) and moves T to the fine grid; `terrain_sea.recut` re-cuts sea cliffs from `sd`/`top` (face
+    plane, lip). Rock, checks, lakes, cover, export and views then run fine. ~2x build time.
+  - Sea (`terrain_sea`): cliff lines jut and bay (sd moved by noise at ~3x the cliff height, only near cliff coast),
+    wandering bevel, talus aprons (in `st_mask`, which recut and rock leave alone), placed `geos` dict, per-stretch
+    `cliffs.heights`, shore `"rocks"` (graded bank + boulder strip, zone "rocks"), `cliff_feet()` + address
+    `cliff_foot:<address>` (terrain3d's hook for caves/notches) + meta "cliff_feet". The sea beyond the frame uses the
+    frame's water material (a glossier plane read as a pale shelf).
+  - Basins open to a side: `inside` an open ridge + `opens` (compass or "edge:s"): the polygon is the ridge closed by
+    rays out of the frame; walls stop past the nearer end (`mouth`, exempt in the wall check); zone `{"inside": ridge}`
+    uses the basin's inside.
+  - Rivers (`forms.water`): the level never stands above the banks (min of the ground beside, falling downstream) and
+    banks are graded 1:3 within 30 m (not canyons, sites, routes): the river had been a stepped slab in a trench.
+  - Lone hills combine by max (a saddle), not sum (+6 m stacking). Erosion's deepest cut is capped at 2x the kind's
+    gully (tanh). Pads: level at the 40th percentile (cut in), big pads (r > 40) keep half the ground's lie (`flat`);
+    the report says how far above the water beside it a pad ended and warns when its lake settled lower.
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same

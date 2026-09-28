@@ -324,7 +324,18 @@ def run(job):
     add.operation = "ADD"
     jt = nt.nodes.new("ShaderNodeMath")
     jt.operation = "MULTIPLY"
-    jt.inputs[1].default_value = 1.5
+    jt.inputs[1].default_value = 0.6
+    # a size spectrum: a few big blocks (~10 m) over the small ones (one size everywhere read as crumpled paper)
+    vb = nt.nodes.new("ShaderNodeTexVoronoi")
+    vb.feature = "DISTANCE_TO_EDGE"
+    vb.inputs["Scale"].default_value = 0.09
+    jb = nt.nodes.new("ShaderNodeMath")
+    jb.operation = "MULTIPLY"
+    jb.inputs[1].default_value = 2.5
+    add2 = nt.nodes.new("ShaderNodeMath")
+    add2.operation = "ADD"
+    nt.links.new(tc.outputs["Object"], vb.inputs["Vector"])
+    nt.links.new(vb.outputs["Distance"], jb.inputs[0])
     bump = nt.nodes.new("ShaderNodeBump")
     bump.inputs["Distance"].default_value = 0.25
     nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
@@ -336,7 +347,9 @@ def run(job):
     nt.links.new(geo.outputs["Normal"], sep.inputs["Vector"])
     nt.links.new(sep.outputs["Z"], steep.inputs["Value"])
     nt.links.new(steep.outputs["Result"], bump.inputs["Strength"])
-    nt.links.new(add.outputs[0], bump.inputs["Height"])
+    nt.links.new(add.outputs[0], add2.inputs[0])
+    nt.links.new(jb.outputs[0], add2.inputs[1])
+    nt.links.new(add2.outputs[0], bump.inputs["Height"])
     nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
     ground.data.materials.append(m)
     if "tree_xyz" in d.files and len(d["tree_xyz"]):  # the same tree instances the export writes

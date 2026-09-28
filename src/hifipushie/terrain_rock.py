@@ -2,7 +2,8 @@
 (sea cliffs, basin walls, canyon walls, mesas, crater walls, scars) had come out as one smooth plaster sheet: the
 builders make the right profile, nothing broke it up along its length.
 
-"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "boulders": 0..1, "scale": m} | false
+"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "bedding": 0..1, "boulders": 0..1, "aprons": 0..1,
+         "scale": m} | false
   (defaults 1, 0.25, 1, the kind's crag size). Applied after erosion (it smeared this detail) to ground steeper than
   ~40 deg, never on routes, sites or water.
 
@@ -33,6 +34,9 @@ def _keep(T):
         keep |= p["corridor"]
     for pf in getattr(T, "peak_forms", {}).values():  # (a peak's arêtes stay clean edges: rock lumps made its skyline a saw)
         keep |= pf["crest"]
+    S = getattr(T, "sea", None)
+    if S:  # stacks, talus and shore boulders are shaped already (faceting their slopes made spikes)
+        keep |= S["st_mask"] | (S["rocks"] > 0.05)
     return ndimage.binary_dilation(keep, iterations=2) | ~np.isnan(T.water)
 
 
@@ -241,8 +245,31 @@ def apply(T):
         lumps = noise.fbm(np.c_[T.P, np.full(len(T.P), 9.0)], 1.3 * T.cell, 2, seed=214).reshape(H.shape)
         H = H + bo * foot * np.clip(lumps - 0.45, 0, None) * min(0.25 * crag, 3.0) * 2
         foot_m = foot > 0.3
+
+    ap = float(cfg.get("aprons", 1.0))
+    apron_m = np.zeros(H.shape, bool)
+    if ap > 0:
+        # scree cones below the cliffs: fans at ~33 deg leaning on each face's foot, fed from its couloirs (in patches,
+        # not a ruled ring), sized to the face above them. A face running straight down to the floor had no room below it
+        # for scree or trees
+        cliff = smoothstep(52, 62, slope) * ~keep > 0.5
+        if cliff.sum() > 10:
+            dist, (iy, ix) = ndimage.distance_transform_edt(~cliff, return_indices=True)
+            dist = dist * T.cell
+            reach = max(8 * crag, 60 * T.cell)
+            top = ndimage.maximum_filter(Hb, size=int(2 * min(reach, 400.0) / T.cell) | 1)
+            foot_h = H[iy, ix]  # the ground at the nearest cliff cell (its foot, from below)
+            face_h = np.clip(top - foot_h, 0, 600)
+            feed = smoothstep(0.4, 0.62, noise.fbm(np.c_[T.P, np.full(len(T.P), 12.0)], max(1.5 * crag, 6 * T.cell),
+                                                   2, seed=220).reshape(H.shape))
+            cone = foot_h + np.minimum(0.22 * face_h, 40.0) * feed[iy, ix] - math.tan(math.radians(33)) * dist
+            lower = (H < foot_h + 0.5) & ~cliff & ~keep & (slope < 40) & np.isnan(T.water) & ~walls_mask(T)
+            add = np.where(lower, np.clip(cone - H, 0, None), 0) * ap
+            add = ndimage.gaussian_filter(add, 1.0)
+            H = H + add
+            apron_m = add > 0.5
     T.H = H
-    T.rock = {"cells": int((steep > 0.5).sum()), "foot": foot_m}
+    T.rock = {"cells": int((steep > 0.5).sum()), "foot": foot_m | apron_m, "aprons": apron_m}
 
 
 def measure(T):
@@ -267,8 +294,11 @@ def measure(T):
     seed = T.H.copy()
     seed[1:-1, 1:-1] = T.H.max()
     pit = (reconstruction(seed, T.H, method="erosion") - T.H) > max(0.5, 0.1 * T.cell)  # (deeper than half a metre)
-    _, n_pits = ndimage.label(pit & face)
+    S = getattr(T, "sea", None)
+    rubble = (S["st_mask"] | (S["rocks"] > 0.05)) if S else np.zeros(T.X.shape, bool)  # (gaps between blocks aren't pits)
+    _, n_pits = ndimage.label(pit & face & ~rubble)
     lap = np.abs(ndimage.laplace(T.H))[face] / T.cell
     return {"face_km2": face.sum() * T.cell ** 2 / 1e6, "turned": float((d[face] > math.radians(25)).mean()),
             "cliff_cells": across, "pits_km2": n_pits / max(face.sum() * T.cell ** 2 / 1e6, 1e-9),
-            "rounded": float(np.median(lap))}
+            "rounded": float(np.median(lap)),
+            "aprons": ((getattr(T, "rock", {}) or {}).get("aprons", np.zeros(1, bool)).sum() * T.cell ** 2 / 1e4)}
