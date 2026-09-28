@@ -27,7 +27,7 @@ HOLES = [
     dict(t=(545, 352), v=[(505, 400)], b=(470, 470), note="opener through the pines, gently uphill, dogleg right"),
     dict(t=(452, 478), v=[(400, 470)], b=(335, 420), note="rolling downhill between pine stands"),
     dict(t=(345, 402), v=[(382, 348)], b=(430, 272), note="down toward the sea: the bay opens up"),
-    dict(t=(445, 250), b=(340, 196), note="along the shore, OB sea left"),
+    dict(t=(442, 226), b=(346, 184), note="along the shore, the sea a few metres off the left edge: OB"),
     dict(t=(326, 204), b=(276, 166), tee_level=10, par=3, note="short par 3 on the cliff edge, OB sea left"),
     dict(t=(318, 205), v=[(278, 252)], b=(238, 240), note="climb onto the headland plateau"),
     dict(t=(212, 176), b=(210, 112), par=3, note="the tiny par 3 down onto the point"),
@@ -136,7 +136,7 @@ def corridor(h, extra=0.0, seed=0):
 def spec():
     zones = {
         "land": {"polygon": [list(p) for p in LAND]},
-        "cliff_coast": {"polygon": [[0, 0], [330, 0], [330, 140], [200, 330], [170, 800], [0, 800]]},
+        "cliff_coast": {"polygon": [[0, 0], [300, 0], [300, 130], [230, 200], [190, 300], [170, 520], [200, 660], [0, 660]]},
         "headland17": {"near": [728, 225], "radius": 40},
         "inland": {"all": ["land", {"not": {"near": "sea", "radius": 70}}]},
     }
@@ -149,7 +149,8 @@ def spec():
     zones["fairways"] = {"any": fw}
     zones["linings"] = {"any": lining}
     zones["clubhouse"] = {"any": [{"near": "lodge", "radius": 45}, {"near": "car_park", "radius": 40}]}
-    sites = {"lodge": {"at": list(LODGE), "radius": 22, "overlooks": BAY, "shoulder": 12},
+    sites = {"lodge": {"at": list(LODGE), "radius": 22, "overlooks": BAY, "shoulder": 12, "prop": "lodge",
+                       "facing": BAY},
              "car_park": {"at": list(CAR), "radius": 24, "shoulder": 12, "toward": "south", "fall": 0.03}}
     intent = {}
     for i, h in enumerate(HOLES, 1):
@@ -180,7 +181,7 @@ def spec():
         "tilt": {"down": 160, "grade": 0.025},
         "zones": zones,
         "peaks": PEAKS,
-        "sea": {"level": 0, "land": "land", "wander": 0.05, "depth": 20, "shore": "rocky",
+        "sea": {"level": 0, "land": "land", "wander": 0.05, "depth": 20, "shore": "beach",
                 "cliffs": {"height": [6, 10], "only": ["cliff_coast", "headland17"], "platform": 12, "geos": 0,
                            "stacks": {"count": 3, "at": "the_point"}},
                 "beaches": {"stillwater_beach": {"at": [640, 312], "length": 70},
@@ -191,17 +192,23 @@ def spec():
         "cover": {
             "rough": {"type": "meadow", "in": "land", "density": 0.8, "color": "#6f8d3e"},
             "fairway": {"type": "grass", "in": "fairways", "density": 1.0, "color": "#4f9d34"},
-            "pines_lining": {"type": "conifer", "in": {"all": ["linings", "inland"]}, "density": 0.45,
-                             "avoid": ["fairways", "routes", "sites", "clubhouse"],
-                             "breakup": {"scale": 35, "amount": 0.6}},
-            "pine_stands": {"type": "conifer", "in": "inland", "density": 0.35,
+            "pines_lining": {"type": "conifer", "trees": "pine", "in": {"all": ["linings", "inland"]},
+                             "density": 0.16, "avoid": ["fairways", "routes", "sites", "clubhouse"],
+                             "breakup": {"scale": 40, "amount": 0.8}},
+            "pine_stands": {"type": "conifer", "trees": "pine", "in": "inland", "density": 0.3,
                             "avoid": ["fairways", "routes", "sites", "clubhouse"],
-                            "breakup": {"scale": 110, "amount": 1.0}},
-            "cypress": {"type": "conifer", "in": {"all": [{"near": "sea", "radius": 40},
-                                                          {"any": ["cliff_coast", "headland17"]}]},
-                        "count": 30, "avoid": ["fairways", "routes", "sites"], "color": "#2f4a2a"},
+                            "breakup": {"scale": 120, "amount": 1.6}},
+            "specimen_pines": {"type": "conifer", "trees": "pine", "in": "inland", "count": 45,
+                               "avoid": ["fairways", "routes", "sites", "clubhouse"]},
+            "cypress": {"type": "conifer", "trees": "cypress",
+                        "in": {"all": [{"near": "sea", "radius": 45}, {"any": ["cliff_coast", "headland17"]}]},
+                        "count": 45, "slope": [0, 35], "avoid": ["fairways", "routes", "sites"], "color": "#1f3322"},
             "cliff_rock": {"type": "rock", "in": "cliffs"},
-            "sand": {"type": "sand", "in": "beach"},
+            "sand": {"type": "sand", "in": {"any": [{"all": ["beach", {"near": "sea", "radius": 6}]},
+                                                    {"near": [640, 312], "radius": 35}]}},
+            "shore_rocks": {"type": "rock", "in": {"all": [{"near": "sea", "radius": 3}, {"not": {"near": [640, 312],
+                                                                                             "radius": 45}}]},
+                            "slope": [0, 90], "breakup": {"scale": 12, "amount": 0.8}},
             "boulders": {"type": "rock", "in": "cliff_foot"},
         },
         "intent": intent,
