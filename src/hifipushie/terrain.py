@@ -280,12 +280,18 @@ class Terrain:
         from . import terrain_volcano
         terrain_volcano.settle(self, pre)  # volcano forms keep their shape; erosion adds detail
         from . import terrain_detail
+        import time as _time
+        _t0 = _time.time()
         terrain_detail.refine(self, terrain_detail.factor(self))  # finer cells from here: faces get cells of their own
         from . import terrain_rock
         terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)
         self._fill_lakes()
         self.cover = design.cover(self)
+        if getattr(self, "detail", None):  # what the finer cells cost: these stages ran on f^2 as many cells
+            fine = _time.time() - _t0
+            self.detail["seconds"] = fine
+            self.detail["saved"] = fine * (1 - 1 / self.detail["factor"] ** 2)
 
     # ------------------------------------------------ skeleton
     def _pt(self, ref):
@@ -1191,7 +1197,10 @@ class Terrain:
         out = terrain_world.report(self)
         if getattr(self, "detail", None):
             out.append(f"grid: the design at a {self.detail['cell']:g} m cell, rock, cover and the export at "
-                       f"{self.cell:g} m (detail {self.detail['factor']}: faces get cells of their own)")
+                       f"{self.cell:g} m (detail {self.detail['factor']}: faces get cells of their own); those stages "
+                       f"took {self.detail.get('seconds', 0):.0f} s, about {self.detail.get('saved', 0):.0f} s more than "
+                       f"at the design cell, and views and export are {self.detail['factor'] ** 2}x the cells. "
+                       f"\"detail\": 1 turns it off (cliffs then 2-3 cells across: soft drapes)")
         out.append("peaks/cols (authored -> built):")
         cols = self.spec.get("cols") or {}
         from .terrain_forms import measure_peak
