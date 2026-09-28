@@ -490,6 +490,40 @@ def recut(T):
     T.H = np.where(on, np.maximum(H, lip), H)
 
 
+def cliff_feet(T, spacing=15.0):
+    """Points along the foot of the sea cliffs, for placing things against the face (sea caves and notches as 3D
+    volumes): [{"xy": foot [x, y], "z": the water level, "out": seaward unit [x, y], "height": cliff height m,
+    "lip": [x, y] of the lip above}], every `spacing` metres along the cliff coast, stacks and talus left out."""
+    S = getattr(T, "sea", None)
+    if not S or not (S["wc"] > 0.5).any():
+        return []
+    sd, level = S["sd"], S["level"]
+    land = sd > 0
+    coast = land & ndimage.binary_dilation(~land) & (S["wc"] > 0.5) & (S["foot"] < 0.5)
+    gy, gx = np.gradient(ndimage.gaussian_filter(sd, 2))
+    ys, xs = np.nonzero(coast)
+    out, taken = [], []
+    order = np.lexsort((xs, ys))
+    for j in order:
+        y, x = ys[j], xs[j]
+        p = np.array([T.X[y, x], T.Y[y, x]])
+        if any(np.hypot(*(p - q)) < spacing for q in taken[-400:]):
+            continue
+        n = -np.array([gx[y, x], gy[y, x]])
+        n /= np.linalg.norm(n) + 1e-9
+        h = float(S["top"][y, x] - level)
+        foot = p + n * h / math.tan(CLIFF)
+        iy = int(np.clip(round((foot[1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1))
+        ix = int(np.clip(round((foot[0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))
+        if S["st_mask"][iy, ix] or h < 2:
+            continue
+        taken.append(p)
+        out.append({"xy": [round(float(foot[0]), 2), round(float(foot[1]), 2)], "z": level,
+                    "out": [round(float(n[0]), 3), round(float(n[1]), 3)], "height": round(h, 1),
+                    "lip": [round(float(p[0]), 2), round(float(p[1]), 2)]})
+    return out
+
+
 def fill(T, lk):
     """The sea's water: ground below its level connected to the sea side of the coast (never limited to a radius)."""
     below = T.H < lk["level"]

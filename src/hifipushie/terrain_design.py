@@ -426,11 +426,17 @@ def _site(T, name, s):
         level = float(s["level"])
     elif shore_lake is not None:  # a lakeside pad: just above its lake, cut into the bank behind
         level = T.lakes[shore_lake]["level"] + s.get("above_water", 3.0)
-    else:
-        level = float(np.median(T.H[inside]))
+    else:  # a little below the middle: cut into the slope more than built out (fill stands as a mound)
+        level = float(np.percentile(T.H[inside], 40))
+    floor_w = -np.inf
     if wet.any():  # above the water nearest the pad (a steep river beside it is higher upstream, lower downstream)
         k = np.argmin(np.where(wet, dist, np.inf))
-        level = max(level, float(T.water.ravel()[k]) + s.get("above_water", 2.0))
+        floor_w = float(T.water.ravel()[k]) + s.get("above_water", 2.0)
+        level = max(level, floor_w)
+    # a big pad (a village, a farmyard) keeps some of the ground's own lie: levelled halfway, not a dead-flat plate
+    # (every village stood on a mound or in a dug box); small pads (a tee, a camp) are flat. "flat": 0..1
+    flat = float(s.get("flat", 1.0 if r <= 40 else 0.5))
+    lie = ndimage.gaussian_filter(T.H, max(1.0, 0.35 * r / T.cell))
     river = getattr(T, "river_water", np.zeros(T.X.shape, bool)) & inside
     if isinstance(ref, str) and ref.rsplit(".", 1)[-1] in ("source", "mouth"):  # a spring or a river's end: on purpose
         river[:] = False
@@ -446,7 +452,12 @@ def _site(T, name, s):
         w = np.where(T.H >= level, w, 0)
 
     def surface(fall, dvec):  # a pad that falls gently toward dvec (real yards drain; a dead-level one blinds its middle)
-        return level - fall * ((T.X - xy[0]) * dvec[0] + (T.Y - xy[1]) * dvec[1])
+        plane = level - fall * ((T.X - xy[0]) * dvec[0] + (T.Y - xy[1]) * dvec[1])
+        if flat >= 1:
+            return plane
+        # the ground's lie relative to its own mean over the pad, added back in part (kept above the water)
+        rel = lie - float(np.mean(lie[inside]))
+        return np.maximum(plane + (1 - flat) * rel, floor_w)
 
     fall, dvec, note = float(s.get("fall", 0.0)), np.array([0.0, 0.0]), ""
     if s.get("toward"):
@@ -486,7 +497,8 @@ def _site(T, name, s):
     T.H = T.H * (1 - w) + surface(fall, dvec) * w
     _earthworks(T, w)
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
-                     "fill": float((T.H - before).max()), "note": note, "fall": fall, "toward": dvec.tolist()}
+                     "fill": float((T.H - before).max()), "note": note, "fall": fall, "toward": dvec.tolist(),
+                     "shore": shore_lake, "above": s.get("above_water", 3.0)}
     if s.get("prop"):  # a prop the engine drops here (a basket, a bench): its name; which way it faces is resolved
         T.sites[name]["prop"] = {"name": s["prop"], "yaw": 0.0, "facing": s.get("facing")}  # once every site stands
     if max(T.sites[name]["cut"], T.sites[name]["fill"]) > 25:
@@ -1199,9 +1211,20 @@ def report(T):
                 T.warnings.append(f"site {name!r}: its centre is {-sea['sd'][iy, ix]:.0f} m out to sea of the coastline: the "
                                   f"pad stands on {s['fill']:.0f} m of fill in the water. Move it inland, or put the "
                                   f"cove/beach where it should stand")
+        above = ""
+        if dw is not None and dw < max(60.0, s["radius"]):  # the water beside it as it ended up (a lake can settle lower
+            # than the level the pad was set from: its spill point, or a pad's cut, drains it)
+            dist = np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])
+            k = int(np.argmin(np.where(wet, dist, np.inf)))
+            wl = float(T.water.ravel()[k])
+            above = f"; {s['level'] - wl:.1f} m above the water beside it"
+            if s["level"] - wl > 6 and s.get("shore"):
+                T.warnings.append(f"site {name!r} was set {s.get('above', 3):.0f} m above {s['shore']!r}, but the water "
+                                  f"settled at {wl:.1f} m: it stands {s['level'] - wl:.1f} m above it. Give the lake a "
+                                  f"level it can hold (see its line), or the site a level")
         out.append(f"site {name}: pad {2 * s['radius']:.0f} m across at {s['level']:.0f} m, centre "
                    f"[{s['xy'][0]:.0f}, {s['xy'][1]:.0f}]; cut {s['cut']:.0f} m, fill {s['fill']:.0f} m{s.get('note', '')}"
-                   + (f"; edge {dw:.0f} m from water" if dw is not None else ""))
+                   + (f"; edge {dw:.0f} m from water" if dw is not None else "") + above)
     for name, R in T.routes.items():
         # the road as built: the ground under its centre line after every carve, not its own planned profile (that
         # always met the limit, so the line said OK where the warnings said nothing connects at that grade)

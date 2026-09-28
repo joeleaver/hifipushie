@@ -586,6 +586,7 @@ class Terrain:
     def _hills(self, H):
         """Lone peaks as domes on the ground beneath: a rounded top of `radius`, flanks falling at about `flanks`
         degrees (default 18) to the surrounding ground. Their footprint is protected from basin floors and such."""
+        lift = np.zeros(H.shape)
         for n in self._lone:
             xy, h = self.points[n]
             p = (self.spec.get("peaks") or {}).get(n) or (self.spec.get("cols") or {}).get(n) or {}
@@ -600,8 +601,10 @@ class Terrain:
             if p.get("base_radius"):  # its footprint, given directly: the flanks follow
                 foot = max(float(p["base_radius"]), top + self.cell)
             u = np.clip((d - top) / (foot - top), 0, 1)
-            H = H + rise * 0.5 * (1 + np.cos(np.pi * u)) * (d < foot)  # a smooth dome: level top, soft foot
-        return H
+            # overlapping hills meet in a saddle, never stack: the higher dome wins (summed, a hill on a neighbour's flank
+            # stood 6 m over its asked height)
+            lift = np.maximum(lift, rise * 0.5 * (1 + np.cos(np.pi * u)) * (d < foot))
+        return H + lift
 
     def _early_xy(self, ref):
         """An address resolved before any ground exists (for the skeleton): points, lines, landform centres."""
@@ -853,6 +856,16 @@ class Terrain:
             xy = np.array(xy, float)
             inward = {"w": (1, 0), "e": (-1, 0), "s": (0, 1), "n": (0, -1)}[side[0]]
             return xy, self.height(xy), np.array(inward, float)
+        if ref == "cliff_foot" or ref.startswith("cliff_foot:"):  # the sea cliffs' foot nearest an address (or the
+            # frame's middle): direction into the rock (for caves and notches set against the face)
+            from .terrain_sea import cliff_feet
+            feet = cliff_feet(self, spacing=max(3 * self.cell, 5.0))
+            if not feet:
+                raise ValueError(f"{ref!r}: there are no sea cliffs (sea.cliffs) to stand at the foot of")
+            near = self.address(ref.split(":", 1)[1])[0] if ":" in ref else self.P.mean(0)
+            f = min(feet, key=lambda f_: np.hypot(*(np.array(f_["xy"]) - near)))
+            xy = np.array(f["xy"], float)
+            return xy, float(f["z"]), -np.array(f["out"], float)
         if ref == "highest" or ref.startswith("highest:"):
             m = design.region(self, ref.split(":", 1)[1]) > 0.5 if ":" in ref else np.ones(self.X.shape, bool)
             k = int(np.argmax(np.where(m, self.H, -np.inf)))
@@ -1455,6 +1468,7 @@ class Terrain:
                 river["water"] = [[round(float(x), 2), round(float(y), 2), round(float(z), 2), round(float(w), 2)]
                                   for (x, y), z, w in zip(rw["xy"][::4], rw["level"][::4], rw["width"][::4])]
             rivers[nm] = river
+        from .terrain_sea import cliff_feet
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
                 "north_up": True, "pixel_0_0": "north-west corner",
                 "height_npy": "float32, absolute metres, north-up",
@@ -1478,6 +1492,7 @@ class Terrain:
                 "cover": {nm: (self.spec.get("cover") or {}).get(nm, {}).get("type", nm) for nm in self.cover},
                 "lakes": {nm: {"level": lk["level"], "at": lk["xy"], **({"sea": True} if lk.get("sea") else {})}
                           for nm, lk in self.lakes.items()},
+                "cliff_feet": cliff_feet(self),  # (sea cliffs: where to set caves or notches against the face)
                 "sites": {nm: {"at": st["xy"], "level": st["level"], "radius": st["radius"], "fall": st.get("fall", 0.0),
                                "falls_toward": st.get("toward", [0, 0]),
                                "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)",

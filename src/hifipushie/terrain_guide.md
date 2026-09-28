@@ -172,8 +172,10 @@ and the `"story"`.
     with no `land` zone: the coast is wherever the cone rises out of the water.
 - **sea**: water below a level out to the frame's edge, and the coast where land meets it.
   ```
-  "sea": {"level": 0, "land"?: zone, "wander": 0.3, "depth": 30, "shore": "rocky" | "beach" | "cliffs",
-          "cliffs"?: {"height": m | [lo, hi], "except": [addresses/zones/coves], "only": [...]},
+  "sea": {"level": 0, "land"?: zone, "wander": 0.3, "depth": 30, "shore": "rocky" | "beach" | "cliffs" | "rocks",
+          "cliffs"?: {"height": m | [lo, hi], "except": [addresses/zones/coves], "only": [...],
+                      "heights"?: {zone or address: m | [lo, hi]}, "geos"?: {name: {"at", "length", "width"}},
+                      "jut": 1, "talus": 1},
           "beaches"?: {name: {"at": address, "length": m, "at_foot": false, "width": 35}},
           "coves"?: {name: {"at": address | "south", "width": m, "depth": m, "beach": true, "apron": m,
                             "valley": river | address}}}
@@ -190,8 +192,17 @@ and the `"story"`.
   - The coastline wanders a little (`wander`, 0 to keep the zone's outline). The seabed shelves down to `depth`.
   - Shore forms, per stretch: **rocky** (the land dropping into the water), **beach** (the land graded down to sand at
     the water), **cliffs** (the land ending in a ~70 deg face; where the land is lower than the asked height it ramps up
-    to the cliff top from inland, never a rim with lower ground behind). `cliffs` with `except`/`only` picks stretches;
-    an address inland (a headland's peak) means the coast nearest it.
+    to the cliff top from inland, never a rim with lower ground behind), **rocks** (the land eased down to a metre or so
+    above the water, ending in a strip of boulders at the waterline, `rocks_width` m (default 6): grass running down to
+    low rocks; the zone `"rocks"` is that strip). `cliffs` with `except`/`only` picks stretches; an address inland (a
+    headland's peak) means the coast nearest it. `cliffs.heights` sets the height per stretch (`{"the_point": [14, 18]}`).
+  - A cliff line juts and bays at tens of metres (buttresses and bights, `jut`: 0 for a straight line), its lip rolls
+    over by varying amounts, and aprons of fallen blocks lean on its foot in patches (`talus`: 0 for none).
+  - **Geos** (zawns): narrow clefts the sea runs up between vertical walls. Without a `geos` entry a cliff coast gets a
+    few at random; `"geos": {"chasm": {"at": address, "length": 60, "width": 8}}` places them (the coast nearest `at`,
+    cut `length` m inland, narrowing); `"geos": 0` for none.
+  - The foot of the sea cliffs is an address: `"cliff_foot:<address>"` (the foot nearest it; plain `"cliff_foot"`: nearest
+    the frame's middle), its direction pointing into the rock. The export lists the feet (`cliff_feet` in meta.json).
   - Below the cliffs: a wave-cut platform of rocks awash (`cliffs.platform`: m out from the face's foot, 0 for none)
     and sea stacks standing off the face (`cliffs.stacks`: how many, mostly off headlands; default about one per
     350 m of cliff coast, up to 8; 0 for none; `{"count": 4, "at": address}`: a string of them running out to sea
@@ -258,7 +269,11 @@ and the `"story"`.
 - **sites**: pads (village, farmyard, camp, spawn). `{"at": address, "radius": m, "level"?: m, "above_water"?: m,
   "fall"?: 0.02, "toward"?: address | "south", "overlooks"?: address}`. `overlooks` picks the gentlest fall toward
   the target that lets most of the pad see it (a dead-level pad's own edge hides what's below it from its middle). With a shore address (`"lake.west_shore"`) the pad sits inland of that point, just above the
-  water. The report gives its level and how far it cuts into or builds out of the slope (a warning over 25 m).
+  water. The report gives its level, how far it cuts into or builds out of the slope (a warning over 25 m) and, near
+  water, how far above the water it ended up (a lake can settle lower than the level the pad was set from).
+  Without a `level` the pad sits a little below the ground's middle there (cut into the slope rather than built out on
+  a mound). `"flat"`: 0..1, how level it is: pads over 40 m radius (a village, a farmyard) default to 0.5, keeping half
+  of the ground's own lie; smaller ones are flat. `"flat": 1` for a dead-level yard or a helipad.
   `"shoulder": m` is how far the pad's banks blend into the ground (default 20 m, or half the radius): give small pads
   (a tee, a bench, a basket) a few metres, or they flatten a 40 m disc around them.
   `"prop": name, "facing"?: address` marks the site as where the engine drops a prop (a disc golf basket, a bench, a
