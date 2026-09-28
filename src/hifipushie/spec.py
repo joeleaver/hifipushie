@@ -326,6 +326,7 @@ def _base(s: dict, k_default: float) -> Prim:
     return Prim("base", "base", "add", float(b["blend"]) if b.get("blend") is not None else k_default,
                 int(b.get("layer", 0)), V.min(0) - pad, V.max(0) + pad,
                 {"verts": V, "normals": surf["normals"], "h": surf["h"], "hmax": surf["hmax"], "tree": surf["tree"],
+                 "wt": surf.get("wt"), "seam": surf.get("seam"),
                  "key": surf["key"], "head": surf["head"]},
                 reach=1.0, part=b.get("part", "body"))
 
