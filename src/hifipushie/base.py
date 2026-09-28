@@ -27,7 +27,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 8  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 11  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 _CACHE: dict = {}
@@ -68,12 +68,20 @@ def inject(spec: dict) -> dict:
         joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in eb["centre"]], "r": round(eb["r"], 4)})
         for k, j in _landmark_joints(head).items():  # face landmarks to address strokes and paint by
             joints.setdefault(k, j)
+        # the mouth closed behind the lips (GNM's mouth bag is left out of the field: its walls made the lips sparkle,
+        # and without it parted lips showed a hole into the head)
+        lu, ll, mc = (np.array(joints[k]["pos"]) for k in ("lm_lip_upper", "lm_lip_lower", "lm_mouth_corner.L"))
+        blobs = dict(out.get("blobs") or spec.get("blobs") or {})
+        blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (lu + ll) + [0, 0.012, 0]],
+                                        "size": [round(float(mc[0]) * 0.95, 4), 0.012, round(float(abs(lu[2] - ll[2])) * 0.8 + 0.004, 4)],
+                                        "blend": 0.004})
+        out["blobs"] = blobs
     elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
         off = np.array(eb["centre"]) - np.array(tj["head"]["pos"])
         joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in np.array(joints["head"]["pos"]) + off],
                                     "r": eb["r"]})
     if eb and b.get("eyes"):  # eyeballs as their own part, filling the base's sockets
-        blobs = dict(spec.get("blobs") or {})
+        blobs = dict(out.get("blobs") or spec.get("blobs") or {})
         blobs.setdefault("eye.L", {"at": "eye.L", "size": [round(float(eb["r"]), 4)] * 3, "part": b["eyes"]})
         out["blobs"] = blobs
     out["joints"] = joints
@@ -166,6 +174,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
+    if base.get("head"):  # a grafted head: the template's own head becomes a column continuing its neck, or its
+        # chin and jaw (bigger and lower than a real head's) stood out of the graft band as a shelf under the chin
+        V, N, h = _neck_column(V, N, h, spec_expanded, tpl)
     h = h * float(base.get("smooth", 1.0))
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
            "key": key, "head": None}
@@ -226,6 +237,48 @@ def _landmark_joints(head: dict) -> dict:
         i, j = (43, 44) if "upper" in name else (46, 47)
         out[name] = {"pos": [round(float(x), 4) for x in 0.5 * (lm[i] + lm[j])], "r": 0.004}
     return out
+
+
+def _neck_column(V, N, h, s, tpl, bins=36):
+    """Body vertices above the template's neck ring (0.8 of the way from the neck joint up to the chin's level: its
+    face's lowest point) moved onto a column: the ring's radius per angle round the neck -> head axis, heights kept,
+    normals radial."""
+    J = s["joints"]
+    a, b = np.array(J["neck"]["pos"], float), np.array(J["head"]["pos"], float)
+    n = _unit(b - a)
+    face = tpl["face"]["landmarks"]
+    eye = np.array(face["eye.L"]) * [0, 1, 1]
+    tj = template_joints(tpl["name"])
+    # the template chin sits ~0.15 m under its eyes; the ring sits a little below that, carried to the model's
+    chin = eye - np.array([0, 0, 0.15]) - np.array(tj["head"]["pos"]) + b
+    h0 = (chin - a) @ n - 0.03
+    u = (V - a) @ n
+    e1 = _unit(np.cross(n, [0, 1.0, 0]) if abs(n[1]) < 0.9 else np.cross(n, [1.0, 0, 0]))
+    e2 = np.cross(n, e1)
+    sl = V[np.abs(u - h0) < 0.006]
+    cen = sl.mean(0)
+    cen = cen - ((cen - a) @ n) * n
+    q = sl - cen
+    ang = np.arctan2(q @ e2, q @ e1)
+    rad = np.hypot(q @ e1, q @ e2)
+    k = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+    r = np.array([np.percentile(rad[k == i], 95) if (k == i).sum() >= 2 else np.nan for i in range(bins)])
+    ok = np.isfinite(r)
+    r = np.interp(np.arange(bins), np.flatnonzero(ok), r[ok], period=bins)
+    up = u > h0
+    q = V[up] - cen
+    q = q - np.outer(q @ n, n)
+    ang = np.arctan2(q @ e2, q @ e1)
+    x = (ang + np.pi) / (2 * np.pi) * bins - 0.5
+    rr = np.interp(x, np.arange(bins), r, period=bins)
+    d = np.cos(ang)[:, None] * e1 + np.sin(ang)[:, None] * e2
+    V = V.copy()
+    N = N.copy()
+    V[up] = cen + np.outer(u[up], n) + rr[:, None] * d
+    N[up] = d
+    h = h.copy()
+    h[up] = np.maximum(h[up], 0.02)  # the head's vertices crowd the column unevenly: a wide kernel smooths them
+    return V, N, h
 
 
 def _match_neck(head: dict, body_verts: np.ndarray, reach: float = 0.06, bins: int = 24) -> dict:
@@ -308,6 +361,44 @@ def _gnm_coeffs(names, given, seed=None, spread=1.0):
     return c
 
 
+FIT_KEYS = ("face_width", "jaw_width", "chin_width", "eye_chin", "eye_mouth", "eye_nose")
+
+
+def _measures(V, J, lm):
+    """Front-view face proportions (GNM frame, Y up), in metres: widths across the jaw line at the ears, at the
+    jaw's angle and at the chin; drops from the eye line to the chin, the lower lip and the nose base; interocular."""
+    io = J[2][0] - J[3][0]
+    ey = 0.5 * (J[2][1] + J[3][1])
+    return np.array([lm(16)[0] - lm(0)[0], lm(12)[0] - lm(4)[0], lm(10)[0] - lm(6)[0], ey - lm(8)[1],
+                     ey - lm(57)[1], ey - lm(33)[1], io])
+
+
+def fit_identity(target: dict, n: int = 80, lam: float = 2e-6) -> dict:
+    """GNM head components (the first n) that give these face proportions, in interocular units (FIT_KEYS; e.g.
+    {"face_width": 2.1, "jaw_width": 1.6}; keys left out keep the mean's), interocular held: ridge least squares
+    on the landmark measurements (linear in the identity), components clipped to +-2.5 sigma. Cached."""
+    key = ("fit", json.dumps(target, sort_keys=True), n)
+    if key in _CACHE:
+        return _CACHE[key]
+    g = _gnm_data()
+    V0, J0 = g["template_vertex_positions"].astype(float), g["template_joint_positions"].astype(float)
+
+    def meas(V, J):
+        return _measures(V, J, lambda i: sum(w * V[int(v)] for v, w in zip(g["lm68"][i][0::2], g["lm68"][i][1::2])))
+    m0 = meas(V0, J0)
+    head = [i for i, nm in enumerate(g["identity_names"]) if str(nm).startswith("head")][:n]
+    A = np.array([meas(V0 + g["vertex_identity_basis"][i], J0 + g["joint_identity_basis"][i]) - m0 for i in head]).T
+    unknown = set(target) - set(FIT_KEYS)
+    if unknown:
+        raise ValueError(f"base head fit: unknown {sorted(unknown)}; use {FIT_KEYS} (interocular units)")
+    t = np.array([float(target.get(k, m0[j] / m0[-1])) for j, k in enumerate(FIT_KEYS)] + [1.0]) * m0[-1]
+    w = np.array([1.0] * len(FIT_KEYS) + [2.0])
+    c = np.linalg.solve((A * w[:, None]).T @ (A * w[:, None]) + lam * np.eye(len(head)), (A * w[:, None]).T @ ((t - m0) * w))
+    out = {str(g["identity_names"][i]): float(v) for i, v in zip(head, np.clip(c, -2.5, 2.5))}
+    _CACHE[key] = out
+    return out
+
+
 def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     """Google GNM's head skin, posed for the base: identity/expression applied (head["identity"] {name: value},
     head["seed"] for a random identity), eyes scaled about their centres (head["eyes"], e.g. 1.45: a stylised look),
@@ -315,7 +406,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     and placed with its eye midpoint on eye_mid, its up along `up`. Returns the skin IMLS arrays, eye centres and
     radius, and the graft plane (point, normal, band) in world space."""
     g = _gnm_data()
-    ci = _gnm_coeffs(g["identity_names"], head.get("identity"), head.get("seed"), head.get("spread", 1.0))
+    ident = dict(fit_identity(head["fit"])) if head.get("fit") else {}
+    ident.update(head.get("identity") or {})  # given components win over fitted ones
+    ci = _gnm_coeffs(g["identity_names"], ident, head.get("seed"), head.get("spread", 1.0))
     ce = _gnm_coeffs(g["expression_names"], head.get("expression"))
     V = g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1) + \
         np.tensordot(ce, g["expression_basis"], 1)
