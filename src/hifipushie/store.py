@@ -136,11 +136,11 @@ def apply_ops(spec: dict, ops: list[dict]) -> dict:
 
 
 def build(name: str, resolution: int = 160, box=None) -> dict:
-    from . import base as basemod
     """Mesh the current spec (cached by expanded spec + resolution). Returns paths and stats.
     With box=(lo, hi), only that region is meshed, at `resolution` voxels across the box (close-ups);
     that goes to its own cache files and has no silhouettes."""
     spec = load(name)
+    from . import base as basemod
     tag = "" if box is None else json.dumps([np.round(b, 4).tolist() for b in box])
     # keyed on the kit-expanded spec, so changes to kit code (or what a face is seated on) rebuild
     key = hashlib.sha1((json.dumps(specmod.expand_mirror(spec), sort_keys=True, default=float)
