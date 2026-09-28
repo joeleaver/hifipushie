@@ -1240,7 +1240,8 @@ class Terrain:
             out.append(f"rock faces (measured): {rk['face_km2'] * 100:.1f} ha over 45 deg; {100 * rk['turned']:.0f}% of it "
                        f"turned over 25 deg from the face's line (buttress and couloir sides; a smooth face is ~0%); "
                        f"{rk['pits_km2']:.0f} closed pits per km2 (round hollows: rock breaks in planes, not dimples), "
-                       f"roundness {rk['rounded']:.2f} (median |curvature| x cell; faceted rock ~0.6-0.9, lumpy 1.2+)"
+                       f"roundness {rk['rounded']:.2f} (median |curvature| x cell; faceted rock ~0.6-0.9, lumpy 1.2+); "
+                       f"scree aprons below the cliffs: {rk['aprons']:.1f} ha (zone \"cliff_foot\")"
                        + (f"; cliffs over 60 deg are {rk['cliff_cells']:.1f} cells across in plan (median)"
                           if rk["cliff_cells"] else ""))
             if rk["cliff_cells"] and rk["cliff_cells"] < 3:
