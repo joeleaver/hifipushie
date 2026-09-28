@@ -45,7 +45,7 @@ NOT_LENGTHS = {"slope", "min_slope", "sides", "max_grade", "grade", "amount", "d
                "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k",
                "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along",
                "gullies", "head", "reach", "top_slope", "walls", "front", "toward", "breach", "stacks", "faces", "hollow",
-               "arete", "buttresses", "ledges", "boulders", "order", "bevel", "geos"}
+               "arete", "buttresses", "ledges", "boulders", "order", "bevel", "geos", "narrow"}
 HEIGHT_KEYS = {"h", "level", "floor", "elevation", "above", "below", "border", "height", "depth", "freeboard",
                "above_water", "hanging", "relief"}
 REFERENCE_SIZE = 4000.0  # landscape defaults were tuned on 4 km scenes; they scale with the frame (Terrain.k)

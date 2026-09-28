@@ -900,13 +900,17 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
 
 
 @mcp.tool(structured_output=False)
-def export_terrain(name: str, size: int | None = None, engine: str | None = None, out_dir: str | None = None) -> str:
+def export_terrain(name: str, size: int | None = None, engine: str | None = None, out_dir: str | None = None,
+                   tiles: bool = False) -> str:
     """Write the terrain for an engine (default workspace/terrain/<name>/export/): height (.npy float32 absolute,
     16-bit .png and Unity .raw offset to 0), masks per cover layer plus water, roads, sites, playable and walls,
     splat weights for the ground layers, trees.csv, and meta.json (heights, the Unity terrain size and position,
     sites with their planes, passes, routes, rivers with water surface and width, fords, lakes). size: an engine
     grid (Unity 257/513/1025/2049, Unreal 505/1009/2017); engine="unity" picks 2^n+1 if no size. Defaults from the
-    spec's "export"."""
+    spec's "export". tiles=True writes 3D mesh tiles instead (default workspace/terrain/<name>/tiles/): the ground
+    and its volumes (arches, caves, overhangs) as seamless glTF tiles with LODs, skirts, collision, heightmap and
+    splat tiles and a manifest.json, tuned by the spec's "export": {"tiles": {...}}; a seam check runs on every
+    export and fails loudly."""
     from . import terrain_tools as tt
     from .terrain_world import Questions
     try:
@@ -914,6 +918,10 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     except Questions as q:
         return tt.questions_data(q)
     cfg = T.spec.get("export") or {}
+    if tiles:
+        from . import terrain_mesh
+        r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+        return terrain_mesh.summary(r)
     path = T.export(Path(out_dir).expanduser() if out_dir else tt._dir(name) / "export",
                     size=size or cfg.get("size"), engine=engine or cfg.get("engine"))
     meta = json.loads((path / "meta.json").read_text())

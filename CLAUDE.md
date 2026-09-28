@@ -625,6 +625,29 @@ regresses, bisect by building one spec at each commit and diffing heights.
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
   functions from a shell (for sessions whose MCP server predates the tools).
+- `terrain_mesh.py` + `blender_tiles.py` (3D terrain spike, 2026-09-28; card "3D terrain: SDF-meshed, seamless tiled
+  mesh export"): the design stays heightfield + 3D `volumes` (arch, cave, overhang: all `Tube`s, a polyline with an
+  elliptical section per node, rounded ends, a flat floor, rough fbm; a cave engine would be a graph of them); the
+  output is optionally glTF mesh tiles (`export_terrain(tiles=True)`, `terrain_run.py --tiles`, cfg in
+  `spec.export.tiles`). Field, global and pointwise: `(z - h) / sqrt(1 + |grad h|^2)` with h the grid as an
+  UNprefiltered cubic B-spline (C2, no overshoot at cliffs), then each volume by smooth max/min. Per tile per LOD k:
+  marching cubes (lewiner) on the global lattice at voxel * 2^k (every voxel divides the tile), z only over the
+  tile's own height range + volumes (cost in area). Lattice values are kept >= 1e-3 voxel from 0, so a crossing is
+  always strictly inside its edge; border vertices are keyed by lattice edge, and each key's vertex is computed ONCE
+  (crossing, Newton steps constrained to the border plane, field normal, weights) and substituted into both tiles:
+  bit-identical, no float agreement needed. Interior projected, then pyfqmr (dependency) with `preserve_border`
+  (border exact through it: tested), the fewest triangles within `error` (p99 of |F| at face centres/edge midpoints,
+  over what MC already misses) by a log search on the count; pyfqmr's own lossless mode removed nothing with the
+  border locked, and it can fold a thin cave mouth into a fin at LOD2: non-manifold candidates are rejected. Then
+  interior re-projected (a vertex whose projection folds its faces stays). Skirts: shared border chains extruded
+  in-plane against the normal by how far that edge's other-LOD chains stray (+25%), clamped to the rock's thickness
+  (a skirt under a cave roof would hang into the cave). `seam_check` reads the GLBs back: per LOD watertight (exact
+  positions; only the export's outer edge open), identical border vertices/edges/normals across every shared edge,
+  every LOD pair's chain gap under a skirt, heightmap edges equal; raises on failure (it caught the LOD2 fin).
+  pebble_disc (1000 x 800 m, 1 m cells, 208 tiles of 64 m, voxels 1/2/4 m): LOD0 186k triangles (MC 1.85M), LOD1
+  48k, LOD2 18k, 31 MB of GLB, ~2 min; 0 seam failures; Khronos 0 errors on all 832 GLBs. Renders go through
+  Blender's glTF importer (`render_tiles`, lod "checker" mixes LODs to show the skirts). terrain2's
+  `terrain_sea.cliff_feet` is the hook for caves/notches at the cliff foot (an address form was asked for).
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
