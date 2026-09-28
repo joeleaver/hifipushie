@@ -1,0 +1,1498 @@
+{
+ "symmetry": true,
+ "blend": 0.035,
+ "joints": {
+  "pelvis": {
+   "pos": [
+    0,
+    0,
+    0.92
+   ],
+   "r": 0.11
+  },
+  "waist": {
+   "pos": [
+    0,
+    -0.02,
+    1.1
+   ],
+   "r": 0.11
+  },
+  "chest": {
+   "pos": [
+    0,
+    0,
+    1.28
+   ],
+   "r": 0.13
+  },
+  "neck": {
+   "pos": [
+    0,
+    -0.02,
+    1.5
+   ],
+   "r": 0.052
+  },
+  "head": {
+   "pos": [
+    0,
+    -0.02,
+    1.64
+   ],
+   "r": 0.1
+  },
+  "shoulder.L": {
+   "pos": [
+    0.2,
+    0.02,
+    1.4
+   ],
+   "r": 0.05
+  },
+  "elbow.L": {
+   "pos": [
+    0.305,
+    0.028,
+    1.18
+   ],
+   "r": 0.04
+  },
+  "wrist.L": {
+   "pos": [
+    0.397,
+    0.005,
+    0.953
+   ],
+   "r": 0.027
+  },
+  "hip.L": {
+   "pos": [
+    0.085,
+    0,
+    0.84
+   ],
+   "r": 0.08
+  },
+  "knee.L": {
+   "pos": [
+    0.088,
+    -0.005,
+    0.49
+   ],
+   "r": 0.047
+  },
+  "ankle.L": {
+   "pos": [
+    0.098,
+    0.005,
+    0.1
+   ],
+   "r": 0.031
+  },
+  "toe.L": {
+   "pos": [
+    0.115,
+    -0.1,
+    0.03
+   ],
+   "r": 0.025
+  },
+  "nose_top": {
+   "pos": [
+    0,
+    -0.132,
+    1.66
+   ],
+   "r": 0.011
+  },
+  "nose_tip": {
+   "pos": [
+    0,
+    -0.168,
+    1.598
+   ],
+   "r": 0.015
+  },
+  "brow_in.L": {
+   "pos": [
+    0.014,
+    -0.128,
+    1.674
+   ],
+   "r": 0.011
+  },
+  "brow_out.L": {
+   "pos": [
+    0.068,
+    -0.105,
+    1.68
+   ],
+   "r": 0.009
+  },
+  "sleeve_end.L": {
+   "pos": [
+    0.242,
+    0.023,
+    1.312
+   ],
+   "r": 0.01
+  }
+ },
+ "bones": {
+  "spine1": {
+   "a": "pelvis",
+   "b": "waist"
+  },
+  "spine2": {
+   "a": "waist",
+   "b": "chest"
+  },
+  "neck": {
+   "a": "chest",
+   "b": "neck"
+  },
+  "head": {
+   "a": "neck",
+   "b": "head",
+   "r_a": 0.055,
+   "r_b": 0.05
+  },
+  "upperarm.L": {
+   "a": "shoulder.L",
+   "b": "elbow.L",
+   "r_a": 0.058,
+   "r_b": 0.04,
+   "group": "arm.L",
+   "join": 0.03
+  },
+  "forearm.L": {
+   "a": "elbow.L",
+   "b": "wrist.L",
+   "r_a": 0.047,
+   "r_b": 0.029,
+   "group": "arm.L",
+   "join": 0.03
+  },
+  "thigh.L": {
+   "a": "hip.L",
+   "b": "knee.L",
+   "r_a": 0.085,
+   "r_b": 0.048,
+   "group": "leg.L",
+   "join": 0.035
+  },
+  "shin.L": {
+   "a": "knee.L",
+   "b": "ankle.L",
+   "r_a": 0.05,
+   "r_b": 0.031,
+   "group": "leg.L",
+   "join": 0.035
+  },
+  "foot.L": {
+   "a": "ankle.L",
+   "b": "toe.L",
+   "flat": [
+    1.1,
+    0.6
+   ],
+   "group": "leg.L",
+   "join": 0.035
+  },
+  "nose": {
+   "a": "nose_top",
+   "b": "nose_tip",
+   "blend": 0.02
+  },
+  "brow.L": {
+   "a": "brow_in.L",
+   "b": "brow_out.L",
+   "blend": 0.05
+  },
+  "sleeve.L": {
+   "a": "shoulder.L",
+   "b": "sleeve_end.L",
+   "r_a": 0.085,
+   "r_b": 0.078,
+   "part": "shirt"
+  }
+ },
+ "blobs": {
+  "ribcage": {
+   "at": "chest",
+   "offset": [
+    0,
+    -0.01,
+    0.03
+   ],
+   "size": [
+    0.17,
+    0.115,
+    0.14
+   ],
+   "blend": 0.05
+  },
+  "lats": {
+   "at": "chest",
+   "offset": [
+    0,
+    0.02,
+    -0.03
+   ],
+   "size": [
+    0.16,
+    0.09,
+    0.1
+   ],
+   "blend": 0.05
+  },
+  "traps": {
+   "at": "chest",
+   "offset": [
+    0,
+    0.02,
+    0.14
+   ],
+   "size": [
+    0.16,
+    0.075,
+    0.055
+   ],
+   "blend": 0.05
+  },
+  "abdomen": {
+   "at": "waist",
+   "offset": [
+    0,
+    -0.03,
+    -0.02
+   ],
+   "size": [
+    0.115,
+    0.09,
+    0.12
+   ],
+   "blend": 0.05
+  },
+  "pelvis_mass": {
+   "at": "pelvis",
+   "offset": [
+    0,
+    -0.02,
+    0
+   ],
+   "size": [
+    0.14,
+    0.1,
+    0.09
+   ],
+   "blend": 0.05
+  },
+  "glute.L": {
+   "at": "pelvis",
+   "offset": [
+    0.06,
+    0.05,
+    -0.05
+   ],
+   "size": [
+    0.075,
+    0.06,
+    0.08
+   ],
+   "blend": 0.05
+  },
+  "calf.L": {
+   "at": {
+    "bone": "shin.L",
+    "t": 0.3
+   },
+   "offset": [
+    0,
+    0.02,
+    0
+   ],
+   "size": [
+    0.045,
+    0.05,
+    0.09
+   ],
+   "blend": 0.05
+  },
+  "cranium": {
+   "at": "head",
+   "offset": [
+    0,
+    0.005,
+    0.035
+   ],
+   "size": [
+    0.1,
+    0.115,
+    0.115
+   ]
+  },
+  "maxilla": {
+   "at": [
+    0,
+    -0.1,
+    1.575
+   ],
+   "size": [
+    0.058,
+    0.05,
+    0.045
+   ],
+   "blend": 0.05
+  },
+  "chin": {
+   "at": [
+    0,
+    -0.126,
+    1.512
+   ],
+   "size": [
+    0.029,
+    0.022,
+    0.022
+   ],
+   "blend": 0.03
+  },
+  "cheekbone.L": {
+   "at": [
+    0.058,
+    -0.092,
+    1.615
+   ],
+   "size": [
+    0.022,
+    0.016,
+    0.014
+   ],
+   "blend": 0.05
+  },
+  "nose_ball": {
+   "at": "nose_tip",
+   "offset": [
+    0,
+    0.002,
+    -0.004
+   ],
+   "size": [
+    0.017,
+    0.016,
+    0.014
+   ],
+   "blend": 0.012
+  },
+  "nose_wing.L": {
+   "at": [
+    0.016,
+    -0.152,
+    1.592
+   ],
+   "size": [
+    0.011,
+    0.01,
+    0.009
+   ],
+   "blend": 0.01
+  },
+  "ear.L": {
+   "at": "head",
+   "offset": [
+    0.1,
+    0.035,
+    -0.01
+   ],
+   "shape": "blade",
+   "size": [
+    0.021,
+    0.032,
+    0.006
+   ],
+   "cup": 0.006,
+   "rot": [
+    90,
+    0,
+    90
+   ],
+   "blend": 0.01
+  },
+  "jaw": {
+   "at": [
+    0,
+    -0.058,
+    1.548
+   ],
+   "size": [
+    0.073,
+    0.075,
+    0.042
+   ],
+   "blend": 0.05
+  },
+  "masseter.L": {
+   "at": [
+    0.058,
+    -0.045,
+    1.565
+   ],
+   "size": [
+    0.022,
+    0.04,
+    0.035
+   ],
+   "blend": 0.06
+  },
+  "hair_top": {
+   "at": [
+    0,
+    -0.01,
+    1.742
+   ],
+   "size": [
+    0.106,
+    0.125,
+    0.068
+   ],
+   "rot": [
+    -12,
+    0,
+    0
+   ],
+   "part": "hair",
+   "blend": 0.03
+  },
+  "hair_back": {
+   "at": [
+    0,
+    0.045,
+    1.67
+   ],
+   "size": [
+    0.103,
+    0.075,
+    0.09
+   ],
+   "part": "hair",
+   "blend": 0.03
+  },
+  "hair_side.L": {
+   "at": [
+    0.083,
+    0.005,
+    1.685
+   ],
+   "size": [
+    0.03,
+    0.075,
+    0.055
+   ],
+   "part": "hair",
+   "blend": 0.03
+  },
+  "hair_quiff": {
+   "at": [
+    0.012,
+    -0.085,
+    1.77
+   ],
+   "size": [
+    0.078,
+    0.055,
+    0.038
+   ],
+   "rot": [
+    -22,
+    0,
+    -8
+   ],
+   "part": "hair",
+   "blend": 0.03
+  },
+  "beard_jaw": {
+   "at": [
+    0,
+    -0.08,
+    1.52
+   ],
+   "size": [
+    0.095,
+    0.095,
+    0.06
+   ],
+   "part": "beard"
+  },
+  "beard_side.L": {
+   "at": [
+    0.07,
+    -0.04,
+    1.575
+   ],
+   "size": [
+    0.032,
+    0.055,
+    0.065
+   ],
+   "part": "beard"
+  },
+  "moustache": {
+   "at": [
+    0,
+    -0.15,
+    1.573
+   ],
+   "size": [
+    0.032,
+    0.03,
+    0.008
+   ],
+   "part": "beard"
+  },
+  "beard_mouth": {
+   "at": [
+    0,
+    -0.165,
+    1.556
+   ],
+   "size": [
+    0.028,
+    0.035,
+    0.008
+   ],
+   "op": "subtract",
+   "part": "beard"
+  },
+  "shirt_torso": {
+   "at": [
+    0,
+    -0.01,
+    1.15
+   ],
+   "shape": "box",
+   "size": [
+    0.2,
+    0.2,
+    0.33
+   ],
+   "part": "shirt"
+  },
+  "collar_ring": {
+   "at": [
+    0,
+    -0.012,
+    1.472
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.062,
+    0.06,
+    0.016
+   ],
+   "hollow": 0.006,
+   "round": 0.003,
+   "rot": [
+    -16,
+    0,
+    0
+   ],
+   "part": "collar"
+  },
+  "shorts_region": {
+   "at": [
+    0,
+    0,
+    0.7
+   ],
+   "shape": "box",
+   "size": [
+    0.24,
+    0.2,
+    0.17
+   ],
+   "part": "shorts"
+  },
+  "sock.L": {
+   "at": [
+    0.098,
+    0.005,
+    0.15
+   ],
+   "shape": "box",
+   "size": [
+    0.06,
+    0.08,
+    0.05
+   ],
+   "part": "socks"
+  },
+  "shoe.L": {
+   "at": [
+    0.103,
+    -0.03,
+    0.054
+   ],
+   "size": [
+    0.054,
+    0.133,
+    0.056
+   ],
+   "part": "shoes"
+  },
+  "sole.L": {
+   "at": [
+    0.103,
+    -0.03,
+    0.015
+   ],
+   "shape": "box",
+   "size": [
+    0.049,
+    0.127,
+    0.016
+   ],
+   "round": 0.012,
+   "part": "shoes"
+  },
+  "strap_band": {
+   "at": [
+    0.035,
+    0,
+    1.175
+   ],
+   "shape": "box",
+   "size": [
+    0.37,
+    0.3,
+    0.02
+   ],
+   "rot": [
+    0,
+    60.6,
+    0
+   ],
+   "part": "strap"
+  },
+  "bag": {
+   "at": [
+    0.23,
+    0.06,
+    0.88
+   ],
+   "shape": "box",
+   "size": [
+    0.06,
+    0.16,
+    0.14
+   ],
+   "round": 0.03,
+   "part": "bag"
+  },
+  "bag_disc1": {
+   "at": [
+    0.205,
+    0.05,
+    0.95
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.106,
+    0.106,
+    0.012
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "disc"
+  },
+  "bag_disc2": {
+   "at": [
+    0.23,
+    0.075,
+    0.965
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.105,
+    0.105,
+    0.009
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "disc"
+  },
+  "bag_disc3": {
+   "at": [
+    0.255,
+    0.055,
+    0.94
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.104,
+    0.104,
+    0.008
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "disc"
+  },
+  "disc": {
+   "at": [
+    -0.456,
+    -0.01,
+    0.805
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.105,
+    0.105,
+    0.009
+   ],
+   "round": 0.007,
+   "rot": [
+    0,
+    112,
+    -30
+   ],
+   "part": "disc"
+  },
+  "forearm_mass.L": {
+   "at": {
+    "bone": "forearm.L",
+    "t": 0.28
+   },
+   "size": [
+    0.045,
+    0.042,
+    0.06
+   ],
+   "blend": 0.04
+  }
+ },
+ "story": {
+  "summary": "Dave, 34, plays the local disc golf course every Saturday morning; a friendly regular who knows every basket",
+  "age": 34,
+  "climate": "sunny park course, dusty fairways, dewy grass in the morning",
+  "use": "walks 18 holes, digs discs out of bushes, sits on the bag between holes",
+  "directions": {
+   "sun": [
+    0.3,
+    -0.5,
+    0.8
+   ]
+  },
+  "events": [
+   "his favourite orange driver has a scuffed rim from hitting trees",
+   "the bag's bottom is grass-stained from being set down",
+   "sneakers dusty from the fairway"
+  ]
+ },
+ "anatomy": {},
+ "parts": {
+  "eyes": {
+   "color": [
+    0.97,
+    0.97,
+    0.95
+   ]
+  },
+  "hair": {
+   "color": [
+    0.33,
+    0.2,
+    0.11
+   ],
+   "roughness": 0.7
+  },
+  "beard": {
+   "shell": "body",
+   "offset": 0.006,
+   "color": [
+    0.3,
+    0.18,
+    0.1
+   ]
+  },
+  "shirt": {
+   "shell": "body",
+   "offset": 0.01,
+   "color": [
+    0.12,
+    0.55,
+    0.55
+   ],
+   "roughness": 0.85,
+   "specular": 0.3
+  },
+  "collar": {
+   "color": [
+    0.12,
+    0.55,
+    0.55
+   ],
+   "roughness": 0.85,
+   "specular": 0.3
+  },
+  "shorts": {
+   "shell": "body",
+   "offset": 0.009,
+   "color": [
+    0.62,
+    0.55,
+    0.4
+   ],
+   "roughness": 0.9,
+   "specular": 0.3
+  },
+  "socks": {
+   "shell": "body",
+   "offset": 0.004,
+   "color": [
+    0.93,
+    0.93,
+    0.9
+   ]
+  },
+  "shoes": {
+   "color": [
+    0.45,
+    0.45,
+    0.48
+   ]
+  },
+  "strap": {
+   "shell": "shirt",
+   "offset": 0.006,
+   "color": [
+    0.1,
+    0.1,
+    0.1
+   ]
+  },
+  "bag": {
+   "color": [
+    0.18,
+    0.3,
+    0.18
+   ]
+  },
+  "disc": {
+   "color": [
+    1,
+    0.45,
+    0.05
+   ],
+   "roughness": 0.35
+  }
+ },
+ "kits": {
+  "face": {
+   "type": "face",
+   "head": "head",
+   "eyes": {
+    "at": [
+     0.038,
+     0,
+     -0.004
+    ],
+    "r": 0.019,
+    "upper": 0.26,
+    "lower": 0.08,
+    "sink": 0.22,
+    "lid": 0.006,
+    "part": "eyes"
+   },
+   "mouth": {
+    "at": [
+     0,
+     0,
+     -0.084
+    ],
+    "width": 0.052,
+    "smile": 0.004,
+    "upper": 0.0075,
+    "lower": 0.009
+   }
+  },
+  "hand.L": {
+   "type": "hand",
+   "wrist": "wrist.L",
+   "fingers": 4,
+   "size": [
+    0.095,
+    0.085,
+    0.03
+   ],
+   "length": 0.078,
+   "r": 0.011,
+   "curl": 35,
+   "thumb": {
+    "length": 0.058,
+    "r": 0.0125,
+    "angle": 40,
+    "curl": 10
+   }
+  }
+ },
+ "strokes": {
+  "hair_part": {
+   "op": "crease",
+   "part": "hair",
+   "path": [
+    {
+     "at": [
+      0.038,
+      -0.12,
+      1.8
+     ],
+     "dir": [
+      0,
+      -0.3,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.042,
+      -0.02,
+      1.83
+     ]
+    },
+    {
+     "at": [
+      0.045,
+      0.06,
+      1.8
+     ]
+    }
+   ],
+   "width": 0.005,
+   "depth": [
+    0.002,
+    0.004,
+    0.001
+   ]
+  },
+  "cargo_pocket.L": {
+   "op": "clay",
+   "part": "shorts",
+   "path": [
+    {
+     "bone": "thigh.L",
+     "t": 0.45,
+     "side": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "t": 0.72
+    }
+   ],
+   "width": 0.03,
+   "depth": 0.008,
+   "profile": "flat"
+  }
+ },
+ "paint": {
+  "skin": {
+   "color": "#e9b48e",
+   "roughness": 0.55
+  },
+  "lips.L": {
+   "color": "#b86a60",
+   "roughness": 0.35,
+   "near": [
+    "face_mouth_upper_1.L",
+    "face_mouth_upper_2.L",
+    "face_mouth_upper_3.L",
+    "face_mouth_upper_4.L",
+    "face_mouth_upper_5.L",
+    "face_mouth_upper_6.L",
+    "face_mouth_lower_1.L",
+    "face_mouth_lower_2.L",
+    "face_mouth_lower_3.L",
+    "face_mouth_lower_4.L",
+    "face_mouth_lower_5.L",
+    "face_mouth_lower_6.L"
+   ],
+   "within": 0.002,
+   "soft": 0.004
+  },
+  "iris.L": {
+   "part": "eyes",
+   "color": "#5a3a1e",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0105,
+   "profile": "flat"
+  },
+  "pupil.L": {
+   "part": "eyes",
+   "color": "#0c0806",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0055,
+   "profile": "flat"
+  },
+  "glint.L": {
+   "part": "eyes",
+   "color": "#ffffff",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "offset": [
+      -0.004,
+      0,
+      0.004
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0022,
+   "profile": "round"
+  },
+  "eye_gloss": {
+   "part": "eyes",
+   "roughness": 0.05,
+   "specular": 0.7
+  },
+  "shirt": {
+   "material": "cloth",
+   "part": "shirt",
+   "color": "#1c8a8a",
+   "wear": 0.15,
+   "dirt": 0.15
+  },
+  "placket": {
+   "part": "shirt",
+   "color": "#136a6a",
+   "path": [
+    {
+     "at": [
+      0,
+      0,
+      1.46
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0,
+      0,
+      1.36
+     ]
+    }
+   ],
+   "width": 0.011
+  },
+  "logo": {
+   "part": "shirt",
+   "color": "#f07a1a",
+   "path": [
+    {
+     "at": [
+      0.08,
+      0,
+      1.36
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.016,
+   "profile": "flat"
+  },
+  "shorts": {
+   "material": "cloth",
+   "part": "shorts",
+   "color": "#a08c64",
+   "wear": 0.2,
+   "dirt": 0.25
+  },
+  "sock_stripe": {
+   "part": "socks",
+   "color": "#1c8a8a",
+   "axis": {
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "from": 0.165,
+    "to": 0.172
+   },
+   "mask": [
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       -1
+      ],
+      "from": -0.185,
+      "to": -0.178
+     }
+    }
+   ]
+  },
+  "soles.L": {
+   "part": "shoes",
+   "color": "#f2f0ea",
+   "roughness": 0.7,
+   "near": [
+    "sole.L"
+   ],
+   "within": 0.001,
+   "soft": 0.002,
+   "mask": [
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       -1
+      ],
+      "from": -0.045,
+      "to": -0.035
+     }
+    }
+   ]
+  },
+  "shoe_accent.L": {
+   "part": "shoes",
+   "color": "#f07a1a",
+   "path": [
+    {
+     "at": [
+      0.16,
+      -0.08,
+      0.055
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.16,
+      0.03,
+      0.06
+     ]
+    }
+   ],
+   "width": 0.009
+  },
+  "shoe_dust": {
+   "part": [
+    "shoes",
+    "socks"
+   ],
+   "color": "#9c8a6a",
+   "opacity": 0.45,
+   "mask": [
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       -1
+      ],
+      "from": -0.12,
+      "to": -0.03
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.02,
+      "range": [
+       0.35,
+       0.65
+      ]
+     }
+    }
+   ]
+  },
+  "bag": {
+   "material": "cloth",
+   "part": "bag",
+   "color": "#2f4a2c",
+   "thread": 0.003,
+   "wear": 0.2,
+   "dirt": 0.3
+  },
+  "bag_grass": {
+   "part": "bag",
+   "color": "#5a6a2a",
+   "opacity": 0.4,
+   "mask": [
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       -1
+      ],
+      "from": -0.77,
+      "to": -0.74
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.02,
+      "range": [
+       0.35,
+       0.6
+      ]
+     }
+    }
+   ]
+  },
+  "disc_blue": {
+   "part": "disc",
+   "color": "#2a6ad0",
+   "near": [
+    "bag_disc1"
+   ],
+   "within": 0.001,
+   "soft": 0.002
+  },
+  "disc_pink": {
+   "part": "disc",
+   "color": "#e04a9a",
+   "near": [
+    "bag_disc2"
+   ],
+   "within": 0.001,
+   "soft": 0.002
+  },
+  "disc_yellow": {
+   "part": "disc",
+   "color": "#f2d02a",
+   "near": [
+    "bag_disc3"
+   ],
+   "within": 0.001,
+   "soft": 0.002
+  },
+  "disc_stamp": {
+   "part": "disc",
+   "color": "#fff4e0",
+   "opacity": 0.8,
+   "mask": [
+    {
+     "near": [
+      "disc"
+     ],
+     "within": 0.001,
+     "soft": 0.002
+    },
+    {
+     "path": [
+      {
+       "at": [
+        -0.456,
+        -0.01,
+        0.805
+       ],
+       "dir": [
+        0.803,
+        -0.464,
+        -0.375
+       ]
+      }
+     ],
+     "width": 0.04,
+     "profile": "round",
+     "blend": "multiply"
+    },
+    {
+     "path": [
+      {
+       "at": [
+        -0.456,
+        -0.01,
+        0.805
+       ],
+       "dir": [
+        0.803,
+        -0.464,
+        -0.375
+       ]
+      }
+     ],
+     "width": 0.03,
+     "profile": "round",
+     "blend": "subtract"
+    }
+   ]
+  },
+  "disc_scuffs": {
+   "part": "disc",
+   "color": "#c9b8a8",
+   "opacity": 0.5,
+   "mask": [
+    {
+     "cavity": "convex",
+     "radius": [
+      0.01,
+      0.003
+     ],
+     "breakup": {
+      "amount": 0.4,
+      "scale": 0.005,
+      "sharpness": 0.7
+     }
+    }
+   ]
+  },
+  "grime": {
+   "part": "*",
+   "color": "#3a2c20",
+   "opacity": 0.25,
+   "mask": [
+    {
+     "ao": [
+      0.6,
+      0.3
+     ],
+     "breakup": {
+      "amount": 0.3,
+      "scale": 0.03
+     }
+    }
+   ]
+  },
+  "skin_warm": {
+   "color": "#d98f73",
+   "opacity": 0.3,
+   "mask": [
+    {
+     "near": [
+      "nose_ball",
+      "nose_wing.L",
+      "ear.L",
+      "nose"
+     ],
+     "within": 0.004,
+     "soft": 0.02
+    }
+   ]
+  },
+  "brows.L": {
+   "color": "#3a2414",
+   "near": [
+    "brow.L"
+   ],
+   "within": 0.003,
+   "soft": 0.004,
+   "mask": [
+    {
+     "facing": [
+      0,
+      -1,
+      0.4
+     ],
+     "range": [
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "hair_tone": {
+   "part": [
+    "hair",
+    "beard"
+   ],
+   "color": "#24150b",
+   "opacity": 0.45,
+   "noise": {
+    "scale": 0.01,
+    "range": [
+     0.4,
+     0.7
+    ],
+    "stretch": {
+     "dir": [
+      0,
+      1,
+      0.3
+     ],
+     "factor": 4
+    }
+   }
+  },
+  "hair_sheen": {
+   "part": "hair",
+   "color": "#6a4428",
+   "opacity": 0.35,
+   "facing": [
+    0,
+    -0.3,
+    1
+   ],
+   "range": [
+    0.6,
+    0.95
+   ]
+  },
+  "beard_skin": {
+   "part": "beard",
+   "roughness": 0.85
+  },
+  "collar_shade": {
+   "part": "collar",
+   "color": "#136a6a",
+   "opacity": 0.5,
+   "ao": [
+    0.8,
+    0.4
+   ]
+  }
+ }
+}

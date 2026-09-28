@@ -1,0 +1,1129 @@
+{
+ "symmetry": true,
+ "blend": 0.03,
+ "joints": {
+  "pelvis": {
+   "pos": [
+    0,
+    0.01,
+    0.15
+   ],
+   "r": 0.09
+  },
+  "chest": {
+   "pos": [
+    0,
+    0,
+    0.28
+   ],
+   "r": 0.075
+  },
+  "neck": {
+   "pos": [
+    0,
+    -0.005,
+    0.33
+   ],
+   "r": 0.06
+  },
+  "head": {
+   "pos": [
+    0,
+    0,
+    0.42
+   ],
+   "r": 0.1
+  },
+  "shoulder.L": {
+   "pos": [
+    0.09,
+    0,
+    0.3
+   ],
+   "r": 0.036
+  },
+  "elbow.L": {
+   "pos": [
+    0.135,
+    -0.045,
+    0.2
+   ],
+   "r": 0.028
+  },
+  "wrist.L": {
+   "pos": [
+    0.088,
+    -0.122,
+    0.21
+   ],
+   "r": 0.022
+  },
+  "hip.L": {
+   "pos": [
+    0.065,
+    0.02,
+    0.13
+   ],
+   "r": 0.05
+  },
+  "knee.L": {
+   "pos": [
+    0.075,
+    -0.01,
+    0.085
+   ],
+   "r": 0.04
+  },
+  "ankle.L": {
+   "pos": [
+    0.08,
+    0,
+    0.045
+   ],
+   "r": 0.032
+  },
+  "toe.L": {
+   "pos": [
+    0.085,
+    -0.085,
+    0.018
+   ],
+   "r": 0.02
+  },
+  "tail0": {
+   "pos": [
+    0,
+    0.1,
+    0.095
+   ],
+   "r": 0.022
+  },
+  "tail1": {
+   "pos": [
+    0,
+    0.155,
+    0.085
+   ],
+   "r": 0.014
+  }
+ },
+ "bones": {
+  "spine": {
+   "a": "pelvis",
+   "b": "chest"
+  },
+  "neck": {
+   "a": "chest",
+   "b": "neck"
+  },
+  "head": {
+   "a": "neck",
+   "b": "head"
+  },
+  "upperarm.L": {
+   "a": "shoulder.L",
+   "b": "elbow.L",
+   "blend": 0.015
+  },
+  "forearm.L": {
+   "a": "elbow.L",
+   "b": "wrist.L",
+   "blend": 0.012
+  },
+  "thigh.L": {
+   "a": "hip.L",
+   "b": "knee.L",
+   "blend": 0.02
+  },
+  "shin.L": {
+   "a": "knee.L",
+   "b": "ankle.L",
+   "blend": 0.012
+  },
+  "tail": {
+   "a": "tail0",
+   "b": "tail1",
+   "blend": 0.02
+  }
+ },
+ "blobs": {
+  "skull": {
+   "at": "head",
+   "size": [
+    0.12,
+    0.11,
+    0.11
+   ]
+  },
+  "muzzle": {
+   "at": "head",
+   "offset": [
+    0,
+    -0.082,
+    -0.05
+   ],
+   "size": [
+    0.058,
+    0.05,
+    0.052
+   ],
+   "blend": 0.03
+  },
+  "pouch.L": {
+   "at": "head",
+   "offset": [
+    0.08,
+    -0.04,
+    -0.055
+   ],
+   "size": [
+    0.065,
+    0.055,
+    0.055
+   ],
+   "blend": 0.03
+  },
+  "belly": {
+   "at": "pelvis",
+   "offset": [
+    0,
+    -0.02,
+    0.05
+   ],
+   "size": [
+    0.13,
+    0.11,
+    0.125
+   ]
+  },
+  "ear.L": {
+   "at": "head",
+   "offset": [
+    0.105,
+    0.015,
+    0.075
+   ],
+   "shape": "blade",
+   "size": [
+    0.026,
+    0.024,
+    0.007
+   ],
+   "cup": 0.008,
+   "rot": [
+    90,
+    0,
+    -30
+   ],
+   "blend": 0.012
+  },
+  "disk": {
+   "at": [
+    0,
+    -0.14,
+    0.2
+   ],
+   "shape": "box",
+   "size": [
+    0.08,
+    0.006,
+    0.083
+   ],
+   "round": 0.004,
+   "rot": [
+    -8,
+    0,
+    0
+   ],
+   "part": "disk"
+  },
+  "shutter": {
+   "at": [
+    0,
+    -0.1323,
+    0.2545
+   ],
+   "shape": "box",
+   "size": [
+    0.034,
+    0.0065,
+    0.028
+   ],
+   "round": 0.002,
+   "rot": [
+    -8,
+    0,
+    0
+   ],
+   "part": "metal"
+  },
+  "tooth.L": {
+   "at": [
+    0.0079,
+    -0.1225,
+    0.329
+   ],
+   "shape": "box",
+   "size": [
+    0.0062,
+    0.0045,
+    0.016
+   ],
+   "round": 0.0025,
+   "rot": [
+    -12,
+    0,
+    0
+   ],
+   "part": "teeth",
+   "layer": 0
+  },
+  "disk_corner": {
+   "at": [
+    -0.08,
+    -0.1285,
+    0.282
+   ],
+   "shape": "box",
+   "size": [
+    0.011,
+    0.03,
+    0.011
+   ],
+   "rot": [
+    0,
+    45,
+    0
+   ],
+   "op": "subtract",
+   "targets": [
+    "disk"
+   ],
+   "part": "disk"
+  },
+  "label": {
+   "at": [
+    0,
+    -0.1496,
+    0.1711
+   ],
+   "shape": "box",
+   "size": [
+    0.066,
+    0.0015,
+    0.05
+   ],
+   "round": 0.001,
+   "rot": [
+    -8,
+    0,
+    0
+   ],
+   "part": "label"
+  }
+ },
+ "story": {
+  "summary": "a young gopher who tunnels under an old computer dump and dug up a 3.5 inch floppy disk; carries it everywhere as a treasure",
+  "age": 2,
+  "climate": "dry dusty soil",
+  "use": "digs all day, polishes the disk on its belly",
+  "events": [
+   "dirt on the feet and claws from digging",
+   "the disk's label is scuffed and hand-written"
+  ]
+ },
+ "parts": {
+  "eyes": {
+   "color": [
+    0.05,
+    0.04,
+    0.04
+   ]
+  },
+  "teeth": {
+   "color": [
+    0.95,
+    0.9,
+    0.75
+   ]
+  },
+  "disk": {
+   "color": [
+    0.15,
+    0.3,
+    0.6
+   ]
+  },
+  "metal": {
+   "color": [
+    0.75,
+    0.75,
+    0.78
+   ],
+   "metallic": 1,
+   "roughness": 0.35
+  },
+  "label": {
+   "color": [
+    0.93,
+    0.92,
+    0.86
+   ],
+   "roughness": 0.8
+  }
+ },
+ "kits": {
+  "face": {
+   "type": "face",
+   "head": "head",
+   "eyes": {
+    "at": [
+     0.042,
+     0,
+     0.035
+    ],
+    "r": 0.022,
+    "upper": 0,
+    "lower": 0,
+    "sink": 0.42,
+    "part": "eyes"
+   },
+   "nose": {
+    "at": [
+     0,
+     0,
+     -0.015
+    ],
+    "length": 0.018,
+    "droop": 0,
+    "r": 0.016,
+    "nostrils": false
+   }
+  },
+  "hand.L": {
+   "type": "hand",
+   "wrist": "wrist.L",
+   "fingers": 4,
+   "curl": 35,
+   "length": 0.032,
+   "r": 0.0085,
+   "taper": 0.75,
+   "spread": 30,
+   "thumb": {
+    "length": 0.022,
+    "r": 0.0085,
+    "angle": 50,
+    "curl": 20
+   }
+  },
+  "foot.L": {
+   "type": "foot",
+   "ankle": "ankle.L",
+   "ball": "toe.L",
+   "toes": 3,
+   "r": 0.011,
+   "length": 0.024,
+   "taper": 0.8
+  }
+ },
+ "anatomy": {
+  "shoulder.L": {
+   "back": 0,
+   "front": 0.6,
+   "cap": 0.7
+  },
+  "hip.L": {
+   "back": 0
+  }
+ },
+ "plan": {
+  "views": {
+   "front": {
+    "shapes": {
+     "head": {
+      "ellipse": [
+       0,
+       0.42,
+       0.125,
+       0.115
+      ]
+     },
+     "cheek.L": {
+      "ellipse": [
+       0.08,
+       0.37,
+       0.07,
+       0.06
+      ]
+     },
+     "body": {
+      "ellipse": [
+       0,
+       0.2,
+       0.125,
+       0.14
+      ]
+     },
+     "leg.L": {
+      "capsule": [
+       0.065,
+       0.13,
+       0.08,
+       0.045
+      ],
+      "r": [
+       0.05,
+       0.035
+      ]
+     },
+     "foot.L": {
+      "ellipse": [
+       0.085,
+       0.022,
+       0.045,
+       0.022
+      ]
+     },
+     "upperarm.L": {
+      "capsule": [
+       0.1,
+       0.3,
+       0.14,
+       0.2
+      ],
+      "r": [
+       0.035,
+       0.028
+      ]
+     },
+     "forearm.L": {
+      "capsule": [
+       0.14,
+       0.2,
+       0.09,
+       0.21
+      ],
+      "r": [
+       0.028,
+       0.022
+      ]
+     },
+     "ear.L": {
+      "ellipse": [
+       0.105,
+       0.49,
+       0.025,
+       0.025
+      ]
+     }
+    }
+   },
+   "side": {
+    "shapes": {
+     "head": {
+      "ellipse": [
+       0,
+       0.42,
+       0.115,
+       0.11
+      ]
+     },
+     "muzzle": {
+      "ellipse": [
+       -0.1,
+       0.385,
+       0.06,
+       0.05
+      ]
+     },
+     "body": {
+      "ellipse": [
+       0.01,
+       0.2,
+       0.11,
+       0.14
+      ]
+     },
+     "leg": {
+      "capsule": [
+       0.02,
+       0.13,
+       0,
+       0.045
+      ],
+      "r": [
+       0.05,
+       0.035
+      ]
+     },
+     "foot": {
+      "ellipse": [
+       -0.035,
+       0.022,
+       0.075,
+       0.022
+      ]
+     },
+     "tail": {
+      "capsule": [
+       0.1,
+       0.09,
+       0.145,
+       0.05
+      ],
+      "r": [
+       0.022,
+       0.013
+      ]
+     },
+     "upperarm": {
+      "capsule": [
+       0,
+       0.3,
+       -0.045,
+       0.2
+      ],
+      "r": [
+       0.035,
+       0.028
+      ]
+     },
+     "forearm": {
+      "capsule": [
+       -0.045,
+       0.2,
+       -0.13,
+       0.21
+      ],
+      "r": [
+       0.028,
+       0.022
+      ]
+     }
+    }
+   }
+  },
+  "landmarks": {
+   "crown": {
+    "z": 0.535
+   },
+   "shoulder": {
+    "z": 0.3,
+    "joint": "shoulder.L"
+   },
+   "elbow": {
+    "z": 0.2,
+    "joint": "elbow.L"
+   },
+   "wrist": {
+    "z": 0.21,
+    "joint": "wrist.L"
+   },
+   "hip": {
+    "z": 0.13,
+    "joint": "hip.L"
+   },
+   "knee": {
+    "z": 0.085,
+    "joint": "knee.L"
+   },
+   "ankle": {
+    "z": 0.045,
+    "joint": "ankle.L"
+   }
+  },
+  "sections": {
+   "belly": {
+    "z": 0.15,
+    "near": [
+     0,
+     0
+    ],
+    "width": 0.25,
+    "depth": 0.22,
+    "x": [
+     -0.12,
+     0.12
+    ]
+   },
+   "chest": {
+    "z": 0.28,
+    "near": [
+     0,
+     0
+    ],
+    "width": 0.19,
+    "depth": 0.17,
+    "x": [
+     -0.095,
+     0.095
+    ]
+   },
+   "head": {
+    "z": 0.43,
+    "near": [
+     0,
+     0
+    ],
+    "width": 0.25,
+    "depth": 0.23
+   }
+  }
+ },
+ "strokes": {
+  "philtrum": {
+   "op": "crease",
+   "path": [
+    {
+     "at": [
+      0,
+      0,
+      0.39
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0,
+      0,
+      0.348
+     ]
+    }
+   ],
+   "width": 0.005,
+   "depth": [
+    0.001,
+    0.003
+   ]
+  },
+  "mouth.L": {
+   "op": "crease",
+   "path": [
+    {
+     "at": [
+      0.001,
+      0,
+      0.348
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.02,
+      0,
+      0.346
+     ]
+    },
+    {
+     "at": [
+      0.036,
+      0,
+      0.356
+     ]
+    }
+   ],
+   "width": 0.0045,
+   "depth": [
+    0.003,
+    0.003,
+    0
+   ]
+  },
+  "brow.L": {
+   "op": "clay",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "offset": [
+      -0.012,
+      0,
+      0.027
+     ],
+     "dir": [
+      0,
+      -1,
+      0.3
+     ]
+    },
+    {
+     "offset": [
+      0.004,
+      0,
+      0.032
+     ]
+    },
+    {
+     "offset": [
+      0.02,
+      0,
+      0.026
+     ]
+    }
+   ],
+   "width": 0.007,
+   "depth": [
+    0,
+    0.0055,
+    0
+   ]
+  },
+  "whiskerpad.L": {
+   "op": "clay",
+   "path": [
+    {
+     "at": "face_nose_tip",
+     "offset": [
+      0.012,
+      0,
+      -0.024
+     ],
+     "dir": [
+      0.2,
+      -1,
+      0
+     ]
+    },
+    {
+     "offset": [
+      0.03,
+      0,
+      -0.018
+     ]
+    }
+   ],
+   "width": 0.016,
+   "depth": [
+    0.003,
+    0.0015
+   ]
+  }
+ },
+ "paint": {
+  "fur": {
+   "color": "#a0703f",
+   "roughness": 0.85,
+   "specular": 0.35
+  },
+  "fur_tone": {
+   "color": "#8a5c32",
+   "opacity": 0.35,
+   "noise": {
+    "scale": 0.04,
+    "range": [
+     0.4,
+     0.7
+    ],
+    "stretch": {
+     "dir": [
+      0,
+      0,
+      1
+     ],
+     "factor": 2
+    }
+   }
+  },
+  "back": {
+   "color": "#6b4526",
+   "facing": [
+    0,
+    0.6,
+    0.8
+   ],
+   "range": [
+    0.1,
+    0.9
+   ],
+   "opacity": 0.55
+  },
+  "belly": {
+   "color": "#ecd6a8",
+   "mask": [
+    {
+     "near": [
+      "belly",
+      "spine"
+     ],
+     "within": 0.02,
+     "soft": 0.02
+    },
+    {
+     "facing": [
+      0,
+      -1,
+      -0.2
+     ],
+     "range": [
+      0.35,
+      0.8
+     ],
+     "breakup": {
+      "amount": 0.15,
+      "scale": 0.02
+     }
+    }
+   ]
+  },
+  "muzzle": {
+   "color": "#f0dcb2",
+   "mask": [
+    {
+     "near": [
+      "muzzle",
+      "pouch.L"
+     ],
+     "within": 0.012,
+     "soft": 0.012
+    },
+    {
+     "facing": [
+      0,
+      -1,
+      -0.3
+     ],
+     "range": [
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "nose": {
+   "color": "#3a2220",
+   "roughness": 0.35,
+   "near": [
+    "face_nose_ball",
+    "face_nose_wing.L"
+   ],
+   "within": 0.002,
+   "soft": 0.003
+  },
+  "inner_ear.L": {
+   "color": "#d99a8c",
+   "near": [
+    "ear.L"
+   ],
+   "within": 0.001,
+   "soft": 0.004,
+   "facing": [
+    0,
+    -1,
+    0.3
+   ],
+   "range": [
+    0.3,
+    0.8
+   ]
+  },
+  "paws": {
+   "color": "#d8a887",
+   "mask": [
+    {
+     "near": [
+      "hand.L",
+      "foot.L"
+     ],
+     "within": 0.004,
+     "soft": 0.008
+    }
+   ]
+  },
+  "claws": {
+   "color": "#f2ead8",
+   "roughness": 0.4,
+   "near": [
+    "hand_f1_3a.L",
+    "hand_f2_3a.L",
+    "hand_f3_3a.L",
+    "hand_f4_3a.L",
+    "hand_th_3a.L",
+    "foot_t1_3a.L",
+    "foot_t2_3a.L",
+    "foot_t3_3a.L"
+   ],
+   "within": 0.0005,
+   "soft": 0.003
+  },
+  "dirt_feet": {
+   "color": "#4a3624",
+   "opacity": 0.6,
+   "mask": [
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "from": 0.035,
+      "to": 0.01
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.012,
+      "range": [
+       0.35,
+       0.65
+      ]
+     }
+    }
+   ]
+  },
+  "grime": {
+   "color": "#3a2818",
+   "opacity": 0.4,
+   "mask": [
+    {
+     "ao": [
+      0.6,
+      0.3
+     ],
+     "breakup": {
+      "amount": 0.3,
+      "scale": 0.02
+     }
+    },
+    {
+     "cavity": "concave",
+     "radius": [
+      0.02,
+      0.005
+     ],
+     "blend": "max"
+    }
+   ]
+  },
+  "eyes": {
+   "part": "eyes",
+   "color": "#120c0a",
+   "roughness": 0.05,
+   "specular": 0.7
+  },
+  "eye_glint.L": {
+   "part": "eyes",
+   "color": "#ffffff",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "offset": [
+      -0.007,
+      0,
+      0.008
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0045,
+   "profile": "round"
+  },
+  "teeth": {
+   "part": "teeth",
+   "color": "#f4e9c8",
+   "roughness": 0.3,
+   "specular": 0.6
+  },
+  "label_text": {
+   "part": "label",
+   "color": "#2c3f96",
+   "path": [
+    {
+     "at": [
+      -0.05,
+      0,
+      0.2
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      -0.02,
+      0,
+      0.202
+     ]
+    },
+    {
+     "at": [
+      0.01,
+      0,
+      0.198
+     ]
+    },
+    {
+     "at": [
+      0.04,
+      0,
+      0.201
+     ]
+    }
+   ],
+   "width": 0.0022,
+   "profile": "soft",
+   "repeat": {
+    "count": 4,
+    "shift": {
+     "offset": [
+      0,
+      0,
+      -0.018
+     ]
+    }
+   }
+  },
+  "label_scuff": {
+   "part": "label",
+   "color": "#9c9280",
+   "opacity": 0.5,
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.01,
+      "warp": 1.2,
+      "range": [
+       0.55,
+       0.7
+      ]
+     }
+    }
+   ]
+  },
+  "disk_wear": {
+   "part": [
+    "disk",
+    "metal"
+   ],
+   "color": "#d6dbe6",
+   "opacity": 0.5,
+   "mask": [
+    {
+     "cavity": "convex",
+     "radius": [
+      0.01,
+      0.003
+     ],
+     "breakup": {
+      "amount": 0.35,
+      "scale": 0.006,
+      "sharpness": 0.7
+     }
+    }
+   ]
+  }
+ }
+}
