@@ -1,0 +1,919 @@
+"""Character topology by template wrap: a production quad base mesh (Blender Studio's CC0 "Human Base Meshes"
+stylized male, `templates/`) carried onto a humanoid model through matching skeletons, so a deforming character gets
+real edge loops (rings at every joint, an armhole, loops round eyes and mouth) instead of decimated triangles.
+
+Steps (`wrap`):
+1. Skeleton warp: per template bone segment a rotation, a stretch along the bone and a radius ratio per angle at 5
+   stations (template radius from its own vertices, model radius from rays); vertices blend their nearest segments.
+   Hands and feet scale uniformly by wrist/ankle thickness (rays across a hand hit digits and gaps).
+2. Face warp: a Gaussian RBF carries template landmarks (eyes, nose tip, mouth) onto the face kit's; anchors on
+   the skull stay.
+3. Patches the template can't bend into (`_patches`), each cut at a closed quad loop of the template and generated
+   from the model instead: digits (tubes along the hand kit's chains, rings by rays onto each digit's own
+   primitives: touching fingers keep their sides; template digits the model lacks are capped), ears (the model's
+   ear bones as flat tubes with equal-arc rings: a blade ear keeps its rim), eyes (rings from a loop round the
+   model's eye in over its lids, a ring on the lid edge, the eyeball to its pole: rays from the lids' centre). Ear
+   and eye loops are first carried onto the model's ear root / eye (`_carry`): left where the skeleton put them
+   they sat behind the jaw / on the cheek.
+4. Stitch, then fit the template's own vertices: shot along normals onto their region's surface, relaxed along
+   the surface, generated rings held fixed (so the template flows into them); the mouth bag isn't projected.
+5. Untangle: faces turned against the field smoothed and re-projected.
+
+`quality` measures a result (field distance, turned faces, closed rings at the anatomy's loop planes).
+"""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import numpy as np
+
+from . import sdf, surface
+from .spec import compile_prims, expand_mirror, resolve_point
+
+TEMPLATES = Path(__file__).parent / "templates"
+SEGS = [("pelvis", "chest"), ("chest", "neck"), ("neck", "head"), ("chest", "shoulder.L"), ("shoulder.L", "elbow.L"),
+        ("elbow.L", "wrist.L"), ("wrist.L", "hand_end.L"), ("hip.L", "knee.L"), ("knee.L", "ankle.L"),
+        ("ankle.L", "toe.L")]
+FINGER_SEGS = [(f"finger{k}_{j}.L", f"finger{k}_{j + 1}.L") for k in range(1, 6) for j in range(3)] + \
+              [(f"thumb_{j}.L", f"thumb_{j + 1}.L") for j in range(3)]
+FACE_MODEL = {"eye.L": "face_eye.L", "nose_tip": "face_nose_tip", "mouth": "face_mouth_line_0",
+              "mouth_corner.L": "face_mouth_corner.L"}
+NB = 16  # angle bins round a bone
+STATIONS = np.linspace(0.0, 1.0, 5)  # along each bone, where radii are measured
+
+
+# ---------------------------------------------------------------------------------------------------- template
+
+def load_template(name: str = "male_stylized") -> dict:
+    """{P verts, L loops, S sizes, J joints (mirrored), face json, name}."""
+    z = np.load(TEMPLATES / f"{name}.npz")
+    J = json.loads((TEMPLATES / f"{name}_joints.json").read_text())
+    return {"name": name, "P": z["verts"].astype(np.float64), "L": z["loops"].astype(np.int64),
+            "S": z["sizes"].astype(np.int64), "J": _mirror({k: np.array(v, float) for k, v in J.items()
+                                                            if not k.startswith("_")}),
+            "face": json.loads((TEMPLATES / f"{name}_face.json").read_text())}
+
+
+def is_humanoid(spec: dict) -> bool:
+    s = expand_mirror(spec)
+    need = ("pelvis", "chest", "neck", "head", "shoulder.L", "elbow.L", "wrist.L", "hip.L", "knee.L", "ankle.L")
+    return all(j in s["joints"] for j in need)
+
+
+# ---------------------------------------------------------------------------------------------------- helpers
+
+def _unit(v):
+    return v / np.linalg.norm(v, axis=-1, keepdims=True)
+
+
+def _mirror(J):
+    out = dict(J)
+    for n, p in J.items():
+        if n.endswith(".L"):
+            out[n[:-2] + ".R"] = np.array([-p[0], p[1], p[2]])
+    return out
+
+
+def _segments(J):
+    out = []
+    for a, b in SEGS + FINGER_SEGS:
+        for sa, sb in ((a, b), (a.replace(".L", ".R"), b.replace(".L", ".R"))) if ".L" in a + b else ((a, b),):
+            if sa in J and sb in J:
+                out.append((sa, sb))
+    return sorted(set(out))
+
+
+def _seg_dist(P, a, b):
+    ab = b - a
+    t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
+    return np.linalg.norm(a + t[:, None] * ab - P, axis=1)
+
+
+def _model_name(k):
+    """Template joint -> the model's: fingers to the hand kit's chains, the thumb to its thumb."""
+    m = re.fullmatch(r"finger(\d)_(\d)(\.[LR])", k)
+    if m:
+        return f"hand_f{m[1]}_{m[2]}{m[3]}"
+    m = re.fullmatch(r"thumb_(\d)(\.[LR])", k)
+    if m:
+        return f"hand_th_{m[1]}{m[2]}"
+    return k
+
+
+def _rot_between(u, v):
+    c = np.cross(u, v)
+    s, d = np.linalg.norm(c), u @ v
+    if s < 1e-9:
+        return np.eye(3)
+    k = c / s
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    return np.eye(3) + s * K + (1 - d) * K @ K
+
+
+def _frame(u):
+    x = np.cross(u, [0, 0, 1.0]) if abs(u[2]) < 0.9 else np.cross(u, [1.0, 0, 0])
+    x /= np.linalg.norm(x)
+    return x, np.cross(u, x)
+
+
+def _fill(r):
+    ok = np.isfinite(r)
+    if not ok.any():
+        return np.ones(NB)
+    idx = np.arange(NB)
+    return np.interp(idx, idx[ok], r[ok], period=NB)
+
+
+def _template_radii(P, a, b, own, t0=0.5, band=0.15):
+    u = _unit(b - a)
+    x, y = _frame(u)
+    q = P[own] - a
+    t = q @ u / np.linalg.norm(b - a)
+    q = q - np.outer(q @ u, u)
+    ang = np.arctan2(q @ y, q @ x)
+    rad = np.linalg.norm(q, axis=1)
+    bins = ((ang + np.pi) / (2 * np.pi) * NB).astype(int) % NB
+    r = np.full(NB, np.nan)
+    for k in range(NB):
+        m = (bins == k) & (np.abs(t - t0) < band)
+        if m.sum() >= 2:
+            r[k] = np.percentile(rad[m], 90)
+    return _fill(r)
+
+
+def _target_radii(prims, a, b, t0=0.5):
+    u = _unit(b - a)
+    x, y = _frame(u)
+    m = a + t0 * (b - a)
+    ang = (np.arange(NB) + 0.5) / NB * 2 * np.pi - np.pi
+    dirs = np.cos(ang)[:, None] * x + np.sin(ang)[:, None] * y
+    t = np.linspace(0, 0.5, 400)
+    f = sdf.field_at(prims, m + t[None, :, None] * dirs[:, None, :], margin=0.05)
+    r = np.array([t[np.flatnonzero(row > 0)[0]] if (row > 0).any() and row[0] < 0 else np.nan for row in f])
+    return _fill(r)
+
+
+def topology(L, S):
+    """faces (lists), vertex neighbours {v: set}, edge -> faces {(a, b) sorted: [face]}."""
+    st = np.r_[0, np.cumsum(S)[:-1]]
+    faces = [list(map(int, L[s:s + k])) for s, k in zip(st, S)]
+    nb, ef = {}, {}
+    for fi, f in enumerate(faces):
+        for k in range(len(f)):
+            a, b = f[k], f[(k + 1) % len(f)]
+            nb.setdefault(a, set()).add(b)
+            nb.setdefault(b, set()).add(a)
+            ef.setdefault((min(a, b), max(a, b)), []).append(fi)
+    return faces, nb, ef
+
+
+def _walk(u, v, faces, nb, ef, limit=64):
+    """Follow a quad edge loop from edge u->v (straight across every valence-4 vertex): (path, closed)."""
+    path = [u, v]
+    while len(path) < limit:
+        if len(nb[v]) != 4:
+            return path, False
+        ws = set()
+        for fi in ef[(min(u, v), max(u, v))]:
+            f = faces[fi]
+            if len(f) != 4:
+                return path, False
+            i = f.index(v)
+            ws.add(f[(i + 1) % 4] if f[(i - 1) % 4] == u else f[(i - 1) % 4])
+        rest = nb[v] - {u} - ws
+        if len(rest) != 1:
+            return path, False
+        u, v = v, rest.pop()
+        if v == path[0]:
+            return path, True
+        path.append(v)
+    return path, False
+
+
+def _tip_side(loop, nb, tip):
+    """Vertices reached from tip without crossing the loop."""
+    seen, stack, stop = {tip}, [tip], set(loop)
+    while stack:
+        v = stack.pop()
+        for w in nb[v]:
+            if w not in seen and w not in stop:
+                seen.add(w)
+                stack.append(w)
+    return seen
+
+
+def tris(L, S):
+    st = np.r_[0, np.cumsum(S)[:-1]]
+    return np.array([(L[s], L[s + j], L[s + j + 1]) for s, n in zip(st, S) for j in range(1, n - 1)])
+
+
+def edges(L, S):
+    st = np.r_[0, np.cumsum(S)[:-1]]
+    e = {(min(L[s + j], L[s + (j + 1) % n]), max(L[s + j], L[s + (j + 1) % n])) for s, n in zip(st, S)
+         for j in range(n)}
+    return np.array(sorted(e))
+
+
+def _vnormals(V, T):
+    fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
+    N = np.zeros_like(V)
+    for k in range(3):
+        np.add.at(N, T[:, k], fn)
+    return N / (np.linalg.norm(N, axis=1, keepdims=True) + 1e-12)
+
+
+def _lap(X, E, deg):
+    acc = np.zeros_like(X)
+    np.add.at(acc, E[:, 0], X[E[:, 1]])
+    np.add.at(acc, E[:, 1], X[E[:, 0]])
+    return acc / np.maximum(deg, 1)[:, None] - X
+
+
+# ---------------------------------------------------------------------------------------------------- warps
+
+def _skeleton_warp(P, Jt, s, prims, sigma=0.8):
+    """Template vertices carried by the skeleton. Returns (warped, segments, dominant segment per vertex, apply)."""
+    Jt = dict(Jt)
+    Jm = {k: resolve_point(s, _model_name(k)) for k in Jt if _model_name(k) in s["joints"]}
+    for side in "LR":  # the palm: wrist to the middle knuckle (the template's second finger, the model's second
+        # or only finger)
+        mk = next((f"hand_f{k}_0.{side}" for k in (2, 1) if f"hand_f{k}_0.{side}" in s["joints"]), None)
+        if f"finger2_0.{side}" in Jt and mk:
+            Jt[f"hand_end.{side}"] = Jt[f"finger2_0.{side}"]
+            Jm[f"hand_end.{side}"] = resolve_point(s, mk)
+        elif f"wrist.{side}" in Jt and f"elbow.{side}" in Jt and f"wrist.{side}" in Jm:
+            for J in (Jt, Jm):
+                w, e = J[f"wrist.{side}"], J[f"elbow.{side}"]
+                J[f"hand_end.{side}"] = w + _unit(w - e) * 0.45 * np.linalg.norm(w - e)
+    segs = [sg for sg in _segments(Jt) if sg[0] in Jm and sg[1] in Jm]
+    near = np.stack([_seg_dist(P, Jt[a], Jt[b]) for a, b in segs], 1).argmin(1)
+    xf = []
+    for k, (a, b) in enumerate(segs):
+        a0, b0, a1, b1 = Jt[a], Jt[b], Jm[a], Jm[b]
+        u0, u1 = _unit(b0 - a0), _unit(b1 - a1)
+        R = _rot_between(u0, u1)
+        if b.startswith(("hand_end", "toe")):
+            prox = [sg for sg in segs if sg[1] == a][0]
+            pk = segs.index(prox)
+            rw0 = np.median(_template_radii(P, Jt[prox[0]], Jt[prox[1]], near == pk, 0.9))
+            rw1 = np.median(_target_radii(prims, Jm[prox[0]], Jm[prox[1]], 0.9))
+            R0, R1 = np.full((len(STATIONS), NB), rw0), np.full((len(STATIONS), NB), rw1)
+        else:
+            R0 = np.stack([_template_radii(P, a0, b0, near == k, t0) for t0 in STATIONS])
+            R1 = np.stack([_target_radii(prims, a1, b1, t0) for t0 in STATIONS])
+        x1, y1 = _frame(u1)
+        x0, y0 = _frame(u0)
+        xr = R @ x0
+        xf.append(dict(a0=a0, u0=u0, a1=a1, R=R, sax=np.linalg.norm(b1 - a1) / np.linalg.norm(b0 - a0),
+                       L0=np.linalg.norm(b0 - a0), R0=R0, R1=R1, x0=x0, y0=y0, off=np.arctan2(xr @ y1, xr @ x1)))
+    centres = (np.arange(NB) + 0.5) / NB * 2 * np.pi - np.pi
+
+    def apply(X):
+        Dx = np.stack([_seg_dist(X, Jt[a], Jt[b]) for a, b in segs], 1)
+        d0 = Dx.min(1, keepdims=True)
+        W = np.exp(-((Dx - d0) / (sigma * np.maximum(d0, 0.01))) ** 2)
+        W /= W.sum(1, keepdims=True)
+        out = np.zeros_like(X)
+        for k, g in enumerate(xf):
+            q = X - g["a0"]
+            t = q @ g["u0"]
+            rad = q - np.outer(t, g["u0"])
+            ang = np.arctan2(rad @ g["y0"], rad @ g["x0"])
+            tc = np.clip(t / g["L0"], 0, 1)
+            tgt = np.zeros(len(X))
+            src = np.zeros(len(X))
+            for i in range(len(STATIONS) - 1):
+                lo, hi = STATIONS[i], STATIONS[i + 1]
+                m = (tc >= lo) & (tc <= hi)
+                w = (tc[m] - lo) / (hi - lo)
+                ai = (ang[m] + g["off"] + np.pi) % (2 * np.pi) - np.pi
+                tgt[m] = (1 - w) * np.interp(ai, centres, g["R1"][i], period=2 * np.pi) + \
+                    w * np.interp(ai, centres, g["R1"][i + 1], period=2 * np.pi)
+                src[m] = (1 - w) * np.interp(ang[m], centres, g["R0"][i], period=2 * np.pi) + \
+                    w * np.interp(ang[m], centres, g["R0"][i + 1], period=2 * np.pi)
+            rs = np.clip(tgt / np.maximum(src, 1e-3), 0.3, 4.0)
+            out += W[:, k:k + 1] * (g["a1"] + (np.outer(t * g["sax"], g["u0"]) + rad * rs[:, None]) @ g["R"].T)
+        return out, W
+
+    out, W = apply(P)
+    return out, segs, W.argmax(1), apply, Jm
+
+
+def _face_warp(out, apply, face, s, log, extra=()):
+    """Gaussian RBF: template landmarks (warped by the skeleton) onto the face kit's; skull anchors stay."""
+    src, dst = [], []
+    for name, pt in face["landmarks"].items():
+        mn = FACE_MODEL.get(name)
+        if name == "eye.L" and len(extra):  # the eye loops' targets place the eyes (eyeball centres don't agree
+            # with them: a goblin's bulging eye sits far forward of a human's)
+            continue
+        pairs = [(pt, mn)]
+        if name.endswith(".L"):
+            pairs.append(([-pt[0], pt[1], pt[2]], mn.replace(".L", ".R") if mn else None))
+        for p_, m_ in pairs:
+            if m_ is None:
+                continue
+            if m_ in s["joints"]:
+                tgt = resolve_point(s, m_)
+            elif m_ in s["blobs"]:
+                bl = s["blobs"][m_]
+                tgt = resolve_point(s, bl.get("at", [0, 0, 0])) + np.array(bl.get("offset", [0, 0, 0]), float)
+            else:
+                continue
+            src.append(p_)
+            dst.append(tgt)
+    if not src:
+        return out
+    ws, _ = apply(np.array(src, float))
+    disp = np.array(dst) - ws
+    if len(extra):  # cut loops' targets (eyes, ears): (warped template points, model points)
+        ws = np.r_[ws, np.array([p for p, _ in extra])]
+        disp = np.r_[disp, np.array([q - p for p, q in extra])]
+        dst = list(dst) + [q for _, q in extra]
+    wa, _ = apply(np.array(list(face["anchors"].values()), float))
+    C = np.r_[ws, wa]
+    Dd = np.r_[disp, np.zeros_like(wa)]
+    sig = max(0.6 * np.linalg.norm(ws[0] - ws[1]) if len(ws) > 1 else 0.05, 0.03)
+    Phi = np.exp(-(np.linalg.norm(C[:, None] - C[None], axis=2) / sig) ** 2) + 1e-6 * np.eye(len(C))
+    wts = np.linalg.solve(Phi, Dd)
+    phi = np.exp(-(np.linalg.norm(out[:, None] - C[None], axis=2) / sig) ** 2)
+    log.append(f"face: {len(src)} landmarks, largest move {np.linalg.norm(disp, axis=1).max() * 1000:.0f} mm")
+    return out + phi @ wts
+
+
+def _carry(out, loop, dst):
+    """Move a loop of the warped template to dst, the surface round it following (Shepard-weighted loop moves,
+    fading over about the loop's size)."""
+    src = out[loop]
+    disp = dst - src
+    size = np.linalg.norm(src - src.mean(0), axis=1).max()
+    d = np.linalg.norm(out[:, None] - src[None], axis=2)
+    w = 1.0 / (d + 1e-4) ** 2
+    shep = (w @ disp) / w.sum(1, keepdims=True)
+    out = out + np.exp(-(d.min(1) / size) ** 2)[:, None] * shep
+    out[loop] = dst
+    return out
+
+
+def _smooth_away(V, E, mask, rounds=40):
+    """Smooth a region into a plain form, the rest fixed (toes over a club foot)."""
+    deg = np.bincount(E.ravel(), minlength=len(V))
+    V = V.copy()
+    for _ in range(rounds):
+        V[mask] += 0.6 * _lap(V, E, deg)[mask]
+    return V
+
+
+# ---------------------------------------------------------------------------------------------------- loops
+
+def _base_loop(P, faces, nb, ef, base, axis, tipv, max_tip=400, near=0.03):
+    """The closed loop round a digit nearest its base: across the axis, all the way round (every 45 degree
+    sector), cutting off at most max_tip vertices on the tip's side."""
+    best, seen = None, set()
+    L = np.linalg.norm(P[tipv] - base)
+    for (a, b) in ef:
+        pa = P[a] - base
+        sa = pa @ axis
+        if not (0.08 * L < sa < 0.7 * L) or np.linalg.norm(pa - sa * axis) > near:
+            continue
+        e = P[b] - P[a]
+        if abs(e @ axis) > 0.35 * np.linalg.norm(e) or (a, b) in seen:
+            continue
+        path, closed = _walk(a, b, faces, nb, ef)
+        for k in range(len(path)):
+            seen.add((path[k], path[(k + 1) % len(path)]))
+        if not closed or not 6 <= len(path) <= 16:
+            continue
+        q = P[path] - base
+        s = float(np.mean(q @ axis))
+        r = q - q.mean(0)
+        r -= np.outer(r @ axis, axis)
+        x = r[0] / np.linalg.norm(r[0])
+        ang = np.degrees(np.arctan2(r @ np.cross(axis, x), r @ x)) % 360
+        if len(set((ang // 45).astype(int))) < 8 or len(_tip_side(path, nb, tipv)) > max_tip:
+            continue
+        if best is None or s < best[0]:
+            best = (s, path)
+    return None if best is None else best[1]
+
+
+def _loops_round(P, faces, nb, ef, near, limit):
+    """Closed loops through the `near` vertices: yields paths."""
+    seen = set()
+    for (a, b) in ef:
+        if a not in near or (a, b) in seen:
+            continue
+        path, closed = _walk(a, b, faces, nb, ef, limit=limit)
+        for k in range(len(path)):
+            seen.add((path[k], path[(k + 1) % len(path)]))
+            seen.add((path[(k + 1) % len(path)], path[k]))
+        if closed and len(path) >= 6:
+            yield path
+
+
+def _ear_loop(P, faces, nb, ef, tip_pt, reach=0.07, max_cut=800):
+    """The outermost closed loop round the template's ear (cutting off the most vertices, at most max_cut, all on
+    the ear's side): where the ear leaves the skull. Returns (loop, tip vertex)."""
+    tipv = int(np.argmin(np.linalg.norm(P - tip_pt, axis=1)))
+    best = None
+    for path in _loops_round(P, faces, nb, ef, set(np.flatnonzero(np.linalg.norm(P - tip_pt, axis=1) < reach)), 120):
+        if not (np.sign(P[path, 0]) == np.sign(tip_pt[0])).all() or tipv in path:
+            continue
+        cut = len(_tip_side(path, nb, tipv))
+        if cut <= max_cut and (best is None or cut > best[0]):
+            best = (cut, path)
+    return (None, None) if best is None else (best[1], tipv)
+
+
+def _eye_loop(P, faces, nb, ef, eye, r_target, reach=0.06):
+    """The closed loop round the template's eye (winding once round the y axis through it) whose mean radius is
+    nearest r_target, the frontmost of equals (the socket tunnel's loops wind too). Returns (loop, inner vertex)."""
+    q = P - eye
+    near = set(np.flatnonzero((np.hypot(q[:, 0], q[:, 2]) < reach) & (q[:, 1] < 0.03)))
+    best = None
+    for path in _loops_round(P, faces, nb, ef, near, 200):
+        Q = q[path]
+        ang = np.arctan2(Q[:, 2], Q[:, 0])
+        wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
+        if abs(round(wn)) != 1:
+            continue
+        key = (abs(np.hypot(Q[:, 0], Q[:, 2]).mean() - r_target), Q[:, 1].mean())
+        if best is None or key < best[0]:
+            best = (key, path)
+    if best is None:
+        return None, None
+    inside = [v for v in near if np.hypot(q[v, 0], q[v, 2]) < 0.3 * r_target and v not in best[1]]
+    return best[1], (int(inside[np.argmin([q[v, 1] for v in inside])]) if inside else None)
+
+
+# ---------------------------------------------------------------------------------------------------- patches
+
+def _shoot(prims, c, u, r_guess):
+    """First exit along c + t u (c inside), t up to 4 r_guess."""
+    t = np.linspace(0, 4 * r_guess, 160)
+    f = sdf.field_at(prims, c[None] + t[:, None] * u[None], clip=False)
+    k = np.flatnonzero(f > 0)
+    if f[0] > 0 or not len(k):
+        return c + r_guess * u
+    k = k[0]
+    t0, t1, f0, f1 = t[k - 1], t[k], f[k - 1], f[k]
+    return c + (t0 + (t1 - t0) * f0 / (f0 - f1)) * u
+
+
+def _exit(prims, c, dirs, reach, steps=240):
+    """Where rays from c (inside) first leave the surface: (points, distances)."""
+    t = np.linspace(0, reach, steps)
+    f = sdf.field_at(prims, c[None, None] + t[None, :, None] * dirs[:, None], margin=0.02)
+    out = f > 0
+    k = np.maximum(np.where(out.any(1), out.argmax(1), steps - 1), 1)
+    i = np.arange(len(dirs))
+    f0, f1 = f[i, k - 1], f[i, k]
+    tt = t[k - 1] + (t[k] - t[k - 1]) * np.clip(f0 / np.where(f0 - f1 == 0, -1, f0 - f1), 0, 1)
+    return c + tt[:, None] * dirs, tt
+
+
+def _chain_point(C, s):
+    seg = np.linalg.norm(np.diff(C, axis=0), axis=1)
+    cum = np.r_[0, np.cumsum(seg)]
+    s = np.clip(s, 0, cum[-1])
+    i = min(np.searchsorted(cum, s, side="right") - 1, len(seg) - 1)
+    d = (C[i + 1] - C[i]) / seg[i]
+    return C[i] + (s - cum[i]) * d, d, cum
+
+
+def _ring_arc(prims, c, d, ref, n, sign, r_guess, rays=96):
+    """n points round the cross-section (plane through c, normal d) at equal arc length from direction ref: flat
+    sections keep their thin edges (equal angles bunch points on the flat faces and leave the rim bare)."""
+    e2 = np.cross(d, ref)
+    a = sign * np.linspace(0, 2 * np.pi, rays, endpoint=False)
+    P = np.array([_shoot(prims, c, np.cos(x) * ref + np.sin(x) * e2, r_guess) for x in a])
+    Q = np.r_[P, P[:1]]
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+    t = np.arange(n) / n * cum[-1]
+    return np.stack([np.interp(t, cum, Q[:, k]) for k in range(3)], 1)
+
+
+def _clear_start(C, own, full, r_guess, s_max, tol=3e-4):
+    """First arc length along chain C whose cross-section on the part's own primitives lies on the whole field's
+    surface (clear of the skull and its fillet)."""
+    for s in np.linspace(0.0, s_max, 12):
+        p, d, _ = _chain_point(C, s)
+        ref, e2 = _frame(d)
+        a = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+        ring = np.array([_shoot(own, p, np.cos(x) * ref + np.sin(x) * e2, r_guess) for x in a])
+        if np.abs(sdf.field_at(full, ring, clip=False)).max() < tol:
+            return s
+    return s_max
+
+
+def _loop_frame(pts, d):
+    q = pts - pts.mean(0)
+    q -= np.outer(q @ d, d)
+    ref = q[0] / np.linalg.norm(q[0])
+    ang = np.arctan2(q @ np.cross(d, ref), q @ ref)
+    dw = (np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi
+    return ref, ang, (1.0 if np.median(dw) > 0 else -1.0)
+
+
+def _tube(loop_pts, C, prims, r_guess, spacing, knuckles=True):
+    """A digit: rings (the loop's count, its angles carried along chain C) from a finger radius past the knuckle
+    to the tip, spacing apart, extra rings either side of each knuckle, a 45 degree ring and a fan at the tip."""
+    cum = _chain_point(C, 0)[2]
+    s0 = min(1.5 * r_guess, 0.3 * cum[-1])
+    p0, d0, _ = _chain_point(C, s0)
+    ref, ang, _ = _loop_frame(loop_pts, d0)
+    stations = list(np.arange(s0 + spacing, cum[-1] - 0.3 * spacing, spacing))
+    if knuckles:
+        stations += [x for kn in cum[1:-1] if kn > s0 + 0.5 * spacing for x in (kn - 0.3 * spacing, kn + 0.3 * spacing)]
+    stations = sorted(stations)
+    stations = [s for i, s in enumerate(stations) if i == 0 or s - stations[i - 1] > 0.25 * spacing] + [cum[-1]]
+
+    def ring(p, d, ref, lift=0.0):
+        e2 = np.cross(d, ref)
+        dirs = np.cos(ang)[:, None] * ref + np.sin(ang)[:, None] * e2
+        return np.array([_shoot(prims, p, _unit(u + lift * d), r_guess) for u in dirs])
+    rings = [ring(p0, d0, ref)]
+    for s in stations:
+        p, d, _ = _chain_point(C, s)
+        ref = _unit(ref - d * (ref @ d))
+        rings.append(ring(p, d, ref))
+    d = _unit(C[-1] - C[-2])
+    rings.append(ring(C[-1], d, ref, 1.0))
+    return rings, _shoot(prims, C[-1], d, r_guess)
+
+
+def _arc_tube(loop_pts, C, prims, r_guess, s0, min_step=0.4):
+    """A flat appendage (a blade ear): equal-arc rings, each a ring's perimeter / count further on (square quads,
+    at least min_step x the first spacing), from s0 to the tip."""
+    p0, d0, cum = _chain_point(C, s0)
+    ref, _, sign = _loop_frame(loop_pts, d0)
+    n = len(loop_pts)
+    per = lambda R: np.linalg.norm(np.diff(np.r_[R, R[:1]], axis=0), axis=1).sum()
+    rings = [_ring_arc(prims, p0, d0, ref, n, sign, r_guess)]
+    sp0 = per(rings[0]) / n
+    s = s0
+    while True:
+        s += max(per(rings[-1]) / n, min_step * sp0)
+        if s > cum[-1] - 0.3 * sp0:
+            break
+        p, d, _ = _chain_point(C, s)
+        ref = _unit(ref - d * (ref @ d))
+        rings.append(_ring_arc(prims, p, d, ref, n, sign, r_guess))
+    return rings, _shoot(prims, C[-1], _unit(C[-1] - C[-2]), r_guess)
+
+
+def _eye_margins(c, rot, prims, reach, the, phi_max=1.3, n_samp=200):
+    """Per azimuth round the lids (frame rot at c, looking along local -y), the angle off the axis where the first
+    exit of rays from c drops from lid to eyeball (the lid edge), median-smoothed round the eye; zeros if shut."""
+    pm = np.zeros(len(the))
+    ph = np.linspace(phi_max, 0.0, n_samp)
+    for i, t in enumerate(the):
+        loc = np.stack([np.sin(ph) * np.cos(t), -np.cos(ph), np.sin(ph) * np.sin(t)], -1)
+        _, R = _exit(prims, c, loc @ rot.T, reach)
+        jump = np.diff(R)
+        m = int(np.argmin(jump))
+        pm[i] = 0.5 * (ph[m] + ph[m + 1]) if jump[m] < -0.05 * R[m] else np.nan  # no step: the lids meet here
+    ok = np.isfinite(pm)
+    if ok.sum() < 3:
+        return np.zeros(len(the))
+    idx = np.arange(len(the))
+    pm = np.interp(idx, idx[ok], pm[ok], period=len(the))
+    return np.median(np.stack([np.roll(pm, k) for k in range(-2, 3)]), 0)
+
+
+def _eye_rings(loop_pts, c, rot, prims, reach, voxel, n_samp=200):
+    """An eye from a loop round it (on the lids, within their cone): rings over the lid down to its edge, a ring on
+    the eyeball under the edge, the eyeball in to its pole. All by rays from the lids' centre c (frame rot,
+    looking along local -y: the opening's walls are radial, so near the eye the surface is star-shaped from c);
+    along each spoke (a loop vertex's azimuth) the first exit drops from lid to eyeball at the margin. Margins are
+    median-smoothed round the eye (one spoke caught the brow's edge and spiked)."""
+    n = len(loop_pts)
+    q = (loop_pts - c) @ rot
+    phi0 = np.arccos(np.clip(-q[:, 1] / np.linalg.norm(q, axis=1), -1, 1))
+    th = np.arctan2(q[:, 2], q[:, 0])
+
+    def world(phi, the):
+        return np.stack([np.sin(phi) * np.cos(the), -np.cos(phi) * np.ones_like(the), np.sin(phi) * np.sin(the)],
+                        -1) @ rot.T
+
+    def ring(phi):
+        return _exit(prims, c, world(phi, th), reach)[0]
+    pm = _eye_margins(c, rot, prims, reach, th)
+    shut = not pm.any()
+    dphi = 0.012  # either side of the margin (margins are found to 1.3 / 200 rad)
+    sp = np.linalg.norm(np.diff(np.r_[loop_pts, loop_pts[:1]], axis=0), axis=1).sum() / n
+    edge = ring(pm + dphi)
+    n_lid = max(1, int(round(np.linalg.norm(edge - loop_pts, axis=1).mean() / sp)))
+    rings = [loop_pts.copy()] + [ring(phi0 + (pm + dphi - phi0) * k / n_lid) for k in range(1, n_lid)] + [edge]
+    if not shut:
+        ball = ring(np.maximum(pm - dphi, 0))
+        n_ball = int(round(np.linalg.norm(ball - _exit(prims, c, world(np.zeros(1), np.zeros(1)), reach)[0],
+                                          axis=1).mean() / sp))
+        rings += [ring(np.maximum(pm - dphi, 0) * (1 - k / (n_ball + 1))) for k in range(n_ball + 1)]
+    return rings, _exit(prims, c, world(np.zeros(1), np.zeros(1)), reach)[0][0]
+
+
+def _ear_chain(s, side):
+    """The model's ear: bones named ear* on one side, chained from the midline out. (points, bone names, radius)."""
+    bs = {n: b for n, b in s["bones"].items() if n.startswith("ear") and n.endswith("." + side)}
+    if not bs:
+        return None
+    pos = lambda j: np.asarray(resolve_point(s, j), float)
+    first = min((b["a"] for b in bs.values()), key=lambda j: abs(pos(j)[0]))
+    C, j, left = [pos(first)], first, dict(bs)
+    while True:
+        nxt = [(n, b) for n, b in left.items() if j in (b["a"], b["b"])]
+        if not nxt:
+            break
+        n, b = nxt[0]
+        j = b["b"] if b["a"] == j else b["a"]
+        C.append(pos(j))
+        del left[n]
+    r = max(float(s["joints"][e].get("r", 0.01)) for b in bs.values() for e in (b["a"], b["b"]))
+    return np.array(C), set(bs), r
+
+
+def _plan_cuts(W, tpl, s, prims):
+    """Cut loops on the template: {key: {"loop", "inner" (a vertex inside), "kind" (digit/ear/eye), and for ears and
+    eyes "target": where the loop goes on the model}}, from the skeleton-warped template W."""
+    P, face = tpl["P"], tpl["face"]
+    faces, nb, ef = topology(tpl["L"], tpl["S"])
+    names = {p.name for p in prims}
+    out = {}
+    for side, sg in (("L", 1.0), ("R", -1.0)):
+        for tn, mn in [(f"finger{k}", f"hand_f{k}") for k in range(1, 5)] + [("thumb", "hand_th")]:
+            if f"{tn}_0.{side}" not in tpl["J"]:
+                continue
+            ch = np.array([tpl["J"][f"{tn}_{j}.{side}"] for j in range(4)])
+            ax = _unit(ch[-1] - ch[0])
+            near_tip = np.flatnonzero(np.linalg.norm(P - ch[-1], axis=1) < 0.03)
+            tip = int(near_tip[np.argmax((P[near_tip] - ch[0]) @ ax)])
+            loop = _base_loop(P, faces, nb, ef, ch[0], ax, tip)
+            if loop is not None:
+                out[f"{tn}.{side}"] = {"loop": loop, "inner": tip, "kind": "digit", "model": mn, "side": side}
+        if "ear_tip" in face:
+            loop, tipv = _ear_loop(P, faces, nb, ef, np.array(face["ear_tip"]) * [sg, 1, 1])
+            if loop is not None:
+                cut = {"loop": loop, "inner": tipv, "kind": "ear"}
+                chain = _ear_chain(s, side)
+                if chain is not None:
+                    C, bn, r = chain
+                    own = [p for p in prims if p.name in bn]
+                    s0 = _clear_start(C, own, prims, r, 0.5 * np.linalg.norm(C[-1] - C[0]))
+                    p0, d0, _ = _chain_point(C, s0)
+                    ref, _, sign = _loop_frame(W[loop], d0)
+                    cut.update(chain=(C, own, r, s0), target=_ring_arc(own, p0, d0, ref, len(loop), sign, r))
+                out[f"ear.{side}"] = cut
+        if "eye_cut" in face and f"face_lids.{side}" in names:
+            loop, inner = _eye_loop(P, faces, nb, ef, np.array(face["landmarks"]["eye.L"]) * [sg, 1, 1],
+                                    face["eye_cut"])
+            if loop is not None and inner is not None:
+                lp = next(p for p in prims if p.name == f"face_lids.{side}")
+                c, rot, ro = lp.params["c"], lp.params["rot"], lp.params["ro"]
+                q = (W[loop] - c) @ rot
+                th = np.arctan2(q[:, 2], q[:, 0])
+                dw = (np.diff(np.r_[th, th[:1]]) + np.pi) % (2 * np.pi) - np.pi
+                the = th[0] + np.sign(np.median(dw)) * np.arange(len(loop)) / len(loop) * 2 * np.pi
+                # the loop follows the lid edge's shape, eye_phi (radians off the lids' axis) outside it: at a fixed
+                # angle it crossed a wide almond opening at the corners
+                pm = _eye_margins(c, rot, prims, 3 * ro, the)
+                phi = np.minimum(pm + face.get("eye_phi", 0.4), 1.3)
+                loc = np.stack([np.sin(phi) * np.cos(the), -np.cos(phi), np.sin(phi) * np.sin(the)], -1)
+                out[f"eye.{side}"] = {"loop": loop, "inner": inner, "kind": "eye", "lids": (c, rot, ro),
+                                      "target": _exit(prims, c, loc @ rot.T, 4 * ro)[0]}
+    return out
+
+
+def _patches(W, cuts, s, prims, voxel, log):
+    """The model's own patch per cut (loops with a target carried there first, moving W): {key: (loop, inner,
+    (rings, tip) or None for a cap)}."""
+    for cut in cuts.values():
+        if "target" in cut:
+            W[:] = _carry(W, cut["loop"], cut["target"])
+    out = {}
+    for key, cut in cuts.items():
+        loop, patch = cut["loop"], None
+        if cut["kind"] == "digit":
+            mn, side = cut["model"], cut["side"]
+            if f"{mn}_0.{side}" in s["joints"]:
+                C = np.array([resolve_point(s, f"{mn}_{j}.{side}") for j in range(4)])
+                own = [p for p in prims if p.name.startswith(mn + "_") and p.name.endswith("." + side)]
+                r = float(s["joints"][f"{mn}_1.{side}"].get("r", 0.01))
+                patch = _tube(W[loop], C, own or prims, r, 2 * np.pi * r / len(loop))
+        elif cut["kind"] == "ear" and "chain" in cut:
+            C, own, r, s0 = cut["chain"]
+            patch = _arc_tube(W[loop], C, own, r, s0)
+        elif cut["kind"] == "eye":
+            c, rot, ro = cut["lids"]
+            patch = _eye_rings(W[loop], c, rot, prims, 3 * ro, voxel)  # noqa
+        out[key] = (loop, cut["inner"], patch)
+        log.append(f"{key}: loop of {len(loop)}, " + ("capped" if patch is None else f"{len(patch[0])} rings"))
+    return out
+
+
+def _stitch(V, faces, cuts):
+    """Remove each loop's inside, add its patch's rings (the first replaces the loop) or a cap. Returns (V, faces,
+    origin per vertex: 0 template, 1 generated ring (fixed), 2 generated free (cap centres), old -> new index)."""
+    nb = {}
+    for f in faces:
+        for k in range(len(f)):
+            nb.setdefault(f[k], set()).update((f[k - 1], f[(k + 1) % len(f)]))
+    drop = set()
+    for loop, inner, _ in cuts.values():
+        drop |= _tip_side(loop, nb, inner) - set(loop)
+    kept = [f for f in faces if not any(v in drop for v in f)]
+    directed = {(f[k], f[(k + 1) % len(f)]) for f in kept for k in range(len(f))}
+    n0 = len(V)
+    V = list(np.asarray(V))
+    origin = [0] * n0
+    new = []
+    for loop, _, patch in cuts.values():
+        n = len(loop)
+        fwd = (loop[0], loop[1]) in directed  # the kept face runs along the loop: patch faces run against it
+
+        def quad(a, b, c, d):
+            return [b, a, d, c] if fwd else [a, b, c, d]
+
+        def fan(ring, t):
+            for i in range(0, n - 1, 2):
+                a, b, c = ring[i], ring[i + 1], ring[(i + 2) % n]
+                new.append([c, b, a, t] if fwd else [a, b, c, t])
+            if n % 2:
+                new.append([ring[0], ring[-1], t] if fwd else [ring[-1], ring[0], t])
+        if patch is None:
+            V.append(np.mean([V[i] for i in loop], 0))
+            origin.append(2)
+            fan(loop, len(V) - 1)
+            continue
+        rings, tip = patch
+        for i, v in enumerate(loop):
+            V[v] = rings[0][i]
+            origin[v] = 1
+        prev = list(loop)
+        for R in rings[1:]:
+            ids = list(range(len(V), len(V) + n))
+            V.extend(R)
+            origin.extend([1] * n)
+            for i in range(n):
+                new.append(quad(prev[i], prev[(i + 1) % n], ids[(i + 1) % n], ids[i]))
+            prev = ids
+        V.append(tip)
+        origin.append(1)
+        fan(prev, len(V) - 1)
+    faces = kept + new
+    used = sorted({v for f in faces for v in f})
+    remap = np.full(len(V), -1)
+    remap[used] = np.arange(len(used))
+    return (np.array([V[v] for v in used]), [[int(remap[v]) for v in f] for f in faces],
+            np.array([origin[v] for v in used]), remap[:n0])
+
+
+# ---------------------------------------------------------------------------------------------------- fitting
+
+def _fit(V, L, S, prims, voxel, regions, dom, keep, fixed, reach=0.12, rounds=50):
+    """Shoot free vertices along their normals to the nearest crossing of their region's surface, then relax
+    along the surface and re-project; fixed vertices stay, kept ones (mouth bag) follow their neighbours."""
+    T = tris(L, S)
+    E = edges(L, S)
+    N = _vnormals(V, T)
+    free = ~keep & ~fixed
+    t = np.linspace(-reach, reach, 121)
+    f = np.full((len(V), len(t)), np.nan)
+    for k, reg in enumerate(regions):
+        m = (dom == k) & free
+        if m.any():
+            f[m] = sdf.field_at(reg or prims, V[m][:, None, :] + t[None, :, None] * N[m][:, None, :], margin=reach)
+    m = free & (dom < 0)
+    if m.any():
+        f[m] = sdf.field_at(prims, V[m][:, None, :] + t[None, :, None] * N[m][:, None, :], margin=reach)
+    ff = np.nan_to_num(f, nan=1.0)
+    sgn = np.signbit(ff)
+    cost = np.where(sgn[:, 1:] != sgn[:, :-1], np.abs(0.5 * (t[1:] + t[:-1]))[None, :], np.inf)
+    k = cost.argmin(1)
+    i = np.arange(len(V))
+    ok = np.isfinite(cost[i, k]) & free
+    f0, f1 = ff[i, k], ff[i, k + 1]
+    tt = t[k] + (t[k + 1] - t[k]) * f0 / np.where(f0 - f1 == 0, 1, f0 - f1)
+    V = V.copy()
+    V[ok] += tt[ok, None] * N[ok]
+    missed = free & ~ok
+
+    def newton(X, it, m):
+        X = X.copy()
+        X[m] = surface.newton(prims, X[m], voxel * 0.125, voxel, iterations=it)[0]
+        return X
+    V = newton(V, 40, missed)
+    V = newton(V, 8, free)
+    deg = np.bincount(E.ravel(), minlength=len(V))
+    for _ in range(rounds):
+        N = _vnormals(V, T)
+        lap = _lap(V, E, deg)
+        dv = lap - (lap * N).sum(1, keepdims=True) * N
+        X = V + 0.5 * dv
+        X[keep] = V[keep] + 0.5 * lap[keep]
+        X[free] = surface.newton(prims, X[free], voxel * 0.125, voxel, iterations=6)[0]
+        X[fixed] = V[fixed]
+        V = X
+    return V, int(missed.sum())
+
+
+def _untangle(V, L, S, prims, voxel, frozen, passes=12, log=None):
+    """Faces turned against the field (tangles in tight creases): their vertices and two rings round them smoothed
+    and re-projected, until none are left or passes run out."""
+    T = tris(L, S)
+    E = edges(L, S)
+    deg = np.bincount(E.ravel(), minlength=len(V))
+    nb = [[] for _ in range(len(V))]
+    for a, b in E:
+        nb[a].append(b)
+        nb[b].append(a)
+    bad = np.zeros(len(T), bool)
+    for it in range(passes):
+        bad = turned(V, T, prims) & ~frozen[T].all(1)
+        if not bad.any():
+            break
+        m = np.zeros(len(V), bool)
+        m[T[bad].ravel()] = True
+        for _ in range(2):
+            m[[j for i in np.flatnonzero(m) for j in nb[i]]] = True
+        m &= ~frozen
+        for _ in range(4):
+            V[m] += 0.5 * _lap(V, E, deg)[m]
+        V[m] = surface.newton(prims, V[m], voxel * 0.125, voxel, iterations=8)[0]
+    if log is not None:
+        log.append(f"untangle: {int(bad.sum())} faces still turned after {it + 1} passes")
+    return V
+
+
+def turned(V, T, prims, near=0.0015):
+    """Triangles on the surface (centre within `near` of it) whose normal faces against the field's gradient."""
+    c = V[T].mean(1)
+    fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
+    g = sdf.gradient(prims, c, 1e-4)
+    on = np.abs(sdf.field_at(prims, c, margin=0.01)) < near
+    return ((fn * g).sum(1) < 0) & on
+
+
+# ---------------------------------------------------------------------------------------------------- main
+
+def wrap(spec: dict, template: str = "male_stylized", log: list | None = None) -> dict:
+    """The model's body as the template's quads: {"verts", "loops", "sizes", "origin" (0 template, 1/2 generated),
+    "log"}. The spec needs the humanoid joints (see is_humanoid); a face kit, hand kit and ear bones are used when
+    present."""
+    log = [] if log is None else log
+    tpl = load_template(template)
+    s = expand_mirror(spec)
+    prims = [p for p in compile_prims(spec) if p.part == "body"]
+    lo = np.min([p.lo for p in prims], 0)
+    hi = np.max([p.hi for p in prims], 0)
+    voxel = float((hi - lo).max()) / 200
+    P = tpl["P"]
+    W, segs, dom, apply, Jm = _skeleton_warp(P, tpl["J"], s, prims)
+    cuts = _plan_cuts(W, tpl, s, prims)
+    if "face" in (spec.get("kits") or {}) or any(k.startswith("face_") for k in s["blobs"]):
+        extra = [(W[c["loop"][i]], c["target"][i]) for c in cuts.values() if "target" in c
+                 for i in range(0, len(c["loop"]), max(1, len(c["loop"]) // 6))]
+        W = _face_warp(W, apply, tpl["face"], s, log, extra)
+    E0 = edges(tpl["L"], tpl["S"])
+    if not any(n.startswith("foot_t") for n in s["joints"]):  # no toes: smooth the template's into the foot
+        toe = np.zeros(len(P), bool)
+        for side in "LR":
+            a, t = tpl["J"][f"ankle.{side}"], tpl["J"][f"toe.{side}"]
+            dirn = t - a
+            dirn[2] = 0
+            dirn /= np.linalg.norm(dirn)
+            toe |= ((P - t) @ dirn > -0.02) & (P[:, 2] < 0.09) & (np.sign(P[:, 0]) == np.sign(t[0]))
+        W = _smooth_away(W, E0, toe)
+        log.append(f"toes smoothed away ({toe.sum()} vertices)")
+    keep0 = np.zeros(len(P), bool)  # the mouth and nostril cavities follow their neighbours: projected they poke
+    keep0[tpl["face"].get("cavities", [])] = True  # through the lips (the old rule, "inside the model near the head",
+    # also caught the goblin's cheeks and jaw: they sat 15-25 mm inside the surface)
+    faces, _, _ = topology(tpl["L"], tpl["S"])
+    cuts = _patches(W, cuts, s, prims, voxel, log)
+    V, fl, origin, remap = _stitch(W, faces, cuts)
+    L = np.array([v for f in fl for v in f])
+    S = np.array([len(f) for f in fl])
+    # per new vertex: its template vertex's dominant segment and keep flag (generated ones: none)
+    n_t = len(V)
+    dom2 = np.full(n_t, -1)
+    keep = np.zeros(n_t, bool)
+    ok = remap >= 0
+    dom2[remap[ok]] = dom[ok]
+    keep[remap[ok]] = keep0[ok]
+    fixed = origin == 1
+    keep &= ~fixed
+    # regions: a vertex first projects onto the primitives of its segment and the neighbouring ones (a hand never
+    # lands on a thigh)
+    cen = np.array([0.5 * (p.lo + p.hi) for p in prims])
+    owner = np.stack([_seg_dist(cen, Jm[a], Jm[b]) for a, b in segs], 1).argmin(1)
+    regions = [[p for p, o in zip(prims, owner) if o in [i for i, (c, d) in enumerate(segs) if {c, d} & {a, b}]]
+               for a, b in segs]
+    V, missed = _fit(V, L, S, prims, voxel, regions, dom2, keep, fixed)
+    V = _untangle(V, L, S, prims, voxel, fixed | keep, log=log)
+    fv = np.abs(sdf.field_at(prims, V, margin=0.05))[~keep] * 1000
+    log.append(f"wrapped: {len(V)} verts, {len(S)} faces ({(S == 4).mean():.0%} quads); {missed} missed the surface "
+               f"along their normal; |field| mean {fv.mean():.2f} p95 {np.percentile(fv, 95):.2f} max {fv.max():.1f} mm")
+    return {"verts": V, "loops": L, "sizes": S, "origin": origin, "log": log,
+            "patches": {k: c[2][0] for k, c in cuts.items() if c[2] is not None}}

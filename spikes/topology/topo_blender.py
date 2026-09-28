@@ -111,6 +111,14 @@ def render(job):
     w.use_even_offset = False
     w.use_relative_offset = False
     w.use_replace = True
+    if job.get("hl_mesh"):  # faces to flag (turned ones): a thick red wireframe
+        h = np.load(job["hl_mesh"])
+        hl = mesh_obj("hl", h["verts"], h["loops"], h["sizes"])
+        hw = hl.modifiers.new("w", "WIREFRAME")
+        hw.thickness = job.get("wire", 0.0012) * 2.5
+        hw.use_replace = True
+        hw.use_even_offset = False
+        hl.color = (0.95, 0.1, 0.1, 1)
     for i, ring in enumerate(job.get("rings") or []):  # closed polylines drawn as red tubes
         cu = bpy.data.curves.new(f"ring{i}", "CURVE")
         cu.dimensions = "3D"

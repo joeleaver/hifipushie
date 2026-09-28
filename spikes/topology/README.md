@@ -24,3 +24,9 @@ Troll body, rig test pose (`rig.test_pose`), same `rig.rig_weights` on every mes
   -DCMAKE_BUILD_TYPE=Release ..`, `make`.
 
 Findings: see "Character topology spike: results" in CLAUDE.md.
+
+Template wrap: `wrap.py` / `tubes.py` were the spike; the pipeline now lives in `src/hifipushie/retopo.py` (template in
+`src/hifipushie/templates/`). Judge a result with `MODEL=<m> wrap_eval.py mesh.npz out_dir` (error by region incl.
+ears, rings at the anatomy's loop planes, turned faces, posed sheet) and `wrap_eval.py closeup mesh.npz out.png
+<joint> <scale> [dx dy dz]` (turned faces in red; `ERR=3`: the model's surface the mesh misses by > 3 mm in red;
+`RINGS=a.npy`: polylines; mesh `model`: the SDF mesh). `run_retopo.py model out.npz`, `variants.py out ENV=v ...`.
