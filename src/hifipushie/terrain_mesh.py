@@ -545,10 +545,10 @@ class Grid:
         self.tile = float(cfg["tile"])
         self.voxel = float(cfg["voxel"])
         self.lods = int(cfg["lods"])
-        vmax = self.voxel * 2 ** (self.lods - 1)
+        vmax = self.voxel
         if abs(self.tile / vmax - round(self.tile / vmax)) > 1e-9:
-            raise ValueError(f"tile {self.tile} m isn't a whole number of the coarsest voxel {vmax} m")
-        # the meshed world: the extent from the origin, trimmed to whole coarsest voxels
+            raise ValueError(f"tile {self.tile} m isn't a whole number of voxels ({vmax} m)")
+        # the meshed world: the extent from the origin, trimmed to whole voxels
         self.lo = self.origin
         span = np.array([x1, y1]) - self.origin
         self.span = np.floor(span / vmax + 1e-9) * vmax
@@ -686,7 +686,7 @@ def _decimate(P, faces, err, budget, field):
             if not _manifold(best[1]):  # over budget and folded: the budget gives way
                 return P, faces
             return best
-    lo = 64
+    lo = 8
     for _ in range(7):  # search the count on a log scale
         if hi / lo < 1.15:
             break
@@ -708,17 +708,213 @@ def _manifold(f):
     return bool(np.unique(und, return_counts=True)[1].max() <= 2)
 
 
+def _polylines(edges):
+    """The ordered vertex lists an undirected edge set makes: open chains (from a vertex that isn't degree 2) and
+    closed loops (first vertex repeated at the end). Deterministic: walks start at the lowest row."""
+    adj = {}
+    for a, b in edges:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    done = set()
+
+    def walk(s):
+        line, cur = [s], s
+        while True:
+            nxt = sorted(x for x in adj[cur] if (min(cur, x), max(cur, x)) not in done)
+            if not nxt:
+                return line
+            x = nxt[0]
+            done.add((min(cur, x), max(cur, x)))
+            line.append(x)
+            cur = x
+            if cur == s:
+                return line
+
+    out = []
+    for s in sorted(v for v, n in adj.items() if len(n) != 2):
+        while any((min(s, x), max(s, x)) not in done for x in adj[s]):
+            out.append((walk(s), False))
+    for s in sorted(adj):
+        if any((min(s, x), max(s, x)) not in done for x in adj[s]):
+            out.append((walk(s), True))
+    return out
+
+
+def _simplify(P, line, closed, tol, always):
+    """Douglas-Peucker on a chain of rows (in 3D, within its border plane): the rows kept, in order. Ends, and rows
+    in `always` (tile corners), are kept; a loop keeps at least 3 (it must not close up)."""
+    pts = [r for r in line if r in always] if closed else []
+    keep = {line[0], line[-1], *[r for r in line if r in always]}
+
+    def dp(a, b):
+        stack = [(a, b)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            A, B = P[line[a]], P[line[b]]
+            Q = P[line[a + 1:b]]
+            d = B - A
+            L2 = max(float(d @ d), 1e-18)
+            t = np.clip((Q - A) @ d / L2, 0, 1)
+            e = np.linalg.norm(Q - (A + t[:, None] * d), axis=1)
+            k = int(np.argmax(e))
+            if e[k] > tol:
+                keep.add(line[a + 1 + k])
+                stack += [(a, a + 1 + k), (a + 1 + k, b)]
+
+    if closed:
+        body = line[:-1]
+        far = int(np.argmax(np.linalg.norm(P[body] - P[body[0]], axis=1)))
+        keep.add(body[far])
+        dp(0, far)
+        dp(far, len(line) - 1)
+        if len(keep) < 3:  # a thin loop: the vertex furthest from its chord too
+            A, B = P[body[0]], P[body[far]]
+            d = np.linalg.norm(np.cross(P[body] - A, B - A), axis=1)
+            keep.add(body[int(np.argmax(d))])
+    else:
+        # the anchors split the chain; each piece simplified on its own
+        anchors = [i for i, r in enumerate(line) if r in keep]
+        for a, b in zip(anchors, anchors[1:]):
+            dp(a, b)
+    del pts
+    return [r for r in line if r in keep]
+
+
+def _plane_rows(L, keep):
+    for ln, _ in L:
+        for r in ln:
+            if r in keep:
+                yield r
+
+
+def _cross3(a, b, c):
+    ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+    return (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+
+
+def _collapse_border(P, F, drop):
+    """Collapse each border vertex in `drop` into a neighbour along the border (half-edge collapse onto the
+    neighbour's position). Returns the faces left and the vertices that couldn't go without turning a face over or
+    joining the mesh badly (the link condition)."""
+    F = F.copy()
+    Pl = P.tolist()
+    alive = np.ones(len(F), bool)
+    bn = {}
+    for a, b in _boundary_edges(F):
+        bn.setdefault(int(a), set()).add(int(b))
+        bn.setdefault(int(b), set()).add(int(a))
+    # faces are only looked up round border vertices (a collapse moves a border vertex onto a border vertex)
+    isb = np.zeros(int(F.max()) + 1, bool)
+    isb[list(bn)] = True
+    vf = {}
+    for f in np.flatnonzero(isb[F].any(1)):
+        for v in F[f]:
+            if isb[v]:
+                vf.setdefault(int(v), set()).add(int(f))
+    dropping = set(int(u) for u in drop)
+
+    def nbrs(v):
+        return {int(x) for f in vf.get(v, ()) for x in F[f]} - {v}
+
+    def attempt(u, w):
+        fu = vf.get(u, set())
+        shared = [f for f in fu if w in F[f]]
+        if len(shared) != 1:
+            return False
+        third = [int(x) for x in F[shared[0]] if x != u and x != w]
+        if nbrs(u) & nbrs(w) != set(third):
+            return False
+        for f in fu:
+            if f == shared[0]:
+                continue
+            tri = F[f]
+            n0 = _cross3(Pl[tri[0]], Pl[tri[1]], Pl[tri[2]])
+            t2 = [w if x == u else x for x in tri]
+            n1 = _cross3(Pl[t2[0]], Pl[t2[1]], Pl[t2[2]])
+            l0 = math.sqrt(n0[0] ** 2 + n0[1] ** 2 + n0[2] ** 2)
+            l1 = math.sqrt(n1[0] ** 2 + n1[1] ** 2 + n1[2] ** 2)
+            if l1 < 1e-9 or n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0.2 * l0 * l1:
+                return False
+        f0 = shared[0]
+        alive[f0] = False
+        for x in F[f0]:
+            vf.get(int(x), set()).discard(f0)
+        for f in list(vf[u]):
+            F[f][F[f] == u] = w
+            vf.setdefault(w, set()).add(f)
+        vf[u] = set()
+        for x in bn.pop(u, set()):
+            bn[x].discard(u)
+            if x != w:
+                bn[x].add(w)
+                bn[w].add(x)
+        return True
+
+    pending = sorted(dropping)
+    for _ in range(4):
+        left = []
+        for u in pending:
+            # into a neighbour that stays if there is one (fewer moves), else one that goes later
+            cands = sorted(bn.get(u, ()), key=lambda x: (x in dropping, x))
+            if not any(attempt(u, w) for w in cands):
+                left.append(u)
+            else:
+                dropping.discard(u)
+        if len(left) == len(pending):
+            break
+        pending = left
+    return F[alive], set(pending)
+
+
 def _chain_dist(A, segs_b):
-    """Distance from points A to a set of segments (m, 2, 3), via dense samples along the segments."""
+    """Distance from points A (n, 3) to the nearest of the segments (m, 2, 3)."""
     if not len(segs_b):
         return np.full(len(A), np.inf)
-    L = np.linalg.norm(segs_b[:, 1] - segs_b[:, 0], axis=1)
-    pts = []
-    for (p, q), l in zip(segs_b, L):
-        m = max(2, int(l / 0.02) + 1)
-        pts.append(p + np.linspace(0, 1, m)[:, None] * (q - p))
-    d, _ = cKDTree(np.vstack(pts)).query(A)
-    return d
+    P0, D = segs_b[:, 0], segs_b[:, 1] - segs_b[:, 0]
+    L2 = np.maximum((D * D).sum(1), 1e-18)
+    out = np.empty(len(A))
+    for s0 in range(0, len(A), 256):
+        Q = A[s0:s0 + 256, None, :] - P0[None]
+        t = np.clip((Q * D[None]).sum(2) / L2[None], 0, 1)
+        out[s0:s0 + 256] = np.linalg.norm(Q - t[..., None] * D[None], axis=2).min(1)
+    return out
+
+
+_CTX: dict = {}  # what the export's worker processes read (forked: shared, not pickled)
+
+
+def _pool():
+    import multiprocessing
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+    return ProcessPoolExecutor(max_workers=min(8, os.cpu_count() or 1), mp_context=multiprocessing.get_context("fork"))
+
+
+def _job_dense(ij):
+    """A tile's LOD0 mesh: marching cubes on the lattice, interior projected, border vertices the canonical ones."""
+    c = _CTX
+    G, v0, field, reg, CP = c["G"], c["v0"], c["field"], c["reg"], c["CP"]
+    idx, faces, rng, kk = c["mc"][ij]
+    P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, idx[:, 2] * v0]
+    border = np.array(sorted(kk), np.int64)
+    rows = np.array([reg[kk[q]] for q in border], np.int64)
+    inner = np.setdiff1d(np.arange(len(P)), border)
+    P[inner], _ = project(field, P[inner], v0)
+    P[border] = CP[rows]
+    vrow = np.full(len(P), -1, np.int64)
+    vrow[border] = rows
+    return P, faces, vrow
+
+
+def _job_collapse(args):
+    ij, keep_rows = args
+    P, faces, vrow = _CTX["dense"][ij]
+    drop = np.flatnonzero((vrow >= 0) & ~np.isin(vrow, keep_rows))
+    Fk, bad = _collapse_border(P, faces, drop)
+    return Fk, {int(vrow[u]) for u in bad}
 
 
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
@@ -742,166 +938,129 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     if cfg.get("only"):  # a block of tiles [[i0, j0], [i1, j1]] (inclusive), for trying things
         (i0, j0), (i1, j1) = cfg["only"]
         tiles = [(i, j) for (i, j) in tiles if i0 <= i <= i1 and j0 <= j <= j1]
-    log(f"{len(tiles)} tiles ({G.ni} x {G.nj}) of {G.tile:g} m, LOD voxels {[G.v(k) for k in range(G.lods)]}, "
-        f"{len(vols)} volume pieces")
+    log(f"{len(tiles)} tiles ({G.ni} x {G.nj}) of {G.tile:g} m, voxel {G.voxel:g} m, LOD errors "
+        f"{cfg['error'][:G.lods]} m, {len(vols)} volume pieces")
 
-    # ---- 1. marching cubes per tile per LOD, and the canonical border vertices (decided once)
+    # ---- 1. marching cubes per tile, and the canonical border vertices (decided once)
     t0 = time.time()
+    v0 = G.voxel
     mc = {}
-    canon = []  # per LOD: key -> row; arrays of positions/normals/weights
-    for k in range(G.lods):
-        reg = {}
-        for (i, j) in tiles:
-            r = _tile_mc(field, G, i, j, k, vols)
-            if r is None:
-                mc[i, j, k] = None
-                continue
-            idx, faces, rng = r
-            (_, _), (_, _), n, (NX, NY) = G.cells(i, j, k)
-            keys = _border_keys(idx, rng, n, NX, NY)
-            for key in keys.values():
-                reg.setdefault(key, len(reg))
-            mc[i, j, k] = (idx, faces, rng, keys)
-        keys = sorted(reg, key=reg.get)
-        a, b, fixed = _key_geometry(keys, G, k)
-        v = G.v(k)
-        Fa, Fb = _lattice_values(field, a, v), _lattice_values(field, b, v)
-        tt = Fa / (Fa - Fb)
-        P0 = a + tt[:, None] * (b - a)
-        P, N = project(field, P0, v, fixed=fixed)
-        W, C = mats.weights(P, N)
-        canon.append({"reg": reg, "P": P, "N": N, "W": W, "C": C, "fixed": fixed,
-                      "pos": {tuple(p): r for r, p in enumerate(P)}})
-    timing["marching cubes + border chains"] = time.time() - t0
+    reg = {}
+    for (i, j) in tiles:
+        r = _tile_mc(field, G, i, j, 0, vols)
+        if r is None:
+            mc[i, j] = None
+            continue
+        idx, faces, rng = r
+        (_, _), (_, _), n, (NX, NY) = G.cells(i, j, 0)
+        keys = _border_keys(idx, rng, n, NX, NY)
+        for key in keys.values():
+            reg.setdefault(key, len(reg))
+        mc[i, j] = (idx, faces, rng, keys)
+    keys = sorted(reg, key=reg.get)
+    a, b, fixed = _key_geometry(keys, G, 0)
+    Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
+    tt = Fa / (Fa - Fb)
+    CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
+    CW, CC = mats.weights(CP, CN)
+    pos = {tuple(p): r for r, p in enumerate(CP)}
+    timing["marching cubes + border vertices"] = time.time() - t0
 
-    # ---- 2. skirts: how far each border vertex's chain strays from its neighbours' chains at other LODs
+    # ---- 2. border chains per shared plane, simplified once per LOD (nested: each LOD keeps a subset of the last)
     t0 = time.time()
-    chains = {}  # (plane key, k) -> segments (m, 2, 3) and vertex rows
-    for (i, j, k), r in mc.items():
+    plane_edges = {}
+    for (i, j), r in mc.items():
         if r is None:
             continue
-        idx, faces, rng, keys = r
-        be = _boundary_edges(faces)
-        for (p, q) in be:
-            if p not in keys or q not in keys:
-                continue
-            for plane in _planes(keys[p], keys[q], G, k):
-                rows = (canon[k]["reg"][keys[p]], canon[k]["reg"][keys[q]])
-                chains.setdefault((plane, k), set()).add(rows)
-    need = [np.zeros(len(c["P"])) for c in canon]
-    for (plane, k), rows in chains.items():
-        segs = {kk: np.array([[canon[kk]["P"][a], canon[kk]["P"][b]] for a, b in chains[(plane, kk)]])
-                for kk in range(G.lods) if (plane, kk) in chains and kk != k}
-        vs = np.array(sorted({x for ab in rows for x in ab}))
-        for kk, sg in segs.items():
-            d = _chain_dist(canon[k]["P"][vs], sg)
-            need[k][vs] = np.maximum(need[k][vs], d)
+        idx, faces, rng, kk = r
+        for (p, q) in _boundary_edges(faces):
+            if p in kk and q in kk:
+                for plane in _planes(kk[p], kk[q], G, 0):
+                    plane_edges.setdefault(plane, set()).add(tuple(sorted((reg[kk[p]], reg[kk[q]]))))
+    corner = fixed[:, 0] & fixed[:, 1]
+    lines = {pl: _polylines(e) for pl, e in plane_edges.items()}
+    keep = []
+    prev = {pl: [(ln, closed) for ln, closed in L] for pl, L in lines.items()}
+    for k in range(G.lods):
+        ks = set(np.flatnonzero(corner).tolist())
+        cur = {}
+        for pl, L in prev.items():
+            simp = []
+            for ln, closed in L:
+                kept = _simplify(CP, ln, closed, cfg["error"][k], ks)
+                simp.append((kept, closed))
+                ks.update(kept)
+            cur[pl] = simp
+        keep.append(ks)
+        prev = cur
+    timing["border chains"] = time.time() - t0
+
+    # ---- 3. per tile: LOD0 projected; each LOD = border chains collapsed to its kept vertices, then decimated
+    t0 = time.time()
+    _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP)
+    work = [ij for ij, r in mc.items() if r is not None]
+    with _pool() as ex:
+        dense = dict(zip(work, ex.map(_job_dense, work)))
+    _CTX["dense"] = dense
+    collapsed = {}
+    with _pool() as ex:
+        for k in range(G.lods):  # a vertex a tile can't drop without folding is kept by both its tiles
+            for attempt in range(4):
+                kr = np.array(sorted(keep[k]), np.int64)
+                res = list(ex.map(_job_collapse, [(ij, kr) for ij in work]))
+                failed = set()
+                for ij, (Fk, bad) in zip(work, res):
+                    collapsed[ij[0], ij[1], k] = Fk
+                    failed |= bad
+                if not failed:
+                    break
+                keep[k] |= failed
+            else:
+                raise RuntimeError(f"LOD {k}: border vertices that can't be collapsed: {sorted(failed)[:10]}")
+    timing["border collapse"] = time.time() - t0
+    # chains as kept, per (plane, LOD): the segments both tiles now share, for the skirts
+    segs = {}
+    for pl, L in lines.items():
+        for k in range(G.lods):
+            s = []
+            for ln, closed in L:
+                kept = [r for r in ln if r in keep[k]]
+                s += list(zip(kept, kept[1:]))
+            segs[pl, k] = np.array([[CP[x], CP[y]] for x, y in s]).reshape(-1, 2, 3)
+    need = [np.zeros(len(CP)) for _ in range(G.lods)]
+    for (pl, k), sg in segs.items():
+        rows = np.unique(np.array(list(_plane_rows(lines[pl], keep[k])), np.int64))
+        if not len(rows):
+            continue
+        for j2 in range(G.lods):
+            if j2 != k and len(segs[pl, j2]):
+                need[k][rows] = np.maximum(need[k][rows], _chain_dist(CP[rows], segs[pl, j2]))
+    dirn = -CN.copy()
+    dirn[fixed] = 0.0
+    ln_ = np.linalg.norm(dirn, axis=1, keepdims=True)
+    dirn = np.where(ln_ > 0.2, dirn / np.maximum(ln_, 1e-9), np.array([0, 0, -1.0]))
     depth = []
-    for k, c in enumerate(canon):
+    for k in range(G.lods):
         d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
-        # into the rock, in the border plane: against the surface normal with the plane's normal taken out
-        dirn = -c["N"].copy()
-        dirn[c["fixed"]] = 0.0
-        ln = np.linalg.norm(dirn, axis=1, keepdims=True)
-        dirn = np.where(ln > 0.2, dirn / np.maximum(ln, 1e-9), np.array([0, 0, -1.0]))
         # never out through the other side of the rock (a skirt under a cave roof would hang into the cave)
-        thick = _thickness(field, c["P"], dirn, d, G.v(k))
-        depth.append((np.minimum(d, thick), dirn, d > thick + 1e-6))
+        depth.append(np.minimum(d, _thickness(field, CP, dirn, d, v0)))
     timing["skirts"] = time.time() - t0
 
-    # ---- 3. per tile: borders from the registry, project, decimate, re-project, weights, write
     t0 = time.time()
-    t_dec = 0.0
     manifest_tiles = []
     mat = [{"name": "terrain_reference", "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0,
                                                                    "roughnessFactor": 0.92}},
            {"name": "terrain_skirt", "doubleSided": True,
             "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}}]
-    stats = []
-    for (i, j) in tiles:
-        lo, hi = G.bounds(i, j)
-        trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
-        entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
-        zmin, zmax = np.inf, -np.inf
-        for k in range(G.lods):
-            r = mc[i, j, k]
-            if r is None:
-                entry["lods"].append(None)
-                continue
-            idx, faces, rng, keys = r
-            v = G.v(k)
-            c = canon[k]
-            P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, idx[:, 2] * v]
-            border = np.array(sorted(keys), np.int64)
-            rows = np.array([c["reg"][keys[b]] for b in border], np.int64)
-            inner = np.setdiff1d(np.arange(len(P)), border)
-            P[inner], _ = project(field, P[inner], v)
-            P[border] = c["P"][rows]
-            n_mc = len(faces)
-            td = time.time()
-            Pd, Fd = _decimate(P, faces, cfg["error"][k], cfg["budget"][k], field)
-            t_dec += time.time() - td
-            # border vertices must have come through untouched
-            rowd = np.array([c["pos"].get(tuple(p), -1) for p in Pd])
-            on = _on_border(Pd, lo, hi)
-            if np.any(on & (rowd < 0)):
-                raise RuntimeError(f"tile {i},{j} LOD {k}: {int(np.sum(on & (rowd < 0)))} border vertices moved in "
-                                   f"decimation")
-            bd = rowd >= 0
-            N = np.zeros_like(Pd)
-            before = Pd.copy()
-            Pd[~bd], N[~bd] = project(field, Pd[~bd], v)
-            # where projecting a coarse vertex folds its faces, it stays where decimation put it
-            fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
-            if fold.any():
-                Pd[fold] = before[fold]
-                N[fold] = _vertex_normals(Pd, Fd)[fold]
-            N[bd] = c["N"][rowd[bd]]
-            W = np.zeros((len(Pd), len(mats.layers)), np.float32)
-            C = np.zeros((len(Pd), 3))
-            W[bd], C[bd] = c["W"][rowd[bd]], c["C"][rowd[bd]]
-            W[~bd], C[~bd] = mats.weights(Pd[~bd], N[~bd])
-            # skirts along shared borders (not the world's edge)
-            be = _boundary_edges(Fd)
-            shared = np.array([_shared(Pd[a], Pd[b], lo, hi, G) for a, b in be], bool) if len(be) else np.zeros(0, bool)
-            be = be[shared] if len(be) else be
-            sv = np.unique(be.ravel()) if len(be) else np.zeros(0, np.int64)
-            dep, dirn, _ = depth[k]
-            top = Pd[sv]
-            bot = top + dirn[rowd[sv]] * dep[rowd[sv]][:, None]
-            m = {int(x): r_ for r_, x in enumerate(sv)}
-            SP = np.empty((2 * len(sv), 3))
-            SP[0::2], SP[1::2] = top, bot
-            SN = np.repeat(N[sv], 2, 0)
-            SC = np.repeat(C[sv], 2, 0)
-            SW = np.repeat(W[sv], 2, 0)
-            sf = []
-            for a, b in be:  # the face has a -> b; the skirt hangs below it, facing the same way
-                ta, tb = 2 * m[int(a)], 2 * m[int(b)]
-                sf += [(tb, ta, ta + 1), (tb, ta + 1, tb + 1)]
-            sf = np.array(sf, np.int64).reshape(-1, 3)
-            origin = np.array([lo[0], lo[1], 0.0])
-            prims = [_prim(Pd - origin, N, C, W, Fd, 0, {"role": "surface"}, mats, lo, cfg)]
-            if len(sf):
-                prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
-            fn = f"tile_{i}_{j}_lod{k}.glb"
-            write_glb(out / fn, f"tile_{i}_{j}_lod{k}", prims, trans, mat,
-                      extras={"tile": [i, j], "lod": k, "voxel": v})
-            if k == int(cfg["collision"]):
-                cf = f"collision_{i}_{j}.glb"
-                write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
-                                                            "indices": Fd}], trans, None,
-                          extras={"tile": [i, j], "collision": True, "from_lod": k})
-                entry["collision"] = cf
-            zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
-            entry["lods"].append({"file": fn, "voxel": v, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
-                                  "marching_cubes_triangles": int(n_mc), "bytes": (out / fn).stat().st_size})
-            stats.append((i, j, k, len(Fd), len(sf), n_mc, (out / fn).stat().st_size))
-        entry["zmin"], entry["zmax"] = zmin, zmax
-        entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
-                                   if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
-        manifest_tiles.append(entry)
-    timing["tiles (project, decimate, write)"] = time.time() - t0
+    _CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
+                CN=CN, CW=CW, CC=CC, mat=mat)
+    stats, t_dec = [], 0.0
+    with _pool() as ex:
+        for entry, st, td in ex.map(_job_tile, tiles):
+            manifest_tiles.append(entry)
+            stats += st
+            t_dec += td
+    timing["tiles (decimate, project, write)"] = time.time() - t0
     timing["of which decimation"] = t_dec
 
     # ---- 4. heightmap and splat tiles on the same grid
@@ -966,10 +1125,13 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         "origin": G.origin.tolist(), "tile_size": G.tile, "grid": [G.ni, G.nj],
         "world_min": G.lo.tolist(), "world_max": G.hi.tolist(),
         "trimmed": "the extent was trimmed to whole coarsest voxels" if G.trimmed else "",
-        "lods": [{"lod": k, "voxel": G.v(k), "error_m": cfg["error"][k], "budget_triangles": cfg["budget"][k]}
-                 for k in range(G.lods)],
+        "voxel": G.voxel,
+        "lods": [{"lod": k, "error_m": cfg["error"][k], "budget_triangles": cfg["budget"][k],
+                  "made": "LOD0's mesh with the border chains simplified (Douglas-Peucker at error_m, each LOD's chain "
+                          "a subset of the one before) and decimated to error_m"} for k in range(G.lods)],
         "skirts": "primitive 1 of each tile (extras.role = skirt, double-sided material): each shared border's chain "
-                  "extruded into the rock by at least how far the neighbours' LOD chains differ there",
+                  "extruded into the rock by how far the neighbours' LOD chains differ there (chains are nested "
+                  "subsets, so that's at most their tolerances)",
         "collision": f"collision_<i>_<j>.glb: LOD {cfg['collision']} surface, no skirts, positions only",
         "sea_level": _sea(T),
         "materials": {
@@ -1012,7 +1174,7 @@ def summary(r) -> str:
     for k, L in enumerate(M["lods"]):
         tris = [t["lods"][k]["triangles"] for t in M["tiles"] if t["lods"][k]]
         size = sum(t["lods"][k]["bytes"] for t in M["tiles"] if t["lods"][k])
-        lines.append(f"LOD {k} (voxel {L['voxel']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
+        lines.append(f"LOD {k} (error {L['error_m']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
                      f"(median {int(np.median(tris))}), {size / 1e6:.1f} MB")
     lines += [f"volume {n}" for n in M["volumes"]]
     sc = M["seam_check"]
@@ -1020,6 +1182,93 @@ def summary(r) -> str:
                  f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under skirts")
     lines.append("timing (s): " + ", ".join(f"{k} {v}" for k, v in M["timing_s"].items()))
     return "\n".join(lines)
+
+
+def _job_tile(ij):
+    """Write one tile's LODs and collision (runs in a worker: everything it reads is in _CTX)."""
+    i, j = ij
+    c = _CTX
+    G, v0, field, mats, cfg, out, vols = c["G"], c["v0"], c["field"], c["mats"], c["cfg"], c["out"], c["vols"]
+    dense, collapsed, pos, depth, dirn = c["dense"], c["collapsed"], c["pos"], c["depth"], c["dirn"]
+    CN, CW, CC, mat = c["CN"], c["CW"], c["CC"], c["mat"]
+    stats, t_dec = [], 0.0
+    lo, hi = G.bounds(i, j)
+    trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
+    entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
+    zmin, zmax = np.inf, -np.inf
+    for k in range(G.lods):
+        if (i, j) not in dense:
+            entry["lods"].append(None)
+            continue
+        P, faces0, _ = dense[i, j]
+        Fk = collapsed[i, j, k]
+        used = np.unique(Fk)
+        remap = np.full(len(P), -1, np.int64)
+        remap[used] = np.arange(len(used))
+        Pk, Fk = P[used], remap[Fk]
+        n_mc = len(faces0)
+        td = time.time()
+        Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field)
+        t_dec += time.time() - td
+        # border vertices must have come through untouched, and be this LOD's chain
+        rowd = np.array([pos.get(tuple(p), -1) for p in Pd])
+        on = _on_border(Pd, lo, hi)
+        if np.any(on & (rowd < 0)):
+            raise RuntimeError(f"tile {i},{j} LOD {k}: {int(np.sum(on & (rowd < 0)))} border vertices moved in "
+                               f"decimation")
+        bd = rowd >= 0
+        N = np.zeros_like(Pd)
+        before = Pd.copy()
+        Pd[~bd], N[~bd] = project(field, Pd[~bd], v0)
+        # where projecting a coarse vertex folds its faces, it stays where decimation put it
+        fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
+        if fold.any():
+            Pd[fold] = before[fold]
+            N[fold] = _vertex_normals(Pd, Fd)[fold]
+        N[bd] = CN[rowd[bd]]
+        W = np.zeros((len(Pd), len(mats.layers)), np.float32)
+        C = np.zeros((len(Pd), 3))
+        W[bd], C[bd] = CW[rowd[bd]], CC[rowd[bd]]
+        W[~bd], C[~bd] = mats.weights(Pd[~bd], N[~bd])
+        # skirts along shared borders (not the world's edge)
+        be = _boundary_edges(Fd)
+        shared = np.array([_shared(Pd[a_], Pd[b_], lo, hi, G) for a_, b_ in be], bool) if len(be) else np.zeros(0, bool)
+        be = be[shared] if len(be) else be
+        sv = np.unique(be.ravel()) if len(be) else np.zeros(0, np.int64)
+        top = Pd[sv]
+        bot = top + dirn[rowd[sv]] * depth[k][rowd[sv]][:, None]
+        m = {int(x): r_ for r_, x in enumerate(sv)}
+        SP = np.empty((2 * len(sv), 3))
+        SP[0::2], SP[1::2] = top, bot
+        SN = np.repeat(N[sv], 2, 0)
+        SC = np.repeat(C[sv], 2, 0)
+        SW = np.repeat(W[sv], 2, 0)
+        sf = []
+        for a_, b_ in be:  # the face has a -> b; the skirt hangs below it, facing the same way
+            ta, tb = 2 * m[int(a_)], 2 * m[int(b_)]
+            sf += [(tb, ta, ta + 1), (tb, ta + 1, tb + 1)]
+        sf = np.array(sf, np.int64).reshape(-1, 3)
+        origin = np.array([lo[0], lo[1], 0.0])
+        prims = [_prim(Pd - origin, N, C, W, Fd, 0, {"role": "surface"}, mats, lo, cfg)]
+        if len(sf):
+            prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
+        fn = f"tile_{i}_{j}_lod{k}.glb"
+        write_glb(out / fn, f"tile_{i}_{j}_lod{k}", prims, trans, mat,
+                  extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]})
+        if k == int(cfg["collision"]):
+            cf = f"collision_{i}_{j}.glb"
+            write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
+                                                        "indices": Fd}], trans, None,
+                      extras={"tile": [i, j], "collision": True, "from_lod": k})
+            entry["collision"] = cf
+        zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
+        entry["lods"].append({"file": fn, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
+                              "marching_cubes_triangles": int(n_mc), "bytes": (out / fn).stat().st_size})
+        stats.append((i, j, k, len(Fd), len(sf), n_mc, (out / fn).stat().st_size))
+    entry["zmin"], entry["zmax"] = zmin, zmax
+    entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
+                               if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
+    return entry, stats, t_dec
 
 
 def _prim(P, N, C, W, F, material, extras, mats, lo, cfg):
@@ -1355,7 +1604,7 @@ def border_segments(out_dir, lod=0):
     return np.concatenate(segs) if segs else np.zeros((0, 2, 3))
 
 
-def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None):
+def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "out"}. box: [[x0, y0], [x1, y1]]: only tiles (and trees) inside. lod: a level, or
@@ -1389,7 +1638,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         jobs.append({"eye": eye, "look": look, "fov": v.get("fov", 55), "sun": v.get("sun", [225, 30]),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
-           "trees": str(out / "trees.csv") if trees else None, "tree_box": box}
+           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color}
     if any(v.get("borders") for v in views):
         np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
         job["borders"] = str(out / "borders.npz")
