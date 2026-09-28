@@ -579,6 +579,13 @@ regresses, bisect by building one spec at each commit and diffing heights.
   broken). Still open: a basin must be a closed ring (a valley open to the south needs cols outside the frame), lake
   levels vs sites on their shores, village pads always on mounds, rugged barely visible on domes, sea cliffs 2 cells
   wide in plan (soft vertical drapes), horns still near-symmetric, no cairns/markers, lighting fixed from the SW.
+- `terrain_sun.py` (2026-09-28, the user's decision): each view's sun. "auto" (default) casts rays from the eye across
+  the frame (visible ground, weighted by the image angle it fills), scores side suns (45-135 deg off the line of sight,
+  12-40 deg high) by shade contrast between neighbours along each ray (x4) plus overall, with cast shadows, docked when
+  over 30% of the view is in shadow. `views[].sun` / spec `"sun"`: side, bearing, {"from", "height"}, "morning"...
+  The run notes each view's sun and warns on flat (behind the eye, >135 deg) or against-the-light suns. The Sky
+  texture's sun follows (Blender 5.1 multiple scattering: `sun_rotation = -bearing`, 0 = north; checked on the sky's
+  glow). The fixed SW sun had hidden b2_alps' pyramid faces and east-wall buttresses (render 17).
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same

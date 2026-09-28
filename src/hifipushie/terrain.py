@@ -1755,8 +1755,10 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
 
 
 def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24):
-    """Perspective Cycles renders: views are {"name", "eye": address | [x, y, z], "lift": m, "look": address, "fov"}."""
+    """Perspective Cycles renders: views are {"name", "eye": address | [x, y, z], "lift": m, "look": address, "fov",
+    "sun"} (terrain_sun: auto picks a raking sun per view)."""
     import subprocess
+    from . import terrain_sun
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     mesh = out_dir / "terrain_mesh.npz"
@@ -1795,7 +1797,9 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
                     T.view_notes.append(f"view {v['name']!r}: the ground just ahead toward {v['look']!r} was in the way: "
                                         f"the eye was raised {need:.0f} m to see past it")
                     ez += need
-        jobs.append({"eye": [*exy, ez], "look": [*txy, th], "fov": v.get("fov", 60),
+        sb, sh, snote = terrain_sun.for_view(T, v, [*exy, ez], [*txy, th])
+        T.view_notes.append(f"view {v['name']!r}: {snote}")
+        jobs.append({"eye": [*exy, ez], "look": [*txy, th], "fov": v.get("fov", 60), "sun": [sb, sh],
                      "out": str(out_dir / f"{v['name']}.png")})
     job = out_dir / "job.json"
     job.write_text(json.dumps({"mesh": str(mesh), "views": jobs, "size": size, "samples": samples}))

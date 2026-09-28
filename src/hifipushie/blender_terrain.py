@@ -1,6 +1,6 @@
 """Runs inside headless Blender: a terrain grid mesh (vertex colours) and its lakes, rendered in Cycles
-under a low sun and sky from perspective cameras. Job: {"mesh", "size": [w, h], "samples",
-"views": [{"eye": [x, y, z], "look": [x, y, z], "fov": deg, "out": png}]}."""
+under a sun (per view [bearing, height] deg: terrain_sun picks it) and sky from perspective cameras. Job: {"mesh",
+"size": [w, h], "samples", "views": [{"eye": [x, y, z], "look": [x, y, z], "fov": deg, "sun": [b, h], "out": png}]}."""
 import math
 
 import json
@@ -291,7 +291,6 @@ def run(job):
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))
     sun.data.energy = 2.2
     sun.data.angle = 0.02
-    sun.rotation_euler = (np.radians(62), 0, np.radians(-35))  # low, from the south-west
     scene.collection.objects.link(sun)
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
     span = float(np.ptp(d["verts"][:, :2], axis=0).max())
@@ -302,6 +301,10 @@ def run(job):
         cam.location = Vector(v["eye"])
         cam.rotation_euler = (Vector(v["look"]) - Vector(v["eye"])).to_track_quat("-Z", "Y").to_euler()
         cam.data.angle = np.radians(v["fov"])
+        b, h = np.radians(v.get("sun", (225, 28)))  # where the sun is: compass bearing, height (terrain_sun picks it)
+        toward = Vector((np.cos(h) * np.sin(b), np.cos(h) * np.cos(b), np.sin(h)))
+        sun.rotation_euler = (-toward).to_track_quat("-Z", "Y").to_euler()
+        sky.sun_elevation, sky.sun_rotation = h, -b  # the sky's glow on the sun's side (Nishita: rotation 0 = north)
         scene.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
 

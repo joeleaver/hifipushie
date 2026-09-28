@@ -317,9 +317,17 @@ Sections of named things (peaks, sites, routes, intent, ...) are objects keyed b
 - a ridge, river or route by name (its middle); a sea's cove or named beach
 - `[x, y]`, or `{"from": address, "offset": [dx, dy]}`
 
-`"views": [{"name": "file_stem", "eye": address | [x, y, z], "lift": m, "look": address, "fov": deg}]` are
-perspective renders. The eye stands on the ground at an address; `lift` raises it. An eye in or against the ground is
-raised to stand clear of it (the run says so).
+`"views": [{"name": "file_stem", "eye": address | [x, y, z], "lift": m, "look": address, "fov": deg, "sun"?: ...}]`
+are perspective renders. The eye stands on the ground at an address; `lift` raises it. An eye in or against the ground
+is raised to stand clear of it (the run says so).
+- **sun**: each view picks its own sun by default (`"auto"`): a low light from the side, the one that makes the most
+  contrast on the ground that view sees (arêtes, buttresses, gullies), with little of it in shadow. Forms only read in
+  side light: with the sun behind the eye every face is lit alike and a pyramid peak looks like a smooth cone. Give
+  your own per view or for all (`"sun"` at the top of the spec): a compass side or bearing where the sun is (`"sw"`,
+  `225`), `{"from": "west", "height": 15}` (degrees above the horizon), or `"morning"`, `"noon"`, `"evening"`
+  (northern hemisphere: morning in the east). The run says which sun each view got, and warns when yours is behind the
+  eye (flat light) or ahead of it (against the light). The auto sun can come from the north: it is for judging forms,
+  not a claim about the level's lighting.
 
 ## Running
 Through the MCP tools (a terrain lives in `workspace/terrain/<name>/`, every version kept):
