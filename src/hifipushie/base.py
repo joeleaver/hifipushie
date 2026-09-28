@@ -27,7 +27,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 11  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 20  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 _CACHE: dict = {}
@@ -72,8 +72,8 @@ def inject(spec: dict) -> dict:
         # and without it parted lips showed a hole into the head)
         lu, ll, mc = (np.array(joints[k]["pos"]) for k in ("lm_lip_upper", "lm_lip_lower", "lm_mouth_corner.L"))
         blobs = dict(out.get("blobs") or spec.get("blobs") or {})
-        blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (lu + ll) + [0, 0.012, 0]],
-                                        "size": [round(float(mc[0]) * 0.95, 4), 0.012, round(float(abs(lu[2] - ll[2])) * 0.8 + 0.004, 4)],
+        blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (lu + ll) + [0, 0.016, 0]],
+                                        "size": [round(float(mc[0]) * 0.8, 4), 0.01, round(float(abs(lu[2] - ll[2])) * 0.5 + 0.002, 4)],
                                         "blend": 0.004})
         out["blobs"] = blobs
     elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
@@ -159,7 +159,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             if n in spec_expanded["joints"]:
                 used[k] = spec_expanded["joints"][n]["pos"]
                 break
-    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head")}
+    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push")}
     used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
     key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
     if key in _CACHE:
@@ -170,17 +170,22 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             girth.setdefault(j[:-2] + ".R", g)
     W, *_ = retopo._skeleton_warp(tpl["P"], tpl["J"], spec_expanded, [], girth=girth)
     faces, _, _ = retopo.topology(tpl["L"], tpl["S"])
+    if base.get("soften"):
+        W = _soften(W, tpl, spec_expanded, float(base["soften"]))
+    if base.get("push"):
+        W = _push(W, tpl, base["push"])
+    head = head_of(spec_expanded, base)
+    if head is not None:  # a grafted head: the template's own head cut off at a neck loop under its jaw and the
+        # neck extruded straight up as quads (its chin and jaw, bigger and lower than a real head's, stood out of the
+        # graft band; columns of points built from its vertices left lips and ruffs)
+        W, faces = _neck_tube(W, faces, tpl, spec_expanded)
     V, F = W, faces
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
-    if base.get("head"):  # a grafted head: the template's own head becomes a column continuing its neck, or its
-        # chin and jaw (bigger and lower than a real head's) stood out of the graft band as a shelf under the chin
-        V, N, h = _neck_column(V, N, h, spec_expanded, tpl)
     h = h * float(base.get("smooth", 1.0))
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
            "key": key, "head": None}
-    head = head_of(spec_expanded, base)
     if head is not None:
         out["head"] = _match_neck(head, V)
     if len(_CACHE) > 8:
@@ -239,46 +244,84 @@ def _landmark_joints(head: dict) -> dict:
     return out
 
 
-def _neck_column(V, N, h, s, tpl, bins=36):
-    """Body vertices above the template's neck ring (0.8 of the way from the neck joint up to the chin's level: its
-    face's lowest point) moved onto a column: the ring's radius per angle round the neck -> head axis, heights kept,
-    normals radial."""
+def _push(W, tpl, pushes):
+    """Big soft volume changes on the base mesh itself: base["push"] = [{"at": [x, y, z], "radius": m, "amount": m},
+    ...] moves vertices along their normals by amount x a smooth bump (1 at the centre, 0 at radius); a centre with
+    x > 0 is mirrored. A belly or love handles: blobs with big blends or deep clay strokes reach past where the base's
+    field is exact (a few cm off its surface) and came out as plates."""
+    T = retopo.tris(tpl["L"], tpl["S"])
+    N = retopo._vnormals(W, T)
+    D = np.zeros_like(W)
+    for p in pushes:
+        c, r, a = np.array(p["at"], float), float(p["radius"]), float(p["amount"])
+        for cc in ([c, c * [-1, 1, 1]] if abs(c[0]) > 1e-6 else [c]):
+            x = np.clip(np.linalg.norm(W - cc, axis=1) / r, 0, 1)
+            D += (a * (1 - x * x) ** 2)[:, None] * N
+    return W + D
+
+
+def _soften(W, tpl, s, amount):
+    """Muscle definition smoothed away (Taubin, so the volume stays): the template is a heroic physique (abs, pecs,
+    big deltoids); amount ~ 1 softens it to an ordinary body, 2 to a soft one. Hands, feet and the head are left
+    alone (fading over a few cm from the wrists, ankles and neck)."""
+    E = retopo.edges(tpl["L"], tpl["S"])
+    deg = np.bincount(E.ravel(), minlength=len(W))
     J = s["joints"]
-    a, b = np.array(J["neck"]["pos"], float), np.array(J["head"]["pos"], float)
-    n = _unit(b - a)
-    face = tpl["face"]["landmarks"]
-    eye = np.array(face["eye.L"]) * [0, 1, 1]
-    tj = template_joints(tpl["name"])
-    # the template chin sits ~0.15 m under its eyes; the ring sits a little below that, carried to the model's
-    chin = eye - np.array([0, 0, 0.15]) - np.array(tj["head"]["pos"]) + b
-    h0 = (chin - a) @ n - 0.03
-    u = (V - a) @ n
-    e1 = _unit(np.cross(n, [0, 1.0, 0]) if abs(n[1]) < 0.9 else np.cross(n, [1.0, 0, 0]))
-    e2 = np.cross(n, e1)
-    sl = V[np.abs(u - h0) < 0.006]
-    cen = sl.mean(0)
-    cen = cen - ((cen - a) @ n) * n
-    q = sl - cen
-    ang = np.arctan2(q @ e2, q @ e1)
-    rad = np.hypot(q @ e1, q @ e2)
-    k = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
-    r = np.array([np.percentile(rad[k == i], 95) if (k == i).sum() >= 2 else np.nan for i in range(bins)])
-    ok = np.isfinite(r)
-    r = np.interp(np.arange(bins), np.flatnonzero(ok), r[ok], period=bins)
-    up = u > h0
-    q = V[up] - cen
-    q = q - np.outer(q @ n, n)
-    ang = np.arctan2(q @ e2, q @ e1)
-    x = (ang + np.pi) / (2 * np.pi) * bins - 0.5
-    rr = np.interp(x, np.arange(bins), r, period=bins)
-    d = np.cos(ang)[:, None] * e1 + np.sin(ang)[:, None] * e2
-    V = V.copy()
-    N = N.copy()
-    V[up] = cen + np.outer(u[up], n) + rr[:, None] * d
-    N[up] = d
-    h = h.copy()
-    h[up] = np.maximum(h[up], 0.02)  # the head's vertices crowd the column unevenly: a wide kernel smooths them
-    return V, N, h
+    w = np.ones(len(W))
+    for side in "LR":  # past the wrist along the forearm (the hand), and below the ankle (the foot)
+        e, wr = np.array(J[f"elbow.{side}"]["pos"]), np.array(J[f"wrist.{side}"]["pos"])
+        ax = _unit(wr - e)
+        near = np.linalg.norm(W - wr, axis=1) < 0.25
+        w *= np.where(near, np.clip(((wr - W) @ ax + 0.01) / 0.05, 0, 1), 1.0)
+        an = np.array(J[f"ankle.{side}"]["pos"])
+        near = (np.abs(W[:, 0] - an[0]) < 0.12) & (W[:, 2] < an[2] + 0.1)
+        w *= np.where(near, np.clip((W[:, 2] - an[2] - 0.01) / 0.05, 0, 1), 1.0)
+    neck = np.array(J["neck"]["pos"])
+    w *= np.clip((neck[2] + 0.04 - W[:, 2]) / 0.06, 0, 1)
+    w = w[:, None]
+    X = W.copy()
+    for _ in range(int(round(10 * amount))):
+        for lam in (0.5, -0.53):
+            X = X + lam * w * retopo._lap(X, E, deg)
+    return X
+
+
+def _neck_loop(tpl):
+    """The template's closed edge loop round the neck whose highest point is just under its chin (loops there tilt:
+    low at the throat, high at the nape): (loop, the head's top vertex)."""
+    key = ("neck_loop", tpl["name"])
+    if key not in _CACHE:
+        P = tpl["P"]
+        faces, nb, ef = retopo.topology(tpl["L"], tpl["S"])
+        eye = np.array(tpl["face"]["landmarks"]["eye.L"])
+        chin_z = eye[2] - 0.15
+        near = set(np.flatnonzero((P[:, 2] > chin_z - 0.1) & (P[:, 2] < chin_z + 0.05) & (np.abs(P[:, 0]) < 0.12)))
+        top = int(np.argmax(P[:, 2]))
+        best = None
+        for path in retopo._loops_round(P, faces, nb, ef, near, 200):
+            Q = P[path]
+            ang = np.arctan2(Q[:, 1] - Q[:, 1].mean(), Q[:, 0])
+            wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
+            if abs(round(wn)) != 1 or Q[:, 2].max() > chin_z + 0.008 or np.abs(Q[:, 0]).max() > 0.1:
+                continue
+            if best is None or Q[:, 2].max() > best[0]:
+                best = (Q[:, 2].max(), path)
+        _CACHE[key] = (best[1], top)
+    return _CACHE[key]
+
+
+def _neck_tube(W, faces, tpl, s, step=0.01):
+    """Everything above the neck loop dropped; the loop extruded along the neck -> head axis in rings `step` apart up
+    past the head's top and capped (quads; subdivided with the rest)."""
+    loop, top = _neck_loop(tpl)
+    J = s["joints"]
+    n = _unit(np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float))
+    ring0 = W[loop]
+    height = float((W[top] - ring0.mean(0)) @ n) + 0.02
+    rings = [ring0 + k * step * n for k in range(int(height / step) + 1)]
+    tip = rings[-1].mean(0) + step * n
+    V, fl, _, _ = retopo._stitch(W, faces, {"neck": (list(loop), top, (rings, tip))})
+    return V, fl
 
 
 def _match_neck(head: dict, body_verts: np.ndarray, reach: float = 0.06, bins: int = 24) -> dict:
@@ -290,13 +333,13 @@ def _match_neck(head: dict, body_verts: np.ndarray, reach: float = 0.06, bins: i
     e2 = np.cross(n, e1)
 
     def ring(V, at):
-        sl = V[np.abs((V - c) @ n - at) < 0.004]
+        sl = V[np.abs((V - c) @ n - at) < 0.0035]
         cen = sl.mean(0)
         q = sl - cen
         ang = np.arctan2(q @ e2, q @ e1)
         rad = np.hypot(q @ e1, q @ e2)
         k = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
-        r = np.array([np.percentile(rad[k == i], 90) if (k == i).sum() >= 2 else np.nan for i in range(bins)])
+        r = np.array([np.percentile(rad[k == i], 50) if (k == i).sum() >= 2 else np.nan for i in range(bins)])
         ok = np.isfinite(r)
         return cen - ((cen - c) @ n - at) * n, np.interp(np.arange(bins), np.flatnonzero(ok), r[ok], period=bins)
     # slices from the band's foot up to the plane: under the plane the head's neck takes the body's own shape at
