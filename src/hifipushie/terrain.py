@@ -439,10 +439,21 @@ class Terrain:
         on_ridge = {p for r in (self.spec.get("ridges") or {}).values() for p in r["through"] if isinstance(p, str)}
         self._lone = [n for n in self.points if n not in on_ridge]
         sea = self.spec.get("sea")
+        land_plain = None
         if sea:  # the sea is low ground: the land falls to it (a ring of peaks with nothing low around it stood as a
             # plateau at its basin floor's height)
             lvl = float(sea.get("level", 0.0))
-            if "land" in sea:
+            if "land" in sea and not low_fix.any() and not high_fix.any():
+                # a coast drawn as a land zone with nothing else holding the ground (no ridges, rivers, basins or
+                # border): the land is a plain at world.base (+ tilt, hills), like a coast without a zone. Solved from
+                # the seabed alone it sagged to the seabed, so a low coast stood at sea level 100 m inland and raised
+                # cliffs left hollows behind them.
+                from . import terrain_design as design
+                try:
+                    land_plain = (design.region(self, sea["land"]) < 0.5, lvl - 0.5 * float(sea.get("depth", 30.0)))
+                except (AttributeError, ValueError):
+                    land_plain = None
+            if land_plain is None and "land" in sea:
                 from . import terrain_design as design
                 try:
                     out = design.region(self, sea["land"]) < 0.5
@@ -462,10 +473,15 @@ class Terrain:
         if not low_fix.any() and not plain:
             raise ValueError("nothing low: add a river or a basin, or give the frame's edge a height (\"border\")")
 
+        if land_plain is not None:
+            plain = True
+
         def solve():
             if plain:
                 base = self.world["base"]
                 self.floor, self.prof = np.full(shape, base), prof
+                if land_plain is not None:  # the sea's side at the seabed (the shore forms reshape the coast)
+                    self.floor = np.where(land_plain[0], land_plain[1], self.floor)
                 self.crest, self.round, self.t = self.floor.copy(), np.zeros(shape), np.zeros(shape)
                 return
             self.floor, self.prof = self._solve(low_fix, [low, prof])

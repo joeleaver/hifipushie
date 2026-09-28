@@ -135,6 +135,8 @@ and the `"story"`.
   - A coast without a `land` zone: the land is `world.base` (plus `tilt` and hills), and the sea is wherever that is
     below `level` and reaches the frame's edge. Clifftop farmland at 60 m falling south: `"base": 60`, a tilt down to
     the south steep enough to bring the ground below the sea level before the frame's edge (or a `land` zone).
+  - A coast drawn as a `land` zone with nothing else holding the ground up (no ridges, rivers, basins or `border`):
+    the land is `world.base` too (plus `tilt` and hills), so you draw the coastline and set the land's height.
   - The coastline wanders a little (`wander`, 0 to keep the zone's outline). The seabed shelves down to `depth`.
   - Shore forms, per stretch: **rocky** (the land dropping into the water), **beach** (the land graded down to sand at
     the water), **cliffs** (the land ending in a ~70 deg face; where the land is lower than the asked height it ramps up
