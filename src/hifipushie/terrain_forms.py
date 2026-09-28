@@ -369,7 +369,7 @@ def peak_forms(T, H):
             gaps = _gaps(aretes)
             k = int(np.argmax(gaps))
             b = (aretes[k][0] + gaps[k] / 2 + rng.uniform(-0.15, 0.15) * gaps[k]) % (2 * math.pi)
-            aretes.append((b, g_def))
+            aretes.append((b, g_def * rng.uniform(0.8, 1.25)))  # (every arête the same made a turned cone)
             aretes.sort()
         # the form is the upper part of the mountain: the faces run down ~70% of its rise (carving whole mountainsides
         # down low arêtes cut across the valley floor)
@@ -392,7 +392,8 @@ def peak_forms(T, H):
         hollow = F["hollow"] * float(p.get("hollow", 1.0))
         if hollow:
             u = np.clip(r / Rc, 0, 1)
-            z = z - hollow * rise * np.sin(np.pi * t_ang) ** 0.7 * 4 * u * (1 - u)  # (steep right off each arete: a sharp crest)
+            each = rng.uniform(0.5, 1.5, len(bear))[j]  # faces of different depth (one hollowed deep, one nearly flat)
+            z = z - hollow * each * rise * np.sin(np.pi * t_ang) ** 0.7 * 4 * u * (1 - u)  # (steep off each arête)
         # other ridges, peaks and cols near it stand: the faces can't cut into their flanks (a big peak's face cut a
         # neighbouring col 110 m down)
         others = [(L.xy, L.h) for L in T.lines.values() if L.kind == "ridge"

@@ -567,8 +567,18 @@ regresses, bisect by building one spec at each commit and diffing heights.
   Floors and plateau tops get a gentle swell at player scale in `_texture` (they were flat plaster from the air).
   The rocky shore keeps land dry only a few cells in (`0.2 * min(sd, 3 cells)`; uncapped it lifted ground 400 m
   inland to 80 m: found by another agent's level).
-- Views (`blender_terrain`): matte ground (specular 0.12: dark cover read brown at grazing angles), water with a noise
-  swell, no site pole where a camera stands (views from a site rendered inside it, all black).
+- Views (`blender_terrain`): matte ground (specular 0.12: dark cover read brown at grazing angles), water with a
+  noise ripple (bump on ~4 m features: 30 m swells were too gentle and it stayed a mirror), no site pole where a camera
+  stands (views from a site rendered inside it, all black). The ground beyond the frame is a ring round it, never
+  under it: its inner edge is the frame's own edge (heights and colours), carried on level then eased down to the
+  30th-percentile edge height (a plane at the lowest point read as a sea on every alpine horizon; a plane at the edge
+  height cut through a canyon). Blender's Python has no scipy.
+- Blind rounds 2026-09-28 (`workspace/terrain/b1_volcano`, `b2_alps`, `b2_coast`; testers ran from this worktree while
+  the agent developed in a scratch copy of `src/` on PYTHONPATH): the volcano, the horn and the stacks read only after
+  the fixes that followed each round (collapse width, flow measure, arête slope near the top, stacks placeable and
+  broken). Still open: a basin must be a closed ring (a valley open to the south needs cols outside the frame), lake
+  levels vs sites on their shores, village pads always on mounds, rugged barely visible on domes, sea cliffs 2 cells
+  wide in plan (soft vertical drapes), horns still near-symmetric, no cairns/markers, lighting fixed from the SW.
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same

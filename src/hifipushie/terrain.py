@@ -1116,7 +1116,8 @@ class Terrain:
             # floors and plateau tops: a gentle swell and hummocks at player scale (rough is ~0 there: a plateau read as
             # flat plaster from the air)
             swell = noise.fbm(np.c_[self.P, np.full(len(self.P), 21.0)], 6 * W["crag"], 3, seed=6).reshape(self.X.shape)
-            self.H += (1 - np.clip(rough / 0.3, 0, 1)) * W["bumps"] * (1.2 * (swell - 0.5) + 0.5 * (fine.reshape(self.X.shape) - 0.5))
+            # (a swell only: the crag-scale term pocked flat tops like a golf ball)
+            self.H += (1 - np.clip(rough / 0.3, 0, 1)) * W["bumps"] * 1.4 * (swell - 0.5)
             return
         ridged = 1 - np.abs(2 * noise.fbm(pts, 120 * self.k, 3, seed=3) - 1)
         gully = noise.fbm(pts, 45 * self.k, 2, seed=5)

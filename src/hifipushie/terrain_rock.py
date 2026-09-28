@@ -120,7 +120,9 @@ def apply(T):
         # below each face: blocky lumps on the gentler ground within a few cells (talus and fallen blocks)
         cliff = steep > 0.5
         near = ndimage.distance_transform_edt(~cliff) * T.cell
-        below = Hb < ndimage.maximum_filter(Hb, size=5)  # (not the ground on top of the face)
+        # (well below the face's top, not the ground on top of it: "below the max nearby" held on any slope, and a plateau
+        # rim came out pockmarked)
+        below = Hb < ndimage.maximum_filter(Hb, size=7) - max(0.5 * crag, 2 * T.cell)
         foot = smoothstep(6 * T.cell + 0.5 * crag, 1 * T.cell, near) * smoothstep(34, 26, slope) * below * ~keep
         lumps = noise.fbm(np.c_[T.P, np.full(len(T.P), 9.0)], 1.3 * T.cell, 2, seed=214).reshape(H.shape)
         H = H + bo * foot * np.clip(lumps - 0.45, 0, None) * min(0.25 * crag, 3.0) * 2

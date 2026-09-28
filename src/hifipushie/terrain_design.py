@@ -63,6 +63,8 @@ def region(T, r) -> np.ndarray:
             return regions(T, r)
         if r in ("routes", "sites"):
             return T.masks.get(r, np.zeros(shape))
+        if r == "cliff_foot":  # below every steep face: where talus and fallen blocks lie (scree cover)
+            return getattr(T, "rock", {}).get("foot", np.zeros(shape, bool)).astype(float)
         if r in getattr(T, "vzones", {}):  # a volcano's crater, flows ("lava"), collapse scars, "debris"
             return T.vzones[r].astype(float)
         if r in T.lakes and hasattr(T, "lake_id"):
