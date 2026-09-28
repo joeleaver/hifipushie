@@ -177,7 +177,11 @@ def run(job):
         mk = bpy.data.materials.new("marker")
         mk.use_nodes = True
         mk.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.8, 0.05, 0.03, 1)
+        eyes = [v["eye"] for v in job["views"]]
         for x, y, z in d["markers"]:
+            # (not where a camera stands: a view from a site's centre was inside its pole, all black)
+            if any((x - e[0]) ** 2 + (y - e[1]) ** 2 < 4.0 ** 2 for e in eyes):
+                continue
             bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.6, depth=12, location=(float(x), float(y), float(z) + 6))
             bpy.context.object.data.materials.append(mk)
     if len(d["wfaces"]):
