@@ -41,7 +41,7 @@ KINDS = {
     "plateau": dict(across=(1000, 8000, 3000), relief=(50, 400, 150), face=(55, 40, 80), steep=0.12, floor=0.5,
                     game=2500, bumps=2.0, gully=5.0, crag=30.0, words=("plateau", "mesa", "butte", "tableland")),
     "crater": dict(across=(500, 8000, 2000), relief=(100, 800, 300), face=(30, 22, 40), steep=0.08, floor=0.3,
-                   game=1500, bumps=2.0, gully=5.0, crag=30.0, words=("crater", "caldera", "volcano")),
+                   game=1500, bumps=2.0, gully=5.0, crag=30.0, words=("crater", "caldera", "volcano", "volcanic", "stratovolcano", "cinder cone")),
     "coast": dict(across=(500, 5000, 2000), relief=(10, 150, 50), face=(10, 3, 45), steep=0.05, floor=0.5,
                   game=1500, bumps=1.0, gully=2.0, crag=20.0, words=("coast", "beach", "shore", "sea cliffs", "bay")),
     "dunes": dict(across=(300, 5000, 1500), relief=(5, 80, 25), face=(15, 5, 32), steep=0.0, floor=0.3,
@@ -58,7 +58,7 @@ DESCRIBE = {
     "hills": "rolling hills you'd walk over",
     "farmland": "gentle farmland, fields and a farmstead",
     "plateau": "flat high ground ending in cliffs (mesas, buttes)",
-    "crater": "a round crater or caldera",
+    "crater": "a volcano, crater or caldera",
     "coast": "a shoreline: beach, bay or sea cliffs (a \"sea\" with its shore)",
     "dunes": "sand dunes",
     "moor": "open upland: broad, bare, rolling",
@@ -94,7 +94,8 @@ QUESTIONS = [
 SHAPES = {
     "valley": "rivers down the middle with ridges either side (or a basin inside a closed ridge, open at one end by a pass)",
     "bowl": "a basin inside a closed ridge (its walls are the mountainsides), a lake as its falls_to",
-    "cone": "a lone peak with a big radius and gentle flanks; a crater is a basin inside a small closed ridge on top",
+    "cone": "a volcano (\"volcanoes\": a strato, shield or cinder cone with its crater or caldera, lava flows, collapse "
+            "scars)",
     "cut": "a plateau at world.base with canyons cut along rivers, mesas standing on it",
     "rolling": "lone hills (peaks with no ridge) and a tilt, with rugged patches",
     "shore": "a \"sea\" with a land zone (a coast: \"north\"; an island: near a point) and its shore forms",
@@ -105,16 +106,15 @@ LIMITS = [
     (("tide", "tides", "surf", "reef", "lagoon", "atoll"),
      "the sea is a still surface at one level: no tides, surf or waves, and no reefs or lagoons of their own (a reef "
      "would be a shallow rim of land; a lagoon a lake inside it)"),
-    (("volcano", "volcanic", "lava", "cone", "caldera"),
-     "no volcano forms yet: no cone profile, lava flows or crater rims of their own; a lone peak with a basin inside a "
-     "small closed ridge is the nearest, and a lava flow is a rounded ridge with rock cover"),
+    (("eruption", "erupting", "molten", "glowing", "fumarole", "fumaroles", "steaming"),
+     "lava is cooled rock: flows, cones and craters are ground (\"volcanoes\"), but nothing glows, steams or moves"),
     (("cave", "arch", "overhang", "tunnel"),
      "the ground is a height field: no caves, arches, overhangs or natural bridges"),
     (("glacier", "ice", "icefall", "crevasse"), "no glaciers: snow and ice are cover layers only"),
     (("dune", "erg"), "no dune forms: sand is a cover, dunes would be hand-placed hills"),
     (("waterfall", "cascade"), "no falling water: a hanging river makes the step, the water doesn't fall"),
     (("swamp", "marsh", "bog", "wetland", "delta"), "no wetland forms: mud cover and shallow lakes (fans for deltas)"),
-    (("city", "town", "castle", "building", "ruin", "ruins"), "no buildings: sites are the flat pads they stand on"),
+    (("city", "town", "castle", "buildings", "houses", "ruin", "ruins"), "no buildings: sites are the flat pads they stand on"),
 ]
 
 
@@ -167,6 +167,11 @@ def _user_kinds():
     return (json.loads(p.read_text()) if p.exists() else {}), p
 
 
+# names that are mixtures in all but name
+ALIASES = {"volcanic island": "crater + coast", "island volcano": "crater + coast", "volcano island": "crater + coast",
+           "island": "coast"}
+
+
 def _norm(n):
     return " ".join(str(n).lower().replace("_", " ").split())
 
@@ -177,6 +182,7 @@ def kind_of(name, spec_kinds=None):
     if not name:
         return None
     n = _norm(name)
+    n = ALIASES.get(n, n)
     parts = _mixture(n)
     if parts:
         keys = [kind_of(p_, spec_kinds) for p_ in parts]

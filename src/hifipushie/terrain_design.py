@@ -63,6 +63,10 @@ def region(T, r) -> np.ndarray:
             return regions(T, r)
         if r in ("routes", "sites"):
             return T.masks.get(r, np.zeros(shape))
+        if r == "cliff_foot":  # below every steep face: where talus and fallen blocks lie (scree cover)
+            return getattr(T, "rock", {}).get("foot", np.zeros(shape, bool)).astype(float)
+        if r in getattr(T, "vzones", {}):  # a volcano's crater, flows ("lava"), collapse scars, "debris"
+            return T.vzones[r].astype(float)
         if r in T.lakes and hasattr(T, "lake_id"):
             return (T.lake_id == T.lakes[r]["id"]).astype(float)
         if r.startswith("zone:"):
@@ -291,6 +295,10 @@ def rugged(T):
             patch = smoothstep(0.45, 0.6, noise.fbm(pts, 2.5 * sc, 2, seed=63 + k).reshape(T.X.shape))
             patch *= smoothstep(40, 25, T._slope())  # on walls, stepped risers stacked into organ pipes
             T.H += R * patch * (stepped - T.H)
+        # erosion smoothed crags of a few metres away entirely ("rugged made no visible difference at any setting"):
+        # the settle step after erosion keeps them, and the report measures them
+        T.settle_mask = np.maximum(getattr(T, "settle_mask", np.zeros(T.X.shape)), (R > 0.05) * 1.0)
+        T.rugged_zones = getattr(T, "rugged_zones", {}) | {name: (R > 0.1, sc)}
 
 
 def _wall(T, name, w):
@@ -935,9 +943,18 @@ def tree_kind(T, name):
 
 def cover(T) -> dict:
     out = {}
-    slope = T._slope()
+    # slope of the ground smoothed over a cell, its thresholds shifted by noise a few cells across: cut on the raw
+    # slope, rock and snow speckled cell by cell and every boundary was a hard pasted line along one contour of slope
     pts = np.c_[T.P, np.zeros(len(T.P))]
-    for k, name in enumerate(T.spec.get("cover") or {}):
+    jit = 2 * noise.fbm(pts, max(3 * T.cell, 25.0), 3, seed=47).reshape(T.X.shape) - 1
+    slope = T._slope(ndimage.gaussian_filter(T.H, 1.0)) + 6.0 * jit
+    elev_j = jit * max(4 * T.cell, 20.0)
+    layers = list(T.spec.get("cover") or {})
+    # painted in key order, or by each layer's "order" (a patch can't reorder keys: scree had to be deleted and re-added
+    # to paint after rock)
+    pos = {n: i for i, n in enumerate(layers)}
+    layers.sort(key=lambda n: (float((T.spec["cover"][n] or {}).get("order", pos[n])), pos[n]))
+    for k, name in enumerate(layers):
         c = _spec_cover(T, name)
         m = np.full(T.X.shape, float(c.get("density", 1.0)))
         if "in" in c:
@@ -948,7 +965,8 @@ def cover(T) -> dict:
         if "elevation" in c:
             lo, hi = c["elevation"]
             fade = c.get("fade", 40)
-            m *= smoothstep(lo - fade, lo + fade, T.H) * smoothstep(hi + fade, hi - fade, T.H)
+            Hj = T.H + elev_j * min(1.0, fade / 40)
+            m *= smoothstep(lo - fade, lo + fade, Hj) * smoothstep(hi + fade, hi - fade, Hj)
         if "gradient" in c:
             g = c["gradient"]
             a, b = T.address(g["from"])[0], T.address(g["to"])[0]
@@ -1144,9 +1162,26 @@ def report(T):
         if worst:
             line += f" FAIL: {100 * worst[0]:.0f}% at [{worst[1][0]:.0f}, {worst[1][1]:.0f}]"
         out.append(line)
+    for name, (zone, sc) in getattr(T, "rugged_zones", {}).items():
+        if zone.sum() < 5:
+            out.append(f"rugged {name}: its zone is empty")
+            continue
+        detail = T.H - ndimage.gaussian_filter(T.H, max(sc, 2 * T.cell) / T.cell)
+        rough_in = float(np.std(detail[zone]))
+        rough_out = float(np.std(detail[~zone])) if (~zone).sum() > 5 else float("nan")
+        out.append(f"rugged {name}: {zone.sum() * T.cell ** 2 / 1e4:.1f} ha; the ground's detail at its {sc:.0f} m scale "
+                   f"stands +-{rough_in:.1f} m there (+-{rough_out:.1f} m elsewhere)")
     for name, s in T.sites.items():
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
+        sea = getattr(T, "sea", None)
+        if sea is not None:
+            iy = int(np.clip(round((s["xy"][1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1))
+            ix = int(np.clip(round((s["xy"][0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))
+            if sea["sd"][iy, ix] < 0:  # (a pad built out into the sea on a fill mound had read "edge 8 m from water")
+                T.warnings.append(f"site {name!r}: its centre is {-sea['sd'][iy, ix]:.0f} m out to sea of the coastline: the "
+                                  f"pad stands on {s['fill']:.0f} m of fill in the water. Move it inland, or put the "
+                                  f"cove/beach where it should stand")
         out.append(f"site {name}: pad {2 * s['radius']:.0f} m across at {s['level']:.0f} m, centre "
                    f"[{s['xy'][0]:.0f}, {s['xy'][1]:.0f}]; cut {s['cut']:.0f} m, fill {s['fill']:.0f} m{s.get('note', '')}"
                    + (f"; edge {dw:.0f} m from water" if dw is not None else ""))
@@ -1158,6 +1193,9 @@ def report(T):
         turns = _switchbacks(R.xy)
         worst = int(np.argmax(g))
         verdict = "OK" if ok else f"FAIL at [{R.xy[worst, 0]:.0f}, {R.xy[worst, 1]:.0f}]"
+        if not ok:  # (a FAIL had no warning at all)
+            T.warnings.append(f"route {name!r} FAILS its grade as built: {100 * g.max():.0f}% at [{R.xy[worst, 0]:.0f}, "
+                              f"{R.xy[worst, 1]:.0f}] (limit {100 * R.props['max_grade']:.0f}%)")
         if R.props.get("relaxed", 1) > 1:
             verdict += (f" (no way at {100 * R.props['max_grade']:.0f}% exists on the ground: it was found at "
                         f"{100 * R.props['max_grade'] * R.props['relaxed']:.0f}% and graded by cutting and filling)")
@@ -1264,6 +1302,8 @@ def _target(T, ref):
     if isinstance(ref, str) and (ref in T.points or ref.startswith("highest")):
         rad = max(40 * T.k, 1.5 * T.cell)
         own = ((T.spec.get("peaks") or {}).get(ref) or {}).get("radius", 0.02 * T.size)
+        if ref in getattr(T, "volcanoes", {}):  # a volcano: aim over its crater at its rim
+            own = T.volcanoes[ref]["rc"] + 2 * T.cell
         rad = max(rad, 1.2 * own)  # a rounded summit's own near edge isn't in the way of seeing it
         near = np.hypot(T.X - xy[0], T.Y - xy[1]) < rad
         return xy, float(T.H[near].max()), rad, True  # aim over the summit's middle at its top height

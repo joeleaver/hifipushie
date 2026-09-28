@@ -149,6 +149,11 @@ def run(job):
     attr.attribute_name = "col"
     nt.links.new(attr.outputs["Color"], bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = 0.9
+    # ground is matte: the default specular sheen at grazing angles (every view from a boat or a valley floor) lifted
+    # dark cover to grey-brown (black lava read as brown rock)
+    for k in ("Specular IOR Level", "Specular"):
+        if k in bsdf.inputs:
+            bsdf.inputs[k].default_value = 0.12
     ground.data.materials.append(m)
     if "tree_xyz" in d.files and len(d["tree_xyz"]):  # the same tree instances the export writes
         for kind in sorted(set(d["tree_kind"].tolist())):
@@ -161,8 +166,40 @@ def run(job):
             _instance(ob, kind)
     # ground beyond the frame, so the horizon isn't the sky's dark underside (it read as a sea)
     span = float(d["span"]) if "span" in d.files else 4000.0
-    plane = _mesh("beyond", np.array([[-20, -20, 0], [21, -20, 0], [21, 21, 0], [-20, 21, 0]], float) * span
-                  + [0, 0, float(d["base"]) - 1 if "base" in d.files else 0], np.array([[0, 1, 2], [0, 2, 3]]))
+    # a ring round the frame, never under it (a plane at the edge's height cut through a canyon and hid a valley's floor)
+    # its inner edge is the frame's own edge (heights and all) sloping out to the far ground, so there's no gap to see
+    # through where the frame's edge stands above it
+    z0 = float(d["base"]) - 1 if "base" in d.files else 0.0
+    V = d["verts"]
+    nx = int(np.sum(V[:, 1] == V[0, 1]))
+    ny = len(V) // nx
+    g = np.arange(len(V)).reshape(ny, nx)
+    loop = np.r_[g[0, :], g[1:, -1], g[-1, -2::-1], g[-2:0:-1, 0]]  # the boundary, anticlockwise
+    inner = V[loop].astype(float)
+    cx, cy = V[:, 0].mean(), V[:, 1].mean()
+    out_d = inner[:, :2] - [cx, cy]
+    far = np.c_[[cx, cy] + out_d / np.maximum(np.abs(out_d).max(1, keepdims=True), 1e-9) * 20 * span, np.full(len(loop), z0)]
+    # the frame's edge carries on level for a while (a plateau stays a plateau, a valley floor a floor), then eases down
+    def wrap_mean(a, k):  # a moving average round the loop (Blender's Python has no scipy)
+        pad = np.concatenate([a[-k:], a, a[:k]])
+        c = np.cumsum(np.concatenate([np.zeros((1,) + a.shape[1:]), pad]), axis=0)
+        return (c[2 * k + 1:] - c[:-2 * k - 1]) / (2 * k + 1)
+
+    mid = np.c_[[cx, cy] + out_d * 1.6, wrap_mean(inner[:, 2], 12)]
+    verts_b = np.vstack([inner, mid, far])
+    n = len(loop)
+    tris = []
+    for k in range(n):
+        a, b = k, (k + 1) % n
+        for off in (0, n):
+            tris += [(off + a, off + n + a, off + n + b), (off + a, off + n + b, off + b)]
+    if "sea" in d.files and np.isfinite(float(d["sea"])):  # the sea runs on flat past the frame (moved to its level below)
+        verts_b[:, 2] = z0
+    ecol = d["colors"][loop]
+    soft = wrap_mean(ecol.astype(float), 30)  # (edge colours stretched out radially streaked)
+    cols_b = np.vstack([ecol, soft, np.repeat(ecol.mean(0, keepdims=True), len(loop), 0)])
+    plane = _mesh("beyond", verts_b, np.array(tris), cols_b)
+    plane.data.polygons.foreach_set("use_smooth", [False] * len(plane.data.polygons))  # (long thin fans streaked)
     pm = bpy.data.materials.new("beyond")
     pm.use_nodes = True
     sea = float(d["sea"]) if "sea" in d.files else float("nan")
@@ -171,14 +208,21 @@ def run(job):
         plane.location.z = sea - 0.3 - (float(d["base"]) - 1)  # (coincident with the water mesh, both rendered black)
         b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)
         b.inputs["Roughness"].default_value = 0.08
-    else:
-        b.inputs["Base Color"].default_value = (0.16, 0.2, 0.1, 1)
+    else:  # the edge's own colours carried out
+        at = pm.node_tree.nodes.new("ShaderNodeAttribute")
+        at.attribute_name = "col"
+        pm.node_tree.links.new(at.outputs["Color"], b.inputs["Base Color"])
+        b.inputs["Roughness"].default_value = 0.9
     plane.data.materials.append(pm)
     if "markers" in d.files and len(d["markers"]):  # sites as thin red poles, to judge what a view sees
         mk = bpy.data.materials.new("marker")
         mk.use_nodes = True
         mk.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.8, 0.05, 0.03, 1)
+        eyes = [v["eye"] for v in job["views"]]
         for x, y, z in d["markers"]:
+            # (not where a camera stands: a view from a site's centre was inside its pole, all black)
+            if any((x - e[0]) ** 2 + (y - e[1]) ** 2 < 4.0 ** 2 for e in eyes):
+                continue
             bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.6, depth=12, location=(float(x), float(y), float(z) + 6))
             bpy.context.object.data.materials.append(mk)
     if "props" in d.files and len(d["props"]):  # sites carrying a prop: a small stand-in at its real size
@@ -214,7 +258,22 @@ def run(job):
         wm.use_nodes = True
         b = wm.node_tree.nodes["Principled BSDF"]
         b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)  # water scatters light back up (darker read as black from above)
-        b.inputs["Roughness"].default_value = 0.08
+        b.inputs["Roughness"].default_value = 0.25
+        # a light swell: noise bump on the normal (a dead-flat surface was a perfect mirror)
+        nt = wm.node_tree
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        mp = nt.nodes.new("ShaderNodeMapping")
+        mp.inputs["Scale"].default_value = (0.25, 0.6, 0.25)  # (in metres: ripples ~4 m long; 30 m swells were too gentle to show)
+        nz = nt.nodes.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = 1.0
+        nz.inputs["Detail"].default_value = 6.0
+        bp = nt.nodes.new("ShaderNodeBump")
+        bp.inputs["Strength"].default_value = 1.0
+        bp.inputs["Distance"].default_value = 0.4
+        nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+        nt.links.new(mp.outputs["Vector"], nz.inputs["Vector"])
+        nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
+        nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
         water.data.materials.append(wm)
 
     scene = bpy.context.scene

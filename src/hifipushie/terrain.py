@@ -43,7 +43,9 @@ UNITS = {"m": 1.0, "km": 1000.0, "cm": 0.01, "ft": 0.3048, "yd": 0.9144, "mi": 1
 # every number in a spec is a length (converted with the units) unless its key is one of these
 NOT_LENGTHS = {"slope", "min_slope", "sides", "max_grade", "grade", "amount", "density", "range", "fov", "lobes",
                "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k",
-               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along"}
+               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along",
+               "gullies", "head", "reach", "top_slope", "walls", "front", "toward", "breach", "stacks", "faces", "hollow",
+               "arete", "buttresses", "ledges", "boulders", "order", "bevel", "geos"}
 HEIGHT_KEYS = {"h", "level", "floor", "elevation", "above", "below", "border", "height", "depth", "freeboard",
                "above_water", "hanging", "relief"}
 REFERENCE_SIZE = 4000.0  # landscape defaults were tuned on 4 km scenes; they scale with the frame (Terrain.k)
@@ -119,7 +121,7 @@ def _number(s):
 
 TEXT_KEYS = ("name", "story", "notes", "wishes", "brief")
 NAMED = ("peaks", "cols", "ridges", "rivers", "basins", "passes", "canyons", "mesas", "fords", "landforms", "zones",
-         "sites", "routes", "walls", "cover", "rugged", "intent")
+         "sites", "routes", "walls", "cover", "rugged", "intent", "volcanoes")
 
 
 def _named(spec):
@@ -272,8 +274,13 @@ class Terrain:
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         design.apply(self)
+        pre = self.H.copy()
         erode(self)  # after the design: its places are protected, and lakes are where water ends
         forms.settle(self)  # caprocks stay flat
+        from . import terrain_volcano
+        terrain_volcano.settle(self, pre)  # volcano forms keep their shape; erosion adds detail
+        from . import terrain_rock
+        terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)
         self._fill_lakes()
         self.cover = design.cover(self)
@@ -336,6 +343,10 @@ class Terrain:
             for name, r in list(todo.items()):
                 if r.get("into") and r["into"] not in self.lines:
                     continue
+                for key in ("source", "mouth"):  # (an [x, y] source crashed with an IndexError)
+                    if key in r and len(r[key]) < 3:
+                        raise ValueError(f"river {name!r}: its {key} needs a height, [x, y, z] (the river's heights come "
+                                         f"from its source, its through points that have a z, and its mouth)")
                 src = np.array(r["source"], float)
                 mid = [np.array(p, float) for p in r.get("through", [])]
                 if r.get("into"):
@@ -541,7 +552,10 @@ class Terrain:
             (x0, y0), (x1, y1) = self.spec["extent"]
             along = (self.X - (x0 + x1) / 2) * math.sin(b) + (self.Y - (y0 + y1) / 2) * math.cos(b)
             H = H - float(tilt.get("grade", 0.05)) * along  # lower toward `down`
-        return self._hills(H)
+        from . import terrain_volcano
+        H = terrain_volcano.build(self, self._hills(H))  # volcanoes stand on the base, as large-scale ground
+        from .terrain_forms import peak_forms
+        return peak_forms(self, H)  # summits carved to their form (pyramid, horn)
 
     def _wall_profile(self, b):
         """Height fraction s(t) across a basin wall, t from the floor's edge (0) to the crest (1): a concave scree foot,
@@ -593,6 +607,13 @@ class Terrain:
             return np.array(ref[:2], float)
         if ref in self.points:
             return self.points[ref][0]
+        if isinstance(ref, str) and ref.startswith("edge:"):  # (a basin's falls_to on the frame's edge was an error)
+            side, _, f = ref[5:].partition("@")
+            f = float(f) if f else 0.5
+            (x0, y0), (x1, y1) = self.spec["extent"]
+            m = 2 * self.cell
+            return np.array({"w": (x0 + m, y0 + f * (y1 - y0)), "e": (x1 - m, y0 + f * (y1 - y0)),
+                             "s": (x0 + f * (x1 - x0), y0 + m), "n": (x0 + f * (x1 - x0), y1 - m)}[side[0]], float)
         lfs = self.spec.get("landforms") or {}
         if ref in lfs:
             return self._early_xy(lfs[ref].get("at") or lfs[ref].get("across"))
@@ -826,6 +847,13 @@ class Terrain:
         if ref in self.sites:
             xy = np.array(self.sites[ref]["xy"])
             return xy, self.height(xy), None
+        for V in getattr(self, "volcanoes", {}).values():  # "<volcano>.crater", a collapse by name
+            if ref in V["collapses"]:
+                xy = np.array(V["collapses"][ref]["floor_xy"])
+                return xy, self.height(xy), np.array(V["collapses"][ref]["a"])
+        if ref.endswith(".crater") and ref[:-7] in getattr(self, "volcanoes", {}):
+            xy = np.array(self.volcanoes[ref[:-7]]["xy"])
+            return xy, self.height(xy), None
         if ref in self.passes:
             xy = np.array(self.passes[ref]["xy"])
             return xy, self.height(xy), None
@@ -889,6 +917,9 @@ class Terrain:
     def summit(self, name):
         """A peak's built height: the highest ground within its own top (map, report and probes all use this)."""
         xy, _ = self.points[name]
+        if name in getattr(self, "volcanoes", {}):  # a volcano's top is its rim, round its crater
+            V = self.volcanoes[name]
+            return float(self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) <= V["rc"] + 3 * self.cell].max())
         p = (self.spec.get("peaks") or {}).get(name) or (self.spec.get("cols") or {}).get(name) or {}
         # within half its top's radius (on a tilt, higher ground uphill inside the whole radius read as its summit)
         r = max(0.5 * float(p.get("radius", 0)), min(40 * self.k, 3 * self.cell), 1.5 * self.cell)
@@ -913,6 +944,9 @@ class Terrain:
         lfs = self.spec.get("landforms") or {}
         prints = {}
         for name, lf in lfs.items():
+            if lf.get("type") not in ("lake", "fan", "moraine", "terrace"):
+                raise ValueError(f"landform {name!r}: needs \"type\": \"lake\" | \"fan\" | \"moraine\" | \"terrace\" "
+                                 f"(got {lf.get('type')!r})")
             before = self.H.copy()
             getattr(self, "_lf_" + lf["type"])(name, lf)
             prints[name] = np.abs(self.H - before) > 0.5
@@ -1095,6 +1129,11 @@ class Terrain:
             fine = noise.fbm(pts, 1.1 * W["crag"], 2, seed=5)
             self.H += rough * crestward * W["bumps"] * 2 * (ridged.reshape(self.X.shape) - 0.5)
             self.H += rough * 0.4 * W["bumps"] * 2 * (fine.reshape(self.X.shape) - 0.5)
+            # floors and plateau tops: a gentle swell and hummocks at player scale (rough is ~0 there: a plateau read as
+            # flat plaster from the air)
+            swell = noise.fbm(np.c_[self.P, np.full(len(self.P), 21.0)], 6 * W["crag"], 3, seed=6).reshape(self.X.shape)
+            # (a swell only: the crag-scale term pocked flat tops like a golf ball)
+            self.H += (1 - np.clip(rough / 0.3, 0, 1)) * W["bumps"] * 1.4 * (swell - 0.5)
             return
         ridged = 1 - np.abs(2 * noise.fbm(pts, 120 * self.k, 3, seed=3) - 1)
         gully = noise.fbm(pts, 45 * self.k, 2, seed=5)
@@ -1112,9 +1151,16 @@ class Terrain:
         from . import terrain_world
         out = terrain_world.report(self) + ["peaks/cols (authored -> built):"]
         cols = self.spec.get("cols") or {}
+        from .terrain_forms import measure_peak
         for n, (xy, h) in self.points.items():
             built = self.height(xy) if n in cols else self.summit(n)
-            out.append(f"  {n}: {h:.0f} m -> {built:.0f} m" + (" (a pass notches it)" if any(
+            form = ""
+            if n in getattr(self, "peak_forms", {}):
+                m = measure_peak(self, n)
+                form = (f"; {self.peak_forms[n]['form']}: falls {m['fall']:.0f} m in its first {m['at']:.0f} m, "
+                        f"{m['aretes']} arêtes (crest angle median {m['crest']:.0f} deg: a knife edge ~100, rounded 150+), "
+                        f"faces median {m['faces']:.0f} deg")
+            out.append(f"  {n}: {h:.0f} m -> {built:.0f} m" + form + (" (a pass notches it)" if any(
                 np.hypot(*(np.array(p["xy"]) - xy)) < p["width"] + 3 * self.cell for p in self.passes.values()) else ""))
         for L in self.lines.values():
             if L.kind != "river":
@@ -1144,6 +1190,19 @@ class Terrain:
             out.append(f"divide (automatic) between {a} and {b}: {length:.0f} m of crest, up to {top:.0f} m")
         from . import terrain_sea
         out += terrain_sea.report(self)
+        from . import terrain_volcano, terrain_rock
+        out += terrain_volcano.report(self)
+        rk = terrain_rock.measure(self)
+        if rk:
+            out.append(f"rock faces (measured): {rk['face_km2'] * 100:.1f} ha over 45 deg; {100 * rk['turned']:.0f}% of it "
+                       f"turned over 25 deg from the face's line (buttress and couloir sides; a smooth face is ~0%)"
+                       + (f"; cliffs over 60 deg are {rk['cliff_cells']:.1f} cells across in plan (median)"
+                          if rk["cliff_cells"] else ""))
+            if rk["cliff_cells"] and rk["cliff_cells"] < 3:
+                out.append(f"  (cliffs over 60 deg are only {rk['cliff_cells']:.1f} cells across in plan at "
+                                     f"a {self.cell:.1f} m cell: too few for detail on the face itself (they render as "
+                                     f"large flat facets from close by). A finer \"cell\" (e.g. {self.cell / 2:.1f}) shows "
+                                     f"more, at 4x the build time)")
         for name, lk in self.lakes.items():
             if lk.get("sea"):
                 continue
@@ -1194,6 +1253,8 @@ class Terrain:
         near += [L.name for L in self.lines.values() if L.kind == "ridge"
                  and cKDTree(L.xy).query(xy)[0] < max(150 * self.k, 4 * self.cell)]
         near += [n for n, m in getattr(self, "mesas", {}).items() if np.linalg.norm(np.array(m["xy"]) - xy) < 1.3 * m["radius"]]
+        near += [n for n, V in getattr(self, "volcanoes", {}).items()
+                 if n not in near and np.linalg.norm(np.array(V["xy"]) - xy) < V["rc"] + max(5 * self.cell, 0.25 * (V["R"] - V["rc"]))]
         top_authored = max([h for _, h in self.points.values()] + [float(L.h.max()) for L in self.lines.values()
                                                                    if L.kind == "ridge"] + [-np.inf])
         if near:
@@ -1530,6 +1591,11 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
         pts = [to_px(*p) for p in Lr.xy[::2]]
         if Lr.kind == "river":
             d.line(pts, fill=(40, 110, 200), width=3)
+        elif Lr.kind == "flow":  # a lava flow: its path, dotted orange-red
+            for a in range(0, len(pts) - 1, 6):
+                d.line(pts[a:a + 2], fill=(220, 80, 30), width=2)
+        elif Lr.kind == "rim":
+            continue
         else:
             for a in range(0, len(pts) - 1, 4):
                 d.line(pts[a:a + 3], fill=(120, 30, 30), width=2)
@@ -1629,20 +1695,43 @@ def mask_sheet(T: Terrain, px: int = 360):
     return sheet
 
 
-def write_mesh(T: Terrain, path, step: int = 1):
-    """Grid mesh npz: verts, faces, linear colours, per-vertex tree densities; a water mesh for lakes."""
+def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
+    """Grid mesh npz: verts, faces, linear colours, per-vertex tree densities; a water mesh for lakes. `up` (default 2
+    for grids up to 700 cells a side) resamples the grid finer for the render only, cubic, kept within its neighbours'
+    range: a 70 deg face is 2-3 cells across in plan and rendered as big flat triangles (crumpled paper)."""
     from . import terrain_design as design
     H = T.H[::step, ::step]
     X, Y = T.X[::step, ::step], T.Y[::step, ::step]
+    col = ground_colours(T)[::step, ::step]
+    Wt = T.water[::step, ::step]
+    if up is None:
+        up = 2 if max(H.shape) <= 700 else 1
+    if up > 1:
+        ny0, nx0 = H.shape
+        gy = np.linspace(0, ny0 - 1, (ny0 - 1) * up + 1)
+        gx = np.linspace(0, nx0 - 1, (nx0 - 1) * up + 1)
+        GY, GX = np.meshgrid(gy, gx, indexing="ij")
+        lo = ndimage.map_coordinates(ndimage.minimum_filter(H, size=2, origin=-1), [np.floor(GY), np.floor(GX)], order=0)
+        hi = ndimage.map_coordinates(ndimage.maximum_filter(H, size=2, origin=-1), [np.floor(GY), np.floor(GX)], order=0)
+        H = np.clip(ndimage.map_coordinates(H, [GY, GX], order=3, mode="nearest"), lo, hi)
+        X, Y = np.meshgrid(np.interp(gx, np.arange(nx0), X[0]), np.interp(gy, np.arange(ny0), Y[:, 0]))
+        col = np.stack([ndimage.map_coordinates(col[..., k], [GY, GX], order=1) for k in range(3)], -1)
+        wet0 = ~np.isnan(Wt)
+        if wet0.any():
+            _, (iy, ix) = ndimage.distance_transform_edt(~wet0, return_indices=True)
+            lev = Wt[iy, ix]
+        else:
+            lev = np.zeros(Wt.shape)
+        wetf = ndimage.map_coordinates(wet0.astype(float), [GY, GX], order=1) > 0.25
+        Wt = np.where(wetf, ndimage.map_coordinates(lev, [GY, GX], order=1), np.nan)
     ny, nx = H.shape
     verts = np.stack([X.ravel(), Y.ravel(), H.ravel()], 1)
     i = np.arange(ny * nx).reshape(ny, nx)
     a, b, c, e = i[:-1, :-1].ravel(), i[:-1, 1:].ravel(), i[1:, 1:].ravel(), i[1:, :-1].ravel()
     faces = np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, e], 1)])
-    col = ground_colours(T)[::step, ::step].reshape(-1, 3)
+    col = col.reshape(-1, 3)
     col = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
     inst = design.trees(T)  # the same instances the export writes
-    Wt = T.water[::step, ::step]
     wet = ~np.isnan(Wt)
     wv = verts.copy()
     if wet.any():
@@ -1654,7 +1743,9 @@ def write_mesh(T: Terrain, path, step: int = 1):
              wverts=wv.astype(np.float32), wfaces=wf.astype(np.int32),
              tree_xyz=inst[:, :3].astype(np.float32),
              tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
-             span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))), base=np.float32(T.H.min()),
+             span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))),
+             # the ground beyond the frame: near its edge's height, not its lowest point (a plain far below read as a sea)
+             base=np.float32(np.percentile(np.r_[T.H[0], T.H[-1], T.H[:, 0], T.H[:, -1]], 30)),
              sea=np.float32(T.sea["level"] if getattr(T, "sea", None) else np.nan),
              markers=np.array([[*st["xy"], st["level"]] for st in T.sites.values() if not st.get("prop")],
                               np.float32).reshape(-1, 3),
