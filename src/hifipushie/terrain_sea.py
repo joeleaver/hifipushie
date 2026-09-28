@@ -141,7 +141,24 @@ def apply(T):
     # geos (zawns): narrow clefts cut back into a cliff coast, the sea running up them between vertical walls (a cliff
     # line with no inlets read as a sea wall with a ruler-straight top)
     cl0 = S.get("cliffs") or {}
-    if (S.get("shore") == "cliffs" or "cliffs" in S) and cl0.get("geos", 1):
+
+    def cut_geo(p, inl, L, w):
+        v = np.stack([T.X - p[0], T.Y - p[1]], -1)
+        along, across = v @ inl, v @ np.array([-inl[1], inl[0]])
+        t = np.clip(along / L, 0, 1)
+        half = w / 2 * (1 - 0.6 * t) * (1 + 0.3 * np.sin(along / (0.3 * L + 1)))  # narrowing, a little kinked
+        return np.where((along > -2 * T.cell) & (along < L), np.abs(across) - half, np.inf)
+
+    geos = {}
+    if isinstance(cl0.get("geos"), dict):  # placed: {name: {"at": address, "length": m, "width": m}}
+        for gname, g in cl0["geos"].items():
+            p, inl = _coast_point(T, land, g.get("at", "south"))
+            L, w = float(g.get("length", 60.0)), max(1.5 * T.cell, float(g.get("width", 8.0)))
+            sd = np.minimum(sd, cut_geo(p - inl * 2 * T.cell, inl, L + 2 * T.cell, w))
+            geos[gname] = {"xy": p.tolist(), "inland": inl.tolist(), "length": L, "width": w,
+                           "head": (p + inl * L).tolist()}
+        land = sd > 0
+    elif (S.get("shore") == "cliffs" or "cliffs" in S) and cl0.get("geos", 1):
         edge = land & ndimage.binary_dilation(~land)
         ey, ex = np.nonzero(edge)
         if len(ey):
@@ -166,12 +183,7 @@ def apply(T):
                 inl /= np.linalg.norm(inl) + 1e-9
                 L = rng_g.uniform(25, 110) * max(k, 0.5) + 4 * T.cell
                 w = max(1.5 * T.cell, rng_g.uniform(4, 12))
-                v = np.stack([T.X - p[0], T.Y - p[1]], -1)
-                along, across = v @ inl, v @ np.array([-inl[1], inl[0]])
-                t = np.clip(along / L, 0, 1)
-                half = w * (1 - 0.7 * t) * (1 + 0.3 * np.sin(along / (0.3 * L + 1)))  # narrowing, a little kinked
-                cut = np.where((along > -2 * T.cell) & (along < L), np.abs(across) - half, np.inf)
-                sd = np.minimum(sd, cut)
+                sd = np.minimum(sd, cut_geo(p, inl, L, 2 * w))
                 done.append(p)
             land = sd > 0
 
@@ -224,12 +236,30 @@ def apply(T):
     H = T.H
     depth = float(S.get("depth", 30.0 * max(k, 0.25)))
     shelf = float(S.get("shelf", max(0.08 * T.size, 10 * depth)))
-    sea_floor = level - 1.0 - (depth - 1.0) * smoothstep(0, shelf, -sd)
     # cliffs: the land's top at the coast, at least the asked height (the land ramps up to it from inland)
     ch = cl.get("height", 30.0 * max(k, 0.3))
     lo_h, hi_h = (ch, ch) if isinstance(ch, (int, float)) else ch
+    # a cliff coast juts and bays at tens of metres (headlands, bights, buttresses): its line moved in and out in plan,
+    # so the lip and the foot move together (a cliff line smooth at that scale read as a long even wall)
+    jut = float(cl.get("jut", 1.0))
+    if jut > 0 and (wc > 0.5).any():
+        A = jut * float(np.clip(0.8 * hi_h, 3.0, 30.0))
+        pts = np.c_[T.P, np.full(len(T.P), 41.0)]
+        big = noise.fbm(pts, max(3 * A, 25.0), 3, seed=191).reshape(T.X.shape) - 0.5
+        rib = 1 - np.abs(2 * noise.fbm(pts, max(1.2 * A, 10.0), 2, seed=192).reshape(T.X.shape) - 1)  # sharp ribs
+        wob = A * (1.6 * big + 0.5 * (rib - 0.5))
+        near = smoothstep(3 * A + 4 * T.cell, A, np.abs(sd))  # only about the coastline
+        sd = sd + wc * near * wob
+        land = sd > 0
+        coast = land & ndimage.binary_dilation(~land)
+        _, (cy, cx) = ndimage.distance_transform_edt(~coast, return_indices=True)
+    sea_floor = level - 1.0 - (depth - 1.0) * smoothstep(0, shelf, -sd)
     var = noise.fbm(np.c_[T.P, np.full(len(T.P), 17.0)], max(0.06 * T.size, 150 * k), 2, seed=141).reshape(T.X.shape)
     want = level + lo_h + (hi_h - lo_h) * np.clip(1.6 * (var - 0.5) + 0.5, 0, 1)
+    for ref, hv in (cl.get("heights") or {}).items():  # per stretch: {zone or address: m | [lo, hi]}
+        lo2, hi2 = (hv, hv) if isinstance(hv, (int, float)) else hv
+        m = _near(T, [ref], 150 * k, coves, sd)
+        want = want * (1 - m) + (level + lo2 + (hi2 - lo2) * np.clip(1.6 * (var - 0.5) + 0.5, 0, 1)) * m
     # the cliff top at each cell's nearest coast point, smoothed along the coast (cell to cell it made a sawtooth crown)
     top_c = ndimage.gaussian_filter(np.where(coast, np.maximum(H, want), 0.0), smooth) / np.maximum(
         ndimage.gaussian_filter(coast.astype(float), smooth), 1e-6)
@@ -238,7 +268,9 @@ def apply(T):
     raised = np.maximum(H, top_here - ramp * np.maximum(sd, 0))
     # the lip rolls over (slope-over-wall): the top falls a little toward the edge before the face (a knife-edge lip
     # read as a sawn block)
-    bev_h = float(cl.get("bevel", 0.12)) * np.maximum(top_here - level, 0)
+    # (the roll-over wanders along the coast: one even bevel read as a ruled lip)
+    lipn = noise.fbm(np.c_[T.P, np.full(len(T.P), 43.0)], max(0.6 * hi_h, 8.0), 2, seed=193).reshape(T.X.shape)
+    bev_h = float(cl.get("bevel", 0.12)) * np.maximum(top_here - level, 0) * np.clip(0.2 + 1.8 * lipn, 0.1, 1.8)
     bev_w = np.maximum(3 * bev_h, 2 * T.cell)
     raised = raised - bev_h * smoothstep(bev_w, 0, np.maximum(sd, 0)) ** 1.5
     cliff_face = (top_here - bev_h) - np.maximum(-sd, 0) * math.tan(CLIFF)
@@ -250,12 +282,22 @@ def apply(T):
     # rocky: the land as it is, kept dry at the shore, dropping into the water
     # (kept dry a few cells in from the shore only: uncapped, 0.2 * sd raised ground 400 m inland to 80 m)
     rocky = np.where(sd > 0, np.maximum(H, level + 0.4 + 0.2 * np.minimum(sd, 3 * T.cell)), np.minimum(H, level - 0.8 + 0.8 * sd))
-    onshore = wc * raised + wb * beach_land + (1 - wc - wb) * rocky
+    # low rocks: the land eased down to a metre or so above the water, ending in a strip of boulders at the waterline
+    # (grass running down to the rocks; a beach grading left sand, a rocky shore a drop)
+    wr = np.clip(1 - wc - wb, 0, 1) if shore in ("rocks", "low rocks", "rocky_low") else np.zeros(T.X.shape)
+    rw = float(S.get("rocks_width", 6.0))
+    rback = float(S.get("backshore", 4 * bw))
+    rock_top = level + 0.3 + np.clip(sd, 0, rw) * (1.2 / rw)
+    ease = smoothstep(rw, rw + rback, sd)
+    rock_land = np.where(sd < rw, rock_top, H * ease + (level + 1.5) * (1 - ease))
+    rock_land = np.where(H < rock_land, np.maximum(H, level + 0.3), rock_land)  # (graded down, never raised)
+    rock_off = np.minimum(np.maximum(level - 0.3 + sd * (0.8 / rw), sea_floor), level - 0.3)
+    onshore = wc * raised + wb * beach_land + wr * rock_land + np.clip(1 - wc - wb - wr, 0, 1) * rocky
     # offshore of a cliff its face stands in the water, from the top down to the sea floor (clamping the first cells
     # offshore under the water had made every cliff a plumb wall at the coastline)
     below = np.minimum(sea_floor, np.where(sd > -3 * T.cell, level - 0.3, np.inf))
     offshore = wc * np.maximum(cliff_face, sea_floor) + wb * np.minimum(np.maximum(beach, sea_floor), level - 0.6) \
-        + (1 - wc - wb) * below
+        + wr * rock_off + np.clip(1 - wc - wb - wr, 0, 1) * below
     # beaches at the foot of cliffs: a strip of sand below the face, the cliff standing behind it
     if foot.any():
         run = np.maximum(top_here - level, 0) / math.tan(CLIFF)
@@ -268,6 +310,14 @@ def apply(T):
         offshore = np.where(foot > 0.5, np.where(x < 0, np.maximum(cliff_face, sand), np.maximum(sand, sea_floor)),
                             offshore)
     new = np.where(sd > 0, onshore, offshore)
+    rocks_band = np.zeros(T.X.shape)
+    if wr.max() > 0.05:  # boulders along the low-rock strip, from a little offshore to the grass's edge
+        from .terrain_rock import facets
+        lumps = noise.fbm(np.c_[T.P, np.full(len(T.P), 51.0)], max(1.2, 1.2 * T.cell), 2, seed=201).reshape(T.X.shape)
+        blocky, _ = facets(T, lumps, max(2.0, 2.5 * T.cell), tilt=0.35, seed=202, crease=0.05)
+        rocks_band = wr * smoothstep(-1.5 * rw, -0.5 * rw, sd) * smoothstep(1.1 * rw, 0.6 * rw, sd)
+        bould = np.clip((blocky - 0.42) / 0.3, 0, 1) * 1.4  # blocks up to ~1.4 m, gaps of shingle between
+        new = new + rocks_band * bould
     # a cove's head: a gentle apron behind its beach (the floor of the old collapse, room for a harbour), walled by the
     # scar where it meets higher ground; only ever cut down, and only inland of the head
     for name, cv in coves.items():
@@ -379,6 +429,26 @@ def apply(T):
             new = np.where(ok, st, new)
             T.hard |= ok & (st > level)
             stacks.append({"xy": c.tolist(), "height": hgt, "radius": r})
+    # talus: aprons of fallen blocks leaning on the cliff's foot, in patches, awash (a face straight into clean water
+    # read as a dam wall)
+    tal = float(cl.get("talus", 1.0))
+    if tal > 0 and (wc > 0.5).any():
+        from .terrain_rock import facets
+        hgt = np.maximum(top_here - level, 0)
+        run = hgt / math.tan(CLIFF)
+        oof = -sd - run  # metres seaward of the face's foot
+        aw = 0.5 * hgt + 2 * T.cell
+        patch = smoothstep(0.42, 0.58, noise.fbm(np.c_[T.P, np.full(len(T.P), 47.0)], max(2.5 * hi_h, 25.0), 2,
+                                                  seed=197).reshape(T.X.shape))
+        lumps = noise.fbm(np.c_[T.P, np.full(len(T.P), 49.0)], max(1.5, 1.5 * T.cell), 2, seed=198).reshape(T.X.shape)
+        blocky, _ = facets(T, lumps, max(3.0, 3 * T.cell), tilt=0.08, seed=199, crease=0.08)
+        fan = np.clip(1 - np.maximum(oof, 0) / aw, 0, 1) ** 1.3
+        # a fan leaning on the foot, its surface blocks a metre or two (steep random facets at this size made spikes)
+        apron = level - 0.8 + tal * patch * (0.3 * hgt * fan + np.minimum(0.06 * hgt, 1.5) * (blocky - 0.5) * 2 * (fan > 0))
+        on = (sd < 0) & (wc > 0.5) & (foot < 0.5) & (oof > -run) & (fan > 0)
+        new = np.where(on, np.maximum(new, apron), new)
+        T.hard |= on & (apron > level)
+        st_mask |= on & (patch > 0.05)  # (the fine re-cut leaves it, like the stacks)
     cliffish = (wc > 0.5) | (foot > 0.5)  # (a cliff's face and its foot's sand stand offshore of the coastline)
     new = np.where(sd > 0, np.maximum(new, level + 0.3), np.where(cliffish, new, np.minimum(new, level - 0.3)))
     T.H = new
@@ -387,8 +457,8 @@ def apply(T):
     T.hardness = np.where(face, np.minimum(T.hardness, 0.05), T.hardness)
     T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "foot": foot, "coves": coves, "want": want,
              "top": top_here, "bev_h": bev_h, "bev_w": bev_w, "st_mask": st_mask,
-             "beach_at": beach_at, "stacks": stacks,
-             "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches)}
+             "beach_at": beach_at, "stacks": stacks, "geos": geos,
+             "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches), "rocks": rocks_band}
     T.masks.setdefault("coast", np.zeros(T.X.shape))
     T.masks["coast"] = np.maximum(T.masks["coast"], smoothstep(4 * T.cell, 0, np.abs(sd)))
     far = np.unravel_index(np.argmin(sd), sd.shape)  # the open sea: furthest from any land (a ring's mean is its hole)
@@ -441,6 +511,8 @@ def regions(T, name):
         return S["wc"] * smoothstep(-4 * T.cell, 0, S["sd"]) * smoothstep(3 * T.cell, 0, S["sd"])
     if name == "coast":
         return smoothstep(6 * T.cell, 0, np.abs(S["sd"]))
+    if name == "rocks":  # the low-rock strip's boulders (shore "rocks")
+        return np.clip(S["rocks"] * 1.5, 0, 1)
     return None
 
 

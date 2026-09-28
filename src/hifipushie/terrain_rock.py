@@ -33,6 +33,9 @@ def _keep(T):
         keep |= p["corridor"]
     for pf in getattr(T, "peak_forms", {}).values():  # (a peak's arêtes stay clean edges: rock lumps made its skyline a saw)
         keep |= pf["crest"]
+    S = getattr(T, "sea", None)
+    if S:  # stacks, talus and shore boulders are shaped already (faceting their slopes made spikes)
+        keep |= S["st_mask"] | (S["rocks"] > 0.05)
     return ndimage.binary_dilation(keep, iterations=2) | ~np.isnan(T.water)
 
 
@@ -267,7 +270,9 @@ def measure(T):
     seed = T.H.copy()
     seed[1:-1, 1:-1] = T.H.max()
     pit = (reconstruction(seed, T.H, method="erosion") - T.H) > max(0.5, 0.1 * T.cell)  # (deeper than half a metre)
-    _, n_pits = ndimage.label(pit & face)
+    S = getattr(T, "sea", None)
+    rubble = (S["st_mask"] | (S["rocks"] > 0.05)) if S else np.zeros(T.X.shape, bool)  # (gaps between blocks aren't pits)
+    _, n_pits = ndimage.label(pit & face & ~rubble)
     lap = np.abs(ndimage.laplace(T.H))[face] / T.cell
     return {"face_km2": face.sum() * T.cell ** 2 / 1e6, "turned": float((d[face] > math.radians(25)).mean()),
             "cliff_cells": across, "pits_km2": n_pits / max(face.sum() * T.cell ** 2 / 1e6, 1e-9),
