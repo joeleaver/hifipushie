@@ -861,7 +861,8 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     """Images of a terrain. map: north-up hillshade with cover colours, contours, rivers, ridges, routes, sites,
     walls (red where climbable), names and a scale bar. masks: each cover mask alone (white = dense). views:
     perspective renders (Cycles, with trees and water; ~30 s + ~10 s a view): [{"name", "eye": address | [x, y, z],
-    "lift": m, "look": address, "fov": deg}]; spec_views=True renders the spec's own "views". Files are also written to
+    "lift": m, "look": address, "fov": deg, "sun": "auto" | side | {"from", "height"} | "morning"}] (auto: a raking
+    sun per view); spec_views=True renders the spec's own "views". Files are also written to
     workspace/terrain/<name>/. Read the images, not just the report."""
     from . import terrain, terrain_tools as tt
     from .terrain_world import Questions
