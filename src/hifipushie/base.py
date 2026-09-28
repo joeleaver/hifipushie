@@ -35,10 +35,11 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 36  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 44  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
+LOW_LOOP = 0.004  # the neck loop's least clearance under the graft's overlap (see _neck_tube)
 _CACHE: dict = {}
 
 
@@ -189,7 +190,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             if n in spec_expanded["joints"]:
                 used[k] = spec_expanded["joints"][n]["pos"]
                 break
-    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push", "body")}
+    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push", "body", "style")}
     used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
     key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
     if key in _CACHE:
@@ -200,8 +201,10 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             girth.setdefault(j[:-2] + ".R", g)
     W, *_ = retopo._skeleton_warp(tpl["P"], tpl["J"], spec_expanded, [], girth=girth)
     faces, _, _ = retopo.topology(tpl["L"], tpl["S"])
-    if base.get("soften"):
-        W = _soften(W, tpl, spec_expanded, float(base["soften"]))
+    soften = base.get("soften")
+    if soften:  # (the style's simplify is the head's only: softening the body with it left a ridge at the neck's
+        # base, where the soften fades out under the neck loop)
+        W = _soften(W, tpl, spec_expanded, float(soften))
     if base.get("push"):
         W = _push(W, tpl, base["push"])
     head = head_of(spec_expanded, base)
@@ -246,7 +249,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
 
 
 GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # under workspace/_templates/gnm (Apache 2.0, see SOURCE.txt)
-GNM_CUT = 0.172  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
+GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
 GNM_TILT = 20.0  # degrees
 
@@ -267,6 +270,11 @@ def head_of(s: dict, base: dict):
     up = np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float)
     up0 = np.array(tj["head"]["pos"]) - np.array(tj["neck"]["pos"])
     up = retopo._rot_between(_unit(up0), _unit(up)) @ np.array([0, 0, 1.0])
+    st = base.get("style") or {}
+    if st:  # the stylisation layer, reusable across characters: bigger eyes, a bigger head, simpler planes
+        head = {**head, "eyes": float(head.get("eyes", 1.0)) * float(st.get("eyes", 1.0)),
+                "scale": float(head.get("scale", 1.4)) * float(st.get("head", 1.0)),
+                "simplify": float(head.get("simplify", 0.0)) + float(st.get("simplify", 0.0))}
     key = ("head", json.dumps([head, mid.round(5).tolist(), up.round(5).tolist()], sort_keys=True))
     if key not in _CACHE:
         _CACHE[key] = gnm_head(head, mid, up)
@@ -338,10 +346,10 @@ def _soften(W, tpl, s, amount):
     return X
 
 
-def _neck_loop(tpl):
-    """The template's closed edge loop round the neck whose highest point is 2.5 cm under its chin (loops there tilt:
-    low at the throat, high at the nape): (loop, the head's top vertex)."""
-    key = ("neck_loop", tpl["name"], len(tpl["P"]), float(tpl["P"][:, 2].max()))
+def _neck_loops(tpl):
+    """The template's closed edge loops round the neck under its chin (loops there tilt: low at the throat, high at
+    the nape), highest first: ([loops], the head's top vertex)."""
+    key = ("neck_loops", tpl["name"], len(tpl["P"]), float(tpl["P"][:, 2].max()))
     if key not in _CACHE:
         P = tpl["P"]
         faces, nb, ef = retopo.topology(tpl["L"], tpl["S"])
@@ -349,16 +357,16 @@ def _neck_loop(tpl):
         chin_z = tpl.get("chin_z", eye[2] - 0.15)
         near = set(np.flatnonzero((P[:, 2] > chin_z - 0.14) & (P[:, 2] < chin_z + 0.05) & (np.abs(P[:, 0]) < 0.14)))
         top = int(np.argmax(P[:, 2]))
-        best = None
+        found = []
         for path in retopo._loops_round(P, faces, nb, ef, near, 200):
             Q = P[path]
             ang = np.arctan2(Q[:, 1] - Q[:, 1].mean(), Q[:, 0])
             wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
             if abs(round(wn)) != 1 or Q[:, 2].max() > chin_z - 0.025 or np.abs(Q[:, 0]).max() > 0.12:
                 continue
-            if best is None or Q[:, 2].max() > best[0]:
-                best = (Q[:, 2].max(), path)
-        _CACHE[key] = (best[1], top)
+            found.append((float(Q[:, 2].max()), path))
+        found.sort(key=lambda f: -f[0])
+        _CACHE[key] = ([f[1] for f in found], top)
     return _CACHE[key]
 
 
@@ -367,7 +375,11 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
     past the head's top and capped (quads; subdivided with the rest). Each ring vertex tapers (smoothstep) from the
     loop's radius to the grafted head's neck radius at its angle, reaching it at the graft plane: a straight tube
     read as a collar with an edge at each end."""
-    loop, top = _neck_loop(tpl)
+    loops, top = _neck_loops(tpl)
+    pc, pn, band = head["plane"]
+    # the highest loop wholly LOW_LOOP under the overlap with the head: a loop reaching into it (a bigger head's plane
+    # sits lower) left the taper no room, and the seam showed as a ridge with flecks
+    loop = next((lp for lp in loops if ((W[lp] - pc) @ pn).max() < -(SEAM + LOW_LOOP)), loops[-1])
     J = s["joints"]
     n = _unit(np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float))
     ring0 = W[loop]
@@ -377,7 +389,6 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
     q0 = ring0 - c0 - np.outer((ring0 - c0) @ n, n)
     th = np.arctan2(q0 @ e2, q0 @ e1)
     r0 = np.linalg.norm(q0, axis=1)
-    pc, pn, band = head["plane"]
     hp = float((pc - c0) @ n)  # the plane's height over the loop's centre, along the axis
     H = head["verts"]
     bins = 36
@@ -545,12 +556,26 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     remap[np.flatnonzero(skin)] = np.arange(skin.sum())
     W = place(V[skin])
     faces = [list(q) for q in remap[Q]]
+    if float(head.get("simplify", 0.0)) > 0:  # simpler planes (a feature-animation face): small forms smoothed away,
+        # the lid rims, lips and nostrils kept (their weight fades to 0 within ~1.5 cm of those landmarks)
+        E = retopo.edges(np.array([v for f in faces for v in f]), np.array([len(f) for f in faces]))
+        deg = np.bincount(E.ravel(), minlength=len(W))
+        keep = [lm[i] for i in (37, 38, 40, 41, 43, 44, 46, 47, 48, 51, 54, 57, 62, 66, 31, 33, 35)]
+        dk = np.min([np.linalg.norm(W - p, axis=1) for p in keep], axis=0)
+        wv = np.clip((dk - 0.006 * s) / (0.015 * s), 0, 1)
+        # and the neck left as it is near the graft plane (its open edge moved under the smoothing: a ridge and
+        # flecks round the neck's base, where the body's tube must meet it)
+        wv = (wv * np.clip(((W - cut) @ pn - 0.02) / 0.03, 0, 1))[:, None]
+        for _ in range(int(round(12 * float(head["simplify"])))):
+            for lam in (0.5, -0.53):
+                W = W + lam * wv * retopo._lap(W, E, deg)
     for _ in range(int(head.get("subdivide", 1))):
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)
     h = h * float(head.get("smooth", 1.0))
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
-            "eyes": [place(J[2]), place(J[3])], "eye_r": s * k_eye * float(np.mean(r_eye)), "lm68": lm,
+            "eyes": [place(J[2]), place(J[3])], "eye_r": 1.04 * s * k_eye * float(np.mean(r_eye)),  # through the lids' lining (it lies at 0.9-1 x GNM's eye radius): at the lining, the two coincided and flecked the rims
+             "lm68": lm,
             "plane": (cut, pn, s * GNM_BAND)}
 
 

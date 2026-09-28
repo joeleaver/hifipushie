@@ -183,14 +183,16 @@ class _Compiler:
         expose = {"opacity": ["paint", name, "opacity"]} if own else {}
         if own and "color" in ly:
             expose["color"] = ["paint", name, "color"]
+        # (a measured whole layer's attribute is named by its definition too: named by the layer alone, an edited mask
+        # kept its old measurement in the scene cache)
         if name.endswith(".L"):  # mirrored: the whole mask measured here (max of the point and its mirror)
-            entries = [{"gen": "input", "attr": self.attr("layer", name, parts=self.parts), "range": None, "blend": "multiply",
+            entries = [{"gen": "input", "attr": self.attr("layer", name, key=("layer", name, ly), parts=self.parts), "range": None, "blend": "multiply",
                         "weight": 1.0, "post": {}, "expose": {}}]
         else:
             try:
                 entries = [self.entry(e, name, paint._tag(name, t), p) for e, t, p in zip(stack, tags, paths)]
             except NotImplementedError:
-                entries = [{"gen": "input", "attr": self.attr("layer", name, parts=self.parts), "range": None, "blend": "multiply",
+                entries = [{"gen": "input", "attr": self.attr("layer", name, key=("layer", name, ly), parts=self.parts), "range": None, "blend": "multiply",
                             "weight": 1.0, "post": {}, "expose": {}}]
         parts = ly.get("part", "body")
         return {"name": name, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
