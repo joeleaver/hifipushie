@@ -63,6 +63,8 @@ def region(T, r) -> np.ndarray:
             return regions(T, r)
         if r in ("routes", "sites"):
             return T.masks.get(r, np.zeros(shape))
+        if r in getattr(T, "vzones", {}):  # a volcano's crater, flows ("lava"), collapse scars, "debris"
+            return T.vzones[r].astype(float)
         if r in T.lakes and hasattr(T, "lake_id"):
             return (T.lake_id == T.lakes[r]["id"]).astype(float)
         if r.startswith("zone:"):
@@ -1255,6 +1257,8 @@ def _target(T, ref):
     if isinstance(ref, str) and (ref in T.points or ref.startswith("highest")):
         rad = max(40 * T.k, 1.5 * T.cell)
         own = ((T.spec.get("peaks") or {}).get(ref) or {}).get("radius", 0.02 * T.size)
+        if ref in getattr(T, "volcanoes", {}):  # a volcano: aim over its crater at its rim
+            own = T.volcanoes[ref]["rc"] + 2 * T.cell
         rad = max(rad, 1.2 * own)  # a rounded summit's own near edge isn't in the way of seeing it
         near = np.hypot(T.X - xy[0], T.Y - xy[1]) < rad
         return xy, float(T.H[near].max()), rad, True  # aim over the summit's middle at its top height

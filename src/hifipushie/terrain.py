@@ -43,7 +43,8 @@ UNITS = {"m": 1.0, "km": 1000.0, "cm": 0.01, "ft": 0.3048, "yd": 0.9144, "mi": 1
 # every number in a spec is a length (converted with the units) unless its key is one of these
 NOT_LENGTHS = {"slope", "min_slope", "sides", "max_grade", "grade", "amount", "density", "range", "fov", "lobes",
                "proud", "concavity", "strength", "age", "lumpy", "soften", "color", "size", "coarse", "wander", "k",
-               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along"}
+               "compression", "detail", "average", "talus", "dip", "dip_toward", "hard", "count", "down", "along",
+               "gullies", "head", "reach", "top_slope", "walls", "front", "toward", "breach"}
 HEIGHT_KEYS = {"h", "level", "floor", "elevation", "above", "below", "border", "height", "depth", "freeboard",
                "above_water", "hanging", "relief"}
 REFERENCE_SIZE = 4000.0  # landscape defaults were tuned on 4 km scenes; they scale with the frame (Terrain.k)
@@ -119,7 +120,7 @@ def _number(s):
 
 TEXT_KEYS = ("name", "story", "notes", "wishes", "brief")
 NAMED = ("peaks", "cols", "ridges", "rivers", "basins", "passes", "canyons", "mesas", "fords", "landforms", "zones",
-         "sites", "routes", "walls", "cover", "rugged", "intent")
+         "sites", "routes", "walls", "cover", "rugged", "intent", "volcanoes")
 
 
 def _named(spec):
@@ -272,8 +273,11 @@ class Terrain:
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         design.apply(self)
+        pre = self.H.copy()
         erode(self)  # after the design: its places are protected, and lakes are where water ends
         forms.settle(self)  # caprocks stay flat
+        from . import terrain_volcano
+        terrain_volcano.settle(self, pre)  # volcano forms keep their shape; erosion adds detail
         design.check(self)
         self._fill_lakes()
         self.cover = design.cover(self)
@@ -525,7 +529,8 @@ class Terrain:
             (x0, y0), (x1, y1) = self.spec["extent"]
             along = (self.X - (x0 + x1) / 2) * math.sin(b) + (self.Y - (y0 + y1) / 2) * math.cos(b)
             H = H - float(tilt.get("grade", 0.05)) * along  # lower toward `down`
-        return self._hills(H)
+        from . import terrain_volcano
+        return terrain_volcano.build(self, self._hills(H))  # volcanoes stand on the base, as large-scale ground
 
     def _wall_profile(self, b):
         """Height fraction s(t) across a basin wall, t from the floor's edge (0) to the crest (1): a concave scree foot,
@@ -810,6 +815,13 @@ class Terrain:
         if ref in self.sites:
             xy = np.array(self.sites[ref]["xy"])
             return xy, self.height(xy), None
+        for V in getattr(self, "volcanoes", {}).values():  # "<volcano>.crater", a collapse by name
+            if ref in V["collapses"]:
+                xy = np.array(V["collapses"][ref]["floor_xy"])
+                return xy, self.height(xy), np.array(V["collapses"][ref]["a"])
+        if ref.endswith(".crater") and ref[:-7] in getattr(self, "volcanoes", {}):
+            xy = np.array(self.volcanoes[ref[:-7]]["xy"])
+            return xy, self.height(xy), None
         if ref in self.passes:
             xy = np.array(self.passes[ref]["xy"])
             return xy, self.height(xy), None
@@ -873,6 +885,9 @@ class Terrain:
     def summit(self, name):
         """A peak's built height: the highest ground within its own top (map, report and probes all use this)."""
         xy, _ = self.points[name]
+        if name in getattr(self, "volcanoes", {}):  # a volcano's top is its rim, round its crater
+            V = self.volcanoes[name]
+            return float(self.H[np.hypot(self.X - xy[0], self.Y - xy[1]) <= V["rc"] + 3 * self.cell].max())
         p = (self.spec.get("peaks") or {}).get(name) or (self.spec.get("cols") or {}).get(name) or {}
         # within half its top's radius (on a tilt, higher ground uphill inside the whole radius read as its summit)
         r = max(0.5 * float(p.get("radius", 0)), min(40 * self.k, 3 * self.cell), 1.5 * self.cell)
@@ -1128,6 +1143,8 @@ class Terrain:
             out.append(f"divide (automatic) between {a} and {b}: {length:.0f} m of crest, up to {top:.0f} m")
         from . import terrain_sea
         out += terrain_sea.report(self)
+        from . import terrain_volcano
+        out += terrain_volcano.report(self)
         for name, lk in self.lakes.items():
             if lk.get("sea"):
                 continue
@@ -1178,6 +1195,8 @@ class Terrain:
         near += [L.name for L in self.lines.values() if L.kind == "ridge"
                  and cKDTree(L.xy).query(xy)[0] < max(150 * self.k, 4 * self.cell)]
         near += [n for n, m in getattr(self, "mesas", {}).items() if np.linalg.norm(np.array(m["xy"]) - xy) < 1.3 * m["radius"]]
+        near += [n for n, V in getattr(self, "volcanoes", {}).items()
+                 if n not in near and np.linalg.norm(np.array(V["xy"]) - xy) < V["rc"] + max(5 * self.cell, 0.25 * (V["R"] - V["rc"]))]
         top_authored = max([h for _, h in self.points.values()] + [float(L.h.max()) for L in self.lines.values()
                                                                    if L.kind == "ridge"] + [-np.inf])
         if near:
@@ -1511,6 +1530,11 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
         pts = [to_px(*p) for p in Lr.xy[::2]]
         if Lr.kind == "river":
             d.line(pts, fill=(40, 110, 200), width=3)
+        elif Lr.kind == "flow":  # a lava flow: its path, dotted orange-red
+            for a in range(0, len(pts) - 1, 6):
+                d.line(pts[a:a + 2], fill=(220, 80, 30), width=2)
+        elif Lr.kind == "rim":
+            continue
         else:
             for a in range(0, len(pts) - 1, 4):
                 d.line(pts[a:a + 3], fill=(120, 30, 30), width=2)

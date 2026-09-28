@@ -18,7 +18,7 @@ Kinds:
 - `hills`
 - `farmland` (farm, farmstead, meadow, pasture, tile)
 - `plateau` (mesa, butte)
-- `crater` (caldera, volcano)
+- `crater` (caldera, volcano, volcanic; "volcanic island" is crater + coast)
 - `coast` (beach, sea cliffs)
 - `dunes` (desert)
 - `moor` (highland, upland)
@@ -41,7 +41,7 @@ compression). With `"units": "none"`, the frame is taken as the kind's typical l
 and roughness come from the most dramatic.
 
 **A kind the tool doesn't know** ("fjord", "badlands"...) isn't guessed. The run stops (exit code 3) and prints
-QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no tides or waves, no volcano forms,
+QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no tides or waves, no glowing lava,
 no caves or overhangs, no glaciers...): tell the designer that before anything else. The questions: is it like one of the
 known kinds or a mix of them (optional), how big it should feel, how dramatic the height is, what's underfoot, what's at
 the lowest point, whether it's closed in, and its overall shape. **Ask the designer; don't answer for them**, and let them
@@ -120,6 +120,38 @@ and the `"story"`.
     over the lip; `"lip": true` brings it forward so its middle is at the lip (a viewpoint that sees in).
 - **mesas**: `{"name": {"at", "top": m, "radius": m, "cliff": deg, "talus": 0.4}}`: a flat caprock top, a cliff,
   and a talus apron. A mesa is an address and a sight target (its top).
+- **volcanoes**: a cone with a volcano's profile, its crater, radial gullies, collapse scars and lava flows.
+  ```
+  {"name": {"at": [x, y], "h": m (the rim's top), "type": "strato" | "shield" | "cinder",
+            "base_radius"?: m (its footprint on the ground beneath), "slope"?: deg (average flank), "top_slope"?: deg,
+            "crater"?: {"radius": m (the rim), "depth": m, "walls": deg, "breach": compass | address, "lake": true | m} | false,
+            "caldera"?: {...the same: a wide crater, cliff walls, a flat floor},
+            "gullies"?: 0..1,
+            "collapses"?: {name: {"toward": compass | address, "width": m, "depth": m, "head": 0.15, "reach": 0.85,
+                                  "walls": 50, "debris": true}},
+            "flows"?: {name: {"from": "crater" | compass (a flank vent on that side) | address, "length": m, "width": m,
+                              "thick": m, "toward"?: address | compass, "front": 38}}}}
+  ```
+  - **strato** (default): concave flanks, steep near the top (~33 deg) easing to the foot; **shield**: broad and low
+    (~6 deg), convex; **cinder**: a small straight cone at ~30 deg with a big crater. Give `base_radius` or `slope`
+    (with neither, the average slope is the type's). The footprint and the rim's height wander a little; `h` is the
+    rim's highest point.
+  - The crater's walls fall at `walls` to a flat floor `depth` below the rim. `lake` fills it (true: a quarter of its
+    depth; or a level). `breach` opens the rim toward a side (a breached crater holds no lake).
+  - **gullies**: radial valleys between ribs, from just below the rim to the foot (default 0.6 on a strato cone).
+  - **collapses**: a horseshoe amphitheatre in the flank opening toward `toward`: `width` wide, its floor `depth` below
+    the flank under the headwall, rising to meet the flank at `reach` (share of the footprint's radius from the
+    centre; `head` is where the headwall stands), steep walls, and hummocky debris spread beyond its mouth.
+  - **flows**: lava runs downhill from its vent on the ground as built (down gullies, into scars) for `length` metres:
+    a sheet `thick` metres deep with steep margins and front, levees, pressure ridges and a lobed toe. Where the ground
+    beside it is higher it fills the hollow. Reaching the sea it builds a lava delta. The report measures how far each
+    stands above the ground beside it: a flow that doesn't stand proud doesn't read.
+  - Addresses: the volcano's name (its top: a sight target), `"<name>.crater"`, `"<name>_rim@0.25"` (on the rim, a
+    quarter of the way round clockwise from north), each flow (`"flow@0.5"`), each collapse (its floor). Zones: each
+    flow, `"lava"` (every flow), `"<name>.crater"`, each collapse, `"debris"`: cover them (`{"type": "rock", "in":
+    "lava", "slope": [0, 90], "color": "#2b2826"}`).
+  - A volcanic island: `"world": {"kind": "volcanic island", "base": -40}` (the sea floor) and `"sea": {"level": 0}`
+    with no `land` zone: the coast is wherever the cone rises out of the water.
 - **sea**: water below a level out to the frame's edge, and the coast where land meets it.
   ```
   "sea": {"level": 0, "land"?: zone, "wander": 0.3, "depth": 30, "shore": "rocky" | "beach" | "cliffs",
