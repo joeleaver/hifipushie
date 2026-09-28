@@ -42,6 +42,25 @@ def _proto(kind):
     if kind == "conifer":
         bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=3.0, depth=13, location=(0, 0, 9))
         col = (0.025, 0.07, 0.03, 1)
+    elif kind == "cypress":  # a wind-shaped coastal cypress: short leaning trunk, flat-topped crown swept one way
+        parts[0].scale = (0.8, 0.8, 1.0)
+        parts[0].rotation_euler = (0, math.radians(18), 0)  # leans toward +x (the instance turn sets the bearing)
+        parts[0].location = (0.6, 0, 2)
+        for dx, dz, r, sq in ((1.5, 4.6, 3.6, 0.38), (4.2, 4.2, 3.0, 0.35), (-0.8, 4.4, 2.4, 0.4)):
+            bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=r, location=(dx, 0, dz))
+            bpy.context.object.scale = (1.35, 1.0, sq)
+            if (dx, dz) != (-0.8, 4.4):
+                parts.append(bpy.context.object)
+        col = (0.02, 0.05, 0.03, 1)
+    elif kind == "pine":  # a Monterey pine: tall bare trunk, a round irregular crown of a few lobes
+        parts[0].scale = (0.7, 0.7, 2.4)
+        parts[0].location = (0, 0, 4.8)
+        for dx, dy, dz, r in ((0, 0, 11.5, 3.8), (2.2, 1.0, 10.3, 2.8), (-2.0, -1.3, 10.6, 2.9)):
+            bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=r, location=(dx, dy, dz))
+            bpy.context.object.scale = (1.0, 1.0, 0.75)
+            if (dx, dy) != (-2.0, -1.3):
+                parts.append(bpy.context.object)
+        col = (0.035, 0.08, 0.04, 1)
     elif kind == "fruit":  # orchard trees: small, round, low trunk
         parts[0].scale = (0.6, 0.6, 0.45)
         parts[0].location = (0, 0, 0.9)
@@ -55,12 +74,16 @@ def _proto(kind):
     b = crown.node_tree.nodes["Principled BSDF"]
     b.inputs["Base Color"].default_value = col
     b.inputs["Roughness"].default_value = 0.8
-    bpy.context.object.data.materials.append(crown)
     parts.append(bpy.context.object)
+    for p_ in parts[1:]:  # every crown lobe (cypress and pine have several)
+        p_.data.materials.append(crown)
     bpy.ops.object.select_all(action="DESELECT")
     for p in parts:
         p.select_set(True)
     bpy.context.view_layer.objects.active = parts[-1]
+    # bake every part's own move/turn/scale into its mesh first: the instancer reads the joined mesh without the active
+    # part's transform, so a scaled or turned last part (a cypress's flat crown, its leaning trunk) came out as a ball
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.join()
     ob = bpy.context.object
     ob.name = "tree_" + kind
@@ -88,6 +111,9 @@ def _instance(points_ob, kind):
     turn = N.new("FunctionNodeRandomValue")
     turn.data_type = "FLOAT_VECTOR"
     turn.inputs[1].default_value = (0, 0, 6.283)
+    if kind == "cypress":  # wind-shaped: all lean the same way, downwind (inland from a westerly), give or take 20 deg
+        turn.inputs[0].default_value = (0, 0, math.radians(10))
+        turn.inputs[1].default_value = (0, 0, math.radians(50))
     L.new(turn.outputs[0], inst.inputs["Rotation"])
     L.new(inst.outputs["Instances"], go.inputs[0])
     points_ob.modifiers.new("trees", "NODES").node_group = ng
@@ -249,11 +275,29 @@ def run(job):
                 o.scale = (1.5, 3.0, 0.1)
                 o.rotation_euler[2] = -math.radians(float(yaw))
                 o.data.materials.append(gm)
+            elif any(w in str(nm) for w in ("lodge", "building", "house", "clubhouse")):  # a blocky building
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 4.5))
+                o = bpy.context.object
+                o.scale = (34.0, 16.0, 9.0)
+                o.rotation_euler[2] = -math.radians(float(yaw))
+                bm = bpy.data.materials.new("building")
+                bm.use_nodes = True
+                bm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.5, 0.42, 1)
+                o.data.materials.append(bm)
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 10.5))  # a pitched roof, roughly
+                r = bpy.context.object
+                r.scale = (36.0, 12.0, 3.0)
+                r.rotation_euler = (0, 0, -math.radians(float(yaw)))
+                rm_ = bpy.data.materials.new("roof")
+                rm_.use_nodes = True
+                rm_.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.2, 0.22, 0.24, 1)
+                r.data.materials.append(rm_)
             else:  # anything else: a small orange post
                 bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.1, depth=1.2, location=(x, y, z + 0.6))
                 bpy.context.object.data.materials.append(pk)
     if len(d["wfaces"]):
-        water = _mesh("water", d["wverts"], d["wfaces"])
+        foam = d["wfoam"] if "wfoam" in d.files else None
+        water = _mesh("water", d["wverts"], d["wfaces"], None if foam is None else np.repeat(foam[:, None], 3, 1))
         wm = bpy.data.materials.new("water")
         wm.use_nodes = True
         b = wm.node_tree.nodes["Principled BSDF"]
@@ -274,6 +318,21 @@ def run(job):
         nt.links.new(mp.outputs["Vector"], nz.inputs["Vector"])
         nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
         nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+        if foam is not None:  # surf where it's shallow: white, rough
+            at = nt.nodes.new("ShaderNodeAttribute")
+            at.attribute_name = "col"
+            sp = nt.nodes.new("ShaderNodeSeparateColor")
+            nt.links.new(at.outputs["Color"], sp.inputs["Color"])
+            mx = nt.nodes.new("ShaderNodeMix")
+            mx.data_type = "RGBA"
+            mx.inputs["A"].default_value = (0.07, 0.17, 0.2, 1)
+            mx.inputs["B"].default_value = (0.85, 0.88, 0.88, 1)
+            nt.links.new(sp.outputs[0], mx.inputs["Factor"])
+            nt.links.new(mx.outputs["Result"], b.inputs["Base Color"])
+            rm = nt.nodes.new("ShaderNodeMapRange")
+            rm.inputs["To Min"].default_value, rm.inputs["To Max"].default_value = 0.25, 0.9
+            nt.links.new(sp.outputs[0], rm.inputs["Value"])
+            nt.links.new(rm.outputs["Result"], b.inputs["Roughness"])
         water.data.materials.append(wm)
 
     scene = bpy.context.scene
@@ -286,6 +345,8 @@ def run(job):
     scene.world = world
     world.use_nodes = True
     sky = world.node_tree.nodes.new("ShaderNodeTexSky")
+    if hasattr(sky, "dust_density"):  # a clearer day: the default dust hazed the far sea into the sky
+        sky.dust_density, sky.air_density = 0.3, 0.8
     world.node_tree.links.new(sky.outputs["Color"], world.node_tree.nodes["Background"].inputs["Color"])
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.12
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))

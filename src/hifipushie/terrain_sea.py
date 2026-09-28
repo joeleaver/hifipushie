@@ -149,6 +149,9 @@ def apply(T):
                 else min(14, int(len(ey) * T.cell / 180))
             rng_g = np.random.default_rng(181)
             avoid = _near(T, cl0.get("except", []), 150 * k, coves, sd) if cl0.get("except") else 0 * sd
+            if cl0.get("only") and S.get("shore") != "cliffs":  # cliffs only on some stretches: geos only there too
+                avoid = np.maximum(avoid, 1 - _near(T, cl0["only"], 150 * k, coves, sd))  # (they cut 60 m slots into
+                # a 6 m rocky shore elsewhere)
             gy_, gx_ = np.gradient(ndimage.gaussian_filter(sd, 3))
             done = []
             for j in rng_g.permutation(len(ey)):

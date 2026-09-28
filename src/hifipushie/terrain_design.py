@@ -449,9 +449,10 @@ def _site(T, name, s):
         asked = float(s.get("fall", 0.0))  # a fall the designer gave is the least it gets
         for f in [asked] + [f for f in (0.02, 0.04, 0.06, 0.08, 0.1) if f > asked]:
             T.H = keep_h * (1 - w) + surface(f, dvec) * w
-            cove = getattr(T, "sea", None) and tgt in T.sea["coves"]
+            named = isinstance(tgt, str)  # (an [x, y] target is neither a cove nor a lake: it crashed the lookup)
+            cove = named and getattr(T, "sea", None) and tgt in T.sea["coves"]
             seen = sum((lake_seen(T, p_.tolist(), "sea", mask=T.sea["coves"][tgt]["mask"]) > 0) if cove else
-                       (lake_seen(T, p_.tolist(), tgt) > 0) if tgt in T.lakes else
+                       (lake_seen(T, p_.tolist(), tgt) > 0) if named and tgt in T.lakes else
                        (sight(T, p_.tolist(), tgt)["visible"] > 0) for p_ in spots)
             if best is None or seen > best[1]:
                 best = (f, seen)

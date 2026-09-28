@@ -1743,8 +1743,15 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
         wv[:, 2] = Wt[iy, ix].ravel()
     q = (wet[:-1, :-1] | wet[:-1, 1:] | wet[1:, 1:] | wet[1:, :-1]).ravel()
     wf = np.concatenate([np.stack([a, b, c], 1)[q], np.stack([a, c, e], 1)[q]])
+    # surf: white water where the sea is shallow over rocks and sand, broken up along the shore (the sea met the land
+    # as a clean line, like a pond)
+    foam = np.zeros(len(wv))
+    if getattr(T, "sea", None) is not None and wet.any():
+        depth = np.maximum(wv[:, 2] - verts[:, 2], 0)
+        brk = noise.fbm(np.c_[verts[:, :2], np.full(len(verts), 5.0)], 6.0, 2, seed=91)
+        foam = np.clip(1.0 - depth / 1.2, 0, 1) * np.clip(0.4 + 1.2 * brk, 0, 1)
     np.savez(path, verts=verts.astype(np.float32), faces=faces.astype(np.int32), colors=col.astype(np.float32),
-             wverts=wv.astype(np.float32), wfaces=wf.astype(np.int32),
+             wverts=wv.astype(np.float32), wfaces=wf.astype(np.int32), wfoam=foam.astype(np.float32),
              tree_xyz=inst[:, :3].astype(np.float32),
              tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
              span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))),

@@ -255,7 +255,8 @@ and the `"story"`.
   (a tee, a bench, a basket) a few metres, or they flatten a 40 m disc around them.
   `"prop": name, "facing"?: address` marks the site as where the engine drops a prop (a disc golf basket, a bench, a
   sign): meta.json's site gets `prop` with its name, ground position `xyz` and `yaw` (the compass bearing it faces),
-  and views draw a stand-in at its real size instead of the 12 m marker pole.
+  and views draw a stand-in at its real size instead of the 12 m marker pole (a disc golf basket, a tee pad slab, a
+  blocky building for a "lodge"/"building"/"house", else a small post).
 - **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search).
   `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone,
   "max_earthworks": 25, "max_fill": m}` (`max_fill` limits banks alone, for a trail that shouldn't stand on one; it may then fail its grade). Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
@@ -289,6 +290,10 @@ and the `"story"`.
   `orchard` plants rows (`"rows": 6` m apart, `"along": "contour" | "east" | "north"`). `"count": 6` on any tree
   layer scales it to about that many trees ("a few trees"). Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
   32 deg), and anything you give overrides them.
+  `"trees"` on a tree layer picks the tree's shape (views, and the kind column of trees.csv): `"conifer"` (a spire),
+  `"broadleaf"` (a round crown), `"fruit"`, `"pine"` (a tall bare trunk under a lobed round crown: a Monterey or stone
+  pine), `"cypress"` (a wind-shaped coastal tree: a short trunk leaning downwind, a flat crown swept one way; all lean
+  the same way).
 - **intent** (checks; nothing is changed):
   - `{"at": address, "above_flood": m}`
   - `{"path": [addresses], "max_grade": g}` (straight legs)
