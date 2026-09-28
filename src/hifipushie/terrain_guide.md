@@ -225,7 +225,9 @@ and the `"story"`.
 - **rock**: every steep face (sea cliffs, basin and canyon walls, mesas, scars, craters) gets rock character on its
   own: buttresses and couloirs along it (the face moved in and out, so its lip and foot are notched and it stays as
   steep and tall), ledges where the face is gentle enough for a tread, and a boulder foot below it.
-  `"rock": {"buttresses": 0..1, "ledges": 0..1, "boulders": 0..1, "scale": m}` tunes it (defaults 1, 0.6, 1, the
+  The faces break into planar facets and joints (`facets`), and buttresses are chiselled: straight flanks, sharp crests,
+  V couloirs. `"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "boulders": 0..1, "scale": m}` tunes it
+  (defaults 1, 0.6, 1, 1, the
   kind's crag size); `"rock": false` turns it off. The zone `"cliff_foot"` is the ground below the faces (for scree). Never on routes, sites or water. The report measures how broken the
   faces are (the share of steep ground turned away from its face's line: a smooth wall is ~0%).
 - **rugged**: ruggedness as geometry (crags, and ledges of benches and risers, in patches).

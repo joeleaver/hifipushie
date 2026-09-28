@@ -126,7 +126,7 @@ def choose(T, eye, look, fov):
             mean = (sh * w).sum() / W
             std = math.sqrt(((sh - mean) ** 2 * w).sum() / W)
             local = (np.abs(np.diff(sh)) * wn).sum() / max(wn.sum(), 1e-9)
-            dark = 1 - (lit * w).sum() / W
+            dark = ((sh < 0.08) * w).sum() / W  # cast shadow or turned away from the sun
             score = (local * 4 + std) * (1 - 1.5 * max(0.0, dark - 0.3)) * (0.85 + 0.15 * math.sin(math.radians(abs(off))))
             if best is None or score > best[0]:
                 best = (score, b, h, dark)
