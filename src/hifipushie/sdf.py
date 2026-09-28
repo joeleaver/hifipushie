@@ -260,7 +260,12 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
        "blade": sd_blade,
-       "csg": sd_csg, "shell": sd_shell}
+       "csg": sd_csg, "shell": sd_shell, "base": lambda p, pr: _sd_base(p, pr)}
+
+
+def _sd_base(p, pr):
+    from .base import sd_base
+    return sd_base(p, pr)
 MODS = {"displace": mod_displace, "flatten": mod_flatten}  # op "modify": reshape what's been combined so far
 
 

@@ -311,8 +311,23 @@ def _compile(spec: dict) -> list[Prim]:
             g = first.setdefault(p.group, p)
             p.blend, p.join = g.blend, g.join
     prims = _csg(s, prims, els)
+    if s.get("base"):  # the base mesh first: everything else unions onto it
+        prims.insert(0, _base(s, k_default))
     prims = _deform(s, prims)
     return _parts(prims, s.get("parts") or {}, k_default)
+
+
+def _base(s: dict, k_default: float) -> Prim:
+    from . import base as basemod
+    b = s["base"]
+    surf = basemod.surface(s, b)
+    V = surf["verts"]
+    pad = float(surf["h"].max()) * 2
+    return Prim("base", "base", "add", float(b["blend"]) if b.get("blend") is not None else k_default,
+                int(b.get("layer", 0)), V.min(0) - pad, V.max(0) + pad,
+                {"verts": V, "normals": surf["normals"], "h": surf["h"], "hmax": surf["hmax"], "tree": surf["tree"],
+                 "key": surf["key"]},
+                reach=1.0, part=b.get("part", "body"))
 
 
 def _deform(s: dict, prims: list[Prim]) -> list[Prim]:

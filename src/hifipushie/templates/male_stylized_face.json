@@ -230,5 +230,13 @@
   8022,
   8023
  ],
- "_notes": "landmarks/anchors: face RBF; eye_cut: radius of the template loop round each eye that the eye patch replaces; eye_phi: where that loop goes on the model (angle off the lids' axis); ear_tip: the ear's outermost vertex; cavities: template vertices facing into the mouth and nostrils (a ray along the normal hits the template again): they follow their neighbours instead of being projected"
+ "_notes": "landmarks/anchors: face RBF; eye_cut: radius of the template loop round each eye that the eye patch replaces; eye_phi: where that loop goes on the model (angle off the lids' axis); ear_tip: the ear's outermost vertex; cavities: template vertices facing into the mouth and nostrils (a ray along the normal hits the template again): they follow their neighbours instead of being projected; eyeball: the template eye object (GEO-body_male_stylized.eye.L): a big sphere whose front cap fills the socket",
+ "eyeball": {
+  "centre": [
+   0.0407,
+   -0.0828,
+   1.6338
+  ],
+  "r": 0.038
+ }
 }

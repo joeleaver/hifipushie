@@ -233,13 +233,20 @@ def _lap(X, E, deg):
 
 # ---------------------------------------------------------------------------------------------------- warps
 
-def _skeleton_warp(P, Jt, s, prims, sigma=0.8):
-    """Template vertices carried by the skeleton. Returns (warped, segments, dominant segment per vertex, apply)."""
+def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
+    """Template vertices carried by the skeleton. Radii per angle follow the model's surface (rays onto prims), or,
+    with girth ({segment start joint: scale}, for the base mesh: there is no surface yet), the template's own
+    scaled. Returns (warped, segments, dominant segment per vertex, apply, model joints)."""
     Jt = dict(Jt)
-    Jm = {k: resolve_point(s, _model_name(k)) for k in Jt if _model_name(k) in s["joints"]}
+    Jm = {}
+    for k in Jt:  # the model may use the template's names (a base mesh) or the kits' (hand_f<n>_<k>)
+        for n in (k, _model_name(k)):
+            if n in s["joints"]:
+                Jm[k] = resolve_point(s, n)
+                break
     for side in "LR":  # the palm: wrist to the middle knuckle (the template's second finger, the model's second
         # or only finger)
-        mk = next((f"hand_f{k}_0.{side}" for k in (2, 1) if f"hand_f{k}_0.{side}" in s["joints"]), None)
+        mk = next((n for n in (f"finger2_0.{side}", f"hand_f2_0.{side}", f"hand_f1_0.{side}") if n in s["joints"]), None)
         if f"finger2_0.{side}" in Jt and mk:
             Jt[f"hand_end.{side}"] = Jt[f"finger2_0.{side}"]
             Jm[f"hand_end.{side}"] = resolve_point(s, mk)
@@ -254,7 +261,10 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8):
         a0, b0, a1, b1 = Jt[a], Jt[b], Jm[a], Jm[b]
         u0, u1 = _unit(b0 - a0), _unit(b1 - a1)
         R = _rot_between(u0, u1)
-        if b.startswith(("hand_end", "toe")):
+        if girth is not None:
+            R0 = np.stack([_template_radii(P, a0, b0, near == k, t0) for t0 in STATIONS])
+            R1 = R0 * float(girth.get(a, 1.0))
+        elif b.startswith(("hand_end", "toe")):
             prox = [sg for sg in segs if sg[1] == a][0]
             pk = segs.index(prox)
             rw0 = np.median(_template_radii(P, Jt[prox[0]], Jt[prox[1]], near == pk, 0.9))
