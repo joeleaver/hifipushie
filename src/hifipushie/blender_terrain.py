@@ -518,4 +518,5 @@ def run(job):
         bpy.ops.render.render(write_still=True)
 
 
-run(json.load(open(sys.argv[sys.argv.index("--") + 1])))
+if __name__ == "__main__":  # (blender_tiles imports the tree builders)
+    run(json.load(open(sys.argv[sys.argv.index("--") + 1])))

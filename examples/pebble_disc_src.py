@@ -59,6 +59,14 @@ PEAKS = {
     "north_rise": {"at": [500, 780], "h": 36, "radius": 150, "base_radius": 350},
 }
 COVES = {"chasm": {"at": [150, 190], "width": 55, "depth": 110, "beach": False, "apron": 0}}
+# 3D rock the heightfield can't hold (only in the mesh tiles: export_terrain(tiles=True)): an arch through the point, a
+# sea cave into its west face, a cave in the chasm's west wall (seen from tee 8) and a wave-cut notch under its east wall
+VOLUMES = {
+    "point_arch": {"type": "arch", "at": [206, 68], "toward": 90, "width": 7, "height": 5.5},
+    "point_cave": {"type": "cave", "at": [170, 106], "toward": 75, "length": 26, "width": 6, "height": 5, "chamber": 6},
+    "chasm_cave": {"type": "cave", "at": [152, 222], "toward": 270, "length": 20, "width": 5, "height": 4.5, "chamber": 4},
+    "chasm_notch": {"type": "overhang", "at": [182, 236], "along": 0, "length": 30, "depth": 3.5, "height": 3},
+}
 STORY = ("A disc golf course on a clifftop peninsula above a bay, inspired by Pebble Beach Golf Links on Carmel Bay: "
          "a lodge above a sheltered bay, inland holes rolling through pines down to the sea, a run of clifftop holes "
          "(a tiny par 3 onto a rocky point, a carry across a cliff chasm, holes along the cliff edge with the sea as out "
@@ -187,6 +195,7 @@ def spec():
                 "beaches": {"stillwater_beach": {"at": [640, 312], "length": 70},
                             "sea_wall": {"at": [712, 290], "length": 70}},
                 "coves": COVES},
+        "volumes": VOLUMES,
         "sites": sites,
         "routes": routes,
         "cover": {

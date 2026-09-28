@@ -241,6 +241,20 @@ and the `"story"`.
 - **rugged**: ruggedness as geometry (crags, and ledges of benches and risers, in patches).
   `{"name": {"in": zone, "gradient"?: {"from", "to", "range": [a, b]}, "amount": 0..1, "scale"?: m, "ledges"?: m}}`.
   Rock cover then finds the steep bits. Use it for "rocky", "craggy" or "broken ground".
+- **volumes** (3D rock the heightfield can't hold: arches, sea caves, overhangs). They only show in the 3D mesh tiles
+  (`export_terrain(name, tiles=True)`) and their views; the heightmap export, map and report ground stay 2.5D.
+  `{"name": {"type": "arch" | "cave" | "overhang", "at": address, ...}}`, each cut out of the rock with rounded,
+  slightly rough edges (`"blend"` m, default 1; `"rough"` m, default 0.4; `"op": "add"` builds rock instead):
+  - `arch {"at", "toward"?: bearing | address, "width": 8, "height", "floor"?}`: a passage through the land at `at`,
+    running along `toward` (default: the narrowest way through) until it comes out into the open both ways. Its floor
+    defaults to 1 m below the sea (water runs through); height defaults to 55% of the ground above the floor. Put it
+    where the land is thin: the report says how long it is and how thick its roof is.
+  - `cave {"at", "toward"?, "length": 30, "width": 6, "height": 5, "chamber"?: radius, "rise"?: m, "narrow"?: 0.7,
+    "wander"?: 0.08, "floor"?}`: a passage into the rock heading `toward` (default: uphill). Its mouth is where the
+    rock starts along that line, so `at` can be in the water just off a cliff. It narrows to `narrow` of its size and
+    ends in a domed chamber if `chamber` is given. A sea cave's floor defaults to half a metre under the sea.
+  - `overhang {"at", "along"?: bearing, "length": 30, "depth": 4, "height": 3, "floor"?}`: a wave-cut notch along the
+    cliff face nearest `at` (following the face), `depth` metres in under the lip.
 - The compiler adds on its own: **divides** between rivers, **ribs** (short spurs down from ridges), a slight
   **wander** to ridges between summits, and **erosion** after your design is placed (drainage networks, scree,
   cliff bands from harder rock). Erosion never touches sites, routes, passes or lake shores, and the large-scale
@@ -374,6 +388,24 @@ The shell run writes its outputs beside the spec:
   - `trees.csv`: tree instances (x, y, z, kind, layer)
   - `meta.json`: extent, height encoding, sites with their planes (level, fall, direction), passes, routes, rivers
     with their bed and water (surface height and width per point), fords, lakes
+- **3D mesh tiles** (`export_terrain(name, tiles=True)`, `terrain_run.py --tiles`): the ground and its volumes as a
+  grid of seamless glTF tiles in `tiles/`, for any engine. Tune with `"export": {"tiles": {...}}` (metres):
+  `"tile": 64` (tile size), `"voxel": 1` (LOD0 meshing voxel; LOD k is voxel x 2^k, every one dividing the tile),
+  `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
+  0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),
+  `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
+  (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none).
+  - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitive 0
+    the ground, primitive 1 the skirts (double-sided); per vertex NORMAL, COLOR_0 (a display colour, so a plain
+    glTF viewer shows it right) and `_WEIGHTS0`, `_WEIGHTS1` (ground layer weights, 4 per attribute, summing to 1).
+    `collision_<i>_<j>.glb`: positions only. `heightmaps/`, `splats/` (RGBA = the same layers, a margin into the
+    neighbours), `trees.csv`.
+  - `manifest.json`: the grid (origin, tile size, count), per tile its bounds, files, triangle counts and the volumes
+    it holds, the LODs, the material layers (name, colour, roughness, triplanar scale, which attribute and channel),
+    the sea level, timings and the seam check.
+  - Tiles meet exactly: neighbours share identical border vertices and normals at every LOD, and each tile's skirts
+    reach past the neighbour's other LODs, so any mix of LODs shows no cracks. Every export runs a seam check on the
+    written files (watertight joins, identical borders, normals, LOD gaps covered, heightmap edges) and fails loudly.
 - `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
   by a thin red pole 12 m tall (to judge what a view sees).
 

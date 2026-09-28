@@ -167,8 +167,9 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
         seed = zlib.crc32(name.encode()) % 10000
         common = dict(op=v.get("op", "subtract"), blend=v.get("blend", DEFAULTS["blend"]), rough=v.get("rough", 0.4),
                       rough_scale=v.get("rough_scale", 3.0), seed=seed)
-        at, _, _ = T.address(v["at"])
+        at, _, adir = T.address(v["at"])  # an address's own direction (e.g. "cliff_foot:<address>": into the rock)
         at = np.asarray(at, float)
+        adir = None if adir is None else np.asarray(adir, float)[:2] / max(np.linalg.norm(np.asarray(adir)[:2]), 1e-9)
         sea = _sea(T)
         if kind == "arch":
             t = _bearing(T, v["toward"], at) if "toward" in v else _narrowest(T, at)
@@ -190,16 +191,22 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
                          f"{np.linalg.norm(ends[0] - ends[1]):.0f} m through the rock, roof {roof:.1f} m thick at its "
                          f"middle" + (" (thin: it may break through)" if roof < 2 else ""))
         elif kind in ("cave", "tunnel"):
-            t = _bearing(T, v["toward"], at) if "toward" in v else -_downhill(T, at)
+            t = _bearing(T, v["toward"], at) if "toward" in v else adir if adir is not None else -_downhill(T, at)
             floor0 = float(v.get("floor", (sea - 0.5) if sea is not None else T.height(at)))
             w, h = float(v.get("width", 6.0)), float(v.get("height", 5.0))
             L = float(v.get("length", 30.0))
             rise = float(v.get("rise", 0.0))
             narrow = float(v.get("narrow", 0.7))
-            # the mouth: where the rock starts, found back along the way in (a cave addressed on the cliff top or in
-            # the water both open at the cliff)
-            back = _daylight(T, at, -t, floor0 + 0.5 * h, reach=200)
-            mouth = at - t * (back or 0.0)
+            # the mouth: where the rock starts along the way in (a cave addressed in the water or on the cliff top both
+            # open at the cliff)
+            if T.height(at) < floor0 + 0.5 * h:  # out in the open: ahead to the rock
+                s = np.arange(0, 300, T.cell / 2)
+                k = np.flatnonzero(T.sample(at + s[:, None] * t) >= floor0 + 0.5 * h)
+                if not len(k):
+                    raise ValueError(f"volume {name!r}: no rock ahead of {v['at']!r} to cut a cave into")
+                mouth = at + t * s[k[0]]
+            else:  # in the rock: back to where it comes out
+                mouth = at - t * (_daylight(T, at, -t, floor0 + 0.5 * h, reach=200) or 0.0)
             start = mouth - t * 0.5 * w
             n = max(3, int(L / 6))
             s = np.linspace(0, L + 0.5 * w, n + 1)
@@ -216,7 +223,8 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             if ch > 0:  # a domed chamber at the end, on the passage's floor
                 out.append(Tube(name + ":chamber", [[*xy[-1], fl[-1]]], ch, 0.8 * ch, fl[-1], **common))
             ground = T.sample(xy)
-            roof = float(np.min(ground - (fl + rh)))
+            inside = ground > fl + rh  # (the part out in the open has no roof)
+            roof = float(np.min((ground - (fl + rh))[inside])) if inside.any() else float("nan")
             notes.append(f"{name}: cave {w:.0f} x {h:.0f} m, mouth at [{mouth[0]:.0f}, {mouth[1]:.0f}] floor "
                          f"{floor0:+.1f} m, {L:.0f} m in" + (f", chamber r {ch:.0f} m" if ch else "")
                          + f"; thinnest roof {roof:.1f} m" + (" (it breaks through)" if roof < 1 else ""))
@@ -649,18 +657,55 @@ def _boundary_edges(faces):
     return e[cnt[inv] == 1]
 
 
-def _decimate(P, faces, err, budget):
+def _decimate(P, faces, err, budget, field):
+    """Fewest triangles (pyfqmr, open borders locked) whose surface stays within `err` of the field (99th percentile
+    at face centres and edge midpoints, over what the undecimated mesh already misses), capped at `budget`.
+    (pyfqmr's own lossless mode barely removed anything with the border locked.)"""
     import pyfqmr
-    s = pyfqmr.Simplify()
-    s.setMesh(P, faces)
-    s.simplify_mesh(lossless=True, threshold_lossless=err * err, preserve_border=True, verbose=False)
-    v, f, _ = s.getMesh()
-    if len(f) > budget:
+
+    def run(n):
         s = pyfqmr.Simplify()
-        s.setMesh(v, f)
-        s.simplify_mesh(target_count=int(budget), aggressiveness=7, preserve_border=True, verbose=False)
+        s.setMesh(P, faces)
+        s.simplify_mesh(target_count=int(n), aggressiveness=7, preserve_border=True, verbose=False)
         v, f, _ = s.getMesh()
-    return np.asarray(v, float), np.asarray(f, np.int64)
+        return np.asarray(v, float), np.asarray(f, np.int64)
+
+    def error(v, f):
+        if not _manifold(f):  # pyfqmr can fold a thin part into a fin (two faces on one directed edge)
+            return np.inf
+        c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
+        return float(np.percentile(np.abs(field.value(c)), 99))
+
+    tol = err + error(P, faces)
+    if len(faces) <= budget:
+        best, hi = (P, faces), len(faces)
+    else:
+        hi = int(budget)
+        best = run(hi)
+        if error(*best) > tol:
+            if not _manifold(best[1]):  # over budget and folded: the budget gives way
+                return P, faces
+            return best
+    lo = 64
+    for _ in range(7):  # search the count on a log scale
+        if hi / lo < 1.15:
+            break
+        mid = int(math.sqrt(lo * hi))
+        cand = run(mid)
+        if error(*cand) <= tol:
+            best, hi = cand, mid
+        else:
+            lo = mid
+    return best
+
+
+def _manifold(f):
+    e = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    n = int(f.max()) + 1
+    if len(np.unique(e[:, 0] * n + e[:, 1])) < len(e):
+        return False
+    und = np.minimum(e[:, 0], e[:, 1]) * n + np.maximum(e[:, 0], e[:, 1])
+    return bool(np.unique(und, return_counts=True)[1].max() <= 2)
 
 
 def _chain_dist(A, segs_b):
@@ -794,7 +839,7 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
             P[border] = c["P"][rows]
             n_mc = len(faces)
             td = time.time()
-            Pd, Fd = _decimate(P, faces, cfg["error"][k], cfg["budget"][k])
+            Pd, Fd = _decimate(P, faces, cfg["error"][k], cfg["budget"][k], field)
             t_dec += time.time() - td
             # border vertices must have come through untouched
             rowd = np.array([c["pos"].get(tuple(p), -1) for p in Pd])
@@ -960,6 +1005,23 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     return {"out": str(out), "manifest": manifest, "stats": stats, "timing": timing, "check": check}
 
 
+def summary(r) -> str:
+    """A short text report of an export_tiles result."""
+    M = r["manifest"]
+    lines = [f"3D tiles in {r['out']}: {M['grid'][0]} x {M['grid'][1]} tiles of {M['tile_size']:g} m"]
+    for k, L in enumerate(M["lods"]):
+        tris = [t["lods"][k]["triangles"] for t in M["tiles"] if t["lods"][k]]
+        size = sum(t["lods"][k]["bytes"] for t in M["tiles"] if t["lods"][k])
+        lines.append(f"LOD {k} (voxel {L['voxel']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
+                     f"(median {int(np.median(tris))}), {size / 1e6:.1f} MB")
+    lines += [f"volume {n}" for n in M["volumes"]]
+    sc = M["seam_check"]
+    lines.append(f"seam check: {sc['failures']} failures; shared edges {sc['shared_edges']}, border normals within "
+                 f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under skirts")
+    lines.append("timing (s): " + ", ".join(f"{k} {v}" for k, v in M["timing_s"].items()))
+    return "\n".join(lines)
+
+
 def _prim(P, N, C, W, F, material, extras, mats, lo, cfg):
     attrs = {"POSITION": _to_gltf(P), "NORMAL": _to_gltf(N), "COLOR_0": _linear(C)}
     for g in range(0, W.shape[1], 4):
@@ -1090,9 +1152,10 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
                                           "open_edges_world_edge": int(np.sum(at_edge)), "non_manifold_edges": nonman,
                                           "same_direction_edges": dup_dir}
         if open_inside or nonman or dup_dir:
-            ex = Pu[a[~at_edge][:3]].round(2).tolist()
-            failures.append(f"LOD {k}: {open_inside} open edges inside the world (e.g. at {ex}), {nonman} non-manifold, "
-                            f"{dup_dir} doubled directed edges")
+            bad = np.r_[a[~at_edge], u[cnt > 2] // nmax, fu[fcnt > 1] // nmax]
+            ex = Pu[bad[:3]].round(2).tolist()
+            failures.append(f"LOD {k}: {open_inside} open edges inside the world, {nonman} non-manifold, "
+                            f"{dup_dir} doubled directed edges (e.g. at {ex})")
     # (1, 3, 4) shared edges
     worst_n, worst_gap, n_edges, uncovered = 0.0, 0.0, 0, 0
     crease_seam, crease_in = [], []
@@ -1265,3 +1328,75 @@ def _crease_inside(surf):
     same = ks[1:] == ks[:-1]
     a, b = fs[:-1][same], fs[1:][same]
     return np.degrees(np.arccos(np.clip((n[a] * n[b]).sum(1), -1, 1)))
+
+
+# ---------------------------------------------------------------- views
+
+def border_segments(out_dir, lod=0):
+    """The shared tile borders as the meshes have them: every surface edge on a border between two tiles."""
+    out = Path(out_dir)
+    M = json.loads((out / "manifest.json").read_text())
+    wlo = np.min([e["min"] for e in M["tiles"]], 0)
+    whi = np.max([e["max"] for e in M["tiles"]], 0)
+    segs = []
+    for e in M["tiles"]:
+        L = e["lods"][lod]
+        if L is None:
+            continue
+        tr, prims = read_glb(out / L["file"])
+        P = _from_gltf(prims[0]["POSITION"].astype(np.float64)) + _from_gltf(tr[None])[0]
+        be = _boundary_edges(prims[0]["indices"])
+        a, b = P[be[:, 0]], P[be[:, 1]]
+        keep = np.zeros(len(be), bool)
+        for ax, lim in ((0, e["min"][0]), (0, e["max"][0]), (1, e["min"][1]), (1, e["max"][1])):
+            if wlo[ax] < lim < whi[ax]:
+                keep |= (a[:, ax] == lim) & (b[:, ax] == lim)
+        segs.append(np.stack([a[keep], b[keep]], 1))
+    return np.concatenate(segs) if segs else np.zeros((0, 2, 3))
+
+
+def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None):
+    """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
+    [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
+    height], "borders": bool, "out"}. box: [[x0, y0], [x1, y1]]: only tiles (and trees) inside. lod: a level, or
+    "checker" (LOD 0 and the coarsest alternating, to see the skirts at work)."""
+    import subprocess
+    out = Path(out_dir)
+    M = json.loads((out / "manifest.json").read_text())
+    glbs = []
+    for e in M["tiles"]:
+        if box and (e["max"][0] < box[0][0] or e["min"][0] > box[1][0] or e["max"][1] < box[0][1]
+                    or e["min"][1] > box[1][1]):
+            continue
+        k = (len(M["lods"]) - 1) * ((e["i"] + e["j"]) % 2) if lod == "checker" else lod  # mixed LODs: seams show
+        if e["lods"][k]:
+            glbs.append(str(out / e["lods"][k]["file"]))
+    jobs = []
+    sea = M.get("sea_level")
+    for v in views:
+        if isinstance(v["eye"], list) and len(v["eye"]) == 3:
+            eye = list(map(float, v["eye"]))
+        else:
+            xy, h, _ = T.address(v["eye"])
+            if sea is not None:
+                h = max(h, sea)
+            eye = [float(xy[0]), float(xy[1]), h + v.get("lift", 1.7)]
+        if isinstance(v["look"], list) and len(v["look"]) == 3:
+            look = list(map(float, v["look"]))
+        else:
+            xy, h, _ = T.address(v["look"])
+            look = [float(xy[0]), float(xy[1]), h]
+        jobs.append({"eye": eye, "look": look, "fov": v.get("fov", 55), "sun": v.get("sun", [225, 30]),
+                     "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
+    job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
+           "trees": str(out / "trees.csv") if trees else None, "tree_box": box}
+    if any(v.get("borders") for v in views):
+        np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
+        job["borders"] = str(out / "borders.npz")
+    (out / "render_job.json").write_text(json.dumps(job))
+    script = Path(__file__).with_name("blender_tiles.py")
+    r = subprocess.run(["blender", "-b", "--factory-startup", "--python", str(script), "--",
+                        str(out / "render_job.json")], capture_output=True, text=True)
+    if r.returncode or "Traceback" in r.stdout + r.stderr:
+        raise RuntimeError(r.stderr[-2000:] + r.stdout[-3000:])
+    return [j["out"] for j in jobs]
