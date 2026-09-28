@@ -153,11 +153,13 @@ def _mesa(T, name, m):
                                         top - (hgt - talus) - (d - r - run_c) * math.tan(TALUS)))
     T.H = np.maximum(T.H, zz)
     ring = (d > r) & (d <= r + run_c)
+    face = (d > r - 0.5 * T.cell) & (d <= r + run_c + T.cell)  # (measured: a small mesa's face is under a cell wide)
     T.hard = T.hard | ring
     T.hardness = np.where(ring, 0.03, T.hardness)
     T.hardness = np.where(d <= r, 0.05, T.hardness)  # a caprock: the top stays flat (a soft top eroded into a dome)
     foot = r + run_c + talus / math.tan(TALUS)
-    T.mesas = getattr(T, "mesas", {}) | {name: {"xy": xy.tolist(), "top": top, "radius": r, "topmask": d <= r,
+    T.mesas = getattr(T, "mesas", {}) | {name: {"xy": xy.tolist(), "top": top, "radius": r,
+                                                "topmask": d <= max(r, 0.75 * T.cell), "face": face,
                                                 "ring": ring, "foot": foot}}
 
 
@@ -208,7 +210,7 @@ def measure_mesa(T, name):
     area = (lab == np.bincount(k).argmax()).sum() * T.cell ** 2 if len(k) and k.max() > 0 else 0.0
     ang = np.linspace(0, 2 * np.pi, 48, endpoint=False)
     around = xy + 1.15 * m["foot"] * np.c_[np.cos(ang), np.sin(ang)]
-    return {"top": top, "across": 2 * math.sqrt(area / math.pi), "cliff": float(np.median(T._slope()[m["ring"]])),
+    return {"top": top, "across": 2 * math.sqrt(area / math.pi), "cliff": float(np.percentile(T._slope()[m["face"]], 75)),
             "rise": top - float(np.median(T.sample(around)))}
 
 
@@ -296,7 +298,7 @@ def water(T):
 # ---------------------------------------------------------------- peak forms
 
 PEAK_FORMS = {  # arête slope for arêtes the ridges don't give, faces added up to this many, cirque hollows
-    "pyramid": dict(arete=32.0, faces=4, hollow=0.0),
+    "pyramid": dict(arete=35.0, faces=4, hollow=0.08),  # (planar faces read as a smooth cone from the valley)
     "horn": dict(arete=40.0, faces=3, hollow=0.14),
 }
 
@@ -352,6 +354,9 @@ def peak_forms(T, H):
                 # (a col 48 m low); from the summit it falls at the ridge's gentlest average fall
                 fall = float(np.min((h - L.h[idx][far]) / dist[far]))
                 v = L.xy[idx[min(4, len(idx) - 1)]] - c
+                # at least the form's own arête slope near the top: a horn's ridges run in steep and meet the gentler ridge
+                # below (following the ridge's fall all the way made a 2 km wide "horn" of 17 deg arêtes)
+                fall = max(fall, (1.0 if form == "horn" else 0.75) * g_def)
                 aretes.append((math.atan2(v[0], v[1]) % (2 * math.pi), float(np.clip(fall, 0.2, 1.2))))
         aretes.sort()
         n_faces = int(p.get("faces", F["faces"]))
@@ -387,7 +392,7 @@ def peak_forms(T, H):
         hollow = F["hollow"] * float(p.get("hollow", 1.0))
         if hollow:
             u = np.clip(r / Rc, 0, 1)
-            z = z - hollow * rise * np.sin(np.pi * t_ang) ** 1.5 * 4 * u * (1 - u)
+            z = z - hollow * rise * np.sin(np.pi * t_ang) ** 0.7 * 4 * u * (1 - u)  # (steep right off each arete: a sharp crest)
         # other ridges, peaks and cols near it stand: the faces can't cut into their flanks (a big peak's face cut a
         # neighbouring col 110 m down)
         others = [(L.xy, L.h) for L in T.lines.values() if L.kind == "ridge"
@@ -424,7 +429,7 @@ def peak_forms(T, H):
         ar = (np.minimum(t_ang, 1 - t_ang) * span * r < 1.5 * T.cell) & (r < 0.7 * Rc)  # the arêtes stand
         T.hard |= ar
         T.hardness = np.where(ar, np.minimum(T.hardness, 0.2), T.hardness)
-        T.peak_forms[name] = {"form": form, "xy": c.tolist(), "h": h, "Rc": Rc, "aretes": aretes}
+        T.peak_forms[name] = {"form": form, "xy": c.tolist(), "h": h, "Rc": Rc, "aretes": aretes, "crest": ar}
     return H
 
 
@@ -440,7 +445,8 @@ def _seed(name):
 
 def measure_peak(T, name):
     """As built: how far the ground falls in the first stretch from the summit (a dome barely falls), the faces' median
-    slope, and how many arêtes run down from it."""
+    slope, and how sharp its arêtes stand: at stations down each arête, the crest angle between the ground falling away
+    either side (a knife edge ~90-110 deg, a rounded shoulder 150+; a planned arête the view can't see is ~170)."""
     pf = T.peak_forms[name]
     c = np.array(pf["xy"])
     top = T.summit(name)
@@ -450,5 +456,21 @@ def measure_peak(T, name):
     fall = top - float(np.median(T.H[ring]))
     slope = T._slope()
     faces = (r > 0.15 * pf["Rc"]) & (r < 0.55 * pf["Rc"])
+    angles = []
+    for bear, _ in pf["aretes"]:
+        u = np.array([math.sin(bear), math.cos(bear)])
+        v = np.array([-u[1], u[0]])
+        for f in (0.2, 0.3, 0.4, 0.5):
+            p = c + u * f * pf["Rc"]
+            ds = np.arange(-8, 8.5, 0.5) * T.cell
+            hs = T.sample(p + ds[:, None] * v)
+            k = int(np.argmax(np.where(np.abs(ds) <= 3 * T.cell, hs, -np.inf)))  # the crest near the line
+            dd = 3 * T.cell
+            left = (hs[k] - float(np.interp(ds[k] - dd, ds, hs))) / dd
+            right = (hs[k] - float(np.interp(ds[k] + dd, ds, hs))) / dd
+            if left > 0 and right > 0:
+                angles.append(180 - math.degrees(math.atan(left)) - math.degrees(math.atan(right)))
+            else:
+                angles.append(180.0)  # no crest there: the arête isn't standing
     return {"fall": fall, "at": near, "faces": float(np.median(slope[faces])) if faces.any() else float("nan"),
-            "aretes": len(pf["aretes"])}
+            "aretes": len(pf["aretes"]), "crest": float(np.median(angles)) if angles else float("nan")}

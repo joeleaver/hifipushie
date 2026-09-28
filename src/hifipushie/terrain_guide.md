@@ -183,8 +183,10 @@ and the `"story"`.
     to the cliff top from inland, never a rim with lower ground behind). `cliffs` with `except`/`only` picks stretches;
     an address inland (a headland's peak) means the coast nearest it.
   - Below the cliffs: a wave-cut platform of rocks awash (`cliffs.platform`: m out from the face's foot, 0 for none)
-    and sea stacks standing off the face (`cliffs.stacks`: how many; default about one per 350 m of cliff coast, up
-    to 8; 0 for none). The report counts them and their heights.
+    and sea stacks standing off the face (`cliffs.stacks`: how many, mostly off headlands; default about one per
+    350 m of cliff coast, up to 8; 0 for none; `{"count": 4, "at": address}`: a string of them running out to sea
+    from the coast nearest that address, a headland's tip, smaller further out). The report counts them and their
+    heights.
   - The cliffs' height is the land's height where it meets the sea: a peak whose flanks reach past the coast makes
     cliffs as tall as the flank there (the report measures them and warns). Size the land and the peaks together.
   - **Beaches** go on the coast nearest their `at`. A beach grades the land down to the water; with `"at_foot": true`
@@ -273,6 +275,8 @@ and the `"story"`.
   ```
   Layers are painted in order, each over the ones before it (the map, the views and the export's splats agree): put
   broad ground (grass) first and what must show on top of it (sand on the beach, lava rock) after, or `avoid` it.
+  `"order": 5` on a layer paints it by that number instead of its place in the spec (a patch can't reorder keys).
+  Slope and elevation edges are broken by noise a few cells across, so boundaries aren't one ruled contour.
   `orchard` plants rows (`"rows": 6` m apart, `"along": "contour" | "east" | "north"`). `"count": 6` on any tree
   layer scales it to about that many trees ("a few trees"). Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
   32 deg), and anything you give overrides them.

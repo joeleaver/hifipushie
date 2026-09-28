@@ -834,6 +834,8 @@ def set_terrain(name: str, spec: dict | None = None, patch: dict | None = None, 
     from . import terrain
     terrain.normalise(new)  # cheap checks (units, named sections) before saving
     prev = tt.load(name) if (tt._dir(name) / "spec.json").exists() else None
+    if prev is not None and prev == new:  # (an empty or no-op patch made a new version each time)
+        return f"terrain {name}: nothing changed (still v{len(tt.history(name))})\n" + tt.report(name)
     v = tt.save(name, new, note or ("set_terrain" if spec is not None else "patch"))
     try:
         rep = tt.report(name)

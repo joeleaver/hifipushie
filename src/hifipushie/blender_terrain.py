@@ -195,7 +195,21 @@ def run(job):
         wm.use_nodes = True
         b = wm.node_tree.nodes["Principled BSDF"]
         b.inputs["Base Color"].default_value = (0.07, 0.17, 0.2, 1)  # water scatters light back up (darker read as black from above)
-        b.inputs["Roughness"].default_value = 0.08
+        b.inputs["Roughness"].default_value = 0.2
+        # a light swell: noise bump on the normal (a dead-flat surface was a perfect mirror)
+        nt = wm.node_tree
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        mp = nt.nodes.new("ShaderNodeMapping")
+        mp.inputs["Scale"].default_value = (0.03, 0.08, 0.03)  # (in metres: swells ~30 m long, ~12 m across)
+        nz = nt.nodes.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = 1.0
+        nz.inputs["Detail"].default_value = 6.0
+        bp = nt.nodes.new("ShaderNodeBump")
+        bp.inputs["Strength"].default_value = 0.5
+        nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+        nt.links.new(mp.outputs["Vector"], nz.inputs["Vector"])
+        nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
+        nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
         water.data.materials.append(wm)
 
     scene = bpy.context.scene

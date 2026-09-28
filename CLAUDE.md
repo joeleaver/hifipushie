@@ -533,6 +533,42 @@ regresses, bisect by building one spec at each commit and diffing heights.
   than their beds plus a 45 deg bank) are blocked and re-planned. Same pass rate on the test set, worst cases far
   smaller (mean as-built/limit 4.9 -> 2.6); roads are longer and jaggier (grid staircase). Next if routes matter
   more: a road planner in (x, y, road height) state so earthworks are part of the plan.
+- `terrain_volcano.py` (2026-09-28): `volcanoes`, built into the base after `_hills` (large-scale ground, before
+  texture, sea, erosion). Cone profiles (strato concave exponential from avg + top slope, shield convex, cinder
+  straight, crater share 0.4 of the footprint); the flank blends local ground to the rim height (an offset from the
+  centre's ground raised a cone's uphill rim 43 m on a slope); crater/caldera pit, breach (a small collapse from the
+  floor), lake (a lake landform injected into the spec); radial gullies in two generations; collapses (U outline,
+  walls from the rim at `walls` so `width` is rim to rim, floor = the flank's own long profile minus a sink easing
+  to the mouth; a straight floor stood above a concave flank), debris hummocks; flows traced down the smoothed
+  built ground with inertia and a slow random walk, a sheet over it (surface = smoothed ground on the path +
+  thickness; the ground wins where higher: a flow fills a gully), levees, bowed pressure ridges, lobed edges,
+  deltas at the sea. `settle` after erosion restores designed volcano forms and peak forms within the kind's gully
+  depth (erosion had smeared 20 m gullies and taken 20-30 m off rims). Report measures rim (per bearing: first near
+  top outward from the floor; a shield's flat top ran on past its caldera), lake + spill side, flank slopes by thirds,
+  collapse width across its head, flow thickness over the ground it buried (the old "stands above the ground beside"
+  read 60-81 m for an 18 m flow on a cone).
+- `terrain_rock.py` (2026-09-28): rock character on every face over ~40 deg after erosion/settle: buttresses and
+  couloirs as the ground resampled a horizontal distance along the fall line (profile kept, lip and foot notched;
+  strike coordinate from the heavily smoothed gradient, ribs elongated along the fall line with wandering spacing:
+  short blobs read as raindrops, even spacing as a comb; a third of the strength on 40-50 deg mountainsides), ledges
+  (heights pulled toward a staircase, off designed walls: treads broke their unclimbable run), a boulder foot. Peak
+  arêtes, routes, sites, water kept out. Measured: share of face cells turned > 25 deg from the face's line (canyon
+  2% -> 37%), cliffs' width in cells (a 70 deg face 2-3 cells across renders as facets: `write_mesh` now resamples
+  2x cubic for the render). Sea cliffs get stacks and a wave-cut platform (`terrain_sea`).
+- Peak forms (`terrain_forms.peak_forms`, after volcanoes): pyramid/horn = planes through the summit and each pair of
+  neighbouring arêtes (continuous across them), arêtes along the ridges that leave the peak at their gentlest fall
+  (never cutting the ridge) but at least the form's own slope near the top (following the ridge made a 2 km "horn"),
+  fillers up to the face count; faces hollowed next to the arêtes (sin^0.7: sharp crests); carve only the upper part
+  (height-weighted), never into other ridges/cols/peaks (a 35 deg guard cone round them: a face cut a col 110 m down),
+  fill only hollows the carving made (a basin floor in the zone had been filled whole). Default pyramid in alpine
+  kinds. Measured: summit fall, faces, arête crest angle across (knife ~100, rounded 150+).
+- Cover masks cut on the slope of the ground smoothed a cell, thresholds (slope and elevation) shifted by noise a few
+  cells across (cut on the raw slope, snow and rock speckled cell by cell and every boundary was a pasted line).
+  Floors and plateau tops get a gentle swell at player scale in `_texture` (they were flat plaster from the air).
+  The rocky shore keeps land dry only a few cells in (`0.2 * min(sd, 3 cells)`; uncapped it lifted ground 400 m
+  inland to 80 m: found by another agent's level).
+- Views (`blender_terrain`): matte ground (specular 0.12: dark cover read brown at grazing angles), water with a noise
+  swell, no site pole where a camera stands (views from a site rendered inside it, all black).
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same

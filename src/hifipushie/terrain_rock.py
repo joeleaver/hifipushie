@@ -3,7 +3,7 @@
 builders make the right profile, nothing broke it up along its length.
 
 "rock": {"buttresses": 0..1, "ledges": 0..1, "boulders": 0..1, "scale": m} | false
-  (defaults 1, 0.6, 1, the kind's crag size). Applied after erosion (it smeared this detail) to ground steeper than
+  (defaults 1, 0.25, 1, the kind's crag size). Applied after erosion (it smeared this detail) to ground steeper than
   ~40 deg, never on routes, sites or water.
 
 A height field can't overhang, and a 70 deg face on a 5 m grid is only a few cells across in plan, so what reads from
@@ -31,6 +31,8 @@ def _keep(T):
             keep |= T.masks[k] > 0.05
     for p in T.passes.values():
         keep |= p["corridor"]
+    for pf in getattr(T, "peak_forms", {}).values():  # (a peak's arêtes stay clean edges: rock lumps made its skyline a saw)
+        keep |= pf["crest"]
     return ndimage.binary_dilation(keep, iterations=2) | ~np.isnan(T.water)
 
 
@@ -69,30 +71,37 @@ def apply(T):
     nx, ny = bx / g, by / g  # uphill
     s = T.X * -ny + T.Y * nx  # along the face (strike)
     q = T.X * nx + T.Y * ny  # up and down it
-    zone = ndimage.gaussian_filter(steep, 1.5)  # (reaching the lip and the foot, so they notch too)
-    zone = np.maximum(zone, steep) * ~keep
+    # reaching the lip and the foot so they notch too, but not the flat top behind the lip (resampling it along the
+    # fall line dug box-shaped pits into the clifftop grass)
+    zone = np.maximum(ndimage.gaussian_filter(steep, 1.0), steep) * smoothstep(18, 32, slope) * ~keep
 
     b_amt = float(cfg.get("buttresses", 1.0))
     if b_amt > 0:
         L = max(1.5 * crag, 3.5 * T.cell)  # spacing of ribs along the face
-        pts = np.stack([s.ravel() / L, q.ravel() / (4 * L), np.full(s.size, 7.0)], 1)
+        # ribs run the whole fall line (short blobs read as raindrops on a mountainside) and their spacing wanders
+        # (evenly spaced flutes read as a comb)
+        warp = noise.fbm(np.stack([s.ravel() / (3 * L), q.ravel() / (20 * L), np.full(s.size, 2.0)], 1), 1.0, 2,
+                         seed=216).reshape(H.shape)
+        sw = s + 1.6 * L * (warp - 0.5)
+        pts = np.stack([sw.ravel() / L, q.ravel() / (12 * L), np.full(s.size, 7.0)], 1)
         n1 = noise.fbm(pts, 1.0, 3, seed=211).reshape(H.shape)
         ridged = 1 - np.sqrt((2 * n1 - 1) ** 2 + 0.03)  # crests: buttresses (softened: sharp ones faceted); lows: couloirs
         # big bays and headlands of the face every few ribs
-        pts2 = np.stack([s.ravel() / (5 * L), q.ravel() / (8 * L), np.full(s.size, 3.0)], 1)
+        pts2 = np.stack([s.ravel() / (5 * L), q.ravel() / (20 * L), np.full(s.size, 3.0)], 1)
         n2 = noise.fbm(pts2, 1.0, 2, seed=212).reshape(H.shape)
-        amp = b_amt * max(0.4 * crag, 1.0 * T.cell)
+        # full strength on cliffs; a mountainside of 40-50 deg gets a third (it had raindrop dimples all over)
+        amp = b_amt * max(0.4 * crag, 1.0 * T.cell) * (0.35 + 0.65 * smoothstep(45, 65, slope))
         # (ribs vary in strength along the face: evenly fluted walls read as organ pipes)
-        n3 = noise.fbm(np.stack([s.ravel() / (2.5 * L), q.ravel() / (6 * L), np.full(s.size, 4.0)], 1), 1.0, 2,
+        n3 = noise.fbm(np.stack([sw.ravel() / (2.5 * L), q.ravel() / (15 * L), np.full(s.size, 4.0)], 1), 1.0, 2,
                        seed=215).reshape(H.shape)
-        delta = amp * ((0.4 + 1.6 * n3) * (ridged - 0.5) + 1.6 * (n2 - 0.5))  # metres, + = face out (a buttress)
+        delta = amp * ((0.2 + 1.8 * n3 ** 1.5) * (ridged - 0.5) + 1.6 * (n2 - 0.5))  # metres, + = face out
         # sample the ground a horizontal distance delta uphill (+: higher ground brought out: a buttress)
         yy = (T.Y - T.ys[0] + ny * delta * zone) / T.cell
         xx = (T.X - T.xs[0] + nx * delta * zone) / T.cell
         shifted = ndimage.map_coordinates(H, [yy, xx], order=1, mode="nearest")
         H = H * (1 - zone) + shifted * zone
 
-    l_amt = float(cfg.get("ledges", 0.6))
+    l_amt = float(cfg.get("ledges", 0.25))
     if l_amt > 0:
         # a tread needs a cell or two of run: only faces gentle enough get ledges; risers in between steepen
         step = max(0.6 * crag, 2.5 * T.cell)
@@ -112,7 +121,7 @@ def apply(T):
         cliff = steep > 0.5
         near = ndimage.distance_transform_edt(~cliff) * T.cell
         below = Hb < ndimage.maximum_filter(Hb, size=5)  # (not the ground on top of the face)
-        foot = smoothstep(6 * T.cell + 0.5 * crag, 1 * T.cell, near) * (slope < 40) * below * ~keep
+        foot = smoothstep(6 * T.cell + 0.5 * crag, 1 * T.cell, near) * smoothstep(34, 26, slope) * below * ~keep
         lumps = noise.fbm(np.c_[T.P, np.full(len(T.P), 9.0)], 1.3 * T.cell, 2, seed=214).reshape(H.shape)
         H = H + bo * foot * np.clip(lumps - 0.45, 0, None) * min(0.25 * crag, 3.0) * 2
         foot_m = foot > 0.3
@@ -121,9 +130,9 @@ def apply(T):
 
 
 def measure(T):
-    """How broken the faces are, as built: along each face, how far its lip wanders in and out (the spread of the
-    lip line across the fall line), and the share of face cells whose aspect differs from the face's mean by > 25 deg
-    (buttress and couloir sides)."""
+    """How broken the faces are, as built: the share of face cells whose aspect differs from the face's mean by > 25 deg
+    (buttress and couloir sides), and how many cells across (in plan) the cliffs over 60 deg are: a face 2-3 cells
+    across can't carry detail of its own (it rendered as big flat triangles)."""
     slope = T._slope()
     face = (slope > 45) & np.isnan(T.water)
     if face.sum() < 20:
@@ -134,4 +143,7 @@ def measure(T):
     by, bx = np.gradient(Hb, T.cell)
     mean = np.arctan2(by, bx)
     d = np.abs((asp - mean + np.pi) % (2 * np.pi) - np.pi)
-    return {"face_km2": face.sum() * T.cell ** 2 / 1e6, "turned": float((d[face] > math.radians(25)).mean())}
+    cliff = (slope > 60) & np.isnan(T.water)
+    across = float(np.median(2 * ndimage.distance_transform_edt(cliff)[cliff])) if cliff.sum() > 20 else None
+    return {"face_km2": face.sum() * T.cell ** 2 / 1e6, "turned": float((d[face] > math.radians(25)).mean()),
+            "cliff_cells": across}

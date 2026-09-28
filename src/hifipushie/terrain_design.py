@@ -286,6 +286,10 @@ def rugged(T):
             patch = smoothstep(0.45, 0.6, noise.fbm(pts, 2.5 * sc, 2, seed=63 + k).reshape(T.X.shape))
             patch *= smoothstep(40, 25, T._slope())  # on walls, stepped risers stacked into organ pipes
             T.H += R * patch * (stepped - T.H)
+        # erosion smoothed crags of a few metres away entirely ("rugged made no visible difference at any setting"):
+        # the settle step after erosion keeps them, and the report measures them
+        T.settle_mask = np.maximum(getattr(T, "settle_mask", np.zeros(T.X.shape)), (R > 0.05) * 1.0)
+        T.rugged_zones = getattr(T, "rugged_zones", {}) | {name: (R > 0.1, sc)}
 
 
 def _wall(T, name, w):
@@ -928,9 +932,18 @@ def tree_kind(T, name):
 
 def cover(T) -> dict:
     out = {}
-    slope = T._slope()
+    # slope of the ground smoothed over a cell, its thresholds shifted by noise a few cells across: cut on the raw
+    # slope, rock and snow speckled cell by cell and every boundary was a hard pasted line along one contour of slope
     pts = np.c_[T.P, np.zeros(len(T.P))]
-    for k, name in enumerate(T.spec.get("cover") or {}):
+    jit = 2 * noise.fbm(pts, max(3 * T.cell, 25.0), 3, seed=47).reshape(T.X.shape) - 1
+    slope = T._slope(ndimage.gaussian_filter(T.H, 1.0)) + 6.0 * jit
+    elev_j = jit * max(4 * T.cell, 20.0)
+    layers = list(T.spec.get("cover") or {})
+    # painted in key order, or by each layer's "order" (a patch can't reorder keys: scree had to be deleted and re-added
+    # to paint after rock)
+    pos = {n: i for i, n in enumerate(layers)}
+    layers.sort(key=lambda n: (float((T.spec["cover"][n] or {}).get("order", pos[n])), pos[n]))
+    for k, name in enumerate(layers):
         c = _spec_cover(T, name)
         m = np.full(T.X.shape, float(c.get("density", 1.0)))
         if "in" in c:
@@ -941,7 +954,8 @@ def cover(T) -> dict:
         if "elevation" in c:
             lo, hi = c["elevation"]
             fade = c.get("fade", 40)
-            m *= smoothstep(lo - fade, lo + fade, T.H) * smoothstep(hi + fade, hi - fade, T.H)
+            Hj = T.H + elev_j * min(1.0, fade / 40)
+            m *= smoothstep(lo - fade, lo + fade, Hj) * smoothstep(hi + fade, hi - fade, Hj)
         if "gradient" in c:
             g = c["gradient"]
             a, b = T.address(g["from"])[0], T.address(g["to"])[0]
@@ -1137,6 +1151,15 @@ def report(T):
         if worst:
             line += f" FAIL: {100 * worst[0]:.0f}% at [{worst[1][0]:.0f}, {worst[1][1]:.0f}]"
         out.append(line)
+    for name, (zone, sc) in getattr(T, "rugged_zones", {}).items():
+        if zone.sum() < 5:
+            out.append(f"rugged {name}: its zone is empty")
+            continue
+        detail = T.H - ndimage.gaussian_filter(T.H, max(sc, 2 * T.cell) / T.cell)
+        rough_in = float(np.std(detail[zone]))
+        rough_out = float(np.std(detail[~zone])) if (~zone).sum() > 5 else float("nan")
+        out.append(f"rugged {name}: {zone.sum() * T.cell ** 2 / 1e4:.1f} ha; the ground's detail at its {sc:.0f} m scale "
+                   f"stands +-{rough_in:.1f} m there (+-{rough_out:.1f} m elsewhere)")
     for name, s in T.sites.items():
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
