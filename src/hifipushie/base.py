@@ -15,6 +15,14 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
   The kernel widens with distance (h >= 0.7 x the nearest vertex's distance), so off the surface it's a plane fit
   over a patch as wide as the distance: shells 5-15 mm out are smooth. Past 3 cm it fades to the distance to the
   nearest vertex minus the largest h (conservative, for culling).
+- Body sources (`source`): the template (default) or MakeHuman (`body: {"source": "makehuman", "age", "weight",
+  "muscle", "height", "race"}`, makehuman.py): no hand edits for age and build.
+- Head graft (`head: {"source": "gnm", ...}`, Google GNM): the body's head is cut at one of its own neck loops ~2.5 cm under
+  its chin and the loop extruded as a quad tube (`_neck_tube`) whose rings leave the loop along the body's slope (Hermite)
+  and then follow the head's own neck slice by slice through the overlap; body points under the (tilted) graft plane
+  and head points over it make one IMLS point set, weighted by C2 ramps across +-SEAM (the k nearest are raised
+  there). Blending two fields across a band showed as a collar; points cut hard at the plane left a crack; a tube
+  matched only at the plane stood proud of the head's narrowing neck and flecked.
 - Topology payoff: `retopo.wrap` of a base-built body starts from the same template, so the export quads follow.
 """
 from __future__ import annotations
@@ -27,17 +35,37 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 20  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 36  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
+SEAM = 0.012  # m: half-width of the head graft's overlap
 _CACHE: dict = {}
 
 
-def template_joints(name: str = "male_stylized") -> dict:
-    """The template's joints (centre and .L) as spec joints {name: {"pos", "r"}}, radii from its cross-sections."""
-    key = ("joints", name)
+def source(b: dict) -> dict:
+    """The body the base starts from, as a template dict (retopo.load_template's): the Blender Studio template
+    (b["template"], default), or MakeHuman shaped by its macro targets (b["body"] = {"source": "makehuman", "age",
+    "weight", "muscle", "height"})."""
+    body = b.get("body") or {}
+    if body.get("source") == "makehuman":
+        from . import makehuman
+        return makehuman.body(body)
+    if body.get("source") not in (None, "template"):
+        raise ValueError('base body: {"source": "makehuman", ...} or the template (default)')
+    return retopo.load_template(b.get("template", "male_stylized"))
+
+
+def _source_key(b: dict) -> str:
+    return json.dumps([b.get("template", "male_stylized"), b.get("body")], sort_keys=True, default=float)
+
+
+def template_joints(name="male_stylized") -> dict:
+    """The body source's joints (centre and .L) as spec joints {name: {"pos", "r"}}, radii from its cross-sections.
+    name: a template name or the base dict."""
+    b = name if isinstance(name, dict) else {"template": name}
+    key = ("joints", _source_key(b))
     if key not in _CACHE:
-        tpl = retopo.load_template(name)
+        tpl = source(b)
         P = tpl["P"]
         out = {}
         J = {k: v for k, v in tpl["J"].items() if not k.endswith(".R")}
@@ -56,12 +84,11 @@ def inject(spec: dict) -> dict:
     if not isinstance(b, dict):
         raise ValueError('base is {"template": "male_stylized", ...}')
     out = dict(spec)
-    name = b.get("template", "male_stylized")
     joints = dict(spec.get("joints") or {})
-    tj = template_joints(name)
+    tj = template_joints(b)
     for k, j in tj.items():
         joints.setdefault(k, j)
-    eb = retopo.load_template(name)["face"].get("eyeball")
+    eb = source(b)["face"].get("eyeball")
     head = head_of({"joints": joints}, b)
     if head is not None:  # the grafted head's own eyes
         eb = {"centre": head["eyes"][0], "r": head["eye_r"]}
@@ -70,12 +97,15 @@ def inject(spec: dict) -> dict:
             joints.setdefault(k, j)
         # the mouth closed behind the lips (GNM's mouth bag is left out of the field: its walls made the lips sparkle,
         # and without it parted lips showed a hole into the head)
-        lu, ll, mc = (np.array(joints[k]["pos"]) for k in ("lm_lip_upper", "lm_lip_lower", "lm_mouth_corner.L"))
-        blobs = dict(out.get("blobs") or spec.get("blobs") or {})
-        blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (lu + ll) + [0, 0.016, 0]],
-                                        "size": [round(float(mc[0]) * 0.8, 4), 0.01, round(float(abs(lu[2] - ll[2])) * 0.5 + 0.002, 4)],
-                                        "blend": 0.004})
-        out["blobs"] = blobs
+        iu, il = head["lm68"][62], head["lm68"][66]  # inner lip midpoints
+        mc = np.array(joints["lm_mouth_corner.L"]["pos"])
+        if float(np.linalg.norm(iu - il)) > 0.0015:  # parted lips (a fill behind closed ones made them pout)
+            blobs = dict(out.get("blobs") or spec.get("blobs") or {})
+            blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (iu + il) + [0, 0.012, 0]],
+                                            "size": [round(float(mc[0]) * 0.8, 4), 0.008,
+                                                     round(float(np.linalg.norm(iu - il)) * 0.5 + 0.001, 4)],
+                                            "blend": 0.003})
+            out["blobs"] = blobs
     elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
         off = np.array(eb["centre"]) - np.array(tj["head"]["pos"])
         joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in np.array(joints["head"]["pos"]) + off],
@@ -151,15 +181,15 @@ def _normals_and_h(V, faces):
 def surface(spec_expanded: dict, base: dict) -> dict:
     """The posed, subdivided base: {"verts", "faces", "normals", "h", "quads" (the unsubdivided warp), "tree"}.
     Cached by the template, the joints it uses and the settings."""
-    name = base.get("template", "male_stylized")
-    tpl = retopo.load_template(name)
+    name = _source_key(base)
+    tpl = source(base)
     used = {}
     for k in tpl["J"]:
         for n in (k, retopo._model_name(k)):
             if n in spec_expanded["joints"]:
                 used[k] = spec_expanded["joints"][n]["pos"]
                 break
-    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push")}
+    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push", "body")}
     used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
     key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
     if key in _CACHE:
@@ -178,16 +208,37 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     if head is not None:  # a grafted head: the template's own head cut off at a neck loop under its jaw and the
         # neck extruded straight up as quads (its chin and jaw, bigger and lower than a real head's, stood out of the
         # graft band; columns of points built from its vertices left lips and ruffs)
-        W, faces = _neck_tube(W, faces, tpl, spec_expanded)
+        W, faces = _neck_tube(W, faces, tpl, spec_expanded, head)
     V, F = W, faces
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
     h = h * float(base.get("smooth", 1.0))
+    if head is not None:  # one point set: the body under the graft plane, the head over it (the tube tapers to the
+        # head's neck at the plane, so they meet). Blending two fields across a band instead showed the band: where
+        # the two surfaces differ, the blend weight's gradient tilts the normals (a collar in every render)
+        c, pn, _ = head["plane"]
+        axis_d = np.linalg.norm(np.cross(V - c, pn), axis=1)
+        # both sets overlap across +-SEAM and their points are weighted down across it (C2 ramps): cut hard at the
+        # plane, the two surfaces' few-mm mismatch left a ragged crack
+        ub = (V - c) @ pn
+        kb = (ub <= SEAM) | (axis_d > 0.2)
+        H = head["verts"]
+        uh = (H - c) @ pn
+        kh = uh > -SEAM
+
+        def ramp(x):
+            x = np.clip(x, 0, 1)
+            return x ** 3 * (x * (6 * x - 15) + 10)
+        wb = np.where(axis_d[kb] > 0.2, 1.0, 1 - ramp((ub[kb] + SEAM) / (2 * SEAM)))
+        wh = ramp((uh[kh] + SEAM) / (2 * SEAM))
+        V = np.r_[V[kb], H[kh]]
+        N = np.r_[N[kb], head["normals"][kh]]
+        h = np.r_[h[kb], head["h"][kh]]
+        wt = np.maximum(np.r_[wb, wh], 1e-4)
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
-           "key": key, "head": None}
-    if head is not None:
-        out["head"] = _match_neck(head, V)
+           "key": key, "head": None, "graft": head, "wt": wt if head is not None else None,
+           "seam": (head["plane"][0], head["plane"][1], 0.2) if head is not None else None}
     if len(_CACHE) > 8:
         _CACHE.pop(next(k for k in _CACHE if not isinstance(k, tuple)))
     _CACHE[key] = out
@@ -197,6 +248,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
 GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # under workspace/_templates/gnm (Apache 2.0, see SOURCE.txt)
 GNM_CUT = 0.172  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
+GNM_TILT = 20.0  # degrees
 
 
 def head_of(s: dict, base: dict):
@@ -207,10 +259,10 @@ def head_of(s: dict, base: dict):
         return None
     if head.get("source", "gnm") != "gnm":
         raise ValueError('base head: {"source": "gnm", ...} (the only head source so far)')
-    tpl = retopo.load_template(base.get("template", "male_stylized"))
-    tj = template_joints(base.get("template", "male_stylized"))
+    tpl = source(base)
+    tj = template_joints(base)
     J = s["joints"]
-    eb = np.array(tpl["face"]["eyeball"]["centre"]) * [0, 1, 1]
+    eb = np.array((tpl["face"].get("eyeball") or {}).get("centre") or tpl["face"]["landmarks"]["eye.L"]) * [0, 1, 1]
     mid = np.array(J["head"]["pos"], float) + eb - np.array(tj["head"]["pos"])
     up = np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float)
     up0 = np.array(tj["head"]["pos"]) - np.array(tj["neck"]["pos"])
@@ -287,22 +339,22 @@ def _soften(W, tpl, s, amount):
 
 
 def _neck_loop(tpl):
-    """The template's closed edge loop round the neck whose highest point is just under its chin (loops there tilt:
+    """The template's closed edge loop round the neck whose highest point is 2.5 cm under its chin (loops there tilt:
     low at the throat, high at the nape): (loop, the head's top vertex)."""
-    key = ("neck_loop", tpl["name"])
+    key = ("neck_loop", tpl["name"], len(tpl["P"]), float(tpl["P"][:, 2].max()))
     if key not in _CACHE:
         P = tpl["P"]
         faces, nb, ef = retopo.topology(tpl["L"], tpl["S"])
         eye = np.array(tpl["face"]["landmarks"]["eye.L"])
-        chin_z = eye[2] - 0.15
-        near = set(np.flatnonzero((P[:, 2] > chin_z - 0.1) & (P[:, 2] < chin_z + 0.05) & (np.abs(P[:, 0]) < 0.12)))
+        chin_z = tpl.get("chin_z", eye[2] - 0.15)
+        near = set(np.flatnonzero((P[:, 2] > chin_z - 0.14) & (P[:, 2] < chin_z + 0.05) & (np.abs(P[:, 0]) < 0.14)))
         top = int(np.argmax(P[:, 2]))
         best = None
         for path in retopo._loops_round(P, faces, nb, ef, near, 200):
             Q = P[path]
             ang = np.arctan2(Q[:, 1] - Q[:, 1].mean(), Q[:, 0])
             wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
-            if abs(round(wn)) != 1 or Q[:, 2].max() > chin_z + 0.008 or np.abs(Q[:, 0]).max() > 0.1:
+            if abs(round(wn)) != 1 or Q[:, 2].max() > chin_z - 0.025 or np.abs(Q[:, 0]).max() > 0.12:
                 continue
             if best is None or Q[:, 2].max() > best[0]:
                 best = (Q[:, 2].max(), path)
@@ -310,68 +362,76 @@ def _neck_loop(tpl):
     return _CACHE[key]
 
 
-def _neck_tube(W, faces, tpl, s, step=0.01):
+def _neck_tube(W, faces, tpl, s, head, step=0.006):
     """Everything above the neck loop dropped; the loop extruded along the neck -> head axis in rings `step` apart up
-    past the head's top and capped (quads; subdivided with the rest)."""
+    past the head's top and capped (quads; subdivided with the rest). Each ring vertex tapers (smoothstep) from the
+    loop's radius to the grafted head's neck radius at its angle, reaching it at the graft plane: a straight tube
+    read as a collar with an edge at each end."""
     loop, top = _neck_loop(tpl)
     J = s["joints"]
     n = _unit(np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float))
     ring0 = W[loop]
-    height = float((W[top] - ring0.mean(0)) @ n) + 0.02
-    rings = [ring0 + k * step * n for k in range(int(height / step) + 1)]
+    c0 = ring0.mean(0)
+    e1 = _unit(np.cross(n, [0, 1.0, 0]) if abs(n[1]) < 0.9 else np.cross(n, [1.0, 0, 0]))
+    e2 = np.cross(n, e1)
+    q0 = ring0 - c0 - np.outer((ring0 - c0) @ n, n)
+    th = np.arctan2(q0 @ e2, q0 @ e1)
+    r0 = np.linalg.norm(q0, axis=1)
+    pc, pn, band = head["plane"]
+    hp = float((pc - c0) @ n)  # the plane's height over the loop's centre, along the axis
+    H = head["verts"]
+    bins = 36
+    x_th = (th + np.pi) / (2 * np.pi) * bins - 0.5
+    d = q0 / np.maximum(r0, 1e-9)[:, None]
+    foot0 = c0 + np.outer((ring0 - c0) @ n, n)  # each loop vertex's axis point
+
+    def head_r(u):
+        """The head's neck radius per loop vertex (its angle about the axis) in a slice at u along the plane's
+        normal: its vertices within a few mm, median per angle bin."""
+        sl = H[np.abs((H - pc) @ pn - u) < 0.004]
+        qs = sl - c0 - np.outer((sl - c0) @ n, n)
+        ang = np.arctan2(qs @ e2, qs @ e1)
+        rad = np.linalg.norm(qs, axis=1)
+        k = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+        rb = np.array([np.median(rad[k == i]) if (k == i).sum() else np.nan for i in range(bins)])
+        ok = np.isfinite(rb)
+        rb = np.interp(np.arange(bins), np.flatnonzero(ok), rb[ok], period=bins)
+        return np.interp(x_th, np.arange(bins), rb, period=bins)
+    # through the whole overlap with the head (u in -SEAM..+SEAM about the plane) the tube follows the head's own
+    # neck, slice by slice: matched only at the plane, the tube stood up to 1 cm proud of the head's narrowing neck
+    # just above it and the blended points made flecks; below the overlap a cubic Hermite from the loop's radius and
+    # slope
+    us = np.linspace(-SEAM, SEAM, 9)
+    R = np.array([head_r(u) for u in us])  # (levels, loop)
+    npn = float(n @ pn)
+    h_start = ((pc - foot0 - R[0][:, None] * d) @ pn - SEAM) / npn  # the height where each vertex enters the overlap
+    s1 = (R[1] - R[0]) / ((us[1] - us[0]) / npn)  # the head's slope there, per metre of height
+    height = float((W[top] - c0) @ n) + 0.02
+    # the body's slope under the loop (radius change per metre of height), so the tube leaves the loop along the
+    # neck's own surface: starting straight up it left a crease round the neck's base
+    below = ring0 - 0.012 * n
+    rest = np.setdiff1d(np.arange(len(W)), loop)
+    Wb = W[rest][cKDTree(W[rest]).query(below)[1]]
+    qb = Wb - c0 - np.outer((Wb - c0) @ n, n)
+    s0 = np.clip((r0 - np.linalg.norm(qb, axis=1)) / np.maximum((ring0 - Wb) @ n, 1e-3), -1.5, 1.5)
+    L = np.maximum(h_start, 1e-3)
+    rings = []
+    for kk in range(int(height / step) + 1):
+        hh = kk * step
+        t = np.clip(hh / L, 0, 1)
+        h00, h10, h01, h11 = 2 * t ** 3 - 3 * t ** 2 + 1, t ** 3 - 2 * t ** 2 + t, -2 * t ** 3 + 3 * t ** 2, t ** 3 - t ** 2
+        r = h00 * r0 + h10 * L * s0 + h01 * R[0] + h11 * L * s1
+        over = hh > L  # in the overlap: the head's radius at this vertex's u
+        if over.any():
+            u = (hh - L[over]) * npn - SEAM
+            j = np.clip(np.searchsorted(us, u) - 1, 0, len(us) - 2)
+            f = np.clip((u - us[j]) / (us[j + 1] - us[j]), 0, 1)
+            cols = np.flatnonzero(over)
+            r[over] = (1 - f) * R[j, cols] + f * R[j + 1, cols]
+        rings.append(foot0 + hh * n + r[:, None] * d)
     tip = rings[-1].mean(0) + step * n
     V, fl, _, _ = retopo._stitch(W, faces, {"neck": (list(loop), top, (rings, tip))})
     return V, fl
-
-
-def _match_neck(head: dict, body_verts: np.ndarray, reach: float = 0.06, bins: int = 24) -> dict:
-    """The grafted head's neck bent onto the body's at the graft plane: per angle round the neck, its radius scaled
-    to the body's and its centre moved onto the body's, fully at the plane, fading out over `reach` above it (the
-    jaw keeps its shape). Without it the body's neck stood out behind the head's as a ledge."""
-    c, n, band = head["plane"]
-    e1 = _unit(np.cross(n, [0, 1.0, 0]) if abs(n[1]) < 0.9 else np.cross(n, [1.0, 0, 0]))
-    e2 = np.cross(n, e1)
-
-    def ring(V, at):
-        sl = V[np.abs((V - c) @ n - at) < 0.0035]
-        cen = sl.mean(0)
-        q = sl - cen
-        ang = np.arctan2(q @ e2, q @ e1)
-        rad = np.hypot(q @ e1, q @ e2)
-        k = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
-        r = np.array([np.percentile(rad[k == i], 50) if (k == i).sum() >= 2 else np.nan for i in range(bins)])
-        ok = np.isfinite(r)
-        return cen - ((cen - c) @ n - at) * n, np.interp(np.arange(bins), np.flatnonzero(ok), r[ok], period=bins)
-    # slices from the band's foot up to the plane: under the plane the head's neck takes the body's own shape at
-    # each height (matched at the plane only, the blend mixed the body's sloping trapezius with a straight neck:
-    # a groove behind the neck)
-    hs = np.linspace(-band, 0.0, 7)
-    V = head["verts"]
-    rings = [(ring(body_verts, a), ring(V, a)) for a in hs]
-    u = (V - c) @ n
-    x_u = np.clip((u - hs[0]) / (hs[-1] - hs[0]) * (len(hs) - 1), 0, len(hs) - 1)
-    i0 = np.minimum(x_u.astype(int), len(hs) - 2)
-    f = (x_u - i0)[:, None]
-    cbs = np.array([r[0][0] for r in rings])
-    chs = np.array([r[1][0] for r in rings])
-    rbs = np.array([r[0][1] for r in rings])
-    rhs = np.array([r[1][1] for r in rings])
-    cb = cbs[i0] * (1 - f) + cbs[i0 + 1] * f
-    ch = chs[i0] * (1 - f) + chs[i0 + 1] * f
-    rat = (rbs / rhs)[i0] * (1 - f) + (rbs / rhs)[i0 + 1] * f  # (n, bins)
-    w = np.clip(1 - u / reach, 0, 1)
-    w = w * w * (3 - 2 * w)
-    q = V - ch - ((V - ch) * n).sum(1, keepdims=True) * n
-    ang = np.arctan2(q @ e2, q @ e1)
-    x = (ang + np.pi) / (2 * np.pi) * bins - 0.5
-    j0 = np.floor(x).astype(int)
-    a = x - j0
-    ratio = rat[np.arange(len(V)), j0 % bins] * (1 - a) + rat[np.arange(len(V)), (j0 + 1) % bins] * a
-    V2 = V + w[:, None] * ((cb - ch) + q * (ratio - 1)[:, None])
-    faces = head["faces"]
-    N, h = _normals_and_h(V2, faces)
-    h = h * (head["h"].mean() / max(_normals_and_h(V, faces)[1].mean(), 1e-9))
-    return {**head, "verts": V2, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V2)}
 
 
 def _gnm_data():
@@ -473,7 +533,11 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
 
     def place(X):
         return eye_mid + s * (X - mid) @ R.T
-    cut = place(np.array([mid[0], GNM_CUT, mid[2]]))
+    # the graft plane through the neck's axis, tilted GNM_TILT down at the front: level, it ran into the jaw under the
+    # chin (the chin sits ~6 mm over GNM_CUT) while the back must stay above the bib's open edge
+    cut = place(np.array([mid[0], GNM_CUT, J[0][2]]))
+    ta = np.radians(GNM_TILT)
+    pn = R @ np.array([0.0, np.cos(ta), np.sin(ta)])
     lm = place(np.array([sum(float(w) * V[int(v)] for v, w in zip(row[0::2], row[1::2])) for row in g["lm68"]]))
     skin = g["skin"]
     Q = g["quads"][skin[g["quads"]].all(1)]
@@ -487,12 +551,12 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     h = h * float(head.get("smooth", 1.0))
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
             "eyes": [place(J[2]), place(J[3])], "eye_r": s * k_eye * float(np.mean(r_eye)), "lm68": lm,
-            "plane": (cut, up, s * GNM_BAND)}
+            "plane": (cut, pn, s * GNM_BAND)}
 
 
-def _imls(X, pr):
+def _imls(X, pr, k=K):
     """IMLS over one surface's vertices at points X (n, 3)."""
-    d, i = pr["tree"].query(X, k=K)
+    d, i = pr["tree"].query(X, k=k)
     P, N, h = pr["verts"][i], pr["normals"][i], pr["h"][i]
     # the kernel widens with distance (h at least 0.7 x the nearest vertex's distance): off the surface the field
     # is a plane fit over a patch as wide as the distance, so shells (clothes, 5-15 mm out) are smooth offsets
@@ -501,6 +565,8 @@ def _imls(X, pr):
     s = ((X[:, None, :] - P) * N).sum(-1)
     q = np.clip(d / (2 * h), 0.0, 1.0)  # Wendland C2, support 2 h: compact, so a vertex entering or leaving the
     w = (1 - q) ** 4 * (4 * q + 1)      # k nearest carries no weight (a Gaussian's tail there speckled the creases)
+    if pr.get("wt") is not None:  # per-point weights (a grafted head's seam)
+        w = w * pr["wt"][i]
     ws = w.sum(1)
     imls = (w * s).sum(1) / np.maximum(ws, 1e-300)
     far = np.sign(imls) * np.maximum(d[:, 0] - pr["hmax"], 0.0)
@@ -509,23 +575,22 @@ def _imls(X, pr):
 
 
 def sd_base(p: np.ndarray, pr: dict) -> np.ndarray:
-    """IMLS distance to the base (see the module docstring); with a grafted head, the body's field below the graft
-    plane, the head's above, linearly blended across its band (smoothstep), so the necks morph into each other."""
-    if pr.get("head") is not None:
-        shape = p.shape[:-1]
-        X = p.reshape(-1, 3)
-        c, n, band = pr["head"]["plane"]
-        u = np.clip(((X - c) @ n) / band * 0.5 + 0.5, 0.0, 1.0)
-        t = u * u * (3 - 2 * u)
-        fb, fh = np.zeros(len(X)), np.zeros(len(X))
-        lo, hi = t < 1, t > 0
-        if lo.any():
-            fb[lo] = _imls(X[lo], pr)
-        if hi.any():
-            fh[hi] = _imls(X[hi], pr["head"])
-        return ((1 - t) * fb + t * fh).reshape(shape)
+    """IMLS distance to the base (see the module docstring). A grafted head is part of the same point set."""
     return _sd_body(p, pr)
 
 
 def _sd_body(p: np.ndarray, pr: dict) -> np.ndarray:
-    return _imls(p.reshape(-1, 3), pr).reshape(p.shape[:-1])
+    X = p.reshape(-1, 3)
+    if pr.get("seam") is None:
+        return _imls(X, pr).reshape(p.shape[:-1])
+    # near a head graft's seam the two point sets overlap with ramped weights; there the k nearest must reach both
+    # (the head's points are twice as dense: 32 nearest were all one set's, and the surface stepped where it switched)
+    c, pn, r = pr["seam"]
+    near = np.abs((X - c) @ pn) < 2 * SEAM
+    near &= np.linalg.norm(np.cross(X - c, pn), axis=1) < r
+    out = np.empty(len(X))
+    if (~near).any():
+        out[~near] = _imls(X[~near], pr)
+    if near.any():
+        out[near] = _imls(X[near], pr, k=4 * K)
+    return out.reshape(p.shape[:-1])

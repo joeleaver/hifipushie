@@ -302,6 +302,7 @@ def apply(T):
     out_of_foot = -sd - run  # metres seaward of the face's foot
     pw = float(cl.get("platform", max(3 * T.cell, 25 * k)))
     stacks = []
+    st_mask = np.zeros(T.X.shape, bool)
     if pw > 0:
         rocks = noise.fbm(np.c_[T.P, np.full(len(T.P), 19.0)], 1.6 * T.cell, 3, seed=151).reshape(T.X.shape)
         fade = smoothstep(pw, 0.3 * pw, out_of_foot) * (out_of_foot > -T.cell)
@@ -374,6 +375,7 @@ def apply(T):
             st = np.where(d < r, top_z, np.maximum(side, np.minimum(steps, side + 0.25 * hgt)))
             st = np.minimum(st, top_z)
             ok = (sd < 0) & (st > new)
+            st_mask |= (sd < 0) & (d < 2.5 * r)
             new = np.where(ok, st, new)
             T.hard |= ok & (st > level)
             stacks.append({"xy": c.tolist(), "height": hgt, "radius": r})
@@ -384,6 +386,7 @@ def apply(T):
     T.hard |= face
     T.hardness = np.where(face, np.minimum(T.hardness, 0.05), T.hardness)
     T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "foot": foot, "coves": coves, "want": want,
+             "top": top_here, "bev_h": bev_h, "bev_w": bev_w, "st_mask": st_mask,
              "beach_at": beach_at, "stacks": stacks,
              "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches)}
     T.masks.setdefault("coast", np.zeros(T.X.shape))
@@ -392,6 +395,29 @@ def apply(T):
     lk = {"xy": [float(T.X[far]), float(T.Y[far])], "level": level, "r": T.size,
           "id": len(T.lakes) + 1, "sea": True}
     T.lakes["sea"] = lk
+
+
+def recut(T):
+    """On a finer grid (terrain_detail): cut the cliffs again from their signed distance, so the face is a plane at the
+    cliff's angle from its lip down to the water (resampled, it was the coarse grid's drape: a face 2 cells across
+    became 4 soft ones) and the lip stands at its top. Stacks, foot beaches, routes and sites are left as they are."""
+    S = getattr(T, "sea", None)
+    if not S or not (S["wc"] > 0.5).any():
+        return
+    keep = np.zeros(T.X.shape, bool)
+    for k in ("routes", "sites"):
+        if k in T.masks:
+            keep |= T.masks[k] > 0.05
+    sd, level = S["sd"], S["level"]
+    cliff = (S["wc"] > 0.5) & (S["foot"] < 0.5) & ~S["st_mask"] & ~keep
+    face = (S["top"] - S["bev_h"]) - np.maximum(-sd, 0) * math.tan(CLIFF)
+    H = T.H
+    off = cliff & (sd < 0) & (face > level + 0.3)
+    H = np.where(off, np.minimum(H, face), H)
+    coarse = T.detail["cell"]
+    lip = S["top"] - S["bev_h"] * smoothstep(S["bev_w"], 0, np.maximum(sd, 0)) ** 1.5
+    on = cliff & (sd >= 0) & (sd < 1.5 * coarse)
+    T.H = np.where(on, np.maximum(H, lip), H)
 
 
 def fill(T, lk):
