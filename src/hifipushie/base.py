@@ -35,7 +35,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 44  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 45  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -94,6 +94,15 @@ def inject(spec: dict) -> dict:
     if head is not None:  # the grafted head's own eyes
         eb = {"centre": head["eyes"][0], "r": head["eye_r"]}
         joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in eb["centre"]], "r": round(eb["r"], 4)})
+        # both eyes look at one point (base "look_at", default 2 m ahead at eye height on the centre line): the
+        # iris sits where that line leaves the eyeball, joint eye_front.L (its r: the opening's height, a good
+        # iris diameter is ~1.1 x that, so the lids cover its top and touch its bottom). A path seated from the
+        # eyeball's centre went off in any direction: walleyed
+        c = np.array(joints["eye.L"]["pos"], float)
+        look = np.array(b.get("look_at") or (np.array([0.0, c[1], c[2]]) + 2.0 * head["forward"]), float)
+        gz = (look - c) / np.linalg.norm(look - c)
+        joints.setdefault("eye_front.L", {"pos": [round(float(x), 4) for x in c + eb["r"] * gz],
+                                          "r": round(head["eye_open"], 4)})
         for k, j in _landmark_joints(head).items():  # face landmarks to address strokes and paint by
             joints.setdefault(k, j)
         # the mouth closed behind the lips (GNM's mouth bag is left out of the field: its walls made the lips sparkle,
@@ -251,6 +260,8 @@ def surface(spec_expanded: dict, base: dict) -> dict:
 GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # under workspace/_templates/gnm (Apache 2.0, see SOURCE.txt)
 GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
+EYE_R = 0.96  # the eyeball's radius over GNM's eye (its median vertex distance)
+EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball
 GNM_TILT = 20.0  # degrees
 
 
@@ -445,6 +456,88 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
     return V, fl
 
 
+def _wlap(X, E, w):
+    """Laplacian with edge weights w."""
+    acc = np.zeros_like(X)
+    tot = np.zeros(len(X))
+    np.add.at(acc, E[:, 0], w[:, None] * X[E[:, 1]])
+    np.add.at(acc, E[:, 1], w[:, None] * X[E[:, 0]])
+    np.add.at(tot, E[:, 0], w)
+    np.add.at(tot, E[:, 1], w)
+    return acc / np.maximum(tot, 1e-12)[:, None] - X
+
+
+def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
+    """A garment part's surface ({"garment": {...}} on a shell part): the base body (its unsubdivided quads) pushed
+    out by `offset`, then closed and eased, as an IMLS point set (a "base" primitive of that part, cut to the part's
+    region blobs like any shell). A shell follows every dip of the body (shrinkwrap); cloth spans them:
+      close: outward-only smoothing rounds (default 30): the cloth bridges the dips between the chest and the
+        belly, the spine's groove, the armpit, never going inside body + offset;
+      hang: 0..1, cloth falls from the widest point of the torso instead of following it back in (under the chest
+        and the belly), straight down at 1;
+      ease: m, extra looseness along the closed surface's normals (default 0.006);
+      ease_at: [{"at": [x, y, z] | joint, "radius", "amount"}]: more (or less) room in places (a baggy back, a
+        loose sleeve), smooth bumps along the normals.
+    Folds are strokes on the part (op "crease"/"clay", part: the garment)."""
+    if key not in _CACHE:
+        raise KeyError("garment: the base surface isn't built (compile the spec's base first)")
+    W0, faces = _CACHE[key]["quads"]
+    W0 = np.asarray(W0, float)
+    gk = ("garment", key, json.dumps(g, sort_keys=True, default=str), round(float(offset), 5), VERSION)
+    if gk in _CACHE:
+        return _CACHE[gk]
+    E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in faces
+                         for k in range(len(f))}))
+    N0, _ = _normals_and_h(W0, faces)
+    X = W0 + offset * N0
+    hang = float(g.get("hang", 0.0))
+    J = {k: np.array(v["pos"], float) for k, v in joints.items() if isinstance(v, dict) and "pos" in v}
+    ax = None
+    if hang and "pelvis" in J and "chest" in J:  # the torso's axis, and which vertices are the torso
+        pa, pb = J["pelvis"], J["neck"] if "neck" in J else J["chest"]
+        ax = (pa, pb)
+        sh = max((abs(J[k][0]) for k in ("shoulder.L", "hip.L") if k in J), default=0.2)
+        tors = (W0[:, 2] > J.get("hip.L", pa)[2] - 0.12) & (W0[:, 2] < pb[2]) & (np.abs(W0[:, 0] - pa[0]) < 0.8 * sh)
+        dz = W0[E[:, 1], 2] - W0[E[:, 0], 2]
+        ln = np.maximum(np.linalg.norm(W0[E[:, 1]] - W0[E[:, 0]], axis=1), 1e-9)
+        vert = (np.abs(dz) > 0.6 * ln) & tors[E[:, 0]] & tors[E[:, 1]]
+        up = np.where(dz[vert] > 0, E[vert, 1], E[vert, 0])  # (upper, lower) pairs
+        lo = np.where(dz[vert] > 0, E[vert, 0], E[vert, 1])
+    w = np.ones(len(E))
+    for it in range(int(g.get("close", 30))):
+        X = X + 0.5 * _wlap(X, E, w)
+        if ax is not None and it % 3 == 2:  # hanging: a vertex under a wider one moves out to (hang x) its radius
+            c = ax[0][:2]
+            R = X[:, :2] - c
+            r = np.linalg.norm(R, axis=1)
+            want = np.zeros(len(X))
+            np.maximum.at(want, lo, r[up])
+            grow = np.clip(hang * (want - r), 0, None) * 0.5
+            X[:, :2] += R / np.maximum(r, 1e-9)[:, None] * grow[:, None]
+        u = ((X - W0) * N0).sum(1)  # never inside the body + offset
+        X = X + np.maximum(offset - u, 0)[:, None] * N0
+    N1, _ = _normals_and_h(X, faces)
+    X = X + float(g.get("ease", 0.006)) * N1
+    for b in g.get("ease_at") or []:
+        at = J[b["at"]] if isinstance(b["at"], str) else np.array(b["at"], float)
+        d = np.linalg.norm(X - at, axis=1) / float(b["radius"])
+        X = X + (float(b["amount"]) * np.exp(-2 * d ** 2) * (d < 1.5))[:, None] * N1
+    V, F = X, faces
+    Vb = W0
+    for _ in range(1):
+        V, F2 = _catmull_clark(V, F)
+        Vb, _ = _catmull_clark(Vb, F)
+        F = F2
+    Nb, _ = _normals_and_h(Vb, F)
+    u = ((V - Vb) * Nb).sum(1)  # the subdivided cloth still clear of the subdivided body
+    V = V + np.maximum(offset - u, 0)[:, None] * Nb
+    N, h = _normals_and_h(V, F)
+    out = {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
+           "head": None, "key": hashlib.sha1(repr(gk).encode()).hexdigest()}
+    _CACHE[gk] = out
+    return out
+
+
 def _gnm_data():
     if "gnm" not in _CACHE:
         from . import store
@@ -573,9 +666,28 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)
     h = h * float(head.get("smooth", 1.0))
+    # the eyeballs seated behind the lids: GNM's eye joint is ahead of where a sphere of its eye's radius rests
+    # under the lid rims (centred there, the sphere stood 1-2 mm proud of the rims: bulging eyes in profile). Each
+    # centre moves back along the face until the sphere clears every lid landmark by EYE_SEAT
+    r_ball = s * k_eye * float(np.mean(r_eye)) * EYE_R
+    back = -(R @ np.array([0, 0, 1.0]))
+    eyes = []
+    for j in (2, 3):
+        c = place(J[j])
+        rim = lm[42:48] if c[0] > 0 else lm[36:42]
+        lo, hi = -0.02, 0.02
+        for _ in range(40):  # the smallest move back where every rim point is EYE_SEAT outside the sphere
+            m = 0.5 * (lo + hi)
+            if np.linalg.norm(rim - (c + m * back), axis=1).min() >= r_ball + EYE_SEAT:
+                hi = m
+            else:
+                lo = m
+        eyes.append(c + hi * back)
+    rim = lm[42:48]
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
-            "eyes": [place(J[2]), place(J[3])], "eye_r": 1.04 * s * k_eye * float(np.mean(r_eye)),  # through the lids' lining (it lies at 0.9-1 x GNM's eye radius): at the lining, the two coincided and flecked the rims
-             "lm68": lm,
+            "eyes": eyes, "eye_r": r_ball, "forward": -back,
+            "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height
+            "lm68": lm,
             "plane": (cut, pn, s * GNM_BAND)}
 
 

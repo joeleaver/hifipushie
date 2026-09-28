@@ -205,6 +205,8 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
         pf = pf_of.get(key)
         if pf is None:  # a scene part: its own voxel, from its thinnest element
             pv, why = part_voxel(ps, vx)
+            if (defs.get(key) or {}).get("voxel") and float(defs[key]["voxel"]) < pv:  # asked finer (paint detail:
+                pv, why = float(defs[key]["voxel"]), "the part's own voxel"  # an iris on a big eyeball)
             if why:
                 log.append(f"{key}: {pv * 1000:.1f} mm voxel ({why})")
             fr = _frame(ps, pv)
