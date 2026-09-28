@@ -27,6 +27,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
+VERSION = 8  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 _CACHE: dict = {}
@@ -61,14 +62,20 @@ def inject(spec: dict) -> dict:
     for k, j in tj.items():
         joints.setdefault(k, j)
     eb = retopo.load_template(name)["face"].get("eyeball")
-    if eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
+    head = head_of({"joints": joints}, b)
+    if head is not None:  # the grafted head's own eyes
+        eb = {"centre": head["eyes"][0], "r": head["eye_r"]}
+        joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in eb["centre"]], "r": round(eb["r"], 4)})
+        for k, j in _landmark_joints(head).items():  # face landmarks to address strokes and paint by
+            joints.setdefault(k, j)
+    elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
         off = np.array(eb["centre"]) - np.array(tj["head"]["pos"])
         joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in np.array(joints["head"]["pos"]) + off],
                                     "r": eb["r"]})
-        if b.get("eyes"):  # eyeballs as their own part, filling the base's open sockets
-            blobs = dict(spec.get("blobs") or {})
-            blobs.setdefault("eye.L", {"at": "eye.L", "size": [eb["r"]] * 3, "part": b["eyes"]})
-            out["blobs"] = blobs
+    if eb and b.get("eyes"):  # eyeballs as their own part, filling the base's sockets
+        blobs = dict(spec.get("blobs") or {})
+        blobs.setdefault("eye.L", {"at": "eye.L", "size": [round(float(eb["r"]), 4)] * 3, "part": b["eyes"]})
+        out["blobs"] = blobs
     out["joints"] = joints
     return out
 
@@ -144,8 +151,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             if n in spec_expanded["joints"]:
                 used[k] = spec_expanded["joints"][n]["pos"]
                 break
-    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth")}
-    key = hashlib.sha1(json.dumps([name, used, settings], sort_keys=True, default=float).encode()).hexdigest()
+    settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head")}
+    used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
+    key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
     if key in _CACHE:
         return _CACHE[key]
     girth = dict(base.get("girth") or {})
@@ -160,17 +168,194 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     N, h = _normals_and_h(V, F)
     h = h * float(base.get("smooth", 1.0))
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
-           "key": key}
+           "key": key, "head": None}
+    head = head_of(spec_expanded, base)
+    if head is not None:
+        out["head"] = _match_neck(head, V)
     if len(_CACHE) > 8:
         _CACHE.pop(next(k for k in _CACHE if not isinstance(k, tuple)))
     _CACHE[key] = out
     return out
 
 
-def sd_base(p: np.ndarray, pr: dict) -> np.ndarray:
-    """IMLS distance to the base (see the module docstring)."""
-    shape = p.shape[:-1]
-    X = p.reshape(-1, 3)
+GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # under workspace/_templates/gnm (Apache 2.0, see SOURCE.txt)
+GNM_CUT = 0.172  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
+GNM_BAND = 0.028
+
+
+def head_of(s: dict, base: dict):
+    """The grafted head (gnm_head) for a base with "head": {"source": "gnm", ...}, placed on the template's eye
+    midpoint (the head joint's ride) and the neck -> head direction; None without one. Cached."""
+    head = base.get("head")
+    if not head:
+        return None
+    if head.get("source", "gnm") != "gnm":
+        raise ValueError('base head: {"source": "gnm", ...} (the only head source so far)')
+    tpl = retopo.load_template(base.get("template", "male_stylized"))
+    tj = template_joints(base.get("template", "male_stylized"))
+    J = s["joints"]
+    eb = np.array(tpl["face"]["eyeball"]["centre"]) * [0, 1, 1]
+    mid = np.array(J["head"]["pos"], float) + eb - np.array(tj["head"]["pos"])
+    up = np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float)
+    up0 = np.array(tj["head"]["pos"]) - np.array(tj["neck"]["pos"])
+    up = retopo._rot_between(_unit(up0), _unit(up)) @ np.array([0, 0, 1.0])
+    key = ("head", json.dumps([head, mid.round(5).tolist(), up.round(5).tolist()], sort_keys=True))
+    if key not in _CACHE:
+        _CACHE[key] = gnm_head(head, mid, up)
+    return _CACHE[key]
+
+
+def _unit(v):
+    return v / np.linalg.norm(v)
+
+
+# face landmarks as joints (iBUG 68 order, GNM's head_sparse_68: barycentric on its mesh), subject's left = ".L"
+LANDMARKS = {"lm_chin": 8, "lm_nose_tip": 30, "lm_nose_base": 33, "lm_nose_bridge": 27, "lm_lip_upper": 51,
+             "lm_lip_lower": 57, "lm_mouth_corner.L": 54, "lm_nostril.L": 35, "lm_eye_inner.L": 42,
+             "lm_eye_outer.L": 45, "lm_brow_inner.L": 22, "lm_brow_mid.L": 24, "lm_brow_outer.L": 26,
+             **{f"lm_jaw_{k}.L": 16 - k for k in range(8)}}
+
+
+def _landmark_joints(head: dict) -> dict:
+    lm = head["lm68"]
+    out = {}
+    for name, i in LANDMARKS.items():
+        p = lm[i]
+        out[name] = {"pos": [round(float(x), 4) for x in p], "r": 0.005}
+    for name in ("lm_lid_upper.L", "lm_lid_lower.L"):
+        i, j = (43, 44) if "upper" in name else (46, 47)
+        out[name] = {"pos": [round(float(x), 4) for x in 0.5 * (lm[i] + lm[j])], "r": 0.004}
+    return out
+
+
+def _match_neck(head: dict, body_verts: np.ndarray, reach: float = 0.06, bins: int = 24) -> dict:
+    """The grafted head's neck bent onto the body's at the graft plane: per angle round the neck, its radius scaled
+    to the body's and its centre moved onto the body's, fully at the plane, fading out over `reach` above it (the
+    jaw keeps its shape). Without it the body's neck stood out behind the head's as a ledge."""
+    c, n, band = head["plane"]
+    e1 = _unit(np.cross(n, [0, 1.0, 0]) if abs(n[1]) < 0.9 else np.cross(n, [1.0, 0, 0]))
+    e2 = np.cross(n, e1)
+
+    def ring(V, at):
+        sl = V[np.abs((V - c) @ n - at) < 0.004]
+        cen = sl.mean(0)
+        q = sl - cen
+        ang = np.arctan2(q @ e2, q @ e1)
+        rad = np.hypot(q @ e1, q @ e2)
+        k = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+        r = np.array([np.percentile(rad[k == i], 90) if (k == i).sum() >= 2 else np.nan for i in range(bins)])
+        ok = np.isfinite(r)
+        return cen - ((cen - c) @ n - at) * n, np.interp(np.arange(bins), np.flatnonzero(ok), r[ok], period=bins)
+    # slices from the band's foot up to the plane: under the plane the head's neck takes the body's own shape at
+    # each height (matched at the plane only, the blend mixed the body's sloping trapezius with a straight neck:
+    # a groove behind the neck)
+    hs = np.linspace(-band, 0.0, 7)
+    V = head["verts"]
+    rings = [(ring(body_verts, a), ring(V, a)) for a in hs]
+    u = (V - c) @ n
+    x_u = np.clip((u - hs[0]) / (hs[-1] - hs[0]) * (len(hs) - 1), 0, len(hs) - 1)
+    i0 = np.minimum(x_u.astype(int), len(hs) - 2)
+    f = (x_u - i0)[:, None]
+    cbs = np.array([r[0][0] for r in rings])
+    chs = np.array([r[1][0] for r in rings])
+    rbs = np.array([r[0][1] for r in rings])
+    rhs = np.array([r[1][1] for r in rings])
+    cb = cbs[i0] * (1 - f) + cbs[i0 + 1] * f
+    ch = chs[i0] * (1 - f) + chs[i0 + 1] * f
+    rat = (rbs / rhs)[i0] * (1 - f) + (rbs / rhs)[i0 + 1] * f  # (n, bins)
+    w = np.clip(1 - u / reach, 0, 1)
+    w = w * w * (3 - 2 * w)
+    q = V - ch - ((V - ch) * n).sum(1, keepdims=True) * n
+    ang = np.arctan2(q @ e2, q @ e1)
+    x = (ang + np.pi) / (2 * np.pi) * bins - 0.5
+    j0 = np.floor(x).astype(int)
+    a = x - j0
+    ratio = rat[np.arange(len(V)), j0 % bins] * (1 - a) + rat[np.arange(len(V)), (j0 + 1) % bins] * a
+    V2 = V + w[:, None] * ((cb - ch) + q * (ratio - 1)[:, None])
+    faces = head["faces"]
+    N, h = _normals_and_h(V2, faces)
+    h = h * (head["h"].mean() / max(_normals_and_h(V, faces)[1].mean(), 1e-9))
+    return {**head, "verts": V2, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V2)}
+
+
+def _gnm_data():
+    if "gnm" not in _CACHE:
+        from . import store
+        path = store.HOME / "_templates" / "gnm" / GNM
+        if not path.exists():
+            raise FileNotFoundError(f"the GNM head needs {path} (github.com/google/GNM, Apache 2.0)")
+        z = np.load(path)
+        names = list(z["vertex_group_names"])
+        _CACHE["gnm"] = {k: z[k] for k in ("template_vertex_positions", "vertex_identity_basis", "expression_basis",
+                                           "template_joint_positions", "joint_identity_basis", "quads",
+                                           "identity_names", "expression_names")}
+        # the skin without the mouth bag: its walls sit a few mm inside the lips and made the IMLS sparkle there
+        _CACHE["gnm"]["skin"] = (z["vertex_groups"][names.index("skin")] > 0.5) & ~(z["vertex_groups"][names.index("mouth_sock")] > 0.5)
+        rows = (path.parent.parent.parent / "landmarks" / "head_sparse_68.txt").read_text().split("\n")
+        _CACHE["gnm"]["lm68"] = [[float(x) for x in r.split()] for r in rows if r.strip()]
+        _CACHE["gnm"]["eye"] = [z["vertex_groups"][names.index(g)] > 0.5 for g in ("left_eye", "right_eye")]
+    return _CACHE["gnm"]
+
+
+def _gnm_coeffs(names, given, seed=None, spread=1.0):
+    c = np.zeros(len(names))
+    if seed is not None:
+        rng = np.random.default_rng(int(seed))
+        head = np.array([n.startswith("head") for n in names])
+        c[head] = rng.normal(0, spread, head.sum())
+    for k, v in (given or {}).items():
+        c[list(names).index(k)] = float(v)
+    return c
+
+
+def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
+    """Google GNM's head skin, posed for the base: identity/expression applied (head["identity"] {name: value},
+    head["seed"] for a random identity), eyes scaled about their centres (head["eyes"], e.g. 1.45: a stylised look),
+    the head narrowed across (head["narrow"]), then scaled (head["scale"], default 1.4: the template's head height)
+    and placed with its eye midpoint on eye_mid, its up along `up`. Returns the skin IMLS arrays, eye centres and
+    radius, and the graft plane (point, normal, band) in world space."""
+    g = _gnm_data()
+    ci = _gnm_coeffs(g["identity_names"], head.get("identity"), head.get("seed"), head.get("spread", 1.0))
+    ce = _gnm_coeffs(g["expression_names"], head.get("expression"))
+    V = g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1) + \
+        np.tensordot(ce, g["expression_basis"], 1)
+    J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
+    V, J = V.astype(float), J.astype(float)
+    k_eye = float(head.get("eyes", 1.0))
+    r_eye = [float(np.median(np.linalg.norm(V[m] - J[2 + i], axis=1))) for i, m in enumerate(g["eye"])]
+    if k_eye != 1.0:  # the eyes and the orbits round them scaled about each eye centre, fading out over ~2 radii
+        for j in (2, 3):
+            d = np.linalg.norm(V - J[j], axis=1)
+            V = J[j] + (V - J[j]) * (1 + (k_eye - 1) * np.exp(-(d / (2.2 * r_eye[j - 2])) ** 2))[:, None]
+    mid = 0.5 * (J[2] + J[3])
+    V[:, 0] = mid[0] + (V[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
+    J[:, 0] = mid[0] + (J[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
+    R = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])  # GNM: Y up, facing +Z -> Z up, facing -Y
+    up = up / np.linalg.norm(up)
+    R = retopo._rot_between(np.array([0, 0, 1.0]), up) @ R
+    s = float(head.get("scale", 1.4))
+
+    def place(X):
+        return eye_mid + s * (X - mid) @ R.T
+    cut = place(np.array([mid[0], GNM_CUT, mid[2]]))
+    lm = place(np.array([sum(float(w) * V[int(v)] for v, w in zip(row[0::2], row[1::2])) for row in g["lm68"]]))
+    skin = g["skin"]
+    Q = g["quads"][skin[g["quads"]].all(1)]
+    remap = -np.ones(len(V), int)
+    remap[np.flatnonzero(skin)] = np.arange(skin.sum())
+    W = place(V[skin])
+    faces = [list(q) for q in remap[Q]]
+    for _ in range(int(head.get("subdivide", 1))):
+        W, faces = _catmull_clark(W, faces)
+    N, h = _normals_and_h(W, faces)
+    h = h * float(head.get("smooth", 1.0))
+    return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
+            "eyes": [place(J[2]), place(J[3])], "eye_r": s * k_eye * float(np.mean(r_eye)), "lm68": lm,
+            "plane": (cut, up, s * GNM_BAND)}
+
+
+def _imls(X, pr):
+    """IMLS over one surface's vertices at points X (n, 3)."""
     d, i = pr["tree"].query(X, k=K)
     P, N, h = pr["verts"][i], pr["normals"][i], pr["h"][i]
     # the kernel widens with distance (h at least 0.7 x the nearest vertex's distance): off the surface the field
@@ -184,5 +369,27 @@ def sd_base(p: np.ndarray, pr: dict) -> np.ndarray:
     imls = (w * s).sum(1) / np.maximum(ws, 1e-300)
     far = np.sign(imls) * np.maximum(d[:, 0] - pr["hmax"], 0.0)
     t = np.clip((d[:, 0] - FAR) / FAR, 0.0, 1.0)  # past FAR from every vertex: conservative distance, for culling
-    out = np.where(ws > 1e-12, (1 - t) * imls + t * far, far)
-    return out.reshape(shape)
+    return np.where(ws > 1e-12, (1 - t) * imls + t * far, far)
+
+
+def sd_base(p: np.ndarray, pr: dict) -> np.ndarray:
+    """IMLS distance to the base (see the module docstring); with a grafted head, the body's field below the graft
+    plane, the head's above, linearly blended across its band (smoothstep), so the necks morph into each other."""
+    if pr.get("head") is not None:
+        shape = p.shape[:-1]
+        X = p.reshape(-1, 3)
+        c, n, band = pr["head"]["plane"]
+        u = np.clip(((X - c) @ n) / band * 0.5 + 0.5, 0.0, 1.0)
+        t = u * u * (3 - 2 * u)
+        fb, fh = np.zeros(len(X)), np.zeros(len(X))
+        lo, hi = t < 1, t > 0
+        if lo.any():
+            fb[lo] = _imls(X[lo], pr)
+        if hi.any():
+            fh[hi] = _imls(X[hi], pr["head"])
+        return ((1 - t) * fb + t * fh).reshape(shape)
+    return _sd_body(p, pr)
+
+
+def _sd_body(p: np.ndarray, pr: dict) -> np.ndarray:
+    return _imls(p.reshape(-1, 3), pr).reshape(p.shape[:-1])

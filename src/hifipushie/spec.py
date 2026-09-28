@@ -321,12 +321,12 @@ def _base(s: dict, k_default: float) -> Prim:
     from . import base as basemod
     b = s["base"]
     surf = basemod.surface(s, b)
-    V = surf["verts"]
+    V = surf["verts"] if surf["head"] is None else np.r_[surf["verts"], surf["head"]["verts"]]
     pad = float(surf["h"].max()) * 2
     return Prim("base", "base", "add", float(b["blend"]) if b.get("blend") is not None else k_default,
                 int(b.get("layer", 0)), V.min(0) - pad, V.max(0) + pad,
                 {"verts": V, "normals": surf["normals"], "h": surf["h"], "hmax": surf["hmax"], "tree": surf["tree"],
-                 "key": surf["key"]},
+                 "key": surf["key"], "head": surf["head"]},
                 reach=1.0, part=b.get("part", "body"))
 
 
