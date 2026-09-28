@@ -165,6 +165,34 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   dropped bone fades instead of stepping: hairline cracks). Judge with the `rig` tool (test pose, front/side);
   export_asset(rig=True) writes the joints (identity rotations at their heads, rest pose as modelled) and skin.
   `spec.geometry` strips `rig`.
+- `retopo.py`: character topology by template wrap (from `spikes/topology/wrap.py`): the CC0 template
+  (`templates/male_stylized*`) carried onto a humanoid by its skeleton (`_skeleton_warp`), face landmarks by RBF, then
+  patches cut at closed template loops and generated from the model *before* the fit and held fixed (the template flows
+  into them): digits as tubes on the hand kit's chains, ear bones as flat tubes with equal-arc rings (a blade ear keeps
+  its rim), eyes as rings over the lids (rays from the lids' centre: star-shaped near the eye; the cut loop follows the
+  lid edge's shape + `eye_phi`: at a fixed angle it crossed a wide almond opening). Ear/eye loops are carried to their
+  targets first (`_carry`, and as RBF landmarks: left to the skeleton they sat behind the jaw / on the cheek). Mouth and
+  nostril cavities (template verts whose normal ray hits the template again, in the face json) follow instead of
+  projecting: the old "inside the model near the head" rule held the goblin's cheeks 15-25 mm inside. goblin_anat 3.11
+  -> 0.85 mm mean, 10/10 rings; troll_anat 1.24 mm. Judge with `spikes/topology/wrap_eval.py` (error by region incl.
+  ears, rings at `anatomy.loop_planes`, turned faces; `closeup` draws turned faces or, `ERR=3`, the model surface the
+  mesh misses: the only view that caught the cheek bug). Not yet wired into export_asset.
+- `base.py`: spec `base` = a template body as the start of a character (`{"template": "male_stylized", "eyes": part,
+  "girth", "soften", "push", "head"}`): the template's joints are injected (spec joints win), the body warped onto them
+  with radii kept (`_skeleton_warp(girth=)`), Catmull-Clark'd, and becomes one primitive (kind "base", first in the
+  prims): IMLS over the vertices with a compact Wendland kernel (a Gaussian's tail truncated by the k nearest speckled
+  creases) whose width grows with distance (h >= 0.7 d: shells stay smooth; a fixed h dimpled a shirt); exact only a few
+  cm out, so big blends or deep strokes on the base make plates: use `push` (normal bumps on the mesh) for volume.
+  `soften` = Taubin smoothing of the heroic template (hands/feet/head kept). `head: {"source": "gnm"}` grafts Google GNM
+  (Apache 2.0, `workspace/_templates/gnm/`, SOURCE.txt; not in the repo) above a neck plane: the template's own head is
+  cut at a neck loop under its jaw and the loop extruded as a quad tube (`_neck_tube`; columns of points built from
+  its vertices, or tapered to GNM's neck, left ruffs, lips and 45 degree steps: probe the surface per height before
+  guessing), GNM's neck bent onto it per height under the plane (`_match_neck`), linearly blended across the band;
+  GNM's bib (open edge) and mouth bag are cut away, the mouth filled behind the lips. `identity`/`fit` (face proportions
+  in interocular units, ridge LS on its 68 landmarks, `fit_identity`)/`expression` (eye regions 000/001 open the lids)/
+  `eyes` (scale about the eye centres)/`scale` (1.12 = 1/7 of 1.8 m). Face landmarks become `lm_*` joints (jaw, chin,
+  brows, lids, lips, nose) to address strokes and paint. Builds are keyed on `base.VERSION` (bump it with any field
+  change: the build cache didn't see base code changes). Worked example: `examples/disc_golfer_base_src.py`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -335,6 +363,13 @@ the same `rig_weights` on every mesh; error = field -> mesh distance, by region 
   Open: blade ears (goblin: lost, most of its 3.1 mm mean error), eye-corner tangles, a small tangle at a capped
   finger's web, then a lower-poly version and wiring into export_asset/rig.
 - Decimation stays for environments and props either way.
+- 2026-09-28: the wrap moved to `src/hifipushie/retopo.py` (see Layout): blade ears, eye patches, fixed patches, the
+  cavity rule. Then the user's priority moved to the base (`base.py`): the template as an SDF body, GNM as a head
+  source (evaluated vs the template: realistic, 17.8k verts, 253 identity / 383 regional-PCA expression components,
+  linear, so blendshapes are possible but not ARKit-named: card "Facial blendshapes"), the golfer rebuilt on it. User
+  corrections on the golfer, in order: head 1/7 of the height (not the fit's), beard as stubble paint (not a shell),
+  hair as a mass (not a shell), middle-aged soft body (not the heroic template; MakeHuman deferred: interim `soften` +
+  `push`), clothes with volume and folds (card "Garments with volume and folds": next).
 
 **Then, in the order the user saw them:**
 1. **Rig check in a real engine:** the rigged goblin FBX in Unity or Unreal with a Mixamo animation. This decides
