@@ -279,6 +279,8 @@ class Terrain:
         forms.settle(self)  # caprocks stay flat
         from . import terrain_volcano
         terrain_volcano.settle(self, pre)  # volcano forms keep their shape; erosion adds detail
+        from . import terrain_detail
+        terrain_detail.refine(self, terrain_detail.factor(self))  # finer cells from here: faces get cells of their own
         from . import terrain_rock
         terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)

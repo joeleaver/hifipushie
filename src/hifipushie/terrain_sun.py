@@ -1,9 +1,9 @@
 """The sun for a terrain view. Forms read only in side light: a pyramid's arêtes and a cliff's buttresses vanish when
 the sun is behind the eye (every face lit alike) and go black against it. "auto" picks, per view, the sun that shows
-the ground the view sees best: rays from the eye across the frame find what is visible and how much of the image each
-piece fills, and each candidate sun (side light, 45-135 deg off the line of sight, 10-40 deg high) is scored by the
-contrast it makes there (between neighbours along each ray: ribs, gullies, arêtes; and overall), with cast shadows,
-less when too much of the view is in shadow. A designer's sun is kept, with a note when it's flat or against the eye.
+the ground the view sees best: a small image of the view (a ray per column, the ground point each pixel lands on;
+water left out) is shaded by each candidate sun (side light, 45-135 deg off the line of sight, 12-40 deg high, with cast
+shadows) and scored by the contrast between neighbouring pixels (ribs, gullies, arêtes, a coast's headlands) plus
+overall, less when much of it is dark or all of it is dim. A designer's sun is kept, with a note when it's flat or against the eye.
 
 `views[].sun` (or the spec's `"sun"` for every view): "auto" (default), a compass side ("sw") or bearing in degrees
 (where the sun is), {"from": side | deg, "height": deg}, or "morning" / "noon" / "evening" (northern hemisphere)."""
@@ -53,34 +53,39 @@ def _vec(b, h):
     return np.array([math.cos(h) * math.sin(b), math.cos(h) * math.cos(b), math.sin(h)])
 
 
-def _seen(T, eye, look, fov, aspect=700 / 1200, rays=81):
-    """What the view sees: ground points along rays across the frame, with the share of the image each fills (its
-    vertical angle in view), and each point's ray index and order along the ray."""
+def _seen(T, eye, look, fov, aspect=700 / 1200, rays=96):
+    """A small image of what the view sees: for each pixel (a ray across the frame x a height in view) the ground point
+    it lands on (-1: sky, or ground beyond the frame). Returns (points [n, 2], pixel -> point index, view bearing)."""
     ex, ey, ez = eye
     dv = np.array(look[:2]) - np.array(eye[:2])
     va = math.atan2(dv[0], dv[1])
     pitch = math.atan2(look[2] - ez, max(np.linalg.norm(dv), 1.0))
     hf = math.radians(fov) / 2
     vf = math.atan(math.tan(hf) * aspect)
+    nb = int(round(rays * aspect))
+    rows = pitch - vf + (np.arange(nb) + 0.5) * 2 * vf / nb
     diag = math.hypot(np.ptp(T.xs), np.ptp(T.ys))
-    ds = np.arange(T.cell, diag, T.cell)
-    pts, wts, rid, order = [], [], [], []
+    ds = np.arange(0.5 * T.cell, diag, 0.5 * T.cell)
+    pts, pix = [], np.full((nb, rays), -1)
+    surf = np.where(np.isfinite(T.water), np.fmax(T.water, T.H), T.H)  # rays stop on water, not on its bed
     for k, a in enumerate(va + np.linspace(-hf, hf, rays)):
         xy = np.c_[ex + ds * math.sin(a), ey + ds * math.cos(a)]
         inside = ((xy[:, 0] >= T.xs[0]) & (xy[:, 0] <= T.xs[-1]) & (xy[:, 1] >= T.ys[0]) & (xy[:, 1] <= T.ys[-1]))
         if not inside.any():
             continue
         n = int(np.nonzero(inside)[0].max()) + 1
-        xy, d = xy[:n], ds[:n]
-        ang = np.arctan2(T.sample(xy) - ez, d)
-        prev = np.maximum.accumulate(np.r_[-np.pi / 2, ang[:-1]])
-        lo, hi = np.clip(prev, pitch - vf, pitch + vf), np.clip(ang, pitch - vf, pitch + vf)
-        w = np.where(inside[:n] & (ang > prev), np.maximum(hi - lo, 0), 0)
-        keep = w > 0
-        pts.append(xy[keep]); wts.append(w[keep]); rid.append(np.full(keep.sum(), k)); order.append(np.nonzero(keep)[0])
+        xy = xy[:n]
+        top = np.maximum.accumulate(np.arctan2(T.sample(xy, surf) - ez, ds[:n]))
+        j = np.searchsorted(top, rows)  # the first point along the ray reaching each pixel's height
+        hit = j < n
+        base = sum(len(p) for p in pts)
+        used, inv = np.unique(j[hit], return_inverse=True)
+        pts.append(xy[used])
+        wet = T.sample(xy, np.isfinite(T.water).astype(float)) > 0.5
+        pix[hit, k] = np.where(wet[used][inv], -1, base + inv)  # (water: flat, lit alike; its bed is hidden)
     if not pts:
         return None
-    return np.concatenate(pts), np.concatenate(wts), np.concatenate(rid), np.concatenate(order), math.degrees(va) % 360
+    return np.concatenate(pts), pix, math.degrees(va) % 360
 
 
 def _shade(T, xy, gx, gy, s, lit_only=False):
@@ -108,26 +113,28 @@ def choose(T, eye, look, fov):
     seen = _seen(T, eye, look, fov)
     if seen is None:
         return 225.0, 25.0, "nothing of the ground in view: default sun"
-    xy, w, rid, order, va = seen
-    if len(xy) > 6000:  # thin evenly along each ray (keeps neighbours for the local contrast)
-        keep = np.arange(len(xy)) % math.ceil(len(xy) / 6000) == 0
-        xy, w, rid, order = xy[keep], w[keep], rid[keep], order[keep]
+    xy, pix, va = seen
+    ground = pix >= 0
+    if ground.sum() < 20:
+        return 225.0, 25.0, "hardly any ground in view: default sun"
     gy, gx = np.gradient(T.H, T.cell)
     coords = [(xy[:, 1] - T.ys[0]) / T.cell, (xy[:, 0] - T.xs[0]) / T.cell]
     px, py = (ndimage.map_coordinates(g, coords, order=1, mode="nearest") for g in (gx, gy))
-    nb = (rid[1:] == rid[:-1])  # neighbours along the same ray
-    wn = np.minimum(w[1:], w[:-1]) * nb
+    # neighbouring pixels both on ground (up/down and across): the contrast between them is what shows the forms
+    pv, ph = ground[1:] & ground[:-1], ground[:, 1:] & ground[:, :-1]
     best = None
     for off in (-135, -112, -90, -68, -45, 45, 68, 90, 112, 135):
         b = (va + off) % 360
         for h in (12, 20, 30, 40):
-            sh, lit = _shade(T, xy, px, py, _vec(b, h))
-            W = w.sum()
-            mean = (sh * w).sum() / W
-            std = math.sqrt(((sh - mean) ** 2 * w).sum() / W)
-            local = (np.abs(np.diff(sh)) * wn).sum() / max(wn.sum(), 1e-9)
-            dark = ((sh < 0.08) * w).sum() / W  # cast shadow or turned away from the sun
-            score = (local * 4 + std) * (1 - 1.5 * max(0.0, dark - 0.3)) * (0.85 + 0.15 * math.sin(math.radians(abs(off))))
+            sh, _ = _shade(T, xy, px, py, _vec(b, h))
+            img = np.where(ground, sh[np.maximum(pix, 0)], np.nan)
+            v = img[ground]
+            std = float(v.std())
+            local = float(np.r_[np.abs(np.diff(img, axis=0))[pv], np.abs(np.diff(img, axis=1))[ph]].mean())
+            dark = float((v < 0.08).mean())  # cast shadow or turned away from the sun
+            dim = max(0.0, 0.35 - float(v.mean()))  # (a view all in half light)
+            score = (local * 3 + std) * (1 - 1.5 * max(0.0, dark - 0.3)) * (1 - 1.5 * dim) \
+                * (0.85 + 0.15 * math.sin(math.radians(abs(off))))
             if best is None or score > best[0]:
                 best = (score, b, h, dark)
     _, b, h, dark = best
