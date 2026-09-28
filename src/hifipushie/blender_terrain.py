@@ -29,8 +29,106 @@ def _mesh(name, verts, faces, colors=None):
     return ob
 
 
+def _mat(name, col, rough=0.8):
+    m = bpy.data.materials.get(name)
+    if m is None:
+        m = bpy.data.materials.new(name)
+        m.use_nodes = True
+        b = m.node_tree.nodes["Principled BSDF"]
+        b.inputs["Base Color"].default_value = col
+        b.inputs["Roughness"].default_value = rough
+    return m
+
+
+def _limb(p0, p1, r0, r1, mat):
+    """A tapered branch or trunk segment from p0 to p1."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = p1 - p0
+    bpy.ops.mesh.primitive_cone_add(vertices=7, radius1=r0, radius2=r1, depth=d.length, location=(p0 + p1) / 2)
+    o = bpy.context.object
+    o.rotation_euler = d.to_track_quat("Z", "Y").to_euler()
+    o.data.materials.append(mat)
+    return o
+
+
+def _blob(c, r, sq, mat, subdiv=2, jitter=0.0, rng=None):
+    """A crown mass: a smooth squashed sphere, its vertices pushed about so it isn't a perfect ball."""
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=subdiv, radius=1.0, location=c)
+    o = bpy.context.object
+    o.scale = (r * sq[0], r * sq[1], r * sq[2])
+    if jitter and rng is not None:
+        for v in o.data.vertices:
+            v.co *= 1.0 + rng.uniform(-jitter, jitter)
+    o.data.materials.append(mat)
+    for f in o.data.polygons:
+        f.use_smooth = True
+    return o
+
+
+def _join(parts, name):
+    bpy.ops.object.select_all(action="DESELECT")
+    for p in parts:
+        p.select_set(True)
+    bpy.context.view_layer.objects.active = parts[-1]
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bpy.ops.object.join()
+    ob = bpy.context.object
+    ob.name = name
+    ob.hide_render = True
+    ob.location = (0, 0, -1e4)
+    return ob
+
+
+def _species(kind, v):
+    """Variant v of a Monterey cypress or pine, downwind = +x.
+    cypress: a bent, often forked trunk, heavy dark crown masses swept and flattened downwind with gaps between;
+    pine: a tall trunk, a rounded crown of 2-3 clumps."""
+    import random
+    rng = random.Random(97 * v + (1 if kind == "cypress" else 2))
+    bark = _mat("bark", (0.1, 0.07, 0.05, 1), 0.9)
+    parts = []
+    if kind == "cypress":
+        crown = _mat("crown_cypress", (0.018, 0.04, 0.025, 1))
+        stems = 1 + (v % 3 != 0) + (v == 2)
+        tops = []
+        for k in range(stems):
+            a = math.radians(rng.uniform(-35, 35))  # stems fan out across the wind
+            lean = rng.uniform(0.35, 0.9)  # how far downwind per metre up
+            h1 = rng.uniform(2.5, 4.0)
+            p0 = (0.0, 0.0, -0.3)
+            p1 = (lean * h1 * math.cos(a), lean * h1 * math.sin(a), h1)
+            p2 = (p1[0] + rng.uniform(2.0, 4.5), p1[1] + rng.uniform(-1, 1), p1[2] + rng.uniform(0.8, 2.5))
+            parts.append(_limb(p0, p1, 0.55 - 0.1 * k, 0.4, bark))
+            parts.append(_limb(p1, p2, 0.4, 0.22, bark))
+            tops.append(p2)
+        for t in tops:  # heavy masses, flat, swept downwind, gaps between
+            for j in range(rng.randint(2, 3)):
+                c = (t[0] + rng.uniform(-1.5, 3.5), t[1] + rng.uniform(-2.5, 2.5), t[2] + rng.uniform(-0.6, 1.0))
+                r = rng.uniform(2.0, 3.4)
+                parts.append(_blob(c, r, (rng.uniform(1.2, 1.7), rng.uniform(0.8, 1.1), rng.uniform(0.35, 0.55)),
+                                   crown, 2, 0.12, rng))
+    else:
+        crown = _mat("crown_pine", (0.03, 0.075, 0.04, 1))
+        h = rng.uniform(9.0, 13.0)
+        top = (rng.uniform(-0.8, 0.8), rng.uniform(-0.8, 0.8), h)
+        parts.append(_limb((0, 0, -0.3), top, 0.45, 0.25, bark))
+        n = rng.randint(2, 3)
+        for j in range(n):
+            ang = 2 * math.pi * j / n + rng.uniform(-0.4, 0.4)
+            d = rng.uniform(1.2, 2.4)
+            c = (top[0] + d * math.cos(ang), top[1] + d * math.sin(ang), h + rng.uniform(-1.2, 1.0))
+            parts.append(_limb(top, (c[0], c[1], c[2] - 0.8), 0.22, 0.12, bark))
+            parts.append(_blob(c, rng.uniform(2.4, 3.3), (1.0, 1.0, 0.72), crown, 3, 0.08, rng))
+    return _join(parts, f"tree_{kind}_{v}")
+
+
+VARIANTS = 4
+
+
 def _proto(kind):
     """A low-poly tree, hidden from render, for the scatter to instance: a cone conifer or a round broadleaf."""
+    if kind in ("cypress", "pine"):
+        return _species(kind, 0)
     parts = []
     bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.45, depth=4, location=(0, 0, 2))
     parts.append(bpy.context.object)
@@ -42,25 +140,6 @@ def _proto(kind):
     if kind == "conifer":
         bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=3.0, depth=13, location=(0, 0, 9))
         col = (0.025, 0.07, 0.03, 1)
-    elif kind == "cypress":  # a wind-shaped coastal cypress: short leaning trunk, flat-topped crown swept one way
-        parts[0].scale = (0.8, 0.8, 1.0)
-        parts[0].rotation_euler = (0, math.radians(18), 0)  # leans toward +x (the instance turn sets the bearing)
-        parts[0].location = (0.6, 0, 2)
-        for dx, dz, r, sq in ((1.5, 4.6, 3.6, 0.38), (4.2, 4.2, 3.0, 0.35), (-0.8, 4.4, 2.4, 0.4)):
-            bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=r, location=(dx, 0, dz))
-            bpy.context.object.scale = (1.35, 1.0, sq)
-            if (dx, dz) != (-0.8, 4.4):
-                parts.append(bpy.context.object)
-        col = (0.02, 0.05, 0.03, 1)
-    elif kind == "pine":  # a Monterey pine: tall bare trunk, a round irregular crown of a few lobes
-        parts[0].scale = (0.7, 0.7, 2.4)
-        parts[0].location = (0, 0, 4.8)
-        for dx, dy, dz, r in ((0, 0, 11.5, 3.8), (2.2, 1.0, 10.3, 2.8), (-2.0, -1.3, 10.6, 2.9)):
-            bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=r, location=(dx, dy, dz))
-            bpy.context.object.scale = (1.0, 1.0, 0.75)
-            if (dx, dy) != (-2.0, -1.3):
-                parts.append(bpy.context.object)
-        col = (0.035, 0.08, 0.04, 1)
     elif kind == "fruit":  # orchard trees: small, round, low trunk
         parts[0].scale = (0.6, 0.6, 0.45)
         parts[0].location = (0, 0, 0.9)
@@ -100,10 +179,31 @@ def _instance(points_ob, kind):
     N, L = ng.nodes, ng.links
     gi, go = N.new("NodeGroupInput"), N.new("NodeGroupOutput")
     inst = N.new("GeometryNodeInstanceOnPoints")
-    info = N.new("GeometryNodeObjectInfo")
-    info.inputs["Object"].default_value = _proto(kind)
     L.new(gi.outputs[0], inst.inputs["Points"])
-    L.new(info.outputs["Geometry"], inst.inputs["Instance"])
+    if kind in ("cypress", "pine"):  # a few shapes per species, picked at random per tree
+        coll = bpy.data.collections.new("species_" + kind)
+        bpy.context.scene.collection.children.link(coll)
+        for v in range(VARIANTS):
+            ob = _species(kind, v)
+            for c in list(ob.users_collection):
+                c.objects.unlink(ob)
+            coll.objects.link(ob)
+            ob.location = (0, 0, 0)
+        coll.hide_render = True
+        ci = N.new("GeometryNodeCollectionInfo")
+        ci.inputs["Collection"].default_value = coll
+        ci.inputs["Separate Children"].default_value = True
+        ci.inputs["Reset Children"].default_value = True
+        L.new(ci.outputs[0], inst.inputs["Instance"])
+        inst.inputs["Pick Instance"].default_value = True
+        pick = N.new("FunctionNodeRandomValue")
+        pick.data_type = "INT"
+        pick.inputs[4].default_value, pick.inputs[5].default_value = 0, VARIANTS - 1  # (the INT min/max sockets)
+        L.new(pick.outputs[2], inst.inputs["Instance Index"])
+    else:
+        info = N.new("GeometryNodeObjectInfo")
+        info.inputs["Object"].default_value = _proto(kind)
+        L.new(info.outputs["Geometry"], inst.inputs["Instance"])
     size = N.new("FunctionNodeRandomValue")
     size.data_type = "FLOAT"
     size.inputs[2].default_value, size.inputs[3].default_value = 0.7, 1.3
@@ -284,14 +384,21 @@ def run(job):
                 bm.use_nodes = True
                 bm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.5, 0.42, 1)
                 o.data.materials.append(bm)
-                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 10.5))  # a pitched roof, roughly
+                # a hipped roof: a four-sided cone turned square to the walls, then stretched over them
+                bpy.ops.mesh.primitive_cone_add(vertices=4, radius1=1.0, depth=1.0, location=(0, 0, 0))
                 r = bpy.context.object
-                r.scale = (36.0, 12.0, 3.0)
-                r.rotation_euler = (0, 0, -math.radians(float(yaw)))
-                rm_ = bpy.data.materials.new("roof")
-                rm_.use_nodes = True
-                rm_.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.2, 0.22, 0.24, 1)
-                r.data.materials.append(rm_)
+                r.rotation_euler[2] = math.radians(45)
+                bpy.ops.object.transform_apply(rotation=True)
+                r.scale = (37.0 / 1.414, 19.0 / 1.414, 6.0)
+                r.location = (x, y, z + 12.0)
+                r.rotation_euler[2] = -math.radians(float(yaw))
+                r.data.materials.append(_mat("roof", (0.16, 0.13, 0.12, 1), 0.7))
+                for zz in (2.4, 6.4):  # a band of windows round each storey
+                    bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + zz))
+                    w = bpy.context.object
+                    w.scale = (34.3, 16.3, 1.5)
+                    w.rotation_euler[2] = -math.radians(float(yaw))
+                    w.data.materials.append(_mat("windows", (0.05, 0.07, 0.09, 1), 0.15))
             else:  # anything else: a small orange post
                 bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.1, depth=1.2, location=(x, y, z + 0.6))
                 bpy.context.object.data.materials.append(pk)
