@@ -295,6 +295,12 @@ def check_refs(spec: dict, prims: list) -> None:
             if expanded is None:
                 expanded = expand_mirror(spec)
             got, missing = resolve_near(spec, near, by_name, expanded)
+            from . import sdf
+            shapeless = [g for g in got if by_name[g].kind not in sdf.SDF or by_name[g].kind == "shell"]
+            if shapeless:
+                raise SpecError(f"paint {name!r}: near {shapeless} reshape the surface (strokes) and have no surface "
+                                f"of their own to be near: name the element under them, or paint a path along the "
+                                f"stroke's path instead")
             asked = [near] if isinstance(near, str) else list(near)
             empty = [a for a in asked if a not in by_name and not any(g == a or g.startswith((a + "/", a + "#"))
                                                                         for g in got)] if not got else missing
