@@ -244,11 +244,16 @@ and the `"story"`.
 - **rock**: every steep face (sea cliffs, basin and canyon walls, mesas, scars, craters) gets rock character on its
   own: buttresses and couloirs along it (the face moved in and out, so its lip and foot are notched and it stays as
   steep and tall), ledges where the face is gentle enough for a tread, and a boulder foot below it.
-  The faces break into planar facets and joints (`facets`), and buttresses are chiselled: straight flanks, sharp crests,
-  V couloirs. `"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "boulders": 0..1, "scale": m}` tunes it
-  (defaults 1, 0.6, 1, 1, the
-  kind's crag size); `"rock": false` turns it off. The zone `"cliff_foot"` is the ground below the faces (for scree). Never on routes, sites or water. The report measures how broken the
-  faces are (the share of steep ground turned away from its face's line: a smooth wall is ~0%).
+  The faces break into planar facets and joints (`facets`), buttresses are chiselled (straight flanks, sharp crests, V
+  couloirs), cliffs over ~60 deg are stepped by level beds where the grid is fine enough (`bedding`), and scree cones
+  lean on the foot of the cliffs in patches (`aprons`: room below a wall for scree and, lower down, trees).
+  `"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "bedding": 0..1, "boulders": 0..1, "aprons": 0..1,
+  "scale": m}` tunes it (defaults 1, 0.6, 1, 1, 1, 1, the kind's crag size); `"rock": false` turns it off. The zone
+  `"cliff_foot"` is the ground below the faces, aprons included (for scree cover). Never on routes, sites or water. The
+  report measures how broken the faces are (the share of steep ground turned away from its face's line: a smooth wall is
+  ~0%), closed pits per km2 (round hollows: rock breaks in planes), how rounded the faces are, and the aprons' area.
+  Views add a rock material's relief on faces steeper than ~55 deg (beds and joints below the grid's size), as an
+  engine's cliff material would.
 - **rugged**: ruggedness as geometry (crags, and ledges of benches and risers, in patches).
   `{"name": {"in": zone, "gradient"?: {"from", "to", "range": [a, b]}, "amount": 0..1, "scale"?: m, "ledges"?: m}}`.
   Rock cover then finds the steep bits. Use it for "rocky", "craggy" or "broken ground".
