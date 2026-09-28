@@ -183,6 +183,13 @@ def apply(T):
                             for k in ("at", "overlooks", "toward"))]
         for n in ready or list(todo)[:1]:  # (a cycle: build in the given order)
             _site(T, n, todo.pop(n))
+    for st in T.sites.values():  # props face an address (a basket its tee): compass bearing, 0 north, 90 east
+        pr = st.get("prop")
+        if pr and pr.get("facing"):
+            f = T.address(pr.pop("facing"))[0] - np.array(st["xy"])
+            pr["yaw"] = round(float(np.degrees(np.arctan2(f[0], f[1]))) % 360, 1)
+        elif pr:
+            pr.pop("facing", None)
     for name, r in (T.spec.get("routes") or {}).items():
         _route(T, name, r)
 
@@ -455,6 +462,8 @@ def _site(T, name, s):
     _earthworks(T, w)
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
                      "fill": float((T.H - before).max()), "note": note, "fall": fall, "toward": dvec.tolist()}
+    if s.get("prop"):  # a prop the engine drops here (a basket, a bench): its name; which way it faces is resolved
+        T.sites[name]["prop"] = {"name": s["prop"], "yaw": 0.0, "facing": s.get("facing")}  # once every site stands
     if max(T.sites[name]["cut"], T.sites[name]["fill"]) > 25:
         T.warnings.append(f"site {name!r} is dug {T.sites[name]['cut']:.0f} m into / built {T.sites[name]['fill']:.0f} m "
                           f"out of the slope: it stands against a cliff or on a mound; move it or give it a level")

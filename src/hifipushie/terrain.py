@@ -1387,7 +1387,10 @@ class Terrain:
                           for nm, lk in self.lakes.items()},
                 "sites": {nm: {"at": st["xy"], "level": st["level"], "radius": st["radius"], "fall": st.get("fall", 0.0),
                                "falls_toward": st.get("toward", [0, 0]),
-                               "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)"}
+                               "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)",
+                               **({"prop": {**st["prop"], "xyz": [*st["xy"], round(self.height(np.array(st["xy"])), 3)],
+                                            "yaw_note": "compass bearing the prop faces: 0 north, 90 east"}}
+                                  if st.get("prop") else {})}
                           for nm, st in self.sites.items()},
                 "passes": {nm: {"at": p["xy"], "saddle": round(self.height(np.array(p["xy"])), 2), "width": p["width"]}
                            for nm, p in self.passes.items()},
@@ -1653,7 +1656,11 @@ def write_mesh(T: Terrain, path, step: int = 1):
              tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
              span=np.float32(max(np.ptp(T.X), np.ptp(T.Y))), base=np.float32(T.H.min()),
              sea=np.float32(T.sea["level"] if getattr(T, "sea", None) else np.nan),
-             markers=np.array([[*st["xy"], st["level"]] for st in T.sites.values()], np.float32).reshape(-1, 3))
+             markers=np.array([[*st["xy"], st["level"]] for st in T.sites.values() if not st.get("prop")],
+                              np.float32).reshape(-1, 3),
+             props=np.array([[*st["xy"], T.height(np.array(st["xy"])), st["prop"]["yaw"]] for st in T.sites.values()
+                             if st.get("prop")], np.float32).reshape(-1, 4),
+             prop_names=np.array([st["prop"]["name"] for st in T.sites.values() if st.get("prop")]))
 
 
 def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24):

@@ -1,6 +1,7 @@
 """Runs inside headless Blender: a terrain grid mesh (vertex colours) and its lakes, rendered in Cycles
 under a low sun and sky from perspective cameras. Job: {"mesh", "size": [w, h], "samples",
 "views": [{"eye": [x, y, z], "look": [x, y, z], "fov": deg, "out": png}]}."""
+import math
 
 import json
 import sys
@@ -180,6 +181,33 @@ def run(job):
         for x, y, z in d["markers"]:
             bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.6, depth=12, location=(float(x), float(y), float(z) + 6))
             bpy.context.object.data.materials.append(mk)
+    if "props" in d.files and len(d["props"]):  # sites carrying a prop: a small stand-in at its real size
+        pk = bpy.data.materials.new("prop")
+        pk.use_nodes = True
+        pk.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.9, 0.55, 0.02, 1)
+        gm = bpy.data.materials.new("prop_metal")
+        gm.use_nodes = True
+        gm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.55, 0.58, 1)
+        for (x, y, z, yaw), nm in zip(d["props"], d["prop_names"]):
+            x, y, z = float(x), float(y), float(z)
+            if "basket" in str(nm):  # a disc golf target: post, basket dish, chain band, yellow top band
+                bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.03, depth=1.45, location=(x, y, z + 0.72))
+                bpy.context.object.data.materials.append(gm)
+                bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.33, depth=0.22, location=(x, y, z + 0.72))
+                bpy.context.object.data.materials.append(gm)
+                bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.28, depth=0.5, location=(x, y, z + 1.08))
+                bpy.context.object.data.materials.append(gm)
+                bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.31, depth=0.1, location=(x, y, z + 1.38))
+                bpy.context.object.data.materials.append(pk)
+            elif "tee" in str(nm):  # a tee pad: a flat slab 1.5 x 3 m, long side toward the basket
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 0.03))
+                o = bpy.context.object
+                o.scale = (1.5, 3.0, 0.1)
+                o.rotation_euler[2] = -math.radians(float(yaw))
+                o.data.materials.append(gm)
+            else:  # anything else: a small orange post
+                bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.1, depth=1.2, location=(x, y, z + 0.6))
+                bpy.context.object.data.materials.append(pk)
     if len(d["wfaces"]):
         water = _mesh("water", d["wverts"], d["wfaces"])
         wm = bpy.data.materials.new("water")

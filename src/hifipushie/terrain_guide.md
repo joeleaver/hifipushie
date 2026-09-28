@@ -196,6 +196,11 @@ and the `"story"`.
   "fall"?: 0.02, "toward"?: address | "south", "overlooks"?: address}`. `overlooks` picks the gentlest fall toward
   the target that lets most of the pad see it (a dead-level pad's own edge hides what's below it from its middle). With a shore address (`"lake.west_shore"`) the pad sits inland of that point, just above the
   water. The report gives its level and how far it cuts into or builds out of the slope (a warning over 25 m).
+  `"shoulder": m` is how far the pad's banks blend into the ground (default 20 m, or half the radius): give small pads
+  (a tee, a bench, a basket) a few metres, or they flatten a 40 m disc around them.
+  `"prop": name, "facing"?: address` marks the site as where the engine drops a prop (a disc golf basket, a bench, a
+  sign): meta.json's site gets `prop` with its name, ground position `xyz` and `yaw` (the compass bearing it faces),
+  and views draw a stand-in at its real size instead of the 12 m marker pole.
 - **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search).
   `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone,
   "max_earthworks": 25, "max_fill": m}` (`max_fill` limits banks alone, for a trail that shouldn't stand on one; it may then fail its grade). Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
