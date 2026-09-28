@@ -1,6 +1,7 @@
 """Template wrap: a production base mesh carried onto a hifipushie model through matching skeletons, then projected
 onto the exact surface and relaxed. usage: wrap.py model template.npz template_joints.json out_dir"""
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -197,6 +198,12 @@ def wrap(model, tpl_npz, tpl_joints, out_dir, relax_rounds=15, sigma=0.8, face=N
     s_prims[:] = [prims]
     if face is not None:  # the face: a radial-basis displacement carrying template landmarks onto the model's
         out = face_warp(out, P, apply, face, s)
+        ear_tip = json.load(open(face)).get("ear_tip")
+        if ear_tip is not None:
+            out = ear_warp(out, P, L, S, s, prims, ear_tip)
+        fj = json.load(open(face))
+        if "eye_cut" in fj and os.environ.get("EYES", "1") == "1":
+            out = eye_warp(out, P, L, S, prims, {"centre": fj["landmarks"]["eye.L"], "cut": fj["eye_cut"]})
     np.savez(out_dir / "warped.npz", verts=out, loops=L, sizes=S)
     # regions: each target primitive belongs to the target segment nearest its centre; a vertex projects onto its
     # dominant segment's primitives and its neighbours' (sharing a joint), so a hand never lands on a thigh
@@ -286,6 +293,97 @@ def face_warp(out, P, apply, face_json, s):
     phi = np.exp(-(np.linalg.norm(out[:, None] - C[None], axis=2) / sig) ** 2)
     print(f"face: {len(src)} landmarks, largest move {np.linalg.norm(disp, axis=1).max() * 1000:.0f} mm, sigma {sig * 1000:.0f} mm")
     return out + phi @ wts
+
+
+EARS: dict = {}  # side -> (template loop, chain, own prim names, radius, s0): shared by ear_warp and digit_tubes
+
+
+def ear_plan(P, L, S, sx, prims, ear_tip):
+    import tubes
+    faces, nb, ef = tubes.quad_topology(L, S)
+    EARS.clear()
+    for side, sg in (("L", 1.0), ("R", -1.0)):
+        loop = tubes.ear_loop(P, faces, nb, ef, np.array(ear_tip) * [sg, 1, 1])
+        chain = ear_chain(sx, side)
+        if loop is None or chain is None:
+            EARS[side] = (loop, None, None, None, None)
+            continue
+        C, names, r = chain
+        own = [p for p in prims if p.name in names]
+        s0 = tubes.clear_start(C, own, prims, r, 0.0, 0.5 * np.linalg.norm(C[-1] - C[0]))
+        EARS[side] = (loop, C, names, r, s0)
+    return EARS
+
+
+def carry(out, loop, dst):
+    """Move a loop of the warped template to dst, the surface round it following (Shepard-weighted loop moves,
+    fading over about the loop's size)."""
+    src = out[loop]
+    disp = dst - src
+    size = np.linalg.norm(src - src.mean(0), axis=1).max()
+    d = np.linalg.norm(out[:, None] - src[None], axis=2)  # (verts, loop)
+    w = 1.0 / (d + 1e-4) ** 2
+    shep = (w @ disp) / w.sum(1, keepdims=True)
+    fade = np.exp(-(d.min(1) / size) ** 2)
+    out = out + fade[:, None] * shep
+    out[loop] = dst
+    return out
+
+
+EYES: dict = {}  # side -> (template loop, a vertex inside it)
+
+
+def eye_warp(out, P, L, S, prims, eye, phi_t=1.15):
+    """Carry the template's cut loop round each eye onto a ring round the model's eye (rays from the lids' centre at
+    phi_t from its axis), so the eye patch (tubes.eye_patch) starts round the model's eye, not the template's:
+    left to the skeleton and face warp, the goblin's loop sat under its eye, on the cheek."""
+    import tubes
+    faces, nb, ef = tubes.quad_topology(L, S)
+    EYES.clear()
+    for side, sg in (("L", 1.0), ("R", -1.0)):
+        lp = next((p for p in prims if p.name == f"face_lids.{side}"), None)
+        if lp is None:
+            continue
+        loop, inner = tubes.eye_loop(P, faces, nb, ef, np.array(eye["centre"]) * [sg, 1, 1], eye["cut"])
+        if loop is None or inner is None:
+            continue
+        EYES[side] = (loop, inner)
+        c, rot = lp.params["c"], lp.params["rot"]
+        q = (out[loop] - c) @ rot
+        th = np.arctan2(q[:, 2], q[:, 0])
+        dw = (np.diff(np.r_[th, th[:1]]) + np.pi) % (2 * np.pi) - np.pi
+        the = th[0] + np.sign(np.median(dw)) * np.arange(len(loop)) / len(loop) * 2 * np.pi
+        loc = np.stack([np.sin(phi_t) * np.cos(the), -np.cos(phi_t) * np.ones_like(the), np.sin(phi_t) * np.sin(the)], -1)
+        dst = tubes._exit(prims, c, loc @ rot.T, 4 * lp.params["ro"])[0]
+        print(f"eye.{side}: cut loop moved {np.linalg.norm(dst - out[loop], axis=1).mean() * 1000:.0f} mm round the model's eye")
+        out = carry(out, loop, dst)
+    return out
+
+
+def ear_warp(out, P, L, S, sx, prims, ear_tip):
+    """Carry the template's ear base loop (and the skull round it, fading over about the loop's size) onto the
+    model ear's first clear cross-section, so the ear tube starts where the model's ear leaves the skull: left
+    where the skeleton put it, the loop sat low behind the jaw and a fin of long quads bridged the gap."""
+    import tubes
+    ear_plan(P, L, S, sx, prims, ear_tip)
+    out = out.copy()
+    for side, (loop, C, names, r, s0) in EARS.items():
+        if C is None:
+            continue
+        own = [p for p in prims if p.name in names]
+        src = out[loop]
+        c0 = src.mean(0)
+        p0, d0, _ = tubes.chain_point(C, s0)
+        q = src - c0
+        q -= np.outer(q @ d0, d0)
+        ref = q[0] / np.linalg.norm(q[0])
+        ang = np.arctan2(q @ np.cross(d0, ref), q @ ref)
+        dw = (np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi
+        dst = tubes.ring_arc(own, p0, d0, ref, len(loop), 1.0 if np.median(dw) > 0 else -1.0, r)
+        disp = dst - src
+        out = carry(out, loop, dst)
+        print(f"ear.{side}: base loop moved {np.linalg.norm(disp, axis=1).mean() * 1000:.0f} mm onto the ear at {s0 * 1000:.0f} mm")
+    return out
 
 
 def tris(L, S):
@@ -420,7 +518,30 @@ def untangle(V, L, S, prims, voxel, regions, dom, keep, passes=12):
     return V
 
 
-def digit_tubes(V, L, S, Pt, joints, sx, prims, kd):
+def ear_chain(sx, side):
+    """The model's ear on one side: bones named ear* (not the face kit's), chained from the skull outward.
+    Returns (points, bone names, radius) or None."""
+    bs = {n: b for n, b in sx["bones"].items() if n.startswith("ear") and n.endswith("." + side)}
+    if not bs:
+        return None
+    pos = lambda j: np.array(sx["joints"][j]["pos"], float)
+    ends = {j for b in bs.values() for j in (b["a"], b["b"])}
+    starts = [b["a"] for b in bs.values()]
+    first = min(starts, key=lambda j: np.linalg.norm(pos(j)[[0]]))  # nearest the midline
+    C, j, left = [pos(first)], first, dict(bs)
+    while True:
+        nxt = [(n, b) for n, b in left.items() if j in (b["a"], b["b"])]
+        if not nxt:
+            break
+        n, b = nxt[0]
+        j = b["b"] if b["a"] == j else b["a"]
+        C.append(pos(j))
+        del left[n]
+    r = max(float(sx["joints"][e].get("r", 0.01)) for e in ends)
+    return np.array(C), set(bs), r
+
+
+def digit_tubes(V, L, S, Pt, joints, sx, prims, kd, ear_tip=None, eye=None):
     """Template fingers and thumbs cut at their base loops; the model's digits as generated tubes (tubes.py)."""
     import tubes
     J = json.load(open(joints))
@@ -452,6 +573,39 @@ def digit_tubes(V, L, S, Pt, joints, sx, prims, kd):
                 print(f"  {key}: loop of {len(loop)}, tube of {len(digits[key][0]) - 1} rings on {mn}")
             else:
                 print(f"  {key}: loop of {len(loop)}, capped (the model has no {mn})")
+    for side, sg in (("L", 1.0), ("R", -1.0)):  # ears: the template's human ear cut at its base loop, the model's
+        # ear (a bone chain whose name starts with "ear") generated as a flat tube with equal-arc rings
+        if ear_tip is None:
+            break
+        loop, C, names, r, s0 = EARS.get(side) or ear_plan(Pt, L, S, sx, prims, ear_tip)[side]
+        if loop is None:
+            print(f"  ear.{side}: no base loop")
+            continue
+        tipv = int(np.argmin(np.linalg.norm(Pt - np.array(ear_tip) * [sg, 1, 1], axis=1)))
+        key = f"ear.{side}"
+        loops[key] = (loop, tipv)
+        if C is None:
+            print(f"  {key}: loop of {len(loop)}, capped (the model has no ear bones)")
+            continue
+        own = [p for p in prims if p.name in names]
+        digits[key] = tubes.tube(V[loop], C, own, r, None, s0=s0, arc=True)
+        print(f"  {key}: loop of {len(loop)}, arc tube of {len(digits[key][0]) - 1} rings from {s0 * 1000:.0f} mm")
+    for side, sg in (("L", 1.0), ("R", -1.0)):  # eyes: the template's eye region (lids, socket tunnel) cut at a loop
+        # round it, replaced by rings on the model's lids and eyeball by rays from the eye centre (tubes.eye_patch)
+        if eye is None or f"face_lids.{side}" not in {p.name for p in prims}:
+            break
+        loop, inner = EYES.get(side) or tubes.eye_loop(Pt, faces, nb, ef, np.array(eye["centre"]) * [sg, 1, 1], eye["cut"])
+        if loop is None or inner is None:
+            print(f"  eye.{side}: no loop round the template's eye")
+            continue
+        lp = next(p for p in prims if p.name == f"face_lids.{side}")
+        key = f"eye.{side}"
+        loops[key] = (loop, inner)
+        rings, pole = tubes.eye_patch(V[loop], lp.params["c"], lp.params["rot"], prims, 3 * lp.params["ro"])
+        digits[key] = (rings, pole)
+        if os.environ.get("EYE_DBG"):
+            np.save(os.environ["EYE_DBG"] + f"_{side}.npy", np.array(rings))
+        print(f"  {key}: loop of {len(loop)}, {len(rings) - 1} rings onto the lids and eyeball")
     Vn, fl = tubes.stitch(V, faces, loops, digits)
     L2, S2 = np.array([v for f in fl for v in f]), np.array([len(f) for f in fl])
     # the palm meets the moved loops: a few rings of vertices round each loop relaxed onto the surface, loops fixed
@@ -460,7 +614,7 @@ def digit_tubes(V, L, S, Pt, joints, sx, prims, kd):
     for a, b in E:
         nbl[a].append(b); nbl[b].append(a)
     from scipy.spatial import cKDTree
-    ring_pts = np.array([d[0][0] for d in digits.values()]).reshape(-1, 3)
+    ring_pts = np.concatenate([d[0][0] for d in digits.values()]) if digits else np.zeros((0, 3))
     fixed = np.zeros(len(Vn), bool)
     if len(ring_pts):
         fixed[cKDTree(Vn).query(ring_pts)[1]] = True
@@ -468,7 +622,7 @@ def digit_tubes(V, L, S, Pt, joints, sx, prims, kd):
     for _ in range(4):
         zone[[j for i in np.flatnonzero(zone) for j in nbl[i]]] = True
     # tubes themselves (vertices added after the template's) stay as generated
-    zone[len(V) - sum(len(t) for t in []):] = zone[len(V) - sum(len(t) for t in []):]
+    zone[tubes.stitch.n_template:] = False  # generated rings stay as generated
     move = zone & ~fixed
     deg = np.bincount(E.ravel(), minlength=len(Vn))
     for _ in range(20):
@@ -523,12 +677,29 @@ if __name__ == "__main__":
             for c in (e, e * [-1, 1, 1]):
                 q = Pt - c
                 keep |= (np.hypot(q[:, 0], q[:, 2]) < fj["eye_open"]) & (q[:, 1] < 0.01)
-    print(f"kept inside (mouth, sockets): {keep.sum()}")
+    if EARS:  # the template's ears are replaced by tubes: they follow, never projected or untangled
+        import tubes
+        _, nbt, _ = tubes.quad_topology(L, S)
+        Pt = np.load(tpl)["verts"]
+        for side, (loop, *_rest) in EARS.items():
+            if loop is not None:
+                inner = tubes.tip_side(loop, nbt, int(np.argmax(np.abs(Pt[:, 0]) * (np.linalg.norm(Pt - Pt[loop].mean(0), axis=1) < 0.06))))
+                keep[list(inner - set(loop))] = True
+    if EYES:  # the eye regions are replaced by eye patches: same
+        import tubes
+        _, nbt, _ = tubes.quad_topology(L, S)
+        for loop, inner in EYES.values():
+            keep[list(tubes.tip_side(loop, nbt, inner) - set(loop))] = True
+    print(f"kept inside (mouth, sockets, ears, eyes): {keep.sum()}")
     V, missed = fit(Wd, L, S, prims, meta["voxel"], regions, dom, keep=keep,
                     V_warped=Wd if __import__("os").environ.get("SHAPE_RELAX", "0") == "1" else None)
     V = untangle(V, L, S, prims, meta["voxel"], regions, dom, keep)
     if __import__("os").environ.get("TUBES", "1") == "1":
-        V, L, S = digit_tubes(V, L, S, Pt, joints, sx, prims, kd)
+        V, L, S = digit_tubes(V, L, S, Pt, joints, sx, prims, kd,
+                              ear_tip=json.load(open(sys.argv[5])).get("ear_tip") if len(sys.argv) > 5 else None,
+                              eye=({"centre": json.load(open(sys.argv[5]))["landmarks"]["eye.L"],
+                                    "cut": json.load(open(sys.argv[5]))["eye_cut"]}
+                                   if len(sys.argv) > 5 and os.environ.get("EYES", "1") == "1" else None))
     np.savez(Path(out) / "wrapped.npz", verts=V, loops=L, sizes=S)
     f = np.abs(sdf.field_at(prims, V, margin=0.05)) * 1000
     print(f"wrapped {len(V)} verts; {missed} missed the surface; |field| mean {f.mean():.2f} p95 {np.percentile(f, 95):.2f} max {f.max():.1f} mm")

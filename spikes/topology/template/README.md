@@ -1,6 +1,6 @@
 # Template: Blender Studio "Human Base Meshes" v1.4.1 (CC0)
 
-From blender.org Demo Files → Asset Bundles (human-base-meshes-bundle-v1.4.1.zip, 49 MB). Not in the repo:
+From blender.org Demo Files → Asset Bundles (human-base-meshes-bundle-v1.4.1.zip, 49 MB; a copy of the bundle is in `workspace/_templates/hbm/`). The exported mesh and its joints/face json now live in `src/hifipushie/templates/` (used by `retopo.py`):
 
     blender -b human_base_meshes_bundle.blend --python hbm_export.py -- GEO-body_male_stylized male_stylized.npz
 
