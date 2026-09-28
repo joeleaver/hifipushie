@@ -279,6 +279,8 @@ class Terrain:
         forms.settle(self)  # caprocks stay flat
         from . import terrain_volcano
         terrain_volcano.settle(self, pre)  # volcano forms keep their shape; erosion adds detail
+        from . import terrain_detail
+        terrain_detail.refine(self, terrain_detail.factor(self))  # finer cells from here: faces get cells of their own
         from . import terrain_rock
         terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)
@@ -637,10 +639,33 @@ class Terrain:
         the floor's edge and the crest a wall as wide as its steepness allows (the wall is the mountainside itself)."""
         from skimage.draw import polygon
         L = self.lines.get(b["inside"])
-        if L is None or not L.props.get("closed"):
-            raise ValueError(f"basin {name!r}: 'inside' must name a closed ridge (one that ends where it starts)")
+        if L is None:
+            raise ValueError(f"basin {name!r}: 'inside' must name a ridge: a closed ring, or a horseshoe with \"opens\"")
+        ring = L.xy
+        if not L.props.get("closed"):
+            # a valley open to one side: a horseshoe ridge, the open side running out of the frame (the floor carries on
+            # to the edge there: no wall, the valley's mouth)
+            op = b.get("opens")
+            ends = L.xy[[0, -1]]
+            if op is None:  # the way between the horseshoe's ends, away from the ridge
+                mid = ends.mean(0)
+                v = mid - L.xy.mean(0)
+                op = v / (np.linalg.norm(v) + 1e-9)
+            cd = compass(op) if isinstance(op, str) else np.asarray(op, float)
+            if cd is None and isinstance(op, str) and op.startswith("edge:"):
+                cd = compass(op[5:6])
+            if cd is None:
+                raise ValueError(f"basin {name!r}: \"opens\" is a compass side (\"south\") or \"edge:s\"; its ridge "
+                                 f"{b['inside']!r} doesn't close, so the valley needs a side to open to")
+            cd = cd / (np.linalg.norm(cd) + 1e-12)
+            far = 3 * self.size * cd
+            ring = np.vstack([ends[0] + far, L.xy, ends[1] + far])
+            # the mouth: past the nearer end the walls stop (a wall check ran down the rays from the ends and failed there)
+            mouth = (cd, float((ends @ cd).min()))
+        else:
+            mouth = None
         inside = np.zeros(self.X.shape, bool)
-        rr, cc = polygon((L.xy[:, 1] - self.ys[0]) / self.cell, (L.xy[:, 0] - self.xs[0]) / self.cell, self.X.shape)
+        rr, cc = polygon((ring[:, 1] - self.ys[0]) / self.cell, (ring[:, 0] - self.xs[0]) / self.cell, self.X.shape)
         inside[rr, cc] = True
         lo, hi = b.get("floor", [None, None])
         crest_min = float(np.percentile(L.h, 5))  # passes will notch lower; they're exempt
@@ -686,7 +711,8 @@ class Terrain:
         self.basins[name] = {"floor": F, "wall": wall, "inside": inside, "width": width, "lo": lo, "hi": hi,
                              "min_slope": slope, "falls": fx.tolist(), "band": band, "avg": avg,
                              "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3)),
-                             "arc": arc, "character": w.get("character", "tiered"), "bands": int(w.get("bands", 0))}
+                             "arc": arc, "character": w.get("character", "tiered"), "bands": int(w.get("bands", 0)),
+                             "mouth": mouth}
         return F, fl, PROFILES.get(w.get("profile", "straight"), 1.0)
 
     def _floor_heights(self, b, F, lo, hi, name, full=False):
@@ -1149,7 +1175,11 @@ class Terrain:
     def report(self) -> str:
         from . import terrain_design as design
         from . import terrain_world
-        out = terrain_world.report(self) + ["peaks/cols (authored -> built):"]
+        out = terrain_world.report(self)
+        if getattr(self, "detail", None):
+            out.append(f"grid: the design at a {self.detail['cell']:g} m cell, rock, cover and the export at "
+                       f"{self.cell:g} m (detail {self.detail['factor']}: faces get cells of their own)")
+        out.append("peaks/cols (authored -> built):")
         cols = self.spec.get("cols") or {}
         from .terrain_forms import measure_peak
         for n, (xy, h) in self.points.items():
@@ -1195,7 +1225,9 @@ class Terrain:
         rk = terrain_rock.measure(self)
         if rk:
             out.append(f"rock faces (measured): {rk['face_km2'] * 100:.1f} ha over 45 deg; {100 * rk['turned']:.0f}% of it "
-                       f"turned over 25 deg from the face's line (buttress and couloir sides; a smooth face is ~0%)"
+                       f"turned over 25 deg from the face's line (buttress and couloir sides; a smooth face is ~0%); "
+                       f"{rk['pits_km2']:.0f} closed pits per km2 (round hollows: rock breaks in planes, not dimples), "
+                       f"roundness {rk['rounded']:.2f} (median |curvature| x cell; faceted rock ~0.6-0.9, lumpy 1.2+)"
                        + (f"; cliffs over 60 deg are {rk['cliff_cells']:.1f} cells across in plan (median)"
                           if rk["cliff_cells"] else ""))
             if rk["cliff_cells"] and rk["cliff_cells"] < 3:
@@ -1529,6 +1561,12 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
         per = max(cy["depth"] / 7, 4.0)  # colour bands through the strata, level all along the canyon
         band = 0.5 + 0.5 * np.sin(2 * np.pi * T.H / per) + 0.25 * np.sin(2 * np.pi * T.H / (per * 0.37))
         rock = rock * (0.8 + 0.25 * band[..., None]) + np.array([0.08, 0.02, -0.02]) * (band[..., None] - 0.5)
+    if not arid:  # beds in any cliff: faint level bands of lighter and darker rock (one grey read as a painted curtain)
+        from . import noise
+        wob = noise.fbm(np.c_[T.P, np.full(len(T.P), 31.0)], 60.0, 2, seed=231).reshape(T.H.shape) - 0.5
+        z = T.H + 6 * wob
+        band = 0.6 * np.sin(2 * np.pi * z / 5.3) + 0.4 * np.sin(2 * np.pi * z / 2.1 + 1.0)
+        rock = rock * (1 + 0.09 * band[..., None] * smoothstep(45, 60, slope)[..., None])
     w = smoothstep(28, 40, slope)[..., None]
     c = grass * (1 - w) + rock * w
     if cover:

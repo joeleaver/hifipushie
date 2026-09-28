@@ -62,6 +62,10 @@ and the `"story"`.
   - for heights (h, level, floor, elevation, border, ...), 30% of `"relief"` (default: a quarter of the frame)
 - `"cell"` is the grid spacing (default: frame / 400). Everything else scales with the frame: a 250 m tile and a
   4 km valley use the same words.
+- `"detail"`: the last stages (rock character, checks, lakes, cover, the export and the views) run on a grid this many
+  times finer than `cell`. `"auto"` (default) is 2 where the frame has sea cliffs or cliffs only 2-3 cells across,
+  while the fine grid stays under ~1100 cells a side; `1` turns it off. A 70 deg face 2 cells across can't carry
+  anything of its own. The report and the export are at the fine cell (the report says which).
 - **tilt**: `{"down": "south" | bearing deg, "grade": 0.07}` leans the whole frame (a south-facing slope). A tile
   with no ridges, rivers or basins is open ground at `world.base`, plus tilt and hills.
 - **Frame edge**: `"border": 150` fixes the whole edge at that height. `{"n": 150, "s": "open", ...}` does it per
@@ -82,11 +86,11 @@ and the `"story"`.
 - **cols** (low points on a ridge) have the same shape.
 - **ridges** `{"name": {"through": [peak/col | "ridge@0.4" | [x, y, z], ...], "crest": "arete" | "rounded"}}`. A
   ridge that ends where it starts is **closed**: a ring round a basin or crater.
-- **basins**: a valley floor inside a closed ridge. Its walls are real mountainsides: they average the kind's face
-  slope, with a hard cliff band that makes them unclimbable, and each stretch is as wide as the crest behind it
-  needs. So high rims take room, and the report says how much floor is left.
+- **basins**: a valley floor inside a closed ridge, or a horseshoe open to one side. Its walls are real mountainsides:
+  they average the kind's face slope, with a hard cliff band that makes them unclimbable, and each stretch is as wide
+  as the crest behind it needs. So high rims take room, and the report says how much floor is left.
   ```
-  {"name": {"inside": "<closed ridge>", "floor": [low, high], "falls_to": address,
+  {"name": {"inside": "<closed ridge | open ridge>", "opens"?: "south" | "edge:s", "floor": [low, high], "falls_to": address,
             "shape": "bowl" | "flat" | "open",
             "rises_toward"?: address,
             "walls": {"min_slope": 45, "height": m, "average"?: deg, "except": [...]}}}
@@ -101,6 +105,10 @@ and the `"story"`.
   - `walls.character`: `"tiered"` (default: stacked cliff bands with benches, light buttresses), `"buttressed"`
     (rock ribs between couloirs), `"broken"`, `"smooth"`. `walls.bands`: how many cliff bands.
   - Passes through its ridge are exempt.
+  - **A valley open to one side**: give `inside` a ridge that doesn't close (a horseshoe: west peaks, the head, east
+    peaks) and `"opens": "south"` (the side its mouth faces; without it, the side between the ridge's two ends). The
+    floor runs out through the mouth to the frame's edge with no wall there; the walls stop where the ridge ends. Put
+    `falls_to` at the mouth (`"edge:s"`) for a valley draining out of the level, or on a lake inside it.
   - An enclosed basin would, in reality, fill with water to its lowest rim. The report says so; the lake keeps its
     own level.
 - **passes**: a saddle through a ridge.
@@ -225,7 +233,9 @@ and the `"story"`.
 - **rock**: every steep face (sea cliffs, basin and canyon walls, mesas, scars, craters) gets rock character on its
   own: buttresses and couloirs along it (the face moved in and out, so its lip and foot are notched and it stays as
   steep and tall), ledges where the face is gentle enough for a tread, and a boulder foot below it.
-  `"rock": {"buttresses": 0..1, "ledges": 0..1, "boulders": 0..1, "scale": m}` tunes it (defaults 1, 0.6, 1, the
+  The faces break into planar facets and joints (`facets`), and buttresses are chiselled: straight flanks, sharp crests,
+  V couloirs. `"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "boulders": 0..1, "scale": m}` tunes it
+  (defaults 1, 0.6, 1, 1, the
   kind's crag size); `"rock": false` turns it off. The zone `"cliff_foot"` is the ground below the faces (for scree). Never on routes, sites or water. The report measures how broken the
   faces are (the share of steep ground turned away from its face's line: a smooth wall is ~0%).
 - **rugged**: ruggedness as geometry (crags, and ledges of benches and risers, in patches).
