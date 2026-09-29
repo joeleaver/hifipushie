@@ -64,7 +64,8 @@ def region(T, r) -> np.ndarray:
         if r in ("routes", "sites"):
             return T.masks.get(r, np.zeros(shape))
         if r == "cliff_foot":  # below every steep face: where talus and fallen blocks lie (scree cover)
-            return getattr(T, "rock", {}).get("foot", np.zeros(shape, bool)).astype(float)
+            m = getattr(T, "rock", {}).get("foot", np.zeros(shape, bool)).astype(float)  # (soft: hard-edged patches read
+            return np.clip(ndimage.gaussian_filter(m, 2.0) * 1.5, 0, 1)  # as pale sugar cubes along a wall's foot)
         if r in getattr(T, "vzones", {}):  # a volcano's crater, flows ("lava"), collapse scars, "debris"
             return T.vzones[r].astype(float)
         if r in T.lakes and hasattr(T, "lake_id"):
@@ -285,6 +286,10 @@ def rugged(T):
         R = np.full(T.X.shape, float(g.get("amount", 0.6)))
         if "in" in g:
             R *= region(T, g["in"])
+        sea = getattr(T, "sea", None)
+        if sea is not None:  # dry land only: it had crumpled the seabed, with a seam where the zone's edge crossed the water
+            R *= smoothstep(0, 3 * T.cell, sea["sd"])
+        R *= ndimage.gaussian_filter(np.isnan(T.water).astype(float), 1.0) ** 2  # (nor under a lake)
         if "gradient" in g:
             gr = g["gradient"]
             a, b = T.address(gr["from"])[0], T.address(gr["to"])[0]
@@ -833,14 +838,38 @@ def _profile(T, pts, maxg, relax=1.0):
     ground = T.sample(xy)
     h = ndimage.gaussian_filter1d(ground, 30 / ds, mode="nearest")
     gp = 0.85 * maxg  # planned with slack under the limit: the grid leaves about a metre of wiggle (24% on 20 at 0.92)
+    # on a pad (a site it starts or ends at) the way is the pad's own surface: the road isn't carved there, so a bed
+    # planned freely met the pad's edge as a 4-5 m step (every lane FAILED at 36-40% right at its pad)
+    pads = getattr(T, "pads", None)
+    pinned = (T.sample(xy, pads) > 0.3) if pads is not None else np.zeros(n, bool)
+    if pinned.any():  # between two pads the grade must at least span their heights (planned at 85% of the limit, a
+        # lane between pads 41 m apart in 390 m couldn't: the grading passes fought and left a 4 m step at one pad)
+        idx = np.nonzero(pinned)[0]
+        gaps = np.nonzero(np.diff(idx) > 1)[0]
+        sc = np.r_[0, np.cumsum(step)]
+        for g_ in gaps:
+            a, b = idx[g_], idx[g_ + 1]
+            need = abs(ground[b] - ground[a]) / max(sc[b] - sc[a], 1e-6)
+            gp = max(gp, 1.02 * need)  # (past the limit too: an even grade that fails honestly, not a step at one pad)
+            if need > maxg:
+                T._pad_gap = (need, float(abs(ground[b] - ground[a])), float(sc[b] - sc[a]), xy[a], xy[b])
     for _ in range(30):  # grade limit both ways, pulled back toward the ground
+        h[pinned] = ground[pinned]
         for i in range(1, n):
             h[i] = np.clip(h[i], h[i - 1] - gp * step[i - 1], h[i - 1] + gp * step[i - 1])
         for i in range(n - 2, -1, -1):
             h[i] = np.clip(h[i], h[i + 1] - gp * step[i], h[i + 1] + gp * step[i])
         h = 0.8 * h + 0.2 * ndimage.gaussian_filter1d(ground, 10 / ds, mode="nearest")
-    for i in range(1, n):
-        h[i] = np.clip(h[i], h[i - 1] - gp * step[i - 1], h[i - 1] + gp * step[i - 1])
+    h[pinned] = ground[pinned]
+    for _ in range(8 if pinned.any() else 1):  # (alternating until both ways hold with the pads fixed)
+        for i in range(1, n):
+            if not pinned[i]:
+                h[i] = np.clip(h[i], h[i - 1] - gp * step[i - 1], h[i - 1] + gp * step[i - 1])
+        if not pinned.any():
+            break
+        for i in range(n - 2, -1, -1):
+            if not pinned[i]:
+                h[i] = np.clip(h[i], h[i + 1] - gp * step[i], h[i + 1] + gp * step[i])
     return xy, h, n
 
 
@@ -946,6 +975,13 @@ def _route(T, name, r):
                           f"the climb needs {climb / maxg:.0f} m at its grade): it's detouring round something; check "
                           f"the map for what, or add a 'via'")
     s, _ = _arclen(xy)
+    gap = getattr(T, "_pad_gap", None)
+    T._pad_gap = None
+    if gap is not None:
+        T.warnings.append(f"route {name!r}: between the sites at [{gap[3][0]:.0f}, {gap[3][1]:.0f}] and [{gap[4][0]:.0f}, "
+                          f"{gap[4][1]:.0f}] the ground falls {gap[1]:.0f} m in {gap[2]:.0f} m of road ({100 * gap[0]:.0f}%): "
+                          f"no way at {100 * maxg:.0f}% joins those pad edges that directly. Add a 'via' so it winds, move a "
+                          f"site, or allow the grade")
     T.routes[name] = Line(name, "route", xy, h, s, {"length": length, "max_grade": maxg, "width": width,
                                                    "cut": cut, "fill": fill, "relaxed": relaxed})
 
@@ -1196,10 +1232,17 @@ def report(T):
             out.append(f"rugged {name}: its zone is empty")
             continue
         detail = T.H - ndimage.gaussian_filter(T.H, max(sc, 2 * T.cell) / T.cell)
-        rough_in = float(np.std(detail[zone]))
-        rough_out = float(np.std(detail[~zone])) if (~zone).sum() > 5 else float("nan")
-        out.append(f"rugged {name}: {zone.sum() * T.cell ** 2 / 1e4:.1f} ha; the ground's detail at its {sc:.0f} m scale "
-                   f"stands +-{rough_in:.1f} m there (+-{rough_out:.1f} m elsewhere)")
+        dry = np.isnan(T.water)
+        gentle = T._slope() < 35
+        zin = zone & dry
+        rough_in = float(np.std(detail[zin])) if zin.sum() > 5 else float("nan")
+        # (compared with dry ground of the same kind outside it: the whole frame's figure included every cliff)
+        zout = ~zone & dry & (gentle if (zin & gentle).mean() > 0.5 * max(zin.mean(), 1e-9) else True)
+        rough_out = float(np.std(detail[zout])) if zout.sum() > 5 else float("nan")
+        big = float(np.percentile(np.abs(detail[zin]), 99)) if zin.sum() > 5 else float("nan")
+        out.append(f"rugged {name}: {zone.sum() * T.cell ** 2 / 1e4:.1f} ha of dry ground; its detail at the {sc:.0f} m scale "
+                   f"stands +-{rough_in:.1f} m (the biggest crags {big:.1f} m) against +-{rough_out:.1f} m on similar "
+                   f"ground elsewhere")
     for name, s in T.sites.items():
         wet = ~np.isnan(T.water)
         dw = (np.hypot(T.X - s["xy"][0], T.Y - s["xy"][1])[wet].min() - s["radius"]) if wet.any() else None
@@ -1228,7 +1271,14 @@ def report(T):
     for name, R in T.routes.items():
         # the road as built: the ground under its centre line after every carve, not its own planned profile (that
         # always met the limit, so the line said OK where the warnings said nothing connects at that grade)
-        g = _grades(T, R.xy)
+        # over water the way is a bridge or a ford at its planned height (the channel under it is not the road), and its
+        # banks within a few metres of the water are the crossing's ramps
+        wet_r = T.sample(R.xy, (~np.isnan(T.water)).astype(float)) > 0.3
+        wet_r = ndimage.binary_dilation(wet_r, iterations=max(1, int(round(3.0 / max(T.cell / 2, 0.5)))))
+        g = _grades(T, R.xy, h=np.where(wet_r, R.h, T.sample(R.xy)))
+        if hasattr(T, "pads"):  # across a site the way is the site's own ground (a village keeping its lie): not the road's
+            onp = T.sample(R.xy, T.pads) > 0.5
+            g = np.where(onp[:len(g)] | onp[-len(g):], 0.0, g)
         ok = g.max() <= R.props["max_grade"] + 0.01
         turns = _switchbacks(R.xy)
         worst = int(np.argmax(g))
@@ -1295,6 +1345,15 @@ def report(T):
         if zs:
             line += "; " + ", ".join(f"{z} {100 * (m * region(T, z)).sum() / max(region(T, z).sum(), 1):.0f}%" for z in zs)
         out.append(line)
+    if T.cover:  # ground no layer paints: bare (grass-coloured or rock by slope) in the views, a gap in the splats
+        tot = np.clip(np.sum([np.clip(m, 0, 1) for m in T.cover.values()], axis=0), 0, 1)
+        dry = np.isnan(T.water)
+        bare = (tot < 0.2) & dry
+        if bare.mean() > 0.05:
+            sl = T._slope()[bare]
+            out.append(f"cover: {100 * bare.sum() / max(dry.sum(), 1):.0f}% of the dry ground has no layer (slopes there "
+                       f"median {np.median(sl):.0f} deg, 10-90% {np.percentile(sl, 10):.0f}-{np.percentile(sl, 90):.0f}): "
+                       f"a layer's slope range may skip it (grass/meadow stop near 30 deg, rock starts at ~32)")
     for a in (T.spec.get("probe") or []):  # the finished ground: after sites, roads and erosion
         xy, h, _ = T.address(a)
         out.append(f"probe {a}: [{xy[0]:.0f}, {xy[1]:.0f}] ground as built {h:.0f} m, slope {T._slope()[_ij(T, xy)]:.0f} deg")
@@ -1579,11 +1638,12 @@ def _see(T, name, it, hide=False):
             if summit:
                 so = max(g[3]["standout"] for g in got)
                 line += f"; its top stands {so:.0f} m above the skyline beside/behind it" if so > 0 else \
-                    f"; its top is {-so:.0f} m below the skyline beside/behind it (it doesn't stand out)"
+                    f"; its top is {-so:.0f} m below the skyline beside or behind it (it doesn't stand out: higher " \
+                    f"ground next to it in the view)"
                 if prom is not None and so < prom:
                     line += f" FAIL (want >= {prom:g} m)"
             sk = any(g[3]["skyline"] for g in got)
-            line += "; on the skyline" if sk else "; against higher ground behind it"
+            line += "; nothing directly behind it is higher (on the skyline)" if sk else "; against higher ground behind it"
             if it.get("skyline") and not sk:
                 line += " FAIL (wanted on the skyline)"
         out.append(line)

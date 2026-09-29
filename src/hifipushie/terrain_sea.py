@@ -150,11 +150,14 @@ def apply(T):
         return np.where((along > -2 * T.cell) & (along < L), np.abs(across) - half, np.inf)
 
     geos = {}
+    geo_mask = np.zeros(T.X.shape, bool)
     if isinstance(cl0.get("geos"), dict):  # placed: {name: {"at": address, "length": m, "width": m}}
         for gname, g in cl0["geos"].items():
             p, inl = _coast_point(T, land, g.get("at", "south"))
             L, w = float(g.get("length", 60.0)), max(1.5 * T.cell, float(g.get("width", 8.0)))
-            sd = np.minimum(sd, cut_geo(p - inl * 2 * T.cell, inl, L + 2 * T.cell, w))
+            cg = cut_geo(p - inl * 2 * T.cell, inl, L + 2 * T.cell, w)
+            geo_mask |= cg < 0
+            sd = np.minimum(sd, cg)
             geos[gname] = {"xy": p.tolist(), "inland": inl.tolist(), "length": L, "width": w,
                            "head": (p + inl * L).tolist()}
         land = sd > 0
@@ -183,7 +186,9 @@ def apply(T):
                 inl /= np.linalg.norm(inl) + 1e-9
                 L = rng_g.uniform(25, 110) * max(k, 0.5) + 4 * T.cell
                 w = max(1.5 * T.cell, rng_g.uniform(4, 12))
-                sd = np.minimum(sd, cut_geo(p, inl, L, 2 * w))
+                cg = cut_geo(p, inl, L, 2 * w)
+                geo_mask |= cg < 0
+                sd = np.minimum(sd, cg)
                 done.append(p)
             land = sd > 0
 
@@ -249,6 +254,8 @@ def apply(T):
         rib = 1 - np.abs(2 * noise.fbm(pts, max(1.2 * A, 10.0), 2, seed=192).reshape(T.X.shape) - 1)  # sharp ribs
         wob = A * (1.6 * big + 0.5 * (rib - 0.5))
         near = smoothstep(3 * A + 4 * T.cell, A, np.abs(sd))  # only about the coastline
+        if geo_mask.any():  # (not across a geo: the wobble closed a 7 m cleft)
+            near = near * (1 - np.clip(ndimage.gaussian_filter(geo_mask.astype(float), 3.0) * 3, 0, 1))
         sd = sd + wc * near * wob
         land = sd > 0
         coast = land & ndimage.binary_dilation(~land)
@@ -383,10 +390,11 @@ def apply(T):
             top = float(top_here[y, x])
             out = float(run[y, x])
             for i in range(n_st):
-                r = max(2 * T.cell, rng.uniform(0.15, 0.28) * (top - level))
-                hg = (top - level) * rng.uniform(0.65, 0.95) * (1 - 0.1 * i)
+                shrink = 0.8 ** i  # (smaller further out, height and girth: 1.0, 0.8, 0.64...; 0.9x read as a row of equals)
+                r = max(2 * T.cell, rng.uniform(0.15, 0.28) * (top - level) * (0.6 + 0.4 * shrink))
+                hg = (top - level) * rng.uniform(0.7, 0.95) * shrink
                 skirt = hg / math.tan(math.radians(76))  # (its sides spread this far at the waterline)
-                out += (2.0 if i == 0 else 1.4) * r + skirt  # (clear water between: they had merged into a shelf)
+                out += (2.0 if i == 0 else rng.uniform(1.6, 3.0)) * r + skirt  # (clear water between, uneven)
                 c = p + nrm * out + side * rng.uniform(-0.8, 0.8) * r
                 places.append((c, top, r, hg))
                 out += r + skirt
@@ -451,6 +459,11 @@ def apply(T):
         st_mask |= on & (patch > 0.05)  # (the fine re-cut leaves it, like the stacks)
     cliffish = (wc > 0.5) | (foot > 0.5)  # (a cliff's face and its foot's sand stand offshore of the coastline)
     new = np.where(sd > 0, np.maximum(new, level + 0.3), np.where(cliffish, new, np.minimum(new, level - 0.3)))
+    # a geo is the sea running up a cleft: its floor under water all the way to its head (the face formula measured from
+    # its walls, then the platform and talus, left a 7 m geo's floor 3-6 m up: a dry trench hanging in the cliff)
+    if geo_mask.any():
+        gfloor = level - 1.0 - 2.0 * smoothstep(0, 4 * T.cell, -sd)
+        new = np.where(geo_mask & (sd < 0), np.minimum(new, gfloor), new)
     T.H = new
     face = (sd < 0) & (sd > -((hi_h + depth) / math.tan(CLIFF) + 2 * T.cell)) & (wc > 0.5)
     T.hard |= face
@@ -569,17 +582,31 @@ def report(T):
         want = S["want"][by, bx] - S["level"]
         slope = T._slope()
         steep = np.array([slope[max(y - ring, 0):y + ring + 1, max(x - ring, 0):x + ring + 1].max() for y, x in zip(by, bx)])
-        lo, hi = S["cliff_asked"]
-        tall = h > 1.3 * max(hi, lo) + 5
+        # judged against what was asked for each stretch (cliffs.heights), not the coast-wide range
+        lo, hi = float(np.percentile(want, 5)), float(np.percentile(want, 95))
+        tall = h > 1.3 * want + 5
         ok = (h >= 0.8 * want) & (steep >= 55) & ~tall
         out.append(f"sea cliffs (measured): {len(by) * T.cell / 1000:.1f} km of cliff coast, {np.percentile(h, 10):.0f}-"
-                   f"{np.percentile(h, 90):.0f} m high (asked {lo:.0f}" + (f"-{hi:.0f}" if hi != lo else "")
+                   f"{np.percentile(h, 90):.0f} m high (asked {lo:.0f}" + (f"-{hi:.0f}" if hi - lo > 1 else "")
+                   + (" over the stretches" if (T.spec.get("sea") or {}).get("cliffs", {}).get("heights") else "")
                    + f"), steepest median {np.median(steep):.0f} deg; {100 * ok.mean():.0f}% as asked")
         if tall.mean() > 0.2:
-            T.warnings.append(f"sea cliffs: {100 * tall.mean():.0f}% of the cliff coast stands over {1.3 * max(hi, lo) + 5:.0f} m "
-                              f"(up to {h.max():.0f}): the land is that high where it meets the sea (a peak's flanks reaching "
-                              f"past the coast). Widen the land, or let the peak's flanks come lower (a wider radius or "
-                              f"gentler flanks); the tool won't cut the land down under what you placed")
+            ty, tx = by[tall], bx[tall]
+            T.warnings.append(f"sea cliffs: {100 * tall.mean():.0f}% of the cliff coast stands over 1.3x its asked height "
+                              f"(up to {h.max():.0f} m, around [{T.X[ty, tx].mean():.0f}, {T.Y[ty, tx].mean():.0f}]): the "
+                              f"land is that high where it meets the sea (a peak's flanks reaching past the coast). Widen the "
+                              f"land, give that stretch its height (cliffs.heights), or let the peak's flanks come lower; the "
+                              f"tool won't cut the land down under what you placed")
+    for gname, g in S.get("geos", {}).items():  # does the sea run up it: the floor at its mouth and its head, as built
+        p, inl = np.array(g["xy"]), np.array(g["inland"])
+        pts_ = p + inl[None] * np.linspace(0, 0.9 * g["length"], 10)[:, None]
+        fl = T.sample(pts_)
+        gwet = T.sample(pts_, (~np.isnan(T.water)).astype(float)) > 0.5
+        out.append(f"geo {gname}: {g['length']:.0f} m long, {g['width']:.0f} m wide; floor {fl[0] - S['level']:+.1f} m at the "
+                   f"mouth, {fl[-1] - S['level']:+.1f} m at its head; the sea runs {100 * gwet.mean():.0f}% of the way up")
+        if gwet.mean() < 0.7:
+            T.warnings.append(f"geo {gname!r}: the sea reaches only {100 * gwet.mean():.0f}% of the way up it (its floor stands "
+                              f"{fl.max() - S['level']:+.1f} m): move it onto a cliff stretch, or shorten it")
     bc = coast & ((S["wb"] > 0.5) | (S["foot"] > 0.5))
     if bc.any():
         # dry ground within 2.5 m of the water, next to the beach coast: its area over the beach's length is its width

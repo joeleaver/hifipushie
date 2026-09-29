@@ -109,6 +109,27 @@ def facets(T, H, size, tilt=0.12, seed=0, crease=0.18):
     return out.reshape(H.shape), keep.reshape(H.shape)
 
 
+def bed_step(T):
+    """Bedding's step height (m) on cliffs: six cells, so a sill is a cell or two deep (sub-cell beds were invisible)."""
+    return max(2.0, 6.0 * T.cell)
+
+
+def bed_offset(T, xy):
+    """The beds' wander in height at points [n, 2] (m): bed k's base is at z = k * bed_step - bed_offset. Shared with
+    3D rock so solid beds line up with the heightfield's sills."""
+    step = bed_step(T)
+    xy = np.atleast_2d(np.asarray(xy, float))
+    return (noise.fbm(np.c_[xy, np.full(len(xy), 6.0)], 25 * step, 2, seed=218) - 0.5) * 0.8 * step
+
+
+def params(T):
+    """The rock pass's sizes for other modules (3D rock): facet size and tilt, bed step, crag size."""
+    cfg = T.spec.get("rock", {}) or {}
+    crag = float(cfg.get("scale", T.world["crag"])) if cfg is not False else T.world["crag"]
+    return {"facet_size": max(1.2 * crag, 3.5 * T.cell), "facet_tilt": 0.35, "bed_step": bed_step(T), "crag": crag,
+            "rib_spacing": max(1.5 * crag, 3.5 * T.cell), "rock_colour": [0.36, 0.34, 0.31]}
+
+
 def walls_mask(T):
     """Designed unclimbable walls (a basin's, a "walls" edge): ledges would break their tall steep run."""
     m = np.zeros(T.X.shape, bool)
@@ -199,8 +220,8 @@ def apply(T):
         # planar facets and joints over the faces (and rugged ground): the noise above left round pits and bubbles
         fsize = max(1.2 * crag, 3.5 * T.cell)
         w = zone.copy()
-        for rz, (m, sc) in getattr(T, "rugged_zones", {}).items():
-            w = np.maximum(w, ndimage.gaussian_filter(m.astype(float), 1.0) * smoothstep(12, 25, slope) * ~keep)
+        # (rugged zones are faceted at their own scale in design.rugged: faceting them again here at the crag size,
+        # tipped planes over gentle ground made 5-15 m spires on a coast's grass)
         w = np.clip(f_amt * w, 0, 1)
         if w.max() > 0.05:
             before = H
@@ -223,8 +244,8 @@ def apply(T):
         # bedding on cliffs: the face stepped into near-vertical risers and narrow sills a cell deep, a few metres apart,
         # level along the face (a 70 deg face with nothing across it read as a curtain draped down to the water). Needs
         # a riser of several cells' height, so only where the cell is small against the step
-        step = max(2.0, 6.0 * T.cell)  # (a sill must be a couple of cells deep: 3 m beds on a 1 m grid were sub-cell)
-        dip = (noise.fbm(np.c_[T.P, np.full(len(T.P), 6.0)], 25 * step, 2, seed=218).reshape(H.shape) - 0.5) * 0.8 * step
+        step = bed_step(T)  # (a sill must be a couple of cells deep: 3 m beds on a 1 m grid were sub-cell)
+        dip = bed_offset(T, T.P).reshape(H.shape)
         th = noise.fbm(np.c_[T.P, np.full(len(T.P), 8.0)], 6 * step, 2, seed=219).reshape(H.shape)  # beds come and go
         z = (H + dip) / step
         k = np.floor(z)
@@ -265,7 +286,7 @@ def apply(T):
             cone = foot_h + np.minimum(0.22 * face_h, 40.0) * feed[iy, ix] - math.tan(math.radians(33)) * dist
             lower = (H < foot_h + 0.5) & ~cliff & ~keep & (slope < 40) & np.isnan(T.water) & ~walls_mask(T)
             add = np.where(lower, np.clip(cone - H, 0, None), 0) * ap
-            add = ndimage.gaussian_filter(add, 1.0)
+            add = ndimage.gaussian_filter(add, 2.5)  # (at 1 cell the patches' edges stood as sugar-cube blocks)
             H = H + add
             apron_m = add > 0.5
     T.H = H

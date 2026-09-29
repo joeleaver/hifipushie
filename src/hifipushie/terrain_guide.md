@@ -67,7 +67,8 @@ and the `"story"`.
   while the fine grid stays under ~1100 cells a side; `1` turns it off. A 70 deg face 2 cells across can't carry
   anything of its own. The report and the export are at the fine cell (the report says which).
 - **tilt**: `{"down": "south" | bearing deg, "grade": 0.07}` leans the whole frame (a south-facing slope). A tile
-  with no ridges, rivers or basins is open ground at `world.base`, plus tilt and hills.
+  with no ridges, rivers or basins is open ground at `world.base`, plus tilt and hills. The tilt leans ridges and the
+  peaks and cols on them too (not lone hills): the report says by how much at each, and what `h` to give instead.
 - **Frame edge**: `"border": 150` fixes the whole edge at that height. `{"n": 150, "s": "open", ...}` does it per
   side. An open side isn't fixed, so the ground carries on as it goes (the default).
 
@@ -78,7 +79,7 @@ and the `"story"`.
   you placed.
   - `"form"`: `"pyramid"` (planar faces between arêtes, a point on top; the default in alpine valleys and cirques),
     `"horn"` (steeper, three faces hollowed into cirques between sharp arêtes: a Matterhorn), `"dome"` (rounded: the
-    default elsewhere). Each ridge leaving the peak is one of its arêtes, at that ridge's own fall; more are added up
+    default elsewhere; on a ridge its top is rounded over `radius`, default 3% of the frame). Each ridge leaving the peak is one of its arêtes, at that ridge's own fall; more are added up
     to `"faces"` (pyramid 4, horn 3). The form carves the upper part of the mountain and never cuts into a
     neighbouring ridge, col or peak. `"arete"`: slope in degrees of the added arêtes; `"hollow"`: 0..1, how deep a
     horn's cirques are. The report says how far each summit falls in its first stretch (a dome barely falls), its
@@ -200,7 +201,8 @@ and the `"story"`.
     over by varying amounts, and aprons of fallen blocks lean on its foot in patches (`talus`: 0 for none).
   - **Geos** (zawns): narrow clefts the sea runs up between vertical walls. Without a `geos` entry a cliff coast gets a
     few at random; `"geos": {"chasm": {"at": address, "length": 60, "width": 8}}` places them (the coast nearest `at`,
-    cut `length` m inland, narrowing); `"geos": 0` for none.
+    cut `length` m inland, narrowing, the sea running to its head); `"geos": 0` for none. The report gives each placed
+    geo's floor at its mouth and head and how far up it the sea runs.
   - The foot of the sea cliffs is an address: `"cliff_foot:<address>"` (the foot nearest it; plain `"cliff_foot"`: nearest
     the frame's middle), its direction pointing into the rock. The export lists the feet (`cliff_feet` in meta.json).
   - Below the cliffs: a wave-cut platform of rocks awash (`cliffs.platform`: m out from the face's foot, 0 for none)
@@ -230,6 +232,11 @@ and the `"story"`.
   {"name": {"source": [x, y, z], "through": [[x, y] or [x, y, z]], "mouth": [x, y, z] | "into": river,
             "hanging": m, "valley": {"profile": "U" | "V" | "gorge" | "open", "floor": m}}}
   ```
+  The source and the mouth need a height (z); through points may leave it out. The river's heights are its bed: set
+  them near the ground they cross (the report warns of a **trench**, the bed far below the ground either side: a
+  basin floor above the river's heights cut it into a slot gorge). Its water never stands above its banks, and the banks
+  are graded down to it. A river leaving a dammed lake runs over the dam as a spillway at the lake's level. In a coast
+  drawn as a `land` zone, the land away from the rivers stays at `world.base`.
   Between two rivers with no ridge between them, the compiler adds a divide.
 - **landforms**:
   - `lake {"at", "radius", "level"?, "depth", "lobes"?: 0..0.5, "dam"?: true | "downhill" | false}`: a basin carved
@@ -256,7 +263,9 @@ and the `"story"`.
   engine's cliff material would.
 - **rugged**: ruggedness as geometry (crags, and ledges of benches and risers, in patches).
   `{"name": {"in": zone, "gradient"?: {"from", "to", "range": [a, b]}, "amount": 0..1, "scale"?: m, "ledges"?: m}}`.
-  Rock cover then finds the steep bits. Use it for "rocky", "craggy" or "broken ground".
+  Rock cover then finds the steep bits. Use it for "rocky", "craggy" or "broken ground". Crags are blocks with flat
+  faces; only dry land is made rugged (never the seabed or a lake bed), and zones made from the water ("near" the sea)
+  work. The report compares its detail with similar ground outside it.
 - **volumes** (3D rock the heightfield can't hold: arches, sea caves, overhangs). They only show in the 3D mesh tiles
   (`export_terrain(name, tiles=True)`) and their views; the heightmap export, map and report ground stay 2.5D.
   `{"name": {"type": "arch" | "cave" | "overhang", "at": address, ...}}`, each cut out of the rock with rounded,
@@ -311,6 +320,8 @@ and the `"story"`.
   "max_earthworks": 25, "max_fill": m}` (`max_fill` limits banks alone, for a trail that shouldn't stand on one; it may then fail its grade). Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
   report judges the road on the ground as built and says where it fails, where its bed ends off its stop (a cliff band
   in the way), and when no way at its grade existed at all.
+  - A route starting or ending at a site runs on the pad's own surface and leaves it at the pad's height (no step at the
+    pad's edge); over water it is a bridge or ford at its own height, so the grade is judged on the deck, not the channel.
   - Routes are planned on the ground nearly as built (each step may be a metre off its grade, which the carve evens
     out) at 85% of their limit, so what the plan promises the built road keeps; switchback legs too close for a bank
     between them are pushed apart where the ground allows (the report says where it doesn't).
@@ -359,7 +370,8 @@ and the `"story"`.
 - `"export": {"size": 513}` resamples the export to an engine grid (Unity 257/513/1025/2049; Unreal 505/1009/2017).
 
 Sections of named things (peaks, sites, routes, intent, ...) are objects keyed by name; a list of objects is accepted too
-(each named by its `"name"`, else `intent_1`, ...). Free text goes in `"story"`, `"notes"` or `"wishes"`.
+(each named by its `"name"`, else `intent_1`, ...). Free text goes in `"story"`, `"notes"` or `"wishes"`. A `patch`
+merges objects key by key but replaces lists whole (views, `through`, `via`): send the whole list.
 
 **Addresses:**
 - a peak/col/landform/site/pass name
