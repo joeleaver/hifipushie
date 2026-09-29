@@ -69,7 +69,7 @@ def side_tuck(az, el, W=None):
 
 
 SIDE_NARROW = 0.35  # and how much narrower it gets there
-FILL_SINK = 0.5  # how much of a fill lock's thickness the side/back mass sinks under it
+FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks under it
 REGIONS = ("front", "top", "sides", "back", "nape")
 GROOM = {
     "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
@@ -1029,7 +1029,7 @@ def _envelope_of(prof, edges):
     return hx, np.where(good, hx - prof, 0.0)
 
 
-def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 8):
+def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14):
     """Raise the underlayer where the hair's outline (underlayer + the locks' outsides) dents inside its own convex
     envelope in the front and 3/4 views, below the crown band: under the wide top locks the sides pinched in at
     the temples (a divot either side). The underlayer is pushed out only near the outline, where it can fill it."""
@@ -1061,10 +1061,10 @@ def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 8):
                 near = _ss((x - (np.where(inb, prof[kz], np.inf) - 0.015)) / 0.012)
                 lat = np.maximum((dirs(AA, EE) @ right), 0.25)
                 raise_ = np.maximum(raise_, need * near / lat)
-        if worst * 1000 <= 0.6 * GATE_MM:
+        if worst * 1000 <= 0.3 * GATE_MM:  # the python outline (lock_extents) runs ~1 mm short of Blender's
             break
-        r = gaussian_filter(raise_, sigma=(2.0, 2.0), mode=("wrap", "nearest"))
-        H = H + np.maximum(r, raise_ * 0.6)
+        r = gaussian_filter(raise_, sigma=(4.0, 4.0), mode=("wrap", "nearest"))  # broad: a sharp raise read as a shelf
+        H = H + 1.5 * r
     return H
 
 
@@ -1094,11 +1094,9 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
     if mass:
         H, d_in = envelope(sc, g, line, AA, EE)
         if sunk:
-            Hs = under(g, H, AA, EE, d_in)
-            if extra is not None:  # sunk only where locks lie over it: bare, a sunk patch at the outline was a dent
-                H = H + (Hs - H) * coverage(sc, AA, EE, extra)
-            else:
-                H = Hs
+            H = under(g, H, AA, EE, d_in)
+            if extra is not None:  # the filler under the partings: where locks part at the outline, the sunk
+                H = _silhouette_fill(sc, AA, EE, H, d_in, extra)  # underlayer rises to close the dent (only there)
         H = np.maximum(H, 0.0015 * _ss(d_in / 0.004))
     else:
         d_in = inside(sc, line, AA, EE)
@@ -1274,6 +1272,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
 
 
 GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
+GATE_SCALE = 0.006  # m: the outline is judged on shapes at least this tall (smoothed over it)
 CROWN_BAND = 0.02  # ...this far under the top (the top's outline is the lock crowns: reported, not gated)
 
 
@@ -1300,6 +1299,10 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
                 continue
             prof = np.array([np.max(sgn * x[(z >= e) & (z < e + 0.002)]) if np.any((z >= e) & (z < e + 0.002))
                              else np.nan for e in edges])
+            # dents under GATE_SCALE tall are a lock edge's facets, not the silhouette's shape: a running mean
+            k = max(1, int(round(GATE_SCALE / 0.002)))
+            if k > 1 and np.isfinite(prof).all():
+                prof = np.convolve(np.pad(prof, k // 2, mode="edge"), np.ones(k) / k, mode="valid")[:len(edges)]
             good = ~np.isnan(prof)
             if good.sum() < 4:
                 continue
