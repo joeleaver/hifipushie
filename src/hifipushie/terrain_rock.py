@@ -40,6 +40,21 @@ def _keep(T):
     return ndimage.binary_dilation(keep, iterations=2) | ~np.isnan(T.water)
 
 
+def _keep_shift(T):
+    """What the faces' horizontal shift leaves alone: as _keep, but the sea's cells are shifted too (a buttress runs on
+    into the water; kept, the cells at the waterline were pulled up into spires between untouched water cells)."""
+    keep = _keep(T)
+    lk = (getattr(T, "lakes", {}) or {}).get("sea")
+    if lk is not None and hasattr(T, "lake_id"):
+        sea = T.lake_id == lk["id"]
+        S = getattr(T, "sea", None)
+        design = np.zeros(T.X.shape, bool)
+        if S:
+            design |= S["st_mask"] | (S["rocks"] > 0.05)
+        keep = keep & ~(sea & ~ndimage.binary_dilation(design, iterations=2))
+    return keep
+
+
 def _chisel(u, v, seed):
     """0..1, piecewise linear in u (knots at the integers, alternating crest and trough, each its own height), the knots
     changing slowly with v (blended between two knot sets): straight flanks, sharp crests, V troughs."""
@@ -289,7 +304,8 @@ def apply(T):
         # big structure first (buttresses and gullies at the face's own scale), then ribs inside it
         Ab_med = float(np.clip(0.17 * med_h, 1.5 * T.cell, 45.0))
         sig_b = max(1.0, 0.6 * Ab_med / T.cell)
-        zone_b = np.clip(1.5 * ndimage.gaussian_filter(steep, sig_b), 0, 1) * ~keep
+        keep_s = _keep_shift(T)
+        zone_b = np.clip(1.5 * ndimage.gaussian_filter(steep, sig_b), 0, 1) * ~keep_s
         # the big structure's own frame, from ground smoothed at its scale (on the ribs' frame it turned sharply round
         # every spur and packed blades into the corner)
         sgb = float(np.clip(0.15 * np.clip(0.9 * med_h, 20, 320) / T.cell, 3, 30))
@@ -316,7 +332,7 @@ def apply(T):
         A0 = b_amt * max(min(0.25 * crag, 0.06 * med_h), 1.0 * T.cell)  # (detail inside the big structure)
         sig = max(1.0, 0.6 * A0 / T.cell)
         sb = ndimage.gaussian_filter(steep, sig)
-        zone_s = np.clip(1.5 * sb, 0, 1) * ~keep
+        zone_s = np.clip(1.5 * sb, 0, 1) * ~keep_s
         cliffness = ndimage.gaussian_filter(steep * smoothstep(45, 65, slope), sig) / np.maximum(sb, 1e-6)
         amp = A0 * (0.35 + 0.65 * np.clip(cliffness, 0, 1))
         # (ribs vary in strength along the face: evenly fluted walls read as organ pipes)
