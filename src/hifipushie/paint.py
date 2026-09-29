@@ -276,6 +276,31 @@ def _gens(ly: dict, key: str):
             yield from _gens(e, key)
 
 
+def side_warnings(spec: dict) -> list[str]:
+    """Centre-named layers that point only at one side's elements: a ".L" name on the elements doesn't make the
+    layer mirror (only the layer's own name does), so these paint one side. Returned for the edit summary."""
+    out = []
+    for name, ly in (spec.get("paint") or {}).items():
+        if not isinstance(ly, dict) or name.endswith((".L", ".R")):
+            continue
+        names = []
+        for near in _nears(ly):
+            names += [near] if isinstance(near, str) else [n for n in near if isinstance(n, str)]
+        for path in _gens(ly, "path"):
+            for pt in path if isinstance(path, list) else []:
+                if isinstance(pt, dict):
+                    names += [pt[k] for k in ("bone", "at", "on") if isinstance(pt.get(k), str)]
+                    if isinstance(pt.get("at"), dict) and isinstance(pt["at"].get("bone"), str):
+                        names.append(pt["at"]["bone"])
+        for side, other in ((".L", ".R"), (".R", ".L")):
+            if names and all(n.endswith(side) for n in names):
+                what = "near/path" if any(True for _ in _gens(ly, "path")) else "near"
+                out.append(f"paint {name!r}: {what} names only {'left' if side == '.L' else 'right'}-side elements "
+                           f"({', '.join(sorted(set(names)))}), so it paints one side; name the layer "
+                           f"'{name}.L' to paint both sides, or add the '{other}' names for one-sided paint")
+    return out
+
+
 def check_refs(spec: dict, prims: list) -> None:
     """Names paint points at must exist: each "near" resolves to primitives, each "part" is a part of the model,
     each axis bone is a bone.

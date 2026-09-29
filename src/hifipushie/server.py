@@ -270,6 +270,12 @@ def kit_reference() -> str:
             + "\n\nPLANS\n" + planmod.__doc__)
 
 
+def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
+    """The reply to a save: version, notes, warnings (things that saved but likely aren't what was meant), summary."""
+    warn = "".join(f"WARNING: {w}\n" for w in paintmod.side_warnings(spec))
+    return f"saved {name} v{v}\n" + extra + warn + summarize(spec)
+
+
 @mcp.tool(structured_output=False)
 def put_model(name: str, spec: dict, note: str = "") -> str:
     """Create a model or replace its whole spec. Missing keys get defaults. The stored plan (set_plan) is kept
@@ -287,7 +293,7 @@ def put_model(name: str, spec: dict, note: str = "") -> str:
     elif full["plan"] is None:
         del full["plan"]
     v = store.save(name, full, note or "put_model")
-    return f"saved {name} v{v}\n" + kept + summarize(full)
+    return _saved(name, v, full, kept)
 
 
 @mcp.tool(structured_output=False)
@@ -304,7 +310,7 @@ def edit_model(name: str, ops: list[dict], note: str = "") -> str:
     Edit only ".L" and centre elements; ".R" follows automatically."""
     spec = store.edit(store.load(name), ops)  # errors name the op: "op 3 (set blobs tooth.L): ..."
     v = store.save(name, spec, note or f"{len(ops)} ops")
-    return f"saved {name} v{v}\n" + summarize(spec)
+    return _saved(name, v, spec)
 
 
 @mcp.tool(structured_output=False)

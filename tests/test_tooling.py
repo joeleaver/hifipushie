@@ -79,6 +79,17 @@ def test_top_level_keys_and_plan_kept():
     assert isinstance(_exc(store.apply_ops, {}, [{"op": "nope"}]), SpecError)
 
 
+# Card "Warn when a centre-named paint layer's near names only .L elements (paints one side)"
+def test_one_sided_paint_warns():
+    spec = {**small_spec(), "paint": {
+        "paws": {"color": [0.9, 0.8, 0.7], "near": ["arm.L"]},           # the gopher's mistake
+        "paws2.L": {"color": [0.9, 0.8, 0.7], "near": ["arm.L"]},        # mirrored layer: fine
+        "belly": {"color": [0.9, 0.8, 0.7], "near": ["arm.L", "spine"]}}}  # mixed: fine
+    out = server.put_model("sides", spec)
+    assert "WARNING: paint 'paws'" in out and "'paws.L'" in out, out
+    assert "paws2" not in out.split("WARNING")[-1].split("\n")[0] and out.count("WARNING") == 1, out
+
+
 def _exc(fn, *a):
     try:
         fn(*a)
