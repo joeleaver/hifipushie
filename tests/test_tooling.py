@@ -140,6 +140,34 @@ def test_check_counts_chosen_parts():
     assert "no part 'hat'" in _raises(server.check, "holder", only_parts=["hat"])
 
 
+# Card "Let blobs/bones hang on kit-generated joints (teeth, claws, accessories)"
+def test_elements_on_kit_joints():
+    import json
+    from pathlib import Path
+    from hifipushie.spec import compile_prims, expand_mirror
+    spec = json.loads((Path(__file__).parents[1] / "examples" / "gopher.json").read_text())
+    spec.pop("plan", None)
+    spec["blobs"]["tooth"] = {"at": "face_nose_tip", "offset": [0, -0.004, -0.02], "size": [0.006, 0.003, 0.009]}
+    spec["bones"]["claw.L"] = {"a": "hand_f1_3.L", "b": "claw_tip.L", "r_a": 0.004, "r_b": 0.001}
+    spec["blobs"]["claw_nub.L"] = {"at": {"bone": "claw.L", "t": 0.5}, "size": [0.002] * 3}  # hangs on the claw
+    spec["joints"]["claw_tip.L"] = {"pos": [0.2, -0.05, 0.3], "r": 0.002}
+    out = server.put_model("gopher_kitjoints", spec)
+    assert out.startswith("saved"), out
+    s = expand_mirror(spec)
+    assert {"tooth", "claw.R", "claw_nub.R"} <= set(s["bones"]) | set(s["blobs"])
+    names = {p.name for p in compile_prims(spec)}
+    assert "tooth" in names and "claw.L" in names and "claw.R" in names, sorted(names)[:20]
+    # the tooth follows the face kit: moving the head moves it
+    moved = json.loads(json.dumps(spec))
+    moved["joints"]["head"]["pos"][2] += 0.01
+    z0 = next(p for p in compile_prims(spec) if p.name == "tooth").lo[2]
+    z1 = next(p for p in compile_prims(moved) if p.name == "tooth").lo[2]
+    assert abs(z1 - z0 - 0.01) < 0.004, (z0, z1)
+    # a real typo still fails, by name
+    spec["blobs"]["tooth"]["at"] = "face_nose_tipp"
+    assert "face_nose_tipp" in _raises(server.put_model, "gopher_kitjoints", spec)
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

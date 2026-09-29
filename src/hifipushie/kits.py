@@ -4,7 +4,8 @@ A kit is stored under spec["kits"][name] = {"type": "hand" | "face", ...}. It ex
 so a kit named "hand.L" generates ".L" elements (hand_f2_1.L, hand_palm.L, ...) and the right side
 follows automatically; a centre kit ("face") generates centre elements plus ".L" pairs (eyes, brows).
 Generated names start with the kit's base name ("hand", "face") and can be used anywhere a joint,
-bone or blob name can: measure along them, hang blobs on them, focus on them.
+bone or blob name can: measure along them, hang blobs and bones on them (a tooth "at": "face_nose_tip" with an
+offset, a claw bone from "hand_f2_3.L": they follow kit edits), focus on them.
 
 Every numeric parameter defaults to something proportioned to the anchor joint's radius, so
 {"type": "hand", "wrist": "wrist.L"} alone makes a plausible hand.

@@ -100,7 +100,44 @@ def without_seated(spec: dict) -> dict:
     base["bones"] = {k: b for k, b in base.get("bones", {}).items() if b["a"] not in on and b["b"] not in on}
     base["blobs"] = {k: b for k, b in base.get("blobs", {}).items()
                      if not (isinstance(b.get("at"), str) and b["at"] in on)}
-    return base
+    return without_dangling(base)
+
+
+def _names_in(at) -> tuple[list[str], list[str]]:
+    """(point names, bone names) an address refers to."""
+    if isinstance(at, str):
+        return [at], []
+    if isinstance(at, dict) and isinstance(at.get("bone"), str):
+        return [], [at["bone"]]
+    return [], []
+
+
+def _known(name: str, *have) -> bool:
+    """In one of `have`, or a ".R" name whose ".L" is (mirroring comes later)."""
+    alt = name[:-2] + ".L" if name.endswith(".R") else name
+    return any(name in h or alt in h for h in have)
+
+
+def without_dangling(spec: dict) -> dict:
+    """Drop bones and blobs hung on names that don't exist yet, and whatever hangs on those: elements hung on
+    kit-generated joints and features (a tooth at face_mouth_upper_0, a claw on hand_f2_3.L) while the kits
+    are seated on the body without them. After kit expansion they resolve like any element."""
+    joints = set(spec.get("joints") or {})
+    bones, blobs = dict(spec.get("bones") or {}), dict(spec.get("blobs") or {})
+    while True:
+        def ok(at):
+            pts, bs = _names_in(at)
+            return all(_known(p, joints, blobs) for p in pts) and all(_known(b, bones) for b in bs)
+        nb = {k: b for k, b in bones.items() if "between" in b or (ok(b.get("a")) and ok(b.get("b")))}
+        nl = {k: b for k, b in blobs.items() if ok(b.get("at"))}
+        if len(nb) == len(bones) and len(nl) == len(blobs):
+            break
+        bones, blobs = nb, nl
+    if len(bones) == len(spec.get("bones") or {}) and len(blobs) == len(spec.get("blobs") or {}):
+        return spec
+    out = dict(spec)
+    out["bones"], out["blobs"] = bones, blobs
+    return out
 
 
 def seat_joints(spec: dict) -> dict:
