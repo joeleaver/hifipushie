@@ -193,6 +193,24 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `eyes` (scale about the eye centres)/`scale` (1.12 = 1/7 of 1.8 m). Face landmarks become `lm_*` joints (jaw, chin,
   brows, lids, lips, nose) to address strokes and paint. Builds are keyed on `base.VERSION` (bump it with any field
   change: the build cache didn't see base code changes). Worked example: `examples/disc_golfer_base_src.py`.
+  Body sources: `body: {"source": "makehuman", "age", "weight", "muscle", "height"}` (`makehuman.py`: CC0 base mesh +
+  macro targets from `workspace/_templates/makehuman/`, our own loader; joints from its default skeleton) or the
+  template. The graft (2026-09-28): the body's head cut at the highest template neck loop wholly `LOW_LOOP` under the
+  overlap (a bigger head's plane sat on the loop: ridge + flecks), a tube from it following the body's slope then the
+  head's own neck slice by slice, both as ONE point set with C2 weights across +-SEAM (k = 4K there). Style layer
+  `base.style = {"eyes", "head", "simplify"}` multiplies the head's settings (reusable across characters); simplify is
+  Taubin on the head mesh, masked off the lid rims, lips, nostrils and the graft's neck (it moved the neck's open
+  edge). Eyes: the eyeball (0.96 x GNM's eye radius) moves back until the lid landmarks clear it by EYE_SEAT (it
+  bulged); both look at `base.look_at` (default 2 m ahead), joint `eye_front.L` carries iris/pupil paint (its r = the
+  opening's height; iris ~1.1 x that). `parts.<p>.voxel` makes a scene part finer (a crisp iris). Lid rims need look
+  resolution >= 384 in face close-ups (3 mm lids alias at 1.4 mm voxels).
+  Garments (`parts.<p>.garment` on a shell part, `base.garment`): the body's quads pushed out by offset, closed by
+  outward-only smoothing, hung, eased (`ease`, `ease_at`), plus tubes: `tube` (a shirt's torso) and `legs` (trouser
+  legs along hip -> knee): per 1 cm slice the convex hull round its own centre (the femur axis runs near the thigh's
+  side: rays from outside a hull miss), hanging from wider slices above, drape folds where loose; handed over to the
+  body cloth by weight across TUBE_BAND (`_tube_weight`; a smooth union of the two swelled ~k/6: a ridge). The region
+  blobs cut hems as with any shell; collars/plackets/cuffs are ordinary blobs/bones (layer 1), folds crease strokes.
+  Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo, shorts).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -414,7 +432,8 @@ the .blend come back as spec edits).
   keep their meaning), tiles (triplanar, stagger, per-tile id), cells (Voronoi F1/F2/colour), facing, axis,
   ramps (smoothstep), breakup, levels, invert, blends, per-channel mixing (linear colour), Principled out.
   Measured per vertex by our code: ao, sky, curvature, `near` distances, paths, weave, blurred entries, ".L"
-  layers; packed three to a FLOAT_VECTOR attribute per part (`hp0`, `hp1`...): a GPU shader reads ~16 vertex
+  layers (a measured attribute is named by a hash of its definition: named by the layer alone, an edited ".L" mask
+  kept its stale measurement); packed three to a FLOAT_VECTOR attribute per part (`hp0`, `hp1`...): a GPU shader reads ~16 vertex
   attributes and more fails to compile (magenta). Inputs are measured at each object's own voxel, where its
   bake instance stands (`wpos`/`wnrm` attributes), cached in two keys: field inputs (geometry only) and
   measured masks (geometry + their definitions).
