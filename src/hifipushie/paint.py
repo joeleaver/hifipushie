@@ -61,6 +61,10 @@ Masks (generators, each 0..1 per point):
            layers stacked with rising ones ([0.25, 0.26], [0.5, 0.51], [0.75, 0.76], each over the last) give a
            quarter of the books on a shelf each colour; a wide range with low opacity jitters every board's tone. A prefab's instances
            share one bake, so they share their values; make copies differ with an array inside the prefab.
+  outline: {"points": [joint | {"at": joint, "offset"} | [x,y,z], ...], "dir": [0, 1, 0], "soft": m (0.001),
+           "depth": m (0.03)}: 1 inside the closed outline as seen looking along dir (the view direction: [0, 1, 0]
+           is a front view of a model facing -Y, [-1, 0, 0] its left side), like a shape drawn on a photo of the
+           model: lips from the mouth landmarks, a beard's border. Follows the points when the model changes.
   painted: "<id>" | "new": a mask a person painted by hand in the Blender scene. `sync` gives the objects of
            the layer's parts a colour attribute "hp_paint:<layer>" showing it; they paint it in Vertex Paint
            (white = 1) and `pull` stores it as a point cloud (workspace/_painted/<id>.npz: it survives
@@ -161,7 +165,7 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
-              "random", "rings", "painted", "mask")
+              "random", "rings", "painted", "outline", "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -718,6 +722,8 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         return _ramp(element_random(view.get("grain_seed"), int(r.get("seed", 0))), float(lo), float(hi))
     if gen == "painted":
         return painted_values(e["painted"], v, n)
+    if gen == "outline":
+        return _outline_mask(spec, name, e["outline"], v, n)
     if gen == "mask":
         sub = e["mask"]
         return _stack(spec, tag, sub, list(range(len(sub))), view)
@@ -867,6 +873,55 @@ def _tag_names(spec: dict) -> set:
         s = expand_mirror(spec)
         _TAGS[key] = {t for k in ("bones", "blobs") for el in s.get(k, {}).values() for t in el.get("tags") or []}
     return _TAGS[key]
+
+
+def _outline_mask(spec: dict, name: str, o: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """1 inside a closed outline of named points (joints/landmarks, or {"at", "offset"}), as seen along "dir" (a
+    region drawn on the model as if on a photo of it: lips, a beard's border), fading over "soft" (m) across its
+    edge; only skin facing the viewer (normal . -dir > 0) and within "depth" (m, 0.03) of the outline's own points
+    along dir (not the back of the head behind it)."""
+    from .spec import expand_mirror, resolve_point
+    s = expand_mirror(spec)
+    d = np.asarray(o.get("dir", [0, 1, 0]), float)
+    d /= np.linalg.norm(d)
+    P = []
+    for p in o["points"]:
+        if isinstance(p, dict):
+            q = resolve_point(s, p["at"]) + np.asarray(p.get("offset", [0, 0, 0]), float)
+        elif isinstance(p, str):
+            q = resolve_point(s, p)
+        else:
+            q = np.asarray(p, float)
+        P.append(q)
+    P = np.array(P)
+    if len(P) < 3:
+        raise SpecError(f"paint {name!r}: an outline needs 3+ points")
+    up = np.array([0, 0, 1.0]) if abs(d[2]) < 0.9 else np.array([0, 1.0, 0])
+    a = np.cross(up, d)
+    a /= np.linalg.norm(a)
+    b = np.cross(d, a)
+    Q = np.c_[P @ a, P @ b]
+    X = np.c_[v @ a, v @ b]
+    inside = np.zeros(len(v), bool)
+    dist = np.full(len(v), np.inf)
+    for i in range(len(Q)):
+        p0, p1 = Q[i], Q[(i + 1) % len(Q)]
+        cross = ((p0[1] > X[:, 1]) != (p1[1] > X[:, 1]))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            xint = p0[0] + (X[:, 1] - p0[1]) * (p1[0] - p0[0]) / (p1[1] - p0[1])
+        inside ^= cross & (X[:, 0] < xint)
+        e = p1 - p0
+        t = np.clip(((X - p0) @ e) / max(float(e @ e), 1e-12), 0, 1)
+        dist = np.minimum(dist, np.linalg.norm(X - (p0 + t[:, None] * e), axis=1))
+    soft = max(float(o.get("soft", 0.001)), 1e-5)
+    sd = np.where(inside, dist, -dist)  # + inside
+    val = np.clip(0.5 + sd / (2 * soft), 0, 1)
+    val = val * val * (3 - 2 * val)
+    dep = v @ d
+    lo, hi = float((P @ d).min()), float((P @ d).max())
+    band = float(o.get("depth", 0.03))
+    val *= ((dep > lo - band) & (dep < hi + band)).astype(float)
+    return val * _ramp(-(n @ d), 0.0, 0.3)
 
 
 def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:

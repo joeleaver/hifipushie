@@ -315,7 +315,7 @@ def posed_measures(head: dict) -> dict:
     return {k: round(float(abs(v) / io), 3) for k, v in zip(FIT_KEYS, vals)}
 
 
-IRIS_SPOT = 0.84  # an iris paint spot's diameter on the eyeball, front view, over its "width" (calibrated in renders)
+IRIS_SPOT = 1.83  # an iris paint spot's diameter on the eyeball seen from the front, over its "width" (measured in renders)
 
 
 def eye_opening(head: dict, cell: float = 0.0005) -> list:
@@ -364,7 +364,12 @@ def _unit(v):
 LANDMARKS = {"lm_chin": 8, "lm_nose_tip": 30, "lm_nose_base": 33, "lm_nose_bridge": 27, "lm_lip_upper": 51,
              "lm_lip_lower": 57, "lm_mouth_corner.L": 54, "lm_nostril.L": 35, "lm_eye_inner.L": 42,
              "lm_eye_outer.L": 45, "lm_brow_inner.L": 22, "lm_brow_mid.L": 24, "lm_brow_outer.L": 26,
-             **{f"lm_jaw_{k}.L": 16 - k for k in range(8)}}
+             **{f"lm_jaw_{k}.L": 16 - k for k in range(8)},
+             # the lips' outline (outer vermilion edge, the subject's left half) and the inner lip line, for paint
+             # outlines: upper peak, upper side, lower side, lower mid-side; inner upper/lower
+             "lm_lip_peak.L": 52, "lm_lip_upper_side.L": 53, "lm_lip_lower_side.L": 55, "lm_lip_lower_mid.L": 56,
+             "lm_lip_inner_upper.L": 63, "lm_lip_inner_lower.L": 65, "lm_lip_inner_upper": 62,
+             "lm_lip_inner_lower": 66}
 
 
 def _landmark_joints(head: dict) -> dict:

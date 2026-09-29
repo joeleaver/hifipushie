@@ -149,8 +149,8 @@ def check(name: str) -> list[dict]:
 # skin sample points on a GNM head, from its landmark joints (world offsets, m): (name, joint, offset, lit?)
 SKIN_SAMPLES = [("forehead", "lm_nose_bridge", [0.0, 0.004, 0.04], "lit"),
                 ("cheek_lit", "lm_nostril.R", [-0.03, 0.012, 0.006], "lit"),
-                ("cheek_shadow", "lm_jaw_2.L", [-0.004, -0.018, 0.0], "shadow"),
-                ("jaw_shadow", "lm_jaw_4.L", [-0.004, -0.004, 0.0], "shadow"),
+                ("temple_shadow", "lm_eye_outer.L", [0.012, 0.012, -0.012], "shadow"),
+                ("nose_side_shadow", "lm_nostril.L", [0.002, 0.004, 0.01], "shadow"),
                 ("nose_tip", "lm_nose_tip", [0.0, 0.0, 0.0], None)]
 
 
@@ -168,7 +168,7 @@ def _project(cam: dict, p: np.ndarray, size: int) -> tuple[float, float]:
 def colour_check(name: str, size: int = 512, save: str | None = None) -> list[dict]:
     """Skin colour against the sheet's rules, rendered in the style's look (the scene must be synced): a front
     camera on the face, HSV sampled in 7x7 px patches at SKIN_SAMPLES (lit: forehead, the key side's cheek;
-    shadow: the far side of the jaw). Returns rules as check() does, plus the samples."""
+    shadow: the far side of the face, above the stubble). Returns rules as check() does, plus the samples."""
     import colorsys
     from . import scene, store
     from . import spec as S
