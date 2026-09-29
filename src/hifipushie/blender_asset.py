@@ -937,7 +937,6 @@ def graft_topology(job):
         if e.select:
             for v in e.verts:
                 v.select = True
-    print(f"@@graft joined {len(bm.verts)} verts, {sum(e.select for e in bm.edges)} rim edges selected", flush=True)
     bm.to_mesh(ob.data)
     bm.free()
     bpy.ops.object.mode_set(mode="EDIT")

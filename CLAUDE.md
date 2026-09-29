@@ -164,6 +164,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   4 slots made cracks), smoothed over the mesh, top 4, then `_settle` (smoothing with each vertex's 4 fixed, so a
   dropped bone fades instead of stepping: hairline cracks). Judge with the `rig` tool (test pose, front/side);
   export_asset(rig=True) writes the joints (identity rotations at their heads, rest pose as modelled) and skin.
+  `skin_parts` (export and the rig tool): `parts.<p>.rig_bone` binds a part rigidly (a bag to Hips, a disc to
+  RightHand: split between bones they tore); with a base, rig flesh is a cone per rig segment sized from the base
+  body and every part blends the weights of the base quads' 4 nearest vertices (the export's skin under clothes is
+  dropped, so clothes can't copy from it). A base's fingers (fingerN_k / thumb_k) fill the Mixamo hand.
+  Export scene parts finer than the model voxel (`scene.part_voxel`) get their own grid (a 6 mm collar shredded at 7.8).
   `spec.geometry` strips `rig`.
 - `retopo.py`: character topology by template wrap (from `spikes/topology/wrap.py`): the CC0 template
   (`templates/male_stylized*`) carried onto a humanoid by its skeleton (`_skeleton_warp`), face landmarks by RBF, then

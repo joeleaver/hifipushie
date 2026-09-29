@@ -1162,19 +1162,6 @@
    "layer": 1,
    "blend": 0.024,
    "part": "hair"
-  },
-  "mouth_back": {
-   "at": [
-    0,
-    -0.1593,
-    1.585
-   ],
-   "size": [
-    0.0246,
-    0.008,
-    0.003
-   ],
-   "blend": 0.003
   }
  },
  "parts": {
@@ -1273,7 +1260,8 @@
   },
   "bag": {
    "color": "#3b4a3c",
-   "roughness": 0.85
+   "roughness": 0.85,
+   "rig_bone": "Hips"
   },
   "strap": {
    "color": "#2d2f33",
@@ -1284,14 +1272,17 @@
   },
   "disc": {
    "color": "#f07a1c",
-   "roughness": 0.45
+   "roughness": 0.45,
+   "rig_bone": "RightHand"
   },
   "discs": {
    "color": "#d8e04a",
-   "roughness": 0.45
+   "roughness": 0.45,
+   "rig_bone": "Hips"
   },
   "body": {
-   "voxel": 0.0013
+   "voxel": 0.0013,
+   "topology": "wrap"
   }
  },
  "story": {

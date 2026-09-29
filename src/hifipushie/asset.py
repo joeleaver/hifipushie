@@ -47,9 +47,6 @@ def _blender(job: dict, timeout: float = 600):
                             "--python", str(SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
-        for line in r.stdout.splitlines():
-            if line.startswith("@@graft"):
-                print(line, flush=True)
 
 
 def margin_px(texture: int) -> int:
@@ -309,7 +306,11 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
     frames = {}
     for key, ps in xs.items():
         if key == origin[key]:
-            frames[key] = (lo, voxel, shape)
+            from . import scene as scenemod
+            pv, _ = scenemod.part_voxel(ps, voxel)
+            # a part finer than the model's voxel (a shirt collar's 6 mm sheet, a strap) on its own grid, as the
+            # scene meshes it: at the model's 7.8 mm the collar came out as shreds
+            frames[key] = (lo, voxel, shape) if pv >= voxel else scenemod._frame(ps, pv)
             continue
         # a prefab is meshed in a box of its own, finer if it's small (`resolution` voxels across it)
         pf = key.split("/")[0]
