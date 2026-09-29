@@ -753,9 +753,9 @@ def _gap_roots(sc: Scalp, g: dict, line, locks: dict, td: dict, rng):
         return np.array([]), np.array([])
     ext = lock_extents(sc, resolve({"hair": {"locks": locks}}, sc))
     A, E = np.meshgrid(np.arange(0.0, 360.0, 1.0), np.arange(-60.0, 89.0, 1.0), indexing="ij")
-    cov = coverage(sc, A, E, ext, reach=0.002)
+    cov = coverage(sc, A, E, ext, reach=0.001)
     d = inside(sc, line, A, E)
-    bare = (cov < 0.5) & (d > 0.004)
+    bare = (cov < 0.75) & (d > 0.004)
     if not bare.any():
         return np.array([]), np.array([])
     a0, e0 = A[bare], E[bare]
@@ -924,7 +924,7 @@ def validate(spec: dict) -> None:
     h = hair_of(spec)
     if not h:
         return
-    bad = set(h) - {"groom", "locks", "look", "cap", "stage", "part"}
+    bad = set(h) - {"groom", "locks", "look", "cap", "stage", "part", "filler"}
     if bad:
         raise HairError(f"hair: unknown keys {sorted(bad)} (have groom, locks, look, cap, stage, part)")
     groom_params(spec)
