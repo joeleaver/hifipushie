@@ -1627,6 +1627,11 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
         lk = locks.get(n)
         if lk is None:
             continue
+        if st.get("hash") and st["hash"] != lock_hash(lk, sc):
+            # the scene's lock was built from another version of the spec (regrown or synced from another model
+            # since): an edit to it isn't an edit to this lock. The next sync replaces it.
+            log.append(f"hair lock {n}: the scene's copy is stale (spec regrown since the sync), not pulled")
+            continue
         P = np.asarray(st["pts"], float)
         a, e, hh = sc.coords(P)
         new = dict(lk)

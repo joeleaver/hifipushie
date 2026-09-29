@@ -119,6 +119,22 @@ holds `spec["hair"]` = groom (words and numbers), locks (addresses on the head: 
 scalp] per control point, so they follow head edits), look (the material) and stage. Python: `hair.groom`,
 `hair.look`, `hair.layout`, `hair.sync`, `scene.pull` (edits made to the curves in Blender come back).
 
+With a reference image, first match it (the user's rule: every hair look is judged against the reference from
+the reference's own camera):
+- `hair.fit_camera(name, points, image_size, crop)`: pose + focal length solved from face landmarks (`lm_*` joints ->
+  their pixels in the reference; 8-10 points, expect a few px of error). Saved as `<model>/ref_camera.json`; from
+  then on every `hair.look` adds a matched row: render, clay, the reference, a 50% blend, the trace over the render.
+- Trace the reference on the image itself (`<model>/ref_trace.json`, reference pixels): the part (from its front
+  end back), the hairline, the visible hair outline (closed, above `clip_y`), each big clump's flow root -> tip and its
+  width. Read the pixels off zoomed crops with a grid; `hair.trace_image` draws it back for checking.
+- `hair.from_trace(name)` carries it onto the head through the camera: rays onto the volume/scalp give the parting
+  `line`, the hairline's `front_points` and drawn clumps as `azel` paths (a hidden root is carried back along the
+  clump's own heading to the part), plus rows behind the traced ones and the part side's rows. Then groom.
+- `look.fit` measures it in the matched view: part start (px) and direction (deg), hairline mean/max px, silhouette
+  IoU and outline distance (from the matched ID render), each traced clump's direction error. A stylised reference
+  won't reach IoU 1 (its cranium isn't ours); direction and part errors should be a few px/deg.
+- Measure every view in the gates, the back too: an unmeasured back sat 20% bare volume.
+
 Stages, each looked at and approved before the next. A look takes seconds, so look after every change:
 1. **Silhouette** (`stage: "mass"`): the groom's volume as one shell. Height over the brows, width at the temples,
    the fringe line, the hairline (a crisp designed line, `hairline.front` in brow-to-nose units). Gate: the outline

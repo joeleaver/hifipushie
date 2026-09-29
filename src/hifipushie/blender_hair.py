@@ -467,7 +467,7 @@ def read(coll_name: str = "hair") -> dict:
             continue
         now = read_one(ob)
         if json.dumps(now, sort_keys=True) != ob.get("hp_set"):
-            out[ob["hp_lock"]] = now
+            out[ob["hp_lock"]] = dict(now, hash=ob.get("hp_hash"))  # which spec lock the sync built it from
     return out
 
 
