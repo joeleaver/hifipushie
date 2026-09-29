@@ -1147,6 +1147,12 @@ def hair_look(job):
             if ob.name.startswith("hp_sun") or ob.name.startswith("hp_cam"):
                 bpy.data.objects.remove(ob)
         render({**job, "views": job["clay_views"], "opened": True})
+    if job.get("id_views"):  # which object each hair pixel is: the underlayer red, locks green, the rest black
+        blender_hair.id_pass()
+        for ob in list(bpy.data.objects):
+            if ob.name.startswith("hp_sun") or ob.name.startswith("hp_cam"):
+                bpy.data.objects.remove(ob)
+        render({**job, "views": job["id_views"], "opened": True, "flat": False, "samples": 1})
 
 
 def hair_sync(job):

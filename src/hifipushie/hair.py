@@ -53,7 +53,8 @@ def under(g: dict, H, az, el, d_in):
     side = side_tuck(az, el, W)
     # the fill (sides, back) is relief on the mass, not its volume: sunk a whole fill thickness, the gaps between
     # fill locks showed the sunk mass and the sides pinched in under the top again
-    depth = 0.85 * top * tb * (1 - side) * _ss(d_in / 0.012) + FILL_SINK * (1 - top) * tf  # the front edge not sunk:
+    tw = top * (1 - side)  # the top proper: sunk by the big locks; the sides (and the top where it lies down) by theirs
+    depth = tw * tb * _ss(d_in / 0.006) + FILL_SINK * (1 - tw) * tf  # the front edge not sunk:
     # between the front row's roots the sunk mass read as black pits along the hairline
     return np.maximum(H - depth, np.minimum(H, 0.0015))
 
@@ -68,6 +69,7 @@ def side_tuck(az, el, W=None):
     return _ss((np.abs(dirs(az, el)[..., 0]) - SIDE_TUCK[0]) / (SIDE_TUCK[1] - SIDE_TUCK[0]))
 
 
+TIP_STEP = 0.35  # how far a top lock's tip lifts off the lock under it, x its thickness
 SIDE_NARROW = 0.35  # and how much narrower it gets there
 FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks under it
 REGIONS = ("front", "top", "sides", "back", "nape")
@@ -80,9 +82,10 @@ GROOM = {
              "sides": {"back": 1, "down": 0.45}, "back": {"down": 1}, "nape": {"down": 1}},
     "tiers": {"crown": {"width": 0.042, "thickness": 0.009, "spacing": 0.7, "where": ["top"]},
               "big": {"width": 0.05, "thickness": 0.011, "spacing": 0.6, "where": ["front", "top"],
-                      "layout": "part", "front_away": 6, "front_part": 0, "part_row": 3, "front_span": 42},
+                      "layout": "part", "front_away": 7, "front_part": 3, "root": 1.0, "part_row": 3, "front_span": 42},
               "fill": {"width": 0.026, "thickness": 0.007, "spacing": 0.8,
                        "where": ["sides", "back", "nape", "top"]},
+              "gap": {"width": 0.026, "thickness": 0.004, "spacing": 0.8, "length": 0.05},
               "edge": {"width": 0.011, "thickness": 0.0028, "spacing": 0.9, "length": 0.022}},
     "grey": {"temples": 0.35, "sideburns": 0.5},
     "noise": 0.3,
@@ -495,14 +498,16 @@ def grow(sc: Scalp, g: dict) -> dict:
     xp = _part_x(g)
     locks = {}
     tiers = g["tiers"]
-    names = {"big": "b", "crown": "c", "fill": "f", "edge": "e"}
+    names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g"}
     if tiers.get("strip"):
         locks.update(_strips(sc, g, line, tiers["strip"], rng))
-    for tier in ("big", "crown", "fill", "edge"):
+    for tier in ("big", "crown", "fill", "edge", "gap", "gap"):  # gaps twice: a second look at what's still bare
         td = tiers.get(tier)
         if not td:
             continue
-        kind = "big" if tier == "crown" else tier  # the crown's locks are big locks laid by spacing, not by the part
+        kind = {"crown": "big", "gap": "fill"}.get(tier, tier)  # crown: big locks laid by spacing; gap: fill locks
+        if tier == "gap":
+            names["gap"] = "g" if not any(n.startswith("g") for n in locks) else "h"
         w0, t0 = float(td["width"]), float(td["thickness"])
         sp0 = w0 * float(td.get("spacing", 0.8))
         where = [REGIONS.index(r) for r in td.get("where", REGIONS)]
@@ -518,6 +523,8 @@ def grow(sc: Scalp, g: dict) -> dict:
             fa = np.abs(((az + 180) % 360) - 180)
             keep = (fa > 40) & (fa < 115)  # temples and sideburns: not the crisp front line, not the nape
             az, el = az[keep], el[keep]
+        elif tier == "gap":  # the artist's pass over what's still bare: roots where no lock covers the volume
+            az, el = _gap_roots(sc, g, line, locks, td, rng)
         elif tier == "big" and td.get("layout", "part") == "part" and xp is not None:
             az, el, away_given = _part_roots(sc, g, line, td, xp, rng)
         else:
@@ -564,7 +571,10 @@ def grow(sc: Scalp, g: dict) -> dict:
         # roots over lower ones on the sides and back), consistently, or overlaps cross in a jumble
         rank = 1 - _ss(d_in / 0.08) if kind == "big" else _ss((el + 40) / 120)
         lift = T_ * (0.25 * rank + 0.08 * rng.uniform(-1, 1, len(az))) if tier == "big" else np.zeros(len(az))  # crown, fill: flush
-        paths, sides = _walk(sc, g, line, az, el, L, T_, lift, away, rng, kind)
+        flat = (away_given == np.sign(_part_x(g) or 1.0)).astype(float) if away_given is not None else None
+        if flat is not None:  # the part side's locks lie flat: no lift, no tip step
+            lift = lift * (1 - flat)
+        paths, sides = _walk(sc, g, line, az, el, L, T_, lift, away, rng, kind, flat=flat)
         for i in range(len(az)):
             path, sfi = paths[i], sides[i]
             if tier != "edge":  # a lock ends inside the hairline (tips standing out over the skin read as a fringe)
@@ -601,7 +611,7 @@ def grow(sc: Scalp, g: dict) -> dict:
                 "pts": [[round(float(a_[j]), 2), round(float(e_[j]), 2), round(float(h_[j]), 4)] for j in range(k)],
                 "width": round(float(W_[i]), 4), "thickness": round(float(T_[i]), 4),
                 "cup": round(float(td["cup"]) * float(size[i]) if "cup" in td else lie_cup(sc, float(W_[i]), path), 4),
-                "taper": 1.0, "belly": round(float(td.get("belly", 0.16) + 0.06 * rng.uniform(-1, 1)), 3),
+                "taper": float(td.get("taper", 1.0)), "belly": round(float(td.get("belly", 0.16) + 0.06 * rng.uniform(-1, 1)), 3),
                 "root": float(td.get("root", 0.8)),
                 "twist": round(float(rng.uniform(-15, 15) * noise), 1) if tier in ("fill", "edge") else 0.0,
                 **({"grey": round(grey, 3)} if grey > 0.01 else {})}
@@ -690,33 +700,85 @@ def _strips(sc: Scalp, g: dict, line, td: dict, rng) -> dict:
         spine = np.array(spine)
         sa, se = az_el(spine)
         H, dd = envelope(sc, g, line, sa, se)
-        u = np.linspace(0, 1, len(spine))
-        # flush: the back at the volume; the root dives under the top locks, the tip tucks at the hairline
-        h = H - 0.55 * t0 - 0.8 * t0 * (1 - _ss(u / 0.15)) - 0.6 * t0 * _ss((u - 0.85) / 0.15)
-        h = np.maximum(h, 0.2 * t0)
-        path = sc.point(sa, se, h)
-        # smooth the spine a little (binning jitter) and pick control points
-        c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
-        L = c[-1]
-        kpts = 5 if L > 0.08 else 4
-        tt = np.linspace(0, L, kpts)
-        ctrl = np.stack([np.interp(tt, c, path[:, q]) for q in range(3)], 1)
-        a_, e_, h_ = sc.coords(ctrl)
-        Pc = sc.point(a_, e_, 0.0)
-        rad = np.clip(np.linalg.norm(Pc - N, axis=1) / d_start, 0.45, 1.2)
-        tilt = lie_tilt(sc, g, line, _catmull(ctrl, 4 * kpts)[::4])
+        U_all = np.linspace(0, 1, len(spine))
+        # shingles: the stream's length in `segments` overlapping pieces, each one's root dived under the tip of the
+        # piece before it, each tip lifted a `step` (x thickness) off the piece it lies on, so the rows read as layered
+        # clumps with a shadow line at every step, not one skin with grooves drawn on it
+        nseg = max(1, int(td.get("segments", 3)))
+        ov = float(td.get("overlap_along", 0.3))
+        step = float(td.get("step", 0.8))
+        lo_u = np.linspace(0, 1, nseg + 1)[:-1]
+        hi_u = np.minimum(np.linspace(0, 1, nseg + 1)[1:] + ov / nseg, 1.0)
         size = 1 + noise * 0.15 * rng.uniform(-1, 1)
-        grey = _grey(g, float(a_[0]), float(e_[0]), line)
-        out[f"s{k:02d}"] = {
-            "tier": "strip",
-            "pts": [[round(float(a_[j]), 2), round(float(e_[j]), 2), round(float(h_[j]), 4)] for j in range(kpts)],
-            "radius": [round(float(v), 3) for v in rad],
-            "tilt": [round(float(v), 3) for v in tilt],
-            "width": round(w0 * size, 4), "thickness": round(t0, 4),
-            "cup": round(float(td["cup"]) if "cup" in td else lie_cup(sc, w0 * size, path), 4),
-            "taper": float(td.get("taper", 0.5)), "belly": float(td.get("belly", 0.25)), "root": 0.9,
-            "twist": 0.0, **({"grey": round(grey, 3)} if grey > 0.01 else {})}
+        for sgi in range(nseg):
+            sel = (U_all >= lo_u[sgi] - 1e-9) & (U_all <= hi_u[sgi] + 1e-9)
+            if sel.sum() < 4:
+                continue
+            u = (U_all[sel] - U_all[sel][0]) / max(U_all[sel][-1] - U_all[sel][0], 1e-9)
+            Hs = H[sel]
+            base = Hs - FILL_SINK * t0 + 0.5 * t0  # back at the volume over the sunk underlayer
+            last = sgi == nseg - 1
+            h = (base - 0.9 * t0 * (1 - _ss(u / 0.2))  # the root dives under the tip before it
+                 + (0.0 if last else step * t0) * _ss((u - 0.55) / 0.45)  # the tip lifts off the next row
+                 - (0.8 * t0 * _ss((u - 0.8) / 0.2) if last else 0.0))  # the last tucks in at the hairline
+            h = np.maximum(h, 0.2 * t0 * _ss(u / 0.2) - 0.6 * t0 * (1 - _ss(u / 0.2)))
+            path = sc.point(sa[sel], se[sel], h)
+            c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
+            L = c[-1]
+            kpts = 5 if L > 0.06 else 4
+            tt = np.linspace(0, L, kpts)
+            ctrl = np.stack([np.interp(tt, c, path[:, q]) for q in range(3)], 1)
+            a_, e_, h_ = sc.coords(ctrl)
+            Pc = sc.point(a_, e_, 0.0)
+            rad = np.clip(np.linalg.norm(Pc - N, axis=1) / d_start, 0.45, 1.2)
+            tilt = lie_tilt(sc, g, line, _catmull(ctrl, 4 * kpts)[::4])
+            grey = _grey(g, float(a_[0]), float(e_[0]), line)
+            out[f"s{k:02d}{'abcdefgh'[sgi]}"] = {
+                "tier": "strip",
+                "pts": [[round(float(a_[q]), 2), round(float(e_[q]), 2), round(float(h_[q]), 4)] for q in range(kpts)],
+                "radius": [round(float(v), 3) for v in rad],
+                "tilt": [round(float(v), 3) for v in tilt],
+                "width": round(w0 * size, 4), "thickness": round(t0, 4),
+                "cup": round(float(td["cup"]) if "cup" in td else lie_cup(sc, w0 * size, path), 4),
+                "taper": float(td.get("taper", 0.6)), "belly": float(td.get("belly", 0.3)), "root": 0.85,
+                "twist": 0.0, **({"grey": round(grey, 3)} if grey > 0.01 else {})}
     return out
+
+
+def _gap_roots(sc: Scalp, g: dict, line, locks: dict, td: dict, rng):
+    """Roots for gap locks: cells of the hair (inside the hairline) that the locks so far leave uncovered (their
+    outer faces splatted on a 1 degree grid, grown a little), spaced like the tier, each a lock length upstream of the
+    hole so the lock lies over it."""
+    if not locks:
+        return np.array([]), np.array([])
+    ext = lock_extents(sc, resolve({"hair": {"locks": locks}}, sc))
+    A, E = np.meshgrid(np.arange(0.0, 360.0, 1.0), np.arange(-60.0, 89.0, 1.0), indexing="ij")
+    cov = coverage(sc, A, E, ext, reach=0.002)
+    d = inside(sc, line, A, E)
+    bare = (cov < 0.5) & (d > 0.004)
+    if not bare.any():
+        return np.array([]), np.array([])
+    a0, e0 = A[bare], E[bare]
+    sp = float(td.get("width", 0.025)) * float(td.get("spacing", 0.7))
+    P = sc.point(a0, e0, 0.0)
+    order = rng.permutation(len(a0))
+    chosen, pts = [], np.zeros((0, 3))
+    for i in order:
+        if len(pts) and np.min(np.linalg.norm(pts - P[i], axis=1)) < sp:
+            continue
+        chosen.append(i)
+        pts = np.vstack([pts, P[i]])
+    a0, e0 = a0[chosen], e0[chosen]
+    # step upstream (against the flow) by a third of the lock so its body covers the hole
+    W = weights(a0, e0, inside(sc, line, a0, e0))
+    P0 = sc.point(a0, e0, 0.0)
+    xp = _part_x(g)
+    away = np.sign(P0[:, 0] + 1e-9) if xp is None else np.where(P0[:, 0] >= xp, 1.0, -1.0)
+    f = _unit(flow(sc, g, P0, W, away))
+    back = P0 - f * float(td.get("length", 0.05)) * 0.35
+    a1, e1 = az_el(back - sc.C)
+    ok = inside(sc, line, a1, e1) > 0.004
+    return np.where(ok, a1, a0), np.where(ok, e1, e0)
 
 
 def _part_roots(sc: Scalp, g: dict, line, td: dict, xp: float, rng):
@@ -796,7 +858,7 @@ def _grey(g, az, el, line):
     return max(temple * (0.4 + 0.6 * low), burn)
 
 
-def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
+def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24, flat=None):
     """Lock spines (m, n, 3): from the root on the scalp along the flow, held under the envelope (the top layer's
     spine half a thickness under it), rising out of the scalp over the first fifth, the tip tucking down."""
     m = len(az)
@@ -806,7 +868,12 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
     P[:, 0] = sc.point(a, e, -0.3 * T)
     ds = L / (n - 1)
     W = weights(a, e, inside(sc, line, a, e))
-    d = _unit(flow(sc, g, P[:, 0], W, away))
+    flat = np.zeros(m) if flat is None else np.asarray(flat, float)
+
+    def flow_flat(q, W):  # locks marked flat comb back and down only (the part side: brushed toward the ear)
+        f = flow(sc, g, q, W, away)
+        return f - flat[:, None] * np.maximum(f[:, 2:3], 0) * np.array([0.0, 0.0, 1.0])
+    d = _unit(flow_flat(P[:, 0], W))
     turn = np.radians(rng.uniform(-1, 1, m) * 6 * float(g.get("noise", 0.3)))
     nrm = _unit(P[:, 0] - sc.C)
     c, s_ = np.cos(turn)[:, None], np.sin(turn)[:, None]
@@ -827,9 +894,11 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
         # standing as proud there as on the crown it overhung the sides and pinched the outline at the temples
         sf = side_tuck(a, e) if tier == "big" else np.zeros(m)
         SF[:, k] = sf
-        h = h - sf * (0.85 * T + np.maximum(lift, 0))  # its back flush with the side mass
-        h = h - (0.7 if tier == "big" else 1.3) * T * _ss((x - 0.72) / 0.28)  # the tip tucks under (the fill's
-        # right into the mass: a row of visible points read as feathers)
+        h = h - sf * np.maximum(lift, 0)  # no lift where it lies down the side (the mass is sunk there too now)
+        if tier == "big":  # the tip lifts a step off the lock it lies on (shingles: the next one's root is under it)
+            h = h + TIP_STEP * T * _ss((x - 0.55) / 0.45) * (1 - 0.5 * sf) * (1 - flat)
+        else:  # the fill's tips tuck (a row of visible points read as feathers)
+            h = h - 1.3 * T * _ss((x - 0.72) / 0.28)
         if tier == "fill":  # relief within the volume: its back never stands out of the groom's silhouette
             h = np.minimum(h, H - 0.8 * T)
         h = np.maximum(h, 0.15 * T * _ss(x / 0.25) - 0.6 * T * (1 - _ss(x / 0.25)))  # the root grows out of the scalp
@@ -838,7 +907,7 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
         P[:, k] = q
         seg = _unit(P[:, k] - P[:, k - 1])
         W = weights(a, e, d_in)
-        f = _unit(flow(sc, g, q, W, away))
+        f = _unit(flow_flat(q, W))
         f = _unit(f * c + np.cross(_unit(q - sc.C), f) * s_)
         d = _unit(0.55 * seg + 0.45 * f)
     SF[:, 0] = SF[:, 1]
@@ -880,7 +949,8 @@ def groom(name: str, replace: bool = False, note: str = "") -> dict:
     g = groom_params(spec)
     new = grow(sc, g)
     old = h.get("locks") or {}
-    keep = {} if replace else {n: lk for n, lk in old.items() if not (n[:1] in "bcfes" and n[1:].isdigit())}
+    keep = {} if replace else {n: lk for n, lk in old.items()
+                               if not (n[:1] in "bcfesgh" and n[1:].rstrip("abcdefgh").isdigit())}
     h["locks"] = {**new, **keep}
     store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     return {"locks": len(h["locks"]), "tiers": {t: sum(1 for lk in new.values() if lk["tier"] == t)
@@ -1169,7 +1239,7 @@ def job(name: str, spec: dict | None = None) -> dict:
     stage = h.get("stage", "locks")
     locks = [] if stage == "mass" else resolve(spec, sc)
     V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass",
-                    extra=lock_extents(sc, locks) if locks else None)
+                    extra=lock_extents(sc, locks) if (locks and h.get("filler")) else None)
     extra = {k: v for k, v in streams(sc, g, V).items() if k == "tangent"} if stage != "mass" else {}  # (the
     # sawtooth clumps on the underlayer aliased into jagged stripes: the strips carry the clumps now)
     np.savez(tmp / "cap.npz", verts=V, faces=F, **extra)
@@ -1235,10 +1305,17 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         thumb["size"] = 160
         dump = str(Path(tmp) / "hair_pts.npy")
         cf = [{**f, "out": str(Path(tmp) / f"clay_{f['name']}.png")} for f in frames] if clay else []
+        idf = [{**f, "out": str(Path(tmp) / f"id_{f['name']}.png"), "size": 240} for f in frames]
         j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec),
-             "samples": 16, "dump": dump, "clay_views": cf}
+             "samples": 16, "dump": dump, "clay_views": cf, "id_views": idf}
         out = _blender(j)
         clays = [Image.open(f["out"]).convert("RGB") for f in cf]
+        look.mass_share = {}
+        for f in idf:  # red = the underlayer, green = locks (flat emission, nothing else drawn)
+            a = np.asarray(Image.open(f["out"]).convert("RGB"), float)
+            red, green = a[..., 0] > a[..., 1] + 60, a[..., 1] > a[..., 0] + 60
+            look.mass_share[f["name"]] = round(float(red.sum() / max(red.sum() + green.sum(), 1)), 3)
+            Image.open(f["out"]).save(store._dir(name) / f"hair_id_{f['name']}.png")  # the last look's id pass
         pts = np.load(dump)
         np.save(store._dir(name) / "hair_points.npy", pts)  # the last look's hair vertices (for measuring) and
         np.savez(store._dir(name) / "hair_point_owners.npz", ids=np.load(dump + ".ids.npy"),  # which object each is

@@ -305,6 +305,44 @@ def material(look: dict):
     return m
 
 
+def id_pass():
+    """Flat emission colours for a pixel count: the hair underlayer red, every lock green, all else black."""
+    def emit(name, rgb):
+        m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+        m.use_nodes = True
+        nt = m.node_tree
+        nt.nodes.clear()
+        o = nt.nodes.new("ShaderNodeOutputMaterial")
+        e = nt.nodes.new("ShaderNodeEmission")
+        e.inputs["Color"].default_value = (*rgb, 1.0)
+        nt.links.new(e.outputs[0], o.inputs["Surface"])
+        return m
+    red, green, black = emit("hp_id_mass", (1, 0, 0)), emit("hp_id_lock", (0, 1, 0)), emit("hp_id_else", (0, 0, 0))
+    ng = bpy.data.node_groups.get(GROUP)
+    if ng is not None:
+        for n in ng.nodes:
+            if n.type == "SET_MATERIAL":
+                n.inputs["Material"].default_value = green
+    for ob in bpy.data.objects:
+        if ob.type not in ("MESH", "CURVE"):
+            continue
+        mat = red if ob.get("hp_hair_cap") else green if ob.get("hp_lock") else black
+        if ob.type == "MESH":
+            ob.data.materials.clear()
+            ob.data.materials.append(mat)
+        else:  # a lock: its node group's Set Material already says green; the curve's own slot too, and re-evaluate
+            ob.data.materials.clear()
+            ob.data.materials.append(green)
+            ob.update_tag()
+    bpy.context.view_layer.update()
+    sc = bpy.context.scene
+    sc.view_settings.view_transform = "Standard"
+    if sc.world and sc.world.node_tree:
+        bg = sc.world.node_tree.nodes.get("Background")
+        if bg:
+            bg.inputs["Strength"].default_value = 0.0
+
+
 def clay():
     """The hair material as plain clay (a mid grey-brown, no gaps, sheen or grooves): judge the forms alone."""
     m = bpy.data.materials.get("hp_hair")
