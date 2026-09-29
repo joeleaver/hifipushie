@@ -29,6 +29,52 @@ def _mesh(name, verts, faces, colors=None):
     return ob
 
 
+def _walls(pts, piece, info):
+    """A dry-stone wall as a box ribbon along its line, following the ground (sunk a little); a fence as posts every
+    2.5 m with a rail along their tops."""
+    V, F, Vf, Ff = [], [], [], []
+    for k, (h, w, fence) in enumerate(info):
+        p = pts[piece == k].astype(float)
+        if len(p) < 2:
+            continue
+        t = np.gradient(p[:, :2], axis=0)
+        t /= np.linalg.norm(t, axis=1, keepdims=True) + 1e-9
+        n = np.c_[-t[:, 1], t[:, 0]]
+        if not fence:  # a wall, a little narrower at its top (battered)
+            base = len(V)
+            for (x, y, z), (nx, ny) in zip(p, n):
+                for sx, top in ((-0.5, 0), (0.5, 0), (0.38, 1), (-0.38, 1)):
+                    V.append((x + nx * sx * w, y + ny * sx * w, z - 0.3 + top * (h + 0.3)))
+            for i in range(len(p) - 1):
+                a, b = base + 4 * i, base + 4 * (i + 1)
+                for q in ((0, 3), (3, 2), (2, 1)):  # outer side, top, other side
+                    F.append((a + q[0], b + q[0], b + q[1]))
+                    F.append((a + q[0], b + q[1], a + q[1]))
+        else:
+            s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p[:, :2], axis=0), axis=1))]
+            for at in np.arange(0, s[-1] + 1e-6, 2.5):
+                x, y, z = (np.interp(at, s, p[:, j]) for j in range(3))
+                base = len(Vf)
+                r = 0.06
+                for dz in (-0.3, h):
+                    Vf += [(x - r, y - r, z + dz), (x + r, y - r, z + dz), (x + r, y + r, z + dz), (x - r, y + r, z + dz)]
+                for i in range(4):
+                    j = (i + 1) % 4
+                    Ff += [(base + i, base + j, base + 4 + j), (base + i, base + 4 + j, base + 4 + i)]
+            base = len(Vf)  # the rail: a thin ribbon a little under the posts' tops
+            for (x, y, z), (nx, ny) in zip(p, n):
+                Vf += [(x + nx * 0.02, y + ny * 0.02, z + h - 0.25), (x + nx * 0.02, y + ny * 0.02, z + h - 0.05)]
+            for i in range(len(p) - 1):
+                a, b = base + 2 * i, base + 2 * (i + 1)
+                Ff += [(a, b, b + 1), (a, b + 1, a + 1)]
+    if V:
+        ob = _mesh("stone_walls", np.array(V, np.float32), np.array(F, np.int32))
+        ob.data.materials.append(_mat("stone_wall", (0.11, 0.105, 0.095, 1), 0.95))
+    if Vf:
+        ob = _mesh("fences", np.array(Vf, np.float32), np.array(Ff, np.int32))
+        ob.data.materials.append(_mat("fence", (0.20, 0.15, 0.10, 1), 0.8))
+
+
 def _mat(name, col, rough=0.8):
     m = bpy.data.materials.get(name)
     if m is None:
@@ -140,6 +186,12 @@ def _proto(kind):
     if kind == "conifer":
         bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=3.0, depth=13, location=(0, 0, 9))
         col = (0.025, 0.07, 0.03, 1)
+    elif kind == "shrub":  # hedge shrubs: a low lumpy mass, set close they close up into a hedge
+        parts[0].scale = (0.3, 0.3, 0.2)
+        parts[0].location = (0, 0, 0.4)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.8, location=(0, 0, 1.5))
+        bpy.context.object.scale = (1.0, 1.0, 0.8)
+        col = (0.05, 0.10, 0.03, 1)
     elif kind == "fruit":  # orchard trees: small, round, low trunk
         parts[0].scale = (0.6, 0.6, 0.45)
         parts[0].location = (0, 0, 0.9)
@@ -411,6 +463,8 @@ def run(job):
         pm.node_tree.links.new(at.outputs["Color"], b.inputs["Base Color"])
         b.inputs["Roughness"].default_value = 0.9
     plane.data.materials.append(pm)
+    if "lw_pts" in d.files and len(d["lw_pts"]):  # stone walls and fences (below the grid): stand-ins on the ground
+        _walls(d["lw_pts"], d["lw_piece"], d["lw_info"])
     if "markers" in d.files and len(d["markers"]):  # sites as thin red poles, to judge what a view sees
         mk = bpy.data.materials.new("marker")
         mk.use_nodes = True

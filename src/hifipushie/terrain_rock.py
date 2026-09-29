@@ -130,6 +130,42 @@ def params(T):
             "rib_spacing": max(1.5 * crag, 3.5 * T.cell), "rock_colour": [0.36, 0.34, 0.31]}
 
 
+def base_colour(T, slope=None, hn=None):
+    """sRGB rock before any cover: the kind's rock (sandstone in canyon/dunes/plateau country, grey elsewhere), the
+    canyon's strata bands, faint level beds on cliffs."""
+    slope = T._slope() if slope is None else slope
+    hn = (T.H - T.H.min()) / max(np.ptp(T.H), 1) if hn is None else hn
+    arid = T.world["kind"] in ("canyon", "dunes", "plateau")
+    rock = (np.array([0.58, 0.38, 0.26]) if arid else np.array([0.36, 0.34, 0.31])) + 0.06 * hn[..., None]
+    if arid and getattr(T, "canyons", None):
+        cy = next(iter(T.canyons.values()))
+        per = max(cy["depth"] / 7, 4.0)  # colour bands through the strata, level all along the canyon
+        band = 0.5 + 0.5 * np.sin(2 * np.pi * T.H / per) + 0.25 * np.sin(2 * np.pi * T.H / (per * 0.37))
+        rock = rock * (0.8 + 0.25 * band[..., None]) + np.array([0.08, 0.02, -0.02]) * (band[..., None] - 0.5)
+    if not arid:  # beds in any cliff: faint level bands of lighter and darker rock (one grey read as a painted curtain)
+        wob = noise.fbm(np.c_[T.P, np.full(len(T.P), 31.0)], 60.0, 2, seed=231).reshape(T.H.shape) - 0.5
+        z = T.H + 6 * wob
+        band = 0.6 * np.sin(2 * np.pi * z / 5.3) + 0.4 * np.sin(2 * np.pi * z / 2.1 + 1.0)
+        rock = rock * (1 + 0.09 * band[..., None] * smoothstep(45, 60, slope)[..., None])
+    return rock
+
+
+def colour(T):
+    """sRGB (ny, nx, 3): what the heightfield views paint on rock, for 3D rock to match: the base colour, then every
+    rock-type cover layer where its mask is (in paint order), then the rock's tone (pale buttresses, dark gullies)."""
+    from . import terrain_design as design
+    c = base_colour(T)
+    for name, m in (getattr(T, "cover", None) or {}).items():
+        sc = design._spec_cover(T, name)
+        if sc.get("type", name) in ("rock", "scree") or "rock" in name:
+            a = np.clip(m, 0, 1)[..., None]
+            c = c * (1 - a) + np.array(design.cover_colour(T, name)) * a
+    tone = (getattr(T, "rock", None) or {}).get("tone")
+    if tone is not None:
+        c = c * tone[..., None]
+    return np.clip(c, 0, 1)
+
+
 def face_height(T, H, face):
     """Metres of relief the faces around each cell span (the visible ground: water counts at its level), averaged over
     the steep ground nearby; and the local top and foot (max/min over about one face height)."""

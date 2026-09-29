@@ -72,6 +72,9 @@ def region(T, r) -> np.ndarray:
             return (T.lake_id == T.lakes[r]["id"]).astype(float)
         if r.startswith("zone:"):
             return region(T, T.zones[r[5:]])
+        if r in getattr(T, "features", {}):  # a line feature (a hedge, a wall): the ground it stands on
+            m = T.features[r].get("mask")
+            return m if m is not None else np.zeros(shape)
         bn, _, band = r.rpartition(".")
         if bn in getattr(T, "basins", {}) and band:  # a band of a basin wall's profile ("valley.scree"), or its walls
             b = T.basins[bn]
@@ -1039,12 +1042,15 @@ def _profile_cover(T):
             key = f"{bn}_{kind}"
             if f"{bn}.{kind}" not in used and key not in cover:
                 add[key] = {**PROFILE_COVER[kind], "in": f"{bn}.{kind}", "_auto": True}
+    for fn, F in getattr(T, "features", {}).items():  # hedges and lines of trees: their green on the ground
+        if F.get("cover") and F.get("pieces") and fn not in cover:
+            add[fn] = {"type": "hedge", "in": fn, "slope": [0, 90], "color": F["cover"], "_auto": True, "_line": True}
     if add:
         names = list(cover)
         snow = [i for i, n in enumerate(names) if (cover[n] or {}).get("type", n) == "snow"]
         at = (snow[0] - 0.5) if snow else len(names)
         for i, (k, v) in enumerate(add.items()):
-            cover[k] = {**v, "order": at + 0.01 * i}
+            cover[k] = {**v, "order": (len(names) + 1 if v.get("_line") else at) + 0.01 * i}
         T.auto_cover = list(add)
     return bare
 
@@ -1158,9 +1164,27 @@ def trees(T, limit=250_000):
         pts = pts[keep]
         out.append(np.c_[pts, T.sample(pts), np.full(len(pts), li)])
         T.tree_layers = getattr(T, "tree_layers", {}) | {li: (name, kind)}
+    lt = []
+    if getattr(T, "features", None):  # shrubs along hedges, trees standing out of them and lining treelines
+        from .terrain_lines import trees as line_trees
+        lt = line_trees(T)
+        T._line_trees = lt
+        base = len(T.cover) + 1
+        for j, kind in enumerate(("shrub", "broadleaf")):
+            pts = np.array([[x, y] for x, y, k, _ in lt if k == kind]).reshape(-1, 2)
+            if len(pts):
+                out.append(np.c_[pts, T.sample(pts), np.full(len(pts), base + j)])
+                T.tree_layers = getattr(T, "tree_layers", {}) | {base + j: ("lines", kind)}
     if not out:
         return np.zeros((0, 4))
     allp = np.vstack(out)
+    if len(lt) and len(allp) > limit:  # (the lines' own trees are few and placed: keep them all)
+        keep_n = limit - len(lt)
+        own = allp[:, 3] >= len(T.cover) + 1
+        rest = allp[~own]
+        allp = np.vstack([rest[rng.choice(len(rest), max(keep_n, 0), replace=False)], allp[own]]) \
+            if len(rest) > keep_n else allp
+        return allp
     if len(allp) > limit:
         allp = allp[rng.choice(len(allp), limit, replace=False)]
     return allp

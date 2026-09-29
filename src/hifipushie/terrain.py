@@ -121,7 +121,7 @@ def _number(s):
 
 TEXT_KEYS = ("name", "story", "notes", "wishes", "brief")
 NAMED = ("peaks", "cols", "ridges", "rivers", "basins", "passes", "canyons", "mesas", "fords", "landforms", "zones",
-         "sites", "routes", "walls", "cover", "rugged", "intent", "volcanoes")
+         "sites", "routes", "walls", "cover", "rugged", "intent", "volcanoes", "lines")
 
 
 def _named(spec):
@@ -322,6 +322,8 @@ class Terrain:
         _t0 = _time.time()
         terrain_detail.refine(self, terrain_detail.factor(self))  # finer cells from here: faces get cells of their own
         terrain_detail.ground(self)  # rolling ground: undulation, swales, hummocks (after erosion smoothed them)
+        from . import terrain_lines
+        terrain_lines.apply(self)  # hedges, stone walls, fences, banks, ditches, lines of trees
         from . import terrain_rock
         terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)
@@ -1501,6 +1503,8 @@ class Terrain:
         out += terrain_sea.report(self)
         from . import terrain_volcano, terrain_rock
         out += terrain_volcano.report(self)
+        from . import terrain_lines
+        out += terrain_lines.report(self)
         if getattr(self, "ground_rms", None) is not None:
             out.append(f"ground texture (measured): gentle ground varies {self.ground_rms:.2f} m rms about its ~50 m "
                        f"trend ({self.ground_before:.2f} m before the undulation, swales and hummocks; plaster-smooth "
@@ -1741,6 +1745,7 @@ class Terrain:
                                   for (x, y), z, w in zip(rw["xy"][::4], rw["level"][::4], rw["width"][::4])]
             rivers[nm] = river
         from .terrain_sea import cliff_feet
+        from . import terrain_lines
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
                 "north_up": True, "pixel_0_0": "north-west corner",
                 "height_npy": "float32, absolute metres, north-up",
@@ -1765,6 +1770,8 @@ class Terrain:
                 "lakes": {nm: {"level": lk["level"], "at": lk["xy"], **({"sea": True} if lk.get("sea") else {})}
                           for nm, lk in self.lakes.items()},
                 "cliff_feet": cliff_feet(self),  # (sea cliffs: where to set caves or notches against the face)
+                "lines": terrain_lines.meta(self),  # hedges, walls...:
+                # per piece [x, y, ground z] points; the engine places wall and fence meshes along them
                 "sites": {nm: {"at": st["xy"], "level": st["level"], "radius": st["radius"], "fall": st.get("fall", 0.0),
                                "falls_toward": st.get("toward", [0, 0]),
                                "plane": "z = level - fall * ((x - at.x) * falls_toward.x + (y - at.y) * falls_toward.y)",
@@ -1842,18 +1849,8 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
     arid = T.world["kind"] in ("canyon", "dunes", "plateau")
     bare = np.array([0.66, 0.52, 0.36]) if arid else np.array([0.40, 0.47, 0.26])  # bare ground: sandstone or grass
     grass = bare * (1 - 0.3 * hn[..., None]) + np.array([0.10, 0.07, 0.02]) * hn[..., None]
-    rock = (np.array([0.58, 0.38, 0.26]) if arid else np.array([0.36, 0.34, 0.31])) + 0.06 * hn[..., None]
-    if arid and getattr(T, "canyons", None):
-        cy = next(iter(T.canyons.values()))
-        per = max(cy["depth"] / 7, 4.0)  # colour bands through the strata, level all along the canyon
-        band = 0.5 + 0.5 * np.sin(2 * np.pi * T.H / per) + 0.25 * np.sin(2 * np.pi * T.H / (per * 0.37))
-        rock = rock * (0.8 + 0.25 * band[..., None]) + np.array([0.08, 0.02, -0.02]) * (band[..., None] - 0.5)
-    if not arid:  # beds in any cliff: faint level bands of lighter and darker rock (one grey read as a painted curtain)
-        from . import noise
-        wob = noise.fbm(np.c_[T.P, np.full(len(T.P), 31.0)], 60.0, 2, seed=231).reshape(T.H.shape) - 0.5
-        z = T.H + 6 * wob
-        band = 0.6 * np.sin(2 * np.pi * z / 5.3) + 0.4 * np.sin(2 * np.pi * z / 2.1 + 1.0)
-        rock = rock * (1 + 0.09 * band[..., None] * smoothstep(45, 60, slope)[..., None])
+    from .terrain_rock import base_colour
+    rock = base_colour(T, slope, hn)
     w = smoothstep(28, 40, slope)[..., None]
     c = grass * (1 - w) + rock * w
     sea = getattr(T, "sea", None)
@@ -2083,7 +2080,20 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
         depth = np.maximum(wv[:, 2] - verts[:, 2], 0)
         brk = noise.fbm(np.c_[verts[:, :2], np.full(len(verts), 5.0)], 6.0, 2, seed=91)
         foam = np.clip(1.0 - depth / 1.2, 0, 1) * np.clip(0.4 + 1.2 * brk, 0, 1)
-    np.savez(path, verts=verts.astype(np.float32), faces=faces.astype(np.int32), colors=col.astype(np.float32),
+    # stone walls and fences (below the grid): their lines on the ground, for the views' stand-ins
+    lw_pts, lw_piece, lw_info = [], [], []
+    for F in getattr(T, "features", {}).values():
+        if not (F.get("wall") or F.get("fence")):
+            continue
+        for xy in F["pieces"]:
+            lw_pts.append(np.c_[xy, T.sample(xy)])
+            lw_piece.append(np.full(len(xy), len(lw_info)))
+            lw_info.append([float(F.get("height", 1.2)), float(F["width"]), 1.0 if F.get("fence") else 0.0])
+    extra = {}
+    if lw_info:
+        extra = {"lw_pts": np.vstack(lw_pts).astype(np.float32), "lw_piece": np.concatenate(lw_piece).astype(np.int32),
+                 "lw_info": np.array(lw_info, np.float32)}
+    np.savez(path, **extra, verts=verts.astype(np.float32), faces=faces.astype(np.int32), colors=col.astype(np.float32),
              wverts=wv.astype(np.float32), wfaces=wf.astype(np.int32), wfoam=foam.astype(np.float32),
              tree_xyz=inst[:, :3].astype(np.float32),
              tree_kind=np.array([getattr(T, "tree_layers", {}).get(int(i), ("", "broadleaf"))[1] for i in inst[:, 3]]),
