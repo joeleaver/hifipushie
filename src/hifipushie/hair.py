@@ -47,9 +47,24 @@ def under(g: dict, H, az, el, d_in):
     top = W[..., 0] + W[..., 1]
     tb = float((g["tiers"].get("big") or {}).get("thickness", 0.0))
     tf = float((g["tiers"].get("fill") or {}).get("thickness", 0.0))
-    depth = 0.85 * (top * tb + (1 - top) * tf)
+    # not sunk over the upper sides, where the top locks lie down onto the side mass (sunk there too, the mass left
+    # a waist under the top locks: a divot at each temple in the front view)
+    side = side_tuck(az, el, W)
+    depth = 0.85 * (top * tb * (1 - side) + (1 - top) * tf)
     return np.maximum(H - depth, np.minimum(H, 0.0015))
 
+
+
+SIDE_TUCK = (0.25, 0.65)  # |lateral| of the head direction where a top lock starts / ends lying down on the side
+
+
+def side_tuck(az, el, W=None):
+    """0 on the crown, 1 over the upper sides: where a top lock lies down onto the side mass. (By elevation alone,
+    sides and back, it did worse: the back's crown then stood proud of the tucked back.)"""
+    return _ss((np.abs(dirs(az, el)[..., 0]) - SIDE_TUCK[0]) / (SIDE_TUCK[1] - SIDE_TUCK[0]))
+
+
+SIDE_NARROW = 0.35  # and how much narrower it gets there
 REGIONS = ("front", "top", "sides", "back", "nape")
 GROOM = {
     "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
@@ -344,7 +359,7 @@ def _fill(sc: Scalp, g: dict, line):
     out = np.zeros((len(A), len(E)))
     for i, a in enumerate(A):
         fa = abs(((a + 180) % 360) - 180)
-        w = _ss((fa - 25) / 15) * (1 - _ss((fa - 105) / 25))  # the sides the front view outlines, not the back
+        w = _ss((fa - 25) / 15) * (1 - _ss((fa - 140) / 20))  # the sides the front and 3/4 views outline
         if w <= 0:
             continue
         aa = np.full(len(E), a)
@@ -535,9 +550,9 @@ def grow(sc: Scalp, g: dict) -> dict:
         # roots over lower ones on the sides and back), consistently, or overlaps cross in a jumble
         rank = 1 - _ss(d_in / 0.08) if tier == "big" else _ss((el + 40) / 120)
         lift = T_ * ((0.25 if tier == "big" else 0.7) * rank + 0.08 * rng.uniform(-1, 1, len(az)))
-        paths = _walk(sc, g, line, az, el, L, T_, lift, away, rng, tier)
+        paths, sides = _walk(sc, g, line, az, el, L, T_, lift, away, rng, tier)
         for i in range(len(az)):
-            path = paths[i]
+            path, sfi = paths[i], sides[i]
             if tier != "edge":  # a lock ends inside the hairline (tips standing out over the skin read as a fringe)
                 pa, pe, _ = sc.coords(path)
                 din = inside(sc, line, pa, pe)
@@ -550,6 +565,7 @@ def grow(sc: Scalp, g: dict) -> dict:
                         continue  # too little room: the underlayer carries it
                     t = np.linspace(0, c[-1], len(path))
                     path = np.stack([np.interp(t, c, path[:j + 1, q]) for q in range(3)], 1)
+                    sfi = np.interp(t, c, sfi[:j + 1])
                     Li = c[-1]
                 else:
                     Li = L[i]
@@ -562,8 +578,10 @@ def grow(sc: Scalp, g: dict) -> dict:
                 Ht, dt = envelope(sc, g, line, a_[-1:], e_[-1:])
                 h_[-1] = min(float(h_[-1]), float(under(g, Ht, a_[-1:], e_[-1:], dt)[0]) + 0.1 * float(T_[i]))
             grey = _grey(g, az[i], el[i], line)
+            rad = 1 - SIDE_NARROW * sfi[idx]
             locks[f"{names[tier]}{i:02d}"] = {
                 "tier": tier,
+                **({"radius": [round(float(v), 3) for v in rad]} if np.any(rad < 0.999) else {}),
                 "pts": [[round(float(a_[j]), 2), round(float(e_[j]), 2), round(float(h_[j]), 4)] for j in range(k)],
                 "width": round(float(W_[i]), 4), "thickness": round(float(T_[i]), 4),
                 "cup": round(float(td.get("cup", 0.002)) * float(size[i]), 4),
@@ -621,6 +639,7 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
     spine half a thickness under it), rising out of the scalp over the first fifth, the tip tucking down."""
     m = len(az)
     P = np.zeros((m, n, 3))
+    SF = np.zeros((m, n))
     a, e = np.asarray(az, float).copy(), np.asarray(el, float).copy()
     P[:, 0] = sc.point(a, e, -0.3 * T)
     ds = L / (n - 1)
@@ -639,8 +658,13 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
         if tier == "edge":
             h = np.full(m, 0.6) * T + 0.0005 + under_h
         else:  # the lock lies on the mass, its back just proud of the silhouette; the root dives into the mass
-            surf = under_h + 0.45 * T + lift  # the spine half a thickness over the underlayer
+            surf = under_h + 0.35 * T + lift  # the lock's back flush with the groom's volume
             h = (under_h - 0.4 * T) + (surf - under_h + 0.4 * T) * _ss(x / 0.18)
+        # over the upper sides a top lock lies down onto the side mass (and narrows: `radius` per point below):
+        # standing as proud there as on the crown it overhung the sides and pinched the outline at the temples
+        sf = side_tuck(a, e) if tier == "big" else np.zeros(m)
+        SF[:, k] = sf
+        h = h - sf * (0.55 * T + np.maximum(lift, 0))
         h = h - (0.7 if tier == "big" else 1.3) * T * _ss((x - 0.72) / 0.28)  # the tip tucks under (the fill's
         # right into the mass: a row of visible points read as feathers)
         h = np.maximum(h, 0.15 * T)
@@ -651,7 +675,8 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
         f = _unit(flow(sc, g, q, W, away))
         f = _unit(f * c + np.cross(_unit(q - sc.C), f) * s_)
         d = _unit(0.55 * seg + 0.45 * f)
-    return P
+    SF[:, 0] = SF[:, 1]
+    return P, SF
 
 
 # ------------------------------------------------------------------------------------------------ spec I/O
@@ -925,8 +950,7 @@ def job(name: str, spec: dict | None = None) -> dict:
     tmp = Path(tempfile.mkdtemp(prefix="hifipushie-hair-"))
     stage = h.get("stage", "locks")
     locks = [] if stage == "mass" else resolve(spec, sc)
-    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass",
-                    extra=lock_extents(sc, locks) if locks else None)
+    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass")
     np.savez(tmp / "cap.npz", verts=V, faces=F)
     return {"locks": locks, "cap": str(tmp / "cap.npz"),
             "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
@@ -1053,16 +1077,23 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
             if good.sum() < 4:
                 continue
             P = np.stack([prof[good], edges[good]], 1)
-            base = P[:, 0].min() - 1.0  # close the outline on the inside so the hull's outer chain is the envelope
-            P2 = np.vstack([P, [[base, P[0, 1]], [base, P[-1, 1]]]])
-            hv = P2[ConvexHull(P2).vertices]
-            hv = hv[hv[:, 0] > base + 0.5]
-            hv = hv[np.argsort(hv[:, 1])]
-            hx = np.interp(P[:, 1], hv[:, 1], hv[:, 0])
-            gap = (hx - P[:, 0]) * 1000
-            crown = P[:, 1] > ztop - CROWN_BAND  # the top's outline: bumps between lock crowns are the clumps
-            res[side + "_crown"] = round(float(gap[crown].max()), 1) if crown.any() else 0.0
-            gap = np.where(crown, 0.0, gap)
+
+            def dents(P):
+                base = P[:, 0].min() - 1.0  # close the outline on the inside: the hull's outer chain is the envelope
+                P2 = np.vstack([P, [[base, P[0, 1]], [base, P[-1, 1]]]])
+                hv = P2[ConvexHull(P2).vertices]
+                hv = hv[hv[:, 0] > base + 0.5]
+                hv = hv[np.argsort(hv[:, 1])]
+                return (np.interp(P[:, 1], hv[:, 1], hv[:, 0]) - P[:, 0]) * 1000
+            # the gated band: brows + 2 cm up to CROWN_BAND under the top, its own envelope (the lock crowns on top
+            # are the clumps; a chord from them down onto the sides is reported as "full", not gated)
+            crown = P[:, 1] > ztop - CROWN_BAND
+            full = dents(P)
+            res[side + "_crown"] = round(float(full[crown].max()), 1) if crown.any() else 0.0
+            res[side + "_full"] = round(float(full.max()), 1)
+            gap = np.zeros(len(P))
+            if (~crown).sum() >= 4:
+                gap[~crown] = dents(P[~crown])
             i = int(np.argmax(gap))
             res[side] = round(float(gap[i]), 1)
             if gap[i] > worst[0]:
