@@ -112,6 +112,34 @@ def test_path_at_any_point_on_the_line():
     assert "never meets part 'plate'" in text and "y -0.3" in text, text
 
 
+# Card "check/fit: choose which parts the silhouette counts (props, held items)"
+def _iou(text: str, view: str) -> float:
+    import re
+    return float(re.search(r"IoU[ =:]*([0-9.]+)", text.split(f"[{view}]")[1]).group(1))
+
+
+def test_check_counts_chosen_parts():
+    spec = small_spec()
+    spec["joints"]["disk"] = {"pos": [0, -0.25, 0.65], "r": 0.02}
+    spec["blobs"]["disk"] = {"at": "disk", "shape": "box", "size": [0.1, 0.04, 0.1], "part": "disk"}
+    spec["parts"] = {"disk": {"color": [0.2, 0.2, 0.2]}}
+    server.put_model("holder", spec)
+    plan = {"views": {"side": {"shapes": {"torso": {"capsule": [0, 0.5, 0, 0.8], "r": 0.11},
+                                          "head": {"ellipse": [0, 1.0, 0.11, 0.12]}}}}}
+    server.set_plan("holder", plan)
+    all_parts = server.check("holder", resolution=96)[1]
+    body = server.check("holder", resolution=96, only_parts=["body"])[1]
+    assert "silhouettes count parts: body" in body, body
+    assert _iou(body, "side") > _iou(all_parts, "side") + 0.02, (all_parts, body)
+    same = server.check("holder", resolution=96, hide_parts=["disk"])[1]
+    assert _iou(same, "side") == _iou(body, "side")
+    server.set_plan("holder", {**plan, "parts": ["body"]})
+    assert _iou(server.check("holder", resolution=96)[1], "side") == _iou(body, "side")
+    out = server.fit("holder", resolution=64, iterations=2)[-1]
+    assert "silhouettes count parts: body" in out and "disk" not in out.split("changes:")[1], out
+    assert "no part 'hat'" in _raises(server.check, "holder", only_parts=["hat"])
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

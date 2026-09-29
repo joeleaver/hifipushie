@@ -9,8 +9,9 @@ spec["plan"] = {
   "sections":  {name: {"z": height, "near": [x, y] (which part of the slice: the one containing or nearest
                        this point, e.g. the left thigh), "width": X extent, "depth": Y extent,
                        "center"?: [x, y], "x"?: [lo, hi] only measure within this X range (leave out
-                       arms touching the torso), "tol"?: fraction (default 0.08)}}
-}
+                       arms touching the torso), "tol"?: fraction (default 0.08)}},
+  "parts": [part names]           # optional: the parts the silhouettes count (the body, not the prop it holds);
+}                                 #   check/compare/fit take only_parts / hide_parts too
 Shapes (u, v in the view's axes):
   {"ellipse": [cu, cv, ru, rv], "rot": deg}
   {"capsule": [u0, v0, u1, v1], "r": r | [r0, r1]}      a limb: rounded, tapering from r0 to r1
@@ -128,6 +129,9 @@ def reference(plan: dict, view: str, res: int = 700):
 
 
 def validate(plan: dict):
+    ps = plan.get("parts")
+    if ps is not None and not (isinstance(ps, list) and ps and all(isinstance(x, str) for x in ps)):
+        raise SpecError('plan: "parts" is a list of part names, e.g. ["body"]')
     for view in plan.get("views", {}):
         if view not in VIEW_AXES:
             raise SpecError(f"plan: unknown view {view!r} (front, side, top)")

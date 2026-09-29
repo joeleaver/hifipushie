@@ -208,6 +208,39 @@ def _refs(name: str, views: list[str] | None, against: str = "auto") -> dict:
     return {v: (cmp.reference_mask(cfg[v]["path"], cfg[v]["flip"], cfg[v]["threshold"]), None) for v in views}
 
 
+def _sil_parts(spec: dict, only_parts: list[str] | None, hide_parts: list[str] | None) -> frozenset | None:
+    """The parts a silhouette counts (check/compare/fit): only_parts, all but hide_parts, else the plan's
+    "parts", else every part (None)."""
+    if not only_parts and not hide_parts:
+        only_parts = (spec.get("plan") or {}).get("parts")
+        if not only_parts:
+            return None
+    from .spec import compile_prims
+    have = {p.part for p in compile_prims(spec)}
+    for pn in [*(only_parts or []), *(hide_parts or [])]:
+        if pn not in have:
+            raise ValueError(f"no part {pn!r} (parts: {', '.join(sorted(have))})")
+    keep = set(only_parts) if only_parts else set(have)
+    keep -= set(hide_parts or [])
+    if not keep:
+        raise ValueError("no parts left to count in the silhouette")
+    return None if keep == have else frozenset(keep)
+
+
+def _silhouettes(name: str, spec: dict, resolution: int, parts: frozenset | None) -> dict:
+    """{view: silhouette} of the whole model (the build's), or of just those parts (evaluated here)."""
+    if parts is None:
+        store.build(name, resolution)
+        return {v: store.silhouette(name, v) for v in ("front", "side", "top")}
+    from . import sdf
+    from .spec import compile_prims
+    return sdf.silhouettes(sdf.evaluate([p for p in compile_prims(spec) if p.part in parts], resolution))
+
+
+def _parts_note(parts: frozenset | None) -> str:
+    return f"silhouettes count parts: {', '.join(sorted(parts))}\n" if parts else ""
+
+
 def _out(im: PILImage.Image, save: str | None) -> Image:
     """The image for the tool result, also written to `save` (a path) when given."""
     if save:
@@ -619,19 +652,22 @@ def set_reference(name: str, view: str, image_path: str, flip: bool = False, thr
 
 @mcp.tool(structured_output=False)
 def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolution: int = 160,
-            against: str = "auto"):
+            against: str = "auto", only_parts: list[str] | None = None, hide_parts: list[str] | None = None):
     """Compare model silhouettes to the references. Per view: IoU, a diff image
     (grey = match, red = model has extra, blue = model is missing) and band tables of edge errors
     in world units, which tell you which joint/blob to move and by how much.
     fit: "auto" searches the reference scale/offset for best overlap, so only shape differences remain
     (absolute size is ignored); "height"/"width" instead match that dimension, bottom-aligned.
     against: "refs" (set_reference images), "plan" (the model's plan, placed exactly: no rescaling), or "auto"
-    (the plan if there is one)."""
-    store.build(name, resolution)
+    (the plan if there is one). only_parts / hide_parts: which parts the silhouette counts (the body without the
+    prop it holds); default: the plan's "parts", else all."""
+    spec = store.load(name)
+    parts = _sil_parts(spec, only_parts, hide_parts)
+    sils = _silhouettes(name, spec, resolution, parts)
     out = []
     for v, (ref, world) in _refs(name, views, against).items():
-        iou, diff, report = cmp.compare(store.silhouette(name, v), ref, fit, world=world)
-        out += [_png(diff), f"[{v}] {report}"]
+        iou, diff, report = cmp.compare(sils[v], ref, fit, world=world)
+        out += [_png(diff), f"[{v}] {_parts_note(parts)}{report}"]
     return out
 
 
@@ -639,7 +675,7 @@ def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolu
 def fit(name: str, views: list[str] | None = None, only: list[str] | None = None,
         lock: list[str] | None = None, params: list[str] | None = None, iterations: int = 20,
         max_step: float = 0.02, stiffness: float = 0.05, align: str = "auto", resolution: int = 160,
-        against: str = "auto"):
+        against: str = "auto", only_parts: list[str] | None = None, hide_parts: list[str] | None = None):
     """Auto-fit the model to its reference silhouettes and save the result as a new version.
     Moves joints, joint/bone radii, blob offsets and blob sizes (params: any of "pos", "r", "offset",
     "size") to minimise the distance between model and reference outlines. Only what the given views can
@@ -648,21 +684,23 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
     stiffness is a spring toward the starting values (higher = more conservative).
     Block out the body plan by hand first: fitting is local and can't fix a missing or misplaced limb.
     against: "refs", "plan" (fit the blockout onto the plan's outlines, placed exactly; joints tied to plan
-    landmarks keep their planned height) or "auto" (the plan if there is one). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
+    landmarks keep their planned height) or "auto" (the plan if there is one). only_parts / hide_parts: which parts
+    the silhouettes count, and whose elements may move (default: the plan's "parts", else all). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
     refs = _refs(name, views, against)
     spec = store.load(name)
     pin = []
     if any(w is not None for _, w in refs.values()):  # fitting to the plan: its landmarks fix joint heights
         pin = [("joints", lm["joint"], "pos", 2) for lm in (spec["plan"].get("landmarks") or {}).values()
                if lm.get("joint") in spec["joints"]]
+    parts = _sil_parts(spec, only_parts, hide_parts)
     res = fitmod.fit(spec, refs, align, tuple(params or fitmod.GROUPS), only, tuple(lock or ()),
-                     iterations, max_step, stiffness, resolution, pin)
+                     iterations, max_step, stiffness, resolution, pin, parts)
     ver = store.save(name, res.spec, "fit " + " ".join(
         f"{v} {res.iou_before[v]:.3f}->{res.iou_after[v]:.3f}" for v in refs))
     out = []
     for v, im in fitmod.diff_images(res).items():
         out += [_png(im), f"[{v}] IoU {res.iou_before[v]:.3f} -> {res.iou_after[v]:.3f}"]
-    out.append(f"saved {name} v{ver}\n" + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
+    out.append(f"saved {name} v{ver}\n" + _parts_note(parts) + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
     return out
 
 
@@ -689,7 +727,8 @@ def set_plan(name: str, plan: dict, note: str = "", save: str | None = None):
 
 
 @mcp.tool(structured_output=False)
-def check(name: str, resolution: int = 160, save: str | None = None):
+def check(name: str, resolution: int = 160, save: str | None = None, only_parts: list[str] | None = None,
+          hide_parts: list[str] | None = None):
     """Check the model against its plan: per view, the plan against the model's silhouette (grey = both,
     blue = plan only: the model is missing it, red = the model sticks out); IoU and edge-error bands in world units (placed exactly, no rescaling); landmark joints vs
     their planned heights; planned sections vs measured width and depth. Run it after every stage.
@@ -697,7 +736,9 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     identical parts, big perfectly flat faces, paint without wear or dirt (works without a plan too).
     And walks a person through every doorway (box cuts with targets reaching the floor, 1.6 m+ tall): a door
     swung across the opening, furniture in the way, a step too high; names what blocks it. And lists props
-    (instances) cutting into anything else, how deep and into what (a chair pushed into a table leg)."""
+    (instances) cutting into anything else, how deep and into what (a chair pushed into a table leg).
+    only_parts / hide_parts: which parts the silhouettes count (judge the body, not the prop it holds); default:
+    the plan's "parts" (a list of part names), else all."""
     from . import realism
     spec = store.load(name)
     warn = realism.audit(spec)
@@ -719,11 +760,12 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     plan = spec.get("plan")
     if not plan:
         return "no plan to check against (set_plan)." + realism_txt
-    store.build(name, resolution)
+    parts = _sil_parts(spec, only_parts, hide_parts)
+    sils = _silhouettes(name, spec, resolution, parts)
     refs = _refs(name, None, "plan")
-    lines, outlines = [], {}
+    lines, outlines = ([_parts_note(parts).strip()] if parts else []), {}
     for v, (ref, world) in refs.items():
-        sil = store.silhouette(name, v)
+        sil = sils[v]
         outlines[v] = (sil["mask"], sil["u"], sil["v"])
         _, _, report = cmp.compare(sil, ref, world=world, bands=10)
         lines.append(f"[{v}] " + report.replace("alignment: fit=world (exact); ", ""))
