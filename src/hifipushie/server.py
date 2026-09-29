@@ -840,7 +840,18 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     meta = store.build(name, resolution)
     z = np.load(meta["mesh"])
     V, F = z["verts"].astype(np.float64), z["faces"]
-    J, W = rigmod.rig_weights(spec, bones, V, F)
+    pv, pnames = z["part"], [str(n) for n in z["part_names"]]  # per part, as export_asset skins them
+    J, W = np.zeros((len(V), 4), int), np.zeros((len(V), 4))
+    fp = pv[F[:, 0]]
+    meshes = {}
+    for i, pn in enumerate(pnames):
+        sel = np.flatnonzero(pv == i)
+        if len(sel):
+            rm = np.full(len(V), -1)
+            rm[sel] = np.arange(len(sel))
+            meshes[pn] = (V[sel], rm[F[fp == i]], sel)
+    for pn, (Jp, Wp) in rigmod.skin_parts(spec, bones, {k: v[:2] for k, v in meshes.items()}).items():
+        J[meshes[pn][2]], W[meshes[pn][2]] = Jp, Wp
     turns = {k: (v[0], v[1]) for k, v in pose.items()} if pose else rigmod.test_pose(bones)
     P = rigmod.pose(bones, V, J, W, turns)
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])

@@ -539,10 +539,13 @@ def lowpoly(job):
     all_names = [str(n) for n in z["part_names"]]
     cfg = job["parts"]
     fpart = part[faces[:, 0]]
-    names = [pn for i, pn in enumerate(all_names) if pn in cfg and (fpart == i).any()]  # skip parts all hidden
+    names = [pn for i, pn in enumerate(all_names) if pn in cfg and (fpart == i).any()  # skip parts all hidden
+             and not cfg[pn].get("fixed")]  # (parts with a mesh of their own: a character's quad topology)
+    fixed = {pn: np.load(c["fixed"]) for pn, c in cfg.items() if c.get("fixed")}
     pidx = {pn: all_names.index(pn) for pn in names}
     nfaces = {pn: int((fpart == pidx[pn]).sum()) for pn in names}
-    total = int(job["triangles"])
+    total = int(job["triangles"]) - sum(int((z["sizes"] - 2).sum()) * int(cfg[pn].get("copies", 1))
+                                        for pn, z in fixed.items())
     sym = job.get("symmetry", True)
 
     # 1. one quadric decimation of all parts together: it spends triangles where they cut the geometric error
@@ -637,6 +640,12 @@ def lowpoly(job):
     if pre_file:
         os.remove(pre_file)
     obs = [obs[pn] for pn in names]
+    for pn, z in fixed.items():  # as given (quads kept), unwrapped with the rest
+        ob = _poly_mesh(pn, z["verts"], z["loops"], np.r_[0, np.cumsum(z["sizes"])[:-1]])
+        ob.data.update(calc_edges=True)
+        obs.append(ob)
+        info[pn] = {"joint_count": int((z["sizes"] - 2).sum()), "budget": int((z["sizes"] - 2).sum()),
+                    "flat": 0.0, "symmetric": False, "fixed": True}
     for ob in obs:
         ob.data.shade_smooth()
     t1b = time.time()

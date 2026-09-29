@@ -287,19 +287,23 @@ def humanoid(spec: dict) -> list[dict] | None:
         add(f"{S}Arm", j["shoulder"], f"{S}Shoulder", src=f"shoulder.{side}")
         add(f"{S}ForeArm", j["elbow"], f"{S}Arm", src=f"elbow.{side}")
         add(f"{S}Hand", j["wrist"], f"{S}ForeArm", src=f"wrist.{side}")
-        thumb = [f"hand_th_{k}.{side}" for k in range(4)]
+        # the hand kit's chains, or a base body's own (the template's names: finger1 = index .. finger4 = pinky)
+        kit = f"hand_th_0.{side}" in J or f"hand_f1_0.{side}" in J
+        th = (lambda k: f"hand_th_{k}.{side}") if kit else (lambda k: f"thumb_{k}.{side}")
+        fg = (lambda f, k: f"hand_f{f}_{k}.{side}") if kit else (lambda f, k: f"finger{f}_{k}.{side}")
+        thumb = [th(k) for k in range(4)]
         if all(x in J for x in thumb):
             for k, x in enumerate(thumb):
                 add(f"{S}HandThumb{k + 1}", _joint(s, x), f"{S}Hand" if k == 0 else f"{S}HandThumb{k}", k == 3, x)
-        fingers = sorted((f for f in range(1, 6) if all(f"hand_f{f}_{k}.{side}" in J for k in range(4))),
-                         key=lambda f: np.linalg.norm(_joint(s, f"hand_f{f}_0.{side}") - _joint(s, thumb[0]))
+        fingers = sorted((f for f in range(1, 6) if all(fg(f, k) in J for k in range(4))),
+                         key=lambda f: np.linalg.norm(_joint(s, fg(f, 0)) - _joint(s, thumb[0]))
                          if thumb[0] in J else f)
         names = FINGERS if len(fingers) >= 4 else ("Index", "Middle", "Ring")[:len(fingers) - 1] + ("Pinky",) \
             if len(fingers) > 1 else ("Index",)
         for f, fn in zip(fingers, names):
             for k in range(4):
-                add(f"{S}Hand{fn}{k + 1}", _joint(s, f"hand_f{f}_{k}.{side}"),
-                    f"{S}Hand" if k == 0 else f"{S}Hand{fn}{k}", k == 3, f"hand_f{f}_{k}.{side}")
+                add(f"{S}Hand{fn}{k + 1}", _joint(s, fg(f, k)),
+                    f"{S}Hand" if k == 0 else f"{S}Hand{fn}{k}", k == 3, fg(f, k))
         add(f"{S}UpLeg", j["hip"], "Hips", src=f"hip.{side}")
         add(f"{S}Leg", j["knee"], f"{S}UpLeg", src=f"knee.{side}")
         add(f"{S}Foot", j["ankle"], f"{S}Leg", src=f"ankle.{side}")
@@ -358,6 +362,52 @@ def test_pose(bones: list[dict]) -> dict:
                 "RightLeg": ([1, 0, 0], 60), "Spine1": ([0, 1, 0], 12), "Neck": ([0, 0, 1], 25)}
         return {PREFIX + k: v for k, v in want.items() if PREFIX + k in names}
     return {b["name"]: ([1, 0, 0], 35) for b in bones if b["name"].endswith("_02")}
+
+
+def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -> dict:
+    """Weights for every part {name: (verts, tris)} -> {name: (J, W)}. parts.<p>.rig_bone (a rig bone, the prefix
+    optional) binds a part rigidly (a bag on the hip, a disc in the hand: split between bones they tore); with a base
+    body the other parts copy the weights of the body's nearest vertex (clothes move with the skin under them:
+    weighted on their own they drifted from it and the body poked through)."""
+    from scipy.spatial import cKDTree
+    defs = spec.get("parts") or {}
+    names = [b["name"] for b in rb]
+    out = {}
+    ref = None
+    if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
+        from . import base as basemod
+        from .spec import expand_mirror as _em
+        Wq, fq = basemod.surface(basemod.inject(_em(spec)), spec["base"])["quads"]
+        Wq = np.asarray(Wq, float)
+        Tq = np.array([(f[0], f[j], f[j + 1]) for f in fq for j in range(1, len(f) - 1)])
+        ref = rig_weights(spec, rb, Wq, Tq, smooth=smooth)
+        tree = cKDTree(Wq)
+    for pn, (V, F) in meshes.items():
+        bone =(defs.get(pn) or {}).get("rig_bone")
+        if bone:
+            full = bone if bone in names else PREFIX + bone
+            if full not in names:
+                raise ValueError(f"parts.{pn}.rig_bone: no rig bone {bone!r}")
+            J = np.zeros((len(V), 4), int)
+            J[:, 0] = names.index(full)
+            W = np.zeros((len(V), 4))
+            W[:, 0] = 1.0
+            out[pn] = (J, W)
+        elif ref is not None:
+            d, k = tree.query(np.asarray(V, float), k=4)  # inverse-distance blend of the 4 nearest (the base's
+            w = 1.0 / np.maximum(d, 1e-5) ** 2  # quads are ~1 cm apart: one nearest vertex left steps)
+            w /= w.sum(1, keepdims=True)
+            dense = np.zeros((len(V), len(rb)))
+            rows = np.arange(len(V))[:, None]
+            for c in range(4):
+                np.add.at(dense, (np.repeat(rows, 4, 1), ref[0][k[:, c]]), ref[1][k[:, c]] * w[:, c:c + 1])
+            J = np.argsort(-dense, 1)[:, :4]
+            W = np.take_along_axis(dense, J, 1)
+            W /= np.maximum(W.sum(1, keepdims=True), 1e-12)
+            out[pn] = (J, W)
+        else:
+            out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
+    return out
 
 
 def rig_bones(spec: dict) -> list[dict]:
@@ -423,12 +473,26 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
     inside its segment (a finger's pieces), and the rest of the modelling bones (a tusk, an ear, a collar) with
     go to the rig bone nearest their middle, blobs to the rig bone nearest their middle; a rig bone left with none (a hand, the toes) gets a cone
     along its own segment. Then `weights` on the rig tree: nearest-flesh distances, family-limited, smoothed."""
-    mb = skeleton(spec)
     seg = _segments(rb)
     ids = list(seg)
     A = np.array([seg[i][0] for i in ids])
     B = np.array([seg[i][1] for i in ids])
     flesh = {i: [] for i in ids}
+    base_r = None
+    if spec.get("base"):  # a base body has no modelling bones (its bones are clothes, straps): each rig bone's
+        # flesh is a cone along its own segment as thick as the base body there (the median distance of the base's
+        # vertices that lie nearest it), measured once, so every part (skin, shirt, shoes) gets the same weights
+        from . import base as basemod
+        from .spec import expand_mirror as _em
+        s = basemod.inject(_em(spec))
+        W = np.asarray(basemod.surface(s, spec["base"])["quads"][0], float)
+        D = np.stack([_seg_dist(W, A[q], B[q]) for q in range(len(ids))], 1)
+        near = D.argmin(1)
+        base_r = np.array([float(np.median(D[near == q, q])) if (near == q).sum() > 3 else np.nan
+                           for q in range(len(ids))])
+        mb = []
+    else:
+        mb = skeleton(spec)
     for b in mb:
         p, h, t = b["prim"], b["head"], b["tail"]
         ax = t - h
@@ -466,6 +530,8 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
             nq = min(have, key=lambda n: float(_seg_dist(A[q], A[n], B[n]))) if have else None
             ref = next(x for x in flesh[ids[nq]] if x.kind == "cone" and "rb" in x.params) if nq is not None else None
             r = 0.4 * (min(ref.params["ra"], ref.params["rb"]) if ref is not None else 0.03)
+            if base_r is not None and np.isfinite(base_r[q]):
+                r = 0.8 * float(base_r[q])
             from .spec import Prim, bone_frame
             a, bb = A[q], B[q] if np.linalg.norm(B[q] - A[q]) > 1e-3 else A[q] + np.array([0, 0, 1e-3])
             flesh[i].append(Prim(rb[i]["name"], "cone", "add", 0.0, 0, np.minimum(a, bb) - r, np.maximum(a, bb) + r,

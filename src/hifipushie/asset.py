@@ -392,6 +392,40 @@ def split_big(mesh: Path, ctx: dict, rel: dict, texture: int, log: list) -> None
         np.savez(mesh, **z)
 
 
+def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
+    """Parts with a modelled topology instead of a decimation: parts.<p>.topology = "wrap" (the body of a humanoid:
+    retopo.wrap, the template's quads carried onto it; a base's grafted head keeps its own), its faces buried in
+    other parts (skin under clothes, where animation would only poke it through) dropped. {part: npz path}."""
+    import hashlib
+    defs = spec.get("parts") or {}
+    out = {}
+    for pn in ctx["streams"]:
+        if (defs.get(ctx["origin"][pn]) or {}).get("topology") != "wrap":
+            continue
+        if ctx["origin"][pn] != "body":
+            raise ValueError(f"parts.{pn}.topology = \"wrap\": only the body (a humanoid's) can be wrapped")
+        from . import retopo
+        tl = []
+        r = retopo.wrap(spec, log=tl)
+        V, L, S = r["verts"], r["loops"], r["sizes"]
+        names = list(ctx["streams"])
+        hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"]) > 0.5
+        st = np.r_[0, np.cumsum(S)[:-1]]
+        faces = [L[a:a + k] for a, k in zip(st, S)]
+        kept = [f for f in faces if not hid[f].all()]
+        used = np.unique(np.concatenate(kept))
+        rm = np.full(len(V), -1)
+        rm[used] = np.arange(len(used))
+        Vk, Lk, Sk = V[used], rm[np.concatenate(kept)], np.array([len(f) for f in kept])
+        path = out_dir / f"topology_{pn}.npz"
+        np.savez(path, verts=Vk, loops=Lk, sizes=Sk)
+        out[pn] = (str(path), hashlib.sha1(Vk.tobytes() + Lk.tobytes()).hexdigest()[:12])
+        log.append(f"{pn}: wrapped topology, {len(Sk)} faces ({(Sk == 4).mean():.0%} quads, "
+                   f"{int((Sk - 2).sum())} triangles), {len(faces) - len(kept)} faces under other parts dropped; "
+                   + "; ".join(x for x in tl if x.startswith(("wrapped", "head"))))
+    return out
+
+
 def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
     """Drop faces buried inside another part (skin under solid clothing shells, the back of an eyeball in its
     socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space."""
@@ -970,6 +1004,7 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
                 log.append(f"{u}: {area:.0f} m^2 of surface wants {np.sqrt(need / FILL):.0f}^2 texels at "
                            f"{texel_density:g}/m, more than one {texture}^2 atlas holds: expect ~{got:.0f}/m "
                            f"(split it into parts, raise texture, or give it a lower texel_density)")
+    topo = topology_parts(spec, ctx, out_dir, log)
     fill = FILL
     for attempt in range(2):
         group = density_groups(units, loads, fixed, texture, fill) if texel_density else atlas_groups(
@@ -981,7 +1016,8 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
                     "atlas": names.index(group[pn]), "focus": focus[pn], "split": pn in ctx.get("split", {}),
                     "copies": len(ctx["prefabs"][pf_of[pn]]["instances"]) if pn in pf_of else 1,
                     **({} if _min_triangles(defs, origin[pn]) is None else  # (absent: cached decimations stay valid)
-                       {"min": _min_triangles(defs, origin[pn])})} for pn in areas}
+                       {"min": _min_triangles(defs, origin[pn])}),
+                    **({"fixed": topo[pn][0], "fixed_sum": topo[pn][1]} if pn in topo else {})} for pn in areas}
         t1 = time.time()
         parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"])
         if not texel_density:
@@ -1068,9 +1104,9 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
         from . import rig as rigmod
         tr = time.time()
         bones = rigmod.rig_bones(spec)
-        rigged = {"bones": bones, "weights": {
-            pn: rigmod.rig_weights(spec, bones, p["verts"], p["corner_vert"].reshape(-1, 3), smooth=3)
-            for pn, p in parts.items() if pn not in pf_of}}
+        rigged = {"bones": bones, "weights": rigmod.skin_parts(
+            spec, bones, {pn: (p["verts"], p["corner_vert"].reshape(-1, 3)) for pn, p in parts.items()
+                          if pn not in pf_of}, smooth=3)}
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
                    f"{bones[0]['name']!r}), {len(rigged['weights'])} parts skinned, {time.time() - tr:.1f}s")
     write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged)
