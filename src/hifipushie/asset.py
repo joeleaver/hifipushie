@@ -613,6 +613,43 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     return {"maps": maps, "height_range": hr, "coverage": len(tri) / size ** 2}
 
 
+def mesh_quality(verts: np.ndarray, tris: np.ndarray, prims=None) -> dict:
+    """A triangle mesh's own quality report: distance to the exact field (mm; p50/p99/max over face centres and
+    edge midpoints, where a low poly strays between its vertices) when `prims` are given, and counts of
+    non-manifold edges (3+ faces), open edges, folds (neighbouring faces turned > 120 deg) and slivers (smallest
+    angle < 2 deg)."""
+    P = np.asarray(verts, np.float64)
+    key = np.round(P / 1e-6).astype(np.int64)  # weld split vertices (uv seams) by position
+    _, weld = np.unique(key, axis=0, return_inverse=True)
+    T = weld.reshape(-1)[np.asarray(tris)]
+    c = P[np.asarray(tris)]
+    n = np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0])
+    area2 = np.linalg.norm(n, axis=1)
+    n = n / np.maximum(area2, 1e-30)[:, None]
+    E = np.sort(np.stack([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1).reshape(-1, 2), axis=1)
+    fid = np.repeat(np.arange(len(T)), 3)
+    uniq, inv, cnt = np.unique(E, axis=0, return_inverse=True, return_counts=True)
+    inv = inv.reshape(-1)
+    out = {"triangles": int(len(T)), "non_manifold_edges": int((cnt > 2).sum()), "open_edges": int((cnt == 1).sum())}
+    two = np.flatnonzero(cnt == 2)
+    order = np.argsort(inv, kind="stable")
+    first = np.searchsorted(inv[order], two)
+    fa, fb = fid[order[first]], fid[order[first + 1]]
+    out["folds"] = int(((n[fa] * n[fb]).sum(1) < -0.5).sum())
+    ang = []
+    for i in range(3):
+        a, b = c[:, (i + 1) % 3] - c[:, i], c[:, (i + 2) % 3] - c[:, i]
+        cosv = (a * b).sum(1) / np.maximum(np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1), 1e-30)
+        ang.append(np.degrees(np.arccos(np.clip(cosv, -1, 1))))
+    out["slivers"] = int((np.min(ang, axis=0) < 2.0).sum())
+    if prims is not None:
+        probe = np.concatenate([c.mean(1), ((c + np.roll(c, 1, 1)) / 2).reshape(-1, 3)])
+        d = np.abs(sdf.field_at(prims, probe, clip=False)) * 1000
+        out.update(err_mm_p50=round(float(np.percentile(d, 50)), 2), err_mm_p99=round(float(np.percentile(d, 99)), 2),
+                   err_mm_max=round(float(d.max()), 2))
+    return out
+
+
 def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, log: list) -> dict:
     """The paint and AO maps of every atlas, baked by Cycles from the model's Blender scene (synced first) onto
     the low poly: {atlas: {"color" (linear), "rms", "ao"}}. Each part's rays reach as far as its low poly strays
@@ -975,6 +1012,17 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
             report[pn]["prefab"] = pf_of[pn]
         if "focus_mm_per_texel" in tsz[pn]:
             report[pn]["focus_mm_per_texel"] = tsz[pn]["focus_mm_per_texel"]
+        q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn])
+        report[pn]["quality"] = q
+        vx_mm = ctx["frames"][pn][1] * 1000
+        warn = [w for w, bad in ((f"p99 {q['err_mm_p99']:.1f} mm from the surface (> 4 voxels: bridged gaps or "
+                                  f"cut corners; raise its triangle_weight)", q["err_mm_p99"] > 4 * vx_mm),
+                                 (f"{q['folds']} folded edges", q["folds"] > 0),
+                                 (f"{q['non_manifold_edges']} non-manifold edges", q["non_manifold_edges"] > 0))
+                if bad]
+        log.append(f"  {pn} quality: error p50/p99/max {q['err_mm_p50']}/{q['err_mm_p99']}/{q['err_mm_max']} mm, "
+                   f"{q['slivers']} slivers, {q['open_edges']} open edges"
+                   + (f": WARNING {'; '.join(warn)}" if warn else ""))
     for ai, an in enumerate(names):
         fill_a = sum(tsz[pn]["uv_fill"] for pn, p in parts.items() if p["atlas"] == ai)
         short = ""

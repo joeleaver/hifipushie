@@ -294,6 +294,27 @@ def test_min_triangles_lets_chains_go_below_the_floor():
     assert "min_triangles" in _raises(asset._min_triangles, {"chain": {"min_triangles": -1}}, "chain")
 
 
+# Card "Mesh exports report their own quality" (export_asset's part)
+def test_mesh_quality():
+    import numpy as np
+    from skimage import measure as skm
+    from hifipushie import asset, sdf
+    from hifipushie.spec import compile_prims
+    prims = compile_prims({"joints": {}, "bones": {}, "blobs": {"ball": {"at": [0, 0, 0], "size": [0.1, 0.1, 0.1]}}})
+    g = sdf.evaluate(prims, 40)
+    v, f, _, _ = skm.marching_cubes(g.field, 0.0)
+    v = g.origin + v * g.voxel
+    q = asset.mesh_quality(v, f, prims)
+    assert q["non_manifold_edges"] == 0 and q["open_edges"] == 0 and q["folds"] == 0, q
+    assert q["err_mm_p99"] < g.voxel * 1000, q
+    folded = np.concatenate([f, f[:1, ::-1]])  # one face doubled back on itself: a fin
+    q2 = asset.mesh_quality(v, folded)
+    assert q2["non_manifold_edges"] == 3, q2
+    fold = asset.mesh_quality(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.3, 0]], float), np.array([[0, 1, 2], [1, 0, 3]]))
+    assert fold["folds"] == 1 and fold["open_edges"] == 4, fold  # the second face lies back over the first
+    assert asset.mesh_quality(v, f[1:])["open_edges"] == 3
+
+
 def _exc(fn, *a):
     try:
         fn(*a)
