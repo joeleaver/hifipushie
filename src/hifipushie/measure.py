@@ -523,3 +523,66 @@ def prop_clashes(spec: dict, voxel: float = 0.015, tol: float = 0.008) -> list[s
         top = sorted(worst.items(), key=lambda t: -t[1])[:3]
         lines.append(f"{inst} cuts " + ", ".join(f"{d * 1000:.0f} mm into {n}" for n, d in top))
     return lines
+
+
+# ---------------------------------------------------------------- line of sight (cameras)
+
+def _blocked(prims, eyes: np.ndarray, target: np.ndarray, samples: int = 400):
+    """For each eye (k, 3): (index of the first sample where the segment to the target enters solid before
+    reaching the target's own surface, or -1; the sample points). A target inside a solid counts as seen when
+    only that solid lies between (the run of samples ending at the target)."""
+    t = np.linspace(0.0, 1.0, samples)
+    P = eyes[:, None, :] + t[None, :, None] * (target - eyes)[:, None, :]
+    inside = field_at(prims, P.reshape(-1, 3)).reshape(len(eyes), samples) < 0
+    first = np.full(len(eyes), -1)
+    for k in range(len(eyes)):
+        ins = inside[k]
+        end = samples
+        if ins[-1]:  # the target sits in a solid: that solid's run is the target itself
+            out = np.flatnonzero(~ins)
+            end = int(out[-1]) + 1 if len(out) else 0
+        else:
+            L = float(np.linalg.norm(target - eyes[k]))
+            end = max(samples - int(np.ceil(0.02 / max(L / (samples - 1), 1e-9))) - 1, 0)  # on its surface
+        hit = np.flatnonzero(ins[:end])
+        if len(hit):
+            first[k] = int(hit[0])
+    return first, P
+
+
+def _element_at(prims, p: np.ndarray) -> str:
+    from . import sdf
+    best, name = np.inf, "?"
+    for q in prims:
+        if q.op != "add" or q.kind not in sdf.SDF:
+            continue
+        try:
+            d = float(sdf.SDF[q.kind](p[None], q.params)[0])
+        except Exception:  # noqa: BLE001 - a kind needing context (a shell's base): skip
+            continue
+        if d < best:
+            best, name = d, q.name + (f" (part {q.part})" if q.part != "body" else "")
+    return name
+
+
+def sight(prims, eye, target, search: float = 3.0) -> str:
+    """"" when the eye sees the target; else what blocks it (element, where, how far in front of the eye) and the
+    nearest eye at the same height within `search` m that does see it."""
+    eye, target = np.asarray(eye, float), np.asarray(target, float)
+    first, P = _blocked(prims, eye[None], target)
+    if first[0] < 0:
+        return ""
+    p = P[0, first[0]]
+    dist = float(np.linalg.norm(p - eye))
+    why = (f"the eye is inside {_element_at(prims, eye)}" if first[0] == 0 else
+           f"target hidden by {_element_at(prims, p + (p - eye) / max(dist, 1e-9) * 0.005)} at "
+           f"[{p[0]:.2f}, {p[1]:.2f}, {p[2]:.2f}], {dist:.2f} m in front of the eye")
+    radii = [r for r in (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0) if r <= search]
+    ang = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+    cands = np.array([eye + [r * np.cos(a), r * np.sin(a), 0.0] for r in radii for a in ang])
+    ok, _ = _blocked(prims, cands, target, 200)
+    good = np.flatnonzero(ok < 0)
+    if not len(good):
+        return why + f"; no eye at this height within {search:g} m sees it"
+    c = cands[good[0]]
+    return why + f"; nearest clear eye: [{c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}] ({np.linalg.norm(c - eye):.2f} m away)"

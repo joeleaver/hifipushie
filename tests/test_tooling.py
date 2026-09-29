@@ -250,6 +250,27 @@ def test_prop_dimensions_and_part_envelopes():
     assert "needs \"of\"" in _raises(server.set_plan, "basket2", {**plan, "dimensions": {"x": {"value": 1}}})
 
 
+# Card "Views: say what blocks the line of sight before rendering, and offer the nearest eye that sees the target"
+def test_camera_sight():
+    from hifipushie import measure
+    from hifipushie.spec import compile_prims
+    spec = {"joints": {}, "bones": {}, "blobs": {
+        "wall": {"at": [0, 0, 1], "shape": "box", "size": [0.6, 0.05, 1.0]},
+        "statue": {"at": [0, 2, 0.5], "shape": "box", "size": [0.2, 0.2, 0.5], "part": "stone"}},
+        "parts": {"stone": {"color": [0.6, 0.6, 0.6]}}}
+    server.put_model("sight", spec)
+    prims = compile_prims(spec)
+    why = measure.sight(prims, [0, -2, 1.5], [0, 2, 0.5])  # the wall stands between
+    assert "hidden by wall" in why and "nearest clear eye" in why, why
+    assert measure.sight(prims, [2, -2, 1.5], [0, 2, 0.5]) == ""  # round the wall's end: seen (target inside)
+    assert measure.sight(prims, [0, 4, 1.5], [0, 2.2, 0.5]) == ""  # a target on the statue's surface
+    assert "eye is inside wall" in measure.sight(prims, [0, 0, 1.0], [0, 2, 0.5])
+    info = server.look("sight", camera={"eye": [0, -2, 1.5], "target": [0, 2, 0.5]}, hide_parts=["body"], size=64)[1]
+    assert "NOT SEEN" not in info, info  # the hidden part doesn't block
+    info = server.look("sight", camera={"eye": [0, -2, 1.5], "target": [0, 2, 0.5]}, size=64)[1]
+    assert "NOT SEEN: target hidden by wall" in info, info
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

@@ -391,7 +391,15 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
-    geometric = strokes or instances or shading not in ("clay", "flat")  # clip and close-ups render painted too
+    if cams:  # say what blocks a camera's view before a render is spent on it
+        from .spec import compile_prims
+        seen = [p for p in compile_prims(store.load(name))
+                if (not only_parts or p.part in only_parts) and p.part not in (hide_parts or [])]
+        for c in cams:
+            why = meas.sight(seen, c["eye"], c["target"]) if seen else ""
+            if why:
+                c["_note"] = c.get("_note", "") + f" | NOT SEEN: {why}"
+    geometric =strokes or instances or shading not in ("clay", "flat")  # clip and close-ups render painted too
     if paint and not geometric and store.load(name).get("paint"):
         from . import scene
         r = scene.sync(name)
