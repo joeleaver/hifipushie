@@ -1,0 +1,848 @@
+{
+ "symmetry": true,
+ "blend": 0.035,
+ "base": {
+  "body": {
+   "source": "makehuman",
+   "age": 45,
+   "weight": 0.72,
+   "muscle": 0.3,
+   "height": 1.78
+  },
+  "eyes": "eyes",
+  "head": {
+   "source": "gnm",
+   "scale": 1.12,
+   "eyes": 1.3,
+   "fit": {
+    "face_width": 2.15,
+    "jaw_width": 1.75,
+    "chin_width": 0.95,
+    "eye_chin": 1.95,
+    "eye_mouth": 1.22,
+    "eye_nose": 0.72
+   },
+   "expression": {
+    "left_eye_region_000": 0.9,
+    "right_eye_region_000": 0.9,
+    "left_eye_region_001": 0.5,
+    "right_eye_region_001": 0.5
+   }
+  },
+  "style": {
+   "eyes": 1.12,
+   "head": 1.06,
+   "simplify": 0.4
+  }
+ },
+ "joints": {
+  "sleeve_end.L": {
+   "pos": [
+    0.285,
+    -0.016,
+    1.315
+   ],
+   "r": 0.01
+  },
+  "sleeve_hem.L": {
+   "pos": [
+    0.279,
+    -0.016,
+    1.322
+   ],
+   "r": 0.01
+  }
+ },
+ "bones": {
+  "sleeve.L": {
+   "a": "shoulder.L",
+   "b": "sleeve_end.L",
+   "r_a": 0.1,
+   "r_b": 0.085,
+   "part": "shirt"
+  },
+  "sleeve_cuff.L": {
+   "a": "sleeve_hem.L",
+   "b": "sleeve_end.L",
+   "r_a": 0.068,
+   "r_b": 0.068,
+   "part": "shirt",
+   "layer": 1,
+   "blend": 0.003
+  }
+ },
+ "blobs": {
+  "shirt_torso": {
+   "at": [
+    0,
+    0,
+    1.19
+   ],
+   "shape": "box",
+   "size": [
+    0.21,
+    0.2,
+    0.325
+   ],
+   "part": "shirt"
+  },
+  "shirt_neck": {
+   "at": [
+    0,
+    -0.02,
+    1.54
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.075,
+    0.07,
+    0.06
+   ],
+   "rot": [
+    -20,
+    0,
+    0
+   ],
+   "op": "subtract",
+   "part": "shirt",
+   "blend": 0.01
+  },
+  "shorts_region": {
+   "at": [
+    0,
+    0,
+    0.71
+   ],
+   "shape": "box",
+   "size": [
+    0.26,
+    0.22,
+    0.17
+   ],
+   "part": "shorts"
+  },
+  "sock.L": {
+   "at": [
+    0.2,
+    0.0,
+    0.15
+   ],
+   "shape": "box",
+   "size": [
+    0.07,
+    0.1,
+    0.05
+   ],
+   "part": "socks"
+  },
+  "collar_band": {
+   "at": [
+    0,
+    -0.012,
+    1.505
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.086,
+    0.088,
+    0.02
+   ],
+   "hollow": 0.006,
+   "round": 0.004,
+   "rot": [
+    -20,
+    0,
+    0
+   ],
+   "part": "collar"
+  },
+  "placket": {
+   "at": [
+    0,
+    -0.1395,
+    1.405
+   ],
+   "shape": "box",
+   "size": [
+    0.016,
+    0.004,
+    0.05
+   ],
+   "round": 0.003,
+   "rot": [
+    -26,
+    0,
+    0
+   ],
+   "part": "shirt",
+   "layer": 1,
+   "blend": 0.004
+  },
+  "button1": {
+   "at": [
+    0,
+    -0.1315,
+    1.428
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.006,
+    0.006,
+    0.002
+   ],
+   "rot": [
+    64,
+    0,
+    0
+   ],
+   "round": 0.0015,
+   "part": "buttons"
+  },
+  "button2": {
+   "at": [
+    0,
+    -0.1505,
+    1.385
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.006,
+    0.006,
+    0.002
+   ],
+   "rot": [
+    64,
+    0,
+    0
+   ],
+   "round": 0.0015,
+   "part": "buttons"
+  }
+ },
+ "parts": {
+  "eyes": {
+   "color": "#ece3d8",
+   "voxel": 0.0012
+  },
+  "shirt": {
+   "shell": "body",
+   "offset": 0.008,
+   "color": [
+    0.12,
+    0.55,
+    0.55
+   ],
+   "roughness": 0.85,
+   "garment_blend": 0.05,
+   "garment": {
+    "close": 40,
+    "hang": 0.8,
+    "ease": 0.008,
+    "tube": {},
+    "tube_ease": 0.01
+   }
+  },
+  "shorts": {
+   "shell": "body",
+   "offset": 0.005,
+   "color": [
+    0.62,
+    0.55,
+    0.4
+   ],
+   "roughness": 0.9,
+   "garment": {
+    "close": 25,
+    "hang": 0.4,
+    "ease": 0.012,
+    "legs": {},
+    "tube_ease": 0.012
+   }
+  },
+  "socks": {
+   "shell": "body",
+   "offset": 0.004,
+   "color": [
+    0.93,
+    0.93,
+    0.9
+   ]
+  },
+  "collar": {
+   "color": [
+    0.12,
+    0.55,
+    0.55
+   ],
+   "roughness": 0.85
+  },
+  "buttons": {
+   "color": [
+    0.9,
+    0.9,
+    0.86
+   ],
+   "roughness": 0.4
+  }
+ },
+ "story": {
+  "summary": "Dave, 34, plays the local disc golf course every Saturday morning; a friendly regular who knows every basket",
+  "age": 34,
+  "climate": "sunny park course, dusty fairways, dewy grass in the morning",
+  "use": "walks 18 holes, digs discs out of bushes, sits on the bag between holes",
+  "directions": {
+   "sun": [
+    0.3,
+    -0.5,
+    0.8
+   ]
+  },
+  "events": [
+   "his favourite orange driver has a scuffed rim from hitting trees",
+   "the bag's bottom is grass-stained from being set down",
+   "sneakers dusty from the fairway"
+  ]
+ },
+ "strokes": {
+  "brow_mass.L": {
+   "op": "clay",
+   "width": 0.01,
+   "depth": 0.0012,
+   "path": [
+    {
+     "at": "lm_brow_inner.L",
+     "dir": [
+      0,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_brow_mid.L"
+    },
+    {
+     "at": "lm_brow_outer.L",
+     "offset": [
+      0,
+      0,
+      -0.002
+     ],
+     "dir": [
+      0.5,
+      -1,
+      0.2
+     ]
+    }
+   ]
+  },
+  "fold_pit_front.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.024,
+   "depth": [
+    0.0004,
+    0.0016,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      0.17,
+      -0.09,
+      1.31
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.14,
+      -0.115,
+      1.25
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      -0.125,
+      1.2
+     ]
+    }
+   ]
+  },
+  "fold_pit_back.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.024,
+   "depth": [
+    0.0004,
+    0.0016,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      0.17,
+      0.09,
+      1.31
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.14,
+      0.12,
+      1.24
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      0.13,
+      1.17
+     ]
+    }
+   ]
+  },
+  "fold_sleeve.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.016,
+   "depth": [
+    0.0016,
+    0.0004
+   ],
+   "path": [
+    {
+     "at": [
+      0.23,
+      -0.05,
+      1.36
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.26,
+      -0.055,
+      1.33
+     ]
+    }
+   ]
+  },
+  "fold_waist.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.022,
+   "depth": [
+    0.0005,
+    0.0018
+   ],
+   "path": [
+    {
+     "at": [
+      0.19,
+      -0.02,
+      1.02
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.18,
+      -0.06,
+      0.95
+     ]
+    }
+   ]
+  }
+ },
+ "paint": {
+  "skin": {
+   "color": "#e9b48e",
+   "roughness": 0.55
+  },
+  "lips.L": {
+   "color": "#b57a6c",
+   "roughness": 0.6,
+   "width": 0.0042,
+   "soft": 0.003,
+   "path": [
+    {
+     "at": "lm_mouth_corner.L",
+     "dir": [
+      0.3,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": "lm_lip_upper",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ]
+  },
+  "iris.L": {
+   "part": "eyes",
+   "color": "#5a3a1e",
+   "path": [
+    {
+     "at": "eye_front.L",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0185,
+   "profile": "flat"
+  },
+  "pupil.L": {
+   "part": "eyes",
+   "color": "#0c0806",
+   "path": [
+    {
+     "at": "eye_front.L",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0075,
+   "profile": "flat"
+  },
+  "glint.L": {
+   "part": "eyes",
+   "color": "#ffffff",
+   "path": [
+    {
+     "at": "eye_front.L",
+     "offset": [
+      -0.003,
+      0,
+      0.002
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0022,
+   "profile": "round"
+  },
+  "eye_gloss": {
+   "part": "eyes",
+   "roughness": 0.2,
+   "specular": 0.7
+  },
+  "skin_warm": {
+   "color": "#d98f73",
+   "opacity": 0.3,
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.014,
+   "soft": 0.02
+  },
+  "brows.L": {
+   "color": "#3b2618",
+   "width": 0.011,
+   "soft": 0.003,
+   "path": [
+    {
+     "at": "lm_brow_inner.L",
+     "offset": [
+      0,
+      0,
+      -0.001
+     ],
+     "dir": [
+      0,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_brow_mid.L",
+     "offset": [
+      0,
+      0,
+      -0.001
+     ]
+    },
+    {
+     "at": "lm_brow_outer.L",
+     "offset": [
+      0,
+      0,
+      -0.003
+     ],
+     "dir": [
+      0.5,
+      -1,
+      0.2
+     ]
+    }
+   ],
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.0004,
+      "range": [
+       0.3,
+       0.7
+      ],
+      "stretch": {
+       "dir": [
+        1,
+        0,
+        0.4
+       ],
+       "factor": 8
+      }
+     },
+     "blend": "multiply",
+     "weight": 0.25
+    }
+   ]
+  },
+  "lips_lower.L": {
+   "color": "#b57a6c",
+   "roughness": 0.6,
+   "width": 0.006,
+   "soft": 0.003,
+   "path": [
+    {
+     "at": "lm_mouth_corner.L",
+     "dir": [
+      0.3,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": "lm_lip_lower",
+     "dir": [
+      0,
+      -1,
+      -0.2
+     ]
+    }
+   ]
+  },
+  "stubble.L": {
+   "color": "#2a2830",
+   "opacity": 0.55,
+   "roughness": 0.7,
+   "height": 0.00015,
+   "mask": [
+    {
+     "path": [
+      {
+       "at": "lm_jaw_1.L",
+       "dir": [
+        1,
+        0,
+        0
+       ]
+      },
+      {
+       "at": "lm_jaw_3.L",
+       "dir": [
+        0.8,
+        -0.2,
+        -0.4
+       ]
+      },
+      {
+       "at": "lm_jaw_5.L",
+       "dir": [
+        0.5,
+        -0.5,
+        -0.6
+       ]
+      },
+      {
+       "at": "lm_jaw_7.L",
+       "dir": [
+        0.2,
+        -0.8,
+        -0.5
+       ]
+      },
+      {
+       "at": "lm_chin",
+       "dir": [
+        0,
+        -0.8,
+        -0.5
+       ]
+      }
+     ],
+     "width": 0.034,
+     "profile": "flat"
+    },
+    {
+     "path": [
+      {
+       "at": "lm_jaw_1.L",
+       "offset": [
+        -0.01,
+        -0.012,
+        0.0
+       ],
+       "dir": [
+        0.8,
+        -0.6,
+        0
+       ]
+      },
+      {
+       "at": "lm_jaw_3.L",
+       "offset": [
+        -0.02,
+        -0.02,
+        0.02
+       ],
+       "dir": [
+        0.6,
+        -0.8,
+        0
+       ]
+      },
+      {
+       "at": "lm_mouth_corner.L",
+       "offset": [
+        0.015,
+        0.006,
+        0.0
+       ],
+       "dir": [
+        0.4,
+        -1,
+        0
+       ]
+      }
+     ],
+     "width": 0.03,
+     "profile": "flat",
+     "blend": "max"
+    },
+    {
+     "path": [
+      {
+       "at": "lm_mouth_corner.L",
+       "offset": [
+        0.003,
+        0,
+        0.004
+       ],
+       "dir": [
+        0.3,
+        -1,
+        0
+       ]
+      },
+      {
+       "at": "lm_lip_upper",
+       "offset": [
+        0,
+        0,
+        0.009
+       ],
+       "dir": [
+        0,
+        -1,
+        0
+       ]
+      }
+     ],
+     "width": 0.013,
+     "profile": "flat",
+     "blend": "max"
+    },
+    {
+     "path": [
+      {
+       "at": "lm_lip_lower",
+       "offset": [
+        0,
+        0,
+        -0.018
+       ],
+       "dir": [
+        0,
+        -1,
+        -0.3
+       ]
+      }
+     ],
+     "width": 0.024,
+     "profile": "flat",
+     "blend": "max"
+    },
+    {
+     "blur": 0.008
+    },
+    {
+     "noise": {
+      "scale": 0.0005,
+      "range": [
+       0.25,
+       0.6
+      ]
+     },
+     "blend": "multiply",
+     "weight": 0.45
+    }
+   ]
+  },
+  "sclera_shade": {
+   "part": "eyes",
+   "color": "#c4a898",
+   "opacity": 0.45,
+   "ao": [
+    0.55,
+    0.25
+   ]
+  },
+  "mouth_dark": {
+   "color": "#3a1d1a",
+   "roughness": 0.8,
+   "near": "mouth_fill",
+   "within": 0.0,
+   "soft": 0.0008
+  }
+ }
+}
