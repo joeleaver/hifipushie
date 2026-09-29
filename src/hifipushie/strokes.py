@@ -148,7 +148,9 @@ class Surface:
         if not self.prims:
             raise SpecError(f"no part {part!r} to lay strokes on")
         adds = [p for p in self.prims if p.op == "add"]
-        self.span = float(np.linalg.norm(np.max([p.hi for p in adds], 0) - np.min([p.lo for p in adds], 0)))
+        self.part = part
+        self.lo, self.hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+        self.span = float(np.linalg.norm(self.hi - self.lo))
 
     def f(self, pts: np.ndarray) -> np.ndarray:
         from . import sdf
@@ -181,13 +183,28 @@ class Surface:
         return self._bisect(origin[None] + us[k - 1] * d, origin[None] + us[k] * d)[0]
 
     def entry(self, point: np.ndarray, facing: np.ndarray, what: str) -> np.ndarray:
-        """First surface point hit by a ray arriving along -facing through `point`."""
-        start = point + facing * self.span
-        us = np.linspace(0.0, 2 * self.span, 1600)
+        """First surface point hit by a ray arriving along -facing through `point`: any point on the line works
+        (the ray starts outside the part's box, however far behind or in front of it the point is)."""
+        # Where the line leaves the part's box on either side (slabs), measured along +facing from the point.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t0, t1 = (self.lo - point) / facing, (self.hi - point) / facing
+        t0, t1 = np.where(np.abs(facing) < 1e-12, -np.inf, t0), np.where(np.abs(facing) < 1e-12, np.inf, t1)
+        inside_slab = (np.abs(facing) >= 1e-12) | ((point >= self.lo) & (point <= self.hi))
+        near, far = np.minimum(t0, t1).max(), np.maximum(t0, t1).min()
+        step = 2 * self.span / 1599
+        if not inside_slab.all() or far < near or far < -1e-9:  # the line misses the box
+            ahead, length = self.span, 2 * self.span
+        else:  # the old reach (span either way) when the point is near; further when it isn't
+            ahead = max(self.span, far + step)
+            length = max(2 * self.span, ahead - near + step)
+        start = point + facing * ahead
+        us = np.arange(int(np.ceil(length / step)) + 1) * step
         f = self.f(start - us[:, None] * facing)
         hit = np.flatnonzero(f < 0)
         if not len(hit) or hit[0] == 0:
-            raise SpecError(f"{what}: no surface along {_r(-facing)} through {_r(point)}")
+            box = ", ".join(f"{a} {lo:.3f}..{hi:.3f}" for a, lo, hi in zip("xyz", self.lo, self.hi))
+            raise SpecError(f"{what}: the ray through {_r(point)} along {_r(-facing)} never meets part "
+                            f"{self.part!r} ({box})")
         k = hit[0]
         return self._bisect(start[None] - us[k] * facing, start[None] - us[k - 1] * facing)[0]
 

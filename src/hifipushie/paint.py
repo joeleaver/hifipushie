@@ -904,6 +904,27 @@ def _seated_paths(spec: dict, name: str, ly: dict) -> list[dict]:
     return list(strokes._generate(base, {f"paint:{name}": st})["blobs"].values())
 
 
+def _path_entries(ly: dict, part):
+    """(entry, part) for every path a layer gives, its mask stack's (nested) included; a stack entry is seated
+    on the layer's part."""
+    if "path" in ly:
+        yield ly, ly.get("part", part)
+    for e in ly.get("mask") or []:
+        if isinstance(e, dict):
+            yield from _path_entries(e, part)
+
+
+def check_paths(spec: dict) -> None:
+    """Seat every paint path now (cached by content, so the sync reuses it): a path that can't be seated fails
+    the edit that made it, not a sync or look minutes later."""
+    for name, ly in layers(spec).items():
+        part = ly.get("part", "body")
+        for e, pn in _path_entries(ly, part):
+            if not isinstance(pn, str) or pn == "*":
+                continue  # seated per part the points are on, at paint time
+            _seated_paths(spec, name, {**e, "part": pn})
+
+
 def _path_mask(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
     from scipy.spatial import cKDTree
     from .sdf import PROFILES

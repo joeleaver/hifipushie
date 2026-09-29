@@ -90,6 +90,28 @@ def test_one_sided_paint_warns():
     assert "paws2" not in out.split("WARNING")[-1].split("\n")[0] and out.count("WARNING") == 1, out
 
 
+# Card "Paint/stroke paths: "at" misses when the point is further than the part's size from its surface"
+def basket_spec(path) -> dict:
+    """The disc basket's hole-number plate: a 150 mm plate 0.34 m in front of the pole, a path addressed on the
+    pole's axis (x, 0, z) with the default view direction."""
+    return {
+        "joints": {"foot": {"pos": [0, 0, 0], "r": 0.02}, "top": {"pos": [0, 0, 1.5], "r": 0.02}},
+        "bones": {"pole": {"a": "foot", "b": "top"}},
+        "blobs": {"plate": {"at": [0, -0.338, 1.3], "shape": "box", "size": [0.075, 0.075, 0.004],
+                            "rot": [90, 0, 0], "part": "plate"}},
+        "parts": {"plate": {"color": [0.9, 0.9, 0.2]}},
+        "paint": {"number": {"part": "plate", "color": [0.1, 0.1, 0.1], "width": 0.006, "path": path}},
+    }
+
+
+def test_path_at_any_point_on_the_line():
+    out = server.put_model("basket", basket_spec([{"at": [-0.022, 0, 1.316]}, {"at": [0.02, 0, 1.28]}]))
+    assert out.startswith("saved basket"), out
+    # a line that never meets the plate fails at save, naming the part and its bounds
+    text = _call("put_model", {"name": "basket", "spec": basket_spec([{"at": [0.5, 0, 1.316]}, {"at": [0.02, 0, 1.28]}])})
+    assert "never meets part 'plate'" in text and "y -0.3" in text, text
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

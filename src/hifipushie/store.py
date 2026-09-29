@@ -44,6 +44,7 @@ def validate(spec: dict) -> None:
     prims = specmod.compile_prims(spec)  # validate before writing
     paint.validate(spec)
     paint.check_refs(spec, prims)  # names paint points at: here, not minutes into a sync
+    paint.check_paths(spec)  # paint paths seat (cached: the sync reuses the seating)
     for pn, d in (spec.get("parts") or {}).items():
         part_colour(pn, spec["parts"], 0)
 
