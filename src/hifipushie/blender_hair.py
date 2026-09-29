@@ -491,3 +491,21 @@ def show(hair: dict):
     made = apply(hair["locks"], hair["look"])
     cap(hair["cap"], hair.get("cap_kind", "cap"))
     return made
+
+
+def hair_points(coll_name: str = "hair"):
+    """Every evaluated vertex of the hair collection (locks and the underlayer), world space (n, 3) float32."""
+    coll = bpy.data.collections.get(coll_name)
+    if coll is None:
+        return np.zeros((0, 3), np.float32)
+    dg = bpy.context.evaluated_depsgraph_get()
+    out = []
+    for ob in coll.objects:
+        ev = ob.evaluated_get(dg)
+        me = ev.to_mesh()
+        v = np.empty(len(me.vertices) * 3, np.float32)
+        me.vertices.foreach_get("co", v)
+        M = np.array(ob.matrix_world, np.float32)
+        out.append(v.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3])
+        ev.to_mesh_clear()
+    return np.concatenate(out) if out else np.zeros((0, 3), np.float32)

@@ -1135,6 +1135,8 @@ def hair_look(job):
     """Render the hair stage file with the job's hair shown (nothing saved)."""
     _open(job["blend"])
     blender_hair.show(job.get("hair") or {})
+    if job.get("dump"):  # the hair's evaluated vertices (world): the silhouette gate measures them
+        np.save(job["dump"], blender_hair.hair_points())
     render({**job, "opened": True})
 
 

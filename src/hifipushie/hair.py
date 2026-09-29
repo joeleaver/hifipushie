@@ -38,7 +38,18 @@ import numpy as np
 
 from . import store
 
-UNDER = 0.82  # the underlayer mass: this share of the groom's volume (the locks' backs make up the rest)
+
+
+def under(g: dict, H, az, el, d_in):
+    """The underlayer's height (m): the mass sunk by about one lock thickness (the big locks' on top, the fill's
+    round the sides), so the locks lying on it make the silhouette (a fraction of the volume buried the big locks)."""
+    W = weights(az, el, d_in)
+    top = W[..., 0] + W[..., 1]
+    tb = float((g["tiers"].get("big") or {}).get("thickness", 0.0))
+    tf = float((g["tiers"].get("fill") or {}).get("thickness", 0.0))
+    depth = 0.85 * (top * tb + (1 - top) * tf)
+    return np.maximum(H - depth, np.minimum(H, 0.0015))
+
 REGIONS = ("front", "top", "sides", "back", "nape")
 GROOM = {
     "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
@@ -507,12 +518,18 @@ def grow(sc: Scalp, g: dict) -> dict:
         if away_given is not None:
             away = away_given
         L = float(td["length"]) * np.ones(len(az)) if td.get("length") else _region(g, "length", W)
+        if away_given is not None:  # the short side of a side part: brushed down toward the ear, not over it
+            L = np.where(away_given == np.sign(_part_x(g) or 1.0), L * float(td.get("part_side_length", 0.55)), L)
         L = L * (1 + noise * 0.25 * rng.uniform(-1, 1, len(az)))
         if tier == "fill":  # shorter near the hairline: the edge tapers cleanly
             L *= 0.5 + 0.5 * _ss(d_in / 0.02)
         size = 1 + noise * 0.25 * rng.uniform(-1, 1, len(az))
         W_ = w0 * size
         T_ = t0 * size
+        if away_given is not None:  # the part side's locks are the short, flat, narrower ones
+            ps = away_given == np.sign(_part_x(g) or 1.0)
+            W_ = np.where(ps, W_ * 0.75, W_)
+            T_ = np.where(ps, T_ * 0.6, T_)
         # the front row lies over the ones behind it (their roots under its body)
         # what lies on what: a lock covers the roots of those downstream of it (the front row over the top, higher
         # roots over lower ones on the sides and back), consistently, or overlaps cross in a jumble
@@ -521,9 +538,29 @@ def grow(sc: Scalp, g: dict) -> dict:
         paths = _walk(sc, g, line, az, el, L, T_, lift, away, rng, tier)
         for i in range(len(az)):
             path = paths[i]
-            k = 5 if L[i] > 0.08 else (4 if L[i] > 0.035 else 3)
+            if tier != "edge":  # a lock ends inside the hairline (tips standing out over the skin read as a fringe)
+                pa, pe, _ = sc.coords(path)
+                din = inside(sc, line, pa, pe)
+                out = np.nonzero(din < float(td.get("tip_inset", 0.006)))[0]
+                out = out[out > 2]
+                if len(out):
+                    j = int(out[0])
+                    c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path[:j + 1], axis=0), axis=1))]
+                    if c[-1] < 0.35 * L[i]:
+                        continue  # too little room: the underlayer carries it
+                    t = np.linspace(0, c[-1], len(path))
+                    path = np.stack([np.interp(t, c, path[:j + 1, q]) for q in range(3)], 1)
+                    Li = c[-1]
+                else:
+                    Li = L[i]
+            else:
+                Li = L[i]
+            k = 5 if Li > 0.08 else (4 if Li > 0.035 else 3)
             idx = np.round(np.linspace(0, len(path) - 1, k)).astype(int)
             a_, e_, h_ = sc.coords(path[idx])
+            if tier != "edge":  # the tip tucks into the layer under it (a shortened lock ended in the air)
+                Ht, dt = envelope(sc, g, line, a_[-1:], e_[-1:])
+                h_[-1] = min(float(h_[-1]), float(under(g, Ht, a_[-1:], e_[-1:], dt)[0]) + 0.1 * float(T_[i]))
             grey = _grey(g, az[i], el[i], line)
             locks[f"{names[tier]}{i:02d}"] = {
                 "tier": tier,
@@ -598,12 +635,12 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
         q = P[:, k - 1] + d * ds[:, None]
         a, e = az_el(q - sc.C)
         H, d_in = envelope(sc, g, line, a, e)
-        under = UNDER * H  # the mass under the locks (the blockout kept as the underlayer, like an artist's)
+        under_h = under(g, H, a, e, d_in)  # the mass under the locks (the blockout kept as the underlayer)
         if tier == "edge":
-            h = np.full(m, 0.6) * T + 0.0005 + under
+            h = np.full(m, 0.6) * T + 0.0005 + under_h
         else:  # the lock lies on the mass, its back just proud of the silhouette; the root dives into the mass
-            surf = under + (0.3 if tier == "big" else 0.05) * T + lift  # the fill lies nearly flush
-            h = (under - 0.4 * T) + (surf - under + 0.4 * T) * _ss(x / 0.18)
+            surf = under_h + 0.45 * T + lift  # the spine half a thickness over the underlayer
+            h = (under_h - 0.4 * T) + (surf - under_h + 0.4 * T) * _ss(x / 0.18)
         h = h - (0.7 if tier == "big" else 1.3) * T * _ss((x - 0.72) / 0.28)  # the tip tucks under (the fill's
         # right into the mass: a row of visible points read as feathers)
         h = np.maximum(h, 0.15 * T)
@@ -688,7 +725,159 @@ def resolve(spec: dict, sc: Scalp) -> list:
     return out
 
 
-def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float = 1.0, scale: float = 1.0):
+def _catmull(P, n):
+    """A Catmull-Rom curve through P (close to Blender's auto handles), n points evenly in parameter."""
+    P = np.asarray(P, float)
+    Q = np.vstack([2 * P[0] - P[1], P, 2 * P[-1] - P[-2]])
+    t = np.linspace(0, len(P) - 1, n)
+    k = np.minimum(np.floor(t).astype(int), len(P) - 2)
+    u = (t - k)[:, None]
+    p0, p1, p2, p3 = Q[k], Q[k + 1], Q[k + 2], Q[k + 3]
+    return 0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u ** 2 + (3 * p1 - p0 - 3 * p2 + p3) * u ** 3)
+
+
+def lock_width(inp: dict, u):
+    """The lock's width factor along it (0 root .. 1 tip), as blender_hair's node group makes it."""
+    root, belly, taper = inp.get("Root", 0.6), max(inp.get("Belly", 0.3), 0.02), inp.get("Taper", 1.0)
+    rise = root + (1 - root) * _ss(u / belly)
+    fall = _ss((u - belly) / max(1 - belly, 1e-6))
+    return rise * (1 - taper * fall ** 0.8)
+
+
+def lock_extents(sc: Scalp, locks: list, n: int = 40):
+    """Points on every lock's outer face (the spine as Blender curves it, the lens across it at 7 places, pushed
+    out by half the thickness less the cup, sized along the lock like the node group): what the locks add to the
+    silhouette."""
+    out = []
+    cs = np.linspace(-1, 1, 7)
+    for lk in locks:
+        S = _catmull(lk["pts"], n)
+        u = np.linspace(0, 1, n)
+        tg = _unit(np.gradient(S, axis=0))
+        nr = _unit(S - sc.C)
+        nr = _unit(nr - (nr * tg).sum(1, keepdims=True) * tg)
+        b = _unit(np.cross(nr, tg))
+        inp = lk["inputs"]
+        f = lock_width(inp, u)[:, None]
+        for c in cs:
+            sy = np.sqrt(max(1 - c * c, 0.0)) ** 0.8
+            off = c * 0.5 * inp["Width"] * b + (sy * 0.5 * inp["Thickness"] - inp.get("Cup", 0.0) * c * c) * nr
+            out.append(S + f * off)
+    return np.concatenate(out) if out else np.zeros((0, 3))
+
+
+def _hull_lift(sc: Scalp, AA, EE, H, d_in, extra, band=12.0):
+    """Raise the underlayer round the sides to the convex hull of itself and the locks' outsides, per azimuth plane
+    (a waist under wide top locks read as a divot at the temples). Sides only (the top keeps its lock separations),
+    below 60 degrees of elevation."""
+    from scipy.spatial import ConvexHull
+    if not len(extra):
+        return H
+    ea, ee = az_el(extra - sc.C)
+    rho_x = np.linalg.norm(extra - sc.C, axis=1)
+    H = H.copy()
+    for i, a in enumerate(AA[:, 0]):
+        fa = abs(((a + 180) % 360) - 180)
+        wa = _ss((fa - 30) / 15) * (1 - _ss((fa - 140) / 15))
+        if wa <= 0:
+            continue
+        near = np.abs(((ea - a + 180) % 360) - 180) < band / 2
+        if near.sum() < 3:
+            continue
+        e = EE[i]
+        hair = d_in[i] > 0
+        rho = sc.r(np.full(len(e), a), e) + H[i]
+        er = np.radians(e)
+        pts = np.stack([rho * np.cos(er), rho * np.sin(er)], 1)[hair]
+        ex = np.radians(ee[near])
+        pts = np.vstack([pts, np.stack([rho_x[near] * np.cos(ex), rho_x[near] * np.sin(ex)], 1), [[0.0, 0.0]]])
+        try:
+            hull = ConvexHull(pts)
+        except Exception:
+            continue
+        uu = np.stack([np.cos(er), np.sin(er)], 1)
+        best = np.full(len(e), np.inf)
+        for eq in hull.equations:
+            nd = uu @ eq[:2]
+            best = np.minimum(best, np.where(nd > 1e-9, -eq[2] / np.maximum(nd, 1e-12), np.inf))
+        need = np.where(hair & np.isfinite(best), best - sc.r(np.full(len(e), a), e) - 0.001, 0.0)
+        we = wa * (1 - _ss((e - 62) / 12))
+        H[i] = np.maximum(H[i], H[i] + (need - H[i]) * we * (need > H[i]))
+    return H
+
+
+GATE_VIEWS = (("front", 0.0, ("left", "right")), ("three_quarter", 40.0, ("left",)),
+              ("three_quarter_r", -40.0, ("right",)))
+
+
+def _outline(sc: Scalp, P, az: float, sgn: float, edges):
+    """The outline (outermost lateral extent, m) of points P per height bin, seen along azimuth az, one side."""
+    a = np.radians(az)
+    right = np.array([np.cos(a), np.sin(a), 0.0]) * sgn
+    x, z = (P - sc.C) @ right, P[:, 2]
+    k = np.clip(((z - edges[0]) / (edges[1] - edges[0])).astype(int), -1, len(edges))
+    prof = np.full(len(edges), -np.inf)
+    ok = (k >= 0) & (k < len(edges))
+    np.maximum.at(prof, k[ok], x[ok])
+    return prof, right
+
+
+def _envelope_of(prof, edges):
+    """The convex envelope of an outline over its heights (what a hull would give), and the deficit per height."""
+    from scipy.spatial import ConvexHull
+    good = np.isfinite(prof)
+    P = np.stack([prof[good], edges[good]], 1)
+    base = P[:, 0].min() - 1.0
+    P2 = np.vstack([P, [[base, P[0, 1]], [base, P[-1, 1]]]])
+    hv = P2[ConvexHull(P2).vertices]
+    hv = hv[hv[:, 0] > base + 0.5]
+    hv = hv[np.argsort(hv[:, 1])]
+    hx = np.full(len(prof), np.nan)
+    hx[good] = np.interp(edges[good], hv[:, 1], hv[:, 0])
+    return hx, np.where(good, hx - prof, 0.0)
+
+
+def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 8):
+    """Raise the underlayer where the hair's outline (underlayer + the locks' outsides) dents inside its own convex
+    envelope in the front and 3/4 views, below the crown band: under the wide top locks the sides pinched in at
+    the temples (a divot either side). The underlayer is pushed out only near the outline, where it can fill it."""
+    from scipy.ndimage import gaussian_filter
+    hair_m = d_in > 0.002
+    H = H.copy()
+    for _ in range(rounds):
+        V = sc.point(AA, EE, H)
+        P = np.vstack([V[hair_m], extra]) if len(extra) else V[hair_m]
+        z0 = sc.lm["lm_brow_mid.L"][2] + 0.02
+        ztop = P[:, 2].max() - 0.01 - CROWN_BAND
+        edges = np.arange(z0, ztop, 0.002)
+        raise_ = np.zeros(H.shape)
+        worst = 0.0
+        for _n, az, sides in GATE_VIEWS:
+            for side in sides:
+                sgn = 1.0 if side == "left" else -1.0
+                prof, right = _outline(sc, P, az, sgn, edges)
+                if np.isfinite(prof).sum() < 4:
+                    continue
+                _hx, deficit = _envelope_of(prof, edges)
+                deficit = np.nan_to_num(deficit)
+                worst = max(worst, float(deficit.max()))
+                x = (V - sc.C) @ right
+                kz = ((V[..., 2] - edges[0]) / 0.002).astype(int)
+                inb = (kz >= 0) & (kz < len(edges)) & hair_m
+                kz = np.clip(kz, 0, len(edges) - 1)
+                need = np.where(inb, deficit[kz], 0.0)
+                near = _ss((x - (np.where(inb, prof[kz], np.inf) - 0.015)) / 0.012)
+                lat = np.maximum((dirs(AA, EE) @ right), 0.25)
+                raise_ = np.maximum(raise_, need * near / lat)
+        if worst * 1000 <= 0.6 * GATE_MM:
+            break
+        r = gaussian_filter(raise_, sigma=(2.0, 2.0), mode=("wrap", "nearest"))
+        H = H + np.maximum(r, raise_ * 0.6)
+    return H
+
+
+def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float = 1.0, sunk: bool = False,
+             extra=None):
     """The scalp inside the hairline pushed out: the dark underlayer (height m) or, mass=True, the groom's whole
     volume (stage a). Its edge dives under the skin just outside the hairline, so the line is crisp."""
     line = hairline(sc, g)
@@ -697,7 +886,11 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
     AA, EE = np.meshgrid(A, E, indexing="ij")
     if mass:
         H, d_in = envelope(sc, g, line, AA, EE)
-        H = np.maximum(H * scale, 0.0015 * _ss(d_in / 0.004))
+        if sunk:
+            H = under(g, H, AA, EE, d_in)
+            if extra is not None:
+                H = _silhouette_fill(sc, AA, EE, H, d_in, extra)
+        H = np.maximum(H, 0.0015 * _ss(d_in / 0.004))
     else:
         d_in = inside(sc, line, AA, EE)
         H = height * _ss(d_in / 0.006)
@@ -731,9 +924,11 @@ def job(name: str, spec: dict | None = None) -> dict:
     g = groom_params(spec)
     tmp = Path(tempfile.mkdtemp(prefix="hifipushie-hair-"))
     stage = h.get("stage", "locks")
-    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, scale=1.0 if stage == "mass" else UNDER)
+    locks = [] if stage == "mass" else resolve(spec, sc)
+    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass",
+                    extra=lock_extents(sc, locks) if locks else None)
     np.savez(tmp / "cap.npz", verts=V, faces=F)
-    return {"locks": [] if stage == "mass" else resolve(spec, sc), "cap": str(tmp / "cap.npz"),
+    return {"locks": locks, "cap": str(tmp / "cap.npz"),
             "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
             "centre": sc.C.tolist()}
 
@@ -792,9 +987,13 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         for f in frames + [thumb]:
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         thumb["size"] = 160
+        dump = str(Path(tmp) / "hair_pts.npy")
         j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec),
-             "samples": 16}
+             "samples": 16, "dump": dump}
         out = _blender(j)
+        pts = np.load(dump)
+        np.save(store._dir(name) / "hair_points.npy", pts)  # the last look's hair vertices (for measuring)
+        look.gate = silhouette_gate(sc, pts)
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t
@@ -821,6 +1020,58 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         sheet.save(save)
     frames_t = [line for line in out.splitlines() if line.startswith("@@")]
     return sheet, round(t_render, 1), frames_t
+
+
+GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
+CROWN_BAND = 0.02  # ...this far under the top (the top's outline is the lock crowns: reported, not gated)
+
+
+def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("three_quarter", 40.0, ("left",)),
+                                          ("three_quarter_r", -40.0, ("right",)))) -> dict:
+    """How far the hair's outline dips inside its own convex hull, per view and side, over the band from a little
+    above the brows to near the top (a waist at the temples reads as a divot). Orthographic along the view's azimuth.
+    {view: {"left": mm, "right": mm, "at": z of the worst}, "pass": bool}."""
+    from scipy.spatial import ConvexHull
+    z0 = sc.lm["lm_brow_mid.L"][2] + 0.02
+    out, ok = {}, True
+    for name, az, sides in views:  # 3/4: the near side's outline (the far one is the forehead's profile)
+        a = np.radians(az)
+        right = np.array([np.cos(a), np.sin(a), 0.0])  # the view's lateral axis (his left positive)
+        Q = V - sc.C
+        x, z = Q @ right, V[:, 2]
+        keep = z > z0
+        x, z = x[keep], z[keep]
+        ztop = z.max() - 0.01
+        res, worst = {}, (0.0, None)
+        edges = np.arange(z0, ztop, 0.002)
+        for side, sgn in (("left", 1.0), ("right", -1.0)):
+            if side not in sides:
+                continue
+            prof = np.array([np.max(sgn * x[(z >= e) & (z < e + 0.002)]) if np.any((z >= e) & (z < e + 0.002))
+                             else np.nan for e in edges])
+            good = ~np.isnan(prof)
+            if good.sum() < 4:
+                continue
+            P = np.stack([prof[good], edges[good]], 1)
+            base = P[:, 0].min() - 1.0  # close the outline on the inside so the hull's outer chain is the envelope
+            P2 = np.vstack([P, [[base, P[0, 1]], [base, P[-1, 1]]]])
+            hv = P2[ConvexHull(P2).vertices]
+            hv = hv[hv[:, 0] > base + 0.5]
+            hv = hv[np.argsort(hv[:, 1])]
+            hx = np.interp(P[:, 1], hv[:, 1], hv[:, 0])
+            gap = (hx - P[:, 0]) * 1000
+            crown = P[:, 1] > ztop - CROWN_BAND  # the top's outline: bumps between lock crowns are the clumps
+            res[side + "_crown"] = round(float(gap[crown].max()), 1) if crown.any() else 0.0
+            gap = np.where(crown, 0.0, gap)
+            i = int(np.argmax(gap))
+            res[side] = round(float(gap[i]), 1)
+            if gap[i] > worst[0]:
+                worst = (float(gap[i]), round(float(P[i, 1]), 3))
+        res["at"] = worst[1]
+        out[name] = res
+        ok &= worst[0] <= GATE_MM
+    out["pass"] = bool(ok)
+    return out
 
 
 def sync(name: str) -> dict:
