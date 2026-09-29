@@ -42,7 +42,7 @@ and roughness come from the most dramatic.
 
 **A kind the tool doesn't know** ("fjord", "badlands"...) isn't guessed. The run stops (exit code 3) and prints
 QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no tides or waves, no glowing lava,
-no caves or overhangs, no glaciers...): tell the designer that before anything else. The questions: is it like one of the
+no glaciers...; caves and overhangs only in the 3D mesh tiles): tell the designer that before anything else. The questions: is it like one of the
 known kinds or a mix of them (optional), how big it should feel, how dramatic the height is, what's underfoot, what's at
 the lowest point, whether it's closed in, and its overall shape. **Ask the designer; don't answer for them**, and let them
 answer in their own words (they're matched to the nearest option). Put their answers in
