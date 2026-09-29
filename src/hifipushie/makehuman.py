@@ -1,6 +1,6 @@
 """MakeHuman as a body source for the base (spec base {"body": {"source": "makehuman", "age", "weight", "muscle",
 "height", "race"}}): its CC0 base mesh (13,380 quads, closed) shaped by its CC0 macro targets, read with our own loader (the
-MakeHuman program is AGPL and isn't used). Files in workspace/_templates/makehuman/ (SOURCE.txt: URL, commit, licence).
+MakeHuman program is AGPL and isn't used). Files in the assets pack "makehuman" (assets.py: `hifipushie-assets fetch`; SOURCE.txt: URL, commit, licence).
 
 Macro targets are blended as MakeHuman blends them: the universal-male-<age>-<muscle>muscle-<weight>weight targets,
 each weighted by the product of its age, muscle and weight weights. Age (years) maps to MakeHuman's slider (1 -> 0,
@@ -21,15 +21,13 @@ _CACHE: dict = {}
 
 
 def root() -> Path:
-    from . import store
-    return store.HOME / "_templates" / "makehuman"
+    from . import assets
+    return assets.pack("makehuman")  # says how to fetch it when missing
 
 
 def _raw():
     if "raw" not in _CACHE:
         r = root()
-        if not (r / "3dobjs" / "base.obj").exists():
-            raise FileNotFoundError(f"the MakeHuman body needs {r} (see SOURCE.txt there, or fetch the CC0 assets)")
         V, F, G, g = [], [], [], None
         for line in open(r / "3dobjs" / "base.obj"):
             if line.startswith("v "):
