@@ -22,6 +22,7 @@ import math
 import numpy as np
 from scipy import ndimage
 
+from . import noise
 from . import terrain_mesh as tm
 
 
@@ -43,10 +44,18 @@ def micro_relief(r, amount=1.0, texel=0.1):
     an, al = keep(0.6), keep(0.24)
     bed = r.get("bed")
 
+    J = r.get("joints")
+
     def f(p):
-        out = 0.10 * a1 * tm._pl_facets(p, 1.2, seed)
+        out = 0.06 * a1 * tm._pl_facets(p, 1.2, seed)
         if a2 > 0:
-            out = out + 0.035 * a2 * tm._pl_facets(p, 0.45, seed + 1)
+            out = out + 0.015 * a2 * tm._pl_facets(p, 0.45, seed + 1)
+        if J and ac > 0:  # fine cracks along the joint sets, between the meshed joints (a third of their spacing)
+            for m, d in enumerate(J["dirs"]):
+                sp = J["spacing"][m] / 3.0
+                q = (p[:, :2] @ np.asarray(d)) / sp + 0.37 * tm._pl_facets(p, 2.0, seed + 9 + m)
+                dist = np.abs(q - np.round(q)) * sp
+                out = out + 0.03 * ac * np.clip(1 - dist / 0.12, 0, 1) ** 2
         if ac > 0:
             c = tm._pl_facets(p, 3.1, seed + 2)
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
@@ -55,7 +64,9 @@ def micro_relief(r, amount=1.0, texel=0.1):
             e = np.abs(zb - np.round(zb)) * bed  # m from the nearest bedding plane
             # the bedding plane's notch: a smooth trough (a cusp stair-stepped when a close view magnified its texels)
             u = np.clip(1 - e / 0.35, 0, 1)
-            out = out + 0.14 * an * u * u * (3 - 2 * u)
+            # (broken along its length: an unbroken dark line on every bed read as a seam)
+            brk = np.clip((noise.fbm(p * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5) - 0.35) * 3, 0, 1)
+            out = out + 0.14 * an * u * u * (3 - 2 * u) * brk
             if al > 0:
                 z = zb * 6.0
                 fr = z - np.floor(z)
@@ -282,10 +293,18 @@ def tangents(P, N, uv, F):
     det = np.where(np.abs(det) < 1e-20, 1e-20, det)
     Tf = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) / det[:, None]   # dP/du
     Bf = -(e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) / det[:, None]  # -dP/dv
+    # as MikkTSpace does it (Blender, Unity and Unreal recompute tangents that way and ignore ours): per corner the
+    # face's tangent projected off the vertex normal and normalised, weighted by the corner's angle. Baking against
+    # any other frame decodes wrong in those engines (lines along chart and tile borders, where frames differ most)
     Tv, Bv = np.zeros_like(P), np.zeros_like(P)
+    C = P[F]
     for c in range(3):
-        np.add.at(Tv, F[:, c], Tf)
-        np.add.at(Bv, F[:, c], Bf)
+        a_, b_ = C[:, (c + 1) % 3] - C[:, c], C[:, (c + 2) % 3] - C[:, c]
+        ang = np.arccos(np.clip((_unit(a_) * _unit(b_)).sum(1), -1, 1))
+        n = N[F[:, c]]
+        tc = _unit(Tf - n * (Tf * n).sum(1, keepdims=True))
+        np.add.at(Tv, F[:, c], tc * ang[:, None])
+        np.add.at(Bv, F[:, c], _unit(Bf) * ang[:, None])
     T = _unit(Tv - N * (Tv * N).sum(1, keepdims=True))
     bad = np.linalg.norm(T, axis=1) < 0.5
     if bad.any():  # (a degenerate corner: any direction across the normal)
@@ -327,6 +346,12 @@ def _surface(field, X, N0, v, reach):
     bad = (moved > reach) | ((G * N0).sum(1) < -0.2) | ~np.isfinite(G).all(1) | (np.abs(f) > 0.05 + 0.1 * v)
     X[bad], G[bad] = X0[bad], N0[bad]
     return X, G, bad
+
+
+def _grain(X):
+    """0..1 value noise over ~1 m (roughness variation)."""
+    from . import noise
+    return noise.fbm(X, 1.3, 3, seed=91)
 
 
 def ambient(field, X, G):
@@ -395,25 +420,25 @@ def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=Non
     tn[:, 2] = np.maximum(tn[:, 2], 0.02)
     tn = _unit(tn)
     # layer weights and colour from the normal over ~half a metre (the fine relief's own normal flipped rock/grass
-    # texel by texel, and two tiles sampling a border a texel apart disagreed)
-    def sparse(fn, step, k):
-        """fn at every step-th texel both ways (k channels), the rest from the nearest one, softened a little."""
-        sub = (ys % step == 0) & (xs % step == 0)
-        img_ = np.full((Hd, Wd, k), np.nan)
-        img_[ys[sub], xs[sub]] = np.asarray(fn(sub), float).reshape(-1, k)
-        _, (jy, jx) = ndimage.distance_transform_edt(~np.isfinite(img_[..., 0]), return_indices=True)
-        img_ = img_[jy, jx]
-        img_ = ndimage.gaussian_filter(img_, (0.5 * step, 0.5 * step, 0))
-        return img_[ys, xs]
-
+    # texel by texel, and two tiles sampling a border a texel apart disagreed). Every value is taken per texel from
+    # its own world point, or interpolated from its own triangle's vertices: never filtered across the atlas image,
+    # where neighbouring texels belong to unrelated charts (a sparse grid + blur there bled one chart into the next
+    # and drew lines along every tile border)
     Gs = G
-    if field is not None:  # (smooth over 0.4 m: every other texel is plenty)
-        Gs = _unit(sparse(lambda s: _unit(_chunked(lambda q: field.value_gradient(q, 0.4)[1], X[s])), 2, 3))
+    if field is not None:
+        Gs = _unit(_chunked(lambda q: field.value_gradient(q, 0.4)[1], X))
         Gs = np.where(bad[:, None], G, Gs)
     Wt, col = _chunked(mats.weights, X, Gs)
-    rgh = Wt @ layers_rough
-    # AO on every fourth texel both ways (it's broad over metres)
-    ao = sparse(lambda s: _chunked(lambda a, b: ambient(ao_field, a, b), X[s], G[s]), 4, 1)[:, 0] if ao_field is not None else np.ones(len(X))
+    # roughness varies over a metre or so (one value per layer read as plastic, the wet band most of all)
+    rgh = np.clip((Wt @ layers_rough) * (0.85 + 0.35 * _grain(X)), 0.05, 1.0)
+    # AO at the mesh's vertices (identical on both sides of a tile border), interpolated over each triangle: it's
+    # broad over metres
+    if ao_field is not None:
+        ao_v = _chunked(lambda a, b: ambient(ao_field, a, b), P, _unit(N))
+        ao = np.clip(np.einsum("nk,nk->n", np.clip(bary, 0, 1) / np.clip(bary, 0, 1).sum(1, keepdims=True),
+                               ao_v[F[t]]), 0, 1)
+    else:
+        ao = np.ones(len(X))
     filled = np.zeros((Hd, Wd), bool)
     filled[ys, xs] = True
     _, (fy, fx) = ndimage.distance_transform_edt(~filled, return_indices=True)
@@ -454,7 +479,7 @@ def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=Non
 # construction): "grit" = rock grain and lumps, "grain" = fine grit, "ripples" = sand ripples, "clods" = soil lumps,
 # "blades" = grass (streaky fine noise), "litter" = leaf litter blobs, "soft" = snow.
 LAYER_DETAIL = {
-    "rock": ("grit", 0.6), "wet_rock": ("grit", 0.4), "grass": ("blades", 0.5), "forest_floor": ("litter", 0.6),
+    "rock": ("grit", 0.35), "wet_rock": ("grit", 0.25), "grass": ("blades", 0.5), "forest_floor": ("litter", 0.6),
     "sand": ("ripples", 0.4), "earth": ("clods", 0.6), "snow": ("soft", 0.25),
 }
 

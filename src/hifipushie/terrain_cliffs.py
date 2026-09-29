@@ -123,7 +123,7 @@ class Region:
         k = np.flatnonzero(R > 1e-3)
         if not len(k):
             return h
-        st = 0.5
+        st = 0.25  # (offsets 0.5 m apart left a regular faceted grid in the pushed ground, visible in its normal map)
         g = np.arange(-self.push, self.push + 1e-9, st)
         ox, oy = np.meshgrid(g, g)
         ox, oy = ox.ravel(), oy.ravel()
@@ -215,7 +215,9 @@ class CliffField:
         if not len(k):
             return out
         front = self.base.solid(p[k], Fg[k] + R.sink * (1 - S[k]), s[k])
-        back = -(Fg[k] + R.thick)
+        # (round a void the shell behind the face reaches 2 m past the cave wall, so it meets the rock round the
+        # void: a gap between them left sealed air pockets inside the rock, meshed as floating bubbles)
+        back = np.minimum(-(Fg[k] + R.thick), dv[k] - (R.wall + 2.0))
         # (rounded where front and back meet: a hard crease there shaded as shards)
         out[k] = tm.smax(front, back, 0.8)
         # round every void, the whole rock (unsunk) within cave_wall of it, up to just under the ground: the sunk
@@ -500,8 +502,8 @@ def ground_check(out: Path, M: dict, R: Region | None = None) -> dict:
         summary["map_seams"] = ms
         for key, r in ms.items():
             if not r["ok"]:
-                failures.append(f"ground {key}: baked maps differ across tile borders (normals p50/p95/p99/max "
-                                f"{r['normal_deg_p50_p95_p99_max']} deg, colour p50/p95 {r['colour_diff_p50_p95']})")
+                failures.append(f"ground {key}: baked maps differ across tile borders in {r['bad']}: "
+                                + ", ".join(f"{c} p50/p95 {r[c]}" for c in r["bad"]))
     summary["ground_border_mismatches"] = bad_edges
     summary["heightmap_edges_differing"] = hm_bad
     if R is not None:
@@ -536,5 +538,53 @@ def ground_check(out: Path, M: dict, R: Region | None = None) -> dict:
         if len(A):
             failures.append(f"{len(A)} heightmap vertices stand in a void (a hole missing), e.g. "
                             f"{A[:3].round(1).tolist()}")
+    if R is not None and M.get("tiles"):
+        fl = floating(out, M, R)
+        summary["cliff_components"] = fl["components"]
+        summary["floating_components"] = len(fl["floating"])
+        for f in fl["floating"][:5]:
+            failures.append(f"a cliff-mesh piece floats clear of the ground ({f['triangles']} triangles, lowest "
+                            f"{f['clearance_m']:.2f} m over the heightmap, at {f['at']})")
     summary["failures"] = len(failures)
     return {"summary": summary, "failures": failures}
+
+
+def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15) -> dict:
+    """Connected pieces of the cliff meshes (LOD `lod`, every tile welded by position) that never reach down to the
+    ground: a piece is grounded if some vertex lies at or under the pushed heightmap (+ tol) or under the sea floor
+    it stands on; one that doesn't floats in the air (a stack's head cut off by the rock relief, a shell fragment)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    Ps, Fs, off = [], [], 0
+    for e in M["tiles"]:
+        L = e["lods"][lod]
+        if not L:
+            continue
+        tr, prims = tm.read_glb(out / L["file"])
+        o = tm._from_gltf(tr[None])[0]
+        for p in prims:
+            if p["extras"].get("role") == "skirt":
+                continue
+            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            Ps.append(P)
+            Fs.append(p["indices"] + off)
+            off += len(P)
+    if not Ps:
+        return {"components": 0, "floating": []}
+    P, F = np.vstack(Ps), np.vstack(Fs)
+    _, uid, inv = np.unique(np.round(P, 4), axis=0, return_index=True, return_inverse=True)
+    F = inv.ravel()[F]
+    P = P[uid]
+    n = len(P)
+    e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]]])
+    ncomp, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
+    clear = P[:, 2] - R.height(P[:, 0], P[:, 1])
+    low = np.full(ncomp, np.inf)
+    np.minimum.at(low, lab, clear)
+    tri = np.bincount(lab[F[:, 0]], minlength=ncomp)
+    out_ = []
+    for c in np.flatnonzero(low > tol):
+        at = P[lab == c].mean(0)
+        out_.append({"triangles": int(tri[c]), "clearance_m": float(low[c]), "at": at.round(1).tolist()})
+    out_.sort(key=lambda f: -f["triangles"])
+    return {"components": int(ncomp), "floating": out_}
