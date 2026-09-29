@@ -117,6 +117,13 @@ def inject(spec: dict) -> dict:
                                                      round(float(np.linalg.norm(iu - il)) * 0.5 + 0.001, 4)],
                                             "blend": 0.003})
             out["blobs"] = blobs
+        else:  # closed lips: the cavity behind them filled from 6 mm back (left open, the field had an outside
+            # pocket in the head there: the export's topology wrap projected the lips and chin into it)
+            blobs = dict(out.get("blobs") or spec.get("blobs") or {})
+            seam = 0.5 * (iu + il)
+            blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in seam + [0, 0.036, -0.004]],
+                                            "size": [round(float(mc[0]) * 0.85, 4), 0.03, 0.02], "blend": 0.004})
+            out["blobs"] = blobs
     elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
         off = np.array(eb["centre"]) - np.array(tj["head"]["pos"])
         joints.setdefault("eye.L", {"pos": [round(float(x), 4) for x in np.array(joints["head"]["pos"]) + off],

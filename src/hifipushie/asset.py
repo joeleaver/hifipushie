@@ -47,6 +47,9 @@ def _blender(job: dict, timeout: float = 600):
                             "--python", str(SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
+        for line in r.stdout.splitlines():
+            if line.startswith("@@graft"):
+                print(line, flush=True)
 
 
 def margin_px(texture: int) -> int:

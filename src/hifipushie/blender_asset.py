@@ -891,5 +891,62 @@ def preview(job):
         bpy.ops.render.render(write_still=True)
 
 
+def graft_topology(job):
+    """A body's quads (the template wrap) and a grafted head's own quads, each already cut at a clean neck loop
+    (retopo.graft_head), joined: the head un-subdivided `unsub` times (GNM's 12k quads to ~6k), the two open neck
+    loops bridged (`cuts` rings between). Writes {verts, loops, sizes, bridge (new vertex mask)}."""
+    import bmesh
+    _clear()
+    c, n, g = Vector(job["plane_c"]), Vector(job["plane_n"]).normalized(), float(job["gap"])
+
+    def load(path, name):
+        z = np.load(path)
+        ob = _poly_mesh(name, z["verts"], z["loops"], np.r_[0, np.cumsum(z["sizes"])[:-1]])
+        ob.data.update(calc_edges=True)
+        return ob
+    body, head = load(job["body"], "body"), load(job["head"], "head")
+    bpy.context.view_layer.objects.active = head
+    for _ in range(int(job.get("unsub", 1))):
+        m = head.modifiers.new("d", "DECIMATE")
+        m.decimate_type, m.iterations = "UNSUBDIV", 1
+        bpy.ops.object.modifier_apply(modifier="d")
+    bpy.ops.object.select_all(action="DESELECT")
+    body.select_set(True)
+    head.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.join()
+    ob = body
+    n0 = len(ob.data.vertices)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    reach = float(job.get("reach", 0.15))
+    for x in (*bm.verts, *bm.faces):  # (everything comes in selected: the bridge then ate the faces)
+        x.select = False
+    for e in bm.edges:
+        e.select = e.is_boundary and all(abs((v.co - c).dot(n)) < g and (v.co - c).length < reach for v in e.verts)
+    for e in bm.edges:
+        if e.select:
+            for v in e.verts:
+                v.select = True
+    print(f"@@graft joined {len(bm.verts)} verts, {sum(e.select for e in bm.edges)} rim edges selected", flush=True)
+    bm.to_mesh(ob.data)
+    bm.free()
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_mode(type="EDGE")
+    bpy.ops.mesh.bridge_edge_loops(number_cuts=int(job.get("cuts", 2)), interpolation="SURFACE", smoothness=1.0)
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    me = ob.data
+    V = np.array([v.co[:] for v in me.vertices])
+    S = np.array([len(p.vertices) for p in me.polygons])
+    L = np.array([i for p in me.polygons for i in p.vertices])
+    bridge = np.zeros(len(V), bool)
+    bridge[n0:] = True
+    np.savez(job["out"], verts=V, loops=L, sizes=S, bridge=bridge)
+    print(f"@@graft {len(V)} verts, {len(S)} faces, {np.bincount(S).tolist()} by size, {int(bridge.sum())} bridge verts",
+          flush=True)
+
+
 job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
-{"lowpoly": lowpoly, "reduce": reduce, "unwrap": unwrap, "preview": preview}[job["mode"]](job)
+{"graft_topology": graft_topology, "lowpoly": lowpoly, "reduce": reduce, "unwrap": unwrap, "preview": preview}[job["mode"]](job)

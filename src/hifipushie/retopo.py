@@ -40,6 +40,8 @@ FINGER_SEGS = [(f"finger{k}_{j}.L", f"finger{k}_{j + 1}.L") for k in range(1, 6)
               [(f"thumb_{j}.L", f"thumb_{j + 1}.L") for j in range(3)]
 FACE_MODEL = {"eye.L": "face_eye.L", "nose_tip": "face_nose_tip", "mouth": "face_mouth_line_0",
               "mouth_corner.L": "face_mouth_corner.L"}
+BASE_FACE = {"eye.L": "eye.L", "nose_tip": "lm_nose_tip", "mouth": "lm_lip_seam",  # a base head's landmark joints
+             "mouth_corner.L": "lm_mouth_corner.L"}
 NB = 16  # angle bins round a bone
 STATIONS = np.linspace(0.0, 1.0, 5)  # along each bone, where radii are measured
 
@@ -311,11 +313,12 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
     return out, segs, W.argmax(1), apply, Jm
 
 
-def _face_warp(out, apply, face, s, log, extra=()):
-    """Gaussian RBF: template landmarks (warped by the skeleton) onto the face kit's; skull anchors stay."""
+def _face_warp(out, apply, face, s, log, extra=(), names=None):
+    """Gaussian RBF: template landmarks (warped by the skeleton) onto the face kit's (or `names`: a base head's
+    landmark joints); skull anchors stay."""
     src, dst = [], []
     for name, pt in face["landmarks"].items():
-        mn = FACE_MODEL.get(name)
+        mn = (names or FACE_MODEL).get(name)
         if name == "eye.L" and len(extra):  # the eye loops' targets place the eyes (eyeball centres don't agree
             # with them: a goblin's bulging eye sits far forward of a human's)
             continue
@@ -527,13 +530,20 @@ def _loop_frame(pts, d):
     return ref, ang, (1.0 if np.median(dw) > 0 else -1.0)
 
 
-def _tube(loop_pts, C, prims, r_guess, spacing, knuckles=True):
+def _tube(loop_pts, C, prims, r_guess, spacing, knuckles=True, tang=None, turn=None):
     """A digit: rings (the loop's count, its angles carried along chain C) from a finger radius past the knuckle
     to the tip, spacing apart, extra rings either side of each knuckle, a 45 degree ring and a fan at the tip."""
     cum = _chain_point(C, 0)[2]
     s0 = min(1.5 * r_guess, 0.3 * cum[-1])
     p0, d0, _ = _chain_point(C, s0)
     ref, ang, _ = _loop_frame(loop_pts, d0)
+    if tang is not None:  # the steps round from the template's own clean digit (a warped loop can fold: its angles ran
+        # backwards and turned the tube inside out)
+        ang = ang[0] + (np.asarray(tang) - tang[0])
+    if turn is not None:
+        dw = (np.diff(ang) + np.pi) % (2 * np.pi) - np.pi
+        if np.sign(np.median(dw)) != turn:
+            ang = ang[0] - (ang - ang[0])
     stations = list(np.arange(s0 + spacing, cum[-1] - 0.3 * spacing, spacing))
     if knuckles:
         stations += [x for kn in cum[1:-1] if kn > s0 + 0.5 * spacing for x in (kn - 0.3 * spacing, kn + 0.3 * spacing)]
@@ -543,7 +553,14 @@ def _tube(loop_pts, C, prims, r_guess, spacing, knuckles=True):
     def ring(p, d, ref, lift=0.0):
         e2 = np.cross(d, ref)
         dirs = np.cos(ang)[:, None] * ref + np.sin(ang)[:, None] * e2
-        return np.array([_shoot(prims, p, _unit(u + lift * d), r_guess) for u in dirs])
+        out = np.array([_shoot(prims, p, _unit(u + lift * d), r_guess) for u in dirs])
+        if not lift:  # again from the section's own centre: a chain near the skin (a base's finger joints lie by
+            # the back of the finger) shot rays out through the near side and turned the tube inside out
+            c = out.mean(0)
+            c = p + (c - p) - d * ((c - p) @ d)
+            if float(sdf.field_at(prims, c[None], margin=0.05)[0]) < 0:
+                out = np.array([_shoot(prims, c, _unit(u), r_guess) for u in dirs])
+        return out
     rings = [ring(p0, d0, ref)]
     for s in stations:
         p, d, _ = _chain_point(C, s)
@@ -662,7 +679,13 @@ def _plan_cuts(W, tpl, s, prims):
             tip = int(near_tip[np.argmax((P[near_tip] - ch[0]) @ ax)])
             loop = _base_loop(P, faces, nb, ef, ch[0], ax, tip)
             if loop is not None:
-                out[f"{tn}.{side}"] = {"loop": loop, "inner": tip, "kind": "digit", "model": mn, "side": side}
+                # which way round the rings must run for the tube's quads to face out: _stitch winds them against
+                # the kept face along loop[0] -> loop[1] (outward needs the angle to rise when that edge isn't kept)
+                drop = _tip_side(loop, nb, tip) - set(loop)
+                fwd = any(f[k] == loop[0] and f[(k + 1) % len(f)] == loop[1] for f in faces
+                          if not any(v in drop for v in f) for k in range(len(f)))
+                out[f"{tn}.{side}"] = {"loop": loop, "inner": tip, "kind": "digit", "model": mn, "side": side,
+                                       "tang": _loop_frame(P[loop], ax)[1], "turn": -1.0 if fwd else 1.0}
         if "ear_tip" in face:
             loop, tipv = _ear_loop(P, faces, nb, ef, np.array(face["ear_tip"]) * [sg, 1, 1])
             if loop is not None:
@@ -711,7 +734,17 @@ def _patches(W, cuts, s, prims, voxel, log):
                 C = np.array([resolve_point(s, f"{mn}_{j}.{side}") for j in range(4)])
                 own = [p for p in prims if p.name.startswith(mn + "_") and p.name.endswith("." + side)]
                 r = float(s["joints"][f"{mn}_1.{side}"].get("r", 0.01))
-                patch = _tube(W[loop], C, own or prims, r, 2 * np.pi * r / len(loop))
+                ft = float(sdf.field_at(own or prims, C[-1:], margin=0.05)[0])
+                if ft > -0.6 * r:  # a tip joint on the skin (a base's): back inside by a tip radius, or the last
+                    # rings shot from the surface and the fingertips came out as bulbs
+                    C[-1] = C[-1] - _unit(C[-1] - C[-2]) * (ft + 0.8 * r)
+                patch = _tube(W[loop], C, own or prims, r, 2 * np.pi * r / len(loop), tang=cut.get("tang"), turn=cut.get("turn"))
+                # the loop carried to just before the first ring: the skeleton warp can leave a digit's base loop
+                # on its neighbour (a base's close-set fingers: the index tube twisted across from the middle one)
+                d0 = _unit(C[1] - C[0])
+                dst = np.asarray(patch[0][0]) - d0 * (0.8 * r)
+                if np.linalg.norm(W[loop].mean(0) - dst.mean(0)) > 0.5 * r:
+                    W[:] = _carry(W, loop, dst)
         elif cut["kind"] == "ear" and "chain" in cut:
             C, own, r, s0 = cut["chain"]
             patch = _arc_tube(W[loop], C, own, r, s0)
@@ -741,7 +774,10 @@ def _stitch(V, faces, cuts):
     new = []
     for loop, _, patch in cuts.values():
         n = len(loop)
-        fwd = (loop[0], loop[1]) in directed  # the kept face runs along the loop: patch faces run against it
+        # the kept faces run along the loop: patch faces run against them (a vote over the loop's edges: another
+        # cut's dropped tip side can take the face on loop[0] -> loop[1], and the whole tube came out inside out)
+        fwd = sum((loop[k], loop[(k + 1) % n]) in directed for k in range(n)) >= \
+            sum((loop[(k + 1) % n], loop[k]) in directed for k in range(n))
 
         def quad(a, b, c, d):
             return [b, a, d, c] if fwd else [a, b, c, d]
@@ -829,6 +865,155 @@ def _fit(V, L, S, prims, voxel, regions, dom, keep, fixed, reach=0.12, rounds=50
     return V, int(missed.sum())
 
 
+def _neck_cut(V, L, S, c, n, side, gap):
+    """A mesh cut at the closed quad loop round the neck nearest the graft plane on its own side (side -1: the
+    body, below; +1: the head, above), at least `gap` from the plane, the far side dropped. A loop, not the plane:
+    cut by the plane, the rims zigzagged a face deep and the bridge between them twisted."""
+    faces, nb, ef = topology(L, S)
+    V = np.asarray(V, float)
+    u = (V - c) @ n
+    rad = np.linalg.norm(np.cross(V - c, n), axis=1)
+    near = set(np.flatnonzero((side * u > gap) & (side * u < gap + 0.09) & (rad < 0.12)).tolist())
+    e1 = _unit(np.cross(n, [1.0, 0, 0]))
+    e2 = np.cross(n, e1)
+    best = None
+    for path in _loops_round(V, faces, nb, ef, near, 300):
+        if not all(p in near for p in path):
+            continue
+        q = V[path] - c
+        ang = np.arctan2(q @ e2, q @ e1)
+        wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
+        if abs(round(wn)) != 1:
+            continue
+        d = float(np.abs(u[path]).max())
+        if best is None or d < best[0]:
+            best = (d, path)
+    if best is None:
+        raise ValueError(f"graft: no closed neck loop on the {'head' if side > 0 else 'body'} side of the plane")
+    loop = best[1]
+    far = int(np.argmax(-side * u))
+    drop = _tip_side(loop, nb, far) - set(loop)
+    kept = [f for f in faces if not any(v in drop for v in f)]
+    used = sorted({v for f in kept for v in f})
+    rm = np.full(len(V), -1)
+    rm[used] = np.arange(len(used))
+    return V[used], np.array([rm[v] for f in kept for v in f]), np.array([len(f) for f in kept])
+
+
+def _zip_mouth(V, L, S, seam, reach=0.04):
+    """The open mouth of a head mesh without its mouth bag (GNM's skin) zipped shut: the boundary loop round the
+    lips split at its corners, each lower-lip vertex welded to the upper one at the same place along the lip. Left
+    open over closed lips, the lips' inner rims projected onto one another and flecked."""
+    faces = [list(map(int, L[a:a + k])) for a, k in zip(np.r_[0, np.cumsum(S)[:-1]], S)]
+    cnt: dict = {}
+    for f in faces:
+        for k in range(len(f)):
+            e = (min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)]))
+            cnt[e] = cnt.get(e, 0) + 1
+    V = np.asarray(V, float).copy()
+    nbr: dict = {}
+    for (a, b), c in cnt.items():
+        if c == 1 and np.linalg.norm(V[a] - seam) < reach and np.linalg.norm(V[b] - seam) < reach:
+            nbr.setdefault(a, []).append(b)
+            nbr.setdefault(b, []).append(a)
+    if not nbr or any(len(v) != 2 for v in nbr.values()):
+        return V, L, S, 0
+    loops, seen = [], set()
+    for start in nbr:
+        if start in seen:
+            continue
+        lp, prev = [start], None
+        while True:
+            nx = [w for w in nbr[lp[-1]] if w != prev]
+            prev = lp[-1]
+            if nx[0] == lp[0]:
+                break
+            lp.append(nx[0])
+        seen |= set(lp)
+        loops.append(lp)
+    loop = max(loops, key=len)
+    x = V[loop, 0]
+    i0, i1, m = int(np.argmin(x)), int(np.argmax(x)), len(loop)
+    a = [loop[(i0 + k) % m] for k in range((i1 - i0) % m + 1)]
+    b = [loop[(i1 + k) % m] for k in range((i0 - i1) % m + 1)][::-1]
+    up, lo = (a, b) if V[a, 2].mean() > V[b, 2].mean() else (b, a)
+    arc = lambda P: np.r_[0, np.cumsum(np.linalg.norm(np.diff(V[P], axis=0), axis=1))] / max(
+        float(np.linalg.norm(np.diff(V[P], axis=0), axis=1).sum()), 1e-9)
+    su, sl = arc(up), arc(lo)
+    to = np.arange(len(V))
+    for v, t in zip(lo[1:-1], sl[1:-1]):
+        to[v] = up[int(np.argmin(np.abs(su - t)))]
+    for k, v in enumerate(up[1:-1], 1):
+        V[v] = 0.5 * (V[v] + V[lo[int(np.argmin(np.abs(sl - su[k])))]])
+    out = []
+    for f in faces:
+        g = [int(to[v]) for v in f]
+        g = [v for k, v in enumerate(g) if v != g[k - 1]]
+        if len(set(g)) >= 3:
+            out.append(g)
+    used = sorted({v for f in out for v in f})
+    rm = np.full(len(V), -1)
+    rm[used] = np.arange(len(used))
+    return V[used], np.array([rm[v] for f in out for v in f]), np.array([len(f) for f in out]), len(up)
+
+
+def graft_head(V, L, S, spec: dict, prims, log: list, unsub: int = 1, gap: float = 0.006):
+    """A base with a grafted head (GNM) keeps the head's own quads: the template's face, carried onto a head of
+    other proportions, folded round the mouth and jaw however the landmarks were set. The head's skin quads
+    un-subdivided `unsub` times in Blender (12k -> 6k quads), both meshes cut `gap` clear of the graft plane, the
+    two neck loops bridged, then the head and the bridge projected onto the field (strokes on the face count) and
+    the bridge relaxed. Returns (V, L, S)."""
+    import copy
+    import tempfile
+    from . import asset, base as basemod
+    s = expand_mirror(spec)
+    b = copy.deepcopy(spec["base"])
+    b["head"] = {**b["head"], "subdivide": 0}
+    h = basemod.head_of(s, b)
+    c, n = h["plane"][0], h["plane"][1]
+    HL = np.array([v for f in h["faces"] for v in f])
+    HS = np.array([len(f) for f in h["faces"]])
+    Vb, Lb, Sb = _neck_cut(V, L, S, c, n, -1, 0.004)  # (the template's neck rings tilt up to the nape)
+    Vh, Lh, Sh = _neck_cut(h["verts"], HL, HS, c, n, +1, -0.002)  # (GNM's neck rings tilt across the plane)
+    if "lm_lip_seam" in s["joints"] and float(np.linalg.norm(h["lm68"][62] - h["lm68"][66])) < 0.0015:
+        Vh, Lh, Sh, nz = _zip_mouth(Vh, Lh, Sh, resolve_point(s, "lm_lip_seam"))
+        log.append(f"head: the closed mouth zipped ({nz} upper-lip vertices)" if nz else "head: mouth left open")
+    with tempfile.TemporaryDirectory(prefix="hifipushie-graft-") as tmp:
+        tmp = Path(tmp)
+        np.savez(tmp / "body.npz", verts=Vb, loops=Lb, sizes=Sb)
+        np.savez(tmp / "head.npz", verts=Vh, loops=Lh, sizes=Sh)
+        asset._blender({"mode": "graft_topology", "body": str(tmp / "body.npz"), "head": str(tmp / "head.npz"),
+                        "plane_c": list(map(float, c)), "plane_n": list(map(float, n)), "gap": 0.08, "unsub": unsub,
+                        "cuts": 2, "out": str(tmp / "out.npz")})
+        z = np.load(tmp / "out.npz")
+        V2, L2, S2, br = z["verts"].astype(float), z["loops"], z["sizes"], z["bridge"]
+    head = ((V2 - c) @ n > 0) | br
+    lo = np.min([p.lo for p in prims], 0)
+    hi = np.max([p.hi for p in prims], 0)
+    voxel = float((hi - lo).max()) / 200
+    V2[head] = surface.newton(prims, V2[head], voxel * 0.125, voxel, iterations=12)[0]
+    E = edges(L2, S2)
+    deg = np.bincount(E.ravel(), minlength=len(V2))
+    T = tris(L2, S2)
+    rel = br.copy()  # the bridge and two rings round it (the plane-cut rims zigzag) relaxed along the surface
+    for _ in range(2):
+        rel[E[rel[E[:, 0]] | rel[E[:, 1]]].ravel()] = True
+    if "lm_lip_seam" in s["joints"]:  # and the zipped lips' seam (their inner rims folded against each other)
+        sm = np.array(resolve_point(s, "lm_lip_seam"))
+        mc = np.array(resolve_point(s, "lm_mouth_corner.L"))
+        q = V2 - sm
+        rel |= (np.abs(q[:, 0]) < abs(mc[0] - sm[0]) + 0.004) & (np.abs(q[:, 2]) < 0.004) & (np.abs(q[:, 1]) < 0.012)
+    for _ in range(60):
+        N = _vnormals(V2, T)
+        lap = _lap(V2, E, deg)
+        dv = lap - (lap * N).sum(1, keepdims=True) * N
+        V2[rel] = V2[rel] + 0.5 * dv[rel]
+        V2[rel] = surface.newton(prims, V2[rel], voxel * 0.125, voxel, iterations=4)[0]
+    log.append(f"head: the grafted head's own quads (un-subdivided x{unsub}), bridged at the neck: {len(V2)} verts, "
+               f"{len(S2)} faces ({(S2 == 4).mean():.0%} quads)")
+    return V2, L2, S2
+
+
 def _untangle(V, L, S, prims, voxel, frozen, passes=12, log=None):
     """Faces turned against the field (tangles in tight creases): their vertices and two rings round them smoothed
     and re-projected, until none are left or passes run out."""
@@ -882,10 +1067,20 @@ def wrap(spec: dict, template: str = "male_stylized", log: list | None = None) -
     P = tpl["P"]
     W, segs, dom, apply, Jm = _skeleton_warp(P, tpl["J"], s, prims)
     cuts = _plan_cuts(W, tpl, s, prims)
-    if "face" in (spec.get("kits") or {}) or any(k.startswith("face_") for k in s["blobs"]):
+    base = bool(spec.get("base"))
+    if base:  # a base body has a real head with ears (they fit by projection: cut and capped for want of ear bones,
+        # they were lost) and its own finger joints under the template's names: digits are tubes along those
+        # (projected, the template's coarse fingers jumped between the base's close-set fingers)
+        for k, c in cuts.items():
+            if c["kind"] == "digit":
+                c["model"] = k.split(".")[0]
+        cuts = {k: c for k, c in cuts.items() if c["kind"] == "eye" or "chain" in c
+                or (c["kind"] == "digit" and f"{c['model']}_0.{c['side']}" in s["joints"])}
+    if "face" in (spec.get("kits") or {}) or any(k.startswith("face_") for k in s["blobs"]) or base:
         extra = [(W[c["loop"][i]], c["target"][i]) for c in cuts.values() if "target" in c
                  for i in range(0, len(c["loop"]), max(1, len(c["loop"]) // 6))]
-        W = _face_warp(W, apply, tpl["face"], s, log, extra)
+        face = tpl["face"]
+        W = _face_warp(W, apply, face, s, log, extra, BASE_FACE if base else None)
     E0 = edges(tpl["L"], tpl["S"])
     if not any(n.startswith("foot_t") for n in s["joints"]):  # no toes: smooth the template's into the foot
         toe = np.zeros(len(P), bool)
@@ -920,10 +1115,16 @@ def wrap(spec: dict, template: str = "male_stylized", log: list | None = None) -
     owner = np.stack([_seg_dist(cen, Jm[a], Jm[b]) for a, b in segs], 1).argmin(1)
     regions = [[p for p, o in zip(prims, owner) if o in [i for i, (c, d) in enumerate(segs) if {c, d} & {a, b}]]
                for a, b in segs]
+    if base:  # one primitive is the whole body (owned by the torso): every segment projects onto all of it (the
+        # hands had nothing to land on and collapsed into strings; the mouth landed on a small blob behind the lips)
+        regions = [prims for _ in segs]
     V, missed = _fit(V, L, S, prims, voxel, regions, dom2, keep, fixed)
     V = _untangle(V, L, S, prims, voxel, fixed | keep, log=log)
     fv = np.abs(sdf.field_at(prims, V, margin=0.05))[~keep] * 1000
     log.append(f"wrapped: {len(V)} verts, {len(S)} faces ({(S == 4).mean():.0%} quads); {missed} missed the surface "
                f"along their normal; |field| mean {fv.mean():.2f} p95 {np.percentile(fv, 95):.2f} max {fv.max():.1f} mm")
+    if base and (spec["base"].get("head") or {}).get("source", "gnm") == "gnm" and spec["base"].get("head"):
+        V, L, S = graft_head(V, L, S, spec, prims, log)
+        origin = np.zeros(len(V), int)
     return {"verts": V, "loops": L, "sizes": S, "origin": origin, "log": log,
             "patches": {k: c[2][0] for k, c in cuts.items() if c[2] is not None}}
