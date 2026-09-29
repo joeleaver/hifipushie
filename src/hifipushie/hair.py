@@ -1639,7 +1639,7 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         U = under(g, H, a, e, d_in)
         u = np.linspace(0, 1, len(a))
         h = U + 0.35 * T
-        h = np.where(u == 0, U - 0.5 * T, h)
+        h = np.where(u == 0, np.minimum(U - 0.5 * T, 0.2 * T), h)  # the root grows from the scalp (at the part)
         h[-1] = U[-1] + float(c.get("lie", 0.1)) * T
         h = np.where(d_in < 0, np.maximum(h, 0.55 * T), h)  # a fringe lies on the forehead
         P = sc.point(a, e, h)

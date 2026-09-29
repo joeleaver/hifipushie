@@ -1117,6 +1117,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             pn_h = (spec["hair"].get("part") or "hair")
             hpart["atlas"] = len(atlas_files)
             parts[pn_h] = hpart
+            origin[pn_h] = pn_h
             atlas_files.append((pn_h, hfiles))
             maps_info[pn_h] = {k: str(v) for k, v in hfiles.items()}
             heights[pn_h], cover[pn_h] = 0.0, 1.0

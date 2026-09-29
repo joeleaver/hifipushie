@@ -242,6 +242,42 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
   bag on a strap, disc, hair as a scalp shell + swept top; exported rigged).
+- `hair.py` + `blender_hair.py` (2026-09-29; replaced the SDF groom on branch hair-sdf-wip: a mop with corduroy grooves,
+  13 min builds): hair as curve locks in the Blender scene. Each lock is a legacy Bezier curve object (collection "hair")
+  with one shared Geometry Nodes group `hp_lock`: resample, flat side facing away from the head centre + Flip + Twist and
+  the curve's own tilt, a lens profile (width x thickness, the edges cupped toward the head) swept with Curve to Mesh,
+  scaled along it (Root, Belly, Taper) x the point radius; it stores hp_along/across/out/lock/grey/tangent for the
+  material (`material`: gaps and roots dark, a sheen band along the crest, per-lock value, grey, uneven soft grooves as
+  bump). Chosen over Hair Curves + the Essentials groom nodes: those are strand tools (clump/curl/trim around guides)
+  and give a fuzzy strand look; stylised hair wants a few big editable locks, and legacy Bezier curves give handles, Alt+S
+  radius, Ctrl+T tilt and per-object modifier numbers a person can edit, instantly (a lock evaluates in ~1 ms).
+  Capture profile attributes BEFORE scaling the profile (captured after, "across" was +-2 mm and the material never
+  showed). Tilt is applied on top of a Free curve normal (checked): `lie_tilt` turns each lock's flat side onto the
+  volume's own normal (facing the centre, locks across the upper side stood on one edge); `lie_cup` = the head's sag
+  over half the width.
+  Spec `spec["hair"]` = groom (hairline from the landmarks, parting, volume per region, flow words, tiers, `drawn`
+  clumps), locks ([azimuth, elevation, height over the scalp] per control point round a centre from the landmarks, so
+  they follow head edits; width, thickness, cup, taper, belly, root, twist, flip, grey, radius/tilt/handles per point),
+  look, stage ("mass" = the groom's volume as one shell). `spec.geometry` strips it; `store.save` of a hair-only
+  change skips the base-body validation. Scalp = rays from the centre, cached on disk by geometry
+  (`hair_scalp_<key>.npz`). The volume (`envelope`): a dome highest behind the front hairline falling to the crown,
+  rounded across, each side azimuth's profile filled to its convex hull (`_fill`: the top over close sides pinched a
+  waist, the user's "divots"). The underlayer is the volume sunk by the covering locks' thickness (`under`); never a
+  visible surface. Tiers: `strip` (sides/back: long locks along the streams converging on a point under the nape, in
+  shingled segments), `gap` (roots where the locks so far leave the volume bare, splatted coverage), `drawn` (the top
+  drawn by hand on the top view: the user's call after every generated top came out busy or jumbled), plus the older
+  `big`/`crown`/`clumps`. Looks (`look`): the head-cropped stage file `hair_stage.blend` (the scene cropped to the
+  head; 42 MB vs 300-440), EEVEE, material + clay rows, thumbnail, reference crop; 4-15 s. Gates measured every look:
+  `silhouette_gate` (front + near side of 3/4: outline dent inside its own hull <= 1.5 mm at a 12 mm scale over
+  brows+2 cm .. top-2 cm; notches at 6 mm reported; `hair_point_owners.npz` says which lock makes each outline bin)
+  and `mass_share` (an ID render: bare volume / visible hair, target < 10%). Round trip: `blender_hair.read` compares
+  each lock with the state the sync wrote (`hp_set`), `scene.pull` -> `hair.pull_locks` writes moved points, handles,
+  radius, tilt and modifier numbers back (tested: 3 locks edited headless, pulled, re-synced, second pull empty).
+  Export (`hair.export_part`, called by `asset._export` when the spec has locks): the locks at 12 x 8 + the underlayer
+  decimated, one uv island per lock (round the lens x along) + smart-projected underlayer, packed by Blender, colour /
+  roughness / normal baked by Cycles from the low poly's own material (selected-to-active from full-res locks picked up
+  neighbouring locks where they overlap); its own atlas in the GLB with KHR_materials_anisotropy (rotation 90 deg:
+  along the lock) and KHR_materials_sheen; bound to `parts.hair.rig_bone`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
