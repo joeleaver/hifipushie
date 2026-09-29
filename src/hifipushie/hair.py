@@ -1031,7 +1031,7 @@ def _envelope_of(prof, edges):
     return hx, np.where(good, hx - prof, 0.0)
 
 
-def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14):
+def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14, cap=None):
     """Raise the underlayer where the hair's outline (underlayer + the locks' outsides) dents inside its own convex
     envelope in the front and 3/4 views, below the crown band: under the wide top locks the sides pinched in at
     the temples (a divot either side). The underlayer is pushed out only near the outline, where it can fill it."""
@@ -1067,6 +1067,8 @@ def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14):
             break
         r = gaussian_filter(raise_, sigma=(4.0, 4.0), mode=("wrap", "nearest"))  # broad: a sharp raise read as a shelf
         H = H + 1.5 * r
+        if cap is not None:  # never above the volume itself: raised past it, the filler buried the crown locks
+            H = np.minimum(H, cap)
     return H
 
 
@@ -1096,9 +1098,10 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
     if mass:
         H, d_in = envelope(sc, g, line, AA, EE)
         if sunk:
+            H0 = H
             H = under(g, H, AA, EE, d_in)
             if extra is not None:  # the filler under the partings: where locks part at the outline, the sunk
-                H = _silhouette_fill(sc, AA, EE, H, d_in, extra)  # underlayer rises to close the dent (only there)
+                H = _silhouette_fill(sc, AA, EE, H, d_in, extra, cap=H0)  # underlayer rises to close the dent (only there)
         H = np.maximum(H, 0.0015 * _ss(d_in / 0.004))
     else:
         d_in = inside(sc, line, AA, EE)
@@ -1197,15 +1200,16 @@ def make_stage(name: str, pad: float = 0.1) -> Path:
 
 
 VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
-         "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0)}
+         "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "close": (-30.0, 25.0, 0.45),
+         "close_back": (150.0, 20.0, 0.45)}
 
 
 def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
     out = []
     target = sc.C + np.array([0.0, 0.0, 0.0])
     for v in views:
-        az, el = VIEWS[v]
-        eye = target + dirs(az, el) * dist
+        az, el, *dd = VIEWS[v]
+        eye = target + dirs(az, el) * (dd[0] if dd else dist)  # close-ups: the material at work
         out.append({"name": v, "eye": eye.tolist(), "target": target.tolist(), "fov": fov})
     return out
 
