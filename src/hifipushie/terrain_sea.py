@@ -38,6 +38,54 @@ from .terrain import compass, smoothstep
 CLIFF = math.radians(70)
 
 
+def _cliff_face(T, sd, top, level, cl):
+    """A sea cliff's face as a profile seaward of its lip: risers with one or two ledges on a tall face (tiers: a face
+    of one even slope from lip to water read as a draped curtain), each ledge at a height that wanders along the coast
+    and pinching out in places. Returns the height below the lip at each cell and the face's run (lip to foot, m)."""
+    hgt = np.maximum(top - level, 0)
+    tiers = float(cl.get("tiers", 1.0))
+    pts = np.c_[T.P, np.full(len(T.P), 61.0)]
+
+    def nz(scale, seed):
+        return noise.fbm(pts, scale, 2, seed=seed).reshape(T.X.shape)
+    one = smoothstep(12, 18, hgt) * tiers
+    two = smoothstep(28, 36, hgt) * tiers
+    r = np.tan(CLIFF + math.radians(8) * one)  # risers steeper where ledges take up the run
+    f1 = np.where(two > 0.5, 0.34, 0.5) + 0.14 * (nz(70.0, 301) - 0.5)
+    f2 = 0.66 + 0.12 * (nz(80.0, 303) - 0.5)
+    D1 = np.clip(0.15 * hgt, 2.5 * T.cell, 9.0) * smoothstep(0.36, 0.55, nz(55.0, 302)) * one
+    D2 = np.clip(0.13 * hgt, 2.5 * T.cell, 8.0) * smoothstep(0.36, 0.55, nz(45.0, 304)) * two
+    d = np.maximum(-sd, 0)
+    z1, z2 = f1 * hgt, np.maximum(f2 * hgt, f1 * hgt + 2 * T.cell)
+    d1 = z1 / r
+    drop = r * d
+    # a ledge falls outward a little (a dead-level shelf read as a road)
+    drop = np.where(d > d1, z1 + 0.08 * np.minimum(d - d1, D1) + r * np.maximum(d - d1 - D1, 0), drop)
+    d2 = d1 + D1 + (z2 - z1 - 0.08 * D1) / r
+    drop = np.where((d > d2) & (two > 0.01), z2 + 0.08 * np.minimum(d - d2, D2) + r * np.maximum(d - d2 - D2, 0),
+                    drop)
+    run = hgt / r + D1 + np.where(two > 0.01, D2, 0) - 0.08 * (D1 + D2) / r
+    return drop, np.maximum(run, 0)
+
+
+def _headland_sides(T, hl, p, inl, left, w):
+    """Which side(s) of a cove get a headland: +1 = left looking inland from the mouth. "auto": the side where the land
+    stands higher; "left"/"right", "both", "none", a compass side or an address."""
+    if hl in ("auto", None, True):
+        hi_left = T.height(p + left * 0.7 * w + inl * 0.1 * w) >= T.height(p - left * 0.7 * w + inl * 0.1 * w)
+        return [1.0 if hi_left else -1.0]
+    if hl in ("none", False):
+        return []
+    if hl == "both":
+        return [1.0, -1.0]
+    if hl in ("left", "right"):
+        return [1.0 if hl == "left" else -1.0]
+    cd = compass(hl)
+    if cd is None:
+        cd = T.address(hl)[0] - p
+    return [1.0 if float(np.dot(cd, left)) >= 0 else -1.0]
+
+
 def _coast_point(T, land, ref):
     """A point on the coastline: toward a compass direction from the land's middle, or the coast nearest an address.
     Returns (xy, inland unit vector)."""
@@ -119,23 +167,69 @@ def apply(T):
         n = noise.fbm(pts, max(0.05 * T.size, 120 * k), 3, seed=121).reshape(T.X.shape) - 0.5
         sd = sd + wander * 2 * n * max(0.03 * T.size, 60 * k)
     land = sd > 0
-    # coves: horseshoe bays, the mouth narrower than the bay inside
+    # coves: bays wider inside than at the mouth, asymmetric: a rocky headland on one side running out past the mouth
+    # (it narrows the mouth and shelters the bay), the bay swinging away from it, a beach at the head, the other side
+    # lower. (A symmetric ellipse read as a round pond with low rims.)
     coves = {}
+    raise_h = np.zeros(T.X.shape)  # headlands stand higher than the land about them
+    head_m = np.zeros(T.X.shape)  # cliffs round each headland
     for name, cv in (S.get("coves") or {}).items():
         p, inl = _coast_point(T, land, cv.get("at", "south"))
+        left = np.array([-inl[1], inl[0]])
         w, dp = float(cv.get("width", 0.08 * T.size)), float(cv.get("depth", 0.07 * T.size))
+        sides = _headland_sides(T, cv.get("headland", "auto"), p, inl, left, w)
+        hs = sides[0] if len(sides) == 1 else 0.0
         a = 0.6 * dp  # along the inland axis; centred so the coastline crosses it at ~2/3 of the bay's width
-        c = p + inl * (dp - a)
+        c = p + inl * (dp - a) - left * hs * 0.12 * w  # (the bay swings away from its headland)
         v = np.stack([T.X - c[0], T.Y - c[1]], -1)
-        u, s = v @ inl, v @ np.array([-inl[1], inl[0]])
+        u, sa = v @ inl, v @ left
+        # the head is pushed further from the headland than the mouth (a hooked, zeta-shaped bay)
+        sa = sa + hs * 0.18 * w * np.clip(u / a, -1, 1)
+        half = np.where(sa * hs > 0, 0.42 * w, 0.58 * w) if hs else np.full(T.X.shape, 0.5 * w)
         lob = noise.fbm(np.c_[T.P, np.full(len(T.P), 13.0)], 0.5 * w, 2, seed=131 + len(coves)).reshape(T.X.shape) - 0.5
-        q = (u / a) ** 2 + (s / (w / 2)) ** 2 + 0.25 * lob
+        q = (u / a) ** 2 + (sa / half) ** 2 + 0.25 * lob
         bay = q < 1.0
-        sd = np.minimum(sd, (np.sqrt(np.maximum(q, 0)) - 1) * min(a, w / 2))  # ~ distance outside the bay
+        sd = np.minimum(sd, (np.sqrt(np.maximum(q, 0)) - 1) * np.minimum(a, half))  # ~ distance outside the bay
+        heads = []
+        points = [(side, True) for side in sides] + ([(-hs, False)] if len(sides) == 1 else [])
+        for side, major in points:
+            # the headland: a tapering point from the bay's shoulder out past the mouth, hooking a little across it; the
+            # other side gets a low rocky point (so the mouth is narrower than the bay on both sides)
+            L = float(cv.get("headland_length", 0.55 * w)) * (1.0 if major else 0.6)
+            b0 = p + left * side * (0.45 if major else 0.52) * w + inl * 0.1 * dp
+            for _ in range(40):  # seated on the land (where the coast falls away beside the mouth, it stood at sea)
+                iy = int(np.clip(round((b0[1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1))
+                ix = int(np.clip(round((b0[0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))
+                if sd[iy, ix] > 0.05 * w:
+                    break
+                b0 = b0 + inl * 0.05 * w
+            tip = b0 - inl * L - left * side * (0.22 if major else 0.12) * w
+            seg = tip - b0
+            t = np.clip(((T.X - b0[0]) * seg[0] + (T.Y - b0[1]) * seg[1]) / (seg @ seg), 0, 1)
+            dl = np.hypot(T.X - (b0[0] + t * seg[0]), T.Y - (b0[1] + t * seg[1]))
+            rad = (0.24 - 0.12 * t) * w * (1.0 if major else 0.6)
+            wig = noise.fbm(np.c_[T.P, np.full(len(T.P), 17.0 + len(heads))], 0.2 * w, 2,
+                            seed=141 + len(coves)).reshape(T.X.shape) - 0.5
+            sdh = rad * (1 + 0.5 * wig) - dl
+            sd = np.maximum(sd, np.where(q > 1.0, sdh, sd))  # (never into the bay)
+            if not major:
+                heads.append({"base": b0.tolist(), "tip": tip.tolist(), "height": None, "side": side})
+                continue
+            # its top: higher than the land behind, highest a little short of its tip (a point, not a ramp)
+            hh = float(cv.get("headland_height", max(18.0, 0.22 * w)))
+            ground = T.height(b0 + inl * 0.2 * w)
+            crest = level + hh * (0.55 + 0.45 * np.sin(np.pi * np.clip(0.2 + 0.8 * t, 0, 1)))
+            prof = np.clip(sdh / np.maximum(rad, 1e-6), 0, 1) ** 0.6
+            raise_h = np.maximum(raise_h, np.where(sdh > -0.3 * w, np.maximum(crest * prof + ground * (1 - prof),
+                                                                               ground), 0))
+            head_m = np.maximum(head_m, smoothstep(0.35 * w, 0.1 * w, -sdh) * (dl < rad + 0.4 * w))
+            heads.append({"base": b0.tolist(), "tip": tip.tolist(), "height": hh, "side": side})
         land = sd > 0
-        head = c + inl * a  # the bay's head, for its beach
+        head = c + inl * a + left * hs * 0.18 * w  # the bay's head, for its beach
         coves[name] = {"xy": c.tolist(), "mouth": p.tolist(), "head": head.tolist(), "inland": inl.tolist(),
-                       "width": w, "depth": dp, "mask": bay}
+                       "width": w, "depth": dp, "mask": bay, "headlands": heads}
+    if raise_h.any():
+        T.H = np.where((raise_h > T.H) & (sd > 0), raise_h, T.H)
     sd = ndimage.gaussian_filter(sd, 1.0)
     land = sd > 0
     # geos (zawns): narrow clefts cut back into a cliff coast, the sea running up them between vertical walls (a cliff
@@ -235,6 +329,10 @@ def apply(T):
         foot = np.clip(foot_c[cy, cx], 0, 1)
         wc = np.maximum(wc, foot)  # the cliff stands behind its foot beach
     wc = np.minimum(wc, 1 - wb)
+    if head_m.any():  # a cove's headland ends in cliffs whatever the shore elsewhere
+        head_c = ndimage.gaussian_filter(np.where(coast, head_m, 0.0), smooth) / np.maximum(
+            ndimage.gaussian_filter(coast.astype(float), smooth), 1e-6)
+        wc = np.maximum(wc, np.clip(1.6 * head_c[cy, cx], 0, 1) * (1 - wb))
     if shore == "beach":  # a beach coast: wherever it isn't cliffs
         wb = np.maximum(wb, 1 - wc)
 
@@ -280,7 +378,8 @@ def apply(T):
     bev_h = float(cl.get("bevel", 0.12)) * np.maximum(top_here - level, 0) * np.clip(0.2 + 1.8 * lipn, 0.1, 1.8)
     bev_w = np.maximum(3 * bev_h, 2 * T.cell)
     raised = raised - bev_h * smoothstep(bev_w, 0, np.maximum(sd, 0)) ** 1.5
-    cliff_face = (top_here - bev_h) - np.maximum(-sd, 0) * math.tan(CLIFF)
+    drop, face_run = _cliff_face(T, sd, top_here, level, cl)
+    cliff_face = (top_here - bev_h) - drop
     # beaches: sand from just under the level to a couple of metres up over `width`, the land behind easing down
     bw = float(S.get("beach_width", 30 * max(k, 0.5)))
     back = float(S.get("backshore", 4 * bw))
@@ -307,7 +406,7 @@ def apply(T):
         + wr * rock_off + np.clip(1 - wc - wb - wr, 0, 1) * below
     # beaches at the foot of cliffs: a strip of sand below the face, the cliff standing behind it
     if foot.any():
-        run = np.maximum(top_here - level, 0) / math.tan(CLIFF)
+        run = face_run
         fw = np.full(T.X.shape, 35.0)
         for m, w in foot_w:
             fw = np.where(m > 0.3, w, fw)
@@ -355,7 +454,7 @@ def apply(T):
         cv["apron"] = ap
     # below the cliffs: a wave-cut platform (rocks awash, a band out from the face's foot), and sea stacks standing off
     # the face (a smooth wall straight into deep water read as a dam)
-    run = np.maximum(top_here - level, 0) / math.tan(CLIFF)
+    run = face_run
     out_of_foot = -sd - run  # metres seaward of the face's foot
     pw = float(cl.get("platform", max(3 * T.cell, 25 * k)))
     stacks = []
@@ -443,7 +542,7 @@ def apply(T):
     if tal > 0 and (wc > 0.5).any():
         from .terrain_rock import facets
         hgt = np.maximum(top_here - level, 0)
-        run = hgt / math.tan(CLIFF)
+        run = face_run
         oof = -sd - run  # metres seaward of the face's foot
         aw = 0.5 * hgt + 2 * T.cell
         patch = smoothstep(0.42, 0.58, noise.fbm(np.c_[T.P, np.full(len(T.P), 47.0)], max(2.5 * hi_h, 25.0), 2,
@@ -469,7 +568,7 @@ def apply(T):
     T.hard |= face
     T.hardness = np.where(face, np.minimum(T.hardness, 0.05), T.hardness)
     T.sea = {"level": level, "land": land, "sd": sd, "wc": wc, "wb": wb, "foot": foot, "coves": coves, "want": want,
-             "top": top_here, "bev_h": bev_h, "bev_w": bev_w, "st_mask": st_mask,
+             "top": top_here, "bev_h": bev_h, "run": face_run, "bev_w": bev_w, "st_mask": st_mask,
              "beach_at": beach_at, "stacks": stacks, "geos": geos,
              "cliff_asked": (lo_h, hi_h), "beach_width": bw, "beaches": list(beaches), "rocks": rocks_band}
     T.masks.setdefault("coast", np.zeros(T.X.shape))
@@ -493,7 +592,7 @@ def recut(T):
             keep |= T.masks[k] > 0.05
     sd, level = S["sd"], S["level"]
     cliff = (S["wc"] > 0.5) & (S["foot"] < 0.5) & ~S["st_mask"] & ~keep
-    face = (S["top"] - S["bev_h"]) - np.maximum(-sd, 0) * math.tan(CLIFF)
+    face = (S["top"] - S["bev_h"]) - _cliff_face(T, sd, S["top"], level, T.spec["sea"].get("cliffs") or {})[0]
     H = T.H
     off = cliff & (sd < 0) & (face > level + 0.3)
     H = np.where(off, np.minimum(H, face), H)
@@ -525,7 +624,7 @@ def cliff_feet(T, spacing=15.0):
         n = -np.array([gx[y, x], gy[y, x]])
         n /= np.linalg.norm(n) + 1e-9
         h = float(S["top"][y, x] - level)
-        foot = p + n * h / math.tan(CLIFF)
+        foot = p + n * float(S["run"][y, x]) if "run" in S else p + n * h / math.tan(CLIFF)
         iy = int(np.clip(round((foot[1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1))
         ix = int(np.clip(round((foot[0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))
         if S["st_mask"][iy, ix] or h < 2:
@@ -628,8 +727,44 @@ def report(T):
     for name, cv in S["coves"].items():
         m = cv["mask"] & wet
         out.append(f"cove {name}: {_area(m.sum() * T.cell ** 2)} of sheltered water, {cv['depth']:.0f} m deep into the "
-                   f"land, mouth at [{cv['mouth'][0]:.0f}, {cv['mouth'][1]:.0f}]")
+                   f"land, mouth at [{cv['mouth'][0]:.0f}, {cv['mouth'][1]:.0f}]" + _cove_shape(T, cv, wet))
     return out
+
+
+def _cove_shape(T, cv, wet):
+    """As built: the bay's widest water across, the mouth's narrowest gap between the land either side, each headland's
+    top (m above the sea) and the shore height round the rest of the bay."""
+    from scipy.spatial import cKDTree
+    p, inl = np.array(cv["mouth"]), np.array(cv["inland"])
+    left = np.array([-inl[1], inl[0]])
+    rel = T.P - p
+    u, sa = rel @ inl, rel @ left
+    w, dp = cv["width"], cv["depth"]
+    bay = (cv["mask"] & wet).ravel()
+    txt = ""
+    if bay.sum() > 10:
+        bins = np.round(u[bay] / (2 * T.cell))
+        widths = [np.ptp(sa[bay][bins == b]) for b in np.unique(bins) if (bins == b).sum() > 2]
+        txt += f"; the bay {max(widths):.0f} m across at its widest"
+    land = (T.sea["sd"] > 0).ravel() & (u < 0.3 * dp) & (np.hypot(u, sa) < 1.4 * w)  # (the coastline: rocks awash
+    # off it aren't the mouth's sides)
+    A, B = T.P[land & (sa > 0)], T.P[land & (sa < 0)]
+    if len(A) and len(B):
+        d, _ = cKDTree(A).query(B)
+        txt += f", the mouth {float(d.min()):.0f} m"
+    lvl = T.sea["level"]
+    for h in cv.get("headlands", []):
+        b0, tip = np.array(h["base"]), np.array(h["tip"])
+        seg = tip - b0
+        t = np.clip(((T.P - b0) @ seg) / (seg @ seg), 0, 1)
+        near = np.linalg.norm(T.P - (b0 + t[:, None] * seg), axis=1) < 0.25 * w
+        top = float(T.H.ravel()[near & ~wet.ravel()].max() - lvl) if (near & ~wet.ravel()).any() else 0.0
+        v = left * h["side"]
+        side = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][
+            int(round(math.degrees(math.atan2(v[0], v[1])) / 45)) % 8]
+        kind = "headland" if h.get("height") is not None else "low point"
+        txt += f"; {kind} on its {side} side tops {top:.0f} m"
+    return txt
 
 
 def _area(a):

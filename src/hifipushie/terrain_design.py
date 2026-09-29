@@ -33,7 +33,7 @@ COVER_TYPES = {
                   "color": [0.10, 0.22, 0.12], "trees": "conifer"},
     "deciduous": {"slope": [0, 36], "avoid": ["water", "routes", "sites"], "breakup": {"scale": 150, "amount": 0.3},
                   "color": [0.24, 0.34, 0.12], "trees": "broadleaf"},
-    "rock":      {"slope": [40, 90], "breakup": {"scale": 60, "amount": 0.3}, "color": [0.45, 0.43, 0.40]},
+    "rock":      {"slope": [40, 90], "breakup": {"scale": 60, "amount": 0.3}, "color": [0.39, 0.37, 0.34]},
     "scree":     {"slope": [32, 42], "density": 0.7, "breakup": {"scale": 60, "amount": 0.6}, "color": [0.58, 0.54, 0.47]},
     "grass":     {"slope": [0, 42], "avoid": ["water"], "color": [0.45, 0.56, 0.26]},
     "meadow":    {"slope": [0, 25], "avoid": ["water", "routes"], "breakup": {"scale": 80, "amount": 0.3},
@@ -72,6 +72,18 @@ def region(T, r) -> np.ndarray:
             return (T.lake_id == T.lakes[r]["id"]).astype(float)
         if r.startswith("zone:"):
             return region(T, T.zones[r[5:]])
+        bn, _, band = r.rpartition(".")
+        if bn in getattr(T, "basins", {}) and band:  # a band of a basin wall's profile ("valley.scree"), or its walls
+            b = T.basins[bn]
+            if band in ("wall", "walls"):
+                return b["wall"].astype(float)
+            if band == "floor":
+                return b["floor"].astype(float)
+            z = (b.get("zones") or {})
+            if band in z:
+                return np.clip(ndimage.gaussian_filter(z[band].astype(float), 1.0) * 1.3, 0, 1)
+            raise ValueError(f"basin {bn!r} has no {band!r} (its zones: wall, floor"
+                             + "".join(", " + k for k in z) + (": give walls.from_top for bands" if not z else "") + ")")
         if r == "everywhere":
             return np.ones(shape)
         if r == "centre":
@@ -1006,6 +1018,37 @@ def tree_kind(T, name):
     return _spec_cover(T, name).get("trees")
 
 
+PROFILE_COVER = {"cliffs": {"type": "rock"}, "crags": {"type": "rock"}, "slabs": {"type": "rock", "slope": [30, 90]},
+                 "scree": {"type": "scree", "slope": [0, 50], "density": 0.9},
+                 "forest": {"type": "conifer", "slope": [0, 45], "density": 0.85},
+                 "meadow": {"type": "meadow", "slope": [0, 40]}}
+
+
+def _profile_cover(T):
+    """Basin walls described from the top down ("cliffs, scree, forest") get that cover in each band, unless the spec
+    already covers the band (a layer "in" it): layers "<basin>_<band>", painted after the broad layers (before snow).
+    Returns the bare bands' mask (cliffs, crags, slabs, scree), where the spec's own tree layers don't grow."""
+    bare, add = None, {}
+    cover = T.spec.setdefault("cover", {}) if isinstance(T.spec.get("cover", {}), dict) else T.spec["cover"]
+    used = {str(c.get("in")) for c in cover.values() if isinstance(c, dict)}
+    for bn, b in getattr(T, "basins", {}).items():
+        for kind, z in (b.get("zones") or {}).items():
+            if kind in ("cliffs", "crags", "slabs", "scree"):
+                zz = np.clip(ndimage.gaussian_filter(z.astype(float), 1.0) * 1.3, 0, 1)
+                bare = zz if bare is None else np.maximum(bare, zz)
+            key = f"{bn}_{kind}"
+            if f"{bn}.{kind}" not in used and key not in cover:
+                add[key] = {**PROFILE_COVER[kind], "in": f"{bn}.{kind}", "_auto": True}
+    if add:
+        names = list(cover)
+        snow = [i for i, n in enumerate(names) if (cover[n] or {}).get("type", n) == "snow"]
+        at = (snow[0] - 0.5) if snow else len(names)
+        for i, (k, v) in enumerate(add.items()):
+            cover[k] = {**v, "order": at + 0.01 * i}
+        T.auto_cover = list(add)
+    return bare
+
+
 def cover(T) -> dict:
     out = {}
     # slope of the ground smoothed over a cell, its thresholds shifted by noise a few cells across: cut on the raw
@@ -1013,7 +1056,11 @@ def cover(T) -> dict:
     pts = np.c_[T.P, np.zeros(len(T.P))]
     jit = 2 * noise.fbm(pts, max(3 * T.cell, 25.0), 3, seed=47).reshape(T.X.shape) - 1
     slope = T._slope(ndimage.gaussian_filter(T.H, 1.0)) + 6.0 * jit
+    ledges = (getattr(T, "rock", None) or {}).get("ledges")
+    if ledges is not None and ledges.any():  # a ledge a few cells wide between risers is flat ground: grass holds on it
+        slope = np.where(ledges, np.minimum(slope, T._slope() + 4.0 * jit), slope)  # (smoothed, it read as the face)
     elev_j = jit * max(4 * T.cell, 20.0)
+    bare = _profile_cover(T)
     layers = list(T.spec.get("cover") or {})
     # painted in key order, or by each layer's "order" (a patch can't reorder keys: scree had to be deleted and re-added
     # to paint after rock)
@@ -1073,6 +1120,8 @@ def cover(T) -> dict:
                     m *= 1 - T.masks[a]
             else:
                 m *= 1 - region(T, a)
+        if bare is not None and c.get("trees") and not c.get("_auto"):  # a wall profiled "cliffs, scree, forest":
+            m *= 1 - bare  # trees only in its forest band
         m = np.clip(m, 0, 1)
         if c.get("count") and c.get("trees"):  # "a few trees": scale the density so about this many stand
             expect = m.sum() * T.cell ** 2 * TREES_PER_M2
@@ -1185,7 +1234,32 @@ def report(T):
         out.append(f"basin {name}: floor {b['floor'].sum() * T.cell ** 2 / 1e6:.2f} km2 from {fl.min():.0f} to "
                    f"{np.percentile(fl, 98):.0f} m, drains to [{b['falls'][0]:.0f}, {b['falls'][1]:.0f}]; "
                    f"walls {b['width']:.0f} m wide, averaging {built:.0f} deg as built (asked {b['avg']:.0f}) with "
-                   f"{b['bands'] or ('3' if b['character'] == 'tiered' else '1')} cliff band(s) {b['band']:.0f} m tall")
+                   + (f"{b['bands'] or ('3' if b['character'] == 'tiered' else '1')} cliff band(s) {b['band']:.0f} m tall"
+                      if not b.get("zones") else "its profile from the top:"))
+        if b.get("zones"):  # each band as built: how much of the wall's height, its median slope, its cover
+            sl = T._slope()
+            rel = max(float(np.percentile(T.H[b["wall"]], 98) - np.percentile(T.H[b["wall"]], 2)), 1.0)
+            parts = []
+            for kind, sh, want in b["from_top"]:
+                z = b["zones"].get(kind)
+                if z is None or not (z & np.isnan(T.water)).any():
+                    parts.append(f"{kind}: none left as built")
+                    continue
+                zz = z & np.isnan(T.water)
+                # its share of the wall's height, stretch by stretch round the ring (the whole ring's range mixes the
+                # low wall under a col with the high wall under a peak)
+                bins = np.floor(b["arc"] / max(150 * T.k, 10 * T.cell)).astype(int)
+                shares = []
+                for k in np.unique(bins[zz]):
+                    wk, zk = b["wall"] & (bins == k), zz & (bins == k)
+                    if zk.sum() > 5 and wk.sum() > 20:
+                        rk = np.percentile(T.H[wk], 98) - np.percentile(T.H[wk], 2)
+                        shares.append((np.percentile(T.H[zk], 95) - np.percentile(T.H[zk], 5)) / max(rk, 1.0))
+                share = float(np.median(shares)) if shares else 0.0
+                parts.append(f"{kind} {100 * share:.0f}% of the height "
+                             f"(asked {100 * sh:.0f}%), median {np.median(sl[zz]):.0f} deg (asked ~{want:.0f})")
+            out.append("    " + "; ".join(parts) + f". Zones \"{name}.<band>\"; cover "
+                       + (", ".join(getattr(T, "auto_cover", [])) or "from the spec") + " added where no layer covers a band")
     from .terrain_forms import measure_canyon, measure_mesa
     for name, c in getattr(T, "canyons", {}).items():
         m = measure_canyon(T, name)

@@ -172,6 +172,43 @@ def smoothstep(e0, e1, x):
 
 # ---------------------------------------------------------------- curves
 
+WALL_BANDS = {"cliffs": "cliffs", "cliff": "cliffs", "crags": "crags", "rock": "crags", "broken rock": "crags",
+              "slabs": "slabs", "scree": "scree", "talus": "scree", "forest": "forest", "woods": "forest",
+              "trees": "forest", "woodland": "forest", "meadow": "meadow", "grass": "meadow", "pasture": "meadow",
+              "alp": "meadow"}
+BAND_SLOPE = {"crags": 50, "slabs": 42, "scree": 35, "forest": 28, "meadow": 20}
+BAND_SHARE = {"cliffs": 0.4, "crags": 0.3, "slabs": 0.3, "scree": 0.25, "forest": 0.35, "meadow": 0.25}
+
+
+def _from_top(ft, min_slope, name):
+    """A wall described from the crest down: ["cliffs", "scree", "forest"], or with shares of the height
+    [["cliffs", 0.4], ...] / [{"cliffs": 0.4}, ...] / {"cliffs": 0.4, ...}. Returns [(kind, share, slope deg)]."""
+    if not ft:
+        return None
+    items = list(ft.items()) if isinstance(ft, dict) else ft
+    out = []
+    for it in items:
+        if isinstance(it, str):
+            k, sh = it, None
+        elif isinstance(it, dict):
+            (k, sh), = it.items()
+        else:
+            k, sh = it[0], (it[1] if len(it) > 1 else None)
+        kind = WALL_BANDS.get(str(k).lower().strip())
+        if kind is None:
+            raise ValueError(f"basin {name!r}: walls.from_top {k!r} isn't a band this knows ({sorted(set(WALL_BANDS))})")
+        sl = min(max(min_slope + 14, 62), 80) if kind == "cliffs" else BAND_SLOPE[kind]
+        out.append([kind, sh, sl])
+    given = sum(sh for _, sh, _ in out if sh is not None)
+    free = [o for o in out if o[1] is None]
+    if free:
+        dflt = sum(BAND_SHARE[o[0]] for o in free)
+        for o in free:
+            o[1] = BAND_SHARE[o[0]] / dflt * max(1.0 - given, 0.1 * len(free))
+    tot = sum(o[1] for o in out)
+    return [(k, sh / tot, sl) for k, sh, sl in out]
+
+
 def _catmull(pts: np.ndarray, step: float, closed: bool = False):
     """A Catmull-Rom curve through pts (n, 2), resampled every ~step metres. Returns (samples, index of each
     control point in samples); a closed curve ends on its first point again (index n)."""
@@ -545,6 +582,11 @@ class Terrain:
             prof = self._wall_profile(b)
             u = np.linspace(0, 1, len(prof))
             t = self.t
+            if b.get("_zones_t"):
+                # a designed profile is laid out by horizontal distance, floor's edge to crest (the harmonic t crowds
+                # toward the crest and floor, so each band came out at another slope: cliffs 37 deg, scree 48)
+                d_floor = ndimage.distance_transform_edt(~b["floor"]) * self.cell
+                t = np.where(b["wall"], np.clip(d_floor / np.maximum(d_floor + b["d_crest"], 1e-6), 0, 1), t)
             if b["character"] in ("buttressed", "broken", "tiered"):
                 # buttresses and couloirs: along the ring the face's profile shifts out and in, so rock ribs stand
                 # proud between gullies (a smooth face read as drapery; ~900 m apart they read as lobes, not ribs)
@@ -552,17 +594,44 @@ class Terrain:
                 a1 = b["arc"] / spacing
                 n1 = noise.fbm(np.c_[a1.ravel(), np.zeros((a1.size, 2))], 1.0, 3, seed=73).reshape(self.X.shape)
                 amp = {"buttressed": 0.3, "broken": 0.45, "tiered": 0.15}[b["character"]]
+                if b.get("_zones_t"):  # (a designed profile keeps its bands' slopes: shifting t by 0.3 stretched the
+                    amp *= 0.3         # cliffs to 47 deg; the rock pass breaks the face up instead)
                 t = np.clip(t + amp * (2 * n1 - 1) * np.sin(np.pi * np.clip(t, 0, 1)), 0, 1)
             s = np.where(b["wall"], np.interp(t, u, prof), s)
             # the band(s) wander up and down the face (one even ring read as a built wall)
             pts = np.c_[self.P, np.zeros(len(self.P))]
             shift = 0.12 * (2 * noise.fbm(pts, 500 * self.k, 2, seed=71).reshape(self.X.shape) - 1)
+            if b.get("_zones_t"):  # (a designed profile's cliffs are where it put them: the hard band too)
+                shift = np.zeros(self.X.shape)
+            if b.get("_zones_t"):  # each band of the designer's profile as a zone ("valley.scree"), edges ragged: scree
+                # runs down in tongues into the forest below it, the treeline ragged under the cliffs
+                tong = noise.fbm(np.c_[b["arc"].ravel() / max(60 * self.k, 4 * self.cell),
+                                       np.full(self.X.size, 4.0), np.zeros(self.X.size)], 1.0, 2, seed=77)
+                rag = 0.05 * (2 * tong.reshape(self.X.shape) - 1)
+                tz = t + rag * np.sin(np.pi * np.clip(t, 0, 1))
+                # (rock bands keep the geometry's own edge: a ragged edge put scree slopes in the cliffs' zone)
+                rocky = {"cliffs", "crags", "slabs"}
+                hard = np.zeros(self.X.shape, bool)
+                for kind, (t0, t1) in b["_zones_t"].items():
+                    if kind in rocky:
+                        hard |= (t >= t0) & (t < t1 + (1 if t1 >= 1 else 0))
+                b["zones"] = {kind: b["wall"] & ((t >= t0) & (t < t1 + (1 if t1 >= 1 else 0)) if kind in rocky else
+                                                 (tz >= t0) & (tz < t1 + (1 if t1 >= 1 else 0)) & ~hard)
+                              for kind, (t0, t1) in b["_zones_t"].items()}
             for at0 in b["_bands"]:
                 at = at0 + shift  # (breaking a band made climbable gaps: "unclimbable" wins that one)
                 band = b["wall"] & (t >= at - 0.03) & (t <= at + b["_ft"] + 0.03)
                 self.hard |= band
                 self.hardness = np.where(band, 0.2, self.hardness)  # (0 made a palisade: it stood, all else went)
+            if b.get("_zones_t"):
+                b["_s"] = np.interp(t, u, prof)
         H = self.floor + np.maximum(self.crest - self.floor, 0) * s
+        for b in self.basins.values():
+            if "_s" in b:  # a designed profile runs from the floor's edge to the ridge itself (the crest field sags
+                # between ribs: the cliffs at the top came out at 47 deg over 60% of the relief)
+                _, (fy, fx_) = ndimage.distance_transform_edt(~b["floor"], return_indices=True)
+                fe = self.floor[fy, fx_]
+                H = np.where(b["wall"], fe + np.maximum(b["crest_here"] - fe, 0) * b.pop("_s"), H)
         tilt = self.spec.get("tilt")  # the whole frame leans: {"down": "south" | bearing deg, "grade": 0.07}
         if tilt:
             down = tilt.get("down", "south")
@@ -581,6 +650,24 @@ class Terrain:
         Built as slope weights (the band's weight is its steepness), so the whole face averages its intended slope."""
         n = 512
         t = np.linspace(0, 1, n)
+        if b.get("from_top"):  # the designer's profile: bands from the crest down, each at its own slope
+            bands = b["from_top"][::-1]  # floor edge first
+            run = np.array([sh / math.tan(math.radians(sl)) for _, sh, sl in bands])
+            edges = np.r_[0, np.cumsum(run / run.sum())]
+            wgt = np.zeros(n)
+            b["_zones_t"] = {}
+            for (kind, sh, sl), t0, t1 in zip(bands, edges[:-1], edges[1:]):
+                m = (t >= t0) & (t < t1 + (1e-9 if t1 >= 1 else 0))
+                u = np.clip((t - t0) / max(t1 - t0, 1e-9), 0, 1)
+                g = math.tan(math.radians(sl))
+                if kind == "scree":  # concave: steepest at its top, easing out at its toe
+                    g = g * (0.75 + 0.5 * u)
+                wgt = np.where(m, g, wgt)
+                b["_zones_t"][kind] = (float(t0), float(t1))
+            cl = b["_zones_t"].get("cliffs")
+            b["_bands"], b["_ft"] = ([cl[0]], cl[1] - cl[0]) if cl else ([], 0.0)
+            s = np.r_[0, np.cumsum((wgt[1:] + wgt[:-1]) / 2)]
+            return s / s[-1]
         rest = math.tan(math.radians(b["avg"]))
         wgt = rest * (0.45 + 0.75 * smoothstep(0.0, 0.3, t) - 0.35 * smoothstep(0.75, 1.0, t))
         steep = math.tan(math.radians(min(b["min_slope"] + 14, 80)))  # margin: erosion and the grid soften it
@@ -699,6 +786,9 @@ class Terrain:
                                  + f" {avg:.0f} deg is steeper than its cliff band allows (min_slope {slope:.0f} + 8): "
                                  f"built at {slope + 8:.0f}; raise min_slope for steeper walls")
             avg = slope + 8
+        from_top = _from_top(w.get("from_top"), slope, name)
+        if from_top:  # the wall's width follows from its bands: each share of the height at its own slope
+            avg = math.degrees(math.atan(1 / sum(sh / math.tan(math.radians(sl)) for _, sh, sl in from_top)))
         # each stretch of wall is as wide as the crest behind it needs at that slope (a big peak has a big footprint;
         # one width from the lowest crest made the high stretches 58 deg)
         dist, near = cKDTree(L.xy).query(self.P)
@@ -727,11 +817,14 @@ class Terrain:
         self._fixed_river |= sink  # water ends here: base level for erosion
         wall = inside & ~F
         band = float(w.get("height", max(30.0, 0.08 * (crest_min - hi))))  # the cliff band's height
+        if from_top and "height" not in w:  # the cliffs' share of the wall (the check measures it)
+            band = sum(sh for k, sh, _ in from_top if k == "cliffs") * max(float(np.median(L.h)) - hi, 1.0) * 0.8
         self.basins[name] = {"floor": F, "wall": wall, "inside": inside, "width": width, "lo": lo, "hi": hi,
                              "min_slope": slope, "falls": fx.tolist(), "band": band, "avg": avg,
                              "relief": float(np.median(L.h)) - hi, "band_at": float(w.get("band_at", 0.3)),
                              "arc": arc, "character": w.get("character", "tiered"), "bands": int(w.get("bands", 0)),
-                             "mouth": mouth}
+                             "mouth": mouth, "from_top": from_top, "d_crest": dist.reshape(self.X.shape),
+                             "crest_here": ndimage.gaussian_filter(L.h[near].reshape(self.X.shape), 2.0)}
         return F, fl, PROFILES.get(w.get("profile", "straight"), 1.0)
 
     def _floor_heights(self, b, F, lo, hi, name, full=False):
@@ -1654,6 +1747,9 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
             col = np.array(design.cover_colour(T, name))
             a = np.clip(m, 0, 1)[..., None]  # density 1 covers the ground (at 85% black sand showed as grass)
             c = c * (1 - a) + col * a
+    tone = (getattr(T, "rock", None) or {}).get("tone")
+    if tone is not None:  # rock varies: pale buttresses, dark streaked gullies, patches (terrain_rock)
+        c = c * (1 + (tone - 1) * smoothstep(38, 55, slope))[..., None]
     if "routes" in T.masks:  # the way itself: a worn, pale track (roads didn't show in any view)
         rd = np.clip(T.masks["routes"], 0, 1)[..., None] * 0.8
         c = c * (1 - rd) + (np.array([0.55, 0.47, 0.36]) if not arid else np.array([0.78, 0.66, 0.5])) * rd
@@ -1846,7 +1942,12 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
     verts = np.stack([X.ravel(), Y.ravel(), H.ravel()], 1)
     i = np.arange(ny * nx).reshape(ny, nx)
     a, b, c, e = i[:-1, :-1].ravel(), i[:-1, 1:].ravel(), i[1:, 1:].ravel(), i[1:, :-1].ravel()
-    faces = np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, e], 1)])
+    # each quad split along its flatter diagonal (one diagonal everywhere striped every steep face with the same slant:
+    # faces read as faintly triangulated close up)
+    z = H.ravel()
+    ac = np.abs(z[a] - z[c]) <= np.abs(z[b] - z[e])
+    faces = np.concatenate([np.stack([a, b, c], 1)[ac], np.stack([a, c, e], 1)[ac],
+                            np.stack([a, b, e], 1)[~ac], np.stack([b, c, e], 1)[~ac]])
     col = col.reshape(-1, 3)
     col = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
     inst = design.trees(T)  # the same instances the export writes
