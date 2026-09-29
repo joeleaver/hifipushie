@@ -270,9 +270,10 @@ class Terrain:
         self._texture()
         from . import terrain_sea
         terrain_sea.apply(self)  # the sea and its coast: before lakes, sites and routes, which use its shores
-        design.rugged(self)  # (after the sea: its zones, "cliffs" and "coast", are places to make rugged)
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
+        # rugged after the water exists (zones near the sea or a lake were empty before it), never under it
+        design.rugged(self)
         design.apply(self)
         pre = self.H.copy()
         erode(self)  # after the design: its places are protected, and lakes are where water ends
@@ -479,6 +480,15 @@ class Terrain:
                 except (AttributeError, ValueError):  # a land zone made from the ground itself: not yet
                     out = None
                 if out is not None:
+                    if not high_fix.any() and self._fixed_river.any():
+                        # a land zone with rivers but no ridges: the land away from the rivers stays at world.base
+                        # (solved between the rivers and the seabed alone, a stream made the whole coast sink: sites
+                        # 18 m -> 2 m, ground 0 m a kilometre inland)
+                        fl = max((L.props["floor"] for L in self.lines.values() if L.kind == "river"), default=60.0)
+                        reach = 2.0 * fl + 120.0 * self.k
+                        far = (ndimage.distance_transform_edt(~self._fixed_river) * self.cell > reach) & ~out & ~low_fix
+                        low_fix |= far
+                        low[far] = self.world["base"]
                     out &= ~high_fix
                     low_fix |= out
                     low[out] = lvl - 0.5 * float(sea.get("depth", 30.0))
@@ -1136,9 +1146,16 @@ class Terrain:
                     ids2 = np.unique(lab2[near & (self.H < mid)])
                     w2 = np.isin(lab2, ids2[ids2 > 0])
                     lo_l, hi_l = (mid, hi_l) if not spills(w2) else (lo_l, mid)
+                lf = (self.spec.get("landforms") or {}).get(name, {})
+                if lf.get("dam", True):  # (it told a designer with "dam": true set to set it)
+                    fix = (f"its dam reaches only {3 * r:.0f} m from the centre and the ground falls away past it: "
+                           f"move the lake where the valley narrows, lower the level, or put a moraine across the valley "
+                           f"below it")
+                else:
+                    fix = "dam it (\"dam\": true), move it, or lower the level"
                 self.warnings.append(f"lake {name!r} at {level:.0f} m would spill out near [{self.P[k, 0]:.0f}, "
                                      f"{self.P[k, 1]:.0f}]: its water stands at {lo_l:.1f} m, the most its basin holds; "
-                                     f"dam it (\"dam\": true), move it, or lower the level")
+                                     + fix)
                 level = lk["level"] = lo_l
                 below = self.H < level
                 lab, _ = ndimage.label(below)
@@ -1201,6 +1218,11 @@ class Terrain:
                        f"took {self.detail.get('seconds', 0):.0f} s, about {self.detail.get('saved', 0):.0f} s more than "
                        f"at the design cell, and views and export are {self.detail['factor'] ** 2}x the cells. "
                        f"\"detail\": 1 turns it off (cliffs then 2-3 cells across: soft drapes)")
+        elif self.spec.get("detail", "auto") == "auto" and getattr(self, "sea", None) is not None \
+                and (self.sea["wc"] > 0.5).any():
+            out.append(f"grid: {self.cell:g} m everywhere; detail stayed off because the fine grid would be over "
+                       f"{__import__('hifipushie.terrain_detail', fromlist=['x']).MAX_SIDE} cells a side at this cell. A "
+                       f"larger cell with detail on (or \"detail\": 2 anyway, slower) gives the cliffs finer cells")
         out.append("peaks/cols (authored -> built):")
         cols = self.spec.get("cols") or {}
         from .terrain_forms import measure_peak
@@ -1212,6 +1234,17 @@ class Terrain:
                 form = (f"; {self.peak_forms[n]['form']}: falls {m['fall']:.0f} m in its first {m['at']:.0f} m, "
                         f"{m['aretes']} arêtes (crest angle median {m['crest']:.0f} deg: a knife edge ~100, rounded 150+), "
                         f"faces median {m['faces']:.0f} deg")
+            tilt = self.spec.get("tilt")
+            if tilt and n not in self._lone and abs(built - h) > 2:  # (lone hills are raised after the tilt: exact)
+                down = tilt.get("down", "south")
+                bt = math.radians({"north": 0, "east": 90, "south": 180, "west": 270}.get(
+                    down, down if isinstance(down, (int, float)) else 180))
+                (x0, y0), (x1, y1) = self.spec["extent"]
+                off = -float(tilt.get("grade", 0.05)) * ((xy[0] - (x0 + x1) / 2) * math.sin(bt)
+                                                         + (xy[1] - (y0 + y1) / 2) * math.cos(bt))
+                if abs(off) > 2:
+                    form += (f" (the frame's tilt {'raises' if off > 0 else 'lowers'} it {abs(off):.0f} m here: ridges and "
+                             f"their peaks lean with the frame; give h {h - off:.0f} for {h:.0f} as built)")
             out.append(f"  {n}: {h:.0f} m -> {built:.0f} m" + form + (" (a pass notches it)" if any(
                 np.hypot(*(np.array(p["xy"]) - xy)) < p["width"] + 3 * self.cell for p in self.passes.values()) else ""))
         for L in self.lines.values():
@@ -1236,6 +1269,24 @@ class Terrain:
                         slope = math.degrees(math.atan((hs[top] - h) / max(ds[top], self.cell)))
                     prof.append(f"{hs[top] - h:.0f} m over {ds[top]:.0f} m ({slope:.0f} deg)")
                 out.append(f"    @{s:.2f}: floor {L.h[np.searchsorted(L.s, s)]:.0f} m; left bank rises {prof[0]}, right {prof[1]}")
+            # a trench: the bed well below the ground just beside its valley floor (a "U valley" cut as a slot gorge
+            # through a basin floor, 35-120 m deep, and nothing said so)
+            fl = L.props.get("floor", 60.0)
+            step = max(1, len(L.xy) // 80)
+            nrm = np.gradient(L.xy, axis=0)[::step]
+            nrm = np.stack([-nrm[:, 1], nrm[:, 0]], 1) / (np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-9)
+            p = L.xy[::step]
+            off = fl / 2 + max(30.0, 3 * self.cell)
+            bed = self.sample(p)
+            banks = np.minimum(self.sample(p + nrm * off), self.sample(p - nrm * off))
+            deep = np.where(L.s[::step] > 0.15, banks - bed, 0)  # (a source is often set into its valley head)
+            k = int(np.argmax(deep))
+            if deep[k] > max(12.0, 2 * self.world["gully"]):
+                out.append(f"    trench: the bed runs up to {deep[k]:.0f} m below the ground {off:.0f} m either side "
+                           f"(at [{p[k, 0]:.0f}, {p[k, 1]:.0f}]; {100 * (deep > 12).mean():.0f}% of its length over 12 m)")
+                self.warnings.append(f"river {L.name!r} runs in a trench up to {deep[k]:.0f} m deep at [{p[k, 0]:.0f}, "
+                                     f"{p[k, 1]:.0f}]: its heights (source/through/mouth z) are below the floor around it. "
+                                     f"Raise its heights there, or lower the floor (a basin's floor range)")
         if getattr(self, "rib_count", 0):
             out.append(f"ribs (automatic): {self.rib_count} spurs off the ridges")
         for (a, b), length, top in self.divides:
@@ -1594,6 +1645,10 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
         rock = rock * (1 + 0.09 * band[..., None] * smoothstep(45, 60, slope)[..., None])
     w = smoothstep(28, 40, slope)[..., None]
     c = grass * (1 - w) + rock * w
+    sea = getattr(T, "sea", None)
+    if sea is not None:  # wet rock at the waterline: dark from the sea up to ~2 m (the same band as the 3D tiles')
+        wet = smoothstep(2.2, 0.4, T.H - sea["level"]) * (T.H > sea["level"] - 1.0) * smoothstep(15, 30, slope)
+        c = c * (1 - wet[..., None]) + np.array([0.17, 0.16, 0.15]) * wet[..., None]
     if cover:
         for name, m in T.cover.items():
             col = np.array(design.cover_colour(T, name))

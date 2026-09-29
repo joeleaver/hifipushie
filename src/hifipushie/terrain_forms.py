@@ -286,11 +286,14 @@ def water(T):
         bmin = -ndimage.maximum_filter1d(-bmin, 9, mode="nearest")  # (a few points either way: one low cell isn't a bank)
         hl = np.where(np.isfinite(bmin), np.minimum(hl, bmin - 0.3), hl)
         hl = np.minimum.accumulate(hl)
+        spill = np.zeros(len(L.xy), bool)
         for lk in T.lakes.values():
             if lk.get("area", 1) == 0:
                 continue
             near = np.hypot(*(L.xy - np.array(lk["xy"])).T) < 1.5 * lk["r"]
             hl = np.where(near, np.maximum(hl, lk["level"]), hl)
+            if not lk.get("sea"):
+                spill |= near
         level = hl[i] + 0.2
         # banks graded down to the water (1:3) where the floor stands above it, never a one-cell trench wall; sites and
         # routes keep their ground
@@ -301,7 +304,9 @@ def water(T):
         slope_bank = level + 0.3 + 0.33 * np.maximum(d - wd, 0)
         gb = np.isfinite(d) & (d > wd) & np.isnan(T.water) & ~keep & (L.name not in canyon_rivers(T.spec))
         T.H = np.where(gb, np.minimum(T.H, np.maximum(slope_bank, T.H - 0.33 * reach)), T.H)
-        depth = 1.0
+        # over a lake's dam the river is a spillway sheet at the lake's level (a metre-deep channel drained a dammed lake
+        # to 9 m below its asked level)
+        depth = np.where(spill[i], 0.15, 1.0)
         for _, fxy, fw, fd in fords:
             nearf = np.hypot(T.X - fxy[0], T.Y - fxy[1]) < fw
             T.ford_mask |= nearf & wet
@@ -339,6 +344,25 @@ def peak_forms(T, H):
     for name, p in (T.spec.get("peaks") or {}).items():
         form = p.get("form", dflt)
         if not form or form == "dome":
+            if name in getattr(T, "_lone", []) or name not in T.points:
+                continue  # (lone hills are domes already, with their own radius)
+            # a peak on a ridge is a fixed point of the base solve: its top came out a cusp (41 deg at the summit: a
+            # "rocky pimple"). A dome's top is rounded over `radius`, the summit kept at its height
+            c, h = T.points[name]
+            r = float(p.get("radius", 0.03 * T.size))
+            if r < 2 * T.cell:
+                continue
+            d = np.hypot(T.X - c[0], T.Y - c[1])
+            near = d < 2 * r
+            if not near.any():
+                continue
+            Hs = ndimage.gaussian_filter(H, 0.5 * r / T.cell)
+            w = smoothstep(1.6 * r, 0.6 * r, d)
+            Hn = H * (1 - w) + Hs * w
+            k = np.unravel_index(np.argmin(np.where(near, d, np.inf)), d.shape)
+            Hn = np.minimum(Hn + (float(H[k]) - float(Hn[k])) * smoothstep(1.2 * r, 0, d), float(H[k]))  # (the top keeps its height, no higher)
+            H = np.where(near, Hn, H)
+            T.settle_mask = np.maximum(getattr(T, "settle_mask", np.zeros(T.X.shape)), w)
             continue
         if form not in PEAK_FORMS:
             raise ValueError(f"peak {name!r}: form {form!r}: use one of {sorted(PEAK_FORMS) + ['dome']}")
