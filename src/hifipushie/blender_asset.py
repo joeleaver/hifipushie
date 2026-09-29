@@ -610,7 +610,8 @@ def lowpoly(job):
     #    fold check for mirrored collapses; on flat faces they turn over and render black): then it is
     #    decimated again on its own
     #    The floor keeps round things round, so it shrinks with the part's flat share: a box needs no floor.
-    floor = {pn: int(round(int(job.get("min_part", 300)) * (1 - flat_frac[pn]))) for pn in names}
+    floor = {pn: int(round(int(job.get("min_part", 300)) * (1 - flat_frac[pn]))) if cfg[pn].get("min") is None
+             else int(cfg[pn]["min"]) for pn in names}  # parts.<p>.min_triangles overrides
     want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, floor, copies)
     obs, info, redo_parts = {}, {}, {}
     for k, pn in enumerate(names):

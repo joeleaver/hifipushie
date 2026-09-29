@@ -129,6 +129,57 @@ the tool doesn't know, it returns questions for the designer: ask them, don't an
 mcp = MCPServer("hifipushie", instructions=INSTRUCTIONS)
 
 
+def _error_text(e: BaseException) -> str:
+    """What the caller needs to fix a failed call: the exception's type and message, and for anything that
+    isn't a ValueError (our anticipated spec/argument errors) where it was raised."""
+    text = f"{type(e).__name__}: {e}"
+    if not isinstance(e, ValueError):
+        import traceback
+        tb = traceback.extract_tb(e.__traceback__)
+        if tb:
+            f = tb[-1]
+            text += f" (at {Path(f.filename).name}:{f.lineno} in {f.name})"
+    return text
+
+
+def _tool_with_errors(_register=mcp.tool):
+    """mcp.tool, but a tool's exception reaches the caller as its text. The SDK turns anything but ToolError
+    into a bare "Error executing tool x", which left agents bisecting op batches to find a SpecError."""
+    import functools
+    import inspect
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    def tool(*args, **kw):
+        register = _register(*args, **kw)
+
+        def deco(fn):
+            if inspect.iscoroutinefunction(fn):
+                @functools.wraps(fn)
+                async def run(*a, **k):
+                    try:
+                        return await fn(*a, **k)
+                    except ToolError:
+                        raise
+                    except Exception as e:
+                        raise ToolError(_error_text(e)) from e
+            else:
+                @functools.wraps(fn)
+                def run(*a, **k):
+                    try:
+                        return fn(*a, **k)
+                    except ToolError:
+                        raise
+                    except Exception as e:
+                        raise ToolError(_error_text(e)) from e
+            register(run)
+            return fn  # module-level name stays the plain function (tests and scripts call it directly)
+        return deco
+    return tool
+
+
+mcp.tool = _tool_with_errors()
+
+
 def _png(im: PILImage.Image) -> Image:
     buf = io.BytesIO()
     im.save(buf, "PNG")
@@ -155,6 +206,39 @@ def _refs(name: str, views: list[str] | None, against: str = "auto") -> dict:
         if v not in cfg:
             raise ValueError(f"no reference for view {v!r}")
     return {v: (cmp.reference_mask(cfg[v]["path"], cfg[v]["flip"], cfg[v]["threshold"]), None) for v in views}
+
+
+def _sil_parts(spec: dict, only_parts: list[str] | None, hide_parts: list[str] | None) -> frozenset | None:
+    """The parts a silhouette counts (check/compare/fit): only_parts, all but hide_parts, else the plan's
+    "parts", else every part (None)."""
+    if not only_parts and not hide_parts:
+        only_parts = (spec.get("plan") or {}).get("parts")
+        if not only_parts:
+            return None
+    from .spec import compile_prims
+    have = {p.part for p in compile_prims(spec)}
+    for pn in [*(only_parts or []), *(hide_parts or [])]:
+        if pn not in have:
+            raise ValueError(f"no part {pn!r} (parts: {', '.join(sorted(have))})")
+    keep = set(only_parts) if only_parts else set(have)
+    keep -= set(hide_parts or [])
+    if not keep:
+        raise ValueError("no parts left to count in the silhouette")
+    return None if keep == have else frozenset(keep)
+
+
+def _silhouettes(name: str, spec: dict, resolution: int, parts: frozenset | None) -> dict:
+    """{view: silhouette} of the whole model (the build's), or of just those parts (evaluated here)."""
+    if parts is None:
+        store.build(name, resolution)
+        return {v: store.silhouette(name, v) for v in ("front", "side", "top")}
+    from . import sdf
+    from .spec import compile_prims
+    return sdf.silhouettes(sdf.evaluate([p for p in compile_prims(spec) if p.part in parts], resolution))
+
+
+def _parts_note(parts: frozenset | None) -> str:
+    return f"silhouettes count parts: {', '.join(sorted(parts))}\n" if parts else ""
 
 
 def _out(im: PILImage.Image, save: str | None) -> Image:
@@ -219,27 +303,47 @@ def kit_reference() -> str:
             + "\n\nPLANS\n" + planmod.__doc__)
 
 
+def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
+    """The reply to a save: version, notes, warnings (things that saved but likely aren't what was meant), summary."""
+    warn = "".join(f"WARNING: {w}\n" for w in paintmod.side_warnings(spec))
+    return f"saved {name} v{v}\n" + extra + warn + summarize(spec)
+
+
 @mcp.tool(structured_output=False)
 def put_model(name: str, spec: dict, note: str = "") -> str:
-    """Create a model or replace its whole spec. Missing keys get defaults. Returns a summary."""
+    """Create a model or replace its whole spec. Missing keys get defaults. The stored plan (set_plan) is kept
+    unless the new spec gives one, or "plan": null to drop it. Returns a summary."""
     full = {**empty_spec(), **_spec_arg(spec)}
+    kept = ""
+    if "plan" not in full:
+        try:
+            old = store.load(name).get("plan")
+        except ValueError:  # a new model
+            old = None
+        if old is not None:
+            full["plan"] = old
+            kept = "kept the stored plan (pass \"plan\": null to drop it)\n"
+    elif full["plan"] is None:
+        del full["plan"]
     v = store.save(name, full, note or "put_model")
-    return f"saved {name} v{v}\n" + summarize(full)
+    return _saved(name, v, full, kept)
 
 
 @mcp.tool(structured_output=False)
 def edit_model(name: str, ops: list[dict], note: str = "") -> str:
     """Apply a batch of edits atomically. Ops:
-    {"op":"set","kind":"joints|bones|blobs|kits|strokes|paint|parts","name":n,"value":{...}}  merge fields, creates if new; a null field removes it
+    {"op":"set","kind":"joints|bones|blobs|kits|strokes|paint|parts|anatomy|prefabs|instances|...","name":n,"value":{...}}
+        merge fields, creates if new; a null field removes it. kind is any top-level key holding named entries.
+    {"op":"set_key","key":"story|style|rig|weather|...","value":v}  replace a whole top-level key; null removes it
     {"op":"delete","kind":...,"name":n}
     {"op":"rename","kind":...,"name":n,"to":m}  joint/bone renames update references
     {"op":"move","joints":[names],"delta":[dx,dy,dz]}   shift a group of joints (e.g. a whole leg)
     {"op":"scale_r","joints":[names],"factor":f}         thicken/thin at those joints
     {"op":"global","value":{"blend":0.04}}
     Edit only ".L" and centre elements; ".R" follows automatically."""
-    spec = store.apply_ops(store.load(name), ops)
+    spec = store.edit(store.load(name), ops)  # errors name the op: "op 3 (set blobs tooth.L): ..."
     v = store.save(name, spec, note or f"{len(ops)} ops")
-    return f"saved {name} v{v}\n" + summarize(spec)
+    return _saved(name, v, spec)
 
 
 @mcp.tool(structured_output=False)
@@ -287,7 +391,15 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
-    geometric = strokes or instances or shading not in ("clay", "flat")  # clip and close-ups render painted too
+    if cams:  # say what blocks a camera's view before a render is spent on it
+        from .spec import compile_prims
+        seen = [p for p in compile_prims(store.load(name))
+                if (not only_parts or p.part in only_parts) and p.part not in (hide_parts or [])]
+        for c in cams:
+            why = meas.sight(seen, c["eye"], c["target"]) if seen else ""
+            if why:
+                c["_note"] = c.get("_note", "") + f" | NOT SEEN: {why}"
+    geometric =strokes or instances or shading not in ("clay", "flat")  # clip and close-ups render painted too
     if paint and not geometric and store.load(name).get("paint"):
         from . import scene
         r = scene.sync(name)
@@ -548,19 +660,22 @@ def set_reference(name: str, view: str, image_path: str, flip: bool = False, thr
 
 @mcp.tool(structured_output=False)
 def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolution: int = 160,
-            against: str = "auto"):
+            against: str = "auto", only_parts: list[str] | None = None, hide_parts: list[str] | None = None):
     """Compare model silhouettes to the references. Per view: IoU, a diff image
     (grey = match, red = model has extra, blue = model is missing) and band tables of edge errors
     in world units, which tell you which joint/blob to move and by how much.
     fit: "auto" searches the reference scale/offset for best overlap, so only shape differences remain
     (absolute size is ignored); "height"/"width" instead match that dimension, bottom-aligned.
     against: "refs" (set_reference images), "plan" (the model's plan, placed exactly: no rescaling), or "auto"
-    (the plan if there is one)."""
-    store.build(name, resolution)
+    (the plan if there is one). only_parts / hide_parts: which parts the silhouette counts (the body without the
+    prop it holds); default: the plan's "parts", else all."""
+    spec = store.load(name)
+    parts = _sil_parts(spec, only_parts, hide_parts)
+    sils = _silhouettes(name, spec, resolution, parts)
     out = []
     for v, (ref, world) in _refs(name, views, against).items():
-        iou, diff, report = cmp.compare(store.silhouette(name, v), ref, fit, world=world)
-        out += [_png(diff), f"[{v}] {report}"]
+        iou, diff, report = cmp.compare(sils[v], ref, fit, world=world)
+        out += [_png(diff), f"[{v}] {_parts_note(parts)}{report}"]
     return out
 
 
@@ -568,7 +683,7 @@ def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolu
 def fit(name: str, views: list[str] | None = None, only: list[str] | None = None,
         lock: list[str] | None = None, params: list[str] | None = None, iterations: int = 20,
         max_step: float = 0.02, stiffness: float = 0.05, align: str = "auto", resolution: int = 160,
-        against: str = "auto"):
+        against: str = "auto", only_parts: list[str] | None = None, hide_parts: list[str] | None = None):
     """Auto-fit the model to its reference silhouettes and save the result as a new version.
     Moves joints, joint/bone radii, blob offsets and blob sizes (params: any of "pos", "r", "offset",
     "size") to minimise the distance between model and reference outlines. Only what the given views can
@@ -577,21 +692,23 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
     stiffness is a spring toward the starting values (higher = more conservative).
     Block out the body plan by hand first: fitting is local and can't fix a missing or misplaced limb.
     against: "refs", "plan" (fit the blockout onto the plan's outlines, placed exactly; joints tied to plan
-    landmarks keep their planned height) or "auto" (the plan if there is one). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
+    landmarks keep their planned height) or "auto" (the plan if there is one). only_parts / hide_parts: which parts
+    the silhouettes count, and whose elements may move (default: the plan's "parts", else all). Returns the diff images, IoU before/after and every change; `revert` undoes it."""
     refs = _refs(name, views, against)
     spec = store.load(name)
     pin = []
     if any(w is not None for _, w in refs.values()):  # fitting to the plan: its landmarks fix joint heights
         pin = [("joints", lm["joint"], "pos", 2) for lm in (spec["plan"].get("landmarks") or {}).values()
                if lm.get("joint") in spec["joints"]]
+    parts = _sil_parts(spec, only_parts, hide_parts)
     res = fitmod.fit(spec, refs, align, tuple(params or fitmod.GROUPS), only, tuple(lock or ()),
-                     iterations, max_step, stiffness, resolution, pin)
+                     iterations, max_step, stiffness, resolution, pin, parts)
     ver = store.save(name, res.spec, "fit " + " ".join(
         f"{v} {res.iou_before[v]:.3f}->{res.iou_after[v]:.3f}" for v in refs))
     out = []
     for v, im in fitmod.diff_images(res).items():
         out += [_png(im), f"[{v}] IoU {res.iou_before[v]:.3f} -> {res.iou_after[v]:.3f}"]
-    out.append(f"saved {name} v{ver}\n" + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
+    out.append(f"saved {name} v{ver}\n" + _parts_note(parts) + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
     return out
 
 
@@ -618,7 +735,8 @@ def set_plan(name: str, plan: dict, note: str = "", save: str | None = None):
 
 
 @mcp.tool(structured_output=False)
-def check(name: str, resolution: int = 160, save: str | None = None):
+def check(name: str, resolution: int = 160, save: str | None = None, only_parts: list[str] | None = None,
+          hide_parts: list[str] | None = None):
     """Check the model against its plan: per view, the plan against the model's silhouette (grey = both,
     blue = plan only: the model is missing it, red = the model sticks out); IoU and edge-error bands in world units (placed exactly, no rescaling); landmark joints vs
     their planned heights; planned sections vs measured width and depth. Run it after every stage.
@@ -626,7 +744,9 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     identical parts, big perfectly flat faces, paint without wear or dirt (works without a plan too).
     And walks a person through every doorway (box cuts with targets reaching the floor, 1.6 m+ tall): a door
     swung across the opening, furniture in the way, a step too high; names what blocks it. And lists props
-    (instances) cutting into anything else, how deep and into what (a chair pushed into a table leg)."""
+    (instances) cutting into anything else, how deep and into what (a chair pushed into a table leg).
+    only_parts / hide_parts: which parts the silhouettes count (judge the body, not the prop it holds); default:
+    the plan's "parts" (a list of part names), else all."""
     from . import realism
     spec = store.load(name)
     warn = realism.audit(spec)
@@ -648,16 +768,57 @@ def check(name: str, resolution: int = 160, save: str | None = None):
     plan = spec.get("plan")
     if not plan:
         return "no plan to check against (set_plan)." + realism_txt
-    store.build(name, resolution)
-    refs = _refs(name, None, "plan")
-    lines, outlines = [], {}
-    for v, (ref, world) in refs.items():
-        sil = store.silhouette(name, v)
-        outlines[v] = (sil["mask"], sil["u"], sil["v"])
-        _, _, report = cmp.compare(sil, ref, world=world, bands=10)
-        lines.append(f"[{v}] " + report.replace("alignment: fit=world (exact); ", ""))
+    parts = _sil_parts(spec, only_parts, hide_parts)
+    tagged = planmod.shape_parts(plan)  # shapes standing for one part each (chains, a cage): compared on their own
+    if tagged:
+        from .spec import compile_prims
+        have = {p.part for p in compile_prims(spec)}
+        if tagged - have:
+            raise ValueError(f"plan shapes name parts the model hasn't: {sorted(tagged - have)} (parts: {sorted(have)})")
+        tagged &= set(parts) if parts else have
+        rest = frozenset((set(parts) if parts else have) - tagged)
+        main_plan = planmod.subplan(plan, None)
+    else:
+        rest, main_plan = parts, plan
+    views = [v for v in ("front", "side", "top") if planmod.bounds(plan, v) is not None]
+    main_views = [v for v in views if planmod.bounds(main_plan, v) is not None]
+    sils = _silhouettes(name, spec, resolution, rest or None) if main_views and (rest or not tagged) else {}
+    shown = sils if not tagged else _silhouettes(name, spec, resolution, parts)
+    lines, outlines = ([_parts_note(parts).strip()] if parts else []), {}
+    for v in views:
+        outlines[v] = (shown[v]["mask"], shown[v]["u"], shown[v]["v"])
+    for v in main_views if sils else []:
+        ref, world = planmod.reference(main_plan, v)
+        _, _, report = cmp.compare(sils[v], ref, world=world, bands=10)
+        who = f" (parts {', '.join(sorted(rest))})" if tagged else ""
+        lines.append(f"[{v}]{who} " + report.replace("alignment: fit=world (exact); ", ""))
+    close = float(plan.get("close", 0.03))
+    for p in sorted(tagged):
+        pplan = planmod.subplan(plan, p)
+        psil = _silhouettes(name, spec, resolution, frozenset([p]))
+        for v in views:
+            if planmod.bounds(pplan, v) is None:
+                continue
+            ref, world = planmod.reference(pplan, v)
+            _, _, report = cmp.compare(_closed(psil[v], close), ref, world=world, bands=10)
+            lines.append(f"[{v}: part {p}, gaps closed {close:g} m] " + report.replace("alignment: fit=world (exact); ", ""))
     lines += planmod.check_numbers(spec, plan)
-    return [_out(planmod.sheet(plan, list(refs), outlines=outlines), save), "\n".join(lines) + realism_txt]
+    if not views:
+        return "\n".join(lines) + realism_txt
+    return [_out(planmod.sheet(plan, views, outlines=outlines), save), "\n".join(lines) + realism_txt]
+
+
+def _closed(sil: dict, radius: float) -> dict:
+    """A silhouette with gaps up to 2 x radius closed (a chain curtain, a wire cage read as their envelope)."""
+    from scipy import ndimage
+    m = sil["mask"]
+    px = (sil["u"][1] - sil["u"][0]) / max(m.shape[1] - 1, 1)
+    r = max(int(np.ceil(radius / px)), 1)
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    disk = xx * xx + yy * yy <= r * r
+    padded = np.pad(m, r + 1)
+    closed = ndimage.binary_closing(padded, structure=disk)[r + 1:-r - 1, r + 1:-r - 1]
+    return {**sil, "mask": closed}
 
 
 @mcp.tool(structured_output=False)
@@ -779,7 +940,7 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     and baked once, at its first instance (paint, AO, sky as it stands there). prefabs.<p>.export = "unique" bakes
     its instances into the scene instead (when paint must differ per copy). `triangles` counts drawn triangles.
     Budgets: triangles go where one joint decimation of all parts puts them (geometric error, so flat walls get
-    few and small round parts enough; every part gets at least max(300, triangles/100)). Per part in
+    few and small round parts enough; every part gets at least max(300, triangles/100) per copy, or its parts.<p>.min_triangles: lower it for many-instance prefabs like chain links). Per part in
     spec["parts"][p]: "triangle_weight" (x its share), "texel_density" (x its texels per metre), "texel_focus":
     [{"at": point | joint | blob, "radius": m, "density": w}] (islands there get w x more: a character's face),
     "atlas": name (its own atlas and material, e.g. "interior").
