@@ -761,16 +761,56 @@ def check(name: str, resolution: int = 160, save: str | None = None, only_parts:
     if not plan:
         return "no plan to check against (set_plan)." + realism_txt
     parts = _sil_parts(spec, only_parts, hide_parts)
-    sils = _silhouettes(name, spec, resolution, parts)
-    refs = _refs(name, None, "plan")
+    tagged = planmod.shape_parts(plan)  # shapes standing for one part each (chains, a cage): compared on their own
+    if tagged:
+        from .spec import compile_prims
+        have = {p.part for p in compile_prims(spec)}
+        if tagged - have:
+            raise ValueError(f"plan shapes name parts the model hasn't: {sorted(tagged - have)} (parts: {sorted(have)})")
+        tagged &= set(parts) if parts else have
+        rest = frozenset((set(parts) if parts else have) - tagged)
+        main_plan = planmod.subplan(plan, None)
+    else:
+        rest, main_plan = parts, plan
+    views = [v for v in ("front", "side", "top") if planmod.bounds(plan, v) is not None]
+    main_views = [v for v in views if planmod.bounds(main_plan, v) is not None]
+    sils = _silhouettes(name, spec, resolution, rest or None) if main_views and (rest or not tagged) else {}
+    shown = sils if not tagged else _silhouettes(name, spec, resolution, parts)
     lines, outlines = ([_parts_note(parts).strip()] if parts else []), {}
-    for v, (ref, world) in refs.items():
-        sil = sils[v]
-        outlines[v] = (sil["mask"], sil["u"], sil["v"])
-        _, _, report = cmp.compare(sil, ref, world=world, bands=10)
-        lines.append(f"[{v}] " + report.replace("alignment: fit=world (exact); ", ""))
+    for v in views:
+        outlines[v] = (shown[v]["mask"], shown[v]["u"], shown[v]["v"])
+    for v in main_views if sils else []:
+        ref, world = planmod.reference(main_plan, v)
+        _, _, report = cmp.compare(sils[v], ref, world=world, bands=10)
+        who = f" (parts {', '.join(sorted(rest))})" if tagged else ""
+        lines.append(f"[{v}]{who} " + report.replace("alignment: fit=world (exact); ", ""))
+    close = float(plan.get("close", 0.03))
+    for p in sorted(tagged):
+        pplan = planmod.subplan(plan, p)
+        psil = _silhouettes(name, spec, resolution, frozenset([p]))
+        for v in views:
+            if planmod.bounds(pplan, v) is None:
+                continue
+            ref, world = planmod.reference(pplan, v)
+            _, _, report = cmp.compare(_closed(psil[v], close), ref, world=world, bands=10)
+            lines.append(f"[{v}: part {p}, gaps closed {close:g} m] " + report.replace("alignment: fit=world (exact); ", ""))
     lines += planmod.check_numbers(spec, plan)
-    return [_out(planmod.sheet(plan, list(refs), outlines=outlines), save), "\n".join(lines) + realism_txt]
+    if not views:
+        return "\n".join(lines) + realism_txt
+    return [_out(planmod.sheet(plan, views, outlines=outlines), save), "\n".join(lines) + realism_txt]
+
+
+def _closed(sil: dict, radius: float) -> dict:
+    """A silhouette with gaps up to 2 x radius closed (a chain curtain, a wire cage read as their envelope)."""
+    from scipy import ndimage
+    m = sil["mask"]
+    px = (sil["u"][1] - sil["u"][0]) / max(m.shape[1] - 1, 1)
+    r = max(int(np.ceil(radius / px)), 1)
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    disk = xx * xx + yy * yy <= r * r
+    padded = np.pad(m, r + 1)
+    closed = ndimage.binary_closing(padded, structure=disk)[r + 1:-r - 1, r + 1:-r - 1]
+    return {**sil, "mask": closed}
 
 
 @mcp.tool(structured_output=False)

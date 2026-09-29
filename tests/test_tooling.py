@@ -217,6 +217,39 @@ def test_assets_fetch_by_checksum():
                                                       for f in p["files"]), name
 
 
+# Card "Plan/check for props: dimension targets and part envelopes instead of silhouette IoU"
+def test_prop_dimensions_and_part_envelopes():
+    import math
+    import re
+    joints = {"foot": {"pos": [0, 0, 0], "r": 0.02}, "top": {"pos": [0, 0, 1.37], "r": 0.02}}
+    bones = {"pole": {"a": "foot", "b": "top", "r_a": 0.02, "r_b": 0.02}}
+    for i in range(12):  # a curtain of chains, 4 mm wide, hanging from 1.3 m to 0.9 m (too short: the rim is 0.8)
+        a = 2 * math.pi * i / 12
+        x, y = 0.25 * math.cos(a), 0.25 * math.sin(a)
+        joints[f"c{i}a"] = {"pos": [x, y, 1.3], "r": 0.004}
+        joints[f"c{i}b"] = {"pos": [x, y, 0.9], "r": 0.004}
+        bones[f"chain{i}"] = {"a": f"c{i}a", "b": f"c{i}b", "part": "chains", "tags": ["chain"]}
+    spec = {"joints": joints, "bones": bones, "parts": {"chains": {"color": [0.7, 0.7, 0.7]}}}
+    server.put_model("basket2", spec)
+    plan = {"views": {"front": {"shapes": {
+                "pole": {"capsule": [0, 0, 0, 1.37], "r": 0.02},
+                "curtain": {"poly": [[-0.254, 0.8], [0.254, 0.8], [0.254, 1.3], [-0.254, 1.3]], "part": "chains"}}}},
+            "close": 0.06,
+            "dimensions": {"pole_top": {"of": "pole", "measure": "top", "value": 1.37},
+                           "chain_bottoms": {"of": "chain", "measure": "bottom", "min": 0.78, "max": 0.82},
+                           "curtain_d": {"part": "chains", "measure": "diameter", "value": 0.508, "tol": 0.005}}}
+    server.set_plan("basket2", plan)
+    img, text = server.check("basket2", resolution=160)
+    top = re.search(r"pole_top\s+top of pole: ([0-9.]+)", text)
+    assert top and abs(float(top.group(1)) - 1.39) < 0.003, text  # 1.37 + the joint's radius, measured exactly
+    assert re.search(r"chain_bottoms .*: 0\.89\d .*<-- above", text), text  # the chains end 10 cm short
+    assert re.search(r"curtain_d .*: 0\.50\d vs 0\.508", text) and "curtain_d" in text, text
+    assert "[front: part chains, gaps closed 0.06 m]" in text and "[front] (parts body)" in text, text
+    chains = float(re.search(r"part chains, gaps closed 0.06 m\] IoU ([0-9.]+)", text).group(1))
+    assert 0.6 < chains < 0.9, text  # the curtain envelope, 10 cm short: not the 0.1 of bare wires
+    assert "needs \"of\"" in _raises(server.set_plan, "basket2", {**plan, "dimensions": {"x": {"value": 1}}})
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

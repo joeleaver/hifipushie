@@ -10,8 +10,19 @@ spec["plan"] = {
                        this point, e.g. the left thigh), "width": X extent, "depth": Y extent,
                        "center"?: [x, y], "x"?: [lo, hi] only measure within this X range (leave out
                        arms touching the torso), "tol"?: fraction (default 0.08)}},
-  "parts": [part names]           # optional: the parts the silhouettes count (the body, not the prop it holds);
-}                                 #   check/compare/fit take only_parts / hide_parts too
+  "parts": [part names],          # optional: the parts the silhouettes count (the body, not the prop it holds);
+                                  #   check/compare/fit take only_parts / hide_parts too
+  "dimensions": {name: {"of": element | tag | array | kit name (or a list) | "part": part,
+                        "measure": "top" | "bottom" | "height" | "width" | "depth" | "diameter" (max of width,
+                                   depth) | "left" | "right" | "front" | "back",
+                        "value": m, "tol"?: m (0.01)  |  "min"?: m, "max"?: m}},
+                                  # real-world numbers, measured on those elements' own surfaces: props, cages,
+                                  #   wirework, chains, where silhouette IoU says little
+  "close": m                      # gap closing for part shapes (below; default 0.03)
+}
+A shape may stand for one part: {"capsule": [...], "part": "chains"}. check then compares that part's silhouette,
+gaps closed (a curtain of chains, a wire cage compared with its envelope), with those shapes alone, and the untagged
+shapes with the other parts.
 Shapes (u, v in the view's axes):
   {"ellipse": [cu, cv, ru, rv], "rot": deg}
   {"capsule": [u0, v0, u1, v1], "r": r | [r0, r1]}      a limb: rounded, tapering from r0 to r1
@@ -129,6 +140,13 @@ def reference(plan: dict, view: str, res: int = 700):
 
 
 def validate(plan: dict):
+    for name, d in (plan.get("dimensions") or {}).items():
+        if not isinstance(d, dict) or not ({"of", "element", "tag", "part"} & set(d)):
+            raise SpecError(f'plan dimension {name!r}: needs "of" (element, tag, array or kit names) or "part"')
+        if d.get("measure", "height") not in MEASURES:
+            raise SpecError(f"plan dimension {name!r}: measure is one of {', '.join(MEASURES)}")
+        if not ({"value", "min", "max"} & set(d)):
+            raise SpecError(f'plan dimension {name!r}: give "value" (+ "tol") or "min" / "max"')
     ps = plan.get("parts")
     if ps is not None and not (isinstance(ps, list) and ps and all(isinstance(x, str) for x in ps)):
         raise SpecError('plan: "parts" is a list of part names, e.g. ["body"]')
@@ -236,6 +254,103 @@ def sheet(plan: dict, views: list[str], size: int = 448, outlines: dict | None =
 
 # ---------------------------------------------------------------- checking
 
+MEASURES = ("top", "bottom", "height", "width", "depth", "diameter", "left", "right", "front", "back")
+
+
+def extents(prims: list, resolution: int = 128) -> tuple[np.ndarray, np.ndarray] | None:
+    """World (lo, hi) of the surface of these primitives alone, to a small fraction of a voxel: extremes from a
+    grid, each refined by bisection along its axis on the exact field."""
+    from . import sdf
+    if not any(p.op == "add" for p in prims):
+        return None
+    g = sdf.evaluate(prims, resolution)
+    inside = g.field < 0
+    if not inside.any():
+        return None
+    idx = np.argwhere(inside)
+    lo, hi = np.zeros(3), np.zeros(3)
+    for a in range(3):
+        for sign, out in ((-1, lo), (1, hi)):
+            k = idx[np.argmin(idx[:, a])] if sign < 0 else idx[np.argmax(idx[:, a])]
+            p_in = g.origin + k * g.voxel  # inside
+            p_out = p_in.copy()
+            p_out[a] += sign * 2 * g.voxel  # the next voxel out along the axis is outside
+            if sdf.field_at(prims, p_out[None], clip=False)[0] < 0:
+                p_out[a] += sign * 4 * g.voxel
+            for _ in range(30):
+                mid = (p_in + p_out) / 2
+                if sdf.field_at(prims, mid[None], clip=False)[0] < 0:
+                    p_in = mid
+                else:
+                    p_out = mid
+            out[a] = (p_in[a] + p_out[a]) / 2
+    return lo, hi
+
+
+def check_dimensions(spec: dict, plan: dict) -> list[str]:
+    """plan["dimensions"]: real-world numbers measured on the elements, tags or part they name (for props, cages and
+    anything whose silhouette IoU says little)."""
+    dims = plan.get("dimensions") or {}
+    if not dims:
+        return []
+    from .paintnodes import resolve_near
+    from .spec import compile_prims
+    prims = compile_prims(spec)
+    by_name = {p.name: p for p in prims}
+    lines = ["Dimensions (measured on the named elements' own surfaces, vs plan):"]
+    cache: dict[str, tuple] = {}
+    for name, d in dims.items():
+        if "part" in d:
+            sel, what = [p for p in prims if p.part == d["part"]], f"part {d['part']}"
+        else:
+            of = d.get("of", d.get("element", d.get("tag")))
+            got, missing = resolve_near(spec, of, by_name)
+            if missing or not got:
+                lines.append(f"  {name}: nothing named {missing or of!r}")
+                continue
+            got = set(got)
+            sel, what = [p for p in prims if p.name in got and p.op == "add"], (of if isinstance(of, str) else ", ".join(of))
+        key = repr(sorted(id(p) for p in sel))
+        if key not in cache:
+            cache[key] = extents(sel)
+        ext = cache[key]
+        if ext is None:
+            lines.append(f"  {name}: {what} has no surface")
+            continue
+        lo, hi = ext
+        m = d.get("measure", "height")
+        val = {"top": hi[2], "bottom": lo[2], "height": hi[2] - lo[2], "width": hi[0] - lo[0],
+               "depth": hi[1] - lo[1], "diameter": max(hi[0] - lo[0], hi[1] - lo[1]), "left": hi[0],
+               "right": lo[0], "front": lo[1], "back": hi[1]}[m]
+        if "value" in d:
+            err = val - float(d["value"])
+            flag = "  <-- off" if abs(err) > float(d.get("tol", 0.01)) else ""
+            lines.append(f"  {name:14s} {m} of {what}: {val:.3f} vs {float(d['value']):.3f} ({err:+.3f}){flag}")
+        else:
+            lo_ok = "min" not in d or val >= float(d["min"])
+            hi_ok = "max" not in d or val <= float(d["max"])
+            rng = f"{d.get('min', '')}..{d.get('max', '')}"
+            flag = "" if lo_ok and hi_ok else f"  <-- {'below' if not lo_ok else 'above'} {rng}"
+            lines.append(f"  {name:14s} {m} of {what}: {val:.3f} (want {rng}){flag}")
+    return lines
+
+
+def subplan(plan: dict, part: str | None) -> dict:
+    """The plan with only the shapes standing for `part` (a shape's "part"), or only untagged shapes (None)."""
+    out = dict(plan)
+    out["views"] = {}
+    for v, vd in (plan.get("views") or {}).items():
+        sh = {n: s for n, s in ((vd or {}).get("shapes") or {}).items() if s.get("part") == part}
+        if sh:
+            out["views"][v] = {**vd, "shapes": sh}
+    return out
+
+
+def shape_parts(plan: dict) -> set[str]:
+    return {s["part"] for vd in (plan.get("views") or {}).values() for s in ((vd or {}).get("shapes") or {}).values()
+            if isinstance(s, dict) and s.get("part")}
+
+
 def check_numbers(spec: dict, plan: dict) -> list[str]:
     """Landmark and section errors, model vs plan."""
     from . import measure as meas
@@ -290,4 +405,4 @@ def check_numbers(spec: dict, plan: dict) -> list[str]:
                 ctr = f" | centre ({cx:+.3f}, {cy:+.3f}) vs ({sec['center'][0]:+.3f}, {sec['center'][1]:+.3f})"
             lines.append(f"  {name:14s} z {z:.3f}: width {w:.3f} vs {sec['width']:.3f} ({ew:+.0%}) | "
                          f"depth {dpt:.3f} vs {sec['depth']:.3f} ({ed:+.0%}){ctr}{flag}")
-    return lines
+    return lines + check_dimensions(spec, plan)
