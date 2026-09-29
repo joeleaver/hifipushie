@@ -773,9 +773,11 @@ def render(job):
         if v.get("eye") is not None:
             cam_data.type = "PERSP"
             cam_data.angle = np.radians(v["fov"])
+            cam_data.shift_x, cam_data.shift_y = v.get("shift") or (0.0, 0.0)  # a crop off the lens axis
             cam.matrix_world = Matrix.Translation(Vector(v["eye"])) @ rot
         else:
             cam_data.type = "ORTHO"
+            cam_data.shift_x = cam_data.shift_y = 0.0
             cam_data.ortho_scale = v["scale"]
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ rot
         scene.render.filepath = v["out"]

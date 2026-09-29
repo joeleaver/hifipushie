@@ -210,11 +210,20 @@ def _measure(spec: dict) -> Scalp:
     g = {k: v for k, v in geometry(spec).items() if k != "hair"}
     J = expand_mirror(g)["joints"]
     need = ("lm_brow_mid.L", "lm_nose_base", "lm_jaw_0.L", "lm_brow_outer.L", "lm_nose_bridge")
-    if not all(n in J for n in need):
-        raise HairError(f"hair needs the face landmarks {need} (a base head gives them)")
     lm = {n: [float(x) for x in J[n]["pos"]] for n in J if n.startswith("lm_")}
-    j0 = np.array(lm["lm_jaw_0.L"])
-    C = np.array([0.0, j0[1] + 0.01, lm["lm_brow_mid.L"][2] + 0.008])
+    if all(n in J for n in need):
+        j0 = np.array(lm["lm_jaw_0.L"])
+        C = np.array([0.0, j0[1] + 0.01, lm["lm_brow_mid.L"][2] + 0.008])
+    else:  # no base head (a kit-built creature): the head joint is the centre, the hairline by elevation angles
+        cen = ((spec.get("hair") or {}).get("groom") or {}).get("centre", "head")
+        if isinstance(cen, str):
+            if cen not in J:
+                raise HairError(f"hair needs the face landmarks {need} (a base head gives them) or a centre "
+                                f"joint (groom.centre, default 'head')")
+            C = np.asarray(J[cen]["pos"], float)
+        else:
+            C = np.asarray(cen, float)
+        lm = {}
     streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(g))}
     body = streams["body"]
     sc = Scalp(C, None, lm)
@@ -259,6 +268,14 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
     hl = g["hairline"]
     if hl.get("points"):
         ctrl = [(float(a), float(z)) for a, z in hl["points"]]
+    elif "lm_brow_mid.L" not in sc.lm:  # no landmarks: elevations (degrees from the centre) per azimuth
+        ea = float(hl.get("ear_az", 95))
+        el = {k: float(hl.get(k, d)) for k, d in (("front_el", 35), ("temple_el", 40), ("sideburn_el", -5),
+                                                   ("ear_el", 18), ("nape_el", -25))}
+        pts = [(0, el["front_el"]), (ea - 55, el["temple_el"]), (ea - 30, el["temple_el"] - 12),
+               (ea - 18, el["sideburn_el"]), (ea - 10, el["sideburn_el"]), (ea - 6, el["ear_el"]),
+               (ea + 20, el["ear_el"]), (ea + 32, el["nape_el"] + 15), (180, el["nape_el"])]
+        ctrl = [(a, float(sc.point(a, e, 0.0)[2])) for a, e in pts]
     else:
         lm = sc.lm
         bz = lm["lm_brow_mid.L"][2]
@@ -276,6 +293,9 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
                 (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, ear_top + 0.012), (az_j - 10, sb + 0.006),
                 (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
                 (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+    if hl.get("front_points"):  # traced (e.g. from the reference through the matched camera): [[az, z], ...] over the
+        fp = sorted((float(x), float(z)) for x, z in hl["front_points"])  # front; the rest of the line kept
+        ctrl = fp + [c for c in ctrl if c[0] > fp[-1][0] + 4]
     # z -> elevation on the scalp, per control's azimuth (the column's first height reaching z, from the bottom)
     A, E = [], []
     for a, z in ctrl:
@@ -432,7 +452,12 @@ def _envelope(sc: Scalp, g: dict, line, az, el):
     xp = _part_x(g)
     if xp is not None:  # the combed-away side is fuller; the part side lies flatter
         sgn = 1.0 if xp >= 0 else -1.0
-        v = v * (1 - 0.22 * topw * _ss(sgn * (P[..., 0] - xp) / 0.03))
+        # parting.flat: how much flatter the part side lies (top and side); parting.full: how much fuller the side
+        # the hair is swept onto (a side-swept cut piles up over the far temple)
+        pw = topw + W[..., 2]
+        flat, full = float(g["parting"].get("flat", 0.22)), float(g["parting"].get("full", 0.0))
+        v = v * (1 - flat * pw * _ss(sgn * (P[..., 0] - xp) / 0.03)) \
+            * (1 + full * pw * _ss(-sgn * (P[..., 0] - xp + sgn * 0.02) / 0.05))
         # along the parting the volume goes down to the scalp: the roots on both sides grow out of it there, and
         # the part is a thin line of scalp and shadow between clumps (a dip left the volume as a smooth patch)
         v = v * (1 - float(g["parting"].get("depth", 0.9)) * _part(sc, g, az, el, float(g["parting"].get("width", 0.012))))
@@ -449,9 +474,41 @@ def _part(sc: Scalp, g: dict, az, el, width):
         return np.zeros(np.shape(az))
     xp = {"left": 1.0, "right": -1.0, "centre": 0.0}[side] * float(pt.get("offset", 0.03))
     P = sc.point(az, el, 0.0)
+    if pt.get("line"):  # a drawn/traced part: distance to its polyline on the scalp, faded in past its front end
+        q = np.asarray(pt["line"], float)
+        L = _catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
+        A, AB = L[:-1], L[1:] - L[:-1]
+        sh = np.shape(az)
+        X = P.reshape(-1, 3)
+        best = np.full(len(X), np.inf)
+        tf = np.zeros(len(X))
+        cum = np.r_[0.0, np.cumsum(np.linalg.norm(AB, axis=1))]
+        for k in range(len(A)):
+            t = np.clip(((X - A[k]) @ AB[k]) / max(AB[k] @ AB[k], 1e-12), 0, 1)
+            d = np.linalg.norm(X - (A[k] + t[:, None] * AB[k]), axis=1)
+            m = d < best
+            best[m], tf[m] = d[m], (cum[k] + t[m] * np.linalg.norm(AB[k]))
+        # past the front end the distance keeps growing (t clipped): fades there by itself; soft at the back end
+        fade = 1 - _ss((tf - cum[-1] + 0.015) / 0.015)
+        return (np.exp(-(best / width) ** 2) * np.maximum(fade, 0.0)).reshape(sh) * _ss((np.asarray(el) - 20) / 10)
     yf = sc.C[1] - sc.r(0.0, 30.0) * np.cos(np.radians(30.0))
     along = _ss((P[..., 1] - yf + 0.005) / 0.01) * (1 - _ss((P[..., 1] - yf - float(pt.get("length", 0.1))) / 0.02))
     return along * np.exp(-((P[..., 0] - xp) / width) ** 2) * _ss((np.asarray(el) - 20) / 10)
+
+
+def part_line(sc: Scalp, g: dict):
+    """The parting as [[az, el], ...] from its front end back: groom.parting.line (e.g. carried from a traced
+    reference), else a straight line at x = offset from the front of the scalp back `length`."""
+    pt = g.get("parting") or {}
+    if pt.get("line"):
+        return np.asarray(pt["line"], float)
+    xp = _part_x(g)
+    if xp is None:
+        return None
+    y0 = -sc.r(0.0, 30.0) * np.cos(np.radians(30.0))
+    t = np.linspace(0.0, float(pt.get("length", 0.1)), 6)
+    a, e = top_to_azel(sc, np.stack([np.full(6, xp), y0 + t], 1))
+    return np.stack([a, e], 1)
 
 
 def _part_x(g):
@@ -1180,7 +1237,7 @@ def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14, cap=No
     for _ in range(rounds):
         V = sc.point(AA, EE, H)
         P = np.vstack([V[hair_m], extra]) if len(extra) else V[hair_m]
-        z0 = sc.lm["lm_brow_mid.L"][2] + 0.02
+        z0 = (sc.lm["lm_brow_mid.L"][2] if "lm_brow_mid.L" in sc.lm else float(sc.C[2])) + 0.02
         ztop = P[:, 2].max() - 0.01 - CROWN_BAND
         edges = np.arange(z0, ztop, 0.002)
         raise_ = np.zeros(H.shape)
@@ -1342,6 +1399,7 @@ def make_stage(name: str, pad: float = 0.1) -> Path:
     return sp
 
 
+REFERENCE = Path("/home/joe/dev/hifipushie/workspace/disc_golfer_renders/ref_user_style.png")
 VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
          "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "close": (-30.0, 25.0, 0.45),
          "close_back": (150.0, 20.0, 0.45)}
@@ -1370,6 +1428,10 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
     sc = scalp(name, spec)
     cams = cameras(sc, views)
     frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
+    rc = ref_camera(name)
+    if rc:  # the reference's own camera (fit_camera): compared with the reference pixel for pixel
+        frames.append({"name": "matched", "eye": rc["eye"], "dir": rc["dir"], "up": rc["up"], "fov": rc["fov"],
+                       "shift": rc["shift"], "center": sc.C.tolist(), "near": 0.01, "scale": None, "axes": None})
     thumb = render.camera_frame({"name": "thumb", "eye": (sc.C + dirs(25.0, 8.0) * 1.6).tolist(),
                                  "target": (sc.C - [0, 0, 0.12]).tolist(), "fov": 30.0}, len(frames))
     with tempfile.TemporaryDirectory() as tmp:
@@ -1387,6 +1449,8 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         for f, fm in zip(idf, frames):  # red = the underlayer, green = locks (flat emission, nothing else drawn)
             a = np.asarray(Image.open(f["out"]).convert("RGB"), float)
             red, green = a[..., 0] > a[..., 1] + 60, a[..., 1] > a[..., 0] + 60
+            if f["name"] == "matched":
+                look.matched_mask = red | green
             look.mass_share[f["name"]] = round(float(red.sum() / max(red.sum() + green.sum(), 1)), 3)
             # lit bare volume: where the volume shows AND is shaded like the locks around it (not a crevice or a
             # parting in shadow): the smooth patch the eye reads as a helmet
@@ -1404,8 +1468,13 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t
     W = size
-    cols = len(imgs) + 1
-    rows = 2 if clays else 1
+    matched = mclay = None
+    if rc:  # its own row: matched render, clay, reference, 50% blend, the traced lines
+        matched = imgs.pop()
+        mclay = clays.pop() if clays else None
+        frames = frames[:-1]
+    cols = max(len(imgs) + 1, 5 if matched is not None else 0)
+    rows = (2 if clays else 1) + (1 if matched is not None else 0)
     sheet = Image.new("RGB", (W * cols, rows * W + 22), (30, 31, 35))
     dr = ImageDraw.Draw(sheet)
     for i, (im, f) in enumerate(zip(imgs, frames)):
@@ -1415,8 +1484,8 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         sheet.paste(im.resize((W, W)), (i * W, 22 + W))
     if clays:
         dr.text((6, 22 + W + 6), "clay", fill=(220, 220, 220))
-    x0 = (cols - 1) * W
-    ref = Path(reference or "/home/joe/dev/hifipushie/workspace/disc_golfer_renders/ref_user_style.png")
+    x0 = len(imgs) * W
+    ref = Path(reference or REFERENCE)
     if ref.exists():
         r = Image.open(ref).convert("RGB")
         r = r.crop((250, 20, 560, 330)) if reference is None else r
@@ -1425,6 +1494,24 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         dr.text((x0 + 6, 5), "reference", fill=(220, 220, 220))
     sheet.paste(th, (x0 + 6, W + 22 - th.height - 4))
     dr.text((x0 + 170, W + 22 - 20), f"thumbnail {th.width}px", fill=(200, 200, 200))
+    look.fit = fit_metrics(name, sc, rc, spec, getattr(look, "matched_mask", None)) if rc else None
+    if look.fit:
+        f = look.fit
+        caption = (caption + "   " if caption else "") + "fit: " + ", ".join(
+            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "mm_per_px"))
+    if matched is not None:
+        y = (rows - 1) * W + 22
+        refc = Image.open(rc.get("reference", str(REFERENCE))).convert("RGB").crop(tuple(rc["crop"])).resize((W, W))
+        mr = matched.resize((W, W))
+        panels = [("matched camera", mr), ("reference", refc), ("50% blend", Image.blend(mr, refc, 0.5))]
+        if mclay is not None:
+            panels.insert(1, ("matched clay", mclay.resize((W, W))))
+        tr = trace_overlay(name, sc, rc, mr, spec)
+        if tr is not None:
+            panels.append(("trace: ref yellow, model cyan", tr))
+        for i, (lab, im) in enumerate(panels[:cols]):
+            sheet.paste(im, (i * W, y))
+            dr.text((i * W + 6, y + 4), lab, fill=(255, 255, 120))
     if caption:
         dr.text((6, rows * W + 6), caption, fill=(240, 220, 160))
     if save:
@@ -1446,7 +1533,7 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
     above the brows to near the top (a waist at the temples reads as a divot). Orthographic along the view's azimuth.
     {view: {"left": mm, "right": mm, "at": z of the worst}, "pass": bool}."""
     from scipy.spatial import ConvexHull
-    z0 = sc.lm["lm_brow_mid.L"][2] + 0.02
+    z0 = (sc.lm["lm_brow_mid.L"][2] if "lm_brow_mid.L" in sc.lm else float(sc.C[2])) + 0.02
     out, ok = {}, True
     for name, az, sides in views:  # 3/4: the near side's outline (the far one is the forehead's profile)
         a = np.radians(az)
@@ -1689,8 +1776,17 @@ def _under_clumps(clumps: list) -> list:
         n0, n1 = c0.get("name", ""), c1.get("name", "")
         if not n0 or re.sub(r"\d+$", "", n0) != re.sub(r"\d+$", "", n1):
             continue
-        mid = 0.5 * (resample(c0["top"]) + resample(c1["top"]))
-        out.append({"name": f"{n0}_{n1}_under", "top": mid.round(4).tolist(),
+        key = "azel" if ("azel" in c0 and "azel" in c1) else "top"
+        if key not in c0 or key not in c1:
+            continue
+
+        def pts(c):
+            q = np.asarray(c[key], float).copy()
+            if key == "azel":
+                q[:, 0] = (q[:, 0] + 180) % 360 - 180  # azimuths either side of the front average sensibly
+            return resample(q)
+        mid = 0.5 * (pts(c0) + pts(c1))
+        out.append({"name": f"{n0}_{n1}_under", key: mid.round(4).tolist(),
                     "width": max(float(c0.get("width", 0.055)), float(c1.get("width", 0.055))),
                     "sink": 1.0, "edge": 1.2, "taper": 0.85})
     return out
@@ -1705,15 +1801,25 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     out = {}
     clumps = list(clumps) + (_under_clumps(clumps) if g.get("drawn_under", True) else [])
     for i, c in enumerate(clumps):
-        xy = np.asarray(c["top"], float)
+        if c.get("azel"):  # drawn on the head itself ([az, el] from the root): the same path in top-view terms
+            q = np.asarray(c["azel"], float)
+            Q = _catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
+            cq = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+            tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * cq[-1]
+            Q = np.stack([np.interp(tt, cq, Q[:, k]) for k in range(3)], 1)
+            a, e = az_el(Q - sc.C)
+            xy = None
+        else:
+            xy = np.asarray(c["top"], float)
         # the drawing smoothed and resampled (6 points), with one more just past the root: the root grows from the
         # scalp and the clump is up at the volume a short way on (with the rise spread over the whole first segment
         # most of a short clump lay under the volume, which then showed as a smooth patch)
-        xy = _catmull(np.c_[xy, np.zeros(len(xy))], 40)[:, :2]
-        c_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
-        tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * c_[-1]
-        xy = np.stack([np.interp(tt, c_, xy[:, k]) for k in range(2)], 1)
-        a, e = top_to_azel(sc, xy)
+        if xy is not None:
+            xy = _catmull(np.c_[xy, np.zeros(len(xy))], 40)[:, :2]
+            c_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+            tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * c_[-1]
+            xy = np.stack([np.interp(tt, c_, xy[:, k]) for k in range(2)], 1)
+            a, e = top_to_azel(sc, xy)
         w = float(c.get("width", 0.055))
         T = float(c.get("thickness", 0.0055 * w / 0.055))
         H, d_in = envelope(sc, g, line, a, e)
@@ -1789,3 +1895,393 @@ def layout(name: str, save: str | None = None, size: int = 520, spec: dict | Non
     if save:
         im.save(save)
     return im
+
+
+# ------------------------------------------------------------------------------------------------ the reference
+
+def _rotvec(r):
+    from scipy.spatial.transform import Rotation
+    return Rotation.from_rotvec(r).as_matrix()
+
+
+def fit_camera(name: str, points: dict, image_size, crop, spec: dict | None = None) -> dict:
+    """A camera matching the reference image, fitted on face landmarks: points = {lm joint name: [u, v]} in the
+    reference's pixels (u right, v down), image_size = [w, h], crop = [x0, y0, x1, y1] (the square the views show).
+    Pinhole, principal point at the image centre; solves pose + focal by least squares from a frontal start. Saves
+    <model>/ref_camera.json: the look frame (eye, dir, up, fov, shift) for the crop, plus the reprojection error."""
+    from scipy.optimize import least_squares
+    spec = store.load(name) if spec is None else spec
+    from .spec import expand_mirror, geometry
+    J = expand_mirror({k: v for k, v in geometry(spec).items() if k != "hair"})["joints"]
+    names = [n for n in points if n in J]
+    X = np.array([J[n]["pos"] for n in names], float)
+    uv = np.array([points[n] for n in names], float)
+    W, Hh = image_size
+    cx, cy = W / 2, Hh / 2
+    ctr = X.mean(0)
+    B = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])  # world -> camera for a camera in front (looking +Y)
+
+    def project(p):
+        R = _rotvec(p[:3]) @ B
+        Xc = (X - ctr) @ R.T + p[3:6]
+        return np.stack([p[6] * Xc[:, 0] / Xc[:, 2] + cx, p[6] * Xc[:, 1] / Xc[:, 2] + cy], 1)
+    p0 = np.r_[0, 0, 0, 0, 0, 1.0, 2000.0]
+    uc = uv.mean(0)
+    p0[3], p0[4] = (uc[0] - cx) / p0[6] * p0[5], (uc[1] - cy) / p0[6] * p0[5]
+    r = least_squares(lambda p: (project(p) - uv).ravel(), p0, x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500])
+    p = r.x
+    err = np.linalg.norm(project(p) - uv, axis=1)
+    R = _rotvec(p[:3]) @ B
+    eye = ctr - R.T @ p[3:6]  # camera centre in world
+    fwd = R.T @ np.array([0.0, 0.0, 1.0])
+    up = R.T @ np.array([0.0, -1.0, 0.0])
+    x0, y0, x1, y1 = crop
+    side = max(x1 - x0, y1 - y0)
+    fov = float(np.degrees(2 * np.arctan(side / 2 / p[6])))
+    # the crop's centre off the principal point: Blender's lens shift, in units of the frame's larger side
+    shift = [float(((x0 + x1) / 2 - cx) / side), float(-((y0 + y1) / 2 - cy) / side)]
+    cam = {"name": "matched", "eye": eye.tolist(), "dir": (-fwd).tolist(), "up": up.tolist(), "fov": fov,
+           "shift": shift, "crop": list(crop), "image_size": list(image_size), "focal_px": float(p[6]),
+           "R": R.tolist(), "t": p[3:6].tolist(), "ctr": ctr.tolist(),
+           "error_px": {n: round(float(e), 1) for n, e in zip(names, err)}}
+    (store._dir(name) / "ref_camera.json").write_text(json.dumps(cam, indent=1))
+    return cam
+
+
+def ref_camera(name: str) -> dict | None:
+    f = store._dir(name) / "ref_camera.json"
+    return json.loads(f.read_text()) if f.exists() else None
+
+
+def project_ref(cam: dict, P):
+    """World points -> reference image pixels (u, v) through the matched camera."""
+    R, t, ctr = np.array(cam["R"]), np.array(cam["t"]), np.array(cam["ctr"])
+    W, Hh = cam["image_size"]
+    Xc = (np.asarray(P, float) - ctr) @ R.T + t
+    return np.stack([cam["focal_px"] * Xc[..., 0] / Xc[..., 2] + W / 2,
+                     cam["focal_px"] * Xc[..., 1] / Xc[..., 2] + Hh / 2], -1)
+
+
+def ray_onto(sc: Scalp, g: dict, cam: dict, uv, onto: str = "volume"):
+    """Reference pixels -> points on the head (the scalp, or the groom's volume): each pixel's camera ray, first
+    crossing of the surface (sampled from the camera out)."""
+    R, t, ctr = np.array(cam["R"]), np.array(cam["t"]), np.array(cam["ctr"])
+    W, Hh = cam["image_size"]
+    eye = ctr - R.T @ t
+    uv = np.atleast_2d(np.asarray(uv, float))
+    dc = np.stack([(uv[:, 0] - W / 2) / cam["focal_px"], (uv[:, 1] - Hh / 2) / cam["focal_px"],
+                   np.ones(len(uv))], 1)
+    D = _unit(dc @ R)  # world directions
+    line = hairline(sc, g)
+    dist = np.linalg.norm(sc.C - eye)
+    ts = np.linspace(dist - 0.2, dist + 0.05, 500)
+    out = []
+    for d in D:
+        P = eye + ts[:, None] * d
+        a, e, hh = sc.coords(P)
+        if onto == "volume":
+            Hv, _ = envelope(sc, g, line, a, e)
+            hh = hh - Hv
+        k = int(np.argmax(hh < 0)) if np.any(hh < 0) else int(np.argmin(hh))  # a miss: its closest approach
+        out.append(P[k])
+    return np.array(out)
+
+
+def ref_trace(name: str) -> dict | None:
+    """The reference traced by hand (<model>/ref_trace.json, reference pixels): "part" (polyline from its start),
+    "hairline" (polyline across the forehead), "hair" (closed polygon of the visible hair), "clumps" ([{"name",
+    "line": root -> tip, "width": px}])."""
+    f = store._dir(name) / "ref_trace.json"
+    return json.loads(f.read_text()) if f.exists() else None
+
+
+def _to_crop(cam: dict, uv, W: int):
+    x0, y0, x1, y1 = cam["crop"]
+    uv = np.asarray(uv, float)
+    return (uv - [x0, y0]) * (W / max(x1 - x0, y1 - y0))
+
+
+def _poly_dist(P, Q):
+    """Mean and max distance from each point of P to the polyline Q (px)."""
+    P, Q = np.asarray(P, float), np.asarray(Q, float)
+    A, B = Q[:-1], Q[1:]
+    AB = B - A
+    t = np.clip(((P[:, None] - A) * AB).sum(-1) / np.maximum((AB * AB).sum(-1), 1e-9), 0, 1)
+    d = np.linalg.norm(P[:, None] - (A + t[..., None] * AB), axis=-1).min(1)
+    return d
+
+
+def _dense(Q, step=2.0):
+    Q = np.asarray(Q, float)
+    c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+    t = np.arange(0, c[-1] + 1e-9, step)
+    return np.stack([np.interp(t, c, Q[:, k]) for k in range(2)], 1)
+
+
+def model_lines(name: str, sc: Scalp, cam: dict, spec: dict) -> dict:
+    """The groom's own lines in reference pixels, through the matched camera: the hairline (the part of it facing the
+    camera), the parting (drawn clumps' roots on the part side: their start points), each drawn clump's spine."""
+    g = groom_params(spec)
+    line = hairline(sc, g)
+    az = np.arange(-70.0, 71.0, 1.0)
+    P = sc.point(az, _line_at(line, az), 0.0)
+    out = {"hairline": project_ref(cam, P).tolist()}
+    locks = (spec.get("hair") or {}).get("locks") or {}
+    cl = {}
+    for n, lk in locks.items():
+        if lk.get("tier") != "drawn" or n.endswith("_under"):
+            continue
+        p = np.asarray(lk["pts"], float)
+        Q = sc.point(p[:, 0], p[:, 1], p[:, 2])
+        cl[n] = project_ref(cam, _catmull(Q, 24)).tolist()
+    out["clumps"] = cl
+    q = part_line(sc, g)
+    if q is not None:
+        H, _ = envelope(sc, g, line, q[:, 0], q[:, 1])
+        out["part"] = project_ref(cam, sc.point(q[:, 0], q[:, 1], H)).tolist()
+    return out
+
+
+def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None) -> dict:
+    """The groom against the traced reference in the matched view (reference pixels, and mm at the head's depth):
+    part start (px) and direction (deg) error, hairline mean/max distance, hair silhouette IoU + mean boundary
+    distance (from the matched id pass), each traced clump's direction error against the nearest drawn clump."""
+    tr = ref_trace(name)
+    if tr is None:
+        return {}
+    ml = model_lines(name, sc, cam, spec)
+    mm = 1000 * np.linalg.norm(np.asarray(cam["eye"]) - sc.C) / cam["focal_px"]  # mm per reference pixel
+    out = {"mm_per_px": round(float(mm), 2)}
+
+    def ang(v):
+        return np.degrees(np.arctan2(v[1], v[0]))
+    if tr.get("part") and ml.get("part"):
+        a, b = np.asarray(tr["part"], float), np.asarray(ml["part"], float)
+        da = (ang(a[min(3, len(a) - 1)] - a[0]) - ang(b[min(3, len(b) - 1)] - b[0]) + 180) % 360 - 180
+        out["part_start_px"] = round(float(np.linalg.norm(a[0] - b[0])), 1)
+        out["part_dir_deg"] = round(float(abs(da)), 1)
+    if tr.get("hairline"):
+        d = _poly_dist(_dense(tr["hairline"]), ml["hairline"])
+        out["hairline_px"] = [round(float(d.mean()), 1), round(float(d.max()), 1)]
+    if tr.get("hair") and hair_mask is not None:
+        from PIL import Image, ImageDraw
+        from scipy.ndimage import distance_transform_edt, binary_erosion
+        x0, y0, x1, y1 = cam["crop"]
+        Wm = hair_mask.shape[0]
+        im = Image.new("L", (Wm, Wm), 0)
+        ImageDraw.Draw(im).polygon([tuple(p) for p in _to_crop(cam, tr["hair"], Wm)], fill=255)
+        R = np.asarray(im) > 0
+        M = hair_mask.copy()
+        if tr.get("clip_y") is not None:  # under it: ear, sideburn, beard (not traced)
+            cy = int(round((tr["clip_y"] - y0) * Wm / max(x1 - x0, y1 - y0)))
+            R[cy:], M[cy:] = False, False
+        out["iou"] = round(float((R & M).sum() / max((R | M).sum(), 1)), 3)
+        bR, bM = R & ~binary_erosion(R), M & ~binary_erosion(M)
+        s = (max(x1 - x0, y1 - y0)) / Wm  # reference px per mask px
+        if bR.any() and bM.any():
+            d1 = distance_transform_edt(~bM)[bR]
+            d2 = distance_transform_edt(~bR)[bM]
+            out["outline_px"] = [round(float(np.r_[d1, d2].mean() * s), 1), round(float(max(d1.max(), d2.max()) * s), 1)]
+    if tr.get("clumps") and ml["clumps"]:
+        errs = {}
+        for c in tr["clumps"]:
+            L = np.asarray(c["line"], float)
+            # the model's clump nearest along the traced one (mean distance of its points to each spine)
+            best = min(ml["clumps"].items(), key=lambda kv: _poly_dist(_dense(L, 4), kv[1]).mean())
+            Q = np.asarray(best[1], float)
+            dl = _dense(L, 4)
+            # direction where they overlap: the traced one's overall heading vs the model spine's over the same span
+            k = [int(np.argmin(np.linalg.norm(Q - p, axis=1))) for p in (dl[0], dl[-1])]
+            v2 = Q[max(k)] - Q[min(k)] if max(k) > min(k) else Q[-1] - Q[0]
+            if np.dot(v2, L[-1] - L[0]) < 0:
+                v2 = -v2
+            da = (ang(L[-1] - L[0]) - ang(v2) + 180) % 360 - 180
+            errs[c.get("name", str(len(errs)))] = [best[0], round(float(abs(da)), 1),
+                                                   round(float(_poly_dist(dl, Q).mean()), 1)]
+        out["clumps"] = errs
+        out["clump_dir_deg_mean"] = round(float(np.mean([v[1] for v in errs.values()])), 1)
+    return out
+
+
+def trace_overlay(name: str, sc: Scalp, cam: dict, img, spec: dict):
+    """The matched render with the traced reference lines (yellow) and the groom's own (cyan)."""
+    from PIL import ImageDraw
+    tr = ref_trace(name)
+    if tr is None:
+        return None
+    W = img.width
+    im = img.copy()
+    dr = ImageDraw.Draw(im)
+    ml = model_lines(name, sc, cam, spec)
+
+    def poly(pts, col, w=2, closed=False):
+        q = [tuple(p) for p in _to_crop(cam, pts, W)]
+        if closed:
+            q = q + q[:1]
+        if len(q) > 1:
+            dr.line(q, fill=col, width=w)
+    for key, col in (("hairline", None), ("part", None)):
+        if tr.get(key):
+            poly(tr[key], (255, 230, 40), 3)
+        if ml.get(key):
+            poly(ml[key], (40, 230, 255), 2)
+    if tr.get("hair"):
+        poly(tr["hair"], (255, 160, 40), 2, closed=True)
+    for c in tr.get("clumps", []):
+        poly(c["line"], (255, 230, 40), 2)
+        e = _to_crop(cam, c["line"][-1:], W)[0]
+        dr.ellipse([e[0] - 3, e[1] - 3, e[0] + 3, e[1] + 3], fill=(255, 230, 40))
+    for q in ml["clumps"].values():
+        poly(q, (40, 230, 255), 1)
+    return im
+
+
+def trace_image(name: str, out: str, scale: float = 2.0) -> None:
+    """The reference crop with the trace drawn on it (part, hairline, hair outline, clumps with tip dots)."""
+    from PIL import Image, ImageDraw
+    tr, cam = ref_trace(name), ref_camera(name)
+    x0, y0, x1, y1 = cam["crop"]
+    im = Image.open(tr.get("image", str(REFERENCE))).convert("RGB").crop((x0, y0, x1, y1))
+    im = im.resize((int(im.width * scale), int(im.height * scale)))
+    dr = ImageDraw.Draw(im)
+
+    def q(pts):
+        return [((u - x0) * scale, (v - y0) * scale) for u, v in pts]
+    dr.line(q(tr["hair"] + tr["hair"][:1]), fill=(255, 160, 40), width=2)
+    dr.line(q(tr["hairline"]), fill=(255, 255, 255), width=3)
+    dr.line(q(tr["part"]), fill=(255, 40, 40), width=4)
+    for c in tr["clumps"]:
+        dr.line(q(c["line"]), fill=(255, 230, 40), width=3)
+        e = q(c["line"][-1:])[0]
+        dr.ellipse([e[0] - 5, e[1] - 5, e[0] + 5, e[1] + 5], fill=(255, 230, 40))
+        r = q(c["line"][:1])[0]
+        dr.text((r[0] + 4, r[1] - 12), c["name"], fill=(255, 255, 255))
+    if tr.get("clip_y") is not None:
+        y = (tr["clip_y"] - y0) * scale
+        dr.line([(0, y), (im.width, y)], fill=(120, 120, 255), width=1)
+    im.save(out)
+
+
+def _signed(az):
+    return (np.asarray(az, float) + 180) % 360 - 180
+
+
+def from_trace(name: str, spec: dict | None = None, widen: float = 1.8, back_rows: int = 3,
+               side_rows: int = 3, part_back: float = 0.1, row_step: float = 0.022,
+               fan: float = 0.004) -> dict:
+    """A groom patch carried from the traced reference through the matched camera (ref_camera + ref_trace):
+    - parting.line: the traced part's rays onto the volume, carried on straight back `part_back` m over the top;
+    - hairline.front_points: the traced hairline's rays onto the scalp across the forehead, both sides averaged;
+    - drawn clumps: each traced clump's rays onto the volume ([az, el]), rooted on the part line (a root hidden
+      behind the outline is moved onto the part at its row), width = traced px x mm/px x `widen` (clumps overlap:
+      the band you see is part of each); rows behind the traced ones (invisible from the reference) repeat the last
+      top row shifted back along the part; the part side's traced clump repeated along the part.
+    Returns {"groom": {...}} for spec["hair"]; nothing is saved."""
+    spec = store.load(name) if spec is None else spec
+    sc = scalp(name, spec)
+    g = groom_params(spec)
+    cam, tr = ref_camera(name), ref_trace(name)
+    if cam is None or tr is None:
+        raise HairError("from_trace needs ref_camera.json (fit_camera) and ref_trace.json in the model folder")
+    mm = np.linalg.norm(np.asarray(cam["eye"]) - sc.C) / cam["focal_px"]  # m per reference pixel at the head
+    # the part
+    Pp = ray_onto(sc, g, cam, tr["part"])
+    a0, e0, _ = sc.coords(Pp)
+    xy = (sc.point(a0, e0, 0.0) - sc.C)[:, :2]  # on the scalp under the hits (top-view terms)
+    d = xy[-1] - xy[-2]
+    d = d / np.linalg.norm(d)
+    ext = [xy[-1] + d * 0.012]
+    while ext[-1][1] < xy[0][1] + part_back:  # on straight back (turning off the traced heading)
+        step = np.array([0.0, 1.0]) * 0.02
+        ext.append(ext[-1] + step)
+    pxy = np.vstack([xy, ext])
+    pa, pe = top_to_azel(sc, np.asarray(ext))
+    part = np.r_[np.stack([_signed(a0), e0], 1), np.stack([_signed(pa), pe], 1)]
+    offset = float(abs(xy[0][0]))
+    # the hairline over the forehead
+    Ph = ray_onto(sc, g, cam, tr["hairline"], onto="scalp")
+    ha, he, _ = sc.coords(Ph)
+    ha = _signed(ha)
+    front = []
+    ok = he > 12  # the temples' vertical edges graze the head: their hits are unreliable
+    for a0 in np.arange(0.0, 41.0, 8.0):
+        zs = []
+        for sgn in (1, -1):
+            m = ok & (sgn * ha >= -2)
+            if m.sum() < 2:
+                continue
+            aa, zz = sgn * ha[m], Ph[m, 2]
+            o = np.argsort(aa)
+            if aa[o][0] <= a0 <= aa[o][-1]:
+                zs.append(np.interp(a0, aa[o], zz[o]))
+        if zs:
+            front.append([float(a0), round(float(np.mean(zs)), 4)])
+    # clumps
+
+    def on_part(y):  # the part point at top-view y (m from the centre)
+        k = np.clip(np.interp(y, pxy[:, 1], np.arange(len(pxy))), 0, len(pxy) - 1)
+        i = int(np.floor(k))
+        j = min(i + 1, len(pxy) - 1)
+        return pxy[i] + (k - i) * (pxy[j] - pxy[i])
+    drawn_ = []
+    tops = []
+    for c in tr["clumps"]:
+        P = ray_onto(sc, g, cam, c["line"])
+        a, e, _ = sc.coords(P)
+        a = _signed(a)
+        keep = [0]
+        for k in range(1, len(a)):  # a tip past the outline: the ray jumps round the head
+            if np.linalg.norm(P[k] - P[keep[-1]]) < 0.06:
+                keep.append(k)
+            else:
+                break
+        a, e, P = a[keep], e[keep], P[keep]
+        q = (P - sc.C)[:, :2]
+        w = round(float(c.get("width", 24)) * mm * widen, 4)
+        side = c["name"].startswith("part_side")
+        far = (q[0][0] * xy[0][0]) < 0  # starts across the head from the part: the sweep's fall down the far side
+        y_prev = tops[-1][1][0][1] if tops else -np.inf
+        if not side and not far and (np.linalg.norm(q[0] - on_part(q[0][1])) > 0.012 or q[0][1] < y_prev + 0.015):
+            # its root is hidden (or ahead of the row before): the clump carried on backward along its own heading
+            # until it meets the part (a sweep running forward across the top grows from further back), never ahead
+            # of the previous row's root
+            d0 = q[0] - q[1]
+            d0 = d0 / max(np.linalg.norm(d0), 1e-9)
+            r = on_part(y_prev + 0.018)
+            for s_ in np.arange(0.0, 0.12, 0.002):
+                t = q[0] + s_ * d0
+                if (t[0] - on_part(t[1])[0]) * np.sign(xy[0][0]) >= 0:
+                    r = on_part(max(t[1], y_prev + 0.018))
+                    break
+            ra, re_ = top_to_azel(sc, r[None])
+            a, e = np.r_[_signed(ra), a], np.r_[re_, e]
+            q = np.vstack([r, q])
+        # names: a row's stem + number (sweep1, sweep2...), so the under layer fills between neighbours
+        nm = "pside0" if side else ("fall0" if far else f"sweep{len(tops) + 1}")
+        drawn_.append({"name": nm, "azel": np.c_[a, e].round(2).tolist(), "width": w,
+                       "taper": 0.85 if not side else 1.0, "traced": c["name"]})
+        if not side and not far:
+            tops.append((nm, q, w))
+    # rows behind: the last top row, shifted back along the part
+    if tops:
+        _, q0, w0 = tops[-1]
+        for k in range(1, back_rows + 1):
+            dy = row_step * k
+            q = q0 + [0.0, dy]
+            q[1:, 1] += fan * k * np.linspace(0, 1, len(q) - 1) ** 1.5  # later rows fan back toward the crown
+            q[:, 0] = np.clip(q[:, 0], -0.09, 0.09)
+            drawn_.append({"name": f"sweep{len(tops) + k}", "top": q.round(4).tolist(), "width": w0, "taper": 0.85})
+    # the part side: down toward his ear from the part, one per row along it
+    ps = next((c for c in drawn_ if c["name"] == "pside0"), None)
+    if ps:
+        q = np.asarray(ps["azel"], float)
+        for k in range(1, side_rows + 1):
+            r = on_part(xy[0][1] + 0.025 * k)
+            ra, re_ = top_to_azel(sc, r[None])
+            dq = np.array([float(_signed(ra)[0]), float(re_[0])]) - q[0]
+            drawn_.append({"name": f"pside{k}", "azel": (q + dq * np.linspace(1, 0.5, len(q))[:, None]).round(2).tolist(),
+                           "width": ps["width"], "taper": 1.0})
+    return {"groom": {"parting": {"side": "left" if xy[0][0] >= 0 else "right", "offset": round(offset, 4),
+                                  "line": part.round(2).tolist()},
+                      "hairline": {"front_points": front},
+                      "drawn": drawn_}}
