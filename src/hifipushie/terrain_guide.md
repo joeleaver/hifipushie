@@ -519,15 +519,31 @@ The shell run writes its outputs beside the spec:
   - `meta.json`: extent, height encoding, sites with their planes (level, fall, direction), passes, routes, rivers
     with their bed and water (surface height and width per point), fords, lakes
 - **3D mesh tiles** (`export_terrain(name, tiles=True)`, `terrain_run.py --tiles`): the ground and its volumes as a
-  grid of seamless glTF tiles in `tiles/`, for any engine. Tune with `"export": {"tiles": {...}}` (metres):
+  grid of seamless glTF tiles in `tiles/`, for any engine. Two modes (`"mode"`):
+  - `"cliffs"` (default, how games do it): the ground is the heightmap (`ground_<i>_<j>_lod<k>.glb` grid meshes, the
+    same samples as `heightmaps/height_<i>_<j>.npy`, and `holes_<i>_<j>.png` where a cave mouth, arch or shaft opens
+    through it), and `tile_<i>_<j>_lod<k>.glb` are 3D cliff meshes laid over it wherever the ground is steeper than
+    `"cliff_slope": 42` (deg) or a volume opens, reaching `"cliff_margin": 4` m past it. Under a cliff the heightmap is
+    pushed a few metres into the rock, so the cliff face covers it; each cliff mesh is a closed shell of rock that
+    sinks under the heightmap at its edges (its buried back is primitive `extras.role = "buried"`: skip it if you
+    like). Nothing to stitch. `"cave_wall": 3` m of rock is kept round every cave.
+  - `"full"`: the whole ground as 3D mesh tiles (no heightmap in the scene).
+  Both bake maps per tile per LOD (`"maps": true`): each tile has its own UV atlas and embeds base colour, ORM
+  (occlusion, roughness) and a tangent-space normal map from the exact rock (with bake-only fine detail: small facets,
+  cracks, the bedding notch), so detail comes from textures, not triangles. `"texel_density": [16, 6, 2.5]`
+  (texels per metre per LOD), `"texture_max": 2048`, `"ground_density": 4`, `"micro": 1` (fine rock detail; 0 none).
+  Beside the GLBs: `maps/<tile>_height.png` (16-bit displacement) and `maps/<tile>_weights<g>.png` (layer weights),
+  `materials/<layer>_albedo/_normal/_height.png` (tileable detail textures) and the manifest's `engine_recipe` (how
+  an engine blends the layers over the baked maps, triplanar on rock). Other settings (metres):
   `"tile": 64` (tile size), `"voxel": 0.5` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),
   `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
   (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none).
   - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitive 0
-    the ground, primitive 1 the skirts (double-sided); per vertex NORMAL, COLOR_0 (a display colour, so a plain
-    glTF viewer shows it right) and `_WEIGHTS0`, `_WEIGHTS1` (ground layer weights, 4 per attribute, summing to 1).
+    the ground, then the skirts (double-sided, `extras.role`); per vertex NORMAL, TANGENT, TEXCOORD_0 (the baked maps),
+    TEXCOORD_1 (the splat) and `_WEIGHTS0`, `_WEIGHTS1` (ground layer weights, 4 per attribute, summing to 1); with
+    `"maps": false`, COLOR_0 (a display colour) instead of the baked material.
     `collision_<i>_<j>.glb`: positions only. `heightmaps/`, `splats/` (RGBA = the same layers, a margin into the
     neighbours), `trees.csv`.
   - `manifest.json`: the grid (origin, tile size, count), per tile its bounds, files, triangle counts and the volumes
@@ -536,7 +552,9 @@ The shell run writes its outputs beside the spec:
   - Tiles meet exactly: neighbours share identical border vertices and normals at every LOD, and each tile's skirts
     reach past the neighbour's other LODs, so any mix of LODs shows no cracks. Every export runs a seam check on the
     written files (watertight joins, identical borders, normals, LOD gaps covered, heightmap edges, and black shards:
-    faces whose corner normals point away from them, over 0.01% / 0.05% / 0.5% of LOD 0 / 1 / 2) and fails loudly.
+    faces whose corner normals point away from them, over 0.01% / 0.05% / 0.5% of LOD 0 / 1 / 2; baked maps decoded
+    from both sides of every shared border; in cliffs mode the ground tiles' borders, heightmap never standing in a
+    void, never showing through a cliff face) and fails loudly.
 - `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
   by a thin red pole 12 m tall (to judge what a view sees).
 

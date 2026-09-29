@@ -38,7 +38,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
-from . import noise
+from . import noise, terrain_sharp
 
 DEFAULTS = {
     "tile": 64.0,          # metres a side
@@ -53,6 +53,17 @@ DEFAULTS = {
     "splat": 128,          # splat texels a side per tile (+ a margin into the neighbours); 0 = none
     "splat_margin": 2,
     "blend": 1.0,          # default volume blend (m): rounded edges where a cave meets the ground
+    "mode": "cliffs",      # "cliffs": heightmap ground tiles + 3D cliff meshes over steep ground and openings
+                           # (terrain_cliffs); "full": the whole ground as 3D mesh tiles
+    "sharp": True,         # creases on mesh edges (extended marching cubes, terrain_sharp)
+    "cliff_slope": 42.0,   # (cliffs) degrees: steeper ground gets a 3D cliff mesh
+    "cliff_margin": 4.0,   # (cliffs) m the region reaches past the steep ground and round openings
+    "cave_wall": 3.0,      # (cliffs) m of rock kept round every void in a cliff shell
+    "maps": True,          # baked maps per tile and LOD (terrain_bake): normal, ORM, base colour, height, weights
+    "texel_density": [16.0, 6.0, 2.5],  # texels per metre per LOD (a tile's atlas is capped at texture_max)
+    "texture_max": 2048,
+    "ground_density": 4.0,  # (cliffs) the ground tiles' maps, texels per metre at LOD 0
+    "micro": 1.0,          # bake-only fine rock relief (facets, cracks, laminae below the voxel); 0 = none
 }
 
 # ground materials: what each cover type lays on the ground (tree layers: the forest floor under them)
@@ -476,11 +487,30 @@ def rock_config(T, cfg):
     bed, off = float(rc.get("bed", 3.0)), None
     if hasattr(terrain_rock, "bed_step") and hasattr(terrain_rock, "bed_offset") and "bed" not in rc:
         bed = float(terrain_rock.bed_step(T))
-        off = lambda xy, T=T: terrain_rock.bed_offset(T, xy)
-    # bed steps ramp over ~2 voxels either side of their plane: a narrower step meshes as a zigzag
+        off = _gridded(lambda xy, T=T: terrain_rock.bed_offset(T, xy), T)
+    # bed steps ramp over 2 voxels either side of their plane (0.8 voxel meshed as a sawtooth that cast jagged
+    # shadows); the crisp notch at the bedding plane is in the maps (terrain_bake.micro_relief)
     vox = float(cfg.get("voxel", DEFAULTS["voxel"]))
     return {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
-            "reach": 1.4 * fac + 0.7 * bd + 1.0, "bed_edge": max(0.05, 0.8 * vox / bed)}
+            "reach": 1.4 * fac + 0.7 * bd + 1.0, "bed_edge": max(0.05, 2.0 * vox / bed)}
+
+
+def _gridded(fn, T, spacing=2.0):
+    """A smooth function of plan position (the beds' wander: fbm over ~150 m) read from a cubic spline on a grid over
+    the frame instead of evaluated per point: it was a quarter of every field evaluation, and the bake evaluates the
+    field tens of times per texel. Identical for meshing and baking (both use this)."""
+    (x0, y0), (x1, y1) = T.spec["extent"]
+    m = 4 * spacing
+    xs = np.arange(x0 - m, x1 + m + spacing, spacing)
+    ys = np.arange(y0 - m, y1 + m + spacing, spacing)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    coef = ndimage.spline_filter(fn(np.c_[X.ravel(), Y.ravel()]).reshape(X.shape), order=3)
+
+    def f(xy):
+        xy = np.atleast_2d(np.asarray(xy, float))
+        return ndimage.map_coordinates(coef, [(xy[:, 0] - xs[0]) / spacing, (xy[:, 1] - ys[0]) / spacing], order=3,
+                                       prefilter=False, mode="nearest")
+    return f
 
 
 def dig_doline(T, H, d):
@@ -504,6 +534,7 @@ class Field:
         self.vols = vols
         self.rock = rock
         self.floor_guard = None
+        self.micro = None  # fine rock relief evaluated only when baking maps (terrain_bake.micro_relief)
         for d in dolines or ():  # 2.5D ground edits (karst dolines: grassy funnels into a throat)
             self.H = dig_doline(T, self.H, d)
         if rock is not None:
@@ -573,6 +604,8 @@ class Field:
             k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 F[k] = F[k] + w[k] * rock_relief(p[k], self.rock)
+                if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
+                    F[k] = F[k] + w[k] * self.micro(p[k])
         return F
 
     def value(self, p):
@@ -730,8 +763,14 @@ class Materials:
         rc = np.stack([self._grid(self.rock_grid[..., i], xy) for i in range(3)], 1)
         if self.field.rock is not None:  # beds and facets differ in tone (a single grey read as plaster)
             r = self.field.rock
-            kb = np.floor(bed_level(P, r)).astype(np.int64)
-            tone = 0.84 + 0.26 * noise._hash(kb, kb * 0 + 3, kb * 0, r["seed"] + 30)
+            zb = bed_level(P, r)
+            kb = np.floor(zb).astype(np.int64)
+            fr = zb - kb
+            th = lambda k: 0.84 + 0.26 * noise._hash(k, k * 0 + 3, k * 0, r["seed"] + 30)
+            # (each bed's tone eases into the next over ~0.2 m: a step aliased along every bedding plane in the maps)
+            e = min(0.45, 0.2 / r["bed"])
+            lo_, hi_ = smoothstep(-e, e, fr), smoothstep(-e, e, fr - 1)
+            tone = th(kb - 1) * (1 - lo_) + th(kb) * (lo_ - hi_) + th(kb + 1) * hi_
             tone = tone * (0.92 + 0.12 * _pl_facets(P, r["size"], r["seed"] + 40))
             tone = tone * (0.93 + 0.14 * noise.fbm(P, 2.5 * r["size"], 2, seed=r["seed"] + 31))
             rc = rc * tone[:, None]
@@ -755,7 +794,7 @@ def _pad4(b: bytes, fill=b"\0"):
     return b + fill * (-len(b) % 4)
 
 
-def write_glb(path, name, prims, translation, material, extras=None):
+def write_glb(path, name, prims, translation, material, extras=None, images=None):
     """One node (at `translation`, glTF axes) with one mesh of primitives: each {"attrs": {NAME: float array},
     "indices": uint array, "material": index or None, "extras": {}}. Materials: a list of glTF material dicts."""
     bin_ = bytearray()
@@ -775,6 +814,8 @@ def write_glb(path, name, prims, translation, material, extras=None):
 
     gprims = []
     for p in prims:
+        if not len(p["indices"]):
+            continue
         attrs = {}
         for k, a in p["attrs"].items():
             a = np.asarray(a, np.float32)
@@ -799,6 +840,16 @@ def write_glb(path, name, prims, translation, material, extras=None):
            "accessors": accs, "bufferViews": views, "buffers": [{"byteLength": len(bin_)}]}
     if material:
         doc["materials"] = material
+    if images:  # [(bytes, mime type)]: embedded, texture i = image i, one sampler (trilinear, repeat)
+        doc["images"] = []
+        for data, mime in images:
+            off = len(bin_)
+            bin_.extend(_pad4(data))
+            views.append({"buffer": 0, "byteOffset": off, "byteLength": len(data)})
+            doc["images"].append({"bufferView": len(views) - 1, "mimeType": mime})
+        doc["samplers"] = [{"magFilter": 9729, "minFilter": 9987}]
+        doc["textures"] = [{"source": i, "sampler": 0} for i in range(len(images))]
+        doc["buffers"][0]["byteLength"] = len(bin_)
     if extras:
         doc["nodes"][0]["extras"] = extras
     js = _pad4(json.dumps(doc, separators=(",", ":")).encode(), b" ")
@@ -900,13 +951,13 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     xe = G.origin[0] + np.arange(max(a0 - m, 0), min(a1 + m, NX) + 1) * v
     ye = G.origin[1] + np.arange(max(b0 - m, 0), min(b1 + m, NY) + 1) * v
     XE, YE = np.meshgrid(xe, ye, indexing="ij")
-    h, _ = field.column(XE.ravel(), YE.ravel())
-    zlo, zhi = h.min(), h.max()
+    h, sce = field.column(XE.ravel(), YE.ravel())
+    zlo, zhi = float(np.min(h - getattr(field, "zpad", 0.0) / np.maximum(sce, 0.15))), h.max()
     lo = np.array([X.min() - v, Y.min() - v, -1e9])
     hi = np.array([X.max() + v, Y.max() + v, 1e9])
     for vol in vols:
         if vol.touches(lo, hi):
-            zlo, zhi = min(zlo, vol.lo[2]), max(zhi, vol.hi[2])
+            zlo, zhi = min(zlo, vol.lo[2] - getattr(field, "vol_pad", 0.0)), max(zhi, vol.hi[2])
     pad = 2 + int(math.ceil((field.rock["reach"] if field.rock else 0.0) / v))  # (rock relief moves the surface)
     c0, c1 = int(math.floor(zlo / v)) - pad, int(math.ceil(zhi / v)) + pad
     ic = np.arange(c0, c1 + 1)
@@ -1289,10 +1340,10 @@ def _job_maps(args):
     from PIL import Image
     i, j, lo = args
     c = _CTX
-    G, field, mats, cfg, out, hrange = c["G"], c["field"], c["mats"], c["cfg"], c["out"], c["hrange"]
+    G, field, mats, cfg, out, hrange = c["G"], c["base"], c["mats"], c["cfg"], c["out"], c["hrange"]
     lo = np.array(lo)
     extra = {}
-    hm = int(cfg["heightmap"])
+    hm = int(cfg["heightmap"]) if cfg["mode"] == "full" else 0  # (cliffs: the ground tiles wrote theirs)
     if hm:
         s = np.linspace(0, G.tile, hm)
         X, Y = np.meshgrid(lo[0] + s, lo[1] + s)
@@ -1327,10 +1378,21 @@ def _job_maps(args):
     return extra
 
 
+def _job_ground(ij):
+    from . import terrain_cliffs
+    c = _CTX
+    i, j = ij
+    lo, _ = c["G"].bounds(i, j)
+    return terrain_cliffs.ground_tile(c["region"], c["mats"], i, j, lo, int(c["cfg"]["heightmap"]) or 65,
+                                      c["G"].lods, c["out"], c["cfg"])
+
+
 def _job_mc(ij):
     """A tile's marching cubes and its border vertices' lattice-edge keys (runs in a worker)."""
     c = _CTX
     i, j = ij
+    if hasattr(c["field"], "empty") and c["field"].empty(*c["G"].bounds(i, j)):
+        return None
     r = _tile_mc(c["field"], c["G"], i, j, 0, c["vols"])
     if r is None:
         return None
@@ -1348,11 +1410,18 @@ def _job_dense(ij):
     border = np.array(sorted(kk), np.int64)
     rows = np.array([reg[kk[q]] for q in border], np.int64)
     inner = np.setdiff1d(np.arange(len(P)), border)
-    P[inner], _ = project(field, P[inner], v0)
-    P[border] = CP[rows]
+    N = np.zeros_like(P)
+    P[inner], N[inner] = project(field, P[inner], v0)
+    P[border], N[border] = CP[rows], c["CN"][rows]
     mov = np.ones(len(P), bool)
     mov[border] = False
-    P = snap_creases(P, faces, field, v0, mov)
+    if c["cfg"].get("sharp", True):  # creases on mesh edges (extended marching cubes), not a sawtooth
+        n0 = len(P)
+        to_world = lambda q: np.array([G.origin[0] + q[0] * v0, G.origin[1] + q[1] * v0, (q[2] + ZOFF) * v0])
+        P, faces, N, _ = terrain_sharp.feature_points(P, faces, idx, N, field, to_world, v0, mov, bounds=G.bounds(*ij))
+        mov = np.r_[mov, np.ones(len(P) - n0, bool)]
+    else:
+        P = snap_creases(P, faces, field, v0, mov)
     vrow = np.full(len(P), -1, np.int64)
     vrow[border] = rows
     return P, faces, vrow
@@ -1392,9 +1461,16 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     timing = {}
     t0 = time.time()
     field, vols, notes, caves = build_field(T, cfg)
-    rock = field.rock
-    mats = Materials(T, field)
+    base = field  # the whole rock (materials, trees, caves' walk, splats); `field` is what's meshed
+    mats = Materials(T, base)
     G = Grid(T, cfg)
+    region = None
+    if cfg["mode"] == "cliffs":
+        from . import terrain_cliffs
+        region = terrain_cliffs.Region(T, base, G, cfg)
+        field = terrain_cliffs.CliffField(base, region)
+    elif cfg["mode"] != "full":
+        raise ValueError(f"export.tiles mode {cfg['mode']!r}: use cliffs or full")
     timing["setup"] = time.time() - t0
     tiles = [(i, j) for j in range(G.nj) for i in range(G.ni)]
     if cfg.get("only"):  # a block of tiles [[i0, j0], [i1, j1]] (inclusive), for trying things
@@ -1408,7 +1484,7 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     v0 = G.voxel
     mc = {}
     reg = {}
-    _CTX.update(field=field, G=G, vols=vols)
+    _CTX.update(field=field, G=G, vols=vols, base=base)
     with _pool() as ex:  # (in parallel: serial it was a third of the export)
         for (i, j), r in zip(tiles, ex.map(_job_mc, tiles)):
             mc[i, j] = r
@@ -1416,7 +1492,7 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         if mc[i, j] is not None:
             for key in mc[i, j][3].values():
                 reg.setdefault(key, len(reg))
-    keys = sorted(reg, key=reg.get)
+    keys = sorted(reg, key=reg.get) or [(0, 0, 0, 0)]  # (a placeholder when no tile has a mesh)
     a, b, fixed = _key_geometry(keys, G, 0)
     Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
     tt = Fa / (Fa - Fb)
@@ -1456,7 +1532,7 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
 
     # ---- 3. per tile: LOD0 projected; each LOD = border chains collapsed to its kept vertices, then decimated
     t0 = time.time()
-    _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP)
+    _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
     work = [ij for ij, r in mc.items() if r is not None]
     with _pool() as ex:
         dense = dict(zip(work, ex.map(_job_dense, work)))
@@ -1507,6 +1583,19 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         manifest_tiles = []
         _CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
                     CN=CN, CW=CW, CC=CC, mat=mat, keep=[np.array(sorted(kk), np.int64) for kk in keep])
+        if cfg.get("maps"):  # the field the maps are baked from: the rock with its bake-only fine relief
+            import copy
+            from . import terrain_bake
+            bfs = []
+            for k in range(G.lods):  # (per LOD: the fine relief band-limited to its texel)
+                bf = copy.copy(base)
+                if base.rock is not None and float(cfg["micro"]) > 0:
+                    dens = cfg["texel_density"][min(k, len(cfg["texel_density"]) - 1)]
+                    bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens)
+                if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
+                    bf = terrain_cliffs.CliffField(bf, region).front_field()
+                bfs.append(bf)
+            _CTX.update(bakefield=bfs, layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
         stats, t_dec = [], 0.0
         with _pool() as ex:
             wanted = set()
@@ -1533,8 +1622,24 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     for sub in ("heightmaps", "splats"):
         (out / sub).mkdir(exist_ok=True)
     _CTX.update(hrange=hrange)
+    ground = []
+    if region is not None:
+        # the ground: pushed heightmaps, holes, grid meshes; splats as before (on the heightmap's own tiles)
+        pbr = {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}
+        cfg["_hrange"] = hrange
+        cfg["_layer_rough"] = np.array([LAYERS[nm]["roughness"] for nm in mats.layers])
+        cfg["_ground_mat"] = [{"name": "terrain_reference", "pbrMetallicRoughness": pbr},
+                              {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
+        _CTX.update(region=region, mats=mats, cfg=cfg, out=out)
+        with _pool() as ex:
+            ground = list(ex.map(_job_ground, tiles))
+        cfg.pop("_hrange"), cfg.pop("_ground_mat"), cfg.pop("_layer_rough")
+        manifest_tiles = [e for e in manifest_tiles if any(e["lods"])]
+        timing["ground tiles"] = time.time() - t0
+        t0 = time.time()
     with _pool() as ex:
-        for e, extra in zip(manifest_tiles, ex.map(_job_maps, [(e["i"], e["j"], e["min"]) for e in manifest_tiles])):
+        for e, extra in zip(ground or manifest_tiles,
+                            ex.map(_job_maps, [(e["i"], e["j"], e["min"]) for e in (ground or manifest_tiles)])):
             e.update(extra)
     timing["heightmaps + splats"] = time.time() - t0
 
@@ -1544,11 +1649,12 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     with open(out / "trees.csv", "w") as f:
         f.write("x,y,z,kind,layer\n")
         layers = getattr(T, "tree_layers", {})
-        zs = field.column(inst[:, 0], inst[:, 1])[0] if len(inst) else np.zeros(0)
+        zs = np.zeros(0) if not len(inst) else region.height(inst[:, 0], inst[:, 1]) if region is not None \
+            else base.column(inst[:, 0], inst[:, 1])[0]
         # a tree stands only where the solid ground is under it: not over an arch's mouth or a notch the volumes cut
         # away (a cypress stood in the water at the arch), nor on a face the rock relief moved
         if len(inst):
-            below = field.value(np.c_[inst[:, :2], zs - 0.3])
+            below = base.value(np.c_[inst[:, :2], zs - 0.3])
             ok = below < 0
             n_drop = int((~ok).sum())
             inst, zs = inst[ok], zs[ok]
@@ -1558,6 +1664,10 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
             nm, kind = layers.get(int(li), ("", ""))
             f.write(f"{x:.2f},{y:.2f},{z:.2f},{kind},{nm}\n")
     groups = [mats.layers[g:g + 4] for g in range(0, len(mats.layers), 4)]
+    layer_tex = {}
+    if cfg.get("maps"):
+        from . import terrain_bake
+        layer_tex = terrain_bake.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
     manifest = {
         "format": "hifipushie terrain tiles 1",
         "units": "m",
@@ -1576,12 +1686,27 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         "collision": f"collision_<i>_<j>.glb: LOD {cfg['collision']} surface, no skirts, positions only",
         "sea_level": _sea(T),
         "materials": {
-            "layers": [{"name": nm, **mats.layer_ref(nm), "weights": f"_WEIGHTS{g}", "channel": c}
+            "layers": [{"name": nm, **mats.layer_ref(nm), "weights": f"_WEIGHTS{g}", "channel": c,
+                        **({"textures": layer_tex[nm]} if nm in layer_tex else {}),
+                        "triplanar": nm in ("rock", "wet_rock")}
                        for g, grp in enumerate(groups) for c, nm in enumerate(grp)],
+            "engine_recipe": "per pixel: weights w_i from the weights texture (cliff tiles: maps/<tile>_weights<g>.png "
+                             "on TEXCOORD_0) or the splat (ground: TEXCOORD_1) or _WEIGHTS<g> per vertex. Each layer's "
+                             "tiling textures (materials/<layer>_albedo/_normal/_height.png) at world position / "
+                             "scale: planar (x, -y) on the ground, triplanar (blend by |n|^4 on the world axes) where "
+                             "`triplanar` is true or the face is steeper than ~35 deg and in caves. Albedo = baked base "
+                             "colour x (sum w_i albedo_i / colour_i) (the layers modulate the tile's macro colour); "
+                             "normal = the baked normal with sum w_i detail normal_i blended on top (RNM or whiteout); "
+                             "occlusion (ORM R) on indirect light only; roughness ORM G. Height blending (w_i x "
+                             "height_i, sharpened) gives crisper layer edges than linear weights.",
             "blend": "layer weights per vertex (_WEIGHTS0, _WEIGHTS1 ... vec4, sum 1) and per tile splat PNGs "
                      "(RGBA = the same layers in the same groups of 4); layers are world-space/triplanar tiling "
                      "textures at `scale` metres",
-            "reference": "COLOR_0 is a display colour (linear) with a plain matte material, so tiles look right in "
+            "reference": ("the baked material (terrain_baked: base colour, ORM = occlusion/roughness/metallic, "
+                          "tangent-space normal, all from the exact field at TEXCOORD_0) shows each tile as authored "
+                          "in any glTF viewer; skirts and buried faces use a plain matte material with COLOR_0")
+                         if cfg.get("maps") else
+                         "COLOR_0 is a display colour (linear) with a plain matte material, so tiles look right in "
                          "any glTF viewer",
             "splat_uv": f"splats cover the tile plus {cfg['splat_margin']} texels into the neighbours each side, "
                         f"row 0 north; texel centre (c, r) at x = min.x + (c - {cfg['splat_margin']} + 0.5) * "
@@ -1593,17 +1718,58 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         if hm else None,
         "trees": "trees.csv (x, y, z, kind, layer), world metres",
         "volumes": notes,
+        "mode": cfg["mode"],
+        "config": {k: v for k, v in cfg.items() if not k.startswith("_") and k != "only"},
+        "maps": {
+            "per tile LOD": "each tile's GLB embeds base colour (JPEG, sRGB), ORM (PNG: R occlusion, G roughness, "
+                            "B metallic 0) and normal (PNG, tangent space, OpenGL/glTF: +Y up the texture, against "
+                            "the TANGENT attribute) on TEXCOORD_0, its own atlas; lods[].maps gives the size, "
+                            "texels/m, fill and how many texels fell back to the low poly",
+            "beside": "maps/<tile>_height.png (16-bit, 0.5 = on the low poly, +-height_range_m along its normal: "
+                      "for parallax/tessellation) and maps/<tile>_weights<g>.png (the layer weights, RGBA per "
+                      "group of 4 in the manifest's layer order, on the same atlas)",
+            "detail": "normals come from the exact rock plus bake-only fine relief (facets 0.45-1.2 m, cracks, the "
+                      "bedding notch): detail below the meshing voxel lives in the maps, not in triangles",
+            "seams": "gutters are baked from the surface past each chart's edge (across tile borders too), so "
+                     "filtering and mips read the real neighbour; the seam check compares decoded normals along "
+                     "shared borders",
+        } if cfg.get("maps") else None,
         "tiles": manifest_tiles,
     }
+    if region is not None:
+        manifest["cliffs"] = {
+            "what": "the ground is the heightmap (ground tiles); `tiles` are 3D cliff meshes laid over it wherever the "
+                    f"ground is steeper than {cfg['cliff_slope']:g} deg or a volume opens (cave mouths, arches, "
+                    "notches, shafts). Each cliff mesh is a closed shell of rock that pinches out buried under the "
+                    "heightmap at its edges: nothing to stitch.",
+            "heightmap": f"pushed {region.push:.2f} m into the rock under the cliffs (eroded in plan), so the cliff "
+                         "face covers it; holes only where a void opens through it (hole PNG per ground tile: 255 = "
+                         "hole, one per heightmap cell, row 0 north)",
+            "shell": {"sink_m": round(region.sink, 2), "thick_m": round(region.thick, 2),
+                      "cave_wall_m": region.wall, "margin_m": cfg["cliff_margin"]},
+            "hole_cells": int(region.holes.sum()),
+        }
+        manifest["ground"] = ground
+        manifest["heightmaps"] = {"samples": int(cfg["heightmap"]), "spacing": region.d,
+                                  "format": "float32 .npy absolute metres, north-up; .png 16-bit over the range",
+                                  "range": hrange, "note": "pushed under the cliff meshes; edges shared with "
+                                  "neighbours; ground_<i>_<j>_lod<k>.glb are the same samples as grid meshes (stride "
+                                  "2^k, hole cells left out, vertical skirts on shared borders)"}
     if caves:  # a person walked through every passage
         t0 = time.time()
         from . import terrain_caves
-        manifest["caves"] = terrain_caves.check(caves, field, sea=_sea(T))
+        manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T))
         timing["cave walk"] = time.time() - t0
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     timing["total before check"] = time.time() - t_all
     t0 = time.time()
-    check = seam_check(out)
+    check = seam_check(out) if manifest_tiles else {"summary": {"failures": 0}, "failures": []}
+    if region is not None:
+        from . import terrain_cliffs
+        gc = terrain_cliffs.ground_check(out, manifest, region)
+        check["summary"]["ground"] = gc["summary"]
+        check["failures"] += gc["failures"]
+        check["summary"]["failures"] = len(check["failures"])
     timing["seam check"] = time.time() - t0
     manifest["seam_check"] = check["summary"]
     manifest["timing_s"] = {k: round(v, 2) for k, v in timing.items()}
@@ -1616,17 +1782,34 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
 def summary(r) -> str:
     """A short text report of an export_tiles result."""
     M = r["manifest"]
-    lines = [f"3D tiles in {r['out']}: {M['grid'][0]} x {M['grid'][1]} tiles of {M['tile_size']:g} m"]
+    what = "cliff mesh tiles" if M.get("mode") == "cliffs" else "3D tiles"
+    lines = [f"{what} in {r['out']}: {M['grid'][0]} x {M['grid'][1]} tiles of {M['tile_size']:g} m"
+             + (f", {len(M['tiles'])} with cliffs" if M.get("mode") == "cliffs" else "")]
     for k, L in enumerate(M["lods"]):
         tris = [t["lods"][k]["triangles"] for t in M["tiles"] if t["lods"][k]]
         size = sum(t["lods"][k]["bytes"] for t in M["tiles"] if t["lods"][k])
-        lines.append(f"LOD {k} (error {L['error_m']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
-                     f"(median {int(np.median(tris))}), {size / 1e6:.1f} MB")
+        if tris:
+            lines.append(f"LOD {k} (error {L['error_m']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
+                         f"(median {int(np.median(tris))}), {size / 1e6:.1f} MB")
+    if M.get("ground"):
+        for k in range(len(M["ground"][0]["lods"])):
+            tris = [g["lods"][k]["triangles"] for g in M["ground"]]
+            size = sum(g["lods"][k]["bytes"] for g in M["ground"])
+            lines.append(f"ground LOD {k}: {sum(tris)} triangles ({min(tris)}-{max(tris)} a tile), {size / 1e6:.1f} MB")
+        c = M["cliffs"]
+        lines.append(f"heightmap pushed {c['heightmap'].split(' m ')[0].split()[-1]} m under the cliffs; "
+                     f"{c['hole_cells']} hole cells")
     lines += [f"volume {n}" for n in M["volumes"]]
     lines += [f"walk: {n}" for n in M.get("caves", [])]
     sc = M["seam_check"]
-    lines.append(f"seam check: {sc['failures']} failures; shared edges {sc['shared_edges']}, border normals within "
-                 f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under skirts")
+    if "shared_edges" in sc:
+        lines.append(f"seam check: {sc['failures']} failures; shared edges {sc['shared_edges']}, border normals within "
+                     f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under "
+                     f"skirts")
+    else:
+        lines.append(f"seam check: {sc['failures']} failures")
+    if "ground" in sc:
+        lines.append("ground check: " + ", ".join(f"{k} {v}" for k, v in sc["ground"].items()))
     sh = [f"LOD {k} {sc[f'lod{k}_shards']['area_pct']}%" for k in range(len(M["lods"])) if f"lod{k}_shards" in sc]
     if sh:
         lines.append("shards (corner normals against their face, share of the area): " + ", ".join(sh))
@@ -1735,12 +1918,28 @@ def _job_tile(ij):
         sf = np.array(sf, np.int64).reshape(-1, 3)
         origin = np.array([lo[0], lo[1], 0.0])
         Ps, Fs, Ns, src = split_normals(Pd, Fd, N, field, bd, NORMAL_H * v0)
-        prims = [_prim(Ps - origin, Ns, C[src], W[src], Fs, 0, {"role": "surface"}, mats, lo, cfg)]
+        bur = np.zeros(len(Fs), bool)
+        if hasattr(field, "front"):
+            # a cliff shell: faces off the visible rock (its back, buried under the heightmap) go in their own
+            # primitive, so an engine or a bake can skip them
+            bur = np.abs(field.front(Ps[Fs].mean(1))) > max(0.3, 2 * cfg["error"][k])
+        stem = f"tile_{i}_{j}_lod{k}"
+        images, binfo = None, None
+        if cfg.get("maps") and (~bur).any():
+            Pv, Nv, Cv, Wv, Fv = _compact(Ps, Ns, C[src], W[src], Fs[~bur])
+            prim, images, binfo = _textured(Pv, Nv, Wv, Fv, k, origin, lo, stem)
+            prims = [prim]
+        else:
+            prims = [_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[~bur]), 0, {"role": "surface"}, mats, lo, cfg)]
+        if bur.any():
+            prims.append(_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[bur]), 1, {"role": "buried"}, mats,
+                               lo, cfg))
         if len(sf):
             prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
-        fn = f"tile_{i}_{j}_lod{k}.glb"
-        write_glb(out / fn, f"tile_{i}_{j}_lod{k}", prims, trans, mat,
-                  extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]})
+        fn = f"{stem}.glb"
+        from . import terrain_bake
+        write_glb(out / fn, stem, prims, trans, mat + ([terrain_bake.material("terrain_baked")] if images else []),
+                  extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]}, images=images)
         if k == int(cfg["collision"]):
             cf = f"collision_{i}_{j}.glb"
             write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
@@ -1749,7 +1948,10 @@ def _job_tile(ij):
             entry["collision"] = cf
         zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
         entry["lods"].append({"file": fn, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
+                              "visible_triangles": int((~bur).sum()),
                               "marching_cubes_triangles": int(n_mc), "bytes": (out / fn).stat().st_size})
+        if binfo:
+            entry["lods"][-1]["maps"] = binfo
         stats.append((i, j, k, len(Fd), len(sf), n_mc, (out / fn).stat().st_size))
     entry["zmin"], entry["zmax"] = zmin, zmax
     entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
@@ -1881,6 +2083,68 @@ def _prim(P, N, C, W, F, material, extras, mats, lo, cfg):
     return {"attrs": attrs, "indices": F, "material": material, "extras": extras}
 
 
+def _textured(P, N, W, F, k, origin, lo, stem):
+    """A tile's visible surface with its own UV atlas and baked maps (terrain_bake): the primitive (material 2, the
+    baked reference material), the embedded images (base colour, ORM, normal) and a report. Height and layer-weight
+    maps go beside the GLB in maps/."""
+    from PIL import Image
+    from . import terrain_bake
+    c = _CTX
+    cfg, mats, out, v0 = c["cfg"], c["mats"], c["out"], c["v0"]
+    t0 = time.time()
+    dens = cfg["texel_density"][min(k, len(cfg["texel_density"]) - 1)]
+    uvc, size, d, _ = terrain_bake.unwrap(P, F, dens, int(cfg["texture_max"]))
+    sp = terrain_bake.split_corners(P, _unit_rows(N), F, uvc, extra={"W": W})
+    T4 = terrain_bake.tangents(sp["P"], sp["N"], sp["uv"], sp["F"])
+    reach = max(0.6, 4 * cfg["error"][k] + 0.5)
+    bf = c["bakefield"][k]
+    surface = lambda Pl, Nl: terrain_bake._surface(bf, Pl, Nl, v0, reach)
+    maps, info = terrain_bake.bake(surface, c["base"], mats, sp["P"], sp["N"], T4, sp["uv"], sp["F"], size,
+                                   c["layer_rough"], field=bf)
+    info["seconds"] = round(time.time() - t0, 1)
+    if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)
+        fn_ = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
+        rock = fn_[:, 2] / np.maximum(np.linalg.norm(fn_, axis=1), 1e-12) < math.cos(math.radians(40))
+        if rock.sum() > 16:
+            info["crease"] = terrain_sharp.crease_error(P, F, c["field"], max(0.01, v0 / 32), rock=rock)
+    (out / "maps").mkdir(exist_ok=True)
+    Image.fromarray(maps["height"], "I;16").save(out / "maps" / f"{stem}_height.png")
+    wfiles = []
+    for g, w in enumerate(maps["weights"]):
+        fn = f"maps/{stem}_weights{g}.png"
+        Image.fromarray(w, "RGBA").save(out / fn)
+        wfiles.append(fn)
+    images = [(terrain_bake.jpeg(maps["basecolor"]), "image/jpeg"), (terrain_bake.png(maps["orm"], "RGB"), "image/png"),
+              (terrain_bake.png(maps["normal"], "RGB"), "image/png")]
+    attrs = {"POSITION": _to_gltf(sp["P"] - origin), "NORMAL": _to_gltf(sp["N"]),
+             "TANGENT": np.c_[_to_gltf(T4[:, :3]), T4[:, 3]], "TEXCOORD_0": sp["uv"]}
+    sq = int(cfg["splat"])
+    if sq:
+        mg = int(cfg["splat_margin"])
+        Nn = sq + 2 * mg
+        Q = sp["P"] - origin
+        attrs["TEXCOORD_1"] = np.c_[(Q[:, 0] / cfg["tile"] * sq + mg) / Nn, 1 - (Q[:, 1] / cfg["tile"] * sq + mg) / Nn]
+    Wv = sp["W"]
+    for g in range(0, Wv.shape[1], 4):
+        w = Wv[:, g:g + 4]
+        attrs[f"_WEIGHTS{g // 4}"] = np.c_[w, np.zeros((len(w), 4 - w.shape[1]))]
+    info.update(size=[int(size[0]), int(size[1])], texels_per_m=round(float(d), 2), height=f"maps/{stem}_height.png",
+                weights=wfiles)
+    return {"attrs": attrs, "indices": sp["F"], "material": 2, "extras": {"role": "surface"}}, images, info
+
+
+def _unit_rows(N):
+    return N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+
+
+def _compact(P, N, C, W, F):
+    """The vertices faces F use, renumbered."""
+    used = np.unique(F)
+    remap = np.full(len(P), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    return P[used], N[used], C[used], W[used], remap[F]
+
+
 def _vertex_normals(P, F):
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
     vn = np.zeros_like(P)
@@ -1961,6 +2225,11 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
             for p in prims:
                 P = _from_gltf(p["POSITION"].astype(np.float64)) + origin
                 d[p["extras"].get("role", "surface")] = (P, _from_gltf(p["NORMAL"].astype(np.float64)), p["indices"])
+            if "buried" in d:  # (a cliff shell's back: part of the mesh's structure, not of what is seen)
+                empty = (np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3), np.int64))
+                d["visible"] = d.get("surface", empty)
+                (P1, N1, F1), (P2, N2, F2) = d["visible"], d.pop("buried")
+                d["surface"] = (np.vstack([P1, P2]), np.vstack([N1, N2]), np.vstack([F1, F2 + len(P1)]))
             data[i, j, k] = d
     # (2) watertight per LOD
     for k in range(lods):
@@ -1997,7 +2266,7 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
                                           "same_direction_edges": dup_dir}
         # shading: a face whose corner normals point away from it renders as a black shard (a jump in the field
         # under it, or a fold decimation left)
-        sh = _shards([data[i, j, k]["surface"] for (i, j) in tiles if (i, j, k) in data])
+        sh = _shards([data[i, j, k].get("visible", data[i, j, k]["surface"]) for (i, j) in tiles if (i, j, k) in data])
         summary[f"lod{k}_shards"] = sh
         if sh["area_pct"] > SHARD_LIMIT[min(k, len(SHARD_LIMIT) - 1)]:
             failures.append(f"LOD {k}: {sh['faces']} faces ({sh['area_pct']}% of the area) with corner normals "
@@ -2099,12 +2368,112 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
     summary["heightmap_edges_differing"] = hm_bad
     if hm_bad:
         failures.append(f"{hm_bad} heightmap tile edges differ from their neighbours'")
+    if M.get("maps"):  # (6) baked maps agree across borders
+        ms = map_seams(out, M["tiles"], lods)
+        summary["map_seams"] = ms
+        for key, r in ms.items():
+            if not r["ok"]:
+                failures.append(f"{key}: baked maps differ across tile borders (normals p50/p95/p99/max "
+                                f"{r['normal_deg_p50_p95_p99_max']} deg, colour p50/p95 {r['colour_diff_p50_p95']})")
     summary["failures"] = len(failures)
     (out / "seam_check.json").write_text(json.dumps({"summary": summary, "failures": failures}, indent=1))
     return {"summary": summary, "failures": failures}
 
 
+def read_glb_images(path):
+    """The images embedded in a GLB, decoded (float arrays 0..1, rows top first), in texture order."""
+    import io
+    from PIL import Image
+    b = Path(path).read_bytes()
+    jl = struct.unpack_from("<I", b, 12)[0]
+    doc = json.loads(b[20:20 + jl])
+    binb = b[28 + jl:]
+    out = []
+    for im in doc.get("images", []):
+        v = doc["bufferViews"][im["bufferView"]]
+        a = np.asarray(Image.open(io.BytesIO(binb[v["byteOffset"]:v["byteOffset"] + v["byteLength"]])), float)
+        out.append(a / 255.0)
+    return out
+
+
+def _bilinear(img, uv):
+    H, W = img.shape[:2]
+    x = np.clip(uv[:, 0] * W - 0.5, 0, W - 1.001)
+    y = np.clip(uv[:, 1] * H - 0.5, 0, H - 1.001)
+    x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+    return (img[y0, x0] * (1 - fx) * (1 - fy) + img[y0, x0 + 1] * fx * (1 - fy) + img[y0 + 1, x0] * (1 - fx) * fy
+            + img[y0 + 1, x0 + 1] * fx * fy)
+
+
+def _map_side(path, origin_fn, ax, lim):
+    """Along a tile's border plane: sample points on its border edges with the baked normal (decoded to world axes,
+    through the tile's own TANGENT/NORMAL) and base colour there. {edge key: (world normals (3, 3), colours)}."""
+    tr, prims = read_glb(path)
+    imgs = read_glb_images(path)
+    p = prims[0]
+    if "TEXCOORD_0" not in p or len(imgs) < 3:
+        return {}
+    origin = _from_gltf(tr[None])[0]
+    P = _from_gltf(p["POSITION"].astype(np.float64)) + origin
+    N = _from_gltf(p["NORMAL"].astype(np.float64))
+    T = _from_gltf(p["TANGENT"][:, :3].astype(np.float64))
+    w = p["TANGENT"][:, 3].astype(np.float64)
+    uv = p["TEXCOORD_0"].astype(np.float64)
+    F = p["indices"]
+    be = _boundary_edges(F)
+    on = (P[be[:, 0], ax] == lim) & (P[be[:, 1], ax] == lim)
+    out = {}
+    t = np.array([0.25, 0.5, 0.75])[:, None]
+    for a, b in be[on]:
+        key = frozenset((tuple(P[a]), tuple(P[b])))
+        # (the edge's end in a canonical order, so both tiles sample the same points)
+        a_, b_ = (a, b) if tuple(P[a]) < tuple(P[b]) else (b, a)
+        Nl = _unit_rows(N[a_] * (1 - t) + N[b_] * t)
+        Tl = T[a_] * (1 - t) + T[b_] * t
+        Tl = _unit_rows(Tl - Nl * (Tl * Nl).sum(1, keepdims=True))
+        Bl = np.cross(Nl, Tl) * np.sign(w[a_])
+        q = uv[a_] * (1 - t) + uv[b_] * t
+        tn = _bilinear(imgs[2], q)[:, :3] * 2 - 1
+        g = _unit_rows(tn[:, :1] * Tl + tn[:, 1:2] * Bl + tn[:, 2:3] * Nl)
+        out[key] = (g, _bilinear(imgs[0], q)[:, :3])
+    return out
+
+
+def map_seams(out, tiles, lods, kind="tiles"):
+    """Baked maps across shared tile borders: the decoded normal and base colour at the same border points from
+    both tiles. Returns {angle p50/p99/max deg, colour difference p99} per LOD and the worst places."""
+    res = {}
+    by = {(e["i"], e["j"]): e for e in tiles}
+    for k in range(lods):
+        ang, dcol = [], []
+        for (i, j), e in by.items():
+            for di, dj, ax in ((1, 0, 0), (0, 1, 1)):
+                o = by.get((i + di, j + dj))
+                if o is None or not e["lods"][k] or not o["lods"][k]:
+                    continue
+                lim = e["max"][ax]
+                A = _map_side(out / e["lods"][k]["file"], None, ax, lim)
+                B = _map_side(out / o["lods"][k]["file"], None, ax, lim)
+                for key in set(A) & set(B):
+                    ang.append(np.degrees(np.arccos(np.clip((A[key][0] * B[key][0]).sum(1), -1, 1))))
+                    dcol.append(np.abs(A[key][1] - B[key][1]).max(1))
+        if ang:
+            a, c = np.concatenate(ang), np.concatenate(dcol)
+            lim = MAP_SEAM[min(k, len(MAP_SEAM) - 1)]
+            pa = [round(float(np.percentile(a, q)), 2) for q in (50, 95, 99)] + [round(float(a.max()), 2)]
+            pc = [round(float(np.percentile(c, q)), 3) for q in (50, 95)]
+            res[f"lod{k}"] = {"points": int(len(a)), "normal_deg_p50_p95_p99_max": pa, "colour_diff_p50_p95": pc,
+                              "ok": bool(pa[0] <= lim[0] and pa[1] <= lim[1] and pc[1] <= lim[2])}
+    return res
+
+
 SHARD_LIMIT = [0.01, 0.05, 0.5]  # % of a LOD's area allowed to have corner normals against its faces
+# the same border point decoded from both tiles' maps (each samples its own texels, 8-bit, bilinear): normals p50 and
+# p95 (deg) and colour p95 (0..1) allowed, per LOD. A seam would shift the median; a few aliased texels at sharp
+# detail don't. LOD 2 (0.4 m texels on a mesh 0.5 m off the rock) is looser: where its triangles stray far from the
+# rock's normal the map can't bend past its surface (z >= 0.02) and the two sides clamp differently
+MAP_SEAM = [(3.0, 15.0, 0.08), (3.0, 15.0, 0.08), (6.0, 50.0, 0.2)]
 
 
 def _shards(surfs):
@@ -2227,17 +2596,20 @@ def border_segments(out_dir, lod=0):
     return np.concatenate(segs) if segs else np.zeros((0, 2, 3))
 
 
-def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None):
+def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
+                 parts="all", textured=True):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
     [x1, y1]]: only tiles (and trees) inside. lod: a level, or
-    "checker" (LOD 0 and the coarsest alternating, to see the skirts at work)."""
+    "checker" (LOD 0 and the coarsest alternating, to see the skirts at work). parts (cliffs mode): "all", "ground"
+    (the heightmap alone: what a game shows without the overlay) or "cliffs". textured: True (the baked material),
+    "layered" (the engine recipe: tiling layers over the baked maps) or False (vertex colour)."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
     glbs = []
-    for e in M["tiles"]:
+    for e in M["tiles"] * (parts != "ground") + M.get("ground", []) * (parts != "cliffs"):
         if box and (e["max"][0] < box[0][0] or e["min"][0] > box[1][0] or e["max"][1] < box[0][1]
                     or e["min"][1] > box[1][1]):
             continue
@@ -2264,7 +2636,12 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                      "fill_at": v.get("fill_at", 8.0),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
-           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color}
+           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
+           "textured": bool(textured)}
+    if textured == "layered":  # the engine recipe: tiling layers over the baked maps
+        job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
+                          "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}
+                         for L in M["materials"]["layers"] if "textures" in L]
     if any(v.get("borders") for v in views):
         np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
         job["borders"] = str(out / "borders.npz")

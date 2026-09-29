@@ -31,6 +31,83 @@ def _terrain_material():
     return m
 
 
+_IMAGES = {}
+
+
+def _layered(m, layers):
+    """The engine recipe on an imported baked material: each layer's tiling height texture laid triplanar (Blender's
+    box projection) in world metres / scale, weighted by the _WEIGHTS attributes; the sum modulates the baked base
+    colour and bumps the baked normal map (what the manifest's engine_recipe describes)."""
+    nt = m.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    base_in = bsdf.inputs["Base Color"].links[0].from_socket if bsdf.inputs["Base Color"].links else None
+    nrm_in = bsdf.inputs["Normal"].links[0].from_socket if bsdf.inputs["Normal"].links else None
+    if base_in is None:
+        return
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    total = None
+    for L in layers:
+        if L["path"] not in _IMAGES:
+            _IMAGES[L["path"]] = bpy.data.images.load(L["path"])
+            _IMAGES[L["path"]].colorspace_settings.name = "Non-Color"
+        mp = nt.nodes.new("ShaderNodeVectorMath")
+        mp.operation = "SCALE"
+        mp.inputs["Scale"].default_value = 1.0 / L["scale"]
+        nt.links.new(geo.outputs["Position"], mp.inputs[0])
+        tx = nt.nodes.new("ShaderNodeTexImage")
+        tx.image = _IMAGES[L["path"]]
+        tx.projection = "BOX"
+        tx.projection_blend = 0.3
+        nt.links.new(mp.outputs["Vector"], tx.inputs["Vector"])
+        at = nt.nodes.new("ShaderNodeAttribute")
+        at.attribute_name = L["attr"]
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(at.outputs["Color"], sep.inputs["Color"])
+        w = at.outputs["Alpha"] if L["channel"] == 3 else sep.outputs[L["channel"]]
+        c = nt.nodes.new("ShaderNodeMath")  # (height - 0.5) x strength x weight
+        c.operation = "SUBTRACT"
+        nt.links.new(tx.outputs["Color"], c.inputs[0])
+        c.inputs[1].default_value = 0.5
+        s = nt.nodes.new("ShaderNodeMath")
+        s.operation = "MULTIPLY"
+        nt.links.new(c.outputs[0], s.inputs[0])
+        s.inputs[1].default_value = L["strength"]
+        mw = nt.nodes.new("ShaderNodeMath")
+        mw.operation = "MULTIPLY"
+        nt.links.new(s.outputs[0], mw.inputs[0])
+        nt.links.new(w, mw.inputs[1])
+        if total is None:
+            total = mw.outputs[0]
+        else:
+            a = nt.nodes.new("ShaderNodeMath")
+            nt.links.new(total, a.inputs[0])
+            nt.links.new(mw.outputs[0], a.inputs[1])
+            total = a.outputs[0]
+    # albedo x (1 + 0.8 h)
+    f = nt.nodes.new("ShaderNodeMath")
+    f.operation = "MULTIPLY_ADD"
+    nt.links.new(total, f.inputs[0])
+    f.inputs[1].default_value = 1.2
+    f.inputs[2].default_value = 1.0
+    mul = nt.nodes.new("ShaderNodeMix")
+    mul.data_type = "RGBA"
+    mul.blend_type = "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    nt.links.new(base_in, mul.inputs["A"])
+    cv = nt.nodes.new("ShaderNodeCombineColor")
+    for k in range(3):
+        nt.links.new(f.outputs[0], cv.inputs[k])
+    nt.links.new(cv.outputs["Color"], mul.inputs["B"])
+    nt.links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Distance"].default_value = 0.05
+    bump.inputs["Strength"].default_value = 0.8
+    nt.links.new(total, bump.inputs["Height"])
+    if nrm_in is not None:
+        nt.links.new(nrm_in, bump.inputs["Normal"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+
+
 def _flat(name, rgb):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -96,6 +173,7 @@ def run(job):
             coll.remove(item)
     mat = _terrain_material()
     ground = []
+    done = set()
     for p in job["glbs"]:
         bpy.ops.import_scene.gltf(filepath=p)
         for ob in bpy.context.selected_objects:
@@ -109,8 +187,16 @@ def run(job):
                     ob.data.polygons.foreach_set("material_index", idx)
                     ground.append(ob)
                     continue
-                ob.data.materials.clear()
-                ob.data.materials.append(mat)
+                # baked tiles keep the importer's material (base colour, ORM, normal map from the GLB); the rest
+                # (untextured tiles, skirts, buried backs) take the vertex-colour one
+                for s, m in enumerate(ob.data.materials):
+                    if not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
+                        ob.data.materials[s] = mat
+                    elif job.get("layers") and m.name not in done:
+                        _layered(m, job["layers"])
+                        done.add(m.name)
+                if not len(ob.data.materials):
+                    ob.data.materials.append(mat)
                 ground.append(ob)
     if job.get("sea") is not None:
         _water(job["sea"])
