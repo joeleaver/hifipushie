@@ -743,7 +743,7 @@ def _patches(W, cuts, s, prims, voxel, log):
                 # on its neighbour (a base's close-set fingers: the index tube twisted across from the middle one)
                 d0 = _unit(C[1] - C[0])
                 dst = np.asarray(patch[0][0]) - d0 * (0.8 * r)
-                if np.linalg.norm(W[loop].mean(0) - dst.mean(0)) > 0.5 * r:
+                if cut.get("carry") and np.linalg.norm(W[loop].mean(0) - dst.mean(0)) > 0.5 * r:
                     W[:] = _carry(W, loop, dst)
         elif cut["kind"] == "ear" and "chain" in cut:
             C, own, r, s0 = cut["chain"]
@@ -1073,7 +1073,7 @@ def wrap(spec: dict, template: str = "male_stylized", log: list | None = None) -
         # (projected, the template's coarse fingers jumped between the base's close-set fingers)
         for k, c in cuts.items():
             if c["kind"] == "digit":
-                c["model"] = k.split(".")[0]
+                c["model"], c["carry"] = k.split(".")[0], True
         cuts = {k: c for k, c in cuts.items() if c["kind"] == "eye" or "chain" in c
                 or (c["kind"] == "digit" and f"{c['model']}_0.{c['side']}" in s["joints"])}
     if "face" in (spec.get("kits") or {}) or any(k.startswith("face_") for k in s["blobs"]) or base:
