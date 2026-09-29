@@ -33,7 +33,9 @@ Masks (generators, each 0..1 per point):
            or {"bone": name, "from": t0, "to": t1} along a bone (0 at its start joint, 1 at its end; outside the
            range it clamps): tail tips, gloved hands, socks, fading limbs. It ramps across the whole part (the
            feet lie past a forearm's end too): confine it with "near", e.g. {"near": ["forearm.L", "hand.L"],
-           "within": 0.02, "axis": {"bone": "forearm.L", "from": 0.7, "to": 1}} for a glove.
+           "within": 0.02, "axis": {"bone": "forearm.L", "from": 0.7, "to": 1}} for a glove. With "at": joint,
+           from/to are measured from that joint along dir: {"dir": [0, 0, 1], "at": "lm_chin", "from": -0.035,
+           "to": -0.02} fades a beard shadow out under the jaw wherever the chin ends up.
   cavity:  "concave" | "convex", "radius": [r0, r1] (m, default [0.03, 0.006]): zero where the surface is
            curved gentler than radius r0 (mean curvature), full where tighter than r1. Dirt in creases,
            light on ridges and knuckles. Depends a little on the build resolution.
@@ -232,9 +234,16 @@ def style_rgb(rgb, st: dict) -> np.ndarray:
 
 def validate(spec: dict) -> None:
     st = spec.get("style") or {}
-    bad = set(st) - {"name", "shape", "paint"}
+    bad = set(st) - {"name", "shape", "paint", "look", "sheet"}
     if bad:
-        raise SpecError(f"style: unknown keys {sorted(bad)} (have name, shape, paint)")
+        raise SpecError(f"style: unknown keys {sorted(bad)} (have name, shape, paint, look, sheet)")
+    lk = st.get("look") or {}
+    bad = set(lk) - {"lights", "world", "look", "exposure"}
+    if bad:
+        raise SpecError(f"style.look: unknown keys {sorted(bad)} (have lights, world, look, exposure)")
+    for i, L in enumerate(lk.get("lights") or []):
+        if "dir" not in L or set(L) - {"dir", "energy", "color", "angle", "shadow"}:
+            raise SpecError(f"style.look.lights[{i}]: needs dir; takes dir, energy, color, angle, shadow")
     bad = set(st.get("paint") or {}) - set(STYLE_PAINT)
     if bad:
         raise SpecError(f"style.paint: unknown keys {sorted(bad)} (have {', '.join(STYLE_PAINT)})")
@@ -836,7 +845,11 @@ def _axis_mask(spec: dict, name: str, ax: dict, v: np.ndarray) -> np.ndarray:
         return _ramp(t, float(ax.get("from", 0.0)), float(ax.get("to", 1.0)))
     d = np.asarray(ax.get("dir", [0, 0, 1]), float)
     d = d / np.linalg.norm(d)
-    return _ramp(v @ d, float(ax["from"]), float(ax["to"]))
+    off = 0.0
+    if "at" in ax:  # from/to measured from a joint's position along dir
+        from .spec import expand_mirror, resolve_point
+        off = float(resolve_point(expand_mirror(spec), ax["at"]) @ d)
+    return _ramp(v @ d - off, float(ax["from"]), float(ax["to"]))
 
 
 _TAGS: dict[str, set] = {}

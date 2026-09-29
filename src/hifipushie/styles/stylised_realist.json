@@ -1,0 +1,570 @@
+{
+ "name": "stylised_realist",
+ "about": "Feature-animation-lite humans (the disc golfer's reference, 2026-09-29): real proportions (~7 heads), a face built from five broad masses with a few pushed features (jaw/chin block, a low heavy brow mass, a dark iris clipped by both lids), everything small removed (nostril detail, wrinkles, pores, noise under 1 cm), and colour doing the modelling: saturated warm skin whose shadows turn redder, broad warm gradients on thin and occluded skin, solid designed shapes for brows and facial hair. For a GNM-headed base (the lm_* landmark joints address the paint). The written sheet with measured crops: workspace/character_renders/style_sheet.html.",
+ "rules": {
+  "chin_over_philtrum": [
+   2.4,
+   3.0
+  ],
+  "nose_width": [
+   0.52,
+   0.62
+  ],
+  "mouth_width": [
+   0.85,
+   1.05
+  ],
+  "eye_h_over_w": [
+   0.3,
+   0.37
+  ],
+  "iris_over_eye_w": [
+   0.48,
+   0.58
+  ],
+  "lid_cover_top": [
+   0.12,
+   0.3
+  ],
+  "lid_cover_bottom": [
+   0.0,
+   0.3
+  ],
+  "skin_sat_lit": [
+   0.28,
+   0.45
+  ],
+  "skin_sat_shadow": [
+   0.45,
+   0.65
+  ],
+  "skin_hue_shift_to_shadow": [
+   3,
+   12
+  ],
+  "_why": {
+   "chin_over_philtrum": "mouth->chin over nose base->mouth: a short philtrum and a long, strong chin (reference 2.3-2.9; ~2.0 is realistic)",
+   "nose_width": "nose wings over the interocular: one soft bulb, a touch wide",
+   "mouth_width": "corner to corner over the interocular",
+   "eye_h_over_w": "an almond, not a round (startled) eye: reference 0.35",
+   "iris_over_eye_w": "a big dark iris: reference 0.52 (real ~0.39)",
+   "lid_cover_top": "the upper lid covers ~20% of the iris: no white above it",
+   "lid_cover_bottom": "the lower lid touches or covers the iris: no white below it",
+   "skin_sat_lit": "HSV saturation of lit skin in the style's look (rendered, sampled on the forehead/cheek)",
+   "skin_sat_shadow": "shadowed skin is MORE saturated than lit skin (reference ~0.6): not grey",
+   "skin_hue_shift_to_shadow": "degrees the hue moves toward red from lit to shadow (reference ~7)"
+  }
+ },
+ "spec": {
+  "base": {
+   "style": {
+    "eyes": 1.12,
+    "head": 1.06,
+    "simplify": 0.4
+   },
+   "head": {
+    "fit": {
+     "nose_width": 0.57,
+     "mouth_width": 0.92
+    },
+    "pose": {
+     "lid_upper": 0.0015,
+     "lid_lower": 0.003,
+     "mouth_raise": 0.003
+    }
+   }
+  },
+  "parts": {
+   "body": {
+    "subsurface": 0.35,
+    "subsurface_radius": [
+     1.0,
+     0.38,
+     0.22
+    ],
+    "subsurface_scale": 0.006
+   },
+   "eyes": {
+    "color": "#ddcbbd",
+    "roughness": 0.18,
+    "specular": 0.7
+   }
+  },
+  "paint": {
+   "skin": {
+    "color": "#e39a78",
+    "roughness": 0.5
+   },
+   "skin_shadow_warm": {
+    "color": "#b04a36",
+    "opacity": 0.35,
+    "ao": [
+     0.9,
+     0.5
+    ]
+   },
+   "skin_thin_warm": {
+    "color": "#cc553d",
+    "opacity": 0.45,
+    "thickness": [
+     0.045,
+     0.012
+    ]
+   },
+   "skin_warm": {
+    "color": "#d06a50",
+    "opacity": 0.4,
+    "path": [
+     {
+      "at": "lm_nose_tip",
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.016,
+    "profile": "soft"
+   },
+   "cheeks_warm.L": {
+    "color": "#d56e55",
+    "opacity": 0.3,
+    "path": [
+     {
+      "at": "lm_nostril.L",
+      "offset": [
+       0.03,
+       0.015,
+       0.008
+      ],
+      "dir": [
+       0.6,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.026,
+    "profile": "soft"
+   },
+   "lids_warm.L": {
+    "color": "#c65a45",
+    "opacity": 0.25,
+    "path": [
+     {
+      "at": "lm_eye_inner.L",
+      "offset": [
+       0,
+       0,
+       -0.003
+      ],
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     },
+     {
+      "at": "lm_eye_outer.L",
+      "offset": [
+       0.002,
+       0,
+       -0.003
+      ],
+      "dir": [
+       0.6,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.007,
+    "profile": "soft"
+   },
+   "lips.L": {
+    "color": "#9c4034",
+    "roughness": 0.45,
+    "width": 0.0042,
+    "soft": 0.002,
+    "path": [
+     {
+      "at": "lm_mouth_corner.L",
+      "dir": [
+       0.3,
+       -1,
+       0
+      ]
+     },
+     {
+      "at": "lm_lip_upper",
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ]
+   },
+   "lips_lower.L": {
+    "color": "#bd6450",
+    "roughness": 0.4,
+    "width": 0.006,
+    "soft": 0.002,
+    "path": [
+     {
+      "at": "lm_mouth_corner.L",
+      "dir": [
+       0.3,
+       -1,
+       0
+      ]
+     },
+     {
+      "at": "lm_lip_lower",
+      "dir": [
+       0,
+       -1,
+       -0.2
+      ]
+     }
+    ]
+   },
+   "brows.L": {
+    "color": "#35201a",
+    "roughness": 0.7,
+    "soft": 0.001,
+    "profile": "flat",
+    "path": [
+     {
+      "at": "lm_brow_inner.L",
+      "offset": [
+       0,
+       0,
+       -0.001
+      ],
+      "dir": [
+       0,
+       -1,
+       0.2
+      ]
+     },
+     {
+      "at": "lm_brow_mid.L",
+      "offset": [
+       0,
+       0,
+       -0.001
+      ]
+     },
+     {
+      "at": "lm_brow_outer.L",
+      "offset": [
+       0,
+       0,
+       -0.003
+      ],
+      "dir": [
+       0.5,
+       -1,
+       0.2
+      ]
+     }
+    ],
+    "width": [
+     0.009,
+     0.0085,
+     0.0045
+    ]
+   },
+   "stubble.L": {
+    "color": "#5a3a30",
+    "opacity": 0.0,
+    "roughness": 0.65,
+    "mask": [
+     {
+      "path": [
+       {
+        "at": "lm_jaw_1.L",
+        "dir": [
+         1,
+         0,
+         0
+        ]
+       },
+       {
+        "at": "lm_jaw_3.L",
+        "dir": [
+         0.8,
+         -0.2,
+         -0.4
+        ]
+       },
+       {
+        "at": "lm_jaw_5.L",
+        "dir": [
+         0.5,
+         -0.5,
+         -0.6
+        ]
+       },
+       {
+        "at": "lm_jaw_7.L",
+        "dir": [
+         0.2,
+         -0.8,
+         -0.5
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "dir": [
+         0,
+         -0.8,
+         -0.5
+        ]
+       }
+      ],
+      "width": 0.034,
+      "profile": "flat"
+     },
+     {
+      "path": [
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         -0.01,
+         -0.012,
+         0.0
+        ],
+        "dir": [
+         0.8,
+         -0.6,
+         0
+        ]
+       },
+       {
+        "at": "lm_jaw_3.L",
+        "offset": [
+         -0.02,
+         -0.02,
+         0.02
+        ],
+        "dir": [
+         0.6,
+         -0.8,
+         0
+        ]
+       },
+       {
+        "at": "lm_mouth_corner.L",
+        "offset": [
+         0.015,
+         0.006,
+         0.0
+        ],
+        "dir": [
+         0.4,
+         -1,
+         0
+        ]
+       }
+      ],
+      "width": 0.03,
+      "profile": "flat",
+      "blend": "max"
+     },
+     {
+      "path": [
+       {
+        "at": "lm_mouth_corner.L",
+        "offset": [
+         0.003,
+         0,
+         0.004
+        ],
+        "dir": [
+         0.3,
+         -1,
+         0
+        ]
+       },
+       {
+        "at": "lm_lip_upper",
+        "offset": [
+         0,
+         0,
+         0.009
+        ],
+        "dir": [
+         0,
+         -1,
+         0
+        ]
+       }
+      ],
+      "width": 0.013,
+      "profile": "flat",
+      "blend": "max"
+     },
+     {
+      "path": [
+       {
+        "at": "lm_lip_lower",
+        "offset": [
+         0,
+         0,
+         -0.018
+        ],
+        "dir": [
+         0,
+         -1,
+         -0.3
+        ]
+       }
+      ],
+      "width": 0.024,
+      "profile": "flat",
+      "blend": "max"
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": -0.04,
+       "to": -0.025
+      }
+     },
+     {
+      "blur": 0.004
+     }
+    ]
+   },
+   "iris.L": {
+    "part": "eyes",
+    "color": "#1e130d",
+    "roughness": 0.08,
+    "path": [
+     {
+      "at": "eye_front.L",
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.017,
+    "profile": "flat"
+   },
+   "pupil.L": {
+    "part": "eyes",
+    "color": "#080605",
+    "path": [
+     {
+      "at": "eye_front.L",
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.007,
+    "profile": "flat"
+   },
+   "glint.L": {
+    "part": "eyes",
+    "color": "#ffffff",
+    "path": [
+     {
+      "at": "eye_front.L",
+      "offset": [
+       -0.003,
+       0,
+       0.002
+      ],
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.0022,
+    "profile": "round"
+   },
+   "sclera_shade": {
+    "part": "eyes",
+    "color": "#a8887a",
+    "opacity": 0.6,
+    "ao": [
+     0.8,
+     0.4
+    ]
+   }
+  },
+  "style": {
+   "look": {
+    "lights": [
+     {
+      "dir": [
+       -0.55,
+       -0.75,
+       0.55
+      ],
+      "energy": 4.0,
+      "color": [
+       1.0,
+       0.93,
+       0.84
+      ],
+      "angle": 12
+     },
+     {
+      "dir": [
+       0.75,
+       -0.6,
+       0.05
+      ],
+      "energy": 1.4,
+      "color": [
+       0.9,
+       0.93,
+       1.0
+      ],
+      "angle": 30,
+      "shadow": false
+     },
+     {
+      "dir": [
+       0.35,
+       0.85,
+       0.45
+      ],
+      "energy": 2.2,
+      "color": [
+       1.0,
+       0.97,
+       0.95
+      ],
+      "angle": 8
+     }
+    ],
+    "world": {
+     "color": [
+      0.78,
+      0.74,
+      0.72
+     ],
+     "strength": 0.45
+    },
+    "look": "AgX - Punchy"
+   }
+  }
+ }
+}

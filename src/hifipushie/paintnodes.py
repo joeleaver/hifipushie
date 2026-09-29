@@ -101,6 +101,9 @@ class _Compiler:
             else:
                 d = np.asarray(ax.get("dir", [0, 0, 1]), float)
                 dvec, off = d / np.linalg.norm(d), 0.0
+                if "at" in ax:  # from/to measured from a joint (a landmark): the ramp follows the model
+                    from .spec import expand_mirror, resolve_point
+                    off = -float(resolve_point(expand_mirror(self.spec), ax["at"]) @ dvec)
                 rng = [float(ax["from"]), float(ax["to"])]
                 if path:
                     out["expose"] = {"range0": path + ["axis", "from"], "range1": path + ["axis", "to"]}

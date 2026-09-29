@@ -300,6 +300,60 @@ def head_of(s: dict, base: dict):
     return _CACHE[key]
 
 
+def posed_measures(head: dict) -> dict:
+    """FIT_KEYS measured on the built head (pose, eyes and scale applied), in interocular units, world Z up."""
+    lm = np.asarray(head["lm68"])
+    e0, e1 = head["eyes"]
+    io = abs(e0[0] - e1[0])
+    ey = 0.5 * (e0[2] + e1[2])
+    z = lm[:, 2]
+    x = lm[:, 0]
+    vals = [x[16] - x[0], x[12] - x[4], x[10] - x[6], ey - z[8], ey - z[57], ey - z[33], x[35] - x[31],
+            x[54] - x[48], ey - 0.5 * (z[62] + z[66])]
+    return {k: round(float(abs(v) / io), 3) for k, v in zip(FIT_KEYS, vals)}
+
+
+IRIS_SPOT = 1.0  # an iris paint spot's diameter on the eyeball, front view, over its "width" (calibrated in renders)
+
+
+def eye_opening(head: dict, cell: float = 0.0005) -> list:
+    """Each eye's opening as seen from the front: where the eyeball stands in front of the skin (the skin runs on into
+    the socket behind the lids, so the opening has no edge loop to measure). Per eye {"w", "h", "top", "bottom"} in
+    mm: the width, the height at the eye centre's column and how far its top and bottom lie from the centre (the
+    iris is centred there: top/bottom against the iris radius say how much of it the lids cover)."""
+    from scipy import ndimage
+    W, r = head["verts"], head["eye_r"]
+    fwd = _unit(np.asarray(head["forward"], float))
+    up = np.array([0.0, 0.0, 1.0])
+    side = _unit(np.cross(up, fwd))
+    up = np.cross(fwd, side)
+    out = []
+    for c in head["eyes"]:
+        d = W - c
+        u, v, depth = d @ side, d @ up, d @ fwd  # depth: toward the viewer
+        m = (np.abs(u) < 0.035) & (np.abs(v) < 0.03) & (depth > -0.005)
+        iu, iv = np.floor(u[m] / cell).astype(int), np.floor(v[m] / cell).astype(int)
+        n = int(r / cell) + 1
+        front = np.full((2 * n + 3, 2 * n + 3), -9.0)
+        ok = (np.abs(iu) <= n) & (np.abs(iv) <= n)
+        np.maximum.at(front, (iu[ok] + n + 1, iv[ok] + n + 1), depth[m][ok])
+        front = ndimage.maximum_filter(front, size=3)[1:-1, 1:-1]  # vertex gaps: a cell sees its neighbours' skin
+        g = (np.arange(-n, n + 1) + 0.5) * cell
+        q = r * r - g[:, None] ** 2 - g[None, :] ** 2
+        ball = np.where(q > 0, np.sqrt(np.maximum(q, 0)), -np.inf)
+        lab, _ = ndimage.label((ball > front) & (q > 0))
+        if lab[n, n] == 0:
+            out.append(None)
+            continue
+        xs, zs = np.nonzero(lab == lab[n, n])
+        col = zs[np.abs(xs - n) <= 2]
+        out.append({"w": round(float((xs.max() - xs.min() + 1) * cell * 1000), 1),
+                    "h": round(float((col.max() - col.min() + 1) * cell * 1000), 1),
+                    "top": round(float((col.max() - n + 1) * cell * 1000), 1),
+                    "bottom": round(float((n - col.min()) * cell * 1000), 1)})
+    return out
+
+
 def _unit(v):
     return v / np.linalg.norm(v)
 

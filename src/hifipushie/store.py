@@ -33,7 +33,8 @@ def load(name: str) -> dict:
     p = _dir(name) / "spec.json"
     if not p.exists():
         raise ValueError(f"no model {name!r}; existing: {list_models()}")
-    return json.loads(p.read_text())
+    from . import stylesheet
+    return stylesheet.resolve(json.loads(p.read_text()))  # a style sheet's defaults under the model's own spec
 
 
 def validate(spec: dict) -> None:
@@ -50,7 +51,10 @@ def validate(spec: dict) -> None:
 
 
 def save(name: str, spec: dict, note: str = "") -> int:
+    from . import stylesheet
+    spec = stylesheet.resolve(spec)
     validate(spec)
+    spec = stylesheet.strip(spec)  # the file keeps the model's own decisions: what its style sheet gives stays there
     d = _dir(name)
     (d / "history").mkdir(parents=True, exist_ok=True)
     version = len(list((d / "history").glob("*.json"))) + 1

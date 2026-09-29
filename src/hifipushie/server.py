@@ -878,6 +878,29 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
 
 
 @mcp.tool(structured_output=False)
+def style_check(name: str, colours: bool = True, save: str | None = None) -> str:
+    """Measure a model against its style sheet's rules (spec.style.sheet; sheets: stylised_realist, ...). A sheet is a
+    reusable bundle of a style's decisions: base head fit/pose defaults, part settings (skin subsurface), paint
+    layers on the landmark joints, the look preset (lights) and the rules it was written from; the model's own spec
+    wins key by key (null deletes a sheet key). Rules measured: face ratios on the posed head (chin over philtrum,
+    nose and mouth widths), the eye opening (height/width, iris share, how much of the iris each lid covers) and,
+    with colours=True, skin saturation/hue lit vs shadow sampled from a front render in the style's look (syncs the
+    scene first; save= keeps that render). Each line: PASS/FAIL, value, target, why."""
+    from . import scene, stylesheet
+    rows = stylesheet.check(name)
+    if colours:
+        scene.sync(name)
+        rows += stylesheet.colour_check(name, save=save)
+    lines = []
+    for r in rows:
+        if "samples" in r:
+            lines.append("samples: " + "; ".join(f"{k} {v['hex']} hsv {v['hsv']}" for k, v in r["samples"].items()))
+        else:
+            lines.append(f"{'PASS' if r['ok'] else 'FAIL'} {r['rule']} = {r['value']} (target {r['target']}): {r['why']}")
+    return "\n".join(lines)
+
+
+@mcp.tool(structured_output=False)
 def history(name: str) -> str:
     """List saved versions of a model."""
     return "\n".join(f"v{h['version']}  {h['time']}  {h['note']}" for h in store.history(name))

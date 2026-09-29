@@ -881,4 +881,5 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
     if save:
         sheet.save(save)
     look.coverage = cover
+    look.images = list(zip([f["name"] for f in frames], imgs))  # the panels alone (colour sampling, comparisons)
     return sheet, round(time.time() - t, 1)

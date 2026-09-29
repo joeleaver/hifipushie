@@ -177,6 +177,27 @@ The rules above (restraint, centimetre sag, subtle grime) are for realism. A sty
   "on" a table ride with the table). Rigid windows and door frames in a bent wall can sit a little off their
   bent openings at strong settings. A deformed build costs ~2-3x an undeformed one.
 
+### Style sheets (characters)
+
+Stylisation is a set of decisions, not a multiplier: what's pushed (a jaw, a brow mass, a dark iris), what's
+removed (nostril detail, wrinkles, pores), which planes the face is built from, how colour carries form (warm,
+saturated skin whose shadows turn redder; brows and stubble as solid designed shapes, never noise), and the light
+it's judged in. A sheet bundles those so another character takes the same style:
+- `spec["style"]["sheet"] = "stylised_realist"` (package `styles/`, or your own in `<HOME>/_styles/`): its partial
+  spec (base.style and head fit/pose defaults, part settings like skin `subsurface`, paint layers addressed on the
+  `lm_*` landmark joints, `style.look` = the lights renders use) sits under the model's spec; the model wins key by
+  key, `null` deletes a sheet key, and save keeps only what differs from the sheet. Turn a recipe on by setting
+  one key (the sheet's `stubble.L` is opacity 0: `{"stubble.L": {"opacity": 0.55}}`).
+- Head shape toward the sheet: `base.head.fit` (proportions in interocular units, now also `nose_width`,
+  `mouth_width`, `eye_seam`) and `base.head.pose` (landmark moves in metres, solved as the least change of GNM's
+  expressions: `smile`, `mouth_raise` (a shorter philtrum), `mouth_width`, `lid_upper`, `lid_lower`, `brow_inner`,
+  `brow_outer`). Character comes on top: a resting smile, a relaxed brow.
+- `style_check(name)` measures the model against the sheet's rules (chin/philtrum, nose, mouth, eye opening and
+  how much iris the lids cover, skin saturation and hue lit vs shadow in the sheet's look) and says why each
+  rule exists. Judge renders next to the reference in the sheet's look, not the grey studio.
+- `style.look` works without a sheet too: {"lights": [{"dir", "energy", "color", "angle", "shadow"}], "world":
+  {"color", "strength"}, "look": "AgX - Punchy", "exposure"}.
+
 ## 5b. History: nothing real is pristine
 
 Perfect things read as CG at a glance: identical copies at even spacing, everything square to the axes, flat
