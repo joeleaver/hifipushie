@@ -11148,13 +11148,7 @@
  "volumes": {
   "point_arch": {
    "type": "arch",
-   "at": [
-    206,
-    68
-   ],
-   "toward": 90,
-   "width": 7,
-   "height": 5.5
+   "at": "the_point"
   },
   "point_cave": {
    "type": "cave",
@@ -11187,9 +11181,7 @@
     236
    ],
    "along": 0,
-   "length": 30,
-   "depth": 3.5,
-   "height": 3
+   "length": 30
   }
  },
  "sites": {

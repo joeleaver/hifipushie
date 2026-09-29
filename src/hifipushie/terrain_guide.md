@@ -245,16 +245,23 @@ and the `"story"`.
   (`export_terrain(name, tiles=True)`) and their views; the heightmap export, map and report ground stay 2.5D.
   `{"name": {"type": "arch" | "cave" | "overhang", "at": address, ...}}`, each cut out of the rock with rounded,
   slightly rough edges (`"blend"` m, default 1; `"rough"` m, default 0.4; `"op": "add"` builds rock instead):
-  - `arch {"at", "toward"?: bearing | address, "width": 8, "height", "floor"?}`: a passage through the land at `at`,
-    running along `toward` (default: the narrowest way through) until it comes out into the open both ways. Its floor
-    defaults to 1 m below the sea (water runs through); height defaults to 55% of the ground above the floor. Put it
-    where the land is thin: the report says how long it is and how thick its roof is.
+  - `arch {"at", "toward"?: bearing | address, "width"?, "height"?, "floor"?, "roof"?: 2, "search"?: 30}`: a passage
+    through the land near `at` (within `search` metres), where it is shortest for its height and still has `roof` metres
+    of rock over it: real sea arches go through a thin neck. Heading `toward` if given, else the best of every heading.
+    Its floor defaults to 1 m below the sea (water runs through); height to 65% of the ground above the floor, width to
+    0.8 of the height. The mouths flare and the line bends a little. The report says where it went and how thick its
+    roof is.
   - `cave {"at", "toward"?, "length": 30, "width": 6, "height": 5, "chamber"?: radius, "rise"?: m, "narrow"?: 0.7,
     "wander"?: 0.08, "floor"?}`: a passage into the rock heading `toward` (default: uphill). Its mouth is where the
     rock starts along that line, so `at` can be in the water just off a cliff. It narrows to `narrow` of its size and
     ends in a domed chamber if `chamber` is given. A sea cave's floor defaults to half a metre under the sea.
-  - `overhang {"at", "along"?: bearing, "length": 30, "depth": 4, "height": 3, "floor"?}`: a wave-cut notch along the
-    cliff face nearest `at` (following the face), `depth` metres in under the lip.
+  - `overhang {"at", "along"?: bearing, "length": 30, "depth": 5, "height": 3.5, "floor"?}`: a wave-cut notch along the
+    cliff face nearest `at` (following the face), `depth` metres in under the lip, its floor half a metre under the
+    sea. The report says how much rock stands over it.
+  - In the mesh tiles every steep face (45-62 deg and up) and everything a volume shaped gets solid rock character:
+    planar facets with joints between them and bedding (grooves and beds standing proud or set back), which can
+    overhang. `"rock": {"facets": 0..1, "bedding": 0..1}` scales it (as for the heightfield's rock), `"rock": false` or
+    `"export": {"tiles": {"rock": 0}}` turns it off. Rock near the water is dark and wet up to ~2 m, higher inside caves.
 - The compiler adds on its own: **divides** between rivers, **ribs** (short spurs down from ridges), a slight
   **wander** to ridges between summits, and **erosion** after your design is placed (drainage networks, scree,
   cliff bands from harder rock). Erosion never touches sites, routes, passes or lake shores, and the large-scale
@@ -390,7 +397,7 @@ The shell run writes its outputs beside the spec:
     with their bed and water (surface height and width per point), fords, lakes
 - **3D mesh tiles** (`export_terrain(name, tiles=True)`, `terrain_run.py --tiles`): the ground and its volumes as a
   grid of seamless glTF tiles in `tiles/`, for any engine. Tune with `"export": {"tiles": {...}}` (metres):
-  `"tile": 64` (tile size), `"voxel": 1` (LOD0 meshing voxel; LOD k is voxel x 2^k, every one dividing the tile),
+  `"tile": 64` (tile size), `"voxel": 1` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),
   `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
