@@ -554,7 +554,8 @@ The shell run writes its outputs beside the spec:
     written files (watertight joins, identical borders, normals, LOD gaps covered, heightmap edges, and black shards:
     faces whose corner normals point away from them, over 0.01% / 0.05% / 0.5% of LOD 0 / 1 / 2; baked maps decoded
     from both sides of every shared border; in cliffs mode the ground tiles' borders, heightmap never standing in a
-    void, never showing through a cliff face) and fails loudly.
+    void, never showing through a cliff face, no cliff-mesh piece floating clear of the ground) and fails loudly. The
+    manifest's `memory_gb` says what the export used (it runs one heavy job at a time, workers sized by free memory).
 - `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
   by a thin red pole 12 m tall (to judge what a view sees).
 

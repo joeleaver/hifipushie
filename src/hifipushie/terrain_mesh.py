@@ -1065,7 +1065,9 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     for q in range(0, len(P), 400_000):  # (in pieces: a whole tile's lattice at once peaked at ~2 GB a worker)
         F[q:q + 400_000] = field.solid(P[q:q + 400_000], F[q:q + 400_000].copy(), S_[q:q + 400_000])
     eps = 1e-3 * v
-    F = np.where(np.abs(F) < eps, np.where(F < 0, -eps, eps), F)
+    # (clamped to a few voxels: a far value (a cliff shell's 1e3 "air") pulled crossings onto the lattice node itself in
+    # float32, and the border vertex lost its edge; only the sign decides which edges are crossed)
+    F = np.clip(np.where(np.abs(F) < eps, np.where(F < 0, -eps, eps), F), -3 * v, 3 * v)
     F = F.reshape(len(ia), len(ib), len(ic))
     if F.min() > 0 or F.max() < 0:
         return None

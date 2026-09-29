@@ -860,6 +860,23 @@ regresses, bisect by building one spec at each commit and diffing heights.
   - Lessons: a close view magnifies texels: sharp features in maps stair-step (the bed notch at 10 px/m), so LOD 0 is
     16 px/m and map features are smooth at the texel; geometry creases below ~2 voxels mesh as sawtooth whatever the
     mesher: put them in the maps.
+  - Round 2 (after the user saw seams and the machine OOM'd twice): NEVER filter across an atlas image (a sparse
+    texel grid + blur bled each chart into its unrelated neighbours: lines along every chart edge, tile borders
+    included): AO is per vertex (identical both sides of a border) interpolated per texel, the 0.4 m normal per texel.
+    Tangents MikkTSpace-style (Blender's glTF importer ignores TANGENT; so do most engines). Colour tone from smooth
+    noise (the facet lattice made a checker of squares). `map_seams` decodes every channel from both sides of each
+    border (world normal, colour, ORM, height, weights) at each LOD and LOD 0 vs the coarsest; `scratch`-style check in
+    Blender (its own tangents) agreed (p95 2.7 deg at LOD 0). `terrain_cliffs.floating`: pieces of the cliff meshes
+    that never reach the heightmap fail the check (a 3 m fin's top cut off by relief, 14 m over the sea; sealed air
+    pockets between the shell and the rock round a cave). Causes fixed: `Field.thin` (a grey opening of H: fins and
+    stack tops narrower than twice the relief's reach take 10% of it), `_drop_specks` (closed pieces < 4 m2 off the
+    tile border), the shell reaches 2 m past the cave wall. Rock geometry: joint sets (`_joints`: two vertical sets
+    ~3 m apart, phase staggered per bed, blocks proud/recessed, grooves 2 voxels wide) and facet size following the
+    face's structure (`_structure_grain`: concave/gully/top of face = small broken facets, buttresses big planes).
+    Wet band edge wanders, roughness varies (`_grain`). Memory: dense meshes streamed through `<out>/_work`, field
+    calls chunked; `WORKER_GB` 2.0 measured; the manifest's `memory_gb` (resources.peak_memory) states each export's
+    peak: pebble 9.1 GB job / 1.07 GB worker / 0.75 GB parent, lava 7.2 GB, alps 10x10 block ~17 GB. MC lattice
+    values are clamped to 3 voxels (a 1e3 "air" pulled a float32 crossing onto a node: "isn't on one lattice edge").
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

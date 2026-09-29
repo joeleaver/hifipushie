@@ -4,7 +4,8 @@ Each cliff (or full-mode) tile mesh gets its own UV atlas per LOD (`unwrap`: cha
 triplanar projection would pick, split where they'd overlap, packed on 4-texel blocks), and every texel goes onto
 the exact rock field plus `micro_relief` (fine facets, cracks and laminae below the meshing voxel, bake-only: meshed
 they would zigzag) to bake:
-- normal (tangent space, glTF/OpenGL convention: +Y = up the texture), against the tile's own TANGENT attribute;
+- normal (tangent space, glTF/OpenGL convention: +Y = up the texture), against MikkTSpace-style tangents (written as
+  TANGENT; Blender and most engines recompute Mikk and ignore it, so the bake must match Mikk);
 - height (16-bit, the exact surface's offset along the low-poly normal, range per tile in the manifest);
 - AO (from the field: how far open the rock is along the normal and round it, the same in every engine);
 - base colour (the terrain's own macro colour at the exact point: cover, strata, rock tone, wet band);
