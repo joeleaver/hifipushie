@@ -63,7 +63,7 @@ COVES = {"chasm": {"at": [150, 190], "width": 55, "depth": 110, "beach": False, 
 # sea cave into its west face, a cave in the chasm's west wall (seen from tee 8) and a wave-cut notch under its east wall
 VOLUMES = {
     "point_arch": {"type": "arch", "at": "the_point"},
-    "point_cave": {"type": "cave", "at": [170, 106], "toward": 75, "length": 26, "width": 6, "height": 5, "chamber": 6},
+    "point_cave": {"type": "cave", "at": "cliff_foot:the_point", "length": 26, "width": 6, "height": 5, "chamber": 6},
     "chasm_cave": {"type": "cave", "at": [152, 222], "toward": 270, "length": 20, "width": 5, "height": 4.5, "chamber": 4},
     "chasm_notch": {"type": "overhang", "at": [182, 236], "along": 0, "length": 30},
 }
@@ -138,14 +138,14 @@ CAVES = {
                     302,
                     500
                 ],
-                "depth": 14
+                "depth": 20
             },
             "hall": {
                 "at": [
                     334,
                     532
                 ],
-                "depth": 18,
+                "depth": 24,
                 "size": 11
             }
         },
