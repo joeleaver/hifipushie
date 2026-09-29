@@ -389,7 +389,7 @@ def apply(locks: list, look: dict, coll_name: str = "hair", segments: int = 32, 
         bpy.context.scene.collection.children.link(coll)
     want = {lk["name"]: lk for lk in locks}
     for ob in list(coll.objects):
-        if ob.get("hp_lock") not in want:
+        if ob.get("hp_lock") is not None and ob.get("hp_lock") not in want:  # (the underlayer isn't a lock)
             cu = ob.data
             bpy.data.objects.remove(ob)
             if cu is not None and cu.users == 0:
