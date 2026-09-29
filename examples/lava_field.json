@@ -1,0 +1,20 @@
+{
+ "story": "A young lava field on the lower flank of a shield volcano: a broad flow runs down from a vent on the flank to the plain, with a lava tube inside it, entered through a collapse pit where its roof fell in and lit by skylights along the way. Sparse grass on the older ground either side.",
+ "world": {"kind": "crater", "base": 20},
+ "units": "m",
+ "extent": [[0, 0], [512, 384]],
+ "cell": 2,
+ "volcanoes": {
+  "shield": {"at": [40, 350], "h": 70, "type": "shield", "base_radius": 520, "crater": false,
+             "gullies": 0.05,
+             "flows": {"flow": {"from": "south-east", "length": 520, "width": 70, "thick": 12, "toward": [470, 40]}}}
+ },
+ "cover": {
+  "grass": {"type": "grass", "density": 0.7, "breakup": {"scale": 60, "amount": 0.4}, "avoid": ["lava"]},
+  "lava_rock": {"type": "rock", "in": "lava", "slope": [0, 90], "density": 1, "color": "#2b2826"}
+ },
+ "caves": {
+  "tube": {"kind": "lava", "flow": "flow", "from": 0.12, "to": 0.62}
+ },
+ "export": {"tiles": {"tile": 64}}
+}
