@@ -1328,11 +1328,18 @@ def _chain_dist(A, segs_b):
 _CTX: dict = {}  # what the export's worker processes read (forked: shared, not pickled)
 
 
+WORKER_GB = 2.5  # a tile worker's peak (measured 1.2-2.2 GB on pebble/lava at 0.5 m)
+
+
 def _pool():
+    """A fork pool sized by free memory (`resources.workers`), guarded: 16 fixed workers x ~2 GB plus other jobs
+    OOM-killed the user's desktop twice."""
     import multiprocessing
-    import os
     from concurrent.futures import ProcessPoolExecutor
-    return ProcessPoolExecutor(max_workers=max(1, min(16, (os.cpu_count() or 1) - 2)), mp_context=multiprocessing.get_context("fork"))
+    from . import resources
+    n = resources.workers(_CTX.get("worker_gb", WORKER_GB), cap=16)
+    ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"))
+    return resources.guarded(ex, "terrain tiles")
 
 
 def _job_maps(args):
@@ -1449,6 +1456,13 @@ def build_field(T, cfg=None):
 
 
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
+    """See `_export_tiles`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
+    from . import resources
+    with resources.heavy("terrain tiles", log=log):
+        return _export_tiles(T, out_dir, cfg, log)
+
+
+def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     """Mesh the terrain's field (heightfield + volumes) into seamless tiles; write GLBs per tile per LOD, collision
     GLBs, heightmap and splat tiles, trees.csv and manifest.json; run the seam check (raises if it fails)."""
     from PIL import Image

@@ -56,7 +56,7 @@ import numpy as np
 
 from .spec import SpecError
 
-TYPES = ("hand", "foot", "face")
+TYPES = ("hand", "foot", "face", "neckline")
 
 
 class KitError(SpecError):
@@ -159,6 +159,9 @@ def _expand(spec: dict) -> dict:
                 _foot(out, name, kit, o)
             case "face":
                 _face(base, name, kit, o)
+            case "neckline":  # a shirt's neckline cut, collar and placket (garments.py)
+                from .garments import neckline
+                neckline(base, name, kit, o)
             case other:
                 raise KitError(f"kit {name!r}: unknown type {other!r} (have {', '.join(TYPES)})")
         if kit.get("part"):  # everything the kit makes goes in that part (unless it chose one itself)
