@@ -1,0 +1,2709 @@
+{
+ "base": {
+  "head": {
+   "fit": {
+    "mouth_width": 0.9,
+    "face_width": 2.15,
+    "jaw_width": 1.75,
+    "chin_width": 1.05,
+    "eye_chin": 1.97,
+    "eye_nose": 0.75,
+    "eye_seam": 1.1,
+    "eye_mouth": 1.22
+   },
+   "pose": {
+    "lid_lower": 0.0045,
+    "smile": 0.005,
+    "brow_outer": -0.0015,
+    "brow_inner": 0.001
+   },
+   "source": "gnm",
+   "scale": 1.12,
+   "eyes": 1.3,
+   "expression": {
+    "left_eye_region_000": 0.9,
+    "right_eye_region_000": 0.9,
+    "left_eye_region_001": 0.5,
+    "right_eye_region_001": 0.5
+   },
+   "mouth_gap": 0.0
+  },
+  "body": {
+   "source": "makehuman",
+   "age": 45,
+   "weight": 0.72,
+   "muscle": 0.3,
+   "height": 1.78
+  },
+  "eyes": "eyes"
+ },
+ "parts": {
+  "body": {
+   "voxel": 0.0013,
+   "topology": "wrap"
+  },
+  "eyes": {
+   "voxel": 0.0012
+  },
+  "hair": {
+   "color": "#3a2416",
+   "roughness": 0.65,
+   "shell": "body",
+   "offset": 0.0035,
+   "blend": 0.006,
+   "voxel": 0.001
+  },
+  "shirt": {
+   "shell": "body",
+   "offset": 0.008,
+   "color": [
+    0.12,
+    0.55,
+    0.55
+   ],
+   "roughness": 0.85,
+   "garment_blend": 0.05,
+   "garment": {
+    "close": 40,
+    "hang": 0.3,
+    "ease": 0.008,
+    "tube": {
+     "bottom": 0.85,
+     "taper": 0.45,
+     "taper_len": 0.4,
+     "folds": 2.5
+    },
+    "tube_ease": 0.01
+   },
+   "blend": 0.004
+  },
+  "shorts": {
+   "shell": "body",
+   "offset": 0.005,
+   "color": [
+    0.62,
+    0.55,
+    0.4
+   ],
+   "roughness": 0.9,
+   "garment": {
+    "close": 25,
+    "hang": 0.4,
+    "ease": 0.012,
+    "legs": {},
+    "tube_ease": 0.012
+   }
+  },
+  "socks": {
+   "shell": "body",
+   "offset": 0.004,
+   "color": [
+    0.93,
+    0.93,
+    0.9
+   ]
+  },
+  "collar": {
+   "color": [
+    0.12,
+    0.55,
+    0.55
+   ],
+   "roughness": 0.85
+  },
+  "buttons": {
+   "color": [
+    0.9,
+    0.9,
+    0.86
+   ],
+   "roughness": 0.4
+  },
+  "shoes": {
+   "shell": "body",
+   "offset": 0.008,
+   "color": "#5d6168",
+   "roughness": 0.8,
+   "blend": 0.01,
+   "garment": {
+    "close": 80,
+    "ease": 0.006
+   }
+  },
+  "soles": {
+   "color": "#e6e1d6",
+   "roughness": 0.9
+  },
+  "bag": {
+   "color": "#3b4a3c",
+   "roughness": 0.85,
+   "rig_bone": "Hips"
+  },
+  "strap": {
+   "color": "#2d2f33",
+   "roughness": 0.8,
+   "shell": "shirt",
+   "offset": 0.0045,
+   "blend": 0.003
+  },
+  "disc": {
+   "color": "#f07a1c",
+   "roughness": 0.45,
+   "rig_bone": "RightHand"
+  },
+  "discs": {
+   "color": "#d8e04a",
+   "roughness": 0.45,
+   "rig_bone": "Hips"
+  }
+ },
+ "paint": {
+  "stubble.L": {
+   "opacity": 0.65
+  },
+  "eye_gloss": {
+   "part": "eyes",
+   "roughness": 0.2,
+   "specular": 0.7
+  },
+  "hair_tone": {
+   "part": [
+    "hair"
+   ],
+   "color": "#24150b",
+   "opacity": 0.4,
+   "noise": {
+    "scale": 0.003,
+    "range": [
+     0.4,
+     0.65
+    ],
+    "stretch": {
+     "dir": [
+      -1,
+      0.6,
+      0.2
+     ],
+     "factor": 10
+    }
+   }
+  },
+  "outsole": {
+   "part": "soles",
+   "color": "#2a2a2c",
+   "roughness": 0.95,
+   "axis": {
+    "dir": [
+     0,
+     0,
+     -1
+    ],
+    "from": -0.001,
+    "to": 0.004
+   }
+  },
+  "laces.L": {
+   "part": "shoes",
+   "color": "#dcd6ca",
+   "roughness": 0.9,
+   "width": 0.011,
+   "soft": 0.002,
+   "path": [
+    {
+     "at": [
+      0.204,
+      -0.13,
+      0.07
+     ],
+     "dir": [
+      0,
+      -0.5,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.2,
+      -0.04,
+      0.1
+     ],
+     "dir": [
+      0,
+      -0.2,
+      1
+     ]
+    }
+   ]
+  },
+  "shoe_toecap.L": {
+   "part": "shoes",
+   "color": "#43464c",
+   "near": [
+    "shoe_toe.L"
+   ],
+   "within": -0.004,
+   "soft": 0.006
+  },
+  "shoe_accent.L": {
+   "part": "shoes",
+   "color": "#e8742a",
+   "opacity": 0.9,
+   "width": 0.006,
+   "soft": 0.002,
+   "path": [
+    {
+     "at": [
+      0.26,
+      -0.13,
+      0.035
+     ],
+     "dir": [
+      1,
+      0,
+      0.2
+     ]
+    },
+    {
+     "at": [
+      0.26,
+      -0.06,
+      0.06
+     ]
+    },
+    {
+     "at": [
+      0.25,
+      0.01,
+      0.07
+     ],
+     "dir": [
+      1,
+      0.3,
+      0
+     ]
+    }
+   ]
+  },
+  "bag_pocket_tone": {
+   "part": "bag",
+   "color": "#2f3b31",
+   "near": [
+    "bag_pocket"
+   ],
+   "within": 0.0,
+   "soft": 0.003
+  },
+  "disc_stamp": {
+   "part": "disc",
+   "color": "#f6b765",
+   "opacity": 0.6,
+   "width": 0.04,
+   "soft": 0.004,
+   "path": [
+    {
+     "at": [
+      -0.5693,
+      -0.3286,
+      0.9331
+     ],
+     "dir": [
+      -0.91,
+      -0.251,
+      0.331
+     ]
+    }
+   ],
+   "mask": []
+  },
+  "disc_rim_scuff": {
+   "part": "disc",
+   "color": "#b85a14",
+   "opacity": 0.6,
+   "cavity": "convex",
+   "radius": [
+    0.02,
+    0.006
+   ],
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.006,
+      "range": [
+       0.5,
+       0.7
+      ]
+     },
+     "blend": "multiply"
+    }
+   ]
+  },
+  "bag_disc0_colour": {
+   "part": "discs",
+   "color": "#d8e04a",
+   "near": [
+    "bag_disc0"
+   ],
+   "within": 0.0,
+   "soft": 0.001
+  },
+  "bag_disc1_colour": {
+   "part": "discs",
+   "color": "#e8433a",
+   "near": [
+    "bag_disc1"
+   ],
+   "within": 0.0,
+   "soft": 0.001
+  },
+  "bag_disc2_colour": {
+   "part": "discs",
+   "color": "#3a8fe0",
+   "near": [
+    "bag_disc2"
+   ],
+   "within": 0.0,
+   "soft": 0.001
+  },
+  "bag_disc3_colour": {
+   "part": "discs",
+   "color": "#f2f2ee",
+   "near": [
+    "bag_disc3"
+   ],
+   "within": 0.0,
+   "soft": 0.001
+  },
+  "bag_zip": {
+   "part": "bag",
+   "color": "#15181a",
+   "roughness": 0.5,
+   "width": 0.0025,
+   "soft": 0.001,
+   "path": [
+    {
+     "at": [
+      0.37,
+      -0.1,
+      0.875
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.37,
+      0.09,
+      0.875
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  "bag_flap_tone": {
+   "part": "bag",
+   "color": "#2b2f2c",
+   "near": [
+    "bag_flap",
+    "bag_rim"
+   ],
+   "within": 0.0,
+   "soft": 0.003
+  },
+  "hair_sides": {
+   "part": [
+    "hair"
+   ],
+   "color": "#7a5e4e",
+   "opacity": 0.75,
+   "axis": {
+    "dir": [
+     0,
+     0,
+     -1
+    ],
+    "from": -1.735,
+    "to": -1.665
+   },
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.0012,
+      "range": [
+       0.3,
+       0.7
+      ]
+     },
+     "blend": "multiply",
+     "weight": 0.4
+    }
+   ]
+  },
+  "hairline_front.L": {
+   "part": "body",
+   "color": "#4a3526",
+   "opacity": 0.85,
+   "width": 0.008,
+   "soft": 0.007,
+   "path": [
+    {
+     "at": [
+      0.0,
+      -0.1,
+      1.752
+     ],
+     "dir": [
+      0,
+      -1,
+      0.15
+     ]
+    },
+    {
+     "at": [
+      0.035,
+      -0.1,
+      1.749
+     ]
+    },
+    {
+     "at": [
+      0.058,
+      -0.1,
+      1.738
+     ],
+     "dir": [
+      0.4,
+      -1,
+      0.1
+     ]
+    },
+    {
+     "at": [
+      0.078,
+      -0.12,
+      1.72
+     ],
+     "dir": [
+      1,
+      -0.4,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.08,
+      -0.1,
+      1.68
+     ],
+     "dir": [
+      1,
+      -0.2,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.08,
+      -0.08,
+      1.64
+     ]
+    }
+   ],
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.0008,
+      "range": [
+       0.3,
+       0.7
+      ]
+     },
+     "blend": "multiply",
+     "weight": 0.6
+    }
+   ]
+  },
+  "hairline_nape.L": {
+   "part": "body",
+   "color": "#4a3526",
+   "opacity": 0.85,
+   "width": 0.008,
+   "soft": 0.007,
+   "path": [
+    {
+     "at": [
+      0.0,
+      0.05,
+      1.619
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.045,
+      0.05,
+      1.622
+     ]
+    },
+    {
+     "at": [
+      0.068,
+      0.02,
+      1.635
+     ],
+     "dir": [
+      0.7,
+      0.7,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.08,
+      0.0,
+      1.648
+     ]
+    }
+   ],
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.0008,
+      "range": [
+       0.3,
+       0.7
+      ]
+     },
+     "blend": "multiply",
+     "weight": 0.6
+    }
+   ]
+  }
+ },
+ "style": {
+  "sheet": "stylised_realist"
+ },
+ "symmetry": true,
+ "blend": 0.035,
+ "joints": {
+  "sleeve_end.L": {
+   "pos": [
+    0.285,
+    -0.016,
+    1.315
+   ],
+   "r": 0.01
+  },
+  "sleeve_hem.L": {
+   "pos": [
+    0.279,
+    -0.016,
+    1.322
+   ],
+   "r": 0.01
+  },
+  "strap_f0": {
+   "on": {
+    "at": [
+     0.17,
+     0.0,
+     1.06
+    ],
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_f1": {
+   "on": {
+    "at": [
+     0.09,
+     0.0,
+     1.16
+    ],
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_f2": {
+   "on": {
+    "at": [
+     0.01,
+     0.0,
+     1.26
+    ],
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_f3": {
+   "on": {
+    "at": [
+     -0.06,
+     0.0,
+     1.35
+    ],
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_f4": {
+   "on": {
+    "at": [
+     -0.11,
+     0.0,
+     1.43
+    ],
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_sf": {
+   "on": {
+    "at": [
+     -0.13,
+     -0.04,
+     1.45
+    ],
+    "dir": [
+     0,
+     -0.7,
+     0.7
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_top": {
+   "on": {
+    "at": [
+     -0.13,
+     0.0,
+     1.45
+    ],
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_sb": {
+   "on": {
+    "at": [
+     -0.13,
+     0.04,
+     1.45
+    ],
+    "dir": [
+     0,
+     0.7,
+     0.7
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_b0": {
+   "on": {
+    "at": [
+     -0.1,
+     0.0,
+     1.4
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_b1": {
+   "on": {
+    "at": [
+     -0.05,
+     0.0,
+     1.33
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_b2": {
+   "on": {
+    "at": [
+     0.03,
+     0.0,
+     1.23
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_b3": {
+   "on": {
+    "at": [
+     0.11,
+     0.0,
+     1.12
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_b4": {
+   "on": {
+    "at": [
+     0.18,
+     0.0,
+     1.04
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "part": "shirt"
+   },
+   "r": 0.024
+  },
+  "strap_end_f": {
+   "pos": [
+    0.27,
+    -0.09,
+    0.975
+   ],
+   "r": 0.006
+  },
+  "strap_end_b": {
+   "pos": [
+    0.27,
+    0.08,
+    0.975
+   ],
+   "r": 0.006
+  }
+ },
+ "bones": {
+  "sleeve.L": {
+   "a": "shoulder.L",
+   "b": "sleeve_end.L",
+   "r_a": 0.1,
+   "r_b": 0.085,
+   "part": "shirt"
+  },
+  "sleeve_cuff.L": {
+   "a": "sleeve_hem.L",
+   "b": "sleeve_end.L",
+   "r_a": 0.068,
+   "r_b": 0.068,
+   "part": "shirt",
+   "layer": 1,
+   "blend": 0.003
+  },
+  "strap_00": {
+   "a": "strap_f0",
+   "b": "strap_f1",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_01": {
+   "a": "strap_f1",
+   "b": "strap_f2",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_02": {
+   "a": "strap_f2",
+   "b": "strap_f3",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_03": {
+   "a": "strap_f3",
+   "b": "strap_f4",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_04": {
+   "a": "strap_f4",
+   "b": "strap_sf",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_05": {
+   "a": "strap_sf",
+   "b": "strap_top",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_06": {
+   "a": "strap_top",
+   "b": "strap_sb",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_07": {
+   "a": "strap_sb",
+   "b": "strap_b0",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_08": {
+   "a": "strap_b0",
+   "b": "strap_b1",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_09": {
+   "a": "strap_b1",
+   "b": "strap_b2",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_10": {
+   "a": "strap_b2",
+   "b": "strap_b3",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_11": {
+   "a": "strap_b3",
+   "b": "strap_b4",
+   "r_a": 0.024,
+   "r_b": 0.024,
+   "part": "strap",
+   "group": "strap_region"
+  },
+  "strap_free_f": {
+   "a": "strap_end_f",
+   "b": "strap_f0",
+   "r_a": 0.006,
+   "r_b": 0.006,
+   "flat": [
+    3.0,
+    0.6
+   ],
+   "up": [
+    1,
+    0,
+    0
+   ],
+   "part": "strap",
+   "layer": 1,
+   "blend": 0.004
+  },
+  "strap_free_b": {
+   "a": "strap_b4",
+   "b": "strap_end_b",
+   "r_a": 0.006,
+   "r_b": 0.006,
+   "flat": [
+    3.0,
+    0.6
+   ],
+   "up": [
+    1,
+    0,
+    0
+   ],
+   "part": "strap",
+   "layer": 1,
+   "blend": 0.004
+  }
+ },
+ "blobs": {
+  "shirt_torso": {
+   "at": [
+    0,
+    0,
+    1.2025
+   ],
+   "shape": "box",
+   "size": [
+    0.21,
+    0.2,
+    0.3125
+   ],
+   "part": "shirt"
+  },
+  "shorts_region": {
+   "at": [
+    0,
+    0,
+    0.725
+   ],
+   "shape": "box",
+   "size": [
+    0.26,
+    0.22,
+    0.185
+   ],
+   "part": "shorts"
+  },
+  "sock.L": {
+   "at": [
+    0.2,
+    0.0,
+    0.135
+   ],
+   "shape": "box",
+   "size": [
+    0.07,
+    0.1,
+    0.065
+   ],
+   "part": "socks"
+  },
+  "shirt_yoke": {
+   "at": [
+    0,
+    0.0324,
+    1.3486
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.2,
+    0.2,
+    0.17
+   ],
+   "rot": [
+    20,
+    0,
+    0
+   ],
+   "part": "shirt"
+  },
+  "shirt_front": {
+   "at": [
+    0,
+    -0.11,
+    0.95
+   ],
+   "shape": "box",
+   "size": [
+    0.19,
+    0.11,
+    0.075
+   ],
+   "round": 0.05,
+   "part": "shirt"
+  },
+  "shirt_tail": {
+   "at": [
+    0,
+    0.11,
+    0.95
+   ],
+   "shape": "box",
+   "size": [
+    0.19,
+    0.11,
+    0.09
+   ],
+   "round": 0.06,
+   "part": "shirt"
+  },
+  "shoe_region.L": {
+   "at": [
+    0.203,
+    -0.08,
+    0.035
+   ],
+   "shape": "box",
+   "size": [
+    0.08,
+    0.18,
+    0.065
+   ],
+   "rot": [
+    -10,
+    0,
+    0
+   ],
+   "part": "shoes"
+  },
+  "shoe_toe.L": {
+   "at": [
+    0.203,
+    -0.183,
+    0.03
+   ],
+   "size": [
+    0.056,
+    0.058,
+    0.036
+   ],
+   "part": "shoes",
+   "layer": 1,
+   "blend": 0.03
+  },
+  "shoe_heel.L": {
+   "at": [
+    0.199,
+    0.028,
+    0.045
+   ],
+   "size": [
+    0.042,
+    0.035,
+    0.045
+   ],
+   "part": "shoes",
+   "layer": 1,
+   "blend": 0.02
+  },
+  "sole_fore.L": {
+   "at": [
+    0.205,
+    -0.137,
+    0.006
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.068,
+    0.11,
+    0.022
+   ],
+   "round": 0.013,
+   "rot": [
+    -4,
+    0,
+    0
+   ],
+   "part": "soles",
+   "blend": 0.03
+  },
+  "sole_heel.L": {
+   "at": [
+    0.199,
+    0.0,
+    0.008
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.058,
+    0.072,
+    0.024
+   ],
+   "round": 0.013,
+   "part": "soles",
+   "blend": 0.03
+  },
+  "shoe_last.L": {
+   "at": [
+    0.203,
+    -0.07,
+    0.035
+   ],
+   "size": [
+    0.056,
+    0.11,
+    0.05
+   ],
+   "rot": [
+    -12,
+    0,
+    0
+   ],
+   "part": "shoes",
+   "layer": 1,
+   "blend": 0.03
+  },
+  "bag_body": {
+   "at": [
+    0.29,
+    -0.005,
+    0.83
+   ],
+   "shape": "box",
+   "size": [
+    0.06,
+    0.13,
+    0.14
+   ],
+   "round": 0.045,
+   "rot": [
+    0,
+    4,
+    0
+   ],
+   "part": "bag",
+   "lumpy": {
+    "amount": 0.0009,
+    "scale": 0.07
+   }
+  },
+  "bag_pocket": {
+   "at": [
+    0.345,
+    -0.01,
+    0.8
+   ],
+   "shape": "box",
+   "size": [
+    0.022,
+    0.1,
+    0.085
+   ],
+   "round": 0.02,
+   "rot": [
+    0,
+    4,
+    0
+   ],
+   "part": "bag",
+   "layer": 1,
+   "blend": 0.006
+  },
+  "disc": {
+   "at": [
+    -0.5584,
+    -0.3256,
+    0.9291
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.105,
+    0.105,
+    0.0075
+   ],
+   "round": 0.007,
+   "rot": [
+    70.69,
+    -0.0,
+    -74.58
+   ],
+   "part": "disc"
+  },
+  "disc_dome": {
+   "at": [
+    -0.5616,
+    -0.3265,
+    0.9302
+   ],
+   "size": [
+    0.088,
+    0.088,
+    0.0045
+   ],
+   "rot": [
+    70.69,
+    -0.0,
+    -74.58
+   ],
+   "part": "disc",
+   "layer": 1,
+   "blend": 0.01
+  },
+  "shorts_gusset": {
+   "at": [
+    0,
+    -0.035,
+    0.845
+   ],
+   "size": [
+    0.075,
+    0.085,
+    0.055
+   ],
+   "part": "shorts",
+   "layer": 1,
+   "blend": 0.035
+  },
+  "bag_puff": {
+   "at": [
+    0.29,
+    -0.005,
+    0.82
+   ],
+   "size": [
+    0.066,
+    0.125,
+    0.125
+   ],
+   "part": "bag",
+   "layer": 1,
+   "blend": 0.04
+  },
+  "bag_rim": {
+   "at": [
+    0.29,
+    -0.005,
+    0.965
+   ],
+   "shape": "box",
+   "size": [
+    0.062,
+    0.132,
+    0.008
+   ],
+   "round": 0.007,
+   "rot": [
+    0,
+    4,
+    0
+   ],
+   "part": "bag",
+   "layer": 1,
+   "blend": 0.004
+  },
+  "bag_hole": {
+   "at": [
+    0.29,
+    -0.005,
+    0.975
+   ],
+   "shape": "box",
+   "size": [
+    0.048,
+    0.115,
+    0.03
+   ],
+   "round": 0.01,
+   "rot": [
+    0,
+    4,
+    0
+   ],
+   "op": "subtract",
+   "part": "bag",
+   "layer": 2,
+   "blend": 0.004
+  },
+  "bag_flap": {
+   "at": [
+    0.356,
+    -0.005,
+    0.925
+   ],
+   "shape": "box",
+   "size": [
+    0.01,
+    0.125,
+    0.05
+   ],
+   "round": 0.009,
+   "rot": [
+    0,
+    8,
+    0
+   ],
+   "part": "bag",
+   "layer": 1,
+   "blend": 0.005
+  },
+  "bag_disc0": {
+   "at": [
+    0.262,
+    -0.005,
+    0.895
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.104,
+    0.104,
+    0.0065
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "discs"
+  },
+  "bag_disc1": {
+   "at": [
+    0.279,
+    0.007,
+    0.901
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.104,
+    0.104,
+    0.0065
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "discs"
+  },
+  "bag_disc2": {
+   "at": [
+    0.296,
+    -0.005,
+    0.907
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.104,
+    0.104,
+    0.0065
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "discs"
+  },
+  "bag_disc3": {
+   "at": [
+    0.313,
+    0.007,
+    0.895
+   ],
+   "shape": "cylinder",
+   "size": [
+    0.104,
+    0.104,
+    0.0065
+   ],
+   "round": 0.006,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "part": "discs"
+  },
+  "hair_cap": {
+   "at": [
+    0,
+    -0.03,
+    1.705
+   ],
+   "size": [
+    0.13,
+    0.165,
+    0.125
+   ],
+   "part": "hair"
+  },
+  "hair_burn.L": {
+   "at": [
+    0.081,
+    -0.074,
+    1.656
+   ],
+   "size": [
+    0.014,
+    0.014,
+    0.03
+   ],
+   "part": "hair"
+  },
+  "hair_brow": {
+   "at": [
+    0,
+    -0.205,
+    1.665
+   ],
+   "shape": "box",
+   "size": [
+    0.075,
+    0.08,
+    0.087
+   ],
+   "round": 0.045,
+   "rot": [
+    -12,
+    0,
+    0
+   ],
+   "op": "subtract",
+   "blend": 0.006,
+   "part": "hair"
+  },
+  "hair_ear.L": {
+   "at": [
+    0.088,
+    -0.033,
+    1.632
+   ],
+   "size": [
+    0.036,
+    0.044,
+    0.05
+   ],
+   "op": "subtract",
+   "blend": 0.006,
+   "part": "hair"
+  },
+  "hair_cheek.L": {
+   "at": [
+    0.095,
+    -0.115,
+    1.6
+   ],
+   "shape": "box",
+   "size": [
+    0.045,
+    0.045,
+    0.045
+   ],
+   "round": 0.02,
+   "rot": [
+    0,
+    0,
+    20
+   ],
+   "op": "subtract",
+   "blend": 0.006,
+   "part": "hair"
+  },
+  "hair_face.L": {
+   "at": [
+    0.09,
+    -0.169,
+    1.663
+   ],
+   "shape": "box",
+   "size": [
+    0.05,
+    0.06,
+    0.12
+   ],
+   "rot": [
+    26.6,
+    0,
+    0
+   ],
+   "op": "subtract",
+   "blend": 0.006,
+   "part": "hair"
+  },
+  "hair_neck": {
+   "at": [
+    0,
+    0.08,
+    1.538
+   ],
+   "shape": "box",
+   "size": [
+    0.13,
+    0.09,
+    0.06
+   ],
+   "round": 0.02,
+   "op": "subtract",
+   "blend": 0.008,
+   "part": "hair"
+  },
+  "hair_neck_side.L": {
+   "at": [
+    0.08,
+    0.045,
+    1.585
+   ],
+   "size": [
+    0.045,
+    0.065,
+    0.045
+   ],
+   "rot": [
+    0,
+    30,
+    0
+   ],
+   "op": "subtract",
+   "blend": 0.008,
+   "part": "hair"
+  },
+  "hair_mass": {
+   "at": [
+    -0.006,
+    -0.064,
+    1.764
+   ],
+   "size": [
+    0.074,
+    0.106,
+    0.031
+   ],
+   "rot": [
+    -13,
+    0,
+    6
+   ],
+   "layer": 1,
+   "blend": 0.024,
+   "part": "hair"
+  }
+ },
+ "story": {
+  "summary": "Dave, 34, plays the local disc golf course every Saturday morning; a friendly regular who knows every basket",
+  "age": 34,
+  "climate": "sunny park course, dusty fairways, dewy grass in the morning",
+  "use": "walks 18 holes, digs discs out of bushes, sits on the bag between holes",
+  "directions": {
+   "sun": [
+    0.3,
+    -0.5,
+    0.8
+   ]
+  },
+  "events": [
+   "his favourite orange driver has a scuffed rim from hitting trees",
+   "the bag's bottom is grass-stained from being set down",
+   "sneakers dusty from the fairway"
+  ]
+ },
+ "strokes": {
+  "brow_mass.L": {
+   "op": "clay",
+   "width": 0.01,
+   "depth": 0.0012,
+   "path": [
+    {
+     "at": "lm_brow_inner.L",
+     "dir": [
+      0,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_brow_mid.L"
+    },
+    {
+     "at": "lm_brow_outer.L",
+     "offset": [
+      0,
+      0,
+      -0.002
+     ],
+     "dir": [
+      0.5,
+      -1,
+      0.2
+     ]
+    }
+   ]
+  },
+  "fold_pit_front.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.024,
+   "depth": [
+    0.0008800000000000001,
+    0.0035200000000000006,
+    0.00066
+   ],
+   "path": [
+    {
+     "at": [
+      0.17,
+      -0.09,
+      1.31
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.14,
+      -0.115,
+      1.25
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      -0.125,
+      1.2
+     ]
+    }
+   ]
+  },
+  "fold_pit_back.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.024,
+   "depth": [
+    0.0008800000000000001,
+    0.0035200000000000006,
+    0.00066
+   ],
+   "path": [
+    {
+     "at": [
+      0.17,
+      0.09,
+      1.31
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.14,
+      0.12,
+      1.24
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      0.13,
+      1.17
+     ]
+    }
+   ]
+  },
+  "fold_sleeve.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.016,
+   "depth": [
+    0.0035200000000000006,
+    0.0008800000000000001
+   ],
+   "path": [
+    {
+     "at": [
+      0.23,
+      -0.05,
+      1.36
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.26,
+      -0.055,
+      1.33
+     ]
+    }
+   ]
+  },
+  "fold_waist.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.022,
+   "depth": [
+    0.0011,
+    0.00396
+   ],
+   "path": [
+    {
+     "at": [
+      0.19,
+      -0.02,
+      1.02
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.18,
+      -0.06,
+      0.95
+     ]
+    }
+   ]
+  },
+  "strap_press_front": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.028,
+   "depth": 0.0035,
+   "path": [
+    {
+     "at": [
+      0.17,
+      0.0,
+      1.06
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      0.0,
+      1.16
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.01,
+      0.0,
+      1.26
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      -0.06,
+      0.0,
+      1.35
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      -0.11,
+      0.0,
+      1.43
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ]
+  },
+  "strap_press_back": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.028,
+   "depth": 0.0035,
+   "path": [
+    {
+     "at": [
+      -0.13,
+      0.0,
+      1.44
+     ],
+     "dir": [
+      0,
+      0.3,
+      1
+     ]
+    },
+    {
+     "at": [
+      -0.1,
+      0.0,
+      1.4
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      -0.05,
+      0.0,
+      1.33
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.03,
+      0.0,
+      1.23
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.11,
+      0.0,
+      1.12
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.18,
+      0.0,
+      1.04
+     ],
+     "dir": [
+      0,
+      1,
+      0
+     ]
+    }
+   ]
+  },
+  "fold_drape0.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.02,
+   "depth": [
+    0.0004,
+    0.0028,
+    0.0012,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      0.07,
+      0,
+      1.27
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.07500000000000001,
+      0,
+      1.2
+     ]
+    },
+    {
+     "at": [
+      0.085,
+      0,
+      1.1
+     ]
+    },
+    {
+     "at": [
+      0.095,
+      0,
+      1.0
+     ]
+    }
+   ]
+  },
+  "fold_drape1.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.02,
+   "depth": [
+    0.0004,
+    0.0028,
+    0.0012,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      0.12,
+      0,
+      1.27
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.125,
+      0,
+      1.2
+     ]
+    },
+    {
+     "at": [
+      0.14,
+      0,
+      1.1
+     ]
+    },
+    {
+     "at": [
+      0.15000000000000002,
+      0,
+      1.0
+     ]
+    }
+   ]
+  },
+  "fold_drape_mid": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.022,
+   "depth": [
+    0.0003,
+    0.002,
+    0.0008
+   ],
+   "path": [
+    {
+     "at": [
+      -0.02,
+      0,
+      1.24
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      -0.03,
+      0,
+      1.13
+     ]
+    },
+    {
+     "at": [
+      -0.02,
+      0,
+      1.02
+     ]
+    }
+   ]
+  },
+  "fold_strap0": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.012,
+   "depth": [
+    0.0003,
+    0.002,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      0.020000000000000004,
+      0,
+      1.175
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.05,
+      0,
+      1.21
+     ]
+    },
+    {
+     "at": [
+      0.08,
+      0,
+      1.2449999999999999
+     ]
+    }
+   ]
+  },
+  "fold_strap1": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.012,
+   "depth": [
+    0.0003,
+    0.002,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      -0.07,
+      0,
+      1.2950000000000002
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      -0.04,
+      0,
+      1.33
+     ]
+    },
+    {
+     "at": [
+      -0.010000000000000002,
+      0,
+      1.365
+     ]
+    }
+   ]
+  },
+  "fold_cuff.L": {
+   "op": "crease",
+   "part": "shirt",
+   "width": 0.01,
+   "depth": [
+    0.0003,
+    0.0025,
+    0.0003
+   ],
+   "path": [
+    {
+     "at": [
+      0.25,
+      -0.06,
+      1.345
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.27,
+      -0.055,
+      1.33
+     ]
+    },
+    {
+     "at": [
+      0.29,
+      -0.03,
+      1.31
+     ]
+    }
+   ]
+  },
+  "hair_part": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.0035,
+   "profile": "sharp",
+   "depth": [
+    0.0025,
+    0.003,
+    0.0012
+   ],
+   "path": [
+    {
+     "at": [
+      0.036,
+      -0.145,
+      1.77
+     ],
+     "dir": [
+      0.2,
+      -0.3,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.039,
+      -0.08,
+      1.795
+     ]
+    },
+    {
+     "at": [
+      0.04,
+      -0.01,
+      1.785
+     ]
+    }
+   ]
+  },
+  "hair_clump0": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.007,
+   "profile": "soft",
+   "depth": [
+    0.0005,
+    0.0022,
+    0.0018,
+    0.0004
+   ],
+   "path": [
+    {
+     "at": [
+      0.03,
+      -0.13,
+      1.8
+     ],
+     "dir": [
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.0,
+      -0.11800000000000001,
+      1.8
+     ]
+    },
+    {
+     "at": [
+      -0.04,
+      -0.1,
+      1.79
+     ]
+    },
+    {
+     "at": [
+      -0.07,
+      -0.08,
+      1.76
+     ],
+     "dir": [
+      -0.7,
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "hair_clump1": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.007,
+   "profile": "soft",
+   "depth": [
+    0.0005,
+    0.0022,
+    0.0018,
+    0.0004
+   ],
+   "path": [
+    {
+     "at": [
+      0.03,
+      -0.1,
+      1.8
+     ],
+     "dir": [
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.0,
+      -0.07800000000000001,
+      1.8
+     ]
+    },
+    {
+     "at": [
+      -0.04,
+      -0.060000000000000005,
+      1.79
+     ]
+    },
+    {
+     "at": [
+      -0.07,
+      -0.04,
+      1.76
+     ],
+     "dir": [
+      -0.7,
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "hair_clump2": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.007,
+   "profile": "soft",
+   "depth": [
+    0.0005,
+    0.0022,
+    0.0018,
+    0.0004
+   ],
+   "path": [
+    {
+     "at": [
+      0.03,
+      -0.07,
+      1.8
+     ],
+     "dir": [
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.0,
+      -0.04300000000000001,
+      1.8
+     ]
+    },
+    {
+     "at": [
+      -0.04,
+      -0.02500000000000001,
+      1.79
+     ]
+    },
+    {
+     "at": [
+      -0.07,
+      -0.0050000000000000044,
+      1.76
+     ],
+     "dir": [
+      -0.7,
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "hair_clump3": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.007,
+   "profile": "soft",
+   "depth": [
+    0.0005,
+    0.0022,
+    0.0018,
+    0.0004
+   ],
+   "path": [
+    {
+     "at": [
+      0.03,
+      -0.04,
+      1.8
+     ],
+     "dir": [
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.0,
+      -0.008,
+      1.8
+     ]
+    },
+    {
+     "at": [
+      -0.04,
+      0.009999999999999998,
+      1.79
+     ]
+    },
+    {
+     "at": [
+      -0.07,
+      0.030000000000000002,
+      1.76
+     ],
+     "dir": [
+      -0.7,
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "hair_clump4": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.007,
+   "profile": "soft",
+   "depth": [
+    0.0005,
+    0.0022,
+    0.0018,
+    0.0004
+   ],
+   "path": [
+    {
+     "at": [
+      0.03,
+      -0.01,
+      1.8
+     ],
+     "dir": [
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "at": [
+      0.0,
+      0.022,
+      1.8
+     ]
+    },
+    {
+     "at": [
+      -0.04,
+      0.039999999999999994,
+      1.79
+     ]
+    },
+    {
+     "at": [
+      -0.07,
+      0.06,
+      1.76
+     ],
+     "dir": [
+      -0.7,
+      0.2,
+      0.7
+     ]
+    }
+   ]
+  },
+  "hair_comb0.L": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.004,
+   "profile": "soft",
+   "depth": [
+    0.0002,
+    0.0007,
+    0.0002
+   ],
+   "path": [
+    {
+     "at": [
+      0.1,
+      -0.1,
+      1.7
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.1,
+      -0.03,
+      1.7049999999999998
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      0.03,
+      1.7
+     ]
+    }
+   ]
+  },
+  "hair_comb1.L": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.004,
+   "profile": "soft",
+   "depth": [
+    0.0002,
+    0.0007,
+    0.0002
+   ],
+   "path": [
+    {
+     "at": [
+      0.1,
+      -0.09000000000000001,
+      1.72
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.1,
+      -0.03,
+      1.7249999999999999
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      0.03,
+      1.72
+     ]
+    }
+   ]
+  },
+  "hair_comb2.L": {
+   "op": "crease",
+   "part": "hair",
+   "width": 0.004,
+   "profile": "soft",
+   "depth": [
+    0.0002,
+    0.0007,
+    0.0002
+   ],
+   "path": [
+    {
+     "at": [
+      0.1,
+      -0.08,
+      1.74
+     ],
+     "dir": [
+      1,
+      0,
+      0
+     ]
+    },
+    {
+     "at": [
+      0.1,
+      -0.03,
+      1.7449999999999999
+     ]
+    },
+    {
+     "at": [
+      0.09,
+      0.03,
+      1.74
+     ]
+    }
+   ]
+  },
+  "nose_tip_groove.L": {
+   "op": "crease",
+   "width": 0.0035,
+   "profile": "soft",
+   "depth": [
+    0.0002,
+    0.0007,
+    0.0002
+   ],
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.009,
+      0.004,
+      0.006
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.011,
+      0.006,
+      -0.002
+     ]
+    },
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.008,
+      0.006,
+      -0.009
+     ],
+     "dir": [
+      0.5,
+      -1,
+      -0.5
+     ]
+    }
+   ]
+  },
+  "nose_plane_L": {
+   "op": "flatten",
+   "width": 0.007,
+   "depth": 0.0007,
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.006,
+      0.002,
+      0.001
+     ],
+     "dir": [
+      0.7,
+      -0.7,
+      -0.1
+     ]
+    }
+   ]
+  },
+  "nose_plane_R": {
+   "op": "flatten",
+   "width": 0.007,
+   "depth": 0.0007,
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      -0.006,
+      0.002,
+      0.001
+     ],
+     "dir": [
+      -0.7,
+      -0.7,
+      -0.1
+     ]
+    }
+   ]
+  }
+ },
+ "kits": {
+  "polo": {
+   "type": "neckline",
+   "shirt": "shirt",
+   "part": "collar",
+   "placket": {
+    "buttons_part": "buttons",
+    "spacing": 0.042,
+    "first": 0.015,
+    "open": 2
+   }
+  }
+ }
+}
