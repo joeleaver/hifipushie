@@ -324,12 +324,12 @@ def apply(T):
         sw = s + 1.6 * L * (warp - 0.5)
         # ribs and couloirs piecewise planar across the face: straight flanks between sharp crests and V-shaped couloirs
         # (smooth noise ribs read as melted wax dripping down every face)
-        ridged = _chisel(sw / L, q / (10 * L), 211)
+        ridged = _chisel(sw / L, q / (3.5 * L), 211)
         # full strength on cliffs; a mountainside of 40-50 deg gets a third (it had raindrop dimples all over)
         # the shift is smooth across the whole face and a little past its lip and foot, and the ground is resampled, not
         # cross-faded: fading the shifted face into the unshifted by the local slope bevelled every lip and foot into a
         # 50 deg ramp (a 21 m sea cliff at 70 deg became 9 m of face under a 12 m drape)
-        A0 = b_amt * max(min(0.25 * crag, 0.06 * med_h), 1.0 * T.cell)  # (detail inside the big structure)
+        A0 = b_amt * max(min(0.15 * crag, 0.035 * med_h), 1.0 * T.cell)  # (detail inside the big structure)
         sig = max(1.0, 0.6 * A0 / T.cell)
         sb = ndimage.gaussian_filter(steep, sig)
         zone_s = np.clip(1.5 * sb, 0, 1) * ~keep_s
@@ -346,6 +346,8 @@ def apply(T):
         up_room = np.maximum(top - Hb, 0) / gb
         down_room = np.maximum(Hb - foot, 0) / gb
         delta = np.clip(delta, -0.8 * down_room - T.cell, 0.7 * up_room)
+        # a crest at least a couple of cells wide (a chisel knot is a point: at a cliff's foot it stood as a thin spire)
+        delta = ndimage.gaussian_filter(delta, 1.2)
         gullies = (big < -0.35 * Ab_med) & face
         # sample the ground a horizontal distance delta uphill (+: higher ground brought out: a buttress)
         yy = (T.Y - T.ys[0] + ny * delta) / T.cell
@@ -490,7 +492,9 @@ def measure(T):
     mean = np.arctan2(by, bx)
     d = np.abs((asp - mean + np.pi) % (2 * np.pi) - np.pi)
     cliff = (slope > 60) & np.isnan(T.water)
-    across = float(np.median(2 * ndimage.distance_transform_edt(cliff)[cliff])) if cliff.sum() > 20 else None
+    # (across the whole face: beds and sills under 60 deg cut the cliff mask into strips 2 cells wide at any cell)
+    cl = ndimage.binary_closing(cliff, iterations=3) & np.isnan(T.water)
+    across = float(np.median(2 * ndimage.distance_transform_edt(cl)[cl])) if cl.sum() > 20 else None
     # closed hollows on the faces (round pits: water would pool on a cliff) and how rounded the faces are (median
     # |laplacian| x cell: planar facets with creases are low, noise lumps high)
     from skimage.morphology import reconstruction

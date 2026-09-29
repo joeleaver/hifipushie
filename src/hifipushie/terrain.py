@@ -606,6 +606,7 @@ class Terrain:
             shift = 0.12 * (2 * noise.fbm(pts, 500 * self.k, 2, seed=71).reshape(self.X.shape) - 1)
             if b.get("_zones_t"):  # (a designed profile's cliffs are where it put them: the hard band too)
                 shift = np.zeros(self.X.shape)
+                b["t_prof"] = np.where(b["wall"], t, np.nan)  # (the bands are re-cut on the final ground for cover)
             if b.get("_zones_t"):  # each band of the designer's profile as a zone ("valley.scree"), edges ragged: scree
                 # runs down in tongues into the forest below it, the treeline ragged under the cliffs
                 tong = noise.fbm(np.c_[b["arc"].ravel() / max(60 * self.k, 4 * self.cell),
@@ -906,6 +907,7 @@ class Terrain:
                     u = np.linspace(0, 1, len(path))
                     hs = hs + proud * relief * np.sin(np.pi * np.clip(u * 1.3, 0, 1)) ** 0.7 * (1 - u)
                     ij = np.round((path[:, ::-1] - [self.ys[0], self.xs[0]]) / self.cell).astype(int)
+                    ij = np.clip(ij, 0, [len(self.ys) - 1, len(self.xs) - 1])  # (a ridge wandering past the frame)
                     ok = ~high_fix[ij[:, 0], ij[:, 1]]
                     ok[:3] = False  # leave the crest itself to the ridge
                     m[ij[ok, 0], ij[ok, 1]] = True
@@ -1203,13 +1205,21 @@ class Terrain:
         x = u - u_d  # across the dam: - upstream (lake side), + downstream
         wob = noise.fbm(np.c_[self.P, np.full(len(self.P), 91.0)], max(0.3 * Wd, 3 * self.cell), 2,
                         seed=int(xy[0] * 7 + xy[1]) % 997).reshape(self.X.shape)
+        # upstream the lake's own bank from its bed up to the crest; downstream a face falling to the valley floor at a
+        # moraine's (22 deg) or a rock step's (58 deg) slope, wherever that floor is (a profile that ended at the lake's
+        # level left a 300 m plateau at lake level ending in a 50 m scarp)
         if kind == "moraine":  # rounded, its crest hummocky
-            prof = np.clip(1 - (x / Wd) ** 2, 0, 1) ** 0.8
-            z = level - 1.0 + (fb + 1.0) * prof + 0.35 * fb * (wob - 0.5) * prof
+            up = np.clip(1 + x / Wd, 0, 1)
+            top = crest + 0.35 * fb * (wob - 0.5)
+            z = np.where(x < 0, level - 1.0 + (top - level + 1.0) * np.sin(0.5 * np.pi * up) ** 1.3,
+                         top - 0.25 * fb * np.clip(x / (0.3 * Wd), 0, 1) ** 2
+                         - np.tan(math.radians(22)) * np.maximum(x - 0.3 * Wd, 0))
+            z = np.where(x < -Wd, -np.inf, z)
         else:  # a rock step: 1:3 up from the lake, a flattish top, then a steep face down to the floor below
             up = np.clip(1 + x / Wd, 0, 1)
             z = np.where(x < 0, level - 1.0 + (fb + 1.0) * up, crest - np.tan(math.radians(58)) * np.maximum(x - 0.25 * Wd, 0))
             z = z + 0.25 * fb * (wob - 0.5)
+            z = np.where(x < -Wd, -np.inf, z)
         # the spillway: where the river crosses, or the crest line's lowest ground (the water leaves over it)
         line = (np.abs(x) < max(self.cell, 0.1 * Wd)) & (np.abs(s) < 4 * r)
         if riv is not None:
@@ -1223,10 +1233,11 @@ class Terrain:
         # a channel through the dam from the lake's level, falling through it (a moraine's in a gentle cut, a rock
         # bar's down its face in rapids)
         dn = np.abs((self.X - sp[0]) * nrm[0] + (self.Y - sp[1]) * nrm[1])
-        notch = smoothstep(notch_w / 2 + 3 * self.cell, notch_w / 2, dn) * (x > -Wd)
         grade = 0.08 if kind == "moraine" else 0.5
         z_ch = level + 0.1 - grade * np.maximum(x, 0)
-        z = np.where(notch > 0, z * (1 - notch) + np.minimum(z, z_ch) * notch, z)
+        # the cut's sides slope back at ~30 deg (a moraine's) or 60 (rock), not a vertical slot
+        side = math.tan(math.radians(30 if kind == "moraine" else 60))
+        z = np.where(x > -Wd, np.minimum(z, z_ch + side * np.maximum(dn - notch_w / 2, 0)), z)
         on = (np.abs(x) < 2.5 * Wd) & (z > self.H) & (np.abs(s) < 5 * r)
         self.H = np.where(on, z, self.H)
         # the lake side of the dam is the lake's own bank: dig back to the lake where the bowl was (the dam's inner
@@ -1510,7 +1521,7 @@ class Terrain:
                        f"trend ({self.ground_before:.2f} m before the undulation, swales and hummocks; plaster-smooth "
                        f"ground is under ~0.1 m). \"ground\": {{\"undulation\", \"swales\", \"hummocks\": 0..2}} tunes it")
         rk = terrain_rock.measure(self)
-        if rk:
+        if rk and rk["face_km2"] > 0.005:  # (0.2 ha of faces gave "22472 pits per km2": noise)
             out.append(f"rock faces (measured): {rk['face_km2'] * 100:.1f} ha over 45 deg; {100 * rk['turned']:.0f}% of it "
                        f"turned over 25 deg from the face's line (buttress and couloir sides; a smooth face is ~0%); "
                        f"{rk['pits_km2']:.0f} closed pits per km2 (round hollows: rock breaks in planes, not dimples), "
@@ -2066,6 +2077,9 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
     col = col.reshape(-1, 3)
     col = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
     inst = design.trees(T)  # the same instances the export writes
+    # (hedge shrubs: the views draw each hedge as one continuous mass instead: strings of balls read as beads)
+    shrub_l = [k for k, v in getattr(T, "tree_layers", {}).items() if v[1] == "shrub"]
+    inst = inst[~np.isin(inst[:, 3], shrub_l)] if shrub_l else inst
     wet = ~np.isnan(Wt)
     wv = verts.copy()
     if wet.any():
@@ -2083,12 +2097,18 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
     # stone walls and fences (below the grid): their lines on the ground, for the views' stand-ins
     lw_pts, lw_piece, lw_info = [], [], []
     for F in getattr(T, "features", {}).values():
-        if not (F.get("wall") or F.get("fence")):
+        hedge = F["type"] == "hedge"
+        if not (F.get("wall") or F.get("fence") or hedge):
             continue
         for xy in F["pieces"]:
-            lw_pts.append(np.c_[xy, T.sample(xy)])
+            tg = np.gradient(xy, axis=0)
+            tg /= np.linalg.norm(tg, axis=1, keepdims=True) + 1e-9
+            nr = np.c_[-tg[:, 1], tg[:, 0]] * 0.5 * float(F["width"])
+            # the ground under each side (a wall's foot follows it on a slope: one height stood as a slab over the drop)
+            lw_pts.append(np.c_[xy, T.sample(xy), T.sample(xy + nr), T.sample(xy - nr)])
             lw_piece.append(np.full(len(xy), len(lw_info)))
-            lw_info.append([float(F.get("height", 1.2)), float(F["width"]), 1.0 if F.get("fence") else 0.0])
+            lw_info.append([float(F.get("height") or (2.2 if hedge else 1.2)), float(F["width"]),
+                            2.0 if hedge else 1.0 if F.get("fence") else 0.0])
     extra = {}
     if lw_info:
         extra = {"lw_pts": np.vstack(lw_pts).astype(np.float32), "lw_piece": np.concatenate(lw_piece).astype(np.int32),
@@ -2133,8 +2153,10 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
         near = np.hypot(T.X - exy[0], T.Y - exy[1]) <= 2.5 * T.cell
         floor = float(T.H[near].max()) if near.any() else T.height(exy)
         if ez < floor + 1.0:
-            T.view_notes.append(f"view {v['name']!r}: the eye was {floor - ez:+.1f} m against the ground there: raised "
-                                f"to {floor + 1.7:.0f} m")
+            T.view_notes.append(f"view {v['name']!r}: the eye stood {ez - floor:.1f} m over the highest ground within "
+                                f"{2.5 * T.cell:.0f} m (a slope beside it): lifted {floor + 1.7 - ez:.1f} m, to "
+                                f"{floor + 1.7:.0f} m above sea level")
+
             ez = floor + 1.7
         txy, th, _ = T.address(v["look"])
         # and not facing a wall: the first stretch toward what it looks at must clear the ground (an eye clear of the

@@ -220,10 +220,26 @@ def apply(T):
             ground = T.height(b0 + inl * 0.2 * w)
             crest = level + hh * (0.55 + 0.45 * np.sin(np.pi * np.clip(0.2 + 0.8 * t, 0, 1)))
             prof = np.clip(sdh / np.maximum(rad, 1e-6), 0, 1) ** 0.6
-            raise_h = np.maximum(raise_h, np.where(sdh > -0.3 * w, np.maximum(crest * prof + ground * (1 - prof),
-                                                                               ground), 0))
+            raise_h = np.maximum(raise_h, np.where(sdh > 0, np.maximum(crest * prof + ground * (1 - prof), ground), 0))
             head_m = np.maximum(head_m, smoothstep(0.35 * w, 0.1 * w, -sdh) * (dl < rad + 0.4 * w))
             heads.append({"base": b0.tolist(), "tip": tip.tolist(), "height": hh, "side": side})
+        # the cove sits in a hollow: the land round the bay (not its headland) eases down to a low rim a little over the
+        # water (on a 55 m plateau every cove had been a pit ringed by 60 m walls, the "low point" as high as the rest)
+        rim = float(cv.get("rim", float(np.clip(0.1 * w, 4.0, 18.0))))
+        if rim >= 0:
+            d_b = ndimage.distance_transform_edt(~bay) * T.cell
+            low = level + rim + math.tan(math.radians(float(cv.get("rim_slope", 16)))) * d_b
+            spare = np.zeros(T.X.shape, bool)
+            for hd in heads:
+                if hd["height"] is None:
+                    continue
+                b0, tip = np.array(hd["base"]), np.array(hd["tip"])
+                seg = tip - b0
+                t = np.clip(((T.X - b0[0]) * seg[0] + (T.Y - b0[1]) * seg[1]) / (seg @ seg), 0, 1)
+                spare |= np.hypot(T.X - (b0[0] + t * seg[0]), T.Y - (b0[1] + t * seg[1])) < 0.3 * w
+            fade = smoothstep(0, 0.2 * w, ndimage.distance_transform_edt(~spare) * T.cell) if spare.any() else 1.0
+            cut = np.clip(T.H - low, 0, None) * fade * (d_b < 2.5 * w)
+            T.H = T.H - ndimage.gaussian_filter(cut, max(1.0, 0.03 * w / T.cell))
         land = sd > 0
         head = c + inl * a + left * hs * 0.18 * w  # the bay's head, for its beach
         coves[name] = {"xy": c.tolist(), "mouth": p.tolist(), "head": head.tolist(), "inland": inl.tolist(),
@@ -512,6 +528,7 @@ def apply(T):
                 r = max(2 * T.cell, rng.uniform(0.15, 0.35) * (top - level))
                 c = p + seaward(y, x) * (float(run[y, x]) + rng.uniform(1.2, 3.0) * r)
                 places.append((c, top, r, (top - level) * rng.uniform(0.45, 0.95)))
+        places = [pl for pl in places if pl[3] >= 2.0]  # (a "stack" under 2 m is a rock awash, not a stack)
         for c, top, r, hgt in places:
             # a stack is a broken pillar, not a turned one (smooth cylinders read as chimneys): a lobed, grooved outline,
             # sides stepping in as it rises, a tilted and notched top
@@ -723,10 +740,15 @@ def report(T):
             c = np.array(st["xy"])
             near = np.hypot(T.X - c[0], T.Y - c[1]) < st["radius"]
             hs.append(float(T.H[near].max() - S["level"]) if near.any() else 0.0)
-        out.append(f"sea stacks: {len(hs)} standing {min(hs):.0f}-{max(hs):.0f} m out of the water off the cliffs")
+        up = [h for h in hs if h >= 2.0]
+        if up:
+            out.append(f"sea stacks: {len(up)} standing {min(up):.0f}-{max(up):.0f} m out of the water off the cliffs")
+        if len(up) < len(hs):
+            out.append(f"  ({len(hs) - len(up)} placed stack(s) don't stand out of the water: the ground there was cut "
+                       f"away after them (a cove, a geo) or they fell in deep water; move the string (`stacks.at`)")
     for name, cv in S["coves"].items():
         m = cv["mask"] & wet
-        out.append(f"cove {name}: {_area(m.sum() * T.cell ** 2)} of sheltered water, {cv['depth']:.0f} m deep into the "
+        out.append(f"cove {name}: {_area(m.sum() * T.cell ** 2)} of water, {cv['depth']:.0f} m deep into the "
                    f"land, mouth at [{cv['mouth'][0]:.0f}, {cv['mouth'][1]:.0f}]" + _cove_shape(T, cv, wet))
     return out
 
@@ -740,18 +762,39 @@ def _cove_shape(T, cv, wet):
     rel = T.P - p
     u, sa = rel @ inl, rel @ left
     w, dp = cv["width"], cv["depth"]
-    bay = (cv["mask"] & wet).ravel()
+    # water across the bay's axis, section by section from outside the mouth to the head: the run of water through the
+    # bay's own axis (stacks count as water: they stand in the mouth, they don't close it)
+    wetx = (T.sea["sd"] <= 0) | wet  # (the coastline itself: rocks awash and stacks in the mouth don't close it)
+    axis_s = float(((np.array(cv["xy"]) - p) @ left))
     txt = ""
-    if bay.sum() > 10:
-        bins = np.round(u[bay] / (2 * T.cell))
-        widths = [np.ptp(sa[bay][bins == b]) for b in np.unique(bins) if (bins == b).sum() > 2]
-        txt += f"; the bay {max(widths):.0f} m across at its widest"
-    land = (T.sea["sd"] > 0).ravel() & (u < 0.3 * dp) & (np.hypot(u, sa) < 1.4 * w)  # (the coastline: rocks awash
-    # off it aren't the mouth's sides)
-    A, B = T.P[land & (sa > 0)], T.P[land & (sa < 0)]
-    if len(A) and len(B):
-        d, _ = cKDTree(A).query(B)
-        txt += f", the mouth {float(d.min()):.0f} m"
+    widths = []
+    for uu in np.arange(-0.3 * dp, dp, max(T.cell, dp / 40)):
+        ss = np.arange(axis_s - 1.5 * w, axis_s + 1.5 * w, T.cell)
+        pts = p + inl * uu + left * ss[:, None]
+        wv = T.sample(pts, wetx.astype(float)) > 0.5
+        k = int(np.argmin(np.abs(ss - axis_s)))
+        if not wv[k]:
+            widths.append((uu, 0.0))
+            continue
+        i0, i1 = k, k
+        while i0 > 0 and wv[i0 - 1]:
+            i0 -= 1
+        while i1 < len(wv) - 1 and wv[i1 + 1]:
+            i1 += 1
+        open_ = i0 == 0 or i1 == len(wv) - 1
+        widths.append((uu, np.inf if open_ else (i1 - i0 + 1) * T.cell))
+    inner = [wd for uu, wd in widths if uu > 0.25 * dp and np.isfinite(wd)]
+    bay_w = max(inner) if inner else 0.0
+    u_b = next((uu for uu, wd in widths if wd == bay_w), dp / 2)
+    mouth = [wd for uu, wd in widths if uu <= u_b and wd > 0]
+    mouth_w = min(mouth) if mouth else 0.0
+    if bay_w:
+        txt += f"; the bay {bay_w:.0f} m across at its widest"
+    if np.isfinite(mouth_w) and mouth_w > 0:
+        txt += f", the mouth {mouth_w:.0f} m" + (" (sheltered)" if mouth_w < 0.8 * bay_w else
+                                                  " (as wide as the bay: open, not sheltered)")
+    else:
+        txt += ", the mouth opens straight onto the sea (no narrowing: not sheltered)"
     lvl = T.sea["level"]
     for h in cv.get("headlands", []):
         b0, tip = np.array(h["base"]), np.array(h["tip"])

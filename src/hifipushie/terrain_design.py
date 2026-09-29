@@ -72,6 +72,10 @@ def region(T, r) -> np.ndarray:
             return (T.lake_id == T.lakes[r]["id"]).astype(float)
         if r.startswith("zone:"):
             return region(T, T.zones[r[5:]])
+        if r in T.sites:  # a site: its pad
+            st = T.sites[r]
+            return smoothstep(1.1 * st["radius"], 0.9 * st["radius"],
+                              np.hypot(T.X - st["xy"][0], T.Y - st["xy"][1]))
         if r in getattr(T, "features", {}):  # a line feature (a hedge, a wall): the ground it stands on
             m = T.features[r].get("mask")
             return m if m is not None else np.zeros(shape)
@@ -1027,11 +1031,48 @@ PROFILE_COVER = {"cliffs": {"type": "rock"}, "crags": {"type": "rock"}, "slabs":
                  "meadow": {"type": "meadow", "slope": [0, 40]}}
 
 
+def _profile_zones(T):
+    """A profiled wall's bands re-cut on the ground as built: the vegetated bands' edges follow the ground's form (scree
+    runs down the gullies and its fans below the cliffs, forest climbs the ribs between them), not a level line round
+    the wall (bands cut on the profile alone were ruled stripes)."""
+    for b in getattr(T, "basins", {}).values():
+        tp, zt = b.get("t_prof"), b.get("_zones_t")
+        if tp is None or not zt:
+            continue
+        # the ground's form across the slope at a gully's size: + in hollows, - on ribs
+        sig = max(1.0, 25.0 / T.cell)
+        lap = ndimage.gaussian_laplace(T.H, sig) * sig ** 2
+        form = np.clip(lap / max(float(np.percentile(np.abs(lap[b["wall"]]), 90)), 1e-6), -1, 1) if b["wall"].any() \
+            else np.zeros(T.X.shape)
+        rag = noise.fbm(np.c_[T.P, np.full(len(T.P), 44.0)], max(40.0 * T.k, 6 * T.cell), 2, seed=351).reshape(T.X.shape)
+        t = np.nan_to_num(tp, nan=-1.0)
+        tz = t + (0.09 * form + 0.04 * (2 * rag - 1)) * np.sin(np.pi * np.clip(t, 0, 1))
+        rocky = {"cliffs", "crags", "slabs"}
+        hard = np.zeros(T.X.shape, bool)
+        for kind, (t0, t1) in zt.items():
+            if kind in rocky:
+                hard |= (t >= t0) & (t < t1 + (1 if t1 >= 1 else 0))
+        z = {}
+        for kind, (t0, t1) in zt.items():
+            top = t1 + (1 if t1 >= 1 else 0)
+            z[kind] = b["wall"] & ((t >= t0) & (t < top) if kind in rocky else (tz >= t0) & (tz < top) & ~hard)
+        # the scree fans below the cliffs (the rock pass's aprons) are scree whichever band they lie in
+        ap = (getattr(T, "rock", None) or {}).get("aprons")
+        if "scree" in z and ap is not None and ap.shape == T.X.shape:
+            fan = ndimage.binary_dilation(ap, iterations=2) & b["wall"] & ~hard
+            for kind in z:
+                if kind not in rocky and kind != "scree":
+                    z[kind] &= ~fan
+            z["scree"] |= fan
+        b["zones"] = z
+
+
 def _profile_cover(T):
     """Basin walls described from the top down ("cliffs, scree, forest") get that cover in each band, unless the spec
     already covers the band (a layer "in" it): layers "<basin>_<band>", painted after the broad layers (before snow).
     Returns the bare bands' mask (cliffs, crags, slabs, scree), where the spec's own tree layers don't grow."""
     bare, add = None, {}
+    _profile_zones(T)
     cover = T.spec.setdefault("cover", {}) if isinstance(T.spec.get("cover", {}), dict) else T.spec["cover"]
     used = {str(c.get("in")) for c in cover.values() if isinstance(c, dict)}
     for bn, b in getattr(T, "basins", {}).items():

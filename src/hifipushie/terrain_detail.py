@@ -67,6 +67,27 @@ def _swales(T, H, sc):
     return np.clip(out, 0, 1)
 
 
+def _sightlines(T):
+    """0..1 corridors (~8 m wide) along the intent's sight lines (from -> each target it must see): ground texture
+    stays off them."""
+    from scipy.spatial import cKDTree
+    m = np.zeros(T.X.shape)
+    for it in (T.spec.get("intent") or {}).values():
+        if not isinstance(it, dict) or "from" not in it or "see" not in it:
+            continue
+        try:
+            a = T.address(it["from"])[0]
+            tg = [T.address(t["at"] if isinstance(t, dict) else t)[0] for t in it["see"]]
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+        for b in tg:
+            n = max(2, int(np.linalg.norm(b - a) / max(T.cell, 1.0)))
+            seg = a + (b - a) * np.linspace(0, 1, n)[:, None]
+            d, _ = cKDTree(seg).query(T.P, distance_upper_bound=8.0)
+            m = np.maximum(m, (np.isfinite(d) & (d < 4.0)).reshape(T.X.shape).astype(float))
+    return m
+
+
 def ground(T):
     """Player-scale texture on gentle ground, after erosion (which smoothed any): field-scale undulation (1-2 m over
     ~100 m), swales (shallow hollows a few tens of metres wide running down the slope, where water gathers) and hummocks
@@ -100,6 +121,7 @@ def ground(T):
         keep = np.maximum(keep, p["corridor"].astype(float))
     wet = ~np.isnan(T.water)
     keep = np.maximum(keep, wet.astype(float))
+    keep = np.maximum(keep, _sightlines(T))  # (a 1 m hummock blocked a disc golf line the designer had checked)
     reach = max(2.0, 12.0 / T.cell)
     keep = np.clip(ndimage.maximum_filter(keep, size=int(2 * reach) | 1), 0, 1)
     keep = ndimage.gaussian_filter(keep, reach / 2)
@@ -109,17 +131,22 @@ def ground(T):
         return
     P = T.P
     z = np.zeros(len(P))
-    n1 = noise.fbm(np.c_[P, z + 31.0], sc, 3, seed=301)
+    # a size spectrum, big first: a few broad swells, field-scale undulation, then little (an even mid-size dimpling read
+    # as orange peel from the air)
+    n0 = noise.fbm(np.c_[P, z + 30.0], 2.5 * sc, 2, seed=300)
+    n1 = noise.fbm(np.c_[P, z + 31.0], sc, 2, seed=301)
     n2 = noise.fbm(np.c_[P, z + 32.0], 0.4 * sc, 2, seed=302)
-    add = und * (2 * (n1 - 0.5) + 0.45 * 2 * (n2 - 0.5))
+    add = und * (1.3 * 2 * (n0 - 0.5) + 0.8 * 2 * (n1 - 0.5) + 0.25 * 2 * (n2 - 0.5))
     add = add.reshape(H.shape)
+    swl = np.zeros(H.shape)
     if sw > 0:  # swales: broad shallow hollows where the water gathers, from the drainage of the undulating ground
         # (noise stretched along the fall line seamed along every divide and valley bottom: grooves like contours)
-        add = add - sw * _swales(T, H + w * add, sc)
-    # hummocks: small rounded lumps, in patches
-    patch = smoothstep(0.45, 0.62, noise.fbm(np.c_[P, z + 34.0], 0.8 * sc, 2, seed=304))
-    hm = noise.fbm(np.c_[P, z + 35.0], max(7.0, 3 * T.cell), 2, seed=305)
-    add = add + (hu * patch * 2 * np.clip(hm - 0.45, 0, None) * 2).reshape(H.shape)
+        swl = _swales(T, H + w * add, sc)
+        add = add - sw * swl
+    # hummocks: small rounded lumps in a few patches, on the drier gentle ground (not in the swales, not on slopes)
+    patch = smoothstep(0.55, 0.7, noise.fbm(np.c_[P, z + 34.0], 1.2 * sc, 2, seed=304)).reshape(H.shape)
+    hm = noise.fbm(np.c_[P, z + 35.0], max(7.0, 3 * T.cell), 2, seed=305).reshape(H.shape)
+    add = add + hu * patch * (1 - swl) * smoothstep(12, 4, slope) * 2 * np.clip(hm - 0.45, 0, None) * 2
     H = H + w * add
     # hollows the texture made (deeper than what was there, by over 0.6 m): filled back to 0.6 m
     from skimage.morphology import reconstruction
