@@ -276,6 +276,31 @@ def _gens(ly: dict, key: str):
             yield from _gens(e, key)
 
 
+def side_warnings(spec: dict) -> list[str]:
+    """Centre-named layers that point only at one side's elements: a ".L" name on the elements doesn't make the
+    layer mirror (only the layer's own name does), so these paint one side. Returned for the edit summary."""
+    out = []
+    for name, ly in (spec.get("paint") or {}).items():
+        if not isinstance(ly, dict) or name.endswith((".L", ".R")):
+            continue
+        names = []
+        for near in _nears(ly):
+            names += [near] if isinstance(near, str) else [n for n in near if isinstance(n, str)]
+        for path in _gens(ly, "path"):
+            for pt in path if isinstance(path, list) else []:
+                if isinstance(pt, dict):
+                    names += [pt[k] for k in ("bone", "at", "on") if isinstance(pt.get(k), str)]
+                    if isinstance(pt.get("at"), dict) and isinstance(pt["at"].get("bone"), str):
+                        names.append(pt["at"]["bone"])
+        for side, other in ((".L", ".R"), (".R", ".L")):
+            if names and all(n.endswith(side) for n in names):
+                what = "near/path" if any(True for _ in _gens(ly, "path")) else "near"
+                out.append(f"paint {name!r}: {what} names only {'left' if side == '.L' else 'right'}-side elements "
+                           f"({', '.join(sorted(set(names)))}), so it paints one side; name the layer "
+                           f"'{name}.L' to paint both sides, or add the '{other}' names for one-sided paint")
+    return out
+
+
 def check_refs(spec: dict, prims: list) -> None:
     """Names paint points at must exist: each "near" resolves to primitives, each "part" is a part of the model,
     each axis bone is a bone.
@@ -877,6 +902,27 @@ def _seated_paths(spec: dict, name: str, ly: dict) -> list[dict]:
     if isinstance(part, str) and part != "*" and part != "body":
         st["part"] = part
     return list(strokes._generate(base, {f"paint:{name}": st})["blobs"].values())
+
+
+def _path_entries(ly: dict, part):
+    """(entry, part) for every path a layer gives, its mask stack's (nested) included; a stack entry is seated
+    on the layer's part."""
+    if "path" in ly:
+        yield ly, ly.get("part", part)
+    for e in ly.get("mask") or []:
+        if isinstance(e, dict):
+            yield from _path_entries(e, part)
+
+
+def check_paths(spec: dict) -> None:
+    """Seat every paint path now (cached by content, so the sync reuses it): a path that can't be seated fails
+    the edit that made it, not a sync or look minutes later."""
+    for name, ly in layers(spec).items():
+        part = ly.get("part", "body")
+        for e, pn in _path_entries(ly, part):
+            if not isinstance(pn, str) or pn == "*":
+                continue  # seated per part the points are on, at paint time
+            _seated_paths(spec, name, {**e, "part": pn})
 
 
 def _path_mask(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:

@@ -157,6 +157,12 @@ class State:
     w: np.ndarray       # (N,) per-sample weight (1 / samples in that view)
     energy: float       # data term only
     iou: dict
+    parts: frozenset | None = None  # the parts the silhouettes count (None: all)
+
+
+def _prims(spec: dict, parts):
+    prims = compile_prims(spec)
+    return prims if parts is None else [p for p in prims if p.part in parts]
 
 
 def _closest_depth(prims, uv: np.ndarray, axes, grid: sdf.Grid):
@@ -189,8 +195,8 @@ def _huber(r, delta):
     return rho, wt
 
 
-def evaluate(spec: dict, theta: np.ndarray, targets: list[Target], resolution: int) -> State:
-    prims = compile_prims(spec)
+def evaluate(spec: dict, theta: np.ndarray, targets: list[Target], resolution: int, parts=None) -> State:
+    prims = _prims(spec, parts)
     grid = sdf.evaluate(prims, resolution)
     Ps, gns, rs, ws, iou = [], [], [], [], {}
     energy = 0.0
@@ -223,7 +229,22 @@ def evaluate(spec: dict, theta: np.ndarray, targets: list[Target], resolution: i
         energy += float((w * rho).sum())
         Ps.append(P), gns.append(gn), rs.append(r), ws.append(w)
     return State(theta, spec, grid, np.concatenate(Ps), np.concatenate(gns), np.concatenate(rs),
-                 np.concatenate(ws), energy, iou)
+                 np.concatenate(ws), energy, iou, parts)
+
+
+def _left_out(spec: dict, parts) -> set[str]:
+    """Bones and blobs outside `parts`, and the joints that only they hang on."""
+    out, used = set(), {}
+    for kind in ("bones", "blobs"):
+        for n, el in spec.get(kind, {}).items():
+            kept = el.get("part", "body") in parts
+            if not kept:
+                out.add(n)
+            refs = [el.get("a"), el.get("b")] if kind == "bones" else [el.get("at")]
+            for r in refs:
+                if isinstance(r, str):
+                    used[r] = used.get(r, False) or kept
+    return out | {j for j, kept in used.items() if not kept and j in spec.get("joints", {})}
 
 
 def freeze(spec: dict) -> dict:
@@ -241,7 +262,7 @@ def freeze(spec: dict) -> dict:
 def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
     """d(residual)/dθ: the outline's outward motion is -(df/dθ)/|∇f|, and residuals are + when sticking out."""
     spec = copy.deepcopy(st.spec)
-    base = compile_prims(spec)
+    base = _prims(spec, st.parts)
     f0 = sdf.field_at(base, st.P, clip=False)
     fp0 = {sdf.fingerprint(q): q for q in base}
     kmax = max([q.blend for q in base] + [0.0])
@@ -249,7 +270,7 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
     for k, p in enumerate(params):
         v = _get(spec, p)
         _set(spec, p, v + eps)
-        prims = compile_prims(spec)
+        prims = _prims(spec, st.parts)
         _set(spec, p, v)
         fp1 = {sdf.fingerprint(q): q for q in prims}
         changed = [fp1[f] for f in fp1.keys() - fp0.keys()] + [fp0[f] for f in fp0.keys() - fp1.keys()]
@@ -283,12 +304,13 @@ class FitResult:
 
 def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GROUPS, only=None, lock=(),
         iterations: int = 20, max_step: float = 0.02, stiffness: float = 0.05,
-        resolution: int = 160, pin=()) -> FitResult:
+        resolution: int = 160, pin=(), parts=None) -> FitResult:
     """pin: individual scalars to hold, as (kind, name, field, index), e.g. ("joints", "knee.L", "pos", 2) for a
-    joint whose height a plan landmark fixes."""
+    joint whose height a plan landmark fixes. parts: the part names the silhouettes count (None: all); elements
+    of other parts, and joints only they hang on, stay put."""
     original = copy.deepcopy(spec)
     spec = freeze(original)
-    grid0 = sdf.evaluate(compile_prims(spec), resolution)
+    grid0 = sdf.evaluate(_prims(spec, parts), resolution)
     # refs: view -> mask, or (mask, world placement) for references with world coordinates (plans)
     targets = []
     for v, m in refs.items():
@@ -298,6 +320,8 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
     seated = {n for n, j in original.get("joints", {}).items() if "on" in j}
     params = [p for p in parameters(spec, groups, only, set(lock) | seated)
               if p not in pinned and p[1] in original.get(p[0], {})]  # the model's own elements only
+    if parts is not None:
+        params = [p for p in params if p[1] not in _left_out(spec, parts)]
     if not params:
         raise ValueError("nothing to fit: no free parameters")
     theta0 = np.array([_get(spec, p) for p in params])
@@ -307,7 +331,7 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         s = copy.deepcopy(spec)
         for p, v in zip(params, theta):
             _set(s, p, round(float(v), 5))
-        return evaluate(s, theta, targets, resolution)
+        return evaluate(s, theta, targets, resolution, parts)
 
     st = at(theta0)
     iou_before = st.iou

@@ -36,15 +36,21 @@ def load(name: str) -> dict:
     return json.loads(p.read_text())
 
 
-def save(name: str, spec: dict, note: str = "") -> int:
+def validate(spec: dict) -> None:
+    """Every check a spec must pass before it is saved (raises SpecError / ValueError)."""
     from . import paint, realism, strokes
     realism.validate(spec)
     strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
     prims = specmod.compile_prims(spec)  # validate before writing
     paint.validate(spec)
     paint.check_refs(spec, prims)  # names paint points at: here, not minutes into a sync
+    paint.check_paths(spec)  # paint paths seat (cached: the sync reuses the seating)
     for pn, d in (spec.get("parts") or {}).items():
         part_colour(pn, spec["parts"], 0)
+
+
+def save(name: str, spec: dict, note: str = "") -> int:
+    validate(spec)
     d = _dir(name)
     (d / "history").mkdir(parents=True, exist_ok=True)
     version = len(list((d / "history").glob("*.json"))) + 1
@@ -78,61 +84,133 @@ def apply_ops(spec: dict, ops: list[dict]) -> dict:
       {"op": "move", "joints": [names], "delta": [dx, dy, dz]}
       {"op": "scale_r", "joints": [names], "factor": f}
       {"op": "global", "value": {"blend": 0.04, "symmetry": true}}
+      {"op": "set_key", "key": k, "value": v}   replace a whole top-level key (null removes it)
+    "kind" is any top-level key holding named entries (joints, bones, blobs, kits, strokes, paint, parts,
+    prefabs, instances, anatomy...). A failing op raises SpecError "op i (op kind name): ...".
     """
     s = copy.deepcopy(spec)
-    for o in ops:
-        kind = o.get("kind")
-        if kind is not None and kind not in (*specmod.KINDS, "paint", "parts", "prefabs", "instances"):
-            raise ValueError(f"bad kind {kind!r}")
-        match o.get("op"):
-            case "set":
-                cur = s.setdefault(kind, {}).setdefault(o["name"], {})
-                for k, v in o["value"].items():
-                    if v is None:
-                        cur.pop(k, None)
-                    else:
-                        cur[k] = v
-            case "delete":
-                if "tag" in o:  # every stored bone/blob carrying that tag
-                    gone = [(k, n) for k in (kind,) if k for n, el in list(s.get(k, {}).items())
-                            if o["tag"] in (el.get("tags") or [])] if kind else \
-                        [(k, n) for k in ("bones", "blobs") for n, el in list(s.get(k, {}).items())
-                         if o["tag"] in (el.get("tags") or [])]
-                    if not gone:
-                        raise ValueError(f"nothing tagged {o['tag']!r}")
-                    for k, n in gone:
-                        del s[k][n]
-                elif s.get(kind, {}).pop(o["name"], None) is None:
-                    raise ValueError(f"no {kind[:-1]} {o['name']!r}")
-            case "rename":
-                s[kind][o["to"]] = s[kind].pop(o["name"])
-                if kind == "joints":
-                    for b in s["bones"].values():
-                        for e in ("a", "b"):
-                            if b[e] == o["name"]:
-                                b[e] = o["to"]
-                    for bl in s["blobs"].values():
-                        if bl.get("at") == o["name"]:
-                            bl["at"] = o["to"]
-                    for kit in s.get("kits", {}).values():
-                        for key in ("wrist", "head"):
-                            if kit.get(key) == o["name"]:
-                                kit[key] = o["to"]
-                if kind == "bones":
-                    for bl in s["blobs"].values():
-                        if isinstance(bl.get("at"), dict) and bl["at"].get("bone") == o["name"]:
-                            bl["at"]["bone"] = o["to"]
-            case "move":
-                for n in o["joints"]:
-                    s["joints"][n]["pos"] = [a + b for a, b in zip(s["joints"][n]["pos"], o["delta"])]
-            case "scale_r":
-                for n in o["joints"]:
-                    s["joints"][n]["r"] = s["joints"][n].get("r", 0.05) * o["factor"]
-            case "global":
-                s.update(o["value"])
-            case other:
-                raise ValueError(f"unknown op {other!r}")
+    for i, o in enumerate(ops):
+        try:
+            _apply_op(s, o)
+        except Exception as e:
+            raise specmod.SpecError(f"{op_label(i, o)}: {_msg(e)}") from e
     return s
+
+
+def _msg(e: Exception) -> str:
+    return str(e) if isinstance(e, ValueError) else f"{type(e).__name__} {e}"
+
+
+def op_label(i: int, o) -> str:
+    """"op 3 (set blobs tooth.L)": how errors name the op of an edit batch that failed."""
+    if not isinstance(o, dict):
+        return f"op {i} ({o!r})"
+    what = " ".join(str(o[k]) for k in ("op", "kind", "key", "name", "tag") if o.get(k) is not None)
+    return f"op {i} ({what})"
+
+
+def edit(spec: dict, ops: list[dict]) -> dict:
+    """apply_ops, then validate the result. A validation error names the first op that makes the spec fail
+    (found by bisecting the batch, only when it fails)."""
+    out = apply_ops(spec, ops)
+    try:
+        validate(out)
+    except Exception as e:
+        try:
+            validate(spec)
+        except Exception:
+            raise e from None  # the stored spec itself no longer validates: no op to blame
+        lo, hi = 0, len(ops)  # ops[:lo] validates, ops[:hi] doesn't
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            try:
+                validate(apply_ops(spec, ops[:mid]))
+                lo = mid
+            except Exception:
+                hi = mid
+        raise specmod.SpecError(f"{op_label(hi - 1, ops[hi - 1])}: {_msg(e)}") from e
+    return out
+
+
+# Top-level keys edited through their own tools, not by ops.
+_OWN_TOOL = {"plan": "set_plan"}
+
+
+def _apply_op(s: dict, o) -> None:
+    if not isinstance(o, dict):
+        raise ValueError('each op is an object like {"op": "set", "kind": "blobs", "name": n, "value": {...}}')
+    kind = o.get("kind")
+    if kind is not None:
+        if kind in _OWN_TOOL:
+            raise ValueError(f"{kind!r} is edited with the {_OWN_TOOL[kind]} tool")
+        if kind in s and not isinstance(s[kind], dict):
+            raise ValueError(f"{kind!r} holds a {type(s[kind]).__name__}, not named entries: use "
+                             f'{{"op": "set_key", "key": "{kind}", "value": ...}}')
+        if o.get("op") in ("set", "delete", "rename") and "name" not in o and "tag" not in o:
+            raise ValueError('needs a "name"')
+    match o.get("op"):
+        case "set":
+            if not isinstance(o.get("value"), dict):
+                raise ValueError('set needs "value": {fields to merge}; to replace a whole top-level key '
+                                 'use set_key')
+            cur = s.setdefault(kind, {}).setdefault(o["name"], {})
+            if not isinstance(cur, dict):
+                s[kind][o["name"]] = cur = {}
+            for k, v in o["value"].items():
+                if v is None:
+                    cur.pop(k, None)
+                else:
+                    cur[k] = v
+        case "delete":
+            if "tag" in o:  # every stored bone/blob carrying that tag
+                gone = [(k, n) for k in (kind,) if k for n, el in list(s.get(k, {}).items())
+                        if o["tag"] in (el.get("tags") or [])] if kind else \
+                    [(k, n) for k in ("bones", "blobs") for n, el in list(s.get(k, {}).items())
+                     if o["tag"] in (el.get("tags") or [])]
+                if not gone:
+                    raise ValueError(f"nothing tagged {o['tag']!r}")
+                for k, n in gone:
+                    del s[k][n]
+            elif s.get(kind, {}).pop(o["name"], None) is None:
+                raise ValueError(f"no {o['name']!r} in {kind}")
+        case "rename":
+            s[kind][o["to"]] = s[kind].pop(o["name"])
+            if kind == "joints":
+                for b in s["bones"].values():
+                    for e in ("a", "b"):
+                        if b[e] == o["name"]:
+                            b[e] = o["to"]
+                for bl in s["blobs"].values():
+                    if bl.get("at") == o["name"]:
+                        bl["at"] = o["to"]
+                for kit in s.get("kits", {}).values():
+                    for key in ("wrist", "head"):
+                        if kit.get(key) == o["name"]:
+                            kit[key] = o["to"]
+            if kind == "bones":
+                for bl in s["blobs"].values():
+                    if isinstance(bl.get("at"), dict) and bl["at"].get("bone") == o["name"]:
+                        bl["at"]["bone"] = o["to"]
+        case "move":
+            for n in o["joints"]:
+                s["joints"][n]["pos"] = [a + b for a, b in zip(s["joints"][n]["pos"], o["delta"])]
+        case "scale_r":
+            for n in o["joints"]:
+                s["joints"][n]["r"] = s["joints"][n].get("r", 0.05) * o["factor"]
+        case "global":
+            s.update(o["value"])
+        case "set_key":  # any top-level key, whole: story, style, rig, weather, anatomy...
+            key = o.get("key")
+            if not isinstance(key, str):
+                raise ValueError('set_key needs "key" (a top-level key) and "value" (null removes it)')
+            if key in _OWN_TOOL:
+                raise ValueError(f"{key!r} is edited with the {_OWN_TOOL[key]} tool")
+            if o.get("value") is None:
+                s.pop(key, None)
+            else:
+                s[key] = o["value"]
+        case other:
+            raise ValueError(f"unknown op {other!r}")
 
 
 def build(name: str, resolution: int = 160, box=None) -> dict:

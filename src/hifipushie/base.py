@@ -258,7 +258,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     return out
 
 
-GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # under workspace/_templates/gnm (Apache 2.0, see SOURCE.txt)
+GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # in the assets pack "gnm" (assets.py; Apache 2.0, see SOURCE.txt)
 GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
 EYE_R = 0.96  # the eyeball's radius over GNM's eye (its median vertex distance)
@@ -744,10 +744,8 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
 
 def _gnm_data():
     if "gnm" not in _CACHE:
-        from . import store
-        path = store.HOME / "_templates" / "gnm" / GNM
-        if not path.exists():
-            raise FileNotFoundError(f"the GNM head needs {path} (github.com/google/GNM, Apache 2.0)")
+        from . import assets
+        path = assets.path("gnm", GNM)  # says how to fetch it when missing
         z = np.load(path)
         names = list(z["vertex_group_names"])
         _CACHE["gnm"] = {k: z[k] for k in ("template_vertex_positions", "vertex_identity_basis", "expression_basis",

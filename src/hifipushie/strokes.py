@@ -100,7 +100,44 @@ def without_seated(spec: dict) -> dict:
     base["bones"] = {k: b for k, b in base.get("bones", {}).items() if b["a"] not in on and b["b"] not in on}
     base["blobs"] = {k: b for k, b in base.get("blobs", {}).items()
                      if not (isinstance(b.get("at"), str) and b["at"] in on)}
-    return base
+    return without_dangling(base)
+
+
+def _names_in(at) -> tuple[list[str], list[str]]:
+    """(point names, bone names) an address refers to."""
+    if isinstance(at, str):
+        return [at], []
+    if isinstance(at, dict) and isinstance(at.get("bone"), str):
+        return [], [at["bone"]]
+    return [], []
+
+
+def _known(name: str, *have) -> bool:
+    """In one of `have`, or a ".R" name whose ".L" is (mirroring comes later)."""
+    alt = name[:-2] + ".L" if name.endswith(".R") else name
+    return any(name in h or alt in h for h in have)
+
+
+def without_dangling(spec: dict) -> dict:
+    """Drop bones and blobs hung on names that don't exist yet, and whatever hangs on those: elements hung on
+    kit-generated joints and features (a tooth at face_mouth_upper_0, a claw on hand_f2_3.L) while the kits
+    are seated on the body without them. After kit expansion they resolve like any element."""
+    joints = set(spec.get("joints") or {})
+    bones, blobs = dict(spec.get("bones") or {}), dict(spec.get("blobs") or {})
+    while True:
+        def ok(at):
+            pts, bs = _names_in(at)
+            return all(_known(p, joints, blobs) for p in pts) and all(_known(b, bones) for b in bs)
+        nb = {k: b for k, b in bones.items() if "between" in b or (ok(b.get("a")) and ok(b.get("b")))}
+        nl = {k: b for k, b in blobs.items() if ok(b.get("at"))}
+        if len(nb) == len(bones) and len(nl) == len(blobs):
+            break
+        bones, blobs = nb, nl
+    if len(bones) == len(spec.get("bones") or {}) and len(blobs) == len(spec.get("blobs") or {}):
+        return spec
+    out = dict(spec)
+    out["bones"], out["blobs"] = bones, blobs
+    return out
 
 
 def seat_joints(spec: dict) -> dict:
@@ -148,7 +185,9 @@ class Surface:
         if not self.prims:
             raise SpecError(f"no part {part!r} to lay strokes on")
         adds = [p for p in self.prims if p.op == "add"]
-        self.span = float(np.linalg.norm(np.max([p.hi for p in adds], 0) - np.min([p.lo for p in adds], 0)))
+        self.part = part
+        self.lo, self.hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+        self.span = float(np.linalg.norm(self.hi - self.lo))
 
     def f(self, pts: np.ndarray) -> np.ndarray:
         from . import sdf
@@ -181,13 +220,28 @@ class Surface:
         return self._bisect(origin[None] + us[k - 1] * d, origin[None] + us[k] * d)[0]
 
     def entry(self, point: np.ndarray, facing: np.ndarray, what: str) -> np.ndarray:
-        """First surface point hit by a ray arriving along -facing through `point`."""
-        start = point + facing * self.span
-        us = np.linspace(0.0, 2 * self.span, 1600)
+        """First surface point hit by a ray arriving along -facing through `point`: any point on the line works
+        (the ray starts outside the part's box, however far behind or in front of it the point is)."""
+        # Where the line leaves the part's box on either side (slabs), measured along +facing from the point.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t0, t1 = (self.lo - point) / facing, (self.hi - point) / facing
+        t0, t1 = np.where(np.abs(facing) < 1e-12, -np.inf, t0), np.where(np.abs(facing) < 1e-12, np.inf, t1)
+        inside_slab = (np.abs(facing) >= 1e-12) | ((point >= self.lo) & (point <= self.hi))
+        near, far = np.minimum(t0, t1).max(), np.maximum(t0, t1).min()
+        step = 2 * self.span / 1599
+        if not inside_slab.all() or far < near or far < -1e-9:  # the line misses the box
+            ahead, length = self.span, 2 * self.span
+        else:  # the old reach (span either way) when the point is near; further when it isn't
+            ahead = max(self.span, far + step)
+            length = max(2 * self.span, ahead - near + step)
+        start = point + facing * ahead
+        us = np.arange(int(np.ceil(length / step)) + 1) * step
         f = self.f(start - us[:, None] * facing)
         hit = np.flatnonzero(f < 0)
         if not len(hit) or hit[0] == 0:
-            raise SpecError(f"{what}: no surface along {_r(-facing)} through {_r(point)}")
+            box = ", ".join(f"{a} {lo:.3f}..{hi:.3f}" for a, lo, hi in zip("xyz", self.lo, self.hi))
+            raise SpecError(f"{what}: the ray through {_r(point)} along {_r(-facing)} never meets part "
+                            f"{self.part!r} ({box})")
         k = hit[0]
         return self._bisect(start[None] - us[k] * facing, start[None] - us[k - 1] * facing)[0]
 
