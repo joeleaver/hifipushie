@@ -36,6 +36,108 @@ def factor(T) -> int:
     return 1
 
 
+# rolling ground by kind: (undulation m, its scale m, swale depth m, hummock height m)
+GROUND = {"hills": (1.8, 110, 0.9, 0.25), "farmland": (1.1, 90, 0.6, 0.18), "moor": (1.4, 120, 0.8, 0.45),
+          "coast": (1.0, 90, 0.6, 0.3), "alpine valley": (1.2, 110, 0.7, 0.4), "cirque": (1.0, 90, 0.6, 0.45),
+          "canyon": (0.6, 90, 0.4, 0.2), "plateau": (0.9, 120, 0.5, 0.25), "crater": (1.0, 100, 0.6, 0.3),
+          "dunes": (0.0, 100, 0.0, 0.0)}
+
+
+def _swales(T, H, sc):
+    """0..1: the hollows water gathers in on this ground, from a catchment of ~(0.3 sc)^2 up to full depth at ~(2 sc)^2,
+    broadened to 20-40 m wide U-shaped troughs (on a coarser grid; D8 on the ground smoothed a little)."""
+    from .terrain import _accumulate, _receivers, smoothstep
+    f = max(1, int(round(4.0 / T.cell)))
+    c = T.cell * f
+    Hc = ndimage.gaussian_filter(H, max(1.0, 6.0 / T.cell))[::f, ::f]
+    base = np.zeros(Hc.shape, bool)
+    base[[0, -1], :] = base[:, [0, -1]] = True
+    wet = ~np.isnan(T.water)[::f, ::f]
+    rec, _, levels = _receivers(Hc, c, base | wet)
+    area = _accumulate(rec, levels, c).reshape(Hc.shape)
+    a0, a1 = (0.3 * sc) ** 2, (2.0 * sc) ** 2
+    line = smoothstep(math.log(a0), math.log(a1), np.log(area))
+    width = max(1.0, 8.0 / c)
+    line = ndimage.grey_dilation(line, size=int(2 * width) | 1)
+    line = ndimage.gaussian_filter(line, max(1.0, 7.0 / c))
+    line = np.where(wet, 0, line)
+    up = ndimage.zoom(line, (H.shape[0] / line.shape[0], H.shape[1] / line.shape[1]), order=1)
+    out = np.zeros(H.shape)
+    out[:up.shape[0], :up.shape[1]] = up[:H.shape[0], :H.shape[1]]
+    return np.clip(out, 0, 1)
+
+
+def ground(T):
+    """Player-scale texture on gentle ground, after erosion (which smoothed any): field-scale undulation (1-2 m over
+    ~100 m), swales (shallow hollows a few tens of metres wide running down the slope, where water gathers) and hummocks
+    in patches. Hill country had read as plaster-smooth tilted planes. Never on sites, routes, passes, water or their
+    shoulders; hollows it makes deeper than ~0.6 m are filled back (it mustn't make ponds).
+    "ground": {"undulation": 0..2, "swales": 0..2, "hummocks": 0..2, "scale": m} | false (defaults 1, by the kind)."""
+    from . import noise
+    from .terrain import smoothstep
+    cfg = T.spec.get("ground", {})
+    if cfg is False:
+        T.ground_rms = None
+        return
+    cfg = cfg or {}
+    kind = T.world.get("kind") or "hills"
+    base = next((v for k, v in GROUND.items() if k in str(kind)), GROUND["hills"])
+    und, sc, sw, hu = base
+    sc = float(cfg.get("scale", sc))
+    und *= float(cfg.get("undulation", 1.0))
+    sw *= float(cfg.get("swales", 1.0))
+    hu *= float(cfg.get("hummocks", 1.0))
+    H = T.H
+    before = H.copy()
+    Hs = ndimage.gaussian_filter(H, max(1.0, 8.0 / T.cell))
+    gy, gx = np.gradient(Hs, T.cell)
+    slope = np.degrees(np.arctan(np.hypot(gx, gy)))
+    keep = np.zeros(H.shape)
+    for k in ("routes", "sites", "earthworks"):
+        if k in T.masks:
+            keep = np.maximum(keep, np.clip(T.masks[k], 0, 1))
+    for p in T.passes.values():
+        keep = np.maximum(keep, p["corridor"].astype(float))
+    wet = ~np.isnan(T.water)
+    keep = np.maximum(keep, wet.astype(float))
+    reach = max(2.0, 12.0 / T.cell)
+    keep = np.clip(ndimage.maximum_filter(keep, size=int(2 * reach) | 1), 0, 1)
+    keep = ndimage.gaussian_filter(keep, reach / 2)
+    w = smoothstep(24, 12, slope) * (1 - np.clip(1.5 * keep, 0, 1))
+    if w.max() < 0.05 or und + sw + hu <= 0:
+        T.ground_rms = None
+        return
+    P = T.P
+    z = np.zeros(len(P))
+    n1 = noise.fbm(np.c_[P, z + 31.0], sc, 3, seed=301)
+    n2 = noise.fbm(np.c_[P, z + 32.0], 0.4 * sc, 2, seed=302)
+    add = und * (2 * (n1 - 0.5) + 0.45 * 2 * (n2 - 0.5))
+    add = add.reshape(H.shape)
+    if sw > 0:  # swales: broad shallow hollows where the water gathers, from the drainage of the undulating ground
+        # (noise stretched along the fall line seamed along every divide and valley bottom: grooves like contours)
+        add = add - sw * _swales(T, H + w * add, sc)
+    # hummocks: small rounded lumps, in patches
+    patch = smoothstep(0.45, 0.62, noise.fbm(np.c_[P, z + 34.0], 0.8 * sc, 2, seed=304))
+    hm = noise.fbm(np.c_[P, z + 35.0], max(7.0, 3 * T.cell), 2, seed=305)
+    add = add + (hu * patch * 2 * np.clip(hm - 0.45, 0, None) * 2).reshape(H.shape)
+    H = H + w * add
+    # hollows the texture made (deeper than what was there, by over 0.6 m): filled back to 0.6 m
+    from skimage.morphology import reconstruction
+    def depth(A):
+        s = A.copy()
+        s[1:-1, 1:-1] = A.max()
+        return reconstruction(s, A, method="erosion") - A
+    extra = depth(H) - depth(before)
+    H = H + np.clip(extra - 0.6, 0, None) * (w > 0.02)
+    T.H = H
+    # measured: the gentle ground's relief about its ~200 m trend (plaster-smooth ground is ~0.1-0.2 m)
+    m = (w > 0.5) & ~wet
+    trend = ndimage.gaussian_filter(H, 25.0 / T.cell)
+    T.ground_rms = float(np.sqrt(np.mean((H - trend)[m] ** 2))) if m.sum() > 50 else None
+    T.ground_before = float(np.sqrt(np.mean((before - ndimage.gaussian_filter(before, 25.0 / T.cell))[m] ** 2))) \
+        if m.sum() > 50 else None
+
+
 def _walk(obj, fn, depth=0):
     """Apply fn to every grid-shaped array held (in dicts, lists, object attributes), in place where they're held."""
     if depth > 4:

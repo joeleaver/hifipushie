@@ -321,6 +321,7 @@ class Terrain:
         import time as _time
         _t0 = _time.time()
         terrain_detail.refine(self, terrain_detail.factor(self))  # finer cells from here: faces get cells of their own
+        terrain_detail.ground(self)  # rolling ground: undulation, swales, hummocks (after erosion smoothed them)
         from . import terrain_rock
         terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
         design.check(self)
@@ -1388,6 +1389,10 @@ class Terrain:
         out += terrain_sea.report(self)
         from . import terrain_volcano, terrain_rock
         out += terrain_volcano.report(self)
+        if getattr(self, "ground_rms", None) is not None:
+            out.append(f"ground texture (measured): gentle ground varies {self.ground_rms:.2f} m rms about its ~50 m "
+                       f"trend ({self.ground_before:.2f} m before the undulation, swales and hummocks; plaster-smooth "
+                       f"ground is under ~0.1 m). \"ground\": {{\"undulation\", \"swales\", \"hummocks\": 0..2}} tunes it")
         rk = terrain_rock.measure(self)
         if rk:
             out.append(f"rock faces (measured): {rk['face_km2'] * 100:.1f} ha over 45 deg; {100 * rk['turned']:.0f}% of it "
