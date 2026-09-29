@@ -689,11 +689,20 @@ regresses, bisect by building one spec at each commit and diffing heights.
   an elliptical section per node, rounded ends, a flat floor; rough fbm on walls and roof only). Output is optionally
   glTF mesh tiles (`export_terrain(tiles=True)`, `terrain_run.py --tiles`, cfg `spec.export.tiles`). Field, global and
   pointwise: `(z - h) / sqrt(1 + |grad h|^2)` with h the grid as an UNprefiltered cubic B-spline (C2, no overshoot at
-  cliffs), each volume by smooth max/min, then solid rock relief (`rock_relief`: a jittered 3D cell lattice, each
-  cell's surface tipped along its own direction = planar facets with crisp joints; beds with a groove and a proud or
-  set-back offset each, on terrain_rock's own `bed_step`/`bed_offset` when present) on ground steeper than 45-62 deg
-  and round volumes, scaled to a passage's size and never on its floor (1 m relief made cave floors a scramble of 1 m
-  steps). Facets 4-10 m (few and large: 5 m cells and 1.8 m beds at 1 m voxels read as crumpled paper); voxel 0.5 m.
+  cliffs), each volume by smooth max/min, then solid rock relief (`rock_relief`: `_pl_facets`, random heights on a
+  rotated lattice interpolated linearly over the Freudenthal tetrahedra = planar facets meeting in C0 creases, 2
+  octaves; beds with a V notch and a proud or set-back offset each, stepping over in a ramp ~2 voxels wide, on
+  terrain_rock's own `bed_step`/`bed_offset`) on ground steeper than 45-62 deg (a smooth grid mask, `Field.steep`)
+  and near volumes (capped at 0.2 of a passage's size), never on floors. THE FIELD MUST BE CONTINUOUS: a jump (the
+  nearest Voronoi cell's plane alone, a per-bed offset, the slope mask switching within 0.2 m at a cliff lip, a
+  volume's box cutting inside its blend/NEAR reach) meshed as steps whose field normals pointed sideways = black
+  triangular shards; blending cells smoothly read as mush. Crisp needs creases: MC vertices beside a crease are moved
+  onto it (`snap_creases`: the QEM point of the ring's tangent planes, DC-style) and `split_normals` gives a corner
+  its own normal only where it faces away (>75 deg; at 30 deg the zigzag creases showed as shaded teeth). Normals at
+  1/8 voxel. Sub-voxel creases still zigzag; the seam check counts shards (`_shards`, `SHARD_LIMIT` per LOD). Rock
+  colour = the heightfield views' rock (`rock_colours`: terrain_rock.colour when present, else kind + rock cover
+  layers), toned per bed/facet, darkened by a field occlusion (F half a metre out along the normal). Facets ~8 m;
+  voxel 0.5 m.
   Meshing: marching cubes (lewiner) per tile on the global lattice (voxel divides the tile; z planes offset 0.137
   voxel: flat floors at round heights lay on lattice planes and left non-manifold slivers), z only over the tile's
   own range (cost in area). Lattice values kept >= 1e-3 voxel from 0; border vertices keyed by lattice edge, each
@@ -709,7 +718,10 @@ regresses, bisect by building one spec at each commit and diffing heights.
   collapsed, and if even that can't drop a vertex, every LOD keeps it and all tiles are written again. Interior
   re-projected. Skirts: in the border plane against the normal, as deep as the other LODs' chains stray (+25%),
   clamped to rock thickness; where the rock is too thin for the skirt a gap needs, every LOD keeps that vertex.
-  Tiles run in a fork process pool (`_CTX`). `seam_check` reads the GLBs back (per-LOD watertight except the outer
+  Tiles run in a fork process pool (`_CTX`, up to 16 workers): marching cubes, dense projection, collapses, tiles
+  and maps all parallel. LOD k>0 is decimated from LOD k-1's mesh (border collapsed to its chain), the dense mesh
+  only if that fails; `_decimate`'s count search halves from the last good mesh (then 0.75, 0.88) instead of a log
+  search over the dense mesh: pebble 256 s -> 61 s, LOD0 +6% triangles. `seam_check` reads the GLBs back (per-LOD watertight except the outer
   edge, identical border vertices/edges/normals, every LOD pair's gap under a skirt, heightmap edges) and raises; it
   caught a LOD2 fin, a vertex stranded at a tile corner, sliver non-manifolds at round-height floors and holes from
   dropped fins. Arches go where the land is shortest for their height (within `search` m); notches 5 m deep with the
@@ -717,10 +729,20 @@ regresses, bisect by building one spec at each commit and diffing heights.
   ground under them dropped. Caves: `terrain_caves.check` walks a person through every passage (floor by vertical
   field columns, headroom, width at 3 heights, the body as a capsule tested by SIGN on a ring of points and allowed
   0.8 m sideways: the field is no distance near relief and blends; steps <= 0.6 m; water depth) into the manifest.
+  Karst: a wide bedding-plane tube with a flat roof (`Tube(roof=)`) over a slot, smooth walls (no facets) with thin
+  beds as ledges (`Tube(beds=)`, `wall_beds`), shaft entrances in dolines (`dig_doline` lowers the Field's own copy
+  of H: a grassy bowl, uneven rim; plus a rocky pit tube at the throat; depth limited by the rock over the passage).
+  Lava: `"flow": name` runs a tube down a terrain_volcano flow line, floors on the flow's smoothed grade (following
+  the surface put 1-3 m steps in), benches, breakdown `Mound`s (cones: tubes/ellipsoids have round ends that made
+  steps or domes) under skylights and in collapse pits, standing on the lowest floor under them. Test level
+  `examples/lava_field.json`. Chambers take `"in": m` from a directed address (`cliff_foot:<address>`).
   Renders through Blender's glTF importer (`render_tiles`: lod "checker" mixes LODs, `skirt_color` shows skirts,
-  `lamp`/`exposure` for views inside caves, no tree within 7 m of an eye). pebble_disc, 0.5 m voxel, 208 tiles:
-  LOD0 ~460k triangles (MC ~7M), 0 seam failures, Khronos 0 errors, ~3 min. Rock parameters agreed with terrain2
-  (no dip, their bed step/offset, rock colour 0.36/0.34/0.31, a matching wet band in their views).
+  `lamp`/`exposure`/`fill` for views inside caves (a second light down the view: a lone headlamp blew out the near
+  walls and read as fog), no tree within 7 m of an eye). pebble_disc, 0.5 m voxel, 208 tiles: LOD0 ~370k triangles,
+  0 seam failures, shards 0.0005% of LOD0, Khronos 0 errors, ~1 min. Rock parameters agreed with terrain2 (no dip,
+  their bed step/offset, a matching wet band in their views); rock colour is now theirs per cell.
+  Views: an eye near a pit or skylight must stand within a few metres of it (from 10+ m the ground hides it), and a
+  render job's `box` applies to every view in it.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
