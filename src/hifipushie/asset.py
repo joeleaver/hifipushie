@@ -792,7 +792,8 @@ def _trs(M: np.ndarray) -> dict:
 
 
 def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]],
-              prefabs: dict | None = None, looks: dict | None = None, rig: dict | None = None):
+              prefabs: dict | None = None, looks: dict | None = None, rig: dict | None = None,
+              extra_ext: dict | None = None):
     """One mesh per part, one material per atlas: atlases is [(atlas name, {basecolor, orm, normal, specular: png})]
     in atlas index order; each part uses the material of its "atlas" index. A shared prefab (prefabs: {prefab:
     {"bake", "instances": {instance: local -> world}, "parts"}}) is one mesh, a primitive per part in its own
@@ -837,9 +838,10 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
             "occlusionTexture": {"index": ti["orm"]},
             # specular 0..1 in the texture's alpha; 0.5 = F0 0.04 (dielectric default), as Blender's IOR level
             "extensions": {"KHR_materials_specular": {"specularTexture": {"index": ti["specular"]},
-                                                      "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]}},
+                                                      "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]},
+                           **((extra_ext or {}).get(len(materials)) or {})},
         })
-    used = ["KHR_materials_specular"]
+    used = ["KHR_materials_specular"] + sorted({e for x in (extra_ext or {}).values() for e in x})
     variants = {}
 
     def material_of(pn, p):
@@ -1106,6 +1108,30 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         maps_info[an] = {k: str(v) for k, v in files.items()}
         heights[an] = res["height_range"]
         cover[an] = res["coverage"]
+    extra_ext = {}
+    if (spec.get("hair") or {}).get("locks"):  # curve locks (hair.py): meshed and baked in Blender, their own atlas
+        from . import hair as hairmod
+        hp = hairmod.export_part(name, out_dir, spec, texture=min(texture, 2048), log=log)
+        if hp is not None:
+            hpart, hfiles = hp
+            pn_h = (spec["hair"].get("part") or "hair")
+            hpart["atlas"] = len(atlas_files)
+            parts[pn_h] = hpart
+            atlas_files.append((pn_h, hfiles))
+            maps_info[pn_h] = {k: str(v) for k, v in hfiles.items()}
+            heights[pn_h], cover[pn_h] = 0.0, 1.0
+            report[pn_h] = {"triangles": len(hpart["corner_vert"]) // 3, "atlas": pn_h, "curves": True}
+            names.append(pn_h)
+            sizes[len(names) - 1] = min(texture, 2048)
+            ntri += report[pn_h]["triangles"]
+            # a lock's sheen runs along it (the uv's v): anisotropy turned 90 degrees from the tangent (u, round the
+            # lens), and a soft warm sheen
+            lk = {**hairmod.LOOK, **(spec["hair"].get("look") or {})}
+            sheen = [round(float(c), 3) for c in hairmod.srgb_to_linear(lk["sheen"])]
+            extra_ext[len(atlas_files) - 1] = {
+                "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
+                                             "anisotropyRotation": 1.5708},
+                "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
     glb = out_dir / f"{name}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
@@ -1119,7 +1145,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                           if pn not in pf_of}, smooth=3)}
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
                    f"{bones[0]['name']!r}), {len(rigged['weights'])} parts skinned, {time.time() - tr:.1f}s")
-    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged)
+    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))

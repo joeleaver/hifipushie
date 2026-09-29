@@ -91,6 +91,7 @@ GROOM = {
               "gap": {"width": 0.026, "thickness": 0.004, "spacing": 0.8, "length": 0.05},
               "edge": {"width": 0.011, "thickness": 0.0028, "spacing": 0.9, "length": 0.022}},
     "grey": {"temples": 0.35, "sideburns": 0.5},
+    "drawn": [],
     "noise": 0.3,
     "seed": 0,
 }
@@ -502,9 +503,11 @@ def grow(sc: Scalp, g: dict) -> dict:
     locks = {}
     tiers = g["tiers"]
     names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g", "clumps": "k"}
+    if g.get("drawn"):  # the top drawn by hand (clumps on the top view), the rest grown round it
+        locks.update(drawn(sc, g, g["drawn"]))
     if tiers.get("strip"):
         locks.update(_strips(sc, g, line, tiers["strip"], rng))
-    designed = bool((tiers.get("clumps") or {}).get("list"))
+    designed = bool((tiers.get("clumps") or {}).get("list")) or bool(g.get("drawn"))
     for tier in ("clumps", "big", "crown", "fill", "edge", "gap", "gap"):  # gaps twice: a second look at what's bare
         td = tiers.get(tier)
         if not td or (designed and tier in ("big", "crown")):  # designed clumps replace the laid-out top
@@ -769,6 +772,9 @@ def _gap_roots(sc: Scalp, g: dict, line, locks: dict, td: dict, rng):
     cov = coverage(sc, A, E, ext, reach=0.001)
     d = inside(sc, line, A, E)
     bare = (cov < 0.75) & (d > 0.004)
+    if td.get("where"):  # only the regions asked (a drawn top is left to its clumps: widen them, don't add small ones)
+        Wg = weights(A, E, d)
+        bare &= Wg[..., [REGIONS.index(r) for r in td["where"]]].sum(-1) > 0.5
     if not bare.any():
         return np.array([]), np.array([])
     a0, e0 = A[bare], E[bare]
@@ -972,7 +978,8 @@ def groom(name: str, replace: bool = False, note: str = "") -> dict:
     new = grow(sc, g)
     old = h.get("locks") or {}
     keep = {} if replace else {n: lk for n, lk in old.items()
-                               if not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())}
+                               if not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
+                               and lk.get("tier") != "drawn"}
     h["locks"] = {**new, **keep}
     store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     return {"locks": len(h["locks"]), "tiers": {t: sum(1 for lk in new.values() if lk["tier"] == t)
@@ -1519,3 +1526,183 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
             changes[f"hair.{n}"] = "deleted in the scene"
             log.append(f"hair lock {n}: deleted in the scene")
     return changes
+
+
+# ------------------------------------------------------------------------------------------------ export
+
+def srgb_to_linear(hexc: str) -> list:
+    c = hexc.lstrip("#")
+    v = [int(c[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    return [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in v]
+
+
+def _srgb8(px):
+    """Linear floats -> sRGB 8-bit."""
+    c = np.clip(px, 0, 1)
+    s = np.where(c <= 0.0031308, 12.92 * c, 1.055 * np.power(c, 1 / 2.4) - 0.055)
+    return (s * 255 + 0.5).astype(np.uint8)
+
+
+def _tangents(V, T, UV):
+    """Per-corner normals (smooth, by vertex) and tangents (dP/du, orthogonalised) + bitangent sign, for a triangle
+    mesh with per-corner uv (T (n, 3) vertex ids, UV (n*3, 2))."""
+    P = V[T]
+    e1, e2 = P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]
+    fn = np.cross(e1, e2)
+    vn = np.zeros_like(V)
+    for k in range(3):
+        np.add.at(vn, T[:, k], fn)
+    vn = _unit(vn)
+    u = UV.reshape(-1, 3, 2)
+    d1, d2 = u[:, 1] - u[:, 0], u[:, 2] - u[:, 0]
+    det = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
+    r = np.where(np.abs(det) > 1e-12, 1.0 / np.where(np.abs(det) > 1e-12, det, 1.0), 0.0)
+    t = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) * r[:, None]
+    b = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) * r[:, None]
+    vt, vb = np.zeros_like(V), np.zeros_like(V)
+    for k in range(3):
+        np.add.at(vt, T[:, k], t)
+        np.add.at(vb, T[:, k], b)
+    n = vn[T].reshape(-1, 3)
+    tt = vt[T].reshape(-1, 3)
+    tt = tt - (tt * n).sum(1, keepdims=True) * n
+    tt = np.where(np.linalg.norm(tt, axis=1, keepdims=True) > 1e-12, _unit(tt), np.array([1.0, 0, 0]))
+    sign = np.sign((np.cross(n, tt) * vb[T].reshape(-1, 3)).sum(1))
+    return n, tt, np.where(sign == 0, 1.0, sign)
+
+
+def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int = 12,
+                sides: int = 8, log: list | None = None) -> tuple[dict, dict] | None:
+    """The hair as an export part: (part dict as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
+    sign; atlas set by the caller) and its maps {basecolor, orm, normal, specular: png}. Low poly = the curve locks at
+    `segments` x `sides` + the underlayer decimated; maps = Cycles bakes from the full-resolution locks (Blender)."""
+    from PIL import Image
+    from .scene import _blender
+    log = [] if log is None else log
+    spec = store.load(name) if spec is None else spec
+    if not hair_of(spec).get("locks"):
+        return None
+    t = time.time()
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    j = {"mode": "hair_export", "blend": "", "out": str(out_dir), "hair": job(name, spec), "texture": texture,
+         "segments": segments, "sides": sides}
+    _blender(j, timeout=1800)
+    z = np.load(out_dir / "hair_low.npz")
+    V, T, UV = z["verts"].astype(np.float64), z["tris"], z["uv"].astype(np.float64)
+    n, tt, sg = _tangents(V, T, UV)
+    part = {"verts": V.astype(np.float32), "corner_vert": T.ravel().astype(np.int64), "uv": UV.astype(np.float32),
+            "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32)}
+    col = np.load(out_dir / "hair_color.npy")[::-1]  # Blender's pixels run bottom-up
+    rough = np.load(out_dir / "hair_rough.npy")[::-1]
+    files = {"basecolor": out_dir / "hair_basecolor.png", "orm": out_dir / "hair_orm.png",
+             "normal": out_dir / "hair_normal.png", "specular": out_dir / "hair_specular_gltf.png"}
+    Image.fromarray(_srgb8(col[..., :3])).save(files["basecolor"])
+    r8 = (np.clip(rough[..., 0], 0, 1) * 255 + 0.5).astype(np.uint8)
+    Image.fromarray(np.stack([np.full_like(r8, 255), r8, np.zeros_like(r8)], -1)).save(files["orm"])
+    Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 128], np.uint8), "RGBA").save(files["specular"])
+    log.append(f"hair: {len(T)} triangles ({segments} x {sides} per lock + the underlayer), maps {texture}^2 baked by Cycles "
+               f"from the locks' own material in {time.time() - t:.1f}s")
+    return part, files
+
+
+# ------------------------------------------------------------------------------------------------ drawn clumps
+
+def top_to_azel(sc: Scalp, xy):
+    """Points drawn on a top view of the head ([x, y] m from the head centre: x his left, y back) -> (az, el) of the
+    scalp point under each, found along the vertical line (the highest scalp crossing)."""
+    xy = np.asarray(xy, float)
+    az0, el0 = az_el(np.stack([xy[:, 0], xy[:, 1], np.full(len(xy), 0.08)], 1))
+    az, el = az0.copy(), el0.copy()
+    for _ in range(12):  # solve for the scalp point whose x, y match (its radius varies with direction)
+        P = sc.point(az, el, 0.0) - sc.C
+        err = xy - P[:, :2]
+        Q = P.copy()
+        Q[:, :2] += err
+        az, el = az_el(Q)
+    return az, el
+
+
+def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
+    """Clumps drawn on the top view: [{"name"?, "top": [[x, y], ...] (root first), "width", "thickness"?, "lie"?}]
+    -> locks. Heights come from the volume: the root dives under whatever it grows from, the body lies with its back
+    at the volume (the underlayer is sunk under it), the tip tucks onto the clump below (lifted `lie` x thickness,
+    default 0.1); past the hairline (a fringe) it lies on the skin."""
+    line = hairline(sc, g)
+    out = {}
+    for i, c in enumerate(clumps):
+        xy = np.asarray(c["top"], float)
+        a, e = top_to_azel(sc, xy)
+        w = float(c.get("width", 0.055))
+        T = float(c.get("thickness", 0.011 * w / 0.055))
+        H, d_in = envelope(sc, g, line, a, e)
+        U = under(g, H, a, e, d_in)
+        u = np.linspace(0, 1, len(a))
+        h = U + 0.35 * T
+        h = np.where(u == 0, U - 0.5 * T, h)
+        h[-1] = U[-1] + float(c.get("lie", 0.1)) * T
+        h = np.where(d_in < 0, np.maximum(h, 0.55 * T), h)  # a fringe lies on the forehead
+        P = sc.point(a, e, h)
+        tilt = lie_tilt(sc, g, line, _catmull(P, 4 * len(P))[::4])
+        name = c.get("name") or f"k{i:02d}"
+        out[name] = {"tier": "drawn", "pts": [[round(float(a[k]), 2), round(float(e[k]), 2), round(float(h[k]), 4)]
+                                              for k in range(len(a))],
+                     "tilt": [round(float(v), 3) for v in tilt], "width": round(w, 4), "thickness": round(T, 4),
+                     "cup": round(lie_cup(sc, w, P), 4), "taper": float(c.get("taper", 0.8)),
+                     "belly": float(c.get("belly", 0.35)), "root": float(c.get("root", 0.8)), "twist": 0.0}
+        gr = _grey(g, float(a[0]), float(e[0]), line)
+        if gr > 0.01:
+            out[name]["grey"] = round(gr, 3)
+    return out
+
+
+def layout(name: str, save: str | None = None, size: int = 520, spec: dict | None = None):
+    """The groom seen from above as a designer's sketch: the hairline, the parting, every lock's spine (drawn clumps
+    thick and labelled, with their width; grown locks thin, by tier), roots dotted, arrows at the tips. x his left
+    to the right of the image? No: drawn as seen from above with the face at the bottom, his left on the image's
+    right (so it matches the top view render)."""
+    from PIL import Image, ImageDraw
+    spec = store.load(name) if spec is None else spec
+    sc = scalp(name, spec)
+    g = groom_params(spec)
+    line = hairline(sc, g)
+    s = size / 0.24
+
+    def px(P):
+        Q = np.asarray(P, float) - sc.C
+        return np.stack([size / 2 + Q[..., 0] * s, size / 2 - Q[..., 1] * s], -1)
+    im = Image.new("RGB", (size, size), (246, 244, 240))
+    dr = ImageDraw.Draw(im)
+    a = np.arange(0.0, 360.0, 2.0)
+    HL = px(sc.point(a, _line_at(line, a), 0.0))
+    dr.line([tuple(p) for p in np.vstack([HL, HL[:1]])], fill=(150, 110, 90), width=2)
+    xp = _part_x(g)
+    if xp is not None:
+        L = float(g["parting"].get("length", 0.1))
+        y0 = sc.point(0.0, float(_line_at(line, 0.0)), 0.0)[1]
+        dr.line([tuple(px([xp, y0, 0])), tuple(px([xp, y0 + L, 0]))], fill=(200, 60, 60), width=2)
+    colours = {"drawn": (40, 40, 40), "strip": (120, 150, 190), "gap": (170, 170, 120), "fill": (170, 170, 120),
+               "big": (60, 90, 60), "crown": (90, 120, 60)}
+    for n, lk in sorted((hair_of(spec).get("locks") or {}).items(), key=lambda kv: kv[1].get("tier") == "drawn"):
+        pts = np.asarray(lk["pts"], float)
+        P = _catmull(sc.point(pts[:, 0], pts[:, 1], pts[:, 2]), 24)
+        Pp = px(P)
+        tier = lk.get("tier", "")
+        col = colours.get(tier, (140, 140, 140))
+        wpx = max(1, int(lk["width"] * s * 0.2))
+        dr.line([tuple(p) for p in Pp], fill=col, width=wpx if tier == "drawn" else 1)
+        r0 = Pp[0]
+        dr.ellipse([r0[0] - 3, r0[1] - 3, r0[0] + 3, r0[1] + 3], outline=col)
+        d = Pp[-1] - Pp[-3]
+        d = d / max(np.linalg.norm(d), 1e-9)
+        nrm = np.array([-d[1], d[0]])
+        tip = Pp[-1]
+        dr.polygon([tuple(tip + d * 7), tuple(tip - d * 3 + nrm * 5), tuple(tip - d * 3 - nrm * 5)], fill=col)
+        if tier == "drawn":
+            dr.text(tuple(r0 + np.array([4, -12])), n, fill=(20, 20, 20))
+    dr.text((6, 6), f"{name}: from above, face at the bottom, his left on the right", fill=(60, 60, 60))
+    dr.text((6, size - 16), "drawn clumps black (thickness = a fifth of the width); strips blue, gap locks olive; red = part",
+            fill=(60, 60, 60))
+    if save:
+        im.save(save)
+    return im

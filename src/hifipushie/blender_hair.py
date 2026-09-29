@@ -580,3 +580,152 @@ def hair_points(coll_name: str = "hair", names: list | None = None):
             names += [ob.name] * len(out[-1])
         ev.to_mesh_clear()
     return np.concatenate(out) if out else np.zeros((0, 3), np.float32)
+
+
+def _mesh_object(name, V, F, loops_uv=None, attrs=None):
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(map(float, v)) for v in V], [], [tuple(map(int, f)) for f in F])
+    me.update()
+    for an, a in (attrs or {}).items():
+        a = np.asarray(a, np.float32)
+        at = me.attributes.new(an, "FLOAT_VECTOR" if a.ndim == 2 else "FLOAT", "POINT")
+        at.data.foreach_set("vector" if a.ndim == 2 else "value", a.ravel())
+    if loops_uv is not None:
+        uvl = me.uv_layers.new(name="UVMap")
+        uvl.data.foreach_set("uv", loops_uv.astype(np.float32).ravel())
+    me.shade_smooth()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def export_bake(job):
+    """The hair as a game asset: the locks at a low resolution (job "segments"/"sides") plus the underlayer
+    decimated; each lock's uv runs round its lens and along it (one island per lock; the underlayer smart-projected),
+    islands scaled to their real size and packed by Blender; then Cycles bakes the full-resolution locks (their node
+    material: base colour and roughness as emission; normals with the grooves' bump) onto it, selected-to-active.
+    Writes <out>/hair_low.npz (verts, tris, per-corner uv) and hair_{color,rough}.npy (linear floats),
+    hair_normal.png (tangent space)."""
+    import os
+    import bmesh
+    out = job["out"]
+    show(job["hair"])
+    coll = bpy.data.collections["hair"]
+    cap = next(ob for ob in coll.objects if ob.get("hp_hair_cap"))
+    Vl, Fl, Al = evaluated_mesh("hair", segments=job.get("segments", 12), sides=job.get("sides", 6))
+    dec = cap.modifiers.new("dec", "DECIMATE")
+    dec.ratio = job.get("cap_ratio", 0.04)
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = cap.evaluated_get(dg)
+    cm = ev.to_mesh()
+    cm.calc_loop_triangles()
+    cv = np.empty(len(cm.vertices) * 3, np.float32)
+    cm.vertices.foreach_get("co", cv)
+    ct = np.empty(len(cm.loop_triangles) * 3, np.int32)
+    cm.loop_triangles.foreach_get("vertices", ct)
+    cv, ct = cv.reshape(-1, 3), ct.reshape(-1, 3)
+    ev.to_mesh_clear()
+    cap.modifiers.remove(dec)
+    ang = (np.arctan2(Al["hp_out"], Al["hp_across"]) / (2 * np.pi)) % 1.0
+    uvp = np.stack([ang, Al["hp_along"]], 1)
+    cu = uvp[Fl].copy()
+    wrap = (cu[..., 0].max(1) - cu[..., 0].min(1)) > 0.5  # a face across the profile's seam
+    cu[..., 0] = np.where(wrap[:, None] & (cu[..., 0] < 0.5), cu[..., 0] + 1.0, cu[..., 0])
+    V = np.concatenate([Vl, cv])
+    F = np.concatenate([Fl, ct + len(Vl)])
+    uv_c = np.concatenate([cu, np.zeros((len(ct), 3, 2))])
+    # the low poly carries the locks' attributes (the underlayer: its own constants), so it bakes from its own
+    # material: selected-to-active from the full-resolution locks picked up neighbouring locks where they overlap
+    # (shingles), smearing one lock's colour and normals onto the next
+    nc = len(cv)
+    cap_a = {"hp_along": 0.5, "hp_across": 0.45, "hp_out": 0.5, "hp_lock": 0.5, "hp_grey": 0.0}
+    attrs = {k: np.concatenate([Al[k], np.full(nc, cap_a[k], np.float32)]) for k in cap_a}
+    attrs["hp_tangent"] = np.concatenate([Al["hp_tangent"], np.tile([0.0, 1.0, 0.0], (nc, 1))])
+    low = _mesh_object("hp_low", V, F, loops_uv=uv_c.reshape(-1, 2), attrs=attrs)
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    bpy.context.view_layer.objects.active = low
+    low.select_set(True)
+    bm = bmesh.new()
+    bm.from_mesh(low.data)
+    bm.faces.ensure_lookup_table()
+    nlock = len(Fl)
+    for f in bm.faces:
+        f.select_set(f.index >= nlock)
+    bm.to_mesh(low.data)
+    bm.free()
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.uv.smart_project(angle_limit=1.15, island_margin=0.0)
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.select_all(action="SELECT")
+    bpy.ops.uv.average_islands_scale()
+    bpy.ops.uv.pack_islands(margin=job.get("margin", 0.004), rotate=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for ob in list(coll.objects):  # the curves aren't needed any more: the low bakes from itself
+        bpy.data.objects.remove(ob)
+    size = int(job.get("texture", 1024))
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = int(job.get("samples", 4))
+    sc.cycles.device = "CPU"
+    mat = bpy.data.materials["hp_hair"]
+    low.data.materials.append(mat)
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    mat.node_tree.nodes.active = tex
+    kw = dict(use_selected_to_active=False, margin=8, target="IMAGE_TEXTURES")
+    for what in ("color", "rough", "normal"):
+        img = bpy.data.images.new(f"hair_{what}", size, size, alpha=False, float_buffer=(what != "normal"))
+        if what == "normal":
+            img.colorspace_settings.name = "Non-Color"
+        tex.image = img
+        for o in bpy.context.view_layer.objects:
+            if o is not None:
+                o.select_set(False)
+        low.select_set(True)
+        bpy.context.view_layer.objects.active = low
+        if what == "normal":
+            _emit_hair(mat, None)
+            bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", **kw)
+            img.filepath_raw = os.path.join(out, "hair_normal.png")
+            img.file_format = "PNG"
+            img.save()
+        else:
+            _emit_hair(mat, "Base Color" if what == "color" else "Roughness")
+            bpy.ops.object.bake(type="EMIT", **kw)
+            px = np.array(img.pixels[:], np.float32).reshape(size, size, 4)
+            np.save(os.path.join(out, f"hair_{what}.npy"), px)
+    me = low.data
+    me.calc_loop_triangles()
+    lv = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", lv)
+    tri = np.empty(len(me.loop_triangles) * 3, np.int32)
+    me.loop_triangles.foreach_get("vertices", tri)
+    tl = np.empty(len(me.loop_triangles) * 3, np.int32)
+    me.loop_triangles.foreach_get("loops", tl)
+    uvs = np.empty(len(me.loops) * 2, np.float32)
+    me.uv_layers.active.data.foreach_get("uv", uvs)
+    np.savez(os.path.join(out, "hair_low.npz"), verts=lv.reshape(-1, 3), tris=tri.reshape(-1, 3),
+             uv=uvs.reshape(-1, 2)[tl])
+    print("@@hair_export", len(tri) // 3)
+
+
+def _emit_hair(mat, what):
+    """The hair material's output as an emission of one of its Principled inputs (None: back to the BSDF)."""
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+    if what is None:
+        nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
+        return
+    em = nt.nodes.get("hp_bake_em") or nt.nodes.new("ShaderNodeEmission")
+    em.name = "hp_bake_em"
+    mat.cycles.emission_sampling = "NONE"
+    for ln in list(em.inputs["Color"].links):
+        nt.links.remove(ln)
+    inp = bsdf.inputs[what]
+    if inp.is_linked:
+        nt.links.new(inp.links[0].from_socket, em.inputs["Color"])
+    else:
+        v = inp.default_value
+        em.inputs["Color"].default_value = (v, v, v, 1.0) if not hasattr(v, "__len__") else tuple(v)
+    nt.links.new(em.outputs[0], out.inputs["Surface"])

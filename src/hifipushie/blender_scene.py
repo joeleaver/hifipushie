@@ -1165,7 +1165,14 @@ def hair_sync(job):
     print("@@made", json.dumps(made))
 
 
-MODES = {"hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
+def hair_export(job):
+    """The hair's low poly + Cycles-baked maps (blender_hair.export_bake), in an empty scene."""
+    for ob in list(bpy.data.objects):
+        bpy.data.objects.remove(ob)
+    blender_hair.export_bake(job)
+
+
+MODES = {"hair_export": hair_export, "hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
 
 if __name__ == "__main__" and "--" in sys.argv:  # run as a script by headless Blender; imported in a live session
     job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
