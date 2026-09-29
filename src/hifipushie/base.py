@@ -35,7 +35,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 53  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 54  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -313,6 +313,7 @@ def _landmark_joints(head: dict) -> dict:
     for name in ("lm_lid_upper.L", "lm_lid_lower.L"):
         i, j = (43, 44) if "upper" in name else (46, 47)
         out[name] = {"pos": [round(float(x), 4) for x in 0.5 * (lm[i] + lm[j])], "r": 0.004}
+    out["lm_lip_seam"] = {"pos": [round(float(x), 4) for x in 0.5 * (lm[62] + lm[66])], "r": 0.003}  # between the lips
     return out
 
 
@@ -823,6 +824,19 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         np.tensordot(ce, g["expression_basis"], 1)
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
+    if head.get("mouth_gap") is not None:  # the lips parted by this much (m, world; 0 = closed): the least change of
+        # the lower-face expression components that sets the inner lips' distance (slightly parted lips left
+        # flecks at the corners where the slit ran out)
+        lmv = lambda X, i: sum(float(w) * X[int(v)] for v, w in zip(g["lm68"][i][0::2], g["lm68"][i][1::2]))
+        lower = [i for i, nm in enumerate(g["expression_names"]) if str(nm).startswith("lower_face")][:40]
+        gap = lambda X: float(np.linalg.norm(lmv(X, 62) - lmv(X, 66)))
+        g0 = gap(V)
+        a = np.array([gap(V + 1e-3 * g["expression_basis"][i]) - g0 for i in lower]) / 1e-3
+        want = float(head["mouth_gap"]) / float(head.get("scale", 1.4))
+        for _ in range(3):  # (the gap is a norm: a few linearised steps)
+            c = a * (want - gap(V)) / max(float(a @ a), 1e-12)
+            V = V + np.tensordot(c, g["expression_basis"][lower], 1)
+            a = np.array([gap(V + 1e-3 * g["expression_basis"][i]) - gap(V) for i in lower]) / 1e-3
     k_eye = float(head.get("eyes", 1.0))
     r_eye = [float(np.median(np.linalg.norm(V[m] - J[2 + i], axis=1))) for i, m in enumerate(g["eye"])]
     if k_eye != 1.0:  # the eyes and the orbits round them scaled about each eye centre, fading out over ~2 radii
