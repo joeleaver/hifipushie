@@ -225,7 +225,8 @@ def apply(T):
             heads.append({"base": b0.tolist(), "tip": tip.tolist(), "height": hh, "side": side})
         # the cove sits in a hollow: the land round the bay (not its headland) eases down to a low rim a little over the
         # water (on a 55 m plateau every cove had been a pit ringed by 60 m walls, the "low point" as high as the rest)
-        rim = float(cv.get("rim", float(np.clip(0.1 * w, 4.0, 18.0))))
+        # (a cove without a beach is a cliffed inlet: no hollow unless asked; the hollow reaches 1.5 widths)
+        rim = float(cv.get("rim", float(np.clip(0.1 * w, 4.0, 18.0)) if cv.get("beach", True) else -1.0))
         if rim >= 0:
             d_b = ndimage.distance_transform_edt(~bay) * T.cell
             low = level + rim + math.tan(math.radians(float(cv.get("rim_slope", 16)))) * d_b
@@ -238,7 +239,12 @@ def apply(T):
                 t = np.clip(((T.X - b0[0]) * seg[0] + (T.Y - b0[1]) * seg[1]) / (seg @ seg), 0, 1)
                 spare |= np.hypot(T.X - (b0[0] + t * seg[0]), T.Y - (b0[1] + t * seg[1])) < 0.3 * w
             fade = smoothstep(0, 0.2 * w, ndimage.distance_transform_edt(~spare) * T.cell) if spare.any() else 1.0
-            cut = np.clip(T.H - low, 0, None) * fade * (d_b < 2.5 * w)
+            # only the gentle land round it, and never more than a few tens of metres (on a volcano's collapse the
+            # hollow had cut the amphitheatre walls 300 m down): designed slopes keep their form
+            gy_, gx_ = np.gradient(ndimage.gaussian_filter(T.H, max(1.0, 10.0 / T.cell)), T.cell)
+            gentle = smoothstep(22, 12, np.degrees(np.arctan(np.hypot(gx_, gy_))))
+            cap = float(cv.get("rim_depth", np.clip(0.1 * w, 6.0, 25.0)))
+            cut = np.minimum(np.clip(T.H - low, 0, None), cap) * fade * gentle * smoothstep(1.5 * w, 1.0 * w, d_b)
             T.H = T.H - ndimage.gaussian_filter(cut, max(1.0, 0.03 * w / T.cell))
         land = sd > 0
         head = c + inl * a + left * hs * 0.18 * w  # the bay's head, for its beach

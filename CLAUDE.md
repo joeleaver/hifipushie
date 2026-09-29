@@ -690,6 +690,39 @@ regresses, bisect by building one spec at each commit and diffing heights.
     uncovered ground, detail left off, detail's cost; a river over a dammed lake's dam is a 0.15 m spillway.
     `terrain_rock.bed_step/bed_offset/params` are shared with terrain3d's solid rock (same beds, facet sizes, colour);
     views darken rock at the waterline (+0.4..2.2 m, the tiles' wet band).
+- Terrain forms (2026-09-29, branch worktree-agent-a13c3e7dac22b5635, renders 26-32, blind round t3_coast/alps/farm):
+  - Rock big structure first (`terrain_rock._structure`): buttresses/gullies spaced ~0.9x the local face height
+    (`face_height`, octave bands 20-320 m, 17% amplitude, strong/slabby stretches), on a frame smoothed at their own
+    scale (the ribs' frame turned round every spur: blades), the shift clamped to the room above/below (past a thin
+    crest it pulled the far side up as saw teeth) and smoothed 1.2 cells (chisel knots made 1-cell spires at cliff feet);
+    ribs inside are small (0.15 crag / 0.035 face height) and change every 3.5 spacings down the fall line (long thin
+    fins read as wax). The faces' shift runs on into the sea (kept, waterline cells stood as spires). Tiers (`_tiers`) on
+    non-sea cliffs; sea cliffs get ledges in their own profile (`terrain_sea._cliff_face`, T.sea["run"] = lip->foot, used by
+    cliff_feet). `T.rock` ledges/gullies/tone; `terrain_rock.colour(T)` / `base_colour` for 3D rock (terrain3d uses it).
+    Aprons are concave cones fed from gullies, ending at their toe (a -inf past it; they had spread 400 ha). write_mesh
+    splits quads along the flatter diagonal.
+  - Coves: asymmetric (`_headland_sides`: auto = the higher side), a cliffed headland (`head_m` forces cliffs), a low
+    point opposite, the bay swung away, and a hollow (`rim`): on a 55 m plateau coves were pits ringed by 60 m walls.
+    Report measures the bay/mouth along the axis on the coastline field (stacks and rocks awash were "a 1 m mouth").
+  - Basin `walls.from_top` (`terrain._from_top`, `_wall_profile` branch): bands laid by horizontal distance floor edge ->
+    ridge line (the harmonic t crowded to the ends: every band at the wrong slope), H over the wall from the floor edge to
+    the ridge's own height; zones `<basin>.<band>` re-cut on the built ground by its form (`design._profile_zones`: scree
+    down gullies and fans, forest up ribs; ruled stripes otherwise), auto cover per band (`_profile_cover`).
+  - `terrain_detail.ground` after refine: undulation in a size spectrum (2.5/1/0.4 x scale), swales from D8 drainage of
+    the undulating ground (stretched noise seamed along divides), hummocks in patches on gentle dry ground, hollows > 0.6 m
+    refilled; off routes/sites/passes/water/intent sight lines (1 m hummocks blocked pebble_disc's holes).
+  - Lakes with `dam: "moraine" | "rock bar"` (`_natural_dam`): across the valley at the lake's downstream end, level from
+    the floor when left out, lake side a bank, downstream face 22/58 deg to the floor (ending the profile at lake level
+    left a 300 m plateau and a 50 m scarp), a V spillway cut at the lake level; lakes with such a dam may run 8 r up.
+  - `terrain_lines.py`: `lines` (hedge/stone wall/fence/bank/ditch/trees; along/follows/around/network). Networks default
+    to `_subdivided_fields` (convex splits across the longer axis, sizes by noise: a grid read as a ladder, Voronoi as
+    honeycomb). Lines stop at water/pads/crossed routes and slopes > 38 deg; banks/ditches never touch routes/pads (they
+    had broken a lane's grade); ditches >= 3 cells; bank/ditch measured per cell against a local ring mean. Views: walls
+    with each foot on its side's ground, fences, hedges as one lumpy ribbon (shrub balls read as beads; shrubs stay in
+    trees.csv), no tree within 7 m of an eye. Export meta "lines".
+  - Blind round t3: layouts land; still fake: rock faces up close (heightfield: smooth fins, no beds at 50 m range), the
+    head as a mesa, stacks at a headland fuse like a causeway, hedges uniform dark, ground "lumpy" still subtle at eye
+    level, the ground beyond the frame streaks, cliffs/scree bands under peak forms don't hold their asked slopes.
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
