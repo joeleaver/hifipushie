@@ -66,7 +66,10 @@ SIDE_TUCK = (0.25, 0.65)  # |lateral| of the head direction where a top lock sta
 def side_tuck(az, el, W=None):
     """0 on the crown, 1 over the upper sides: where a top lock lies down onto the side mass. (By elevation alone,
     sides and back, it did worse: the back's crown then stood proud of the tucked back.)"""
-    return _ss((np.abs(dirs(az, el)[..., 0]) - SIDE_TUCK[0]) / (SIDE_TUCK[1] - SIDE_TUCK[0]))
+    fa = np.abs(((np.asarray(az, float) + 180) % 360) - 180)
+    lat = np.abs(dirs(az, el)[..., 0])
+    down = np.cos(np.radians(np.asarray(el, float))) * _ss((fa - 90) / 40)  # the back, turning down
+    return _ss((np.maximum(lat, down) - SIDE_TUCK[0]) / (SIDE_TUCK[1] - SIDE_TUCK[0]))
 
 
 TIP_STEP = 0.25  # how far a top lock's tip lifts off the lock under it, x its thickness
@@ -268,7 +271,7 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
         sb = ear_top - float(hl.get("sideburns", 0.028))
         nape = ear_bot - 0.015 + float(hl.get("nape", 0.0))
         ctrl = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
-                (az_j - 28, zf - 0.02 + tmp), (az_j - 18, ear_top + 0.012), (az_j - 10, sb + 0.006),
+                (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, ear_top + 0.012), (az_j - 10, sb + 0.006),
                 (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
                 (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
     # z -> elevation on the scalp, per control's azimuth (the column's first height reaching z, from the bottom)
@@ -901,7 +904,8 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24, f
             h = h - 1.3 * T * _ss((x - 0.72) / 0.28)
         if tier == "fill":  # relief within the volume: its back never stands out of the groom's silhouette
             h = np.minimum(h, H - 0.8 * T)
-        h = np.maximum(h, 0.15 * T * _ss(x / 0.25) - 0.6 * T * (1 - _ss(x / 0.25)))  # the root grows out of the scalp
+        floor = np.where(d_in > 0, 0.15, 0.55) * T  # past the hairline (a fringe) it lies on the skin, not in it
+        h = np.maximum(h, floor * _ss(x / 0.25) - 0.6 * T * (1 - _ss(x / 0.25)))  # the root grows out of the scalp
         # (floored above the skin from the start, a lock's squared-off root end stood on the forehead as a black notch)
         q = sc.point(a, e, h)
         P[:, k] = q
