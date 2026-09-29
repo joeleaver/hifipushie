@@ -1,0 +1,886 @@
+"""Hair as locks: Bezier curves swept with a lens profile, living in the Blender scene.
+
+spec["hair"] = {
+  "groom":  the designer's words and numbers; `groom()` grows the first pass of locks from them (hairline from the
+            face landmarks, a parting, volume per region, flow per region, lock tiers). Parameters come first: change
+            these and regrow before editing locks by hand.
+  "locks":  {name: lock}: what the scene shows. Written by `groom()`, then edited by numbers or in Blender (pull
+            brings moved control points, handles, radius, tilt and the modifier numbers back).
+  "look":   the material: {"gap", "lit", "sheen", "grey" (sRGB hex), "roughness", "sheen_amount", "vary",
+            "grooves" (strand ridges across a lock), "groove_depth", "anisotropic"}.
+  "cap":    the dark underlayer on the scalp inside the hairline (m, default 0.002; 0 = none).
+  "stage":  "mass" shows the groom's volume as one smooth shell (stage a: silhouette), else the locks.
+  "part":   the export part (default "hair").
+}
+A lock: {"pts": [[az, el, h], ...], "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey",
+"radius"?: [per point], "tilt"?: [per point, radians], "handles"?: [[az, el, h, az, el, h] | null per point],
+"tier"?: "big" | "fill" | "edge"}. Every point is an address on the head: azimuth in degrees round the head centre
+(0 = the front, 90 = his left ear, 180 = the back), elevation in degrees up from the centre's level, and h metres
+above the scalp along that ray (pts[0] is the root: h ~ 0). The centre comes from the face landmarks (between the
+jaw tops, at the brows' height), so locks follow the head when it changes. Widths etc. in metres: width across the
+lock at its widest (Belly: where along, 0..1), Root = the width at the scalp / the widest, Taper 1 = to a point,
+Cup = how far the edges curl toward the head, Twist = degrees turned root to tip, Flip = degrees turned everywhere.
+
+In Blender every lock is a curve object in the "hair" collection with the "hp_lock" Geometry Nodes modifier
+(`blender_hair.py`): grab its control points and the mesh follows live.
+"""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import tempfile
+import time
+from pathlib import Path
+
+import numpy as np
+
+from . import store
+
+UNDER = 0.82  # the underlayer mass: this share of the groom's volume (the locks' backs make up the rest)
+REGIONS = ("front", "top", "sides", "back", "nape")
+GROOM = {
+    "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
+    "parting": {"side": "left", "offset": 0.03, "length": 0.1},
+    "volume": {"front": 0.045, "top": 0.036, "crown": 0.02, "sides": 0.012, "back": 0.013, "nape": 0.005},
+    "length": {"front": 0.17, "top": 0.15, "sides": 0.055, "back": 0.06, "nape": 0.03},
+    "flow": {"front": {"back": 1, "up": 0.3, "away": 0.6}, "top": {"back": 1, "away": 0.55},
+             "sides": {"back": 1, "down": 0.45}, "back": {"down": 1}, "nape": {"down": 1}},
+    "tiers": {"big": {"width": 0.05, "thickness": 0.011, "cup": 0.004, "spacing": 0.6, "where": ["front", "top"],
+                      "layout": "part", "front_away": 5, "front_part": 2, "part_row": 3, "front_span": 42},
+              "fill": {"width": 0.026, "thickness": 0.007, "cup": 0.002, "spacing": 0.8,
+                       "where": ["sides", "back", "nape", "top"]},
+              "edge": {"width": 0.011, "thickness": 0.0028, "cup": 0.0008, "spacing": 0.9, "length": 0.022}},
+    "grey": {"temples": 0.35, "sideburns": 0.5},
+    "noise": 0.3,
+    "seed": 0,
+}
+LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
+        "sheen_amount": 0.45, "vary": 0.25, "grooves": 9, "groove_depth": 0.25, "anisotropic": 0.7}
+LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
+             "handles", "tier"}
+MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
+       "twist": "Twist", "flip": "Flip", "grey": "Grey"}
+LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002}
+WORDS = {"back": (0, 1, 0), "forward": (0, -1, 0), "down": (0, 0, -1), "up": (0, 0, 1), "left": (1, 0, 0),
+         "right": (-1, 0, 0), "away": None}
+
+
+class HairError(ValueError):
+    pass
+
+
+def _ss(x):
+    x = np.clip(x, 0.0, 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def _unit(v):
+    return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
+
+
+def dirs(az, el):
+    """Unit directions for azimuth / elevation in degrees (0 = front -Y, 90 = +X his left)."""
+    a, e = np.radians(az), np.radians(el)
+    return np.stack([np.sin(a) * np.cos(e), -np.cos(a) * np.cos(e), np.sin(e)], -1)
+
+
+def az_el(v):
+    u = _unit(np.asarray(v, float))
+    return np.degrees(np.arctan2(u[..., 0], -u[..., 1])) % 360, np.degrees(np.arcsin(np.clip(u[..., 2], -1, 1)))
+
+
+# ------------------------------------------------------------------------------------------------ the head
+
+class Scalp:
+    """The head as rays from its centre: r(az, el) = where the body's surface is (a 2 degree grid, cached per body
+    geometry), plus the face landmarks."""
+    STEP = 2.0
+    EL = (-70.0, 90.0)
+
+    def __init__(self, C, R, lm):
+        self.C = np.asarray(C, float)
+        self.R = R  # (180, n_el)
+        self.lm = lm
+        self.A = np.arange(0.0, 360.0, self.STEP)
+        self.E = np.arange(self.EL[0], self.EL[1] + 1e-6, self.STEP)
+
+    def r(self, az, el):
+        az = np.asarray(az, float) % 360
+        el = np.clip(np.asarray(el, float), self.EL[0], self.EL[1])
+        fa, fe = az / self.STEP, (el - self.EL[0]) / self.STEP
+        ia, ie = np.floor(fa).astype(int), np.minimum(np.floor(fe).astype(int), len(self.E) - 2)
+        ta, te = fa - ia, fe - ie
+        ia0, ia1 = ia % len(self.A), (ia + 1) % len(self.A)
+        R = self.R
+        return ((1 - ta) * (1 - te) * R[ia0, ie] + ta * (1 - te) * R[ia1, ie] + (1 - ta) * te * R[ia0, ie + 1]
+                + ta * te * R[ia1, ie + 1])
+
+    def point(self, az, el, h):
+        return self.C + (self.r(az, el) + np.asarray(h, float))[..., None] * dirs(az, el)
+
+    def coords(self, P):
+        """(az, el, h) of world points."""
+        Q = np.asarray(P, float) - self.C
+        az, el = az_el(Q)
+        return az, el, np.linalg.norm(Q, axis=-1) - self.r(az, el)
+
+    def normal(self, az, el, d=1.0):
+        """The scalp's outward normal (finite differences on the grid)."""
+        p = self.point(az, el, 0.0)
+        ea = self.point(az + d, el, 0.0) - self.point(az - d, el, 0.0)
+        ee = self.point(az, el + d, 0.0) - self.point(az, el - d, 0.0)
+        n = _unit(np.cross(ea, ee))
+        out = _unit(p - self.C)
+        return np.where((n * out).sum(-1, keepdims=True) < 0, -n, n)
+
+
+def _geometry_key(spec: dict) -> str:
+    from .spec import geometry
+    g = {k: v for k, v in geometry(spec).items() if k != "hair"}
+    return hashlib.sha1(json.dumps(g, sort_keys=True, default=float).encode()).hexdigest()[:16]
+
+
+_SCALPS: dict = {}
+
+
+def scalp(name: str, spec: dict | None = None) -> Scalp:
+    """The model's Scalp (cached in memory and on disk by the body's geometry: hair edits never recompute it)."""
+    spec = store.load(name) if spec is None else spec
+    key = _geometry_key(spec)
+    if key in _SCALPS:
+        return _SCALPS[key]
+    f = store._dir(name) / f"hair_scalp_{key}.npz"
+    if f.exists():
+        z = np.load(f, allow_pickle=False)
+        sc = Scalp(z["C"], z["R"], json.loads(str(z["lm"])))
+    else:
+        sc = _measure(spec)
+        for old in store._dir(name).glob("hair_scalp_*.npz"):
+            old.unlink()
+        np.savez(f, C=sc.C, R=sc.R, lm=json.dumps(sc.lm))
+    _SCALPS[key] = sc
+    return sc
+
+
+def _measure(spec: dict) -> Scalp:
+    from . import sdf
+    from .spec import compile_prims, expand_mirror, geometry
+    g = {k: v for k, v in geometry(spec).items() if k != "hair"}
+    J = expand_mirror(g)["joints"]
+    need = ("lm_brow_mid.L", "lm_nose_base", "lm_jaw_0.L", "lm_brow_outer.L", "lm_nose_bridge")
+    if not all(n in J for n in need):
+        raise HairError(f"hair needs the face landmarks {need} (a base head gives them)")
+    lm = {n: [float(x) for x in J[n]["pos"]] for n in J if n.startswith("lm_")}
+    j0 = np.array(lm["lm_jaw_0.L"])
+    C = np.array([0.0, j0[1] + 0.01, lm["lm_brow_mid.L"][2] + 0.008])
+    streams = {ps[0].part: ps for ps in sdf.streams(compile_prims(g))}
+    body = streams["body"]
+    sc = Scalp(C, None, lm)
+    AA, EE = np.meshgrid(sc.A, sc.E, indexing="ij")
+    U = dirs(AA.ravel(), EE.ravel())
+    ts = np.arange(0.02, 0.26, 0.003)
+    F = sdf.field_at(body, (C + ts[None, :, None] * U[:, None, :]).reshape(-1, 3)).reshape(len(U), len(ts))
+    if np.any(F[:, 0] >= 0):
+        raise HairError(f"hair: the head centre {np.round(C, 3).tolist()} isn't inside the head")
+    out = F >= 0
+    i = np.argmax(out, 1)
+    miss = ~out.any(1)
+    lo, hi = ts[np.maximum(i - 1, 0)], ts[i]
+    for _ in range(10):
+        mid = (lo + hi) / 2
+        fm = sdf.field_at(body, C + mid[:, None] * U)
+        lo, hi = np.where(fm < 0, mid, lo), np.where(fm < 0, hi, mid)
+    r = np.where(miss, ts[-1], hi)
+    sc.R = r.reshape(AA.shape)
+    return sc
+
+
+# ------------------------------------------------------------------------------------------------ the groom
+
+def _merge(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        return {**a, **{k: _merge(a.get(k), v) for k, v in b.items()}}
+    return copy.deepcopy(b) if b is not None else copy.deepcopy(a)
+
+
+def groom_params(spec: dict) -> dict:
+    g = (spec.get("hair") or {}).get("groom") or {}
+    bad = set(g) - set(GROOM)
+    if bad:
+        raise HairError(f"hair groom: unknown keys {sorted(bad)} (have {', '.join(sorted(GROOM))})")
+    return _merge(GROOM, g)
+
+
+def hairline(sc: Scalp, g: dict) -> np.ndarray:
+    """The hairline's elevation (degrees) at each whole degree of azimuth (360,), symmetric left/right: from the
+    landmarks (front height in brow-to-nose units, temples receding, sideburns, clear of the ears, the nape)."""
+    hl = g["hairline"]
+    if hl.get("points"):
+        ctrl = [(float(a), float(z)) for a, z in hl["points"]]
+    else:
+        lm = sc.lm
+        bz = lm["lm_brow_mid.L"][2]
+        fore = bz - lm["lm_nose_base"][2]
+        zf = bz + float(hl.get("front", 0.9)) * fore
+        tmp = float(hl.get("temples", 0.012))
+        j0 = np.array(lm["lm_jaw_0.L"]) - sc.C
+        az_j = float(np.degrees(np.arctan2(j0[0], -j0[1])))
+        ear_top = lm["lm_brow_outer.L"][2] + 0.004
+        ear_bot = lm["lm_nose_base"][2] - 0.01
+        clear = float(hl.get("ear", 0.01))
+        sb = ear_top - float(hl.get("sideburns", 0.028))
+        nape = ear_bot - 0.015 + float(hl.get("nape", 0.0))
+        ctrl = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
+                (az_j - 28, zf - 0.02 + tmp), (az_j - 18, ear_top + 0.012), (az_j - 10, sb + 0.006),
+                (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
+                (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+    # z -> elevation on the scalp, per control's azimuth (the column's first height reaching z, from the bottom)
+    A, E = [], []
+    for a, z in ctrl:
+        el = np.arange(-60.0, 89.0, 0.25)
+        zz = sc.point(np.full(len(el), a), el, 0.0)[:, 2]
+        k = int(np.argmax(zz >= z)) if np.any(zz >= z) else len(el) - 1
+        A.append(a)
+        E.append(el[k])
+    from scipy.interpolate import PchipInterpolator
+    a = np.array(A, float)
+    e = np.array(E, float)
+    AA = np.r_[-a[::-1][:-1], a, 360 - a[::-1][1:]]
+    EE = np.r_[e[::-1][:-1], e, e[::-1][1:]]
+    AA, idx = np.unique(AA, return_index=True)
+    return PchipInterpolator(AA, EE[idx])(np.arange(360.0))
+
+
+def _line_at(line, az):
+    f = np.asarray(az, float) % 360
+    i0 = np.floor(f).astype(int) % 360
+    return line[i0] + (f - np.floor(f)) * (line[(i0 + 1) % 360] - line[i0])
+
+
+def inside(sc: Scalp, line, az, el):
+    """Signed distance (m) inside the hairline over the scalp (> 0 in the hair): the distance to the hairline curve
+    (along the elevation alone, the steep run from temple to sideburn measured long and creased the mass)."""
+    from scipy.spatial import cKDTree
+    key = (id(sc), float(np.sum(line)))
+    tree = _LINES.get(key)
+    if tree is None:
+        a = np.arange(0.0, 360.0, 0.1)
+        e = _line_at(line, a)
+        L = sc.point(a, e, 0.0)
+        # densify steep stretches: consecutive points closer than 1 mm
+        seg = np.linalg.norm(np.diff(L, axis=0, append=L[:1]), axis=1)
+        extra = [L]
+        for i in np.nonzero(seg > 0.001)[0]:
+            n = int(seg[i] / 0.001) + 1
+            t = np.linspace(0, 1, n + 1)[1:-1]
+            a1 = a[i] + 0.1 * t
+            e1 = e[i] + (e[(i + 1) % len(e)] - e[i]) * t
+            extra.append(sc.point(a1, e1, 0.0))
+        tree = cKDTree(np.concatenate(extra))
+        if len(_LINES) > 8:
+            _LINES.clear()
+        _LINES[key] = tree
+    az, el = np.asarray(az, float), np.asarray(el, float)
+    d, _ = tree.query(sc.point(az, el, 0.0).reshape(-1, 3))
+    d = d.reshape(az.shape)
+    return np.where(el >= _line_at(line, az), d, -d)
+
+
+_LINES: dict = {}
+
+
+def weights(az, el, d_in):
+    """Region weights (n, 5) in REGIONS order from where a point sits: front = the first few cm behind the front
+    hairline, top above ~30 deg, sides round the ears, back behind, nape low at the back."""
+    fa = np.abs(((np.asarray(az) + 180) % 360) - 180)  # 0 front .. 180 back
+    front = (1 - _ss((d_in - 0.02) / 0.03)) * (1 - _ss((fa - 30) / 25))
+    top = _ss((np.asarray(el) - 22) / 20)
+    back = _ss((fa - 105) / 40)
+    nape = _ss((-np.asarray(el) + 0) / 20)
+    rest = (1 - front) * (1 - top)
+    W = np.stack([front, (1 - front) * top, rest * (1 - back), rest * back * (1 - nape), rest * back * nape], -1)
+    return W / np.maximum(W.sum(-1, keepdims=True), 1e-9)
+
+
+def _region(g: dict, key: str, W):
+    v = g[key]
+    vals = np.array([float(v[r]) for r in REGIONS])
+    return W @ vals
+
+
+def envelope(sc: Scalp, g: dict, line, az, el):
+    """The hair's outer surface height above the scalp (m): `_envelope` made convex round the sides (`_fill`)."""
+    H, d_in = _envelope(sc, g, line, az, el)
+    return np.maximum(H, _fill(sc, g, line)(az, el) * (d_in > 0)), d_in
+
+
+_FILLS: dict = {}
+
+
+def _fill(sc: Scalp, g: dict, line):
+    """Per azimuth round the sides, the hair's profile (in the vertical plane through the centre) filled out to its
+    convex hull: where the full top meets the close sides the outline pinched in above the temples (a waist in the
+    front view). Returns an interpolator (az, el) -> the height the hull asks for (0 where nothing is filled)."""
+    from scipy.interpolate import RegularGridInterpolator
+    from scipy.spatial import ConvexHull
+    key = (id(sc), json.dumps(g, sort_keys=True, default=float), float(np.sum(line)))
+    if key in _FILLS:
+        return _FILLS[key]
+    A = np.arange(0.0, 361.0, 2.0)
+    E = np.arange(-60.0, 90.01, 1.0)
+    out = np.zeros((len(A), len(E)))
+    for i, a in enumerate(A):
+        fa = abs(((a + 180) % 360) - 180)
+        w = _ss((fa - 25) / 15) * (1 - _ss((fa - 105) / 25))  # the sides the front view outlines, not the back
+        if w <= 0:
+            continue
+        aa = np.full(len(E), a)
+        H, d_in = _envelope(sc, g, line, aa, E)
+        hair = d_in > 0
+        if hair.sum() < 3:
+            continue
+        rho = sc.r(aa, E) + H
+        e = np.radians(E)
+        pts = np.stack([rho * np.cos(e), rho * np.sin(e)], 1)[hair]
+        pts = np.vstack([pts, [0.0, 0.0]])
+        hull = ConvexHull(pts)
+        # the hull's radius along each hair ray: the nearest facet the ray leaves through
+        u = np.stack([np.cos(e), np.sin(e)], 1)
+        best = np.full(len(E), np.inf)
+        for eq in hull.equations:  # n.x + c <= 0 inside
+            nd = u @ eq[:2]
+            t = np.where(nd > 1e-9, -eq[2] / np.maximum(nd, 1e-12), np.inf)
+            best = np.minimum(best, t)
+        need = np.where(hair & np.isfinite(best), best - sc.r(aa, E), 0.0)
+        out[i] = np.maximum(need - H, 0.0) * w + H * (need > H) * w
+    fill = RegularGridInterpolator((A, E), out, bounds_error=False, fill_value=0.0)
+
+    def f(az, el):
+        az, el = np.asarray(az, float), np.asarray(el, float)
+        return fill(np.stack([az % 360, np.clip(el, -60, 90)], -1).reshape(-1, 2)).reshape(np.shape(az))
+    if len(_FILLS) > 8:
+        _FILLS.clear()
+    _FILLS[key] = f
+    return f
+
+
+def _envelope(sc: Scalp, g: dict, line, az, el):
+    """The hair's outer surface height above the scalp (m). On top a dome: highest a few cm behind the front hairline
+    (volume "front"), falling smoothly to "crown" at the back of the top; the front edge rounds up off the hairline
+    like a bull nose (no square wall); the side of the parting the hair is combed away from (his right, for a left
+    part) carries more than the other; sides, back and nape their own volume with a short clean ramp."""
+    d_in = inside(sc, line, az, el)
+    W = weights(az, el, d_in)
+    vol = g["volume"]
+    fa = np.abs(((np.asarray(az) + 180) % 360) - 180)
+    P = sc.point(az, el, 0.0)
+    # the top's dome, by distance back from the front hairline (m)
+    vf, vt, vc = float(vol["front"]), float(vol["top"]), float(vol["crown"])
+    back = np.clip(d_in, 0, None)
+    dome = vc + (vf - vc) * np.exp(-((back - 0.03) / 0.075) ** 2)
+    dome = np.where(back < 0.03, vf, dome)
+    dome = np.minimum(dome, vt + (vf - vt) * (1 - _ss((back - 0.02) / 0.05))) if vt < vf else dome
+    # rounded across as well: the dome's height falls off toward the sides, so the front view is a curve over the top
+    # and the sides stay close (a dome as full at its edges as on the crest made square shoulders and a bucket back)
+    vs = float(vol["sides"])
+    dome = vs + (dome - vs) * (1 - 0.65 * _ss((np.abs(P[..., 0]) - 0.02) / 0.06))
+    topw = W[..., 0] + W[..., 1]
+    side = W[..., 2] * float(vol["sides"]) + W[..., 3] * float(vol["back"]) + W[..., 4] * float(vol["nape"])
+    v = topw * dome + side
+    xp = _part_x(g)
+    if xp is not None:  # the combed-away side is fuller; the part side lies flatter
+        sgn = 1.0 if xp >= 0 else -1.0
+        v = v * (1 - 0.22 * topw * _ss(sgn * (P[..., 0] - xp) / 0.03))
+        v = v * (1 - 0.12 * _part(sc, g, az, el, 0.02) * (1 - _ss((back - 0.02) / 0.03)))
+    ramp = topw * 0.028 + (1 - topw) * (0.8 * v + 0.002)  # continuous: a switch creased the temples
+    x = np.clip(d_in / ramp, 0, 1)
+    return v * np.sin(0.5 * np.pi * x) ** 0.8, d_in
+
+
+def _part(sc: Scalp, g: dict, az, el, width):
+    """How much a scalp point is in the parting (0..1) within `width` m of its line."""
+    pt = g["parting"]
+    side = pt.get("side", "left")
+    if side == "none":
+        return np.zeros(np.shape(az))
+    xp = {"left": 1.0, "right": -1.0, "centre": 0.0}[side] * float(pt.get("offset", 0.03))
+    P = sc.point(az, el, 0.0)
+    yf = sc.C[1] - sc.r(0.0, 30.0) * np.cos(np.radians(30.0))
+    along = _ss((P[..., 1] - yf + 0.005) / 0.01) * (1 - _ss((P[..., 1] - yf - float(pt.get("length", 0.1))) / 0.02))
+    return along * np.exp(-((P[..., 0] - xp) / width) ** 2) * _ss((np.asarray(el) - 20) / 10)
+
+
+def _part_x(g):
+    pt = g["parting"]
+    side = pt.get("side", "left")
+    return None if side == "none" else {"left": 1.0, "right": -1.0, "centre": 0.0}[side] * float(pt.get("offset", 0.03))
+
+
+def flow(sc: Scalp, g: dict, P, W, away):
+    """The combing direction at points P (tangent to the scalp), from the regions' direction words."""
+    fl = g["flow"]
+    out = np.zeros(P.shape)
+    for ri, r in enumerate(REGIONS):
+        words = fl.get(r) or {}
+        if isinstance(words, str):
+            words = {words: 1.0}
+        v = np.zeros(P.shape)
+        for wd, amt in words.items():
+            if wd not in WORDS:
+                raise HairError(f"hair flow {r}: unknown direction {wd!r} (have {', '.join(WORDS)})")
+            vec = away[..., None] * np.array([1.0, 0, 0]) if wd == "away" else np.array(WORDS[wd], float)
+            v = v + float(amt) * vec
+        out += W[..., ri:ri + 1] * v
+    n = _unit(P - sc.C)
+    t = out - (out * n).sum(-1, keepdims=True) * n
+    return t
+
+
+def _poisson(sc: Scalp, rng, spacing_at, ok, n_try=6000):
+    """Blue-noise roots (az, el) over the scalp where ok(az, el), at least spacing_at(az, el) apart (dart throwing)."""
+    U = _unit(rng.normal(size=(n_try, 3)))
+    az, el = az_el(U)
+    keep = ok(az, el)
+    az, el = az[keep], el[keep]
+    P = sc.point(az, el, 0.0)
+    sp = spacing_at(az, el)
+    chosen, pts = [], np.zeros((0, 3))
+    for i in rng.permutation(len(az)):
+        if len(pts) and np.any(np.linalg.norm(pts - P[i], axis=1) < 0.5 * (sp[i] + sp[chosen])):
+            continue
+        chosen.append(i)
+        pts = np.vstack([pts, P[i]])
+    return az[chosen], el[chosen]
+
+
+def grow(sc: Scalp, g: dict) -> dict:
+    """The first pass of locks from the groom: {name: lock}."""
+    rng = np.random.default_rng(int(g.get("seed", 0)))
+    noise = float(g.get("noise", 0.3))
+    line = hairline(sc, g)
+    xp = _part_x(g)
+    locks = {}
+    tiers = g["tiers"]
+    names = {"big": "b", "fill": "f", "edge": "e"}
+    for tier in ("big", "fill", "edge"):
+        td = tiers.get(tier)
+        if not td:
+            continue
+        w0, t0 = float(td["width"]), float(td["thickness"])
+        sp0 = w0 * float(td.get("spacing", 0.8))
+        where = [REGIONS.index(r) for r in td.get("where", REGIONS)]
+        if tier == "edge":  # along the hairline, just inside it, where it's seen: temples, sideburns, the nape
+            az_all = np.arange(0.0, 360.0, 0.5)
+            el_all = _line_at(line, az_all) + np.degrees(0.004 / sc.r(az_all, _line_at(line, az_all)))
+            P = sc.point(az_all, el_all, 0.0)
+            arc = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+            at = np.arange(0.5 * sp0, arc[-1], sp0)
+            at = at + rng.uniform(-0.2, 0.2, len(at)) * sp0
+            az = np.interp(at, arc, az_all)
+            el = np.interp(at, arc, el_all)
+            fa = np.abs(((az + 180) % 360) - 180)
+            keep = (fa > 40) & (fa < 115)  # temples and sideburns: not the crisp front line, not the nape
+            az, el = az[keep], el[keep]
+        elif tier == "big" and td.get("layout", "part") == "part" and xp is not None:
+            az, el, away_given = _part_roots(sc, g, line, td, xp, rng)
+        else:
+            def ok(a, e, where=where):
+                d = inside(sc, line, a, e)
+                W = weights(a, e, d)
+                good = (d > (0.006 if tier == "big" else 0.004)) & (W[:, where].sum(1) > 0.5)
+                if xp is not None:
+                    good &= _part(sc, g, a, e, 0.006) < 0.5
+                return good
+            az, el = _poisson(sc, rng, lambda a, e: np.full(len(a), sp0), ok)
+        if not len(az):
+            continue
+        if not (tier == "big" and td.get("layout", "part") == "part" and xp is not None):
+            away_given = None
+        d_in = inside(sc, line, az, el)
+        W = weights(az, el, d_in)
+        P0 = sc.point(az, el, 0.0)
+        away = np.ones(len(az)) if xp is None else np.where(P0[:, 0] >= xp, 1.0, -1.0)
+        if xp is None:
+            away = np.sign(P0[:, 0] + 1e-9)
+        if away_given is not None:
+            away = away_given
+        L = float(td["length"]) * np.ones(len(az)) if td.get("length") else _region(g, "length", W)
+        L = L * (1 + noise * 0.25 * rng.uniform(-1, 1, len(az)))
+        if tier == "fill":  # shorter near the hairline: the edge tapers cleanly
+            L *= 0.5 + 0.5 * _ss(d_in / 0.02)
+        size = 1 + noise * 0.25 * rng.uniform(-1, 1, len(az))
+        W_ = w0 * size
+        T_ = t0 * size
+        # the front row lies over the ones behind it (their roots under its body)
+        # what lies on what: a lock covers the roots of those downstream of it (the front row over the top, higher
+        # roots over lower ones on the sides and back), consistently, or overlaps cross in a jumble
+        rank = 1 - _ss(d_in / 0.08) if tier == "big" else _ss((el + 40) / 120)
+        lift = T_ * ((0.25 if tier == "big" else 0.7) * rank + 0.08 * rng.uniform(-1, 1, len(az)))
+        paths = _walk(sc, g, line, az, el, L, T_, lift, away, rng, tier)
+        for i in range(len(az)):
+            path = paths[i]
+            k = 5 if L[i] > 0.08 else (4 if L[i] > 0.035 else 3)
+            idx = np.round(np.linspace(0, len(path) - 1, k)).astype(int)
+            a_, e_, h_ = sc.coords(path[idx])
+            grey = _grey(g, az[i], el[i], line)
+            locks[f"{names[tier]}{i:02d}"] = {
+                "tier": tier,
+                "pts": [[round(float(a_[j]), 2), round(float(e_[j]), 2), round(float(h_[j]), 4)] for j in range(k)],
+                "width": round(float(W_[i]), 4), "thickness": round(float(T_[i]), 4),
+                "cup": round(float(td.get("cup", 0.002)) * float(size[i]), 4),
+                "taper": 1.0, "belly": round(float(0.16 + 0.06 * rng.uniform(-1, 1)), 3),
+                "root": 0.8,
+                "twist": round(float(rng.uniform(-15, 15) * noise), 1),
+                **({"grey": round(grey, 3)} if grey > 0.01 else {})}
+    return locks
+
+
+def _part_roots(sc: Scalp, g: dict, line, td: dict, xp: float, rng):
+    """The big locks' roots, laid out the way the cut is designed: along the front hairline on each side of the
+    parting (most on the side the hair is combed to) and in a row down the parting behind it. Returns az, el, away."""
+    sgn = 1.0 if xp >= 0 else -1.0  # the part's side; the hair is combed away from it
+    P = sc.point(np.array([0.0]), np.array([60.0]), 0.0)[0]
+    az_p = float(az_el(np.array([xp, sc.C[1] - 0.12, P[2]]) - sc.C)[0][()])
+    az_p = (az_p + 180) % 360 - 180
+    nf_away, nf_part, n_row = int(td.get("front_away", 5)), int(td.get("front_part", 2)), int(td.get("part_row", 3))
+    far = float(td.get("front_span", 42.0))  # degrees of azimuth the front row reaches round from the middle
+    A, E, AW = [], [], []
+    inset = float(td.get("inset", 0.016))  # behind the hairline: the roots grow out of the mass, not the skin
+    for n, lo, hi, aw in ((nf_away, az_p - sgn * 3, -sgn * far, -sgn), (nf_part, az_p + sgn * 5, sgn * far, sgn)):
+        if n <= 0:
+            continue
+        a = np.linspace(lo, hi, n + 1)[:-1] + (hi - lo) / (2 * n) * 0.3 + rng.uniform(-1, 1, n) * 1.5
+        e = _line_at(line, a % 360) + np.degrees(inset / sc.r(a % 360, _line_at(line, a % 360)))
+        A += list(a % 360)
+        E += list(e)
+        AW += [aw] * n
+    if n_row > 0:  # down the parting, behind the front row, combed away from it
+        L = float(g["parting"].get("length", 0.1))
+        y0 = sc.point(0.0, float(_line_at(line, 0.0)), 0.0)[1]
+        for k in range(n_row):
+            y = y0 + L * (k + 0.9) / (n_row + 0.4)
+            q = np.array([xp - sgn * 0.006, y, sc.C[2] + 0.12]) - sc.C
+            a, e = az_el(q)
+            A.append(float(a))
+            E.append(float(e))
+            AW.append(-sgn)
+    return np.array(A), np.array(E), np.array(AW)
+
+
+def _grey(g, az, el, line):
+    """Grey at the temples and sideburns: by azimuth band and how low the root sits."""
+    gr = g.get("grey") or {}
+    fa = abs(((az + 180) % 360) - 180)
+    temple = float(gr.get("temples", 0)) * float(_ss((fa - 35) / 15) * (1 - _ss((fa - 95) / 15)))
+    low = float(_ss((30 - el) / 25))
+    burn = float(gr.get("sideburns", 0)) * float(_ss((fa - 60) / 10) * (1 - _ss((fa - 90) / 10))) * low
+    return max(temple * (0.4 + 0.6 * low), burn)
+
+
+def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24):
+    """Lock spines (m, n, 3): from the root on the scalp along the flow, held under the envelope (the top layer's
+    spine half a thickness under it), rising out of the scalp over the first fifth, the tip tucking down."""
+    m = len(az)
+    P = np.zeros((m, n, 3))
+    a, e = np.asarray(az, float).copy(), np.asarray(el, float).copy()
+    P[:, 0] = sc.point(a, e, -0.3 * T)
+    ds = L / (n - 1)
+    W = weights(a, e, inside(sc, line, a, e))
+    d = _unit(flow(sc, g, P[:, 0], W, away))
+    turn = np.radians(rng.uniform(-1, 1, m) * 6 * float(g.get("noise", 0.3)))
+    nrm = _unit(P[:, 0] - sc.C)
+    c, s_ = np.cos(turn)[:, None], np.sin(turn)[:, None]
+    d = _unit(d * c + np.cross(nrm, d) * s_)
+    for k in range(1, n):
+        x = k / (n - 1)
+        q = P[:, k - 1] + d * ds[:, None]
+        a, e = az_el(q - sc.C)
+        H, d_in = envelope(sc, g, line, a, e)
+        under = UNDER * H  # the mass under the locks (the blockout kept as the underlayer, like an artist's)
+        if tier == "edge":
+            h = np.full(m, 0.6) * T + 0.0005 + under
+        else:  # the lock lies on the mass, its back just proud of the silhouette; the root dives into the mass
+            surf = under + (0.3 if tier == "big" else 0.05) * T + lift  # the fill lies nearly flush
+            h = (under - 0.4 * T) + (surf - under + 0.4 * T) * _ss(x / 0.18)
+        h = h - (0.7 if tier == "big" else 1.3) * T * _ss((x - 0.72) / 0.28)  # the tip tucks under (the fill's
+        # right into the mass: a row of visible points read as feathers)
+        h = np.maximum(h, 0.15 * T)
+        q = sc.point(a, e, h)
+        P[:, k] = q
+        seg = _unit(P[:, k] - P[:, k - 1])
+        W = weights(a, e, d_in)
+        f = _unit(flow(sc, g, q, W, away))
+        f = _unit(f * c + np.cross(_unit(q - sc.C), f) * s_)
+        d = _unit(0.55 * seg + 0.45 * f)
+    return P
+
+
+# ------------------------------------------------------------------------------------------------ spec I/O
+
+def hair_of(spec: dict) -> dict:
+    return spec.get("hair") or {}
+
+
+def validate(spec: dict) -> None:
+    h = hair_of(spec)
+    if not h:
+        return
+    bad = set(h) - {"groom", "locks", "look", "cap", "stage", "part"}
+    if bad:
+        raise HairError(f"hair: unknown keys {sorted(bad)} (have groom, locks, look, cap, stage, part)")
+    groom_params(spec)
+    for n, lk in (h.get("locks") or {}).items():
+        bad = set(lk) - LOCK_KEYS
+        if bad:
+            raise HairError(f"hair lock {n!r}: unknown keys {sorted(bad)} (have {', '.join(sorted(LOCK_KEYS))})")
+        pts = lk.get("pts") or []
+        if len(pts) < 2 or any(len(p) != 3 for p in pts):
+            raise HairError(f"hair lock {n!r}: pts is a list of at least 2 [az, el, h] points")
+        for k in ("width", "thickness"):
+            if not isinstance(lk.get(k), (int, float)) or lk[k] <= 0:
+                raise HairError(f"hair lock {n!r}: {k} (m) must be > 0")
+
+
+def groom(name: str, replace: bool = False, note: str = "") -> dict:
+    """Grow the first pass of locks from spec["hair"]["groom"] and save them. Locks a person or an edit changed
+    (their names not starting with the tier letters b/f/e + digits) are kept unless replace."""
+    spec = store.load(name)
+    h = spec.setdefault("hair", {})
+    sc = scalp(name, spec)
+    g = groom_params(spec)
+    new = grow(sc, g)
+    old = h.get("locks") or {}
+    keep = {} if replace else {n: lk for n, lk in old.items() if not (n[:1] in "bfe" and n[1:].isdigit())}
+    h["locks"] = {**new, **keep}
+    store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
+    return {"locks": len(h["locks"]), "tiers": {t: sum(1 for lk in new.values() if lk["tier"] == t)
+                                                for t in ("big", "fill", "edge")}}
+
+
+def lock_hash(lk: dict, sc: Scalp) -> str:
+    return hashlib.sha1(json.dumps([lk, sc.C.tolist(), float(sc.R.sum())], sort_keys=True,
+                                   default=float).encode()).hexdigest()[:12]
+
+
+def resolve(spec: dict, sc: Scalp) -> list:
+    """The locks as Blender wants them: world control points, handles, radius, tilt and modifier inputs."""
+    out = []
+    for n, lk in sorted((hair_of(spec).get("locks") or {}).items()):
+        pts = np.asarray(lk["pts"], float)
+        W = sc.point(pts[:, 0], pts[:, 1], pts[:, 2])
+        H = None
+        if lk.get("handles"):
+            H = []
+            for hd in lk["handles"]:
+                if hd:
+                    a = sc.point(hd[0], hd[1], hd[2])
+                    b = sc.point(hd[3], hd[4], hd[5])
+                    H.append([float(v) for v in list(a) + list(b)])
+                else:
+                    H.append(None)
+        inputs = {MOD[k]: float(lk.get(k, LOCK_DEFAULTS.get(k, 0.0))) for k in MOD}
+        inputs["Seed"] = (int(hashlib.md5(n.encode()).hexdigest()[:6], 16) % 1000) / 1000.0
+        inputs["Centre"] = [float(v) for v in sc.C]
+        out.append({"name": n, "pts": W.tolist(), "handles": H, "radius": lk.get("radius"), "tilt": lk.get("tilt"),
+                    "inputs": inputs, "hash": lock_hash(lk, sc)})
+    return out
+
+
+def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float = 1.0, scale: float = 1.0):
+    """The scalp inside the hairline pushed out: the dark underlayer (height m) or, mass=True, the groom's whole
+    volume (stage a). Its edge dives under the skin just outside the hairline, so the line is crisp."""
+    line = hairline(sc, g)
+    A = np.arange(0.0, 360.0, step)
+    E = np.r_[np.arange(-60.0, 90.0, step), 90.0]  # up to the pole (a hole there read as a groove)
+    AA, EE = np.meshgrid(A, E, indexing="ij")
+    if mass:
+        H, d_in = envelope(sc, g, line, AA, EE)
+        H = np.maximum(H * scale, 0.0015 * _ss(d_in / 0.004))
+    else:
+        d_in = inside(sc, line, AA, EE)
+        H = height * _ss(d_in / 0.006)
+    H = np.where(d_in > 0, H, np.maximum(d_in, -0.004) * 0.8)
+    V = sc.point(AA, EE, H).reshape(-1, 3)
+    na, ne = AA.shape
+    idx = np.arange(na * ne).reshape(na, ne)
+    live = d_in > -0.003
+    faces = []
+    for i in range(na):
+        i1 = (i + 1) % na
+        a, b, c, d = idx[i, :-1], idx[i1, :-1], idx[i1, 1:], idx[i, 1:]
+        ok = live[i, :-1] | live[i1, :-1] | live[i1, 1:] | live[i, 1:]
+        faces.append(np.stack([a[ok], b[ok], c[ok], d[ok]], 1))
+    F = np.concatenate(faces)
+    used = np.unique(F)
+    remap = -np.ones(len(V), int)
+    remap[used] = np.arange(len(used))
+    return V[used].astype(np.float32), remap[F].astype(np.int32)
+
+
+# ------------------------------------------------------------------------------------------------ Blender
+
+def job(name: str, spec: dict | None = None) -> dict:
+    """What Blender needs to show the hair: the locks, the cap (or the mass), the material."""
+    spec = store.load(name) if spec is None else spec
+    h = hair_of(spec)
+    if not h:
+        return {}
+    sc = scalp(name, spec)
+    g = groom_params(spec)
+    tmp = Path(tempfile.mkdtemp(prefix="hifipushie-hair-"))
+    stage = h.get("stage", "locks")
+    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, scale=1.0 if stage == "mass" else UNDER)
+    np.savez(tmp / "cap.npz", verts=V, faces=F)
+    return {"locks": [] if stage == "mass" else resolve(spec, sc), "cap": str(tmp / "cap.npz"),
+            "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
+            "centre": sc.C.tolist()}
+
+
+def stage_path(name: str) -> Path:
+    return store._dir(name) / "hair_stage.blend"
+
+
+def make_stage(name: str, pad: float = 0.1) -> Path:
+    """A small .blend for fast hair looks: the scene cropped to a box round the head (painted skin, eyes, collar),
+    rebuilt when scene.blend is newer."""
+    from .scene import _blender, blend_path
+    bp = blend_path(name)
+    if not bp.exists():
+        raise HairError(f"{name}: no scene.blend yet (sync the model once)")
+    sp = stage_path(name)
+    if sp.exists() and sp.stat().st_mtime > bp.stat().st_mtime:
+        return sp
+    sc = scalp(name)
+    lo = (sc.C - [0.16, 0.2, 0.22]).tolist()
+    hi = (sc.C + [0.16, 0.16, 0.16]).tolist()
+    _blender({"mode": "hair_stage", "blend": str(bp), "out": str(sp), "box": [lo, hi]})
+    return sp
+
+
+VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
+         "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0)}
+
+
+def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
+    out = []
+    target = sc.C + np.array([0.0, 0.0, 0.0])
+    for v in views:
+        az, el = VIEWS[v]
+        eye = target + dirs(az, el) * dist
+        out.append({"name": v, "eye": eye.tolist(), "target": target.tolist(), "fov": fov})
+    return out
+
+
+def look(name: str, views=("front", "three_quarter", "side", "back", "top"), size: int = 480, save: str | None = None,
+         reference: str | None = None, spec: dict | None = None, caption: str = "") -> tuple:
+    """A fast hair look: the head-cropped stage file + the hair from the spec, EEVEE, a few perspective views, a
+    thumbnail (how it reads small) and the reference beside. Returns (sheet image, seconds)."""
+    from PIL import Image, ImageDraw
+    from . import render
+    from .scene import _blender
+    t = time.time()
+    spec = store.load(name) if spec is None else spec
+    sp = make_stage(name)
+    sc = scalp(name, spec)
+    cams = cameras(sc, views)
+    frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
+    thumb = render.camera_frame({"name": "thumb", "eye": (sc.C + dirs(25.0, 8.0) * 1.6).tolist(),
+                                 "target": (sc.C - [0, 0, 0.12]).tolist(), "fov": 30.0}, len(frames))
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in frames + [thumb]:
+            f["out"] = str(Path(tmp) / f"{f['name']}.png")
+        thumb["size"] = 160
+        j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec),
+             "samples": 16}
+        out = _blender(j)
+        imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
+        th = Image.open(thumb["out"]).convert("RGB")
+    t_render = time.time() - t
+    W = size
+    cols = len(imgs) + 1
+    sheet = Image.new("RGB", (W * cols, W + 22), (30, 31, 35))
+    dr = ImageDraw.Draw(sheet)
+    for i, (im, f) in enumerate(zip(imgs, frames)):
+        sheet.paste(im.resize((W, W)), (i * W, 22))
+        dr.text((i * W + 6, 5), f["name"], fill=(220, 220, 220))
+    x0 = (cols - 1) * W
+    ref = Path(reference or "/home/joe/dev/hifipushie/workspace/disc_golfer_renders/ref_user_style.png")
+    if ref.exists():
+        r = Image.open(ref).convert("RGB")
+        r = r.crop((250, 20, 560, 330)) if reference is None else r
+        r.thumbnail((W, W - 170))
+        sheet.paste(r, (x0, 22))
+        dr.text((x0 + 6, 5), "reference", fill=(220, 220, 220))
+    sheet.paste(th, (x0 + 6, W + 22 - th.height - 4))
+    dr.text((x0 + 170, W + 22 - 20), f"thumbnail {th.width}px", fill=(200, 200, 200))
+    if caption:
+        dr.text((6, W + 6), caption, fill=(240, 220, 160))
+    if save:
+        sheet.save(save)
+    frames_t = [line for line in out.splitlines() if line.startswith("@@")]
+    return sheet, round(t_render, 1), frames_t
+
+
+def sync(name: str) -> dict:
+    """Push the spec's hair into scene.blend (the person's live Blender when it has the scene open)."""
+    from .scene import _blender, _blender_live, blend_path, live_session
+    j = {"mode": "hair_sync", "blend": str(blend_path(name)), "hair": job(name)}
+    t = time.time()
+    out = _blender_live(j) if live_session(name) else _blender(j)
+    made = next((json.loads(line[7:]) for line in out.splitlines() if line.startswith("@@made")), [])
+    return {"made": len(made), "seconds": round(time.time() - t, 1)}
+
+
+def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
+    """Locks a person changed in the scene, written into the spec as (az, el, h) addresses and lock numbers."""
+    if not got:
+        return {}
+    h = hair_of(spec)
+    locks = h.get("locks") or {}
+    sc = scalp(name, spec)
+    changes = {}
+    inv = {v: k for k, v in MOD.items()}
+    for n, st in got.items():
+        if n == "__deleted__":
+            continue
+        lk = locks.get(n)
+        if lk is None:
+            continue
+        P = np.asarray(st["pts"], float)
+        a, e, hh = sc.coords(P)
+        new = dict(lk)
+        new["pts"] = [[round(float(a[i]), 2), round(float(e[i]), 2), round(float(hh[i]), 4)] for i in range(len(P))]
+        if st.get("handles"):
+            H = []
+            for hd in st["handles"]:
+                if hd:
+                    a1, e1, h1 = sc.coords(np.asarray(hd[:3]))
+                    a2, e2, h2 = sc.coords(np.asarray(hd[3:]))
+                    H.append([round(float(v), 4) for v in (a1, e1, h1, a2, e2, h2)])
+                else:
+                    H.append(None)
+            new["handles"] = H
+        else:
+            new.pop("handles", None)
+        for k, key in (("radius", 1.0), ("tilt", 0.0)):
+            vals = st.get(k) or []
+            if vals and any(abs(v - key) > 1e-4 for v in vals):
+                new[k] = vals
+            else:
+                new.pop(k, None)
+        for mk, v in (st.get("inputs") or {}).items():
+            if mk in inv:
+                if abs(float(v) - float(lk.get(inv[mk], LOCK_DEFAULTS.get(inv[mk], 0.0)))) > 1e-5:
+                    new[inv[mk]] = round(float(v), 5)
+        if new != lk:
+            locks[n] = new
+            changes[f"hair.{n}"] = "edited in the scene"
+            log.append(f"hair lock {n}: edited in the scene")
+    for n in got.get("__deleted__", []):
+        if n in locks:
+            locks.pop(n)
+            changes[f"hair.{n}"] = "deleted in the scene"
+            log.append(f"hair lock {n}: deleted in the scene")
+    return changes

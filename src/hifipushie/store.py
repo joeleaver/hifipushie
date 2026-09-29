@@ -38,8 +38,9 @@ def load(name: str) -> dict:
 
 def validate(spec: dict) -> None:
     """Every check a spec must pass before it is saved (raises SpecError / ValueError)."""
-    from . import paint, realism, strokes
+    from . import hair, paint, realism, strokes
     realism.validate(spec)
+    hair.validate(spec)
     strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
     prims = specmod.compile_prims(spec)  # validate before writing
     paint.validate(spec)
@@ -49,9 +50,19 @@ def validate(spec: dict) -> None:
         part_colour(pn, spec["parts"], 0)
 
 
+def _same_but_hair(a: dict, b: dict) -> bool:
+    """Do two specs differ only in their hair (curve locks, which nothing else depends on)?"""
+    return {k: v for k, v in a.items() if k != "hair"} == {k: v for k, v in b.items() if k != "hair"}
+
+
 def save(name: str, spec: dict, note: str = "") -> int:
-    validate(spec)
     d = _dir(name)
+    prev = d / "spec.json"
+    if prev.exists() and _same_but_hair(json.loads(prev.read_text()), spec):
+        from . import hair  # a hair edit: the rest was validated when it was saved (compiling a base body: ~1 min)
+        hair.validate(spec)
+    else:
+        validate(spec)
     (d / "history").mkdir(parents=True, exist_ok=True)
     version = len(list((d / "history").glob("*.json"))) + 1
     entry = {"version": version, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "note": note, "spec": spec}
