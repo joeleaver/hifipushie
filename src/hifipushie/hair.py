@@ -916,7 +916,8 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24, f
         SF[:, k] = sf
         h = h - sf * np.maximum(lift, 0)  # no lift where it lies down the side (the mass is sunk there too now)
         if tier == "big":  # the tip lifts a step off the lock it lies on (shingles: the next one's root is under it)
-            h = h + TIP_STEP * T * _ss((x - 0.55) / 0.45) * (1 - 0.5 * sf) * (1 - flat)
+            h = h + (TIP_STEP if heading is None else 0.1) * T * _ss((x - 0.55) / 0.45) * (1 - 0.5 * sf) * (1 - flat)  # designed
+            # clumps lie calm (a lifted tip on a long clump curled up like a claw)
         else:  # the fill's tips tuck (a row of visible points read as feathers)
             h = h - 1.3 * T * _ss((x - 0.72) / 0.28)
         if tier == "fill":  # relief within the volume: its back never stands out of the groom's silhouette
