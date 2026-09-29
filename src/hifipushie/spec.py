@@ -139,7 +139,7 @@ def expand_mirror(spec: dict) -> dict:
             nb["offset"] = _mirror_vec(bl["offset"])
         if "rot" in bl:
             nb["rot"] = _mirror_rot(bl["rot"])
-        for key in ("pts", "nrm"):  # sweeps (strokes)
+        for key in ("pts", "nrm", "path", "N", "U"):  # sweeps (strokes, sweep blobs)
             if key in bl:
                 nb[key] = [_mirror_vec(v) for v in bl[key]]
         if bl.get("group"):
@@ -303,8 +303,11 @@ def _compile(spec: dict) -> list[Prim]:
             prims.append(Prim(name, "collar", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
                               cp, reach=4.0))
             continue
+        if bl.get("shape") == "sweep":  # a profile swept along a path (sdf.sd_sweep): collars, plackets, necklines
+            prims.append(_sweep(name, bl, k))
+            continue
         if bl.get("shape") == "box":
-            rnd = min(float(bl.get("round", 0.0)), float(size.min()))
+            rnd =min(float(bl.get("round", 0.0)), float(size.min()))
             prims.append(Prim(name, "box", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
                               {"c": c, "size": size, "rot": rot, "round": rnd}, reach=1.0))  # exact distance
             continue
@@ -459,7 +462,7 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     return out
 
 
-SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar")
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}
@@ -518,6 +521,50 @@ def _parts(prims: list[Prim], defs: dict, k_default: float, joints: dict | None 
         if not progressed:
             raise SpecError(f"parts {pending}: shells form a cycle")
     return [p for ps in done.values() for p in ps]
+
+
+SWEEP_KEYS = {"collar": ("t", "stand", "lean", "fall", "phi", "sink", "point"),
+              "band": ("n0", "n1", "u0", "u1", "round")}
+
+
+def _sweep(name: str, bl: dict, k: float) -> Prim:
+    """A "sweep" blob: {"path": [[x,y,z], ...], "N": outward dirs, "U": up dirs (per vertex), "profile": "collar" |
+    "band", "values": {key: number or per-vertex list}, "mirror"?: evaluate at |x|, "open_start"?: no cap at the
+    path's start (a mirrored path starting on x = 0)}. Usually written by a kit (kits "garment")."""
+    P = np.asarray(bl.get("path") or [], float)
+    prof = bl.get("profile", "band")
+    if prof not in SWEEP_KEYS:
+        raise SpecError(f"blob {name!r}: sweep profile {prof!r} (have {', '.join(SWEEP_KEYS)})")
+    if P.ndim != 2 or P.shape[1] != 3 or len(P) < 2:
+        raise SpecError(f"blob {name!r}: a sweep's path is a list of 2+ points")
+    d = P[1:] - P[:-1]
+    L = np.linalg.norm(d, axis=1)
+    if np.any(L < 1e-9):
+        raise SpecError(f"blob {name!r}: repeated point in the sweep's path")
+    T = d / L[:, None]
+    Sv = np.concatenate([[0.0], np.cumsum(L)])
+
+    def unit(key):
+        A = np.asarray(bl.get(key), float)
+        if A.shape != P.shape:
+            raise SpecError(f"blob {name!r}: sweep {key} needs one direction per path point")
+        return A / np.maximum(np.linalg.norm(A, axis=1, keepdims=True), 1e-12)
+    vals = {}
+    for key in SWEEP_KEYS[prof]:
+        v = np.broadcast_to(np.asarray((bl.get("values") or {}).get(key, 0.0), float), (len(P),)).copy()
+        vals[key] = v
+    if prof == "collar":
+        R = np.max(vals["stand"] + vals["sink"] + 2 * vals["t"] + vals["lean"] + vals["fall"] * (1 + vals["point"]))
+    else:
+        R = np.max(np.abs(np.concatenate([vals["n0"], vals["n1"], vals["u0"], vals["u1"]])))
+    lo, hi = P.min(0) - R, P.max(0) + R
+    if bl.get("mirror"):
+        m = max(abs(lo[0]), abs(hi[0]))
+        lo[0], hi[0] = -m, m
+    pr = {"P": P, "T": T, "L": L, "S": Sv[:-1], "Sv": Sv, "N": unit("N"), "U": unit("U"), "profile": prof,
+          "V": vals, "mirror": bool(bl.get("mirror")),
+          "open_start": bool(bl.get("open_start")), "lip": float(bl.get("lip", 1.3))}
+    return Prim(name, "sweep", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr, reach=4.0)
 
 
 def _lids(name: str, bl: dict, c: np.ndarray, rot: np.ndarray, k: float) -> Prim:

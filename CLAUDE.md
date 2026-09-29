@@ -229,9 +229,18 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (`sdf.sd_collar`, a folded collar swept round the neck: stand + fall at `spread`/`spread_back`, `points`, `gap`);
   the shirt's region ends at a plane tilted like the neckline (a level box top left the shoulders bare or the chin
   covered). A strap is a shell of the shirt inside a chain of round cones, pressed in by a crease on the shirt.
+  Necklines (2026-09-29, `garments.py`, kit type "neckline"; replaces the "collar" blob + neck cylinder cut): the
+  neckline is measured on the body (per direction round the neck axis, where the neck has flared `flare` below its
+  narrowest: low at the front notch, high on the trapezius; never dipping behind the sides, or the collar made a heart
+  shape from behind), the shirt cut above it out to its own outer face (cut further, the fall sat over a shelf and
+  showed skin under it), a V cut down to the first closed button, the collar a swept stand + fall whose fall angle is
+  the least that clears the cut shirt (per point round the neck), placket strips left over right seated on the shirt,
+  buttons (undone ones on the under strip). Everything is a blob shape "sweep" (`sdf.sd_sweep`: a 2D profile,
+  "collar" or "band", along a polyline with per-vertex frames and numbers; `mirror` evaluates at |x|, a mirrored
+  path's start on x = 0 isn't capped). `tests/test_sweep.py`.
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
-  Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo with a folded collar, shorts, trail sneakers,
+  Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
   bag on a strap, disc, hair as a scalp shell + swept top; exported rigged).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
