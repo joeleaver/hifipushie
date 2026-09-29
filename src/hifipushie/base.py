@@ -35,10 +35,11 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 45  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 52  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
+TUBE_BAND = 0.08  # m: where a garment's torso tube hands over to the cloth from the body
 LOW_LOOP = 0.004  # the neck loop's least clearance under the graft's overlap (see _neck_tube)
 _CACHE: dict = {}
 
@@ -467,6 +468,163 @@ def _wlap(X, E, w):
     return acc / np.maximum(tot, 1e-12)[:, None] - X
 
 
+def _seg_dist(P, a, b):
+    ab = b - a
+    t = np.clip(((P - a) @ ab) / max(float(ab @ ab), 1e-12), 0, 1)
+    return np.linalg.norm(P - (a + t[:, None] * ab), axis=1), t
+
+
+def _garment_tube(X, keep, o, u, L, tb: dict, hang: float, ease: float, info: dict):
+    """Cloth as a tube round an axis (from o along u, the way the cloth hangs, L long): per 1 cm slice across the axis
+    the convex hull of the (closed, eased) cloth's points `keep`, radius per angle, hanging from the wider slice
+    above (under the chest and belly, over the seat; a trouser leg from the thigh), smoothed, with drape folds where
+    it hangs free of the body (tb["folds"], default 1; tb["seed"]). Its first TUBE_BAND hands over to the cloth made
+    from the body by weight (_tube_weight, `info`); the far end is cut by the part's region. Returns an IMLS point
+    set (a quad grid, capped with rings) or None."""
+    from scipy.spatial import ConvexHull
+    from scipy.ndimage import gaussian_filter
+    u = _unit(np.asarray(u, float))
+    e1 = _unit(np.cross(u, [0, 1.0, 0]) if abs(u[1]) < 0.9 else np.cross(u, [1.0, 0, 0]))
+    e2 = np.cross(u, e1)
+    nth, ds = 96, 0.01
+    th = np.linspace(-np.pi, np.pi, nth, endpoint=False)
+    ss = np.arange(0.0, L + 1e-9, ds)
+    R = np.full((len(ss), nth), np.nan)
+    P = X[keep] - o
+    sp = P @ u
+    Q = np.c_[P @ e1, P @ e2]
+    dirs = np.c_[np.cos(th), np.sin(th)]
+    # each slice's own centre (the hull's centroid, smoothed along the axis): a joint axis can run near the limb's
+    # side (the femur from the hip joint), and rays from outside a slice's hull miss it
+    hulls = []
+    for sv in ss:
+        sl = Q[np.abs(sp - sv) < 1.2 * ds]
+        hulls.append(sl[ConvexHull(sl).vertices] if len(sl) >= 8 else None)
+    C = np.array([h.mean(0) if h is not None else [np.nan, np.nan] for h in hulls])
+    okc = np.isfinite(C[:, 0])
+    if okc.sum() < 3:
+        return None
+    for j in range(2):
+        C[:, j] = np.interp(np.arange(len(ss)), np.flatnonzero(okc), C[okc, j])
+    C = gaussian_filter(C, (4.0, 0), mode="nearest")
+    for i, hull in enumerate(hulls):
+        if hull is None:
+            continue
+        A = hull - C[i]
+        E = np.roll(A, -1, axis=0) - A
+        for k, dv in enumerate(dirs):  # the hull's radius along each angle
+            den = dv[0] * E[:, 1] - dv[1] * E[:, 0]
+            ok = np.abs(den) > 1e-12
+            tt = (A[:, 0] * E[:, 1] - A[:, 1] * E[:, 0])[ok] / den[ok]
+            uu = (A[:, 0] * dv[1] - A[:, 1] * dv[0])[ok] / den[ok]
+            good = (tt > 0) & (uu >= -1e-9) & (uu <= 1 + 1e-9)
+            if good.any():
+                R[i, k] = tt[good].max()
+    rows = np.flatnonzero(np.isfinite(R).all(1))
+    if len(rows) < 3:
+        return None
+    for i in range(len(ss)):  # slices with too few points: the nearest one's
+        if not np.isfinite(R[i]).all():
+            R[i] = R[rows[np.argmin(np.abs(rows - i))]]
+    Rb = gaussian_filter(R, (4.0, 1.5), mode=("nearest", "wrap"))  # the body's own hull, before hanging
+    for i in range(1, len(ss)):  # hanging: cloth falls from the wider slice above
+        R[i] = np.maximum(R[i], (1 - hang) * R[i] + hang * R[i - 1])
+    R = gaussian_filter(R, (4.0, 1.5), mode=("nearest", "wrap")) + ease
+    fold = float(tb.get("folds", 1.0))
+    if fold:  # drape folds where the cloth hangs free of the body: long ridges down the axis, deeper the looser
+        rng = np.random.default_rng(int(tb.get("seed", 7)))
+        F = gaussian_filter(rng.standard_normal(R.shape), (7.0, 1.6), mode=("nearest", "wrap"))
+        F /= F.std() + 1e-12
+        R += fold * 0.35 * np.clip(R - Rb - ease, 0, 0.03) * F
+    ring = lambda i, f=1.0: (o + ss[i] * u + C[i, 0] * e1 + C[i, 1] * e2
+                             + f * R[i][:, None] * (np.outer(np.cos(th), e1) + np.outer(np.sin(th), e2)))
+    V = np.concatenate([ring(i) for i in range(len(ss))])
+    idx = np.arange(len(ss) * nth).reshape(len(ss), nth)
+    # the quads wind outward with the angle running e1 -> e2 and s along u (e1 x e2 = u): reversed
+    faces = [[int(idx[i, k]), int(idx[i + 1, k]), int(idx[i + 1, (k + 1) % nth]), int(idx[i, (k + 1) % nth])]
+             for i in range(len(ss) - 1) for k in range(nth)]
+    nc = 16  # caps: concentric rings (a fan's long edges made a wide kernel, and the IMLS grew sheets)
+    for row, top in ((0, True), (len(ss) - 1, False)):
+        prev = idx[row]
+        for j in range(1, nc):
+            rg = np.arange(len(V), len(V) + nth)
+            V = np.r_[V, ring(row, 1 - j / nc)]
+            for k in range(nth):
+                q = [int(prev[k]), int(prev[(k + 1) % nth]), int(rg[(k + 1) % nth]), int(rg[k])]
+                faces.append(q if top else q[::-1])
+            prev = rg
+        cv = len(V)
+        V = np.r_[V, [o + ss[row] * u + C[row, 0] * e1 + C[row, 1] * e2]]
+        for k in range(nth):
+            t3 = [cv, int(prev[k]), int(prev[(k + 1) % nth])]
+            faces.append(t3 if top else t3[::-1])
+    N, h = _normals_and_h(V, faces)
+    c = V[:len(ss) * nth].mean(0)
+    if ((V[:len(ss) * nth] - c) * N[:len(ss) * nth]).sum(1).mean() < 0:  # (orientation guard)
+        faces = [f[::-1] for f in faces]
+        N, h = _normals_and_h(V, faces)
+    return {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
+            "head": None, "blend_info": {"o": o, "u": u, **info}}
+
+
+def _tube_weight(X, m):
+    """How much of the field at X is a tube's (the rest is the cloth made from the body): 0 at the tube's start,
+    easing to 1 over TUBE_BAND along it, times its side (a trouser leg: x on its own side) and away from the arms
+    (the torso). A smooth union of the two swelled ~k/6 where they crossed: a ridge round the chest."""
+    w = _smooth01(((X - m["o"]) @ m["u"]) / TUBE_BAND)
+    if m.get("side"):
+        w = w * _smooth01(m["side"] * X[:, 0] / 0.03 + 0.5)
+    if m.get("arms"):
+        dax = np.linalg.norm(np.cross(X - m["o"], m["u"]), axis=1)
+        for a, b in m["arms"]:
+            d, t = _seg_dist(X, a, b)
+            w = w * np.where(t > 0.08, _smooth01((d - 0.75 * dax) / 0.04 + 0.5), 1.0)
+    return w
+
+
+def _smooth01(x):
+    x = np.clip(x, 0, 1)
+    return x * x * (3 - 2 * x)
+
+
+def _tubes(X, J, g: dict, hang: float) -> list:
+    """The garment's tubes: g["tube"] (a shirt's torso: down from 7 cm under the shoulders to 15 cm under the hips,
+    arms left out) and g["legs"] (trouser legs: along hip -> knee from `start` (default 0.25) of the way, `length`
+    (default 0.9 of hip -> knee)), each {} or with folds/seed/top/bottom/start/length."""
+    out = []
+    ease = float(g.get("tube_ease", 0.004))
+    arm = np.zeros(len(X), bool)
+    arms = [(J[f"shoulder.{sd}"], J[f"wrist.{sd}"]) for sd in "LR" if f"shoulder.{sd}" in J and f"wrist.{sd}" in J]
+    if g.get("tube") is not None and "pelvis" in J and "chest" in J:
+        tb = g["tube"] or {}
+        pel = J["pelvis"]
+        c = np.array([pel[0], 0.5 * (pel[1] + J["chest"][1])])
+        for a, b in arms:
+            d, t = _seg_dist(X, a, b)
+            arm |= (t > 0.08) & (d < 0.75 * np.linalg.norm(X[:, :2] - c, axis=1))
+        zt = float(tb.get("top", J["shoulder.L"][2] - 0.07 if "shoulder.L" in J else J["chest"][2] + 0.1))
+        zb = float(tb.get("bottom", J["hip.L"][2] - 0.15 if "hip.L" in J else pel[2] - 0.15))
+        t = _garment_tube(X, ~arm, np.array([c[0], c[1], zt]), [0, 0, -1.0], zt - zb, tb, hang or 0.8, ease,
+                          {"arms": arms})
+        if t is not None:
+            out.append(t)
+    if g.get("legs") is not None and "hip.L" in J and "knee.L" in J:
+        lg = g["legs"] or {}
+        for sd, sign in (("L", 1.0), ("R", -1.0)):
+            hp, kn = J[f"hip.{sd}"], J[f"knee.{sd}"]
+            ln = float(np.linalg.norm(kn - hp))
+            u = (kn - hp) / ln
+            o = hp + float(lg.get("start", 0.25)) * ln * u
+            keep = sign * X[:, 0] > 0.01
+            s = (X - o) @ u
+            keep &= (s > -0.05) & (np.linalg.norm(np.cross(X - o, u), axis=1) < 0.2)
+            t = _garment_tube(X, keep, o, u, float(lg.get("length", 0.9)) * ln, lg, hang or 0.5, ease,
+                              {"side": sign})
+            if t is not None:
+                out.append(t)
+    return out
+
+
 def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
     """A garment part's surface ({"garment": {...}} on a shell part): the base body (its unsubdivided quads) pushed
     out by `offset`, then closed and eased, as an IMLS point set (a "base" primitive of that part, cut to the part's
@@ -477,7 +635,11 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
         and the belly), straight down at 1;
       ease: m, extra looseness along the closed surface's normals (default 0.006);
       ease_at: [{"at": [x, y, z] | joint, "radius", "amount"}]: more (or less) room in places (a baggy back, a
-        loose sleeve), smooth bumps along the normals.
+        loose sleeve), smooth bumps along the normals;
+      tube: {} or {"bottom": z, "top": z, "folds", "seed"}: a shirt's or jacket's torso as a tube hanging from the
+        chest and belly over the seat and the crotch; legs: {} or {"start", "length", "folds", "seed"}: trouser legs
+        as tubes along hip -> knee (`_tubes`); tube_ease: m.
+    Returns a list of IMLS point sets (one primitive each; with tubes, one set mixing them by weight).
     Folds are strokes on the part (op "crease"/"clay", part: the garment)."""
     if key not in _CACHE:
         raise KeyError("garment: the base surface isn't built (compile the spec's base first)")
@@ -532,8 +694,16 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
     u = ((V - Vb) * Nb).sum(1)  # the subdivided cloth still clear of the subdivided body
     V = V + np.maximum(offset - u, 0)[:, None] * Nb
     N, h = _normals_and_h(V, F)
-    out = {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
-           "head": None, "key": hashlib.sha1(repr(gk).encode()).hexdigest()}
+    out = [{"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
+            "head": None}]
+    tubes = _tubes(V, J, g, hang) if J else []  # (from the subdivided cloth: slices of the coarse one missed points)
+    if tubes:  # a torso hanging over the crotch and seat, trouser legs: tubes, handed over to the cloth from the
+        # body by weight (_tube_weight)
+        out = [{"mix": [out[0], *tubes], "weights": [t["blend_info"] for t in tubes],
+                "verts": np.concatenate([out[0]["verts"]] + [t["verts"] for t in tubes]),
+                "hmax": max([out[0]["hmax"]] + [t["hmax"] for t in tubes]), "head": None}]
+    for k, o in enumerate(out):
+        o["key"] = hashlib.sha1(repr((gk, k)).encode()).hexdigest()
     _CACHE[gk] = out
     return out
 
@@ -712,7 +882,19 @@ def _imls(X, pr, k=K):
 
 
 def sd_base(p: np.ndarray, pr: dict) -> np.ndarray:
-    """IMLS distance to the base (see the module docstring). A grafted head is part of the same point set."""
+    """IMLS distance to the base (see the module docstring). A grafted head is part of the same point set. A
+    garment with a torso tube is two point sets mixed by weight (_tube_weight)."""
+    if pr.get("mix"):
+        X = p.reshape(-1, 3)
+        W = np.array([_tube_weight(X, m) for m in pr["weights"]])
+        tot = W.sum(0)
+        W = W / np.maximum(tot, 1.0)
+        out = _sd_body(X, pr["mix"][0]) * (1 - W.sum(0))
+        for w, t in zip(W, pr["mix"][1:]):
+            on = w > 1e-4
+            if on.any():
+                out[on] += w[on] * _sd_body(X[on], t)
+        return out.reshape(p.shape[:-1])
     return _sd_body(p, pr)
 
 

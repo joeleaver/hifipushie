@@ -314,7 +314,7 @@ def _compile(spec: dict) -> list[Prim]:
     if s.get("base"):  # the base mesh first: everything else unions onto it
         prims.insert(0, _base(s, k_default))
     prims = _deform(s, prims)
-    return _parts(prims, s.get("parts") or {}, k_default)
+    return _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
 
 
 def _base(s: dict, k_default: float) -> Prim:
@@ -451,7 +451,7 @@ SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg")
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}
 
 
-def _parts(prims: list[Prim], defs: dict, k_default: float) -> list[Prim]:
+def _parts(prims: list[Prim], defs: dict, k_default: float, joints: dict | None = None) -> list[Prim]:
     """Order primitives part by part (body first, shells after the part they follow), each part sorted and
     clipped on its own. A shell part ({"shell": base, "offset", "thickness"?}) is its base part's surface pushed
     out by offset (solid; or only a layer `thickness` deep), cut to the union of its own layer-0 additive
@@ -479,13 +479,23 @@ def _parts(prims: list[Prim], defs: dict, k_default: float) -> list[Prim]:
                 bp = done[base]
                 badds = [q for q in bp if q.op == "add"]
                 pad = off
-                shell = Prim(f"{name}:shell", "shell", "add", k_default, 0,
-                             np.min([q.lo for q in badds], 0) - pad, np.max([q.hi for q in badds], 0) + pad,
-                             {"prims": bp, "offset": off, "thickness": th}, part=name)
+                bq = next((q for q in bp if q.kind == "base"), None)
+                if d.get("garment") and bq is None:
+                    raise SpecError(f"part {name!r}: a garment is built from a base body (spec base)")
+                if d.get("garment"):  # a garment with its own volume: from the base mesh, closed and eased (base.py)
+                    from . import base as basemod
+                    gs = basemod.garment(bq.params["key"], d["garment"], off, joints or {})
+                    shells = [Prim(f"{name}:garment{k or ''}", "base", "add", float(d.get("garment_blend", 0.02)), 0,
+                                   g["verts"].min(0) - 0.05, g["verts"].max(0) + 0.05, g, reach=1.0, part=name)
+                              for k, g in enumerate(gs)]
+                else:
+                    shells = [Prim(f"{name}:shell", "shell", "add", k_default, 0,
+                                   np.min([q.lo for q in badds], 0) - pad, np.max([q.hi for q in badds], 0) + pad,
+                                   {"prims": bp, "offset": off, "thickness": th}, part=name)]
                 for q in ps:  # the region: layer-0 adds, unioned (by `blend`) then intersected with the shell
                     if q.op == "add" and q.layer == 0:
                         q.op, q.group, q.join = "intersect", f"region:{name}", float(d.get("blend", 0.01))
-                ps.insert(0, shell)
+                ps[:0] = shells
             ps.sort(key=lambda p: (p.layer, OP_ORDER[p.op], p.group or ""))
             _set_reach(ps)
             done[name] = ps
