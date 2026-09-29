@@ -29,6 +29,81 @@ def _mesh(name, verts, faces, colors=None):
     return ob
 
 
+def _walls(pts, piece, info):
+    """A dry-stone wall as a box ribbon along its line, following the ground (sunk a little); a fence as posts every
+    2.5 m with a rail along their tops."""
+    V, F, Vf, Ff, Vh, Fh = [], [], [], [], [], []
+    rng = np.random.default_rng(5)
+    for k, (h, w, fence) in enumerate(info):
+        p = pts[piece == k].astype(float)
+        if len(p) < 2:
+            continue
+        t = np.gradient(p[:, :2], axis=0)
+        t /= np.linalg.norm(t, axis=1, keepdims=True) + 1e-9
+        n = np.c_[-t[:, 1], t[:, 0]]
+        if fence == 2:  # a hedge: one continuous mass, rounded, its top and sides lumpy (shrub by shrub it read as
+            # strings of beads)
+            m = len(p)
+            lump = np.convolve(rng.normal(0, 1, m + 6), np.ones(4) / 4, "same")[3:3 + m]
+            wid = np.convolve(rng.normal(0, 1, m + 6), np.ones(3) / 3, "same")[3:3 + m]
+            base = len(Vh)
+            prof = ((-0.5, 0.0), (-0.45, 0.55), (-0.25, 0.95), (0.25, 0.95), (0.45, 0.55), (0.5, 0.0))
+            for i, (row, (nx, ny)) in enumerate(zip(p, n)):
+                x, y, z = row[:3]
+                zl, zr = (row[3], row[4]) if len(row) > 4 else (z, z)
+                hh = h * (1 + 0.15 * lump[i])
+                ww = w * (1 + 0.15 * wid[i])
+                for sx, fz in prof:
+                    zg = zr if sx < 0 else zl
+                    Vh.append((x + nx * sx * ww, y + ny * sx * ww, (zg - 0.2) * (1 - fz) + (max(zl, zr) + hh) * fz))
+            for i in range(m - 1):
+                a, b = base + 6 * i, base + 6 * (i + 1)
+                for q in range(5):
+                    Fh.append((a + q, b + q, b + q + 1))
+                    Fh.append((a + q, b + q + 1, a + q + 1))
+            continue
+        if not fence:  # a wall, a little narrower at its top (battered)
+            base = len(V)
+            for row, (nx, ny) in zip(p, n):
+                x, y, z = row[:3]
+                zl, zr = (row[3], row[4]) if len(row) > 4 else (z, z)
+                zt = max(zl, zr) + h  # a level top over the higher side; the feet on each side's ground
+                for sx, zz in ((-0.5, zr - 0.3), (0.5, zl - 0.3), (0.3, zt), (-0.3, zt)):
+                    V.append((x + nx * sx * w, y + ny * sx * w, zz))
+            for i in range(len(p) - 1):
+                a, b = base + 4 * i, base + 4 * (i + 1)
+                for q in ((0, 3), (3, 2), (2, 1)):  # outer side, top, other side
+                    F.append((a + q[0], b + q[0], b + q[1]))
+                    F.append((a + q[0], b + q[1], a + q[1]))
+        else:
+            s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p[:, :2], axis=0), axis=1))]
+            for at in np.arange(0, s[-1] + 1e-6, 2.5):
+                x, y, z = (np.interp(at, s, p[:, j]) for j in range(3))
+                base = len(Vf)
+                r = 0.06
+                for dz in (-0.3, h):
+                    Vf += [(x - r, y - r, z + dz), (x + r, y - r, z + dz), (x + r, y + r, z + dz), (x - r, y + r, z + dz)]
+                for i in range(4):
+                    j = (i + 1) % 4
+                    Ff += [(base + i, base + j, base + 4 + j), (base + i, base + 4 + j, base + 4 + i)]
+            base = len(Vf)  # the rail: a thin ribbon a little under the posts' tops
+            for row, (nx, ny) in zip(p, n):
+                x, y, z = row[:3]
+                Vf += [(x + nx * 0.02, y + ny * 0.02, z + h - 0.25), (x + nx * 0.02, y + ny * 0.02, z + h - 0.05)]
+            for i in range(len(p) - 1):
+                a, b = base + 2 * i, base + 2 * (i + 1)
+                Ff += [(a, b, b + 1), (a, b + 1, a + 1)]
+    if V:
+        ob = _mesh("stone_walls", np.array(V, np.float32), np.array(F, np.int32))
+        ob.data.materials.append(_mat("stone_wall", (0.2, 0.19, 0.17, 1), 0.95))  # (grey stone, sRGB ~0.48)
+    if Vh:
+        ob = _mesh("hedges", np.array(Vh, np.float32), np.array(Fh, np.int32))
+        ob.data.materials.append(_mat("hedge", (0.035, 0.07, 0.025, 1), 0.95))
+    if Vf:
+        ob = _mesh("fences", np.array(Vf, np.float32), np.array(Ff, np.int32))
+        ob.data.materials.append(_mat("fence", (0.20, 0.15, 0.10, 1), 0.8))
+
+
 def _mat(name, col, rough=0.8):
     m = bpy.data.materials.get(name)
     if m is None:
@@ -140,6 +215,12 @@ def _proto(kind):
     if kind == "conifer":
         bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=3.0, depth=13, location=(0, 0, 9))
         col = (0.025, 0.07, 0.03, 1)
+    elif kind == "shrub":  # hedge shrubs: a low lumpy mass, set close they close up into a hedge
+        parts[0].scale = (0.3, 0.3, 0.2)
+        parts[0].location = (0, 0, 0.4)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.8, location=(0, 0, 1.5))
+        bpy.context.object.scale = (1.0, 1.0, 0.8)
+        col = (0.05, 0.10, 0.03, 1)
     elif kind == "fruit":  # orchard trees: small, round, low trunk
         parts[0].scale = (0.6, 0.6, 0.45)
         parts[0].location = (0, 0, 0.9)
@@ -355,6 +436,9 @@ def run(job):
     if "tree_xyz" in d.files and len(d["tree_xyz"]):  # the same tree instances the export writes
         for kind in sorted(set(d["tree_kind"].tolist())):
             pts = d["tree_xyz"][d["tree_kind"] == kind]
+            for v in job["views"]:  # (an eye among trees rendered from inside a crown: all green)
+                e = v["eye"]
+                pts = pts[((pts[:, 0] - e[0]) ** 2 + (pts[:, 1] - e[1]) ** 2 > 7.0 ** 2) | (pts[:, 2] < e[2] - 20)]
             me = bpy.data.meshes.new("trees_" + kind)
             me.vertices.add(len(pts))
             me.vertices.foreach_set("co", pts.astype(np.float64).ravel())
@@ -411,6 +495,8 @@ def run(job):
         pm.node_tree.links.new(at.outputs["Color"], b.inputs["Base Color"])
         b.inputs["Roughness"].default_value = 0.9
     plane.data.materials.append(pm)
+    if "lw_pts" in d.files and len(d["lw_pts"]):  # stone walls and fences (below the grid): stand-ins on the ground
+        _walls(d["lw_pts"], d["lw_piece"], d["lw_info"])
     if "markers" in d.files and len(d["markers"]):  # sites as thin red poles, to judge what a view sees
         mk = bpy.data.materials.new("marker")
         mk.use_nodes = True

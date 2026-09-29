@@ -40,6 +40,21 @@ def _keep(T):
     return ndimage.binary_dilation(keep, iterations=2) | ~np.isnan(T.water)
 
 
+def _keep_shift(T):
+    """What the faces' horizontal shift leaves alone: as _keep, but the sea's cells are shifted too (a buttress runs on
+    into the water; kept, the cells at the waterline were pulled up into spires between untouched water cells)."""
+    keep = _keep(T)
+    lk = (getattr(T, "lakes", {}) or {}).get("sea")
+    if lk is not None and hasattr(T, "lake_id"):
+        sea = T.lake_id == lk["id"]
+        S = getattr(T, "sea", None)
+        design = np.zeros(T.X.shape, bool)
+        if S:
+            design |= S["st_mask"] | (S["rocks"] > 0.05)
+        keep = keep & ~(sea & ~ndimage.binary_dilation(design, iterations=2))
+    return keep
+
+
 def _chisel(u, v, seed):
     """0..1, piecewise linear in u (knots at the integers, alternating crest and trough, each its own height), the knots
     changing slowly with v (blended between two knot sets): straight flanks, sharp crests, V troughs."""
@@ -130,6 +145,117 @@ def params(T):
             "rib_spacing": max(1.5 * crag, 3.5 * T.cell), "rock_colour": [0.36, 0.34, 0.31]}
 
 
+def base_colour(T, slope=None, hn=None):
+    """sRGB rock before any cover: the kind's rock (sandstone in canyon/dunes/plateau country, grey elsewhere), the
+    canyon's strata bands, faint level beds on cliffs."""
+    slope = T._slope() if slope is None else slope
+    hn = (T.H - T.H.min()) / max(np.ptp(T.H), 1) if hn is None else hn
+    arid = T.world["kind"] in ("canyon", "dunes", "plateau")
+    rock = (np.array([0.58, 0.38, 0.26]) if arid else np.array([0.36, 0.34, 0.31])) + 0.06 * hn[..., None]
+    if arid and getattr(T, "canyons", None):
+        cy = next(iter(T.canyons.values()))
+        per = max(cy["depth"] / 7, 4.0)  # colour bands through the strata, level all along the canyon
+        band = 0.5 + 0.5 * np.sin(2 * np.pi * T.H / per) + 0.25 * np.sin(2 * np.pi * T.H / (per * 0.37))
+        rock = rock * (0.8 + 0.25 * band[..., None]) + np.array([0.08, 0.02, -0.02]) * (band[..., None] - 0.5)
+    if not arid:  # beds in any cliff: faint level bands of lighter and darker rock (one grey read as a painted curtain)
+        wob = noise.fbm(np.c_[T.P, np.full(len(T.P), 31.0)], 60.0, 2, seed=231).reshape(T.H.shape) - 0.5
+        z = T.H + 6 * wob
+        band = 0.6 * np.sin(2 * np.pi * z / 5.3) + 0.4 * np.sin(2 * np.pi * z / 2.1 + 1.0)
+        rock = rock * (1 + 0.09 * band[..., None] * smoothstep(45, 60, slope)[..., None])
+    return rock
+
+
+def colour(T):
+    """sRGB (ny, nx, 3): what the heightfield views paint on rock, for 3D rock to match: the base colour, then every
+    rock-type cover layer where its mask is (in paint order), then the rock's tone (pale buttresses, dark gullies)."""
+    from . import terrain_design as design
+    c = base_colour(T)
+    for name, m in (getattr(T, "cover", None) or {}).items():
+        sc = design._spec_cover(T, name)
+        if sc.get("type", name) in ("rock", "scree") or "rock" in name:
+            a = np.clip(m, 0, 1)[..., None]
+            c = c * (1 - a) + np.array(design.cover_colour(T, name)) * a
+    tone = (getattr(T, "rock", None) or {}).get("tone")
+    if tone is not None:
+        c = c * tone[..., None]
+    return np.clip(c, 0, 1)
+
+
+def face_height(T, H, face):
+    """Metres of relief the faces around each cell span (the visible ground: water counts at its level), averaged over
+    the steep ground nearby; and the local top and foot (max/min over about one face height)."""
+    vis = np.where(np.isnan(T.water), H, np.maximum(H, np.nan_to_num(T.water, nan=-1e9)))
+    vb = ndimage.gaussian_filter(vis, 1.0)
+    w = int(np.clip(min(250.0, 0.25 * T.size) / T.cell, 5, 151)) | 1
+    rel = ndimage.maximum_filter(vb, w) - ndimage.minimum_filter(vb, w)
+    f = face.astype(float)
+    sig = max(2.0, w / 4)
+    Hf = ndimage.gaussian_filter(rel * f, sig) / np.maximum(ndimage.gaussian_filter(f, sig), 1e-3)
+    Hf = np.where(ndimage.gaussian_filter(f, sig) > 1e-3, Hf, 0.0)
+    med = float(np.median(Hf[face])) if face.any() else 0.0
+    wl = int(np.clip(1.6 * med / T.cell, 7, 151)) | 1  # (one face's top and foot: the wide window saw the hills behind)
+    return Hf, ndimage.maximum_filter(vb, wl), ndimage.minimum_filter(vb, wl), med
+
+
+def _structure(T, H, s, q, zone_s, face, Hf, amt):
+    """The faces' big structure, before any detail: buttresses with flat fronts and V gullies a face-height or so apart
+    (spacing and depth scale with the face: 20-40 m on a sea cliff, ~300 m on an alpine wall), strong in some stretches
+    and slabby in others (an even texture everywhere read as crumpled paper). Returns the horizontal shift (m, + = face
+    brought out) and how strongly each stretch is structured (0..1)."""
+    lo = max(8 * T.cell, 20.0)
+    Lb = np.clip(0.9 * Hf, lo, 320.0)
+    Ab = amt * np.clip(0.17 * Hf, 1.5 * T.cell, 45.0)
+    lg = np.log2(Lb / lo)
+    big = np.zeros(H.shape)
+    for k in range(int(math.ceil(math.log2(320.0 / lo))) + 1):
+        wk = np.clip(1 - np.abs(lg - k), 0, 1) * zone_s
+        if wk.max() < 1e-3:
+            continue
+        Lk = lo * 2 ** k
+        warp = noise.fbm(np.stack([s.ravel() / (3 * Lk), q.ravel() / (12 * Lk), np.full(s.size, 7.0 + k)], 1), 1.0, 2,
+                         seed=231 + k).reshape(H.shape)
+        r = _chisel((s + 1.3 * Lk * (warp - 0.5)) / Lk, q / (5 * Lk), 241 + k)
+        # buttress fronts are flat (the face itself, brought out), gullies V-shaped and narrower than the buttresses
+        p = (np.minimum(r, 0.68) - 0.36) / 0.32
+        big += wk * p
+    med = float(np.median(Lb[face])) if face.any() else lo
+    st = noise.fbm(np.stack([s.ravel() / (2.5 * med), q.ravel() / (6 * med), np.full(s.size, 9.0)], 1), 1.0, 2,
+                   seed=251).reshape(H.shape)
+    strength = 0.25 + 0.75 * smoothstep(0.35, 0.62, st)
+    return Ab * strength * big, strength
+
+
+def _tiers(T, H, face_w, Hf, top, foot, nx, ny, s, amt):
+    """Tall cliffs step back in tiers: a ledge (grass and shrubs hold on it) and the face above set back behind it, at
+    a height that wanders along the face, pinching out in places. The ground above each ledge is resampled from a
+    ledge's width downhill, so the upper face and its clifftop move back whole (no bevel)."""
+    ledges = np.zeros(H.shape, bool)
+    rel = top - foot
+    tall = smoothstep(max(10.0, 8 * T.cell), max(18.0, 14 * T.cell), Hf)
+    w = ndimage.gaussian_filter(face_w * tall, 1.5)
+    if w.max() < 0.3:
+        return H, ledges
+    fr = [0.5] if float(np.median(Hf[face_w > 0.5])) < 30 else [0.36, 0.66]
+    for i, f0 in enumerate(fr):
+        wan = noise.fbm(np.stack([s.ravel() / 60.0, np.full(s.size, 3.0 + i), np.zeros(s.size)], 1), 1.0, 2,
+                        seed=261 + i).reshape(H.shape)
+        pinch = smoothstep(0.38, 0.55, noise.fbm(np.stack([s.ravel() / 45.0, np.full(s.size, 5.0 + i),
+                                                           np.zeros(s.size)], 1), 1.0, 2, seed=271 + i).reshape(H.shape))
+        z_t = foot + (f0 + 0.16 * (wan - 0.5)) * rel
+        D = amt * np.clip(0.12 * Hf, 2.5 * T.cell, 14.0) * pinch * w
+        if D.max() < T.cell:
+            continue
+        yy = (T.Y - T.ys[0] - ny * D) / T.cell
+        xx = (T.X - T.xs[0] - nx * D) / T.cell
+        Hs = ndimage.map_coordinates(H, [yy, xx], order=1, mode="nearest")
+        on = (H >= z_t) & (Hs < z_t) & (D > T.cell)
+        # the ledge falls outward a little and its lip rolls (a dead-level shelf read as a road)
+        new = np.where(H < z_t, H, np.where(Hs < z_t, z_t - 0.25 * (z_t - np.maximum(Hs, z_t - 0.2 * D)), Hs))
+        H = np.where(D > 0.05, new, H)
+        ledges |= on
+    return H, ledges
+
+
 def walls_mask(T):
     """Designed unclimbable walls (a basin's, a "walls" edge): ledges would break their tall steep run."""
     m = np.zeros(T.X.shape, bool)
@@ -170,8 +296,27 @@ def apply(T):
     zone = np.maximum(ndimage.gaussian_filter(steep, 1.0), steep) * smoothstep(18, 32, slope) * ~keep
 
     b_amt = float(cfg.get("buttresses", 1.0))
+    face = steep > 0.5
+    Hf, top, foot, med_h = face_height(T, H, face)
+    gullies = np.zeros(H.shape, bool)
+    strength = np.ones(H.shape)
     if b_amt > 0:
-        L = max(1.5 * crag, 3.5 * T.cell)  # spacing of ribs along the face
+        # big structure first (buttresses and gullies at the face's own scale), then ribs inside it
+        Ab_med = float(np.clip(0.17 * med_h, 1.5 * T.cell, 45.0))
+        sig_b = max(1.0, 0.6 * Ab_med / T.cell)
+        keep_s = _keep_shift(T)
+        zone_b = np.clip(1.5 * ndimage.gaussian_filter(steep, sig_b), 0, 1) * ~keep_s
+        # the big structure's own frame, from ground smoothed at its scale (on the ribs' frame it turned sharply round
+        # every spur and packed blades into the corner)
+        sgb = float(np.clip(0.15 * np.clip(0.9 * med_h, 20, 320) / T.cell, 3, 30))
+        Hbb = ndimage.gaussian_filter(H, sgb)
+        byb, bxb = np.gradient(Hbb, T.cell)
+        gbb = np.hypot(bxb, byb) + 1e-9
+        nxb, nyb = bxb / gbb, byb / gbb
+        big, strength = _structure(T, H, T.X * -nyb + T.Y * nxb, T.X * nxb + T.Y * nyb, zone_b, face, Hf, b_amt)
+        # shifted along the big frame's fall line: express as the ribs' frame's shift (their directions are close)
+        big = big * np.clip(nxb * nx + nyb * ny, 0, 1)
+        L = max(min(1.5 * crag, 0.35 * float(np.clip(0.9 * med_h, 20, 320))), 3.5 * T.cell)  # spacing of ribs
         # ribs run the whole fall line (short blobs read as raindrops on a mountainside) and their spacing wanders
         # (evenly spaced flutes read as a comb)
         warp = noise.fbm(np.stack([s.ravel() / (3 * L), q.ravel() / (20 * L), np.full(s.size, 2.0)], 1), 1.0, 2,
@@ -179,28 +324,45 @@ def apply(T):
         sw = s + 1.6 * L * (warp - 0.5)
         # ribs and couloirs piecewise planar across the face: straight flanks between sharp crests and V-shaped couloirs
         # (smooth noise ribs read as melted wax dripping down every face)
-        ridged = _chisel(sw / L, q / (10 * L), 211)
-        # big bays and headlands of the face every few ribs
-        pts2 = np.stack([s.ravel() / (5 * L), q.ravel() / (20 * L), np.full(s.size, 3.0)], 1)
-        n2 = noise.fbm(pts2, 1.0, 2, seed=212).reshape(H.shape)
+        ridged = _chisel(sw / L, q / (3.5 * L), 211)
         # full strength on cliffs; a mountainside of 40-50 deg gets a third (it had raindrop dimples all over)
         # the shift is smooth across the whole face and a little past its lip and foot, and the ground is resampled, not
         # cross-faded: fading the shifted face into the unshifted by the local slope bevelled every lip and foot into a
         # 50 deg ramp (a 21 m sea cliff at 70 deg became 9 m of face under a 12 m drape)
-        A0 = b_amt * max(0.4 * crag, 1.0 * T.cell)
+        A0 = b_amt * max(min(0.15 * crag, 0.035 * med_h), 1.0 * T.cell)  # (detail inside the big structure)
         sig = max(1.0, 0.6 * A0 / T.cell)
         sb = ndimage.gaussian_filter(steep, sig)
-        zone_s = np.clip(1.5 * sb, 0, 1) * ~keep
+        zone_s = np.clip(1.5 * sb, 0, 1) * ~keep_s
         cliffness = ndimage.gaussian_filter(steep * smoothstep(45, 65, slope), sig) / np.maximum(sb, 1e-6)
         amp = A0 * (0.35 + 0.65 * np.clip(cliffness, 0, 1))
         # (ribs vary in strength along the face: evenly fluted walls read as organ pipes)
         n3 = noise.fbm(np.stack([sw.ravel() / (2.5 * L), q.ravel() / (15 * L), np.full(s.size, 4.0)], 1), 1.0, 2,
                        seed=215).reshape(H.shape)
-        delta = amp * ((0.2 + 1.8 * n3 ** 1.5) * (ridged - 0.5) + 1.6 * (n2 - 0.5))  # metres, + = face out
+        delta = amp * (0.2 + 1.8 * n3 ** 1.5) * (ridged - 0.5) * (0.5 + 0.5 * strength) * zone_s  # metres, + = out
+        delta = delta + big * np.maximum(zone_b, 0)
+        # never sample past the crest above or the foot below: brought out past a narrow ridge's top, the ground on its far
+        # side came back as saw teeth along the skyline
+        gb = np.maximum(g, 0.2)
+        up_room = np.maximum(top - Hb, 0) / gb
+        down_room = np.maximum(Hb - foot, 0) / gb
+        delta = np.clip(delta, -0.8 * down_room - T.cell, 0.7 * up_room)
+        # a crest at least a couple of cells wide (a chisel knot is a point: at a cliff's foot it stood as a thin spire)
+        delta = ndimage.gaussian_filter(delta, 1.2)
+        gullies = (big < -0.35 * Ab_med) & face
         # sample the ground a horizontal distance delta uphill (+: higher ground brought out: a buttress)
-        yy = (T.Y - T.ys[0] + ny * delta * zone_s) / T.cell
-        xx = (T.X - T.xs[0] + nx * delta * zone_s) / T.cell
+        yy = (T.Y - T.ys[0] + ny * delta) / T.cell
+        xx = (T.X - T.xs[0] + nx * delta) / T.cell
         H = ndimage.map_coordinates(H, [yy, xx], order=1, mode="nearest")
+
+    t_amt = float(cfg.get("tiers", 1.0))
+    ledge_m = np.zeros(H.shape, bool)
+    if t_amt > 0:
+        cl = smoothstep(52, 62, slope) * ~keep * ~walls_mask(T)
+        S = getattr(T, "sea", None)
+        if S:  # (sea cliffs have their tiers in their own profile: terrain_sea._cliff_face)
+            cl = cl * ~((S["wc"] > 0.5) & (np.abs(S["sd"]) < 80))
+        cl = ndimage.binary_dilation(cl > 0.5, iterations=2).astype(float) * ~keep
+        H, ledge_m = _tiers(T, H, cl, Hf, top, foot, nx, ny, s, t_amt)
 
     l_amt = float(cfg.get("ledges", 0.25))
     if l_amt > 0:
@@ -283,14 +445,36 @@ def apply(T):
             face_h = np.clip(top - foot_h, 0, 600)
             feed = smoothstep(0.4, 0.62, noise.fbm(np.c_[T.P, np.full(len(T.P), 12.0)], max(1.5 * crag, 6 * T.cell),
                                                    2, seed=220).reshape(H.shape))
-            cone = foot_h + np.minimum(0.22 * face_h, 40.0) * feed[iy, ix] - math.tan(math.radians(33)) * dist
+            # fed mostly from the gullies above (cones at a couloir's foot, not a ruled ring)
+            if gullies.any():
+                gf = np.clip(ndimage.gaussian_filter(gullies.astype(float), 2.0) * 4, 0, 1)
+                feed = np.maximum(0.5 * feed, gf)
+            # concave: steepest at the apex, easing out over its toe (a straight 33 deg cone read as a pale tent)
+            hc = np.minimum(0.16 * face_h, 28.0) * feed[iy, ix]
+            run_c = np.maximum(hc, 1e-6) / math.tan(math.radians(33))
+            u = np.clip(dist / (1.35 * run_c), 0, 1)
+            cone = np.where(u < 1, foot_h + hc * (1 - u) ** 1.6 - 0.02 * dist, -np.inf)  # (past its toe: nothing)
             lower = (H < foot_h + 0.5) & ~cliff & ~keep & (slope < 40) & np.isnan(T.water) & ~walls_mask(T)
             add = np.where(lower, np.clip(cone - H, 0, None), 0) * ap
             add = ndimage.gaussian_filter(add, 2.5)  # (at 1 cell the patches' edges stood as sugar-cube blocks)
             H = H + add
             apron_m = add > 0.5
     T.H = H
-    T.rock = {"cells": int((steep > 0.5).sum()), "foot": foot_m | apron_m, "aprons": apron_m}
+    # ledges: flat ground a few cells wide among the cliffs (tiers, sea cliffs' ledges, benches) as built
+    gy2, gx2 = np.gradient(H, T.cell)
+    sl = np.degrees(np.arctan(np.hypot(gx2, gy2)))
+    cliffy = ndimage.binary_dilation(sl > 60, iterations=3)
+    ledge_m = (ledge_m | ((sl < 32) & cliffy & ndimage.binary_erosion(ndimage.binary_dilation(sl > 60, iterations=6),
+                                                                       iterations=2))) & ~keep
+    # the rock's tone (views and the map): buttress fronts pale, gullies dark and streaked down the fall line, big
+    # patches of lighter and darker rock (one even grey on every face read as a plaster drape)
+    patch = noise.fbm(np.c_[T.P, np.full(len(T.P), 14.0)], max(3 * crag, 12 * T.cell), 2, seed=281).reshape(H.shape)
+    streak = _chisel(s / max(2.5 * T.cell, 0.12 * crag), q / max(40 * T.cell, 3 * crag), 283)
+    gsoft = np.clip(ndimage.gaussian_filter(gullies.astype(float), 2.0) * 3, 0, 1)
+    tone = (0.72 + 0.5 * smoothstep(0.3, 0.7, patch)) * (1 - 0.35 * gsoft) * (0.84 + 0.22 * streak)
+    T.H = H
+    T.rock = {"cells": int((steep > 0.5).sum()), "foot": foot_m | apron_m, "aprons": apron_m, "ledges": ledge_m,
+              "gullies": gullies, "face_height": med_h, "tone": tone}
 
 
 def measure(T):
@@ -308,7 +492,9 @@ def measure(T):
     mean = np.arctan2(by, bx)
     d = np.abs((asp - mean + np.pi) % (2 * np.pi) - np.pi)
     cliff = (slope > 60) & np.isnan(T.water)
-    across = float(np.median(2 * ndimage.distance_transform_edt(cliff)[cliff])) if cliff.sum() > 20 else None
+    # (across the whole face: beds and sills under 60 deg cut the cliff mask into strips 2 cells wide at any cell)
+    cl = ndimage.binary_closing(cliff, iterations=3) & np.isnan(T.water)
+    across = float(np.median(2 * ndimage.distance_transform_edt(cl)[cl])) if cl.sum() > 20 else None
     # closed hollows on the faces (round pits: water would pool on a cliff) and how rounded the faces are (median
     # |laplacian| x cell: planar facets with creases are low, noise lumps high)
     from skimage.morphology import reconstruction

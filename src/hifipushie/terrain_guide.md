@@ -105,6 +105,14 @@ and the `"story"`.
     wider wall. It's checked like a wall (share of the edge that holds, climbable spots).
   - `walls.character`: `"tiered"` (default: stacked cliff bands with benches, light buttresses), `"buttressed"`
     (rock ribs between couloirs), `"broken"`, `"smooth"`. `walls.bands`: how many cliff bands.
+  - **The wall as a profile**, from the crest down, as you'd say it: `"walls": {"from_top": ["cliffs", "scree",
+    "forest"]}`, or with shares of the wall's height: `[["cliffs", 0.4], ["scree", 0.25], ["forest", 0.35]]`. Bands:
+    `cliffs` (min_slope + 14, at least 62 deg), `crags` (50), `slabs` (42), `scree` (35, concave), `forest` (28),
+    `meadow` (20). The wall's width follows from them (`walls.average` is ignored then). Peak forms (pyramid, horn)
+    still carve the top of the wall under a peak, so the top band is gentler there. Each band is a zone (`"valley.cliffs"`, `"valley.scree"`, ...;
+    also `"valley.wall"` and `"valley.floor"`) and gets its cover (rock, scree, conifer forest, meadow) unless a layer
+    of yours is `"in"` it; your own tree layers stay out of its bare bands. Scree runs down into the forest in tongues.
+    The report measures each band's share of the height and slope as built.
   - Passes through its ridge are exempt.
   - **A valley open to one side**: give `inside` a ridge that doesn't close (a horseshoe: west peaks, the head, east
     peaks) and `"opens": "south"` (the side its mouth faces; without it, the side between the ridge's two ends). The
@@ -198,7 +206,8 @@ and the `"story"`.
     low rocks; the zone `"rocks"` is that strip). `cliffs` with `except`/`only` picks stretches; an address inland (a
     headland's peak) means the coast nearest it. `cliffs.heights` sets the height per stretch (`{"the_point": [14, 18]}`).
   - A cliff line juts and bays at tens of metres (buttresses and bights, `jut`: 0 for a straight line), its lip rolls
-    over by varying amounts, and aprons of fallen blocks lean on its foot in patches (`talus`: 0 for none).
+    over by varying amounts, and aprons of fallen blocks lean on its foot in patches (`talus`: 0 for none). Cliffs over
+    ~15 m step back at a ledge (two over ~30 m) that wanders in height and pinches out (`tiers`: 0 for one face).
   - **Geos** (zawns): narrow clefts the sea runs up between vertical walls. Without a `geos` entry a cliff coast gets a
     few at random; `"geos": {"chasm": {"at": address, "length": 60, "width": 8}}` places them (the coast nearest `at`,
     cut `length` m inland, narrowing, the sea running to its head); `"geos": 0` for none. The report gives each placed
@@ -214,11 +223,17 @@ and the `"story"`.
     cliffs as tall as the flank there (the report measures them and warns). Size the land and the peaks together.
   - **Beaches** go on the coast nearest their `at`. A beach grades the land down to the water; with `"at_foot": true`
     the cliff stays and a strip of sand `width` metres wide lies at its foot (a hidden cove beach).
-  - **Coves** bite a horseshoe bay into the land at a compass side or the coast nearest an address: a mouth narrower
-    than the bay, headlands either side, a beach at the head and behind it an `apron` of gentle ground (default a third
-    of the width) walled by a steep scar: room for a harbour. A cove is an address; a site `"at": "cove"` stands on its
-    apron just above the water. `"valley"`: the cove is the drowned mouth of a valley (a river or an address): the scar
-    opens toward it at a road's grade, so a lane can come down to the harbour.
+  - **Coves** bite a bay into the land at a compass side or the coast nearest an address: wider inside than at the
+    mouth, a beach at the head and behind it an `apron` of gentle ground (default a third of the width) walled by a
+    steep scar: room for a harbour. They're asymmetric: a rocky **headland** on one side runs out past the mouth (cliffs
+    all round it, standing at least `headland_height` m, default ~22% of the width, at least 18; the land's own height
+    if that's more), the bay swings away from it, and a low rocky point on the other side narrows the mouth. The cove
+    sits in a hollow: the land round the bay (not the headland) eases down to a rim `rim` m over the water (default a
+    tenth of the width, 4-18) at `rim_slope` (16 deg), so a cove in a high plateau isn't a pit ringed by cliffs (coves with a beach only; gentle ground only, at most `rim_depth` m, default a tenth of the width, 6-25). `"headland"`: `"auto"` (the side where the land is higher),
+    a compass side or address, `"left"`/`"right"` (looking in from the sea), `"both"`, `"none"`; `"headland_length"` m.
+    The report measures the bay's widest water, the mouth's narrowest gap and each headland's top. A cove is an address;
+    a site `"at": "cove"` stands on its apron just above the water. `"valley"`: the cove is the drowned mouth of a
+    valley (a river or an address): the scar opens toward it at a road's grade, so a lane can come down to the harbour.
   - The sea is a lake named `"sea"` to everything else: `"sea.south_shore"` (the coast on the land's south side),
     `"see": ["sea"]` (or a cove: its water), water in the export. Zones `"beach"`, `"cliffs"`, `"coast"` and `"sea"`
     work in cover (`{"type": "sand", "in": "beach"}`), rugged and routes; `{"near": "sea", "radius": m}` is within that
@@ -238,24 +253,35 @@ and the `"story"`.
   are graded down to it. A river leaving a dammed lake runs over the dam as a spillway at the lake's level. In a coast
   drawn as a `land` zone, the land away from the rivers stays at `world.base`.
   Between two rivers with no ridge between them, the compiler adds a divide.
-- **landforms**:
-  - `lake {"at", "radius", "level"?, "depth", "lobes"?: 0..0.5, "dam"?: true | "downhill" | false}`: a basin carved
+- **landforms** `{"name": {"type": "lake" | "fan" | "moraine" | "terrace", ...}}` (the type is always given):
+  - `lake {"at", "radius", "level"?, "depth", "lobes"?: 0..0.5, "dam"?: true | "downhill" | false | "moraine" | "rock bar"}`: a basin carved
     below its level. `dam: true` puts a rim all round where the ground is lower. `"downhill"` is a farm pond: one
     straight bank across the slope. `false` is a natural lake that holds only what the ground holds. Without `level`
     it fills to the ground at its centre (a basin's drain lake: the basin floor's low end). `lobes: 0` gives a round
     shore.
+    - **A lake held partway down a sloping valley**: `"dam": "moraine"` (a rounded, hummocky ridge of till bowed
+      downstream) or `"rock bar"` (a rock step: gentle on the lake side, a steep face below). It runs right across the
+      valley at the lake's downstream end (`radius` below its centre), ends against the valley sides on its own, and has
+      a spillway channel at the lake's level where the river leaves (or the crest's lowest point). The water runs back
+      up the valley as far as the floor lies below the level. Downstream is the river through the lake, `"toward"`
+      (compass or address), or the way the valley falls. Leave `level` out and it's set a little over the floor at the
+      dam's site; `"freeboard"` (crest over the water), `"dam_width"`. The zone `"<lake>.dam"` is the dam.
   - `fan {"at": "river.mouth", "radius", "height"}`
   - `moraine {"across": "river@0.8", "height", "width"}`
   - `terrace {"along": river, "from", "to", "side": "left" | "right", "height", "width"}` (banks: left and right
     looking downstream)
 - **rock**: every steep face (sea cliffs, basin and canyon walls, mesas, scars, craters) gets rock character on its
-  own: buttresses and couloirs along it (the face moved in and out, so its lip and foot are notched and it stays as
-  steep and tall), ledges where the face is gentle enough for a tread, and a boulder foot below it.
+  own, big structure first: buttresses with flat fronts and V gullies a face-height or so apart (20-40 m on a sea
+  cliff, a few hundred on an alpine wall), strong in some stretches and slabby in others; tall cliffs step back in
+  tiers with a ledge where grass holds (`"tiers": 0..1`; sea cliffs have their own, `sea.cliffs.tiers`); then ribs,
+  facets and beds inside that (the face moved in and out, so its lip and foot are notched and it stays as steep and
+  tall), ledges where the face is gentle enough for a tread, and a boulder foot below it; scree cones below the
+  gullies. Rock varies in tone (pale buttresses, dark gullies).
   The faces break into planar facets and joints (`facets`), buttresses are chiselled (straight flanks, sharp crests, V
   couloirs), cliffs over ~60 deg are stepped by level beds where the grid is fine enough (`bedding`), and scree cones
   lean on the foot of the cliffs in patches (`aprons`: room below a wall for scree and, lower down, trees).
-  `"rock": {"buttresses": 0..1, "ledges": 0..1, "facets": 0..1, "bedding": 0..1, "boulders": 0..1, "aprons": 0..1,
-  "scale": m}` tunes it (defaults 1, 0.6, 1, 1, 1, 1, the kind's crag size); `"rock": false` turns it off. The zone
+  `"rock": {"buttresses": 0..1, "tiers": 0..1, "ledges": 0..1, "facets": 0..1, "bedding": 0..1, "boulders": 0..1, "aprons": 0..1,
+  "scale": m}` tunes it (defaults 1, 1, 0.6, 1, 1, 1, 1, the kind's crag size); `"rock": false` turns it off. The zone
   `"cliff_foot"` is the ground below the faces, aprons included (for scree cover). Never on routes, sites or water. The
   report measures how broken the faces are (the share of steep ground turned away from its face's line: a smooth wall is
   ~0%), closed pits per km2 (round hollows: rock breaks in planes), how rounded the faces are, and the aprons' area.
@@ -318,6 +344,11 @@ and the `"story"`.
   - Every export walks a person (1.8 m tall, 0.5 m wide) through every passage and reports, in the manifest and the
     summary: floor range, least headroom, least width, the largest step between half-metre samples (0.6 m allowed),
     water depth (wading, or how far you swim), and PASSES or what stops them and where.
+- **ground**: gentle ground rolls at player scale on its own: field-scale undulation (1-2 m over ~100 m), swales
+  (broad shallow hollows where water gathers, down the slope) and hummocks in patches, by the kind (none in dunes).
+  Never on sites, routes, passes or water; it doesn't make ponds. `"ground": {"undulation": 0..2, "swales": 0..2,
+  "hummocks": 0..2, "scale": m}` tunes it, `"ground": false` turns it off. The report measures how much the gentle
+  ground varies about its ~50 m trend (plaster-smooth ground is under ~0.1 m).
 - The compiler adds on its own: **divides** between rivers, **ribs** (short spurs down from ridges), a slight
   **wander** to ridges between summits, and **erosion** after your design is placed (drainage networks, scree,
   cliff bands from harder rock). Erosion never touches sites, routes, passes or lake shores, and the large-scale
@@ -330,6 +361,7 @@ and the `"story"`.
   - `"quadrant:ne"`, `"north"`, `"south"`, `"east"`, `"west"`, `"centre"`, `"everywhere"` (these have soft edges)
   - `{"inside": "<closed ridge>", "inset"?: m}`
   - `{"polygon": [[x, y]...]}`, `{"near": address, "radius": m}`
+  - a site's name (its pad), a line's name (its ground), `"<basin>.walls"`, `"<basin>.floor"`, `"<basin>.<band>"`
   - `{"above": m}`, `{"below": m}`, `{"slope": [lo, hi]}`
   - `{"all": [...]}`, `{"any": [...]}`, `{"not": zone}`, `"feather": m`
 - **sites**: pads (village, farmyard, camp, spawn). `{"at": address, "radius": m, "level"?: m, "above_water"?: m,
@@ -362,6 +394,34 @@ and the `"story"`.
     Breaks that don't open a way are taken out again. `"max_break": 250` (tallest cliff to break), `"leg": m` (longest
     leg), `"breaks": false` (none: a road that must go round). A cove's scar walls in its apron: open the cove's
     `"valley"` toward where the route goes.
+- **lines**: things drawn as a line on the land: hedgerows, stone walls, fences, earth banks, ditches, lines of trees.
+  ```
+  {"name": {"type": "hedge" | "stone wall" | "fence" | "bank" | "ditch" | "trees",
+            "along": [addresses] | "follows": route or river | "around": zone | "network": {"in": zone, "spacing": m},
+            "side"?: "left" | "right" | "both", "offset"?: m, "from"?: 0..1, "to"?: 0..1,
+            "gaps"?: [addresses], "gates"?: m, "width"?: m, "bank"?: m, "ditch"?: m, "ditch_side"?: "left" | "right",
+            "height"?: m, "shrubs"?: m, "trees"?: m}}
+  ```
+  - Types: `hedge` (a 0.4 m bank under a 2.5 m hedge: shrubs every 1.8 m and a tree standing out of it every ~25 m),
+    `stone wall` (1.2 m high, 0.7 m wide), `fence` (1.2 m), `bank` (1 m high, 4 m across), `ditch` (1 m deep, 3 m
+    across), `trees` (a shelterbelt or avenue, a tree every 7 m). Any number can be given; `bank`/`ditch` add them to
+    any type (a hedge with a ditch on its field side).
+  - Where: `along` straight between addresses; `follows` a route or river at `offset` (default: just off the road),
+    one side or both, `from`/`to` along it; `around` a zone's edge (a field, a yard, a site's pad: `{"near": "farm",
+    "radius": 60}`); `network`: field boundaries over a zone, `{"in": zone, "spacing": m | [across, along], "pattern":
+    "irregular" | "strips" | "cells", "angle": "contour" | bearing, "jitter": 0.25}`. `irregular` (default): enclosure
+    fields cut again and again across their longer side, a little off square, their sizes 0.5-2x `spacing` by area,
+    lying along the contours; plus the zone's own edge. `strips`: long lines along the contours with cross lines between
+    (T-junctions). `cells`: rounder cells. Every boundary wanders a little; a network has a gate every ~110 m.
+  - A line stops at water, pads and routes it crosses (a gateway), and never climbs ground steeper than `max_slope`
+    (38 deg: a wall across a cliff stood as a billboard); `gaps` opens it at addresses, `gates` every so many metres.
+    Its bank and ditch never touch a route's bed or a pad. A **sunken lane / hollow way**: hedges `follows` the route
+    with `"bank": 2` both sides. Each line is a zone (its ground, for cover). Walls and fences are below the grid: the
+    export lists every line (`meta.json` "lines": per piece, points on the ground, type, height, width) so the engine
+    places the meshes; views draw walls and fences, and each hedge as one continuous mass `height` m tall (2.2). Hedge
+    shrubs and standard trees go in `trees.csv` (kinds `shrub` and `broadleaf`; standards stand in clumps along some
+    stretches, `"trees": 0` for none). The report gives each line's length, pieces, how far its bank's crest and its
+    ditch stand from the ground a few metres either side (asked in brackets), and its trees and shrubs.
 - **walls**: unclimbable edges around a zone where no basin gives you one.
   `{"around": zone, "min_slope": 45, "height": m, "except": [addresses or passes]}`. The ground just outside is
   raised to make them (a little taller than `height`: the grid rounds a wall's lip and foot). The check walks straight
