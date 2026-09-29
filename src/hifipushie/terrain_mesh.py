@@ -64,6 +64,7 @@ LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling sca
     "forest_floor": {"color": [0.27, 0.22, 0.15], "roughness": 0.95, "scale": 3.0},
     "sand": {"color": [0.72, 0.65, 0.48], "roughness": 0.9, "scale": 2.0},
     "rock": {"color": [0.44, 0.42, 0.39], "roughness": 0.85, "scale": 6.0},
+    "wet_rock": {"color": [0.17, 0.16, 0.15], "roughness": 0.35, "scale": 6.0},
     "earth": {"color": [0.42, 0.34, 0.24], "roughness": 0.95, "scale": 2.5},
     "snow": {"color": [0.93, 0.94, 0.96], "roughness": 0.7, "scale": 4.0},
 }
@@ -172,24 +173,48 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
         adir = None if adir is None else np.asarray(adir, float)[:2] / max(np.linalg.norm(np.asarray(adir)[:2]), 1e-9)
         sea = _sea(T)
         if kind == "arch":
-            t = _bearing(T, v["toward"], at) if "toward" in v else _narrowest(T, at)
             floor = float(v.get("floor", (sea - 1.0) if sea is not None else T.height(at) - 6))
-            top = T.height(at)
-            height = float(v.get("height", 0.55 * (top - floor)))
-            w = float(v.get("width", 8.0))
-            ends = []
-            for sgn in (1, -1):
-                s = _daylight(T, at, sgn * t, floor + 0.5 * height)
-                if s is None:
-                    raise ValueError(f"volume {name!r}: the arch never comes out of the rock heading "
-                                     f"{'forward' if sgn > 0 else 'back'}")
-                ends.append(at + sgn * t * (s + 0.5 * w))
-            nodes = [[*ends[1], floor], [*ends[0], floor]]
-            out.append(Tube(name, nodes, w / 2, height, floor, **common))
-            roof = top - floor - height
-            notes.append(f"{name}: arch {w:.0f} m wide, {height:.1f} m high over a floor at {floor:+.1f} m, "
-                         f"{np.linalg.norm(ends[0] - ends[1]):.0f} m through the rock, roof {roof:.1f} m thick at its "
-                         f"middle" + (" (thin: it may break through)" if roof < 2 else ""))
+            roof_min = float(v.get("roof", 2.0))
+            # where along the land near `at` the arch is shortest: real sea arches go through a thin neck, short and
+            # tall (a fixed spot put a 38 m tunnel through a 30 m point)
+            R = float(v.get("search", 30.0))
+            g = np.arange(-R, R + 0.1, 3.0)
+            cands = [at] + [at + np.array([dx, dy]) for dx in g for dy in g if 0 < dx * dx + dy * dy <= R * R]
+            best = None
+            for c in cands:
+                top = T.height(c)
+                height = float(v.get("height", 0.65 * (top - floor)))
+                if top - floor - height < roof_min or height < 2:
+                    continue
+                ts = [_bearing(T, v["toward"], c)] if "toward" in v else [
+                    np.array([math.sin(math.radians(b_)), math.cos(math.radians(b_))]) for b_ in range(0, 180, 10)]
+                for t in ts:
+                    s1 = _daylight(T, c, t, floor + 0.5 * height, reach=80)
+                    s2 = _daylight(T, c, -t, floor + 0.5 * height, reach=80)
+                    if s1 is None or s2 is None:
+                        continue
+                    # short for its height (length over height), near `at`
+                    score = (s1 + s2) / height + 0.01 * float(np.linalg.norm(c - at))
+                    if best is None or score < best[0]:
+                        best = (score, c, t, s1, s2, top, height)
+            if best is None:
+                raise ValueError(f"volume {name!r}: no place within {R:.0f} m of {v['at']!r} where an arch fits (land "
+                                 f"that comes out into the open both ways, {roof_min:g} m of roof over it)")
+            _, c, t, s1, s2, top, height = best
+            w = float(v.get("width", min(8.0, 0.8 * height)))
+            # irregular: mouths flared and taller than the middle, the line bending a little
+            side = np.array([-t[1], t[0]])
+            u = np.linspace(-1, 1, 5)
+            along = np.where(u < 0, u * (s2 + 0.5 * w), u * (s1 + 0.5 * w))
+            bend = 0.12 * w * math.sin(seed) * (1 - u * u)
+            xy = c + along[:, None] * t + bend[:, None] * side
+            flare = 1 + 0.3 * u * u
+            common["rough"] = v.get("rough", 0.5)
+            out.append(Tube(name, np.c_[xy, np.full(5, floor)], w / 2 * flare, height * (1 + 0.12 * u * u), floor,
+                            **common))
+            notes.append(f"{name}: arch at [{c[0]:.0f}, {c[1]:.0f}] heading {math.degrees(math.atan2(t[0], t[1])) % 180:.0f}"
+                         f" deg, {w:.1f} m wide, {height:.1f} m high over a floor at {floor:+.1f} m, {s1 + s2:.0f} m "
+                         f"through the rock, roof {top - floor - height:.1f} m thick at its middle")
         elif kind in ("cave", "tunnel"):
             t = _bearing(T, v["toward"], at) if "toward" in v else adir if adir is not None else -_downhill(T, at)
             floor0 = float(v.get("floor", (sea - 0.5) if sea is not None else T.height(at)))
@@ -229,23 +254,28 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
                          f"{floor0:+.1f} m, {L:.0f} m in" + (f", chamber r {ch:.0f} m" if ch else "")
                          + f"; thinnest roof {roof:.1f} m" + (" (it breaks through)" if roof < 1 else ""))
         elif kind == "overhang":  # a wave-cut notch along a cliff foot: the lip above overhangs it
-            depth, h = float(v.get("depth", 4.0)), float(v.get("height", 3.0))
+            # a flat floor in the water, the roof high enough to see from a boat, the back cut deep under the lip
+            depth, h = float(v.get("depth", 5.0)), float(v.get("height", 3.5))
             L = float(v.get("length", 30.0))
-            floor = float(v.get("floor", (sea + 0.3) if sea is not None else T.height(at)))
+            floor = float(v.get("floor", (sea - 0.5) if sea is not None else T.height(at)))
             along = _bearing(T, v["along"], at) if "along" in v else np.array([-_downhill(T, at)[1], _downhill(T, at)[0]])
             pts = []
-            for s in np.linspace(-L / 2, L / 2, max(3, int(L / 5) + 1)):
-                p = at + s * along
-                face = _face(T, p, floor + h / 2)
+            for s_ in np.linspace(-L / 2, L / 2, max(3, int(L / 5) + 1)):
+                face = _face(T, at + s_ * along, floor + h / 2)
                 if face is not None:
                     pts.append(face)
             if len(pts) < 2:
                 raise ValueError(f"volume {name!r}: no cliff face near {v['at']!r} to undercut")
             pts = np.array(pts)
             f = np.abs(np.linspace(-1, 1, len(pts)))
-            rw = depth * (1 - 0.7 * f ** 2)
-            out.append(Tube(name, np.c_[pts, np.full(len(pts), floor + h / 2)], rw, h / 2, floor, **common))
-            notes.append(f"{name}: overhang notch {depth:.0f} m deep, {h:.0f} m high, {L:.0f} m along the cliff")
+            ease = 1 - 0.75 * f ** 3  # full depth along most of it, easing out at the ends
+            common["rough"] = v.get("rough", 0.3)
+            out.append(Tube(name, np.c_[pts, np.full(len(pts), floor)], depth * ease, h * (0.6 + 0.4 * ease), floor,
+                            **common))
+            lip = [float(T.height(p_ - _downhill(T, p_) * depth)) for p_ in pts]  # the ground over the notch's back
+            notes.append(f"{name}: overhang notch {depth:.1f} m deep, {h:.1f} m high over a floor at {floor:+.1f} m, "
+                         f"{L:.0f} m along the cliff; {min(lip) - floor - h:.1f}-{max(lip) - floor - h:.1f} m of rock "
+                         f"over it")
         else:
             raise ValueError(f"volume {name!r}: type {kind!r}: use arch, cave or overhang")
         if common["op"] not in ("subtract", "add"):
@@ -292,11 +322,61 @@ def _face(T, p, z):
 
 # ---------------------------------------------------------------- the field
 
+def rock_relief(p, r):
+    """Solid rock character as a field offset (+ carves, - builds): planar facets (a jittered 3D cell lattice, each
+    cell's surface tipped along its own direction, so faces break into planes with joints at the cell walls) and
+    bedding (strata `bed` m thick, gently dipping: a groove at each bedding plane and each bed standing proud or set
+    back on its own). The heightfield's own rock (terrain_rock) moves the ground in plan only; this can overhang."""
+    size, amp = r["size"], r["facets"]
+    q = p / size
+    base = np.floor(q).astype(np.int64)
+    best = np.full(len(p), np.inf)
+    site = np.zeros_like(p)
+    cell = np.zeros_like(base)
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                c = base + np.array([dx, dy, dz])
+                j = np.stack([noise._hash(c[:, 0], c[:, 1], c[:, 2], r["seed"] + k) for k in range(3)], 1)
+                sp = c + 0.15 + 0.7 * j
+                d = ((q - sp) ** 2).sum(1)
+                m = d < best
+                best[m], site[m], cell[m] = d[m], sp[m], c[m]
+    t = np.stack([noise._hash(cell[:, 0], cell[:, 1], cell[:, 2], r["seed"] + 10 + k) for k in range(3)], 1) * 2 - 1
+    t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+    out = amp * np.clip(((q - site) * t).sum(1), -1, 1)
+    if r["bedding"] > 0:
+        bed = r["bed"]
+        z = (p[:, 2] + r["dip"] * (p[:, 0] * 0.8 + p[:, 1] * 0.6)) / bed
+        kb = np.floor(z).astype(np.int64)
+        f = z - kb
+        edge = np.minimum(f, 1 - f)
+        out = out + r["bedding"] * (0.3 * (1 - smoothstep(0.0, 0.2, edge))
+                                    + 0.35 * (2 * noise._hash(kb, kb * 0 + 7, kb * 0, r["seed"] + 20) - 1))
+    return out
+
+
+def rock_config(T, cfg):
+    """The solid rock character's settings: spec "rock" (false turns it off; "facets", "bedding" 0..1 as for the
+    heightfield) and export.tiles "rock" (a multiplier, 0 = none)."""
+    rc = T.spec.get("rock", {})
+    mult = float(cfg.get("rock", 1.0))
+    if rc is False or mult <= 0:
+        return None
+    rc = rc if isinstance(rc, dict) else {}
+    size = float(np.clip(float(T.world.get("crag", 12.0)) / 4, 3.0, 8.0))
+    fac = mult * float(rc.get("facets", 1.0)) * 0.12 * size
+    bd = mult * float(rc.get("bedding", 1.0))
+    return {"size": size, "facets": fac, "bedding": bd, "bed": 1.8, "dip": 0.04, "seed": 4242,
+            "reach": fac + 0.7 * bd + 1.0}
+
+
 class Field:
-    def __init__(self, T, vols: list[Tube]):
+    def __init__(self, T, vols: list[Tube], rock=None):
         self.H = np.ascontiguousarray(T.H, float)
         self.x0, self.y0, self.c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
         self.vols = vols
+        self.rock = rock
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
@@ -314,18 +394,35 @@ class Field:
         h, s = self.column(p[:, 0], p[:, 1])
         return (p[:, 2] - h) * s
 
-    def volumes(self, p, F):
+    def volumes(self, p, F, near=None):
+        """Each volume combined into F in order; `near` (if given) gets how close each point is to a volume, 0..1
+        (rock character applies there)."""
         for vol in self.vols:
             k = np.flatnonzero(np.all((p >= vol.lo) & (p <= vol.hi), axis=1))
             if not len(k):
                 continue
             d = vol.sd(p[k])
             F[k] = smax(F[k], -d, vol.blend) if vol.op == "subtract" else smin(F[k], d, vol.blend)
+            if near is not None:
+                near[k] = np.maximum(near[k], smoothstep(3.0, 0.0, d))
+        return F
+
+    def solid(self, p, F, s):
+        """Volumes and rock character on top of the ground's distance F (s: the column's slope factor, cos slope)."""
+        near = np.zeros(len(p))
+        F = self.volumes(p, F, near)
+        if self.rock is not None:
+            # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock
+            w = np.maximum(smoothstep(0.71, 0.47, s), near)
+            k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
+            if len(k):
+                F[k] = F[k] + w[k] * rock_relief(p[k], self.rock)
         return F
 
     def value(self, p):
         p = np.asarray(p, float)
-        return self.volumes(p, self.ground(p))
+        h, s = self.column(p[:, 0], p[:, 1])
+        return self.solid(p, (p[:, 2] - h) * s, s)
 
     def value_gradient(self, p, h):
         tet = np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]], float)
@@ -384,7 +481,8 @@ class Materials:
             tree = bool(c.get("trees"))
             self.cover.append((name, layer, 0.6 if tree else 1.0))
             order.append(layer)
-        self.layers = list(dict.fromkeys(order + ["rock", "earth"] + (["sand"] if self.sea is not None else [])))
+        self.layers = list(dict.fromkeys(order + ["rock", "earth"] + (["sand", "wet_rock"] if self.sea is not None
+                                                                      else [])))
         col = ground_colours(T, cover=True)
         wet = ~np.isnan(T.water)
         col[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
@@ -414,14 +512,19 @@ class Materials:
         slope = np.degrees(np.arccos(np.clip(N[:, 2], -1, 1)))
         below = smoothstep(0.3, 1.2, -self.field.ground(P))
         rock = np.maximum(smoothstep(38, 58, slope), below)
+        tide = np.zeros(n)
         if self.sea is not None:  # under water: sand, unless rock
             wet = smoothstep(0.2, 1.2, self.sea - P[:, 2])
             for key in W:
                 W[key] *= 1 - wet
             W["sand"] += wet
+            # the splash zone: rock dark and wet from the water up a couple of metres, higher inside caves and notches
+            tide = smoothstep(self.sea + 2.2 + 1.5 * below, self.sea + 0.4, P[:, 2])
         for key in W:
             W[key] *= 1 - rock
-        W["rock"] += rock
+        W["rock"] += rock * (1 - tide)
+        if "wet_rock" in W:
+            W["wet_rock"] += rock * tide
         Wm = np.stack([W[k] for k in self.layers], 1)
         Wm /= np.maximum(Wm.sum(1, keepdims=True), 1e-9)
         # display colour: the terrain's own preview colours (cover, roads, slope), rock over steep faces and caves
@@ -430,7 +533,14 @@ class Materials:
         if self.sea is not None:
             wet = smoothstep(0.2, 1.2, self.sea - P[:, 2])[:, None]
             c = c * (1 - wet) + np.array(LAYERS["sand"]["color"]) * 0.8 * wet
-        c = c * (1 - rock[:, None]) + rc * rock[:, None]
+        wc = np.array(LAYERS["wet_rock"]["color"])
+        if self.field.rock is not None:  # beds and facets differ a little in tone (a single grey read as plaster)
+            r = self.field.rock
+            kb = np.floor((P[:, 2] + r["dip"] * (P[:, 0] * 0.8 + P[:, 1] * 0.6)) / r["bed"]).astype(np.int64)
+            tone = 0.82 + 0.3 * noise._hash(kb, kb * 0 + 3, kb * 0, r["seed"] + 30)
+            tone = tone * (0.93 + 0.14 * noise.fbm(P, 2.5 * r["size"], 2, seed=r["seed"] + 31))
+            rc = rc[None] * tone[:, None]
+        c = c * (1 - rock[:, None]) + (rc * (1 - tide[:, None]) + wc * tide[:, None]) * rock[:, None]
         return Wm.astype(np.float32), c
 
 
@@ -545,10 +655,10 @@ class Grid:
         self.tile = float(cfg["tile"])
         self.voxel = float(cfg["voxel"])
         self.lods = int(cfg["lods"])
-        vmax = self.voxel * 2 ** (self.lods - 1)
+        vmax = self.voxel
         if abs(self.tile / vmax - round(self.tile / vmax)) > 1e-9:
-            raise ValueError(f"tile {self.tile} m isn't a whole number of the coarsest voxel {vmax} m")
-        # the meshed world: the extent from the origin, trimmed to whole coarsest voxels
+            raise ValueError(f"tile {self.tile} m isn't a whole number of voxels ({vmax} m)")
+        # the meshed world: the extent from the origin, trimmed to whole voxels
         self.lo = self.origin
         span = np.array([x1, y1]) - self.origin
         self.span = np.floor(span / vmax + 1e-9) * vmax
@@ -592,14 +702,15 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     for vol in vols:
         if vol.touches(lo, hi):
             zlo, zhi = min(zlo, vol.lo[2]), max(zhi, vol.hi[2])
-    c0, c1 = int(math.floor(zlo / v)) - 2, int(math.ceil(zhi / v)) + 2
+    pad = 2 + int(math.ceil((field.rock["reach"] if field.rock else 0.0) / v))  # (rock relief moves the surface)
+    c0, c1 = int(math.floor(zlo / v)) - pad, int(math.ceil(zhi / v)) + pad
     ic = np.arange(c0, c1 + 1)
     hcol, scol = field.column(X.ravel(), Y.ravel())
     Z = ic * v
     F = (Z[None, :] - hcol[:, None]) * scol[:, None]
     P = np.stack(np.broadcast_arrays(X.ravel()[:, None], Y.ravel()[:, None], Z[None, :]), -1).reshape(-1, 3)
     F = F.ravel()
-    F = field.volumes(P, F)
+    F = field.solid(P, F, np.repeat(scol, len(ic)))
     eps = 1e-3 * v
     F = np.where(np.abs(F) < eps, np.where(F < 0, -eps, eps), F)
     F = F.reshape(len(ia), len(ib), len(ic))
@@ -680,13 +791,22 @@ def _decimate(P, faces, err, budget, field):
     if len(faces) <= budget:
         best, hi = (P, faces), len(faces)
     else:
-        hi = int(budget)
-        best = run(hi)
+        # the budget caps it: the first unfolded result at or under it (a fold at the budget itself used to hand back
+        # the undecimated mesh: LOD2 came out bigger than LOD1)
+        n = int(budget)
+        best = None
+        while n >= 16:
+            cand = run(n)
+            if _manifold(cand[1]):
+                best = cand
+                break
+            n = int(n * 0.8)
+        if best is None:
+            return P, faces
+        hi = n
         if error(*best) > tol:
-            if not _manifold(best[1]):  # over budget and folded: the budget gives way
-                return P, faces
             return best
-    lo = 64
+    lo = 8
     for _ in range(7):  # search the count on a log scale
         if hi / lo < 1.15:
             break
@@ -708,17 +828,235 @@ def _manifold(f):
     return bool(np.unique(und, return_counts=True)[1].max() <= 2)
 
 
+def _polylines(edges):
+    """The ordered vertex lists an undirected edge set makes: open chains (from a vertex that isn't degree 2) and
+    closed loops (first vertex repeated at the end). Deterministic: walks start at the lowest row."""
+    adj = {}
+    for a, b in edges:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    done = set()
+
+    def walk(s):
+        line, cur = [s], s
+        while True:
+            nxt = sorted(x for x in adj[cur] if (min(cur, x), max(cur, x)) not in done)
+            if not nxt:
+                return line
+            x = nxt[0]
+            done.add((min(cur, x), max(cur, x)))
+            line.append(x)
+            cur = x
+            if cur == s:
+                return line
+
+    out = []
+    for s in sorted(v for v, n in adj.items() if len(n) != 2):
+        while any((min(s, x), max(s, x)) not in done for x in adj[s]):
+            out.append((walk(s), False))
+    for s in sorted(adj):
+        if any((min(s, x), max(s, x)) not in done for x in adj[s]):
+            out.append((walk(s), True))
+    return out
+
+
+def _simplify(P, line, closed, tol, always):
+    """Douglas-Peucker on a chain of rows (in 3D, within its border plane): the rows kept, in order. Ends, and rows
+    in `always` (tile corners), are kept; a loop keeps at least 3 (it must not close up)."""
+    pts = [r for r in line if r in always] if closed else []
+    keep = {line[0], line[-1], *[r for r in line if r in always]}
+
+    def dp(a, b):
+        stack = [(a, b)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            A, B = P[line[a]], P[line[b]]
+            Q = P[line[a + 1:b]]
+            d = B - A
+            L2 = max(float(d @ d), 1e-18)
+            t = np.clip((Q - A) @ d / L2, 0, 1)
+            e = np.linalg.norm(Q - (A + t[:, None] * d), axis=1)
+            k = int(np.argmax(e))
+            if e[k] > tol:
+                keep.add(line[a + 1 + k])
+                stack += [(a, a + 1 + k), (a + 1 + k, b)]
+
+    if closed:
+        body = line[:-1]
+        far = int(np.argmax(np.linalg.norm(P[body] - P[body[0]], axis=1)))
+        keep.add(body[far])
+        dp(0, far)
+        dp(far, len(line) - 1)
+        if len(keep) < 3:  # a thin loop: the vertex furthest from its chord too
+            A, B = P[body[0]], P[body[far]]
+            d = np.linalg.norm(np.cross(P[body] - A, B - A), axis=1)
+            keep.add(body[int(np.argmax(d))])
+    else:
+        # the anchors split the chain; each piece simplified on its own
+        anchors = [i for i, r in enumerate(line) if r in keep]
+        for a, b in zip(anchors, anchors[1:]):
+            dp(a, b)
+    del pts
+    return [r for r in line if r in keep]
+
+
+def _needs(lines, keep, CP, lods):
+    """Per LOD, per canonical row on a kept chain: how far it is from the same plane's chains at the other LODs
+    (what a skirt there has to cover)."""
+    segs = {}
+    for pl, L in lines.items():
+        for k in range(lods):
+            s = []
+            for ln, closed in L:
+                kept = [r for r in ln if r in keep[k]]
+                s += list(zip(kept, kept[1:]))
+            segs[pl, k] = np.array([[CP[x], CP[y]] for x, y in s]).reshape(-1, 2, 3)
+    need = [np.zeros(len(CP)) for _ in range(lods)]
+    for (pl, k), sg in segs.items():
+        rows = np.unique(np.array(list(_plane_rows(lines[pl], keep[k])), np.int64))
+        if not len(rows):
+            continue
+        for j2 in range(lods):
+            if j2 != k and len(segs[pl, j2]):
+                need[k][rows] = np.maximum(need[k][rows], _chain_dist(CP[rows], segs[pl, j2]))
+    return need
+
+
+def _plane_rows(L, keep):
+    for ln, _ in L:
+        for r in ln:
+            if r in keep:
+                yield r
+
+
+def _cross3(a, b, c):
+    ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+    return (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+
+
+def _collapse_border(P, F, drop):
+    """Collapse each border vertex in `drop` into a neighbour along the border (half-edge collapse onto the
+    neighbour's position). Returns the faces left and the vertices that couldn't go without turning a face over or
+    joining the mesh badly (the link condition)."""
+    F = F.copy()
+    Pl = P.tolist()
+    alive = np.ones(len(F), bool)
+    bn = {}
+    for a, b in _boundary_edges(F):
+        bn.setdefault(int(a), set()).add(int(b))
+        bn.setdefault(int(b), set()).add(int(a))
+    # faces are only looked up round border vertices (a collapse moves a border vertex onto a border vertex)
+    isb = np.zeros(int(F.max()) + 1, bool)
+    isb[list(bn)] = True
+    vf = {}
+    for f in np.flatnonzero(isb[F].any(1)):
+        for v in F[f]:
+            if isb[v]:
+                vf.setdefault(int(v), set()).add(int(f))
+    dropping = set(int(u) for u in drop)
+
+    def nbrs(v):
+        return {int(x) for f in vf.get(v, ()) for x in F[f]} - {v}
+
+    def attempt(u, w):
+        fu = vf.get(u, set())
+        shared = [f for f in fu if w in F[f]]
+        if len(shared) != 1:
+            return False
+        third = [int(x) for x in F[shared[0]] if x != u and x != w]
+        if nbrs(u) & nbrs(w) != set(third):
+            return False
+        for f in fu:
+            if f == shared[0]:
+                continue
+            tri = F[f]
+            n0 = _cross3(Pl[tri[0]], Pl[tri[1]], Pl[tri[2]])
+            t2 = [w if x == u else x for x in tri]
+            n1 = _cross3(Pl[t2[0]], Pl[t2[1]], Pl[t2[2]])
+            l0 = math.sqrt(n0[0] ** 2 + n0[1] ** 2 + n0[2] ** 2)
+            l1 = math.sqrt(n1[0] ** 2 + n1[1] ** 2 + n1[2] ** 2)
+            if l1 < 1e-9 or n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0.2 * l0 * l1:
+                return False
+        f0 = shared[0]
+        alive[f0] = False
+        for x in F[f0]:
+            vf.get(int(x), set()).discard(f0)
+        for f in list(vf[u]):
+            F[f][F[f] == u] = w
+            vf.setdefault(w, set()).add(f)
+        vf[u] = set()
+        for x in bn.pop(u, set()):
+            bn[x].discard(u)
+            if x != w:
+                bn[x].add(w)
+                bn[w].add(x)
+        return True
+
+    pending = sorted(dropping)
+    for _ in range(4):
+        left = []
+        for u in pending:
+            # into a neighbour that stays if there is one (fewer moves), else one that goes later
+            cands = sorted(bn.get(u, ()), key=lambda x: (x in dropping, x))
+            if not any(attempt(u, w) for w in cands):
+                left.append(u)
+            else:
+                dropping.discard(u)
+        if len(left) == len(pending):
+            break
+        pending = left
+    return F[alive], set(pending)
+
+
 def _chain_dist(A, segs_b):
-    """Distance from points A to a set of segments (m, 2, 3), via dense samples along the segments."""
+    """Distance from points A (n, 3) to the nearest of the segments (m, 2, 3)."""
     if not len(segs_b):
         return np.full(len(A), np.inf)
-    L = np.linalg.norm(segs_b[:, 1] - segs_b[:, 0], axis=1)
-    pts = []
-    for (p, q), l in zip(segs_b, L):
-        m = max(2, int(l / 0.02) + 1)
-        pts.append(p + np.linspace(0, 1, m)[:, None] * (q - p))
-    d, _ = cKDTree(np.vstack(pts)).query(A)
-    return d
+    P0, D = segs_b[:, 0], segs_b[:, 1] - segs_b[:, 0]
+    L2 = np.maximum((D * D).sum(1), 1e-18)
+    out = np.empty(len(A))
+    for s0 in range(0, len(A), 256):
+        Q = A[s0:s0 + 256, None, :] - P0[None]
+        t = np.clip((Q * D[None]).sum(2) / L2[None], 0, 1)
+        out[s0:s0 + 256] = np.linalg.norm(Q - t[..., None] * D[None], axis=2).min(1)
+    return out
+
+
+_CTX: dict = {}  # what the export's worker processes read (forked: shared, not pickled)
+
+
+def _pool():
+    import multiprocessing
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+    return ProcessPoolExecutor(max_workers=min(8, os.cpu_count() or 1), mp_context=multiprocessing.get_context("fork"))
+
+
+def _job_dense(ij):
+    """A tile's LOD0 mesh: marching cubes on the lattice, interior projected, border vertices the canonical ones."""
+    c = _CTX
+    G, v0, field, reg, CP = c["G"], c["v0"], c["field"], c["reg"], c["CP"]
+    idx, faces, rng, kk = c["mc"][ij]
+    P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, idx[:, 2] * v0]
+    border = np.array(sorted(kk), np.int64)
+    rows = np.array([reg[kk[q]] for q in border], np.int64)
+    inner = np.setdiff1d(np.arange(len(P)), border)
+    P[inner], _ = project(field, P[inner], v0)
+    P[border] = CP[rows]
+    vrow = np.full(len(P), -1, np.int64)
+    vrow[border] = rows
+    return P, faces, vrow
+
+
+def _job_collapse(args):
+    ij, keep_rows = args
+    P, faces, vrow = _CTX["dense"][ij]
+    drop = np.flatnonzero((vrow >= 0) & ~np.isin(vrow, keep_rows))
+    Fk, bad = _collapse_border(P, faces, drop)
+    return Fk, {int(vrow[u]) for u in bad}
 
 
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
@@ -734,7 +1072,7 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     timing = {}
     t0 = time.time()
     vols, notes = volumes(T)
-    field = Field(T, vols)
+    field = Field(T, vols, rock_config(T, cfg))
     mats = Materials(T, field)
     G = Grid(T, cfg)
     timing["setup"] = time.time() - t0
@@ -742,166 +1080,122 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     if cfg.get("only"):  # a block of tiles [[i0, j0], [i1, j1]] (inclusive), for trying things
         (i0, j0), (i1, j1) = cfg["only"]
         tiles = [(i, j) for (i, j) in tiles if i0 <= i <= i1 and j0 <= j <= j1]
-    log(f"{len(tiles)} tiles ({G.ni} x {G.nj}) of {G.tile:g} m, LOD voxels {[G.v(k) for k in range(G.lods)]}, "
-        f"{len(vols)} volume pieces")
+    log(f"{len(tiles)} tiles ({G.ni} x {G.nj}) of {G.tile:g} m, voxel {G.voxel:g} m, LOD errors "
+        f"{cfg['error'][:G.lods]} m, {len(vols)} volume pieces")
 
-    # ---- 1. marching cubes per tile per LOD, and the canonical border vertices (decided once)
+    # ---- 1. marching cubes per tile, and the canonical border vertices (decided once)
     t0 = time.time()
+    v0 = G.voxel
     mc = {}
-    canon = []  # per LOD: key -> row; arrays of positions/normals/weights
-    for k in range(G.lods):
-        reg = {}
-        for (i, j) in tiles:
-            r = _tile_mc(field, G, i, j, k, vols)
-            if r is None:
-                mc[i, j, k] = None
-                continue
-            idx, faces, rng = r
-            (_, _), (_, _), n, (NX, NY) = G.cells(i, j, k)
-            keys = _border_keys(idx, rng, n, NX, NY)
-            for key in keys.values():
-                reg.setdefault(key, len(reg))
-            mc[i, j, k] = (idx, faces, rng, keys)
-        keys = sorted(reg, key=reg.get)
-        a, b, fixed = _key_geometry(keys, G, k)
-        v = G.v(k)
-        Fa, Fb = _lattice_values(field, a, v), _lattice_values(field, b, v)
-        tt = Fa / (Fa - Fb)
-        P0 = a + tt[:, None] * (b - a)
-        P, N = project(field, P0, v, fixed=fixed)
-        W, C = mats.weights(P, N)
-        canon.append({"reg": reg, "P": P, "N": N, "W": W, "C": C, "fixed": fixed,
-                      "pos": {tuple(p): r for r, p in enumerate(P)}})
-    timing["marching cubes + border chains"] = time.time() - t0
+    reg = {}
+    for (i, j) in tiles:
+        r = _tile_mc(field, G, i, j, 0, vols)
+        if r is None:
+            mc[i, j] = None
+            continue
+        idx, faces, rng = r
+        (_, _), (_, _), n, (NX, NY) = G.cells(i, j, 0)
+        keys = _border_keys(idx, rng, n, NX, NY)
+        for key in keys.values():
+            reg.setdefault(key, len(reg))
+        mc[i, j] = (idx, faces, rng, keys)
+    keys = sorted(reg, key=reg.get)
+    a, b, fixed = _key_geometry(keys, G, 0)
+    Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
+    tt = Fa / (Fa - Fb)
+    CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
+    CW, CC = mats.weights(CP, CN)
+    pos = {tuple(p): r for r, p in enumerate(CP)}
+    timing["marching cubes + border vertices"] = time.time() - t0
 
-    # ---- 2. skirts: how far each border vertex's chain strays from its neighbours' chains at other LODs
+    # ---- 2. border chains per shared plane, simplified once per LOD (nested: each LOD keeps a subset of the last)
     t0 = time.time()
-    chains = {}  # (plane key, k) -> segments (m, 2, 3) and vertex rows
-    for (i, j, k), r in mc.items():
+    plane_edges = {}
+    for (i, j), r in mc.items():
         if r is None:
             continue
-        idx, faces, rng, keys = r
-        be = _boundary_edges(faces)
-        for (p, q) in be:
-            if p not in keys or q not in keys:
-                continue
-            for plane in _planes(keys[p], keys[q], G, k):
-                rows = (canon[k]["reg"][keys[p]], canon[k]["reg"][keys[q]])
-                chains.setdefault((plane, k), set()).add(rows)
-    need = [np.zeros(len(c["P"])) for c in canon]
-    for (plane, k), rows in chains.items():
-        segs = {kk: np.array([[canon[kk]["P"][a], canon[kk]["P"][b]] for a, b in chains[(plane, kk)]])
-                for kk in range(G.lods) if (plane, kk) in chains and kk != k}
-        vs = np.array(sorted({x for ab in rows for x in ab}))
-        for kk, sg in segs.items():
-            d = _chain_dist(canon[k]["P"][vs], sg)
-            need[k][vs] = np.maximum(need[k][vs], d)
-    depth = []
-    for k, c in enumerate(canon):
-        d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
-        # into the rock, in the border plane: against the surface normal with the plane's normal taken out
-        dirn = -c["N"].copy()
-        dirn[c["fixed"]] = 0.0
-        ln = np.linalg.norm(dirn, axis=1, keepdims=True)
-        dirn = np.where(ln > 0.2, dirn / np.maximum(ln, 1e-9), np.array([0, 0, -1.0]))
-        # never out through the other side of the rock (a skirt under a cave roof would hang into the cave)
-        thick = _thickness(field, c["P"], dirn, d, G.v(k))
-        depth.append((np.minimum(d, thick), dirn, d > thick + 1e-6))
-    timing["skirts"] = time.time() - t0
+        idx, faces, rng, kk = r
+        for (p, q) in _boundary_edges(faces):
+            if p in kk and q in kk:
+                for plane in _planes(kk[p], kk[q], G, 0):
+                    plane_edges.setdefault(plane, set()).add(tuple(sorted((reg[kk[p]], reg[kk[q]]))))
+    corner = fixed[:, 0] & fixed[:, 1]
+    lines = {pl: _polylines(e) for pl, e in plane_edges.items()}
+    keep = []
+    prev = {pl: [(ln, closed) for ln, closed in L] for pl, L in lines.items()}
+    for k in range(G.lods):
+        ks = set(np.flatnonzero(corner).tolist())
+        cur = {}
+        for pl, L in prev.items():
+            simp = []
+            for ln, closed in L:
+                kept = _simplify(CP, ln, closed, cfg["error"][k], ks)
+                simp.append((kept, closed))
+                ks.update(kept)
+            cur[pl] = simp
+        keep.append(ks)
+        prev = cur
+    timing["border chains"] = time.time() - t0
 
-    # ---- 3. per tile: borders from the registry, project, decimate, re-project, weights, write
+    # ---- 3. per tile: LOD0 projected; each LOD = border chains collapsed to its kept vertices, then decimated
     t0 = time.time()
-    t_dec = 0.0
+    _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP)
+    work = [ij for ij, r in mc.items() if r is not None]
+    with _pool() as ex:
+        dense = dict(zip(work, ex.map(_job_dense, work)))
+    _CTX["dense"] = dense
+    # skirts go into the rock, in the border plane, against the surface normal; never out through the other side
+    # (a skirt under a cave roof would hang into the cave)
+    dirn = -CN.copy()
+    dirn[fixed] = 0.0
+    ln_ = np.linalg.norm(dirn, axis=1, keepdims=True)
+    dirn = np.where(ln_ > 0.2, dirn / np.maximum(ln_, 1e-9), np.array([0, 0, -1.0]))
+    thick = _thickness(field, CP, dirn, np.full(len(CP), 3.0), v0)
+    collapsed = {}
+    with _pool() as ex:
+        for rnd in range(8):
+            # where the rock is too thin for the skirt a gap needs, every LOD keeps that vertex (the gap closes)
+            need = _needs(lines, keep, CP, G.lods)
+            thin = set()
+            for k in range(G.lods):
+                d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
+                thin |= set(np.flatnonzero((need[k] > 1e-6) & (d > thick + 1e-6)).tolist())
+            if thin:
+                for kk in keep:
+                    kk |= thin
+                continue
+            # a vertex a tile can't drop without folding is kept by both its tiles (at every LOD: chains stay nested)
+            failed = set()
+            for k in range(G.lods):
+                kr = np.array(sorted(keep[k]), np.int64)
+                for ij, (Fk, bad) in zip(work, ex.map(_job_collapse, [(ij, kr) for ij in work])):
+                    collapsed[ij[0], ij[1], k] = Fk
+                    failed |= bad
+            if not failed:
+                break
+            for kk in keep:
+                kk |= failed
+        else:
+            raise RuntimeError("border chains didn't settle (vertices that can't be collapsed, or rock too thin for "
+                               "a skirt)")
+    depth = [np.minimum(np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"]), thick) for k in range(G.lods)]
+    timing["border collapse + skirts"] = time.time() - t0
+
+    t0 = time.time()
     manifest_tiles = []
     mat = [{"name": "terrain_reference", "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0,
                                                                    "roughnessFactor": 0.92}},
            {"name": "terrain_skirt", "doubleSided": True,
             "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}}]
-    stats = []
-    for (i, j) in tiles:
-        lo, hi = G.bounds(i, j)
-        trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
-        entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
-        zmin, zmax = np.inf, -np.inf
-        for k in range(G.lods):
-            r = mc[i, j, k]
-            if r is None:
-                entry["lods"].append(None)
-                continue
-            idx, faces, rng, keys = r
-            v = G.v(k)
-            c = canon[k]
-            P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, idx[:, 2] * v]
-            border = np.array(sorted(keys), np.int64)
-            rows = np.array([c["reg"][keys[b]] for b in border], np.int64)
-            inner = np.setdiff1d(np.arange(len(P)), border)
-            P[inner], _ = project(field, P[inner], v)
-            P[border] = c["P"][rows]
-            n_mc = len(faces)
-            td = time.time()
-            Pd, Fd = _decimate(P, faces, cfg["error"][k], cfg["budget"][k], field)
-            t_dec += time.time() - td
-            # border vertices must have come through untouched
-            rowd = np.array([c["pos"].get(tuple(p), -1) for p in Pd])
-            on = _on_border(Pd, lo, hi)
-            if np.any(on & (rowd < 0)):
-                raise RuntimeError(f"tile {i},{j} LOD {k}: {int(np.sum(on & (rowd < 0)))} border vertices moved in "
-                                   f"decimation")
-            bd = rowd >= 0
-            N = np.zeros_like(Pd)
-            before = Pd.copy()
-            Pd[~bd], N[~bd] = project(field, Pd[~bd], v)
-            # where projecting a coarse vertex folds its faces, it stays where decimation put it
-            fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
-            if fold.any():
-                Pd[fold] = before[fold]
-                N[fold] = _vertex_normals(Pd, Fd)[fold]
-            N[bd] = c["N"][rowd[bd]]
-            W = np.zeros((len(Pd), len(mats.layers)), np.float32)
-            C = np.zeros((len(Pd), 3))
-            W[bd], C[bd] = c["W"][rowd[bd]], c["C"][rowd[bd]]
-            W[~bd], C[~bd] = mats.weights(Pd[~bd], N[~bd])
-            # skirts along shared borders (not the world's edge)
-            be = _boundary_edges(Fd)
-            shared = np.array([_shared(Pd[a], Pd[b], lo, hi, G) for a, b in be], bool) if len(be) else np.zeros(0, bool)
-            be = be[shared] if len(be) else be
-            sv = np.unique(be.ravel()) if len(be) else np.zeros(0, np.int64)
-            dep, dirn, _ = depth[k]
-            top = Pd[sv]
-            bot = top + dirn[rowd[sv]] * dep[rowd[sv]][:, None]
-            m = {int(x): r_ for r_, x in enumerate(sv)}
-            SP = np.empty((2 * len(sv), 3))
-            SP[0::2], SP[1::2] = top, bot
-            SN = np.repeat(N[sv], 2, 0)
-            SC = np.repeat(C[sv], 2, 0)
-            SW = np.repeat(W[sv], 2, 0)
-            sf = []
-            for a, b in be:  # the face has a -> b; the skirt hangs below it, facing the same way
-                ta, tb = 2 * m[int(a)], 2 * m[int(b)]
-                sf += [(tb, ta, ta + 1), (tb, ta + 1, tb + 1)]
-            sf = np.array(sf, np.int64).reshape(-1, 3)
-            origin = np.array([lo[0], lo[1], 0.0])
-            prims = [_prim(Pd - origin, N, C, W, Fd, 0, {"role": "surface"}, mats, lo, cfg)]
-            if len(sf):
-                prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
-            fn = f"tile_{i}_{j}_lod{k}.glb"
-            write_glb(out / fn, f"tile_{i}_{j}_lod{k}", prims, trans, mat,
-                      extras={"tile": [i, j], "lod": k, "voxel": v})
-            if k == int(cfg["collision"]):
-                cf = f"collision_{i}_{j}.glb"
-                write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
-                                                            "indices": Fd}], trans, None,
-                          extras={"tile": [i, j], "collision": True, "from_lod": k})
-                entry["collision"] = cf
-            zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
-            entry["lods"].append({"file": fn, "voxel": v, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
-                                  "marching_cubes_triangles": int(n_mc), "bytes": (out / fn).stat().st_size})
-            stats.append((i, j, k, len(Fd), len(sf), n_mc, (out / fn).stat().st_size))
-        entry["zmin"], entry["zmax"] = zmin, zmax
-        entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
-                                   if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
-        manifest_tiles.append(entry)
-    timing["tiles (project, decimate, write)"] = time.time() - t0
+    _CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
+                CN=CN, CW=CW, CC=CC, mat=mat)
+    stats, t_dec = [], 0.0
+    with _pool() as ex:
+        for entry, st, td in ex.map(_job_tile, tiles):
+            manifest_tiles.append(entry)
+            stats += st
+            t_dec += td
+    timing["tiles (decimate, project, write)"] = time.time() - t0
     timing["of which decimation"] = t_dec
 
     # ---- 4. heightmap and splat tiles on the same grid
@@ -953,7 +1247,16 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     with open(out / "trees.csv", "w") as f:
         f.write("x,y,z,kind,layer\n")
         layers = getattr(T, "tree_layers", {})
-        zs = field.column(inst[:, 0], inst[:, 1])[0] if len(inst) else []
+        zs = field.column(inst[:, 0], inst[:, 1])[0] if len(inst) else np.zeros(0)
+        # a tree stands only where the solid ground is under it: not over an arch's mouth or a notch the volumes cut
+        # away (a cypress stood in the water at the arch), nor on a face the rock relief moved
+        if len(inst):
+            below = field.value(np.c_[inst[:, :2], zs - 0.3])
+            ok = below < 0
+            n_drop = int((~ok).sum())
+            inst, zs = inst[ok], zs[ok]
+            if n_drop:
+                notes.append(f"{n_drop} trees dropped: no solid ground under them")
         for (x, y, _, li), z in zip(inst, zs):
             nm, kind = layers.get(int(li), ("", ""))
             f.write(f"{x:.2f},{y:.2f},{z:.2f},{kind},{nm}\n")
@@ -966,10 +1269,13 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         "origin": G.origin.tolist(), "tile_size": G.tile, "grid": [G.ni, G.nj],
         "world_min": G.lo.tolist(), "world_max": G.hi.tolist(),
         "trimmed": "the extent was trimmed to whole coarsest voxels" if G.trimmed else "",
-        "lods": [{"lod": k, "voxel": G.v(k), "error_m": cfg["error"][k], "budget_triangles": cfg["budget"][k]}
-                 for k in range(G.lods)],
+        "voxel": G.voxel,
+        "lods": [{"lod": k, "error_m": cfg["error"][k], "budget_triangles": cfg["budget"][k],
+                  "made": "LOD0's mesh with the border chains simplified (Douglas-Peucker at error_m, each LOD's chain "
+                          "a subset of the one before) and decimated to error_m"} for k in range(G.lods)],
         "skirts": "primitive 1 of each tile (extras.role = skirt, double-sided material): each shared border's chain "
-                  "extruded into the rock by at least how far the neighbours' LOD chains differ there",
+                  "extruded into the rock by how far the neighbours' LOD chains differ there (chains are nested "
+                  "subsets, so that's at most their tolerances)",
         "collision": f"collision_<i>_<j>.glb: LOD {cfg['collision']} surface, no skirts, positions only",
         "sea_level": _sea(T),
         "materials": {
@@ -1012,7 +1318,7 @@ def summary(r) -> str:
     for k, L in enumerate(M["lods"]):
         tris = [t["lods"][k]["triangles"] for t in M["tiles"] if t["lods"][k]]
         size = sum(t["lods"][k]["bytes"] for t in M["tiles"] if t["lods"][k])
-        lines.append(f"LOD {k} (voxel {L['voxel']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
+        lines.append(f"LOD {k} (error {L['error_m']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
                      f"(median {int(np.median(tris))}), {size / 1e6:.1f} MB")
     lines += [f"volume {n}" for n in M["volumes"]]
     sc = M["seam_check"]
@@ -1020,6 +1326,93 @@ def summary(r) -> str:
                  f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under skirts")
     lines.append("timing (s): " + ", ".join(f"{k} {v}" for k, v in M["timing_s"].items()))
     return "\n".join(lines)
+
+
+def _job_tile(ij):
+    """Write one tile's LODs and collision (runs in a worker: everything it reads is in _CTX)."""
+    i, j = ij
+    c = _CTX
+    G, v0, field, mats, cfg, out, vols = c["G"], c["v0"], c["field"], c["mats"], c["cfg"], c["out"], c["vols"]
+    dense, collapsed, pos, depth, dirn = c["dense"], c["collapsed"], c["pos"], c["depth"], c["dirn"]
+    CN, CW, CC, mat = c["CN"], c["CW"], c["CC"], c["mat"]
+    stats, t_dec = [], 0.0
+    lo, hi = G.bounds(i, j)
+    trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
+    entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
+    zmin, zmax = np.inf, -np.inf
+    for k in range(G.lods):
+        if (i, j) not in dense:
+            entry["lods"].append(None)
+            continue
+        P, faces0, _ = dense[i, j]
+        Fk = collapsed[i, j, k]
+        used = np.unique(Fk)
+        remap = np.full(len(P), -1, np.int64)
+        remap[used] = np.arange(len(used))
+        Pk, Fk = P[used], remap[Fk]
+        n_mc = len(faces0)
+        td = time.time()
+        Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field)
+        t_dec += time.time() - td
+        # border vertices must have come through untouched, and be this LOD's chain
+        rowd = np.array([pos.get(tuple(p), -1) for p in Pd])
+        on = _on_border(Pd, lo, hi)
+        if np.any(on & (rowd < 0)):
+            raise RuntimeError(f"tile {i},{j} LOD {k}: {int(np.sum(on & (rowd < 0)))} border vertices moved in "
+                               f"decimation")
+        bd = rowd >= 0
+        N = np.zeros_like(Pd)
+        before = Pd.copy()
+        Pd[~bd], N[~bd] = project(field, Pd[~bd], v0)
+        # where projecting a coarse vertex folds its faces, it stays where decimation put it
+        fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
+        if fold.any():
+            Pd[fold] = before[fold]
+            N[fold] = _vertex_normals(Pd, Fd)[fold]
+        N[bd] = CN[rowd[bd]]
+        W = np.zeros((len(Pd), len(mats.layers)), np.float32)
+        C = np.zeros((len(Pd), 3))
+        W[bd], C[bd] = CW[rowd[bd]], CC[rowd[bd]]
+        W[~bd], C[~bd] = mats.weights(Pd[~bd], N[~bd])
+        # skirts along shared borders (not the world's edge)
+        be = _boundary_edges(Fd)
+        shared = np.array([_shared(Pd[a_], Pd[b_], lo, hi, G) for a_, b_ in be], bool) if len(be) else np.zeros(0, bool)
+        be = be[shared] if len(be) else be
+        sv = np.unique(be.ravel()) if len(be) else np.zeros(0, np.int64)
+        top = Pd[sv]
+        bot = top + dirn[rowd[sv]] * depth[k][rowd[sv]][:, None]
+        m = {int(x): r_ for r_, x in enumerate(sv)}
+        SP = np.empty((2 * len(sv), 3))
+        SP[0::2], SP[1::2] = top, bot
+        SN = np.repeat(N[sv], 2, 0)
+        SC = np.repeat(C[sv], 2, 0)
+        SW = np.repeat(W[sv], 2, 0)
+        sf = []
+        for a_, b_ in be:  # the face has a -> b; the skirt hangs below it, facing the same way
+            ta, tb = 2 * m[int(a_)], 2 * m[int(b_)]
+            sf += [(tb, ta, ta + 1), (tb, ta + 1, tb + 1)]
+        sf = np.array(sf, np.int64).reshape(-1, 3)
+        origin = np.array([lo[0], lo[1], 0.0])
+        prims = [_prim(Pd - origin, N, C, W, Fd, 0, {"role": "surface"}, mats, lo, cfg)]
+        if len(sf):
+            prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
+        fn = f"tile_{i}_{j}_lod{k}.glb"
+        write_glb(out / fn, f"tile_{i}_{j}_lod{k}", prims, trans, mat,
+                  extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]})
+        if k == int(cfg["collision"]):
+            cf = f"collision_{i}_{j}.glb"
+            write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
+                                                        "indices": Fd}], trans, None,
+                      extras={"tile": [i, j], "collision": True, "from_lod": k})
+            entry["collision"] = cf
+        zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
+        entry["lods"].append({"file": fn, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
+                              "marching_cubes_triangles": int(n_mc), "bytes": (out / fn).stat().st_size})
+        stats.append((i, j, k, len(Fd), len(sf), n_mc, (out / fn).stat().st_size))
+    entry["zmin"], entry["zmax"] = zmin, zmax
+    entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
+                               if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
+    return entry, stats, t_dec
 
 
 def _prim(P, N, C, W, F, material, extras, mats, lo, cfg):
@@ -1355,7 +1748,7 @@ def border_segments(out_dir, lod=0):
     return np.concatenate(segs) if segs else np.zeros((0, 2, 3))
 
 
-def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None):
+def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "out"}. box: [[x0, y0], [x1, y1]]: only tiles (and trees) inside. lod: a level, or
@@ -1389,7 +1782,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         jobs.append({"eye": eye, "look": look, "fov": v.get("fov", 55), "sun": v.get("sun", [225, 30]),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
-           "trees": str(out / "trees.csv") if trees else None, "tree_box": box}
+           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color}
     if any(v.get("borders") for v in views):
         np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
         job["borders"] = str(out / "borders.npz")

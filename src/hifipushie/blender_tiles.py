@@ -31,6 +31,16 @@ def _terrain_material():
     return m
 
 
+def _flat(name, rgb):
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    b = m.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = (*rgb, 1)
+    b.inputs["Emission Color"].default_value = (*rgb, 1)
+    b.inputs["Emission Strength"].default_value = 1.5
+    return m
+
+
 def _water(level):
     bpy.ops.mesh.primitive_plane_add(size=8000, location=(500, 400, level))
     w = bpy.context.object
@@ -90,6 +100,15 @@ def run(job):
         bpy.ops.import_scene.gltf(filepath=p)
         for ob in bpy.context.selected_objects:
             if ob.type == "MESH":
+                if job.get("skirt_color"):  # skirts in their own flat colour, to see where they show
+                    idx = np.zeros(len(ob.data.polygons), np.int32)
+                    ob.data.polygons.foreach_get("material_index", idx)
+                    ob.data.materials.clear()
+                    ob.data.materials.append(mat)
+                    ob.data.materials.append(_flat("skirt", job["skirt_color"]))
+                    ob.data.polygons.foreach_set("material_index", idx)
+                    ground.append(ob)
+                    continue
                 ob.data.materials.clear()
                 ob.data.materials.append(mat)
                 ground.append(ob)
