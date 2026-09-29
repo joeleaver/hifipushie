@@ -129,6 +129,57 @@ the tool doesn't know, it returns questions for the designer: ask them, don't an
 mcp = MCPServer("hifipushie", instructions=INSTRUCTIONS)
 
 
+def _error_text(e: BaseException) -> str:
+    """What the caller needs to fix a failed call: the exception's type and message, and for anything that
+    isn't a ValueError (our anticipated spec/argument errors) where it was raised."""
+    text = f"{type(e).__name__}: {e}"
+    if not isinstance(e, ValueError):
+        import traceback
+        tb = traceback.extract_tb(e.__traceback__)
+        if tb:
+            f = tb[-1]
+            text += f" (at {Path(f.filename).name}:{f.lineno} in {f.name})"
+    return text
+
+
+def _tool_with_errors(_register=mcp.tool):
+    """mcp.tool, but a tool's exception reaches the caller as its text. The SDK turns anything but ToolError
+    into a bare "Error executing tool x", which left agents bisecting op batches to find a SpecError."""
+    import functools
+    import inspect
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    def tool(*args, **kw):
+        register = _register(*args, **kw)
+
+        def deco(fn):
+            if inspect.iscoroutinefunction(fn):
+                @functools.wraps(fn)
+                async def run(*a, **k):
+                    try:
+                        return await fn(*a, **k)
+                    except ToolError:
+                        raise
+                    except Exception as e:
+                        raise ToolError(_error_text(e)) from e
+            else:
+                @functools.wraps(fn)
+                def run(*a, **k):
+                    try:
+                        return fn(*a, **k)
+                    except ToolError:
+                        raise
+                    except Exception as e:
+                        raise ToolError(_error_text(e)) from e
+            register(run)
+            return fn  # module-level name stays the plain function (tests and scripts call it directly)
+        return deco
+    return tool
+
+
+mcp.tool = _tool_with_errors()
+
+
 def _png(im: PILImage.Image) -> Image:
     buf = io.BytesIO()
     im.save(buf, "PNG")
@@ -221,23 +272,37 @@ def kit_reference() -> str:
 
 @mcp.tool(structured_output=False)
 def put_model(name: str, spec: dict, note: str = "") -> str:
-    """Create a model or replace its whole spec. Missing keys get defaults. Returns a summary."""
+    """Create a model or replace its whole spec. Missing keys get defaults. The stored plan (set_plan) is kept
+    unless the new spec gives one, or "plan": null to drop it. Returns a summary."""
     full = {**empty_spec(), **_spec_arg(spec)}
+    kept = ""
+    if "plan" not in full:
+        try:
+            old = store.load(name).get("plan")
+        except ValueError:  # a new model
+            old = None
+        if old is not None:
+            full["plan"] = old
+            kept = "kept the stored plan (pass \"plan\": null to drop it)\n"
+    elif full["plan"] is None:
+        del full["plan"]
     v = store.save(name, full, note or "put_model")
-    return f"saved {name} v{v}\n" + summarize(full)
+    return f"saved {name} v{v}\n" + kept + summarize(full)
 
 
 @mcp.tool(structured_output=False)
 def edit_model(name: str, ops: list[dict], note: str = "") -> str:
     """Apply a batch of edits atomically. Ops:
-    {"op":"set","kind":"joints|bones|blobs|kits|strokes|paint|parts","name":n,"value":{...}}  merge fields, creates if new; a null field removes it
+    {"op":"set","kind":"joints|bones|blobs|kits|strokes|paint|parts|anatomy|prefabs|instances|...","name":n,"value":{...}}
+        merge fields, creates if new; a null field removes it. kind is any top-level key holding named entries.
+    {"op":"set_key","key":"story|style|rig|weather|...","value":v}  replace a whole top-level key; null removes it
     {"op":"delete","kind":...,"name":n}
     {"op":"rename","kind":...,"name":n,"to":m}  joint/bone renames update references
     {"op":"move","joints":[names],"delta":[dx,dy,dz]}   shift a group of joints (e.g. a whole leg)
     {"op":"scale_r","joints":[names],"factor":f}         thicken/thin at those joints
     {"op":"global","value":{"blend":0.04}}
     Edit only ".L" and centre elements; ".R" follows automatically."""
-    spec = store.apply_ops(store.load(name), ops)
+    spec = store.edit(store.load(name), ops)  # errors name the op: "op 3 (set blobs tooth.L): ..."
     v = store.save(name, spec, note or f"{len(ops)} ops")
     return f"saved {name} v{v}\n" + summarize(spec)
 
