@@ -966,7 +966,9 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     F = (Z[None, :] - hcol[:, None]) * scol[:, None]
     P = np.stack(np.broadcast_arrays(X.ravel()[:, None], Y.ravel()[:, None], Z[None, :]), -1).reshape(-1, 3)
     F = F.ravel()
-    F = field.solid(P, F, np.repeat(scol, len(ic)))
+    S_ = np.repeat(scol, len(ic))
+    for q in range(0, len(P), 400_000):  # (in pieces: a whole tile's lattice at once peaked at ~2 GB a worker)
+        F[q:q + 400_000] = field.solid(P[q:q + 400_000], F[q:q + 400_000].copy(), S_[q:q + 400_000])
     eps = 1e-3 * v
     F = np.where(np.abs(F) < eps, np.where(F < 0, -eps, eps), F)
     F = F.reshape(len(ia), len(ib), len(ic))
@@ -1328,7 +1330,8 @@ def _chain_dist(A, segs_b):
 _CTX: dict = {}  # what the export's worker processes read (forked: shared, not pickled)
 
 
-WORKER_GB = 2.5  # a tile worker's peak (measured 1.2-2.2 GB on pebble/lava at 0.5 m)
+WORKER_GB = 1.5  # a tile worker's peak PSS: 1.04 GB on a full pebble cliff-overlay export with maps (0.5 m voxel;
+# field calls chunked, dense meshes streamed through <out>/_work); 2.2 GB before chunking
 
 
 def _pool():
@@ -1405,14 +1408,30 @@ def _job_mc(ij):
         return None
     idx, faces, rng = r
     (_, _), (_, _), n, (NX, NY) = c["G"].cells(i, j, 0)
-    return idx, faces, rng, _border_keys(idx, rng, n, NX, NY)
+    kk = _border_keys(idx, rng, n, NX, NY)
+    # the dense mesh goes to disk (per tile, streamed): only the border keys and edges come back to the parent,
+    # which had held every tile's meshes at once
+    np.savez(_work(c, "mc", i, j), idx=idx, faces=faces)
+    bed = [(int(a), int(b)) for a, b in _boundary_edges(faces) if a in kk and b in kk]
+    return rng, kk, bed
+
+
+def _work(c, kind, i, j, k=None):
+    return c["work"] / (f"{kind}_{i}_{j}.npz" if k is None else f"{kind}_{i}_{j}_{k}.npy")
+
+
+def _dense(c, ij):
+    d = np.load(_work(c, "dense", *ij))
+    return d["P"], d["faces"], d["vrow"]
 
 
 def _job_dense(ij):
     """A tile's LOD0 mesh: marching cubes on the lattice, interior projected, border vertices the canonical ones."""
     c = _CTX
     G, v0, field, reg, CP = c["G"], c["v0"], c["field"], c["reg"], c["CP"]
-    idx, faces, rng, kk = c["mc"][ij]
+    rng, kk, _ = c["mc"][ij]
+    d = np.load(_work(c, "mc", *ij))
+    idx, faces = d["idx"], d["faces"]
     P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, (idx[:, 2] + ZOFF) * v0]
     border = np.array(sorted(kk), np.int64)
     rows = np.array([reg[kk[q]] for q in border], np.int64)
@@ -1431,15 +1450,17 @@ def _job_dense(ij):
         P = snap_creases(P, faces, field, v0, mov)
     vrow = np.full(len(P), -1, np.int64)
     vrow[border] = rows
-    return P, faces, vrow
+    np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
+    return True
 
 
 def _job_collapse(args):
-    ij, keep_rows = args
-    P, faces, vrow = _CTX["dense"][ij]
+    ij, keep_rows, k = args
+    P, faces, vrow = _dense(_CTX, ij)
     drop = np.flatnonzero((vrow >= 0) & ~np.isin(vrow, keep_rows))
     Fk, bad = _collapse_border(P, faces, drop)
-    return Fk, {int(vrow[u]) for u in bad}
+    np.save(_work(_CTX, "col", ij[0], ij[1], k), Fk)
+    return {int(vrow[u]) for u in bad}
 
 
 def build_field(T, cfg=None):
@@ -1472,6 +1493,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     for f in out.glob("*.glb"):
         f.unlink()
+    import shutil
+    workdir = out / "_work"  # per-tile dense meshes, streamed through disk; removed at the end
+    shutil.rmtree(workdir, ignore_errors=True)
+    workdir.mkdir()
+    _CTX.clear()
+    _CTX["work"] = workdir
     timing = {}
     t0 = time.time()
     field, vols, notes, caves = build_field(T, cfg)
@@ -1504,7 +1531,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
             mc[i, j] = r
     for (i, j) in tiles:  # canonical border keys numbered in tile order (deterministic)
         if mc[i, j] is not None:
-            for key in mc[i, j][3].values():
+            for key in mc[i, j][1].values():
                 reg.setdefault(key, len(reg))
     keys = sorted(reg, key=reg.get) or [(0, 0, 0, 0)]  # (a placeholder when no tile has a mesh)
     a, b, fixed = _key_geometry(keys, G, 0)
@@ -1521,9 +1548,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     for (i, j), r in mc.items():
         if r is None:
             continue
-        idx, faces, rng, kk = r
-        for (p, q) in _boundary_edges(faces):
-            if p in kk and q in kk:
+        rng, kk, bed = r
+        for (p, q) in bed:
+            if True:
                 for plane in _planes(kk[p], kk[q], G, 0):
                     plane_edges.setdefault(plane, set()).add(tuple(sorted((reg[kk[p]], reg[kk[q]]))))
     corner = fixed[:, 0] & fixed[:, 1]
@@ -1549,7 +1576,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
     work = [ij for ij, r in mc.items() if r is not None]
     with _pool() as ex:
-        dense = dict(zip(work, ex.map(_job_dense, work)))
+        dense = set(ij for ij, ok in zip(work, ex.map(_job_dense, work)) if ok)
     _CTX["dense"] = dense
     # skirts go into the rock, in the border plane, against the surface normal; never out through the other side
     # (a skirt under a cave roof would hang into the cave)
@@ -1580,8 +1607,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
                 failed = set()
                 for k in range(G.lods):
                     kr = np.array(sorted(keep[k]), np.int64)
-                    for ij, (Fk, bad) in zip(work, ex.map(_job_collapse, [(ij, kr) for ij in work])):
-                        collapsed[ij[0], ij[1], k] = Fk
+                    for bad in ex.map(_job_collapse, [(ij, kr, k) for ij in work]):
                         failed |= bad
                 if not failed:
                     break
@@ -1627,6 +1653,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
             kk |= wanted
         log(f"{len(wanted)} border vertices kept for coarse LODs that folded; tiles written again")
     timing["tiles (decimate, project, write)"] = time.time() - t0
+    shutil.rmtree(workdir, ignore_errors=True)
     timing["of which decimation"] = t_dec
 
     # ---- 4. heightmap and splat tiles on the same grid (in parallel)
@@ -1848,8 +1875,8 @@ def _job_tile(ij):
         if (i, j) not in dense:
             entry["lods"].append(None)
             continue
-        P, faces0, _ = dense[i, j]
-        Fk = collapsed[i, j, k]
+        P, faces0, _ = _dense(c, (i, j))
+        Fk = np.load(_work(c, "col", i, j, k))
         used = np.unique(Fk)
         remap = np.full(len(P), -1, np.int64)
         remap[used] = np.arange(len(used))
@@ -2487,7 +2514,7 @@ SHARD_LIMIT = [0.01, 0.05, 0.5]  # % of a LOD's area allowed to have corner norm
 # p95 (deg) and colour p95 (0..1) allowed, per LOD. A seam would shift the median; a few aliased texels at sharp
 # detail don't. LOD 2 (0.4 m texels on a mesh 0.5 m off the rock) is looser: where its triangles stray far from the
 # rock's normal the map can't bend past its surface (z >= 0.02) and the two sides clamp differently
-MAP_SEAM = [(3.0, 15.0, 0.08), (3.0, 15.0, 0.08), (6.0, 50.0, 0.2)]
+MAP_SEAM = [(3.0, 15.0, 0.08), (3.0, 15.0, 0.12), (6.0, 50.0, 0.2)]
 
 
 def _shards(surfs):

@@ -347,6 +347,21 @@ def ambient(field, X, G):
     return np.clip(1.0 - 1.6 * occ / wsum, 0.0, 1.0)
 
 
+CHUNK = 200_000  # texels per field call: whole atlases at once (2.6M texels x 4-point stencils x fbm temporaries)
+# made each bake worker 2+ GB
+
+
+def _chunked(fn, *arrays):
+    """fn over the rows of `arrays` in CHUNK-sized pieces, outputs concatenated (a tuple or a single array)."""
+    n = len(arrays[0])
+    if n <= CHUNK:
+        return fn(*arrays)
+    parts = [fn(*(a[i:i + CHUNK] for a in arrays)) for i in range(0, n, CHUNK)]
+    if isinstance(parts[0], tuple):
+        return tuple(np.concatenate([p[j] for p in parts]) for j in range(len(parts[0])))
+    return np.concatenate(parts)
+
+
 def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=None):
     """Every map of one mesh's atlas (size = (width, height)): {"normal": uint8 (h, w, 3), "orm", "basecolor",
     "weights": [RGBA...], "height": uint16}, plus the height range and how many texels fell back to the low poly."""
@@ -374,7 +389,7 @@ def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=Non
     Tl = corner(T4[:, :3])
     Tl = _unit(Tl - Nl * (Tl * Nl).sum(1, keepdims=True))
     Bl = np.cross(Nl, Tl) * np.sign(T4[F[t, 0], 3])[:, None]
-    X, G, bad = surface(Pl, Nl)
+    X, G, bad = _chunked(surface, Pl, Nl)
     height = ((X - Pl) * Nl).sum(1)
     tn = np.stack([(G * Tl).sum(1), (G * Bl).sum(1), (G * Nl).sum(1)], -1)
     tn[:, 2] = np.maximum(tn[:, 2], 0.02)
@@ -393,12 +408,12 @@ def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=Non
 
     Gs = G
     if field is not None:  # (smooth over 0.4 m: every other texel is plenty)
-        Gs = _unit(sparse(lambda s: _unit(field.value_gradient(X[s], 0.4)[1]), 2, 3))
+        Gs = _unit(sparse(lambda s: _unit(_chunked(lambda q: field.value_gradient(q, 0.4)[1], X[s])), 2, 3))
         Gs = np.where(bad[:, None], G, Gs)
-    Wt, col = mats.weights(X, Gs)
+    Wt, col = _chunked(mats.weights, X, Gs)
     rgh = Wt @ layers_rough
     # AO on every fourth texel both ways (it's broad over metres)
-    ao = sparse(lambda s: ambient(ao_field, X[s], G[s]), 4, 1)[:, 0] if ao_field is not None else np.ones(len(X))
+    ao = sparse(lambda s: _chunked(lambda a, b: ambient(ao_field, a, b), X[s], G[s]), 4, 1)[:, 0] if ao_field is not None else np.ones(len(X))
     filled = np.zeros((Hd, Wd), bool)
     filled[ys, xs] = True
     _, (fy, fx) = ndimage.distance_transform_edt(~filled, return_indices=True)
