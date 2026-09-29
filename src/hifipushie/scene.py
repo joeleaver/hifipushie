@@ -759,7 +759,10 @@ def sync(name: str, resolution: int = 256) -> dict:
         rgb = style_rgb(o["color"][:3], (spec.get("style") or {}).get("paint") or {})
         bases[o["part"]] = {"color": [float(x) for x in rgb], "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5)),
-                            **{k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}}
+                            **{k: float(d[k]) for k in ("transmission", "alpha", "ior", "subsurface",
+                                                         "subsurface_scale") if k in d},
+                            **({"subsurface_radius": [float(x) for x in d["subsurface_radius"]]}
+                               if "subsurface_radius" in d else {})}
     ph = part_hashes(prog, bases)
     job = {"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
            "program": prog, "bases": bases, "prog_hash": ph}
@@ -791,13 +794,16 @@ def part_hashes(prog: dict | None, bases: dict) -> dict:
 
 def look(name: str, views: list[str] | None = None, cameras: list[dict] | None = None, size: int = 640,
          save: str | None = None, show_layer: str | None = None, hide_parts: list[str] | None = None,
-         only_parts: list[str] | None = None, flat: bool = False, clip=None, focus=None, zoom: float = 1.0):
+         only_parts: list[str] | None = None, flat: bool = False, clip=None, focus=None, zoom: float = 1.0,
+         lighting: dict | None = None):
     """Render the saved scene with EEVEE: named views (as look) and/or perspective cameras {"eye": [x,y,z],
     "target", "fov"}. show_layer: one paint layer's mask, orange on grey clay. hide_parts / only_parts: leave
     parts out (prefab parts too, in every instance); with only_parts the views frame what's shown. flat: unlit
     base colour. clip (as look): everything beyond the planes is left out of the render (the materials turn
     transparent there) and the cut solids get flat caps, their part's colour darkened. focus + zoom: the named
-    views framed on that point, zoom times closer (painted close-ups at the scene's mesh resolution)."""
+    views framed on that point, zoom times closer (painted close-ups at the scene's mesh resolution).
+    lighting: {"lights": [{"dir", "energy", "color", "angle"}], "world": {"color", "strength"}, "look", "exposure"}
+    (default: the spec's style look preset, spec["style"]["look"], else one neutral sun under a grey-blue sky)."""
     from PIL import Image
     from .spec import compile_prims, geometry
     bp = blend_path(name)
@@ -825,7 +831,8 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         # refracting the room behind it wants more
         glass = any((d or {}).get("transmission") or (d or {}).get("alpha", 1) < 1 for d in (spec.get("parts") or {}).values())
         job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
-               "samples": 32 if glass else 16}
+               "samples": 32 if glass else 16,
+               "lighting": lighting if lighting is not None else (spec.get("style") or {}).get("look")}
         planes = store.clip_planes(clip)
         if planes:  # cut in the render only; caps where solids are cut, so walls read as walls
             job["clip"] = [[np.asarray(p, float).tolist(), np.asarray(n, float).tolist()] for p, n in planes]

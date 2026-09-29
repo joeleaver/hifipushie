@@ -87,11 +87,13 @@ def geometry(spec: dict) -> dict:
     """The spec without what doesn't shape the surface (paint, plan, story), so editing those doesn't rebuild or
     re-seat anything."""
     skip = ("paint", "plan", "story", "rig")
-    if not any(k in spec for k in skip) and not (spec.get("style") or {}).get("paint"):
+    unshaped = ("paint", "look", "sheet")  # a paint style, a look preset, the sheet's name shape nothing either
+    st = spec.get("style") or {}
+    if not any(k in spec for k in skip) and not any(k in st for k in unshaped):
         return spec
     out = {k: v for k, v in spec.items() if k not in skip}
-    if (spec.get("style") or {}).get("paint"):  # a paint style doesn't shape anything either
-        out["style"] = {k: v for k, v in spec["style"].items() if k != "paint"}
+    if any(k in st for k in unshaped):
+        out["style"] = {k: v for k, v in st.items() if k not in unshaped}
     return out
 
 

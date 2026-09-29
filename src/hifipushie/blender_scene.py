@@ -418,6 +418,11 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         bsdf.inputs["IOR"].default_value = float(base.get("ior", 1.45))
         m.use_raytrace_refraction = True
         m.surface_render_method = "DITHERED"
+    if float(base.get("subsurface", 0.0)) > 0:  # skin: light scattered under the surface (red bleeds at the
+        # ears, nose and shadow edges); radius per channel in m x scale
+        bsdf.inputs["Subsurface Weight"].default_value = float(base["subsurface"])
+        bsdf.inputs["Subsurface Radius"].default_value = base.get("subsurface_radius", [1.0, 0.35, 0.2])
+        bsdf.inputs["Subsurface Scale"].default_value = float(base.get("subsurface_scale", 0.004))
     if al < 1:  # see-through by coverage (a fade, a gauze curtain)
         bsdf.inputs["Alpha"].default_value = al
         m.surface_render_method = "BLENDED"
@@ -741,18 +746,30 @@ def render(job):
     scene.render.film_transparent = bool(job.get("show_layer"))  # alpha: surface vs sky, for coverage
     scene.render.image_settings.color_mode = "RGBA" if job.get("show_layer") else "RGB"
     scene.view_settings.view_transform = "Standard" if job.get("flat") else "AgX"
+    lt = job.get("lighting") or {}  # a style's look preset (spec["style"]["look"]): key/fill/rim suns, world, view
+    if lt.get("look") and not job.get("flat"):
+        try:
+            scene.view_settings.look = lt["look"]
+        except TypeError:  # names differ between Blender versions ("AgX - Punchy" / "Punchy")
+            scene.view_settings.look = lt["look"].split(" - ")[-1]
+    if "exposure" in lt:
+        scene.view_settings.exposure = float(lt["exposure"])
     scene.world = scene.world or bpy.data.worlds.new("w")
     scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get("Background")
-    bg.inputs["Color"].default_value = (0.55, 0.62, 0.72, 1)
-    bg.inputs["Strength"].default_value = 0.6
-    ld = bpy.data.lights.new("hp_sun", "SUN")
-    ld.energy, ld.angle = 3.5, 0.05
-    if job.get("clip"):  # a section: what's cut away would still cast the sun's shadow (EEVEE's shadow pass
-        ld.use_shadow = False  # doesn't see the clip), striping a floor plan with the roof's shadow
-    sun = bpy.data.objects.new("hp_sun", ld)
-    scene.collection.objects.link(sun)
-    sun.rotation_euler = Vector(job.get("sun", [-0.4, -0.7, 0.6])).to_track_quat("Z", "Y").to_euler()
+    wc = (lt.get("world") or {})
+    bg.inputs["Color"].default_value = (*_lin(wc.get("color", [0.77, 0.81, 0.86])), 1)
+    bg.inputs["Strength"].default_value = float(wc.get("strength", 0.6))
+    lights = lt.get("lights") or [{"dir": job.get("sun", [-0.4, -0.7, 0.6]), "energy": 3.5, "angle": 3.0}]
+    for i, L in enumerate(lights):  # each a sun: "dir" points from the model toward the light
+        ld = bpy.data.lights.new(f"hp_sun{i}", "SUN")
+        ld.energy, ld.angle = float(L.get("energy", 3.5)), np.radians(float(L.get("angle", 3.0)))
+        ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
+        if job.get("clip") or L.get("shadow") is False:  # a section: what's cut away would still cast the
+            ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
+        sun = bpy.data.objects.new(f"hp_sun{i}", ld)
+        scene.collection.objects.link(sun)
+        sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
     cam_data = bpy.data.cameras.new("hp_cam")
     cam_data.clip_start, cam_data.clip_end = 0.01, 1000
     cam = bpy.data.objects.new("hp_cam", cam_data)
