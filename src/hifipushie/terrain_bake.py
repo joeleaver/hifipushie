@@ -51,9 +51,9 @@ def micro_relief(r, amount=1.0, texel=0.1):
         out = 0.06 * a1 * tm._pl_facets(p, 1.2, seed)
         if a2 > 0:
             out = out + 0.015 * a2 * tm._pl_facets(p, 0.45, seed + 1)
-        if J and ac > 0:  # fine cracks along the joint sets, between the meshed joints (a third of their spacing)
-            for m, d in enumerate(J["dirs"]):
-                sp = J["spacing"][m] / 3.0
+        if J and ac > 0:  # hairline cracks along the joint sets, on their candidate planes (most not meshed)
+            for m, d in enumerate(J["dirs"][:2]):
+                sp = J["spacing"][m]
                 q = (p[:, :2] @ np.asarray(d)) / sp + 0.37 * tm._pl_facets(p, 2.0, seed + 9 + m)
                 dist = np.abs(q - np.round(q)) * sp
                 out = out + 0.03 * ac * np.clip(1 - dist / 0.12, 0, 1) ** 2

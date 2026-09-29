@@ -870,8 +870,11 @@ regresses, bisect by building one spec at each commit and diffing heights.
     that never reach the heightmap fail the check (a 3 m fin's top cut off by relief, 14 m over the sea; sealed air
     pockets between the shell and the rock round a cave). Causes fixed: `Field.thin` (a grey opening of H: fins and
     stack tops narrower than twice the relief's reach take 10% of it), `_drop_specks` (closed pieces < 4 m2 off the
-    tile border), the shell reaches 2 m past the cave wall. Rock geometry: joint sets (`_joints`: two vertical sets
-    ~3 m apart, phase staggered per bed, blocks proud/recessed, grooves 2 voxels wide) and facet size following the
+    tile border), the shell reaches 2 m past the cave wall. Rock geometry: joint sets (`_joints`: three families of long
+    vertical planes, candidate planes ~1.6 m apart each present or not and jittered (many small blocks, a few big),
+    patchy bands of strength, V grooves between flat faces 2 voxels wide; a first version with regular spacing,
+    per-bed stagger and pillowed blocks read as hammered metal from 150 m; the far LODs' maps get half / none of
+    them) and facet size following the
     face's structure (`_structure_grain`: concave/gully/top of face = small broken facets, buttresses big planes).
     Wet band edge wanders, roughness varies (`_grain`). Memory: dense meshes streamed through `<out>/_work`, field
     calls chunked; `WORKER_GB` 2.0 measured; the manifest's `memory_gb` (resources.peak_memory) states each export's

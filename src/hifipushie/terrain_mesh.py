@@ -444,42 +444,34 @@ def rock_relief(p, r, g=None):
         u = np.clip((np.where(lower, f, f - 1) + be) / (2 * be), 0, 1)  # 0..1 from the lower bed to the upper
         o = np.where(lower, off(nb) * (1 - u) + off(kb) * u, off(kb) * (1 - u) + off(nb) * u)
         out = out + r["bedding"] * (0.3 * np.clip(1 - edge / be, 0, 1) + 0.3 * o)
-        if r.get("joints"):
-            out = out + _joints(p, r, z, be)
+    if r.get("joints") and r["joints"]["depth"] > 0:
+        out = out + _joints(p, r)
     return out
 
 
-def _pair(q, be):
-    """The two cells a coordinate hands over between (cell units) and the weight of the second: 0 or 1 inside a
-    cell, a straight ramp `be` either side of each boundary (continuous: no step in the field)."""
-    k = np.floor(q).astype(np.int64)
-    f = q - k
-    lower = f < 0.5
-    a = np.where(lower, k - 1, k)
-    u = np.where(lower, np.clip((f + be) / (2 * be), 0, 1), np.clip((f - 1 + be) / (2 * be), 0, 1))
-    return a, a + 1, u
-
-
-def _joints(p, r, zb, be):
-    """Vertical joint sets through the bedded rock: grooves along two sets of planes (their phase staggered bed to
-    bed, as joints in sedimentary rock end at bedding planes) and each block between them standing proud or set back
-    on its own. Blocks 2-4 m, grooves ~2 voxels wide: the medium structure in geometry, fine grain in the maps."""
+def _joints(p, r):
+    """Joint sets: a few families of long, straight, vertical fracture planes (2-3 directions), irregularly spaced
+    (each candidate plane on a fine spacing is present or not, jittered: many small blocks and a few big ones), strong
+    in some bands of the face and absent in others. Each joint is a V groove between flat faces (a smooth profile
+    pillowed every block: from 150 m the face read as hammered metal). ~2 voxels wide: geometry carries the medium
+    structure, the maps the fine grain."""
     J = r["joints"]
-    sp, ed = J["spacing"], J["edge"]
-    ab, bb, ub = _pair(zb, be)
-    groove = np.zeros(len(p))
-    block = np.zeros(len(p))
-    h = lambda a, b, c: noise._hash(a, b, b * 0 + c, r["seed"] + 60)
-    for bed, w in ((ab, 1 - ub), (bb, ub)):
-        for m, d in enumerate(J["dirs"]):
-            q = (p[:, :2] @ np.asarray(d)) / sp[m] + h(bed, bed * 0 + m, 1)
-            dist = np.abs(q - np.round(q)) * sp[m]
-            t = np.clip(1 - dist / ed, 0, 1)
-            groove += w * t * t * (3 - 2 * t)
-            if m == 0:
-                a_, b_, u_ = _pair(q, ed / sp[m])
-                block += w * ((2 * h(bed, a_, 2) - 1) * (1 - u_) + (2 * h(bed, b_, 2) - 1) * u_)
-    return J["depth"] * np.minimum(groove, 1.0) + J["block"] * block
+    ed = J["edge"]
+    out = np.zeros(len(p))
+    h = lambda k, m, c: noise._hash(k, k * 0 + m, k * 0 + c, r["seed"] + 60)
+    for m, d in enumerate(J["dirs"]):
+        sp = J["spacing"][m]
+        q = (p[:, :2] @ np.asarray(d)) / sp
+        k0 = np.floor(q).astype(np.int64)
+        best = np.zeros(len(p))
+        for dk in (-1, 0, 1):
+            k = k0 + dk
+            pos = k + 0.8 * (h(k, m, 1) - 0.5)
+            amp = (h(k, m, 2) < J["prob"][m]) * (0.6 + 0.4 * h(k, m, 3))
+            best = np.maximum(best, amp * np.clip(1 - np.abs(q - pos) * sp / ed, 0, 1))
+        band = smoothstep(0.35, 0.6, noise.fbm(p * np.array([1.0, 1.0, 0.5]), J["band"], 2, seed=r["seed"] + 70 + m))
+        out = out + J["depth"] * best * band
+    return out
 
 
 # a fixed rotation for the facet lattice, so its creases don't line up with the world's axes
@@ -538,13 +530,13 @@ def rock_config(T, cfg):
     out = {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
            "reach": 1.4 * fac + 0.7 * bd + 1.0, "bed_edge": max(0.05, 2.0 * vox / bed)}
     jt = float(rc.get("joints", 1.0)) * mult
-    if bd > 0 and jt > 0:  # joint sets: two directions ~70 deg apart, spacing ~a third of a facet
-        a = math.radians(37.0)
-        sp = float(np.clip(0.35 * size, 2.0, 4.0))
-        out["joints"] = {"dirs": [[math.cos(a), math.sin(a)], [math.cos(a + 1.22), math.sin(a + 1.22)]],
-                         "spacing": [sp, 1.3 * sp], "edge": max(0.5, 1.2 * vox),
-                         "depth": 0.25 * jt * bd, "block": 0.15 * jt * bd}
-        out["reach"] += 0.45 * jt * bd
+    if bd > 0 and jt > 0:  # joint sets: three families of vertical planes, candidate spacing ~a fifth of a facet
+        sp = float(np.clip(0.2 * size, 1.2, 2.5))
+        dirs = [math.radians(a) for a in (37.0, 107.0, 162.0)]
+        out["joints"] = {"dirs": [[math.cos(a), math.sin(a)] for a in dirs], "spacing": [sp, 1.4 * sp, 2.0 * sp],
+                         "prob": [0.4, 0.3, 0.2], "band": max(12.0, 3.0 * size), "edge": max(0.5, 1.2 * vox),
+                         "depth": 0.3 * jt * bd}
+        out["reach"] += 0.35 * jt * bd
     return out
 
 
@@ -1746,6 +1738,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             bfs = []
             for k in range(G.lods):  # (per LOD: the fine relief band-limited to its texel)
                 bf = copy.copy(base)
+                if base.rock is not None and base.rock.get("joints"):  # (the far LODs' maps: big structure only)
+                    rk = dict(base.rock)
+                    rk["joints"] = {**rk["joints"], "depth": rk["joints"]["depth"] * [1.0, 0.5, 0.0][min(k, 2)]}
+                    bf.rock = rk
                 if base.rock is not None and float(cfg["micro"]) > 0:
                     dens = cfg["texel_density"][min(k, len(cfg["texel_density"]) - 1)]
                     bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens)
