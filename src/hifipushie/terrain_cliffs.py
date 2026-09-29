@@ -215,17 +215,36 @@ class CliffField:
         if not len(k):
             return out
         front = self.base.solid(p[k], Fg[k] + R.sink * (1 - S[k]), s[k])
-        back = np.minimum(-(Fg[k] + R.thick), dv[k] - R.wall)
-        out[k] = tm.smax(front, back, 0.8)  # (rounded where front and back meet: a hard crease there shaded as shards)
+        back = -(Fg[k] + R.thick)
+        # (rounded where front and back meet: a hard crease there shaded as shards)
+        out[k] = tm.smax(front, back, 0.8)
+        # round every void, the whole rock (unsunk) within cave_wall of it, up to just under the ground: the sunk
+        # front alone sliced off a lava tube's roof wherever the tube ran shallower than `sink`
+        kv = np.flatnonzero(near_void[k])
+        if len(kv):
+            q = k[kv]
+            out[q] = tm.smin(out[q], self._void_rock(p[q], Fg[q], s[q], dv[q]), 0.5)
         return out
 
+    TOP = 0.5  # m: the rock round a void stops this far under the ground (the heightmap's place)
+
+    def _void_rock(self, p, Fg, s, dv):
+        full = self.base.solid(p, Fg.copy(), s)
+        return tm.smax(tm.smax(full, dv - self.region.wall, 0.5), Fg + self.TOP, 0.5)
+
     def front(self, p):
-        """The visible surface's own field (the rock, its ground part sunk toward the region's edge): faces of the
-        shell where this is ~0 are seen, the rest is its buried back."""
+        """The visible surface's own field: the rock, its ground part sunk toward the region's edge, and the rock round
+        every void unsunk. Faces of the shell where this is ~0 are seen, the rest is its buried back."""
         p = np.asarray(p, float)
         h, s = self.base.column(p[:, 0], p[:, 1])
         S = self.region.s(p[:, 0], p[:, 1])
-        return self.base.solid(p, (p[:, 2] - h) * s + self.region.sink * (1 - S), s)
+        Fg = (p[:, 2] - h) * s
+        out = self.base.solid(p, Fg + self.region.sink * (1 - S), s)
+        dv = self._void(p)
+        kv = np.flatnonzero(np.isfinite(dv) & (dv < self.region.wall + 2.0))
+        if len(kv):  # (the full rock there: its buried outer skin and cap read deep inside it, so they're "buried")
+            out[kv] = np.minimum(out[kv], self.base.solid(p[kv], Fg[kv].copy(), s[kv]))
+        return out
 
     def value(self, p):
         p = np.asarray(p, float)
