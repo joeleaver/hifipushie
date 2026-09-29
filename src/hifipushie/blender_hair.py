@@ -17,7 +17,7 @@ import bpy
 import numpy as np
 
 GROUP = "hp_lock"
-VERSION = 8  # bump when the node group changes: scenes rebuild it
+VERSION = 9  # bump when the node group changes: scenes rebuild it
 INPUTS = [  # (name, type, default, min, max) in modifier order; the spec's lock keys are these, lower case
     ("Width", "NodeSocketFloat", 0.03, 0.0, 1.0),
     ("Thickness", "NodeSocketFloat", 0.008, 0.0, 1.0),
@@ -27,6 +27,7 @@ INPUTS = [  # (name, type, default, min, max) in modifier order; the spec's lock
     ("Root", "NodeSocketFloat", 0.6, 0.0, 1.0),
     ("Twist", "NodeSocketFloat", 0.0, -720.0, 720.0),
     ("Flip", "NodeSocketFloat", 0.0, -180.0, 180.0),
+    ("Edge", "NodeSocketFloat", 0.8, 0.2, 4.0),
     ("Grey", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ("Seed", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ("Centre", "NodeSocketVector", (0.0, 0.0, 0.0), None, None),
@@ -181,7 +182,7 @@ def node_group():
     circ.inputs["Radius"].default_value = 1.0
     ppos = _sep(nt, nt.nodes.new("GeometryNodeInputPosition").outputs[0])
     # a lens, not an ellipse: the sides come to soft edges (|sin| ^ 0.7 fattens the middle, thins the edges)
-    s_abs = _math(nt, "POWER", _math(nt, "ABSOLUTE", ppos[1]), 0.8)
+    s_abs = _math(nt, "POWER", _math(nt, "ABSOLUTE", ppos[1]), I["Edge"])  # Edge > 1: thin crisp edges, a flat back
     sy = _math(nt, "MULTIPLY", _math(nt, "SIGN", ppos[1]), s_abs)
     across = ppos[0]
     y = _math(nt, "SUBTRACT", _math(nt, "MULTIPLY", sy, _math(nt, "MULTIPLY", I["Thickness"], 0.5)),

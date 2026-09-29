@@ -98,10 +98,10 @@ GROOM = {
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
-             "handles", "tier"}
+             "handles", "tier", "edge"}
 MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
-       "twist": "Twist", "flip": "Flip", "grey": "Grey"}
-LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002}
+       "twist": "Twist", "flip": "Flip", "grey": "Grey", "edge": "Edge"}
+LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002, "edge": 0.8}
 WORDS = {"back": (0, 1, 0), "forward": (0, -1, 0), "down": (0, 0, -1), "up": (0, 0, 1), "left": (1, 0, 0),
          "right": (-1, 0, 0), "away": None}
 
@@ -1634,7 +1634,7 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         xy = np.asarray(c["top"], float)
         a, e = top_to_azel(sc, xy)
         w = float(c.get("width", 0.055))
-        T = float(c.get("thickness", 0.011 * w / 0.055))
+        T = float(c.get("thickness", 0.0055 * w / 0.055))
         H, d_in = envelope(sc, g, line, a, e)
         U = under(g, H, a, e, d_in)
         u = np.linspace(0, 1, len(a))
@@ -1648,8 +1648,9 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         out[name] = {"tier": "drawn", "pts": [[round(float(a[k]), 2), round(float(e[k]), 2), round(float(h[k]), 4)]
                                               for k in range(len(a))],
                      "tilt": [round(float(v), 3) for v in tilt], "width": round(w, 4), "thickness": round(T, 4),
-                     "cup": round(lie_cup(sc, w, P), 4), "taper": float(c.get("taper", 0.8)),
-                     "belly": float(c.get("belly", 0.35)), "root": float(c.get("root", 0.8)), "twist": 0.0}
+                     "cup": round(lie_cup(sc, w, P), 4), "taper": float(c.get("taper", 1.0)),  # wedges: widest
+                     "belly": float(c.get("belly", 0.06)), "root": float(c.get("root", 1.0)), "twist": 0.0,  # at
+                     "edge": float(c.get("edge", 1.6))}  # the root, to a thin sharp tip; a flat back with crisp edges
         gr = _grey(g, float(a[0]), float(e[0]), line)
         if gr > 0.01:
             out[name]["grey"] = round(gr, 3)
