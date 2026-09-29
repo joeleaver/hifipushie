@@ -31,14 +31,16 @@ from .terrain_mesh import Tube, _daylight, _downhill, _sea, smoothstep
 
 KINDS = {
     "sea": {"width": 6.0, "height": 4.5, "chamber": 8.0, "depth": None, "rough": 0.4},
-    "karst": {"width": 4.0, "height": 4.5, "chamber": 9.0, "depth": 14.0, "rough": 0.3},
+    "karst": {"width": 4.0, "height": 4.5, "chamber": 9.0, "depth": 14.0, "rough": 0.12, "doline": 18.0, "relief": 0.2,
+              "rough_scale": 6.0},
     "lava": {"width": 7.0, "height": 4.5, "chamber": 9.0, "depth": 7.5, "rough": 0.25},
 }
 
 
 class Cave:
-    def __init__(self, name, kind, nodes, edges, tubes, notes):
+    def __init__(self, name, kind, nodes, edges, tubes, notes, dolines=()):
         self.name, self.kind, self.nodes, self.edges, self.tubes, self.notes = name, kind, nodes, edges, tubes, notes
+        self.dolines = list(dolines)  # ground edits (terrain_mesh.dig_doline)
 
 
 def build(T, rock=None) -> list[Cave]:
@@ -70,6 +72,14 @@ def _cave(T, name, c, rock):
         off = float(boff(xy)[0])
         return math.floor((z + off) / bed) * bed - off
 
+    # thin beds inside the rock's beds (~1.2-1.5 m: a passage shows a few), on the same planes
+    sub = bed / max(1, round(bed / 1.3))
+    beds = {"bed": sub, "amp": float(c.get("ledges", 0.45)), "off": rk.get("bed_offset"), "seed": seed}
+
+    def sub_snap(xy, z):  # the nearest thin bedding plane (a flat roof)
+        off = boff(xy)
+        return np.round((np.asarray(z, float) + off) / sub) * sub - off
+
     for n, ch in (c.get("chambers") or {}).items():
         xy, g, _ = _xy(T, ch["at"])
         size = ch.get("size", K["chamber"])
@@ -87,8 +97,7 @@ def _cave(T, name, c, rock):
         xy, g, _ = _xy(T, en["at"])
         # a lava tube is entered where its roof fell in (a collapse pit), never through a hillside mouth
         nodes[n] = {"xy": xy, "z": None, "type": "entrance", "shaft": bool(en.get("shaft")) or kind == "lava",
-                    "ground": g,
-                    "at": en["at"]}
+                    "ground": g, "at": en["at"], "doline": en.get("doline", kind == "karst")}
     edges = []
     for p in c.get("passages") or []:
         if isinstance(p, (list, tuple)):
@@ -125,7 +134,7 @@ def _cave(T, name, c, rock):
         nd["xy"] = nd["xy"] - t * 0.5 * K["width"]
     tubes = []
     common = dict(op="subtract", blend=float(c.get("blend", 0.8)), rough=float(c.get("rough", K["rough"])),
-                  rough_scale=3.0)
+                  rough_scale=float(c.get("rough_scale", K.get("rough_scale", 3.0))), relief=float(c.get("relief", K.get("relief", 1.0))))
     for i, e in enumerate(edges):
         a, b = nodes[e["from"]], nodes[e["to"]]
         w, h = float(e.get("width", K["width"])), float(e.get("height", K["height"]))
@@ -156,10 +165,14 @@ def _cave(T, name, c, rock):
             fl = (a["z"] + oa - off) * (1 - g_) + (b["z"] + ob - off) * g_
         node_seed = zlib.crc32(f"{name}:{i}".encode()) % 10000
         if kind == "karst":
-            # keyhole: the phreatic tube up top along the bed, the vadose slot cut down below it
-            r = 0.5 * w
-            tubes.append(Tube(f"{name}:{i}", np.c_[xy, fl + h - r], r, r, None, seed=node_seed, **common))
-            tubes.append(Tube(f"{name}:{i}:slot", np.c_[xy, fl], 0.3 * w, h - r, fl, seed=node_seed + 1, **common))
+            # keyhole: the phreatic tube up top, spread wide along a bedding plane that is its flat roof, the vadose
+            # slot cut down below it by the stream; thin beds stand out of the walls as ledges or are set back
+            roof = sub_snap(xy, fl + h)
+            top_h = 0.3 * w
+            tubes.append(Tube(f"{name}:{i}", np.c_[xy, roof - 0.5 * top_h], 0.55 * w, top_h, None, seed=node_seed,
+                              roof=roof, beds=beds, **common))
+            tubes.append(Tube(f"{name}:{i}:slot", np.c_[xy, fl], 0.3 * w, roof - fl - 0.5 * top_h, fl,
+                              seed=node_seed + 1, beds=beds, **common))
         else:
             tubes.append(Tube(f"{name}:{i}", np.c_[xy, fl], 0.5 * w, h, fl, seed=node_seed, **common))
         e["_xy"], e["_floor"], e["_w"], e["_h"] = xy, fl, w, h
@@ -171,21 +184,38 @@ def _cave(T, name, c, rock):
                 if g[j] - (fl[j] + h) < 5.0:
                     tubes.append(Tube(f"{name}:{i}:skylight{j}", [[*xy[j], fl[j] + h], [*xy[j], g[j] + 2]],
                                       0.35 * w, 0.35 * w, None, seed=node_seed + 7, **common))
+    dolines = []
     for n, nd in nodes.items():
         if nd["type"] == "chamber":
+            kw = {}
+            if kind == "karst":  # a hall under a bedding plane: a flat roof, bedded walls
+                kw = {"roof": float(sub_snap(nd["xy"], nd["z"] + 0.8 * nd["rh"])[0]), "beds": beds}
             tubes.append(Tube(f"{name}:{n}", [[*nd["xy"], nd["z"]]], nd["rw"], nd["rh"], nd["z"],
-                              seed=zlib.crc32(n.encode()) % 10000, **common))
+                              seed=zlib.crc32(n.encode()) % 10000, **common, **kw))
         elif nd["shaft"]:  # a sinkhole: a round shaft from the passage's roof up through the ground, flared at the top
             r = (0.6 if kind == "lava" else 0.4) * K["width"] + 0.5  # (a collapse pit is as wide as the tube)
             g = nd["ground"]
+            if nd.get("doline"):
+                # a doline: a wide grassy funnel (tens of metres) dug into the ground, the shaft opening in its throat.
+                # Deep enough to read, never so deep the shaft's rock over the passage goes (>= 2 m of it)
+                dl = nd["doline"] if isinstance(nd["doline"], dict) else {}
+                R = float(dl.get("radius", K["doline"]))
+                roof = nd["z"] + float(max((e.get("height", K["height"]) for e in edges if n in (e["from"], e["to"])),
+                                           default=K["height"]))
+                D = float(dl.get("depth", max(1.0, min(0.3 * R, g - roof - 2.0))))
+                dolines.append({"xy": nd["xy"].copy(), "radius": R, "depth": D, "throat": 1.6 * r})
+                nd["doline"] = {"radius": R, "depth": D}
+                g = g - D
             tubes.append(Tube(f"{name}:{n}", [[*nd["xy"], nd["z"]], [*nd["xy"], g - 1.5], [*nd["xy"], g + 3]],
                               [r, r, 2.2 * r], [r, r, 2.2 * r], nd["z"], **common))  # (flat-bottomed: no pit)
     for n, nd in nodes.items():
         over = nd["ground"] - nd["z"]
         notes.append(f"cave {name} ({kind}): {nd['type']} {n} at [{nd['xy'][0]:.0f}, {nd['xy'][1]:.0f}], floor "
                      f"{nd['z']:+.1f} m, {over:.0f} m under the ground" + (" (a shaft down to it)" if nd.get("shaft")
-                                                                             else ""))
-    return Cave(name, kind, nodes, edges, tubes, notes)
+                                                                             else "")
+                     + (f", in a doline {2 * nd['doline']['radius']:.0f} m across and {nd['doline']['depth']:.0f} m "
+                        f"deep" if nd.get("shaft") and isinstance(nd.get("doline"), dict) else ""))
+    return Cave(name, kind, nodes, edges, tubes, notes, dolines)
 
 
 def _resample(P, step):

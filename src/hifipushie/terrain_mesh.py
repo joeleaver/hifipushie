@@ -71,7 +71,7 @@ LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling sca
 
 
 def smin(a, b, k):
-    if k <= 0:
+    if np.isscalar(k) and k <= 0:
         return np.minimum(a, b)
     h = np.maximum(k - np.abs(a - b), 0.0) / k
     return np.minimum(a, b) - h * h * h * k * (1.0 / 6.0)
@@ -88,23 +88,38 @@ def smoothstep(e0, e1, x):
 
 # ---------------------------------------------------------------- volumes
 
+NORMAL_H = 0.5  # the normals' stencil, voxels
+NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+
+
 class Tube:
     """A passage along a polyline of nodes: an elliptical cross-section (half width rw across, rh up) that varies
     node to node, rounded ends, optionally cut flat below `floor` (per node). One node is an ellipsoid (a chamber).
     Arches, sea caves and notches are all tubes; a cave engine would be a graph of them."""
 
-    def __init__(self, name, nodes, rw, rh, floor=None, op="subtract", blend=1.0, rough=0.4, rough_scale=3.0, seed=0):
+    def __init__(self, name, nodes, rw, rh, floor=None, op="subtract", blend=1.0, rough=0.4, rough_scale=3.0, seed=0,
+                 roof=None, beds=None, relief=1.0):
         self.name, self.op, self.blend = name, op, float(blend)
         self.nodes = np.atleast_2d(np.asarray(nodes, float))
         n = len(self.nodes)
         self.rw = np.broadcast_to(np.asarray(rw, float), (n,)).copy()
         self.rh = np.broadcast_to(np.asarray(rh, float), (n,)).copy()
         self.floor = None if floor is None else np.broadcast_to(np.asarray(floor, float), (n,)).copy()
+        # a flat roof (per node: a bedding plane the passage spread along) and beds in the walls: {"bed": m thick,
+        # "amp": m each bed stands out or back, "off": xy -> the beds' shift in height (the rock's own beds)}
+        self.roof = None if roof is None else np.broadcast_to(np.asarray(roof, float), (n,)).copy()
+        self.beds = beds
+        self.relief = float(relief)  # how much of the rock character (facets) its walls take
         self.rough, self.rough_scale, self.seed = float(rough), float(rough_scale), int(seed)
-        r = np.maximum(self.rw, self.rh).max() + self.blend + self.rough + 0.5
+        rough = self.rough + (1.6 * beds["amp"] if beds else 0.0)
+        # the box reaches past everything the tube does to the field (its blend, and the rock character's reach,
+        # NEAR): cut off inside that reach, the field jumped at the box's edge (shards). The ellipse's distance
+        # under-reads along its long axis by the aspect ratio, hence the factor.
+        aspect = float(np.max(np.maximum(self.rw / self.rh, self.rh / self.rw)))
+        r = np.maximum(self.rw, self.rh).max() + (self.blend + rough + NEAR + 0.5) * aspect
         self.lo, self.hi = self.nodes.min(0) - r, self.nodes.max(0) + r
         if self.floor is not None:
-            self.lo[2] = max(self.lo[2], float(self.floor.min()) - self.blend - self.rough - 0.5)
+            self.lo[2] = max(self.lo[2], float(self.floor.min()) - self.blend - rough - 0.5)
 
     def sd(self, p, detail=False):
         """Signed distance (roughly: the ellipse's is a bound). With detail: also each point's height above the floor
@@ -114,6 +129,8 @@ class Tube:
         above = np.full(len(p), np.inf)
         size = np.zeros(len(p))
         rough = self.rough * (2 * noise.fbm(p, self.rough_scale, 3, seed=self.seed) - 1) if self.rough > 0 else 0.0
+        if self.beds:
+            rough = rough + wall_beds(p, self.beds)
         segs = [(0, 0)] if len(self.nodes) == 1 else [(i, i + 1) for i in range(len(self.nodes) - 1)]
         for i, j in segs:
             a, b = self.nodes[i], self.nodes[j]
@@ -130,10 +147,15 @@ class Tube:
             rh = self.rh[i] + s * (self.rh[j] - self.rh[i])
             # walls and roof rough, the floor flat (rough floors made a cave's floor a scramble of 1 m steps)
             dd = (np.sqrt((u / rw) ** 2 + (v / rh) ** 2 + (w / rw) ** 2) - 1) * np.minimum(rw, rh) + rough
+            if self.roof is not None:  # flat along the bedding plane, rounding into the walls over ~a voxel
+                rf = self.roof[i] + s * (self.roof[j] - self.roof[i])
+                dd = smax(dd, p[:, 2] - rf, np.minimum(0.6, 0.3 * rh))
             ab = np.full(len(p), np.inf)
             if self.floor is not None:
                 fl = self.floor[i] + s * (self.floor[j] - self.floor[i])
-                dd = np.maximum(dd, fl - p[:, 2])
+                # the floor meets the walls in a fillet about a voxel round, not a hard crease: a vertex on a
+                # crease takes one side's normal from the field and the faces on the other side shade black
+                dd = smax(dd, fl - p[:, 2], np.minimum(0.6, 0.3 * rh))
                 ab = p[:, 2] - fl
             m = dd < best
             best = np.where(m, dd, best)
@@ -143,6 +165,24 @@ class Tube:
 
     def touches(self, lo, hi):
         return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
+
+
+def wall_beds(p, b):
+    """Beds in a passage's walls, as an offset to its distance (+ rock stands out: a ledge; - it's set back): each
+    bed `amp` proud or recessed on its own, a notch along every bedding plane. Continuous: each bed hands over to the
+    next over >= 0.25 m (a step in the field meshed as shards)."""
+    off = b["off"](p[:, :2]) if b.get("off") else 0.0
+    z = (p[:, 2] + off) / b["bed"]
+    kb = np.floor(z).astype(np.int64)
+    f = z - kb
+    edge = np.minimum(f, 1 - f)
+    be = max(0.12, 0.25 / b["bed"])
+    o = lambda k: 2 * noise._hash(k, k * 0 + 11, k * 0, int(b.get("seed", 0))) - 1
+    lower = f < 0.5
+    nb = np.where(lower, kb - 1, kb + 1)
+    u = smoothstep(-be, be, np.where(lower, f, f - 1))
+    stand = np.where(lower, o(nb) * (1 - u) + o(kb) * u, o(kb) * (1 - u) + o(nb) * u)
+    return b["amp"] * (stand - 0.6 * (1 - smoothstep(0.0, 2 * be, edge)))
 
 
 def _bearing(T, v, at_xy):
@@ -340,30 +380,48 @@ def rock_relief(p, r):
     size, amp = r["size"], r["facets"]
     q = p / size
     base = np.floor(q).astype(np.int64)
-    best = np.full(len(p), np.inf)
-    site = np.zeros_like(p)
-    cell = np.zeros_like(base)
+    # Continuous on purpose: each cell's plane is weighted by exp(-(d - d_nearest) / JOINT), so the facets hand over
+    # in a narrow bevel at the cell walls (~0.15 cell) instead of jumping. A jump in the field (the nearest cell's
+    # plane alone) left marching-cubes steps whose field normals, taken across the jump, pointed sideways or backwards:
+    # black triangular shards at every joint. A groove along the joint (from the two nearest distances, both
+    # continuous) keeps it reading as a crack.
+    ds, vals = [], []
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
             for dz in (-1, 0, 1):
                 c = base + np.array([dx, dy, dz])
                 j = np.stack([noise._hash(c[:, 0], c[:, 1], c[:, 2], r["seed"] + k) for k in range(3)], 1)
                 sp = c + 0.15 + 0.7 * j
-                d = ((q - sp) ** 2).sum(1)
-                m = d < best
-                best[m], site[m], cell[m] = d[m], sp[m], c[m]
-    t = np.stack([noise._hash(cell[:, 0], cell[:, 1], cell[:, 2], r["seed"] + 10 + k) for k in range(3)], 1) * 2 - 1
-    t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
-    out = amp * np.clip(((q - site) * t).sum(1), -1, 1)
+                t = np.stack([noise._hash(c[:, 0], c[:, 1], c[:, 2], r["seed"] + 10 + k) for k in range(3)], 1) * 2 - 1
+                t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+                ds.append(np.sqrt(((q - sp) ** 2).sum(1)))
+                vals.append(smax(smin(((q - sp) * t).sum(1), 1.0, 0.3), -1.0, 0.3))  # (a soft clip: no crease)
+    D, V = np.array(ds), np.array(vals)
+    d1 = D.min(0)
+    joint = r.get("joint", JOINT)
+    wgt = np.exp(-(D - d1) / joint)
+    out = amp * (wgt * V).sum(0) / wgt.sum(0)
+    d2 = np.partition(D, 1, axis=0)[1]
+    out = out + GROOVE * amp * np.exp(-(d2 - d1) / joint)
     if r["bedding"] > 0:
-        bed = r["bed"]
         z = bed_level(p, r)
         kb = np.floor(z).astype(np.int64)
         f = z - kb
         edge = np.minimum(f, 1 - f)
-        out = out + r["bedding"] * (0.25 * (1 - smoothstep(0.0, 0.08, edge))
-                                    + 0.25 * (2 * noise._hash(kb, kb * 0 + 7, kb * 0, r["seed"] + 20) - 1))
+        # each bed stands proud or set back on its own, handing over to the next inside the groove (a step there
+        # was a jump in the field too)
+        off = lambda k: 2 * noise._hash(k, k * 0 + 7, k * 0, r["seed"] + 20) - 1
+        lower = f < 0.5
+        nb = np.where(lower, kb - 1, kb + 1)
+        be = r.get("bed_edge", 0.08)
+        u = smoothstep(-be, be, np.where(lower, f, f - 1))  # 0..1 from the lower bed to the upper
+        o = np.where(lower, off(nb) * (1 - u) + off(kb) * u, off(kb) * (1 - u) + off(nb) * u)
+        out = out + r["bedding"] * (0.25 * (1 - smoothstep(0.0, be, edge)) + 0.25 * o)
     return out
+
+
+JOINT = 0.05  # facet hand-over (cell units: a bevel ~2.7 x JOINT cells wide); rock_config widens it to 2 voxels
+GROOVE = 0.25  # how deep the joint crack is, relative to the facet amplitude
 
 
 def bed_level(p, r):
@@ -393,17 +451,39 @@ def rock_config(T, cfg):
     if hasattr(terrain_rock, "bed_step") and hasattr(terrain_rock, "bed_offset") and "bed" not in rc:
         bed = float(terrain_rock.bed_step(T))
         off = lambda xy, T=T: terrain_rock.bed_offset(T, xy)
+    # joints and bed edges at least ~2 voxels wide: sub-voxel creases mesh as zigzags whose vertices take one
+    # side's normal (black shards)
+    vox = float(cfg.get("voxel", DEFAULTS["voxel"]))
     return {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
-            "reach": fac + 0.7 * bd + 1.0}
+            "reach": fac + 0.7 * bd + 1.0, "joint": max(JOINT, 0.8 * vox / size), "bed_edge": max(0.08, vox / bed)}
+
+
+def dig_doline(T, H, d):
+    """A doline (a karst sinkhole) dug into the ground grid: a bowl `radius` m round and `depth` m deep relative to the
+    ground around it (so on a hillside it's a hollow in the slope), gentle at the lip and steepest (2 x depth / run)
+    at its throat, a flat floor `throat` m round where a shaft drops to the cave."""
+    r = np.hypot(T.X - d["xy"][0], T.Y - d["xy"][1])
+    s = np.clip((r - d["throat"]) / max(d["radius"] - d["throat"], 1e-6), 0, 1)
+    return H - d["depth"] * (1 - s) ** 2
 
 
 class Field:
-    def __init__(self, T, vols: list[Tube], rock=None):
+    def __init__(self, T, vols: list[Tube], rock=None, dolines=None):
         self.H = np.ascontiguousarray(T.H, float)
         self.x0, self.y0, self.c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
         self.vols = vols
         self.rock = rock
         self.floor_guard = None
+        for d in dolines or ():  # 2.5D ground edits (karst dolines: grassy funnels into a throat)
+            self.H = dig_doline(T, self.H, d)
+        if rock is not None:
+            # where the rock character goes: steep ground (45-62 deg), as a smooth mask on the grid (~2 cells). From
+            # each point's own column slope it switched on within 0.2 m at a cliff's lip (the B-spline's slope turns
+            # fast there): the relief times that switch was a sub-voxel step in the field, meshed as black shards
+            gy, gx = np.gradient(self.H, self.c)
+            cs = 1.0 / np.sqrt(1.0 + gx * gx + gy * gy)
+            # (dilated a cell first: a sheer cliff is a cell or two wide in plan and smoothing alone halved it)
+            self.steep = ndimage.gaussian_filter(ndimage.maximum_filter(smoothstep(0.71, 0.47, cs), 3), 1.0)
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
@@ -416,6 +496,11 @@ class Field:
         gx = (v[1] - v[2]) / (2 * e * self.c)
         gy = (v[3] - v[4]) / (2 * e * self.c)
         return v[0], 1.0 / np.sqrt(1.0 + gx * gx + gy * gy)
+
+    def steep_at(self, x, y):
+        r = (np.asarray(y, float) - self.y0) / self.c
+        q = (np.asarray(x, float) - self.x0) / self.c
+        return ndimage.map_coordinates(self.steep, [r, q], order=3, prefilter=False, mode="nearest")
 
     def ground(self, p):
         h, s = self.column(p[:, 0], p[:, 1])
@@ -433,8 +518,8 @@ class Field:
             if near is not None:
                 # rock relief on walls and roofs, scaled to the passage (a 1 m slot doesn't take 0.8 m facets), and
                 # none on floors (a person walks there)
-                w = smoothstep(3.0, 0.0, d) * np.clip(size / 3.0, 0.15, 1.0) * smoothstep(0.3, 1.5, above)
-                near[k] = np.maximum(near[k], w)
+                w = smoothstep(NEAR, 0.0, d) * np.clip(size / 3.0, 0.15, 1.0) * smoothstep(0.3, 1.5, above)
+                near[k] = np.maximum(near[k], w * vol.relief)
                 if self.floor_guard is not None:
                     self.floor_guard[k] = np.minimum(self.floor_guard[k], np.where(np.isinf(above), 1.0,
                                                                                   smoothstep(0.3, 1.5, above)))
@@ -448,7 +533,7 @@ class Field:
         guard, self.floor_guard = self.floor_guard, None
         if self.rock is not None:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
-            w = np.maximum(smoothstep(0.71, 0.47, s) * guard, near)
+            w = np.maximum(self.steep_at(p[:, 0], p[:, 1]) * guard, near)
             k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 F[k] = F[k] + w[k] * rock_relief(p[k], self.rock)
@@ -491,7 +576,9 @@ def project(field, P, v, fixed=None, iterations=4):
         ok = np.isfinite(step).all(1)
         P[todo[ok]] -= step[ok]
         todo = todo[ok & (n[:, 0] > 1e-4 * v)]
-    _, g = field.value_gradient(P, h)
+    # normals over a voxel-sized stencil: the gradient the mesh can show (a finer one reads detail smaller than the
+    # faces and turns a vertex against them)
+    _, g = field.value_gradient(P, NORMAL_H * v)
     N = g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
     return P, N
 
@@ -1136,6 +1223,19 @@ def _job_collapse(args):
     return Fk, {int(vrow[u]) for u in bad}
 
 
+def build_field(T, cfg=None):
+    """The 3D field of a terrain: (field, volume pieces, notes, caves)."""
+    from . import terrain_caves
+    cfg = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
+    vols, notes = volumes(T)
+    rock = rock_config(T, cfg)
+    caves = terrain_caves.build(T, rock)
+    for cv in caves:
+        vols = vols + cv.tubes
+        notes = notes + cv.notes
+    return Field(T, vols, rock, dolines=[d for cv in caves for d in cv.dolines]), vols, notes, caves
+
+
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     """Mesh the terrain's field (heightfield + volumes) into seamless tiles; write GLBs per tile per LOD, collision
     GLBs, heightmap and splat tiles, trees.csv and manifest.json; run the seam check (raises if it fails)."""
@@ -1148,14 +1248,8 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         f.unlink()
     timing = {}
     t0 = time.time()
-    vols, notes = volumes(T)
-    from . import terrain_caves
-    rock = rock_config(T, cfg)
-    caves = terrain_caves.build(T, rock)
-    for cv in caves:
-        vols = vols + cv.tubes
-        notes = notes + cv.notes
-    field = Field(T, vols, rock)
+    field, vols, notes, caves = build_field(T, cfg)
+    rock = field.rock
     mats = Materials(T, field)
     G = Grid(T, cfg)
     timing["setup"] = time.time() - t0
@@ -1394,6 +1488,7 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     }
     if caves:  # a person walked through every passage
         t0 = time.time()
+        from . import terrain_caves
         manifest["caves"] = terrain_caves.check(caves, field, sea=_sea(T))
         timing["cave walk"] = time.time() - t0
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
@@ -1423,6 +1518,9 @@ def summary(r) -> str:
     sc = M["seam_check"]
     lines.append(f"seam check: {sc['failures']} failures; shared edges {sc['shared_edges']}, border normals within "
                  f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under skirts")
+    sh = [f"LOD {k} {sc[f'lod{k}_shards']['area_pct']}%" for k in range(len(M["lods"])) if f"lod{k}_shards" in sc]
+    if sh:
+        lines.append("shards (corner normals against their face, share of the area): " + ", ".join(sh))
     lines.append("timing (s): " + ", ".join(f"{k} {v}" for k, v in M["timing_s"].items()))
     return "\n".join(lines)
 
@@ -1487,6 +1585,16 @@ def _job_tile(ij):
         if fold.any():
             Pd[fold] = before[fold]
             N[fold] = _vertex_normals(Pd, Fd)[fold]
+        # a face spanning detail it can't show (coarse LODs across a joint, LOD0 at a sub-voxel feature) can have a
+        # corner whose field normal points away from it: that corner takes the mesh's own normal (border vertices
+        # keep the canonical one, which both tiles share)
+        against = np.zeros(len(Pd), bool)
+        fnm = _face_normals(Pd, Fd)
+        for c3 in range(3):
+            np.logical_or.at(against, Fd[:, c3], (N[Fd[:, c3]] * fnm).sum(1) < 0.1)
+        against &= ~bd
+        if against.any():
+            N[against] = _vertex_normals(Pd, Fd)[against]
         N[bd] = CN[rowd[bd]]
         prevs.append((Pd.copy(), Fd.copy()))
         W = np.zeros((len(Pd), len(mats.layers)), np.float32)
@@ -1663,6 +1771,13 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
         summary[f"lod{k}_watertight"] = {"vertices": int(nmax), "triangles": int(len(F)), "open_edges_inside": open_inside,
                                           "open_edges_world_edge": int(np.sum(at_edge)), "non_manifold_edges": nonman,
                                           "same_direction_edges": dup_dir}
+        # shading: a face whose corner normals point away from it renders as a black shard (a jump in the field
+        # under it, or a fold decimation left)
+        sh = _shards([data[i, j, k]["surface"] for (i, j) in tiles if (i, j, k) in data])
+        summary[f"lod{k}_shards"] = sh
+        if sh["area_pct"] > SHARD_LIMIT[min(k, len(SHARD_LIMIT) - 1)]:
+            failures.append(f"LOD {k}: {sh['faces']} faces ({sh['area_pct']}% of the area) with corner normals "
+                            f"against the face: black shards (e.g. at {sh['at'][:3]})")
         if open_inside or nonman or dup_dir:
             bad = np.r_[a[~at_edge], u[cnt > 2] // nmax, fu[fcnt > 1] // nmax]
             ex = Pu[bad[:3]].round(2).tolist()
@@ -1763,6 +1878,27 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
     summary["failures"] = len(failures)
     (out / "seam_check.json").write_text(json.dumps({"summary": summary, "failures": failures}, indent=1))
     return {"summary": summary, "failures": failures}
+
+
+SHARD_LIMIT = [0.01, 0.05, 0.5]  # % of a LOD's area allowed to have corner normals against its faces
+
+
+def _shards(surfs):
+    """Faces with a corner normal against the face (dot < 0): count, area share, worst places."""
+    n = a_bad = a_all = 0
+    at = []
+    for P, N, F in surfs:
+        fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
+        A = np.linalg.norm(fn, axis=1) / 2
+        fn /= np.maximum(2 * A, 1e-20)[:, None]
+        m = np.einsum("fcj,fj->fc", N[F], fn).min(1)
+        b = m < 0
+        n += int(b.sum())
+        a_bad += float(A[b].sum())
+        a_all += float(A.sum())
+        at += [(float(A[f]), P[F[f]].mean(0).round(1).tolist()) for f in np.flatnonzero(b)]
+    at = [p for _, p in sorted(at, reverse=True)[:5]]
+    return {"faces": n, "area_m2": round(a_bad, 2), "area_pct": round(100 * a_bad / max(a_all, 1e-9), 4), "at": at}
 
 
 def _at_world_edge(P, lo, hi):
