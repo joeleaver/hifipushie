@@ -141,6 +141,17 @@ def _weight(defs: dict, pn: str, key: str) -> float:
     return w
 
 
+def _min_triangles(defs: dict, pn: str) -> int | None:
+    """parts.<p>.min_triangles: this part's floor per copy, in place of min_part (which pins every copy of a
+    many-instance prefab, chain links say, at 300 whatever its triangle_weight)."""
+    v = (defs.get(pn) or {}).get("min_triangles")
+    if v is None:
+        return None
+    if int(v) < 0:
+        raise ValueError(f"parts.{pn}.min_triangles must be >= 0")
+    return int(v)
+
+
 def focus_regions(spec: dict, pn: str) -> list:
     """parts.<p>.texel_focus: [{"at": point | joint | blob | {"bone", "t"}, "radius": m, "density": w}] as
     [[x, y, z, radius, density]]: islands inside get `density` times the part's own (the face of a character)."""
@@ -542,7 +553,9 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
         x[bad], g[bad] = P[sel][bad], Nl[sel][bad]
         X[sel], G[sel] = x, _unit(g)
         if bad.any():
-            log.append(f"  {pn}: {bad.mean():.2%} of texels kept the low-poly surface (projection went astray)")
+            log.append(f"  {pn}: {bad.mean():.2%} of texels kept the low-poly surface (projection went astray)"
+                       + (": WARNING, the low poly is too far from thin geometry: raise its triangle_weight "
+                          "(or min_triangles)" if bad.mean() > 0.2 else ""))
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
     # texels whose ray found no scene mesh (alpha 0) take their nearest baked neighbour
     baked = given["color"][..., 3] > 0.5
@@ -926,7 +939,9 @@ def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048
                  if texel_density else texture for ai, an in enumerate(names)}
         cfg = {pn: {"weight": w(pn, "triangle_weight"), "density": w(pn, "texel_density"),
                     "atlas": names.index(group[pn]), "focus": focus[pn], "split": pn in ctx.get("split", {}),
-                    "copies": len(ctx["prefabs"][pf_of[pn]]["instances"]) if pn in pf_of else 1} for pn in areas}
+                    "copies": len(ctx["prefabs"][pf_of[pn]]["instances"]) if pn in pf_of else 1,
+                    **({} if _min_triangles(defs, origin[pn]) is None else  # (absent: cached decimations stay valid)
+                       {"min": _min_triangles(defs, origin[pn])})} for pn in areas}
         t1 = time.time()
         parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"])
         if not texel_density:

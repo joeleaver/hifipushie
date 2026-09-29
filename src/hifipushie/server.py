@@ -940,7 +940,7 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     and baked once, at its first instance (paint, AO, sky as it stands there). prefabs.<p>.export = "unique" bakes
     its instances into the scene instead (when paint must differ per copy). `triangles` counts drawn triangles.
     Budgets: triangles go where one joint decimation of all parts puts them (geometric error, so flat walls get
-    few and small round parts enough; every part gets at least max(300, triangles/100)). Per part in
+    few and small round parts enough; every part gets at least max(300, triangles/100) per copy, or its parts.<p>.min_triangles: lower it for many-instance prefabs like chain links). Per part in
     spec["parts"][p]: "triangle_weight" (x its share), "texel_density" (x its texels per metre), "texel_focus":
     [{"at": point | joint | blob, "radius": m, "density": w}] (islands there get w x more: a character's face),
     "atlas": name (its own atlas and material, e.g. "interior").

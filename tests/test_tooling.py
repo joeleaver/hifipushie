@@ -271,6 +271,29 @@ def test_camera_sight():
     assert "NOT SEEN: target hidden by wall" in info, info
 
 
+# Card "Export: many-instance prefabs (chains) eat the budget..." (the budget floor; cards not done)
+def test_min_triangles_lets_chains_go_below_the_floor():
+    import ast
+    from pathlib import Path
+    from hifipushie import asset
+    # blender_asset imports bpy: take its pure budgets() alone
+    src = (Path(asset.__file__).with_name("blender_asset.py")).read_text()
+    fn = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "budgets")
+    ns: dict = {}
+    exec(compile(ast.Module([fn], []), "budgets", "exec"), ns)
+    budgets = ns["budgets"]
+    # the disc basket: 30 chain copies, a tray, a pole; 8000 drawn triangles; chains weighted down to 0.4
+    counts, faces = {"chain": 900, "tray": 2000, "pole": 800}, {"chain": 20000, "tray": 60000, "pole": 20000}
+    weights, copies = {"chain": 0.4, "tray": 4, "pole": 4}, {"chain": 30}
+    old = budgets(counts, faces, weights, 8000, {p: asset.min_part(8000) for p in faces}, copies)
+    assert old["chain"] * 30 >= 9000  # the incident: chains pinned at 300 a copy, whatever the weight
+    floor = {"chain": asset._min_triangles({"chain": {"min_triangles": 40}}, "chain"), "tray": 300, "pole": 300}
+    new = budgets(counts, faces, weights, 8000, floor, copies)
+    assert new["chain"] * 30 < 4000 and new["tray"] > old["tray"], (old, new)
+    assert asset._min_triangles({}, "chain") is None
+    assert "min_triangles" in _raises(asset._min_triangles, {"chain": {"min_triangles": -1}}, "chain")
+
+
 def _exc(fn, *a):
     try:
         fn(*a)
