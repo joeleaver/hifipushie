@@ -113,7 +113,9 @@ def flatten_parts(high: Path, path: Path, names: list, plane_tol: float) -> str:
         todo.append(pn)
         jobs.append((V[used], remap[F[sel]], plane_tol))
     order = sorted(range(len(jobs)), key=lambda i: -len(jobs[i][1]))  # biggest first: they set the wall time
-    with ProcessPoolExecutor(max_workers=max(1, min(len(jobs), (os.cpu_count() or 4) - 1))) as ex:
+    from . import resources
+    ex = ProcessPoolExecutor(max_workers=resources.workers(1.5, jobs=len(jobs)))
+    with resources.guarded(ex, "flatten parts") as ex:
         got = dict(zip(order, ex.map(planar._flatten_job, [jobs[i] for i in order])))
     arrays = {"key": np.array(key), "names": np.array(todo)}
     for i in range(len(todo)):
@@ -954,9 +956,16 @@ def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
     return out
 
 
-def export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
-           atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False,
-           fbx: bool = False) -> dict:
+def export(name: str, out_dir: Path, *args, **kw) -> dict:
+    """See `_export`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
+    from . import resources
+    with resources.heavy(f"export {name}"):
+        return _export(name, out_dir, *args, **kw)
+
+
+def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
+            atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False,
+            fbx: bool = False) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
     the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own.
