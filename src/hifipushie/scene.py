@@ -141,6 +141,8 @@ def thinnest(ps: list) -> float:
             t = min(t, 2 * float(np.min(pr["size"])))
         elif kind == "cone":
             t = min(t, 2 * min(pr["ra"], pr["rb"]) * min(1.0, *pr["flat"]))
+        elif kind == "collar":  # a sheet of cloth 2 t thick
+            t = min(t, 2 * pr["t"])
         if p.kind == "csg" and p.params.get("hollow"):
             t = min(t, float(p.params["hollow"]))
     return float(t) if np.isfinite(t) else 0.05

@@ -27,18 +27,20 @@ import zlib
 
 import numpy as np
 
-from .terrain_mesh import Tube, _daylight, _downhill, _sea, smoothstep
+from .terrain_mesh import Mound, Tube, _daylight, _downhill, _sea, smoothstep
 
 KINDS = {
     "sea": {"width": 6.0, "height": 4.5, "chamber": 8.0, "depth": None, "rough": 0.4},
-    "karst": {"width": 4.0, "height": 4.5, "chamber": 9.0, "depth": 14.0, "rough": 0.3},
+    "karst": {"width": 4.0, "height": 4.5, "chamber": 9.0, "depth": 18.0, "rough": 0.12, "doline": 18.0, "relief": 0.0,
+              "rough_scale": 6.0},
     "lava": {"width": 7.0, "height": 4.5, "chamber": 9.0, "depth": 7.5, "rough": 0.25},
 }
 
 
 class Cave:
-    def __init__(self, name, kind, nodes, edges, tubes, notes):
+    def __init__(self, name, kind, nodes, edges, tubes, notes, dolines=()):
         self.name, self.kind, self.nodes, self.edges, self.tubes, self.notes = name, kind, nodes, edges, tubes, notes
+        self.dolines = list(dolines)  # ground edits (terrain_mesh.dig_doline)
 
 
 def build(T, rock=None) -> list[Cave]:
@@ -57,6 +59,19 @@ def _cave(T, name, c, rock):
         raise ValueError(f"cave {name!r}: kind {kind!r}: use one of {sorted(KINDS)}")
     K = {**KINDS[kind], **{k: c[k] for k in ("width", "height") if k in c}}
     sea = _sea(T)
+    if kind == "lava" and c.get("flow") and not c.get("passages"):
+        # a tube down a lava flow (terrain_volcano's line): from a collapse pit at `from` to another at `to` (shares
+        # of the flow's length), following the flow's line
+        fl_, f0, f1 = c["flow"], float(c.get("from", 0.25)), float(c.get("to", 0.85))
+        if fl_ not in getattr(T, "lines", {}):
+            raise ValueError(f"cave {name!r}: no lava flow {fl_!r} (flows: "
+                             f"{sorted(k for k, v in getattr(T, 'lines', {}).items() if getattr(v, 'kind', '') == 'flow')})")
+        L_ = float(getattr(T.lines[fl_], "s", [0, 100])[-1])
+        n_ = max(2, int((f1 - f0) * L_ / 15))
+        c = {**c, "entrances": {**(c.get("entrances") or {}), "upper_pit": {"at": f"{fl_}@{f0:.4f}"},
+                                "lower_pit": {"at": f"{fl_}@{f1:.4f}"}},
+             "passages": [{"from": "upper_pit", "to": "lower_pit", "wander": 0,
+                           "via": [f"{fl_}@{t:.4f}" for t in np.linspace(f0, f1, n_ + 1)[1:-1]]}]}
     seed = zlib.crc32(name.encode()) % 10000
     rk = rock or {"bed": 3.0}
     bed = rk["bed"]
@@ -70,8 +85,22 @@ def _cave(T, name, c, rock):
         off = float(boff(xy)[0])
         return math.floor((z + off) / bed) * bed - off
 
+    # thin beds inside the rock's beds (~1.2-1.5 m: a passage shows a few), on the same planes
+    sub = bed / max(1, round(bed / 1.3))
+    beds = {"bed": sub, "amp": float(c.get("ledges", 0.45)), "off": rk.get("bed_offset"), "seed": seed}
+
+    def sub_snap(xy, z):  # the nearest thin bedding plane (a flat roof)
+        off = boff(xy)
+        return np.round((np.asarray(z, float) + off) / sub) * sub - off
+
     for n, ch in (c.get("chambers") or {}).items():
-        xy, g, _ = _xy(T, ch["at"])
+        xy, g, d = _xy(T, ch["at"])
+        if "in" in ch:  # metres into the rock along the address's own direction (e.g. from "cliff_foot:<address>")
+            if d is None:
+                raise ValueError(f"cave {name!r}: chamber {n!r}: \"in\" needs an address with a direction into the "
+                                 f"rock, e.g. \"cliff_foot:<address>\" ({ch['at']!r} has none)")
+            xy = xy + float(ch["in"]) * d / max(np.linalg.norm(d), 1e-9)
+            g = float(T.height(xy))
         size = ch.get("size", K["chamber"])
         rw, rh = (float(size), 0.6 * float(size)) if np.isscalar(size) else map(float, size)
         if "z" in ch:
@@ -87,8 +116,7 @@ def _cave(T, name, c, rock):
         xy, g, _ = _xy(T, en["at"])
         # a lava tube is entered where its roof fell in (a collapse pit), never through a hillside mouth
         nodes[n] = {"xy": xy, "z": None, "type": "entrance", "shaft": bool(en.get("shaft")) or kind == "lava",
-                    "ground": g,
-                    "at": en["at"]}
+                    "ground": g, "at": en["at"], "doline": en.get("doline", kind == "karst")}
     edges = []
     for p in c.get("passages") or []:
         if isinstance(p, (list, tuple)):
@@ -123,9 +151,9 @@ def _cave(T, name, c, rock):
             back = _daylight(T, nd["xy"], -t, nd["z"] + 0.5 * K["height"], reach=150) or 0.0
             nd["xy"] = nd["xy"] - t * back
         nd["xy"] = nd["xy"] - t * 0.5 * K["width"]
-    tubes = []
+    tubes, rubble = [], []
     common = dict(op="subtract", blend=float(c.get("blend", 0.8)), rough=float(c.get("rough", K["rough"])),
-                  rough_scale=3.0)
+                  rough_scale=float(c.get("rough_scale", K.get("rough_scale", 3.0))), relief=float(c.get("relief", K.get("relief", 1.0))))
     for i, e in enumerate(edges):
         a, b = nodes[e["from"]], nodes[e["to"]]
         w, h = float(e.get("width", K["width"])), float(e.get("height", K["height"]))
@@ -134,7 +162,7 @@ def _cave(T, name, c, rock):
         L = s[-1]
         # the floor: straight between the nodes' floors, or following the ground (lava), or the beds (karst)
         f = s / max(L, 1e-9)
-        wander = 0.06 * L * math.sin(seed + i) * np.sin(np.pi * f)
+        wander = float(e.get("wander", 0.06)) * L * math.sin(seed + i) * np.sin(np.pi * f)
         if len(xy) > 1:
             tang = np.gradient(xy, axis=0)
             tang /= np.maximum(np.linalg.norm(tang, axis=1, keepdims=True), 1e-9)
@@ -146,9 +174,16 @@ def _cave(T, name, c, rock):
         g_ = np.clip((s - ra) / max(L - (ra + rb), 1e-6), 0, 1)
         fl = a["z"] + (b["z"] - a["z"]) * g_
         if kind == "lava":  # a tube runs at a steady depth under the ground it follows
+            # (the flow's grade, not its surface: levees and pressure ridges put 1-3 m steps in a floor that followed
+            # the ground itself)
+            from scipy.ndimage import gaussian_filter1d
             roof = float(e.get("roof", K["depth"] - h))
-            g = T.sample(xy)
+            step = float(np.median(np.diff(s))) if len(s) > 1 else 3.0
+            g = gaussian_filter1d(T.sample(xy), 12.0 / max(step, 1e-6), mode="nearest")
             fl = np.minimum(g - roof - h, fl + 0.0) if e.get("level") else g - roof - h
+            for nd_, k_ in ((a, 0), (b, -1)):  # a pit's floor is the tube's (a chamber keeps its own)
+                if nd_["type"] == "entrance":
+                    nd_["z"] = float(fl[k_])
             fl[0], fl[-1] = a["z"], b["z"]
         if kind == "karst":  # each end's floor carried along its own bedding plane (they dip), handing over between
             off = boff(xy)
@@ -156,10 +191,18 @@ def _cave(T, name, c, rock):
             fl = (a["z"] + oa - off) * (1 - g_) + (b["z"] + ob - off) * g_
         node_seed = zlib.crc32(f"{name}:{i}".encode()) % 10000
         if kind == "karst":
-            # keyhole: the phreatic tube up top along the bed, the vadose slot cut down below it
-            r = 0.5 * w
-            tubes.append(Tube(f"{name}:{i}", np.c_[xy, fl + h - r], r, r, None, seed=node_seed, **common))
-            tubes.append(Tube(f"{name}:{i}:slot", np.c_[xy, fl], 0.3 * w, h - r, fl, seed=node_seed + 1, **common))
+            # keyhole: the phreatic tube up top, spread wide along a bedding plane that is its flat roof, the vadose
+            # slot cut down below it by the stream; thin beds stand out of the walls as ledges or are set back
+            roof = sub_snap(xy, fl + h)
+            top_h = 0.3 * w
+            tubes.append(Tube(f"{name}:{i}", np.c_[xy, roof - 0.5 * top_h], 0.55 * w, top_h, None, seed=node_seed,
+                              roof=roof, beds=beds, **common))
+            tubes.append(Tube(f"{name}:{i}:slot", np.c_[xy, fl], 0.3 * w, roof - fl - 0.5 * top_h, fl,
+                              seed=node_seed + 1, beds=beds, **common))
+        elif kind == "lava":  # benches along the walls where the flow's level stood a while (lava shelves)
+            tubes.append(Tube(f"{name}:{i}", np.c_[xy, fl], 0.5 * w, h, fl, seed=node_seed,
+                              beds={"bed": 1.4, "amp": float(c.get("benches", 0.3)), "off": None, "seed": seed},
+                              **common))
         else:
             tubes.append(Tube(f"{name}:{i}", np.c_[xy, fl], 0.5 * w, h, fl, seed=node_seed, **common))
         e["_xy"], e["_floor"], e["_w"], e["_h"] = xy, fl, w, h
@@ -171,21 +214,62 @@ def _cave(T, name, c, rock):
                 if g[j] - (fl[j] + h) < 5.0:
                     tubes.append(Tube(f"{name}:{i}:skylight{j}", [[*xy[j], fl[j] + h], [*xy[j], g[j] + 2]],
                                       0.35 * w, 0.35 * w, None, seed=node_seed + 7, **common))
+                    # the fallen roof: a low pile of breakdown on the floor under it
+                    near_ = np.linalg.norm(xy - xy[j], axis=1) < 0.45 * w
+                    base = float(fl[near_].min())
+                    rubble.append(((*xy[j], base), 0.45 * w, 0.7 + fl[j] - base, node_seed + 8))
+    dolines = []
     for n, nd in nodes.items():
         if nd["type"] == "chamber":
+            kw = {}
+            if kind == "karst":  # a hall under a bedding plane: a flat roof, bedded walls
+                kw = {"roof": float(sub_snap(nd["xy"], nd["z"] + 0.8 * nd["rh"])[0]), "beds": beds}
             tubes.append(Tube(f"{name}:{n}", [[*nd["xy"], nd["z"]]], nd["rw"], nd["rh"], nd["z"],
-                              seed=zlib.crc32(n.encode()) % 10000, **common))
+                              seed=zlib.crc32(n.encode()) % 10000, **common, **kw))
         elif nd["shaft"]:  # a sinkhole: a round shaft from the passage's roof up through the ground, flared at the top
             r = (0.6 if kind == "lava" else 0.4) * K["width"] + 0.5  # (a collapse pit is as wide as the tube)
             g = nd["ground"]
+            if nd.get("doline"):
+                # a doline: a wide grassy funnel (tens of metres) dug into the ground, the shaft opening in its throat.
+                # Deep enough to read, never so deep the shaft's rock over the passage goes (>= 2 m of it)
+                dl = nd["doline"] if isinstance(nd["doline"], dict) else {}
+                R = float(dl.get("radius", K["doline"]))
+                roof = nd["z"] + float(max((e.get("height", K["height"]) for e in edges if n in (e["from"], e["to"])),
+                                           default=K["height"]))
+                # the bowl, then a rocky pit (a scarp round the throat) the shaft drops out of; >= 1.5 m of rock
+                # left over the passage
+                avail = g - roof - 1.5
+                D = float(dl.get("depth", max(1.0, min(0.3 * R, 0.65 * avail))))
+                scarp = float(dl.get("scarp", float(np.clip(avail - D, 0.0, 3.0))))
+                throat = 1.6 * r
+                dolines.append({"xy": nd["xy"].copy(), "radius": R, "depth": D, "throat": throat, "seed": seed})
+                nd["doline"] = {"radius": R, "depth": D, "scarp": scarp}
+                g = g - D
+                if scarp > 0.3:
+                    tubes.append(Tube(f"{name}:{n}:pit", [[*nd["xy"], g - scarp], [*nd["xy"], g + 3]],
+                                      [throat, 1.5 * throat], [throat, 1.5 * throat], g - scarp,
+                                      **{**common, "rough": 0.4, "relief": 1.0}))
             tubes.append(Tube(f"{name}:{n}", [[*nd["xy"], nd["z"]], [*nd["xy"], g - 1.5], [*nd["xy"], g + 3]],
                               [r, r, 2.2 * r], [r, r, 2.2 * r], nd["z"], **common))  # (flat-bottomed: no pit)
+            if kind == "lava":  # a collapse pit: the roof that fell lies in it, a slope of blocks to climb down
+                # standing on the lowest floor under it (the tube falls away from the pit: a mound set on the pit's
+                # floor ran on down the tube as a long ramp, or overhung it)
+                rr_ = 1.7 * r
+                base = min([nd["z"]] + [float(np.min(e["_floor"][np.linalg.norm(e["_xy"] - nd["xy"], axis=1) < rr_]))
+                                        for e in edges if n in (e["from"], e["to"]) and "_floor" in e])
+                rubble.append(((*nd["xy"], base), rr_, 0.18 * (nd["ground"] - nd["z"]) + (nd["z"] - base),
+                               zlib.crc32(n.encode()) % 10000))
+    for k_, (at, rr, hh, sd) in enumerate(rubble):
+        # a low cone of blocks (as an ellipsoid or a tube, its round ends made a step or a dome nobody could climb)
+        tubes.append(Mound(f"{name}:rubble{k_}", at, rr, hh, seed=sd))
     for n, nd in nodes.items():
         over = nd["ground"] - nd["z"]
         notes.append(f"cave {name} ({kind}): {nd['type']} {n} at [{nd['xy'][0]:.0f}, {nd['xy'][1]:.0f}], floor "
                      f"{nd['z']:+.1f} m, {over:.0f} m under the ground" + (" (a shaft down to it)" if nd.get("shaft")
-                                                                             else ""))
-    return Cave(name, kind, nodes, edges, tubes, notes)
+                                                                             else "")
+                     + (f", in a doline {2 * nd['doline']['radius']:.0f} m across and {nd['doline']['depth']:.0f} m "
+                        f"deep" if nd.get("shaft") and isinstance(nd.get("doline"), dict) else ""))
+    return Cave(name, kind, nodes, edges, tubes, notes, dolines)
 
 
 def _resample(P, step):
@@ -270,7 +354,7 @@ def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None)
             tight = int((ok & ((clear < radius) | (width < 2 * radius))).sum())
             swim = int((wet > 1.0).sum())
             passes = not blocked and not low and not tight and (steps.max() if len(steps) else 0) <= step
-            bad_at = np.flatnonzero(ok & ((clear < radius) | (width < 2 * radius) | (head < height)))
+            bad_at = np.flatnonzero(~ok | (clear < radius) | (width < 2 * radius) | (head < height))
             if len(steps) and steps.max() > step:
                 bad_at = np.r_[bad_at, np.flatnonzero(ok)[int(np.argmax(steps))]]
             why = [w for w, bad in (("blocked", blocked), ("low headroom", low), ("too tight", tight),
