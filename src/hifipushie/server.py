@@ -296,9 +296,9 @@ in its part and layer. Walls thinner than ~2 voxels break up at the build resolu
 @mcp.tool(structured_output=False)
 def kit_reference() -> str:
     """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten), paint and plans."""
-    from . import assemble, kits, materials, strokes
+    from . import assemble, garments, kits, materials, strokes
     from . import realism
-    return ("REALISM\n" + realism.__doc__ + "\n\nREPETITION AND SOLIDS\n" + assemble.__doc__ + "\n" + SOLIDS + "\n\n" + kits.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
+    return ("REALISM\n" + realism.__doc__ + "\n\nREPETITION AND SOLIDS\n" + assemble.__doc__ + "\n" + SOLIDS + "\n\n" + kits.__doc__ + "\n\nGARMENTS\n" + garments.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
             + "\n\nMATERIALS\n" + materials.__doc__
             + "\n\nPLANS\n" + planmod.__doc__)
 

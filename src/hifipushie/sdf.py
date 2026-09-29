@@ -246,6 +246,86 @@ def sd_collar(p: np.ndarray, pr: dict) -> np.ndarray:
     return d / pr["lip"]
 
 
+def _sweep_frame(q: np.ndarray, pr: dict):
+    """Nearest point on the sweep's polyline: returns (n, u, a, s): offsets along the path's outward (N) and up (U)
+    directions there, the overshoot past either end (>= 0, 0 inside), and the arc length (m)."""
+    P, T, L, S = pr["P"], pr["T"], pr["L"], pr["S"]
+    r0 = q[:, None, :] - P[None, :-1, :]  # (n, m, 3)
+    t = np.clip(np.einsum("nmk,mk->nm", r0, T) / L[None], 0.0, 1.0)
+    d2 = ((r0 - t[..., None] * (T * L[:, None])[None]) ** 2).sum(-1)
+    i = np.argmin(d2, 1)
+    ti = t[np.arange(len(q)), i]
+    C = P[i] + ti[:, None] * T[i] * L[i][:, None]
+    r = q - C
+    w = ti[:, None]
+    N = (1 - w) * pr["N"][i] + w * pr["N"][i + 1]
+    U = (1 - w) * pr["U"][i] + w * pr["U"][i + 1]
+    n, u = (r * N).sum(1), (r * U).sum(1)
+    a = np.zeros(len(q))
+    last = len(L) - 1
+    st = (i == 0) & (ti <= 0.0)
+    a[st] = np.maximum(-(r[st] * T[0]).sum(1), 0.0)
+    en = (i == last) & (ti >= 1.0)
+    a[en] = np.maximum((r[en] * T[last]).sum(1), 0.0)
+    s = S[i] + ti * L[i]
+    return n, u, a, s
+
+
+def sd_sweep(p: np.ndarray, pr: dict) -> np.ndarray:
+    """A 2D profile swept along a polyline (a neckline, a placket's edge), each path vertex carrying its own frame
+    (N outward, U up) and profile numbers, interpolated by arc length; `mirror` evaluates at |x| (a path on the left
+    half makes both sides, e.g. a collar from the nape round to one front end). Profiles:
+    "collar": a folded collar: the stand from `sink` below the path up `stand` (leaning out `lean`), the fall folded
+      over its top running `fall` m out and down at `phi` rad off the stand's line, both `t` (half) thick; past the
+      path's far end the fall reaches forward by `point` x its distance down the fall (the collar point).
+    "band": a rounded rectangle n in [n0, n1], u in [u0, u1], corners `round` (a placket strip; with a wide n0 and
+      op subtract, the hole a neckline cuts).
+    Ends are capped where the path stops, except the start with `open_start` (a mirrored path starting on x = 0: the
+    other half carries on there). Divided by `lip`."""
+    sh = p.shape[:-1]
+    q = p.reshape(-1, 3).astype(np.float64)
+    if pr.get("mirror"):
+        q = q.copy()
+        q[:, 0] = np.abs(q[:, 0])
+    out = np.empty(len(q))
+    V = pr["V"]
+    for c0 in range(0, len(q), 2048):
+        qq = q[c0:c0 + 2048]
+        n, u, a, s = _sweep_frame(qq, pr)
+        # signed distance along the path to the nearer capped end (past it: the overshoot)
+        tot = pr["Sv"][-1]
+        if pr.get("open_start"):
+            a = np.where(s < tot * 0.5, 0.0, a)
+            inner = tot - s
+        else:
+            inner = np.minimum(s, tot - s)
+        a = np.where(a > 0, a, -inner)
+        val = {k: np.interp(s, pr["Sv"], v) for k, v in V.items()}
+        if pr["profile"] == "collar":
+            t, hs, lean, fl, phi, sink = (val[k] for k in ("t", "stand", "lean", "fall", "phi", "sink"))
+            bx = lean
+            ds = _seg2(n, u, 0.0, -sink, bx, hs)
+            fx0, fy0 = bx + t, hs
+            fx1, fy1 = fx0 + fl * np.sin(phi), fy0 - fl * np.cos(phi)
+            df = _seg2(n, u, fx0, fy0, fx1, fy1)
+            # how far down the fall (0 at the fold, 1 at its edge): the point reaches forward past the end with it
+            dx, dy = fx1 - fx0, fy1 - fy0
+            v = np.clip(((n - fx0) * dx + (u - fy0) * dy) / np.maximum(dx * dx + dy * dy, 1e-12), 0, 1)
+            end = (s > tot * 0.5) | bool(pr.get("open_start"))
+            af = np.where(end, a - val["point"] * fl * v, a)
+            d2 = np.where(df < ds, df, ds) - t
+            aa = np.where(df < ds, af, a)
+        else:
+            n0, n1, u0, u1, rnd = (val[k] for k in ("n0", "n1", "u0", "u1", "round"))
+            cn, cu = (n0 + n1) / 2, (u0 + u1) / 2
+            hn, hu = (n1 - n0) / 2 - rnd, (u1 - u0) / 2 - rnd
+            ex, ey = np.abs(n - cn) - hn, np.abs(u - cu) - hu
+            d2 = np.hypot(np.maximum(ex, 0), np.maximum(ey, 0)) + np.minimum(np.maximum(ex, ey), 0) - rnd
+            aa = a
+        out[c0:c0 + 2048] = np.hypot(np.maximum(d2, 0), np.maximum(aa, 0)) + np.minimum(np.maximum(d2, aa), 0)
+    return (out / pr["lip"]).reshape(sh)
+
+
 def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray:
     """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts.
     An instance's element takes its noise (lumpy, chips) in the prefab's frame ("frame": world -> prefab m, t and
@@ -297,7 +377,7 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
-       "blade": sd_blade, "collar": sd_collar,
+       "blade": sd_blade, "collar": sd_collar, "sweep": sd_sweep,
        "csg": sd_csg, "shell": sd_shell, "base": lambda p, pr: _sd_base(p, pr)}
 
 
