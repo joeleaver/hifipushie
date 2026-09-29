@@ -1120,6 +1120,12 @@ class Terrain:
         drains = [b for b in self.basins.values() if np.allclose(b["falls"], xy)]
         level = float(lf["level"]) if "level" in lf else (drains[0]["lo"] if drains else self.height(xy))
         depth = float(lf.get("depth", 10))
+        natural = isinstance(lf.get("dam"), str) and lf["dam"].replace("_", " ").replace("-", " ") in (
+            "moraine", "rock bar", "rockbar", "bar", "rock")
+        if natural and "level" not in lf:  # held partway down the valley: the dam's crest a little over the floor at
+            # its site (the lake's downstream end), so the lake runs back up the valley from it
+            tan0, _ = self._downstream(lf, xy, r, self.H)
+            level = self.height(xy + tan0 * 0.95 * r) + max(0.6 * depth, 4.0)
         target = np.where(d < r, level - depth * np.clip(1 - (d / r) ** 2, 0, 1) ** 1.5 - 0.3,
                           level - 0.3 + 0.35 * (d - r))  # shore banks at ~19 deg rather than a step
         reach = smoothstep(1.6 * r, 1.1 * r, true_d)  # the bank only reshapes the shore, not the hills around it
@@ -1132,6 +1138,9 @@ class Terrain:
                                  f"deep): a lake is a basin dug to its level everywhere inside its radius. Make it smaller "
                                  f"or move it off the high ground (for water around land use 'sea')")
         dam = lf.get("dam", True)
+        if natural:
+            self._natural_dam(name, lf, xy, r, level, before, "moraine" if dam == "moraine" else "rock bar")
+            dam = False
         if dam:
             # an embankment wherever the ground (before digging) was below the crest: its inner face rises from the
             # water's edge, a level top, an outer face at 1:2.5 down to the ground. On a slope that is a bank across the
@@ -1147,8 +1156,111 @@ class Terrain:
             fill = np.where(low & (true_d < 3 * r), np.minimum(bank, crest), -np.inf)
             self.H = np.maximum(self.H, fill)
         # dam false: a natural lake, holding only what the ground holds (the report says if it leaks)
-        self.lakes[name] = {"xy": xy.tolist(), "level": level, "r": r, "id": len(self.lakes) + 1}
+        self.lakes[name] = {"xy": xy.tolist(), "level": level, "r": r, "id": len(self.lakes) + 1,
+                            "reach": 8.0 if lf.get("_dam") else 2.5}  # (a dammed valley lake runs far up the valley)
         lf["_centre"] = xy.tolist()
+
+    def _downstream(self, lf, xy, r, H):
+        """Which way a lake's valley runs down: a river through the lake, "toward", or down the ground smoothed at the
+        lake's size. Returns (unit vector, the river or None)."""
+        tan = None
+        if lf.get("toward"):
+            cd = compass(lf["toward"])
+            tan = cd if cd is not None else self.address(lf["toward"])[0] - xy
+        riv = None
+        for L in self.lines.values():
+            if L.kind == "river":
+                dd = np.hypot(*(L.xy - xy).T)
+                if dd.min() < 1.5 * r:
+                    riv = L
+                    if tan is None:
+                        i = int(np.argmin(dd))
+                        tan = L.xy[min(i + 3, len(L.xy) - 1)] - L.xy[max(i - 3, 0)]
+                    break
+        if tan is None:
+            g = np.gradient(self._smooth(H, r), self.cell)
+            iy, ix = int(round((xy[1] - self.ys[0]) / self.cell)), int(round((xy[0] - self.xs[0]) / self.cell))
+            iy, ix = int(np.clip(iy, 0, len(self.ys) - 1)), int(np.clip(ix, 0, len(self.xs) - 1))
+            tan = -np.array([g[1][iy, ix], g[0][iy, ix]])
+        return np.asarray(tan, float) / (np.linalg.norm(tan) + 1e-9), riv
+
+    def _natural_dam(self, name, lf, xy, r, level, before, kind):
+        """A lake held partway down a sloping valley floor by what a glacier left across it: a moraine (a rounded ridge of
+        till bowed downstream, hummocky) or a rock bar (a rock step, gentle on the lake side, a steep face below). It
+        runs right across the valley at the lake's downstream end (it only rises where the ground is lower than its
+        crest, so it ends against the valley sides by itself), with a spillway notch at the lake's level where the water
+        leaves (the river, or the lowest point of the crest line). The floor beyond it carries on down."""
+        tan, riv = self._downstream(lf, xy, r, before)
+        nrm = np.array([-tan[1], tan[0]])
+        v = np.stack([self.X - xy[0], self.Y - xy[1]], -1)
+        u, s = v @ tan, v @ nrm
+        fb = float(lf.get("freeboard", 2.0 if kind == "moraine" else 3.0))
+        crest = level + fb
+        Wd = float(lf.get("dam_width", max(0.45 * r if kind == "moraine" else 0.3 * r, 4 * self.cell)))
+        u_d = 0.95 * r + 0.5 * Wd - 0.12 * s ** 2 / max(r, 1.0)  # its crest line, bowed downstream
+        x = u - u_d  # across the dam: - upstream (lake side), + downstream
+        wob = noise.fbm(np.c_[self.P, np.full(len(self.P), 91.0)], max(0.3 * Wd, 3 * self.cell), 2,
+                        seed=int(xy[0] * 7 + xy[1]) % 997).reshape(self.X.shape)
+        if kind == "moraine":  # rounded, its crest hummocky
+            prof = np.clip(1 - (x / Wd) ** 2, 0, 1) ** 0.8
+            z = level - 1.0 + (fb + 1.0) * prof + 0.35 * fb * (wob - 0.5) * prof
+        else:  # a rock step: 1:3 up from the lake, a flattish top, then a steep face down to the floor below
+            up = np.clip(1 + x / Wd, 0, 1)
+            z = np.where(x < 0, level - 1.0 + (fb + 1.0) * up, crest - np.tan(math.radians(58)) * np.maximum(x - 0.25 * Wd, 0))
+            z = z + 0.25 * fb * (wob - 0.5)
+        # the spillway: where the river crosses, or the crest line's lowest ground (the water leaves over it)
+        line = (np.abs(x) < max(self.cell, 0.1 * Wd)) & (np.abs(s) < 4 * r)
+        if riv is not None:
+            pts = riv.xy[(riv.xy - xy) @ tan > 0]
+            dl = cKDTree(pts).query(self.P)[0].reshape(self.X.shape) if len(pts) else np.full(self.X.shape, np.inf)
+            k = np.argmin(np.where(line, dl, np.inf))
+        else:
+            k = np.argmin(np.where(line, self._smooth(before, 2 * self.cell), np.inf))
+        sp = self.P[k]
+        notch_w = float(lf.get("spillway", max(8.0, riv.props["floor"] * 0.6 if riv is not None else 8.0)))
+        # a channel through the dam from the lake's level, falling through it (a moraine's in a gentle cut, a rock
+        # bar's down its face in rapids)
+        dn = np.abs((self.X - sp[0]) * nrm[0] + (self.Y - sp[1]) * nrm[1])
+        notch = smoothstep(notch_w / 2 + 3 * self.cell, notch_w / 2, dn) * (x > -Wd)
+        grade = 0.08 if kind == "moraine" else 0.5
+        z_ch = level + 0.1 - grade * np.maximum(x, 0)
+        z = np.where(notch > 0, z * (1 - notch) + np.minimum(z, z_ch) * notch, z)
+        on = (np.abs(x) < 2.5 * Wd) & (z > self.H) & (np.abs(s) < 5 * r)
+        self.H = np.where(on, z, self.H)
+        # the lake side of the dam is the lake's own bank: dig back to the lake where the bowl was (the dam's inner
+        # toe stood in the water)
+        if kind == "rock bar":
+            self.hard |= on & (x > -0.3 * Wd)
+            self.hardness = np.where(on & (x > -0.3 * Wd), 0.1, self.hardness)
+        m = on & (z > before + 0.5)
+        self.vzones = getattr(self, "vzones", {})
+        self.vzones[f"{name}.dam"] = m
+        lf["_dam"] = {"kind": kind, "crest": crest, "spillway": sp.tolist(), "tangent": tan.tolist(), "width": Wd}
+        site = float(self.height(xy + tan * (0.95 * r + 0.5 * Wd), before))
+        tall = crest - site
+        if tall > max(30.0, 0.25 * r):
+            self.warnings.append(f"lake {name!r}: its {kind} stands {tall:.0f} m over the valley floor at its site "
+                                 f"({site:.0f} m): a wall, not a {kind}. Lower the level toward {site + 8:.0f} m (leave "
+                                 f"\"level\" out and it's set from the floor), or move the lake up the valley")
+
+    def _dam_report(self, name, lk):
+        """A valley lake's natural dam as built: its crest above the water, the spillway's lip, how far the water runs
+        up the valley, and how far the floor falls below the dam (the lake is held partway down)."""
+        lf = (self.spec.get("landforms") or {}).get(name) or {}
+        dm = lf.get("_dam")
+        if not dm or not lk.get("area"):
+            return ""
+        m = self.vzones.get(f"{name}.dam") if hasattr(self, "vzones") else None
+        crest = float(np.percentile(self.H[m], 90)) if m is not None and m.any() else dm["crest"]
+        sp = np.array(dm["spillway"])
+        lip = float(self.height(sp))
+        tan = np.array(dm["tangent"])
+        wet = self.lake_id == lk["id"]
+        up = float(-(((self.P - np.array(lk["xy"])) @ tan)[wet.ravel()]).min()) if wet.any() else 0.0
+        below = float(self.height(sp + tan * 2.5 * dm["width"]))
+        return (f"; held by a {dm['kind']} across the valley (crest ~{crest - lk['level']:+.1f} m over the water, "
+                f"spillway lip {lip - lk['level']:+.1f} m at [{sp[0]:.0f}, {sp[1]:.0f}]); the water runs {up:.0f} m up "
+                f"the valley from the lake's centre; the floor below the dam is {lk['level'] - below:.0f} m lower")
 
     def _lf_fan(self, name, lf):
         """A debris cone where a steep stream meets flatter ground: spreads downslope from the stream's mouth."""
@@ -1226,7 +1338,7 @@ class Terrain:
             ids = np.unique(lab[near])
             wet = np.isin(lab, ids[ids > 0])
             def spills(w):
-                return (w & (d > 2.5 * r)).any() or w[[0, -1], :].any() or w[:, [0, -1]].any()
+                return (w & (d > lk.get("reach", 2.5) * r)).any() or w[[0, -1], :].any() or w[:, [0, -1]].any()
 
             if spills(wet):
                 # water finds its own level: the highest that stays in its basin (cropping it at a radius left water
@@ -1411,7 +1523,8 @@ class Terrain:
             if lk.get("sea"):
                 continue
             out.append(f"lake {name}: level {lk['level']:.0f} m, {lk.get('area', 0) / 1e4:.1f} ha, "
-                       f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water")
+                       f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water"
+                       + self._dam_report(name, lk))
         out += design.report(self)
         out += self._highest()
         out += self._drainage()
