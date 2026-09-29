@@ -42,7 +42,7 @@ and roughness come from the most dramatic.
 
 **A kind the tool doesn't know** ("fjord", "badlands"...) isn't guessed. The run stops (exit code 3) and prints
 QUESTIONS FOR THE DESIGNER, and first what the tool **can't build** of what was asked (no tides or waves, no glowing lava,
-no caves or overhangs, no glaciers...): tell the designer that before anything else. The questions: is it like one of the
+no glaciers...; caves and overhangs only in the 3D mesh tiles): tell the designer that before anything else. The questions: is it like one of the
 known kinds or a mix of them (optional), how big it should feel, how dramatic the height is, what's underfoot, what's at
 the lowest point, whether it's closed in, and its overall shape. **Ask the designer; don't answer for them**, and let them
 answer in their own words (they're matched to the nearest option). Put their answers in
@@ -287,6 +287,28 @@ and the `"story"`.
     planar facets with joints between them and bedding (grooves and beds standing proud or set back), which can
     overhang. `"rock": {"facets": 0..1, "bedding": 0..1}` scales it (as for the heightfield's rock), `"rock": false` or
     `"export": {"tiles": {"rock": 0}}` turns it off. Rock near the water is dark and wet up to ~2 m, higher inside caves.
+- **caves** (mesh tiles only, like volumes): a cave is a skeleton of named entrances and chambers joined by passages.
+  ```
+  {"name": {"kind": "sea" | "karst" | "lava", "width"?: m, "height"?: m,
+            "entrances": {"door": {"at": address, "shaft"?: true}},
+            "chambers": {"hall": {"at": address, "depth"?: m | "z"?: m, "size"?: m | [across, up]}},
+            "passages": [["door", "hall"], {"from": "hall", "to": "top", "via"?: [[x, y], ...], "width"?, "height"?}]}}
+  ```
+  - `kind` sets the shapes:
+    - `sea`: floors at the water, wide low passages, domed chambers.
+    - `karst`: keyhole passages (a round tube along a bed, a slot below it), floors on the rock's bedding planes,
+      sinkhole entrances.
+    - `lava`: wide round tubes at a steady depth under the ground they follow, with skylights where the roof is thin;
+      its entrances are always collapse pits (the roof fallen in), as wide as the tube.
+  - An entrance is where a passage meets the open: at a cliff or hillside along the way in, or a shaft straight down
+    from the ground with `"shaft": true` (a blowhole, a sinkhole).
+  - A chamber's floor is `depth` metres under the ground over it (karst 14 m, lava 7.5 m) or at height `z`; a sea
+    cave's chambers sit at the water.
+  - Passages run level through the chambers at either end and slope between them, so a passage that climbs needs
+    room: the walk below tells you if it's too steep.
+  - Every export walks a person (1.8 m tall, 0.5 m wide) through every passage and reports, in the manifest and the
+    summary: floor range, least headroom, least width, the largest step between half-metre samples (0.6 m allowed),
+    water depth (wading, or how far you swim), and PASSES or what stops them and where.
 - The compiler adds on its own: **divides** between rivers, **ribs** (short spurs down from ridges), a slight
   **wander** to ridges between summits, and **erosion** after your design is placed (drainage networks, scree,
   cliff bands from harder rock). Erosion never touches sites, routes, passes or lake shores, and the large-scale

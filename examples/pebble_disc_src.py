@@ -67,6 +67,106 @@ VOLUMES = {
     "chasm_cave": {"type": "cave", "at": [152, 222], "toward": 270, "length": 20, "width": 5, "height": 4.5, "chamber": 4},
     "chasm_notch": {"type": "overhang", "at": [182, 236], "along": 0, "length": 30},
 }
+# caves (mesh tiles only): a sea cave under the west cliffs with a blowhole up to the clifftop, and a karst cave under
+# knoll_b entered by a sinkhole
+CAVES = {
+    "smugglers": {
+        "kind": "sea",
+        "entrances": {
+            "sea_door": {
+                "at": [
+                    56,
+                    330
+                ]
+            },
+            "blowhole": {
+                "at": [
+                    134,
+                    357
+                ],
+                "shaft": True
+            }
+        },
+        "chambers": {
+            "hall": {
+                "at": [
+                    95,
+                    330
+                ],
+                "size": 9
+            },
+            "loft": {
+                "at": [
+                    125,
+                    352
+                ],
+                "z": 4,
+                "size": 6
+            }
+        },
+        "passages": [
+            [
+                "sea_door",
+                "hall"
+            ],
+            {
+                "from": "hall",
+                "to": "loft",
+                "width": 4,
+                "height": 3.5
+            },
+            [
+                "loft",
+                "blowhole"
+            ]
+        ]
+    },
+    "knoll_caves": {
+        "kind": "karst",
+        "entrances": {
+            "doline": {
+                "at": [
+                    300,
+                    468
+                ],
+                "shaft": True
+            }
+        },
+        "chambers": {
+            "gallery": {
+                "at": [
+                    302,
+                    500
+                ],
+                "depth": 14
+            },
+            "hall": {
+                "at": [
+                    334,
+                    532
+                ],
+                "depth": 18,
+                "size": 11
+            }
+        },
+        "passages": [
+            [
+                "doline",
+                "gallery"
+            ],
+            {
+                "from": "gallery",
+                "to": "hall",
+                "via": [
+                    [
+                        318,
+                        508
+                    ]
+                ]
+            }
+        ]
+    }
+}
 STORY = ("A disc golf course on a clifftop peninsula above a bay, inspired by Pebble Beach Golf Links on Carmel Bay: "
          "a lodge above a sheltered bay, inland holes rolling through pines down to the sea, a run of clifftop holes "
          "(a tiny par 3 onto a rocky point, a carry across a cliff chasm, holes along the cliff edge with the sea as out "
@@ -196,6 +296,7 @@ def spec():
                             "sea_wall": {"at": [712, 290], "length": 70}},
                 "coves": COVES},
         "volumes": VOLUMES,
+        "caves": CAVES,
         "sites": sites,
         "routes": routes,
         "cover": {
