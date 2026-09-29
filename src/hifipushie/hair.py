@@ -69,7 +69,7 @@ def side_tuck(az, el, W=None):
     return _ss((np.abs(dirs(az, el)[..., 0]) - SIDE_TUCK[0]) / (SIDE_TUCK[1] - SIDE_TUCK[0]))
 
 
-TIP_STEP = 0.35  # how far a top lock's tip lifts off the lock under it, x its thickness
+TIP_STEP = 0.25  # how far a top lock's tip lifts off the lock under it, x its thickness
 SIDE_NARROW = 0.35  # and how much narrower it gets there
 FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks under it
 REGIONS = ("front", "top", "sides", "back", "nape")
@@ -1355,7 +1355,9 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
 
 
 GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
-GATE_SCALE = 0.006  # m: the outline is judged on shapes at least this tall (smoothed over it)
+GATE_SCALE = 0.012  # m: the outline is gated on shapes at least one lock row tall (smoothed over it): a waist or
+# divot is tens of mm; a clump's step where one lock ends over the next is a notch, the relief we want
+NOTCH_SCALE = 0.006  # m: notches (clump steps at the outline) are measured on this and reported, target 2-5 mm
 CROWN_BAND = 0.02  # ...this far under the top (the top's outline is the lock crowns: reported, not gated)
 
 
@@ -1380,12 +1382,28 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
         for side, sgn in (("left", 1.0), ("right", -1.0)):
             if side not in sides:
                 continue
-            prof = np.array([np.max(sgn * x[(z >= e) & (z < e + 0.002)]) if np.any((z >= e) & (z < e + 0.002))
-                             else np.nan for e in edges])
-            # dents under GATE_SCALE tall are a lock edge's facets, not the silhouette's shape: a running mean
-            k = max(1, int(round(GATE_SCALE / 0.002)))
-            if k > 1 and np.isfinite(prof).all():
-                prof = np.convolve(np.pad(prof, k // 2, mode="edge"), np.ones(k) / k, mode="valid")[:len(edges)]
+            raw = np.array([np.max(sgn * x[(z >= e) & (z < e + 0.002)]) if np.any((z >= e) & (z < e + 0.002))
+                            else np.nan for e in edges])
+
+            def smoothed(scale):
+                k = max(1, int(round(scale / 0.002)))
+                if k > 1 and np.isfinite(raw).all():
+                    return np.convolve(np.pad(raw, k // 2, mode="edge"), np.ones(k) / k, mode="valid")[:len(edges)]
+                return raw
+            prof = smoothed(NOTCH_SCALE)
+            good = ~np.isnan(prof)
+            if good.sum() >= 4:  # the notches: clump steps (6 mm smoothing), reported
+                Pn = np.stack([prof[good], edges[good]], 1)
+                Pn = Pn[Pn[:, 1] <= ztop - CROWN_BAND]
+                if len(Pn) >= 4:
+                    b = Pn[:, 0].min() - 1.0
+                    P2 = np.vstack([Pn, [[b, Pn[0, 1]], [b, Pn[-1, 1]]]])
+                    hv = P2[ConvexHull(P2).vertices]
+                    hv = hv[hv[:, 0] > b + 0.5]
+                    hv = hv[np.argsort(hv[:, 1])]
+                    res[side + "_notch"] = round(float(((np.interp(Pn[:, 1], hv[:, 1], hv[:, 0]) - Pn[:, 0])
+                                                        * 1000).max()), 1)
+            prof = smoothed(GATE_SCALE)
             good = ~np.isnan(prof)
             if good.sum() < 4:
                 continue
