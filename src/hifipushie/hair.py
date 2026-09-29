@@ -501,17 +501,21 @@ def grow(sc: Scalp, g: dict) -> dict:
     xp = _part_x(g)
     locks = {}
     tiers = g["tiers"]
-    names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g"}
+    names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g", "clumps": "k"}
     if tiers.get("strip"):
         locks.update(_strips(sc, g, line, tiers["strip"], rng))
-    for tier in ("big", "crown", "fill", "edge", "gap", "gap"):  # gaps twice: a second look at what's still bare
+    designed = bool((tiers.get("clumps") or {}).get("list"))
+    for tier in ("clumps", "big", "crown", "fill", "edge", "gap", "gap"):  # gaps twice: a second look at what's bare
         td = tiers.get(tier)
-        if not td:
+        if not td or (designed and tier in ("big", "crown")):  # designed clumps replace the laid-out top
             continue
-        kind = {"crown": "big", "gap": "fill"}.get(tier, tier)  # crown: big locks laid by spacing; gap: fill locks
+        if tier == "clumps" and not td.get("list"):
+            continue
+        kind = {"crown": "big", "gap": "fill", "clumps": "big"}.get(tier, tier)
+        heading = None  # crown: big locks laid by spacing; gap: fill locks
         if tier == "gap":
             names["gap"] = "g" if not any(n.startswith("g") for n in locks) else "h"
-        w0, t0 = float(td["width"]), float(td["thickness"])
+        w0, t0 = float(td.get("width", 0.055)), float(td["thickness"])
         sp0 = w0 * float(td.get("spacing", 0.8))
         where = [REGIONS.index(r) for r in td.get("where", REGIONS)]
         if tier == "edge":  # along the hairline, just inside it, where it's seen: temples, sideburns, the nape
@@ -526,6 +530,9 @@ def grow(sc: Scalp, g: dict) -> dict:
             fa = np.abs(((az + 180) % 360) - 180)
             keep = (fa > 40) & (fa < 115)  # temples and sideburns: not the crisp front line, not the nape
             az, el = az[keep], el[keep]
+        elif tier == "clumps":  # the designer's big clumps: [az, el, heading deg, length m, width m] each
+            arr = np.asarray(td["list"], float)
+            az, el, heading = arr[:, 0], arr[:, 1], arr[:, 2]
         elif tier == "gap":  # the artist's pass over what's still bare: roots where no lock covers the volume
             az, el = _gap_roots(sc, g, line, locks, td, rng)
         elif tier == "big" and td.get("layout", "part") == "part" and xp is not None:
@@ -562,6 +569,9 @@ def grow(sc: Scalp, g: dict) -> dict:
         size = 1 + noise * 0.25 * rng.uniform(-1, 1, len(az))
         W_ = w0 * size
         T_ = t0 * size
+        if tier == "clumps":
+            L, W_, size = arr[:, 3], arr[:, 4], np.ones(len(az))
+            T_ = t0 * W_ / 0.055
         if away_given is not None:  # the part side's locks are the short, flat, narrower ones
             ps = away_given == np.sign(_part_x(g) or 1.0)
             W_ = np.where(ps, W_ * 0.75, W_)
@@ -577,7 +587,7 @@ def grow(sc: Scalp, g: dict) -> dict:
         flat = (away_given == np.sign(_part_x(g) or 1.0)).astype(float) if away_given is not None else None
         if flat is not None:  # the part side's locks lie flat: no lift, no tip step
             lift = lift * (1 - flat)
-        paths, sides = _walk(sc, g, line, az, el, L, T_, lift, away, rng, kind, flat=flat)
+        paths, sides = _walk(sc, g, line, az, el, L, T_, lift, away, rng, kind, flat=flat, heading=heading)
         for i in range(len(az)):
             path, sfi = paths[i], sides[i]
             if tier != "edge":  # a lock ends inside the hairline (tips standing out over the skin read as a fringe)
@@ -861,7 +871,7 @@ def _grey(g, az, el, line):
     return max(temple * (0.4 + 0.6 * low), burn)
 
 
-def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24, flat=None):
+def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24, flat=None, heading=None):
     """Lock spines (m, n, 3): from the root on the scalp along the flow, held under the envelope (the top layer's
     spine half a thickness under it), rising out of the scalp over the first fifth, the tip tucking down."""
     m = len(az)
@@ -874,6 +884,13 @@ def _walk(sc: Scalp, g: dict, line, az, el, L, T, lift, away, rng, tier, n=24, f
     flat = np.zeros(m) if flat is None else np.asarray(flat, float)
 
     def flow_flat(q, W):  # locks marked flat comb back and down only (the part side: brushed toward the ear)
+        if heading is not None:  # a designed clump keeps its heading on the surface: 0 back, 90 his right, 180 fwd
+            n = _unit(q - sc.C)
+            v = np.array([0.0, 1.0, 0.8])  # back over the crown (from the forehead, that is up: +Y alone vanished there)
+            back = _unit(v - (n @ v)[:, None] * n)
+            right = _unit(np.cross(n, back))  # n x back: toward his right (-X) on the top
+            hr = np.radians(heading)[:, None]
+            return np.cos(hr) * back + np.sin(hr) * right
         f = flow(sc, g, q, W, away)
         return f - flat[:, None] * np.maximum(f[:, 2:3], 0) * np.array([0.0, 0.0, 1.0])
     d = _unit(flow_flat(P[:, 0], W))
@@ -954,7 +971,7 @@ def groom(name: str, replace: bool = False, note: str = "") -> dict:
     new = grow(sc, g)
     old = h.get("locks") or {}
     keep = {} if replace else {n: lk for n, lk in old.items()
-                               if not (n[:1] in "bcfesgh" and n[1:].rstrip("abcdefgh").isdigit())}
+                               if not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())}
     h["locks"] = {**new, **keep}
     store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     return {"locks": len(h["locks"]), "tiers": {t: sum(1 for lk in new.values() if lk["tier"] == t)
