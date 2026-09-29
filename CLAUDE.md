@@ -649,6 +649,17 @@ regresses, bisect by building one spec at each commit and diffing heights.
   - Lone hills combine by max (a saddle), not sum (+6 m stacking). Erosion's deepest cut is capped at 2x the kind's
     gully (tanh). Pads: level at the 40th percentile (cut in), big pads (r > 40) keep half the ground's lie (`flat`);
     the report says how far above the water beside it a pad ended and warns when its lake settled lower.
+  - Blind round t2 (`workspace/terrain/t2_coast`, `t2_alps`, `t2_farm`; renders 24, 25). Fixed: routes on a pad run on
+    its surface (`_profile` pins pad points; between two pads the grade is at least what their heights need, past the
+    limit if it must: an even FAIL and a warning naming the pads, not a 4 m step at one pad edge); the as-built grade
+    is judged on the deck over water and not on pads; ridge dome peaks rounded over `radius` (they were cusps: 41 deg
+    "pimples"); the tilt's lift on ridge peaks is said; a land-zone coast with rivers keeps `world.base` away from them
+    (the solve between rivers and seabed sank the land 16 m); rugged runs after the water (sea/lake zones work), on dry
+    land only, and rock no longer re-facets it (spires); geos are flooded to their head last (platform/talus refilled
+    them) and reported; stacks shrink 0.8x outwards; cliff heights judged per stretch; report lines for trench rivers,
+    uncovered ground, detail left off, detail's cost; a river over a dammed lake's dam is a 0.15 m spillway.
+    `terrain_rock.bed_step/bed_offset/params` are shared with terrain3d's solid rock (same beds, facet sizes, colour);
+    views darken rock at the waterline (+0.4..2.2 m, the tiles' wet band).
 - `terrain_tools.py` + tools in `server.py`: `set_terrain` (spec or merge `patch`; `workspace/terrain/<name>/` with
   history), `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history`; builds cached by spec content;
   questions come back as JSON (`Questions.data`). `guide(topic="terrain")`. `examples/terrain_tool.py` calls the same
