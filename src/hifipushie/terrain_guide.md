@@ -229,7 +229,7 @@ and the `"story"`.
     all round it, standing at least `headland_height` m, default ~22% of the width, at least 18; the land's own height
     if that's more), the bay swings away from it, and a low rocky point on the other side narrows the mouth. The cove
     sits in a hollow: the land round the bay (not the headland) eases down to a rim `rim` m over the water (default a
-    tenth of the width, 4-18) at `rim_slope` (16 deg), so a cove in a high plateau isn't a pit ringed by cliffs. `"headland"`: `"auto"` (the side where the land is higher),
+    tenth of the width, 4-18) at `rim_slope` (16 deg), so a cove in a high plateau isn't a pit ringed by cliffs (coves with a beach only; gentle ground only, at most `rim_depth` m, default a tenth of the width, 6-25). `"headland"`: `"auto"` (the side where the land is higher),
     a compass side or address, `"left"`/`"right"` (looking in from the sea), `"both"`, `"none"`; `"headland_length"` m.
     The report measures the bay's widest water, the mouth's narrowest gap and each headland's top. A cove is an address;
     a site `"at": "cove"` stands on its apron just above the water. `"valley"`: the cove is the drowned mouth of a
