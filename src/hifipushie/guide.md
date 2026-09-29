@@ -48,6 +48,12 @@ you're in.
 Going back is fine and cheap (history/revert). Expect the plan-vs-model IoU to drop a little as kits and
 details add things the plan never drew (nose, ears, fingers).
 
+Big to small, like an artist: silhouette, then big masses, then secondary forms, then detail. **Get each stage
+approved (by the person, or against the reference and a measured gate) before starting the next.** Detail comes
+last. Grooves, pores and strands put on a wrong mass only hide the problem and are thrown away when the mass
+changes. Every stage needs a look that takes seconds (a cropped scene, a few views, a thumbnail at game size,
+the reference beside it), or the loop stalls.
+
 ## 2. Blockout pitfalls
 
 - A joint whose radius is bigger than the bones meeting there shows as a ball (elbows, knees). Taper
@@ -104,6 +110,54 @@ addressed on the surface. Rules that matter:
 - Seated joints root attachments on the surface: `{"on": {"at": "face_mouth_corner.L", "offset": [...]},
   "lift": -0.003, "r": 0.0065}` for a tusk's root, and the same address with `"shift": [dx,dy,dz]` for its
   tip. They follow the surface when the face or body changes.
+
+## 4c. Hair: curve locks, big to small, the way an artist grooms
+
+Hair isn't part of the field. Each lock is a Bezier curve in the Blender scene with a Geometry Nodes sweep: a cupped
+lens profile, sized along its length (root, belly, taper to a point), its flat side on the volume under it. The spec
+holds `spec["hair"]` = groom (words and numbers), locks (addresses on the head: [azimuth, elevation, height over the
+scalp] per control point, so they follow head edits), look (the material) and stage. Python: `hair.groom`,
+`hair.look`, `hair.layout`, `hair.sync`, `scene.pull` (edits made to the curves in Blender come back).
+
+With a reference image, first match it (the user's rule: every hair look is judged against the reference from
+the reference's own camera):
+- `hair.fit_camera(name, points, image_size, crop)`: pose + focal length solved from face landmarks (`lm_*` joints ->
+  their pixels in the reference; 8-10 points, expect a few px of error). Saved as `<model>/ref_camera.json`; from
+  then on every `hair.look` adds a matched row: render, clay, the reference, a 50% blend, the trace over the render.
+- Trace the reference on the image itself (`<model>/ref_trace.json`, reference pixels): the part (from its front
+  end back), the hairline, the visible hair outline (closed, above `clip_y`), each big clump's flow root -> tip and its
+  width. Read the pixels off zoomed crops with a grid; `hair.trace_image` draws it back for checking.
+- `hair.from_trace(name)` carries it onto the head through the camera: rays onto the volume/scalp give the parting
+  `line`, the hairline's `front_points` and drawn clumps as `azel` paths (a hidden root is carried back along the
+  clump's own heading to the part), plus rows behind the traced ones and the part side's rows. Then groom.
+- `look.fit` measures it in the matched view: part start (px) and direction (deg), hairline mean/max px, silhouette
+  IoU and outline distance (from the matched ID render), each traced clump's direction error. A stylised reference
+  won't reach IoU 1 (its cranium isn't ours); direction and part errors should be a few px/deg.
+- Measure every view in the gates, the back too: an unmeasured back sat 20% bare volume.
+
+Stages, each looked at and approved before the next. A look takes seconds, so look after every change:
+1. **Silhouette** (`stage: "mass"`): the groom's volume as one shell. Height over the brows, width at the temples,
+   the fringe line, the hairline (a crisp designed line, `hairline.front` in brow-to-nose units). Gate: the outline
+   must be convex in the front and 3/4 views (`look.gate`, dents <= 1.5 mm at a 12 mm scale). A pinched temple
+   reads as a divot, and locks never fix it later.
+2. **Big clumps** (8-12). On a hero head, draw them rather than generating them: `groom.drawn` = clumps drawn on the
+   top view ([x, y] from the head centre, root first, width). Generated tops came out busy or jumbled: one sweep from
+   the part, overlapping like shingles, calm tips. `hair.layout` shows the plan from above.
+3. **Secondary** (the sides and back): strips along the combed streams (converging on the nape) in shingled
+   segments, then gap locks wherever the volume still shows (`tiers.gap`, confined to sides/back). Gate: the share
+   of visible hair that is bare volume (`look.mass_share`, from an ID render) < 10%. The volume is filler, never a
+   surface.
+4. **Detail**: strand grooves, sheen band, grey, contrast between clumps. All of it goes in the material (grooves as
+   bump, which bakes into the normal map), never in the geometry. Judge with the material on AND in clay (the look
+   renders both rows), and in close-ups.
+
+What goes wrong: tips standing up (claws), locks curling at their ends, many small locks at mixed angles (a mop),
+the volume visible between clumps (a helmet with grooves drawn on). Fix these by widening, overlapping or
+re-drawing the big clumps. Adding small locks makes them worse.
+
+Export: the locks at low resolution (12 x 8 per lock) + the volume decimated, one uv island per lock, packed by
+Blender, maps baked by Cycles from the locks' own material. It lands as its own atlas in the GLB with
+KHR_materials_anisotropy (along the lock) and KHR_materials_sheen, bound rigidly to `parts.hair.rig_bone` (Head).
 
 ## 4b. Props and environments
 

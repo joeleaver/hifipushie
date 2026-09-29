@@ -553,10 +553,13 @@ def pull(name: str, log: list | None = None) -> dict:
         spec = store.load(name)
         changes = _pull_params(spec, got["params"], log)
         changes.update(_pull_painted(spec, got.get("painted") or {}, log))
+        if got.get("hair"):  # locks a person moved, re-shaped or re-numbered (hair.pull_locks)
+            from . import hair
+            changes.update(hair.pull_locks(spec, name, got["hair"], log))
     moved = got["moved"]
     if not moved:
         if changes:
-            store.save(name, spec, "paint from the Blender scene: " + ", ".join(changes))
+            store.save(name, spec, "from the Blender scene: " + ", ".join(changes))
         return changes
     pls = assemble.placements(spec)
     for inst, m in moved.items():
@@ -769,6 +772,9 @@ def sync(name: str, resolution: int = 256) -> dict:
     ph = part_hashes(prog, bases)
     job = {"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
            "program": prog, "bases": bases, "prog_hash": ph}
+    if spec.get("hair"):  # the hair's curve locks (hair.py) ride along
+        from . import hair
+        job["hair"] = hair.job(name, spec)
     live = live_session(name)
     out = _blender_live(job) if live else _blender(job)
     if live:

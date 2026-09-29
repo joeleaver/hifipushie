@@ -24,6 +24,9 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import blender_hair  # noqa: E402
+
 
 def _open(path, live=False):
     """Open the scene file (headless). In a live session (a person's running Blender, which has this file open)
@@ -540,8 +543,8 @@ def pull(job):
                     continue
             params.setdefault(n.name[3:], []).append(
                 [round(float(x), 4) for x in _srgb(v)] if n.type == "RGB" else round(float(v), 5))
-    json.dump({"moved": moved, "params": params, "painted": _pull_painted(os.path.dirname(job["out"]))},
-              open(job["out"], "w"))
+    json.dump({"moved": moved, "params": params, "painted": _pull_painted(os.path.dirname(job["out"])),
+               "hair": blender_hair.read()}, open(job["out"], "w"))
 
 
 def _pull_painted(folder):
@@ -645,6 +648,8 @@ def sync(job):
                 lc = bpy.context.view_layer.layer_collection.children.get(c.name)
                 if lc is not None:
                     lc.exclude = True
+    if job.get("hair"):
+        made += blender_hair.show(job["hair"])
     bpy.context.scene.render.engine = "BLENDER_EEVEE"
     if not job.get("live"):  # no scene.blend1 (the scene is derived, the spec is the source); a person's own
         bpy.context.preferences.filepaths.save_version = 0  # Blender keeps its preferences
@@ -699,7 +704,8 @@ RT_SCALE = 1
 
 
 def render(job):
-    _open(job["blend"])
+    if not job.get("opened"):
+        _open(job["blend"])
     scene = bpy.context.scene
     if job.get("show_layer"):  # one layer's mask on every part (not saved)
         prog = job["program"]
@@ -784,12 +790,15 @@ def render(job):
         if v.get("eye") is not None:
             cam_data.type = "PERSP"
             cam_data.angle = np.radians(v["fov"])
+            cam_data.shift_x, cam_data.shift_y = v.get("shift") or (0.0, 0.0)  # a crop off the lens axis
             cam.matrix_world = Matrix.Translation(Vector(v["eye"])) @ rot
         else:
             cam_data.type = "ORTHO"
+            cam_data.shift_x = cam_data.shift_y = 0.0
             cam_data.ortho_scale = v["scale"]
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ rot
         scene.render.filepath = v["out"]
+        scene.render.resolution_x = scene.render.resolution_y = v.get("size", job.get("size", 512))
         t = time.time()
         bpy.ops.render.render(write_still=True)
         print(f"@@frame {time.time() - t:.2f}", flush=True)
@@ -1100,7 +1109,89 @@ def bake_inputs(job):
     print("@@times", json.dumps(times))
 
 
-MODES = {"pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
+def hair_stage(job):
+    """The scene cropped to a box (the head): every mesh object's faces with a corner inside, saved as a small
+    .blend for fast hair looks."""
+    import bmesh
+    _open(job["blend"])
+    lo, hi = np.array(job["box"][0]), np.array(job["box"][1])
+    for ob in list(bpy.data.objects):
+        if ob.type != "MESH" or ob.name.startswith("hp_"):
+            if ob.type in ("CURVE",) or ob.get("hp_hair_cap"):
+                bpy.data.objects.remove(ob)
+            continue
+        if ob.get("hp_hair_cap"):
+            bpy.data.objects.remove(ob)
+            continue
+        me = ob.data
+        M = np.array(ob.matrix_world)
+        v = np.empty(len(me.vertices) * 3, np.float32)
+        me.vertices.foreach_get("co", v)
+        v = v.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+        ins = np.all((v >= lo) & (v <= hi), axis=1)
+        if not ins.any():
+            bpy.data.objects.remove(ob)
+            continue
+        if ins.all():
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        dead = [bm.verts[i] for i in np.nonzero(~ins)[0]]
+        bmesh.ops.delete(bm, geom=dead, context="VERTS")
+        bm.to_mesh(me)
+        bm.free()
+    for c in list(bpy.data.collections):
+        if c.name.startswith("prefab:"):
+            for ob in list(c.objects):
+                bpy.data.objects.remove(ob)
+    bpy.ops.outliner.orphans_purge(do_recursive=True)
+    bpy.context.preferences.filepaths.save_version = 0
+    bpy.ops.wm.save_as_mainfile(filepath=job["out"], compress=False)
+
+
+def hair_look(job):
+    """Render the hair stage file with the job's hair shown (nothing saved)."""
+    _open(job["blend"])
+    blender_hair.show(job.get("hair") or {})
+    if job.get("dump"):  # the hair's evaluated vertices (world): the silhouette gate measures them
+        names = []
+        np.save(job["dump"], blender_hair.hair_points(names=names))
+        json.dump(sorted(set(names)), open(job["dump"] + ".names.json", "w"))
+        np.save(job["dump"] + ".ids.npy", np.searchsorted(sorted(set(names)), names).astype(np.int32))
+    render({**job, "opened": True})
+    if job.get("clay_views"):  # the same views with the hair as clay: form without the material's help
+        blender_hair.clay()
+        for ob in list(bpy.data.objects):
+            if ob.name.startswith("hp_sun") or ob.name.startswith("hp_cam"):
+                bpy.data.objects.remove(ob)
+        render({**job, "views": job["clay_views"], "opened": True})
+    if job.get("id_views"):  # which object each hair pixel is: the underlayer red, locks green, the rest black
+        blender_hair.id_pass()
+        for ob in list(bpy.data.objects):
+            if ob.name.startswith("hp_sun") or ob.name.startswith("hp_cam"):
+                bpy.data.objects.remove(ob)
+        render({**job, "views": job["id_views"], "opened": True, "flat": False, "samples": 1})
+
+
+def hair_sync(job):
+    """Bring the scene's hair in line with the spec's and save (the live session: shown as it is)."""
+    _open(job["blend"], job.get("live"))
+    made = blender_hair.show(job.get("hair") or {})
+    if not job.get("live"):
+        bpy.context.preferences.filepaths.save_version = 0
+    bpy.ops.wm.save_as_mainfile(filepath=job["blend"], compress=False)
+    print("@@made", json.dumps(made))
+
+
+def hair_export(job):
+    """The hair's low poly + Cycles-baked maps (blender_hair.export_bake), in an empty scene."""
+    for ob in list(bpy.data.objects):
+        bpy.data.objects.remove(ob)
+    blender_hair.export_bake(job)
+
+
+MODES = {"hair_export": hair_export, "hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
 
 if __name__ == "__main__" and "--" in sys.argv:  # run as a script by headless Blender; imported in a live session
     job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
