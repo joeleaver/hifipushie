@@ -92,6 +92,7 @@ GROOM = {
               "edge": {"width": 0.011, "thickness": 0.0028, "spacing": 0.9, "length": 0.022}},
     "grey": {"temples": 0.35, "sideburns": 0.5},
     "drawn": [],
+    "drawn_under": True,
     "noise": 0.3,
     "seed": 0,
 }
@@ -432,7 +433,9 @@ def _envelope(sc: Scalp, g: dict, line, az, el):
     if xp is not None:  # the combed-away side is fuller; the part side lies flatter
         sgn = 1.0 if xp >= 0 else -1.0
         v = v * (1 - 0.22 * topw * _ss(sgn * (P[..., 0] - xp) / 0.03))
-        v = v * (1 - 0.12 * _part(sc, g, az, el, 0.02) * (1 - _ss((back - 0.02) / 0.03)))
+        # along the parting the volume goes down to the scalp: the roots on both sides grow out of it there, and
+        # the part is a thin line of scalp and shadow between clumps (a dip left the volume as a smooth patch)
+        v = v * (1 - float(g["parting"].get("depth", 0.9)) * _part(sc, g, az, el, float(g["parting"].get("width", 0.012))))
     ramp = topw * 0.028 + (1 - topw) * (0.8 * v + 0.002)  # continuous: a switch creased the temples
     x = np.clip(d_in / ramp, 0, 1)
     return v * np.sin(0.5 * np.pi * x) ** 0.8, d_in
@@ -1271,6 +1274,10 @@ def job(name: str, spec: dict | None = None) -> dict:
                     extra=lock_extents(sc, locks) if (locks and h.get("filler")) else None)
     extra = {k: v for k, v in streams(sc, g, V).items() if k == "tangent"} if stage != "mass" else {}  # (the
     # sawtooth clumps on the underlayer aliased into jagged stripes: the strips carry the clumps now)
+    if stage != "mass":  # the parting is a line of shadow: the underlayer there takes the gap colour
+        va, ve, _ = sc.coords(V)
+        pw = _part(sc, g, va, ve, 2 * float(g["parting"].get("width", 0.012)))
+        extra["across"] = (0.45 + 0.55 * np.clip(pw * 1.5, 0, 1)).astype(np.float32)
     np.savez(tmp / "cap.npz", verts=V, faces=F, **extra)
     return {"locks": locks, "cap": str(tmp / "cap.npz"),
             "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
@@ -1339,11 +1346,17 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
              "samples": 16, "dump": dump, "clay_views": cf, "id_views": idf}
         out = _blender(j)
         clays = [Image.open(f["out"]).convert("RGB") for f in cf]
-        look.mass_share = {}
-        for f in idf:  # red = the underlayer, green = locks (flat emission, nothing else drawn)
+        look.mass_share, look.lit_mass = {}, {}
+        for f, fm in zip(idf, frames):  # red = the underlayer, green = locks (flat emission, nothing else drawn)
             a = np.asarray(Image.open(f["out"]).convert("RGB"), float)
             red, green = a[..., 0] > a[..., 1] + 60, a[..., 1] > a[..., 0] + 60
             look.mass_share[f["name"]] = round(float(red.sum() / max(red.sum() + green.sum(), 1)), 3)
+            # lit bare volume: where the volume shows AND is shaded like the locks around it (not a crevice or a
+            # parting in shadow): the smooth patch the eye reads as a helmet
+            lum = np.asarray(Image.open(fm["out"]).convert("L").resize(a.shape[1::-1]), float)
+            lit_ref = np.percentile(lum[green], 35) if green.any() else 255.0
+            lit = red & (lum >= lit_ref)
+            look.lit_mass[f["name"]] = round(float(lit.sum() / max(red.sum() + green.sum(), 1)), 3)
             Image.open(f["out"]).save(store._dir(name) / f"hair_id_{f['name']}.png")  # the last look's id pass
         pts = np.load(dump)
         np.save(store._dir(name) / "hair_points.npy", pts)  # the last look's hair vertices (for measuring) and
@@ -1623,6 +1636,29 @@ def top_to_azel(sc: Scalp, xy):
     return az, el
 
 
+def _under_clumps(clumps: list) -> list:
+    """The layer under the drawn clumps, as an artist builds it: between each pair of neighbouring clumps of a row
+    (consecutive, same name stem: top1, top2...) one more clump halfway between them, lying beneath both, so where
+    their wedge tips part the gap shows hair, not the volume (the volume must never be a visible surface)."""
+    import re
+
+    def resample(xy, n=5):
+        xy = np.asarray(xy, float)
+        c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+        t = np.linspace(0, c[-1], n)
+        return np.stack([np.interp(t, c, xy[:, k]) for k in range(2)], 1)
+    out = []
+    for c0, c1 in zip(clumps, clumps[1:]):
+        n0, n1 = c0.get("name", ""), c1.get("name", "")
+        if not n0 or re.sub(r"\d+$", "", n0) != re.sub(r"\d+$", "", n1):
+            continue
+        mid = 0.5 * (resample(c0["top"]) + resample(c1["top"]))
+        out.append({"name": f"{n0}_{n1}_under", "top": mid.round(4).tolist(),
+                    "width": max(float(c0.get("width", 0.055)), float(c1.get("width", 0.055))),
+                    "sink": 1.0, "edge": 1.2, "taper": 0.85})
+    return out
+
+
 def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     """Clumps drawn on the top view: [{"name"?, "top": [[x, y], ...] (root first), "width", "thickness"?, "lie"?}]
     -> locks. Heights come from the volume: the root dives under whatever it grows from, the body lies with its back
@@ -1630,17 +1666,26 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     default 0.1); past the hairline (a fringe) it lies on the skin."""
     line = hairline(sc, g)
     out = {}
+    clumps = list(clumps) + (_under_clumps(clumps) if g.get("drawn_under", True) else [])
     for i, c in enumerate(clumps):
         xy = np.asarray(c["top"], float)
+        # the drawing smoothed and resampled (6 points), with one more just past the root: the root grows from the
+        # scalp and the clump is up at the volume a short way on (with the rise spread over the whole first segment
+        # most of a short clump lay under the volume, which then showed as a smooth patch)
+        xy = _catmull(np.c_[xy, np.zeros(len(xy))], 40)[:, :2]
+        c_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+        tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * c_[-1]
+        xy = np.stack([np.interp(tt, c_, xy[:, k]) for k in range(2)], 1)
         a, e = top_to_azel(sc, xy)
         w = float(c.get("width", 0.055))
         T = float(c.get("thickness", 0.0055 * w / 0.055))
         H, d_in = envelope(sc, g, line, a, e)
         U = under(g, H, a, e, d_in)
-        u = np.linspace(0, 1, len(a))
+        u = tt / max(tt[-1], 1e-9)
         h = U + 0.35 * T
-        h = np.where(u == 0, np.minimum(U - 0.5 * T, 0.2 * T), h)  # the root grows from the scalp (at the part)
+        h[0] = min(U[0] - 0.5 * T, 0.2 * T)  # the root grows from the scalp (at the part)
         h[-1] = U[-1] + float(c.get("lie", 0.1)) * T
+        h = h - float(c.get("sink", 0.0)) * T * _ss(u / 0.2)  # an under clump lies beneath its neighbours
         h = np.where(d_in < 0, np.maximum(h, 0.55 * T), h)  # a fringe lies on the forehead
         P = sc.point(a, e, h)
         tilt = lie_tilt(sc, g, line, _catmull(P, 4 * len(P))[::4])
