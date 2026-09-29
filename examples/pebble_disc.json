@@ -11152,11 +11152,7 @@
   },
   "point_cave": {
    "type": "cave",
-   "at": [
-    170,
-    106
-   ],
-   "toward": 75,
+   "at": "cliff_foot:the_point",
    "length": 26,
    "width": 6,
    "height": 5,
@@ -11253,14 +11249,14 @@
       302,
       500
      ],
-     "depth": 14
+     "depth": 20
     },
     "hall": {
      "at": [
       334,
       532
      ],
-     "depth": 18,
+     "depth": 24,
      "size": 11
     }
    },

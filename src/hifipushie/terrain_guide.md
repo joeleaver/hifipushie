@@ -277,15 +277,17 @@ and the `"story"`.
     0.8 of the height. The mouths flare and the line bends a little. The report says where it went and how thick its
     roof is.
   - `cave {"at", "toward"?, "length": 30, "width": 6, "height": 5, "chamber"?: radius, "rise"?: m, "narrow"?: 0.7,
-    "wander"?: 0.08, "floor"?}`: a passage into the rock heading `toward` (default: uphill). Its mouth is where the
+    "wander"?: 0.08, "floor"?}`: a passage into the rock heading `toward` (default: the address's own direction, e.g.
+    `"at": "cliff_foot:<address>"` goes straight into the cliff; else uphill). Its mouth is where the
     rock starts along that line, so `at` can be in the water just off a cliff. It narrows to `narrow` of its size and
     ends in a domed chamber if `chamber` is given. A sea cave's floor defaults to half a metre under the sea.
   - `overhang {"at", "along"?: bearing, "length": 30, "depth": 5, "height": 3.5, "floor"?}`: a wave-cut notch along the
-    cliff face nearest `at` (following the face), `depth` metres in under the lip, its floor half a metre under the
+    cliff face nearest `at` (following the face; `"cliff_foot:<address>"` sets it along that cliff), `depth` metres in under the lip, its floor half a metre under the
     sea. The report says how much rock stands over it.
   - In the mesh tiles every steep face (45-62 deg and up) and everything a volume shaped gets solid rock character:
-    planar facets with joints between them and bedding (grooves and beds standing proud or set back), which can
-    overhang. `"rock": {"facets": 0..1, "bedding": 0..1}` scales it (as for the heightfield's rock), `"rock": false` or
+    planar facets meeting in crisp creases and bedding (a notch at each bed, beds standing proud or set back), which
+    can overhang. Its colour is the heightfield's own rock there (the kind's rock, any rock cover layer such as a
+    cliff's grey or black lava), toned per bed and facet and darker in crevices. `"rock": {"facets": 0..1, "bedding": 0..1}` scales it (as for the heightfield's rock), `"rock": false` or
     `"export": {"tiles": {"rock": 0}}` turns it off. Rock near the water is dark and wet up to ~2 m, higher inside caves.
 - **caves** (mesh tiles only, like volumes): a cave is a skeleton of named entrances and chambers joined by passages.
   ```
@@ -296,14 +298,21 @@ and the `"story"`.
   ```
   - `kind` sets the shapes:
     - `sea`: floors at the water, wide low passages, domed chambers.
-    - `karst`: keyhole passages (a round tube along a bed, a slot below it), floors on the rock's bedding planes,
-      sinkhole entrances.
-    - `lava`: wide round tubes at a steady depth under the ground they follow, with skylights where the roof is thin;
-      its entrances are always collapse pits (the roof fallen in), as wide as the tube.
+    - `karst`: keyhole passages (a wide bedding-plane tube with a flat roof, a slot below it), smooth dissolved walls
+      with thin beds standing out as ledges (`"ledges"`: m, default 0.45), floors on the rock's bedding planes. A shaft
+      entrance opens in a **doline**: a grassy funnel ~36 m across with an uneven rim and a rocky pit at its throat
+      (`"doline": {"radius": 18, "depth"?, "scarp"?}` on the entrance; `false` for a bare shaft). The doline's depth is
+      limited by the rock over the passage: put the cave deeper (chambers `depth` 18+) for a deeper funnel.
+    - `lava`: wide round tubes at a steady depth under the ground they follow (on its smoothed grade, not its bumps),
+      benches along the walls, skylights where the roof is thin with fallen blocks under them; its entrances are
+      always collapse pits (the roof fallen in, a low cone of blocks to climb down), as wide as the tube.
+      `{"kind": "lava", "flow": "<flow name>", "from": 0.25, "to": 0.85}` runs a tube down a volcano's lava flow
+      between those shares of its length, a collapse pit at each end (no entrances or passages needed).
   - An entrance is where a passage meets the open: at a cliff or hillside along the way in, or a shaft straight down
     from the ground with `"shaft": true` (a blowhole, a sinkhole).
-  - A chamber's floor is `depth` metres under the ground over it (karst 14 m, lava 7.5 m) or at height `z`; a sea
-    cave's chambers sit at the water.
+  - A chamber's floor is `depth` metres under the ground over it (karst 18 m, lava 7.5 m) or at height `z`; a sea
+    cave's chambers sit at the water. `"in": m` puts a chamber that far into the rock from an address with a
+    direction: `{"at": "cliff_foot:<address>", "in": 30}` is 30 m in from the foot of that cliff.
   - Passages run level through the chambers at either end and slope between them, so a passage that climbs needs
     room: the walk below tells you if it's too steep.
   - Every export walks a person (1.8 m tall, 0.5 m wide) through every passage and reports, in the manifest and the
@@ -451,7 +460,7 @@ The shell run writes its outputs beside the spec:
     with their bed and water (surface height and width per point), fords, lakes
 - **3D mesh tiles** (`export_terrain(name, tiles=True)`, `terrain_run.py --tiles`): the ground and its volumes as a
   grid of seamless glTF tiles in `tiles/`, for any engine. Tune with `"export": {"tiles": {...}}` (metres):
-  `"tile": 64` (tile size), `"voxel": 1` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
+  `"tile": 64` (tile size), `"voxel": 0.5` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),
   `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
@@ -466,7 +475,8 @@ The shell run writes its outputs beside the spec:
     the sea level, timings and the seam check.
   - Tiles meet exactly: neighbours share identical border vertices and normals at every LOD, and each tile's skirts
     reach past the neighbour's other LODs, so any mix of LODs shows no cracks. Every export runs a seam check on the
-    written files (watertight joins, identical borders, normals, LOD gaps covered, heightmap edges) and fails loudly.
+    written files (watertight joins, identical borders, normals, LOD gaps covered, heightmap edges, and black shards:
+    faces whose corner normals point away from them, over 0.01% / 0.05% / 0.5% of LOD 0 / 1 / 2) and fails loudly.
 - `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
   by a thin red pole 12 m tall (to judge what a view sees).
 

@@ -164,11 +164,23 @@ def run(job):
     lamp = bpy.data.objects.new("lamp", bpy.data.lights.new("lamp", "POINT"))  # a headlamp for views inside caves
     lamp.data.shadow_soft_size = 0.3
     scene.collection.objects.link(lamp)
+    # a second, weaker light down the view: a headlamp alone blew out the walls beside the eye and left the passage
+    # ahead dark (inverse square), which read as fog
+    fill = bpy.data.objects.new("fill", bpy.data.lights.new("fill", "POINT"))
+    fill.data.shadow_soft_size = 1.0
+    scene.collection.objects.link(fill)
     for v in job["views"]:
         cam.location = Vector(v["eye"])
         lamp.data.energy = float(v.get("lamp", 0.0))
         scene.view_settings.exposure = float(v.get("exposure", 0.0))
-        lamp.location = Vector(v["eye"]) + Vector((0, 0, 0.3))
+        # the lamp a little above and to the right of the eye, so ledges and roofs cast a shadow line
+        fwd = (Vector(v["look"]) - Vector(v["eye"])).normalized()
+        right = fwd.cross(Vector((0, 0, 1)))
+        right = right.normalized() if right.length > 1e-6 else Vector((1, 0, 0))
+        lamp.location = Vector(v["eye"]) + Vector((0, 0, 0.4)) + 0.35 * right
+        reach = min((Vector(v["look"]) - Vector(v["eye"])).length, float(v.get("fill_at", 8.0)))
+        fill.location = Vector(v["eye"]) + fwd * reach + Vector((0, 0, 0.5))
+        fill.data.energy = float(v.get("fill", 0.4)) * float(v.get("lamp", 0.0))
         cam.rotation_euler = (Vector(v["look"]) - Vector(v["eye"])).to_track_quat("-Z", "Y").to_euler()
         cam.data.angle = math.radians(v.get("fov", 55))
         b, h = [math.radians(x) for x in v.get("sun", (225, 30))]
