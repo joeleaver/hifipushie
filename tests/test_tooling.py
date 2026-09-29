@@ -168,6 +168,55 @@ def test_elements_on_kit_joints():
     assert "face_nose_tipp" in _raises(server.put_model, "gopher_kitjoints", spec)
 
 
+# Card "Durable home for pipeline assets (templates, patched builds)"
+def test_assets_fetch_by_checksum():
+    """fetch/verify on a fake pack served from file:// URLs (no network): a missing pack says how to fetch it;
+    fetch places files only when their sha256 matches, repairs a corrupt one, extracts a zip member."""
+    import hashlib
+    import json
+    import zipfile
+    from pathlib import Path
+    from hifipushie import assets
+    src = Path(tempfile.mkdtemp(prefix="hp_src_"))
+    (src / "a.txt").write_text("alpha\n")
+    with zipfile.ZipFile(src / "b.zip", "w") as z:
+        z.writestr("bundle-v1/b.bin", b"beta" * 100)
+    sha = lambda b: hashlib.sha256(b).hexdigest()  # noqa: E731
+    man = {"demo": {"needed_by": "the test", "source": "here", "licence": "CC0", "files": [
+        {"path": "a.txt", "url": (src / "a.txt").as_uri(), "sha256": sha(b"alpha\n")},
+        {"path": "deep/b.bin", "url": (src / "b.zip").as_uri(), "member": "bundle-v1/b.bin", "sha256": sha(b"beta" * 100)}]}}
+    mp = src / "assets.json"
+    mp.write_text(json.dumps(man))
+    old, old_env = assets.MANIFEST, os.environ.get("HIFIPUSHIE_ASSETS")
+    assets.MANIFEST = mp
+    os.environ["HIFIPUSHIE_ASSETS"] = str(src / "assets")
+    try:
+        msg = _raises(assets.pack, "demo")
+        assert "hifipushie-assets fetch demo" in msg, msg
+        assets.fetch(["demo"], log=lambda *_: None)
+        assert assets.verify(["demo"]) == {"demo": []}
+        assert (assets.pack("demo") / "deep" / "b.bin").read_bytes() == b"beta" * 100
+        assert "Licence: CC0" in (src / "assets" / "demo" / "SOURCE.txt").read_text()
+        (src / "assets" / "demo" / "a.txt").write_text("corrupt")
+        assert assets.verify(["demo"])["demo"] == ["checksum mismatch a.txt"]
+        assets.fetch(["demo"], log=lambda *_: None)
+        assert assets.verify(["demo"]) == {"demo": []}
+        (src / "a.txt").write_text("changed upstream\n")  # the source moved: refuse, leave nothing half-written
+        (src / "assets" / "demo" / "a.txt").unlink()
+        assert "sha256" in _raises(assets.fetch, ["demo"], log=lambda *_: None)
+        assert sorted(p.name for p in (src / "assets" / "demo").iterdir()) == ["SOURCE.txt", "deep"]
+    finally:
+        assets.MANIFEST = old
+        if old_env is None:
+            os.environ.pop("HIFIPUSHIE_ASSETS", None)
+        else:
+            os.environ["HIFIPUSHIE_ASSETS"] = old_env
+    # the real manifest: every file has a URL and a checksum, packs say what needs them
+    for name, p in assets.manifest().items():
+        assert p["needed_by"] and p["licence"] and all(f["url"].startswith("https://") and len(f["sha256"]) == 64
+                                                      for f in p["files"]), name
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

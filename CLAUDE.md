@@ -260,7 +260,14 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `blender_scene` inside it (`_blender_live`: imports the module, `live: True` skips opening the file; a sync saves
   the session). `blender_scene` dispatches only when run as a script. Test with a headless add-on server:
   `blender -b workspace/<m>/scene.blend --command blender_mcp --port 9877` + `BLENDER_MCP_PORT=9877`.
-- `server.py`: MCP tools (mcp 2.x `MCPServer`, not v1 FastMCP).
+- `server.py`: MCP tools (mcp 2.x `MCPServer`, not v1 FastMCP). Every tool is wrapped (`_tool_with_errors`) so its exception
+  text reaches the caller (the SDK sends a bare "Error executing tool x" otherwise). `edit_model` ops take any
+  top-level key as `kind`, plus `set_key`; a failing batch names the op (`store.edit` bisects). Save replies carry
+  WARNING lines (`paint.side_warnings`). check/compare/fit take `only_parts`/`hide_parts` (or plan `"parts"`).
+- `assets.py` + `assets.json`: third-party assets (GNM, MakeHuman, the HBM bundle) by URL + sha256 in one directory
+  ($HIFIPUSHIE_ASSETS, else `<HOME>/_templates`); `uv run hifipushie-assets verify|fetch [packs]`. Code reaches them
+  through `assets.pack/path`, which say how to fetch a missing pack. Never keep pipeline assets in /tmp.
+- `tests/test_tooling.py`: reproductions of the tooling cards' incidents (`uv run python tests/test_tooling.py`).
 
 ## Performance (keep these properties when changing things)
 - `sdf.field_at` sorts points into Morton-ordered chunks, culls the primitive list per chunk (`_cull`: region
