@@ -637,18 +637,21 @@ def grow(sc: Scalp, g: dict) -> dict:
     return locks
 
 
-def _nape_frame(sc: Scalp):
+def _nape_frame(sc: Scalp, td: dict | None = None):
     """Short back and sides are combed back and down toward the nape: flow lines are the head's sections through a
-    point under the nape (N) and an axis from it toward the forehead. Returns N, axis, e1, e2."""
-    N = sc.C + np.array([0.0, 0.06, -0.13])
-    axis = _unit(np.array([0.0, -0.9, 0.45]))
+    point under the nape (N) and an axis from it toward the forehead. Returns N, axis, e1, e2. td["nape"] ([x, y, z]
+    from the head centre) moves N: long hair falls, so its streams meet far below the head (at the default nape point
+    they gathered into a tail)."""
+    N = sc.C + np.asarray((td or {}).get("nape", [0.0, 0.06, -0.13]), float)
+    axis = _unit(np.array([0.0, -0.9, 0.45]) if "nape" not in (td or {}) else
+                 sc.C + np.array([0.0, -0.115, 0.0567]) - N)  # toward the forehead from N
     e1 = _unit(np.cross(axis, [1.0, 0, 0]))
     return N, axis, e1, np.cross(axis, e1)
 
 
-def stream_angle(sc: Scalp, P):
+def stream_angle(sc: Scalp, P, td: dict | None = None):
     """Each point's flow line: its angle round the nape axis (radians; constant along a combed-back stream)."""
-    N, axis, e1, e2 = _nape_frame(sc)
+    N, axis, e1, e2 = _nape_frame(sc, td)
     Q = np.asarray(P, float) - N
     t = Q - (Q @ axis)[..., None] * axis
     return np.arctan2(t @ e2, t @ e1)
@@ -660,7 +663,7 @@ def _strips(sc: Scalp, g: dict, line, td: dict, rng) -> dict:
     groom's volume, overlapping its neighbours a little, narrowing as the streams converge on the nape. So the whole
     head is locks with one flow: no mass surface shows, and the outline stays the volume's (the fill tier's short
     locks either broke it or read as scales)."""
-    N = _nape_frame(sc)[0]
+    N = _nape_frame(sc, td)[0]
     w0, t0 = float(td.get("width", 0.03)), float(td.get("thickness", 0.003))
     over = float(td.get("overlap", 1.2))
     top_start = float(td.get("start", 0.55))  # the top-region weight where a strip's root sits (under the top locks)
@@ -673,7 +676,7 @@ def _strips(sc: Scalp, g: dict, line, td: dict, rng) -> dict:
     W = weights(A, E, d_in)
     topw = W[:, 0] + W[:, 1]
     P = sc.point(A, E, 0.0)
-    ang = stream_angle(sc, P)
+    ang = stream_angle(sc, P, td)
     dist = np.linalg.norm(P - N, axis=1)
     # the strips' start line: where the top gives way to the sides; spacing along it = the strip width
     band = np.abs(topw - top_start) < 0.08
@@ -739,12 +742,17 @@ def _strips(sc: Scalp, g: dict, line, td: dict, rng) -> dict:
             last = sgi == nseg - 1
             h = (base - 0.9 * t0 * (1 - _ss(u / 0.2))  # the root dives under the tip before it
                  + (0.0 if last else step * t0) * _ss((u - 0.55) / 0.45)  # the tip lifts off the next row
-                 - (0.8 * t0 * _ss((u - 0.8) / 0.2) if last else 0.0))  # the last tucks in at the hairline
+                 - (0.8 * t0 * _ss((u - 0.8) / 0.2) if last and not td.get("hang") else 0.0))  # the last tucks in
             h = np.maximum(h, 0.2 * t0 * _ss(u / 0.2) - 0.6 * t0 * (1 - _ss(u / 0.2)))
             path = sc.point(sa[sel], se[sel], h)
+            hang = float(td.get("hang", 0.0))
+            if last and hang > 0:  # longer hair: past the hairline the stream falls, off the head and down
+                path = _hang(sc, path, hang, td, rng, k)
             c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
             L = c[-1]
             kpts = 5 if L > 0.06 else 4
+            if hang > 0 and last:
+                kpts = int(np.clip(L / 0.025, 5, 12))  # waves need control points
             tt = np.linspace(0, L, kpts)
             ctrl = np.stack([np.interp(tt, c, path[:, q]) for q in range(3)], 1)
             a_, e_, h_ = sc.coords(ctrl)
@@ -801,6 +809,35 @@ def _gap_roots(sc: Scalp, g: dict, line, locks: dict, td: dict, rng):
     a1, e1 = az_el(back - sc.C)
     ok = inside(sc, line, a1, e1) > 0.004
     return np.where(ok, a1, a0), np.where(ok, e1, e0)
+
+
+def _hang(sc: Scalp, path, hang: float, td: dict, rng, k: int):
+    """A strip's end carried on past the hairline: it leaves the head along its last heading, turns down under
+    gravity and falls `hang` m, kept off the body (the scalp model's surface + a clearance) and waved side to side
+    (`wave`: {"amount", "length"} m, phase per strip)."""
+    P = [p for p in np.asarray(path, float)]
+    d = _unit(P[-1] - P[-2])
+    step = 0.008
+    n = int(hang / step)
+    wv = td.get("wave") or {}
+    amp, lam = float(wv.get("amount", 0.0)), float(wv.get("length", 0.06))
+    ph = rng.uniform(0, 2 * np.pi)
+    clear = float(td.get("clearance", 0.004))
+    base = [P[-1].copy()]
+    for i in range(n):
+        f = min(1.0, (i + 1) / 6)
+        d = _unit((1 - f) * d + f * np.array([0.0, 0.0, -1.0]) + 0.15 * _unit(np.r_[(P[-1] - sc.C)[:2], 0.0]))
+        q = base[-1] + d * step
+        a, e, hh = sc.coords(q[None])
+        if hh[0] < clear:  # never into the head, neck or shoulders
+            q = sc.point(a, e, np.array([clear]))[0]
+        base.append(q)
+    base = np.array(base[1:])
+    if amp > 0 and len(base) > 2:
+        s_ = np.arange(1, len(base) + 1) * step
+        side = _unit(np.cross(np.array([0.0, 0.0, 1.0]), _unit(np.r_[(base[0] - sc.C)[:2], 0.0])))
+        base = base + (amp * np.minimum(s_ / lam, 1.0) * np.sin(2 * np.pi * s_ / lam + ph))[:, None] * side
+    return np.vstack([np.asarray(path, float), base])
 
 
 def _part_roots(sc: Scalp, g: dict, line, td: dict, xp: float, rng):

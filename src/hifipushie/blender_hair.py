@@ -615,7 +615,10 @@ def export_bake(job):
     cap = next(ob for ob in coll.objects if ob.get("hp_hair_cap"))
     Vl, Fl, Al = evaluated_mesh("hair", segments=job.get("segments", 12), sides=job.get("sides", 6))
     dec = cap.modifiers.new("dec", "DECIMATE")
-    dec.ratio = job.get("cap_ratio", 0.04)
+    dec.ratio = job.get("cap_ratio", 0.08)
+    sh = cap.modifiers.new("shrink", "DISPLACE")  # pulled in under the low-poly locks (decimated, it poked through them)
+    sh.strength = -float(job.get("cap_inset", 0.003))
+    sh.mid_level = 0.0
     dg = bpy.context.evaluated_depsgraph_get()
     ev = cap.evaluated_get(dg)
     cm = ev.to_mesh()
@@ -627,6 +630,7 @@ def export_bake(job):
     cv, ct = cv.reshape(-1, 3), ct.reshape(-1, 3)
     ev.to_mesh_clear()
     cap.modifiers.remove(dec)
+    cap.modifiers.remove(sh)
     ang = (np.arctan2(Al["hp_out"], Al["hp_across"]) / (2 * np.pi)) % 1.0
     uvp = np.stack([ang, Al["hp_along"]], 1)
     cu = uvp[Fl].copy()
@@ -639,7 +643,7 @@ def export_bake(job):
     # material: selected-to-active from the full-resolution locks picked up neighbouring locks where they overlap
     # (shingles), smearing one lock's colour and normals onto the next
     nc = len(cv)
-    cap_a = {"hp_along": 0.5, "hp_across": 0.45, "hp_out": 0.5, "hp_lock": 0.5, "hp_grey": 0.0}
+    cap_a = {"hp_along": 0.5, "hp_across": 1.0, "hp_out": 0.0, "hp_lock": 0.5, "hp_grey": 0.0}  # gap-dark
     attrs = {k: np.concatenate([Al[k], np.full(nc, cap_a[k], np.float32)]) for k in cap_a}
     attrs["hp_tangent"] = np.concatenate([Al["hp_tangent"], np.tile([0.0, 1.0, 0.0], (nc, 1))])
     low = _mesh_object("hp_low", V, F, loops_uv=uv_c.reshape(-1, 2), attrs=attrs)
