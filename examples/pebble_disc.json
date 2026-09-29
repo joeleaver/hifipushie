@@ -11184,6 +11184,104 @@
    "length": 30
   }
  },
+ "caves": {
+  "smugglers": {
+   "kind": "sea",
+   "entrances": {
+    "sea_door": {
+     "at": [
+      56,
+      330
+     ]
+    },
+    "blowhole": {
+     "at": [
+      134,
+      357
+     ],
+     "shaft": true
+    }
+   },
+   "chambers": {
+    "hall": {
+     "at": [
+      95,
+      330
+     ],
+     "size": 9
+    },
+    "loft": {
+     "at": [
+      125,
+      352
+     ],
+     "z": 4,
+     "size": 6
+    }
+   },
+   "passages": [
+    [
+     "sea_door",
+     "hall"
+    ],
+    {
+     "from": "hall",
+     "to": "loft",
+     "width": 4,
+     "height": 3.5
+    },
+    [
+     "loft",
+     "blowhole"
+    ]
+   ]
+  },
+  "knoll_caves": {
+   "kind": "karst",
+   "entrances": {
+    "doline": {
+     "at": [
+      300,
+      468
+     ],
+     "shaft": true
+    }
+   },
+   "chambers": {
+    "gallery": {
+     "at": [
+      302,
+      500
+     ],
+     "depth": 14
+    },
+    "hall": {
+     "at": [
+      334,
+      532
+     ],
+     "depth": 18,
+     "size": 11
+    }
+   },
+   "passages": [
+    [
+     "doline",
+     "gallery"
+    ],
+    {
+     "from": "gallery",
+     "to": "hall",
+     "via": [
+      [
+       318,
+       508
+      ]
+     ]
+    }
+   ]
+  }
+ },
  "sites": {
   "lodge": {
    "at": [

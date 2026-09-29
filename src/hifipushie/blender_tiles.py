@@ -120,11 +120,15 @@ def run(job):
             for r in csv.DictReader(f):
                 by.setdefault(r["kind"] or "broadleaf", []).append((float(r["x"]), float(r["y"]), float(r["z"])))
         box = job.get("tree_box")
+        eyes = np.array([v["eye"] for v in job["views"]], float).reshape(-1, 3)
         for kind, pts in by.items():
             pts = np.array(pts)
             if box:
                 (x0, y0), (x1, y1) = box
                 pts = pts[(pts[:, 0] >= x0) & (pts[:, 0] <= x1) & (pts[:, 1] >= y0) & (pts[:, 1] <= y1)]
+            if len(pts) and len(eyes):  # no tree over a camera (views from inside a crown rendered all green)
+                d = np.linalg.norm(pts[:, None, :2] - eyes[None, :, :2], axis=2).min(1)
+                pts = pts[d > 7.0]
             if not len(pts):
                 continue
             me = bpy.data.meshes.new("trees_" + kind)
@@ -157,8 +161,14 @@ def run(job):
     cam.data.clip_start, cam.data.clip_end = 0.1, 8000
     scene.collection.objects.link(cam)
     scene.camera = cam
+    lamp = bpy.data.objects.new("lamp", bpy.data.lights.new("lamp", "POINT"))  # a headlamp for views inside caves
+    lamp.data.shadow_soft_size = 0.3
+    scene.collection.objects.link(lamp)
     for v in job["views"]:
         cam.location = Vector(v["eye"])
+        lamp.data.energy = float(v.get("lamp", 0.0))
+        scene.view_settings.exposure = float(v.get("exposure", 0.0))
+        lamp.location = Vector(v["eye"]) + Vector((0, 0, 0.3))
         cam.rotation_euler = (Vector(v["look"]) - Vector(v["eye"])).to_track_quat("-Z", "Y").to_euler()
         cam.data.angle = math.radians(v.get("fov", 55))
         b, h = [math.radians(x) for x in v.get("sun", (225, 30))]

@@ -42,7 +42,7 @@ from . import noise
 
 DEFAULTS = {
     "tile": 64.0,          # metres a side
-    "voxel": 1.0,          # LOD0 meshing voxel; LOD k uses voxel * 2^k (all must divide the tile)
+    "voxel": 0.5,          # the meshing voxel (divides the tile); coarser LODs are LOD0 decimated
     "lods": 3,
     "origin": None,        # world grid origin [x, y]; default the extent's south-west corner
     "error": [0.04, 0.15, 0.5],     # decimation tolerance per LOD, metres
@@ -63,7 +63,7 @@ LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling sca
     "grass": {"color": [0.36, 0.47, 0.20], "roughness": 0.95, "scale": 3.0},
     "forest_floor": {"color": [0.27, 0.22, 0.15], "roughness": 0.95, "scale": 3.0},
     "sand": {"color": [0.72, 0.65, 0.48], "roughness": 0.9, "scale": 2.0},
-    "rock": {"color": [0.44, 0.42, 0.39], "roughness": 0.85, "scale": 6.0},
+    "rock": {"color": [0.36, 0.34, 0.31], "roughness": 0.85, "scale": 6.0},  # (the heightfield views' rock)
     "wet_rock": {"color": [0.17, 0.16, 0.15], "roughness": 0.35, "scale": 6.0},
     "earth": {"color": [0.42, 0.34, 0.24], "roughness": 0.95, "scale": 2.5},
     "snow": {"color": [0.93, 0.94, 0.96], "roughness": 0.7, "scale": 4.0},
@@ -106,8 +106,14 @@ class Tube:
         if self.floor is not None:
             self.lo[2] = max(self.lo[2], float(self.floor.min()) - self.blend - self.rough - 0.5)
 
-    def sd(self, p):
+    def sd(self, p, detail=False):
+        """Signed distance (roughly: the ellipse's is a bound). With detail: also each point's height above the floor
+        of the nearest segment (inf with no floor) and that segment's smaller radius (for how much rock relief
+        a passage's walls take)."""
         best = np.full(len(p), np.inf)
+        above = np.full(len(p), np.inf)
+        size = np.zeros(len(p))
+        rough = self.rough * (2 * noise.fbm(p, self.rough_scale, 3, seed=self.seed) - 1) if self.rough > 0 else 0.0
         segs = [(0, 0)] if len(self.nodes) == 1 else [(i, i + 1) for i in range(len(self.nodes) - 1)]
         for i, j in segs:
             a, b = self.nodes[i], self.nodes[j]
@@ -122,14 +128,18 @@ class Tube:
             u, v, w = q @ eu, q @ ev, q @ t
             rw = self.rw[i] + s * (self.rw[j] - self.rw[i])
             rh = self.rh[i] + s * (self.rh[j] - self.rh[i])
-            dd = (np.sqrt((u / rw) ** 2 + (v / rh) ** 2 + (w / rw) ** 2) - 1) * np.minimum(rw, rh)
+            # walls and roof rough, the floor flat (rough floors made a cave's floor a scramble of 1 m steps)
+            dd = (np.sqrt((u / rw) ** 2 + (v / rh) ** 2 + (w / rw) ** 2) - 1) * np.minimum(rw, rh) + rough
+            ab = np.full(len(p), np.inf)
             if self.floor is not None:
                 fl = self.floor[i] + s * (self.floor[j] - self.floor[i])
                 dd = np.maximum(dd, fl - p[:, 2])
-            best = np.minimum(best, dd)
-        if self.rough > 0:
-            best = best + self.rough * (2 * noise.fbm(p, self.rough_scale, 3, seed=self.seed) - 1)
-        return best
+                ab = p[:, 2] - fl
+            m = dd < best
+            best = np.where(m, dd, best)
+            above = np.where(m, ab, above)
+            size = np.where(m, np.minimum(rw, rh), size)
+        return (best, above, size) if detail else best
 
     def touches(self, lo, hi):
         return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
@@ -347,27 +357,43 @@ def rock_relief(p, r):
     out = amp * np.clip(((q - site) * t).sum(1), -1, 1)
     if r["bedding"] > 0:
         bed = r["bed"]
-        z = (p[:, 2] + r["dip"] * (p[:, 0] * 0.8 + p[:, 1] * 0.6)) / bed
+        z = bed_level(p, r)
         kb = np.floor(z).astype(np.int64)
         f = z - kb
         edge = np.minimum(f, 1 - f)
-        out = out + r["bedding"] * (0.3 * (1 - smoothstep(0.0, 0.2, edge))
-                                    + 0.35 * (2 * noise._hash(kb, kb * 0 + 7, kb * 0, r["seed"] + 20) - 1))
+        out = out + r["bedding"] * (0.25 * (1 - smoothstep(0.0, 0.08, edge))
+                                    + 0.25 * (2 * noise._hash(kb, kb * 0 + 7, kb * 0, r["seed"] + 20) - 1))
     return out
+
+
+def bed_level(p, r):
+    """Which bed a point is in, as a real number (bed k spans k..k+1): the heightfield rock's own beds
+    (terrain_rock.bed_step / bed_offset, so sills on the heightfield's faces and the solid rock's beds line up) when
+    it has them, else level beds `bed` thick."""
+    off = r["bed_offset"](p[:, :2]) if r.get("bed_offset") else 0.0
+    return (p[:, 2] + off) / r["bed"]
 
 
 def rock_config(T, cfg):
     """The solid rock character's settings: spec "rock" (false turns it off; "facets", "bedding" 0..1 as for the
-    heightfield) and export.tiles "rock" (a multiplier, 0 = none)."""
+    heightfield; "facet_size", "bed" m) and export.tiles "rock" (a multiplier, 0 = none). Beds are the heightfield
+    rock's own where terrain_rock exposes them."""
+    from . import terrain_rock
     rc = T.spec.get("rock", {})
     mult = float(cfg.get("rock", 1.0))
     if rc is False or mult <= 0:
         return None
     rc = rc if isinstance(rc, dict) else {}
-    size = float(np.clip(float(T.world.get("crag", 12.0)) / 4, 3.0, 8.0))
-    fac = mult * float(rc.get("facets", 1.0)) * 0.12 * size
+    # few large facets with crisp joints (5 m cells and 1.8 m beds at 1 m voxels read as crumpled paper); the
+    # heightfield's own facets are larger (1.2 x crag): these sit inside them, the finer size
+    size = float(rc.get("facet_size", np.clip(float(T.world.get("crag", 12.0)) / 2.5, 4.0, 10.0)))
+    fac = mult * float(rc.get("facets", 1.0)) * 0.1 * size
     bd = mult * float(rc.get("bedding", 1.0))
-    return {"size": size, "facets": fac, "bedding": bd, "bed": 1.8, "dip": 0.04, "seed": 4242,
+    bed, off = float(rc.get("bed", 3.0)), None
+    if hasattr(terrain_rock, "bed_step") and hasattr(terrain_rock, "bed_offset") and "bed" not in rc:
+        bed = float(terrain_rock.bed_step(T))
+        off = lambda xy, T=T: terrain_rock.bed_offset(T, xy)
+    return {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
             "reach": fac + 0.7 * bd + 1.0}
 
 
@@ -377,6 +403,7 @@ class Field:
         self.x0, self.y0, self.c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
         self.vols = vols
         self.rock = rock
+        self.floor_guard = None
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
@@ -401,19 +428,27 @@ class Field:
             k = np.flatnonzero(np.all((p >= vol.lo) & (p <= vol.hi), axis=1))
             if not len(k):
                 continue
-            d = vol.sd(p[k])
+            d, above, size = vol.sd(p[k], detail=True)
             F[k] = smax(F[k], -d, vol.blend) if vol.op == "subtract" else smin(F[k], d, vol.blend)
             if near is not None:
-                near[k] = np.maximum(near[k], smoothstep(3.0, 0.0, d))
+                # rock relief on walls and roofs, scaled to the passage (a 1 m slot doesn't take 0.8 m facets), and
+                # none on floors (a person walks there)
+                w = smoothstep(3.0, 0.0, d) * np.clip(size / 3.0, 0.15, 1.0) * smoothstep(0.3, 1.5, above)
+                near[k] = np.maximum(near[k], w)
+                if self.floor_guard is not None:
+                    self.floor_guard[k] = np.minimum(self.floor_guard[k], np.where(np.isinf(above), 1.0,
+                                                                                  smoothstep(0.3, 1.5, above)))
         return F
 
     def solid(self, p, F, s):
         """Volumes and rock character on top of the ground's distance F (s: the column's slope factor, cos slope)."""
         near = np.zeros(len(p))
+        self.floor_guard = np.ones(len(p))
         F = self.volumes(p, F, near)
+        guard, self.floor_guard = self.floor_guard, None
         if self.rock is not None:
-            # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock
-            w = np.maximum(smoothstep(0.71, 0.47, s), near)
+            # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
+            w = np.maximum(smoothstep(0.71, 0.47, s) * guard, near)
             k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 F[k] = F[k] + w[k] * rock_relief(p[k], self.rock)
@@ -536,7 +571,7 @@ class Materials:
         wc = np.array(LAYERS["wet_rock"]["color"])
         if self.field.rock is not None:  # beds and facets differ a little in tone (a single grey read as plaster)
             r = self.field.rock
-            kb = np.floor((P[:, 2] + r["dip"] * (P[:, 0] * 0.8 + P[:, 1] * 0.6)) / r["bed"]).astype(np.int64)
+            kb = np.floor(bed_level(P, r)).astype(np.int64)
             tone = 0.82 + 0.3 * noise._hash(kb, kb * 0 + 3, kb * 0, r["seed"] + 30)
             tone = tone * (0.93 + 0.14 * noise.fbm(P, 2.5 * r["size"], 2, seed=r["seed"] + 31))
             rc = rc[None] * tone[:, None]
@@ -646,6 +681,11 @@ def _from_gltf(P):
 
 # ---------------------------------------------------------------- tiles
 
+# the lattice's z planes sit this fraction of a voxel off round heights: flat floors at round heights (sea level, a
+# cave floor at 5.5 m) lay exactly on lattice planes, every corner there was a zero, and marching cubes left
+# non-manifold slivers (the seam check caught them). x and y stay on the tile borders.
+ZOFF = 0.137
+
 class Grid:
     """The world's tile grid and the meshing lattice per LOD."""
 
@@ -706,7 +746,7 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     c0, c1 = int(math.floor(zlo / v)) - pad, int(math.ceil(zhi / v)) + pad
     ic = np.arange(c0, c1 + 1)
     hcol, scol = field.column(X.ravel(), Y.ravel())
-    Z = ic * v
+    Z = (ic + ZOFF) * v
     F = (Z[None, :] - hcol[:, None]) * scol[:, None]
     P = np.stack(np.broadcast_arrays(X.ravel()[:, None], Y.ravel()[:, None], Z[None, :]), -1).reshape(-1, 3)
     F = F.ravel()
@@ -751,7 +791,7 @@ def _key_geometry(keys, G, k):
     lo = K[:, 1:].astype(float)
     hi = lo.copy()
     hi[np.arange(len(K)), ax] += 1
-    to_w = lambda a: np.c_[G.origin[0] + a[:, 0] * v, G.origin[1] + a[:, 1] * v, a[:, 2] * v]
+    to_w = lambda a: np.c_[G.origin[0] + a[:, 0] * v, G.origin[1] + a[:, 1] * v, (a[:, 2] + ZOFF) * v]
     n = int(round(G.tile / v))
     NX, NY = int(round(G.span[0] / v)), int(round(G.span[1] / v))
     fixed = np.zeros((len(K), 3), bool)
@@ -773,16 +813,30 @@ def _decimate(P, faces, err, budget, field):
     at face centres and edge midpoints, over what the undecimated mesh already misses), capped at `budget`.
     (pyfqmr's own lossless mode barely removed anything with the border locked.)"""
     import pyfqmr
+    n_open = len(_boundary_edges(faces))
 
-    def run(n):
-        s = pyfqmr.Simplify()
-        s.setMesh(P, faces)
-        s.simplify_mesh(target_count=int(n), aggressiveness=7, preserve_border=True, verbose=False)
-        v, f, _ = s.getMesh()
-        return np.asarray(v, float), np.asarray(f, np.int64)
+    def valid(f):  # manifold, and no new holes (dropping a fin's twin faces can open one)
+        return _manifold(f) and len(_boundary_edges(f)) == n_open
+
+    def run(n, base=None):
+        # pyfqmr sometimes folds a thin part (a cave mouth, an arch's soffit) whatever the count: other settings of
+        # its aggressiveness usually don't
+        Pb, Fb = base if base is not None else (P, faces)
+        out = None
+        for agg in (7, 5, 9, 6, 8):
+            s = pyfqmr.Simplify()
+            s.setMesh(Pb, Fb)
+            s.simplify_mesh(target_count=int(n), aggressiveness=agg, max_iterations=300, preserve_border=True,
+                            verbose=False)
+            v, f, _ = s.getMesh()
+            out = _drop_twins(np.asarray(v, float), np.asarray(f, np.int64))
+            if valid(out[1]) and len(out[1]) <= 1.15 * n + 64:  # (a low aggressiveness can stall far above n)
+                return out
+        return out
+
 
     def error(v, f):
-        if not _manifold(f):  # pyfqmr can fold a thin part into a fin (two faces on one directed edge)
+        if not valid(f):  # pyfqmr can fold a thin part into a fin (two faces on one directed edge)
             return np.inf
         c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
         return float(np.percentile(np.abs(field.value(c)), 99))
@@ -797,12 +851,18 @@ def _decimate(P, faces, err, budget, field):
         best = None
         while n >= 16:
             cand = run(n)
-            if _manifold(cand[1]):
+            if valid(cand[1]) and len(cand[1]) <= budget:
                 best = cand
                 break
             n = int(n * 0.8)
-        if best is None:
-            return P, faces
+        if best is None:  # in one pass every count folded something: in steps, each from the last good mesh
+            cur = (P, faces)
+            while len(cur[1]) > budget:
+                cand = run(max(int(len(cur[1]) / 1.6), int(budget)), cur)
+                if not valid(cand[1]) or len(cand[1]) >= len(cur[1]):
+                    break
+                cur = cand
+            return cur
         hi = n
         if error(*best) > tol:
             return best
@@ -817,6 +877,21 @@ def _decimate(P, faces, err, budget, field):
         else:
             lo = mid
     return best
+
+
+def _drop_twins(v, f):
+    """pyfqmr sometimes folds a thin part into a fin: the same triangle twice, back to back. Both go (the faces round
+    them close up), and vertices left unused are dropped."""
+    key = np.sort(f, axis=1)
+    _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True)
+    keep = cnt[inv.ravel()] == 1
+    if keep.all():
+        return v, f
+    f = f[keep]
+    used = np.unique(f)
+    remap = np.full(len(v), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    return v[used], remap[f]
 
 
 def _manifold(f):
@@ -937,7 +1012,7 @@ def _cross3(a, b, c):
     return (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
 
 
-def _collapse_border(P, F, drop):
+def _collapse_border(P, F, drop, min_dot=0.2):
     """Collapse each border vertex in `drop` into a neighbour along the border (half-edge collapse onto the
     neighbour's position). Returns the faces left and the vertices that couldn't go without turning a face over or
     joining the mesh badly (the link condition)."""
@@ -964,9 +1039,11 @@ def _collapse_border(P, F, drop):
     def attempt(u, w):
         fu = vf.get(u, set())
         shared = [f for f in fu if w in F[f]]
-        if len(shared) != 1:
+        if len(shared) != 1 or len(fu) < 2:  # (u's only face gone would leave w and the third vertex stranded)
             return False
         third = [int(x) for x in F[shared[0]] if x != u and x != w]
+        if len(vf.get(w, ())) < 2 or (third[0] in vf and len(vf[third[0]]) < 2):
+            return False
         if nbrs(u) & nbrs(w) != set(third):
             return False
         for f in fu:
@@ -978,7 +1055,7 @@ def _collapse_border(P, F, drop):
             n1 = _cross3(Pl[t2[0]], Pl[t2[1]], Pl[t2[2]])
             l0 = math.sqrt(n0[0] ** 2 + n0[1] ** 2 + n0[2] ** 2)
             l1 = math.sqrt(n1[0] ** 2 + n1[1] ** 2 + n1[2] ** 2)
-            if l1 < 1e-9 or n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0.2 * l0 * l1:
+            if l1 < 1e-9 or n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= min_dot * l0 * l1:
                 return False
         f0 = shared[0]
         alive[f0] = False
@@ -1040,7 +1117,7 @@ def _job_dense(ij):
     c = _CTX
     G, v0, field, reg, CP = c["G"], c["v0"], c["field"], c["reg"], c["CP"]
     idx, faces, rng, kk = c["mc"][ij]
-    P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, idx[:, 2] * v0]
+    P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, (idx[:, 2] + ZOFF) * v0]
     border = np.array(sorted(kk), np.int64)
     rows = np.array([reg[kk[q]] for q in border], np.int64)
     inner = np.setdiff1d(np.arange(len(P)), border)
@@ -1072,7 +1149,13 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     timing = {}
     t0 = time.time()
     vols, notes = volumes(T)
-    field = Field(T, vols, rock_config(T, cfg))
+    from . import terrain_caves
+    rock = rock_config(T, cfg)
+    caves = terrain_caves.build(T, rock)
+    for cv in caves:
+        vols = vols + cv.tubes
+        notes = notes + cv.notes
+    field = Field(T, vols, rock)
     mats = Materials(T, field)
     G = Grid(T, cfg)
     timing["setup"] = time.time() - t0
@@ -1151,50 +1234,61 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     ln_ = np.linalg.norm(dirn, axis=1, keepdims=True)
     dirn = np.where(ln_ > 0.2, dirn / np.maximum(ln_, 1e-9), np.array([0, 0, -1.0]))
     thick = _thickness(field, CP, dirn, np.full(len(CP), 3.0), v0)
-    collapsed = {}
-    with _pool() as ex:
-        for rnd in range(8):
-            # where the rock is too thin for the skirt a gap needs, every LOD keeps that vertex (the gap closes)
-            need = _needs(lines, keep, CP, G.lods)
-            thin = set()
-            for k in range(G.lods):
-                d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
-                thin |= set(np.flatnonzero((need[k] > 1e-6) & (d > thick + 1e-6)).tolist())
-            if thin:
+    pbr = {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}
+    mat = [{"name": "terrain_reference", "pbrMetallicRoughness": pbr},
+           {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
+    rounds = 0
+    while True:
+        collapsed = {}
+        with _pool() as ex:
+            for rnd in range(8):
+                # where the rock is too thin for the skirt a gap needs, every LOD keeps that vertex (the gap closes)
+                need = _needs(lines, keep, CP, G.lods)
+                thin = set()
+                for k in range(G.lods):
+                    d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
+                    thin |= set(np.flatnonzero((need[k] > 1e-6) & (d > thick + 1e-6)).tolist())
+                if thin:
+                    for kk in keep:
+                        kk |= thin
+                    continue
+                # a vertex a tile can't drop without folding is kept by both its tiles (at every LOD: chains nested)
+                failed = set()
+                for k in range(G.lods):
+                    kr = np.array(sorted(keep[k]), np.int64)
+                    for ij, (Fk, bad) in zip(work, ex.map(_job_collapse, [(ij, kr) for ij in work])):
+                        collapsed[ij[0], ij[1], k] = Fk
+                        failed |= bad
+                if not failed:
+                    break
                 for kk in keep:
-                    kk |= thin
-                continue
-            # a vertex a tile can't drop without folding is kept by both its tiles (at every LOD: chains stay nested)
-            failed = set()
-            for k in range(G.lods):
-                kr = np.array(sorted(keep[k]), np.int64)
-                for ij, (Fk, bad) in zip(work, ex.map(_job_collapse, [(ij, kr) for ij in work])):
-                    collapsed[ij[0], ij[1], k] = Fk
-                    failed |= bad
-            if not failed:
-                break
-            for kk in keep:
-                kk |= failed
-        else:
-            raise RuntimeError("border chains didn't settle (vertices that can't be collapsed, or rock too thin for "
-                               "a skirt)")
-    depth = [np.minimum(np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"]), thick) for k in range(G.lods)]
-    timing["border collapse + skirts"] = time.time() - t0
+                    kk |= failed
+            else:
+                raise RuntimeError("border chains didn't settle (vertices that can't be collapsed, or rock too "
+                                   "thin for a skirt)")
+        depth = [np.minimum(np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"]), thick) for k in range(G.lods)]
+        timing["border collapse + skirts"] = time.time() - t0
 
-    t0 = time.time()
-    manifest_tiles = []
-    mat = [{"name": "terrain_reference", "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0,
-                                                                   "roughnessFactor": 0.92}},
-           {"name": "terrain_skirt", "doubleSided": True,
-            "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}}]
-    _CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
-                CN=CN, CW=CW, CC=CC, mat=mat)
-    stats, t_dec = [], 0.0
-    with _pool() as ex:
-        for entry, st, td in ex.map(_job_tile, tiles):
-            manifest_tiles.append(entry)
-            stats += st
-            t_dec += td
+        t0 = time.time()
+        manifest_tiles = []
+        _CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
+                    CN=CN, CW=CW, CC=CC, mat=mat, keep=[np.array(sorted(kk), np.int64) for kk in keep])
+        stats, t_dec = [], 0.0
+        with _pool() as ex:
+            wanted = set()
+            for entry, st, td, wt in ex.map(_job_tile, tiles):
+                manifest_tiles.append(entry)
+                stats += st
+                t_dec += td
+                wanted |= wt
+        # a vertex a coarse LOD couldn't lose without folding (the dense mesh folded at every count, and an
+        # earlier LOD's mesh couldn't drop it either): every LOD keeps it and the tiles are written again
+        if not wanted or rounds >= 2:
+            break
+        rounds += 1
+        for kk in keep:
+            kk |= wanted
+        log(f"{len(wanted)} border vertices kept for coarse LODs that folded; tiles written again")
     timing["tiles (decimate, project, write)"] = time.time() - t0
     timing["of which decimation"] = t_dec
 
@@ -1298,6 +1392,10 @@ def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
         "volumes": notes,
         "tiles": manifest_tiles,
     }
+    if caves:  # a person walked through every passage
+        t0 = time.time()
+        manifest["caves"] = terrain_caves.check(caves, field, sea=_sea(T))
+        timing["cave walk"] = time.time() - t0
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     timing["total before check"] = time.time() - t_all
     t0 = time.time()
@@ -1321,6 +1419,7 @@ def summary(r) -> str:
         lines.append(f"LOD {k} (error {L['error_m']:g} m): {sum(tris)} triangles, per tile {min(tris)}-{max(tris)} "
                      f"(median {int(np.median(tris))}), {size / 1e6:.1f} MB")
     lines += [f"volume {n}" for n in M["volumes"]]
+    lines += [f"walk: {n}" for n in M.get("caves", [])]
     sc = M["seam_check"]
     lines.append(f"seam check: {sc['failures']} failures; shared edges {sc['shared_edges']}, border normals within "
                  f"{sc['border_normal_max_deg']} deg, LOD gaps up to {sc['lod_pairs_max_gap_m']} m all under skirts")
@@ -1335,11 +1434,12 @@ def _job_tile(ij):
     G, v0, field, mats, cfg, out, vols = c["G"], c["v0"], c["field"], c["mats"], c["cfg"], c["out"], c["vols"]
     dense, collapsed, pos, depth, dirn = c["dense"], c["collapsed"], c["pos"], c["depth"], c["dirn"]
     CN, CW, CC, mat = c["CN"], c["CW"], c["CC"], c["mat"]
-    stats, t_dec = [], 0.0
+    stats, t_dec, wanted = [], 0.0, set()
     lo, hi = G.bounds(i, j)
     trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
     entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
     zmin, zmax = np.inf, -np.inf
+    prevs = []
     for k in range(G.lods):
         if (i, j) not in dense:
             entry["lods"].append(None)
@@ -1353,6 +1453,24 @@ def _job_tile(ij):
         n_mc = len(faces0)
         td = time.time()
         Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field)
+        if k > 0 and prevs and len(Fd) > max(cfg["budget"][k], len(prevs[-1][1])):
+            # this LOD from the dense mesh folded at every count: from an earlier LOD's mesh instead (the last one
+            # first), its border collapsed to this LOD's chain (the same chain either way: neighbours still agree)
+            for Pp, Fp in reversed(prevs):
+                rp = np.array([pos.get(tuple(q), -1) for q in Pp])
+                drop = np.flatnonzero((rp >= 0) & ~np.isin(rp, c["keep"][k]))
+                Fc, bad = _collapse_border(Pp, Fp, drop, min_dot=0.0)
+                if bad:
+                    if len(Fd) > 1.2 * cfg["budget"][k]:
+                        wanted |= {int(rp[u]) for u in bad}
+                    continue
+                used = np.unique(Fc)
+                remap = np.full(len(Pp), -1, np.int64)
+                remap[used] = np.arange(len(used))
+                P2, F2 = _decimate(Pp[used], remap[Fc], cfg["error"][k], cfg["budget"][k], field)
+                if len(F2) < len(Fd):
+                    Pd, Fd = P2, F2
+                    break
         t_dec += time.time() - td
         # border vertices must have come through untouched, and be this LOD's chain
         rowd = np.array([pos.get(tuple(p), -1) for p in Pd])
@@ -1370,6 +1488,7 @@ def _job_tile(ij):
             Pd[fold] = before[fold]
             N[fold] = _vertex_normals(Pd, Fd)[fold]
         N[bd] = CN[rowd[bd]]
+        prevs.append((Pd.copy(), Fd.copy()))
         W = np.zeros((len(Pd), len(mats.layers)), np.float32)
         C = np.zeros((len(Pd), 3))
         W[bd], C[bd] = CW[rowd[bd]], CC[rowd[bd]]
@@ -1412,7 +1531,7 @@ def _job_tile(ij):
     entry["zmin"], entry["zmax"] = zmin, zmax
     entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
                                if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
-    return entry, stats, t_dec
+    return entry, stats, t_dec, wanted
 
 
 def _prim(P, N, C, W, F, material, extras, mats, lo, cfg):
@@ -1751,7 +1870,8 @@ def border_segments(out_dir, lod=0):
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
-    height], "borders": bool, "out"}. box: [[x0, y0], [x1, y1]]: only tiles (and trees) inside. lod: a level, or
+    height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
+    [x1, y1]]: only tiles (and trees) inside. lod: a level, or
     "checker" (LOD 0 and the coarsest alternating, to see the skirts at work)."""
     import subprocess
     out = Path(out_dir)
@@ -1780,6 +1900,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             xy, h, _ = T.address(v["look"])
             look = [float(xy[0]), float(xy[1]), h]
         jobs.append({"eye": eye, "look": look, "fov": v.get("fov", 55), "sun": v.get("sun", [225, 30]),
+                     "lamp": v.get("lamp", 0.0), "exposure": v.get("exposure", 0.0),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
            "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color}
