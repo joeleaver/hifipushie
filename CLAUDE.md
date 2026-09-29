@@ -264,6 +264,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   text reaches the caller (the SDK sends a bare "Error executing tool x" otherwise). `edit_model` ops take any
   top-level key as `kind`, plus `set_key`; a failing batch names the op (`store.edit` bisects). Save replies carry
   WARNING lines (`paint.side_warnings`). check/compare/fit take `only_parts`/`hide_parts` (or plan `"parts"`).
+  Plans for props: `plan.dimensions` (measured on named elements' own surfaces, `plan.extents`) and shapes with
+  `"part"` (that part's silhouette, gaps closed at `plan.close`). look cameras report what blocks the eye -> target
+  line and the nearest clear eye (`measure.sight`). export_asset: `parts.<p>.min_triangles` (per-copy floor) and a
+  per-part `quality` report (`asset.mesh_quality`: error to the field, folds, non-manifold/open edges, slivers).
 - `assets.py` + `assets.json`: third-party assets (GNM, MakeHuman, the HBM bundle) by URL + sha256 in one directory
   ($HIFIPUSHIE_ASSETS, else `<HOME>/_templates`); `uv run hifipushie-assets verify|fetch [packs]`. Code reaches them
   through `assets.pack/path`, which say how to fetch a missing pack. Never keep pipeline assets in /tmp.
