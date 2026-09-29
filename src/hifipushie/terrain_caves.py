@@ -85,7 +85,9 @@ def _cave(T, name, c, rock):
         nodes[n] = {"xy": xy, "z": z, "rw": rw, "rh": rh, "type": "chamber", "ground": g}
     for n, en in (c.get("entrances") or {}).items():
         xy, g, _ = _xy(T, en["at"])
-        nodes[n] = {"xy": xy, "z": None, "type": "entrance", "shaft": bool(en.get("shaft")), "ground": g,
+        # a lava tube is entered where its roof fell in (a collapse pit), never through a hillside mouth
+        nodes[n] = {"xy": xy, "z": None, "type": "entrance", "shaft": bool(en.get("shaft")) or kind == "lava",
+                    "ground": g,
                     "at": en["at"]}
     edges = []
     for p in c.get("passages") or []:
@@ -105,7 +107,10 @@ def _cave(T, name, c, rock):
         if other is None:
             raise ValueError(f"cave {name!r}: entrance {n!r} has no passage")
         if nd["shaft"]:
-            nd["z"] = other["z"] if other["z"] is not None else nd["ground"] - K["depth"]
+            if kind == "lava":  # the tube's own depth under the ground here
+                nd["z"] = nd["ground"] - K["depth"]
+            else:
+                nd["z"] = other["z"] if other["z"] is not None else nd["ground"] - K["depth"]
             continue
         if kind == "sea":
             nd["z"] = (sea if sea is not None else nd["ground"]) - 0.5
@@ -171,7 +176,7 @@ def _cave(T, name, c, rock):
             tubes.append(Tube(f"{name}:{n}", [[*nd["xy"], nd["z"]]], nd["rw"], nd["rh"], nd["z"],
                               seed=zlib.crc32(n.encode()) % 10000, **common))
         elif nd["shaft"]:  # a sinkhole: a round shaft from the passage's roof up through the ground, flared at the top
-            r = 0.4 * K["width"] + 0.5
+            r = (0.6 if kind == "lava" else 0.4) * K["width"] + 0.5  # (a collapse pit is as wide as the tube)
             g = nd["ground"]
             tubes.append(Tube(f"{name}:{n}", [[*nd["xy"], nd["z"]], [*nd["xy"], g - 1.5], [*nd["xy"], g + 3]],
                               [r, r, 2.2 * r], [r, r, 2.2 * r], nd["z"], **common))  # (flat-bottomed: no pit)

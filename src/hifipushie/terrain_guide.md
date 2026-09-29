@@ -273,7 +273,8 @@ and the `"story"`.
     - `sea`: floors at the water, wide low passages, domed chambers.
     - `karst`: keyhole passages (a round tube along a bed, a slot below it), floors on the rock's bedding planes,
       sinkhole entrances.
-    - `lava`: wide round tubes at a steady depth under the ground they follow, with skylights where the roof is thin.
+    - `lava`: wide round tubes at a steady depth under the ground they follow, with skylights where the roof is thin;
+      its entrances are always collapse pits (the roof fallen in), as wide as the tube.
   - An entrance is where a passage meets the open: at a cliff or hillside along the way in, or a shaft straight down
     from the ground with `"shaft": true` (a blowhole, a sinkhole).
   - A chamber's floor is `depth` metres under the ground over it (karst 14 m, lava 7.5 m) or at height `z`; a sea
