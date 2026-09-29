@@ -27,6 +27,16 @@ import math
 import sys
 import time
 
+
+def _mem_workers(per_gb=2.0, cap=8):
+    """Worker Blenders that fit in free memory (half of RAM at most, 12% kept back; see resources.py)."""
+    try:
+        m = {l.split(":")[0]: int(l.split()[1]) / 2**20 for l in open("/proc/meminfo")}
+        budget = min(0.5 * m["MemTotal"], m["MemAvailable"] - max(6.0, 0.12 * m["MemTotal"]))
+    except OSError:
+        budget = 8.0
+    return max(1, min(cap, (os.cpu_count() or 4) // 2, int(budget // per_gb)))
+
 import bmesh
 import bpy
 import numpy as np
@@ -711,7 +721,7 @@ def _reduce_parts(job, parts, source=None):
     z = np.load(job["mesh"])
     all_names = [str(n) for n in z["part_names"]]
     size = dict(zip(all_names, np.bincount(z["part"][z["faces"][:, 0]], minlength=len(all_names)).tolist()))
-    n = max(1, min(len(parts), int(job.get("workers", min(8, max(1, (os.cpu_count() or 4) // 2))))))
+    n = max(1, min(len(parts), int(job.get("workers", _mem_workers()))))
     load, groups = [0] * n, [dict() for _ in range(n)]
     for pn in sorted(parts, key=lambda pn: -size.get(pn, 0)):
         i = int(np.argmin(load))
@@ -793,7 +803,7 @@ def _unwrap_parallel(job, atlases):
     first, each to the least loaded worker): the pack is ~50 s an atlas, and a density export has dozens."""
     import subprocess
     import tempfile
-    n = max(1, min(len(atlases), int(job.get("workers", min(8, max(1, (os.cpu_count() or 4) // 2))))))
+    n = max(1, min(len(atlases), int(job.get("workers", _mem_workers()))))
     load, groups = [0] * n, [[] for _ in range(n)]
     for ai in sorted(atlases, key=lambda a: -sum(len(ob.data.polygons) for ob in atlases[a])):
         i = int(np.argmin(load))

@@ -302,6 +302,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
 - `assets.py` + `assets.json`: third-party assets (GNM, MakeHuman, the HBM bundle) by URL + sha256 in one directory
   ($HIFIPUSHIE_ASSETS, else `<HOME>/_templates`); `uv run hifipushie-assets verify|fetch [packs]`. Code reaches them
   through `assets.pack/path`, which say how to fetch a missing pack. Never keep pipeline assets in /tmp.
+- `resources.py` (2026-09-29, after two OOM crashes of the user's desktop: a terrain export's 16 fork workers x ~2 GB
+  plus other agents' jobs): heavy jobs take the machine-wide slot `resources.heavy` (a file lock in $XDG_RUNTIME_DIR;
+  $HIFIPUSHIE_HEAVY_SLOTS, default 1) and wait for it; pools are sized by free memory (`resources.workers(per_gb)`:
+  half of RAM at most, 12% or 6 GB kept back; $HIFIPUSHIE_MEM_GB) and run under `resources.guarded`, which kills the
+  workers and raises MemoryGuardError if free memory falls under half the reserve. Wired into terrain_mesh
+  (`_pool`, `export_tiles`), asset (`export`, `flatten_parts`) and blender_asset's worker Blenders. Any new pool or
+  batch job must use them, and agents must not run sweeps/exports in parallel with each other.
 - `tests/test_tooling.py`: reproductions of the tooling cards' incidents (`uv run python tests/test_tooling.py`).
 
 ## Performance (keep these properties when changing things)
