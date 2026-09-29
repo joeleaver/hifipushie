@@ -17,7 +17,7 @@ import bpy
 import numpy as np
 
 GROUP = "hp_lock"
-VERSION = 7  # bump when the node group changes: scenes rebuild it
+VERSION = 8  # bump when the node group changes: scenes rebuild it
 INPUTS = [  # (name, type, default, min, max) in modifier order; the spec's lock keys are these, lower case
     ("Width", "NodeSocketFloat", 0.03, 0.0, 1.0),
     ("Thickness", "NodeSocketFloat", 0.008, 0.0, 1.0),
@@ -187,11 +187,14 @@ def node_group():
     y = _math(nt, "SUBTRACT", _math(nt, "MULTIPLY", sy, _math(nt, "MULTIPLY", I["Thickness"], 0.5)),
               _math(nt, "MULTIPLY", I["Cup"], _math(nt, "MULTIPLY", across, across)))
     x = _math(nt, "MULTIPLY", across, _math(nt, "MULTIPLY", I["Width"], 0.5))
-    sp = nt.nodes.new("GeometryNodeSetPosition")
-    nt.links.new(circ.outputs["Curve"], sp.inputs["Geometry"])
-    nt.links.new(_comb(nt, y, x, 0.0), sp.inputs["Position"])  # profile x runs along the curve normal
-    prof, pacross = _capture(nt, sp.outputs[0], across)
+    # captured on the unit circle, before it's scaled (captured after, "across" was +-W/2: +-2 mm, and the material's
+    # gaps, sheen band and grooves never showed)
+    prof, pacross = _capture(nt, circ.outputs["Curve"], across)
     prof, pout = _capture(nt, prof, sy)
+    sp = nt.nodes.new("GeometryNodeSetPosition")
+    nt.links.new(prof, sp.inputs["Geometry"])
+    nt.links.new(_comb(nt, y, x, 0.0), sp.inputs["Position"])  # profile x runs along the curve normal
+    prof = sp.outputs[0]
 
     c2m = nt.nodes.new("GeometryNodeCurveToMesh")
     nt.links.new(curve, c2m.inputs["Curve"])
@@ -294,6 +297,22 @@ def material(look: dict):
         nt.links.new(_math(nt, "MULTIPLY", wave, _math(nt, "SUBTRACT", 1.0, edge)), bump.inputs["Height"])
         nt.links.new(bump.outputs[0], bsdf.inputs["Normal"])
     return m
+
+
+def clay():
+    """The hair material as plain clay (a mid grey-brown, no gaps, sheen or grooves): judge the forms alone."""
+    m = bpy.data.materials.get("hp_hair")
+    if m is None:
+        return
+    nt = m.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    for k in ("Base Color", "Normal"):
+        for ln in list(bsdf.inputs[k].links):
+            nt.links.remove(ln)
+    bsdf.inputs["Base Color"].default_value = (0.33, 0.25, 0.21, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.6
+    bsdf.inputs["Anisotropic"].default_value = 0.0
+    m["hp_look"] = "clay"
 
 
 def _set_inputs(mod, vals: dict):
@@ -471,10 +490,15 @@ def cap(path, kind: str = "cap", coll_name: str = "hair"):
     me.polygons.foreach_set("loop_start", np.arange(0, nq * 4, 4, dtype=np.int32))
     me.update()
     me.validate()
-    across, out = {"cap": (1.0, -1.0), "under": (0.68, 0.4), "mass": (0.0, 1.0)}[kind]
+    across, out = {"cap": (1.0, -1.0), "under": (0.45, 0.5), "mass": (0.0, 1.0)}[kind]
+    given = {"hp_across": z["across"] if "across" in z else None, "hp_lock": z["lock"] if "lock" in z else None}
     for an, v in (("hp_along", 0.5), ("hp_across", across), ("hp_out", out), ("hp_lock", 0.5), ("hp_grey", 0.0)):
         a = me.attributes.new(an, "FLOAT", "POINT")
-        a.data.foreach_set("value", np.full(len(V), v, np.float32))
+        val = given.get(an)
+        a.data.foreach_set("value", np.full(len(V), v, np.float32) if val is None else val.astype(np.float32))
+    if "tangent" in z:
+        a = me.attributes.new("hp_tangent", "FLOAT_VECTOR", "POINT")
+        a.data.foreach_set("vector", z["tangent"].astype(np.float32).ravel())
     me.shade_smooth()
     me.materials.append(bpy.data.materials["hp_hair"])
     ob = bpy.data.objects.new("hair_cap", me)
@@ -493,8 +517,9 @@ def show(hair: dict):
     return made
 
 
-def hair_points(coll_name: str = "hair"):
-    """Every evaluated vertex of the hair collection (locks and the underlayer), world space (n, 3) float32."""
+def hair_points(coll_name: str = "hair", names: list | None = None):
+    """Every evaluated vertex of the hair collection (locks and the underlayer), world space (n, 3) float32; names
+    (a list) gets each object's name repeated per vertex (which lock makes which part of an outline)."""
     coll = bpy.data.collections.get(coll_name)
     if coll is None:
         return np.zeros((0, 3), np.float32)
@@ -507,5 +532,7 @@ def hair_points(coll_name: str = "hair"):
         me.vertices.foreach_get("co", v)
         M = np.array(ob.matrix_world, np.float32)
         out.append(v.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3])
+        if names is not None:
+            names += [ob.name] * len(out[-1])
         ev.to_mesh_clear()
     return np.concatenate(out) if out else np.zeros((0, 3), np.float32)

@@ -1136,8 +1136,17 @@ def hair_look(job):
     _open(job["blend"])
     blender_hair.show(job.get("hair") or {})
     if job.get("dump"):  # the hair's evaluated vertices (world): the silhouette gate measures them
-        np.save(job["dump"], blender_hair.hair_points())
+        names = []
+        np.save(job["dump"], blender_hair.hair_points(names=names))
+        json.dump(sorted(set(names)), open(job["dump"] + ".names.json", "w"))
+        np.save(job["dump"] + ".ids.npy", np.searchsorted(sorted(set(names)), names).astype(np.int32))
     render({**job, "opened": True})
+    if job.get("clay_views"):  # the same views with the hair as clay: form without the material's help
+        blender_hair.clay()
+        for ob in list(bpy.data.objects):
+            if ob.name.startswith("hp_sun") or ob.name.startswith("hp_cam"):
+                bpy.data.objects.remove(ob)
+        render({**job, "views": job["clay_views"], "opened": True})
 
 
 def hair_sync(job):
