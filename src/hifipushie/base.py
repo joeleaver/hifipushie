@@ -293,7 +293,9 @@ def head_of(s: dict, base: dict):
     if st:  # the stylisation layer, reusable across characters: bigger eyes, a bigger head, simpler planes
         head = {**head, "eyes": float(head.get("eyes", 1.0)) * float(st.get("eyes", 1.0)),
                 "scale": float(head.get("scale", 1.4)) * float(st.get("head", 1.0)),
-                "simplify": float(head.get("simplify", 0.0)) + float(st.get("simplify", 0.0))}
+                "simplify": float(head.get("simplify", 0.0)) + float(st.get("simplify", 0.0)),
+                **({"simplify_keep": st["simplify_keep"]} if "simplify_keep" in st and "simplify_keep" not in head
+                   else {})}
     key = ("head", json.dumps([head, mid.round(5).tolist(), up.round(5).tolist()], sort_keys=True))
     if key not in _CACHE:
         _CACHE[key] = gnm_head(head, mid, up)
@@ -313,7 +315,7 @@ def posed_measures(head: dict) -> dict:
     return {k: round(float(abs(v) / io), 3) for k, v in zip(FIT_KEYS, vals)}
 
 
-IRIS_SPOT = 1.0  # an iris paint spot's diameter on the eyeball, front view, over its "width" (calibrated in renders)
+IRIS_SPOT = 0.84  # an iris paint spot's diameter on the eyeball, front view, over its "width" (calibrated in renders)
 
 
 def eye_opening(head: dict, cell: float = 0.0005) -> list:
@@ -1004,7 +1006,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         deg = np.bincount(E.ravel(), minlength=len(W))
         keep = [lm[i] for i in (37, 38, 40, 41, 43, 44, 46, 47, 48, 51, 54, 57, 62, 66, 31, 33, 35)]
         dk = np.min([np.linalg.norm(W - p, axis=1) for p in keep], axis=0)
-        wv = np.clip((dk - 0.006 * s) / (0.015 * s), 0, 1)
+        k0, k1 = head.get("simplify_keep", [0.006, 0.015])  # kept within k0 of those landmarks, fading over k1
+        wv = np.clip((dk - float(k0) * s) / (float(k1) * s), 0, 1)
         # and the neck left as it is near the graft plane (its open edge moved under the smoothing: a ridge and
         # flecks round the neck's base, where the body's tube must meet it)
         wv = (wv * np.clip(((W - cut) @ pn - 0.02) / 0.03, 0, 1))[:, None]

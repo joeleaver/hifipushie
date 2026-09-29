@@ -60,7 +60,11 @@
    "style": {
     "eyes": 1.12,
     "head": 1.06,
-    "simplify": 0.4
+    "simplify": 0.9,
+    "simplify_keep": [
+     0.003,
+     0.008
+    ]
    },
    "head": {
     "fit": {
@@ -86,8 +90,8 @@
    },
    "eyes": {
     "color": "#ddcbbd",
-    "roughness": 0.18,
-    "specular": 0.7
+    "roughness": 0.06,
+    "specular": 0.4
    }
   },
   "paint": {
@@ -181,6 +185,146 @@
     ],
     "width": 0.007,
     "profile": "soft"
+   },
+   "stubble.L": {
+    "color": "#6b4436",
+    "opacity": 0.0,
+    "roughness": 0.65,
+    "mask": [
+     {
+      "path": [
+       {
+        "at": "lm_jaw_1.L",
+        "dir": [
+         1,
+         0,
+         0
+        ]
+       },
+       {
+        "at": "lm_jaw_3.L",
+        "dir": [
+         0.8,
+         -0.2,
+         -0.4
+        ]
+       },
+       {
+        "at": "lm_jaw_5.L",
+        "dir": [
+         0.5,
+         -0.5,
+         -0.6
+        ]
+       },
+       {
+        "at": "lm_jaw_7.L",
+        "dir": [
+         0.2,
+         -0.8,
+         -0.5
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "dir": [
+         0,
+         -0.8,
+         -0.5
+        ]
+       }
+      ],
+      "width": [
+       0.016,
+       0.026,
+       0.032,
+       0.036,
+       0.036
+      ],
+      "profile": "flat"
+     },
+     {
+      "path": [
+       {
+        "at": "lm_mouth_corner.L",
+        "offset": [
+         0.004,
+         0,
+         0.002
+        ],
+        "dir": [
+         0.3,
+         -1,
+         0
+        ]
+       },
+       {
+        "at": "lm_lip_upper",
+        "offset": [
+         0,
+         0,
+         0.008
+        ],
+        "dir": [
+         0,
+         -1,
+         0
+        ]
+       }
+      ],
+      "width": 0.007,
+      "profile": "flat",
+      "blend": "max"
+     },
+     {
+      "path": [
+       {
+        "at": "lm_mouth_corner.L",
+        "offset": [
+         0.004,
+         0,
+         -0.006
+        ],
+        "dir": [
+         0.3,
+         -1,
+         0
+        ]
+       },
+       {
+        "at": "lm_lip_lower",
+        "offset": [
+         0,
+         0,
+         -0.012
+        ],
+        "dir": [
+         0,
+         -1,
+         -0.3
+        ]
+       }
+      ],
+      "width": 0.012,
+      "profile": "flat",
+      "blend": "max"
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": -0.04,
+       "to": -0.025
+      }
+     },
+     {
+      "blur": 0.005
+     }
+    ]
    },
    "lips.L": {
     "color": "#9c4034",
@@ -277,173 +421,6 @@
      0.0045
     ]
    },
-   "stubble.L": {
-    "color": "#5a3a30",
-    "opacity": 0.0,
-    "roughness": 0.65,
-    "mask": [
-     {
-      "path": [
-       {
-        "at": "lm_jaw_1.L",
-        "dir": [
-         1,
-         0,
-         0
-        ]
-       },
-       {
-        "at": "lm_jaw_3.L",
-        "dir": [
-         0.8,
-         -0.2,
-         -0.4
-        ]
-       },
-       {
-        "at": "lm_jaw_5.L",
-        "dir": [
-         0.5,
-         -0.5,
-         -0.6
-        ]
-       },
-       {
-        "at": "lm_jaw_7.L",
-        "dir": [
-         0.2,
-         -0.8,
-         -0.5
-        ]
-       },
-       {
-        "at": "lm_chin",
-        "dir": [
-         0,
-         -0.8,
-         -0.5
-        ]
-       }
-      ],
-      "width": 0.034,
-      "profile": "flat"
-     },
-     {
-      "path": [
-       {
-        "at": "lm_jaw_1.L",
-        "offset": [
-         -0.01,
-         -0.012,
-         0.0
-        ],
-        "dir": [
-         0.8,
-         -0.6,
-         0
-        ]
-       },
-       {
-        "at": "lm_jaw_3.L",
-        "offset": [
-         -0.02,
-         -0.02,
-         0.02
-        ],
-        "dir": [
-         0.6,
-         -0.8,
-         0
-        ]
-       },
-       {
-        "at": "lm_mouth_corner.L",
-        "offset": [
-         0.015,
-         0.006,
-         0.0
-        ],
-        "dir": [
-         0.4,
-         -1,
-         0
-        ]
-       }
-      ],
-      "width": 0.03,
-      "profile": "flat",
-      "blend": "max"
-     },
-     {
-      "path": [
-       {
-        "at": "lm_mouth_corner.L",
-        "offset": [
-         0.003,
-         0,
-         0.004
-        ],
-        "dir": [
-         0.3,
-         -1,
-         0
-        ]
-       },
-       {
-        "at": "lm_lip_upper",
-        "offset": [
-         0,
-         0,
-         0.009
-        ],
-        "dir": [
-         0,
-         -1,
-         0
-        ]
-       }
-      ],
-      "width": 0.013,
-      "profile": "flat",
-      "blend": "max"
-     },
-     {
-      "path": [
-       {
-        "at": "lm_lip_lower",
-        "offset": [
-         0,
-         0,
-         -0.018
-        ],
-        "dir": [
-         0,
-         -1,
-         -0.3
-        ]
-       }
-      ],
-      "width": 0.024,
-      "profile": "flat",
-      "blend": "max"
-     },
-     {
-      "axis": {
-       "dir": [
-        0,
-        0,
-        1
-       ],
-       "at": "lm_chin",
-       "from": -0.04,
-       "to": -0.025
-      }
-     },
-     {
-      "blur": 0.004
-     }
-    ]
-   },
    "iris.L": {
     "part": "eyes",
     "color": "#1e130d",
@@ -458,7 +435,7 @@
       ]
      }
     ],
-    "width": 0.017,
+    "width": 0.021,
     "profile": "flat"
    },
    "pupil.L": {
@@ -474,7 +451,7 @@
       ]
      }
     ],
-    "width": 0.007,
+    "width": 0.008,
     "profile": "flat"
    },
    "glint.L": {
