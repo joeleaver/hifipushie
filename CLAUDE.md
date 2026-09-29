@@ -176,7 +176,16 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   projecting: the old "inside the model near the head" rule held the goblin's cheeks 15-25 mm inside. goblin_anat 3.11
   -> 0.85 mm mean, 10/10 rings; troll_anat 1.24 mm. Judge with `spikes/topology/wrap_eval.py` (error by region incl.
   ears, rings at `anatomy.loop_planes`, turned faces; `closeup` draws turned faces or, `ERR=3`, the model surface the
-  mesh misses: the only view that caught the cheek bug). Not yet wired into export_asset.
+  mesh misses: the only view that caught the cheek bug). Export: `parts.body.topology = "wrap"` (asset.topology_parts:
+  the wrap kept through the decimation, skin buried under other parts dropped). Base bodies (2026-09-29): digits are
+  tubes on the base's own finger joints (`c["model"]` = the template's names), each base loop carried to its first
+  ring, ring angles from the template's clean digit, `_stitch` winds tubes by a vote over the loop's edges (another
+  cut's tip side took the face on loop[0]->loop[1]: an inside-out index finger); a grafted GNM head keeps its own quads
+  (`graft_head`: un-subdivided once in Blender, 12k -> 6k quads with diagonal flow on the cranium; both meshes cut at
+  clean neck loops, `_neck_cut`: plane cuts zigzagged and twisted the bridge; bridged, projected, relaxed; a closed
+  mouth zipped, `_zip_mouth`). The template's face onto GNM's proportions folded round the mouth and jaw whatever the
+  landmarks (tried RBF with lip/chin landmarks, a global similarity, a smoothed registration): dropped. dgf: 13.9k
+  verts, 98% quads, mean error 1.34 mm, head 0.78.
 - `base.py`: spec `base` = a template body as the start of a character (`{"template": "male_stylized", "eyes": part,
   "girth", "soften", "push", "head"}`): the template's joints are injected (spec joints win), the body warped onto them
   with radii kept (`_skeleton_warp(girth=)`), Catmull-Clark'd, and becomes one primitive (kind "base", first in the
@@ -210,7 +219,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   side: rays from outside a hull miss), hanging from wider slices above, drape folds where loose; handed over to the
   body cloth by weight across TUBE_BAND (`_tube_weight`; a smooth union of the two swelled ~k/6: a ridge). The region
   blobs cut hems as with any shell; collars/plackets/cuffs are ordinary blobs/bones (layer 1), folds crease strokes.
-  Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo, shorts).
+  Tube `taper` (+ `taper_len`, `hem`): looseness taken in toward the hem, against the body's own hull. Garments are
+  pushed clear of the real body (a grafted neck is wider than the template's). Collars: blob shape "collar"
+  (`sdf.sd_collar`, a folded collar swept round the neck: stand + fall at `spread`/`spread_back`, `points`, `gap`);
+  the shirt's region ends at a plane tilted like the neckline (a level box top left the shoulders bare or the chin
+  covered). A strap is a shell of the shirt inside a chain of round cones, pressed in by a crease on the shirt.
+  `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
+  cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
+  Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo with a folded collar, shorts, trail sneakers,
+  bag on a strap, disc, hair as a scalp shell + swept top; exported rigged).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

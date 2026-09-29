@@ -640,9 +640,9 @@ def lowpoly(job):
     if pre_file:
         os.remove(pre_file)
     obs = [obs[pn] for pn in names]
-    for pn, z in fixed.items():  # as given (quads kept), unwrapped with the rest
-        ob = _poly_mesh(pn, z["verts"], z["loops"], np.r_[0, np.cumsum(z["sizes"])[:-1]])
-        ob.data.update(calc_edges=True)
+    for pn, z in fixed.items():  # as given, its quads split in two (everything downstream reads triangles: kept as
+        # quads, corners were read three at a time and the body came out as shards)
+        ob = _flat_mesh(pn, z["verts"], z["loops"], z["sizes"])
         obs.append(ob)
         info[pn] = {"joint_count": int((z["sizes"] - 2).sum()), "budget": int((z["sizes"] - 2).sum()),
                     "flat": 0.0, "symmetric": False, "fixed": True}
