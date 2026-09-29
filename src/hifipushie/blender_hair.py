@@ -290,7 +290,13 @@ def material(look: dict):
     # strand grooves: fine parallel ridges across the width (bump only)
     g = float(look.get("grooves", 9))
     if g > 0:
-        wave = _math(nt, "SINE", _math(nt, "MULTIPLY", across, g * 3.14159))
+        # uneven spacing per lock (a warp of the across coordinate seeded by the lock) and softened: evenly spaced
+        # sharp ridges read as corduroy
+        warp = _math(nt, "ADD", across, _math(nt, "MULTIPLY", 0.18, _math(nt, "SINE", _math(
+            nt, "ADD", _math(nt, "MULTIPLY", across, 2.3), _math(nt, "MULTIPLY", lock, 37.0)))))
+        wave = _math(nt, "SINE", _math(nt, "ADD", _math(nt, "MULTIPLY", warp, g * 3.14159),
+                                       _math(nt, "MULTIPLY", lock, 11.0)))
+        wave = _math(nt, "MULTIPLY", wave, _math(nt, "ABSOLUTE", wave))  # soft-signed: broad valleys, soft ridges
         bump = nt.nodes.new("ShaderNodeBump")
         bump.inputs["Strength"].default_value = float(look.get("groove_depth", 0.25))
         bump.inputs["Distance"].default_value = 0.0005

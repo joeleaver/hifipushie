@@ -53,7 +53,7 @@ def under(g: dict, H, az, el, d_in):
     side = side_tuck(az, el, W)
     # the fill (sides, back) is relief on the mass, not its volume: sunk a whole fill thickness, the gaps between
     # fill locks showed the sunk mass and the sides pinched in under the top again
-    depth = 0.85 * top * tb * (1 - side) * _ss(d_in / 0.03) + FILL_SINK * (1 - top) * tf  # the front edge not sunk:
+    depth = 0.85 * top * tb * (1 - side) * _ss(d_in / 0.012) + FILL_SINK * (1 - top) * tf  # the front edge not sunk:
     # between the front row's roots the sunk mass read as black pits along the hairline
     return np.maximum(H - depth, np.minimum(H, 0.0015))
 
@@ -80,7 +80,7 @@ GROOM = {
              "sides": {"back": 1, "down": 0.45}, "back": {"down": 1}, "nape": {"down": 1}},
     "tiers": {"crown": {"width": 0.042, "thickness": 0.009, "spacing": 0.7, "where": ["top"]},
               "big": {"width": 0.05, "thickness": 0.011, "spacing": 0.6, "where": ["front", "top"],
-                      "layout": "part", "front_away": 5, "front_part": 2, "part_row": 3, "front_span": 42},
+                      "layout": "part", "front_away": 6, "front_part": 0, "part_row": 3, "front_span": 42},
               "fill": {"width": 0.026, "thickness": 0.007, "spacing": 0.8,
                        "where": ["sides", "back", "nape", "top"]},
               "edge": {"width": 0.011, "thickness": 0.0028, "spacing": 0.9, "length": 0.022}},
@@ -89,7 +89,7 @@ GROOM = {
     "seed": 0,
 }
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
-        "sheen_amount": 0.45, "vary": 0.25, "grooves": 9, "groove_depth": 0.25, "anisotropic": 0.7}
+        "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier"}
 MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
@@ -541,6 +541,8 @@ def grow(sc: Scalp, g: dict) -> dict:
             away = np.sign(P0[:, 0] + 1e-9)
         if away_given is not None:
             away = away_given
+        if tier == "crown" and xp is not None:  # the whole top sweeps one way, away from the part (each lock choosing
+            away = np.full(len(az), -np.sign(xp) or -1.0)  # its side of the part turned the crown into a jumble)
         L = float(td["length"]) * np.ones(len(az)) if td.get("length") else _region(g, "length", W)
         if away_given is not None:  # the short side of a side part: brushed down toward the ear, not over it
             L = np.where(away_given == np.sign(_part_x(g) or 1.0), L * float(td.get("part_side_length", 0.55)), L)
@@ -601,7 +603,7 @@ def grow(sc: Scalp, g: dict) -> dict:
                 "cup": round(float(td["cup"]) * float(size[i]) if "cup" in td else lie_cup(sc, float(W_[i]), path), 4),
                 "taper": 1.0, "belly": round(float(td.get("belly", 0.16) + 0.06 * rng.uniform(-1, 1)), 3),
                 "root": float(td.get("root", 0.8)),
-                "twist": round(float(rng.uniform(-15, 15) * noise), 1),
+                "twist": round(float(rng.uniform(-15, 15) * noise), 1) if tier in ("fill", "edge") else 0.0,
                 **({"grey": round(grey, 3)} if grey > 0.01 else {})}
     return locks
 
