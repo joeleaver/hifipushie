@@ -289,6 +289,18 @@ def _compile(spec: dict) -> list[Prim]:
                                "bend": bend, "lip": lip},
                               reach=lip * max(W, L) / T))  # a thin sheet under-reports distance off its edge
             continue
+        if bl.get("shape") == "collar":  # a folded shirt collar round a neck (sdf.sd_collar)
+            rx, ry, hs = (float(v) for v in size)
+            cp = {"c": c, "rot": rot, "rx": rx, "ry": ry, "stand": hs, "t": float(bl.get("thickness", 0.0025)),
+                  "lean": float(bl.get("lean", 0.004)), "fall": float(bl.get("fall", 0.035)),
+                  "points": float(bl.get("points", 0.02)), "spread": float(bl.get("spread", 55.0)),
+                  "spread_back": float(bl.get("spread_back", bl.get("spread", 30.0))),
+                  "gap": float(bl.get("gap", 14.0)), "stand_gap": float(bl.get("stand_gap", 8.0)), "lip": 1.3}
+            R = max(rx, ry) + cp["lean"] + 2 * cp["t"] + cp["fall"] + cp["points"]
+            ext = np.abs(rot) @ np.array([R, R, max(R, hs + 2 * cp["t"])])
+            prims.append(Prim(name, "collar", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
+                              cp, reach=4.0))
+            continue
         if bl.get("shape") == "box":
             rnd = min(float(bl.get("round", 0.0)), float(size.min()))
             prims.append(Prim(name, "box", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
@@ -445,7 +457,7 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     return out
 
 
-SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg")
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}

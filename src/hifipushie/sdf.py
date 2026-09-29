@@ -208,6 +208,44 @@ def sd_blade(p: np.ndarray, pr: dict) -> np.ndarray:
     return d / pr.get("lip", 1.0)
 
 
+def _seg2(px, py, ax, ay, bx, by):
+    """Distance from 2D points to segments a-b (arrays broadcast)."""
+    dx, dy = bx - ax, by - ay
+    t = np.clip(((px - ax) * dx + (py - ay) * dy) / np.maximum(dx * dx + dy * dy, 1e-12), 0.0, 1.0)
+    return np.hypot(px - ax - t * dx, py - ay - t * dy)
+
+
+def sd_collar(p: np.ndarray, pr: dict) -> np.ndarray:
+    """A shirt collar turned down over its stand, swept round a neck (local frame: z up the neck, -y front). Each
+    half-plane round the axis holds the same 2D profile, two strokes of cloth `t` thick (half): the stand rising
+    from the neckline (an ellipse rx, ry) `stand` high, leaning out `lean` m, and the fall folded over its top and
+    running back down and out at `spread` degrees off vertical (`spread_back` at the back, where the fall lies
+    on the upper back instead of the shoulders' slope), `fall` long, longer toward the front ends
+    (`points` m more at the front, easing in over the front third). The front stays open `gap` degrees each side of
+    the centre line (the fall's ends: the collar points; the stand closes `stand_gap`). Divided by `lip` (the
+    profile varies round the axis, so the field is slightly steeper than 1)."""
+    q = (p - pr["c"]) @ pr["rot"]
+    x, y, z = q[..., 0], q[..., 1], q[..., 2]
+    rx, ry = pr["rx"], pr["ry"]
+    rho = np.hypot(x, y)
+    th = np.arctan2(x, -y)  # 0 at the front
+    ath = np.abs(th)
+    r0 = rx * ry / np.maximum(np.hypot(ry * np.sin(th), rx * np.cos(th)), 1e-9)
+    hs, t, lean = pr["stand"], pr["t"], pr["lean"]
+    back = (0.5 * (1 - np.cos(th))) ** 2  # 0 at the front, 1/4 at the sides, 1 at the back
+    sp = np.radians(pr["spread"] + (pr["spread_back"] - pr["spread"]) * back)
+    front = np.clip(1 - ath / (np.pi / 3), 0, 1)
+    fl = pr["fall"] + pr["points"] * front * front * (3 - 2 * front)
+    bx, by = r0 + lean, hs  # the fold: the stand's top
+    ds = _seg2(rho, z, r0, 0.0, bx, by)
+    df = _seg2(rho, z, bx + t, by, bx + t + fl * np.sin(sp), by - fl * np.cos(sp))
+    d = np.minimum(ds, df) - t
+    # the front opening: the fall's ends (collar points) at `gap`, the stand's at `stand_gap`, as arc lengths
+    g = np.where(df < ds, np.radians(pr["gap"]), np.radians(pr["stand_gap"]))
+    d = np.maximum(d, (g - ath) * np.maximum(rho, 1e-3))
+    return d / pr["lip"]
+
+
 def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray:
     """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts.
     An instance's element takes its noise (lumpy, chips) in the prefab's frame ("frame": world -> prefab m, t and
@@ -259,7 +297,7 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
-       "blade": sd_blade,
+       "blade": sd_blade, "collar": sd_collar,
        "csg": sd_csg, "shell": sd_shell, "base": lambda p, pr: _sd_base(p, pr)}
 
 

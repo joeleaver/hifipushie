@@ -35,7 +35,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 52  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 53  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -474,7 +474,7 @@ def _seg_dist(P, a, b):
     return np.linalg.norm(P - (a + t[:, None] * ab), axis=1), t
 
 
-def _garment_tube(X, keep, o, u, L, tb: dict, hang: float, ease: float, info: dict):
+def _garment_tube(X, keep, o, u, L, tb: dict, hang: float, ease: float, info: dict, B=None):
     """Cloth as a tube round an axis (from o along u, the way the cloth hangs, L long): per 1 cm slice across the axis
     the convex hull of the (closed, eased) cloth's points `keep`, radius per angle, hanging from the wider slice
     above (under the chest and belly, over the seat; a trouser leg from the thigh), smoothed, with drape folds where
@@ -507,29 +507,55 @@ def _garment_tube(X, keep, o, u, L, tb: dict, hang: float, ease: float, info: di
     for j in range(2):
         C[:, j] = np.interp(np.arange(len(ss)), np.flatnonzero(okc), C[okc, j])
     C = gaussian_filter(C, (4.0, 0), mode="nearest")
-    for i, hull in enumerate(hulls):
-        if hull is None:
-            continue
-        A = hull - C[i]
-        E = np.roll(A, -1, axis=0) - A
-        for k, dv in enumerate(dirs):  # the hull's radius along each angle
-            den = dv[0] * E[:, 1] - dv[1] * E[:, 0]
-            ok = np.abs(den) > 1e-12
-            tt = (A[:, 0] * E[:, 1] - A[:, 1] * E[:, 0])[ok] / den[ok]
-            uu = (A[:, 0] * dv[1] - A[:, 1] * dv[0])[ok] / den[ok]
-            good = (tt > 0) & (uu >= -1e-9) & (uu <= 1 + 1e-9)
-            if good.any():
-                R[i, k] = tt[good].max()
-    rows = np.flatnonzero(np.isfinite(R).all(1))
-    if len(rows) < 3:
+    def radii(hulls):
+        """Each slice's hull radius along each angle (about the smoothed centres); None if too few slices."""
+        R = np.full((len(ss), nth), np.nan)
+        for i, hull in enumerate(hulls):
+            if hull is None:
+                continue
+            A = hull - C[i]
+            E = np.roll(A, -1, axis=0) - A
+            for k, dv in enumerate(dirs):  # the hull's radius along each angle
+                den = dv[0] * E[:, 1] - dv[1] * E[:, 0]
+                ok = np.abs(den) > 1e-12
+                tt = (A[:, 0] * E[:, 1] - A[:, 1] * E[:, 0])[ok] / den[ok]
+                uu = (A[:, 0] * dv[1] - A[:, 1] * dv[0])[ok] / den[ok]
+                good = (tt > 0) & (uu >= -1e-9) & (uu <= 1 + 1e-9)
+                if good.any():
+                    R[i, k] = tt[good].max()
+        rows = np.flatnonzero(np.isfinite(R).all(1))
+        if len(rows) < 3:
+            return None
+        for i in range(len(ss)):  # slices with too few points: the nearest one's
+            if not np.isfinite(R[i]).all():
+                R[i] = R[rows[np.argmin(np.abs(rows - i))]]
+        return R
+    R = radii(hulls)
+    if R is None:
         return None
-    for i in range(len(ss)):  # slices with too few points: the nearest one's
-        if not np.isfinite(R[i]).all():
-            R[i] = R[rows[np.argmin(np.abs(rows - i))]]
     Rb = gaussian_filter(R, (4.0, 1.5), mode=("nearest", "wrap"))  # the body's own hull, before hanging
     for i in range(1, len(ss)):  # hanging: cloth falls from the wider slice above
         R[i] = np.maximum(R[i], (1 - hang) * R[i] + hang * R[i - 1])
     R = gaussian_filter(R, (4.0, 1.5), mode=("nearest", "wrap")) + ease
+    tp = float(tb.get("taper", 0.0))
+    if tp:  # the looseness taken in toward the hem (a shirt tapering to the hips instead of falling as a tube): over
+        # the last taper_len above `hem` (distance along the tube, default its end) the cloth closes in on the body's
+        # own hull by `taper` of its gap, and the hem sits near the body (a hanging hem cut by the region was a roll)
+        hem = float(tb.get("hem", L))
+        tl = float(tb.get("taper_len", 0.25))
+        f = tp * _smooth01((ss - (hem - tl)) / tl)
+        Rn = Rb
+        if B is not None:  # the body's own hull (the cloth's already hangs from the belly)
+            Pb = B[keep] - o
+            spb, Qb = Pb @ u, np.c_[Pb @ e1, Pb @ e2]
+            hb = []
+            for sv in ss:
+                sl = Qb[np.abs(spb - sv) < 1.2 * ds]
+                hb.append(sl[ConvexHull(sl).vertices] if len(sl) >= 8 else None)
+            Rbody = radii(hb)
+            if Rbody is not None:
+                Rn = gaussian_filter(Rbody, (4.0, 1.5), mode=("nearest", "wrap"))
+        R = R - f[:, None] * np.clip(R - Rn - ease, 0, None)
     fold = float(tb.get("folds", 1.0))
     if fold:  # drape folds where the cloth hangs free of the body: long ridges down the axis, deeper the looser
         rng = np.random.default_rng(int(tb.get("seed", 7)))
@@ -587,7 +613,7 @@ def _smooth01(x):
     return x * x * (3 - 2 * x)
 
 
-def _tubes(X, J, g: dict, hang: float) -> list:
+def _tubes(X, J, g: dict, hang: float, B=None) -> list:
     """The garment's tubes: g["tube"] (a shirt's torso: down from 7 cm under the shoulders to 15 cm under the hips,
     arms left out) and g["legs"] (trouser legs: along hip -> knee from `start` (default 0.25) of the way, `length`
     (default 0.9 of hip -> knee)), each {} or with folds/seed/top/bottom/start/length."""
@@ -605,7 +631,7 @@ def _tubes(X, J, g: dict, hang: float) -> list:
         zt = float(tb.get("top", J["shoulder.L"][2] - 0.07 if "shoulder.L" in J else J["chest"][2] + 0.1))
         zb = float(tb.get("bottom", J["hip.L"][2] - 0.15 if "hip.L" in J else pel[2] - 0.15))
         t = _garment_tube(X, ~arm, np.array([c[0], c[1], zt]), [0, 0, -1.0], zt - zb, tb, hang or 0.8, ease,
-                          {"arms": arms})
+                          {"arms": arms}, B)
         if t is not None:
             out.append(t)
     if g.get("legs") is not None and "hip.L" in J and "knee.L" in J:
@@ -619,7 +645,7 @@ def _tubes(X, J, g: dict, hang: float) -> list:
             s = (X - o) @ u
             keep &= (s > -0.05) & (np.linalg.norm(np.cross(X - o, u), axis=1) < 0.2)
             t = _garment_tube(X, keep, o, u, float(lg.get("length", 0.9)) * ln, lg, hang or 0.5, ease,
-                              {"side": sign})
+                              {"side": sign}, B)
             if t is not None:
                 out.append(t)
     return out
@@ -693,10 +719,18 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
     Nb, _ = _normals_and_h(Vb, F)
     u = ((V - Vb) * Nb).sum(1)  # the subdivided cloth still clear of the subdivided body
     V = V + np.maximum(offset - u, 0)[:, None] * Nb
+    surf = _CACHE[key]
+    if surf.get("graft") is not None:  # and clear of the real body: a grafted head's neck is wider at its base than
+        # the template's own, and poked through the shirt beside the collar
+        N, _ = _normals_and_h(V, F)
+        near = np.linalg.norm(V - surf["graft"]["plane"][0], axis=1) < 0.25
+        for _ in range(3):
+            d = _sd_body(V[near], surf)
+            V[near] += np.maximum(offset - d, 0)[:, None] * N[near]
     N, h = _normals_and_h(V, F)
     out = [{"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
             "head": None}]
-    tubes = _tubes(V, J, g, hang) if J else []  # (from the subdivided cloth: slices of the coarse one missed points)
+    tubes = _tubes(V, J, g, hang, Vb + offset * Nb) if J else []  # (from the subdivided cloth: slices of the coarse one missed points)
     if tubes:  # a torso hanging over the crotch and seat, trouser legs: tubes, handed over to the cloth from the
         # body by weight (_tube_weight)
         out = [{"mix": [out[0], *tubes], "weights": [t["blend_info"] for t in tubes],
