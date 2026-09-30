@@ -35,7 +35,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 56  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 57  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -359,6 +359,25 @@ def plane_measures(head: dict) -> dict:
     return {"corner_radius_brow_mm": corner(lm[24][2]),
             "corner_radius_cheekbone_mm": corner(0.5 * (e0[2] + e1[2]) - 0.35 * io),
             "corner_radius_mouth_mm": corner(lm[48][2]), "muzzle_mm": round(1000 * float(np.mean(ck) - lip), 1)}
+
+
+def ala_width(head: dict) -> float:
+    """The nose's width across the outer alar wings over the interocular (eye centres), on the built head mesh: the
+    nose region's most lateral points in a band from the nostril base (lm31/35) to 1 cm above it. What reads as the
+    nose's width in a picture; GNM's lm31-35 (fit key nose_width) sit at the nostril base, inside the wings."""
+    g = _gnm_data()
+    skin = g["skin"]
+    V = np.asarray(head["verts"])
+    ns = int(skin.sum())
+    lm = np.asarray(head["lm68"])
+    e0, e1 = head["eyes"]
+    io = abs(e0[0] - e1[0])
+    s = io / 0.063  # the band in the head's own scale
+    za = 0.5 * (lm[31][2] + lm[35][2])
+    nose = np.flatnonzero(g["groups"]["nose_region"][skin] > 0.5)
+    z = V[nose, 2]
+    iv = nose[(z > za - 0.002 * s) & (z < za + 0.010 * s)]
+    return float((V[iv, 0].max() - V[iv, 0].min()) / io)
 
 
 IRIS_SPOT = 1.83  # an iris paint spot's diameter on the eyeball seen from the front, over its "width" (measured in renders)
@@ -1003,14 +1022,22 @@ def _lm_of(g, V):
     return np.array([sum(float(w) * V[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]])
 
 
-def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8) -> tuple:
+PLANES_KEEP = {("nose_region",): 10, ("upper_lip_region", "lower_lip_region", "chin_region"): 30}  # features _planes
+# leaves alone (group names: feather rounds); the lips and chin fade out wide: feathered at 10 the kept muzzle met the
+# pushed cheek in a crease (a smile fold beside the mouth)
+
+
+def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8, keep: float = 1.0) -> tuple:
     """A head's front and side planes meeting at a tighter corner (a stylised head: the forehead slab turning
     sharply into the side plane at the temple, on down the cheekbone to the jaw corner). Per 2 mm height band, the
     face's horizontal section is taken as an ellipse (half width a at the jaw contour's depth, depth b from there to
     the cheek's front off the midline) and every point in front of the jaw contour is moved radially (in the
     ellipse's normalised coordinates) onto the superellipse of exponent n (2 = unchanged, 3 = boxy): nothing moves
     straight ahead (nose, mouth) or straight out at the side, the most at the corner between. GNM frame (Y up,
-    Z forward). pts (eye joints) move with it. Returns (V, pts)."""
+    Z forward). pts (eye joints) move with it. Returns (V, pts).
+    The nose, lips and chin (PLANES_KEEP, feathered) are held by `keep` (0..1): the radial push acts on their own
+    sides too (off the straight-ahead axis), which boxed the nose's section and sliced its front flat; the planes
+    are the broad face's (temple, cheekbone, jaw corner), not the features'."""
     lm = _lm_of(g, V)
     skin = g["skin"] & ~(g["groups"]["ears"] > 0.5)
     zc = 0.5 * (lm[0][2] + lm[16][2])  # the jaw contour's depth at the ear: the side of the face
@@ -1054,7 +1081,9 @@ def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8
         Y[:, 2] = zc + (X[:, 2] - zc) * k
         return Y
     ears = g["groups"]["ears"]
-    return move(V, 1.0 - np.clip(ears, 0, 1)), move(np.asarray(pts, float))
+    kw = np.max([region_weight(list(gs), f) for gs, f in PLANES_KEEP.items()], axis=0)
+    wm = (1.0 - np.clip(ears, 0, 1)) * (1.0 - keep * kw)
+    return move(V, wm), move(np.asarray(pts, float))
 
 
 def region_weight(groups, feather: int = 8) -> np.ndarray:
@@ -1154,7 +1183,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     J[:, 0] = mid[0] + (J[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
     shape = head.get("shape") or {}
     if float(shape.get("planes", 2.0)) != 2.0:  # front/side planes meeting at a tighter corner (temple, cheekbone)
-        V, J[2:4] = _planes(V, J[2:4], float(shape["planes"]), g, float(shape.get("planes_hold_eyes", 0.8)))
+        V, J[2:4] = _planes(V, J[2:4], float(shape["planes"]), g, float(shape.get("planes_hold_eyes", 0.8)),
+                             float(shape.get("planes_keep_features", 1.0)))
     R = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])  # GNM: Y up, facing +Z -> Z up, facing -Y
     up = up / np.linalg.norm(up)
     R = retopo._rot_between(np.array([0, 0, 1.0]), up) @ R
