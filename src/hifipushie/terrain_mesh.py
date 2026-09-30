@@ -38,7 +38,8 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
-from . import noise, terrain_sharp
+from . import noise, profiling, terrain_sharp
+from .profiling import span as _span
 
 DEFAULTS = {
     "tile": 64.0,          # metres a side
@@ -64,6 +65,7 @@ DEFAULTS = {
     "texture_max": 2048,
     "ground_density": 4.0,  # (cliffs) the ground tiles' maps, texels per metre at LOD 0
     "micro": 1.0,          # bake-only fine rock relief (facets, cracks, laminae below the voxel); 0 = none
+    "checks": True,        # the seam/ground/pattern checks after writing (off for previews)
 }
 
 DENSITY_FILL = 0.55  # the share of an atlas the packer fills (for choosing one texel density that fits every tile)
@@ -425,6 +427,7 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
     on the face, `facet`); u: 0..1 how much of the point's relief comes from a volume (a cave's walls and roof, which
     the ground's gradient says nothing about: facets in 3D there)."""
     fac = lambda size, seed: facet(p, size, seed, fd, u)
+    profiling.count("facets pts", len(p))
     if g is None:
         out = r["facets"] * (fac(r["size"], r["seed"]) + 0.4 * fac(0.43 * r["size"], r["seed"] + 5))
     else:
@@ -456,7 +459,8 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
         out = out + r["bedding"] * (0.3 * np.clip(1 - edge / be, 0, 1) + 0.3 * o)
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
-        out = out + _joints(p, r, fd) * (1.0 if jw is None else jw)
+        with _span("field.joints", leaf=True):
+            out = out + _joints(p, r, fd) * (1.0 if jw is None else jw)
     return out
 
 
@@ -489,8 +493,12 @@ def _joints(p, r, fd=None):
             # the slope in the denominator keeps it continuous where the ground flattens and the direction is lost)
             cs = np.abs(fd @ np.asarray(d)) / np.sqrt((fd * fd).sum(1) + 0.04)
             best = best * smoothstep(0.8, 0.45, cs)
-        band = smoothstep(0.35, 0.6, noise.fbm(p * np.array([1.0, 1.0, 0.5]), J["band"], 2, seed=r["seed"] + 70 + m))
-        out = out + J["depth"] * best * band
+        # (the bands' noise only where there's a groove to scale: it was a sixth of every bake's time)
+        kb = np.flatnonzero(best > 0)
+        if len(kb):
+            band = smoothstep(0.35, 0.6, noise.fbm(p[kb] * np.array([1.0, 1.0, 0.5]), J["band"], 2,
+                                                   seed=r["seed"] + 70 + m))
+            out[kb] = out[kb] + J["depth"] * best[kb] * band
     return out
 
 
@@ -553,6 +561,11 @@ def facet(p, size, seed, fd=None, u=None):
     if fd is None:
         return _pl_facets(p, size, seed)
     from . import terrain_facets
+    with _span("field.facets", leaf=True):
+        return _facet(p, size, seed, fd, u, terrain_facets)
+
+
+def _facet(p, size, seed, fd, u, terrain_facets):
     u = np.zeros(len(p)) if u is None else u
     out = np.zeros(len(p))
     a, b = np.flatnonzero(u < 0.999), np.flatnonzero(u > 1e-3)
@@ -761,6 +774,11 @@ class Field:
 
     def solid(self, p, F, s):
         """Volumes and rock character on top of the ground's distance F (s: the column's slope factor, cos slope)."""
+        profiling.count("field.solid pts", len(p))
+        with _span("field.solid", leaf=True):
+            return self._solid(p, F, s)
+
+    def _solid(self, p, F, s):
         near = np.zeros(len(p))
         self.floor_guard = np.ones(len(p))
         depth = -np.asarray(F, float).copy()  # (how far under the open ground: joints are a surface thing)
@@ -775,9 +793,12 @@ class Field:
                 fd = self.face_dir(p[k, 0], p[k, 1])
                 a_ = self.steep_at(p[k, 0], p[k, 1]) * guard[k]
                 u = near[k] / np.maximum(a_ + near[k], 1e-9)  # (the volumes' share of the relief)
-                F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u)
+                profiling.count("field.rock pts", len(k))
+                with _span("field.rock_relief", leaf=True):
+                    F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u)
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
-                    F[k] = F[k] + w[k] * self.micro(p[k], fd, u)
+                    with _span("field.micro", leaf=True):
+                        F[k] = F[k] + w[k] * self.micro(p[k], fd, u)
         return F
 
     def value(self, p):
@@ -802,6 +823,11 @@ def _lattice_values(field, P, v):
 def project(field, P, v, fixed=None, iterations=4):
     """Newton steps onto the zero set (capped at half a voxel), then unit normals from the field's gradient.
     `fixed`: (n, 3) bool, axes a vertex may not move along (border planes)."""
+    with _span("project"):
+        return _project(field, P, v, fixed, iterations)
+
+
+def _project(field, P, v, fixed=None, iterations=4):
     P = P.astype(np.float64).copy()
     h = v / 8
     todo = np.arange(len(P))
@@ -898,6 +924,10 @@ class Materials:
                                        order=3, prefilter=False, mode="nearest")
 
     def weights(self, P, N):
+        with _span("materials.weights"):
+            return self._weights(P, N)
+
+    def _weights(self, P, N):
         xy = P[:, :2]
         n = len(P)
         W = {k: np.zeros(n) for k in self.layers}
@@ -1149,8 +1179,9 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     P = np.stack(np.broadcast_arrays(X.ravel()[:, None], Y.ravel()[:, None], Z[None, :]), -1).reshape(-1, 3)
     F = F.ravel()
     S_ = np.repeat(scol, len(ic))
-    for q in range(0, len(P), 400_000):  # (in pieces: a whole tile's lattice at once peaked at ~2 GB a worker)
-        F[q:q + 400_000] = field.solid(P[q:q + 400_000], F[q:q + 400_000].copy(), S_[q:q + 400_000])
+    with _span("mc/lattice field"):
+        for q in range(0, len(P), 400_000):  # (in pieces: a whole tile's lattice at once peaked at ~2 GB a worker)
+            F[q:q + 400_000] = field.solid(P[q:q + 400_000], F[q:q + 400_000].copy(), S_[q:q + 400_000])
     eps = 1e-3 * v
     # (clamped to a few voxels: a far value (a cliff shell's 1e3 "air") pulled crossings onto the lattice node itself in
     # float32, and the border vertex lost its edge; only the sign decides which edges are crossed)
@@ -1158,8 +1189,9 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     F = F.reshape(len(ia), len(ib), len(ic))
     if F.min() > 0 or F.max() < 0:
         return None
-    verts, faces, _, _ = measure.marching_cubes(F, 0.0, spacing=(1.0, 1.0, 1.0), method="lewiner",
-                                                allow_degenerate=False, gradient_direction="ascent")
+    with _span("mc/skimage"):
+        verts, faces, _, _ = measure.marching_cubes(F, 0.0, spacing=(1.0, 1.0, 1.0), method="lewiner",
+                                                    allow_degenerate=False, gradient_direction="ascent")
     faces = faces[:, ::-1].astype(np.int64)  # outward for our inside-negative field
     idx = verts.astype(np.float64) + np.array([a0, b0, c0], float)
     return idx, faces, (a0, a1, b0, b1)
@@ -1230,13 +1262,17 @@ def _decimate(P, faces, err, budget, field, border_ok=None):
         Pb, Fb = base if base is not None else (P, faces)
         out = None
         for agg in (7, 5, 9, 6, 8):
-            s = pyfqmr.Simplify()
-            s.setMesh(Pb, Fb)
-            s.simplify_mesh(target_count=int(n), aggressiveness=agg, max_iterations=300, preserve_border=True,
-                            verbose=False)
-            v, f, _ = s.getMesh()
-            out = _drop_twins(np.asarray(v, float), np.asarray(f, np.int64))
-            if valid(*out) and len(out[1]) <= 1.15 * n + 64:  # (a low aggressiveness can stall far above n)
+            profiling.count("decimate.pyfqmr runs")
+            with _span("decimate.pyfqmr", leaf=True):
+                s = pyfqmr.Simplify()
+                s.setMesh(Pb, Fb)
+                s.simplify_mesh(target_count=int(n), aggressiveness=agg, max_iterations=300, preserve_border=True,
+                                verbose=False)
+                v, f, _ = s.getMesh()
+                out = _drop_twins(np.asarray(v, float), np.asarray(f, np.int64))
+            with _span("decimate.valid", leaf=True):
+                ok = valid(*out)
+            if ok and len(out[1]) <= 1.15 * n + 64:  # (a low aggressiveness can stall far above n)
                 return out
         return out
 
@@ -1245,7 +1281,8 @@ def _decimate(P, faces, err, budget, field, border_ok=None):
         if not valid(v, f):  # pyfqmr can fold a thin part into a fin (two faces on one directed edge)
             return np.inf
         c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
-        return float(np.percentile(np.abs(field.value(c)), 99))
+        with _span("decimate.error"):
+            return float(np.percentile(np.abs(field.value(c)), 99))
 
     tol = err + error(P, faces)
     if len(faces) <= budget:
@@ -1530,7 +1567,9 @@ def _pool():
     from concurrent.futures import ProcessPoolExecutor
     from . import resources
     n = resources.workers(_CTX.get("worker_gb", WORKER_GB), cap=16)
-    ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"))
+    # (one BLAS thread a worker: each inherited the parent's 4, which spun on every small matmul)
+    ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"),
+                             initializer=resources._worker_init)
     return resources.guarded(ex, "terrain tiles")
 
 
@@ -1626,27 +1665,32 @@ def _job_dense(ij):
     rows = np.array([reg[kk[q]] for q in border], np.int64)
     inner = np.setdiff1d(np.arange(len(P)), border)
     N = np.zeros_like(P)
-    P[inner], N[inner] = project(field, P[inner], v0)
+    with _span("dense/project"):
+        P[inner], N[inner] = project(field, P[inner], v0)
     P[border], N[border] = CP[rows], c["CN"][rows]
     mov = np.ones(len(P), bool)
     mov[border] = False
     if c["cfg"].get("sharp", True):  # creases on mesh edges (extended marching cubes), not a sawtooth
         n0 = len(P)
         to_world = lambda q: np.array([G.origin[0] + q[0] * v0, G.origin[1] + q[1] * v0, (q[2] + ZOFF) * v0])
-        P, faces, N, _ = terrain_sharp.feature_points(P, faces, idx, N, field, to_world, v0, mov, bounds=G.bounds(*ij))
+        with _span("dense/sharp features"):
+            P, faces, N, _ = terrain_sharp.feature_points(P, faces, idx, N, field, to_world, v0, mov,
+                                                          bounds=G.bounds(*ij))
         mov = np.r_[mov, np.ones(len(P) - n0, bool)]
     else:
         P = snap_creases(P, faces, field, v0, mov)
     vrow = np.full(len(P), -1, np.int64)
     vrow[border] = rows
-    faces = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)))
-    np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
+    with _span("dense/specks + save"):
+        faces = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)))
+        np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
     # the area its maps will cover (a cliff shell's visible front only): the export's texel density is chosen from it
     area = 0.0
     if len(faces):
         a = np.linalg.norm(np.cross(P[faces[:, 1]] - P[faces[:, 0]], P[faces[:, 2]] - P[faces[:, 0]]), axis=1) / 2
         if hasattr(field, "front"):
-            a = a[np.abs(_chunks(field.front, P[faces].mean(1))) <= 0.3]
+            with _span("dense/visible area"):
+                a = a[np.abs(_chunks(field.front, P[faces].mean(1))) <= 0.3]
         area = float(a.sum())
     return True, area
 
@@ -1677,7 +1721,8 @@ def _job_collapse(args):
     ij, keep_rows, k = args
     P, faces, vrow = _dense(_CTX, ij)
     drop = np.flatnonzero((vrow >= 0) & ~np.isin(vrow, keep_rows))
-    Fk, bad = _collapse_border(P, faces, drop)
+    with _span("collapse border"):
+        Fk, bad = _collapse_border(P, faces, drop)
     np.save(_work(_CTX, "col", ij[0], ij[1], k), Fk)
     return {int(vrow[u]) for u in bad}
 
@@ -1698,7 +1743,8 @@ def build_field(T, cfg=None):
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     """See `_export_tiles`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
     from . import resources
-    with resources.heavy("terrain tiles", log=log), resources.peak_memory() as peak:
+    # (PSS every 2 s: reading every worker's smaps_rollup each 0.5 s kept a parent thread ~40% busy)
+    with resources.heavy("terrain tiles", log=log), resources.peak_memory(every=2.0) as peak:
         return _export_tiles(T, out_dir, cfg, log, peak)
 
 
@@ -1719,7 +1765,11 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _CTX.clear()
     _CTX["work"] = workdir
     timing = {}
+    prof = profiling.Report()  # per stage: wall, workers' busy share, stragglers; spans, field counts (manifest "profile")
+    tile_key = lambda ij: f"{ij[0]},{ij[1]}"
     t0 = time.time()
+    _st = prof.stage("setup (parent)")
+    _st.__enter__()
     field, vols, notes, caves = build_field(T, cfg)
     base = field  # the whole rock (materials, trees, caves' walk, splats); `field` is what's meshed
     mats = Materials(T, base)
@@ -1731,6 +1781,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         field = terrain_cliffs.CliffField(base, region)
     elif cfg["mode"] != "full":
         raise ValueError(f"export.tiles mode {cfg['mode']!r}: use cliffs or full")
+    _st.__exit__(None, None, None)
     timing["setup"] = time.time() - t0
     tiles = [(i, j) for j in range(G.nj) for i in range(G.ni)]
     if cfg.get("only"):  # a block of tiles [[i0, j0], [i1, j1]] (inclusive), for trying things
@@ -1746,18 +1797,19 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     reg = {}
     _CTX.update(field=field, G=G, vols=vols, base=base)
     with _pool() as ex:  # (in parallel: serial it was a third of the export)
-        for (i, j), r in zip(tiles, ex.map(_job_mc, tiles)):
+        for (i, j), r in zip(tiles, prof.pool_map(ex, _job_mc, tiles, "marching cubes", tile_key)):
             mc[i, j] = r
     for (i, j) in tiles:  # canonical border keys numbered in tile order (deterministic)
         if mc[i, j] is not None:
             for key in mc[i, j][1].values():
                 reg.setdefault(key, len(reg))
     keys = sorted(reg, key=reg.get) or [(0, 0, 0, 0)]  # (a placeholder when no tile has a mesh)
-    a, b, fixed = _key_geometry(keys, G, 0)
-    Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
-    tt = Fa / (Fa - Fb)
-    CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
-    CW, CC = mats.weights(CP, CN)
+    with prof.stage("border vertices (parent)"):
+        a, b, fixed = _key_geometry(keys, G, 0)
+        Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
+        tt = Fa / (Fa - Fb)
+        CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
+        CW, CC = mats.weights(CP, CN)
     pos = {tuple(p): r for r, p in enumerate(CP)}
     timing["marching cubes + border vertices"] = time.time() - t0
 
@@ -1772,6 +1824,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             if True:
                 for plane in _planes(kk[p], kk[q], G, 0):
                     plane_edges.setdefault(plane, set()).add(tuple(sorted((reg[kk[p]], reg[kk[q]]))))
+    _st = prof.stage("border chains (parent)")
+    _st.__enter__()
     corner = fixed[:, 0] & fixed[:, 1]
     lines = {pl: _polylines(e) for pl, e in plane_edges.items()}
     keep = []
@@ -1788,6 +1842,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             cur[pl] = simp
         keep.append(ks)
         prev = cur
+    _st.__exit__(None, None, None)
     timing["border chains"] = time.time() - t0
 
     # ---- 3. per tile: LOD0 projected; each LOD = border chains collapsed to its kept vertices, then decimated
@@ -1795,7 +1850,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
     work = [ij for ij, r in mc.items() if r is not None]
     with _pool() as ex:
-        res = list(ex.map(_job_dense, work))
+        res = prof.pool_map(ex, _job_dense, work, "dense LOD0 (project, sharp)", tile_key)
     dense = set(ij for ij, (ok, _) in zip(work, res) if ok)
     _CTX["dense"] = dense
     # one texel density per LOD for every tile: the asked one, or what the tile with the most rock can fit in
@@ -1813,7 +1868,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     dirn[fixed] = 0.0
     ln_ = np.linalg.norm(dirn, axis=1, keepdims=True)
     dirn = np.where(ln_ > 0.2, dirn / np.maximum(ln_, 1e-9), np.array([0, 0, -1.0]))
-    thick = _thickness(field, CP, dirn, np.full(len(CP), 3.0), v0)
+    with prof.stage("skirt thickness (parent)"):
+        thick = _thickness(field, CP, dirn, np.full(len(CP), 3.0), v0)
     pbr = {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}
     mat = [{"name": "terrain_reference", "pbrMetallicRoughness": pbr},
            {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
@@ -1836,7 +1892,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 failed = set()
                 for k in range(G.lods):
                     kr = np.array(sorted(keep[k]), np.int64)
-                    for bad in ex.map(_job_collapse, [(ij, kr, k) for ij in work]):
+                    for bad in prof.pool_map(ex, _job_collapse, [(ij, kr, k) for ij in work],
+                                             f"border collapse lod{k}", lambda a: f"{a[0][0]},{a[0][1]}"):
                         failed |= bad
                 if not failed:
                     break
@@ -1869,14 +1926,41 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     bf = terrain_cliffs.CliffField(bf, region).front_field()
                 bfs.append(bf)
             _CTX.update(bakefield=bfs, layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
-        stats, t_dec = [], 0.0
-        with _pool() as ex:
-            wanted = set()
-            for entry, st, td, wt in ex.map(_job_tile, tiles):
+        # every tile's LODs (decimation, atlases), and as each tile is done its atlases' texels baked in pieces across
+        # the pool, and each atlas's maps assembled and its GLB written once its pieces are in: a 3 x 3 block's
+        # stragglers (one tile decimating for minutes) no longer hold the bake back
+        stats, t_dec, wanted, got, left = [], 0.0, set(), {}, {}
+
+        def on_done(fn, arg, r):
+            nonlocal t_dec
+            if fn is _job_tile:
+                entry, st, td, wt = r
                 manifest_tiles.append(entry)
-                stats += st
+                stats.extend(st)
                 t_dec += td
-                wanted |= wt
+                wanted.update(wt)
+                jobs = []
+                for q in entry.pop("_bakes", []):
+                    # (at most BAKE_PIECE texels a piece, and a small atlas still spread over the pool: a preview's
+                    # one tile)
+                    step = int(np.clip(q["n"] / max(ex._max_workers, 1), BAKE_PIECE / 6, BAKE_PIECE))
+                    cuts = list(range(0, q["n"], step))
+                    left[q["stem"]] = len(cuts)
+                    jobs += [(_job_bake, (q["stem"], q["k"], a, min(a + step, q["n"])), f"{q['stem']}@{a}")
+                             for a in cuts]
+                return jobs
+            if fn is _job_bake:
+                left[arg[0]] -= 1
+                return [(_job_finish, arg[0], arg[0])] if not left[arg[0]] else []
+            got[arg] = r
+            return []
+        with _pool() as ex:
+            prof.run_jobs(ex, [(_job_tile, ij, tile_key(ij)) for ij in tiles], on_done,
+                          f"tiles (decimate, atlases; maps baked in pieces) round {rounds}")
+        order = {ij: n for n, ij in enumerate(tiles)}
+        manifest_tiles.sort(key=lambda e: order[e["i"], e["j"]])
+        stats.sort(key=lambda st: (order[st[0], st[1]], st[2]))
+        _maps_done(manifest_tiles, stats, got)
         # a vertex a coarse LOD couldn't lose without folding (the dense mesh folded at every count, and an
         # earlier LOD's mesh couldn't drop it either): every LOD keeps it and the tiles are written again
         if not wanted or rounds >= 2:
@@ -1906,18 +1990,21 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                               {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
         _CTX.update(region=region, mats=mats, cfg=cfg, out=out)
         with _pool() as ex:
-            ground = list(ex.map(_job_ground, tiles))
+            ground = prof.pool_map(ex, _job_ground, tiles, "ground tiles", tile_key)
         cfg.pop("_hrange"), cfg.pop("_ground_mat"), cfg.pop("_layer_rough")
         manifest_tiles = [e for e in manifest_tiles if any(e["lods"])]
         timing["ground tiles"] = time.time() - t0
         t0 = time.time()
     with _pool() as ex:
         for e, extra in zip(ground or manifest_tiles,
-                            ex.map(_job_maps, [(e["i"], e["j"], e["min"]) for e in (ground or manifest_tiles)])):
+                            prof.pool_map(ex, _job_maps, [(e["i"], e["j"], e["min"]) for e in (ground or manifest_tiles)],
+                                          "heightmaps + splats", lambda a: f"{a[0]},{a[1]}")):
             e.update(extra)
     timing["heightmaps + splats"] = time.time() - t0
 
     # ---- 5. trees and the manifest
+    _st = prof.stage("trees + layer textures (parent)")
+    _st.__enter__()
     from . import terrain_design as design
     inst = design.trees(T)
     with open(out / "trees.csv", "w") as f:
@@ -1942,6 +2029,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if cfg.get("maps"):
         from . import terrain_bake
         layer_tex = terrain_bake.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
+    _st.__exit__(None, None, None)
     manifest = {
         "format": "hifipushie terrain tiles 1",
         "units": "m",
@@ -2033,46 +2121,73 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if caves:  # a person walked through every passage
         t0 = time.time()
         from . import terrain_caves
-        manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T))
+        with prof.stage("cave walk (parent)"):
+            manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T))
         timing["cave walk"] = time.time() - t0
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     timing["total before check"] = time.time() - t_all
     t0 = time.time()
-    check = seam_check(out) if manifest_tiles else {"summary": {"failures": 0}, "failures": []}
-    if region is not None:
-        from . import terrain_cliffs
-        gc = terrain_cliffs.ground_check(out, manifest, region)
-        check["summary"]["ground"] = gc["summary"]
-        check["failures"] += gc["failures"]
-    # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
-    # colour, and texel density jumping between neighbouring tiles (sharp rock beside soft)
-    from . import terrain_seams
-    gs = terrain_seams.grid_squares(T, mats)
-    if base.rock is not None:  # how regular the facets look (a lattice shows repeated diamonds from afar)
-        from . import terrain_facets
-        rk = base.rock
-        per = terrain_facets.periodicity(lambda P, fd: facet(P, 1.5 * rk["size"], rk["seed"], fd)
-                                         + 0.3 * facet(P, 0.6 * rk["size"], rk["seed"] + 5, fd))
-        check["summary"]["facet_periodicity"] = per
-        if max(per) > terrain_facets.PERIODIC:
-            check["failures"].append(f"rock facets look regular (autocorrelation peaks {per}, limit "
-                                     f"{terrain_facets.PERIODIC}): a quilt of repeated diamonds from afar")
-    td = terrain_seams.texel_density(manifest) if cfg.get("maps") else {"summary": {}, "failures": []}
-    check["summary"]["grid_squares"], check["summary"]["texel_density"] = gs, td["summary"]
-    if not gs["ok"]:
-        check["failures"].append(f"the colour bends on every terrain cell line (x{gs['ratio']} the kinks between "
-                                 f"them): cell-sized squares on the rock")
-    check["failures"] += td["failures"]
-    check["summary"]["failures"] = len(check["failures"])
+    if cfg.get("checks", True):
+        with prof.stage("check: seams (parent)"):
+            check = seam_check(out) if manifest_tiles else {"summary": {"failures": 0}, "failures": []}
+        if region is not None:
+            from . import terrain_cliffs
+            with prof.stage("check: ground (parent)"):
+                gc = terrain_cliffs.ground_check(out, manifest, region)
+            check["summary"]["ground"] = gc["summary"]
+            check["failures"] += gc["failures"]
+        # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
+        # colour, and texel density jumping between neighbouring tiles (sharp rock beside soft)
+        from . import terrain_seams
+        with prof.stage("check: grid squares (parent)"):
+            gs = terrain_seams.grid_squares(T, mats)
+        if base.rock is not None:  # how regular the facets look (a lattice shows repeated diamonds from afar)
+            from . import terrain_facets
+            rk = base.rock
+            with prof.stage("check: facet periodicity (parent)"):
+                per = terrain_facets.periodicity(lambda P, fd: facet(P, 1.5 * rk["size"], rk["seed"], fd)
+                                                 + 0.3 * facet(P, 0.6 * rk["size"], rk["seed"] + 5, fd))
+            check["summary"]["facet_periodicity"] = per
+            if max(per) > terrain_facets.PERIODIC:
+                check["failures"].append(f"rock facets look regular (autocorrelation peaks {per}, limit "
+                                         f"{terrain_facets.PERIODIC}): a quilt of repeated diamonds from afar")
+        with prof.stage("check: texel density (parent)"):
+            td = terrain_seams.texel_density(manifest) if cfg.get("maps") else {"summary": {}, "failures": []}
+        check["summary"]["grid_squares"], check["summary"]["texel_density"] = gs, td["summary"]
+        if not gs["ok"]:
+            check["failures"].append(f"the colour bends on every terrain cell line (x{gs['ratio']} the kinks between "
+                                     f"them): cell-sized squares on the rock")
+        check["failures"] += td["failures"]
+        check["summary"]["failures"] = len(check["failures"])
+    else:  # (a preview: `preview_tiles`)
+        check = {"summary": {"failures": 0, "skipped": "checks off (a preview)"}, "failures": []}
     timing["seam check"] = time.time() - t0
     manifest["seam_check"] = check["summary"]
     manifest["timing_s"] = {k: round(v, 2) for k, v in timing.items()}
+    manifest["profile"] = prof.as_dict()
+    (out / "profile.txt").write_text(profiling.table(manifest["profile"]))
+    log(profiling.table(manifest["profile"], top=25))
     if peak is not None:  # (what the job used, sampled every 0.5 s: PSS of the parent and its workers)
         manifest["memory_gb"] = {k: round(v, 2) for k, v in peak.items()}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     if check["failures"]:
         raise RuntimeError("seam check FAILED:\n" + "\n".join(check["failures"][:30]))
     return {"out": str(out), "manifest": manifest, "stats": stats, "timing": timing, "check": check}
+
+
+def preview_tiles(T, out_dir, at, radius=40.0, density=6.0, cfg=None, log=print) -> dict:
+    """A fast look at the rock round `at` (an address or [x, y]): only the tiles within `radius` m, one LOD, maps at
+    `density` texels/m, ground maps at half their density, no checks. The same code path as the export (so what it
+    shows is what an export bakes), sized for rock design rounds: a tile or four in about a minute instead of a block
+    export's 15+. Render it with `render_tiles(T, out_dir, views)`."""
+    base = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
+    G = Grid(T, base)
+    xy = np.asarray(at, float)[:2] if isinstance(at, (list, tuple)) else np.asarray(T.address(at)[0], float)
+    lo = np.floor((xy - radius - G.origin) / G.tile).astype(int).clip(0, [G.ni - 1, G.nj - 1])
+    hi = np.floor((xy + radius - G.origin) / G.tile).astype(int).clip(0, [G.ni - 1, G.nj - 1])
+    c = {"only": [lo.tolist(), hi.tolist()], "lods": 1, "texel_density": [float(density)], "checks": False,
+         "ground_density": 0.5 * float(base["ground_density"])}
+    return export_tiles(T, out_dir, {**c, **(cfg or {})}, log)
 
 
 def summary(r) -> str:
@@ -2123,6 +2238,18 @@ def summary(r) -> str:
     return "\n".join(lines)
 
 
+def _maps_done(manifest_tiles, stats, got):
+    """Each textured tile LOD's GLB size and maps report (from _job_finish) into its manifest entry and stats."""
+    for e in manifest_tiles:
+        for k, L in enumerate(e["lods"]):
+            if L and L["bytes"] is None:
+                L["bytes"], extra = got[f"tile_{e['i']}_{e['j']}_lod{k}"]
+                L["maps"] = {**extra, **L.get("maps", {})}
+    for n_, st in enumerate(stats):
+        if st[6] is None:
+            stats[n_] = st[:6] + (got[f"tile_{st[0]}_{st[1]}_lod{st[2]}"][0],)
+
+
 def _job_tile(ij):
     """Write one tile's LODs and collision (runs in a worker: everything it reads is in _CTX)."""
     i, j = ij
@@ -2130,7 +2257,7 @@ def _job_tile(ij):
     G, v0, field, mats, cfg, out, vols = c["G"], c["v0"], c["field"], c["mats"], c["cfg"], c["out"], c["vols"]
     dense, collapsed, pos, depth, dirn = c["dense"], c["collapsed"], c["pos"], c["depth"], c["dirn"]
     CN, CW, CC, mat = c["CN"], c["CW"], c["CC"], c["mat"]
-    stats, t_dec, wanted = [], 0.0, set()
+    stats, t_dec, wanted, wanted_bakes = [], 0.0, set(), []
     lo, hi = G.bounds(i, j)
     trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
     entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
@@ -2142,6 +2269,7 @@ def _job_tile(ij):
         if (i, j) not in dense:
             entry["lods"].append(None)
             continue
+        mark = profiling.snapshot()
         P, faces0, _ = _dense(c, (i, j))
         Fk = np.load(_work(c, "col", i, j, k))
         used = np.unique(Fk)
@@ -2150,6 +2278,8 @@ def _job_tile(ij):
         Pk, Fk = P[used], remap[Fk]
         n_mc = len(faces0)
         td = time.time()
+        _sp = _span(f"tile/lod{k}/decimate")
+        _sp.__enter__()
         Pd = Fd = None
         if k > 0 and prevs:
             # from the last LOD's mesh (a fifth of the dense one's faces: the count search was most of the export's
@@ -2165,10 +2295,14 @@ def _job_tile(ij):
                 if len(Fd) > 1.15 * cfg["budget"][k] + 64:
                     Pd = Fd = None
         if Pd is None:
-            Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok)
+            if k > 0:
+                profiling.count(f"decimate: lod{k} from the dense mesh (the last LOD's didn't reach its budget)")
+            with _span(f"tile/lod{k}/decimate from dense"):
+                Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok)
         if k > 0 and prevs and len(Fd) > max(cfg["budget"][k], len(prevs[-1][1])):
             # this LOD from the dense mesh folded at every count: from an earlier LOD's mesh instead (the last one
             # first), its border collapsed to this LOD's chain (the same chain either way: neighbours still agree)
+            profiling.count(f"decimate: lod{k} retried from earlier LODs (the dense mesh folded at every count)")
             for Pp, Fp in reversed(prevs):
                 rp = np.array([pos.get(tuple(q), -1) for q in Pp])
                 drop = np.flatnonzero((rp >= 0) & ~np.isin(rp, c["keep"][k]))
@@ -2184,6 +2318,7 @@ def _job_tile(ij):
                 if len(F2) < len(Fd):
                     Pd, Fd = P2, F2
                     break
+        _sp.__exit__(None, None, None)
         t_dec += time.time() - td
         # border vertices must have come through untouched, and be this LOD's chain
         rowd = np.array([pos.get(tuple(p), -1) for p in Pd])
@@ -2199,7 +2334,8 @@ def _job_tile(ij):
         bd = rowd >= 0
         N = np.zeros_like(Pd)
         before = Pd.copy()
-        Pd[~bd], N[~bd] = project(field, Pd[~bd], v0)
+        with _span(f"tile/lod{k}/project"):
+            Pd[~bd], N[~bd] = project(field, Pd[~bd], v0)
         hn = NORMAL_H * v0
         # where projecting a coarse vertex folds its faces, it stays where decimation put it
         fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
@@ -2211,7 +2347,8 @@ def _job_tile(ij):
         W = np.zeros((len(Pd), len(mats.layers)), np.float32)
         C = np.zeros((len(Pd), 3))
         W[bd], C[bd] = CW[rowd[bd]], CC[rowd[bd]]
-        W[~bd], C[~bd] = mats.weights(Pd[~bd], N[~bd])
+        with _span(f"tile/lod{k}/vertex weights"):
+            W[~bd], C[~bd] = mats.weights(Pd[~bd], N[~bd])
         # skirts along shared borders (not the world's edge)
         be = _boundary_edges(Fd)
         shared = np.array([_shared(Pd[a_], Pd[b_], lo, hi, G) for a_, b_ in be], bool) if len(be) else np.zeros(0, bool)
@@ -2231,17 +2368,19 @@ def _job_tile(ij):
             sf += [(tb, ta, ta + 1), (tb, ta + 1, tb + 1)]
         sf = np.array(sf, np.int64).reshape(-1, 3)
         origin = np.array([lo[0], lo[1], 0.0])
-        Ps, Fs, Ns, src = split_normals(Pd, Fd, N, field, bd, hn)
-        bur = np.zeros(len(Fs), bool)
-        if hasattr(field, "front"):
-            # a cliff shell: faces off the visible rock (its back, buried under the heightmap) go in their own
-            # primitive, so an engine or a bake can skip them
-            bur = np.abs(field.front(Ps[Fs].mean(1))) > max(0.3, 2 * cfg["error"][k])
+        with _span(f"tile/lod{k}/split normals + buried"):
+            Ps, Fs, Ns, src = split_normals(Pd, Fd, N, field, bd, hn)
+            bur = np.zeros(len(Fs), bool)
+            if hasattr(field, "front"):
+                # a cliff shell: faces off the visible rock (its back, buried under the heightmap) go in their own
+                # primitive, so an engine or a bake can skip them
+                bur = np.abs(field.front(Ps[Fs].mean(1))) > max(0.3, 2 * cfg["error"][k])
         stem = f"tile_{i}_{j}_lod{k}"
-        images, binfo = None, None
+        images, binfo, deferred = None, None, None
         if cfg.get("maps") and (~bur).any():
             Pv, Nv, Cv, Wv, Fv = _compact(Ps, Ns, C[src], W[src], Fs[~bur])
-            prim, images, binfo = _textured(Pv, Nv, Wv, Fv, k, origin, lo, stem)
+            with _span(f"tile/lod{k}/maps prep"):
+                prim, binfo, deferred = _textured_prep(Pv, Nv, Wv, Fv, k, origin, stem)
             prims = [prim]
         else:
             prims = [_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[~bur]), 0, {"role": "surface"}, mats, lo, cfg)]
@@ -2252,8 +2391,17 @@ def _job_tile(ij):
             prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
         fn = f"{stem}.glb"
         from . import terrain_bake
-        write_glb(out / fn, stem, prims, trans, mat + ([terrain_bake.material("terrain_baked")] if images else []),
-                  extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]}, images=images)
+        glb = dict(path=out / fn, name=stem, prims=prims, trans=trans,
+                   mats=mat + ([terrain_bake.material("terrain_baked")] if (images or deferred) else []),
+                   extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]})
+        if deferred:  # (written by _job_finish once its texels are baked)
+            import pickle
+            with open(c["work"] / f"glb_{stem}.pkl", "wb") as fh:
+                pickle.dump(glb, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            wanted_bakes.append(deferred)
+        else:
+            with _span(f"tile/lod{k}/write glb"):
+                write_glb(glb["path"], stem, prims, trans, glb["mats"], extras=glb["extras"], images=images)
         if k == int(cfg["collision"]):
             cf = f"collision_{i}_{j}.glb"
             write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
@@ -2261,16 +2409,33 @@ def _job_tile(ij):
                       extras={"tile": [i, j], "collision": True, "from_lod": k})
             entry["collision"] = cf
         zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
+        size_ = None if deferred else (out / fn).stat().st_size
         entry["lods"].append({"file": fn, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
                               "visible_triangles": int((~bur).sum()),
-                              "marching_cubes_triangles": int(n_mc), "bytes": (out / fn).stat().st_size})
+                              "marching_cubes_triangles": int(n_mc), "bytes": size_})
         if binfo:
             entry["lods"][-1]["maps"] = binfo
-        stats.append((i, j, k, len(Fd), len(sf), n_mc, (out / fn).stat().st_size))
+        entry["lods"][-1]["timing_s"] = _since(mark)
+        stats.append((i, j, k, len(Fd), len(sf), n_mc, size_))
     entry["zmin"], entry["zmax"] = zmin, zmax
     entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
                                if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
+    entry["_bakes"] = wanted_bakes
     return entry, stats, t_dec, wanted
+
+
+def _since(mark, min_s=0.05):
+    """The spans (seconds, rounded) and field-point counts run since `mark` (a profiling.snapshot)."""
+    now = profiling.snapshot()
+    out = {}
+    for k, (t, _) in now["spans"].items():
+        d = t - mark["spans"].get(k, [0.0, 0])[0]
+        if d >= min_s:
+            out[k.split("/")[-1] if k.startswith("tile/") else k] = round(d, 2)
+    n = now["counts"].get("field.solid pts", 0) - mark["counts"].get("field.solid pts", 0)
+    if n:
+        out["field points"] = int(n)
+    return out
 
 
 def _corner_normals(P, F, field, h):
@@ -2397,39 +2562,40 @@ def _prim(P, N, C, W, F, material, extras, mats, lo, cfg):
     return {"attrs": attrs, "indices": F, "material": material, "extras": extras}
 
 
-def _textured(P, N, W, F, k, origin, lo, stem):
-    """A tile's visible surface with its own UV atlas and baked maps (terrain_bake): the primitive (material 2, the
-    baked reference material), the embedded images (base colour, ORM, normal) and a report. Height and layer-weight
-    maps go beside the GLB in maps/."""
-    from PIL import Image
+def _textured_prep(P, N, W, F, k, origin, stem):
+    """A tile LOD's visible surface with its own UV atlas (terrain_bake): the primitive (material 2, the baked reference
+    material), a partial report, and a bake request ({"stem", "k", "n" texels}). Its texels, AO and atlas go to the
+    work dir; `_job_bake` bakes the texels in pieces across the pool and `_job_finish` assembles the maps (base colour,
+    ORM, normal embedded; height and layer-weight maps beside the GLB in maps/) and writes the GLB."""
     from . import terrain_bake
     c = _CTX
-    cfg, mats, out, v0 = c["cfg"], c["mats"], c["out"], c["v0"]
-    t0 = time.time()
+    cfg, v0 = c["cfg"], c["v0"]
     dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
-    uvc, size, d, _ = terrain_bake.unwrap(P, F, dens, int(cfg["texture_max"]))
-    sp = terrain_bake.split_corners(P, _unit_rows(N), F, uvc, extra={"W": W})
-    T4 = terrain_bake.tangents(sp["P"], sp["N"], sp["uv"], sp["F"])
-    reach = max(0.6, 4 * cfg["error"][k] + 0.5)
-    bf = c["bakefield"][k]
-    surface = lambda Pl, Nl: terrain_bake._surface(bf, Pl, Nl, v0, reach)
-    maps, info = terrain_bake.bake(surface, c["base"], mats, sp["P"], sp["N"], T4, sp["uv"], sp["F"], size,
-                                   c["layer_rough"], field=bf)
-    info["seconds"] = round(time.time() - t0, 1)
+    with _span("maps/unwrap"):
+        uvc, size, d, _ = terrain_bake.unwrap(P, F, dens, int(cfg["texture_max"]))
+    with _span("maps/tangents"):
+        sp = terrain_bake.split_corners(P, _unit_rows(N), F, uvc, extra={"W": W})
+        T4 = terrain_bake.tangents(sp["P"], sp["N"], sp["uv"], sp["F"])
+    with _span("maps/texels"):
+        tx = terrain_bake.texels(sp["uv"], sp["F"], size)
+        # texels in space-filling-curve order of where they land (every map value is per texel, so the order is free):
+        # a bake piece then covers a compact patch of rock, and its facet triangulations (terrain_facets, cached per
+        # process) are few and reused; in atlas order every piece touched the whole tile
+        bary = terrain_bake._bary(sp["uv"], sp["F"], tx["size"], tx["t"], tx["xs"], tx["ys"])
+        o = _morton(np.einsum("nk,nkc->nc", bary, sp["P"][sp["F"][tx["t"]]]), 2.0)
+        for key in ("ys", "xs", "t", "inside"):
+            tx[key] = tx[key][o]
+    ao_v = terrain_bake.bake_ao(c["base"], sp["P"], sp["N"])
+    info = {}
     if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)
         fn_ = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
         rock = fn_[:, 2] / np.maximum(np.linalg.norm(fn_, axis=1), 1e-12) < math.cos(math.radians(40))
         if rock.sum() > 16:
-            info["crease"] = terrain_sharp.crease_error(P, F, c["field"], max(0.01, v0 / 32), rock=rock)
-    (out / "maps").mkdir(exist_ok=True)
-    Image.fromarray(maps["height"], "I;16").save(out / "maps" / f"{stem}_height.png")
-    wfiles = []
-    for g, w in enumerate(maps["weights"]):
-        fn = f"maps/{stem}_weights{g}.png"
-        Image.fromarray(w, "RGBA").save(out / fn)
-        wfiles.append(fn)
-    images = [(terrain_bake.jpeg(maps["basecolor"]), "image/jpeg"), (terrain_bake.png(maps["orm"], "RGB"), "image/png"),
-              (terrain_bake.png(maps["normal"], "RGB"), "image/png")]
+            with _span("maps/crease error"):
+                info["crease"] = terrain_sharp.crease_error(P, F, c["field"], max(0.01, v0 / 32), rock=rock)
+    np.savez(c["work"] / f"bake_{stem}.npz", P=sp["P"], N=sp["N"], T4=T4, uv=sp["uv"], F=sp["F"], ao=ao_v,
+             size=np.array(tx["size"]), ys=tx["ys"].astype(np.int32), xs=tx["xs"].astype(np.int32), t=tx["t"],
+             inside=tx["inside"], fill=np.array(tx["fill_pct"]))
     attrs = {"POSITION": _to_gltf(sp["P"] - origin), "NORMAL": _to_gltf(sp["N"]),
              "TANGENT": np.c_[_to_gltf(T4[:, :3]), T4[:, 3]], "TEXCOORD_0": sp["uv"]}
     sq = int(cfg["splat"])
@@ -2442,9 +2608,72 @@ def _textured(P, N, W, F, k, origin, lo, stem):
     for g in range(0, Wv.shape[1], 4):
         w = Wv[:, g:g + 4]
         attrs[f"_WEIGHTS{g // 4}"] = np.c_[w, np.zeros((len(w), 4 - w.shape[1]))]
-    info.update(size=[int(size[0]), int(size[1])], texels_per_m=round(float(d), 2), height=f"maps/{stem}_height.png",
-                weights=wfiles)
-    return {"attrs": attrs, "indices": sp["F"], "material": 2, "extras": {"role": "surface"}}, images, info
+    info.update(size=[int(size[0]), int(size[1])], texels_per_m=round(float(d), 2), height=f"maps/{stem}_height.png")
+    return ({"attrs": attrs, "indices": sp["F"], "material": 2, "extras": {"role": "surface"}}, info,
+            {"stem": stem, "k": k, "n": int(len(tx["t"]))})
+
+
+def _morton(X, cell):
+    """An order of points X (n, 3) along a Z-order curve over cells `cell` m across."""
+    q = np.floor((X - X.min(0)) / cell).astype(np.int64)
+    key = np.zeros(len(X), np.int64)
+    for bit in range(20):
+        for a in range(3):
+            key |= ((q[:, a] >> bit) & 1) << (3 * bit + a)
+    return np.argsort(key, kind="stable")
+
+
+BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
+
+
+def _job_bake(args):
+    """One piece of a tile LOD's atlas: texels [a, b) baked (terrain_bake.bake_texels), saved for _job_finish."""
+    from . import terrain_bake
+    stem, k, a, b = args
+    c = _CTX
+    d = np.load(c["work"] / f"bake_{stem}.npz")
+    reach = max(0.6, 4 * c["cfg"]["error"][k] + 0.5)
+    bf = c["bakefield"][k]
+    surface = lambda Pl, Nl: terrain_bake._surface(bf, Pl, Nl, c["v0"], reach)
+    vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
+                                    d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
+                                    bf, first=a)
+    np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
+
+
+def _job_finish(stem):
+    """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
+    import pickle
+    from PIL import Image
+    from . import terrain_bake
+    c = _CTX
+    out, work = c["out"], c["work"]
+    d = np.load(work / f"bake_{stem}.npz")
+    tx = {"size": tuple(int(x) for x in d["size"]), "ys": d["ys"], "xs": d["xs"], "t": d["t"], "inside": d["inside"],
+          "fill_pct": float(d["fill"])}
+    pieces = sorted(work.glob(f"baked_{stem}_*.npz"))
+    vals = terrain_bake.concat([dict(np.load(f)) for f in pieces])
+    maps, info = terrain_bake.assemble(tx, vals, d["ao"], d["uv"], d["F"])
+    with _span("maps/encode + save"):
+        (out / "maps").mkdir(exist_ok=True)
+        Image.fromarray(maps["height"], "I;16").save(out / "maps" / f"{stem}_height.png")
+        wfiles = []
+        for g, w in enumerate(maps["weights"]):
+            fn = f"maps/{stem}_weights{g}.png"
+            Image.fromarray(w, "RGBA").save(out / fn)
+            wfiles.append(fn)
+        images = [(terrain_bake.jpeg(maps["basecolor"]), "image/jpeg"),
+                  (terrain_bake.png(maps["orm"], "RGB"), "image/png"),
+                  (terrain_bake.png(maps["normal"], "RGB"), "image/png")]
+    with open(work / f"glb_{stem}.pkl", "rb") as fh:
+        glb = pickle.load(fh)
+    with _span("maps/write glb"):
+        write_glb(glb["path"], glb["name"], glb["prims"], glb["trans"], glb["mats"], extras=glb["extras"],
+                  images=images)
+    for f in pieces + [work / f"bake_{stem}.npz", work / f"glb_{stem}.pkl"]:
+        f.unlink()
+    info["weights"] = wfiles
+    return glb["path"].stat().st_size, info
 
 
 def _unit_rows(N):

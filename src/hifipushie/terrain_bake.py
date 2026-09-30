@@ -23,8 +23,9 @@ import math
 import numpy as np
 from scipy import ndimage
 
-from . import noise
+from . import noise, profiling
 from . import terrain_mesh as tm
+from .profiling import span as _span
 
 
 def _unit(v):
@@ -67,8 +68,12 @@ def micro_relief(r, amount=1.0, texel=0.1):
             # the bedding plane's notch: a smooth trough (a cusp stair-stepped when a close view magnified its texels)
             u = np.clip(1 - e / 0.35, 0, 1)
             # (broken along its length: an unbroken dark line on every bed read as a seam)
-            brk = np.clip((noise.fbm(p * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5) - 0.35) * 3, 0, 1)
-            out = out + 0.14 * an * u * u * (3 - 2 * u) * brk
+            kn = np.flatnonzero(u > 0)  # (the noise only near a bedding plane)
+            if len(kn):
+                brk = np.clip((noise.fbm(p[kn] * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5) - 0.35) * 3, 0, 1)
+                un = u[kn]
+                out = out + 0.0  # (a copy: `out` may be a view of an earlier term)
+                out[kn] = out[kn] + 0.14 * an * un * un * (3 - 2 * un) * brk
             if al > 0:
                 z = zb * 6.0
                 fr = z - np.floor(z)
@@ -374,8 +379,9 @@ def ambient(field, X, G):
     return np.clip(1.0 - 1.6 * occ / wsum, 0.0, 1.0)
 
 
-CHUNK = 200_000  # texels per field call: whole atlases at once (2.6M texels x 4-point stencils x fbm temporaries)
-# made each bake worker 2+ GB
+CHUNK = 25_000  # texels per field call: whole atlases at once (2.6M texels x 4-point stencils x fbm temporaries) made
+# each bake worker 2+ GB; 200k a call ran 25% slower than 25k with 12-16 workers busy (temporaries out of cache:
+# the memory bus, not the cores, set the pace)
 
 
 def _chunked(fn, *arrays):
@@ -389,34 +395,48 @@ def _chunked(fn, *arrays):
     return np.concatenate(parts)
 
 
-def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=None):
-    """Every map of one mesh's atlas (size = (width, height)): {"normal": uint8 (h, w, 3), "orm", "basecolor",
-    "weights": [RGBA...], "height": uint16}, plus the height range and how many texels fell back to the low poly."""
+def texels(uv, F, size):
+    """The texels an atlas bake fills: every texel a triangle covers, plus gutters (texels within 3.5 of a chart take
+    its nearest covered texel's triangle, extrapolated). {"size", "ys", "xs", "t" (triangle per texel), "inside"}."""
     Wd, Hd = (size, size) if np.isscalar(size) else size
     tris = uv[F] * np.array([Wd, Hd], float)  # texel space, x right, y down
     ids = _raster(tris, Wd, Hd)
     covered = ids >= 0
-    # gutters: texels within a few of a chart take its nearest covered texel's triangle, extrapolated
     dist, (iy, ix) = ndimage.distance_transform_edt(~covered, return_indices=True)
     gut = (~covered) & (dist <= 3.5)
     ys, xs = np.nonzero(covered | gut)
     t = np.where(covered[ys, xs], ids[ys, xs], ids[iy[ys, xs], ix[ys, xs]])
+    return {"size": (int(Wd), int(Hd)), "ys": ys, "xs": xs, "t": t, "inside": covered[ys, xs],
+            "fill_pct": round(100 * float(covered.mean()), 1)}
+
+
+def _bary(uv, F, size, t, xs, ys):
+    tris = uv[F[t]] * np.array(size, float)
     q = np.stack([xs + 0.5, ys + 0.5], -1)
-    a_, b_, c_ = tris[t, 0], tris[t, 1], tris[t, 2]
+    a_, b_, c_ = tris[:, 0], tris[:, 1], tris[:, 2]
     v0, v1, v2 = b_ - a_, c_ - a_, q - a_
     den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
     den = np.where(np.abs(den) < 1e-12, 1e-12, den)
     w1 = (v2[:, 0] * v1[:, 1] - v1[:, 0] * v2[:, 1]) / den
     w2 = (v0[:, 0] * v2[:, 1] - v2[:, 0] * v0[:, 1]) / den
     bary = np.stack([1 - w1 - w2, w1, w2], -1)
-    bary = np.clip(bary, -1.0, 2.0)  # (gutters extrapolate a little past the edge; never far)
+    return np.clip(bary, -1.0, 2.0)  # (gutters extrapolate a little past the edge; never far)
+
+
+def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0):
+    """The per-texel part of a bake (pointwise, so an atlas can be baked in pieces): each texel's point on the low poly,
+    moved onto the surface (`surface`), and its values quantised as the maps store them. `first`: the index of the
+    first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas)."""
+    bary = _bary(uv, F, size, t, xs, ys)
     corner = lambda A: np.einsum("nk,nkc->nc", bary, A[F[t]])
     Pl = corner(P)
     Nl = _unit(corner(N))
     Tl = corner(T4[:, :3])
     Tl = _unit(Tl - Nl * (Tl * Nl).sum(1, keepdims=True))
     Bl = np.cross(Nl, Tl) * np.sign(T4[F[t, 0], 3])[:, None]
-    X, G, bad = _chunked(surface, Pl, Nl)
+    profiling.count("bake texels", len(Pl))
+    with _span("bake/surface (Newton + normal)"):
+        X, G, bad = _chunked(surface, Pl, Nl)
     height = ((X - Pl) * Nl).sum(1)
     tn = np.stack([(G * Tl).sum(1), (G * Bl).sum(1), (G * Nl).sum(1)], -1)
     tn[:, 2] = np.maximum(tn[:, 2], 0.02)
@@ -428,51 +448,91 @@ def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=Non
     # and drew lines along every tile border)
     Gs = G
     if field is not None:
-        Gs = _unit(_chunked(lambda q: field.value_gradient(q, 0.4)[1], X))
+        with _span("bake/normal 0.4 m"):
+            Gs = _unit(_chunked(lambda q: field.value_gradient(q, 0.4)[1], X))
         Gs = np.where(bad[:, None], G, Gs)
-    Wt, col = _chunked(mats.weights, X, Gs)
+    with _span("bake/weights + colour"):
+        Wt, col = _chunked(mats.weights, X, Gs)
     # roughness varies over a metre or so (one value per layer read as plastic, the wet band most of all)
-    rgh = np.clip((Wt @ layers_rough) * (0.85 + 0.35 * _grain(X)), 0.05, 1.0)
-    # AO at the mesh's vertices (identical on both sides of a tile border), interpolated over each triangle: it's
-    # broad over metres
-    if ao_field is not None:
-        ao_v = _chunked(lambda a, b: ambient(ao_field, a, b), P, _unit(N))
-        ao = np.clip(np.einsum("nk,nk->n", np.clip(bary, 0, 1) / np.clip(bary, 0, 1).sum(1, keepdims=True),
-                               ao_v[F[t]]), 0, 1)
-    else:
-        ao = np.ones(len(X))
-    filled = np.zeros((Hd, Wd), bool)
-    filled[ys, xs] = True
-    _, (fy, fx) = ndimage.distance_transform_edt(~filled, return_indices=True)
+    with _span("bake/roughness grain"):
+        rgh = np.clip((Wt @ layers_rough) * (0.85 + 0.35 * _grain(X)), 0.05, 1.0)
+    q8 = lambda a: np.round(a * 255).clip(0, 255).astype(np.uint8)
+    out = {"height": height, "normal": q8(tn * 0.5 + 0.5), "basecolor": q8(np.clip(col, 0, 1)),
+           "rough": q8(np.clip(rgh, 0.02, 1)), "bad": bad,
+           "weights": q8(np.c_[Wt, np.zeros((len(Wt), (-Wt.shape[1]) % 4))])}
+    err = np.zeros(0)
+    if field is not None:  # texel error: how far the baked points sit off the exact surface (every 7th atlas texel)
+        k = np.flatnonzero(inside & ~bad & ((np.arange(len(X)) + first) % 7 == 0))
+        with _span("bake/texel error"):
+            err = np.abs(field.value(X[k])) if len(k) else err
+    out["err"] = err
+    return out
 
-    def img(vals, fill):
-        out = np.full((Hd, Wd) + vals.shape[1:], fill, np.float64)
-        out[ys, xs] = vals
-        return out[fy, fx]  # (dilated into the empty space)
-    maps = {}
-    maps["normal"] = np.round(img(tn * 0.5 + 0.5, 0.5) * 255).clip(0, 255).astype(np.uint8)
-    srgb = np.clip(col, 0, 1)
-    maps["basecolor"] = np.round(img(srgb, 0.5) * 255).clip(0, 255).astype(np.uint8)
-    orm = np.stack([ao, np.clip(rgh, 0.02, 1), np.zeros(len(ao))], -1)
-    maps["orm"] = np.round(img(orm, 0.5) * 255).clip(0, 255).astype(np.uint8)
-    hr = float(max(np.abs(height).max(), 1e-3))
-    maps["height"] = np.round(img((height / hr * 0.5 + 0.5)[:, None], 0.5)[..., 0] * 65535).astype(np.uint16)
-    maps["weights"] = []
-    for g in range(0, Wt.shape[1], 4):
-        w = Wt[:, g:g + 4]
-        w = np.c_[w, np.zeros((len(w), 4 - w.shape[1]))]
-        maps["weights"].append(np.round(img(w, 0.0) * 255).clip(0, 255).astype(np.uint8))
-    inside = covered[ys, xs]
+
+def bake_ao(ao_field, P, N):
+    """AO at the mesh's vertices (identical on both sides of a tile border; interpolated over each triangle when the
+    maps are assembled: it's broad over metres)."""
+    with _span("bake/ao (vertices)"):
+        return _chunked(lambda a, b: ambient(ao_field, a, b), P, _unit(N))
+
+
+def assemble(tx, vals, ao_v, uv, F, field=True):
+    """The maps of an atlas from its texels (`texels`) and their values (`bake_texels`, concatenated in texel order):
+    each texel's value at its texel, dilated into the empty space (never filtered across the atlas: neighbouring texels
+    belong to unrelated charts)."""
+    Wd, Hd = tx["size"]
+    ys, xs, t, inside = tx["ys"], tx["xs"], tx["t"], tx["inside"]
+    with _span("bake/images (dilate)"):
+        if ao_v is not None:
+            bary = _bary(uv, F, tx["size"], t, xs, ys)
+            ao = np.clip(np.einsum("nk,nk->n", np.clip(bary, 0, 1) / np.clip(bary, 0, 1).sum(1, keepdims=True),
+                                   ao_v[F[t]]), 0, 1)
+        else:
+            ao = np.ones(len(xs))
+        filled = np.zeros((Hd, Wd), bool)
+        filled[ys, xs] = True
+        _, (fy, fx) = ndimage.distance_transform_edt(~filled, return_indices=True)
+
+        def img(v, fill):
+            out = np.full((Hd, Wd) + v.shape[1:], fill, v.dtype)
+            out[ys, xs] = v
+            return out[fy, fx]  # (dilated into the empty space)
+        q8 = lambda a: np.round(a * 255).clip(0, 255).astype(np.uint8)
+        maps = {"normal": img(vals["normal"], 128), "basecolor": img(vals["basecolor"], 128)}
+        orm = np.stack([q8(ao), vals["rough"], np.zeros(len(ao), np.uint8)], -1)
+        maps["orm"] = img(orm, 128)
+        height = vals["height"]
+        hr = float(max(np.abs(height).max(), 1e-3))
+        maps["height"] = np.round(img(height / hr * 0.5 + 0.5, 0.5) * 65535).astype(np.uint16)
+        W = vals["weights"]
+        maps["weights"] = [img(W[:, g:g + 4], 0) for g in range(0, W.shape[1], 4)]
+    bad = vals["bad"]
     extra = {}
-    if field is not None and inside.any():  # texel error: how far the baked points sit off the exact surface
-        k = np.flatnonzero(inside & ~bad)[::7]
-        r = np.abs(field.value(X[k])) if len(k) else np.zeros(1)
+    if field and inside.any():
+        r = vals["err"] if len(vals["err"]) else np.zeros(1)
         extra["texel_error_mm_p50_p99"] = [round(1000 * float(np.percentile(r, q)), 2) for q in (50, 99)]
     return maps, {**extra, "height_range_m": round(hr, 4), "texels": int(inside.sum()),
                   "fallback_pct": round(100 * float(bad[inside].mean()), 3) if inside.any() else 0.0,
-                  "fill_pct": round(100 * float(covered.mean()), 1),
+                  "fill_pct": tx["fill_pct"],
                   "height_abs_p99_m": round(float(np.percentile(np.abs(height[inside]), 99)), 4) if inside.any()
                   else 0.0}
+
+
+def concat(parts):
+    """bake_texels results of consecutive texel ranges, joined."""
+    return {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
+
+
+def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=None):
+    """Every map of one mesh's atlas (size = (width, height)): {"normal": uint8 (h, w, 3), "orm", "basecolor",
+    "weights": [RGBA...], "height": uint16}, plus the height range and how many texels fell back to the low poly.
+    (texels + bake_texels + assemble in one process; the tile export runs bake_texels in pieces across its pool.)"""
+    with _span("bake/raster + texels"):
+        tx = texels(uv, F, size)
+    vals = bake_texels(surface, mats, P, N, T4, uv, F, tx["size"], tx["t"], tx["xs"], tx["ys"], tx["inside"],
+                       layers_rough, field)
+    ao_v = bake_ao(ao_field, P, N) if ao_field is not None else None
+    return assemble(tx, vals, ao_v, uv, F, field is not None)
 
 
 # ---------------------------------------------------------------- tiling layers

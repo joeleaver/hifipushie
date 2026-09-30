@@ -307,7 +307,9 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
     hole_ij = holes[::-1].T  # [ix, iy] cells
     P0 = np.c_[X.ravel(), Y.ravel(), Hh.ravel()]
     N0 = ground_normals(R, X.ravel(), Y.ravel())
-    W0, C0 = mats.weights(P0, N0)
+    from .profiling import span
+    with span("ground/vertex weights"):
+        W0, C0 = mats.weights(P0, N0)
     trans = tm._to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
     origin = np.array([lo[0], lo[1], 0.0])
     mat = cfg["_ground_mat"]
@@ -333,9 +335,11 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
         images, binfo = None, None
         if cfg.get("maps") and len(F):
             if fine is None:
-                fine = _fine_ground(R, lo, G.tile, cfg)
-            prim, images, binfo = _ground_baked(R, mats, fine, P, Nn, W, F, k, lo, origin, cfg, out,
-                                                f"ground_{i}_{j}_lod{k}")
+                with span("ground/fine heightmap"):
+                    fine = _fine_ground(R, lo, G.tile, cfg)
+            with span(f"ground/lod{k}/maps"):
+                prim, images, binfo = _ground_baked(R, mats, fine, P, Nn, W, F, k, lo, origin, cfg, out,
+                                                    f"ground_{i}_{j}_lod{k}")
             prims = [prim]
         else:
             prims = [tm._prim(P - origin, Nn, C, W, F, 0, {"role": "surface"}, mats, lo, cfg)]
