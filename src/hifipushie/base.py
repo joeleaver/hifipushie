@@ -1057,6 +1057,53 @@ def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8
     return move(V, 1.0 - np.clip(ears, 0, 1)), move(np.asarray(pts, float))
 
 
+def region_weight(groups, feather: int = 8) -> np.ndarray:
+    """A soft weight over GNM's vertices: 1 on the named region groups (one name or a list), feathered by `feather`
+    rounds of Laplacian smoothing over the head's quads (the groups have hard edges: a component applied on the bare
+    group left a step at its border). Cached."""
+    groups = [groups] if isinstance(groups, str) else list(groups)
+    key = ("region_w", tuple(groups), int(feather))
+    if key not in _CACHE:
+        g = _gnm_data()
+        unknown = [k for k in groups if k not in g["groups"]]
+        if unknown:
+            raise ValueError(f"base head regions: unknown group {unknown}; groups: {sorted(g['groups'])}")
+        w = np.clip(sum(np.asarray(g["groups"][k], float) for k in groups), 0, 1)
+        Q = g["quads"]
+        E = retopo.edges(Q.ravel(), np.full(len(Q), 4))
+        deg = np.maximum(np.bincount(E.ravel(), minlength=len(w)), 1)
+        for _ in range(int(feather)):
+            w = np.maximum(w, w + 0.5 * retopo._lap(w[:, None], E, deg)[:, 0])  # grows outward, never eats the group
+        _CACHE[key] = w
+    return _CACHE[key]
+
+
+def near_weight(near: dict) -> np.ndarray:
+    """A smooth bump over GNM's template vertices: {"lm": [ids] (their mean), "offset": [x, y, z] (GNM's frame: y up,
+    z forward, m before the head's scale), "radius": m}, 1 at the centre, falling as a Gaussian. For regions no
+    group covers (the soft tissue under the chin)."""
+    g = _gnm_data()
+    V = g["template_vertex_positions"].astype(float)
+    c = _lm_of(g, V)[list(near["lm"])].mean(0) + np.asarray(near.get("offset", [0, 0, 0]), float)
+    return np.exp(-(np.linalg.norm(V - c, axis=1) / float(near["radius"])) ** 2)
+
+
+def regional_identity(regions) -> np.ndarray:
+    """head["regions"] = [{"group": name | [names], "feather": rounds (default 8), "identity": {component: value}}]:
+    GNM identity components applied only within a region (a feathered group weight): a nose or a chin fitted on its
+    own (the whole-head components move the eyes and the jaw with it). A region may instead (or as well) be
+    "near": {"lm", "offset", "radius"} (near_weight; the max of both). Offsets on GNM's vertices, in its frame."""
+    g = _gnm_data()
+    D = np.zeros_like(g["template_vertex_positions"], dtype=float)
+    for r in regions or []:
+        c = _gnm_coeffs(g["identity_names"], r.get("identity") or {})
+        w = region_weight(r["group"], int(r.get("feather", 8))) if r.get("group") else 0.0
+        if r.get("near"):
+            w = np.maximum(w, near_weight(r["near"]))
+        D += w[:, None] * np.tensordot(c, g["vertex_identity_basis"], 1)
+    return D
+
+
 def _local_smooth(W, E, deg, wv, iters):
     """Plain (shrinking) Laplacian smoothing weighted per vertex: fills creases and closes small cavities (the
     under-eye crease, nostril holes) where wv > 0."""
@@ -1080,6 +1127,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         np.tensordot(ce, g["expression_basis"], 1)
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
+    V = V + regional_identity(head.get("regions"))
     if head.get("pose"):  # landmark moves: a smile, lids, brows (least change of the regional expressions)
         V = V + pose_expression(head["pose"], V, float(head.get("scale", 1.4)))
     if head.get("mouth_gap") is not None:  # the lips parted by this much (m, world; 0 = closed): the least change of
@@ -1141,7 +1189,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         for _ in range(int(round(12 * float(head["simplify"])))):
             for lam in (0.5, -0.53):
                 W = W + lam * wv * retopo._lap(W, E, deg)
-    if shape.get("push"):  # soft landmark-addressed bumps along the head's normals, mirrored: a buccal hollow under
+    pushes = list(shape.get("push") or []) + list(shape.get("push_more") or [])  # push_more: a model's own bumps
+    # added to its style sheet's (a model's "push" replaces the sheet's list: the shape dict merges key by key)
+    if pushes:  # soft landmark-addressed bumps along the head's normals, mirrored: a buccal hollow under
         # the cheekbone, a proud cheekbone, a jaw corner. [{"lm": [ids] (their mean), "offset": [x, y, z] (m, world),
         # "radius": m, "amount": m}], Gaussian falloff (GNM's region groups have hard edges: pushed, they left steps)
         Nw = retopo._vnormals(W, np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)]))
@@ -1152,14 +1202,15 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         Nl = Nw[near].mean(1)  # the landmarks' normals smoothed (a lip seam vertex's own normal faces up or down)
         Nl /= np.linalg.norm(Nl, axis=1, keepdims=True)
         DW, DL = np.zeros_like(W), np.zeros_like(lm)
-        for b in shape["push"]:
+        for b in pushes:
             c = np.mean([lm[int(i)] for i in b["lm"]], axis=0) + np.asarray(b.get("offset", [0, 0, 0]), float)
             d = np.asarray(b["dir"], float) / np.linalg.norm(b["dir"]) if b.get("dir") is not None else None
-            for cc in ([c, np.array([2 * mx - c[0], c[1], c[2]])] if abs(c[0] - mx) > 1e-4 else [c]):
+            for side, cc in enumerate([c, np.array([2 * mx - c[0], c[1], c[2]])] if abs(c[0] - mx) > 1e-4 else [c]):
                 fw = float(b["amount"]) * np.exp(-(np.linalg.norm(W - cc, axis=1) / float(b["radius"])) ** 2)
                 fl = float(b["amount"]) * np.exp(-(np.linalg.norm(lm - cc, axis=1) / float(b["radius"])) ** 2)
-                DW += fw[:, None] * (Nw if d is None else d)
-                DL += fl[:, None] * (Nl if d is None else d)
+                dd = None if d is None else (d * [-1, 1, 1] if side else d)  # the mirrored bump's dir mirrors too
+                DW += fw[:, None] * (Nw if dd is None else dd)
+                DL += fl[:, None] * (Nl if dd is None else dd)
         W = W + DW
         lm = lm + DL  # the landmarks ride along (lip outlines, the mouth fill and lid rims are placed from them)
     if shape.get("under_eye") or shape.get("nostrils"):  # designed reductions: the under-eye crease filled, the

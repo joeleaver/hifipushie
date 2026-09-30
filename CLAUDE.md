@@ -249,6 +249,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   a muzzle, full lower cheeks, sleepy lids and paint. `base.look_at` off the centre line sets `eye_front.R` too; a
   near look_at reads cross-eyed, use a far point. Fast clay iteration of head shapes: build `base.head_of` alone and
   render the mesh (~10 s; a painted face look needs a sync, 4+ min on a head-cropped copy).
+  Nose and chin (2026-09-30, renders n01-n05): `base.head.regions` = GNM identity components applied only inside a
+  feathered region group (`region_weight`) or a landmark bump (`near`), so one feature is reshaped without moving the
+  eyes or jaw. Fitted by least squares to 3D targets (ala width, nasolabial angle, tip projection, chin forward/up/
+  narrower, mentolabial fold, under-chin sag), reading the targets off the reference through two matched cameras
+  (near + the far figure). Fitting 2D silhouette chamfers directly made a noisy objective and odd noses: fit smooth 3D
+  measures and check them in 2D. `shape.push_more` adds a model's bumps to the sheet's (a model's `push` replaces the
+  sheet's list); a push `dir` now mirrors its x on the mirrored side. Limits: GNM ties the outer alae to the nostril
+  base (the sheet's `nose_width` rule measures lm31-35, so wings narrower than ~x0.95 fail it); pushes near the nostrils
+  are mostly smoothed away by `shape.nostrils`; small chin pushes read as a chin "button" under stubble.
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
