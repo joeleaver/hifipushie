@@ -3,7 +3,7 @@
 spec["style"]["sheet"] = "<name>" makes a model take the sheet `styles/<name>.json` (in the package, or
 <HIFIPUSHIE_HOME>/_styles/<name>.json for your own). A sheet is a partial spec ("spec": base style and head fit/pose
 defaults, part settings such as skin subsurface, paint layers addressed on the base's landmark joints, the style's
-look preset) plus "rules": the checkable targets the style was written from (face ratios, eye opening, skin colour).
+look preset) plus "rules": the checkable targets the style was written from (face ratios, plane corners and muzzle, eye opening, skin colour).
 
 Resolution (`resolve`, done by `store.load`): the sheet's spec is the default and the model's own spec wins, key by
 key, recursively (lists replace; a key set to null in the model deletes the sheet's). Sheet paint layers come first,
@@ -112,8 +112,9 @@ def _within(v, rng):
 
 def check(name: str) -> list[dict]:
     """The model against its sheet's rules: [{"rule", "value", "target", "ok"}]. Measured: face ratios from the GNM
-    fit (interocular units: the chin against the philtrum, nose and mouth widths), the eye opening (height/width
-    and how much of the iris the lids cover, from the posed head mesh)."""
+    fit (interocular units: the chin against the philtrum, nose and mouth widths), the planes (base.plane_measures:
+    the front/side corner's radius, the muzzle), the eye opening (height/width and how much of the iris the lids
+    cover, from the posed head mesh)."""
     from . import base, store
     from . import spec as S
     spec = store.load(name)
@@ -131,6 +132,7 @@ def check(name: str) -> list[dict]:
                 "nose_width": m["nose_width"], "mouth_width": m["mouth_width"],
                 "mouth_corner_lift": 1000 * float(0.5 * (h["lm68"][48][2] + h["lm68"][54][2])
                                                   - 0.5 * (h["lm68"][62][2] + h["lm68"][66][2]))}
+        vals.update(base.plane_measures(h))
         op = base.eye_opening(h)[0]
         if op:
             vals["eye_h_over_w"] = op["h"] / op["w"]

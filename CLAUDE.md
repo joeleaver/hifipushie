@@ -238,6 +238,17 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   buttons (undone ones on the under strip). Everything is a blob shape "sweep" (`sdf.sd_sweep`: a 2D profile,
   "collar" or "band", along a polyline with per-vertex frames and numbers; `mirror` evaluates at |x|, a mirrored
   path's start on x = 0 isn't capped). `tests/test_sweep.py`.
+  Head shape (`base.head.shape`, or `base.style.shape` in a sheet; 2026-09-30, the golfer's face toward the
+  reference): `planes` (each 2 mm horizontal section in front of the jaw contour moved onto a superellipse of that
+  exponent in its ellipse's normalised coordinates: a tighter front/side corner at temple, cheekbone and jaw; the eyes
+  held by `planes_hold_eyes`, or the interocular grew 7%), `under_eye` / `nostrils` (weighted shrinking Laplacian:
+  the crease filled, the openings closed), `push` (landmark-addressed Gaussian bumps, mirrored, along the normals or
+  a world `dir`: along the normals a muzzle push opened the mouth, the lip seam faces up/down); the landmarks ride
+  the pushes (left behind, the lip outlines and mouth fill broke the mouth). `plane_measures` (corner radius, muzzle)
+  feeds `style_check`. The proportions were already within ~5% of the reference: the "moon" read was round planes,
+  a muzzle, full lower cheeks, sleepy lids and paint. `base.look_at` off the centre line sets `eye_front.R` too; a
+  near look_at reads cross-eyed, use a far point. Fast clay iteration of head shapes: build `base.head_of` alone and
+  render the mesh (~10 s; a painted face look needs a sync, 4+ min on a head-cropped copy).
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
