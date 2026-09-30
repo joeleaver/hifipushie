@@ -872,7 +872,8 @@ regresses, bisect by building one spec at each commit and diffing heights.
     stack tops narrower than twice the relief's reach take 10% of it), `_drop_specks` (closed pieces < 4 m2 off the
     tile border), the shell reaches 2 m past the cave wall. Rock geometry: joint sets (`_joints`: three families of long
     vertical planes, candidate planes ~1.6 m apart each present or not and jittered (many small blocks, a few big),
-    patchy bands of strength, V grooves between flat faces 2 voxels wide; a first version with regular spacing,
+    patchy bands of strength, 0.22 m grooves (flat faces, rounded floor, 1.5 voxels wide) fading out a few metres
+    under the open ground (on deep cave walls and at 0.3 m they made black shards); a first version with regular spacing,
     per-bed stagger and pillowed blocks read as hammered metal from 150 m; the far LODs' maps get half / none of
     them) and facet size following the
     face's structure (`_structure_grain`: concave/gully/top of face = small broken facets, buttresses big planes).
