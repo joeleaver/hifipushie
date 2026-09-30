@@ -35,7 +35,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 55  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 56  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -104,6 +104,12 @@ def inject(spec: dict) -> dict:
         gz = (look - c) / np.linalg.norm(look - c)
         joints.setdefault("eye_front.L", {"pos": [round(float(x), 4) for x in c + eb["r"] * gz],
                                           "r": round(head["eye_open"], 4)})
+        if b.get("look_at") is not None:  # a point off the centre line (a camera to one side): each eye turns to it
+            # on its own (the mirrored .L gaze looked cross-eyed or walleyed at it)
+            cr = np.asarray(head["eyes"][1], float)
+            gr = (look - cr) / np.linalg.norm(look - cr)
+            joints.setdefault("eye_front.R", {"pos": [round(float(x), 4) for x in cr + eb["r"] * gr],
+                                              "r": round(head["eye_open"], 4)})
         for k, j in _landmark_joints(head).items():  # face landmarks to address strokes and paint by
             joints.setdefault(k, j)
         # the mouth closed behind the lips (GNM's mouth bag is left out of the field: its walls made the lips sparkle,
@@ -294,6 +300,7 @@ def head_of(s: dict, base: dict):
         head = {**head, "eyes": float(head.get("eyes", 1.0)) * float(st.get("eyes", 1.0)),
                 "scale": float(head.get("scale", 1.4)) * float(st.get("head", 1.0)),
                 "simplify": float(head.get("simplify", 0.0)) + float(st.get("simplify", 0.0)),
+                **({"shape": {**st["shape"], **(head.get("shape") or {})}} if st.get("shape") else {}),
                 **({"simplify_keep": st["simplify_keep"]} if "simplify_keep" in st and "simplify_keep" not in head
                    else {})}
     key = ("head", json.dumps([head, mid.round(5).tolist(), up.round(5).tolist()], sort_keys=True))
@@ -313,6 +320,45 @@ def posed_measures(head: dict) -> dict:
     vals = [x[16] - x[0], x[12] - x[4], x[10] - x[6], ey - z[8], ey - z[57], ey - z[33], x[35] - x[31],
             x[54] - x[48], ey - 0.5 * (z[62] + z[66])]
     return {k: round(float(abs(v) / io), 3) for k, v in zip(FIT_KEYS, vals)}
+
+
+def plane_measures(head: dict) -> dict:
+    """How designed the head's planes are, on the built head mesh (world, Z up, facing -Y):
+    corner_radius_*_mm: the tightest turn (mm) of the horizontal section between the front (straight ahead) and the
+    side (straight out), 30-80 deg round from the front about the jaw contour's centre, at brow / cheekbone / mouth
+    height, both sides averaged (a real head ~42-50 mm; a stylised front/side corner ~30); muzzle_mm: how far the
+    upper lip stands in front of the cheeks beside the nose wings (GNM ~12 mm: a muzzle)."""
+    from scipy.ndimage import gaussian_filter1d
+    V, lm = head["verts"], np.asarray(head["lm68"])
+    e0, e1 = head["eyes"]
+    io = abs(e0[0] - e1[0])
+    xc, yc = 0.5 * (lm[0][0] + lm[16][0]), 0.5 * (lm[0][1] + lm[16][1]) + 0.01
+
+    def corner(z0):
+        P = V[np.abs(V[:, 2] - z0) < 0.0015][:, :2] - [xc, yc]
+        th = np.degrees(np.arctan2(np.abs(P[:, 0]), -P[:, 1]))
+        r = np.linalg.norm(P, axis=1)
+        out = []
+        for side in (1, -1):
+            s = np.sign(P[:, 0]) == side
+            bins = np.arange(0, 100, 2.0)
+            R = np.array([r[s & (th >= b) & (th < b + 2)].max() if (s & (th >= b) & (th < b + 2)).any() else np.nan
+                          for b in bins])
+            ok = ~np.isnan(R)
+            R = gaussian_filter1d(np.interp(bins, bins[ok], R[ok]), 1.5)
+            t = np.radians(bins + 1)
+            dr = np.gradient(R, t)
+            ddr = np.gradient(dr, t)
+            k = np.abs(R ** 2 + 2 * dr ** 2 - R * ddr) / (R ** 2 + dr ** 2) ** 1.5
+            out.append(1000 / k[(bins >= 30) & (bins <= 80)].max())
+        return round(float(np.mean(out)), 1)
+    mx = 0.5 * (e0[0] + e1[0])
+    lip = V[(np.abs(V[:, 0] - mx) < 0.004) & (np.abs(V[:, 2] - lm[51][2]) < 0.003), 1].min()
+    ck = [V[(np.abs(V[:, 0] - mx - s * 0.032) < 0.003) & (np.abs(V[:, 2] - lm[33][2]) < 0.003), 1].min()
+          for s in (-1, 1)]
+    return {"corner_radius_brow_mm": corner(lm[24][2]),
+            "corner_radius_cheekbone_mm": corner(0.5 * (e0[2] + e1[2]) - 0.35 * io),
+            "corner_radius_mouth_mm": corner(lm[48][2]), "muzzle_mm": round(1000 * float(np.mean(ck) - lip), 1)}
 
 
 IRIS_SPOT = 1.83  # an iris paint spot's diameter on the eyeball seen from the front, over its "width" (measured in renders)
@@ -825,6 +871,7 @@ def _gnm_data():
         rows = (path.parent.parent.parent / "landmarks" / "head_sparse_68.txt").read_text().split("\n")
         _CACHE["gnm"]["lm68"] = [[float(x) for x in r.split()] for r in rows if r.strip()]
         _CACHE["gnm"]["eye"] = [z["vertex_groups"][names.index(g)] > 0.5 for g in ("left_eye", "right_eye")]
+        _CACHE["gnm"]["groups"] = {str(n): z["vertex_groups"][i] for i, n in enumerate(names)}
     return _CACHE["gnm"]
 
 
@@ -947,6 +994,77 @@ def fit_identity(target: dict, n: int = 80, lam: float = 2e-6) -> dict:
     return out
 
 
+def _sstep(x):
+    x = np.clip(x, 0.0, 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def _lm_of(g, V):
+    return np.array([sum(float(w) * V[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]])
+
+
+def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8) -> tuple:
+    """A head's front and side planes meeting at a tighter corner (a stylised head: the forehead slab turning
+    sharply into the side plane at the temple, on down the cheekbone to the jaw corner). Per 2 mm height band, the
+    face's horizontal section is taken as an ellipse (half width a at the jaw contour's depth, depth b from there to
+    the cheek's front off the midline) and every point in front of the jaw contour is moved radially (in the
+    ellipse's normalised coordinates) onto the superellipse of exponent n (2 = unchanged, 3 = boxy): nothing moves
+    straight ahead (nose, mouth) or straight out at the side, the most at the corner between. GNM frame (Y up,
+    Z forward). pts (eye joints) move with it. Returns (V, pts)."""
+    lm = _lm_of(g, V)
+    skin = g["skin"] & ~(g["groups"]["ears"] > 0.5)
+    zc = 0.5 * (lm[0][2] + lm[16][2])  # the jaw contour's depth at the ear: the side of the face
+    xc = 0.5 * (lm[0][0] + lm[16][0])
+    S = V[skin]
+    ys = np.arange(lm[8][1] - 0.03, S[:, 1].max() + 0.004, 0.002)
+    a, b = np.full(len(ys), np.nan), np.full(len(ys), np.nan)
+    for i, y in enumerate(ys):
+        m = np.abs(S[:, 1] - y) < 0.003
+        side = m & (np.abs(S[:, 2] - zc) < 0.008)
+        if side.sum() > 3:
+            a[i] = np.percentile(np.abs(S[side, 0] - xc), 90)
+        u = np.abs(S[:, 0] - xc)
+        front = m & (u > 0.02) & (u < 0.036)
+        if front.sum() > 3:
+            b[i] = S[front, 2].max() - zc
+    ok = ~np.isnan(a) & ~np.isnan(b) & (b > 0.01)
+    if ok.sum() < 5:
+        return V, pts
+    from scipy.ndimage import gaussian_filter1d
+    a = gaussian_filter1d(np.interp(ys, ys[ok], a[ok]), 4)  # ~8 mm
+    b = gaussian_filter1d(np.interp(ys, ys[ok], b[ok]), 4)
+
+    eyes = np.asarray(pts, float)
+
+    def move(X, wmask=None):
+        A, B = np.interp(X[:, 1], ys, a), np.interp(X[:, 1], ys, b)
+        U, W = (X[:, 0] - xc) / A, (X[:, 2] - zc) / B
+        phi = np.arctan2(np.abs(U), W)
+        rs = (np.abs(np.cos(phi)) ** n + np.abs(np.sin(phi)) ** n) ** (-1.0 / n)
+        # in front of the jaw contour only; from under the jaw corner (the neck stays) up over the forehead
+        w = _sstep((X[:, 2] - zc + 0.012) / 0.024) * _sstep((X[:, 1] - lm[8][1] + 0.004) / 0.022)
+        # the eyes and their lids mostly held (moved out with the corner, the interocular grew 7%: wide-set eyes)
+        de = np.min([np.linalg.norm(X - e, axis=1) for e in eyes], axis=0)
+        w = w * (1 - hold * np.exp(-(de / 0.022) ** 2))
+        if wmask is not None:
+            w = w * wmask
+        k = 1 + w * (rs - 1)
+        Y = X.copy()
+        Y[:, 0] = xc + (X[:, 0] - xc) * k
+        Y[:, 2] = zc + (X[:, 2] - zc) * k
+        return Y
+    ears = g["groups"]["ears"]
+    return move(V, 1.0 - np.clip(ears, 0, 1)), move(np.asarray(pts, float))
+
+
+def _local_smooth(W, E, deg, wv, iters):
+    """Plain (shrinking) Laplacian smoothing weighted per vertex: fills creases and closes small cavities (the
+    under-eye crease, nostril holes) where wv > 0."""
+    for _ in range(int(iters)):
+        W = W + 0.5 * wv[:, None] * retopo._lap(W, E, deg)
+    return W
+
+
 def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     """Google GNM's head skin, posed for the base: identity/expression applied (head["identity"] {name: value},
     head["seed"] for a random identity), eyes scaled about their centres (head["eyes"], e.g. 1.45: a stylised look),
@@ -986,6 +1104,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     mid = 0.5 * (J[2] + J[3])
     V[:, 0] = mid[0] + (V[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
     J[:, 0] = mid[0] + (J[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
+    shape = head.get("shape") or {}
+    if float(shape.get("planes", 2.0)) != 2.0:  # front/side planes meeting at a tighter corner (temple, cheekbone)
+        V, J[2:4] = _planes(V, J[2:4], float(shape["planes"]), g, float(shape.get("planes_hold_eyes", 0.8)))
     R = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])  # GNM: Y up, facing +Z -> Z up, facing -Y
     up = up / np.linalg.norm(up)
     R = retopo._rot_between(np.array([0, 0, 1.0]), up) @ R
@@ -1009,7 +1130,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         # the lid rims, lips and nostrils kept (their weight fades to 0 within ~1.5 cm of those landmarks)
         E = retopo.edges(np.array([v for f in faces for v in f]), np.array([len(f) for f in faces]))
         deg = np.bincount(E.ravel(), minlength=len(W))
-        keep = [lm[i] for i in (37, 38, 40, 41, 43, 44, 46, 47, 48, 51, 54, 57, 62, 66, 31, 33, 35)]
+        keep = [lm[i] for i in (37, 38, 40, 41, 43, 44, 46, 47, 48, 51, 54, 57, 62, 66)
+                + ((31, 33, 35) if not shape.get("nostrils") else ())]
         dk = np.min([np.linalg.norm(W - p, axis=1) for p in keep], axis=0)
         k0, k1 = head.get("simplify_keep", [0.006, 0.015])  # kept within k0 of those landmarks, fading over k1
         wv = np.clip((dk - float(k0) * s) / (float(k1) * s), 0, 1)
@@ -1019,6 +1141,45 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         for _ in range(int(round(12 * float(head["simplify"])))):
             for lam in (0.5, -0.53):
                 W = W + lam * wv * retopo._lap(W, E, deg)
+    if shape.get("push"):  # soft landmark-addressed bumps along the head's normals, mirrored: a buccal hollow under
+        # the cheekbone, a proud cheekbone, a jaw corner. [{"lm": [ids] (their mean), "offset": [x, y, z] (m, world),
+        # "radius": m, "amount": m}], Gaussian falloff (GNM's region groups have hard edges: pushed, they left steps)
+        Nw = retopo._vnormals(W, np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)]))
+        mx = float(eye_mid[0])
+        # a push with "dir" ([x, y, z] world, e.g. [0, 1, 0] = back) moves everything that way instead: a muzzle
+        # pushed back along the normals opened the mouth (the lips' seam faces up and down)
+        near = cKDTree(W).query(lm, k=24)[1]
+        Nl = Nw[near].mean(1)  # the landmarks' normals smoothed (a lip seam vertex's own normal faces up or down)
+        Nl /= np.linalg.norm(Nl, axis=1, keepdims=True)
+        DW, DL = np.zeros_like(W), np.zeros_like(lm)
+        for b in shape["push"]:
+            c = np.mean([lm[int(i)] for i in b["lm"]], axis=0) + np.asarray(b.get("offset", [0, 0, 0]), float)
+            d = np.asarray(b["dir"], float) / np.linalg.norm(b["dir"]) if b.get("dir") is not None else None
+            for cc in ([c, np.array([2 * mx - c[0], c[1], c[2]])] if abs(c[0] - mx) > 1e-4 else [c]):
+                fw = float(b["amount"]) * np.exp(-(np.linalg.norm(W - cc, axis=1) / float(b["radius"])) ** 2)
+                fl = float(b["amount"]) * np.exp(-(np.linalg.norm(lm - cc, axis=1) / float(b["radius"])) ** 2)
+                DW += fw[:, None] * (Nw if d is None else d)
+                DL += fl[:, None] * (Nl if d is None else d)
+        W = W + DW
+        lm = lm + DL  # the landmarks ride along (lip outlines, the mouth fill and lid rims are placed from them)
+    if shape.get("under_eye") or shape.get("nostrils"):  # designed reductions: the under-eye crease filled, the
+        # nostril holes closed to a shallow dent (a stylised nose shows no openings from the front)
+        E = retopo.edges(np.array([v for f in faces for v in f]), np.array([len(f) for f in faces]))
+        deg = np.bincount(E.ravel(), minlength=len(W))
+        gs = {k: v[skin] for k, v in g["groups"].items()}
+        if shape.get("under_eye"):
+            dl = np.min([np.linalg.norm(W - lm[i], axis=1) for i in range(36, 48)], axis=0)
+            infra = np.clip(gs["left_infraorbital_region"] + gs["right_infraorbital_region"]
+                            + 0.5 * (gs["left_orbital_region"] + gs["right_orbital_region"])
+                            + 0.7 * (gs["left_zygomatic_region"] + gs["right_zygomatic_region"]), 0, 1)
+            for _ in range(6):  # feathered: the regions' hard edges left a step where the smoothing stopped
+                infra = infra + 0.5 * retopo._lap(infra[:, None], E, deg)[:, 0]
+            wv = infra * _sstep((dl - 0.0025 * s) / (0.004 * s)) * (1 - np.clip(gs["nose_region"], 0, 1))
+            W = _local_smooth(W, E, deg, wv, 12 * float(shape["under_eye"]))
+        if shape.get("nostrils"):
+            dn = np.min([np.linalg.norm(W - lm[i], axis=1) for i in (31, 32, 33, 34, 35)], axis=0)
+            wv = 1 - _sstep((dn - 0.006 * s) / (0.006 * s))
+            W = _local_smooth(W, E, deg, wv, 12 * float(shape["nostrils"]))
     for _ in range(int(head.get("subdivide", 1))):
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)

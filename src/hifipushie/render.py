@@ -74,7 +74,8 @@ def camera_frame(cam: dict, index: int = 0) -> dict:
         raise ValueError("camera fov must be between 5 and 150 degrees")
     return {"name": cam.get("name") or (f"camera {index + 1}" if index else "camera"), "dir": d.tolist(),
             "up": up.tolist(), "eye": eye.tolist(), "center": target.tolist(), "fov": fov,
-            "near": float(cam.get("near", 0.01)), "scale": None, "axes": None}
+            "near": float(cam.get("near", 0.01)), "scale": None, "axes": None,
+            **({"shift": [float(v) for v in cam["shift"]]} if cam.get("shift") else {})}  # lens shift (fit_camera)
 
 
 class _Blender:

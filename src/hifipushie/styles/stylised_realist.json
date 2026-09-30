@@ -15,8 +15,8 @@
    1.05
   ],
   "eye_h_over_w": [
-   0.3,
-   0.37
+   0.33,
+   0.5
   ],
   "iris_over_eye_w": [
    0.48,
@@ -46,14 +46,24 @@
    "chin_over_philtrum": "mouth->chin over nose base->mouth: a short philtrum and a long, strong chin (reference 2.3-2.9; ~2.0 is realistic)",
    "nose_width": "nose wings over the interocular: one soft bulb, a touch wide",
    "mouth_width": "corner to corner over the interocular",
-   "eye_h_over_w": "an almond, not a round (startled) eye: reference 0.35",
+   "eye_h_over_w": "an open almond (reference 0.35 as drawn; GNM's lids measure ~0.1 over what reads: 0.31 measured read as sleepy/closed, 0.36-0.48 reads open)",
    "iris_over_eye_w": "a big dark iris: reference 0.52 (real ~0.39)",
    "lid_cover_top": "the upper lid covers ~20% of the iris: no white above it",
    "lid_cover_bottom": "the lower lid touches or covers the iris: no white below it",
    "skin_sat_lit": "HSV saturation of lit skin in the style's look (rendered, sampled on the forehead/cheek)",
    "skin_sat_shadow": "shadowed skin is MORE saturated than lit skin (reference ~0.6): not grey",
-   "skin_hue_shift_to_shadow": "degrees the hue moves toward red from lit to shadow (reference ~7)"
-  }
+   "skin_hue_shift_to_shadow": "degrees the hue moves toward red from lit to shadow (reference ~7)",
+   "corner_radius_cheekbone_mm": "the tightest turn of the horizontal section between the front and side planes at cheekbone height: a realistic GNM head ~42 mm",
+   "muzzle_mm": "how far the upper lip stands in front of the cheeks beside the nose wings (GNM ~12: a muzzle)"
+  },
+  "corner_radius_cheekbone_mm": [
+   20,
+   34
+  ],
+  "muzzle_mm": [
+   0,
+   8
+  ]
  },
  "spec": {
   "base": {
@@ -64,7 +74,117 @@
     "simplify_keep": [
      0.0015,
      0.004
-    ]
+    ],
+    "shape": {
+     "planes": 2.7,
+     "planes_hold_eyes": 0.5,
+     "under_eye": 3,
+     "nostrils": 2,
+     "push": [
+      {
+       "lm": [
+        2,
+        48,
+        36
+       ],
+       "radius": 0.024,
+       "amount": -0.009
+      },
+      {
+       "lm": [
+        2,
+        3
+       ],
+       "radius": 0.02,
+       "amount": -0.005
+      },
+      {
+       "lm": [
+        5,
+        6,
+        48
+       ],
+       "radius": 0.016,
+       "amount": -0.004
+      },
+      {
+       "lm": [
+        0,
+        17
+       ],
+       "radius": 0.022,
+       "amount": 0.004
+      },
+      {
+       "lm": [
+        1,
+        36
+       ],
+       "offset": [
+        0,
+        0,
+        -0.004
+       ],
+       "radius": 0.014,
+       "amount": 0.003
+      },
+      {
+       "lm": [
+        4
+       ],
+       "radius": 0.012,
+       "amount": 0.002
+      },
+      {
+       "lm": [
+        7,
+        8,
+        9
+       ],
+       "radius": 0.016,
+       "amount": 0.0015
+      },
+      {
+       "lm": [
+        51,
+        57
+       ],
+       "radius": 0.026,
+       "amount": 0.006,
+       "dir": [
+        0,
+        1,
+        0
+       ]
+      },
+      {
+       "lm": [
+        33,
+        51
+       ],
+       "radius": 0.012,
+       "amount": 0.0015,
+       "dir": [
+        0,
+        1,
+        0
+       ]
+      },
+      {
+       "lm": [
+        38,
+        19
+       ],
+       "offset": [
+        0,
+        0,
+        -0.002
+       ],
+       "radius": 0.008,
+       "amount": -0.0012
+      }
+     ]
+    }
    },
    "head": {
     "fit": {
@@ -72,21 +192,21 @@
      "mouth_width": 0.92
     },
     "pose": {
-     "lid_upper": 0.0015,
-     "lid_lower": 0.003,
+     "lid_upper": 0.0003,
+     "lid_lower": 0.0033,
      "mouth_raise": 0.003
     }
    }
   },
   "parts": {
    "body": {
-    "subsurface": 0.6,
+    "subsurface": 0.35,
     "subsurface_radius": [
      1.0,
      0.25,
      0.1
     ],
-    "subsurface_scale": 0.008
+    "subsurface_scale": 0.006
    },
    "eyes": {
     "color": "#ddcbbd",
@@ -96,8 +216,8 @@
   },
   "paint": {
    "skin": {
-    "color": "#e6a47a",
-    "roughness": 0.5
+    "color": "#dea486",
+    "roughness": 0.55
    },
    "skin_shadow_warm": {
     "color": "#a63c2c",
@@ -109,11 +229,199 @@
    },
    "skin_thin_warm": {
     "color": "#cc553d",
-    "opacity": 0.45,
+    "opacity": 0.5,
     "thickness": [
      0.045,
      0.012
     ]
+   },
+   "plane_side.L": {
+    "color": "#b56a55",
+    "opacity": 0.38,
+    "mask": [
+     {
+      "facing": [
+       1,
+       0.3,
+       0
+      ],
+      "range": [
+       0.5,
+       0.78
+      ]
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": -0.11,
+       "to": -0.08
+      }
+     }
+    ]
+   },
+   "plane_under": {
+    "color": "#935e58",
+    "opacity": 0.35,
+    "mask": [
+     {
+      "facing": [
+       0,
+       -0.25,
+       -1
+      ],
+      "range": [
+       0.3,
+       0.7
+      ]
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": -0.11,
+       "to": -0.08
+      }
+     }
+    ]
+   },
+   "socket_shadow.L": {
+    "color": "#94503f",
+    "opacity": 0.32,
+    "profile": "soft",
+    "path": [
+     {
+      "at": "lm_eye_inner.L",
+      "offset": [
+       -0.001,
+       0,
+       0.007
+      ],
+      "dir": [
+       0,
+       -1,
+       0.3
+      ]
+     },
+     {
+      "at": "lm_lid_upper.L",
+      "offset": [
+       0,
+       0,
+       0.008
+      ]
+     },
+     {
+      "at": "lm_eye_outer.L",
+      "offset": [
+       0.004,
+       0,
+       0.006
+      ],
+      "dir": [
+       0.6,
+       -1,
+       0.3
+      ]
+     }
+    ],
+    "width": 0.0065
+   },
+   "plane_top_light": {
+    "color": "#f2c4a6",
+    "opacity": 0.3,
+    "mask": [
+     {
+      "facing": [
+       0,
+       -0.55,
+       0.85
+      ],
+      "range": [
+       0.45,
+       0.9
+      ]
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": -0.11,
+       "to": -0.08
+      }
+     }
+    ]
+   },
+   "skin_matte": {
+    "roughness": 0.66,
+    "opacity": 0.8,
+    "mask": [
+     {
+      "noise": {
+       "scale": 0.035,
+       "range": [
+        0.35,
+        0.7
+       ],
+       "seed": 3
+      }
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": -0.11,
+       "to": -0.08
+      }
+     }
+    ]
+   },
+   "tzone_satin": {
+    "roughness": 0.42,
+    "profile": "soft",
+    "path": [
+     {
+      "at": "lm_nose_bridge",
+      "offset": [
+       0,
+       0,
+       0.035
+      ],
+      "dir": [
+       0,
+       -1,
+       0.3
+      ]
+     },
+     {
+      "at": "lm_nose_bridge"
+     },
+     {
+      "at": "lm_nose_tip",
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ],
+    "width": 0.011
    },
    "skin_warm": {
     "color": "#d06a50",
@@ -193,8 +501,8 @@
      "eye.L",
      "eye.R"
     ],
-    "within": 0.0012,
-    "soft": 0.0012,
+    "within": 0.0018,
+    "soft": 0.0015,
     "axis": {
      "dir": [
       0,
@@ -202,14 +510,14 @@
       1
      ],
      "at": "eye.L",
-     "from": 0.0015,
-     "to": 0.0035
+     "from": 0.0005,
+     "to": 0.0025
     }
    },
    "stubble.L": {
-    "color": "#6a4a40",
-    "opacity": 0.0,
-    "roughness": 0.65,
+    "color": "#4a2b21",
+    "opacity": 0.85,
+    "roughness": 0.72,
     "mask": [
      {
       "outline": {
@@ -276,7 +584,7 @@
         1,
         0
        ],
-       "soft": 0.006,
+       "soft": 0.009,
        "depth": 0.06
       }
      },
@@ -369,6 +677,31 @@
        "from": -0.04,
        "to": -0.025
       }
+     },
+     {
+      "noise": {
+       "scale": 0.001,
+       "range": [
+        0.2,
+        0.8
+       ],
+       "octaves": 2,
+       "seed": 11
+      },
+      "weight": 0.3
+     },
+     {
+      "axis": {
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "at": "lm_chin",
+       "from": 0.075,
+       "to": 0.02
+      },
+      "weight": 0.35
      }
     ]
    },
@@ -492,7 +825,7 @@
       ]
      }
     ],
-    "width": 0.0098,
+    "width": 0.0108,
     "profile": "flat"
    },
    "pupil.L": {
