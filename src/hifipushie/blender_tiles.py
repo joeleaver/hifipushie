@@ -108,6 +108,137 @@ def _layered(m, layers):
     nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 
 
+def _upstream(sock, kind):
+    """The first node of type `kind` feeding a socket (walking back through the importer's links)."""
+    seen = [sock]
+    while seen:
+        s = seen.pop()
+        for ln in s.links:
+            n = ln.from_node
+            if n.type == kind:
+                return n
+            seen += [i for i in n.inputs if i.is_linked]
+    return None
+
+
+def _channel(m, ch):
+    """One baked channel alone, to see which carries a seam: "base" (base colour, unlit), "ao" (ORM occlusion,
+    unlit), "normal" (the normal map on a flat grey), "clay" (geometry only: flat grey, no normal map)."""
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+    base = _upstream(b.inputs["Base Color"], "TEX_IMAGE")
+    orm = _upstream(b.inputs["Roughness"], "TEX_IMAGE")
+    if ch in ("base", "ao"):
+        em = nt.nodes.new("ShaderNodeEmission")
+        if ch == "base" and base is not None:
+            nt.links.new(base.outputs["Color"], em.inputs["Color"])
+        elif orm is not None:
+            sep = nt.nodes.new("ShaderNodeSeparateColor")
+            nt.links.new(orm.outputs["Color"], sep.inputs["Color"])
+            nt.links.new(sep.outputs["Red"], em.inputs["Color"])
+        nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+        return
+    for ln in list(b.inputs["Base Color"].links):
+        nt.links.remove(ln)
+    b.inputs["Base Color"].default_value = (0.2, 0.2, 0.2, 1)
+    if ch == "clay":
+        for ln in list(b.inputs["Normal"].links):
+            nt.links.remove(ln)
+
+
+def _id_attr(ob, tile):
+    """A FLOAT_COLOR point attribute hp_id = (tile, chart, 0): charts are the mesh's pieces joined by shared vertices
+    (the export splits vertices wherever the uv jumps, so each piece is one atlas chart)."""
+    me = ob.data
+    nv = len(me.vertices)
+    lv = np.zeros(len(me.loops), np.int64)
+    me.loops.foreach_get("vertex_index", lv)
+    ls = np.zeros(len(me.polygons), np.int64)
+    me.polygons.foreach_get("loop_start", ls)
+    lt = np.zeros(len(me.polygons), np.int64)
+    me.polygons.foreach_get("loop_total", lt)
+    F = lv.reshape(-1, 3) if len(lv) == 3 * len(ls) else None
+    if F is None:
+        F = np.array([lv[s_:s_ + 3] for s_ in ls])
+    lab = np.arange(nv)
+    for _ in range(100000):  # min-label propagation over faces, with pointer jumping
+        fm = lab[F].min(1)
+        new = lab.copy()
+        for c in range(3):
+            np.minimum.at(new, F[:, c], fm)
+        new = new[new]
+        if np.array_equal(new, lab):
+            break
+        lab = new
+    _, cid = np.unique(lab, return_inverse=True)
+    at = me.attributes.new("hp_id", "FLOAT_COLOR", "POINT")
+    col = np.zeros((nv, 4), np.float32)
+    col[:, 0], col[:, 1], col[:, 3] = tile, cid + 1, 1
+    at.data.foreach_set("color", col.ravel())
+
+
+def _id_material():
+    """Emission of (tile, chart, view distance): an exact id pass (1 sample, no filter) for the render-space seam
+    measure."""
+    m = bpy.data.materials.new("hp_ids")
+    m.use_nodes = True
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    at = nt.nodes.new("ShaderNodeAttribute")
+    at.attribute_name = "hp_id"
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(at.outputs["Color"], sep.inputs["Color"])
+    cd = nt.nodes.new("ShaderNodeCameraData")
+    cc = nt.nodes.new("ShaderNodeCombineColor")
+    nt.links.new(sep.outputs["Red"], cc.inputs["Red"])
+    nt.links.new(sep.outputs["Green"], cc.inputs["Green"])
+    nt.links.new(cd.outputs["View Distance"], cc.inputs["Blue"])
+    em = nt.nodes.new("ShaderNodeEmission")
+    nt.links.new(cc.outputs["Color"], em.inputs["Color"])
+    o = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(em.outputs["Emission"], o.inputs["Surface"])
+    return m
+
+
+def _render_ids(scene, path):
+    """The id pass for the current camera, saved as float32 .npy (rows top first): tile, chart, distance (0 = sky)."""
+    vl = bpy.context.view_layer
+    keep = (scene.cycles.samples, scene.cycles.use_denoising, scene.render.filter_size, scene.render.image_settings.
+            file_format, scene.render.image_settings.color_depth, scene.render.filepath, vl.material_override,
+            scene.world.node_tree.nodes["Background"].inputs["Strength"].default_value, scene.view_settings.view_transform)
+    for o in scene.objects:  # (water and other meshes occlude with id 0)
+        if o.type == "MESH" and not o.data.attributes.get("hp_id"):
+            o.data.attributes.new("hp_id", "FLOAT_COLOR", "POINT")
+    hidden = [o for o in scene.objects if o.type == "CURVE"]  # (the drawn borders; trees occlude with id 0)
+    was = [o.hide_render for o in hidden]
+    for o in hidden:
+        o.hide_render = True
+    scene.cycles.samples, scene.cycles.use_denoising, scene.render.filter_size = 1, False, 0.01
+    scene.render.image_settings.file_format, scene.render.image_settings.color_depth = "OPEN_EXR", "32"
+    scene.view_settings.view_transform = "Standard"
+    vl.material_override = _IDMAT[0]
+    scene.world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.0
+    tmp = path + ".exr"
+    scene.render.filepath = tmp
+    bpy.ops.render.render(write_still=True)
+    img = bpy.data.images.load(tmp)
+    a = np.array(img.pixels[:], np.float32).reshape(img.size[1], img.size[0], 4)[::-1, :, :3]
+    np.save(path, a)
+    bpy.data.images.remove(img)
+    os.remove(tmp)
+    (scene.cycles.samples, scene.cycles.use_denoising, scene.render.filter_size, scene.render.image_settings.file_format,
+     scene.render.image_settings.color_depth, scene.render.filepath, vl.material_override,
+     scene.world.node_tree.nodes["Background"].inputs["Strength"].default_value,
+     scene.view_settings.view_transform) = keep
+    for o, w in zip(hidden, was):
+        o.hide_render = w
+
+
+_IDMAT = []
+
+
 def _flat(name, rgb):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -174,10 +305,13 @@ def run(job):
     mat = _terrain_material()
     ground = []
     done = set()
-    for p in job["glbs"]:
+    ch = job.get("channel")
+    for ti, p in enumerate(job["glbs"]):
         bpy.ops.import_scene.gltf(filepath=p)
         for ob in bpy.context.selected_objects:
             if ob.type == "MESH":
+                if job.get("ids"):
+                    _id_attr(ob, ti + 1)
                 if job.get("skirt_color"):  # skirts in their own flat colour, to see where they show
                     idx = np.zeros(len(ob.data.polygons), np.int32)
                     ob.data.polygons.foreach_get("material_index", idx)
@@ -194,6 +328,9 @@ def run(job):
                         ob.data.materials[s] = mat
                     elif job.get("layers") and m.name not in done:
                         _layered(m, job["layers"])
+                        done.add(m.name)
+                    elif ch and m.name not in done:
+                        _channel(m, ch)
                         done.add(m.name)
                 if not len(ob.data.materials):
                     ob.data.materials.append(mat)
@@ -223,6 +360,13 @@ def run(job):
             ob = bpy.data.objects.new("trees_" + kind, me)
             bpy.context.scene.collection.objects.link(ob)
             bt._instance(ob, kind)
+    if ch == "clay":  # (untextured parts too: geometry alone)
+        bb = mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"]
+        for ln in list(bb.links):
+            mat.node_tree.links.remove(ln)
+        bb.default_value = (0.2, 0.2, 0.2, 1)
+    if job.get("ids"):
+        _IDMAT.append(_id_material())
     border_ob = None
     if job.get("borders"):
         d = np.load(job["borders"])
@@ -277,6 +421,10 @@ def run(job):
             border_ob.hide_render = not v.get("borders", False)
         scene.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
+        if job.get("ids"):
+            if border_ob is not None:
+                border_ob.hide_render = True
+            _render_ids(scene, os.path.splitext(v["out"])[0] + "_ids.npy")
 
 
 if __name__ == "__main__":
