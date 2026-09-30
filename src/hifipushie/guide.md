@@ -151,6 +151,14 @@ Stages, each looked at and approved before the next. A look takes seconds, so lo
    bump, which bakes into the normal map), never in the geometry. Judge with the material on AND in clay (the look
    renders both rows), and in close-ups.
 
+Hand-shaping in Blender (when generated locks won't read like the reference): edit the lock curves in scene.blend
+(points, handles, Alt+S radius, Ctrl+T tilt, the modifier's Width/Thickness/Taper/Belly/Root/Edge; Shift+D a lock to
+add one, X to delete), then `scene.pull`: edits come back as `"hand": true` locks that a regrow leaves alone, new
+curves as new locks, deletions as `hair.removed`. Keep locks few and broad (7-10 cm, ~6 mm thick, thin edges) lying on
+the volume with a steady tilt; a fan from the part whose rows never cross; roots lying flat (not climbing out of the
+parting). Look after every few edits (seconds), fix gate dents by pulling out the lock that makes that height of the
+outline.
+
 What goes wrong: tips standing up (claws), locks curling at their ends, many small locks at mixed angles (a mop),
 the volume visible between clumps (a helmet with grooves drawn on). Fix these by widening, overlapping or
 re-drawing the big clumps. Adding small locks makes them worse.

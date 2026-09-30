@@ -315,6 +315,35 @@ def test_mesh_quality():
     assert asset.mesh_quality(v, f[1:])["open_edges"] == 3
 
 
+# Hand-shaping hair in Blender (2026-09-30): edits, deletions and Shift+D copies come back, and a regrow keeps them
+def test_hair_pull_hand_locks():
+    import numpy as np
+    from hifipushie import hair
+    sc = hair.Scalp([0, 0, 1.7], np.full((180, 81), 0.1), {})
+    old = hair.scalp
+    hair.scalp = lambda name, spec=None: sc
+    try:
+        lk = {"tier": "drawn", "pts": [[0, 30, 0.0], [-40, 30, 0.01]], "width": 0.05, "thickness": 0.006}
+        spec = {"hair": {"locks": {"sweep1": dict(lk), "sweep2": dict(lk), "g01": dict(lk, tier="gap")}}}
+        moved = sc.point(np.array([0, -45.0]), np.array([30, 28.0]), np.array([0.0, 0.012]))
+        got = {"sweep1": {"pts": moved.tolist(), "radius": [1, 1], "tilt": [0, 0.3], "inputs": {"Width": 0.07},
+                          "hash": hair.lock_hash(spec["hair"]["locks"]["sweep1"], sc)},
+               "__deleted__": ["g01"],
+               "__new__": {"sweep1_001": {"pts": moved.tolist(), "radius": [1, 1], "tilt": [0, 0],
+                                          "inputs": {"Width": 0.04, "Thickness": 0.005}}}}
+        log = []
+        ch = hair.pull_locks(spec, "x", got, log)
+        L = spec["hair"]["locks"]
+        assert set(ch) == {"hair.sweep1", "hair.g01", "hair.sweep1_001"}, ch
+        assert L["sweep1"]["hand"] and L["sweep1"]["width"] == 0.07 and L["sweep1"]["tilt"] == [0, 0.3]
+        assert L["sweep1_001"]["tier"] == "hand" and L["sweep1_001"]["width"] == 0.04
+        assert "g01" not in L and spec["hair"]["removed"] == ["g01"]
+        assert "sweep2" in L and not L["sweep2"].get("hand")
+        hair.validate(spec)
+    finally:
+        hair.scalp = old
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

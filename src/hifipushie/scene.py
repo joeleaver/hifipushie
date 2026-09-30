@@ -554,13 +554,17 @@ def pull(name: str, log: list | None = None) -> dict:
         spec = store.load(name)
         changes = _pull_params(spec, got["params"], log)
         changes.update(_pull_painted(spec, got.get("painted") or {}, log))
+        hair_changed = False
         if got.get("hair"):  # locks a person moved, re-shaped or re-numbered (hair.pull_locks)
             from . import hair
-            changes.update(hair.pull_locks(spec, name, got["hair"], log))
+            hc = hair.pull_locks(spec, name, got["hair"], log)
+            changes.update(hc)
+            hair_changed = bool(hc)
     moved = got["moved"]
     if not moved:
         if changes:
             store.save(name, spec, "from the Blender scene: " + ", ".join(changes))
+        _restamp_hair(name, hair_changed, log)
         return changes
     pls = assemble.placements(spec)
     for inst, m in moved.items():
@@ -611,12 +615,23 @@ def pull(name: str, log: list | None = None) -> dict:
         changes[inst] = new
         log.append(f"{inst}: {json.dumps(new)} (from the scene)")
     store.save(name, spec, "from the Blender scene: " + ", ".join(changes))
+    _restamp_hair(name, hair_changed, log)
     for inst in moved:  # a person's move can land an instance inside something: say so
         hit = clashes(spec, inst)
         if hit:
             log.append(f"{inst} now cuts into " + ", ".join(f"{n} ({d * 1000:.0f} mm)" for d, n in hit[:4])
                        + ": move it in the scene, or `scene.clear_of(name, instance)` slides it out")
     return changes
+
+
+def _restamp_hair(name: str, changed: bool, log: list) -> None:
+    """After hair locks came back from a person's live Blender, sync them straight back so each scene lock carries
+    the hash of its new spec version: left stamped with the old one, the next edit to the same lock read as
+    "stale" and was dropped (found hand-shaping dg_hh). Headless pulls leave the file alone (the next sync does it)."""
+    if changed and live_session(name):
+        from . import hair
+        hair.sync(name)
+        log.append("hair: the edited locks re-stamped in the live session")
 
 
 def _clash_setup(spec: dict, inst: str, voxel: float, tol: float):

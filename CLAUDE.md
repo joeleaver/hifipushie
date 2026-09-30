@@ -289,6 +289,22 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   volume: gap locks 60 mm wide at spacing 0.7 (sides/back/top) fixed it. Pull skips a lock whose scene copy was built
   from another version of the spec (`hp_hash` != `lock_hash`): a stale scene.blend had clobbered the spec with zero
   widths on export. Sync the hair (`hair.sync`) before exporting after a regrow.
+  Hand-shaping (2026-09-30, the user's call after the procedural rounds: "hand shape the front locks in blender"; model
+  `workspace/dg_hh`, a copy of dg_hair2, renders hh01-hh04): edit the curves in scene.blend (a live session: the person's
+  Blender, or `blender -b scene.blend --online-mode --command blender_mcp --port N` + BLENDER_MCP_PORT=N), then
+  `scene.pull`. Every lock edited there comes back with `"hand": true`; curves added to the "hair" collection (Shift+D
+  on a lock, or a new Bezier curve) come back as new locks (tier "hand", named by their object); deleted ones leave the
+  spec and are listed in `hair.removed`. `hair.groom` (regrow) keeps hand locks and never regrows a removed name; the
+  sync records the locks it made (collection prop `hp_made`) so deletions are seen; a live pull re-syncs the edited
+  locks (`scene._restamp_hair`: stamped with the old hash, the next edit of the same lock read as stale). What worked:
+  few BROAD locks (7-10 cm wide, 6 mm thick, thin edges `edge` 1.6) lying on the volume (h = volume - 2 mm, tilt =
+  `lie_tilt` smoothed along the lock, the root's tilt = the next point's: the volume's normal turns sideways at the
+  parting and roots stood as fins), a top fan from the part whose rows never cross (slerp arcs, an under-row between
+  each pair where the fan spreads), sides/back as ~8 broad locks brushed back to the nape (the procedural strips and gap
+  locks read as tiles and shingles on edge), sideburn, nape and behind-ear locks for coverage. The groom's volume still
+  shapes the silhouette: `volume.ramp` (0.028 default: the front a wall the front locks jutted over like a cap's peak;
+  0.06 leans it back), `volume.across`, `parting.depth` (0.45: the roots stopped climbing out of a trench). Dents in
+  the gate: find the lock that makes each height of the outline (`hair_point_owners.npz`) and pull it out 2-4 mm.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
