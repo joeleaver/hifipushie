@@ -47,10 +47,11 @@ def micro_relief(r, amount=1.0, texel=0.1):
 
     J = r.get("joints")
 
-    def f(p):
-        out = 0.06 * a1 * tm._pl_facets(p, 1.2, seed)
+    def f(p, fd=None, u=None):
+        fac = lambda size, sd: tm.facet(p, size, sd, fd, u)  # (irregular triangles on faces: terrain_facets)
+        out = 0.06 * a1 * fac(1.2, seed)
         if a2 > 0:
-            out = out + 0.015 * a2 * tm._pl_facets(p, 0.45, seed + 1)
+            out = out + 0.015 * a2 * fac(0.45, seed + 1)
         if J and ac > 0:  # hairline cracks along the joint sets, on their candidate planes (most not meshed)
             for m, d in enumerate(J["dirs"][:2]):
                 sp = J["spacing"][m]
@@ -58,7 +59,7 @@ def micro_relief(r, amount=1.0, texel=0.1):
                 dist = np.abs(q - np.round(q)) * sp
                 out = out + 0.03 * ac * np.clip(1 - dist / 0.12, 0, 1) ** 2
         if ac > 0:
-            c = tm._pl_facets(p, 3.1, seed + 2)
+            c = fac(3.1, seed + 2)
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
         if bed and (an > 0 or al > 0):
             zb = tm.bed_level(p, r)
