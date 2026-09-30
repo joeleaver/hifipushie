@@ -14,7 +14,9 @@ creases on them read as seams in every channel, clay included.)
 
 `grid_squares` looks for the other kind of square: a pattern locked to the world's axes at a fixed spacing (a grid of
 cells sampled bilinearly) shows as energy at that period along x and y in the rendered colour.
-`texel_density` checks that neighbouring tiles' atlases have about the same texels per metre."""
+`texel_density` checks that neighbouring tiles' atlases have about the same texels per metre.
+`straight_lines` finds what no border class holds: long straight edges in the render (a bed ruled across a whole wall
+read as a seam while every border measured ~1.0)."""
 
 from __future__ import annotations
 
@@ -96,6 +98,107 @@ def measure(image, ids, kinds):
     return res
 
 
+RULER_M = 25.0      # a straight edge in the render longer than this (world metres) that isn't a border is a ruler line
+RULER_FRAC = 0.4    # ... or crossing this share of the view's longer side
+RULER_CONTRAST = 1.6  # ... and at least this much stronger (brightness gradient across it) than the view's median edge
+
+
+def straight_lines(image, ids, kinds, fov=55.0, min_m=RULER_M, min_frac=RULER_FRAC, min_contrast=RULER_CONTRAST,
+                   peaks=16):
+    """Long straight edges in a rendered view that are no tile, overlay or silhouette border: what the eye reads as a
+    seam although no border lies there (bedding one ruler-straight groove and tone step across a whole wall: "reads
+    like a seam", with every border class at ~1.0). Canny edges on the render off borders and depth jumps, a Hough
+    transform, and along each peak line its longest run of edge pixels (gaps under 1.5% of the width bridged); the
+    run's length in world metres (the id pass's distance x the pixel's angle: fov across the image's longer side) and
+    its contrast (mean brightness gradient across the line over the median at edge pixels of the view). Facet creases
+    and joints are straight too but short: a rock feature longer than `min_m` in one straight line is geology drawn
+    with a ruler; so is one crossing `min_frac` of a close view (40 m away the whole view is ~30 m wide). Returns
+    {"lines": [{"length_m", "length_px", "angle" (deg, 0 = horizontal), "contrast", "from", "to" (px [x, y]),
+    "ruler"}...] longest first, "rulers": how many are rulers (long and contrasted), "ok"}."""
+    from skimage.feature import canny
+    from skimage.transform import hough_line, hough_line_peaks
+    L = _lum(image) if not isinstance(image, np.ndarray) else image
+    I = np.load(ids) if not isinstance(ids, np.ndarray) else ids
+    h, w = L.shape
+    ch, cv = classes(I, kinds)
+    bad = np.zeros((h, w), bool)  # silhouettes (depth jumps, sky) and tile / overlay borders
+    for cl, sa, sb in ((ch, (slice(None), slice(0, -1)), (slice(None), slice(1, None))),
+                       (cv, (slice(0, -1), slice(None)), (slice(1, None), slice(None)))):
+        m = (cl == 0) | (cl == 3) | (cl == 4)
+        bad[sa] |= m
+        bad[sb] |= m
+    bad |= I[..., 0] < 0.5
+    bad = ndimage.binary_dilation(bad, iterations=4)
+    edges = canny(L, sigma=2.0, low_threshold=0.02, high_threshold=0.05) & ~bad
+    Ls = ndimage.gaussian_filter(L, 1.5)
+    gy, gx = np.gradient(Ls)
+    gm = np.hypot(gx, gy)
+    med = float(np.median(gm[edges])) if edges.sum() > 50 else 1.0
+    res = {"lines": [], "rulers": 0, "ok": True}
+    if edges.sum() < 50:
+        return res
+    theta = np.deg2rad(np.arange(-90.0, 90.0, 0.25))
+    H_, th_, di_ = hough_line(edges, theta=theta)
+    near = ndimage.binary_dilation(edges, iterations=1)
+    per_px = 2 * np.tan(np.deg2rad(fov) / 2) / max(h, w)  # radians a pixel (near the centre)
+    dist = I[..., 2]
+    gap = max(4, int(0.015 * w))
+    for _, a, rho in zip(*hough_line_peaks(H_, th_, di_, num_peaks=peaks, min_distance=12, min_angle=4,
+                                           threshold=0.15 * H_.max())):
+        # the line x cos a + y sin a = rho, walked a pixel at a time across the image
+        c, s = np.cos(a), np.sin(a)
+        t = np.arange(-max(h, w) * 1.5, max(h, w) * 1.5, 1.0)
+        xs, ys = rho * c - t * s, rho * s + t * c
+        inside = (xs >= 0) & (xs <= w - 1) & (ys >= 0) & (ys <= h - 1)
+        xs, ys = xs[inside], ys[inside]
+        if len(xs) < 10:
+            continue
+        xi, yi = np.rint(xs).astype(int), np.rint(ys).astype(int)
+        on = near[yi, xi]
+        # the longest run of edge pixels with gaps up to `gap` bridged
+        best, cur, last, start, bs = 0, 0, -10 ** 9, 0, 0
+        idx = np.flatnonzero(on)
+        for k in idx:
+            if k - last > gap:
+                start = k
+            last = k
+            if k - start + 1 > best:
+                best, bs = k - start + 1, start
+        if best < 10:
+            continue
+        seg = slice(bs, bs + best)
+        sx, sy = xi[seg], yi[seg]
+        ok = ~bad[sy, sx]
+        if ok.sum() < 5:
+            continue
+        # the gradient across the line (its normal is (c, s) in x, y)
+        across = np.abs(gx[sy, sx] * c + gy[sy, sx] * s)[ok]
+        metres = float((dist[sy, sx][ok] * per_px).sum() * best / max(ok.sum(), 1))
+        ang = (np.degrees(a) + 90.0) % 180.0
+        ang = ang - 180.0 if ang > 90 else ang
+        line = {"length_m": round(metres, 1), "length_px": int(best), "angle": round(float(ang), 1),
+                "contrast": round(float(across.mean() / max(med, 1e-9)), 2),
+                "from": [int(sx[0]), int(sy[0])], "to": [int(sx[-1]), int(sy[-1])]}
+        line["ruler"] = bool((metres >= min_m or best >= min_frac * max(h, w)) and line["contrast"] >= min_contrast)
+        res["lines"].append(line)
+    res["lines"].sort(key=lambda q: -q["length_m"])
+    res["rulers"] = sum(1 for q in res["lines"] if q["ruler"])
+    res["ok"] = res["rulers"] == 0
+    return res
+
+
+def draw_lines(image, found, out):
+    """The render with straight_lines' finds drawn: rulers magenta, shorter/weaker lines thin grey."""
+    from PIL import Image, ImageDraw
+    im = Image.open(image).convert("RGB")
+    d = ImageDraw.Draw(im)
+    for q in found["lines"]:
+        r = q["ruler"]
+        d.line([tuple(q["from"]), tuple(q["to"])], fill=(255, 0, 200) if r else (150, 150, 150), width=3 if r else 1)
+    im.save(out)
+    return out
+
+
 GRID_KINK = 1.5  # colour kinks on the terrain's cell lines may be this much stronger than between them
 
 
@@ -145,13 +248,17 @@ def overlay(image, ids, kinds, out):
 
 
 def views(out_dir, rendered, job=None):
-    """measure() for every view of a render_tiles job (the paths it returned)."""
+    """measure() and straight_lines() ("straight": the rulers and the five longest lines) for every view of a
+    render_tiles job (the paths it returned)."""
     job = job or json.loads((Path(out_dir) / "render_job.json").read_text())
+    fovs = {Path(v.get("out", "")).stem: v.get("fov", 55) for v in job.get("views", [])}
     res = {}
     for p in rendered:
         ids = Path(p).with_name(Path(p).stem + "_ids.npy")
         if ids.exists():
             res[Path(p).stem] = measure(p, ids, job["kinds"])
+            sl = straight_lines(p, ids, job["kinds"], fov=fovs.get(Path(p).stem, 55))
+            res[Path(p).stem]["straight"] = {"rulers": sl["rulers"], "ok": sl["ok"], "top": sl["lines"][:5]}
     return res
 
 

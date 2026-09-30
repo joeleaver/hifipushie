@@ -994,6 +994,17 @@ regresses, bisect by building one spec at each commit and diffing heights.
     jump excess (step across vs the steps beside it: creases on chart borders don't count; ~1.0 = invisible);
     `channel=` "base"/"ao" (unlit), "normal", "clay" isolates a channel. `floating` treats pieces running off an
     `only` block as continuing (a wall steep across the whole block never came down inside it).
+  - Round 4, the ruled bed (2026-09-30, renders s01_*): the user's "reads like a seam" on the alps wall at 40 m was the
+    bedding, uniform along the whole wall: one proud/set-back offset, one 0.3 m V groove (creases +-1.5 m: the second
+    edge under the line), one tone per bed, the maps' notch on nearly everywhere, all on a plane whose offset changes
+    over ~750 m (isolated by channel: strong in "normal", faint in "base", nothing in "clay"). Now `bed_planes`: per
+    plane along the strike a presence (patches ~20 m, off in gullies; absent = the step ramps over metres, no notch,
+    tone eased over metres), a sharpness and per bed an offset and tone that vary along the strike (`_bed_noise`: the
+    bed index as the lattice's third coordinate); beds wander in height (~0.5 m / 25 m + 0.15 m / 7 m, in the gridded
+    offset); the notch's width wanders and breaks more; joint planes wander ~0.3 m over ~8-16 m (they were dead straight
+    50 m grooves from 150 m). Presence/sharpness are only evaluated near a plane (field ~+15-35%, noisy machine).
+    `terrain_seams.straight_lines` (also in `views`): Canny off borders/silhouettes, Hough, longest run per peak; a
+    ruler = >= 25 m (distance x pixel angle) or >= 40% of the view, and >= 1.6x the view's median edge gradient.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
