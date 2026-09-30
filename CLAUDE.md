@@ -1001,8 +1001,9 @@ regresses, bisect by building one spec at each commit and diffing heights.
     plane along the strike a presence (patches ~20 m, off in gullies; absent = the step ramps over metres, no notch,
     tone eased over metres), a sharpness and per bed an offset and tone that vary along the strike (`_bed_noise`: the
     bed index as the lattice's third coordinate); beds wander in height (~0.5 m / 25 m + 0.15 m / 7 m, in the gridded
-    offset); the notch's width wanders and breaks more; joint planes wander ~0.3 m over ~8-16 m (they were dead straight
-    50 m grooves from 150 m). Presence/sharpness are only evaluated near a plane (field ~+15-35%, noisy machine).
+    offset); the notch's width wanders and breaks more. Presence/sharpness are only evaluated near a plane (field ~+15-35%,
+    noisy machine). Open: the joints are still dead-straight vertical grooves 25-50 m long from 150 m (4 rulers);
+    bowing their planes (~0.4 m over 40 m) fixed that but pushed pebble's LOD 0 shards 0.004 -> 0.011% (limit 0.01).
     `terrain_seams.straight_lines` (also in `views`): Canny off borders/silhouettes, Hough, longest run per peak; a
     ruler = >= 25 m (distance x pixel angle) or >= 40% of the view, and >= 1.6x the view's median edge gradient.
 

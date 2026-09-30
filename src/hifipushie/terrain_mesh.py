@@ -476,12 +476,9 @@ def _joints(p, r, fd=None):
     ed = J["edge"]
     out = np.zeros(len(p))
     h = lambda k, m, c: noise._hash(k, k * 0 + m, k * 0 + c, r["seed"] + 60)
-    # the planes bow sideways ~0.4 m over ~40 m down the face (exact planes cut grooves dead straight for 50 m: ruler
-    # lines from afar, terrain_seams.straight_lines; a second, 8 m octave made them wriggle like worms)
-    wob = 1.6 * (noise.fbm(p * np.array([1.0, 1.0, 0.5]), 20.0, 1, seed=r["seed"] + 65) - 0.5)
     for m, d in enumerate(J["dirs"]):
         sp = J["spacing"][m]
-        q = (p[:, :2] @ np.asarray(d) + wob) / sp
+        q = (p[:, :2] @ np.asarray(d)) / sp
         k0 = np.floor(q).astype(np.int64)
         best = np.zeros(len(p))
         for dk in (-1, 0, 1):
