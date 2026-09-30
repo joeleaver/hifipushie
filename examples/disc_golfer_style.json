@@ -589,6 +589,9 @@
      "weight": 0.6
     }
    ]
+  },
+  "stubble.L": {
+   "opacity": 0.85
   }
  },
  "style": {

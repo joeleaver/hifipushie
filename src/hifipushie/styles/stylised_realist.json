@@ -516,7 +516,7 @@
    },
    "stubble.L": {
     "color": "#4a2b21",
-    "opacity": 0.85,
+    "opacity": 0.0,
     "roughness": 0.72,
     "mask": [
      {
