@@ -31,7 +31,7 @@
    "shape": {
     "planes": 2.7,
     "planes_hold_eyes": 0.5,
-    "under_eye": 3,
+    "under_eye": 5,
     "nostrils": 2,
     "push": [
      {
@@ -462,7 +462,7 @@
    "voxel": 0.0012
   },
   "hair": {
-   "color": "#4e2f26",
+   "color": "#3b2317",
    "rig_bone": "Head"
   },
   "shirt": {
@@ -571,7 +571,13 @@
  },
  "paint": {
   "skin": {
-   "color": "#e2a282"
+   "color": "#eb9e80"
+  },
+  "skin_shadow_warm": {
+   "opacity": 0.35
+  },
+  "lids_warm.L": {
+   "opacity": 0.12
   },
   "lash_line": {
    "color": "#1a0e0a",
@@ -1168,6 +1174,40 @@
       }
      },
      "weight": 0.07
+    }
+   ]
+  },
+  "under_eye_lift.L": {
+   "color": "#e3a088",
+   "opacity": 0.65,
+   "profile": "soft",
+   "width": 0.012,
+   "path": [
+    {
+     "at": "lm_eye_inner.L",
+     "offset": [
+      0.001,
+      0,
+      -0.0055
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": "lm_eye_outer.L",
+     "offset": [
+      0.0,
+      0,
+      -0.005
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0
+     ]
     }
    ]
   }
@@ -3330,16 +3370,17 @@
   },
   "stage": "locks",
   "look": {
-   "edge": 0.72,
-   "sheen_amount": 0.65,
+   "edge": 0.93,
+   "sheen_amount": 0.4,
    "vary": 0.15,
    "grooves": 9,
-   "groove_depth": 0.25,
-   "roughness": 0.38,
+   "groove_depth": 0.15,
+   "roughness": 0.5,
    "root": 0.2,
-   "lit": "#4f3226",
-   "sheen": "#80573d",
-   "gap": "#22150f"
+   "lit": "#40231a",
+   "sheen": "#5c3a28",
+   "gap": "#1c110b",
+   "anisotropic": 0.45
   },
   "locks": {
    "sweep1": {

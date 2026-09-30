@@ -1764,8 +1764,12 @@ def _tangents(V, T, UV):
     return n, tt, np.where(sign == 0, 1.0, sign)
 
 
-def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int = 12,
-                sides: int = 8, log: list | None = None) -> tuple[dict, dict] | None:
+EXPORT = {"segments": 24, "sides": 10}  # per lock (spec["hair"]["export"] overrides): 12 x 8 read faceted in the
+# export (the lens's thin edges shaded as flat planes), 24 x 10 is ~20k triangles for 45 locks
+
+
+def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int | None = None,
+                sides: int | None = None, log: list | None = None) -> tuple[dict, dict] | None:
     """The hair as an export part: (part dict as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
     sign; atlas set by the caller) and its maps {basecolor, orm, normal, specular: png}. Low poly = the curve locks at
     `segments` x `sides` + the underlayer decimated; maps = Cycles bakes from the full-resolution locks (Blender)."""
@@ -1775,6 +1779,9 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
     spec = store.load(name) if spec is None else spec
     if not hair_of(spec).get("locks"):
         return None
+    ex = {**EXPORT, **((spec.get("hair") or {}).get("export") or {})}
+    segments = int(segments or ex["segments"])
+    sides = int(sides or ex["sides"])
     t = time.time()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
