@@ -255,9 +255,17 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   narrower, mentolabial fold, under-chin sag), reading the targets off the reference through two matched cameras
   (near + the far figure). Fitting 2D silhouette chamfers directly made a noisy objective and odd noses: fit smooth 3D
   measures and check them in 2D. `shape.push_more` adds a model's bumps to the sheet's (a model's `push` replaces the
-  sheet's list); a push `dir` now mirrors its x on the mirrored side. Limits: GNM ties the outer alae to the nostril
-  base (the sheet's `nose_width` rule measures lm31-35, so wings narrower than ~x0.95 fail it); pushes near the nostrils
-  are mostly smoothed away by `shape.nostrils`; small chin pushes read as a chin "button" under stubble.
+  sheet's list); a push `dir` now mirrors its x on the mirrored side. Pushes near the nostrils are mostly smoothed
+  away by `shape.nostrils`; small chin pushes read as a chin "button" under stubble, and jaw-narrowing pushes cut
+  marionette grooves (use regions). The user's rule (2026-09-30): the reference wins, so a sheet rule the reference
+  itself would fail is wrong. Rules are banded on the reference's own values, each image ratio carried to 3D by the
+  model's own 3D/image ratio in the same camera: `ala_width` (`base.ala_width`, the outer wings; it replaced
+  `nose_width` = lm31-35, the nostril base, which blocked narrowing the wings), `chin_over_philtrum`, `muzzle_mm` (not
+  measurable without a profile). `_planes` (the superellipse push) acts on the features' own sides too: it boxed
+  the nose and flattened the lips and chin into slabs. It now keeps `PLANES_KEEP` (nose feathered 10, lips+chin 30:
+  at 10 the kept muzzle met the pushed cheek in a smile-fold crease), `shape.planes_keep_features`. The user's "flat,
+  sliced-off nose" in the dg_face renders was that head-only copy's `face_crop` box (front face 19 mm behind the nose
+  tip), not the head: widen a crop to y size 0.22 before judging a nose.
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
