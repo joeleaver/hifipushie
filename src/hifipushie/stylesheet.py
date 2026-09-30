@@ -129,7 +129,7 @@ def check(name: str) -> list[dict]:
         h = base.head_of(e, spec["base"])
         m = base.posed_measures(h)
         vals = {"chin_over_philtrum": (m["eye_chin"] - m["eye_seam"]) / (m["eye_seam"] - m["eye_nose"]),
-                "nose_width": m["nose_width"], "mouth_width": m["mouth_width"],
+                "nose_width": m["nose_width"], "mouth_width": m["mouth_width"], "ala_width": base.ala_width(h),
                 "mouth_corner_lift": 1000 * float(0.5 * (h["lm68"][48][2] + h["lm68"][54][2])
                                                   - 0.5 * (h["lm68"][62][2] + h["lm68"][66][2]))}
         vals.update(base.plane_measures(h))

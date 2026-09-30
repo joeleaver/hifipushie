@@ -249,6 +249,23 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   a muzzle, full lower cheeks, sleepy lids and paint. `base.look_at` off the centre line sets `eye_front.R` too; a
   near look_at reads cross-eyed, use a far point. Fast clay iteration of head shapes: build `base.head_of` alone and
   render the mesh (~10 s; a painted face look needs a sync, 4+ min on a head-cropped copy).
+  Nose and chin (2026-09-30, renders n01-n05): `base.head.regions` = GNM identity components applied only inside a
+  feathered region group (`region_weight`) or a landmark bump (`near`), so one feature is reshaped without moving the
+  eyes or jaw. Fitted by least squares to 3D targets (ala width, nasolabial angle, tip projection, chin forward/up/
+  narrower, mentolabial fold, under-chin sag), reading the targets off the reference through two matched cameras
+  (near + the far figure). Fitting 2D silhouette chamfers directly made a noisy objective and odd noses: fit smooth 3D
+  measures and check them in 2D. `shape.push_more` adds a model's bumps to the sheet's (a model's `push` replaces the
+  sheet's list); a push `dir` now mirrors its x on the mirrored side. Pushes near the nostrils are mostly smoothed
+  away by `shape.nostrils`; small chin pushes read as a chin "button" under stubble, and jaw-narrowing pushes cut
+  marionette grooves (use regions). The user's rule (2026-09-30): the reference wins, so a sheet rule the reference
+  itself would fail is wrong. Rules are banded on the reference's own values, each image ratio carried to 3D by the
+  model's own 3D/image ratio in the same camera: `ala_width` (`base.ala_width`, the outer wings; it replaced
+  `nose_width` = lm31-35, the nostril base, which blocked narrowing the wings), `chin_over_philtrum`, `muzzle_mm` (not
+  measurable without a profile). `_planes` (the superellipse push) acts on the features' own sides too: it boxed
+  the nose and flattened the lips and chin into slabs. It now keeps `PLANES_KEEP` (nose feathered 10, lips+chin 30:
+  at 10 the kept muzzle met the pushed cheek in a smile-fold crease), `shape.planes_keep_features`. The user's "flat,
+  sliced-off nose" in the dg_face renders was that head-only copy's `face_crop` box (front face 19 mm behind the nose
+  tip), not the head: widen a crop to y size 0.22 before judging a nose.
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
@@ -994,6 +1011,18 @@ regresses, bisect by building one spec at each commit and diffing heights.
     jump excess (step across vs the steps beside it: creases on chart borders don't count; ~1.0 = invisible);
     `channel=` "base"/"ao" (unlit), "normal", "clay" isolates a channel. `floating` treats pieces running off an
     `only` block as continuing (a wall steep across the whole block never came down inside it).
+  - Round 4, the ruled bed (2026-09-30, renders s01_*): the user's "reads like a seam" on the alps wall at 40 m was the
+    bedding, uniform along the whole wall: one proud/set-back offset, one 0.3 m V groove (creases +-1.5 m: the second
+    edge under the line), one tone per bed, the maps' notch on nearly everywhere, all on a plane whose offset changes
+    over ~750 m (isolated by channel: strong in "normal", faint in "base", nothing in "clay"). Now `bed_planes`: per
+    plane along the strike a presence (patches ~20 m, off in gullies; absent = the step ramps over metres, no notch,
+    tone eased over metres), a sharpness and per bed an offset and tone that vary along the strike (`_bed_noise`: the
+    bed index as the lattice's third coordinate); beds wander in height (~0.5 m / 25 m + 0.15 m / 7 m, in the gridded
+    offset); the notch's width wanders and breaks more. Presence/sharpness are only evaluated near a plane (field ~+15-35%,
+    noisy machine). Open: the joints are still dead-straight vertical grooves 25-50 m long from 150 m (4 rulers);
+    bowing their planes (~0.4 m over 40 m) fixed that but pushed pebble's LOD 0 shards 0.004 -> 0.011% (limit 0.01).
+    `terrain_seams.straight_lines` (also in `views`): Canny off borders/silhouettes, Hough, longest run per peak; a
+    ruler = >= 25 m (distance x pixel angle) or >= 40% of the view, and >= 1.6x the view's median edge gradient.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

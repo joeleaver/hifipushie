@@ -444,19 +444,22 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
             out[kf] += g[kf] * (0.55 * sub(0.45 * r["size"], r["seed"] + 11) + 0.35 * sub(0.2 * r["size"], r["seed"] + 12))
         out = r["facets"] * out
     if r["bedding"] > 0:
-        z = bed_level(p, r)
-        kb = np.floor(z).astype(np.int64)
-        f = z - kb
+        B = bed_planes(p, r, g)
+        kb, f, lower, xy = B["kb"], B["f"], B["lower"], p[:, :2]
         edge = np.minimum(f, 1 - f)
-        # each bed stands proud or set back on its own, stepping over to the next in a straight ramp `be` either side
-        # of the bedding plane (creases at both ends: a crisp step, no jump)
-        off = lambda k: 2 * noise._hash(k, k * 0 + 7, k * 0, r["seed"] + 20) - 1
-        lower = f < 0.5
+        # each bed stands proud or set back, by an amount that changes along the strike (one offset per bed made the
+        # step a ruler-straight line across the whole wall: "reads like a seam"), stepping over to the next in a
+        # straight ramp either side of the bedding plane (creases at both ends: a crisp step, no jump). Where the plane
+        # is absent (`pres` low: patches along the strike, gullies) the ramp widens to metres: the beds merge
+        off = lambda k, i=slice(None): 2 * _bed_noise(xy[i], k, 28.0, r["seed"] + 20) - 1
         nb = np.where(lower, kb - 1, kb + 1)
-        be = r.get("bed_edge", 0.08)
+        be = B["width"]
         u = np.clip((np.where(lower, f, f - 1) + be) / (2 * be), 0, 1)  # 0..1 from the lower bed to the upper
-        o = np.where(lower, off(nb) * (1 - u) + off(kb) * u, off(kb) * (1 - u) + off(nb) * u)
-        out = out + r["bedding"] * (0.3 * np.clip(1 - edge / be, 0, 1) + 0.3 * o)
+        t = np.where(lower, 1 - u, u)  # the neighbouring bed's share
+        o = off(kb)
+        i = np.flatnonzero(t > 0)
+        o[i] += t[i] * (off(nb[i], i) - o[i])
+        out = out + r["bedding"] * (0.3 * B["pres"] * np.clip(1 - edge / B["sharp"], 0, 1) + 0.3 * o)
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
         with _span("field.joints", leaf=True):
@@ -584,6 +587,46 @@ def bed_level(p, r):
     return (p[:, 2] + off) / r["bed"]
 
 
+def _bed_noise(xy, k, scale, seed, octaves=2):
+    """0..1 per point, smooth along the strike (plan position, features ~`scale` m), independent per bed k (the bed
+    index is the lattice's third coordinate, sampled on its nodes). Two octaves on rotated lattices."""
+    k = np.asarray(k, float) * np.ones(len(xy))
+    out = np.zeros(len(xy))
+    for o, (a, w) in enumerate(((0.61, 0.65), (2.13, 0.35))[:octaves]):
+        c, s, m = math.cos(a), math.sin(a), (2 ** o) / scale
+        q = np.c_[(xy[:, 0] * c - xy[:, 1] * s) * m, (xy[:, 0] * s + xy[:, 1] * c) * m, k]
+        out += w * noise._value_noise(q, seed + 101 * o)
+    out = out / (0.65 if octaves == 1 else 1.0)
+    return np.clip(0.5 + (out - 0.5) * (1.6 if octaves > 1 else 1.0), 0, 1)
+
+
+def bed_planes(p, r, g=None):
+    """The beds at points: bed level z (bed k spans k..k+1), kb, f, lower (nearer the plane under than over), and for
+    the nearest bedding plane: `pres` 0..1 (how much the plane shows: it comes and goes along the strike in patches of
+    ~20 m and breaks in gullies, g), `sharp` (its crisp half-width in bed units, varying along the strike: 1-2.5x
+    `bed_edge`) and `width` (the step's ramp: sharp where present, metres wide where absent, so the beds merge).
+    One offset, one sharpness and one tone per bed, uniform along the whole wall, read as a ruler line: a seam."""
+    z = bed_level(p, r)
+    kb = np.floor(z).astype(np.int64)
+    f = z - kb
+    lower = f < 0.5
+    m = np.where(lower, kb, kb + 1)  # the nearest plane: between beds m - 1 and m
+    be = r.get("bed_edge", 0.08)
+    wide = min(0.42, 6.0 / r["bed"])
+    pres, sharp = np.ones(len(z)), np.full(len(z), min(be, 0.45))
+    # (only points near a plane need them: the step, the notch and the tone's ease reach at most `reach` from it)
+    reach = max(wide, min(0.45, 4.2 / r["bed"]), 2.5 * be)
+    k = np.flatnonzero(np.minimum(f, 1 - f) < reach)
+    if len(k):
+        xy = p[k, :2]
+        pres[k] = smoothstep(0.3, 0.62, _bed_noise(xy, m[k], 22.0, r["seed"] + 23))
+        if g is not None:
+            pres[k] *= 1 - 0.8 * np.clip(g[k], 0, 1)
+        sharp[k] = np.minimum(0.45, be * (1 + 1.5 * _bed_noise(xy, m[k], 15.0, r["seed"] + 24, octaves=1)))
+    width = sharp + (1 - pres) * np.maximum(0.0, wide - sharp)
+    return {"z": z, "kb": kb, "f": f, "lower": lower, "m": m, "pres": pres, "sharp": sharp, "width": width}
+
+
 def rock_config(T, cfg):
     """The solid rock character's settings: spec "rock" (false turns it off; "facets", "bedding" 0..1 as for the
     heightfield; "facet_size", "bed" m) and export.tiles "rock" (a multiplier, 0 = none). Beds are the heightfield
@@ -599,10 +642,16 @@ def rock_config(T, cfg):
     size = float(rc.get("facet_size", np.clip(float(T.world.get("crag", 12.0)) / 2.5, 4.0, 10.0)))
     fac = mult * float(rc.get("facets", 1.0)) * 0.18 * size
     bd = mult * float(rc.get("bedding", 1.0))
-    bed, off = float(rc.get("bed", 3.0)), None
+    bed, base = float(rc.get("bed", 3.0)), None
     if hasattr(terrain_rock, "bed_step") and hasattr(terrain_rock, "bed_offset") and "bed" not in rc:
         bed = float(terrain_rock.bed_step(T))
-        off = _gridded(lambda xy, T=T: terrain_rock.bed_offset(T, xy), T)
+        base = lambda xy, T=T: terrain_rock.bed_offset(T, xy)
+    # the beds wander in height along the strike, ~0.5 m over ~25 m and ~0.15 m over ~7 m (terrain_rock's offset alone
+    # changes over hundreds of metres: every bed was a level ruler line across the wall)
+    wa = min(1.0, 0.12 * bed)
+    wander = lambda xy: wa * 3 * (noise.fbm(np.c_[xy, np.full(len(xy), 17.0)], 24.0, 2, seed=4242 + 25) - 0.5) + \
+        0.3 * wa * 3 * (noise.fbm(np.c_[xy, np.full(len(xy), 5.0)], 7.0, 1, seed=4242 + 26) - 0.5)
+    off = _gridded(lambda xy: wander(xy) + (base(xy) if base else 0.0), T)
     # bed steps ramp over 2 voxels either side of their plane (0.8 voxel meshed as a sawtooth that cast jagged
     # shadows); the crisp notch at the bedding plane is in the maps (terrain_bake.micro_relief)
     vox = float(cfg.get("voxel", DEFAULTS["voxel"]))
@@ -798,7 +847,7 @@ class Field:
                     F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u)
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
-                        F[k] = F[k] + w[k] * self.micro(p[k], fd, u)
+                        F[k] = F[k] + w[k] * self.micro(p[k], fd, u, g)
         return F
 
     def value(self, p):
@@ -974,12 +1023,14 @@ class Materials:
         rc = np.stack([self._grid(self.rock_grid[..., i], xy) for i in range(3)], 1)
         if self.field.rock is not None:  # beds and facets differ in tone (a single grey read as plaster)
             r = self.field.rock
-            zb = bed_level(P, r)
-            kb = np.floor(zb).astype(np.int64)
-            fr = zb - kb
-            th = lambda k: 0.84 + 0.26 * noise._hash(k, k * 0 + 3, k * 0, r["seed"] + 30)
-            # (each bed's tone eases into the next over ~0.2 m: a step aliased along every bedding plane in the maps)
-            e = min(0.45, 0.2 / r["bed"])
+            g = self.field.grain_at(P[:, 0], P[:, 1]) if self.field.grain is not None else None
+            B = bed_planes(P, r, g)
+            kb, fr = B["kb"], B["f"]
+            # each bed's tone changes along the strike too (one tone per bed was a band ruled across the wall)
+            th = lambda k: 0.84 + 0.26 * _bed_noise(xy, k, 40.0, r["seed"] + 30)
+            # (each bed's tone eases into the next over ~0.2 m where the plane shows, a step aliased along every
+            # bedding plane in the maps; over metres where it doesn't: no line there)
+            e = np.minimum(0.45, (0.2 + (1 - B["pres"]) * 4.0) / r["bed"])
             lo_, hi_ = smoothstep(-e, e, fr), smoothstep(-e, e, fr - 1)
             tone = th(kb - 1) * (1 - lo_) + th(kb) * (lo_ - hi_) + th(kb + 1) * hi_
             # (a smooth noise: the facet lattice's tone had straight edges and read as a checker of squares)

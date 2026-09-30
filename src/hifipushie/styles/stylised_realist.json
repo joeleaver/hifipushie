@@ -3,12 +3,12 @@
  "about": "Feature-animation-lite humans (the disc golfer's reference, 2026-09-29): real proportions (~7 heads), a face built from five broad masses with a few pushed features (jaw/chin block, a low heavy brow mass, a dark iris clipped by both lids), everything small removed (nostril detail, wrinkles, pores, noise under 1 cm), and colour doing the modelling: saturated warm skin whose shadows turn redder, broad warm gradients on thin and occluded skin, solid designed shapes for brows and facial hair. For a GNM-headed base (the lm_* landmark joints address the paint). The written sheet with measured crops: workspace/character_renders/style_sheet.html.",
  "rules": {
   "chin_over_philtrum": [
-   2.4,
-   3.0
+   1.8,
+   2.5
   ],
-  "nose_width": [
-   0.52,
-   0.62
+  "ala_width": [
+   0.55,
+   0.67
   ],
   "mouth_width": [
    0.85,
@@ -43,8 +43,7 @@
    12
   ],
   "_why": {
-   "chin_over_philtrum": "mouth->chin over nose base->mouth: a short philtrum and a long, strong chin (reference 2.3-2.9; ~2.0 is realistic)",
-   "nose_width": "nose wings over the interocular: one soft bulb, a touch wide",
+   "chin_over_philtrum": "mouth->chin over nose base->mouth. Band around the reference's own values: 1.84 measured on the far figure (nose outline, mouth line, chin outline, carried to 3D through the model), 2.3-2.9 read earlier from pixel landmarks on 3/4 views (+-10%); the two readings disagree, so the band spans both until a better view settles it",
    "mouth_width": "corner to corner over the interocular",
    "eye_h_over_w": "an open almond (reference 0.35 as drawn; GNM's lids measure ~0.1 over what reads: 0.31 measured read as sleepy/closed, 0.36-0.48 reads open)",
    "iris_over_eye_w": "a big dark iris: reference 0.52 (real ~0.39)",
@@ -54,7 +53,8 @@
    "skin_sat_shadow": "shadowed skin is MORE saturated than lit skin (reference ~0.6): not grey",
    "skin_hue_shift_to_shadow": "degrees the hue moves toward red from lit to shadow (reference ~7)",
    "corner_radius_cheekbone_mm": "the tightest turn of the horizontal section between the front and side planes at cheekbone height: a realistic GNM head ~42 mm",
-   "muzzle_mm": "how far the upper lip stands in front of the cheeks beside the nose wings (GNM ~12: a muzzle)"
+   "muzzle_mm": "how far the upper lip stands in front of the cheeks beside the nose wings (GNM ~12: a muzzle). Not measurable in the reference's views (no profile); 0-10 keeps the style's flat-ish front without forbidding what a matched fit needs",
+   "ala_width": "the nose across its outer alar wings over the interocular (base.ala_width). The reference measures 0.56 (near figure, matched camera) and 0.65 (far figure), each image ratio carried to 3D by the model's own 3D/image ratio in the same camera: a long, narrow nose. Replaces nose_width (GNM lm31-35, the nostril base inside the wings, which the reference can't show and which blocked narrowing the wings)"
   },
   "corner_radius_cheekbone_mm": [
    20,
@@ -62,7 +62,7 @@
   ],
   "muzzle_mm": [
    0,
-   8
+   10
   ]
  },
  "spec": {
@@ -361,6 +361,37 @@
        "from": -0.11,
        "to": -0.08
       }
+     },
+     {
+      "path": [
+       {
+        "at": "lm_nose_bridge",
+        "offset": [
+         0,
+         0,
+         0.012
+        ],
+        "dir": [
+         0,
+         -1,
+         0.3
+        ]
+       },
+       {
+        "at": "lm_nose_bridge"
+       },
+       {
+        "at": "lm_nose_tip",
+        "dir": [
+         0,
+         -1,
+         0
+        ]
+       }
+      ],
+      "width": 0.024,
+      "profile": "soft",
+      "invert": true
      }
     ]
    },
@@ -438,6 +469,126 @@
     ],
     "width": 0.016,
     "profile": "soft"
+   },
+   "nose_sides.L": {
+    "color": "#a85a48",
+    "opacity": 0.4,
+    "mask": [
+     {
+      "path": [
+       {
+        "at": "lm_nose_bridge",
+        "offset": [
+         0,
+         0,
+         0.012
+        ],
+        "dir": [
+         0,
+         -1,
+         0.3
+        ]
+       },
+       {
+        "at": "lm_nose_bridge"
+       },
+       {
+        "at": "lm_nose_tip",
+        "dir": [
+         0,
+         -1,
+         0
+        ]
+       }
+      ],
+      "width": 0.026,
+      "profile": "soft"
+     },
+     {
+      "facing": [
+       1,
+       0.1,
+       0
+      ],
+      "range": [
+       0.25,
+       0.8
+      ]
+     }
+    ]
+   },
+   "nose_under": {
+    "color": "#843f33",
+    "opacity": 0.45,
+    "mask": [
+     {
+      "path": [
+       {
+        "at": "lm_nose_tip",
+        "dir": [
+         0,
+         -1,
+         0
+        ]
+       },
+       {
+        "at": "lm_nose_base",
+        "dir": [
+         0,
+         -1,
+         -0.3
+        ]
+       }
+      ],
+      "width": 0.02,
+      "profile": "soft"
+     },
+     {
+      "facing": [
+       0,
+       -0.2,
+       -1
+      ],
+      "range": [
+       0.25,
+       0.75
+      ]
+     }
+    ]
+   },
+   "nose_highlight": {
+    "color": "#f8d8c0",
+    "opacity": 0.4,
+    "profile": "soft",
+    "width": 0.006,
+    "path": [
+     {
+      "at": "lm_nose_bridge",
+      "offset": [
+       0,
+       0,
+       -0.008
+      ],
+      "dir": [
+       0,
+       -1,
+       0.3
+      ]
+     },
+     {
+      "at": "lm_nose_tip",
+      "offset": [
+       0,
+       0,
+       0.003
+      ],
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ]
    },
    "cheeks_warm.L": {
     "color": "#d56e55",
@@ -667,6 +818,52 @@
       "blend": "max"
      },
      {
+      "outline": {
+       "points": [
+        {
+         "at": "lm_chin",
+         "offset": [
+          -0.012,
+          -0.03,
+          0.0
+         ]
+        },
+        {
+         "at": "lm_chin",
+         "offset": [
+          0.035,
+          -0.03,
+          0.0
+         ]
+        },
+        {
+         "at": "lm_chin",
+         "offset": [
+          0.035,
+          0.03,
+          0.0
+         ]
+        },
+        {
+         "at": "lm_chin",
+         "offset": [
+          -0.012,
+          0.03,
+          0.0
+         ]
+        }
+       ],
+       "dir": [
+        0,
+        0,
+        1
+       ],
+       "soft": 0.007,
+       "depth": 0.025
+      },
+      "blend": "max"
+     },
+     {
       "axis": {
        "dir": [
         0,
@@ -871,9 +1068,9 @@
     "lights": [
      {
       "dir": [
-       -0.55,
-       -0.75,
-       0.55
+       -0.5,
+       -0.7,
+       0.75
       ],
       "energy": 4.0,
       "color": [
@@ -889,7 +1086,7 @@
        -0.6,
        0.05
       ],
-      "energy": 1.6,
+      "energy": 1.0,
       "color": [
        1.0,
        0.7,

@@ -48,7 +48,7 @@ def micro_relief(r, amount=1.0, texel=0.1):
 
     J = r.get("joints")
 
-    def f(p, fd=None, u=None):
+    def f(p, fd=None, u=None, g=None):
         fac = lambda size, sd: tm.facet(p, size, sd, fd, u)  # (irregular triangles on faces: terrain_facets)
         out = 0.06 * a1 * fac(1.2, seed)
         if a2 > 0:
@@ -63,17 +63,20 @@ def micro_relief(r, amount=1.0, texel=0.1):
             c = fac(3.1, seed + 2)
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
         if bed and (an > 0 or al > 0):
-            zb = tm.bed_level(p, r)
+            B = tm.bed_planes(p, r, g)
+            zb = B["z"]
             e = np.abs(zb - np.round(zb)) * bed  # m from the nearest bedding plane
             # the bedding plane's notch: a smooth trough (a cusp stair-stepped when a close view magnified its texels)
-            u = np.clip(1 - e / 0.35, 0, 1)
-            # (broken along its length: an unbroken dark line on every bed read as a seam)
-            kn = np.flatnonzero(u > 0)  # (the noise only near a bedding plane)
+            # (broken along its length, only where the plane shows at all, its width wandering: an unbroken dark line
+            # of one width on every bed read as a seam). The noise only within the widest notch of a plane (1.45 x
+            # 0.35 m): everywhere it was a large share of the micro relief's cost
+            kn = np.flatnonzero(e < 0.35 * 1.45)
             if len(kn):
-                brk = np.clip((noise.fbm(p[kn] * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5) - 0.35) * 3, 0, 1)
-                un = u[kn]
+                nz = noise.fbm(p[kn] * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5)
+                u = np.clip(1 - e[kn] / (0.35 * (0.55 + 0.9 * nz)), 0, 1)
+                brk = np.clip((nz - 0.42) * 3.5, 0, 1) * B["pres"][kn]
                 out = out + 0.0  # (a copy: `out` may be a view of an earlier term)
-                out[kn] = out[kn] + 0.14 * an * un * un * (3 - 2 * un) * brk
+                out[kn] = out[kn] + 0.14 * an * u * u * (3 - 2 * u) * brk
             if al > 0:
                 z = zb * 6.0
                 fr = z - np.floor(z)
