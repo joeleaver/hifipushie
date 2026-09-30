@@ -383,6 +383,21 @@ def ala_width(head: dict) -> float:
 IRIS_SPOT = 1.83  # an iris paint spot's diameter on the eyeball seen from the front, over its "width" (measured in renders)
 
 
+def eye_size(head: dict) -> dict:
+    """The eye opening's size from its lid landmarks seen from the front, over the interocular (eye centres): width
+    corner to corner (lm 36-39 / 42-45), height upper lid margin to lower (37-41, 38-40 / 43-47, 44-46), both eyes'
+    mean. Landmarks, so a reference photo measures the same way (corners and lid margins traced; eye_opening's
+    eyeball-in-front-of-skin width leaves the corners out)."""
+    lm = np.asarray(head["lm68"], float)
+    e0, e1 = (np.asarray(e, float) for e in head["eyes"])
+    fwd = _unit(np.asarray(head["forward"], float))
+    P = lm - np.outer(lm @ fwd, fwd)  # onto the front plane
+    io = float(np.linalg.norm((e0 - e1) - ((e0 - e1) @ fwd) * fwd))
+    w = np.mean([np.linalg.norm(P[36] - P[39]), np.linalg.norm(P[42] - P[45])])
+    h = np.mean([np.linalg.norm(P[a] - P[b]) for a, b in ((37, 41), (38, 40), (43, 47), (44, 46))])
+    return {"eye_w_over_io": round(float(w / io), 3), "eye_h_over_io": round(float(h / io), 3)}
+
+
 def eye_opening(head: dict, cell: float = 0.0005) -> list:
     """Each eye's opening as seen from the front: where the eyeball stands in front of the skin (the skin runs on into
     the socket behind the lids, so the opening has no edge loop to measure). Per eye {"w", "h", "top", "bottom"} in

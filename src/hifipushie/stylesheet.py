@@ -133,6 +133,7 @@ def check(name: str) -> list[dict]:
                 "mouth_corner_lift": 1000 * float(0.5 * (h["lm68"][48][2] + h["lm68"][54][2])
                                                   - 0.5 * (h["lm68"][62][2] + h["lm68"][66][2]))}
         vals.update(base.plane_measures(h))
+        vals.update(base.eye_size(h))
         op = base.eye_opening(h)[0]
         if op:
             vals["eye_h_over_w"] = op["h"] / op["w"]

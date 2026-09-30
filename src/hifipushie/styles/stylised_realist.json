@@ -54,7 +54,9 @@
    "skin_hue_shift_to_shadow": "degrees the hue moves toward red from lit to shadow (reference ~7)",
    "corner_radius_cheekbone_mm": "the tightest turn of the horizontal section between the front and side planes at cheekbone height: a realistic GNM head ~42 mm",
    "muzzle_mm": "how far the upper lip stands in front of the cheeks beside the nose wings (GNM ~12: a muzzle). Not measurable in the reference's views (no profile); 0-10 keeps the style's flat-ish front without forbidding what a matched fit needs",
-   "ala_width": "the nose across its outer alar wings over the interocular (base.ala_width). The reference measures 0.56 (near figure, matched camera) and 0.65 (far figure), each image ratio carried to 3D by the model's own 3D/image ratio in the same camera: a long, narrow nose. Replaces nose_width (GNM lm31-35, the nostril base inside the wings, which the reference can't show and which blocked narrowing the wings)"
+   "ala_width": "the nose across its outer alar wings over the interocular (base.ala_width). The reference measures 0.56 (near figure, matched camera) and 0.65 (far figure), each image ratio carried to 3D by the model's own 3D/image ratio in the same camera: a long, narrow nose. Replaces nose_width (GNM lm31-35, the nostril base inside the wings, which the reference can't show and which blocked narrowing the wings)",
+   "eye_w_over_io": "eye corner to corner over the interocular, lid landmarks seen from the front (base.eye_size). Reference: 0.69 on the far figure's near-frontal eye (its turned eye 0.52), 0.49-0.55 on the near figure's 3/4 eyes: a big eye; GNM's mean ~0.5",
+   "eye_h_over_io": "upper to lower lid margin over the interocular (base.eye_size). Reference 0.24 (far) and 0.22 (near): a tall, open opening. 0.18 read small, heavy-lidded and sleepy next to it"
   },
   "corner_radius_cheekbone_mm": [
    20,
@@ -63,6 +65,14 @@
   "muzzle_mm": [
    0,
    10
+  ],
+  "eye_w_over_io": [
+   0.55,
+   0.72
+  ],
+  "eye_h_over_io": [
+   0.2,
+   0.27
   ]
  },
  "spec": {
