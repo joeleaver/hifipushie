@@ -970,6 +970,30 @@ regresses, bisect by building one spec at each commit and diffing heights.
     calls chunked; `WORKER_GB` 2.0 measured; the manifest's `memory_gb` (resources.peak_memory) states each export's
     peak: pebble 9.1 GB job / 1.07 GB worker / 0.75 GB parent, lava 7.2 GB, alps 10x10 block ~17 GB. MC lattice
     values are clamped to 3 voxels (a 1e3 "air" pulled a float32 crossing onto a node: "isn't on one lattice edge").
+  - Round 3, "seams/squares" (2026-09-30, seams agent, renders q01-): tile and chart borders were already invisible
+    (measured in render space, every channel); the squares were patterns, all lattice-locked: (1) `Materials._grid`
+    sampled the per-cell colour/cover grids bilinearly: a kink on every cell line, 5 m squares on the alps' rock (now
+    a cubic B-spline, no prefilter); (2) `_pl_facets` creases lay on one rotated cubic lattice (a few fixed crease
+    directions at a fixed spacing: a quilt of diamonds, mostly in the normal map). Warping the lattice
+    (`_pl_walk(vec=True)`) barely helped (periodicity 0.55 -> 0.46); a 3D Delaunay of Poisson-disk seeds has slivers
+    (needles 4x the lattice's slope). Now `terrain_facets`: random heights on the 2D Delaunay triangles of hashed
+    Poisson-disk seeds (deterministic and local: tiles agree), laid triplanar on the face from `Field.face_dir`
+    (normal ~ (fd, 1), weights^4, projections under 3% dropped continuously, blend renormalised), 1.4x up the face;
+    `facet()` uses it for rock_relief and the bake's micro relief, the warped lattice only for a volume's share
+    (caves: the ground's gradient says nothing there). Periodicity 0.30 max; the heightfield's own facets
+    (terrain_rock, `T.rock["facet_delta"]`) are taken back out of Field.H where the solid rock has relief (two facet
+    systems made a moire of lozenges). Cost: none measurable once points are triangulated per 64-size piece (one box over a sparse map-wide sample asked for 57M seeds: parent 7 GB); alps 9-tile block 14.4 min, pebble 12.5; (3) every joint
+    family cut every face: long diagonal grooves crosshatched into diamonds; a family now fades where its planes run
+    along the face (`Field.face_dir`, continuous where the slope vanishes); (4) each tile lowered its own texel
+    density to fit texture_max (13.8-16/m side by side on a wall): one density per LOD for the export now, from the
+    largest tile's visible area (`_job_dense` returns it, `DENSITY_FILL`), `texel_density_used` in the manifest.
+    Checks (`terrain_seams`/`terrain_facets`, in the export's seam check): `facet_periodicity` (autocorrelation peak
+    above its radial mean, 4 plane orientations; fails > 0.4), `grid_squares` (colour kinks on cell lines vs between:
+    bilinear 2.4-5.9, now 1.1; fails > 1.5), `texel_density` (neighbours within 1.25x); `render_tiles(ids=True)`
+    writes an exact id pass (glb, chart, distance) per view and `terrain_seams.measure` gives each border class's
+    jump excess (step across vs the steps beside it: creases on chart borders don't count; ~1.0 = invisible);
+    `channel=` "base"/"ao" (unlit), "normal", "clay" isolates a channel. `floating` treats pieces running off an
+    `only` block as continuing (a wall steep across the whole block never came down inside it).
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

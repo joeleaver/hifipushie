@@ -66,6 +66,8 @@ DEFAULTS = {
     "micro": 1.0,          # bake-only fine rock relief (facets, cracks, laminae below the voxel); 0 = none
 }
 
+DENSITY_FILL = 0.55  # the share of an atlas the packer fills (for choosing one texel density that fits every tile)
+
 # ground materials: what each cover type lays on the ground (tree layers: the forest floor under them)
 LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "forest": "forest_floor",
             "conifer": "forest_floor", "deciduous": "forest_floor", "rock": "rock", "scree": "rock", "sand": "sand",
@@ -413,23 +415,31 @@ def _face(T, p, z):
 
 # ---------------------------------------------------------------- the field
 
-def rock_relief(p, r, g=None, jw=None):
+def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
     """Solid rock character as a field offset (+ carves, - builds): planar facets meeting in crisp creases, and bedding
     (a V notch at each bedding plane, each bed standing proud or set back on its own, stepping over at its edge).
     Continuous everywhere with C0 creases, never jumps: a jump (the nearest cell's plane alone) meshed as steps whose
     normals pointed sideways (black shards), and blending the cells smoothly read as mush. The mesh shows the creases
     with split normals (`split_normals`). The heightfield's own rock (terrain_rock) moves the ground in plan only;
-    this can overhang."""
+    this can overhang. fd: the ground's gradient per point (the face's orientation: facets on irregular triangles laid
+    on the face, `facet`); u: 0..1 how much of the point's relief comes from a volume (a cave's walls and roof, which
+    the ground's gradient says nothing about: facets in 3D there)."""
+    fac = lambda size, seed: facet(p, size, seed, fd, u)
     if g is None:
-        out = r["facets"] * (_pl_facets(p, r["size"], r["seed"]) + 0.4 * _pl_facets(p, 0.43 * r["size"], r["seed"] + 5))
+        out = r["facets"] * (fac(r["size"], r["seed"]) + 0.4 * fac(0.43 * r["size"], r["seed"] + 5))
     else:
         # facet size follows the face's structure (g: 0 on buttresses and open faces, 1 in gullies and near the
         # top): big planes where the rock stands out, small broken facets where it's cut up; one facet size
         # everywhere read as evenly crumpled paper (the alps walls)
-        coarse = _pl_facets(p, 1.5 * r["size"], r["seed"]) + 0.3 * _pl_facets(p, 0.6 * r["size"], r["seed"] + 5)
-        fine = 0.55 * _pl_facets(p, 0.45 * r["size"], r["seed"] + 11) + 0.35 * _pl_facets(p, 0.2 * r["size"],
-                                                                                            r["seed"] + 12)
-        out = r["facets"] * ((1 - g) * 1.1 * coarse + g * fine)
+        out = np.zeros(len(p))
+        kc, kf = np.flatnonzero(g < 1), np.flatnonzero(g > 0)
+        if len(kc):
+            sub = lambda size, seed: facet(p[kc], size, seed, None if fd is None else fd[kc], None if u is None else u[kc])
+            out[kc] += (1 - g[kc]) * 1.1 * (sub(1.5 * r["size"], r["seed"]) + 0.3 * sub(0.6 * r["size"], r["seed"] + 5))
+        if len(kf):
+            sub = lambda size, seed: facet(p[kf], size, seed, None if fd is None else fd[kf], None if u is None else u[kf])
+            out[kf] += g[kf] * (0.55 * sub(0.45 * r["size"], r["seed"] + 11) + 0.35 * sub(0.2 * r["size"], r["seed"] + 12))
+        out = r["facets"] * out
     if r["bedding"] > 0:
         z = bed_level(p, r)
         kb = np.floor(z).astype(np.int64)
@@ -446,16 +456,19 @@ def rock_relief(p, r, g=None, jw=None):
         out = out + r["bedding"] * (0.3 * np.clip(1 - edge / be, 0, 1) + 0.3 * o)
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
-        out = out + _joints(p, r) * (1.0 if jw is None else jw)
+        out = out + _joints(p, r, fd) * (1.0 if jw is None else jw)
     return out
 
 
-def _joints(p, r):
+def _joints(p, r, fd=None):
     """Joint sets: a few families of long, straight, vertical fracture planes (2-3 directions), irregularly spaced
     (each candidate plane on a fine spacing is present or not, jittered: many small blocks and a few big ones), strong
     in some bands of the face and absent in others. Each joint is a V groove between flat faces (a smooth profile
     pillowed every block: from 150 m the face read as hammered metal). ~2 voxels wide: geometry carries the medium
-    structure, the maps the fine grain."""
+    structure, the maps the fine grain.
+    fd: the face's horizontal normal per point (plan; its length the slope). A family whose planes run nearly along the face shows no
+    groove there (a cliff breaks off along such a joint: it IS the face); crossing the face it cuts steep traces.
+    Every family everywhere crossed as a lattice of long diagonal grooves: from 150 m a crosshatch of diamonds."""
     J = r["joints"]
     ed = J["edge"]
     out = np.zeros(len(p))
@@ -472,6 +485,10 @@ def _joints(p, r):
             t = np.clip(1 - np.abs(q - pos) * sp / ed, 0, 1)
             # (crisp shoulders, a rounded floor: a V-bottom crease on cave walls shaded as black shards)
             best = np.maximum(best, amp * t * (2 - t))
+        if fd is not None:  # (|cos| of the joint plane's normal with the face's: 1 = the plane lies along the face;
+            # the slope in the denominator keeps it continuous where the ground flattens and the direction is lost)
+            cs = np.abs(fd @ np.asarray(d)) / np.sqrt((fd * fd).sum(1) + 0.04)
+            best = best * smoothstep(0.8, 0.45, cs)
         band = smoothstep(0.35, 0.6, noise.fbm(p * np.array([1.0, 1.0, 0.5]), J["band"], 2, seed=r["seed"] + 70 + m))
         out = out + J["depth"] * best * band
     return out
@@ -481,22 +498,68 @@ def _joints(p, r):
 _ROT = np.linalg.qr(np.array([[0.62, -0.51, 0.33], [0.27, 0.71, 0.58], [-0.49, -0.12, 0.74]]))[0]
 
 
-def _pl_facets(p, size, seed):
-    """Random heights at the corners of a rotated cubic lattice, interpolated linearly over each cube's six tetrahedra
-    (the Freudenthal split: consistent across faces): a continuous, piecewise-planar field. Offsetting a surface by it
-    breaks the surface into planar facets with crisp creases. -1..1."""
-    q = (p @ _ROT.T) / size
+# a second rotation, for the lattice that warps the facet lattice (see _pl_facets)
+_ROT_W = np.linalg.qr(np.array([[0.3, 0.8, -0.2], [-0.7, 0.1, 0.6], [0.5, -0.4, 0.7]]))[0]
+
+
+def _hash3(ix, iy, iz, seed):
+    """Three pseudo-random values -1..1 per lattice point from one 64-bit hash (16 bits each)."""
+    h = ((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791) ^ (seed * 2654435761)).astype(np.uint64)
+    for m in (np.uint64(0xBF58476D1CE4E5B9), np.uint64(0x94D049BB133111EB)):  # (splitmix64's finaliser)
+        h ^= h >> np.uint64(31)
+        h *= m
+    h ^= h >> np.uint64(29)
+    return np.stack([((h >> np.uint64(16 * c)) & np.uint64(0xFFFF)).astype(np.float64) / 32767.5 - 1.0
+                     for c in range(3)], 1)
+
+
+def _pl_walk(q, seed, vec=False):
+    """Random values (-1..1) at the corners of the unit cubic lattice, interpolated linearly over each cube's six
+    tetrahedra (the Freudenthal split: consistent across faces). (n,), or (n, 3) with vec."""
     b = np.floor(q).astype(np.int64)
     f = q - b
     order = np.argsort(-f, axis=1)  # the tetrahedron: walk the axes from the largest fraction down
     fs = np.take_along_axis(f, order, 1)
     w = np.stack([1 - fs[:, 0], fs[:, 0] - fs[:, 1], fs[:, 1] - fs[:, 2], fs[:, 2]], 1)
+    val = (lambda v: _hash3(v[:, 0], v[:, 1], v[:, 2], seed)) if vec else \
+        (lambda v: 2 * noise._hash(v[:, 0], v[:, 1], v[:, 2], seed) - 1)
     v = b.copy()
-    out = w[:, 0] * (2 * noise._hash(v[:, 0], v[:, 1], v[:, 2], seed) - 1)
-    rows = np.arange(len(p))
+    out = (w[:, :1] if vec else w[:, 0]) * val(v)
+    rows = np.arange(len(q))
     for k in range(3):
         v[rows, order[:, k]] += 1
-        out = out + w[:, k + 1] * (2 * noise._hash(v[:, 0], v[:, 1], v[:, 2], seed) - 1)
+        out = out + (w[:, k + 1:k + 2] if vec else w[:, k + 1]) * val(v)
+    return out
+
+
+def _pl_facets(p, size, seed, warp=0.45):
+    """A continuous, piecewise-planar field (-1..1): random heights at the corners of a rotated cubic lattice,
+    interpolated linearly over each cube's six tetrahedra. Offsetting a surface by it breaks the surface into planar
+    facets with crisp creases.
+    The lattice is warped by a second piecewise-linear field on another rotated lattice 1.7x coarser (a composition of
+    piecewise-linear maps is still piecewise linear: facets stay planar, creases stay C0). Unwarped, every crease lay
+    on the lattice's planes and diagonals: a face showed a few fixed crease directions at a fixed spacing, a quilt of
+    rhombs and rectangles (the user's "squares in the rocks")."""
+    q = (p @ _ROT.T) / size
+    if warp:
+        q = q + warp * _pl_walk((p @ _ROT_W.T) / (1.7 * size), seed + 1001, vec=True)
+    return _pl_walk(q, seed)
+
+
+def facet(p, size, seed, fd=None, u=None):
+    """Planar facets about `size` across (-1..1): on irregular triangles laid on the face where the ground's gradient
+    fd says which way it faces (terrain_facets), on the warped lattice (`_pl_facets`) where a volume shapes the rock
+    (share u) or no gradient is given."""
+    if fd is None:
+        return _pl_facets(p, size, seed)
+    from . import terrain_facets
+    u = np.zeros(len(p)) if u is None else u
+    out = np.zeros(len(p))
+    a, b = np.flatnonzero(u < 0.999), np.flatnonzero(u > 1e-3)
+    if len(a):
+        out[a] += (1 - u[a]) * terrain_facets.facets(p[a], size, seed, fd[a])
+    if len(b):
+        out[b] += u[b] * _pl_facets(p[b], size, seed)
     return out
 
 
@@ -626,6 +689,15 @@ class Field:
             self.thin = ndimage.gaussian_filter(thin, 1.0)
             self.steep = self.steep * (1 - 0.9 * self.thin)
             self.grain = _structure_grain(T, self.H, self.c)
+            # the heightfield's own facets (terrain_rock: tipped planes on jittered ~5-17 m cells) taken back out where
+            # the solid rock gets its own: two facet systems on one face made a moire of lozenges
+            fdel = (getattr(T, "rock", None) or {}).get("facet_delta") if isinstance(getattr(T, "rock", None), dict) \
+                else None
+            if fdel is not None and np.shape(fdel) == self.H.shape:
+                self.H = self.H - np.clip(self.steep, 0, 1) * fdel
+            # the faces' horizontal normal (downhill), smoothed over ~3 cells: which joint families cross a face
+            sy, sx = np.gradient(ndimage.gaussian_filter(self.H, 3.0), self.c)
+            self._fdx, self._fdy = -sx, -sy
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
@@ -648,7 +720,16 @@ class Field:
     def grain_at(self, x, y):
         r = (np.asarray(y, float) - self.y0) / self.c
         q = (np.asarray(x, float) - self.x0) / self.c
-        return np.clip(ndimage.map_coordinates(self.grain, [r, q], order=1, mode="nearest"), 0, 1)
+        return np.clip(ndimage.map_coordinates(self.grain, [r, q], order=3, prefilter=False, mode="nearest"), 0, 1)
+
+    def face_dir(self, x, y):
+        """The face's horizontal normal at columns, as the smoothed ground's downhill gradient (its length the slope,
+        tan): a smooth grid (cubic B-spline), so relief built on it stays continuous."""
+        r = (np.asarray(y, float) - self.y0) / self.c
+        q = (np.asarray(x, float) - self.x0) / self.c
+        v = np.stack([ndimage.map_coordinates(a, [r, q], order=3, prefilter=False, mode="nearest")
+                      for a in (self._fdx, self._fdy)], 1)
+        return v
 
     def steep_at(self, x, y):
         r = (np.asarray(y, float) - self.y0) / self.c
@@ -691,9 +772,12 @@ class Field:
             k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 g = self.grain_at(p[k, 0], p[k, 1]) if self.grain is not None else None
-                F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]))
+                fd = self.face_dir(p[k, 0], p[k, 1])
+                a_ = self.steep_at(p[k, 0], p[k, 1]) * guard[k]
+                u = near[k] / np.maximum(a_ + near[k], 1e-9)  # (the volumes' share of the relief)
+                F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u)
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
-                    F[k] = F[k] + w[k] * self.micro(p[k])
+                    F[k] = F[k] + w[k] * self.micro(p[k], fd, u)
         return F
 
     def value(self, p):
@@ -804,7 +888,14 @@ class Materials:
         return ref
 
     def _grid(self, a, xy):
-        return self.T.sample(xy, a)
+        """A per-cell grid (cover, colours) at points: a cubic B-spline over the cells (approximating, no prefilter:
+        smooth and never overshooting). Bilinear it had a crease in its gradient on every cell line, and the per-cell
+        variation (tone, strata, slope-dependent beds) showed as a quilt of cell-sized squares on the rock, plainest
+        from 100 m and more (5 m cells on the alps)."""
+        T = self.T
+        return ndimage.map_coordinates(np.asarray(a, float), [(xy[:, 1] - T.ys[0]) / T.cell,
+                                                              (xy[:, 0] - T.xs[0]) / T.cell],
+                                       order=3, prefilter=False, mode="nearest")
 
     def weights(self, P, N):
         xy = P[:, :2]
@@ -1119,15 +1210,19 @@ def _boundary_edges(faces):
     return e[cnt[inv] == 1]
 
 
-def _decimate(P, faces, err, budget, field):
+def _decimate(P, faces, err, budget, field, border_ok=None):
     """Fewest triangles (pyfqmr, open borders locked) whose surface stays within `err` of the field (99th percentile
     at face centres and edge midpoints, over what the undecimated mesh already misses), capped at `budget`.
-    (pyfqmr's own lossless mode barely removed anything with the border locked.)"""
+    (pyfqmr's own lossless mode barely removed anything with the border locked.)
+    border_ok(v): False when a vertex on a tile's border plane isn't one of the canonical border vertices. pyfqmr
+    locks vertices on OPEN edges only: two border vertices joined by an interior edge (a shell's front and back
+    meeting in the border plane) may collapse into a new point on the plane, and the export then died after every
+    tile was baked ("border vertices moved in decimation", alps blocks). Such a result counts as a fold."""
     import pyfqmr
     n_open = len(_boundary_edges(faces))
 
-    def valid(f):  # manifold, and no new holes (dropping a fin's twin faces can open one)
-        return _manifold(f) and len(_boundary_edges(f)) == n_open
+    def valid(v, f):  # manifold, no new holes (dropping a fin's twin faces can open one), the border kept
+        return _manifold(f) and len(_boundary_edges(f)) == n_open and (border_ok is None or border_ok(v))
 
     def run(n, base=None):
         # pyfqmr sometimes folds a thin part (a cave mouth, an arch's soffit) whatever the count: other settings of
@@ -1141,13 +1236,13 @@ def _decimate(P, faces, err, budget, field):
                             verbose=False)
             v, f, _ = s.getMesh()
             out = _drop_twins(np.asarray(v, float), np.asarray(f, np.int64))
-            if valid(out[1]) and len(out[1]) <= 1.15 * n + 64:  # (a low aggressiveness can stall far above n)
+            if valid(*out) and len(out[1]) <= 1.15 * n + 64:  # (a low aggressiveness can stall far above n)
                 return out
         return out
 
 
     def error(v, f):
-        if not valid(f):  # pyfqmr can fold a thin part into a fin (two faces on one directed edge)
+        if not valid(v, f):  # pyfqmr can fold a thin part into a fin (two faces on one directed edge)
             return np.inf
         c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
         return float(np.percentile(np.abs(field.value(c)), 99))
@@ -1162,7 +1257,7 @@ def _decimate(P, faces, err, budget, field):
         best = None
         while n >= 16:
             cand = run(n)
-            if valid(cand[1]) and len(cand[1]) <= budget:
+            if valid(*cand) and len(cand[1]) <= budget:
                 best = cand
                 break
             n = int(n * 0.8)
@@ -1170,7 +1265,7 @@ def _decimate(P, faces, err, budget, field):
             cur = (P, faces)
             while len(cur[1]) > budget:
                 cand = run(max(int(len(cur[1]) / 1.6), int(budget)), cur)
-                if not valid(cand[1]) or len(cand[1]) >= len(cur[1]):
+                if not valid(*cand) or len(cand[1]) >= len(cur[1]):
                     break
                 cur = cand
             return cur
@@ -1546,7 +1641,18 @@ def _job_dense(ij):
     vrow[border] = rows
     faces = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)))
     np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
-    return True
+    # the area its maps will cover (a cliff shell's visible front only): the export's texel density is chosen from it
+    area = 0.0
+    if len(faces):
+        a = np.linalg.norm(np.cross(P[faces[:, 1]] - P[faces[:, 0]], P[faces[:, 2]] - P[faces[:, 0]]), axis=1) / 2
+        if hasattr(field, "front"):
+            a = a[np.abs(_chunks(field.front, P[faces].mean(1))) <= 0.3]
+        area = float(a.sum())
+    return True, area
+
+
+def _chunks(fn, X, n=200_000):
+    return np.concatenate([fn(X[i:i + n]) for i in range(0, len(X), n)]) if len(X) else np.zeros(0)
 
 
 def _drop_specks(P, F, on_border, min_area):
@@ -1689,8 +1795,18 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
     work = [ij for ij, r in mc.items() if r is not None]
     with _pool() as ex:
-        dense = set(ij for ij, ok in zip(work, ex.map(_job_dense, work)) if ok)
+        res = list(ex.map(_job_dense, work))
+    dense = set(ij for ij, (ok, _) in zip(work, res) if ok)
     _CTX["dense"] = dense
+    # one texel density per LOD for every tile: the asked one, or what the tile with the most rock can fit in
+    # texture_max (each tile used to lower its own: on the alps' walls tiles came out 11-16 texels/m side by side,
+    # sharp rock beside soft in squares of tiles)
+    area = max([a for _, a in res] + [1.0])
+    tmax = int(cfg["texture_max"])
+    cfg["_density"] = [min(float(d), math.sqrt(DENSITY_FILL * tmax * tmax / area)) for d in cfg["texel_density"]]
+    if cfg["_density"][0] < cfg["texel_density"][0]:
+        log(f"texel density {cfg['_density'][0]:.1f}/m at LOD 0 (asked {cfg['texel_density'][0]:g}): the largest "
+            f"tile's rock ({area:.0f} m2) in a {tmax} atlas")
     # skirts go into the rock, in the border plane, against the surface normal; never out through the other side
     # (a skirt under a cave roof would hang into the cave)
     dirn = -CN.copy()
@@ -1747,7 +1863,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     rk["joints"] = {**rk["joints"], "depth": rk["joints"]["depth"] * [1.0, 0.5, 0.0][min(k, 2)]}
                     bf.rock = rk
                 if base.rock is not None and float(cfg["micro"]) > 0:
-                    dens = cfg["texel_density"][min(k, len(cfg["texel_density"]) - 1)]
+                    dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
                     bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens)
                 if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
                     bf = terrain_cliffs.CliffField(bf, region).front_field()
@@ -1878,6 +1994,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         "volumes": notes,
         "mode": cfg["mode"],
         "config": {k: v for k, v in cfg.items() if not k.startswith("_") and k != "only"},
+        "texel_density_used": [round(d, 3) for d in cfg.get("_density", [])],
         "maps": {
             "per tile LOD": "each tile's GLB embeds base colour (JPEG, sRGB), ORM (PNG: R occlusion, G roughness, "
                             "B metallic 0) and normal (PNG, tangent space, OpenGL/glTF: +Y up the texture, against "
@@ -1927,7 +2044,26 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         gc = terrain_cliffs.ground_check(out, manifest, region)
         check["summary"]["ground"] = gc["summary"]
         check["failures"] += gc["failures"]
-        check["summary"]["failures"] = len(check["failures"])
+    # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
+    # colour, and texel density jumping between neighbouring tiles (sharp rock beside soft)
+    from . import terrain_seams
+    gs = terrain_seams.grid_squares(T, mats)
+    if base.rock is not None:  # how regular the facets look (a lattice shows repeated diamonds from afar)
+        from . import terrain_facets
+        rk = base.rock
+        per = terrain_facets.periodicity(lambda P, fd: facet(P, 1.5 * rk["size"], rk["seed"], fd)
+                                         + 0.3 * facet(P, 0.6 * rk["size"], rk["seed"] + 5, fd))
+        check["summary"]["facet_periodicity"] = per
+        if max(per) > terrain_facets.PERIODIC:
+            check["failures"].append(f"rock facets look regular (autocorrelation peaks {per}, limit "
+                                     f"{terrain_facets.PERIODIC}): a quilt of repeated diamonds from afar")
+    td = terrain_seams.texel_density(manifest) if cfg.get("maps") else {"summary": {}, "failures": []}
+    check["summary"]["grid_squares"], check["summary"]["texel_density"] = gs, td["summary"]
+    if not gs["ok"]:
+        check["failures"].append(f"the colour bends on every terrain cell line (x{gs['ratio']} the kinks between "
+                                 f"them): cell-sized squares on the rock")
+    check["failures"] += td["failures"]
+    check["summary"]["failures"] = len(check["failures"])
     timing["seam check"] = time.time() - t0
     manifest["seam_check"] = check["summary"]
     manifest["timing_s"] = {k: round(v, 2) for k, v in timing.items()}
@@ -1970,6 +2106,12 @@ def summary(r) -> str:
         lines.append(f"seam check: {sc['failures']} failures")
     if "ground" in sc:
         lines.append("ground check: " + ", ".join(f"{k} {v}" for k, v in sc["ground"].items()))
+    if "grid_squares" in sc:
+        if "facet_periodicity" in sc:
+            lines.append(f"facet periodicity (autocorrelation peak per plane orientation): {sc['facet_periodicity']}")
+        lines.append(f"grid squares (colour kinks on cell lines vs between): x{sc['grid_squares']['ratio']}; texel "
+                     "density " + ", ".join(f"{k} {v['min']:g}-{v['max']:g}/m (neighbours x{v['worst_neighbour_ratio']})"
+                                            for k, v in sc.get("texel_density", {}).items()))
     sh = [f"LOD {k} {sc[f'lod{k}_shards']['area_pct']}%" for k in range(len(M["lods"])) if f"lod{k}_shards" in sc]
     if sh:
         lines.append("shards (corner normals against their face, share of the area): " + ", ".join(sh))
@@ -1994,6 +2136,8 @@ def _job_tile(ij):
     entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
     zmin, zmax = np.inf, -np.inf
     prevs = []
+    # (a decimated mesh may only have canonical vertices on the tile's border planes)
+    border_ok = lambda v: all(tuple(q) in pos for q in v[_on_border(v, lo, hi)])
     for k in range(G.lods):
         if (i, j) not in dense:
             entry["lods"].append(None)
@@ -2017,11 +2161,11 @@ def _job_tile(ij):
                 used = np.unique(Fc)
                 remap = np.full(len(Pp), -1, np.int64)
                 remap[used] = np.arange(len(used))
-                Pd, Fd = _decimate(Pp[used], remap[Fc], cfg["error"][k], cfg["budget"][k], field)
+                Pd, Fd = _decimate(Pp[used], remap[Fc], cfg["error"][k], cfg["budget"][k], field, border_ok)
                 if len(Fd) > 1.15 * cfg["budget"][k] + 64:
                     Pd = Fd = None
         if Pd is None:
-            Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field)
+            Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok)
         if k > 0 and prevs and len(Fd) > max(cfg["budget"][k], len(prevs[-1][1])):
             # this LOD from the dense mesh folded at every count: from an earlier LOD's mesh instead (the last one
             # first), its border collapsed to this LOD's chain (the same chain either way: neighbours still agree)
@@ -2036,7 +2180,7 @@ def _job_tile(ij):
                 used = np.unique(Fc)
                 remap = np.full(len(Pp), -1, np.int64)
                 remap[used] = np.arange(len(used))
-                P2, F2 = _decimate(Pp[used], remap[Fc], cfg["error"][k], cfg["budget"][k], field)
+                P2, F2 = _decimate(Pp[used], remap[Fc], cfg["error"][k], cfg["budget"][k], field, border_ok)
                 if len(F2) < len(Fd):
                     Pd, Fd = P2, F2
                     break
@@ -2045,8 +2189,13 @@ def _job_tile(ij):
         rowd = np.array([pos.get(tuple(p), -1) for p in Pd])
         on = _on_border(Pd, lo, hi)
         if np.any(on & (rowd < 0)):
+            q = Pd[on & (rowd < 0)]
+            inP = [bool(np.any(np.all(Pk == x, axis=1))) for x in q[:5]]
+            be = np.unique(_boundary_edges(Fk)) if len(Fk) else np.zeros(0, np.int64)
+            onb = [bool(np.any(np.all(Pk[be] == x, axis=1))) for x in q[:5]]
             raise RuntimeError(f"tile {i},{j} LOD {k}: {int(np.sum(on & (rowd < 0)))} border vertices moved in "
-                               f"decimation")
+                               f"decimation, e.g. {q[:5].tolist()} (in the undecimated mesh: {inP}, on its open "
+                               f"boundary: {onb})")
         bd = rowd >= 0
         N = np.zeros_like(Pd)
         before = Pd.copy()
@@ -2257,7 +2406,7 @@ def _textured(P, N, W, F, k, origin, lo, stem):
     c = _CTX
     cfg, mats, out, v0 = c["cfg"], c["mats"], c["out"], c["v0"]
     t0 = time.time()
-    dens = cfg["texel_density"][min(k, len(cfg["texel_density"]) - 1)]
+    dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
     uvc, size, d, _ = terrain_bake.unwrap(P, F, dens, int(cfg["texture_max"]))
     sp = terrain_bake.split_corners(P, _unit_rows(N), F, uvc, extra={"W": W})
     T4 = terrain_bake.tangents(sp["P"], sp["N"], sp["uv"], sp["F"])
@@ -2811,18 +2960,21 @@ def border_segments(out_dir, lod=0):
 
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
-                 parts="all", textured=True):
+                 parts="all", textured=True, channel=None, ids=False):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
     [x1, y1]]: only tiles (and trees) inside. lod: a level, or
     "checker" (LOD 0 and the coarsest alternating, to see the skirts at work). parts (cliffs mode): "all", "ground"
     (the heightmap alone: what a game shows without the overlay) or "cliffs". textured: True (the baked material),
-    "layered" (the engine recipe: tiling layers over the baked maps) or False (vertex colour)."""
+    "layered" (the engine recipe: tiling layers over the baked maps) or False (vertex colour). channel: one baked
+    channel alone ("base", "ao": unlit; "normal": the normal map on flat grey; "clay": geometry only). ids: also an id
+    pass per view (<out>_ids.npy: glb index + 1, chart, view distance) for `terrain_seams.measure`; the job's "glbs"
+    and "kinds" say which file each index is."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
-    glbs = []
+    glbs, kinds = [], []
     for e in M["tiles"] * (parts != "ground") + M.get("ground", []) * (parts != "cliffs"):
         if box and (e["max"][0] < box[0][0] or e["min"][0] > box[1][0] or e["max"][1] < box[0][1]
                     or e["min"][1] > box[1][1]):
@@ -2830,6 +2982,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         k = (len(M["lods"]) - 1) * ((e["i"] + e["j"]) % 2) if lod == "checker" else lod  # mixed LODs: seams show
         if e["lods"][k]:
             glbs.append(str(out / e["lods"][k]["file"]))
+            kinds.append(["ground" if e["lods"][k]["file"].startswith("ground") else "cliff", e["i"], e["j"], k])
     jobs = []
     sea = M.get("sea_level")
     for v in views:
@@ -2851,7 +3004,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
            "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
-           "textured": bool(textured)}
+           "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds}
     if textured == "layered":  # the engine recipe: tiling layers over the baked maps
         job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
                           "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}

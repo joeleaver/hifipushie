@@ -579,6 +579,24 @@ def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15) -> 
     e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]]])
     ncomp, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
     clear = P[:, 2] - R.height(P[:, 0], P[:, 1])
+    # a piece that runs off the exported block (an `only` export: the tile beyond wasn't made, but the world goes on)
+    # continues there: on a wall steep all the way across the block the shell never came down to the ground inside it
+    have = {(g["i"], g["j"]) for g in M.get("ground", [])} or {(e["i"], e["j"]) for e in M["tiles"]}
+    G = R.G
+    off = np.zeros(len(P), bool)
+    for ax in (0, 1):
+        t = (P[:, ax] - G.origin[ax]) / G.tile
+        on = np.abs(t - np.round(t)) < 1e-6
+        inner = (P[:, ax] > G.lo[ax] + 1e-6) & (P[:, ax] < G.hi[ax] - 1e-6)
+        k = np.flatnonzero(on & inner)
+        if not len(k):
+            continue
+        line = np.round(t[k]).astype(int)
+        other = np.floor((P[k, 1 - ax] - G.origin[1 - ax]) / G.tile).astype(int)
+        for side in (line - 1, line):  # the tiles either side of the plane
+            ij = [(s_, o) if ax == 0 else (o, s_) for s_, o in zip(side, other)]
+            off[k] |= np.array([q not in have for q in ij])
+    clear = np.where(off, -np.inf, clear)
     low = np.full(ncomp, np.inf)
     np.minimum.at(low, lab, clear)
     tri = np.bincount(lab[F[:, 0]], minlength=ncomp)

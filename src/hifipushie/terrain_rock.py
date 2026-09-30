@@ -378,6 +378,7 @@ def apply(T):
         H = H * (1 - w) + stair * w
 
     f_amt = float(cfg.get("facets", 1.0))
+    facet_delta = np.zeros_like(H)  # (what the faceting moved: 3D rock takes it back out and facets in its own way)
     if f_amt > 0:
         # planar facets and joints over the faces (and rugged ground): the noise above left round pits and bubbles
         fsize = max(1.2 * crag, 3.5 * T.cell)
@@ -400,6 +401,7 @@ def apply(T):
             seed_b[1:-1, 1:-1] = before.max()
             was = reconstruction(seed_b, before, method="erosion") - before
             H = H + np.where((w > 0.05) & (fill > was + 0.05) & (fill < 0.3 * fsize), fill - was, 0)
+            facet_delta = H - before
 
     bd = float(cfg.get("bedding", 1.0))
     if bd > 0:
@@ -474,7 +476,7 @@ def apply(T):
     tone = (0.72 + 0.5 * smoothstep(0.3, 0.7, patch)) * (1 - 0.35 * gsoft) * (0.84 + 0.22 * streak)
     T.H = H
     T.rock = {"cells": int((steep > 0.5).sum()), "foot": foot_m | apron_m, "aprons": apron_m, "ledges": ledge_m,
-              "gullies": gullies, "face_height": med_h, "tone": tone}
+              "gullies": gullies, "face_height": med_h, "tone": tone, "facet_delta": facet_delta}
 
 
 def measure(T):
