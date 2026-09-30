@@ -47,7 +47,7 @@ def micro_relief(r, amount=1.0, texel=0.1):
 
     J = r.get("joints")
 
-    def f(p, fd=None, u=None):
+    def f(p, fd=None, u=None, g=None):
         fac = lambda size, sd: tm.facet(p, size, sd, fd, u)  # (irregular triangles on faces: terrain_facets)
         out = 0.06 * a1 * fac(1.2, seed)
         if a2 > 0:
@@ -62,12 +62,15 @@ def micro_relief(r, amount=1.0, texel=0.1):
             c = fac(3.1, seed + 2)
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
         if bed and (an > 0 or al > 0):
-            zb = tm.bed_level(p, r)
+            B = tm.bed_planes(p, r, g)
+            zb = B["z"]
             e = np.abs(zb - np.round(zb)) * bed  # m from the nearest bedding plane
             # the bedding plane's notch: a smooth trough (a cusp stair-stepped when a close view magnified its texels)
-            u = np.clip(1 - e / 0.35, 0, 1)
-            # (broken along its length: an unbroken dark line on every bed read as a seam)
-            brk = np.clip((noise.fbm(p * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5) - 0.35) * 3, 0, 1)
+            # (broken along its length, only where the plane shows at all, its width wandering: an unbroken dark line
+            # of one width on every bed read as a seam)
+            nz = noise.fbm(p * np.array([1.0, 1.0, 0.2]), 6.0, 2, seed=seed + 5)
+            u = np.clip(1 - e / (0.35 * (0.55 + 0.9 * nz)), 0, 1)
+            brk = np.clip((nz - 0.42) * 3.5, 0, 1) * B["pres"]
             out = out + 0.14 * an * u * u * (3 - 2 * u) * brk
             if al > 0:
                 z = zb * 6.0
