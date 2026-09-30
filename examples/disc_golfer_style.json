@@ -256,6 +256,44 @@
       "radius": 0.01,
       "amount": 0.0012
      }
+    ],
+    "push_late": [
+     {
+      "lm": [
+       46,
+       47
+      ],
+      "offset": [
+       0,
+       0,
+       -0.013
+      ],
+      "radius": 0.008,
+      "amount": 0.0022,
+      "dir": [
+       0,
+       -1,
+       0.2
+      ]
+     },
+     {
+      "lm": [
+       46,
+       47
+      ],
+      "offset": [
+       0.004,
+       0,
+       -0.019
+      ],
+      "radius": 0.011,
+      "amount": 0.0024,
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
     ]
    },
    "regions": [
@@ -1210,9 +1248,102 @@
      ]
     }
    ]
+  },
+  "lip_seam": {
+   "color": "#8e3a2e",
+   "roughness": 0.45,
+   "outline": {
+    "points": [
+     "lm_mouth_corner.R",
+     "lm_lip_inner_upper.R",
+     "lm_lip_inner_upper",
+     "lm_lip_inner_upper.L",
+     "lm_mouth_corner.L",
+     "lm_lip_inner_lower.L",
+     "lm_lip_inner_lower",
+     "lm_lip_inner_lower.R"
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "soft": 0.0006,
+    "depth": 0.02
+   }
   }
  },
  "style": {
+  "look": {
+   "lights": [
+    {
+     "dir": [
+      -0.45,
+      -0.75,
+      0.6
+     ],
+     "energy": 3.0,
+     "color": [
+      1.0,
+      0.94,
+      0.86
+     ],
+     "angle": 25
+    },
+    {
+     "dir": [
+      0.25,
+      -0.95,
+      0.15
+     ],
+     "energy": 1.8,
+     "color": [
+      1.0,
+      0.82,
+      0.76
+     ],
+     "angle": 40,
+     "shadow": false
+    },
+    {
+     "dir": [
+      0.0,
+      -0.6,
+      -0.8
+     ],
+     "energy": 0.6,
+     "color": [
+      1.0,
+      0.72,
+      0.62
+     ],
+     "angle": 40,
+     "shadow": false
+    },
+    {
+     "dir": [
+      0.35,
+      0.85,
+      0.45
+     ],
+     "energy": 2.2,
+     "color": [
+      1.0,
+      0.97,
+      0.95
+     ],
+     "angle": 8
+    }
+   ],
+   "world": {
+    "color": [
+     0.86,
+     0.74,
+     0.76
+    ],
+    "strength": 0.7
+   }
+  },
   "sheet": "stylised_realist"
  },
  "symmetry": true,

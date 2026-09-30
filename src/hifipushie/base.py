@@ -1236,7 +1236,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
                 W = W + lam * wv * retopo._lap(W, E, deg)
     pushes = list(shape.get("push") or []) + list(shape.get("push_more") or [])  # push_more: a model's own bumps
     # added to its style sheet's (a model's "push" replaces the sheet's list: the shape dict merges key by key)
-    if pushes:  # soft landmark-addressed bumps along the head's normals, mirrored: a buccal hollow under
+    def _pushes(W, lm, pushes):  # soft landmark-addressed bumps along the head's normals, mirrored: a buccal hollow under
         # the cheekbone, a proud cheekbone, a jaw corner. [{"lm": [ids] (their mean), "offset": [x, y, z] (m, world),
         # "radius": m, "amount": m}], Gaussian falloff (GNM's region groups have hard edges: pushed, they left steps)
         Nw = retopo._vnormals(W, np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)]))
@@ -1258,6 +1258,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
                 DL += fl[:, None] * (Nl if dd is None else dd)
         W = W + DW
         lm = lm + DL  # the landmarks ride along (lip outlines, the mouth fill and lid rims are placed from them)
+        return W, lm
+    if pushes:
+        W, lm = _pushes(W, lm, pushes)
     if shape.get("under_eye") or shape.get("nostrils"):  # designed reductions: the under-eye crease filled, the
         # nostril holes closed to a shallow dent (a stylised nose shows no openings from the front)
         E = retopo.edges(np.array([v for f in faces for v in f]), np.array([len(f) for f in faces]))
@@ -1276,6 +1279,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             dn = np.min([np.linalg.norm(W - lm[i], axis=1) for i in (31, 32, 33, 34, 35)], axis=0)
             wv = 1 - _sstep((dn - 0.006 * s) / (0.006 * s))
             W = _local_smooth(W, E, deg, wv, 12 * float(shape["nostrils"]))
+    if shape.get("push_late"):  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
+        # lifted upper cheek under the lower lid, filling the socket hollow that shaded as a dark ring)
+        W, lm = _pushes(W, lm, list(shape["push_late"]))
     for _ in range(int(head.get("subdivide", 1))):
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)

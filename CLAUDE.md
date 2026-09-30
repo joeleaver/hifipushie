@@ -266,6 +266,17 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   at 10 the kept muzzle met the pushed cheek in a smile-fold crease), `shape.planes_keep_features`. The user's "flat,
   sliced-off nose" in the dg_face renders was that head-only copy's `face_crop` box (front face 19 mm behind the nose
   tip), not the head: widen a crop to y size 0.22 before judging a nose.
+  Face finish + the whole golfer (2026-09-30, renders g01-g0x, model `workspace/dg_full` = full body + face + dg_hh's
+  hand-shaped locks; `examples/disc_golfer_style.json` (on the sheet) / `disc_golfer_mh.json` (resolved)): jowl in
+  (a normal push on the jaw ahead of lm12: the far jaw outline in the matched view is the jowl at mouth height, not the
+  jaw contour), mouth down 4 mm by `pose.mouth_raise` -0.004 (nose-to-mouth 0.30 -> 0.38 io), chin block (corner pushes).
+  Eyes: `base.eye_size` (lid landmarks from the front / interocular) and sheet rules `eye_w_over_io`, `eye_h_over_io`
+  banded on the reference (0.69 / 0.22-0.24 io; we had 0.18 high: "sleepy"). Brows: traced in both reference figures
+  (`workspace/dg_nose/brow_trace.json`), carried onto the head through the matched cameras (four traces agreed on ~9 mm
+  thickness), painted as an `outline` layer from the brow landmarks (`brows_top.L` + a softer `brows_soft.L`; the
+  sheet's `brows.L` off: its later warm overlays washed a model's brow layer to a thin line, card filed). Under-eye:
+  `shape.push_late` = pushes applied AFTER the `under_eye`/`nostrils` smoothing (which erased pushes in its region):
+  the upper cheek filled under the lower lid (section hollow 1.43 -> 0.58 mm); the dark ring was that slope, not paint.
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
@@ -301,7 +312,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   and `mass_share` (an ID render: bare volume / visible hair, target < 10%). Round trip: `blender_hair.read` compares
   each lock with the state the sync wrote (`hp_set`), `scene.pull` -> `hair.pull_locks` writes moved points, handles,
   radius, tilt and modifier numbers back (tested: 3 locks edited headless, pulled, re-synced, second pull empty).
-  Export (`hair.export_part`, called by `asset._export` when the spec has locks): the locks at 12 x 8 + the underlayer
+  Export (`hair.export_part`, called by `asset._export` when the spec has locks): the locks at 24 x 10 (`hair.EXPORT`,
+  `spec.hair.export` overrides; 12 x 8 read faceted and dark in Cycles: the thin lens edges shaded as flat planes) + the underlayer
   decimated, one uv island per lock (round the lens x along) + smart-projected underlayer, packed by Blender, colour /
   roughness / normal baked by Cycles from the low poly's own material (selected-to-active from full-res locks picked up
   neighbouring locks where they overlap); its own atlas in the GLB with KHR_materials_anisotropy (rotation 90 deg:
