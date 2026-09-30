@@ -413,7 +413,7 @@ def _face(T, p, z):
 
 # ---------------------------------------------------------------- the field
 
-def rock_relief(p, r, g=None):
+def rock_relief(p, r, g=None, jw=None):
     """Solid rock character as a field offset (+ carves, - builds): planar facets meeting in crisp creases, and bedding
     (a V notch at each bedding plane, each bed standing proud or set back on its own, stepping over at its edge).
     Continuous everywhere with C0 creases, never jumps: a jump (the nearest cell's plane alone) meshed as steps whose
@@ -445,7 +445,8 @@ def rock_relief(p, r, g=None):
         o = np.where(lower, off(nb) * (1 - u) + off(kb) * u, off(kb) * (1 - u) + off(nb) * u)
         out = out + r["bedding"] * (0.3 * np.clip(1 - edge / be, 0, 1) + 0.3 * o)
     if r.get("joints") and r["joints"]["depth"] > 0:
-        out = out + _joints(p, r)
+        # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
+        out = out + _joints(p, r) * (1.0 if jw is None else jw)
     return out
 
 
@@ -468,7 +469,9 @@ def _joints(p, r):
             k = k0 + dk
             pos = k + 0.8 * (h(k, m, 1) - 0.5)
             amp = (h(k, m, 2) < J["prob"][m]) * (0.6 + 0.4 * h(k, m, 3))
-            best = np.maximum(best, amp * np.clip(1 - np.abs(q - pos) * sp / ed, 0, 1))
+            t = np.clip(1 - np.abs(q - pos) * sp / ed, 0, 1)
+            # (crisp shoulders, a rounded floor: a V-bottom crease on cave walls shaded as black shards)
+            best = np.maximum(best, amp * t * (2 - t))
         band = smoothstep(0.35, 0.6, noise.fbm(p * np.array([1.0, 1.0, 0.5]), J["band"], 2, seed=r["seed"] + 70 + m))
         out = out + J["depth"] * best * band
     return out
@@ -534,8 +537,8 @@ def rock_config(T, cfg):
         sp = float(np.clip(0.2 * size, 1.2, 2.5))
         dirs = [math.radians(a) for a in (37.0, 107.0, 162.0)]
         out["joints"] = {"dirs": [[math.cos(a), math.sin(a)] for a in dirs], "spacing": [sp, 1.4 * sp, 2.0 * sp],
-                         "prob": [0.4, 0.3, 0.2], "band": max(12.0, 3.0 * size), "edge": max(0.5, 1.2 * vox),
-                         "depth": 0.3 * jt * bd}
+                         "prob": [0.4, 0.3, 0.2], "band": max(12.0, 3.0 * size), "edge": max(0.6, 1.5 * vox),
+                         "depth": 0.22 * jt * bd}  # (0.3 m folded the 800-triangle LOD 2: 0.6% shards)
         out["reach"] += 0.35 * jt * bd
     return out
 
@@ -679,6 +682,7 @@ class Field:
         """Volumes and rock character on top of the ground's distance F (s: the column's slope factor, cos slope)."""
         near = np.zeros(len(p))
         self.floor_guard = np.ones(len(p))
+        depth = -np.asarray(F, float).copy()  # (how far under the open ground: joints are a surface thing)
         F = self.volumes(p, F, near)
         guard, self.floor_guard = self.floor_guard, None
         if self.rock is not None:
@@ -687,7 +691,7 @@ class Field:
             k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 g = self.grain_at(p[k, 0], p[k, 1]) if self.grain is not None else None
-                F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g)
+                F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]))
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     F[k] = F[k] + w[k] * self.micro(p[k])
         return F
@@ -2047,6 +2051,7 @@ def _job_tile(ij):
         N = np.zeros_like(Pd)
         before = Pd.copy()
         Pd[~bd], N[~bd] = project(field, Pd[~bd], v0)
+        hn = NORMAL_H * v0
         # where projecting a coarse vertex folds its faces, it stays where decimation put it
         fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
         if fold.any():
@@ -2077,7 +2082,7 @@ def _job_tile(ij):
             sf += [(tb, ta, ta + 1), (tb, ta + 1, tb + 1)]
         sf = np.array(sf, np.int64).reshape(-1, 3)
         origin = np.array([lo[0], lo[1], 0.0])
-        Ps, Fs, Ns, src = split_normals(Pd, Fd, N, field, bd, NORMAL_H * v0)
+        Ps, Fs, Ns, src = split_normals(Pd, Fd, N, field, bd, hn)
         bur = np.zeros(len(Fs), bool)
         if hasattr(field, "front"):
             # a cliff shell: faces off the visible rock (its back, buried under the heightmap) go in their own
