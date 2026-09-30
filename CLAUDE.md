@@ -955,7 +955,7 @@ regresses, bisect by building one spec at each commit and diffing heights.
     `facet()` uses it for rock_relief and the bake's micro relief, the warped lattice only for a volume's share
     (caves: the ground's gradient says nothing there). Periodicity 0.30 max; the heightfield's own facets
     (terrain_rock, `T.rock["facet_delta"]`) are taken back out of Field.H where the solid rock has relief (two facet
-    systems made a moire of lozenges). Cost: alps 9-tile block 14 -> ~22 min; (3) every joint
+    systems made a moire of lozenges). Cost: none measurable once points are triangulated per 64-size piece (one box over a sparse map-wide sample asked for 57M seeds: parent 7 GB); alps 9-tile block 14.4 min, pebble 12.5; (3) every joint
     family cut every face: long diagonal grooves crosshatched into diamonds; a family now fades where its planes run
     along the face (`Field.face_dir`, continuous where the slope vanishes); (4) each tile lowered its own texel
     density to fit texture_max (13.8-16/m side by side on a wall): one density per LOD for the export now, from the
