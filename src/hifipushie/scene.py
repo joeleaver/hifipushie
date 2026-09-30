@@ -71,7 +71,8 @@ def _blender_live(job: dict) -> str:
     from disk, and a sync saves the session to scene.blend so headless renders see it)."""
     code = ("import sys, importlib, json\n"
             f"sys.path.insert(0, {str(SCRIPT.parent)!r})\n"
-            "import blender_scene as B\n"
+            "import blender_hair, blender_scene as B\n"
+            "importlib.reload(blender_hair)\n"  # (reloading B alone kept a stale blender_hair in a long session)
             "importlib.reload(B)\n"
             f"B.MODES[{job['mode']!r}](json.loads({json.dumps({**job, 'live': True})!r}))\n"
             "result = {}")

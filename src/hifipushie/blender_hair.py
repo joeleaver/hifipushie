@@ -390,7 +390,9 @@ def apply(locks: list, look: dict, coll_name: str = "hair", segments: int = 32, 
         bpy.context.scene.collection.children.link(coll)
     want = {lk["name"]: lk for lk in locks}
     for ob in list(coll.objects):
-        if ob.get("hp_lock") is not None and ob.get("hp_lock") not in want:  # (the underlayer isn't a lock)
+        # (the underlayer isn't a lock) a lock the spec no longer has, or a copy of a lock (Shift+D keeps hp_lock)
+        # that a pull outside this session named as a lock of its own
+        if ob.get("hp_lock") is not None and (ob.get("hp_lock") not in want or ob.name != ob.get("hp_lock")):
             cu = ob.data
             bpy.data.objects.remove(ob)
             if cu is not None and cu.users == 0:
@@ -430,6 +432,8 @@ def apply(locks: list, look: dict, coll_name: str = "hair", segments: int = 32, 
         ob["hp_lock"], ob["hp_hash"] = name, lk["hash"]
         ob["hp_set"] = _state(ob)  # what the sync wrote: pull reports only what moved from it
         made.append(name)
+    import json
+    coll["hp_made"] = json.dumps(sorted(want))  # the locks this sync left in the scene: pull reports deletions
     return made
 
 
@@ -455,19 +459,47 @@ def read_one(ob) -> dict:
 
 def read(coll_name: str = "hair") -> dict:
     """{lock: its state} for every lock a person changed since the sync wrote it (moved points or handles,
-    radius, tilt, modifier numbers), and "deleted": locks removed in the scene."""
+    radius, tilt, modifier numbers); "__deleted__": locks the sync made that are gone from the scene; "__new__":
+    curves added in the collection (a lock duplicated with Shift+D, or a new Bezier curve), keyed by their object
+    name as a lock name (the object is renamed to it, so the next sync keeps it)."""
     import json
+    import re
     coll = bpy.data.collections.get(coll_name)
     if coll is None:
         return {}
     bpy.context.view_layer.update()
-    out = {}
+    out, new = {}, {}
+    seen = set()
     for ob in coll.objects:
-        if ob.get("hp_lock") is None or ob.type != "CURVE" or not ob.data.splines:
+        if ob.type != "CURVE" or not ob.data.splines or ob.get("hp_hair_cap"):
             continue
-        now = read_one(ob)
-        if json.dumps(now, sort_keys=True) != ob.get("hp_set"):
-            out[ob["hp_lock"]] = dict(now, hash=ob.get("hp_hash"))  # which spec lock the sync built it from
+        lk = ob.get("hp_lock")
+        if lk is not None and ob.name == lk:
+            seen.add(lk)
+            now = read_one(ob)
+            if json.dumps(now, sort_keys=True) != ob.get("hp_set"):
+                out[lk] = dict(now, hash=ob.get("hp_hash"))  # which spec lock the sync built it from
+            continue
+        # added in Blender: a copy of a lock (its name "sweep1.001") or a curve with no lock behind it
+        sp = ob.data.splines[0]
+        if sp.type != "BEZIER" or len(sp.bezier_points) < 2:
+            continue
+        name = re.sub(r"[^A-Za-z0-9_]", "_", ob.name)
+        if ob.modifiers.get("hp_lock") is None:  # a bare curve: give it the lock sweep so it reads back
+            mod = ob.modifiers.new("hp_lock", "NODES")
+            mod.node_group = node_group()
+        if ob.data.users > 1:  # Alt+D shares the curve: make it its own
+            ob.data = ob.data.copy()
+        ob.name = name
+        ob["hp_lock"] = ob.name
+        ob["hp_hash"] = ""
+        new[ob.name] = read_one(ob)
+    made = set(json.loads(coll.get("hp_made", "[]")))
+    gone = sorted(made - seen)
+    if gone:
+        out["__deleted__"] = gone
+    if new:
+        out["__new__"] = new
     return out
 
 

@@ -31,6 +31,7 @@ import copy
 import hashlib
 import json
 import tempfile
+import os
 import time
 from pathlib import Path
 
@@ -99,7 +100,7 @@ GROOM = {
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
-             "handles", "tier", "edge"}
+             "handles", "tier", "edge", "hand"}
 MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
        "twist": "Twist", "flip": "Flip", "grey": "Grey", "edge": "Edge"}
 LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002, "edge": 0.8}
@@ -445,7 +446,9 @@ def _envelope(sc: Scalp, g: dict, line, az, el):
     # rounded across as well: the dome's height falls off toward the sides, so the front view is a curve over the top
     # and the sides stay close (a dome as full at its edges as on the crest made square shoulders and a bucket back)
     vs = float(vol["sides"])
-    dome = vs + (dome - vs) * (1 - 0.65 * _ss((np.abs(P[..., 0]) - 0.02) / 0.06))
+    # volume.across: how much of the dome's height is gone over the upper sides (0.65: a crest down the middle; less, a
+    # broad flat top like a side-swept cut's, where the top outline in the front view is a wide curve, not a peak)
+    dome = vs + (dome - vs) * (1 - float(vol.get("across", 0.65)) * _ss((np.abs(P[..., 0]) - 0.02) / 0.06))
     topw = W[..., 0] + W[..., 1]
     side = W[..., 2] * float(vol["sides"]) + W[..., 3] * float(vol["back"]) + W[..., 4] * float(vol["nape"])
     v = topw * dome + side
@@ -461,7 +464,9 @@ def _envelope(sc: Scalp, g: dict, line, az, el):
         # along the parting the volume goes down to the scalp: the roots on both sides grow out of it there, and
         # the part is a thin line of scalp and shadow between clumps (a dip left the volume as a smooth patch)
         v = v * (1 - float(g["parting"].get("depth", 0.9)) * _part(sc, g, az, el, float(g["parting"].get("width", 0.012))))
-    ramp = topw * 0.028 + (1 - topw) * (0.8 * v + 0.002)  # continuous: a switch creased the temples
+    # volume.ramp: how far back from the front hairline the top reaches its height (m): short, the front stands as a
+    # wall and the front locks over it jut like a cap's peak; longer, the front face leans back (a quiff's wave)
+    ramp = topw * float(vol.get("ramp", 0.028)) + (1 - topw) * (0.8 * v + 0.002)  # continuous: a switch creased the temples
     x = np.clip(d_in / ramp, 0, 1)
     return v * np.sin(0.5 * np.pi * x) ** 0.8, d_in
 
@@ -1049,9 +1054,9 @@ def validate(spec: dict) -> None:
     h = hair_of(spec)
     if not h:
         return
-    bad = set(h) - {"groom", "locks", "look", "cap", "stage", "part", "filler"}
+    bad = set(h) - {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed"}
     if bad:
-        raise HairError(f"hair: unknown keys {sorted(bad)} (have groom, locks, look, cap, stage, part)")
+        raise HairError(f"hair: unknown keys {sorted(bad)} (have groom, locks, look, cap, stage, part, filler, removed)")
     groom_params(spec)
     for n, lk in (h.get("locks") or {}).items():
         bad = set(lk) - LOCK_KEYS
@@ -1067,16 +1072,22 @@ def validate(spec: dict) -> None:
 
 def groom(name: str, replace: bool = False, note: str = "") -> dict:
     """Grow the first pass of locks from spec["hair"]["groom"] and save them. Locks a person or an edit changed
-    (their names not starting with the tier letters b/f/e + digits) are kept unless replace."""
+    (their names not starting with the tier letters b/f/e + digits) and hand-shaped locks (`"hand": true`: every lock
+    edited or added in Blender comes back with it from scene.pull) are kept unless replace; locks deleted in Blender
+    (`hair.removed`) aren't grown again."""
     spec = store.load(name)
     h = spec.setdefault("hair", {})
     sc = scalp(name, spec)
     g = groom_params(spec)
     new = grow(sc, g)
     old = h.get("locks") or {}
+    if replace:
+        h.pop("removed", None)
+    else:
+        new = {n: lk for n, lk in new.items() if n not in set(h.get("removed") or [])}
     keep = {} if replace else {n: lk for n, lk in old.items()
-                               if not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
-                               and lk.get("tier") != "drawn"}
+                               if lk.get("hand") or (not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
+                                                     and lk.get("tier") != "drawn")}
     h["locks"] = {**new, **keep}
     store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     return {"locks": len(h["locks"]), "tiers": {t: sum(1 for lk in new.values() if lk["tier"] == t)
@@ -1607,7 +1618,11 @@ def sync(name: str) -> dict:
     from .scene import _blender, _blender_live, blend_path, live_session
     j = {"mode": "hair_sync", "blend": str(blend_path(name)), "hair": job(name)}
     t = time.time()
+    bp, sp = blend_path(name), stage_path(name)
+    fresh = sp.exists() and bp.exists() and sp.stat().st_mtime > bp.stat().st_mtime
     out = _blender_live(j) if live_session(name) else _blender(j)
+    if fresh:  # the stage holds no hair (looks show the spec's): a hair-only save of scene.blend doesn't stale it
+        os.utime(sp)
     made = next((json.loads(line[7:]) for line in out.splitlines() if line.startswith("@@made")), [])
     return {"made": len(made), "seconds": round(time.time() - t, 1)}
 
@@ -1622,7 +1637,7 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
     changes = {}
     inv = {v: k for k, v in MOD.items()}
     for n, st in got.items():
-        if n == "__deleted__":
+        if n in ("__deleted__", "__new__"):
             continue
         lk = locks.get(n)
         if lk is None:
@@ -1659,14 +1674,50 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
                 if abs(float(v) - float(lk.get(inv[mk], LOCK_DEFAULTS.get(inv[mk], 0.0)))) > 1e-5:
                     new[inv[mk]] = round(float(v), 5)
         if new != lk:
+            new["hand"] = True  # shaped by hand: a regrow (hair.groom) leaves it alone
             locks[n] = new
             changes[f"hair.{n}"] = "edited in the scene"
             log.append(f"hair lock {n}: edited in the scene")
+    for n, st in (got.get("__new__") or {}).items():  # curves added in Blender (Shift+D on a lock, or drawn new)
+        if n in locks:
+            log.append(f"hair lock {n}: added in the scene, but the spec has a lock of that name: not pulled")
+            continue
+        P = np.asarray(st["pts"], float)
+        a, e, hh = sc.coords(P)
+        new = {"tier": "hand", "hand": True,
+               "pts": [[round(float(a[i]), 2), round(float(e[i]), 2), round(float(hh[i]), 4)] for i in range(len(P))]}
+        if st.get("handles"):
+            H = []
+            for hd in st["handles"]:
+                if hd:
+                    a1, e1, h1 = sc.coords(np.asarray(hd[:3]))
+                    a2, e2, h2 = sc.coords(np.asarray(hd[3:]))
+                    H.append([round(float(v), 4) for v in (a1, e1, h1, a2, e2, h2)])
+                else:
+                    H.append(None)
+            new["handles"] = H
+        for k in ("radius", "tilt"):
+            vals = st.get(k) or []
+            if vals and any(abs(v - (1.0 if k == "radius" else 0.0)) > 1e-4 for v in vals):
+                new[k] = vals
+        for mk, v in (st.get("inputs") or {}).items():
+            if mk in inv:
+                new[inv[mk]] = round(float(v), 5)
+        new.setdefault("width", 0.03)
+        new.setdefault("thickness", 0.006)
+        locks[n] = new
+        changes[f"hair.{n}"] = "added in the scene"
+        log.append(f"hair lock {n}: added in the scene")
+    removed = h.setdefault("removed", [])
     for n in got.get("__deleted__", []):
         if n in locks:
             locks.pop(n)
+            if n not in removed:  # a regrow mustn't bring it back
+                removed.append(n)
             changes[f"hair.{n}"] = "deleted in the scene"
             log.append(f"hair lock {n}: deleted in the scene")
+    if not removed:
+        h.pop("removed", None)
     return changes
 
 
@@ -2034,10 +2085,14 @@ def model_lines(name: str, sc: Scalp, cam: dict, spec: dict) -> dict:
     locks = (spec.get("hair") or {}).get("locks") or {}
     cl = {}
     for n, lk in locks.items():
-        if lk.get("tier") != "drawn" or n.endswith("_under"):
+        if lk.get("tier") not in ("drawn", "hand") or n.endswith("_under"):
             continue
         p = np.asarray(lk["pts"], float)
         Q = sc.point(p[:, 0], p[:, 1], p[:, 2])
+        if lk.get("tier") == "hand":  # locks added by hand anywhere: only those the camera sees (a back lock's spine
+            # projected across the face, and the clump match could pick it)
+            if float(np.mean(_unit(Q - sc.C) @ _unit(np.asarray(cam["eye"]) - sc.C))) < 0.2:
+                continue
         cl[n] = project_ref(cam, _catmull(Q, 24)).tolist()
     out["clumps"] = cl
     q = part_line(sc, g)
