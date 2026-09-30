@@ -887,6 +887,62 @@ regresses, bisect by building one spec at each commit and diffing heights.
   their bed step/offset, a matching wet band in their views); rock colour is now theirs per cell.
   Views: an eye near a pit or skylight must stand within a few metres of it (from 10+ m the ground hides it), and a
   render job's `box` applies to every view in it.
+- Cliff overlay + baked maps (2026-09-29, "cliffs" agent; the user: games put 3D cliff faces over the heightmap, and
+  the caves read low-poly/sawtooth). export.tiles `mode`: "cliffs" (default) | "full".
+  - `terrain_cliffs.py`: `Region` (S = steep > `cliff_slope` 42 deg + the rock character's mask, grown `cliff_margin`,
+    and round openings; pointwise, a grid read bilinearly), the ground = heightmap eroded in plan by a ball of radius
+    push x S (push = relief + 0.6 m, only `push_open` 0.9 m round openings: pushed deeper round a lava skylight it
+    went through the tube's roof and every round of holes pushed it further), holes = heightmap cells standing in a
+    void (iterated with the region). `CliffField` = a closed rock shell: front = the full field with its ground part
+    sunk by sink x (1 - S), back = `thick` m behind the smooth ground or `cave_wall` m round a void, joined by smax
+    (a hard max shaded shards); where sink(1 - S) > thick it pinches out buried: no open edges. Points away from the
+    region and voids return +1e3 (air), so each void's box is grown to hold its whole shell (the tube's own box is cut
+    ~2 m under its floor: the shell ended in a flat face there with zero normals). The same tile machinery meshes it
+    (`_tile_mc` reads `zpad`/`vol_pad`, `empty` skips tiles); faces off the visible front are primitive role
+    "buried" (the seam check merges them for structure, shards count the visible ones). Ground tiles:
+    heightmap npy/png, holes png, grid GLBs (stride 2^k, vertical skirts), `ground_check` (borders, heightmap never in
+    a void, never through a cliff face).
+  - `terrain_sharp.py`: extended marching cubes on the exact field (per cell with a normal cone > 20 deg: QEF vertex,
+    fan, flip edges onto the crease; patches at tile borders keep their boundary, so chains stay canonical) and
+    `crease_error` (sharp edges' distance off the surface, face normals vs the field's). Modest on its own (dense tile:
+    crease p95 7.2 -> 6.5 cm, normals p95 17.9 -> 16.1 deg): half the sawtooth was sub-voxel bed ramps, now 2 voxels
+    wide in the meshed field, the crisp notch in the maps.
+  - `terrain_bake.py`: per tile per LOD its own atlas (faces labelled by the axis they face, smoothed; components;
+    split where the projection overlaps and where longer than half the atlas; placed bottom-left on 4-texel blocks by
+    FFT correlation; atlas as tall as used), then every texel projected onto the front field + `micro_relief`
+    (bake-only facets 1.2/0.45 m, cracks, the bedding notch, laminae; band-limited to the LOD's texel: unfiltered it
+    aliased and the two sides of a border disagreed), normal (tangent, +Y up the image, our TANGENT), height,
+    AO (field SDF samples along 5 directions), base colour and weights from a 0.4 m normal (the fine normal flipped
+    rock/grass per texel), roughness. Gutters are baked by extrapolating the nearest chart triangle. Ground maps use
+    planar uv with texel centres on the tile edges (a half-texel inset put the sides a texel apart). The Materials
+    bed tone eases between beds (a step aliased). `map_seams` decodes both sides' maps at shared border points
+    (limits per LOD `MAP_SEAM`). Tiling layer textures (`layer_textures`: tileable spectra, no Voronoi honeycomb) +
+    the manifest's `engine_recipe`; `render_tiles(textured="layered")` builds it in Blender (box-projected height per
+    layer x _WEIGHTS attributes modulating the baked colour and bumping the baked normal).
+  - Lessons: a close view magnifies texels: sharp features in maps stair-step (the bed notch at 10 px/m), so LOD 0 is
+    16 px/m and map features are smooth at the texel; geometry creases below ~2 voxels mesh as sawtooth whatever the
+    mesher: put them in the maps.
+  - Round 2 (after the user saw seams and the machine OOM'd twice): NEVER filter across an atlas image (a sparse
+    texel grid + blur bled each chart into its unrelated neighbours: lines along every chart edge, tile borders
+    included): AO is per vertex (identical both sides of a border) interpolated per texel, the 0.4 m normal per texel.
+    Tangents MikkTSpace-style (Blender's glTF importer ignores TANGENT; so do most engines). Colour tone from smooth
+    noise (the facet lattice made a checker of squares). `map_seams` decodes every channel from both sides of each
+    border (world normal, colour, ORM, height, weights) at each LOD and LOD 0 vs the coarsest; `scratch`-style check in
+    Blender (its own tangents) agreed (p95 2.7 deg at LOD 0). `terrain_cliffs.floating`: pieces of the cliff meshes
+    that never reach the heightmap fail the check (a 3 m fin's top cut off by relief, 14 m over the sea; sealed air
+    pockets between the shell and the rock round a cave). Causes fixed: `Field.thin` (a grey opening of H: fins and
+    stack tops narrower than twice the relief's reach take 10% of it), `_drop_specks` (closed pieces < 4 m2 off the
+    tile border), the shell reaches 2 m past the cave wall. Rock geometry: joint sets (`_joints`: three families of long
+    vertical planes, candidate planes ~1.6 m apart each present or not and jittered (many small blocks, a few big),
+    patchy bands of strength, 0.22 m grooves (flat faces, rounded floor, 1.5 voxels wide) fading out a few metres
+    under the open ground (on deep cave walls and at 0.3 m they made black shards); a first version with regular spacing,
+    per-bed stagger and pillowed blocks read as hammered metal from 150 m; the far LODs' maps get half / none of
+    them) and facet size following the
+    face's structure (`_structure_grain`: concave/gully/top of face = small broken facets, buttresses big planes).
+    Wet band edge wanders, roughness varies (`_grain`). Memory: dense meshes streamed through `<out>/_work`, field
+    calls chunked; `WORKER_GB` 2.0 measured; the manifest's `memory_gb` (resources.peak_memory) states each export's
+    peak: pebble 9.1 GB job / 1.07 GB worker / 0.75 GB parent, lava 7.2 GB, alps 10x10 block ~17 GB. MC lattice
+    values are clamped to 3 voxels (a 1e3 "air" pulled a float32 crossing onto a node: "isn't on one lattice edge").
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

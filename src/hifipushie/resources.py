@@ -115,3 +115,51 @@ def guarded(ex, name: str = "job", log=print):
         stop.set()
     if tripped:
         raise MemoryGuardError(f"{name}: stopped, free memory fell to {tripped[0]:.1f} GB")
+
+
+def _pss_gb(pid: int) -> float:
+    try:
+        for ln in Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
+            if ln.startswith("Pss:"):
+                return int(ln.split()[1]) / 2**20
+    except OSError:
+        pass
+    return 0.0
+
+
+def _children(pid: int) -> list:
+    out = []
+    try:
+        for t in os.listdir(f"/proc/{pid}/task"):
+            out += [int(c) for c in Path(f"/proc/{pid}/task/{t}/children").read_text().split()]
+    except OSError:
+        pass
+    return out
+
+
+@contextlib.contextmanager
+def peak_memory(every: float = 0.5):
+    """Samples this process and its worker processes (PSS: shared pages split between them) while the block runs;
+    yields a dict that ends up holding the peaks in GB: job (all processes), worker (the largest one), parent, and
+    the machine's lowest MemAvailable. A heavy job's report should say what it used."""
+    peak = {"job_gb": 0.0, "worker_gb": 0.0, "parent_gb": 0.0, "min_available_gb": meminfo()["available"]}
+    stop = threading.Event()
+    me = os.getpid()
+
+    def watch():
+        while not stop.wait(every):
+            ps = [_pss_gb(c) for c in _children(me)]
+            p0 = _pss_gb(me)
+            peak["parent_gb"] = max(peak["parent_gb"], p0)
+            peak["job_gb"] = max(peak["job_gb"], p0 + sum(ps))
+            peak["worker_gb"] = max([peak["worker_gb"]] + ps)
+            peak["min_available_gb"] = min(peak["min_available_gb"], meminfo()["available"])
+
+    th = threading.Thread(target=watch, daemon=True)
+    th.start()
+    try:
+        yield peak
+    finally:
+        stop.set()
+        for k in peak:
+            peak[k] = round(peak[k], 2)
