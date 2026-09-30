@@ -1023,6 +1023,31 @@ regresses, bisect by building one spec at each commit and diffing heights.
     bowing their planes (~0.4 m over 40 m) fixed that but pushed pebble's LOD 0 shards 0.004 -> 0.011% (limit 0.01).
     `terrain_seams.straight_lines` (also in `views`): Canny off borders/silhouettes, Hough, longest run per peak; a
     ruler = >= 25 m (distance x pixel angle) or >= 40% of the view, and >= 1.6x the view's median edge gradient.
+  - Export speed (2026-09-30, "profiling" agent; the user: "it's taking a very long time to output those rocks").
+    `profiling.py`: spans + counters per process (`count` is also credited to the innermost open span, so "field.solid
+    pts @ bake/surface" says who asked), `Report.pool_map` / `run_jobs` (jobs that unlock jobs) time every pooled job
+    in its worker: wall, busy, utilisation, straggler tail, slowest jobs per stage. The export writes it to the
+    manifest (`profile`), `profile.txt`, the log, and per tile LOD (`lods[k].timing_s`). HIFIPUSHIE_CPROFILE=<dir> dumps
+    a cProfile per job; py-spy (`uvx py-spy record --subprocesses --format raw`) works on the whole export.
+    Measured: the maps bake was 96% of the tile stage's CPU. That was 21M texels (pebble), each ~15 field points
+    (Newton 9, the 0.4 m normal 4, weights 1) at ~17 us, and a field point was ~60% terrain_facets and ~27% value
+    noise. Changes (identical up to fp rounding; the facet change moves values ~1e-15, which on the alps block
+    tips pyfqmr into other, equally valid LODs):
+    - Atlases are baked in pieces (`_textured_prep` -> `_job_bake` -> `_job_finish`, BAKE_PIECE texels, texels in
+      Morton order) as soon as their tile is meshed. `terrain_bake.texels/bake_texels/assemble` are bake() split up.
+    - Facet triangulations are cached per fixed block (GROUP 32).
+    - The joint-band and bed-notch noise are evaluated only where a groove/notch exists.
+    - One BLAS thread per pool worker (`resources.blas_threads`: forked workers inherited 4 and spun them, cpu 5x
+      wall).
+    - 25k-point field calls: memory-bound, +34% throughput at 12-16 workers. The machine saturates ~66k texels/s.
+    - The PSS sampler reads every 2 s (smaps_rollup every 0.5 s kept a parent thread ~40% busy).
+    Pebble 656 -> ~425 s of stages. Alps 3x3 on main after the bedding fix: 938 -> 627 s export. The alps block's
+    critical path is now decimation: a LOD whose budget the previous LOD can't reach falls back to the 265k-face
+    dense mesh with pyfqmr retries (80-210 s a LOD; Overboard card).
+    The per-texel exact bake can't scale much further in numpy: a V3 prototype (height by secant along the low-poly
+    normal, normals from neighbouring texels) cut field points 15 -> 7/texel for ~1.9x, but normals moved p90 4 deg.
+    A compiled field (numba/C) is the next lever (card). For rock design rounds use `preview_tiles` (one LOD, low
+    density, no checks; `examples/terrain_rock_look.py` exports + renders the tiles round a point): ~40 s a tile.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

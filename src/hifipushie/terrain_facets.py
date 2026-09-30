@@ -16,7 +16,8 @@ slivers: slopes stay under the lattice's.
 
 Seeds are decided per point set, deterministically and locally (hashed candidates, a few candidates per cell of a
 grid, accepted in rounds by priority within the disk radius), so any two queries agree on every seed they share: tiles
-evaluate the same field at a shared border. Triangulations are cached per process by the box they cover.
+evaluate the same field at a shared border. Triangulations are cached per process per fixed block (GROUP facet
+sizes square + PAD): boxes fitted to each query missed the cache whenever a later query reached a little further.
 
 `periodicity(fn)`: the strongest peak of the shaded field's autocorrelation above its radial mean, over planes of a few
 orientations: a lattice shows off-centre peaks (0.4-0.55), irregular facets don't (~0.25-0.3)."""
