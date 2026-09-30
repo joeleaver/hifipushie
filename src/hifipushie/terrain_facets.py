@@ -16,7 +16,8 @@ slivers: slopes stay under the lattice's.
 
 Seeds are decided per point set, deterministically and locally (hashed candidates, a few candidates per cell of a
 grid, accepted in rounds by priority within the disk radius), so any two queries agree on every seed they share: tiles
-evaluate the same field at a shared border. Triangulations are cached per process by the box they cover.
+evaluate the same field at a shared border. Triangulations are cached per process per fixed block (GROUP facet
+sizes square + PAD): boxes fitted to each query missed the cache whenever a later query reached a little further.
 
 `periodicity(fn)`: the strongest peak of the shaded field's autocorrelation above its radial mean, over planes of a few
 orientations: a lattice shows off-centre peaks (0.4-0.55), irregular facets don't (~0.25-0.3)."""
@@ -33,12 +34,11 @@ CELL = R_DISK / np.sqrt(2) * 0.999    # candidate grid: at most one seed per cel
 PER = 3                               # candidates per cell
 ROUNDS = 3                            # acceptance rounds (each depends on candidates R_DISK further out)
 PAD = 3.0                             # facet sizes of seeds round the queried points (their triangles are global)
-QUANT = 16.0                          # boxes are rounded out to this many facet sizes (cache hits)
 GAIN = 1.4                            # slope to match the lattice facets' (see facets)
-GROUP = 64.0                          # points are triangulated in pieces this many facet sizes square
+GROUP = 32.0                          # points are triangulated per block this many facet sizes square (+ PAD round)
 CACHE_POINTS = 600_000                # seeds kept in triangulations per process (~200 B each with the lazily built transform)
 PERIODIC = 0.4                        # periodicity() above this: the facets read as a lattice
-_CACHE: list = []
+_CACHE: dict = {}                     # (seed, block i, block j) -> (triangulation, heights), least recently used first
 
 
 def _seeds(lo, hi, seed):
@@ -72,28 +72,34 @@ def _seeds(lo, hi, seed):
     return pts[keep], np.stack([I, J, K], 1)[keep]
 
 
-def _triangulation(lo, hi, seed):
-    for key, clo, chi, tri, val in _CACHE:
-        if key == seed and np.all(clo <= lo) and np.all(chi >= hi):
-            return tri, val
-    pts, ids = _seeds(lo, hi, seed)
-    val = 2 * noise._hash(ids[:, 0], ids[:, 1], ids[:, 2], seed + 9) - 1
-    tri = Delaunay(pts)
-    _CACHE.insert(0, (seed, lo, hi, tri, val))
-    total = 0
-    for n_, e in enumerate(_CACHE):
-        total += len(e[4])
-        if total > CACHE_POINTS and n_ > 0:
-            del _CACHE[n_:]
-            break
-    return tri, val
+def _triangulation(seed, gi, gj):
+    """The Delaunay triangulation of the seeds in block (gi, gj) plus PAD round it, and the seeds' heights. One per
+    block, cached by block (boxes fitted to each query's points missed the cache whenever a later query reached a
+    little further: a cold bake piece spent 3/4 of its field time triangulating)."""
+    key = (seed, gi, gj)
+    hit = _CACHE.pop(key, None)
+    if hit is None:
+        from . import profiling
+        lo = np.array([gi * GROUP - PAD, gj * GROUP - PAD])
+        hi = lo + GROUP + 2 * PAD
+        with profiling.span("facets.triangulate (cache miss)", leaf=True):
+            pts, ids = _seeds(lo, hi, seed)
+            val = 2 * noise._hash(ids[:, 0], ids[:, 1], ids[:, 2], seed + 9) - 1
+            tri = Delaunay(pts)
+        profiling.count("facets.seeds triangulated", len(pts))
+        hit = (tri, val)
+        total = sum(len(v[1]) for v in _CACHE.values()) + len(val)
+        for k in list(_CACHE):
+            if total <= CACHE_POINTS:
+                break
+            total -= len(_CACHE.pop(k)[1])
+    _CACHE[key] = hit
+    return hit
 
 
-def pl2d(q, seed):
-    """The piecewise-linear field at 2D points q (facet units)."""
-    lo = np.floor((q.min(0) - PAD) / QUANT) * QUANT
-    hi = np.ceil((q.max(0) + PAD) / QUANT) * QUANT
-    tri, val = _triangulation(lo, hi, seed)
+def pl2d(q, seed, gi, gj):
+    """The piecewise-linear field at 2D points q (facet units) in block (gi, gj)."""
+    tri, val = _triangulation(seed, gi, gj)
     s = tri.find_simplex(q)
     T = tri.transform[s]
     bc = np.einsum("nij,nj->ni", T[:, :2], q - T[:, 2])
@@ -123,7 +129,7 @@ def facets(p, size, seed, fd, stretch=1.4):
             vals = np.empty(len(k))
             for a_, b_ in zip(cut[:-1], cut[1:]):
                 sel = o[a_:b_]
-                vals[sel] = pl2d(q[sel], seed + 500 * ax)
+                vals[sel] = pl2d(q[sel], seed + 500 * ax, int(g[sel[0], 0]), int(g[sel[0], 1]))
             out[k] += w[k, ax] * vals
     # (triangles of well-spaced seeds tilt less than the lattice's six tetrahedra a cube: median slope 0.11 vs 0.18 a
     # facet size, and the rock read soft and plastered from 5 m. Steeper by GAIN (1.4: median slope 0.15, ~8%

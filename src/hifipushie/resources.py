@@ -81,6 +81,35 @@ def heavy(name: str, log=print):
         f.close()
 
 
+def blas_threads(n: int = 1) -> list:
+    """Set the thread count of every OpenBLAS already loaded in this process (numpy's and scipy's copies), e.g. in a
+    pool worker: forked workers inherit the parent's 4 BLAS threads, and every small matmul (points @ a 3x3 rotation)
+    then spun 4 threads: a 15-worker terrain export ran ~60 busy threads on 24 CPUs, each worker's cpu time 5x its
+    wall time for no gain. Returns the libraries set."""
+    import ctypes
+    done = []
+    try:
+        libs = sorted({ln.split()[-1] for ln in open("/proc/self/maps") if "openblas" in ln.lower() and ".so" in ln})
+    except OSError:
+        return done
+    for path in libs:
+        try:
+            lib = ctypes.CDLL(path)
+        except OSError:
+            continue
+        for sym in ("scipy_openblas_set_num_threads64_", "scipy_openblas_set_num_threads", "openblas_set_num_threads64_",
+                    "openblas_set_num_threads"):
+            if hasattr(lib, sym):
+                getattr(lib, sym)(int(n))
+                done.append(path)
+                break
+    return done
+
+
+def _worker_init(n=1):
+    blas_threads(n)
+
+
 class MemoryGuardError(MemoryError):
     pass
 
