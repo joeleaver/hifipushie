@@ -56,6 +56,13 @@ class FakeDepartment:
         self.cancel: set[str] = set()
         self.cancel_on_progress: set[str] = set()  # told only in the progress reply, not the heartbeat
         self.runner_id = None
+        self.wanted_version = None  # returned in register/heartbeat replies (runner self-update)
+        # public routes (pairing, the install manifest, downloads): see artist_setup
+        self.pairing = "approve"  # | "deny" | "expire" | "pending"
+        self.polls = 0
+        self.codes: dict[str, str] = {}  # one-time code -> token
+        self.install: dict = {}
+        self.files: dict[str, bytes] = {}  # GET /files/<name>
         dept = self
 
         class H(BaseHTTPRequestHandler):
@@ -81,6 +88,10 @@ class FakeDepartment:
                 return True
 
             def do_GET(self):
+                if self.path == "/v1/artists/sculpt/install":
+                    return self._send(200, dept.install)
+                if self.path.startswith("/files/") and self.path[7:] in dept.files:
+                    return self._send(200, raw=dept.files[self.path[7:]], ctype="application/octet-stream")
                 if not self._authed():
                     return
                 if self.path.startswith("/v1/blobs/"):
@@ -102,6 +113,8 @@ class FakeDepartment:
                 return self._send(204)
 
             def do_POST(self):
+                if self.path.startswith("/v1/runner-pairings"):
+                    return self._pairing(json.loads(self._body() or b"{}"))
                 if not self._authed():
                     return
                 body = json.loads(self._body() or b"{}")
@@ -109,13 +122,14 @@ class FakeDepartment:
                 if p == ["v1", "runners", "register"]:
                     dept.registrations.append(body)
                     dept.runner_id = str(uuid.uuid4())
-                    return self._send(200, {"runner_id": dept.runner_id, "heartbeat_secs": 0.3, "poll_secs": 0.5})
+                    return self._send(200, {"runner_id": dept.runner_id, "heartbeat_secs": 0.3, "poll_secs": 0.5,
+                                            "wanted_version": dept.wanted_version})
                 if len(p) == 4 and p[:2] == ["v1", "runners"]:
                     if p[2] != dept.runner_id:
                         return self._send(404, {"error": "no such runner"})
                     if p[3] == "heartbeat":
                         dept.heartbeats.append(body)
-                        return self._send(200, {"cancel": sorted(dept.cancel)})
+                        return self._send(200, {"cancel": sorted(dept.cancel), "wanted_version": dept.wanted_version})
                     if p[3] == "next":
                         try:
                             return self._send(200, dept.tasks.get(timeout=0.5))
@@ -132,6 +146,27 @@ class FakeDepartment:
                         dept.results[tid] = body
                         dept.result_events.setdefault(tid, threading.Event()).set()
                         return self._send(204)
+                return self._send(404, {"error": "no route"})
+
+            def _pairing(self, body):
+                if self.path == "/v1/runner-pairings":
+                    assert body["artist"] == "sculpt" and body["name"] and body["hostname"]
+                    return self._send(200, {"pairing_id": "pr1", "device_secret": "sec", "user_code": "WDJB-MJHT",
+                                            "verify_url": dept.url + "/pair/WDJB-MJHT", "expires_in": 5,
+                                            "poll_secs": 0.05})
+                if self.path == "/v1/runner-pairings/poll":
+                    assert body == {"pairing_id": "pr1", "device_secret": "sec"}
+                    dept.polls += 1
+                    if dept.polls < 3 or dept.pairing == "pending":
+                        return self._send(202, {"status": "pending"})
+                    if dept.pairing == "approve":
+                        return self._send(200, {"status": "approved", "token": TOKEN})
+                    return self._send(410, {"status": "denied" if dept.pairing == "deny" else "expired"})
+                if self.path == "/v1/runner-pairings/redeem":
+                    tok = dept.codes.pop(body.get("code"), None)
+                    if tok is None:
+                        return self._send(410, {"error": "unknown or used code"})
+                    return self._send(200, {"token": tok})
                 return self._send(404, {"error": "no route"})
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)

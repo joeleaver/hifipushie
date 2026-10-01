@@ -4,3 +4,4 @@ workspace/*/build/
 workspace/
 .claude/worktrees/
 docker/assets/
+dist/

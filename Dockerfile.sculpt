@@ -3,7 +3,8 @@
 #
 # Runtime env (set by the department): OXIDEGEN_URL, OXIDEGEN_RUNNER_TOKEN, OXIDEGEN_RUNNER_NAME,
 # OXIDEGEN_RUNNER_MODE=hosted, NVIDIA_DRIVER_CAPABILITIES=all (graphics: the NVIDIA runtime injects the driver's
-# EGL/GL libraries, which Blender's EEVEE uses headless). Nothing listens: the runner dials out.
+# EGL/GL libraries, which Blender's EEVEE uses headless); optional OXIDEGEN_WANTED_VERSION (+ OXIDEGEN_WANTED_REPO):
+# a hifipushie git sha to run instead of the baked one. Nothing listens: the runner dials out.
 
 ARG UBUNTU=ubuntu:24.04
 
@@ -42,10 +43,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libegl1 libgl1 libglvnd0 libglx0 libopengl0 libgles2 libegl-mesa0 libgl1-mesa-dri \
       libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 libsm6 libice6 libxcb1 \
       libxrandr2 libxcursor1 libxinerama1 libwayland-client0 libwayland-cursor0 libwayland-egl1 libdbus-1-3 \
-      libuuid1 fonts-dejavu-core ca-certificates \
+      libuuid1 fonts-dejavu-core ca-certificates git \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 1001 --shell /usr/sbin/nologin sculpt \
  && mkdir -p /work && chown sculpt:sculpt /work
+# uv + git: a box can start the department's pinned hifipushie sha (OXIDEGEN_WANTED_VERSION) over a copy of
+# this venv (artist_update.hosted_update) without a new image
+COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
 COPY --from=blender /opt/blender /opt/blender
 COPY --from=app /opt/python /opt/python
 COPY --from=app /app/.venv /app/.venv
