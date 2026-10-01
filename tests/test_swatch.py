@@ -41,7 +41,35 @@ def test_projection():
     assert b[0] == 0 and np.allclose(uv, [[10, -5], [11, -7]])
 
 
+def test_cells_and_pits_tile():
+    # the polygonal facets (soft-min over the K nearest seeds) and the pits are continuous on the torus
+    h, ids, e = ts.periodic_cells(256, 1.0, 0.2, 5, stretch=1.3)
+    assert max(ts.tileability(h)) < ts.TILE_LIMIT and (e >= 0).all()
+    d, inside = ts.periodic_pits(256, 1.0, 6)
+    assert max(ts.tileability(d)) < ts.TILE_LIMIT and d.min() >= 0
+
+
+def test_stats_and_repetition():
+    S = ts.swatch(None, size=1.0, res=128)
+    st = ts.swatch_stats(S)
+    assert st["slope_octaves"] and st["albedo"]["lum_std"] > 0
+    prof = ts.repetition_profile(S, ps=[0.01, 0.05])
+    assert len(prof) == 2 and all(0 <= c and -1 <= p <= 1 for _, c, p in prof)
+
+
+def test_scan_swatch():
+    # (only where the optional rock_scans pack is present)
+    try:
+        S = ts.scan_swatch("rock_face_03", n=128)
+    except FileNotFoundError:
+        print("  (rock_scans not fetched: skipped)")
+        return
+    assert S["albedo"].shape == (128, 128, 3) and abs(S["albedo"].reshape(-1, 3).mean(0) - 1).max() < 1e-6
+    assert S["height_scale_m"] > 0
+
+
 if __name__ == "__main__":
-    for f in (test_periodic_facets, test_swatch_tiles, test_projection):
+    for f in (test_periodic_facets, test_swatch_tiles, test_projection, test_cells_and_pits_tile,
+              test_stats_and_repetition, test_scan_swatch):
         f()
         print("ok", f.__name__)

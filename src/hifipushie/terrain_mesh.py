@@ -75,6 +75,8 @@ DEFAULTS = {
     "micro": 1.0,          # bake-only fine rock relief (facets, cracks, laminae below the voxel); 0 = none
     "detail": True,        # the tiling rock detail (terrain_swatch): swatches in materials/ and, on cliff tiles, a
                            # strike-binned UV set (TEXCOORD_n, metres) + _DETAIL (strike x, y, side share, bed v)
+    "detail_source": "procedural",  # the swatch: "procedural" (terrain_swatch.swatch) or "scan:<set>" (a CC0
+                           # photoscan from the rock_scans asset pack: terrain_swatch.scan_swatch)
     "checks": True,        # the seam/ground/pattern checks after writing (off for previews)
 }
 
@@ -1160,10 +1162,16 @@ class Materials:
         open_ = np.clip(self.field.value(P + d * N) / d, 0, 1)
         # (lighter with the rock structure: its recesses are already shaded by geometry and the AO map; with this too
         # every slot read as black-outlined)
-        lo = 0.75 if (self.field.rock or {}).get("blocks") else 0.55
+        lo = 0.66 if (self.field.rock or {}).get("blocks") else 0.55
         rc = rc * (lo + (1 - lo) * open_)[:, None]
         c = c * (1 - rock[:, None]) + rc * (1 - 0.55 * tide[:, None]) * rock[:, None]  # wet: its own rock, darker
         return Wm.astype(np.float32), c
+
+
+BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
+              "along": 0.10, "under_ledge": 0.12}
+# block_colour's spread: per bed and per block (+-), thin packages darker, the share of freshly spalled blocks and how
+# much paler (and warmer, per channel) they are; weathering along the beds (+-) and the darkening under each ledge
 
 
 def block_colour(P, N, rc, r, fd, lines=True):
@@ -1183,13 +1191,26 @@ def block_colour(P, N, rc, r, fd, lines=True):
     eb = ease(I["bed_edge"])
     # each bed its own tone (thin packages darker), each block a little different; tones ease to neutral at their edges
     # (equal on both sides: no step to alias); closed joints show only as that tone change and the face's own tilt
-    tone = 1 + (0.08 * (2 * hsh(K, j, 1) - 1) - 0.06 * I["thin"]) * eb
+    # (whole blocks only a little: +-13% per block read as pasted flat rectangles, a patchwork, at 40 m (n01). What
+    # separates faces on real limestone/sandstone is weathering that runs along the beds and down from the ledges, with
+    # soft transitions; the blocks' own geometry and the lines do the rest)
+    tone = 1 + (BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - BLOCK_TONE["thin"] * I["thin"]) * eb
     # (lines=False: the open bed planes and joints are drawn crisp from the lines map, terrain_swatch.structure_lines)
     dark = 0.5 * I["bed_crack"] * (1 - eb) * lines  # (bed planes: faint; the geometry draws the ledges)
+    fresh = np.zeros(len(P))
+    # (a block's tone is not uniform across it: weathering wanders within the face, and a spall bares only part of it;
+    # a flat tone per block with crisp edges read as masonry tiles)
+    within = noise.fbm(P, 1.6, 2, seed=sd + 6)
+    spall = smoothstep(0.4, 0.6, noise.fbm(P, 1.8, 2, seed=sd + 7))  # (0.7 m read as camouflage at 40 m)
     for m, (bi, w) in enumerate(zip(I["blocks"], I["weights"])):
-        tone = tone * (1 + w * 0.06 * (2 * hsh(bi, (K * 16 + j) * 5 + m, 2) - 1) * ease(I["edges"][m]))
+        jj = (K * 16 + j) * 5 + m
+        e_m = ease(I["edges"][m])
+        tone = tone * (1 + w * BLOCK_TONE["block"] * (2 * hsh(bi, jj, 2) - 1) * e_m * (0.55 + 0.9 * within))
+        fresh = np.maximum(fresh, w * (hsh(bi, jj, 3) < BLOCK_TONE["p_fresh"]) * e_m * spall)
         if lines:
             dark = np.maximum(dark, w * (1 - ease(I["open"][m])))  # (open joints only: most boundaries are closed)
+    # freshly spalled faces: paler and warmer (unweathered rock under the grey patina)
+    tone = tone * (1 + BLOCK_TONE["fresh"] * fresh * eb)
     dark = np.maximum(dark, np.clip(1.6 * I["master"], 0, 1))  # (master joints: always open)
     tone = tone * (1 - 0.18 * dark)
     # stains: dark streaks hanging from the ledges (each super-bed's top), 0.25-0.8 m wide, 2-12 m long, narrowing and
@@ -1213,7 +1234,16 @@ def block_colour(P, N, rc, r, fd, lines=True):
         down = np.clip(1 - d / L, 0, 1) ** 1.5 * np.clip(d / 0.3, 0, 1)
         stain = np.maximum(stain, on * (across * (2 - across)) * down)
     tone = tone * (1 - 0.32 * stain * patch * vert)
-    out = rc * tone[:, None]
+    # weathering along the beds: tone bands a few metres long and under a metre tall, following the bed coordinate
+    # (soft: no edge to alias), and each ledge's underside darker for a metre or so (runoff and shade), easing in from
+    # the plane itself (a step there aliases in the maps)
+    bz = P[:, 2] + zoff
+    band = noise._value_noise(np.ascontiguousarray(np.c_[u / 6.0, bz / 0.9, K1 * 0.37]), sd + 8)
+    tone = tone * (1 + BLOCK_TONE["along"] * (2 * band - 1) * vert)
+    ul = np.exp(-d / 1.2) * smoothstep(0.0, 0.2, d) * (0.5 + noise._value_noise(
+        np.ascontiguousarray(np.c_[u / 9.0, K1 * 0.53, np.zeros(len(P))]), sd + 9))
+    tone = tone * (1 - BLOCK_TONE["under_ledge"] * ul * vert)
+    out = rc * tone[:, None] * (1 + (fresh * eb)[:, None] * np.array(BLOCK_TONE["warm"]))
     # lichen on tops: up-facing ledges and block tops, patchy, a dull grey-green (pale lichen read as foam on the ledges)
     up = np.clip((N[:, 2] - 0.4) / 0.35, 0, 1)
     li = np.clip((noise.fbm(P, 0.9, 2, seed=sd + 5) - 0.55) / 0.2, 0, 1) * up
@@ -2061,14 +2091,14 @@ def build_field(T, cfg=None):
     return Field(T, vols, rock, dolines=[d for cv in caves for d in cv.dolines]), vols, notes, caves
 
 
-def _swatch(out, rock):
+def _swatch(out, rock, macro_density=8.0, source="procedural"):
     """terrain_swatch.write(out, rock, "rock"), or what the last export wrote when the swatch's inputs (the rock's seed,
     the swatch's code) and its files are the same."""
     import pickle
     from . import codehash, terrain_swatch
     from . import terrain_incremental as inc
     key = inc._h(codehash.digest("terrain_swatch"), int((rock or {}).get("seed", 4242)), terrain_swatch.SIZE,
-                 terrain_swatch.RES)
+                 terrain_swatch.RES, float(macro_density), str(source))
     p = out / "_incremental" / "swatch.pkl"
     files = lambda de: sorted(v for v in de.values() if isinstance(v, str) and v.startswith("materials/"))
     try:
@@ -2077,7 +2107,7 @@ def _swatch(out, rock):
             return de
     except Exception:
         pass
-    de = terrain_swatch.write(out, rock, "rock")
+    de = terrain_swatch.write(out, rock, "rock", macro_density=float(macro_density), source=source)
     p.parent.mkdir(exist_ok=True)
     p.write_bytes(pickle.dumps((key, de, inc.files_key(out, files(de)))))
     return dict(de)
@@ -2136,7 +2166,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if cfg.get("detail") and base.rock is not None:  # (the tiling detail's projection, read by the workers)
         from . import terrain_swatch
         _CTX["detail"] = terrain_swatch.DetailProjection(base, base.rock)
-        de = _swatch(out, base.rock)  # (the last export's, when its seed and code are the same: 3-4 s)
+        de = _swatch(out, base.rock, cfg["texel_density"][0], cfg["detail_source"])  # (cached by seed + code)
         de.update(texcoord=1 + bool(int(cfg["splat"])), bins=_CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
                   layers=[nm for nm in ("rock", "wet_rock") if nm in mats.layers], recipe=terrain_swatch.RECIPE,
                   gltf=("each cliff tile LOD's baked material carries extras.hifipushie_detail: texture indices of "
@@ -3218,7 +3248,7 @@ def _job_bake(args):
     if c.get("detail") is not None and c["cfg"].get("lines", True):
         from . import terrain_swatch
         tx_ = 1.0 / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)]
-        lines = lambda X: terrain_swatch.structure_lines(c["base"], X, tx_)
+        lines = lambda X, N: terrain_swatch.structure_lines(c["base"], X, tx_, N=N)
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines)
@@ -3869,7 +3899,7 @@ def border_segments(out_dir, lod=0):
 
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
-                 parts="all", textured=True, channel=None, ids=False):
+                 parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -3929,7 +3959,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                          "height": str((out / D["height"]).resolve()), "height_m": D["height_m"], "rock": rock,
                          "bins": D["bins"], "line_d": D.get("line_d", 0.5),
                          "variation": str((out / D["variation"]).resolve()), "variation_m": D["variation_m"],
-                         "variation_scale": D["variation_scale"], "variation_offset": D["variation_offset"]}
+                         "variation_scale": D["variation_scale"], "variation_offset": D["variation_offset"],
+                         "fade": (D.get("fade") or {}).get("footprint_m") if detail_fade else None, "show": detail_show}
     if any(v.get("borders") for v in views):
         np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
         job["borders"] = str(out / "borders.npz")
