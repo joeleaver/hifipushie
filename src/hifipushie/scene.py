@@ -37,8 +37,12 @@ LIVE_PORT = int(__import__("os").environ.get("BLENDER_MCP_PORT", "9876"))
 
 def _live_call(code: str, timeout: float = 600.0, port: int | None = None) -> dict | None:
     """Run Python in a person's running Blender over the Blender MCP add-on's socket (JSON + NUL). None when
-    no Blender is listening."""
+    no Blender is listening, or when HIFIPUSHIE_NO_LIVE is set (an oxidegen artist runner: specs are data, and no
+    tool may reach a Blender session on the host)."""
+    import os
     import socket
+    if os.environ.get("HIFIPUSHIE_NO_LIVE"):
+        return None
     try:
         with socket.create_connection(("localhost", port or LIVE_PORT), timeout=1.0) as sock:
             sock.settimeout(timeout)

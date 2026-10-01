@@ -74,6 +74,26 @@ Point the client at the checkout with an absolute path, and give models a fixed 
 }
 ```
 
+## Run as an oxidegen artist
+
+hifipushie can also be the `sculpt` artist of an [oxidegen](https://oxidegen.jkbase.app) Art Department, as a
+local runner on your machine. Mint a runner token in oxidegen (Account -> Tokens), then from the checkout:
+
+```sh
+OXIDEGEN_RUNNER_TOKEN=<token> uv run hifipushie-artist
+```
+
+(or put the token in `~/.config/hifipushie/runner-token`). The runner dials out to the department and pulls work;
+nothing listens on your machine. Options: `--url` (`OXIDEGEN_URL`, default https://oxidegen.jkbase.app), `--name`
+(default the hostname), `--work-root` (session workspaces, default `~/.cache/hifipushie-artist`), `--assets` (the
+GNM/MakeHuman packs; default `$HIFIPUSHIE_ASSETS`, else `./workspace/_templates`). `--capabilities` prints what it
+offers and exits.
+
+Each department session works on one model or terrain in its own workspace (deleted when the session closes), in a
+worker process the department can cancel (Blender included). Tools take no `name` and no host paths: reference
+images arrive as library versions, exports go back as files. The live-Blender socket is off in runner mode
+(`HIFIPUSHIE_NO_LIVE=1`). Standalone use (`hifipushie-mcp`) is unchanged.
+
 ## Models and examples
 
 Models live in `workspace/<name>/` under the directory the server runs in (override with `HIFIPUSHIE_HOME`):

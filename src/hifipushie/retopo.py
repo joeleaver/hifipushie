@@ -50,6 +50,10 @@ STATIONS = np.linspace(0.0, 1.0, 5)  # along each bone, where radii are measured
 
 def load_template(name: str = "male_stylized") -> dict:
     """{P verts, L loops, S sizes, J joints (mirrored), face json, name}."""
+    # the name comes from the spec (base.template): only the templates shipped in templates/, never a path
+    have = sorted(p.stem for p in TEMPLATES.glob("*.npz"))
+    if name not in have:
+        raise ValueError(f"base template {name!r}: no such template (have {', '.join(have)})")
     z = np.load(TEMPLATES / f"{name}.npz")
     J = json.loads((TEMPLATES / f"{name}_joints.json").read_text())
     return {"name": name, "P": z["verts"].astype(np.float64), "L": z["loops"].astype(np.int64),

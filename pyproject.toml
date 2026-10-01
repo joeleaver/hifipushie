@@ -23,7 +23,13 @@ dependencies = [
 hifipushie-mcp = "hifipushie.server:main"
 hifipushie-import = "hifipushie.server:import_main"
 hifipushie-assets = "hifipushie.assets:main"
+hifipushie-artist = "hifipushie.artist:main"
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
