@@ -1000,7 +1000,8 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
             + "\nmaps: " + ", ".join(Path(v).name for a in info["atlases"].values() for v in a["maps"].values()))
     if not preview:
         return text
-    im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide)
+    im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide,
+                       lighting=(store.load(name).get("style") or {}).get("look"))
     return [_out(im, save), text]
 
 
