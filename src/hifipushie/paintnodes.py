@@ -174,13 +174,28 @@ class _Compiler:
                     "within": within, "soft": soft}
         if gen == "image":  # a projected decal, drawn per pixel from the image file (images.frame)
             from . import images
-            fr = images.frame(self.spec, e["image"], self.expanded(), what=f"paint {layer!r} image")
+            parts = None if "*" in self.parts else list(self.parts)
+            fr = images.frame(self.spec, e["image"], self.expanded(), what=f"paint {layer!r} image", parts=parts)
             if self.mirror_images:  # a ".L" layer of decals: the mirrored placement too, the picture unmirrored
                 fr["mirror"] = True
-            return {**out, "gen": "image", **{k: fr[k] for k in ("path", "c", "right", "up", "dir", "w", "h", "depth",
-                                                                   "facing", "channel", "flip", "mirror")},
-                    "mirrored": {k: v for k, v in images.mirrored(fr).items() if k in ("c", "right", "up", "dir")},
-                    "key": hashlib.sha1(json.dumps(e["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]}
+            keys = ("c", "right", "up", "dir", "o", "k", "seam", "dc")
+            ent = {**out, "gen": "image", **{k: fr[k] for k in ("path", "wrap", "c", "right", "up", "dir", "w", "h",
+                                                                  "depth", "facing", "channel", "flip", "mirror")},
+                   "mirrored": {k: v for k, v in images.mirrored(fr).items() if k in keys},
+                   "key": hashlib.sha1(json.dumps(e["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]}
+            if fr["wrap"] in ("cylinder", "sphere"):  # drawn per pixel from wpos (atan2, asin in nodes)
+                ent.update({k: fr[k] for k in ("o", "k", "r0", "phic", "seam", "dc", "su", "sv", "m", "unroll", "ta", "Rc",
+                                               "sg") if k in fr})
+            elif fr["wrap"] == "surface":  # geodesic coordinates measured per vertex (decalmap, images.project)
+                from . import decalmap
+                def uvw(mir):
+                    return [self.attr("decal", layer, e["image"], parts, mir, comp,
+                                      key=("decal", e["image"], parts, mir, comp, decalmap.VERSION), parts=self.parts)
+                            for comp in range(3)]
+                ent["uv"] = uvw(False)
+                if fr["mirror"]:
+                    ent["uv_mirrored"] = uvw(True)
+            return ent
         if gen == "mask":
             sub = e["mask"]
             return {**out, "gen": "mask", "entries": [self.entry(s, tag, paint._tag(tag, i), None, layer)
@@ -267,6 +282,8 @@ def _attrs(entries: list) -> set:
             out.add(e["stretch"][2])
         if e.get("seed_attr"):
             out.add(e["seed_attr"])
+        out.update(e.get("uv") or [])
+        out.update(e.get("uv_mirrored") or [])
         if e.get("gen") == "mask":
             out |= _attrs(e["entries"])
     return out
@@ -292,6 +309,7 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
         times[k] = time.time() - t
         print(f"[measure] {k}: {times[k]:.1f}s ({len(pos)} points)", file=sys.stderr, flush=True)
     layers = paint.layers(spec)
+    decals: dict = {}
     for attr, fb in (prog["fallbacks"].items() if what in ("all", "masks") else []):
         t = time.time()
         kind = fb[0]
@@ -302,6 +320,21 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
         if kind == "dist":
             _, lname, near = fb
             val[idx] = _distance(spec, lname, near, pos[idx])
+        elif kind == "decal":  # a surface decal's u, v (flipped as asked) and weight, per vertex
+            _, lname, img, on, mir, comp = fb
+            ck = json.dumps([img, on, mir], sort_keys=True, default=str)
+            if ck not in decals:
+                from . import images
+                fr = images.frame(spec, img, paint._expanded(spec), what=f"paint {lname!r} image", parts=on)
+                if mir:
+                    fr = images.mirrored(fr)
+                full = np.zeros((len(pos), 3), np.float32)
+                full[:, :2] = -1.0
+                if len(idx):
+                    u, v, w = images.project(fr, pos[idx], nrm[idx])
+                    full[idx] = np.stack([u, v, w], 1)
+                decals[ck] = full
+            val = decals[ck][:, comp].copy()
         else:
             lname = fb[1]
             ly = layers[lname]

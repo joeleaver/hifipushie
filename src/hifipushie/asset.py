@@ -178,10 +178,36 @@ DECAL_MAX = 2000.0  # texels per metre a decal asks for at most (0.5 mm: small p
 DECAL_GAIN = 16.0  # and at most this many times its part's own density
 
 
-def decal_focus(spec: dict, pn: str, base: float) -> list:
+def _cover(pts: np.ndarray, w: float, h: float) -> list:
+    """Spheres [x, y, z, r] covering a decal's footprint points: one round them all when that fits about as tight
+    as the decal's own half diagonal (planar decals, stickers), else greedy spheres of the decal's smaller side (a
+    label wrapped round a can: one sphere round it all would take the whole can)."""
+    half = 0.5 * float(np.hypot(w, h))
+    c = pts.mean(0)
+    r = float(np.linalg.norm(pts - c, axis=1).max())
+    if r <= 1.15 * half:
+        return [[*c.tolist(), r * 1.05]]
+    rs = 0.6 * min(w, h)
+    left = np.ones(len(pts), bool)
+    out = []
+    while left.any():
+        c = pts[np.flatnonzero(left)[0]]
+        near = left & (np.linalg.norm(pts - c, axis=1) <= 1.6 * rs)
+        c = pts[near].mean(0)  # centred on what it takes
+        inside = np.linalg.norm(pts - c, axis=1) <= rs
+        if not (inside & left).any():
+            inside = np.linalg.norm(pts - c, axis=1) <= np.linalg.norm(pts[near] - c, axis=1).max()
+        left &= ~inside
+        out.append([*c.tolist(), rs * 1.05])
+    return out
+
+
+def decal_focus(spec: dict, pn: str, base: float, box=None) -> list:
     """Focus regions over the part's image decals (paint `image`, images.py), so a picture or a page of text keeps
-    about its own resolution in the atlas: a sphere round each decal, density = the image's pixels per metre
-    (capped at DECAL_MAX) / the part's own density `base` (texels/m), at most DECAL_GAIN, never below 1."""
+    about its own resolution in the atlas: spheres over each decal's footprint as it lies on the surface (wraps
+    included), density = the image's pixels per metre (capped at DECAL_MAX) / the part's own density `base`
+    (texels/m), at most DECAL_GAIN, never below 1. pn is the model part; box (lo, hi): only decals reaching it (a
+    prefab's part is exported from its bake instance: a decal on another instance isn't on its texels)."""
     from . import images, paint
     out = []
     exp = None
@@ -192,14 +218,21 @@ def decal_focus(spec: dict, pn: str, base: float) -> list:
         for img in images.layer_images(ly):
             if exp is None:
                 exp = paint._expanded(spec)
-            fr = images.frame(spec, img, exp, what=f"paint {name!r} image")
+            fr = images.frame(spec, img, exp, what=f"paint {name!r} image", parts=lp)
             want = min(DECAL_MAX, fr["px"][0] / fr["w"], fr["px"][1] / fr["h"])
             k = float(np.clip(want / max(base, 1e-9), 1.0, DECAL_GAIN))
-            r = 0.5 * float(np.hypot(fr["w"], fr["h"])) * 1.05
+            if k <= 1.0:
+                continue
             places = [fr] + ([images.mirrored(fr)] if fr["mirror"] or name.endswith(".L") else [])
             for f in places:
-                if k > 1.0 and not any(np.allclose(o[:4], [*f["c"], r]) for o in out):
-                    out.append([*(float(x) for x in f["c"]), r, k])
+                pts = images.footprint(f)
+                if box is not None:
+                    pts = pts[((pts >= box[0]) & (pts <= box[1])).all(1)]
+                if not len(pts):
+                    continue
+                for s in _cover(pts, f["w"], f["h"]):
+                    if not any(np.allclose(o[:4], s) for o in out):
+                        out.append([*(float(x) for x in s), k])
     return out
 
 
@@ -1028,11 +1061,18 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         return _weight(defs, origin[pn], key)
     focus = {pn: focus_regions(spec, origin[pn]) for pn in areas}
     # image decals keep their own resolution: their density relative to the part's (asked, or what an atlas of
-    # `texture` holds over every part); scene parts only (a prefab's part is in its own frame)
+    # `texture` holds over every part). A prefab's part (or a split slab) takes the decals reaching its own mesh: it
+    # is unwrapped where its bake instance stands, as the scene paints it
     guess = texture * np.sqrt(FILL / max(sum(areas.values()), 1e-9))
+    with np.load(high) as z:
+        hv, hp, hnames = z["verts"], z["part"], [str(n) for n in z["part_names"]]
     for pn in areas:
-        if pn == origin[pn]:
-            dec = decal_focus(spec, pn, w(pn, "texel_density") * (texel_density or guess))
+        box = None
+        if pn != origin[pn] and pn in hnames:
+            pv = hv[hp == hnames.index(pn)]
+            box = (pv.min(0) - 0.01, pv.max(0) + 0.01) if len(pv) else None
+        if pn == origin[pn] or box is not None:
+            dec = decal_focus(spec, origin[pn], w(pn, "texel_density") * (texel_density or guess), box)
             if dec:
                 focus[pn] = focus[pn] + dec
                 log.append(f"{pn}: texel focus over {len(dec)} image decal(s), x{', x'.join(f'{d[4]:.1f}' for d in dec)}")

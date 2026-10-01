@@ -348,7 +348,24 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   into `workspace/_images/` at save and named by its id. `look` draws decals per pixel (text readable in close-ups);
   exports raise the texel density over each decal (up to 2000/m: 4 mm text needs ~0.4 mm texels, ~10 per em; at
   2.5 mm it's grey smudges). A placement that hits nothing on the layer's part is refused at save. Planar
-  projection stretches on steep curvature (a mug's sides past ~45 deg): use two decals or a lower `facing`.
+  projection stretches on steep curvature (a mug's sides past ~45 deg): wrap it instead (`"wrap"`):
+  - `"cylinder"`: a label round a can, mug, bottle, a print round a sleeve. `"axis"`: a bone, [joint, joint],
+    [x, y, z] with `at`, or {"at", "dir"}; default the `at` blob's own axis (a cylinder blob). `at` sets the
+    label's height; `dir` the way its centre faces (default front). Width as `size` [w, h] in metres round the
+    surface, or `"span"`: degrees round (then `size` [null, h] or the image's aspect). `"seam"`: where the wrap is
+    cut (deg from the centre, default 180: behind). The surface's taper at the label is measured: on a taper (a
+    bottle's shoulder) it's fan-cut like a paper neck label (rows round the axis, the ends along the cone's lines,
+    even height; `"unroll": "cone"`), else a cylinder; `"unroll": "arc"` keeps each row's true length at its own
+    radius instead (the ends lean on a taper). Mug: `{"file": ..., "wrap": "cylinder", "at": "body", "span": 300,
+    "size": [null, 0.066]}` (the seam behind, the handle in the gap).
+  - `"sphere"`: a globe or a ball: `at` = the centre, `axis` = the poles (default the blob's z), `span`
+    [round, up] in degrees ([360, 180]: an equirectangular map), or `size` in metres at the surface.
+  - `"surface"`: a sticker that lies on any curved surface like paper (a ball, a car door, a helmet): geodesic
+    coordinates from its centre (`at`, seated on the surface; `up` orients it). Measured per vertex on its own
+    fine mesh, the picture sampled per pixel; stretch left is the surface's own curvature (a sticker the size of
+    a ball's radius drifts ~2 deg at its edge). Costs a few seconds once per placement (cached).
+  Wraps measure the surface of the layer's parts (`"on"`: other parts). `"style": true` runs the picture's
+  colours through the paint style's saturation/value. `.L` layers and `"mirror"` mirror wraps too.
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 

@@ -113,6 +113,25 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   Measured on `img_book` (4.2 mm text): 0.38 mm/texel readable in the GLB, 2.5 mm smudges. `asset.preview(cameras=)`
   renders a GLB through perspective cameras. Examples: `examples/image_decals_src.py` (img_painting, img_book,
   img_disc), `examples/framed_painting.json`; `tests/test_images.py`.
+  Wraps (2026-10-01, `"wrap"`; renders workspace/image_renders/w0*): `cylinder` (axis = bone / two joints / point +
+  dir / the `at` cylinder blob's z; `span` deg or width in m round the surface; `seam` = where the wrap is cut), the
+  surface's radius measured by a ray from the axis (`images._hit`) above and below the centre = a local cone (r0 + m t,
+  also the depth window and facing normal). `unroll` auto: |m| > `TAPER` 0.02 is fan-cut (u = angle x r0, v = slant
+  distance from the apex: rows round the axis, ends along the generators, even height: the main session's call after
+  "arc" (u = arc length at the point's own radius, v = axis height) sheared a shoulder band's ends into a
+  parallelogram). `sphere` (lat/long; span [deg, deg] = equirectangular, or metres at the surface). Both per pixel in
+  nodes (ARCTAN2, FLOORED_MODULO, ARCSINE). `surface` (`decalmap.py`): a discrete exponential map (Schmidt 2006,
+  numba Dijkstra with upwind-averaged coordinates and frames) on its own mesh of the parts' field in a box round the
+  seated centre (reach 1.3 x half diagonal, <= 160 voxels across; the box padded past the model's own bounds: cut at
+  them, a ball's front pole had a hole), cached `_images/m_<key>.npz`; a point is looked up on its nearest triangle.
+  In the scene u, v, weight are measured per vertex (fallback kind "decal", three packed scalars) and the picture
+  sampled per pixel. Against the sphere's exact log map: radius error < 0.5%, angle drift up to ~2 deg at 0.6 rad
+  (a 12 cm sticker on an 11 cm-radius ball: grid lines wobble slightly). `images.footprint` = the decal as it lies
+  on the surface; `asset.decal_focus` covers it with spheres (one round it, or greedy ones of the decal's smaller
+  side for a wrap: one round a can took the whole can) and now does prefab parts / split slabs too (decals reaching
+  their mesh as it stands at the bake instance). `"style": true` = the image through the paint style's HSV
+  (`images.styled_path`, a cached `s_<key>.png`). Examples `examples/image_wraps_src.py` (wrap_mug, wrap_bottle,
+  wrap_sticker), images from `examples/images/make_images.py` (label, neck, sticker).
 - `materials.py`: `{"material": ...}` paint layers expand (`paint.layers`) into sub-layers `<name>:<sub>` built
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first

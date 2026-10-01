@@ -75,7 +75,10 @@ Masks (generators, each 0..1 per point):
            "flip", "mirror"}: an image laid on the surface as a projected decal (a painting, a printed page, a
            label, a logo). With "color": "image" on the layer, the layer paints the image's own colours; otherwise
            (or in a mask stack) it's a mask (a stencil). Text is an image too: {"text": {"string", "font", "size",
-           "color", "align", ...}}. Details: images.py; look shows it per pixel, exports bake it.
+           "color", "align", ...}}. "wrap": "cylinder" (a label round a can or bottle: "axis", "span" deg or
+           size in m round the surface, "seam" deg), "sphere" (a globe, a ball) or "surface" (a sticker lying on any
+           curved surface: geodesic coordinates from its centre). "style": true runs its colours through the
+           paint style. Details: images.py; look shows it per pixel, exports bake it.
   tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
            "mode": "gaps" (1 in the joints, fading over "bevel") | "bevel" (0 at a joint rising to 1: a tile's
            rounded face, for height) | "id" (random per tile)}: bricks, planks, flagstones, shingles.
@@ -370,12 +373,12 @@ def check_refs(spec: dict, prims: list) -> None:
                 expanded = expand_mirror(spec)
             if not isinstance(img, dict):
                 continue
-            fr = images.frame(spec, img, expanded, what=f"paint {name!r} image")
+            fr = images.frame(spec, img, expanded, what=f"paint {name!r} image", parts=lp)
             on = [p for p in prims if p.op == "add" and (lp == "*" or p.part in ([lp] if isinstance(lp, str) else lp))]
             on = [p for p in prims if p.part in {q.part for q in on}]  # with their cuts
             if images.coverage(fr, on) == 0:
-                raise SpecError(f"paint {name!r}: image at {img['at']!r} hits nothing on part(s) {lp!r} within its "
-                                f"depth {fr['depth']:.3f} m of the decal's plane (centre {np.round(fr['c'], 3).tolist()}, "
+                raise SpecError(f"paint {name!r}: image at {img.get('at', img.get('axis'))!r} hits nothing on part(s) "
+                                f"{lp!r} within its depth {fr['depth']:.3f} m of the decal's {fr['wrap']} surface (centre {np.round(fr['c'], 3).tolist()}, "
                                 f"dir {np.round(fr['dir'], 2).tolist()}): check at/dir, or raise depth")
         for ax in _gens(ly, "axis"):
             if isinstance(ax, dict) and "bone" in ax:
@@ -451,11 +454,15 @@ def _check_generator(name: str, g: str, e: dict) -> None:
                 raise SpecError(f"paint {name!r}: image text align is left, center, right or justify")
         if img.get("channel", "alpha") not in images.CHANNELS:
             raise SpecError(f"paint {name!r}: image channel is one of {', '.join(images.CHANNELS)}")
+        wrap = img.get("wrap", "planar")
+        if wrap not in images.WRAPS:
+            raise SpecError(f"paint {name!r}: image wrap is one of {', '.join(images.WRAPS)}")
         sz = img.get("size")
-        if not (isinstance(sz, list) and len(sz) == 2 and any(sz) and all(x is None or float(x) > 0 for x in sz)):
+        if not ((isinstance(sz, list) and len(sz) == 2 and any(sz) and all(x is None or float(x) > 0 for x in sz))
+                or ("span" in img and wrap in ("cylinder", "sphere"))):
             raise SpecError(f"paint {name!r}: image size is [width, height] in m, > 0 (one may be null: from the "
-                            f"image's aspect)")
-        if "at" not in img:
+                            f"image's aspect)" + ("; or a span in degrees" if wrap in ("cylinder", "sphere") else ""))
+        if "at" not in img and not (wrap == "cylinder" and "axis" in img):
             raise SpecError(f"paint {name!r}: image needs \"at\" (its centre: a joint, a blob, [x, y, z])")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
@@ -566,7 +573,8 @@ def apply_channels(spec: dict, pts, base: dict, stats: dict | None = None, masks
                 if c == "color" and ly[c] == "image":  # the picture's own colours (sRGB, as every colour here)
                     from . import images
                     view = _View(pts, idx)
-                    fr = images.frame(spec, ly["image"], _expanded(spec), what=f"paint {name!r} image")
+                    fr = images.frame(spec, ly["image"], _expanded(spec), what=f"paint {name!r} image",
+                                       parts=ly.get("part", "body"))
                     _, val = images.evaluate(fr, view.v, view.n)
                     arr[idx] += a * (val - arr[idx])
                     continue
@@ -802,7 +810,8 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         return _outline_mask(spec, name, e["outline"], v, n)
     if gen == "image":  # a mirrored view (a ".L" layer) sees the picture unmirrored on the other side
         from . import images
-        fr = images.frame(spec, e["image"], _expanded(spec), what=f"paint {name!r} image")
+        on = sorted({view.pts.part_names[i] for i in np.unique(view.pts.part[view.idx])}) if len(view) else None
+        fr = images.frame(spec, e["image"], _expanded(spec), what=f"paint {name!r} image", parts=on)
         if view.mirror:
             fr = {**fr, "flip": not fr["flip"]}
         return images.evaluate(fr, v, n)[0]

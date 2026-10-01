@@ -94,8 +94,72 @@ def logo(S=1024):
     return im
 
 
+def _bold(px):
+    return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", px)
+
+
+def label(W=2400, H=900):
+    """A can/mug label made to show stretching: a cream ground, red and navy stripes, a brand name, a row of circles
+    (ellipses = stretch) and a ruler of ticks every 1/24 of the width (uneven spacing = stretch), opaque."""
+    im = Image.new("RGBA", (W, H), (240, 232, 210, 255))
+    dr = ImageDraw.Draw(im)
+    red, navy = (196, 32, 40, 255), (28, 40, 88, 255)
+    dr.rectangle([0, 70, W, 170], fill=red)
+    dr.rectangle([0, H - 170, W, H - 70], fill=navy)
+    dr.text((W / 2, 330), "PEBBLE COLA", font=_bold(210), fill=navy, anchor="mm")
+    for k in range(12):
+        x = (k + 0.5) * W / 12
+        dr.ellipse([x - 42, 520 - 42, x + 42, 520 + 42], outline=red, width=12)
+    for k in range(25):
+        x = min(k * W / 24, W - 6)
+        dr.rectangle([x - 3, 610, x + 3, 680 if k % 2 else 700], fill=navy)
+    dr.text((W / 2, 205), "ORIGINAL  *  SINCE 1952  *  ORIGINAL", font=_bold(44), fill=(240, 232, 210, 255),
+            anchor="mm")
+    return im
+
+
+def neck(W=1600, H=420):
+    """A bottle's neck band: a gold band, a navy border and lettering, with a ring of dots."""
+    im = Image.new("RGBA", (W, H), (214, 172, 72, 255))
+    dr = ImageDraw.Draw(im)
+    navy = (28, 40, 88, 255)
+    dr.rectangle([0, 0, W, 34], fill=navy)
+    dr.rectangle([0, H - 34, W, H], fill=navy)
+    dr.text((W / 2, H / 2 - 30), "RESERVE  1952", font=_bold(120), fill=navy, anchor="mm")
+    for k in range(16):
+        x = (k + 0.5) * W / 16
+        dr.ellipse([x - 16, H - 110, x + 16, H - 78], fill=navy)
+    return im
+
+
+def sticker(S=1024):
+    """A round sticker with a white border, a star, text and a square grid (to see the surface map's distortion),
+    transparent outside the circle."""
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    dr = ImageDraw.Draw(im)
+    dr.ellipse([8, 8, S - 8, S - 8], fill=(255, 255, 255, 255))
+    dr.ellipse([44, 44, S - 44, S - 44], fill=(28, 96, 168, 255))
+    g = (255, 255, 255, 110)
+    for k in range(1, 8):
+        dr.line([(k * S / 8, 44), (k * S / 8, S - 44)], fill=g, width=5)
+        dr.line([(44, k * S / 8), (S - 44, k * S / 8)], fill=g, width=5)
+    c = S / 2
+    pts = [(c + r * np.sin(a), c - 70 - r * np.cos(a)) for i in range(10)
+           for a, r in [(i * np.pi / 5, 230 if i % 2 == 0 else 95)]]
+    dr.polygon(pts, fill=(250, 200, 40, 255))
+    dr.text((c, 770), "RALLY", font=_bold(150), fill=(255, 255, 255, 255), anchor="mm")
+    # the circle's own alpha (the grid's half-alpha pixels composited over the blue)
+    a = np.asarray(im).copy()
+    yy, xx = np.mgrid[0:S, 0:S]
+    a[..., 3] = np.where(np.hypot(xx - c + 0.5, yy - c + 0.5) <= c - 8, 255, 0)
+    return Image.fromarray(a)
+
+
 if __name__ == "__main__":
     landscape().save(HERE / "landscape.jpg", quality=88)
     logo().save(HERE / "logo.png", optimize=True)
-    for f in ("landscape.jpg", "logo.png"):
+    label().save(HERE / "label.png", optimize=True)
+    neck().save(HERE / "neck.png", optimize=True)
+    sticker().save(HERE / "sticker.png", optimize=True)
+    for f in ("landscape.jpg", "logo.png", "label.png", "neck.png", "sticker.png"):
         print(f, (HERE / f).stat().st_size // 1024, "KB")

@@ -18,7 +18,27 @@ The paint generator `image` lays an image on the surface as a projected decal (p
             "channel": "alpha" (default: the image's coverage, PNG alpha) | "luma" | "r" | "g" | "b" | "coverage"
                 (the whole rectangle),
             "flip": true (mirror the picture left-right), "mirror": true (also at the X-mirrored placement, the
-                picture still reading the right way)}
+                picture still reading the right way),
+            "wrap": "planar" (default) | "cylinder" | "sphere" | "surface" (below),
+            "style": true (the picture's colours through the paint style's saturation and value),
+            "on": part(s) whose surface a wrap measures (default the layer's parts)}
+
+Wraps, so a label isn't stretched round a curved thing:
+  "cylinder": a label round a can, mug or bottle, a print round a sleeve. "axis": a bone | [joint, joint] |
+      [x, y, z] (through "at") | {"at", "dir"}; default the "at" blob's own z axis. "at" sets the label's height
+      (projected onto the axis), "dir" the way its centre faces (off the axis; default front). Width: "size"
+      [w, h] in metres round the surface, or "span": degrees round (height from size [null, h] or the aspect).
+      "seam": deg from the centre where the wrap is cut (180: behind). The surface's radius above and below the
+      centre gives a local cone (r0 + m t); "unroll": "auto" fan-cuts the label on a taper (|m| > TAPER: rows
+      round the axis, the ends along the cone's lines, even height, like a paper neck label) and is a plain
+      cylinder otherwise; "cone" / "arc" force one ("arc": each row its true length at its own radius, v = height
+      along the axis: the ends lean on a taper). Depth = distance off that cone; facing = against its normal.
+  "sphere": a globe or a ball. "at" = the centre, "axis" = the poles (default the blob's z), "dir" = the
+      decal's centre (latitude included). "span": [round, up] degrees ([360, 180]: equirectangular), or "size" in
+      metres at the surface.
+  "surface": a sticker lying on any curved surface: geodesic polar coordinates from its centre ("at", seated on
+      the field; "up" orients it, "dir" only picks a blob's face). decalmap.py; measured per vertex in the scene.
+Cylinder and sphere are computed per pixel in the look's shader nodes (and so in the export's Cycles bake).
 
 As a layer's flat key with "color": "image" the layer paints the image's own colours (masked by the channel);
 with a plain colour, or in a mask stack, it is a mask like any generator (a stencil). Height x mask gives relief:
@@ -51,7 +71,10 @@ MAX_PX = 4096  # a text page's longer side at most
 FACES = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1),
          "bottom": (0, 0, -1)}
 KEYS = {"file", "id", "text", "name", "at", "dir", "up", "size", "rotate", "depth", "facing", "channel", "flip",
-        "mirror"}
+        "mirror", "wrap", "axis", "seam", "span", "style", "on", "unroll"}
+WRAPS = ("planar", "cylinder", "sphere", "surface")
+UNROLLS = ("auto", "cone", "arc")
+TAPER = 0.02  # |d radius / d height| over a cylinder wrap's label above which "auto" unrolls it as a cone
 TEXT_KEYS = {"string", "font", "size", "color", "background", "align", "margin", "line", "px_per_m"}
 CHANNELS = ("alpha", "luma", "r", "g", "b", "coverage")
 FONT_DIRS = ["/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/dejavu", "/usr/share/fonts/TTF",
@@ -286,6 +309,31 @@ def image_size(path: Path) -> tuple[int, int]:
         return im.size
 
 
+# ---- style --------------------------------------------------------------------------------------------------------
+
+def styled_path(path: Path, st: dict) -> Path:
+    """The image with the paint style's saturation and value applied per pixel (paint.style_rgb's HSV scaling, in
+    sRGB as every colour here), cached by content: "style": true on an image."""
+    from PIL import Image
+    sat, val = float(st.get("saturation", 1.0)), float(st.get("value", 1.0))
+    if sat == 1.0 and val == 1.0:
+        return path
+    key = hashlib.sha1(Path(path).read_bytes() + json.dumps([sat, val]).encode()).hexdigest()[:16]
+    out = store_dir() / f"s_{key}.png"
+    if not out.exists():
+        with Image.open(path) as im:
+            rgba = np.asarray(im.convert("RGBA"))
+        hsv = np.asarray(Image.fromarray(np.ascontiguousarray(rgba[..., :3])).convert("HSV")).astype(np.float32)
+        hsv[..., 1] = np.clip(hsv[..., 1] * sat, 0, 255)
+        hsv[..., 2] = np.clip(hsv[..., 2] * val, 0, 255)
+        rgb = np.asarray(Image.fromarray(np.round(hsv).astype(np.uint8), "HSV").convert("RGB"))
+        tmp = out.with_suffix(".tmp.png")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(np.dstack([rgb, rgba[..., 3]])).save(tmp)
+        tmp.replace(out)
+    return out
+
+
 # ---- placement ----------------------------------------------------------------------------------------------------
 
 def _unit(v, what):
@@ -296,22 +344,123 @@ def _unit(v, what):
     return v / n
 
 
-def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "image") -> dict:
+_PRIMS: dict = {}  # a frame's "geo" -> the primitives its surface is measured on (surface maps)
+
+
+def prims_on(spec: dict, parts) -> list:
+    """The primitives of these parts (their cuts too): what a wrap measures its surface on. None / "*": every part."""
+    from .spec import compile_prims
+    prims = compile_prims(spec)
+    if parts is None or parts == "*" or (not isinstance(parts, str) and "*" in parts):
+        return list(prims)
+    parts = [parts] if isinstance(parts, str) else list(parts)
+    return [p for p in prims if p.part in parts]
+
+
+def _geo(prims) -> str:
+    from . import sdf
+    g = hashlib.sha1(json.dumps(sorted(sdf.fingerprint(p) for p in prims)).encode()).hexdigest()[:16]
+    _PRIMS[g] = prims
+    if len(_PRIMS) > 32:
+        _PRIMS.pop(next(iter(_PRIMS)))
+    return g
+
+
+def _hit(prims, o, d, what) -> float:
+    """Distance along d from o to the outermost surface crossing (marched in from outside the model)."""
+    from . import sdf
+    adds = [p for p in prims if p.op == "add"]
+    if not adds:
+        raise SpecError(f"{what}: no surface to wrap onto (the parts have no primitives)")
+    lo, hi = np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)
+    corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+    tmax = float(np.linalg.norm(corners - o, axis=1).max()) + 0.01
+    t = np.linspace(tmax, 0.0, 400)
+    f = sdf.field_at(prims, o + t[:, None] * d)
+    idx = np.flatnonzero((f[:-1] > 0) & (f[1:] <= 0))
+    if not len(idx):
+        raise SpecError(f"{what}: the wrap's centre ray (from {np.round(o, 3).tolist()} along "
+                        f"{np.round(d, 2).tolist()}) hits nothing on the decal's parts")
+    a, b = t[idx[0]], t[idx[0] + 1]
+    for _ in range(40):
+        m = 0.5 * (a + b)
+        if sdf.field_at(prims, (o + m * d)[None])[0] > 0:
+            a = m
+        else:
+            b = m
+    return 0.5 * (a + b)
+
+
+def _axis(s: dict, img: dict, blob, R, what):
+    """(a point on the axis, unit direction) of a cylinder/sphere wrap: "axis" = a bone | [joint or xyz, joint or
+    xyz] | [x, y, z] (a direction through "at") | {"at", "dir"}; default the "at" blob's own z axis (a cylinder
+    blob: a can, a bottle), or world Z through "at"."""
+    from .spec import resolve_point
+    ax = img.get("axis")
+    at = img.get("at")
+    if ax is None:
+        if at is None:
+            raise SpecError(f"{what}: a {img.get('wrap')} wrap needs \"axis\" (a bone, [joint, joint] or "
+                            f"{{\"at\", \"dir\"}}) or \"at\" (a cylinder blob, or a point the axis runs up through)")
+        return resolve_point(s, at), R @ np.array([0, 0, 1.0])
+    if isinstance(ax, str):
+        b = (s.get("bones") or {}).get(ax)
+        if b is None:
+            raise SpecError(f"{what}: axis bone {ax!r} doesn't exist")
+        a, bb = resolve_point(s, b["a"]), resolve_point(s, b["b"])
+        return 0.5 * (a + bb), _unit(bb - a, f"{what} axis")
+    if isinstance(ax, dict):
+        if "dir" not in ax:
+            raise SpecError(f"{what}: axis {{\"at\", \"dir\"}} needs dir")
+        o = resolve_point(s, ax["at"]) if "at" in ax else (resolve_point(s, at) if at is not None else None)
+        if o is None:
+            raise SpecError(f"{what}: axis needs \"at\" (a point on it)")
+        return o, _unit(ax["dir"], f"{what} axis dir")
+    if isinstance(ax, list) and len(ax) == 3 and all(isinstance(x, (int, float)) for x in ax):
+        if at is None:
+            raise SpecError(f"{what}: axis [x, y, z] is a direction: give \"at\" (a point on the axis) too")
+        return resolve_point(s, at), _unit(ax, f"{what} axis")
+    if isinstance(ax, list) and len(ax) == 2:
+        a, bb = resolve_point(s, ax[0]), resolve_point(s, ax[1])
+        return 0.5 * (a + bb), _unit(bb - a, f"{what} axis")
+    raise SpecError(f"{what}: axis is a bone, [joint, joint], [x, y, z] (with at) or {{\"at\", \"dir\"}}")
+
+
+def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "image", parts=None) -> dict:
     """The decal's placement in world space: centre c, unit right/up/dir, size w x h (m), depth, facing, and the
-    image file. Computed from the spec (joints and blobs follow edits)."""
+    image file. Computed from the spec (joints and blobs follow edits). parts: the layer's parts (the surface a
+    wrap is measured on; an image's own "on" wins)."""
     from .spec import euler_matrix, expand_mirror, resolve_point
     bad = set(img) - KEYS
     if bad:
         raise SpecError(f"{what}: unknown keys {sorted(bad)} (have {', '.join(sorted(KEYS))})")
-    if "at" not in img:
+    wrap = img.get("wrap", "planar")
+    if wrap not in WRAPS:
+        raise SpecError(f"{what}: wrap is one of {', '.join(WRAPS)}")
+    if "at" not in img and not (wrap == "cylinder" and "axis" in img):
         raise SpecError(f"{what}: needs \"at\" (the decal's centre: a joint, a blob, [x, y, z])")
+    for k in ("axis", "seam", "span"):
+        if k in img and wrap not in ("cylinder", "sphere"):
+            raise SpecError(f"{what}: {k} is for wrap cylinder or sphere")
+    if "rotate" in img and wrap in ("cylinder", "sphere"):
+        raise SpecError(f"{what}: rotate is for planar and surface decals (a wrap's picture runs round its axis)")
     s = expanded if expanded is not None else expand_mirror(spec)
-    at = img["at"]
+    at = img.get("at")
     blob = (s.get("blobs") or {}).get(at) if isinstance(at, str) else None
     if isinstance(at, str) and at not in (s.get("joints") or {}) and blob is None:
         raise SpecError(f"{what}: at {at!r} is no joint or blob")
-    c = resolve_point(s, at)
     R = euler_matrix(blob.get("rot", [0, 0, 0])) if blob is not None else np.eye(3)
+    path = source_path(img)
+    if img.get("style"):
+        path = styled_path(path, (spec.get("style") or {}).get("paint") or {})
+    pw, ph = image_size(path)
+    ch = img.get("channel", "alpha")
+    if ch not in CHANNELS:
+        raise SpecError(f"{what}: channel is one of {', '.join(CHANNELS)}")
+    base = {"path": str(path), "wrap": wrap, "facing": float(img.get("facing", 0.3)), "channel": ch,
+            "flip": bool(img.get("flip", False)), "mirror": bool(img.get("mirror", False)), "px": [pw, ph]}
+    if wrap in ("cylinder", "sphere"):
+        return {**base, **_wrap_frame(spec, s, img, blob, R, wrap, pw, ph, parts, what)}
     d = img.get("dir", "front" if blob is not None else [0, -1, 0])
     named = isinstance(d, str)
     if named:
@@ -319,6 +468,45 @@ def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "imag
             raise SpecError(f"{what}: dir {d!r} is a vector or one of {', '.join(FACES)}")
         d = R @ np.array(FACES[d], float)
     d = _unit(d, f"{what} dir")
+    c = resolve_point(s, at)
+    if blob is not None:  # onto the blob's face along dir
+        size = np.asarray(blob.get("size", [0.05] * 3), float)
+        loc = R.T @ d
+        if blob.get("shape") == "box":
+            ext = float(np.abs(loc) @ size)
+        elif blob.get("shape") == "cylinder":
+            ext = float(np.hypot(loc[0] * size[0], loc[1] * size[1]) + abs(loc[2]) * size[2])
+        else:
+            ext = float(np.linalg.norm(loc * size))
+        c = c + d * ext
+    sz = img.get("size")
+    if not (isinstance(sz, list) and len(sz) == 2 and (sz[0] or sz[1])):
+        raise SpecError(f"{what}: size is [width, height] in m (one may be null: from the image's aspect)")
+    w = float(sz[0]) if sz[0] else float(sz[1]) * pw / ph
+    h = float(sz[1]) if sz[1] else w * ph / pw
+    if w <= 0 or h <= 0:
+        raise SpecError(f"{what}: size must be > 0")
+    geo = None
+    if wrap == "surface":  # seated on the field: the centre and its normal are the surface's own
+        from . import sdf
+        prims = prims_on(spec, img.get("on", parts))
+        if not prims:
+            raise SpecError(f"{what}: no surface to lay the decal on (parts {img.get('on', parts)!r})")
+        geo = _geo(prims)
+        def fg(x, h=1e-5):  # unclipped: the centre may start well off the surface
+            st = np.vstack([x, x + np.eye(3) * h])
+            f = sdf.field_at(prims, st, clip=False)
+            return f[0], (f[1:] - f[0]) / h
+        for _ in range(12):
+            f, g = fg(c)
+            c = c - (f / max(float(g @ g), 1e-12)) * g
+        f, g = fg(c)
+        if abs(f) > 1e-3 * max(w, h):
+            raise SpecError(f"{what}: couldn't seat the decal's centre on the surface (left {f:.4f} m off)")
+        n0 = _unit(g, f"{what} surface normal")
+        if n0 @ d < -0.2 and "dir" in img:
+            raise SpecError(f"{what}: the surface at the centre faces away from dir")
+        d = n0
     if "up" in img:
         up = _unit(img["up"], f"{what} up")
     elif named:
@@ -333,42 +521,126 @@ def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "imag
     rot = np.radians(float(img.get("rotate", 0.0)))
     if rot:
         right, up = np.cos(rot) * right + np.sin(rot) * up, -np.sin(rot) * right + np.cos(rot) * up
-    if blob is not None:  # onto the blob's face along dir
-        size = np.asarray(blob.get("size", [0.05] * 3), float)
-        loc = R.T @ d
-        if blob.get("shape") == "box":
-            ext = float(np.abs(loc) @ size)
-        elif blob.get("shape") == "cylinder":
-            ext = float(np.hypot(loc[0] * size[0], loc[1] * size[1]) + abs(loc[2]) * size[2])
+    out = {**base, "c": c.tolist(), "right": right.tolist(), "up": up.tolist(), "dir": d.tolist(), "w": w, "h": h}
+    if wrap == "surface":
+        from . import decalmap
+        reach = 0.5 * float(np.hypot(w, h)) * decalmap.REACH
+        vox = max(2 * reach / decalmap.RES, min(w, h) / 60, decalmap.MIN_VOXEL)
+        out.update(geo=geo, reach=reach, voxel=vox, depth=float(img.get("depth", max(0.04 * max(w, h), 3 * vox))))
+    else:
+        out["depth"] = float(img.get("depth", 0.25 * max(w, h)))
+    if out["depth"] <= 0:
+        raise SpecError(f"{what}: depth must be > 0")
+    return out
+
+
+def _wrap_frame(spec, s, img, blob, R, wrap, pw, ph, parts, what) -> dict:
+    """A cylinder or sphere wrap: the axis (o, k), the centre's direction e1 (dir projected off the axis), e2 = k x
+    e1 (the picture's right, seen from outside), the surface's radius at the centre r0 (measured), the seam."""
+    from .spec import resolve_point
+    if wrap == "cylinder":
+        o, k = _axis(s, img, blob, R, what)
+        if img.get("at") is not None:  # the centre's height: "at" projected onto the axis
+            o = o + ((resolve_point(s, img["at"]) - o) @ k) * k
+    else:
+        if img.get("at") is None:
+            raise SpecError(f"{what}: a sphere wrap needs \"at\" (the sphere's centre)")
+        o = resolve_point(s, img["at"])
+        if img.get("axis") is None:
+            k = R @ np.array([0, 0, 1.0])
         else:
-            ext = float(np.linalg.norm(loc * size))
-        c = c + d * ext
-    path = source_path(img)
+            k = _axis(s, img, blob, R, what)[1]
+    d = img.get("dir", "front" if blob is not None else [0, -1, 0])
+    if isinstance(d, str):
+        if d not in FACES:
+            raise SpecError(f"{what}: dir {d!r} is a vector or one of {', '.join(FACES)}")
+        d = R @ np.array(FACES[d], float)
+    d = _unit(d, f"{what} dir")
+    e1 = d - (d @ k) * k
+    if np.linalg.norm(e1) < 1e-3:
+        if wrap == "cylinder":
+            raise SpecError(f"{what}: dir runs along the axis (dir is the way the decal's centre faces, off the axis)")
+        e1 = np.cross(k, [1.0, 0, 0] if abs(k[0]) < 0.9 else [0, 1.0, 0])
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(k, e1)
+    phic = float(np.arcsin(np.clip(d @ k, -1, 1))) if wrap == "sphere" else 0.0
+    cdir = np.cos(phic) * e1 + np.sin(phic) * k  # from o to the decal's centre
+    prims = prims_on(spec, img.get("on", parts))
+    r0 = _hit(prims, o, cdir, what)
+    seam = np.radians(float(img.get("seam", 180.0)))
+    span = img.get("span")
+    su = sv = None
+    if span is not None:
+        sp = span if isinstance(span, list) else [span, None]
+        if not (len(sp) == 2 and sp[0] and float(sp[0]) > 0 and (sp[1] is None or float(sp[1]) > 0)):
+            raise SpecError(f"{what}: span is degrees round the axis (> 0), or [round, up] for a sphere")
+        if sp[1] is not None and wrap == "cylinder":
+            raise SpecError(f"{what}: a cylinder's span is one angle (round the axis); its height is size[1] or "
+                            f"from the image's aspect")
+        su = float(np.radians(float(sp[0])))
+        sv = float(np.radians(float(sp[1]))) if sp[1] is not None else None
     sz = img.get("size")
-    if not (isinstance(sz, list) and len(sz) == 2 and (sz[0] or sz[1])):
-        raise SpecError(f"{what}: size is [width, height] in m (one may be null: from the image's aspect)")
-    pw, ph = image_size(path)
-    w = float(sz[0]) if sz[0] else float(sz[1]) * pw / ph
-    h = float(sz[1]) if sz[1] else w * ph / pw
+    rho0 = r0 * np.cos(phic)  # the centre's distance from the axis
+    if su is not None:
+        w = su * rho0
+        if sz is not None and (not isinstance(sz, list) or len(sz) != 2 or sz[0]):
+            raise SpecError(f"{what}: with span, size is [null, height] (or left out: from the image's aspect)")
+        if sv is not None:
+            h = sv * r0
+        elif sz is not None and sz[1]:
+            h = float(sz[1])
+        else:
+            h = w * ph / pw
+            if wrap == "sphere":
+                sv = su * ph / pw  # equirectangular: square pixels at the equator
+                h = sv * r0
+    else:
+        if not (isinstance(sz, list) and len(sz) == 2 and (sz[0] or sz[1])):
+            raise SpecError(f"{what}: size is [width, height] in m (width measured round the surface), or give "
+                            f"span (degrees)")
+        w = float(sz[0]) if sz[0] else float(sz[1]) * pw / ph
+        h = float(sz[1]) if sz[1] else w * ph / pw
     if w <= 0 or h <= 0:
         raise SpecError(f"{what}: size must be > 0")
-    ch = img.get("channel", "alpha")
-    if ch not in CHANNELS:
-        raise SpecError(f"{what}: channel is one of {', '.join(CHANNELS)}")
+    if su is None and w > 2 * np.pi * rho0 * 1.0001:
+        raise SpecError(f"{what}: {w:.3f} m is more than once round ({2 * np.pi * rho0:.3f} m at the centre's radius)")
     depth = float(img.get("depth", 0.25 * max(w, h)))
     if depth <= 0:
         raise SpecError(f"{what}: depth must be > 0")
-    return {"path": str(path), "c": c.tolist(), "right": right.tolist(), "up": up.tolist(), "dir": d.tolist(),
-            "w": w, "h": h, "depth": depth, "facing": float(img.get("facing", 0.3)), "channel": ch,
-            "flip": bool(img.get("flip", False)), "mirror": bool(img.get("mirror", False)), "px": [pw, ph]}
+    out = {"o": o.tolist(), "k": k.tolist(), "c": (o + r0 * cdir).tolist(), "dir": e1.tolist(), "up": k.tolist(),
+           "right": e2.tolist(), "r0": float(r0), "phic": phic, "seam": float(seam),
+           "dc": float(np.mod(-seam, 2 * np.pi)), "su": su, "sv": sv, "w": float(w), "h": float(h), "depth": depth,
+           "m": 0.0, "unroll": "arc"}
+    if wrap == "cylinder":
+        unroll = img.get("unroll", "auto")
+        if unroll not in UNROLLS:
+            raise SpecError(f"{what}: unroll is one of {', '.join(UNROLLS)}")
+        # the surface's taper over the label: its radius a little above and below the centre (a local cone)
+        dt = 0.5 * h
+        r_hi, r_lo = (_hit(prims, o + sgn * dt * k, e1, what) for sgn in (1, -1))
+        m = float((r_hi - r_lo) / (2 * dt))
+        if unroll == "auto":
+            unroll = "cone" if abs(m) > TAPER else "arc"
+        out.update(m=m, unroll=unroll)
+        if unroll == "cone":  # fan-cut: rows on circles round the axis, columns on the cone's generators
+            if abs(m) < 1e-6:
+                raise SpecError(f"{what}: unroll cone on a surface with no taper here (use arc)")
+            out.update(ta=float(-r0 / m), Rc=float(r0 * np.sqrt(1 + m * m) / abs(m)), sg=1.0 if m < 0 else -1.0)
+    elif "unroll" in img:
+        raise SpecError(f"{what}: unroll is for cylinder wraps")
+    return out
 
 
 def mirrored(fr: dict) -> dict:
     """The placement reflected across X with the picture still reading the right way."""
     M = np.array([-1.0, 1.0, 1.0])
     c, d, up = np.array(fr["c"]) * M, np.array(fr["dir"]) * M, np.array(fr["up"]) * M
-    return {**fr, "c": c.tolist(), "dir": d.tolist(), "up": up.tolist(), "right": np.cross(up, d).tolist(),
-            "mirror": False}
+    out = {**fr, "c": c.tolist(), "dir": d.tolist(), "up": up.tolist(), "right": np.cross(up, d).tolist(),
+           "mirror": False}
+    if fr.get("wrap") in ("cylinder", "sphere"):  # the seam's place mirrored too (angles run the other way)
+        out.update(o=(np.array(fr["o"]) * M).tolist(), k=up.tolist(), seam=-fr["seam"],
+                   dc=float(np.mod(fr["seam"], 2 * np.pi)))
+    return out
 
 
 def _ramp(x, a, b):
@@ -376,18 +648,75 @@ def _ramp(x, a, b):
     return t * t * (3 - 2 * t)
 
 
+def surface_map(fr: dict) -> dict:
+    """A surface decal's exponential map (decalmap.build), on the primitives its frame was made from."""
+    from . import decalmap
+    prims = _PRIMS.get(fr["geo"])
+    if prims is None:
+        raise RuntimeError("a surface decal's frame must be made in this process (images.frame) before it's used")
+    return decalmap.build(prims, fr)
+
+
+def wrap_coords(fr: dict, pos: np.ndarray):
+    """A cylinder/sphere wrap's (u, v, distance off its surface, outward unit) at points (before flip). The
+    cylinder's surface is the local cone fitted at the centre (radius r0 + m t), "arc": u = arc length at the point's
+    own radius, v = height along the axis; "cone": the label fan-cut onto that cone (u = angle x the centre's radius,
+    v = slant distance: columns run along the cone's generators, rows round it, even height)."""
+    q = np.asarray(pos, float) - fr["o"]
+    k, e1, e2 = (np.asarray(fr[x], float) for x in ("k", "dir", "right"))
+    t, x, y = q @ k, q @ e1, q @ e2
+    D = np.mod(np.arctan2(y, x) - fr["seam"], 2 * np.pi) - fr["dc"]
+    rho = np.hypot(x, y)
+    if fr["wrap"] == "cylinder":
+        m = fr.get("m", 0.0)
+        s = np.sqrt(1 + m * m)
+        radial = (x[:, None] * e1 + y[:, None] * e2) / np.maximum(rho, 1e-12)[:, None]
+        out = (radial - m * k) / s
+        err = (rho - (fr["r0"] + m * t)) / s
+        if fr.get("unroll") == "cone":
+            u = (D / fr["su"] if fr["su"] else fr["r0"] * D / fr["w"]) + 0.5
+            v = fr["sg"] * (fr["Rc"] - np.hypot(rho, t - fr["ta"])) / fr["h"] + 0.5
+        else:
+            u = (D / fr["su"] if fr["su"] else rho * D / fr["w"]) + 0.5
+            v = t / fr["h"] + 0.5
+    else:
+        u = (D / fr["su"] if fr["su"] else rho * D / fr["w"]) + 0.5
+        R = np.linalg.norm(q, axis=1)
+        phi = np.arcsin(np.clip(t / np.maximum(R, 1e-12), -1, 1)) - fr["phic"]
+        v = (phi / fr["sv"] if fr["sv"] else R * phi / fr["h"]) + 0.5
+        err = R - fr["r0"]
+        out = q / np.maximum(R, 1e-12)[:, None]
+    return u, v, err, out
+
+
 def project(fr: dict, pos: np.ndarray, nrm: np.ndarray):
     """(u, v, weight) per point: u, v in 0..1 across the decal (v up), weight = inside its depth x facing."""
-    p = np.asarray(pos, float) - fr["c"]
-    u = p @ fr["right"] / fr["w"] + 0.5
-    if fr["flip"]:
-        u = 1 - u
-    v = p @ fr["up"] / fr["h"] + 0.5
-    s = np.abs(p @ fr["dir"])
-    wgt = _ramp(s, fr["depth"], 0.8 * fr["depth"])
     nn = np.asarray(nrm, float)
     nn = nn / np.maximum(np.linalg.norm(nn, axis=1, keepdims=True), 1e-12)
-    wgt = wgt * _ramp(nn @ fr["dir"], fr["facing"] - 0.15, fr["facing"])
+    wrap = fr.get("wrap", "planar")
+    if wrap in ("cylinder", "sphere"):
+        u, v, err, out = wrap_coords(fr, pos)
+        wgt = _ramp(np.abs(err), fr["depth"], 0.8 * fr["depth"])
+        wgt = wgt * _ramp((nn * out).sum(1), fr["facing"] - 0.15, fr["facing"])
+    elif wrap == "surface":
+        from . import decalmap
+        U, dist, N = decalmap.lookup(surface_map(fr), pos)
+        off = ~np.isfinite(U).all(1)
+        U[off] = -1e3
+        u = U[:, 0] / fr["w"] + 0.5
+        v = U[:, 1] / fr["h"] + 0.5
+        wgt = _ramp(dist, fr["depth"], 0.8 * fr["depth"]) * _ramp((nn * N).sum(1), fr["facing"] - 0.15, fr["facing"])
+        wgt = wgt * _ramp(np.linalg.norm(U, axis=1), fr["reach"], 0.9 * fr["reach"])
+        wgt[off] = 0
+    else:
+        p = np.asarray(pos, float) - fr["c"]
+        u = p @ fr["right"] / fr["w"] + 0.5
+        v = p @ fr["up"] / fr["h"] + 0.5
+        s = np.abs(p @ fr["dir"])
+        wgt = _ramp(s, fr["depth"], 0.8 * fr["depth"])
+        wgt = wgt * _ramp(nn @ fr["dir"], fr["facing"] - 0.15, fr["facing"])
+    if fr["flip"]:
+        u = 1 - u
     return u, v, wgt
 
 
@@ -437,21 +766,70 @@ def frames_of(spec: dict, ly: dict, expanded: dict | None = None) -> list[dict]:
     if not imgs:
         return []
     s = expanded if expanded is not None else expand_mirror(spec)
-    return [frame(spec, img, s) for img in imgs]
+    return [frame(spec, img, s, parts=ly.get("part", "body")) for img in imgs]
+
+
+def footprint(fr: dict, n: int = 24) -> np.ndarray:
+    """World points over the decal's rectangle as it lies on the surface (texel focus, coverage): a grid on the
+    plane, on the wrap's cylinder/sphere at the centre's radius, or the surface map's own vertices inside it."""
+    a = (np.arange(n) + 0.5) / n
+    gu, gv = (x.ravel() for x in np.meshgrid(a, a))
+    if fr["wrap"] == "planar":
+        return (np.asarray(fr["c"]) + ((gu - 0.5) * fr["w"])[:, None] * np.asarray(fr["right"])
+                + ((gv - 0.5) * fr["h"])[:, None] * np.asarray(fr["up"]))
+    if fr["wrap"] == "surface":
+        m = surface_map(fr)
+        U = m["U"].astype(float)
+        ok = np.isfinite(U).all(1)
+        ok[ok] = (np.abs(U[ok, 0]) <= 0.5 * fr["w"]) & (np.abs(U[ok, 1]) <= 0.5 * fr["h"])
+        return m["V"][ok].astype(float)
+    o, k, e1, e2 = (np.asarray(fr[x], float) for x in ("o", "k", "dir", "right"))
+    r0, phic = fr["r0"], fr["phic"]
+    rho0 = r0 * np.cos(phic)
+    D = (gu - 0.5) * (fr["su"] if fr["su"] else fr["w"] / rho0)
+    if fr["flip"]:
+        D = -D
+    if fr["wrap"] == "cylinder":
+        m = fr.get("m", 0.0)
+        if fr.get("unroll") == "cone":  # back from the fan: slant distance -> height and radius on the cone
+            R = fr["Rc"] - fr["sg"] * (gv - 0.5) * fr["h"]
+            s = np.sqrt(1 + m * m)
+            t = fr["ta"] - fr["sg"] * R / s
+            rho = R * abs(m) / s
+        else:
+            t = (gv - 0.5) * fr["h"]
+            rho = rho0 + m * t
+            if not fr["su"]:
+                D = D * rho0 / rho  # arc length at the point's own radius
+        return o + rho[:, None] * (np.cos(D)[:, None] * e1 + np.sin(D)[:, None] * e2) + t[:, None] * k
+    phi = phic + (gv - 0.5) * (fr["sv"] if fr["sv"] else fr["h"] / r0)
+    return o + r0 * (np.cos(phi)[:, None] * (np.cos(D)[:, None] * e1 + np.sin(D)[:, None] * e2)
+                     + np.sin(phi)[:, None] * k)
 
 
 def coverage(fr: dict, prims: list, n: int = 7, steps: int = 48) -> float:
-    """The share of an n x n grid over the decal whose ray (from depth in front of its plane to depth behind,
-    against dir) crosses the surface of these primitives: 0 = the placement hits nothing."""
+    """The share of an n x n grid over the decal whose ray (from depth in front of its surface to depth behind)
+    crosses the surface of these primitives: 0 = the placement hits nothing."""
     from . import sdf
     if not prims:
         return 0.0
-    c, r, u, d = (np.asarray(fr[k], float) for k in ("c", "right", "up", "dir"))
+    if fr["wrap"] == "surface":
+        return 1.0 if len(footprint(fr)) else 0.0  # seated on the surface already
     a = (np.arange(n) + 0.5) / n - 0.5
-    gu, gv = np.meshgrid(a * fr["w"], a * fr["h"])
-    base = c + gu.reshape(-1, 1) * r + gv.reshape(-1, 1) * u
+    if fr["wrap"] == "planar":
+        c, r, u, d = (np.asarray(fr[k], float) for k in ("c", "right", "up", "dir"))
+        gu, gv = np.meshgrid(a * fr["w"], a * fr["h"])
+        base = c + gu.reshape(-1, 1) * r + gv.reshape(-1, 1) * u
+        dirs = np.broadcast_to(d, base.shape)
+    else:
+        base = footprint(fr, n)
+        rel = base - np.asarray(fr["o"], float)
+        if fr["wrap"] == "cylinder":
+            k = np.asarray(fr["k"], float)
+            rel = rel - (rel @ k)[:, None] * k
+        dirs = rel / np.maximum(np.linalg.norm(rel, axis=1, keepdims=True), 1e-12)
     t = np.linspace(fr["depth"], -fr["depth"], steps)
-    pts = base[:, None, :] + t[None, :, None] * d
+    pts = base[:, None, :] + t[None, :, None] * dirs[:, None, :]
     f = sdf.field_at(prims, pts.reshape(-1, 3)).reshape(len(base), steps)
     hit = ((f[:, :-1] > 0) & (f[:, 1:] <= 0)).any(1)
     return float(hit.mean())

@@ -305,9 +305,9 @@ class _Nodes:
         if g == "mask":
             return self.stack(e["entries"])
         if g == "image":
-            m, col = self.decal(e, e)
+            m, col = self.decal(e, e, e.get("uv"))
             if e["mirror"]:  # the mirrored placement too: the stronger one wins, colour and all
-                m2, col2 = self.decal(e, e["mirrored"])
+                m2, col2 = self.decal(e, e["mirrored"], e.get("uv_mirrored"))
                 pick = self.math("GREATER_THAN", m2, m)
                 mix = self.node("ShaderNodeMix", data_type="RGBA", blend_type="MIX")
                 self._in(mix.inputs[0], pick)
@@ -329,14 +329,65 @@ class _Nodes:
             im.alpha_mode = "STRAIGHT"
         return im
 
-    def decal(self, e, fr):
-        """images.project + sample as nodes: the decal's u, v from the world position (per pixel), the image
-        clipped outside, times the depth window and the facing ramp. Returns (mask, linear colour)."""
-        p = self.vmath("SUBTRACT", self.attr("wpos", True), fr["c"])
-        u = self.math("ADD", self.math("DIVIDE", self.vmath("DOT_PRODUCT", p, fr["right"]), e["w"]), 0.5)
-        if e["flip"]:
-            u = self.math("SUBTRACT", 1.0, u)
-        v = self.math("ADD", self.math("DIVIDE", self.vmath("DOT_PRODUCT", p, fr["up"]), e["h"]), 0.5)
+    def decal(self, e, fr, uv_attrs=None):
+        """images.project + sample as nodes: the decal's u, v from the world position (per pixel; a surface decal's
+        from its measured per-vertex attributes), the image clipped outside, times the depth window and the facing
+        ramp. Returns (mask, linear colour)."""
+        wrap = e.get("wrap", "planar")
+        nrm = self.vmath("NORMALIZE", self.attr("wnrm", True))
+        if wrap == "surface":  # geodesic coordinates, flipped already; the weight holds depth, facing and reach
+            u, v, wgt = (self.attr(a) for a in uv_attrs)
+        elif wrap in ("cylinder", "sphere"):  # images.wrap_coords
+            q = self.vmath("SUBTRACT", self.attr("wpos", True), fr["o"])
+            t = self.vmath("DOT_PRODUCT", q, fr["k"])
+            x = self.vmath("DOT_PRODUCT", q, fr["dir"])
+            y = self.vmath("DOT_PRODUCT", q, fr["right"])
+            th = self.math("ARCTAN2", y, x)
+            D = self.math("SUBTRACT", self.math("FLOORED_MODULO", self.math("SUBTRACT", th, fr["seam"]), 2 * np.pi),
+                          fr["dc"])
+            rho = self.math("SQRT", self.math("ADD", self.math("MULTIPLY", x, x), self.math("MULTIPLY", y, y)))
+            if wrap == "cylinder":  # on the local cone fitted at the centre (radius r0 + m t)
+                m = e.get("m", 0.0)
+                s = float(np.sqrt(1 + m * m))
+                if e.get("unroll") == "cone":  # fan-cut: angle x the centre's radius, slant distance
+                    u = self.math("ADD", self.math("DIVIDE", D, e["su"]) if e["su"] else
+                                  self.math("MULTIPLY", D, e["r0"] / e["w"]), 0.5)
+                    dt = self.math("SUBTRACT", t, e["ta"])
+                    R = self.math("SQRT", self.math("ADD", self.math("MULTIPLY", rho, rho), self.math("MULTIPLY", dt, dt)))
+                    v = self.math("ADD", self.math("MULTIPLY", self.math("SUBTRACT", e["Rc"], R), e["sg"] / e["h"]), 0.5)
+                else:
+                    u = self.math("ADD", self.math("DIVIDE", D, e["su"]) if e["su"] else
+                                  self.math("DIVIDE", self.math("MULTIPLY", rho, D), e["w"]), 0.5)
+                    v = self.math("ADD", self.math("DIVIDE", t, e["h"]), 0.5)
+                err = self.math("DIVIDE", self.math("SUBTRACT", rho, self.math("ADD", e["r0"], self.math("MULTIPLY", t, m))), s)
+                nr = self.math("DIVIDE", self.math("ADD", self.math("MULTIPLY", self.vmath("DOT_PRODUCT", nrm, fr["dir"]), x),
+                                                   self.math("MULTIPLY", self.vmath("DOT_PRODUCT", nrm, fr["right"]), y)),
+                               self.math("MAXIMUM", rho, 1e-12))
+                out = self.math("DIVIDE", self.math("SUBTRACT", nr, self.math("MULTIPLY", self.vmath("DOT_PRODUCT", nrm, fr["k"]), m)), s)
+            else:
+                u = self.math("ADD", self.math("DIVIDE", D, e["su"]) if e["su"] else
+                              self.math("DIVIDE", self.math("MULTIPLY", rho, D), e["w"]), 0.5)
+                R = self.vmath("LENGTH", q)
+                phi = self.math("SUBTRACT", self.math("ARCSINE", self.math("DIVIDE", t, self.math("MAXIMUM", R, 1e-12)),
+                                                      clamp=False), e["phic"])
+                v = self.math("ADD", self.math("DIVIDE", phi, e["sv"]) if e["sv"] else
+                              self.math("DIVIDE", self.math("MULTIPLY", R, phi), e["h"]), 0.5)
+                err = self.math("SUBTRACT", R, e["r0"])
+                out = self.math("DIVIDE", self.vmath("DOT_PRODUCT", nrm, q), self.math("MAXIMUM", R, 1e-12))
+            win = self.ramp(self.math("ABSOLUTE", err), e["depth"], 0.8 * e["depth"])
+            wgt = self.math("MULTIPLY", win, self.ramp(out, e["facing"] - 0.15, e["facing"]))
+            if e["flip"]:
+                u = self.math("SUBTRACT", 1.0, u)
+        else:
+            p = self.vmath("SUBTRACT", self.attr("wpos", True), fr["c"])
+            u = self.math("ADD", self.math("DIVIDE", self.vmath("DOT_PRODUCT", p, fr["right"]), e["w"]), 0.5)
+            if e["flip"]:
+                u = self.math("SUBTRACT", 1.0, u)
+            v = self.math("ADD", self.math("DIVIDE", self.vmath("DOT_PRODUCT", p, fr["up"]), e["h"]), 0.5)
+            s = self.math("ABSOLUTE", self.vmath("DOT_PRODUCT", p, fr["dir"]))
+            win = self.ramp(s, e["depth"], 0.8 * e["depth"])
+            wgt = self.math("MULTIPLY", win, self.ramp(self.vmath("DOT_PRODUCT", nrm, fr["dir"]),
+                                                       e["facing"] - 0.15, e["facing"]))
         uv = self.node("ShaderNodeCombineXYZ")
         self._in(uv.inputs[0], u)
         self._in(uv.inputs[1], v)
@@ -367,11 +418,7 @@ class _Nodes:
                 self._in(sep.inputs[0], data.outputs["Color"])
                 val = sep.outputs["rgb".index(ch)]
             val = self.math("MULTIPLY", val, inside)
-        s = self.math("ABSOLUTE", self.vmath("DOT_PRODUCT", p, fr["dir"]))
-        win = self.ramp(s, e["depth"], 0.8 * e["depth"])
-        face = self.ramp(self.vmath("DOT_PRODUCT", self.vmath("NORMALIZE", self.attr("wnrm", True)), fr["dir"]),
-                         e["facing"] - 0.15, e["facing"])
-        return self.math("MULTIPLY", val, self.math("MULTIPLY", win, face)), col.outputs["Color"]
+        return self.math("MULTIPLY", val, wgt), col.outputs["Color"]
 
     def tiles(self, u, w, e):
         """paint._tiles on one plane: running bond, rows shifted by offset (or at random), joints gap wide."""
