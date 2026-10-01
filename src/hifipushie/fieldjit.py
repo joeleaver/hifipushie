@@ -1068,11 +1068,11 @@ if ON:
                     jb64 = np.int64(jb)
                     h1 = _hb(K, jb64, s)
                     h2 = _hb(K, jb64, s + 1)
-                    along = _clip(1.4 * _vn(x / 9.0, y / 9.0, np.float64(K * 16 + jb64), s + 2) - 0.25, 0.0, 1.0)
-                    if th < thin:
-                        v = along * fpar[14]
+                    vnb = _vn(x / 9.0, y / 9.0, np.float64(K * 16 + jb64), s + 2)
+                    if th < thin:  # (a thin package sits back only in stretches)
+                        v = _clip((vnb - 0.4) / 0.25, 0.0, 1.0) * fpar[14]
                     else:
-                        v = along * (-fpar[15] * _clip((th - 1.2) / 2.5, 0.0, 1.0))
+                        v = _clip(1.4 * vnb - 0.25, 0.0, 1.0) * (-fpar[15] * _clip((th - 1.2) / 2.5, 0.0, 1.0))
                     v = v + fpar[16] * (2 * h1 - 1) + fpar[17] * (2 * h2 - 1) * _clip(t_m, -_BP_LEVER, _BP_LEVER)
                     # the minor joints inside it (terrain_blocks._joints_in_bed)
                     J = 0.0
@@ -1258,7 +1258,7 @@ if ON:
             jp = (np.int64(0) if top else j + 1) if plane_hi else j
             pc = _hb(Kp, jp, seed + 90)
             crack = _clip((pc - 0.75) / 0.25, 0.0, 1.0) * _clip(
-                (_vn(x / 15.0, y / 15.0, np.float64(jp + 16 * Kp), seed + 92) - 0.4) / 0.25, 0.0, 1.0)
+                (_vn(x / 8.0, y / 8.0, np.float64(jp + 16 * Kp), seed + 92) - 0.52) / 0.18, 0.0, 1.0)
             iK[k] = K
             ij[k] = j
             fo[k, 0] = th

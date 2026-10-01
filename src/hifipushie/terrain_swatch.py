@@ -425,8 +425,8 @@ REF_VIEW = (1920, 60.0)     # px, deg: the camera the manifest quotes fade dista
 REPEAT = {"periodicity": 0.3, "contrast": 0.02, "px": 768, "span": 2.0}
 # repetition shows where the detail's image has a periodicity above `periodicity` while its contrast is above
 # `contrast` (2% luminance, about a just-noticeable step), measured on a `px`-pixel frontal view; the fade runs over
-# `span` x the footprint where it starts. Calibrated on the alps wall at 40 m (sc1): rock_06 (1.5 m, 0.34-0.38) and
-# rock_wall_02 (2 m, 0.34-0.36) showed their tiling as a grid; rock_face_03 (2.7 m, 0.28) and ours (4 m, 0.22) didn't
+# `span` x the footprint where it starts. Calibrated on the alps wall at 40 m (n02/n03): every scan (1.5-2.7 m) showed a
+# grid there and measures 0.37-0.61 at 37-53 m in local windows; ours (4 m) never does and stays 0.16-0.26
 
 
 def detail_image(S, p, px=768, light=(-0.5, 0.45, 0.74)):
@@ -466,17 +466,25 @@ def repetition_profile(S, ps=None):
     ps = ps if ps is not None else np.geomspace(0.004, 0.25, 13)
     out = []
     px = REPEAT["px"]
+    wn = px // 3  # (local windows: the anti-tiling mask mixes the two samplings over ~24 m, so a whole-view
+    # autocorrelation averaged the repeat away, but within one patch of the mask the repeat is exact: rock_face_03 read
+    # as a grid at 40 m (n03) while the whole-view measure gave 0.28)
+    yy, xx = np.mgrid[:2 * wn, :2 * wn]
+    rb = np.rint(np.hypot(yy - wn, xx - wn)).astype(int)
+    cnt = np.maximum(np.bincount(rb.ravel()), 1)
     for p in ps:
         im = detail_image(S, float(p), px)
         c = float(im.std())
-        sh = im - ndimage.gaussian_filter(im, px / 8, mode="reflect")
-        A = np.fft.rfft2(sh, s=(2 * px, 2 * px))
-        ac = np.fft.fftshift(np.fft.irfft2(np.abs(A) ** 2))
-        ac /= max(ac[px, px], 1e-12)
-        yy, xx = np.mgrid[:2 * px, :2 * px]
-        rb = np.rint(np.hypot(yy - px, xx - px)).astype(int)
-        mean = np.bincount(rb.ravel(), ac.ravel()) / np.maximum(np.bincount(rb.ravel()), 1)
-        per = float((ac - mean[rb])[(rb > 2) & (rb < px // 3)].max())
+        sh = im - ndimage.gaussian_filter(im, wn / 4, mode="reflect")
+        per = 0.0
+        for i in range(3):
+            for j in range(3):
+                w = sh[i * wn:(i + 1) * wn, j * wn:(j + 1) * wn]
+                A = np.fft.rfft2(w - w.mean(), s=(2 * wn, 2 * wn))
+                ac = np.fft.fftshift(np.fft.irfft2(np.abs(A) ** 2))
+                ac /= max(ac[wn, wn], 1e-12)
+                mean = np.bincount(rb.ravel(), ac.ravel()) / cnt
+                per = max(per, float((ac - mean[rb])[(rb > 2) & (rb < wn // 2)].max()))
         out.append((round(float(p), 5), round(c, 4), round(per, 3)))
     return out
 

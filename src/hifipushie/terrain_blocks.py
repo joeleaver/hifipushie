@@ -190,7 +190,10 @@ def _bed_value(K, j, thick, t_m, xy, B):
     s = B["seed"] + 30
     h1, h2 = _h(K, j, s), _h(K, j, s + 1)
     thin = thick < B["thin"]
-    along = np.clip(1.4 * noise._value_noise(np.c_[xy / 9.0, (K * 16 + j).astype(float)], s + 2) - 0.25, 0, 1)
+    vn = noise._value_noise(np.c_[xy / 9.0, (K * 16 + j).astype(float)], s + 2)
+    # (a thin package sits back only in stretches: set back wherever the noise allowed (~85%), it ran the whole pebble
+    # chasm as one dark ruled line)
+    along = np.where(thin, np.clip((vn - 0.4) / 0.25, 0, 1), np.clip(1.4 * vn - 0.25, 0, 1))
     v = along * np.where(thin, B["package"], -B["thick_proud"] * np.clip((thick - 1.2) / 2.5, 0, 1))
     return v + B["bed_amp"] * (2 * h1 - 1) + B["bed_tilt"] * (2 * h2 - 1) * np.clip(t_m, -LEVER, LEVER)
 
@@ -457,10 +460,11 @@ def ids(p, B, fd, zoff=0.0, pre=None):
     pc = _h(Kp, jp, B["seed"] + 90)
     out = {"K": K, "j": j, "thick": th, "thin": th < B["thin"], "bed_edge": np.minimum(d_lo, d_hi),
            "below_top": (K + 1 - Phi) / dPhi,  # (m under the top of the point's super-bed: where stains start)
-           # (open in stretches along the strike, ~15 m: a whole plane drawn read as a ruled line)
+           # (open in stretches along the strike, ~8 m, about a third of it: ~15 m stretches over 85% of the plane still
+           # drew a ruled line across the pebble chasm)
            "bed_crack": np.clip((pc - 0.75) / 0.25, 0, 1) * np.clip((noise._value_noise(
-               np.c_[p[:, :2] / 15.0, (jp + 16 * Kp).astype(float)], B["seed"] + 92) - 0.4)
-               / 0.25, 0, 1), "blocks": [], "weights": [], "edges": [], "open": []}
+               np.c_[p[:, :2] / 8.0, (jp + 16 * Kp).astype(float)], B["seed"] + 92) - 0.52)
+               / 0.18, 0, 1), "blocks": [], "weights": [], "edges": [], "open": []}
     s = B["seed"] + 80 + 9
     for m in range(len(AZ)):
         phi, dphi, n2 = _joint_coord(p, K, j, m, th, B)

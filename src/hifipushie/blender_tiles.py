@@ -464,7 +464,10 @@ def _render_ids(scene, path):
             scene.world.node_tree.nodes["Background"].inputs["Strength"].default_value, scene.view_settings.view_transform)
     for o in scene.objects:  # (water and other meshes occlude with id 0)
         if o.type == "MESH" and not o.data.attributes.get("hp_id"):
-            o.data.attributes.new("hp_id", "FLOAT_COLOR", "POINT")
+            at = o.data.attributes.new("hp_id", "FLOAT_COLOR", "POINT")
+            # (explicitly 0: a new colour attribute starts WHITE, so the sea read as tile 1 chart 1 and every
+            # waterline counted as a tile border: pebble's chasm "tile jump excess 2.7-2.9" was the waterline)
+            at.data.foreach_set("color", np.zeros(4 * len(o.data.vertices), np.float32))
     hidden = [o for o in scene.objects if o.type == "CURVE"]  # (the drawn borders; trees occlude with id 0)
     was = [o.hide_render for o in hidden]
     for o in hidden:
