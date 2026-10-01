@@ -455,7 +455,16 @@ def _bary(uv, F, size, t, xs, ys):
     w1 = (v2[:, 0] * v1[:, 1] - v1[:, 0] * v2[:, 1]) / den
     w2 = (v0[:, 0] * v2[:, 1] - v2[:, 0] * v0[:, 1]) / den
     bary = np.stack([1 - w1 - w2, w1, w2], -1)
-    return np.clip(bary, -1.0, 2.0)  # (gutters extrapolate a little past the edge; never far)
+    # (gutters extrapolate a little past the edge; never far.) Clipped weights no longer sum to 1: a gutter texel of a
+    # sliver triangle then landed at a fraction of its world position, hundreds of metres off (tile 10,3 of pebble
+    # baked gutter texels at the arch 450 m away: an export of one tile read another's rock). Those take the triangle's
+    # nearest point instead.
+    out = np.clip(bary, -1.0, 2.0)
+    off = np.abs(out.sum(1) - 1.0) > 1e-9
+    if off.any():
+        near = np.clip(bary[off], 0.0, 1.0)
+        out[off] = near / near.sum(1, keepdims=True)
+    return out
 
 
 def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0,
