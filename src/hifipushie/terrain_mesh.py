@@ -445,15 +445,28 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None):
         kc, kf = np.flatnonzero(g < 1), np.flatnonzero(g > 0)
         # (with jointed blocks the finer facet octaves go: the blocks are the medium scale, and facets inside blocks
         # read as crumpled soft slabs)
-        fine = 0.0 if r.get("blocks") else 1.0
+        # (on volumes' walls (u) as before: the blocks don't go there)
+        fine = np.ones(len(p)) if not r.get("blocks") else (np.zeros(len(p)) if u is None else np.asarray(u, float))
         if len(kc):
             sub = lambda size, seed: facet(p[kc], size, seed, None if fd is None else fd[kc], None if u is None else u[kc])
             big = sub(1.5 * r["size"], r["seed"])
-            out[kc] += (1 - g[kc]) * 1.1 * (big + 0.3 * sub(0.6 * r["size"], r["seed"] + 5) if fine else big)
+            fk = fine[kc]
+            sm = np.flatnonzero(fk > 0)
+            add = np.zeros(len(kc))
+            if len(sm):
+                add[sm] = fk[sm] * 0.3 * facet(p[kc][sm], 0.6 * r["size"], r["seed"] + 5,
+                                               None if fd is None else fd[kc][sm], None if u is None else u[kc][sm])
+            out[kc] += (1 - g[kc]) * 1.1 * (big + add)
         if len(kf):
             sub = lambda size, seed: facet(p[kf], size, seed, None if fd is None else fd[kf], None if u is None else u[kf])
             mid = 0.55 * sub(0.45 * r["size"], r["seed"] + 11)
-            out[kf] += g[kf] * (mid + 0.35 * sub(0.2 * r["size"], r["seed"] + 12) if fine else 1.3 * mid)
+            fk = fine[kf]
+            sm = np.flatnonzero(fk > 0)
+            add = np.zeros(len(kf))
+            if len(sm):
+                add[sm] = fk[sm] * 0.35 * facet(p[kf][sm], 0.2 * r["size"], r["seed"] + 12,
+                                                None if fd is None else fd[kf][sm], None if u is None else u[kf][sm])
+            out[kf] += g[kf] * ((1.3 - 0.3 * fk) * mid + add)
         out = r["facets"] * out
     if r["bedding"] > 0:
         B = bed_planes(p, r, g)
@@ -471,12 +484,17 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None):
         o = off(kb)
         i = np.flatnonzero(t > 0)
         o[i] += t[i] * (off(nb[i], i) - o[i])
-        out = out + r["bedding"] * (0.3 * B["pres"] * np.clip(1 - edge / B["sharp"], 0, 1) + 0.3 * o)
+        # (with jointed blocks the big beds step less: their planes ran the whole cliff as ruled ledges)
+        # (in full on the volumes' walls: karst passages' ledges are these beds)
+        bf = 1.0 if not r.get("blocks") else (0.4 if uvol is None else 0.4 + 0.6 * uvol)
+        out = out + r["bedding"] * bf * (
+            0.3 * B["pres"] * np.clip(1 - edge / B["sharp"], 0, 1) + 0.3 * o)
     if r.get("blocks"):
         # jointed blocks (terrain_blocks): courses and joint families bound blocks 1-10 m that stand proud or sit back
         # (a few missing): the medium scale. Not on volumes' walls (u) nor deep in the rock (jw)
         from . import terrain_blocks
-        wb = (1.0 if jw is None else jw) * (1.0 if uvol is None else 1.0 - uvol)
+        # ((1 - u)^3: at a cave mouth, half volume and half face, the face's blocks stepped the cave's walls and roof)
+        wb = (1.0 if jw is None else jw) * (1.0 if uvol is None else (1.0 - uvol) ** 3)
         kb = np.flatnonzero(np.asarray(wb) * np.ones(len(p)) > 1e-3)
         if len(kb) and fd is not None:
             with _span("field.blocks", leaf=True):
@@ -693,7 +711,9 @@ def rock_config(T, cfg):
         out["blocks"] = terrain_blocks.config(size, vox, bk)
         b = out["blocks"]
         out["reach"] += b["relief"]
-        out["relief"] = 1.4 * fac + 0.7 * bd + b["relief"]
+        # (the cliff overlay's push/shell keep main's sizes: the blocks mostly carve, within the old push's margin.
+        # Thickening the shell by the blocks' relief re-cut the shells round pebble's karst passage and notch: a face
+        # in a tile border plane, a non-manifold sliver, a 4-triangle piece floating 2 m over the heightmap)
     jt = float(rc.get("joints", 1.0)) * mult * (bk <= 0)
     if bd > 0 and jt > 0:  # joint sets: three families of vertical planes, candidate spacing ~a fifth of a facet
         sp = float(np.clip(0.2 * size, 1.2, 2.5))
@@ -903,7 +923,7 @@ class Field:
                 with _span("field.fallen", leaf=True):
                     sd = terrain_blocks.fallen_sd(p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0],
                                                   lambda xy: self.fall_at(xy[:, 0], xy[:, 1]), self.rock["blocks"])
-                    F[kf] = smin(F[kf], sd, 0.12)
+                    F[kf] = smin(F[kf], sd, 0.3)  # (a fillet ~a voxel: a razor contact crease made slivers)
         if self.rock is not None:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
             w = np.maximum(self.steep_at(p[:, 0], p[:, 1]) * guard, near)
@@ -922,6 +942,8 @@ class Field:
                         zoff = self.rock["bed_offset"](p[k, :2]) if self.rock.get("bed_offset") else 0.0
                         blk, I = terrain_blocks.structure(p[k], self.rock["blocks"], fd, zoff, want_ids=True,
                                                           sharp=getattr(self.micro, "sharp", None))
+                        if "sharp" in I:  # (the maps' share of the blocks weighted as rock_relief weights them)
+                            I["sharp"] = I["sharp"] * smoothstep(4.0, 1.5, depth[k]) * (1.0 - u) ** 3
                 with _span("field.rock_relief", leaf=True):
                     F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u, blk)
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
@@ -1162,7 +1184,7 @@ def block_colour(P, N, rc, r, fd):
     dark = np.maximum(dark, np.clip(1.6 * I["master"], 0, 1))  # (master joints: always open)
     tone = tone * (1 - 0.18 * dark)
     # stains: dark streaks hanging from the ledges (each super-bed's top), 0.25-0.8 m wide, 2-12 m long, narrowing and
-    # fading down; spaced ~1.5 m along the face where present, in patches. (Stretched noise made ink blots.)
+    # fading down; a few per 10 m along the face, in patches. (Stretched noise made ink blots.)
     vert = np.clip((0.7 - np.abs(N[:, 2])) / 0.4, 0, 1)
     fdn = fd / np.maximum(np.linalg.norm(fd, axis=1, keepdims=True), 1e-9)
     u = P[:, 0] * -fdn[:, 1] + P[:, 1] * fdn[:, 0]  # (along the face)
@@ -1170,13 +1192,14 @@ def block_colour(P, N, rc, r, fd):
     K1 = I["K"]
     patch = np.clip((noise.fbm(P * np.array([1.0, 1.0, 0.3]), 25.0, 2, seed=sd + 4) - 0.4) / 0.2, 0, 1)
     stain = np.zeros(len(P))
-    c0 = np.floor(u / 1.5).astype(np.int64)
+    # (candidates every 3 m, a fifth present: every 1.5 m with half present read as a comb from 150 m)
+    c0 = np.floor(u / 3.0).astype(np.int64)
     for dc in (-1, 0, 1):
         c = c0 + dc
-        uc = (c + 0.5 + 0.6 * (hsh(c, K1, 10) - 0.5)) * 1.5
+        uc = (c + 0.5 + 0.8 * (hsh(c, K1, 10) - 0.5)) * 3.0
         L = 2.0 + 10.0 * hsh(c, K1, 11)
         wd = (0.25 + 0.55 * hsh(c, K1, 12)) * (1 - 0.5 * np.clip(d / L, 0, 1))
-        on = hsh(c, K1, 13) < 0.45
+        on = hsh(c, K1, 13) < 0.22
         across = np.clip(1 - np.abs(u - uc) / wd, 0, 1)
         down = np.clip(1 - d / L, 0, 1) ** 1.5 * np.clip(d / 0.3, 0, 1)
         stain = np.maximum(stain, on * (across * (2 - across)) * down)
@@ -2129,7 +2152,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
                     bf = terrain_cliffs.CliffField(bf, region).front_field()
                 bfs.append(bf)
-            _CTX.update(bakefield=bfs, layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
+            # (the normal over ~0.4 m that picks layer weights and colour: from the rock WITHOUT the per-LOD fine relief,
+            # so every LOD picks the same layers at a border; with it, the LOD's own band-limited rock structure moved
+            # weights p95 0.26 between LOD 0 and LOD 2)
+            gf = terrain_cliffs.CliffField(base, region).front_field() if region is not None else base
+            _CTX.update(bakefield=bfs, weightfield=gf,
+                        layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
         # every tile's LODs (decimation, atlases), and as each tile is done its atlases' texels baked in pieces across
         # the pool, and each atlas's maps assembled and its GLB written once its pieces are in: a 3 x 3 block's
         # stragglers (one tile decimating for minutes) no longer hold the bake back
@@ -2847,7 +2875,7 @@ def _job_bake(args):
     surface = lambda Pl, Nl: terrain_bake._surface(bf, Pl, Nl, c["v0"], reach)
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
-                                    bf, first=a)
+                                    bf, first=a, gfield=c.get("weightfield"))
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
 
 

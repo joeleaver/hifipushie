@@ -42,18 +42,19 @@ SOFT = 0.1                   # m: the filter's box is softened by this either si
 
 def config(size, vox, scale=1.0):
     """Settings for a terrain: `size` the solid rock's facet size (m), vox the meshing voxel."""
-    out = {"super": float(np.clip(0.55 * size, 2.5, 6.0)) * scale, "thin": 0.7 * scale,
+    out = {"super": float(np.clip(0.5 * size, 2.5, 6.0)) * scale, "thin": 0.7 * scale,
             "joint": 1.3, "joint_min": 1.0 * scale, "joint_max": 5.0 * scale,
             "family": [1.0, 0.7, 0.5], "amp": 0.15 * scale, "tip": 0.1,
-            "recess": 0.45 * scale, "p_recess": 0.025, "proud": 0.4 * scale, "p_proud": 0.06,
-            "package": 0.22 * scale, "thick_proud": 0.35 * scale, "bed_amp": 0.12 * scale, "bed_tilt": 0.12,
+            "recess": 0.45 * scale, "p_recess": 0.015, "proud": 0.4 * scale, "p_proud": 0.04,
+            "package": 0.22 * scale, "thick_proud": 0.5 * scale, "bed_amp": 0.12 * scale, "bed_tilt": 0.12,
             "open": 0.08,                                     # share of minor joints drawn as open cracks
             "master": {"spacing": float(np.clip(2.5 * size, 15.0, 25.0)) * scale, "p": 0.55, "seg": 35.0 * scale, "p_seg": 0.65,
                        "depth": 0.5 * scale, "half": max(0.6, 1.4 * vox), "taper": 6.0 * scale},
-            "ramp": max(0.45, 1.0 * vox), "seed": 9100, "fallen": 1.0, "chip": 0.35 * scale}
-    # (the most the structure moves the surface, either way: the field's reach and the cliff overlay's push)
-    out["relief"] = max(out["recess"] * 1.4 + out["package"] + out["bed_amp"], out["proud"] * 1.4 + out["thick_proud"]
-                        + out["bed_amp"]) + out["master"]["depth"] + LEVER * (out["tip"] + out["bed_tilt"]) + out["chip"]
+            "ramp": max(0.45, 1.0 * vox), "seed": 9100, "back": 0.3 * scale, "build": 0.12 * scale, "fallen": 1.0, "fall_min": max(0.6, 1.8 * vox), "chip": 0.35 * scale}
+    # (the most the structure moves the surface, either way: the field's reach and the cliff overlay's push/shell
+    # thickness. Measured: offsets -0.12..1.44 m over 400k random points; the sum of every term's maximum, 3 m,
+    # thickened the cliff shell round caves by 3 m and a tile corner in pebble's karst passage decimated badly)
+    out["relief"] = 1.6 * scale
     return out
 
 
@@ -100,6 +101,11 @@ def _win(lo, hi, c, a, e):
     return G(hi - c) - G(lo - c)
 
 
+def _smin(a, b, k):
+    h = np.maximum(k - np.abs(a - b), 0.0) / k
+    return np.minimum(a, b) - h * h * h * k / 6.0
+
+
 def _h(i, j, s):
     return noise._hash(i, j, np.zeros_like(i), s)
 
@@ -120,7 +126,7 @@ def _cuts(K, B):
     s = B["seed"] + 20
     # beds in this super-bed: often one massive bed, sometimes a thinly bedded package (an even split everywhere read
     # as plywood from 150 m)
-    nb = 1 + np.floor(_h(K, K * 0, s) ** 1.5 * NCUT).astype(np.int64)
+    nb = 1 + np.floor(_h(K, K * 0, s) ** 1.2 * NCUT).astype(np.int64)
     c = np.stack([_h(K, K * 0 + k, s + 1) for k in range(1, NCUT)], 1)
     c = np.where(np.arange(1, NCUT)[None] < nb[:, None], c, 1.0)
     c = np.sort(c, 1)
@@ -131,10 +137,13 @@ def _bed_coord(p, B, zoff):
     """The super-bed coordinate Phi (super-bed K = floor(Phi)) and its slope up the face (per m); beds undulate ~0.15
     super over ~10 m."""
     S = B["super"]
-    und = 0.3 * S * (noise._value_noise(np.c_[p[:, :2] / 10.0, np.full(len(p), 3.5)], B["seed"] + 2) - 0.5)
-    # (and rough at the block scale, +-0.12 m over ~1 m: smooth bed edges read as sawn lumber at 40 m; slope < 0.4, so
-    # the coordinate stays monotone up the face)
-    und = und + 0.24 * (noise._value_noise(p / 1.1, B["seed"] + 5) - 0.5)
+    und = 0.3 * S * (noise._value_noise(np.c_[p[:, :2] / 10.0, np.full(len(p), 3.5)], B["seed"] + 2) - 0.5) + \
+        0.5 * S * (noise._value_noise(np.c_[p[:, :2] / 28.0, np.full(len(p), 7.5)], B["seed"] + 3) - 0.5)
+    # (the second octave: a ledge's shadow ran ruler-straight for 35-41 m in the 150 m view)
+    # (and rough at the block scale, +-0.15 m over ~3 m: smooth bed edges read as sawn lumber at 40 m; over ~1 m the
+    # creases wiggled within 2 voxels: black shards at tile borders, 0.09% of pebble's LOD 0. Slope < 0.3: the
+    # coordinate stays monotone up the face)
+    und = und + 0.3 * (noise._value_noise(p / 3.0, B["seed"] + 5) - 0.5)
     return _warp(p[:, 2] + zoff + und, S, p[:, 0] / 40.0, p[:, 1] / 40.0, B["seed"])
 
 
@@ -181,7 +190,7 @@ def _bed_value(K, j, thick, t_m, xy, B):
     s = B["seed"] + 30
     h1, h2 = _h(K, j, s), _h(K, j, s + 1)
     thin = thick < B["thin"]
-    along = 0.25 + 0.75 * noise._value_noise(np.c_[xy / 15.0, (K * 16 + j).astype(float)], s + 2)
+    along = np.clip(1.4 * noise._value_noise(np.c_[xy / 9.0, (K * 16 + j).astype(float)], s + 2) - 0.25, 0, 1)
     v = along * np.where(thin, B["package"], -B["thick_proud"] * np.clip((thick - 1.2) / 2.5, 0, 1))
     return v + B["bed_amp"] * (2 * h1 - 1) + B["bed_tilt"] * (2 * h2 - 1) * np.clip(t_m, -LEVER, LEVER)
 
@@ -209,7 +218,7 @@ def _joint_coord(p, K, j, m, thick, B):
     s = B["seed"] + 60 + m
     bid = (K * 16 + j).astype(float)
     wav = 0.25 * sp * (noise._value_noise(np.c_[p[:, 2] / (1.5 * sp), bid, np.full(len(p), m + 0.5)], s + 7) - 0.5)
-    x = (p * nrm).sum(1) + wav + 0.3 * (noise._value_noise(p / 1.0, s + 9) - 0.5)  # (rough edges, +-0.15 m)
+    x = (p * nrm).sum(1) + wav + 0.4 * (noise._value_noise(p / 3.0, s + 9) - 0.5)  # (rough edges, +-0.2 m / 3 m)
     phi, dphi = _warp(x, sp, bid, np.full(len(p), float(m)), s)
     return phi, dphi, n2
 
@@ -236,7 +245,8 @@ def _joint_value(i, jj, t_m, B, half=None, z_m=None, zh=None):
             sz = np.where(_h(g, jj, s + 6 + 2 * c) < 0.5, 1.0, -1.0)
             u = st * a + sz * b  # (2 at the corner)
             on = hc < (0.6 if c == 0 else 0.3)
-            v = v + on * B["chip"] * (0.5 + 0.5 * hc) * np.clip((u - 0.6) / 1.0, 0, 1)
+            x = np.clip((u - 0.6) / 1.0, 0, 1)  # (smooth: a C0 crease inside a face is a sub-voxel edge to mesh)
+            v = v + on * B["chip"] * (0.5 + 0.5 * hc) * x * x * (3 - 2 * x)
     return v
 
 
@@ -272,7 +282,7 @@ def _joints_in_bed(p, K, j, thick, fd, B, ramp, sharp=None, z_m=None, zh=None):
         for di in range(-SLOTS, SLOTS + 1):
             i = i0 + di
             ol = _win(i, i + 1, ph, a, e)
-            kk = np.flatnonzero(ol > 0)
+            kk = np.flatnonzero((ol > 0) | ((_win(i, i + 1, ph, a2, e2) > 0) if sharp is not None else False))
             if not len(kk):
                 continue
             oc = 0.5 * (np.minimum(i[kk] + 1, ph[kk] + a[kk]) + np.maximum(i[kk], ph[kk] - a[kk]))
@@ -283,7 +293,7 @@ def _joints_in_bed(p, K, j, thick, fd, B, ramp, sharp=None, z_m=None, zh=None):
                 ext = 1 + _absent(i[kk], jj[kk], s) + _absent(i[kk] + 1, jj[kk], s)
                 v = _joint_value(i[kk], jj[kk], t_m, B, 0.5 * ext / dp[kk], z_m[k][kk], zh[k][kk])
             acc[kk] += ol[kk] * v
-            if sharp is not None:  # (the sharp window lies inside the wide one: the same slots)
+            if sharp is not None:  # (the slots either window reaches)
                 acc2[kk] += _win(i[kk], i[kk] + 1, ph[kk], a2[kk], e2[kk]) * v
         out[k] += w[k] * acc
         if sharp is not None:
@@ -372,27 +382,41 @@ def structure(p, B, fd, zoff=0.0, want_ids=False, sharp=None):
 
 def offsets(p, B, fd, zoff=0.0, pre=None, sharp=None):
     """The rock structure's field offset at points p (n, 3); fd the face's gradient per point (n, 2); zoff the big
-    beds' wander (m). With `sharp` (m, < ramp): (offsets, the same filtered over +-sharp)."""
+    beds' wander (m). With `sharp` (m): (offsets, the same filtered over +-sharp: crisper than the mesh's ramp at a
+    fine texel, softer at a coarse one, where the ramp's edges would alias)."""
     n = len(p)
     if not n:
         return np.zeros(0) if sharp is None else (np.zeros(0), np.zeros(0))
     ramp = B["ramp"]
     Phi, dPhi, mast = pre if pre is not None else (*_bed_coord(p, B, zoff), _masters(p, fd, B))
     a = ramp * dPhi
-    S, _ = _bed_slots(Phi, dPhi, B, a)
+    # (the beds either window reaches: a coarse LOD's bake asks for a sharp window WIDER than the ramp)
+    S, _ = _bed_slots(Phi, dPhi, B, max(ramp, sharp or 0.0) * dPhi)
     r = S["row"]
+    if sharp is not None and sharp > ramp:
+        S["ol"] = _win(S["lo"], S["hi"], Phi[r], a[r], np.minimum(SOFT * dPhi[r], 0.9 * a[r]))
+        S["oc"] = 0.5 * (np.minimum(S["hi"], Phi[r] + a[r]) + np.maximum(S["lo"], Phi[r] - a[r]))
     mid = 0.5 * (S["lo"] + S["hi"])
     v = _bed_value(S["K"], S["j"], S["thick"], (S["oc"] - mid) / dPhi[r], p[r, :2], B)
     J = _joints_in_bed(p[r], S["K"], S["j"], S["thick"], fd[r], B, ramp, sharp,
                        (S["oc"] - mid) / dPhi[r], 0.5 * (S["hi"] - S["lo"]) / dPhi[r])
     md = B["master"]["depth"] * mast[0]
     if sharp is None:
-        return np.bincount(r, S["ol"] * (v + J), minlength=n) + md
+        return _carve(np.bincount(r, S["ol"] * (v + J), minlength=n), B) + md
     a2 = sharp * dPhi[r]
     e2 = np.minimum(np.minimum(SOFT, 0.5 * sharp) * dPhi[r], 0.9 * a2)
     ol2 = _win(S["lo"], S["hi"], Phi[r], a2, e2)
-    return (np.bincount(r, S["ol"] * (v + J[0]), minlength=n) + md,
-            np.bincount(r, ol2 * (v + J[1]), minlength=n) + md)
+    return (_carve(np.bincount(r, S["ol"] * (v + J[0]), minlength=n), B) + md,
+            _carve(np.bincount(r, ol2 * (v + J[1]), minlength=n), B) + md)
+
+
+def _carve(o, B):
+    """The structure set back `back` m and its building side softly capped at -`build` m (a smooth, monotone clamp):
+    proud beds and blocks standing out over a cliff's lip built slabs in the air (a 42-triangle piece floating 27 m over
+    pebble's heightmap). Mostly the structure carves, as weathering does."""
+    x = o + B["back"] + B["build"]
+    k = 0.15
+    return -B["build"] + k * np.logaddexp(0.0, x / k)
 
 
 def ids(p, B, fd, zoff=0.0, pre=None):
@@ -461,7 +485,7 @@ def fall_zone(H, c, steep, reach=None):
 
 
 def fallen_sd(p, ground, zone, B):
-    """Signed distance to the fallen blocks at points p: rounded, slightly irregular boxes 0.3-1.4 m, sunk a third into
+    """Signed distance to the fallen blocks at points p: rounded, chipped boxes `fall_min`-(+1.1) m, sunk a third into
     the ground, many small and few big (size ~ u^2), one candidate per FALL_CELL cell (present by the zone's density),
     each turned and tipped its own way. ground(xy) -> heights; zone(xy) -> 0..1. inf where none is near."""
     out = np.full(len(p), np.inf)
@@ -476,14 +500,18 @@ def fallen_sd(p, ground, zone, B):
             cx = (i + 0.2 + 0.6 * _h(i, j, s)) * FALL_CELL
             cy = (j + 0.2 + 0.6 * _h(i, j, s + 1)) * FALL_CELL
             dens = zone(np.c_[cx, cy])
-            on = _h(i, j, s + 2) < 0.75 * dens
+            # (only where the zone is dense enough that the cliff overlay holds the ground unsunk: Region takes 4 x the
+            # zone; a block on sunk ground was a piece floating over the heightmap)
+            x = np.clip((dens - 0.3) / 0.3, 0, 1)
+            on = _h(i, j, s + 2) < 0.75 * x * x * (3 - 2 * x)
             if not on.any():
                 continue
             k = np.flatnonzero(on)
-            size = 0.3 + 1.1 * _h(i[k], j[k], s + 3) ** 2
+            # (never under ~2 voxels across: 0.3 m blocks meshed as slivers, a non-manifold edge at a tile border)
+            size = B["fall_min"] + 1.1 * _h(i[k], j[k], s + 3) ** 2
             bx = size * (0.8 + 0.4 * _h(i[k], j[k], s + 4))
-            by = size * (0.6 + 0.4 * _h(i[k], j[k], s + 5))
-            bz = size * (0.45 + 0.35 * _h(i[k], j[k], s + 6))
+            by = size * (0.65 + 0.35 * _h(i[k], j[k], s + 5))
+            bz = size * (0.55 + 0.3 * _h(i[k], j[k], s + 6))
             yaw = 2 * math.pi * _h(i[k], j[k], s + 7)
             tilt = math.radians(25.0) * (2 * _h(i[k], j[k], s + 8) - 1)
             cz = ground(np.c_[cx[k], cy[k]]) + 0.35 * bz
@@ -492,7 +520,7 @@ def fallen_sd(p, ground, zone, B):
             x1, y1 = c_ * q[:, 0] + s_ * q[:, 1], -s_ * q[:, 0] + c_ * q[:, 1]
             ct, st = np.cos(tilt), np.sin(tilt)
             y2, z2 = ct * y1 + st * q[:, 2], -st * y1 + ct * q[:, 2]
-            rr = 0.12 * size
+            rr = np.maximum(0.25 * size, 0.2)  # (edges rounded over ~half a voxel at least: sharper made shards)
             d = np.abs(np.c_[x1, y2, z2]) - np.c_[bx, by, bz] + rr[:, None]
             sd = np.linalg.norm(np.maximum(d, 0), axis=1) + np.minimum(d.max(1), 0) - rr
             # two corners knocked off by planes of their own (a rounded box alone read as a crate)
@@ -501,6 +529,6 @@ def fallen_sd(p, ground, zone, B):
                           0.3 + 0.7 * _h(i[k], j[k], s + 12 + 3 * c)]
                 u /= np.linalg.norm(u, axis=1, keepdims=True)
                 reach = (np.abs(u) * np.c_[bx, by, bz]).sum(1)  # (the box's extent along u)
-                sd = np.maximum(sd, (np.c_[x1, y2, z2] * u).sum(1) - 0.7 * reach)
+                sd = -_smin(-sd, -((np.c_[x1, y2, z2] * u).sum(1) - 0.7 * reach), 0.25)
             out[k] = np.minimum(out[k], sd)
     return out

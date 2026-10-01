@@ -34,6 +34,8 @@ def _unit(v):
 
 # ---------------------------------------------------------------- fine rock (bake only)
 
+SHARP_MIN = 0.25  # m: the narrowest edge filter the maps use for the rock structure (see micro_relief)
+
 def micro_relief(r, amount=1.0, texel=0.1):
     """A function p -> field offset: rock detail finer than the meshing voxel (facets 1.2 m and 0.45 m across, thin
     cracks along a coarser facet net's zero lines, the bedding plane's notch, laminae every sixth of a bed).
@@ -71,12 +73,11 @@ def micro_relief(r, amount=1.0, texel=0.1):
             for m, w in enumerate(I["weights"]):
                 cr = np.maximum(cr, w * notch(I["open"][m], 0.22))
             out = out + 0.07 * max(ac, al) * cr
-            if "sharp" in I:  # (the block and bed edges crisp in the maps: filtered at ~2 texels, not 2 voxels)
-                out = out + I["sharp"]
         if ac > 0 and not r.get("blocks"):  # (with blocks, the cracks are the structure's open joints)
             c = fac(3.1, seed + 2)
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
-        if bed and (an > 0 or al > 0):
+        if bed and (an > 0 or al > 0) and not r.get("blocks"):  # (with blocks their bed planes are the beds: the big
+            # beds' notch drew two dark lines along the whole pebble chasm)
             B = tm.bed_planes(p, r, g)
             zb = B["z"]
             e = np.abs(zb - np.round(zb)) * bed  # m from the nearest bedding plane
@@ -95,11 +96,16 @@ def micro_relief(r, amount=1.0, texel=0.1):
                 z = zb * 6.0
                 fr = z - np.floor(z)
                 out = out + 0.025 * al * np.clip(1 - np.minimum(fr, 1 - fr) * bed / 6.0 / 0.12, 0, 1)
+        if I is not None and "sharp" in I:  # (the structure filtered at ~2 texels, not the mesh's 2 voxels)
+            out = out + I["sharp"]
         return amount * out
-    # the rock structure's edges in the maps: its offsets filtered over +-`sharp` m instead of +-ramp (Field._solid
-    # asks terrain_blocks.structure for the difference); never under ~2 texels (narrower aliased as teeth)
+    # the rock structure in the maps: its offsets filtered over +-`sharp` instead of the mesh's +-ramp (Field._solid
+    # asks terrain_blocks.structure for the difference): crisper edges at LOD 0 (2-voxel ramps read soft at 40 m),
+    # never under 2 texels (narrower aliased as teeth), never softer than the mesh, and not below 0.25 m: the seam
+    # check compares LOD 0's maps with LOD 2's (0.4 m texels, the mesh's ramp) at border points up to 0.6 m apart, and
+    # 0.1 m edges made them differ by 6-7 deg at the median (limit 6); at 0.25 m they agree within it
     if r.get("blocks"):
-        f.sharp = float(min(r["blocks"]["ramp"], max(0.1, 2.0 * texel)))
+        f.sharp = float(np.clip(2.0 * texel, SHARP_MIN, r["blocks"]["ramp"]))
     return f
 
 
@@ -444,7 +450,8 @@ def _bary(uv, F, size, t, xs, ys):
     return np.clip(bary, -1.0, 2.0)  # (gutters extrapolate a little past the edge; never far)
 
 
-def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0):
+def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0,
+                gfield=None):
     """The per-texel part of a bake (pointwise, so an atlas can be baked in pieces): each texel's point on the low poly,
     moved onto the surface (`surface`), and its values quantised as the maps store them. `first`: the index of the
     first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas)."""
@@ -470,7 +477,8 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
     Gs = G
     if field is not None:
         with _span("bake/normal 0.4 m"):
-            Gs = _unit(_chunked(lambda q: field.value_gradient(q, 0.4)[1], X))
+            gf = field if gfield is None else gfield  # (gfield: the same for every LOD; see terrain_mesh)
+            Gs = _unit(_chunked(lambda q: gf.value_gradient(q, 0.4)[1], X))
         Gs = np.where(bad[:, None], G, Gs)
     with _span("bake/weights + colour"):
         Wt, col = _chunked(mats.weights, X, Gs)

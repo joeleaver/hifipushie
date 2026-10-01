@@ -1091,6 +1091,55 @@ regresses, bisect by building one spec at each commit and diffing heights.
     above the budget from a dense mesh and `_decimate` counted down to 16 (~100 runs); it now stops at the stall and
     steps from its last mesh (same meshes, 4-12x fewer runs: alps 3x3 276 -> 130 s, byte-identical;
     HIFIPUSHIE_DECIMATE_DUMP=<dir> saves a dense fallback's inputs to replay). Next: compile the rock composition (terrain_blocks etc.) once its formulas settle.
+  - Round 5, jointed and bedded rock (2026-09-30, "rock" agent, renders r01-r12, r*_vs_main; the user: "keep working
+    on the rock" after q09/q10/s01 read flat, soft and blotchy: removing the lattice patterns removed structure).
+    `terrain_blocks.py`, the medium scale (0.3-10 m), added in rock_relief (spec `rock.blocks` 0..1, default on; off
+    brings the old joints, laminae, crack net and full bedding back):
+    - beds: super-beds (`super` ~0.5 x facet size, a monotone `_warp` of height: they pinch and swell) each split at 0-5
+      random cuts (`_cuts`): often one massive bed, sometimes a thin package. Thin beds (< 0.7 m) sit back as a package,
+      thick ones stand out, how much changing along the strike (~9 m); beds undulate (10 and 28 m: one octave left
+      ledge shadows ruler-straight for 40 m) and are rough (+-0.15 m over 3 m). Minor joints only inside their bed,
+      spaced 1.3 x its thickness, each bed's set turned +-20 deg and dipping 72-90 deg, a third of boundaries absent
+      (blocks merge), faces tipped, one or two corners chipped, a few blocks missing or proud. A few master joints
+      (`_masters`): en echelon segments 20-50 m up the face, leaning +-15 deg, wavy at two scales, a rounded groove. The
+      big beds (bed_planes) step at 0.4 and lose their notch with blocks: they ran whole cliffs as ruled lines.
+    - CONTINUITY: every piecewise-constant value is box-filtered in its own coordinate (`_win`: a box of +-ramp softened
+      by `SOFT`, so creases are C1 curves over 0.2 m; the filter width carried through the warp's slope). A ramp per
+      boundary jumped where two boundaries came closer than the ramp; the box filter averages thin beds/blocks. A
+      per-bed/per-block choice must use a per-cell constant (the nominal thickness), never the point's warped one.
+      Detail under ~2 voxels in the MESHED field makes shards at tile borders (rough edges over 1 m, razor-edged
+      fallen blocks: pebble LOD 0 0.09%): rough at 3 m, fallen blocks rounded >= 0.2 m and smooth-chipped. The
+      structure mostly carves (`_carve`: set back `back` 0.3 m, building softly capped at `build` 0.12 m): proud beds
+      over a cliff's lip built a slab in the air (a piece floating 27 m over pebble's heightmap: `floating` failed).
+      The field's reach takes the blocks' MEASURED range (-0.12..1.44 m, 1.6 used); the cliff overlay's push and shell
+      (`rock["relief"]`) keep main's sizes: thickening the shell by the blocks re-cut the shells round pebble's karst
+      passage and notch (a face lying in a tile border plane at a corner: "border edges differ"; a non-manifold sliver;
+      a 4-triangle piece floating 2 m up). Volumes' walls keep main's facets and bedding (the blocks' changes are
+      weighted by 1 - u): the export's border machinery is fragile there and any change of their shells re-rolls it.
+    - The maps get the structure filtered over +-max(2 texels, `terrain_bake.SHARP_MIN` 0.25 m) instead of the mesh's
+      +-0.5 m (`structure(..., sharp=)`, micro_relief's `f.sharp`; weighted like rock_relief's blocks, so not in caves).
+      0.1 m failed the seam check's LOD 0 vs LOD 2 normals (p50 7 deg, limit 6: it compares border points up to 0.6 m
+      apart, and crisp 1 m-scale structure varies within that); 0.25 m measured 5.6. The layer/colour normal (0.4 m)
+      is taken from the field without the per-LOD fine relief (`weightfield`): with it, weights differed p95 0.26.
+    - colour (`block_colour`): bed and block tones easing to neutral 0.25 m from their edges (no step to alias), open
+      joints only (8%) and some bed planes as faint lines, master joints dark, stains hanging from each super-bed's top
+      (candidates every 3 m, a fifth present, 0.25-0.8 m wide, 2-12 m long), dull lichen on tops, the old tone noise at
+      0.35, the field occlusion floor 0.75 (0.55 outlined every slot in black).
+    - fallen blocks (`fall_zone`, `fallen_sd`): chipped rounded boxes at the faces' feet on gentler ground, >= 1.8 voxels
+      (0.3 m ones meshed a non-manifold sliver at a tile border), smin 0.3 into the ground; the cliff Region covers them.
+      Blocks on cave walls weighted (1 - u)^3 (at a cave mouth the face's blocks stepped its roof).
+    - What read wrong on the way: every block outlined + right-angle joints + uniform courses = masonry / dry-stone wall
+      (r01-r03); long straight master joints = knife cuts; a recess the same along a whole bed = a ruled black line;
+      fat stretched-noise stains = ink blots, thin regular ones = a comb; even bed splits = plywood; isolated near-black
+      blobs at 40 m (deep slot ends?) still open. Judge 40 m and closer at the export's 16 texels/m, not preview density.
+    - Measured (`examples/rock_measure.py`, the alps wall): 1-3 m relief band 0.064 -> ~0.09 m rms; blocks median
+      ~2.7 m2, p90 ~21; beds p10/50/90 0.7/2.8/5.5 m; joint traces off the beds' perpendicular p10/50/90 5/17/38 deg (32%
+      within 10: not all right angles); drawn cracks 6% of all edges.
+    - Tools: `examples/rock_round.py` + `rock_views.json` (fixed views: far pass 6/m on the block, near pass 16/m on one
+      tile; `--noblocks` = main's rock for before/after), `examples/rock_measure.py`.
+    - COST: a field point ~4.6-6.6 us with blocks vs ~1 without (fieldjit compiled the rest; terrain_blocks is numpy):
+      alps 3x3 export ~970 s vs 130, pebble ~900 s vs ~180. Compile terrain_blocks (structure/offsets/ids/_masters/
+      fallen_sd) before merging.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
