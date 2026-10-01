@@ -112,14 +112,14 @@ def facets(p, size, seed, fd, stretch=1.4):
     """Irregular planar facets about `size` m across on the face whose ground gradient is fd (n, 2). -1..1."""
     p = np.asarray(p, float)
     w = np.abs(np.c_[fd, np.ones(len(p))]) ** 4
+    if fieldjit.ON:  # (the same arithmetic from here on, compiled: fieldjit.facets)
+        got = fieldjit.facets(p, size, seed, w, stretch, GROUP, _triangulation, GAIN, normalise=0.03)
+        if got is not None:
+            return got
     w /= w.sum(1, keepdims=True)
     # (a projection under 3% is dropped, continuously: on a steep face one or two patterns, not three)
     w = np.maximum(w - 0.03, 0.0)
     w /= w.sum(1, keepdims=True)
-    if fieldjit.ON:  # (the same arithmetic, compiled: fieldjit.facets_kernel)
-        got = fieldjit.facets(p, size, seed, w, stretch, GROUP, _triangulation, GAIN)
-        if got is not None:
-            return got
     out = np.zeros(len(p))
     for ax, (u, v, st) in enumerate(((1, 2, stretch), (0, 2, stretch), (0, 1, 1.0))):
         k = np.flatnonzero(w[:, ax] > 0)

@@ -532,6 +532,9 @@ def _hash3(ix, iy, iz, seed):
 def _pl_walk(q, seed, vec=False):
     """Random values (-1..1) at the corners of the unit cubic lattice, interpolated linearly over each cube's six
     tetrahedra (the Freudenthal split: consistent across faces). (n,), or (n, 3) with vec."""
+    if fieldjit.ON:
+        r = fieldjit.pl_walk(np.ascontiguousarray(q, dtype=np.float64), int(seed), bool(vec))
+        return r if vec else r[:, 0]
     b = np.floor(q).astype(np.int64)
     f = q - b
     order = np.argsort(-f, axis=1)  # the tetrahedron: walk the axes from the largest fraction down
@@ -1638,6 +1641,7 @@ def _pool():
     from concurrent.futures import ProcessPoolExecutor
     from . import resources
     n = resources.workers(_CTX.get("worker_gb", WORKER_GB), cap=16)
+    fieldjit.warm()  # (compiled kernels in the parent: the forked workers inherit them, none compiles its own)
     # (one BLAS thread a worker: each inherited the parent's 4, which spun on every small matmul)
     ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"),
                              initializer=resources._worker_init)

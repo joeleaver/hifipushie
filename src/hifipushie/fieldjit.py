@@ -466,13 +466,40 @@ if ON:
                 bidx[k, ax] = last
 
     @njit(cache=True)
-    def _select(bidx, ax, bi, sel):
-        m = 0
-        for k in range(bidx.shape[0]):
-            if bidx[k, ax] == bi:
-                sel[m] = k
-                m += 1
-        return m
+    def _by_block(bidx, nblk):
+        """Every (point, axis) grouped by block, points in their own order within a block (a counting sort):
+        (order of point indices, start of each block's run)."""
+        n = bidx.shape[0]
+        cnt = np.zeros(nblk + 1, np.int64)
+        for k in range(n):
+            for ax in range(3):
+                b = bidx[k, ax]
+                if b >= 0:
+                    cnt[b + 1] += 1
+        for t in range(nblk):
+            cnt[t + 1] += cnt[t]
+        pos = cnt[:nblk].copy()
+        order = np.empty(cnt[nblk], np.int64)
+        for k in range(n):
+            for ax in range(3):
+                b = bidx[k, ax]
+                if b >= 0:
+                    order[pos[b]] = k
+                    pos[b] += 1
+        return order, cnt
+
+    @njit(cache=True)
+    def _norm_weights(w, cut):
+        for k in range(w.shape[0]):
+            t = w[k, 0] + w[k, 1] + w[k, 2]
+            a, b, c = w[k, 0] / t, w[k, 1] / t, w[k, 2] / t
+            a = max(a - cut, 0.0)
+            b = max(b - cut, 0.0)
+            c = max(c - cut, 0.0)
+            t = a + b + c
+            w[k, 0] = a / t
+            w[k, 1] = b / t
+            w[k, 2] = c / t
 
     @njit(cache=True)
     def _facets_sum(w, vout, gain):
@@ -504,28 +531,148 @@ def _grid_of(tri):
     return g
 
 
-def facets(p, size, seed, w, stretch, group, triangulation, gain):
+def facets(p, size, seed, w, stretch, group, triangulation, gain, normalise=None):
     """terrain_facets.facets from its weights w (n, 3) on: every projection's block found and triangulated (through
     `triangulation(seed, gi, gj)`, the module's cache), its points located and interpolated block by block (each
     block's points in their own order: find_simplex's chained start), summed by weight. None when the points touch
     too many blocks (the caller then takes the numpy path)."""
     p = np.ascontiguousarray(p, dtype=np.float64)
     w = np.ascontiguousarray(w, dtype=np.float64)
+    if normalise is not None:  # (w = |(fd, 1)|^4, normalised, `normalise` taken off, normalised again: in place)
+        w = w.copy()  # (the caller's array stays as it was: it falls back to numpy when there are too many blocks)
+        _norm_weights(w, float(normalise))
     n = len(p)
-    blocks = _blocks(p, w, float(size), float(stretch), float(group), 512)
+    blocks = _blocks(p, w, float(size), float(stretch), float(group), 1 << 16)
     if len(blocks) == 0:
         return None
     x0s, x1s = np.empty((3, n)), np.empty((3, n))
     bidx = np.empty((n, 3), np.int64)
     _facets_coords(p, w, float(size), float(stretch), float(group), blocks, x0s, x1s, bidx)
     vout = np.zeros((n, 3))
-    sel = np.empty(n, np.int64)
+    order, starts = _by_block(bidx, len(blocks))
     for t, (ax, gi, gj) in enumerate(blocks):
         tri, val = triangulation(seed + 500 * int(ax), int(gi), int(gj))
         grid, g0, g1, nx, ny = _grid_of(tri)
         fpar = np.array([tri.min_bound[0], tri.min_bound[1], tri.max_bound[0], tri.max_bound[1], g0, g1, BUCKET,
                          float(tri.paraboloid_scale), float(tri.paraboloid_shift)])
-        m = _select(bidx, int(ax), t, sel)
-        _facets_block(p, w, float(size), float(stretch), int(ax), x0s[ax], x1s[ax], sel, m, tri.transform,
+        sel = order[starts[t]:starts[t + 1]]
+        _facets_block(p, w, float(size), float(stretch), int(ax), x0s[ax], x1s[ax], sel, len(sel), tri.transform,
                       tri.neighbors, tri.simplices, tri.equations, val, grid, fpar, np.array([nx, ny], np.int64), vout)
     return _facets_sum(w, vout, float(gain))
+
+
+# ---------------------------------------------------------------- terrain_mesh._pl_walk (the warped facet lattice)
+
+if ON:
+    _U16 = np.uint64(16)
+    _U29 = np.uint64(29)
+    _U31 = np.uint64(31)
+    _M1 = np.uint64(0xBF58476D1CE4E5B9)
+    _M2 = np.uint64(0x94D049BB133111EB)
+    _FFFF = np.uint64(0xFFFF)
+
+    @njit(cache=True, inline="always")
+    def _hash3_one(ix, iy, iz, seed):
+        h = np.uint64((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791) ^ (seed * 2654435761))
+        h ^= h >> _U31
+        h *= _M1
+        h ^= h >> _U31
+        h *= _M2
+        h ^= h >> _U29
+        a = np.float64(h & _FFFF) / 32767.5 - 1.0
+        b = np.float64((h >> _U16) & _FFFF) / 32767.5 - 1.0
+        c = np.float64((h >> np.uint64(32)) & _FFFF) / 32767.5 - 1.0
+        return a, b, c
+
+    @njit(cache=True)
+    def pl_walk(q, seed, vec):
+        """terrain_mesh._pl_walk: corner values of the unit lattice interpolated over the Freudenthal tetrahedra.
+        Axes walked from the largest fraction down (ties in index order; a tie's middle corner has weight 0, so the
+        order between tied axes doesn't change the value). (n,) or (n, 3) with vec (the first column filled when
+        not vec)."""
+        n = q.shape[0]
+        out = np.zeros((n, 3 if vec else 1))
+        for k in range(n):
+            b0 = np.int64(np.floor(q[k, 0]))
+            b1 = np.int64(np.floor(q[k, 1]))
+            b2 = np.int64(np.floor(q[k, 2]))
+            f0 = q[k, 0] - np.float64(b0)
+            f1 = q[k, 1] - np.float64(b1)
+            f2 = q[k, 2] - np.float64(b2)
+            # argsort(-f), stable: o0 has the largest fraction
+            o0, o1, o2 = 0, 1, 2
+            fa, fb, fc = f0, f1, f2
+            if -fb < -fa:
+                o0, o1 = o1, o0
+                fa, fb = fb, fa
+            if -fc < -fb:
+                o1, o2 = o2, o1
+                fb, fc = fc, fb
+                if -fb < -fa:
+                    o0, o1 = o1, o0
+                    fa, fb = fb, fa
+            w0 = 1 - fa
+            w1 = fa - fb
+            w2 = fb - fc
+            w3 = fc
+            v0, v1, v2 = b0, b1, b2
+            for step in range(4):
+                if step == 0:
+                    ww = w0
+                else:
+                    o = o0 if step == 1 else (o1 if step == 2 else o2)
+                    if o == 0:
+                        v0 += 1
+                    elif o == 1:
+                        v1 += 1
+                    else:
+                        v2 += 1
+                    ww = w1 if step == 1 else (w2 if step == 2 else w3)
+                if vec:
+                    a, b_, c = _hash3_one(v0, v1, v2, seed)
+                    if step == 0:
+                        out[k, 0] = ww * a
+                        out[k, 1] = ww * b_
+                        out[k, 2] = ww * c
+                    else:
+                        out[k, 0] = out[k, 0] + ww * a
+                        out[k, 1] = out[k, 1] + ww * b_
+                        out[k, 2] = out[k, 2] + ww * c
+                else:
+                    hv = 2 * hash01(v0, v1, v2, seed) - 1
+                    if step == 0:
+                        out[k, 0] = ww * hv
+                    else:
+                        out[k, 0] = out[k, 0] + ww * hv
+        return out
+
+
+_WARM = False
+
+
+def warm():
+    """Compile (or load from the on-disk cache) every kernel in this process, once: call it before forking a pool, so
+    the workers inherit compiled code instead of each compiling it (~10 s apiece when the cache is cold)."""
+    global _WARM
+    if not ON or _WARM:
+        return
+    import time
+    from scipy.spatial import Delaunay
+    t = time.perf_counter()
+    p = np.array([[0.3, 0.4, 0.5], [1.7, 2.2, -0.4]])
+    value_noise(p, 1)
+    hash_arrays(np.zeros(2, np.int64), np.zeros(2, np.int64), np.zeros(2, np.int64), 1)
+    a = np.zeros((4, 4))
+    cubic2d(a, p[:, 0], p[:, 1])
+    grid_at(a, p[:, 0], p[:, 1], 0.0, 0.0, 1.0)
+    column(a, p[:, 0], p[:, 1], 0.0, 0.0, 1.0)
+    pl_walk(p, 1, True)
+    pl_walk(p, 1, False)
+    pts = np.array([[0.0, 0.0], [3.0, 0.0], [0.0, 3.0], [3.0, 3.0], [1.4, 1.6]])
+    tri = Delaunay(pts)
+    val = np.linspace(-1, 1, len(pts))
+    pl2d_tri(np.array([[1.0, 1.0]]), tri, val)
+    facets(p, 1.0, 1, np.abs(np.c_[p[:, :2], np.ones(2)]) ** 4, 1.4, 32.0, lambda s, i, j: (tri, val), 1.4,
+           normalise=0.03)
+    _WARM = True
+    return time.perf_counter() - t
