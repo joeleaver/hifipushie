@@ -17,7 +17,7 @@ import bpy
 import numpy as np
 
 GROUP = "hp_lock"
-VERSION = 9  # bump when the node group changes: scenes rebuild it
+VERSION = 10  # bump when the node group changes: scenes rebuild it
 INPUTS = [  # (name, type, default, min, max) in modifier order; the spec's lock keys are these, lower case
     ("Width", "NodeSocketFloat", 0.03, 0.0, 1.0),
     ("Thickness", "NodeSocketFloat", 0.008, 0.0, 1.0),
@@ -122,8 +122,15 @@ def node_group():
     ng = bpy.data.node_groups.get(GROUP)
     if ng is not None and ng.get("hp_version") == VERSION:
         return ng
+    kept = {}
     if ng is None:
         ng = bpy.data.node_groups.new(GROUP, "GeometryNodeTree")
+    else:  # a rebuild re-creates the input sockets (new identifiers): every lock's modifier values would fall back to
+        # the defaults (width 0), which the next pull read as the person's edits and wrote into the spec
+        for ob in bpy.data.objects:
+            for mod in ob.modifiers:
+                if mod.type == "NODES" and mod.node_group == ng:
+                    kept[(ob.name, mod.name)] = get_inputs(mod)
     ng.nodes.clear()
     ng.interface.clear()
     ng.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -202,7 +209,12 @@ def node_group():
     nt.links.new(prof, c2m.inputs["Profile Curve"])
     nt.links.new(scale, c2m.inputs["Scale"])
     c2m.inputs["Fill Caps"].default_value = True
-    geo = c2m.outputs[0]
+    # the profile is the unit circle with x and y swapped (a mirror), so Curve to Mesh winds every face inward: flip
+    # them. Inward faces rendered fine where nothing culls back faces (Cycles, the scene), but the glTF importer and
+    # engines cull them on a single-sided material: EEVEE then drew each lens's dark underside, near-black hair
+    flip = nt.nodes.new("GeometryNodeFlipFaces")
+    nt.links.new(c2m.outputs[0], flip.inputs["Mesh"])
+    geo = flip.outputs[0]
     geo = _store(nt, geo, "hp_along", along)
     geo = _store(nt, geo, "hp_across", pacross)
     geo = _store(nt, geo, "hp_out", pout)
@@ -215,6 +227,11 @@ def node_group():
     nt.links.new(sm.outputs[0], mat.inputs["Geometry"])
     mat.inputs["Material"].default_value = bpy.data.materials.get("hp_hair") or bpy.data.materials.new("hp_hair")
     nt.links.new(mat.outputs[0], go.inputs[0])
+    for (on, mn), vals in kept.items():
+        ob = bpy.data.objects.get(on)
+        if ob is not None and ob.modifiers.get(mn) is not None:
+            _set_inputs(ob.modifiers[mn], vals)
+            ob.update_tag()
     return ng
 
 

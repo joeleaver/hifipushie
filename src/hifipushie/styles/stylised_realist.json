@@ -31,8 +31,8 @@
    0.3
   ],
   "skin_sat_lit": [
-   0.28,
-   0.45
+   0.38,
+   0.53
   ],
   "skin_sat_shadow": [
    0.45,
@@ -42,6 +42,14 @@
    3,
    12
   ],
+  "skin_val_shadow_over_lit": [
+   0.75,
+   0.92
+  ],
+  "skin_val_lit": [
+   0.88,
+   0.97
+  ],
   "_why": {
    "chin_over_philtrum": "mouth->chin over nose base->mouth. Band around the reference's own values: 1.84 measured on the far figure (nose outline, mouth line, chin outline, carried to 3D through the model), 2.3-2.9 read earlier from pixel landmarks on 3/4 views (+-10%); the two readings disagree, so the band spans both until a better view settles it",
    "mouth_width": "corner to corner over the interocular",
@@ -49,9 +57,11 @@
    "iris_over_eye_w": "a big dark iris: reference 0.52 (real ~0.39)",
    "lid_cover_top": "the upper lid covers ~20% of the iris: no white above it",
    "lid_cover_bottom": "the lower lid touches or covers the iris: no white below it",
-   "skin_sat_lit": "HSV saturation of lit skin in the style's look (rendered, sampled on the forehead/cheek)",
+   "skin_sat_lit": "HSV saturation of lit skin in the style's look (rendered, sampled on the forehead/cheek). Banded on the reference through the matched face camera: forehead 0.42, lit cheek 0.59 (the same two samples average 0.5); the old 0.28-0.45 was an estimate under AgX, which can't reach the reference's value and saturation together",
    "skin_sat_shadow": "shadowed skin is MORE saturated than lit skin (reference ~0.6): not grey",
    "skin_hue_shift_to_shadow": "degrees the hue moves toward red from lit to shadow (reference ~7)",
+   "skin_val_shadow_over_lit": "shadow-side skin value over lit (samples on the side away from the key): the reference reads 0.87 through the matched face camera (nose side, under the cheekbone, cheek side, brow socket on his right, away from its key on his left; shadow h 14 s 0.56 v 0.80). Soft modelling, not flat: a frontal key alone read flat and pale",
+   "skin_val_lit": "HSV value of lit skin in the style's look: the reference's forehead/cheeks/nose bridge read 0.925 (h 19, s 0.45) through the matched face camera; under AgX the skin topped out at 0.78-0.85 whatever its paint or exposure (it was the 'darker than the reference' skin)",
    "corner_radius_cheekbone_mm": "the tightest turn of the horizontal section between the front and side planes at cheekbone height: a realistic GNM head ~42 mm",
    "muzzle_mm": "how far the upper lip stands in front of the cheeks beside the nose wings (GNM ~12: a muzzle). Not measurable in the reference's views (no profile); 0-10 keeps the style's flat-ish front without forbidding what a matched fit needs",
    "ala_width": "the nose across its outer alar wings over the interocular (base.ala_width). The reference measures 0.56 (near figure, matched camera) and 0.65 (far figure), each image ratio carried to 3D by the model's own 3D/image ratio in the same camera: a long, narrow nose. Replaces nose_width (GNM lm31-35, the nostril base inside the wings, which the reference can't show and which blocked narrowing the wings)",
@@ -1128,7 +1138,9 @@
      ],
      "strength": 0.45
     },
-    "look": "AgX - Punchy"
+    "view": "Khronos PBR Neutral",
+    "look": "None",
+    "exposure": -0.5
    }
   }
  }

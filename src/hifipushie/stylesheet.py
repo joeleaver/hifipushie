@@ -159,6 +159,19 @@ SKIN_SAMPLES = [("forehead", "lm_nose_bridge", [0.0, 0.004, 0.04], "lit"),
                 ("temple_shadow", "lm_eye_outer.L", [0.012, 0.012, -0.012], "shadow"),
                 ("nose_side_shadow", "lm_nostril.L", [0.002, 0.004, 0.01], "shadow"),
                 ("nose_tip", "lm_nose_tip", [0.0, 0.0, 0.0], None)]
+# (written for a key from his right, -x: the lit cheek is .R, the shadow side .L; skin_samples mirrors them)
+
+
+def skin_samples(spec: dict) -> list:
+    """SKIN_SAMPLES on the look's own sides: mirrored (.L <-> .R, x offsets negated) when the key light (the first
+    of style.look's lights) comes from his left (+x), so "shadow" samples stay on the side away from the key."""
+    lights = ((spec.get("style") or {}).get("look") or {}).get("lights") or []
+    if not lights or float(lights[0]["dir"][0]) <= 0:
+        return SKIN_SAMPLES
+
+    def flip(j):
+        return j[:-2] + {".L": ".R", ".R": ".L"}[j[-2:]] if j[-2:] in (".L", ".R") else j
+    return [(n, flip(j), [-o[0], o[1], o[2]], k) for n, j, o, k in SKIN_SAMPLES]
 
 
 def _project(cam: dict, p: np.ndarray, size: int) -> tuple[float, float]:
@@ -187,7 +200,7 @@ def colour_check(name: str, size: int = 512, save: str | None = None) -> list[di
     scene.look(name, [], [cam], size, save)
     im = np.asarray(scene.look.images[0][1].convert("RGB"), float) / 255
     samples = {}
-    for nm, j, off, kind in SKIN_SAMPLES:
+    for nm, j, off, kind in skin_samples(spec):
         if j not in J:
             continue
         x, y = _project(cam, np.array(J[j]["pos"], float) + off, size)
@@ -201,6 +214,8 @@ def colour_check(name: str, size: int = 512, save: str | None = None) -> list[di
     vals = {}
     if lit and sh:
         vals = {"skin_sat_lit": float(np.mean([s[1] for s in lit])), "skin_sat_shadow": float(np.mean([s[1] for s in sh])),
+                "skin_val_lit": float(np.mean([s[2] for s in lit])),
+                "skin_val_shadow_over_lit": float(np.mean([s[2] for s in sh]) / max(np.mean([s[2] for s in lit]), 1e-6)),
                 "skin_hue_shift_to_shadow": float(np.mean([s[0] for s in lit]) - np.mean([s[0] for s in sh]))}
     out = [{"rule": k, "value": round(v, 3), "target": rules[k], "ok": _within(v, rules[k]),
             "why": (rules.get("_why") or {}).get(k, "")} for k, v in vals.items() if k in rules]

@@ -252,9 +252,9 @@ def validate(spec: dict) -> None:
     if bad:
         raise SpecError(f"style: unknown keys {sorted(bad)} (have name, shape, paint, look, sheet)")
     lk = st.get("look") or {}
-    bad = set(lk) - {"lights", "world", "look", "exposure"}
+    bad = set(lk) - {"lights", "world", "look", "exposure", "view"}
     if bad:
-        raise SpecError(f"style.look: unknown keys {sorted(bad)} (have lights, world, look, exposure)")
+        raise SpecError(f"style.look: unknown keys {sorted(bad)} (have lights, world, look, exposure, view)")
     for i, L in enumerate(lk.get("lights") or []):
         if "dir" not in L or set(L) - {"dir", "energy", "color", "angle", "shadow"}:
             raise SpecError(f"style.look.lights[{i}]: needs dir; takes dir, energy, color, angle, shadow")

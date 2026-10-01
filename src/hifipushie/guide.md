@@ -258,7 +258,9 @@ it's judged in. A sheet bundles those so another character takes the same style:
   how much iris the lids cover, skin saturation and hue lit vs shadow in the sheet's look) and says why each
   rule exists. Judge renders next to the reference in the sheet's look, not the grey studio.
 - `style.look` works without a sheet too: {"lights": [{"dir", "energy", "color", "angle", "shadow"}], "world":
-  {"color", "strength"}, "look": "AgX - Punchy", "exposure"}.
+  {"color", "strength"}, "view": "AgX" | "Khronos PBR Neutral" | ..., "look": "AgX - Punchy" | "None", "exposure"}.
+  AgX rolls bright colours off toward white (lit skin never passed V ~0.8 whatever its paint); "Khronos PBR
+  Neutral" keeps albedo hue and saturation up to the highlights, as glTF viewers show an export.
 
 ## 5b. History: nothing real is pristine
 

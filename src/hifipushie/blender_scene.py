@@ -873,8 +873,10 @@ def render(job):
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
     scene.render.film_transparent = bool(job.get("show_layer"))  # alpha: surface vs sky, for coverage
     scene.render.image_settings.color_mode = "RGBA" if job.get("show_layer") else "RGB"
-    scene.view_settings.view_transform = "Standard" if job.get("flat") else "AgX"
     lt = job.get("lighting") or {}  # a style's look preset (spec["style"]["look"]): key/fill/rim suns, world, view
+    # "view": the view transform (AgX by default; "Khronos PBR Neutral" keeps albedo hue and saturation, as glTF
+    # viewers show an export: AgX rolled lit skin off to V 0.78 whatever its colour)
+    scene.view_settings.view_transform = "Standard" if job.get("flat") else lt.get("view", "AgX")
     if lt.get("look") and not job.get("flat"):
         try:
             scene.view_settings.look = lt["look"]
