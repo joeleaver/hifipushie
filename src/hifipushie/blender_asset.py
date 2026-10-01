@@ -29,13 +29,30 @@ import time
 
 
 def _mem_workers(per_gb=2.0, cap=8):
-    """Worker Blenders that fit in free memory (half of RAM at most, 12% kept back; see resources.py)."""
+    """Worker Blenders that fit in free memory (half of RAM at most, 12% kept back; see resources.py, whose
+    container-aware limits this mirrors: this runs inside Blender, without the package)."""
     try:
         m = {l.split(":")[0]: int(l.split()[1]) / 2**20 for l in open("/proc/meminfo")}
-        budget = min(0.5 * m["MemTotal"], m["MemAvailable"] - max(6.0, 0.12 * m["MemTotal"]))
+        total, avail = m["MemTotal"], m["MemAvailable"]
+        try:
+            raw = open("/sys/fs/cgroup/memory.max").read().strip()
+            if raw.isdigit():
+                limit = int(raw) / 2**30
+                used = int(open("/sys/fs/cgroup/memory.current").read().strip()) / 2**30
+                total, avail = min(total, limit), min(avail, limit - used)
+        except (OSError, ValueError):
+            pass
+        budget = min(0.5 * total, avail - max(6.0, 0.12 * total))
     except OSError:
         budget = 8.0
-    return max(1, min(cap, (os.cpu_count() or 4) // 2, int(budget // per_gb)))
+    ncpu = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 4)
+    try:
+        q, per = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
+        if q != "max":
+            ncpu = min(ncpu, max(1, int(q) // int(per)))
+    except (OSError, ValueError):
+        pass
+    return max(1, min(cap, ncpu // 2, int(budget // per_gb)))
 
 import bmesh
 import bpy

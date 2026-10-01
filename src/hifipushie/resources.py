@@ -15,8 +15,27 @@ import time
 from pathlib import Path
 
 
+def _cgroup_mem_gb() -> tuple[float | None, float | None]:
+    """The container's memory limit and current use in GB (cgroup v2, else v1), or None where there's no limit:
+    inside a container /proc/meminfo shows the HOST (a hosted sculpt box saw 503 GB), not what we may use."""
+    for limit_p, used_p in (("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+                            ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes")):
+        try:
+            raw = Path(limit_p).read_text().strip()
+        except OSError:
+            continue
+        if raw == "max" or not raw.isdigit() or int(raw) >= 1 << 60:  # v1 reports "no limit" as a huge number
+            return None, None
+        try:
+            used = int(Path(used_p).read_text().strip()) / 2**30
+        except (OSError, ValueError):
+            used = None
+        return int(raw) / 2**30, used
+    return None, None
+
+
 def meminfo() -> dict:
-    """/proc/meminfo in GB ({"total", "available"})."""
+    """Memory in GB ({"total", "available"}): /proc/meminfo, capped by the container's limit when there is one."""
     out = {}
     try:
         for line in Path("/proc/meminfo").read_text().splitlines():
@@ -24,7 +43,29 @@ def meminfo() -> dict:
             out[k] = int(v.split()[0]) / 2**20
     except OSError:
         return {"total": 16.0, "available": 8.0}
-    return {"total": out.get("MemTotal", 16.0), "available": out.get("MemAvailable", 8.0)}
+    total, avail = out.get("MemTotal", 16.0), out.get("MemAvailable", 8.0)
+    limit, used = _cgroup_mem_gb()
+    if limit is not None:
+        total = min(total, limit)
+        avail = min(avail, limit - (used or 0.0))
+    return {"total": total, "available": max(0.0, avail)}
+
+
+def cpus() -> int:
+    """CPUs this process may use: the affinity mask and the container's CPU quota (cgroup v2 cpu.max / v1 cfs quota),
+    not os.cpu_count(), which inside a container is the HOST's (a hosted sculpt box saw 96)."""
+    n = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+    for quota_p, period_p in (("/sys/fs/cgroup/cpu.max", None),
+                              ("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", "/sys/fs/cgroup/cpu/cpu.cfs_period_us")):
+        try:
+            parts = Path(quota_p).read_text().split()
+            quota, period = parts[0], (parts[1] if period_p is None else Path(period_p).read_text().strip())
+        except (OSError, IndexError):
+            continue
+        if quota not in ("max", "-1") and int(period) > 0:
+            n = min(n, max(1, int(quota) // int(period)))
+        break
+    return max(1, n)
 
 
 def reserve_gb() -> float:
@@ -41,7 +82,7 @@ def budget_gb() -> float:
 def workers(per_worker_gb: float, cap: int | None = None, jobs: int | None = None) -> int:
     """How many worker processes of ~per_worker_gb fit in the memory budget now (at least 1)."""
     n = int(budget_gb() // max(per_worker_gb, 0.1))
-    n = min(n, max(1, (os.cpu_count() or 2) - 2))
+    n = min(n, max(1, cpus() - 2))
     if cap:
         n = min(n, cap)
     if jobs:

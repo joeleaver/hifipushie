@@ -885,13 +885,8 @@ def artist_version() -> str:
 
 
 def equipment(work_root: Path) -> dict:
-    ram = None
-    try:
-        for line in Path("/proc/meminfo").read_text().splitlines():
-            if line.startswith("MemTotal:"):
-                ram = round(int(line.split()[1]) / 1024 ** 2, 1)
-    except OSError:
-        pass
+    from . import resources  # container-aware: a hosted box's /proc shows the whole host
+    ram = round(resources.meminfo()["total"], 1)
     gpu = None
     if shutil.which("nvidia-smi"):
         try:
@@ -910,7 +905,7 @@ def equipment(work_root: Path) -> dict:
     except (OSError, subprocess.SubprocessError):
         pass
     work_root.mkdir(parents=True, exist_ok=True)
-    return {"cpus": os.cpu_count(), "ram_gb": ram, "gpu": gpu, "blender": blender,
+    return {"cpus": resources.cpus(), "ram_gb": ram, "gpu": gpu, "blender": blender,
             "disk_gb_free": round(shutil.disk_usage(work_root).free / 1024 ** 3, 1),
             "os": platform.platform()}
 
