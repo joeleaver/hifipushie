@@ -225,6 +225,8 @@ class Config:
     mode: str = "local"
     preload: list = field(default_factory=list)
     probe: bool = False  # run the GPU/EEVEE readiness probe before registering (hosted boxes)
+    updater: object = None  # artist_update.Updater (a local install that follows the department's pinned sha)
+    update_failed: str | None = None  # a sha that couldn't be switched to (hosted start), reported in heartbeats
 
 
 def hosted_config(env=None) -> Config:
@@ -284,7 +286,8 @@ class Department:
         url = path if path.startswith(("http://", "https://")) else self.base + path
         data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
         req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Authorization", f"Bearer {self.token}")
+        if self.token:  # (pairing and the install manifest are public)
+            req.add_header("Authorization", f"Bearer {self.token}")
         if data is not None:
             req.add_header("Content-Type", ctype or "application/json")
         try:
@@ -300,7 +303,8 @@ class Department:
     def get_bytes(self, path: str, timeout: float = 300.0) -> bytes:
         url = path if path.startswith(("http://", "https://")) else self.base + path
         req = urllib.request.Request(url)
-        req.add_header("Authorization", f"Bearer {self.token}")
+        if self.token:
+            req.add_header("Authorization", f"Bearer {self.token}")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.read()
@@ -424,6 +428,8 @@ class Runner:
                         c["needs"]["gpu"] = True
         self.cap_of = {c["tool"]: c for c in self.caps}
         self.exit_code = 0
+        self.updater = cfg.updater
+        self.wanted = None  # (sha, repo) the department wants this runner to run
         self.runner_id: str | None = None
         self.heartbeat_secs = 15.0
         self.poll_secs = 25.0
@@ -447,6 +453,8 @@ class Runner:
         body = {"name": self.cfg.name, "artist": ARTIST, "artist_version": artist_version(), "contract": CONTRACT,
                 "mode": self.cfg.mode, "equipment": eq, "capabilities": self.caps,
                 "instructions": instructions() + gpu_note(self.gpu)}
+        if self._update_failed():
+            body["update_failed"] = self._update_failed()
         try:
             r = self.dept.request("POST", "/v1/runners/register", body)
         except HTTPError as e:
@@ -454,6 +462,9 @@ class Runner:
                 raise Unauthorized(f"the department refused this runner's token (HTTP {e.status}: {e.body[:200]})")
             raise
         self.runner_id = r["runner_id"]
+        self._wanted(r)
+        if self.updater:
+            self.updater.confirm()
         self.heartbeat_secs = float(r.get("heartbeat_secs") or 15)
         self.poll_secs = float(r.get("poll_secs") or 25)
         self.need_register.clear()
@@ -462,7 +473,7 @@ class Runner:
             log.info("re-registered: dropping session %s", self.session.id)
             self._drop_session()
         write_status({"state": "registered", "runner_id": self.runner_id, "name": self.cfg.name,
-                      "url": self.cfg.url, "at": time.time()})
+                      "url": self.cfg.url, "at": time.time(), "version": artist_version(), "pid": os.getpid()})
         log.info("registered %s as runner %s (%d capabilities; left out: %s)", self.cfg.name, self.runner_id,
                  len(self.caps), ", ".join(f"{k} ({v})" for k, v in self.left_out.items()) or "none")
 
@@ -475,6 +486,8 @@ class Runner:
             last = time.monotonic()
             with self.lock:
                 body = {"task": self.task_id, "message": self.task_msg}
+            if self._update_failed():
+                body["update_failed"] = self._update_failed()
             try:
                 r = self.dept.request("POST", f"/v1/runners/{rid}/heartbeat", body) or {}
             except HTTPError as e:
@@ -487,6 +500,31 @@ class Runner:
                 continue
             with self.lock:
                 self.cancels |= set(r.get("cancel") or [])
+            self._wanted(r)
+
+    def _wanted(self, reply):
+        from .artist_update import wanted
+        w = wanted(reply)
+        if w:
+            self.wanted = w
+
+    def _update_failed(self) -> str | None:
+        return (self.updater.last_failed() if self.updater else None) or self.cfg.update_failed
+
+    def _maybe_update(self):
+        """Idle (no session, no task): follow the department's pinned sha, or roll back a switch that never
+        registered. On a switch this process becomes the new version (exec)."""
+        u = self.updater
+        if u is None or self.session is not None or self.task_id is not None:
+            return
+        if u.overdue(self.runner_id is not None):
+            log.error("this version (%s) didn't register within a minute of the update: rolling back", u.current[:12])
+            u.rollback("didn't register after the switch")
+            self.shutdown()
+            u.reexec()
+        if u.due(self.wanted) and u.update(self.wanted) is None:
+            self.shutdown()
+            u.reexec()
 
     # -- main loop
 
@@ -517,11 +555,14 @@ class Runner:
                 continue
             except OSError as e:
                 log.warning("department unreachable: %s", e)
+                self._maybe_update()
                 self.stop.wait(backoff)
                 backoff = min(backoff * 2, 60)
                 continue
             if task:
                 self.handle(task)
+            else:
+                self._maybe_update()
         self.shutdown()
 
     def shutdown(self):
@@ -838,13 +879,8 @@ def artist_version() -> str:
         v = version("hifipushie")
     except PackageNotFoundError:
         v = "?"
-    sha = os.environ.get("HIFIPUSHIE_GIT_SHA", "")  # (the hosted image has no git)
-    if not sha:
-        try:
-            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent,
-                                 capture_output=True, text=True, timeout=5).stdout.strip()
-        except (OSError, subprocess.SubprocessError):
-            sha = ""
+    from .artist_update import running_sha
+    sha = running_sha()[:12]
     return f"hifipushie {v}" + (f" (git {sha})" if sha else "")
 
 
@@ -882,13 +918,14 @@ def equipment(work_root: Path) -> dict:
 SOFTWARE_GL = ("llvmpipe", "softpipe", "swrast", "lavapipe", "software rasterizer")
 
 
-def gpu_probe(timeout: float = 300.0) -> dict:
+def gpu_probe(timeout: float = 300.0, blender: str | None = None) -> dict:
     """Can this box's Blender render headless? A 64 px cube in Workbench (clay looks) and EEVEE (painted looks),
     run the way hifipushie runs Blender. {"workbench": "ok" | why, "eevee": "ok" | why, "renderer", "backend", ...}.
     EEVEE on a software rasterizer (Mesa llvmpipe: no usable GPU) counts as unavailable: painted looks would take
     minutes."""
     import tempfile
-    from .render import BLENDER as BL
+    from .render import BLENDER
+    BL = blender or BLENDER
     script = Path(__file__).with_name("blender_probe.py")
     with tempfile.TemporaryDirectory(prefix="hifipushie-probe-") as tmp:
         try:
@@ -921,7 +958,7 @@ def gpu_note(gpu: dict | None) -> str:
     return note
 
 
-COMMANDS = ("run", "setup", "login", "logout", "install", "uninstall", "status")
+COMMANDS = ("run", "setup", "login", "logout", "install", "uninstall", "status", "probe")
 
 
 def run_parser(prog: str = "hifipushie-artist") -> argparse.ArgumentParser:
@@ -940,6 +977,8 @@ def run_parser(prog: str = "hifipushie-artist") -> argparse.ArgumentParser:
                                                       "default ~/.cache/hifipushie-artist)")
     ap.add_argument("--assets", default=None, help="third-party asset packs (default $HIFIPUSHIE_ASSETS, else "
                                                    "./workspace/_templates or $HIFIPUSHIE_HOME/_templates)")
+    ap.add_argument("--dir", default=None, help="the runner's directory from `setup` (<project>/.oxidegen/runner: "
+                                                "config, token, logs, workspaces; OXIDEGEN_RUNNER_DIR)")
     ap.add_argument("--capabilities", action="store_true", help="print the capabilities and exit")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
@@ -959,21 +998,39 @@ def local_config(a) -> Config:
     saved = saved_settings()
     url = a.url or os.environ.get("OXIDEGEN_URL") or saved.get("url") or DEFAULT_URL
     name = a.name or os.environ.get("HIFIPUSHIE_ARTIST_NAME") or saved.get("name") or socket.gethostname()
-    work = a.work_root or os.environ.get("HIFIPUSHIE_ARTIST_WORK") or "~/.cache/hifipushie-artist"
+    d = runner_dir()
+    work = a.work_root or os.environ.get("HIFIPUSHIE_ARTIST_WORK") or (d / "work" if d else
+                                                                      "~/.cache/hifipushie-artist")
+    from .artist_update import Updater
     return Config(url=url, token=_token(a.token, a.token_file), name=name, work_root=Path(work).expanduser(),
-                  assets=a.assets or _assets_default())
+                  assets=a.assets or saved.get("assets") or _assets_default(),
+                  updater=Updater.for_this_install(d, saved.get("git_repo") or ""))
+
+
+RUNNER_DIR: Path | None = None  # a runner set up by `setup` (<project>/.oxidegen/runner): its config, token, state
+
+
+def runner_dir() -> Path | None:
+    if RUNNER_DIR is not None:
+        return RUNNER_DIR
+    d = os.environ.get("OXIDEGEN_RUNNER_DIR")
+    return Path(d).expanduser().resolve() if d else None
 
 
 def config_dir() -> Path:
-    return Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser() / "hifipushie"
+    return runner_dir() or Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser() / "hifipushie"
 
 
 def token_path() -> Path:
-    return config_dir() / "runner-token"
+    d = runner_dir()
+    return d / "token" if d else config_dir() / "runner-token"
 
 
 def status_path() -> Path:
-    """The runner's own last state (`setup` waits on it): $XDG_STATE_HOME/hifipushie/runner-status.json."""
+    """The runner's own last state (`setup` waits on it): <runner dir>/status.json, else
+    $XDG_STATE_HOME/hifipushie/runner-status.json."""
+    if runner_dir():
+        return runner_dir() / "status.json"
     return Path(os.environ.get("XDG_STATE_HOME") or "~/.local/state").expanduser() / "hifipushie" / "runner-status.json"
 
 
@@ -996,13 +1053,19 @@ def saved_settings() -> dict:
 
 
 def main(argv: list[str] | None = None):
+    global RUNNER_DIR
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "probe":  # (the update check runs it: Blender renders with this version)
+        print(json.dumps(gpu_probe()))
+        return
     if argv and argv[0] in COMMANDS[1:]:
         from . import artist_setup
         sys.exit(artist_setup.main(argv))
     if argv and argv[0] == "run":
         argv = argv[1:]
     a = run_parser().parse_args(argv)
+    if a.dir:
+        RUNNER_DIR = Path(a.dir).expanduser().resolve()
     _logging(a.verbose)
     if a.capabilities:
         caps, left = capabilities()
@@ -1017,6 +1080,7 @@ def main(argv: list[str] | None = None):
         for flag in ("url", "token", "token_file", "name", "work_root"):
             if getattr(a, flag):
                 log.warning("hosted mode takes its config from the environment: --%s ignored", flag.replace("_", "-"))
+        cfg.update_failed = hosted_start_update(cfg)
     else:
         cfg = local_config(a)
         if not cfg.token:
@@ -1037,6 +1101,47 @@ def main(argv: list[str] | None = None):
             log.error(DISCONNECTED)
             print(DISCONNECTED, file=sys.stderr)
         sys.exit(EXIT_UNAUTHORIZED)
+
+
+def hosted_start_update(cfg: Config) -> str | None:
+    """A hosted box runs the department's pinned sha (OXIDEGEN_WANTED_VERSION) if it differs from the baked one:
+    installed over a copy of the image's venv and run as a child. Returns None when there's nothing to do; when
+    the child ran, exits with its code; when the update failed (install, check, or no registration within 60 s),
+    returns the failed sha so the baked version runs and reports it."""
+    from . import artist_update as U
+    want = os.environ.get("OXIDEGEN_WANTED_VERSION", "").strip()
+    if not want or os.environ.get("OXIDEGEN_UPDATE_CHILD") or U.same(want, U.running_sha()):
+        return None
+    repo = os.environ.get("OXIDEGEN_WANTED_REPO") or U.DEFAULT_REPO
+    log.info("the department wants %s (baked %s): installing it", want[:12], U.running_sha()[:12])
+    py, why = U.hosted_update(want, repo, cfg.work_root)
+    if py is None:
+        log.error("update to %s failed: %s; running the baked version", want[:12], why)
+        return want
+    started = time.time()
+    child = subprocess.Popen([str(py), "-m", "hifipushie.artist"], env={**os.environ, "OXIDEGEN_UPDATE_CHILD": "1"})
+    signal.signal(signal.SIGTERM, lambda *_: child.terminate())
+    registered = False
+    while child.poll() is None:
+        if not registered:
+            try:
+                st = json.loads(status_path().read_text())
+                registered = st.get("state") == "registered" and st.get("at", 0) >= started
+            except (OSError, ValueError):
+                pass
+            if not registered and time.time() - started > U.CONFIRM_SECS + 30:  # (+ its own GPU probe)
+                log.error("%s didn't register in time: stopping it, running the baked version", want[:12])
+                child.terminate()
+                try:
+                    child.wait(30)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                return want
+        time.sleep(0.5)
+    if child.returncode == EXIT_UNAUTHORIZED or registered:
+        sys.exit(child.returncode)
+    log.error("%s exited %s before registering; running the baked version", want[:12], child.returncode)
+    return want
 
 
 if __name__ == "__main__":
