@@ -35,7 +35,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 57  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 58  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -277,6 +277,7 @@ GNM_BAND = 0.028
 EYE_R = 0.96  # the eyeball's radius over GNM's eye (its median vertex distance)
 EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball
 GNM_TILT = 20.0  # degrees
+LIP_RING = 2  # GNM: the inner-lip contact ring (landmarks 61-63, 65-67), rings out from the skin's open mouth loop
 
 
 def head_of(s: dict, base: dict):
@@ -375,6 +376,9 @@ def ala_width(head: dict) -> float:
     s = io / 0.063  # the band in the head's own scale
     za = 0.5 * (lm[31][2] + lm[35][2])
     nose = np.flatnonzero(g["groups"]["nose_region"][skin] > 0.5)
+    if head.get("skin_index") is not None:  # zipped lips dropped vertices (_zip_lips)
+        nose = head["skin_index"][nose]
+        nose = nose[nose >= 0]
     z = V[nose, 2]
     iv = nose[(z > za - 0.002 * s) & (z < za + 0.010 * s)]
     return float((V[iv, 0].max() - V[iv, 0].min()) / io)
@@ -1282,6 +1286,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if shape.get("push_late"):  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
         # lifted upper cheek under the lower lid, filling the socket hollow that shaded as a dark ring)
         W, lm = _pushes(W, lm, list(shape["push_late"]))
+    skin_index, zipped = None, 0
+    if head.get("mouth_gap") is not None and float(head["mouth_gap"]) < 0.0015 and head.get("zip_lips", True):
+        W, faces, skin_index, zipped = _zip_lips(W, faces, 0.5 * (lm[62] + lm[66]))
     for _ in range(int(head.get("subdivide", 1))):
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)
@@ -1307,8 +1314,87 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
             "eyes": eyes, "eye_r": r_ball, "forward": -back,
             "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height
-            "lm68": lm,
+            "lm68": lm, "skin_index": skin_index, "lips_zipped": zipped,
             "plane": (cut, pn, s * GNM_BAND)}
+
+
+def _zip_lips(W, faces, seam, reach=0.045, ring=LIP_RING):
+    """Closed lips as one surface: GNM's skin (mouth bag left out) ends in an open loop a few mm inside the lips,
+    and its inner lip rolls face each other behind the contact. Over closed lips those rolls left sealed air pockets
+    in the field behind the lips, and a slot the export's low poly and its bake fell into (a dark jagged slit with
+    flecks). The rings from the open loop out to the contact ring (`ring` rings out: the inner-lip landmarks
+    62/66 sit on it) are dropped and the contact ring's upper half welded to its lower half by arc length (corners
+    at its extremes in x), so the lips meet in one seam line, an edge loop of the head's quads. Returns (W, faces,
+    skin_index: old -> new vertex index or -1, upper-lip vertices welded)."""
+    import collections
+    W = np.asarray(W, float)
+    cnt: dict = {}
+    for f in faces:
+        for k in range(len(f)):
+            e = (min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)]))
+            cnt[e] = cnt.get(e, 0) + 1
+    adj = collections.defaultdict(set)
+    for a, b in cnt:
+        adj[a].add(b)
+        adj[b].add(a)
+    loop = [v for (a, b), c in cnt.items() if c == 1 for v in (a, b)
+            if np.linalg.norm(W[a] - seam) < reach and np.linalg.norm(W[b] - seam) < reach]
+    if not loop:
+        return W, faces, None, 0
+    lev = {v: 0 for v in set(loop)}
+    dq = collections.deque(lev)
+    while dq:
+        v = dq.popleft()
+        if lev[v] >= ring:
+            continue
+        for w in adj[v]:
+            if w not in lev:
+                lev[w] = lev[v] + 1
+                dq.append(w)
+    rv = [v for v, lv in lev.items() if lv == ring]
+    rs = set(rv)
+    nb = {v: [w for w in adj[v] if w in rs] for v in rv}
+    if any(len(n) != 2 for n in nb.values()):
+        return W, faces, None, 0
+    lp, prev = [rv[0]], None
+    while True:
+        nx = [w for w in nb[lp[-1]] if w != prev]
+        prev = lp[-1]
+        if nx[0] == lp[0]:
+            break
+        lp.append(nx[0])
+    if len(lp) != len(rv):
+        return W, faces, None, 0
+    x = W[lp, 0]
+    i0, i1, m = int(np.argmin(x)), int(np.argmax(x)), len(lp)
+    a = [lp[(i0 + k) % m] for k in range((i1 - i0) % m + 1)]
+    b = [lp[(i1 + k) % m] for k in range((i0 - i1) % m + 1)][::-1]
+    up, lo = (a, b) if W[a, 2].mean() > W[b, 2].mean() else (b, a)
+
+    def arc(P):
+        d = np.r_[0, np.cumsum(np.linalg.norm(np.diff(W[P], axis=0), axis=1))]
+        return d / max(float(d[-1]), 1e-12)
+    su, sl = arc(up), arc(lo)
+    to = np.arange(len(W))
+    for v, t in zip(lo[1:-1], sl[1:-1]):
+        to[v] = up[int(np.argmin(np.abs(su - t)))]
+    W = W.copy()
+    for k, v in enumerate(up[1:-1], 1):  # the seam halfway between the lips (lower position by arc, interpolated)
+        q = np.array([np.interp(su[k], sl, W[lo, j]) for j in range(3)])
+        W[v] = 0.5 * (W[v] + q)
+    gone = {v for v, lv in lev.items() if lv < ring}
+    out = []
+    for f in faces:
+        if any(v in gone for v in f):
+            continue
+        g = [int(to[v]) for v in f]
+        g = [v for k, v in enumerate(g) if v != g[k - 1]]
+        if len(set(g)) >= 3:
+            out.append(g)
+    used = sorted({v for f in out for v in f})
+    rm = np.full(len(W), -1)
+    rm[used] = np.arange(len(used))
+    return W[used], [[int(rm[v]) for v in f] for f in out], rm, len(up) - 2
 
 
 def _imls(X, pr, k=K):

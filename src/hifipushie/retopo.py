@@ -975,7 +975,10 @@ def graft_head(V, L, S, spec: dict, prims, log: list, unsub: int = 1, gap: float
     HS = np.array([len(f) for f in h["faces"]])
     Vb, Lb, Sb = _neck_cut(V, L, S, c, n, -1, 0.004)  # (the template's neck rings tilt up to the nape)
     Vh, Lh, Sh = _neck_cut(h["verts"], HL, HS, c, n, +1, -0.002)  # (GNM's neck rings tilt across the plane)
-    if "lm_lip_seam" in s["joints"] and float(np.linalg.norm(h["lm68"][62] - h["lm68"][66])) < 0.0015:
+    if h.get("lips_zipped"):  # the head's own mesh is closed at the lips' contact (base._zip_lips): the seam is
+        # an edge loop already, on the field's lip line
+        log.append(f"head: lips closed in the head mesh ({h['lips_zipped']} seam vertices)")
+    elif "lm_lip_seam" in s["joints"] and float(np.linalg.norm(h["lm68"][62] - h["lm68"][66])) < 0.0015:
         Vh, Lh, Sh, nz = _zip_mouth(Vh, Lh, Sh, resolve_point(s, "lm_lip_seam"))
         log.append(f"head: the closed mouth zipped ({nz} upper-lip vertices)" if nz else "head: mouth left open")
     with tempfile.TemporaryDirectory(prefix="hifipushie-graft-") as tmp:

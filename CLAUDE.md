@@ -279,6 +279,18 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   the upper cheek filled under the lower lid (section hollow 1.43 -> 0.58 mm); the dark ring was that slope, not paint.
   `base.head.mouth_gap` closes (or opens) the lips (least change of GNM's lower-face components); a closed mouth's
   cavity is filled (base.inject): left open it was an outside pocket in the head that the wrap projected into.
+  Closed lips are zipped in the head mesh itself (`base._zip_lips`, 2026-09-30): the rings from the skin's open mouth
+  loop to the contact ring (`LIP_RING` 2, where lm 61-63/65-67 sit) dropped, the contact ring's halves welded. The
+  inner lip rolls had left sealed air pockets behind the lips and a slot: the export's low poly and its bake fell in
+  (a dark jagged slit with flecks, g08c). Now the field is solid with a ~0.5 mm groove, the wrap's seam is that edge
+  loop (`graft_head` skips `_zip_mouth`), `head["skin_index"]` maps GNM skin indices past the dropped vertices.
+  Export vs look (same day, renders x01-x05): rendered with the same camera, suns, world and engine (EEVEE), the
+  export's skin and stubble match the scene (chin HSV equal, contrast within 4%); the "grey stubble" was the old
+  preview (grey world, other lights) plus 1.1 mm texels under 1 mm stubble noise: `parts.body.texel_focus` on the
+  face (2.5x: 0.5 mm). `asset.preview(lighting=)` / export_asset's preview now use the model's style look. The
+  hair still reads near-black in EEVEE from the GLB (brown in Cycles; not sheen, anisotropy or the normal map).
+  Skin: lit saturation is AgX's (bright colours desaturate): the base skin #e88f68 + top-plane light #f4b495 took
+  lit 0.36 -> 0.43 at hue 16-17 under the sheet's "AgX - Punchy" (other AgX looks/exposure only desaturated it).
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
   bag on a strap, disc, hair as a scalp shell + swept top; exported rigged).
 - `hair.py` + `blender_hair.py` (2026-09-29; replaced the SDF groom on branch hair-sdf-wip: a mop with corduroy grooves,
