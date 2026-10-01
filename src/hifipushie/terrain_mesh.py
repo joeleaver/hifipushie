@@ -1611,6 +1611,36 @@ def _polylines(edges):
     return out
 
 
+WELD = 1e-3  # x voxel: canonical border vertices joined by a chain edge and closer than this are one vertex
+
+
+def _weld_rows(plane_edges, CP, corner, tol):
+    """{row: the row it is welded to} for canonical border rows joined by a border chain edge and closer than tol.
+    Two marching-cubes crossings whose Newton steps converge on one point (a corner of pebble's karst passage in a tile
+    border plane: 7e-7 m apart) are one vertex in the GLB's float32 positions: the sliver face between them turns
+    degenerate and its neighbours meet on a non-manifold edge with doubled directed edges. Dropping one in the chain
+    simplification wasn't enough (a border collapse that failed at a coarser LOD put it back at every LOD), so the pair
+    is merged before any LOD is made: in the chains here and in each tile's dense mesh (`_job_dense`). Corners win."""
+    par = {}
+
+    def find(x):
+        while par.get(x, x) != x:
+            x = par[x]
+        return x
+
+    for e in plane_edges.values():
+        for a, b in e:
+            if a != b and float(np.linalg.norm(CP[a] - CP[b])) < tol:
+                ra, rb = find(a), find(b)
+                if ra == rb:
+                    continue
+                if corner[ra] and corner[rb]:
+                    continue
+                keep_, gone = (ra, rb) if corner[ra] or (not corner[rb] and ra < rb) else (rb, ra)
+                par[gone] = keep_
+    return {x: find(x) for x in par}
+
+
 def _simplify(P, line, closed, tol, always):
     """Douglas-Peucker on a chain of rows (in 3D, within its border plane): the rows kept, in order. Ends, and rows
     in `always` (tile corners), are kept; a loop keeps at least 3 (it must not close up)."""
@@ -1890,6 +1920,20 @@ def _job_dense(ij):
     P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, (idx[:, 2] + ZOFF) * v0]
     border = np.array(sorted(kk), np.int64)
     rows = np.array([reg[kk[q]] for q in border], np.int64)
+    alias, gone = c.get("alias") or {}, np.zeros(0, np.int64)
+    if alias and any(int(r) in alias for r in rows):  # (welded rows: their vertices merged, `_weld_rows`)
+        rows = np.array([alias.get(int(r), int(r)) for r in rows], np.int64)
+        orig = np.array([reg[kk[q]] for q in border], np.int64)
+        remap = np.arange(len(P))
+        first = {}
+        for v, r, o in sorted(zip(border.tolist(), rows.tolist(), orig.tolist()), key=lambda t: (t[1], t[2] != t[1], t[0])):
+            if r in first:
+                remap[v] = first[r]
+            else:
+                first[r] = v
+        gone = np.flatnonzero(remap != np.arange(len(P)))
+        faces = remap[faces]
+        faces = faces[(faces[:, 0] != faces[:, 1]) & (faces[:, 1] != faces[:, 2]) & (faces[:, 0] != faces[:, 2])]
     inner = np.setdiff1d(np.arange(len(P)), border)
     N = np.zeros_like(P)
     with _span("dense/project"):
@@ -1908,6 +1952,7 @@ def _job_dense(ij):
         P = snap_creases(P, faces, field, v0, mov)
     vrow = np.full(len(P), -1, np.int64)
     vrow[border] = rows
+    vrow[gone] = -1  # (merged into their weld's kept vertex: unused)
     with _span("dense/specks + save"):
         faces = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)))
         np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
@@ -2054,6 +2099,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _st = prof.stage("border chains (parent)")
     _st.__enter__()
     corner = fixed[:, 0] & fixed[:, 1]
+    alias = _weld_rows(plane_edges, CP, corner, WELD * v0)
+    if alias:  # (the chains run through each weld's kept row; every tile's dense mesh merges its vertices the same way)
+        plane_edges = {pl: {tuple(sorted((alias.get(a, a), alias.get(b, b)))) for a, b in e
+                            if alias.get(a, a) != alias.get(b, b)} for pl, e in plane_edges.items()}
+        log(f"{len(alias)} border vertices welded to a neighbour closer than {WELD * v0:.2g} m")
+    _CTX["alias"] = alias
     lines = {pl: _polylines(e) for pl, e in plane_edges.items()}
     keep = []
     prev = {pl: [(ln, closed) for ln, closed in L] for pl, L in lines.items()}
@@ -3006,27 +3057,33 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
             for p in prims:
                 P = _from_gltf(p["POSITION"].astype(np.float64)) + origin
                 d[p["extras"].get("role", "surface")] = (P, _from_gltf(p["NORMAL"].astype(np.float64)), p["indices"])
+            d["_roles"] = np.zeros(len(d["surface"][2]) if "surface" in d else 0, np.int8)
             if "buried" in d:  # (a cliff shell's back: part of the mesh's structure, not of what is seen)
                 empty = (np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3), np.int64))
                 d["visible"] = d.get("surface", empty)
                 (P1, N1, F1), (P2, N2, F2) = d["visible"], d.pop("buried")
                 d["surface"] = (np.vstack([P1, P2]), np.vstack([N1, N2]), np.vstack([F1, F2 + len(P1)]))
+                d["_roles"] = np.r_[np.zeros(len(F1), np.int8), np.ones(len(F2), np.int8)]
             data[i, j, k] = d
     # (2) watertight per LOD
     for k in range(lods):
-        allP, allF, off = [], [], 0
+        allP, allF, off, ftile, frole = [], [], 0, [], []
         for (i, j) in tiles:
             if (i, j, k) not in data:
                 continue
             P, _, F = data[i, j, k]["surface"]
             allP.append(P)
             allF.append(F + off)
+            ftile.append(np.tile([i, j], (len(F), 1)))
+            frole.append(data[i, j, k]["_roles"])
             off += len(P)
         P = np.vstack(allP)
         F = np.vstack(allF)
+        ftile, frole = np.vstack(ftile), np.concatenate(frole)
         _, uid = np.unique(P, axis=0, return_inverse=True)
         F = uid.ravel()[F]
-        F = F[(F[:, 0] != F[:, 1]) & (F[:, 1] != F[:, 2]) & (F[:, 0] != F[:, 2])]
+        ok3 = (F[:, 0] != F[:, 1]) & (F[:, 1] != F[:, 2]) & (F[:, 0] != F[:, 2])
+        F, ftile, frole = F[ok3], ftile[ok3], frole[ok3]
         e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
         nmax = int(F.max()) + 1
         fwd = e[:, 0] * nmax + e[:, 1]
@@ -3055,8 +3112,14 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
         if open_inside or nonman or dup_dir:
             bad = np.r_[a[~at_edge], u[cnt > 2] // nmax, fu[fcnt > 1] // nmax]
             ex = Pu[bad[:3]].round(2).tolist()
+            # (which tiles and primitives the bad edges' faces are in: an edge's faces, by its undirected key)
+            bad_keys = np.r_[single[~at_edge], u[cnt > 2], np.minimum(fu[fcnt > 1], (fu[fcnt > 1] % nmax) * nmax
+                                                                       + fu[fcnt > 1] // nmax)]
+            fe = np.tile(np.arange(len(F)), 3)
+            hit = fe[np.isin(und, bad_keys[:20])]
+            where = sorted({(int(ftile[f][0]), int(ftile[f][1]), ("surface", "buried")[int(frole[f])]) for f in hit})
             failures.append(f"LOD {k}: {open_inside} open edges inside the world, {nonman} non-manifold, "
-                            f"{dup_dir} doubled directed edges (e.g. at {ex})")
+                            f"{dup_dir} doubled directed edges (e.g. at {ex}; tiles/primitives {where[:6]})")
     # (1, 3, 4) shared edges
     worst_n, worst_gap, n_edges, uncovered = 0.0, 0.0, 0, 0
     crease_seam, crease_in = [], []
