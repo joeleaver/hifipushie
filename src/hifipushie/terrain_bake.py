@@ -509,7 +509,16 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
     if lines is not None:  # the structure's lines as signed distances (terrain_swatch.structure_lines)
         from .terrain_swatch import LINE_D
         with _span("bake/lines"):
-            sb, ab, sj, aj = _chunked(lines, X)
+            # (at the texel's point on the low poly, where the line is drawn: measured at its point projected onto the
+            # exact rock, every texel of a triangle bridging a ledge landed on the ledge's crease, so on the bed plane,
+            # and the line map filled whole triangles: sawteeth along every bed line and thorns on the joints)
+            # (gated by the triangle's own normal: near a ledge's crease the low poly zigzags, and the triangles lying
+            # nearly in the bed plane took the line over their whole area, as teeth along it; the smooth vertex normal
+            # there is half riser, half tread)
+            Ft = F[t]
+            fn = _unit(np.cross(P[Ft[:, 1]] - P[Ft[:, 0]], P[Ft[:, 2]] - P[Ft[:, 0]]))
+            fn = np.where((fn * Nl).sum(1, keepdims=True) < 0, -fn, fn)
+            sb, ab, sj, aj = _chunked(lines, Pl, fn)
         out["lines"] = q8(np.c_[0.5 + 0.5 * sb / LINE_D, 0.5 + 0.5 * sj / LINE_D, ab, aj])
     err = np.zeros(0)
     if field is not None:  # texel error: how far the baked points sit off the exact surface (every 7th atlas texel)

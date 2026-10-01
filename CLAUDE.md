@@ -1215,8 +1215,44 @@ regresses, bisect by building one spec at each commit and diffing heights.
       manifest "detail" (files, wrap seams, recipe). `render_tiles(textured="detail")` draws the recipe in Blender.
     - Cost (loaded machine): alps 3x3 bake 1140 -> 595 CPU s, export 187 -> 149 s; pebble bake 2577 -> 954, export
       337 -> 234 s; all checks pass, Khronos 0 errors. Decimation is now the alps block's critical path.
-    - Open: at 40 m the swatch reads as a faint grainy overlay; crisp joints in thin beds read as short pen ticks;
-      no dip in the projection; TEXCOORD_2 seams not judged in a render.
+    - Open: no dip in the projection; TEXCOORD_2 seams not judged in a render.
+  - Rock by measurement (2026-10-01, "rockmid" agent, renders n01-n03; the user, on m02: 40 m only equal to the unique
+    bake, 10 m "faceted plaster"; then "compare away" with CC0 scans "to learn how to generate our own").
+    - Scans: asset pack `rock_scans` (optional; Poly Haven rock_face_03 2.7 m, rock_06 1.5 m, cliff_side 1.83 m,
+      rock_wall_02 2 m; 2K diff/nor_gl/rough/disp; CC0). `terrain_swatch.scan_swatch(set)` (albedo/rough as mean-1
+      multipliers, height scale fitted to the normal map), export cfg `detail_source: "scan:<set>"`.
+      `examples/scan_compare.py` renders swatches through the same detail pipeline (one preview export, swatch files
+      swapped) + `swatch_stats` per swatch. assets.py sends a User-Agent (Poly Haven answers 403 without).
+    - What the scans had (swatch_stats): surface slope 0.08-0.21 rms per octave, flat from 1 m to 1 cm (ours 0.02-0.07),
+      median slope 0.2-0.4 (ours 0.08), albedo 0.10-0.23 rms per octave (ours 0.01-0.04: stucco), albedo uncorrelated
+      with concavity and +0.2 with proud places. Retuned (`TUNE`): polygonal facets at 0.32/0.09/0.03 m
+      (`periodic_cells`: Voronoi planes on a torus, soft-min over the 6 nearest seeds with softness a share of the LOCAL
+      spacing (a share of the size speckled the dense patches); blending two nearest jumped at every corner), two
+      fracture nets, every facet its own tone, clustered pits (crisp cups; thresholded noise read as cauliflower), veins,
+      iron. Now slope 0.08-0.20/octave, albedo 0.05-0.11. Sub-texel lines alias into dashes: fracture/vein half-width
+      >= 1.5 texels, faded by depth/darkness, never narrowed to 0.
+    - Fade by repetition, not by energy (a fine-band-energy fade blurred 40 m: the 8/m macro can't carry it; mipmaps
+      handle aliasing): `repetition_profile` lays the anti-tiled swatch as the shader does, reads the mip level a GPU
+      picks, measures contrast and periodicity per footprint in LOCAL windows (a whole-view autocorrelation averaged
+      the repeat away across the anti-tiling mask's patches: rock_face_03 read as a grid at 40 m but scored 0.28); the
+      detail fades where both show (REPEAT 0.3 / 2%: every scan, 1.5-2.7 m, is 0.37-0.61 from 37 m and shows a grid;
+      ours, 4 m, stays 0.16-0.26). Ours fades only past ~400 m; the scans would fade from 26-37 m, so a scan source
+      needs a bigger set or stochastic/hex tiling before it ships. Manifest detail.fade, recipe step 6, render_tiles
+      sets the pixel angle per view.
+    - The id pass's sea plane read as tile 1 (a new colour attribute starts white): every waterline counted as a tile
+      border. Pebble's chasm "tile jump excess 2.7-2.9" was that; fixed, there are no tile borders in those views, and
+      the arch view's tile excess is 0.99 (was 1.61).
+    - Lines: joints drawn by `joint_openness` (a smooth field: fracture corridors running through beds) and only in beds
+      >= 1.4-2.4 m (bed-bound joints in thin beds were "pen ticks"); the family drawn at a point is the strongest there,
+      not the nearest; the map is measured at the texel's LOW-POLY point (at the projected point every texel of a
+      triangle bridging a ledge sat on the bed plane: filled triangles) and gated by the triangle's own normal; shader
+      crack half-width never 0 (a 0-6 cm width under +-2.5 cm jitter gated it on and off: dashes). Debug:
+      `render_tiles(detail_show="lines")`. Still open: lines on a step the 0.5 m voxels zigzag follow the zigzag
+      ("thorns" at 40 m, sawteeth on bed lines at 10 m).
+    - Block tones: per block +-4% (13% read as pasted rectangles), per bed 6%, partial fresh spalls; tone bands along
+      the beds (6 x 0.9 m) and each ledge's underside darker for ~1 m (`BLOCK_TONE`). Thin packages recess only in
+      stretches and bed cracks are open over about a third of a plane in ~8 m pieces (both ran the pebble chasm as
+      ruled lines; terrain_blocks + fieldjit, bit-identical).
   - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
     - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
       untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test

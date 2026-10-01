@@ -83,7 +83,8 @@ def verify(names: list[str] | None = None) -> dict[str, list[str]]:
 
 
 def _download(url: str, dest: Path) -> None:
-    with urllib.request.urlopen(url, timeout=60) as r, open(dest, "wb") as f:
+    req = urllib.request.Request(url, headers={"User-Agent": "hifipushie-assets"})  # (Poly Haven refuses no UA: 403)
+    with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
         shutil.copyfileobj(r, f, 1 << 20)
 
 

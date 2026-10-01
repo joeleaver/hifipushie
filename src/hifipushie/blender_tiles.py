@@ -32,6 +32,7 @@ def _terrain_material():
 
 
 _IMAGES = {}
+_PIXEL_ANGLE = []  # (the detail fade's per-view pixel angle nodes, set before each render)
 
 
 def _layered(m, layers):
@@ -229,17 +230,23 @@ def _lines(nt, D, path, geo):
     nz.inputs["Scale"].default_value = 9.0
     nz.inputs["Detail"].default_value = 4.0
     nt.links.new(geo.outputs["Position"], nz.inputs["Vector"])
-    jit = _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", nz.outputs["Fac"], 0.5), 0.05)
+    jit = _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", nz.outputs["Fac"], 0.5), 0.8)  # (x the width: +-40%)
     nw = nt.nodes.new("ShaderNodeTexNoise")
     nw.inputs["Scale"].default_value = 0.7
     nt.links.new(geo.outputs["Position"], nw.inputs["Vector"])
-    wid = _math(nt, "MULTIPLY", _math(nt, "MAXIMUM", _math(nt, "SUBTRACT", nw.outputs["Fac"], 0.35), 0.0), 0.12)
+    w0, w1 = D.get("crack_width", (0.012, 0.045))
+    wfac = _math(nt, "MAXIMUM", _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", nw.outputs["Fac"], 0.3), 2.5), 0.0)
     crack = shadow = None
     for sc, ac in ((sep.outputs[0], sep.outputs[2]), (sep.outputs[1], t.outputs["Alpha"])):
         s = _math(nt, "ABSOLUTE", _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", sc, 0.5), 2 * D["line_d"]))
-        # (the crack's width wanders along it: 1-6 cm)
-        k = _math(nt, "MULTIPLY", ac, _smooth_band(nt, _math(nt, "SUBTRACT", _math(nt, "ADD", s, jit), wid), 0.0, 0.03))
-        h = _math(nt, "MULTIPLY", ac, _smooth_band(nt, s, 0.02, 0.14))
+        # (the crack's half-width wanders along it, never zero, wider where it is more open: a width that fell to 0 with
+        # a +-2.5 cm edge jitter gated the line on and off every ~10 cm, beaded dashes)
+        wid = _math(nt, "MULTIPLY", _math(nt, "ADD", w0, _math(nt, "MULTIPLY", wfac, w1 - w0)),
+                    _math(nt, "ADD", 0.5, _math(nt, "MULTIPLY", ac, 0.5)))
+        edge = _math(nt, "MULTIPLY", wid, _math(nt, "ADD", 1.0, jit))  # (the edge wanders +-40% of the width)
+        k = _math(nt, "MULTIPLY", ac, _smooth_band(nt, _math(nt, "SUBTRACT", s, edge), 0.0, 0.02))
+        h = _math(nt, "MULTIPLY", ac, _smooth_band(nt, s, 0.015, 0.06))  # (0.14 m wide, it drew the low poly's zigzag
+        # round each line as teeth: the line lies on a step the 0.5 m voxels can only zigzag)
         crack = k if crack is None else _math(nt, "MAXIMUM", crack, k)
         shadow = h if shadow is None else _math(nt, "MAXIMUM", shadow, h)
     return crack, shadow
@@ -272,6 +279,17 @@ def _detail(m, D, lines=None):
         w = x if w is None else _math(nt, "ADD", w, x)
     if D.get("strength", 1.0) != 1.0:
         w = _math(nt, "MULTIPLY", w, D["strength"])
+    wn = wa = w
+    if D.get("fade"):  # the detail fades with the pixel's footprint (view distance x the pixel's angle, set per view):
+        # only where its repetition would show (terrain_swatch.repetition_fade; mipmaps handle the rest), on log
+        # footprint
+        pa = nt.nodes.new("ShaderNodeValue")
+        pa.name = "hp_pixel_angle"
+        pa.outputs[0].default_value = 1e-3
+        _PIXEL_ANGLE.append(pa)
+        cd = nt.nodes.new("ShaderNodeCameraData")
+        lnp = _math(nt, "LOGARITHM", _math(nt, "MULTIPLY", cd.outputs["View Distance"], pa.outputs[0]), _m.e)
+        wn = wa = _math(nt, "MULTIPLY", w, _smooth_band(nt, lnp, _m.log(D["fade"][0]), _m.log(D["fade"][1])))
     da = nt.nodes.new("ShaderNodeAttribute")
     da.attribute_name = "_DETAIL"
     det = _sep(nt, da.outputs["Vector"])
@@ -312,7 +330,7 @@ def _detail(m, D, lines=None):
     tz = _vmath(nt, "DOT_PRODUCT", tt, Nv)
     r = _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", tt, scale=_math(nt, "DIVIDE", tu, _math(nt, "MAXIMUM", tz, 1e-4))),
                uu)
-    n_out = _vmath(nt, "NORMALIZE", _mixv(nt, Nm, _vmath(nt, "NORMALIZE", r), w))
+    n_out = _vmath(nt, "NORMALIZE", _mixv(nt, Nm, _vmath(nt, "NORMALIZE", r), wn))
     dark = None
     if lines:  # the structure's crisp lines: darker, and a groove (bump) where the crack is
         crack, shadow = _lines(nt, D, lines, geo)
@@ -330,11 +348,11 @@ def _detail(m, D, lines=None):
             out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
             nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
     nt.links.new(n_out, bsdf.inputs["Normal"])
-    # albedo: base x (1 + w (2a - 1))
+    # albedo: base x (1 + wa (2a - 1)) x (1 - w dark): the lines are structure and never fade
     two = _vmath(nt, "SCALE", alb.outputs["Result"], scale=2.0)
+    mod = _mixv(nt, _xyz(nt, 1.0, 1.0, 1.0), two, wa)
     if dark is not None:
-        two = _vmath(nt, "SCALE", two, scale=_math(nt, "SUBTRACT", 1.0, dark))
-    mod = _mixv(nt, _xyz(nt, 1.0, 1.0, 1.0), two, w)
+        mod = _vmath(nt, "SCALE", mod, scale=_math(nt, "SUBTRACT", 1.0, _math(nt, "MULTIPLY", dark, w)))
     mul = nt.nodes.new("ShaderNodeMix")
     mul.data_type = "RGBA"
     mul.blend_type = "MULTIPLY"
@@ -446,7 +464,10 @@ def _render_ids(scene, path):
             scene.world.node_tree.nodes["Background"].inputs["Strength"].default_value, scene.view_settings.view_transform)
     for o in scene.objects:  # (water and other meshes occlude with id 0)
         if o.type == "MESH" and not o.data.attributes.get("hp_id"):
-            o.data.attributes.new("hp_id", "FLOAT_COLOR", "POINT")
+            at = o.data.attributes.new("hp_id", "FLOAT_COLOR", "POINT")
+            # (explicitly 0: a new colour attribute starts WHITE, so the sea read as tile 1 chart 1 and every
+            # waterline counted as a tile border: pebble's chasm "tile jump excess 2.7-2.9" was the waterline)
+            at.data.foreach_set("color", np.zeros(4 * len(o.data.vertices), np.float32))
     hidden = [o for o in scene.objects if o.type == "CURVE"]  # (the drawn borders; trees occlude with id 0)
     was = [o.hide_render for o in hidden]
     for o in hidden:
@@ -654,7 +675,9 @@ def run(job):
         fill.data.energy = float(v.get("fill", 0.4)) * float(v.get("lamp", 0.0))
         cam.rotation_euler = (Vector(v["look"]) - Vector(v["eye"])).to_track_quat("-Z", "Y").to_euler()
         cam.data.angle = math.radians(v.get("fov", 55))
-        b, h = [math.radians(x) for x in v.get("sun", (225, 30))]
+        for pa in _PIXEL_ANGLE:  # (the detail fade: radians per pixel across the image's width)
+            pa.outputs[0].default_value = 2 * math.tan(cam.data.angle / 2) / job["size"][0]
+        b, h =[math.radians(x) for x in v.get("sun", (225, 30))]
         toward = Vector((math.cos(h) * math.sin(b), math.cos(h) * math.cos(b), math.sin(h)))
         sun.rotation_euler = (-toward).to_track_quat("-Z", "Y").to_euler()
         sky.sun_elevation, sky.sun_rotation = h, -b

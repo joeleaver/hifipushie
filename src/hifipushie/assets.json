@@ -291,5 +291,126 @@
     "sha256": "3c121505651140ceb4d69fd1d8923f7788ffadd81672f5be14845a5f2c75c137"
    }
   ]
+ },
+ "rock_scans": {
+  "needed_by": "terrain_swatch.scan_swatch (examples/scan_compare.py): photoscanned rock as the tiling detail, the comparison against the procedural swatch",
+  "source": "Poly Haven (polyhaven.com) 2K texture sets: rock_face_03 (https://polyhaven.com/a/rock_face_03, 2.7 m, Dario Barresi: Photography, Rico Cilliers: Processing), rock_06 (https://polyhaven.com/a/rock_06, 1.5 m, Rob Tuytel: All), cliff_side (https://polyhaven.com/a/cliff_side, 1.83 m, James Ray Cock: Photography, Jenelle van Heerden: Processing, Dario Barresi: Photography), rock_wall_02 (https://polyhaven.com/a/rock_wall_02, 2.0 m, Rob Tuytel: All)",
+  "licence": "CC0 1.0 (public domain): every Poly Haven asset, https://polyhaven.com/license",
+  "optional": true,
+  "sets": {
+   "rock_face_03": {
+    "size_m": 2.7,
+    "authors": {
+     "Dario Barresi": "Photography",
+     "Rico Cilliers": "Processing"
+    },
+    "page": "https://polyhaven.com/a/rock_face_03"
+   },
+   "rock_06": {
+    "size_m": 1.5,
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "page": "https://polyhaven.com/a/rock_06"
+   },
+   "cliff_side": {
+    "size_m": 1.83,
+    "authors": {
+     "James Ray Cock": "Photography",
+     "Jenelle van Heerden": "Processing",
+     "Dario Barresi": "Photography"
+    },
+    "page": "https://polyhaven.com/a/cliff_side"
+   },
+   "rock_wall_02": {
+    "size_m": 2.0,
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "page": "https://polyhaven.com/a/rock_wall_02"
+   }
+  },
+  "files": [
+   {
+    "path": "rock_face_03/rock_face_03_diff_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_face_03/rock_face_03_diff_2k.jpg",
+    "sha256": "644ee79df7ffbf5f6afc330b64dd3f33794bab8820915fe61ffe0c88ecfd7ece"
+   },
+   {
+    "path": "rock_face_03/rock_face_03_nor_gl_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/rock_face_03/rock_face_03_nor_gl_2k.png",
+    "sha256": "53044f276b4f1c3041b91c7d4767bda0d75cb4b2d237f08b64eb4e95ee456a93"
+   },
+   {
+    "path": "rock_face_03/rock_face_03_rough_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_face_03/rock_face_03_rough_2k.jpg",
+    "sha256": "9ca3e9e196685f702328f24d66f039b72f5330fc35cf2a2c265cfa50a7916301"
+   },
+   {
+    "path": "rock_face_03/rock_face_03_disp_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/rock_face_03/rock_face_03_disp_2k.png",
+    "sha256": "3cb398fc7e958c4a1c05428dbdb124da70ac5c62dab0820c1fada48065370d2b"
+   },
+   {
+    "path": "rock_06/rock_06_diff_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_06/rock_06_diff_2k.jpg",
+    "sha256": "cd0e306ee8fb9ddc11f8d7c4dc709fa09caf91ebdd7941ab79196654f1789481"
+   },
+   {
+    "path": "rock_06/rock_06_nor_gl_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/rock_06/rock_06_nor_gl_2k.png",
+    "sha256": "68740ffff9f959196fc2f18f399191bcefef4862c291c7cb23906ab242a483e5"
+   },
+   {
+    "path": "rock_06/rock_06_rough_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_06/rock_06_rough_2k.jpg",
+    "sha256": "f030ddcd6b089037826bafb4f49a3999a364ae33187ff1d1e7f0b1fc4975c883"
+   },
+   {
+    "path": "rock_06/rock_06_disp_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/rock_06/rock_06_disp_2k.png",
+    "sha256": "46fa5f69b2bb8e28f226ce38ab44c3a10a08dbdc55b5d4f955743ba1b74cb4f3"
+   },
+   {
+    "path": "cliff_side/cliff_side_diff_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_diff_2k.jpg",
+    "sha256": "bc6f92d72eb6383ecc3a1094ed9f5b37efb36ccf83cf29699bb5990e6775afee"
+   },
+   {
+    "path": "cliff_side/cliff_side_nor_gl_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/cliff_side/cliff_side_nor_gl_2k.png",
+    "sha256": "7674007afe533d0073ff373e028c29048362d14224bf0eb2e6045bb42fc18c89"
+   },
+   {
+    "path": "cliff_side/cliff_side_rough_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_rough_2k.jpg",
+    "sha256": "7fd4f6d289b1b44c812533eaea7802e640dda55070b9746025a9d33117a1bd1f"
+   },
+   {
+    "path": "cliff_side/cliff_side_disp_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/cliff_side/cliff_side_disp_2k.png",
+    "sha256": "be974eb7ef5ecb17be1a574c8cadf09d47794983cacc0c27e953bbe47dedfd6f"
+   },
+   {
+    "path": "rock_wall_02/rock_wall_02_diff_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_diff_2k.jpg",
+    "sha256": "55aa5fd7f309501aeb343a9bbdff09a2643b9c012521452878e76ddc6dffe8ef"
+   },
+   {
+    "path": "rock_wall_02/rock_wall_02_nor_gl_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/rock_wall_02/rock_wall_02_nor_gl_2k.png",
+    "sha256": "b0e7b07eb7ea478c2157e522ac884f0fa54de8103bf1b302c329087ac57a94be"
+   },
+   {
+    "path": "rock_wall_02/rock_wall_02_rough_2k.jpg",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_rough_2k.jpg",
+    "sha256": "ac6a30dad0325495819b63b87bfd160d499d4c567686be6f268ba24a81722e2c"
+   },
+   {
+    "path": "rock_wall_02/rock_wall_02_disp_2k.png",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/rock_wall_02/rock_wall_02_disp_2k.png",
+    "sha256": "d29886d679166f0d815165db9bf3c0a32657a88b9be4f0665dce99456c4dfc2c"
+   }
+  ]
  }
 }

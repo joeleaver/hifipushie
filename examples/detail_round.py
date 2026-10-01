@@ -51,7 +51,7 @@ def main():
         for v in views:
             v["out"] = str(o / f"{name}_{v['name']}.png")
         terrain_mesh.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, box=cfgv.get("box"),
-                                  textured="detail" if var[0] == "m" else True)
+                                  textured="detail" if var[0] == "m" else True, detail_fade="--nofade" not in sys.argv)
         (out / "costs.json").write_text(json.dumps(costs, indent=1))
 
 
