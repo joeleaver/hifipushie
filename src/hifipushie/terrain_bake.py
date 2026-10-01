@@ -67,9 +67,9 @@ def micro_relief(r, amount=1.0, texel=0.1):
                 zoff = r["bed_offset"](p[:, :2]) if r.get("bed_offset") else 0.0
                 I = terrain_blocks.ids(p, r["blocks"], fd, zoff)
             notch = lambda d, wd: np.clip(1 - d / wd, 0, 1) ** 2
-            cr = np.maximum(I["bed_crack"], 0.5 * I["thin"]) * notch(I["bed_edge"], 0.15)
+            cr = np.maximum(I["bed_crack"], 0.5 * I["thin"]) * notch(I["bed_edge"], 0.22)
             for m, w in enumerate(I["weights"]):
-                cr = np.maximum(cr, w * notch(I["open"][m], 0.15))
+                cr = np.maximum(cr, w * notch(I["open"][m], 0.22))
             out = out + 0.07 * max(ac, al) * cr
             if "sharp" in I:  # (the block and bed edges crisp in the maps: filtered at ~2 texels, not 2 voxels)
                 out = out + I["sharp"]

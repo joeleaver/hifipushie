@@ -1128,7 +1128,10 @@ class Materials:
         # normal: a cheap occlusion that needs no ray tracing, the same in every engine)
         d = 0.8
         open_ = np.clip(self.field.value(P + d * N) / d, 0, 1)
-        rc = rc * (0.55 + 0.45 * open_)[:, None]
+        # (lighter with the rock structure: its recesses are already shaded by geometry and the AO map; with this too
+        # every slot read as black-outlined)
+        lo = 0.75 if (self.field.rock or {}).get("blocks") else 0.55
+        rc = rc * (lo + (1 - lo) * open_)[:, None]
         c = c * (1 - rock[:, None]) + rc * (1 - 0.55 * tide[:, None]) * rock[:, None]  # wet: its own rock, darker
         return Wm.astype(np.float32), c
 
@@ -1144,18 +1147,19 @@ def block_colour(P, N, rc, r, fd):
     I = terrain_blocks.ids(P, B, fd, zoff)
     sd = B["seed"] + 500
     hsh = lambda i, j, s_: noise._hash(i, j, np.zeros_like(i), sd + s_)
-    ease = lambda e: (lambda x: x * x * (3 - 2 * x))(np.clip(e / 0.15, 0, 1))  # 0 at an edge, 1 from 0.15 m
+    # 0 at an edge, 1 from 0.25 m (narrower lines stair-stepped on 16/m texels seen from 5 m)
+    ease = lambda e: (lambda x: x * x * (3 - 2 * x))(np.clip(e / 0.25, 0, 1))
     K, j = I["K"], I["j"]
     eb = ease(I["bed_edge"])
     # each bed its own tone (thin packages darker), each block a little different; tones ease to neutral at their edges
     # (equal on both sides: no step to alias); closed joints show only as that tone change and the face's own tilt
     tone = 1 + (0.08 * (2 * hsh(K, j, 1) - 1) - 0.06 * I["thin"]) * eb
-    dark = I["bed_crack"] * (1 - eb)
+    dark = 0.5 * I["bed_crack"] * (1 - eb)  # (bed planes: faint; the geometry draws the ledges)
     for m, (bi, w) in enumerate(zip(I["blocks"], I["weights"])):
         tone = tone * (1 + w * 0.06 * (2 * hsh(bi, (K * 16 + j) * 5 + m, 2) - 1) * ease(I["edges"][m]))
         dark = np.maximum(dark, w * (1 - ease(I["open"][m])))  # (open joints only: most boundaries are closed)
     dark = np.maximum(dark, np.clip(1.6 * I["master"], 0, 1))  # (master joints: always open)
-    tone = tone * (1 - 0.35 * dark)
+    tone = tone * (1 - 0.18 * dark)
     # stains: dark streaks hanging from the ledges (each super-bed's top), 0.25-0.8 m wide, 2-12 m long, narrowing and
     # fading down; spaced ~1.5 m along the face where present, in patches. (Stretched noise made ink blots.)
     vert = np.clip((0.7 - np.abs(N[:, 2])) / 0.4, 0, 1)

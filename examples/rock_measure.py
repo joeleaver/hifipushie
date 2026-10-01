@@ -44,7 +44,7 @@ def measure(T, at, size=40.0, h=0.1):
 
 def structure(P, r, fd, n, h):
     """The rock structure on the sampled face: blocks (connected cells of one bed and one block per family shown),
-    their area and aspect; the joint traces' angle to the beds (share within 10 deg of a right angle: masonry);
+    their area and aspect; the joint traces' angle off the perpendicular to the beds' traces on the face (share within 10 deg: masonry);
     drawn crack length per m2 (open joints, open bed planes, master joints: the colour's dark lines)."""
     from skimage.measure import label, regionprops
     from skimage.morphology import skeletonize
@@ -72,7 +72,9 @@ def structure(P, r, fd, n, h):
             if wgt < 0.3:
                 continue
             t = np.cross(fn, nrm[0])
-            ang.append(np.degrees(np.arccos(min(1.0, abs(t[2]) / max(np.linalg.norm(t), 1e-9)))))
+            bt = np.cross(fn, [0, 0, 1.0])  # (the beds' trace on the face: level)
+            cs = abs(t @ bt) / max(np.linalg.norm(t) * np.linalg.norm(bt), 1e-9)
+            ang.append(90.0 - np.degrees(np.arccos(min(1.0, cs))))  # (0 = at right angles to the beds)
     ang = np.array(ang)
     dark = np.zeros(len(P))
     for m in range(len(tb.AZ)):
@@ -92,7 +94,7 @@ def structure(P, r, fd, n, h):
             "aspect_p50_p90": [round(float(x), 2) for x in np.percentile(asp, [50, 90])],
             "bed_thick_m_p10_50_90": [round(float(x), 2) for x in np.percentile(I["thick"], [10, 50, 90])],
             "thin_bed_share": round(float(I["thin"].mean()), 3),
-            "joint_trace_deg_from_vertical_p10_50_90": [round(float(x), 1) for x in np.percentile(ang, [10, 50, 90])]
+            "joint_trace_deg_off_perpendicular_to_beds_p10_50_90": [round(float(x), 1) for x in np.percentile(ang, [10, 50, 90])]
             if len(ang) else None,
             "right_angle_share(<10 deg)": round(float((ang < 10).mean()), 2) if len(ang) else None,
             "drawn_crack_m_per_m2": round(float(sk.sum() * h / face), 3),

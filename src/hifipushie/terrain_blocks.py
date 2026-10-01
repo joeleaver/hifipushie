@@ -42,18 +42,18 @@ SOFT = 0.1                   # m: the filter's box is softened by this either si
 
 def config(size, vox, scale=1.0):
     """Settings for a terrain: `size` the solid rock's facet size (m), vox the meshing voxel."""
-    out = {"super": float(np.clip(0.45 * size, 2.5, 6.0)) * scale, "thin": 0.7 * scale,
+    out = {"super": float(np.clip(0.55 * size, 2.5, 6.0)) * scale, "thin": 0.7 * scale,
             "joint": 1.3, "joint_min": 1.0 * scale, "joint_max": 5.0 * scale,
             "family": [1.0, 0.7, 0.5], "amp": 0.15 * scale, "tip": 0.1,
-            "recess": 0.6 * scale, "p_recess": 0.04, "proud": 0.4 * scale, "p_proud": 0.06,
-            "package": 0.3 * scale, "thick_proud": 0.35 * scale, "bed_amp": 0.12 * scale, "bed_tilt": 0.12,
-            "open": 0.15,                                     # share of minor joints drawn as open cracks
+            "recess": 0.45 * scale, "p_recess": 0.025, "proud": 0.4 * scale, "p_proud": 0.06,
+            "package": 0.22 * scale, "thick_proud": 0.35 * scale, "bed_amp": 0.12 * scale, "bed_tilt": 0.12,
+            "open": 0.08,                                     # share of minor joints drawn as open cracks
             "master": {"spacing": float(np.clip(2.5 * size, 15.0, 25.0)) * scale, "p": 0.55, "seg": 35.0 * scale, "p_seg": 0.65,
                        "depth": 0.5 * scale, "half": max(0.6, 1.4 * vox), "taper": 6.0 * scale},
-            "ramp": max(0.45, 1.0 * vox), "seed": 9100, "fallen": 1.0}
+            "ramp": max(0.45, 1.0 * vox), "seed": 9100, "fallen": 1.0, "chip": 0.35 * scale}
     # (the most the structure moves the surface, either way: the field's reach and the cliff overlay's push)
     out["relief"] = max(out["recess"] * 1.4 + out["package"] + out["bed_amp"], out["proud"] * 1.4 + out["thick_proud"]
-                        + out["bed_amp"]) + out["master"]["depth"] + LEVER * (out["tip"] + out["bed_tilt"])
+                        + out["bed_amp"]) + out["master"]["depth"] + LEVER * (out["tip"] + out["bed_tilt"]) + out["chip"]
     return out
 
 
@@ -118,7 +118,9 @@ def _cuts(K, B):
     """The bed boundaries of super-beds K (n,): (n, NCUT + 1) fractions in [0, 1], sorted, padded with 1 (the first
     is 0, the end is 1)."""
     s = B["seed"] + 20
-    nb = 1 + np.floor(np.sqrt(_h(K, K * 0, s)) * NCUT).astype(np.int64)  # beds in this super-bed (most split)
+    # beds in this super-bed: often one massive bed, sometimes a thinly bedded package (an even split everywhere read
+    # as plywood from 150 m)
+    nb = 1 + np.floor(_h(K, K * 0, s) ** 1.5 * NCUT).astype(np.int64)
     c = np.stack([_h(K, K * 0 + k, s + 1) for k in range(1, NCUT)], 1)
     c = np.where(np.arange(1, NCUT)[None] < nb[:, None], c, 1.0)
     c = np.sort(c, 1)
@@ -130,6 +132,9 @@ def _bed_coord(p, B, zoff):
     super over ~10 m."""
     S = B["super"]
     und = 0.3 * S * (noise._value_noise(np.c_[p[:, :2] / 10.0, np.full(len(p), 3.5)], B["seed"] + 2) - 0.5)
+    # (and rough at the block scale, +-0.12 m over ~1 m: smooth bed edges read as sawn lumber at 40 m; slope < 0.4, so
+    # the coordinate stays monotone up the face)
+    und = und + 0.24 * (noise._value_noise(p / 1.1, B["seed"] + 5) - 0.5)
     return _warp(p[:, 2] + zoff + und, S, p[:, 0] / 40.0, p[:, 1] / 40.0, B["seed"])
 
 
@@ -169,13 +174,15 @@ def _bed_slots(Phi, dPhi, B, a):
             "oc": flat(oc), "thick": flat(th)}, own_bed
 
 
-def _bed_value(K, j, thick, t_m, B):
+def _bed_value(K, j, thick, t_m, xy, B):
     """A bed's own offset: thin beds recessed as a package, thick beds proud by their thickness, a little random, and
-    a tilt up the bed (t_m: m from the bed's middle)."""
+    a tilt up the bed (t_m: m from the bed's middle). How far a bed stands out or sits back changes along the strike
+    (~15 m, xy: plan position): the same recess along a whole cliff was a ruled black line (the pebble chasm, r07)."""
     s = B["seed"] + 30
     h1, h2 = _h(K, j, s), _h(K, j, s + 1)
     thin = thick < B["thin"]
-    v = np.where(thin, B["package"], -B["thick_proud"] * np.clip((thick - 1.2) / 2.5, 0, 1))
+    along = 0.25 + 0.75 * noise._value_noise(np.c_[xy / 15.0, (K * 16 + j).astype(float)], s + 2)
+    v = along * np.where(thin, B["package"], -B["thick_proud"] * np.clip((thick - 1.2) / 2.5, 0, 1))
     return v + B["bed_amp"] * (2 * h1 - 1) + B["bed_tilt"] * (2 * h2 - 1) * np.clip(t_m, -LEVER, LEVER)
 
 
@@ -202,21 +209,35 @@ def _joint_coord(p, K, j, m, thick, B):
     s = B["seed"] + 60 + m
     bid = (K * 16 + j).astype(float)
     wav = 0.25 * sp * (noise._value_noise(np.c_[p[:, 2] / (1.5 * sp), bid, np.full(len(p), m + 0.5)], s + 7) - 0.5)
-    x = (p * nrm).sum(1) + wav
+    x = (p * nrm).sum(1) + wav + 0.3 * (noise._value_noise(p / 1.0, s + 9) - 0.5)  # (rough edges, +-0.15 m)
     phi, dphi = _warp(x, sp, bid, np.full(len(p), float(m)), s)
     return phi, dphi, n2
 
 
-def _joint_value(i, jj, t_m, B):
+def _joint_value(i, jj, t_m, B, half=None, z_m=None, zh=None):
     """Minor block i (merged across absent boundaries) of joint set jj: mostly nearly flush (+-amp), a few missing
-    (recess) or standing out (proud), each face tipped on its own (t_m: m from the block's middle)."""
+    (recess) or standing out (proud), each face tipped on its own (t_m: m from the block's middle). With the block's
+    half-width `half`, the point's height from its bed's middle `z_m` and the bed's half-thickness `zh` (m): one or two
+    corners knocked off (a diagonal plane carving up to `chip` m into the corner): straight joints between level beds
+    outlined every block as a rectangle (stacked lumber, masonry)."""
     s = B["seed"] + 80
     g = i - _absent(i, jj, s + 9)
     h1, h2, h3 = _h(g, jj, s), _h(g, jj, s + 1), _h(g, jj, s + 2)
     v = B["amp"] * (2 * h1 - 1)
     v = np.where(h2 < B["p_recess"], B["recess"] * (0.6 + 0.8 * h1), v)
     v = np.where(h2 > 1 - B["p_proud"], -B["proud"] * (0.6 + 0.8 * h1), v)
-    return v + B["tip"] * (2 * h3 - 1) * np.clip(t_m, -LEVER, LEVER)
+    v = v + B["tip"] * (2 * h3 - 1) * np.clip(t_m, -LEVER, LEVER)
+    if half is not None and B.get("chip", 0) > 0:
+        a = t_m / np.maximum(half, 0.2)
+        b = z_m / np.maximum(zh, 0.2)
+        for c in range(2):
+            hc = _h(g, jj, s + 3 + c)
+            st = np.where(_h(g, jj, s + 5 + 2 * c) < 0.5, 1.0, -1.0)
+            sz = np.where(_h(g, jj, s + 6 + 2 * c) < 0.5, 1.0, -1.0)
+            u = st * a + sz * b  # (2 at the corner)
+            on = hc < (0.6 if c == 0 else 0.3)
+            v = v + on * B["chip"] * (0.5 + 0.5 * hc) * np.clip((u - 0.6) / 1.0, 0, 1)
+    return v
 
 
 def _block_mid(i, jj, s):
@@ -225,7 +246,7 @@ def _block_mid(i, jj, s):
     return i + 0.5 + 0.5 * _absent(i + 1, jj, s) - 0.5 * _absent(i, jj, s)
 
 
-def _joints_in_bed(p, K, j, thick, fd, B, ramp, sharp=None):
+def _joints_in_bed(p, K, j, thick, fd, B, ramp, sharp=None, z_m=None, zh=None):
     """The minor joints' offset inside bed (K, j) at points p: per family, box-filtered over +-ramp along the joint
     coordinate, weighted by how much the family crosses the face. With `sharp` (a narrower ramp, m) also the same
     filtered over +-sharp (the maps' crisp edges), from the same blocks: (wide, sharp)."""
@@ -256,7 +277,11 @@ def _joints_in_bed(p, K, j, thick, fd, B, ramp, sharp=None):
                 continue
             oc = 0.5 * (np.minimum(i[kk] + 1, ph[kk] + a[kk]) + np.maximum(i[kk], ph[kk] - a[kk]))
             t_m = (oc - _block_mid(i[kk], jj[kk], s)) / dp[kk]
-            v = _joint_value(i[kk], jj[kk], t_m, B)
+            if z_m is None:
+                v = _joint_value(i[kk], jj[kk], t_m, B)
+            else:  # (the block's half-width: its group's extent, 1-3 blocks)
+                ext = 1 + _absent(i[kk], jj[kk], s) + _absent(i[kk] + 1, jj[kk], s)
+                v = _joint_value(i[kk], jj[kk], t_m, B, 0.5 * ext / dp[kk], z_m[k][kk], zh[k][kk])
             acc[kk] += ol[kk] * v
             if sharp is not None:  # (the sharp window lies inside the wide one: the same slots)
                 acc2[kk] += _win(i[kk], i[kk] + 1, ph[kk], a2[kk], e2[kk]) * v
@@ -357,8 +382,9 @@ def offsets(p, B, fd, zoff=0.0, pre=None, sharp=None):
     S, _ = _bed_slots(Phi, dPhi, B, a)
     r = S["row"]
     mid = 0.5 * (S["lo"] + S["hi"])
-    v = _bed_value(S["K"], S["j"], S["thick"], (S["oc"] - mid) / dPhi[r], B)
-    J = _joints_in_bed(p[r], S["K"], S["j"], S["thick"], fd[r], B, ramp, sharp)
+    v = _bed_value(S["K"], S["j"], S["thick"], (S["oc"] - mid) / dPhi[r], p[r, :2], B)
+    J = _joints_in_bed(p[r], S["K"], S["j"], S["thick"], fd[r], B, ramp, sharp,
+                       (S["oc"] - mid) / dPhi[r], 0.5 * (S["hi"] - S["lo"]) / dPhi[r])
     md = B["master"]["depth"] * mast[0]
     if sharp is None:
         return np.bincount(r, S["ol"] * (v + J), minlength=n) + md
@@ -388,7 +414,7 @@ def ids(p, B, fd, zoff=0.0, pre=None):
     out = {"K": K, "j": j, "thick": th, "thin": th < B["thin"], "bed_edge": np.minimum(d_lo, d_hi),
            "below_top": (K + 1 - Phi) / dPhi,  # (m under the top of the point's super-bed: where stains start)
            # (open in stretches along the strike, ~15 m: a whole plane drawn read as a ruled line)
-           "bed_crack": np.clip((pc - 0.6) / 0.4, 0, 1) * np.clip((noise._value_noise(
+           "bed_crack": np.clip((pc - 0.75) / 0.25, 0, 1) * np.clip((noise._value_noise(
                np.c_[p[:, :2] / 15.0, (jp + 16 * Kp).astype(float)], B["seed"] + 92) - 0.4)
                / 0.25, 0, 1), "blocks": [], "weights": [], "edges": [], "open": []}
     s = B["seed"] + 80 + 9
@@ -466,8 +492,15 @@ def fallen_sd(p, ground, zone, B):
             x1, y1 = c_ * q[:, 0] + s_ * q[:, 1], -s_ * q[:, 0] + c_ * q[:, 1]
             ct, st = np.cos(tilt), np.sin(tilt)
             y2, z2 = ct * y1 + st * q[:, 2], -st * y1 + ct * q[:, 2]
-            rr = 0.2 * size
+            rr = 0.12 * size
             d = np.abs(np.c_[x1, y2, z2]) - np.c_[bx, by, bz] + rr[:, None]
             sd = np.linalg.norm(np.maximum(d, 0), axis=1) + np.minimum(d.max(1), 0) - rr
+            # two corners knocked off by planes of their own (a rounded box alone read as a crate)
+            for c in range(2):
+                u = np.c_[2 * _h(i[k], j[k], s + 10 + 3 * c) - 1, 2 * _h(i[k], j[k], s + 11 + 3 * c) - 1,
+                          0.3 + 0.7 * _h(i[k], j[k], s + 12 + 3 * c)]
+                u /= np.linalg.norm(u, axis=1, keepdims=True)
+                reach = (np.abs(u) * np.c_[bx, by, bz]).sum(1)  # (the box's extent along u)
+                sd = np.maximum(sd, (np.c_[x1, y2, z2] * u).sum(1) - 0.7 * reach)
             out[k] = np.minimum(out[k], sd)
     return out
