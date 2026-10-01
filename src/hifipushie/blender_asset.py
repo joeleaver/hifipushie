@@ -880,16 +880,32 @@ def preview(job):
     scene.cycles.use_denoising = True
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
     scene.render.film_transparent = False
-    scene.view_settings.view_transform = "Standard"
     scene.world = scene.world or bpy.data.worlds.new("w")
     scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get("Background")
-    bg.inputs["Color"].default_value = (0.23, 0.24, 0.27, 1)
-    bg.inputs["Strength"].default_value = 0.6
-    lights = [((-1.0, -1.2, 1.4), 3.2, 0.03), ((1.4, -0.6, 0.6), 1.2, 0.15), ((0.3, 1.5, 1.0), 2.0, 0.05)]
-    for k, (d, e, ang) in enumerate(lights):  # key, fill, rim: sun lamps, so the model's scale doesn't matter
+    lt = job.get("lighting")
+    if lt:  # the model's style look (spec.style.look: suns, world, AgX look), as the scene's look renders it: a
+        # preview under other lights and view transform read the stubble grey and the skin pale next to the look
+        lin = lambda c: [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c[:3]]
+        scene.view_settings.view_transform = "AgX"
+        if lt.get("look"):
+            scene.view_settings.look = lt["look"]
+        scene.view_settings.exposure = float(lt.get("exposure", 0.0))
+        wc = lt.get("world") or {}
+        bg.inputs["Color"].default_value = (*lin(wc.get("color", [0.77, 0.81, 0.86])), 1)
+        bg.inputs["Strength"].default_value = float(wc.get("strength", 0.6))
+        lights = [(L["dir"], float(L.get("energy", 3.5)), math.radians(float(L.get("angle", 3.0))),
+                   lin(L.get("color", [1.0, 1.0, 1.0])), L.get("shadow", True)) for L in lt.get("lights") or []]
+    else:
+        scene.view_settings.view_transform = "Standard"
+        bg.inputs["Color"].default_value = (0.23, 0.24, 0.27, 1)
+        bg.inputs["Strength"].default_value = 0.6
+        lights = [((-1.0, -1.2, 1.4), 3.2, 0.03, (1, 1, 1), True), ((1.4, -0.6, 0.6), 1.2, 0.15, (1, 1, 1), True),
+                  ((0.3, 1.5, 1.0), 2.0, 0.05, (1, 1, 1), True)]
+    for k, (d, e, ang, col, shadow) in enumerate(lights):  # sun lamps, so the model's scale doesn't matter
         ld = bpy.data.lights.new(f"sun{k}", "SUN")
-        ld.energy, ld.angle = e, ang
+        ld.energy, ld.angle, ld.color = e, ang, col
+        ld.use_shadow = bool(shadow)
         lo = bpy.data.objects.new(f"sun{k}", ld)
         lo.rotation_euler = Vector(d).to_track_quat("Z", "Y").to_euler()
         scene.collection.objects.link(lo)

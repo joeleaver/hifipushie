@@ -1193,16 +1193,17 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
 
 
 def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
-            hide: list[str] | None = None) -> Image.Image:
+            hide: list[str] | None = None, lighting: dict | None = None) -> Image.Image:
     """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
-    walls, to see an interior)."""
+    walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure"}, as scene.look
+    takes), so the preview compares with the painted look; default a neutral studio under Standard."""
     bounds = np.array(json.loads(glb.with_suffix(".json").read_text())["bounds_blender"])
     with tempfile.TemporaryDirectory(prefix="hifipushie-prev-") as tmp:
         frames = render.view_frames(bounds, views, focus, zoom)
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
-                  "hide": list(hide or [])})
+                  "hide": list(hide or []), "lighting": lighting})
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
     return render.contact_sheet(imgs, frames)

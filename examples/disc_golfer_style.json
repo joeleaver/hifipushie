@@ -494,7 +494,14 @@
  "parts": {
   "body": {
    "voxel": 0.0013,
-   "topology": "wrap"
+   "topology": "wrap",
+   "texel_focus": [
+    {
+     "at": "lm_nose_tip",
+     "radius": 0.11,
+     "density": 2.5
+    }
+   ]
   },
   "eyes": {
    "voxel": 0.0012
@@ -609,10 +616,13 @@
  },
  "paint": {
   "skin": {
-   "color": "#eb9e80"
+   "color": "#e88f68"
   },
   "skin_shadow_warm": {
    "opacity": 0.35
+  },
+  "plane_top_light": {
+   "color": "#f4b495"
   },
   "lids_warm.L": {
    "opacity": 0.12
