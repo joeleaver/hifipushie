@@ -41,7 +41,7 @@ class Region:
         hm = int(cfg["heightmap"]) or 65
         self.d = d = G.tile / (hm - 1)
         rock = base.rock
-        relief = (1.4 * rock["facets"] + 0.7 * rock["bedding"]) if rock else 0.0
+        relief = rock.get("relief", 1.4 * rock["facets"] + 0.7 * rock["bedding"]) if rock else 0.0
         self.push = float(cfg.get("push", relief + 0.6))          # heightmap moved back under the cliff face
         self.thick = float(cfg.get("thick", self.push + 1.5))     # shell: rock kept behind the smooth ground
         self.sink = float(cfg.get("sink", self.thick + relief + 0.8))  # front buried at the region's edge
@@ -58,6 +58,8 @@ class Region:
         st = _smooth(th - 4.0, th + 2.0, slope)
         if rock is not None:  # (every face the rock character touches is in the region)
             st = np.maximum(st, np.clip(base.steep_at(X.ravel(), Y.ravel()).reshape(X.shape) * 4, 0, 1))
+        if getattr(base, "fall", None) is not None:  # (and where fallen blocks lie: the heightmap can't hold them)
+            st = np.maximum(st, np.clip(base.fall_at(X.ravel(), Y.ravel()).reshape(X.shape) * 4, 0, 1))
         self.steep = self._grow(st, m)
         self.S = self.steep.copy()
         # how far the heightmap is pushed in: the full push under cliffs; round an opening only a little (the cliff

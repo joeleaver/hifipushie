@@ -1,0 +1,14 @@
+{
+ "alps": {
+  "far": {"center": [2215, 3690], "density": 6, "cfg": {"only": [[33, 56], [35, 58]]},
+          "views": [{"name": "wall", "at": [2215, 3690], "dist": [150], "dz": 0, "lift": -0.05, "sun": [190, 25]}]},
+  "near": {"center": [2215, 3690], "radius": 20, "density": 16,
+           "views": [{"name": "wall", "at": [2215, 3690], "dist": [40, 10], "dz": 0, "lift": -0.05, "sun": [190, 25]}]}
+ },
+ "pebble": {
+  "far": {"center": [210, 100], "radius": 45, "density": 6,
+          "views": [{"name": "arch", "at": [210, 100], "dist": [150], "lift": 0.15, "yaw": -25}]},
+  "near": {"center": [176, 224], "radius": 20, "density": 16,
+           "views": [{"name": "chasm", "at": [176, 224], "dist": [40, 15], "dz": -8, "lift": 0.1, "sun": [280, 45]}]}
+ }
+}

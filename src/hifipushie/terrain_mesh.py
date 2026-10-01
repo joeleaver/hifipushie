@@ -417,7 +417,7 @@ def _face(T, p, z):
 
 # ---------------------------------------------------------------- the field
 
-def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
+def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None):
     """Solid rock character as a field offset (+ carves, - builds): planar facets meeting in crisp creases, and bedding
     (a V notch at each bedding plane, each bed standing proud or set back on its own, stepping over at its edge).
     Continuous everywhere with C0 creases, never jumps: a jump (the nearest cell's plane alone) meshed as steps whose
@@ -427,6 +427,7 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
     on the face, `facet`); u: 0..1 how much of the point's relief comes from a volume (a cave's walls and roof, which
     the ground's gradient says nothing about: facets in 3D there)."""
     fac = lambda size, seed: facet(p, size, seed, fd, u)
+    uvol = u  # (the volumes' share; `u` is reused below)
     profiling.count("facets pts", len(p))
     if g is None:
         out = r["facets"] * (fac(r["size"], r["seed"]) + 0.4 * fac(0.43 * r["size"], r["seed"] + 5))
@@ -436,12 +437,17 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
         # everywhere read as evenly crumpled paper (the alps walls)
         out = np.zeros(len(p))
         kc, kf = np.flatnonzero(g < 1), np.flatnonzero(g > 0)
+        # (with jointed blocks the finer facet octaves go: the blocks are the medium scale, and facets inside blocks
+        # read as crumpled soft slabs)
+        fine = 0.0 if r.get("blocks") else 1.0
         if len(kc):
             sub = lambda size, seed: facet(p[kc], size, seed, None if fd is None else fd[kc], None if u is None else u[kc])
-            out[kc] += (1 - g[kc]) * 1.1 * (sub(1.5 * r["size"], r["seed"]) + 0.3 * sub(0.6 * r["size"], r["seed"] + 5))
+            big = sub(1.5 * r["size"], r["seed"])
+            out[kc] += (1 - g[kc]) * 1.1 * (big + 0.3 * sub(0.6 * r["size"], r["seed"] + 5) if fine else big)
         if len(kf):
             sub = lambda size, seed: facet(p[kf], size, seed, None if fd is None else fd[kf], None if u is None else u[kf])
-            out[kf] += g[kf] * (0.55 * sub(0.45 * r["size"], r["seed"] + 11) + 0.35 * sub(0.2 * r["size"], r["seed"] + 12))
+            mid = 0.55 * sub(0.45 * r["size"], r["seed"] + 11)
+            out[kf] += g[kf] * (mid + 0.35 * sub(0.2 * r["size"], r["seed"] + 12) if fine else 1.3 * mid)
         out = r["facets"] * out
     if r["bedding"] > 0:
         B = bed_planes(p, r, g)
@@ -460,6 +466,21 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None):
         i = np.flatnonzero(t > 0)
         o[i] += t[i] * (off(nb[i], i) - o[i])
         out = out + r["bedding"] * (0.3 * B["pres"] * np.clip(1 - edge / B["sharp"], 0, 1) + 0.3 * o)
+    if r.get("blocks"):
+        # jointed blocks (terrain_blocks): courses and joint families bound blocks 1-10 m that stand proud or sit back
+        # (a few missing): the medium scale. Not on volumes' walls (u) nor deep in the rock (jw)
+        from . import terrain_blocks
+        wb = (1.0 if jw is None else jw) * (1.0 if uvol is None else 1.0 - uvol)
+        kb = np.flatnonzero(np.asarray(wb) * np.ones(len(p)) > 1e-3)
+        if len(kb) and fd is not None:
+            with _span("field.blocks", leaf=True):
+                if blk is None:  # (blk: the offsets at every point, computed by the caller with the maps' ids)
+                    zoff = r["bed_offset"](p[kb, :2]) if r.get("bed_offset") else 0.0
+                    ob = terrain_blocks.offsets(p[kb], r["blocks"], fd[kb], zoff)
+                else:
+                    ob = blk[kb]
+                out = out + 0.0
+                out[kb] += (np.ones(len(p)) * wb)[kb] * ob
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
         with _span("field.joints", leaf=True):
@@ -657,7 +678,14 @@ def rock_config(T, cfg):
     vox = float(cfg.get("voxel", DEFAULTS["voxel"]))
     out = {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
            "reach": 1.4 * fac + 0.7 * bd + 1.0, "bed_edge": max(0.05, 2.0 * vox / bed)}
-    jt = float(rc.get("joints", 1.0)) * mult
+    bk = float(rc.get("blocks", 1.0)) * mult
+    if bk > 0:  # jointed blocks (terrain_blocks); the big facets calmer on them: block faces are flat-ish
+        from . import terrain_blocks
+        out["blocks"] = terrain_blocks.config(size, vox, bk)
+        b = out["blocks"]
+        out["reach"] += b["relief"]
+        out["relief"] = 1.4 * fac + 0.7 * bd + b["relief"]
+    jt = float(rc.get("joints", 1.0)) * mult * (bk <= 0)
     if bd > 0 and jt > 0:  # joint sets: three families of vertical planes, candidate spacing ~a fifth of a facet
         sp = float(np.clip(0.2 * size, 1.2, 2.5))
         dirs = [math.radians(a) for a in (37.0, 107.0, 162.0)]
@@ -732,6 +760,7 @@ class Field:
         self.floor_guard = None
         self.grain = None  # where the rock is cut up (gullies, concave, near the top of a face): finer facets
         self.micro = None  # fine rock relief evaluated only when baking maps (terrain_bake.micro_relief)
+        self.fall = None  # where fallen blocks lie (a grid, 0..1)
         for d in dolines or ():  # 2.5D ground edits (karst dolines: grassy funnels into a throat)
             self.H = dig_doline(T, self.H, d)
         if rock is not None:
@@ -760,6 +789,10 @@ class Field:
             # the faces' horizontal normal (downhill), smoothed over ~3 cells: which joint families cross a face
             sy, sx = np.gradient(ndimage.gaussian_filter(self.H, 3.0), self.c)
             self._fdx, self._fdy = -sx, -sy
+            if rock.get("blocks") and rock["blocks"].get("fallen", 0) > 0:
+                # where blocks that fell off the faces lie (terrain_blocks.fall_zone): at their feet, on gentler ground
+                from . import terrain_blocks
+                self.fall = terrain_blocks.fall_zone(self.H, self.c, self.steep) * float(rock["blocks"]["fallen"])
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
@@ -798,6 +831,14 @@ class Field:
         q = (np.asarray(x, float) - self.x0) / self.c
         return ndimage.map_coordinates(self.steep, [r, q], order=3, prefilter=False, mode="nearest")
 
+    def fall_at(self, x, y):
+        """0..1: the fallen blocks' density at columns (0 where there are none)."""
+        if self.fall is None:
+            return np.zeros(np.shape(x))
+        r = (np.asarray(y, float) - self.y0) / self.c
+        q = (np.asarray(x, float) - self.x0) / self.c
+        return np.clip(ndimage.map_coordinates(self.fall, [r, q], order=1, mode="nearest"), 0, 1)
+
     def ground(self, p):
         h, s = self.column(p[:, 0], p[:, 1])
         return (p[:, 2] - h) * s
@@ -833,6 +874,15 @@ class Field:
         depth = -np.asarray(F, float).copy()  # (how far under the open ground: joints are a surface thing)
         F = self.volumes(p, F, near)
         guard, self.floor_guard = self.floor_guard, None
+        if self.fall is not None:  # fallen blocks at the faces' feet, unioned with a small fillet
+            fz = self.fall_at(p[:, 0], p[:, 1])
+            kf = np.flatnonzero((fz > 0) & (F < 3.0) & (F > -2.0))
+            if len(kf):
+                from . import terrain_blocks
+                with _span("field.fallen", leaf=True):
+                    sd = terrain_blocks.fallen_sd(p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0],
+                                                  lambda xy: self.fall_at(xy[:, 0], xy[:, 1]), self.rock["blocks"])
+                    F[kf] = smin(F[kf], sd, 0.12)
         if self.rock is not None:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
             w = np.maximum(self.steep_at(p[:, 0], p[:, 1]) * guard, near)
@@ -843,11 +893,19 @@ class Field:
                 a_ = self.steep_at(p[k, 0], p[k, 1]) * guard[k]
                 u = near[k] / np.maximum(a_ + near[k], 1e-9)  # (the volumes' share of the relief)
                 profiling.count("field.rock pts", len(k))
+                blk = I = None
+                if self.rock.get("blocks") and self.micro is not None:
+                    # (the maps' fine relief needs the rock structure's ids at the same points: computed together)
+                    from . import terrain_blocks
+                    with _span("field.blocks", leaf=True):
+                        zoff = self.rock["bed_offset"](p[k, :2]) if self.rock.get("bed_offset") else 0.0
+                        blk, I = terrain_blocks.structure(p[k], self.rock["blocks"], fd, zoff, want_ids=True,
+                                                          sharp=getattr(self.micro, "sharp", None))
                 with _span("field.rock_relief", leaf=True):
-                    F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u)
+                    F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u, blk)
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
-                        F[k] = F[k] + w[k] * self.micro(p[k], fd, u, g)
+                        F[k] = F[k] + w[k] * self.micro(p[k], fd, u, g, I)
         return F
 
     def value(self, p):
@@ -996,6 +1054,9 @@ class Materials:
         slope = np.degrees(np.arccos(np.clip(N[:, 2], -1, 1)))
         below = smoothstep(0.3, 1.2, -self.field.ground(P))
         rock = np.maximum(smoothstep(38, 58, slope), below)
+        if getattr(self.field, "fall", None) is not None:  # (a fallen block: anything standing clear of the ground)
+            rock = np.maximum(rock, smoothstep(0.05, 0.25, self.field.ground(P)) *
+                              np.clip(4 * self.field.fall_at(P[:, 0], P[:, 1]), 0, 1))
         tide = np.zeros(n)
         if self.sea is not None:  # under water: sand, unless rock
             wet = smoothstep(0.2, 1.2, self.sea - P[:, 2])
@@ -1027,16 +1088,19 @@ class Materials:
             B = bed_planes(P, r, g)
             kb, fr = B["kb"], B["f"]
             # each bed's tone changes along the strike too (one tone per bed was a band ruled across the wall)
-            th = lambda k: 0.84 + 0.26 * _bed_noise(xy, k, 40.0, r["seed"] + 30)
+            calm = 0.35 if r.get("blocks") else 1.0  # (blocks carry the tone where they exist: less blotchy noise)
+            th = lambda k: 1 + calm * (-0.16 + 0.26 * _bed_noise(xy, k, 40.0, r["seed"] + 30))
             # (each bed's tone eases into the next over ~0.2 m where the plane shows, a step aliased along every
             # bedding plane in the maps; over metres where it doesn't: no line there)
             e = np.minimum(0.45, (0.2 + (1 - B["pres"]) * 4.0) / r["bed"])
             lo_, hi_ = smoothstep(-e, e, fr), smoothstep(-e, e, fr - 1)
             tone = th(kb - 1) * (1 - lo_) + th(kb) * (lo_ - hi_) + th(kb + 1) * hi_
             # (a smooth noise: the facet lattice's tone had straight edges and read as a checker of squares)
-            tone = tone * (0.92 + 0.12 * (2 * noise.fbm(P, r["size"], 2, seed=r["seed"] + 40) - 1))
-            tone = tone * (0.93 + 0.14 * noise.fbm(P, 2.5 * r["size"], 2, seed=r["seed"] + 31))
+            tone = tone * (1 + calm * (-0.08 + 0.12 * (2 * noise.fbm(P, r["size"], 2, seed=r["seed"] + 40) - 1)))
+            tone = tone * (1 + calm * (-0.07 + 0.14 * noise.fbm(P, 2.5 * r["size"], 2, seed=r["seed"] + 31)))
             rc = rc * tone[:, None]
+            if r.get("blocks"):
+                rc = block_colour(P, N, rc, r, self.field.face_dir(P[:, 0], P[:, 1]))
         # crevices, joints and the backs of overhangs darker (how open the field is half a metre out along the
         # normal: a cheap occlusion that needs no ray tracing, the same in every engine)
         d = 0.8
@@ -1044,6 +1108,57 @@ class Materials:
         rc = rc * (0.55 + 0.45 * open_)[:, None]
         c = c * (1 - rock[:, None]) + rc * (1 - 0.55 * tide[:, None]) * rock[:, None]  # wet: its own rock, darker
         return Wm.astype(np.float32), c
+
+
+def block_colour(P, N, rc, r, fd):
+    """Rock colour from the block structure (terrain_blocks): each block and course weathered to its own tone, the
+    joints and bedding planes as dark lines (eased to the line over ~0.15 m: a step aliases in the maps), dark water
+    stains streaking down the faces in patches, pale grey-green lichen on ledge tops. Structure-driven colour instead
+    of blotchy noise."""
+    from . import terrain_blocks
+    B = r["blocks"]
+    zoff = r["bed_offset"](P[:, :2]) if r.get("bed_offset") else 0.0
+    I = terrain_blocks.ids(P, B, fd, zoff)
+    sd = B["seed"] + 500
+    hsh = lambda i, j, s_: noise._hash(i, j, np.zeros_like(i), sd + s_)
+    ease = lambda e: (lambda x: x * x * (3 - 2 * x))(np.clip(e / 0.15, 0, 1))  # 0 at an edge, 1 from 0.15 m
+    K, j = I["K"], I["j"]
+    eb = ease(I["bed_edge"])
+    # each bed its own tone (thin packages darker), each block a little different; tones ease to neutral at their edges
+    # (equal on both sides: no step to alias); closed joints show only as that tone change and the face's own tilt
+    tone = 1 + (0.08 * (2 * hsh(K, j, 1) - 1) - 0.06 * I["thin"]) * eb
+    dark = I["bed_crack"] * (1 - eb)
+    for m, (bi, w) in enumerate(zip(I["blocks"], I["weights"])):
+        tone = tone * (1 + w * 0.06 * (2 * hsh(bi, (K * 16 + j) * 5 + m, 2) - 1) * ease(I["edges"][m]))
+        dark = np.maximum(dark, w * (1 - ease(I["open"][m])))  # (open joints only: most boundaries are closed)
+    dark = np.maximum(dark, np.clip(1.6 * I["master"], 0, 1))  # (master joints: always open)
+    tone = tone * (1 - 0.35 * dark)
+    # stains: dark streaks hanging from the ledges (each super-bed's top), 0.25-0.8 m wide, 2-12 m long, narrowing and
+    # fading down; spaced ~1.5 m along the face where present, in patches. (Stretched noise made ink blots.)
+    vert = np.clip((0.7 - np.abs(N[:, 2])) / 0.4, 0, 1)
+    fdn = fd / np.maximum(np.linalg.norm(fd, axis=1, keepdims=True), 1e-9)
+    u = P[:, 0] * -fdn[:, 1] + P[:, 1] * fdn[:, 0]  # (along the face)
+    d = I["below_top"]
+    K1 = I["K"]
+    patch = np.clip((noise.fbm(P * np.array([1.0, 1.0, 0.3]), 25.0, 2, seed=sd + 4) - 0.4) / 0.2, 0, 1)
+    stain = np.zeros(len(P))
+    c0 = np.floor(u / 1.5).astype(np.int64)
+    for dc in (-1, 0, 1):
+        c = c0 + dc
+        uc = (c + 0.5 + 0.6 * (hsh(c, K1, 10) - 0.5)) * 1.5
+        L = 2.0 + 10.0 * hsh(c, K1, 11)
+        wd = (0.25 + 0.55 * hsh(c, K1, 12)) * (1 - 0.5 * np.clip(d / L, 0, 1))
+        on = hsh(c, K1, 13) < 0.45
+        across = np.clip(1 - np.abs(u - uc) / wd, 0, 1)
+        down = np.clip(1 - d / L, 0, 1) ** 1.5 * np.clip(d / 0.3, 0, 1)
+        stain = np.maximum(stain, on * (across * (2 - across)) * down)
+    tone = tone * (1 - 0.32 * stain * patch * vert)
+    out = rc * tone[:, None]
+    # lichen on tops: up-facing ledges and block tops, patchy, a dull grey-green (pale lichen read as foam on the ledges)
+    up = np.clip((N[:, 2] - 0.4) / 0.35, 0, 1)
+    li = np.clip((noise.fbm(P, 0.9, 2, seed=sd + 5) - 0.55) / 0.2, 0, 1) * up
+    lichen = rc * np.array([0.8, 0.86, 0.72])
+    return out * (1 - 0.5 * li[:, None]) + lichen * (0.5 * li[:, None])
 
 
 def _linear(c):

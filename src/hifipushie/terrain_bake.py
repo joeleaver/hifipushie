@@ -48,7 +48,7 @@ def micro_relief(r, amount=1.0, texel=0.1):
 
     J = r.get("joints")
 
-    def f(p, fd=None, u=None, g=None):
+    def f(p, fd=None, u=None, g=None, I=None):
         fac = lambda size, sd: tm.facet(p, size, sd, fd, u)  # (irregular triangles on faces: terrain_facets)
         out = 0.06 * a1 * fac(1.2, seed)
         if a2 > 0:
@@ -59,7 +59,21 @@ def micro_relief(r, amount=1.0, texel=0.1):
                 q = (p[:, :2] @ np.asarray(d)) / sp + 0.37 * tm._pl_facets(p, 2.0, seed + 9 + m)
                 dist = np.abs(q - np.round(q)) * sp
                 out = out + 0.03 * ac * np.clip(1 - dist / 0.12, 0, 1) ** 2
-        if ac > 0:
+        if r.get("blocks") and fd is not None and (ac > 0 or al > 0):
+            # the rock structure's fine lines (terrain_blocks): open joints, the open bed planes and every thin bed's
+            # planes as notches; closed joints are left to the geometry's change of face
+            from . import terrain_blocks
+            if I is None:
+                zoff = r["bed_offset"](p[:, :2]) if r.get("bed_offset") else 0.0
+                I = terrain_blocks.ids(p, r["blocks"], fd, zoff)
+            notch = lambda d, wd: np.clip(1 - d / wd, 0, 1) ** 2
+            cr = np.maximum(I["bed_crack"], 0.5 * I["thin"]) * notch(I["bed_edge"], 0.15)
+            for m, w in enumerate(I["weights"]):
+                cr = np.maximum(cr, w * notch(I["open"][m], 0.15))
+            out = out + 0.07 * max(ac, al) * cr
+            if "sharp" in I:  # (the block and bed edges crisp in the maps: filtered at ~2 texels, not 2 voxels)
+                out = out + I["sharp"]
+        if ac > 0 and not r.get("blocks"):  # (with blocks, the cracks are the structure's open joints)
             c = fac(3.1, seed + 2)
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
         if bed and (an > 0 or al > 0):
@@ -77,11 +91,15 @@ def micro_relief(r, amount=1.0, texel=0.1):
                 brk = np.clip((nz - 0.42) * 3.5, 0, 1) * B["pres"][kn]
                 out = out + 0.0  # (a copy: `out` may be a view of an earlier term)
                 out[kn] = out[kn] + 0.14 * an * u * u * (3 - 2 * u) * brk
-            if al > 0:
+            if al > 0 and not r.get("blocks"):  # (with blocks, the thin beds are the laminae)
                 z = zb * 6.0
                 fr = z - np.floor(z)
                 out = out + 0.025 * al * np.clip(1 - np.minimum(fr, 1 - fr) * bed / 6.0 / 0.12, 0, 1)
         return amount * out
+    # the rock structure's edges in the maps: its offsets filtered over +-`sharp` m instead of +-ramp (Field._solid
+    # asks terrain_blocks.structure for the difference); never under ~2 texels (narrower aliased as teeth)
+    if r.get("blocks"):
+        f.sharp = float(min(r["blocks"]["ramp"], max(0.1, 2.0 * texel)))
     return f
 
 
