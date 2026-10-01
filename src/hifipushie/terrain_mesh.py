@@ -1473,14 +1473,22 @@ def _boundary_edges(faces):
     return e[cnt[inv] == 1]
 
 
-def _decimate(P, faces, err, budget, field, border_ok=None):
+PRE = 32  # x a coarse LOD's budget: what its dense-mesh fallback reaches in one pyfqmr pass before the budget search
+# (replayed on the alps block's 12 fallbacks: 85 -> 37 s, faces <= the old ones in every case, summed error p99
+# 6.2 -> 5.7 m; 4x and 8x were faster still but their meshes sat further off the rock at the same count)
+
+
+def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
     """Fewest triangles (pyfqmr, open borders locked) whose surface stays within `err` of the field (99th percentile
     at face centres and edge midpoints, over what the undecimated mesh already misses), capped at `budget`.
     (pyfqmr's own lossless mode barely removed anything with the border locked.)
     border_ok(v): False when a vertex on a tile's border plane isn't one of the canonical border vertices. pyfqmr
     locks vertices on OPEN edges only: two border vertices joined by an interior edge (a shell's front and back
     meeting in the border plane) may collapse into a new point on the plane, and the export then died after every
-    tile was baked ("border vertices moved in decimation", alps blocks). Such a result counts as a fold."""
+    tile was baked ("border vertices moved in decimation", alps blocks). Such a result counts as a fold.
+    pre: a face count to reach in one pyfqmr pass first (from a dense mesh), the tolerance staying the dense mesh's:
+    counting down from a 265k-face mesh ran pyfqmr on all of it 20-60 times a LOD (10-28 s, the alps block's
+    stragglers); the same search from PRE x the budget takes 2-5 s, to the same budget and tolerance."""
     import pyfqmr
     n_open = len(_boundary_edges(faces))
 
@@ -1516,6 +1524,11 @@ def _decimate(P, faces, err, budget, field, border_ok=None):
             return float(np.percentile(np.abs(field.value(c)), 99))
 
     tol = err + error(P, faces)
+    if pre is not None and len(faces) > 1.5 * pre and len(faces) > budget:
+        cand = run(pre)
+        if valid(*cand) and len(cand[1]) < len(faces) and error(*cand) <= tol:
+            profiling.count("decimate: a dense mesh taken down in one pass first")
+            P, faces = cand
     if len(faces) <= budget:
         best, hi = (P, faces), len(faces)
     else:
@@ -2852,7 +2865,9 @@ def _job_tile(ij):
                              pos=np.array(list(pos.keys()), float), posv=np.array(list(pos.values())),
                              err=cfg["error"][k], budget=cfg["budget"][k])
             with _span(f"tile/lod{k}/decimate from dense"):
-                Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok)
+                # (a coarse LOD from the dense mesh: one pass to PRE x its budget first, LOD 0 as it always was)
+                Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok,
+                                   pre=PRE * cfg["budget"][k] if k > 0 else None)
         if k > 0 and prevs and len(Fd) > max(cfg["budget"][k], len(prevs[-1][1])):
             # this LOD from the dense mesh folded at every count: from an earlier LOD's mesh instead (the last one
             # first), its border collapsed to this LOD's chain (the same chain either way: neighbours still agree)

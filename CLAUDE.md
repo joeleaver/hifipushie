@@ -1184,6 +1184,41 @@ regresses, bisect by building one spec at each commit and diffing heights.
       337 -> 234 s; all checks pass, Khronos 0 errors. Decimation is now the alps block's critical path.
     - Open: at 40 m the swatch reads as a faint grainy overlay; crisp joints in thin beds read as short pen ticks;
       no dip in the projection; TEXCOORD_2 seams not judged in a render.
+  - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
+    - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
+      untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test
+      with a cold export of the same spec and a file-by-file compare. Nothing is decided from the spec: `Fingerprint`
+      walks what the workers read (the export's field, base Field, Materials + T.cover, Region, DetailProjection, swatch
+      entry, cfg, code digest); arrays on a known grid (T's cells [iy, ix], the region lattice [ix, iy], `_gridded`
+      splines via `f.frame`) are cropped per tile to its box + MARGIN 24 m (+3 cells), volumes count where their reach
+      box (incl. the cliff shell's void box) meets it, everything else is GLOBAL (a change: cold, the log names the
+      member, e.g. a site edit changes `materials.rock_ref` and every tile's grain: erosion and global percentiles make
+      heightfield edits global). An object type the walk can't hash turns incremental off. Later stages chain keys:
+      dense (field key + its canonical border rows' CP/CN and their order: welds keep the lowest row), each border
+      collapse (dense key + which rows the LOD keeps; failures stored as positions in the tile's rows), each tile's LODs
+      (dense + keep masks, skirt depth/dir, CN/CW/CC at its rows as `pos` finds them, density). The parent's global
+      steps (border vertices, chains, keep sets, skirts, density) always run in full, as cold: a neighbour whose shared
+      chain moved gets a new key by itself. A reused stage's work files are made again only if a later stage needs them
+      (`_job_dense_full`, `_job_prep_tile`). State: <out>/_incremental/state.pkl (deleted at the start, written before the
+      checks); `export.tiles incremental: false` or HIFIPUSHIE_TILES_COLD=1 force cold. Files nothing names any more are
+      removed at the end (top-level GLBs, maps/, heightmaps/, splats/).
+    - Bugs it found (cold exports were not functions of their inputs): bake pieces were sized by the pool's worker
+      count, which follows free memory (a few texels' facet lookups moved: exports differed run to run; now n/16);
+      `terrain_bake._bary` clipped a sliver triangle's gutter weights without renormalising, so gutter texels were
+      baked at a fraction of their position, hundreds of metres away (pebble tile 10,3 read the arch at x 220; now the
+      triangle's nearest point); map_seams iterated a set of channel names (key order in seam_check.json by hash seed).
+    - Checks: `map_seams` decodes each tile LOD's maps once for all its borders across a fork pool (was once per
+      border, serial: 80% of the checks), `floating`'s clearances per tile; both kept in `inc.Memo`
+      (<out>/_incremental/checks.pkl) by their files' bytes. Swatch kept by seed + code (`_swatch`).
+    - `terrain_cache.py`: built terrains pickled (zlib 1) in ~/.cache/hifipushie/terrain (HIFIPUSHIE_TERRAIN_CACHE,
+      cap HIFIPUSHIE_TERRAIN_CACHE_GB 1.5, LRU), keyed by the spec minus THREE_D (caves, volumes, export, views: the
+      build never sees them, cached or not, so a cave edit reuses the build), kinds.json and `codehash.digest("terrain")`
+      (`codehash.py`: sources of the package modules a root imports, statically, incl. lazy imports; package *.json;
+      numeric library versions). terrain.load and terrain_tools.build go through it. alps 128 MB pickled, 39 MB stored.
+    - Decimation tail: a coarse LOD's dense-mesh fallback (a failed border collapse on the previous LOD's mesh, or a
+      budget it can't reach) reaches PRE 32 x its budget in one pyfqmr pass first, then the same budget search with the
+      dense mesh's tolerance (`_decimate(pre=)`). Replayed (HIFIPUSHIE_DECIMATE_DUMP) on the alps block's 12 fallbacks:
+      85 -> 37 s, faces <= before in every case, summed error p99 6.2 -> 5.7 m; 4x/8x were faster but further off.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
