@@ -76,23 +76,34 @@ Point the client at the checkout with an absolute path, and give models a fixed 
 
 ## Run as an oxidegen artist
 
-hifipushie can also be the `sculpt` artist of an [oxidegen](https://oxidegen.jkbase.app) Art Department, as a
-local runner on your machine. Mint a runner token in oxidegen (Account -> Tokens), then from the checkout:
+hifipushie can be the `sculpt` artist of an [oxidegen](https://oxidegen.jkbase.app) Art Department. Usually the
+department runs it for you on a rented GPU box (the hosted image below) and you need nothing installed. To run
+it on your own Linux machine instead, ask oxidegen to connect this computer; it gives you one command:
 
 ```sh
-OXIDEGEN_RUNNER_TOKEN=<token> uv run hifipushie-artist
+curl -fsSL <department>/install/runner.sh | sh -s -- --url <department> --code <one-time code>
 ```
 
-(or put the token in `~/.config/hifipushie/runner-token`). The runner dials out to the department and pulls work;
-nothing listens on your machine. Options: `--url` (`OXIDEGEN_URL`, default https://oxidegen.jkbase.app), `--name`
-(default the hostname), `--work-root` (session workspaces, default `~/.cache/hifipushie-artist`), `--assets` (the
-GNM/MakeHuman packs; default `$HIFIPUSHIE_ASSETS`, else `./workspace/_templates`). `--capabilities` prints what it
-offers and exits.
+`--check` first prints whether the machine fits (disk, RAM, GPU, missing libraries with the install command)
+without changing anything. The runner dials out to the department and pulls work; nothing listens on your
+machine. Each department session works on one model or terrain in its own workspace (deleted when the session
+closes), in a worker process the department can cancel (Blender included). Tools take no `name` and no host
+paths: reference images arrive as library versions, exports go back as files. The live-Blender socket is off in
+runner mode (`HIFIPUSHIE_NO_LIVE=1`). Standalone use (`hifipushie-mcp`) is unchanged.
 
-Each department session works on one model or terrain in its own workspace (deleted when the session closes), in a
-worker process the department can cancel (Blender included). Tools take no `name` and no host paths: reference
-images arrive as library versions, exports go back as files. The live-Blender socket is off in runner mode
-(`HIFIPUSHIE_NO_LIVE=1`). Standalone use (`hifipushie-mcp`) is unchanged.
+### Start at login
+
+The installer runs `hifipushie-artist setup`, which keeps this project's runner in `.oxidegen/runner/` (config,
+the token (mode 600), logs, workspaces; added to `.git/info/exclude`) and shared bits in `~/.cache/oxidegen/`
+(Blender 5.1 unless you have it, the asset packs, the Python env), then installs and starts the systemd user
+service `oxidegen-runner-sculpt.service` (one per user; setting up from another project reuses it,
+`--move-here` repoints it). Without systemd it starts a background process instead. Other commands:
+`hifipushie-artist status | logout | install | uninstall`, or `login` (browser pairing, no code). If the
+department forgets this computer, the runner stops and says to run setup again. The runner follows the version
+the department pins (it updates itself between sessions and rolls back a version that doesn't work). Remove it
+all with `install-runner.sh --uninstall [--purge]`. From a checkout, for development:
+`OXIDEGEN_RUNNER_TOKEN=<token> uv run hifipushie-artist` (`--url`, `--name`, `--work-root`, `--assets`,
+`--capabilities`).
 
 ### Hosted runner image
 
@@ -106,7 +117,9 @@ the driver's EGL (EEVEE renders headless through it). It runs as a non-root user
 stdout, opens no ports, and exits 77 if the department refuses its token (other failures: retried with backoff).
 At start it renders a 64 px cube in Workbench and EEVEE and reports the result in its registration `equipment`
 (`eevee`, `workbench`, `gpu_renderer`); without a usable GPU (Mesa llvmpipe) painted looks (`look`, `style_check`)
-are marked `needs.gpu` and the instructions say to use clay looks.
+are marked `needs.gpu` and the instructions say to use clay looks. With `OXIDEGEN_WANTED_VERSION=<git sha>` a box runs
+that hifipushie commit instead of the baked one (installed at start over a copy of the image's env; on failure it runs the
+baked one and reports `update_failed`).
 
 ## Models and examples
 
