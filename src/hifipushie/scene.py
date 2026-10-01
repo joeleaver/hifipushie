@@ -831,7 +831,7 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
     base colour. clip (as look): everything beyond the planes is left out of the render (the materials turn
     transparent there) and the cut solids get flat caps, their part's colour darkened. focus + zoom: the named
     views framed on that point, zoom times closer (painted close-ups at the scene's mesh resolution).
-    lighting: {"lights": [{"dir", "energy", "color", "angle"}], "world": {"color", "strength"}, "look", "exposure"}
+    lighting: {"lights": [{"dir", "energy", "color", "angle"}], "world": {"color", "strength"}, "look", "exposure", "view"}
     (default: the spec's style look preset, spec["style"]["look"], else one neutral sun under a grey-blue sky)."""
     from PIL import Image
     from .spec import compile_prims, geometry

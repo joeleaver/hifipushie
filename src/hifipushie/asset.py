@@ -1234,7 +1234,7 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
             hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None) -> Image.Image:
     """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
-    walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure"}, as scene.look
+    walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene.look
     takes), so the preview compares with the painted look; default a neutral studio under Standard. cameras:
     perspective panels as look takes them (model coordinates, Z up), for close-ups of the textures."""
     bounds = np.array(json.loads(glb.with_suffix(".json").read_text())["bounds_blender"])

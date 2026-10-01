@@ -344,6 +344,59 @@ def test_hair_pull_hand_locks():
         hair.scalp = old
 
 
+_LOCK_SCRIPT = r'''
+import sys, json, bpy, numpy as np
+sys.path.insert(0, SRC)
+from hifipushie import blender_hair as bh
+for ob in list(bpy.data.objects):
+    bpy.data.objects.remove(ob)
+bh.material({})
+cu = bpy.data.curves.new("k", "CURVE")
+cu.dimensions = "3D"
+sp = cu.splines.new("BEZIER")
+sp.bezier_points.add(2)
+for i, bp in enumerate(sp.bezier_points):
+    bp.co = (0.0, -0.05 * i, 1.7 + 0.1 - 0.02 * i * i)
+    bp.handle_left_type = bp.handle_right_type = "AUTO"
+ob = bpy.data.objects.new("k", cu)
+bpy.context.scene.collection.objects.link(ob)
+mod = ob.modifiers.new("hp_lock", "NODES")
+mod.node_group = bh.node_group()
+bh._set_inputs(mod, {"Width": 0.05, "Thickness": 0.006, "Centre": (0.0, 0.0, 1.7)})
+mod.node_group["hp_version"] = -1  # a scene built by an older version: the next sync rebuilds the group
+bh.node_group()
+width = bh.get_inputs(mod)["Width"]
+dg = bpy.context.evaluated_depsgraph_get()
+me = ob.evaluated_get(dg).to_mesh()
+me.calc_loop_triangles()
+P = np.array([[me.vertices[i].co[:] for i in t.vertices] for t in me.loop_triangles])
+vol = float(np.einsum("ij,ij->i", P[:, 0], np.cross(P[:, 1], P[:, 2])).sum() / 6)
+print("@@" + json.dumps({"width": width, "volume": vol}))
+'''
+
+
+def test_hair_lock_rebuild_keeps_inputs_and_winds_outward():
+    """A node-group rebuild (VERSION bump) kept every lock's modifier values (it zeroed them: the next pull wrote
+    width 0 into the spec), and the locks' faces wind outward (they wound inward: the glTF importer and engines
+    cull back faces on a single-sided material, so the exported hair showed each lens's dark underside, near-black
+    in EEVEE)."""
+    import json as _json
+    import subprocess
+    from pathlib import Path
+    import tempfile
+    from hifipushie import render
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+        f.write(f"SRC = {src!r}\n" + _LOCK_SCRIPT)
+    r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python", f.name], capture_output=True,
+                       text=True, timeout=300)
+    line = next((x for x in r.stdout.splitlines() if x.startswith("@@")), None)
+    assert line, r.stdout[-1500:] + r.stderr[-1500:]
+    got = _json.loads(line[2:])
+    assert abs(got["width"] - 0.05) < 1e-6, got
+    assert got["volume"] > 0, got
+
+
 def _exc(fn, *a):
     try:
         fn(*a)

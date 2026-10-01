@@ -301,10 +301,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   Export vs look (same day, renders x01-x05): rendered with the same camera, suns, world and engine (EEVEE), the
   export's skin and stubble match the scene (chin HSV equal, contrast within 4%); the "grey stubble" was the old
   preview (grey world, other lights) plus 1.1 mm texels under 1 mm stubble noise: `parts.body.texel_focus` on the
-  face (2.5x: 0.5 mm). `asset.preview(lighting=)` / export_asset's preview now use the model's style look. The
-  hair still reads near-black in EEVEE from the GLB (brown in Cycles; not sheen, anisotropy or the normal map).
-  Skin: lit saturation is AgX's (bright colours desaturate): the base skin #e88f68 + top-plane light #f4b495 took
-  lit 0.36 -> 0.43 at hue 16-17 under the sheet's "AgX - Punchy" (other AgX looks/exposure only desaturated it).
+  face (2.5x: 0.5 mm). `asset.preview(lighting=)` / export_asset's preview now use the model's style look.
+  Golfer fix (2026-10-01, renders g10-g14, model `workspace/dg_fix2`): the exported hair read near-black in EEVEE
+  because the lock profile (unit circle with x/y swapped: a mirror) made Curve to Mesh wind every face inward; the
+  glTF importer (and engines) cull back faces on a single-sided material, so EEVEE drew each lens's dark underside.
+  A Flip Faces node fixes it (GLB vs look on the same hair pixels: V -59% -> +4%). Rebuilding the node group (a
+  VERSION bump) used to reset every lock's modifier inputs (width 0, which the next pull wrote into the spec):
+  `node_group` now keeps them. Skin was dark because AgX rolls lit skin off at V ~0.8 whatever its paint: the
+  sheet's look is now `view` "Khronos PBR Neutral" (what glTF viewers use), look None, exposure -0.5; skin
+  #e4ae86, key light moved to his left as in the reference, a pink-neutral fill; measured through the matched face
+  camera at landmark points (lit h/s/V 19.7/0.455/0.946 vs the reference 18.9/0.448/0.926, shadow/lit V 0.82 vs
+  0.87, GLB = look within 0.001). Rules `skin_val_lit`, `skin_val_shadow_over_lit` (shadow samples follow the key's
+  side, `stylesheet.skin_samples`). Chin: regions fitted (linearised with `zip_lips` off: the zip changes the vertex
+  count) to a narrower jowl and wider chin corners at the far figure's length (chin_over_philtrum 1.84); the near
+  figure's open mouth biases its lip-to-chin length, so don't fit chin length to it.
   Example: `examples/disc_golfer_mh.json` (MakeHuman + GNM, style, polo from the neckline kit (collar, open placket, buttons), shorts, trail sneakers,
   bag on a strap, disc, hair as a scalp shell + swept top; exported rigged).
 - `hair.py` + `blender_hair.py` (2026-09-29; replaced the SDF groom on branch hair-sdf-wip: a mop with corduroy grooves,

@@ -904,9 +904,12 @@ def preview(job):
     if lt:  # the model's style look (spec.style.look: suns, world, AgX look), as the scene's look renders it: a
         # preview under other lights and view transform read the stubble grey and the skin pale next to the look
         lin = lambda c: [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c[:3]]
-        scene.view_settings.view_transform = "AgX"
+        scene.view_settings.view_transform = lt.get("view", "AgX")
         if lt.get("look"):
-            scene.view_settings.look = lt["look"]
+            try:
+                scene.view_settings.look = lt["look"]
+            except TypeError:  # names differ between Blender versions ("AgX - Punchy" / "Punchy")
+                scene.view_settings.look = lt["look"].split(" - ")[-1]
         scene.view_settings.exposure = float(lt.get("exposure", 0.0))
         wc = lt.get("world") or {}
         bg.inputs["Color"].default_value = (*lin(wc.get("color", [0.77, 0.81, 0.86])), 1)
