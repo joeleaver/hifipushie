@@ -29,7 +29,7 @@ import math
 
 import numpy as np
 
-from . import noise
+from . import fieldjit, noise
 
 AZ = (37.0, 97.0, 157.0)     # joint families' plan normals (deg from +x), 60 deg apart: every face is crossed by one
 SPACE = (1.0, 1.3, 1.7)      # minor joint spacing per family, x the bed's
@@ -371,7 +371,7 @@ def structure(p, B, fd, zoff=0.0, want_ids=False, sharp=None):
         if I is not None and sharp is not None:
             I["sharp"] = np.zeros(0)
         return np.zeros(0), I
-    pre = (*_bed_coord(p, B, zoff), _masters(p, fd, B))
+    pre = _pre(p, B, fd, zoff)
     if sharp is None:
         return offsets(p, B, fd, zoff, pre), (ids(p, B, fd, zoff, pre) if want_ids else None)
     o, o2 = offsets(p, B, fd, zoff, pre, sharp)
@@ -388,7 +388,13 @@ def offsets(p, B, fd, zoff=0.0, pre=None, sharp=None):
     if not n:
         return np.zeros(0) if sharp is None else (np.zeros(0), np.zeros(0))
     ramp = B["ramp"]
-    Phi, dPhi, mast = pre if pre is not None else (*_bed_coord(p, B, zoff), _masters(p, fd, B))
+    Phi, dPhi, mast = pre if pre is not None else _pre(p, B, fd, zoff)
+    if fieldjit.ON:  # (the compiled sums, bit-identical)
+        o, o2 = fieldjit.blocks_offsets(p, B, fd, Phi, dPhi, sharp, _cuts, _joint_frame, NCUT)
+        md = B["master"]["depth"] * mast[0]
+        if sharp is None:
+            return _carve(o, B) + md
+        return _carve(o, B) + md, _carve(o2, B) + md
     a = ramp * dPhi
     # (the beds either window reaches: a coarse LOD's bake asks for a sharp window WIDER than the ramp)
     S, _ = _bed_slots(Phi, dPhi, B, max(ramp, sharp or 0.0) * dPhi)
@@ -410,6 +416,13 @@ def offsets(p, B, fd, zoff=0.0, pre=None, sharp=None):
             _carve(np.bincount(r, ol2 * (v + J[1]), minlength=n), B) + md)
 
 
+def _pre(p, B, fd, zoff):
+    """The bed coordinate, its slope and the master joints at points: what offsets and ids share."""
+    if fieldjit.ON and len(p):
+        return fieldjit.blocks_pre(p, B, fd, zoff, AZ)
+    return (*_bed_coord(p, B, zoff), _masters(p, fd, B))
+
+
 def _carve(o, B):
     """The structure set back `back` m and its building side softly capped at -`build` m (a smooth, monotone clamp):
     proud beds and blocks standing out over a cliff's lip built slabs in the air (a 42-triangle piece floating 27 m over
@@ -424,7 +437,14 @@ def ids(p, B, fd, zoff=0.0, pre=None):
     (m) to the nearest bed plane and that plane's crack strength (0..1: drawn only where > 0), per family the block
     id, the family's weight and its distance to an open joint (inf where the nearest boundary is closed), and the
     master joints (groove 0..1, distance m)."""
-    Phi, dPhi, mast = pre if pre is not None else (*_bed_coord(p, B, zoff), _masters(p, fd, B))
+    Phi, dPhi, mast = pre if pre is not None else _pre(p, B, fd, zoff)
+    if fieldjit.ON and len(p):
+        K, j, fo, blocks, fam = fieldjit.blocks_ids(p, B, fd, Phi, dPhi, _cuts, _joint_frame, NCUT)
+        out = {"K": K, "j": j, "thick": fo[:, 0], "thin": fo[:, 4] > 0, "bed_edge": fo[:, 1], "below_top": fo[:, 2],
+               "bed_crack": fo[:, 3], "blocks": list(blocks), "weights": [fam[m, :, 0] for m in range(len(AZ))],
+               "edges": [fam[m, :, 1] for m in range(len(AZ))], "open": [fam[m, :, 2] for m in range(len(AZ))]}
+        out["master"], out["master_d"] = mast
+        return out
     _, own = _bed_slots(Phi, dPhi, B, np.zeros(len(p)))
     K, j, th = own["K"], own["j"], own["thick"]
     d_lo, d_hi = (Phi - own["lo"]) / dPhi, (own["hi"] - Phi) / dPhi

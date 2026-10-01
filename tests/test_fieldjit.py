@@ -1,6 +1,7 @@
 """The compiled field kernels (fieldjit) against the numpy path they stand in for: bit-identical values.
 
-Unit tests on synthetic inputs (fast), then the whole 3D terrain field on real terrains: the bake's field (CliffField
+Unit tests on synthetic inputs (fast; terrain_blocks included), then the whole 3D terrain field on real terrains (jointed
+rock on, the default): the bake's field (CliffField
 front + micro relief) and the meshing field (Field.value), value_gradient and Materials.weights at points near the
 rock surface, numpy (fieldjit.ON = False) vs compiled. Terrains: examples/pebble_disc.json, examples/lava_field.json,
 and workspace/terrain/t3_alps (skipped when missing; it takes ~1-2 min to build).
@@ -114,6 +115,38 @@ def test_facets():
     q[:200] = tri.points[tri.simplices[:200, 0]]  # (on seeds: on edges of several triangles)
     q[200:400] = 0.5 * (tri.points[tri.simplices[:200, 0]] + tri.points[tri.simplices[:200, 1]])  # (mid-edge)
     same(*both(lambda: tf.pl2d(q, 4242, 3, -2)), "pl2d")
+
+
+def test_blocks():
+    """terrain_blocks (jointed, bedded rock): the bed coordinate, master joints, offsets (with and without the maps'
+    sharp window, narrower and wider than the ramp), ids and structure, at two voxels."""
+    if not need_jit():
+        return
+    from hifipushie import terrain_blocks as tb
+    rng = np.random.default_rng(5)
+    n = 30_000
+    p = np.cumsum(rng.normal(0, 0.3, (n, 3)), 0) + [500.0, -200.0, 40.0]
+    fd = rng.normal(0, 1.5, (n, 2))
+    fd[:2000] = 0.0  # (flat: every family's weight from the 0.04 floor)
+    zoff = rng.normal(0, 1, n)
+    for vox in (0.5, 1.0):
+        B = tb.config(6.0, vox)
+        same(*both(lambda: tb._pre(p, B, fd, zoff)[:2]), "blocks: bed coordinate")
+        same(*both(lambda: tb._pre(p, B, fd, zoff)[2]), "blocks: master joints")
+        same(*both(lambda: tb.offsets(p, B, fd, zoff)), "blocks: offsets")
+        for sh in (0.25, B["ramp"], 0.8):
+            same(*both(lambda: tb.offsets(p, B, fd, 0.0, None, sh)), f"blocks: offsets sharp {sh}")
+
+        def ids():
+            I = tb.ids(p, B, fd, zoff)
+            return tuple([I[k] for k in ("K", "j", "thick", "thin", "bed_edge", "below_top", "bed_crack", "master",
+                                         "master_d")] + I["blocks"] + I["weights"] + I["edges"] + I["open"])
+        same(*both(ids), "blocks: ids")
+
+        def st():
+            o, I = tb.structure(p, B, fd, zoff, want_ids=True, sharp=0.3)
+            return (o, I["sharp"], I["bed_edge"], I["bed_crack"], *I["open"], *I["blocks"])
+        same(*both(st), "blocks: structure")
 
 
 def _fields(name):
