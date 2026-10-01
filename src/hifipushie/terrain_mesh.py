@@ -28,6 +28,7 @@ world's.
 from __future__ import annotations
 
 import json
+import os
 import math
 import struct
 import time
@@ -1485,11 +1486,20 @@ def _decimate(P, faces, err, budget, field, border_ok=None):
         # the undecimated mesh: LOD2 came out bigger than LOD1)
         n = int(budget)
         best = None
+        last = None
         while n >= 16:
             cand = run(n)
             if valid(*cand) and len(cand[1]) <= budget:
                 best = cand
                 break
+            # pyfqmr stalled (a lower target gave the same mesh: it stops where its flip and border checks block every
+            # collapse, far above the target from a dense mesh): every lower count would too. The steps below, each
+            # from the last mesh, get past it in a second; counting down to 16 took ~100 runs (80-110 s a LOD, the
+            # alps block's straggler tiles)
+            if last is not None and len(cand[1]) == last:
+                profiling.count("decimate: pyfqmr stalled above the budget")
+                break
+            last = len(cand[1])
             n = int(n * 0.8)
         if best is None:  # in one pass every count folded something: in steps, each from the last good mesh
             cur = (P, faces)
@@ -2491,6 +2501,12 @@ def _job_tile(ij):
         if Pd is None:
             if k > 0:
                 profiling.count(f"decimate: lod{k} from the dense mesh (the last LOD's didn't reach its budget)")
+                if os.environ.get("HIFIPUSHIE_DECIMATE_DUMP"):  # (the inputs, to replay a straggler offline)
+                    Pp, Fp = prevs[-1]
+                    np.savez(Path(os.environ["HIFIPUSHIE_DECIMATE_DUMP"]) / f"dec_{i}_{j}_{k}.npz", Pk=Pk, Fk=Fk,
+                             Pp=Pp, Fp=Fp, keep=np.asarray(c["keep"][k]), lo=np.asarray(lo), hi=np.asarray(hi),
+                             pos=np.array(list(pos.keys()), float), posv=np.array(list(pos.values())),
+                             err=cfg["error"][k], budget=cfg["budget"][k])
             with _span(f"tile/lod{k}/decimate from dense"):
                 Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok)
         if k > 0 and prevs and len(Fd) > max(cfg["budget"][k], len(prevs[-1][1])):

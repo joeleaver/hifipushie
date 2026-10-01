@@ -1072,6 +1072,25 @@ regresses, bisect by building one spec at each commit and diffing heights.
     normal, normals from neighbouring texels) cut field points 15 -> 7/texel for ~1.9x, but normals moved p90 4 deg.
     A compiled field (numba/C) is the next lever (card). For rock design rounds use `preview_tiles` (one LOD, low
     density, no checks; `examples/terrain_rock_look.py` exports + renders the tiles round a point): ~40 s a tile.
+  - Compiled field (2026-09-30, "compiled field" agent; the user: "prototype the compiled field"). `fieldjit.py`: numba
+    (dependency) kernels behind the numpy leaves, which keep their signatures and stay the reference
+    (HIFIPUSHIE_JIT=0): noise._hash/_value_noise/fbm, Field.column/steep_at/grain_at/face_dir, `_gridded`,
+    Materials._grid, Region.s, terrain_facets.facets/pl2d/_seeds, _pl_walk. BIT-IDENTICAL, exports byte-identical:
+    each kernel repeats numpy/scipy's operations in their order (map_coordinates' spline weights and 4x4 accumulation
+    from ni_splines.c/ni_interpolation.c; find_simplex's lifted walk, directed walk, brute force and start chaining from
+    _qhull.pyx). Facets locate through a bucket grid per triangulation and fall back to scipy's walk only within 1e-9
+    of an edge (where the walk's choice of triangle shows in the last bit). What can't be matched stays in numpy and is
+    passed in: `x ** 4` (SVML pow), matmuls (BLAS FMA). Points must be (n,) float64 / int64 (other int widths wrap
+    differently: numpy path). `fieldjit.warm()` runs in the parent before the pool forks (5 s cold, 0.5 s from
+    numba's cache in __pycache__). `tests/test_fieldjit.py`: kernels + pebble/lava/alps fields, 0 differing values.
+    Measured (shared, loaded laptop): leaves 3-34x per point (value noise 34x, column 8x, facets 3-5x), the bake's
+    whole field ~3.5x, the pool 1.2M -> 3.1M points/s at 15 workers; pebble export 466 -> 182 s, alps 3x3 494 ->
+    276 s, peak memory unchanged (5-6 GB, workers 0.4-0.6 GB). Not 10x because the composition (rock_relief,
+    micro_relief, bed_planes, joints) is still numpy, and facet triangulation misses are cold per worker (a 2.5x
+    bigger cache missed as often), ~16 ms each now. Alps was then 95% one decimation straggler: pyfqmr stalls far
+    above the budget from a dense mesh and `_decimate` counted down to 16 (~100 runs); it now stops at the stall and
+    steps from its last mesh (same meshes, 4-12x fewer runs: alps 3x3 276 -> 130 s, byte-identical;
+    HIFIPUSHIE_DECIMATE_DUMP=<dir> saves a dense fallback's inputs to replay). Next: compile the rock composition (terrain_blocks etc.) once its formulas settle.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

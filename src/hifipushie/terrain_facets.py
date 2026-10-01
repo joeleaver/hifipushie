@@ -23,6 +23,8 @@ sizes square + PAD): boxes fitted to each query missed the cache whenever a late
 orientations: a lattice shows off-centre peaks (0.4-0.55), irregular facets don't (~0.25-0.3)."""
 from __future__ import annotations
 
+import os
+
 import numpy as np
 from scipy import ndimage
 from scipy.spatial import Delaunay, cKDTree
@@ -36,7 +38,8 @@ ROUNDS = 3                            # acceptance rounds (each depends on candi
 PAD = 3.0                             # facet sizes of seeds round the queried points (their triangles are global)
 GAIN = 1.4                            # slope to match the lattice facets' (see facets)
 GROUP = 32.0                          # points are triangulated per block this many facet sizes square (+ PAD round)
-CACHE_POINTS = 600_000                # seeds kept in triangulations per process (~200 B each with the lazily built transform)
+CACHE_POINTS = int(os.environ.get("HIFIPUSHIE_FACET_CACHE", 600_000))  # seeds kept in triangulations per process (~200 B
+# each with the lazily built transform)
 PERIODIC = 0.4                        # periodicity() above this: the facets read as a lattice
 _CACHE: dict = {}                     # (seed, block i, block j) -> (triangulation, heights), least recently used first
 
