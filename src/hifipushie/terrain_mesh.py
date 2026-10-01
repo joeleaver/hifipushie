@@ -67,11 +67,13 @@ DEFAULTS = {
     "cliff_margin": 4.0,   # (cliffs) m the region reaches past the steep ground and round openings
     "cave_wall": 3.0,      # (cliffs) m of rock kept round every void in a cliff shell
     "maps": True,          # baked maps per tile and LOD (terrain_bake): normal, ORM, base colour, height, weights
-    "texel_density": [16.0, 6.0, 2.5],  # texels per metre per LOD (a tile's atlas is capped at texture_max)
+    "texel_density": [8.0, 4.0, 2.0],  # texels per metre per LOD (a tile's atlas is capped at texture_max): the macro
+                           # maps; below ~0.5 m the tiling detail draws the rock (`detail`). Unique maps alone
+                           # wanted 16/m at LOD 0 and were still mush at 10 m (renders m01)
     "texture_max": 2048,
     "ground_density": 4.0,  # (cliffs) the ground tiles' maps, texels per metre at LOD 0
     "micro": 1.0,          # bake-only fine rock relief (facets, cracks, laminae below the voxel); 0 = none
-    "detail": False,       # the tiling rock detail (terrain_swatch): swatches in materials/ and, on cliff tiles, a
+    "detail": True,        # the tiling rock detail (terrain_swatch): swatches in materials/ and, on cliff tiles, a
                            # strike-binned UV set (TEXCOORD_n, metres) + _DETAIL (strike x, y, side share, bed v)
     "checks": True,        # the seam/ground/pattern checks after writing (off for previews)
 }
@@ -1274,9 +1276,14 @@ def write_glb(path, name, prims, translation, material, extras=None, images=None
            "accessors": accs, "bufferViews": views, "buffers": [{"byteLength": len(bin_)}]}
     if material:
         doc["materials"] = material
-    if images:  # [(bytes, mime type)]: embedded, texture i = image i, one sampler (trilinear, repeat)
+    if images:  # [(bytes, mime type) | uri]: embedded or (a str) a file beside the GLB; texture i = image i, one
+        # sampler (trilinear, repeat)
         doc["images"] = []
-        for data, mime in images:
+        for im in images:
+            if isinstance(im, str):
+                doc["images"].append({"uri": im})
+                continue
+            data, mime = im
             off = len(bin_)
             bin_.extend(_pad4(data))
             views.append({"buffer": 0, "byteOffset": off, "byteLength": len(data)})
@@ -2054,6 +2061,13 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if cfg.get("detail") and base.rock is not None:  # (the tiling detail's projection, read by the workers)
         from . import terrain_swatch
         _CTX["detail"] = terrain_swatch.DetailProjection(base, base.rock)
+        de = terrain_swatch.write(out, base.rock, "rock")
+        de.update(texcoord=1 + bool(int(cfg["splat"])), bins=_CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
+                  layers=[nm for nm in ("rock", "wet_rock") if nm in mats.layers], recipe=terrain_swatch.RECIPE,
+                  gltf=("each cliff tile LOD's baked material carries extras.hifipushie_detail: texture indices of "
+                        "the embedded lines map and of the swatch images (files in materials/, by uri), and the UV "
+                        "set; glTF viewers ignore it and show the macro maps"))
+        _CTX["detail_entry"] = de
         # (the drawn lines go to the lines map, crisp, instead of blurring into the macro colour)
         mats.lines_in_maps = bool(cfg.get("lines", True))
     region = None
@@ -2209,7 +2223,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     bf.rock = rk
                 if base.rock is not None and float(cfg["micro"]) > 0:
                     dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
-                    bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens)
+                    bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens,
+                                                         fine="detail" not in _CTX)
                 if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
                     bf = terrain_cliffs.CliffField(bf, region).front_field()
                 bfs.append(bf)
@@ -2322,12 +2337,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if cfg.get("maps"):
         from . import terrain_bake
         layer_tex = terrain_bake.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
-    detail = None
-    if _CTX.get("detail") is not None:
-        from . import terrain_swatch
-        detail = terrain_swatch.write(out, base.rock, "rock")
-        detail.update(texcoord=1 + bool(int(cfg["splat"])), bins=_CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
-                      layers=[nm for nm in ("rock", "wet_rock") if nm in mats.layers])
+    detail = _CTX.get("detail_entry")
     _st.__exit__(None, None, None)
     manifest = {
         "format": "hifipushie terrain tiles 1",
@@ -2352,7 +2362,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                         "triplanar": nm in ("rock", "wet_rock")}
                        for g, grp in enumerate(groups) for c, nm in enumerate(grp)],
             "engine_recipe": "per pixel: weights w_i from the weights texture (cliff tiles: maps/<tile>_weights<g>.png "
-                             "on TEXCOORD_0) or the splat (ground: TEXCOORD_1) or _WEIGHTS<g> per vertex. Each layer's "
+                             "on TEXCOORD_0) or the splat (ground: TEXCOORD_1) or _WEIGHTS<g> per vertex. Rock on cliff "
+                             "tiles: the tiling rock detail instead (manifest detail.recipe) when the export has "
+                             "it. Each layer's "
                              "tiling textures (materials/<layer>_albedo/_normal/_height.png) at world position / "
                              "scale: planar (x, -y) on the ground, triplanar (blend by |n|^4 on the world axes) where "
                              "`triplanar` is true or the face is steeper than ~35 deg and in caves. Albedo = baked base "
@@ -2459,6 +2471,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             check["failures"].append(f"the colour bends on every terrain cell line (x{gs['ratio']} the kinks between "
                                      f"them): cell-sized squares on the rock")
         check["failures"] += td["failures"]
+        if detail is not None:  # the swatch must tile: its wrap seam's jump against the steps beside it
+            check["summary"]["swatch_wrap_seam"] = detail["wrap_seam"]
+            if not detail["tileable"]:
+                from . import terrain_swatch
+                check["failures"].append(f"the detail swatch's wrap seam shows (jump excess {detail['wrap_seam']}, "
+                                         f"limit {terrain_swatch.TILE_LIMIT})")
         check["summary"]["failures"] = len(check["failures"])
     else:  # (a preview: `preview_tiles`)
         check = {"summary": {"failures": 0, "skipped": "checks off (a preview)"}, "failures": []}
@@ -2992,6 +3010,20 @@ def _job_finish(stem):
                   (terrain_bake.png(maps["normal"], "RGB"), "image/png")]
     with open(work / f"glb_{stem}.pkl", "rb") as fh:
         glb = pickle.load(fh)
+    de = c.get("detail_entry")
+    if de is not None:  # the detail layer in the GLB: the lines map embedded, the swatches as files beside it
+        ext = {"recipe": "manifest.json detail.recipe", "texCoord_detail": de["texcoord"],
+               "attribute": "_DETAIL (strike x, strike y, side share, bed coordinate m)", "size_m": de["size_m"]}
+        if "lines" in maps:
+            images.append((terrain_bake.png(maps["lines"], "RGBA"), "image/png"))
+            ext["lines"] = {"index": len(images) - 1, "texCoord": 0, "range_m": de["line_d"],
+                            "channels": "R bed planes, G joints: signed distance (0.5 = on the line, +-range_m); "
+                                        "B, A: their strengths"}
+        for key in ("albedo", "normal", "rough", "variation"):
+            images.append(de[key])
+            ext[key] = {"index": len(images) - 1, "texCoord": de["texcoord"]}
+        glb["mats"] = [dict(m) for m in glb["mats"]]
+        glb["mats"][-1]["extras"] = {"hifipushie_detail": ext}
     with _span("maps/write glb"):
         write_glb(glb["path"], glb["name"], glb["prims"], glb["trans"], glb["mats"], extras=glb["extras"],
                   images=images)
@@ -3270,6 +3302,9 @@ def read_glb_images(path):
     binb = b[28 + jl:]
     out = []
     for im in doc.get("images", []):
+        if "bufferView" not in im:  # (a file beside the GLB: the detail swatches)
+            out.append(None)
+            continue
         v = doc["bufferViews"][im["bufferView"]]
         a = np.asarray(Image.open(io.BytesIO(binb[v["byteOffset"]:v["byteOffset"] + v["byteLength"]])), float)
         out.append(a / 255.0)

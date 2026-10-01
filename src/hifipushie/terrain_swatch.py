@@ -76,51 +76,88 @@ def spectral(n, beta, seed, stretch=(1.0, 1.0), lo=4.0):
     return 2 * (z - z.mean()) / max(np.ptp(z), 1e-9)
 
 
+def _wrap_edt(mask):
+    """Distance (texels) from each True texel to the nearest False one, on the torus (computed on a 3x3 tiling)."""
+    n0, n1 = mask.shape
+    big = np.tile(mask, (3, 3))
+    d = ndimage.distance_transform_edt(big)
+    return d[n0:2 * n0, n1:2 * n1]
+
+
 def swatch(rock=None, size=SIZE, res=RES, seed=None):
     """The detail swatch of one rock type: {"height" (m, outward), "normal" (unit, tangent space: x along s, y up t,
     z out), "albedo" (a multiplier on the macro colour, mean 1 per channel), "rough" (a multiplier, mean 1), "cavity"
-    (0..1)}; arrays rows = t up. Facet sizes follow the rock's (terrain_bake.micro_relief's 0.45 m facets are its
-    smallest; finer here)."""
+    (0..1)}; arrays rows = t up. Rock character at several scales, each periodic on the swatch:
+    - planes: irregular facets 0.45 / 0.16 / 0.07 m (terrain_facets' seeds on a torus), the bigger ones stretched up
+      the face like the rock's own;
+    - fractures: few, on a facet net's zero lines, broken into lengths, each its own width (2-12 mm) and depth (to ~3
+      cm), a V with a dark floor (uniform thin creases read as crumpled paper);
+    - spall scars: polygons where a coarser facet field stands high, a crisp rim and a conchoidal bowl 1-3 cm deep
+      that is paler (fresh rock) and smoother;
+    - pits: sparse round pits 3-10 mm, dark inside;
+    - grain: mineral speckle in albedo (pale and dark grains, a few mm) and roughness (glassy grains smoother), a
+      sub-millimetre-to-cm roughness in the relief;
+    - weathering patches 0.3-1 m and sparse crustose lichen.
+    Nothing longer than a quarter of the swatch (a swatch-sized feature repeats visibly)."""
     seed = int((rock or {}).get("seed", 4242) if seed is None else seed) + 900
     n = int(round(size * res))
     L = float(size)
+    texel = L / n
     f45 = periodic_facets(n, L, 0.45, seed + 1, stretch=1.4)
     f16 = periodic_facets(n, L, 0.16, seed + 2, stretch=1.2)
     f07 = periodic_facets(n, L, 0.07, seed + 6, stretch=1.0)
-    grain = spectral(n, 1.1, seed + 3, lo=16)
-    net = periodic_facets(n, L, 0.55, seed + 4, stretch=1.6)
+    rough_rel = spectral(n, 0.9, seed + 3, lo=24)
+    # fractures
+    net = periodic_facets(n, L, 0.7, seed + 4, stretch=1.6)
     wob = spectral(n, 1.8, seed + 5, lo=8)
-    # hairline fractures on a facet net's zero lines, broken into short lengths of varying strength: many small ones
-    # (a few long ones were the swatch's landmarks, repeated every 4 m)
-    keep = smoothstep(0.3, 0.6, spectral(n, 1.6, seed + 7, lo=10)) * (0.5 + 0.5 * spectral(n, 1.2, seed + 14, lo=8))
-    crack = np.clip(1 - np.abs(net + 0.05 * wob) / 0.03, 0, 1) ** 2 * np.clip(keep, 0, 1)
-    # spalls: shallow shell-shaped scars a few cm to 20 cm across, crisp-edged, paler (fresh rock)
-    # (angular: where another facet field stands high, a polygon; rounded noise blobs read as plaster)
-    chip = smoothstep(0.66, 0.72, periodic_facets(n, L, 0.22, seed + 15, stretch=1.0))
-    # (no laminae: lines at fixed heights in the swatch repeated every 4 m up the whole wall as ruled stripes; the
-    # beds' own planes are in the lines map)
-    h = 0.014 * f45 + 0.008 * f16 + 0.003 * f07 + 0.0015 * grain - 0.008 * crack - 0.004 * chip
-    texel = L / n
+    on = smoothstep(0.0, 0.25, spectral(n, 1.6, seed + 7, lo=8))           # (lengths of fracture, ~a third)
+    wvar = 0.5 + 0.5 * spectral(n, 1.4, seed + 14, lo=10)                    # (each length its own width)
+    width = (0.0015 + 0.006 * np.clip(wvar, 0, 1) ** 2) * on                 # half-width, m
+    gnet = np.hypot(*np.gradient(net, texel))                                # (per m: the net's slope)
+    dist = np.abs(net + 0.04 * wob) / np.maximum(ndimage.gaussian_filter(gnet, 3, mode="wrap"), 0.5)
+    v = np.clip(1 - dist / np.maximum(width, 1e-4), 0, 1) * (on > 0.02)
+    frac = v                                                                  # 0..1 inside a fracture
+    frac_d = (0.006 + 0.025 * np.clip(wvar, 0, 1)) * v ** 0.7                 # V depth
+    # spall scars: a crisp rim, a conchoidal bowl
+    region = (periodic_facets(n, L, 0.14, seed + 15, stretch=1.0) > 0.62) & \
+        (spectral(n, 1.4, seed + 22, lo=6) > -0.05)                          # (small, in patches)
+    inner = _wrap_edt(region) * texel                                        # m inside the scar
+    sdepth = 0.012 + 0.018 * (0.5 + 0.5 * spectral(n, 1.2, seed + 17, lo=8))
+    bowl = np.where(region, sdepth * (1 - np.exp(-inner / 0.035)), 0.0)
+    bowl = ndimage.gaussian_filter(bowl, 0.7, mode="wrap")                   # (the rim crisp, not aliased)
+    scar = smoothstep(0.0, 0.004, bowl)
+    # pits
+    pn = 0.5 + 0.5 * spectral(n, 0.6, seed + 18, lo=96)
+    pit = smoothstep(0.86, 0.93, pn) * smoothstep(0.1, 0.4, spectral(n, 1.4, seed + 19, lo=6))
+    pit = ndimage.gaussian_filter(pit, 0.8, mode="wrap")
+    h = (0.024 * f45 + 0.012 * f16 + 0.004 * f07 * (1 - 0.7 * scar) + 0.0012 * rough_rel * (1 - 0.6 * scar)
+         - frac_d - bowl - 0.004 * pit)
     gx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) / (2 * texel)
     gy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) / (2 * texel)  # (rows = t up)
     nrm = np.stack([-gx, -gy, np.ones_like(h)], -1)
     nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
-    # cavity: concave places (the height's Laplacian over ~2 cm) darker
-    lap = ndimage.gaussian_filter(h, 2.0, mode="wrap")
-    lap = ndimage.laplace(lap, mode="wrap") / (texel * texel)
+    # cavity: concave places (the height's Laplacian over ~1 cm) darker
+    lap = ndimage.laplace(ndimage.gaussian_filter(h, 1.5, mode="wrap"), mode="wrap") / (texel * texel)
     cav = np.clip(lap / max(np.percentile(np.abs(lap), 98), 1e-9), -1, 1)
-    # albedo: grains (speckle, a few mm), weathering patches 0.3-1 m, facets to slightly different tones, darker
-    # fractures, paler spalls, sparse crustose lichen (pale, rounded patches 2-10 cm)
-    speck = spectral(n, 0.35, seed + 10, lo=16)
+    # albedo
+    g1 = spectral(n, 0.0, seed + 10, lo=64)                                  # (grain-sized white-ish noise)
+    g2 = spectral(n, 0.0, seed + 20, lo=64)
+    pale = smoothstep(0.3, 0.45, g1) * 0.3                                   # pale grains (quartz, calcite)
+    dark = smoothstep(0.32, 0.47, g2) * 0.4                                  # dark grains
+    dens = np.clip(0.55 + 0.6 * spectral(n, 1.4, seed + 23, lo=8), 0.1, 1.2)  # (grains cluster: no even salt and pepper)
+    pale, dark = pale * dens, dark * dens
+    speck = 0.06 * spectral(n, 0.4, seed + 21, lo=32)
     patch = spectral(n, 1.5, seed + 16, lo=4)
-    tone = (1 + 0.04 * f45 + 0.03 * f16 + 0.14 * speck + 0.08 * patch - 0.08 * np.clip(cav, 0, 1)
-            + 0.07 * chip)
-    tone = tone * (1 - 0.3 * crack)
+    tone = (1 + 0.04 * f45 + 0.03 * f16 + speck + pale - dark + 0.09 * patch - 0.18 * np.clip(cav, 0, 1)
+            + 0.10 * scar)
+    tone = tone * (1 - 0.55 * frac) * (1 - 0.5 * pit)
     lic = smoothstep(0.66, 0.74, 0.5 + 0.5 * spectral(n, 1.8, seed + 11, lo=24)) * \
-        smoothstep(0.0, 0.4, spectral(n, 1.6, seed + 12, lo=8))
+        smoothstep(0.0, 0.4, spectral(n, 1.6, seed + 12, lo=8)) * (1 - scar)
     alb = tone[..., None] * (1 - 0.6 * lic[..., None]) + 0.6 * lic[..., None] * np.array([1.30, 1.34, 1.18])
+    alb = np.clip(alb, 0.05, None)
     alb = alb / alb.reshape(-1, 3).mean(0)
-    rough = 1 + 0.08 * spectral(n, 1.0, seed + 13, lo=8) + 0.06 * crack - 0.05 * lic - 0.04 * chip
+    rough = 1 + 0.06 * spectral(n, 1.0, seed + 13, lo=8) - 0.4 * pale + 0.08 * frac - 0.1 * scar \
+        - 0.05 * lic
     rough = rough / rough.mean()
     return {"height": h, "normal": nrm, "albedo": alb, "rough": rough, "cavity": np.clip(-cav, 0, 1),
             "size_m": L, "texels_per_m": n / L, "n": n}
@@ -175,6 +212,33 @@ def write(out_dir, rock=None, name="rock", size=SIZE, res=RES):
             "variation_m": VARIATION_M, "variation_scale": VARIATION_SCALE, "variation_offset": VARIATION_OFFSET,
             "pixels": int(S["n"]), "height_m": round(hr, 5), "wrap_seam": seams,
             "tileable": all(max(v) <= TILE_LIMIT for v in seams.values())}
+
+
+RECIPE = (
+    "The tile maps are macro only (a few texels/m: colour, AO, roughness, layer weights, the normal of the >= 0.5 m "
+    "structure); the rock below ~0.5 m is a tiling swatch per rock type, drawn on top in the shader. glTF viewers that "
+    "ignore it show the macro maps alone (the reference material): correct, softer up close. Per pixel, on cliff tiles, "
+    "where the rock layers weigh w = sum of the `layers`' weights (_WEIGHTS / the weights map):\n"
+    "1. Projection (seamless, custom shader): s = normalize(_DETAIL.xy) (the strike, u runs to the right as one faces "
+    "the rock), v = _DETAIL.w (the bed coordinate, m). theta = atan2(s.y, s.x) / (2 pi / bins); k0 = floor(theta), f = "
+    "theta - k0; for k in (k0, k0 + 1): d_k = (cos, sin)(k 2 pi / bins), uv_k = (dot(worldpos.xy, d_k), v), tangent "
+    "T_k = (d_k, 0), bitangent B = +z (both projected onto the surface and normalised). Blend the two by f^4 / (f^4 + "
+    "(1 - f)^4). Top plane: uv = worldpos.xy, T = +x, B = +y. Blend sides vs top by _DETAIL.z (the side share). "
+    "Simpler (stock detail maps): TEXCOORD_<texcoord> holds each triangle's nearest plane (metres; seams where the "
+    "plane changes); its tangents are MikkTSpace on that UV set, or the analytic T/B above.\n"
+    "2. Anti-tiling: sample the swatch at uv / size_m and at uv / (size_m x variation_scale) + variation_offset; mix by "
+    "the variation texture (R) sampled at uv / variation_m.\n"
+    "3. Albedo: macro base colour x (1 + w (2 x albedo_detail - 1)) (the albedo texture is linear, 0.5 = unchanged). "
+    "Roughness: ORM.g x (1 + w (2 x rough_detail - 1)).\n"
+    "4. Normal: the detail normal (tangent space on the plane's T/B, glTF convention) in world space, combined with "
+    "the macro normal by RNM about the vertex normal Nv: t = Nm + Nv; u = 2 (Nd.Nv) Nv - Nd; n = normalize(t (t.u) / "
+    "(t.Nv) - u); then mix(Nm, n, w).\n"
+    "5. Lines (the lines map, TEXCOORD_0, linear filtering, never sRGB): per set (R/B bed planes, G/A joints) s = (c - "
+    "0.5) x 2 x line_d metres, a = strength; crack = a (1 - smoothstep(0, 0.03, |s| + jitter - width)) with jitter "
+    "+-2.5 cm and width 0-6 cm wandering along the line (e.g. from noise or the swatch height); shadow = a (1 - "
+    "smoothstep(0.02, 0.14, |s|)); albedo x (1 - (0.45 crack + 0.3 shadow) w); a groove: height -(crack + 0.5 shadow) "
+    "x 4 cm (bump or derivatives of s). The signed distances interpolate linearly across a line, so it stays crisp at "
+    "any distance. Fade the detail (not the lines) toward the swatch's mean beyond ~60 m if it shimmers.")
 
 
 # ---------------------------------------------------------------- the structure's lines (a macro map)

@@ -36,7 +36,7 @@ def _unit(v):
 
 SHARP_MIN = 0.25  # m: the narrowest edge filter the maps use for the rock structure (see micro_relief)
 
-def micro_relief(r, amount=1.0, texel=0.1):
+def micro_relief(r, amount=1.0, texel=0.1, fine=True):
     """A function p -> field offset: rock detail finer than the meshing voxel (facets 1.2 m and 0.45 m across, thin
     cracks along a coarser facet net's zero lines, the bedding plane's notch, laminae every sixth of a bed).
     Centimetres deep: for normal and height maps only. Band-limited to the map's texel: a feature narrower than
@@ -45,6 +45,9 @@ def micro_relief(r, amount=1.0, texel=0.1):
     seed = r["seed"] + 77
     keep = lambda width: float(np.clip((width / texel - 3.0) / 3.0, 0.0, 1.0))  # 0 below 3 texels, 1 from 6
     a1, a2, ac = keep(1.2), keep(0.45), keep(0.3)
+    if not fine:  # (the tiling detail draws everything under ~0.5 m: terrain_swatch. Its 0.45 m facets here were
+        # the bake's smallest facet size, so most of its facet triangulations: a cost per square metre, not per texel)
+        a2 = 0.0
     an, al = keep(0.6), keep(0.24)
     bed = r.get("bed")
 
