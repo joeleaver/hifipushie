@@ -57,8 +57,8 @@ def _same_but_hair(a: dict, b: dict) -> bool:
 
 
 def save(name: str, spec: dict, note: str = "") -> int:
-    from . import stylesheet
-    spec = stylesheet.resolve(spec)
+    from . import images, stylesheet
+    spec = images.ingest_spec(stylesheet.resolve(spec))  # paint images by file: into the content store, by id
     d = _dir(name)
     prev = d / "spec.json"
     if prev.exists() and _same_but_hair(stylesheet.resolve(json.loads(prev.read_text())), spec):

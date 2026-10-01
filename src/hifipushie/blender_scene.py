@@ -16,6 +16,7 @@ Jobs:
 """
 
 import json
+from pathlib import Path
 import os
 import time
 import sys
@@ -76,6 +77,7 @@ class _Nodes:
         self.t, self.q, self.packing = tree, quantiles, packing
         self.x = 0
         self.attrs = {}
+        self.colours = {}  # an image entry's key -> its colour (linear), for a layer with "color": "image"
 
     def node(self, kind, **props):
         n = self.t.nodes.new(kind)
@@ -302,7 +304,74 @@ class _Nodes:
             return self.ramp(self.attr(e["attr"]), self.math("ADD", w, e["soft"]), w)
         if g == "mask":
             return self.stack(e["entries"])
+        if g == "image":
+            m, col = self.decal(e, e)
+            if e["mirror"]:  # the mirrored placement too: the stronger one wins, colour and all
+                m2, col2 = self.decal(e, e["mirrored"])
+                pick = self.math("GREATER_THAN", m2, m)
+                mix = self.node("ShaderNodeMix", data_type="RGBA", blend_type="MIX")
+                self._in(mix.inputs[0], pick)
+                self._in(mix.inputs[6], col)
+                self._in(mix.inputs[7], col2)
+                col, m = mix.outputs[2], self.math("MAXIMUM", m, m2)
+            self.colours[e["key"]] = col
+            return m
         raise ValueError(g)
+
+    def image(self, path, data):
+        """The image file as a datablock: colour (sRGB) or data (Non-Color: masks read the stored values)."""
+        name = f"hp:{Path(path).stem}:{'data' if data else 'srgb'}"
+        im = bpy.data.images.get(name)
+        if im is None or bpy.path.abspath(im.filepath) != path:
+            im = bpy.data.images.load(path, check_existing=False)
+            im.name = name
+            im.colorspace_settings.name = "Non-Color" if data else "sRGB"
+            im.alpha_mode = "STRAIGHT"
+        return im
+
+    def decal(self, e, fr):
+        """images.project + sample as nodes: the decal's u, v from the world position (per pixel), the image
+        clipped outside, times the depth window and the facing ramp. Returns (mask, linear colour)."""
+        p = self.vmath("SUBTRACT", self.attr("wpos", True), fr["c"])
+        u = self.math("ADD", self.math("DIVIDE", self.vmath("DOT_PRODUCT", p, fr["right"]), e["w"]), 0.5)
+        if e["flip"]:
+            u = self.math("SUBTRACT", 1.0, u)
+        v = self.math("ADD", self.math("DIVIDE", self.vmath("DOT_PRODUCT", p, fr["up"]), e["h"]), 0.5)
+        uv = self.node("ShaderNodeCombineXYZ")
+        self._in(uv.inputs[0], u)
+        self._in(uv.inputs[1], v)
+
+        def tex(data):
+            n = self.node("ShaderNodeTexImage", interpolation="Cubic" if not data else "Linear", extension="CLIP")
+            n.image = self.image(e["path"], data)
+            self._in(n.inputs["Vector"], uv.outputs[0])
+            return n
+        col = tex(False)
+        ch = e["channel"]
+        inside = self.math("MULTIPLY", self.math("MULTIPLY", self.math("GREATER_THAN", u, 0.0), self.math("LESS_THAN", u, 1.0)),
+                           self.math("MULTIPLY", self.math("GREATER_THAN", v, 0.0), self.math("LESS_THAN", v, 1.0)))
+        if ch == "coverage":
+            val = inside
+        elif ch == "alpha":
+            val = col.outputs["Alpha"]
+        else:
+            data = tex(True)
+            if ch == "luma":
+                sep = self.node("ShaderNodeSeparateColor")
+                self._in(sep.inputs[0], data.outputs["Color"])
+                val = self.math("ADD", self.math("ADD", self.math("MULTIPLY", sep.outputs[0], 0.2126),
+                                                 self.math("MULTIPLY", sep.outputs[1], 0.7152)),
+                                self.math("MULTIPLY", sep.outputs[2], 0.0722))
+            else:
+                sep = self.node("ShaderNodeSeparateColor")
+                self._in(sep.inputs[0], data.outputs["Color"])
+                val = sep.outputs["rgb".index(ch)]
+            val = self.math("MULTIPLY", val, inside)
+        s = self.math("ABSOLUTE", self.vmath("DOT_PRODUCT", p, fr["dir"]))
+        win = self.ramp(s, e["depth"], 0.8 * e["depth"])
+        face = self.ramp(self.vmath("DOT_PRODUCT", self.vmath("NORMALIZE", self.attr("wnrm", True)), fr["dir"]),
+                         e["facing"] - 0.15, e["facing"])
+        return self.math("MULTIPLY", val, self.math("MULTIPLY", win, face)), col.outputs["Color"]
 
     def tiles(self, u, w, e):
         """paint._tiles on one plane: running bond, rows shifted by offset (or at random), joints gap wide."""
@@ -395,7 +464,13 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         a = N.math("MULTIPLY", op, mask if not isinstance(mask, float) else mask)
         a = N.math("MAXIMUM", N.math("MINIMUM", a, 1.0), 0.0)
         for c, v in ly["channels"].items():
-            if c == "color":
+            if c == "color" and v == "image":  # the picture's own colours
+                mix = N.node("ShaderNodeMix", data_type="RGBA", blend_type="MIX")
+                N._in(mix.inputs[0], a)
+                N._in(mix.inputs[6], col)
+                N._in(mix.inputs[7], N.colours[ly["color_from"]])
+                col = mix.outputs[2]
+            elif c == "color":
                 rgb = N.node("ShaderNodeRGB")
                 rgb.outputs[0].default_value = (*_lin(v), 1.0)
                 if "color" in ly["expose"]:

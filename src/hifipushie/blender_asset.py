@@ -937,8 +937,14 @@ def preview(job):
         up = Vector(v["up"])
         right = up.cross(d).normalized()
         up = d.cross(right).normalized()
-        cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ Matrix((right, up, d)).transposed().to_4x4()
-        cam_data.ortho_scale = v["scale"]
+        if v.get("eye") is not None:  # a perspective camera (render.camera_frame): close-ups of the textures
+            cam_data.type, cam_data.angle = "PERSP", math.radians(v["fov"])
+            cam_data.sensor_fit = "HORIZONTAL"
+            cam.matrix_world = Matrix.Translation(Vector(v["eye"])) @ Matrix((right, up, d)).transposed().to_4x4()
+        else:
+            cam_data.type = "ORTHO"
+            cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ Matrix((right, up, d)).transposed().to_4x4()
+            cam_data.ortho_scale = v["scale"]
         scene.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
 

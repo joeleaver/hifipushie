@@ -1,0 +1,219 @@
+{
+ "symmetry": false,
+ "blend": 0.002,
+ "story": {
+  "summary": "a small oil landscape in a gilt frame on a plastered wall, a few years old"
+ },
+ "joints": {
+  "c": {
+   "pos": [
+    0,
+    0,
+    1.4
+   ],
+   "r": 0.01
+  }
+ },
+ "parts": {
+  "wall": {
+   "color": "#d9d2c3",
+   "roughness": 0.9
+  },
+  "frame": {
+   "color": "#a8863f",
+   "roughness": 0.4,
+   "metallic": 0.6
+  },
+  "canvas": {
+   "color": "#ece6d6",
+   "roughness": 0.7
+  }
+ },
+ "blobs": {
+  "wall": {
+   "shape": "box",
+   "at": [
+    0,
+    0.06,
+    1.4
+   ],
+   "size": [
+    0.7,
+    0.03,
+    0.55
+   ],
+   "part": "wall",
+   "blend": 0
+  },
+  "frame": {
+   "shape": "box",
+   "at": [
+    0,
+    -0.004,
+    1.4
+   ],
+   "size": [
+    0.37,
+    0.025,
+    0.2925
+   ],
+   "round": 0.008,
+   "part": "frame",
+   "blend": 0
+  },
+  "frame_lip": {
+   "shape": "box",
+   "at": [
+    0,
+    -0.03,
+    1.4
+   ],
+   "size": [
+    0.345,
+    0.01,
+    0.2675
+   ],
+   "round": 0.006,
+   "part": "frame",
+   "blend": 0.006
+  },
+  "opening": {
+   "shape": "box",
+   "at": [
+    0,
+    -0.03,
+    1.4
+   ],
+   "size": [
+    0.306,
+    0.03,
+    0.2285
+   ],
+   "op": "subtract",
+   "targets": [
+    "frame",
+    "frame_lip"
+   ],
+   "blend": 0.004
+  },
+  "canvas": {
+   "shape": "box",
+   "at": [
+    0,
+    0.0,
+    1.4
+   ],
+   "size": [
+    0.32,
+    0.012,
+    0.24250000000000002
+   ],
+   "round": 0.002,
+   "part": "canvas",
+   "blend": 0
+  }
+ },
+ "paint": {
+  "plaster": {
+   "part": "wall",
+   "color": "#c9c0ae",
+   "opacity": 0.5,
+   "noise": {
+    "scale": 0.08,
+    "range": [
+     0.4,
+     0.75
+    ],
+    "warp": 0.8
+   }
+  },
+  "gilt_wear": {
+   "part": "frame",
+   "color": "#5a4320",
+   "roughness": 0.7,
+   "metallic": 0.1,
+   "mask": [
+    {
+     "cavity": "concave",
+     "radius": [
+      0.02,
+      0.004
+     ]
+    },
+    {
+     "noise": {
+      "scale": 0.01,
+      "range": [
+       0.3,
+       0.7
+      ]
+     },
+     "blend": "multiply"
+    }
+   ]
+  },
+  "picture": {
+   "part": "canvas",
+   "color": "image",
+   "roughness": 0.45,
+   "image": {
+    "file": "examples/images/landscape.jpg",
+    "at": "canvas",
+    "dir": "front",
+    "size": [
+     0.62,
+     null
+    ]
+   }
+  },
+  "impasto": {
+   "part": "canvas",
+   "height": 0.00025,
+   "image": {
+    "file": "examples/images/landscape.jpg",
+    "at": "canvas",
+    "dir": "front",
+    "size": [
+     0.62,
+     null
+    ],
+    "channel": "luma"
+   }
+  },
+  "brushwork": {
+   "part": "canvas",
+   "height": 0.0001,
+   "mask": [
+    {
+     "image": {
+      "file": "examples/images/landscape.jpg",
+      "at": "canvas",
+      "dir": "front",
+      "size": [
+       0.62,
+       null
+      ],
+      "channel": "coverage"
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.004,
+      "range": [
+       0.35,
+       0.75
+      ],
+      "stretch": {
+       "dir": [
+        1,
+        0,
+        0.2
+       ],
+       "factor": 4
+      }
+     }
+    }
+   ]
+  }
+ }
+}

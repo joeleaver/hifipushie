@@ -99,6 +99,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (`hp_sum:<layer>`); `blender_scene._pull_painted` sends every object's points for any layer whose checksum
   moved, `scene._pull_painted` saves the cloud and writes the id (`paint.set_painted`). Prefab paint sits where
   the bake instance stands (world coords): moving that instance leaves the paint behind.
+- Images as paint (2026-10-01, `images.py`, paint generator `image`; the user: "consume images on our models (framed
+  painting, text on a page...)"): a planar decal (centre `at` = joint/xyz or a blob, seated on its face named by
+  `dir`; right = up x dir so it reads from the front; depth window + facing ramp against print-through), image from
+  "file" (copied at `store.save` into the content store `workspace/_images/<sha16>.png`, transparent pixels' colour
+  bled from the nearest visible one, spec keeps "id" + "name") or "text" (PIL page, DejaVu from the system or PIL's
+  default, ink colour everywhere + coverage in alpha spread by `INK` (alpha^0.5: thin glyphs read grey mixed in linear),
+  cached as `_images/t_<key>.png`). `"color": "image"` = the picture's colours (paintnodes `color_from`), else a mask.
+  Native nodes (`blender_scene._Nodes.decal`): u, v from `wpos` per pixel, Image Texture (Cubic, CLIP), a Non-Color
+  copy for luma/r/g/b masks; a ".L" layer of image-only entries stays native with the mirrored placement (picture
+  unmirrored), others fall back to the measured per-vertex mask. Export: `asset.decal_focus` adds texel_focus spheres
+  (image px/m capped at `DECAL_MAX` 2000, <= `DECAL_GAIN` 16x, scene parts only: a prefab's part is in its own frame).
+  Measured on `img_book` (4.2 mm text): 0.38 mm/texel readable in the GLB, 2.5 mm smudges. `asset.preview(cameras=)`
+  renders a GLB through perspective cameras. Examples: `examples/image_decals_src.py` (img_painting, img_book,
+  img_disc), `examples/framed_painting.json`; `tests/test_images.py`.
 - `materials.py`: `{"material": ...}` paint layers expand (`paint.layers`) into sub-layers `<name>:<sub>` built
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first

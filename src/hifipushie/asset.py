@@ -174,6 +174,35 @@ def focus_regions(spec: dict, pn: str) -> list:
     return out
 
 
+DECAL_MAX = 2000.0  # texels per metre a decal asks for at most (0.5 mm: small print stays readable)
+DECAL_GAIN = 16.0  # and at most this many times its part's own density
+
+
+def decal_focus(spec: dict, pn: str, base: float) -> list:
+    """Focus regions over the part's image decals (paint `image`, images.py), so a picture or a page of text keeps
+    about its own resolution in the atlas: a sphere round each decal, density = the image's pixels per metre
+    (capped at DECAL_MAX) / the part's own density `base` (texels/m), at most DECAL_GAIN, never below 1."""
+    from . import images, paint
+    out = []
+    exp = None
+    for name, ly in paint.layers(spec).items():
+        lp = ly.get("part", "body")
+        if lp != "*" and pn not in ([lp] if isinstance(lp, str) else lp):
+            continue
+        for img in images.layer_images(ly):
+            if exp is None:
+                exp = paint._expanded(spec)
+            fr = images.frame(spec, img, exp, what=f"paint {name!r} image")
+            want = min(DECAL_MAX, fr["px"][0] / fr["w"], fr["px"][1] / fr["h"])
+            k = float(np.clip(want / max(base, 1e-9), 1.0, DECAL_GAIN))
+            r = 0.5 * float(np.hypot(fr["w"], fr["h"])) * 1.05
+            places = [fr] + ([images.mirrored(fr)] if fr["mirror"] or name.endswith(".L") else [])
+            for f in places:
+                if k > 1.0 and not any(np.allclose(o[:4], [*f["c"], r]) for o in out):
+                    out.append([*(float(x) for x in f["c"]), r, k])
+    return out
+
+
 def atlas_groups(loads: dict, fixed: dict, atlases: int) -> dict:
     """Atlas name per part, by count. Parts with their own "atlas" (fixed) keep it; the others share atlas "0", or
     with atlases > 1 are split into that many ("0", "1", ...) by texture load, largest first into the lightest."""
@@ -998,7 +1027,16 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     def w(pn, key):
         return _weight(defs, origin[pn], key)
     focus = {pn: focus_regions(spec, origin[pn]) for pn in areas}
-    rel = {pn: w(pn, "texel_density") * (texel_density or 1.0) for pn in areas}
+    # image decals keep their own resolution: their density relative to the part's (asked, or what an atlas of
+    # `texture` holds over every part); scene parts only (a prefab's part is in its own frame)
+    guess = texture * np.sqrt(FILL / max(sum(areas.values()), 1e-9))
+    for pn in areas:
+        if pn == origin[pn]:
+            dec = decal_focus(spec, pn, w(pn, "texel_density") * (texel_density or guess))
+            if dec:
+                focus[pn] = focus[pn] + dec
+                log.append(f"{pn}: texel focus over {len(dec)} image decal(s), x{', x'.join(f'{d[4]:.1f}' for d in dec)}")
+    rel ={pn: w(pn, "texel_density") * (texel_density or 1.0) for pn in areas}
     loads = texture_loads(high, rel, focus)
     fixed = {pn: str(defs[origin[pn]]["atlas"]) for pn in areas if (defs.get(origin[pn]) or {}).get("atlas") is not None}
     pf_of = {pn: pf for pf, d in ctx["prefabs"].items() for pn in d["parts"]}
@@ -1193,14 +1231,16 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
 
 
 def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
-            hide: list[str] | None = None, lighting: dict | None = None) -> Image.Image:
+            hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None) -> Image.Image:
     """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
     walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure"}, as scene.look
-    takes), so the preview compares with the painted look; default a neutral studio under Standard."""
+    takes), so the preview compares with the painted look; default a neutral studio under Standard. cameras:
+    perspective panels as look takes them (model coordinates, Z up), for close-ups of the textures."""
     bounds = np.array(json.loads(glb.with_suffix(".json").read_text())["bounds_blender"])
     with tempfile.TemporaryDirectory(prefix="hifipushie-prev-") as tmp:
-        frames = render.view_frames(bounds, views, focus, zoom)
+        frames = (render.view_frames(bounds, views, focus, zoom) if views else []) + [
+            render.camera_frame(c, i) for i, c in enumerate(cameras or [])]  # perspective: {"eye", "target", "fov"}
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,

@@ -335,6 +335,20 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   1. The next `pull`/`sync` stores it as a point cloud and writes its id into the layer. It survives re-meshing
   and model edits nearby, and works in stacks like any generator: multiply it with `noise` breakup so the painted
   edge isn't the brush's.
+- **Images (a painting, a printed page, a poster, a label, a logo):** the `image` generator lays an image file or
+  set text on the surface as a decal projected along `dir`. Give the thing it's printed on its own part (the
+  canvas, the page, the disc), so the projection can't land on the frame or wall behind it:
+  `{"part": "canvas", "color": "image", "image": {"file": "examples/images/landscape.jpg", "at": "canvas",
+  "dir": "front", "size": [0.62, null]}}` (a blob's "front" = its local -Y face; `null` = from the image's aspect).
+  Text: `"image": {"text": {"string": "...", "font": "serif", "size": 0.004, "align": "justify"}, "at": [x, y, z],
+  "dir": [0, 0, 1], "up": [0, 1, 0], "size": [0.145, 0.21]}` (the page; `size` of the text = em height in m).
+  `"color": "image"` paints the picture's colours; with a plain colour or in a mask stack it's a stencil
+  (`channel` alpha / luma / r / g / b / coverage). Relief: a second layer `{"height": 0.0003, "image": {...,
+  "channel": "luma"}}` (impasto, embossing). Foil: add `metallic`/`roughness` to the colour layer. A file is copied
+  into `workspace/_images/` at save and named by its id. `look` draws decals per pixel (text readable in close-ups);
+  exports raise the texel density over each decal (up to 2000/m: 4 mm text needs ~0.4 mm texels, ~10 per em; at
+  2.5 mm it's grey smudges). A placement that hits nothing on the layer's part is refused at save. Planar
+  projection stretches on steep curvature (a mug's sides past ~45 deg): use two decals or a lower `facing`.
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 

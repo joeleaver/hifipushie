@@ -26,7 +26,8 @@ import numpy as np
 from . import paint
 from .spec import SpecError
 
-NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings"}
+NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings",
+          "image"}
 QUANTILES = json.loads(Path(__file__).with_name("noise_quantiles.json").read_text())
 
 
@@ -37,6 +38,13 @@ class _Compiler:
         self.fallbacks = {}  # attr -> ("gen", layer, stack name, entry, tag) | ("layer", name) | ("dist", layer, near)
         self.where = {}  # attr -> the parts it's measured on
         self.parts = ()  # the parts of the layer being compiled
+        self.mirror_images = False
+        self._exp = None
+
+    def expanded(self):
+        if self._exp is None:
+            self._exp = paint._expanded(self.spec)
+        return self._exp
 
     def attr(self, kind, *args, key=None, parts=()) -> str:
         """A measured input's attribute name. key: what makes two of them the same measurement (a material's
@@ -164,6 +172,15 @@ class _Compiler:
                 out["expose"] = {"within": path + ["within"]}
             return {**out, "gen": "near", "attr": self.attr("dist", layer, e["near"], key=(e["near"],), parts=self.parts),
                     "within": within, "soft": soft}
+        if gen == "image":  # a projected decal, drawn per pixel from the image file (images.frame)
+            from . import images
+            fr = images.frame(self.spec, e["image"], self.expanded(), what=f"paint {layer!r} image")
+            if self.mirror_images:  # a ".L" layer of decals: the mirrored placement too, the picture unmirrored
+                fr["mirror"] = True
+            return {**out, "gen": "image", **{k: fr[k] for k in ("path", "c", "right", "up", "dir", "w", "h", "depth",
+                                                                   "facing", "channel", "flip", "mirror")},
+                    "mirrored": {k: v for k, v in images.mirrored(fr).items() if k in ("c", "right", "up", "dir")},
+                    "key": hashlib.sha1(json.dumps(e["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]}
         if gen == "mask":
             sub = e["mask"]
             return {**out, "gen": "mask", "entries": [self.entry(s, tag, paint._tag(tag, i), None, layer)
@@ -182,13 +199,19 @@ class _Compiler:
             stack += ly["mask"]
             tags += list(range(len(ly["mask"])))
             paths += [["paint", name, "mask", i] if own else None for i in range(len(ly["mask"]))]
-        channels = {c: (paint.colour(ly[c]).tolist() if c == "color" else float(ly[c])) for c in paint.CHANNELS if c in ly}
+        channels = {c: (("image" if ly[c] == "image" else paint.colour(ly[c]).tolist()) if c == "color" else float(ly[c]))
+                    for c in paint.CHANNELS if c in ly}
         expose = {"opacity": ["paint", name, "opacity"]} if own else {}
-        if own and "color" in ly:
+        if own and "color" in ly and ly["color"] != "image":
             expose["color"] = ["paint", name, "color"]
         # (a measured whole layer's attribute is named by its definition too: named by the layer alone, an edited mask
         # kept its old measurement in the scene cache)
-        if name.endswith(".L"):  # mirrored: the whole mask measured here (max of the point and its mirror)
+        decals = name.endswith(".L") and _only_images(stack)
+        if decals:  # decals alone: drawn per pixel at both placements (a measured mask would be per vertex: mush)
+            self.mirror_images = True
+            entries = [self.entry(e, name, paint._tag(name, t), p) for e, t, p in zip(stack, tags, paths)]
+            self.mirror_images = False
+        elif name.endswith(".L"):  # mirrored: the whole mask measured here (max of the point and its mirror)
             entries = [{"gen": "input", "attr": self.attr("layer", name, key=("layer", name, ly), parts=self.parts), "range": None, "blend": "multiply",
                         "weight": 1.0, "post": {}, "expose": {}}]
         else:
@@ -198,7 +221,11 @@ class _Compiler:
                 entries = [{"gen": "input", "attr": self.attr("layer", name, key=("layer", name, ly), parts=self.parts), "range": None, "blend": "multiply",
                             "weight": 1.0, "post": {}, "expose": {}}]
         parts = ly.get("part", "body")
-        return {"name": name, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
+        img = next((en for en in entries if en.get("gen") == "image"), None) if ly.get("color") == "image" else None
+        if ly.get("color") == "image" and (img is None or img["key"] != hashlib.sha1(json.dumps(
+                ly["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]):
+            raise SpecError(f"paint {name!r}: \"color\": \"image\" needs the layer's own flat \"image\" key")
+        return {"name": name, "color_from": img["key"] if img else None, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
                 "height": float(ly.get("height", 0.0)),
                 "opacity": float(ly.get("opacity", 1.0)), "entries": entries, "expose": expose}
 
@@ -222,6 +249,13 @@ def compile(spec: dict) -> dict:
     packing = {p: {a: [f"hp{i // 3}", i % 3] for i, a in enumerate(attrs)} for p, attrs in need.items()}
     return {"layers": layers, "inputs": sorted(c.inputs), "fallbacks": c.fallbacks, "quantiles": QUANTILES,
             "where": {k: sorted(v) for k, v in c.where.items()}, "packing": packing}
+
+
+def _only_images(stack: list) -> bool:
+    """A mask stack whose every generator is an image (nested stacks included)."""
+    gens = [next((g for g in paint.GENERATORS if g in e), None) for e in stack]
+    return any(g == "image" for g in gens) and all(
+        g in (None, "image") or (g == "mask" and _only_images(e["mask"])) for g, e in zip(gens, stack))
 
 
 def _attrs(entries: list) -> set:

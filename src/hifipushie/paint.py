@@ -70,6 +70,12 @@ Masks (generators, each 0..1 per point):
            (white = 1) and `pull` stores it as a point cloud (workspace/_painted/<id>.npz: it survives
            re-meshing, and each spec in history keeps its own) and writes the new id here. "new" starts an empty
            one. Works in mask stacks like any generator (levels, breakup, blur on it).
+  image:   {"file": path | "id" | "text": {...}, "at": joint | blob | [x,y,z], "dir": [x,y,z] | "front"..., "size":
+           [w, h] m, "up", "rotate", "depth", "facing", "channel": "alpha" | "luma" | "r" | "g" | "b" | "coverage",
+           "flip", "mirror"}: an image laid on the surface as a projected decal (a painting, a printed page, a
+           label, a logo). With "color": "image" on the layer, the layer paints the image's own colours; otherwise
+           (or in a mask stack) it's a mask (a stencil). Text is an image too: {"text": {"string", "font", "size",
+           "color", "align", ...}}. Details: images.py; look shows it per pixel, exports bake it.
   tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
            "mode": "gaps" (1 in the joints, fading over "bevel") | "bevel" (0 at a joint rising to 1: a tile's
            rounded face, for height) | "id" (random per tile)}: bricks, planks, flagstones, shingles.
@@ -166,7 +172,7 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
-              "random", "rings", "painted", "outline", "mask")
+              "random", "rings", "painted", "outline", "image", "mask")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -202,7 +208,7 @@ def style_layer(ly: dict, st: dict, patterns: bool = True) -> dict:
     if not st:
         return ly
     ly = dict(ly)
-    if "color" in ly:
+    if "color" in ly and ly["color"] != "image":
         ly["color"] = style_rgb(colour(ly["color"], "color"), st).tolist()
     k = float(st.get("pattern", 1.0))
     if patterns and k != 1.0:
@@ -257,7 +263,11 @@ def validate(spec: dict) -> None:
             raise SpecError(f"paint {name!r}: needs at least one of {', '.join(CHANNELS)}, height")
         if "height" in ly and not isinstance(ly["height"], (int, float)):
             raise SpecError(f"paint {name!r}: height is a number (m, + out of the surface, times the mask)")
-        if "color" in ly:
+        if ly.get("color") == "image":
+            if not isinstance(ly.get("image"), dict):
+                raise SpecError(f"paint {name!r}: \"color\": \"image\" takes the colours of the layer's own "
+                                f"\"image\" key (a flat key on the layer, not in its mask stack)")
+        elif "color" in ly:
             colour(ly["color"], f"paint {name!r}")
         for c in ("roughness", "metallic", "specular"):
             if c in ly and not 0 <= float(ly[c]) <= 1:
@@ -354,6 +364,19 @@ def check_refs(spec: dict, prims: list) -> None:
                                f"its own to be near; name what it cuts, or elements beside the cut")
             raise SpecError(f"paint {name!r}: near names nothing for {bad}" + (": " + "; ".join(why) if why else
                             " (element, tag, instance, array or kit names)"))
+        for img in _gens(ly, "image"):  # a decal must resolve and land on the layer's own parts
+            from . import images
+            if expanded is None:
+                expanded = expand_mirror(spec)
+            if not isinstance(img, dict):
+                continue
+            fr = images.frame(spec, img, expanded, what=f"paint {name!r} image")
+            on = [p for p in prims if p.op == "add" and (lp == "*" or p.part in ([lp] if isinstance(lp, str) else lp))]
+            on = [p for p in prims if p.part in {q.part for q in on}]  # with their cuts
+            if images.coverage(fr, on) == 0:
+                raise SpecError(f"paint {name!r}: image at {img['at']!r} hits nothing on part(s) {lp!r} within its "
+                                f"depth {fr['depth']:.3f} m of the decal's plane (centre {np.round(fr['c'], 3).tolist()}, "
+                                f"dir {np.round(fr['dir'], 2).tolist()}): check at/dir, or raise depth")
         for ax in _gens(ly, "axis"):
             if isinstance(ax, dict) and "bone" in ax:
                 if expanded is None:
@@ -405,6 +428,35 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         from . import store
         raise SpecError(f"paint {name!r}: painted is the id of a hand-painted mask (a point cloud `pull` stores "
                         f"under {store.HOME / '_painted'}/<id>.npz), or \"new\" to start one; {e[g]!r} isn't one")
+    if g == "image":
+        from . import images
+        img = e[g]
+        if not isinstance(img, dict):
+            raise SpecError(f"paint {name!r}: image is an object: {{\"file\" | \"id\" | \"text\", \"at\", "
+                            f"\"dir\", \"size\": [w, h], ...}}")
+        bad = set(img) - images.KEYS
+        if bad:
+            raise SpecError(f"paint {name!r}: image: unknown keys {sorted(bad)} (have {', '.join(sorted(images.KEYS))})")
+        if sum(k in img for k in ("file", "id", "text")) != 1:
+            raise SpecError(f"paint {name!r}: image takes one of \"file\", \"id\", \"text\"")
+        if "text" in img:
+            t = img["text"]
+            if not (isinstance(t, dict) and isinstance(t.get("string"), str)):
+                raise SpecError(f"paint {name!r}: image text is {{\"string\": \"...\", \"font\", \"size\", ...}}")
+            bad = set(t) - images.TEXT_KEYS
+            if bad:
+                raise SpecError(f"paint {name!r}: image text: unknown keys {sorted(bad)} "
+                                f"(have {', '.join(sorted(images.TEXT_KEYS))})")
+            if t.get("align", "left") not in ("left", "center", "right", "justify"):
+                raise SpecError(f"paint {name!r}: image text align is left, center, right or justify")
+        if img.get("channel", "alpha") not in images.CHANNELS:
+            raise SpecError(f"paint {name!r}: image channel is one of {', '.join(images.CHANNELS)}")
+        sz = img.get("size")
+        if not (isinstance(sz, list) and len(sz) == 2 and any(sz) and all(x is None or float(x) > 0 for x in sz)):
+            raise SpecError(f"paint {name!r}: image size is [width, height] in m, > 0 (one may be null: from the "
+                            f"image's aspect)")
+        if "at" not in img:
+            raise SpecError(f"paint {name!r}: image needs \"at\" (its centre: a joint, a blob, [x, y, z])")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
     if g in ("ao", "thickness", "sky") and not (isinstance(e[g], list) and len(e[g]) == 2):
@@ -511,6 +563,13 @@ def apply_channels(spec: dict, pts, base: dict, stats: dict | None = None, masks
         a = (float(ly.get("opacity", 1.0)) * m)[:, None]
         for c, arr in out.items():
             if c in ly:
+                if c == "color" and ly[c] == "image":  # the picture's own colours (sRGB, as every colour here)
+                    from . import images
+                    view = _View(pts, idx)
+                    fr = images.frame(spec, ly["image"], _expanded(spec), what=f"paint {name!r} image")
+                    _, val = images.evaluate(fr, view.v, view.n)
+                    arr[idx] += a * (val - arr[idx])
+                    continue
                 val = colour(ly[c]) if c == "color" else np.array([float(ly[c])])
                 arr[idx] += a * (val[None] - arr[idx])
     return out
@@ -552,6 +611,20 @@ class _View:
             moved.footprint = self.pts.footprint
             views.append(_View(moved, np.arange(len(P)), self.mirror))
         return views, w / w.sum()
+
+
+_EXP: dict = {}
+
+
+def _expanded(spec: dict) -> dict:
+    """expand_mirror(spec), cached by content (image placements resolve their joints and blobs on it)."""
+    from .spec import expand_mirror, geometry
+    k = hashlib.sha1(json.dumps(geometry(spec), sort_keys=True, default=float).encode()).hexdigest()
+    if k not in _EXP:
+        if len(_EXP) > 8:
+            _EXP.pop(next(iter(_EXP)))
+        _EXP[k] = expand_mirror(spec)
+    return _EXP[k]
 
 
 def _tag(name: str, i) -> str:
@@ -727,6 +800,12 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         return painted_values(e["painted"], v, n)
     if gen == "outline":
         return _outline_mask(spec, name, e["outline"], v, n)
+    if gen == "image":  # a mirrored view (a ".L" layer) sees the picture unmirrored on the other side
+        from . import images
+        fr = images.frame(spec, e["image"], _expanded(spec), what=f"paint {name!r} image")
+        if view.mirror:
+            fr = {**fr, "flip": not fr["flip"]}
+        return images.evaluate(fr, v, n)[0]
     if gen == "mask":
         sub = e["mask"]
         return _stack(spec, tag, sub, list(range(len(sub))), view)
