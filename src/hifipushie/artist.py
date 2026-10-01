@@ -1119,7 +1119,8 @@ def hosted_start_update(cfg: Config) -> str | None:
         log.error("update to %s failed: %s; running the baked version", want[:12], why)
         return want
     started = time.time()
-    child = subprocess.Popen([str(py), "-m", "hifipushie.artist"], env={**os.environ, "OXIDEGEN_UPDATE_CHILD": "1"})
+    env = {k: v for k, v in os.environ.items() if k != "HIFIPUSHIE_GIT_SHA"}  # (the child's sha is its own)
+    child = subprocess.Popen([str(py), "-m", "hifipushie.artist"], env={**env, "OXIDEGEN_UPDATE_CHILD": "1"})
     signal.signal(signal.SIGTERM, lambda *_: child.terminate())
     registered = False
     while child.poll() is None:
