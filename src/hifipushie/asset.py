@@ -1113,9 +1113,16 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         if not texel_density:
             break
         # the size each atlas needs for every part to get its density, now that it's packed
-        ts = texel_sizes(parts, sizes)
-        need = {ai: max(sizes[ai] * ts[pn]["mm_per_texel"] * rel[pn] / 1000 for pn, p in parts.items()
-                        if p["atlas"] == ai) for ai in range(len(names))}
+        ts = texel_sizes(parts, sizes, {pn: focus.get(pn) or [] for pn in parts})
+
+        def needs(pn, ai):  # the part's own density, and each focus region's (a decal covering a whole mug: the
+            # part's average is the focus's, and sizing the atlas by it alone dropped the focus)
+            yield sizes[ai] * ts[pn]["mm_per_texel"] * rel[pn] / 1000
+            for f, mm in zip(focus.get(pn) or [], ts[pn].get("focus_mm_per_texel") or []):
+                if mm > 0:  # (0: no face of this part in the region)
+                    yield sizes[ai] * mm * rel[pn] * f[4] / 1000
+        need = {ai: max(x for pn, p in parts.items() if p["atlas"] == ai for x in needs(pn, ai))
+                for ai in range(len(names))}
         over = [ai for ai in need if need[ai] > 1.05 * texture and len({pf_of.get(pn, pn) for pn, p in parts.items()
                                                                          if p["atlas"] == ai}) > 1]
         if over and attempt == 0:
