@@ -1154,6 +1154,36 @@ regresses, bisect by building one spec at each commit and diffing heights.
     - COST: numpy terrain_blocks made a field point ~4.6-6.6 us vs ~1 without (alps 3x3 ~940 s, pebble ~900 s). Now
       compiled (`fieldjit.blocks_*`, 2026-10-01, see "Compiled field"): alps 3x3 125 s, pebble 223 s (184 before the
       check), main's were 130 / ~182.
+  - Detail by scale (2026-10-01, "detail" agent, renders m01_*/m02_*; the user: full unique tiles would overwhelm a
+    game, and 16/m was still mush at 10 m). Geometry >= ~1 m; unique maps are MACRO only (`texel_density` default
+    8/4/2, was 16/6/2.5); below ~0.5 m a tiling swatch per rock type (`terrain_swatch.py`, export cfg `detail`, default
+    on). Experiment (`examples/detail_round.py` + `detail_sheet.py`, u16/m4/m8/u32 on rock_views): 4/m lost the block
+    structure (0.3-1 m: block edges, bed steps, cracks) at 15-40 m; 8/m + detail matched 16/m at 40/150 m and was
+    far sharper at 10 m; 32/m bought nothing at 40 m and was still mush at 10 m.
+    - Swatch: 4 m at 256/m, every term periodic (terrain_facets seeds hashed on a torus, `_seeds(period=)`; FFT
+      spectra band-limited to <= a quarter of the swatch: swatch-sized features repeat visibly): facets 0.45/0.16/0.07
+      m, few deep fractures of varied width, spall scars with a conchoidal bowl, pits, clustered mineral grain in albedo
+      and roughness, lichen. No laminae (lines at fixed v repeated every 4 m up a wall as ruled stripes). Anti-tiling:
+      a second sampling at 1.618x, chosen by a periodic variation mask at uv / 24 m. `tileability` (wrap seam jump
+      excess) is an export check (TILE_LIMIT 1.5).
+    - Projection: a global strike UV can't exist (round a peak the faces close into a ring: a least-squares strike
+      coordinate came out at 0.37 m/m, 2.7x stretch). Instead strike-binned planes: 8 vertical (u = p . d_k) + top, v =
+      the bed coordinate (z + bed_offset), the plane from the field normal averaged over 1.5 m (position only: tiles
+      and LODs agree). Per vertex `_DETAIL` = (strike x, y, side share, bed v) for a seamless blend of the two nearest
+      planes; TEXCOORD_2 = each triangle's nearest plane (stock engine detail maps; seams). Blender's importer mixes
+      custom attributes of different widths: keep them all VEC4 and on every primitive.
+    - Lines map (RGBA per tile LOD, embedded as texture 3): SIGNED distances to the open bed planes / open joints
+      (`structure_lines`, sign by a probe) + strengths faded within ~1 texel, so cracks are cut crisp at any density
+      (unsigned distances beaded; the sign flip half-way between planes must be gated, and joints faded near their
+      bed's planes or every crack end drew a hook). These lines leave the macro colour (`Materials.lines_in_maps`).
+      micro_relief drops its 0.45 m facets when the detail is on (the smallest facet size held most of the bake's
+      per-area triangulation misses: 3800 -> 958).
+    - GLB: the baked material's extras.hifipushie_detail (texture indices, the swatches by uri in materials/);
+      manifest "detail" (files, wrap seams, recipe). `render_tiles(textured="detail")` draws the recipe in Blender.
+    - Cost (loaded machine): alps 3x3 bake 1140 -> 595 CPU s, export 187 -> 149 s; pebble bake 2577 -> 954, export
+      337 -> 234 s; all checks pass, Khronos 0 errors. Decimation is now the alps block's critical path.
+    - Open: at 40 m the swatch reads as a faint grainy overlay; crisp joints in thin beds read as short pen ticks;
+      no dip in the projection; TEXCOORD_2 seams not judged in a render.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
