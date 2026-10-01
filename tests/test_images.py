@@ -321,6 +321,96 @@ def test_logmap_heat_vs_dem():
         decalmap.METHOD = old
 
 
+def _moved(fr_g, T=np.zeros(3), R=np.eye(3), S=np.ones(3)):
+    """A gizmo matrix moved by T, turned by R (about its origin) and its scale multiplied by S."""
+    M = np.asarray(fr_g["matrix"], float)
+    out = np.eye(4)
+    out[:3, :3] = R @ M[:3, :3] * S
+    out[:3, 3] = M[:3, 3] + T
+    return M, out
+
+
+def _rz(deg):
+    a = np.radians(deg)
+    return np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+
+
+def test_decal_gizmo_round_trip():
+    """A decal's gizmo moved, turned or scaled comes back into the spec (images.from_gizmo): near its blob as an
+    offset, far off as a world point; a spin as rotate, a tilt as dir/up; a scale as size; a wrap's height, turn
+    round its axis and scale as offset, dir, span. Absolute: pulled twice, the spec is the same."""
+    p = _png("lr11.png", LR)
+    spec = _board({"file": str(p), "at": "board", "size": [0.1, None]})
+    img = spec["paint"]["pic"]["image"]
+    fr = images.frame(spec, img, parts="board")
+    g = images.gizmo(fr)
+    assert np.allclose(np.asarray(g["matrix"])[:3, 3], fr["c"])
+    assert images.from_gizmo(spec, img, "board", *_moved(g)) == (None, [])  # nothing moved
+    # slid along the board's face by 2 cm: an offset from the blob (it keeps riding the board)
+    new, notes = images.from_gizmo(spec, img, "board", *_moved(g, T=[0.02, 0, 0.01]))
+    assert new["at"] == "board" and np.allclose(new["offset"], [0.02, 0, 0.01]) and not notes
+    f2 = images.frame(spec, new, parts="board")
+    assert np.allclose(f2["c"], np.asarray(fr["c"]) + [0.02, 0, 0.01])
+    again, _ = images.from_gizmo({**spec, "paint": {"pic": {**spec["paint"]["pic"], "image": new}}}, new, "board",
+                                 *_moved(g, T=[0.02, 0, 0.01]))
+    assert again is None or again == new  # absolute: a second pull of the same gizmo changes nothing
+    # moved 30 cm away: a world point, dir/up written out
+    new, notes = images.from_gizmo(spec, img, "board", *_moved(g, T=[0.3, 0, 0]))
+    assert np.allclose(new["at"], np.asarray(fr["c"]) + [0.3, 0, 0], atol=1e-4) and "offset" not in new and notes
+    assert np.allclose(new["dir"], fr["dir"]) and np.allclose(new["up"], fr["up"])
+    assert np.allclose(images.frame(spec, new, parts="board")["c"], np.asarray(fr["c"]) + [0.3, 0, 0], atol=1e-4)
+    # spun 30 degrees about its normal: rotate
+    Rspin = np.array(fr["dir"])  # rotation about dir (here -Y)
+    K = np.array([[0, -Rspin[2], Rspin[1]], [Rspin[2], 0, -Rspin[0]], [-Rspin[1], Rspin[0], 0]])
+    a = np.radians(30)
+    Rd = np.eye(3) + np.sin(a) * K + (1 - np.cos(a)) * K @ K
+    new, _ = images.from_gizmo(spec, img, "board", *_moved(g, R=Rd))
+    assert np.isclose(new["rotate"], 30, atol=0.05) and new.get("offset") is None, new
+    f3 = images.frame(spec, new, parts="board")
+    assert np.allclose(f3["up"], Rd @ np.array(fr["up"]), atol=1e-4)
+    # scaled 1.5 x uniformly: the width given, the height still from the image's aspect
+    new, _ = images.from_gizmo(spec, img, "board", *_moved(g, S=[1.5, 1.5, 1.5]))
+    assert new["size"] == [0.15, None]
+    # a cylinder wrap: raised 1 cm along the can's axis, turned 40 degrees round it, scaled 1.2 x
+    spec = _can(file=str(p), wrap="cylinder", at="can", span=120, size=[None, 0.04])
+    img = spec["paint"]["pic"]["image"]
+    fr = images.frame(spec, img, parts=["can"])
+    g = images.gizmo(fr)
+    new, _ = images.from_gizmo(spec, img, ["can"], *_moved(g, T=[0, 0, 0.01], R=_rz(40), S=[1.2] * 3))
+    assert np.allclose(new["offset"], [0, 0, 0.01]) and np.isclose(new["span"], 144) and new["size"] == [None, 0.048]
+    f4 = images.frame(spec, new, parts=["can"])
+    assert np.isclose(f4["o"][2], fr["o"][2] + 0.01, atol=1e-6)
+    assert np.allclose(f4["dir"], _rz(40) @ np.array(fr["dir"]), atol=1e-4) and np.allclose(f4["k"], fr["k"])
+
+
+def test_decal_pull_through_blender():
+    """The whole round trip in a headless Blender: sync makes the gizmo, a person's move (here a script that moves
+    it and saves the file) comes back into the spec on pull, a re-sync re-stamps it, and a second pull is empty."""
+    import shutil
+    import subprocess
+    from hifipushie import scene
+    if not shutil.which("blender"):
+        print("  (no blender: skipped)")
+        return
+    p = _png("lr12.png", LR)
+    spec = _board({"file": str(p), "at": "board", "size": [0.1, None]})
+    (Path(_TMP) / "decal_rt").mkdir(exist_ok=True)
+    store.save("decal_rt", spec)
+    scene.sync("decal_rt", 96)
+    move = ("import bpy\n"
+            "ob = next(o for o in bpy.data.objects if o.get('hp_decal') is not None)\n"
+            "ob.location.x += 0.03\n"
+            "bpy.ops.wm.save_mainfile()\n")
+    subprocess.run(["blender", "-b", str(scene.blend_path("decal_rt")), "--factory-startup", "--python-expr", move],
+                   check=True, capture_output=True, timeout=300)
+    log: list = []
+    got = scene.pull("decal_rt", log)
+    assert np.allclose(got["pic.image"]["offset"], [0.03, 0, 0]), (got, log)
+    assert np.allclose(store.load("decal_rt")["paint"]["pic"]["image"]["offset"], [0.03, 0, 0])
+    scene.sync("decal_rt", 96)
+    assert scene.pull("decal_rt", []) == {}  # re-stamped: nothing moved since
+
+
 def test_chart_border_steps():
     """asset.seam_steps on a square cut into two charts along x = 0 (packed apart, at different sub-texel phases):
     a map that is the surface's own function on both sides (texels past each chart's edge extrapolated, as

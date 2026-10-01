@@ -650,6 +650,13 @@ def pull(job):
             now = np.array(ob.matrix_world)
             if np.abs(now - spec_m).max() > 1e-5:
                 moved[ob["hp_instance"]] = now.tolist()
+    decals = {}
+    for ob in bpy.data.objects:  # decal gizmos a person moved, turned or scaled since the sync stamped them
+        if ob.get("hp_decal") is not None and ob.get("hp_set") is not None:
+            was = np.array(ob["hp_set"]).reshape(4, 4)
+            now = np.array(ob.matrix_world)
+            if np.abs(now - was).max() > 1e-5:
+                decals[ob["hp_decal"]] = {"was": was.tolist(), "now": now.tolist()}
     for m in bpy.data.materials:  # paint numbers exposed as named nodes; the same layer can sit in several parts
         if not m.name.startswith("part:") or not m.node_tree:
             continue
@@ -666,7 +673,7 @@ def pull(job):
             params.setdefault(n.name[3:], []).append(
                 [round(float(x), 4) for x in _srgb(v)] if n.type == "RGB" else round(float(v), 5))
     json.dump({"moved": moved, "params": params, "painted": _pull_painted(os.path.dirname(job["out"])),
-               "hair": blender_hair.read()}, open(job["out"], "w"))
+               "decals": decals, "hair": blender_hair.read()}, open(job["out"], "w"))
 
 
 def _pull_painted(folder):
@@ -706,6 +713,40 @@ def _pull_painted(folder):
         np.savez(f, pos=np.concatenate(P), nrm=np.concatenate(N), val=np.concatenate(V), spacing=np.concatenate(S))
         out[ly] = f
     return out
+
+
+def _decals(decals):
+    """Every image decal as a wire gizmo (collection "decals", never rendered or baked): images.gizmo's outline at
+    its matrix, which is stamped as "hp_set" so a pull reports only what a person moved, turned or scaled."""
+    coll = _coll("decals")
+    want = {d["path"]: d for d in decals}
+    for ob in list(bpy.data.objects):
+        if ob.get("hp_decal") is not None and ob["hp_decal"] not in want:
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+    have = {ob["hp_decal"]: ob for ob in bpy.data.objects if ob.get("hp_decal") is not None}
+    for p, d in want.items():
+        shape = json.dumps([d["verts"], d["edges"]])
+        ob = have.get(p)
+        if ob is None or ob.get("hp_shape") != shape:
+            me = bpy.data.meshes.new(d["name"])
+            me.from_pydata([tuple(v) for v in d["verts"]], [tuple(e) for e in d["edges"]], [])
+            if ob is None:
+                ob = bpy.data.objects.new(d["name"], me)
+                ob["hp_decal"] = p
+                coll.objects.link(ob)
+            else:
+                old, ob.data = ob.data, me
+                if old.users == 0:
+                    bpy.data.meshes.remove(old)
+            ob["hp_shape"] = shape
+        ob.matrix_world = _matrix(d["matrix"])
+        ob["hp_set"] = [float(v) for r in d["matrix"] for v in r]
+        ob.hide_render = True
+        ob.display_type = "WIRE"
+        ob.show_in_front = True
 
 
 def sync(job):
@@ -764,6 +805,7 @@ def sync(job):
         ob["hp_prefab"] = i["prefab"]
         ob.matrix_world = _matrix(i["matrix"])
         ob["hp_matrix"] = [v for r in i["matrix"] for v in r]
+    _decals(job.get("decals") or [])
     for key in ("prefab",):  # prefab collections excluded from the view layer (they show through instances)
         for c in bpy.data.collections:
             if c.name.startswith("prefab:"):
