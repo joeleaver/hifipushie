@@ -746,6 +746,8 @@ def _gridded(fn, T, spacing=2.0):
             return fieldjit.grid_at(coef, _f64(xy[:, 1]), _f64(xy[:, 0]), ys[0], xs[0], spacing)
         return ndimage.map_coordinates(coef, [(xy[:, 0] - xs[0]) / spacing, (xy[:, 1] - ys[0]) / spacing], order=3,
                                        prefilter=False, mode="nearest")
+    from .terrain_incremental import Frame
+    f.grid, f.frame = coef, Frame("gridded", coef.shape, "xy", xs[0], ys[0], spacing)  # (incremental export: per tile)
     return f
 
 
@@ -2011,6 +2013,28 @@ def _job_collapse(args):
     return {int(vrow[u]) for u in bad}
 
 
+def _job_dense_full(ij):
+    """A tile's dense LOD0 (`_job_dense`), its marching cubes first when the last export made them (incremental: the
+    border keys came from the state). Those must come out as stored: a difference would break the invariant."""
+    c = _CTX
+    if not _work(c, "mc", *ij).exists():
+        r = _job_mc(ij)
+        want = c["mc"][ij]
+        if r is None or r[0] != want[0] or r[1] != want[1] or r[2] != want[2]:
+            raise RuntimeError(f"tile {ij[0]},{ij[1]}: marching cubes made again differ from the stored ones")
+    return _job_dense(ij)
+
+
+def _job_prep_tile(ij):
+    """The work files a tile's LODs read when the last export made its dense mesh and collapses: made again, with
+    this export's kept vertices."""
+    c = _CTX
+    if not _work(c, "dense", *ij).exists():
+        _job_dense_full(ij)
+    for k, kr in enumerate(c["keep"]):  # (the same sorted rows the collapse loop passed)
+        _job_collapse((ij, kr, k))
+
+
 def build_field(T, cfg=None):
     """The 3D field of a terrain: (field, volume pieces, notes, caves)."""
     from . import terrain_caves
@@ -2022,6 +2046,45 @@ def build_field(T, cfg=None):
         vols = vols + cv.tubes
         notes = notes + cv.notes
     return Field(T, vols, rock, dolines=[d for cv in caves for d in cv.dolines]), vols, notes, caves
+
+
+def _swatch(out, rock):
+    """terrain_swatch.write(out, rock, "rock"), or what the last export wrote when the swatch's inputs (the rock's seed,
+    the swatch's code) and its files are the same."""
+    import pickle
+    from . import codehash, terrain_swatch
+    from . import terrain_incremental as inc
+    key = inc._h(codehash.digest("terrain_swatch"), int((rock or {}).get("seed", 4242)), terrain_swatch.SIZE,
+                 terrain_swatch.RES)
+    p = out / "_incremental" / "swatch.pkl"
+    files = lambda de: sorted(v for v in de.values() if isinstance(v, str) and v.startswith("materials/"))
+    try:
+        k, de, fk = pickle.loads(p.read_bytes())
+        if k == key and inc.files_key(out, files(de)) == fk:
+            return de
+    except Exception:
+        pass
+    de = terrain_swatch.write(out, rock, "rock")
+    p.parent.mkdir(exist_ok=True)
+    p.write_bytes(pickle.dumps((key, de, inc.files_key(out, files(de)))))
+    return dict(de)
+
+
+def _fingerprint(T, cfg, base, field, mats, region, G, hrange):
+    """What every tile's outputs read (terrain_incremental.Fingerprint): the export's field, materials, cliff region
+    and detail projection, the terrain's cover grids and the settings; per tile windows of the grids."""
+    from . import codehash
+    from .terrain_incremental import Fingerprint, Frame
+    frames = [Frame("terrain", T.H.shape, "yx", T.xs[0], T.ys[0], T.cell)]
+    if region is not None:  # (the cliff region's heightmap lattice [ix, iy], nodes and cells)
+        frames += [Frame("region", (region.nx, region.ny), "xy", G.origin[0], G.origin[1], region.d),
+                   Frame("region cells", (region.nx - 1, region.ny - 1), "xy", G.origin[0], G.origin[1], region.d)]
+    roots = {"field": field, "base": base, "materials": mats, "terrain cover": dict(T.cover),
+             "terrain frame": (float(T.xs[0]), float(T.ys[0]), float(T.cell), tuple(T.H.shape)),
+             "region": region, "detail": _CTX.get("detail"), "detail entry": _CTX.get("detail_entry"),
+             "config": {k: v for k, v in cfg.items() if k not in ("incremental",)}, "heights range": hrange,
+             "grid": G, "sea": _sea(T), "code": codehash.digest("terrain_mesh")}
+    return Fingerprint(roots, frames, base.vols, float(cfg["cave_wall"]) + 3.0)
 
 
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
@@ -2036,12 +2099,11 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     """Mesh the terrain's field (heightfield + volumes) into seamless tiles; write GLBs per tile per LOD, collision
     GLBs, heightmap and splat tiles, trees.csv and manifest.json; run the seam check (raises if it fails)."""
     from PIL import Image
+    import copy
     t_all = time.time()
     cfg = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    for f in out.glob("*.glb"):
-        f.unlink()
     import shutil
     workdir = out / "_work"  # per-tile dense meshes, streamed through disk; removed at the end
     shutil.rmtree(workdir, ignore_errors=True)
@@ -2061,7 +2123,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if cfg.get("detail") and base.rock is not None:  # (the tiling detail's projection, read by the workers)
         from . import terrain_swatch
         _CTX["detail"] = terrain_swatch.DetailProjection(base, base.rock)
-        de = terrain_swatch.write(out, base.rock, "rock")
+        de = _swatch(out, base.rock)  # (the last export's, when its seed and code are the same: 3-4 s)
         de.update(texcoord=1 + bool(int(cfg["splat"])), bins=_CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
                   layers=[nm for nm in ("rock", "wet_rock") if nm in mats.layers], recipe=terrain_swatch.RECIPE,
                   gltf=("each cliff tile LOD's baked material carries extras.hifipushie_detail: texture indices of "
@@ -2086,15 +2148,49 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     log(f"{len(tiles)} tiles ({G.ni} x {G.nj}) of {G.tile:g} m, voxel {G.voxel:g} m, LOD errors "
         f"{cfg['error'][:G.lods]} m, {len(vols)} volume pieces")
 
+    # ---- 0. incremental: each tile's inputs keyed (terrain_incremental); the previous export's state if it applies
+    from . import terrain_incremental as inc
+    t0 = time.time()
+    with prof.stage("incremental keys (parent)"):
+        hrange = [float(np.nanmin(T.H)), float(np.nanmax(T.H))]
+        fp = _fingerprint(T, cfg, base, field, mats, region, G, hrange)
+        fkey = {ij: fp.tile(*G.bounds(*ij)) for ij in tiles}
+        prev_state, why_cold = None, "incremental off (export.tiles incremental false or HIFIPUSHIE_TILES_COLD)"
+        if fp.unknown:
+            why_cold = f"inputs it can't fingerprint: {fp.unknown[:3]}"
+            (out / inc.STATE).unlink(missing_ok=True)
+        elif cfg.get("incremental", True) and not os.environ.get("HIFIPUSHIE_TILES_COLD"):
+            prev_state, why_cold = inc.load(out, fp.parts["code"], fp.global_key, fp.parts)
+        else:
+            (out / inc.STATE).unlink(missing_ok=True)
+    old = prev_state["tiles"] if prev_state else {}
+    ns = {ij: {"field": fkey[ij][0], "parts": fkey[ij][1]} for ij in tiles}  # (the state this export leaves)
+    redone = {}
+    if prev_state is None:
+        log(f"cold export: {why_cold}")
+        for f in out.glob("*.glb"):
+            f.unlink()
+    timing["incremental keys"] = time.time() - t0
+
     # ---- 1. marching cubes per tile, and the canonical border vertices (decided once)
     t0 = time.time()
     v0 = G.voxel
     mc = {}
     reg = {}
     _CTX.update(field=field, G=G, vols=vols, base=base)
-    with _pool() as ex:  # (in parallel: serial it was a third of the export)
-        for (i, j), r in zip(tiles, prof.pool_map(ex, _job_mc, tiles, "marching cubes", tile_key)):
-            mc[i, j] = r
+    redo = [ij for ij in tiles if not (ij in old and old[ij]["field"] == fkey[ij][0] and "mc" in old[ij])]
+    if prev_state is not None:
+        changed = [ij for ij in redo if ij in old]
+        log(f"incremental: {len(redo)} of {len(tiles)} tiles' inputs changed" +
+            "".join(f"; {ij[0]},{ij[1]}: {inc.why(old[ij]['parts'], fkey[ij][1])}" for ij in changed[:4]))
+    redone["marching cubes"] = len(redo)
+    if redo:
+        with _pool() as ex:  # (in parallel: serial it was a third of the export)
+            for ij, r in zip(redo, prof.pool_map(ex, _job_mc, redo, "marching cubes", tile_key)):
+                mc[ij] = r
+    mc = {ij: mc[ij] if ij in mc else old[ij]["mc"] for ij in tiles}  # (tile order: the chains' order follows it)
+    for ij in tiles:
+        ns[ij]["mc"] = mc[ij]
     for (i, j) in tiles:  # canonical border keys numbered in tile order (deterministic)
         if mc[i, j] is not None:
             for key in mc[i, j][1].values():
@@ -2151,14 +2247,30 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     t0 = time.time()
     _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
     work = [ij for ij, r in mc.items() if r is not None]
-    with _pool() as ex:
-        res = prof.pool_map(ex, _job_dense, work, "dense LOD0 (project, sharp)", tile_key)
-    dense = set(ij for ij, (ok, _) in zip(work, res) if ok)
+    # each tile's border rows as its dense mesh takes them (welds merged), and what its dense mesh depends on: its
+    # field, its canonical border vertices, and their order (a weld keeps the lowest row)
+    rows_of, dkey = {}, {}
+    for ij in work:
+        kk = mc[ij][1]
+        orig = np.array([reg[kk[q]] for q in sorted(kk)], np.int64)
+        rows = np.array([alias.get(int(r), int(r)) for r in orig], np.int64)
+        rows_of[ij] = rows
+        dkey[ij] = inc._h(fkey[ij][0], "dense", inc.rank(rows), rows != orig, CP[rows], CN[rows])
+    redo = [ij for ij in work if not (ij in old and old[ij].get("dense", {}).get("key") == dkey[ij])]
+    redone["dense LOD0"] = len(redo)
+    areas = {}
+    if redo:
+        with _pool() as ex:
+            res = prof.pool_map(ex, _job_dense_full, redo, "dense LOD0 (project, sharp)", tile_key)
+        areas = {ij: a for ij, (_, a) in zip(redo, res)}
+    for ij in work:
+        ns[ij]["dense"] = {"key": dkey[ij], "area": areas[ij] if ij in areas else old[ij]["dense"]["area"]}
+    dense = set(work)
     _CTX["dense"] = dense
     # one texel density per LOD for every tile: the asked one, or what the tile with the most rock can fit in
     # texture_max (each tile used to lower its own: on the alps' walls tiles came out 11-16 texels/m side by side,
     # sharp rock beside soft in squares of tiles)
-    area = max([a for _, a in res] + [1.0])
+    area = max([ns[ij]["dense"]["area"] for ij in work] + [1.0])
     tmax = int(cfg["texture_max"])
     cfg["_density"] = [min(float(d), math.sqrt(DENSITY_FILL * tmax * tmax / area)) for d in cfg["texel_density"]]
     if cfg["_density"][0] < cfg["texel_density"][0]:
@@ -2176,34 +2288,63 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     mat = [{"name": "terrain_reference", "pbrMetallicRoughness": pbr},
            {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
     rounds = 0
+    # border collapses: (tile, LOD) keyed by the tile's dense key and which of its border rows the LOD keeps; the
+    # vertices it couldn't drop are stored as positions in the tile's rows (row numbers shift between exports)
+    tile_state = {ij: old[ij]["tile"] for ij in tiles if "tile" in old.get(ij, {})}  # (each tile's LODs as on disk)
+    rpos_of, tile_wanted = {}, {}
+    col_known = {(ij, ck): pos_ for ij in work for ck, pos_ in old.get(ij, {}).get("col", {}).items()}
+    col_used, col_file, col_all = {}, {}, set()  # (ij, k) -> the key this export's chains need; the file in _work's
+    first = lambda rows: {int(r): p for p, r in reversed(list(enumerate(rows.tolist())))}
+    redone["border collapses"] = 0
     while True:
         collapsed = {}
-        with _pool() as ex:
-            for rnd in range(8):
-                # where the rock is too thin for the skirt a gap needs, every LOD keeps that vertex (the gap closes)
-                need = _needs(lines, keep, CP, G.lods)
-                thin = set()
-                for k in range(G.lods):
-                    d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
-                    thin |= set(np.flatnonzero((need[k] > 1e-6) & (d > thick + 1e-6)).tolist())
-                if thin:
-                    for kk in keep:
-                        kk |= thin
-                    continue
-                # a vertex a tile can't drop without folding is kept by both its tiles (at every LOD: chains nested)
-                failed = set()
-                for k in range(G.lods):
-                    kr = np.array(sorted(keep[k]), np.int64)
-                    for bad in prof.pool_map(ex, _job_collapse, [(ij, kr, k) for ij in work],
-                                             f"border collapse lod{k}", lambda a: f"{a[0][0]},{a[0][1]}"):
-                        failed |= bad
-                if not failed:
-                    break
+        for rnd in range(8):
+            # where the rock is too thin for the skirt a gap needs, every LOD keeps that vertex (the gap closes)
+            need = _needs(lines, keep, CP, G.lods)
+            thin = set()
+            for k in range(G.lods):
+                d = np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"])
+                thin |= set(np.flatnonzero((need[k] > 1e-6) & (d > thick + 1e-6)).tolist())
+            if thin:
                 for kk in keep:
-                    kk |= failed
-            else:
-                raise RuntimeError("border chains didn't settle (vertices that can't be collapsed, or rock too "
-                                   "thin for a skirt)")
+                    kk |= thin
+                continue
+            # a vertex a tile can't drop without folding is kept by both its tiles (at every LOD: chains nested)
+            failed = set()
+            todo = {}
+            for k in range(G.lods):
+                kr = np.array(sorted(keep[k]), np.int64)
+                for ij in work:
+                    ck = inc._h(dkey[ij], "col", k, np.isin(rows_of[ij], kr))
+                    col_used[ij, k] = ck
+                    col_all.add((ij, ck))  # (every round's: the next export walks the same rounds)
+                    if (ij, ck) in col_known:
+                        failed |= {int(rows_of[ij][p]) for p in col_known[ij, ck]}
+                    else:
+                        todo.setdefault(k, []).append((ij, kr, k))
+            if todo:
+                with _pool() as ex:
+                    need_dense = sorted({a[0] for t in todo.values() for a in t if not _work(_CTX, "dense", *a[0]).exists()})
+                    if need_dense:  # (tiles whose dense mesh the last export made: made again, one job a tile)
+                        prof.pool_map(ex, _job_dense_full, need_dense, "dense LOD0 again (for collapses)", tile_key)
+                    for k, jobs in sorted(todo.items()):
+                        redone["border collapses"] += len(jobs)
+                        for a, bad in zip(jobs, prof.pool_map(ex, _job_collapse, jobs, f"border collapse lod{k}",
+                                                              lambda a: f"{a[0][0]},{a[0][1]}")):
+                            failed |= bad
+                            ij = a[0]
+                            f_ = first(rows_of[ij])
+                            col_known[ij, col_used[ij, k]] = tuple(sorted(f_[r] for r in bad))
+                            col_file[ij, k] = col_used[ij, k]
+            if not failed:
+                break
+            for kk in keep:
+                kk |= failed
+        else:
+            raise RuntimeError("border chains didn't settle (vertices that can't be collapsed, or rock too "
+                               "thin for a skirt)")
+        for ij in work:
+            ns[ij]["col"] = {ck: col_known[ij, ck] for (t, ck) in sorted(col_all) if t == ij}
         depth = [np.minimum(np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"]), thick) for k in range(G.lods)]
         timing["border collapse + skirts"] = time.time() - t0
 
@@ -2247,11 +2388,13 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 stats.extend(st)
                 t_dec += td
                 wanted.update(wt)
+                tile_wanted[entry["i"], entry["j"]] = set(wt)
                 jobs = []
                 for q in entry.pop("_bakes", []):
-                    # (at most BAKE_PIECE texels a piece, and a small atlas still spread over the pool: a preview's
-                    # one tile)
-                    step = int(np.clip(q["n"] / max(ex._max_workers, 1), BAKE_PIECE / 6, BAKE_PIECE))
+                    # (at most BAKE_PIECE texels a piece, and a small atlas still spread over ~16 jobs: a preview's one
+                    # tile. Never by the pool's size: that follows free memory, and where a piece starts changes a few
+                    # texels' facet lookups (the walk chains from the last point): exports differed run to run)
+                    step = int(np.clip(q["n"] / 16, BAKE_PIECE / 6, BAKE_PIECE))
                     cuts = list(range(0, q["n"], step))
                     left[q["stem"]] = len(cuts)
                     jobs += [(_job_bake, (q["stem"], q["k"], a, min(a + step, q["n"])), f"{q['stem']}@{a}")
@@ -2262,13 +2405,55 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 return [(_job_finish, arg[0], arg[0])] if not left[arg[0]] else []
             got[arg] = r
             return []
-        with _pool() as ex:
-            prof.run_jobs(ex, [(_job_tile, ij, tile_key(ij)) for ij in tiles], on_done,
-                          f"tiles (decimate, atlases; maps baked in pieces) round {rounds}")
+        # each tile's LODs keyed by its dense mesh and everything _job_tile reads of its border vertices (rows as `pos`
+        # finds them): which each LOD keeps, normals, weights, colours, skirt depths and directions; and the density
+        kp = _CTX["keep"]
+        tkey = {}
+        for ij in tiles:
+            if ij in dense:
+                rows = rows_of[ij]
+                rp = np.array([pos[tuple(CP[r])] for r in rows.tolist()], np.int64)
+                rpos_of[ij] = rp
+                tp = {"dense": dkey[ij], "keep": inc._h(*[np.isin(rows, kp[k]) for k in range(G.lods)]),
+                      "keep at pos": inc._h(*[np.isin(rp, kp[k]) for k in range(G.lods)]),
+                      "skirt depth": inc._h(*[depth[k][rp] for k in range(G.lods)]), "skirt dir": inc._h(dirn[rp]),
+                      "normals": inc._h(CN[rp]), "weights": inc._h(CW[rp], CC[rp]),
+                      "density": inc._h(cfg["_density"], mat)}
+                ns[ij]["tile parts"] = tp
+                tkey[ij] = inc._h("tile", *sorted(tp.items()))
+            else:
+                tkey[ij] = inc._h(fkey[ij][0], "tile without a mesh")
+        redo = [ij for ij in tiles if not (tile_state.get(ij) and tile_state[ij]["key"] == tkey[ij]
+                                            and inc.files_ok(out, tile_state[ij]["files"]))]
+        redone[f"tiles round {rounds}"] = len(redo)
+        stale = [ij for ij in redo if ij in dense and any(col_file.get((ij, k)) != col_used[ij, k]
+                                                          for k in range(G.lods))]
+        if redo:
+            with _pool() as ex:
+                if stale:  # (their dense meshes and collapses came from the last export: made again here)
+                    prof.pool_map(ex, _job_prep_tile, stale, "dense + collapses again (for tiles)", tile_key)
+                    for ij in stale:
+                        for k in range(G.lods):
+                            col_file[ij, k] = col_used[ij, k]
+                prof.run_jobs(ex, [(_job_tile, ij, tile_key(ij)) for ij in redo], on_done,
+                              f"tiles (decimate, atlases; maps baked in pieces) round {rounds}")
+        for ij in tiles:
+            if ij not in redo:  # (unchanged: its entry, stats and files as the last export left them)
+                c_ = tile_state[ij]
+                manifest_tiles.append(copy.deepcopy(c_["entry"]))
+                stats.extend(c_["stats"])
+                wanted.update(int(rpos_of[ij][p]) for p in c_["wanted"])
         order = {ij: n for n, ij in enumerate(tiles)}
         manifest_tiles.sort(key=lambda e: order[e["i"], e["j"]])
         stats.sort(key=lambda st: (order[st[0], st[1]], st[2]))
         _maps_done(manifest_tiles, stats, got)
+        for e in manifest_tiles:
+            ij = (e["i"], e["j"])
+            if ij in redo:
+                f_ = first(rpos_of[ij]) if ij in rpos_of else {}
+                tile_state[ij] = {"key": tkey[ij], "entry": copy.deepcopy(e), "stats": [st for st in stats if st[:2] == ij],
+                           "wanted": tuple(sorted(f_[r] for r in tile_wanted.get(ij, ()))),
+                           "files": inc.sizes(out, inc.entry_files(e))}
         # a vertex a coarse LOD couldn't lose without folding (the dense mesh folded at every count, and an
         # earlier LOD's mesh couldn't drop it either): every LOD keeps it and the tiles are written again
         if not wanted or rounds >= 2:
@@ -2279,6 +2464,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         log(f"{len(wanted)} border vertices kept for coarse LODs that folded; tiles written again")
     timing["tiles (decimate, project, write)"] = time.time() - t0
     shutil.rmtree(workdir, ignore_errors=True)
+    for ij in tiles:
+        ns[ij]["tile"] = tile_state[ij]
     timing["of which decimation"] = t_dec
 
     # ---- 4. heightmap and splat tiles on the same grid (in parallel)
@@ -2297,17 +2484,40 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         cfg["_ground_mat"] = [{"name": "terrain_reference", "pbrMetallicRoughness": pbr},
                               {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
         _CTX.update(region=region, mats=mats, cfg=cfg, out=out)
-        with _pool() as ex:
-            ground = prof.pool_map(ex, _job_ground, tiles, "ground tiles", tile_key)
+        gkey = {ij: inc._h(fkey[ij][0], "ground") for ij in tiles}
+        og = {ij: old[ij]["ground"] for ij in tiles if "ground" in old.get(ij, {})}
+        redo = [ij for ij in tiles if not (ij in og and og[ij]["key"] == gkey[ij] and inc.files_ok(out, og[ij]["files"]))]
+        redone["ground tiles"] = len(redo)
+        got_g = {}
+        if redo:
+            with _pool() as ex:
+                got_g = dict(zip(redo, prof.pool_map(ex, _job_ground, redo, "ground tiles", tile_key)))
+        ground = [got_g[ij] if ij in got_g else copy.deepcopy(og[ij]["entry"]) for ij in tiles]
+        for ij, e in zip(tiles, ground):
+            ns[ij]["ground"] = og[ij] if ij not in got_g else \
+                {"key": gkey[ij], "entry": copy.deepcopy(e), "files": inc.sizes(out, inc.entry_files(e))}
         cfg.pop("_hrange"), cfg.pop("_ground_mat"), cfg.pop("_layer_rough")
         manifest_tiles = [e for e in manifest_tiles if any(e["lods"])]
         timing["ground tiles"] = time.time() - t0
         t0 = time.time()
-    with _pool() as ex:
-        for e, extra in zip(ground or manifest_tiles,
-                            prof.pool_map(ex, _job_maps, [(e["i"], e["j"], e["min"]) for e in (ground or manifest_tiles)],
-                                          "heightmaps + splats", lambda a: f"{a[0]},{a[1]}")):
-            e.update(extra)
+    ents = ground or manifest_tiles
+    mkey = {(e["i"], e["j"]): inc._h(fkey[e["i"], e["j"]][0], "maps", e["min"]) for e in ents}
+    om = {ij: old[ij]["maps"] for ij in mkey if "maps" in old.get(ij, {})}
+    redo = [e for e in ents if not ((e["i"], e["j"]) in om and om[e["i"], e["j"]]["key"] == mkey[e["i"], e["j"]]
+                                    and inc.files_ok(out, om[e["i"], e["j"]]["files"]))]
+    redone["heightmaps + splats"] = len(redo)
+    got_m = {}
+    if redo:
+        with _pool() as ex:
+            got_m = {(e["i"], e["j"]): x for e, x in zip(redo, prof.pool_map(
+                ex, _job_maps, [(e["i"], e["j"], e["min"]) for e in redo], "heightmaps + splats",
+                lambda a: f"{a[0]},{a[1]}"))}
+    for e in ents:
+        ij = (e["i"], e["j"])
+        extra = got_m[ij] if ij in got_m else copy.deepcopy(om[ij]["extra"])
+        ns[ij]["maps"] = om[ij] if ij not in got_m else \
+            {"key": mkey[ij], "extra": copy.deepcopy(extra), "files": inc.sizes(out, inc.entry_files(extra))}
+        e.update(extra)
     timing["heightmaps + splats"] = time.time() - t0
 
     # ---- 5. trees and the manifest
@@ -2392,7 +2602,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         "trees": "trees.csv (x, y, z, kind, layer), world metres",
         "volumes": notes,
         "mode": cfg["mode"],
-        "config": {k: v for k, v in cfg.items() if not k.startswith("_") and k != "only"},
+        "config": {k: v for k, v in cfg.items() if not k.startswith("_") and k not in ("only", "incremental")},
         "texel_density_used": [round(d, 3) for d in cfg.get("_density", [])],
         "maps": {
             "per tile LOD": "each tile's GLB embeds base colour (JPEG, sRGB), ORM (PNG: R occlusion, G roughness, "
@@ -2438,15 +2648,27 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T))
         timing["cave walk"] = time.time() - t0
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
+    # files no tile names any more (a tile that lost its cliff, a LOD without maps now) go; then the state the next
+    # export builds on
+    keep_files = {f for e in manifest_tiles + ground for f in inc.entry_files(e)}
+    for f in list(out.glob("*.glb")) + [p for d in inc.OUT_DIRS for p in (out / d).glob("*") if p.is_file()]:
+        if str(f.relative_to(out)) not in keep_files:
+            f.unlink()
+    inc.save(out, {"format": inc.FORMAT, "code": fp.parts["code"], "global": fp.global_key, "global_parts": fp.parts,
+                   "tiles": ns})
     timing["total before check"] = time.time() - t_all
     t0 = time.time()
     if cfg.get("checks", True):
+        # (what the checks compute from each tile's files, kept by those files' bytes: an incremental export decodes
+        # only the maps of the tiles it rewrote)
+        memo = inc.Memo(out, "checks", fp.parts["code"])
         with prof.stage("check: seams (parent)"):
-            check = seam_check(out) if manifest_tiles else {"summary": {"failures": 0}, "failures": []}
+            check = seam_check(out, memo=memo) if manifest_tiles else {"summary": {"failures": 0}, "failures": []}
         if region is not None:
             from . import terrain_cliffs
             with prof.stage("check: ground (parent)"):
-                gc = terrain_cliffs.ground_check(out, manifest, region)
+                gc = terrain_cliffs.ground_check(out, manifest, region, memo=memo,
+                                                 tile_keys={ij: fkey[ij][0] for ij in tiles})
             check["summary"]["ground"] = gc["summary"]
             check["failures"] += gc["failures"]
         # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
@@ -2478,12 +2700,19 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 check["failures"].append(f"the detail swatch's wrap seam shows (jump excess {detail['wrap_seam']}, "
                                          f"limit {terrain_swatch.TILE_LIMIT})")
         check["summary"]["failures"] = len(check["failures"])
+        memo.save()
+        redone["check samples"] = {"reused": memo.hits, "computed": memo.misses}
     else:  # (a preview: `preview_tiles`)
         check = {"summary": {"failures": 0, "skipped": "checks off (a preview)"}, "failures": []}
     timing["seam check"] = time.time() - t0
     manifest["seam_check"] = check["summary"]
     manifest["timing_s"] = {k: round(v, 2) for k, v in timing.items()}
     manifest["profile"] = prof.as_dict()
+    # (in the profile: like the timings, it says how this export ran, not what it made)
+    manifest["profile"]["incremental"] = {"previous export used": prev_state is not None,
+                                          "why not": why_cold if prev_state is None else "", "tiles": len(tiles),
+                                          "redone": redone}
+    log(f"incremental: {json.dumps(manifest['profile']['incremental'])}")
     (out / "profile.txt").write_text(profiling.table(manifest["profile"]))
     log(profiling.table(manifest["profile"], top=25))
     if peak is not None:  # (what the job used, sampled every 0.5 s: PSS of the parent and its workers)
@@ -2980,7 +3209,6 @@ def _job_bake(args):
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines)
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
 
-
 def _job_finish(stem):
     """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
     import pickle
@@ -3100,7 +3328,7 @@ def _thickness(field, P, d, want, v):
 
 # ---------------------------------------------------------------- the seam check
 
-def seam_check(out_dir, normal_deg=1.0) -> dict:
+def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
     """Read the written tiles back and check: (1) border vertices identical across every shared edge, per LOD;
     (2) each LOD's tiles joined are watertight and consistently oriented except at the world's edge; (3) matched
     border vertices carry the same normal (under `normal_deg`), and the crease across seams is no worse than inside
@@ -3281,7 +3509,7 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
     if hm_bad:
         failures.append(f"{hm_bad} heightmap tile edges differ from their neighbours'")
     if M.get("maps"):  # (6) baked maps agree across borders
-        ms = map_seams(out, M["tiles"], lods)
+        ms = map_seams(out, M["tiles"], lods, memo=memo)
         summary["map_seams"] = ms
         for key, r in ms.items():
             if not r["ok"]:
@@ -3292,8 +3520,8 @@ def seam_check(out_dir, normal_deg=1.0) -> dict:
     return {"summary": summary, "failures": failures}
 
 
-def read_glb_images(path):
-    """The images embedded in a GLB, decoded (float arrays 0..1, rows top first), in texture order."""
+def read_glb_images(path, n=None):
+    """The images embedded in a GLB, decoded (float arrays 0..1, rows top first), in texture order (the first `n`)."""
     import io
     from PIL import Image
     b = Path(path).read_bytes()
@@ -3301,7 +3529,7 @@ def read_glb_images(path):
     doc = json.loads(b[20:20 + jl])
     binb = b[28 + jl:]
     out = []
-    for im in doc.get("images", []):
+    for im in doc.get("images", [])[:n]:
         if "bufferView" not in im:  # (a file beside the GLB: the detail swatches)
             out.append(None)
             continue
@@ -3326,13 +3554,33 @@ def _map_side(out, L, ax, lim):
     its maps say there: the normal decoded to world axes (through the tile's NORMAL/TANGENT: MikkTSpace-style, as
     engines recompute them), base colour, occlusion, roughness, the height map in metres and the layer weights.
     Returns (points (n, 3), {channel: (n, k)})."""
+    return _map_sides(out, L, [(ax, lim)])[ax, lim]
+
+
+def _map_files(L):
+    mp = L.get("maps") or {}
+    return [L["file"]] + ([mp["height"]] if mp.get("height") else []) + list(mp.get("weights", []))
+
+
+def _map_sides(out, L, planes):
+    """`_map_side` on several border planes of one tile LOD, its maps decoded once: {(ax, lim): (points, channels)}."""
     from PIL import Image
     path = out / L["file"]
     tr, prims = read_glb(path)
-    imgs = read_glb_images(path)
     p = prims[0]
-    if "TEXCOORD_0" not in p or len(imgs) < 3:
-        return np.zeros((0, 3)), {}
+    none = {pl: (np.zeros((0, 3)), {}) for pl in planes}
+    if "TEXCOORD_0" not in p:
+        return none
+    imgs = read_glb_images(path, 3)
+    if len(imgs) < 3:
+        return none
+    mp = L.get("maps") or {}
+    hi = np.asarray(Image.open(out / mp["height"]), float) / 65535.0 if mp.get("height") else None
+    wimgs = [np.asarray(Image.open(out / fn), float) / 255.0 for fn in mp.get("weights", [])]
+    return {(ax, lim): _map_plane(p, tr, imgs, hi, wimgs, mp, ax, lim) for ax, lim in planes}
+
+
+def _map_plane(p, tr, imgs, hi, wimgs, mp, ax, lim):
     origin = _from_gltf(tr[None])[0]
     P = _from_gltf(p["POSITION"].astype(np.float64)) + origin
     N = _from_gltf(p["NORMAL"].astype(np.float64))
@@ -3358,30 +3606,75 @@ def _map_side(out, L, ax, lim):
     tn = _bilinear(imgs[2], q)[:, :3] * 2 - 1
     ch = {"normal": _unit_rows(tn[:, :1] * Tl + tn[:, 1:2] * Bl + tn[:, 2:3] * Nl),
           "colour": _bilinear(imgs[0], q)[:, :3], "orm": _bilinear(imgs[1], q)[:, :2]}
-    mp = L.get("maps") or {}
-    if mp.get("height"):
-        hi = np.asarray(Image.open(out / mp["height"]), float) / 65535.0
+    if hi is not None:
         ch["height_m"] = ((_bilinear(hi[..., None], q)[:, 0] - 0.5) * 2 * mp["height_range_m"])[:, None]
-    for g, fn in enumerate(mp.get("weights", [])):
-        ch[f"weights{g}"] = _bilinear(np.asarray(Image.open(out / fn), float) / 255.0, q)
+    for g, w in enumerate(wimgs):
+        ch[f"weights{g}"] = _bilinear(w, q)
     return X, ch
 
 
-def map_seams(out, tiles, lods, kind="tiles"):
+def _job_sides(a):
+    out, L, planes = a
+    return _map_sides(out, L, planes)
+
+
+def _side_pool(todo):
+    """`_map_sides` of each (key, files key, args) across a fork pool (decoding the maps was 80% of the checks)."""
+    from . import resources
+    if len(todo) <= 2:
+        return [_job_sides(t[2]) for t in todo]
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    ex = ProcessPoolExecutor(max_workers=resources.workers(1.0, cap=16, jobs=len(todo)),
+                             mp_context=multiprocessing.get_context("fork"), initializer=resources._worker_init)
+    with resources.guarded(ex, "map seams") as ex:
+        return list(ex.map(_job_sides, [t[2] for t in todo], chunksize=2))
+
+
+def map_seams(out, tiles, lods, kind="tiles", memo=None):
     """Baked maps across shared tile borders: every channel decoded from both tiles at the same border points (same
     LOD) and, for mixed LODs (0 against the coarsest), at the nearest point of the other tile's border within 0.6 m.
-    Per pair: normals (deg), colour, occlusion, roughness, weights (0..1) and height (m) differences, p50/p95."""
+    Per pair: normals (deg), colour, occlusion, roughness, weights (0..1) and height (m) differences, p50/p95.
+    Each tile LOD's maps are decoded once for all its borders, across a pool; `memo` (terrain_incremental.Memo)
+    keeps each side's samples by its files' content, so an incremental export decodes only the tiles it rewrote."""
     from scipy.spatial import cKDTree
+    from . import terrain_incremental as inc
     res = {}
     by = {(e["i"], e["j"]): e for e in tiles}
     pairs = [(k, k) for k in range(lods)] + ([(0, lods - 1)] if lods > 1 else [])
-    cache = {}
+    need = {}
+    for ka, kb in pairs:
+        for (i, j), e in by.items():
+            for di, dj, ax in ((1, 0, 0), (0, 1, 1)):
+                o = by.get((i + di, j + dj))
+                if o is None or not e["lods"][ka] or not o["lods"][kb]:
+                    continue
+                lim = e["max"][ax]
+                need.setdefault((i, j, ka), set()).add((ax, lim))
+                need.setdefault((i + di, j + dj, kb), set()).add((ax, lim))
+    cache, todo = {}, []
+    for (i, j, k), planes in need.items():
+        L = by[i, j]["lods"][k]
+        fk = inc.files_key(out, _map_files(L)) if memo is not None else None
+        miss = []
+        for pl in sorted(planes):
+            got = memo.get(inc._h("map side", fk, pl)) if memo is not None else None
+            if got is None:
+                miss.append(pl)
+            else:
+                cache[(i, j, k) + pl] = got
+        if miss:
+            todo.append(((i, j, k), fk, (out, L, miss)))
+    if todo:
+        got_all = _side_pool(todo)
+        for ((i, j, k), fk, _), got in zip(todo, got_all):
+            for pl, v in got.items():
+                cache[(i, j, k) + pl] = v
+                if memo is not None:
+                    memo.put(inc._h("map side", fk, pl), v)
 
     def side(e, k, ax, lim):
-        key = (e["i"], e["j"], k, ax, lim)
-        if key not in cache:
-            cache[key] = _map_side(out, e["lods"][k], ax, lim)
-        return cache[key]
+        return cache[e["i"], e["j"], k, ax, lim]
 
     for ka, kb in pairs:
         diffs = {}
@@ -3399,7 +3692,7 @@ def map_seams(out, tiles, lods, kind="tiles"):
                 m = d < (1e-6 if ka == kb else 0.6)
                 if not m.any():
                     continue
-                for c in A.keys() & B.keys():
+                for c in sorted(A.keys() & B.keys()):  # (sorted: a set of names iterates in hash order, run to run)
                     va, vb = A[c][m], B[c][nb[m]]
                     if c == "normal":
                         v = np.degrees(np.arccos(np.clip((va * vb).sum(1), -1, 1)))

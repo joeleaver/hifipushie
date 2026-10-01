@@ -473,7 +473,7 @@ def _ground_skirts(P0, n, st, G, lo):
     return np.vstack(SP), np.array(SF, np.int64), np.concatenate(sv)
 
 
-def ground_check(out: Path, M: dict, R: Region | None = None) -> dict:
+def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_keys=None) -> dict:
     """Ground tiles read back: shared borders identical per LOD (vertices and edges), heightmap edges identical, and
     how much of the pushed heightmap under the cliff meshes would show through their faces."""
     failures, summary = [], {}
@@ -508,7 +508,7 @@ def ground_check(out: Path, M: dict, R: Region | None = None) -> dict:
     if hm_bad:
         failures.append(f"{hm_bad} heightmap tile edges differ from their neighbours'")
     if M.get("maps"):
-        ms = tm.map_seams(out, M["ground"], lods)
+        ms = tm.map_seams(out, M["ground"], lods, memo=memo)
         summary["map_seams"] = ms
         for key, r in ms.items():
             if not r["ok"]:
@@ -549,7 +549,7 @@ def ground_check(out: Path, M: dict, R: Region | None = None) -> dict:
             failures.append(f"{len(A)} heightmap vertices stand in a void (a hole missing), e.g. "
                             f"{A[:3].round(1).tolist()}")
     if R is not None and M.get("tiles"):
-        fl = floating(out, M, R)
+        fl = floating(out, M, R, memo=memo, tile_keys=tile_keys)
         summary["cliff_components"] = fl["components"]
         summary["floating_components"] = len(fl["floating"])
         for f in fl["floating"][:5]:
@@ -559,26 +559,42 @@ def ground_check(out: Path, M: dict, R: Region | None = None) -> dict:
     return {"summary": summary, "failures": failures}
 
 
-def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15) -> dict:
+def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15, memo=None, tile_keys=None) -> dict:
     """Connected pieces of the cliff meshes (LOD `lod`, every tile welded by position) that never reach down to the
     ground: a piece is grounded if some vertex lies at or under the pushed heightmap (+ tol) or under the sea floor
-    it stands on; one that doesn't floats in the air (a stack's head cut off by the rock relief, a shell fragment)."""
+    it stands on; one that doesn't floats in the air (a stack's head cut off by the rock relief, a shell fragment).
+    Each tile's clearances (pointwise) can come from `memo` by its GLB's bytes and `tile_keys[i, j]` (what the pushed
+    heightmap reads there: the incremental export's field key)."""
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
-    Ps, Fs, off = [], [], 0
+    from . import terrain_incremental as inc
+    Ps, Fs, Cs, off = [], [], [], 0
     for e in M["tiles"]:
         L = e["lods"][lod]
         if not L:
             continue
         tr, prims = tm.read_glb(out / L["file"])
         o = tm._from_gltf(tr[None])[0]
+        tp = []
         for p in prims:
             if p["extras"].get("role") == "skirt":
                 continue
             P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
             Ps.append(P)
+            tp.append(P)
             Fs.append(p["indices"] + off)
             off += len(P)
+        if tp:
+            Q = np.vstack(tp)
+            key = None
+            if memo is not None and tile_keys is not None and (e["i"], e["j"]) in tile_keys:
+                key = inc._h("clearance", inc.file_hash(out / L["file"]), tile_keys[e["i"], e["j"]])
+            c = memo.get(key) if key is not None else None
+            if c is None:
+                c = Q[:, 2] - R.height(Q[:, 0], Q[:, 1])
+                if key is not None:
+                    memo.put(key, c)
+            Cs.append(c)
     if not Ps:
         return {"components": 0, "floating": []}
     P, F = np.vstack(Ps), np.vstack(Fs)
@@ -588,7 +604,7 @@ def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15) -> 
     n = len(P)
     e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]]])
     ncomp, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
-    clear = P[:, 2] - R.height(P[:, 0], P[:, 1])
+    clear = np.concatenate(Cs)[uid]  # (pointwise: each tile's own, the same as over all points at once)
     # a piece that runs off the exported block (an `only` export: the tile beyond wasn't made, but the world goes on)
     # continues there: on a wall steep all the way across the block the shell never came down to the ground inside it
     have = {(g["i"], g["j"]) for g in M.get("ground", [])} or {(e["i"], e["j"]) for e in M["tiles"]}

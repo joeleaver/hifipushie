@@ -2187,5 +2187,7 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
     return [j["out"] for j in jobs]
 
 
-def load(path) -> Terrain:
-    return Terrain(json.loads(Path(path).read_text()))
+def load(path, log=None) -> Terrain:
+    """The built terrain of a spec file, through the disk cache (terrain_cache: keyed by the spec and the build's code)."""
+    from . import terrain_cache
+    return terrain_cache.build(json.loads(Path(path).read_text()), log=log)

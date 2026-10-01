@@ -106,7 +106,7 @@ def _hash(spec) -> str:
 def build(name: str):
     """The built Terrain for the stored spec (cached by content). Raises terrain_world.Questions when the designer has
     to answer something first."""
-    from . import terrain
+    from . import terrain_cache
     from .terrain_world import save_kind
     spec = load(name)
     h = _hash(spec)
@@ -114,7 +114,7 @@ def build(name: str):
         got = _BUILT.get(name)
         if got and got[0] == h:
             return got[1]
-        T = terrain.Terrain(spec)
+        T = terrain_cache.build(spec)  # (on disk by spec + code: a new session doesn't rebuild either)
         if T.new_kind:
             save_kind(T.new_kind)
         _BUILT[name] = (h, T)
