@@ -305,15 +305,20 @@ def _raster_pack(masks, n):
     return place
 
 
-def split_corners(P, N, F, uvc, extra=None):
-    """New vertices per (vertex, uv) pair: glTF wants one uv per vertex. extra: per-vertex arrays carried along."""
+def split_corners(P, N, F, uvc, extra=None, ids=None):
+    """New vertices per (vertex, uv) pair: glTF wants one uv per vertex. extra: per-vertex arrays carried along. ids:
+    per-corner integers (m, 3) that split vertices too (the detail UV's plane); the result's "ids" per vertex."""
     key = np.c_[F.reshape(-1), np.round(uvc.reshape(-1, 2) * 2 ** 22).astype(np.int64)]
+    if ids is not None:
+        key = np.c_[key, np.asarray(ids).reshape(-1)]
     _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
     inv = inv.ravel()
     src = F.reshape(-1)[first]
     out = {"P": P[src], "N": N[src], "uv": uvc.reshape(-1, 2)[first], "F": inv.reshape(-1, 3), "src": src}
     for k, v in (extra or {}).items():
         out[k] = v[src]
+    if ids is not None:
+        out["ids"] = np.asarray(ids).reshape(-1)[first]
     return out
 
 
@@ -451,7 +456,7 @@ def _bary(uv, F, size, t, xs, ys):
 
 
 def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0,
-                gfield=None):
+                gfield=None, lines=None):
     """The per-texel part of a bake (pointwise, so an atlas can be baked in pieces): each texel's point on the low poly,
     moved onto the surface (`surface`), and its values quantised as the maps store them. `first`: the index of the
     first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas)."""
@@ -489,6 +494,11 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
     out = {"height": height, "normal": q8(tn * 0.5 + 0.5), "basecolor": q8(np.clip(col, 0, 1)),
            "rough": q8(np.clip(rgh, 0.02, 1)), "bad": bad,
            "weights": q8(np.c_[Wt, np.zeros((len(Wt), (-Wt.shape[1]) % 4))])}
+    if lines is not None:  # the structure's lines as signed distances (terrain_swatch.structure_lines)
+        from .terrain_swatch import LINE_D
+        with _span("bake/lines"):
+            sb, ab, sj, aj = _chunked(lines, X)
+        out["lines"] = q8(np.c_[0.5 + 0.5 * sb / LINE_D, 0.5 + 0.5 * sj / LINE_D, ab, aj])
     err = np.zeros(0)
     if field is not None:  # texel error: how far the baked points sit off the exact surface (every 7th atlas texel)
         k = np.flatnonzero(inside & ~bad & ((np.arange(len(X)) + first) % 7 == 0))
@@ -535,6 +545,8 @@ def assemble(tx, vals, ao_v, uv, F, field=True):
         maps["height"] = np.round(img(height / hr * 0.5 + 0.5, 0.5) * 65535).astype(np.uint16)
         W = vals["weights"]
         maps["weights"] = [img(W[:, g:g + 4], 0) for g in range(0, W.shape[1], 4)]
+        if "lines" in vals:
+            maps["lines"] = img(vals["lines"], 128)
     bad = vals["bad"]
     extra = {}
     if field and inside.any():

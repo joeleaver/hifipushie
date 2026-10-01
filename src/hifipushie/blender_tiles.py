@@ -108,6 +108,242 @@ def _layered(m, layers):
     nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 
 
+def _img(path):
+    if path not in _IMAGES:
+        _IMAGES[path] = bpy.data.images.load(path)
+        _IMAGES[path].colorspace_settings.name = "Non-Color"
+        _IMAGES[path].alpha_mode = "CHANNEL_PACKED"  # (data in RGB where alpha is 0: the lines map)
+    return _IMAGES[path]
+
+
+def _vmath(nt, op, a, b=None, scale=None):
+    n = nt.nodes.new("ShaderNodeVectorMath")
+    n.operation = op
+    nt.links.new(a, n.inputs[0])
+    if b is not None:
+        if isinstance(b, (int, float)):
+            n.inputs[1].default_value = (b, b, b)
+        else:
+            nt.links.new(b, n.inputs[1])
+    if scale is not None:
+        if isinstance(scale, (int, float)):
+            n.inputs["Scale"].default_value = scale
+        else:
+            nt.links.new(scale, n.inputs["Scale"])
+    return n.outputs["Value"] if op in ("DOT_PRODUCT", "LENGTH", "DISTANCE") else n.outputs["Vector"]
+
+
+def _math(nt, op, a, b=None):
+    n = nt.nodes.new("ShaderNodeMath")
+    n.operation = op
+    for k, x in enumerate((a, b)):
+        if x is None:
+            continue
+        if isinstance(x, (int, float)):
+            n.inputs[k].default_value = x
+        else:
+            nt.links.new(x, n.inputs[k])
+    return n.outputs[0]
+
+
+def _mixv(nt, a, b, fac):
+    n = nt.nodes.new("ShaderNodeMix")
+    n.data_type = "VECTOR"
+    nt.links.new(fac, n.inputs["Factor"])
+    nt.links.new(a, n.inputs[4])
+    nt.links.new(b, n.inputs[5])
+    return n.outputs[1]
+
+
+def _xyz(nt, x, y, z):
+    c = nt.nodes.new("ShaderNodeCombineXYZ")
+    for k, s in enumerate((x, y, z)):
+        if isinstance(s, (int, float)):
+            c.inputs[k].default_value = s
+        else:
+            nt.links.new(s, c.inputs[k])
+    return c.outputs[0]
+
+
+def _sep(nt, v):
+    s = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(v, s.inputs[0])
+    return s.outputs
+
+
+def _tex(nt, path, vec):
+    t = nt.nodes.new("ShaderNodeTexImage")
+    t.image = _img(path)
+    nt.links.new(vec, t.inputs["Vector"])
+    return t.outputs["Color"]
+
+
+def _plane_sample(nt, D, u, v, T, B, Nv):
+    """The swatch at (u, v) metres on a plane whose +u / +v run along world T / B: (albedo, world-space detail normal,
+    built from the tangent-space map on T and B projected onto the surface). Anti-tiling: the swatch at 1x and at
+    variation_scale x (offset), chosen place by place by the variation mask at (u, v) / variation_m."""
+    uv = _xyz(nt, u, v, 0.0)
+    vec1 = _vmath(nt, "SCALE", uv, scale=1.0 / D["size"])
+    off = _xyz(nt, D["variation_offset"][0], D["variation_offset"][1], 0.0)
+    vec2 = _vmath(nt, "ADD", _vmath(nt, "SCALE", uv, scale=1.0 / (D["size"] * D["variation_scale"])), off)
+    mask = _tex(nt, D["variation"], _vmath(nt, "SCALE", uv, scale=1.0 / D["variation_m"]))
+    mask = _sep(nt, mask)[0]
+    alb = nt.nodes.new("ShaderNodeMix")
+    alb.data_type = "RGBA"
+    nt.links.new(mask, alb.inputs["Factor"])
+    nt.links.new(_tex(nt, D["albedo"], vec1), alb.inputs["A"])
+    nt.links.new(_tex(nt, D["albedo"], vec2), alb.inputs["B"])
+    dec = lambda col: _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", col, scale=2.0), 1.0)
+    n = _sep(nt, _mixv(nt, dec(_tex(nt, D["normal"], vec1)), dec(_tex(nt, D["normal"], vec2)), mask))
+    proj = lambda A: _vmath(nt, "NORMALIZE", _vmath(nt, "SUBTRACT", A, _vmath(
+        nt, "SCALE", Nv, scale=_vmath(nt, "DOT_PRODUCT", Nv, A))))
+    Tp, Bp = proj(T), proj(B)
+    w = _vmath(nt, "ADD", _vmath(nt, "ADD", _vmath(nt, "SCALE", Tp, scale=n[0]), _vmath(nt, "SCALE", Bp, scale=n[1])),
+               _vmath(nt, "SCALE", Nv, scale=n[2]))
+    return alb.outputs["Result"], _vmath(nt, "NORMALIZE", w)
+
+
+def _smooth_band(nt, x, lo, hi):
+    """1 below lo falling smoothly to 0 at hi."""
+    mr = nt.nodes.new("ShaderNodeMapRange")
+    mr.interpolation_type = "SMOOTHSTEP"
+    nt.links.new(x, mr.inputs["Value"])
+    mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = lo, hi
+    mr.inputs["To Min"].default_value, mr.inputs["To Max"].default_value = 1.0, 0.0
+    return mr.outputs["Result"]
+
+
+def _lines(nt, D, path, geo):
+    """The structure's lines from the tile's lines map (atlas UV): per set (bed planes, joints) a signed distance s
+    (m) and a strength a; crack = a x (1 - smoothstep(0.012, 0.05, |s| + jitter)), shadow = a x (1 - smoothstep(0.03,
+    0.2, |s|)). Returns (crack, shadow) sockets: the strongest of the two sets."""
+    uv = nt.nodes.new("ShaderNodeUVMap")
+    uv.uv_map = "UVMap"
+    t = nt.nodes.new("ShaderNodeTexImage")
+    t.image = _img(path)
+    t.extension = "EXTEND"
+    nt.links.new(uv.outputs["UV"], t.inputs["Vector"])
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(t.outputs["Color"], sep.inputs["Color"])
+    nz = nt.nodes.new("ShaderNodeTexNoise")  # (the crack's edge wanders a centimetre or two)
+    nz.inputs["Scale"].default_value = 9.0
+    nz.inputs["Detail"].default_value = 4.0
+    nt.links.new(geo.outputs["Position"], nz.inputs["Vector"])
+    jit = _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", nz.outputs["Fac"], 0.5), 0.05)
+    nw = nt.nodes.new("ShaderNodeTexNoise")
+    nw.inputs["Scale"].default_value = 0.7
+    nt.links.new(geo.outputs["Position"], nw.inputs["Vector"])
+    wid = _math(nt, "MULTIPLY", _math(nt, "MAXIMUM", _math(nt, "SUBTRACT", nw.outputs["Fac"], 0.35), 0.0), 0.12)
+    crack = shadow = None
+    for sc, ac in ((sep.outputs[0], sep.outputs[2]), (sep.outputs[1], t.outputs["Alpha"])):
+        s = _math(nt, "ABSOLUTE", _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", sc, 0.5), 2 * D["line_d"]))
+        # (the crack's width wanders along it: 1-6 cm)
+        k = _math(nt, "MULTIPLY", ac, _smooth_band(nt, _math(nt, "SUBTRACT", _math(nt, "ADD", s, jit), wid), 0.0, 0.03))
+        h = _math(nt, "MULTIPLY", ac, _smooth_band(nt, s, 0.02, 0.14))
+        crack = k if crack is None else _math(nt, "MAXIMUM", crack, k)
+        shadow = h if shadow is None else _math(nt, "MAXIMUM", shadow, h)
+    return crack, shadow
+
+
+def _detail(m, D, lines=None):
+    """The tiling rock detail as the manifest's detail recipe draws it (a custom shader's version: seamless). The
+    swatch on the two strike planes nearest the vertex's smoothed strike (_DETAIL.xy; planes every 45 deg, u = world
+    position . the plane's direction, v = _DETAIL.w, the bed coordinate), blended by angle (sharpened like triplanar), and
+    on the top plane (u = x, v = y) by 1 - side share (_DETAIL.z). Its normal (tangent space on each plane's own
+    axes) is combined with the baked macro normal by RNM (reoriented normal mapping, in world space about the vertex
+    normal); its albedo (x 2) multiplies the baked base colour; all weighted by the rock layers' weights."""
+    import math as _m
+    nt = m.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    base_in = bsdf.inputs["Base Color"].links[0].from_socket if bsdf.inputs["Base Color"].links else None
+    nrm_in = bsdf.inputs["Normal"].links[0].from_socket if bsdf.inputs["Normal"].links else None
+    if base_in is None:
+        return
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    Nv = geo.outputs["Normal"]
+    Nm = nrm_in if nrm_in is not None else Nv
+    w = None  # the rock layers' weight
+    for attr, ch in D["rock"]:
+        at = nt.nodes.new("ShaderNodeAttribute")
+        at.attribute_name = attr
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(at.outputs["Color"], sep.inputs["Color"])
+        x = at.outputs["Alpha"] if ch == 3 else sep.outputs[ch]
+        w = x if w is None else _math(nt, "ADD", w, x)
+    if D.get("strength", 1.0) != 1.0:
+        w = _math(nt, "MULTIPLY", w, D["strength"])
+    da = nt.nodes.new("ShaderNodeAttribute")
+    da.attribute_name = "_DETAIL"
+    det = _sep(nt, da.outputs["Vector"])
+    v = da.outputs["Alpha"]
+    P = _sep(nt, geo.outputs["Position"])
+    step = 2 * _m.pi / D["bins"]
+    t = _math(nt, "DIVIDE", _math(nt, "ARCTAN2", det[1], det[0]), step)
+    k0 = _math(nt, "FLOOR", t)
+    f = _math(nt, "SUBTRACT", t, k0)
+    f4 = _math(nt, "POWER", f, 4.0)
+    g4 = _math(nt, "POWER", _math(nt, "SUBTRACT", 1.0, f), 4.0)
+    wf = _math(nt, "DIVIDE", f4, _math(nt, "ADD", f4, g4))
+    up = _xyz(nt, 0.0, 0.0, 1.0)
+    side = []
+    for dk in (0.0, 1.0):
+        phi = _math(nt, "MULTIPLY", _math(nt, "ADD", k0, dk), step)
+        c, s = _math(nt, "COSINE", phi), _math(nt, "SINE", phi)
+        u = _math(nt, "ADD", _math(nt, "MULTIPLY", P[0], c), _math(nt, "MULTIPLY", P[1], s))
+        side.append(_plane_sample(nt, D, u, v, _xyz(nt, c, s, 0.0), up, Nv))
+    sa = nt.nodes.new("ShaderNodeMix")
+    sa.data_type = "RGBA"
+    nt.links.new(wf, sa.inputs["Factor"])
+    nt.links.new(side[0][0], sa.inputs["A"])
+    nt.links.new(side[1][0], sa.inputs["B"])
+    sn = _vmath(nt, "NORMALIZE", _mixv(nt, side[0][1], side[1][1], wf))
+    ta, tn = _plane_sample(nt, D, P[0], P[1], _xyz(nt, 1.0, 0.0, 0.0), _xyz(nt, 0.0, 1.0, 0.0), Nv)
+    alb = nt.nodes.new("ShaderNodeMix")
+    alb.data_type = "RGBA"
+    nt.links.new(det[2], alb.inputs["Factor"])
+    nt.links.new(ta, alb.inputs["A"])
+    nt.links.new(sa.outputs["Result"], alb.inputs["B"])
+    Nd = _vmath(nt, "NORMALIZE", _mixv(nt, tn, sn, det[2]))
+    # RNM about the vertex normal: t = Nm + Nv; u = 2 (Nd.Nv) Nv - Nd; r = t (t.u) / (t.Nv) - u
+    tt = _vmath(nt, "ADD", Nm, Nv)
+    dn = _vmath(nt, "DOT_PRODUCT", Nd, Nv)
+    uu = _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", Nv, scale=_math(nt, "MULTIPLY", dn, 2.0)), Nd)
+    tu = _vmath(nt, "DOT_PRODUCT", tt, uu)
+    tz = _vmath(nt, "DOT_PRODUCT", tt, Nv)
+    r = _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", tt, scale=_math(nt, "DIVIDE", tu, _math(nt, "MAXIMUM", tz, 1e-4))),
+               uu)
+    n_out = _vmath(nt, "NORMALIZE", _mixv(nt, Nm, _vmath(nt, "NORMALIZE", r), w))
+    dark = None
+    if lines:  # the structure's crisp lines: darker, and a groove (bump) where the crack is
+        crack, shadow = _lines(nt, D, lines, geo)
+        bump = nt.nodes.new("ShaderNodeBump")
+        bump.inputs["Distance"].default_value = 0.04
+        nt.links.new(_math(nt, "MULTIPLY", _math(nt, "ADD", crack, _math(nt, "MULTIPLY", shadow, 0.5)), -1.0),
+                     bump.inputs["Height"])
+        nt.links.new(n_out, bump.inputs["Normal"])
+        nt.links.new(w, bump.inputs["Strength"])
+        n_out = bump.outputs["Normal"]
+        dark = _math(nt, "ADD", _math(nt, "MULTIPLY", crack, 0.45), _math(nt, "MULTIPLY", shadow, 0.3))
+        if D.get("show") == "lines":  # (debug: the lines alone, unlit)
+            em = nt.nodes.new("ShaderNodeEmission")
+            nt.links.new(dark, em.inputs["Strength"])
+            out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+            nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    nt.links.new(n_out, bsdf.inputs["Normal"])
+    # albedo: base x (1 + w (2a - 1))
+    two = _vmath(nt, "SCALE", alb.outputs["Result"], scale=2.0)
+    if dark is not None:
+        two = _vmath(nt, "SCALE", two, scale=_math(nt, "SUBTRACT", 1.0, dark))
+    mod = _mixv(nt, _xyz(nt, 1.0, 1.0, 1.0), two, w)
+    mul = nt.nodes.new("ShaderNodeMix")
+    mul.data_type = "RGBA"
+    mul.blend_type = "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    nt.links.new(base_in, mul.inputs["A"])
+    nt.links.new(mod, mul.inputs["B"])
+    nt.links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
+
+
 def _upstream(sock, kind):
     """The first node of type `kind` feeding a socket (walking back through the importer's links)."""
     seen = [sock]
@@ -328,6 +564,11 @@ def run(job):
                         ob.data.materials[s] = mat
                     elif job.get("layers") and m.name not in done:
                         _layered(m, job["layers"])
+                        done.add(m.name)
+                    elif job.get("detail") and m.name not in done:
+                        stem = os.path.splitext(os.path.basename(p))[0]
+                        ln = os.path.join(os.path.dirname(p), "maps", stem + "_lines.png")
+                        _detail(m, job["detail"], ln if os.path.exists(ln) else None)
                         done.add(m.name)
                     elif ch and m.name not in done:
                         _channel(m, ch)

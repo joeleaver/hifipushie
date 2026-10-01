@@ -44,18 +44,22 @@ PERIODIC = 0.4                        # periodicity() above this: the facets rea
 _CACHE: dict = {}                     # (seed, block i, block j) -> (triangulation, heights), least recently used first
 
 
-def _seeds(lo, hi, seed):
-    """Poisson-disk seeds in the box [lo, hi] (2D, facet units) and their ids (cell i, j, candidate k)."""
+def _seeds(lo, hi, seed, period=None):
+    """Poisson-disk seeds in the box [lo, hi] (2D, facet units) and their ids (cell i, j, candidate k). period: (ni, nj)
+    cells: the candidates' hashes repeat every ni x nj cells, so the seeds (and anything built on them) tile a torus
+    ni x nj x CELL across (the tiling rock swatches, terrain_swatch); ids come back wrapped into the period."""
     m = int(np.ceil((ROUNDS + 1) * R_DISK / CELL)) + 1
     lo_c = np.floor(np.asarray(lo) / CELL).astype(np.int64) - m
     hi_c = np.floor(np.asarray(hi) / CELL).astype(np.int64) + m
-    if fieldjit.ON:  # (the same candidates and rounds, compiled: 10x+, a cache miss was ~90% this)
+    if fieldjit.ON and period is None:  # (the same candidates and rounds, compiled: 10x+, a cache miss was ~90% this)
         return fieldjit.seeds(lo_c, hi_c, lo, hi, seed, CELL, PER, R_DISK, ROUNDS)
     I, J = np.meshgrid(np.arange(lo_c[0], hi_c[0] + 1), np.arange(lo_c[1], hi_c[1] + 1), indexing="ij")
     I, J = np.repeat(I.ravel(), PER), np.repeat(J.ravel(), PER)
     K = np.tile(np.arange(PER, dtype=np.int64), len(I) // PER)
-    pts = (np.stack([I, J], 1) + np.stack([noise._hash(I, J, K, seed + 1), noise._hash(I, J, K, seed + 2)], 1)) * CELL
-    pr = noise._hash(I, J, K, seed + 3)
+    Ih, Jh = (I, J) if period is None else (np.mod(I, period[0]), np.mod(J, period[1]))
+    pts = (np.stack([I, J], 1) + np.stack([noise._hash(Ih, Jh, K, seed + 1), noise._hash(Ih, Jh, K, seed + 2)], 1)) \
+        * CELL
+    pr = noise._hash(Ih, Jh, K, seed + 3)
     pairs = cKDTree(pts).query_pairs(R_DISK, output_type="ndarray")
     a, b = pairs[:, 0], pairs[:, 1]
     state = np.zeros(len(pts), np.int8)  # 0 undecided, 1 a seed, -1 not
@@ -74,7 +78,7 @@ def _seeds(lo, hi, seed):
         near[b[win[a]]] = True
         state[und & near & ~win] = -1
     keep = (state == 1) & np.all((pts >= lo) & (pts <= hi), axis=1)
-    return pts[keep], np.stack([I, J, K], 1)[keep]
+    return pts[keep], np.stack([Ih, Jh, K], 1)[keep]
 
 
 def _triangulation(seed, gi, gj):
