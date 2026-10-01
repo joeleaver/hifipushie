@@ -360,8 +360,8 @@ def test_capabilities_are_derived_and_confined():
     assert set(ref["required"]) == {"view", "image"}
     assert caps["look"]["input_schema"]["properties"]["matcap"]["pattern"]
     expect = {"fast": ["guide", "kit_reference", "get_model", "put_model", "edit_model", "history", "revert", "measure",
-                       "clearance", "set_reference", "set_plan", "check"],
-              "slow": ["look", "compare", "fit", "rig", "style_check", "sync", "set_terrain", "check_terrain", "export",
+                       "clearance", "set_reference", "set_plan", "check", "look"],
+              "slow": ["compare", "fit", "rig", "style_check", "sync", "set_terrain", "check_terrain", "export",
                        "snapshot", "nap"],
               "very_slow": ["export_asset", "look_terrain", "export_terrain"]}
     for timing, tools in expect.items():

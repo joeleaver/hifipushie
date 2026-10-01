@@ -49,9 +49,10 @@ PROGRESS_SECS = 10.0
 # ---------------------------------------------------------------------------------------------- capabilities
 
 FAST = {"guide", "kit_reference", "get_model", "put_model", "edit_model", "history", "revert", "measure",
-        "clearance", "set_reference", "set_plan", "check"}
+        "clearance", "set_reference", "set_plan", "check",
+        "look"}  # ~10 s at the default resolution: worth waiting for inline (a big close-up becomes a task to poll)
 SLOW = {  # (documentation: anything not fast or very_slow is slow, new tools included)
-    "look", "compare", "fit", "rig", "style_check", "sync", "set_terrain", "check_terrain", "export", "snapshot"}
+    "compare", "fit", "rig", "style_check", "sync", "set_terrain", "check_terrain", "export", "snapshot"}
 VERY_SLOW = {"export_asset", "look_terrain", "export_terrain"}
 MUTATES = {"put_model", "edit_model", "revert", "set_plan", "fit", "set_reference", "set_terrain", "sync",
            "terrain_history"}  # terrain_history: only with revert_to, but it can
