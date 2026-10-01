@@ -1016,7 +1016,6 @@ def bake_maps(job):
     _device(scene, job.get("device", "CPU"))
     scene.cycles.samples = job.get("samples", 4)
     scene.render.bake.use_clear = False
-    scene.render.bake.margin = 0  # our own dilation fills around every island afterwards
     by_key = {ob["hp_key"]: ob for ob in bpy.data.objects if ob.get("hp_key")}
     highs = {}
     for pt in job["parts"]:
@@ -1029,15 +1028,41 @@ def bake_maps(job):
             highs[pt["key"]] = ob
         else:
             highs[pt["key"]] = src
-    imgs = {}
     WHAT = ("color", "rms", "aoh")  # ao and painted height share a pass (red, green)
-    for ai, size in job["atlases"].items():
-        for what in WHAT:
-            im = bpy.data.images.new(f"a{ai}_{what}", size, size, alpha=True, float_buffer=True)
+    # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
+    # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
+    # them (a box filter). Texels past a chart's edge are filled across the seam from the adjacent faces (Blender's
+    # bake margin), so bilinear filtering at the edge reads the surface beyond it, not a copy of the last texel.
+    ss = {ai: max(1, min(int(job.get("supersample", 1)), int(job.get("max_px", 8192)) // size))
+          for ai, size in job["atlases"].items()}
+    margin = {ai: int((job.get("margins") or {}).get(ai, 0)) for ai in job["atlases"]}  # texels
+
+    def new_images(what):
+        out = {}
+        for ai, size in job["atlases"].items():
+            im = bpy.data.images.new(f"a{ai}_{what}", size * ss[ai], size * ss[ai], alpha=True, float_buffer=True)
             im.colorspace_settings.name = "Non-Color"
             im.generated_color = (0, 0, 0, 0)
-            imgs[(ai, what)] = im
-    lows = {pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
+            out[ai] = im
+        return out
+
+    def read(ai, im):
+        """The image as (size, size, 4) rows top first, ss x ss blocks averaged over the points baked (alpha
+        weighted; alpha = the share baked)."""
+        n, s = job["atlases"][ai], ss[ai]
+        a = np.empty((n * s) ** 2 * 4, np.float32)
+        im.pixels.foreach_get(a)
+        a = a.reshape(n * s, n * s, 4)[::-1]  # Blender's rows start at the bottom
+        if s == 1:
+            return a
+        w = (a[..., 3:] > 0).astype(np.float32)
+        b = (a * w).reshape(n, s, n, s, 4).sum((1, 3))
+        cnt = w.reshape(n, s, n, s, 1).sum((1, 3))
+        out = np.zeros((n, n, 4), np.float32)
+        out[..., :3] = b[..., :3] / np.maximum(cnt, 1)
+        out[..., 3] = cnt[..., 0] / (s * s)
+        return out
+    lows ={pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
     bm = bpy.data.materials.new("hp_bake_target")
     bm.use_nodes = True
     tex = bm.node_tree.nodes.new("ShaderNodeTexImage")
@@ -1048,9 +1073,11 @@ def bake_maps(job):
     # Rays only ever hit the selected high mesh, so what the others would add is set-up time, not texels.
     everything = list(scene.objects)
     times = {}
+    res = {ai: {} for ai in job["atlases"]}
     for what in WHAT:
         for m in {mat for ob in highs.values() for mat in ob.data.materials if mat}:
             _emit(m, what)
+        imgs = new_images(what)  # one pass's images at a time (supersampled ones are big)
         t1 = time.time()
         for i, pt in enumerate(job["parts"]):
             hi, lo = highs[pt["key"]], lows[pt["key"]]
@@ -1058,20 +1085,24 @@ def bake_maps(job):
                 ob.hide_render = ob is not hi and ob is not lo
                 ob.select_set(False)
             hi.hide_render = lo.hide_render = False
-            tex.image = imgs[(str(pt["atlas"]), what)]
+            ai = str(pt["atlas"])
+            tex.image = imgs[ai]
             hi.select_set(True)
             lo.select_set(True)
             bpy.context.view_layer.objects.active = lo
+            # the margin reaches at most half the gap between islands, so one part's margin never covers the
+            # texels of another part baked before it (use_clear False)
             bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=pt["extrusion"],
-                                max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES")
+                                max_ray_distance=pt["ray"], margin=margin[ai] * ss[ai], margin_type="ADJACENT_FACES",
+                                use_clear=False, target="IMAGE_TEXTURES")
             print(f"@@progress {what} {i + 1}/{len(job['parts'])} {pt['key']} {time.time() - t1:.0f}s", flush=True)
+        for ai, im in imgs.items():
+            res[ai][what] = read(ai, im)
+            bpy.data.images.remove(im)
         times[what] = round(time.time() - t1, 1)
+    times["supersample"] = sorted(set(ss.values()))
     for ai, size in job["atlases"].items():
-        out = {}
-        for what in WHAT:
-            a = np.empty(size * size * 4, np.float32)
-            imgs[(ai, what)].pixels.foreach_get(a)
-            out[what] = a.reshape(size, size, 4)[::-1]  # Blender's rows start at the bottom
+        out = res[ai]
         aoh = out.pop("aoh")
         out["ao"] = aoh[..., [0, 0, 0, 3]]
         out["height"] = aoh[..., [1, 1, 1, 3]]

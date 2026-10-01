@@ -321,6 +321,36 @@ def test_logmap_heat_vs_dem():
         decalmap.METHOD = old
 
 
+def test_chart_border_steps():
+    """asset.seam_steps on a square cut into two charts along x = 0 (packed apart, at different sub-texel phases):
+    a map that is the surface's own function on both sides (texels past each chart's edge extrapolated, as
+    `rasterize(ring=)` gives them) reads ~1 (measured 1.0); one chart a texel off reads over twice that (2.3)."""
+    from hifipushie import asset
+    S = 64
+    # 3D: two triangles sharing the edge (0, 0)-(0, 1) in the z = 0 plane, 4 cm across
+    V = np.array([[0, 0, 0], [0, 0.04, 0], [-0.04, 0.02, 0], [0.04, 0.02, 0]], float)
+    cv = np.array([0, 1, 2, 0, 3, 1])
+    k = 20 / S / 0.04  # 20 texels across 4 cm
+    uvA = np.array([[0.40, 0.2], [0.40, 0.2 + 0.04 * k], [0.40 - 0.04 * k, 0.2 + 0.02 * k]])
+    uvB = np.array([[0.55 + 0.3 / S, 0.25 + 0.37 / S]] * 3) + np.array([[0, 0], [0, 0.04 * k], [0.04 * k, 0.02 * k]])
+    part = {"verts": V, "corner_vert": cv, "uv": np.concatenate([uvA, uvB]), "atlas": 0}
+
+    def bake(ring, shift_b=0.0):
+        (ys, xs), tri, bary, _, _, _ = asset.rasterize({"p": part}, S, ring=ring)
+        P = np.einsum("nk,nkc->nc", bary, V[cv.reshape(-1, 3)][tri])
+        y = P[:, 1] + 0.7 * P[:, 0] + np.where(tri == 1, shift_b, 0.0)  # an edge crossing the seam at a slant
+        val = 1 / (1 + np.exp(-(y - 0.0213) / 0.0015))  # an edge across the seam, about a texel wide
+        img = np.zeros((S, S, 3))
+        img[ys, xs] = val[:, None]
+        filled = np.zeros((S, S), bool)
+        filled[ys, xs] = True
+        return asset._dilate(img, filled)
+    good = asset.seam_steps(part, bake(2))["excess"]
+    off = asset.seam_steps(part, bake(2, shift_b=0.04 / 20))["excess"]  # chart B a texel off
+    assert 0.7 < good < 1.3, good
+    assert off > 2.0 * good, (good, off)
+
+
 def test_wrap_mask_and_nodes():
     p = _png("lr8.png", LR)
     spec = _can(file=str(p), wrap="cylinder", at="can", size=[0.17, 0.08])
