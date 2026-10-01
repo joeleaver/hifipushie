@@ -125,13 +125,31 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   seated centre (reach 1.3 x half diagonal, <= 160 voxels across; the box padded past the model's own bounds: cut at
   them, a ball's front pole had a hole), cached `_images/m_<key>.npz`; a point is looked up on its nearest triangle.
   In the scene u, v, weight are measured per vertex (fallback kind "decal", three packed scalars) and the picture
-  sampled per pixel. Against the sphere's exact log map: radius error < 0.5%, angle drift up to ~2 deg at 0.6 rad
-  (a 12 cm sticker on an 11 cm-radius ball: grid lines wobble slightly). `images.footprint` = the decal as it lies
+  sampled per pixel. Since 2026-10-01 the default is the vector heat method's log map (potpourri3d, dependency;
+  `decalmap.METHOD`/`LOGMAP` "AffineLocal"; potpourri's default "VectorHeat" strategy was worse than the DEM: 2.5-5
+  deg, 4-9% radius): the mesh vertex nearest the centre moved onto it (splitting its face to insert the centre left
+  a T-junction: angles flipped 180 deg on one side), only the centre's connected piece, the library's tangent basis
+  carried onto right/up by a Procrustes fit next to the centre. Against the sphere's exact log map (16 cm sticker,
+  10 cm ball, off-axis): angle <= 0.12 deg out to 0.8 rad (DEM 1.85), radius <= 0.25% (0.38), 3.5-5 s a placement
+  (DEM 0.4-2 s). The DEM stays as the fallback (no potpourri3d). Renders f02_*. `images.footprint` = the decal as it lies
   on the surface; `asset.decal_focus` covers it with spheres (one round it, or greedy ones of the decal's smaller
   side for a wrap: one round a can took the whole can) and now does prefab parts / split slabs too (decals reaching
   their mesh as it stands at the bake instance). `"style": true` = the image through the paint style's HSV
   (`images.styled_path`, a cached `s_<key>.png`). Examples `examples/image_wraps_src.py` (wrap_mug, wrap_bottle,
   wrap_sticker), images from `examples/images/make_images.py` (label, neck, sticker).
+  Decals in the Blender scene (2026-10-01, renders f03_*): `scene.decal_gizmos` gives every image entry (entries
+  alike in `images.PLACE_KEYS` share one: a picture, its impasto and brushwork) a wire object (`images.gizmo`:
+  planar/surface at the centre, axes right/up/dir, scaled by the size; wraps on the axis at the label's height,
+  x = toward the centre, z = the axis, scaled by the height; collection "decals", hide_render), stamped `hp_set`.
+  `pull` -> `scene._pull_decals` -> `images.from_gizmo`: each of position/orientation/size counts only if it moved
+  from the stamp, then is ABSOLUTE (the decal goes where the gizmo is; pulling twice changes nothing: a relative
+  version double-applied when a headless pull wasn't followed by a sync). A decal at a joint/blob comes back as
+  `"offset"` (new image key, world axes, added after a blob's face seat) while within its own larger side of where
+  the anchor puts it (it keeps riding the blob through model edits), else as a world `at` with dir/up/axis written
+  out; a spin about the normal as `rotate`, a tilt as dir/up (a surface sticker keeps only the spin); a wrap's turn
+  round its axis as dir, a tilt as axis, a scale as span/size. A placement that no longer works (a label moved past
+  a mug's cut rim) is logged and left. A cylinder wrap's taper probes step in to 0.25/0.1 h where the surface ends.
+  Tested headless through the Blender MCP add-on (move, pull, sync, second pull empty) and in tests/test_images.py.
 - `materials.py`: `{"material": ...}` paint layers expand (`paint.layers`) into sub-layers `<name>:<sub>` built
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first
@@ -183,7 +201,16 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   xatlas (tried 2026-09-25) mixed islands up when packed together (0.0.11 binding) and gained ~10% where it
   worked: dropped. Ray misses (~5%) are 84% edge texels (centre outside the triangle: Blender bakes centres only,
   dilation fills them); the rest are low-poly faces bridging gaps (between books, slats, window frames), logged
-  per part.
+  per part. Chart borders (2026-10-01, the wrapped mug's label stepped a texel at a seam, renders f01_*): Cycles
+  bakes one point per texel centre, unfiltered, so a sharp printed edge landed on each chart's own texel grid, and
+  texels past an island's edge were nearest-copied. Now `bake_maps` bakes `BAKE_SS` 2 x 2 points per texel (box
+  filter by alpha; skipped past `BAKE_SS_PX` 8192, one pass's images at a time), its margin is Blender's
+  ADJACENT_FACES at half the island gap (filled across the seam; never onto a part baked before), and our own maps
+  extrapolate each triangle a ring past its island's edge (`rasterize(ring=)`; slivers under 0.5 texel clamp).
+  `seam_steps` (export report `parts.<p>.seams`, WARNING over `SEAM_LIMIT` 1.5): along every seam edge the step
+  across (half a texel into each chart, bilinear) vs the steps beside; mug 2.57 -> 0.89. What's left (~0.1 texel at
+  4x zoom) is bilinear reconstruction of a sub-texel edge at each chart's own phase: a texture made analytically from
+  the low poly's own z shows the same. `asset.preview(denoise=False)` for texture close-ups.
 - `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
   Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
   modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit
