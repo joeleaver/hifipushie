@@ -1,0 +1,10 @@
+# Only what Dockerfile.sculpt copies: the project (pyproject, uv.lock, src) and the staged asset packs.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!README.md
+!src/
+!docker/assets/
+**/__pycache__
+**/*.pyc

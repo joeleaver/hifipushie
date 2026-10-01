@@ -74,6 +74,40 @@ Point the client at the checkout with an absolute path, and give models a fixed 
 }
 ```
 
+## Run as an oxidegen artist
+
+hifipushie can also be the `sculpt` artist of an [oxidegen](https://oxidegen.jkbase.app) Art Department, as a
+local runner on your machine. Mint a runner token in oxidegen (Account -> Tokens), then from the checkout:
+
+```sh
+OXIDEGEN_RUNNER_TOKEN=<token> uv run hifipushie-artist
+```
+
+(or put the token in `~/.config/hifipushie/runner-token`). The runner dials out to the department and pulls work;
+nothing listens on your machine. Options: `--url` (`OXIDEGEN_URL`, default https://oxidegen.jkbase.app), `--name`
+(default the hostname), `--work-root` (session workspaces, default `~/.cache/hifipushie-artist`), `--assets` (the
+GNM/MakeHuman packs; default `$HIFIPUSHIE_ASSETS`, else `./workspace/_templates`). `--capabilities` prints what it
+offers and exits.
+
+Each department session works on one model or terrain in its own workspace (deleted when the session closes), in a
+worker process the department can cancel (Blender included). Tools take no `name` and no host paths: reference
+images arrive as library versions, exports go back as files. The live-Blender socket is off in runner mode
+(`HIFIPUSHIE_NO_LIVE=1`). Standalone use (`hifipushie-mcp`) is unchanged.
+
+### Hosted runner image
+
+`Dockerfile.sculpt` is the image a department rents a GPU box for (one session per box, destroyed after):
+Ubuntu 24.04, the official Blender 5.1.2 (sha256-checked), hifipushie from `uv.lock`, and the GNM (Apache-2.0) and
+MakeHuman (CC0) packs at `/opt/hifipushie-assets`. Build and push with `docker/build-sculpt.sh [--push]` (it stages
+the packs from `$HIFIPUSHIE_ASSETS` or `./workspace/_templates`, fetching what's missing by checksum; tag = the git
+short sha). Its CMD is `hifipushie-artist` in hosted mode, configured only by env: `OXIDEGEN_URL`,
+`OXIDEGEN_RUNNER_TOKEN`, `OXIDEGEN_RUNNER_NAME`, plus `NVIDIA_DRIVER_CAPABILITIES=all` so the NVIDIA runtime adds
+the driver's EGL (EEVEE renders headless through it). It runs as a non-root user with sessions under `/work`, logs to
+stdout, opens no ports, and exits 77 if the department refuses its token (other failures: retried with backoff).
+At start it renders a 64 px cube in Workbench and EEVEE and reports the result in its registration `equipment`
+(`eevee`, `workbench`, `gpu_renderer`); without a usable GPU (Mesa llvmpipe) painted looks (`look`, `style_check`)
+are marked `needs.gpu` and the instructions say to use clay looks.
+
 ## Models and examples
 
 Models live in `workspace/<name>/` under the directory the server runs in (override with `HIFIPUSHIE_HOME`):

@@ -139,6 +139,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -399,9 +400,11 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         raise SpecError(f"paint {name!r}: rings is {{\"spacing\"?: m, \"warp\"?: 0..1, \"range\"?: [lo, hi], \"seed\"?}}")
     if g == "random" and not (isinstance(e[g], dict) and set(e[g]) <= {"range", "seed"}):
         raise SpecError(f"paint {name!r}: random is {{\"range\"?: [lo, hi], \"seed\"?: n}}: one value per element")
-    if g == "painted" and not (isinstance(e[g], str) and (e[g] == "new" or painted_path(e[g]).exists())):
+    if g == "painted" and not (isinstance(e[g], str) and (e[g] == "new" or (
+            re.fullmatch(r"[0-9a-f]{16}", e[g]) and painted_path(e[g]).exists()))):
+        from . import store
         raise SpecError(f"paint {name!r}: painted is the id of a hand-painted mask (a point cloud `pull` stores "
-                        f"under {painted_path('<id>')}), or \"new\" to start one; {e[g]!r} isn't one")
+                        f"under {store.HOME / '_painted'}/<id>.npz), or \"new\" to start one; {e[g]!r} isn't one")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
     if g in ("ao", "thickness", "sky") and not (isinstance(e[g], list) and len(e[g]) == 2):
@@ -736,7 +739,11 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
 # under workspace/_painted/<id>.npz, so it survives re-meshing and every spec in history keeps its own.
 
 def painted_path(pid: str) -> Path:
+    """Where a hand-painted mask lives. The id comes from the spec, so it must be a content id (save_painted's 16 hex
+    digits), never a path: "../x" would otherwise reach outside the workspace (artist contract, specs are data)."""
     from . import store
+    if not (isinstance(pid, str) and re.fullmatch(r"[0-9a-f]{16}", pid)):
+        raise SpecError(f"hand-painted mask id {pid!r} isn't one (16 hex digits, as pull stores them)")
     return store.HOME / "_painted" / f"{pid}.npz"
 
 

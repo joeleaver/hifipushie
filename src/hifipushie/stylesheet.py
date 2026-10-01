@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +28,9 @@ _CACHE: dict = {}
 
 
 def _paths(name: str) -> list[Path]:
+    # the name comes from the spec (style.sheet): a plain name, never a path ("../../x" read any JSON on the host)
+    if not (isinstance(name, str) and re.fullmatch(r"[a-z0-9_]+", name)):
+        raise ValueError(f"style sheet {name!r}: a sheet name is lowercase letters, digits and _ (sheets: {names()})")
     home = Path(os.environ.get("HIFIPUSHIE_HOME", "workspace"))
     return [home / "_styles" / f"{name}.json", HERE / f"{name}.json"]
 
