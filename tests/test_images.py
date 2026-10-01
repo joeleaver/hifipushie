@@ -279,6 +279,48 @@ def test_surface_map_on_sphere():
     assert inside.any() and (w[inside] > 0.99).all() and (w[d[:, 1] > 0] == 0).all()
 
 
+def _logmap_errors(m, fr, c0, R, alphas):
+    """(max |angle error| deg, max |radius error| share) per geodesic angle alpha against the sphere's exact log map."""
+    from hifipushie import decalmap
+    n0, r, u = (np.array(fr[k]) for k in ("dir", "right", "up"))
+    out = []
+    for al in alphas:
+        beta = np.linspace(0, 2 * np.pi, 32, endpoint=False)
+        q = c0 + R * (np.cos(al) * n0 + np.sin(al) * (np.cos(beta)[:, None] * r + np.sin(beta)[:, None] * u))
+        U, _, _ = decalmap.lookup(m, q)
+        ang = np.degrees(np.angle(np.exp(1j * (np.arctan2(U[:, 1], U[:, 0]) - beta))))
+        out.append((np.abs(ang).max(), np.abs(np.linalg.norm(U, axis=1) / (R * al) - 1).max()))
+    return out
+
+
+def test_logmap_heat_vs_dem():
+    """The vector heat log map (potpourri3d) against the sphere's exact one, off-axis with a turned up, and the
+    discrete exponential map it replaced (still the fallback)."""
+    from hifipushie import decalmap
+    p = _png("lr10.png", LR)
+    spec = {"symmetry": False, "blend": 0.0, "parts": {"ball": {}},
+            "blobs": {"ball": {"shape": "ellipsoid", "at": [0, 0.5, 0], "size": [0.1, 0.1, 0.1], "part": "ball"}},
+            "paint": {"pic": {"part": "ball", "color": "image",
+                              "image": {"file": str(p), "wrap": "surface", "at": [0.013, 0.3, 0.021],
+                                        "size": [0.16, 0.16], "up": [0.3, 0, 1]}}}}
+    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
+    prims = images._PRIMS[fr["geo"]]
+    c0, R = np.array([0, 0.5, 0]), 0.1
+    assert decalmap.method() == "heat"
+    heat = _logmap_errors(decalmap.build(prims, fr, "heat"), fr, c0, R, (0.2, 0.4, 0.6, 0.8))
+    dem = _logmap_errors(decalmap.build(prims, fr, "dem"), fr, c0, R, (0.2, 0.4, 0.6, 0.8))
+    assert all(a < 0.3 and r < 0.004 for a, r in heat), heat  # measured <= 0.12 deg, 0.25%
+    assert all(a < 2.5 and r < 0.006 for a, r in dem), dem  # measured 1.85 deg at 0.8 rad
+    assert heat[-1][0] < 0.25 * dem[-1][0]  # the drift at the decal's corners is gone
+    # the fallback is what runs without the library
+    old = decalmap.METHOD
+    try:
+        decalmap.METHOD = "dem"
+        assert decalmap.method() == "dem"
+    finally:
+        decalmap.METHOD = old
+
+
 def test_wrap_mask_and_nodes():
     p = _png("lr8.png", LR)
     spec = _can(file=str(p), wrap="cylinder", at="can", size=[0.17, 0.08])
