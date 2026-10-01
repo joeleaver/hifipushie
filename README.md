@@ -94,6 +94,20 @@ worker process the department can cancel (Blender included). Tools take no `name
 images arrive as library versions, exports go back as files. The live-Blender socket is off in runner mode
 (`HIFIPUSHIE_NO_LIVE=1`). Standalone use (`hifipushie-mcp`) is unchanged.
 
+### Hosted runner image
+
+`Dockerfile.sculpt` is the image a department rents a GPU box for (one session per box, destroyed after):
+Ubuntu 24.04, the official Blender 5.1.2 (sha256-checked), hifipushie from `uv.lock`, and the GNM (Apache-2.0) and
+MakeHuman (CC0) packs at `/opt/hifipushie-assets`. Build and push with `docker/build-sculpt.sh [--push]` (it stages
+the packs from `$HIFIPUSHIE_ASSETS` or `./workspace/_templates`, fetching what's missing by checksum; tag = the git
+short sha). Its CMD is `hifipushie-artist` in hosted mode, configured only by env: `OXIDEGEN_URL`,
+`OXIDEGEN_RUNNER_TOKEN`, `OXIDEGEN_RUNNER_NAME`, plus `NVIDIA_DRIVER_CAPABILITIES=all` so the NVIDIA runtime adds
+the driver's EGL (EEVEE renders headless through it). It runs as a non-root user with sessions under `/work`, logs to
+stdout, opens no ports, and exits 77 if the department refuses its token (other failures: retried with backoff).
+At start it renders a 64 px cube in Workbench and EEVEE and reports the result in its registration `equipment`
+(`eevee`, `workbench`, `gpu_renderer`); without a usable GPU (Mesa llvmpipe) painted looks (`look`, `style_check`)
+are marked `needs.gpu` and the instructions say to use clay looks.
+
 ## Models and examples
 
 Models live in `workspace/<name>/` under the directory the server runs in (override with `HIFIPUSHIE_HOME`):

@@ -45,6 +45,8 @@ ARTIST = "sculpt"
 DEFAULT_URL = "https://oxidegen.jkbase.app"
 SAFE_NAME = re.compile(r"[A-Za-z0-9_\-]+")
 PROGRESS_SECS = 10.0
+EXIT_UNAUTHORIZED = 77  # the department refused the token: don't retry (systemd: RestartPreventExitStatus)
+DISCONNECTED = "This computer was disconnected; run hifipushie-artist setup to connect again."
 
 # ---------------------------------------------------------------------------------------------- capabilities
 
@@ -61,6 +63,7 @@ NO_BLENDER = FAST | {"compare", "fit", "set_terrain", "check_terrain", "export",
 IMAGES = {"look", "set_reference", "compare", "fit", "set_plan", "check", "rig", "export_asset", "look_terrain",
           "snapshot"}
 FILES = {"export", "export_asset", "export_terrain", "snapshot"}
+PAINTED = {"look", "style_check"}  # render the Blender scene in EEVEE by default (painted looks; style colours)
 
 # Left out of the department: they list or reach the host (every model on this machine; the person's Blender).
 EXCLUDE = {"list_models": "lists every model on this machine, not the session's subject",
@@ -221,6 +224,19 @@ class Config:
     assets: str | None = None
     mode: str = "local"
     preload: list = field(default_factory=list)
+    probe: bool = False  # run the GPU/EEVEE readiness probe before registering (hosted boxes)
+
+
+def hosted_config(env=None) -> Config:
+    """A hosted box's config: env only (no token file, no flags needed). Raises ValueError naming what's missing."""
+    env = os.environ if env is None else env
+    missing = [k for k in ("OXIDEGEN_URL", "OXIDEGEN_RUNNER_TOKEN") if not env.get(k, "").strip()]
+    if missing:
+        raise ValueError(f"hosted mode needs {' and '.join(missing)} in the environment")
+    return Config(url=env["OXIDEGEN_URL"].strip(), token=env["OXIDEGEN_RUNNER_TOKEN"].strip(),
+                  name=env.get("OXIDEGEN_RUNNER_NAME", "").strip() or f"hosted-{socket.gethostname()}",
+                  work_root=Path(env.get("HIFIPUSHIE_ARTIST_WORK") or "/work").expanduser(),
+                  assets=env.get("HIFIPUSHIE_ASSETS") or None, mode="hosted", probe=True)
 
 
 def _token(arg: str | None, token_file: str | None) -> str:
@@ -228,7 +244,7 @@ def _token(arg: str | None, token_file: str | None) -> str:
         return arg.strip()
     if os.environ.get("OXIDEGEN_RUNNER_TOKEN"):
         return os.environ["OXIDEGEN_RUNNER_TOKEN"].strip()
-    p = Path(token_file or "~/.config/hifipushie/runner-token").expanduser()
+    p = Path(token_file).expanduser() if token_file else token_path()
     if p.exists():
         return p.read_text().strip()
     return ""
@@ -252,6 +268,10 @@ class HTTPError(Exception):
         super().__init__(f"HTTP {status}: {body[:300]}")
         self.status = status
         self.body = body
+
+
+class Unauthorized(Exception):
+    """The department refused the runner's token (401/403): retrying won't help."""
 
 
 class Department:
@@ -394,7 +414,16 @@ class Runner:
         self.cfg = cfg
         self.dept = Department(cfg.url, cfg.token)
         self.caps, self.left_out = capabilities(cfg.preload)
+        self.gpu = gpu_probe() if cfg.probe else None
+        if self.gpu is not None:
+            log.info("GPU probe: eevee %s, workbench %s (%s)", self.gpu["eevee"], self.gpu["workbench"],
+                     self.gpu.get("renderer") or "no renderer")
+            if self.gpu["eevee"] != "ok":
+                for c in self.caps:
+                    if c["tool"] in PAINTED:
+                        c["needs"]["gpu"] = True
         self.cap_of = {c["tool"]: c for c in self.caps}
+        self.exit_code = 0
         self.runner_id: str | None = None
         self.heartbeat_secs = 15.0
         self.poll_secs = 25.0
@@ -411,10 +440,19 @@ class Runner:
     # -- registration and heartbeat
 
     def register(self):
+        eq = equipment(self.cfg.work_root)
+        if self.gpu is not None:
+            eq.update(eevee=self.gpu["eevee"], workbench=self.gpu["workbench"], gpu_renderer=self.gpu.get("renderer"),
+                      gpu_backend=self.gpu.get("backend"))
         body = {"name": self.cfg.name, "artist": ARTIST, "artist_version": artist_version(), "contract": CONTRACT,
-                "mode": self.cfg.mode, "equipment": equipment(self.cfg.work_root), "capabilities": self.caps,
-                "instructions": instructions()}
-        r = self.dept.request("POST", "/v1/runners/register", body)
+                "mode": self.cfg.mode, "equipment": eq, "capabilities": self.caps,
+                "instructions": instructions() + gpu_note(self.gpu)}
+        try:
+            r = self.dept.request("POST", "/v1/runners/register", body)
+        except HTTPError as e:
+            if e.status in (401, 403):
+                raise Unauthorized(f"the department refused this runner's token (HTTP {e.status}: {e.body[:200]})")
+            raise
         self.runner_id = r["runner_id"]
         self.heartbeat_secs = float(r.get("heartbeat_secs") or 15)
         self.poll_secs = float(r.get("poll_secs") or 25)
@@ -423,6 +461,8 @@ class Runner:
         if self.session:  # re-registering ends the department's side of it ("runner_restarted")
             log.info("re-registered: dropping session %s", self.session.id)
             self._drop_session()
+        write_status({"state": "registered", "runner_id": self.runner_id, "name": self.cfg.name,
+                      "url": self.cfg.url, "at": time.time()})
         log.info("registered %s as runner %s (%d capabilities; left out: %s)", self.cfg.name, self.runner_id,
                  len(self.caps), ", ".join(f"{k} ({v})" for k, v in self.left_out.items()) or "none")
 
@@ -438,7 +478,7 @@ class Runner:
             try:
                 r = self.dept.request("POST", f"/v1/runners/{rid}/heartbeat", body) or {}
             except HTTPError as e:
-                if e.status in (401, 404):
+                if e.status in (401, 403, 404):  # (re-registering tells a revoked token from a forgotten runner)
                     self.need_register.set()
                 log.warning("heartbeat: %s", e)
                 continue
@@ -460,8 +500,14 @@ class Runner:
                 task = self.dept.request("POST", f"/v1/runners/{self.runner_id}/next", {},
                                          timeout=self.poll_secs + 15)
                 backoff = 1.0
+            except Unauthorized as e:
+                log.error("%s: stopping", e)
+                write_status({"state": "unauthorized", "name": self.cfg.name, "url": self.cfg.url,
+                              "at": time.time(), "error": str(e)})
+                self.exit_code = EXIT_UNAUTHORIZED
+                break
             except HTTPError as e:
-                if e.status in (401, 404):
+                if e.status in (401, 403, 404):
                     log.warning("department forgot this runner (%s): registering again", e.status)
                     self.need_register.set()
                 else:
@@ -792,11 +838,13 @@ def artist_version() -> str:
         v = version("hifipushie")
     except PackageNotFoundError:
         v = "?"
-    try:
-        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent,
-                             capture_output=True, text=True, timeout=5).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        sha = ""
+    sha = os.environ.get("HIFIPUSHIE_GIT_SHA", "")  # (the hosted image has no git)
+    if not sha:
+        try:
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent,
+                                 capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            sha = ""
     return f"hifipushie {v}" + (f" (git {sha})" if sha else "")
 
 
@@ -831,41 +879,164 @@ def equipment(work_root: Path) -> dict:
             "os": platform.platform()}
 
 
-def main(argv: list[str] | None = None):
-    ap = argparse.ArgumentParser(prog="hifipushie-artist", description=__doc__.split("\n\n")[0])
-    ap.add_argument("--url", default=os.environ.get("OXIDEGEN_URL", DEFAULT_URL), help="the department (OXIDEGEN_URL)")
+SOFTWARE_GL = ("llvmpipe", "softpipe", "swrast", "lavapipe", "software rasterizer")
+
+
+def gpu_probe(timeout: float = 300.0) -> dict:
+    """Can this box's Blender render headless? A 64 px cube in Workbench (clay looks) and EEVEE (painted looks),
+    run the way hifipushie runs Blender. {"workbench": "ok" | why, "eevee": "ok" | why, "renderer", "backend", ...}.
+    EEVEE on a software rasterizer (Mesa llvmpipe: no usable GPU) counts as unavailable: painted looks would take
+    minutes."""
+    import tempfile
+    from .render import BLENDER as BL
+    script = Path(__file__).with_name("blender_probe.py")
+    with tempfile.TemporaryDirectory(prefix="hifipushie-probe-") as tmp:
+        try:
+            r = subprocess.run([BL, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(script),
+                                "--", tmp], capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as e:
+            why = f"blender didn't run: {e}"[:300]
+            return {"workbench": why, "eevee": why}
+    line = next((l for l in r.stdout.splitlines() if l.startswith("@@probe ")), None)
+    if line is None:
+        tail = " ".join((r.stdout + r.stderr).strip().splitlines()[-4:])
+        why = f"blender exited {r.returncode} without a result: {tail}"[:500]
+        return {"workbench": why, "eevee": why}
+    res = json.loads(line[len("@@probe "):])
+    renderer = (res.get("renderer") or "").lower()
+    if res.get("eevee") == "ok" and any(s in renderer for s in SOFTWARE_GL):
+        res["eevee"] = f"software rendering only ({res.get('renderer')}): no usable GPU for EEVEE"
+    return res
+
+
+def gpu_note(gpu: dict | None) -> str:
+    """What the department/LLM must know when this box can't render painted looks (empty when it can)."""
+    if gpu is None or gpu.get("eevee") == "ok":
+        return ""
+    note = (f"\nTHIS BOX HAS NO EEVEE ({gpu['eevee']}): painted looks are unavailable here. look with paint=true "
+            "(the default, shading clay/flat) and style_check with colours=true (the default) will fail or crawl; "
+            "use look(paint=false) or shading raking/curvature, and style_check(colours=false).")
+    if gpu.get("workbench") != "ok":
+        note += f" Clay looks are unavailable too (Workbench: {gpu['workbench']}): no look renders on this box."
+    return note
+
+
+COMMANDS = ("run", "setup", "login", "logout", "install", "uninstall", "status")
+
+
+def run_parser(prog: str = "hifipushie-artist") -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(prog=prog, description=__doc__.split("\n\n")[0],
+                                 epilog="other commands: " + ", ".join(COMMANDS[1:]) + " (hifipushie-artist <command> -h)")
+    ap.add_argument("--mode", choices=("local", "hosted"), default=os.environ.get("OXIDEGEN_RUNNER_MODE") or "local",
+                    help="local (default; your machine) or hosted (a department-rented box: config from env only, "
+                         "OXIDEGEN_RUNNER_MODE)")
+    ap.add_argument("--url", default=None, help="the department (OXIDEGEN_URL, else the saved one, else "
+                                                f"{DEFAULT_URL})")
     ap.add_argument("--token", default=None, help="runner token (default $OXIDEGEN_RUNNER_TOKEN, else --token-file)")
     ap.add_argument("--token-file", default=None, help="default ~/.config/hifipushie/runner-token")
-    ap.add_argument("--name", default=os.environ.get("HIFIPUSHIE_ARTIST_NAME") or socket.gethostname(),
-                    help="runner name, stable per machine (default: hostname)")
-    ap.add_argument("--work-root", default=os.environ.get("HIFIPUSHIE_ARTIST_WORK")
-                    or "~/.cache/hifipushie-artist", help="session workspaces live under here")
+    ap.add_argument("--name", default=None, help="runner name, stable per machine (default: the saved one, else the "
+                                                 "hostname)")
+    ap.add_argument("--work-root", default=None, help="session workspaces live under here (HIFIPUSHIE_ARTIST_WORK, "
+                                                      "default ~/.cache/hifipushie-artist)")
     ap.add_argument("--assets", default=None, help="third-party asset packs (default $HIFIPUSHIE_ASSETS, else "
                                                    "./workspace/_templates or $HIFIPUSHIE_HOME/_templates)")
     ap.add_argument("--capabilities", action="store_true", help="print the capabilities and exit")
     ap.add_argument("-v", "--verbose", action="store_true")
-    a = ap.parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
+    return ap
+
+
+def _logging(verbose: bool = False):
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO, stream=sys.stdout,
                         format="%(asctime)s %(levelname)s %(message)s")
+
+
+def local_config(a) -> Config:
+    """A local runner's config: flags, then env, then what `setup` saved (runner.json), then defaults."""
+    saved = saved_settings()
+    url = a.url or os.environ.get("OXIDEGEN_URL") or saved.get("url") or DEFAULT_URL
+    name = a.name or os.environ.get("HIFIPUSHIE_ARTIST_NAME") or saved.get("name") or socket.gethostname()
+    work = a.work_root or os.environ.get("HIFIPUSHIE_ARTIST_WORK") or "~/.cache/hifipushie-artist"
+    return Config(url=url, token=_token(a.token, a.token_file), name=name, work_root=Path(work).expanduser(),
+                  assets=a.assets or _assets_default())
+
+
+def config_dir() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser() / "hifipushie"
+
+
+def token_path() -> Path:
+    return config_dir() / "runner-token"
+
+
+def status_path() -> Path:
+    """The runner's own last state (`setup` waits on it): $XDG_STATE_HOME/hifipushie/runner-status.json."""
+    return Path(os.environ.get("XDG_STATE_HOME") or "~/.local/state").expanduser() / "hifipushie" / "runner-status.json"
+
+
+def write_status(d: dict) -> None:
+    try:
+        p = status_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps(d))
+        tmp.replace(p)
+    except OSError as e:
+        log.debug("status file: %s", e)
+
+
+def saved_settings() -> dict:
+    try:
+        return json.loads((config_dir() / "runner.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def main(argv: list[str] | None = None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] in COMMANDS[1:]:
+        from . import artist_setup
+        sys.exit(artist_setup.main(argv))
+    if argv and argv[0] == "run":
+        argv = argv[1:]
+    a = run_parser().parse_args(argv)
+    _logging(a.verbose)
     if a.capabilities:
         caps, left = capabilities()
         print(json.dumps({"capabilities": caps, "left_out": left}, indent=1))
         return
-    token = _token(a.token, a.token_file)
-    if not token:
-        sys.exit("no runner token: set OXIDEGEN_RUNNER_TOKEN or write it to ~/.config/hifipushie/runner-token "
-                 "(mint one under Account -> Tokens in oxidegen)")
-    cfg = Config(url=a.url, token=token, name=a.name, work_root=Path(a.work_root).expanduser(),
-                 assets=a.assets or _assets_default())
+    if a.mode == "hosted":
+        try:
+            cfg = hosted_config()
+        except ValueError as e:
+            log.error("%s", e)
+            sys.exit(2)
+        for flag in ("url", "token", "token_file", "name", "work_root"):
+            if getattr(a, flag):
+                log.warning("hosted mode takes its config from the environment: --%s ignored", flag.replace("_", "-"))
+    else:
+        cfg = local_config(a)
+        if not cfg.token:
+            log.error("no runner token (none in OXIDEGEN_RUNNER_TOKEN or %s). %s", token_path(), DISCONNECTED)
+            sys.exit(EXIT_UNAUTHORIZED)
     if not cfg.assets:
         log.warning("no asset packs found (GNM, MakeHuman): bases with heads/bodies from them will fail; "
                     "pass --assets or set HIFIPUSHIE_ASSETS")
+    log.info("hifipushie-artist (%s, %s mode) -> %s as %s", artist_version(), cfg.mode, cfg.url, cfg.name)
     runner = Runner(cfg)
     signal.signal(signal.SIGTERM, lambda *_: runner.stop.set())
     try:
         runner.run()
     except KeyboardInterrupt:
         runner.shutdown()
+    if runner.exit_code == EXIT_UNAUTHORIZED:
+        if cfg.mode == "local":
+            log.error(DISCONNECTED)
+            print(DISCONNECTED, file=sys.stderr)
+        sys.exit(EXIT_UNAUTHORIZED)
 
 
 if __name__ == "__main__":

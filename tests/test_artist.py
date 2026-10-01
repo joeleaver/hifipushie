@@ -20,6 +20,8 @@ from pathlib import Path
 import pytest
 
 os.environ["HIFIPUSHIE_HOME"] = tempfile.mkdtemp(prefix="hp_artist_")
+os.environ["XDG_STATE_HOME"] = tempfile.mkdtemp(prefix="hp_artist_state_")  # the runner's status file
+os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="hp_artist_config_")  # token file, saved settings
 TESTS = Path(__file__).parent
 sys.path.insert(0, str(TESTS))
 os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [str(TESTS), os.environ.get("PYTHONPATH")]))
@@ -490,3 +492,99 @@ def test_set_reference_takes_a_library_version(dept_runner):
     res = dept.run(sid, "set_reference", {"view": "front", "image": "ver-img"}, bad)
     assert res["status"] == "error" and "sha256" in res["error"]["message"]
     assert dept.run(sid, "_close")["status"] == "ok"
+
+
+# ------------------------------------------------------------------------------------------- hosted mode
+
+def test_hosted_config_comes_from_env_only(tmp_path, monkeypatch):
+    (Path(os.environ["XDG_CONFIG_HOME"]) / "hifipushie").mkdir(parents=True, exist_ok=True)
+    artist.token_path().write_text("file-token")  # a token file is never read in hosted mode
+    try:
+        with pytest.raises(ValueError, match="OXIDEGEN_RUNNER_TOKEN"):
+            artist.hosted_config({"OXIDEGEN_URL": "https://dept.example"})
+        with pytest.raises(ValueError, match="OXIDEGEN_URL"):
+            artist.hosted_config({"OXIDEGEN_RUNNER_TOKEN": "t"})
+        cfg = artist.hosted_config({"OXIDEGEN_URL": "https://dept.example", "OXIDEGEN_RUNNER_TOKEN": " tok \n",
+                                    "OXIDEGEN_RUNNER_NAME": "hosted-1234", "HIFIPUSHIE_ARTIST_WORK": str(tmp_path),
+                                    "HIFIPUSHIE_ASSETS": "/opt/packs"})
+        assert (cfg.url, cfg.token, cfg.name, cfg.mode, cfg.probe) == ("https://dept.example", "tok", "hosted-1234",
+                                                                        "hosted", True)
+        assert cfg.work_root == tmp_path and cfg.assets == "/opt/packs"
+        assert artist.hosted_config({"OXIDEGEN_URL": "u", "OXIDEGEN_RUNNER_TOKEN": "t"}).name.startswith("hosted-")
+    finally:
+        artist.token_path().unlink()
+
+
+def _wait(cond, secs=30):
+    deadline = time.time() + secs
+    while not cond() and time.time() < deadline:
+        time.sleep(0.05)
+    return cond()
+
+
+def test_hosted_registers_with_the_probe_and_exits_on_a_refused_token(tmp_path, monkeypatch):
+    global TOKEN  # (the fake department checks it per request)
+    probe = {"workbench": "ok", "eevee": "software rendering only (llvmpipe): no usable GPU for EEVEE",
+             "renderer": "llvmpipe (LLVM 20)", "backend": "OPENGL"}
+    monkeypatch.setattr(artist, "gpu_probe", lambda timeout=300.0: dict(probe))
+    dept = FakeDepartment()
+    try:
+        env = {"OXIDEGEN_URL": dept.url, "OXIDEGEN_RUNNER_TOKEN": TOKEN, "OXIDEGEN_RUNNER_NAME": "hosted-abc",
+               "HIFIPUSHIE_ARTIST_WORK": str(tmp_path)}
+        runner = artist.Runner(artist.hosted_config(env))
+        t = threading.Thread(target=runner.run, daemon=True)
+        t.start()
+        assert _wait(lambda: dept.registrations)
+        reg = dept.registrations[0]
+        assert reg["mode"] == "hosted" and reg["name"] == "hosted-abc"
+        eq = reg["equipment"]
+        assert eq["eevee"].startswith("software") and eq["workbench"] == "ok" and eq["gpu_renderer"].startswith("llvm")
+        assert {"cpus", "ram_gb", "blender", "gpu"} <= set(eq)
+        caps = {c["tool"]: c for c in reg["capabilities"]}
+        assert caps["look"]["needs"]["gpu"] and caps["style_check"]["needs"]["gpu"]
+        assert not caps["get_model"]["needs"]["gpu"] and not caps["export"]["needs"]["gpu"]
+        assert "NO EEVEE" in reg["instructions"] and "paint=false" in reg["instructions"]
+        # snapshot look=false needs no worker: the department checkpoints every session with it
+        sid = "hosted-s"
+        assert dept.run(sid, "_open", {"subject": {"kind": "model", "name": "m", "version": None},
+                                       "workspace": sid})["status"] == "ok"
+        assert dept.run(sid, "put_model", {"spec": small_spec()})["status"] == "ok"
+        res = dept.run(sid, "snapshot", {"look": False}, timeout=10)
+        assert res["status"] == "ok" and [f["role"] for f in res["files"]] == ["spec"]
+        assert dept.run(sid, "_close")["status"] == "ok"
+
+        # the token is revoked: the runner stops (exit code 77), it doesn't retry forever
+        old, TOKEN = TOKEN, "revoked"
+        try:
+            dept.runner_id = "forgotten"  # (next/heartbeat 404 -> re-register -> 401)
+            t.join(30)
+        finally:
+            TOKEN = old
+        assert not t.is_alive() and runner.exit_code == artist.EXIT_UNAUTHORIZED
+        assert json.loads(artist.status_path().read_text())["state"] == "unauthorized"
+    finally:
+        dept.server.shutdown()
+
+
+def test_main_exits_77_on_a_refused_token_and_2_without_config(tmp_path, monkeypatch):
+    monkeypatch.setattr(artist, "gpu_probe", lambda timeout=300.0: {"workbench": "ok", "eevee": "ok"})
+    dept = FakeDepartment()
+    try:
+        for k, v in {"OXIDEGEN_URL": dept.url, "OXIDEGEN_RUNNER_TOKEN": "wrong", "OXIDEGEN_RUNNER_MODE": "hosted",
+                     "HIFIPUSHIE_ARTIST_WORK": str(tmp_path)}.items():
+            monkeypatch.setenv(k, v)
+        t0 = time.time()
+        with pytest.raises(SystemExit) as e:
+            artist.main([])
+        assert e.value.code == artist.EXIT_UNAUTHORIZED and time.time() - t0 < 30
+        monkeypatch.delenv("OXIDEGEN_RUNNER_TOKEN")
+        with pytest.raises(SystemExit) as e:
+            artist.main(["--mode", "hosted"])
+        assert e.value.code == 2
+        # local mode: a refused token says how to reconnect, and exits 77 too
+        monkeypatch.setenv("OXIDEGEN_RUNNER_TOKEN", "wrong")
+        with pytest.raises(SystemExit) as e:
+            artist.main(["--mode", "local", "--url", dept.url, "--work-root", str(tmp_path)])
+        assert e.value.code == artist.EXIT_UNAUTHORIZED
+    finally:
+        dept.server.shutdown()
