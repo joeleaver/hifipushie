@@ -920,7 +920,10 @@ regresses, bisect by building one spec at each commit and diffing heights.
   own range (cost in area). Lattice values kept >= 1e-3 voxel from 0; border vertices keyed by lattice edge, each
   computed ONCE (crossing, Newton steps in the border plane, field normal, weights) and substituted into both tiles:
   bit-identical. LODs are LOD0 decimated, not re-meshed: each shared plane's chain (`_polylines`) is simplified by
-  Douglas-Peucker once per LOD, nested (LOD k keeps a subset of LOD k-1), and both tiles collapse the dropped border
+  Douglas-Peucker once per LOD, nested (LOD k keeps a subset of LOD k-1; rows joined along a chain and closer than
+  1e-3 voxel are welded into one first, in the chains and every tile's dense mesh, `_weld_rows`: two crossings 7e-7 m
+  apart were one float32 vertex in the GLB, a degenerate sliver and a non-manifold edge in pebble's karst passage;
+  pebble welds 180), and both tiles collapse the dropped border
   vertices along the border (`_collapse_border`: half-edge collapse, link condition, no flips, never stranding a
   vertex; one that can't go is kept at every LOD by both tiles, and the settle loop reruns). Mixed-LOD gaps are then
   <= the tolerances (0.5 m; re-meshing at 2x/4x voxels gave 2.9 m). Interior: pyfqmr (dependency) with
@@ -1090,7 +1093,18 @@ regresses, bisect by building one spec at each commit and diffing heights.
     bigger cache missed as often), ~16 ms each now. Alps was then 95% one decimation straggler: pyfqmr stalls far
     above the budget from a dense mesh and `_decimate` counted down to 16 (~100 runs); it now stops at the stall and
     steps from its last mesh (same meshes, 4-12x fewer runs: alps 3x3 276 -> 130 s, byte-identical;
-    HIFIPUSHIE_DECIMATE_DUMP=<dir> saves a dense fallback's inputs to replay). Next: compile the rock composition (terrain_blocks etc.) once its formulas settle.
+    HIFIPUSHIE_DECIMATE_DUMP=<dir> saves a dense fallback's inputs to replay).
+    terrain_blocks compiled (2026-10-01, "compiled blocks" agent): `_blocks_bed_coord`, `_blocks_offsets` (bed slots,
+    bed values, minor joints per bed with the box filters, the maps' sharp window), `_blocks_masters`, `_blocks_ids`,
+    per point, bit-identical (test_blocks + the terrain tests with blocks on). Numpy-only pieces come in: each
+    super-bed's cuts (`h ** 1.2`, SVML pow) and every bed's joint frames (sin/cos) as tables over the points' K range
+    (`_blocks_tables`, cached), the master joints' plan projections (`q[:, :2] @ n2`, BLAS, on numpy's own subset),
+    the carve (logaddexp) applied after. Exact shortcuts: a value-noise corner of weight exactly 0 adds +0.0 to a sum
+    that is never -0.0, so it's skipped (a bed or family index as a coordinate zeroes half the corners); a window
+    wholly under the interval is exactly 0 (not the side above: (t+a)-(t-a) rounds, and numpy's tiny nonzero counts).
+    structure() 11.7 -> 1.6-1.9 us/pt (synthetic, every family on); the pebble bake field 6.6 -> 3.6 us/pt.
+    Remaining numpy in the composition: rock_relief/micro_relief's glue, bed_planes/_bed_noise (value noise compiled),
+    block_colour, fallen_sd (small share).
   - Round 5, jointed and bedded rock (2026-09-30, "rock" agent, renders r01-r12, r*_vs_main; the user: "keep working
     on the rock" after q09/q10/s01 read flat, soft and blotchy: removing the lattice patterns removed structure).
     `terrain_blocks.py`, the medium scale (0.3-10 m), added in rock_relief (spec `rock.blocks` 0..1, default on; off
@@ -1137,9 +1151,9 @@ regresses, bisect by building one spec at each commit and diffing heights.
       within 10: not all right angles); drawn cracks 6% of all edges.
     - Tools: `examples/rock_round.py` + `rock_views.json` (fixed views: far pass 6/m on the block, near pass 16/m on one
       tile; `--noblocks` = main's rock for before/after), `examples/rock_measure.py`.
-    - COST: a field point ~4.6-6.6 us with blocks vs ~1 without (fieldjit compiled the rest; terrain_blocks is numpy):
-      alps 3x3 export ~970 s vs 130, pebble ~900 s vs ~180. Compile terrain_blocks (structure/offsets/ids/_masters/
-      fallen_sd) before merging.
+    - COST: numpy terrain_blocks made a field point ~4.6-6.6 us vs ~1 without (alps 3x3 ~940 s, pebble ~900 s). Now
+      compiled (`fieldjit.blocks_*`, 2026-10-01, see "Compiled field"): alps 3x3 125 s, pebble 223 s (184 before the
+      check), main's were 130 / ~182.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
