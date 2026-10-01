@@ -103,6 +103,9 @@ def test_facets():
         same(*both(lambda: tf.facets(p, size, 4242, fd)), f"facets {size}")
     sparse = rng.uniform([0, 0, 0], [3000, 3000, 400], (300, 3))  # (a block per point, the caller's w untouched)
     same(*both(lambda: tf.facets(sparse, 1.2, 4242, fd[:300])), "facets, sparse")
+    for b in range(4):  # (Poisson-disk seeds: candidates, rounds, priority ties)
+        lo = np.array([b * tf.GROUP * 1.7 - 500, -3 * tf.GROUP]) - tf.PAD
+        same(*both(lambda: tf._seeds(lo, lo + tf.GROUP + 2 * tf.PAD, 77 + b)), "seeds")
     tri, val = tf._triangulation(4242, 3, -2)
     q = rng.uniform([3 * tf.GROUP, -2 * tf.GROUP], [4 * tf.GROUP, -tf.GROUP], (20_000, 2))
     q[:200] = tri.points[tri.simplices[:200, 0]]  # (on seeds: on edges of several triangles)

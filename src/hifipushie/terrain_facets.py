@@ -46,6 +46,8 @@ def _seeds(lo, hi, seed):
     m = int(np.ceil((ROUNDS + 1) * R_DISK / CELL)) + 1
     lo_c = np.floor(np.asarray(lo) / CELL).astype(np.int64) - m
     hi_c = np.floor(np.asarray(hi) / CELL).astype(np.int64) + m
+    if fieldjit.ON:  # (the same candidates and rounds, compiled: 10x+, a cache miss was ~90% this)
+        return fieldjit.seeds(lo_c, hi_c, lo, hi, seed, CELL, PER, R_DISK, ROUNDS)
     I, J = np.meshgrid(np.arange(lo_c[0], hi_c[0] + 1), np.arange(lo_c[1], hi_c[1] + 1), indexing="ij")
     I, J = np.repeat(I.ravel(), PER), np.repeat(J.ravel(), PER)
     K = np.tile(np.arange(PER, dtype=np.int64), len(I) // PER)

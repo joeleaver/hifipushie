@@ -674,5 +674,111 @@ def warm():
     pl2d_tri(np.array([[1.0, 1.0]]), tri, val)
     facets(p, 1.0, 1, np.abs(np.c_[p[:, :2], np.ones(2)]) ** 4, 1.4, 32.0, lambda s, i, j: (tri, val), 1.4,
            normalise=0.03)
+    seeds(np.array([0, 0]), np.array([3, 3]), np.array([0.0, 0.0]), np.array([1.0, 1.0]), 1, 0.565, 3, 0.8, 3)
     _WARM = True
     return time.perf_counter() - t
+
+
+# ---------------------------------------------------------------- terrain_facets._seeds (Poisson-disk seeds)
+
+if ON:
+    @njit(cache=True)
+    def _seeds_kernel(i0, j0, nI, nJ, per, seed, cell, r, rounds, lo0, lo1, hi0, hi1):
+        """terrain_facets._seeds after its cell range: candidates (cell i, j, k) at hashed spots, accepted in rounds by
+        priority within r (the same pairs cKDTree.query_pairs finds: neighbours up to 2 cells off; on equal
+        priorities the later candidate loses, as np.where(pr[a] < pr[b], a, b) does)."""
+        N = nI * nJ * per
+        px = np.empty(N)
+        py = np.empty(N)
+        pr = np.empty(N)
+        for a in range(nI):
+            I = i0 + a
+            for b in range(nJ):
+                J = j0 + b
+                for k in range(per):
+                    c = (a * nJ + b) * per + k
+                    px[c] = (I + hash01(I, J, np.int64(k), seed + 1)) * cell
+                    py[c] = (J + hash01(I, J, np.int64(k), seed + 2)) * cell
+                    pr[c] = hash01(I, J, np.int64(k), seed + 3)
+        rr = r * r
+        reach = np.int64(np.ceil(r / cell))
+        # neighbours within r, once (CSR): the rounds then only walk these
+        start = np.zeros(N + 1, np.int64)
+        cap = N * 32
+        nbr = np.empty(cap, np.int64)
+        t = 0
+        for a in range(nI):
+            for b in range(nJ):
+                for k in range(per):
+                    c = (a * nJ + b) * per + k
+                    for aa in range(max(a - reach, 0), min(a + reach + 1, nI)):
+                        for bb in range(max(b - reach, 0), min(b + reach + 1, nJ)):
+                            for kk in range(per):
+                                o = (aa * nJ + bb) * per + kk
+                                if o == c:
+                                    continue
+                                dx = px[c] - px[o]
+                                dy = py[c] - py[o]
+                                if dx * dx + dy * dy <= rr:
+                                    if t == cap:
+                                        cap *= 2
+                                        grown = np.empty(cap, np.int64)
+                                        grown[:t] = nbr[:t]
+                                        nbr = grown
+                                    nbr[t] = o
+                                    t += 1
+                    start[c + 1] = t
+        state = np.zeros(N, np.int8)
+        win = np.zeros(N, np.bool_)
+        for _ in range(rounds):
+            for c in range(N):
+                w_ = False
+                if state[c] == 0:
+                    w_ = True
+                    for u in range(start[c], start[c + 1]):
+                        o = nbr[u]
+                        so = state[o]
+                        if so == 1:  # (a neighbour is a seed already)
+                            w_ = False
+                            break
+                        if so == 0:  # (an undecided neighbour with the higher priority)
+                            lo_, hi_ = (c, o) if c < o else (o, c)
+                            if (lo_ if pr[lo_] < pr[hi_] else hi_) == c:
+                                w_ = False
+                                break
+                win[c] = w_
+            for c in range(N):
+                if win[c]:
+                    state[c] = 1
+            for c in range(N):  # (undecided neighbours of this round's winners are out)
+                if win[c]:
+                    for u in range(start[c], start[c + 1]):
+                        o = nbr[u]
+                        if state[o] == 0:
+                            state[o] = -1
+        m = 0
+        for c in range(N):
+            if state[c] == 1 and px[c] >= lo0 and px[c] <= hi0 and py[c] >= lo1 and py[c] <= hi1:
+                m += 1
+        pts = np.empty((m, 2))
+        ids = np.empty((m, 3), np.int64)
+        t = 0
+        for a in range(nI):
+            for b in range(nJ):
+                for k in range(per):
+                    c = (a * nJ + b) * per + k
+                    if state[c] == 1 and px[c] >= lo0 and px[c] <= hi0 and py[c] >= lo1 and py[c] <= hi1:
+                        pts[t, 0] = px[c]
+                        pts[t, 1] = py[c]
+                        ids[t, 0] = i0 + a
+                        ids[t, 1] = j0 + b
+                        ids[t, 2] = k
+                        t += 1
+        return pts, ids
+
+
+def seeds(lo_c, hi_c, lo, hi, seed, cell, per, r, rounds):
+    """terrain_facets._seeds through the kernel (cells lo_c..hi_c inclusive)."""
+    return _seeds_kernel(int(lo_c[0]), int(lo_c[1]), int(hi_c[0] - lo_c[0] + 1), int(hi_c[1] - lo_c[1] + 1), int(per),
+                         int(seed), float(cell), float(r), int(rounds), float(lo[0]), float(lo[1]), float(hi[0]),
+                         float(hi[1]))
