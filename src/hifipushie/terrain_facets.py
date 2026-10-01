@@ -27,7 +27,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import Delaunay, cKDTree
 
-from . import noise
+from . import fieldjit, noise
 
 R_DISK = 0.8                          # Poisson-disk radius, in facet sizes
 CELL = R_DISK / np.sqrt(2) * 0.999    # candidate grid: at most one seed per cell
@@ -100,6 +100,8 @@ def _triangulation(seed, gi, gj):
 def pl2d(q, seed, gi, gj):
     """The piecewise-linear field at 2D points q (facet units) in block (gi, gj)."""
     tri, val = _triangulation(seed, gi, gj)
+    if fieldjit.ON:
+        return fieldjit.pl2d_tri(q, tri, val)
     s = tri.find_simplex(q)
     T = tri.transform[s]
     bc = np.einsum("nij,nj->ni", T[:, :2], q - T[:, 2])
@@ -114,6 +116,10 @@ def facets(p, size, seed, fd, stretch=1.4):
     # (a projection under 3% is dropped, continuously: on a steep face one or two patterns, not three)
     w = np.maximum(w - 0.03, 0.0)
     w /= w.sum(1, keepdims=True)
+    if fieldjit.ON:  # (the same arithmetic, compiled: fieldjit.facets_kernel)
+        got = fieldjit.facets(p, size, seed, w, stretch, GROUP, _triangulation, GAIN)
+        if got is not None:
+            return got
     out = np.zeros(len(p))
     for ax, (u, v, st) in enumerate(((1, 2, stretch), (0, 2, stretch), (0, 1, 1.0))):
         k = np.flatnonzero(w[:, ax] > 0)
