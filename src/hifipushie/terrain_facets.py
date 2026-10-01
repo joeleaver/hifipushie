@@ -27,7 +27,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import Delaunay, cKDTree
 
-from . import noise
+from . import fieldjit, noise
 
 R_DISK = 0.8                          # Poisson-disk radius, in facet sizes
 CELL = R_DISK / np.sqrt(2) * 0.999    # candidate grid: at most one seed per cell
@@ -46,6 +46,8 @@ def _seeds(lo, hi, seed):
     m = int(np.ceil((ROUNDS + 1) * R_DISK / CELL)) + 1
     lo_c = np.floor(np.asarray(lo) / CELL).astype(np.int64) - m
     hi_c = np.floor(np.asarray(hi) / CELL).astype(np.int64) + m
+    if fieldjit.ON:  # (the same candidates and rounds, compiled: 10x+, a cache miss was ~90% this)
+        return fieldjit.seeds(lo_c, hi_c, lo, hi, seed, CELL, PER, R_DISK, ROUNDS)
     I, J = np.meshgrid(np.arange(lo_c[0], hi_c[0] + 1), np.arange(lo_c[1], hi_c[1] + 1), indexing="ij")
     I, J = np.repeat(I.ravel(), PER), np.repeat(J.ravel(), PER)
     K = np.tile(np.arange(PER, dtype=np.int64), len(I) // PER)
@@ -100,6 +102,8 @@ def _triangulation(seed, gi, gj):
 def pl2d(q, seed, gi, gj):
     """The piecewise-linear field at 2D points q (facet units) in block (gi, gj)."""
     tri, val = _triangulation(seed, gi, gj)
+    if fieldjit.ON:
+        return fieldjit.pl2d_tri(q, tri, val)
     s = tri.find_simplex(q)
     T = tri.transform[s]
     bc = np.einsum("nij,nj->ni", T[:, :2], q - T[:, 2])
@@ -110,6 +114,10 @@ def facets(p, size, seed, fd, stretch=1.4):
     """Irregular planar facets about `size` m across on the face whose ground gradient is fd (n, 2). -1..1."""
     p = np.asarray(p, float)
     w = np.abs(np.c_[fd, np.ones(len(p))]) ** 4
+    if fieldjit.ON:  # (the same arithmetic from here on, compiled: fieldjit.facets)
+        got = fieldjit.facets(p, size, seed, w, stretch, GROUP, _triangulation, GAIN, normalise=0.03)
+        if got is not None:
+            return got
     w /= w.sum(1, keepdims=True)
     # (a projection under 3% is dropped, continuously: on a steep face one or two patterns, not three)
     w = np.maximum(w - 0.03, 0.0)

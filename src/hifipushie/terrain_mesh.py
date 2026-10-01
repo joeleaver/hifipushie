@@ -38,8 +38,13 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
-from . import noise, profiling, terrain_sharp
+from . import fieldjit, noise, profiling, terrain_sharp
 from .profiling import span as _span
+
+
+def _f64(a):
+    """A 1D contiguous float64 array (what the compiled kernels take)."""
+    return np.ascontiguousarray(np.asarray(a, dtype=np.float64).ravel())
 
 DEFAULTS = {
     "tile": 64.0,          # metres a side
@@ -527,6 +532,9 @@ def _hash3(ix, iy, iz, seed):
 def _pl_walk(q, seed, vec=False):
     """Random values (-1..1) at the corners of the unit cubic lattice, interpolated linearly over each cube's six
     tetrahedra (the Freudenthal split: consistent across faces). (n,), or (n, 3) with vec."""
+    if fieldjit.ON:
+        r = fieldjit.pl_walk(np.ascontiguousarray(q, dtype=np.float64), int(seed), bool(vec))
+        return r if vec else r[:, 0]
     b = np.floor(q).astype(np.int64)
     f = q - b
     order = np.argsort(-f, axis=1)  # the tetrahedron: walk the axes from the largest fraction down
@@ -681,6 +689,8 @@ def _gridded(fn, T, spacing=2.0):
 
     def f(xy):
         xy = np.atleast_2d(np.asarray(xy, float))
+        if fieldjit.ON:
+            return fieldjit.grid_at(coef, _f64(xy[:, 1]), _f64(xy[:, 0]), ys[0], xs[0], spacing)
         return ndimage.map_coordinates(coef, [(xy[:, 0] - xs[0]) / spacing, (xy[:, 1] - ys[0]) / spacing], order=3,
                                        prefilter=False, mode="nearest")
     return f
@@ -763,6 +773,9 @@ class Field:
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
+        if fieldjit.ON:
+            x, y = _f64(x), _f64(y)
+            return fieldjit.column(self.H, x, y, self.x0, self.y0, self.c)
         r = (np.asarray(y, float) - self.y0) / self.c
         q = (np.asarray(x, float) - self.x0) / self.c
         e = 0.5
@@ -780,6 +793,8 @@ class Field:
         return np.clip(0.2 * size / max(amp, 1e-6), 0.1, 1.0)
 
     def grain_at(self, x, y):
+        if fieldjit.ON:
+            return np.clip(fieldjit.grid_at(self.grain, _f64(x), _f64(y), self.x0, self.y0, self.c), 0, 1)
         r = (np.asarray(y, float) - self.y0) / self.c
         q = (np.asarray(x, float) - self.x0) / self.c
         return np.clip(ndimage.map_coordinates(self.grain, [r, q], order=3, prefilter=False, mode="nearest"), 0, 1)
@@ -787,6 +802,9 @@ class Field:
     def face_dir(self, x, y):
         """The face's horizontal normal at columns, as the smoothed ground's downhill gradient (its length the slope,
         tan): a smooth grid (cubic B-spline), so relief built on it stays continuous."""
+        if fieldjit.ON:
+            x, y = _f64(x), _f64(y)
+            return np.stack([fieldjit.grid_at(a, x, y, self.x0, self.y0, self.c) for a in (self._fdx, self._fdy)], 1)
         r = (np.asarray(y, float) - self.y0) / self.c
         q = (np.asarray(x, float) - self.x0) / self.c
         v = np.stack([ndimage.map_coordinates(a, [r, q], order=3, prefilter=False, mode="nearest")
@@ -794,6 +812,8 @@ class Field:
         return v
 
     def steep_at(self, x, y):
+        if fieldjit.ON:
+            return fieldjit.grid_at(self.steep, _f64(x), _f64(y), self.x0, self.y0, self.c)
         r = (np.asarray(y, float) - self.y0) / self.c
         q = (np.asarray(x, float) - self.x0) / self.c
         return ndimage.map_coordinates(self.steep, [r, q], order=3, prefilter=False, mode="nearest")
@@ -968,6 +988,9 @@ class Materials:
         variation (tone, strata, slope-dependent beds) showed as a quilt of cell-sized squares on the rock, plainest
         from 100 m and more (5 m cells on the alps)."""
         T = self.T
+        if fieldjit.ON:
+            return fieldjit.grid_at(np.ascontiguousarray(a, dtype=np.float64), _f64(xy[:, 0]), _f64(xy[:, 1]),
+                                    float(T.xs[0]), float(T.ys[0]), float(T.cell))
         return ndimage.map_coordinates(np.asarray(a, float), [(xy[:, 1] - T.ys[0]) / T.cell,
                                                               (xy[:, 0] - T.xs[0]) / T.cell],
                                        order=3, prefilter=False, mode="nearest")
@@ -1618,6 +1641,7 @@ def _pool():
     from concurrent.futures import ProcessPoolExecutor
     from . import resources
     n = resources.workers(_CTX.get("worker_gb", WORKER_GB), cap=16)
+    fieldjit.warm()  # (compiled kernels in the parent: the forked workers inherit them, none compiles its own)
     # (one BLAS thread a worker: each inherited the parent's 4, which spun on every small matmul)
     ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"),
                              initializer=resources._worker_init)

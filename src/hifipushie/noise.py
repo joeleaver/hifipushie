@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import fieldjit
+
 
 def _hash(ix, iy, iz, seed: int) -> np.ndarray:
     """Pseudo-random 0..1 per integer lattice point."""
+    if fieldjit.ON:
+        return fieldjit.hash_arrays(ix, iy, iz, seed)
     h = (ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791) ^ (seed * 2654435761)
     h = h.astype(np.uint64)
     h ^= h >> np.uint64(13)
@@ -16,6 +20,8 @@ def _hash(ix, iy, iz, seed: int) -> np.ndarray:
 
 
 def _value_noise(p: np.ndarray, seed: int) -> np.ndarray:
+    if fieldjit.ON:
+        return fieldjit.value_noise(np.ascontiguousarray(p, dtype=np.float64), int(seed))
     i = np.floor(p).astype(np.int64)
     f = p - i
     u = f * f * f * (f * (f * 6 - 15) + 10)  # quintic fade: no creases at lattice planes
