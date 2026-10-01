@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
+from . import fieldjit
 from . import terrain_mesh as tm
 
 
@@ -109,6 +110,9 @@ class Region:
 
     # ---- pointwise
     def s(self, x, y):
+        if fieldjit.ON and self.S.dtype == np.float64 and self.S.ndim == 2:
+            return fieldjit.linear_at(self.S, tm._f64(x), tm._f64(y), float(self.G.origin[0]),
+                                      float(self.G.origin[1]), float(self.d))
         q = (np.asarray(x, float) - self.G.origin[0]) / self.d
         r = (np.asarray(y, float) - self.G.origin[1]) / self.d
         return ndimage.map_coordinates(self.S, [q, r], order=1, mode="nearest")

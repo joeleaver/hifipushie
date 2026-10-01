@@ -80,6 +80,9 @@ def test_cubic():
     r, q = rng.uniform(-4, 124, 40_000), rng.uniform(-4, 94, 40_000)
     a = ndimage.map_coordinates(A, [r, q], order=3, prefilter=False, mode="nearest")
     same(a, fieldjit.cubic2d(A, r, q), "cubic")
+    x, y = rng.uniform(-30, 500, 40_000), rng.uniform(-30, 500, 40_000)
+    a = ndimage.map_coordinates(A, [(x - 2.0) / 5.0, (y + 3.0) / 5.0], order=1, mode="nearest")
+    same(a, fieldjit.linear_at(A, x, y, 2.0, -3.0, 5.0), "linear")
 
 
 def test_pl_walk():

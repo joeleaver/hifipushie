@@ -674,6 +674,7 @@ def warm():
     pl2d_tri(np.array([[1.0, 1.0]]), tri, val)
     facets(p, 1.0, 1, np.abs(np.c_[p[:, :2], np.ones(2)]) ** 4, 1.4, 32.0, lambda s, i, j: (tri, val), 1.4,
            normalise=0.03)
+    linear_at(a, p[:, 0], p[:, 1], 0.0, 0.0, 1.0)
     seeds(np.array([0, 0]), np.array([3, 3]), np.array([0.0, 0.0]), np.array([1.0, 1.0]), 1, 0.565, 3, 0.8, 3)
     _WARM = True
     return time.perf_counter() - t
@@ -702,32 +703,39 @@ if ON:
                     pr[c] = hash01(I, J, np.int64(k), seed + 3)
         rr = r * r
         reach = np.int64(np.ceil(r / cell))
-        # neighbours within r, once (CSR): the rounds then only walk these
+        # neighbours within r, once (CSR): the rounds then only walk these. Counted, then filled, in separate loops:
+        # one loop appending to a growable array (or branching on the pass) ran 5-10x slower than the tests alone
         start = np.zeros(N + 1, np.int64)
-        cap = N * 32
-        nbr = np.empty(cap, np.int64)
-        t = 0
         for a in range(nI):
             for b in range(nJ):
                 for k in range(per):
                     c = (a * nJ + b) * per + k
+                    cnt = 0
                     for aa in range(max(a - reach, 0), min(a + reach + 1, nI)):
                         for bb in range(max(b - reach, 0), min(b + reach + 1, nJ)):
                             for kk in range(per):
                                 o = (aa * nJ + bb) * per + kk
-                                if o == c:
-                                    continue
                                 dx = px[c] - px[o]
                                 dy = py[c] - py[o]
-                                if dx * dx + dy * dy <= rr:
-                                    if t == cap:
-                                        cap *= 2
-                                        grown = np.empty(cap, np.int64)
-                                        grown[:t] = nbr[:t]
-                                        nbr = grown
-                                    nbr[t] = o
-                                    t += 1
-                    start[c + 1] = t
+                                cnt += dx * dx + dy * dy <= rr
+                    start[c + 1] = cnt - 1  # (itself)
+        for c in range(N):
+            start[c + 1] += start[c]
+        nbr = np.empty(start[N], np.int64)
+        for a in range(nI):
+            for b in range(nJ):
+                for k in range(per):
+                    c = (a * nJ + b) * per + k
+                    f = start[c]
+                    for aa in range(max(a - reach, 0), min(a + reach + 1, nI)):
+                        for bb in range(max(b - reach, 0), min(b + reach + 1, nJ)):
+                            for kk in range(per):
+                                o = (aa * nJ + bb) * per + kk
+                                dx = px[c] - px[o]
+                                dy = py[c] - py[o]
+                                if dx * dx + dy * dy <= rr and o != c:
+                                    nbr[f] = o
+                                    f += 1
         state = np.zeros(N, np.int8)
         win = np.zeros(N, np.bool_)
         for _ in range(rounds):
@@ -782,3 +790,39 @@ def seeds(lo_c, hi_c, lo, hi, seed, cell, per, r, rounds):
     return _seeds_kernel(int(lo_c[0]), int(lo_c[1]), int(hi_c[0] - lo_c[0] + 1), int(hi_c[1] - lo_c[1] + 1), int(per),
                          int(seed), float(cell), float(r), int(rounds), float(lo[0]), float(lo[1]), float(hi[0]),
                          float(hi[1]))
+
+
+
+# ---------------------------------------------------------------- linear grid lookups (terrain_cliffs.Region.s)
+
+if ON:
+    @njit(cache=True)
+    def linear_at(a, x, y, x0, y0, d):
+        """map_coordinates(a, [(x - x0) / d, (y - y0) / d], order=1, mode="nearest") (ni_splines' order-1 weights:
+        w0 = 1 - frac, w1 = 1 - w0)."""
+        n0, n1 = a.shape
+        n = x.shape[0]
+        out = np.empty(n)
+        for k in range(n):
+            r = (x[k] - x0) / d
+            q = (y[k] - y0) / d
+            fr = np.floor(r)
+            fq = np.floor(q)
+            s0 = np.int64(fr)
+            s1 = np.int64(fq)
+            u0 = 1.0 - (r - fr)
+            u1 = 1.0 - u0
+            v0 = 1.0 - (q - fq)
+            v1 = 1.0 - v0
+            t = 0.0
+            for i in range(2):
+                ii = min(max(s0 + i, 0), n0 - 1)
+                wi = u0 if i == 0 else u1
+                for j in range(2):
+                    jj = min(max(s1 + j, 0), n1 - 1)
+                    coeff = a[ii, jj]
+                    coeff *= wi
+                    coeff *= v0 if j == 0 else v1
+                    t += coeff
+            out[k] = t
+        return out
