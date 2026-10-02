@@ -69,6 +69,45 @@ def test_detail_maps():
     assert dm["height"].max() > 0  # the turned hem stands proud
 
 
+def test_marks_make_no_slivers():
+    # a notch on the outline and two marks 1 mm apart: the outline vertex / one vertex, not sub-mm edges
+    h = 0.01
+    g = {"pieces": {"p": {"rect": [0.3, 0.2], "marks": {"notch": [0.0003, 0.0997], "a": [0.05, 0.0], "b": [0.051, 0.0]},
+                          "wrap": {"to": "flat"}}}}
+    M = cloth.mesh(cloth.pieces(g, {}), h)
+    F, uv = M["F"], M["uv"]
+    E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+    assert np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1).min() > 0.3 * h
+    assert M["border"][M["marks"]["p:notch"]] and M["marks"]["p:a"] == M["marks"]["p:b"]
+
+
+def test_straight_arms():
+    # a bent arm (a box of points along shoulder -> elbow -> wrist) straightened, then posed back exactly
+    sh, el = np.array([0.2, 0, 1.4]), np.array([0.45, 0, 1.2])
+    d1 = (el - sh) / np.linalg.norm(el - sh)
+    wr = el + 0.25 * np.array([0.3, -0.7, -0.65]) / np.linalg.norm([0.3, -0.7, -0.65])
+    t = np.linspace(0, 1, 40)[:, None]
+    V = np.r_[sh + t * (el - sh), el + t * (wr - el)] + [0, 0, 0.0]
+    body = cloth.Body({"V": V, "F": np.zeros((0, 3), int), "J": {"shoulder.L": sh, "elbow.L": el, "wrist.L": wr}})
+    body._m = {"mm": {}, "at": {}}
+    sb, pose = body.straight_arms()
+    w = sb.J["wrist.L"]
+    assert np.allclose((w - el) / np.linalg.norm(w - el), d1, atol=1e-6)  # in line with the upper arm
+    far = np.r_[(V[:40] - el) @ ((d1 + (wr - el) / np.linalg.norm(wr - el)) / 2) < -0.045, np.zeros(40, bool)]
+    assert far.sum() > 20 and np.allclose(sb.V[far], V[far])  # the upper arm (outside the band) doesn't move
+    assert np.abs(pose(sb.V) - V).max() < 2e-3  # posed back (the blend band read from the bent side)
+
+
+def test_piece_crossings():
+    _, B, M = _tablecloth(0.1)
+    X = np.c_[M["uv"], np.zeros(len(M["uv"]))]
+    assert cloth._piece_crossings(X, M) == set()
+    Y = X.copy()  # fold the cloth's right half down through its left half
+    r = M["uv"][:, 0] > 0.1
+    Y[r] = np.c_[0.1 - (M["uv"][r, 0] - 0.1), M["uv"][r, 1], 0.05 * np.sin(8 * M["uv"][r, 1])]
+    assert ("cloth", "cloth") in cloth._piece_crossings(Y, M)
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

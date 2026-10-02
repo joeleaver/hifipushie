@@ -6,15 +6,22 @@ release's own bundled HIP runtime) or CPU.
     (env: CARGO_TARGET_DIR=<ppf>/target/rocm|cuda|cpu, PYTHONPATH=<ppf>; spikes/gpu_cloth/zozo.sh sets them)
 
 Mapping (one session for the whole schedule, times at the job's 24 fps):
-- the garment is one shell whose REST is the start placement X (isometric to the pattern, like Blender's), bending
-  rest from that geometry (`bend-rest-from-geometry`: a turned collar keeps its fold);
-- seams and stitches: ZOZO stitches (vertex to vertex) from t = 0;
-- gravity 0 while sewing (the "assemble" + "sew" stages), then on;
-- assemble.fixed vertices pinned until the bodice is sewn, assemble.hold (cuffs) until the sewing ends;
-- the body a static collider (contact offset `body_offset`); hung garments: the body moves away down after the worn
-  settle while the hanger-loop vertices (pinned from the start) move up under the hook. No rack (yet);
+- placement "smooth" jobs (cloth.place(smooth=True), the way to run ZOZO): the garment's membrane REST is the flat
+  pattern, written into the built scene (the frontend has no call for a static rest apart from the start); the made
+  pieces (`job["made"]`, wholly interfaced: collar, stand, cuffs) rest as placed in stretch and bending; bending rest
+  flat elsewhere (`set_bend_rest_vert`). The start is the placement on a body with straight arms (bodyV0); the arms
+  bend back through bodyPoses in the "pose" stage (only the arms are a solved, prescribed object: a moving body is
+  2.5x a static collider's cost). Nothing may start intersecting: no pass-through allowances, no pins on the pieces
+  (ZOZO sets a pin's pass-through once at build and keeps it after the unpin: pinned sleeves passed through the
+  body for the whole sim; and two prescribed things in contact, a held cuff on the wrist, can't be parted).
+- other jobs: the REST is the start placement X (isometric to the pattern, like Blender's), bending rest from that
+  geometry, the placement's overlaps (sleeve fins) allowed, assemble.fixed / assemble.hold pinned as in Blender;
+- seams and stitches: ZOZO stitches (vertex to vertex) from t = 0; gravity 0 while sewing, then on;
+- hung garments: the body moves away down after the worn settle while the hanger-loop vertices (pinned from the
+  start) move up under the hook. No rack (yet);
 - material: young-mod = stretch / density (ZOZO's is normalised by density), `bend` (dimensionless, ZOZO's scale),
   strain limit (`strain_limit`, default 5%), friction.
+- a scene check that fails names each violation's pieces (`--set debug_violations=true`: the raw record).
 """
 from __future__ import annotations
 
@@ -40,6 +47,7 @@ def main():
     ap.add_argument("--set", action="append", default=[])
     ap.add_argument("--frames", type=int, default=None, help="stop early (debugging)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--snap", type=int, default=0, help="also keep every N-th frame (S<frame> in out.npz)")
     a = ap.parse_args()
     jd = Path(a.job)
     job = json.loads((jd / "job.json").read_text())
@@ -73,7 +81,25 @@ def main():
     app.asset.add.stitch("seams", (Ind, W))
     has_body = any(s.get("body", True) for s in stages) and not job.get("no_body")
     if has_body:
-        app.asset.add.tri("body", np.asarray(d["bodyV"], float), np.asarray(d["bodyT"], np.int64))
+        # placement "smooth": the garment was put on the body with straight arms (bodyV0), which bends back to its
+        # pose through bodyPoses in the "pose" stage
+        bV0 = np.asarray(d["bodyV0"] if "bodyV0" in d else d["bodyV"], float)
+        bT = np.asarray(d["bodyT"], np.int64)
+        # a body that moves is solved (pinned, prescribed): 2.5x the cost of a static collider. Only the part that
+        # moves is: the arms (faces with a vertex the poses move) apart from the static rest. A hung garment's body
+        # leaves whole
+        parts = [("body", np.arange(len(bV0)), bT)]
+        if "bodyPoses" in d and not any(st.get("hang") for st in stages) and job.get("split_body", True):
+            mv = (np.abs(np.asarray(d["bodyPoses"], float) - bV0).max(axis=(0, 2)) > 1e-7)
+            fm = mv[bT].any(1)
+            parts = []
+            for nm_, ff in (("body", bT[~fm]), ("arms", bT[fm])):
+                used = np.unique(ff)
+                re = -np.ones(len(bV0), np.int64)
+                re[used] = np.arange(len(used))
+                parts.append((nm_, used, re[ff]))
+        for nm_, used, ff in parts:
+            app.asset.add.tri(nm_, bV0[used], ff)
     scene = app.scene.create()
     g = scene.add("garment")
     if not job.get("no_stitch"):
@@ -83,11 +109,29 @@ def main():
     g.param.set("poiss-rat", float(job.get("poisson", 0.3))).set("bend", float(job.get("bend", 1.0)))
     g.param.set("strain-limit", float(job.get("strain_limit", 0.05))).set("friction", float(P.get("friction", 0.4)))
     g.param.set("contact-gap", float(job.get("contact_gap", 1e-3)))
-    g.param.set("bend-rest-from-geometry", float(job.get("bend_rest_geom", 1.0)))
-    g.param.set("allow-existing-intersection", 1.0)  # the placement's own few overlaps (sleeve fins) aren't fatal
+    # rest "flat": the membrane rests on the flat pattern (set on the built scene below), the start is the placement
+    # (placement "smooth" jobs); "placed": the start is the rest, as in Blender
+    rest = job.get("rest", "flat" if job.get("placement") == "smooth" else "placed")
+    stiff = np.asarray(d["stiff"], float)
+    pid = np.asarray(d["piece"])
+    if rest == "flat":
+        # bending rest flat (0) on ordinary cloth. Pieces wholly interfaced (collar, stand, cuffs) rest as placed in membrane and bending: a turned collar's U
+        # and a cuff's curl are the made shape, and a fold over coarse triangles isn't isometric to the flat. Every
+        # hinge lies inside one piece, so choosing per piece is consistent
+        uv = np.asarray(d["uv"], float)
+        flat3 = np.c_[uv, np.zeros(len(uv))]
+        made = np.isin(pid, [job["pieces"].index(nm) for nm in job.get("made", [])])  # cloth.made_pieces
+        flat3[made] = X[made]
+        ref = flat3.copy()
+        g.set_bend_rest_vert(ref)
+    else:
+        g.param.set("bend-rest-from-geometry", float(job.get("bend_rest_geom", 1.0)))
+    # a moving body (the "pose" stage) passed straight through a garment allowed its existing intersections: the
+    # smooth placement starts clean, so only the fitted one (sleeve fins) needs the allowance
+    if job.get("allow_existing", rest != "flat"):
+        g.param.set("allow-existing-intersection", 1.0)  # the placement's own few overlaps (sleeve fins) aren't fatal
     if job.get("stitch_stiffness"):
         g.param.set("stitch-stiffness", float(job["stitch_stiffness"]))
-    stiff = np.asarray(d["stiff"], float)
     if stiff.max() > 0 and job.get("interfacing", True):  # interfacing: bending and stretch up towards their interfaced values
         g.set_param_spatial("bend", stiff, float(job.get("bend", 1.0)) * float(P.get("interfacing_bend", 10)))
     asm = job.get("assemble") or {}
@@ -95,12 +139,22 @@ def main():
     for s in stages:
         if s.get("gravity", 1) == 0:
             sew_end = max(sew_end, times[s["name"]][1])
-    if asm.get("fixed") and "assemble" in times:
-        g.pin(list(map(int, asm["fixed"])), allow_intersection=bool(job.get("pin_pass", True))).unpin(times["assemble"][1])
-    if asm.get("hold") and "sew" in times:
-        held = sorted(set(map(int, asm["hold"])) - set(map(int, asm.get("fixed", []))))
-        if held:
-            g.pin(held, allow_intersection=bool(job.get("pin_pass", True))).unpin(times["sew"][1])
+    # the bodice is sewn alone with the rest held (assemble.fixed until the assemble stage ends); pieces that close
+    # round a limb (cuffs, assemble.hold) are held on until the sewing ends. One pin per vertex: the hold used to be
+    # (hold - fixed), which is empty when the cuffs are among the fixed, so the cuffs flew up the arm once released
+    # (resting on the flat pattern the cuffs aren't held: a held cuff pressed onto the wrist is two prescribed things
+    # in contact, which the barrier can't part: "contact starts overlapping" as the sleeve pulled on it)
+    hold = set(map(int, asm.get("hold") or [])) if "sew" in times and job.get("hold", rest != "flat") else set()
+    fixed = set(map(int, asm.get("fixed") or [])) - hold if "assemble" in times else set()
+    # neck pieces (stand, collar) aren't held: held, the rising bodice pressed them into the (also prescribed) body,
+    # two pinned things no contact separates (an intersection at the unpin)
+    neck = [k for k, nm in enumerate(job["pieces"]) if (job.get("wraps") or {}).get(nm) == "neck"]
+    fixed = sorted(fixed - set(np.where(np.isin(pid, neck))[0].tolist())) if job.get("free_neck", True) else sorted(fixed)
+    pp = bool(job.get("pin_pass", False))  # ZOZO keeps a pin's pass-through after the unpin (set once at build): False
+    if fixed and job.get("assemble_pins", rest != "flat"):
+        g.pin(fixed, allow_intersection=pp).unpin(times["assemble"][1])
+    if hold:
+        g.pin(sorted(hold), allow_intersection=pp).unpin(times["sew"][1])
     hang = next((s for s in stages if s.get("hang")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):
@@ -110,13 +164,43 @@ def main():
         # pinned where they start (a small patch at the back neck, harmless while dressing), then lifted to the hook
         g.pin(list(map(int, pins))).move_to(target, t0, t0 + 0.4 * (t1 - t0))
     if has_body:
-        b = scene.add("body")
-        b.param.set("contact-offset", float(job.get("body_offset", 0.002))).set("friction", float(P.get("friction", 0.4)))
-        bp = b.pin()
-        if hang is not None:  # the body leaves downward while the coat is lifted to its hook
-            t0, t1 = times[hang["name"]]
-            bp.move_by([0.0, 0.0, -3.0], t0, t0 + 0.4 * (t1 - t0))
-    scene = scene.build()
+        pose = next((st for st in stages if st.get("pose")), None)
+        for nm_, used, _ in parts:
+            b = scene.add(nm_)
+            b.param.set("contact-offset", float(job.get("body_offset", 0.002))).set("friction", float(P.get("friction", 0.4)))
+            bp = b.pin()
+            if pose is not None and "bodyPoses" in d and (nm_ == "arms" or len(parts) == 1):
+                t0, t1 = times[pose["name"]]
+                poses = np.asarray(d["bodyPoses"], float)[:, used]
+                for k in range(len(poses)):
+                    bp.move_to(poses[k], t0 + (t1 - t0) * k / len(poses), t0 + (t1 - t0) * (k + 1) / len(poses))
+            if hang is not None:  # the body leaves downward while the coat is lifted to its hook
+                t0, t1 = times[hang["name"]]
+                bp.move_by([0.0, 0.0, -3.0], t0, t0 + 0.4 * (t1 - t0))
+    try:
+        scene = scene.build()
+    except Exception as e:
+        from scipy.spatial import cKDTree
+        tg, tb = cKDTree(X), cKDTree(bV0) if has_body else None
+        for v in (getattr(e, "violations", None) or [])[:20]:
+            who = []
+            for tri in np.asarray(v.get("tris", np.zeros((0, 3, 3))), float).reshape(-1, 3, 3):
+                c = np.asarray(tri, float).mean(0)
+                dg, ig = tg.query(c)
+                db = tb.query(c)[0] if tb is not None else np.inf
+                who.append(job["pieces"][int(pid[ig])] if dg <= db else "body")
+            if job.get("debug_violations"):
+                log("detail:", json.dumps(v, default=str)[:700])
+            log("violation:", v.get("type"), " x ".join(who), np.asarray(v.get("tris", np.zeros((1, 3, 3))), float).reshape(-1, 3, 3)[0].mean(0).round(3))
+        raise
+    if rest == "flat":  # the frontend has no call for a static rest shape apart from the start: write it in
+        idx = np.asarray(scene._map_by_name["garment"], np.int64)
+        cv = np.asarray(scene._vert[1], float)
+        rv = cv.copy() if scene._concat_rest_vert is None else np.asarray(scene._concat_rest_vert, float)
+        mask = np.zeros(len(cv), np.uint8) if scene._rest_vert_mask is None else np.asarray(scene._rest_vert_mask)
+        rv[idx] = flat3
+        mask[idx] = 1
+        scene._concat_rest_vert, scene._rest_vert_mask = rv, mask
     sess = app.session.create(scene)
     prm = sess.param
     prm.set("fps", fps).set("frames", total).set("dt", float(job.get("dt", 0.01)))
@@ -154,8 +238,15 @@ def main():
     gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1)
     log(f"zozo: {frame} frames in {wall:.1f} s ({per:.0f} ms/frame), seam gaps mean {gap.mean() * 1000:.1f} mm p95 "
         f"{np.percentile(gap, 95) * 1000:.1f} mm, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
+    snaps = {}
+    for f in range(a.snap, frame, a.snap) if a.snap else ():
+        got_f = sess.get.vertex(f)
+        if got_f is not None:
+            Vf = np.empty((n, 3))
+            Vf[ii] = np.asarray(got_f[0][:n], float)
+            snaps[f"S{f}"] = Vf
     out = Path(a.out) if a.out else jd / "out.npz"
-    np.savez(out, V=V, log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
+    np.savez(out, V=V, **snaps, rest_rows=np.asarray(Vall[n:], float), log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
     print("cloth: wrote", out, flush=True)
 
 
