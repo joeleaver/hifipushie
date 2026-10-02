@@ -1455,6 +1455,49 @@ regresses, bisect by building one spec at each commit and diffing heights.
     - Measured (renders vs the Pebble 7th photo): grass hue 61 deg / sat 0.24 at 150 m in L01 (photo rough 86 / 0.46,
       fairway 91-97 / 0.36-0.43); inside the arch's opening 0.28 of the lit rock's luminance. Open: the fairway still
       pale at eye level, bushes perch on cliff tops, the turf lip is colour only (no geometric step), stacks bulky.
+  - Eye-level ground (2026-10-02, "eyelevel" agent, renders E04-E0x; the user, after L04: the fairway one pale minty
+    green, the beach smooth, boulders low-poly, the turf lip colour only, bushes perched on lips, stacks bulky, the arch
+    smooth). Judged against the Pebble 7th photo by measure (HSV of ground pixels by kind from the id pass's world
+    points; texture = luminance std / mean in 7 px windows at the photo's 640 px scale).
+    - Ground edits finer than the grid (`terrain_ground.Edits`, built in Field.__init__, applied in `Field.column`, so
+      the heightmap, the cliff overlay, collision and both bakes agree): the turf's STEP at its ragged edge back from
+      every lip (`LIP` turf 0.7 m, riser +-0.35 m in the mesh; the maps bake it crisper, +-max(0.12, 2.5 texels):
+      `bf.edit_riser`, `Region.height(riser=)` for the ground maps), and bunkers cut crisp (a signed distance per trap
+      at 0.25 m, `signed_distance`; they were H edits at 2 m cells: soft dishes). `zone` (cells) gates the cost. Two
+      traps found by the checks: the Region took the bunkers' faces as cliffs (square 4 m pits round every bunker:
+      Region reads the slope from `_column`, the grid's own ground), and recomputing the column's slope factor from
+      the edits moved every cliff face below a lip ((z - h) s metres under the top: floating pieces, shards, map seams
+      lod1 p95 16 deg). The field is just steeper than 1 across a riser now. No overhang: 0.2 m under 0.5 m voxels
+      would be shards; the undercut is the colour's `under` and the maps' crisper riser.
+    - Mown grass is its own layer `turf` (LAYER_OF mown/lawn/fairway/green), with its own swatch; covers are painted
+      per point with the layers' own weights (`Materials._paint`, the bare ground's grid under them, roads over),
+      mown pieces cut along the mower's line (a 1 m signed distance, edge +-0.3 m: +-0.12 put the earth layer's weight
+      over the LOD 0/2 seam limit), a first cut (`CUT` 2.2 m, kind "cut") taken out of the rough, stripes 7 m with a
+      normal-map lean along the mower's way (`STRIPE` tilt 0.25 rad, tone +-16%, edges softened to 2.5 texels) and
+      mottling at 3 / 0.8 m. Maps-only relief (`Ground.relief` -> `Materials.relief`, tilted into the baked normals in
+      `bake_texels(texel=)`): tussock clumps 1.2 m, clumps 2.6 m, scrub lumps; each octave fades where it's under 3-5
+      texels, and cliff tiles count their texel 2.5x (`RELIEF_CHART`: their charts' texel grids differ across a
+      border). Swatches per kind (`SWATCHES`: turf short and dense, long grass clumpy with straw, sand ripples / grit /
+      pebbles via `sand_swatch`), manifest `ground_detail.swatches`, each with its fade (turf 30-110 m).
+    - Colours: the defaults and pebble's were too pale for the renderer (albedo v 0.48 rendered 0.58-0.72 under the
+      hazy sky). mown [0.20, 0.40, 0.13], rough [0.30, 0.43, 0.17]; less straw/salt on rough; sand darker. Most of
+      the "pale minty" was the light: `render_tiles(light="clear")` / `look_terrain(light="clear")` (LIGHTS: Nishita
+      dust 0.02, sun 3.2 W, sky 0.08, exposure -0.35) put the fairway at h 98 s 0.39 v 0.46 vs the photo's 98-100 /
+      0.36-0.39 / 0.38-0.54. `grade=` sets an AgX look ("Punchy" changed almost nothing).
+    - Clutter (`terrain_ground.clutter`, rows [x, y, z, kind, scale, yaw, squash]; clutter.csv gains `squash`): bushes
+      never within `CLUTTER_LIP.keep` 1.8 m of the turf's edge and squashed/broader out to 7 m (wind-shorn), only
+      where the maps paint grass; tall grass (`tallgrass`, 0.3 m grid within 28 m of each eye, thinning out); boulders
+      in clusters, only on rock (weight > 0.55-0.8), sunk 0.12 x scale; trees kept `TREE_LIP` 4 m (cypress 1.5) in
+      from the turf's edge (the export drops them, noted). Render protos (`blender_terrain._clutter_variant`, 4
+      variants each, picked per instance, scale/yaw/squash from point attributes): blade tufts (curved strips, green
+      root to straw tips on a few), sage bushes (lumps with a leafy Voronoi bump), boulders faceted by noise, wet and
+      darker near the sea. No bush or boulder within 2.5 m of an eye.
+    - Stacks (`Stack`): the heightfield's stack is a slim core (`terrain_sea.STACK_CORE` 0.45) and the solid stack
+      replaces it (`clip`: the ground cleared in a cylinder over the plinth; crossing surfaces in its notch made
+      shards): lobes changing up the stack (`twist` 6 m), beds standing out / sitting back +-0.2 r handing over in 1 m,
+      a waterline notch, 10 deg lean, a broken top. Thin fins and stacks take little relief (`Field.thin`), so their
+      beds show in colour instead (`THIN_TONE`): the arch's fin still reads smooth in geometry.
+    - Regression numbers and open items: see the Overboard card "Whole-level look".
   - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
     - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
       untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test

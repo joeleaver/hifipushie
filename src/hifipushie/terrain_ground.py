@@ -49,7 +49,7 @@ LOOK = {  # sRGB
     "scrub_gap": [0.36, 0.37, 0.24],    # dry grass and litter between them
     "undercut": 0.55,                   # rock just under the turf's edge: shaded
 }
-LIP = {"band": 1.4, "patches": 7.0, "steep": 50.0, "turf": 0.45, "riser": 0.3, "maps": 0.12, "max": 3.2}
+LIP = {"band": 1.4, "patches": 7.0, "steep": 50.0, "turf": 0.7, "riser": 0.35, "maps": 0.12, "max": 3.2}
 # turf edge set back ~band m (wandering 0.15-2.6x, at most `max` m: inside the cliff overlay's margin); rock patches
 # within `patches` m of a lip; a lip = ground steeper than `steep` deg below a top. Geometry: the ground steps down
 # `turf` m at the turf's edge (the mat's thickness) onto the bare lip, over a riser +-`riser` m wide (a real step in
@@ -57,7 +57,7 @@ LIP = {"band": 1.4, "patches": 7.0, "steep": 50.0, "turf": 0.45, "riser": 0.3, "
 # texels) (+-0.18 m in the meshed field made black shards at the cliff meshes' 0.5 m voxels and pieces floating off
 # the lip, and a riser sharper than a couple of texels differed across tile borders).
 # Spec: "ground_character": {"lip": {...}}.
-STRIPE = {"width": 7.0, "edge": 5.0, "tilt": 0.18, "tone": 0.10}  # mower stripes: m wide, edge crispness, the
+STRIPE = {"width": 7.0, "edge": 5.0, "tilt": 0.25, "tone": 0.16}  # mower stripes: m wide, edge crispness, the
 # blades' lean as a slope along the mower's way (light one way, dark the other), and the colour step (+-)
 RELIEF = {"tussock": 0.07, "clump": 0.06, "bush": 0.16, "cut": 0.01}  # maps-only ground relief, m (fbm^2 heights)
 CUT = {"width": 2.2, "wander": 0.25}  # the first cut round mown pieces: m wide, +- share wandering
@@ -428,13 +428,13 @@ class Ground:
         tow = lambda col, a: out * (1 - a[:, None]) + np.asarray(col) * lum(out)[:, None] / lum(np.asarray(col)) * \
             a[:, None]
         # (tones carried at the ground's own brightness: a hue shift, not a paint-over)
-        out = tow(LOOK["straw"], np.clip(dry, 0, 1) * (0.15 * natural + 0.03 * kept))
+        out = tow(LOOK["straw"], np.clip(dry, 0, 1) * (0.08 * natural + 0.03 * kept))
         out = tow(LOOK["lush"], np.clip(-dry, 0, 1) * 0.45)
         # salt-burnt turf above the sea (unmown): patchy within ~30 m of the shore
         if self.sea_d is not None:
             sd = self._at(mats, self.sea_d, xy)
             salt = _ss(32.0, 6.0, sd) * natural * (0.25 + 0.55 * noise.fbm(Pf, 9.0, 2, seed=623))
-            out = out * (1 - 0.25 * salt[:, None]) + np.asarray(LOOK["salt"]) * 0.25 * salt[:, None]
+            out = out * (1 - 0.15 * salt[:, None]) + np.asarray(LOOK["salt"]) * 0.15 * salt[:, None]
         # rough: tussocks (the maps' own relief: Ground.relief) lit straw-tipped on top, shaded between, and straw
         # patches (3 m); the mid distance reads its texture from these
         rough = np.clip(natural - scrub, 0, 1)
@@ -442,7 +442,7 @@ class Ground:
         t1 = noise.fbm(P, 0.9, 2, seed=624) - 0.5
         t2 = noise.fbm(Pf, 3.0, 2, seed=625) - 0.5
         out = out * (1 + rough * (0.34 * (tus - 0.3) + 0.12 * t1 + 0.12 * t2))[:, None]
-        out = tow(LOOK["straw"], rough * np.clip(t2 * 1.4, 0, 1) * 0.22 + rough * _ss(0.45, 0.8, tus) * 0.15)
+        out = tow(LOOK["straw"], rough * np.clip(t2 * 1.4, 0, 1) * 0.12 + rough * _ss(0.45, 0.8, tus) * 0.1)
         # scrub on slopes (natural grass turns to scrub from ~22 deg) and where asked: clumps 1-4 m with dry gaps
         sc, clump = self.scrub(mats, P, scrub, natural)
         scol = np.asarray(LOOK["scrub"]) * (0.8 + 0.4 * noise.fbm(Pf, 1.1, 2, seed=628))[:, None]

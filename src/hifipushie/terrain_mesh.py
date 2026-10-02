@@ -1546,6 +1546,10 @@ class Materials:
             kb, fr = B["kb"], B["f"]
             # each bed's tone changes along the strike too (one tone per bed was a band ruled across the wall)
             calm = 0.35 if r.get("blocks") else 1.0  # (blocks carry the tone where they exist: less blotchy noise)
+            if r.get("blocks") and getattr(self.field, "thin", None) is not None:
+                # thin fins and stacks (an arch's fin) take little relief (Field.thin: carved, their tops floated off),
+                # so their beds show in colour instead: Durdle Door's banding, not a smooth tan wall
+                calm = calm + (1.0 - calm) * np.clip(self._grid(self.field.thin, xy), 0, 1) * THIN_TONE
             th = lambda k: 1 + calm * (-0.16 + 0.26 * _bed_noise(xy, k, 40.0, r["seed"] + 30))
             # (each bed's tone eases into the next over ~0.2 m where the plane shows, a step aliased along every
             # bedding plane in the maps; over metres where it doesn't: no line there)
@@ -1574,6 +1578,7 @@ class Materials:
         return Wm.astype(np.float32), c
 
 
+THIN_TONE = 1.0  # how much of the full bed tone thin fins take back (Materials, rock colour)
 BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
               "along": 0.10, "under_ledge": 0.12}
 # block_colour's spread: per bed and per block (+-), thin packages darker, the share of freshly spalled blocks and how
@@ -3713,6 +3718,12 @@ def _morton(X, cell):
     return np.argsort(key, kind="stable")
 
 
+LIGHTS = {  # render_tiles(light=...) presets: the sky's dust/air (Nishita), sun watts, sky strength, exposure
+    "hazy": {"dust": 0.3, "air": 0.8, "sun_energy": 2.4, "sky_strength": 0.12, "exposure": 0.0},
+    # matched to a clear sunny photo (the Pebble 7th): its sky deep blue (v ~0.75 s ~0.45 at the top), crisp shadows
+    # exposure metered on the sun's height (`meter` stops per doubling of sin(height) over 25 deg)
+    "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8},
+}
 RELIEF_CHART = 2.5  # the ground's maps-only relief on cliff tiles is band-limited as if their texel were this x larger:
 # their charts' texel grids don't line up across a tile border (ground tiles' do), so fine relief differed there
 BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
@@ -4403,7 +4414,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0):
+                 props=True, clutter=120.0, grade=None, light=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -4418,7 +4429,10 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     "auto" / left out (terrain_sun picks a raking sun for what the view sees; the choice is noted in render_job.json).
     haze: aerial perspective, metres for 63% (None/0: off). props: placeholder buildings, tee pads and baskets on the
     sites (the export's meta), for scale. clutter: metres round each eye where ground clutter placeholders stand
-    (terrain_ground.clutter: bushes on the scrub, tussocks in rough grass, boulders on the shore; 0/None: none)."""
+    (terrain_ground.clutter: bushes on the scrub, tussocks and tall grass in rough grass, boulders on the shore;
+    0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
+    blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
+    "exposure"}; default the hazy sky every earlier round was judged under."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -4460,7 +4474,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
            "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
            "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
            "haze": float(haze) if haze else None, "notes": notes,
-           "props": _site_props(T, box) if props else []}
+           "props": _site_props(T, box) if props else [], "grade": grade,
+           "light": LIGHTS.get(light, light) if isinstance(light, str) else light}
     if textured == "layered":  # the engine recipe: tiling layers over the baked maps
         job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
                           "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}

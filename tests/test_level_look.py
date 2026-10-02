@@ -107,7 +107,8 @@ def test_ground_edits(T):
     k = np.flatnonzero(b > 0.9)[:200]
     hz, _ = field.column(P[k, 0], P[k, 1])
     hr, _ = field._column(P[k, 0], P[k, 1])
-    assert np.allclose(hz - hr, -E.lip_cfg["turf"], atol=0.05)
+    assert np.allclose(hz - hr, -E.lip_cfg["turf"] * b[k], atol=1e-9)  # (the step: the turf's thickness x bare)
+    assert (hz - hr).min() < -0.9 * E.lip_cfg["turf"]
     # outside the zone the column is the grid's own
     far = np.c_[np.full(50, 600.0), np.linspace(380, 420, 50)]
     assert np.array_equal(field.column(far[:, 0], far[:, 1])[0], field._column(far[:, 0], far[:, 1])[0])

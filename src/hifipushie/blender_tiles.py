@@ -793,19 +793,25 @@ def run(job):
     scene.cycles.use_denoising = True
     scene.render.resolution_x, scene.render.resolution_y = job["size"]
     scene.view_settings.view_transform = "AgX"
+    if job.get("grade"):  # (a grade, e.g. "AgX - Punchy": what a game's tonemapper and colour grade would do)
+        scene.view_settings.look = job["grade"]
     world = bpy.data.worlds.new("sky")
     scene.world = world
     world.use_nodes = True
     sky = world.node_tree.nodes.new("ShaderNodeTexSky")
     if job.get("haze") and hasattr(sky, "dust_density"):  # (the same clear sky the haze takes its colour from)
         sky.dust_density, sky.air_density = 0.3, 0.8
+    L = job.get("light") or {}  # (a lighting preset: render_tiles(light=...))
+    if hasattr(sky, "dust_density"):
+        sky.dust_density = float(L.get("dust", sky.dust_density))
+        sky.air_density = float(L.get("air", sky.air_density))
     world.node_tree.links.new(sky.outputs["Color"], world.node_tree.nodes["Background"].inputs["Color"])
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.12
+    world.node_tree.nodes["Background"].inputs["Strength"].default_value = float(L.get("sky_strength", 0.12))
     if job.get("haze") and not job.get("channel"):
         for m in list(bpy.data.materials):
             _haze(m, job["haze"])
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))
-    sun.data.energy = 2.4
+    sun.data.energy = float(L.get("sun_energy", 2.4))
     sun.data.angle = 0.02
     scene.collection.objects.link(sun)
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
@@ -823,7 +829,7 @@ def run(job):
     for v in job["views"]:
         cam.location = Vector(v["eye"])
         lamp.data.energy = float(v.get("lamp", 0.0))
-        scene.view_settings.exposure = float(v.get("exposure", 0.0))
+        scene.view_settings.exposure = float(v.get("exposure") or L.get("exposure", 0.0))  # (a view's own wins)
         # the lamp a little above and to the right of the eye, so ledges and roofs cast a shadow line
         fwd = (Vector(v["look"]) - Vector(v["eye"])).normalized()
         right = fwd.cross(Vector((0, 0, 1)))
@@ -837,6 +843,10 @@ def run(job):
         for pa in _PIXEL_ANGLE:  # (the detail fade: radians per pixel across the image's width)
             pa.outputs[0].default_value = 2 * math.tan(cam.data.angle / 2) / job["size"][0]
         b, h =[math.radians(x) for x in v.get("sun", (225, 30))]
+        if L.get("meter") and not v.get("exposure"):  # (a camera's metering: a high sun's ground exposed down, a low
+            # one's up, as a photographer would; at a fixed exposure a noon sun washed the grass out)
+            scene.view_settings.exposure = float(L.get("exposure", 0.0)) - float(L["meter"]) * math.log2(
+                max(math.sin(h), 0.08) / math.sin(math.radians(25.0)))
         toward = Vector((math.cos(h) * math.sin(b), math.cos(h) * math.cos(b), math.sin(h)))
         sun.rotation_euler = (-toward).to_track_quat("-Z", "Y").to_euler()
         # (Blender 5.1: sun_rotation = the bearing; -bearing put the sky's glow on the wrong side, blender_terrain)

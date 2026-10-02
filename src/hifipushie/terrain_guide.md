@@ -573,7 +573,9 @@ The shell run writes its outputs beside the spec:
   its own relief in their normals (tussocks, scrub lumps, the mower stripes' lean).
   See them as an engine would: `look_terrain(name, views=[...], tiles=True)` renders the last tiles export (baked maps,
   rock and turf detail, arches and caves, trees, the sites' props as stand-ins for scale: baskets, tee pads, a lodge),
-  under a raking sun chosen per view (`"sun"` as for views) with aerial haze (`haze`: metres for 63%, default 5000). Other settings (metres):
+  under a raking sun chosen per view (`"sun"` as for views) with aerial haze (`haze`: metres for 63%, default 5000);
+  `light="clear"` swaps the default hazy sky for a deep blue clear one and a strong sun (what a sunny photo shows:
+  judge colours against photos in it). Other settings (metres):
   `"tile": 64` (tile size), `"voxel": 0.5` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),

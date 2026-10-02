@@ -40,9 +40,9 @@ COVER_TYPES = {
                   "color": [0.55, 0.62, 0.30]},
     # grass by how it's kept (terrain_ground: each reads differently in the 3D tiles' maps)
     # (albedos as measured off photos of real turf under sun: mown ~h 98 s 0.65 v 0.43, darker than they look)
-    "mown":      {"slope": [0, 42], "avoid": ["water"], "color": [0.25, 0.43, 0.15]},   # fairways, greens, lawns
+    "mown":      {"slope": [0, 42], "avoid": ["water"], "color": [0.20, 0.40, 0.13]},   # fairways, greens, lawns
     "rough":     {"slope": [0, 40], "avoid": ["water"], "breakup": {"scale": 60, "amount": 0.2},
-                  "color": [0.35, 0.45, 0.19]},                                         # long grass, tussocks
+                  "color": [0.30, 0.43, 0.17]},                                         # long grass, tussocks
     "scrub":     {"slope": [0, 50], "avoid": ["water", "routes"], "breakup": {"scale": 40, "amount": 0.5},
                   "color": [0.30, 0.34, 0.21]},                                         # low bushes, heath
     "bunker":    {"slope": [0, 25], "avoid": ["water", "routes", "sites"], "color": [0.86, 0.80, 0.64],

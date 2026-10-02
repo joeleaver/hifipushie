@@ -329,7 +329,7 @@ def _tuft(rng, n, h, spread, lean, dry):
             c = (root * (1 - t) + mid * t) if t < 0.6 else mid * (1 - (t - 0.6) / 0.4) + tipg * (t - 0.6) / 0.4
             if d:
                 c = c * (1 - t) + straw * t
-            elif t > 0.75 and rng.random() < 0.35:
+            elif t > 0.75 and rng.random() < 0.15:
                 c = c * 0.5 + straw * 0.5
             C += [c, c]
         for j in range(4):
@@ -345,9 +345,9 @@ def _clutter_variant(kind, v, sea=None):
     rng = np.random.default_rng(1000 * CLUTTER_KINDS.index(kind) + v)
     if kind in ("tussock", "tallgrass"):
         if kind == "tussock":
-            V, F, C = _tuft(rng, 36, 0.42, 0.07, 0.5, 0.18)
+            V, F, C = _tuft(rng, 36, 0.42, 0.07, 0.5, 0.1)
         else:
-            V, F, C = _tuft(rng, 22, 0.62, 0.16, 0.38, 0.28)
+            V, F, C = _tuft(rng, 22, 0.62, 0.16, 0.38, 0.12)
         ob = _mesh_ob(f"clutter_{kind}_{v}", V, F, C)
     elif kind == "bush":
         import bmesh
