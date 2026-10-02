@@ -38,7 +38,8 @@ def _rgb(hexs):
     return [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in srgb]
 
 
-def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, quality=6):
+def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, quality=None):
+    quality = int(quality or fab.get("quality", 6))
     # The flat pattern is the mesh itself (Basis); the start positions are a shape key faded out over the first
     # frames, and Dynamic Mesh takes the rest lengths from the (now flat) input every frame. (rest_shape_key moves
     # the cloth onto the rest shape at the first frame: the garment started as the flat pattern, measured.)
@@ -88,6 +89,10 @@ def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, q
     s.shear_stiffness_max = fab["shear"] * 3
     s.vertex_group_bending = "stiff"
     s.vertex_group_shear_stiffness = "stiff"
+    # interfacing also stops a piece stretching (a cuff caught on the hand's base stretched 30-70% as plain shirting)
+    s.vertex_group_structural_stiffness = "stiff"
+    s.tension_stiffness_max = fab["tension"] * fab.get("stiff_tension", 6)
+    s.compression_stiffness_max = fab["compression"] * fab.get("stiff_tension", 6)
     s.tension_damping = s.compression_damping = s.shear_damping = 5
     s.bending_damping = 0.5
     s.use_sewing_springs = True
@@ -164,9 +169,30 @@ def sim(job, d):
     body.collision.damping = 0.6
     hang = isinstance(state, dict) and "hang" in state
     frames = int(job.get("frames", 90))
+    # stage 0 (assembly order, as a shirt is made): the bodice is sewn alone (its shoulder seams close over the
+    # shoulders and lift it ~10 cm into place) with the sleeves and collar held where they were placed against the
+    # body. Sewn all at once, the rising bodice dragged the sleeves 5-10 cm up the forearms (ruffled cuffs).
+    asm = job.get("assemble")
+    if asm:
+        fixed = np.asarray(asm["fixed"], np.int64)
+        fx = np.zeros(len(X), bool)
+        fx[fixed] = True
+        sew0 = sew[~fx[sew[:, 0]] & ~fx[sew[:, 1]]]
+        f0 = int(job.get("sew_frames", 60))
+        ob = _sim_object("garment0", X, F, sew0, uv, stiff, fixed, fab, False, f0)
+        ob.modifiers["cloth"].settings.effector_weights.gravity = 0.0
+        ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 30.0))
+        V0, dt = _run(ob, f0)
+        TRACE["stage0"] = V0
+        bpy.data.objects.remove(ob)
+        Xn = V0.copy()
+        Xn[fixed] = X[fixed]
+        log(f"stage 0 (bodice sewn alone): {f0} frames, {dt:.1f} s, z {V0[~fx, 2].min():.3f}..{V0[~fx, 2].max():.3f}")
+        X = Xn
     # stage 1: sew without gravity (the seams close before anything can slide off the shoulders)
     f1 = int(job.get("sew_frames", 60))
-    ob = _sim_object("garment", X, F, sew, uv, stiff, [], fab, False, f1)
+    hold = np.asarray((asm or {}).get("hold", []), np.int64)
+    ob = _sim_object("garment", X, F, sew, uv, stiff, hold, fab, False, f1)
     ob.modifiers["cloth"].settings.effector_weights.gravity = 0.0
     ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 30.0))  # 0 = unbounded (yanks pieces through the body)
     V, dt = _run(ob, f1, trace=job.get("trace", ()))

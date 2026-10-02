@@ -40,7 +40,7 @@
    ["front.R:button7", "front.L:buttonhole7"],
    ["cuff.L:button1", "cuff.L:buttonhole1"], ["cuff.R:button1", "cuff.R:buttonhole1"]
   ],
-  "interfaced": ["stand", "collar", "cuff.L", "cuff.R"],
+  "interfaced": ["stand", "collar", "cuff.L", "cuff.R", {"piece": "front.L", "near": "frontCenter", "within": 0.02}, {"piece": "front.R", "near": "frontCenter", "within": 0.016}],
   "fit_alterations": {
    "large_abdomen": {"op": "slash_spread", "piece": ["front.L", "front.R"], "line": ["waist", "cfWaist-notch"], "hinge": "a"}
   },
@@ -102,7 +102,7 @@
    ["front.L:button2Left", "front.R:button2Right"], ["front.L:button2Right", "front.R:button2Left"],
    ["front.L:button3Left", "front.R:button3Right"], ["front.L:button3Right", "front.R:button3Left"]
   ],
-  "interfaced": ["stand", "collar"],
+  "interfaced": ["stand", "collar", "front.L", "front.R"],
   "words": {
    "ease": {"chest": "chestEase", "waist": "waistEase", "seat": "seatEase", "biceps": "bicepsEase", "wrist": "cuffEase", "shoulders": "shoulderEase"},
    "length": "length",

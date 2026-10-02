@@ -47,13 +47,15 @@ FABRICS = {
                  "limit": 0.03, "thickness": 0.0004, "stiff": 40},
     "jersey": {"mass": 0.2, "tension": 5, "compression": 5, "shear": 3, "bending": 0.02, "air": 1.0,
                "limit": 0.25, "thickness": 0.0007, "stiff": 30},
-    "wool_coating": {"mass": 0.3, "tension": 80, "compression": 40, "shear": 30, "bending": 1.5, "air": 1.0,
+    "wool_coating": {"mass": 0.5, "tension": 80, "compression": 40, "shear": 30, "bending": 2.0, "air": 1.0,
                      "limit": 0.03, "thickness": 0.002, "stiff": 20},
     "denim": {"mass": 0.5, "tension": 40, "compression": 40, "shear": 30, "bending": 2.0, "air": 1.0,
               "limit": 0.02, "thickness": 0.001, "stiff": 10},
     "linen": {"mass": 0.25, "tension": 25, "compression": 25, "shear": 10, "bending": 0.3, "air": 1.0,
               "limit": 0.03, "thickness": 0.0005, "stiff": 20},
 }
+
+H_REF = 0.02  # the triangle size the presets' per-vertex masses are for
 
 
 ALTERATIONS = {
@@ -142,12 +144,13 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     out = pattern.apply(out, g.get("alter"))
     seams += g.get("seams", [])
     stitches += g.get("stitches", [])
-    interfaced = list(dict.fromkeys(interfaced + list(g.get("interfaced", []))))
+    interfaced = interfaced + [e for e in g.get("interfaced", []) if e not in interfaced]
     keep = set(out)
     side_ok = lambda s: all(e.split(":")[0] in keep for e in ([s] if isinstance(s, str) else s))
     seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
     stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
-    return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced if p in keep],
+    return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
+                                                                                    if (p if isinstance(p, str) else p["piece"]) in keep],
             "draft": draft_info}
 
 
@@ -479,10 +482,11 @@ class Body:
             n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
             q = self.V[i].mean(1)
             s = np.sum((X - q) * n, 1)
-            bad = s < gap
+            g = np.broadcast_to(np.asarray(gap, float), (len(X),))  # per vertex (a closed cuff hugs the wrist)
+            bad = s < g
             if not bad.any():
                 break
-            X[bad] += (gap - s[bad])[:, None] * n[bad]
+            X[bad] += (g[bad] - s[bad])[:, None] * n[bad]
         return X
 
     # torso: offset convex hulls of the body's sections (arms and hands left out)
@@ -516,6 +520,15 @@ def _offset_hull(H: np.ndarray, m: float) -> np.ndarray:
     return H + m * nrm
 
 
+def _densify(H: np.ndarray, step: float) -> np.ndarray:
+    """A closed polygon with extra vertices along its edges, at most `step` apart (its corners kept)."""
+    out = []
+    for a, b in zip(H, np.roll(H, -1, axis=0)):
+        n = max(1, int(np.ceil(np.linalg.norm(b - a) / step)))
+        out.append(a + (b - a) * (np.arange(n) / n)[:, None])
+    return np.concatenate(out)
+
+
 def _arc_point(H: np.ndarray, start: np.ndarray, s: np.ndarray, sign: float) -> np.ndarray:
     """Points arc length s (signed) round the closed polygon H from its point nearest `start`, positive going the way
     x increases at the start."""
@@ -542,9 +555,35 @@ def _piece_width_at(P: np.ndarray, y: float) -> float:
     return (max(xs) - min(xs)) if len(xs) >= 2 else 0.0
 
 
-def place(B: dict, M: dict, body: Body, gap: float = 0.012) -> np.ndarray:
+LAYER = 0.004  # how far an overlapping layer starts outside the one under it
+CLEAR = 0.008  # the least start clearance from the body (Blender: cloth 3 mm + body 4 mm collision distances)
+
+
+def _closed_girth(M: dict, nm: str) -> float:
+    """A piece stitched to itself (a cuff's button and buttonhole): its girth when closed, the distance across it
+    between the stitched vertices in the flat (0 if it doesn't close on itself)."""
+    return _closure(M, nm)[0]
+
+
+def _closure(M: dict, nm: str) -> tuple[float, float]:
+    """(closed girth, x of the stitched point nearer the piece's low x) of a piece stitched to itself."""
+    k = M["names"].index(nm)
+    best, xlo = 0.0, 0.0
+    for a, b in np.asarray(M["stitch"]).reshape(-1, 2):
+        if M["piece"][a] == k and M["piece"][b] == k:
+            d = float(abs(M["uv"][a, 0] - M["uv"][b, 0]))
+            if d > best:
+                best, xlo = d, float(min(M["uv"][a, 0], M["uv"][b, 0]))
+    return best, xlo
+
+
+def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None = None) -> np.ndarray:
     """Start positions: each piece wrapped round the body part its `wrap` names (torso front/back, arm.L/R, neck),
-    lengths along the pattern kept along the wrap (the sim's rest shape is the flat pattern anyway)."""
+    lengths along the pattern kept along the wrap (the sim's rest shape is the flat pattern anyway).
+    _blouse {piece: (t of its hem, excess)}: a sleeve whose cuff had to sit further up the arm than its hem is
+    placed with the excess folded in under itself (a fold is isometric), so the hem meets the cuff; set by a first
+    pass. (Left as a gap, sewing dragged the sleeve, and with it the shirt, 28 mm up the body.)"""
+    shifts = {}
     uv, pid = M["uv"], M["piece"]
     X = np.zeros((len(uv), 3))
     pcs = B["pieces"]
@@ -579,7 +618,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012) -> np.ndarray:
                    if pcs[nm]["wrap"].get("side", "front") == "front"
                    and abs(pcs[nm]["P"][:, 0].min() + pcs[nm]["P"][:, 0].max()) > 0.05)  # one-sided pieces
         m = float(np.clip((Wmax - over - P0) / (2 * np.pi), gap, 0.15))
-        C = _offset_hull(Hu, m)
+        # densified: each piece starts at the hull's point nearest its centre line, and a convex hull's front is
+        # one long edge between the pecs (its nearest vertex was 69 mm off centre: the bodice started turned round
+        # the body and sewing dragged it back ~10 cm, lifting the armholes and the sleeves with them)
+        C = _densify(_offset_hull(Hu, m), 0.002)
     placed = {}
     for k, nm in enumerate(names):
         w = pcs[nm]["wrap"]
@@ -648,6 +690,45 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012) -> np.ndarray:
             on = (ts >= tt.min() - 0.02) & (ts <= tt.max() + 0.02) & (ts > 0.06)
             Rp = max(R, float(rmax[on].max()) + gap if on.any() else R)
             cx = 0.5 * (P[:, 0].max() + P[:, 0].min())
+            # a piece buttoned to itself (a cuff) starts closed: round its closed girth (the stitched marks' distance
+            # along it) on a slight spiral, the overlap one layer outside, arc length kept along it. (Laid open round
+            # the hand, 108 mm apart, the stitch snapped a stiff cuff shut and crumpled it.)
+            closed = _closed_girth(M, nm)
+            if closed:
+                # r grows by LAYER over the closed girth (dr/dx = kk) and the stitched points, `closed` apart along
+                # the piece, land one turn apart: ln(r_hi / r_lo) / kk = 2 pi
+                kk = LAYER / closed
+                x_lo = _closure(M, nm)[1]
+                r_lo = LAYER / math.expm1(2 * np.pi * kk)
+                x0 = P[:, 0].min()
+                Rc = r_lo - kk * (x_lo - x0)  # the radius at the piece's low end
+                th = np.log((Rc + kk * (U[:, 0] - x0)) / Rc) / kk
+                th -= float(np.log((Rc + kk * (cx - x0)) / Rc) / kk)
+                rr = Rc + kk * (U[:, 0] - x0)
+                # it can't sit over the hand's base (wider than it: the push out of the body opened it 13 mm and
+                # the cuff stretched 30-70% there): back up the arm to where it fits; the sleeve blouses into it
+                past = ts > seg[0] + 0.5 * seg[1]
+                if past.any():
+                    i0 = int(np.argmin(np.where(past, rmax, np.inf)))
+                    wide = np.where((np.arange(len(ts)) > i0) & (rmax >= Rc - 0.002))[0]
+                    t_lim = float(ts[wide[0]]) - 0.005 if len(wide) else float(ts[-1])
+                    if t.max() > t_lim:
+                        if "follow" in w and t.max() - t_lim > 0.01:
+                            shifts[w["follow"][0]] = (t_anchor, float(t.max() - t_lim))
+                        t = t - (t.max() - t_lim)
+            rad = np.full(len(U), Rp)
+            if _blouse and nm in _blouse:  # the excess turned in under the sleeve round a U of radius LAYER / 2
+                t_h, ex = _blouse[nm]
+                rho = LAYER / 2
+                t_f = t_h - ex / 2 - np.pi * rho / 2
+                sf = t - t_f
+                bend = (sf > 0) & (sf < np.pi * rho)
+                back = sf >= np.pi * rho
+                t = t.copy()
+                t[bend] = t_f + rho * np.sin(sf[bend] / rho)
+                rad[bend] = Rp - rho * (1 - np.cos(sf[bend] / rho))
+                t[back] = t_f - (sf[back] - np.pi * rho)
+                rad[back] = Rp - 2 * rho
             out = np.zeros((len(U), 3))
             for i, (x, yv) in enumerate(U):
                 ti = float(t[i])
@@ -664,8 +745,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012) -> np.ndarray:
                 fw = np.cross(d, up)
                 if fw[1] > 0:  # pattern +x goes to the front of the arm (-Y)
                     fw = -fw
+                if closed:
+                    ang = float(w.get("front", 1)) * th[i] + math.radians(float(w.get("turn", 0)))
+                    out[i] = c + rr[i] * (np.cos(ang) * up + np.sin(ang) * fw)
+                    continue
                 ang = float(w.get("front", 1)) * (x - cx) / Rp + math.radians(float(w.get("turn", 0)))
-                out[i] = c + Rp * (np.cos(ang) * up + np.sin(ang) * fw)
+                out[i] = c + rad[i] * (np.cos(ang) * up + np.sin(ang) * fw)
             X[sel] = out
         elif to == "neck":
             nb, hd = body.J["neck"], body.J["head"]
@@ -709,7 +794,13 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012) -> np.ndarray:
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
         else:
             raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, neck, flat)")
-    Xp = body.push_out(X, gap)
+    gaps = np.full(len(X), gap)
+    for k, nm in enumerate(names):
+        if B["pieces"][nm]["wrap"].get("to", "").startswith("arm.") and _closed_girth(M, nm):
+            gaps[pid == k] = CLEAR  # outside the collision zone (cloth + body distance): inside it, the impulses launched the torso 15 cm up
+    if shifts and _blouse is None:
+        return place(B, M, body, gap, _blouse=shifts)
+    Xp = body.push_out(X, gaps)
     mv = np.linalg.norm(Xp - X, axis=1)
     # what pushing the start out of the body moved: it becomes stretch in the rest shape (rest = placed)
     B["push"] = {nm: round(float(mv[pid == k].max() * 1000), 1) for k, nm in enumerate(names) if mv[pid == k].max() > 0.002}
@@ -760,6 +851,50 @@ def _cache_dir() -> Path:
     return d
 
 
+def _assembly(Bp: dict, M: dict, body: Body) -> dict | None:
+    """The sim's stage 0 (blender_cloth): the pieces wrapped on the torso are sewn first, everything else held where
+    it was placed against the body (the sleeves, the collar), as a shirt is made."""
+    wraps = {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in M["names"]}
+    torso = np.isin(M["piece"], [k for k, nm in enumerate(M["names"]) if wraps[nm] == "torso"])
+    if torso.all() or not torso.any():
+        return None
+    # pieces that close round a limb (cuffs) are held while everything is sewn (stage 1), as a tailor holds the cuff
+    # setting a sleeve: the cap's underarm starts ~8 cm down an A-posed arm, and closing it dragged one sleeve's cuff
+    # up to the elbow (marginal: one side of a symmetric pair did, the other not)
+    hold = [k for k, nm in enumerate(M["names"]) if wraps[nm].startswith("arm.") and _closed_girth(M, nm)]
+    return {"fixed": np.where(~torso)[0].tolist(), "hold": np.where(np.isin(M["piece"], hold))[0].tolist()}
+
+
+def interfacing(Bp: dict, M: dict) -> np.ndarray:
+    """Per vertex 0..1: how interfaced (stiffer in bending, shear and stretch). An entry is a whole piece by name, or
+    a band {"piece", "near": a line / point / mark of it, "within": m} (a cut-on placket: the strip along the centre
+    front), feathered over its last third."""
+    stiff = np.zeros(len(M["uv"]))
+    for e in Bp["interfaced"]:
+        nm = e if isinstance(e, str) else e["piece"]
+        sel = M["piece"] == M["names"].index(nm)
+        if isinstance(e, str):
+            stiff[sel] = 1.0
+            continue
+        pc = Bp["pieces"][nm]
+        ref = e["near"]
+        if isinstance(ref, str) and ref not in (pc.get("lines") or {}):  # a point or mark
+            L = np.asarray([pc["P"][pattern.index_of(pc, ref)] if ref in pc["names"] else pc["marks"][ref]], float)
+        else:  # a line name or [point, point]
+            L = np.asarray(pattern._line(pc, ref), float)
+        Q = M["uv"][sel]
+        if len(L) == 1:
+            d = np.linalg.norm(Q - L[0], axis=1)
+        else:
+            a, b = L[:-1], L[1:]
+            ab = b - a
+            t = np.clip(np.einsum("qkd,kd->qk", Q[:, None] - a[None], ab) / np.maximum((ab * ab).sum(1), 1e-12), 0, 1)
+            d = np.linalg.norm(Q[:, None] - (a[None] + t[..., None] * ab[None]), axis=2).min(1)
+        w = float(e.get("within", 0.02))
+        stiff[sel] = np.maximum(stiff[sel], np.clip((w - d) / (w / 3), 0, 1))
+    return stiff
+
+
 def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int | None = None,
           render: dict | None = None, out_dir: Path | None = None) -> dict:
     """Draft, mesh, place and simulate one garment on one body. Returns {"V" settled verts, "F", "uv", ...,
@@ -771,6 +906,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     M = mesh(Bp, h)
     X0 = place(Bp, M, body)
     fab = fabric(g)
+    # Blender's cloth mass is per vertex: the presets are per vertex at 2 cm triangles, so a finer mesh keeps the
+    # garment's weight (and so its stretch and drape under gravity) by scaling it with the area a vertex carries
+    fab["mass"] = float(fab["mass"]) * (h / H_REF) ** 2
+    # lighter vertices on the same springs ring twice as fast per halving of h: more substeps (quality 6 at 1 cm
+    # crumpled one interfaced cuff of a symmetric pair into a ball, the other not: an instability)
+    fab.setdefault("quality", int(round(6 * max(1.0, H_REF / h))))
     state = g.get("state", "worn")
     code = hashlib.sha1(b"".join(Path(__file__).with_name(f).read_bytes() for f in
                                  ("cloth.py", "blender_cloth.py", "pattern.py", "cloth_designs.json"))).hexdigest()
@@ -779,9 +920,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     key = hashlib.sha1(json.dumps([VERSION, g, body_src.get("key"), frames, code, inputs], sort_keys=True,
                                   default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
-    stiff = np.zeros(len(M["uv"]))
-    for nm in Bp["interfaced"]:
-        stiff[M["piece"] == M["names"].index(nm)] = 1.0
+    stiff = interfacing(Bp, M)
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key}
     if cache.exists() and not render:
         d = np.load(cache)
@@ -794,7 +933,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                  piece=M["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64))
         cfg = {"fabric": fab, "frames": int(frames or g.get("frames", 90)), "state": state, "name": name,
                "color": g.get("color", "#5b7fa6"), "render": render, "out": str(job_dir / "out.npz"),
-               "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", [])}
+               "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", []),
+               **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames") if k in g}}
+        if g.get("assemble", True):
+            cfg["assemble"] = _assembly(Bp, M, body)
         if isinstance(state, dict) and "hang" in state:
             pins = [M["points"].get(p, M["marks"].get(p)) for p in state["hang"].get("pins", [])]
             if None in pins:
