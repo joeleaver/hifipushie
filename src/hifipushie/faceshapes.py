@@ -58,7 +58,7 @@ ALL = REQUIRED + RECOMMENDED + EXTRA
 # min(jawOpen, mouthClose): the lips meet whatever the jaw does, and an engine that ignores it just shows parted lips.
 CORRECTIVES = {"jawOpen_mouthClose": ("min", "jawOpen", "mouthClose")}
 CLOSE_LOWER = 0.8  # jawOpen_mouthClose: the lower lip's share of closing the gap jawOpen makes
-CLOSE_SEAL = 0.3  # mouthClose alone: this much of mouthPressLeft + mouthPressRight
+CLOSE_SEAL = 0.3  # mouthClose alone: how firmly the closed lips push forward (no vertical travel)
 
 
 def playback(weights: dict) -> dict:
@@ -421,8 +421,11 @@ class Face:
                 d = wj[:, None] * out * 0.08 * w
             elif name in ("jawLeft", "jawRight"):
                 d = wj[:, None] * side * sg * 0.08 * w
-            elif name == "mouthClose":  # alone: the lips sealed (a light press); the closing is the corrective's
-                d = CLOSE_SEAL * (press("Left") + press("Right"))
+            elif name == "mouthClose":
+                # alone (A2F drives it with the jaw shut): the closed lips firmed forward a little, never into each
+                # other (a vertical press here intersected the human's lips on 70 of 765 A2F frames); the closing
+                # against an open jaw is the corrective's
+                d = lips[:, None] * out * CLOSE_SEAL * 0.03 * w
             elif name == "jawOpen_mouthClose":
                 # against a full jawOpen: the lips meet, the lower lip doing most of it (meeting half way, the upper
                 # lip hung like a curtain)
@@ -833,11 +836,10 @@ class GnmFace(Face):
             return self._jaw_moves(shift=[0, 0, 0.12]), "mouth"
         if name in ("jawLeft", "jawRight"):
             return self._jaw_moves(shift=[0.12 * sx, 0, 0]), "mouth"
-        if name == "mouthClose":  # alone: the lips sealed, a light press (the closing is jawOpen_mouthClose's)
-            for sd in ("Left", "Right"):
-                pm, _ = self._gnm_moves(f"mouthPress{sd}")
-                for i, d in pm.items():
-                    mv[i] = mv.get(i, np.zeros(3)) + CLOSE_SEAL * np.asarray(d, float)
+        if name == "mouthClose":  # alone: the closed lips firmed forward a little, never into each other (the
+            # closing against an open jaw is jawOpen_mouthClose's)
+            put(mv, UPPER_LIP + LOWER_LIP, [0, 0, CLOSE_SEAL * 0.05])
+            hold(mv, CHIN)
             return mv, "mouth"
         if name == "jawOpen_mouthClose":  # against a full jawOpen: the lower lip back up most of the way, the upper
             # down the rest
@@ -877,14 +879,16 @@ class GnmFace(Face):
             put(mv, [54], [0.1, -0.04, -0.02]), put(mv, [55, 56, 65], [0.03, -0.04, 0])
             return mv, "mouth"
         if name == "mouthRollLower":
-            put(mv, [56, 57, 58], [0, 0.03, -0.08]), put(mv, [65, 66, 67], [0, 0.015, -0.07])
+            # mostly back (tucked under the upper lip), little up: with less back travel, A2F's stacks (pucker +
+            # rollLower + the sealed jaw + shrug) pushed the lower lip up INTO the upper one
+            put(mv, [56, 57, 58], [0, 0.02, -0.1]), put(mv, [65, 66, 67], [0, 0.01, -0.09])
             hold(mv, CHIN)
             return mv, "mouth"
         if name == "mouthRollUpper":
             put(mv, [50, 51, 52], [0, -0.04, -0.08]), put(mv, [61, 62, 63], [0, -0.02, -0.07])
             return mv, "mouth"
         if name == "mouthShrugLower":  # the lower lip and chin pushed up (mentalis), not out
-            put(mv, LOWER_LIP, [0, 0.04, 0.01]), put(mv, [7, 8, 9], [0, 0.02, 0])
+            put(mv, LOWER_LIP, [0, 0.03, 0.015]), put(mv, [7, 8, 9], [0, 0.02, 0])
             hold(mv, [5, 6, 10, 11])
             return mv, "mouth"
         if name == "mouthShrugUpper":
