@@ -1316,7 +1316,25 @@ regresses, bisect by building one spec at each commit and diffing heights.
       whole chasm. Not in the mesh (clay shows nothing: the mesh's +-0.5 m filter averages it away) but in the MAPS
       (the bake's +-0.25 m filter keeps the slot; the bed above's underside faces straight down: a dark band in the
       normal channel, 0.2 m tall, 8 m long). The package's depth now wanders: flush for a metre or two every few
-      metres, lumpy over ~1 m (`_bed_value`, fieldjit bit-identical), and its darker tone follows its depth.
+      metres, lumpy over ~1 m (`_bed_value`, fieldjit bit-identical); the maps' thin-plane notches and the darker tone
+      follow it (`terrain_blocks.package_recess`). At 40 m the band is three shorter pieces; at 15 m one stretch that
+      really recesses is still a dark slot.
+    - The cliff overlay's edge was a TRENCH: the front sank by sink x (1 - S) and the heightmap was pushed by push x S,
+      so they crossed where both were metres down (pebble S 0.73, 2.5 m under the true ground): every cliff-top edge
+      sagged into a channel with a V crease (the "terraces" along pebble's cliff tops in the 150 m view were this). Now
+      the front sinks only where S < SINK_EDGE 0.2 (`terrain_cliffs.sink_share`) and the heightmap is pushed by push x
+      S^PUSH_POW 3: they cross ~2 cm down, the cliff mesh covers a little more of the margin. Arch view: overlay step
+      0.086 -> 0.011, excess 1.96 -> 1.39 (regression export 1.25); heightmap_through_cliff unchanged (0.50%). Also
+      `terrain_seams.classes` leaves out pairs across a depth JUMP (2% of the distance is 3 m at 150 m: the ground in
+      front of the arch's cliff mesh counted as an overlay border). A faint line with small dents remains at the
+      crossing.
+    - Debugging tools used (scratch, worth knowing): render_tiles(channel=base/ao/normal/clay) splits a dark feature
+      into colour vs maps vs mesh (the band was normal-only, the trench clay); a pixel's world point from the id pass's
+      distance + the view ray; field profiles along the face normal per field (base, bake = CliffField front + micro).
+    - Regression (cold, loaded machine: cloth sims and another export holding the heavy slot, 7 workers): pebble export
+      271 s (main ~162-176; bake/lines 31 of 500 CPU s in the bake jobs), 0 failures, floating 0, shards LOD 0/1/2
+      0.006/0.014/0.31%, Khronos 1040 files 0/0; alps 3x3 105 s (main 84-96), 0 failures, Khronos 72 files 0/0; views:
+      0 rulers, chart 0.99-1.04, tile 0.97-1.0, overlay (arch) 1.25.
   - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
     - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
       untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test
