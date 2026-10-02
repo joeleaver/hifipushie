@@ -15,9 +15,20 @@ jaw region about the pivot, never a surface appearing. Weights (which region a p
 meshed (open) position, where the upper and lower lip are told apart by the parting line; the move is applied at the
 neutral (closed) one.
 
+A GNM head (base.head.source "gnm", class GnmFace) works the other way: each shape is GNM's own expression basis,
+solved as the least change of its regional components that moves some of the 68 landmarks and holds the rest (as
+base.pose_expression does), carried from the head's skin vertices onto the export's (inverse distance over the
+nearest few; the bag, teeth and tongue, away from the skin, take the jaw's rigid motion fitted to the jaw line). It
+needs base.head.interior (the kit's slit/bag/teeth/tongue behind the head's lips, base.mouth_interior) and
+base.head.mouth_gap >= 0.002 (lips parted while modelling; closed ones are zipped into one seam). The neutral
+closes the lips through the basis too. Blinks are pushed out of the eyeball.
+
+The export decimates with the lids and lips magnified (focuswarp.py), so the low poly has triangles where the shapes
+move.
+
 spec["face_shapes"] (optional, stripped from geometry): {"amount": {name: scale (1 = default, 0 = flat)},
-  "jaw": {"pivot": joint | [x, y, z], "open": deg at jawOpen 1.0 (18), "depth": m below the parting line where the
-  jaw stops (0.75 x head radius)}}
+  "jaw": {"pivot": joint | [x, y, z], "open": deg at jawOpen 1.0 (18; GNM 14, about the ears' landmarks), "depth": m
+  below the parting line where the jaw stops (0.75 x head radius)}}
 """
 
 from __future__ import annotations
@@ -35,6 +46,7 @@ REQUIRED = ("jawOpen", "jawForward", "jawLeft", "jawRight", "mouthClose", "mouth
 RECOMMENDED = ("eyeBlinkLeft", "eyeBlinkRight", "browInnerUp", "browDownLeft", "browDownRight", "browOuterUpLeft",
                "browOuterUpRight", "cheekPuff", "tongueOut")
 ALL = REQUIRED + RECOMMENDED
+CLOSE_LOWER = 0.8  # mouthClose: the lower lip's share of closing the gap jawOpen makes
 # viseme-like combinations for review sheets (oxidegen's presets are its own)
 COMBOS = {"AA": {"jawOpen": 0.6, "mouthFunnel": 0.2}, "OO": {"mouthPucker": 0.8, "jawOpen": 0.2},
           "MBP": {"mouthPressLeft": 0.7, "mouthPressRight": 0.7, "mouthRollLower": 0.2, "mouthRollUpper": 0.2},
@@ -109,17 +121,7 @@ class Face:
         self.sz = pts @ self.up            # the parting line's height (the smile) by u
         self.sf = pts @ self.out           # and how far forward it is (the lips' front)
         self.corners = {"Left": corner, "Right": corner - 2 * self.side * ((corner - self.M) @ self.side)}
-        slit = prims[f"{fb}_mouth_slit"]
-        self.slit_u = np.clip(((slit.params["P"] - self.M) @ self.side) / self.W2, 0, None)
-        self.slit_h = np.asarray(slit.params["V"]["u1"], float)
-        self.slit = 2 * float(self.slit_h[0])
-        self.slit_part = slit.part
-        bag = prims[f"{fb}_mouth_bag"]
-        self.bag = np.asarray(bag.params["size"], float)
-        self.thick = float(((self.M - bag.params["c"]) @ self.out) - self.bag[1])  # lip front to the bag's front
-        self.parts_teeth = {p.part for n, p in prims.items() if n.startswith(f"{fb}_teeth_")}
-        self.parts_tongue = {p.part for n, p in prims.items() if n == f"{fb}_tongue"}
-        self.tongue = prims.get(f"{fb}_tongue")
+        self._mouth_parts(prims, fb)
         # the nose is bone: mouth shapes leave it where it is (a goblin's nose hangs over its upper lip)
         self.nose = [p for n, p in prims.items() if n.startswith(f"{fb}_nose") and p.op == "add"]
         jaw = opts.get("jaw") or {}
@@ -166,10 +168,40 @@ class Face:
                 c = self.corners[s] + self.side * sg * 0.25 * self.width + self.up * 0.1 * self.width
                 self.cheeks[s] = (c - self.out * 0.15 * self.width, 0.3 * self.width)
 
+    def _mouth_parts(self, prims: dict, fb: str):
+        """The interior the kit made (kits._interior): slit, bag, teeth and tongue parts."""
+        slit = prims[f"{fb}_mouth_slit"]
+        self.slit_u = np.clip(((slit.params["P"] - self.M) @ self.side) / self.W2, 0, None)
+        self.slit_h = np.asarray(slit.params["V"]["u1"], float)
+        self.slit = 2 * float(self.slit_h[0])
+        self.slit_part = slit.part
+        bag = prims[f"{fb}_mouth_bag"]
+        self.bag = np.asarray(bag.params["size"], float)
+        self.thick = float(((self.M - bag.params["c"]) @ self.out) - self.bag[1])  # lip front to the bag's front
+        self.parts_teeth = {p.part for n, p in prims.items() if n.startswith(f"{fb}_teeth_")}
+        rows = [p for n, p in prims.items() if n.startswith(f"{fb}_teeth_")]
+        self.teeth_t = min((float(np.min(p.params["V"]["n1"] - p.params["V"]["n0"])) for p in rows), default=1.0)
+        self.parts_tongue = {p.part for n, p in prims.items() if n == f"{fb}_tongue"}
+        self.tongue = prims.get(f"{fb}_tongue")
+
+    def neutral(self, Xm: np.ndarray, kind: str) -> np.ndarray:
+        """The neutral's move for a part's meshed vertices: the slit closed (the lips only)."""
+        return self.close(self.local(Xm)) if kind == "skin" else np.zeros_like(Xm)
+
     def voxels(self) -> dict:
         """{part: voxel}: the export meshes the slit's part at least this fine, so the slit (2+ voxels across) and
         the lips' inner faces are real surfaces."""
-        return {self.slit_part: round(self.slit / 2.2, 5)}
+        out = {self.slit_part: round(self.slit / 2.2, 5)}
+        for pn in self.parts_teeth:  # a tooth row's thickness 3 voxels across (at a big body's scene voxel the
+            # lower row came out in shreds)
+            out[pn] = min(out.get(pn, 1.0), round(self.teeth_t / 3, 5))
+        return out
+
+    def tri_focus(self, k: float = 2.0) -> list:
+        """Spheres the export's decimation magnifies k x (focuswarp.py: more triangles there): each eye's lids (a
+        blink moves them an eye radius: on the plain low poly the skin round them showed facets) and the lips."""
+        out = [[*map(float, ev["c"]), float(ev["ro"] + 0.3 * ev["r"]), k] for ev in self.eyes.values()]
+        return out + [[*map(float, self.M - self.out * 0.5 * self.thick), float(0.45 * self.width), 1 + 0.5 * (k - 1)]]
 
     # ---- the parting line and the regions -------------------------------------------------------------------
 
@@ -216,7 +248,7 @@ class Face:
         hs = np.interp(np.minimum(L["u"], self.slit_u[-1]), self.slit_u, self.slit_h)
         b0 = 0.45 * self.slit
         above = _ss((L["h0"] + b0) / (2 * b0))
-        lat = _bump(L["u"], self.slit_u[-1], self.slit_u[-1] + 0.12)
+        lat = _bump(L["u"], 0.75 * self.slit_u[-1], self.slit_u[-1] + 0.04)  # (to the end cap, a flap at the corner)
         deep = _bump(L["back"], self.thick, self.thick + 0.6 * self.bag[1])
         hu = _bump(L["h0"], hs + 1.2 * self.ru, hs + 3.0 * self.ru)
         hl = _bump(-L["h0"], hs + 1.2 * self.rl, hs + 3.0 * self.rl)
@@ -258,7 +290,7 @@ class Face:
             still *= _ss((np.linalg.norm(Xm - ev["c"], axis=1) - 1.01 * ev["r"]) / (0.05 * ev["r"]))
         jo = self._jaw_move(Xn, wj, self.open)
         # the lower lip's travel at jawOpen, per point (sampled on the parting line at the point's u): mouthClose
-        # moves both lips half of it toward each other
+        # closes the gap, the lower lip doing most of it (CLOSE_LOWER)
         seam = self.M + side[None] * L["xs"][:, None] + up * np.interp(np.minimum(L["u"], self.su[-1]), self.su,
                                                                        self.sz)[:, None]
         delta = self._jaw_move(seam, np.ones(n), self.open)
@@ -299,7 +331,8 @@ class Face:
             elif name in ("jawLeft", "jawRight"):
                 d = wj[:, None] * side * sg * 0.08 * w
             elif name == "mouthClose":
-                d = -0.5 * jo * ll[:, None] + 0.5 * delta * (lu * wjp)[:, None]
+                # the lower lip does most of it (meeting half way, the upper lip hung like a curtain)
+                d = -CLOSE_LOWER * jo * ll[:, None] + (1 - CLOSE_LOWER) * delta * (lu * wjp)[:, None]
             elif name == "mouthFunnel":
                 c = (1 - 0.6 * np.minimum(L["u"], 1) ** 2)
                 d = lips[:, None] * out * 0.09 * w * c[:, None] + (lu - ll)[:, None] * up * 0.06 * w * c[:, None] \
@@ -447,7 +480,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
     p["shapes"] = {name: (delta (verts, 3), vertex normal before (verts, 3), after (verts, 3))}, in the order of
     `names`; normals and tangents per corner turn with the close. Returns {part: [names]}."""
     names = names_of(face_shapes)
-    face = Face(spec)
+    face = face_of(spec)
     if "eyeBlinkLeft" in names and not face.eyes:
         log.append("face shapes: no lids on the face kit's eyes: eyeBlink shapes are flat")
     got = {}
@@ -462,7 +495,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             if not near.any():
                 continue
         T = p["corner_vert"].reshape(-1, 3)
-        Xn = Xm + (face.close(face.local(Xm)) if kind == "skin" else 0.0)
+        Xn = Xm + face.neutral(Xm, kind)
         n0m, n0 = vertex_normals(Xm, T), vertex_normals(Xn, T)
         if kind == "skin":  # the close turns the corners' normals and tangents with it
             cv = p["corner_vert"]
@@ -528,3 +561,408 @@ def read_glb(path) -> dict:
                           "count": doc["accessors"][pr["attributes"]["POSITION"]]["count"],
                           "targets": [{k: acc(v) for k, v in t.items()} for t in pr.get("targets", [])]}
     return res
+
+
+# ---- GNM heads (base.head.source "gnm") ---------------------------------------------------------------------------
+
+# Each ARKit shape on a grafted GNM head is GNM's own expression basis, solved like base.pose_expression: the least
+# change of the regional expression components that moves some of the 68 landmarks as said and holds the rest.
+# Moves are in GNM's frame (x = the head's left, y up, z forward), in units of the mouth's width (corner to corner);
+# ".L" lists name the head's left landmarks and mirror (x flips) for the right. Landmarks: jaw line 0-16 (8 the
+# chin), brows 17-21 right / 22-26 left, eyes 36-41 right / 42-47 left (upper lid 37, 38 / 43, 44; lower 41, 40 /
+# 47, 46), outer lips 48-59 (48 right corner, 51 upper middle, 54 left corner, 57 lower middle), inner 60-67.
+JAW = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+LOWER_LIP = [55, 56, 57, 58, 59, 65, 66, 67]
+UPPER_LIP = [49, 50, 51, 52, 53, 61, 62, 63]
+LEFT = {"corner": 54, "inner_corner": 64, "upper": [52, 53, 63], "lower": [55, 56, 65], "upper_mid": [51, 62],
+        "lower_mid": [57, 66], "brow_inner": [22, 23], "brow_mid": [24], "brow_outer": [25, 26],
+        "lid_upper": [(43, 47), (44, 46)], "jaw_side": [12, 13, 14]}
+JAW_SHAPES = ("jawOpen", "jawForward", "jawLeft", "jawRight", "tongueOut")
+HOLD = 0.5   # the weight of holding a landmark a shape doesn't move
+GNM_OPEN = 14.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16)
+
+
+def _mirror_ids(ids, side):
+    """Left landmark ids -> the same on `side` (iBUG 68 numbering mirrors in pairs)."""
+    if side == "Left":
+        return ids
+    pairs = {**{i: 16 - i for i in range(17)}, **{17 + i: 26 - i for i in range(5)}, **{22 + i: 21 - i for i in range(5)},
+             36: 45, 37: 44, 38: 43, 39: 42, 40: 47, 41: 46, 42: 39, 43: 38, 44: 37, 45: 36, 46: 41, 47: 40,
+             48: 54, 49: 53, 50: 52, 52: 50, 53: 49, 54: 48, 55: 59, 56: 58, 58: 56, 59: 55, 60: 64, 61: 63,
+             63: 61, 64: 60, 65: 67, 67: 65, 51: 51, 57: 57, 62: 62, 66: 66}
+    return [pairs[i] for i in ids]
+
+
+class GnmFace(Face):
+    """A grafted GNM head (base.py): its mouth from the landmarks (base.mouth_lips), its interior from
+    base.head.interior (kits._interior), its shapes from GNM's expression basis carried onto the export."""
+
+    def __init__(self, spec: dict):
+        from . import base as basemod
+        b = spec["base"]
+        hd = b["head"]
+        if not hd.get("interior"):
+            raise SpecError("face_shapes on a GNM head needs a mouth that can open: base.head.interior (true, or "
+                            "{\"teeth\": true, \"tongue\": true}) and base.head.mouth_gap >= 0.002 (the lips parted "
+                            "while modelling; the export closes them)")
+        if float(hd.get("mouth_gap") or 0) < 0.0015:
+            raise SpecError("face_shapes on a GNM head: base.head.mouth_gap must part the lips (>= 0.002 m): closed "
+                            "lips are zipped into one seam and can't open")
+        opts = spec.get("face_shapes") or {}
+        self.amount = {str(a): float(v) for a, v in (opts.get("amount") or {}).items()}
+        bad = [a for a in self.amount if a not in ALL]
+        if bad:
+            raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
+        e = specmod.expand_mirror(spec)
+        prims = {p.name: p for p in specmod.compile_prims(spec)}
+        head = basemod.head_of({"joints": e["joints"]}, b)
+        self.head = head
+        m = basemod.mouth_lips(head)
+        lm = head["lm68"]
+        self.M, self.out, self.up, self.side = m["M"], m["out"], m["up"], m["side"]
+        self.width = m["width"]
+        self.W2 = self.width / 2
+        self.ru, self.rl = m["ru"], m["rl"]
+        self.lip = max(self.ru, self.rl)
+        pts = m["pts"] - self.M
+        self.su, self.sz, self.sf = m["knots"], pts @ self.up, pts @ self.out
+        self.corners = {"Left": lm[54], "Right": lm[48]}
+        self.R = 0.5 * float(np.linalg.norm(lm[16] - lm[0]))
+        self._mouth_parts(prims, "face")
+        self.nose = []
+        self.eyes = {s: {"c": np.asarray(c, float), "r": float(head["eye_r"]), "ro": 1.3 * float(head["eye_r"]),
+                         "part": b.get("eyes")} for s, c in zip(("Left", "Right"), head["eyes"])}
+        self.brows, self.cheeks = {}, {}
+        jaw = opts.get("jaw") or {}
+        self.P = (np.asarray(specmod.resolve_point(e, jaw["pivot"]), float) if "pivot" in jaw
+                  else 0.5 * (lm[0] + lm[16]))
+        self.open = np.radians(float(jaw.get("open", GNM_OPEN)))
+        self.depth = float(jaw.get("depth", 0.75 * self.R))
+        self._gnm = {}
+
+    # ---- GNM's frame, the solve, the carry ---------------------------------------------------------------------
+
+    def _setup(self):
+        if self._gnm:
+            return self._gnm
+        from scipy.spatial import cKDTree
+
+        from . import base as basemod
+        g = basemod._gnm_data()
+        c = self.head["carry"]
+        V = c["V"]
+        Wlm = np.zeros((68, len(V)))
+        for i, r in enumerate(g["lm68"]):
+            for v, w in zip(r[0::2], r[1::2]):
+                Wlm[i, int(v)] += float(w)
+        names = [str(n) for n in g["expression_names"]]
+        regions = {k: [i for i, n in enumerate(names) if n.startswith(k)] for k in ("lower_face", "left_eye", "right_eye")}
+        X0 = Wlm @ V
+        wg = float(X0[54, 0] - X0[48, 0])
+        self._gnm = {"g": g, "c": c, "Wlm": Wlm, "regions": regions, "X0": X0, "wg": wg,
+                     "tree": cKDTree(self.head["verts"])}
+        return self._gnm
+
+    def _solve(self, moves: dict, region: str, hold: float = HOLD) -> np.ndarray:
+        """GNM vertex offsets (its frame) that move landmarks by `moves` ({id: [x, y, z] in mouth widths}) holding
+        the rest: ridge least squares over the region's expression components (linear in them, as pose_expression)."""
+        G = self._setup()
+        comps = G["regions"]["lower_face"] if region == "mouth" else G["regions"]["left_eye"] + G["regions"]["right_eye"]
+        B = G["g"]["expression_basis"][comps]
+        A = np.einsum("ln,cnd->ldc", G["Wlm"], B).reshape(68 * 3, len(comps))
+        t = np.zeros((68, 3))
+        w = np.full((68, 3), hold)
+        for i, d in moves.items():
+            t[i] += np.asarray(d, float) * G["wg"]
+            w[i] = 1.0
+        w, t = w.ravel(), t.ravel()
+        Aw = A * w[:, None]
+        cf = np.linalg.solve(Aw.T @ Aw + 1e-6 * np.eye(len(comps)), Aw.T @ (t * w))
+        return np.tensordot(cf, B, 1)
+
+    def _jaw_moves(self, ang: float = None, shift=None) -> dict:
+        """The jaw's landmarks (jaw line, lower lip; the corners half) turned about the ear line or shifted."""
+        G = self._setup()
+        X0 = G["X0"]
+        Pg = 0.5 * (X0[0] + X0[16])
+        out = {}
+        for ids, k in ((JAW + LOWER_LIP, 1.0), ([2, 14, 48, 54, 60, 64], 0.5)):
+            for i in ids:
+                if ang is not None:
+                    q = X0[i] - Pg
+                    moved = _rodrigues(np.array([1.0, 0.0, 0.0]), np.array([k * ang]), q[None])[0]
+                    out[i] = (moved - q) / G["wg"]
+                else:
+                    out[i] = k * np.asarray(shift, float)
+        return out
+
+    def _gnm_moves(self, name: str):
+        """(landmark moves, region) for a shape, or (vertex offsets, None) for those the basis has no landmarks for."""
+        s = "Left" if name.endswith("Left") else "Right" if name.endswith("Right") else None
+        sx = 1.0 if s in (None, "Left") else -1.0
+        side = (lambda ids: _mirror_ids(ids, s)) if s else (lambda ids: ids)
+
+        def put(mv, ids, d, k=1.0):
+            for i in side(ids):
+                mv[i] = np.asarray(mv.get(i, np.zeros(3)), float) + k * np.asarray([d[0] * sx, d[1], d[2]], float)
+        mv = {}
+        if name == "jawOpen":
+            return self._jaw_moves(self.open), "mouth"
+        if name == "jawForward":
+            return self._jaw_moves(shift=[0, 0, 0.12]), "mouth"
+        if name in ("jawLeft", "jawRight"):
+            return self._jaw_moves(shift=[0.12 * sx, 0, 0]), "mouth"
+        if name == "mouthClose":  # against jawOpen: the lower lip back up most of the way, the upper down the rest
+            jo = self._jaw_moves(self.open)
+            for i in LOWER_LIP:
+                mv[i] = -CLOSE_LOWER * jo[i]
+            for u, l in zip(UPPER_LIP, [59, 58, 57, 56, 55, 67, 66, 65]):
+                mv[u] = (1 - CLOSE_LOWER) * jo[l]
+            for i in JAW:
+                mv[i] = np.zeros(3)
+            return mv, "mouth"
+        if name == "mouthFunnel":
+            put(mv, [48, 54], [0, 0, 0]), put(mv, [54], [-0.08, 0, 0.06]), put(mv, [48], [0.08, 0, 0.06])
+            put(mv, UPPER_LIP[:5], [0, 0.07, 0.1]), put(mv, LOWER_LIP[:5], [0, -0.07, 0.1])
+            put(mv, [61, 62, 63], [0, 0.07, 0.06]), put(mv, [65, 66, 67], [0, -0.07, 0.06])
+            return mv, "mouth"
+        if name == "mouthPucker":
+            put(mv, [54], [-0.14, 0, 0.08]), put(mv, [48], [0.14, 0, 0.08])
+            put(mv, [53, 55], [-0.07, 0, 0.12]), put(mv, [49, 59], [0.07, 0, 0.12])
+            put(mv, [50, 51, 52, 56, 57, 58, 61, 62, 63, 65, 66, 67], [0, 0, 0.13])
+            return mv, "mouth"
+        if name in ("mouthLeft", "mouthRight"):
+            for i in range(48, 68):
+                mv[i] = np.array([0.12 * sx, 0, 0])
+            return mv, "mouth"
+        if name.startswith("mouthSmile"):
+            put(mv, [54], [0.08, 0.15, -0.05]), put(mv, [53, 55, 64], [0.04, 0.08, -0.03])
+            return mv, "mouth"
+        if name.startswith("mouthFrown"):
+            put(mv, [54], [0.0, -0.09, 0.0]), put(mv, [55, 64], [0, -0.04, 0])
+            return mv, "mouth"
+        if name.startswith("mouthDimple"):
+            put(mv, [54], [0.05, 0.0, -0.06]), put(mv, [64], [0.03, 0, -0.03])
+            return mv, "mouth"
+        if name.startswith("mouthStretch"):
+            put(mv, [54], [0.1, -0.04, -0.02]), put(mv, [55, 56, 65], [0.03, -0.04, 0])
+            return mv, "mouth"
+        if name == "mouthRollLower":
+            put(mv, [56, 57, 58], [0, 0.04, -0.09]), put(mv, [65, 66, 67], [0, 0.02, -0.08])
+            return mv, "mouth"
+        if name == "mouthRollUpper":
+            put(mv, [50, 51, 52], [0, -0.04, -0.08]), put(mv, [61, 62, 63], [0, -0.02, -0.07])
+            return mv, "mouth"
+        if name == "mouthShrugLower":
+            put(mv, LOWER_LIP, [0, 0.05, 0.03]), put(mv, [7, 8, 9], [0, 0.04, 0.02])
+            return mv, "mouth"
+        if name == "mouthShrugUpper":
+            put(mv, UPPER_LIP, [0, 0.05, 0.03])
+            return mv, "mouth"
+        if name.startswith("mouthPress"):
+            put(mv, LEFT["upper"] + [51, 62], [0, -0.02, -0.02], 1.0), put(mv, LEFT["lower"] + [57, 66], [0, 0.02, -0.02])
+            put(mv, [54], [0.03, 0, -0.01])
+            return mv, "mouth"
+        if name.startswith("mouthLowerDown"):
+            put(mv, [55, 56, 65], [0, -0.09, 0.02]), put(mv, [57, 66], [0, -0.045, 0.01])
+            return mv, "mouth"
+        if name.startswith("mouthUpperUp"):
+            put(mv, [52, 53, 63], [0, 0.09, 0.02]), put(mv, [51, 62], [0, 0.045, 0.01])
+            return mv, "mouth"
+        if name.startswith("eyeBlink"):
+            X0 = self._setup()["X0"]
+            for up_i, lo_i in LEFT["lid_upper"]:
+                u, lo = side([up_i])[0], side([lo_i])[0]
+                gap = (X0[lo] - X0[u]) / self._setup()["wg"]
+                mv[u] = 0.8 * gap * np.array([0, 1.0, 0.3])  # down (and a little forward: over the ball)
+                mv[lo] = -0.2 * gap * np.array([0, 1.0, 0.3])
+            return mv, "eyes"
+        if name == "browInnerUp":
+            for ss in ("Left", "Right"):
+                for i in _mirror_ids([22, 23], ss):
+                    mv[i] = np.array([0, 0.1, 0])
+                for i in _mirror_ids([24], ss):
+                    mv[i] = np.array([0, 0.04, 0])
+            return mv, "eyes"
+        if name.startswith("browDown"):
+            put(mv, [22, 23, 24, 25, 26], [-0.02, -0.08, 0.01])
+            return mv, "eyes"
+        if name.startswith("browOuterUp"):
+            put(mv, [25, 26], [0, 0.1, 0]), put(mv, [24], [0, 0.05, 0])
+            return mv, "eyes"
+        if name == "cheekPuff":
+            return self._cheek_puff(), None
+        if name == "tongueOut":
+            jo = self._jaw_moves(0.35 * self.open)
+            return jo, "mouth"
+        raise SpecError(f"face_shapes: unknown shape {name!r}")
+
+    def _cheek_puff(self) -> np.ndarray:
+        """The cheeks blown out along their normals (no landmark there for the basis to aim at)."""
+        G = self._setup()
+        g, V = G["g"], G["c"]["V"]
+        Q = g["quads"]
+        N = vertex_normals(V, np.r_[Q[:, [0, 1, 2]], Q[:, [0, 2, 3]]])
+        w = np.clip(g["groups"]["left_cheek_region"] + g["groups"]["right_cheek_region"]
+                    + 0.5 * (g["groups"]["left_parotid_region"] + g["groups"]["right_parotid_region"]), 0, 1)
+        w = w * (1 - np.clip(g["groups"]["upper_lip_region"] + g["groups"]["lower_lip_region"], 0, 1))
+        # feathered across the quads (the regions have hard edges)
+        for _ in range(8):
+            acc = np.zeros(len(V))
+            cnt = np.zeros(len(V))
+            for k in range(4):
+                np.add.at(acc, Q[:, k], w[Q].mean(1))
+                np.add.at(cnt, Q[:, k], 1)
+            w = acc / np.maximum(cnt, 1)
+        return N * (0.09 * G["wg"]) * w[:, None]
+
+    def _carried(self, *dVs: np.ndarray) -> list:
+        """GNM offsets (its frame, every GNM vertex) -> offsets of the head mesh's vertices (head["verts"]): the eye
+        scaling's local magnification, the head's narrowing, the placement (scale, turn), then Catmull-Clark as the
+        skin was (linear in the positions: all the offsets go through one subdivision side by side)."""
+        from . import base as basemod
+        c = self._setup()["c"]
+        cols = []
+        for dV in dVs:
+            d = dV * c["esc"][:, None]
+            d[:, 0] *= c["narrow"]
+            dW = c["s"] * d[c["skin"]] @ c["R"].T
+            if c["skin_index"] is not None:  # (zipped lips: never with face shapes, they need the lips apart)
+                dW = dW[c["skin_index"] >= 0]
+            cols.append(dW)
+        D, faces = np.concatenate(cols, 1), c["faces"]
+        for _ in range(c["subdivide"]):
+            D, faces = basemod._catmull_clark(D, faces)
+        return [D[:, 3 * k:3 * k + 3] for k in range(len(dVs))]
+
+    def _carried_scalar(self, f: np.ndarray) -> np.ndarray:
+        """A per-GNM-vertex value (a vertex group) on the head mesh's vertices, subdivided like the positions."""
+        from . import base as basemod
+        c = self._setup()["c"]
+        v = np.asarray(f, float)[c["skin"]]
+        if c["skin_index"] is not None:
+            v = v[c["skin_index"] >= 0]
+        D, faces = np.repeat(v[:, None], 3, 1), c["faces"]
+        for _ in range(c["subdivide"]):
+            D, faces = basemod._catmull_clark(D, faces)
+        return D[:, 0]
+
+    def _onto(self, X: np.ndarray, dW: np.ndarray):
+        """Head-mesh offsets onto points X: inverse-distance over the 6 nearest head-mesh vertices, and how near the
+        head mesh each point is (1 within 2 mm, 0 from 6 mm: the bag, teeth and tongue go by the jaw instead). Between the lips a point takes only its own lip's vertices: the parted lips are ~3 mm
+        apart, so the nearest six mixed both lips and the jaw's opening tore the slit's walls into shards."""
+        G = self._setup()
+        if "sides" not in G:  # which lip each head vertex is: GNM's lip groups (the inner rolls curl past the
+            # parting line's height, so height alone put lower-lip vertices in the upper lip), else its height
+            from scipy.spatial import cKDTree
+            W = np.asarray(self.head["verts"], float)
+            gr = G["g"]["groups"]
+            up_w, lo_w = self._carried_scalar(gr["upper_lip"]), self._carried_scalar(gr["lower_lip"])
+            above = np.where(np.maximum(up_w, lo_w) > 0.3, up_w > lo_w, self.local(W)["h0"] >= 0)
+            G["sides"] = [(np.flatnonzero(m), cKDTree(W[m])) for m in (above, ~above)]
+        d, i = G["tree"].query(X, k=6)
+        L = self.local(X)
+        lips = _bump(L["u"], 0.95, 1.3) * _bump(L["back"], self.thick + 0.004, self.thick + 0.012) \
+            * _bump(np.abs(L["h0"]), 3 * self.lip, 6 * self.lip)
+        out = (dW[i] * self._idw(d)[..., None]).sum(1)
+        sel = lips > 0
+        if sel.any():
+            sided = np.zeros((sel.sum(), 3))
+            up = L["h0"][sel] >= 0
+            for (idx, tree), m in zip(G["sides"], (up, ~up)):
+                if m.any():
+                    ds, js = tree.query(X[sel][m], k=6)
+                    sided[m] = (dW[idx[js]] * self._idw(ds)[..., None]).sum(1)
+            out[sel] = out[sel] * (1 - lips[sel, None]) + sided * lips[sel, None]
+        return out, _bump(d[:, 0], 0.002, 0.006)
+
+    @staticmethod
+    def _idw(d):
+        w = 1 / np.maximum(d, 1e-5) ** 2
+        return w / w.sum(1, keepdims=True)
+
+    def _rigid_jaw(self, dW: np.ndarray):
+        """The jaw's rigid motion in a shape (Procrustes on the jaw line's landmarks, world): (rotation, origin, t)."""
+        lm = self.head["lm68"]
+        ids = [4, 5, 6, 7, 8, 9, 10, 11, 12]
+        P0 = lm[ids]
+        D, _ = self._onto(P0, dW)
+        P1 = P0 + D
+        a, b = P0.mean(0), P1.mean(0)
+        U, _, Vt = np.linalg.svd((P0 - a).T @ (P1 - b))
+        Rr = (U @ Vt).T
+        if np.linalg.det(Rr) < 0:
+            Vt[-1] *= -1
+            Rr = (U @ Vt).T
+        return Rr, a, b
+
+    def neutral(self, Xm: np.ndarray, kind: str) -> np.ndarray:
+        """The lips closed: the inner lips' landmarks moved half the gap each, solved in the basis and carried."""
+        if kind != "skin":
+            return np.zeros_like(Xm)
+        if "close" not in self._gnm:
+            G = self._setup()
+            X0 = G["X0"]
+            mv = {}
+            for u, l in ((61, 67), (62, 66), (63, 65)):
+                gap = (X0[l] - X0[u]) / G["wg"]
+                mv[u], mv[l] = 0.5 * gap, -0.5 * gap
+            dW, = self._carried(self._solve(mv, "mouth", hold=0.2))
+            # the basis gets most of the way (holding the outer lips); scaled so the inner lips' midpoints meet
+            lm = self.head["lm68"]
+            D, _ = self._onto(lm[[62, 66]], dW)
+            want = float((lm[66] - lm[62]) @ self.up)
+            got = float((D[0] - D[1]) @ self.up)
+            self._gnm["close"] = dW * float(np.clip(-want / got, 1.0, 2.0) if got * want < 0 else 1.0)
+        D, a = self._onto(Xm, self._gnm["close"])
+        return D * a[:, None]
+
+    def displacements(self, Xm, Xn, nrm, kind, names, lower=None) -> dict:
+        G = self._setup()
+        L = self.local(Xm)
+        n = len(Xm)
+        wj = self.jaw_weight(L) if kind == "skin" else (np.ones(n) if kind == "tongue" else
+                                                        (np.zeros(n) if lower is None else lower.astype(float)))
+        res = {}
+        todo = [nm for nm in names if nm not in G.setdefault("dW", {})]
+        if todo:  # every shape's GNM offsets, then one subdivision for all of them
+            dVs = []
+            for name in todo:
+                mv, region = self._gnm_moves(name)
+                dVs.append(mv if region is None else self._solve(mv, region))
+            G["dW"].update(zip(todo, self._carried(*dVs)))
+        for name in names:
+            dW = G["dW"][name]
+            if name in JAW_SHAPES:
+                Rr, a, b = self._rigid_jaw(dW)
+                rigid = (Xn - a) @ Rr.T + b - Xn  # the jaw's own move, for what isn't skin (bag, teeth, tongue)
+            else:  # (the jaw line hardly moves: its fit is noise, and moved the teeth in a smile)
+                rigid = np.zeros_like(Xn)
+            if kind == "skin":
+                D, near = self._onto(Xm, dW)
+                d = D * near[:, None] + rigid * ((1 - near) * wj)[:, None]
+                # nothing may sink into an eyeball (a blink's lid slides over it)
+                for ev in self.eyes.values():
+                    q = Xn + d - ev["c"]
+                    r = np.linalg.norm(q, axis=1)
+                    lim = ev["r"] + 0.0006
+                    inside = (r < lim) & (np.linalg.norm(Xn - ev["c"], axis=1) < 1.6 * ev["r"])
+                    d[inside] += q[inside] * ((lim - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
+            else:
+                d = rigid * wj[:, None]
+            if name == "tongueOut" and kind == "tongue" and self.tongue is not None:
+                tc, ts = self.tongue.params["c"], self.tongue.params["size"]
+                along = np.clip(((Xm - tc) @ self.out + ts[1]) / (2 * ts[1]), 0, 1)
+                reach = ((self.M - tc) @ self.out) - ts[1] + 0.3 * self.width
+                d = d + (_ss(along) * reach)[:, None] * self.out - (along ** 2 * 0.2 * reach)[:, None] * self.up
+            res[name] = d * self.amount.get(name, 1.0)
+        return res
+
+
+def face_of(spec: dict) -> Face:
+    """The face shapes' anatomy for a model: a GNM head (base.head.source "gnm") or the face kit."""
+    hd = ((spec.get("base") or {}).get("head") or {})
+    if hd and hd.get("source", "gnm") == "gnm" and not any(
+            k.get("type") == "face" for k in (spec.get("kits") or {}).values()):
+        return GnmFace(spec)
+    return Face(spec)

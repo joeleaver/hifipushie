@@ -381,8 +381,7 @@
   "mouth_inside": {
    "color": "#4a1a1c",
    "near": [
-    "face_mouth_bag",
-    "face_mouth_slit"
+    "face_mouth_bag"
    ],
    "within": 0.002
   }

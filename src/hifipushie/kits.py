@@ -46,8 +46,9 @@ face: {"head": joint (anchor); feature positions "at" are offsets from it in wor
            "interior": true | {"slit": m (gap between the lips, 0.5 x the thinner lip radius), "lips": m (lip
              front to the bag), "bag": [half width, half depth, half height] of the mouth bag (rounded box),
              "teeth": true | {"part" ("teeth"), "thickness", "width"/"back": arch share of the bag's},
-             "tongue": true | {"part" ("tongue"), "size"}}: a mouth that can open (export face shapes:
-             faceshapes.py): a slit through the lips into a bag; teeth/tongue in parts of their own}
+             "tongue": true | {"part" ("tongue"), "size"}, "end": where the slit stops (0.92 of the half
+             width)}: a mouth that can open (export face shapes: faceshapes.py): a slit through the lips into a
+             bag; teeth/tongue in parts of their own. A GNM base head takes the same under base.head.interior}
   "blend": default blend for face parts. Layers: skin features 0, lids and lips 1, eyeballs 2.
 Any kit: "part" puts everything it generates in that part.
 """
@@ -518,12 +519,15 @@ def _interior(f: dict, line, on_skin, us, F, width: float, ru: float, rl: float,
     bag = np.asarray(it.get("bag", [0.42 * width, 0.32 * width, 0.11 * width]), float)  # half width, depth, height
     # the slit: along the parting line (the groove chain's own points), from in front of the lips back into the bag,
     # narrowing to nothing at the corners
-    seam = [on_skin(u, 0.0, 0.0) for u in us[:-1]] + [on_skin(0.96, 0.0, 0.0)]
-    taper = [max(1 - (u / 0.96) ** 4, 0.25) for u in [*us[:-1], 0.96]]
+    end = float(it.get("end", 0.92))  # where the slit stops, of the half width (past it, it notched the cheek)
+    ends = [u for u in us[:-1] if u < end] + [end]
+    seam = [on_skin(u, 0.0, 0.0) for u in ends]
+    taper = [max(1 - (u / end) ** 4, 0.25) for u in ends]
     hs = [round(slit / 2 * t, 5) for t in taper]
+    front = [round(1.5 * lip * (0.3 + 0.7 * t), 5) for t in taper]  # in front of the lips, less toward the corner
     o.blob(f"{fb}_mouth_slit", shape="sweep", profile="band", path=[_r(p) for p in seam], N=[_r(out)] * len(seam),
            U=[_r(up)] * len(seam), mirror=True, open_start=True,
-           values={"n0": round(-(thick + 0.5 * bag[1]), 5), "n1": round(1.5 * lip, 5), "u0": [-h for h in hs],
+           values={"n0": round(-(thick + 0.5 * bag[1]), 5), "n1": front, "u0": [-h for h in hs],
                    "u1": hs, "round": [round(0.9 * h, 5) for h in hs]},
            op="subtract", layer=1, blend=round(0.25 * slit, 5))
     centre = on_skin(0.0, 0.0, -(thick + bag[1]))
@@ -543,7 +547,7 @@ def _interior(f: dict, line, on_skin, us, F, width: float, ru: float, rl: float,
         for row, (u0, u1) in (("upper", (-0.15 * slit, gum)), ("lower", (-gum, -0.6 * slit))):
             o.blob(f"{fb}_teeth_{row}", shape="sweep", profile="band", path=[_r(p) for p in path], N=[_r(n) for n in N],
                    U=[_r(up)] * len(path), mirror=True, open_start=True,
-                   values={"n0": round(-half - (0.5 * half if row == "lower" else 0.0), 5),
+                   values={"n0": round(-half - (1.5 * half if row == "lower" else 0.0), 5),  # (lower: behind)
                            "n1": round(half - (1.5 * half if row == "lower" else 0.0), 5),
                            "u0": round(u0, 5), "u1": round(u1, 5), "round": round(0.8 * half, 5)},
                    layer=2, blend=round(0.3 * half, 5), part=t.get("part", "teeth"))

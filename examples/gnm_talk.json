@@ -1,0 +1,2270 @@
+{
+ "base": {
+  "style": {
+   "eyes": 1.12,
+   "head": 1.06,
+   "simplify": 2.0,
+   "simplify_keep": [
+    0.0015,
+    0.004
+   ],
+   "shape": {
+    "planes": 2.7,
+    "planes_hold_eyes": 0.5,
+    "under_eye": 3,
+    "nostrils": 2,
+    "push": [
+     {
+      "lm": [
+       2,
+       48,
+       36
+      ],
+      "radius": 0.024,
+      "amount": -0.009
+     },
+     {
+      "lm": [
+       2,
+       3
+      ],
+      "radius": 0.02,
+      "amount": -0.005
+     },
+     {
+      "lm": [
+       5,
+       6,
+       48
+      ],
+      "radius": 0.016,
+      "amount": -0.004
+     },
+     {
+      "lm": [
+       0,
+       17
+      ],
+      "radius": 0.022,
+      "amount": 0.004
+     },
+     {
+      "lm": [
+       1,
+       36
+      ],
+      "offset": [
+       0,
+       0,
+       -0.004
+      ],
+      "radius": 0.014,
+      "amount": 0.003
+     },
+     {
+      "lm": [
+       4
+      ],
+      "radius": 0.012,
+      "amount": 0.002
+     },
+     {
+      "lm": [
+       7,
+       8,
+       9
+      ],
+      "radius": 0.016,
+      "amount": 0.0015
+     },
+     {
+      "lm": [
+       51,
+       57
+      ],
+      "radius": 0.026,
+      "amount": 0.006,
+      "dir": [
+       0,
+       1,
+       0
+      ]
+     },
+     {
+      "lm": [
+       33,
+       51
+      ],
+      "radius": 0.012,
+      "amount": 0.0015,
+      "dir": [
+       0,
+       1,
+       0
+      ]
+     },
+     {
+      "lm": [
+       38,
+       19
+      ],
+      "offset": [
+       0,
+       0,
+       -0.002
+      ],
+      "radius": 0.008,
+      "amount": -0.0012
+     }
+    ]
+   }
+  },
+  "head": {
+   "fit": {
+    "nose_width": 0.57,
+    "mouth_width": 0.9,
+    "face_width": 2.02,
+    "jaw_width": 1.78,
+    "chin_width": 1.05,
+    "eye_chin": 2.05,
+    "eye_nose": 0.75,
+    "eye_seam": 1.1,
+    "eye_mouth": 1.22
+   },
+   "pose": {
+    "lid_upper": -0.0013,
+    "lid_lower": 0.0033,
+    "mouth_raise": -0.004,
+    "smile": 0.005,
+    "brow_outer": -0.0015,
+    "brow_inner": 0.001
+   },
+   "source": "gnm",
+   "scale": 1.12,
+   "eyes": 1.35,
+   "expression": {
+    "left_eye_region_000": 0.9,
+    "right_eye_region_000": 0.9,
+    "left_eye_region_001": 0.5,
+    "right_eye_region_001": 0.5
+   },
+   "mouth_gap": 0.003,
+   "shape": {
+    "planes": 2.7,
+    "planes_hold_eyes": 0.5,
+    "under_eye": 5,
+    "nostrils": 2,
+    "push": [
+     {
+      "lm": [
+       2,
+       48,
+       36
+      ],
+      "radius": 0.024,
+      "amount": -0.009
+     },
+     {
+      "lm": [
+       2,
+       3
+      ],
+      "radius": 0.02,
+      "amount": -0.005
+     },
+     {
+      "lm": [
+       5,
+       6,
+       48
+      ],
+      "radius": 0.016,
+      "amount": -0.004
+     },
+     {
+      "lm": [
+       0,
+       17
+      ],
+      "radius": 0.022,
+      "amount": 0.004
+     },
+     {
+      "lm": [
+       1,
+       36
+      ],
+      "offset": [
+       0,
+       0,
+       -0.004
+      ],
+      "radius": 0.014,
+      "amount": 0.003
+     },
+     {
+      "lm": [
+       4
+      ],
+      "radius": 0.012,
+      "amount": 0.002
+     },
+     {
+      "lm": [
+       7,
+       8,
+       9
+      ],
+      "radius": 0.016,
+      "amount": 0.0015
+     },
+     {
+      "lm": [
+       51,
+       57
+      ],
+      "radius": 0.026,
+      "amount": 0.006,
+      "dir": [
+       0,
+       1,
+       0
+      ]
+     },
+     {
+      "lm": [
+       33,
+       51
+      ],
+      "radius": 0.012,
+      "amount": 0.0015,
+      "dir": [
+       0,
+       1,
+       0
+      ]
+     },
+     {
+      "lm": [
+       38,
+       19
+      ],
+      "offset": [
+       0,
+       0,
+       -0.002
+      ],
+      "radius": 0.008,
+      "amount": -0.0012
+     }
+    ],
+    "push_more": [
+     {
+      "lm": [
+       57
+      ],
+      "offset": [
+       0,
+       0,
+       -0.008
+      ],
+      "radius": 0.007,
+      "amount": 0.0022,
+      "dir": [
+       0,
+       1,
+       0
+      ]
+     },
+     {
+      "lm": [
+       8
+      ],
+      "offset": [
+       0,
+       0.02,
+       -0.012
+      ],
+      "radius": 0.016,
+      "amount": 0.0065,
+      "dir": [
+       0,
+       0.3,
+       1
+      ]
+     },
+     {
+      "lm": [
+       33,
+       51
+      ],
+      "radius": 0.014,
+      "amount": 0.0022,
+      "dir": [
+       0,
+       1,
+       0
+      ]
+     },
+     {
+      "lm": [
+       8
+      ],
+      "offset": [
+       0,
+       0,
+       0.004
+      ],
+      "radius": 0.022,
+      "amount": 0.0015,
+      "dir": [
+       0,
+       0,
+       -1
+      ]
+     },
+     {
+      "lm": [
+       12
+      ],
+      "offset": [
+       0,
+       -0.028,
+       0.0
+      ],
+      "radius": 0.028,
+      "amount": -0.009
+     },
+     {
+      "lm": [
+       9
+      ],
+      "offset": [
+       0.004,
+       0,
+       -0.002
+      ],
+      "radius": 0.014,
+      "amount": 0.004,
+      "dir": [
+       0.6,
+       0,
+       -1
+      ]
+     },
+     {
+      "lm": [
+       19,
+       20
+      ],
+      "offset": [
+       0,
+       0,
+       -0.003
+      ],
+      "radius": 0.012,
+      "amount": 0.0018
+     },
+     {
+      "lm": [
+       18
+      ],
+      "offset": [
+       0,
+       0,
+       -0.004
+      ],
+      "radius": 0.01,
+      "amount": 0.0012
+     }
+    ],
+    "push_late": [
+     {
+      "lm": [
+       46,
+       47
+      ],
+      "offset": [
+       0,
+       0,
+       -0.013
+      ],
+      "radius": 0.008,
+      "amount": 0.0022,
+      "dir": [
+       0,
+       -1,
+       0.2
+      ]
+     },
+     {
+      "lm": [
+       46,
+       47
+      ],
+      "offset": [
+       0.004,
+       0,
+       -0.019
+      ],
+      "radius": 0.011,
+      "amount": 0.0024,
+      "dir": [
+       0,
+       -1,
+       0
+      ]
+     }
+    ]
+   },
+   "regions": [
+    {
+     "group": "nose_region",
+     "feather": 6,
+     "identity": {
+      "head_000": 1.347,
+      "head_002": -0.237,
+      "head_003": 1.056,
+      "head_011": 0.404,
+      "head_006": 0.622,
+      "head_004": 0.716,
+      "head_001": 0.627,
+      "head_005": -0.707,
+      "head_015": 0.049,
+      "head_020": -0.459,
+      "head_013": 0.38,
+      "head_018": 0.465,
+      "head_008": 0.047,
+      "head_009": -0.124,
+      "head_007": 0.464,
+      "head_010": 0.802,
+      "head_016": -0.303,
+      "head_019": 0.406,
+      "head_021": 0.968,
+      "head_022": -1.691,
+      "head_025": -0.61,
+      "head_024": -0.372,
+      "head_027": 0.142,
+      "head_041": 0.088,
+      "head_014": 0.028,
+      "head_029": 0.053,
+      "head_038": 0.342,
+      "head_023": -0.429,
+      "head_042": -0.439,
+      "head_028": -0.779,
+      "head_044": 0.239,
+      "head_017": -0.029,
+      "head_035": -0.29,
+      "head_043": -0.604,
+      "head_034": -0.631,
+      "head_037": -0.433,
+      "head_040": 0.549,
+      "head_036": 0.796,
+      "head_032": 0.156,
+      "head_026": 0.29
+     }
+    },
+    {
+     "group": [
+      "chin_region",
+      "lower_lip_region"
+     ],
+     "feather": 24,
+     "identity": {
+      "head_000": 1.586,
+      "head_002": 0.977,
+      "head_003": -0.854,
+      "head_001": -0.526,
+      "head_004": 1.158,
+      "head_006": 0.145,
+      "head_005": -0.119,
+      "head_007": -0.155,
+      "head_008": 0.101,
+      "head_009": -0.123,
+      "head_011": -0.161,
+      "head_017": -0.641,
+      "head_013": -0.394,
+      "head_015": -0.013,
+      "head_018": 0.323,
+      "head_010": 0.47,
+      "head_014": 0.507,
+      "head_021": 0.35,
+      "head_025": 0.048,
+      "head_012": -0.332,
+      "head_020": -0.313,
+      "head_023": 0.22,
+      "head_031": 0.046,
+      "head_019": 0.273,
+      "head_027": -0.465,
+      "head_036": -0.211,
+      "head_034": -0.166,
+      "head_029": 0.039,
+      "head_024": -0.048,
+      "head_043": -0.177,
+      "head_026": -0.06,
+      "head_040": 0.234,
+      "head_047": -0.035,
+      "head_041": -0.204,
+      "head_030": 0.074,
+      "head_039": 0.426,
+      "head_048": -0.217,
+      "head_033": -0.146,
+      "head_028": 0.154,
+      "head_044": 0.203,
+      "head_035": 0.519,
+      "head_038": -0.437,
+      "head_050": 0.264,
+      "head_064": 0.154,
+      "head_056": 0.263,
+      "head_049": -0.252,
+      "head_042": 0.176,
+      "head_046": -0.082,
+      "head_016": 0.186,
+      "head_058": -0.022,
+      "head_054": -0.14,
+      "head_066": 0.072,
+      "head_059": -0.015,
+      "head_032": -0.151,
+      "head_072": 0.14,
+      "head_068": -0.198,
+      "head_061": -0.05,
+      "head_073": -0.018
+     }
+    },
+    {
+     "near": {
+      "lm": [
+       8
+      ],
+      "offset": [
+       0,
+       -0.012,
+       -0.022
+      ],
+      "radius": 0.022
+     },
+     "identity": {
+      "head_000": 0.446,
+      "head_004": 0.519,
+      "head_001": 0.01,
+      "head_002": 0.074,
+      "head_003": -0.232,
+      "head_008": 0.21,
+      "head_015": -0.096,
+      "head_006": -0.011,
+      "head_012": -0.147,
+      "head_010": 0.021,
+      "head_014": 0.211,
+      "head_009": -0.065,
+      "head_013": -0.21,
+      "head_017": -0.286,
+      "head_007": -0.019,
+      "head_018": 0.187,
+      "head_025": -0.018,
+      "head_020": -0.006,
+      "head_022": -0.148,
+      "head_005": -0.022,
+      "head_021": 0.165,
+      "head_011": -0.191,
+      "head_019": -0.044,
+      "head_027": -0.055
+     }
+    },
+    {
+     "group": "upper_lip_region",
+     "feather": 4,
+     "identity": {
+      "head_000": 0.095,
+      "head_003": -0.167,
+      "head_002": -0.445,
+      "head_001": -0.259,
+      "head_006": 0.418,
+      "head_005": 0.315,
+      "head_007": -0.02,
+      "head_009": 0.751,
+      "head_004": -0.29,
+      "head_011": 0.155,
+      "head_014": -0.318,
+      "head_031": 0.223,
+      "head_015": -0.836,
+      "head_020": 0.957,
+      "head_022": 0.622,
+      "head_025": 0.359,
+      "head_034": 0.018,
+      "head_013": 0.215,
+      "head_041": 0.225,
+      "head_008": 0.095
+     }
+    },
+    {
+     "group": [
+      "chin_region",
+      "lower_lip_region"
+     ],
+     "feather": 24,
+     "identity": {
+      "head_000": -2.154,
+      "head_002": 0.453,
+      "head_003": 1.885,
+      "head_001": -0.048,
+      "head_004": 1.879,
+      "head_006": -0.323,
+      "head_005": -0.056,
+      "head_007": 0.546,
+      "head_008": 0.695,
+      "head_009": -0.768,
+      "head_011": 0.237,
+      "head_017": 0.779,
+      "head_013": 0.124,
+      "head_022": -0.697,
+      "head_015": -0.21,
+      "head_018": -0.442,
+      "head_010": -1.01,
+      "head_014": 0.145,
+      "head_021": 0.775,
+      "head_025": -0.381,
+      "head_012": -0.195,
+      "head_020": -0.632,
+      "head_023": -0.029,
+      "head_031": -0.411,
+      "head_019": -0.945,
+      "head_027": 0.495,
+      "head_036": 0.255,
+      "head_034": -0.193,
+      "head_029": -0.517,
+      "head_024": -0.298,
+      "head_043": -0.317,
+      "head_026": 0.429,
+      "head_040": 0.707,
+      "head_047": 0.401,
+      "head_041": 1.111,
+      "head_055": 0.357,
+      "head_030": -0.541,
+      "head_039": 0.116,
+      "head_048": 0.702,
+      "head_033": 0.706
+     }
+    },
+    {
+     "near": {
+      "lm": [
+       8
+      ],
+      "offset": [
+       0,
+       0.022,
+       -0.005
+      ],
+      "radius": 0.035
+     },
+     "identity": {
+      "head_000": 2.984,
+      "head_003": -1.843,
+      "head_002": -0.506,
+      "head_001": -3.0,
+      "head_006": -0.215,
+      "head_005": -0.602,
+      "head_004": 1.396,
+      "head_007": 0.373,
+      "head_009": 0.492,
+      "head_011": -0.808,
+      "head_008": 1.15,
+      "head_013": 1.548,
+      "head_017": 1.53,
+      "head_015": -0.092,
+      "head_014": 0.571,
+      "head_021": 0.222,
+      "head_022": 1.806,
+      "head_018": -1.326,
+      "head_010": 2.33,
+      "head_012": -0.94,
+      "head_023": -0.803,
+      "head_025": -0.307,
+      "head_020": -0.973,
+      "head_031": 0.137,
+      "head_019": -0.681,
+      "head_036": 0.718,
+      "head_040": 0.468,
+      "head_027": -0.247,
+      "head_038": 1.267,
+      "head_044": -0.32
+     }
+    },
+    {
+     "near": {
+      "lm": [
+       8
+      ],
+      "offset": [
+       0,
+       -0.012,
+       -0.022
+      ],
+      "radius": 0.022
+     },
+     "identity": {
+      "head_000": -1.574,
+      "head_004": -0.408,
+      "head_001": 0.898,
+      "head_002": -0.6,
+      "head_003": 0.378,
+      "head_008": 0.011,
+      "head_015": 0.241,
+      "head_006": -0.396,
+      "head_012": 0.253,
+      "head_010": -0.327,
+      "head_014": -0.275,
+      "head_009": -0.154,
+      "head_013": 0.395,
+      "head_017": 0.436,
+      "head_007": -0.371,
+      "head_018": -0.329,
+      "head_025": -0.103,
+      "head_020": -0.204,
+      "head_022": 0.355,
+      "head_005": -0.202
+     }
+    }
+   ],
+   "interior": {
+    "teeth": true,
+    "tongue": true
+   }
+  },
+  "body": {
+   "source": "makehuman",
+   "age": 45,
+   "weight": 0.72,
+   "muscle": 0.3,
+   "height": 1.78
+  },
+  "eyes": "eyes",
+  "look_at": [
+   0.0,
+   -4.0,
+   1.64
+  ]
+ },
+ "style": {
+  "look": {
+   "lights": [
+    {
+     "dir": [
+      0.3,
+      -0.85,
+      0.45
+     ],
+     "energy": 3.2,
+     "color": [
+      1.0,
+      0.94,
+      0.86
+     ],
+     "angle": 50
+    },
+    {
+     "dir": [
+      -0.45,
+      -0.85,
+      0.05
+     ],
+     "energy": 2.0,
+     "color": [
+      1.0,
+      0.74,
+      0.74
+     ],
+     "angle": 40,
+     "shadow": false
+    },
+    {
+     "dir": [
+      0.0,
+      -0.6,
+      -0.8
+     ],
+     "energy": 0.9,
+     "color": [
+      1.0,
+      0.72,
+      0.62
+     ],
+     "angle": 40,
+     "shadow": false
+    },
+    {
+     "dir": [
+      -0.35,
+      0.85,
+      0.45
+     ],
+     "energy": 2.2,
+     "color": [
+      1.0,
+      0.97,
+      0.95
+     ],
+     "angle": 8
+    }
+   ],
+   "world": {
+    "color": [
+     0.86,
+     0.74,
+     0.76
+    ],
+    "strength": 0.7
+   },
+   "view": "Khronos PBR Neutral",
+   "look": "None",
+   "exposure": -0.5
+  },
+  "sheet": "stylised_realist"
+ },
+ "symmetry": true,
+ "blend": 0.035,
+ "joints": {},
+ "bones": {},
+ "blobs": {},
+ "strokes": {
+  "brow_mass.L": {
+   "op": "clay",
+   "width": 0.01,
+   "depth": 0.0012,
+   "path": [
+    {
+     "at": "lm_brow_inner.L",
+     "dir": [
+      0,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_brow_mid.L"
+    },
+    {
+     "at": "lm_brow_outer.L",
+     "offset": [
+      0,
+      0,
+      -0.002
+     ],
+     "dir": [
+      0.5,
+      -1,
+      0.2
+     ]
+    }
+   ]
+  },
+  "nose_tip_groove.L": {
+   "op": "crease",
+   "width": 0.0035,
+   "profile": "soft",
+   "depth": [
+    0.0002,
+    0.0007,
+    0.0002
+   ],
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.009,
+      0.004,
+      0.006
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.011,
+      0.006,
+      -0.002
+     ]
+    },
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.008,
+      0.006,
+      -0.009
+     ],
+     "dir": [
+      0.5,
+      -1,
+      -0.5
+     ]
+    }
+   ]
+  },
+  "nose_plane_L": {
+   "op": "flatten",
+   "width": 0.007,
+   "depth": 0.0007,
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0.006,
+      0.002,
+      0.001
+     ],
+     "dir": [
+      0.7,
+      -0.7,
+      -0.1
+     ]
+    }
+   ]
+  },
+  "nose_plane_R": {
+   "op": "flatten",
+   "width": 0.007,
+   "depth": 0.0007,
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      -0.006,
+      0.002,
+      0.001
+     ],
+     "dir": [
+      -0.7,
+      -0.7,
+      -0.1
+     ]
+    }
+   ]
+  }
+ },
+ "paint": {
+  "skin": {
+   "color": "#e4ae86",
+   "roughness": 0.55
+  },
+  "skin_shadow_warm": {
+   "color": "#a85a4c",
+   "opacity": 0.45,
+   "ao": [
+    0.75,
+    0.4
+   ]
+  },
+  "skin_thin_warm": {
+   "color": "#cc553d",
+   "opacity": 0.35,
+   "thickness": [
+    0.045,
+    0.012
+   ]
+  },
+  "plane_side.L": {
+   "color": "#b56a55",
+   "opacity": 0.38,
+   "mask": [
+    {
+     "facing": [
+      1,
+      0.3,
+      0
+     ],
+     "range": [
+      0.5,
+      0.78
+     ]
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "at": "lm_chin",
+      "from": -0.11,
+      "to": -0.08
+     }
+    }
+   ]
+  },
+  "plane_under": {
+   "color": "#935e58",
+   "opacity": 0.35,
+   "mask": [
+    {
+     "facing": [
+      0,
+      -0.25,
+      -1
+     ],
+     "range": [
+      0.3,
+      0.7
+     ]
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "at": "lm_chin",
+      "from": -0.11,
+      "to": -0.08
+     }
+    }
+   ]
+  },
+  "socket_shadow.L": {
+   "color": "#94503f",
+   "opacity": 0.32,
+   "profile": "soft",
+   "path": [
+    {
+     "at": "lm_eye_inner.L",
+     "offset": [
+      -0.001,
+      0,
+      0.007
+     ],
+     "dir": [
+      0,
+      -1,
+      0.3
+     ]
+    },
+    {
+     "at": "lm_lid_upper.L",
+     "offset": [
+      0,
+      0,
+      0.008
+     ]
+    },
+    {
+     "at": "lm_eye_outer.L",
+     "offset": [
+      0.004,
+      0,
+      0.006
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0.3
+     ]
+    }
+   ],
+   "width": 0.0065
+  },
+  "plane_top_light": {
+   "color": "#f6c4a8",
+   "opacity": 0.3,
+   "mask": [
+    {
+     "facing": [
+      0,
+      -0.55,
+      0.85
+     ],
+     "range": [
+      0.45,
+      0.9
+     ]
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "at": "lm_chin",
+      "from": -0.11,
+      "to": -0.08
+     }
+    },
+    {
+     "path": [
+      {
+       "at": "lm_nose_bridge",
+       "offset": [
+        0,
+        0,
+        0.012
+       ],
+       "dir": [
+        0,
+        -1,
+        0.3
+       ]
+      },
+      {
+       "at": "lm_nose_bridge"
+      },
+      {
+       "at": "lm_nose_tip",
+       "dir": [
+        0,
+        -1,
+        0
+       ]
+      }
+     ],
+     "width": 0.024,
+     "profile": "soft",
+     "invert": true
+    }
+   ]
+  },
+  "skin_matte": {
+   "roughness": 0.66,
+   "opacity": 0.8,
+   "mask": [
+    {
+     "noise": {
+      "scale": 0.035,
+      "range": [
+       0.35,
+       0.7
+      ],
+      "seed": 3
+     }
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "at": "lm_chin",
+      "from": -0.11,
+      "to": -0.08
+     }
+    }
+   ]
+  },
+  "tzone_satin": {
+   "roughness": 0.42,
+   "profile": "soft",
+   "path": [
+    {
+     "at": "lm_nose_bridge",
+     "offset": [
+      0,
+      0,
+      0.035
+     ],
+     "dir": [
+      0,
+      -1,
+      0.3
+     ]
+    },
+    {
+     "at": "lm_nose_bridge"
+    },
+    {
+     "at": "lm_nose_tip",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.011
+  },
+  "skin_warm": {
+   "color": "#d06a50",
+   "opacity": 0.6,
+   "path": [
+    {
+     "at": "lm_nose_tip",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.016,
+   "profile": "soft"
+  },
+  "nose_sides.L": {
+   "color": "#a85a48",
+   "opacity": 0.3,
+   "mask": [
+    {
+     "path": [
+      {
+       "at": "lm_nose_bridge",
+       "offset": [
+        0,
+        0,
+        0.012
+       ],
+       "dir": [
+        0,
+        -1,
+        0.3
+       ]
+      },
+      {
+       "at": "lm_nose_bridge"
+      },
+      {
+       "at": "lm_nose_tip",
+       "dir": [
+        0,
+        -1,
+        0
+       ]
+      }
+     ],
+     "width": 0.026,
+     "profile": "soft"
+    },
+    {
+     "facing": [
+      1,
+      0.1,
+      0
+     ],
+     "range": [
+      0.25,
+      0.8
+     ]
+    }
+   ]
+  },
+  "nose_under": {
+   "color": "#843f33",
+   "opacity": 0.45,
+   "mask": [
+    {
+     "path": [
+      {
+       "at": "lm_nose_tip",
+       "dir": [
+        0,
+        -1,
+        0
+       ]
+      },
+      {
+       "at": "lm_nose_base",
+       "dir": [
+        0,
+        -1,
+        -0.3
+       ]
+      }
+     ],
+     "width": 0.02,
+     "profile": "soft"
+    },
+    {
+     "facing": [
+      0,
+      -0.2,
+      -1
+     ],
+     "range": [
+      0.25,
+      0.75
+     ]
+    }
+   ]
+  },
+  "nose_highlight": {
+   "color": "#f8d8c0",
+   "opacity": 0.4,
+   "profile": "soft",
+   "width": 0.006,
+   "path": [
+    {
+     "at": "lm_nose_bridge",
+     "offset": [
+      0,
+      0,
+      -0.008
+     ],
+     "dir": [
+      0,
+      -1,
+      0.3
+     ]
+    },
+    {
+     "at": "lm_nose_tip",
+     "offset": [
+      0,
+      0,
+      0.003
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ]
+  },
+  "cheeks_warm.L": {
+   "color": "#d56e55",
+   "opacity": 0.3,
+   "path": [
+    {
+     "at": "lm_nostril.L",
+     "offset": [
+      0.03,
+      0.015,
+      0.008
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.026,
+   "profile": "soft"
+  },
+  "lids_warm.L": {
+   "color": "#c65a45",
+   "opacity": 0.12,
+   "path": [
+    {
+     "at": "lm_eye_inner.L",
+     "offset": [
+      0,
+      0,
+      -0.003
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": "lm_eye_outer.L",
+     "offset": [
+      0.002,
+      0,
+      -0.003
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.007,
+   "profile": "soft"
+  },
+  "lash_line": {
+   "color": "#1a0e0a",
+   "roughness": 0.6,
+   "near": [
+    "eye.L",
+    "eye.R"
+   ],
+   "within": 0.0024,
+   "soft": 0.0012,
+   "axis": {
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "at": "eye.L",
+    "from": -0.0005,
+    "to": 0.0018
+   }
+  },
+  "stubble.L": {
+   "color": "#3a1c13",
+   "opacity": 0.95,
+   "roughness": 0.72,
+   "mask": [
+    {
+     "outline": {
+      "points": [
+       {
+        "at": "lm_nose_base",
+        "offset": [
+         -0.012,
+         0,
+         -0.004
+        ]
+       },
+       {
+        "at": "lm_nostril.L",
+        "offset": [
+         0.004,
+         0,
+         -0.007
+        ]
+       },
+       {
+        "at": "lm_mouth_corner.L",
+        "offset": [
+         0.009,
+         0,
+         0.005
+        ]
+       },
+       {
+        "at": "lm_jaw_3.L",
+        "offset": [
+         -0.004,
+         0,
+         0.012
+        ]
+       },
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         0.004,
+         0,
+         0.0
+        ]
+       },
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         0.004,
+         0,
+         -0.05
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "offset": [
+         -0.012,
+         0,
+         -0.05
+        ]
+       }
+      ],
+      "dir": [
+       0,
+       1,
+       0
+      ],
+      "soft": 0.009,
+      "depth": 0.06
+     }
+    },
+    {
+     "outline": {
+      "points": [
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         0,
+         -0.01,
+         0.004
+        ]
+       },
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         0,
+         -0.022,
+         -0.004
+        ]
+       },
+       {
+        "at": "lm_jaw_2.L",
+        "offset": [
+         0,
+         -0.036,
+         0.004
+        ]
+       },
+       {
+        "at": "lm_mouth_corner.L",
+        "offset": [
+         0,
+         -0.004,
+         0.006
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "offset": [
+         0,
+         -0.02,
+         0.0
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "offset": [
+         0,
+         0.03,
+         -0.05
+        ]
+       },
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         0,
+         0.012,
+         -0.05
+        ]
+       },
+       {
+        "at": "lm_jaw_1.L",
+        "offset": [
+         0,
+         0.01,
+         -0.01
+        ]
+       }
+      ],
+      "dir": [
+       -1,
+       0,
+       0
+      ],
+      "soft": 0.007,
+      "depth": 0.12
+     },
+     "blend": "max"
+    },
+    {
+     "outline": {
+      "points": [
+       {
+        "at": "lm_chin",
+        "offset": [
+         -0.012,
+         -0.03,
+         0.0
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "offset": [
+         0.035,
+         -0.03,
+         0.0
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "offset": [
+         0.035,
+         0.03,
+         0.0
+        ]
+       },
+       {
+        "at": "lm_chin",
+        "offset": [
+         -0.012,
+         0.03,
+         0.0
+        ]
+       }
+      ],
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "soft": 0.007,
+      "depth": 0.025
+     },
+     "blend": "max"
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "at": "lm_chin",
+      "from": -0.04,
+      "to": -0.025
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.001,
+      "range": [
+       0.2,
+       0.8
+      ],
+      "octaves": 2,
+      "seed": 11
+     },
+     "weight": 0.3
+    },
+    {
+     "axis": {
+      "dir": [
+       0,
+       0,
+       1
+      ],
+      "at": "lm_chin",
+      "from": 0.075,
+      "to": 0.02
+     },
+     "weight": 0.35
+    }
+   ]
+  },
+  "lips_upper": {
+   "color": "#b05a42",
+   "roughness": 0.45,
+   "outline": {
+    "points": [
+     "lm_mouth_corner.R",
+     "lm_lip_upper_side.R",
+     "lm_lip_peak.R",
+     "lm_lip_upper",
+     "lm_lip_peak.L",
+     "lm_lip_upper_side.L",
+     "lm_mouth_corner.L",
+     "lm_lip_inner_upper.L",
+     "lm_lip_inner_upper",
+     "lm_lip_inner_upper.R"
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "soft": 0.0008,
+    "depth": 0.015
+   }
+  },
+  "lips_lower": {
+   "color": "#cc7458",
+   "roughness": 0.4,
+   "outline": {
+    "points": [
+     "lm_mouth_corner.R",
+     "lm_lip_inner_lower.R",
+     "lm_lip_inner_lower",
+     "lm_lip_inner_lower.L",
+     "lm_mouth_corner.L",
+     "lm_lip_lower_side.L",
+     "lm_lip_lower_mid.L",
+     "lm_lip_lower",
+     "lm_lip_lower_mid.R",
+     "lm_lip_lower_side.R"
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "soft": 0.0008,
+    "depth": 0.015
+   }
+  },
+  "brows.L": {
+   "color": "#35201a",
+   "roughness": 0.7,
+   "soft": 0.0006,
+   "profile": "flat",
+   "path": [
+    {
+     "at": "lm_brow_inner.L",
+     "offset": [
+      0,
+      0,
+      -0.001
+     ],
+     "dir": [
+      0,
+      -1,
+      0.2
+     ]
+    },
+    {
+     "at": "lm_brow_mid.L",
+     "offset": [
+      0,
+      0,
+      -0.001
+     ]
+    },
+    {
+     "at": "lm_brow_outer.L",
+     "offset": [
+      0,
+      0,
+      -0.003
+     ],
+     "dir": [
+      0.5,
+      -1,
+      0.2
+     ]
+    }
+   ],
+   "width": [
+    0.009,
+    0.0085,
+    0.0045
+   ],
+   "opacity": 0.0
+  },
+  "sclera_shade": {
+   "part": "eyes",
+   "color": "#a8887a",
+   "opacity": 0.35,
+   "ao": [
+    0.6,
+    0.3
+   ]
+  },
+  "iris.L": {
+   "part": "eyes",
+   "color": "#232830",
+   "roughness": 0.08,
+   "path": [
+    {
+     "at": "eye_front.L",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0132,
+   "profile": "flat"
+  },
+  "pupil.L": {
+   "part": "eyes",
+   "color": "#080605",
+   "path": [
+    {
+     "at": "eye_front.L",
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0035,
+   "profile": "flat"
+  },
+  "glint.L": {
+   "part": "eyes",
+   "color": "#ffffff",
+   "path": [
+    {
+     "at": "eye_front.L",
+     "offset": [
+      -0.003,
+      0,
+      0.002
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.0022,
+   "profile": "round"
+  },
+  "eye_gloss": {
+   "part": "eyes",
+   "roughness": 0.2,
+   "specular": 0.7
+  },
+  "brows_soft.L": {
+   "color": "#2e1a12",
+   "roughness": 0.7,
+   "opacity": 0.55,
+   "mask": [
+    {
+     "outline": {
+      "points": [
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         -0.0004,
+         -0.0007,
+         0.0057
+        ]
+       },
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         0.0076,
+         -0.0019,
+         0.008
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0146,
+         -0.0006,
+         0.0013
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0086,
+         -0.0001,
+         0.0022
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0006,
+         0.0013,
+         0.0027
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0074,
+         0.0042,
+         0.0026
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0134,
+         0.0072,
+         0.002
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0156,
+         -0.0206,
+         0.0116
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0076,
+         -0.0135,
+         0.0075
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0076,
+         -0.0145,
+         0.0039
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0156,
+         -0.0225,
+         0.0054
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0134,
+         0.005,
+         -0.0071
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0074,
+         0.0025,
+         -0.007
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0006,
+         0.0008,
+         -0.0075
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0086,
+         0.0006,
+         -0.0083
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0146,
+         0.0008,
+         -0.0089
+        ]
+       },
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         0.0076,
+         -0.001,
+         -0.0014
+        ]
+       },
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         -0.0004,
+         -0.0005,
+         0.0007
+        ]
+       }
+      ],
+      "dir": [
+       0,
+       1,
+       0
+      ],
+      "soft": 0.0024,
+      "depth": 0.02
+     }
+    }
+   ]
+  },
+  "brows_top.L": {
+   "color": "#22130d",
+   "roughness": 0.7,
+   "mask": [
+    {
+     "outline": {
+      "points": [
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         -0.0004,
+         -0.0007,
+         0.0048
+        ]
+       },
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         0.0076,
+         -0.0019,
+         0.0071
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0146,
+         -0.0006,
+         0.0004
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0086,
+         -0.0001,
+         0.0013
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0006,
+         0.0013,
+         0.0018
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0074,
+         0.0042,
+         0.0017
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0134,
+         0.0072,
+         0.0011
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0156,
+         -0.0206,
+         0.0107
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0076,
+         -0.0135,
+         0.0066
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0076,
+         -0.0145,
+         0.0039
+        ]
+       },
+       {
+        "at": "lm_brow_outer.L",
+        "offset": [
+         -0.0156,
+         -0.0225,
+         0.0054
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0134,
+         0.005,
+         -0.0071
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         0.0074,
+         0.0025,
+         -0.007
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0006,
+         0.0008,
+         -0.0075
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0086,
+         0.0006,
+         -0.0083
+        ]
+       },
+       {
+        "at": "lm_brow_mid.L",
+        "offset": [
+         -0.0146,
+         0.0008,
+         -0.0089
+        ]
+       },
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         0.0076,
+         -0.001,
+         -0.0014
+        ]
+       },
+       {
+        "at": "lm_brow_inner.L",
+        "offset": [
+         -0.0004,
+         -0.0005,
+         0.0007
+        ]
+       }
+      ],
+      "dir": [
+       0,
+       1,
+       0
+      ],
+      "soft": 0.0005,
+      "depth": 0.02
+     }
+    },
+    {
+     "noise": {
+      "scale": 0.0015,
+      "range": [
+       0.25,
+       0.75
+      ],
+      "stretch": {
+       "dir": [
+        1,
+        0,
+        0.35
+       ],
+       "factor": 4
+      }
+     },
+     "weight": 0.07
+    }
+   ]
+  },
+  "under_eye_lift.L": {
+   "color": "#e3a088",
+   "opacity": 0.65,
+   "profile": "soft",
+   "width": 0.012,
+   "path": [
+    {
+     "at": "lm_eye_inner.L",
+     "offset": [
+      0.001,
+      0,
+      -0.0055
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "at": "lm_eye_outer.L",
+     "offset": [
+      0.0,
+      0,
+      -0.005
+     ],
+     "dir": [
+      0.6,
+      -1,
+      0
+     ]
+    }
+   ]
+  },
+  "lip_seam": {
+   "color": "#8e3a2e",
+   "roughness": 0.45,
+   "outline": {
+    "points": [
+     "lm_mouth_corner.R",
+     "lm_lip_inner_upper.R",
+     "lm_lip_inner_upper",
+     "lm_lip_inner_upper.L",
+     "lm_mouth_corner.L",
+     "lm_lip_inner_lower.L",
+     "lm_lip_inner_lower",
+     "lm_lip_inner_lower.R"
+    ],
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "soft": 0.0006,
+    "depth": 0.02
+   }
+  },
+  "mouth_inside": {
+   "color": "#5a2626",
+   "near": [
+    "face_mouth_bag"
+   ],
+   "within": 0.002
+  }
+ },
+ "parts": {
+  "body": {
+   "subsurface": 0.35,
+   "subsurface_radius": [
+    1.0,
+    0.25,
+    0.1
+   ],
+   "subsurface_scale": 0.006,
+   "texel_focus": [
+    {
+     "at": "lm_nose_tip",
+     "radius": 0.11,
+     "density": 2.5
+    }
+   ]
+  },
+  "eyes": {
+   "color": "#ddcbbd",
+   "roughness": 0.06,
+   "specular": 0.4,
+   "voxel": 0.0012
+  },
+  "teeth": {
+   "color": [
+    0.92,
+    0.89,
+    0.8
+   ],
+   "roughness": 0.3
+  },
+  "tongue": {
+   "color": [
+    0.7,
+    0.33,
+    0.33
+   ],
+   "roughness": 0.45
+  }
+ },
+ "story": {
+  "summary": "Dave, 34, plays the local disc golf course every Saturday morning; a friendly regular who knows every basket",
+  "age": 34,
+  "climate": "sunny park course, dusty fairways, dewy grass in the morning",
+  "use": "walks 18 holes, digs discs out of bushes, sits on the bag between holes",
+  "directions": {
+   "sun": [
+    0.3,
+    -0.5,
+    0.8
+   ]
+  },
+  "events": [
+   "his favourite orange driver has a scuffed rim from hitting trees",
+   "the bag's bottom is grass-stained from being set down",
+   "sneakers dusty from the fairway"
+  ]
+ }
+}

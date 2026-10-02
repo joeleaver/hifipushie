@@ -991,7 +991,7 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
-    tongue). Required mouth/jaw set: jawOpen jawForward jawLeft jawRight mouthClose mouthFunnel mouthPucker mouthLeft
+    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). Required mouth/jaw set: jawOpen jawForward jawLeft jawRight mouthClose mouthFunnel mouthPucker mouthLeft
     mouthRight mouthSmile/Frown/Dimple/Stretch/Press/LowerDown/UpperUp Left+Right mouthRollLower/Upper
     mouthShrugLower/Upper; plus eyeBlinkLeft/Right browInnerUp browDownLeft/Right browOuterUpLeft/Right cheekPuff
     tongueOut. On every part that moves (the head's part, teeth, tongue; eyeballs and the rest carry none), the same
