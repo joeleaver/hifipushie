@@ -298,8 +298,8 @@ and the `"story"`.
   slightly rough edges (`"blend"` m, default 1; `"rough"` m, default 0.4; `"op": "add"` builds rock instead):
   - `arch {"at", "toward"?: bearing | address, "width"?, "height"?, "floor"?, "roof"?: 2, "search"?: 30,
     "through"?: m, "neck"?: m}`: a passage through the land near `at` (within `search` metres), where it is shortest for
-    its height, keeps a roof of at least `roof` metres and half its span, and has open sea (no land within 60 m) past
-    both mouths. Heading `toward` if given, else the best of every heading. Its floor defaults to 1 m below the sea
+    its height, keeps a roof of at least `roof` metres and half its span, has open sea (no land standing over most of
+    the opening within 60 m) past both mouths, and is tall enough to read (taller wins, all else equal). Heading `toward` if given, else the best of every heading. Its floor defaults to 1 m below the sea
     (water runs through); height to 65% of the ground above the floor (less if the roof needs it), width to 0.8 of the
     height (capped at 8 m): arches are taller than wide. Real sea arches go through a FIN of rock about as thick as the
     arch is tall (Durdle Door); through a wider headland one read as a tunnel with a turf lid. So where the land is more
