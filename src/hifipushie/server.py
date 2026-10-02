@@ -1055,13 +1055,16 @@ def check_terrain(name: str) -> str:
 
 @mcp.tool(structured_output=False)
 def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[dict] | None = None,
-                 spec_views: bool = False, size: int = 1100):
+                 spec_views: bool = False, size: int = 1100, tiles: bool = False, haze: float | None = 5000.0):
     """Images of a terrain. map: north-up hillshade with cover colours, contours, rivers, ridges, routes, sites,
     walls (red where climbable), names and a scale bar. masks: each cover mask alone (white = dense). views:
     perspective renders (Cycles, with trees and water; ~30 s + ~10 s a view): [{"name", "eye": address | [x, y, z],
     "lift": m, "look": address, "fov": deg, "sun": "auto" | side | {"from", "height"} | "morning"}] (auto: a raking
-    sun per view); spec_views=True renders the spec's own "views". Files are also written to
-    workspace/terrain/<name>/. Read the images, not just the report."""
+    sun per view); spec_views=True renders the spec's own "views". tiles=True renders the views from the 3D mesh
+    tiles of the last export_terrain(name, tiles=True) instead (the way an engine shows them: baked maps, tiling rock
+    detail, arches and caves, the ground's character, trees, the sites' props as stand-ins for scale, a raking sun and
+    aerial haze: `haze` m for 63%, None off); a view may add "lamp": watts (a headlamp, inside caves). Files are also
+    written to workspace/terrain/<name>/. Read the images, not just the report."""
     from . import terrain, terrain_tools as tt
     from .terrain_world import Questions
     try:
@@ -1090,6 +1093,22 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
                 raise ValueError(f"view name {v['name']!r}: letters, digits, _ and - only")
         for v in vs:
             v["name"] = f"{v['name']}_v{ver}"
+        if tiles:
+            from . import terrain_mesh
+            td = d / "tiles"
+            if not (td / "manifest.json").exists():
+                raise ValueError(f"no tiles for {name!r}: run export_terrain({name!r}, tiles=True) first")
+            for v in vs:
+                v["out"] = str(d / "views" / f"{v['name']}_tiles.png")
+                if isinstance(v.get("eye"), list) and len(v["eye"]) == 2:
+                    v["eye"] = [*v["eye"], float(T.height(np.array(v["eye"], float))) + v.get("lift", 1.7)]
+                v.setdefault("look", v["eye"])
+            (d / "views").mkdir(parents=True, exist_ok=True)
+            for pth in terrain_mesh.render_tiles(T, td, vs, haze=haze):
+                out.append(_out(PILImage.open(pth), None))
+                notes.append(f"view: {pth}")
+            notes += json.loads((td / "render_job.json").read_text()).get("notes", [])
+            return out + ["\n".join(notes)]
         for pth in terrain.render(T, d / "views", vs):
             out.append(_out(PILImage.open(pth), None))
             notes.append(f"view: {pth}")

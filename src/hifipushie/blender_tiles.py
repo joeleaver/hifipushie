@@ -362,6 +362,70 @@ def _detail(m, D, lines=None):
     nt.links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
 
 
+
+def _grass(m, G):
+    """The grass detail as the manifest's ground_detail recipe draws it: the turf swatch laid from above (uv = world
+    x, y / size, a second sampling at 1.618 x offset mixed in half), weighted by the grass/scrub layers' weights and
+    faded out with the view distance; albedo multiplies the baked base colour, the normal is RNM-combined onto the
+    baked one."""
+    nt = m.node_tree
+    bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if bsdf is None or not bsdf.inputs["Base Color"].links:
+        return
+    base_in = bsdf.inputs["Base Color"].links[0].from_socket
+    nrm_in = bsdf.inputs["Normal"].links[0].from_socket if bsdf.inputs["Normal"].links else None
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    Nv = geo.outputs["Normal"]
+    Nm = nrm_in if nrm_in is not None else Nv
+    w = None
+    for attr, ch in G["weights"]:
+        at = nt.nodes.new("ShaderNodeAttribute")
+        at.attribute_name = attr
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(at.outputs["Color"], sep.inputs["Color"])
+        x = at.outputs["Alpha"] if ch == 3 else sep.outputs[ch]
+        w = x if w is None else _math(nt, "ADD", w, x)
+    if w is None:
+        return
+    cd = nt.nodes.new("ShaderNodeCameraData")
+    fade = _smooth_band(nt, cd.outputs["View Distance"], G["fade"][0], G["fade"][1])
+    w = _math(nt, "MULTIPLY", _math(nt, "MINIMUM", w, 1.0), fade)
+    P = _sep(nt, geo.outputs["Position"])
+    uv = _xyz(nt, P[0], P[1], 0.0)
+    v1 = _vmath(nt, "SCALE", uv, scale=1.0 / G["size"])
+    v2 = _vmath(nt, "ADD", _vmath(nt, "SCALE", uv, scale=1.0 / (G["size"] * 1.618)), _xyz(nt, 0.37, 0.71, 0.0))
+    am = nt.nodes.new("ShaderNodeMix")
+    am.data_type = "RGBA"
+    am.inputs["Factor"].default_value = 0.5
+    nt.links.new(_tex(nt, G["albedo"], v1), am.inputs["A"])
+    nt.links.new(_tex(nt, G["albedo"], v2), am.inputs["B"])
+    dec = lambda col: _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", col, scale=2.0), 1.0)
+    nd = _sep(nt, _vmath(nt, "NORMALIZE", _vmath(nt, "ADD", dec(_tex(nt, G["normal"], v1)),
+                                                   dec(_tex(nt, G["normal"], v2)))))
+    proj = lambda A: _vmath(nt, "NORMALIZE", _vmath(nt, "SUBTRACT", A, _vmath(
+        nt, "SCALE", Nv, scale=_vmath(nt, "DOT_PRODUCT", Nv, A))))
+    Tt, Bt = proj(_xyz(nt, 1.0, 0.0, 0.0)), proj(_xyz(nt, 0.0, 1.0, 0.0))
+    Nd = _vmath(nt, "NORMALIZE", _vmath(nt, "ADD", _vmath(nt, "ADD", _vmath(nt, "SCALE", Tt, scale=nd[0]),
+                                                           _vmath(nt, "SCALE", Bt, scale=nd[1])),
+                                         _vmath(nt, "SCALE", Nv, scale=nd[2])))
+    tt = _vmath(nt, "ADD", Nm, Nv)
+    dn = _vmath(nt, "DOT_PRODUCT", Nd, Nv)
+    uu = _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", Nv, scale=_math(nt, "MULTIPLY", dn, 2.0)), Nd)
+    tu = _vmath(nt, "DOT_PRODUCT", tt, uu)
+    tz = _vmath(nt, "DOT_PRODUCT", tt, Nv)
+    r = _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", tt, scale=_math(nt, "DIVIDE", tu, _math(nt, "MAXIMUM", tz, 1e-4))),
+               uu)
+    nt.links.new(_vmath(nt, "NORMALIZE", _mixv(nt, Nm, _vmath(nt, "NORMALIZE", r), w)), bsdf.inputs["Normal"])
+    mod = _mixv(nt, _xyz(nt, 1.0, 1.0, 1.0), _vmath(nt, "SCALE", am.outputs["Result"], scale=2.0), w)
+    mul = nt.nodes.new("ShaderNodeMix")
+    mul.data_type = "RGBA"
+    mul.blend_type = "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    nt.links.new(base_in, mul.inputs["A"])
+    nt.links.new(mod, mul.inputs["B"])
+    nt.links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
+
+
 def _upstream(sock, kind):
     """The first node of type `kind` feeding a socket (walking back through the importer's links)."""
     seen = [sock]
@@ -506,6 +570,80 @@ def _flat(name, rgb):
     return m
 
 
+_HAZE = []  # (the haze's emission nodes, one per material: their colour set per view)
+
+
+def _haze(m, dist):
+    """Aerial perspective on a material: what the camera sees of it fades toward the sky's colour at the horizon in
+    the view's direction (measured per view, `_horizon`), by 1 - exp(-d / dist), d = the camera ray's length. Without it
+    every distance read alike (flat cut-outs on a plain sea). (A Sky Texture inside the material lost its Vector input
+    in the importer's scene and fell back to object coordinates: a pale gradient per tile.)"""
+    if not m or not m.use_nodes:
+        return
+    nt = m.node_tree
+    out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None)
+    if out is None or not out.inputs["Surface"].links:
+        return
+    src = out.inputs["Surface"].links[0].from_socket
+    lp = nt.nodes.new("ShaderNodeLightPath")
+    dv = nt.nodes.new("ShaderNodeMath")
+    dv.operation = "DIVIDE"
+    nt.links.new(lp.outputs["Ray Length"], dv.inputs[0])
+    dv.inputs[1].default_value = -float(dist)
+    ex = nt.nodes.new("ShaderNodeMath")
+    ex.operation = "EXPONENT"
+    nt.links.new(dv.outputs[0], ex.inputs[0])
+    fac = nt.nodes.new("ShaderNodeMath")
+    fac.operation = "SUBTRACT"
+    fac.inputs[0].default_value = 1.0
+    nt.links.new(ex.outputs[0], fac.inputs[1])
+    cam = nt.nodes.new("ShaderNodeMath")
+    cam.operation = "MULTIPLY"
+    nt.links.new(fac.outputs[0], cam.inputs[0])
+    nt.links.new(lp.outputs["Is Camera Ray"], cam.inputs[1])
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs["Strength"].default_value = 1.0
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(cam.outputs[0], mix.inputs["Fac"])
+    nt.links.new(src, mix.inputs[1])
+    nt.links.new(em.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    _HAZE.append(em)
+
+
+def _horizon(scene, cam, look_dir, tmp):
+    """The sky's colour (linear) at the horizon in the view's direction: a 16 x 16 render of the sky alone (every object
+    hidden), camera level and narrow."""
+    keep = (scene.render.resolution_x, scene.render.resolution_y, scene.cycles.samples, scene.cycles.use_denoising,
+            scene.render.image_settings.file_format, scene.render.image_settings.color_depth, scene.render.filepath,
+            tuple(cam.rotation_euler), cam.data.angle, scene.view_settings.view_transform)
+    hidden = [o for o in scene.objects if o.type != "CAMERA" and not o.hide_render]
+    for o in hidden:
+        o.hide_render = True
+    d = Vector((look_dir.x, look_dir.y, 0.0))
+    d = d.normalized() if d.length > 1e-6 else Vector((0.0, 1.0, 0.0))
+    d.z = 0.03
+    cam.rotation_euler = d.normalized().to_track_quat("-Z", "Y").to_euler()
+    cam.data.angle = math.radians(4.0)
+    scene.render.resolution_x = scene.render.resolution_y = 16
+    scene.cycles.samples, scene.cycles.use_denoising = 4, False
+    scene.render.image_settings.file_format, scene.render.image_settings.color_depth = "OPEN_EXR", "32"
+    scene.view_settings.view_transform = "Standard"
+    scene.render.filepath = tmp
+    bpy.ops.render.render(write_still=True)
+    img = bpy.data.images.load(tmp)
+    a = np.array(img.pixels[:], np.float32).reshape(-1, 4)[:, :3].mean(0)
+    bpy.data.images.remove(img)
+    os.remove(tmp)
+    for o in hidden:
+        o.hide_render = False
+    (scene.render.resolution_x, scene.render.resolution_y, scene.cycles.samples, scene.cycles.use_denoising,
+     scene.render.image_settings.file_format, scene.render.image_settings.color_depth, scene.render.filepath, rot,
+     cam.data.angle, scene.view_settings.view_transform) = keep
+    cam.rotation_euler = rot
+    return a
+
+
 def _water(level):
     bpy.ops.mesh.primitive_plane_add(size=8000, location=(500, 400, level))
     w = bpy.context.object
@@ -597,6 +735,10 @@ def run(job):
                 if not len(ob.data.materials):
                     ob.data.materials.append(mat)
                 ground.append(ob)
+    if job.get("grass") and job.get("textured", True) and not ch:  # the tiling turf over the baked maps
+        for m in list(bpy.data.materials):
+            if m.name.startswith("terrain_baked") and m.use_nodes:
+                _grass(m, job["grass"])
     if job.get("sea") is not None:
         _water(job["sea"])
     if job.get("trees"):
@@ -622,6 +764,19 @@ def run(job):
             ob = bpy.data.objects.new("trees_" + kind, me)
             bpy.context.scene.collection.objects.link(ob)
             bt._instance(ob, kind)
+    for kind, pts in (job.get("clutter") or {}).items():  # ground clutter placeholders (bushes, tussocks, boulders)
+        pts = np.asarray(pts, float).reshape(-1, 3)
+        if not len(pts):
+            continue
+        me = bpy.data.meshes.new("clutter_" + kind)
+        me.vertices.add(len(pts))
+        me.vertices.foreach_set("co", pts.astype(np.float64).ravel())
+        ob = bpy.data.objects.new("clutter_" + kind, me)
+        bpy.context.scene.collection.objects.link(ob)
+        bt._instance(ob, kind)
+    if job.get("props"):  # the sites' props as stand-ins (scale cues: a basket, a tee pad, the lodge)
+        pr = job["props"]
+        bt.props(np.array([p_[:4] for p_ in pr], float), [p_[4] for p_ in pr])
     if ch == "clay":  # (untextured parts too: geometry alone)
         bb = mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"]
         for ln in list(bb.links):
@@ -643,8 +798,13 @@ def run(job):
     scene.world = world
     world.use_nodes = True
     sky = world.node_tree.nodes.new("ShaderNodeTexSky")
+    if job.get("haze") and hasattr(sky, "dust_density"):  # (the same clear sky the haze takes its colour from)
+        sky.dust_density, sky.air_density = 0.3, 0.8
     world.node_tree.links.new(sky.outputs["Color"], world.node_tree.nodes["Background"].inputs["Color"])
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.12
+    if job.get("haze") and not job.get("channel"):
+        for m in list(bpy.data.materials):
+            _haze(m, job["haze"])
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))
     sun.data.energy = 2.4
     sun.data.angle = 0.02
@@ -680,7 +840,12 @@ def run(job):
         b, h =[math.radians(x) for x in v.get("sun", (225, 30))]
         toward = Vector((math.cos(h) * math.sin(b), math.cos(h) * math.cos(b), math.sin(h)))
         sun.rotation_euler = (-toward).to_track_quat("-Z", "Y").to_euler()
-        sky.sun_elevation, sky.sun_rotation = h, -b
+        # (Blender 5.1: sun_rotation = the bearing; -bearing put the sky's glow on the wrong side, blender_terrain)
+        sky.sun_elevation, sky.sun_rotation = h, b
+        if _HAZE:  # (the haze takes the horizon's colour in this view's direction, under this view's sun)
+            hz = _horizon(scene, cam, fwd, v["out"] + ".horizon.exr")
+            for em in _HAZE:
+                em.inputs["Color"].default_value = (float(hz[0]), float(hz[1]), float(hz[2]), 1.0)
         if border_ob is not None:
             border_ob.hide_render = not v.get("borders", False)
         scene.render.filepath = v["out"]

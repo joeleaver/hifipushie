@@ -83,12 +83,14 @@ DEFAULTS = {
 DENSITY_FILL = 0.55  # the share of an atlas the packer fills (for choosing one texel density that fits every tile)
 
 # ground materials: what each cover type lays on the ground (tree layers: the forest floor under them)
-LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "forest": "forest_floor",
+LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "mown": "grass", "rough": "grass",
+            "scrub": "scrub", "heath": "scrub", "bunker": "sand", "forest": "forest_floor",
             "conifer": "forest_floor", "deciduous": "forest_floor", "rock": "rock", "scree": "rock", "sand": "sand",
             "mud": "earth", "snow": "snow"}
 LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling scale (m) for engines
     "grass": {"color": [0.36, 0.47, 0.20], "roughness": 0.95, "scale": 3.0},
     "forest_floor": {"color": [0.27, 0.22, 0.15], "roughness": 0.95, "scale": 3.0},
+    "scrub": {"color": [0.30, 0.33, 0.21], "roughness": 0.95, "scale": 2.0},
     "sand": {"color": [0.72, 0.65, 0.48], "roughness": 0.9, "scale": 2.0},
     "rock": {"color": [0.36, 0.34, 0.31], "roughness": 0.85, "scale": 6.0},  # (the heightfield views' rock)
     "wet_rock": {"color": [0.17, 0.16, 0.15], "roughness": 0.55, "scale": 6.0},
@@ -194,6 +196,63 @@ class Tube:
         return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
 
 
+
+class Stack:
+    """A sea stack as solid rock (op "add" over the heightfield's own stack): a lobed, grooved prism whose sides lean in
+    ~6 deg, a flat top tilted a little and notched, edges bevelled ~0.35 m. The heightfield can't hold a 70-80 deg
+    side on 1-2 m cells: its stacks came out as rounded loaves (the user's p05/L01 views)."""
+
+    def __init__(self, name, xy, base, top, r, seed, blend=0.4):
+        self.name, self.op, self.blend, self.relief = name, "add", float(blend), 1.0
+        self.xy, self.base, self.top, self.r, self.seed = np.asarray(xy, float), float(base), float(top), float(r), \
+            int(seed)
+        rng = np.random.default_rng(self.seed)
+        self.k_g = int(rng.integers(5, 9))
+        self.ph = rng.uniform(0, 6.3, 2)
+        self.tilt = rng.uniform(0.08, 0.25) * (top - base) / max(r, 1e-6)
+        self.tdir = rng.uniform(0, 2 * math.pi)
+        self.lean = math.tan(math.radians(6.0))
+        m = self.r * 1.6 + (top - base) * self.lean + self.blend + NEAR + 1.0
+        self.lo = np.r_[self.xy - m, self.base - 1.0 - NEAR]
+        self.hi = np.r_[self.xy + m, self.top + 1.0 + NEAR]
+
+    def sd(self, p, detail=False):
+        q = p[:, :2] - self.xy
+        d = np.hypot(q[:, 0], q[:, 1])
+        th = np.arctan2(q[:, 1], q[:, 0])
+        u = np.c_[np.cos(th), np.sin(th), np.zeros(len(p))]
+        lob = noise.fbm(u * 1.3 + np.array([self.seed % 97, 0.0, 0.0]), 1.0, 3, seed=self.seed + 17)
+        grooves = 0.06 * np.cos(self.k_g * th + self.ph[0]) + 0.03 * np.cos((self.k_g + 3) * th + self.ph[1])
+        R = self.r * (1 + 0.45 * (lob - 0.5) + grooves) + (self.top - p[:, 2]) * self.lean
+        side = (d - R) * 0.92
+        along = q[:, 0] * math.cos(self.tdir) + q[:, 1] * math.sin(self.tdir)
+        topz = self.top - self.tilt * np.clip(along + self.r, 0, 2 * self.r) * 0.5 \
+            - 0.1 * (self.top - self.base) * np.clip(lob - 0.62, 0, None) / 0.38
+        f = smax(side, p[:, 2] - topz, 0.35)
+        f = smax(f, (self.base - 1.0) - p[:, 2], 0.3)
+        if detail:
+            return f, np.full(len(p), np.inf), np.full(len(p), self.r)
+        return f
+
+    def touches(self, lo, hi):
+        return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
+
+
+def stacks(T):
+    """The sea's stacks (terrain_sea) as solid prisms for the 3D tiles, and a note. Off with export.tiles "stacks":
+    false."""
+    st = (getattr(T, "sea", None) or {}).get("stacks") or []
+    sea = _sea(T)
+    out = []
+    for i, a in enumerate(st):
+        xy = np.asarray(a["xy"], float)
+        top = sea + float(a["height"])
+        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, 0.85 * float(a["radius"]), 3000 + i))
+    note = (f"stacks: {len(out)} as solid rock prisms (sides ~84 deg, flat tilted tops), "
+            f"{min(a['height'] for a in st):.0f}-{max(a['height'] for a in st):.0f} m out of the water") if out else None
+    return out, note
+
+
 class Mound:
     """A low cone of fallen blocks standing on a floor (breakdown under a skylight or in a collapse pit): `radius` at
     its foot, `height` at its top, rough. Added to the rock (op "add")."""
@@ -258,6 +317,13 @@ def _daylight(T, xy, t, below, reach=300.0, start=0.0):
     return float(s[k[0]]) if len(k) else None
 
 
+def _daylight_back(T, xy, t, above, reach):
+    """Distance along t from xy to the first ground higher than `above` (land standing in a line of sight), or None."""
+    st = np.arange(0.0, reach, T.cell / 2)
+    k = np.flatnonzero(T.sample(xy + st[:, None] * t) > above)
+    return float(st[k[0]]) if len(k) else None
+
+
 def _sea(T):
     return float(T.sea["level"]) if getattr(T, "sea", None) else None
 
@@ -288,8 +354,8 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             best = None
             for c in cands:
                 top = T.height(c)
-                height = float(v.get("height", 0.65 * (top - floor)))
-                if top - floor - height < roof_min or height < 2:
+                height, w, roof = _arch_size(v, top - floor, roof_min)
+                if height is None:
                     continue
                 ts = [_bearing(T, v["toward"], c)] if "toward" in v else [
                     np.array([math.sin(math.radians(b_)), math.cos(math.radians(b_))]) for b_ in range(0, 180, 10)]
@@ -298,15 +364,20 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
                     s2 = _daylight(T, c, -t, floor + 0.5 * height, reach=80)
                     if s1 is None or s2 is None:
                         continue
-                    # short for its height (length over height), near `at`
-                    score = (s1 + s2) / height + 0.01 * float(np.linalg.norm(c - at))
+                    # short for its height (length over height), near `at`, and daylight through it: land standing
+                    # in its line just past a mouth fills the opening with rock (pebble's first neck framed a rock
+                    # 9 m off)
+                    zc = floor + 0.75 * height  # (rocks awash in front of a mouth don't close it)
+                    blocked = sum(_daylight_back(T, c + t * sg * (s_ + 2.0), t * sg, zc, 60.0) is not None
+                                  for sg, s_ in ((1, s1), (-1, s2)))
+                    score = (s1 + s2) / height + 0.01 * float(np.linalg.norm(c - at)) + 1.5 * blocked
                     if best is None or score < best[0]:
-                        best = (score, c, t, s1, s2, top, height)
+                        best = (score, c, t, s1, s2, top, height, w)
             if best is None:
                 raise ValueError(f"volume {name!r}: no place within {R:.0f} m of {v['at']!r} where an arch fits (land "
-                                 f"that comes out into the open both ways, {roof_min:g} m of roof over it)")
-            _, c, t, s1, s2, top, height = best
-            w = float(v.get("width", min(8.0, 0.8 * height)))
+                                 f"that comes out into the open both ways, {roof_min:g} m of roof over it, at least "
+                                 f"half its span)")
+            _, c, t, s1, s2, top, height, w = best
             # irregular: mouths flared and taller than the middle, the line bending a little
             side = np.array([-t[1], t[0]])
             u = np.linspace(-1, 1, 5)
@@ -315,15 +386,32 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             xy = c + along[:, None] * t + bend[:, None] * side
             flare = 1 + 0.3 * u * u
             common["rough"] = v.get("rough", 0.25)
-            out.append(Tube(name, np.c_[xy, np.full(5, floor)], w / 2 * flare, height * (1 + 0.12 * u * u), floor,
-                            **common))
+            tube = Tube(name, np.c_[xy, np.full(5, floor)], w / 2 * flare, height * (1 + 0.12 * u * u), floor,
+                        **common)
+            # the neck: a sea arch goes through a fin of rock about as thick as the arch is tall (Durdle Door, the
+            # Green Bridge of Wales). Through a wider headland the arch read as a tunnel with a turf lid ("a cave with
+            # a cover over it", the user on pebble's 38 m arch): the sea's bays cut in on both sides until the rock
+            # left round the arch is `through` metres thick, over `neck` metres either side of it
+            through = float(v.get("through", max(4.0, 0.9 * height)))
+            land = s1 + s2
+            tube.kind = "arch"
+            tube.arch = {"c": c, "t": t, "s1": s1, "s2": s2, "w": w, "height": height, "floor": floor,
+                         "bend": 0.12 * w * math.sin(seed), "through": min(through, land)}
+            if land > 1.25 * through:
+                neck = float(v.get("neck", max(6.0, 1.2 * w)))
+                tube.cut = {"kind": "neck", "c": c.tolist(), "t": t.tolist(), "a1": s1 + 0.5 * w, "a2": s2 + 0.5 * w,
+                            "hw": 0.5 * w, "neck": neck, "through": through, "floor": floor,
+                            "bend": 0.12 * w * math.sin(seed)}
+            out.append(tube)
+            shape = (f"through a neck {through:.0f} m thick (bays cut in from {land:.0f} m of land)"
+                     if land > 1.25 * through else f"{land:.0f} m through the rock")
             notes.append(f"{name}: arch at [{c[0]:.0f}, {c[1]:.0f}] heading {math.degrees(math.atan2(t[0], t[1])) % 180:.0f}"
-                         f" deg, {w:.1f} m wide, {height:.1f} m high over a floor at {floor:+.1f} m, {s1 + s2:.0f} m "
-                         f"through the rock, roof {top - floor - height:.1f} m thick at its middle")
+                         f" deg, {w:.1f} m wide, {height:.1f} m high over a floor at {floor:+.1f} m, {shape}, roof "
+                         f"{top - floor - height:.1f} m thick at its middle")
         elif kind in ("cave", "tunnel"):
             t = _bearing(T, v["toward"], at) if "toward" in v else adir if adir is not None else -_downhill(T, at)
             floor0 = float(v.get("floor", (sea - 0.5) if sea is not None else T.height(at)))
-            w, h = float(v.get("width", 6.0)), float(v.get("height", 5.0))
+            w, h = float(v.get("width", 4.5)), float(v.get("height", 6.0))  # (taller than wide: sea caves follow joints)
             L = float(v.get("length", 30.0))
             rise = float(v.get("rise", 0.0))
             narrow = float(v.get("narrow", 0.7))
@@ -348,16 +436,45 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             f = np.clip(s / (L + 0.5 * w), 0, 1)
             rw = w / 2 * (1 - (1 - narrow) * f)
             rh = h * (1 - (1 - narrow) * f)
+            # a roof of at least ROOF_SPAN x the span (and 1.5 m) over every node under the ground: the passage
+            # lowers where the rock over it thins, and ends where even a 1.8 m passage wouldn't keep it (a 0.7 m roof
+            # broke through; a turf skin over a hole read as a lid)
+            ground = T.sample(xy)
+            rmin = np.maximum(1.5, ROOF_SPAN * 2 * rw)
+            room = ground - fl - rmin
+            under = ground > fl + 0.5 * rh  # (the part out in the open has no roof)
+            fix = []
+            if v.get("roof_rule", True):
+                lowered = under & (room < rh)
+                keep = ~(under & (room < 1.8))
+                stop = int(np.argmin(keep)) if not keep.all() else len(keep)
+                if stop < len(keep):
+                    fix.append(f"ends after {s[max(stop - 1, 0)]:.0f} m (the rock over it thins under "
+                               f"{float(rmin[stop]) + 1.8:.1f} m)")
+                    xy, fl, rw, rh, ground, rmin, under = (a[:max(stop, 2)] for a in (xy, fl, rw, rh, ground, rmin,
+                                                                                       under))
+                lowered = lowered[:len(rh)]
+                if lowered.any():
+                    rh = np.where(lowered, np.maximum(1.8, np.minimum(rh, ground - fl - rmin)), rh)
+                    fix.append(f"lowered to {float(rh[lowered].min()):.1f} m where the rock thins")
             out.append(Tube(name, np.c_[xy, fl], rw, rh, fl, **common))
             ch = float(v.get("chamber", 0.0))
-            if ch > 0:  # a domed chamber at the end, on the passage's floor
-                out.append(Tube(name + ":chamber", [[*xy[-1], fl[-1]]], ch, 0.8 * ch, fl[-1], **common))
-            ground = T.sample(xy)
-            inside = ground > fl + rh  # (the part out in the open has no roof)
+            if ch > 0 and len(xy) == n + 1:  # a domed chamber at the end, on the passage's floor
+                g_end = float(T.sample(xy[-1:])[0])
+                ch_fit = min(ch, (g_end - fl[-1]) / (0.8 + 2 * ROOF_SPAN), (g_end - fl[-1] - 1.5) / 0.8) \
+                    if v.get("roof_rule", True) else ch
+                if ch_fit < ch:
+                    fix.append(f"chamber r {ch:.0f} -> {max(ch_fit, 0):.1f} m (its roof)")
+                    ch = ch_fit
+                if ch >= 1.5:
+                    out.append(Tube(name + ":chamber", [[*xy[-1], fl[-1]]], ch, 0.8 * ch, fl[-1], **common))
+            inside = ground > fl + rh
             roof = float(np.min((ground - (fl + rh))[inside])) if inside.any() else float("nan")
-            notes.append(f"{name}: cave {w:.0f} x {h:.0f} m, mouth at [{mouth[0]:.0f}, {mouth[1]:.0f}] floor "
+            shape = " (wider than tall: sea caves follow joints, mostly taller than wide)" if w > 1.15 * h else ""
+            notes.append(f"{name}: cave {w:g} x {h:g} m{shape}, mouth at [{mouth[0]:.0f}, {mouth[1]:.0f}] floor "
                          f"{floor0:+.1f} m, {L:.0f} m in" + (f", chamber r {ch:.0f} m" if ch else "")
-                         + f"; thinnest roof {roof:.1f} m" + (" (it breaks through)" if roof < 1 else ""))
+                         + f"; thinnest roof {roof:.1f} m" + (" (it breaks through)" if roof < 1 else "")
+                         + ("; " + ", ".join(fix) if fix else ""))
         elif kind == "overhang":  # a wave-cut notch along a cliff foot: the lip above overhangs it
             # a flat floor in the water, the roof high enough to see from a boat, the back cut deep under the lip
             depth, h = float(v.get("depth", 5.0)), float(v.get("height", 3.5))
@@ -377,17 +494,109 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             f = np.abs(np.linspace(-1, 1, len(pts)))
             ease = 1 - 0.75 * f ** 3  # full depth along most of it, easing out at the ends
             common["rough"] = v.get("rough", 0.3)
-            out.append(Tube(name, np.c_[pts, np.full(len(pts), floor)], depth * ease, h * (0.6 + 0.4 * ease), floor,
-                            **common))
-            lip = [float(T.height(p_ - _downhill(T, p_) * depth)) for p_ in pts]  # the ground over the notch's back
+            # the rock over the notch: where the ground behind the face is too low to roof it (1.5 m and ROOF_SPAN x
+            # its height), the notch is shallower there (it broke through behind a low stretch of cliff)
+            hh = h * (0.6 + 0.4 * ease)
+            if v.get("roof_rule", True):
+                for i, p_ in enumerate(pts):
+                    dn = _downhill(T, p_)
+                    for fr in (1.0, 0.8, 0.6, 0.45, 0.3, 0.2):
+                        if T.height(p_ - dn * depth * ease[i] * fr) - floor - hh[i] >= max(1.5, ROOF_SPAN * hh[i]):
+                            break
+                    else:  # (a low stretch of cliff: the notch dies out to a nick)
+                        fr = 0.15
+                        hh[i] = max(0.5, min(hh[i], T.height(p_) - floor - 1.5))
+                    ease[i] *= fr
+            out.append(Tube(name, np.c_[pts, np.full(len(pts), floor)], depth * ease, hh, floor, **common))
+            lip = np.array([float(T.height(p_ - _downhill(T, p_) * depth * e_)) for p_, e_ in zip(pts, ease)]) \
+                - floor - hh
             notes.append(f"{name}: overhang notch {depth:.1f} m deep, {h:.1f} m high over a floor at {floor:+.1f} m, "
-                         f"{L:.0f} m along the cliff; {min(lip) - floor - h:.1f}-{max(lip) - floor - h:.1f} m of rock "
-                         f"over it")
+                         f"{L:.0f} m along the cliff; {lip.min():.1f}-{lip.max():.1f} m of rock over it")
         else:
             raise ValueError(f"volume {name!r}: type {kind!r}: use arch, cave or overhang")
         if common["op"] not in ("subtract", "add"):
             raise ValueError(f"volume {name!r}: op {common['op']!r}: use subtract or add")
     return out, notes
+
+
+ROOF_SPAN = 0.5  # the rock over an opening: at least this share of its span (thinner read as a lid on a hole)
+
+
+def _arch_size(v, avail, roof_min):
+    """An arch's height, span and roof from the rock standing over its floor (avail): 0.65 of it high unless given,
+    0.8 of that wide (capped at 8 m; arches are taller than wide), and a roof of at least `roof_min` and ROOF_SPAN x
+    the span. (None, ...) where it doesn't fit."""
+    h = float(v.get("height", 0.65 * avail))
+    w = float(v.get("width", min(8.0, 0.8 * h)))
+    for _ in range(4):
+        roof = max(roof_min, ROOF_SPAN * w)
+        if avail - h >= roof - 1e-6:
+            break
+        h = avail - roof
+        if "width" not in v:
+            w = min(8.0, 0.8 * h)
+    roof = max(roof_min, ROOF_SPAN * w)
+    if h < 2 or avail - h < roof - 1e-6:
+        return None, None, None
+    return h, w, roof
+
+
+def cut_neck(T, H, c):
+    """A sea arch's neck dug into the ground grid: on each side of the arch the ground down to its floor where the
+    land along the arch's line is more than `through`/2 from its middle, over `hw` + `neck` metres across (the
+    bays narrowing to nothing at the neck's ends), so the rock round the arch is a fin `through` m thick."""
+    t = np.asarray(c["t"], float)
+    n = np.array([-t[1], t[0]])
+    dx, dy = T.X - c["c"][0], T.Y - c["c"][1]
+    a = dx * t[0] + dy * t[1]
+    A = np.where(a >= 0, c["a1"], c["a2"])
+    u = np.clip(np.where(a >= 0, a / c["a1"], a / c["a2"]), -1, 1)
+    b = dx * n[0] + dy * n[1] - c["bend"] * (1 - u * u)
+    hw, B, th = c["hw"], c["neck"], 0.5 * c["through"]
+    # the neck's half thickness: `through`/2 at the arch, opening out to the whole land at the bays' far sides
+    half = th + (A - th) * smoothstep(hw, hw + B, np.abs(b))
+    wgt = smoothstep(half, half + 1.0, np.abs(a)) * smoothstep(A + c["hw"] + 4.0, A + c["hw"], np.abs(a)) \
+        * smoothstep(hw + B + 1.0, hw + B, np.abs(b))
+    return H - wgt * np.maximum(H - c["floor"], 0.0)
+
+
+def through_view(field, tube, reach=300.0):
+    """Does an arch show daylight? Rays parallel to its line through a grid over its opening (above the water), marched
+    through the rock: the share that come out the far side clear is the see-through share. Beyond each mouth the
+    centre ray runs on `reach` m: what it meets (sea/sky, or land at what distance) is what the opening frames."""
+    A = tube.arch
+    t = np.r_[np.asarray(A["t"], float), 0.0]
+    n = np.array([-t[1], t[0], 0.0])
+    c = np.r_[np.asarray(A["c"], float), 0.0]
+    sea = A["floor"] + 1.0
+    lo = max(A["floor"], sea) + 0.3
+    hw = 0.5 * A["w"]
+    us = np.linspace(-0.9, 0.9, 9) * hw
+    zs = np.linspace(lo, A["floor"] + 0.95 * A["height"], 7)
+    U, Z = np.meshgrid(us, zs)
+    inside = (U / hw) ** 2 + ((Z - A["floor"]) / A["height"]) ** 2 <= 1.0  # (the ellipse over its floor)
+    U, Z = U[inside], Z[inside]
+    s = np.arange(-(A["s2"] + hw + 2.0), A["s1"] + hw + 2.0, 0.25)
+    P = (c + U[:, None, None] * n + Z[:, None, None] * np.array([0, 0, 1.0]) + s[None, :, None] * t
+         ).reshape(-1, 3)
+    P[:, :2] += 0  # (the bend: under 1 m, inside the 0.9 x half width margin)
+    F = field.value(P).reshape(len(U), len(s))
+    clear = float((F > 0).all(1).mean()) if len(U) else 0.0
+    zc = A["floor"] + 0.75 * A["height"]  # (land standing over most of the opening; rocks awash don't count)
+    beyond = {}
+    for sign, key in ((1, "ahead"), (-1, "behind")):
+        d = np.arange(0, reach, 1.0)
+        start = c + t * sign * ((A["s1"] if sign > 0 else A["s2"]) + 2.0)
+        Q = start[None] + sign * d[:, None] * t
+        h, _ = field.column(Q[:, 0], Q[:, 1])
+        k = np.flatnonzero(h > zc)
+        beyond[key] = None if not len(k) else float(d[k[0]])
+    b = math.degrees(math.atan2(t[0], t[1])) % 360
+    say = lambda d, bb: (f"open sea/sky toward {bb:.0f} deg" if d is None else f"land {d:.0f} m off toward {bb:.0f} deg")
+    note = (f"{tube.name}: see-through {100 * clear:.0f}% of the opening (rays along it, above the water); beyond: "
+            f"{say(beyond['ahead'], b)}, {say(beyond['behind'], (b + 180) % 360)}"
+            + (" -- WARNING: the arch barely shows daylight" if clear < 0.5 else ""))
+    return {"clear": round(clear, 3), "ahead_land_m": beyond["ahead"], "behind_land_m": beyond["behind"], "note": note}
 
 
 def _downhill(T, xy):
@@ -776,6 +985,17 @@ def _structure_grain(T, H, c):
     return ndimage.gaussian_filter(g, 2.0)
 
 
+def dig_bunker(T, H, m, depth):
+    """A sand trap dug into the ground grid where its cover mask m (0..1) is: `depth` m down with a steep cut edge
+    (most of the drop within ~1 m of the edge), the turf lip round it raised a little (0.15 x depth) as mown up to the
+    edge; a flat-ish sand floor following the ground's own lie."""
+    c = float(T.cell)
+    m = ndimage.gaussian_filter(np.clip(np.asarray(m, float), 0, 1), 0.6 / c)
+    inside = smoothstep(0.25, 0.65, m)
+    ring = smoothstep(0.02, 0.2, ndimage.maximum_filter(m, size=3)) * (1 - inside)
+    return H - depth * inside + 0.15 * depth * ring
+
+
 def dig_doline(T, H, d):
     """A doline (a karst sinkhole) dug into the ground grid: a bowl `radius` m round and `depth` m deep relative to the
     ground around it (so on a hillside it's a hollow in the slope), gentle at the lip and steepest (2 x depth / run)
@@ -791,7 +1011,7 @@ def dig_doline(T, H, d):
 
 
 class Field:
-    def __init__(self, T, vols: list[Tube], rock=None, dolines=None):
+    def __init__(self, T, vols: list[Tube], rock=None, dolines=None, cuts=None, bunkers=None):
         self.H = np.ascontiguousarray(T.H, float)
         self.x0, self.y0, self.c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
         self.vols = vols
@@ -802,6 +1022,10 @@ class Field:
         self.fall = None  # where fallen blocks lie (a grid, 0..1)
         for d in dolines or ():  # 2.5D ground edits (karst dolines: grassy funnels into a throat)
             self.H = dig_doline(T, self.H, d)
+        for c in cuts or ():  # (a sea arch's neck: the bays either side of it)
+            self.H = cut_neck(T, self.H, c)
+        for m, depth in bunkers or ():  # (sand traps: cover type "bunker", dug in)
+            self.H = dig_bunker(T, self.H, m, depth)
         if rock is not None:
             # where the rock character goes: steep ground (45-62 deg), as a smooth mask on the grid (~2 cells). From
             # each point's own column slope it switched on within 0.2 m at a cliff's lip (the B-spline's slope turns
@@ -1045,22 +1269,31 @@ class Materials:
         self.sea = _sea(T)
         order = []
         self.cover = []
+        from . import terrain_ground
         for name, m in T.cover.items():
             c = design._spec_cover(T, name)
-            layer = LAYER_OF.get(c.get("type", name), "grass")
+            typ = c.get("type", name)
+            layer = LAYER_OF.get(typ, "grass")
             tree = bool(c.get("trees"))
-            self.cover.append((name, layer, 0.6 if tree else 1.0))
+            self.cover.append((name, layer, 0.6 if tree else 1.0, terrain_ground.KIND_OF.get(typ)))
             order.append(layer)
         self.layers = list(dict.fromkeys(order + ["rock", "earth"] + (["sand", "wet_rock"] if self.sea is not None
                                                                       else [])))
         col = ground_colours(T, cover=True)
         wet = ~np.isnan(T.water)
         col[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
+        if getattr(T, "spec", {}).get("ground_character", True) is not False:
+            # (a cell's cover colour sampled as is drew every cover edge as the grid's staircase: fairways were cut-out
+            # stickers with stepped edges; softened over about a cell, and warped a little where sampled)
+            col = np.stack([ndimage.gaussian_filter(col[..., i], 0.9) for i in range(3)], -1)
         self.display = col
         self.rock_grid = rock_colours(T)
         steep = T._slope() > 45
         self.rock_ref = np.median(self.rock_grid[steep] if steep.any() else self.rock_grid.reshape(-1, 3), 0)
         self.routes = T.masks.get("routes")
+        # the ground's character between the rock faces (terrain_ground): turf edges, shore, variation, cover kinds
+        self.ground = terrain_ground.Ground(T, field.H, self.sea) if getattr(T, "spec", {}).get(
+            "ground_character", True) is not False else None
 
     def layer_ref(self, name):
         """A layer's reference look for the manifest (rock: this terrain's own rock colour)."""
@@ -1084,6 +1317,19 @@ class Materials:
                                                               (xy[:, 0] - T.xs[0]) / T.cell],
                                        order=3, prefilter=False, mode="nearest")
 
+    def kinds(self, P):
+        """The cover kinds (terrain_ground.KIND_OF: mown, rough, scrub) at points, as painted (later layers over
+        earlier)."""
+        xy = P[:, :2]
+        rest = np.ones(len(P))
+        out = {}
+        for name, layer, k, kind in reversed(self.cover):
+            d = np.clip(self._grid(self.T.cover[name].astype(float), xy), 0, 1) * k
+            if kind is not None:
+                out[kind] = out.get(kind, 0.0) + d * rest
+            rest *= 1 - d
+        return out
+
     def weights(self, P, N):
         with _span("materials.weights"):
             return self._weights(P, N)
@@ -1093,9 +1339,14 @@ class Materials:
         n = len(P)
         W = {k: np.zeros(n) for k in self.layers}
         rest = np.ones(n)
-        for name, layer, k in reversed(self.cover):  # painted in order: later layers over earlier
+        kinds, mown = {}, []
+        for name, layer, k, kind in reversed(self.cover):  # painted in order: later layers over earlier
             d = np.clip(self._grid(self.T.cover[name].astype(float), xy), 0, 1) * k
             W[layer] += d * rest
+            if kind is not None and self.ground is not None:
+                kinds[kind] = kinds.get(kind, 0.0) + d * rest
+                if kind == "mown":
+                    mown.append((d * rest, self.ground.stripes(P, name, self.T.cover[name])))
             rest *= 1 - d
         W["earth"] += rest
         if self.routes is not None:
@@ -1108,6 +1359,17 @@ class Materials:
         slope = np.degrees(np.arccos(np.clip(N[:, 2], -1, 1)))
         below = smoothstep(0.3, 1.2, -self.field.ground(P))
         rock = np.maximum(smoothstep(38, 58, slope), below)
+        under = None
+        if self.ground is not None:  # the turf's ragged edge back from a lip, rock breaking through, the splash zone
+            g_rock, under, shore, ledge = self.ground.rock(self, P, N)
+            g_rock = np.maximum(g_rock - shore * W.get("sand", 0.0), 0.0)  # (beaches stay sand)
+            for key in ("forest_floor",):  # (not under trees)
+                if key in W:
+                    g_rock = g_rock * (1 - W[key])
+            rock = np.maximum(rock, g_rock)
+            # (green on the faces' ledges near a top, off the wet band and out of caves)
+            rock = rock * (1 - ledge * (1 - below) * smoothstep(self.sea + 2.5, self.sea + 4.0, P[:, 2])
+                           if self.sea is not None else 1 - ledge * (1 - below))
         if getattr(self.field, "fall", None) is not None:  # (a fallen block: anything standing clear of the ground)
             rock = np.maximum(rock, smoothstep(0.05, 0.25, self.field.ground(P)) *
                               np.clip(4 * self.field.fall_at(P[:, 0], P[:, 1]), 0, 1))
@@ -1129,7 +1391,16 @@ class Materials:
         Wm = np.stack([W[k] for k in self.layers], 1)
         Wm /= np.maximum(Wm.sum(1, keepdims=True), 1e-9)
         # display colour: the terrain's own preview colours (cover, roads, slope), rock over steep faces and caves
-        c = np.stack([self._grid(self.display[..., i], xy) for i in range(3)], 1)
+        if self.ground is not None:  # (cover edges wander ~0.6 m: not the grid's straight runs)
+            Pf = P * np.array([1.0, 1.0, 0.0])
+            wxy = xy + 0.6 * np.c_[noise.fbm(Pf, 4.0, 2, seed=631) - 0.5, noise.fbm(Pf, 4.0, 2, seed=632) - 0.5]
+            c = np.stack([self._grid(self.display[..., i], wxy) for i in range(3)], 1)
+        else:
+            c = np.stack([self._grid(self.display[..., i], xy) for i in range(3)], 1)
+        if self.ground is not None:
+            if "sand" in W:
+                kinds["sand"] = W["sand"]
+            c = self.ground.tint(self, P, N, c, kinds, mown)
         if self.sea is not None:
             wet = smoothstep(0.2, 1.2, self.sea - P[:, 2])[:, None]
             c = c * (1 - wet) + np.array(LAYERS["sand"]["color"]) * 0.8 * wet
@@ -1164,6 +1435,9 @@ class Materials:
         # every slot read as black-outlined)
         lo = 0.66 if (self.field.rock or {}).get("blocks") else 0.55
         rc = rc * (lo + (1 - lo) * open_)[:, None]
+        if under is not None:  # (the rock just under the turf's lip: shaded by the overhanging mat)
+            from .terrain_ground import LOOK
+            rc = rc * (1 - (1 - LOOK["undercut"]) * under)[:, None]
         c = c * (1 - rock[:, None]) + rc * (1 - 0.55 * tide[:, None]) * rock[:, None]  # wet: its own rock, darker
         return Wm.astype(np.float32), c
 
@@ -2086,12 +2360,31 @@ def build_field(T, cfg=None):
     from . import terrain_caves
     cfg = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     vols, notes = volumes(T)
+    if cfg.get("stacks", True) and _sea(T) is not None:
+        sv, sn = stacks(T)
+        vols = vols + sv
+        if sn:
+            notes = notes + [sn]
     rock = rock_config(T, cfg)
     caves = terrain_caves.build(T, rock)
     for cv in caves:
         vols = vols + cv.tubes
         notes = notes + cv.notes
-    return Field(T, vols, rock, dolines=[d for cv in caves for d in cv.dolines]), vols, notes, caves
+    from . import terrain_design as design
+    bunkers = []
+    for name in getattr(T, "cover", {}):
+        c = design._spec_cover(T, name)
+        if c.get("type", name) == "bunker":
+            bunkers.append((T.cover[name], float(c.get("depth", 0.6))))
+            notes = notes + [f"{name}: bunkers dug {float(c.get('depth', 0.6)):g} m in, over "
+                             f"{float((T.cover[name] > 0.5).sum()) * T.cell ** 2:.0f} m2"]
+    field = Field(T, vols, rock, dolines=[d for cv in caves for d in cv.dolines],
+                  cuts=[v.cut for v in vols if getattr(v, "cut", None)], bunkers=bunkers)
+    for v in vols:
+        if getattr(v, "kind", None) == "arch":
+            v.view = through_view(field, v)
+            notes.append(v.view["note"])
+    return field, vols, notes, caves
 
 
 def _swatch(out, rock, macro_density=8.0, source="procedural"):
@@ -2566,6 +2859,18 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         e.update(extra)
     timing["heightmaps + splats"] = time.time() - t0
 
+    # ---- 4b. ground clutter (bushes on the scrub, boulders on the shore): placements an engine's detail scatter can use
+    if T.spec.get("ground_character", True) is not False and mats.ground is not None:
+        from . import terrain_ground
+        with prof.stage("clutter (parent)"):
+            ks = ("bush", "boulder")
+            C = terrain_ground.clutter(T, mats, base, ks)
+            with open(out / "clutter.csv", "w") as f:
+                f.write("x,y,z,kind,scale,yaw\n")
+                for r in C:
+                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f}\n")
+            notes.append(f"clutter.csv: {int((C[:, 3] == 0).sum())} bushes, {int((C[:, 3] == 1).sum())} boulders")
+
     # ---- 5. trees and the manifest
     _st = prof.stage("trees + layer textures (parent)")
     _st.__enter__()
@@ -2582,9 +2887,20 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             below = base.value(np.c_[inst[:, :2], zs - 0.3])
             ok = below < 0
             n_drop = int((~ok).sum())
+            # nor in the splash zone (a cypress stood on the wave-cut platform at pebble's point), nor on a cliff face
+            # (more than 45 deg: the trees' masks are cut on the heightfield, the solid rock is steeper)
+            sea = _sea(T)
+            wet = (zs < sea + 2.5) if sea is not None else np.zeros(len(zs), bool)
+            _, gq = base.value_gradient(np.c_[inst[:, :2], zs], 0.25)
+            steep = gq[:, 2] / np.maximum(np.linalg.norm(gq, axis=1), 1e-9) < 0.7
+            n_wet, n_steep = int((ok & wet).sum()), int((ok & ~wet & steep).sum())
+            ok &= ~wet & ~steep
             inst, zs = inst[ok], zs[ok]
             if n_drop:
                 notes.append(f"{n_drop} trees dropped: no solid ground under them")
+            if n_wet or n_steep:
+                notes.append(f"{n_wet} trees dropped in the splash zone (under 2.5 m over the sea), {n_steep} on "
+                             f"faces steeper than 45 deg")
         for (x, y, _, li), z in zip(inst, zs):
             nm, kind = layers.get(int(li), ("", ""))
             f.write(f"{x:.2f},{y:.2f},{z:.2f},{kind},{nm}\n")
@@ -2668,6 +2984,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     }
     if detail is not None:
         manifest["detail"] = detail
+    if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub")):
+        from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch)
+        ge = terrain_ground.write_grass(out)
+        ge["weights"] = [[f"_WEIGHTS{mats.layers.index(nm) // 4}", mats.layers.index(nm) % 4] for nm in ge["layers"]
+                         if nm in mats.layers]
+        manifest["ground_detail"] = ge
     if region is not None:
         manifest["cliffs"] = {
             "what": "the ground is the heightmap (ground tiles); `tiles` are 3D cliff meshes laid over it wherever the "
@@ -3906,8 +4228,23 @@ def border_segments(out_dir, lod=0):
     return np.concatenate(segs) if segs else np.zeros((0, 2, 3))
 
 
+
+def _site_props(T, box=None):
+    """The sites' props for render_tiles' stand-ins: [x, y, ground z, yaw, name] (inside `box` if given)."""
+    out = []
+    for st in getattr(T, "sites", {}).values():
+        pr = st.get("prop")
+        if not pr:
+            continue
+        x, y = map(float, st["xy"])
+        if box and not (box[0][0] <= x <= box[1][0] and box[0][1] <= y <= box[1][1]):
+            continue
+        out.append([x, y, float(T.height(np.array([x, y]))), float(pr.get("yaw", 0.0)), str(pr["name"])])
+    return out
+
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
-                 parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None):
+                 parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
+                 props=True, clutter=120.0):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -3918,7 +4255,11 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     macro maps, as the manifest's detail recipe draws it: needs an export with cfg detail) or False (vertex colour). channel: one baked
     channel alone ("base", "ao": unlit; "normal": the normal map on flat grey; "clay": geometry only). ids: also an id
     pass per view (<out>_ids.npy: glb index + 1, chart, view distance) for `terrain_seams.measure`; the job's "glbs"
-    and "kinds" say which file each index is."""
+    and "kinds" say which file each index is. A view's "sun" may be [bearing, height], a word terrain_sun knows, or
+    "auto" / left out (terrain_sun picks a raking sun for what the view sees; the choice is noted in render_job.json).
+    haze: aerial perspective, metres for 63% (None/0: off). props: placeholder buildings, tee pads and baskets on the
+    sites (the export's meta), for scale. clutter: metres round each eye where ground clutter placeholders stand
+    (terrain_ground.clutter: bushes on the scrub, tussocks in rough grass, boulders on the shore; 0/None: none)."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -3931,7 +4272,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         if e["lods"][k]:
             glbs.append(str(out / e["lods"][k]["file"]))
             kinds.append(["ground" if e["lods"][k]["file"].startswith("ground") else "cliff", e["i"], e["j"], k])
-    jobs = []
+    jobs, notes = [], []
     sea = M.get("sea_level")
     for v in views:
         if isinstance(v["eye"], list) and len(v["eye"]) == 3:
@@ -3946,13 +4287,21 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         else:
             xy, h, _ = T.address(v["look"])
             look = [float(xy[0]), float(xy[1]), h]
-        jobs.append({"eye": eye, "look": look, "fov": v.get("fov", 55), "sun": v.get("sun", [225, 30]),
+        sun = v.get("sun", "auto")
+        if not (isinstance(sun, (list, tuple)) and len(sun) == 2):
+            from . import terrain_sun
+            sb, sh, snote = terrain_sun.for_view(T, {**v, "sun": sun}, eye, look)
+            sun = [float(sb), float(sh)]
+            notes.append(f"{Path(v['out']).name}: {snote}")
+        jobs.append({"eye": eye, "look": look, "fov": v.get("fov", 55), "sun": list(map(float, sun)),
                      "lamp": v.get("lamp", 0.0), "exposure": v.get("exposure", 0.0), "fill": v.get("fill", 0.4),
                      "fill_at": v.get("fill_at", 8.0),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
            "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
-           "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds}
+           "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
+           "haze": float(haze) if haze else None, "notes": notes,
+           "props": _site_props(T, box) if props else []}
     if textured == "layered":  # the engine recipe: tiling layers over the baked maps
         job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
                           "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}
@@ -3969,6 +4318,22 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                          "variation": str((out / D["variation"]).resolve()), "variation_m": D["variation_m"],
                          "variation_scale": D["variation_scale"], "variation_offset": D["variation_offset"],
                          "fade": (D.get("fade") or {}).get("footprint_m") if detail_fade else None, "show": detail_show}
+    if clutter and not channel:  # ground clutter round the eyes (an engine's detail scatter, as placeholders)
+        from . import terrain_ground
+        cf, *_ = build_field(T)
+        cm = Materials(T, cf)
+        ks = ("bush", "tussock", "boulder")
+        eyes = np.array([j["eye"] for j in jobs], float)
+        lo_, hi_ = eyes[:, :2].min(0) - clutter, eyes[:, :2].max(0) + clutter
+        if box:
+            lo_, hi_ = np.maximum(lo_, box[0]), np.minimum(hi_, box[1])
+        C = terrain_ground.clutter(T, cm, cf, ks, box=[lo_.tolist(), hi_.tolist()], near=(eyes, clutter))
+        job["clutter"] = {k: C[C[:, 3] == i, :3].round(3).tolist() for i, k in enumerate(ks)}
+        notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+    GD = M.get("ground_detail")
+    if GD and textured and not channel:  # the turf's tiling detail over the baked maps (as an engine draws it)
+        job["grass"] = {"albedo": str((out / GD["albedo"]).resolve()), "normal": str((out / GD["normal"]).resolve()),
+                        "size": GD["size_m"], "fade": GD["fade_m"], "weights": GD["weights"]}
     if any(v.get("borders") for v in views):
         np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
         job["borders"] = str(out / "borders.npz")

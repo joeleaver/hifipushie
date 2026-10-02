@@ -296,20 +296,30 @@ and the `"story"`.
   (`export_terrain(name, tiles=True)`) and their views; the heightmap export, map and report ground stay 2.5D.
   `{"name": {"type": "arch" | "cave" | "overhang", "at": address, ...}}`, each cut out of the rock with rounded,
   slightly rough edges (`"blend"` m, default 1; `"rough"` m, default 0.4; `"op": "add"` builds rock instead):
-  - `arch {"at", "toward"?: bearing | address, "width"?, "height"?, "floor"?, "roof"?: 2, "search"?: 30}`: a passage
-    through the land near `at` (within `search` metres), where it is shortest for its height and still has `roof` metres
-    of rock over it: real sea arches go through a thin neck. Heading `toward` if given, else the best of every heading.
-    Its floor defaults to 1 m below the sea (water runs through); height to 65% of the ground above the floor, width to
-    0.8 of the height. The mouths flare and the line bends a little. The report says where it went and how thick its
-    roof is.
-  - `cave {"at", "toward"?, "length": 30, "width": 6, "height": 5, "chamber"?: radius, "rise"?: m, "narrow"?: 0.7,
-    "wander"?: 0.08, "floor"?}`: a passage into the rock heading `toward` (default: the address's own direction, e.g.
-    `"at": "cliff_foot:<address>"` goes straight into the cliff; else uphill). Its mouth is where the
+  - `arch {"at", "toward"?: bearing | address, "width"?, "height"?, "floor"?, "roof"?: 2, "search"?: 30,
+    "through"?: m, "neck"?: m}`: a passage through the land near `at` (within `search` metres), where it is shortest for
+    its height, keeps a roof of at least `roof` metres and half its span, and has open sea (no land within 60 m) past
+    both mouths. Heading `toward` if given, else the best of every heading. Its floor defaults to 1 m below the sea
+    (water runs through); height to 65% of the ground above the floor (less if the roof needs it), width to 0.8 of the
+    height (capped at 8 m): arches are taller than wide. Real sea arches go through a FIN of rock about as thick as the
+    arch is tall (Durdle Door); through a wider headland one read as a tunnel with a turf lid. So where the land is more
+    than 1.25 x `through` (default 0.9 x the height, at least 4 m) along its line, bays are cut in from the sea on both
+    sides down to its floor, `neck` metres (default 1.2 x its width, at least 6) either side of it, leaving a fin
+    `through` m thick: the tip beyond stands on the arch. The report says where it went, the neck, the roof, and a
+    see-through check (the share of rays along the opening that come out clear, and what lies beyond each mouth:
+    "WARNING" when under half shows daylight).
+  - `cave {"at", "toward"?, "length": 30, "width": 4.5, "height": 6, "chamber"?: radius, "rise"?: m, "narrow"?: 0.7,
+    "wander"?: 0.08, "floor"?, "roof_rule"?: true}`: a passage into the rock heading `toward` (default: the address's own
+    direction, e.g. `"at": "cliff_foot:<address>"` goes straight into the cliff; else uphill). Its mouth is where the
     rock starts along that line, so `at` can be in the water just off a cliff. It narrows to `narrow` of its size and
-    ends in a domed chamber if `chamber` is given. A sea cave's floor defaults to half a metre under the sea.
+    ends in a domed chamber if `chamber` is given. A sea cave's floor defaults to half a metre under the sea. Sea caves
+    follow joints: make them taller than wide (the report says when one isn't). The rock over it is kept at least
+    1.5 m and half its span thick: it lowers where the ground over it thins, ends where even 1.8 m wouldn't fit, and
+    a chamber shrinks to fit (all said in the report; `"roof_rule": false` keeps your sizes and lets it break through).
   - `overhang {"at", "along"?: bearing, "length": 30, "depth": 5, "height": 3.5, "floor"?}`: a wave-cut notch along the
     cliff face nearest `at` (following the face; `"cliff_foot:<address>"` sets it along that cliff), `depth` metres in under the lip, its floor half a metre under the
-    sea. The report says how much rock stands over it.
+    sea. Where the cliff behind is too low to roof it (1.5 m and half its height) it is shallower, dying out to a nick on
+    a low stretch. The report says how much rock stands over it.
   - In the mesh tiles every steep face (45-62 deg and up) and everything a volume shaped gets solid rock character:
     planar facets meeting in crisp creases and bedding (a notch at each bed, beds standing proud or set back), which
     can overhang. Its colour is the heightfield's own rock there (the kind's rock, any rock cover layer such as a
@@ -428,7 +438,7 @@ and the `"story"`.
   out from each point of the edge and measures the tallest stretch at least `min_slope` steep: it must reach `height`.
 - **cover**: masks for the engine, density or weight 0..1 per layer.
   ```
-  {"type": forest | conifer | deciduous | rock | scree | grass | meadow | snow | sand | mud,
+  {"type": forest | conifer | deciduous | rock | scree | grass | meadow | mown | rough | scrub | snow | sand | mud,
    "in": zone, "density": 0..1, "slope": [lo, hi], "elevation": [lo, hi],
    "gradient": {"from": address, "to": address, "range": [a, b]},
    "near": {"what": "water" | address, "within": m}, "breakup": {"scale": m, "amount": 0..1},
@@ -441,6 +451,19 @@ and the `"story"`.
   `orchard` plants rows (`"rows": 6` m apart, `"along": "contour" | "east" | "north"`). `"count": 6` on any tree
   layer scales it to about that many trees ("a few trees"). Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
   32 deg), and anything you give overrides them.
+  Grass by how it's kept reads differently in the 3D tiles' maps: `mown` (fairways, greens, lawns: even, bright, mown
+  in straight stripes ~8 m wide along each piece's long axis, a darker first cut at its edge), `rough` (long grass:
+  olive, tussocks, straw tips; `grass` and `meadow` are rough too) and `scrub` (low bushes, heath: dark grey-green
+  clumps with dry gaps). Unkept grass also turns to scrub on slopes past ~20 deg. All of it varies by itself (patches at
+  60 and 15 m, drier and paler on crests and sun-facing slopes, lusher in hollows, salt-burnt within ~30 m of the sea),
+  the turf ends back from every cliff's lip along a ragged edge (bare rock, shaded just under the turf), rock breaks
+  through in patches near lips, and there is no grass in the splash zone (~1.6 m over the sea; beaches stay sand).
+  `"ground_character": false` at the spec's top level turns that off (flat cover colours). `bunker` is sand dug
+  into the ground (`"depth": 0.6` m, a steep cut edge and a slight turf lip; in the 3D tiles): give it zones round the
+  greens (`{"any": [{"near": [x, y], "radius": 3}, ...]}`, two or three overlapping circles make a kidney).
+  The 3D tiles' renders and `clutter.csv` (x, y, z, kind, scale, yaw) carry ground clutter from the same masks:
+  bushes on scrub (on its dark clumps), boulders along the splash zone and where rock breaks through near lips, and
+  (renders only, near the eye) tussocks in rough grass: placeholders for an engine's detail scatter.
   `"trees"` on a tree layer picks the tree's shape (views, and the kind column of trees.csv): `"conifer"` (a spire),
   `"broadleaf"` (a round crown), `"fruit"`, `"pine"` (a tall bare trunk under a lobed round crown: a Monterey or stone
   pine), `"cypress"` (a wind-shaped coastal tree: a short trunk leaning downwind, a flat crown swept one way; all lean
@@ -534,7 +557,12 @@ The shell run writes its outputs beside the spec:
   (texels per metre per LOD), `"texture_max": 2048`, `"ground_density": 4`, `"micro": 1` (fine rock detail; 0 none).
   Beside the GLBs: `maps/<tile>_height.png` (16-bit displacement) and `maps/<tile>_weights<g>.png` (layer weights),
   `materials/<layer>_albedo/_normal/_height.png` (tileable detail textures) and the manifest's `engine_recipe` (how
-  an engine blends the layers over the baked maps, triplanar on rock). Other settings (metres):
+  an engine blends the layers over the baked maps, triplanar on rock). The ground's grass and scrub get a tiling turf
+  detail too (`materials/grass_detail_*.png`, the manifest's `ground_detail` with its recipe: laid from above at 2 m,
+  fading out by 20-70 m; `"grass_detail": false` leaves it out).
+  See them as an engine would: `look_terrain(name, views=[...], tiles=True)` renders the last tiles export (baked maps,
+  rock and turf detail, arches and caves, trees, the sites' props as stand-ins for scale: baskets, tee pads, a lodge),
+  under a raking sun chosen per view (`"sun"` as for views) with aerial haze (`haze`: metres for 63%, default 5000). Other settings (metres):
   `"tile": 64` (tile size), `"voxel": 0.5` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),
