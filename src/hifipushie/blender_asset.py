@@ -935,6 +935,20 @@ def preview(job):
     cam = bpy.data.objects.new("cam", cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
+    poses = job.get("poses")
+    if poses is None:
+        _render_views(job, scene, cam, cam_data, "")
+        return
+    keyed = [ob for ob in scene.objects if ob.type == "MESH" and ob.data.shape_keys]
+    for i, pose in enumerate(poses):  # face shapes: the morph targets (shape keys on import) at these weights
+        for ob in keyed:
+            for kb in ob.data.shape_keys.key_blocks[1:]:
+                kb.slider_min = min(kb.slider_min, -1.0)
+                kb.value = float(pose.get(kb.name, 0.0))
+        _render_views(job, scene, cam, cam_data, f"_p{i}")
+
+
+def _render_views(job, scene, cam, cam_data, sfx):
     for v in job["views"]:
         d = Vector(v["dir"]).normalized()
         up = Vector(v["up"])
@@ -948,7 +962,7 @@ def preview(job):
             cam_data.type = "ORTHO"
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ Matrix((right, up, d)).transposed().to_4x4()
             cam_data.ortho_scale = v["scale"]
-        scene.render.filepath = v["out"]
+        scene.render.filepath = v["out"][:-4] + sfx + ".png" if sfx else v["out"]
         bpy.ops.render.render(write_still=True)
 
 
