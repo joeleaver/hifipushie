@@ -1,0 +1,57 @@
+{
+ "_doc": "How a FreeSewing design is built (cloth.py): the parts used as pieces (fold = cut on the fold at x = 0, mirrored whole; copies = the same part cut again), alterations every build applies (turned plackets), where each piece starts round the body (wrap), the seam table (edges 'piece:a>b' or 'piece:a>via>b'; a side may be a chain of edges), point stitches (buttons), interfaced pieces, and the tailoring words mapped onto the design's options (ease as a fraction of the body measurement, lengths in m).",
+ "simon": {
+  "kind": "shirt",
+  "pieces": {
+   "back": {"part": "simon.back", "fold": "x0", "wrap": {"to": "torso", "side": "back"}},
+   "yoke": {"part": "simon.yoke", "wrap": {"to": "torso", "side": "back", "out": 0.004}},
+   "front.R": {"part": "simon.frontRight", "wrap": {"to": "torso", "side": "front"}},
+   "front.L": {"part": "simon.frontLeft", "wrap": {"to": "torso", "side": "front", "out": 0.004}},
+   "sleeve.L": {"part": "simon.sleeve", "wrap": {"to": "arm.L", "front": 1}},
+   "sleeve.R": {"part": "simon.sleeve", "wrap": {"to": "arm.R", "front": 1}},
+   "cuff.L": {"part": "simon.cuff", "wrap": {"to": "arm.L", "front": 1, "follow": ["sleeve.L", "cuffMid", "bottomLeft"]}},
+   "cuff.R": {"part": "simon.cuff", "wrap": {"to": "arm.R", "front": 1, "follow": ["sleeve.R", "cuffMid", "bottomLeft"]}},
+   "stand": {"part": "simon.collarStand", "wrap": {"to": "neck", "edge": "bottomMid"}},
+   "collar": {"part": "simon.collar", "wrap": {"to": "neck", "edge": "bottomMid", "above": 0.03}}
+  },
+  "alter": [
+   {"op": "turn", "piece": "front.R", "line": "placketOuterFold", "keep": "neck"},
+   {"op": "turn", "piece": "front.L", "line": "placketFold1", "keep": "neck"}
+  ],
+  "seams": [
+   ["back:hem>armhole", "front.L:hem>armhole"],
+   ["back:hem.m>armhole.m", "front.R:hem>armhole"],
+   ["yoke:shoulder>neck", "front.L:shoulder>neck"],
+   ["yoke:shoulder.m>neck.m", "front.R:shoulder>neck"],
+   ["yoke:armholeYokeSplit>cbYoke>armholeYokeSplit.m", "back:armholeYokeSplit>cbYoke>armholeYokeSplit.m"],
+   ["sleeve.L:bicepsRight>capQ2>bicepsLeft", ["front.L:armhole>shoulder", "yoke:shoulder>armholeYokeSplit", "back:armholeYokeSplit>armhole"]],
+   ["sleeve.R:bicepsRight>capQ2>bicepsLeft", ["front.R:armhole>shoulder", "yoke:shoulder.m>armholeYokeSplit.m", "back:armholeYokeSplit.m>armhole.m"]],
+   ["sleeve.L:bicepsLeft>wristLeft", "sleeve.L:bicepsRight>wristRight"],
+   ["sleeve.R:bicepsLeft>wristLeft", "sleeve.R:bicepsRight>wristRight"],
+   ["sleeve.L:wristLeft>cuffMid>wristRight", "cuff.L:bottomLeft>bottomRight"],
+   ["sleeve.R:wristLeft>cuffMid>wristRight", "cuff.R:bottomLeft>bottomRight"],
+   ["stand:leftBottomCf>bottomMid>rightBottomCf", ["front.R:cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck"]],
+   ["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopCf>topMid>rightTopCf"]
+  ],
+  "stitches": [
+   ["front.R:button1", "front.L:buttonhole1"], ["front.R:button2", "front.L:buttonhole2"],
+   ["front.R:button3", "front.L:buttonhole3"], ["front.R:button4", "front.L:buttonhole4"],
+   ["front.R:button5", "front.L:buttonhole5"], ["front.R:button6", "front.L:buttonhole6"],
+   ["front.R:button7", "front.L:buttonhole7"],
+   ["cuff.L:button1", "cuff.L:buttonhole1"], ["cuff.R:button1", "cuff.R:buttonhole1"]
+  ],
+  "interfaced": ["stand", "collar", "cuff.L", "cuff.R"],
+  "words": {
+   "ease": {"chest": "chestEase", "waist": "waistEase", "hips": "hipsEase", "biceps": "bicepsEase", "neck": "collarEase", "wrist": "cuffEase", "shoulders": "shoulderEase"},
+   "length": "lengthBonus",
+   "sleeve_length": "sleeveLengthBonus",
+   "round_back": "roundBack",
+   "yoke_depth": "yokeHeight",
+   "back_darts": "backDarts",
+   "buttons": "buttons",
+   "hem": "hemStyle",
+   "cuff": "cuffStyle",
+   "sleeve": "sleeveStyle"
+  }
+ }
+}
