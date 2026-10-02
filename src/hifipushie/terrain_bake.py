@@ -72,7 +72,13 @@ def micro_relief(r, amount=1.0, texel=0.1, fine=True):
                 zoff = r["bed_offset"](p[:, :2]) if r.get("bed_offset") else 0.0
                 I = terrain_blocks.ids(p, r["blocks"], fd, zoff)
             notch = lambda d, wd: np.clip(1 - d / wd, 0, 1) ** 2
-            cr = np.maximum(I["bed_crack"], 0.5 * I["thin"]) * notch(I["bed_edge"], 0.22)
+            # (a thin bed's planes notched only where its package sits back, as much as it does: notched all along,
+            # three notches in 0.6 m drew the pebble chasm's dark band in the normal map, the mesh smooth there)
+            thin = np.zeros(len(p))
+            k = np.flatnonzero(I["thin"])
+            if len(k):
+                thin[k] = terrain_blocks.package_recess(p[k, :2], I["K"][k], I["j"][k], r["blocks"])
+            cr = np.maximum(I["bed_crack"], 0.5 * thin) * notch(I["bed_edge"], 0.22)
             for m, w in enumerate(I["weights"]):
                 cr = np.maximum(cr, w * notch(I["open"][m], 0.22))
             out = out + 0.07 * max(ac, al) * cr

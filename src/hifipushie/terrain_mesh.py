@@ -1196,10 +1196,7 @@ def block_colour(P, N, rc, r, fd, lines=True):
     # soft transitions; the blocks' own geometry and the lines do the rest)
     # (a thin package is darker only where it sits back, by as much as it does (terrain_blocks._bed_value's stretches
     # and depth): darker all along, it was a ruled band across the pebble chasm)
-    sb_ = B["seed"] + 30
-    kj = (K * 16 + j).astype(float)
-    rec = np.clip((noise._value_noise(np.c_[P[:, :2] / 9.0, kj], sb_ + 2) - 0.4) / 0.25, 0, 1) * \
-        np.clip((noise._value_noise(np.c_[P[:, :2] / 2.5, kj], sb_ + 3) - 0.35) / 0.4, 0, 1)
+    rec = terrain_blocks.package_recess(P[:, :2], K, j, B)
     tone = 1 + (BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - BLOCK_TONE["thin"] * I["thin"] * rec) * eb
     # (lines=False: the open bed planes and joints are drawn crisp from the lines map, terrain_swatch.structure_lines)
     dark = 0.5 * I["bed_crack"] * (1 - eb) * lines  # (bed planes: faint; the geometry draws the ledges)
