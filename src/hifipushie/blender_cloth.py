@@ -261,7 +261,7 @@ def sim(job, d):
             cyl.modifiers.new("collision", "COLLISION")
         fh = int(job.get("hang_frames", 120))
         bpy.data.objects.remove(ob)
-        ob = _sim_object("garment_hang", Va, F, sew_h, uv_h, stiff_h, pins_h, fab, False, fh)
+        ob = _sim_object("garment_hang", Va, F, sew_h, uv_h, stiff_h, pins_h, fab, bool(job.get("self_collision", True)), fh)  # self-collision: hung without it the coat folded through itself (thousands of crossings)
         ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("hang_sew_force", 200.0))  # anchors carry its weight
         V, dt = _run(ob, fh, trace=(1, 2, 5, 10, 30, 60))
         for f in (1, 2, 5, 10, 30, 60):

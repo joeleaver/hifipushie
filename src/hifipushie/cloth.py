@@ -755,6 +755,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         C = _densify(_offset_hull(Hu, m), 0.002)
     placed = {}
     neck_base = None  # height up the neck axis where the neck pieces' sewn edges start (shared: a collar on a stand)
+    neck_tilt = None  # the neck pieces' axis (shared; wrap "tilt")
+    placed_neck = []
     for k, nm in enumerate(names):
         w = pcs[nm]["wrap"]
         sel = pid == k
@@ -930,6 +932,15 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             else:
                 nb = neck_base[1]
                 neck_base = neck_base[0]
+                # sewn to a neck piece already placed (a collar on its stand): its sewn edge where that piece's edge
+                # is. The design's fixed "above" (3 cm) left a collar 2 cm above a lowered stand
+                k_ = names.index(nm)
+                sw = M["sew"]
+                prev = [names.index(o) for o in placed_neck]
+                pv = np.r_[sw[(pid[sw[:, 0]] == k_) & np.isin(pid[sw[:, 1]], prev), 1],
+                           sw[(pid[sw[:, 1]] == k_) & np.isin(pid[sw[:, 0]], prev), 0]]
+                if len(pv) >= 3 and not w.get("fixed_above"):
+                    above = float(np.median((X[pv] - nb) @ (neck_tilt if neck_tilt is not None else d))) - neck_base
             # still clear of the neck over the piece's own heights (sections that are the neck: the jaw above it is
             # left to the collision)
             for hgt in np.linspace(neck_base + above + (P[:, 1].min() - e[1]),
@@ -937,12 +948,46 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 rc = body.neck_radius(hgt)
                 if rc is not None:
                     R = max(R, rc + CLEAR / 2)
+            # wrap "tilt" (deg, + tips the front down; shared by the neck pieces): the band's axis turned from the
+            # neck's about the side axis. Off by default: on the thin body (a 3 cm neck under the jaw) no tilt from
+            # -15 to 25 deg cleared a 3 cm stand + collar better than square (the collar pushed 19-34 mm: the open
+            # thin-collar crumple); the tilt that clears a ring of the band's radius best is used.
+            if neck_tilt is None:
+                neck_tilt = d
+                if "tilt" in w:
+                    # the tilt (forward, about the side axis) that keeps the neck pieces' whole height clearest of
+                    # the body: rings at the band's radius from its base to the top of the tallest neck piece
+                    sd0 = np.cross(d, np.array([0, 1.0, 0]) - d * d[1])
+                    sd0 /= np.linalg.norm(sd0)
+                    htop = max(float(pcs[o]["wrap"].get("above", 0.0)) + (  # a turned collar's top is its fold
+                        sum(map(float, pcs[o]["wrap"]["fold"])) if pcs[o]["wrap"].get("fold")
+                        else float(np.ptp(pcs[o]["P"][:, 1]))) for o in names if pcs[o]["wrap"].get("to") == "neck")
+                    phis = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+
+                    def push_at(dd):
+                        bk = np.array([0, 1.0, 0]) - dd * dd[1]
+                        bk /= np.linalg.norm(bk)
+                        sdv = np.cross(dd, bk)
+                        ring = np.outer(np.cos(phis), bk) + np.outer(np.sin(phis), sdv)
+                        P = np.concatenate([nb + dd * (neck_base + hh) + R * ring
+                                            for hh in np.linspace(0, htop, 5)])
+                        return float(np.linalg.norm(body.push_out(P, CLEAR) - P, axis=1).max())
+                    cands = [math.radians(float(w["tilt"]))] if "tilt" in w else \
+                        [math.radians(a) for a in range(-10, 45, 5)]
+                    best = None
+                    for th_ in cands:  # rotate d about the side axis: + tips the front down
+                        dd = d * math.cos(th_) + np.cross(sd0, d) * math.sin(th_)
+                        dd /= np.linalg.norm(dd)
+                        pp = push_at(dd)
+                        if best is None or pp < best[0] - 1e-3 or (abs(pp - best[0]) <= 1e-3 and abs(th_) < abs(best[1])):
+                            best = (pp, th_, dd)
+                    neck_tilt = best[2]
+            d = neck_tilt
             back = np.array([0, 1.0, 0]) - d * d[1]
             back /= np.linalg.norm(back)
             side = np.cross(d, back)
             if side[0] < 0:
                 side = -side
-            above = float(w.get("above", 0.0))
             # "fold": [rise, layer] a turned-down collar: up `rise` from its sewn edge, then folded down outside
             # itself `layer` further out (placed folded, so the rest shape holds the fold; arc length kept per row)
             fold = w.get("fold")
@@ -977,6 +1022,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 out[i] = nb + d * (neck_base + hgt) + r * radial
             X[sel] = out
             neck_base = (neck_base, nb)
+            placed_neck.append(nm)
         elif to == "flat":  # laid flat at a height (a tablecloth, a blanket): pattern x, y -> world x, y
             o = np.asarray(w.get("at", [0, 0, 1.0]), float)
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
@@ -1186,7 +1232,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     push = dict(Bp.get("push") or {})
     if refine:
         M = mesh(Bp, h)
-        X0 = place(Bp, M, body)
+        # the fine mesh's rest shape is the coarse one's placement carried onto it (the same surface, sampled finer):
+        # placed again at 1 cm, its cuff spiral and pushed-off rows differed from the coarse rest the sim had settled,
+        # and easing between the two crumpled one interfaced cuff
+        X0 = transfer(Ms, Xs, M)
     else:
         M, X0 = Ms, Xs
     fab_s, fab = _fabric_at(g, hs), _fabric_at(g, h)
@@ -2018,12 +2067,17 @@ def report(gname: str, res: dict) -> str:
              + "; sim log: " + "; ".join(ln.replace("cloth: ", "") for ln in res.get("log", "").splitlines()[-3:]))
     if res["pieces"].get("push"):
         L.append(f"  start pushed off the body (mm, becomes rest stretch): {res['pieces']['push']}")
+        bad = [p for p, v in res["pieces"]["push"].items() if v > 8 and p in res["pieces"]["pieces"]
+               and res["pieces"]["pieces"][p]["wrap"].get("to") == "neck"]
+        if bad:
+            L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
+                     "allows and crumples; lower it (simon: pattern options collarStandWidth 0.045, default 0.08)")
     return "\n".join(L)
 
 
 # ---------------------------------------------------------------- detail: seams, topstitching, hems, buttons
 
-DETAIL = {"seam": 0.0012, "seam_width": 0.0025, "allowance": 0.0006, "topstitch": 0.006, "stitch": 0.003,
+DETAIL = {"thread": None, "button": None, "seam": 0.0012, "seam_width": 0.0025, "allowance": 0.0006, "topstitch": 0.006, "stitch": 0.003,
           "stitch_gap": 0.0015, "stitch_depth": 0.0003, "hem": 0.02, "hem_height": 0.0007, "buttons": True,
           "texture": 2048}
 
@@ -2091,6 +2145,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         thread = band * dash
         H -= o["stitch_depth"] * thread
     # buttons and buttonholes on the pieces' marks
+    btn = np.zeros((T, T), np.float32)
     if o["buttons"]:
         for nm, v in M["marks"].items():
             mk = nm.split(":", 1)[1]
@@ -2106,6 +2161,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
                     hr = np.hypot(xx[:, sub[1]] - (cx + hx * r), yy[sub[0], :] - (cy + hy * r)) / (0.13 * r)
                     bump -= 0.0012 * np.clip(1 - hr ** 2, 0, 1)
                 H[sub] = np.maximum(H[sub], bump)
+                btn[sub] = np.maximum(btn[sub], (rr < 1).astype(np.float32))
             elif mk.startswith("buttonhole"):
                 w, hh = 0.0075 / mpt, 0.0012 / mpt  # a slot along the placket (pattern y)
                 yy, xx = np.ogrid[:T, :T]
@@ -2125,7 +2181,8 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     n /= np.linalg.norm(n, axis=2, keepdims=True)
     N = ((n * 0.5 + 0.5) * 255).round().astype(np.uint8)
     cav = np.clip(1 + H / 0.0015, 0.55, 1.0).astype(np.float32)
-    return {"height": H, "normal": N, "cavity": cav, "thread": thread.astype(np.float32), "inside": inside,
+    btn *= inside
+    return {"height": H, "normal": N, "cavity": cav, "thread": thread.astype(np.float32), "button": btn, "inside": inside,
             "texels_per_m": T / side}
 
 
@@ -2135,18 +2192,23 @@ def write_maps(path_stem: Path, M: dict, uv: np.ndarray, side: float, g: dict, t
     from PIL import Image
     dm = detail_maps(M, uv, side, g, texture)
     rgb = np.array([int(g.get("color", "#8fb3d9").lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)], float)
-    thread = np.array([int((g.get("detail") or {}).get("thread", g.get("color", "#8fb3d9")).lstrip("#")[i:i + 2], 16)
+    thread = np.array([int(((g.get("detail") or {}).get("thread") or g.get("color", "#8fb3d9")).lstrip("#")[i:i + 2], 16)
                        for i in (0, 2, 4)], float)
-    if "thread" not in (g.get("detail") or {}):
+    if not (g.get("detail") or {}).get("thread"):
         thread = np.clip(rgb * 1.18 + 12, 0, 255)  # a shade lighter than the cloth (matched thread catches light)
     C = rgb[None, None] * dm["cavity"][..., None]
     t = dm["thread"][..., None] * 0.8
     C = C * (1 - t) + thread[None, None] * t
+    button = np.array([int(((g.get("detail") or {}).get("button") or "#ebe6dc").lstrip("#")[i:i + 2], 16)
+                       for i in (0, 2, 4)], float)
+    b = dm["button"][..., None]
+    C = C * (1 - b) + button[None, None] * dm["cavity"][..., None] * b
     out = {}
     out["basecolor"] = Path(f"{path_stem}_basecolor.png")
     Image.fromarray(np.clip(C, 0, 255).astype(np.uint8)).save(out["basecolor"])
     out["shade"] = Path(f"{path_stem}_shade.png")  # the detail's shading alone (the scene multiplies the colour by it)
     sh = dm["cavity"] * (1 - dm["thread"] * 0.8) + dm["thread"] * 0.8
+    sh = sh * (1 - dm["button"]) + dm["button"] * dm["cavity"]
     Image.fromarray((np.clip(sh, 0, 1) * 255).astype(np.uint8)).save(out["shade"])
     out["normal"] = Path(f"{path_stem}_normal.png")
     Image.fromarray(dm["normal"]).save(out["normal"])
@@ -2318,6 +2380,19 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
 # ---------------------------------------------------------------- looks
 
 
+def _cylinder(a, b, r, n=20):
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    d = (b - a) / np.linalg.norm(b - a)
+    u = np.cross(d, [1, 0, 0] if abs(d[0]) < 0.9 else [0, 1, 0])
+    u /= np.linalg.norm(u)
+    v = np.cross(d, u)
+    ang = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    ring = np.outer(np.cos(ang), u) + np.outer(np.sin(ang), v)
+    V = np.r_[a + r * ring, b + r * ring]
+    F = [[i, (i + 1) % n, n + (i + 1) % n] for i in range(n)] + [[i, n + (i + 1) % n, n + i] for i in range(n)]
+    return V, np.array(F)
+
+
 def look(name: str, which: list | None = None, views=("front", "side", "back", "three"), strain: bool = True,
          size: int = 640, focus=None, zoom: float = 0.4, body: bool = True, textured: bool = False):
     """Renders of the model's simulated garments on their body (clay, each garment its colour) + the strain map, and
@@ -2346,6 +2421,12 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
     if not results:
         return None, "\n".join(texts)
     bod = results[0][2]["body"]
+    hung = [g for _, g, _ in results if isinstance(_state(g), dict) and "hang" in _state(g)]
+    if hung and len(hung) == len(results):  # hung garments: the body is gone, the rack shows
+        body = False
+        for k, (a, b, r) in enumerate([c for g in hung for c in (_state(g)["hang"].get("rack") or [])]):
+            V, F = _cylinder(a, b, r)
+            objs.append({"name": f"rack{k}", "V": V, "F": F, "color": "#8a6b45"})
     if body and len(bod.V):
         objs.append({"name": "body", "V": bod.V, "F": bod.T, "color": "#d9c3b0"})
     tmp = store._dir(name) / "_cloth_look"
