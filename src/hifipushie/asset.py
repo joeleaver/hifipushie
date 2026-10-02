@@ -1280,7 +1280,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     ctx = split(spec, resolution, instancing, log, min_share=1, voxels=fine)
     for pn, v in fine.items():
         if ctx["frames"].get(pn) and ctx["frames"][pn][1] <= v:
-            log.append(f"{pn}: meshed at {ctx['frames'][pn][1] * 1000:.2f} mm for the face shapes (the lips' slit)")
+            log.append(f"{pn}: meshed at {ctx['frames'][pn][1] * 1000:.2f} mm for the face shapes (the lips' slit, teeth)")
     origin = ctx["origin"]
     tm = time.time()
     high = mesh_parts(ctx, out_dir / "high.npz")

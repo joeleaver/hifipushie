@@ -89,6 +89,61 @@ Looks wrong / limits:
   "the nose and eyeballs stay".
 - NORMAL targets only (no TANGENT deltas); Blender's importer ignores both (recomputes), engines may use them.
 
+## Round 2 (2026-10-01): GNM heads, goblin fixes
+
+### GNM head on a MakeHuman body (`examples/gnm_talk.json`, sheet `gnm_talk_shapes.jpg`)
+`examples/disc_golfer_mh.json` with the clothes, bag, disc, hair locks and the template-wrap topology left out (the
+golfer's head, style sheet, skin/lip/brow/eye paint and nose strokes kept); `base.head.mouth_gap` 0.003 and
+`base.head.interior` {teeth, tongue}. Left out because: hair locks are curves (no face shapes, minutes of export),
+the shirt/collar are far from the face, and the wrap (`parts.body.topology "wrap"`) zips the lips into one seam
+(`_zip_mouth`), which can't open. Exports with decimation instead (40k triangles, 2048 atlas, ~25 min: the body is
+meshed at 1.4 mm to keep the slit).
+
+**Approach: GNM's expression basis, not the landmark warp.** GNM's 383 expression components are learned from scans:
+a smile bunches the cheek and deepens the nasolabial fold, an open jaw stretches the chin and cheeks the way faces
+do; a hand-made warp gets none of that. So each ARKit shape is a set of 68-landmark moves (`GnmFace._gnm_moves`:
+in mouth widths, GNM frame; Left = the head's left landmarks, mirrored for Right) solved as the least change of
+the regional components (lower face for mouth/jaw, eye regions for lids/brows) holding every other landmark (weight
+0.5): the same ridge solve as `base.pose_expression`. jawOpen = the jaw line and lower lip turned 14 deg about the
+ears' landmarks (0, 16); mouthClose = against it, the lower lip back 80% of the way, the upper lip the rest;
+cheekPuff (no landmarks there) = a direct normal push on GNM's cheek regions, feathered. The GNM offsets are carried
+onto the export: eye-scaling magnification, narrowing, placement (scale, turn) -> the head skin's vertices before
+subdivision -> each low-poly vertex by inverse distance over the 6 nearest; between the lips only from its own
+lip's vertices (mixed, the parted lips tore the slit walls into shards). The neutral's closed lips are a basis solve
+too (inner lips half the gap each).
+
+**Mouth interior.** GNM has its own mouth sock, teeth, gums and tongue, but the head's style moves only the skin
+(the golfer's lips are pushed 6 mm back), which left GNM's teeth standing in front of the lips. So the interior is
+the face kit's (`kits._interior`: slit, bag, teeth, tongue) placed from the head's lip landmarks
+(`base.mouth_lips` / `base.mouth_interior`, replacing the `mouth_fill` blob). What isn't near the skin (the bag's
+deep walls, teeth, tongue) takes the jaw's rigid motion, Procrustes-fitted to the jaw line's carried landmarks, for
+the jaw shapes only.
+
+**Blinks** come from the basis (upper lid landmarks 80% to the lower, lower 20% up), then anything that would sink
+into the eyeball is pushed out to its surface + 0.6 mm.
+
+### Goblin fixes
+- Lid facets: the export decimates with the lids (and lips) magnified 2x (`focuswarp.py`, `Face.tri_focus`): the
+  quadric error counts more there, triangles stay. Blender's Decimate vertex group was tried first and is useless
+  for grading: ANY weight protects a vertex outright (factor 0.01 kept all 6569 weighted vertices of a test mesh
+  and ignored the ratio; the first try gave the face 97% of the goblin's triangles).
+- jawOpen + mouthClose: the lower lip now closes 80% of the gap (`CLOSE_LOWER`): no upper-lip curtain.
+- Corner spikes/flap: the slit ran out to 0.96 of the half width and in front of the lips its full height, notching
+  the cheek at the corner; it now stops at 0.92 (`interior.end`) and its front tapers.
+- Dark seam: the example's mouth-interior paint was `near` the slit too (the lips' inner faces); now the bag only.
+
+### Round 2 results (sheets `goblin_talk_shapes.jpg`, `gnm_talk_shapes.jpg` here)
+- GNM head: neutral closed (thin seam), jawOpen opens onto bag, lower teeth and tongue; tongueOut, AA/OO/EE/FV read;
+  smile/frown/dimple/stretch/press/up/down are subtle but correct-sided; brows and cheekPuff read. Exports: GLB 0
+  errors/0 warnings (Khronos), FBX shape keys body/teeth/tongue 36 each. ~25 min per export (the body at 1.4 mm).
+- Still wrong: GNM blink leaves a small dark gap at the inner corner and flat-shaded triangles on the outer lid (the
+  low poly's lid is coarse even magnified; the texture slides with the lid); upper teeth barely show (the strip sits
+  behind the upper lip: a style call); mouthClose alone bulges the lips (as ARKit's does: it is meant with jawOpen);
+  GNM mouth shapes' amounts are first guesses (smile ~4.5 mm corner lift); the goblin's upper teeth are hidden in
+  the gum (only the lower row shows at jawOpen).
+- Outputs (git-ignored workspace, written by `examples/face_shapes_sheet.py <model>`):
+  `workspace/face_shapes/<model>/<model>.glb` (+ `.fbx`, `.json`, maps) for goblin_talk and gnm_talk.
+
 ## Open questions for the director
 - Art style of the mouth interior (bag colour, teeth as one strip vs individual teeth, tongue size) and the default
   slit/bag sizes. Conservative defaults taken.

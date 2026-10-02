@@ -2,6 +2,7 @@
 face, rendered from the GLB as an engine loads it), the neutral, and a few viseme-like combinations.
 
   uv run python examples/face_shapes_sheet.py [model] [out_dir]      (defaults: goblin_talk, workspace/face_shapes)
+  uv run python examples/face_shapes_sheet.py gnm_talk                (MakeHuman body + GNM head: 40k tris, 2048)
 
 Imports examples/<model>.json if the model isn't in the workspace, exports it with face_shapes=True (rig + FBX) unless
 <out_dir>/<model>/<model>.glb exists, checks the GLB's morph targets (faceshapes.read_glb), then writes
@@ -31,20 +32,23 @@ def main(model: str = "goblin_talk", out: str = "workspace/face_shapes"):
         store.save(model, spec, "face shapes sheet")
         spec = store.load(model)
     if not glb.exists():
-        info = asset.export(model, glb.parent, triangles=15000, texture=1024, rig=True, fbx=True, face_shapes=True)
+        human = (spec.get("base") or {}).get("head") is not None  # a whole body: more triangles, finer textures
+        info = asset.export(model, glb.parent, triangles=40000 if human else 15000, texture=2048 if human else 1024,
+                            rig=True, fbx=True, face_shapes=True)
         print("\n".join(info["log"]))
     got = faceshapes.read_glb(glb)
     for mesh, g in got.items():
         moving = [n for n, t in zip(g["names"], g["targets"]) if np.abs(t["POSITION"]).max() > 0]
         print(f"{mesh}: {g['count']} vertices, {len(g['names'])} targets, {len(moving)} move it")
-    face = faceshapes.Face(spec)
+    face = faceshapes.face_of(spec)
     target = face.M + face.up * 0.35 * face.R - face.out * 0.2 * face.R
     dist = 5.0 * face.R
     q = (face.out + face.side) / np.sqrt(2)  # three quarter from the creature's left
     cams = [{"eye": (target + face.out * dist).tolist(), "target": target.tolist(), "fov": 30, "name": "front"},
             {"eye": (target + q * dist).tolist(), "target": target.tolist(), "fov": 30, "name": "3/4 left"}]
     poses = [("neutral", {})] + [(n, {n: 1.0}) for n in faceshapes.ALL] + list(faceshapes.COMBOS.items())
-    sheets = asset.preview(glb, [], size=300, samples=16, cameras=cams, poses=[p for _, p in poses])
+    sheets = asset.preview(glb, [], size=300, samples=16, cameras=cams, poses=[p for _, p in poses],
+                           lighting=(spec.get("style") or {}).get("look"))
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", 22)
         small = ImageFont.truetype("DejaVuSans.ttf", 14)

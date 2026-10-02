@@ -225,6 +225,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (open) position, moves applied at the neutral. The nose and eyeballs never move. Rolls are moves (a turn tore);
   blink skin follows the lid's outer sphere (turning far skin about the eye swung a lever). Sheet:
   `examples/face_shapes_sheet.py` (`asset.preview(poses=)`); `tests/test_face_shapes.py`.
+  Round 2: GNM heads (`GnmFace`, `examples/gnm_talk.json` = the golfer's MakeHuman body + GNM head without clothes,
+  hair or the wrap topology, which zips the lips): each shape = 68-landmark moves solved in GNM's expression basis
+  (as `base.pose_expression`), carried onto the export (eye scaling, narrowing, placement, then Catmull-Clark like
+  the skin, all shapes side by side; inverse distance over the 6 nearest head vertices, between the lips only its
+  own lip's, by GNM's lip groups: by height, the inner rolls mixed and tore the slit walls); interior = the kit's,
+  placed from the lip landmarks (`base.mouth_interior`; GNM's own teeth stood in front of the style-pushed lips);
+  bag/teeth/tongue by the jaw's Procrustes motion for jaw shapes. Needs `base.head.interior` + `mouth_gap` >= 0.002.
+  Export triangle focus (`focuswarp.py`): the high mesh is magnified 2x round the lids/lips before decimation and put
+  back after it in Blender; Blender's Decimate vertex group protects ANY weighted vertex outright (useless).
 - `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
   Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
   modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit
