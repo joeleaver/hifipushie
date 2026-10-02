@@ -506,6 +506,21 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - `integrity`'s candidate search: per-edge radius + a few big triangles apart (one global radius made 70M pairs, 11 s).
   - Body: `Body.m` lazy (a collider that isn't a body measures {}); state "draped" collides with the model's built
     mesh (`model_body`), pieces wrapped "flat". `tests/test_cloth.py`.
+  - Solver-neutral job + GPU spike (2026-10-02, `cloth_job.py`, `spikes/gpu_cloth/`, renders g01-g02): the sim is a
+    folder (job.json + in.npz -> out.npz: flat pattern = rest, start X, F, piece, sew/stitch pairs, interfacing, body,
+    pins/hook/rack, `fabric.physical` SI numbers, the stage schedule spelled out by `cloth_job.stages`). Garment key
+    `backend`: "blender" (default) | "file" (write the job, wait for out.npz) | "remote" ($HIFIPUSHIE_CLOTH_REMOTE run with
+    the folder, e.g. `spikes/gpu_cloth/remote.sh` over ssh); results take the same clean-up/fit/integrity path, and a
+    non-Blender backend is in the cache key. `run_newton.py` = NVIDIA Newton 1.6 VBD (warp, Apache-2.0): seams close as
+    zero-length springs whose rest length shrinks, then are WELDED into one vertex for the gravity/hang stages (springs
+    and self-contact fought: the yoke stretched 22-29%); a CUDA graph per frame; full-surface body contact (SDF) is
+    CUDA-only. Results on a rented 4090 (shirt 1 cm 13.5k verts): 50-75 s vs Blender final 425 s / direct 1 cm 2530 s;
+    smooth, no tangles, but VBD is convergence-limited (a hung sheet is ~100x softer than its stiffness at 10 substeps;
+    stiffer material changes nothing, substeps do): strain p95 17.6% at 10 substeps, 9.9% at 40 (hem rides up, a waist
+    crease); 5 mm shirt 56% / 17% with split sleeve seams; the hung coat rubbery at 10 substeps and NaN in the hang
+    stage at 30-40 substeps or 5 mm. Verdict: no-go as a drop-in. ZOZO ppf-contact-solver (Apache-2.0; strain limiting,
+    stitches, uv rest shapes) ships a self-contained Linux tarball with its own HIP runtime: it runs on this laptop's
+    890M (ROCm backend, no ROCm SDK; ~4-5x its CPU backend, 1.2 s/frame on a 16k-vertex drape): the next candidate.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

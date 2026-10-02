@@ -114,6 +114,76 @@ class Sim:
         # seam neighbourhoods whose self-contact is filtered (the two sides must touch)
         self._seam_filter = None
         self.weld = bool(job.get("weld", True))
+        self._bend_rest = None  # per hinge: the start placement's dihedral (made-in folds), see _rest_angles
+        E = np.r_[self.F[:, [0, 1]], self.F[:, [1, 2]], self.F[:, [2, 0]]]
+        self.E = np.unique(np.sort(E, 1), axis=0)
+        self.L0 = np.linalg.norm(self.flat[self.E[:, 0]] - self.flat[self.E[:, 1]], axis=1)
+
+    def _rest_angles(self, b, ei_flat):
+        """Bending rest angles of the hinges whose pieces were placed folded on purpose: an interfaced piece's
+        (a turned collar's fold line, a stand's curve, a cuff closed round the wrist) dihedral at the start placement,
+        which is isometric to the pattern. With the flat pattern's 0 the turned collar unfolded into a hood (Blender's
+        rest shape is the placement and kept it). `bend_rest` "interfaced" (default) | "all" | "none"."""
+        mode = self.job.get("bend_rest", "interfaced")
+        if mode == "none" or not len(ei_flat):
+            return None
+        if self._bend_rest is None:
+            import newton
+            import warp as wp
+            tb = newton.ModelBuilder(up_axis=newton.Axis.Z)
+            X = np.asarray(self.d["X"], float)
+            tb.add_cloth_mesh(pos=wp.vec3(0.0, 0.0, 0.0), rot=wp.quat_identity(), scale=1.0,
+                              vel=wp.vec3(0.0, 0.0, 0.0), vertices=X.tolist(), indices=self.F.ravel().tolist(),
+                              density=0.1)
+            ex = np.asarray(tb.edge_indices, np.int64)
+            ang = np.asarray(tb.edge_rest_angle, float)
+            key = {tuple(e): a for e, a in zip(map(tuple, ex), ang)}
+            self._bend_rest = np.array([key.get(tuple(e), 0.0) for e in map(tuple, ei_flat)])
+        sel = np.ones(len(ei_flat), bool)
+        if mode == "interfaced":
+            sel = (self.stiff[ei_flat[:, 2]] > 0.5) & (self.stiff[ei_flat[:, 3]] > 0.5)
+        return np.where(sel, self._bend_rest, 0.0)
+
+    def strain_limit(self, q, R, inactive):
+        """Position-based strain limiting after each frame (Provot): edges stretched past 1 + `strain_limit` of their
+        pattern length are pulled back, Jacobi-averaged, each move capped (`strain_cap` m) so it can't push cloth
+        through cloth. VBD at few substeps is far softer than its material (a hung sheet stretched 100x its elastic
+        strain): this bounds the stretch without paying for convergence."""
+        lim = float(self.job.get("strain_limit", 0) or 0)
+        if lim <= 0:
+            return q, 0
+        it = int(self.job.get("strain_iters", 8))
+        cap = float(self.job.get("strain_cap", 0.001))
+        a, b_ = (R[self.E[:, 0]], R[self.E[:, 1]]) if R is not None else (self.E[:, 0], self.E[:, 1])
+        ok = a != b_
+        a, b_, L0 = a[ok], b_[ok], self.L0[ok]
+        w = np.where(inactive, 0.0, 1.0)
+        n_over = 0
+        x = q.copy()
+        for _ in range(it):
+            d = x[b_] - x[a]
+            l = np.linalg.norm(d, axis=1)
+            over = l - (1 + lim) * L0
+            m = over > 0
+            n_over = int(m.sum())
+            if not n_over:
+                break
+            wa, wb = w[a[m]], w[b_[m]]
+            ws = wa + wb
+            g = ws > 0
+            corr = (over[m] / np.maximum(l[m], 1e-12))[:, None] * d[m]
+            dx = np.zeros_like(x)
+            cnt = np.zeros(len(x))
+            ia, ib, c, wa, wb, ws = a[m][g], b_[m][g], corr[g], wa[g], wb[g], ws[g]
+            np.add.at(dx, ia, c * (wa / ws)[:, None])
+            np.add.at(dx, ib, -c * (wb / ws)[:, None])
+            np.add.at(cnt, ia, 1)
+            np.add.at(cnt, ib, 1)
+            dx = dx / np.maximum(cnt, 1)[:, None]
+            nrm = np.linalg.norm(dx, axis=1)
+            dx *= np.minimum(1.0, cap / np.maximum(nrm, 1e-12))[:, None]
+            x = x + dx
+        return x, n_over
 
     # ---------------------------------------------------------------- model
 
@@ -152,8 +222,9 @@ class Sim:
                 b.add_particle(wp.vec3(*map(float, a)), wp.vec3(0.0, 0.0, 0.0), 0.0, radius=r)
             n_anchor = len(anchors)
         ks = float(self.job.get("sew_ke", P.get("sew_ke", 1e4)))
+        ka = float(self.job.get("anchor_ke", ks))  # hang loops: pins to their anchors at the hook
         for (i, j) in sew_pairs:
-            b.add_spring(int(i), int(j), ks, float(self.job.get("sew_kd", 0.0)), 0)
+            b.add_spring(int(i), int(j), ka if max(i, j) >= self.n else ks, float(self.job.get("sew_kd", 0.0)), 0)
         cfg = b.default_shape_cfg.copy()
         cfg.mu = float(P.get("friction", 0.4))
         cfg.margin = 0.0
@@ -230,6 +301,9 @@ class Sim:
             ebp = model.edge_bending_properties.numpy()
             ebp[:, 0] = ke
             model.edge_bending_properties.assign(ebp)
+            ra = self._rest_angles(b, ei_flat)
+            if ra is not None:
+                model.edge_rest_angle.assign(ra.astype(np.float32))
         if len(sew_pairs):
             model.spring_rest_length.assign(np.asarray(rest_len, np.float32))
         flags = model.particle_flags.numpy()
@@ -289,18 +363,56 @@ class Sim:
         t_build = time.time() - t0
         damp = float(self.job.get("frame_damping", 0.85))
         close_frames = max(1, int(0.6 * frames))
+        graph = None
+        sa, sb = s0, s1
+
+        def substeps():
+            x0, x1 = sa, sb
+            for _ in range(self.substeps):
+                x0.clear_forces()
+                pipe.collide(x0, contacts)
+                solver.step(x0, x1, ctrl, contacts, dt)
+                x0, x1 = x1, x0
+        # one frame's substeps as a CUDA graph (Python launches dominate at 10-100k vertices); an even substep count
+        # leaves the state buffers where they started
+        if str(self.device).startswith("cuda") and self.job.get("graph", True) and self.substeps % 2 == 0:
+            try:
+                substeps()  # warm up (kernel loads, buffer growth) before capture
+                with wp.ScopedCapture() as cap:
+                    substeps()
+                graph = cap.graph
+            except Exception as e:
+                log(f"  CUDA graph capture failed ({type(e).__name__}: {e}); plain launches")
+                graph = None
+            # the warm-up frames moved the cloth: start again from X
+            sa.particle_q.assign(model.particle_q)
+            sa.particle_qd.zero_()
         for f in range(1, frames + 1):
             if closing and len(sew_pairs):
                 k = min(1.0, f / close_frames)
                 model.spring_rest_length.assign((rest0 * (1 - k)).astype(np.float32))
-            for _ in range(self.substeps):
-                s0.clear_forces()
-                pipe.collide(s0, contacts)
-                solver.step(s0, s1, ctrl, contacts, dt)
-                s0, s1 = s1, s0
+            if graph is not None:
+                wp.capture_launch(graph)
+            else:
+                substeps()
+                if self.substeps % 2:  # an odd count ends in the other buffer
+                    sa.particle_q.assign(sb.particle_q)
+                    sa.particle_qd.assign(sb.particle_qd)
+            s0 = sa
             # quasi-static settling: bleed off velocity each frame (Blender's air damping + its damped springs)
             qd = s0.particle_qd.numpy() * damp
             s0.particle_qd.assign(qd)
+            if self.job.get("strain_limit"):
+                q = s0.particle_q.numpy().astype(np.float64)
+                n_tot = len(q)
+                inact = (model.particle_flags.numpy() & 1) == 0
+                Rn = None if rep is None else np.r_[rep, np.arange(self.n, n_tot)]
+                qn, n_over = self.strain_limit(q[:self.n] if Rn is None else q, Rn, inact if Rn is not None else inact[:self.n])
+                if Rn is None:
+                    q[:self.n] = qn
+                else:
+                    q = qn
+                s0.particle_q.assign(q.astype(np.float32))
             if f % 10 == 0 or f == frames:
                 q = s0.particle_q.numpy()
                 if not np.isfinite(q).all():
@@ -321,6 +433,8 @@ class Sim:
     def sim(self):
         job, d = self.job, self.d
         X = np.asarray(d["X"], float)
+        if self.job.get("start_npz"):  # e.g. a late stage alone, from an earlier run's snapshot
+            X = np.asarray(np.load(self.job["start_npz"])[self.job.get("start_key", "V")], float)
         body = (d["bodyV"], d["bodyT"])
         asm = job.get("assemble") or {}
         snaps = {}
@@ -352,7 +466,8 @@ class Sim:
             V = self.run_stage(nm, X, int(stg["frames"]), float(stg.get("gravity", 1)), np.where(fx)[0], pairs, closing,
                                body if stg.get("body", True) else None,
                                job.get("rack") if stg.get("rack") else None, anchors,
-                               bool(stg.get("self_collision", True)), weld=self.weld and not closing)
+                               bool(stg.get("self_collision", True)), weld=self.weld and (not closing or bool(stg.get("hang"))))
+            # (hung: the seams are sewn already and stay welded; only the hanger loops close onto their anchors)
             Vn = V[:self.n].copy()
             if nm == "assemble":
                 Vn[fx] = np.asarray(d["X"], float)[fx]
@@ -405,6 +520,11 @@ def main():
     V, snaps = s.refine() if job.get("mode") == "refine" else s.sim()
     total = time.time() - t
     log(f"total {total:.1f} s")
+    if dev.startswith("cuda"):
+        try:
+            log(f"GPU memory pool high water {wp.get_mempool_used_mem_high(dev) / 2**30:.2f} GB")
+        except Exception as e:  # older/newer warp
+            log(f"GPU memory: {e}")
     out = Path(a.out) if a.out else jd / "out.npz"
     np.savez(out, V=V, **{k: v for k, v in snaps.items()}, log=np.array(LOG),
              timing=np.array(json.dumps({"total_s": total, "stages": s.timing, "device": dev})))

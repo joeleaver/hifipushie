@@ -2098,6 +2098,14 @@ def report(gname: str, res: dict) -> str:
              f"between neighbouring triangles (smooth cloth reads ~3-5), {sh['sim']['crinkle_mm']} -> "
              f"{sh['final']['crinkle_mm']} mm fine waviness; folds {sh['sim']['folds_mm']} -> {sh['final']['folds_mm']} mm "
              "(rms height of folds narrower than ~15 cm; a 20 mm-deep 10 cm fold reads ~9; 2-4 hangs close to the body)")
+    s = sh["sim"]
+    # what reads first in a render: the sim's own surface (crinkle the clean-up has to smooth away), then fold depth.
+    # The user picked a smooth 1 cm Newton shirt (sim crinkle 2.9 deg, strain p95 18%) over Blender's (7.7 deg, 1%):
+    # strain is a fit number, not the look
+    rd = "smooth" if s["crinkle_deg"] < 4 else "some crinkle" if s["crinkle_deg"] < 7 else "crinkly"
+    fd = "flat (few folds)" if s["folds_mm"] < 2.5 else "soft folds" if s["folds_mm"] < 6 else "deep folds"
+    L.append(f"  reads (judge renders first): sim surface {rd} ({s['crinkle_deg']} deg), {fd} ({s['folds_mm']} mm); "
+             "rank looks by these before strain")
     cu = res.get("cleanup") or {}
     L.append(f"  clean-up: {cu.get('passes', 0)} smoothing passes, moved p95 {cu.get('moved_p95_mm')} mm"
              + (f"; the fine settle tangled {res['kept_coarse']}: kept the coarse drape there" if res.get("kept_coarse") else "")
