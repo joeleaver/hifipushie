@@ -47,7 +47,7 @@ FABRICS = {
                  "limit": 0.03, "thickness": 0.0004, "stiff": 40},
     "jersey": {"mass": 0.2, "tension": 5, "compression": 5, "shear": 3, "bending": 0.02, "air": 1.0,
                "limit": 0.25, "thickness": 0.0007, "stiff": 30},
-    "wool_coating": {"mass": 0.6, "tension": 40, "compression": 40, "shear": 20, "bending": 1.5, "air": 1.0,
+    "wool_coating": {"mass": 0.3, "tension": 80, "compression": 40, "shear": 30, "bending": 1.5, "air": 1.0,
                      "limit": 0.03, "thickness": 0.002, "stiff": 20},
     "denim": {"mass": 0.5, "tension": 40, "compression": 40, "shear": 30, "bending": 2.0, "air": 1.0,
               "limit": 0.02, "thickness": 0.001, "stiff": 10},
@@ -791,8 +791,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                "color": g.get("color", "#5b7fa6"), "render": render, "out": str(job_dir / "out.npz"),
                "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", [])}
         if isinstance(state, dict) and "hang" in state:
-            cfg["pins"] = [M["points"].get(p, M["marks"].get(p)) for p in state["hang"].get("pins", [])]
+            pins = [M["points"].get(p, M["marks"].get(p)) for p in state["hang"].get("pins", [])]
+            if None in pins:
+                raise KeyError(f"hang pins: no such point/mark in {state['hang'].get('pins')}")
+            # a hanger loop holds a patch, not a vertex: every vertex within `radius` of a pin (start positions)
+            rad = float(state["hang"].get("radius", 0.03))
+            near = np.unique(np.concatenate([np.where(np.linalg.norm(X0 - X0[p], axis=1) < rad)[0] for p in pins]))
+            cfg["pins"] = [int(i) for i in near]
             cfg["hook"] = state["hang"].get("hook")
+            cfg["rack"] = state["hang"].get("rack")  # [[a, b, radius], ...] colliders (a coat rack's pole, arms)
+            cfg["pin_spread"] = state["hang"].get("spread", 0.3)
         (job_dir / "job.json").write_text(json.dumps(cfg))
         from . import resources, render as rmod
         t = time.time()
@@ -806,6 +814,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         res["log"] = "\n".join(ln for ln in r.stdout.splitlines() if ln.startswith("cloth:"))
         log(f"cloth {name}: simulated in {time.time() - t:.0f} s")
         np.savez_compressed(cache, V=d["V"], log=res["log"])
+        if out_dir is None and not os.environ.get("HIFIPUSHIE_CLOTH_KEEP"):  # the job's files (MBs) go
+            import shutil
+            shutil.rmtree(job_dir, ignore_errors=True)
     res["fit"] = fit(res)
     res["sizing"] = sizing(res)
     # the verdict reads both: a pattern smaller than the body (negative ease) can't show as a small garment in the
@@ -938,21 +949,37 @@ def sizing(res: dict) -> dict:
             continue
         # each piece's width at the draft's own girth line where it has one, else at the body's height, less the
         # closure's overlap past centre front
-        w = 0.0
+        w, per = 0.0, {}
         for nm in torso:
+            P = pcs[nm]["P"]
+            dz = 0.0
+            al = pcs[nm]["wrap"].get("align")
+            if al:  # a piece hung from another's point (a coat's skirt): its own pattern y is shifted
+                mine, other, op = al
+                dz = float(pcs[other]["P"][pcs[other]["names"][op], 1] - P[pcs[nm]["names"][mine], 1])
             L = pcs[nm]["lines"].get(reg)
-            y = float(np.mean(L[:, 1])) if L is not None else body.at[zk] - hps_z  # the draft's line, or the body's
-            # height (pattern y, hps at 0); the chest at the armhole's bottom (where a chest line ends: the outline
-            # is still curving in at the line's own height)
+            y = float(np.mean(L[:, 1])) if L is not None else body.at[zk] - hps_z - dz  # the draft's line, or the
+            # body's height (pattern y, hps at 0); the chest at the armhole's bottom (where a chest line ends: the
+            # outline is still curving in at the line's own height)
             if reg == "chest" and "armhole" in pcs[nm]["names"]:
-                y = float(pcs[nm]["P"][pcs[nm]["names"]["armhole"], 1]) - 0.002
-            w += _piece_width_at(pcs[nm]["P"], y)
-        overlap = sum(min(abs(pcs[nm]["P"][:, 0].min()), abs(pcs[nm]["P"][:, 0].max())) for nm in torso
-                      if abs(pcs[nm]["P"][:, 0].min() + pcs[nm]["P"][:, 0].max()) > 0.05)
-        g = (w - overlap) * 1000
+                y = float(P[pcs[nm]["names"]["armhole"], 1]) - 0.002
+            wi = _piece_width_at(P, y)
+            if wi > 0 and abs(P[:, 0].min() + P[:, 0].max()) > 0.05:
+                # a piece drawn from its centre line out (x = 0 the centre front/back): what lies past the centre
+                # is an overlap (a closure, a lapel, a pleat's underlay), not girth
+                xs = []
+                for a_, b_ in zip(P, np.roll(P, -1, axis=0)):
+                    if (a_[1] - y) * (b_[1] - y) <= 0 and a_[1] != b_[1]:
+                        xs.append(a_[0] + (y - a_[1]) / (b_[1] - a_[1]) * (b_[0] - a_[0]))
+                if xs:
+                    sgn = 1.0 if P[:, 0].max() > -P[:, 0].min() else -1.0
+                    wi = max(0.0, max(sgn * x for x in xs))
+            per[nm] = round(wi * 1000, 1)
+            w += wi
+        g = w * 1000
         bb = body.m["mm"][reg]
         rows[reg] = {"body_mm": bb, "garment_mm": round(g, 1), "ease_mm": round(g - bb, 1),
-                     "ease": round((g - bb) / bb, 3)}
+                     "ease": round((g - bb) / bb, 3), "pieces_mm": per}
     return {"options": opts, "rows": rows}
 
 

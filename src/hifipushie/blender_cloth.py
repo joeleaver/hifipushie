@@ -154,42 +154,19 @@ def sim(job, d):
     pins = np.asarray(job.get("pins") or [], dtype=np.int64)
     sc = bpy.context.scene
     sc.render.fps = 24
-    if not (isinstance(state, dict) and "hang" in state) or job.get("with_body"):
-        body = _mesh("body", d["bodyV"], d["bodyT"])
-        col = body.modifiers.new("collision", "COLLISION")
-        body.collision.thickness_outer = 0.004
-        body.collision.cloth_friction = 5.0
-        body.collision.damping = 0.6
-    if isinstance(state, dict) and "hang" in state:
-        hook = np.asarray(job["hook"], float)
-        # the whole garment moved so the pins' centre hangs just under the hook; each pin is sewn to an anchor
-        # vertex at the hook (loose, pinned: the pin group can't hold cloth vertices themselves, Dynamic Mesh would
-        # pull them to their flat-pattern positions)
-        X = X + (hook - [0, 0, 0.01] - X[pins].mean(0))
-        n0 = len(X)
-        anchors = hook + (X[pins] - X[pins].mean(0)) * float(job.get("pin_spread", 0.3))
-        X = np.r_[X, anchors]
-        uv = np.r_[np.c_[uv, np.zeros(len(uv))], anchors]  # anchors stay at the hook in the input mesh
-        stiff = np.r_[stiff, np.zeros(len(pins))]
-        sew = np.r_[sew, np.c_[pins, n0 + np.arange(len(pins))]]
-        pins = n0 + np.arange(len(pins))
-        job["_n0"] = n0
-        if job.get("rack"):
-            for k, (a, b, r) in enumerate(job["rack"]):
-                bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=1.0, vertices=24)
-                cyl = bpy.context.object
-                a, b = np.asarray(a), np.asarray(b)
-                cyl.location = tuple((a + b) / 2)
-                cyl.scale = (1, 1, float(np.linalg.norm(b - a)))
-                dirv = (b - a) / np.linalg.norm(b - a)
-                cyl.rotation_mode = "QUATERNION"
-                from mathutils import Vector
-                cyl.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(Vector(tuple(dirv)))
-                cyl.modifiers.new("collision", "COLLISION")
+    # Every garment is dressed first (sewn on the body, then settled under gravity), whatever its final state: a
+    # coat sewn in the air with nothing inside it caved in and crumpled into a ball. "hang" then takes the body
+    # away and hangs the dressed garment from its pins.
+    body = _mesh("body", d["bodyV"], d["bodyT"])
+    body.modifiers.new("collision", "COLLISION")
+    body.collision.thickness_outer = 0.004
+    body.collision.cloth_friction = 5.0
+    body.collision.damping = 0.6
+    hang = isinstance(state, dict) and "hang" in state
     frames = int(job.get("frames", 90))
     # stage 1: sew without gravity (the seams close before anything can slide off the shoulders)
     f1 = int(job.get("sew_frames", 60))
-    ob = _sim_object("garment", X, F, sew, uv, stiff, pins, fab, False, f1)
+    ob = _sim_object("garment", X, F, sew, uv, stiff, [], fab, False, f1)
     ob.modifiers["cloth"].settings.effector_weights.gravity = 0.0
     ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 30.0))  # 0 = unbounded (yanks pieces through the body)
     V, dt = _run(ob, f1, trace=job.get("trace", ()))
@@ -197,20 +174,59 @@ def sim(job, d):
     log(f"stage 1 (sew, no gravity): {len(X)} verts, {f1} frames, {dt:.1f} s, seam gaps mean "
         f"{gap.mean() * 1000:.1f} mm, max {gap.max() * 1000:.1f} mm, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
     stages = {"V1": V.copy()}
-    # stage 2: gravity, settle
+    # stage 2: gravity, settle (worn)
     bpy.data.objects.remove(ob)
-    ob = _sim_object("garment2", V, F, sew, uv, stiff, pins, fab, False, frames)
-    V, dt = _run(ob, frames)
-    log(f"stage 2 (gravity): {frames} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
+    f2 = int(job.get("worn_frames", 40)) if hang else frames
+    ob = _sim_object("garment2", V, F, sew, uv, stiff, [], fab, False, f2)
+    V, dt = _run(ob, f2)
+    log(f"stage 2 (gravity, worn): {f2} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
+    n0 = len(V)
+    if hang:
+        stages["worn"] = V.copy()
+        bpy.data.objects.remove(body)
+        hook = np.asarray(job["hook"], float)
+        # moved so the pins' centre hangs just under the hook; each pin is sewn to an anchor vertex at the hook
+        # (loose, pinned: a cloth vertex in the pin group is held at its input position, which moves nothing here
+        # but keeps the anchors put)
+        V = V + (hook - [0, 0, 0.01] - V[pins].mean(0))
+        anchors = hook + (V[pins] - V[pins].mean(0)) * float(job.get("pin_spread", 0.3))
+        Va = np.r_[V, anchors]
+        sew_h = np.r_[sew, np.c_[pins, n0 + np.arange(len(pins))]]
+        stiff_h = np.r_[stiff, np.zeros(len(pins))]
+        uv_h = np.r_[np.c_[uv, np.zeros(len(uv))], anchors] if uv.shape[1] == 2 else np.r_[uv, anchors]
+        pins_h = n0 + np.arange(len(pins))
+        for k, (a_, b_, r) in enumerate(job.get("rack") or []):
+            bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=1.0, vertices=24)
+            cyl = bpy.context.object
+            a_, b_ = np.asarray(a_), np.asarray(b_)
+            cyl.location = tuple((a_ + b_) / 2)
+            cyl.scale = (1, 1, float(np.linalg.norm(b_ - a_)))
+            dirv = (b_ - a_) / np.linalg.norm(b_ - a_)
+            cyl.rotation_mode = "QUATERNION"
+            from mathutils import Vector
+            cyl.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(Vector(tuple(dirv)))
+            cyl.modifiers.new("collision", "COLLISION")
+        fh = int(job.get("hang_frames", 120))
+        bpy.data.objects.remove(ob)
+        ob = _sim_object("garment_hang", Va, F, sew_h, uv_h, stiff_h, pins_h, fab, False, fh)
+        ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("hang_sew_force", 200.0))  # anchors carry its weight
+        V, dt = _run(ob, fh, trace=(1, 2, 5, 10, 30, 60))
+        for f in (1, 2, 5, 10, 30, 60):
+            T_ = TRACE.get(f"garment_hang_{f}")
+            if T_ is not None:
+                log(f"  hang frame {f}: z p5 {np.percentile(T_[:n0, 2], 5):.3f} p50 {np.median(T_[:n0, 2]):.3f}")
+        log(f"stage 3 (hung): {fh} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
+        X, F_, sew, uv, stiff, pins = Va, F, sew_h, uv_h, stiff_h, pins_h
     if job.get("self_collision", True):
         f3 = int(job.get("settle_frames", 24))
         bpy.data.objects.remove(ob)
-        ob = _sim_object("garment3", V, F, sew, uv, stiff, pins, fab, True, f3)
+        ob = _sim_object("garment3", V, F, sew, uv, stiff, pins if hang else [], fab, True, f3)
+        if hang:
+            ob.modifiers["cloth"].settings.sewing_force_max = 0.0
         V, dt = _run(ob, f3)
-        log(f"stage 3 (self-collision): {f3} frames, {dt:.1f} s")
+        log(f"stage 4 (self-collision): {f3} frames, {dt:.1f} s")
     gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1) if len(sew) else np.zeros(1)
     log(f"final seam gaps mean {gap.mean() * 1000:.1f} mm, p95 {np.percentile(gap, 95) * 1000:.1f} mm")
-    n0 = job.get("_n0", len(V))
     np.savez(job["out"], V=V[:n0], **{k: v[:n0] for k, v in stages.items()}, **{k: v[:n0] for k, v in TRACE.items()})
 
 
