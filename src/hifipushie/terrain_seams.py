@@ -46,6 +46,22 @@ def classes(ids, kinds, depth_tol=0.02):
                        ((slice(0, -1), slice(None)), (slice(1, None), slice(None)))):
         ga, gb, ca, cb, da, db = g[sl_a], g[sl_b], c[sl_a], c[sl_b], d[sl_a], d[sl_b]
         ok = (ga > 0) & (gb > 0) & (np.abs(da - db) < depth_tol * np.maximum(da, db) + 0.05)
+        # (and no depth JUMP: the step in distance across the pair well over the steps beside it. 2% of the distance is
+        # 3 m at 150 m: the ground in front of the arch's cliff mesh, an occlusion, counted as an overlay border and
+        # most of the arch view's overlay "excess")
+        ax = 1 if sl_a[0] == slice(None) else 0
+        dd = np.abs(np.diff(d, axis=ax))
+        nb = np.zeros_like(dd)
+        idx = [slice(None)] * 2
+        a_, b_, c_ = list(idx), list(idx), list(idx)
+        a_[ax], b_[ax], c_[ax] = slice(1, -1), slice(0, -2), slice(2, None)
+        nb[tuple(a_)] = 0.5 * (dd[tuple(b_)] + dd[tuple(c_)])
+        e0, e1 = list(idx), list(idx)
+        e0[ax], e1[ax] = 0, -1
+        f0, f1 = list(idx), list(idx)
+        f0[ax], f1[ax] = 1, -2
+        nb[tuple(e0)], nb[tuple(e1)] = dd[tuple(f0)], dd[tuple(f1)]
+        ok &= dd <= 2.5 * nb + 0.01
         cl = np.ones(ga.shape, np.int8)
         same = ga == gb
         cl[same & (ca != cb)] = 2
