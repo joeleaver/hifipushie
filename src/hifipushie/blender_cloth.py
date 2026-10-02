@@ -248,21 +248,13 @@ def sim(job, d):
         stiff_h = np.r_[stiff, np.zeros(len(pins))]
         uv_h = np.r_[np.c_[uv, np.zeros(len(uv))], anchors] if uv.shape[1] == 2 else np.r_[uv, anchors]
         pins_h = n0 + np.arange(len(pins))
-        for k, (a_, b_, r) in enumerate(job.get("rack") or []):
-            bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=1.0, vertices=24)
-            cyl = bpy.context.object
-            a_, b_ = np.asarray(a_), np.asarray(b_)
-            cyl.location = tuple((a_ + b_) / 2)
-            cyl.scale = (1, 1, float(np.linalg.norm(b_ - a_)))
-            dirv = (b_ - a_) / np.linalg.norm(b_ - a_)
-            cyl.rotation_mode = "QUATERNION"
-            from mathutils import Vector
-            cyl.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(Vector(tuple(dirv)))
-            cyl.modifiers.new("collision", "COLLISION")
+        _rack(job.get("rack") or [])
         fh = int(job.get("hang_frames", 120))
         bpy.data.objects.remove(ob)
         ob = _sim_object("garment_hang", Va, F, sew_h, uv_h, stiff_h, pins_h, fab, bool(job.get("self_collision", True)), fh)  # self-collision: hung without it the coat folded through itself (thousands of crossings)
-        ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("hang_sew_force", 200.0))  # anchors carry its weight
+        # the sewing force while hung: 200 (meant for the anchors to carry the weight) also drove every seam and drew the coat
+        # up into a sack (its hem rose 0.65 -> 1.12 m, pattern strain p95 105%); at the sewing force (6) the anchors hold it
+        ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("hang_sew_force", job.get("sew_force", 6.0)))
         V, dt = _run(ob, fh, trace=(1, 2, 5, 10, 30, 60))
         for f in (1, 2, 5, 10, 30, 60):
             T_ = TRACE.get(f"garment_hang_{f}")
@@ -327,6 +319,10 @@ def _rack(rack):
         cyl.rotation_mode = "QUATERNION"
         cyl.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(Vector(tuple(dirv)))
         cyl.modifiers.new("collision", "COLLISION")
+        # the default outer thickness (2 cm) made a hanger bar 3 cm thick inside the shoulders: it pushed the coat up
+        # off it into a sack
+        cyl.collision.thickness_outer = 0.003
+        cyl.collision.cloth_friction = 5.0
 
 
 def render(job, d):

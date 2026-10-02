@@ -1252,7 +1252,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                                   default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
-           "coarse_mesh": Ms if refine else None}
+           "coarse_mesh": Ms if refine else None, "hung": hang}
     if cache.exists() and not render:
         d = np.load(cache)
         res["V_sim"] = d["V"]
@@ -1268,7 +1268,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                "color": g.get("color", "#5b7fa6"), "render": render,
                "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", []),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
-                                    "hang_frames") if k in g}}
+                                    "hang_frames", "hang_sew_force") if k in g}}
         if g.get("assemble", True):
             cfg["assemble"] = _assembly(Bp, Ms, body)
         pins_of = None
@@ -1319,7 +1319,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # the clean-up pass (what artists do in ZBrush/Blender after the sim): crinkle smoothed, big folds kept, seams
     # welded, the cloth kept off the body
     cu = g.get("cleanup", {})
-    res["V"], res["cleanup"] = cleanup(res["V_sim"], M, body, cu if isinstance(cu, dict) else {"smooth": 0}
+    res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
+                                       cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
     sc = g.get("sculpt")
     if sc and sc.get("key") == key:
@@ -1687,7 +1688,7 @@ def fit(res: dict) -> dict:
     tors = [k for k, nm in enumerate(M["names"]) if res["pieces"]["pieces"][nm]["wrap"].get("to", "torso") == "torso"]
     garment_T = M["F"][np.isin(M["piece"][M["F"][:, 0]], tors)]  # girths round the body pieces (not the sleeves)
     Z = np.array([0, 0, 1.0])
-    for reg in ("chest", "waist", "hips", "seat"):
+    for reg in (() if res.get("hung") else ("chest", "waist", "hips", "seat")):  # hung: no body to fit
         zk = f"{reg}_z"
         if zk not in body.at:
             continue
@@ -1801,7 +1802,7 @@ class ClothError(ValueError):
 
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
-                "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "refine_frames",
+                "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "_trace"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
