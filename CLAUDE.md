@@ -1286,14 +1286,37 @@ regresses, bisect by building one spec at each commit and diffing heights.
     - Lines: joints drawn by `joint_openness` (a smooth field: fracture corridors running through beds) and only in beds
       >= 1.4-2.4 m (bed-bound joints in thin beds were "pen ticks"); the family drawn at a point is the strongest there,
       not the nearest; the map is measured at the texel's LOW-POLY point (at the projected point every texel of a
-      triangle bridging a ledge sat on the bed plane: filled triangles) and gated by the triangle's own normal; shader
-      crack half-width never 0 (a 0-6 cm width under +-2.5 cm jitter gated it on and off: dashes). Debug:
-      `render_tiles(detail_show="lines")`. Still open: lines on a step the 0.5 m voxels zigzag follow the zigzag
-      ("thorns" at 40 m, sawteeth on bed lines at 10 m).
+      triangle bridging a ledge sat on the bed plane: filled triangles); shader crack half-width never 0 (a 0-6 cm width
+      under +-2.5 cm jitter gated it on and off: dashes). Debug: `render_tiles(detail_show="lines")`.
     - Block tones: per block +-4% (13% read as pasted rectangles), per bed 6%, partial fresh spalls; tone bands along
       the beds (6 x 0.9 m) and each ledge's underside darker for ~1 m (`BLOCK_TONE`). Thin packages recess only in
       stretches and bed cracks are open over about a third of a plane in ~8 m pieces (both ran the pebble chasm as
       ruled lines; terrain_blocks + fieldjit, bit-identical).
+  - Lines from the rock, swatch albedo, the pebble band (2026-10-01, "rock5" agent, renders p01-p0x).
+    - The thorns/sawteeth were not the mesh's zigzag but the lines map's own values (measured on a kept bake,
+      HIFIPUSHIE_KEEP_BAKE=1 keeps each atlas's texels in <out>/_bakes; `terrain_bake.bake_lines` re-bakes the lines map
+      alone): the signed distance went to the nearest plane of the texel's OWN bed (noise inside a thin package, a plane
+      every few cm) and the strength was gated to ~1 texel round the line so the noise stayed dark: the drawn line
+      followed that 1-texel band, stepping texel row to texel row (period = the voxel). Joints the same (ids' nearest
+      boundary switches half-way). Now `structure_lines`: the distance to the nearest DRAWN bed plane (`_drawn_beds`)
+      or joint boundary (`_drawn_joints`), strength 1.5-2.5 texels wide (`LINE_GATE_TX`), faded where it meets the
+      next line's sign flip (`guard`), distances across the surface (/ sine to the plane, from the interpolated normal;
+      a surface within ~20 deg of the plane fades the line). Moving texels level onto the exact rock first changed
+      nothing measurable (dropped). Jitter (structure tensor, fine vs coarse direction, lines-only renders): alps 10 m
+      11.3 -> 1.2 deg, 40 m 5.4 -> 1.0 (line ends per 100 px 12 -> 1.4), pebble 15 m 4.2 -> 2.0, 40 m 3.5 -> 2.2.
+      Clean, a bed crack read as a ruled ink stroke at 10 m: its opening wanders over ~1.7 m, it closes for a metre or
+      two every few metres (4.5 m noise) and breaks where a joint crosses. tests/test_swatch: clean ramps, continuous
+      strength.
+    - Swatch albedo (TUNE): softened per-facet tones (hard ones that strong read as terrazzo), weathering patches,
+      grime round and under fractures, a skew (`exp`: long pale tail, short dark one, as the scans). Per octave 0.05-0.07
+      -> 0.13 at 0.25-1 m falling to 0.06-0.09 below 6 cm (scans 0.10-0.12 flat: flat at that level read as speckled
+      dirty granite on pebble's dark rock at 15 m, so the energy sits in the larger octaves); percentiles of the
+      multiplier = rock_face_03's.
+    - Pebble's mid-cliff band: a thin package (super-bed 0's two beds of 0.24-0.32 m, z 2.3-2.9 m) set back along the
+      whole chasm. Not in the mesh (clay shows nothing: the mesh's +-0.5 m filter averages it away) but in the MAPS
+      (the bake's +-0.25 m filter keeps the slot; the bed above's underside faces straight down: a dark band in the
+      normal channel, 0.2 m tall, 8 m long). The package's depth now wanders: flush for a metre or two every few
+      metres, lumpy over ~1 m (`_bed_value`, fieldjit bit-identical), and its darker tone follows its depth.
   - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
     - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
       untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test
