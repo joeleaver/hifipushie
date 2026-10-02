@@ -672,8 +672,10 @@ def pull(job):
                     continue
             params.setdefault(n.name[3:], []).append(
                 [round(float(x), 4) for x in _srgb(v)] if n.type == "RGB" else round(float(v), 5))
+    import blender_cloth
     json.dump({"moved": moved, "params": params, "painted": _pull_painted(os.path.dirname(job["out"])),
-               "decals": decals, "hair": blender_hair.read()}, open(job["out"], "w"))
+               "decals": decals, "hair": blender_hair.read(),
+               "cloth": blender_cloth.read(os.path.dirname(job["out"]))}, open(job["out"], "w"))
 
 
 def _pull_painted(folder):
@@ -1381,6 +1383,17 @@ def hair_sync(job):
     print("@@made", json.dumps(made))
 
 
+def cloth_sync(job):
+    """Bring the scene's garments in line with the simulated ones and save (the live session: shown as it is)."""
+    import blender_cloth
+    _open(job["blend"], job.get("live"))
+    made = blender_cloth.show(job.get("cloth") or [])
+    if not job.get("live"):
+        bpy.context.preferences.filepaths.save_version = 0
+    bpy.ops.wm.save_as_mainfile(filepath=job["blend"], compress=False)
+    print("@@made", json.dumps(made))
+
+
 def hair_export(job):
     """The hair's low poly + Cycles-baked maps (blender_hair.export_bake), in an empty scene."""
     for ob in list(bpy.data.objects):
@@ -1388,7 +1401,7 @@ def hair_export(job):
     blender_hair.export_bake(job)
 
 
-MODES = {"hair_export": hair_export, "hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
+MODES = {"cloth_sync": cloth_sync, "hair_export": hair_export, "hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
 
 if __name__ == "__main__" and "--" in sys.argv:  # run as a script by headless Blender; imported in a live session
     job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
