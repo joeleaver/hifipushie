@@ -518,9 +518,29 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     smooth, no tangles, but VBD is convergence-limited (a hung sheet is ~100x softer than its stiffness at 10 substeps;
     stiffer material changes nothing, substeps do): strain p95 17.6% at 10 substeps, 9.9% at 40 (hem rides up, a waist
     crease); 5 mm shirt 56% / 17% with split sleeve seams; the hung coat rubbery at 10 substeps and NaN in the hang
-    stage at 30-40 substeps or 5 mm. Verdict: no-go as a drop-in. ZOZO ppf-contact-solver (Apache-2.0; strain limiting,
-    stitches, uv rest shapes) ships a self-contained Linux tarball with its own HIP runtime: it runs on this laptop's
-    890M (ROCm backend, no ROCm SDK; ~4-5x its CPU backend, 1.2 s/frame on a 16k-vertex drape): the next candidate.
+    stage at 30-40 substeps or 5 mm. The user picked the 1 cm / 10-substep Newton shirt as the best LOOK (smooth, no
+    tangles) despite its strain: the report now has a "reads" line (sim crinkle, fold depth) ranked before strain.
+    Round 2 in run_newton.py: position-based strain limiting after each frame (`strain_limit`; edges past 1+limit
+    pulled back, moves capped at 1 mm: 4 cm strain p95 8.9 -> 2.6%), interfaced pieces take their bending rest from the
+    placement (`bend_rest`: with the flat pattern's 0 the turned collar unfolded into a hood; Blender's rest is the
+    placement), seams stay welded while hung (the hang re-opened them as springs). ZOZO ppf-contact-solver (Apache-2.0;
+    strain limiting, stitches; rest = the asset's 3D shape, uv only orients anisotropy; writes vertices REORDERED, map
+    back by frame 0) via `run_zozo.py`/`zozo.sh`: its self-contained release (own Python, own HIP runtime) runs on this
+    laptop's 890M with the ROCm backend and no SDK: 4 cm shirt 0.45 s/frame, 0 crossings, strain ~0.1%; at 1 cm it
+    needs contact-gap 0.3 mm (the 1 cm pattern mesh has 0.5 mm sliver edges along seams: CCD fails at frame 0 with
+    1 mm) and runs 9 s/frame (~45 min a shirt): too slow locally; spatial interfacing bend + bend rest from geometry
+    together hit a non-PD block once.
+    Round 2 on a 4090 (renders g04, g05): Newton shirt 1 cm, 10 substeps, 20 VBD iterations, strain limit 3%: 64 s,
+    verdict "fits", 0 crossings, nothing crumpled, the collar turned down properly, smooth (sim crinkle 3.2 deg), strain
+    p95 10.4% (round 1: 17.6%, CORRUPT stand, collar a hood). The strain limit alone barely helps at 1 cm (8 Jacobi
+    iterations; 60 with a 2 mm cap dropped the coat through the body): iterations do. Hung coat 1 cm, 30 substeps +
+    strain limit: 167 s, no NaN (welded hang), reads like a coat on a hanger, strain 8%, crossings only at the back
+    vent (Blender has them there too). ZOZO on CUDA, shirt 1 cm: 451 s, strain 0.1% and cotton-like torso wrinkles,
+    but the sleeves bunch at the elbows and tear (332 crossings inside the placement overlaps that
+    `allow-existing-intersection` exempts) and the collar crumples: its rest = placement inherits the sleeve fins.
+    ZOZO's coat: stitches whose ends start together give a NaN force (dropped now); then 2.3 s/frame, unfinished (90
+    of 364 frames) at the pod's deadline. Runner defaults now: 10 substeps x 20 iterations + 3% strain limit worn,
+    30 substeps hung.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

@@ -54,6 +54,8 @@ def main():
     F = np.asarray(d["F"], np.int64)
     n = len(X)
     sew = np.r_[d["sew"], d["stitch"]] if len(d["stitch"]) else np.asarray(d["sew"])
+    # a stitch whose ends already coincide has no direction (ZOZO: NaN force): those vertices are sewn already
+    sew = sew[np.linalg.norm(X[sew[:, 0]] - X[sew[:, 1]], axis=1) > 1e-6]
     stages = job["stages"]
     t = 0.0
     times = {}

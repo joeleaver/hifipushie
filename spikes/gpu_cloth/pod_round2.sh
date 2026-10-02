@@ -24,12 +24,12 @@ case "${1:-newton}" in
       r shirt_h10 n10sl3 --set strain_limit=0.03
       r shirt_h10 n10sl5 --set strain_limit=0.05
       r shirt_h10 it20sl3 --iterations 20 --set strain_limit=0.03
-      r shirt_h10 ib10sl3 --set strain_limit=0.03 --set physical.interfacing_bend=10 ) > newton_a.log 2>&1 &
+      r shirt_h10 ib10sl3 --set strain_limit=0.03 --set physical.interfacing_bend=10 ) > newton_a.log 2>&1
     ( r coat_h10 n10
       r coat_h10 n10sl3 --set strain_limit=0.03
       r coat_h10 s30sl3 --substeps 30 --set strain_limit=0.03
-      r coat_h10 s40sl3 --substeps 40 --set strain_limit=0.03 ) > newton_b.log 2>&1 &
-    wait
+      r coat_h10 s40sl3 --substeps 40 --set strain_limit=0.03 ) > newton_b.log 2>&1
+    true
     cat newton_a.log newton_b.log
     echo NEWTON_DONE ;;
   zozo)

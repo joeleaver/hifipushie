@@ -510,8 +510,12 @@ def main():
     wp.config.quiet = True
     wp.init()
     dev = a.device or ("cuda" if wp.is_cuda_available() else "cpu")
-    sub = a.substeps or int(job.get("substeps", 10))
-    it = a.iterations or int(job.get("iterations", 10))
+    # round-2 defaults (4090, 1 cm): 10 substeps x 20 iterations + a 3% strain limit for worn garments (64 s a shirt,
+    # 0 crossings); hung ones 30 substeps (at 10 the coat stretched 30%+)
+    hung = any(s_.get("hang") for s_ in job.get("stages", []))
+    sub = a.substeps or int(job.get("substeps", 30 if hung else 10))
+    it = a.iterations or int(job.get("iterations", 20))
+    job.setdefault("strain_limit", 0.03)
     log(f"newton {__import__('newton').__version__} warp {wp.__version__} on {dev}"
         f"{' ' + wp.get_device(dev).name if dev.startswith('cuda') else ''}: {len(d['uv'])} verts, {len(d['F'])} tris, "
         f"mode {job.get('mode', 'sim')}, substeps {sub}, iterations {it}")
