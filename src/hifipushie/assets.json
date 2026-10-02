@@ -412,5 +412,157 @@
     "sha256": "d29886d679166f0d815165db9bf3c0a32657a88b9be4f0665dce99456c4dfc2c"
    }
   ]
+ },
+ "freesewing": {
+  "needed_by": "cloth drafts from FreeSewing designs (spec cloth.<g>.draft.design; freesewing.py runs them in Node >= 20)",
+  "optional": true,
+  "source": "npm registry tarballs of FreeSewing 4.10.2 (codeberg.org/freesewing/freesewing, released 2026-09-13): core, core-plugins + plugins, config, library, designs brian/bent/simon/carlton/teagan; their npm dependencies bezier-js 6.1.4, hooks 0.3.2, lodash.get/set/unset/clonedeep",
+  "licence": "MIT (every package: FreeSewing, bezier-js, hooks, lodash.*)",
+  "files": [
+   {
+    "path": "tgz/@freesewing__bent-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/bent/-/bent-4.10.2.tgz",
+    "sha256": "6c329d7b385b6eda99a13f8f8e89226225d0e39cf60fe760377b2af5a0edb1ff",
+    "unpack": "node_modules/@freesewing/bent"
+   },
+   {
+    "path": "tgz/@freesewing__brian-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/brian/-/brian-4.10.2.tgz",
+    "sha256": "7fabd4495ea743e84e6aaeff6bca491595c615473e34150f718cdc8e010d94b1",
+    "unpack": "node_modules/@freesewing/brian"
+   },
+   {
+    "path": "tgz/@freesewing__carlton-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/carlton/-/carlton-4.10.2.tgz",
+    "sha256": "27632f5f2bb48e46fb963cc40b0986621730de63181787e2630f4b7b4d28c952",
+    "unpack": "node_modules/@freesewing/carlton"
+   },
+   {
+    "path": "tgz/@freesewing__config-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/config/-/config-4.10.2.tgz",
+    "sha256": "520b6a17ef608a6c095ac9157844a827d0c80ef22658b82c02d54ec0afdd649f",
+    "unpack": "node_modules/@freesewing/config"
+   },
+   {
+    "path": "tgz/@freesewing__core-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/core/-/core-4.10.2.tgz",
+    "sha256": "170b189722806abed60d434600781a1d410013550fb50cd30cd4d5d68e95022d",
+    "unpack": "node_modules/@freesewing/core"
+   },
+   {
+    "path": "tgz/@freesewing__core-plugins-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/core-plugins/-/core-plugins-4.10.2.tgz",
+    "sha256": "531ab9afe884ea95c1b6e95bf0901aca69db1abf43ef0fe3625e8975fefc1261",
+    "unpack": "node_modules/@freesewing/core-plugins"
+   },
+   {
+    "path": "tgz/@freesewing__library-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/library/-/library-4.10.2.tgz",
+    "sha256": "75a242cb58c83ccfc7edbd47c1303a9519b0377a6e1bc3ebcd5462580a135d10",
+    "unpack": "node_modules/@freesewing/library"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-annotations-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-annotations/-/plugin-annotations-4.10.2.tgz",
+    "sha256": "86631df29a1ba7240e93cbeb0f9b59f82a57288b10fb6be9d9363713d0be04f5",
+    "unpack": "node_modules/@freesewing/plugin-annotations"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-bin-pack-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-bin-pack/-/plugin-bin-pack-4.10.2.tgz",
+    "sha256": "2889bf0694f1e611710b9a5509b05158609e59026ccb9afc2609dc75e5b28d2a",
+    "unpack": "node_modules/@freesewing/plugin-bin-pack"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-bust-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-bust/-/plugin-bust-4.10.2.tgz",
+    "sha256": "7735ae63adb2b6e4a51b28fc22c66a8aba7ab6c709cd3b107f0ba69b7943c97a",
+    "unpack": "node_modules/@freesewing/plugin-bust"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-flip-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-flip/-/plugin-flip-4.10.2.tgz",
+    "sha256": "cb9cde1e99fd0c374f48e238fbbbfef82913efabeeb61b525a9015cbf792f5eb",
+    "unpack": "node_modules/@freesewing/plugin-flip"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-measurements-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-measurements/-/plugin-measurements-4.10.2.tgz",
+    "sha256": "9c1474c9e7ec8986e284b2749417a92ba0145d5c28e86d8c061d86c6fb2ade64",
+    "unpack": "node_modules/@freesewing/plugin-measurements"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-mirror-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-mirror/-/plugin-mirror-4.10.2.tgz",
+    "sha256": "b0c0e43723fa7ba0dd0e963aa9c08374a7131872fdfccd554e16c4652ed0a4e6",
+    "unpack": "node_modules/@freesewing/plugin-mirror"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-round-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-round/-/plugin-round-4.10.2.tgz",
+    "sha256": "16712ec2ccffb57df8f0c655cfe66aa12c4ae56865f0dff0da3b7e056ba2cd52",
+    "unpack": "node_modules/@freesewing/plugin-round"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-sprinkle-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-sprinkle/-/plugin-sprinkle-4.10.2.tgz",
+    "sha256": "c1f1648978d549accd7cc2d204e427b5dbcb72c40c52dca3c39446feaa61caf7",
+    "unpack": "node_modules/@freesewing/plugin-sprinkle"
+   },
+   {
+    "path": "tgz/@freesewing__plugin-transform-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/plugin-transform/-/plugin-transform-4.10.2.tgz",
+    "sha256": "543dd32438c6fc8b677a7e9fa7685aede1c98a1f7d424767ff5d78b7f18de740",
+    "unpack": "node_modules/@freesewing/plugin-transform"
+   },
+   {
+    "path": "tgz/@freesewing__simon-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/simon/-/simon-4.10.2.tgz",
+    "sha256": "817eab004f29bf19675976b2fa2511f4726599dd24f5f2280f1d8264f997f82b",
+    "unpack": "node_modules/@freesewing/simon"
+   },
+   {
+    "path": "tgz/@freesewing__teagan-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/teagan/-/teagan-4.10.2.tgz",
+    "sha256": "1f218e051069e5e63efc79d6feb518ba762b72a0b5d88ab0a0f75dd856ff8c7a",
+    "unpack": "node_modules/@freesewing/teagan"
+   },
+   {
+    "path": "tgz/bezier-js-6.1.4.tgz",
+    "url": "https://registry.npmjs.org/bezier-js/-/bezier-js-6.1.4.tgz",
+    "sha256": "3619e2920f86ce8c16540898cffa2e386364e83ece53f51da6d3aa6dc94f9665",
+    "unpack": "node_modules/bezier-js"
+   },
+   {
+    "path": "tgz/hooks-0.3.2.tgz",
+    "url": "https://registry.npmjs.org/hooks/-/hooks-0.3.2.tgz",
+    "sha256": "dfcf76903959e70d6718f8e6f39bd2c037b69c3d4084ed31b9948261d24fd6b0",
+    "unpack": "node_modules/hooks"
+   },
+   {
+    "path": "tgz/lodash.clonedeep-4.5.0.tgz",
+    "url": "https://registry.npmjs.org/lodash.clonedeep/-/lodash.clonedeep-4.5.0.tgz",
+    "sha256": "cd3630dddc6fcb73e1bd27fce6972b2d20aa0ecadb001c523174648efbfe0312",
+    "unpack": "node_modules/lodash.clonedeep"
+   },
+   {
+    "path": "tgz/lodash.get-4.4.2.tgz",
+    "url": "https://registry.npmjs.org/lodash.get/-/lodash.get-4.4.2.tgz",
+    "sha256": "df4deba1b8156cffe8360b08f04de11b78d3f31ebdde90bef0a053a59848a49b",
+    "unpack": "node_modules/lodash.get"
+   },
+   {
+    "path": "tgz/lodash.set-4.3.2.tgz",
+    "url": "https://registry.npmjs.org/lodash.set/-/lodash.set-4.3.2.tgz",
+    "sha256": "3a9d0dc7fd48ef99f2e792426e5bac00ec83f95e748b496484f9ff61ee473e49",
+    "unpack": "node_modules/lodash.set"
+   },
+   {
+    "path": "tgz/lodash.unset-4.5.2.tgz",
+    "url": "https://registry.npmjs.org/lodash.unset/-/lodash.unset-4.5.2.tgz",
+    "sha256": "0d20b6aebb8d10ff2533d3dc7402a22bf61dad8bd93e439000ea8d672aed817a",
+    "unpack": "node_modules/lodash.unset"
+   }
+  ]
  }
 }

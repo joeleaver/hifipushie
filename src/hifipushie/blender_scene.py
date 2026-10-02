@@ -814,6 +814,9 @@ def sync(job):
                     lc.exclude = True
     if job.get("hair"):
         made += blender_hair.show(job["hair"])
+    if job.get("cloth") is not None:  # simulated garments (cloth.py): meshes, not fields
+        import blender_cloth
+        made += blender_cloth.show(job["cloth"])
     bpy.context.scene.render.engine = "BLENDER_EEVEE"
     if not job.get("live"):  # no scene.blend1 (the scene is derived, the spec is the source); a person's own
         bpy.context.preferences.filepaths.save_version = 0  # Blender keeps its preferences

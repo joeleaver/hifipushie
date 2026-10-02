@@ -8,7 +8,8 @@ written by `fetch`. Code asks `pack(name)` / `path(name, rel)`, which say how to
   uv run hifipushie-assets fetch [packs...]  download what's missing or corrupt (default: every required pack)
 
 Downloads go to a ".part" file inside the pack's directory (never /tmp) and replace the file only when its
-sha256 matches. A zip download ("member") extracts that one file.
+sha256 matches. A zip download ("member") extracts that one file; a tarball with "unpack" (npm packages) is kept and
+extracted into that directory of the pack (its first path component, npm's "package/", dropped).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import json
 import os
 import shutil
 import sys
+import tarfile
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -50,7 +52,27 @@ def pack(name: str) -> Path:
             f"asset pack {name!r} ({m[name]['needed_by']}) is missing from {d} ({len(missing)} files, e.g. "
             f"{missing[0]}): run `uv run hifipushie-assets fetch {name}` (source: {m[name]['source']}; "
             f"licence: {m[name]['licence']}), or set HIFIPUSHIE_ASSETS to where they are")
+    for f in m[name]["files"]:
+        if f.get("unpack") and not (d / f["unpack"]).exists():
+            _unpack(d / f["path"], d / f["unpack"])
     return d
+
+
+def _unpack(tgz: Path, dest: Path) -> None:
+    """Extract a tarball into dest, dropping its first path component (npm's "package/")."""
+    tmp = dest.with_name(dest.name + ".unpack")
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    with tarfile.open(tgz) as t:
+        members = []
+        for mem in t.getmembers():
+            parts = Path(mem.name).parts[1:]
+            if not parts or ".." in parts or not (mem.isfile() or mem.isdir()):
+                continue
+            mem.name = str(Path(*parts))
+            members.append(mem)
+        t.extractall(tmp, members=members, filter="data")
+    tmp.replace(dest)
 
 
 def path(name: str, rel: str) -> Path:
@@ -122,6 +144,10 @@ def fetch(names: list[str] | None = None, log=print) -> None:
                 if got != f["sha256"]:
                     raise ValueError(f"{f['path']}: sha256 {got} != {f['sha256']} (the source changed?)")
                 part.replace(dest)
+                if f.get("unpack"):
+                    if (d / f["unpack"]).exists():
+                        shutil.rmtree(d / f["unpack"])
+                    _unpack(dest, d / f["unpack"])
             finally:
                 for p in (part, dest.with_name(dest.name + ".part")):
                     if p.exists() and p != dest:

@@ -1404,6 +1404,20 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
+    if spec.get("cloth"):  # simulated garments (cloth.py): their settled meshes, the flat pattern as the uv
+        from . import cloth as clothmod
+        for pn_c, cpart, cfiles in clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048),
+                                                         log=log.append):
+            cpart["atlas"] = len(atlas_files)
+            parts[pn_c] = cpart
+            origin[pn_c] = pn_c
+            atlas_files.append((pn_c, cfiles))
+            maps_info[pn_c] = {k: str(v) for k, v in cfiles.items()}
+            heights[pn_c], cover[pn_c] = 0.0, 1.0
+            report[pn_c] = {"triangles": len(cpart["corner_vert"]) // 3, "atlas": pn_c, "cloth": True}
+            names.append(pn_c)
+            sizes[len(names) - 1] = min(texture, 2048)
+            ntri += report[pn_c]["triangles"]
     glb = out_dir / f"{name}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}

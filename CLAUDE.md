@@ -431,6 +431,31 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   shapes the silhouette: `volume.ramp` (0.028 default: the front a wall the front locks jutted over like a cap's peak;
   0.06 leans it back), `volume.across`, `parting.depth` (0.45: the roots stopped climbing out of a trench). Dents in
   the gate: find the lock that makes each height of the outline (`hair_point_owners.npz`) and pull it out 2-4 mm.
+- Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
+  real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
+  `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
+  a seam table, button stitches, interfaced pieces, `fit_alterations`, tailoring `words` -> FreeSewing options) or own
+  `pieces` + `seams` (a tablecloth is one piece). FreeSewing (MIT) is drafted in Node from `tailor.measure` (convex-hull
+  girths and surface tapes on the body, FreeSewing's names), pack "freesewing" in assets.json, drafts cached
+  (`<HOME>/_cache/freesewing`); missing Node/pack raise with the fetch command. `pattern` ops (turn, slash_spread,
+  move_point, scale) are general 2D alterations; `large_abdomen` = front - back hps-to-seat past 25 mm, spread at the
+  waist. Mesh: one flat mesh of all pieces, seams sampled jointly (chains with gaps = pleats), 1 cm triangles (2 cm made
+  blobby padded folds), vertex mass scaled by area (Blender's mass is per vertex), solver quality 6 x (2 cm / h).
+  Placement is isometric so rest = start: torso pieces on one generalized cylinder (the densified hull: a hull vertex
+  as the start put the bodice 69 mm off centre), sleeves on the bent arm axis (sharp kink), a self-buttoned piece
+  (cuff) closed on an exact spiral at its closed girth and moved off the hand's base with the sleeve's excess folded
+  under (left open or over the hand it crumpled / dragged the shirt up), neck bands at their own girth on the neck's
+  narrow part (`Body.neck_rows`; the neck joint is ~22 mm behind the neck's centre), curved bands on a cone from their
+  sewn arc, a turned collar folded round a U with fold-line vertex rows. Sim stages (`blender_cloth.sim`): 0 the bodice
+  sewn alone (shoulder seams lift it ~10 cm; with the sleeves on it dragged them up the arms), 1 everything sewn without
+  gravity at sewing force 6 over 90 frames (30 whipped the hem up 15 cm) with cuffs held, 2 gravity + self-collision,
+  hang (body removed, pins on a hook, rack colliders), self-collision settle. Interfacing (whole pieces or bands
+  `{"piece", "near", "within"}`: cut-on plackets) stiffens bending, shear and stretch. Fit report: strain vs the start
+  per girth region, negative ease from the flat pattern (`sizing`) = TOO SMALL, and `integrity` (self-crossings per
+  piece, crumpled/folded faces, twisted seams) leading the verdict with CORRUPT. Diagnose with per-edge strain by
+  piece and direction, start seam gaps per seam, and per-frame traces (`_trace`, `TRACE["stage0"]`): every fix above
+  came from those numbers, not from tuning stiffness. Scene: `blender_cloth.show` (collection "cloth", pattern uv,
+  Solidify); export: `cloth.export_part` (two-sided, the flat pattern as its atlas). Renders `workspace/cloth_renders/`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

@@ -858,6 +858,9 @@ def sync(name: str, resolution: int = 256) -> dict:
     if spec.get("hair"):  # the hair's curve locks (hair.py) ride along
         from . import hair
         job["hair"] = hair.job(name, spec)
+    if spec.get("cloth") is not None:  # simulated garments (cloth.py): sewn and settled on the body, as meshes
+        from . import cloth
+        job["cloth"] = cloth.scene_job(name, spec, log)
     live = live_session(name)
     out = _blender_live(job) if live else _blender(job)
     if live:

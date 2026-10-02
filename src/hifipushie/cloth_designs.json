@@ -1,0 +1,113 @@
+{
+ "_doc": "How a FreeSewing design is built (cloth.py): the parts used as pieces (fold = cut on the fold at x = 0, mirrored whole; copies = the same part cut again), alterations every build applies (turned plackets), where each piece starts round the body (wrap), the seam table (edges 'piece:a>b' or 'piece:a>via>b'; a side may be a chain of edges), point stitches (buttons), interfaced pieces, and the tailoring words mapped onto the design's options (ease as a fraction of the body measurement, lengths in m).",
+ "simon": {
+  "kind": "shirt",
+  "pieces": {
+   "back": {"part": "simon.back", "fold": "x0", "wrap": {"to": "torso", "side": "back"}},
+   "yoke": {"part": "simon.yoke", "wrap": {"to": "torso", "side": "back", "out": 0.004}},
+   "front.R": {"part": "simon.frontRight", "wrap": {"to": "torso", "side": "front"}},
+   "front.L": {"part": "simon.frontLeft", "wrap": {"to": "torso", "side": "front", "out": 0.004}},
+   "sleeve.L": {"part": "simon.sleeve", "wrap": {"to": "arm.L", "front": 1}},
+   "sleeve.R": {"part": "simon.sleeve", "wrap": {"to": "arm.R", "front": 1}},
+   "cuff.L": {"part": "simon.cuff", "wrap": {"to": "arm.L", "front": 1, "follow": ["sleeve.L", "cuffMid", "bottomLeft"]}},
+   "cuff.R": {"part": "simon.cuff", "wrap": {"to": "arm.R", "front": 1, "follow": ["sleeve.R", "cuffMid", "bottomLeft"]}},
+   "stand": {"part": "simon.collarStand", "wrap": {"to": "neck", "edge": "bottomMid"}},
+   "collar": {"part": "simon.collar", "wrap": {"to": "neck", "edge": "bottomMid", "above": 0.03, "fold": [0.006, 0.01]}}
+  },
+  "alter": [
+   {"op": "turn", "piece": "front.R", "line": "placketOuterFold", "keep": "neck"},
+   {"op": "turn", "piece": "front.L", "line": "placketFold1", "keep": "neck"}
+  ],
+  "seams": [
+   ["back:hem>armhole", "front.L:hem>armhole"],
+   ["back:hem.m>armhole.m", "front.R:hem>armhole"],
+   ["yoke:shoulder>neck", "front.L:shoulder>neck"],
+   ["yoke:shoulder.m>neck.m", "front.R:shoulder>neck"],
+   ["yoke:armholeYokeSplit>cbYoke>armholeYokeSplit.m", "back:armholeYokeSplit>cbYoke>armholeYokeSplit.m"],
+   ["sleeve.L:bicepsRight>capQ2>bicepsLeft", ["front.L:armhole>shoulder", "yoke:shoulder>armholeYokeSplit", "back:armholeYokeSplit>armhole"]],
+   ["sleeve.R:bicepsRight>capQ2>bicepsLeft", ["front.R:armhole>shoulder", "yoke:shoulder.m>armholeYokeSplit.m", "back:armholeYokeSplit.m>armhole.m"]],
+   ["sleeve.L:bicepsLeft>wristLeft", "sleeve.L:bicepsRight>wristRight"],
+   ["sleeve.R:bicepsLeft>wristLeft", "sleeve.R:bicepsRight>wristRight"],
+   [["sleeve.L:wristLeft>cuffLeftCusp>cuffMid", "sleeve.L:cuffPleat1Edge>cuffRightCusp", "sleeve.L:cuffPleat2Edge>wristRight"], "cuff.L:bottomLeft>bottomRight"],
+   [["sleeve.R:wristLeft>cuffLeftCusp>cuffMid", "sleeve.R:cuffPleat1Edge>cuffRightCusp", "sleeve.R:cuffPleat2Edge>wristRight"], "cuff.R:bottomLeft>bottomRight"],
+   ["stand:leftBottomCf>bottomMid>rightBottomCf", ["front.R:cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck"]],
+   ["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopCf>topMid>rightTopCf"]
+  ],
+  "stitches": [
+   ["front.R:button1", "front.L:buttonhole1"], ["front.R:button2", "front.L:buttonhole2"],
+   ["front.R:button3", "front.L:buttonhole3"], ["front.R:button4", "front.L:buttonhole4"],
+   ["front.R:button5", "front.L:buttonhole5"], ["front.R:button6", "front.L:buttonhole6"],
+   ["front.R:button7", "front.L:buttonhole7"],
+   ["cuff.L:button1", "cuff.L:buttonhole1"], ["cuff.R:button1", "cuff.R:buttonhole1"]
+  ],
+  "interfaced": ["stand", "collar", "cuff.L", "cuff.R", {"piece": "front.L", "near": "frontCenter", "within": 0.02}, {"piece": "front.R", "near": "frontCenter", "within": 0.016}],
+  "fit_alterations": {
+   "large_abdomen": {"op": "slash_spread", "piece": ["front.L", "front.R"], "line": ["waist", "cfWaist-notch"], "hinge": "a"}
+  },
+  "words": {
+   "ease": {"chest": "chestEase", "waist": "waistEase", "hips": "hipsEase", "biceps": "bicepsEase", "neck": "collarEase", "wrist": "cuffEase", "shoulders": "shoulderEase"},
+   "length": "lengthBonus",
+   "sleeve_length": "sleeveLengthBonus",
+   "round_back": "roundBack",
+   "yoke_depth": "yokeHeight",
+   "back_darts": "backDarts",
+   "buttons": "buttons",
+   "hem": "hemStyle",
+   "cuff": "cuffStyle",
+   "sleeve": "sleeveStyle"
+  }
+ },
+ "carlton": {
+  "kind": "overcoat (shell: no lining, facings, pockets or belt)",
+  "pieces": {
+   "back.L": {"part": "carlton.back", "wrap": {"to": "torso", "side": "back"}},
+   "back.R": {"part": "carlton.back", "mirror": true, "wrap": {"to": "torso", "side": "back"}},
+   "tail.L": {"part": "carlton.tail", "wrap": {"to": "torso", "side": "back", "out": 0.006, "align": ["waistTop", "back.L", "waist"]}},
+   "tail.R": {"part": "carlton.tail", "mirror": true, "wrap": {"to": "torso", "side": "back", "out": 0.006, "align": ["waistTop", "back.R", "waist"]}},
+   "front.L": {"part": "carlton.front", "wrap": {"to": "torso", "side": "front", "out": 0.006}},
+   "front.R": {"part": "carlton.front", "mirror": true, "wrap": {"to": "torso", "side": "front"}},
+   "top.L": {"part": "carlton.topsleeve", "wrap": {"to": "arm.L", "front": -1}},
+   "top.R": {"part": "carlton.topsleeve", "wrap": {"to": "arm.R", "front": -1}},
+   "under.L": {"part": "carlton.undersleeve", "wrap": {"to": "arm.L", "front": 1, "turn": 180, "align": ["usLeftEdge", "top.L", "tsLeftEdge"]}},
+   "under.R": {"part": "carlton.undersleeve", "wrap": {"to": "arm.R", "front": 1, "turn": 180, "align": ["usLeftEdge", "top.R", "tsLeftEdge"]}},
+   "stand": {"part": "carlton.collarStand", "wrap": {"to": "neck", "edge": "bottomLeft"}},
+   "collar": {"part": "carlton.collar", "fold": "x0", "wrap": {"to": "neck", "edge": "standTop", "above": 0.04, "fold": [0.008, 0.008]}}
+  },
+  "seams": [
+   ["back.L:cbNeck>bpStart>bpTop>bpBottom", "back.R:cbNeck>bpStart>bpTop>bpBottom"],
+   ["back.L:dartLeft>dartTip", "back.L:dartRight>dartTip"],
+   ["back.R:dartLeft>dartTip", "back.R:dartRight>dartTip"],
+   [["back.L:bpBottom>dartLeft", "back.L:dartRight>waist"], "tail.L:cbTop>waistTop"],
+   [["back.R:bpBottom>dartLeft", "back.R:dartRight>waist"], "tail.R:cbTop>waistTop"],
+   ["tail.L:cbTop>cbBottom", "tail.R:cbTop>cbBottom"],
+   ["back.L:waist>armhole", "front.L:waist>armhole"],
+   ["back.R:waist>armhole", "front.R:waist>armhole"],
+   ["tail.L:waistTop>waistBottom", "front.L:waist>seat>hem"],
+   ["tail.R:waistTop>waistBottom", "front.R:waist>seat>hem"],
+   ["back.L:shoulder>neck", "front.L:shoulder>neck"],
+   ["back.R:shoulder>neck", "front.R:shoulder>neck"],
+   ["top.L:tsLeftEdge>tsElbowLeft>tsWristLeft", "under.L:usLeftEdge>usElbowLeft>usWristLeft"],
+   ["top.R:tsLeftEdge>tsElbowLeft>tsWristLeft", "under.R:usLeftEdge>usElbowLeft>usWristLeft"],
+   ["top.L:tsRightEdge>elbowRight>tsWristRight", "under.L:usRightEdge>elbowRight>usWristRight"],
+   ["top.R:tsRightEdge>elbowRight>tsWristRight", "under.R:usRightEdge>elbowRight>usWristRight"],
+   [["top.L:tsLeftEdge>top>tsRightEdge", "under.L:usRightEdge>usTip>usLeftEdge"],
+    ["front.L:armholePitch>shoulder", "back.L:shoulder>armhole", "front.L:armhole>armholePitch"]],
+   [["top.R:tsLeftEdge>top>tsRightEdge", "under.R:usRightEdge>usTip>usLeftEdge"],
+    ["front.R:armholePitch>shoulder", "back.R:shoulder>armhole", "front.R:armhole>armholePitch"]],
+   ["stand:standTipLeft>bottomLeft>standTip", ["front.R:cfNeck>neck", "back.R:neck>cbNeck", "back.L:cbNeck>neck", "front.L:neck>cfNeck"]],
+   ["collar:standTip.m>standTop>standTip", "stand:standTipLeft>standTop>standTip"]
+  ],
+  "stitches": [
+   ["front.L:button1Left", "front.R:button1Right"], ["front.L:button1Right", "front.R:button1Left"],
+   ["front.L:button2Left", "front.R:button2Right"], ["front.L:button2Right", "front.R:button2Left"],
+   ["front.L:button3Left", "front.R:button3Right"], ["front.L:button3Right", "front.R:button3Left"]
+  ],
+  "interfaced": ["stand", "collar", "front.L", "front.R"],
+  "words": {
+   "ease": {"chest": "chestEase", "waist": "waistEase", "seat": "seatEase", "biceps": "bicepsEase", "wrist": "cuffEase", "shoulders": "shoulderEase"},
+   "length": "length",
+   "sleeve_length": "sleeveLengthBonus",
+   "collar_height": "collarHeight"
+  }
+ }
+}
