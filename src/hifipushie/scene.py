@@ -559,6 +559,9 @@ def pull(name: str, log: list | None = None) -> dict:
         changes = _pull_params(spec, got["params"], log)
         changes.update(_pull_painted(spec, got.get("painted") or {}, log))
         changes.update(_pull_decals(spec, got.get("decals") or {}, log))
+        if got.get("cloth"):  # garments a person re-coloured or sculpted in the scene (cloth.pull_garments)
+            from . import cloth
+            changes.update(cloth.pull_garments(spec, name, got["cloth"], log))
         hair_changed = False
         if got.get("hair"):  # locks a person moved, re-shaped or re-numbered (hair.pull_locks)
             from . import hair

@@ -127,6 +127,12 @@ from spec.hair.groom) -> look_hair (renders + gates: outline dents, bare volume,
 edit_model kind "hair.locks" ... ; hair_reference matches a reference picture (camera from face landmarks, traced part,
 hairline and clumps carried onto the head); sync(hair_only=True) puts the locks in scene.blend, pull brings hand edits back.
 
+Clothes are sewn, not sculpted: spec["cloth"] garments are drafted to the body's measurements (FreeSewing designs or
+your own pattern pieces), sewn and settled by Blender's cloth sim, cleaned up, with seams/stitching/hems from the
+pattern. Read guide(topic="cloth"), then dress (starts the sim in the background; quality "draft" first) -> look_cloth
+(renders, strain map, fit/integrity report) -> dress(spec=patch) ...; states worn / draped (tablecloths, blankets) /
+hung; sync(cloth_only=True) puts them in scene.blend, pull brings colour and sculpt edits back.
+
 Terrain (landscapes and game levels) is separate: a height field described in a level designer's words (a basin, a
 pass, a village site, a road, forest here, "this must be visible from there"). Read guide(topic="terrain"), then
 set_terrain -> check_terrain / look_terrain -> set_terrain(patch=...) ... -> export_terrain. When the world's kind is one
@@ -268,13 +274,17 @@ def guide(topic: str = "") -> str:
     topic="terrain": the terrain vocabulary (landscapes and game levels in a level designer's words: world kinds,
     basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools.
     topic="hair": stylised hair as sculpted locks, the way artists groom it (silhouette, big shapes, clumps, breakup),
-    with groom_hair, look_hair, hair_reference and sync(hair_only=True)."""
+    with groom_hair, look_hair, hair_reference and sync(hair_only=True).
+    topic="cloth": garments the way garment artists make them (pattern, sew, simulate coarse then fine, clean up,
+    seams and stitching), with dress, look_cloth and sync(cloth_only=True)."""
     if topic.strip().lower() == "terrain":
         return (Path(__file__).with_name("terrain_guide.md")).read_text()
     if topic.strip().lower() == "hair":
         return (Path(__file__).with_name("hair_guide.md")).read_text()
+    if topic.strip().lower() == "cloth":
+        return (Path(__file__).with_name("cloth_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair" or "terrain"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth" or "terrain"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -926,7 +936,7 @@ def revert(name: str, version: int) -> str:
 
 
 @mcp.tool(structured_output=False)
-def sync(name: str, resolution: int = 256, hair_only: bool = False) -> str:
+def sync(name: str, resolution: int = 256, hair_only: bool = False, cloth_only: bool = False) -> str:
     """Bring the model's Blender scene (workspace/<model>/scene.blend) in line with the spec, after taking back
     what a person changed in it (moved/turned/scaled instances, exposed paint numbers: see `pull`). One object
     per part and per prefab (collection instances), paint as shader nodes, AO and sky baked by Cycles (each
@@ -937,8 +947,19 @@ def sync(name: str, resolution: int = 256, hair_only: bool = False) -> str:
     (port 9876, or $BLENDER_MCP_PORT), sync and pull run inside that session: changes appear in their viewport as
     they're made, their unsaved moves and tweaks come back, and the session is saved to scene.blend afterwards.
     hair_only: only the hair's curve locks (after pulling what a person changed in the scene; seconds): enough after
-    groom_hair or lock edits when the body hasn't changed. look_hair doesn't need it (it renders the spec's hair)."""
+    groom_hair or lock edits when the body hasn't changed. look_hair doesn't need it (it renders the spec's hair).
+    Garments (spec["cloth"]) go in as meshes in the collection "cloth" with their pattern uv, sewing-detail maps and a
+    colour node a person can change; only simulated ones (dress) go in, a sync never starts a sim. cloth_only: just
+    the garments (seconds). A person's sculpt of a garment in Blender comes back with pull as offsets on that sim."""
     from . import scene
+    if cloth_only:
+        from . import cloth
+        log: list = []
+        changes = scene.pull(name, log)
+        r = cloth.sync(name, log)
+        return (f"garments synced into {scene.blend_path(name)}: {', '.join(r['garments']) or 'none simulated'} "
+                f"({len(r['made'])} objects replaced) in {r['seconds']}s"
+                + (f"\npulled first: {json.dumps(changes)}" if changes else "") + ("\n" + "\n".join(log) if log else ""))
     if hair_only:
         from . import hair
         log: list = []
@@ -956,7 +977,8 @@ def pull(name: str) -> str:
     """Take back what a person changed in the model's Blender scene, without re-syncing it: instances they moved,
     turned or scaled become instance edits (the story's weather offsets taken back out), and exposed paint
     numbers (a layer's opacity and colour, mask ranges, noise scale, near distances; nodes named hp:...) come
-    back into the spec. Only values changed from what the last sync wrote count. Reports instances that now cut
+    back into the spec, and garments: their colour node, roughness, and their shape (a sculpt/clean-up in Blender,
+    kept as per-vertex offsets on top of that sim: cloth.<g>.sculpt). Only values changed from what the last sync wrote count. Reports instances that now cut
     into something (scene.clear_of slides one out). Reads the person's running Blender when it has the scene open
     (unsaved edits too), else the saved file."""
     from . import scene
@@ -1254,6 +1276,95 @@ def hair_reference(name: str, trace: dict | None = None, image_path: str | None 
                     f"{patch['groom']['parting']['side']}), hairline.front_points, {len(dr)} drawn clumps "
                     f"({', '.join(c['name'] for c in dr)}). Next: groom_hair, then look_hair.")
     return [_out(hair.trace_image(name), save), "\n".join(text)]
+
+
+# ---------------------------------------------------------------- cloth
+
+def _cloth_status(st: dict) -> str:
+    s = st["state"]
+    tail = f" ({st['lines'][-1]})" if st.get("lines") else ""
+    if s == "running":
+        return f"running {st.get('seconds', 0)}s{tail}"
+    if s == "failed":
+        return f"FAILED: {st.get('error')}"
+    return s + tail
+
+
+@mcp.tool(structured_output=False)
+def dress(name: str, garment: str | None = None, spec: dict | None = None, state: str | dict | None = None,
+          quality: str | None = None, replace: bool = False, wait: float = 50.0, note: str = ""):
+    """Put a garment on the model and simulate it: drafted to the body's measurements, sewn, settled by Blender's
+    cloth, cleaned up (guide(topic="cloth") is the workflow). Garments live in spec["cloth"][garment].
+    spec: the garment (merged into the stored one key by key, null deletes; replace=True replaces it), e.g.
+      {"pattern": {"from": "simon", "ease": {"chest": 0.12}, "length": 0.15}, "fabric": "shirting", "color": "#8fb3d9"}
+      Keys: pattern (from: a design in cloth_designs.json: simon (shirt), carlton (coat); ease per girth, length,
+      sleeve_length, options, measurements (a fixed size instead of made to measure), alterations), or own pieces +
+      seams (a tablecloth is one piece wrapped "flat"), fabric (preset: shirting, jersey, linen, denim, wool_coating,
+      or {"preset", overrides}), color, roughness, state, quality, resolution (final triangle size, 0.01), coarse
+      (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep} or false), detail (seam/stitch/hem maps:
+      {seam, topstitch, stitch, hem, buttons, thread} or false).
+    state: "worn" (default: sewn on the body and settled), "draped" (laid flat and dropped on the model's surface: a
+      tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or {"hang": {"pins": ["stand:bottomLeft"],
+      "hook": [x, y, z], "rack": [[a, b, radius], ...]}} (dressed first, then hung from the pins with the body gone).
+    quality: "draft" (one coarse 2 cm sim, ~1 min: judge fit and big shape) or "final" (default: the coarse sim, then
+      refined at 1 cm and cleaned up, ~3-5 min).
+    The sim runs in the background (one at a time on the machine); this waits up to `wait` s and returns either the
+    report (when done) or the progress. Call dress(name) again (no spec) or look_cloth to see where it is: a sim
+    already running or cached isn't started again. Returns the save, then per garment: status, report."""
+    from . import cloth
+    if spec is not None or state is not None or quality is not None:
+        if garment is None:
+            raise ValueError("name the garment to change: dress(name, garment=..., spec={...})")
+        full = store.load(name)
+        gs = full.setdefault("cloth", {})
+        from .hair import merge_patch
+        g = {} if replace else dict(gs.get(garment) or {})
+        if spec is not None:
+            g = merge_patch(g, _spec_arg(spec))
+        if state is not None:
+            g["state"] = state
+        if quality is not None:
+            g["quality"] = quality
+        gs[garment] = g
+        v = store.save(name, full, note or f"dress {garment}")
+        head = f"saved {name} v{v}\n"
+    else:
+        head = ""
+        if garment is not None and garment not in (store.load(name).get("cloth") or {}):
+            raise ValueError(f"no garment {garment!r}: give its spec (dress(name, garment, spec={{...}}))")
+    sts = cloth.dress(name, [garment] if garment else None, wait=float(wait))
+    out = []
+    spec_now = store.load(name)
+    for gn, st in sts.items():
+        if st["state"] == "done":
+            res = cloth.cached(name, spec_now, gn)
+            out.append(cloth.report(gn, res) if res is not None else f"{gn}: done")
+        else:
+            out.append(f"{gn}: {_cloth_status(st)}")
+    return head + "\n".join(out) + ("\nnext: look_cloth(name) for renders (strain map, close-ups with focus=...)"
+                                    if all(s["state"] == "done" for s in sts.values()) else
+                                    "\ncall dress(name) or look_cloth(name) again for progress")
+
+
+@mcp.tool(structured_output=False)
+def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | None = None, strain: bool = True,
+               size: int = 640, focus: str | list[float] | None = None, zoom: float = 0.4, textured: bool = False,
+               body: bool = True, save: str | None = None):
+    """Look at the model's simulated garments (10-40 s): clay renders on the body (views from front, side, back,
+    three (3/4 front), three_back, side_r; default front, side, back, three) and a strain map row (blue slack, green
+    fine, yellow at the fabric's limit, red twice it), with each garment's report: the verdict (CORRUPT = tangled or
+    crumpled cloth, TOO SMALL = negative ease, STRAINED = past the fabric's limit on the body), ease per girth from
+    the pattern and on the body, integrity (crossings, crumpled pieces, where), surface numbers (crinkle, fold
+    depth: sim -> after the clean-up) and the clean-up.
+    focus: [x, y, z] or "garment:piece" (e.g. "shirt:collar") for a close-up `zoom` m across. textured: EEVEE with
+    the sewing detail maps (seam grooves, topstitching, hems, buttons) instead of clay; use it with focus.
+    A garment still simulating reports its progress instead (dress starts sims)."""
+    from . import cloth
+    sheet, text = cloth.look(name, garments, views=tuple(views or ("front", "side", "back", "three")), strain=strain,
+                             size=size, focus=focus, zoom=zoom, body=body, textured=textured)
+    if sheet is None:
+        return text
+    return [_out(sheet, save), text]
 
 
 # ---------------------------------------------------------------- terrain

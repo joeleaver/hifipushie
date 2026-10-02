@@ -39,9 +39,10 @@ def load(name: str) -> dict:
 
 def validate(spec: dict) -> None:
     """Every check a spec must pass before it is saved (raises SpecError / ValueError)."""
-    from . import hair, paint, realism, strokes
+    from . import cloth, hair, paint, realism, strokes
     realism.validate(spec)
     hair.validate(spec)
+    cloth.validate(spec)
     strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
     prims = specmod.compile_prims(spec)  # validate before writing
     paint.validate(spec)
@@ -52,8 +53,17 @@ def validate(spec: dict) -> None:
 
 
 def _same_but_hair(a: dict, b: dict) -> bool:
-    """Do two specs differ only in their hair (curve locks, which nothing else depends on)?"""
-    return {k: v for k, v in a.items() if k != "hair"} == {k: v for k, v in b.items() if k != "hair"}
+    """Do two specs differ only in their hair (curve locks) and garments (simulated cloth), which nothing else in the
+    spec depends on?"""
+    return ({k: v for k, v in a.items() if k not in ("hair", "cloth")}
+            == {k: v for k, v in b.items() if k not in ("hair", "cloth")})
+
+
+def _validate_light(spec: dict) -> None:
+    """What a hair/cloth-only edit needs checked (compiling a base body for the full check: ~1 min)."""
+    from . import cloth, hair
+    hair.validate(spec)
+    cloth.validate(spec)
 
 
 def save(name: str, spec: dict, note: str = "") -> int:
@@ -62,8 +72,7 @@ def save(name: str, spec: dict, note: str = "") -> int:
     d = _dir(name)
     prev = d / "spec.json"
     if prev.exists() and _same_but_hair(stylesheet.resolve(json.loads(prev.read_text())), spec):
-        from . import hair  # a hair edit: the rest was validated when it was saved (compiling a base body: ~1 min)
-        hair.validate(spec)
+        _validate_light(spec)  # a hair/cloth edit: the rest was validated when it was saved
     else:
         validate(spec)
     spec = stylesheet.strip(spec)  # the file keeps the model's own decisions: what its style sheet gives stays there
@@ -129,9 +138,8 @@ def edit(spec: dict, ops: list[dict]) -> dict:
     (found by bisecting the batch, only when it fails)."""
     out = apply_ops(spec, ops)
     check = validate
-    if _same_but_hair(spec, out):  # a hair edit: only the hair needs checking (compiling a base body: ~1 min)
-        from . import hair
-        check = hair.validate
+    if _same_but_hair(spec, out):  # a hair/cloth edit: only those need checking (compiling a base body: ~1 min)
+        check = _validate_light
     try:
         check(out)
     except Exception as e:
