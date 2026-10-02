@@ -190,7 +190,8 @@ class _Compiler:
                 from . import decalmap
                 def uvw(mir):
                     return [self.attr("decal", layer, e["image"], parts, mir, comp,
-                                      key=("decal", e["image"], parts, mir, comp, decalmap.VERSION), parts=self.parts)
+                                      key=("decal", e["image"], parts, mir, comp, decalmap.VERSION,
+                                           decalmap.method()), parts=self.parts)
                             for comp in range(3)]
                 ent["uv"] = uvw(False)
                 if fr["mirror"]:

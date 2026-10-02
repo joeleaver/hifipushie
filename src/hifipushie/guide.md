@@ -364,10 +364,18 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
     [round, up] in degrees ([360, 180]: an equirectangular map), or `size` in metres at the surface.
   - `"surface"`: a sticker that lies on any curved surface like paper (a ball, a car door, a helmet): geodesic
     coordinates from its centre (`at`, seated on the surface; `up` orients it). Measured per vertex on its own
-    fine mesh, the picture sampled per pixel; stretch left is the surface's own curvature (a sticker the size of
-    a ball's radius drifts ~2 deg at its edge). Costs a few seconds once per placement (cached).
+    fine mesh (the vector heat method's log map: angles within ~0.1 deg out to the corners of a sticker the size
+    of the ball's radius), the picture sampled per pixel; stretch left is the surface's own curvature. Costs a
+    few seconds once per placement (cached).
   Wraps measure the surface of the layer's parts (`"on"`: other parts). `"style": true` runs the picture's
   colours through the paint style's saturation/value. `.L` layers and `"mirror"` mirror wraps too.
+  Placing by hand: after a `sync` every decal is a wire gizmo in the scene (collection "decals"; layers placed
+  alike, a picture and its relief, share one). Move, turn or scale it in Blender and `pull` (or the next `sync`)
+  writes it back: near its joint/blob as `"offset"` (world [x, y, z], so it keeps riding the blob), further than
+  its own size away as a world `at`; a spin about its normal as `rotate`, a tilt as `dir`/`up`, a scale as
+  `size`; a wrap's height (offset), turn round its axis (`dir`), tilt (`axis`), scale (`span`/`size`).
+  Exports: the export report's `parts.<p>.seams` says whether the baked maps run on across UV chart borders
+  (`excess` ~1 = invisible; > 1.5 is a WARNING in the log). Texels past each island are filled across its seam.
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 

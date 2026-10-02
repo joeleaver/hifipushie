@@ -558,6 +558,7 @@ def pull(name: str, log: list | None = None) -> dict:
         spec = store.load(name)
         changes = _pull_params(spec, got["params"], log)
         changes.update(_pull_painted(spec, got.get("painted") or {}, log))
+        changes.update(_pull_decals(spec, got.get("decals") or {}, log))
         hair_changed = False
         if got.get("hair"):  # locks a person moved, re-shaped or re-numbered (hair.pull_locks)
             from . import hair
@@ -745,6 +746,68 @@ def _pull_params(spec: dict, params: dict, log: list) -> dict:
     return changes
 
 
+def decal_gizmos(spec: dict, log: list) -> list:
+    """Every image decal's gizmo for the scene (images.gizmo): {"name", "path" (json path to the image entry),
+    "matrix", "verts", "edges"}."""
+    from . import images
+    from .spec import expand_mirror
+    ents = images.decal_entries(spec)
+    if not ents:
+        return []
+    s = expand_mirror(spec)
+    groups: dict = {}  # entries placed alike (a picture, its relief and its brushwork) share one gizmo
+    for path, img, ly, parts in ents:
+        key = json.dumps([{k: img.get(k) for k in sorted(images.PLACE_KEYS)}, parts], sort_keys=True, default=str)
+        groups.setdefault(key, []).append((path, img, ly, parts))
+    out = []
+    for g in groups.values():
+        path, img, ly, parts = g[0]
+        try:
+            fr = images.frame(spec, img, s, parts=parts)
+        except Exception as e:  # noqa: BLE001 (a decal that can't be placed has no gizmo; save validates them)
+            log.append(f"decal {ly}: no gizmo ({e})")
+            continue
+        out.append({"name": "decal:" + "+".join(".".join(str(k) for k in p[1:-1]) for p, *_ in g),
+                    "path": json.dumps([p for p, *_ in g]), **images.gizmo(fr)})
+    return out
+
+
+def _pull_decals(spec: dict, decals: dict, log: list) -> dict:
+    """Decal gizmos a person moved, turned or scaled in the scene, written into their image entries
+    (images.from_gizmo)."""
+    from . import images
+    changes = {}
+    for key, m in decals.items():
+        paths = json.loads(key)
+        paths = [paths] if paths and not isinstance(paths[0], list) else paths  # (one entry, or several placed alike)
+        # each worked out against the spec as it was pulled: the placement keys the gizmo's entries shared
+        found = []
+        for path in paths:
+            label = ".".join(str(k) for k in path[1:-1])
+            try:
+                found.append((path, label, _at(spec, path), spec["paint"][path[1]].get("part", "body")))
+            except (KeyError, IndexError, TypeError, AttributeError):
+                log.append(f"decal {label}: moved in the scene, but the spec has no such image any more")
+        for path, label, img, parts in found:
+            try:
+                new, notes = images.from_gizmo(spec, img, parts, m["was"], m["now"])
+                if new is not None:
+                    images.frame(spec, new, parts=parts, what=f"decal {label}")  # still a placement that works?
+            except SpecError as e:
+                log.append(f"decal {label}: its gizmo's new placement doesn't work, left as it was ({e}); move it "
+                           f"back in the scene, or the next sync puts it back")
+                continue
+            for n in notes:
+                log.append(f"decal {label}: {n}")
+            if new is None:
+                continue
+            _at(spec, path[:-1])[path[-1]] = new
+            diff = {k: new.get(k) for k in sorted(set(new) | set(img)) if new.get(k) != img.get(k)}
+            changes[f"{label}.image"] = diff
+            log.append(f"decal {label}: {json.dumps(diff)} (from the scene)")
+    return changes
+
+
 def _pull_painted(spec: dict, painted: dict, log: list) -> dict:
     """Masks a person painted in the scene (the objects' "hp_paint:<layer>" colour attributes, each file every
     object's points for one layer), stored as point clouds and put into their layers."""
@@ -791,7 +854,7 @@ def sync(name: str, resolution: int = 256) -> dict:
                                if "subsurface_radius" in d else {})}
     ph = part_hashes(prog, bases)
     job = {"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
-           "program": prog, "bases": bases, "prog_hash": ph}
+           "program": prog, "bases": bases, "prog_hash": ph, "decals": decal_gizmos(spec, log)}
     if spec.get("hair"):  # the hair's curve locks (hair.py) ride along
         from . import hair
         job["hair"] = hair.job(name, spec)

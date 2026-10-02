@@ -292,6 +292,9 @@ class _Log(list):
         self.note(str(line))
 
 
+SEAM_LIMIT = 1.5  # seam_steps excess over which the export warns (texture space; ~1 = invisible)
+BAKE_SS = 2  # Cycles bakes BAKE_SS^2 points per texel, box-filtered (one point per texel aliased sharp paint)
+BAKE_SS_PX = 8192  # ... while the supersampled image's side stays within this
 BAKE_SAMPLES = 1  # emission bakes: one sample per texel (4 cost 4x and changed nothing measurable)
 FILL = 0.6  # the fraction of an atlas the packed islands fill: a first guess, corrected from the first unwrap
 
@@ -507,10 +510,15 @@ def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
     return mesh
 
 
-def rasterize(parts: dict, size: int, atlas: int | None = None):
+def rasterize(parts: dict, size: int, atlas: int | None = None, ring: int = 0):
     """Which triangle covers each texel and where: (texel rows and columns, triangle id, barycentrics, part index
-    of every triangle). Triangle ids and part indices count over all parts in order; only the parts on `atlas`
-    (None: all) are drawn. Texel (x, y) of the PNG (row 0 at the top) is uv ((x + .5) / size, 1 - (y + .5) / size)."""
+    of every triangle, inside, drawn). Triangle ids and part indices count over all parts in order; only the parts on
+    `atlas` (None: all) are drawn. Texel (x, y) of the PNG (row 0 at the top) is uv ((x + .5) / size, 1 - (y + .5)
+    / size). inside: the texel's centre lies in its triangle. ring > 0: texels whose centre lies outside (PIL's edge
+    texels, plus every texel up to `ring` (+ the diagonal) texels past an island's edge, appended after the drawn ones, with their
+    nearest drawn texel's triangle) get the triangle's barycentrics extrapolated: the surface carried on past the
+    chart's edge, as the chart across the seam has it (a texel copied from its nearest neighbour put a sharp edge
+    a fraction of a texel off on each side of a seam). Without ring they are clamped onto the triangle."""
     img = Image.new("I", (size, size), -1)
     d = ImageDraw.Draw(img)
     uvs, tpart, draw = [], [], []
@@ -525,6 +533,12 @@ def rasterize(parts: dict, size: int, atlas: int | None = None):
     tid = np.asarray(img, np.int64)
     ys, xs = np.nonzero(tid >= 0)
     t = tid[ys, xs]
+    if ring > 0:
+        from scipy import ndimage
+        dist, (iy, ix) = ndimage.distance_transform_edt(tid < 0, return_indices=True)
+        ry, rx = np.nonzero((tid < 0) & (dist <= ring + 0.5))
+        t = np.concatenate([t, tid[iy[ry, rx], ix[ry, rx]]])
+        ys, xs = np.concatenate([ys, ry]), np.concatenate([xs, rx])
     a, b, c = px[t, 0], px[t, 1], px[t, 2]
     q = np.stack([xs + 0.5, ys + 0.5], -1)
     v0, v1, v2 = b - a, c - a, q - a
@@ -536,7 +550,14 @@ def rasterize(parts: dict, size: int, atlas: int | None = None):
     inside = (raw >= -1e-6).all(1)  # the texel's centre lies in its triangle (edge texels PIL adds don't)
     bary = np.clip(raw, 0, 1)
     bary /= bary.sum(1, keepdims=True)
-    return (ys, xs), t, bary, np.concatenate(tpart), inside
+    if ring > 0:  # extrapolated, unless the uv triangle is too thin for its plane to say where (a sliver)
+        span = np.maximum.reduce([np.linalg.norm(v0, axis=1), np.linalg.norm(v1, axis=1),
+                                  np.linalg.norm(c - b, axis=1)])
+        height = np.abs(den) / np.maximum(span, 1e-12)  # texels across the triangle
+        ok = ~inside & (height > 0.5)
+        bary[ok] = raw[ok]
+    drawn = np.arange(len(t)) < int((tid >= 0).sum())  # (the ring texels come after the drawn ones)
+    return (ys, xs), t, bary, np.concatenate(tpart), inside, drawn
 
 
 def uv_islands(parts: dict) -> np.ndarray:
@@ -620,14 +641,90 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
+def _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel):
+    """The texels past each island's edge (rasterize's ring: their point P is their triangle's plane carried on
+    past the edge) take what the chart across the seam baked at that surface point: the low-poly triangle of the
+    same part, on another island, that P lies on (within half a texel), its uv, Cycles' maps sampled there
+    bilinearly. Then bilinear filtering at a chart's edge reads the surface beyond it, as the chart across reads
+    it. Returns (given, baked, texels filled)."""
+    from .decalmap import _closest_bary
+    r = np.flatnonzero(fill)
+    if not len(r):
+        return given, baked, 0
+    C, UV = _corners(parts, "pos"), _corners(parts, "uv")
+    isl = uv_islands(parts)
+    # global vertex ids per triangle, and each vertex's triangles (padded): the faces across an edge are found by
+    # topology, not by distance (a decimated cylinder's strips are hundreds of texels long: their centres are far
+    # from a point just past their side)
+    tv, base = [], 0
+    for p in parts.values():
+        tv.append(p["corner_vert"].reshape(-1, 3).astype(np.int64) + base)
+        base += len(p["verts"])
+    tv = np.concatenate(tv)
+    vs, fs = tv.ravel(), np.repeat(np.arange(len(tv)), 3)
+    o = np.argsort(vs, kind="stable")
+    vs, fs = vs[o], fs[o]
+    start = np.searchsorted(vs, np.arange(base))
+    rank = np.arange(len(vs)) - start[vs]
+    cap = int(min(rank.max() + 1, 16))
+    vf = np.full((base, cap), -1, np.int64)
+    keep = rank < cap
+    vf[vs[keep], rank[keep]] = fs[keep]
+    A = tri[r]
+    # the edge of its own triangle the texel lies past (its most negative barycentric), and the faces round that
+    # edge's two vertices: the triangle across the seam and its neighbours
+    e0, e1 = C[A, 1] - C[A, 0], C[A, 2] - C[A, 0]
+    nrm = np.cross(e0, e1)
+    q = P[r] - C[A, 0]
+    n2 = np.maximum((nrm * nrm).sum(1), 1e-30)
+    w1 = (np.cross(q, e1) * nrm).sum(1) / n2
+    w2 = (np.cross(e0, q) * nrm).sum(1) / n2
+    k_out = np.argmin(np.stack([1 - w1 - w2, w1, w2], 1), 1)
+    va = tv[A, (k_out + 1) % 3]
+    vb = tv[A, (k_out + 2) % 3]
+    cand = np.concatenate([vf[va], vf[vb]], 1)
+    best, bt, bw = np.full(len(r), np.inf), np.full(len(r), -1), np.zeros((len(r), 3))
+    own_isl, own_part = isl[A], tpart[A]
+    for j in range(cand.shape[1]):
+        t = cand[:, j]
+        okj = t >= 0
+        t = np.where(okj, t, 0)
+        w = _closest_bary(P[r], C[t, 0], C[t, 1], C[t, 2])
+        d = np.linalg.norm(np.einsum("nk,nkc->nc", w, C[t]) - P[r], axis=1)
+        better = okj & (isl[t] != own_isl) & (tpart[t] == own_part) & (d < best)
+        best[better], bt[better], bw[better] = d[better], t[better], w[better]
+    ok = (bt >= 0) & (best < texel)
+    if not ok.any():
+        return given, baked, 0
+    uv = np.einsum("nk,nkc->nc", bw[ok], UV[bt[ok]])
+    yy, xx = ys[r[ok]], xs[r[ok]]
+    a = share[yy, xx][:, None]  # an edge texel part-baked keeps its own points' share: the rest from across
+    from scipy import ndimage
+    done = baked.copy()
+    done[yy, xx] = True
+    # (one pass: a second, reading the chart across with its edge texels already filled, measured worse: 1.08 -> 1.14)
+    _, (iy, ix) = ndimage.distance_transform_edt(~baked, return_indices=True)
+    out = {}
+    for name, img in given.items():
+        v = _bilinear(img[iy, ix], uv)  # (past its own edge, the chart across reads its nearest texel)
+        o = img.copy()
+        o[yy, xx] = a * img[yy, xx] + (1 - a) * v
+        o[yy, xx, -1] = 1.0  # baked now
+        out[name] = o
+    return out, done, int(ok.sum())
+
+
 def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given: dict) -> dict:
     """Every map of one atlas (None: all parts) as float arrays (size, size, k), plus the height range. Each
     texel is projected onto its export part's own field (normal, height); given: the maps Cycles baked from the
     scene (`scene_maps`: color linear, rms, ao, height; rows top first) for paint, AO and painted relief."""
     t0 = time.time()
     names = list(parts)
-    (ys, xs), tri, bary, tpart, inside = rasterize(parts, size, atlas)
-    log.append(f"rasterized {len(tri)} texels ({len(tri) / size ** 2:.0%} of the atlas) in {time.time() - t0:.1f}s")
+    # the islands' own texels plus a ring past their edges (half the gap between islands): extrapolated, so
+    # bilinear filtering at a chart's edge reads the surface beyond it on both sides of a seam
+    (ys, xs), tri, bary, tpart, inside, drawn = rasterize(parts, size, atlas, ring=max(1, margin_px(size) // 2))
+    log.append(f"rasterized {drawn.sum()} texels ({drawn.sum() / size ** 2:.0%} of the atlas) + {(~drawn).sum()} "
+               f"past the islands' edges in {time.time() - t0:.1f}s")
 
     def interp(key):
         return np.einsum("nk,nkc->nc", bary, _corners(parts, key)[tri])
@@ -660,23 +757,26 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
                           "(or min_triangles)" if bad.mean() > 0.2 else ""))
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
     # texels whose ray found no scene mesh (alpha 0) take their nearest baked neighbour
-    baked = given["color"][..., 3] > 0.5
-    miss = ~baked[ys, xs]
+    share = given["color"][..., 3].astype(np.float64)  # (supersampled: the share of the texel's points baked)
+    baked = share > 0
+    miss = ~baked[ys, xs] & drawn
     if miss.any():
-        log.append(f"  {miss.mean():.2%} of texels found no scene mesh along their ray: filled from neighbours")
+        log.append(f"  {miss.sum() / drawn.sum():.2%} of texels found no scene mesh along their ray: filled from neighbours")
         log.append(f"    {(miss & ~inside).sum() / miss.sum():.0%} of them are edge texels (centre outside its triangle)")
         for pi, pn in enumerate(names):
-            m = (miss & inside)[part == pi]
+            m = (miss & inside)[(part == pi) & drawn]
             if m.size and m.mean() > 0.005:
                 log.append(f"    {pn}: {m.mean():.1%} of its texels missed inside their triangle")
         given = {k: _dilate(v, baked) for k, v in given.items()}
 
     c = _corners(parts, "pos")[np.unique(tri)]  # the atlas's triangles: surface per texel
-    texel = np.sqrt(np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2 / max(len(tri), 1))
-    lin = given["color"][ys, xs, :3].astype(np.float64)
-    srgb = np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055)
-    rms = given["rms"][ys, xs].astype(np.float64)
-    ch = {"color": srgb, "roughness": rms[:, :1], "metallic": rms[:, 1:2], "specular": rms[:, 2:3]}
+    area = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2
+    texel = np.sqrt(area / max(int(drawn.sum()), 1))
+    fill = share[ys, xs] < 0.999  # past the islands' edges, edge texels part-baked or missed
+    given, baked, n_across = _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel)
+    if fill.any():
+        log.append(f"  {n_across / fill.sum():.0%} of the texels past the islands' edges (or missed at them) filled "
+                   f"across their seam; the rest (open edges) from the nearest texel")
     if "height" in given:
         # painted height baked by Cycles (0.5 + h x 25); its slope across the texture tilts the normal: u runs
         # along the tangent, v (up the texture, rows down) along the bitangent, a texel is `texel` metres
@@ -704,15 +804,91 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
         img = np.full((size, size, vals.shape[1]), fill, np.float64)
         img[ys, xs] = vals
         maps[name] = _dilate(img, filled)
-    put("basecolor", ch["color"], 0.5)
-    put("roughness", ch["roughness"], 0.6)
-    put("metallic", ch["metallic"], 0.0)
-    put("specular", ch["specular"], 0.5)
-    maps["ao"] = _dilate(given["ao"][..., :1].astype(np.float64), filled)
+    # Cycles' channels keep their own texels past the islands' edges too (the bake's margin, filled across each
+    # seam from the adjacent faces): only what lies beyond them is filled from the nearest texel
+    own = baked.copy()
+    own[ys[drawn], xs[drawn]] = True
+
+    def put_given(name, img):
+        maps[name] = _dilate(img.astype(np.float64), own)
+    lin = given["color"][..., :3].astype(np.float64)
+    put_given("basecolor", np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055))
+    put_given("roughness", given["rms"][..., :1])
+    put_given("metallic", given["rms"][..., 1:2])
+    put_given("specular", given["rms"][..., 2:3])
+    put_given("ao", given["ao"][..., :1])
     put("normal", tn * 0.5 + 0.5, 0.5)
     put("height", (height / hr * 0.5 + 0.5)[:, None], 0.5)
     maps["orm"] = np.concatenate([maps["ao"], maps["roughness"], maps["metallic"]], -1)
-    return {"maps": maps, "height_range": hr, "coverage": len(tri) / size ** 2}
+    return {"maps": maps, "height_range": hr, "coverage": float(drawn.sum()) / size ** 2}
+
+
+def _bilinear(img: np.ndarray, uv: np.ndarray) -> np.ndarray:
+    """img (rows top first) at uvs as an engine samples it (bilinear, texel centres at (i + .5) / size, clamped)."""
+    S = img.shape[0]
+    x, y = uv[:, 0] * S - 0.5, (1 - uv[:, 1]) * S - 0.5
+    x0, y0 = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
+    fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+    c = lambda a: np.clip(a, 0, S - 1)  # noqa: E731
+    return (img[c(y0), c(x0)] * (1 - fx) * (1 - fy) + img[c(y0), c(x0 + 1)] * fx * (1 - fy)
+            + img[c(y0 + 1), c(x0)] * (1 - fx) * fy + img[c(y0 + 1), c(x0 + 1)] * fx * fy)
+
+
+def seam_steps(p: dict, img: np.ndarray, per_texel: int = 2) -> dict | None:
+    """How a map steps across a part's UV seams (edges whose two triangles have the same vertices but different
+    uvs), as an engine shows it: along every seam edge, the step across it (half a texel into each chart, sampled
+    bilinearly) against the steps beside it (half a texel to 1.5 texels in, on each side). excess = their ratio
+    summed over the seams (~1 = invisible: the map runs on across the seam as it does inside a chart; a texel's
+    misregistration of a sharp edge is ~2+), p95 = the 95th percentile of it per sample where the map changes
+    (beside > 2% of its range). None if the part has no seams."""
+    S = img.shape[0]
+    cv = p["corner_vert"].reshape(-1, 3).astype(np.int64)
+    uv = p["uv"].reshape(-1, 3, 2).astype(np.float64)
+    a, b = cv, np.roll(cv, -1, 1)  # edge k runs from corner k to k + 1
+    ea, eb = np.minimum(a, b).T.ravel(), np.maximum(a, b).T.ravel()
+    et, ek = np.tile(np.arange(len(cv)), 3), np.repeat(np.arange(3), len(cv))
+    order = np.lexsort((eb, ea))
+    ea, eb, et, ek = ea[order], eb[order], et[order], ek[order]
+    pair = np.flatnonzero((ea[1:] == ea[:-1]) & (eb[1:] == eb[:-1]))
+    if not len(pair):
+        return None
+    tA, kA, tB, kB = et[pair], ek[pair], et[pair + 1], ek[pair + 1]
+
+    def ends(t, k, v0):  # the edge's uv at vertex v0 then the other end, and the opposite corner's uv
+        i0, i1 = k, (k + 1) % 3
+        swap = cv[t, i0] != v0
+        u0 = np.where(swap[:, None], uv[t, i1], uv[t, i0])
+        u1 = np.where(swap[:, None], uv[t, i0], uv[t, i1])
+        return u0, u1, uv[t, (k + 2) % 3]
+    v0 = ea[pair]
+    a0, a1, a2 = ends(tA, kA, v0)
+    b0, b1, b2 = ends(tB, kB, v0)
+    seam = (np.abs(a0 - b0).max(1) > 0.5 / S) | (np.abs(a1 - b1).max(1) > 0.5 / S)
+    if not seam.any():
+        return None
+    a0, a1, a2, b0, b1, b2 = (x[seam] for x in (a0, a1, a2, b0, b1, b2))
+
+    def inward(u0, u1, u2):
+        d = u1 - u0
+        n = np.stack([-d[:, 1], d[:, 0]], 1)
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        return n * np.sign(((u2 - u0) * n).sum(1))[:, None]
+    nA, nB = inward(a0, a1, a2), inward(b0, b1, b2)
+    m = np.maximum(np.ceil(np.linalg.norm(a1 - a0, axis=1) * S * per_texel).astype(np.int64), 1)
+    e = np.repeat(np.arange(len(m)), m)
+    t = (np.arange(len(e)) - np.repeat(np.cumsum(m) - m, m) + 0.5) / m[e]
+    t = t[:, None]
+    pa, pb = a0[e] + t * (a1[e] - a0[e]), b0[e] + t * (b1[e] - b0[e])
+    A0, A1 = (_bilinear(img, pa + nA[e] * s / S) for s in (0.5, 1.5))
+    B0, B1 = (_bilinear(img, pb + nB[e] * s / S) for s in (0.5, 1.5))
+    across = np.linalg.norm(A0 - B0, axis=1)
+    beside = 0.5 * (np.linalg.norm(A1 - A0, axis=1) + np.linalg.norm(B1 - B0, axis=1))
+    rng = float(np.ptp(img.reshape(-1, img.shape[-1]), axis=0).max()) or 1.0
+    busy = beside > 0.02 * rng
+    eps = 0.002 * rng * len(e)  # steps under 0.2% of the map's range are noise, not edges (a flat map reads ~1)
+    return {"edges": int(seam.sum()), "samples": len(e),
+            "excess": round(float((across.sum() + eps) / (beside.sum() + eps)), 2),
+            "p95": round(float(np.percentile(across[busy] / beside[busy], 95)), 2) if busy.sum() > 20 else None}
 
 
 def mesh_quality(verts: np.ndarray, tris: np.ndarray, prims=None) -> dict:
@@ -778,7 +954,8 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
                          "extrusion": out_, "ray": out_ + in_, "matrix": M})
         t = time.time()
         out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
-                              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES},
+                              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES,
+                              "supersample": BAKE_SS, "max_px": BAKE_SS_PX},
                              3 * 3600, progress=getattr(log, "note", None))
         bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
         log.append(f"paint and AO maps baked by Cycles from the scene in {time.time() - t:.1f}s ({bt})")
@@ -1178,6 +1355,15 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             log.append(f"atlas {an}:")
         res = bake(parts, sizes[ai], ctx, log, ai, given[ai])
         maps = res["maps"]
+        for pn, p in parts.items():  # seams: does the baked colour run on across each chart border? (~1 = yes)
+            if p["atlas"] == ai:
+                st = {k: seam_steps(p, maps[k]) for k in ("basecolor", "orm")}
+                report[pn]["seams"] = st
+                if st["basecolor"]:
+                    b = st["basecolor"]
+                    log.append(f"  {pn} seams: {b['edges']} edges, colour step across / beside {b['excess']} (p95 "
+                               f"{b['p95']}), orm {st['orm']['excess']}"
+                               + (": WARNING, the maps step at chart borders" if b["excess"] > SEAM_LIMIT else ""))
         files = {}
         for key in ("basecolor", "normal", "orm", "roughness", "metallic", "specular", "ao"):
             files[key] = out_dir / f"{stem}_{key}.png"
@@ -1278,7 +1464,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
 
 
 def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
-            hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None) -> Image.Image:
+            hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None,
+            denoise: bool = True) -> Image.Image:
     """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
     walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene.look
@@ -1291,6 +1478,6 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
-                  "hide": list(hide or []), "lighting": lighting})
+                  "hide": list(hide or []), "lighting": lighting, "denoise": denoise})
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
     return render.contact_sheet(imgs, frames)

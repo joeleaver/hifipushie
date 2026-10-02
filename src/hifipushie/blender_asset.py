@@ -894,7 +894,7 @@ def preview(job):
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = job.get("samples", 24)
-    scene.cycles.use_denoising = True
+    scene.cycles.use_denoising = bool(job.get("denoise", True))  # off for texture close-ups: OIDN moved edges
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
     scene.render.film_transparent = False
     scene.world = scene.world or bpy.data.worlds.new("w")

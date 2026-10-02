@@ -14,6 +14,7 @@ dependencies = [
     "numba>=0.68.0",
     "numpy>=2.5.3",
     "pillow>=12.3.0",
+    "potpourri3d>=1.4.0",
     "pyfqmr>=0.5.0",
     "scikit-image>=0.26.0",
     "scipy>=1.18.1",

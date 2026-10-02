@@ -650,6 +650,13 @@ def pull(job):
             now = np.array(ob.matrix_world)
             if np.abs(now - spec_m).max() > 1e-5:
                 moved[ob["hp_instance"]] = now.tolist()
+    decals = {}
+    for ob in bpy.data.objects:  # decal gizmos a person moved, turned or scaled since the sync stamped them
+        if ob.get("hp_decal") is not None and ob.get("hp_set") is not None:
+            was = np.array(ob["hp_set"]).reshape(4, 4)
+            now = np.array(ob.matrix_world)
+            if np.abs(now - was).max() > 1e-5:
+                decals[ob["hp_decal"]] = {"was": was.tolist(), "now": now.tolist()}
     for m in bpy.data.materials:  # paint numbers exposed as named nodes; the same layer can sit in several parts
         if not m.name.startswith("part:") or not m.node_tree:
             continue
@@ -666,7 +673,7 @@ def pull(job):
             params.setdefault(n.name[3:], []).append(
                 [round(float(x), 4) for x in _srgb(v)] if n.type == "RGB" else round(float(v), 5))
     json.dump({"moved": moved, "params": params, "painted": _pull_painted(os.path.dirname(job["out"])),
-               "hair": blender_hair.read()}, open(job["out"], "w"))
+               "decals": decals, "hair": blender_hair.read()}, open(job["out"], "w"))
 
 
 def _pull_painted(folder):
@@ -706,6 +713,40 @@ def _pull_painted(folder):
         np.savez(f, pos=np.concatenate(P), nrm=np.concatenate(N), val=np.concatenate(V), spacing=np.concatenate(S))
         out[ly] = f
     return out
+
+
+def _decals(decals):
+    """Every image decal as a wire gizmo (collection "decals", never rendered or baked): images.gizmo's outline at
+    its matrix, which is stamped as "hp_set" so a pull reports only what a person moved, turned or scaled."""
+    coll = _coll("decals")
+    want = {d["path"]: d for d in decals}
+    for ob in list(bpy.data.objects):
+        if ob.get("hp_decal") is not None and ob["hp_decal"] not in want:
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+    have = {ob["hp_decal"]: ob for ob in bpy.data.objects if ob.get("hp_decal") is not None}
+    for p, d in want.items():
+        shape = json.dumps([d["verts"], d["edges"]])
+        ob = have.get(p)
+        if ob is None or ob.get("hp_shape") != shape:
+            me = bpy.data.meshes.new(d["name"])
+            me.from_pydata([tuple(v) for v in d["verts"]], [tuple(e) for e in d["edges"]], [])
+            if ob is None:
+                ob = bpy.data.objects.new(d["name"], me)
+                ob["hp_decal"] = p
+                coll.objects.link(ob)
+            else:
+                old, ob.data = ob.data, me
+                if old.users == 0:
+                    bpy.data.meshes.remove(old)
+            ob["hp_shape"] = shape
+        ob.matrix_world = _matrix(d["matrix"])
+        ob["hp_set"] = [float(v) for r in d["matrix"] for v in r]
+        ob.hide_render = True
+        ob.display_type = "WIRE"
+        ob.show_in_front = True
 
 
 def sync(job):
@@ -764,6 +805,7 @@ def sync(job):
         ob["hp_prefab"] = i["prefab"]
         ob.matrix_world = _matrix(i["matrix"])
         ob["hp_matrix"] = [v for r in i["matrix"] for v in r]
+    _decals(job.get("decals") or [])
     for key in ("prefab",):  # prefab collections excluded from the view layer (they show through instances)
         for c in bpy.data.collections:
             if c.name.startswith("prefab:"):
@@ -1018,7 +1060,6 @@ def bake_maps(job):
     _device(scene, job.get("device", "CPU"))
     scene.cycles.samples = job.get("samples", 4)
     scene.render.bake.use_clear = False
-    scene.render.bake.margin = 0  # our own dilation fills around every island afterwards
     by_key = {ob["hp_key"]: ob for ob in bpy.data.objects if ob.get("hp_key")}
     highs = {}
     for pt in job["parts"]:
@@ -1031,15 +1072,41 @@ def bake_maps(job):
             highs[pt["key"]] = ob
         else:
             highs[pt["key"]] = src
-    imgs = {}
     WHAT = ("color", "rms", "aoh")  # ao and painted height share a pass (red, green)
-    for ai, size in job["atlases"].items():
-        for what in WHAT:
-            im = bpy.data.images.new(f"a{ai}_{what}", size, size, alpha=True, float_buffer=True)
+    # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
+    # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
+    # them (a box filter). No margin: the texels past each island's edge are filled across its seam by
+    # asset._across_seams (Blender's own "Adjacent Faces" margin left a dark rim round the islands: marks like
+    # dents along a ball's chart borders).
+    ss = {ai: max(1, min(int(job.get("supersample", 1)), int(job.get("max_px", 8192)) // size))
+          for ai, size in job["atlases"].items()}
+
+    def new_images(what):
+        out = {}
+        for ai, size in job["atlases"].items():
+            im = bpy.data.images.new(f"a{ai}_{what}", size * ss[ai], size * ss[ai], alpha=True, float_buffer=True)
             im.colorspace_settings.name = "Non-Color"
             im.generated_color = (0, 0, 0, 0)
-            imgs[(ai, what)] = im
-    lows = {pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
+            out[ai] = im
+        return out
+
+    def read(ai, im):
+        """The image as (size, size, 4) rows top first, ss x ss blocks averaged over the points baked (alpha
+        weighted; alpha = the share baked)."""
+        n, s = job["atlases"][ai], ss[ai]
+        a = np.empty((n * s) ** 2 * 4, np.float32)
+        im.pixels.foreach_get(a)
+        a = a.reshape(n * s, n * s, 4)[::-1]  # Blender's rows start at the bottom
+        if s == 1:
+            return a
+        w = (a[..., 3:] > 0).astype(np.float32)
+        b = (a * w).reshape(n, s, n, s, 4).sum((1, 3))
+        cnt = w.reshape(n, s, n, s, 1).sum((1, 3))
+        out = np.zeros((n, n, 4), np.float32)
+        out[..., :3] = b[..., :3] / np.maximum(cnt, 1)
+        out[..., 3] = cnt[..., 0] / (s * s)
+        return out
+    lows ={pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
     bm = bpy.data.materials.new("hp_bake_target")
     bm.use_nodes = True
     tex = bm.node_tree.nodes.new("ShaderNodeTexImage")
@@ -1050,9 +1117,11 @@ def bake_maps(job):
     # Rays only ever hit the selected high mesh, so what the others would add is set-up time, not texels.
     everything = list(scene.objects)
     times = {}
+    res = {ai: {} for ai in job["atlases"]}
     for what in WHAT:
         for m in {mat for ob in highs.values() for mat in ob.data.materials if mat}:
             _emit(m, what)
+        imgs = new_images(what)  # one pass's images at a time (supersampled ones are big)
         t1 = time.time()
         for i, pt in enumerate(job["parts"]):
             hi, lo = highs[pt["key"]], lows[pt["key"]]
@@ -1060,20 +1129,21 @@ def bake_maps(job):
                 ob.hide_render = ob is not hi and ob is not lo
                 ob.select_set(False)
             hi.hide_render = lo.hide_render = False
-            tex.image = imgs[(str(pt["atlas"]), what)]
+            ai = str(pt["atlas"])
+            tex.image = imgs[ai]
             hi.select_set(True)
             lo.select_set(True)
             bpy.context.view_layer.objects.active = lo
             bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=pt["extrusion"],
                                 max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES")
             print(f"@@progress {what} {i + 1}/{len(job['parts'])} {pt['key']} {time.time() - t1:.0f}s", flush=True)
+        for ai, im in imgs.items():
+            res[ai][what] = read(ai, im)
+            bpy.data.images.remove(im)
         times[what] = round(time.time() - t1, 1)
+    times["supersample"] = sorted(set(ss.values()))
     for ai, size in job["atlases"].items():
-        out = {}
-        for what in WHAT:
-            a = np.empty(size * size * 4, np.float32)
-            imgs[(ai, what)].pixels.foreach_get(a)
-            out[what] = a.reshape(size, size, 4)[::-1]  # Blender's rows start at the bottom
+        out = res[ai]
         aoh = out.pop("aoh")
         out["ao"] = aoh[..., [0, 0, 0, 3]]
         out["height"] = aoh[..., [1, 1, 1, 3]]
