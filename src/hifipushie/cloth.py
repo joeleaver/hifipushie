@@ -2328,19 +2328,24 @@ def pull_garments(spec: dict, name: str, got: dict, log: list) -> dict:
         if g is None:
             continue
         ch = {}
-        if st.get("color"):
+        # (the scene keeps what the sync stamped until the next sync: a value already in the spec isn't news)
+        if st.get("color") and st["color"].lower() != str(g.get("color", "")).lower():
             g["color"] = st["color"]
             ch["color"] = st["color"]
-        if st.get("roughness") is not None:
+        if st.get("roughness") is not None and abs(float(st["roughness"]) - float(g.get("roughness", 0.85))) > 1e-3:
             g["roughness"] = round(float(st["roughness"]), 3)
             ch["roughness"] = g["roughness"]
         if st.get("verts"):
             z = np.load(store._dir(name) / f"cloth_{gname}.npz")
             Vnew = np.load(st["verts"])["verts"].astype(np.float64)
             base = z["base"].astype(np.float64)
-            if Vnew.shape == base.shape:
+            f = store._dir(name) / f"cloth_{gname}_sculpt.npz"
+            same = (Vnew.shape == base.shape and f.exists() and (g.get("sculpt") or {}).get("file") == str(f)
+                    and np.abs(np.load(f)["offset"] - (Vnew - base)).max() < 2e-4)
+            if same:
+                pass
+            elif Vnew.shape == base.shape:
                 off = Vnew - base
-                f = store._dir(name) / f"cloth_{gname}_sculpt.npz"
                 np.savez_compressed(f, offset=off.astype(np.float32))
                 key = st.get("key", "").split(":")[0]
                 g["sculpt"] = {"file": str(f), "key": key,
@@ -2486,7 +2491,8 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         box = (c - zoom / 2, c + zoom / 2)
     vs = [v if v != "three" else {"name": "three", "dir": [-0.65, -0.72, 0.25]} for v in views]
     vs = [v if v != "three_back" else {"name": "three_back", "dir": [0.65, 0.72, 0.25]} for v in vs]
-    aspect = 1.0 if focus is not None else 0.62
+    ext = box[1] - box[0]  # the frame follows the subject (a table is wide, a person tall)
+    aspect = 1.0 if focus is not None else float(np.clip(max(ext[0], ext[1]) / max(ext[2], 1e-3), 0.62, 1.8))
     paths = render(objs, tmp / "look", views=vs, resolution=size, box=box, aspect=aspect, textured=textured)
     ims = [Image.open(p).convert("RGB") for p in paths]
     rows = [ims]
