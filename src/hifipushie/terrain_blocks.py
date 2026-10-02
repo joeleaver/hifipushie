@@ -195,7 +195,26 @@ def _bed_value(K, j, thick, t_m, xy, B):
     # chasm as one dark ruled line)
     along = np.where(thin, np.clip((vn - 0.4) / 0.25, 0, 1), np.clip(1.4 * vn - 0.25, 0, 1))
     v = along * np.where(thin, B["package"], -B["thick_proud"] * np.clip((thick - 1.2) / 2.5, 0, 1))
+    # (and how deep it sits back wanders within a stretch: flush for a metre or two every few metres (weathered back
+    # less, or choked with its own debris), lumpy over a metre. One depth along a stretch put the bed above's
+    # underside, facing straight down, in the maps as one dark band along the pebble chasm, 0.2 m tall and 8 m long)
+    kj = (K * 16 + j).astype(float)
+    vd = noise._value_noise(np.c_[xy / 2.5, kj], s + 3)
+    vr = noise._value_noise(np.c_[xy / 0.9, kj], s + 4)
+    v = np.where(thin, v * (np.clip((vd - 0.35) / 0.4, 0, 1) * (0.55 + 0.45 * vr)), v)
     return v + B["bed_amp"] * (2 * h1 - 1) + B["bed_tilt"] * (2 * h2 - 1) * np.clip(t_m, -LEVER, LEVER)
+
+
+def package_recess(xy, K, j, B):
+    """0..1 at plan points: how far bed (K, j), if thin, sits back as `_bed_value` sets it (its stretches along the
+    strike x its wandering depth): for the colour and the maps' notches, which must follow the geometry's recess
+    (darker and notched all along, a thin package drew one ruled band across the pebble chasm)."""
+    s = B["seed"] + 30
+    kj = (K * 16 + j).astype(float)
+    along = np.clip((noise._value_noise(np.c_[xy / 9.0, kj], s + 2) - 0.4) / 0.25, 0, 1)
+    vd = noise._value_noise(np.c_[xy / 2.5, kj], s + 3)
+    vr = noise._value_noise(np.c_[xy / 0.9, kj], s + 4)
+    return along * np.clip((vd - 0.35) / 0.4, 0, 1) * (0.55 + 0.45 * vr)
 
 
 # ---------------------------------------------------------------- minor joints

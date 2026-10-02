@@ -1194,7 +1194,10 @@ def block_colour(P, N, rc, r, fd, lines=True):
     # (whole blocks only a little: +-13% per block read as pasted flat rectangles, a patchwork, at 40 m (n01). What
     # separates faces on real limestone/sandstone is weathering that runs along the beds and down from the ledges, with
     # soft transitions; the blocks' own geometry and the lines do the rest)
-    tone = 1 + (BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - BLOCK_TONE["thin"] * I["thin"]) * eb
+    # (a thin package is darker only where it sits back, by as much as it does (terrain_blocks._bed_value's stretches
+    # and depth): darker all along, it was a ruled band across the pebble chasm)
+    rec = terrain_blocks.package_recess(P[:, :2], K, j, B)
+    tone = 1 + (BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - BLOCK_TONE["thin"] * I["thin"] * rec) * eb
     # (lines=False: the open bed planes and joints are drawn crisp from the lines map, terrain_swatch.structure_lines)
     dark = 0.5 * I["bed_crack"] * (1 - eb) * lines  # (bed planes: faint; the geometry draws the ledges)
     fresh = np.zeros(len(P))
@@ -3248,7 +3251,7 @@ def _job_bake(args):
     if c.get("detail") is not None and c["cfg"].get("lines", True):
         from . import terrain_swatch
         tx_ = 1.0 / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)]
-        lines = lambda X, N: terrain_swatch.structure_lines(c["base"], X, tx_, N=N)
+        lines = lambda Pl, Nl: terrain_swatch.structure_lines(c["base"], Pl, tx_, N=Nl)
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines)
@@ -3300,6 +3303,11 @@ def _job_finish(stem):
     with _span("maps/write glb"):
         write_glb(glb["path"], glb["name"], glb["prims"], glb["trans"], glb["mats"], extras=glb["extras"],
                   images=images)
+    if os.environ.get("HIFIPUSHIE_KEEP_BAKE"):  # (debug: each atlas's texels kept in <out>/_bakes, to re-bake one map
+        # alone with terrain_bake.bake_lines while trying line variants)
+        (out / "_bakes").mkdir(exist_ok=True)
+        import shutil
+        shutil.copy(work / f"bake_{stem}.npz", out / "_bakes" / f"bake_{stem}.npz")
     for f in pieces + [work / f"bake_{stem}.npz", work / f"glb_{stem}.pkl"]:
         f.unlink()
     info["weights"] = wfiles

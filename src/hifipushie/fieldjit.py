@@ -1069,8 +1069,12 @@ if ON:
                     h1 = _hb(K, jb64, s)
                     h2 = _hb(K, jb64, s + 1)
                     vnb = _vn(x / 9.0, y / 9.0, np.float64(K * 16 + jb64), s + 2)
-                    if th < thin:  # (a thin package sits back only in stretches)
+                    if th < thin:  # (a thin package sits back only in stretches, its depth wandering)
                         v = _clip((vnb - 0.4) / 0.25, 0.0, 1.0) * fpar[14]
+                        kjb = np.float64(K * 16 + jb64)
+                        vdb = _vn(x / 2.5, y / 2.5, kjb, s + 3)
+                        vrb = _vn(x / 0.9, y / 0.9, kjb, s + 4)
+                        v = v * (_clip((vdb - 0.35) / 0.4, 0.0, 1.0) * (0.55 + 0.45 * vrb))
                     else:
                         v = _clip(1.4 * vnb - 0.25, 0.0, 1.0) * (-fpar[15] * _clip((th - 1.2) / 2.5, 0.0, 1.0))
                     v = v + fpar[16] * (2 * h1 - 1) + fpar[17] * (2 * h2 - 1) * _clip(t_m, -_BP_LEVER, _BP_LEVER)

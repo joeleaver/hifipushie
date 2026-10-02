@@ -198,8 +198,13 @@ def _veins(n, L, seed, texel):
 
 # The procedural swatch's settings, tuned toward measured CC0 rock scans (swatch_stats; examples/scan_compare.py):
 # cells = facet sizes (m) and their tilt (rms slope), step and cup (m); fractures = facet nets whose zero lines crack,
-# their coverage (`on` thresholds), half-width and depth (m); albedo: per-octave tone noise, per-facet tones, proud
-# places lighter
+# their coverage (`on` thresholds), half-width and depth (m); albedo: per-octave tone noise, per-facet tones (each
+# softened over `cell_soft` x its size), proud places lighter, weathering patches, grime round and under fractures.
+# 2026-10-01 (rock5): albedo rms per octave 0.05-0.07 -> 0.13 at 0.25-1 m falling to 0.06-0.09 below 6 cm
+# (rock_face_03: 0.10-0.12 flat; flat at that level read as speckled dirty granite on pebble's dark rock at 15 m, so
+# the energy sits in the larger octaves), luminance std 0.195 -> 0.28 (0.32), percentiles 1/5/50/95/99 of the
+# multiplier 0.49/0.60/0.96/1.54/1.84 (the scan's 0.50/0.60/0.96/1.54/1.85: a long pale tail, `skew`), correlation with
+# high-passed height 0.12 -> 0.25 (0.23); hard per-facet tones that strong read as terrazzo, so they are softened
 TUNE = {
     "cells": [{"size": 0.32, "stretch": 1.3, "vary": 1.6, "slope": 0.10, "step": 0.006, "cup": 0.005, "soft": 0.12},
               {"size": 0.09, "stretch": 1.1, "vary": 1.2, "slope": 0.12, "step": 0.002, "cup": 0.0015, "soft": 0.12},
@@ -208,7 +213,8 @@ TUNE = {
     "fractures": [{"net": 0.7, "on": [0.0, 0.3], "width": 0.006, "depth": 0.025},
                   {"net": 0.3, "on": [0.1, 0.35], "width": 0.004, "depth": 0.012}],
     "scars": 0.035,
-    "speck": 0.75, "speck_beta": 0.3, "cell_tone": [0.15, 0.12, 0.08], "proud": 0.02, "rough_var": 0.15,
+    "speck": 0.55, "speck_beta": 0.3, "cell_tone": [0.17, 0.2, 0.13], "cell_soft": 0.15, "proud": 0.07,
+    "rough_var": 0.15, "patch": 0.22, "halo_m": 0.03, "streak_m": 0.15, "grime": 0.35, "skew": 1.0,
 }
 
 
@@ -286,9 +292,29 @@ def swatch(rock=None, size=SIZE, res=RES, seed=None):
     tone = 1 + T["speck"] * spectral(n, T["speck_beta"], seed + 21, lo=8) + pale - dark
     for k, c in enumerate(cells):
         fh = noise._hash(c[1], np.full_like(c[1], 2), np.zeros_like(c[1]), seed + 16 + k)
-        tone = tone + T["cell_tone"][k] * (2 * fh - 1)
+        ct = (2 * fh - 1).astype(float)
+        if T["cell_soft"] > 0:  # (each facet's tone fading into its neighbours': hard polygon tones read as terrazzo)
+            ct = ndimage.gaussian_filter(ct, T["cell_soft"] * T["cells"][k]["size"] / texel, mode="wrap")
+            ct = ct / max(ct.std(), 1e-9) * 0.577  # (the std a hard +-1 uniform tone has)
+        tone = tone + T["cell_tone"][k] * ct
     hp = h - ndimage.gaussian_filter(h, 0.05 / texel, mode="wrap")
     tone = tone + T["proud"] * hp / max(hp.std(), 1e-9)
+    # weathering: patches of rind darker or paler (0.2-1 m, irregular, soft-edged), grime soaked into the rock round
+    # each fracture and washed down from it (the scans' darkest tones sit in and under their cracks, not on concave
+    # facets)
+    wz = spectral(n, 1.7, seed + 60, lo=6)
+    tone = tone + T["patch"] * (smoothstep(-0.25, 0.35, wz) - 0.5) * 2
+    halo = ndimage.gaussian_filter(frac, T["halo_m"] / texel, mode="wrap")
+    halo = halo / max(halo.max(), 1e-9)
+    kz = max(1, int(round(T["streak_m"] / texel)))
+    ker = np.exp(-np.arange(4 * kz) / kz)
+    # (rows = t up: grime runs down, so a row takes what the rows above it hold)
+    streak = sum(ker[i] * np.roll(halo, -i, 0) for i in range(0, len(ker), max(1, kz // 8))) * max(1, kz // 8) / ker.sum()
+    streak = streak / max(streak.max(), 1e-9)
+    tone = tone * (1 - T["grime"] * np.clip(0.6 * halo + 0.7 * streak, 0, 1))
+    # (skewed like the scans': a long pale tail, a short dark one (their 1st percentile 0.3-0.5 x the median, ours was
+    # 0.3 with a symmetric spread: dark mottle on dark rock read as dirty granite)
+    tone = np.exp(T["skew"] * (tone - 1.0))
     tone = (tone + 0.05 * scar) * (1 - 0.55 * frac) * (1 - 0.15 * pit)
     lic = smoothstep(0.66, 0.74, 0.5 + 0.5 * spectral(n, 1.8, seed + 11, lo=24)) * \
         smoothstep(0.0, 0.4, spectral(n, 1.6, seed + 12, lo=8)) * (1 - scar)
@@ -578,7 +604,6 @@ RECIPE = (
 # ---------------------------------------------------------------- the structure's lines (a macro map)
 
 LINE_D = 0.5  # m: the lines map's signed distances run -LINE_D..LINE_D (8 bits: 4 mm a step)
-LINE_GATE = (0.15, 0.3)  # m at 4 texels/m (scaled with the texel): a line's strength fades out between these
 
 
 JOINT_OPEN = {"across": 2.2, "along": 7.0, "up": 6.0, "lo": 0.72, "hi": 0.88, "thick": (1.4, 2.4)}
@@ -598,15 +623,105 @@ def joint_openness(X, m, B):
     return smoothstep(J["lo"], J["hi"], v)
 
 
-def structure_lines(field, X, texel=0.25, eps=0.02, N=None):
-    """The rock structure's drawn lines at surface points X: the open bedding planes and the open joints
-    (terrain_blocks.ids), as SIGNED distances (m) and strengths, for the lines map: (s_bed, a_bed, s_joint, a_joint).
-    At a few texels per metre a crack 3-5 cm wide can't be baked into colour (it blurs into a 0.5 m smudge), but a
-    signed distance interpolates linearly across the line, so the shader cuts it crisp at any width (as a font's
-    distance field does). Unsigned, the bilinear minimum sat up to half a texel off zero (the line beaded); the sign
-    comes from a probe eps along the line's normal (up for beds, along the strike for joints). The strength is that of
-    the NEAREST line and fades out between LINE_GATE: half-way between two lines the distance flips sign, and the faded
-    strength is what keeps the interpolated zero there from drawing a false line."""
+LINE_GATE_TX = (1.5, 2.5)  # texels: a line's strength fades out between these distances from it
+
+
+def _drawn_beds(p, Phi, dPhi, B, texel):
+    """The nearest DRAWN bed plane at points: (signed distance m, + above it; its crack strength; the distance to the
+    next drawn plane). Drawn planes are the open ones (terrain_blocks.ids' bed_crack: the same hash and stretches)
+    beside a bed thicker than ~3 texels. Measured to the nearest plane of the point's own bed, the distance was noise
+    inside a thin package (a plane every few cm), and the line's strength, gated to a texel round it so that noise
+    stayed dark, stepped from texel row to texel row along it: the sawteeth."""
+    from .terrain_blocks import _cuts, _h, NCUT
+    n = len(Phi)
+    S = B["super"]
+    K0 = np.floor(Phi).astype(np.int64)
+    Cs = {dk: _cuts(K0 + dk, B) for dk in (-2, -1, 0, 1)}
+    best = np.full(n, np.inf)
+    s_best = np.full(n, LINE_D)
+    a_best = np.zeros(n)
+    second = np.full(n, np.inf)
+    for dk in (-1, 0, 1):
+        K = K0 + dk
+        C, Cb = Cs[dk], Cs[dk - 1]
+        last_lo = np.max(np.where(Cb[:, :NCUT] < 1.0, Cb[:, :NCUT], 0.0), 1)  # (the top bed of the super-bed below)
+        for i in range(NCUT):
+            lo = K + C[:, i]
+            valid = (C[:, i + 1] > C[:, i]) & ((i == 0) | (C[:, i] < 1.0))
+            above = (C[:, i + 1] - C[:, i]) * S
+            below = ((C[:, i] - C[:, i - 1]) if i else (1.0 - last_lo)) * S
+            d = (Phi - lo) / dPhi
+            pc = _h(K, np.full(n, i, np.int64), B["seed"] + 90)
+            cand = valid & (pc > 0.75) & (np.abs(d) < LINE_D) & (np.maximum(above, below) > 2.8 * texel)
+            if not cand.any():
+                continue
+            k = np.flatnonzero(cand)
+            vn = noise._value_noise(np.c_[p[k, :2] / 8.0, (i + 16 * K[k]).astype(float)], B["seed"] + 92)
+            cr = np.clip((pc[k] - 0.75) / 0.25, 0, 1) * np.clip((vn - 0.52) / 0.18, 0, 1)
+            k, cr = k[cr > 0], cr[cr > 0]
+            # (how open the crack is wanders along it over a metre or two, now and then closing: one strength over a
+            # whole 8 m stretch drew a ruled ink line across the 10 m view once the line was clean)
+            key = (i + 16 * K[k]).astype(float) + 0.5
+            ow = noise._value_noise(np.c_[p[k, :2] / 1.7, key], B["seed"] + 93)
+            gap = noise._value_noise(np.c_[p[k, :2] / 4.5, key], B["seed"] + 94)
+            cr = cr * (0.3 + 0.7 * smoothstep(0.2, 0.7, ow)) * smoothstep(0.25, 0.4, gap)
+            ad = np.abs(d[k])
+            nearer = ad < best[k]
+            second[k] = np.where(nearer, best[k], np.minimum(second[k], ad))
+            kk = k[nearer]
+            best[kk], s_best[kk], a_best[kk] = ad[nearer], d[kk], cr[nearer]
+    return s_best, a_best, second
+
+
+def _drawn_joints(p, I, B, fd, texel, n):
+    """Per joint family the nearest present boundary of the point's own bed's set (terrain_blocks: absent boundaries
+    merge blocks): (signed distance m along the joint's normal, the family's weight x joint_openness there, the
+    distance to the next boundary, the joint's 3D normal)."""
+    from .terrain_blocks import _joint_coord, _joint_frame, _absent, face_weight
+    K, j, th = I["K"][:n], I["j"][:n], I["thick"][:n]
+    out = []
+    for m in range(len(I["edges"])):
+        phi, dphi, n2 = _joint_coord(p, K, j, m, th, B)
+        nrm, _ = _joint_frame(K, j, m, B)
+        jj = (K * 16 + j) * 5 + m
+        i0 = np.floor(phi).astype(np.int64)
+        best = np.full(n, np.inf)
+        sd = np.full(n, LINE_D)
+        second = np.full(n, np.inf)
+        for db in (-1, 0, 1, 2):
+            b = i0 + db
+            ok = ~_absent(b, jj, B["seed"] + 80 + 9)  # (every present boundary: which are drawn is joint_openness's)
+            d = (phi - b) / dphi
+            ad = np.where(ok, np.abs(d), np.inf)
+            nearer = ad < best
+            second = np.where(nearer, best, np.minimum(second, ad))
+            sd = np.where(nearer, d, sd)
+            best = np.where(nearer, ad, best)
+        w = B["family"][m] * face_weight(n2, fd) * (th >= B["thin"])
+        out.append((np.where(np.isfinite(best), sd, LINE_D), w * joint_openness(p, m, B), second, nrm))
+    return out
+
+
+def structure_lines(field, X, texel=0.25, N=None):
+    """The rock structure's drawn lines at texels, as SIGNED distances (m, across the surface) and strengths, for the
+    lines map: (s_bed, a_bed, s_joint, a_joint). At a few texels per metre a crack 3-5 cm wide can't be baked into
+    colour (it blurs into a 0.5 m smudge), but a signed distance interpolates linearly across the line, so the shader
+    cuts it crisp at any width (as a font's distance field does).
+    X: the texels' points on the low poly (measured at the point projected onto the exact rock, every texel of a
+    triangle bridging a ledge landed on its crease, on the bed plane: filled triangles); N: the low poly's smooth
+    (interpolated) normal there. Every value is a smooth function of position within a line's reach (2026-10-01: the
+    lines followed the 0.5 m mesh's zigzag as thorns at 40 m and sawteeth on bed lines at 10 m; the cause was the
+    distance and the gating, not where it was measured: moving the points level onto the exact rock first changed
+    nothing measurable):
+    - the distance is to the nearest DRAWN plane (`_drawn_beds`) or joint (`_drawn_joints`), so it is a clean
+      ramp across the line, and the strength is wide (LINE_GATE_TX texels) and constant across it: the shader's crisp
+      cut follows the distance's zero, not the texel grid. Half-way to the next drawn line the distance flips sign (a
+      false zero after interpolation): the strength is 0 there (it fades within 2 texels of that point);
+    - distances are taken across the surface, not through space (/ the sine between the surface and the plane, from
+      the low poly's smooth normal): on a tread lying near a bed plane the vertical distance stayed under the line's
+      width over whole triangles. Where the surface runs within ~20 deg of a plane (a tread, a block's side) the line
+      fades out on the same smooth normal (the old gate on the triangle's own normal switched it triangle by triangle:
+      thorns; ungated, the mesh's wobble about the plane drew wavy false lines beside a crack)."""
     from . import terrain_blocks
     r = field.rock
     n = len(X)
@@ -615,54 +730,47 @@ def structure_lines(field, X, texel=0.25, eps=0.02, N=None):
         return z, z, z, z
     B = r["blocks"]
     fd = field.face_dir(X[:, 0], X[:, 1])
-    fl = np.maximum(np.linalg.norm(fd, axis=1, keepdims=True), 1e-9)
-    along = np.c_[-fd[:, 1:2] / fl, fd[:, 0:1] / fl, np.zeros((n, 1))]
-    Q = np.concatenate([X, X + [0.0, 0.0, eps], X + eps * along])
-    zoff = r["bed_offset"](Q[:, :2]) if r.get("bed_offset") else 0.0
-    I = terrain_blocks.ids(Q, B, np.concatenate([fd, fd, fd]), zoff)
-    # (the gate scales with the texel: what has to be told apart is planes a few texels apart)
-    g0, g1 = LINE_GATE[0] * texel / 0.25, LINE_GATE[1] * texel / 0.25
+    zoff = r["bed_offset"](X[:, :2]) if r.get("bed_offset") else 0.0
+    pre = terrain_blocks._pre(X, B, fd, zoff)
+    I = terrain_blocks.ids(X, B, fd, zoff, pre=pre)
+    Phi, dPhi = pre[0], pre[1]
+    g0, g1 = LINE_GATE_TX[0] * texel, LINE_GATE_TX[1] * texel
     gate = lambda s: 1.0 - smoothstep(g0, g1, np.abs(s))
-    d0, du = I["bed_edge"][:n], I["bed_edge"][n:2 * n]
-    s_b = np.where(du >= d0, 1.0, -1.0) * d0
-    be = I["bed_edge"][:n]
-    # (not inside thin beds: planes closer than ~2.5 texels can't be told apart, and the sign flipping half-way between
-    # them drew zigzags; a thin package's planes are the swatch's laminae)
-    # (the point's own bed only: drawing a plane from its thin side too (the thicker of the two beds) put a second plane
-    # within a texel or two, the sign flipped between them and the interpolated zero scalloped along the line)
-    a_b = I["bed_crack"][:n] * (I["thick"][:n] > 2.8 * texel) * gate(s_b)
-    # joints: drawn by `joint_openness`, a smooth field that opens fracture corridors (several neighbouring joints,
-    # through several beds, each crack's strength wandering along it), not single boundaries by chance: one open
-    # boundary in twelve, alone in its bed, drew a short dash of one width per bed ("pen ticks" at 40 m, m02)
-    op = [joint_openness(X, m, B) for m in range(len(I["edges"]))]
-    # (the family drawn at a point is the one whose line there is strongest, strength x the gate on its distance: the
-    # family with the NEAREST boundary, however faint, took points off a strong crack wherever its own boundary came
-    # closer, and broke the crack into pieces)
-    E = np.stack([e[:n] for e in I["edges"]], 1)
-    Wo = np.stack([w[:n] * o for w, o in zip(I["weights"], op)], 1)
-    score = np.where(np.isfinite(E), np.clip(Wo, 0, 1) * gate(np.where(np.isfinite(E), E, 1e3)), 0.0)
-    m = np.argmax(score, 1)
-    rows = np.arange(n)
-    dj = np.where(score[rows, m] > 0, E[rows, m], np.inf)
-    ds = np.stack(I["edges"], 1)[2 * n:][rows, m]
-    wj = Wo[rows, m]
-    fin = np.isfinite(dj)
-    s_j = np.where(fin, np.where(~np.isfinite(ds) | (ds >= dj), 1.0, -1.0) * np.where(fin, dj, 0.0), LINE_D)
-    # (a joint stops at its bed's planes: faded out within ~1.5 texels of them. Cut off there, its distance jumped to
-    # the next bed's at the plane, and the interpolated zero drew a hook along the plane at every crack's end)
-    # (and only in beds thick enough for a crack with some length: a joint ends at its bed's planes, so in a 0.7-1.4 m
-    # bed every open joint was a short dash of one width, the "pen ticks" of m02. Thinner beds' joints stay closed:
-    # the geometry's change of face and the block tone show them)
+    guard = lambda s, d2: smoothstep(0.0, 2.0 * texel, d2 - np.abs(s))
+    s_b, a_b, d2b = _drawn_beds(X, Phi, dPhi, B, texel)
+    if N is not None:
+        sin_b = np.sqrt(np.maximum(1.0 - N[:, 2] ** 2, 0.02))
+        s_b, d2b = s_b / sin_b, d2b / sin_b
+        a_b = a_b * smoothstep(0.2, 0.4, sin_b)
+    a_b = a_b * gate(s_b) * guard(s_b, d2b)
+    fam = _drawn_joints(X, I, B, fd, texel, n)
+    # (a bed crack breaks where a joint crosses it: the joint's block corners are knocked off there, not cut through)
+    cross = np.zeros(n)
+    for sd, w, d2, nrm in fam:
+        cross = np.maximum(cross, np.clip(w, 0, 1) * (1 - smoothstep(0.08, 0.3, np.abs(sd))))
+    a_b = a_b * (1 - 0.85 * cross)
+    best = np.full(n, -1.0)
+    runner = np.zeros(n)
+    s_j, a_j = np.full(n, LINE_D), np.zeros(n)
+    for sd, w, d2, nrm in fam:
+        if N is not None:
+            sn = np.sqrt(np.maximum(1.0 - ((N * nrm).sum(1)) ** 2, 0.02))
+            sd, d2 = sd / sn, d2 / sn
+            w = w * smoothstep(0.2, 0.4, sn)
+        a = np.clip(w, 0, 1) * gate(sd) * guard(sd, d2)
+        # (the family drawn at a point is the one whose line there is strongest: the family with the NEAREST boundary,
+        # however faint, broke a strong crack into pieces wherever its own boundary came closer)
+        take = a > best
+        runner = np.where(take, np.maximum(best, 0.0), np.maximum(runner, a))
+        best = np.where(take, a, best)
+        s_j, a_j = np.where(take, sd, s_j), np.where(take, a, a_j)
+    # (a joint stops at its bed's planes: faded out within ~1.5 texels of them; and only in beds thick enough for a
+    # crack with some length (in a 0.7-1.4 m bed every open joint was a short dash of one width, the "pen ticks" of m02)
+    # (where two families are nearly as strong, the drawn one can switch between neighbouring texels, and two distances
+    # of either sign interpolate to a false zero: faded where the runner-up is close)
+    a_j = a_j * smoothstep(0.0, 0.35, (best - runner) / np.maximum(best, 1e-9))
     th = JOINT_OPEN["thick"]
-    a_j = np.where(fin, np.clip(wj, 0, 1) * gate(s_j) * smoothstep(0.6 * texel, 1.6 * texel, be)
-                   * smoothstep(th[0], th[1], I["thick"][:n]), 0.0)
-    if N is not None:  # (a line is drawn only where the surface crosses its plane: on a ledge's tread lying in a bed
-        # plane, or on a block's side lying in its joint, the plane's zero set on the mesh is an area the mesh's own
-        # wobble cuts into sawteeth and thorns)
-        a_b = a_b * smoothstep(0.6, 0.4, np.abs(N[:, 2]))
-        from .terrain_blocks import AZ
-        dm = np.array([[math.cos(math.radians(a)), math.sin(math.radians(a))] for a in AZ])[m]
-        a_j = a_j * smoothstep(0.75, 0.5, np.abs((N[:, :2] * dm).sum(1)))
+    a_j = a_j * smoothstep(0.6 * texel, 1.6 * texel, I["bed_edge"]) * smoothstep(th[0], th[1], I["thick"])
     return np.clip(s_b, -LINE_D, LINE_D), a_b, np.clip(s_j, -LINE_D, LINE_D), a_j
 
 

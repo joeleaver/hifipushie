@@ -68,8 +68,35 @@ def test_scan_swatch():
     assert S["height_scale_m"] > 0
 
 
+def test_structure_lines_follow_the_rock():
+    """The lines map's signed distances are clean ramps across each drawn line and its strength is continuous (the
+    distance to the nearest plane of the point's own bed was noise inside thin packages, and a strength gated to a texel
+    round it stepped row by row: sawteeth and thorns along the 0.5 m mesh). Columns of points up a face on pebble."""
+    from pathlib import Path
+    from hifipushie import terrain, terrain_mesh as tm
+    spec = Path(__file__).resolve().parents[1] / "examples" / "pebble_disc.json"
+    T = terrain.load(spec)
+    field = tm.build_field(T)[0]
+    texel = 1 / 8.0
+    z = np.arange(-2.0, 40.0, 0.01)
+    drawn = 0
+    for x, y in ((176.0, 224.0), (150.0, 210.0), (205.0, 238.0)):
+        X = np.c_[np.full(len(z), x), np.full(len(z), y), z]
+        fd = field.face_dir(X[:, 0], X[:, 1])
+        n = np.c_[fd[:, :2], np.zeros(len(z))]
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+        sb, ab, sj, aj = ts.structure_lines(field, X, texel, N=n)
+        assert np.abs(np.diff(ab)).max() < 0.05 and np.abs(np.diff(aj)).max() < 0.05
+        on = (ab[1:] > 0.2) & (ab[:-1] > 0.2)
+        drawn += on.sum()
+        if on.any():  # (up a vertical face the distance to a level plane grows at ~1 m per m)
+            slope = np.diff(sb)[on] / 0.01
+            assert np.percentile(np.abs(slope - np.median(slope)), 95) < 0.15, slope
+    assert drawn > 0
+
+
 if __name__ == "__main__":
     for f in (test_periodic_facets, test_swatch_tiles, test_projection, test_cells_and_pits_tile,
-              test_stats_and_repetition, test_scan_swatch):
+              test_stats_and_repetition, test_scan_swatch, test_structure_lines_follow_the_rock):
         f()
         print("ok", f.__name__)

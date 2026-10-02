@@ -5,12 +5,13 @@ gets a separate 3D mesh cut from the same rock field (terrain_mesh.Field: facets
 How the two fit without cutting holes except where a void must show through:
 - The region: S(x, y) in 0..1, 1 on ground steeper than `cliff_slope` (and the rock character's own mask) and round
   every opening, easing to 0 over `cliff_margin` metres. Pointwise (a grid read bilinearly), so tiles agree.
-- The heightmap is pushed into the rock under the region: eroded in plan by a ball of radius push x S (every point
-  moves back along the face's normal), so it lies behind the cliff face, hidden, where S is near 1.
-- The cliff mesh is a closed shell of rock: the front is the full field with the ground part sunk by sink x (1 - S)
-  (so at the region's edge it is buried `sink` under the heightmap), the back `thick` metres behind the smooth ground
-  (and `cave_wall` metres round every void, so caves stay closed). Where sink x (1 - S) > thick the shell has no
-  thickness: it pinches out under the heightmap on its own, no open edges to hide.
+- The heightmap is pushed into the rock under the region: eroded in plan by a ball of radius push x S^PUSH_POW (every
+  point moves back along the face's normal), so it lies behind the cliff face, hidden, where S is near 1.
+- The cliff mesh is a closed shell of rock: the front is the full field with the ground part sunk by sink x
+  sink_share(S) (all of it at the region's edge, none from S = SINK_EDGE: the front is the true ground over most of the
+  margin and crosses the heightmap ~0.2 m down), the back `thick` metres behind the smooth ground (and `cave_wall`
+  metres round every void, so caves stay closed). Where the sink > thick the shell has no thickness: it pinches out
+  under the heightmap on its own, no open edges to hide.
 - Holes: heightmap cells whose surface would stand in a void (a cave mouth, an arch's side, a doline's shaft) are cut
   (a hole mask per tile) and the region grows round them, so the cliff mesh carries the ground there.
 The ground tiles are written as heightmaps (.npy float metres, 16-bit PNG), hole masks, splats, and as glTF grid
@@ -31,6 +32,18 @@ from . import terrain_mesh as tm
 def _smooth(e0, e1, x):
     u = np.clip((x - e0) / (e1 - e0), 0, 1)
     return u * u * (3 - 2 * u)
+
+
+SINK_EDGE = 0.2   # the cliff front sinks only where S < this (1 - smoothstep(0, SINK_EDGE, S)), all of `sink` at S = 0
+PUSH_POW = 3.0    # the heightmap is pushed back by push x S^PUSH_POW
+# (2026-10-01: sunk by sink x (1 - S) and pushed by push x S, the two crossed where both were metres down (pebble: S 0.73,
+# 2.5 m under the true ground) and the visible surface sagged into a trench along every overlay edge, a V crease the
+# arch view at 150 m measured as an overlay edge excess of 2.0. Now they cross near S 0.18, ~0.25 m down.)
+
+
+def sink_share(S):
+    """How much of `sink` the cliff front is sunk by at region weight S."""
+    return 1.0 - _smooth(0.0, SINK_EDGE, S)
 
 
 class Region:
@@ -68,7 +81,7 @@ class Region:
         # the tube's 4 m roof and every round of holes pushed it further)
         # (0.35 m let the rock's roughness round a lava pit's rim stand behind the heightmap: 3% showed through)
         self.push_open = float(cfg.get("push_open", 0.9))
-        self.Rg = self.push * self.steep
+        self.Rg = self.push * self.steep ** PUSH_POW
         self.holes = np.zeros((self.nx - 1, self.ny - 1), bool)  # per lattice cell
         # openings: where the heightmap (pushed) would stand in a void. Only near subtracted volumes.
         self.voids = [v for v in base.vols if v.op == "subtract"]
@@ -106,7 +119,7 @@ class Region:
             node[1:, 1:] = np.maximum(node[1:, 1:], self.holes)
             op = self._grow(node, m)
             self.S = np.maximum(self.steep, op)
-            self.Rg = np.maximum(self.push * self.steep, self.push_open * op)
+            self.Rg = np.maximum(self.push * self.steep ** PUSH_POW, self.push_open * op)
             if not new.any():
                 break
 
@@ -220,7 +233,7 @@ class CliffField:
         k = np.flatnonzero((S > 0) | near_void)
         if not len(k):
             return out
-        front = self.base.solid(p[k], Fg[k] + R.sink * (1 - S[k]), s[k])
+        front = self.base.solid(p[k], Fg[k] + R.sink * sink_share(S[k]), s[k])
         # (round a void the shell behind the face reaches 2 m past the cave wall, so it meets the rock round the
         # void: a gap between them left sealed air pockets inside the rock, meshed as floating bubbles)
         back = np.minimum(-(Fg[k] + R.thick), dv[k] - (R.wall + 2.0))
@@ -247,7 +260,7 @@ class CliffField:
         h, s = self.base.column(p[:, 0], p[:, 1])
         S = self.region.s(p[:, 0], p[:, 1])
         Fg = (p[:, 2] - h) * s
-        out = self.base.solid(p, Fg + self.region.sink * (1 - S), s)
+        out = self.base.solid(p, Fg + self.region.sink * sink_share(S), s)
         dv = self._void(p)
         kv = np.flatnonzero(np.isfinite(dv) & (dv < self.region.wall + 2.0))
         if len(kv):  # (the full rock there: its buried outer skin and cap read deep inside it, so they're "buried")

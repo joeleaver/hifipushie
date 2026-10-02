@@ -72,7 +72,13 @@ def micro_relief(r, amount=1.0, texel=0.1, fine=True):
                 zoff = r["bed_offset"](p[:, :2]) if r.get("bed_offset") else 0.0
                 I = terrain_blocks.ids(p, r["blocks"], fd, zoff)
             notch = lambda d, wd: np.clip(1 - d / wd, 0, 1) ** 2
-            cr = np.maximum(I["bed_crack"], 0.5 * I["thin"]) * notch(I["bed_edge"], 0.22)
+            # (a thin bed's planes notched only where its package sits back, as much as it does: notched all along,
+            # three notches in 0.6 m drew the pebble chasm's dark band in the normal map, the mesh smooth there)
+            thin = np.zeros(len(p))
+            k = np.flatnonzero(I["thin"])
+            if len(k):
+                thin[k] = terrain_blocks.package_recess(p[k, :2], I["K"][k], I["j"][k], r["blocks"])
+            cr = np.maximum(I["bed_crack"], 0.5 * thin) * notch(I["bed_edge"], 0.22)
             for m, w in enumerate(I["weights"]):
                 cr = np.maximum(cr, w * notch(I["open"][m], 0.22))
             out = out + 0.07 * max(ac, al) * cr
@@ -507,19 +513,8 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
            "rough": q8(np.clip(rgh, 0.02, 1)), "bad": bad,
            "weights": q8(np.c_[Wt, np.zeros((len(Wt), (-Wt.shape[1]) % 4))])}
     if lines is not None:  # the structure's lines as signed distances (terrain_swatch.structure_lines)
-        from .terrain_swatch import LINE_D
         with _span("bake/lines"):
-            # (at the texel's point on the low poly, where the line is drawn: measured at its point projected onto the
-            # exact rock, every texel of a triangle bridging a ledge landed on the ledge's crease, so on the bed plane,
-            # and the line map filled whole triangles: sawteeth along every bed line and thorns on the joints)
-            # (gated by the triangle's own normal: near a ledge's crease the low poly zigzags, and the triangles lying
-            # nearly in the bed plane took the line over their whole area, as teeth along it; the smooth vertex normal
-            # there is half riser, half tread)
-            Ft = F[t]
-            fn = _unit(np.cross(P[Ft[:, 1]] - P[Ft[:, 0]], P[Ft[:, 2]] - P[Ft[:, 0]]))
-            fn = np.where((fn * Nl).sum(1, keepdims=True) < 0, -fn, fn)
-            sb, ab, sj, aj = _chunked(lines, Pl, fn)
-        out["lines"] = q8(np.c_[0.5 + 0.5 * sb / LINE_D, 0.5 + 0.5 * sj / LINE_D, ab, aj])
+            out["lines"] = _lines_vals(lines, Pl, Nl)
     err = np.zeros(0)
     if field is not None:  # texel error: how far the baked points sit off the exact surface (every 7th atlas texel)
         k = np.flatnonzero(inside & ~bad & ((np.arange(len(X)) + first) % 7 == 0))
@@ -527,6 +522,23 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
             err = np.abs(field.value(X[k])) if len(k) else err
     out["err"] = err
     return out
+
+
+def _lines_vals(lines, Pl, Nl):
+    """The lines map's texels (RGBA uint8): `lines(Pl, Nl)` -> (s_bed, a_bed, s_joint, a_joint) at each texel's point
+    on the low poly, with the low poly's interpolated (smooth) normal there (terrain_swatch.structure_lines)."""
+    from .terrain_swatch import LINE_D
+    sb, ab, sj, aj = _chunked(lines, Pl, Nl)
+    q8 = lambda a: np.round(a * 255).clip(0, 255).astype(np.uint8)
+    return q8(np.c_[0.5 + 0.5 * sb / LINE_D, 0.5 + 0.5 * sj / LINE_D, ab, aj])
+
+
+def bake_lines(lines, P, N, uv, F, size, t, xs, ys):
+    """The lines map's texels alone (bake_texels' lines, for trying line variants on a kept bake: HIFIPUSHIE_KEEP_BAKE)."""
+    bary = _bary(uv, F, size, t, xs, ys)
+    Pl = np.einsum("nk,nkc->nc", bary, P[F[t]])
+    Nl = _unit(np.einsum("nk,nkc->nc", bary, N[F[t]]))
+    return _lines_vals(lines, Pl, Nl)
 
 
 def bake_ao(ao_field, P, N):
