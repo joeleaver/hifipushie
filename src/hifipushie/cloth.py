@@ -1316,6 +1316,23 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             import shutil
             shutil.rmtree(job_dir, ignore_errors=True)
     Bp["push"] = push
+    # A piece the fine settle tangled or crumpled that the coarse drape had clean keeps the coarse drape carried onto
+    # the fine mesh (the clean-up then welds its seams). Blender's self-collision at 1 cm let bunched cloth pass through
+    # itself where the 2 cm sim held (a hung coat's top: 2 -> 1600 crossings whatever the rest shape or ease; a heavy
+    # body's cuff)
+    if refine and res.get("V_coarse") is not None:
+        S = transfer(Ms, res["V_coarse"], M)
+        ig_f, ig_s = integrity(res["V_sim"], M, Bp, X0), integrity(S, M, Bp, X0)
+        back = [p for p in ig_f["corrupt_pieces"] if p not in ig_s["corrupt_pieces"]]
+        if back:
+            V = res["V_sim"].copy()
+            for p in back:
+                sel = M["piece"] == M["names"].index(p)
+                V[sel] = S[sel]
+            res["kept_coarse"] = back
+            if integrity(V, M, Bp, X0)["self_intersections"] > 3 * ig_s["self_intersections"] + 20:
+                V, res["kept_coarse"] = S, ["all pieces"]  # tangled across pieces (the hung coat): the whole drape
+            res["V_sim"] = V
     # the clean-up pass (what artists do in ZBrush/Blender after the sim): crinkle smoothed, big folds kept, seams
     # welded, the cloth kept off the body
     cu = g.get("cleanup", {})
@@ -2073,6 +2090,7 @@ def report(gname: str, res: dict) -> str:
              "(rms height of folds narrower than ~15 cm; a 20 mm-deep 10 cm fold reads ~9; 2-4 hangs close to the body)")
     cu = res.get("cleanup") or {}
     L.append(f"  clean-up: {cu.get('passes', 0)} smoothing passes, moved p95 {cu.get('moved_p95_mm')} mm"
+             + (f"; the fine settle tangled {res['kept_coarse']}: kept the coarse drape there" if res.get("kept_coarse") else "")
              + (f"; hand sculpt applied ({res['sculpted']} vertices moved)" if res.get("sculpted") else "")
              + ("; a hand sculpt from an earlier sim is NOT applied (the sim changed)" if res.get("sculpt_stale") else ""))
     M = res["mesh"]
@@ -2084,7 +2102,8 @@ def report(gname: str, res: dict) -> str:
                and res["pieces"]["pieces"][p]["wrap"].get("to") == "neck"]
         if bad:
             L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
-                     "allows and crumples; lower it (simon: pattern options collarStandWidth 0.045, default 0.08)")
+                     "allows and crumples; lower it (the design's stand/collar width option, e.g. simon \"options\": "
+                     "{\"collarStandWidth\": 0.045}, default 0.08)")
     return "\n".join(L)
 
 
