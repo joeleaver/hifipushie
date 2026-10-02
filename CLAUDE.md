@@ -215,6 +215,16 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   beside, steps under 0.2% of the map's range counted as noise; mug 1.64 -> 1.08, ball 1.0. What's left on the mug
   (~0.1 texel at 4x zoom) is bilinear reconstruction of a sub-texel edge at each chart's own phase: a texture made
   analytically from the low poly's own z shows the same. `asset.preview(denoise=False)` for texture close-ups.
+- `faceshapes.py` (2026-10-01, for oxidegen lipsync; design note `spikes/face_shapes/README.md`): export_asset(face_shapes=
+  True | [names]) gives the parts that move with the face ARKit-named morph targets (glTF targets, sparse POSITION +
+  NORMAL deltas, mesh.extras.targetNames; FBX shape keys). A shape is a displacement of space from the face kit's
+  anatomy (parting line, corners, jaw pivot, lid margins, brows, cheeks), applied to the same low-poly vertices: no
+  re-projection (projection slid a 4 cm jaw move along the surface and dropped lips onto teeth). Needs the kit's
+  `mouth.interior` (slit sweep subtract through the lips into a box bag; teeth/tongue parts); the export meshes the
+  slit's part at <= slit/2.2 and its NEUTRAL closes the slit (after bake + skin). Weights are measured at the meshed
+  (open) position, moves applied at the neutral. The nose and eyeballs never move. Rolls are moves (a turn tore);
+  blink skin follows the lid's outer sphere (turning far skin about the eye swung a lever). Sheet:
+  `examples/face_shapes_sheet.py` (`asset.preview(poses=)`); `tests/test_face_shapes.py`.
 - `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
   Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
   modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit
