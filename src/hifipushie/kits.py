@@ -45,7 +45,8 @@ face: {"head": joint (anchor); feature positions "at" are offsets from it in wor
            "depth": of the cavity behind an open mouth,
            "interior": true | {"slit": m (gap between the lips, 0.5 x the thinner lip radius), "lips": m (lip
              front to the bag), "bag": [half width, half depth, half height] of the mouth bag (rounded box),
-             "teeth": true | {"part" ("teeth"), "thickness", "width"/"back": arch share of the bag's},
+             "teeth": true | {"part" ("teeth"), "thickness", "width"/"back": arch share of the bag's,
+             "clearance": m behind the bag's front wall (0.25 x the lip radius)},
              "tongue": true | {"part" ("tongue"), "size"}, "end": where the slit stops (0.92 of the half
              width)}: a mouth that can open (export face shapes: faceshapes.py): a slit through the lips into a
              bag; teeth/tongue in parts of their own. A GNM base head takes the same under base.head.interior}
@@ -538,7 +539,10 @@ def _interior(f: dict, line, on_skin, us, F, width: float, ru: float, rl: float,
         half = float(t.get("thickness", 0.035 * width)) / 2
         hw, back = float(t.get("width", 0.8)) * bag[0], float(t.get("back", 0.9)) * bag[1]
         ks = np.linspace(0.0, 1.0, 7)
-        front = on_skin(0.0, 0.0, -(thick + 1.6 * half))  # the arch's front, just inside the bag's front wall
+        # the arch's front, inside the bag's front wall with room for the lips (A2F's rolled and pressed lower lip
+        # touched the goblin's teeth on 87% of frames)
+        clear = float(t.get("clearance", 0.25 * lip))
+        front = on_skin(0.0, 0.0, -(thick + 1.6 * half + clear))
         path = [front + side * k * hw - out * back * k ** 2 for k in ks]
         tang = [side * hw - out * 2 * back * k for k in ks]
         N = [_unit(np.cross(tg, up)) if np.cross(tg, up) @ out > 0 else -_unit(np.cross(tg, up)) for tg in tang]

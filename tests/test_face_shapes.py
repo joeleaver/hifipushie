@@ -95,9 +95,13 @@ def test_shapes_on_the_goblin():
     before = {pn: p["verts"].copy() for pn, p in parts.items()}
     log = []
     got = faceshapes.apply(_spec(), parts, True, log)
-    names = list(faceshapes.ALL)
-    assert set(got) == {"body", "teeth", "tongue"}, got  # the eyeballs don't move
+    names = faceshapes.names_of(True)
+    assert len(names) == 53 and names[-1] == "jawOpen_mouthClose"  # all 52 ARKit names + the corrective
+    assert set(got) == {"body", "teeth", "tongue", "eyes"}, got  # the eyeballs: only eyeLook*
     assert all(got[pn] == names for pn in got)
+    E = parts["eyes"]["shapes"]
+    assert all(np.abs(E[nm][0]).max() == 0 for nm in names if not nm.startswith("eyeLook"))
+    assert all(np.abs(E[nm][0]).max() > 1e-3 for nm in names if nm.startswith("eyeLook"))
     face = faceshapes.Face(_spec())
     body = parts["body"]
     S = body["shapes"]
@@ -107,7 +111,10 @@ def test_shapes_on_the_goblin():
     for nm, (d, n0, n1) in S.items():
         assert d.shape == before["body"].shape and n0.shape == n1.shape == d.shape
         assert np.abs(d[far]).max() == 0.0, nm
-        assert np.abs(d).max() > 1e-4, f"{nm} moves nothing"
+        assert nm.startswith("eyeLook") or np.abs(d).max() > 1e-4, f"{nm} moves nothing"
+    _no_shared_offset(S)
+    # mouthClose alone barely moves (A2F drives it with the jaw shut); the corrective does the closing
+    assert np.linalg.norm(S["mouthClose"][0], axis=1).max() < 0.2 * np.linalg.norm(S["jawOpen_mouthClose"][0], axis=1).max()
     # the neutral closed the slit: lip vertices moved toward the parting line, nothing else
     moved = np.linalg.norm(body["verts"] - before["body"], axis=1)
     assert 0.3 * face.slit < moved.max() <= 0.51 * face.slit + 1e-6, moved.max()
@@ -173,6 +180,17 @@ def test_glb_round_trip():
     assert np.abs(got["teeth"]["targets"][1]["POSITION"]).max() == 0.0  # mouthSmileLeft: teeth stay
 
 
+def _no_shared_offset(S: dict):
+    """No vertex moves by one identical offset in every mouth shape (a baked-in neutral mismatch: round 2's GNM
+    lower lids took the eyeball push in all 23)."""
+    mouth = [k for k in S if k.startswith("mouth")]
+    stack = np.stack([S[k][0] for k in mouth])
+    spread = np.linalg.norm(stack - stack[0], axis=2).max(0)
+    mag = np.linalg.norm(stack[0], axis=1)
+    shared = (mag > 1e-3) & (spread < 1e-4)
+    assert shared.sum() == 0, f"{shared.sum()} vertices move identically in all {len(mouth)} mouth shapes"
+
+
 def test_focus_warp():
     """The decimation's focus warp (focuswarp.py) is undone exactly, magnifies near a sphere and leaves far points."""
     from hifipushie import focuswarp
@@ -221,8 +239,33 @@ def test_gnm_head_shapes():
     gap1 = np.linalg.norm(lm[62] + close[62] - lm[66] - close[66])
     assert gap0 > 0.002 and gap1 < 0.35 * gap0, (gap0, gap1)
     n0 = faceshapes.vertex_normals(V, T)
-    D = face.displacements(V, V, n0, "skin", list(faceshapes.ALL))
-    assert list(D) == list(faceshapes.ALL)
+    names = faceshapes.names_of(True)
+    D = face.displacements(V, V, n0, "skin", names)
+    assert list(D) == names
+    _no_shared_offset({k: (d,) for k, d in D.items()})
+    # mouth shapes stay below the lower lids, lid/brow shapes above the nose's base (the basis's regions reach
+    # further: jawOpen moved the forehead, mouth shapes the under-eye skin)
+    h = (V - face.M) @ face.up
+    hl = np.mean([(lm[i] - face.M) @ face.up for i in (40, 41, 46, 47)])
+    hn = (lm[33] - face.M) @ face.up
+    for nm, d in D.items():
+        m = np.linalg.norm(d, axis=1)
+        if faceshapes.family(nm) == "mouth":
+            assert m[h > hl].max() < 1e-4, (nm, m[h > hl].max())
+        elif faceshapes.family(nm) == "eye":
+            assert m[h < hn].max() < 1e-4, (nm, m[h < hn].max())
+    # A2F's stress combos keep the lips apart and the chin in (rig report 2026-10-02: 29 mm crossing, 17 mm bulge)
+    lips_up = [51, 61, 62, 63]
+    lips_lo = [57, 65, 66, 67]
+    chin = [7, 8, 9]
+    for combo in ("CL alone", "warm f31", "PK+CL+JO", "RL+SL", "PK+RL", "JO+RL"):
+        w = faceshapes.playback(faceshapes.COMBOS[combo])
+        dl = sum(v * face._onto(lm, face._gnm["dW"][k])[0] for k, v in w.items() if k in face._gnm["dW"])
+        P = lm + dl
+        cross = max(float((P[lo] - P[u]) @ face.up) for u, lo in zip(lips_up, lips_lo))
+        assert cross < 0.0015, (combo, cross)
+        no_jaw = dl - w.get("jawOpen", 0) * face._onto(lm, face._gnm["dW"]["jawOpen"])[0]
+        assert max(float(no_jaw[i] @ face.out) for i in chin) < 0.004, (combo, no_jaw[chin])
     on, _ = face._onto(lm, face._gnm["dW"]["jawOpen"])
     assert on[8] @ face.up < -0.02 and abs(on[27] @ face.up) < 0.002  # the chin drops, the nose bridge stays
     # left is the head's own left (+X), and the right shape mirrors it
@@ -230,12 +273,15 @@ def test_gnm_head_shapes():
     sr, _ = face._onto(lm, face._gnm["dW"]["mouthSmileRight"])
     assert sl[54] @ face.up > 0.003 and sl[54] @ face.up > 2 * (sl[48] @ face.up)
     assert np.allclose(sl[54] * [-1, 1, 1], sr[48], atol=5e-4), (sl[54], sr[48])
-    # a blink never sinks the skin into the eyeball
+    # a blink never sinks the skin into the eyeball: no deeper than its clearance, or than the neutral already sits
+    # (the neutral lower lids are a hair inside it; pushing them out to the clearance was round 2's under-eye leak)
     for s in ("Left", "Right"):
         ev = face.eyes[s]
         X = V + D[f"eyeBlink{s}"]
-        near = np.linalg.norm(V - ev["c"], axis=1) < 1.6 * ev["r"]
-        assert (np.linalg.norm(X[near] - ev["c"], axis=1) >= ev["r"] + 0.0005).all()
+        r0 = np.linalg.norm(V - ev["c"], axis=1)
+        near = r0 < 1.6 * ev["r"]
+        floor = np.minimum(ev["r"] + 0.0005, r0[near]) - 1e-6
+        assert (np.linalg.norm(X[near] - ev["c"], axis=1) >= floor).all()
     # far from the face (the back of the head, the neck) nothing moves (brows do pull the forehead a little)
     eyes = 0.5 * (face.eyes["Left"]["c"] + face.eyes["Right"]["c"])
     far = (np.linalg.norm(V - face.M, axis=1) > 0.16) & (np.linalg.norm(V - eyes, axis=1) > 0.12)

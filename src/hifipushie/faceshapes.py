@@ -45,8 +45,29 @@ REQUIRED = ("jawOpen", "jawForward", "jawLeft", "jawRight", "mouthClose", "mouth
             "mouthLowerDownRight", "mouthUpperUpLeft", "mouthUpperUpRight")
 RECOMMENDED = ("eyeBlinkLeft", "eyeBlinkRight", "browInnerUp", "browDownLeft", "browDownRight", "browOuterUpLeft",
                "browOuterUpRight", "cheekPuff", "tongueOut")
-ALL = REQUIRED + RECOMMENDED
-CLOSE_LOWER = 0.8  # mouthClose: the lower lip's share of closing the gap jawOpen makes
+# the rest of ARKit's 52 (Audio2Face drives eyeWide/eyeSquint/cheekSquint/noseSneer a little; eyeLook* turn the
+# eyeballs, which only the eyes' own part carries)
+EXTRA = ("eyeWideLeft", "eyeWideRight", "eyeSquintLeft", "eyeSquintRight", "cheekSquintLeft", "cheekSquintRight",
+         "noseSneerLeft", "noseSneerRight", "eyeLookUpLeft", "eyeLookUpRight", "eyeLookDownLeft", "eyeLookDownRight",
+         "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight")
+ALL = REQUIRED + RECOMMENDED + EXTRA
+# Correctives (not ARKit names): their weight is a function of other weights, set by the player, never authored.
+# ARKit's mouthClose means "lips closed against an OPEN jaw"; Audio2Face drives it to 1.0 with the jaw shut, so a
+# mouthClose that closed a full jawOpen's gap on its own pushed the lower lip 29 mm up through the upper lip. Now
+# mouthClose alone only seals the lips (a light press), and the closing lives in jawOpen_mouthClose, weighted
+# min(jawOpen, mouthClose): the lips meet whatever the jaw does, and an engine that ignores it just shows parted lips.
+CORRECTIVES = {"jawOpen_mouthClose": ("min", "jawOpen", "mouthClose")}
+CLOSE_LOWER = 0.8  # jawOpen_mouthClose: the lower lip's share of closing the gap jawOpen makes
+CLOSE_SEAL = 0.3  # mouthClose alone: this much of mouthPressLeft + mouthPressRight
+
+
+def playback(weights: dict) -> dict:
+    """ARKit weights -> the weights to set on the export's morph targets (the correctives filled in)."""
+    out = dict(weights)
+    for name, (op, a, b) in CORRECTIVES.items():
+        if op == "min":
+            out[name] = min(float(weights.get(a, 0.0)), float(weights.get(b, 0.0)))
+    return out
 # viseme-like combinations for review sheets (oxidegen's presets are its own)
 COMBOS = {"AA": {"jawOpen": 0.6, "mouthFunnel": 0.2}, "OO": {"mouthPucker": 0.8, "jawOpen": 0.2},
           "MBP": {"mouthPressLeft": 0.7, "mouthPressRight": 0.7, "mouthRollLower": 0.2, "mouthRollUpper": 0.2},
@@ -54,7 +75,21 @@ COMBOS = {"AA": {"jawOpen": 0.6, "mouthFunnel": 0.2}, "OO": {"mouthPucker": 0.8,
           "EE": {"mouthStretchLeft": 0.5, "mouthStretchRight": 0.5, "jawOpen": 0.25, "mouthSmileLeft": 0.3,
                  "mouthSmileRight": 0.3},
           "FV": {"mouthRollLower": 0.6, "mouthUpperUpLeft": 0.3, "mouthUpperUpRight": 0.3, "jawOpen": 0.1},
-          "smile": {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0, "cheekPuff": 0.2, "browInnerUp": 0.2}}
+          "smile": {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0, "cheekPuff": 0.2, "browInnerUp": 0.2},
+          # Audio2Face's co-activations (oxidegen rig report 2026-10-02: mean weights when both > 0.3), its worst
+          # frame on the GNM human, and the full-face channels added for it
+          "RL+SL": {"mouthRollLower": 0.64, "mouthShrugLower": 0.48},
+          "PK+RL": {"mouthPucker": 0.61, "mouthRollLower": 0.55},
+          "PK+CL+JO": {"mouthPucker": 0.6, "mouthClose": 0.56, "jawOpen": 0.46},
+          "JO+RL": {"jawOpen": 0.46, "mouthRollLower": 0.49},
+          "CL alone": {"mouthClose": 1.0, "jawOpen": 0.04},
+          "warm f31": {"mouthClose": 1.0, "mouthPucker": 1.0, "mouthRollLower": 1.0, "jawOpen": 0.58,
+                       "mouthShrugLower": 0.55, "mouthFrownLeft": 0.25, "mouthFrownRight": 0.25, "cheekPuff": 0.2,
+                       "browInnerUp": 0.15},
+          "wide+sneer": {"eyeWideLeft": 0.5, "eyeWideRight": 0.5, "noseSneerLeft": 0.3, "noseSneerRight": 0.3,
+                         "browInnerUp": 0.3},
+          "squint+look": {"eyeSquintLeft": 0.6, "eyeSquintRight": 0.6, "cheekSquintLeft": 0.6, "cheekSquintRight": 0.6,
+                          "eyeLookOutLeft": 0.8, "eyeLookInRight": 0.8, "eyeLookUpLeft": 0.3, "eyeLookUpRight": 0.3}}
 
 
 def _ss(t):
@@ -124,6 +159,9 @@ class Face:
         self._mouth_parts(prims, fb)
         # the nose is bone: mouth shapes leave it where it is (a goblin's nose hangs over its upper lip)
         self.nose = [p for n, p in prims.items() if n.startswith(f"{fb}_nose") and p.op == "add"]
+        # noseSneer lifts the wings (levator labii superioris alaeque nasi): it holds only the bridge and ball
+        self.nose_bone = [p for n, p in prims.items() if n.startswith(f"{fb}_nose") and p.op == "add"
+                          and "_wing" not in n and "nostril" not in n]
         jaw = opts.get("jaw") or {}
         self.eyes = {}
         for s, sfx in (("Left", ".L"), ("Right", ".R")):
@@ -167,6 +205,16 @@ class Face:
             else:
                 c = self.corners[s] + self.side * sg * 0.25 * self.width + self.up * 0.1 * self.width
                 self.cheeks[s] = (c - self.out * 0.15 * self.width, 0.3 * self.width)
+        self.sneer = {}
+        for s, sfx in (("Left", ".L"), ("Right", ".R")):
+            wp = prims.get(f"{fb}_nose_wing{sfx}")
+            ball = prims.get(f"{fb}_nose_ball")
+            if wp is not None or ball is not None:
+                p0 = wp if wp is not None else ball
+                c, r = np.asarray(p0.params["c"], float), float(np.max(p0.params["size"]))
+                if wp is None:
+                    c = c + self.side * (1 if s == "Left" else -1) * r
+                self.sneer[s] = (c + self.side * (1 if s == "Left" else -1) * r, 1.5 * r)
 
     def _mouth_parts(self, prims: dict, fb: str):
         """The interior the kit made (kits._interior): slit, bag, teeth and tongue parts."""
@@ -187,6 +235,35 @@ class Face:
     def neutral(self, Xm: np.ndarray, kind: str) -> np.ndarray:
         """The neutral's move for a part's meshed vertices: the slit closed (the lips only)."""
         return self.close(self.local(Xm)) if kind == "skin" else np.zeros_like(Xm)
+
+    LOOK = {"Up": 20.0, "Down": 20.0, "In": 25.0, "Out": 25.0}  # deg at 1.0
+
+    def eye_part(self, Xm: np.ndarray, names) -> dict:
+        """The eyeballs' own part: eyeLook<Dir><Side> turns that side's eyeball about its centre (Up/Down about the
+        left-right axis, In = toward the nose); every other shape leaves them still."""
+        res = {}
+        side_of = None
+        if self.eyes:
+            cs = {s: ev["c"] for s, ev in self.eyes.items()}
+            ks = list(cs)
+            dist = np.stack([np.linalg.norm(Xm - cs[k], axis=1) for k in ks])
+            side_of = np.array(ks)[np.argmin(dist, 0)]
+        for name in names:
+            d = np.zeros_like(Xm)
+            if name.startswith("eyeLook") and side_of is not None:
+                s = "Left" if name.endswith("Left") else "Right"
+                dr = name[len("eyeLook"):-len(s)]
+                if s in self.eyes:
+                    c = self.eyes[s]["c"]
+                    sg = 1.0 if s == "Left" else -1.0
+                    t = {"Up": self.up, "Down": -self.up, "In": -sg * self.side, "Out": sg * self.side}[dr]
+                    axis = _unit(np.cross(self.out, t))
+                    m = side_of == s
+                    rel = Xm[m] - c
+                    ang = np.full(m.sum(), np.radians(self.LOOK[dr]) * self.amount.get(name, 1.0))
+                    d[m] = _rodrigues(axis, ang, rel) - rel
+            res[name] = d
+        return res
 
     def voxels(self) -> dict:
         """{part: voxel}: the export meshes the slit's part at least this fine, so the slit (2+ voxels across) and
@@ -267,6 +344,8 @@ class Face:
         """{shape: (n, 3) move} for one part's vertices: Xm where they were meshed (weights), Xn the neutral
         (geometry), nrm its vertex normals. kind: "skin" (a part with the face), "teeth" (`lower`: the vertices of
         the lower row), "tongue"."""
+        if kind == "eyes":
+            return self.eye_part(Xm, names)
         L = self.local(Xm)
         n = len(Xm)
         zero = np.zeros((n, 3))
@@ -282,12 +361,16 @@ class Face:
             else:  # teeth: the lower row rides the jaw, rigidly
                 wj = np.zeros(n) if lower is None else lower.astype(float)
         # eyeball surfaces of the skin's own part (eyes not given a part of their own) never move, nor does the nose
-        still = np.ones(n)
+        eyes_still = np.ones(n)
+        for ev in self.eyes.values():
+            eyes_still *= _ss((np.linalg.norm(Xm - ev["c"], axis=1) - 1.01 * ev["r"]) / (0.05 * ev["r"]))
+        still, sneer_still = eyes_still.copy(), eyes_still.copy()
         if self.nose and kind == "skin":
             from . import sdf
-            still *= 1 - _bump(sdf.field_at(self.nose, Xm), 0.001, 0.25 * self.lip + 0.004)
-        for ev in self.eyes.values():
-            still *= _ss((np.linalg.norm(Xm - ev["c"], axis=1) - 1.01 * ev["r"]) / (0.05 * ev["r"]))
+            hold = lambda prims: 1 - _bump(sdf.field_at(prims, Xm), 0.001, 0.25 * self.lip + 0.004)  # noqa: E731
+            still *= hold(self.nose)
+            if self.nose_bone:
+                sneer_still *= hold(self.nose_bone)
         jo = self._jaw_move(Xn, wj, self.open)
         # the lower lip's travel at jawOpen, per point (sampled on the parting line at the point's u): mouthClose
         # closes the gap, the lower lip doing most of it (CLOSE_LOWER)
@@ -311,7 +394,15 @@ class Face:
         def lip_roll(sel, lip_r, sense):
             """A lip drawn in over the teeth: back into the mouth and toward the parting line (sense +1 the lower
             lip, -1 the upper). A turn about the lip's axis tore where its weight fell off; a move can't."""
-            return sel[:, None] * (-out * 0.9 * lip_r + up * sense * 0.45 * lip_r)
+            return sel[:, None] * (-out * 0.6 * lip_r + up * sense * 0.45 * lip_r)  # (0.9 back: into the teeth)
+
+        def press(s):
+            hh = half(s)
+            return hh[:, None] * (lu[:, None] * (-up * 0.3 * self.ru) + ll[:, None] * (up * 0.3 * self.rl)
+                                  - lips[:, None] * out * 0.03 * w + lips[:, None] * side * sg_of(s) * 0.02 * w)
+
+        def sg_of(s):
+            return 1.0 if s == "Left" else -1.0
 
         # the upper lip's half of mouthClose follows the jaw weight of the point mirrored below the parting line
         # (at the corners the jaw takes less of the lower lip, and the upper lip must meet it there)
@@ -330,8 +421,11 @@ class Face:
                 d = wj[:, None] * out * 0.08 * w
             elif name in ("jawLeft", "jawRight"):
                 d = wj[:, None] * side * sg * 0.08 * w
-            elif name == "mouthClose":
-                # the lower lip does most of it (meeting half way, the upper lip hung like a curtain)
+            elif name == "mouthClose":  # alone: the lips sealed (a light press); the closing is the corrective's
+                d = CLOSE_SEAL * (press("Left") + press("Right"))
+            elif name == "jawOpen_mouthClose":
+                # against a full jawOpen: the lips meet, the lower lip doing most of it (meeting half way, the upper
+                # lip hung like a curtain)
                 d = -CLOSE_LOWER * jo * ll[:, None] + (1 - CLOSE_LOWER) * delta * (lu * wjp)[:, None]
             elif name == "mouthFunnel":
                 c = (1 - 0.6 * np.minimum(L["u"], 1) ** 2)
@@ -363,15 +457,31 @@ class Face:
             elif name == "mouthShrugUpper":
                 d = lu[:, None] * (up * 0.05 * w + out * 0.03 * w)
             elif name.startswith("mouthPress"):
-                hh = half(s)
-                d = hh[:, None] * (lu[:, None] * (-up * 0.3 * self.ru) + ll[:, None] * (up * 0.3 * self.rl)
-                                   - lips[:, None] * out * 0.03 * w + lips[:, None] * side * sg * 0.02 * w)
+                d = press(s)
             elif name.startswith("mouthLowerDown"):
                 d = (half(s) * ll)[:, None] * (-up * 0.1 * w + out * 0.02 * w)
             elif name.startswith("mouthUpperUp"):
                 d = (half(s) * lu)[:, None] * (up * 0.1 * w + out * 0.02 * w)
             elif name.startswith("eyeBlink"):
                 d = self._blink(s, Xm, Xn) if (kind == "skin" and s in self.eyes) else zero
+            elif name.startswith("eyeWide"):  # the upper lid up a third of a blink's travel, the lower a little down
+                d = self._blink(s, Xm, Xn, -0.35, -0.3) if (kind == "skin" and s in self.eyes) else zero
+            elif name.startswith("eyeSquint") or name.startswith("cheekSquint"):
+                d = zero.copy()
+                if kind == "skin" and name.startswith("eyeSquint") and s in self.eyes:  # the lower lid up
+                    d = self._blink(s, Xm, Xn, 0.1, 1.4)
+                if kind == "skin" and s in self.cheeks:  # the cheek under the eye up (a squint takes some)
+                    c, r = self.cheeks[s]
+                    m = _bump(np.linalg.norm(Xm - c, axis=1), 0.5 * r, 1.5 * r) * (1 - lips)
+                    d = d + (m * (0.3 if name.startswith("eyeSquint") else 1.0))[:, None] * up * 0.06 * self.R
+            elif name.startswith("noseSneer"):  # the skin beside the nose's wing up and out (the nose stays)
+                d = zero
+                if kind == "skin" and self.sneer:
+                    c, r = self.sneer[s]
+                    m = _bump(np.linalg.norm(Xm - c, axis=1), 0.4 * r, 1.6 * r) * (1 - lips)
+                    d = m[:, None] * (up * 0.05 * self.R + side * sg * 0.015 * self.R)
+            elif name.startswith("eyeLook"):
+                d = zero  # (the eyeballs' own part turns: eye_part)
             elif name.startswith("browDown") or name.startswith("browOuterUp") or name == "browInnerUp":
                 d = self._brow(name, s, Xm) if kind == "skin" else zero
             elif name == "cheekPuff":
@@ -388,13 +498,14 @@ class Face:
                     d = d + (_ss(along) * reach)[:, None] * out - (along ** 2 * 0.25 * reach)[:, None] * up
             else:
                 raise SpecError(f"face_shapes: unknown shape {name!r}")
-            d = d * (self.amount.get(name, 1.0) * still)[:, None]
+            d = d * (self.amount.get(name, 1.0) * (sneer_still if name.startswith("noseSneer") else still))[:, None]
             res[name] = d
         return res
 
-    def _blink(self, s: str, Xm: np.ndarray, Xn: np.ndarray) -> np.ndarray:
+    def _blink(self, s: str, Xm: np.ndarray, Xn: np.ndarray, ku: float = 1.0, kl: float = 1.0) -> np.ndarray:
         """The upper lid turned down over the eyeball about the eye's own left-right axis (so it slides on the
-        ball), the lower lid up a quarter of the way; the corners stay, the skin round the eye follows less."""
+        ball), the lower lid up a quarter of the way; the corners stay, the skin round the eye follows less.
+        ku / kl scale the upper / lower lid's turn (eyeWide: negative, eyeSquint: the lower lid more)."""
         ev = self.eyes[s]
         c, rot, r, ro = ev["c"], ev["rot"], ev["r"], ev["ro"]
         q = (Xm - c) @ rot
@@ -412,7 +523,7 @@ class Face:
         # fading over most of an eye radius (the low poly is coarse there: a tight fade made facets)
         reach = _ss((dist - 1.01 * r) / (0.05 * r)) * _bump(dist, ro, ro + 1.1 * r) \
             * _bump(q[:, 1], 0.1 * r, 0.6 * r)
-        ang = (upper * th_u - (1 - upper) * th_l) * lat * reach
+        ang = (upper * th_u * ku - (1 - upper) * th_l * kl) * lat * reach
         qn = (Xn - c) @ rot
         dn = np.linalg.norm(qn, axis=1, keepdims=True)
         on = qn * np.minimum(ro / np.maximum(dn, 1e-9), 1.0)  # on the lid's outer sphere (the lid itself: as is)
@@ -463,15 +574,18 @@ def turn(vecs: np.ndarray, n0: np.ndarray, n1: np.ndarray) -> np.ndarray:
 
 
 def names_of(face_shapes) -> list[str]:
+    """The targets an export carries: the ARKit names asked for (True: all 52), plus each corrective whose inputs
+    are all there."""
     if face_shapes is True:
-        return list(ALL)
-    if isinstance(face_shapes, str):
-        face_shapes = [face_shapes]
-    names = list(face_shapes or [])
-    bad = [n for n in names if n not in ALL]
-    if bad:
-        raise SpecError(f"face_shapes: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
-    return names
+        names = list(ALL)
+    else:
+        if isinstance(face_shapes, str):
+            face_shapes = [face_shapes]
+        names = list(face_shapes or [])
+        bad = [n for n in names if n not in ALL]
+        if bad:
+            raise SpecError(f"face_shapes: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
+    return names + [c for c, (_, *ins) in CORRECTIVES.items() if all(i in names for i in ins)]
 
 
 def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
@@ -487,10 +601,10 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
     for pn, p in parts.items():
         base = pn.split("/")[-1].split("~")[0]
         kind = "teeth" if base in face.parts_teeth else "tongue" if base in face.parts_tongue else "skin"
+        if any(e.get("part") == base for e in face.eyes.values()):
+            kind = "eyes"  # the eyeballs' own part: only the eyeLook shapes turn them
         Xm = np.asarray(p["verts"], np.float64)
         if kind == "skin":
-            if any(e.get("part") == base for e in face.eyes.values()):
-                continue  # the eyeballs' own part: they don't move
             near = np.linalg.norm(Xm - face.M, axis=1) < 3 * face.width + 2 * face.R
             if not near.any():
                 continue
@@ -572,6 +686,7 @@ def read_glb(path) -> dict:
 # chin), brows 17-21 right / 22-26 left, eyes 36-41 right / 42-47 left (upper lid 37, 38 / 43, 44; lower 41, 40 /
 # 47, 46), outer lips 48-59 (48 right corner, 51 upper middle, 54 left corner, 57 lower middle), inner 60-67.
 JAW = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+CHIN = [5, 6, 7, 8, 9, 10, 11]
 LOWER_LIP = [55, 56, 57, 58, 59, 65, 66, 67]
 UPPER_LIP = [49, 50, 51, 52, 53, 61, 62, 63]
 LEFT = {"corner": 54, "inner_corner": 64, "upper": [52, 53, 63], "lower": [55, 56, 65], "upper_mid": [51, 62],
@@ -589,7 +704,8 @@ def _mirror_ids(ids, side):
     pairs = {**{i: 16 - i for i in range(17)}, **{17 + i: 26 - i for i in range(5)}, **{22 + i: 21 - i for i in range(5)},
              36: 45, 37: 44, 38: 43, 39: 42, 40: 47, 41: 46, 42: 39, 43: 38, 44: 37, 45: 36, 46: 41, 47: 40,
              48: 54, 49: 53, 50: 52, 52: 50, 53: 49, 54: 48, 55: 59, 56: 58, 58: 56, 59: 55, 60: 64, 61: 63,
-             63: 61, 64: 60, 65: 67, 67: 65, 51: 51, 57: 57, 62: 62, 66: 66}
+             63: 61, 64: 60, 65: 67, 67: 65, 51: 51, 57: 57, 62: 62, 66: 66,
+             27: 27, 28: 28, 29: 29, 30: 30, 31: 35, 32: 34, 33: 33, 34: 32, 35: 31}
     return [pairs[i] for i in ids]
 
 
@@ -630,6 +746,7 @@ class GnmFace(Face):
         self.R = 0.5 * float(np.linalg.norm(lm[16] - lm[0]))
         self._mouth_parts(prims, "face")
         self.nose = []
+        self.nose_bone = []
         self.eyes = {s: {"c": np.asarray(c, float), "r": float(head["eye_r"]), "ro": 1.3 * float(head["eye_r"]),
                          "part": b.get("eyes")} for s, c in zip(("Left", "Right"), head["eyes"])}
         self.brows, self.cheeks = {}, {}
@@ -702,6 +819,10 @@ class GnmFace(Face):
         sx = 1.0 if s in (None, "Left") else -1.0
         side = (lambda ids: _mirror_ids(ids, s)) if s else (lambda ids: ids)
 
+        def hold(mv, ids):  # these landmarks stay (moved by 0, at full weight)
+            for i in ids:
+                mv.setdefault(i, np.zeros(3))
+
         def put(mv, ids, d, k=1.0):
             for i in side(ids):
                 mv[i] = np.asarray(mv.get(i, np.zeros(3)), float) + k * np.asarray([d[0] * sx, d[1], d[2]], float)
@@ -712,7 +833,14 @@ class GnmFace(Face):
             return self._jaw_moves(shift=[0, 0, 0.12]), "mouth"
         if name in ("jawLeft", "jawRight"):
             return self._jaw_moves(shift=[0.12 * sx, 0, 0]), "mouth"
-        if name == "mouthClose":  # against jawOpen: the lower lip back up most of the way, the upper down the rest
+        if name == "mouthClose":  # alone: the lips sealed, a light press (the closing is jawOpen_mouthClose's)
+            for sd in ("Left", "Right"):
+                pm, _ = self._gnm_moves(f"mouthPress{sd}")
+                for i, d in pm.items():
+                    mv[i] = mv.get(i, np.zeros(3)) + CLOSE_SEAL * np.asarray(d, float)
+            return mv, "mouth"
+        if name == "jawOpen_mouthClose":  # against a full jawOpen: the lower lip back up most of the way, the upper
+            # down the rest
             jo = self._jaw_moves(self.open)
             for i in LOWER_LIP:
                 mv[i] = -CLOSE_LOWER * jo[i]
@@ -726,10 +854,11 @@ class GnmFace(Face):
             put(mv, UPPER_LIP[:5], [0, 0.07, 0.1]), put(mv, LOWER_LIP[:5], [0, -0.07, 0.1])
             put(mv, [61, 62, 63], [0, 0.07, 0.06]), put(mv, [65, 66, 67], [0, -0.07, 0.06])
             return mv, "mouth"
-        if name == "mouthPucker":
-            put(mv, [54], [-0.14, 0, 0.08]), put(mv, [48], [0.14, 0, 0.08])
-            put(mv, [53, 55], [-0.07, 0, 0.12]), put(mv, [49, 59], [0.07, 0, 0.12])
-            put(mv, [50, 51, 52, 56, 57, 58, 61, 62, 63, 65, 66, 67], [0, 0, 0.13])
+        if name == "mouthPucker":  # (the chin held: pucker + rollLower + shrugLower, A2F's usual mix, bulged it 10 mm)
+            put(mv, [54], [-0.14, 0, 0.07]), put(mv, [48], [0.14, 0, 0.07])
+            put(mv, [53, 55], [-0.07, 0, 0.1]), put(mv, [49, 59], [0.07, 0, 0.1])
+            put(mv, [50, 51, 52, 56, 57, 58, 61, 62, 63, 65, 66, 67], [0, 0, 0.1])
+            hold(mv, CHIN)
             return mv, "mouth"
         if name in ("mouthLeft", "mouthRight"):
             for i in range(48, 68):
@@ -748,13 +877,15 @@ class GnmFace(Face):
             put(mv, [54], [0.1, -0.04, -0.02]), put(mv, [55, 56, 65], [0.03, -0.04, 0])
             return mv, "mouth"
         if name == "mouthRollLower":
-            put(mv, [56, 57, 58], [0, 0.04, -0.09]), put(mv, [65, 66, 67], [0, 0.02, -0.08])
+            put(mv, [56, 57, 58], [0, 0.03, -0.08]), put(mv, [65, 66, 67], [0, 0.015, -0.07])
+            hold(mv, CHIN)
             return mv, "mouth"
         if name == "mouthRollUpper":
             put(mv, [50, 51, 52], [0, -0.04, -0.08]), put(mv, [61, 62, 63], [0, -0.02, -0.07])
             return mv, "mouth"
-        if name == "mouthShrugLower":
-            put(mv, LOWER_LIP, [0, 0.05, 0.03]), put(mv, [7, 8, 9], [0, 0.04, 0.02])
+        if name == "mouthShrugLower":  # the lower lip and chin pushed up (mentalis), not out
+            put(mv, LOWER_LIP, [0, 0.04, 0.01]), put(mv, [7, 8, 9], [0, 0.02, 0])
+            hold(mv, [5, 6, 10, 11])
             return mv, "mouth"
         if name == "mouthShrugUpper":
             put(mv, UPPER_LIP, [0, 0.05, 0.03])
@@ -774,9 +905,26 @@ class GnmFace(Face):
             for up_i, lo_i in LEFT["lid_upper"]:
                 u, lo = side([up_i])[0], side([lo_i])[0]
                 gap = (X0[lo] - X0[u]) / self._setup()["wg"]
-                mv[u] = 0.8 * gap * np.array([0, 1.0, 0.3])  # down (and a little forward: over the ball)
-                mv[lo] = -0.2 * gap * np.array([0, 1.0, 0.3])
+                # down (and a little forward: over the ball), meeting the lower lid a little past it (at 0.8/0.2
+                # the inner corner stayed open a crack); the eyeball push keeps the lids out of the ball
+                mv[u] = 0.9 * gap * np.array([0, 1.0, 0.3])
+                mv[lo] = -0.25 * gap * np.array([0, 1.0, 0.3])
             return mv, "eyes"
+        if name.startswith("eyeWide") or name.startswith("eyeSquint"):
+            X0 = self._setup()["X0"]
+            ku, kl = (-0.35, -0.15) if name.startswith("eyeWide") else (0.1, 0.35)
+            for up_i, lo_i in LEFT["lid_upper"]:
+                u, lo = side([up_i])[0], side([lo_i])[0]
+                gap = (X0[lo] - X0[u]) / self._setup()["wg"]
+                mv[u] = ku * gap * np.array([0, 1.0, 0.0])
+                mv[lo] = -kl * gap * np.array([0, 1.0, 0.0])
+            return mv, "eyes"
+        if name.startswith("cheekSquint"):
+            return self._cheek_raise(s), None
+        if name.startswith("noseSneer"):  # the nostril's wing and the skin beside it up
+            put(mv, [35], [0.0, 0.07, 0.0]), put(mv, [34], [0.0, 0.04, 0.0])
+            put(mv, [33], [0, 0.015, 0])
+            return mv, "mouth"
         if name == "browInnerUp":
             for ss in ("Left", "Right"):
                 for i in _mirror_ids([22, 23], ss):
@@ -796,6 +944,27 @@ class GnmFace(Face):
             jo = self._jaw_moves(0.35 * self.open)
             return jo, "mouth"
         raise SpecError(f"face_shapes: unknown shape {name!r}")
+
+    def _cheek_raise(self, s: str) -> np.ndarray:
+        """cheekSquint: the cheek under the eye up (GNM's zygomatic and infraorbital regions, feathered)."""
+        G = self._setup()
+        g, V = G["g"], G["c"]["V"]
+        k = "left" if s == "Left" else "right"
+        w = np.clip(g["groups"][f"{k}_zygomatic_region"] + 0.7 * g["groups"][f"{k}_infraorbital_region"], 0, 1)
+        w = self._feather(w)
+        out = np.zeros_like(V)
+        out[:, 1] = 0.06 * G["wg"] * w  # GNM frame: y up
+        return out
+
+    def _feather(self, w: np.ndarray, rounds: int = 8) -> np.ndarray:
+        Q = self._setup()["g"]["quads"]
+        for _ in range(rounds):
+            acc, cnt = np.zeros(len(w)), np.zeros(len(w))
+            for k in range(4):
+                np.add.at(acc, Q[:, k], w[Q].mean(1))
+                np.add.at(cnt, Q[:, k], 1)
+            w = acc / np.maximum(cnt, 1)
+        return w
 
     def _cheek_puff(self) -> np.ndarray:
         """The cheeks blown out along their normals (no landmark there for the basis to aim at)."""
@@ -918,20 +1087,33 @@ class GnmFace(Face):
         return D * a[:, None]
 
     def displacements(self, Xm, Xn, nrm, kind, names, lower=None) -> dict:
+        if kind == "eyes":
+            return self.eye_part(Xm, names)
         G = self._setup()
         L = self.local(Xm)
         n = len(Xm)
         wj = self.jaw_weight(L) if kind == "skin" else (np.ones(n) if kind == "tongue" else
                                                         (np.zeros(n) if lower is None else lower.astype(float)))
         res = {}
-        todo = [nm for nm in names if nm not in G.setdefault("dW", {})]
+        todo = [nm for nm in names if nm not in G.setdefault("dW", {}) and family(nm) != "look"]
         if todo:  # every shape's GNM offsets, then one subdivision for all of them
             dVs = []
             for name in todo:
                 mv, region = self._gnm_moves(name)
                 dVs.append(mv if region is None else self._solve(mv, region))
             G["dW"].update(zip(todo, self._carried(*dVs)))
+        # regions: the basis's lower-face components reach up to the lids and its eye components down the cheek;
+        # each family fades out past its own region (jawOpen moved the forehead, brows tugged the cheek)
+        lm = self.head["lm68"]
+        h = (Xm - self.M) @ self.up
+        hn = float((lm[33] - self.M) @ self.up)                   # the nose's base
+        hl = float(np.mean([(lm[i] - self.M) @ self.up for i in (40, 41, 46, 47)]))  # the lower lids
+        mouth_mask = 1 - _ss((h - (hn + 0.35 * (hl - hn))) / (0.55 * (hl - hn)))
+        eye_mask = _ss((h - hn) / (0.5 * (hl - hn)))
         for name in names:
+            if family(name) == "look":  # (the eyeballs' part turns; the skin stays)
+                res[name] = np.zeros_like(Xm)
+                continue
             dW = G["dW"][name]
             if name in JAW_SHAPES:
                 Rr, a, b = self._rigid_jaw(dW)
@@ -941,13 +1123,21 @@ class GnmFace(Face):
             if kind == "skin":
                 D, near = self._onto(Xm, dW)
                 d = D * near[:, None] + rigid * ((1 - near) * wj)[:, None]
-                # nothing may sink into an eyeball (a blink's lid slides over it)
+                fam = family(name)
+                if fam == "mouth":
+                    d *= mouth_mask[:, None]
+                elif fam == "eye":
+                    d *= eye_mask[:, None]
+                # nothing may sink into an eyeball (a blink's lid slides over it), but no deeper than where the
+                # neutral already has it: pushed out to a fixed clearance, the lower lids (a hair inside it in the
+                # neutral) took the same 3-6 mm offset in EVERY shape, and A2F's sums dragged them 10-27 mm
                 for ev in self.eyes.values():
+                    r0 = np.linalg.norm(Xn - ev["c"], axis=1)
                     q = Xn + d - ev["c"]
                     r = np.linalg.norm(q, axis=1)
-                    lim = ev["r"] + 0.0006
-                    inside = (r < lim) & (np.linalg.norm(Xn - ev["c"], axis=1) < 1.6 * ev["r"])
-                    d[inside] += q[inside] * ((lim - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
+                    lim = np.minimum(ev["r"] + 0.0006, r0)
+                    inside = (r < lim) & (r0 < 1.6 * ev["r"])
+                    d[inside] += q[inside] * ((lim[inside] - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
             else:
                 d = rigid * wj[:, None]
             if name == "tongueOut" and kind == "tongue" and self.tongue is not None:
@@ -957,6 +1147,18 @@ class GnmFace(Face):
                 d = d + (_ss(along) * reach)[:, None] * self.out - (along ** 2 * 0.2 * reach)[:, None] * self.up
             res[name] = d * self.amount.get(name, 1.0)
         return res
+
+
+def family(name: str) -> str:
+    """Which part of the face a shape belongs to: "mouth" (jaw, mouth, cheekPuff, tongue, the corrective), "eye"
+    (lids, brows), "mid" (noseSneer, cheekSquint: between the two), "look" (the eyeballs)."""
+    if name.startswith(("eyeBlink", "eyeWide", "eyeSquint", "brow")):
+        return "eye"
+    if name.startswith(("noseSneer", "cheekSquint")):
+        return "mid"
+    if name.startswith("eyeLook"):
+        return "look"
+    return "mouth"
 
 
 def face_of(spec: dict) -> Face:

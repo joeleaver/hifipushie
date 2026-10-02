@@ -1520,9 +1520,15 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
             "parts": report, "prefabs": prefabs,
             **({"face_shapes": {"names": faceshapes.names_of(face_shapes), "parts": shapes,
+                                "correctives": {c: f"{op}({a}, {b})" for c, (op, a, b) in faceshapes.CORRECTIVES.items()
+                                                if c in faceshapes.names_of(face_shapes)},
                                 "convention": "ARKit blendshape names; glTF morph targets (names in mesh.extras."
                                               "targetNames, default weights 0), FBX blend shapes of the same names; "
-                                              "neutral = mouth closed, each shape its full extent at 1.0, additive"}}
+                                              "neutral = mouth closed, each shape its full extent at 1.0, additive; "
+                                              "correctives are not ARKit channels: set each to its formula of the "
+                                              "ARKit weights every frame (jawOpen_mouthClose = min(jawOpen, "
+                                              "mouthClose) seals the lips over an open jaw); left at 0 the lips "
+                                              "just stay parted"}}
                if face_shapes else {}),
             "conventions": {"up": "+Y (glTF)", "front": "+Z", "units": "metres", "normal_map": "OpenGL (+Y), MikkTSpace",
                             "height": "0.5 = low-poly surface, 0/1 = -/+ height_range_m (per atlas) along the normal",

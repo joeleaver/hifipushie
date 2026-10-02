@@ -1,5 +1,6 @@
-"""Face-shapes contact sheet: every ARKit shape of an exported character at weight 1.0 (front + 3/4 close-ups of the
-face, rendered from the GLB as an engine loads it), the neutral, and a few viseme-like combinations.
+"""Face-shapes contact sheet: every ARKit shape (and corrective) of an exported character at weight 1.0 (front + 3/4
+close-ups of the face, rendered from the GLB as an engine loads it), the neutral, viseme-like combinations and
+Audio2Face's stress combinations (faceshapes.COMBOS, correctives set as a player would: faceshapes.playback).
 
   uv run python examples/face_shapes_sheet.py [model] [out_dir]      (defaults: goblin_talk, workspace/face_shapes)
   uv run python examples/face_shapes_sheet.py gnm_talk                (MakeHuman body + GNM head: 40k tris, 2048)
@@ -46,8 +47,10 @@ def main(model: str = "goblin_talk", out: str = "workspace/face_shapes"):
     q = (face.out + face.side) / np.sqrt(2)  # three quarter from the creature's left
     cams = [{"eye": (target + face.out * dist).tolist(), "target": target.tolist(), "fov": 30, "name": "front"},
             {"eye": (target + q * dist).tolist(), "target": target.tolist(), "fov": 30, "name": "3/4 left"}]
-    poses = [("neutral", {})] + [(n, {n: 1.0}) for n in faceshapes.ALL] + list(faceshapes.COMBOS.items())
-    sheets = asset.preview(glb, [], size=300, samples=16, cameras=cams, poses=[p for _, p in poses],
+    # every shape alone, then the combinations as a player sets them (correctives filled in: faceshapes.playback)
+    poses = [("neutral", {})] + [(n, {n: 1.0}) for n in faceshapes.names_of(True)] + list(faceshapes.COMBOS.items())
+    sheets = asset.preview(glb, [], size=300, samples=16, cameras=cams,
+                           poses=[faceshapes.playback(p) if len(p) > 1 else p for _, p in poses],
                            lighting=(spec.get("style") or {}).get("look"))
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", 22)

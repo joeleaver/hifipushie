@@ -991,12 +991,13 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
-    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). Required mouth/jaw set: jawOpen jawForward jawLeft jawRight mouthClose mouthFunnel mouthPucker mouthLeft
-    mouthRight mouthSmile/Frown/Dimple/Stretch/Press/LowerDown/UpperUp Left+Right mouthRollLower/Upper
-    mouthShrugLower/Upper; plus eyeBlinkLeft/Right browInnerUp browDownLeft/Right browOuterUpLeft/Right cheekPuff
-    tongueOut. On every part that moves (the head's part, teeth, tongue; eyeballs and the rest carry none), the same
-    vertices as the neutral (mouth closed), each shape its full extent at weight 1, additive; names in glTF
-    mesh.extras.targetNames, FBX blend shapes, and the json's face_shapes. Tune amounts / the jaw in
+    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). True
+    = all 52 ARKit names (mouth and jaw, lids, brows, cheeks, nose, and eyeLook*, which turn the eyeballs' own part)
+    plus the corrective jawOpen_mouthClose, which a player sets to min(jawOpen, mouthClose) each frame: mouthClose
+    alone only seals the lips (Audio2Face drives it with the jaw shut). On every part that moves (the head's part,
+    teeth, tongue, eyeballs), the same vertices as the neutral (mouth closed), each shape its full extent at weight
+    1, additive; names in glTF mesh.extras.targetNames, FBX blend shapes, and the json's face_shapes. Tune amounts /
+    the jaw in
     spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
