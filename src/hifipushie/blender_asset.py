@@ -673,6 +673,16 @@ def lowpoly(job):
         obs.append(ob)
         info[pn] = {"joint_count": int((z["sizes"] - 2).sum()), "budget": int((z["sizes"] - 2).sum()),
                     "flat": 0.0, "symmetric": False, "fixed": True}
+    if job.get("focus_warp"):  # the mesh came magnified round focus spheres (focuswarp.py): put back
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import focuswarp
+        for ob in obs:
+            if info.get(ob.name, {}).get("fixed"):
+                continue
+            P = np.empty(len(ob.data.vertices) * 3)
+            ob.data.vertices.foreach_get("co", P)
+            ob.data.vertices.foreach_set("co", focuswarp.unwarp(P.reshape(-1, 3), job["focus_warp"]).ravel())
+            ob.data.update()
     for ob in obs:
         ob.data.shade_smooth()
     t1b = time.time()

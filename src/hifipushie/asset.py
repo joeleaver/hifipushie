@@ -59,23 +59,34 @@ def min_part(triangles: int) -> int:
     return max(300, triangles // 100)
 
 
-def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel: float = 0.0) -> tuple[dict, dict]:
+def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel: float = 0.0,
+            tri_focus: list | None = None) -> tuple[dict, dict]:
     """Decimate + unwrap in Blender. cfg: {part: {"weight": triangle weight, "density": texel density,
     "atlas": index}}, sizes: {atlas index: texels}, voxel: the scene voxel (flat regions within a quarter of it
     are dissolved before the collapse). Returns ({part: {verts, corner_vert, uv, normal, tangent, sign,
     atlas}}, info from Blender: per part the joint decimation's count, the budget and whether it came out mirrored;
-    timings)."""
+    timings). tri_focus: [[x, y, z, radius, k]]: the mesh is decimated magnified k x round those spheres and put
+    back (focuswarp.py): more triangles where face shapes deform (lids, lips)."""
     import hashlib
     st = high.stat()
     # what the decimation depends on (not the atlases): a regroup for other atlas sizes re-unwraps only
     key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, int(triangles), float(voxel),
-                                   {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()}],
+                                   {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()},
+                                  tri_focus or []],
                                   sort_keys=True, default=str).encode()).hexdigest()
+    if tri_focus:  # decimate a magnified copy (its own file: flatten and the decimation cache key on the path)
+        from . import focuswarp
+        with np.load(high) as z:
+            arrs = {k: z[k] for k in z.files}
+        arrs["verts"] = focuswarp.warp(arrs["verts"], tri_focus).astype(arrs["verts"].dtype)
+        high = out.with_name("high_focus.npz")
+        np.savez(high, **arrs)
     flat = flatten_parts(high, out.with_name(out.stem + "_flat.npz"), list(cfg), 0.25 * float(voxel))
     _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles), "flat": flat,
               "min_part": min_part(triangles), "voxel": float(voxel), "textures": {str(a): int(t) for a, t in sizes.items()},
               "margins": {str(a): margin_px(int(t)) for a, t in sizes.items()},
-              "decimated": {"path": str(out.with_name(out.stem + "_decimated.npz")), "key": key}}, timeout=3600)
+              "decimated": {"path": str(out.with_name(out.stem + "_decimated.npz")), "key": key},
+              "focus_warp": tri_focus or []}, timeout=3600)
     z = np.load(out)
     names = [str(n) for n in z["part_names"]]
     parts = {pn: {k: z[f"{i}_{k}"] for k in ("verts", "corner_vert", "uv", "normal", "tangent", "sign")}
@@ -1258,11 +1269,13 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     t = time.time()
     spec = store.load(name)
     defs = spec.get("parts") or {}
-    fine = {}
-    if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open
+    fine, tri_focus = {}, []
+    if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
+        # triangles at the lids and lips
         from . import faceshapes
         faceshapes.names_of(face_shapes)
-        fine = faceshapes.Face(spec).voxels()
+        fface = faceshapes.face_of(spec)
+        fine, tri_focus = fface.voxels(), fface.tri_focus()
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx = split(spec, resolution, instancing, log, min_share=1, voxels=fine)
     for pn, v in fine.items():
@@ -1330,7 +1343,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                        {"min": _min_triangles(defs, origin[pn])}),
                     **({"fixed": topo[pn][0], "fixed_sum": topo[pn][1]} if pn in topo else {})} for pn in areas}
         t1 = time.time()
-        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"])
+        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"], tri_focus)
         if not texel_density:
             break
         # the size each atlas needs for every part to get its density, now that it's packed
@@ -1480,6 +1493,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()
     high.unlink()
+    out_dir.joinpath("high_focus.npz").unlink(missing_ok=True)
     # where everything ends up: scene parts as they are, a prefab at each of its instances
     placed = [p["verts"] for pn, p in parts.items() if pn not in pf_of]
     prefabs = {}
