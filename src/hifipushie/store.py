@@ -128,18 +128,22 @@ def edit(spec: dict, ops: list[dict]) -> dict:
     """apply_ops, then validate the result. A validation error names the first op that makes the spec fail
     (found by bisecting the batch, only when it fails)."""
     out = apply_ops(spec, ops)
+    check = validate
+    if _same_but_hair(spec, out):  # a hair edit: only the hair needs checking (compiling a base body: ~1 min)
+        from . import hair
+        check = hair.validate
     try:
-        validate(out)
+        check(out)
     except Exception as e:
         try:
-            validate(spec)
+            check(spec)
         except Exception:
             raise e from None  # the stored spec itself no longer validates: no op to blame
         lo, hi = 0, len(ops)  # ops[:lo] validates, ops[:hi] doesn't
         while hi - lo > 1:
             mid = (lo + hi) // 2
             try:
-                validate(apply_ops(spec, ops[:mid]))
+                check(apply_ops(spec, ops[:mid]))
                 lo = mid
             except Exception:
                 hi = mid
@@ -155,6 +159,19 @@ def _apply_op(s: dict, o) -> None:
     if not isinstance(o, dict):
         raise ValueError('each op is an object like {"op": "set", "kind": "blobs", "name": n, "value": {...}}')
     kind = o.get("kind")
+    if isinstance(kind, str) and "." in kind and o.get("op") in ("set", "delete", "rename"):
+        # a dotted kind addresses named entries nested in a top-level key: "hair.locks" (one lock's fields),
+        # "hair.groom" ({"op": "set", "kind": "hair.groom", "name": "volume", "value": {"top": 0.04}})
+        *path, last = kind.split(".")
+        cur = s
+        for i, k in enumerate(path):
+            if i == 0 and k in _OWN_TOOL:
+                raise ValueError(f"{k!r} is edited with the {_OWN_TOOL[k]} tool")
+            nxt = cur.setdefault(k, {}) if o.get("op") == "set" else cur.get(k)
+            if not isinstance(nxt, dict):
+                raise ValueError(f"{'.'.join(path[:i + 1])!r} isn't an object of named entries")
+            cur = nxt
+        return _apply_op(cur, {**o, "kind": last})
     if kind is not None:
         if kind in _OWN_TOOL:
             raise ValueError(f"{kind!r} is edited with the {_OWN_TOOL[kind]} tool")

@@ -96,9 +96,12 @@ GROOM = {
     "drawn_under": True,
     "noise": 0.3,
     "seed": 0,
+    "centre": "head",  # without face landmarks (a kit-built head): the joint (or [x, y, z]) the scalp is measured from
 }
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
-        "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7}
+        "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
+        "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0}  # edge: how far across a lock its edges darken; root: how far
+# along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand"}
 MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
@@ -1054,9 +1057,15 @@ def validate(spec: dict) -> None:
     h = hair_of(spec)
     if not h:
         return
-    bad = set(h) - {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed"}
+    keys = {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed", "export"}
+    bad = set(h) - keys
     if bad:
-        raise HairError(f"hair: unknown keys {sorted(bad)} (have groom, locks, look, cap, stage, part, filler, removed)")
+        raise HairError(f"hair: unknown keys {sorted(bad)} (have {', '.join(sorted(keys))})")
+    if h.get("stage", "locks") not in ("mass", "locks"):
+        raise HairError('hair stage is "mass" (the groom\'s volume as one shell) or "locks"')
+    bad = set(h.get("look") or {}) - set(LOOK)
+    if bad:
+        raise HairError(f"hair look: unknown keys {sorted(bad)} (have {', '.join(sorted(LOOK))})")
     groom_params(spec)
     for n, lk in (h.get("locks") or {}).items():
         bad = set(lk) - LOCK_KEYS
@@ -1070,13 +1079,32 @@ def validate(spec: dict) -> None:
                 raise HairError(f"hair lock {n!r}: {k} (m) must be > 0")
 
 
-def groom(name: str, replace: bool = False, note: str = "") -> dict:
+def merge_patch(a, b):
+    """b merged into a key by key (objects merge, null deletes, anything else replaces)."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        out = dict(a)
+        for k, v in b.items():
+            if v is None:
+                out.pop(k, None)
+            else:
+                out[k] = merge_patch(a.get(k), v)
+        return out
+    return copy.deepcopy(b)
+
+
+def groom(name: str, replace: bool = False, note: str = "", patch: dict | None = None,
+          stage: str | None = None) -> dict:
     """Grow the first pass of locks from spec["hair"]["groom"] and save them. Locks a person or an edit changed
     (their names not starting with the tier letters b/f/e + digits) and hand-shaped locks (`"hand": true`: every lock
     edited or added in Blender comes back with it from scene.pull) are kept unless replace; locks deleted in Blender
     (`hair.removed`) aren't grown again."""
     spec = store.load(name)
     h = spec.setdefault("hair", {})
+    if patch:
+        h["groom"] = merge_patch(h.get("groom") or {}, patch)
+    if stage is not None:
+        h["stage"] = stage
+    validate(spec)
     sc = scalp(name, spec)
     g = groom_params(spec)
     new = grow(sc, g)
@@ -1089,9 +1117,38 @@ def groom(name: str, replace: bool = False, note: str = "") -> dict:
                                if lk.get("hand") or (not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
                                                      and lk.get("tier") != "drawn")}
     h["locks"] = {**new, **keep}
-    store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
-    return {"locks": len(h["locks"]), "tiers": {t: sum(1 for lk in new.values() if lk["tier"] == t)
-                                                for t in ("big", "fill", "edge")}}
+    v = store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
+    tiers: dict = {}
+    for n, lk in new.items():
+        if n not in keep:  # (a kept lock of the same name wins)
+            tiers[lk["tier"]] = tiers.get(lk["tier"], 0) + 1
+    return {"version": v, "locks": len(h["locks"]), "grown": tiers, "kept": sorted(keep),
+            "not_regrown": sorted(set(h.get("removed") or []))}
+
+
+def hierarchy(spec: dict, sc: Scalp) -> dict:
+    """The groom's size hierarchy, the artists' 6-3-1 (big shapes ~60% of the area, medium ~30%, small ~10%): each
+    lock's area (width x length x 0.65, lens and taper) by its width against the widest locks (90th percentile):
+    big >= 0.7, medium 0.4-0.7, small < 0.4. Under-layer locks ("_under") don't count (they're hidden). Also how far
+    widths spread (coefficient of variation: ~0 = every lock the same, the "uniform locks" look)."""
+    locks = {n: lk for n, lk in (hair_of(spec).get("locks") or {}).items() if not n.endswith("_under")}
+    if not locks:
+        return {}
+    W, A = [], []
+    for lk in locks.values():
+        p = np.asarray(lk["pts"], float)
+        P = sc.point(p[:, 0], p[:, 1], p[:, 2])
+        L = float(np.linalg.norm(np.diff(_catmull(P, 24), axis=0), axis=1).sum())
+        W.append(float(lk["width"]))
+        A.append(float(lk["width"]) * L * 0.65)
+    W, A = np.array(W), np.array(A)
+    ref = np.percentile(W, 90)
+    r = W / max(ref, 1e-9)
+    tot = max(A.sum(), 1e-12)
+    big, med = A[r >= 0.7].sum() / tot, A[(r >= 0.4) & (r < 0.7)].sum() / tot
+    return {"big": round(float(big), 2), "medium": round(float(med), 2), "small": round(max(0.0, float(1 - big - med)), 2),
+            "width_cv": round(float(W.std() / max(W.mean(), 1e-9)), 2), "locks": len(W),
+            "widest_mm": round(float(ref * 1000), 1)}
 
 
 def lock_hash(lk: dict, sc: Scalp) -> str:
@@ -1410,7 +1467,18 @@ def make_stage(name: str, pad: float = 0.1) -> Path:
     return sp
 
 
-REFERENCE = Path("/home/joe/dev/hifipushie/workspace/disc_golfer_renders/ref_user_style.png")
+def reference_image(name: str, reference: str | None = None):
+    """(path, crop or None) of the image the hair is judged against: `reference` if given, else the traced
+    reference's image (ref_trace.json "image", cropped to the matched camera's crop), else none."""
+    if reference:
+        p = Path(reference).expanduser()
+        return (p, None) if p.exists() else (None, None)
+    tr = ref_trace(name) or {}
+    cam = ref_camera(name) or {}
+    p = tr.get("image") or cam.get("reference")
+    if p and Path(p).exists():
+        return Path(p), cam.get("crop") or tr.get("crop")
+    return None, None
 VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
          "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "close": (-30.0, 25.0, 0.45),
          "close_back": (150.0, 20.0, 0.45)}
@@ -1496,10 +1564,10 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
     if clays:
         dr.text((6, 22 + W + 6), "clay", fill=(220, 220, 220))
     x0 = len(imgs) * W
-    ref = Path(reference or REFERENCE)
-    if ref.exists():
+    ref, rcrop = reference_image(name, reference)
+    if ref is not None:
         r = Image.open(ref).convert("RGB")
-        r = r.crop((250, 20, 560, 330)) if reference is None else r
+        r = r.crop(tuple(rcrop)) if rcrop else r
         r.thumbnail((W, W - 170))
         sheet.paste(r, (x0, 22))
         dr.text((x0 + 6, 5), "reference", fill=(220, 220, 220))
@@ -1512,9 +1580,12 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
             f"{k} {v}" for k, v in f.items() if k not in ("clumps", "mm_per_px"))
     if matched is not None:
         y = (rows - 1) * W + 22
-        refc = Image.open(rc.get("reference", str(REFERENCE))).convert("RGB").crop(tuple(rc["crop"])).resize((W, W))
+        rimg, _ = reference_image(name, None)
         mr = matched.resize((W, W))
-        panels = [("matched camera", mr), ("reference", refc), ("50% blend", Image.blend(mr, refc, 0.5))]
+        panels = [("matched camera", mr)]
+        if rimg is not None:
+            refc = Image.open(rimg).convert("RGB").crop(tuple(rc["crop"])).resize((W, W))
+            panels += [("reference", refc), ("50% blend", Image.blend(mr, refc, 0.5))]
         if mclay is not None:
             panels.insert(1, ("matched clay", mclay.resize((W, W))))
         tr = trace_overlay(name, sc, rc, mr, spec)
@@ -1642,11 +1713,10 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
         lk = locks.get(n)
         if lk is None:
             continue
-        if st.get("hash") and st["hash"] != lock_hash(lk, sc):
-            # the scene's lock was built from another version of the spec (regrown or synced from another model
-            # since): an edit to it isn't an edit to this lock. The next sync replaces it.
-            log.append(f"hair lock {n}: the scene's copy is stale (spec regrown since the sync), not pulled")
-            continue
+        stale = bool(st.get("hash")) and st["hash"] != lock_hash(lk, sc)
+        # stale: the scene's lock was built from another version of the spec (regrown or synced from another model
+        # since): an edit to it isn't an edit to this lock. The next sync replaces it. (A lock pulled from a saved
+        # file reads back as itself until the next sync: not news.)
         P = np.asarray(st["pts"], float)
         a, e, hh = sc.coords(P)
         new = dict(lk)
@@ -1673,6 +1743,11 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
             if mk in inv:
                 if abs(float(v) - float(lk.get(inv[mk], LOCK_DEFAULTS.get(inv[mk], 0.0)))) > 1e-5:
                     new[inv[mk]] = round(float(v), 5)
+        if stale:
+            if {k: v for k, v in new.items() if k != "hand"} != {k: v for k, v in lk.items() if k != "hand"}:
+                log.append(f"hair lock {n}: the scene's copy was built from another version of the spec (regrown or "
+                           f"edited since the last sync): not pulled; sync replaces it")
+            continue
         if new != lk:
             new["hand"] = True  # shaped by hand: a regrow (hair.groom) leaves it alone
             locks[n] = new
@@ -1855,6 +1930,56 @@ def _under_clumps(clumps: list) -> list:
     return out
 
 
+def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: float = 0.6, fan: float = 0.5,
+               keep: float = 0.2) -> dict:
+    """A clump whose end breaks into n smaller locks, the way an artist splits a big shape's tip in twos and threes
+    (negative space between the tips, not one blunt point): the clump itself is cut off `keep` past `at` (0..1 along
+    it) so its end tucks under the children; each child starts at `at`, lies on top of it (its tips over the layer
+    below), is ~1.3/n of its width, and they fan apart across the lock by `fan` x the clump's width at the tips.
+    Lengths differ a little (equal tips read as a comb). Returns the children ({name}_t1...); lk is shortened in place."""
+    pts = np.asarray(lk["pts"], float)
+    P = _catmull(sc.point(pts[:, 0], pts[:, 1], pts[:, 2]), 48)
+    c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    u = c / max(c[-1], 1e-9)
+    w, T = float(lk["width"]), float(lk["thickness"])
+    tg = _unit(np.gradient(P, axis=0))
+    nrm = _unit(P - sc.C)
+    side = _unit(np.cross(nrm, tg))  # across the clump, in the head's tangent plane
+
+    def resample(Q, lo, hi, k):
+        t = np.linspace(lo, hi, k)
+        return np.stack([np.interp(t, u, Q[:, q]) for q in range(3)], 1), t
+    # the parent ends a little past the split, its tip under the children
+    end = min(1.0, at + keep)
+    k0 = max(3, len(pts) - 1)
+    Pp, _ = resample(P, 0.0, end, k0)
+    a, e, h = sc.coords(Pp)
+    lk["pts"] = [[round(float(a[j]), 2), round(float(e[j]), 2), round(float(h[j]), 4)] for j in range(k0)]
+    if lk.get("tilt"):
+        lk["tilt"] = [round(float(v), 3) for v in lie_tilt(sc, g, line, _catmull(Pp, 4 * k0)[::4])]
+    lk.pop("radius", None)
+    lk.pop("handles", None)
+    out = {}
+    rng = np.random.default_rng(int(hashlib.md5(name.encode()).hexdigest()[:6], 16))
+    for i in range(n):
+        o = (i - (n - 1) / 2) / max(n - 1, 1)  # -0.5 .. 0.5 across
+        length = 1.0 - 0.12 * rng.uniform(0, 1) if n > 1 else 1.0
+        Q, t = resample(P, at - 0.04, at + (1.0 - at) * length, 5)
+        s_ = np.clip((t - at) / max(1.0 - at, 1e-9), 0, 1)
+        j = np.clip(np.searchsorted(u, t), 0, len(u) - 1)
+        off = (o * w * 0.55 * (1 - s_) + o * w * (0.55 + fan) * s_)[:, None] * side[j]  # start side by side, fan out
+        Q = Q + off + nrm[j] * (0.55 * T * np.sin(np.pi * np.clip(s_ * 1.4, 0, 1)) + 0.15 * T)[:, None]
+        a, e, h = sc.coords(Q)
+        cw = round(w * 1.3 / n * (1 + 0.15 * rng.uniform(-1, 1)), 4)
+        out[f"{name}_t{i + 1}"] = {
+            "tier": lk.get("tier", "drawn"), "pts": [[round(float(a[q]), 2), round(float(e[q]), 2),
+                                                      round(float(h[q]), 4)] for q in range(len(Q))],
+            "tilt": [round(float(v), 3) for v in lie_tilt(sc, g, line, Q)], "width": cw,
+            "thickness": round(T * 0.8, 4), "cup": round(lie_cup(sc, cw, Q), 4), "taper": 1.0, "belly": 0.25,
+            "root": 0.7, "twist": 0.0, "edge": lk.get("edge", 1.6), **({"grey": lk["grey"]} if "grey" in lk else {})}
+    return out
+
+
 def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     """Clumps drawn on the top view: [{"name"?, "top": [[x, y], ...] (root first), "width", "thickness"?, "lie"?}]
     -> locks. Heights come from the volume: the root dives under whatever it grows from, the body lies with its back
@@ -1905,6 +2030,10 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         gr = _grey(g, float(a[0]), float(e[0]), line)
         if gr > 0.01:
             out[name]["grey"] = round(gr, 3)
+        if c.get("split"):  # breakup: the tip splits into smaller locks
+            sp = c["split"] if isinstance(c["split"], dict) else {"n": int(c["split"])}
+            out.update(split_tips(sc, g, line, name, out[name], int(sp.get("n", 2)), float(sp.get("at", 0.6)),
+                                  float(sp.get("fan", 0.5)), float(sp.get("keep", 0.2))))
     return out
 
 
@@ -2203,30 +2332,51 @@ def trace_overlay(name: str, sc: Scalp, cam: dict, img, spec: dict):
     return im
 
 
-def trace_image(name: str, out: str, scale: float = 2.0) -> None:
-    """The reference crop with the trace drawn on it (part, hairline, hair outline, clumps with tip dots)."""
+def trace_image(name: str, out: str | None = None, scale: float = 2.0):
+    """The reference crop with the trace drawn on it (part red, hairline white, hair outline orange, clumps yellow
+    with tip dots, landmarks green with the matched camera's reprojection in cyan). Returns the image."""
     from PIL import Image, ImageDraw
-    tr, cam = ref_trace(name), ref_camera(name)
-    x0, y0, x1, y1 = cam["crop"]
-    im = Image.open(tr.get("image", str(REFERENCE))).convert("RGB").crop((x0, y0, x1, y1))
+    tr, cam = ref_trace(name) or {}, ref_camera(name) or {}
+    img, _ = reference_image(name)
+    if img is None:
+        raise HairError("the trace has no reference image (ref_trace.json \"image\")")
+    im = Image.open(img).convert("RGB")
+    x0, y0, x1, y1 = cam.get("crop") or tr.get("crop") or [0, 0, im.width, im.height]
+    im = im.crop((x0, y0, x1, y1))
     im = im.resize((int(im.width * scale), int(im.height * scale)))
     dr = ImageDraw.Draw(im)
 
     def q(pts):
         return [((u - x0) * scale, (v - y0) * scale) for u, v in pts]
-    dr.line(q(tr["hair"] + tr["hair"][:1]), fill=(255, 160, 40), width=2)
-    dr.line(q(tr["hairline"]), fill=(255, 255, 255), width=3)
-    dr.line(q(tr["part"]), fill=(255, 40, 40), width=4)
-    for c in tr["clumps"]:
+    if tr.get("hair"):
+        dr.line(q(tr["hair"] + tr["hair"][:1]), fill=(255, 160, 40), width=2)
+    if tr.get("hairline"):
+        dr.line(q(tr["hairline"]), fill=(255, 255, 255), width=3)
+    if tr.get("part"):
+        dr.line(q(tr["part"]), fill=(255, 40, 40), width=4)
+    for c in tr.get("clumps") or []:
         dr.line(q(c["line"]), fill=(255, 230, 40), width=3)
         e = q(c["line"][-1:])[0]
         dr.ellipse([e[0] - 5, e[1] - 5, e[0] + 5, e[1] + 5], fill=(255, 230, 40))
         r = q(c["line"][:1])[0]
-        dr.text((r[0] + 4, r[1] - 12), c["name"], fill=(255, 255, 255))
+        dr.text((r[0] + 4, r[1] - 12), c.get("name", ""), fill=(255, 255, 255))
+    lms = tr.get("landmarks") or {}
+    if lms and cam.get("R"):
+        spec = store.load(name)
+        from .spec import expand_mirror, geometry
+        J = expand_mirror({k: v for k, v in geometry(spec).items() if k != "hair"})["joints"]
+        for n, uv in lms.items():
+            a = q([uv])[0]
+            dr.ellipse([a[0] - 4, a[1] - 4, a[0] + 4, a[1] + 4], outline=(60, 255, 60), width=2)
+            if n in J:
+                b = q(project_ref(cam, np.asarray(J[n]["pos"], float)[None]).tolist())[0]
+                dr.line([a, b], fill=(40, 230, 255), width=2)
     if tr.get("clip_y") is not None:
         y = (tr["clip_y"] - y0) * scale
         dr.line([(0, y), (im.width, y)], fill=(120, 120, 255), width=1)
-    im.save(out)
+    if out:
+        im.save(out)
+    return im
 
 
 def _signed(az):

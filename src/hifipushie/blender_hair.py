@@ -295,11 +295,18 @@ def material(look: dict):
     nt.links.new(_math(nt, "ADD", 1.0, var), hsv.inputs["Value"])
     col = hsv.outputs[0]
     # the sheen: a broad warm band along each lock's crown
+    # (each lock's band slides along it by its own amount: bands at the same place on every lock line up into one
+    # stripe across the head, the thing artists break up first)
+    sh = _math(nt, "ADD", along, _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", lock, 0.5),
+                                       float(look.get("band_shift", 0.25))))
     band = _math(nt, "MULTIPLY", _smooth(nt, _math(nt, "SUBTRACT", 0.0, _math(nt, "ABSOLUTE", across)), -0.75, -0.1),
-                 _math(nt, "MULTIPLY", top, _smooth(nt, along, 0.1, 0.35)))
-    band = _math(nt, "MULTIPLY", band, _math(nt, "SUBTRACT", 1.0, _smooth(nt, along, 0.7, 1.0)))
+                 _math(nt, "MULTIPLY", top, _smooth(nt, sh, 0.1, 0.35)))
+    band = _math(nt, "MULTIPLY", band, _math(nt, "SUBTRACT", 1.0, _smooth(nt, sh, 0.7, 1.0)))
     col = mix(col, rgb(look.get("sheen", "#9a6048")), _math(nt, "MULTIPLY", band, float(look.get("sheen_amount", 0.45))))
     col = mix(col, rgb(look.get("grey", "#9a948d")), _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", grey, 0.7), expo))
+    if float(look.get("tip_amount", 0.0)) > 0:  # tips a shade lighter/warmer (sun-bleached ends)
+        col = mix(col, rgb(look.get("tip", "#7a5038")),
+                  _math(nt, "MULTIPLY", _smooth(nt, along, 0.55, 1.0), float(look["tip_amount"])))
     nt.links.new(col, bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = float(look.get("roughness", 0.42))
     bsdf.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5))

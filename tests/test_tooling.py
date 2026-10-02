@@ -397,6 +397,41 @@ def test_hair_lock_rebuild_keeps_inputs_and_winds_outward():
     assert got["volume"] > 0, got
 
 
+def test_hair_through_the_tools():
+    """2026-10-01: hair was reachable only from Python. The tools exist, edit_model edits one lock's fields through a
+    dotted kind ("hair.locks"), the validation names the bad key, the export/look keys the pipeline reads validate,
+    and a stale scene copy that reads back as the spec's own lock is not reported."""
+    from hifipushie import hair
+    for t in ("groom_hair", "look_hair", "hair_reference"):
+        assert callable(getattr(server, t)), t
+    assert "silhouette" in server.guide("hair").lower()
+    lk = {"tier": "drawn", "pts": [[0, 30, 0.0], [-40, 30, 0.01]], "width": 0.05, "thickness": 0.006}
+    spec = {"hair": {"locks": {"sweep1": dict(lk)}, "look": {"edge": 0.7, "root": 0.2}, "export": {"segments": 12}}}
+    out = store.apply_ops(spec, [{"op": "set", "kind": "hair.locks", "name": "sweep1", "value": {"width": 0.07}},
+                                 {"op": "set", "kind": "hair.groom", "name": "volume", "value": {"top": 0.04}}])
+    assert out["hair"]["locks"]["sweep1"]["width"] == 0.07 and out["hair"]["locks"]["sweep1"]["pts"] == lk["pts"]
+    assert out["hair"]["groom"]["volume"] == {"top": 0.04}
+    hair.validate(out)
+    bad = store.apply_ops(spec, [{"op": "set", "kind": "hair.locks", "name": "sweep1", "value": {"wdth": 0.07}}])
+    assert "wdth" in str(_exc(hair.validate, bad))
+    assert "stage" in str(_exc(hair.validate, {"hair": {"stage": "clumps"}}))
+    assert hair.merge_patch({"a": {"b": 1, "c": 2}}, {"a": {"b": None, "d": 3}}) == {"a": {"c": 2, "d": 3}}
+    import numpy as np
+    sc = hair.Scalp([0, 0, 1.7], np.full((180, 81), 0.1), {})
+    old = hair.scalp
+    hair.scalp = lambda name, spec=None: sc
+    try:
+        s2 = {"hair": {"locks": {"sweep1": dict(lk, pts=[[0, 30, 0.0], [320, 30, 0.01]])}}}  # (azimuths read back 0..360)
+        P = sc.point(np.array([0.0, -40.0]), np.array([30.0, 30.0]), np.array([0.0, 0.01]))
+        got = {"sweep1": {"pts": P.tolist(), "radius": [1, 1], "tilt": [0, 0], "inputs": {}, "hash": "stale"}}
+        log = []
+        assert hair.pull_locks(s2, "x", got, log) == {} and not log, log
+        got["sweep1"]["pts"] = sc.point(np.array([0.0, -50.0]), np.array([30.0, 30.0]), np.array([0.0, 0.01])).tolist()
+        assert hair.pull_locks(s2, "x", got, log) == {} and "another version" in log[0], log
+    finally:
+        hair.scalp = old
+
+
 def _exc(fn, *a):
     try:
         fn(*a)
