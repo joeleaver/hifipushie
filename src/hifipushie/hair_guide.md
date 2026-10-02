@@ -81,6 +81,15 @@ the shapes without colour; the thumbnail shows how the hair reads small.
   landmark, and more means a mislabelled point. Check the returned picture: landmarks green, the reprojection cyan.
 - `apply=True` carries the trace onto the head: the parting line, hairline front points, and drawn clumps along the
   traced flows, plus rows behind and on the part side that the picture can't show.
+- Put a landmark beside the ear in the trace (`lm_jaw_0.R` or `.L`, the face's edge just in front of the ear at
+  eye level). Face landmarks alone barely fix the camera's pitch, and the cranium is what hair sits on. On the
+  golfer, the face-only camera put the bare skull at the reference's hair top, so every outline number on top was
+  wrong by ~10 mm. One ear point moved the IoU from 0.60 to 0.73 with no change to the hair.
+- Match every view of the character you have: `trace["views"] = {"far": {landmarks, hair, hairline, part?, clip_y,
+  crop}}`. A view can be another figure in the same picture (it shares the lens, so only the pose is fitted) or
+  another picture, such as a turnaround's side or back (give it its own `"image"`). Each view gets its own matched
+  row and its own numbers in look_hair. Where two views disagree by more than the camera error, no single fix will
+  satisfy both: split the difference and say so.
 
 ### 1. Silhouette
 
@@ -89,14 +98,33 @@ groom_hair(name, groom={"hairline": {...}, "parting": {...}, "volume": {...}}, s
 ```
 
 - The volume, in metres of hair over the scalp per region: front, top, crown, sides, back, nape.
-- `ramp`: how the front rises.
+- `ramp`: how the front rises. About 0.03 gives a quiff's rolled front. 0.02 is a wall the front locks jut over;
+  0.06 leans the front back into a slope.
 - `across`: how round it is across the top.
+- `crest`: where across the head the top's crest runs (x in metres, his left positive). On a side part, put it just
+  across the part on the swept side (golfer: 0.025): the quiff is highest there and falls away toward the swept
+  side.
+- `taper` `{"from": el, "to": el, "floor": f}`: sides and back keep their full volume down to elevation `from`
+  (degrees), then ease to `floor` x that volume at `to`. This gives short tapered sides and back under a full
+  occiput, instead of a bucket that is as full at the nape as higher up.
+- `parting.full` piles volume onto the swept side. On the golfer it was the main reason that side stuck out 12 mm
+  too far: set it from the outline numbers, not by eye.
 - The hairline is a crisp, designed line: `hairline.front` (in brow-to-nose units), temples, sideburns, nape.
 
 Check:
 - Gate: the outline's dents. They must be <= 1.5 mm in front and 3/4. A pinched temple reads as a divot, and locks
   never fix that later.
 - Height over the brows, width at the temples, and IoU / outline px against the trace.
+- The outline per head region, in every matched view: front, top, side.L/R, back.L/R, back.
+  - Each ray from the head centre is labelled by the part of the volume that makes the outline there.
+  - `err` = ours minus the reference, in mm; + means ours sticks out further.
+  - `ref_hair` / `our_hair` = how far each outline stands outside the bare head. A negative `ref_hair` means the bare
+    head is already outside the reference there: hair can't fix that, so check the camera or the head.
+  - `over_brow_mm` = [reference, ours]: the hair's top above the brows.
+  - Change the region named, by the millimetres given.
+- Measure before you decide what is wrong. On the golfer, "the hair hugs the skull" turned out to be hair 10-14 mm
+  TOO TALL, too full on the swept side and thin at the back sides. What read as flat was the front's shape and the
+  locks.
 - Get the outline right here: it's the one thing every later stage inherits.
 
 ### 2. Big shapes
@@ -127,6 +155,20 @@ Rules from the artists:
 - **Overlap:** front rows over the roots of the rows behind, higher clumps over lower ones. The roots lie flat; they
   don't climb out of the parting.
 - **Asymmetry:** the part side short and flat, the swept side full (`parting.flat`, `parting.full`).
+- **A quiff's front:** 4-5 rows from the part sweeping across and down over the far temple. Make the front two big
+  (8-9 cm wide) and the rows behind 5.5-6.5 cm. Lay the front row 2+ cm behind the hairline, so it rides the front
+  roll; laid along the hairline, it sits in the ramp and dips and twists. Draw gentle arcs: chevrons twist a wide
+  lens. On the golfer, seven traced rows plus their under clumps in the front 6 cm stacked into slats and flakes.
+- **Keep paths inside the hairline.** A clump that crosses the hairline drops to the skin there and stands up again
+  as a fin. (On the golfer, the part-side clump curled past the temple.)
+- **Folds:** look_hair lists "folded locks". These are places where the spine turns within the lock's own half width,
+  so the inner edge runs backwards and the lens crumples into flakes. Ease the path or narrow the lock.
+  - Drawn clumps are eased automatically on the head (`hair.ease_bends`).
+  - A root takes the next point's tilt.
+  - A root dives just under the underlayer, not to the scalp. Sent to the scalp, it climbed 2 cm in its first
+    centimetre and folded: those were the flakes along the part.
+- **Find the culprit:** `look_hair(name, views=[...], only=["pside*", "sweep1"])` shows only those locks on the
+  underlayer, so you can see which locks make a busy patch.
 
 ### 3. Secondary: sides and back
 

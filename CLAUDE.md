@@ -441,7 +441,24 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   locks, a light breakup, material) for the tools. Found doing it through the tools (renders hair_t01-t13): under
   clumps sank 1 x thickness, i.e. under the underlayer, so the volume showed between every pair of wedge tips (now
   `drawn_under` sink 0.35, per row); unders across az 180 averaged through the front (a lock over the face); the
-  generated strip/gap tiers read as tiles and a mop (t13: 47 drawn locks in rows, no tiers, back bare 0.07). Drawn
+  generated strip/gap tiers read as tiles and a mop (t13: 47 drawn locks in rows, no tiers, back bare 0.07).
+  Silhouette round (2026-10-02, model `workspace/hair_vol`, renders hv01_*/hv02_*):
+  - `trace.views` adds matched views: another figure in the same picture shares the lens (`fit_camera(focal=)`;
+    with a free focal it ran off to orthographic). They are stored in `ref_cameras.json` and listed by
+    `hair.ref_views`; each gets a matched row and its own fit.
+  - `outline_regions`: on rays from the head centre in each matched view, the outline per head region (labelled by
+    the volume point that makes the outline there), ours vs the reference vs the bare head, in mm; plus
+    `over_brow_mm`.
+  - A face-only camera fit left the cranium's pitch loose: the bare skull already reached the reference's hair top.
+    One ear-side landmark (`lm_jaw_0.R`) fixed it.
+  - The golfer's hair was 10-14 mm TOO TALL and too full on the swept side, not flat. New `volume.crest` and
+    `volume.taper`. IoU near 0.73 -> 0.76, far 0.75 -> 0.84 (mass), 0.74 / 0.86 with locks.
+  - The flakes along the part were roots twisting and climbing. lie_tilt at a root came out ~100 deg off the next
+    point (now the root takes the next point's tilt, and |tilt| <= `TILT_MAX`), and roots were sent to the scalp
+    under a 2 cm volume (now they dive just under the underlayer).
+  - `hair.folds` (look_hair "folded locks"): in-plane bend x half width >= 1. `ease_bends` on drawn paths.
+    `look_hair(only=)` isolates locks.
+  Drawn
   clumps take `"split"` (`split_tips`: tip into n narrower locks fanned apart, the clump tapering out under them, held
   inside the hairline); look keys `band_shift` (each lock's sheen band slides along it) and `tip`/`tip_amount`. The
   look's reference image is the trace's own (no golfer default).

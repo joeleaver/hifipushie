@@ -454,6 +454,27 @@ def _exc(fn, *a):
     return None
 
 
+def test_hair_folds_regions_and_shared_lens():
+    """2026-10-02 (hair silhouette round): a wide lock bent round a corner tighter than its half width crumpled into
+    flakes along the part: `folds` must see it and `ease_bends` must take it out; outline rays are labelled by head
+    region; a second figure in the same picture keeps the first's focal length (free, it ran off to infinity)."""
+    import numpy as np
+    from hifipushie import hair
+    A, E = np.arange(0.0, 360.0, 2.0), np.arange(-70.0, 90.01, 2.0)
+    sc = hair.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
+    # an L on the top of a ball: 6 cm along, a right angle, 6 cm on; 3 cm wide (drawn paths are 40 points)
+    xy = np.r_[np.c_[np.linspace(0.06, 0.0, 20), np.zeros(20)], np.c_[np.zeros(19), np.linspace(0.003, 0.06, 19)]]
+    a, e = hair.top_to_azel(sc, xy)
+    Q = hair._catmull(sc.point(a, e, 0.0), 40)
+    half = np.full(len(Q), 0.015)
+    assert hair.bend_ratio(sc, Q, half).max() > 1.0
+    lk = {"name": "L", "pts": Q[::10].tolist(), "inputs": {"Width": 0.03, "Root": 1.0, "Belly": 0.05, "Taper": 0.0}}
+    assert "L" in hair.folds(sc, [lk])
+    assert hair.bend_ratio(sc, hair.ease_bends(sc, Q, half), half).max() < hair.BEND_EASE + 0.05
+    assert list(hair.region_of([0, 60, -60, 130, -130, 180, 10], [0, 0, 0, 0, 0, 0, 70])) == \
+        ["front", "side.L", "side.R", "back.L", "back.R", "back", "top"]
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

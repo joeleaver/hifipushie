@@ -1095,6 +1095,12 @@ def _hair_gates(look) -> str:
     lm = getattr(look, "lit_mass", None) or {}
     if lm:
         lines.append("lit bare volume (reads as a helmet, < 0.03): " + ", ".join(f"{v} {x}" for v, x in lm.items()))
+    fo = getattr(look, "folds", None)
+    if fo:
+        worst = sorted(fo.items(), key=lambda kv: -kv[1][0])
+        lines.append(f"folded locks ({len(fo)}; the spine turns within the lock's own width, bend x half width >= "
+                     f"1: the inner edge runs backwards and the lens crumples into flakes there; ease the path or narrow the lock): " + ", ".join(
+                         f"{n} {r} at {u}" for n, (r, u) in worst[:12]) + (" ..." if len(fo) > 12 else ""))
     fits = getattr(look, "fits", None) or ({"matched": look.fit} if getattr(look, "fit", None) else {})
     for view, f in fits.items():
         if not f:
@@ -1123,7 +1129,7 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
     groom: a patch merged into the stored groom first (objects merge key by key, null deletes), e.g.
       {"volume": {"top": 0.04}, "parting": {"side": "left", "offset": 0.03}, "drawn": [...]}.
       Keys: hairline (front, temples, sideburns, nape, ear, front_points), parting (side, offset, length, line, flat,
-      full, depth), volume (front, top, crown, sides, back, nape, ramp, across: m of hair over the scalp), length
+      full, depth), volume (front, top, crown, sides, back, nape: m of hair over the scalp; ramp, across, crest: x of the top's crest, taper: {from, to, floor} short tapered sides and back), length
       (per region, m), flow (per region: {"back"|"down"|"up"|"away"|...: weight}), tiers ({tier: {width, thickness,
       spacing, where, length, taper, belly, root, ...} | false}: strip = shingled side/back strips, gap = covers
       bare volume, big/crown = the generated top, fill, edge), drawn (big clumps drawn by hand: [{"name", "top":
@@ -1147,7 +1153,7 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
 
 @mcp.tool(structured_output=False)
 def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: bool = True, layout: bool = False,
-              reference: str | None = None, save: str | None = None):
+              reference: str | None = None, save: str | None = None, only: list[str] | None = None):
     """A fast look at the hair (4-30 s): the head cropped from the model's Blender scene with the hair from the spec,
     rendered in EEVEE. Rows: the material, the same in clay (shape without colour: judge clumps there), and with a
     matched reference camera (hair_reference) the matched render, its clay, the reference, a 50% blend and the traced
@@ -1155,7 +1161,9 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     views: any of front, three_quarter, three_quarter_r, side, back, top, close, close_back (default front,
     three_quarter, side, back, top). layout=True adds the groom seen from above as a sketch: hairline, parting, every
     lock's spine (drawn clumps black with names, others by tier), roots and tips; views=["layout"] gives only that
-    (no render). reference: an image to show beside the views (default: the traced reference).
+    (no render). reference: an image to show beside the views (default: the traced reference). only: lock names or
+    patterns (["sweep*", "pside0"]) shown alone on the underlayer, to see which locks make a busy patch (the gates
+    then measure that subset).
     Returns the images and the measured gates: the outline's dents (front, 3/4: a pinched temple reads as a divot),
     the bare-volume share per view (the volume showing between locks reads as a helmet), and with a trace the fit to
     the reference (part start px / direction deg, hairline px, silhouette IoU, outline px, clump directions).
@@ -1175,7 +1183,8 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     out = []
     text = _hair_counts(spec)
     if not only_layout:
-        sheet, secs, _ = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay)
+        sheet, secs, _ = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay,
+                                   only=only)
         out.append(_out(sheet, save))
         gates = _hair_gates(hair.look)
         if (spec.get("hair") or {}).get("stage") == "mass":  # the volume is the surface on purpose at this stage

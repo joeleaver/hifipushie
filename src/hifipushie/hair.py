@@ -1209,6 +1209,37 @@ def lock_width(inp: dict, u):
     return rise * (1 - taper * fall ** 0.8)
 
 
+FOLD_LIMIT = 1.0  # in-plane bend x half width: at 1 the lock's inner edge runs backwards (folds over itself)
+
+
+def folds(sc: Scalp, locks: list, n: int = 80) -> dict:
+    """Locks that fold over themselves: where the spine turns within the lock's flat side tighter than its half width
+    (in-plane curvature x half width >= 1), the inner edge runs backwards and the lens crumples into overlapping
+    flakes. {lock: [ratio, u]} for the worst point of every lock over FOLD_LIMIT (u = 0 root .. 1 tip)."""
+    out = {}
+    for lk in locks:
+        S = _catmull(lk["pts"], n)
+        d = np.gradient(S, axis=0)
+        ds = np.maximum(np.linalg.norm(d, axis=1), 1e-9)
+        tg = d / ds[:, None]
+        nr = _unit(S - sc.C)
+        nr = _unit(nr - (nr * tg).sum(1, keepdims=True) * tg)
+        u = np.linspace(0, 1, n)
+        if lk.get("tilt"):
+            ti = np.interp(u, np.linspace(0, 1, len(lk["tilt"])), lk["tilt"])[:, None]
+            nr = nr * np.cos(ti) + np.cross(tg, nr) * np.sin(ti)
+        b = _unit(np.cross(nr, tg))
+        k = (np.gradient(tg, axis=0) / ds[:, None] * b).sum(1)  # in-plane curvature (1/m)
+        inp = lk["inputs"]
+        half = 0.5 * inp["Width"] * lock_width(inp, u)
+        r = np.abs(k) * half
+        r[[0, -1]] = 0.0  # the ends' one-sided differences
+        i = int(np.argmax(r))
+        if r[i] >= FOLD_LIMIT:
+            out[lk["name"]] = [round(float(r[i]), 2), round(float(u[i]), 2)]
+    return out
+
+
 def lock_extents(sc: Scalp, locks: list, n: int = 40):
     """Points on every lock's outer face (the spine as Blender curves it, the lens across it at 7 places, pushed
     out by half the thickness less the cup, sized along the lock like the node group): what the locks add to the
@@ -1431,8 +1462,9 @@ def streams(sc: Scalp, g: dict, V) -> dict:
             "lock": (rng.uniform(0, 1, len(edges))[i]).astype(np.float32)}
 
 
-def job(name: str, spec: dict | None = None) -> dict:
-    """What Blender needs to show the hair: the locks, the cap (or the mass), the material."""
+def job(name: str, spec: dict | None = None, only=None) -> dict:
+    """What Blender needs to show the hair: the locks, the cap (or the mass), the material. `only`: lock names or
+    fnmatch patterns ("sweep*") to show alone on the underlayer (finding which locks make a patch)."""
     spec = store.load(name) if spec is None else spec
     h = hair_of(spec)
     if not h:
@@ -1442,6 +1474,10 @@ def job(name: str, spec: dict | None = None) -> dict:
     tmp = Path(tempfile.mkdtemp(prefix="hifipushie-hair-"))
     stage = h.get("stage", "locks")
     locks = [] if stage == "mass" else resolve(spec, sc)
+    if only:
+        from fnmatch import fnmatch
+        pats = [only] if isinstance(only, str) else list(only)
+        locks = [lk for lk in locks if any(fnmatch(lk["name"], q) for q in pats)]
     V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass",
                     extra=lock_extents(sc, locks) if (locks and h.get("filler")) else None)
     extra = {k: v for k, v in streams(sc, g, V).items() if k == "tangent"} if stage != "mass" else {}  # (the
@@ -1505,7 +1541,8 @@ def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
 
 
 def look(name: str, views=("front", "three_quarter", "side", "back", "top"), size: int = 480, save: str | None = None,
-         reference: str | None = None, spec: dict | None = None, caption: str = "", clay: bool = True) -> tuple:
+         reference: str | None = None, spec: dict | None = None, caption: str = "", clay: bool = True,
+         only=None) -> tuple:
     """A fast hair look: the head-cropped stage file + the hair from the spec, EEVEE, a few perspective views, a
     thumbnail (how it reads small) and the reference beside. Returns (sheet image, seconds)."""
     from PIL import Image, ImageDraw
@@ -1532,7 +1569,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         dump = str(Path(tmp) / "hair_pts.npy")
         cf = [{**f, "out": str(Path(tmp) / f"clay_{f['name']}.png")} for f in frames] if clay else []
         idf = [{**f, "out": str(Path(tmp) / f"id_{f['name']}.png"), "size": 240} for f in frames]
-        j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec),
+        j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec, only=only),
              "samples": 16, "dump": dump, "clay_views": cf, "id_views": idf}
         out = _blender(j)
         clays = [Image.open(f["out"]).convert("RGB") for f in cf]
@@ -1555,6 +1592,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         np.savez(store._dir(name) / "hair_point_owners.npz", ids=np.load(dump + ".ids.npy"),  # which object each is
                  names=np.array(json.load(open(dump + ".names.json"))))
         look.gate = silhouette_gate(sc, pts)
+        look.folds = folds(sc, j["hair"].get("locks") or []) if j["hair"] else {}
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t
@@ -2024,6 +2062,42 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
     return out
 
 
+TILT_MAX = 1.3  # rad: the most a drawn clump's flat side turns off facing away from the head centre
+BEND_EASE = 0.7  # drawn clumps are eased until their spine's in-plane bend x half width is under this
+
+
+def bend_ratio(sc: Scalp, Q, half):
+    """Per point of a dense path on the head: how tightly it turns along the head's surface x the half width there
+    (>= 1: a lock that wide folds its inner edge)."""
+    d = np.gradient(Q, axis=0)
+    ds = np.maximum(np.linalg.norm(d, axis=1), 1e-9)
+    tg = d / ds[:, None]
+    nr = _unit(Q - sc.C)
+    b = _unit(np.cross(nr, tg))
+    r = np.abs((np.gradient(tg, axis=0) / ds[:, None] * b).sum(1)) * half
+    r[[0, -1]] = 0.0
+    return r
+
+
+def ease_bends(sc: Scalp, Q, half, limit: float = BEND_EASE, rounds: int = 200):
+    """A dense path on the head smoothed (ends held, kept on the scalp's rays) where it turns tighter than `limit` x
+    half width allows: a wide clump drawn round a sharp corner sweeps a wide curve instead."""
+    Q = np.asarray(Q, float).copy()
+    for _ in range(rounds):
+        r = bend_ratio(sc, Q, half)
+        if r.max() < limit:
+            break
+        wgt = np.clip((r - 0.8 * limit) / (0.2 * limit), 0, 1)
+        wgt = np.convolve(wgt, np.ones(5) / 5, mode="same")  # ease the neighbourhood, not one point
+        wgt[[0, -1]] = 0.0
+        L = np.zeros_like(Q)
+        L[1:-1] = 0.5 * (Q[:-2] + Q[2:]) - Q[1:-1]
+        Q = Q + 0.5 * wgt[:, None] * L
+        a, e = az_el(Q - sc.C)
+        Q = sc.point(a, e, 0.0)
+    return Q
+
+
 def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     """Clumps drawn on the top view: [{"name"?, "top": [[x, y], ...] (root first), "width", "thickness"?, "lie"?}]
     -> locks. Heights come from the volume: the root dives under whatever it grows from, the body lies with its back
@@ -2033,37 +2107,44 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     out = {}
     clumps = list(clumps) + (_under_clumps(clumps, sc, g["drawn_under"]) if g.get("drawn_under", True) is not False else [])
     for i, c in enumerate(clumps):
-        if c.get("azel"):  # drawn on the head itself ([az, el] from the root): the same path in top-view terms
-            q = np.asarray(c["azel"], float)
-            Q = _catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
-            cq = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
-            tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * cq[-1]
-            Q = np.stack([np.interp(tt, cq, Q[:, k]) for k in range(3)], 1)
-            a, e = az_el(Q - sc.C)
-            xy = None
-        else:
-            xy = np.asarray(c["top"], float)
+        w = float(c.get("width", 0.055))
         # the drawing smoothed and resampled (6 points), with one more just past the root: the root grows from the
         # scalp and the clump is up at the volume a short way on (with the rise spread over the whole first segment
         # most of a short clump lay under the volume, which then showed as a smooth patch)
-        if xy is not None:
-            xy = _catmull(np.c_[xy, np.zeros(len(xy))], 40)[:, :2]
-            c_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
-            tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * c_[-1]
-            xy = np.stack([np.interp(tt, c_, xy[:, k]) for k in range(2)], 1)
-            a, e = top_to_azel(sc, xy)
-        w = float(c.get("width", 0.055))
+        if c.get("azel"):  # drawn on the head itself ([az, el] from the root)
+            q = np.asarray(c["azel"], float)
+            Q = _catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
+        else:  # drawn on the top view
+            xy = _catmull(np.c_[np.asarray(c["top"], float), np.zeros(len(c["top"]))], 40)[:, :2]
+            qa, qe = top_to_azel(sc, xy)
+            Q = sc.point(qa, qe, 0.0)
+        # a clump can't turn within its own width: eased where the drawing bends tighter (it folded into flakes)
+        Q = ease_bends(sc, Q, 0.5 * w * lock_width({"Root": float(c.get("root", 1.0)),
+                                                       "Belly": float(c.get("belly", 0.06)),
+                                                       "Taper": float(c.get("taper", 1.0))}, np.linspace(0, 1, len(Q))))
+        cq = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+        tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * cq[-1]
+        Q = np.stack([np.interp(tt, cq, Q[:, k]) for k in range(3)], 1)
+        a, e = az_el(Q - sc.C)
         T = float(c.get("thickness", 0.0055 * w / 0.055))
         H, d_in = envelope(sc, g, line, a, e)
         U = under(g, H, a, e, d_in)
         u = tt / max(tt[-1], 1e-9)
         h = U + 0.35 * T
-        h[0] = min(U[0] - 0.5 * T, 0.2 * T)  # the root grows from the scalp (at the part)
+        # the root dives just under the underlayer where it grows (at the part the underlayer dips to the scalp):
+        # sent down to the scalp under a full volume, a root climbed ~2 cm in its first centimetre and the wide lens
+        # folded through itself there (flakes along the part)
+        h[0] = max(min(U[0] - 0.5 * T, U[1] - T), 0.2 * T)
         h[-1] = U[-1] + float(c.get("lie", 0.1)) * T
         h = h - float(c.get("sink", 0.0)) * T * _ss(u / 0.2)  # an under clump lies beneath its neighbours
         h = np.where(d_in < 0, np.maximum(h, 0.55 * T), h)  # a fringe lies on the forehead
         P = sc.point(a, e, h)
         tilt = lie_tilt(sc, g, line, _catmull(P, 4 * len(P))[::4])
+        # the root takes the next point's tilt: there the spine climbs out of the scalp and the volume's normal turns
+        # sideways at a parting, so its own tilt came out ~100 deg off the next one's: the lens twisted through
+        # itself at the root (the flakes along the part); and no point lies more than TILT_MAX off the head's own
+        tilt[0] = tilt[1]
+        tilt = np.clip(tilt, -TILT_MAX, TILT_MAX)
         name = c.get("name") or f"k{i:02d}"
         out[name] = {"tier": "drawn", "pts": [[round(float(a[k]), 2), round(float(e[k]), 2), round(float(h[k]), 4)]
                                               for k in range(len(a))],
