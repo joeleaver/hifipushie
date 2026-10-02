@@ -122,6 +122,11 @@ look can hide parts, clip with a plane (floor plans, cross-sections) and add per
 room); clearance checks walkable floor, headroom and door widths of environments.
 Every change is checkpointed; history/revert let you experiment freely.
 
+Hair is curve locks in the Blender scene, not part of the field: read guide(topic="hair"), then groom_hair (grow locks
+from spec.hair.groom) -> look_hair (renders + gates: outline dents, bare volume, fit to a traced reference) -> groom_hair /
+edit_model kind "hair.locks" ... ; hair_reference matches a reference picture (camera from face landmarks, traced part,
+hairline and clumps carried onto the head); sync(hair_only=True) puts the locks in scene.blend, pull brings hand edits back.
+
 Terrain (landscapes and game levels) is separate: a height field described in a level designer's words (a basin, a
 pass, a village site, a road, forest here, "this must be visible from there"). Read guide(topic="terrain"), then
 set_terrain -> check_terrain / look_terrain -> set_terrain(patch=...) ... -> export_terrain. When the world's kind is one
@@ -261,11 +266,15 @@ def guide(topic: str = "") -> str:
     """The hifipushie playbook: how to work in stages (plan, blockout, secondary forms, detail), rules for
     strokes and parts, how to judge renders and diagnose artifacts. Read it before modelling.
     topic="terrain": the terrain vocabulary (landscapes and game levels in a level designer's words: world kinds,
-    basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools."""
+    basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools.
+    topic="hair": stylised hair as sculpted locks, the way artists groom it (silhouette, big shapes, clumps, breakup),
+    with groom_hair, look_hair, hair_reference and sync(hair_only=True)."""
     if topic.strip().lower() == "terrain":
         return (Path(__file__).with_name("terrain_guide.md")).read_text()
+    if topic.strip().lower() == "hair":
+        return (Path(__file__).with_name("hair_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook) or "terrain"')
+        raise ValueError('topic is "" (the modelling playbook), "hair" or "terrain"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -917,7 +926,7 @@ def revert(name: str, version: int) -> str:
 
 
 @mcp.tool(structured_output=False)
-def sync(name: str, resolution: int = 256) -> str:
+def sync(name: str, resolution: int = 256, hair_only: bool = False) -> str:
     """Bring the model's Blender scene (workspace/<model>/scene.blend) in line with the spec, after taking back
     what a person changed in it (moved/turned/scaled instances, exposed paint numbers: see `pull`). One object
     per part and per prefab (collection instances), paint as shader nodes, AO and sky baked by Cycles (each
@@ -926,8 +935,17 @@ def sync(name: str, resolution: int = 256) -> str:
     .blend in Blender to look around and edit; the next sync or look brings the edits back.
     Live: when the person's running Blender has this scene.blend open with the Blender MCP add-on's server started
     (port 9876, or $BLENDER_MCP_PORT), sync and pull run inside that session: changes appear in their viewport as
-    they're made, their unsaved moves and tweaks come back, and the session is saved to scene.blend afterwards."""
+    they're made, their unsaved moves and tweaks come back, and the session is saved to scene.blend afterwards.
+    hair_only: only the hair's curve locks (after pulling what a person changed in the scene; seconds): enough after
+    groom_hair or lock edits when the body hasn't changed. look_hair doesn't need it (it renders the spec's hair)."""
     from . import scene
+    if hair_only:
+        from . import hair
+        log: list = []
+        changes = scene.pull(name, log)
+        r = hair.sync(name)
+        return (f"hair synced into {scene.blend_path(name)}: {r['made']} locks in {r['seconds']}s"
+                + (f"\npulled first: {json.dumps(changes)}" if changes else "") + ("\n" + "\n".join(log) if log else ""))
     r = scene.sync(name, resolution)
     return (f"{r['blend']} synced in {sum(r['seconds'].values()):.1f}s ({', '.join(f'{k} {v}s' for k, v in r['seconds'].items())})\n"
             + "\n".join(r["log"]))
@@ -1005,6 +1023,237 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide,
                        lighting=(store.load(name).get("style") or {}).get("look"))
     return [_out(im, save), text]
+
+
+# ---------------------------------------------------------------- hair
+
+HAIR_TRACE = """A trace is reference-image pixels (u right, v down) of the picture you're matching:
+  {"image": path (or pass image_path), "landmarks": {lm joint: [u, v], ...} (8-10 face points: eye corners, brow
+   middles, nose tip, mouth corners, chin; the model's lm_* joints), "part": [[u, v], ...] (the parting from its front
+   end back), "hairline": [[u, v], ...] (temple to temple across the forehead), "hair": [[u, v], ...] (closed outline of
+   the visible hair above clip_y), "clip_y": v (below it ear, sideburn and beard aren't traced), "clumps": [{"name",
+   "line": [[u, v], ...] root -> tip along the strands, "width": px across the clump}], "crop"?: [x0, y0, x1, y1] (the
+   square the matched views show; default: round the hair and landmarks)}.
+Clump names: one starting "part_side" is the short clump falling from the part toward the near ear; one whose root is
+across the head from the part is the sweep's fall down the far side; the rest are the rows sweeping from the part,
+front first."""
+
+
+def _hair_counts(spec: dict) -> str:
+    locks = (spec.get("hair") or {}).get("locks") or {}
+    tiers: dict = {}
+    for lk in locks.values():
+        t = lk.get("tier", "?") + ("(hand)" if lk.get("hand") else "")
+        tiers[t] = tiers.get(t, 0) + 1
+    return f"{len(locks)} locks: " + ", ".join(f"{k} {v}" for k, v in sorted(tiers.items()))
+
+
+def _hair_gates(look) -> str:
+    """The numbers a hair look measures, each with what it should be."""
+    lines = []
+    g = getattr(look, "gate", None) or {}
+    if g:
+        worst = {v: max((x for k, x in r.items() if k in ("left", "right")), default=0.0)
+                 for v, r in g.items() if isinstance(r, dict)}
+        notch = {v: max((x for k, x in r.items() if k.endswith("_notch")), default=0.0)
+                 for v, r in g.items() if isinstance(r, dict)}
+        at = {v: r.get("at") for v, r in g.items() if isinstance(r, dict)}
+        lines.append(f"silhouette gate {'PASS' if g.get('pass') else 'FAIL'}: worst dent in the outline (mm, <= 1.5; brows"
+                     f" + 2 cm up to near the top, 12 mm scale) " + ", ".join(f"{v} {d} at z {at[v]}" for v, d in worst.items())
+                     + "; clump steps at the outline (mm, 2-5 reads as clumps) "
+                     + ", ".join(f"{v} {d}" for v, d in notch.items()))
+    ms = getattr(look, "mass_share", None) or {}
+    if ms:
+        bad = [v for v, x in ms.items() if x > 0.10]
+        lines.append("bare volume share of the visible hair (< 0.10; the volume is filler, never a surface): "
+                     + ", ".join(f"{v} {x}" for v, x in ms.items()) + (f"  OVER in {', '.join(bad)}" if bad else ""))
+    lm = getattr(look, "lit_mass", None) or {}
+    if lm:
+        lines.append("lit bare volume (reads as a helmet, < 0.03): " + ", ".join(f"{v} {x}" for v, x in lm.items()))
+    f = getattr(look, "fit", None)
+    if f:
+        lines.append("against the traced reference (matched camera): " + ", ".join(
+            f"{k} {v}" for k, v in f.items() if k not in ("clumps",)))
+        if f.get("clumps"):
+            lines.append("  traced clump -> nearest model clump, direction error deg, mean distance px: " + "; ".join(
+                f"{k} -> {v[0]} {v[1]} deg {v[2]} px" for k, v in f["clumps"].items()))
+    return "\n".join(lines)
+
+
+@mcp.tool(structured_output=False)
+def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stage: str | None = None,
+               note: str = ""):
+    """Grow the hair's locks from spec["hair"]["groom"] (the designer's words and numbers) and save them.
+    Hair is curve locks (Bezier curves swept with a cupped lens profile) in the model's Blender scene, not part of
+    the SDF body; guide(topic="hair") is the workflow. Needs a head with face landmarks (a `base` head) or a
+    groom "centre" joint.
+    groom: a patch merged into the stored groom first (objects merge key by key, null deletes), e.g.
+      {"volume": {"top": 0.04}, "parting": {"side": "left", "offset": 0.03}, "drawn": [...]}.
+      Keys: hairline (front, temples, sideburns, nape, ear, front_points), parting (side, offset, length, line, flat,
+      full, depth), volume (front, top, crown, sides, back, nape, ramp, across: m of hair over the scalp), length
+      (per region, m), flow (per region: {"back"|"down"|"up"|"away"|...: weight}), tiers ({tier: {width, thickness,
+      spacing, where, length, taper, belly, root, ...} | false}: strip = shingled side/back strips, gap = covers
+      bare volume, big/crown = the generated top, fill, edge), drawn (big clumps drawn by hand: [{"name", "top":
+      [[x, y] m from the head centre seen from above, root first] | "azel": [[az, el] deg], "width", "thickness"?,
+      "taper"?, "lie"?}]; name rows stem+number so an under-layer clump fills between neighbours), grey, noise, seed.
+    stage: "mass" shows only the groom's volume as one shell (judge the silhouette first), "locks" the locks.
+    Locks edited by hand (in Blender and pulled, or by edit_model) carry "hand": true and are kept; locks deleted in
+    Blender (hair.removed) aren't grown again; replace=True regrows everything and forgets both.
+    Edit single locks with edit_model: {"op": "set", "kind": "hair.locks", "name": lock, "value": {"width": 0.07}};
+    the material with {"op": "set", "kind": "hair", "name": "look", "value": {"lit": "#5a3a2c"}}.
+    Then look_hair. Returns the counts per tier."""
+    from . import hair
+    r = hair.groom(name, replace=replace, note=note, patch=_spec_arg(groom) if groom else None, stage=stage)
+    spec = store.load(name)
+    return (f"saved {name} v{r['version']}: grew " + (", ".join(f"{t} {n}" for t, n in r["grown"].items()) or "nothing")
+            + f"; kept {len(r['kept'])} hand/edited locks" + (f" ({', '.join(r['kept'][:12])}{'...' if len(r['kept']) > 12 else ''})" if r["kept"] else "")
+            + (f"; {len(r['not_regrown'])} names not regrown (deleted in Blender: hair.removed; replace=True "
+               f"forgets them)" if r["not_regrown"] else "")
+            + f"\n{_hair_counts(spec)}; stage {(spec.get('hair') or {}).get('stage', 'locks')}")
+
+
+@mcp.tool(structured_output=False)
+def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: bool = True, layout: bool = False,
+              reference: str | None = None, save: str | None = None):
+    """A fast look at the hair (4-30 s): the head cropped from the model's Blender scene with the hair from the spec,
+    rendered in EEVEE. Rows: the material, the same in clay (shape without colour: judge clumps there), and with a
+    matched reference camera (hair_reference) the matched render, its clay, the reference, a 50% blend and the traced
+    lines over the render (reference yellow, model cyan). A thumbnail shows how it reads small.
+    views: any of front, three_quarter, three_quarter_r, side, back, top, close, close_back (default front,
+    three_quarter, side, back, top). layout=True adds the groom seen from above as a sketch: hairline, parting, every
+    lock's spine (drawn clumps black with names, others by tier), roots and tips; views=["layout"] gives only that
+    (no render). reference: an image to show beside the views (default: the traced reference).
+    Returns the images and the measured gates: the outline's dents (front, 3/4: a pinched temple reads as a divot),
+    the bare-volume share per view (the volume showing between locks reads as a helmet), and with a trace the fit to
+    the reference (part start px / direction deg, hairline px, silhouette IoU, outline px, clump directions).
+    Needs the scene once: `sync` the model first."""
+    from . import hair
+    views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
+    only_layout = views == ["layout"]
+    if "layout" in views:
+        layout = True
+        views = [v for v in views if v != "layout"]
+    bad = [v for v in views if v not in hair.VIEWS]
+    if bad:
+        raise ValueError(f"unknown views {bad} (have {', '.join(hair.VIEWS)}, layout)")
+    spec = store.load(name)
+    if not (spec.get("hair") or {}):
+        raise ValueError(f"{name} has no hair: groom_hair(name, groom={{...}}) grows it")
+    out = []
+    text = _hair_counts(spec)
+    if not only_layout:
+        sheet, secs, _ = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay)
+        out.append(_out(sheet, save))
+        gates = _hair_gates(hair.look)
+        if (spec.get("hair") or {}).get("stage") == "mass":  # the volume is the surface on purpose at this stage
+            gates = "\n".join(ln for ln in gates.splitlines() if "bare volume" not in ln)
+            gates += "\nstage mass: judge the silhouette (outline dents, IoU / outline px); bare-volume shares count " \
+                     "once the locks are on (stage \"locks\")"
+        text = f"rendered in {secs}s; {text}\n" + gates
+    hy = hair.hierarchy(spec, hair.scalp(name, spec))
+    if hy:
+        flag = ("  near-uniform: vary the widths (a few big shapes, some medium, a few small)"
+                if hy["width_cv"] < 0.2 or max(hy["big"], hy["medium"], hy["small"]) > 0.8 else "")
+        text += (f"\nsize hierarchy by area (artists aim near big 0.6 / medium 0.3 / small 0.1): big {hy['big']}, "
+                 f"medium {hy['medium']}, small {hy['small']}; width spread (cv) {hy['width_cv']}, widest "
+                 f"{hy['widest_mm']} mm" + flag)
+    if layout:
+        lay = hair.layout(name, spec=spec)
+        lp = None
+        if save:
+            p = Path(save).expanduser()
+            lp = str(p.with_name(p.stem + "_layout" + (p.suffix or ".png"))) if not only_layout else save
+        out.append(_out(lay, lp))
+    return [*out, text]
+
+
+@mcp.tool(structured_output=False)
+def hair_reference(name: str, trace: dict | None = None, image_path: str | None = None, apply: bool = False,
+                   widen: float = 1.8, save: str | None = None):
+    """Match the hair to a reference picture: store its trace, fit the reference's camera to the model's face, and
+    optionally carry the traced groom onto the head. From then on every look_hair adds a matched row and fit numbers.
+    trace (or the stored one when omitted): see below; trace it by reading pixels off the image (zoomed crops with
+    a grid help). image_path sets/overrides trace["image"].
+    The camera (pose + focal length) is solved by least squares from trace["landmarks"] (the model's lm_* joints ->
+    their pixels); expect a few px of error per landmark, more means a mislabelled point.
+    apply=True: the trace carried through the camera onto the head becomes the groom's parting line, hairline
+    front_points and drawn clumps (rays onto the groom's volume; hidden roots carried back to the part; rows behind
+    the traced ones; widths = traced px x mm/px x widen, since clumps overlap) and is merged into spec.hair.groom.
+    Then groom_hair to grow the locks, and look_hair.
+    Returns the trace drawn on the reference (landmarks green, the fitted camera's reprojection cyan) and the errors.
+    A trace is reference-image pixels (u right, v down) of the picture you're matching:
+      {"image": path (or pass image_path), "landmarks": {lm joint: [u, v], ...} (8-10 face points: eye corners, brow
+       middles, nose tip, mouth corners, chin; the model's lm_* joints), "part": [[u, v], ...] (the parting from its front
+       end back), "hairline": [[u, v], ...] (temple to temple across the forehead), "hair": [[u, v], ...] (closed outline of
+       the visible hair above clip_y), "clip_y": v (below it ear, sideburn and beard aren't traced), "clumps": [{"name",
+       "line": [[u, v], ...] root -> tip along the strands, "width": px across the clump}], "crop"?: [x0, y0, x1, y1] (the
+       square the matched views show; default: round the hair and landmarks)}.
+    Clump names: one starting "part_side" is the short clump falling from the part toward the near ear; one whose root is
+    across the head from the part is the sweep's fall down the far side; the rest are the rows sweeping from the part,
+    front first."""
+    from PIL import Image as PI
+    from . import hair
+    d = store._dir(name)
+    if not (d / "spec.json").exists():
+        raise ValueError(f"no model {name!r}")
+    if trace is not None:
+        tr = _spec_arg(trace)
+    else:
+        tr = hair.ref_trace(name)
+        if tr is None:
+            raise ValueError("no stored trace: pass trace={...}\n" + HAIR_TRACE)
+    if image_path:
+        tr["image"] = str(Path(image_path).expanduser())
+    if not tr.get("image") or not Path(tr["image"]).exists():
+        raise ValueError(f"the reference image {tr.get('image')!r} doesn't exist (give image_path)")
+    for k in ("part", "hairline", "hair"):
+        if k in tr and (not isinstance(tr[k], list) or any(len(p) != 2 for p in tr[k])):
+            raise ValueError(f"trace {k!r} is a list of [u, v] pixels")
+    for c in tr.get("clumps") or []:
+        if not isinstance(c, dict) or len(c.get("line") or []) < 2:
+            raise ValueError('each trace clump is {"name", "line": [[u, v], ...] root -> tip, "width": px}')
+    with PI.open(tr["image"]) as im:
+        tr["image_size"] = [im.width, im.height]
+    spec = store.load(name)
+    sc = hair.scalp(name, spec)
+    lms = tr.get("landmarks") or {}
+    unknown = [n for n in lms if n not in sc.lm]
+    if unknown:
+        raise ValueError(f"unknown landmarks {unknown}; the model's: {', '.join(sorted(sc.lm))}")
+    if not tr.get("crop"):
+        P = np.array([*lms.values(), *(tr.get("hair") or []), *(tr.get("hairline") or [])], float)
+        if not len(P):
+            raise ValueError("give trace crop [x0, y0, x1, y1] or some landmarks / a hair outline")
+        lo, hi = P.min(0), P.max(0)
+        c, half = (lo + hi) / 2, (hi - lo).max() * 0.6
+        tr["crop"] = [int(c[0] - half), int(c[1] - half), int(c[0] + half), int(c[1] + half)]
+    (d / "ref_trace.json").write_text(json.dumps(tr, indent=1))
+    text = []
+    if len(lms) >= 6:
+        cam = hair.fit_camera(name, lms, tr["image_size"], tr["crop"], spec)
+        cam["reference"] = tr["image"]
+        (d / "ref_camera.json").write_text(json.dumps(cam, indent=1))
+        e = cam["error_px"]
+        text.append(f"camera fitted on {len(e)} landmarks: error px mean {np.mean(list(e.values())):.1f}, max "
+                    f"{max(e.values()):.1f} ({', '.join(f'{k} {v}' for k, v in e.items())}); fov {cam['fov']:.1f} deg, "
+                    f"{1000 * np.linalg.norm(np.asarray(cam['eye']) - sc.C) / cam['focal_px']:.2f} mm per reference px")
+    elif lms:
+        raise ValueError(f"fitting the camera needs at least 6 landmarks (got {len(lms)}); the model's: "
+                         f"{', '.join(sorted(sc.lm))}")
+    else:
+        text.append("no landmarks: the trace is stored, no camera fitted")
+    if apply:
+        if hair.ref_camera(name) is None:
+            raise ValueError("apply needs a fitted camera (landmarks in the trace)")
+        patch = hair.from_trace(name, spec, widen=widen)
+        h = spec.setdefault("hair", {})
+        h["groom"] = hair.merge_patch(h.get("groom") or {}, patch["groom"])
+        v = store.save(name, spec, "hair: groom from the traced reference")
+        dr = patch["groom"]["drawn"]
+        text.append(f"saved v{v}: groom parting.line ({len(patch['groom']['parting']['line'])} points, side "
+                    f"{patch['groom']['parting']['side']}), hairline.front_points, {len(dr)} drawn clumps "
+                    f"({', '.join(c['name'] for c in dr)}). Next: groom_hair, then look_hair.")
+    return [_out(hair.trace_image(name), save), "\n".join(text)]
 
 
 # ---------------------------------------------------------------- terrain
