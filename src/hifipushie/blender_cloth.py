@@ -178,10 +178,10 @@ def sim(job, d):
         fx = np.zeros(len(X), bool)
         fx[fixed] = True
         sew0 = sew[~fx[sew[:, 0]] & ~fx[sew[:, 1]]]
-        f0 = int(job.get("sew_frames", 60))
+        f0 = int(job.get("sew_frames", 90))
         ob = _sim_object("garment0", X, F, sew0, uv, stiff, fixed, fab, False, f0)
         ob.modifiers["cloth"].settings.effector_weights.gravity = 0.0
-        ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 30.0))
+        ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 6.0))
         V0, dt = _run(ob, f0)
         TRACE["stage0"] = V0
         bpy.data.objects.remove(ob)
@@ -190,11 +190,11 @@ def sim(job, d):
         log(f"stage 0 (bodice sewn alone): {f0} frames, {dt:.1f} s, z {V0[~fx, 2].min():.3f}..{V0[~fx, 2].max():.3f}")
         X = Xn
     # stage 1: sew without gravity (the seams close before anything can slide off the shoulders)
-    f1 = int(job.get("sew_frames", 60))
+    f1 = int(job.get("sew_frames", 90))
     hold = np.asarray((asm or {}).get("hold", []), np.int64)
     ob = _sim_object("garment", X, F, sew, uv, stiff, hold, fab, False, f1)
     ob.modifiers["cloth"].settings.effector_weights.gravity = 0.0
-    ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 30.0))  # 0 = unbounded (yanks pieces through the body)
+    ob.modifiers["cloth"].settings.sewing_force_max = float(job.get("sew_force", 6.0))  # 0 = unbounded (yanks pieces through the body)
     V, dt = _run(ob, f1, trace=job.get("trace", ()))
     gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1) if len(sew) else np.zeros(1)
     log(f"stage 1 (sew, no gravity): {len(X)} verts, {f1} frames, {dt:.1f} s, seam gaps mean "

@@ -1041,7 +1041,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     body = Body(body_src)
     meas = body.m["mm"]
     Bp = pieces(g, meas)
-    h = float(g.get("resolution", 0.02))
+    h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     M = mesh(Bp, h)
     X0 = place(Bp, M, body)
     fab = fabric(g)
