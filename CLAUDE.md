@@ -1360,6 +1360,51 @@ regresses, bisect by building one spec at each commit and diffing heights.
       271 s (main ~162-176; bake/lines 31 of 500 CPU s in the bake jobs), 0 failures, floating 0, shards LOD 0/1/2
       0.006/0.014/0.31%, Khronos 1040 files 0/0; alps 3x3 105 s (main 84-96), 0 failures, Khronos 72 files 0/0; views:
       0 rulers, chart 0.99-1.04, tile 0.97-1.0, overlay (arch) 1.25.
+  - Whole-level look (2026-10-02, "level" agent, renders L01-L04; the user on pebble from 150 m: "WTF?", the point's
+    arch "a cave with a cover over it"). Judged against photos of real coast (workspace/level_refs, CC BY-SA, never in
+    the repo: Durdle Door, a Cornish sea cave, Cornish cliff tops, Pebble Beach's 7th) through the real export path.
+    - The "cover": the point's arch was a 38 m tunnel (7 x 5.5 m) under a 30 m headland, turf to its lip. Arches now
+      go through a FIN: where the land along the arch is more than 1.25 x `through` (0.9 x height, >= 4 m), bays are
+      cut in from the sea down to its floor on both sides (`cut_neck`, a 2.5D ground edit in Field.H like dolines;
+      `neck` m either side), so the tip stands on the arch. Height/span/roof by `_arch_size`: span <= 0.8 x height (8 m
+      cap), roof >= max(`roof`, ROOF_SPAN 0.5 x span). The search prefers open sea past both mouths (land standing over
+      0.75 of the opening within 60 m; rocks awash don't count). `through_view` (notes/manifest): rays along the opening
+      above the water, share that come out clear + what lies beyond each mouth, WARNING < 50%.
+    - Roofs: caves lower where the rock over them thins and end where even 1.8 m wouldn't keep max(1.5, 0.5 x span) of
+      roof, chambers shrink to fit; notches die out to a nick under a low cliff (the chasm notch had -1.2 m: broke
+      through). Cave default 4.5 x 6 (taller than wide: sea caves follow joints); the report flags wider-than-tall.
+    - `terrain_ground.py` (colour + layer weight only, pointwise: tiles and LODs agree, tests/test_level_look): a turf
+      edge set back ~1.4 m x (0.15-2.6 wandering) from every lip (distance to > 50 deg cells on the tops), shaded just
+      under it; rock breaking through within 7 m of lips; no grass in the splash zone (~1.6 m over the sea, beaches stay
+      sand); green on ledges below the top; patches at 60 / 15 m, drier on crests and sun-facing slopes, lusher in
+      hollows, salt-burnt within ~30 m of the sea (toned down after L01 read straw-yellow: hue 61 vs the photo's 86);
+      cover kinds mown (8 m straight mower stripes along each piece's principal axis from its centre: a frame turning
+      with the zone put metres of phase into every degree; a darker first cut), rough (tussocks, straw tips), scrub
+      (dark grey-green clumps; unkept grass turns to scrub past ~20 deg), sand (wet swash, a wrack line at the high
+      water mark, grit), `bunker` covers dug 0.6 m into Field.H with a cut edge and a turf lip. The display grid is
+      softened ~1 cell and sampled at a 0.6 m domain warp (cover edges were the grid's staircase: stickers).
+      `"ground_character": false` turns it all off.
+    - Eye level: the ground maps are 4 texels/m: plaster at 1.7 m. A tiling turf swatch (`grass_swatch`: blades
+      splatted on the torus, clumps, dry blades; 2 m, 256/m) laid from above on grass/scrub weights, fading 20-70 m
+      (manifest `ground_detail` + recipe; `blender_tiles._grass`). Ground clutter (`terrain_ground.clutter`, from the
+      same masks): bushes on scrub clumps, boulders in the splash zone and near lips (clutter.csv for engines), tussocks
+      in rough near the eye (renders only); placeholders in `blender_terrain._clutter_proto`.
+    - Sea stacks as solid prisms (`Stack`, op add over the heightfield's stack: lobed, ~84 deg sides, a tilted notched
+      top, 0.35 m bevel): on 1 m cells the heightfield's 76 deg stacks were rounded loaves. Trees out of the splash zone
+      and off faces over 45 deg (a cypress stood on the wave-cut platform).
+    - Tile views (`render_tiles`, `look_terrain(tiles=True)`): the sun is terrain_sun's per view ("auto" default; the
+      fixed SW sun front-lit the 150 m view flat), the sky's sun_rotation = bearing (it was -bearing), aerial haze (a
+      mix toward the horizon's colour by 1 - exp(-d / haze), d = the camera ray's length; the colour is MEASURED per
+      view by a 16 px render of the sky alone: a Sky Texture inside a material lost its Vector input in the importer's
+      scene and fell back to object coordinates, a pale gradient on every tile, L01's "quilt"), the sites' props as
+      stand-ins (baskets, tee pads, the lodge: `blender_terrain.props`), trees, clutter.
+    - Arch placement also rewards height (6 m / height) and daylight (3 per blocked mouth): pebble's arch went from a
+      3.9 x 4.9 m hole on a spur to 5.7 x 7.1 m through a 6 m fin (bays cut from 30 m of land), 83% see-through.
+    - Clutter shapes: tussocks are blades turned about their ROOT (about their middle they crossed into teepees);
+      boulders only where the maps make rock (the shore rule alone put them on beach sand); bushes on 5 m clump noise.
+    - Measured (renders vs the Pebble 7th photo): grass hue 61 deg / sat 0.24 at 150 m in L01 (photo rough 86 / 0.46,
+      fairway 91-97 / 0.36-0.43); inside the arch's opening 0.28 of the lit rock's luminance. Open: the fairway still
+      pale at eye level, bushes perch on cliff tops, the turf lip is colour only (no geometric step), stacks bulky.
   - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
     - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
       untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test

@@ -335,11 +335,23 @@ def clutter(T, mats, field, kinds=("bush", "boulder"), box=None, near=None, seed
     if mats.ground is None:
         return np.zeros((0, 6))
     (x0, y0), (x1, y1) = box or T.spec["extent"]
-    rng = np.random.default_rng(seed)
     out = []
     for ki, kind in enumerate(kinds):
         sp = CLUTTER[kind]
-        gx, gy = np.meshgrid(np.arange(x0, x1, sp), np.arange(y0, y1, sp))
+        ys = np.arange(y0, y1, sp)
+        rows = max(1, int(1_000_000 // max(1, len(np.arange(x0, x1, sp)))))  # (in strips: a big map is 10^7 samples)
+        for r0 in range(0, len(ys), rows):
+            C = _clutter_strip(T, mats, field, kind, ki, np.arange(x0, x1, sp), ys[r0:r0 + rows], sp, near,
+                               np.random.default_rng([seed, ki, r0]))
+            if len(C):
+                out.append(C)
+    return np.concatenate(out) if out else np.zeros((0, 6))
+
+
+def _clutter_strip(T, mats, field, kind, ki, xs, ys, sp, near, rng):
+    out = []
+    if True:
+        gx, gy = np.meshgrid(xs, ys)
         xy = np.c_[gx.ravel(), gy.ravel()]
         xy = xy + rng.uniform(-0.45, 0.45, xy.shape) * sp
         if near is not None:
@@ -347,7 +359,7 @@ def clutter(T, mats, field, kinds=("bush", "boulder"), box=None, near=None, seed
             d, _ = cKDTree(np.asarray(near[0], float)[:, :2]).query(xy)
             xy = xy[d < near[1]]
         if not len(xy):
-            continue
+            return np.zeros((0, 6))
         h, cs = field.column(xy[:, 0], xy[:, 1])
         P = np.c_[xy, h]
         ok = cs > 0.82  # (under ~35 deg)
@@ -362,7 +374,7 @@ def clutter(T, mats, field, kinds=("bush", "boulder"), box=None, near=None, seed
                 ok &= mats._grid(np.asarray(T.masks[m], float), xy) < 0.2
         P = P[ok]
         if not len(P):
-            continue
+            return np.zeros((0, 6))
         N = np.tile([0.0, 0.0, 1.0], (len(P), 1))
         kd = mats.kinds(P)
         u = rng.random(len(P))

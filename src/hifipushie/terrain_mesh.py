@@ -2866,7 +2866,11 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         from . import terrain_ground
         with prof.stage("clutter (parent)"):
             ks = ("bush", "boulder")
-            C = terrain_ground.clutter(T, mats, base, ks)
+            cb = None
+            if cfg.get("only"):  # (a block of tiles: only its ground)
+                (i0, j0), (i1, j1) = cfg["only"]
+                cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
+            C = terrain_ground.clutter(T, mats, base, ks, box=cb)
             with open(out / "clutter.csv", "w") as f:
                 f.write("x,y,z,kind,scale,yaw\n")
                 for r in C:
