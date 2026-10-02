@@ -1075,6 +1075,7 @@ def _hair_counts(spec: dict) -> str:
 
 def _hair_gates(look) -> str:
     """The numbers a hair look measures, each with what it should be."""
+    from . import hair
     lines = []
     g = getattr(look, "gate", None) or {}
     if g:
@@ -1107,6 +1108,18 @@ def _hair_gates(look) -> str:
         lines.append(f"folded locks ({len(fo)}; the spine turns within the lock's own width, bend x half width >= "
                      f"1: the inner edge runs backwards and the lens crumples into flakes there; ease the path or narrow the lock): " + ", ".join(
                          f"{n} {r} at {u}" for n, (r, u) in worst[:12]) + (" ..." if len(fo) > 12 else ""))
+    fi = getattr(look, "fins", None)
+    if fi:
+        lines.append(f"fins ({len(fi)}; a lock edge standing over the layer by more than the lock's own thickness + "
+                     f"{hair.FIN_MM:g} mm, [mm over, u along it]; narrow the lock, lower its lie or lay it along the "
+                     f"volume's curve): " + ", ".join(f"{n} {v[0]} at {v[1]}" for n, v in list(fi.items())[:12])
+                     + (" ..." if len(fi) > 12 else ""))
+    re_ = getattr(look, "root_ends", None)
+    if re_:
+        lines.append(f"blunt root ends ({len(re_)}; the lock's width in mm where it rises out of the layer, > "
+                     f"{hair.ROOT_END_MM:g}: the cut end shows as a crescent fin at a parting or scales along a "
+                     f"hairline; lower the clump's `root` (0.1) and raise `climb` (0.025 m)): " + ", ".join(
+                         f"{n} {w}" for n, w in list(re_.items())[:12]) + (" ..." if len(re_) > 12 else ""))
     fits = getattr(look, "fits", None) or ({"matched": look.fit} if getattr(look, "fit", None) else {})
     for view, f in fits.items():
         if not f:
@@ -1153,7 +1166,11 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
       spacing, where, length, taper, belly, root, ...} | false}: strip = shingled side/back strips, gap = covers
       bare volume, big/crown = the generated top, fill, edge), drawn (big clumps drawn by hand: [{"name", "top":
       [[x, y] m from the head centre seen from above, root first] | "azel": [[az, el] deg], "width", "thickness"?,
-      "taper"?, "lie"?}]; name rows stem+number so an under-layer clump fills between neighbours), grey, noise, seed.
+      "taper"?, "lie"?, "root"? (width at the root: 0.1 grows out of the layer), "climb"? (m the root takes to rise),
+      "to_hairline"? (inset m or {inset, reach}: the edge laid on the hairline), "split"?}]; name rows stem+number so
+      an under-layer clump fills between neighbours; patch one by name: {"drawn": {"sweep2": {...}, "qf*": {...},
+      "old": null}}), hairline_edge ({inset, reach} for every clump near the hairline), volume.edge_sink,
+      parting.front, grey, noise, seed.
     stage: "mass" shows only the groom's volume as one shell (judge the silhouette first), "locks" the locks.
     Locks edited by hand (in Blender and pulled, or by edit_model) carry "hand": true and are kept; locks deleted in
     Blender (hair.removed) aren't grown again; replace=True regrows everything and forgets both.

@@ -1274,6 +1274,80 @@ def folds(sc: Scalp, locks: list, n: int = 80) -> dict:
     return out
 
 
+ROOT_END_MM = 15.0  # a root end wider than this where it rises out of the layer reads as a blunt end
+
+
+def root_ends(sc: Scalp, g: dict, locks: list, n: int = 80) -> dict:
+    """How blunt each lock's root end is where it comes out of the layer: the lens's width (mm) x the steepness of its
+    rise (rise over run, at most 1) at the first point
+    along it whose back stands ROOT_RISE above the underlayer there. A wide end standing up shows its cut: a crescent
+    fin from the side where rows start at a parting, a row of scales along a hairline. {lock: mm} over ROOT_END_MM,
+    widest first (lower `root` and raise `climb` on those clumps: a narrow root grows out of the layer)."""
+    line = hairline(sc, g)
+    out = {}
+    for lk in locks:
+        if lk["name"].endswith("_under"):
+            continue
+        S = _catmull(lk["pts"], n)
+        u = np.linspace(0, 1, n)
+        a, e, h = sc.coords(S)
+        H, d_in = envelope(sc, g, line, a, e)
+        U = under(g, H, a, e, d_in)
+        inp = lk["inputs"]
+        f = lock_width(inp, u)
+        top = h + 0.5 * inp["Thickness"] * f
+        up = np.nonzero((top - U > ROOT_RISE) & (u < 0.5))[0]
+        if not len(up):
+            continue
+        k = up[0]
+        below = np.nonzero(top[:k] - U[:k] <= 0)[0]  # where its back was last under the layer
+        j = below[-1] if len(below) else 0
+        run = float(np.linalg.norm(np.diff(S[j:k + 1], axis=0), axis=1).sum()) if k > j else 0.0
+        steep = min(1.0, (top[k] - U[k]) / max(run, 1e-6))  # 1: a wall; a long low ramp shows no cut
+        w = 1000 * inp["Width"] * f[k] * steep
+        if w > ROOT_END_MM:
+            out[lk["name"]] = round(float(w), 1)
+    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+
+ROOT_RISE = 0.003  # m
+FIN_MM = 3.0  # an edge standing this much more than the lock's own thickness over the layer reads as a fin
+
+
+def fins(sc: Scalp, g: dict, locks: list, n: int = 60) -> dict:
+    """Lock edges standing up off the hair under them: for each lock, the highest of its two lens edges (with the
+    tilt and cup) over the underlayer there, less the lock's own thickness (a lock lying on another one stands about
+    a thickness up), over u 0.1-0.95. {lock: [mm over, u]} above FIN_MM, worst first. A wide flat lock whose path
+    crosses the volume's curve, or stacked on rows that lie high, stands on one edge (the top rows' fins in the side
+    view): narrow it, lower its `lie`, or move it onto the curve."""
+    line = hairline(sc, g)
+    out = {}
+    for lk in locks:
+        S = _catmull(lk["pts"], n)
+        u = np.linspace(0, 1, n)
+        tg = _unit(np.gradient(S, axis=0))
+        nr = _unit(S - sc.C)
+        nr = _unit(nr - (nr * tg).sum(1, keepdims=True) * tg)
+        if lk.get("tilt"):
+            ti = np.interp(u, np.linspace(0, 1, len(lk["tilt"])), lk["tilt"])[:, None]
+            nr = nr * np.cos(ti) + np.cross(tg, nr) * np.sin(ti)
+        b = _unit(np.cross(nr, tg))
+        inp = lk["inputs"]
+        f = lock_width(inp, u)
+        best = np.full(n, -np.inf)
+        for c in (-1.0, 1.0):
+            E = S + (f * c * 0.5 * inp["Width"])[:, None] * b - (f * inp["Cup"])[:, None] * nr
+            a, e, h = sc.coords(E)
+            H, d = envelope(sc, g, line, a, e)
+            best = np.maximum(best, h - under(g, H, a, e, d))
+        x = (best - inp["Thickness"]) * 1000
+        x[(u < 0.1) | (u > 0.95)] = -np.inf
+        k = int(np.argmax(x))
+        if x[k] > FIN_MM:
+            out[lk["name"]] = [round(float(x[k]), 1), round(float(u[k]), 2)]
+    return dict(sorted(out.items(), key=lambda kv: -kv[1][0]))
+
+
 def lock_extents(sc: Scalp, locks: list, n: int = 40):
     """Points on every lock's outer face (the spine as Blender curves it, the lens across it at 7 places, pushed
     out by half the thickness less the cup, sized along the lock like the node group): what the locks add to the
@@ -1646,6 +1720,8 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
                                                           cam=dict(zip(mnames, [rc for _, rc, _ in rvs])).get(f["name"]))
         look.gate = silhouette_gate(sc, pts)
         look.folds = folds(sc, j["hair"].get("locks") or []) if j["hair"] else {}
+        look.root_ends = root_ends(sc, groom_params(spec), j["hair"].get("locks") or []) if j["hair"] else {}
+        look.fins = fins(sc, groom_params(spec), j["hair"].get("locks") or []) if j["hair"] else {}
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t
@@ -2330,8 +2406,10 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         cq =np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
         # (the root's climb out of the layer takes at least ROOT_CLIMB m: over 8% of a short nape lock it rose ~7 mm
         # in 5 mm, and the tilted lens folded there)
-        t1 = min(max(0.08, ROOT_CLIMB / max(cq[-1], 1e-9)), 0.16)
-        tt = np.r_[0.0, t1, np.linspace(0.25, 1.0, 4)] * cq[-1]
+        # "climb" (m): how long the root takes to rise onto the layer; long, a narrow root (root 0.05-0.1) grows out
+        # of the layer and the lock's body forms further back, with no blunt root end showing
+        t1 = min(max(0.08, float(c.get("climb", ROOT_CLIMB)) / max(cq[-1], 1e-9)), 0.4)
+        tt = np.r_[0.0, t1, np.linspace(max(0.25, t1 + 0.12), 1.0, 4)] * cq[-1]
         Q = np.stack([np.interp(tt, cq, Q[:, k]) for k in range(3)], 1)
         a, e = az_el(Q - sc.C)
         T = float(c.get("thickness", 0.0055 * w / 0.055))

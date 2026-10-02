@@ -475,6 +475,43 @@ def test_hair_folds_regions_and_shared_lens():
         ["front", "side.L", "side.R", "back.L", "back.R", "back", "top"]
 
 
+def test_hair_hairline_edge_round3():
+    """2026-10-02 (hair round 3, workspace/hair_r3): the hairline read as jagged and torn. The underlayer's rim was a
+    staircase of grid cells across the line (its rows now follow the hairline); a clump laid with `to_hairline` keeps
+    its edge on the line; the rendered edge is measured (`front_edge`: a sawtooth is rough, a clean line isn't); one
+    drawn clump is patched by name without resending the list."""
+    import numpy as np
+    from hifipushie import hair
+    A, E = np.arange(0.0, 360.0, 2.0), np.arange(-70.0, 90.01, 2.0)
+    sc = hair.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
+    g = hair._merge(hair.GROOM, {})
+    line = hair.hairline(sc, g)
+    V, F = hair.cap_mesh(sc, g, 0.002)
+    a, e, _ = sc.coords(V)
+    on = np.abs(e - hair._line_at(line, a)) < 1e-3  # a row of vertices exactly on the line, every column
+    assert len(np.unique(np.round(a[on]))) >= 359
+    # a clump laid on the hairline: its edge (half width 15 mm) 2 mm inside, all along
+    q = np.c_[np.linspace(40, -40, 40), np.full(40, hair._line_at(line, 0.0) + 15.0)]
+    Q = hair._catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
+    Q2 = hair._to_hairline(sc, line, Q, np.full(len(Q), 0.015), 0.002)
+    a2, e2 = hair.az_el(Q2 - sc.C)
+    d = hair.inside(sc, line, a2, e2)
+    assert np.abs(d - 0.017).max() < 0.001, d
+    # front_edge: a straight traced line over a mask whose edge is clean, then sawtoothed
+    W = 400
+    cam = {"crop": [0, 0, W, W]}
+    tr = {"hairline": [[50, 200], [350, 200]], "landmarks": {"x": [200, 300]}}
+    yy, xx = np.mgrid[0:W, 0:W]
+    clean = yy < 200
+    saw = yy < 200 + 6 * (((xx // 10) % 2) * 2 - 1)
+    fc, fs = hair.front_edge(cam, tr, clean, 0.5), hair.front_edge(cam, tr, saw, 0.5)
+    assert fc["rough_mm"] < 0.3 and fs["rough_mm"] > 1.0 and fs["tooth_mm"] > 2.0, (fc, fs)
+    out = hair.merge_patch([{"name": "a1", "width": 1}, {"name": "a2", "width": 2}, {"name": "b", "width": 3}],
+                           {"a*": {"root": 0.1}, "b": None, "c": {"width": 4}})
+    assert out == [{"name": "a1", "width": 1, "root": 0.1}, {"name": "a2", "width": 2, "root": 0.1},
+                   {"name": "c", "width": 4}], out
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

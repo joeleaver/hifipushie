@@ -7,8 +7,11 @@ rebuild the body.
 
 Tools:
 - `groom_hair(name, groom={patch}, replace, stage)`: merges a patch into `spec.hair.groom` and regrows the generated
-  locks. Locks shaped by hand are kept.
-- `look_hair(name, views, layout)`: the renders, plus the gates measured on them.
+  locks. Locks shaped by hand are kept. `drawn` can be patched by name instead of resent whole:
+  `{"drawn": {"sweep2": {"width": 0.07}, "qf*": {"root": 0.12}, "fringe": null, "stray1": {"azel": [...]}}}`
+  (patterns match several clumps, null drops one, a new name is added).
+- `look_hair(name, views, layout)`: the renders, plus the gates measured on them. Views include `close_front` and
+  `close_side` for the hairline and the part.
 - `hair_reference(name, trace, image_path, apply)`: matches a reference picture.
 - `edit_model` with kind `"hair.locks"` / `"hair.groom"` / `"hair"`: edits numbers directly.
 - `sync(name, hair_only=True)`: puts the locks in scene.blend for a person to shape. `pull` brings their edits back.
@@ -197,6 +200,52 @@ worked on the golfer test head (hair_t13): 47 locks, back bare share 0.07, a cal
   - Use them only for quick coverage, never on a hero head. If you do, gap locks should be broad (6 cm) and kept to
     sides/back/nape.
 
+### 3b. The hairline and the front
+
+The hairline is one designed line, and the front's strands come out of it at an angle. look_hair measures both in
+every matched view:
+- **hairline edge**: the rendered hair's edge against the skin, followed along the traced hairline.
+  - `rough_mm` (rms against its own running median) should be <= 1, and `tooth_mm` (the worst tip or notch) <= 3.
+  - `teeth` names the lock that makes each tooth.
+  - `holes` is skin showing just inside the edge.
+- **strand direction just inside the hairline**: the strands' angle to the hairline, read off the reference and our
+  render alike (structure tensor) in the band 4-28 mm inside it, in 6 stretches. 0 runs along the hairline like a
+  headband; 90 comes straight out of it. On the golfer the reference reads 10-30 degrees: a shallow diagonal, not
+  perpendicular.
+- **where the bare volume shows**: by head region, "hairline" meaning within 15 mm of it.
+
+What worked on the golfer (workspace/hair_r3, renders hr01-hr04):
+- **Front locks grow out of the edge.** Draw 3-4 front locks rooted along the hairline from the part's corner,
+  rising at the reference's angle and sweeping over to the far temple, with `"root": 0.1-0.15, "climb": 0.025`.
+  - The narrow root comes out of the layer and the lock's body forms 2-3 cm back.
+  - With full-width roots, a row of root ends read as scales along the forehead.
+  - A lock drawn along the hairline (a fringe) reads as a headband.
+- **`to_hairline`** (on a drawn clump): an inset in m, negative to tuck it into the skin, or `{"inset", "reach"}`.
+  The clump is moved across so its edge runs along the hairline, and cupped so that edge comes down onto the layer.
+  Good for one lock that should BE the edge. Don't use it at a temple corner: offsetting a path round a tight
+  corner folds it.
+- **`groom.hairline_edge`** `{"inset", "reach"}` does the same for every clump whose edge comes within `reach` of the
+  hairline. On the golfer it bent the side rows round the temples into folds; prefer per-clump.
+- **A root drawn on or past the hairline grows out of the skin** (its end is buried).
+- **`volume.edge_sink`** (0..1): the underlayer's front edge sunk under the front locks. Unsunk, it stands up as a
+  dark lip under the quiff. With a gentle `ramp` it hardly matters.
+- **`parting.front`** (m, default 0.015): the part's dip fades in that far behind the hairline. Dipping right to
+  the edge, it cut a V notch.
+- The underlayer's rows follow the hairline, and traced `front_points` ease onto the default line at the temples.
+  On a fixed grid the rim was a staircase of fine serrations; the old join stepped 4 mm at the temple corner.
+
+### 3c. Fins, blunt root ends, folds
+
+- **fins**: a lock edge standing over the layer by more than its own thickness + 3 mm. A wide flat lock laid
+  across the volume's shoulder stands on one edge.
+- **blunt root ends**: a lock's width where it rises out of the layer, times how steeply it rises. Over 15 mm, the
+  cut end shows: crescent fins along a parting in the side view, scales along a hairline. Lower `root` (0.1-0.2) and
+  raise `climb` (0.02-0.03 m) on rows that start at a parting or the crown.
+  - Not on the side rows: their narrow roots left the temples bare (bare share 0.09 -> 0.13).
+- **Folds at u ~0.15 on short rows** (the nape) were the root's climb out of the layer. On a lens tilted ~35
+  degrees, that bend lies in the lens's own plane. They are hidden under the row above, but real.
+  - Now the climb takes at least 12 mm (`climb`), and the root's tilt is half the lie's (ROOT_TILT).
+
 ### 4. Breakup
 
 - Split the tips of a few big clumps: `"split": 2` (or `{"n": 2|3, "at": 0.6, "fan": 0.5, "keep": 0.2}`) on a
@@ -208,6 +257,14 @@ worked on the golfer test head (hair_t13): 47 locks, back bare share 0.07, a cal
 - Check every split in clay. A split in the middle of the top hardly shows: the clump on top covers it. The split
   pays off at the outline, at the tips of the fringe, and over the ears and nape.
 - One or two small locks where the outline wants a break (a stray at the crown or temple) can be drawn too.
+- The size hierarchy (look_hair) counts small locks as narrower than 0.4x the widest:
+  - A 2-way split of a big clump only makes medium locks.
+  - 3-way splits on the nape and swept-side rows, plus 3-5 strays (2-2.5 cm wide, `root` 0.3) at the crown, over
+    the ears and at the far temple's outline, took the golfer from 0.8 / 0.2 / 0 to 0.64 / 0.27 / 0.09.
+  - Narrowing the outer back rows and two side rows to ~5.5 cm moved them to medium.
+  - Don't split the dominant front sweep. Splitting it re-laid the whole front (direction error 20 -> 26 deg) and
+    raised a 13 mm fin.
+  - 3-way splits at the nape read as a comb from behind: twos there if the back shows.
 - Gate: the clump steps at the outline (notches) should read: 2-5 mm. A perfectly smooth outline reads as a helmet;
   steps much deeper than that read as spikes.
 
@@ -264,6 +321,11 @@ Material settings go in `spec.hair.look` (sRGB hex colours):
 | Tiles or shingles on the sides | uniform generated strips: broad hand or drawn locks |
 | Comb | equal tips on one line: vary lengths; split only some |
 | One highlight stripe across the head | band_shift up |
+| Jagged, torn hairline | `teeth` in the hairline-edge line names the lock: narrow its root, or lay one front lock with `to_hairline` |
+| A dark band under the quiff | "where the bare volume shows" says front hairline: front locks rooted at the edge, `volume.edge_sink` |
+| A headband across the forehead | the front lock runs along the hairline: compare the strand direction with the reference, re-lay it diagonally |
+| Scales along the hairline, crescents at the part | blunt root ends: `root` 0.1-0.2, `climb` 0.025 |
+| A lock on its edge (fin) | the fins line names it: narrow it, lower `lie`, or move it off the volume's shoulder |
 
 Adding small locks makes every one of these worse. Fix the big shapes first.
 

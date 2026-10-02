@@ -458,6 +458,18 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     under a 2 cm volume (now they dive just under the underlayer).
   - `hair.folds` (look_hair "folded locks"): in-plane bend x half width >= 1. `ease_bends` on drawn paths.
     `look_hair(only=)` isolates locks.
+  Hairline round (2026-10-02, model `workspace/hair_r3` = copy of hair_vol, renders hr00-hr04; guide 3b/3c): new
+  look_hair numbers per matched view: `front_edge` (rendered edge along the traced hairline: rough_mm vs its running
+  median, tooth_mm, teeth by lock), `front_flow` (strand angle to the hairline, structure tensor on the reference and
+  our render; the golfer's reference reads 10-30 deg, a shallow diagonal), `bare_where` (bare pixels by head region,
+  "hairline" = within 15 mm), `fins`, `root_ends` (blunt cut ends). Fixes: cap rows follow the hairline (a 1 deg
+  grid serrated the rim), traced front_points ease onto the default line (`HAIRLINE_JOIN`), `parting.front`,
+  `volume.edge_sink`, drawn `to_hairline` / groom `hairline_edge`, `root` + `climb` (narrow roots growing out of the
+  layer: full-width roots read as scales along the hairline and crescent fins at the part), roots past the hairline
+  buried in the skin, ROOT_TILT (nape fold flags were the root's climb in a tilted lens), drawn clumps patched by name.
+  hair_vol -> hr04: edge rough/tooth 1.21/6.4 -> 0.54/2.0, bare front 0.176 -> 0.095, direction err 25.5 -> 19.8 deg,
+  hierarchy 0.8/0.2/0 -> 0.64/0.27/0.09, folds 7 -> 2. Open: the part-side temple corner's direction (ours ~80 deg vs
+  15-40), sideR1's root fin on the swept side, 3-way nape splits read as a comb from behind.
   Drawn
   clumps take `"split"` (`split_tips`: tip into n narrower locks fanned apart, the clump tapering out under them, held
   inside the hairline); look keys `band_shift` (each lock's sheen band slides along it) and `tip`/`tip_amount`. The
