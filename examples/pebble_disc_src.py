@@ -45,6 +45,27 @@ HOLES = [
     dict(t=(752, 252), v=[(724, 306), (672, 344)], b=(598, 340),
          note="curving along the sea wall round the bay's head to the lodge"),
 ]
+
+def _bunkers():
+    """Sand traps round the par-3 greens: two kidneys (three overlapping circles each) either side of the basket,
+    across the line from the tee."""
+    out = []
+    for h in HOLES:
+        if h.get("par") != 3:
+            continue
+        tx, ty = h["t"]
+        bx, by = h["b"]
+        L = math.hypot(bx - tx, by - ty)
+        ux, uy = (bx - tx) / L, (by - ty) / L
+        for side in (-1, 1):
+            cx, cy = bx - side * uy * 9 - ux * 2, by + side * ux * 9 - uy * 2
+            for k, (a, r) in enumerate(((-3.0, 2.6), (0.0, 3.2), (3.2, 2.4))):
+                out.append({"near": [round(cx + ux * a + side * uy * 0.8 * (k == 1), 1),
+                                     round(cy + uy * a - side * ux * 0.8 * (k == 1), 1)], "radius": r})
+    return out
+
+
+BUNKERS = _bunkers()
 LODGE = (615, 378)
 CAR = (650, 452)
 BAY = [645, 250]  # Stillwater's water, for the lodge to overlook
@@ -63,8 +84,8 @@ COVES = {"chasm": {"at": [150, 190], "width": 55, "depth": 110, "beach": False, 
 # sea cave into its west face, a cave in the chasm's west wall (seen from tee 8) and a wave-cut notch under its east wall
 VOLUMES = {
     "point_arch": {"type": "arch", "at": "the_point"},
-    "point_cave": {"type": "cave", "at": "cliff_foot:the_point", "length": 26, "width": 6, "height": 5, "chamber": 6},
-    "chasm_cave": {"type": "cave", "at": [152, 222], "toward": 270, "length": 20, "width": 5, "height": 4.5, "chamber": 4},
+    "point_cave": {"type": "cave", "at": "cliff_foot:the_point", "length": 26, "width": 4.5, "height": 6, "chamber": 6},
+    "chasm_cave": {"type": "cave", "at": [152, 222], "toward": 270, "length": 20, "width": 3.5, "height": 4.5, "chamber": 4},
     "chasm_notch": {"type": "overhang", "at": [182, 236], "along": 0, "length": 30},
 }
 # caves (mesh tiles only): a sea cave under the west cliffs with a blowhole up to the clifftop, and a karst cave under
@@ -300,8 +321,12 @@ def spec():
         "sites": sites,
         "routes": routes,
         "cover": {
-            "rough": {"type": "meadow", "in": "land", "density": 0.8, "color": "#6f8d3e"},
-            "fairway": {"type": "grass", "in": "fairways", "density": 1.0, "color": "#4f9d34"},
+            "rough": {"type": "rough", "in": "land", "density": 0.8, "color": "#64803c"},
+            "coastal_scrub": {"type": "scrub", "in": {"all": ["land", {"near": "sea", "radius": 70}]},
+                              "slope": [10, 50], "density": 0.75, "avoid": ["fairways", "routes", "sites"],
+                              "breakup": {"scale": 35, "amount": 0.7}},
+            "fairway": {"type": "mown", "in": "fairways", "density": 1.0, "color": "#3f7a2e"},
+            "bunkers": {"type": "bunker", "in": {"any": BUNKERS}, "density": 1.0},
             "pines_lining": {"type": "conifer", "trees": "pine", "in": {"all": ["linings", "inland"]},
                              "density": 0.16, "avoid": ["fairways", "routes", "sites", "clubhouse"],
                              "breakup": {"scale": 40, "amount": 0.8}},

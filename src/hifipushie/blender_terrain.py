@@ -7,6 +7,7 @@ import json
 import sys
 
 import bpy
+from mathutils import Matrix
 import numpy as np
 from mathutils import Vector
 
@@ -200,10 +201,62 @@ def _species(kind, v):
 VARIANTS = 4
 
 
+def _clutter_proto(kind):
+    """Ground clutter placeholders (hidden; instanced): a coastal scrub bush (a few lumpy grey-green masses, ~1 m), a
+    long-grass tussock (a fan of thin blades, ~0.45 m, olive with straw tips), a boulder (a flattened, faceted lump,
+    ~0.8 m, grey)."""
+    parts = []
+    if kind == "bush":
+        for (x, y, z, r) in ((0, 0, 0.35, 0.6), (0.45, 0.15, 0.25, 0.45), (-0.35, 0.3, 0.22, 0.4), (0.1, -0.4, 0.2, 0.38)):
+            bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=r, location=(x, y, z))
+            bpy.context.object.scale = (1.0, 1.0, 0.75)
+            parts.append(bpy.context.object)
+        mat = _mat("bush", (0.045, 0.06, 0.03, 1), 0.9)
+    elif kind == "tussock":  # blades fanning OUT from one root (turned about their base: about their middle they
+        import random       # crossed into teepees)
+        rnd = random.Random(3)
+        for i in range(14):
+            a = i / 14 * 6.283 + rnd.uniform(-0.2, 0.2)
+            h = rnd.uniform(0.35, 0.6)
+            bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.03, depth=h, location=(0, 0, 0))
+            o = bpy.context.object
+            o.data.transform(Matrix.Translation((0, 0, h / 2)))
+            o.rotation_euler = (0.55 * math.sin(a) * rnd.uniform(0.6, 1.3), -0.55 * math.cos(a) * rnd.uniform(0.6, 1.3),
+                                a)
+            parts.append(o)
+        mat = _mat("tussock", (0.07, 0.10, 0.03, 1), 0.9)
+    else:  # boulder: a smooth, flattened, irregular lump
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.5, location=(0, 0, 0.12))
+        o = bpy.context.object
+        import random
+        rnd = random.Random(5)
+        for vtx in o.data.vertices:
+            vtx.co *= 1 + 0.18 * rnd.uniform(-1, 1)
+        o.scale = (1.25, 0.95, 0.55)
+        parts.append(o)
+        mat = _mat("boulder", (0.11, 0.105, 0.095, 1), 0.85)
+    for p_ in parts:
+        p_.data.materials.append(mat)
+    bpy.ops.object.select_all(action="DESELECT")
+    for p_ in parts:
+        p_.select_set(True)
+    bpy.context.view_layer.objects.active = parts[-1]
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    if len(parts) > 1:
+        bpy.ops.object.join()
+    ob = bpy.context.object
+    ob.name = "clutter_" + kind
+    ob.hide_render = True
+    ob.location = (0, 0, -1e4)
+    return ob
+
+
 def _proto(kind):
     """A low-poly tree, hidden from render, for the scatter to instance: a cone conifer or a round broadleaf."""
     if kind in ("cypress", "pine"):
         return _species(kind, 0)
+    if kind in ("bush", "tussock", "boulder"):
+        return _clutter_proto(kind)
     parts = []
     bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.45, depth=4, location=(0, 0, 2))
     parts.append(bpy.context.object)
@@ -366,6 +419,60 @@ def _water_material(name):
     return wm
 
 
+def props(props, names):
+    """Sites carrying a prop, as stand-ins at their real size (scale cues): a disc golf basket, a tee pad, a blocky
+    building with a hipped roof and window bands, else a small post. props: [[x, y, ground z, yaw deg]]."""
+    pk = bpy.data.materials.new("prop")
+    pk.use_nodes = True
+    pk.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.9, 0.55, 0.02, 1)
+    gm = bpy.data.materials.new("prop_metal")
+    gm.use_nodes = True
+    gm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.55, 0.58, 1)
+    for (x, y, z, yaw), nm in zip(props, names):
+        x, y, z = float(x), float(y), float(z)
+        if "basket" in str(nm):  # a disc golf target: post, basket dish, chain band, yellow top band
+            bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.03, depth=1.45, location=(x, y, z + 0.72))
+            bpy.context.object.data.materials.append(gm)
+            bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.33, depth=0.22, location=(x, y, z + 0.72))
+            bpy.context.object.data.materials.append(gm)
+            bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.28, depth=0.5, location=(x, y, z + 1.08))
+            bpy.context.object.data.materials.append(gm)
+            bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.31, depth=0.1, location=(x, y, z + 1.38))
+            bpy.context.object.data.materials.append(pk)
+        elif "tee" in str(nm):  # a tee pad: a flat slab 1.5 x 3 m, long side toward the basket
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 0.03))
+            o = bpy.context.object
+            o.scale = (1.5, 3.0, 0.1)
+            o.rotation_euler[2] = -math.radians(float(yaw))
+            o.data.materials.append(gm)
+        elif any(w in str(nm) for w in ("lodge", "building", "house", "clubhouse")):  # a blocky building
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 4.5))
+            o = bpy.context.object
+            o.scale = (34.0, 16.0, 9.0)
+            o.rotation_euler[2] = -math.radians(float(yaw))
+            bm = bpy.data.materials.new("building")
+            bm.use_nodes = True
+            bm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.5, 0.42, 1)
+            o.data.materials.append(bm)
+            # a hipped roof: a four-sided cone turned square to the walls, then stretched over them
+            bpy.ops.mesh.primitive_cone_add(vertices=4, radius1=1.0, depth=1.0, location=(0, 0, 0))
+            r = bpy.context.object
+            r.rotation_euler[2] = math.radians(45)
+            bpy.ops.object.transform_apply(rotation=True)
+            r.scale = (37.0 / 1.414, 19.0 / 1.414, 6.0)
+            r.location = (x, y, z + 12.0)
+            r.rotation_euler[2] = -math.radians(float(yaw))
+            r.data.materials.append(_mat("roof", (0.16, 0.13, 0.12, 1), 0.7))
+            for zz in (2.4, 6.4):  # a band of windows round each storey
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + zz))
+                w = bpy.context.object
+                w.scale = (34.3, 16.3, 1.5)
+                w.rotation_euler[2] = -math.radians(float(yaw))
+                w.data.materials.append(_mat("windows", (0.05, 0.07, 0.09, 1), 0.15))
+        else:  # anything else: a small orange post
+            bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.1, depth=1.2, location=(x, y, z + 0.6))
+            bpy.context.object.data.materials.append(pk)
+
 def run(job):
     for coll in (bpy.data.objects, bpy.data.meshes, bpy.data.cameras, bpy.data.lights, bpy.data.node_groups):
         for item in list(coll):
@@ -509,56 +616,7 @@ def run(job):
             bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.6, depth=12, location=(float(x), float(y), float(z) + 6))
             bpy.context.object.data.materials.append(mk)
     if "props" in d.files and len(d["props"]):  # sites carrying a prop: a small stand-in at its real size
-        pk = bpy.data.materials.new("prop")
-        pk.use_nodes = True
-        pk.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.9, 0.55, 0.02, 1)
-        gm = bpy.data.materials.new("prop_metal")
-        gm.use_nodes = True
-        gm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.55, 0.58, 1)
-        for (x, y, z, yaw), nm in zip(d["props"], d["prop_names"]):
-            x, y, z = float(x), float(y), float(z)
-            if "basket" in str(nm):  # a disc golf target: post, basket dish, chain band, yellow top band
-                bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.03, depth=1.45, location=(x, y, z + 0.72))
-                bpy.context.object.data.materials.append(gm)
-                bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.33, depth=0.22, location=(x, y, z + 0.72))
-                bpy.context.object.data.materials.append(gm)
-                bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.28, depth=0.5, location=(x, y, z + 1.08))
-                bpy.context.object.data.materials.append(gm)
-                bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.31, depth=0.1, location=(x, y, z + 1.38))
-                bpy.context.object.data.materials.append(pk)
-            elif "tee" in str(nm):  # a tee pad: a flat slab 1.5 x 3 m, long side toward the basket
-                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 0.03))
-                o = bpy.context.object
-                o.scale = (1.5, 3.0, 0.1)
-                o.rotation_euler[2] = -math.radians(float(yaw))
-                o.data.materials.append(gm)
-            elif any(w in str(nm) for w in ("lodge", "building", "house", "clubhouse")):  # a blocky building
-                bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + 4.5))
-                o = bpy.context.object
-                o.scale = (34.0, 16.0, 9.0)
-                o.rotation_euler[2] = -math.radians(float(yaw))
-                bm = bpy.data.materials.new("building")
-                bm.use_nodes = True
-                bm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.5, 0.42, 1)
-                o.data.materials.append(bm)
-                # a hipped roof: a four-sided cone turned square to the walls, then stretched over them
-                bpy.ops.mesh.primitive_cone_add(vertices=4, radius1=1.0, depth=1.0, location=(0, 0, 0))
-                r = bpy.context.object
-                r.rotation_euler[2] = math.radians(45)
-                bpy.ops.object.transform_apply(rotation=True)
-                r.scale = (37.0 / 1.414, 19.0 / 1.414, 6.0)
-                r.location = (x, y, z + 12.0)
-                r.rotation_euler[2] = -math.radians(float(yaw))
-                r.data.materials.append(_mat("roof", (0.16, 0.13, 0.12, 1), 0.7))
-                for zz in (2.4, 6.4):  # a band of windows round each storey
-                    bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z + zz))
-                    w = bpy.context.object
-                    w.scale = (34.3, 16.3, 1.5)
-                    w.rotation_euler[2] = -math.radians(float(yaw))
-                    w.data.materials.append(_mat("windows", (0.05, 0.07, 0.09, 1), 0.15))
-            else:  # anything else: a small orange post
-                bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.1, depth=1.2, location=(x, y, z + 0.6))
-                bpy.context.object.data.materials.append(pk)
+        props(d["props"], d["prop_names"])
     if len(d["wfaces"]):
         foam = d["wfoam"] if "wfoam" in d.files else None
         water = _mesh("water", d["wverts"], d["wfaces"], None if foam is None else np.repeat(foam[:, None], 3, 1))

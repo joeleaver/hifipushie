@@ -38,6 +38,14 @@ COVER_TYPES = {
     "grass":     {"slope": [0, 42], "avoid": ["water"], "color": [0.45, 0.56, 0.26]},
     "meadow":    {"slope": [0, 25], "avoid": ["water", "routes"], "breakup": {"scale": 80, "amount": 0.3},
                   "color": [0.55, 0.62, 0.30]},
+    # grass by how it's kept (terrain_ground: each reads differently in the 3D tiles' maps)
+    "mown":      {"slope": [0, 42], "avoid": ["water"], "color": [0.38, 0.56, 0.22]},   # fairways, greens, lawns
+    "rough":     {"slope": [0, 40], "avoid": ["water"], "breakup": {"scale": 60, "amount": 0.2},
+                  "color": [0.47, 0.53, 0.27]},                                         # long grass, tussocks
+    "scrub":     {"slope": [0, 50], "avoid": ["water", "routes"], "breakup": {"scale": 40, "amount": 0.5},
+                  "color": [0.33, 0.36, 0.23]},                                         # low bushes, heath
+    "bunker":    {"slope": [0, 25], "avoid": ["water", "routes", "sites"], "color": [0.86, 0.80, 0.64],
+                  "depth": 0.6},                                                        # sand traps, dug in (tiles)
     "snow":      {"slope": [0, 45], "color": [0.94, 0.95, 0.97]},
     "sand":      {"slope": [0, 15], "color": [0.78, 0.71, 0.52]},
     "mud":       {"slope": [0, 10], "color": [0.33, 0.27, 0.19]},
