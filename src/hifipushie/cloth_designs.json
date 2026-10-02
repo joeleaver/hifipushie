@@ -28,8 +28,8 @@
    ["sleeve.R:bicepsRight>capQ2>bicepsLeft", ["front.R:armhole>shoulder", "yoke:shoulder.m>armholeYokeSplit.m", "back:armholeYokeSplit.m>armhole.m"]],
    ["sleeve.L:bicepsLeft>wristLeft", "sleeve.L:bicepsRight>wristRight"],
    ["sleeve.R:bicepsLeft>wristLeft", "sleeve.R:bicepsRight>wristRight"],
-   ["sleeve.L:wristLeft>cuffMid>wristRight", "cuff.L:bottomLeft>bottomRight"],
-   ["sleeve.R:wristLeft>cuffMid>wristRight", "cuff.R:bottomLeft>bottomRight"],
+   [["sleeve.L:wristLeft>cuffLeftCusp>cuffMid", "sleeve.L:cuffPleat1Edge>cuffRightCusp", "sleeve.L:cuffPleat2Edge>wristRight"], "cuff.L:bottomLeft>bottomRight"],
+   [["sleeve.R:wristLeft>cuffLeftCusp>cuffMid", "sleeve.R:cuffPleat1Edge>cuffRightCusp", "sleeve.R:cuffPleat2Edge>wristRight"], "cuff.R:bottomLeft>bottomRight"],
    ["stand:leftBottomCf>bottomMid>rightBottomCf", ["front.R:cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck"]],
    ["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopCf>topMid>rightTopCf"]
   ],

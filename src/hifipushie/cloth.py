@@ -207,6 +207,10 @@ def mesh(B: dict, h: float = 0.02) -> dict:
     # Each side of a seam is a chain of edges (one or more); a gap between two edges of a chain on the same piece
     # is folded away (a pleat or tuck: both its ends sew to the same point). Samples are laid at fractions of each
     # side's own length (ease spread evenly), and every junction of either side is a sample of both.
+    # one triangle size for every piece (per piece sizes are supported through `ph`, seams sampled at their finest
+    # piece's). Finer collars and cuffs (7 mm) crumpled MORE: Blender's bending springs are per edge, so the same
+    # settings on a finer mesh are a softer cloth
+    ph = {nm: h for nm in names}
     sew_keys = []
     for si, (A, Bs) in enumerate(B["seams"]):
         sides = []
@@ -215,8 +219,8 @@ def mesh(B: dict, h: float = 0.02) -> dict:
             arcs = [_edge(pcs, e) for e in chain]
             lens = np.array([pattern.length(pcs[nm]["P"][ix]) for nm, ix in arcs])
             sides.append((arcs, np.r_[0, np.cumsum(lens)] / lens.sum()))
-        n = max(2, int(math.ceil(max(pattern.length(pcs[nm]["P"][ix]) for s in sides for nm, ix in s[0]) * 0 +
-                                 max(sum(pattern.length(pcs[nm]["P"][ix]) for nm, ix in s[0]) for s in sides) / h)))
+        hs = min(ph[nm] for s in sides for nm, _ in s[0])
+        n = max(2, int(math.ceil(max(sum(pattern.length(pcs[nm]["P"][ix]) for nm, ix in s[0]) for s in sides) / hs)))
         U = np.unique(np.round(np.r_[sides[0][1], sides[1][1]], 9))
         G = [0.0]
         for u0, u1 in zip(U[:-1], U[1:]):
@@ -239,6 +243,7 @@ def mesh(B: dict, h: float = 0.02) -> dict:
     uv, piece_of, F, border = [], [], [], []
     key_vid, points, marks = {}, {}, {}
     for pi, nm in enumerate(names):
+        h = ph[nm]
         pc = pcs[nm]
         Pp = pc["P"]
         n = len(Pp)
@@ -818,6 +823,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             import shutil
             shutil.rmtree(job_dir, ignore_errors=True)
     res["fit"] = fit(res)
+    res["integrity"] = integrity(res["V"], M, Bp, X0)
     res["sizing"] = sizing(res)
     # the verdict reads both: a pattern smaller than the body (negative ease) can't show as a small garment in the
     # sim (the body holds it out), it shows as cloth stretched past its limit there
@@ -832,6 +838,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             f"; strained at {', '.join(strained)}" if strained else "")
     elif strained:
         res["fit"]["verdict"] = "STRAINED at " + ", ".join(strained)
+    ig = res["integrity"]
+    if ig["corrupt_pieces"] or ig["twisted_seams"]:  # a tangled garment's fit means nothing: said first
+        res["fit"]["verdict"] = ("CORRUPT: " + ", ".join(
+            f"{p} ({ig['pieces'][p]['crumpled'] * 100:.0f}% crumpled, {ig['pieces'][p]['intersections']} crossings)"
+            for p in ig["corrupt_pieces"]) + (f"; twisted seams {ig['twisted_seams']}" if ig["twisted_seams"] else "")
+            + " | " + res["fit"]["verdict"])
     return res
 
 
@@ -857,6 +869,136 @@ def edge_strain(V: np.ndarray, uv: np.ndarray, F: np.ndarray) -> tuple[np.ndarra
 
 
 REGIONS = ("neck", "chest", "waist", "hips", "seat", "biceps", "wrist")
+
+
+def _seg_tri(P0, P1, A, B, C, eps=1e-9):
+    """Segments P0-P1 against triangles ABC (row-wise): True where the segment crosses the triangle's interior
+    (Moller-Trumbore with the segment's own length as the parameter range)."""
+    d = P1 - P0
+    e1, e2 = B - A, C - A
+    h = np.cross(d, e2)
+    a = np.sum(e1 * h, 1)
+    ok = np.abs(a) > eps
+    f = np.where(ok, 1.0 / np.where(ok, a, 1.0), 0.0)
+    s = P0 - A
+    u = f * np.sum(s * h, 1)
+    q = np.cross(s, e1)
+    v = f * np.sum(d * q, 1)
+    t = f * np.sum(e2 * q, 1)
+    m = 1e-3  # stay off shared edges and vertices
+    return ok & (u > m) & (v > m) & (u + v < 1 - m) & (t > m) & (t < 1 - m)
+
+
+def integrity(V: np.ndarray, M: dict, B: dict | None = None, X0: np.ndarray | None = None) -> dict:
+    """Is the settled cloth still a garment? Per piece: self-intersections (an edge of the cloth crossing a triangle
+    of it, the piece itself or any other: tangled or passed-through cloth), crumpled triangles (squashed under a
+    third of their pattern area, or folded flat: a neighbour turned more than 160 deg), and per seam whether its two
+    sides run the same way (a twisted seam: one side's order reversed). Numbers, so a corrupted garment never reads
+    as settled."""
+    F, uv = M["F"], M["uv"]
+    pid = M["piece"][F[:, 0]]
+    names = M["names"]
+    # crumpled: area against the pattern's
+    a3 = 0.5 * np.linalg.norm(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]), axis=1)
+    du1, du2 = uv[F[:, 1]] - uv[F[:, 0]], uv[F[:, 2]] - uv[F[:, 0]]
+    a2 = 0.5 * np.abs(du1[:, 0] * du2[:, 1] - du1[:, 1] * du2[:, 0])
+    if X0 is not None:  # against the start, which holds the made-in folds (across a collar's fold a triangle is thin)
+        a2 = np.minimum(a2, 0.5 * np.linalg.norm(np.cross(X0[F[:, 1]] - X0[F[:, 0]], X0[F[:, 2]] - X0[F[:, 0]]), axis=1))
+    squashed = a3 < a2 / 3
+    # folded flat: adjacent triangles of one piece whose normals turn > 160 deg
+    n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+    E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+    tid = np.tile(np.arange(len(F)), 3)
+    key = np.sort(E, 1)
+    order = np.lexsort((key[:, 1], key[:, 0]))
+    ks, ts = key[order], tid[order]
+    same = np.all(ks[1:] == ks[:-1], axis=1)
+    t1, t2 = ts[:-1][same], ts[1:][same]
+    folded_t = np.zeros(len(F), bool)
+    flip = np.sum(n[t1] * n[t2], 1) < -0.94
+    if X0 is not None:  # folds the garment was made with (a turned-down collar placed folded) don't count
+        n0 = np.cross(X0[F[:, 1]] - X0[F[:, 0]], X0[F[:, 2]] - X0[F[:, 0]])
+        n0 /= np.linalg.norm(n0, axis=1, keepdims=True) + 1e-12
+        flip &= ~(np.sum(n0[t1] * n0[t2], 1) < -0.5)
+    folded_t[t1[flip]] = True
+    folded_t[t2[flip]] = True
+    # self-intersections: every unique edge against nearby triangles that don't share its vertices
+    ue = np.unique(key, axis=0)
+    # a seam's two sides meet: an edge touching a triangle through a sewn (or stitched) partner isn't a crossing
+    rep = np.arange(len(V))
+    links = np.r_[M["sew"], M["stitch"]] if len(M["stitch"]) else M["sew"]
+    for _ in range(4):  # union-find by repeated min over the pairs (chains of seams meet at corners)
+        np.minimum.at(rep, links[:, 0], rep[links[:, 1]])
+        np.minimum.at(rep, links[:, 1], rep[links[:, 0]])
+
+    def crossings(Vx):
+        cen = Vx[F].mean(1)
+        rad = np.max(np.linalg.norm(Vx[F] - cen[:, None], axis=2), axis=1)
+        mid = 0.5 * (Vx[ue[:, 0]] + Vx[ue[:, 1]])
+        half = 0.5 * np.linalg.norm(Vx[ue[:, 0]] - Vx[ue[:, 1]], axis=1)
+        cand = cKDTree(cen).query_ball_point(mid, r=float(half.max() + rad.max()))
+        ei = np.repeat(np.arange(len(ue)), [len(c) for c in cand])
+        ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
+        Rt = rep[F[ti]]
+        keep = ~((Rt == rep[ue[ei, 0]][:, None]).any(1) | (Rt == rep[ue[ei, 1]][:, None]).any(1))
+        ei, ti = ei[keep], ti[keep]
+        hit = np.zeros(len(ei), bool)
+        for s0 in range(0, len(ei), 200000):
+            sl = slice(s0, s0 + 200000)
+            T = F[ti[sl]]
+            hit[sl] = _seg_tri(Vx[ue[ei[sl], 0]], Vx[ue[ei[sl], 1]], Vx[T[:, 0]], Vx[T[:, 1]], Vx[T[:, 2]])
+        he, ht = ei[hit], ti[hit]
+        # right at a seam the two sides fold against each other at the resolution of a triangle (a real seam has
+        # its allowance there): crossings within a triangle's size of a seam don't count as tangles
+        if len(he) and len(links):
+            sv = np.unique(links.ravel())
+            dseam, _ = cKDTree(Vx[sv]).query(0.5 * (Vx[ue[he, 0]] + Vx[ue[he, 1]]))
+            hsz = float(np.median(np.linalg.norm(Vx[ue[:, 0]] - Vx[ue[:, 1]], axis=1)))
+            far = dseam > 1.5 * hsz
+            he, ht = he[far], ht[far]
+        return he, ht
+    hit_e, hit_t = crossings(V)
+    carried = 0
+    if X0 is not None:  # crossings already in the start (a sleeve laid round a bent elbow overlaps itself inside
+        s_e, s_t = crossings(X0)  # the crook) are the placement's: reported apart, the sim's own counted
+        start = set(zip(s_e.tolist(), s_t.tolist()))
+        new = np.array([(e, t) not in start for e, t in zip(hit_e.tolist(), hit_t.tolist())], bool)
+        carried = int((~new).sum()) if len(new) else 0
+        if len(new):
+            hit_e, hit_t = hit_e[new], hit_t[new]
+    out = {"pieces": {}, "twisted_seams": [], "self_intersections": int(len(hit_t)),
+           "crossings_from_placement": carried}
+    epid = M["piece"][ue[:, 0]]
+    pairs = {}
+    for a_, b_ in zip(epid[hit_e], pid[hit_t]):
+        k_ = " / ".join(sorted({names[a_], names[b_]}))
+        pairs[k_] = pairs.get(k_, 0) + 1
+    out["crossing_pairs"] = dict(sorted(pairs.items(), key=lambda kv: -kv[1]))
+    # where: the crossings' positions (for a close-up)
+    out["crossing_at"] = (0.5 * (V[ue[hit_e, 0]] + V[ue[hit_e, 1]])).round(3).tolist()[:50]
+    for k, nm in enumerate(names):
+        s = pid == k
+        if not s.any():
+            continue
+        out["pieces"][nm] = {
+            "crumpled": round(float(np.mean(squashed[s] | folded_t[s])), 4),
+            "intersections": int(np.sum(epid[hit_e] == k) + np.sum(pid[hit_t] == k)),
+        }
+    # seam twist: along each seam, the two sides' directions in the placed start must agree
+    if B is not None and X0 is not None and len(M["sew"]):
+        for si, sd in enumerate(B["seams"]):
+            p = M["sew"][M["sew_seam"] == si]
+            if len(p) < 3:
+                continue
+            da = np.diff(X0[p[:, 0]], axis=0)
+            db = np.diff(X0[p[:, 1]], axis=0)
+            dots = np.sum(da * db, 1)
+            if np.mean(dots < 0) > 0.5:
+                out["twisted_seams"].append(str(sd))
+    bad = [nm for nm, v in out["pieces"].items() if v["crumpled"] > 0.03 or v["intersections"] > 20]
+    out["corrupt_pieces"] = bad
+    return out
 
 
 def fit(res: dict) -> dict:

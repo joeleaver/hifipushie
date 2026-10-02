@@ -177,7 +177,9 @@ def sim(job, d):
     # stage 2: gravity, settle (worn)
     bpy.data.objects.remove(ob)
     f2 = int(job.get("worn_frames", 40)) if hang else frames
-    ob = _sim_object("garment2", V, F, sew, uv, stiff, [], fab, False, f2)
+    # self-collision already while settling: the overlapping fronts passed through each other under gravity and the
+    # last stage then locked the tangle in (55 crossings per front)
+    ob = _sim_object("garment2", V, F, sew, uv, stiff, [], fab, bool(job.get("self_collision", True)), f2)
     V, dt = _run(ob, f2)
     log(f"stage 2 (gravity, worn): {f2} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
     n0 = len(V)
