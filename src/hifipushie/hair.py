@@ -55,8 +55,11 @@ def under(g: dict, H, az, el, d_in):
     # the fill (sides, back) is relief on the mass, not its volume: sunk a whole fill thickness, the gaps between
     # fill locks showed the sunk mass and the sides pinched in under the top again
     tw = top * (1 - side)  # the top proper: sunk by the big locks; the sides (and the top where it lies down) by theirs
-    depth = tw * tb * _ss(d_in / 0.006) + FILL_SINK * (1 - tw) * tf  # the front edge not sunk:
-    # between the front row's roots the sunk mass read as black pits along the hairline
+    # the front edge not sunk (between generated front-row roots the sunk mass read as black pits along the hairline),
+    # unless volume.edge_sink (0..1): a front lock laid on the hairline (drawn "to_hairline") covers the edge, and an
+    # unsunk edge stood out under it as a dark lip (the band under the quiff)
+    es = float(g["volume"].get("edge_sink", 0.0))
+    depth = tw * tb * (es + (1 - es) * _ss(d_in / 0.006)) + FILL_SINK * (1 - tw) * tf
     return np.maximum(H - depth, np.minimum(H, 0.0015))
 
 
@@ -95,6 +98,8 @@ GROOM = {
     "drawn": [],
     "drawn_under": True,  # an under clump between neighbours of a row: true, false, a sink (x thickness under the
     # row: 0.35 shows between the wedges, 1 is buried under the underlayer) or per row {stem: sink | false}
+    "hairline_edge": None,  # {"inset": m (negative: tucked into the skin), "reach": m}: every drawn clump whose edge
+    # comes within reach of the hairline lays that edge on it (the volume's rim showed between clump edges and skin)
     "noise": 0.3,
     "seed": 0,
     "centre": "head",  # without face landmarks (a kit-built head): the joint (or [x, y, z]) the scalp is measured from
@@ -267,6 +272,9 @@ def groom_params(spec: dict) -> dict:
     return _merge(GROOM, g)
 
 
+HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
+
+
 def hairline(sc: Scalp, g: dict) -> np.ndarray:
     """The hairline's elevation (degrees) at each whole degree of azimuth (360,), symmetric left/right: from the
     landmarks (front height in brow-to-nose units, temples receding, sideburns, clear of the ears, the nape)."""
@@ -300,7 +308,13 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
                 (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
     if hl.get("front_points"):  # traced (e.g. from the reference through the matched camera): [[az, z], ...] over the
         fp = sorted((float(x), float(z)) for x, z in hl["front_points"])  # front; the rest of the line kept
-        ctrl = fp + [c for c in ctrl if c[0] > fp[-1][0] + 4]
+        # ...eased onto the traced end (HAIRLINE_JOIN deg): joined as it was, the default temple stood ~4 mm off the
+        # traced front's end and the hairline stepped up and down again at the temple corner (a notch in the edge)
+        ca = np.array([c[0] for c in ctrl])
+        cz = np.array([c[1] for c in ctrl])
+        dz = fp[-1][1] - float(np.interp(fp[-1][0], ca, cz))
+        ctrl = fp + [(a, z + dz * max(0.0, 1.0 - (a - fp[-1][0]) / HAIRLINE_JOIN)) for a, z in ctrl
+                     if a > fp[-1][0] + 4]
     # z -> elevation on the scalp, per control's azimuth (the column's first height reaching z, from the bottom)
     A, E = [], []
     for a, z in ctrl:
@@ -476,7 +490,12 @@ def _envelope(sc: Scalp, g: dict, line, az, el):
             * (1 + full * pw * _ss(-sgn * (P[..., 0] - xp + sgn * 0.02) / 0.05))
         # along the parting the volume goes down to the scalp: the roots on both sides grow out of it there, and
         # the part is a thin line of scalp and shadow between clumps (a dip left the volume as a smooth patch)
-        v = v * (1 - float(g["parting"].get("depth", 0.9)) * _part(sc, g, az, el, float(g["parting"].get("width", 0.012))))
+        # parting.front (m): the part's dip fades in over this far behind the front hairline, so the front roll stays
+        # whole and the hairline one clean sweep (dipping right to the hairline it cut a V notch into the edge)
+        pf = float(g["parting"].get("front", 0.015))
+        fade = _ss(d_in / pf) if pf > 0 else 1.0
+        v = v * (1 - float(g["parting"].get("depth", 0.9)) * fade
+                 * _part(sc, g, az, el, float(g["parting"].get("width", 0.012))))
     # volume.ramp: how far back from the front hairline the top reaches its height (m): short, the front stands as a
     # wall and the front locks over it jut like a cap's peak; longer, the front face leans back (a quiff's wave)
     ramp = topw * float(vol.get("ramp", 0.028)) + (1 - topw) * (0.8 * v + 0.002)  # continuous: a switch creased the temples
@@ -1090,7 +1109,22 @@ def validate(spec: dict) -> None:
 
 
 def merge_patch(a, b):
-    """b merged into a key by key (objects merge, null deletes, anything else replaces)."""
+    """b merged into a key by key (objects merge, null deletes, anything else replaces). A list of named objects
+    (the drawn clumps) patched with an object {name: patch | null} merges by name: one clump's numbers change, null
+    drops it, a new name is appended (`"*"` / `"sweep*"` patterns patch every match)."""
+    if isinstance(a, list) and isinstance(b, dict) and all(isinstance(x, dict) and x.get("name") for x in a):
+        from fnmatch import fnmatch
+        out = [copy.deepcopy(x) for x in a]
+        for k, v in b.items():
+            hit = [i for i, x in enumerate(out) if fnmatch(x["name"], k)]
+            if v is None:
+                out = [x for i, x in enumerate(out) if i not in hit]
+            elif hit:
+                for i in hit:
+                    out[i] = merge_patch(out[i], v)
+            elif not any(ch in k for ch in "*?["):
+                out.append({"name": k, **copy.deepcopy(v)})
+        return out
     if isinstance(a, dict) and isinstance(b, dict):
         out = dict(a)
         for k, v in b.items():
@@ -1398,8 +1432,15 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
     volume (stage a). Its edge dives under the skin just outside the hairline, so the line is crisp."""
     line = hairline(sc, g)
     A = np.arange(0.0, 360.0, step)
-    E = np.r_[np.arange(-60.0, 90.0, step), 90.0]  # up to the pole (a hole there read as a groove)
-    AA, EE = np.meshgrid(A, E, indexing="ij")
+    # rows follow the hairline: per column, two rows just outside it (the edge dives under the skin), one ON it, then
+    # evenly up to the pole (a hole there read as a groove). On a fixed elevation grid the edge was a staircase of
+    # cells crossing the line: fine serrations all along the hairline, read as a torn edge in close-ups
+    la = _line_at(line, A)
+    n = int(np.ceil((90.0 - la.min()) / step))
+    t = np.linspace(0.0, 1.0, n + 1)
+    AA = np.repeat(A[:, None], n + 3, 1)
+    EE = np.concatenate([(la - 2.5 * step)[:, None], (la - 1.2 * step)[:, None],
+                         la[:, None] + t[None, :] * (90.0 - la)[:, None]], 1)
     if mass:
         H, d_in = envelope(sc, g, line, AA, EE)
         if sunk:
@@ -1527,7 +1568,7 @@ def reference_image(name: str, reference: str | None = None):
     return None, None
 VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
          "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "close": (-30.0, 25.0, 0.45),
-         "close_back": (150.0, 20.0, 0.45)}
+         "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42)}
 
 
 def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
@@ -1568,7 +1609,9 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         thumb["size"] = 160
         dump = str(Path(tmp) / "hair_pts.npy")
         cf = [{**f, "out": str(Path(tmp) / f"clay_{f['name']}.png")} for f in frames] if clay else []
-        idf = [{**f, "out": str(Path(tmp) / f"id_{f['name']}.png"), "size": 240} for f in frames]
+        idf = [{**f, "out": str(Path(tmp) / f"id_{f['name']}.png"),
+                "size": 480 if f["name"].startswith("matched") else 240} for f in frames]  # (matched ones finer:
+        # the hairline's edge is measured on them)
         j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec, only=only),
              "samples": 16, "dump": dump, "clay_views": cf, "id_views": idf}
         out = _blender(j)
@@ -1591,6 +1634,16 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         np.save(store._dir(name) / "hair_points.npy", pts)  # the last look's hair vertices (for measuring) and
         np.savez(store._dir(name) / "hair_point_owners.npz", ids=np.load(dump + ".ids.npy"),  # which object each is
                  names=np.array(json.load(open(dump + ".names.json"))))
+        owners = (pts, np.load(dump + ".ids.npy"), json.load(open(dump + ".names.json")))
+        look.bare_where = {}
+        if j["hair"] and j["hair"].get("cap"):  # where the bare volume shows, by head region
+            capV = np.load(j["hair"]["cap"])["verts"]
+            g_ = groom_params(spec)
+            for f, fm in zip(idf, frames):
+                a = np.asarray(Image.open(f["out"]).convert("RGB"), float)
+                red, green = a[..., 0] > a[..., 1] + 60, a[..., 1] > a[..., 0] + 60
+                look.bare_where[f["name"]] = bare_regions(sc, g_, capV, fm, red, red.sum() + green.sum(),
+                                                          cam=dict(zip(mnames, [rc for _, rc, _ in rvs])).get(f["name"]))
         look.gate = silhouette_gate(sc, pts)
         look.folds = folds(sc, j["hair"].get("locks") or []) if j["hair"] else {}
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
@@ -1627,13 +1680,13 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         dr.text((x0 + 6, 5), "reference", fill=(220, 220, 220))
     sheet.paste(th, (x0 + 6, W + 22 - th.height - 4))
     dr.text((x0 + 170, W + 22 - 20), f"thumbnail {th.width}px", fill=(200, 200, 200))
-    look.fits = {v: fit_metrics(name, sc, rc, spec, masks.get(fn), tr=t)
+    look.fits = {v: fit_metrics(name, sc, rc, spec, masks.get(fn), tr=t, owners=owners)
                  for fn, (v, rc, t) in zip(mnames, rvs)}
     look.fit = look.fits.get("matched")
     if look.fit:
         f = look.fit
         caption = (caption + "   " if caption else "") + "fit: " + ", ".join(
-            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "mm_per_px", "regions"))
+            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "mm_per_px", "regions", "front_edge"))
     for j, (fn, (v, rc, t)) in enumerate(zip(mnames, rvs)):
         y = (rows - nm + j) * W + 22
         rimg = Path(t["image"]) if t.get("image") and Path(t["image"]).exists() else None
@@ -1641,6 +1694,12 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         panels = [(f"matched camera ({v})", mr)]
         if rimg is not None:
             refc = Image.open(rimg).convert("RGB").crop(tuple(rc["crop"])).resize((W, W))
+            fv = look.fits.get(v)
+            if fv and masks.get(fn) is not None:
+                fl = front_flow(rc, t, Image.open(rimg).convert("RGB").crop(tuple(rc["crop"])), matched[j],
+                                masks[fn], fv["mm_per_px"])
+                if fl:
+                    fv["front_flow"] = fl
             panels += [("reference", refc), ("50% blend", Image.blend(mr, refc, 0.5))]
         if mclay:
             panels.insert(1, ("matched clay", mclay[j].resize((W, W))))
@@ -1656,6 +1715,60 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         sheet.save(save)
     frames_t = [line for line in out.splitlines() if line.startswith("@@")]
     return sheet, round(t_render, 1), frames_t
+
+
+def _project_frame(fm: dict, P, W: int):
+    """World points -> pixels (u right, v down) of a square look frame (render.camera_frame: perspective, fov across)
+    and their depth along the view."""
+    eye = np.asarray(fm["eye"], float)
+    fwd = -_unit(np.asarray(fm["dir"], float))
+    right = _unit(np.cross(fwd, np.asarray(fm["up"], float)))
+    up = np.cross(right, fwd)
+    Q = np.asarray(P, float) - eye
+    z = Q @ fwd
+    k = 1.0 / np.tan(np.radians(float(fm["fov"])) / 2)
+    x, y = (Q @ right) / z * k, (Q @ up) / z * k
+    return np.stack([(x + 1) / 2 * W, (1 - (y + 1) / 2) * W], -1), z
+
+
+BARE_BAND = 0.015  # m inside the hairline: bare volume there is reported as "<region> hairline"
+
+
+def bare_regions(sc: Scalp, g: dict, capV, fm: dict, red, total: int, cam: dict | None = None) -> dict:
+    """Where the bare volume shows in a view: each underlayer pixel of the id pass labelled by the head region of the
+    underlayer point it shows (the nearest projected vertex), "<region> hairline" within BARE_BAND of the hairline.
+    {label: share of the view's visible hair}, largest first (above 0.005)."""
+    if total == 0 or not red.any():
+        return {}
+    W = red.shape[0]
+    if cam is not None:  # a matched view: the reference camera (lens shift)
+        uv = _to_crop(cam, project_ref(cam, capV), W)
+        R_, t_, ctr = np.array(cam["R"]), np.array(cam["t"]), np.array(cam["ctr"])
+        z = ((capV - ctr) @ R_.T + t_)[:, 2]
+    else:
+        uv, z = _project_frame(fm, capV, W)
+    iu, iv = np.round(uv[:, 0]).astype(int), np.round(uv[:, 1]).astype(int)
+    ok = (z > 0) & (iu >= 0) & (iu < W) & (iv >= 0) & (iv < W)
+    zb = np.full((W, W), np.inf)
+    owner = -np.ones((W, W), int)
+    idx = np.nonzero(ok)[0]
+    order = idx[np.argsort(-z[idx])]  # far first: nearer vertices overwrite
+    zb[iv[order], iu[order]] = z[order]
+    owner[iv[order], iu[order]] = order
+    from scipy.ndimage import distance_transform_edt
+    has = owner >= 0
+    _, (ri, ci) = distance_transform_edt(~has, return_indices=True)  # pixels between projected vertices
+    ys, xs = np.nonzero(red)
+    v = owner[ri[ys, xs], ci[ys, xs]]
+    a, e, _ = sc.coords(capV[v])
+    d_in = inside(sc, hairline(sc, g), a, e)
+    lab = np.char.add(region_of(a, e).astype(str), np.where(d_in < BARE_BAND, " hairline", ""))
+    out = {}
+    for L in np.unique(lab):
+        s = float((lab == L).sum() / total)
+        if s >= 0.005:
+            out[str(L)] = round(s, 3)
+    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
 
 
 GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
@@ -1997,7 +2110,9 @@ def _under_clumps(clumps: list, sc: Scalp | None = None, sink=True) -> list:
         mid = 0.5 * (p0 + p1)
         out.append({"name": f"{n0}_{n1}_under", key: mid.round(4).tolist(),
                     "width": max(float(c0.get("width", 0.055)), float(c1.get("width", 0.055))),
-                    "sink": sk, "edge": 1.2, "taper": 0.85})  # (sink 1: under the
+                    "sink": sk, "edge": 1.2, "taper": 0.85,
+                    **({"root": min(float(c0.get("root", 1.0)), float(c1.get("root", 1.0)))}
+                       if ("root" in c0 or "root" in c1) else {})})  # (a narrow-rooted row's unders too; sink 1: under the
         # underlayer itself, so the volume still showed between the wedges)
     return out
 
@@ -2062,6 +2177,8 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
     return out
 
 
+ROOT_TILT = 0.5  # the climbing root's tilt, x the lie's tilt behind it (1: nape rows folded at their roots)
+ROOT_CLIMB = 0.012  # m: the shortest run over which a drawn clump's root rises from under the layer to lie on it
 TILT_MAX = 1.3  # rad: the most a drawn clump's flat side turns off facing away from the head centre
 BEND_EASE = 0.7  # drawn clumps are eased until their spine's in-plane bend x half width is under this
 
@@ -2098,6 +2215,73 @@ def ease_bends(sc: Scalp, Q, half, limit: float = BEND_EASE, rounds: int = 200):
     return Q
 
 
+def _to_hairline(sc: Scalp, line, Q, half, inset: float, rounds: int = 6, reach: float | None = None):
+    """A dense path on the head moved across itself so the lock's edge facing the hairline (half width `half` per
+    point) runs `inset` m inside the hairline (negative: tucked into the skin): the spine lies `half + inset` from the
+    line. The edge of the front lock then IS the hairline, one designed sweep, instead of the volume's rim showing
+    between it and the skin. `reach` (m): only where the edge already comes within this of that line (fully within
+    half of it), so a lock that runs off the hairline keeps its drawn path there."""
+    from scipy.ndimage import gaussian_filter1d
+    Q = np.asarray(Q, float).copy()
+    target = np.asarray(half, float) + inset
+    eps = 0.4
+    wgt = np.ones(len(Q))
+    if reach is not None:
+        a, e = az_el(Q - sc.C)
+        gap = inside(sc, line, a, e) - target
+        wgt = 1 - _ss((gap - 0.5 * reach) / (0.5 * reach))
+        wgt = np.clip(gaussian_filter1d(wgt, 3.0, mode="nearest"), 0, 1)
+        if wgt.max() < 0.02:
+            return Q
+    for _ in range(rounds):
+        a, e = az_el(Q - sc.C)
+        d = inside(sc, line, a, e)
+        Pa = sc.point(a + eps, e, 0.0) - sc.point(a - eps, e, 0.0)
+        Pe = sc.point(a, e + eps, 0.0) - sc.point(a, e - eps, 0.0)
+        da = inside(sc, line, a + eps, e) - inside(sc, line, a - eps, e)
+        de = inside(sc, line, a, e + eps) - inside(sc, line, a, e - eps)
+        # the gradient of d on the scalp: v in span(Pa, Pe) with Pa.v = da, Pe.v = de
+        M = np.stack([Pa, Pe], 1)  # (n, 2, 3)
+        G = M @ np.transpose(M, (0, 2, 1))
+        lam = np.linalg.solve(G + 1e-12 * np.eye(2), np.stack([da, de], 1)[..., None])[..., 0]
+        v = (lam[:, :, None] * M).sum(1)
+        step = -(wgt * (d - target) / np.maximum((v * v).sum(1), 1e-12))[:, None] * v
+        Q = Q + step
+        a, e = az_el(Q - sc.C)
+        Q = sc.point(a, e, 0.0)
+        if (wgt * np.abs(d - target)).max() < 0.0005:
+            break
+    return Q
+
+
+def _edge_cup(sc: Scalp, g: dict, line, P, tilt, half, T) -> float:
+    """The cup that brings a lock's edge facing the hairline down onto the underlayer there (a lock laid along a
+    rolled front lies on the roll's tangent at its spine; its front edge stood off the roll and the dark rim of the
+    volume showed under it). Near the most any control point needs (80th percentile: the roll at the quiff is where
+    the rim showed), never less than the head's own sag."""
+    P = np.asarray(P, float)
+    tg = _unit(np.gradient(P, axis=0))
+    n0 = _unit(P - sc.C)
+    n0 = _unit(n0 - (n0 * tg).sum(1, keepdims=True) * tg)
+    t = np.asarray(tilt, float)[:, None]
+    nr = n0 * np.cos(t) + np.cross(tg, n0) * np.sin(t)
+    b = _unit(np.cross(nr, tg))
+    drops = []
+    for sgn in (1.0, -1.0):
+        E = P + sgn * np.asarray(half)[:, None] * b
+        a, e, hE = sc.coords(E)
+        drops.append((a, e, hE))
+    # the side nearer the hairline
+    (a1, e1, h1), (a2, e2, h2) = drops
+    d1, d2 = inside(sc, line, a1, e1), inside(sc, line, a2, e2)
+    pick = d1 < d2
+    a, e, hE = np.where(pick, a1, a2), np.where(pick, e1, e2), np.where(pick, h1, h2)
+    H, d_in = envelope(sc, g, line, a, e)
+    want = under(g, H, a, e, d_in) + 0.35 * T
+    need = (hE + 0.5 * T) - want  # the lens's outer face at the edge vs lying on the layer under it
+    return float(np.clip(np.percentile(need[1:], 80), lie_cup(sc, 2 * float(np.max(half)), P), 0.03))
+
+
 def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     """Clumps drawn on the top view: [{"name"?, "top": [[x, y], ...] (root first), "width", "thickness"?, "lie"?}]
     -> locks. Heights come from the volume: the root dives under whatever it grows from, the body lies with its back
@@ -2122,8 +2306,32 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         Q = ease_bends(sc, Q, 0.5 * w * lock_width({"Root": float(c.get("root", 1.0)),
                                                        "Belly": float(c.get("belly", 0.06)),
                                                        "Taper": float(c.get("taper", 1.0))}, np.linspace(0, 1, len(Q))))
-        cq = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
-        tt = np.r_[0.0, 0.08, np.linspace(0.25, 1.0, 4)] * cq[-1]
+        # the clump's outer edge laid on the hairline: one clean designed sweep. Per clump "to_hairline": inset m
+        # (all along it) or {"inset", "reach"}; groom "hairline_edge": {"inset", "reach"} for every drawn clump whose
+        # edge comes within reach of the hairline (the volume's rim showed between the clumps' edges and the skin)
+        th = c.get("to_hairline", g.get("hairline_edge") if not c.get("name", "").endswith("_under") else None)
+        if th is False:
+            th = None
+        laid = False
+        if th is not None:
+            thd = th if isinstance(th, dict) else {"inset": th}
+            Q0 = Q
+            Q = _to_hairline(sc, line, Q, 0.5 * w * lock_width({"Root": float(c.get("root", 1.0)),
+                                                                "Belly": float(c.get("belly", 0.06)),
+                                                                "Taper": float(c.get("taper", 1.0))},
+                                                               np.linspace(0, 1, len(Q))), float(thd.get("inset", 0.0)),
+                             reach=float(thd["reach"]) if thd.get("reach") is not None else None)
+            laid = thd.get("reach") is None or float(np.abs(Q - Q0).max()) > 1e-4
+            if laid:  # a hairline that turns (a temple corner) bent the path tighter than the lock's width allows
+                Q = ease_bends(sc, Q, 0.5 * w * lock_width({"Root": float(c.get("root", 1.0)),
+                                                               "Belly": float(c.get("belly", 0.06)),
+                                                               "Taper": float(c.get("taper", 1.0))},
+                                                              np.linspace(0, 1, len(Q))))
+        cq =np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+        # (the root's climb out of the layer takes at least ROOT_CLIMB m: over 8% of a short nape lock it rose ~7 mm
+        # in 5 mm, and the tilted lens folded there)
+        t1 = min(max(0.08, ROOT_CLIMB / max(cq[-1], 1e-9)), 0.16)
+        tt = np.r_[0.0, t1, np.linspace(0.25, 1.0, 4)] * cq[-1]
         Q = np.stack([np.interp(tt, cq, Q[:, k]) for k in range(3)], 1)
         a, e = az_el(Q - sc.C)
         T = float(c.get("thickness", 0.0055 * w / 0.055))
@@ -2138,6 +2346,9 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         h[-1] = U[-1] + float(c.get("lie", 0.1)) * T
         h = h - float(c.get("sink", 0.0)) * T * _ss(u / 0.2)  # an under clump lies beneath its neighbours
         h = np.where(d_in < 0, np.maximum(h, 0.55 * T), h)  # a fringe lies on the forehead
+        if d_in[0] < 0:  # a root drawn on or past the hairline grows out of the skin there: its end is buried in
+            # the skin (left lying on the forehead, a row of front roots read as rounded scales along the hairline)
+            h[0] = -0.6 * T
         P = sc.point(a, e, h)
         tilt = lie_tilt(sc, g, line, _catmull(P, 4 * len(P))[::4])
         # the root takes the next point's tilt: there the spine climbs out of the scalp and the volume's normal turns
@@ -2145,11 +2356,20 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         # itself at the root (the flakes along the part); and no point lies more than TILT_MAX off the head's own
         tilt[0] = tilt[1]
         tilt = np.clip(tilt, -TILT_MAX, TILT_MAX)
+        # where the root climbs out of the layer the spine bends up: a lens turned on its side there bends within its
+        # own plane and folds (the nape rows' flags), so the climb faces out (ROOT_TILT of the lie's tilt)
+        tilt[:2] = ROOT_TILT * tilt[2]
+        cup = lie_cup(sc, w, P)
+        if laid:  # its hairline edge brought down onto the layer under it
+            cup = _edge_cup(sc, g, line, P, tilt, 0.5 * w * lock_width(
+                {"Root": float(c.get("root", 1.0)), "Belly": float(c.get("belly", 0.06)),
+                 "Taper": float(c.get("taper", 1.0))}, u), T)
+        cup = float(c.get("cup", cup))
         name = c.get("name") or f"k{i:02d}"
         out[name] = {"tier": "drawn", "pts": [[round(float(a[k]), 2), round(float(e[k]), 2), round(float(h[k]), 4)]
                                               for k in range(len(a))],
                      "tilt": [round(float(v), 3) for v in tilt], "width": round(w, 4), "thickness": round(T, 4),
-                     "cup": round(lie_cup(sc, w, P), 4), "taper": float(c.get("taper", 1.0)),  # wedges: widest
+                     "cup": round(cup, 4), "taper": float(c.get("taper", 1.0)),  # wedges: widest
                      "belly": float(c.get("belly", 0.06)), "root": float(c.get("root", 1.0)), "twist": 0.0,  # at
                      "edge": float(c.get("edge", 1.6))}  # the root, to a thin sharp tip; a flat back with crisp edges
         gr = _grey(g, float(a[0]), float(e[0]), line)
@@ -2386,7 +2606,8 @@ def model_lines(name: str, sc: Scalp, cam: dict, spec: dict) -> dict:
     return out
 
 
-def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None, tr: dict | None = None) -> dict:
+def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None, tr: dict | None = None,
+                owners=None) -> dict:
     """The groom against the traced reference in the matched view (reference pixels, and mm at the head's depth):
     part start (px) and direction (deg) error, hairline mean/max distance, hair silhouette IoU + mean boundary
     distance (from the matched id pass), the outline per head region (`outline_regions`), the hair's top over the
@@ -2427,6 +2648,9 @@ def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None, tr:
             d1 = distance_transform_edt(~bM)[bR]
             d2 = distance_transform_edt(~bR)[bM]
             out["outline_px"] = [round(float(np.r_[d1, d2].mean() * s), 1), round(float(max(d1.max(), d2.max()) * s), 1)]
+        fe = front_edge(cam, tr, hair_mask, mm, owners=owners)
+        if fe:
+            out["front_edge"] = fe
         reg, brow = outline_regions(sc, cam, spec, R, M, tr, s * mm)
         out["regions"] = reg
         if brow:
@@ -2450,6 +2674,156 @@ def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None, tr:
         out["clumps"] = errs
         out["clump_dir_deg_mean"] = round(float(np.mean([v[1] for v in errs.values()])), 1)
     return out
+
+
+EDGE_SMOOTH = 0.008  # m: the hairline edge's own sweep is the edge with tips/notches narrower than ~this taken out
+EDGE_REACH = 0.03  # m: how far either side of the traced hairline the rendered edge is looked for
+
+
+def front_edge(cam: dict, tr: dict, mask, mm_px: float, owners=None) -> dict | None:
+    """The hair's edge against the skin along the traced hairline, measured on the matched id pass: at each point of
+    the traced line (every 1.5 mm) the outermost hair pixel along the line's normal (within EDGE_REACH). Its
+    roughness is the edge minus itself smoothed along the line (EDGE_SMOOTH): `rough_mm` (rms) and `tooth_mm` (the
+    worst tip or notch) read as a jagged, torn hairline past ~1 / ~3 mm (the reference's line is one clean sweep);
+    `turn_deg_cm` = how much the edge turns per cm beyond its smoothed sweep (zigzag). `off_mm` = ours minus the
+    trace on average (+: our edge sits further out onto the skin), `holes` = the share of the band 1-6 mm inside our
+    edge that shows skin (a torn edge: tips with skin between them)."""
+    from scipy.ndimage import gaussian_filter1d, map_coordinates, median_filter
+    if not tr.get("hairline") or mask is None:
+        return None
+    Wm = mask.shape[0]
+    x0, y0, x1, y1 = cam["crop"]
+    px_mm = (Wm / max(x1 - x0, y1 - y0)) / mm_px  # mask px per mm
+    L = _to_crop(cam, _dense(tr["hairline"], 1.0), Wm)
+    if len(L) < 8:
+        return None
+    c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(L, axis=0), axis=1))]
+    t = np.arange(0, c[-1], 1.5 * px_mm)
+    L = np.stack([np.interp(t, c, L[:, k]) for k in range(2)], 1)
+    tg = np.gradient(gaussian_filter1d(L, 3, axis=0, mode="nearest"), axis=0)
+    tg /= np.maximum(np.linalg.norm(tg, axis=1, keepdims=True), 1e-9)
+    nrm = np.stack([tg[:, 1], -tg[:, 0]], 1)
+    if tr.get("landmarks"):  # outward = onto the skin: toward the face's landmarks (the U's inside)
+        face = _to_crop(cam, list(tr["landmarks"].values()), Wm).mean(0)
+        if np.mean(((face - L) * nrm).sum(1)) < 0:
+            nrm = -nrm
+    reach = EDGE_REACH * 1000 * px_mm
+    s = np.arange(-reach, reach + 1e-9, 0.5)
+    S = L[:, None, :] + s[None, :, None] * nrm[:, None, :]  # (n, k, [x, y])
+    hv = map_coordinates(mask.astype(float), [S[..., 1].ravel(), S[..., 0].ravel()], order=1, mode="constant",
+                         cval=0.0).reshape(S.shape[:2]) > 0.5
+    have = hv.any(1) & hv[:, 0]  # the line's inside must be hair (else the part or a gap crosses it)
+    if have.sum() < 8:
+        return None
+    last = np.where(hv.any(1), len(s) - 1 - np.argmax(hv[:, ::-1], 1), 0)
+    e = s[last] / px_mm  # mm out from the traced line
+    k = np.nonzero(have)[0]
+    e, tt = e[k], t[k] / px_mm
+    # the sweep: a running median then a light Gaussian (a median keeps the temple's corners, which are design, and
+    # drops tips and notches narrower than EDGE_SMOOTH: a Gaussian alone counted every corner as roughness)
+    sm = gaussian_filter1d(median_filter(e, size=2 * int(EDGE_SMOOTH * 1000 / 1.5) + 1, mode="nearest"), 1.0,
+                           mode="nearest")
+    r = e - sm
+    turn = np.abs(np.diff(np.arctan2(np.diff(e), np.diff(tt)) - np.arctan2(np.diff(sm), np.diff(tt))))
+    inner = []
+    for i in k:  # holes: skin in the band 1..6 mm inside our edge
+        sel = (s >= s[last[i]] - 6 * px_mm) & (s <= s[last[i]] - px_mm)
+        inner.append(1.0 - hv[i, sel].mean() if sel.any() else 0.0)
+    E = L[k] + (e * px_mm)[:, None] * nrm[k]  # the measured edge in mask px
+    front_edge.last = E
+    out = {"rough_mm": round(float(np.sqrt(np.mean(r ** 2))), 2), "tooth_mm": round(float(np.abs(r).max()), 1),
+           "turn_deg_cm": round(float(np.degrees(turn.sum()) / max(tt[-1] - tt[0], 1e-9) * 10), 1),
+           "off_mm": round(float(e.mean()), 1), "holes": round(float(np.mean(inner)), 3)}
+    if owners is not None:  # which lock makes each tooth: the hair vertex nearest the camera at that edge pixel
+        P, ids, names = owners
+        R_, t_, ctr = np.array(cam["R"]), np.array(cam["t"]), np.array(cam["ctr"])
+        depth = ((np.asarray(P, float) - ctr) @ R_.T + t_)[:, 2]
+        uv = _to_crop(cam, project_ref(cam, P), Wm)
+        teeth = {}
+        for i in np.argsort(-np.abs(r)):
+            if abs(r[i]) < 2.0 or len(teeth) >= 6:
+                break
+            near = np.nonzero(np.linalg.norm(uv - E[i], axis=1) < 1.5 * px_mm)[0]
+            if not len(near):
+                continue
+            who = str(names[ids[near[np.argmin(depth[near])]]])
+            if who not in teeth:
+                teeth[who] = round(float(r[i]), 1)  # + a tip hanging out, - a notch
+        out["teeth"] = teeth
+    return out
+
+
+FLOW_BAND = (0.004, 0.028)  # m inside the traced hairline: the band whose strand direction front_flow compares
+FLOW_BINS = 6
+
+
+def _orientation(img, sigma: float):
+    """Per pixel the strand direction (deg, image axes, y down; axial: mod 180) and its coherence 0..1 from the
+    structure tensor of the luminance (strands run across the strongest gradient)."""
+    from scipy.ndimage import gaussian_filter, sobel
+    A = np.asarray(img.convert("L"), float)
+    gx, gy = sobel(A, 1), sobel(A, 0)
+    Jxx, Jyy, Jxy = (gaussian_filter(v, sigma) for v in (gx * gx, gy * gy, gx * gy))
+    ang = 0.5 * np.degrees(np.arctan2(2 * Jxy, Jxx - Jyy)) + 90.0
+    coh = np.sqrt((Jxx - Jyy) ** 2 + 4 * Jxy ** 2) / (Jxx + Jyy + 1e-9)
+    return ang, coh
+
+
+def front_flow(cam: dict, tr: dict, ref_img, our_img, mask, mm_px: float) -> dict | None:
+    """Which way the strands run in the band just inside the hairline (FLOW_BAND), the reference against our render
+    in the same camera, read off the images themselves (structure tensor: grooves, sheen and lock edges). Per bin
+    along the traced hairline (from its first traced point to its last), the strands' angle to the hairline (deg,
+    axial: 0 = along the hairline, a headband; +-90 = straight out of it), the reference's and ours.
+    {"bins": [[ref, ours], ...], "err_deg": mean |ref - ours|}."""
+    if not tr.get("hairline") or mask is None:
+        return None
+    from scipy.ndimage import gaussian_filter1d
+    W = mask.shape[0]
+    x0, y0, x1, y1 = cam["crop"]
+    px_mm = (W / max(x1 - x0, y1 - y0)) / mm_px
+    ref = ref_img.resize((W, W))
+    our = our_img.resize((W, W))
+    sig = 1.5 * px_mm
+    ra, rc = _orientation(ref, sig)
+    oa, oc = _orientation(our, sig)
+    L = _to_crop(cam, _dense(tr["hairline"], 1.0), W)
+    c = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(L, axis=0), axis=1))]
+    t = np.arange(0, c[-1], 1.0 * px_mm)
+    L = np.stack([np.interp(t, c, L[:, k]) for k in range(2)], 1)
+    tg = np.gradient(gaussian_filter1d(L, 4, axis=0, mode="nearest"), axis=0)
+    tg /= np.maximum(np.linalg.norm(tg, axis=1, keepdims=True), 1e-9)
+    nrm = np.stack([tg[:, 1], -tg[:, 0]], 1)
+    if tr.get("landmarks"):  # inward = into the hair: away from the face
+        face = _to_crop(cam, list(tr["landmarks"].values()), W).mean(0)
+        if np.mean(((face - L) * nrm).sum(1)) > 0:
+            nrm = -nrm
+    line_ang = np.degrees(np.arctan2(tg[:, 1], tg[:, 0]))
+    bins = []
+    edges = np.linspace(0, len(L), FLOW_BINS + 1).astype(int)
+    for b in range(FLOW_BINS):
+        rs, os_ = [], []
+        for i in range(edges[b], edges[b + 1]):
+            for dmm in np.linspace(FLOW_BAND[0] * 1000, FLOW_BAND[1] * 1000, 7):
+                x, y = L[i] + dmm * px_mm * nrm[i]
+                xi, yi = int(round(x)), int(round(y))
+                if not (0 <= xi < W and 0 <= yi < W) or not mask[yi, xi]:
+                    continue
+                for A_, C_, acc in ((ra, rc, rs), (oa, oc, os_)):
+                    rel = np.radians(2 * (A_[yi, xi] - line_ang[i]))
+                    acc.append((C_[yi, xi] * np.cos(rel), C_[yi, xi] * np.sin(rel)))
+        if len(rs) < 5:
+            bins.append(None)
+            continue
+
+        def mean_ang(v):
+            s = np.sum(v, 0)
+            return float((0.5 * np.degrees(np.arctan2(s[1], s[0])) + 90) % 180 - 90)
+        bins.append([round(mean_ang(rs)), round(mean_ang(os_))])
+    good = [b for b in bins if b]
+    if not good:
+        return None
+    err = [abs((b[0] - b[1] + 90) % 180 - 90) for b in good]
+    return {"bins": bins, "err_deg": round(float(np.mean(err)), 1)}
 
 
 REGION_NAMES = ("front", "top", "side.L", "side.R", "back.L", "back.R", "back")

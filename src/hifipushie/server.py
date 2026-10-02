@@ -1092,6 +1092,12 @@ def _hair_gates(look) -> str:
         bad = [v for v, x in ms.items() if x > 0.10]
         lines.append("bare volume share of the visible hair (< 0.10; the volume is filler, never a surface): "
                      + ", ".join(f"{v} {x}" for v, x in ms.items()) + (f"  OVER in {', '.join(bad)}" if bad else ""))
+    bw = getattr(look, "bare_where", None) or {}
+    bw = {v: r for v, r in bw.items() if r and ms.get(v, 0) > 0.10}
+    if bw:
+        lines.append("  where the bare volume shows (share of the view's hair, by head region; 'hairline' = within 15 mm "
+                     "of it): " + "; ".join(f"{v}: " + ", ".join(f"{k} {x}" for k, x in list(r.items())[:4])
+                                             for v, r in bw.items()))
     lm = getattr(look, "lit_mass", None) or {}
     if lm:
         lines.append("lit bare volume (reads as a helmet, < 0.03): " + ", ".join(f"{v} {x}" for v, x in lm.items()))
@@ -1106,7 +1112,20 @@ def _hair_gates(look) -> str:
         if not f:
             continue
         lines.append(f"against the traced reference ({view} camera): " + ", ".join(
-            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "regions")))
+            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "regions", "front_edge", "front_flow")))
+        ff = f.get("front_flow")
+        if ff:
+            lines.append(f"  strand direction just inside the hairline, read off both images (deg to the hairline: 0 runs "
+                         f"along it like a headband, +-90 straight out of it; per stretch from the trace's first "
+                         f"hairline point to its last, [reference, ours]): " + ", ".join(
+                             str(b) if b else "-" for b in ff["bins"]) + f"; mean error {ff['err_deg']} deg")
+        fe = f.get("front_edge")
+        if fe:
+            bad = fe["rough_mm"] > 1.0 or fe["tooth_mm"] > 3.0 or fe["holes"] > 0.05
+            lines.append(f"  hairline edge along the traced line ({'JAGGED' if bad else 'clean'}; the edge against the "
+                         f"skin as rendered: rough_mm rms <= 1, tooth_mm worst tip/notch <= 3, holes = skin just inside "
+                         f"the edge <= 0.05, turn_deg_cm = zigzag; off_mm + = ours further onto the skin than the "
+                         f"trace): " + ", ".join(f"{k} {v}" for k, v in fe.items()))
         if f.get("regions"):
             lines.append("  outline per region, mm (err = ours - reference, + = ours sticks out; ref_hair / our_hair = "
                          "the outline over the bare head; ref_hair < 0: the bare head is already outside the "
