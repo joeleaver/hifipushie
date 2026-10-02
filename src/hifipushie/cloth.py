@@ -1144,15 +1144,16 @@ def _fabric_at(g: dict, h: float) -> dict:
     return fab
 
 
-def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progress, timeout: float = 3600) -> tuple:
-    """Run blender_cloth.py on a job (under resources.heavy), streaming its "cloth:" lines to `progress`.
+def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progress, timeout: float = 3600,
+                 backend: str = "blender", names: list | None = None) -> tuple:
+    """Run blender_cloth.py on a job (under resources.heavy), streaming its "cloth:" lines to `progress`; or hand the
+    same solver-neutral job folder (cloth_job) to another backend ("file", "remote").
     Returns (out.npz contents, the log lines without progress)."""
-    from . import resources, render as rmod
-    job_dir.mkdir(parents=True, exist_ok=True)
-    np.savez(job_dir / "in.npz", **arrays)
-    cfg = dict(cfg, out=str(job_dir / "out.npz"))
-    (job_dir / "job.json").write_text(json.dumps(cfg))
-    (job_dir / "out.npz").unlink(missing_ok=True)
+    from . import cloth_job, resources, render as rmod
+    if backend != "blender":
+        jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
+        return cloth_job.run_external(jd, backend, progress)
+    cloth_job.write(job_dir, cfg, arrays, names)
     progress(f"waiting for the heavy-job slot ({cfg.get('mode', 'sim')})")
     with resources.heavy(f"cloth {name}", log=log):
         progress(f"started {cfg.get('mode', 'sim')}")
@@ -1248,8 +1249,13 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
         *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ())))).hexdigest()
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
-    key = hashlib.sha1(json.dumps([VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab], sort_keys=True,
-                                  default=str).encode()).hexdigest()[:16]
+    from . import cloth_job
+    backend = cloth_job.backend_of(g)
+    gs.pop("backend", None)
+    keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab]
+    if backend != "blender":  # another solver's result is another result (Blender's keys stay as they were)
+        keyed.append(["backend", backend, os.environ.get("HIFIPUSHIE_CLOTH_SOLVER", "newton")])
+    key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
            "coarse_mesh": Ms if refine else None, "hung": hang}
@@ -1288,7 +1294,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
                       piece=Ms["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64))
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
-        d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress)
+        d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
         Vs = d["V"]
         Vc = None
         if refine:
@@ -1305,7 +1311,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             progress(f"refine at {h * 100:.1f} cm: {len(X0)} verts")
             d2, lines2 = _blender_job(job_dir, rcfg, dict(X=X0, S=S, uv=M["uv"], F=M["F"], sew=M["sew"],
                                                           stitch=M["stitch"], stiff=interfacing(Bp, M),
-                                                          bodyV=body.V, bodyT=body.T), name, log, progress)
+                                                          bodyV=body.V, bodyT=body.T, piece=M["piece"]), name, log,
+                                            progress, backend=backend, names=M["names"])
             Vs = d2["V"]
             lines = lines + lines2
         res["V_sim"], res["V_coarse"] = Vs, Vc
@@ -1825,7 +1832,7 @@ class ClothError(ValueError):
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "refine_frames",
-                "refine_ease", "cleanup", "detail", "sculpt", "note", "_trace"}
+                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "_trace"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -1904,6 +1911,9 @@ def validate(spec: dict) -> None:
         for k, lo, hi in (("resolution", 0.004, 0.05), ("coarse", 0.008, 0.05)):
             if k in g and not (isinstance(g[k], (int, float)) and lo <= g[k] <= hi):
                 raise ClothError(f"{where}: {k} is a triangle size in m ({lo}..{hi})")
+        if g.get("backend", "blender") not in ("blender", "file", "remote"):
+            raise ClothError(f'{where}: backend is "blender" (default), "file" (write the job, wait for its result) or '
+                             '"remote" ($HIFIPUSHIE_CLOTH_REMOTE runs it): see cloth_job.py')
         if "color" in g and not _is_hex(g["color"]):
             raise ClothError(f'{where}: color is "#rrggbb"')
         cu = g.get("cleanup")
