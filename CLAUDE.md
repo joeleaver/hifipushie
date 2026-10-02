@@ -204,13 +204,17 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   per part. Chart borders (2026-10-01, the wrapped mug's label stepped a texel at a seam, renders f01_*): Cycles
   bakes one point per texel centre, unfiltered, so a sharp printed edge landed on each chart's own texel grid, and
   texels past an island's edge were nearest-copied. Now `bake_maps` bakes `BAKE_SS` 2 x 2 points per texel (box
-  filter by alpha; skipped past `BAKE_SS_PX` 8192, one pass's images at a time), its margin is Blender's
-  ADJACENT_FACES at half the island gap (filled across the seam; never onto a part baked before), and our own maps
-  extrapolate each triangle a ring past its island's edge (`rasterize(ring=)`; slivers under 0.5 texel clamp).
-  `seam_steps` (export report `parts.<p>.seams`, WARNING over `SEAM_LIMIT` 1.5): along every seam edge the step
-  across (half a texel into each chart, bilinear) vs the steps beside; mug 2.57 -> 0.89. What's left (~0.1 texel at
-  4x zoom) is bilinear reconstruction of a sub-texel edge at each chart's own phase: a texture made analytically from
-  the low poly's own z shows the same. `asset.preview(denoise=False)` for texture close-ups.
+  filter by alpha; skipped past `BAKE_SS_PX` 8192, one pass's images at a time), with no margin, and every map
+  carries each island a ring past its edge: `rasterize(ring=)` extrapolates the triangle (slivers under 0.5 texel
+  clamp), our own maps project those points, and `_across_seams` gives Cycles' maps the value the chart across the
+  seam baked there (the face across found by topology: the edge the texel lies past and the fans of its two
+  vertices; centroid KD-trees missed the decimated mug's 300-texel strips) and completes part-baked edge texels
+  with it. Blender's own "Adjacent Faces" margin measured a bit better on the mug (0.91) but left a dark rim round
+  islands: dents along a ball's chart borders (f04). `seam_steps` (export report `parts.<p>.seams`, WARNING over
+  `SEAM_LIMIT` 1.5): along every seam edge the step across (half a texel into each chart, bilinear) vs the steps
+  beside, steps under 0.2% of the map's range counted as noise; mug 1.64 -> 1.08, ball 1.0. What's left on the mug
+  (~0.1 texel at 4x zoom) is bilinear reconstruction of a sub-texel edge at each chart's own phase: a texture made
+  analytically from the low poly's own z shows the same. `asset.preview(denoise=False)` for texture close-ups.
 - `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
   Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
   modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit

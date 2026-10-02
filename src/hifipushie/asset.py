@@ -515,7 +515,7 @@ def rasterize(parts: dict, size: int, atlas: int | None = None, ring: int = 0):
     of every triangle, inside, drawn). Triangle ids and part indices count over all parts in order; only the parts on
     `atlas` (None: all) are drawn. Texel (x, y) of the PNG (row 0 at the top) is uv ((x + .5) / size, 1 - (y + .5)
     / size). inside: the texel's centre lies in its triangle. ring > 0: texels whose centre lies outside (PIL's edge
-    texels, plus every texel up to `ring` texels past an island's edge, appended after the drawn ones, with their
+    texels, plus every texel up to `ring` (+ the diagonal) texels past an island's edge, appended after the drawn ones, with their
     nearest drawn texel's triangle) get the triangle's barycentrics extrapolated: the surface carried on past the
     chart's edge, as the chart across the seam has it (a texel copied from its nearest neighbour put a sharp edge
     a fraction of a texel off on each side of a seam). Without ring they are clamped onto the triangle."""
@@ -536,7 +536,7 @@ def rasterize(parts: dict, size: int, atlas: int | None = None, ring: int = 0):
     if ring > 0:
         from scipy import ndimage
         dist, (iy, ix) = ndimage.distance_transform_edt(tid < 0, return_indices=True)
-        ry, rx = np.nonzero((tid < 0) & (dist <= ring))
+        ry, rx = np.nonzero((tid < 0) & (dist <= ring + 0.5))
         t = np.concatenate([t, tid[iy[ry, rx], ix[ry, rx]]])
         ys, xs = np.concatenate([ys, ry]), np.concatenate([xs, rx])
     a, b, c = px[t, 0], px[t, 1], px[t, 2]
@@ -641,6 +641,79 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
+def _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel):
+    """The texels past each island's edge (rasterize's ring: their point P is their triangle's plane carried on
+    past the edge) take what the chart across the seam baked at that surface point: the low-poly triangle of the
+    same part, on another island, that P lies on (within half a texel), its uv, Cycles' maps sampled there
+    bilinearly. Then bilinear filtering at a chart's edge reads the surface beyond it, as the chart across reads
+    it. Returns (given, baked, texels filled)."""
+    from .decalmap import _closest_bary
+    r = np.flatnonzero(fill)
+    if not len(r):
+        return given, baked, 0
+    C, UV = _corners(parts, "pos"), _corners(parts, "uv")
+    isl = uv_islands(parts)
+    # global vertex ids per triangle, and each vertex's triangles (padded): the faces across an edge are found by
+    # topology, not by distance (a decimated cylinder's strips are hundreds of texels long: their centres are far
+    # from a point just past their side)
+    tv, base = [], 0
+    for p in parts.values():
+        tv.append(p["corner_vert"].reshape(-1, 3).astype(np.int64) + base)
+        base += len(p["verts"])
+    tv = np.concatenate(tv)
+    vs, fs = tv.ravel(), np.repeat(np.arange(len(tv)), 3)
+    o = np.argsort(vs, kind="stable")
+    vs, fs = vs[o], fs[o]
+    start = np.searchsorted(vs, np.arange(base))
+    rank = np.arange(len(vs)) - start[vs]
+    cap = int(min(rank.max() + 1, 16))
+    vf = np.full((base, cap), -1, np.int64)
+    keep = rank < cap
+    vf[vs[keep], rank[keep]] = fs[keep]
+    A = tri[r]
+    # the edge of its own triangle the texel lies past (its most negative barycentric), and the faces round that
+    # edge's two vertices: the triangle across the seam and its neighbours
+    e0, e1 = C[A, 1] - C[A, 0], C[A, 2] - C[A, 0]
+    nrm = np.cross(e0, e1)
+    q = P[r] - C[A, 0]
+    n2 = np.maximum((nrm * nrm).sum(1), 1e-30)
+    w1 = (np.cross(q, e1) * nrm).sum(1) / n2
+    w2 = (np.cross(e0, q) * nrm).sum(1) / n2
+    k_out = np.argmin(np.stack([1 - w1 - w2, w1, w2], 1), 1)
+    va = tv[A, (k_out + 1) % 3]
+    vb = tv[A, (k_out + 2) % 3]
+    cand = np.concatenate([vf[va], vf[vb]], 1)
+    best, bt, bw = np.full(len(r), np.inf), np.full(len(r), -1), np.zeros((len(r), 3))
+    own_isl, own_part = isl[A], tpart[A]
+    for j in range(cand.shape[1]):
+        t = cand[:, j]
+        okj = t >= 0
+        t = np.where(okj, t, 0)
+        w = _closest_bary(P[r], C[t, 0], C[t, 1], C[t, 2])
+        d = np.linalg.norm(np.einsum("nk,nkc->nc", w, C[t]) - P[r], axis=1)
+        better = okj & (isl[t] != own_isl) & (tpart[t] == own_part) & (d < best)
+        best[better], bt[better], bw[better] = d[better], t[better], w[better]
+    ok = (bt >= 0) & (best < texel)
+    if not ok.any():
+        return given, baked, 0
+    uv = np.einsum("nk,nkc->nc", bw[ok], UV[bt[ok]])
+    yy, xx = ys[r[ok]], xs[r[ok]]
+    a = share[yy, xx][:, None]  # an edge texel part-baked keeps its own points' share: the rest from across
+    from scipy import ndimage
+    done = baked.copy()
+    done[yy, xx] = True
+    # (one pass: a second, reading the chart across with its edge texels already filled, measured worse: 1.08 -> 1.14)
+    _, (iy, ix) = ndimage.distance_transform_edt(~baked, return_indices=True)
+    out = {}
+    for name, img in given.items():
+        v = _bilinear(img[iy, ix], uv)  # (past its own edge, the chart across reads its nearest texel)
+        o = img.copy()
+        o[yy, xx] = a * img[yy, xx] + (1 - a) * v
+        o[yy, xx, -1] = 1.0  # baked now
+        out[name] = o
+    return out, done, int(ok.sum())
+
+
 def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given: dict) -> dict:
     """Every map of one atlas (None: all parts) as float arrays (size, size, k), plus the height range. Each
     texel is projected onto its export part's own field (normal, height); given: the maps Cycles baked from the
@@ -684,7 +757,8 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
                           "(or min_triangles)" if bad.mean() > 0.2 else ""))
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
     # texels whose ray found no scene mesh (alpha 0) take their nearest baked neighbour
-    baked = given["color"][..., 3] > 0  # (supersampled: alpha = the share of the texel's points baked)
+    share = given["color"][..., 3].astype(np.float64)  # (supersampled: the share of the texel's points baked)
+    baked = share > 0
     miss = ~baked[ys, xs] & drawn
     if miss.any():
         log.append(f"  {miss.sum() / drawn.sum():.2%} of texels found no scene mesh along their ray: filled from neighbours")
@@ -698,6 +772,11 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     c = _corners(parts, "pos")[np.unique(tri)]  # the atlas's triangles: surface per texel
     area = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2
     texel = np.sqrt(area / max(int(drawn.sum()), 1))
+    fill = share[ys, xs] < 0.999  # past the islands' edges, edge texels part-baked or missed
+    given, baked, n_across = _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel)
+    if fill.any():
+        log.append(f"  {n_across / fill.sum():.0%} of the texels past the islands' edges (or missed at them) filled "
+                   f"across their seam; the rest (open edges) from the nearest texel")
     if "height" in given:
         # painted height baked by Cycles (0.5 + h x 25); its slope across the texture tilts the normal: u runs
         # along the tangent, v (up the texture, rows down) along the bitangent, a texel is `texel` metres
@@ -806,8 +885,9 @@ def seam_steps(p: dict, img: np.ndarray, per_texel: int = 2) -> dict | None:
     beside = 0.5 * (np.linalg.norm(A1 - A0, axis=1) + np.linalg.norm(B1 - B0, axis=1))
     rng = float(np.ptp(img.reshape(-1, img.shape[-1]), axis=0).max()) or 1.0
     busy = beside > 0.02 * rng
+    eps = 0.002 * rng * len(e)  # steps under 0.2% of the map's range are noise, not edges (a flat map reads ~1)
     return {"edges": int(seam.sum()), "samples": len(e),
-            "excess": round(float(across.sum() / max(beside.sum(), 1e-12)), 2),
+            "excess": round(float((across.sum() + eps) / (beside.sum() + eps)), 2),
             "p95": round(float(np.percentile(across[busy] / beside[busy], 95)), 2) if busy.sum() > 20 else None}
 
 
@@ -875,8 +955,7 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
         t = time.time()
         out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
                               "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES,
-                              "supersample": BAKE_SS, "max_px": BAKE_SS_PX,
-                              "margins": {str(ai): max(1, margin_px(sz) // 2) for ai, sz in sizes.items()}},
+                              "supersample": BAKE_SS, "max_px": BAKE_SS_PX},
                              3 * 3600, progress=getattr(log, "note", None))
         bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
         log.append(f"paint and AO maps baked by Cycles from the scene in {time.time() - t:.1f}s ({bt})")

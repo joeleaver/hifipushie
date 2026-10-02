@@ -373,7 +373,7 @@ Colours are sRGB as you'd pick them (`"#7d8c5a"` or `[0.49, 0.55, 0.35]`).
   its own size away as a world `at`; a spin about its normal as `rotate`, a tilt as `dir`/`up`, a scale as
   `size`; a wrap's height (offset), turn round its axis (`dir`), tilt (`axis`), scale (`span`/`size`).
   Exports: the export report's `parts.<p>.seams` says whether the baked maps run on across UV chart borders
-  (`excess` ~1 = invisible; > 1.5 is a WARNING in the log).
+  (`excess` ~1 = invisible; > 1.5 is a WARNING in the log). Texels past each island are filled across its seam.
 - Eyes, teeth and clothing are best as their own parts with their own colour; a `near` mask around the eye
   also paints the eyeball if the eyeball is in the body part.
 

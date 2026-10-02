@@ -1073,11 +1073,11 @@ def bake_maps(job):
     WHAT = ("color", "rms", "aoh")  # ao and painted height share a pass (red, green)
     # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
     # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
-    # them (a box filter). Texels past a chart's edge are filled across the seam from the adjacent faces (Blender's
-    # bake margin), so bilinear filtering at the edge reads the surface beyond it, not a copy of the last texel.
+    # them (a box filter). No margin: the texels past each island's edge are filled across its seam by
+    # asset._across_seams (Blender's own "Adjacent Faces" margin left a dark rim round the islands: marks like
+    # dents along a ball's chart borders).
     ss = {ai: max(1, min(int(job.get("supersample", 1)), int(job.get("max_px", 8192)) // size))
           for ai, size in job["atlases"].items()}
-    margin = {ai: int((job.get("margins") or {}).get(ai, 0)) for ai in job["atlases"]}  # texels
 
     def new_images(what):
         out = {}
@@ -1132,11 +1132,8 @@ def bake_maps(job):
             hi.select_set(True)
             lo.select_set(True)
             bpy.context.view_layer.objects.active = lo
-            # the margin reaches at most half the gap between islands, so one part's margin never covers the
-            # texels of another part baked before it (use_clear False)
             bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=pt["extrusion"],
-                                max_ray_distance=pt["ray"], margin=margin[ai] * ss[ai], margin_type="ADJACENT_FACES",
-                                use_clear=False, target="IMAGE_TEXTURES")
+                                max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES")
             print(f"@@progress {what} {i + 1}/{len(job['parts'])} {pt['key']} {time.time() - t1:.0f}s", flush=True)
         for ai, im in imgs.items():
             res[ai][what] = read(ai, im)
