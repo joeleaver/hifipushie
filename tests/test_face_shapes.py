@@ -173,6 +173,81 @@ def test_glb_round_trip():
     assert np.abs(got["teeth"]["targets"][1]["POSITION"]).max() == 0.0  # mouthSmileLeft: teeth stay
 
 
+def test_focus_warp():
+    """The decimation's focus warp (focuswarp.py) is undone exactly, magnifies near a sphere and leaves far points."""
+    from hifipushie import focuswarp
+    S = [[0.0, 0.0, 0.0, 0.02, 2.0], [0.03, 0.0, 0.0, 0.02, 2.0], [0.0, 0.05, 0.0, 0.06, 1.5]]
+    P = np.random.default_rng(0).uniform(-0.1, 0.1, (5000, 3))
+    Q = focuswarp.warp(P, S)
+    assert np.abs(focuswarp.unwarp(Q, S) - P).max() < 1e-9
+    a = focuswarp.warp(np.array([[0.001, 0, 0], [0.002, 0, 0]]), S[:1])
+    assert abs(np.linalg.norm(a[1] - a[0]) - 0.002) < 1e-4  # 2x at the centre
+    far = np.array([[1.0, 1.0, 1.0]])
+    assert np.abs(focuswarp.warp(far, S) - far).max() < 1e-12
+
+
+GNM_EXAMPLE = EXAMPLE.with_name("gnm_talk.json")
+
+
+def _gnm():
+    """The gnm_talk head (MakeHuman body, GNM head) and its anatomy; None without the GNM asset pack."""
+    from hifipushie import assets, base
+    try:
+        assets.path("gnm", base.GNM)
+    except Exception:
+        return None
+    spec = json.loads(GNM_EXAMPLE.read_text())
+    return spec, faceshapes.face_of(spec)
+
+
+def test_gnm_head_shapes():
+    """On a GNM head the shapes are GNM's expression basis carried onto the mesh: tried on the head mesh itself
+    (as the low poly), its jaw's interior by the jaw's rigid motion. Slow (~3 min: the MakeHuman body and the GNM
+    head are built); skipped without the GNM pack."""
+    got = _gnm()
+    if got is None:
+        print("skip: no GNM asset pack ($HIFIPUSHIE_ASSETS)")
+        return
+    spec, face = got
+    assert isinstance(face, faceshapes.GnmFace)
+    h = face.head
+    V = np.asarray(h["verts"], float)
+    T = np.array([(f[0], f[j], f[j + 1]) for f in h["faces"] for j in range(1, len(f) - 1)])
+    # the neutral closes the parted lips: inner lip landmarks meet
+    lm = h["lm68"]
+    face.neutral(V, "skin")
+    close, _ = face._onto(lm, face._gnm["close"])
+    gap0 = np.linalg.norm(lm[62] - lm[66])
+    gap1 = np.linalg.norm(lm[62] + close[62] - lm[66] - close[66])
+    assert gap0 > 0.002 and gap1 < 0.35 * gap0, (gap0, gap1)
+    n0 = faceshapes.vertex_normals(V, T)
+    D = face.displacements(V, V, n0, "skin", list(faceshapes.ALL))
+    assert list(D) == list(faceshapes.ALL)
+    on, _ = face._onto(lm, face._gnm["dW"]["jawOpen"])
+    assert on[8] @ face.up < -0.02 and abs(on[27] @ face.up) < 0.002  # the chin drops, the nose bridge stays
+    # left is the head's own left (+X), and the right shape mirrors it
+    sl, _ = face._onto(lm, face._gnm["dW"]["mouthSmileLeft"])
+    sr, _ = face._onto(lm, face._gnm["dW"]["mouthSmileRight"])
+    assert sl[54] @ face.up > 0.003 and sl[54] @ face.up > 2 * (sl[48] @ face.up)
+    assert np.allclose(sl[54] * [-1, 1, 1], sr[48], atol=5e-4), (sl[54], sr[48])
+    # a blink never sinks the skin into the eyeball
+    for s in ("Left", "Right"):
+        ev = face.eyes[s]
+        X = V + D[f"eyeBlink{s}"]
+        near = np.linalg.norm(V - ev["c"], axis=1) < 1.6 * ev["r"]
+        assert (np.linalg.norm(X[near] - ev["c"], axis=1) >= ev["r"] + 0.0005).all()
+    # far from the face (the back of the head, the neck) nothing moves (brows do pull the forehead a little)
+    eyes = 0.5 * (face.eyes["Left"]["c"] + face.eyes["Right"]["c"])
+    far = (np.linalg.norm(V - face.M, axis=1) > 0.16) & (np.linalg.norm(V - eyes, axis=1) > 0.12)
+    assert far.sum() > 100 and max(np.abs(d[far]).max() for d in D.values()) < 2e-4
+    # the tongue rides the jaw and comes out past the lips
+    tp = [p for p in compile_prims(spec) if p.name == "face_tongue"][0]
+    tv = tp.params["c"] + np.array([[0, 0, 0], [0, -tp.params["size"][1], 0]])
+    Dt = face.displacements(tv, tv, np.zeros_like(tv), "tongue", ["jawOpen", "tongueOut"])
+    assert Dt["jawOpen"][0] @ face.up < -0.005
+    assert (tv[1] + Dt["tongueOut"][1]) @ face.out > face.M @ face.out
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
