@@ -12,7 +12,7 @@
    "cuff.L": {"part": "simon.cuff", "wrap": {"to": "arm.L", "front": 1, "follow": ["sleeve.L", "cuffMid", "bottomLeft"]}},
    "cuff.R": {"part": "simon.cuff", "wrap": {"to": "arm.R", "front": 1, "follow": ["sleeve.R", "cuffMid", "bottomLeft"]}},
    "stand": {"part": "simon.collarStand", "wrap": {"to": "neck", "edge": "bottomMid"}},
-   "collar": {"part": "simon.collar", "wrap": {"to": "neck", "edge": "bottomMid", "above": 0.03, "fold": [0.006, 0.006]}}
+   "collar": {"part": "simon.collar", "wrap": {"to": "neck", "edge": "bottomMid", "above": 0.03, "fold": [0.006, 0.01]}}
   },
   "alter": [
    {"op": "turn", "piece": "front.R", "line": "placketOuterFold", "keep": "neck"},
