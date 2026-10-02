@@ -66,7 +66,9 @@ class Region:
         xs = G.origin[0] + np.arange(self.nx) * d
         ys = G.origin[1] + np.arange(self.ny) * d
         X, Y = np.meshgrid(xs, ys, indexing="ij")
-        h, cs = base.column(X.ravel(), Y.ravel())
+        # (the grid's own ground, without the ground edits: a bunker's cut face or the turf's step at a cliff lip is
+        # not a cliff; counted as one, the heightmap was pushed 4 m down round every bunker into a square pit)
+        h, cs = getattr(base, "_column", base.column)(X.ravel(), Y.ravel())
         slope = np.degrees(np.arccos(np.clip(cs, 0, 1))).reshape(X.shape)
         th = float(cfg["cliff_slope"])
         st = _smooth(th - 4.0, th + 2.0, slope)
@@ -132,11 +134,11 @@ class Region:
         r = (np.asarray(y, float) - self.G.origin[1]) / self.d
         return ndimage.map_coordinates(self.S, [q, r], order=1, mode="nearest")
 
-    def height(self, x, y):
+    def height(self, x, y, riser=None, wmin=0.0):
         """The pushed heightmap: the ground eroded in plan by a ball of radius push x S (so it lies behind the cliff
-        face by about that much)."""
+        face by about that much). riser: the turf step's half-width (terrain_ground.Edits; the maps' crisper one)."""
         x, y = np.asarray(x, float).ravel(), np.asarray(y, float).ravel()
-        h, _ = self.base.column(x, y)
+        h, _ = self.base.column(x, y) if riser is None else self._col_riser(x, y, riser, wmin)
         R = ndimage.map_coordinates(self.Rg, [(x - self.G.origin[0]) / self.d, (y - self.G.origin[1]) / self.d],
                                     order=1, mode="nearest")
         k = np.flatnonzero(R > 1e-3)
@@ -160,6 +162,12 @@ class Region:
         h = h.copy()
         h[k] = np.minimum(h[k], best)
         return h
+
+    def _col_riser(self, x, y, riser, wmin=0.0):
+        b = self.base
+        h, s = b._column(x, y)
+        return b.edits.column(x, y, h, s, b._column, riser, wmin) if getattr(b, "edits", None) is not None \
+            else (h, s)
 
     def tile_holes(self, i, j, n):
         """The hole mask of tile (i, j): (n - 1) x (n - 1) cells, row 0 north (like the heightmap PNGs)."""
@@ -392,7 +400,9 @@ def _fine_ground(R: Region, lo, tile, cfg, pad=5):
     t = tile / n0
     ax = np.arange(-pad, n0 + pad + 1) * t
     X, Y = np.meshgrid(lo[0] + ax, lo[1] + ax, indexing="ij")
-    Hg = R.height(X.ravel(), Y.ravel()).reshape(X.shape)
+    ed = getattr(R.base, "edits", None)  # (the turf's step crisper in the maps than in the mesh)
+    Hg = R.height(X.ravel(), Y.ravel(), None if ed is None else max(ed.lip_cfg["maps"], 1.5 * t),
+                  1.5 * t).reshape(X.shape)
     gx, gy = np.gradient(Hg, t)
     return {"x0": lo[0] - pad * t, "y0": lo[1] - pad * t, "t": t, "H": Hg, "gx": gx, "gy": gy, "n0": n0}
 
@@ -420,7 +430,8 @@ def _ground_baked(R, mats, fine, P, N, W, F, k, lo, origin, cfg, out, stem):
         X = np.c_[x, y, sample(fine["H"], x, y)]
         G = np.c_[-sample(fine["gx"], x, y), -sample(fine["gy"], x, y), np.ones(len(x))]
         return X, G / np.linalg.norm(G, axis=1, keepdims=True), np.zeros(len(x), bool)
-    maps, info = tb.bake(surface, R.base, mats, P, N, T4, uv, F, (size, size), cfg["_layer_rough"])
+    maps, info = tb.bake(surface, R.base, mats, P, N, T4, uv, F, (size, size), cfg["_layer_rough"],
+                         texel=tile / size)
     (out / "maps").mkdir(exist_ok=True)
     wfiles = []
     for g, w in enumerate(maps["weights"]):

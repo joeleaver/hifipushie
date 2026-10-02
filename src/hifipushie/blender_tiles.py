@@ -738,7 +738,8 @@ def run(job):
     if job.get("grass") and job.get("textured", True) and not ch:  # the tiling turf over the baked maps
         for m in list(bpy.data.materials):
             if m.name.startswith("terrain_baked") and m.use_nodes:
-                _grass(m, job["grass"])
+                for g in (job["grass"] if isinstance(job["grass"], list) else [job["grass"]]):
+                    _grass(m, g)  # (one swatch per kind: mown turf, long grass)
     if job.get("sea") is not None:
         _water(job["sea"])
     if job.get("trees"):
@@ -764,16 +765,14 @@ def run(job):
             ob = bpy.data.objects.new("trees_" + kind, me)
             bpy.context.scene.collection.objects.link(ob)
             bt._instance(ob, kind)
-    for kind, pts in (job.get("clutter") or {}).items():  # ground clutter placeholders (bushes, tussocks, boulders)
-        pts = np.asarray(pts, float).reshape(-1, 3)
-        if not len(pts):
+    for kind, rows in (job.get("clutter") or {}).items():  # ground clutter placeholders (bushes, grass, boulders)
+        rows = np.asarray(rows, float)
+        if not len(rows):
             continue
-        me = bpy.data.meshes.new("clutter_" + kind)
-        me.vertices.add(len(pts))
-        me.vertices.foreach_set("co", pts.astype(np.float64).ravel())
-        ob = bpy.data.objects.new("clutter_" + kind, me)
-        bpy.context.scene.collection.objects.link(ob)
-        bt._instance(ob, kind)
+        if rows.shape[1] == 3:  # (positions only: a random size and turn)
+            rng = np.random.default_rng(len(rows))
+            rows = np.c_[rows, rng.uniform(0.7, 1.3, len(rows)), rng.uniform(0, 360, len(rows)), np.ones(len(rows))]
+        bt.clutter(kind, rows, job.get("sea"))
     if job.get("props"):  # the sites' props as stand-ins (scale cues: a basket, a tee pad, the lodge)
         pr = job["props"]
         bt.props(np.array([p_[:4] for p_ in pr], float), [p_[4] for p_ in pr])

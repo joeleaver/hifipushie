@@ -201,51 +201,275 @@ def _species(kind, v):
 VARIANTS = 4
 
 
+CLUTTER_KINDS = ("bush", "tussock", "tallgrass", "boulder")
+CLUTTER_VARIANTS = 4
+
+
+def _clutter_mat(kind, sea=None):
+    """Clutter materials: colour from the mesh's own "tc" attribute (blades: green at the root to straw at the tip;
+    bush lumps: sage, some in flower), varied per instance (Object Info's random: brightness and a little hue); boulders
+    dark, wetter and darker within ~1.5 m of the sea."""
+    name = "clutter_" + kind
+    m = bpy.data.materials.get(name)
+    if m is not None:
+        return m
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    at = nt.nodes.new("ShaderNodeAttribute")
+    at.attribute_name = "tc"
+    oi = nt.nodes.new("ShaderNodeObjectInfo")
+    hsv = nt.nodes.new("ShaderNodeHueSaturation")
+    nt.links.new(at.outputs["Color"], hsv.inputs["Color"])
+    # per instance: value 0.75-1.25, hue +-0.02
+    mv = nt.nodes.new("ShaderNodeMapRange")
+    nt.links.new(oi.outputs["Random"], mv.inputs["Value"])
+    mv.inputs["To Min"].default_value, mv.inputs["To Max"].default_value = 0.75, 1.25
+    nt.links.new(mv.outputs["Result"], hsv.inputs["Value"])
+    mh = nt.nodes.new("ShaderNodeMapRange")
+    nt.links.new(oi.outputs["Random"], mh.inputs["Value"])
+    mh.inputs["To Min"].default_value, mh.inputs["To Max"].default_value = 0.48, 0.52
+    nt.links.new(mh.outputs["Result"], hsv.inputs["Hue"])
+    col = hsv.outputs["Color"]
+    if kind == "bush":  # leafy: a fine bump and dark gaps between leaf clusters (a lump read as a smooth stone)
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        vo = nt.nodes.new("ShaderNodeTexVoronoi")
+        vo.inputs["Scale"].default_value = 28.0
+        nt.links.new(tc.outputs["Object"], vo.inputs["Vector"])
+        bp = nt.nodes.new("ShaderNodeBump")
+        bp.inputs["Strength"].default_value = 0.7
+        bp.inputs["Distance"].default_value = 0.02
+        nt.links.new(vo.outputs["Distance"], bp.inputs["Height"])
+        nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+        dk = nt.nodes.new("ShaderNodeMapRange")
+        nt.links.new(vo.outputs["Distance"], dk.inputs["Value"])
+        dk.inputs["From Min"].default_value, dk.inputs["From Max"].default_value = 0.0, 0.6
+        dk.inputs["To Min"].default_value, dk.inputs["To Max"].default_value = 1.15, 0.55
+        mx = nt.nodes.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        mx.blend_type = "MULTIPLY"
+        mx.inputs["Factor"].default_value = 1.0
+        nt.links.new(col, mx.inputs["A"])
+        cc = nt.nodes.new("ShaderNodeCombineColor")
+        for k in range(3):
+            nt.links.new(dk.outputs["Result"], cc.inputs[k])
+        nt.links.new(cc.outputs["Color"], mx.inputs["B"])
+        col = mx.outputs["Result"]
+    if kind == "boulder" and sea is not None:  # wet: darker and glossier near the water
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        sp = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(geo.outputs["Position"], sp.inputs["Vector"])
+        wr = nt.nodes.new("ShaderNodeMapRange")
+        nt.links.new(sp.outputs["Z"], wr.inputs["Value"])
+        wr.inputs["From Min"].default_value, wr.inputs["From Max"].default_value = sea + 0.4, sea + 1.8
+        wr.inputs["To Min"].default_value, wr.inputs["To Max"].default_value = 0.45, 1.0
+        mx = nt.nodes.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        mx.blend_type = "MULTIPLY"
+        mx.inputs["Factor"].default_value = 1.0
+        nt.links.new(col, mx.inputs["A"])
+        cc = nt.nodes.new("ShaderNodeCombineColor")
+        for k in range(3):
+            nt.links.new(wr.outputs["Result"], cc.inputs[k])
+        nt.links.new(cc.outputs["Color"], mx.inputs["B"])
+        col = mx.outputs["Result"]
+        rr = nt.nodes.new("ShaderNodeMapRange")
+        nt.links.new(sp.outputs["Z"], rr.inputs["Value"])
+        rr.inputs["From Min"].default_value, rr.inputs["From Max"].default_value = sea + 0.4, sea + 1.8
+        rr.inputs["To Min"].default_value, rr.inputs["To Max"].default_value = 0.35, 0.85
+        nt.links.new(rr.outputs["Result"], b.inputs["Roughness"])
+    else:
+        b.inputs["Roughness"].default_value = 0.85 if kind == "boulder" else 0.7
+    nt.links.new(col, b.inputs["Base Color"])
+    for k_ in ("Specular IOR Level", "Specular"):
+        if k_ in b.inputs:
+            b.inputs[k_].default_value = 0.25 if kind != "boulder" else 0.3
+    return m
+
+
+def _mesh_ob(name, verts, faces, cols, smooth=True):
+    """An object from vertices, polygons and a per-vertex "tc" colour (linear)."""
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(v) for v in verts], [], [tuple(f) for f in faces])
+    a = me.color_attributes.new("tc", "FLOAT_COLOR", "POINT")
+    a.data.foreach_set("color", np.c_[np.asarray(cols, float), np.ones(len(cols))].ravel())
+    for f in me.polygons:
+        f.use_smooth = smooth
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def _tuft(rng, n, h, spread, lean, dry):
+    """A grass tuft: n blades from a small root patch, each a curved strip (5 rows) narrowing to its tip, leaning out
+    `lean` rad (more toward the tip), turned about its ROOT; green at the root to straw at the tip on dry blades."""
+    V, F, C = [], [], []
+    root, mid, tipg = np.array([0.025, 0.05, 0.01]), np.array([0.07, 0.12, 0.03]), np.array([0.10, 0.15, 0.04])
+    straw = np.array([0.30, 0.24, 0.10])
+    for i in range(n):
+        a = rng.uniform(0, 2 * math.pi)
+        r0 = spread * math.sqrt(rng.uniform(0, 1))
+        base = np.array([r0 * math.cos(a), r0 * math.sin(a), -0.03])
+        hh = h * rng.uniform(0.55, 1.15)
+        ln = lean * rng.uniform(0.4, 1.3) + 0.9 * r0 / max(spread, 1e-6) * lean
+        w = rng.uniform(0.006, 0.012)
+        side = np.array([-math.sin(a), math.cos(a), 0.0])
+        out = np.array([math.cos(a), math.sin(a), 0.0])
+        d = rng.random() < dry
+        k0 = len(V)
+        p = base.copy()
+        for j in range(5):
+            t = j / 4
+            ph = ln * (0.4 + 1.2 * t)  # (bending over toward the tip)
+            if j:
+                p = p + (hh / 4) * (math.sin(ph) * out + math.cos(ph) * np.array([0, 0, 1.0]))
+            ww = w * (1 - t) ** 0.7 + 0.0005
+            V += [p - ww * side, p + ww * side]
+            c = (root * (1 - t) + mid * t) if t < 0.6 else mid * (1 - (t - 0.6) / 0.4) + tipg * (t - 0.6) / 0.4
+            if d:
+                c = c * (1 - t) + straw * t
+            elif t > 0.75 and rng.random() < 0.35:
+                c = c * 0.5 + straw * 0.5
+            C += [c, c]
+        for j in range(4):
+            q = k0 + 2 * j
+            F.append((q, q + 1, q + 3, q + 2))
+    return np.array(V), F, np.array(C)
+
+
+def _clutter_variant(kind, v, sea=None):
+    """Variant v of a clutter placeholder (hidden; instanced): grass tufts (tussock: a dense clump ~0.45 m; tallgrass:
+    a looser sheaf ~0.7 m), a coastal scrub bush (sage-green lumps, some in yellow flower, ~1 m), a boulder (a
+    weathered lump, faceted by noise, flattened, its foot below ground)."""
+    rng = np.random.default_rng(1000 * CLUTTER_KINDS.index(kind) + v)
+    if kind in ("tussock", "tallgrass"):
+        if kind == "tussock":
+            V, F, C = _tuft(rng, 36, 0.42, 0.07, 0.5, 0.18)
+        else:
+            V, F, C = _tuft(rng, 22, 0.62, 0.16, 0.38, 0.28)
+        ob = _mesh_ob(f"clutter_{kind}_{v}", V, F, C)
+    elif kind == "bush":
+        import bmesh
+        bm = bmesh.new()
+        sage = np.array([0.075, 0.095, 0.05]) * rng.uniform(0.85, 1.15)
+        flower = v == 1  # (one variant in four, a few lumps: gorse/lupin in flower; more read as rubble from 150 m)
+        cols = []
+        nl = int(rng.integers(14, 22))
+        for i in range(nl):
+            a = rng.uniform(0, 2 * math.pi)
+            rr = 0.55 * math.sqrt(rng.uniform(0, 1))
+            z = 0.25 + 0.4 * (1 - rr / 0.55) * rng.uniform(0.6, 1.0)
+            r = rng.uniform(0.16, 0.32)
+            res = bmesh.ops.create_icosphere(bm, subdivisions=3, radius=r,
+                                             matrix=Matrix.Translation((rr * math.cos(a), rr * math.sin(a), z)))
+            c = sage * rng.uniform(0.8, 1.2)
+            if flower and rng.random() < 0.2:
+                c = np.array([0.30, 0.24, 0.04])  # (gorse / lupin yellow, muted)
+            for vert in res["verts"]:
+                vert.co.z = max(vert.co.z * 0.85, -0.05)
+                vert.co += Vector(rng.normal(0, 0.025, 3))
+                cols.append(c)
+        bm.verts.index_update()
+        V = np.array([tuple(vv.co) for vv in bm.verts])
+        F = [tuple(vv.index for vv in f.verts) for f in bm.faces]
+        bm.free()
+        ob = _mesh_ob(f"clutter_bush_{v}", V, F, np.array(cols))
+    else:
+        import bmesh
+        from mathutils import noise as mn
+        bm = bmesh.new()
+        bmesh.ops.create_icosphere(bm, subdivisions=3, radius=0.5)
+        sq = (rng.uniform(1.0, 1.4), rng.uniform(0.8, 1.05), rng.uniform(0.45, 0.7))
+        off = Vector(rng.uniform(-50, 50, 3))
+        for vert in bm.verts:
+            n = vert.co.normalized()
+            f = 1 + 0.22 * mn.fractal(n * 1.6 + off, 0.6, 2.0, 3) + 0.08 * mn.noise(n * 5.0 + off)
+            vert.co = Vector((n.x * sq[0], n.y * sq[1], n.z * sq[2])) * 0.5 * f
+            vert.co.z = max(vert.co.z, -0.22) + 0.06  # (a flat-ish foot, sunk into the ground)
+        bm.verts.index_update()
+        V = np.array([tuple(vv.co) for vv in bm.verts])
+        F = [tuple(vv.index for vv in f.verts) for f in bm.faces]
+        bm.free()
+        base = np.array([0.05, 0.046, 0.04]) * rng.uniform(0.8, 1.2)
+        C = base[None] * (0.85 + 0.3 * rng.random((len(V), 1)))
+        ob = _mesh_ob(f"clutter_boulder_{v}", V, F, C, smooth=False)
+    ob.data.materials.append(_clutter_mat(kind, sea))
+    return ob
+
+
+def _clutter_instance(points_ob, kind, sea=None):
+    """Clutter on every vertex of points_ob: a variant picked at random, scaled by the vertex's "scale" (and "squash"
+    in height), turned by its "yaw" (deg), all from terrain_ground.clutter."""
+    ng = bpy.data.node_groups.new("clutter_" + kind, "GeometryNodeTree")
+    ng.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    ng.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    N, L = ng.nodes, ng.links
+    gi, go = N.new("NodeGroupInput"), N.new("NodeGroupOutput")
+    inst = N.new("GeometryNodeInstanceOnPoints")
+    L.new(gi.outputs[0], inst.inputs["Points"])
+    coll = bpy.data.collections.new("clutter_" + kind)
+    bpy.context.scene.collection.children.link(coll)
+    for v in range(CLUTTER_VARIANTS):
+        ob = _clutter_variant(kind, v, sea)
+        for c in list(ob.users_collection):
+            c.objects.unlink(ob)
+        coll.objects.link(ob)
+    coll.hide_render = True
+    ci = N.new("GeometryNodeCollectionInfo")
+    ci.inputs["Collection"].default_value = coll
+    ci.inputs["Separate Children"].default_value = True
+    ci.inputs["Reset Children"].default_value = True
+    L.new(ci.outputs[0], inst.inputs["Instance"])
+    inst.inputs["Pick Instance"].default_value = True
+    pick = N.new("FunctionNodeRandomValue")
+    pick.data_type = "INT"
+    pick.inputs[4].default_value, pick.inputs[5].default_value = 0, CLUTTER_VARIANTS - 1
+    L.new(pick.outputs[2], inst.inputs["Instance Index"])
+
+    def attr(name):
+        a = N.new("GeometryNodeInputNamedAttribute")
+        a.data_type = "FLOAT"
+        a.inputs["Name"].default_value = name
+        return a.outputs["Attribute"]
+    sc = N.new("ShaderNodeCombineXYZ")
+    s_, q_ = attr("scale"), attr("squash")
+    L.new(s_, sc.inputs["X"])
+    L.new(s_, sc.inputs["Y"])
+    mz = N.new("ShaderNodeMath")
+    mz.operation = "MULTIPLY"
+    L.new(s_, mz.inputs[0])
+    L.new(q_, mz.inputs[1])
+    L.new(mz.outputs[0], sc.inputs["Z"])
+    L.new(sc.outputs["Vector"], inst.inputs["Scale"])
+    rot = N.new("ShaderNodeCombineXYZ")
+    rad = N.new("ShaderNodeMath")
+    rad.operation = "RADIANS"
+    L.new(attr("yaw"), rad.inputs[0])
+    L.new(rad.outputs[0], rot.inputs["Z"])
+    L.new(rot.outputs["Vector"], inst.inputs["Rotation"])
+    L.new(inst.outputs["Instances"], go.inputs[0])
+    points_ob.modifiers.new("clutter", "NODES").node_group = ng
+
+
+def clutter(kind, rows, sea=None):
+    """A points object for one clutter kind: rows [x, y, z, scale, yaw, squash], instanced (_clutter_instance)."""
+    rows = np.asarray(rows, float).reshape(-1, 6)
+    me = bpy.data.meshes.new("clutter_" + kind)
+    me.vertices.add(len(rows))
+    me.vertices.foreach_set("co", rows[:, :3].astype(np.float64).ravel())
+    for k, name in ((3, "scale"), (4, "yaw"), (5, "squash")):
+        a = me.attributes.new(name, "FLOAT", "POINT")
+        a.data.foreach_set("value", rows[:, k].astype(np.float32))
+    ob = bpy.data.objects.new("clutter_" + kind, me)
+    bpy.context.scene.collection.objects.link(ob)
+    _clutter_instance(ob, kind, sea)
+    return ob
+
+
 def _clutter_proto(kind):
-    """Ground clutter placeholders (hidden; instanced): a coastal scrub bush (a few lumpy grey-green masses, ~1 m), a
-    long-grass tussock (a fan of thin blades, ~0.45 m, olive with straw tips), a boulder (a flattened, faceted lump,
-    ~0.8 m, grey)."""
-    parts = []
-    if kind == "bush":
-        for (x, y, z, r) in ((0, 0, 0.35, 0.6), (0.45, 0.15, 0.25, 0.45), (-0.35, 0.3, 0.22, 0.4), (0.1, -0.4, 0.2, 0.38)):
-            bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=r, location=(x, y, z))
-            bpy.context.object.scale = (1.0, 1.0, 0.75)
-            parts.append(bpy.context.object)
-        mat = _mat("bush", (0.045, 0.06, 0.03, 1), 0.9)
-    elif kind == "tussock":  # blades fanning OUT from one root (turned about their base: about their middle they
-        import random       # crossed into teepees)
-        rnd = random.Random(3)
-        for i in range(14):
-            a = i / 14 * 6.283 + rnd.uniform(-0.2, 0.2)
-            h = rnd.uniform(0.35, 0.6)
-            bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.03, depth=h, location=(0, 0, 0))
-            o = bpy.context.object
-            o.data.transform(Matrix.Translation((0, 0, h / 2)))
-            o.rotation_euler = (0.55 * math.sin(a) * rnd.uniform(0.6, 1.3), -0.55 * math.cos(a) * rnd.uniform(0.6, 1.3),
-                                a)
-            parts.append(o)
-        mat = _mat("tussock", (0.07, 0.10, 0.03, 1), 0.9)
-    else:  # boulder: a smooth, flattened, irregular lump
-        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.5, location=(0, 0, 0.12))
-        o = bpy.context.object
-        import random
-        rnd = random.Random(5)
-        for vtx in o.data.vertices:
-            vtx.co *= 1 + 0.18 * rnd.uniform(-1, 1)
-        o.scale = (1.25, 0.95, 0.55)
-        parts.append(o)
-        mat = _mat("boulder", (0.11, 0.105, 0.095, 1), 0.85)
-    for p_ in parts:
-        p_.data.materials.append(mat)
-    bpy.ops.object.select_all(action="DESELECT")
-    for p_ in parts:
-        p_.select_set(True)
-    bpy.context.view_layer.objects.active = parts[-1]
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    if len(parts) > 1:
-        bpy.ops.object.join()
-    ob = bpy.context.object
-    ob.name = "clutter_" + kind
+    """(the old single placeholder: variant 0)"""
+    ob = _clutter_variant(kind, 0)
     ob.hide_render = True
     ob.location = (0, 0, -1e4)
     return ob
@@ -255,7 +479,7 @@ def _proto(kind):
     """A low-poly tree, hidden from render, for the scatter to instance: a cone conifer or a round broadleaf."""
     if kind in ("cypress", "pine"):
         return _species(kind, 0)
-    if kind in ("bush", "tussock", "boulder"):
+    if kind in CLUTTER_KINDS:
         return _clutter_proto(kind)
     parts = []
     bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.45, depth=4, location=(0, 0, 2))

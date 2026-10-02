@@ -321,11 +321,11 @@ def spec():
         "sites": sites,
         "routes": routes,
         "cover": {
-            "rough": {"type": "rough", "in": "land", "density": 0.8, "color": "#64803c"},
+            "rough": {"type": "rough", "in": "land", "density": 0.8, "color": "#4e7430"},
             "coastal_scrub": {"type": "scrub", "in": {"all": ["land", {"near": "sea", "radius": 70}]},
                               "slope": [10, 50], "density": 0.75, "avoid": ["fairways", "routes", "sites"],
                               "breakup": {"scale": 35, "amount": 0.7}},
-            "fairway": {"type": "mown", "in": "fairways", "density": 1.0, "color": "#3f7a2e"},
+            "fairway": {"type": "mown", "in": "fairways", "density": 1.0, "color": "#3a6e2a"},
             "bunkers": {"type": "bunker", "in": {"any": BUNKERS}, "density": 1.0},
             "pines_lining": {"type": "conifer", "trees": "pine", "in": {"all": ["linings", "inland"]},
                              "density": 0.16, "avoid": ["fairways", "routes", "sites", "clubhouse"],

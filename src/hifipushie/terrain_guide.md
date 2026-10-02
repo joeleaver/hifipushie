@@ -451,19 +451,28 @@ and the `"story"`.
   `orchard` plants rows (`"rows": 6` m apart, `"along": "contour" | "east" | "north"`). `"count": 6` on any tree
   layer scales it to about that many trees ("a few trees"). Types have sensible defaults (forest avoids steep ground, water, roads and sites; rock favours slopes over
   32 deg), and anything you give overrides them.
-  Grass by how it's kept reads differently in the 3D tiles' maps: `mown` (fairways, greens, lawns: even, bright, mown
-  in straight stripes ~8 m wide along each piece's long axis, a darker first cut at its edge), `rough` (long grass:
-  olive, tussocks, straw tips; `grass` and `meadow` are rough too) and `scrub` (low bushes, heath: dark grey-green
-  clumps with dry gaps). Unkept grass also turns to scrub on slopes past ~20 deg. All of it varies by itself (patches at
-  60 and 15 m, drier and paler on crests and sun-facing slopes, lusher in hollows, salt-burnt within ~30 m of the sea),
-  the turf ends back from every cliff's lip along a ragged edge (bare rock, shaded just under the turf), rock breaks
-  through in patches near lips, and there is no grass in the splash zone (~1.6 m over the sea; beaches stay sand).
-  `"ground_character": false` at the spec's top level turns that off (flat cover colours). `bunker` is sand dug
-  into the ground (`"depth": 0.6` m, a steep cut edge and a slight turf lip; in the 3D tiles): give it zones round the
-  greens (`{"any": [{"near": [x, y], "radius": 3}, ...]}`, two or three overlapping circles make a kidney).
-  The 3D tiles' renders and `clutter.csv` (x, y, z, kind, scale, yaw) carry ground clutter from the same masks:
-  bushes on scrub (on its dark clumps), boulders along the splash zone and where rock breaks through near lips, and
-  (renders only, near the eye) tussocks in rough grass: placeholders for an engine's detail scatter.
+  Grass by how it's kept reads differently in the 3D tiles' maps: `mown` (fairways, greens, lawns: even, cut crisp
+  along the mower's line, mown in straight stripes ~7 m wide along each piece's long axis that read light and dark with
+  the sun, a first cut ~2 m wide round it, darker and unstriped), `rough` (long grass: tussocks in the maps' relief,
+  straw tips; `grass` and `meadow` are rough too) and `scrub` (low bushes, heath: sage grey-green clumps with dry
+  gaps). Mown grass is its own ground layer (`turf`) with its own tiling detail. Unkept grass also turns to scrub on
+  slopes past ~20 deg. All of it varies by itself (patches at 60 and 15 m, drier and paler on crests and sun-facing
+  slopes, lusher in hollows, salt-burnt within ~30 m of the sea), and there is no grass in the splash zone (~1.6 m over
+  the sea; beaches stay sand, with a wet swash band, swash lines, a wrack line and shingle patches up the beach).
+  Cliff tops: the turf ends back from every lip along a ragged edge and the ground STEPS DOWN there by the turf's
+  thickness onto a bare, eroded lip (geometry, not just colour: the heightmap, the cliff meshes and their maps all
+  have it); rock breaks through in patches near lips. Tune it with `"ground_character": {"lip": {"band": 1.4 (m the
+  edge sits back, wandering 0.15-2.6x), "turf": 0.4 (m step; 0 = colour only), "riser": 0.18, "max": 3.2}}`.
+  `"ground_character": false` at the spec's top level turns all of it off (flat cover colours). `bunker` is sand dug
+  into the ground (`"depth": 0.6` m, a crisp cut face and a slight turf lip, cut finer than the terrain grid; in the 3D
+  tiles): give it zones round the greens (`{"any": [{"near": [x, y], "radius": 3}, ...]}`, two or three overlapping
+  circles make a kidney).
+  The 3D tiles' renders and `clutter.csv` (x, y, z, kind, scale, yaw, squash: the height's share of the scale) carry
+  ground clutter from the same masks: bushes on scrub (on its dark clumps; never within ~1.8 m of a cliff's turf edge
+  and low and wind-shorn, squashed, out to ~7 m from it), boulders in clusters on rock (the splash zone, where rock
+  breaks through near lips; never on sand, sunk a little), and (renders only, near the eye) tussocks in rough grass and
+  dense tall grass round the eye: placeholders for an engine's detail scatter. Trees keep back from cliff lips too
+  (4 m in from the turf's edge; cypress 1.5 m).
   `"trees"` on a tree layer picks the tree's shape (views, and the kind column of trees.csv): `"conifer"` (a spire),
   `"broadleaf"` (a round crown), `"fruit"`, `"pine"` (a tall bare trunk under a lobed round crown: a Monterey or stone
   pine), `"cypress"` (a wind-shaped coastal tree: a short trunk leaning downwind, a flat crown swept one way; all lean
@@ -557,9 +566,11 @@ The shell run writes its outputs beside the spec:
   (texels per metre per LOD), `"texture_max": 2048`, `"ground_density": 4`, `"micro": 1` (fine rock detail; 0 none).
   Beside the GLBs: `maps/<tile>_height.png` (16-bit displacement) and `maps/<tile>_weights<g>.png` (layer weights),
   `materials/<layer>_albedo/_normal/_height.png` (tileable detail textures) and the manifest's `engine_recipe` (how
-  an engine blends the layers over the baked maps, triplanar on rock). The ground's grass and scrub get a tiling turf
-  detail too (`materials/grass_detail_*.png`, the manifest's `ground_detail` with its recipe: laid from above at 2 m,
-  fading out by 20-70 m; `"grass_detail": false` leaves it out).
+  an engine blends the layers over the baked maps, triplanar on rock). The ground gets tiling detail too, one swatch
+  per kind (`materials/turf_detail_*.png` on mown turf, `grass_detail_*.png` on long grass and scrub,
+  `sand_detail_*.png` on sand: ripples, grit, pebbles; the manifest's `ground_detail.swatches` with its recipe: laid
+  from above at 2 m, fading out by 20-70 m; `"grass_detail": false` leaves it out). Below that the ground's maps carry
+  its own relief in their normals (tussocks, scrub lumps, the mower stripes' lean).
   See them as an engine would: `look_terrain(name, views=[...], tiles=True)` renders the last tiles export (baked maps,
   rock and turf detail, arches and caves, trees, the sites' props as stand-ins for scale: baskets, tee pads, a lodge),
   under a raking sun chosen per view (`"sun"` as for views) with aerial haze (`haze`: metres for 63%, default 5000). Other settings (metres):

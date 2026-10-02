@@ -36,6 +36,7 @@ from . import noise
 from .terrain import compass, smoothstep
 
 CLIFF = math.radians(70)
+STACK_CORE = 0.45  # a stack's heightfield core: its radius x this, sheer (the solid stack in the 3D tiles is the form)
 
 
 def _cliff_face(T, sd, top, level, cl):
@@ -550,9 +551,12 @@ def apply(T):
             tdir = rng.uniform(0, 2 * math.pi)
             top_z = level + hgt - tilt * np.clip(dx * math.cos(tdir) + dy * math.sin(tdir) + r, 0, 2 * r) * 0.5 \
                 - 0.12 * hgt * np.clip(lob - 0.6, 0, None) / 0.4
-            steps = level + hgt * np.floor((1 - (d - 0.7 * r) / (1.2 * r)) * 3) / 3  # ledges down the sides
-            side = level + hgt - (d - r) * math.tan(math.radians(76))
-            st = np.where(d < r, top_z, np.maximum(side, np.minimum(steps, side + 0.25 * hgt)))
+            # a slim core with sheer sides: the 3D tiles stand a solid, layered, undercut stack over it
+            # (terrain_mesh.Stack), which must hold the heightfield's stack inside (a wide 76 deg skirt made a fat foot
+            # no undercut could cut into); ledges are the solid stack's beds
+            core = STACK_CORE * r
+            side = level + hgt - (d - core) * math.tan(math.radians(84))
+            st = np.where(d < core, top_z, side)
             st = np.minimum(st, top_z)
             ok = (sd < 0) & (st > new)
             st_mask |= (sd < 0) & (d < 2.5 * r)
