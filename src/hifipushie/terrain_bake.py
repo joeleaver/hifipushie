@@ -474,10 +474,12 @@ def _bary(uv, F, size, t, xs, ys):
 
 
 def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0,
-                gfield=None, lines=None):
+                gfield=None, lines=None, texel=None):
     """The per-texel part of a bake (pointwise, so an atlas can be baked in pieces): each texel's point on the low poly,
     moved onto the surface (`surface`), and its values quantised as the maps store them. `first`: the index of the
-    first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas)."""
+    first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas). `texel` (m): the
+    map's texel, for the ground's maps-only relief (Materials.relief: tussocks, scrub lumps, mower stripes; band-limited
+    to what the texel carries)."""
     bary = _bary(uv, F, size, t, xs, ys)
     corner = lambda A: np.einsum("nk,nkc->nc", bary, A[F[t]])
     Pl = corner(P)
@@ -505,6 +507,16 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
         Gs = np.where(bad[:, None], G, Gs)
     with _span("bake/weights + colour"):
         Wt, col = _chunked(mats.weights, X, Gs)
+    if texel and getattr(mats, "ground", None) is not None and hasattr(mats, "relief"):
+        # the ground's own fine relief (grass, scrub, the mower's lean) tilts the normal; the geometry has none of it
+        with _span("bake/ground relief"):
+            gr = _chunked(lambda q, w: mats.relief(q, w, texel), X, Wt)
+        live = ~bad & (np.abs(gr).sum(1) > 0)
+        if live.any():
+            G2 = _unit(G[live] - np.c_[gr[live], np.zeros(int(live.sum()))])
+            t2 = np.stack([(G2 * Tl[live]).sum(1), (G2 * Bl[live]).sum(1), (G2 * Nl[live]).sum(1)], -1)
+            t2[:, 2] = np.maximum(t2[:, 2], 0.02)
+            tn[live] = _unit(t2)
     # roughness varies over a metre or so (one value per layer read as plastic, the wet band most of all)
     with _span("bake/roughness grain"):
         rgh = np.clip((Wt @ layers_rough) * (0.85 + 0.35 * _grain(X)), 0.05, 1.0)
@@ -597,14 +609,14 @@ def concat(parts):
     return {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
 
 
-def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=None):
+def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=None, texel=None):
     """Every map of one mesh's atlas (size = (width, height)): {"normal": uint8 (h, w, 3), "orm", "basecolor",
     "weights": [RGBA...], "height": uint16}, plus the height range and how many texels fell back to the low poly.
     (texels + bake_texels + assemble in one process; the tile export runs bake_texels in pieces across its pool.)"""
     with _span("bake/raster + texels"):
         tx = texels(uv, F, size)
     vals = bake_texels(surface, mats, P, N, T4, uv, F, tx["size"], tx["t"], tx["xs"], tx["ys"], tx["inside"],
-                       layers_rough, field)
+                       layers_rough, field, texel=texel)
     ao_v = bake_ao(ao_field, P, N) if ao_field is not None else None
     return assemble(tx, vals, ao_v, uv, F, field is not None)
 
@@ -615,7 +627,8 @@ def bake(surface, ao_field, mats, P, N, T4, uv, F, size, layers_rough, field=Non
 # construction): "grit" = rock grain and lumps, "grain" = fine grit, "ripples" = sand ripples, "clods" = soil lumps,
 # "blades" = grass (streaky fine noise), "litter" = leaf litter blobs, "soft" = snow.
 LAYER_DETAIL = {
-    "rock": ("grit", 0.35), "wet_rock": ("grit", 0.25), "grass": ("blades", 0.5), "forest_floor": ("litter", 0.6),
+    "rock": ("grit", 0.35), "wet_rock": ("grit", 0.25), "grass": ("blades", 0.5), "turf": ("blades", 0.3),
+    "forest_floor": ("litter", 0.6),
     "sand": ("ripples", 0.4), "earth": ("clods", 0.6), "snow": ("soft", 0.25),
 }
 

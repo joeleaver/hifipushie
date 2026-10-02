@@ -83,12 +83,14 @@ DEFAULTS = {
 DENSITY_FILL = 0.55  # the share of an atlas the packer fills (for choosing one texel density that fits every tile)
 
 # ground materials: what each cover type lays on the ground (tree layers: the forest floor under them)
-LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "mown": "grass", "rough": "grass",
+LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "mown": "turf", "lawn": "turf", "fairway": "turf",
+            "green": "turf", "rough": "grass",
             "scrub": "scrub", "heath": "scrub", "bunker": "sand", "forest": "forest_floor",
             "conifer": "forest_floor", "deciduous": "forest_floor", "rock": "rock", "scree": "rock", "sand": "sand",
             "mud": "earth", "snow": "snow"}
 LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling scale (m) for engines
     "grass": {"color": [0.36, 0.47, 0.20], "roughness": 0.95, "scale": 3.0},
+    "turf": {"color": [0.30, 0.50, 0.17], "roughness": 0.9, "scale": 2.0},  # (mown grass: fairways, greens, lawns)
     "forest_floor": {"color": [0.27, 0.22, 0.15], "roughness": 0.95, "scale": 3.0},
     "scrub": {"color": [0.30, 0.33, 0.21], "roughness": 0.95, "scale": 2.0},
     "sand": {"color": [0.72, 0.65, 0.48], "roughness": 0.9, "scale": 2.0},
@@ -197,22 +199,33 @@ class Tube:
 
 
 
+STACK = {"radius": 0.75, "bed": 1.6, "beds": 0.4, "notch": 0.7, "ramp": 1.0, "lean": 10.0, "lobes": 0.55,
+         "twist": 6.0}
+# a solid sea stack: its radius x the sea's stack radius, bed thickness m, how far beds stand out / sit back (x r,
+# +-half), the outline's lobes (x r) and how fast they change up the stack (m), its sides' lean (deg),
+# the waterline notch (x min(0.3 r, 1.6 m)), each bed handing over to the next across `ramp` m (2 voxels: shards)
+
+
 class Stack:
     """A sea stack as solid rock (op "add" over the heightfield's own stack): a lobed, grooved prism whose sides lean in
     ~6 deg, a flat top tilted a little and notched, edges bevelled ~0.35 m. The heightfield can't hold a 70-80 deg
     side on 1-2 m cells: its stacks came out as rounded loaves (the user's p05/L01 views)."""
 
-    def __init__(self, name, xy, base, top, r, seed, blend=0.4):
+    def __init__(self, name, xy, base, top, r, seed, blend=0.4, clip=None):
         self.name, self.op, self.blend, self.relief = name, "add", float(blend), 1.0
+        # the heightfield's own stack (a slim core) taken away within `clip` m of the centre above the plinth, so the
+        # solid stack alone is the form: two steep surfaces crossing inside its notch and lobes meshed as shards
+        self.clip = None if clip is None else (float(clip), float(base) + 0.5)
         self.xy, self.base, self.top, self.r, self.seed = np.asarray(xy, float), float(base), float(top), float(r), \
             int(seed)
         rng = np.random.default_rng(self.seed)
         self.k_g = int(rng.integers(5, 9))
         self.ph = rng.uniform(0, 6.3, 2)
-        self.tilt = rng.uniform(0.08, 0.25) * (top - base) / max(r, 1e-6)
+        self.tilt = rng.uniform(0.12, 0.35) * (top - base) / max(r, 1e-6)
         self.tdir = rng.uniform(0, 2 * math.pi)
-        self.lean = math.tan(math.radians(6.0))
-        m = self.r * 1.6 + (top - base) * self.lean + self.blend + NEAR + 1.0
+        self.lean = math.tan(math.radians(STACK["lean"]))
+        m = max(self.r * (1.6 + STACK["beds"]) + (top - base) * self.lean, self.clip[0] if self.clip else 0.0) + \
+            self.blend + NEAR + 1.0
         self.lo = np.r_[self.xy - m, self.base - 1.0 - NEAR]
         self.hi = np.r_[self.xy + m, self.top + 1.0 + NEAR]
 
@@ -221,13 +234,32 @@ class Stack:
         d = np.hypot(q[:, 0], q[:, 1])
         th = np.arctan2(q[:, 1], q[:, 0])
         u = np.c_[np.cos(th), np.sin(th), np.zeros(len(p))]
-        lob = noise.fbm(u * 1.3 + np.array([self.seed % 97, 0.0, 0.0]), 1.0, 3, seed=self.seed + 17)
+        # (the outline's lobes change up the stack, ~6 m: the same polygon all the way up read as a crate)
+        lob = noise.fbm(u * 1.3 + np.c_[np.full(len(p), float(self.seed % 97)), np.zeros(len(p)),
+                                         (p[:, 2] - self.base) / STACK["twist"]], 1.0, 3, seed=self.seed + 17)
         grooves = 0.06 * np.cos(self.k_g * th + self.ph[0]) + 0.03 * np.cos((self.k_g + 3) * th + self.ph[1])
-        R = self.r * (1 + 0.45 * (lob - 0.5) + grooves) + (self.top - p[:, 2]) * self.lean
+        z = p[:, 2]
+        # layered: each bed stands out or sits back on its own (and by a different amount round the stack), handing
+        # over to the next across ~0.6 m (a step: shards); the sea's notch undercuts it at the waterline (a stack
+        # standing on a fat skirt read as a bulky prism)
+        b = STACK["bed"]
+        zb = (z - self.base) / b
+        kb = np.floor(zb)
+        f = zb - kb
+        bo = lambda k: (noise._hash(k.astype(np.int64), np.zeros_like(k, dtype=np.int64),
+                                    np.zeros_like(k, dtype=np.int64), self.seed + 91) - 0.5)
+        lo, hi = bo(kb), bo(kb + 1)
+        e = STACK["ramp"] / b
+        t = smoothstep(1 - e, 1.0, f)
+        bed = (lo * (1 - t) + hi * t) * (1 + 0.6 * (lob - 0.5)) * smoothstep(0.8, 2.5, self.top - z)
+        sea = self.base + 2.0
+        notch = STACK["notch"] * min(self.r * 0.3, 1.6) * np.exp(-((z - sea - 0.9) / 1.2) ** 2)
+        R = self.r * (1 + STACK["lobes"] * (lob - 0.5) + grooves + STACK["beds"] * bed) + (self.top - z) * self.lean \
+            - notch
         side = (d - R) * 0.92
         along = q[:, 0] * math.cos(self.tdir) + q[:, 1] * math.sin(self.tdir)
         topz = self.top - self.tilt * np.clip(along + self.r, 0, 2 * self.r) * 0.5 \
-            - 0.1 * (self.top - self.base) * np.clip(lob - 0.62, 0, None) / 0.38
+            - 0.22 * (self.top - self.base) * np.clip(lob - 0.55, 0, None) / 0.45
         f = smax(side, p[:, 2] - topz, 0.35)
         f = smax(f, (self.base - 1.0) - p[:, 2], 0.3)
         if detail:
@@ -247,7 +279,9 @@ def stacks(T):
     for i, a in enumerate(st):
         xy = np.asarray(a["xy"], float)
         top = sea + float(a["height"])
-        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, 0.85 * float(a["radius"]), 3000 + i))
+        from .terrain_sea import STACK_CORE
+        rc = STACK_CORE * float(a["radius"]) + 0.11 * float(a["height"]) + 0.8  # (the core, spread at 84 deg, + margin)
+        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, STACK["radius"] * float(a["radius"]), 3000 + i, clip=rc))
     note = (f"stacks: {len(out)} as solid rock prisms (sides ~84 deg, flat tilted tops), "
             f"{min(a['height'] for a in st):.0f}-{max(a['height'] for a in st):.0f} m out of the water") if out else None
     return out, note
@@ -1026,8 +1060,11 @@ class Field:
             self.H = dig_doline(T, self.H, d)
         for c in cuts or ():  # (a sea arch's neck: the bays either side of it)
             self.H = cut_neck(T, self.H, c)
-        for m, depth in bunkers or ():  # (sand traps: cover type "bunker", dug in)
-            self.H = dig_bunker(T, self.H, m, depth)
+        from . import terrain_ground
+        gcfg = terrain_ground.config(T)
+        if gcfg is None:  # (no ground character: sand traps dug into the grid, as 2-cell blurs)
+            for m, depth, *_ in bunkers or ():
+                self.H = dig_bunker(T, self.H, m, depth)
         if rock is not None:
             # where the rock character goes: steep ground (45-62 deg), as a smooth mask on the grid (~2 cells). From
             # each point's own column slope it switched on within 0.2 m at a cliff's lip (the B-spline's slope turns
@@ -1058,9 +1095,20 @@ class Field:
                 # where blocks that fell off the faces lie (terrain_blocks.fall_zone): at their feet, on gentler ground
                 from . import terrain_blocks
                 self.fall = terrain_blocks.fall_zone(self.H, self.c, self.steep) * float(rock["blocks"]["fallen"])
+        # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
+        # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
+        self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg) if gcfg is not None else None
 
     def column(self, x, y):
-        """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns."""
+        """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns (with the ground edits:
+        turf lips, bunkers)."""
+        h, s = self._column(x, y)
+        if getattr(self, "edits", None) is not None:
+            return self.edits.column(np.asarray(x, float), np.asarray(y, float), h, s, self._column,
+                                     getattr(self, "edit_riser", None), getattr(self, "edit_wmin", 0.0))
+        return h, s
+
+    def _column(self, x, y):
         if fieldjit.ON:
             x, y = _f64(x), _f64(y)
             return fieldjit.column(self.H, x, y, self.x0, self.y0, self.c)
@@ -1126,6 +1174,10 @@ class Field:
             if not len(k):
                 continue
             d, above, size = vol.sd(p[k], detail=True)
+            if getattr(vol, "clip", None) is not None:  # (what it replaces: the ground within a cylinder over a plinth)
+                rc, zc = vol.clip
+                F[k] = smax(F[k], np.minimum(rc - np.hypot(p[k, 0] - vol.xy[0], p[k, 1] - vol.xy[1]), p[k, 2] - zc),
+                            0.4)
             F[k] = smax(F[k], -d, vol.blend) if vol.op == "subtract" else smin(F[k], d, vol.blend)
             if near is not None:
                 # rock relief on walls and roofs, scaled to the passage (a 1 m slot doesn't take 0.8 m facets), and
@@ -1289,13 +1341,29 @@ class Materials:
             # stickers with stepped edges; softened over about a cell, and warped a little where sampled)
             col = np.stack([ndimage.gaussian_filter(col[..., i], 0.9) for i in range(3)], -1)
         self.display = col
+        if getattr(T, "spec", {}).get("ground_character", True) is not False:
+            # the bare ground's colour (slope, height, roads, water) as a grid; the covers are painted over it per point
+            # with the same crisp weights as the layers (from the cell grid, a fairway's or a bunker's edge was the
+            # grid's 2-cell blur however crisp its weight: soft stickers)
+            bare = ground_colours(T, cover=False)
+            bare[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
+            self.display_bare = np.stack([ndimage.gaussian_filter(bare[..., i], 0.9) for i in range(3)], -1)
+            self.cover_col = {name: np.asarray(design.cover_colour(T, name), float) for name, *_ in self.cover}
         self.rock_grid = rock_colours(T)
         steep = T._slope() > 45
         self.rock_ref = np.median(self.rock_grid[steep] if steep.any() else self.rock_grid.reshape(-1, 3), 0)
         self.routes = T.masks.get("routes")
         # the ground's character between the rock faces (terrain_ground): turf edges, shore, variation, cover kinds
-        self.ground = terrain_ground.Ground(T, field.H, self.sea) if getattr(T, "spec", {}).get(
+        ed = getattr(field, "edits", None) or getattr(getattr(field, "base", None), "edits", None)
+        self.ground = terrain_ground.Ground(T, field.H, self.sea, ed) if getattr(T, "spec", {}).get(
             "ground_character", True) is not False else None
+        if self.ground is not None:  # (its per-cover grids made now, not lazily per worker)
+            for name, layer, k, kind in self.cover:
+                if kind == "mown":
+                    self.ground.mown_sd(name, T.cover[name])
+                    self.ground.stripe_frame(name, T.cover[name])
+        for name in T.cover:  # (made now: a lazy cache filled in some processes and not others)
+            self._covf(name)
 
     def layer_ref(self, name):
         """A layer's reference look for the manifest (rock: this terrain's own rock colour)."""
@@ -1319,18 +1387,90 @@ class Materials:
                                                               (xy[:, 0] - T.xs[0]) / T.cell],
                                        order=3, prefilter=False, mode="nearest")
 
-    def kinds(self, P):
-        """The cover kinds (terrain_ground.KIND_OF: mown, rough, scrub) at points, as painted (later layers over
-        earlier)."""
+    def _covf(self, name):
+        """A cover's mask as a contiguous float64 grid (made once: per call it was most of a weights call)."""
+        cache = self.__dict__.setdefault("_covf_cache", {})
+        if name not in cache:
+            cache[name] = np.ascontiguousarray(self.T.cover[name], dtype=np.float64)
+        return cache[name]
+
+    def _cover_d(self, name, kind, xy):
+        """A cover's weight (0..1) at points: its mask as a cubic spline over the cells, cut crisp where the ground
+        character asks: a bunker at its dug edge, a mown piece along the mower's line (as a 2-cell blur both read as
+        soft-edged stickers)."""
+        d = np.clip(self._grid(self._covf(name), xy), 0, 1)
+        g = self.ground
+        if g is None:
+            return d
+        e = g.edits.bunker_of(name)
+        if e is not None:
+            return smoothstep(0.06, -0.06, e(xy)) * np.clip(2 * d, 0, 1)
+        if kind == "mown":
+            return smoothstep(0.3, -0.3, g.mown_sd(name, self.T.cover[name])(xy)) * np.clip(2 * d, 0, 1)
+        return d
+
+    def _covers(self, P):
+        """(per-layer weights, kinds, mown stripes [(weight, -1..1)], rest) as painted (later layers over earlier);
+        kinds: terrain_ground.KIND_OF's mown/rough/scrub, plus "cut": the first cut, a mown band round each mown piece
+        taken out of the rough round it."""
         xy = P[:, :2]
-        rest = np.ones(len(P))
-        out = {}
-        for name, layer, k, kind in reversed(self.cover):
-            d = np.clip(self._grid(self.T.cover[name].astype(float), xy), 0, 1) * k
-            if kind is not None:
-                out[kind] = out.get(kind, 0.0) + d * rest
+        n = len(P)
+        W = {k: np.zeros(n) for k in self.layers}
+        rest = np.ones(n)
+        kinds, mown = {}, []
+        bands = []
+        for name, layer, k, kind in reversed(self.cover):  # painted in order: later layers over earlier
+            d = self._cover_d(name, kind, xy) * k
+            W[layer] += d * rest
+            if kind is not None and self.ground is not None:
+                kinds[kind] = kinds.get(kind, 0.0) + d * rest
+                if kind == "mown":
+                    mown.append((d * rest, self.ground.stripes(P, name, self.T.cover[name], along=True)))
+                    bands.append(self.ground.first_cut(P, name, self.T.cover[name]))
             rest *= 1 - d
-        return out
+        if bands and "rough" in kinds:
+            cut = np.minimum(np.max(bands, 0), kinds["rough"])
+            kinds["rough"] = kinds["rough"] - cut
+            kinds["cut"] = cut
+        return W, kinds, mown, rest
+
+    def _paint(self, xy, wxy):
+        """The display colour before the ground's character: the bare ground's grid (at the warped points), each
+        cover's colour painted over it in order with its weight (crisp-edged covers at the points themselves, the
+        rest at the warped ones), the roads over everything (sRGB)."""
+        c = np.stack([self._grid(self.display_bare[..., i], wxy) for i in range(3)], 1)
+        rest = np.ones(len(xy))
+        acc = np.zeros((len(xy), 3))
+        g = self.ground
+        for name, layer, k, kind in reversed(self.cover):
+            crisp = kind == "mown" or g.edits.bunker_of(name) is not None
+            d = (self._cover_d(name, kind, xy) if crisp else
+                 np.clip(self._grid(self._covf(name), wxy), 0, 1)) * k
+            acc += (d * rest)[:, None] * self.cover_col[name]
+            rest = rest * (1 - d)
+        c = acc + rest[:, None] * c
+        if self.routes is not None:
+            arid = self.T.world["kind"] in ("canyon", "dunes", "plateau")
+            rd = np.clip(self._grid(self.routes.astype(float), wxy), 0, 1)[:, None] * 0.8
+            c = c * (1 - rd) + (np.array([0.78, 0.66, 0.5]) if arid else np.array([0.55, 0.47, 0.36])) * rd
+        return c
+
+    def relief(self, P, Wt, texel):
+        """The ground's maps-only relief (terrain_ground.Ground.relief) as a plan gradient (n, 2), weighted by the
+        grass layers (not on rock or sand), or None without ground character."""
+        if self.ground is None:
+            return None
+        _, kinds, mown, _ = self._covers(P)
+        w = sum(Wt[:, self.layers.index(nm)] for nm in ("grass", "turf", "scrub") if nm in self.layers)
+        if not np.isscalar(w):
+            kinds = {k: v * w for k, v in kinds.items()}
+            mown = [(m * w, st) for m, st in mown]
+        return self.ground.relief(self, P, kinds, mown, texel)
+
+    def kinds(self, P):
+        """The cover kinds (terrain_ground.KIND_OF: mown, rough, scrub; "cut": the first cut round mown pieces) at
+        points, as painted (later layers over earlier)."""
+        return self._covers(P)[1]
 
     def weights(self, P, N):
         with _span("materials.weights"):
@@ -1339,17 +1479,7 @@ class Materials:
     def _weights(self, P, N):
         xy = P[:, :2]
         n = len(P)
-        W = {k: np.zeros(n) for k in self.layers}
-        rest = np.ones(n)
-        kinds, mown = {}, []
-        for name, layer, k, kind in reversed(self.cover):  # painted in order: later layers over earlier
-            d = np.clip(self._grid(self.T.cover[name].astype(float), xy), 0, 1) * k
-            W[layer] += d * rest
-            if kind is not None and self.ground is not None:
-                kinds[kind] = kinds.get(kind, 0.0) + d * rest
-                if kind == "mown":
-                    mown.append((d * rest, self.ground.stripes(P, name, self.T.cover[name])))
-            rest *= 1 - d
+        W, kinds, mown, rest = self._covers(P)
         W["earth"] += rest
         if self.routes is not None:
             r = np.clip(self._grid(self.routes.astype(float), xy), 0, 1) * 0.8
@@ -1396,7 +1526,7 @@ class Materials:
         if self.ground is not None:  # (cover edges wander ~0.6 m: not the grid's straight runs)
             Pf = P * np.array([1.0, 1.0, 0.0])
             wxy = xy + 0.6 * np.c_[noise.fbm(Pf, 4.0, 2, seed=631) - 0.5, noise.fbm(Pf, 4.0, 2, seed=632) - 0.5]
-            c = np.stack([self._grid(self.display[..., i], wxy) for i in range(3)], 1)
+            c = self._paint(xy, wxy)
         else:
             c = np.stack([self._grid(self.display[..., i], xy) for i in range(3)], 1)
         if self.ground is not None:
@@ -1416,6 +1546,10 @@ class Materials:
             kb, fr = B["kb"], B["f"]
             # each bed's tone changes along the strike too (one tone per bed was a band ruled across the wall)
             calm = 0.35 if r.get("blocks") else 1.0  # (blocks carry the tone where they exist: less blotchy noise)
+            if r.get("blocks") and getattr(self.field, "thin", None) is not None:
+                # thin fins and stacks (an arch's fin) take little relief (Field.thin: carved, their tops floated off),
+                # so their beds show in colour instead: Durdle Door's banding, not a smooth tan wall
+                calm = calm + (1.0 - calm) * np.clip(self._grid(self.field.thin, xy), 0, 1) * THIN_TONE
             th = lambda k: 1 + calm * (-0.16 + 0.26 * _bed_noise(xy, k, 40.0, r["seed"] + 30))
             # (each bed's tone eases into the next over ~0.2 m where the plane shows, a step aliased along every
             # bedding plane in the maps; over metres where it doesn't: no line there)
@@ -1444,6 +1578,7 @@ class Materials:
         return Wm.astype(np.float32), c
 
 
+THIN_TONE = 1.0  # how much of the full bed tone thin fins take back (Materials, rock colour)
 BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
               "along": 0.10, "under_ledge": 0.12}
 # block_colour's spread: per bed and per block (+-), thin packages darker, the share of freshly spalled blocks and how
@@ -2377,7 +2512,7 @@ def build_field(T, cfg=None):
     for name in getattr(T, "cover", {}):
         c = design._spec_cover(T, name)
         if c.get("type", name) == "bunker":
-            bunkers.append((T.cover[name], float(c.get("depth", 0.6))))
+            bunkers.append((T.cover[name], float(c.get("depth", 0.6)), name))
             notes = notes + [f"{name}: bunkers dug {float(c.get('depth', 0.6)):g} m in, over "
                              f"{float((T.cover[name] > 0.5).sum()) * T.cell ** 2:.0f} m2"]
     field = Field(T, vols, rock, dolines=[d for cv in caves for d in cv.dolines],
@@ -2703,8 +2838,11 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     rk = dict(base.rock)
                     rk["joints"] = {**rk["joints"], "depth": rk["joints"]["depth"] * [1.0, 0.5, 0.0][min(k, 2)]}
                     bf.rock = rk
+                dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
+                if getattr(base, "edits", None) is not None:  # (the turf's step crisper in the maps than the mesh)
+                    bf.edit_riser = max(base.edits.lip_cfg["maps"], 2.5 / dens)
+                    bf.edit_wmin = 2.5 / dens
                 if base.rock is not None and float(cfg["micro"]) > 0:
-                    dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
                     bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens,
                                                          fine="detail" not in _CTX)
                 if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
@@ -2872,9 +3010,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
             C = terrain_ground.clutter(T, mats, base, ks, box=cb)
             with open(out / "clutter.csv", "w") as f:
-                f.write("x,y,z,kind,scale,yaw\n")
+                f.write("x,y,z,kind,scale,yaw,squash\n")
                 for r in C:
-                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f}\n")
+                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f}\n")
             notes.append(f"clutter.csv: {int((C[:, 3] == 0).sum())} bushes, {int((C[:, 3] == 1).sum())} boulders")
 
     # ---- 5. trees and the manifest
@@ -2901,12 +3039,25 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             steep = gq[:, 2] / np.maximum(np.linalg.norm(gq, axis=1), 1e-9) < 0.7
             n_wet, n_steep = int((ok & wet).sum()), int((ok & ~wet & steep).sum())
             ok &= ~wet & ~steep
+            # nor perched on a cliff's lip: a tree's roots want soil, so none within its crown of the turf's edge
+            # (terrain_ground.TREE_LIP m in from it; wind-shorn cypress may stand closer)
+            n_lip = 0
+            if getattr(base, "edits", None) is not None and len(inst):
+                from . import terrain_ground
+                Pq = np.c_[inst[:, :2], zs]
+                bare_, d_, edge_, top_ = base.edits.bare(Pq)
+                kinds_ = [layers.get(int(li), ("", ""))[1] for li in inst[:, 3]]
+                need = np.array([terrain_ground.TREE_LIP.get(k_, terrain_ground.TREE_LIP["default"]) for k_ in kinds_])
+                lip = (top_ > 0.3) & (d_ - edge_ < need)
+                n_lip = int((ok & lip).sum())
+                ok &= ~lip
             inst, zs = inst[ok], zs[ok]
             if n_drop:
                 notes.append(f"{n_drop} trees dropped: no solid ground under them")
-            if n_wet or n_steep:
+            if n_wet or n_steep or n_lip:
                 notes.append(f"{n_wet} trees dropped in the splash zone (under 2.5 m over the sea), {n_steep} on "
-                             f"faces steeper than 45 deg")
+                             f"faces steeper than 45 deg, {n_lip} on cliff lips (closer to the turf's edge than "
+                             "terrain_ground.TREE_LIP)")
         for (x, y, _, li), z in zip(inst, zs):
             nm, kind = layers.get(int(li), ("", ""))
             f.write(f"{x:.2f},{y:.2f},{z:.2f},{kind},{nm}\n")
@@ -2990,11 +3141,15 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     }
     if detail is not None:
         manifest["detail"] = detail
-    if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub")):
-        from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch)
-        ge = terrain_ground.write_grass(out)
-        ge["weights"] = [[f"_WEIGHTS{mats.layers.index(nm) // 4}", mats.layers.index(nm) % 4] for nm in ge["layers"]
-                         if nm in mats.layers]
+    if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
+                                                                                                "turf", "sand")):
+        from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)
+        ge = terrain_ground.write_grass(out, mats.layers)
+        wl = lambda lay: [[f"_WEIGHTS{mats.layers.index(nm) // 4}", mats.layers.index(nm) % 4] for nm in lay
+                          if nm in mats.layers]
+        for sw in ge["swatches"]:
+            sw["weights"] = wl(sw["layers"])
+        ge["weights"] = wl(ge["layers"])
         manifest["ground_detail"] = ge
     if region is not None:
         manifest["cliffs"] = {
@@ -3563,6 +3718,14 @@ def _morton(X, cell):
     return np.argsort(key, kind="stable")
 
 
+LIGHTS = {  # render_tiles(light=...) presets: the sky's dust/air (Nishita), sun watts, sky strength, exposure
+    "hazy": {"dust": 0.3, "air": 0.8, "sun_energy": 2.4, "sky_strength": 0.12, "exposure": 0.0},
+    # matched to a clear sunny photo (the Pebble 7th): its sky deep blue (v ~0.75 s ~0.45 at the top), crisp shadows
+    # exposure metered on the sun's height (`meter` stops per doubling of sin(height) over 25 deg)
+    "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8},
+}
+RELIEF_CHART = 2.5  # the ground's maps-only relief on cliff tiles is band-limited as if their texel were this x larger:
+# their charts' texel grids don't line up across a tile border (ground tiles' do), so fine relief differed there
 BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
 
 
@@ -3582,7 +3745,8 @@ def _job_bake(args):
         lines = lambda Pl, Nl: terrain_swatch.structure_lines(c["base"], Pl, tx_, N=Nl)
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
-                                    bf, first=a, gfield=c.get("weightfield"), lines=lines)
+                                    bf, first=a, gfield=c.get("weightfield"), lines=lines,
+                                    texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
 
 def _job_finish(stem):
@@ -4250,7 +4414,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0):
+                 props=True, clutter=120.0, grade=None, light=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -4265,7 +4429,10 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     "auto" / left out (terrain_sun picks a raking sun for what the view sees; the choice is noted in render_job.json).
     haze: aerial perspective, metres for 63% (None/0: off). props: placeholder buildings, tee pads and baskets on the
     sites (the export's meta), for scale. clutter: metres round each eye where ground clutter placeholders stand
-    (terrain_ground.clutter: bushes on the scrub, tussocks in rough grass, boulders on the shore; 0/None: none)."""
+    (terrain_ground.clutter: bushes on the scrub, tussocks and tall grass in rough grass, boulders on the shore;
+    0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
+    blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
+    "exposure"}; default the hazy sky every earlier round was judged under."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -4307,7 +4474,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
            "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
            "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
            "haze": float(haze) if haze else None, "notes": notes,
-           "props": _site_props(T, box) if props else []}
+           "props": _site_props(T, box) if props else [], "grade": grade,
+           "light": LIGHTS.get(light, light) if isinstance(light, str) else light}
     if textured == "layered":  # the engine recipe: tiling layers over the baked maps
         job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
                           "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}
@@ -4328,18 +4496,23 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         from . import terrain_ground
         cf, *_ = build_field(T)
         cm = Materials(T, cf)
-        ks = ("bush", "tussock", "boulder")
+        ks = ("bush", "tussock", "tallgrass", "boulder")
         eyes = np.array([j["eye"] for j in jobs], float)
         lo_, hi_ = eyes[:, :2].min(0) - clutter, eyes[:, :2].max(0) + clutter
         if box:
             lo_, hi_ = np.maximum(lo_, box[0]), np.minimum(hi_, box[1])
         C = terrain_ground.clutter(T, cm, cf, ks, box=[lo_.tolist(), hi_.tolist()], near=(eyes, clutter))
-        job["clutter"] = {k: C[C[:, 3] == i, :3].round(3).tolist() for i, k in enumerate(ks)}
+        if len(C):  # (no bush or boulder at an eye: a view from inside a bush was all leaves)
+            from scipy.spatial import cKDTree
+            de, _ = cKDTree(eyes[:, :2]).query(C[:, :2])
+            C = C[(de > 2.5) | np.isin(C[:, 3], [ks.index("tussock"), ks.index("tallgrass")])]
+        job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
         notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
     GD = M.get("ground_detail")
     if GD and textured and not channel:  # the turf's tiling detail over the baked maps (as an engine draws it)
-        job["grass"] = {"albedo": str((out / GD["albedo"]).resolve()), "normal": str((out / GD["normal"]).resolve()),
-                        "size": GD["size_m"], "fade": GD["fade_m"], "weights": GD["weights"]}
+        job["grass"] = [{"albedo": str((out / g["albedo"]).resolve()), "normal": str((out / g["normal"]).resolve()),
+                         "size": g["size_m"], "fade": g.get("fade_m", GD["fade_m"]), "weights": g["weights"]}
+                        for g in GD.get("swatches") or [GD]]
     if any(v.get("borders") for v in views):
         np.savez(out / "borders.npz", segs=border_segments(out, 0 if lod == "checker" else lod))
         job["borders"] = str(out / "borders.npz")

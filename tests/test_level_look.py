@@ -56,7 +56,8 @@ def test_ground_pointwise(T):
         np.concatenate([M.weights(P[:1000], N[:1000])[1], M.weights(P[1000:], N[1000:])[1]])
     assert np.array_equal(W1, W2) and np.array_equal(C1, C2)  # (a point's colour is its own: tiles agree)
     # varied ground: the grass's colour spreads (the old flat cover colour had none)
-    grass = W1[:, M.layers.index("grass")] > 0.9
+    gl = [M.layers.index(nm) for nm in ("grass", "turf") if nm in M.layers]
+    grass = W1[:, gl].sum(1) > 0.75
     L = C1[grass] @ np.array([0.3, 0.59, 0.11])
     assert L.std() / L.mean() > 0.04, L.std() / L.mean()
     # no grass in the splash zone
@@ -79,7 +80,70 @@ def test_clutter(T):
     C = terrain_ground.clutter(T, M, field, ("bush", "tussock", "boulder"), box=[[150, 60], [300, 260]])
     kinds = C[:, 3].astype(int)
     assert (kinds == 0).sum() > 10 and (kinds == 1).sum() > 100, np.bincount(kinds)
-    assert (C[:, 2] > -0.3).all()  # (nothing under the sea)
+    ground = C[:, 2] + np.where(kinds == 2, 0.12 * C[:, 4], 0.0)  # (boulders are sunk 0.12 x their scale)
+    assert (ground > -0.3).all()  # (nothing under the sea)
+
+
+def test_ground_edits(T):
+    """The turf's step at a cliff lip and the bunkers are real geometry, finer than the grid, and continuous."""
+    field, *_ = terrain_mesh.build_field(T)
+    E = field.edits
+    assert E is not None and E.any
+    # a bunker: ~depth down inside, untouched a metre outside, the cut face within ~0.6 m
+    sd = E.bunker_sd(np.c_[np.linspace(194, 210, 33), np.full(33, 114.3)])
+    assert sd.min() < -1.0, sd
+    xs = np.linspace(190, 214, 241)
+    ys = np.full_like(xs, 114.3)
+    h, s = field.column(xs, ys)
+    h0, _ = field._column(xs, ys)
+    dz = h - h0
+    assert dz.min() < -0.5 and np.abs(dz[:20]).max() < 1e-9
+    assert np.abs(np.diff(dz)).max() < 0.2  # (continuous at 0.1 m steps)
+    # the turf lip: some lip points are stepped down by the turf's thickness, the step continuous
+    rng = np.random.default_rng(3)
+    P = np.c_[rng.uniform(150, 300, 20000), rng.uniform(60, 260, 20000), np.zeros(20000)]
+    b, d, edge, top = E.bare(P)
+    assert (b > 0.9).sum() > 50
+    k = np.flatnonzero(b > 0.9)[:200]
+    hz, _ = field.column(P[k, 0], P[k, 1])
+    hr, _ = field._column(P[k, 0], P[k, 1])
+    assert np.allclose(hz - hr, -E.lip_cfg["turf"] * b[k], atol=1e-9)  # (the step: the turf's thickness x bare)
+    assert (hz - hr).min() < -0.9 * E.lip_cfg["turf"]
+    # outside the zone the column is the grid's own
+    far = np.c_[np.full(50, 600.0), np.linspace(380, 420, 50)]
+    assert np.array_equal(field.column(far[:, 0], far[:, 1])[0], field._column(far[:, 0], far[:, 1])[0])
+
+
+def test_kinds_and_swatches(T):
+    field, *_ = terrain_mesh.build_field(T)
+    M = terrain_mesh.Materials(T, field)
+    assert "turf" in M.layers
+    rng = np.random.default_rng(2)
+    xy = np.c_[rng.uniform(150, 600, 20000), rng.uniform(60, 500, 20000)]
+    P = np.c_[xy, field.column(xy[:, 0], xy[:, 1])[0]]
+    k = M.kinds(P)
+    assert (k["cut"] > 0.5).sum() > 50  # (a first cut round the fairways)
+    assert (np.minimum(k["cut"], k["mown"]) > 0.5).sum() == 0
+    for kind in ("turf", "grass"):
+        Sw = terrain_ground.SWATCHES[kind]
+        S = terrain_ground.grass_swatch(seed=Sw["seed"], blades=Sw["blades"] // 4, length=Sw["length"])
+        assert max(terrain_swatch.tileability(S["height"])) <= terrain_swatch.TILE_LIMIT
+    S = terrain_ground.sand_swatch()
+    for a in (S["albedo"][..., 1], S["height"]):
+        assert max(terrain_swatch.tileability(a)) <= terrain_swatch.TILE_LIMIT
+
+
+def test_clutter_lips(T):
+    field, *_ = terrain_mesh.build_field(T)
+    M = terrain_mesh.Materials(T, field)
+    C = terrain_ground.clutter(T, M, field, ("bush", "boulder"), box=[[100, 40], [320, 280]])
+    bush = C[C[:, 3] == 0]
+    b, d, edge, top = field.edits.bare(bush[:, :3])
+    into = np.where(top > 0.3, d - edge, 1e3)
+    assert (into > terrain_ground.CLUTTER_LIP["keep"] - 0.3).all(), into.min()
+    near = into < 3.0
+    if near.any():
+        assert bush[near, 6].max() < 0.8  # (hugging the ground near the lip)
 
 
 if __name__ == "__main__":
@@ -88,4 +152,7 @@ if __name__ == "__main__":
     test_ground_pointwise(T)
     test_grass_swatch_tiles()
     test_clutter(T)
+    test_ground_edits(T)
+    test_kinds_and_swatches(T)
+    test_clutter_lips(T)
     print("ok")
