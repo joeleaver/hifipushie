@@ -325,4 +325,51 @@ def main():
         sim(job, d)
 
 
-main()
+def show(entries: list) -> list:
+    """Garments in the scene (scene.sync): each {"name", "key", "npz" (verts, faces, uv), "color" sRGB hex,
+    "thickness", "roughness"} becomes a mesh object in the collection "cloth" with its pattern uv, a Principled
+    material and a Solidify (the cloth's thickness, outward). Garments no longer in the spec are removed."""
+    coll = bpy.data.collections.get("cloth")
+    if coll is None:
+        coll = bpy.data.collections.new("cloth")
+        bpy.context.scene.collection.children.link(coll)
+    want = {e["name"] for e in entries}
+    for ob in list(coll.objects):
+        if ob.name not in want:
+            bpy.data.objects.remove(ob)
+    made = []
+    for e in entries:
+        old = bpy.data.objects.get(e["name"])
+        if old is not None and old.get("hp_key") == e["key"]:
+            continue
+        if old is not None:
+            bpy.data.objects.remove(old)
+        z = np.load(e["npz"])
+        V, F, UV = z["verts"], z["faces"], z["uv"]
+        me = bpy.data.meshes.new(e["name"])
+        me.from_pydata(V.tolist(), [], F.tolist())
+        me.validate()
+        uvl = me.uv_layers.new(name="pattern")
+        uvl.data.foreach_set("uv", UV[F.ravel()].astype(np.float32).ravel())
+        for poly in me.polygons:
+            poly.use_smooth = True
+        ob = bpy.data.objects.new(e["name"], me)
+        coll.objects.link(ob)
+        ob["hp_key"] = e["key"]
+        sol = ob.modifiers.new("thickness", "SOLIDIFY")
+        sol.thickness = float(e.get("thickness", 0.0008))
+        sol.offset = 1.0
+        mat = bpy.data.materials.new(f"cloth:{e['name']}")
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+        bsdf.inputs["Base Color"].default_value = (*_rgb(e.get("color", "#8fb3d9")), 1.0)
+        bsdf.inputs["Roughness"].default_value = float(e.get("roughness", 0.85))
+        if "Sheen Weight" in bsdf.inputs:
+            bsdf.inputs["Sheen Weight"].default_value = 0.3
+        me.materials.append(mat)
+        made.append(e["name"])
+    return made
+
+
+if __name__ == "__main__":
+    main()

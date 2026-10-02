@@ -1125,6 +1125,131 @@ def sizing(res: dict) -> dict:
     return {"options": opts, "rows": rows}
 
 
+# ---------------------------------------------------------------- the model: scene and export
+
+
+def atlas_uv(M: dict, margin: float = 0.01) -> tuple[np.ndarray, float]:
+    """The flat pattern as the uv: every piece at one scale (texel density the same everywhere), packed in rows
+    (tallest first) into the unit square. Returns (uv (n, 2), metres per uv unit)."""
+    uv, pid = M["uv"], M["piece"]
+    boxes = []
+    for k in range(len(M["names"])):
+        P = uv[pid == k]
+        boxes.append((k, P.min(0), np.ptp(P, 0)))
+    order = sorted(boxes, key=lambda b: -b[2][1])
+    area = sum((b[2][0] + margin) * (b[2][1] + margin) for b in boxes)
+    width = max(math.sqrt(area) * 1.15, max(b[2][0] for b in boxes) + 2 * margin)
+    x = y = margin  # a margin round the atlas too: pieces on its edge bleed under mip/bilinear sampling
+    row_h = 0.0
+    place = {}
+    for k, lo, size in order:
+        if x + size[0] + margin > width:
+            x, y, row_h = margin, y + row_h + margin, 0.0
+        place[k] = (x, y, lo)
+        x += size[0] + margin
+        row_h = max(row_h, size[1])
+    side = max(width, y + row_h + margin)
+    out = np.zeros_like(uv)
+    for k, (x0, y0, lo) in place.items():
+        s = pid == k
+        out[s] = (uv[s] - lo + [x0, y0]) / side
+    return out, side
+
+
+def garments(name: str, spec: dict, log=print) -> list:
+    """Every garment of a model (spec["cloth"]: {name: garment}) sewn and settled on the model's own body (its base:
+    MakeHuman or the template, measured by `tailor`), cached by content."""
+    out = []
+    gs = spec.get("cloth") or {}
+    if not gs:
+        return out
+    src = body_mesh(spec=spec)
+    for gname, g in gs.items():
+        res = build(g, src, f"{name}:{gname}", log=log)
+        log(f"cloth {gname}: {res['fit']['verdict']}")
+        out.append((gname, g, res))
+    return out
+
+
+def scene_job(name: str, spec: dict, log: list | None = None) -> list:
+    """What blender_cloth.show needs per garment: its settled mesh + pattern uv in an npz beside the model."""
+    from . import store
+    say = (log.append if isinstance(log, list) else print)
+    entries = []
+    for gname, g, res in garments(name, spec, say):
+        uv, _ = atlas_uv(res["mesh"])
+        path = store._dir(name) / f"cloth_{gname}.npz"
+        np.savez(path, verts=res["V"].astype(np.float32), faces=res["mesh"]["F"].astype(np.int32),
+                 uv=uv.astype(np.float32))
+        entries.append({"name": f"cloth:{gname}", "key": res["key"], "npz": str(path),
+                        "color": g.get("color", "#8fb3d9"), "thickness": fabric(g).get("thickness", 0.0008),
+                        "roughness": float(g.get("roughness", 0.85))})
+    return entries
+
+
+def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) -> list:
+    """The garments as export parts (as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent, sign) and
+    their maps. Two-sided: the outer face and an inner one a cloth's thickness in (a coat open at the front shows
+    its inside). The uv is the flat pattern (`atlas_uv`); the base colour carries the seams as a slightly darker
+    line (a seam's shadow) so the pattern reads on the model."""
+    from PIL import Image, ImageDraw
+    from . import hair as hairmod
+    out_dir = Path(out_dir)
+    parts = []
+    for gname, g, res in garments(name, spec, log):
+        M, V = res["mesh"], res["V"].astype(np.float64)
+        F = M["F"]
+        uv, side = atlas_uv(M)
+        # vertex normals (area weighted)
+        fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+        vn = np.zeros_like(V)
+        for k in range(3):
+            np.add.at(vn, F[:, k], fn)
+        vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+        # which way is out: away from the body
+        from scipy.spatial import cKDTree as KD
+        body = res["body"]
+        _, ni = KD(body.V).query(V)
+        flip = np.sum(vn * (V - body.V[ni]), 1) < 0
+        if np.mean(flip) > 0.5:
+            F = F[:, [0, 2, 1]]
+            vn = -vn
+        th = float(fabric(g).get("thickness", 0.0008))
+        Vin = V - vn * th
+        Vall = np.r_[V, Vin]
+        Fall = np.r_[F, F[:, [0, 2, 1]] + len(V)]
+        UVall = np.r_[uv, uv]
+        UVc = UVall[Fall.ravel()]  # per corner
+        n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
+        part = {"verts": Vall.astype(np.float32), "corner_vert": Fall.ravel().astype(np.int64),
+                "uv": UVc.astype(np.float32),
+                "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32)}
+        # maps: the colour, seams drawn a little darker, flat normal, ORM (rough cloth)
+        rgb = tuple(int(g.get("color", "#8fb3d9").lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+        img = Image.new("RGB", (texture, texture), rgb)
+        d = ImageDraw.Draw(img)
+        dark = tuple(int(c * 0.8) for c in rgb)
+        border = M["border"]
+        for k in range(len(M["names"])):
+            sel = np.where((M["piece"] == k) & border)[0]
+            if len(sel) < 3:
+                continue
+            ring = uv[sel] * texture
+            ring[:, 1] = texture - ring[:, 1]
+            d.line([tuple(p) for p in ring] + [tuple(ring[0])], fill=dark, width=max(1, texture // 512))
+        files = {"basecolor": out_dir / f"cloth_{gname}_basecolor.png", "orm": out_dir / f"cloth_{gname}_orm.png",
+                 "normal": out_dir / f"cloth_{gname}_normal.png",
+                 "specular": out_dir / f"cloth_{gname}_specular_gltf.png"}
+        img.save(files["basecolor"])
+        rough = int(255 * float(g.get("roughness", 0.85)))
+        Image.new("RGB", (16, 16), (255, rough, 0)).save(files["orm"])
+        Image.new("RGB", (16, 16), (128, 128, 255)).save(files["normal"])
+        Image.new("RGBA", (16, 16), (255, 255, 255, 128)).save(files["specular"])
+        log(f"cloth {gname}: {len(Fall)} triangles (two-sided), pattern uv at {texture / side:.0f} texels/m")
+        parts.append((f"cloth_{gname}", part, files))
+    return parts
+
+
 # ---------------------------------------------------------------- views
 
 
