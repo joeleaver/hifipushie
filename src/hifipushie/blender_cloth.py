@@ -47,8 +47,19 @@ def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, q
         flat[:, :2] = uv
     else:
         flat = uv
-    if fab.get("rest", "placed") == "placed":  # rest lengths from the start positions (placed isometrically)
-        ob = _mesh(name, X, F, edges=sew)
+    shrink = None
+    if fab.get("rest", "placed") == "placed":  # rest lengths from the start positions (placed isometrically),
+        ob = _mesh(name, X, F, edges=sew)    # corrected per vertex toward the flat pattern's (Shrinking group)
+        Fa = np.asarray(F)
+        E = np.r_[Fa[:, [0, 1]], Fa[:, [1, 2]], Fa[:, [2, 0]]]
+        lf = np.linalg.norm(flat[E[:, 0]] - flat[E[:, 1]], axis=1)
+        lx = np.linalg.norm(np.asarray(X)[E[:, 0]] - np.asarray(X)[E[:, 1]], axis=1)
+        num, den = np.zeros(len(X)), np.zeros(len(X))
+        for k in (0, 1):
+            np.add.at(num, E[:, k], lf)
+            np.add.at(den, E[:, k], lx)
+        r = np.where(den > 0, num / np.maximum(den, 1e-12), 1.0)
+        shrink = np.clip(1.0 - r, -0.3, 0.3)
     else:
         ob = _mesh(name, flat, F, edges=sew)
         ob.shape_key_add(name="Basis")
@@ -57,7 +68,7 @@ def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, q
         sk.value = 1.0
         sk.keyframe_insert("value", frame=1)
         sk.value = 0.0
-        sk.keyframe_insert("value", frame=int(fab.get("ease_in", 4)))
+        sk.keyframe_insert("value", frame=int(fab.get("ease_in", 20)))
     vg = ob.vertex_groups.new(name="stiff")
     for i in np.where(stiff > 0)[0]:
         vg.add([int(i)], float(stiff[i]), "REPLACE")
@@ -82,6 +93,14 @@ def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, q
     s.use_sewing_springs = True
     s.sewing_force_max = fab.get("sewing", 8.0)
     s.use_dynamic_mesh = fab.get("rest", "placed") != "placed"
+    if shrink is not None and fab.get("rest_fix") and np.ptp(shrink) > 1e-4:
+        lo, hi = float(shrink.min()), float(shrink.max())
+        sg = ob.vertex_groups.new(name="shrink")
+        wts = (shrink - lo) / (hi - lo)
+        for i in range(len(wts)):
+            sg.add([i], float(wts[i]), "REPLACE")
+        s.vertex_group_shrink = "shrink"
+        s.shrink_min, s.shrink_max = lo, hi
     if len(pins):
         s.vertex_group_mass = "pin"
         s.pin_stiffness = 5.0

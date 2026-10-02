@@ -203,9 +203,14 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     # arms
     ad = el - sh
     ad /= np.linalg.norm(ad)
-    best = max(((girth(L, ad), t, L) for t in np.linspace(0.25, 0.6, 15)
-                if (L := section(V, T, sh + t * (el - sh), ad, sh + t * (el - sh))) is not None),
-               key=lambda q: q[0])
+    # (a section that runs into the torso, a heavy arm against its side, isn't the arm's: left out)
+    arm_r = 0.4 * np.linalg.norm(el - sh)
+    cands = [(girth(L, ad), t, L) for t in np.linspace(0.25, 0.75, 21)
+             if (L := section(V, T, sh + t * (el - sh), ad, sh + t * (el - sh))) is not None
+             and np.max(np.linalg.norm(L - (sh + t * (el - sh)), axis=1)) < arm_r]
+    if not cands:
+        raise ValueError("tailor: every upper-arm section runs into the torso (arms against the body?): no biceps")
+    best = max(cands, key=lambda q: q[0])
     mm["biceps"], loops["biceps"] = best[0], best[2]
     fd = wr - el
     fd /= np.linalg.norm(fd)
@@ -240,6 +245,13 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     mm["hpsToBust"] = length(tape)
     loops["hpsToBust"] = tape
     mm["highBust"] = mm["chest"]
+    # front and back lengths from hps down to the seat over the surface, a hand's width from centre: a belly makes
+    # the front longer than the back (patterns draft them equal: the large-abdomen alteration adds the difference)
+    zs_ = at["seat_z"]
+    tf = down(zs_, hps[0], 0.06, -1)
+    tb = down(zs_, hps[0], 0.06, 1)
+    mm["hpsToSeatFront"], mm["hpsToSeatBack"] = length(tf), length(tb)
+    loops["hpsToSeatFront"], loops["hpsToSeatBack"] = tf, tb
     zmin = float(V[:, 2].min())
     mm["waistToArmpit"] = arm_z - W
     mm["waistToHips"] = W - zh
