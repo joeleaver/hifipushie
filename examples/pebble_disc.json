@@ -11845,7 +11845,7 @@
    "type": "rough",
    "in": "land",
    "density": 0.8,
-   "color": "#6f8a45"
+   "color": "#64803c"
   },
   "coastal_scrub": {
    "type": "scrub",
@@ -11877,7 +11877,7 @@
    "type": "mown",
    "in": "fairways",
    "density": 1.0,
-   "color": "#4f8a3a"
+   "color": "#3f7a2e"
   },
   "bunkers": {
    "type": "bunker",

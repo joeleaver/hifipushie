@@ -7,6 +7,7 @@ import json
 import sys
 
 import bpy
+from mathutils import Matrix
 import numpy as np
 from mathutils import Vector
 
@@ -211,20 +212,27 @@ def _clutter_proto(kind):
             bpy.context.object.scale = (1.0, 1.0, 0.75)
             parts.append(bpy.context.object)
         mat = _mat("bush", (0.045, 0.06, 0.03, 1), 0.9)
-    elif kind == "tussock":
-        import random
+    elif kind == "tussock":  # blades fanning OUT from one root (turned about their base: about their middle they
+        import random       # crossed into teepees)
         rnd = random.Random(3)
-        for i in range(9):
-            a = i / 9 * 6.283
-            bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.035, depth=0.5, location=(0, 0, 0.22))
+        for i in range(14):
+            a = i / 14 * 6.283 + rnd.uniform(-0.2, 0.2)
+            h = rnd.uniform(0.35, 0.6)
+            bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.03, depth=h, location=(0, 0, 0))
             o = bpy.context.object
-            o.rotation_euler = (0.35 * math.cos(a) * rnd.uniform(0.5, 1.2), 0.35 * math.sin(a) * rnd.uniform(0.5, 1.2), a)
+            o.data.transform(Matrix.Translation((0, 0, h / 2)))
+            o.rotation_euler = (0.55 * math.sin(a) * rnd.uniform(0.6, 1.3), -0.55 * math.cos(a) * rnd.uniform(0.6, 1.3),
+                                a)
             parts.append(o)
-        mat = _mat("tussock", (0.13, 0.15, 0.05, 1), 0.9)
-    else:  # boulder
-        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.5, location=(0, 0, 0.15))
+        mat = _mat("tussock", (0.07, 0.10, 0.03, 1), 0.9)
+    else:  # boulder: a smooth, flattened, irregular lump
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.5, location=(0, 0, 0.12))
         o = bpy.context.object
-        o.scale = (1.2, 0.9, 0.6)
+        import random
+        rnd = random.Random(5)
+        for vtx in o.data.vertices:
+            vtx.co *= 1 + 0.18 * rnd.uniform(-1, 1)
+        o.scale = (1.25, 0.95, 0.55)
         parts.append(o)
         mat = _mat("boulder", (0.11, 0.105, 0.095, 1), 0.85)
     for p_ in parts:

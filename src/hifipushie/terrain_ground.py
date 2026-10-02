@@ -147,7 +147,8 @@ class Ground:
         shore = np.zeros(len(P))
         if self.sea is not None:
             sh = SHORE + 1.6 * (noise.fbm(P * np.array([1.0, 1.0, 0.0]), 6.0, 2, seed=613) - 0.5)
-            shore = _ss(self.sea + sh + 0.4, self.sea + sh - 0.4, P[:, 2])
+            # (above the water: the seabed stays sand)
+            shore = _ss(self.sea + sh + 0.4, self.sea + sh - 0.4, P[:, 2]) * _ss(self.sea - 0.4, self.sea - 0.1, P[:, 2])
             if self.sea_d is not None:  # (only by the sea, not a low inland hollow)
                 shore = shore * _ss(40.0, 15.0, self._at(mats, self.sea_d, xy))
             rock = np.maximum(rock, shore)
@@ -160,7 +161,8 @@ class Ground:
         sl = self._at(mats, self.slope, P[:, :2])
         sc = np.clip(scrub + natural * _ss(20.0, 36.0, sl) * 0.8 * (0.4 + 0.6 * noise.fbm(Pf, 30.0, 2, seed=626)),
                      0, 1)
-        return sc, _ss(0.42, 0.55, noise.fbm(Pf, 2.4, 3, seed=627))
+        # (patches of 3-8 m holding several bushes: one bush per 2 m noise blob read as rubble from 150 m)
+        return sc, _ss(0.45, 0.56, noise.fbm(Pf, 5.0, 3, seed=627))
 
     def tint(self, mats, P, N, c, kinds, mown_dirs):
         """The ground colour c (sRGB, the cover's own) varied by situation and kind. kinds: {"mown"|"rough"|"scrub":
@@ -318,8 +320,8 @@ GRASS_FADE = (20.0, 70.0)  # m: the grass detail fades out with the view distanc
 # ---------------------------------------------------------------- ground clutter (placeholder instances)
 
 CLUTTER = {  # kind: (grid spacing m, what decides it) -- jittered grid samples kept by probability
-    "bush": 1.8,      # coastal scrub / heath clumps, 0.5-1.4 m: in scrub, on its clumps (the maps' dark clumps)
-    "tussock": 0.9,   # long-grass tussocks, 0.3-0.6 m: in rough grass, off scrub
+    "bush": 1.3,      # coastal scrub / heath clumps, 0.5-1.4 m: in scrub, on its clumps (the maps' dark clumps)
+    "tussock": 0.7,   # long-grass tussocks, 0.3-0.6 m: in rough grass, off scrub
     "boulder": 1.6,   # rocks 0.3-1.5 m: along the shore's splash zone and where rock breaks through near a lip
 }
 
@@ -367,13 +369,15 @@ def clutter(T, mats, field, kinds=("bush", "boulder"), box=None, near=None, seed
         if kind == "bush":
             sc, clump = mats.ground.scrub(mats, P, kd.get("scrub", 0.0), np.clip(kd.get("rough", 0.0) +
                                                                                  kd.get("scrub", 0.0), 0, 1))
-            p = sc * clump * 0.85
+            p = sc * clump * 0.9
         elif kind == "tussock":
             sc, _ = mats.ground.scrub(mats, P, kd.get("scrub", 0.0), kd.get("rough", 0.0))
-            p = np.clip(kd.get("rough", 0.0), 0, 1) * (1 - sc) * 0.45
-        else:
+            p = np.clip(kd.get("rough", 0.0), 0, 1) * (1 - sc) * 0.6
+        else:  # (on the ground the maps make rock: never on a beach's sand)
             rock, _, shore, _ = mats.ground.rock(mats, P, N)
-            p = shore * 0.35 + np.clip(rock - shore, 0, 1) * 0.12
+            Wl, _ = mats.weights(P, N)
+            wr = sum(Wl[:, mats.layers.index(k)] for k in ("rock", "wet_rock") if k in mats.layers)
+            p = np.clip(wr, 0, 1) * (shore * 0.35 + np.clip(rock - shore, 0, 1) * 0.12)
         keep = u < p
         n = int(keep.sum())
         if n:

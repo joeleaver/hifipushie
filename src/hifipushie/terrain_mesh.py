@@ -370,7 +370,9 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
                     zc = floor + 0.75 * height  # (rocks awash in front of a mouth don't close it)
                     blocked = sum(_daylight_back(T, c + t * sg * (s_ + 2.0), t * sg, zc, 60.0) is not None
                                   for sg, s_ in ((1, s1), (-1, s2)))
-                    score = (s1 + s2) / height + 0.01 * float(np.linalg.norm(c - at)) + 1.5 * blocked
+                    # (and big enough to read: 6 m / height; daylight through it weighs more than its length, since
+                    # the neck cut makes a long one a fin anyway)
+                    score = (s1 + s2) / height + 0.01 * float(np.linalg.norm(c - at)) + 3.0 * blocked + 6.0 / height
                     if best is None or score < best[0]:
                         best = (score, c, t, s1, s2, top, height, w)
             if best is None:
