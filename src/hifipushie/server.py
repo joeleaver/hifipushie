@@ -65,6 +65,8 @@ or tentacle) are joined among themselves first, with a small "join" blend (0 = h
 radius rounds a bend without bulging), then blended into the body once: chains of fully blended
 segments otherwise bulge at every joint.
 
+Realistic humans: start from spec["base"] (a MakeHuman body + a GNM head, shaped by parameters), not from blobs
+and kits; guide section 4d. The skeleton-and-blobs approach below is for creatures, cartoons and props.
 Kits: prefer them to hand-placing fingers and facial features. {"type": "hand", "wrist": "wrist.L"} under
 "hand.L" makes a mirrored hand (fingers, spread, curl, thumb). A "face" kit on the head joint places eyes
 with lids, brows, nose, lips and cheeks by rough position and seats each onto the head's actual surface,

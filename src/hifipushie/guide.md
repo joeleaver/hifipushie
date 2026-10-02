@@ -111,6 +111,21 @@ addressed on the surface. Rules that matter:
   "lift": -0.003, "r": 0.0065}` for a tusk's root, and the same address with `"shift": [dx,dy,dz]` for its
   tip. They follow the surface when the face or body changes.
 
+## 4d. Realistic humans start from a base, not blobs
+
+When the subject is a realistic human (or stylised-realist: near-real proportions), don't build the body from joints,
+blobs and the face/hand kits. Start from `spec["base"]`: a MakeHuman body (CC0, parametric age / weight / muscle /
+height) with a Google GNM head (realistic faces, identity and expression components), e.g.
+
+    "base": {"body": {"source": "makehuman", "age": 45, "weight": 0.72, "muscle": 0.3, "height": 1.78},
+             "head": {"source": "gnm", "scale": 1.12}, "eyes": "eyes"}
+
+Then shape it with parameters, not sculpting: body macros, `base.head.fit` / `regions` / `pose` / `shape`, a style
+sheet (`style.sheet`), garments, hair locks. The less hand-editing, the less margin for error. Worked example:
+`examples/disc_golfer_mh.json` (resolved) / `disc_golfer_style.json` (on a sheet). Blobs, anatomy and kits remain the
+way to build creatures, cartoons and anything a parametric human can't reach. `check` warns when a spec looks
+humanoid but has no base.
+
 ## 4c. Hair: curve locks, big to small, the way an artist grooms
 
 Hair isn't part of the field. Each lock is a Bezier curve in the Blender scene with a Geometry Nodes sweep: a cupped

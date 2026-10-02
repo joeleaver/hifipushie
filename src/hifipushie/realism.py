@@ -71,10 +71,26 @@ def summary(spec: dict) -> str:
     return "story: " + "; ".join(b for b in bits if b)
 
 
+def looks_humanoid(spec: dict) -> bool:
+    """A biped with a head, arms and legs (by joint names), or a face kit plus a hand kit."""
+    kits = {k.get("type") for k in (spec.get("kits") or {}).values() if isinstance(k, dict)}
+    if {"face", "hand"} <= kits:
+        return True
+    names = " ".join(spec.get("joints") or {}).lower()
+    has = lambda *ws: any(w in names for w in ws)  # noqa: E731
+    return has("head") and has("shoulder", "clavicle", "upperarm", "arm") and has("hip", "thigh", "knee") and \
+        has("pelvis", "hips", "spine", "chest")
+
+
 def audit(spec: dict) -> list[str]:
     """Warnings about perfection, most important first."""
     from .assemble import expand as assemble
     out = []
+    if looks_humanoid(spec) and not spec.get("base"):
+        out.append("HUMANOID WITHOUT A BASE: a realistic human starts from spec['base'] (body {'source': "
+                   "'makehuman', age/weight/muscle/height} + head {'source': 'gnm'}), not hand-built blobs and "
+                   "kits: parametric bodies and faces need far less hand-fixing (guide 4d). Blobs and kits are "
+                   "for creatures and cartoons; ignore this if that's what this is")
     st = spec.get("story")
     if not st:
         out.append("NO STORY: write spec['story'] (age, climate, use, directions, events) and let every "

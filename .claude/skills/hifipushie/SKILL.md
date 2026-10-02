@@ -7,6 +7,9 @@ description: Model characters and creatures with the hifipushie MCP server (skel
 
 Call the hifipushie `guide` tool first and follow it: it is the full playbook. The essentials:
 
+0. **Realistic humans start from `spec["base"]`** (MakeHuman body + GNM head, shaped by parameters: guide 4d),
+   never from blobs and kits. The blob/kit route below is for creatures, cartoons and props.
+
 1. **Stages, with `check` after each:** plan (`set_plan`: front/side outlines, landmarks, sections) →
    blockout (`put_model`, kits, `fit` against the plan) → secondary forms (strokes) → detail
    (strokes with repeat/scatter, in close-ups). Fix proportions in the plan, where it's cheap.
