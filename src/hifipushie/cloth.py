@@ -1413,10 +1413,17 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
     ang = np.degrees(np.arccos(np.clip(np.sum(n[t1] * n[t2], 1), -1, 1)))
     inner = ~M["border"]
     hi = taubin(V, M, 3)
-    d_hi = np.linalg.norm(V - hi, axis=1)[inner]
     h = float(np.median(np.linalg.norm(V[F[:, 0]] - V[F[:, 1]], axis=1)))
-    lo = taubin(V, M, int(np.clip(round((0.15 / max(h, 1e-3)) ** 2 / 4), 10, 300)), lam=0.6, mu=-0.61)
-    d_lo = np.linalg.norm(V - lo, axis=1)[inner]
+    lo = taubin(V, M, int(np.clip(round((0.15 / (0.7 * max(h, 1e-3))) ** 2), 10, 600)), lam=0.5, mu=0.0)  # plain Laplacian: removes the folds too (Taubin would keep them)
+    # along the smoothed surface's normal only: plain smoothing also slides the cloth in its own plane (open edges
+    # pull in), which isn't a fold
+    fl = np.cross(lo[F[:, 1]] - lo[F[:, 0]], lo[F[:, 2]] - lo[F[:, 0]])
+    vn = np.zeros_like(lo)
+    for k in range(3):
+        np.add.at(vn, F[:, k], fl)
+    vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+    d_lo = np.abs(np.sum((V - lo) * vn, 1))[inner]
+    d_hi = np.abs(np.sum((V - hi) * vn, 1))[inner]
     return {"crinkle_deg": round(float(np.median(ang)), 2), "crinkle_p90_deg": round(float(np.percentile(ang, 90)), 1),
             "crinkle_mm": round(float(np.sqrt(np.mean(d_hi ** 2)) * 1000), 2),
             "folds_mm": round(float(np.sqrt(np.mean(d_lo ** 2)) * 1000), 1)}
