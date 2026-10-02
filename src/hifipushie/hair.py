@@ -452,9 +452,18 @@ def _envelope(sc: Scalp, g: dict, line, az, el):
     vs = float(vol["sides"])
     # volume.across: how much of the dome's height is gone over the upper sides (0.65: a crest down the middle; less, a
     # broad flat top like a side-swept cut's, where the top outline in the front view is a wide curve, not a peak)
-    dome = vs + (dome - vs) * (1 - float(vol.get("across", 0.65)) * _ss((np.abs(P[..., 0]) - 0.02) / 0.06))
+    # volume.crest: where across the head (x, m, his left +) the top's crest runs: a quiff swept off a side part is
+    # highest just across the part and falls away toward the swept side (0: down the middle)
+    dome = vs + (dome - vs) * (1 - float(vol.get("across", 0.65))
+                               * _ss((np.abs(P[..., 0] - sc.C[0] - float(vol.get("crest", 0.0))) - 0.02) / 0.06))
     topw = W[..., 0] + W[..., 1]
     side = W[..., 2] * float(vol["sides"]) + W[..., 3] * float(vol["back"]) + W[..., 4] * float(vol["nape"])
+    tp = vol.get("taper")
+    if tp:  # volume.taper {"from": el, "to": el, "floor": f}: sides and back full down to elevation `from` (deg),
+        # easing to `floor` x their volume at `to`: short tapered sides and back under a full top (a back as full at
+        # the nape as at the occiput reads as a bucket)
+        e0, e1, fl = float(tp.get("from", 30.0)), float(tp.get("to", -15.0)), float(tp.get("floor", 0.35))
+        side = side * (fl + (1 - fl) * _ss((np.asarray(el, float) - e1) / max(e0 - e1, 1e-6)))
     v = topw * dome + side
     xp = _part_x(g)
     if xp is not None:  # the combed-away side is fuller; the part side lies flatter
@@ -1508,9 +1517,11 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
     sc = scalp(name, spec)
     cams = cameras(sc, views)
     frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
-    rc = ref_camera(name)
-    if rc:  # the reference's own camera (fit_camera): compared with the reference pixel for pixel
-        frames.append({"name": "matched", "eye": rc["eye"], "dir": rc["dir"], "up": rc["up"], "fov": rc["fov"],
+    rvs = ref_views(name)
+    mnames = ["matched" if v == "matched" else f"matched_{v}" for v, _, _ in rvs]
+    for fname, (v, rc, _) in zip(mnames, rvs):  # the reference's own cameras (fit_camera): compared with the
+        # reference pixel for pixel
+        frames.append({"name": fname, "eye": rc["eye"], "dir": rc["dir"], "up": rc["up"], "fov": rc["fov"],
                        "shift": rc["shift"], "center": sc.C.tolist(), "near": 0.01, "scale": None, "axes": None})
     thumb = render.camera_frame({"name": "thumb", "eye": (sc.C + dirs(25.0, 8.0) * 1.6).tolist(),
                                  "target": (sc.C - [0, 0, 0.12]).tolist(), "fov": 30.0}, len(frames))
@@ -1525,12 +1536,12 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
              "samples": 16, "dump": dump, "clay_views": cf, "id_views": idf}
         out = _blender(j)
         clays = [Image.open(f["out"]).convert("RGB") for f in cf]
-        look.mass_share, look.lit_mass = {}, {}
+        look.mass_share, look.lit_mass, masks = {}, {}, {}
         for f, fm in zip(idf, frames):  # red = the underlayer, green = locks (flat emission, nothing else drawn)
             a = np.asarray(Image.open(f["out"]).convert("RGB"), float)
             red, green = a[..., 0] > a[..., 1] + 60, a[..., 1] > a[..., 0] + 60
-            if f["name"] == "matched":
-                look.matched_mask = red | green
+            if f["name"] in mnames:
+                masks[f["name"]] = red | green
             look.mass_share[f["name"]] = round(float(red.sum() / max(red.sum() + green.sum(), 1)), 3)
             # lit bare volume: where the volume shows AND is shaded like the locks around it (not a crevice or a
             # parting in shadow): the smooth patch the eye reads as a helmet
@@ -1548,13 +1559,17 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t
     W = size
-    matched = mclay = None
-    if rc:  # its own row: matched render, clay, reference, 50% blend, the traced lines
-        matched = imgs.pop()
-        mclay = clays.pop() if clays else None
-        frames = frames[:-1]
-    cols = max(len(imgs) + 1, 5 if matched is not None else 0)
-    rows = (2 if clays else 1) + (1 if matched is not None else 0)
+    nm = len(rvs)
+    matched, mclay = [], []
+    if nm:  # a row each: matched render, clay, reference, 50% blend, the traced lines
+        matched = imgs[len(imgs) - nm:]
+        imgs = imgs[:len(imgs) - nm]
+        if clays:
+            mclay = clays[len(clays) - nm:]
+            clays = clays[:len(clays) - nm]
+        frames = frames[:len(frames) - nm]
+    cols = max(len(imgs) + 1, 5 if nm else 0)
+    rows = (2 if clays else 1) + nm
     sheet = Image.new("RGB", (W * cols, rows * W + 22), (30, 31, 35))
     dr = ImageDraw.Draw(sheet)
     for i, (im, f) in enumerate(zip(imgs, frames)):
@@ -1574,24 +1589,26 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         dr.text((x0 + 6, 5), "reference", fill=(220, 220, 220))
     sheet.paste(th, (x0 + 6, W + 22 - th.height - 4))
     dr.text((x0 + 170, W + 22 - 20), f"thumbnail {th.width}px", fill=(200, 200, 200))
-    look.fit = fit_metrics(name, sc, rc, spec, getattr(look, "matched_mask", None)) if rc else None
+    look.fits = {v: fit_metrics(name, sc, rc, spec, masks.get(fn), tr=t)
+                 for fn, (v, rc, t) in zip(mnames, rvs)}
+    look.fit = look.fits.get("matched")
     if look.fit:
         f = look.fit
         caption = (caption + "   " if caption else "") + "fit: " + ", ".join(
-            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "mm_per_px"))
-    if matched is not None:
-        y = (rows - 1) * W + 22
-        rimg, _ = reference_image(name, None)
-        mr = matched.resize((W, W))
-        panels = [("matched camera", mr)]
+            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "mm_per_px", "regions"))
+    for j, (fn, (v, rc, t)) in enumerate(zip(mnames, rvs)):
+        y = (rows - nm + j) * W + 22
+        rimg = Path(t["image"]) if t.get("image") and Path(t["image"]).exists() else None
+        mr = matched[j].resize((W, W))
+        panels = [(f"matched camera ({v})", mr)]
         if rimg is not None:
             refc = Image.open(rimg).convert("RGB").crop(tuple(rc["crop"])).resize((W, W))
             panels += [("reference", refc), ("50% blend", Image.blend(mr, refc, 0.5))]
-        if mclay is not None:
-            panels.insert(1, ("matched clay", mclay.resize((W, W))))
-        tr = trace_overlay(name, sc, rc, mr, spec)
-        if tr is not None:
-            panels.append(("trace: ref yellow, model cyan", tr))
+        if mclay:
+            panels.insert(1, ("matched clay", mclay[j].resize((W, W))))
+        tro = trace_overlay(name, sc, rc, mr, spec, tr=t, mask=masks.get(fn))
+        if tro is not None:
+            panels.append(("trace: ref yellow/orange, ours cyan/magenta", tro))
         for i, (lab, im) in enumerate(panels[:cols]):
             sheet.paste(im, (i * W, y))
             dr.text((i * W + 6, y + 4), lab, fill=(255, 255, 120))
@@ -2123,7 +2140,8 @@ def _rotvec(r):
     return Rotation.from_rotvec(r).as_matrix()
 
 
-def fit_camera(name: str, points: dict, image_size, crop, spec: dict | None = None) -> dict:
+def fit_camera(name: str, points: dict, image_size, crop, spec: dict | None = None, view: str = "matched",
+               save: bool = True, focal: float | None = None) -> dict:
     """A camera matching the reference image, fitted on face landmarks: points = {lm joint name: [u, v]} in the
     reference's pixels (u right, v down), image_size = [w, h], crop = [x0, y0, x1, y1] (the square the views show).
     Pinhole, principal point at the image centre; solves pose + focal by least squares from a frontal start. Saves
@@ -2147,8 +2165,15 @@ def fit_camera(name: str, points: dict, image_size, crop, spec: dict | None = No
     p0 = np.r_[0, 0, 0, 0, 0, 1.0, 2000.0]
     uc = uv.mean(0)
     p0[3], p0[4] = (uc[0] - cx) / p0[6] * p0[5], (uc[1] - cy) / p0[6] * p0[5]
-    r = least_squares(lambda p: (project(p) - uv).ravel(), p0, x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500])
-    p = r.x
+    if focal:  # another figure in the same picture: the same lens (a free focal ran off to infinity, orthographic)
+        p0[6] = float(focal)
+        p0[3], p0[4] = (uc[0] - cx) / p0[6] * p0[5], (uc[1] - cy) / p0[6] * p0[5]
+        r = least_squares(lambda q: (project(np.r_[q, focal]) - uv).ravel(), p0[:6],
+                          x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3])
+        p = np.r_[r.x, focal]
+    else:
+        r = least_squares(lambda p: (project(p) - uv).ravel(), p0, x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500])
+        p = r.x
     err = np.linalg.norm(project(p) - uv, axis=1)
     R = _rotvec(p[:3]) @ B
     eye = ctr - R.T @ p[3:6]  # camera centre in world
@@ -2159,17 +2184,32 @@ def fit_camera(name: str, points: dict, image_size, crop, spec: dict | None = No
     fov = float(np.degrees(2 * np.arctan(side / 2 / p[6])))
     # the crop's centre off the principal point: Blender's lens shift, in units of the frame's larger side
     shift = [float(((x0 + x1) / 2 - cx) / side), float(-((y0 + y1) / 2 - cy) / side)]
-    cam = {"name": "matched", "eye": eye.tolist(), "dir": (-fwd).tolist(), "up": up.tolist(), "fov": fov,
+    cam = {"name": view, "eye": eye.tolist(), "dir": (-fwd).tolist(), "up": up.tolist(), "fov": fov,
            "shift": shift, "crop": list(crop), "image_size": list(image_size), "focal_px": float(p[6]),
            "R": R.tolist(), "t": p[3:6].tolist(), "ctr": ctr.tolist(),
            "error_px": {n: round(float(e), 1) for n, e in zip(names, err)}}
-    (store._dir(name) / "ref_camera.json").write_text(json.dumps(cam, indent=1))
+    if save:
+        (store._dir(name) / "ref_camera.json").write_text(json.dumps(cam, indent=1))
     return cam
 
 
 def ref_camera(name: str) -> dict | None:
     f = store._dir(name) / "ref_camera.json"
     return json.loads(f.read_text()) if f.exists() else None
+
+
+def ref_views(name: str) -> list:
+    """Every matched view as (view, camera, trace): the primary ("matched": ref_camera.json, ref_trace.json) then each
+    of the trace's "views" (another figure in the same picture, or another picture: a turnaround's side or back),
+    whose cameras live in ref_cameras.json. A view's trace inherits "image" from the main trace."""
+    tr, cam = ref_trace(name), ref_camera(name)
+    out = [("matched", cam, tr)] if (tr is not None and cam is not None) else []
+    f = store._dir(name) / "ref_cameras.json"
+    cams = json.loads(f.read_text()) if f.exists() else {}
+    for v, t in ((tr or {}).get("views") or {}).items():
+        if v in cams:
+            out.append((v, cams[v], {"image": tr.get("image"), **t}))
+    return out
 
 
 def project_ref(cam: dict, P):
@@ -2265,11 +2305,12 @@ def model_lines(name: str, sc: Scalp, cam: dict, spec: dict) -> dict:
     return out
 
 
-def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None) -> dict:
+def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None, tr: dict | None = None) -> dict:
     """The groom against the traced reference in the matched view (reference pixels, and mm at the head's depth):
     part start (px) and direction (deg) error, hairline mean/max distance, hair silhouette IoU + mean boundary
-    distance (from the matched id pass), each traced clump's direction error against the nearest drawn clump."""
-    tr = ref_trace(name)
+    distance (from the matched id pass), the outline per head region (`outline_regions`), the hair's top over the
+    brows, each traced clump's direction error against the nearest drawn clump."""
+    tr = ref_trace(name) if tr is None else tr
     if tr is None:
         return {}
     ml = model_lines(name, sc, cam, spec)
@@ -2305,6 +2346,10 @@ def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None) -> 
             d1 = distance_transform_edt(~bM)[bR]
             d2 = distance_transform_edt(~bR)[bM]
             out["outline_px"] = [round(float(np.r_[d1, d2].mean() * s), 1), round(float(max(d1.max(), d2.max()) * s), 1)]
+        reg, brow = outline_regions(sc, cam, spec, R, M, tr, s * mm)
+        out["regions"] = reg
+        if brow:
+            out["over_brow_mm"] = brow
     if tr.get("clumps") and ml["clumps"]:
         errs = {}
         for c in tr["clumps"]:
@@ -2326,14 +2371,111 @@ def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None) -> 
     return out
 
 
-def trace_overlay(name: str, sc: Scalp, cam: dict, img, spec: dict):
-    """The matched render with the traced reference lines (yellow) and the groom's own (cyan)."""
-    from PIL import ImageDraw
-    tr = ref_trace(name)
+REGION_NAMES = ("front", "top", "side.L", "side.R", "back.L", "back.R", "back")
+
+
+def region_of(az, el):
+    """The head region a point on the hair is in, by where it sits round the centre: top (el >= 55), else front
+    (within 45 deg of the face), side (45-110 deg round: his left .L is az > 0), back.L / back.R (110-160), back."""
+    fa = np.abs(((np.asarray(az, float) + 180) % 360) - 180)
+    lr = np.where(((np.asarray(az, float) + 180) % 360) - 180 > 0, ".L", ".R")
+    reg = np.where(fa < 45, "front", np.where(fa < 110, "side", np.where(fa < 160, "back", "back_")))
+    reg = np.where(reg == "back_", "back", np.char.add(reg, np.where(reg == "front", "", lr)))
+    return np.where(np.asarray(el) >= 55, "top", reg)
+
+
+OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from the head centre this far apart
+
+
+def outline_regions(sc: Scalp, cam: dict, spec: dict, R, M, tr: dict, mm_px: float):
+    """The hair outline in a matched view per head region, in mm at the head's depth. Rays from the head centre's
+    image every OUTLINE_STEP deg (above clip_y); on each: the reference outline (outermost traced hair), ours
+    (outermost hair in the id pass) and the bare head's (the scalp without hair, projected). Each ray is labelled by
+    the region (`region_of`) of the groom volume's point that makes the outline there. Per region:
+    "err" = ours - reference (mean over its rays; + = ours sticks out further), "worst" (signed, largest |err|),
+    "ref_hair" / "our_hair" = how far each outline stands outside the bare head (the hair's thickness the view
+    shows: negative ref_hair = the bare head is already outside the reference there, which hair can't fix),
+    "rays". Also the hair's top over the brows (mm along the image's vertical, between the brows): [reference, ours]."""
+    g = groom_params(spec)
+    line = hairline(sc, g)
+    Wm = R.shape[0]
+    c = _to_crop(cam, project_ref(cam, sc.C[None])[0][None], Wm)[0]
+    AA, EE = np.meshgrid(np.arange(0.0, 360.0, 2.0), np.arange(-40.0, 90.0, 1.5), indexing="ij")
+    Hh, d_in = envelope(sc, g, line, AA, EE)
+    hair = d_in > 0
+
+    def polar(P):
+        q = _to_crop(cam, project_ref(cam, P), Wm) - c
+        return np.degrees(np.arctan2(q[..., 0], -q[..., 1])) % 360, np.hypot(q[..., 0], q[..., 1])
+    th_v, r_v = polar(sc.point(AA, EE, Hh)[hair])
+    th_s, r_s = polar(sc.point(AA, EE, 0.0).reshape(-1, 3))
+    az_v, el_v = AA[hair], EE[hair]
+    x0, y0, x1, y1 = cam["crop"]
+    cy = (tr["clip_y"] - y0) * Wm / max(x1 - x0, y1 - y0) if tr.get("clip_y") is not None else Wm
+    rr = np.arange(0.0, 1.5 * Wm, 0.5)
+    rows = {}
+    for th in np.arange(0.0, 360.0, OUTLINE_STEP):
+        t = np.radians(th)
+        u, v = c[0] + rr * np.sin(t), c[1] - rr * np.cos(t)
+        ok = (u >= 0) & (u < Wm) & (v >= 0) & (v < min(Wm, cy))
+        if ok.sum() < 2:
+            continue
+        iu, iv = u[ok].astype(int), v[ok].astype(int)
+        inR, inM = R[iv, iu], M[iv, iu]
+        if not inR.any():
+            continue
+        r_ref = rr[ok][inR].max()
+        if v[ok][inR][np.argmax(rr[ok][inR])] > cy - 4:  # the clip line, not an outline
+            continue
+        r_mod = rr[ok][inM].max() if inM.any() else 0.0
+        near = np.abs(((th_v - th + 180) % 360) - 180) < OUTLINE_STEP
+        nears = np.abs(((th_s - th + 180) % 360) - 180) < OUTLINE_STEP
+        if not near.any() or not nears.any():
+            continue
+        k = np.argmax(np.where(near, r_v, -1))
+        reg = str(region_of(az_v[k], el_v[k]))
+        r_sc = r_s[nears].max()
+        rows.setdefault(reg, []).append((r_mod - r_ref, r_ref - r_sc, r_mod - r_sc))
+    out = {}
+    for reg in REGION_NAMES:
+        if reg not in rows:
+            continue
+        a = np.asarray(rows[reg]) * mm_px
+        out[reg] = {"err": round(float(a[:, 0].mean()), 1), "worst": round(float(a[np.argmax(np.abs(a[:, 0])), 0]), 1),
+                    "ref_hair": round(float(a[:, 1].mean()), 1), "our_hair": round(float(a[:, 2].mean()), 1),
+                    "rays": len(a)}
+    brow = None
+    lms = tr.get("landmarks") or {}
+    if "lm_brow_mid.L" in sc.lm and "lm_brow_mid.R" in sc.lm:
+        bm = _to_crop(cam, project_ref(cam, np.array([sc.lm["lm_brow_mid.L"], sc.lm["lm_brow_mid.R"]])), Wm)
+        br = _to_crop(cam, [lms[k] for k in ("lm_brow_mid.L", "lm_brow_mid.R")], Wm) \
+            if all(k in lms for k in ("lm_brow_mid.L", "lm_brow_mid.R")) else bm
+        lo, hi = int(max(0, min(bm[:, 0].min(), br[:, 0].min()))), int(min(Wm, max(bm[:, 0].max(), br[:, 0].max())) + 1)
+
+        def top(mask):
+            cols = mask[:, lo:hi]
+            rws = np.where(cols.any(1))[0]
+            return float(rws.min()) if len(rws) else np.nan
+        brow = [round(float((br[:, 1].mean() - top(R)) * mm_px), 1), round(float((bm[:, 1].mean() - top(M)) * mm_px), 1)]
+    return out, brow
+
+
+def trace_overlay(name: str, sc: Scalp, cam: dict, img, spec: dict, tr: dict | None = None, mask=None):
+    """The matched render with the traced reference lines (yellow, the hair outline orange) and the groom's own
+    (cyan); `mask` (the matched id pass's hair) adds our hair's outline in magenta."""
+    from PIL import Image, ImageDraw
+    tr = ref_trace(name) if tr is None else tr
     if tr is None:
         return None
     W = img.width
     im = img.copy()
+    if mask is not None:
+        from scipy.ndimage import binary_erosion
+        m = np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize((W, W))) > 127
+        edge = m & ~binary_erosion(m, iterations=2)
+        a = np.asarray(im).copy()
+        a[edge] = (255, 60, 230)
+        im = Image.fromarray(a)
     dr = ImageDraw.Draw(im)
     ml = model_lines(name, sc, cam, spec)
 

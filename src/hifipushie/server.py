@@ -1055,7 +1055,10 @@ HAIR_TRACE = """A trace is reference-image pixels (u right, v down) of the pictu
    end back), "hairline": [[u, v], ...] (temple to temple across the forehead), "hair": [[u, v], ...] (closed outline of
    the visible hair above clip_y), "clip_y": v (below it ear, sideburn and beard aren't traced), "clumps": [{"name",
    "line": [[u, v], ...] root -> tip along the strands, "width": px across the clump}], "crop"?: [x0, y0, x1, y1] (the
-   square the matched views show; default: round the hair and landmarks)}.
+   square the matched views show; default: round the hair and landmarks), "views"?: {name: {the same keys for
+   another view of the character: another figure in the same picture (same lens), or a turnaround's side/back with
+   its own "image"; landmarks, hair, hairline, clip_y and crop needed}}}. Every view gets its own matched row and
+   outline numbers in look_hair.
 Clump names: one starting "part_side" is the short clump falling from the part toward the near ear; one whose root is
 across the head from the part is the sweep's fall down the far side; the rest are the rows sweeping from the part,
 front first."""
@@ -1092,10 +1095,18 @@ def _hair_gates(look) -> str:
     lm = getattr(look, "lit_mass", None) or {}
     if lm:
         lines.append("lit bare volume (reads as a helmet, < 0.03): " + ", ".join(f"{v} {x}" for v, x in lm.items()))
-    f = getattr(look, "fit", None)
-    if f:
-        lines.append("against the traced reference (matched camera): " + ", ".join(
-            f"{k} {v}" for k, v in f.items() if k not in ("clumps",)))
+    fits = getattr(look, "fits", None) or ({"matched": look.fit} if getattr(look, "fit", None) else {})
+    for view, f in fits.items():
+        if not f:
+            continue
+        lines.append(f"against the traced reference ({view} camera): " + ", ".join(
+            f"{k} {v}" for k, v in f.items() if k not in ("clumps", "regions")))
+        if f.get("regions"):
+            lines.append("  outline per region, mm (err = ours - reference, + = ours sticks out; ref_hair / our_hair = "
+                         "the outline over the bare head; ref_hair < 0: the bare head is already outside the "
+                         "reference, hair can't fix it): " + "; ".join(
+                             f"{r} err {v['err']:+} (worst {v['worst']:+}) ref_hair {v['ref_hair']} our_hair "
+                             f"{v['our_hair']}" for r, v in f["regions"].items()))
         if f.get("clumps"):
             lines.append("  traced clump -> nearest model clump, direction error deg, mean distance px: " + "; ".join(
                 f"{k} -> {v[0]} {v[1]} deg {v[2]} px" for k, v in f["clumps"].items()))
@@ -1209,7 +1220,10 @@ def hair_reference(name: str, trace: dict | None = None, image_path: str | None 
        end back), "hairline": [[u, v], ...] (temple to temple across the forehead), "hair": [[u, v], ...] (closed outline of
        the visible hair above clip_y), "clip_y": v (below it ear, sideburn and beard aren't traced), "clumps": [{"name",
        "line": [[u, v], ...] root -> tip along the strands, "width": px across the clump}], "crop"?: [x0, y0, x1, y1] (the
-       square the matched views show; default: round the hair and landmarks)}.
+       square the matched views show; default: round the hair and landmarks), "views"?: {name: {the same keys for
+   another view of the character: another figure in the same picture (same lens), or a turnaround's side/back with
+   its own "image"; landmarks, hair, hairline, clip_y and crop needed}}}. Every view gets its own matched row and
+   outline numbers in look_hair.
     Clump names: one starting "part_side" is the short clump falling from the part toward the near ear; one whose root is
     across the head from the part is the sweep's fall down the far side; the rest are the rows sweeping from the part,
     front first."""
@@ -1264,6 +1278,29 @@ def hair_reference(name: str, trace: dict | None = None, image_path: str | None 
                          f"{', '.join(sorted(sc.lm))}")
     else:
         text.append("no landmarks: the trace is stored, no camera fitted")
+    cams = {}
+    for v, t in (tr.get("views") or {}).items():  # more matched views: another figure or picture
+        vl = t.get("landmarks") or {}
+        unknown = [n for n in vl if n not in sc.lm]
+        if unknown or len(vl) < 6:
+            raise ValueError(f"trace view {v!r}: needs >= 6 known landmarks (unknown {unknown}, got {len(vl)})")
+        if not t.get("crop"):
+            raise ValueError(f"trace view {v!r}: give its crop [x0, y0, x1, y1]")
+        img = t.get("image") or tr["image"]
+        with PI.open(img) as im:
+            size = [im.width, im.height]
+        prim = hair.ref_camera(name) if not t.get("image") or t["image"] == tr["image"] else None
+        # another figure in the same picture: the same lens (focal); its own picture: a focal of its own
+        c = hair.fit_camera(name, vl, size, t["crop"], spec, view=v, save=False,
+                            focal=prim["focal_px"] if prim else None)
+        c["reference"] = img
+        cams[v] = c
+        e = c["error_px"]
+        text.append(f"view {v}: camera fitted on {len(e)} landmarks: error px mean {np.mean(list(e.values())):.1f}, "
+                    f"max {max(e.values()):.1f}; {1000 * np.linalg.norm(np.asarray(c['eye']) - sc.C) / c['focal_px']:.2f}"
+                    f" mm per reference px")
+    if cams or (d / "ref_cameras.json").exists():
+        (d / "ref_cameras.json").write_text(json.dumps(cams, indent=1))
     if apply:
         if hair.ref_camera(name) is None:
             raise ValueError("apply needs a fitted camera (landmarks in the trace)")
