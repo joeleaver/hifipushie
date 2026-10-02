@@ -1,0 +1,415 @@
+{
+ "symmetry": true,
+ "blend": 0.03,
+ "joints": {
+  "pelvis": {
+   "pos": [
+    0,
+    0.01,
+    0.4
+   ],
+   "r": 0.08
+  },
+  "chest": {
+   "pos": [
+    0,
+    0,
+    0.56
+   ],
+   "r": 0.085
+  },
+  "neck": {
+   "pos": [
+    0,
+    0,
+    0.64
+   ],
+   "r": 0.045
+  },
+  "head": {
+   "pos": [
+    0,
+    -0.03,
+    0.77
+   ],
+   "r": 0.09
+  },
+  "shoulder.L": {
+   "pos": [
+    0.12,
+    0,
+    0.59
+   ],
+   "r": 0.04
+  },
+  "elbow.L": {
+   "pos": [
+    0.17,
+    0.01,
+    0.44
+   ],
+   "r": 0.028
+  },
+  "wrist.L": {
+   "pos": [
+    0.18,
+    -0.02,
+    0.31
+   ],
+   "r": 0.022
+  },
+  "hip.L": {
+   "pos": [
+    0.07,
+    0.01,
+    0.36
+   ],
+   "r": 0.055
+  },
+  "knee.L": {
+   "pos": [
+    0.09,
+    -0.02,
+    0.2
+   ],
+   "r": 0.038
+  },
+  "ankle.L": {
+   "pos": [
+    0.09,
+    0.01,
+    0.06
+   ],
+   "r": 0.032
+  },
+  "toe.L": {
+   "pos": [
+    0.1,
+    -0.11,
+    0.028
+   ],
+   "r": 0.028
+  },
+  "ear0.L": {
+   "pos": [
+    0.09,
+    0,
+    0.79
+   ],
+   "r": 0.035
+  },
+  "ear1.L": {
+   "pos": [
+    0.25,
+    0.03,
+    0.85
+   ],
+   "r": 0.006
+  }
+ },
+ "bones": {
+  "spine": {
+   "a": "pelvis",
+   "b": "chest"
+  },
+  "neck": {
+   "a": "chest",
+   "b": "neck"
+  },
+  "head": {
+   "a": "neck",
+   "b": "head"
+  },
+  "upperarm.L": {
+   "a": "shoulder.L",
+   "b": "elbow.L"
+  },
+  "forearm.L": {
+   "a": "elbow.L",
+   "b": "wrist.L",
+   "blend": 0.012
+  },
+  "thigh.L": {
+   "a": "hip.L",
+   "b": "knee.L"
+  },
+  "shin.L": {
+   "a": "knee.L",
+   "b": "ankle.L",
+   "blend": 0.012
+  },
+  "foot.L": {
+   "a": "ankle.L",
+   "b": "toe.L",
+   "blend": 0.012
+  },
+  "ear.L": {
+   "a": "ear0.L",
+   "b": "ear1.L",
+   "flat": [
+    1,
+    0.35
+   ],
+   "blend": 0.015
+  }
+ },
+ "blobs": {
+  "skull": {
+   "at": "head",
+   "size": [
+    0.12,
+    0.11,
+    0.11
+   ]
+  },
+  "belly": {
+   "at": "pelvis",
+   "offset": [
+    0,
+    -0.04,
+    0.07
+   ],
+   "size": [
+    0.13,
+    0.12,
+    0.12
+   ]
+  },
+  "jaw": {
+   "at": "head",
+   "offset": [
+    0,
+    -0.06,
+    -0.07
+   ],
+   "size": [
+    0.085,
+    0.07,
+    0.05
+   ],
+   "blend": 0.03
+  }
+ },
+ "kits": {
+  "hand.L": {
+   "type": "hand",
+   "wrist": "wrist.L",
+   "fingers": 3,
+   "curl": 12
+  },
+  "face": {
+   "type": "face",
+   "head": "head",
+   "eyes": {
+    "at": [
+     0.045,
+     0,
+     0.01
+    ],
+    "r": 0.02,
+    "upper": 0.4,
+    "lower": 0.2,
+    "tilt": 8,
+    "part": "eyes"
+   },
+   "brows": {
+    "at": [
+     0.045,
+     0,
+     0.042
+    ],
+    "size": [
+     0.035,
+     0.015,
+     0.011
+    ],
+    "angle": -12
+   },
+   "nose": {
+    "at": [
+     0,
+     0,
+     0.0
+    ],
+    "length": 0.07,
+    "droop": 35,
+    "r": 0.024
+   },
+   "cheeks": {
+    "at": [
+     0.065,
+     0,
+     -0.035
+    ],
+    "size": [
+     0.03,
+     0.025,
+     0.025
+    ]
+   },
+   "mouth": {
+    "at": [
+     0,
+     0,
+     -0.065
+    ],
+    "width": 0.1,
+    "smile": 0.012,
+    "interior": {
+     "teeth": true,
+     "tongue": true
+    }
+   }
+  }
+ },
+ "paint": {
+  "skin": {
+   "color": "#8fa35a"
+  },
+  "back": {
+   "color": "#5f7038",
+   "facing": [
+    0,
+    0.5,
+    0.85
+   ],
+   "range": [
+    0,
+    0.9
+   ],
+   "opacity": 0.7
+  },
+  "belly": {
+   "color": "#c9c48a",
+   "facing": [
+    0,
+    -0.4,
+    -0.9
+   ],
+   "range": [
+    0,
+    0.8
+   ],
+   "opacity": 0.6
+  },
+  "warpaint.L": {
+   "color": "#b0302a",
+   "path": [
+    {
+     "at": "face_eye.L",
+     "offset": [
+      0.005,
+      0,
+      -0.02
+     ],
+     "dir": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "offset": [
+      0.03,
+      0,
+      -0.045
+     ]
+    }
+   ],
+   "width": 0.006
+  },
+  "freckles": {
+   "color": "#4c5a2c",
+   "path": [
+    {
+     "bone": "head",
+     "t": 0.6,
+     "side": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ],
+   "width": 0.004,
+   "profile": "round",
+   "scatter": {
+    "count": 40,
+    "t": [
+     0.1,
+     0.9
+    ],
+    "around": [
+     -80,
+     80
+    ],
+    "spacing": 0.012,
+    "scale": [
+     0.6,
+     1.3
+    ],
+    "seed": 3
+   },
+   "opacity": 0.8
+  },
+  "gloves.L": {
+   "color": "#4a3a2e",
+   "near": [
+    "forearm.L",
+    "hand.L"
+   ],
+   "within": 0.015,
+   "axis": {
+    "bone": "forearm.L",
+    "from": 0.55,
+    "to": 0.65
+   }
+  },
+  "ear_tips.L": {
+   "color": "#c46a5a",
+   "axis": {
+    "bone": "ear.L",
+    "from": 0.4,
+    "to": 1.0
+   },
+   "near": [
+    "ear.L"
+   ],
+   "within": 0.01,
+   "opacity": 0.7
+  },
+  "mouth_inside": {
+   "color": "#4a1a1c",
+   "near": [
+    "face_mouth_bag",
+    "face_mouth_slit"
+   ],
+   "within": 0.002
+  }
+ },
+ "parts": {
+  "eyes": {
+   "color": [
+    0.93,
+    0.9,
+    0.78
+   ]
+  },
+  "teeth": {
+   "color": [
+    0.9,
+    0.86,
+    0.68
+   ],
+   "roughness": 0.35
+  },
+  "tongue": {
+   "color": [
+    0.62,
+    0.25,
+    0.27
+   ],
+   "roughness": 0.45
+  }
+ }
+}

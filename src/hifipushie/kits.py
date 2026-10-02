@@ -42,7 +42,12 @@ face: {"head": joint (anchor); feature positions "at" are offsets from it in wor
            "bridge": root radius, "wings": nostril-wing size ratio (0 = none), "nostrils": bool}
   mouth:  {"at": centre, "width", "smile": corner lift (m, negative = frown), "open": gap (m),
            "upper"/"lower": lip radius, "pout": how far lips stand out (fraction of radius, 0.35),
-           "depth": of the cavity behind an open mouth}
+           "depth": of the cavity behind an open mouth,
+           "interior": true | {"slit": m (gap between the lips, 0.5 x the thinner lip radius), "lips": m (lip
+             front to the bag), "bag": [half width, half depth, half height] of the mouth bag (rounded box),
+             "teeth": true | {"part" ("teeth"), "thickness", "width"/"back": arch share of the bag's},
+             "tongue": true | {"part" ("tongue"), "size"}}: a mouth that can open (export face shapes:
+             faceshapes.py): a slit through the lips into a bag; teeth/tongue in parts of their own}
   "blend": default blend for face parts. Layers: skin features 0, lids and lips 1, eyeballs 2.
 Any kit: "part" puts everything it generates in that part.
 """
@@ -491,7 +496,60 @@ def _mouth(f: dict, H: np.ndarray, R: float, surf: _Surface, o: _Out, fb: str):
     for i in range(len(names) - 1):
         o.bone(f"{fb}_mouth_line_{i + 1}.L", names[i], names[i + 1], op="subtract", layer=1,
                blend=round(0.5 * rg, 5), group=f"{fb}_mouth_line")
-    if gap > 0:
+    if gap > 0 and not f.get("interior"):
         o.blob(f"{fb}_mouth_cavity", at=_r(on_skin(0.0, 0.0, -depth * 0.5)),
                size=_r([width * 0.4, depth * 0.7, gap / 2]), op="subtract", layer=1,
                blend=round(0.5 * min(ru, rl), 5))
+    if f.get("interior"):
+        _interior(f, line, on_skin, us, F, width, ru, rl, gap, o, fb)
+
+
+def _interior(f: dict, line, on_skin, us, F, width: float, ru: float, rl: float, gap: float, o: _Out, fb: str):
+    """A mouth that can open (face shapes, faceshapes.py): a slit between the lips through to a mouth bag behind
+    them, and optionally teeth and a tongue in parts of their own. The slit is a real gap in the mesh (its two
+    walls are the lips' inner faces), so the export's neutral closes it by moving the lips together and opening the
+    jaw is a deformation, never a surface appearing. The slit and the teeth are "band" sweeps (sdf.sd_sweep) along
+    the lips' parting line / the dental arch, mirrored; the bag is a rounded box."""
+    it = f["interior"] if isinstance(f["interior"], dict) else {}
+    side, up, out = F[:, 0], F[:, 2], -F[:, 1]
+    lip = max(ru, rl)
+    slit = float(it.get("slit", max(gap, 0.5 * min(ru, rl))))   # the gap between the lips, mouth closed in the export
+    thick = float(it.get("lips", 2.2 * lip))                       # lip front to the bag's front wall
+    bag = np.asarray(it.get("bag", [0.42 * width, 0.32 * width, 0.11 * width]), float)  # half width, depth, height
+    # the slit: along the parting line (the groove chain's own points), from in front of the lips back into the bag,
+    # narrowing to nothing at the corners
+    seam = [on_skin(u, 0.0, 0.0) for u in us[:-1]] + [on_skin(0.96, 0.0, 0.0)]
+    taper = [max(1 - (u / 0.96) ** 4, 0.25) for u in [*us[:-1], 0.96]]
+    hs = [round(slit / 2 * t, 5) for t in taper]
+    o.blob(f"{fb}_mouth_slit", shape="sweep", profile="band", path=[_r(p) for p in seam], N=[_r(out)] * len(seam),
+           U=[_r(up)] * len(seam), mirror=True, open_start=True,
+           values={"n0": round(-(thick + 0.5 * bag[1]), 5), "n1": round(1.5 * lip, 5), "u0": [-h for h in hs],
+                   "u1": hs, "round": [round(0.9 * h, 5) for h in hs]},
+           op="subtract", layer=1, blend=round(0.25 * slit, 5))
+    centre = on_skin(0.0, 0.0, -(thick + bag[1]))
+    o.blob(f"{fb}_mouth_bag", shape="box", at=_r(centre), size=_r(bag), round=round(0.8 * float(bag[2]), 5),
+           rot=_euler(F), op="subtract", layer=1, blend=round(0.5 * lip, 5))
+    if t := it.get("teeth"):
+        t = t if isinstance(t, dict) else {}
+        half = float(t.get("thickness", 0.035 * width)) / 2
+        hw, back = float(t.get("width", 0.8)) * bag[0], float(t.get("back", 0.9)) * bag[1]
+        ks = np.linspace(0.0, 1.0, 7)
+        front = on_skin(0.0, 0.0, -(thick + 1.6 * half))  # the arch's front, just inside the bag's front wall
+        path = [front + side * k * hw - out * back * k ** 2 for k in ks]
+        tang = [side * hw - out * 2 * back * k for k in ks]
+        N = [_unit(np.cross(tg, up)) if np.cross(tg, up) @ out > 0 else -_unit(np.cross(tg, up)) for tg in tang]
+        N[0] = out
+        gum = 1.5 * float(bag[2])
+        for row, (u0, u1) in (("upper", (-0.15 * slit, gum)), ("lower", (-gum, -0.6 * slit))):
+            o.blob(f"{fb}_teeth_{row}", shape="sweep", profile="band", path=[_r(p) for p in path], N=[_r(n) for n in N],
+                   U=[_r(up)] * len(path), mirror=True, open_start=True,
+                   values={"n0": round(-half - (0.5 * half if row == "lower" else 0.0), 5),
+                           "n1": round(half - (1.5 * half if row == "lower" else 0.0), 5),
+                           "u0": round(u0, 5), "u1": round(u1, 5), "round": round(0.8 * half, 5)},
+                   layer=2, blend=round(0.3 * half, 5), part=t.get("part", "teeth"))
+    if g := it.get("tongue"):
+        g = g if isinstance(g, dict) else {}
+        size = np.asarray(g.get("size", [0.62 * bag[0], 0.85 * bag[1], 0.42 * bag[2]]), float)
+        at = on_skin(0.0, -0.45 * float(bag[2]), -(thick + 1.05 * bag[1]))
+        o.blob(f"{fb}_tongue", at=_r(at), size=_r(size), rot=_euler(F), layer=2, blend=round(0.3 * size[2], 5),
+               part=g.get("part", "tongue"))
