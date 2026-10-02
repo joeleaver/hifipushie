@@ -160,8 +160,8 @@ shape here.
 - **Surface.**
   - Crinkle is the median angle between neighbouring triangles. A 1 cm simulation reads 8-10°, after clean-up 5-6°.
     Under ~5 reads smooth.
-  - Folds is the depth of the folds, rms against the surface smoothed over ~15 cm. A shirt with 15% ease on an
-    A-posed body measured only 2-4 mm: it hangs close. Folds come from pose, ease and gravity. They are not
+  - Folds is the rms height of folds narrower than ~15 cm (a 20 mm deep fold 10 cm across reads ~9). A shirt with 15% ease on an
+    A-posed body measured 3-4 mm: it hangs close. Folds come from pose, ease and gravity. They are not
     sculpted in.
 - **Strain map.** Blue is slack, green fine, yellow at the fabric's limit, red twice it. Red rings sit at seams and
   buttons (the sewing springs: left out of the numbers). Red across a whole region means it's too tight.
@@ -196,7 +196,8 @@ The same maps go into `scene.blend` and the export.
 ### 6. States
 
 - `"worn"`: sewn on the body and settled.
-- `{"hang": {"pins": ["stand:bottomLeft"], "hook": [x, y, z], "rack": [[a, b, r], ...]}}`:
+- `{"hang": {"pins": ["stand:bottomLeft"], "hook": [x, y, z], "rack": [[a, b, r], ...]}}` (a hanger is two thin
+  bars from just under the hook out and down inside the shoulders, about 4 cm in front of the back neck):
   - Dressed on the body first: a coat sewn in the air with nothing inside caved in.
   - Then the body is taken away and the coat hangs from a pin patch at the hook. Rack poles and arms are cylinder
     colliders.
@@ -232,6 +233,8 @@ The same maps go into `scene.blend` and the export.
 | Shrink-wrapped (folds < 2 mm, the body's forms show through) | Too little ease, or a too-light, stretchy fabric | More ease in the pattern; a heavier or stiffer fabric |
 | Uniform, evenly spaced folds | One fabric everywhere, a symmetric pose | Different fabrics per garment; interfacing on bands; break symmetry by hand in Blender |
 | STRAINED at chest/seat on a heavy body | The draft's ease is relative, but the body's shape (a belly) isn't in the block | `alterations` (`large_abdomen` is automatic); more ease where it's strained |
+| A hung coat bunched up into a sack | A strong sewing force while hung (it drives every seam, not just the pins), or a rack collider thicker than it looks (Blender's default outer thickness is 2 cm) | Fixed: the sewing force stays at `sew_force` while hung, rack colliders are 3 mm thick. Hang it on a hanger (two bars inside the shoulders in `rack`), not a single pin: on one pin a coat folds in on itself |
+| Collar or stand crumpled on a thin neck | The band is taller than the neck between the shoulders and the jaw. It started pushed out of the jaw, and that stretch went into its rest shape | The report's HINT; lower the stand (simon: `"options": {"collarStandWidth": 0.045}`) |
 | Shirt rides up / sleeves dragged up the arm | Sewing everything at once lifts the bodice | Assembly order: the bodice is sewn first, cuffs held (`assemble`) |
 
 ## Sources

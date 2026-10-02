@@ -469,7 +469,7 @@ class Body:
         if self._m is None:
             try:
                 self._m = tailor.measure(self.V, self._faces, self.J)
-            except (KeyError, ValueError, IndexError, TypeError):
+            except Exception:  # no pelvis/neck/limb joints, sections that miss: not a body
                 self._m = {"mm": {}, "at": {}, "body": False}
         return self._m
 
@@ -1400,7 +1400,8 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
     """What the surface reads as, in numbers an artist judges by eye: crinkle (the median angle between neighbouring
     triangles inside the pieces, deg: fine sim noise and frozen buckles; ~2-4 reads smooth at 1 cm, 6+ crinkled),
     crinkle_mm (rms of what 3 Taubin passes remove: the sub-3-edge waviness), folds_mm (rms height of the folds:
-    the surface against itself smoothed over ~15 cm; a few mm = flat/shrink-wrapped, 10+ = clear folds)."""
+    the surface against a Taubin low-pass keeping forms over ~15 cm: folds narrower than that; a 20 mm-deep 10 cm fold
+    reads ~9, a shirt hanging close 2-4)."""
     F = M["F"]
     n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
     n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
@@ -1415,7 +1416,11 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
     inner = ~M["border"]
     hi = taubin(V, M, 3)
     h = float(np.median(np.linalg.norm(V[F[:, 0]] - V[F[:, 1]], axis=1)))
-    lo = taubin(V, M, int(np.clip(round((0.15 / (0.7 * max(h, 1e-3))) ** 2), 10, 600)), lam=0.5, mu=0.0)  # plain Laplacian: removes the folds too (Taubin would keep them)
+    # a Taubin low-pass whose pass band ends at ~15 cm wavelengths (kpb = (2 pi h / 0.15)^2): folds narrower than that
+    # are removed, the garment's form round the body (arms, shoulders) kept. A plain Laplacian shrank a sleeve's tube
+    # and read 30 mm of "folds" on every shirt
+    kpb = min(1.0, (2 * np.pi * max(h, 1e-3) / 0.15) ** 2)
+    lo = taubin(V, M, 200, lam=0.5, mu=1.0 / (kpb - 1.0 / 0.5))
     # along the smoothed surface's normal only: plain smoothing also slides the cloth in its own plane (open edges
     # pull in), which isn't a fold
     fl = np.cross(lo[F[:, 1]] - lo[F[:, 0]], lo[F[:, 2]] - lo[F[:, 0]])
@@ -2065,7 +2070,7 @@ def report(gname: str, res: dict) -> str:
     L.append(f"  surface (sim -> final): crinkle {sh['sim']['crinkle_deg']} -> {sh['final']['crinkle_deg']} deg median "
              f"between neighbouring triangles (smooth cloth reads ~3-5), {sh['sim']['crinkle_mm']} -> "
              f"{sh['final']['crinkle_mm']} mm fine waviness; folds {sh['sim']['folds_mm']} -> {sh['final']['folds_mm']} mm "
-             "(under ~3 reads shrink-wrapped, 8+ clear folds)")
+             "(rms height of folds narrower than ~15 cm; a 20 mm-deep 10 cm fold reads ~9; 2-4 hangs close to the body)")
     cu = res.get("cleanup") or {}
     L.append(f"  clean-up: {cu.get('passes', 0)} smoothing passes, moved p95 {cu.get('moved_p95_mm')} mm"
              + (f"; hand sculpt applied ({res['sculpted']} vertices moved)" if res.get("sculpted") else "")

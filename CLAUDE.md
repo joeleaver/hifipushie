@@ -470,6 +470,42 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   piece and direction, start seam gaps per seam, and per-frame traces (`_trace`, `TRACE["stage0"]`): every fix above
   came from those numbers, not from tuning stiffness. Scene: `blender_cloth.show` (collection "cloth", pattern uv,
   Solidify); export: `cloth.export_part` (two-sided, the flat pattern as its atlas). Renders `workspace/cloth_renders/`.
+  Cloth 2 (2026-10-02, the user: "learn how to do clothes" like hair, and everything through MCP; renders c20-c22):
+  - Tools: `dress` (stores spec.cloth[g] merged, starts the sim in a background thread (`cloth.dress`/`_run_job`,
+    progress in `workspace/<m>/cloth_<g>.progress`, `status`), waits `wait` s, returns progress or `cloth.report`),
+    `look_cloth` (`cloth.look`: clay views + strain row + report; focus "g:piece", textured EEVEE with detail maps;
+    hung garments show the rack, not the body), `sync(cloth_only=True)` (`cloth.sync` -> blender_scene `cloth_sync`),
+    pull brings garment colour (`hp_color` node), roughness and SHAPE (Blender sculpt -> per-vertex offsets on that sim,
+    `cloth.<g>.sculpt`, dropped and reported when the sim changes). `cloth.validate` at save; a cloth-only edit validates
+    only hair+cloth (`store._validate_light`). Guide `guide(topic="cloth")` = `cloth_guide.md` (artists' workflow with
+    sources: MD's 20 mm block -> 5-10 mm final, layers, fold lines, clean-up sculpt, Hogarth folds, seams last).
+  - Sims never block a sync: `scene_job` takes only cached sims (`build(cached_only=True)`). The sim cache key is the
+    sim's own inputs (start, pattern, triangles, seams, stitches, interfacing, both meshes) + blender_cloth.py's hash +
+    fabric, not cloth.py: report/clean-up edits never re-simulate (`NOT_SIM` keys: color, roughness, cleanup, detail).
+  - quality "final" = the whole sim at `coarse` 2 cm (~45 s), then `transfer` (barycentric in pattern space) onto the
+    1 cm mesh whose REST is the coarse placement carried over (placed again at 1 cm its cuff spiral differed and an
+    interfaced cuff crumpled), settled 40 frames with self-collision (`blender_cloth.refine`: Basis = rest, shape key
+    "start" eased out, Dynamic Mesh). Shirt 3-5 min (was 8-25). "draft" = the coarse sim alone.
+  - CORRUPT causes found: (1) no self-collision while sewing (fronts passed through each other): on in every stage;
+    (2) the sleeve laid round the kinked elbow overlapped itself inside the crook (58 crossings in every START, grown into
+    tangles): the excess round the mitre (r (u . n) tan(theta/2) per angle) is laid as a fin standing out in the mitre
+    plane (`wrap.no_fin` off); (3) the hung coat: hang sewing force 200 drew it into a sack (now sew_force) and rack
+    colliders kept Blender's 2 cm outer thickness (now 3 mm); the hang stage had no self-collision (now on).
+  - Clean-up (`cleanup`): Taubin 4 passes at 1 cm (scaled by (1 cm / h)^2), each move capped at `keep` 4 mm, interfaced
+    vertices not smoothed (smoothing crumpled a cuff 2 -> 6%), seams the sim closed welded, pushed off the body (not when
+    hung). Strain/fit read the sim's own surface (`V_sim`), integrity the cleaned one (and the sim's, reported).
+  - `shape_numbers`: crinkle = median dihedral between neighbouring triangles (1 cm sim 8-10 deg, cleaned 5-6), crinkle_mm
+    and folds_mm along the smoothed surface's normal (plain Laplacian over ~15 cm; Taubin keeps low frequencies).
+  - Detail maps (`detail_maps`/`write_maps`) on the flat-pattern atlas from the pattern itself: seam grooves + allowance
+    ridge on sewn border edges, dashed topstitch at arc length along the outline, turned hems on free edges, buttons
+    (discs, holes, button colour) on button* marks, slots on buttonhole*; normal + shade + basecolor; into the scene
+    material (normal map on the "pattern" uv) and the export.
+  - Neck bands: a piece sewn to an already placed neck piece starts at that piece's edge (the design's fixed "above"
+    left the collar 2 cm over a lowered stand); `wrap.tilt` optional (no tilt helped the thin body); the report HINTs a
+    band pushed > 8 mm off the neck (taller than the neck: lower the stand).
+  - `integrity`'s candidate search: per-edge radius + a few big triangles apart (one global radius made 70M pairs, 11 s).
+  - Body: `Body.m` lazy (a collider that isn't a body measures {}); state "draped" collides with the model's built
+    mesh (`model_body`), pieces wrapped "flat". `tests/test_cloth.py`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
