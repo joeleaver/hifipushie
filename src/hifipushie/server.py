@@ -1144,7 +1144,12 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     if not only_layout:
         sheet, secs, _ = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay)
         out.append(_out(sheet, save))
-        text = f"rendered in {secs}s; {text}\n" + _hair_gates(hair.look)
+        gates = _hair_gates(hair.look)
+        if (spec.get("hair") or {}).get("stage") == "mass":  # the volume is the surface on purpose at this stage
+            gates = "\n".join(ln for ln in gates.splitlines() if "bare volume" not in ln)
+            gates += "\nstage mass: judge the silhouette (outline dents, IoU / outline px); bare-volume shares count " \
+                     "once the locks are on (stage \"locks\")"
+        text = f"rendered in {secs}s; {text}\n" + gates
     hy = hair.hierarchy(spec, hair.scalp(name, spec))
     if hy:
         flag = ("  near-uniform: vary the widths (a few big shapes, some medium, a few small)"

@@ -130,12 +130,30 @@ Rules from the artists:
 
 ### 3. Secondary: sides and back
 
-- `tiers.strip`: strips along the combed streams converging under the nape, in shingled segments.
-- `tiers.gap`: gap locks wherever the volume still shows.
-- Gate: bare-volume share of the visible hair < 0.10 in every view, the back too; lit bare volume < 0.03. The volume
-  is filler, never a surface.
-- Generated strips can read as tiles or shingles. If so, use fewer and broader locks: 6-8 broad locks brushed back to
-  the nape, by hand (step 5) or as drawn clumps with `azel` paths.
+Draw the sides and back as rows of broad drawn clumps on the head (`azel` paths), not as generated tiers. This
+worked on the golfer test head (hair_t13): 47 locks, back bare share 0.07, a calm combed read.
+
+```
+{"name": "bk1", "azel": [[141, 68], [112, 54], [118, 36], [124, 14], [129, -12]], "width": 0.07, "taper": 0.7}
+```
+
+- **Upper back row** (bk1..bk5): roots at the crown (el ~65), tips half-way down the back. Converge them a little
+  toward the back centre (az 180), and make the middle widest (0.09) and the ends narrower (0.065).
+- **Lower row** (nk1..nk5): roots just under the upper row's tips, tips at the nape hairline. This row tucks under
+  the one above, like shingles.
+- **Sides, per side:** 2-3 sweeps from near the part or temple back to behind the ear (sideR1..3, sideL1..3), each
+  lower one narrower.
+- **Blunt tips:** taper 0.7-0.8. Pointed wedges side by side leave a row of bare triangles.
+- **Under clumps:** each row's under clumps (between neighbours, automatic) show in the wedge gaps
+  (`drawn_under`: a sink of 0.35 by default). Per row: `{"sweep": 1.0}` buries them, false drops them.
+- **Gate:** bare-volume share of the visible hair < 0.10 in every view, the back too; lit bare volume < 0.03. The
+  volume is filler, never a surface. Some of the front's share is the parting's own shadow line: judge that one in
+  the picture.
+- **Generated tiers:**
+  - `tiers.strip` (shingled strips to the nape) read as tiles.
+  - `tiers.gap` at 4 cm made a mop of small locks at mixed angles.
+  - Use them only for quick coverage, never on a hero head. If you do, gap locks should be broad (6 cm) and kept to
+    sides/back/nape.
 
 ### 4. Breakup
 
@@ -145,6 +163,8 @@ Rules from the artists:
   - n narrower locks start there, lie over it and fan apart.
   - The gaps between them are the negative space.
 - Use it on 2-4 clumps, mostly at the outline and the fringe, not everywhere. Twos more than threes.
+- Check every split in clay. A split in the middle of the top hardly shows: the clump on top covers it. The split
+  pays off at the outline, at the tips of the fringe, and over the ears and nape.
 - One or two small locks where the outline wants a break (a stray at the crown or temple) can be drawn too.
 - Gate: the clump steps at the outline (notches) should read: 2-5 mm. A perfectly smooth outline reads as a helmet;
   steps much deeper than that read as spikes.

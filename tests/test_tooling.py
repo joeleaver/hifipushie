@@ -397,6 +397,20 @@ def test_hair_lock_rebuild_keeps_inputs_and_winds_outward():
     assert got["volume"] > 0, got
 
 
+def test_hair_under_clumps_across_the_back():
+    """2026-10-01: under clumps between back locks either side of az 180 were averaged across the front (a lock
+    over the face), and a clump crossing 180 within itself too."""
+    from hifipushie import hair
+    c = [{"name": "bk1", "azel": [[175, 58], [179, 38], [181, 10], [181, -18]], "width": 0.08},
+         {"name": "bk2", "azel": [[-140, 54], [-155, 34], [-163, 8], [-168, -20]], "width": 0.06},
+         {"name": "sw1", "azel": [[30, 30], [0, 30]], "width": 0.05}, {"name": "sw2", "azel": [[40, 40], [0, 40]]}]
+    u = hair._under_clumps(c, None, {"sw": False})
+    assert [x["name"] for x in u] == ["bk1_bk2_under"], u
+    az = (u[0]["azel"][0][0] + 360) % 360
+    assert 150 < az < 220, u[0]["azel"]
+    assert hair._under_clumps(c, None, 1.0)[0]["sink"] == 1.0
+
+
 def test_hair_through_the_tools():
     """2026-10-01: hair was reachable only from Python. The tools exist, edit_model edits one lock's fields through a
     dotted kind ("hair.locks"), the validation names the bad key, the export/look keys the pipeline reads validate,

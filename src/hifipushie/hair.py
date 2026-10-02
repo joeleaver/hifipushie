@@ -93,7 +93,8 @@ GROOM = {
               "edge": {"width": 0.011, "thickness": 0.0028, "spacing": 0.9, "length": 0.022}},
     "grey": {"temples": 0.35, "sideburns": 0.5},
     "drawn": [],
-    "drawn_under": True,
+    "drawn_under": True,  # an under clump between neighbours of a row: true, false, a sink (x thickness under the
+    # row: 0.35 shows between the wedges, 1 is buried under the underlayer) or per row {stem: sink | false}
     "noise": 0.3,
     "seed": 0,
     "centre": "head",  # without face landmarks (a kit-built head): the joint (or [x, y, z]) the scalp is measured from
@@ -1898,7 +1899,7 @@ def top_to_azel(sc: Scalp, xy):
     return az, el
 
 
-def _under_clumps(clumps: list) -> list:
+def _under_clumps(clumps: list, sc: Scalp | None = None, sink=True) -> list:
     """The layer under the drawn clumps, as an artist builds it: between each pair of neighbouring clumps of a row
     (consecutive, same name stem: top1, top2...) one more clump halfway between them, lying beneath both, so where
     their wedge tips part the gap shows hair, not the volume (the volume must never be a visible surface)."""
@@ -1912,21 +1913,37 @@ def _under_clumps(clumps: list) -> list:
     out = []
     for c0, c1 in zip(clumps, clumps[1:]):
         n0, n1 = c0.get("name", ""), c1.get("name", "")
-        if not n0 or re.sub(r"\d+$", "", n0) != re.sub(r"\d+$", "", n1):
+        stem = re.sub(r"\d+$", "", n0)
+        if not n0 or stem != re.sub(r"\d+$", "", n1):
             continue
+        sk = sink.get(stem, True) if isinstance(sink, dict) else sink  # per row: {stem: sink | false}
+        if sk is False:
+            continue
+        sk = 0.35 if sk is True else float(sk)
         key = "azel" if ("azel" in c0 and "azel" in c1) else "top"
         if key not in c0 or key not in c1:
-            continue
+            if sc is None or not all(("azel" in c or "top" in c) for c in (c0, c1)):
+                continue
+            key = "azel"  # one drawn on the top view, one on the head: both as [az, el]
 
         def pts(c):
-            q = np.asarray(c[key], float).copy()
+            if key == "azel" and "azel" not in c:
+                a_, e_ = top_to_azel(sc, np.asarray(c["top"], float))
+                q = np.stack([a_, e_], 1)
+            else:
+                q = np.asarray(c[key], float).copy()
             if key == "azel":
                 q[:, 0] = (q[:, 0] + 180) % 360 - 180  # azimuths either side of the front average sensibly
+                q[:, 0] = np.degrees(np.unwrap(np.radians(q[:, 0])))  # a clump crossing the back stays continuous
             return resample(q)
-        mid = 0.5 * (pts(c0) + pts(c1))
+        p0, p1 = pts(c0), pts(c1)
+        if key == "azel":  # neighbours either side of the back (175 and -170) average across it, not the front
+            p1[:, 0] += 360.0 * np.round((p0[:, 0] - p1[:, 0]).mean() / 360.0)
+        mid = 0.5 * (p0 + p1)
         out.append({"name": f"{n0}_{n1}_under", key: mid.round(4).tolist(),
                     "width": max(float(c0.get("width", 0.055)), float(c1.get("width", 0.055))),
-                    "sink": 1.0, "edge": 1.2, "taper": 0.85})
+                    "sink": sk, "edge": 1.2, "taper": 0.85})  # (sink 1: under the
+        # underlayer itself, so the volume still showed between the wedges)
     return out
 
 
@@ -1959,6 +1976,7 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
         lk["tilt"] = [round(float(v), 3) for v in lie_tilt(sc, g, line, _catmull(Pp, 4 * k0)[::4])]
     lk.pop("radius", None)
     lk.pop("handles", None)
+    lk["taper"] = 1.0  # its cut end comes to a point under the children (a blunt end read as a block on top)
     out = {}
     rng = np.random.default_rng(int(hashlib.md5(name.encode()).hexdigest()[:6], 16))
     for i in range(n):
@@ -1968,7 +1986,16 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
         s_ = np.clip((t - at) / max(1.0 - at, 1e-9), 0, 1)
         j = np.clip(np.searchsorted(u, t), 0, len(u) - 1)
         off = (o * w * 0.55 * (1 - s_) + o * w * (0.55 + fan) * s_)[:, None] * side[j]  # start side by side, fan out
-        Q = Q + off + nrm[j] * (0.55 * T * np.sin(np.pi * np.clip(s_ * 1.4, 0, 1)) + 0.15 * T)[:, None]
+        # a child never strays further out of the hairline than the clump's own spine there (a split fringe
+        # dropped one tip onto the forehead)
+        a0, e0, _ = sc.coords(Q)
+        lim = np.minimum(inside(sc, line, a0, e0), 0.004)
+        for f in np.linspace(1.0, 0.0, 11):
+            a1, e1, _ = sc.coords(Q + f * off)
+            ok = inside(sc, line, a1, e1) >= lim - 1e-4
+            if ok.all() or f == 0.0:
+                break
+        Q = Q + f * off + nrm[j] * (0.55 * T * np.sin(np.pi * np.clip(s_ * 1.4, 0, 1)) + 0.15 * T)[:, None]
         a, e, h = sc.coords(Q)
         cw = round(w * 1.3 / n * (1 + 0.15 * rng.uniform(-1, 1)), 4)
         out[f"{name}_t{i + 1}"] = {
@@ -1976,7 +2003,7 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
                                                       round(float(h[q]), 4)] for q in range(len(Q))],
             "tilt": [round(float(v), 3) for v in lie_tilt(sc, g, line, Q)], "width": cw,
             "thickness": round(T * 0.8, 4), "cup": round(lie_cup(sc, cw, Q), 4), "taper": 1.0, "belly": 0.25,
-            "root": 0.7, "twist": 0.0, "edge": lk.get("edge", 1.6), **({"grey": lk["grey"]} if "grey" in lk else {})}
+            "root": 0.35, "twist": 0.0, "edge": lk.get("edge", 1.6), **({"grey": lk["grey"]} if "grey" in lk else {})}
     return out
 
 
@@ -1987,7 +2014,7 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
     default 0.1); past the hairline (a fringe) it lies on the skin."""
     line = hairline(sc, g)
     out = {}
-    clumps = list(clumps) + (_under_clumps(clumps) if g.get("drawn_under", True) else [])
+    clumps = list(clumps) + (_under_clumps(clumps, sc, g["drawn_under"]) if g.get("drawn_under", True) is not False else [])
     for i, c in enumerate(clumps):
         if c.get("azel"):  # drawn on the head itself ([az, el] from the root): the same path in top-view terms
             q = np.asarray(c["azel"], float)
