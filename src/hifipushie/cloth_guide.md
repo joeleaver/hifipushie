@@ -196,12 +196,22 @@ The same maps go into `scene.blend` and the export.
 ### 6. States
 
 - `"worn"`: sewn on the body and settled.
-- `{"hang": {"pins": ["stand:bottomLeft"], "hook": [x, y, z], "rack": [[a, b, r], ...]}}` (a hanger is two thin
-  bars from just under the hook out and down inside the shoulders, about 4 cm in front of the back neck):
-  - Dressed on the body first: a coat sewn in the air with nothing inside caved in.
-  - Then the body is taken away and the coat hangs from a pin patch at the hook. Rack poles and arms are cylinder
-    colliders.
-  - Pins name outline points or marks (`piece:point`).
+- `"hung"` / `{"hang": {"hanger": {...}, "rail": {...} | false}}`: on a hanger, the way a person hangs it.
+  - Dressed on the body first (a coat sewn in the air with nothing inside caved in). The hanger is then already
+    INSIDE it: its arms under the body's shoulders along their slope, its hook up through the neck opening, clear of
+    the collar, curled over a face-out bar that runs back to a post behind the garment.
+  - The body is taken away and gravity settles the garment onto the hanger. Nothing is pinned: contact with the arms
+    carries the weight. The seams are welded while it hangs (as sewing springs they opened under the weight).
+  - hanger: `kind` "wood" (default: a shaped coat hanger, broad rounded shoulder ends) or "wire"; `width` tip to tip
+    (default: the body's shoulder points less 2 cm); `bar` (a trouser bar); `slope` deg; `clear` (how far under
+    the shoulder surface the arms' tops sit, 8 mm); `rise` (the hook above the arms). rail: `length`, `radius`,
+    `posts`, or false.
+  - The report's `hanger:` line says what carries it ("supported by: arms 98% (L 51, R 47), hook 1%... pins 0%") and
+    whether the hanger is inside: rays forward, back and up from each arm must meet the cloth, the hook's rod must
+    cross no cloth and the cloth must surround it at the collar. It leads the verdict with NOT ON ITS HANGER when
+    pins carry it, one shoulder carries almost nothing, it is still moving, or the hanger isn't inside it.
+- The old pinned hang `{"hang": {"pins": ["stand:bottomLeft"], "hook": [x, y, z], "rack": [[a, b, r], ...]}}` (a
+  pin patch moved under the hook) still works; its report says the pins carry it.
 - `"draped"` / `{"drape": {"over": "model" | "body"}}`:
   - Pieces wrapped `{"to": "flat", "at": [x, y, z]}` fall onto the model's surface: a tablecloth on a table, a blanket
     on a bed.

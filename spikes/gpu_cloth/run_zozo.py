@@ -17,8 +17,11 @@ Mapping (one session for the whole schedule, times at the job's 24 fps):
 - other jobs: the REST is the start placement X (isometric to the pattern, like Blender's), bending rest from that
   geometry, the placement's overlaps (sleeve fins) allowed, assemble.fixed / assemble.hold pinned as in Blender;
 - seams and stitches: ZOZO stitches (vertex to vertex) from t = 0; gravity 0 while sewing, then on;
-- hung garments: the body moves away down after the worn settle while the hanger-loop vertices (pinned from the
-  start) move up under the hook. No rack (yet);
+- hung on a hanger (job "hanger", stage "hanger"): the hanger and rail meshes (in.npz hangerV/F, railV/F) are static
+  colliders from the start, inside the body while the garment is dressed; the body stops colliding at the hang
+  (collision window + a still move) and the garment settles onto the hanger by contact. No pins;
+- the old pinned hang: the hanger-loop vertices (pinned from the start) move up under the hook, the rack's arms rise
+  with them;
 - material: young-mod = stretch / density (ZOZO's is normalised by density), `bend` (dimensionless, ZOZO's scale),
   strain limit (`strain_limit`, default 5%), friction.
 - a scene check that fails names each violation's pieces (`--set debug_violations=true`: the raw record).
@@ -27,6 +30,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -39,6 +46,50 @@ def log(*a):
     s = " ".join(str(x) for x in a)
     LOG.append(s)
     print("cloth:", s, flush=True)
+
+
+MIN_FREE_GB = 20.0  # refuse to start with less free disk than this where the session writes
+STOP_FREE_GB = 10.0  # stop a running session when free disk falls under this
+KEEP_LAST = 8  # vert_N.bin frames kept at the end (the result and Vprev)
+
+
+def _free_gb(path) -> float:
+    return shutil.disk_usage(path).free / 2**30
+
+
+class _Pruner(threading.Thread):
+    """While a session runs: deletes its vert_N.bin frames but frame 0 (the row map), every `snap`-th and the last
+    KEEP_LAST (a 1 cm coat writes ~2 MB a frame, every frame), and stops the run when free disk falls under
+    STOP_FREE_GB."""
+
+    def __init__(self, out_dir: Path, snap: int):
+        super().__init__(daemon=True)
+        self.out_dir, self.snap, self.stop_flag, self.low = out_dir, snap, threading.Event(), None
+
+    def prune(self):
+        frames = []
+        for f in self.out_dir.glob("vert_*.bin") if self.out_dir.exists() else ():
+            m = re.match(r"vert_(\d+)\.bin$", f.name)
+            if m:
+                frames.append((int(m.group(1)), f))
+        if not frames:
+            return
+        last = max(k for k, _ in frames)
+        for k, f in frames:
+            if k == 0 or k > last - KEEP_LAST or (self.snap and k % self.snap == 0):
+                continue
+            f.unlink(missing_ok=True)
+
+    def run(self):
+        while not self.stop_flag.wait(5.0):
+            self.prune()
+            free = _free_gb(self.out_dir if self.out_dir.exists() else self.out_dir.parent.parent)
+            if free < STOP_FREE_GB:
+                self.low = free
+                log(f"disk: {free:.1f} GB free (< {STOP_FREE_GB}): stopping the session")
+                from frontend import App
+                App.terminate()
+                return
 
 
 def _tube(a, b, r, n=16):
@@ -63,6 +114,7 @@ def main():
     ap.add_argument("--frames", type=int, default=None, help="stop early (debugging)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--snap", type=int, default=0, help="also keep every N-th frame (S<frame> in out.npz)")
+    ap.add_argument("--keep-session", action="store_true", help="leave ZOZO's session folder (deleted by default)")
     a = ap.parse_args()
     jd = Path(a.job)
     job = json.loads((jd / "job.json").read_text())
@@ -89,7 +141,13 @@ def main():
     if a.frames:
         total = min(total, a.frames)
     name = f"hp_{jd.parent.name}_{jd.name}"[:60]
+    data_root = Path(App.get_data_dirpath())
+    data_root.mkdir(parents=True, exist_ok=True)
+    free = _free_gb(data_root)
+    if free < MIN_FREE_GB:
+        raise RuntimeError(f"only {free:.1f} GB free under {data_root} (need {MIN_FREE_GB}): not starting")
     app = App.create(name)
+    app_root = data_root / name  # the session's files: deleted after the run (out.npz has what we keep)
     app.asset.add.tri("garment", X.astype(np.float64), F)
     Ind = np.c_[sew[:, 0], sew[:, 1], sew[:, 1], sew[:, 1]].astype(np.int64)
     W = np.tile([1.0, 1.0, 0.0, 0.0], (len(sew), 1))
@@ -103,8 +161,14 @@ def main():
         # a body that moves is solved (pinned, prescribed): 2.5x the cost of a static collider. Only the part that
         # moves is: the arms (faces with a vertex the poses move) apart from the static rest
         parts = [("body", np.arange(len(bV0)), bT)]
-        if "bodyPoses" in d and job.get("split_body", True):
-            mv = (np.abs(np.asarray(d["bodyPoses"], float) - bV0).max(axis=(0, 2)) > 1e-7)
+        # stages that move the body: "pose" true = bodyPoses (elbows bent back), or the array's name (bodyLower: the
+        # arms brought down to the sides before a garment goes on its hanger)
+        posers = [(st, "bodyPoses" if st["pose"] is True else st["pose"]) for st in stages if st.get("pose")]
+        posers = [(st, k) for st, k in posers if k in d]
+        if posers and job.get("split_body", True):
+            mv = np.zeros(len(bV0), bool)
+            for _, k in posers:
+                mv |= (np.abs(np.asarray(d[k], float) - bV0).max(axis=(0, 2)) > 1e-7)
             fm = mv[bT].any(1)
             parts = []
             for nm_, ff in (("body", bT[~fm]), ("arms", bT[fm])):
@@ -170,7 +234,7 @@ def main():
         g.pin(fixed, allow_intersection=pp).unpin(times["assemble"][1])
     if hold:
         g.pin(sorted(hold), allow_intersection=pp).unpin(times["sew"][1])
-    hang = next((s for s in stages if s.get("hang")), None)
+    hang = next((s for s in stages if s.get("hang") or s.get("hanger")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):
         t0, t1 = times[hang["name"]]
@@ -202,15 +266,25 @@ def main():
             if near:
                 rp.move_by(list(map(float, lift)), t0, t0 + 0.4 * (t1 - t0))
                 o_.collision_windows([(t0, t1 + 1e3)])
+    if hang is not None and hang.get("hanger") and job.get("use_hanger", True):
+        # on a hanger: the hanger (arms, hook, bar) and the rail stand still from the start, inside the body while the
+        # garment is dressed (the cloth never meets them until the body stops colliding), then carry it by contact
+        for nm_ in ("hanger", "rail"):
+            if f"{nm_}V" not in d:
+                continue
+            app.asset.add.tri(nm_, np.asarray(d[f"{nm_}V"], float), np.asarray(d[f"{nm_}F"], np.int64))
+            o_ = scene.add(nm_)
+            o_.param.set("contact-offset", float(job.get("hanger_offset", job.get("body_offset", 0.002))))
+            o_.param.set("friction", float(job.get("hanger_friction", max(0.5, float(P.get("friction", 0.4))))))
+            o_.pin()
     if has_body:
-        pose = next((st for st in stages if st.get("pose")), None)
         for nm_, used, _ in parts:
             b = scene.add(nm_)
             b.param.set("contact-offset", float(job.get("body_offset", 0.002))).set("friction", float(P.get("friction", 0.4)))
             bp = b.pin()
-            if pose is not None and "bodyPoses" in d and (nm_ == "arms" or len(parts) == 1):
+            for pose, key in (posers if (nm_ == "arms" or len(parts) == 1) else []):
                 t0, t1 = times[pose["name"]]
-                poses = np.asarray(d["bodyPoses"], float)[:, used]
+                poses = np.asarray(d[key], float)[:, used]
                 for k in range(len(poses)):
                     bp.move_to(poses[k], t0 + (t1 - t0) * k / len(poses), t0 + (t1 - t0) * (k + 1) / len(poses))
             if hang is not None:  # the body stops colliding as the coat is lifted to its hook (moved away down
@@ -263,7 +337,16 @@ def main():
     log(f"zozo: {n} verts, {len(F)} tris, {len(sew)} stitches, {total} frames at {fps:.0f} fps, sewing until "
         f"{sew_end:.2f} s, mode {job.get('mode', 'sim')}")
     tt = time.time()
-    sess.start(blocking=True)
+    pruner = _Pruner(app_root / "session" / "output", a.snap)
+    pruner.start()
+    try:
+        sess.start(blocking=True)
+    finally:
+        pruner.stop_flag.set()
+    pruner.prune()
+    if pruner.low is not None:
+        shutil.rmtree(app_root, ignore_errors=True)
+        raise RuntimeError(f"stopped: disk down to {pruner.low:.1f} GB free")
     wall = time.time() - tt
     got = sess.get.vertex()
     if got is None:
@@ -299,9 +382,14 @@ def main():
         if got_f is not None:
             Vf = np.asarray(got_f[0], float)[rows]
             snaps[f"S{f}"] = Vf
+    got_p = sess.get.vertex(max(0, frame - 6)) if frame > 6 else None  # cloth.PREV_APART: the "still moving" measure
+    if got_p is not None:
+        snaps["Vprev"] = np.asarray(got_p[0], float)[rows]
     out = Path(a.out) if a.out else jd / "out.npz"
     np.savez(out, V=V, **snaps, log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
     print("cloth: wrote", out, flush=True)
+    if not a.keep_session:
+        shutil.rmtree(app_root, ignore_errors=True)
 
 
 if __name__ == "__main__":

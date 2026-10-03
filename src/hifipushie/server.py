@@ -1397,8 +1397,10 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
       (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep} or false), detail (seam/stitch/hem maps:
       {seam, topstitch, stitch, hem, buttons, thread} or false).
     state: "worn" (default: sewn on the body and settled), "draped" (laid flat and dropped on the model's surface: a
-      tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or {"hang": {"pins": ["stand:bottomLeft"],
-      "hook": [x, y, z], "rack": [[a, b, radius], ...]}} (dressed first, then hung from the pins with the body gone).
+      tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or "hung" (dressed first, a hanger put inside
+      it under the shoulders with its hook through the neck opening, the body taken away: it settles onto the hanger,
+      nothing pinned; {"hang": {"hanger": {"kind": "wood" | "wire", "width", "bar", "slope", "clear", "rise"},
+      "rail": {"length", "radius", "posts"} | false}}). The report's "hanger" line says what carries it.
     quality: "draft" (one coarse 2 cm sim, ~1 min: judge fit and big shape) or "final" (default: the coarse sim, then
       refined at 1 cm and cleaned up, ~3-5 min).
     The sim runs in the background (one at a time on the machine); this waits up to `wait` s and returns either the

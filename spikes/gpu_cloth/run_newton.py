@@ -32,6 +32,9 @@ import numpy as np
 LOG = []
 
 
+PREV_APART = 6  # cloth.PREV_APART
+
+
 def log(*a):
     s = " ".join(str(x) for x in a)
     LOG.append(s)
@@ -200,7 +203,7 @@ class Sim:
         # edge ids follow the builder's edge order: map (v1, v2) -> id after finalize
         return vmap
 
-    def build(self, X, fixed, sew_pairs, rest_len, body, rack, anchors=None, self_contact=True, rep=None):
+    def build(self, X, fixed, sew_pairs, rest_len, body, rack, anchors=None, self_contact=True, rep=None, hanger=None):
         """rep: welded seams (weld_map): every vertex's triangles and hinges point at its group's vertex, the others
         are inactive and follow it (sew_pairs are then only the pairs left as springs)."""
         wp = self.wp
@@ -244,6 +247,9 @@ class Sim:
                     self._body_sdf = mesh
                 mesh = self._body_sdf
             b.add_shape_mesh(body=-1, mesh=mesh, cfg=cfg)
+        for hv, hf in (hanger or []):  # the hanger (arms, hook, bar) and the rail: static meshes the garment rests on
+            b.add_shape_mesh(body=-1, mesh=newton.Mesh(np.asarray(hv, np.float32), np.asarray(hf, np.int32).ravel()),
+                             cfg=cfg)
         for (a_, b_, rad) in (rack or []):
             a_, b_ = np.asarray(a_, float), np.asarray(b_, float)
             ax = b_ - a_
@@ -344,7 +350,7 @@ class Sim:
     # ---------------------------------------------------------------- stages
 
     def run_stage(self, name, X, frames, gravity, fixed, sew_pairs, closing, body, rack, anchors=None, self_contact=True,
-                  weld=False):
+                  weld=False, hanger=None):
         wp = self.wp
         t0 = time.time()
         rep = None
@@ -354,7 +360,7 @@ class Sim:
             if anchors is not None and len(anchors) else (
             np.linalg.norm(X[sew_pairs[:, 0]] - X[sew_pairs[:, 1]], axis=1) if len(sew_pairs) else np.zeros(0))
         rest0 = d0 if closing else np.zeros_like(d0)
-        model, solver, pipe = self.build(X, fixed, sew_pairs, rest0, body, rack, anchors, self_contact, rep)
+        model, solver, pipe = self.build(X, fixed, sew_pairs, rest0, body, rack, anchors, self_contact, rep, hanger)
         model.set_gravity((0.0, 0.0, -9.81 * gravity))
         s0, s1 = model.state(), model.state()
         ctrl = model.control()
@@ -413,6 +419,9 @@ class Sim:
                 else:
                     q = qn
                 s0.particle_q.assign(q.astype(np.float32))
+            if f == frames - PREV_APART:  # cloth.py's "still moving" measure
+                q = s0.particle_q.numpy().astype(np.float64)
+                self.prev = q[rep] if rep is not None else q[:self.n]
             if f % 10 == 0 or f == frames:
                 q = s0.particle_q.numpy()
                 if not np.isfinite(q).all():
@@ -436,12 +445,16 @@ class Sim:
         if self.job.get("start_npz"):  # e.g. a late stage alone, from an earlier run's snapshot
             X = np.asarray(np.load(self.job["start_npz"])[self.job.get("start_key", "V")], float)
         body = (d["bodyV"], d["bodyT"])
+        hg = self.hanger()
         asm = job.get("assemble") or {}
         snaps = {}
         anchors = None
         pins = np.asarray(job.get("pins") or [], np.int64)
         for stg in job["stages"]:
             nm = stg["name"]
+            if stg.get("pose"):  # the body is a static shape here: a posing stage ("pose", "lower") isn't run
+                log(f"stage {nm}: moves the body ({stg['pose']}), which this runner can't: skipped")
+                continue
             fixed = stg.get("fixed") or []
             if fixed == "assemble.fixed":
                 fixed = asm.get("fixed", [])
@@ -466,7 +479,8 @@ class Sim:
             V = self.run_stage(nm, X, int(stg["frames"]), float(stg.get("gravity", 1)), np.where(fx)[0], pairs, closing,
                                body if stg.get("body", True) else None,
                                job.get("rack") if stg.get("rack") else None, anchors,
-                               bool(stg.get("self_collision", True)), weld=self.weld and (not closing or bool(stg.get("hang"))))
+                               bool(stg.get("self_collision", True)), weld=self.weld and (not closing or bool(stg.get("hang"))),
+                               hanger=hg if stg.get("hanger") else None)
             # (hung: the seams are sewn already and stay welded; only the hanger loops close onto their anchors)
             Vn = V[:self.n].copy()
             if nm == "assemble":
@@ -484,8 +498,12 @@ class Sim:
         V = self.run_stage("refine", S, int(stg["frames"]), 1.0, pins, self.sew, False,
                            (d["bodyV"], d["bodyT"]) if stg.get("body", True) else None,
                            job.get("rack") if stg.get("rack") else None, None, bool(stg.get("self_collision", True)),
-                           weld=self.weld)
+                           weld=self.weld, hanger=self.hanger() if stg.get("hanger") else None)
         return V[:self.n], {}
+
+    def hanger(self):
+        """The hanger and rail meshes (in.npz hangerV/F, railV/F) of a garment hung on a hanger."""
+        return [(self.d[f"{k}V"], self.d[f"{k}F"]) for k in ("hanger", "rail") if f"{k}V" in self.d]
 
 
 def main():
@@ -512,7 +530,7 @@ def main():
     dev = a.device or ("cuda" if wp.is_cuda_available() else "cpu")
     # round-2 defaults (4090, 1 cm): 10 substeps x 20 iterations + a 3% strain limit for worn garments (64 s a shirt,
     # 0 crossings); hung ones 30 substeps (at 10 the coat stretched 30%+)
-    hung = any(s_.get("hang") for s_ in job.get("stages", []))
+    hung = any(s_.get("hang") or s_.get("hanger") for s_ in job.get("stages", []))
     sub = a.substeps or int(job.get("substeps", 30 if hung else 10))
     it = a.iterations or int(job.get("iterations", 20))
     job.setdefault("strain_limit", 0.03)
@@ -530,6 +548,8 @@ def main():
         except Exception as e:  # older/newer warp
             log(f"GPU memory: {e}")
     out = Path(a.out) if a.out else jd / "out.npz"
+    if getattr(s, "prev", None) is not None:
+        snaps["Vprev"] = s.prev
     np.savez(out, V=V, **{k: v for k, v in snaps.items()}, log=np.array(LOG),
              timing=np.array(json.dumps({"total_s": total, "stages": s.timing, "device": dev})))
     print("cloth: wrote", out, flush=True)
