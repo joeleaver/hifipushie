@@ -40,6 +40,7 @@ DESIGNS = Path(__file__).with_name("cloth_designs.json")
 SCRIPT = Path(__file__).with_name("blender_cloth.py")
 SIM_NOISE = 0.06  # the strain a well-fitting garment shows in the sim (see build's verdict)
 HANGER_SKIN = 0.25  # the hanger's collision skin in triangle sizes (5 mm at 2 cm; 1 cm held a coat 4 cm up, bouncing)
+SIM_MIN_FREE_GB = 20.0  # a cloth sim isn't started with less free disk (run_zozo.py also stops a run under 10 GB)
 PREV_APART = 6  # frames between the sim's last positions and Vprev (the "still moving" measure)
 VERSION = 1  # bump with any change to the mesh, placement or sim job: results are cached by it
 
@@ -1383,6 +1384,11 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
     same solver-neutral job folder (cloth_job) to another backend ("file", "remote").
     Returns (out.npz contents, the log lines without progress)."""
     from . import cloth_job, resources, render as rmod
+    import shutil
+    job_dir.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(job_dir).free / 2**30
+    if free < SIM_MIN_FREE_GB:  # a full disk has stopped the machine before (solver sessions write every frame)
+        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {SIM_MIN_FREE_GB}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
         return cloth_job.run_external(jd, backend, progress)

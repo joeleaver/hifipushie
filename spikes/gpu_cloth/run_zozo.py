@@ -30,6 +30,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -42,6 +46,50 @@ def log(*a):
     s = " ".join(str(x) for x in a)
     LOG.append(s)
     print("cloth:", s, flush=True)
+
+
+MIN_FREE_GB = 20.0  # refuse to start with less free disk than this where the session writes
+STOP_FREE_GB = 10.0  # stop a running session when free disk falls under this
+KEEP_LAST = 8  # vert_N.bin frames kept at the end (the result and Vprev)
+
+
+def _free_gb(path) -> float:
+    return shutil.disk_usage(path).free / 2**30
+
+
+class _Pruner(threading.Thread):
+    """While a session runs: deletes its vert_N.bin frames but frame 0 (the row map), every `snap`-th and the last
+    KEEP_LAST (a 1 cm coat writes ~2 MB a frame, every frame), and stops the run when free disk falls under
+    STOP_FREE_GB."""
+
+    def __init__(self, out_dir: Path, snap: int):
+        super().__init__(daemon=True)
+        self.out_dir, self.snap, self.stop_flag, self.low = out_dir, snap, threading.Event(), None
+
+    def prune(self):
+        frames = []
+        for f in self.out_dir.glob("vert_*.bin") if self.out_dir.exists() else ():
+            m = re.match(r"vert_(\d+)\.bin$", f.name)
+            if m:
+                frames.append((int(m.group(1)), f))
+        if not frames:
+            return
+        last = max(k for k, _ in frames)
+        for k, f in frames:
+            if k == 0 or k > last - KEEP_LAST or (self.snap and k % self.snap == 0):
+                continue
+            f.unlink(missing_ok=True)
+
+    def run(self):
+        while not self.stop_flag.wait(5.0):
+            self.prune()
+            free = _free_gb(self.out_dir if self.out_dir.exists() else self.out_dir.parent.parent)
+            if free < STOP_FREE_GB:
+                self.low = free
+                log(f"disk: {free:.1f} GB free (< {STOP_FREE_GB}): stopping the session")
+                from frontend import App
+                App.terminate()
+                return
 
 
 def _tube(a, b, r, n=16):
@@ -66,6 +114,7 @@ def main():
     ap.add_argument("--frames", type=int, default=None, help="stop early (debugging)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--snap", type=int, default=0, help="also keep every N-th frame (S<frame> in out.npz)")
+    ap.add_argument("--keep-session", action="store_true", help="leave ZOZO's session folder (deleted by default)")
     a = ap.parse_args()
     jd = Path(a.job)
     job = json.loads((jd / "job.json").read_text())
@@ -92,7 +141,13 @@ def main():
     if a.frames:
         total = min(total, a.frames)
     name = f"hp_{jd.parent.name}_{jd.name}"[:60]
+    data_root = Path(App.get_data_dirpath())
+    data_root.mkdir(parents=True, exist_ok=True)
+    free = _free_gb(data_root)
+    if free < MIN_FREE_GB:
+        raise RuntimeError(f"only {free:.1f} GB free under {data_root} (need {MIN_FREE_GB}): not starting")
     app = App.create(name)
+    app_root = data_root / name  # the session's files: deleted after the run (out.npz has what we keep)
     app.asset.add.tri("garment", X.astype(np.float64), F)
     Ind = np.c_[sew[:, 0], sew[:, 1], sew[:, 1], sew[:, 1]].astype(np.int64)
     W = np.tile([1.0, 1.0, 0.0, 0.0], (len(sew), 1))
@@ -282,7 +337,16 @@ def main():
     log(f"zozo: {n} verts, {len(F)} tris, {len(sew)} stitches, {total} frames at {fps:.0f} fps, sewing until "
         f"{sew_end:.2f} s, mode {job.get('mode', 'sim')}")
     tt = time.time()
-    sess.start(blocking=True)
+    pruner = _Pruner(app_root / "session" / "output", a.snap)
+    pruner.start()
+    try:
+        sess.start(blocking=True)
+    finally:
+        pruner.stop_flag.set()
+    pruner.prune()
+    if pruner.low is not None:
+        shutil.rmtree(app_root, ignore_errors=True)
+        raise RuntimeError(f"stopped: disk down to {pruner.low:.1f} GB free")
     wall = time.time() - tt
     got = sess.get.vertex()
     if got is None:
@@ -324,6 +388,8 @@ def main():
     out = Path(a.out) if a.out else jd / "out.npz"
     np.savez(out, V=V, **snaps, log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
     print("cloth: wrote", out, flush=True)
+    if not a.keep_session:
+        shutil.rmtree(app_root, ignore_errors=True)
 
 
 if __name__ == "__main__":
