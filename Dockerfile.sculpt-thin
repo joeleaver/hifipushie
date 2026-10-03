@@ -1,0 +1,35 @@
+# The THIN hosted sculpt box: Dockerfile.sculpt's runtime (system libraries, uv, git, the sculpt user) WITHOUT the
+# stack (Blender, Python, the venv, the asset packs). Those come from an archive on the department's RunPod network
+# volume, unpacked onto the container disk at boot by docker/sculpt-stack-boot.sh: ~2 s, against a ~1 min pull of the
+# full image. A box only gets this image when the department rents it WITH the volume (one datacenter); everywhere
+# else it gets the full image. Build with docker/build-sculpt.sh --thin; stage archives with docker/stage-sculpt-stack.sh.
+#
+# Runtime env: as Dockerfile.sculpt, plus HIFIPUSHIE_STACK (the archive to use when none matches
+# OXIDEGEN_WANTED_VERSION; set by the department) and optionally HIFIPUSHIE_STACK_DIR (default /workspace/sculpt).
+
+ARG UBUNTU=ubuntu:24.04
+FROM ${UBUNTU}
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libegl1 libgl1 libglvnd0 libglx0 libopengl0 libgles2 libegl-mesa0 libgl1-mesa-dri \
+      libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 libsm6 libice6 libxcb1 \
+      libxrandr2 libxcursor1 libxinerama1 libwayland-client0 libwayland-cursor0 libwayland-egl1 libdbus-1-3 \
+      libuuid1 fonts-dejavu-core ca-certificates git zstd \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 1001 --shell /usr/sbin/nologin sculpt \
+ && mkdir -p /work /opt/stack /app && chown sculpt:sculpt /work /opt/stack \
+ # the stack's paths, as in the full image (the venv's interpreter and scripts point at /opt/python, /app/.venv)
+ && ln -s /opt/stack/blender /opt/blender && ln -s /opt/stack/python /opt/python \
+ && ln -s /opt/stack/venv /app/.venv && ln -s /opt/stack/hifipushie-assets /opt/hifipushie-assets \
+ && ln -s /opt/blender/blender /usr/local/bin/blender
+COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
+COPY docker/sculpt-stack-boot.sh /usr/local/bin/sculpt-stack-boot
+ENV PATH=/app/.venv/bin:$PATH \
+    HIFIPUSHIE_BLENDER=/opt/blender/blender \
+    HIFIPUSHIE_ASSETS=/opt/hifipushie-assets \
+    HIFIPUSHIE_ARTIST_WORK=/work \
+    OXIDEGEN_RUNNER_MODE=hosted \
+    NVIDIA_DRIVER_CAPABILITIES=all \
+    PYTHONUNBUFFERED=1
+USER sculpt
+WORKDIR /work
+CMD ["/usr/local/bin/sculpt-stack-boot"]

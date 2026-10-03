@@ -1,4 +1,4 @@
-# Only what Dockerfile.sculpt copies: the project (pyproject, uv.lock, src) and the staged asset packs.
+# Only what Dockerfile.sculpt(-thin) copies: the project (pyproject, uv.lock, src), the staged asset packs, the thin boot.
 *
 !pyproject.toml
 !uv.lock
@@ -6,5 +6,6 @@
 !README.md
 !src/
 !docker/assets/
+!docker/sculpt-stack-boot.sh
 **/__pycache__
 **/*.pyc
