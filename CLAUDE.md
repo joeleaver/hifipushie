@@ -276,7 +276,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   verts, 98% quads, mean error 1.34 mm, head 0.78.
 - `base.py`: spec `base` = a template body as the start of a character (`{"template": "male_stylized", "eyes": part,
   "girth", "soften", "push", "head"}`): the template's joints are injected (spec joints win), the body warped onto them
-  with radii kept (`_skeleton_warp(girth=)`; hands by FK, see below), Catmull-Clark'd, and becomes one primitive (kind "base", first in the
+  with radii kept (`_skeleton_warp(girth=)`; FK rotations, hands from a palm fit, see below), Catmull-Clark'd, and becomes one primitive (kind "base", first in the
   prims): IMLS over the vertices with a compact Wendland kernel (a Gaussian's tail truncated by the k nearest speckled
   creases) whose width grows with distance (h >= 0.7 d: shells stay smooth; a fixed h dimpled a shirt); exact only a few
   cm out, so big blends or deep strokes on the base make plates: use `push` (normal bumps on the mesh) for volume.
@@ -299,9 +299,26 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   past the template's wrist (`HAND_BLEND` 3 cm ramp, and only where the arm's bones carry the point: the thigh beside
   a hanging hand keeps the warp) the hand's bones only, blended tighter (`HAND_SIGMA` 0.5). Joints that keep the
   template's hand pose -> one rigid move (Garrett: 0.1 mm of the Kabsch-moved MakeHuman hand); curled fingers bend
-  at their joints. Nothing outside the hands changes. `tests/test_handwarp.py`. Not fixed (changes approved bodies):
-  the rest of the body keeps per-bone minimal arcs and the girth `off`, which leaves base bodies slightly L/R
-  asymmetric (`_frame` isn't mirror-symmetric; up to ~13 mm at a shoulder on Garrett).
+  at their joints. `tests/test_handwarp.py`.
+  The rest of the body (2026-10-03, base.VERSION 60; director: "we have to fix the warping issue, too"): the same
+  causes outside the hands left Garrett's base up to 13 mm L/R asymmetric (right shoulder, chest) and twisted at
+  elbows/wrists. Now `retopo._body_rotations`: rigid fits where several bones start (`FITS`: pelvis + hips + chest
+  joints, chest + neck + shoulders; each palm) and FK down every chain (parent's rotation + the minimal arc to the
+  bone's target: consistent roll); a bone ending at a fit (forearm -> palm, spine -> chest) twists into the fit's roll
+  along its length (`_twist`, applied in `carry`; Garrett's forearms 7.6 deg) instead of the wrist taking it all; no
+  `off` for any girth radius lookup (R1 is the template's own). The blend: related bones (a shared joint, or one
+  starts at a fit whose root joint the other has: thighs relate to the spine, not to each other) blend over the full
+  width (sigma 0.8 x distance), others over `FAR_SIGMA` 0.35 of it, the width chosen by a soft nearest bone
+  (`NEAR_SOFT`) so weights stay continuous (the neck's base had been pulled 2-12 mm by an arm raise, an inner thigh
+  14 mm by the other leg). Narrowing sigma itself (0.6, 0.5) creased bent elbows/knees more than it helped: kept.
+  Garrett: asymmetry 13.3 -> 0.0 mm; bumpiness (vs the template) shoulder 1.17 -> 1.00, elbow 1.07 -> 1.03, wrist 1.09
+  -> 1.01, neck 1.05 -> 1.00; up to 15 mm moved (the right side onto the left's mirror); face (GNM graft) unchanged.
+  A spec in the template's pose gives it back; a rigidly moved skeleton gives a rigidly moved body (0.000 mm).
+  `tests/test_bodywarp.py` (symmetry, rest/rigid, joint bumpiness, unrelated bones; MakeHuman when its pack is
+  present). Known: bending an elbow further than the template's rest still creases like any linear blend (x1.16
+  bumpiness at +35 deg on MakeHuman, the same before). The wrap path (no girth) gets the FK rotations and twist but keeps the
+  full-width blend for all bones: with FAR_SIGMA its untangle left ~7% more turned faces (goblin_anat, troll_anat);
+  as merged, 1215 / 1781 turned faces vs 1185 / 1725 before (+3%), misses and field error unchanged.
   Body sources: `body: {"source": "makehuman", "age", "weight", "muscle", "height"}` (`makehuman.py`: CC0 base mesh +
   macro targets from `workspace/_templates/makehuman/`, our own loader; joints from its default skeleton) or the
   template. The graft (2026-09-28): the body's head cut at the highest template neck loop wholly `LOW_LOOP` under the

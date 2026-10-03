@@ -45,6 +45,8 @@ BASE_FACE = {"eye.L": "eye.L", "nose_tip": "lm_nose_tip", "mouth": "lm_lip_seam"
 NB = 16  # angle bins round a bone
 STATIONS = np.linspace(0.0, 1.0, 5)  # along each bone, where radii are measured
 HAND_BLEND = 0.03  # m past the wrist over which the general warp hands over to the rigidly moved hand
+FAR_SIGMA = 0.35  # x sigma: the blend width between bones that share no joint (see apply in _skeleton_warp)
+NEAR_SOFT = 0.25  # how softly "the nearest bone" is taken when choosing those widths (relative distance)
 HAND_SIGMA = 0.5  # the hand's blend between its bones (x the distance to the nearest), tighter than the body's
 
 
@@ -155,6 +157,71 @@ def _hand_rotations(Jt, Jm, segs):
             u0, u1 = _unit(Jt[b] - Jt[a]), _unit(Jm[b] - Jm[a])
             out[(a, b)] = _rot_between(parent @ u0, u1) @ parent
     return out
+
+
+FITS = {"pelvis": ("pelvis", "chest", "hip.L", "hip.R"),  # joints where several bones start: the rotation they
+        "chest": ("chest", "neck", "shoulder.L", "shoulder.R")}  # share is the best rigid fit of the joints round them
+FIT_OF = {"pelvis": "pelvis", "hip.L": "pelvis", "hip.R": "pelvis", "chest": "chest"}
+
+
+def _palm_roots(side):
+    return [f"wrist.{side}"] + [f"finger{k}_0.{side}" for k in range(1, 6)] + [f"thumb_0.{side}"]
+
+
+def _body_rotations(Jt, Jm, segs):
+    """Every segment's rotation by forward kinematics, and the rigid fits ({joint: R}) its bones start from.
+
+    Where several bones start (the pelvis and hips, the chest, a palm) their shared rotation is the best rigid fit
+    (Kabsch) of the joints round them; every other bone takes its parent's rotation composed with the minimal arc from
+    the parent-carried axis to its own target axis. Neighbouring bones then differ only by the bend between them (a
+    consistent roll down every chain), so the warp's blend across a joint mixes two views of one motion. Per-bone
+    minimal arcs (the old rule) gave neighbouring bones different rolls for the same motion and the blend averaged
+    the mismatched frames: twisted shoulders and elbows, and (with the radius lookup) bodies up to 13 mm asymmetric.
+    A whole skeleton moved rigidly thus moves the body rigidly. The hand's own transforms (`_hand_rotations`) use the
+    same palm fit; these are the general warp's, up to the wrist."""
+    def fit(names):
+        names = [n for n in names if n in Jt and n in Jm]
+        if len(names) < 3:
+            return None
+        return _kabsch(np.array([Jt[n] for n in names]), np.array([Jm[n] for n in names]))
+    fits = {}
+    for g, names in FITS.items():
+        R = fit(names)
+        if R is not None:
+            fits.update({j: R for j, f in FIT_OF.items() if f == g})
+    for side in "LR":
+        R = fit(_palm_roots(side))
+        if R is not None:
+            fits.update({j: R for j in _palm_roots(side)})
+    ends = {sg[1]: sg for sg in segs}
+    out = {}
+
+    def rot(sg):
+        if sg not in out:
+            a, b = sg
+            if a in fits:
+                parent = fits[a]
+            elif a in ends:
+                parent = rot(ends[a])
+            elif re.fullmatch(r"(finger\d|thumb)_0\.[LR]", a) and f"wrist.{a[-1]}" in ends:  # no palm fit
+                parent = rot(ends[f"wrist.{a[-1]}"])
+            else:
+                parent = np.eye(3)
+            u0, u1 = _unit(Jt[b] - Jt[a]), _unit(Jm[b] - Jm[a])
+            out[sg] = _rot_between(parent @ u0, u1) @ parent
+        return out[sg]
+    for sg in segs:
+        rot(sg)
+    return out, fits
+
+
+def _twist(R, Rend, u0, u1):
+    """The signed angle about u1 that turns R into the rotation a bone ending at a rigid fit (Rend) would have: the
+    bone twists by it along its length (forearm into the palm, spine into the chest), as a real forearm does."""
+    Rb = _rot_between(Rend @ u0, u1) @ Rend
+    x = _frame(u1)[0]
+    b = Rb @ (R.T @ x)  # Rb R^T keeps u1 (both carry u0 onto it): a turn about u1
+    return float(np.arctan2(np.cross(x, b) @ u1, x @ b))
 
 
 def _frame(u):
@@ -281,7 +348,12 @@ def _lap(X, E, deg):
 def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
     """Template vertices carried by the skeleton. Radii per angle follow the model's surface (rays onto prims), or,
     with girth ({segment start joint: scale}, for the base mesh: there is no surface yet), the template's own
-    scaled. Returns (warped, segments, dominant segment per vertex, apply, model joints)."""
+    scaled (read at the template's own angle: no frame offset). Each bone's rotation by forward kinematics
+    (`_body_rotations`; the hand's past the wrist by `_hand_rotations`), a bone ending at a rigid fit twisting into
+    it along its length; vertices blend the bones' transforms by distance (sigma x the distance to the nearest bone),
+    related bones (a shared joint or fit) over that width, others over FAR_SIGMA of it (base bodies; a wrap keeps
+    the full width for all).
+    Returns (warped, segments, dominant segment per vertex, apply, model joints)."""
     Jt = dict(Jt)
     Jm = {}
     for k in Jt:  # the model may use the template's names (a base mesh) or the kits' (hand_f<n>_<k>)
@@ -302,6 +374,7 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
     segs = [sg for sg in _segments(Jt) if sg[0] in Jm and sg[1] in Jm]
     near = np.stack([_seg_dist(P, Jt[a], Jt[b]) for a, b in segs], 1).argmin(1)
     hand = _hand_rotations(Jt, Jm, segs)
+    body, fits = _body_rotations(Jt, Jm, segs)
     xf, xh = [], {}
     for k, (a, b) in enumerate(segs):
         a0, b0, a1, b1 = Jt[a], Jt[b], Jm[a], Jm[b]
@@ -320,22 +393,26 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
             R1 = np.stack([_target_radii(prims, a1, b1, t0) for t0 in STATIONS])
         x1, y1 = _frame(u1)
         x0, y0 = _frame(u0)
-        g = dict(a0=a0, u0=u0, a1=a1, sax=np.linalg.norm(b1 - a1) / np.linalg.norm(b0 - a0),
-                 L0=np.linalg.norm(b0 - a0), R0=R0, R1=R1, x0=x0, y0=y0)
-        for R, into in ((_rot_between(u0, u1), None), (hand.get((a, b)), k)):
+        g = dict(a0=a0, u0=u0, a1=a1, u1=u1, sax=np.linalg.norm(b1 - a1) / np.linalg.norm(b0 - a0),
+                 L0=np.linalg.norm(b0 - a0), R0=R0, R1=R1, x0=x0, y0=y0, tw=0.0)
+        Rb = body[(a, b)]
+        # a bone ending where a rigid fit starts (forearm -> palm, spine -> chest) twists along its length from its
+        # own (parent-carried) roll to the fit's, so neither joint carries the whole turn
+        tw = _twist(Rb, fits[b], u0, u1) if b in fits else 0.0
+        for R, into, t_ in ((Rb, None, tw), (hand.get((a, b)), k, 0.0)):
             if R is None:
                 continue
             xr = R @ x0
-            # R1 is looked up at the point's angle in the target's frame (ang + off), as _target_radii measures
-            # it. A girth R1 is the template's own (its frame), so the hand's transforms take no offset: with one,
-            # the radii were read round the bone by the frames' twist (fingers stretched by up to ~15 mm). The
-            # body's keep it: there it leaves base bodies slightly asymmetric (_frame isn't mirror-symmetric; up
-            # to ~13 mm at a shoulder), but fixing that changes every approved body (left for a decision)
-            off = 0.0 if girth is not None and into is not None else np.arctan2(xr @ y1, xr @ x1)
+            # R1 is looked up at the point's angle in the target's frame (ang + off; + the twist along the bone),
+            # as _target_radii measures it. A girth R1 is the template's own (its frame): no offset, or the radii
+            # are read round the bone by the frames' twist (fingers stretched by up to ~15 mm; bodies up to 13 mm
+            # asymmetric, as _frame isn't mirror-symmetric)
+            off = 0.0 if girth is not None else np.arctan2(xr @ y1, xr @ x1)
+            h = dict(g, R=R, off=off, tw=t_)
             if into is None:
-                xf.append(dict(g, R=R, off=off))
+                xf.append(h)
             else:
-                xh[into] = dict(g, R=R, off=off)
+                xh[into] = h
     centres = (np.arange(NB) + 0.5) / NB * 2 * np.pi - np.pi
     # where the hand moves as one piece (the FK transforms in xh) instead of by the general per-bone warp: past
     # the template's wrist (ramped over HAND_BLEND along the forearm) and only where the arm's own bones carry the
@@ -364,18 +441,39 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
             lo, hi = STATIONS[i], STATIONS[i + 1]
             m = (tc >= lo) & (tc <= hi)
             w = (tc[m] - lo) / (hi - lo)
-            ai = (ang[m] + g["off"] + np.pi) % (2 * np.pi) - np.pi
+            ai = (ang[m] + g["off"] + g["tw"] * tc[m] + np.pi) % (2 * np.pi) - np.pi
             tgt[m] = (1 - w) * np.interp(ai, centres, g["R1"][i], period=2 * np.pi) + \
                 w * np.interp(ai, centres, g["R1"][i + 1], period=2 * np.pi)
             src[m] = (1 - w) * np.interp(ang[m], centres, g["R0"][i], period=2 * np.pi) + \
                 w * np.interp(ang[m], centres, g["R0"][i + 1], period=2 * np.pi)
         rs = np.clip(tgt / np.maximum(src, 1e-3), 0.3, 4.0)
-        return g["a1"] + (np.outer(t * g["sax"], g["u0"]) + rad * rs[:, None]) @ g["R"].T
+        v = (np.outer(t * g["sax"], g["u0"]) + rad * rs[:, None]) @ g["R"].T
+        if g["tw"]:  # the twist along the bone (0 at its start, all of it at its end), about the target axis
+            u, phi = g["u1"], g["tw"] * tc
+            c, s = np.cos(phi)[:, None], np.sin(phi)[:, None]
+            v = v * c + np.cross(u, v) * s + np.outer(v @ u, u) * (1 - c)
+        return g["a1"] + v
+
+    # blend only across a joint's own region: bones that share a joint (or a rigid fit: pelvis and hips, the chest,
+    # a palm) blend over the full width; any other pair only where their distances are nearly equal. A wide blend
+    # between unrelated bones pulled the neck's base with the upper arms, a clavicle with the forearm, an inner
+    # thigh with the other leg. The width is chosen by how related each bone is to the softly nearest ones, so the
+    # weights stay continuous where the nearest bone changes. Base bodies only: a model's wrap (no girth) is a first
+    # guess before projection and its untangling did ~7% worse (more turned faces on goblin/troll) with it
+    far = FAR_SIGMA if girth is not None else 1.0
+    # related: a shared joint, or one bone starts at a fit whose root joint (pelvis, chest, wrist) the other has (the
+    # thighs relate to the spine, not to each other; the digits to the palm and forearm, not to each other)
+    root = {**{j: g for j, g in FIT_OF.items()}, **{j: f"wrist.{j[-1]}" for s_ in "LR" for j in _palm_roots(s_)}}
+    near_ = np.array([[bool(set(p) & set(q)) or root.get(p[0]) in q or root.get(q[0]) in p for q in segs]
+                      for p in segs], float)
 
     def apply(X):
         Dx = np.stack([_seg_dist(X, Jt[a], Jt[b]) for a, b in segs], 1)
         d0 = Dx.min(1, keepdims=True)
-        W = np.exp(-((Dx - d0) / (sigma * np.maximum(d0, 0.01))) ** 2)
+        rel = (Dx - d0) / np.maximum(d0, 0.01)
+        pk = np.exp(-(rel / NEAR_SOFT) ** 2)
+        sig = sigma * (far + (1 - far) * (pk / pk.sum(1, keepdims=True)) @ near_)
+        W = np.exp(-(rel / sig) ** 2)
         W /= W.sum(1, keepdims=True)
         out = np.zeros_like(X)
         for k, g in enumerate(xf):

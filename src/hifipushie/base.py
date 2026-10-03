@@ -7,7 +7,10 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
   thumb_k .L) is added to the spec's joints where the spec doesn't give them (`inject`, before kits), with radii
   measured from the template. Moving a joint moves the base with it (`retopo._skeleton_warp`: per bone segment a
   rotation and a stretch, radii kept, times "girth" {segment start joint: scale}, e.g. {"shoulder.L": 1.15} for a
-  thicker upper arm). Hands move by forward kinematics from a rigid fit of the palm (`retopo._hand_rotations`): joints
+  thicker upper arm). Rotations by forward kinematics down every chain from rigid fits where several bones start
+  (pelvis + hips, chest, palm; `retopo._body_rotations`), a bone ending at a fit twisting into it along its length
+  (forearm -> palm), blended only between related bones: symmetric specs give symmetric bodies, a rigidly moved
+  skeleton a rigidly moved body. Hands move by FK from a rigid fit of the palm (`retopo._hand_rotations`): joints
   that keep the template's hand pose move it as one piece, blended into the forearm over 3 cm past the wrist.
 - Surface: the warped quads are Catmull-Clark subdivided ("subdivide", default 1) and become an implicit surface
   (`sd_base`): IMLS over the vertices (Kolluri 2005): f(x) = sum w_i n_i.(x - p_i) / sum w_i, w_i Wendland's C2 kernel of support 2 h_i, h_i
@@ -36,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 59  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 60  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
