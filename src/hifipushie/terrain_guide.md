@@ -325,6 +325,9 @@ and the `"story"`.
     can overhang. Its colour is the heightfield's own rock there (the kind's rock, any rock cover layer such as a
     cliff's grey or black lava), toned per bed and facet and darker in crevices. `"rock": {"facets": 0..1, "bedding": 0..1}` scales it (as for the heightfield's rock), `"rock": false` or
     `"export": {"tiles": {"rock": 0}}` turns it off. Rock near the water is dark and wet up to ~2 m, higher inside caves.
+    Thin rock (an arch's fin, slim stacks and headlands, anything narrower than ~20 m) keeps its relief, bounded by
+    how thick the rock is at that height (it never carves through or cuts a top off), and shows its strata: beds
+    1-3 m thick, the soft ones set back and darker, the hard ones flush and paler, as the sea picks them out.
 - **caves** (mesh tiles only, like volumes): a cave is a skeleton of named entrances and chambers joined by passages.
   ```
   {"name": {"kind": "sea" | "karst" | "lava", "width"?: m, "height"?: m,
@@ -388,7 +391,8 @@ and the `"story"`.
   sign): meta.json's site gets `prop` with its name, ground position `xyz` and `yaw` (the compass bearing it faces),
   and views draw a stand-in at its real size instead of the 12 m marker pole (a disc golf basket, a tee pad slab, a
   blocky building for a "lodge"/"building"/"house", else a small post).
-- **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search).
+- **routes**: paths the compiler finds, grades and carves (switchbacks come out of the search). In the 3D tiles' maps
+  a route is worn ground only off mown turf: across a fairway or a green it is walked on grass.
   `{"from": address, "to": address, "via": [...], "max_grade": 0.12, "width": m, "avoid": [zones], "stay_in": zone,
   "max_earthworks": 25, "max_fill": m}` (`max_fill` limits banks alone, for a trail that shouldn't stand on one; it may then fail its grade). Cuts and fills stop at `max_earthworks` metres (beyond that it's a bridge or a tunnel); the
   report judges the road on the ground as built and says where it fails, where its bed ends off its stop (a cliff band
@@ -470,8 +474,9 @@ and the `"story"`.
   The 3D tiles' renders and `clutter.csv` (x, y, z, kind, scale, yaw, squash: the height's share of the scale) carry
   ground clutter from the same masks: bushes on scrub (on its dark clumps; never within ~1.8 m of a cliff's turf edge
   and low and wind-shorn, squashed, out to ~7 m from it), boulders in clusters on rock (the splash zone, where rock
-  breaks through near lips; never on sand, sunk a little), and (renders only, near the eye) tussocks in rough grass and
-  dense tall grass round the eye: placeholders for an engine's detail scatter. Trees keep back from cliff lips too
+  breaks through near lips; never on sand, sunk a little), and (renders only, near the eye) tussocks in rough grass
+  (fewer and bigger clumps from ~20 to 70 m out, as an engine's grass draws further away) and dense tall grass round the
+  eye: placeholders for an engine's detail scatter (bushes are twiggy stems under small leaf clusters). Trees keep back from cliff lips too
   (4 m in from the turf's edge; cypress 1.5 m).
   `"trees"` on a tree layer picks the tree's shape (views, and the kind column of trees.csv): `"conifer"` (a spire),
   `"broadleaf"` (a round crown), `"fruit"`, `"pine"` (a tall bare trunk under a lobed round crown: a Monterey or stone
@@ -575,7 +580,7 @@ The shell run writes its outputs beside the spec:
   rock and turf detail, arches and caves, trees, the sites' props as stand-ins for scale: baskets, tee pads, a lodge),
   under a raking sun chosen per view (`"sun"` as for views) with aerial haze (`haze`: metres for 63%, default 5000);
   `light="clear"` swaps the default hazy sky for a deep blue clear one and a strong sun (what a sunny photo shows:
-  judge colours against photos in it). Other settings (metres):
+  judge colours against photos in it; the sky as a camera sees it, deeper than the light it casts, and a deep blue sea). Other settings (metres):
   `"tile": 64` (tile size), `"voxel": 0.5` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),

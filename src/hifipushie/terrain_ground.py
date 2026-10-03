@@ -652,6 +652,7 @@ CLUTTER = {  # kind: grid spacing m (jittered grid samples kept by probability)
 }
 TREE_LIP = {"default": 4.0, "cypress": 1.5, "shrub": 2.0}  # trees: m in from the turf's edge back from a lip
 CLUTTER_NEAR = {"tallgrass": 28.0}  # kinds placed only this close to the render's eyes (m), thinning out with distance
+CLUTTER_MID = (20.0, 70.0, 0.6, 0.9)  # tussocks from / to (m from the eye): x (1 + a) as many, x (1 + b) as big
 CLUTTER_LIP = {"keep": 1.8, "hug": 7.0, "squash": 0.45}  # bushes: none within `keep` m of the turf's edge (back from
 # a cliff's lip), hugging the ground (height x squash, broader) out to `hug` m: wind-shorn, not perched on the edge
 
@@ -747,6 +748,11 @@ def _clutter_strip(T, mats, field, kind, ki, xs, ys, sp, near, rng):
         p = one("rough") * (1 - sc) * (1 - bare) * _ss(0.2, 0.8, into) * green
         if kind == "tussock":
             p = p * 0.6
+            if dn is not None:  # (past the tall grass round the eye: fewer, bigger clumps keep the rough's cover, as an
+                # engine's grass draws bigger clumps further out; at 0.45 m they thinned to a few dots from 30 m)
+                far = _ss(CLUTTER_MID[0], CLUTTER_MID[1], dn)
+                p = np.clip(p * (1 + CLUTTER_MID[2] * far), 0, 1)
+                scale = scale * (1 + CLUTTER_MID[3] * far)
         else:  # (dense by the eye, thinning out to the radius: an engine's grass draw distance)
             r = CLUTTER_NEAR["tallgrass"]
             p = p * 0.9 * (_ss(r, 0.45 * r, dn) if dn is not None else 1.0)

@@ -1550,6 +1550,30 @@ regresses, bisect by building one spec at each commit and diffing heights.
       a waterline notch, 10 deg lean, a broken top. Thin fins and stacks take little relief (`Field.thin`), so their
       beds show in colour instead (`THIN_TONE`): the arch's fin still reads smooth in geometry.
     - Regression numbers and open items: see the Overboard card "Whole-level look".
+  - Thin rock, lips, routes, sea and sky (2026-10-02, "terrain7" agent, renders T0x in workspace/terrain3d_renders).
+    - Thin rock keeps its relief: `Field.thin` (grey opening) no longer cuts the relief's weight (`Field.relief_w`;
+      `Field.steep` keeps the cut for the cliff Region, fallen blocks and the facet-delta removal). `_local_thickness`:
+      per thin piece (labelled, padded 2 r_open), per ~1 m height level, the Hildebrand-Ruegsegger local thickness of
+      {H > z} (largest disc covering the cell, via an EDT per radius: disc dilations cost R^2 per cell), 2 cells into
+      the air, smoothed; `Field.thin_at(p)` -> (half-thickness, t), trilinear. The relief is soft-clamped there
+      (`thin_cap`: THIN_RELIEF 0.35 x hw x tanh(R / that)), so it can't carve through or cut a top off. Near caves and
+      notches (THIN_VOID 8 m, not arches) the old rule stays: full relief over a sea-cave mouth cut a roof piece free
+      4 m up (`floating` caught it), and capping by the slab between face and void instead folded cave walls into
+      shards. Thin rock also gets `strata` (interbedded 1-3 m beds, about half soft and set back up to 1 m, eased over
+      +-0.5 m, wandering along the strike) in geometry AND colour (Materials: soft darker/warmer, hard paler,
+      THIN_STRATA tone). Honest read: relief on pebble is ~0.5 m rms whatever the rule, invisible at 30-60 m; the fin
+      reads layered only through the colour bands. Durdle Door's crisp many-bedded look is still far.
+    - The pale flat triangles at lips were the cliff mesh's "buried" split: a face whose CENTRE was > 0.3 m off the
+      visible front went to the plain matte (COLOR_0) primitive, and big faces across the turf step have their centre
+      off it with every corner on it. Now buried = centre off and not all corners on the front (requiring every corner
+      off promoted the back's edge faces round caves into the visible prim: shards and map seams).
+    - Routes are worn ground only off mown turf (`Materials._route`, gated by the mown + first-cut kinds).
+    - `light="clear"`: `sky_sat` (Hue/Saturation on camera and glossy rays only: the light the sky casts is unchanged),
+      `water` / `water_roughness` (a deep blue body, IOR 1.33), `haze_scale` 3. Sea measured h 189-194 s 0.12-0.25 ->
+      206 / 0.44 (photo 212 / 0.43-0.49).
+    - Bushes: `blender_terrain._scrub` (stems forking from a crown, ~600 small leaf clusters over a lumpy shell with
+      gaps); lumps read as stones, big clusters as crumpled paper. Tussocks 20-70 m out are more and bigger
+      (`terrain_ground.CLUTTER_MID`).
   - Incremental export, build cache, decimation tail (2026-10-01, "incremental" agent; the user: exports take long).
     - `terrain_incremental.py`: an edit re-exports only the tiles it can reach; the rest of the export dir is left
       untouched. INVARIANT: an incremental export equals a cold one byte for byte (manifest timing/profile aside); test

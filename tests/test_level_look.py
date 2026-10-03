@@ -146,6 +146,49 @@ def test_clutter_lips(T):
         assert bush[near, 6].max() < 0.8  # (hugging the ground near the lip)
 
 
+def test_thin_rock(T):
+    """Thin rock (the arch's fin) keeps its relief, bounded by its local half-thickness, and shows strata."""
+    field, vols, *_ = terrain_mesh.build_field(T)
+    assert field.thin_parts, "no thin rock measured on pebble"
+    A = [v for v in vols if getattr(v, "kind", None) == "arch"][0].arch
+    rng = np.random.default_rng(3)
+    P = np.c_[np.asarray(A["c"]) + rng.uniform(-14, 14, (30000, 2)), rng.uniform(0.5, 9.0, 30000)]
+    h, s = field.column(P[:, 0], P[:, 1])
+    F0 = (P[:, 2] - h) * s
+    k = np.abs(F0) < 0.25
+    P, F0, s = P[k], F0[k], s[k]
+    hw, t = field.thin_at(P)
+    assert (t > 0.5).mean() > 0.2, (t > 0.5).mean()
+    R = field.solid(P, F0.copy(), s) - F0
+    # the relief's own weight is back on the fin (it was a tenth), within THIN_RELIEF x hw where fully thin
+    assert np.sqrt((R * R).mean()) > 0.3, np.sqrt((R * R).mean())
+    full = (t > 0.999) & np.isfinite(hw)
+    if full.any():
+        assert (np.abs(R[full]) <= terrain_mesh.THIN_RELIEF * hw[full] + 1e-6).all()
+    st = terrain_mesh.strata(P, 0.0, 4242)
+    assert 0.05 < (st > 0.1).mean() < 0.9 and st.max() <= terrain_mesh.THIN_STRATA["depth"] + 1e-9
+    # continuous along z: no jumps between beds (a jump meshes as shards)
+    z = np.arange(0, 20, 0.01)
+    col = terrain_mesh.strata(np.c_[np.full(len(z), 200.0), np.full(len(z), 80.0), z], 0.0, 4242)
+    assert np.abs(np.diff(col)).max() < 0.05, np.abs(np.diff(col)).max()
+
+
+def test_route_off_turf(T):
+    """A route is worn ground only off mown turf."""
+    field, *_ = terrain_mesh.build_field(T)
+    M = terrain_mesh.Materials(T, field)
+    if M.routes is None or M.ground is None:
+        return
+    iy, ix = np.nonzero(np.asarray(M.routes, float) > 0.5)
+    xy = np.c_[T.xs[ix], T.ys[iy]]
+    kinds = M.kinds(np.c_[xy, field.column(xy[:, 0], xy[:, 1])[0]])
+    r = M._route(xy, kinds)
+    turf = np.clip(np.asarray(kinds.get("mown", 0.0) + kinds.get("cut", 0.0)) + np.zeros(len(xy)), 0, 1)
+    assert (r[turf > 0.7] < 0.05).all()
+    if (turf < 0.05).any():
+        assert r[turf < 0.05].max() > 0.5
+
+
 if __name__ == "__main__":
     T = _pebble()
     test_arch_and_roofs(T)
@@ -155,4 +198,6 @@ if __name__ == "__main__":
     test_ground_edits(T)
     test_kinds_and_swatches(T)
     test_clutter_lips(T)
+    test_thin_rock(T)
+    test_route_off_turf(T)
     print("ok")

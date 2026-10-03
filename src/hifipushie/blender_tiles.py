@@ -644,15 +644,20 @@ def _horizon(scene, cam, look_dir, tmp):
     return a
 
 
-def _water(level):
+def _water(level, L=None):
+    """The sea: a plane with a noise ripple. L (the light preset) may set "water" (linear base colour) and
+    "water_roughness"; water's IOR is 1.33 (the Principled default 1.5 reflected ~40% more of the pale low sky)."""
+    L = L or {}
     bpy.ops.mesh.primitive_plane_add(size=8000, location=(500, 400, level))
     w = bpy.context.object
     wm = bpy.data.materials.new("water")
     wm.use_nodes = True
     nt = wm.node_tree
     b = nt.nodes["Principled BSDF"]
-    b.inputs["Base Color"].default_value = (0.05, 0.14, 0.17, 1)
-    b.inputs["Roughness"].default_value = 0.2
+    b.inputs["Base Color"].default_value = tuple(L.get("water", (0.05, 0.14, 0.17))) + (1,)
+    b.inputs["Roughness"].default_value = float(L.get("water_roughness", 0.2))
+    if "water" in L and "IOR" in b.inputs:
+        b.inputs["IOR"].default_value = 1.33
     tc = nt.nodes.new("ShaderNodeTexCoord")
     mp = nt.nodes.new("ShaderNodeMapping")
     mp.inputs["Scale"].default_value = (0.25, 0.6, 0.25)
@@ -741,7 +746,7 @@ def run(job):
                 for g in (job["grass"] if isinstance(job["grass"], list) else [job["grass"]]):
                     _grass(m, g)  # (one swatch per kind: mown turf, long grass)
     if job.get("sea") is not None:
-        _water(job["sea"])
+        _water(job["sea"], job.get("light") or {})
     if job.get("trees"):
         by = {}
         with open(job["trees"]) as f:
@@ -805,7 +810,26 @@ def run(job):
     if hasattr(sky, "dust_density"):
         sky.dust_density = float(L.get("dust", sky.dust_density))
         sky.air_density = float(L.get("air", sky.air_density))
-    world.node_tree.links.new(sky.outputs["Color"], world.node_tree.nodes["Background"].inputs["Color"])
+    if L.get("sky_sat"):  # (a camera's sky, as a photo shows it: deeper than Nishita's at the low elevations a level
+        # view sees; camera and glossy rays only, so the light the sky casts (shadows' tint, the grass) stays as measured)
+        wn = world.node_tree.nodes
+        hs = wn.new("ShaderNodeHueSaturation")
+        hs.inputs["Saturation"].default_value = float(L["sky_sat"])
+        hs.inputs["Value"].default_value = float(L.get("sky_value", 1.0))
+        world.node_tree.links.new(sky.outputs["Color"], hs.inputs["Color"])
+        lp = wn.new("ShaderNodeLightPath")
+        mx = wn.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        mxr = wn.new("ShaderNodeMath")  # (and in reflections: the sea mirrors the sky the eye sees)
+        mxr.operation = "MAXIMUM"
+        world.node_tree.links.new(lp.outputs["Is Camera Ray"], mxr.inputs[0])
+        world.node_tree.links.new(lp.outputs["Is Glossy Ray"], mxr.inputs[1])
+        world.node_tree.links.new(mxr.outputs[0], mx.inputs["Factor"])
+        world.node_tree.links.new(sky.outputs["Color"], mx.inputs["A"])
+        world.node_tree.links.new(hs.outputs["Color"], mx.inputs["B"])
+        world.node_tree.links.new(mx.outputs["Result"], wn["Background"].inputs["Color"])
+    else:
+        world.node_tree.links.new(sky.outputs["Color"], world.node_tree.nodes["Background"].inputs["Color"])
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = float(L.get("sky_strength", 0.12))
     if job.get("haze") and not job.get("channel"):
         for m in list(bpy.data.materials):
