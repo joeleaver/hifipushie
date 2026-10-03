@@ -125,6 +125,17 @@ def _start_stretch(R: np.ndarray, X: np.ndarray, F: np.ndarray) -> np.ndarray:
     return np.linalg.svd(Ds @ inv, compute_uv=False)[:, 0]
 
 
+BEND_SCALE = 1.28e-5  # ZOZO's shell_bend_stiffness.kernel.cpp: hinge k = BEND_SCALE * bend * |e|^2 / area * areal density
+
+
+def zozo_bend(P: dict) -> float:
+    """ZOZO's dimensionless `bend` for a fabric's flexural rigidity B (N m, cloth_job.PHYSICAL "bend"). ZOZO's hinge
+    stiffness is BEND_SCALE * bend * areal density * |e|^2 / (A1 + A2) (Discrete Shells, density-normalised), i.e. a
+    flexural rigidity B = BEND_SCALE * bend * density: bend = B / (BEND_SCALE * density). Shirting 2e-6 N m at
+    120 g/m2: 1.3; wool coating 2e-5 at 450 g/m2: 3.5."""
+    return float(P.get("bend", 2e-6)) / (BEND_SCALE * float(P["density"]))
+
+
 def profile(data: Path, times: dict, fps: float) -> dict:
     """Where a session's time went, per stage of the schedule (ZOZO's per-step records in output/data): ms per frame,
     steps per frame, how much of dt each step advanced (the time of impact: contact or the strain limit), newton
@@ -260,7 +271,10 @@ def main():
         g.stitch("seams")
     dens = float(P["density"])
     g.param.set("density", dens).set("young-mod", float(job.get("young_mod", P["stretch"] / dens)))
-    g.param.set("poiss-rat", float(job.get("poisson", 0.3))).set("bend", float(job.get("bend", 1.0)))
+    bend = zozo_bend(P) if job.get("bend") is None else float(job["bend"])
+    log(f"zozo: bend {bend:.2f} (ZOZO's dimensionless shell bend; the fabric's rigidity {P.get('bend', 0):.2g} N m"
+        f" = {P.get('bend', 0) / 9.807e-5:.3f} gf cm2/cm at {P['density'] * 1000:.0f} g/m2)")
+    g.param.set("poiss-rat", float(job.get("poisson", 0.3))).set("bend", bend)
     g.param.set("strain-limit", float(job.get("strain_limit", 0.05))).set("friction", float(P.get("friction", 0.4)))
     g.param.set("contact-gap", float(job.get("contact_gap", 1e-3)))
     # rest "flat": the membrane rests on the flat pattern (set on the built scene below), the start is the placement
@@ -282,6 +296,10 @@ def main():
         for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
             sel_ = pid == job["pieces"].index(nm)
             flat3[sel_] = X[sel_]
+        for nm in job.get("rest_flat", []):  # (experiments: these made pieces rest on the flat pattern)
+            sel_ = pid == job["pieces"].index(nm)
+            flat3[sel_] = np.c_[uv, np.zeros(len(uv))][sel_]
+            made[sel_] = False
         ref = flat3.copy()
         g.set_bend_rest_vert(ref)
         # a made piece pushed clear of the body starts stretched past its rest (a cuff round a wrist fatter than it
@@ -306,7 +324,7 @@ def main():
     if job.get("stitch_stiffness"):
         g.param.set("stitch-stiffness", float(job["stitch_stiffness"]))
     if stiff.max() > 0 and job.get("interfacing", True):  # interfacing: bending and stretch up towards their interfaced values
-        g.set_param_spatial("bend", stiff, float(job.get("bend", 1.0)) * float(job.get("interfacing_bend", P.get("interfacing_bend", 10))))
+        g.set_param_spatial("bend", stiff, bend * float(job.get("interfacing_bend", P.get("interfacing_bend", 10))))
     asm = job.get("assemble") or {}
     sew_end = 0.0
     for s in stages:
@@ -388,6 +406,22 @@ def main():
                 b.collision_windows([(0.0, times[hang["name"]][0])])
                 if nm_ == "body" and len(parts) > 1:
                     bp.move_by([0.0, 0.0, 0.0], times[hang["name"]][0], times[hang["name"]][0] + 0.05)
+    st_ = job.get("set")
+    if st_ and st_.get("from") in times:
+        # the garment takes a set (bend plasticity: each hinge's rest angle creeps toward its current angle at `rate`
+        # per second) while `from` .. `to` stages run: a coat on a hanger keeps the shape the arms-down pose gave its
+        # sleeves instead of springing back to the angle its flat-pattern rest prefers
+        ta = times[st_["from"]][0]
+        tb = times[st_.get("to", st_["from"])][1]
+        if st_.get("to_frac") is not None:  # only the first part of the last stage
+            t0_ = times[st_.get("to", st_["from"])][0]
+            tb = t0_ + float(st_["to_frac"]) * (tb - t0_)
+        r_ = float(st_.get("rate", 1.0))
+        end_ = max(v[1] for v in times.values()) + 1.0
+        scene.set_param_anim_times([0.0, max(ta - 1e-3, 1e-4), ta, tb, tb + 1e-3, end_])
+        g.set_param_anim("bend-plasticity", [0.0, 0.0, r_, r_, 0.0, 0.0])
+        g.param.set("bend-plasticity-threshold", float(st_.get("threshold", 0.0)))
+        log(f"zozo: bend plasticity {r_}/s from {ta:.2f} to {tb:.2f} s (the garment takes a set)")
     try:
         scene = scene.build()
     except Exception as e:

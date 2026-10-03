@@ -71,13 +71,15 @@ FPS = 24
 # What the Blender presets stand for, in SI units a physical solver takes. Areal density from fabric weights (shirting
 # ~120 g/m2, a coating ~450); stretch = the membrane's tensile stiffness at small strain (woven cloth: 1.5-3e4 N/m
 # along the threads; knits far less; at 4000 Newton's VBD shirt stretched 10-29% under its own seams); shear ~ a tenth
-# of the woven stretch; bending rigidity from KES-style numbers (shirting ~0.05 gf cm2/cm = 5e-6 N m, a coating ~10x).
+# of the woven stretch; bending rigidity B from Kawabata (KES-F / FAST) numbers, 1 gf cm2/cm = 9.81e-5 N m: shirting
+# cotton 0.01-0.03 gf cm2/cm (0.02 = 2e-6 N m), jersey ~0.01, linen ~0.05, heavy wool coating 0.1-0.3 (0.2 = 2e-5 N m,
+# 10x the shirt), denim ~0.3. (Before 2026-10-03: shirting 5e-6, wool 6e-5; the ZOZO runner ignored them.)
 PHYSICAL = {
-    "shirting": {"density": 0.12, "stretch": 20000.0, "shear": 2000.0, "bend": 5e-6, "friction": 0.4},
-    "jersey": {"density": 0.18, "stretch": 1500.0, "shear": 500.0, "bend": 2e-6, "friction": 0.5},
-    "wool_coating": {"density": 0.45, "stretch": 15000.0, "shear": 2500.0, "bend": 6e-5, "friction": 0.5},
+    "shirting": {"density": 0.12, "stretch": 20000.0, "shear": 2000.0, "bend": 2e-6, "friction": 0.4},
+    "jersey": {"density": 0.18, "stretch": 1500.0, "shear": 500.0, "bend": 1e-6, "friction": 0.5},
+    "wool_coating": {"density": 0.45, "stretch": 15000.0, "shear": 2500.0, "bend": 2e-5, "friction": 0.5},
     "denim": {"density": 0.40, "stretch": 30000.0, "shear": 4000.0, "bend": 3e-5, "friction": 0.5},
-    "linen": {"density": 0.17, "stretch": 25000.0, "shear": 2000.0, "bend": 1e-5, "friction": 0.4},
+    "linen": {"density": 0.17, "stretch": 25000.0, "shear": 2000.0, "bend": 5e-6, "friction": 0.4},
 }
 
 
@@ -245,8 +247,8 @@ def _stream(cmd: list, progress, timeout: float, env: dict | None = None, what: 
     try:
         for line in p.stdout:
             lines.append(line.rstrip())
-            if line.startswith("cloth:"):
-                progress(line[6:].strip())
+            if "cloth:" in line:  # (ZOZO's own tqdm bar, written without newlines, can lead the line)
+                progress(line[line.rindex("cloth:") + 6:].strip())
             if time.time() - t > timeout:
                 raise RuntimeError(f"{what} over {timeout:.0f} s, stopped")
         p.wait(timeout=60)

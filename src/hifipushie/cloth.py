@@ -1582,6 +1582,42 @@ def rest_shape(M: dict, X0: np.ndarray, stiff: np.ndarray, smooth: bool, made: n
     return R
 
 
+def sleeve_angles(V: np.ndarray, M: dict, Bp: dict) -> dict:
+    """Each arm's sleeve axis angle from vertical (deg): the centre of its cap's top (top 8% of each sleeve piece's
+    pattern height) to the centre of its hem (bottom 4%). A garment on a hanger hangs its sleeves under ~5 deg."""
+    out = {}
+    for side in ("L", "R"):
+        ks = [k for k, nm in enumerate(M["names"]) if Bp["pieces"][nm]["wrap"].get("to") == f"arm.{side}"
+              and not _closed_girth(M, nm) and "follow" not in Bp["pieces"][nm]["wrap"]]
+        top, hem = [], []
+        for k in ks:
+            sel = np.where(M["piece"] == k)[0]
+            y = M["uv"][sel, 1]
+            lo, hi = y.min(), y.max()
+            top.append(sel[y > hi - 0.08 * (hi - lo)])
+            hem.append(sel[y < lo + 0.04 * (hi - lo)])
+        if not ks:
+            continue
+        v = V[np.concatenate(hem)].mean(0) - V[np.concatenate(top)].mean(0)
+        out[side] = float(np.degrees(np.arccos(np.clip(-v[2] / np.linalg.norm(v), -1, 1))))
+    return out
+
+
+def _made_rest(Bp: dict, M: dict, X: np.ndarray) -> np.ndarray | None:
+    """Where made pieces rest (placement smooth): pieces closed round an arm (cuffs) as placed before the push clear of
+    the body (pushed, a cuff rested 17-30% too big and ruffled); everything else as it starts (a collar resting
+    unpushed, its fall shorter than the layer it lies at, stood up and flared at the front; as placed it rolls
+    round the neck cleanly)."""
+    U = Bp.get("start_unpushed")
+    if U is None:
+        return None
+    R = X.copy()
+    for k, nm in enumerate(M["names"]):
+        if Bp["pieces"][nm]["wrap"].get("to", "").startswith("arm.") and _closed_girth(M, nm):
+            R[M["piece"] == k] = U[M["piece"] == k]
+    return R
+
+
 def _hang_pins(state: dict, Mx: dict, Xx: np.ndarray) -> np.ndarray:
     """The old pinned hang's vertices (state {"hang": {"pins": [...], "hook", "rack"}}): a hanger loop holds a patch,
     not a vertex: every vertex within `radius` of a named pin point (start positions)."""
@@ -1676,7 +1712,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # keyed on the sim's inputs themselves (start positions, pattern, triangles, seams, stitches, interfacing, both
     # meshes) and the Blender side's code, not on cloth.py: a change there that moves nothing doesn't re-simulate
     # smooth: the rest the solver gets (flat pattern + the made pieces' unpushed placement) is an input too
-    rest_s = rest_shape(Ms, Xs, interfacing(Bp, Ms), True, Bp.get("start_unpushed")) if smooth else None
+    made_s = _made_rest(Bp, Ms, Xs) if smooth else None
+    rest_s = rest_shape(Ms, Xs, interfacing(Bp, Ms), True, made_s) if smooth else None
     inputs = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
         Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
         *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values(),
@@ -1692,7 +1729,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
-           "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, Bp.get("start_unpushed") if not refine else None),
+           "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not refine else None),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
     if result is not None:
         from . import cloth_job as cj
@@ -1838,6 +1875,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         res["support"] = hangmod.support(res["V_sim"], M, hx, pins_h, res.get("V_prev"), frames_apart=PREV_APART)
         res["on_hanger"] = hangmod.on_hanger(res["V"], M, hg) if hg is not None else None
         res["hanger_ok"], res["hanger_line"] = hangmod.verdict(res["support"], res["on_hanger"])
+        res["sleeves"] = sleeve_angles(res["V"], M, Bp)
     # the verdict reads both: a pattern smaller than the body (negative ease) can't show as a small garment in the
     # sim (the body holds it out), it shows as cloth stretched past its limit there
     tight = [r for r, v in res["sizing"]["rows"].items() if v["ease"] < -0.01]  # under the body by over 1%
@@ -2585,6 +2623,9 @@ def report(gname: str, res: dict) -> str:
         + f" (the sim before the clean-up: {ig['sim']['self_intersections']} crossings)")
     if res.get("hanger_line"):
         L.append("  hanger: " + res["hanger_line"])
+    if res.get("sleeves"):
+        L.append("  sleeves from vertical (cap top -> hem centre; hanging straight is under ~5 deg): " + ", ".join(
+            f"{k} {v:.1f} deg" for k, v in res["sleeves"].items()))
     sh = res["shape"]
     L.append(f"  surface (sim -> final): crinkle {sh['sim']['crinkle_deg']} -> {sh['final']['crinkle_deg']} deg median "
              f"between neighbouring triangles (smooth cloth reads ~3-5), {sh['sim']['crinkle_mm']} -> "
