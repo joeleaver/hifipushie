@@ -1,9 +1,16 @@
-"""Run a hifipushie cloth job (src/hifipushie/cloth_job.py) with ZOZO's contact solver (ppf-contact-solver, Apache-2.0:
-intersection-free IPC-style contact, strain limiting, stitches). Runs on CUDA, ROCm (this laptop's Radeon 890M, from the
-release's own bundled HIP runtime) or CPU.
+"""The ZOZO cloth backend's runner: a hifipushie cloth job (cloth_job.py) run with ZOZO's contact solver
+(ppf-contact-solver, Apache-2.0: intersection-free IPC-style contact, strain limiting, stitches). Runs on CUDA, ROCm
+(the laptop's Radeon 890M, from the release's own bundled HIP runtime) or CPU.
 
-    <ppf>/python/bin/python3.12 run_zozo.py <job folder> [--set key=json ...] [--frames N]
+This file runs inside the ZOZO release's own Python (it never imports hifipushie): garment key `backend: "zozo"` runs
+it through `cloth_job.run_zozo` (locally under resources.heavy, or on a GPU box through $HIFIPUSHIE_ZOZO_REMOTE, which
+copies this file with the job). By hand:
+
+    <ppf>/python/bin/python3.12 cloth_zozo.py <job folder> [--set key=json ...] [--frames N]
     (env: CARGO_TARGET_DIR=<ppf>/target/rocm|cuda|cpu, PYTHONPATH=<ppf>; spikes/gpu_cloth/zozo.sh sets them)
+
+Options: job.json's top-level keys, then its "zozo" dict (the garment's `zozo` key: contact_gap, strain_limit, dt,
+bend, young_mod, body_offset, hanger_offset, air_friction, ...), then --set.
 
 Mapping (one session for the whole schedule, times at the job's 24 fps):
 - placement "smooth" jobs (cloth.place(smooth=True), the way to run ZOZO): the garment's membrane REST is the flat
@@ -118,6 +125,7 @@ def main():
     a = ap.parse_args()
     jd = Path(a.job)
     job = json.loads((jd / "job.json").read_text())
+    job.update(job.pop("zozo", None) or {})  # the garment's solver options
     for kv in a.set:
         k, v = kv.split("=", 1)
         job[k] = json.loads(v)
@@ -173,9 +181,9 @@ def main():
             parts = []
             for nm_, ff in (("body", bT[~fm]), ("arms", bT[fm])):
                 used = np.unique(ff)
-                re = -np.ones(len(bV0), np.int64)
-                re[used] = np.arange(len(used))
-                parts.append((nm_, used, re[ff]))
+                remap = -np.ones(len(bV0), np.int64)
+                remap[used] = np.arange(len(used))
+                parts.append((nm_, used, remap[ff]))
         for nm_, used, ff in parts:
             app.asset.add.tri(nm_, bV0[used], ff)
     scene = app.scene.create()

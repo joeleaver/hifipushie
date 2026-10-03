@@ -564,5 +564,19 @@
     "unpack": "node_modules/lodash.unset"
    }
   ]
+ },
+ "zozo": {
+  "needed_by": "cloth backend \"zozo\" (cloth_job.run_zozo runs cloth_zozo.py with the release's own Python; or set HIFIPUSHIE_ZOZO to an unpacked release)",
+  "optional": true,
+  "source": "https://github.com/st-tech/ppf-contact-solver release 2026-10-01-19-29 (ZOZO's Contact Solver, Linux x86_64 bundle: its own Python, CUDA/ROCm/CPU backends)",
+  "licence": "Apache License 2.0 (THIRD_PARTY_LICENSES.txt in the release for its bundled runtimes)",
+  "files": [
+   {
+    "path": "ppf-contact-solver-2026-10-01-19-29-linux-x86_64.tar.gz",
+    "url": "https://github.com/st-tech/ppf-contact-solver/releases/download/2026-10-01-19-29/ppf-contact-solver-2026-10-01-19-29-linux-x86_64.tar.gz",
+    "sha256": "3ed5e9978a94bc29f69eedc0eb4ba24dfc950ce7f4215655e9e6cbe5e5696408",
+    "unpack": "release"
+   }
+  ]
  }
 }

@@ -8,8 +8,8 @@ written by `fetch`. Code asks `pack(name)` / `path(name, rel)`, which say how to
   uv run hifipushie-assets fetch [packs...]  download what's missing or corrupt (default: every required pack)
 
 Downloads go to a ".part" file inside the pack's directory (never /tmp) and replace the file only when its
-sha256 matches. A zip download ("member") extracts that one file; a tarball with "unpack" (npm packages) is kept and
-extracted into that directory of the pack (its first path component, npm's "package/", dropped).
+sha256 matches. A zip download ("member") extracts that one file; a tarball with "unpack" (npm packages, the ZOZO release) is kept
+and extracted into that directory of the pack (its first path component, npm's "package/", dropped; symlinks kept).
 """
 
 from __future__ import annotations
@@ -67,10 +67,16 @@ def _unpack(tgz: Path, dest: Path) -> None:
         members = []
         for mem in t.getmembers():
             parts = Path(mem.name).parts[1:]
-            if not parts or ".." in parts or not (mem.isfile() or mem.isdir()):
+            if not parts or ".." in parts or not (mem.isfile() or mem.isdir() or mem.issym() or mem.islnk()):
                 continue
             mem.name = str(Path(*parts))
-            members.append(mem)
+            if mem.islnk():  # a hard link names its target from the archive's root: drop the same component
+                lp = Path(mem.linkname).parts[1:]
+                if not lp:
+                    continue
+                mem.linkname = str(Path(*lp))
+            members.append(mem)  # (symlinks kept: a bundled Python's bin/ is symlinks; the "data" filter refuses
+            # any pointing outside the tree)
         t.extractall(tmp, members=members, filter="data")
     tmp.replace(dest)
 

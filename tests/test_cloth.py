@@ -149,6 +149,35 @@ def test_hanger_measures():
     assert not ok and "pins carry" in line, line
 
 
+def test_zozo_backend_keys():
+    """A ZOZO result is keyed on its runner (cloth_zozo.py), never on blender_cloth.py, and not on where it ran: a
+    pod's result is found locally (the tooling card: a 27-min result lost to an edit of the Blender script)."""
+    import os
+    from hifipushie import cloth_job
+    assert cloth_job.backend_of({"backend": "zozo"}) == "zozo"
+    assert cloth_job.solver_of("zozo") == "zozo"
+    k = cloth_job.solver_code("zozo")
+    old = os.environ.get("HIFIPUSHIE_ZOZO_REMOTE")
+    os.environ["HIFIPUSHIE_ZOZO_REMOTE"] = "true"
+    try:
+        assert cloth_job.solver_code(cloth_job.solver_of("zozo")) == k
+    finally:
+        os.environ.pop("HIFIPUSHIE_ZOZO_REMOTE") if old is None else os.environ.__setitem__("HIFIPUSHIE_ZOZO_REMOTE", old)
+    import hashlib
+    assert k == hashlib.sha1(cloth_job.ZOZO_RUNNER.read_bytes() + b"zozo").hexdigest()
+    assert cloth.placement_of({"backend": "zozo"}) == "smooth" and cloth.placement_of({}) == "fitted"
+    base = {"base": {"body": {"source": "makehuman"}}}
+    cloth.validate({**base, "cloth": {"s": {"pattern": {"from": "simon"}, "backend": "zozo", "zozo": {"dt": 0.01}}}})
+    for bad, word in (({"backend": "zozo", "zozo": 3}, "zozo"), ({"placement": "smooth"}, "smooth"),
+                      ({"backend": "bullet"}, "backend")):
+        try:
+            cloth.validate({**base, "cloth": {"s": {"pattern": {"from": "simon"}, **bad}}})
+        except cloth.ClothError as e:
+            assert word in str(e), (word, str(e))
+        else:
+            raise AssertionError(f"not rejected: {bad}")
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

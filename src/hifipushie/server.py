@@ -1403,6 +1403,9 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
       "rail": {"length", "radius", "posts"} | false}}). The report's "hanger" line says what carries it.
     quality: "draft" (one coarse 2 cm sim, ~1 min: judge fit and big shape) or "final" (default: the coarse sim, then
       refined at 1 cm and cleaned up, ~3-5 min).
+    backend (spec key): "blender" (default, local) or "zozo" (ZOZO's contact solver: intersection-free, strain
+      limited; one sim at `resolution`, placement "smooth"; on this machine's GPU, ~2 s/frame at 2 cm, or on a GPU box
+      via $HIFIPUSHIE_ZOZO_REMOTE; `zozo` = solver options). Judge ZOZO at "resolution": 0.02 locally.
     The sim runs in the background (one at a time on the machine); this waits up to `wait` s and returns either the
     report (when done) or the progress. Call dress(name) again (no spec) or look_cloth to see where it is: a sim
     already running or cached isn't started again. Returns the save, then per garment: status, report."""
@@ -1444,7 +1447,7 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
 @mcp.tool(structured_output=False)
 def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | None = None, strain: bool = True,
                size: int = 640, focus: str | list[float] | None = None, zoom: float = 0.4, textured: bool = False,
-               body: bool = True, save: str | None = None):
+               body: bool = True, save: str | None = None, result: str | None = None):
     """Look at the model's simulated garments (10-40 s): clay renders on the body (views from front, side, back,
     three (3/4 front), three_back, side_r; default front, side, back, three) and a strain map row (blue slack, green
     fine, yellow at the fabric's limit, red twice it), with each garment's report: the verdict (CORRUPT = tangled or
@@ -1453,10 +1456,12 @@ def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | 
     depth: sim -> after the clean-up) and the clean-up.
     focus: [x, y, z] or "garment:piece" (e.g. "shirt:collar") for a close-up `zoom` m across. textured: EEVEE with
     the sewing detail maps (seam grooves, topstitching, hems, buttons) instead of clay; use it with focus.
-    A garment still simulating reports its progress instead (dress starts sims)."""
+    A garment still simulating reports its progress instead (dress starts sims).
+    result: a cloth job's out.npz (e.g. from a GPU box) applied to the one garment named instead of its cached sim
+    (clean-up, report and renders as usual; not cached)."""
     from . import cloth
     sheet, text = cloth.look(name, garments, views=tuple(views or ("front", "side", "back", "three")), strain=strain,
-                             size=size, focus=focus, zoom=zoom, body=body, textured=textured)
+                             size=size, focus=focus, zoom=zoom, body=body, textured=textured, result=result)
     if sheet is None:
         return text
     return [_out(sheet, save), text]

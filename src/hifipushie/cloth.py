@@ -1392,6 +1392,8 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
         raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {SIM_MIN_FREE_GB}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
+        if backend == "zozo":
+            return cloth_job.run_zozo(jd, progress, log)
         return cloth_job.run_external(jd, backend, progress)
     cloth_job.write(job_dir, cfg, arrays, names)
     progress(f"waiting for the heavy-job slot ({cfg.get('mode', 'sim')})")
@@ -1492,27 +1494,38 @@ def cloth_job_backend(g: dict) -> str:
     return cloth_job.backend_of(g)
 
 
+def placement_of(g: dict) -> str:
+    """"smooth" (ZOZO's default: rests on the flat pattern, dressed on straight arms) or "fitted" (Blender's)."""
+    return g.get("placement") or ("smooth" if cloth_job_backend(g) == "zozo" else "fitted")
+
+
 def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int | None = None,
-          render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None) -> dict | None:
+          render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None,
+          result: str | Path | None = None) -> dict | None:
     """Draft, mesh, place and simulate one garment on one body, then clean it up. Returns {"V" final verts, "V_sim"
     the sim's own, "mesh", "fit", "integrity", "sizing", "shape", ...}; the sim is cached by content (keys that only
     change the look or the clean-up never re-simulate). cached_only: None when it hasn't been simulated.
     quality "final" (default): the whole sim at `coarse` (2 cm), then carried onto the `resolution` mesh (1 cm) and
-    settled there (refine): the coarse-then-fine particle distance artists use. "draft": the coarse sim alone."""
+    settled there (refine): the coarse-then-fine particle distance artists use. "draft": the coarse sim alone.
+    Backend "zozo" sims once at `resolution` (its contact holds at 1 cm; "draft" = at `coarse`).
+    result: an out.npz (a job folder's, from any solver) applied instead of the cached/simulated one, for judging a
+    result whose key has moved; it isn't cached."""
     progress = progress or (lambda s: None)
     body = Body(body_src)
     Bp = pieces(g, body.m["mm"] if g.get("pattern") else {})
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     quality = g.get("quality", "final")
     hc = float(g.get("coarse", 0.02))
-    refine = quality == "final" and hc > 1.4 * h
+    backend = cloth_job_backend(g)
+    # ZOZO isn't refined: its contact keeps a 1 cm sim clean, and a refine would rest on the carried drape
+    refine = quality == "final" and hc > 1.4 * h and backend != "zozo"
     if quality == "draft":
         h = max(h, hc)
     hs = hc if refine else h
     Ms = mesh(Bp, hs)
-    smooth = g.get("placement") == "smooth"
-    if smooth and cloth_job_backend(g) == "blender":
-        raise ClothError('placement "smooth" is for solvers resting on the flat pattern (backend "file"/"remote": ZOZO); '
+    smooth = placement_of(g) == "smooth"
+    if smooth and backend == "blender":
+        raise ClothError('placement "smooth" is for solvers resting on the flat pattern (backend "zozo"); '
                          "Blender rests on the placement")
     # smooth: dressed on straight arms (the body bends back in the sim's "pose" stage), nothing folded but what the
     # solver keeps as rest (interfaced pieces)
@@ -1542,25 +1555,42 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # before the body goes, its arms come down to its sides with the garment on (stage "lower"): taken off a dummy in
     # the A-pose, a coat's sleeves stayed splayed on the hanger
     lower = {"bodyLower": np.stack(body.arms_down())} if hg is not None and g.get("lower_arms", True) else {}
-    code = hashlib.sha1(SCRIPT.read_bytes()).hexdigest()
+    from . import cloth_job
+    solver = cloth_job.solver_of(backend)
+    # the code that makes the result: blender_cloth.py for Blender, the runner for any other solver (a ZOZO result
+    # was lost on every edit of the Blender script)
+    code = hashlib.sha1(SCRIPT.read_bytes()).hexdigest() if solver == "blender" else cloth_job.solver_code(solver)
     # keyed on the sim's inputs themselves (start positions, pattern, triangles, seams, stitches, interfacing, both
     # meshes) and the Blender side's code, not on cloth.py: a change there that moves nothing doesn't re-simulate
     inputs = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
         Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
         *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values()))).hexdigest()
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
-    from . import cloth_job
-    backend = cloth_job.backend_of(g)
     gs.pop("backend", None)
     keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab]
-    if backend != "blender":  # another solver's result is another result (Blender's keys stay as they were)
-        keyed.append(["backend", backend, os.environ.get("HIFIPUSHIE_CLOTH_SOLVER", "newton")])
+    if solver != "blender":  # another solver's result is another result (Blender's keys stay as they were); the
+        # solver, not the backend: ZOZO run here or on a pod is the same result
+        keyed.append(["solver", solver])
+    if result is not None:  # a hand-carried out.npz: its own key, never cached
+        keyed.append(["result", hashlib.sha1(Path(result).read_bytes()).hexdigest()])
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
-    if cache.exists() and not render:
+    if result is not None:
+        from . import cloth_job as cj
+        d, lines = cj.read_out(Path(result))
+        if d["V"].shape != Xs.shape:
+            raise ClothError(f"result {result}: {len(d['V'])} vertices, this garment's sim mesh has {len(Xs)} (another "
+                             "garment, resolution or quality?)")
+        res["V_sim"], res["V_coarse"], res["V_prev"] = d["V"], None, d.get("Vprev")
+        res["log"] = "\n".join(lines)
+        if refine:  # a coarse result: carried onto the fine mesh (no refine run)
+            res["V_coarse"] = d["V"]
+            res["V_sim"] = transfer(Ms, d["V"], M)
+            res["V_prev"] = transfer(Ms, d["Vprev"], M) if d.get("Vprev") is not None else None
+    elif cache.exists() and not render:
         d = np.load(cache)
         res["V_sim"] = d["V"]
         res["V_coarse"] = d["Vc"] if "Vc" in d else None
@@ -1575,7 +1605,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         cfg = {"fabric": fab_s, "frames": int(frames or g.get("frames", 90)), "state": state, "name": name,
                "color": g.get("color", "#5b7fa6"), "render": render,
                "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", []),
-               "placement": g.get("placement", "fitted"),
+               "placement": placement_of(g), **({"zozo": dict(g["zozo"])} if g.get("zozo") else {}),
                "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in Ms["names"]},
                "made": made_pieces(Ms, stiff_s),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
@@ -2163,7 +2193,7 @@ class ClothError(ValueError):
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
-                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "_trace"}
+                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -2245,11 +2275,17 @@ def validate(spec: dict) -> None:
             if k in g and not (isinstance(g[k], (int, float)) and lo <= g[k] <= hi):
                 raise ClothError(f"{where}: {k} is a triangle size in m ({lo}..{hi})")
         if g.get("placement", "fitted") not in ("fitted", "smooth"):
-            raise ClothError(f'{where}: placement is "fitted" (default: the start is the rest shape, folds and fins '
-                             'laid isometrically) or "smooth" (for solvers resting on the flat pattern: ZOZO)')
-        if g.get("backend", "blender") not in ("blender", "file", "remote"):
-            raise ClothError(f'{where}: backend is "blender" (default), "file" (write the job, wait for its result) or '
-                             '"remote" ($HIFIPUSHIE_CLOTH_REMOTE runs it): see cloth_job.py')
+            raise ClothError(f'{where}: placement is "fitted" (Blender\'s default: the start is the rest shape, folds '
+                             'and fins laid isometrically) or "smooth" (ZOZO\'s default: rests on the flat pattern)')
+        if g.get("backend", "blender") not in ("blender", "zozo", "file", "remote"):
+            raise ClothError(f'{where}: backend is "blender" (default), "zozo" (ZOZO\'s contact solver, here or on a GPU '
+                             'box), "file" (write the job, wait for its result) or "remote" ($HIFIPUSHIE_CLOTH_REMOTE '
+                             'runs it): see cloth_job.py')
+        if g.get("placement") == "smooth" and cloth_job_backend(g) == "blender":
+            raise ClothError(f'{where}: placement "smooth" needs backend "zozo" (Blender rests on the placement)')
+        if "zozo" in g and not isinstance(g["zozo"], dict):
+            raise ClothError(f'{where}: zozo is a dict of solver options (contact_gap, strain_limit, dt, ...: '
+                             'cloth_zozo.py)')
         if "color" in g and not _is_hex(g["color"]):
             raise ClothError(f'{where}: color is "#rrggbb"')
         cu = g.get("cleanup")
@@ -2789,10 +2825,13 @@ def _cylinder(a, b, r, n=20):
 
 
 def look(name: str, which: list | None = None, views=("front", "side", "back", "three"), strain: bool = True,
-         size: int = 640, focus=None, zoom: float = 0.4, body: bool = True, textured: bool = False):
+         size: int = 640, focus=None, zoom: float = 0.4, body: bool = True, textured: bool = False,
+         result: str | None = None):
     """Renders of the model's simulated garments on their body (clay, each garment its colour) + the strain map, and
     the text report per garment. focus: [x, y, z] or "garment:piece" (that piece's middle) with zoom m across: a
     close-up. textured: EEVEE with the detail maps (seams, topstitching, hems, buttons) instead of clay.
+    result: an out.npz from a cloth job folder (any solver) shown for the one garment named, instead of its cached
+    sim: a result whose cache key has moved can still be judged.
     Returns (sheet PIL image, text)."""
     from PIL import Image, ImageDraw
     from . import store
@@ -2804,7 +2843,14 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
     for gn in which:
         if gn not in gs:
             raise ClothError(f"no garment {gn!r} (have {', '.join(gs) or 'none'})")
-        res = cached(name, spec, gn)
+        if result:
+            if len(which) != 1:
+                raise ClothError("look with a result: name the one garment it is for")
+            g = gs[gn]
+            res = build(_garment_for_sim(g), model_body(name, spec, g), f"{name}:{gn}", log=lambda *_: None,
+                        result=result)
+        else:
+            res = cached(name, spec, gn)
         if res is None:
             st = status(name, gn, gs[gn])
             texts.append(f"{gn}: not simulated ({st['state']}" + (f": {st['lines'][-1]}" if st["lines"] else "")
