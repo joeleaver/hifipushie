@@ -582,7 +582,7 @@ def lowpoly(job):
     ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))  # drawn triangles: prefabs per copy
     flat_frac = {pn: 0.0 for pn in names}
     _, polys = _part_arrays(job)
-    pre_file = None
+    pre_file, unfocused = None, None
     if ratio >= 1.0:  # nothing to decimate: the parts as they are
         keep = np.isin(fpart, [pidx[pn] for pn in names])
         pid_of = np.full(len(all_names), -1)
@@ -622,6 +622,26 @@ def lowpoly(job):
         joint.data.attributes["pid"].data.foreach_get("value", fp)
         nfaces = {pn: int((fp == k).sum()) for k, pn in enumerate(names)}
         ratio = min(1.0, total / sum(nfaces[pn] * copies[pn] for pn in names))
+        if ratio < 1.0 and job.get("focus_warp"):  # what each part takes unfocused: the same collapse of the joint
+            # mesh put back (focuswarp.py), only counted. The focus's triangles then come on top of the budget
+            # (step 2); shared out by the focused counts, the face took them from the clothes (Garrett: jacket
+            # 2,771 -> 1,532 at 15k). Estimating it per triangle from the warp's magnification missed most of it.
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import focuswarp
+            plain = joint.copy()
+            plain.data = joint.data.copy()
+            bpy.context.scene.collection.objects.link(plain)
+            P = np.empty(len(plain.data.vertices) * 3)
+            plain.data.vertices.foreach_get("co", P)
+            plain.data.vertices.foreach_set("co", focuswarp.unwarp(P.reshape(-1, 3), job["focus_warp"]).ravel())
+            plain.data.update()
+            _decimate(plain, ratio, sym)
+            _clean(plain)
+            _, Fp = _tri_arrays(plain)
+            pp = np.empty(len(Fp), np.int32)
+            plain.data.attributes["pid"].data.foreach_get("value", pp)
+            unfocused = {pn: int((pp == k).sum()) for k, pn in enumerate(names)}
+            bpy.data.objects.remove(plain)
         if ratio < 1.0:
             _decimate(joint, ratio, sym)
         print(f"@@t joint {n} faces {time.time() - tf:.1f}s", flush=True)
@@ -642,14 +662,9 @@ def lowpoly(job):
     #    The floor keeps round things round, so it shrinks with the part's flat share: a box needs no floor.
     floor = {pn: int(round(int(job.get("min_part", 300)) * (1 - flat_frac[pn]))) if cfg[pn].get("min") is None
              else int(cfg[pn]["min"]) for pn in names}  # parts.<p>.min_triangles overrides
-    eq = counts
-    if job.get("focus_warp"):  # the focus's triangles on top: budgets shared by what each part would have taken
-        # unfocused, then a focused part's multiplied back up (focuswarp.py)
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import focuswarp
-        gj = focuswarp.gain(Vj, Fj, job["focus_warp"])
-        eq = {pn: max(1, round(focuswarp.unfocused(gj[jpart == k]))) if counts[pn] else 0
-              for k, pn in enumerate(names)}
+    # the focus's triangles on top: budgets shared by what each part takes unfocused, then a focused part's
+    # multiplied back up by its focused / unfocused counts
+    eq = {pn: max(1, unfocused[pn]) if counts[pn] else 0 for pn in names} if unfocused else counts
     want = budgets(eq, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, floor, copies)
     extra = {}
     for pn in names:

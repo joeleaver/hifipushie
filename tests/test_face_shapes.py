@@ -381,23 +381,6 @@ def test_focus_warp():
     assert np.abs(focuswarp.warp(far, S) - far).max() < 1e-12
 
 
-def test_focus_on_top():
-    """The focus's triangles come on top of the budget: a triangle's gain is its linear magnification (2 at a k=2
-    sphere's centre, 1 far away), and a part counts what it would have been unfocused (each triangle 1/gain), so the
-    parts' budgets are shared as without the focus (Garrett's jacket lost 27% to the face's lids and lips)."""
-    from hifipushie import focuswarp
-    S = [[0.0, 0.0, 0.0, 0.02, 2.0]]
-    g = np.linspace(-0.004, 0.004, 9)
-    X, Y = np.meshgrid(g, g)
-    P = np.c_[X.ravel(), Y.ravel(), np.zeros(X.size)]
-    F = np.array([[i * 9 + j, i * 9 + j + 1, i * 9 + j + 10] for i in range(8) for j in range(8)])
-    near = focuswarp.gain(focuswarp.warp(P, S), F, S)
-    assert np.all((near > 1.85) & (near <= 2.0)), (near.min(), near.max())  # (4 mm out of a 20 mm sphere: ~1.9)
-    farP = P + 1.0
-    assert np.allclose(focuswarp.gain(focuswarp.warp(farP, S), F, S), 1.0, atol=1e-9)
-    # a focused part's 64 triangles count as ~33 unfocused; an unfocused part's as themselves
-    assert 32 <= focuswarp.unfocused(near) < 35 and focuswarp.unfocused(np.ones(64)) == 64
-
 
 GNM_EXAMPLE = EXAMPLE.with_name("gnm_talk.json")
 

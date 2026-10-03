@@ -237,8 +237,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `face_shapes.parts`) takes skin shapes; clothes none. Teeth: the upper row hangs `show` (0.5 x upper lip radius)
   below the parting line so jawOpen 0.3-0.6 shows it; the lower row 3.2 half-thicknesses back (at 2.2 the rows
   blended into one connected piece and the upper row rode the jaw: rows are told apart by connected component).
-  Focus warp budgets: shared by each part's unfocused count (`focuswarp.gain/unfocused`), the focus extra on top
-  (`focus_extra` in the lowpoly info).
+  Focus warp budgets: the joint collapse runs a second time on the joint mesh put back (unwarped), only to count each
+  part's unfocused share; budgets are shared by those, a focused part gets its focused/unfocused ratio on top
+  (`focus_extra` in the lowpoly info). A per-triangle estimate (sum of 1/magnification) missed most of the extra and
+  left the clothes under the 10% redo threshold: Garrett's jacket stayed at 1,532 (v11 2,771) at 15k.
   Round 2: GNM heads (`GnmFace`, `examples/gnm_talk.json` = the golfer's MakeHuman body + GNM head without clothes,
   hair or the wrap topology, which zips the lips): each shape = 68-landmark moves solved in GNM's expression basis
   (as `base.pose_expression`), carried onto the export (eye scaling, narrowing, placement, then Catmull-Clark like

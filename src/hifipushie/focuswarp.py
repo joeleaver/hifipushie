@@ -8,10 +8,11 @@ Each sphere [x, y, z, R, k] is a radial map r -> r (1 + (k - 1) exp(-(r / R)^2))
 k < 3.2; spheres are applied in turn (each centre taken where the previous ones moved it) and undone in reverse,
 each by Newton on the radius. numpy only: blender_asset.py imports this too.
 
-The focus's triangles come ON TOP of the export's budget (blender_asset.lowpoly): the parts' budgets are shared out
-by what each would have taken unfocused (`gain`, `unfocused`), then a focused part gets its focus multiplier on top.
-Shared out by the focused counts, the face took its extra from everything else (Garrett: jacket 2,771 -> 2,035
-triangles at a higher budget)."""
+The focus's triangles come ON TOP of the export's budget (blender_asset.lowpoly): the joint collapse is run a second
+time on the mesh put back, only to count what each part takes unfocused; budgets are shared out by those counts, then
+a focused part gets its focused / unfocused ratio on top. Shared out by the focused counts, the face took its extra
+from everything else (Garrett: jacket 2,771 -> 1,532 triangles at 15k). (A per-triangle estimate from the warp's
+magnification, sum of 1 / gain, missed most of it.)"""
 
 from __future__ import annotations
 
@@ -59,18 +60,3 @@ def unwarp(P: np.ndarray, spheres) -> np.ndarray:
         P = c + q * (r / np.maximum(rp, 1e-15))[:, None]
     return P
 
-
-def gain(Pw: np.ndarray, F: np.ndarray, spheres) -> np.ndarray:
-    """Each triangle's linear magnification (sqrt of its area warped / put back): 1 away from the spheres."""
-    Pw = np.asarray(Pw, np.float64)
-    Pu = unwarp(Pw, spheres)
-
-    def area(P):
-        return 0.5 * np.linalg.norm(np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]), axis=1)
-    return np.sqrt(np.maximum(area(Pw), 1e-30) / np.maximum(area(Pu), 1e-30))
-
-
-def unfocused(gains: np.ndarray) -> float:
-    """How many triangles these would have been without the focus: at one quadric error a surface magnified g x
-    takes ~g x the triangles (area g^2, curvature 1/g, edge length ~ sqrt(error / curvature)), so each counts 1/g."""
-    return float(np.sum(1.0 / np.clip(gains, 1.0, None)))
