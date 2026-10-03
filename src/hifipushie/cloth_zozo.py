@@ -353,11 +353,30 @@ def main():
         sig = _start_stretch(flat3, X, F)
         fm = made[F].all(1)
         need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
-        if need > 0.8 * lim:
+        # (experiment) job "zone_limit": {"pieces": [...whole], "top": {piece: m from its pattern top}, "value": 0.15}:
+        # another strain limit there (the shoulder/yoke dome)
+        zl = job.get("zone_limit")
+        zone = np.zeros(len(pid))
+        if zl:
+            for nm in zl.get("pieces", []):
+                zone[pid == job["pieces"].index(nm)] = 1.0
+            for nm, dy in (zl.get("top") or {}).items():
+                sel_ = pid == job["pieces"].index(nm)
+                zone[sel_ & (uv[:, 1] > uv[sel_, 1].max() - float(dy))] = 1.0
+            zone[made] = 0.0
+        tgt = min(1.0, 1.3 * need + 0.02) if need > 0.8 * lim else None
+        if tgt is not None or zone.any():
+            zv = float(zl["value"]) if zl else lim
+            T = max(tgt or 0.0, zv)
+            w = (made.astype(float) * ((tgt - lim) / (T - lim) if tgt else 0.0)
+                 + zone * (zv - lim) / max(T - lim, 1e-9))
             g.param.set("strain-limit", lim)
-            g.set_param_spatial("strain-limit", made.astype(float), min(1.0, 1.3 * need + 0.02))
-            log(f"zozo: made pieces start up to {need * 100:.0f}% stretched past their rest: their strain limit "
-                f"{min(1.0, 1.3 * need + 0.02) * 100:.0f}%")
+            g.set_param_spatial("strain-limit", np.clip(w, 0, 1), T)
+            if tgt:
+                log(f"zozo: made pieces start up to {need * 100:.0f}% stretched past their rest: their strain limit "
+                    f"{tgt * 100:.0f}%")
+            if zone.any():
+                log(f"zozo: strain limit {zv * 100:.0f}% on {int(zone.sum())} zone vertices")
     else:
         g.param.set("bend-rest-from-geometry", float(job.get("bend_rest_geom", 1.0)))
     # the start's own few crossings (a coat's under sleeve against the back's armhole edge, a collar pushed off the jaw
