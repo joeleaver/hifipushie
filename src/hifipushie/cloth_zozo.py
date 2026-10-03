@@ -105,6 +105,21 @@ class _Pruner(threading.Thread):
                 return
 
 
+def _shrunk(V: np.ndarray, T: np.ndarray, iters: int) -> np.ndarray:
+    """A mesh pulled toward its own skeleton: umbrella smoothing (Laplacian, step 1) `iters` times, so limbs and the
+    torso thin toward their axes."""
+    n = len(V)
+    E = np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]
+    E = np.r_[E, E[:, ::-1]]
+    deg = np.bincount(E[:, 0], minlength=n).astype(float)
+    S = V.copy()
+    for _ in range(iters):
+        acc = np.zeros_like(S)
+        np.add.at(acc, E[:, 0], S[E[:, 1]])
+        S = np.where(deg[:, None] > 0, acc / np.maximum(deg, 1)[:, None], S)
+    return S
+
+
 def _start_stretch(R: np.ndarray, X: np.ndarray, F: np.ndarray) -> np.ndarray:
     """The largest principal stretch of each triangle from rest R (3D, any orientation) to X."""
     e1, e2 = R[F[:, 1]] - R[F[:, 0]], R[F[:, 2]] - R[F[:, 0]]
@@ -431,10 +446,29 @@ def main():
             if hang is not None:  # the body stops colliding as the coat is lifted to its hook (moved away down
                 # through the sleeves, it dragged them down against the hanger pins: CCD failed at the strain limit).
                 # Windows act on solved objects only: a static collider kept holding the sleeves out, so the body is
-                # given a still move to make it one
-                b.collision_windows([(0.0, times[hang["name"]][0])])
-                if nm_ == "body" and len(parts) > 1:
-                    bp.move_by([0.0, 0.0, 0.0], times[hang["name"]][0], times[hang["name"]][0] + 0.05)
+                # given a still move to make it one. job "release" (experiments): "window" (default) | "keep" (the
+                # body stays, gravity off over the hang) | "sink" (the body moves down `release_drop` m over
+                # `release_frames`, colliding) | "shrink" (it shrinks toward a heavily smoothed copy of itself)
+                th = times[hang["name"]][0]
+                rel = job.get("release", "window")
+                rdur = float(job.get("release_frames", 30)) / fps
+                cur = (np.asarray(d[posers[-1][1]], float)[-1] if posers else bV0)[used]
+                if rel == "keep":
+                    pass
+                elif rel in ("sink", "shrink"):
+                    if rel == "sink":
+                        tgt = cur + [0.0, 0.0, -float(job.get("release_drop", 0.6))]
+                    else:
+                        tgt = _shrunk(np.asarray(d[posers[-1][1]], float)[-1] if posers else bV0, bT,
+                                      int(job.get("shrink_iters", 300)))[used]
+                    n_ = 6
+                    for k in range(n_):
+                        bp.move_to(cur + (tgt - cur) * (k + 1) / n_, th + rdur * k / n_, th + rdur * (k + 1) / n_)
+                    b.collision_windows([(0.0, th + rdur)])
+                else:
+                    b.collision_windows([(0.0, th)])
+                    if nm_ == "body" and len(parts) > 1:
+                        bp.move_by([0.0, 0.0, 0.0], th, th + 0.05)
     st_ = job.get("set")
     if st_ and st_.get("from") in times:
         # the garment takes a set (bend plasticity: each hinge's rest angle creeps toward its current angle at `rate`
@@ -492,7 +526,9 @@ def main():
     prm.set("fps", fps).set("frames", total).set("dt", float(job.get("dt", 0.01)))
     prm.set("gravity", [0.0, 0.0, 0.0] if sew_end > 0 else [0.0, 0.0, -9.8])
     if sew_end > 0:
-        prm.dyn("gravity").time(sew_end).hold().change([0.0, 0.0, -9.8])
+        gdyn = prm.dyn("gravity").time(sew_end).hold().change([0.0, 0.0, -9.8])
+        if job.get("release") == "keep" and hang is not None:  # (experiment) the hang without gravity, body kept
+            gdyn.time(times[hang["name"]][0]).hold().change([0.0, 0.0, 0.0])
     if job.get("air_friction") is not None:
         prm.set("air-friction", float(job["air_friction"]))
     sess = sess.build()
