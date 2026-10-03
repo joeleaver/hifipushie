@@ -147,6 +147,18 @@ shape here.
 - Below 1 cm, Blender's per-edge bending makes the cloth softer and the solver slower. The collar and cuffs crumpled
   at 7 mm.
 
+### 2b. The ZOZO solver (`"backend": "zozo"`)
+
+- ZOZO's contact solver (ppf-contact-solver) is the cloth solver being developed: contact never lets cloth pass
+  through itself or the body, and the stretch is limited (cotton-like, a few %). Blender stays the local default.
+- It sims once at `resolution` (no coarse -> fine). The cloth rests on the FLAT pattern (placement "smooth": dressed on
+  straight arms, the elbows bent back in a "pose" stage); interfaced pieces (collar, stand, cuffs) rest as made.
+- On this laptop's GPU judge at `"resolution": 0.02` (a shirt ~10 min, a hung coat ~30 min); 1 cm finals go to a rented
+  GPU box ($HIFIPUSHIE_ZOZO_REMOTE). A result is keyed on the solver's own code, so a pod's result is found here.
+- `zozo` holds solver options (`contact_gap`, `strain_limit`, `dt`, ...); the log's `zozo <stage>:` lines say where
+  the time went (steps per frame, how much of each step the strain limit or contact allowed).
+- `look_cloth(result=<out.npz>)` shows any job folder's result on its garment.
+
 ### 3. Read the report
 
 - **Verdict.**

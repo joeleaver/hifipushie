@@ -281,6 +281,7 @@ def read_out(out: Path) -> tuple:
         raise RuntimeError(f"cloth job: no {out}")
     d = dict(np.load(out, allow_pickle=False))
     lines = [str(x) for x in d.pop("log", np.array([]))] if "log" in d else []
+    lines = [ln for ln in lines if not ln.startswith(("progress", "cloth: progress"))]
     d.pop("timing", None)
     return d, [ln if ln.startswith("cloth:") else "cloth: " + ln for ln in lines]
 
