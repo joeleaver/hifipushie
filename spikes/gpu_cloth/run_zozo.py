@@ -41,6 +41,21 @@ def log(*a):
     print("cloth:", s, flush=True)
 
 
+def _tube(a, b, r, n=16):
+    """A closed cylinder (end fans) round a -> b: a rack's pole or a hanger's arm as a collider."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    d = (b - a) / np.linalg.norm(b - a)
+    u = np.cross(d, [1, 0, 0] if abs(d[0]) < 0.9 else [0, 1, 0])
+    u /= np.linalg.norm(u)
+    w = np.cross(d, u)
+    ang = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    ring = np.outer(np.cos(ang), u) + np.outer(np.sin(ang), w)
+    V = np.r_[a + r * ring, b + r * ring, [a], [b]]
+    F = [[i, (i + 1) % n, n + (i + 1) % n] for i in range(n)] + [[i, n + (i + 1) % n, n + i] for i in range(n)]
+    F += [[2 * n, (i + 1) % n, i] for i in range(n)] + [[2 * n + 1, n + i, n + (i + 1) % n] for i in range(n)]
+    return V, np.asarray(F, np.int64)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("job")
@@ -163,6 +178,30 @@ def main():
         target = hook - [0, 0, 0.01] + (X[pins] - X[pins].mean(0)) * float(job.get("pin_spread", 0.3))
         # pinned where they start (a small patch at the back neck, harmless while dressing), then lifted to the hook
         g.pin(list(map(int, pins))).move_to(target, t0, t0 + 0.4 * (t1 - t0))
+    if hang is not None and job.get("rack") and job.get("use_rack", True):
+        # the rack: capsules far from the hook (a pole) stand still from the start; the hanger's arms (near the hook)
+        # start where the hanger loop starts (inside the body's shoulders, which they don't collide with) and rise
+        # with the pins, colliding only from the hang on: the coat is lifted by its shoulders, as on a real hanger
+        t0, t1 = times[hang["name"]]
+        hook = np.asarray(job["hook"], float)
+        lift = hook - [0, 0, 0.01] - X[pins].mean(0) if len(pins) else np.zeros(3)
+        # (from the hanger loop itself they started touching the collar: contact can't start overlapping) a further
+        # `rack_drop` down, inside the body, and rising that much more
+        lift = lift + [0.0, 0.0, float(job.get("rack_drop", 0.08))]
+        for k, (a_, b_, r_) in enumerate(job["rack"]):
+            a_, b_ = np.asarray(a_, float), np.asarray(b_, float)
+            near = min(np.linalg.norm(a_ - hook), np.linalg.norm(b_ - hook)) < 0.15
+            if near:  # an arm from the hook's centre: start it 1.5 cm out (the two arms mustn't overlap)
+                c_, e_ = (a_, b_) if np.linalg.norm(a_ - hook) < np.linalg.norm(b_ - hook) else (b_, a_)
+                a_, b_ = c_ + (e_ - c_) * 0.015 / np.linalg.norm(e_ - c_), e_
+            V_, F_ = _tube(a_ - (lift if near else 0), b_ - (lift if near else 0), float(r_))
+            app.asset.add.tri(f"rack{k}", V_, F_)
+            o_ = scene.add(f"rack{k}")
+            o_.param.set("contact-offset", float(job.get("body_offset", 0.002))).set("friction", float(P.get("friction", 0.4)))
+            rp = o_.pin()
+            if near:
+                rp.move_by(list(map(float, lift)), t0, t0 + 0.4 * (t1 - t0))
+                o_.collision_windows([(t0, t1 + 1e3)])
     if has_body:
         pose = next((st for st in stages if st.get("pose")), None)
         for nm_, used, _ in parts:

@@ -580,6 +580,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     sliver edges); marks within 0.4 h of the outline are its vertex now (min edge 4.1 mm, min quality 0.26).
     Shirt 2 cm: fits, 0 crossings, nothing crumpled, sleeves to the wrists on the bent arms, collar turned down; reads
     crinkly at 2 cm (9.5 deg), strain p95 5.5% (outside of the elbows).
+    Rack (`run_zozo`, hung jobs): capsules far from the hook stand still; the hanger's arms start inside the body under
+    the hanger loop (`rack_drop` 8 cm lower: from the loop itself they touched the collar, "contact starts overlapping")
+    and rise with the pins, colliding from the hang on: the coat is held by its shoulders. 1 cm on a 4090 (z02, z03;
+    `pod_zozo.sh check|run`, the release fetched on the pod from GitHub): shirt 164 s (was 451), fits, 0 crossings,
+    nothing crumpled, crinkle 7.4 sim / 5.0 cleaned, strain p95 4.9%; hung coat on the rack 664 s, holds its shoulders
+    with the sleeves hanging (the best hung coat of the three backends to the eye), but 100 crossings at centre back and
+    the stand/collar 18/11% crumpled where the hanger loop is gathered (the 2 cm run: 0 crossings). Open: cuffs start
+    as circles round an elliptic wrist (pushed out 18 mm, so the made cuff is too big and ruffles), collar points stand
+    up, the back crossings at 1 cm.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
