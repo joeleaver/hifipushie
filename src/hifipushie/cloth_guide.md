@@ -277,3 +277,7 @@ The same maps go into `scene.blend` and the export.
 - Cloth shading (sheen/fuzz): https://dev.epicgames.com/documentation/en-us/unreal-engine/shading-models-in-unreal-engine
 - Pixar's garment pipeline (a coarse authored mesh, a triangle simulation mesh, a render mesh with procedural thickness
   and seams): https://dl.acm.org/doi/fullHtml/10.1145/3532836.3536252
+
+## Construction audit
+
+`cloth_audit.md` (2026-10-03) checks our shirt and coat construction against tailoring practice and an MD/CLO workflow, with measured targets (fold widths, layer gaps, collar, cuffs, seam ease). `cloth_check.report(Bp, kind)` checks any design's seam table (ease per seam kind, notches).
