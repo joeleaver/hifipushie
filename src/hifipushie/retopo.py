@@ -44,6 +44,8 @@ BASE_FACE = {"eye.L": "eye.L", "nose_tip": "lm_nose_tip", "mouth": "lm_lip_seam"
              "mouth_corner.L": "lm_mouth_corner.L"}
 NB = 16  # angle bins round a bone
 STATIONS = np.linspace(0.0, 1.0, 5)  # along each bone, where radii are measured
+HAND_BLEND = 0.03  # m past the wrist over which the general warp hands over to the rigidly moved hand
+HAND_SIGMA = 0.5  # the hand's blend between its bones (x the distance to the nearest), tighter than the body's
 
 
 # ---------------------------------------------------------------------------------------------------- template
@@ -116,6 +118,43 @@ def _rot_between(u, v):
     k = c / s
     K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
     return np.eye(3) + s * K + (1 - d) * K @ K
+
+
+def _kabsch(A, B):
+    """The rotation best carrying point set A onto B (both centred on their means), or None if A is degenerate."""
+    A, B = A - A.mean(0), B - B.mean(0)
+    U, S, Vt = np.linalg.svd(A.T @ B)
+    if S[1] < 1e-6 * max(S[0], 1e-12):
+        return None
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    return Vt.T @ np.diag([1.0, 1.0, d]) @ U.T
+
+
+def _hand_rotations(Jt, Jm, segs):
+    """Rotations for the hand's segments (the palm, wrist -> hand_end, and every digit bone), by forward kinematics:
+    the hand's rotation is the best rigid fit of its palm joints (wrist, every digit's root), and each bone's is its
+    parent's composed with the minimal arc from the parent-carried axis to the bone's target axis. A hand whose joints
+    are a rigid motion of the template's (a base re-posed at the elbow) thus moves as ONE piece; a curled finger
+    rolls with its parent. Per-bone minimal arcs (the general rule) gave neighbouring bones of one rigidly moved hand
+    different rolls, and the warp's blend averaged those mismatched frames across every finger joint: bulging
+    knuckles, grooves, a ring round the thumb, nail edges cut in (up to 14 mm off on a MakeHuman body)."""
+    out = {}
+    for side in "LR":
+        roots = [f"wrist.{side}"] + [f"finger{k}_0.{side}" for k in range(1, 6)] + [f"thumb_0.{side}"]
+        roots = [n for n in roots if n in Jt and n in Jm]
+        if len(roots) < 3:
+            continue
+        Rh = _kabsch(np.array([Jt[n] for n in roots]), np.array([Jm[n] for n in roots]))
+        if Rh is None:
+            continue
+        mine = [sg for sg in segs if sg[0] == f"wrist.{side}" and sg[1] == f"hand_end.{side}"
+                or re.fullmatch(rf"(finger\d|thumb)_\d\.{side}", sg[0])]
+        mine.sort(key=lambda sg: sg[0][-3])  # digits by bone index, parents first (the palm last: it parents none)
+        for a, b in mine:
+            parent = next((out[sg] for sg in out if sg[1] == a), Rh)
+            u0, u1 = _unit(Jt[b] - Jt[a]), _unit(Jm[b] - Jm[a])
+            out[(a, b)] = _rot_between(parent @ u0, u1) @ parent
+    return out
 
 
 def _frame(u):
@@ -262,11 +301,11 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
                 J[f"hand_end.{side}"] = w + _unit(w - e) * 0.45 * np.linalg.norm(w - e)
     segs = [sg for sg in _segments(Jt) if sg[0] in Jm and sg[1] in Jm]
     near = np.stack([_seg_dist(P, Jt[a], Jt[b]) for a, b in segs], 1).argmin(1)
-    xf = []
+    hand = _hand_rotations(Jt, Jm, segs)
+    xf, xh = [], {}
     for k, (a, b) in enumerate(segs):
         a0, b0, a1, b1 = Jt[a], Jt[b], Jm[a], Jm[b]
         u0, u1 = _unit(b0 - a0), _unit(b1 - a1)
-        R = _rot_between(u0, u1)
         if girth is not None:
             R0 = np.stack([_template_radii(P, a0, b0, near == k, t0) for t0 in STATIONS])
             R1 = R0 * float(girth.get(a, 1.0))
@@ -281,10 +320,57 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
             R1 = np.stack([_target_radii(prims, a1, b1, t0) for t0 in STATIONS])
         x1, y1 = _frame(u1)
         x0, y0 = _frame(u0)
-        xr = R @ x0
-        xf.append(dict(a0=a0, u0=u0, a1=a1, R=R, sax=np.linalg.norm(b1 - a1) / np.linalg.norm(b0 - a0),
-                       L0=np.linalg.norm(b0 - a0), R0=R0, R1=R1, x0=x0, y0=y0, off=np.arctan2(xr @ y1, xr @ x1)))
+        g = dict(a0=a0, u0=u0, a1=a1, sax=np.linalg.norm(b1 - a1) / np.linalg.norm(b0 - a0),
+                 L0=np.linalg.norm(b0 - a0), R0=R0, R1=R1, x0=x0, y0=y0)
+        for R, into in ((_rot_between(u0, u1), None), (hand.get((a, b)), k)):
+            if R is None:
+                continue
+            xr = R @ x0
+            # R1 is looked up at the point's angle in the target's frame (ang + off), as _target_radii measures
+            # it. A girth R1 is the template's own (its frame), so the hand's transforms take no offset: with one,
+            # the radii were read round the bone by the frames' twist (fingers stretched by up to ~15 mm). The
+            # body's keep it: there it leaves base bodies slightly asymmetric (_frame isn't mirror-symmetric; up
+            # to ~13 mm at a shoulder), but fixing that changes every approved body (left for a decision)
+            off = 0.0 if girth is not None and into is not None else np.arctan2(xr @ y1, xr @ x1)
+            if into is None:
+                xf.append(dict(g, R=R, off=off))
+            else:
+                xh[into] = dict(g, R=R, off=off)
     centres = (np.arange(NB) + 0.5) / NB * 2 * np.pi - np.pi
+    # where the hand moves as one piece (the FK transforms in xh) instead of by the general per-bone warp: past
+    # the template's wrist (ramped over HAND_BLEND along the forearm) and only where the arm's own bones carry the
+    # point (the thigh beside a hanging hand keeps the warp: the body stays as it was outside the hands)
+    arms = []
+    for side in "LR":
+        e, w = f"elbow.{side}", f"wrist.{side}"
+        mine = [k for k, sg in enumerate(segs) if k in xh and sg[0].endswith(f".{side}")]
+        if mine and e in Jt and w in Jt:
+            chain = mine + [k for k, sg in enumerate(segs) if sg == (e, w)]
+            arms.append((mine, chain, Jt[w], _unit(Jt[w] - Jt[e])))
+
+    def smooth(x):
+        x = np.clip(x, 0, 1)
+        return x * x * (3 - 2 * x)
+
+    def carry(g, X):
+        q = X - g["a0"]
+        t = q @ g["u0"]
+        rad = q - np.outer(t, g["u0"])
+        ang = np.arctan2(rad @ g["y0"], rad @ g["x0"])
+        tc = np.clip(t / g["L0"], 0, 1)
+        tgt = np.zeros(len(X))
+        src = np.zeros(len(X))
+        for i in range(len(STATIONS) - 1):
+            lo, hi = STATIONS[i], STATIONS[i + 1]
+            m = (tc >= lo) & (tc <= hi)
+            w = (tc[m] - lo) / (hi - lo)
+            ai = (ang[m] + g["off"] + np.pi) % (2 * np.pi) - np.pi
+            tgt[m] = (1 - w) * np.interp(ai, centres, g["R1"][i], period=2 * np.pi) + \
+                w * np.interp(ai, centres, g["R1"][i + 1], period=2 * np.pi)
+            src[m] = (1 - w) * np.interp(ang[m], centres, g["R0"][i], period=2 * np.pi) + \
+                w * np.interp(ang[m], centres, g["R0"][i + 1], period=2 * np.pi)
+        rs = np.clip(tgt / np.maximum(src, 1e-3), 0.3, 4.0)
+        return g["a1"] + (np.outer(t * g["sax"], g["u0"]) + rad * rs[:, None]) @ g["R"].T
 
     def apply(X):
         Dx = np.stack([_seg_dist(X, Jt[a], Jt[b]) for a, b in segs], 1)
@@ -293,24 +379,22 @@ def _skeleton_warp(P, Jt, s, prims, sigma=0.8, girth=None):
         W /= W.sum(1, keepdims=True)
         out = np.zeros_like(X)
         for k, g in enumerate(xf):
-            q = X - g["a0"]
-            t = q @ g["u0"]
-            rad = q - np.outer(t, g["u0"])
-            ang = np.arctan2(rad @ g["y0"], rad @ g["x0"])
-            tc = np.clip(t / g["L0"], 0, 1)
-            tgt = np.zeros(len(X))
-            src = np.zeros(len(X))
-            for i in range(len(STATIONS) - 1):
-                lo, hi = STATIONS[i], STATIONS[i + 1]
-                m = (tc >= lo) & (tc <= hi)
-                w = (tc[m] - lo) / (hi - lo)
-                ai = (ang[m] + g["off"] + np.pi) % (2 * np.pi) - np.pi
-                tgt[m] = (1 - w) * np.interp(ai, centres, g["R1"][i], period=2 * np.pi) + \
-                    w * np.interp(ai, centres, g["R1"][i + 1], period=2 * np.pi)
-                src[m] = (1 - w) * np.interp(ang[m], centres, g["R0"][i], period=2 * np.pi) + \
-                    w * np.interp(ang[m], centres, g["R0"][i + 1], period=2 * np.pi)
-            rs = np.clip(tgt / np.maximum(src, 1e-3), 0.3, 4.0)
-            out += W[:, k:k + 1] * (g["a1"] + (np.outer(t * g["sax"], g["u0"]) + rad * rs[:, None]) @ g["R"].T)
+            out += W[:, k:k + 1] * carry(g, X)
+        for mine, chain, w0, ax in arms:
+            h = smooth((X - w0) @ ax / HAND_BLEND) * smooth((W[:, chain].sum(1) - 0.5) / 0.4)
+            sel = h > 0
+            if not sel.any():
+                continue
+            # past the wrist: the hand's own bones only (palm and digits, their FK transforms), blended tighter than
+            # the body's (HAND_SIGMA) so a re-posed finger bends at its joints. With joints that keep the template's
+            # hand pose every one of these transforms is the same rigid motion: the hand moves as one. (The forearm
+            # stays out: its minimal arc rolls differently, 4 mm off at the base of the thumb.)
+            Xs, D = X[sel], Dx[sel][:, mine]
+            dh = D.min(1, keepdims=True)
+            Wh = np.exp(-((D - dh) / (HAND_SIGMA * np.maximum(dh, 0.004))) ** 2)
+            Wh /= Wh.sum(1, keepdims=True)
+            moved = sum(Wh[:, j:j + 1] * carry(xh[k], Xs) for j, k in enumerate(mine))
+            out[sel] += h[sel, None] * (moved - out[sel])
         return out, W
 
     out, W = apply(P)
