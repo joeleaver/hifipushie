@@ -276,7 +276,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   verts, 98% quads, mean error 1.34 mm, head 0.78.
 - `base.py`: spec `base` = a template body as the start of a character (`{"template": "male_stylized", "eyes": part,
   "girth", "soften", "push", "head"}`): the template's joints are injected (spec joints win), the body warped onto them
-  with radii kept (`_skeleton_warp(girth=)`), Catmull-Clark'd, and becomes one primitive (kind "base", first in the
+  with radii kept (`_skeleton_warp(girth=)`; hands by FK, see below), Catmull-Clark'd, and becomes one primitive (kind "base", first in the
   prims): IMLS over the vertices with a compact Wendland kernel (a Gaussian's tail truncated by the k nearest speckled
   creases) whose width grows with distance (h >= 0.7 d: shells stay smooth; a fixed h dimpled a shirt); exact only a few
   cm out, so big blends or deep strokes on the base make plates: use `push` (normal bumps on the mesh) for volume.
@@ -290,6 +290,18 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   `eyes` (scale about the eye centres)/`scale` (1.12 = 1/7 of 1.8 m). Face landmarks become `lm_*` joints (jaw, chin,
   brows, lids, lips, nose) to address strokes and paint. Builds are keyed on `base.VERSION` (bump it with any field
   change: the build cache didn't see base code changes). Worked example: `examples/disc_golfer_base_src.py`.
+  Hands in the warp (2026-10-03, s0urc3's Garrett: "those fingers are terrible"): MakeHuman rests with the forearm
+  bent; an A-pose turns the whole hand ~0.3 m. Per-bone minimal-arc rotations gave each finger bone a different roll
+  and the Gaussian blend averaged them across every joint (bulging knuckles, grooves, a thumb ring, nails cut in, up
+  to 14-18 mm off), and a girth R1 was read at the target frame's angle (`off`), stretching flat fingers. Now
+  `retopo._hand_rotations`: the hand's rotation = Kabsch of its palm joints (wrist, digit roots), each digit bone =
+  parent's composed with the minimal arc from the parent-carried axis (FK, consistent roll), no `off` for a girth R1;
+  past the template's wrist (`HAND_BLEND` 3 cm ramp, and only where the arm's bones carry the point: the thigh beside
+  a hanging hand keeps the warp) the hand's bones only, blended tighter (`HAND_SIGMA` 0.5). Joints that keep the
+  template's hand pose -> one rigid move (Garrett: 0.1 mm of the Kabsch-moved MakeHuman hand); curled fingers bend
+  at their joints. Nothing outside the hands changes. `tests/test_handwarp.py`. Not fixed (changes approved bodies):
+  the rest of the body keeps per-bone minimal arcs and the girth `off`, which leaves base bodies slightly L/R
+  asymmetric (`_frame` isn't mirror-symmetric; up to ~13 mm at a shoulder on Garrett).
   Body sources: `body: {"source": "makehuman", "age", "weight", "muscle", "height"}` (`makehuman.py`: CC0 base mesh +
   macro targets from `workspace/_templates/makehuman/`, our own loader; joints from its default skeleton) or the
   template. The graft (2026-09-28): the body's head cut at the highest template neck loop wholly `LOW_LOOP` under the
