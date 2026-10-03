@@ -241,6 +241,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   part's unfocused share; budgets are shared by those, a focused part gets its focused/unfocused ratio on top
   (`focus_extra` in the lowpoly info). A per-triangle estimate (sum of 1/magnification) missed most of the extra and
   left the clothes under the 10% redo threshold: Garrett's jacket stayed at 1,532 (v11 2,771) at 15k.
+  But the focus is not where most of a dressed character's face-shapes extra comes from: the export meshes the
+  slit's part (the whole body) at <= slit/2.2 and adds the mouth interior, so the body's own joint-decimation share
+  grows (Garrett 5,742 -> ~8.5-9.9k) and the clothes lose ~45% at the same `triangles`. Pin the clothes with
+  `parts.<p>.min_triangles` at the earlier export's counts and raise `triangles` (Garrett v15: 20k, clothes = v11's,
+  45,966 total with hair), or give the body a lower triangle_weight. A GNM head's upper teeth: Garrett needed
+  `base.head.interior.teeth.show` 0.0035 (the 0.5 x ru default showed ~1 mm) and `parts.teeth.min_triangles` 600 (the
+  300 x flat floor left 128-149 triangles: a flat band, 30-40% of its texels missed).
   Round 2: GNM heads (`GnmFace`, `examples/gnm_talk.json` = the golfer's MakeHuman body + GNM head without clothes,
   hair or the wrap topology, which zips the lips): each shape = 68-landmark moves solved in GNM's expression basis
   (as `base.pose_expression`), carried onto the export (eye scaling, narrowing, placement, then Catmull-Clark like
