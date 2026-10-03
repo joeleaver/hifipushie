@@ -642,7 +642,20 @@ def lowpoly(job):
     #    The floor keeps round things round, so it shrinks with the part's flat share: a box needs no floor.
     floor = {pn: int(round(int(job.get("min_part", 300)) * (1 - flat_frac[pn]))) if cfg[pn].get("min") is None
              else int(cfg[pn]["min"]) for pn in names}  # parts.<p>.min_triangles overrides
-    want = budgets(counts, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, floor, copies)
+    eq = counts
+    if job.get("focus_warp"):  # the focus's triangles on top: budgets shared by what each part would have taken
+        # unfocused, then a focused part's multiplied back up (focuswarp.py)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import focuswarp
+        gj = focuswarp.gain(Vj, Fj, job["focus_warp"])
+        eq = {pn: max(1, round(focuswarp.unfocused(gj[jpart == k]))) if counts[pn] else 0
+              for k, pn in enumerate(names)}
+    want = budgets(eq, nfaces, {pn: cfg[pn]["weight"] for pn in names}, total, floor, copies)
+    extra = {}
+    for pn in names:
+        if eq[pn] and counts[pn] > eq[pn]:
+            w = min(nfaces[pn], round(want[pn] * counts[pn] / eq[pn]))
+            extra[pn], want[pn] = w - want[pn], w
     obs, info, redo_parts = {}, {}, {}
     for k, pn in enumerate(names):
         redo, s = abs(want[pn] - counts[pn]) > 0.1 * max(counts[pn], 1), sym and ratio < 1.0
@@ -659,7 +672,8 @@ def lowpoly(job):
                 obs[pn] = ob
         if redo:
             redo_parts[pn] = [int(want[pn]), bool(s)]
-        info[pn] = {"joint_count": counts[pn], "budget": want[pn], "flat": round(flat_frac[pn], 3), "symmetric": s}
+        info[pn] = {"joint_count": counts[pn], "budget": want[pn], "flat": round(flat_frac[pn], 3), "symmetric": s,
+                    **({"focus_extra": extra[pn]} if extra.get(pn) else {})}
     # 3. the parts decimated again on their own: independent, so in parallel Blender processes
     for pn, (v, lp, sz, s) in _reduce_parts(job, redo_parts, pre_file).items():
         obs[pn] = _flat_mesh(pn, v, lp, sz)

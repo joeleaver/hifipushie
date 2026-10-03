@@ -225,6 +225,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   (open) position, moves applied at the neutral. The nose and eyeballs never move. Rolls are moves (a turn tore);
   blink skin follows the lid's outer sphere (turning far skin about the eye swung a lever). Sheet:
   `examples/face_shapes_sheet.py` (`asset.preview(poses=)`); `tests/test_face_shapes.py`.
+  Round 3 (2026-10-03, s0urc3's Garrett, base VERSION 61): `Face.seal` closes whatever gap the neutral left, on the
+  low poly (3 passes: gap measured over points on each lip's triangles, bins across the mouth x a little back,
+  smoothed over the mesh, 0.2 mm overlap, clamped at where the lips meet so corners don't cross; behind the front only
+  the front's gap except past `SEAL_POCKET` 0.85, the corners' pockets). Tests ray-cast the posed mouth from the front
+  and +-30 deg (`_front_hits`: triangles culled to the grid, then one row of rays at a time against the triangles
+  spanning its height; the goblin has ~240k triangles by the mouth and rays x all of them OOM'd the box). Known cost
+  of sealing: A2F's roll/shrug/pucker combos press the lower lip up in front of the upper by a few mm from the front
+  (goblin PK+RL 2.7, RL+SL 3.9, PK+CL+JO 5.0, warm f31 13.1 mm; 0-10.5 with the slit open; not the overlap, which
+  changes it <1 mm: the lips' depth order where they meet). `Face.owns`: only the slit's skin part (+
+  `face_shapes.parts`) takes skin shapes; clothes none. Teeth: the upper row hangs `show` (0.5 x upper lip radius)
+  below the parting line so jawOpen 0.3-0.6 shows it; the lower row 3.2 half-thicknesses back (at 2.2 the rows
+  blended into one connected piece and the upper row rode the jaw: rows are told apart by connected component).
+  Focus warp budgets: shared by each part's unfocused count (`focuswarp.gain/unfocused`), the focus extra on top
+  (`focus_extra` in the lowpoly info).
   Round 2: GNM heads (`GnmFace`, `examples/gnm_talk.json` = the golfer's MakeHuman body + GNM head without clothes,
   hair or the wrap topology, which zips the lips): each shape = 68-landmark moves solved in GNM's expression basis
   (as `base.pose_expression`), carried onto the export (eye scaling, narrowing, placement, then Catmull-Clark like

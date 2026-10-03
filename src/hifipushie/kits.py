@@ -46,7 +46,8 @@ face: {"head": joint (anchor); feature positions "at" are offsets from it in wor
            "interior": true | {"slit": m (gap between the lips, 0.5 x the thinner lip radius), "lips": m (lip
              front to the bag), "bag": [half width, half depth, half height] of the mouth bag (rounded box),
              "teeth": true | {"part" ("teeth"), "thickness", "width"/"back": arch share of the bag's,
-             "clearance": m behind the bag's front wall (0.25 x the lip radius)},
+             "clearance": m behind the bag's front wall (0.25 x the lip radius), "show": m the upper row hangs
+             below where the closed lips meet (0.5 x the upper lip radius)},
              "tongue": true | {"part" ("tongue"), "size"}, "end": where the slit stops (0.92 of the half
              width)}: a mouth that can open (export face shapes: faceshapes.py): a slit through the lips into a
              bag; teeth/tongue in parts of their own. A GNM base head takes the same under base.head.interior}
@@ -548,11 +549,16 @@ def _interior(f: dict, line, on_skin, us, F, width: float, ru: float, rl: float,
         N = [_unit(np.cross(tg, up)) if np.cross(tg, up) @ out > 0 else -_unit(np.cross(tg, up)) for tg in tang]
         N[0] = out
         gum = 1.5 * float(bag[2])
-        for row, (u0, u1) in (("upper", (-0.15 * slit, gum)), ("lower", (-gum, -0.6 * slit))):
+        # the upper row hangs `show` below the parting line (the lips' closed neutral meets there): at 0.15 slit
+        # its edge sat level with the upper lip's and an open mouth (jawOpen 0.3-0.6) showed no upper teeth (Garrett,
+        # s0urc3 2026-10-03); the lower row sits behind it (overjet), clear of it where they overlap
+        show = float(t.get("show", 0.5 * ru))
+        back_lo = 3.2 * half
+        for row, (u0, u1) in (("upper", (-0.15 * slit - show, gum)), ("lower", (-gum, -0.6 * slit))):
             o.blob(f"{fb}_teeth_{row}", shape="sweep", profile="band", path=[_r(p) for p in path], N=[_r(n) for n in N],
                    U=[_r(up)] * len(path), mirror=True, open_start=True,
-                   values={"n0": round(-half - (1.5 * half if row == "lower" else 0.0), 5),  # (lower: behind)
-                           "n1": round(half - (1.5 * half if row == "lower" else 0.0), 5),
+                   values={"n0": round(-half - (back_lo if row == "lower" else 0.0), 5),  # (lower: behind)
+                           "n1": round(half - (back_lo if row == "lower" else 0.0), 5),
                            "u0": round(u0, 5), "u1": round(u1, 5), "round": round(0.8 * half, 5)},
                    layer=2, blend=round(0.3 * half, 5), part=t.get("part", "teeth"))
     if g := it.get("tongue"):

@@ -23,10 +23,18 @@ needs base.head.interior (the kit's slit/bag/teeth/tongue behind the head's lips
 base.head.mouth_gap >= 0.002 (lips parted while modelling; closed ones are zipped into one seam). The neutral
 closes the lips through the basis too. Blinks are pushed out of the eyeball.
 
+Either way the neutral's last step is `Face.seal` on the low poly itself: the gap the close left between the lips
+(measured across the mouth and a little back from its front, corners included) closed, the lips pressed 0.2 mm past
+touching (GNM's close met only at the middle: Garrett's lips stayed ~1 mm apart, corners 5-7 mm open).
+
+Which parts take the shapes (`Face.owns`): the skin the lips are in, the teeth, tongue and eyes, and parts listed in
+face_shapes.parts (a beard or brow shell). Clothes never do (Garrett's collar followed his jaw 31 mm).
+
 The export decimates with the lids and lips magnified (focuswarp.py), so the low poly has triangles where the shapes
-move.
+move; those come on top of the export's budget, the other parts keep what they'd have had without face shapes.
 
 spec["face_shapes"] (optional, stripped from geometry): {"amount": {name: scale (1 = default, 0 = flat)},
+  "parts": [part names besides the face's own skin that take the skin's shapes],
   "jaw": {"pivot": joint | [x, y, z], "open": deg at jawOpen 1.0 (18; GNM 14, about the ears' landmarks), "depth": m
   below the parting line where the jaw stops (0.75 x head radius)}}
 """
@@ -130,6 +138,7 @@ class Face:
                             "{\"teeth\": true, \"tongue\": true}): a slit between the lips and a mouth bag behind them")
         opts = spec.get("face_shapes") or {}
         self.amount = {str(a): float(v) for a, v in (opts.get("amount") or {}).items()}
+        self.skin_parts = {str(p) for p in (opts.get("parts") or [])}
         bad = [a for a in self.amount if a not in ALL]
         if bad:
             raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
@@ -235,6 +244,115 @@ class Face:
     def neutral(self, Xm: np.ndarray, kind: str) -> np.ndarray:
         """The neutral's move for a part's meshed vertices: the slit closed (the lips only)."""
         return self.close(self.local(Xm)) if kind == "skin" else np.zeros_like(Xm)
+
+    SEAL_BINS = 0.05  # seal(): how far across (of the half width) and
+    SEAL_BACK = 0.001  # how far back (m) the gap at a point is measured
+    SEAL_PASSES = 3  # measured and closed again on the result
+    SEAL_SMOOTH = 8  # passes of smoothing the gap over the mesh
+    SEAL_POCKET = 0.85  # past this (of the half width) the gap is closed at every depth (the corners' pockets)
+    SEAL_OVERLAP = 0.0002  # the lips pressed this much past touching (met exactly, the low poly's edges left pinholes)
+
+    def seal(self, Xm: np.ndarray, Xc: np.ndarray, T: np.ndarray) -> np.ndarray:
+        """The neutral's last step on the skin: whatever gap `neutral` left between the lips, measured on this low
+        poly (Xm meshed, Xc closed, T its triangles), closed. Across the mouth (bins of SEAL_BINS half widths, out
+        past the corners), the upper lip's lowest point and the lower lip's highest in front of the bag (points over
+        each lip's triangles; sides by the parting line at the meshed position, heights at the closed one) leave a
+        gap r; each lip moves r/2 toward the other there, fading over a few lip radii up and down, behind the bag's
+        front and past the corners (u 1, where the skin is one surface). GNM's basis close met only at the middle: the lips stayed ~1 mm apart and the corners
+        open 5-7 mm (dark pockets on Garrett, s0urc3 2026-10-03). Returns the move."""
+        D = np.zeros_like(Xm)
+        for k in range(self.SEAL_PASSES):  # (each pass closes what the last left: edges that don't line up across)
+            D += self._seal_pass(Xm, Xc + D, T)
+            if k == 0:
+                first = self.sealed
+        self.sealed = first
+        return D
+
+    def _seal_pass(self, Xm: np.ndarray, Xc: np.ndarray, T: np.ndarray) -> np.ndarray:
+        L = self.local(Xm)
+        h0c = self.local(Xc)["h0"]  # heights over the parting line at the closed position
+        up = L["h0"] >= 0
+        front = 0.5 * self.thick  # the gap is measured (and closed in full) in front of this: what shows
+        # the lips near where they meet (a goblin's nose over its upper lip and its chin, at the same depth, measured
+        # a 4 cm "gap")
+        cand = (L["u"] < 1.3) & (L["back"] < front) & (L["back"] > -2 * self.lip) & (np.abs(h0c) < 2 * self.lip)
+        xs = L["xs"] / self.W2
+        tc = T[cand[T].all(1)]
+        side = up[tc]
+        tc, side = tc[side.all(1) | (~side).all(1)], side[side.all(1) | (~side).all(1)]  # (one lip's own)
+        # points over each triangle (barycentric grid): across, how far back, height at the closed position
+        g = np.array([(i, j, 6 - i - j) for i in range(7) for j in range(7 - i)], float) / 6
+        px, pb, ph = ((v[tc] @ g.T).ravel() for v in (xs, L["back"], h0c))
+        pu = np.repeat(side[:, 0], len(g))
+        # the gap r at each point (across, back): the upper lip's lowest point near it minus the lower's highest
+        # (a corner's pocket is deeper inside than at its front: per column alone, its back wall hid the front gap)
+        from scipy.spatial import cKDTree
+        sx, sb = self.SEAL_BINS, self.SEAL_BACK
+        tr = [cKDTree(np.c_[px[m] / sx, pb[m] / sb]) for m in (pu, ~pu)]
+        hs = [ph[pu], ph[~pu]]
+
+        def gap(qx, qb):
+            q = np.c_[qx / sx, qb / sb]
+            hit = [t.query_ball_point(q, 1.0) for t in tr]
+            out = np.full((len(q), 2), np.nan)  # the gap, and the height half way across it
+            for k, (iu, il) in enumerate(zip(*hit)):
+                if iu and il:
+                    a, b = hs[0][iu].min(), hs[1][il].max()
+                    out[k] = a - b, 0.5 * (a + b)
+            return out
+        mids = np.arange(-1.2, 1.2 + 1e-9, 0.5 * sx)
+        r1, z1 = gap(mids, np.zeros_like(mids)).T  # along the lips' front: the profile logged
+        self.sealed = (mids, np.clip(np.nan_to_num(r1), 0.0, 2 * self.lip))
+        z1 = np.interp(mids, mids[np.isfinite(z1)], z1[np.isfinite(z1)]) if np.isfinite(z1).any() else np.zeros_like(mids)
+        zm = np.interp(xs, mids, z1)  # where the lips meet: each point's own, else its column's front
+        rv = np.zeros(len(Xm))
+        sel = np.flatnonzero(cand & (L["u"] < 1.2))
+        if len(sel) == 0 or not len(pu):
+            return np.zeros_like(Xm)
+        rs, zs = gap(xs[sel], np.clip(L["back"][sel], -2 * self.lip, front)).T
+        if np.isnan(rs).all():
+            return np.zeros_like(Xm)
+        ok = np.isfinite(rs)  # (no lip on one side near it: the nearest measured gap)
+        if (~ok).any():
+            near = cKDTree(np.c_[xs[sel][ok] / sx, L["back"][sel][ok] / sb]).query(
+                np.c_[xs[sel][~ok] / sx, L["back"][sel][~ok] / sb])[1]
+            rs[~ok], zs[~ok] = rs[ok][near], zs[ok][near]
+        # (zm stays the column's: per point, an upper and a lower point met at different heights and crossed)
+        rs = np.minimum(rs, 2 * self.lip)  # (more than that is no gap between lips)
+        # inside the corners, behind the front only what the front left: closing the slit's walls by their own
+        # (wider) gap pressed the lips together all through and A2F's lip combos (roll + shrug, pucker + roll) then
+        # pushed the lower lip up in front of the upper 3-5 mm; the corners' pockets are closed by their own gap
+        u_s = L["u"][sel]
+        rs = np.where(u_s > self.SEAL_POCKET, rs, np.minimum(rs, np.interp(xs[sel], mids, self.sealed[1])))
+        rv[sel] = (np.maximum(rs, 0.0) + self.SEAL_OVERLAP) * _bump(np.abs(xs[sel]), 1.0, 1.15)
+        # the rest of the lips (beyond the band the gap was measured in) take the nearest column's front gap
+        rest = np.flatnonzero(~np.isin(np.arange(len(Xm)), sel) & (L["u"] < 1.2))
+        rv[rest] = (np.interp(xs[rest], mids, self.sealed[1]) + self.SEAL_OVERLAP) * _bump(np.abs(xs[rest]), 1.0, 1.15)
+        # smoothed over the mesh (each point's own gap differs from its neighbours': a jagged lip edge), never below
+        # the front gap of its column
+        e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]])
+        e = np.r_[e, e[:, ::-1]]
+        floor = np.where(L["u"] < 1.2, np.interp(xs, mids, self.sealed[1]) * _bump(np.abs(xs), 1.0, 1.15), 0.0)
+        for _ in range(self.SEAL_SMOOTH):
+            acc = np.bincount(e[:, 0], rv[e[:, 1]], len(Xm)) + rv
+            cnt = np.bincount(e[:, 0], minlength=len(Xm)) + 1
+            rv = np.where(rv > 0, np.maximum(acc / cnt, floor), rv)
+        lat = _bump(L["u"], 1.0, 1.2)
+        deep = _bump(L["back"], front, self.thick + 0.6 * self.bag[1])
+        hu = _bump(h0c, 0.5 * rv + 1.2 * self.ru, 0.5 * rv + 3.0 * self.ru)
+        hl = _bump(-h0c, 0.5 * rv + 1.2 * self.rl, 0.5 * rv + 3.0 * self.rl)
+        dz = 0.5 * rv * lat * deep * np.where(up, -hu, hl)
+        # never past where the lips meet (+ the overlap): at a corner a lip's last vertices sit near it while the
+        # pocket beside them is millimetres open, and its gap carried them across each other
+        o = 0.5 * self.SEAL_OVERLAP
+        dz = np.where(up, np.maximum(dz, np.minimum(zm - h0c - o, 0.0)), np.minimum(dz, np.maximum(zm - h0c + o, 0.0)))
+        return dz[:, None] * self.up
+
+    def owns(self, part: str) -> bool:
+        """Whether a part takes the skin's face shapes: the face's own skin (the part the lips are in) and any listed
+        in spec.face_shapes.parts (a beard or brow shell). Clothes never do: transferred by distance, the jaw
+        shapes moved Garrett's collar 31 mm and his jacket's lapel trim 21 mm."""
+        return part == self.slit_part or part in self.skin_parts
 
     LOOK = {"Up": 20.0, "Down": 20.0, "In": 25.0, "Out": 25.0}  # deg at 1.0
 
@@ -608,11 +726,15 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             kind = "eyes"  # the eyeballs' own part: only the eyeLook shapes turn them
         Xm = np.asarray(p["verts"], np.float64)
         if kind == "skin":
+            if not face.owns(base):  # clothes and everything else: no face shapes
+                continue
             near = np.linalg.norm(Xm - face.M, axis=1) < 3 * face.width + 2 * face.R
             if not near.any():
                 continue
         T = p["corner_vert"].reshape(-1, 3)
         Xn = Xm + face.neutral(Xm, kind)
+        if kind == "skin" and base == face.slit_part:
+            Xn = Xn + face.seal(Xm, Xn, T)
         n0m, n0 = vertex_normals(Xm, T), vertex_normals(Xn, T)
         if kind == "skin":  # the close turns the corners' normals and tangents with it
             cv = p["corner_vert"]
@@ -729,6 +851,7 @@ class GnmFace(Face):
                             "lips are zipped into one seam and can't open")
         opts = spec.get("face_shapes") or {}
         self.amount = {str(a): float(v) for a, v in (opts.get("amount") or {}).items()}
+        self.skin_parts = {str(p) for p in (opts.get("parts") or [])}
         bad = [a for a in self.amount if a not in ALL]
         if bad:
             raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
