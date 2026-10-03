@@ -393,7 +393,11 @@ def support(V: np.ndarray, M: dict, h: dict | None, pins=(), V_prev: np.ndarray 
             out["share"][str(p)] = float(m[reach & (lab[np.where(reach, source, 0)] == p)].sum() / tot)
         out["unsupported"] = float(m[~reach].sum() / tot)
     if V_prev is not None:
-        out["moving_mm"] = float(np.percentile(np.linalg.norm(V - V_prev, axis=1), 99) / max(frames_apart, 1) * 1000)
+        # p90 per vertex, and the centre of mass: Blender's contact jitters single vertices ~2 mm a frame on a coat whose
+        # mass stands still (h11: the p99 2.1 mm/frame at frame 240 and the same at 480, the centre still within 1 mm)
+        mv = np.linalg.norm(V - V_prev, axis=1) / max(frames_apart, 1) * 1000
+        out["moving_mm"] = float(np.percentile(mv, 90))
+        out["com_mm"] = float(np.linalg.norm((m[:, None] * (V - V_prev)).sum(0) / m.sum()) / max(frames_apart, 1) * 1000)
     out["floor"] = float(m[V[:, 2] < 0.02].sum() / m.sum())
     return out
 
@@ -437,10 +441,10 @@ def on_hanger(V: np.ndarray, M: dict, h: dict) -> dict:
     # the garment's top round the rod
     rr = np.hypot(V[:, 0] - a[0], V[:, 1] - a[1]) < 0.12
     ztop = float(V[rr, 2].max()) if rr.any() else -np.inf
-    # the neck opening round the rod: cloth from just under the arms to 8 cm over them, within 12 cm of the rod, in each
+    # the neck opening round the rod: cloth from 3 cm under the arms to 8 cm over them, within 15 cm of the rod, in each
     # of the 4 sectors BEHIND it and on both sides (a collar or neckband round the hook; an open front - a coat's lapels,
     # a V neck - leaves the front sectors empty, and a coat hanging in front of its hanger leaves the back ones empty)
-    band = rr & (V[:, 2] > a[2] - 0.01) & (V[:, 2] < a[2] + 0.08)
+    band = (np.hypot(V[:, 0] - a[0], V[:, 1] - a[1]) < 0.15) & (V[:, 2] > a[2] - 0.03) & (V[:, 2] < a[2] + 0.08)
     az = np.arctan2(V[band, 1] - a[1], V[band, 0] - a[0])
     secs = set(np.floor((az + np.pi) / (2 * np.pi) * 8).astype(int) % 8)  # 4..7: behind (+y)
     sur = len(secs)
@@ -473,14 +477,14 @@ def verdict(sup: dict, onh: dict | None) -> tuple[bool, str]:
         why.append(f"not on both shoulders (left arm {s.get('arm.L', 0) * 100:.0f}%, right {s.get('arm.R', 0) * 100:.0f}%)")
     if sup["unsupported"] > 0.05 or sup.get("floor", 0) > 0.02:
         why.append(f"{max(sup['unsupported'], sup.get('floor', 0)) * 100:.0f}% of it isn't hanging from anything")
-    if sup.get("moving_mm", 0) > 2.0:
-        why.append(f"still moving ({sup['moving_mm']:.1f} mm/frame)")
+    if sup.get("moving_mm", 0) > 1.5 or sup.get("com_mm", 0) > 0.5:
+        why.append(f"still moving ({sup['moving_mm']:.1f} mm/frame p90, centre {sup.get('com_mm', 0):.2f})")
     if onh is not None and not onh["ok"]:
         why += onh["why"]
     line = (f"supported by: arms {arms * 100:.0f}% (L {s.get('arm.L', 0) * 100:.0f}, R {s.get('arm.R', 0) * 100:.0f}), "
             f"hook {hook * 100:.0f}%, bar {s.get('bar', 0) * 100:.0f}%, rail {(s.get('rail', 0) + s.get('post', 0)) * 100:.0f}%, "
             f"pins {pins * 100:.0f}%; touching: " + ", ".join(f"{k} {v}" for k, v in sup["touch"].items())
-            + (f"; moving {sup['moving_mm']:.1f} mm/frame" if "moving_mm" in sup else ""))
+            + (f"; moving {sup['moving_mm']:.1f} mm/frame p90, centre {sup['com_mm']:.2f}" if "moving_mm" in sup else ""))
     if onh is not None:
         line += ("; arms inside (front/back/up hits): " + ", ".join(
             f"{k} {v['front']:.1f}/{v['back']:.1f}/{v['up']:.1f}" for k, v in onh["arms"].items())
