@@ -84,8 +84,17 @@ def test_rigid_hand():
     before = (P - w) @ ((w - e) / np.linalg.norm(w - e)) < 0
     assert np.abs(W[before] - W0[before]).max() < 1e-9
     assert np.abs(W[P[:, 0] < -0.05] - W0[P[:, 0] < -0.05]).max() < 1e-9  # the other side untouched (not re-posed)
-    # the general warp is what made the lumps: it's well off the rigid hand
-    assert np.linalg.norm(W0[sel] - (P[sel] @ R.T + t), axis=1).max() > 2e-3
+    # per-bone minimal arcs (the old general rule) are what made the lumps: well off the rigid hand
+    keep_b = retopo._body_rotations
+    retopo._hand_rotations = lambda *a: {}
+    retopo._body_rotations = lambda Jt, Jm, segs: ({(a, b): retopo._rot_between(retopo._unit(Jt[b] - Jt[a]),
+                                                                                   retopo._unit(Jm[b] - Jm[a]))
+                                                    for a, b in segs}, {})
+    try:
+        _, W1, _, _ = _warp(J)
+    finally:
+        retopo._hand_rotations, retopo._body_rotations = keep, keep_b
+    assert np.linalg.norm(W1[sel] - (P[sel] @ R.T + t), axis=1).max() > 2e-3
 
 
 def test_curled_fingers():
