@@ -660,6 +660,35 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     still), ZOZO's collar sits round the hook; crossings at the back vent (ZOZO 80, Newton 190), sleeves still ~20 deg
     out (arms_down stops 7 cm off the torso), Newton's splayed (no lower stage). Blender final h11 smooth (4.3 deg). Disk: run_zozo prunes vert_N.bin while running, deletes its session after, and
     refuses < 20 GB free / stops < 10 GB; cloth sims refuse < 20 GB.
+  - ZOZO as a backend (2026-10-03, "zozo2" agent, renders zz01-zz1x; the user: "defer more Newton and double down
+    on ZOZO"; Blender stays the local default). Garment key `backend: "zozo"` (`cloth_job.run_zozo`): the runner is
+    `src/hifipushie/cloth_zozo.py`, run by the release's own Python (no hifipushie imports); the release is
+    $HIFIPUSHIE_ZOZO / $PPF_ROOT or the optional asset pack "zozo" (assets unpack keeps symlinks: its Python's bin/ is
+    symlinks). Local: under resources.heavy, a systemd scope (MemoryMax $HIFIPUSHIE_ZOZO_MEM 6G), device cuda/rocm/cpu
+    found or $HIFIPUSHIE_ZOZO_DEVICE. Remote: $HIFIPUSHIE_ZOZO_REMOTE (spikes/gpu_cloth/remote.sh, GPU_RUNNER=zozo,
+    GPU_SSH_OPTS; copies the job + the runner; `pod_setup_zozo.sh` unpacks the release on a pod by sha256). Defaults
+    for zozo: placement "smooth", ONE sim at `resolution` (no coarse -> fine), clean-up without Taubin (it rounded
+    ZOZO's fold crests 20-40%: sleeve crest radius p50 12 -> 17 mm at 1 cm; crinkle 7.0 deg unsmoothed, 0 crossings),
+    garment key `zozo` = solver options into job.json (contact_gap, strain_limit, dt, interfacing_bend, snap, set,
+    shear_model, uv_frame, ...). The sim cache key hashes the solver's runner (`cloth_job.solver_code`), never
+    blender_cloth.py, and not where it ran; `look_cloth(result=)` applies any out.npz. The runner logs per stage where
+    the time went (`profile`, from ZOZO's output/data/advance.*: steps/frame, how much of dt each step advanced and
+    whether contact or the strain limit stopped it, newton, PCG, contacts) and `progress:` lines; `zozo_rows.npy` maps
+    a session's vert_N.bin rows. Report: `sleeves from vertical` for hung garments.
+    Material: ZOZO's shell hinge = BEND_SCALE 1.28e-5 x bend x areal density x |e|^2/A, so `zozo_bend` = B / (1.28e-5
+    x density) from Kawabata B in PHYSICAL (shirting 0.02 gf cm2/cm -> 1.3, wool coating 0.2 -> 3.5; the runner had
+    passed 1.0 for every fabric). Its Baraff-Witkin membrane takes E and nu; a patch test (spikes/gpu_cloth/
+    zozo_patch.py) showed nu 0.045 makes it STIFFER in stretch and shear, so the old mapping (E = stretch/density,
+    nu 0.3) stays. Placement: cuffs on a spiral round the arm's own (elliptic) sections at their closed girth; bands
+    cleared by ZOZO's zone (4 mm, faces checked) not Blender's 8 mm; pieces closed round an arm rest as placed BEFORE
+    the push off the body (`_made_rest`; pushed, a cuff rested 17-30% big and ruffled) with a strain limit above their
+    start stretch (spatial "strain-limit"); collars/stands rest as placed. Hung: arms down straightened to 3 cm
+    (`arms_down(straighten=True)`). Carlton's seam table was wrong: 867 mm of sleeve cap into a 603 mm armhole (the
+    hindarm seam runs up to the back pitch / usTip), the stand sewn to the whole 425 mm neckline (now to the lapel's
+    roll line), the 341 mm tail gathered into 243 mm (now pleated: FreeSewing points on an outline become outline
+    points, `pattern._points_on_outline`). Open: hung sleeves spring out 13-26 deg within ~8 frames of the body
+    going (at 8-10 deg at the end of lowering; not bend, not mesh size, not the hanger; compressed underarm cloth
+    springing back is the lead), collars stand up, the coat's back side seam is 4 cm shorter than the front's.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

@@ -1837,7 +1837,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             res["V_sim"] = V
     # the clean-up pass (what artists do in ZBrush/Blender after the sim): crinkle smoothed, big folds kept, seams
     # welded, the cloth kept off the body
-    cu = g.get("cleanup", {})
+    # ZOZO's surface needs no smoothing (its sim crinkle is low): Taubin rounded its fold crests 20-40% (sleeve crest
+    # radius p50 12 -> 17 mm at 1 cm) and wiped its smaller folds; welding and the push off the body stay
+    cu = g.get("cleanup", {"smooth": 0} if backend == "zozo" else {})
     res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
                                        cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
