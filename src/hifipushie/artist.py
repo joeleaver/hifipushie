@@ -175,8 +175,9 @@ SNAPSHOT = {
     "tool": "snapshot",
     "title": "Snapshot the subject",
     "description": ("The subject's current spec as a file (role \"spec\", spec.json) plus a quick look (a clay contact "
-                    "sheet for a model, the map for a terrain), so a spec-only working state can be published. "
-                    "look=false skips the image."),
+                    "sheet for a model, the map for a terrain), also filed as role \"preview\" (preview.png), so a "
+                    "working state published to the library shows (and is reviewed) by its image. look=false skips "
+                    "the image."),
     "input_schema": {"type": "object", "properties": {
         "look": {"type": "boolean", "default": True, "description": "include a quick look image"}}},
     "returns": ["text", "image", "file"],
@@ -825,8 +826,12 @@ class Runner:
             if rep.get("ok"):
                 imgs, _ = self._content([c for c in rep["content"] if c["type"] == "image"])
                 content += imgs
-            else:
-                content.append({"type": "text", "text": f"(no look: {rep.get('error')})"})
+                # the look also as a file (role "preview"): a snapshot published to the library then carries its
+                # image, so a sculpt WIP shows in dailies and gets reviewed on it (it reached dailies spec-only)
+                files = [{"role": "preview", "filename": f"preview{i or ''}.{'png' if im['mime'] == 'image/png' else 'jpg'}",
+                          "blob": im["blob"], "mime": im["mime"]} for i, im in enumerate(imgs)]
+                return {"status": "ok", "content": content, "files": [spec_file] + files}
+            content.append({"type": "text", "text": f"(no look: {rep.get('error')})"})
         return {"status": "ok", "content": content, "files": [spec_file]}
 
 

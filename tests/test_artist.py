@@ -499,7 +499,10 @@ def test_snapshot_with_a_look(dept_runner):
     (img,) = [c for c in res["content"] if c["type"] == "image"]
     data = dept.blobs[img["blob"]]
     assert img["mime"] == "image/png" and data.startswith(b"\x89PNG") and hashlib.sha256(data).hexdigest() == img["blob"]
-    assert [f["role"] for f in res["files"]] == ["spec"]
+    assert [f["role"] for f in res["files"]] == ["spec", "preview"]  # the look is filed too (dailies show WIPs)
+    pv = res["files"][1]
+    assert pv["blob"] == img["blob"] and pv["mime"] == "image/png" and pv["filename"] == "preview.png"
+    assert [f["role"] for f in dept.run(sid, "snapshot", {"look": False})["files"]] == ["spec"]
     assert dept.run(sid, "_close")["status"] == "ok"
 
 
