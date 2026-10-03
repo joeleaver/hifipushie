@@ -175,8 +175,9 @@ SNAPSHOT = {
     "tool": "snapshot",
     "title": "Snapshot the subject",
     "description": ("The subject's current spec as a file (role \"spec\", spec.json) plus a quick look (a clay contact "
-                    "sheet for a model, the map for a terrain), so a spec-only working state can be published. "
-                    "look=false skips the image."),
+                    "sheet for a model, the map for a terrain), also filed as role \"preview\" (preview.png), so a "
+                    "working state published to the library shows (and is reviewed) by its image. look=false skips "
+                    "the image."),
     "input_schema": {"type": "object", "properties": {
         "look": {"type": "boolean", "default": True, "description": "include a quick look image"}}},
     "returns": ["text", "image", "file"],
@@ -727,12 +728,15 @@ class Runner:
             except ValueError as e:
                 self._drop_session()
                 return _error(f"the subject's spec isn't JSON: {e}")
+            # the department says which library version this is (asset, number, uuid, whether it's the approved one:
+            # subject.from); a bare id read like an unrelated asset in sculpt_history
+            src = (subj.get("from") or {}).get("summary") or f"library version {subj['version']}"
             rep = self._call(task, {"op": "hydrate", "kind": kind, "name": name, "spec": spec,
-                                    "note": f"hydrated from library version {subj['version']}"})
+                                    "note": f"hydrated from {src}"})
             if not rep.get("ok"):
                 self._drop_session()
                 return _error(f"hydrating {name}: {rep.get('error')}")
-            text = f"ready: {rep['text']} (from version {subj['version']})"
+            text = f"ready: {rep['text']} (from {src})"
         return {"status": "ok", "content": [{"type": "text", "text": text}]}
 
     def _drop_session(self):
@@ -822,8 +826,12 @@ class Runner:
             if rep.get("ok"):
                 imgs, _ = self._content([c for c in rep["content"] if c["type"] == "image"])
                 content += imgs
-            else:
-                content.append({"type": "text", "text": f"(no look: {rep.get('error')})"})
+                # the look also as a file (role "preview"): a snapshot published to the library then carries its
+                # image, so a sculpt WIP shows in dailies and gets reviewed on it (it reached dailies spec-only)
+                files = [{"role": "preview", "filename": f"preview{i or ''}.{'png' if im['mime'] == 'image/png' else 'jpg'}",
+                          "blob": im["blob"], "mime": im["mime"]} for i, im in enumerate(imgs)]
+                return {"status": "ok", "content": content, "files": [spec_file] + files}
+            content.append({"type": "text", "text": f"(no look: {rep.get('error')})"})
         return {"status": "ok", "content": content, "files": [spec_file]}
 
 
@@ -884,18 +892,59 @@ def artist_version() -> str:
     return f"hifipushie {v}" + (f" (git {sha})" if sha else "")
 
 
-def equipment(work_root: Path) -> dict:
-    from . import resources  # container-aware: a hosted box's /proc shows the whole host
-    ram = round(resources.meminfo()["total"], 1)
-    gpu = None
+GPU_VENDORS = {"0x10de": "nvidia", "0x1002": "amd", "0x8086": "intel"}
+_VENDOR_SHORT = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}
+
+
+def _lspci_name(slot: str) -> str:
+    """The device's name from lspci (e.g. "Navi 31 [Radeon RX 7900 XTX]"; the vendor is added by the caller), or ""."""
+    if not shutil.which("lspci"):
+        return ""
+    try:
+        r = subprocess.run(["lspci", "-mm", "-s", slot], capture_output=True, text=True, timeout=10)
+        f = re.findall(r'"([^"]*)"', r.stdout)  # class, vendor, device, ...
+        return f[2].strip() if len(f) >= 3 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def gpu_info() -> dict | None:
+    """{"vendor", "name", "vram_gb"} of the box's first display GPU, or None. NVIDIA via nvidia-smi; AMD / Intel /
+    other from the kernel's DRM devices (/sys/class/drm/card*/device: vendor id, VRAM for amdgpu) named by lspci.
+    (Before, only nvidia-smi was asked: an AMD runner reported gpu: null while the installer said "amd".)"""
     if shutil.which("nvidia-smi"):
         try:
             r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
                                capture_output=True, text=True, timeout=10)
             first = r.stdout.strip().splitlines()[0].split(",")
-            gpu = {"name": first[0].strip(), "vram_gb": round(float(first[1]) / 1024, 1)}
+            return {"vendor": "nvidia", "name": first[0].strip(), "vram_gb": round(float(first[1]) / 1024, 1)}
         except (OSError, subprocess.SubprocessError, IndexError, ValueError):
             pass
+    for card in sorted(Path("/sys/class/drm").glob("card[0-9]*")):
+        dev = card / "device"
+        if "-" in card.name or not (dev / "vendor").exists():
+            continue  # card0-DP-1 etc. are connectors, not devices
+        try:
+            vendor_id = (dev / "vendor").read_text().strip()
+            slot = os.path.basename(os.path.realpath(dev))
+        except OSError:
+            continue
+        vram = None
+        try:
+            vram = round(int((dev / "mem_info_vram_total").read_text()) / 1024 ** 3, 1)  # amdgpu only
+        except (OSError, ValueError):
+            pass
+        vendor = GPU_VENDORS.get(vendor_id, "other")
+        dev_name = _lspci_name(slot)
+        name = f"{_VENDOR_SHORT[vendor]} {dev_name}" if vendor in _VENDOR_SHORT and dev_name else (dev_name or vendor_id)
+        return {"vendor": vendor, "name": name, "vram_gb": vram}
+    return None
+
+
+def equipment(work_root: Path) -> dict:
+    from . import resources  # container-aware: a hosted box's /proc shows the whole host
+    ram = round(resources.meminfo()["total"], 1)
+    gpu = gpu_info()
     blender = None
     try:
         from .render import BLENDER as BL

@@ -388,7 +388,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     paint: show the spec's paint layers (default); False shows plain clay per part.
     paint_layer: show that one layer's mask in false colour instead (purple 0, teal 0.5, yellow 1), to see
     where a mask stack lands before judging colours.
-    hide_parts / only_parts: leave those parts out / show only those (no rebuild): the body under clothes, the
+    hide_parts / only_parts: leave those parts out / show only those (no rebuild; "hair" hides the hair's locks): the body under clothes, the
     inside of a house without its roof, one part alone. With only_parts the views frame the parts shown.
     clip: cut the model with a plane and drop what's beyond it, e.g. {"z": 2.2} drops everything above
     z = 2.2 (a plan view of a house: use views=["top"]; a torso cross-section), {"-y": 0} drops everything
@@ -412,6 +412,15 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     save: also write the contact sheet to this PNG path (to show someone who can't see tool images)."""
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
+    # "hair" is a pseudo-part (the locks aren't spec parts): hide_parts=["hair"] leaves them out of a painted look;
+    # clay and geometric views draw no locks anyway, so there it just drops out
+    if hide_parts and "hair" in hide_parts:
+        if not store.load(name).get("hair"):
+            raise ValueError(f"{name} has no hair to hide")
+        hide_parts = [p for p in hide_parts if p != "hair"]
+        hide_hair = True
+    else:
+        hide_hair = False
     if cams:  # say what blocks a camera's view before a render is spent on it
         from .spec import compile_prims
         seen = [p for p in compile_prims(store.load(name))
@@ -427,7 +436,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         closeup = focus is not None and zoom > 1
         sheet, secs = scene.look(name, views or ([] if cams else (render.DEFAULT_VIEWS[:1] if closeup else render.DEFAULT_VIEWS)),
                                  cams, size, None, paint_layer, hide_parts, only_parts, flat=shading == "flat",
-                                 clip=clip, focus=focus if closeup else None, zoom=zoom)
+                                 clip=clip, focus=focus if closeup else None, zoom=zoom, hide_hair=hide_hair)
         if save:
             sheet.save(save)
         notes = [l for l in r["log"] if "cuts into" in l or "from the scene" in l or "scene:" in l]
@@ -1020,7 +1029,9 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     few and small round parts enough; every part gets at least max(300, triangles/100) per copy, or its parts.<p>.min_triangles: lower it for many-instance prefabs like chain links). Per part in
     spec["parts"][p]: "triangle_weight" (x its share), "texel_density" (x its texels per metre), "texel_focus":
     [{"at": point | joint | blob, "radius": m, "density": w}] (islands there get w x more: a character's face),
-    "atlas": name (its own atlas and material, e.g. "interior").
+    "atlas": name (its own atlas and material, e.g. "interior"), "uv": "planar" (a swappable flat surface: a clock's
+    dial, a sign, a screen: its own material with upright 0..1 planar UVs, so an engine swaps its texture by one
+    property; the json's parts.<p>.material names that material).
     Atlases: texel_density (texels per metre, e.g. 512) opens as many atlases as that needs at `texture`^2 at most
     (a prefab's parts stay on one), each the smallest power of two that holds its parts; the log says if any
     part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.

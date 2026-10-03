@@ -36,6 +36,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# The department that serves this script stamps its own URL here (GET /install/runner.sh), so `curl … | sh` works
+# without --url; a copy run from disk keeps the placeholder and still needs --url.
+DEPARTMENT_URL="__OXIDEGEN_DEPARTMENT_URL__"
+case "$DEPARTMENT_URL" in __*) ;; *) [ -z "$URL" ] && URL=$DEPARTMENT_URL ;; esac
 URL=${URL%/}
 PROJECT=$(cd "${PROJECT:-.}" && pwd) || { echo "no such project directory" >&2; exit 2; }
 RUNNER="$PROJECT/.oxidegen/runner"
@@ -179,8 +183,25 @@ fi
 gpu=none gpu_name=""
 if have nvidia-smi && nvidia-smi -L >/dev/null 2>&1; then
   gpu=nvidia gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1)
-elif [ -e /dev/kfd ] || (have rocminfo && rocminfo >/dev/null 2>&1); then gpu=amd
-elif ls /dev/dri/renderD* >/dev/null 2>&1; then gpu=other
+else
+  # AMD / Intel / other: the first DRM device's PCI vendor, named by lspci (an AMD box said "amd" with a blank name)
+  for card in /sys/class/drm/card[0-9]*; do
+    case "$card" in *-*) continue ;; esac
+    [ -r "$card/device/vendor" ] || continue
+    case "$(cat "$card/device/vendor")" in
+      0x1002) gpu=amd ;; 0x8086) gpu=intel ;; 0x10de) gpu=nvidia ;; *) gpu=other ;;
+    esac
+    if have lspci; then
+      slot=$(basename "$(readlink -f "$card/device")")
+      gpu_name=$(lspci -mm -s "$slot" 2>/dev/null | awk -F'"' '{print $6}')
+      case "$gpu" in amd) gpu_name="AMD $gpu_name" ;; intel) gpu_name="Intel $gpu_name" ;; esac
+    fi
+    break
+  done
+  if [ "$gpu" = none ]; then
+    if [ -e /dev/kfd ] || (have rocminfo && rocminfo >/dev/null 2>&1); then gpu=amd
+    elif ls /dev/dri/renderD* >/dev/null 2>&1; then gpu=other; fi
+  fi
 fi
 painted=likely
 [ "$gpu" = none ] && { painted=no; limit "no GPU found: clay looks work, painted looks (EEVEE) won't"; }
@@ -263,7 +284,15 @@ fi
 TOOLS="$CACHE/tools/$SHA"
 if ! [ -x "$TOOLS/bin/hifipushie-artist" ]; then
   say "Installing hifipushie $SHA from $REPO ..."
-  UV_TOOL_DIR="$TOOLS" UV_TOOL_BIN_DIR="$TOOLS/bin" "$UV" tool install --force --python 3.12 "git+$REPO@$SHA" >&2
+  # uv warns that $TOOLS/bin "is not on your PATH": nothing to fix (the service runs the tool by its full path), so
+  # drop those lines; everything else uv says is passed on, and its exit status kept
+  uv_log=$(mktemp)
+  rc=0
+  UV_TOOL_DIR="$TOOLS" UV_TOOL_BIN_DIR="$TOOLS/bin" "$UV" tool install --force --python 3.12 "git+$REPO@$SHA" \
+    >&2 2>"$uv_log" || rc=$?
+  grep -vE 'is not on your PATH|uv tool update-shell|export PATH=|^warning: `.*` is not on your PATH' "$uv_log" >&2 || true
+  rm -f "$uv_log"
+  [ "$rc" -eq 0 ] || exit "$rc"
 fi
 cur=$(readlink "$CACHE/$ARTIST-current" 2>/dev/null || true)
 if [ "$cur" != "tools/$SHA" ]; then
