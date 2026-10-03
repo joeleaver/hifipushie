@@ -503,6 +503,21 @@ def test_snapshot_with_a_look(dept_runner):
     assert dept.run(sid, "_close")["status"] == "ok"
 
 
+def test_open_names_the_library_version_it_started_from(dept_runner):
+    """The department's subject.from summary (asset, number, approved or not) is what history and _open say, not a
+    bare version id (s0urc3: "hydrated from library version c8fcfcf0..." read like an unrelated asset)."""
+    dept, runner, root = dept_runner
+    sha = dept.put_blob(json.dumps(small_spec()).encode())
+    summary = 'library asset "frame" (model) v2 ver-2 — the latest saved version with a spec; NOT the approved one (v1)'
+    res = dept.run("sess-from", "_open", {"subject": {"kind": "model", "name": "frame", "version": "ver-2",
+                                                       "from": {"summary": summary}}, "workspace": "sess-from"},
+                   {"spec": {"version": "ver-2", "role": "spec", "filename": "spec.json", "sha256": sha,
+                             "url": f"/v1/blobs/{sha}"}})
+    assert res["status"] == "ok", res
+    assert summary in text_of(res)
+    assert f"hydrated from {summary}" in text_of(dept.run("sess-from", "history"))
+
+
 def test_set_reference_takes_a_library_version(dept_runner):
     import io
     from PIL import Image, ImageDraw
