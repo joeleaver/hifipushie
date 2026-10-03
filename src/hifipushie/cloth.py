@@ -605,17 +605,20 @@ class Body:
         b._m = self.m  # the tape is the body's own (drafting, landmarks on the torso)
         return b, pose
 
-    def arms_down(self, gap: float = 0.07, band: float = 0.05, steps: int = 4) -> list:
+    def arms_down(self, gap: float = 0.07, band: float = 0.05, steps: int = 4, straighten: bool = False) -> list:
         """Poses lowering both arms about the shoulder joints toward the body's sides (the way a coat is taken off a
         dummy: arms down first, so the sleeves hang beside the body on the hanger instead of staying splayed in the
         A-pose). Each arm turns in its own plane (the upper arm and straight down) until its forearm and hand come
         within `gap` of the torso; blended over +-band across the plane through the shoulder joint square to the
-        upper arm. Returns [V (n, 3)] for `steps` poses evenly from here to fully down (the last fully down)."""
-        V0 = self.V
+        upper arm. straighten: the elbows straighten as the arms come down (the bent forearm met the torso after
+        26 deg and left the sleeves ~20 deg out on the hanger). Returns [V (n, 3)] for `steps` poses evenly from here
+        to fully down (the last fully down)."""
+        base = self.straight_arms()[0] if straighten else self
+        V0 = base.V
         turns = []
         for side, sg in (("L", 1.0), ("R", -1.0)):
             try:
-                sh, el, wr = (self.J[f"{j}.{side}"] for j in ("shoulder", "elbow", "wrist"))
+                sh, el, wr = (base.J[f"{j}.{side}"] for j in ("shoulder", "elbow", "wrist"))
             except KeyError:
                 continue
             d1 = (el - sh) / np.linalg.norm(el - sh)
@@ -654,7 +657,7 @@ class Body:
 
         full = []
         for sh, ax, w, side in turns:
-            el, wr = self.J[f"elbow.{side}"], self.J[f"wrist.{side}"]
+            el, wr = base.J[f"elbow.{side}"], base.J[f"wrist.{side}"]
             # the forearm and hand: what meets the torso first (the upper arm's inside lies against the lat already)
             far = (w > 0.99) & ((V0 - el) @ ((wr - el) / np.linalg.norm(wr - el)) > 0.0)
             best = 0.0
@@ -666,7 +669,7 @@ class Body:
             full.append(best)
         poses = []
         for k in range(1, steps + 1):
-            V = V0.copy()
+            V = self.straight_arms(frac=k / steps)[0].V if straighten else V0.copy()
             for (sh, ax, w, _), ang in zip(turns, full):
                 V = rot(V, sh, ax, ang * k / steps * w)
             poses.append(V)
@@ -709,6 +712,15 @@ class Body:
         if not rows or h < rows[0]["h"] - 0.003 or h > rows[-1]["h"] + 0.003:
             return None
         return float(np.interp(h, [r["h"] for r in rows], [r["r"] for r in rows]))
+
+    def clearance(self, P: np.ndarray) -> np.ndarray:
+        """Signed distance-ish of points from the body (along its normal from the 4 nearest vertices; < 0 inside):
+        push_out's own measure."""
+        vn, tree = self.normals()
+        _, i = tree.query(P, k=4)
+        n = vn[i].mean(1)
+        n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+        return np.sum((P - self.V[i].mean(1)) * n, 1)
 
     def push_out(self, X: np.ndarray, gap: float, iters: int = 4) -> np.ndarray:
         """Start positions inside the body (or closer than gap) moved out along the body's normal: a cloth vertex
@@ -796,6 +808,8 @@ def _piece_width_at(P: np.ndarray, y: float) -> float:
 
 LAYER = 0.004  # how far an overlapping layer starts outside the one under it
 CLEAR = 0.008  # the least start clearance from the body (Blender: cloth 3 mm + body 4 mm collision distances)
+SMOOTH_CLEAR = 0.004  # ZOZO bands (cuffs, neck pieces): its contact offset 2 mm + gap 1 mm + 1 mm
+SMOOTH_FACE_CLEAR = 0.0035  # ... and the least clearance of their faces (centres, edge midpoints)
 
 
 def _sewn_arc(B: dict, M: dict, nm: str, R: float):
@@ -851,6 +865,55 @@ def _closure(M: dict, nm: str) -> tuple[float, float]:
             if d > best:
                 best, xlo = d, float(min(M["uv"][a, 0], M["uv"][b, 0]))
     return best, xlo
+
+
+def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo: float, lay: float, cx: float,
+                 sgn: float, turn: float, frame_t) -> tuple | None:
+    """A piece closed on itself round an arm (a cuff) laid on a spiral that follows the arm's sections: the radial
+    function of their convex hull (over the piece's length, in the cuff's frame) + m(phi), m growing by `lay` a turn,
+    m's start solved so the stitched points (x_lo and x_lo + closed along the pattern) land exactly one turn apart, arc
+    length along the spiral = pattern x (from the piece's middle cx, at angle `turn`). Returns (angle per vertex
+    before sgn/turn, radius per vertex) for the placement's own angle convention, or None without sections."""
+    pts = []
+    for ti in np.arange(float(t.min()), float(t.max()) + 1e-9, 0.01):
+        c, up, fw, d = frame_t(ti)
+        L = tailor.section(body.V, body.T, c, d, c)
+        if L is None or not tailor._encloses(L, c, d):
+            continue
+        Q = L - c
+        pts.append(np.c_[Q @ up, Q @ fw])
+    if not pts:
+        return None
+    P = np.concatenate(pts)
+    H = _densify(P[ConvexHull(P).vertices], 0.001)
+    a = np.arctan2(H[:, 1], H[:, 0])
+    o = np.argsort(a)
+    a, rh = a[o], np.linalg.norm(H, axis=1)[o]
+
+    def r_hull(psi):
+        return np.interp(np.mod(psi + np.pi, 2 * np.pi) - np.pi, a, rh, period=2 * np.pi)
+    phi = np.linspace(-3 * np.pi, 3 * np.pi, 6001)
+    psi = sgn * phi + turn
+    rH = r_hull(psi)
+
+    def spiral(m0):
+        r = rH + m0 + lay * phi / (2 * np.pi)
+        xy = np.c_[r * np.cos(psi), r * np.sin(psi)]
+        s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+        return s - np.interp(0.0, phi, s), r
+
+    def turn_err(m0):
+        s, _ = spiral(m0)
+        return float(np.interp(x_lo + closed - cx, s, phi) - np.interp(x_lo - cx, s, phi)) - 2 * np.pi
+    lo, hi = -0.5 * float(rH.min()), 0.2
+    if turn_err(lo) < 0:  # the cuff can't close even right on the arm: as small as it goes, pushed out later
+        hi = lo
+    for _ in range(50):
+        mid = 0.5 * (lo + hi)
+        lo, hi = (mid, hi) if turn_err(mid) > 0 else (lo, mid)
+    s, r = spiral(0.5 * (lo + hi))
+    th = np.interp(x - cx, s, phi)
+    return th, np.interp(th, phi, r)
 
 
 def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None = None, smooth: bool = False,
@@ -1038,8 +1101,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             out = np.zeros((len(U), 3))
             d1, d2 = (el - sh) / seg[0], (wr - el) / seg[1]
 
-            def at_t(ti, ang, r):
-                """The point at arc position t along the bent axis, angle ang round it, radius r; and its radial."""
+            def frame_t(ti):
+                """The axis point at arc position t along the bent axis, the directions angle 0 and 90 deg point
+                round it (up, forward) and the axis direction there."""
                 if ti <= seg[0]:
                     d, c = d1, sh + d1 * ti
                 else:
@@ -1051,8 +1115,22 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 fw = np.cross(d, up)
                 if fw[1] > 0:  # pattern +x goes to the front of the arm (-Y)
                     fw = -fw
+                return c, up, fw, d
+
+            def at_t(ti, ang, r):
+                """The point at arc position t along the bent axis, angle ang round it, radius r; and its radial."""
+                c, up, fw, _ = frame_t(ti)
                 u = np.cos(ang) * up + np.sin(ang) * fw
                 return c + r * u, u
+            if closed and smooth:
+                # a cuff closes round a wrist that is an ellipse (wider across than front to back), not a circle: the
+                # spiral follows the arm's own sections over the cuff (their hull) grown to the closed girth. On a
+                # circle of that girth it was pushed 18-21 mm out across the wrist and rested (made piece: rest =
+                # placed) as a cuff that much too big, which ruffled
+                sp = _cuff_spiral(body, t, U[:, 0], closed, x_lo, lay, cx, float(w.get("front", 1)),
+                                  math.radians(float(w.get("turn", 0))), frame_t)
+                if sp is not None:
+                    th, rr = sp
             # The inside of the elbow: round the kinked axis each segment's cylinder runs past the mitre plane there
             # by r (u . n) tan(theta / 2), so the two overlapped in a wedge (58 crossings in every start; the sim grew
             # them into tangled sleeves, CORRUPT). That excess length (the sleeve is straight, the arm bent) is laid
@@ -1204,12 +1282,36 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     for k, nm in enumerate(names):
         wto = B["pieces"][nm]["wrap"].get("to", "")
         if (wto.startswith("arm.") and _closed_girth(M, nm)) or wto == "neck":  # bands hugging the body
-            gaps[pid == k] = CLEAR  # outside the collision zone (cloth + body distance): inside it, the impulses launched the torso 15 cm up
-            if smooth and wto.startswith("arm."):  # a cuff's coarse triangles reach in between its vertices (2 cm ones came within ZOZO's offset)
-                gaps[pid == k] += 0.25 * float(np.median(np.linalg.norm(uv[M["F"][:, 0]] - uv[M["F"][:, 1]], axis=1)))
+            # outside the collision zone (cloth + body distance): inside it, Blender's impulses launched the torso
+            # 15 cm up. ZOZO's zone is its contact offset + gap (3 mm): Blender's 8 mm (+ h/4) pushed a 183 mm cuff
+            # 14 mm off a 149 mm wrist and a collar 8 mm off the neck, and these made pieces rest as placed: a cuff
+            # too big that ruffled. Their faces are checked below instead (coarse triangles reach in between the
+            # vertices)
+            gaps[pid == k] = SMOOTH_CLEAR if smooth else CLEAR
     if shifts and _blouse is None:
         return place(B, M, body, gap, _blouse=shifts, smooth=smooth, _out=_out, _down=_down)
+    # the made pieces' (cuff, collar) shape before the push: their rest (the push only clears the start)
+    B["start_unpushed"] = X.copy()
     Xp = body.push_out(X, gaps)
+    if smooth:  # every face of a band clear of the body (centres and edge midpoints): its vertices go further out
+        F = M["F"]
+        bands = np.unique(pid[gaps == SMOOTH_CLEAR])
+        for _ in range(6):
+            Pf = np.concatenate([Xp[F].mean(1), 0.5 * (Xp[F[:, 0]] + Xp[F[:, 1]]), 0.5 * (Xp[F[:, 1]] + Xp[F[:, 2]]),
+                                 0.5 * (Xp[F[:, 2]] + Xp[F[:, 0]])])
+            fk = np.tile(pid[F[:, 0]], 4)
+            on = np.isin(fk, bands)
+            cl = np.full(len(Pf), np.inf)
+            cl[on] = body.clearance(Pf[on])
+            short = SMOOTH_FACE_CLEAR - cl
+            if short.max() <= 2e-4:
+                break
+            fi = np.tile(np.arange(len(F)), 4)
+            need = np.zeros(len(Xp))
+            for c in range(3):  # each vertex out by the largest shortfall of the faces round it
+                np.maximum.at(need, F[fi, c], np.maximum(short, 0))
+            gaps = gaps + need + 2e-4 * (need > 0)
+            Xp = body.push_out(X, gaps)
     if smooth:  # a piece closed on itself: its outer layer moves out with the inner one under it (pushed alone, the
         # inner layer was squeezed onto the outer: 1.7 mm apart, which a contact solver refuses to start from)
         for k, nm in enumerate(names):
@@ -1392,6 +1494,8 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
         raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {SIM_MIN_FREE_GB}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
+        if backend == "zozo":
+            return cloth_job.run_zozo(jd, progress, log)
         return cloth_job.run_external(jd, backend, progress)
     cloth_job.write(job_dir, cfg, arrays, names)
     progress(f"waiting for the heavy-job slot ({cfg.get('mode', 'sim')})")
@@ -1458,15 +1562,52 @@ def made_pieces(M: dict, stiff: np.ndarray) -> list:
     return [nm for k, nm in enumerate(M["names"]) if stiff[M["piece"] == k].mean() > 0.9]
 
 
-def rest_shape(M: dict, X0: np.ndarray, stiff: np.ndarray, smooth: bool) -> np.ndarray:
+def rest_shape(M: dict, X0: np.ndarray, stiff: np.ndarray, smooth: bool, made: np.ndarray | None = None) -> np.ndarray:
     """What the sim's cloth rests on, as positions with its edge lengths: the start (placement "fitted"), or the flat
-    pattern with the made pieces as placed ("smooth")."""
+    pattern with the made pieces as placed ("smooth"; `made`: their placement before it was pushed clear of the
+    body, the shape they were made to: a cuff pushed off the wrist rested 17-30% too big and ruffled)."""
     if not smooth:
         return X0
     R = np.c_[M["uv"], np.zeros(len(M["uv"]))]
     for nm in made_pieces(M, stiff):
         sel = M["piece"] == M["names"].index(nm)
-        R[sel] = X0[sel]
+        R[sel] = (made if made is not None else X0)[sel]
+    return R
+
+
+def sleeve_angles(V: np.ndarray, M: dict, Bp: dict) -> dict:
+    """Each arm's sleeve axis angle from vertical (deg): the centre of its cap's top (top 8% of each sleeve piece's
+    pattern height) to the centre of its hem (bottom 4%). A garment on a hanger hangs its sleeves under ~5 deg."""
+    out = {}
+    for side in ("L", "R"):
+        ks = [k for k, nm in enumerate(M["names"]) if Bp["pieces"][nm]["wrap"].get("to") == f"arm.{side}"
+              and not _closed_girth(M, nm) and "follow" not in Bp["pieces"][nm]["wrap"]]
+        top, hem = [], []
+        for k in ks:
+            sel = np.where(M["piece"] == k)[0]
+            y = M["uv"][sel, 1]
+            lo, hi = y.min(), y.max()
+            top.append(sel[y > hi - 0.08 * (hi - lo)])
+            hem.append(sel[y < lo + 0.04 * (hi - lo)])
+        if not ks:
+            continue
+        v = V[np.concatenate(hem)].mean(0) - V[np.concatenate(top)].mean(0)
+        out[side] = float(np.degrees(np.arccos(np.clip(-v[2] / np.linalg.norm(v), -1, 1))))
+    return out
+
+
+def _made_rest(Bp: dict, M: dict, X: np.ndarray) -> np.ndarray | None:
+    """Where made pieces rest (placement smooth): pieces closed round an arm (cuffs) as placed before the push clear of
+    the body (pushed, a cuff rested 17-30% too big and ruffled); everything else as it starts (a collar resting
+    unpushed, its fall shorter than the layer it lies at, stood up and flared at the front; as placed it rolls
+    round the neck cleanly)."""
+    U = Bp.get("start_unpushed")
+    if U is None:
+        return None
+    R = X.copy()
+    for k, nm in enumerate(M["names"]):
+        if Bp["pieces"][nm]["wrap"].get("to", "").startswith("arm.") and _closed_girth(M, nm):
+            R[M["piece"] == k] = U[M["piece"] == k]
     return R
 
 
@@ -1492,27 +1633,38 @@ def cloth_job_backend(g: dict) -> str:
     return cloth_job.backend_of(g)
 
 
+def placement_of(g: dict) -> str:
+    """"smooth" (ZOZO's default: rests on the flat pattern, dressed on straight arms) or "fitted" (Blender's)."""
+    return g.get("placement") or ("smooth" if cloth_job_backend(g) == "zozo" else "fitted")
+
+
 def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int | None = None,
-          render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None) -> dict | None:
+          render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None,
+          result: str | Path | None = None) -> dict | None:
     """Draft, mesh, place and simulate one garment on one body, then clean it up. Returns {"V" final verts, "V_sim"
     the sim's own, "mesh", "fit", "integrity", "sizing", "shape", ...}; the sim is cached by content (keys that only
     change the look or the clean-up never re-simulate). cached_only: None when it hasn't been simulated.
     quality "final" (default): the whole sim at `coarse` (2 cm), then carried onto the `resolution` mesh (1 cm) and
-    settled there (refine): the coarse-then-fine particle distance artists use. "draft": the coarse sim alone."""
+    settled there (refine): the coarse-then-fine particle distance artists use. "draft": the coarse sim alone.
+    Backend "zozo" sims once at `resolution` (its contact holds at 1 cm; "draft" = at `coarse`).
+    result: an out.npz (a job folder's, from any solver) applied instead of the cached/simulated one, for judging a
+    result whose key has moved; it isn't cached."""
     progress = progress or (lambda s: None)
     body = Body(body_src)
     Bp = pieces(g, body.m["mm"] if g.get("pattern") else {})
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     quality = g.get("quality", "final")
     hc = float(g.get("coarse", 0.02))
-    refine = quality == "final" and hc > 1.4 * h
+    backend = cloth_job_backend(g)
+    # ZOZO isn't refined: its contact keeps a 1 cm sim clean, and a refine would rest on the carried drape
+    refine = quality == "final" and hc > 1.4 * h and backend != "zozo"
     if quality == "draft":
         h = max(h, hc)
     hs = hc if refine else h
     Ms = mesh(Bp, hs)
-    smooth = g.get("placement") == "smooth"
-    if smooth and cloth_job_backend(g) == "blender":
-        raise ClothError('placement "smooth" is for solvers resting on the flat pattern (backend "file"/"remote": ZOZO); '
+    smooth = placement_of(g) == "smooth"
+    if smooth and backend == "blender":
+        raise ClothError('placement "smooth" is for solvers resting on the flat pattern (backend "zozo"); '
                          "Blender rests on the placement")
     # smooth: dressed on straight arms (the body bends back in the sim's "pose" stage), nothing folded but what the
     # solver keeps as rest (interfaced pieces)
@@ -1541,26 +1693,50 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         harr[f"{o['name']}V"], harr[f"{o['name']}F"] = o["V"], o["F"]
     # before the body goes, its arms come down to its sides with the garment on (stage "lower"): taken off a dummy in
     # the A-pose, a coat's sleeves stayed splayed on the hanger
-    lower = {"bodyLower": np.stack(body.arms_down())} if hg is not None and g.get("lower_arms", True) else {}
-    code = hashlib.sha1(SCRIPT.read_bytes()).hexdigest()
+    la = g.get("lower_arms", True)
+    # ZOZO's arms come down straightened to 3 cm off the body (the sleeves hang straight); Blender's as before
+    la = dict({"gap": 0.03, "straighten": True} if backend == "zozo" else {}, **(la if isinstance(la, dict) else {}))
+    lower = {"bodyLower": np.stack(body.arms_down(**la))} if hg is not None and g.get("lower_arms", True) else {}
+    from . import cloth_job
+    solver = cloth_job.solver_of(backend)
+    # the code that makes the result: blender_cloth.py for Blender, the runner for any other solver (a ZOZO result
+    # was lost on every edit of the Blender script)
+    code = hashlib.sha1(SCRIPT.read_bytes()).hexdigest() if solver == "blender" else cloth_job.solver_code(solver)
     # keyed on the sim's inputs themselves (start positions, pattern, triangles, seams, stitches, interfacing, both
     # meshes) and the Blender side's code, not on cloth.py: a change there that moves nothing doesn't re-simulate
+    # smooth: the rest the solver gets (flat pattern + the made pieces' unpushed placement) is an input too
+    made_s = _made_rest(Bp, Ms, Xs) if smooth else None
+    rest_s = rest_shape(Ms, Xs, interfacing(Bp, Ms), True, made_s) if smooth else None
     inputs = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
         Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
-        *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values()))).hexdigest()
+        *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values(),
+        *((rest_s,) if smooth else ())))).hexdigest()
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
-    from . import cloth_job
-    backend = cloth_job.backend_of(g)
     gs.pop("backend", None)
     keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab]
-    if backend != "blender":  # another solver's result is another result (Blender's keys stay as they were)
-        keyed.append(["backend", backend, os.environ.get("HIFIPUSHIE_CLOTH_SOLVER", "newton")])
+    if solver != "blender":  # another solver's result is another result (Blender's keys stay as they were); the
+        # solver, not the backend: ZOZO run here or on a pod is the same result
+        keyed.append(["solver", solver])
+    if result is not None:  # a hand-carried out.npz: its own key, never cached
+        keyed.append(["result", hashlib.sha1(Path(result).read_bytes()).hexdigest()])
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
-           "rest": rest_shape(M, X0, interfacing(Bp, M), smooth),
+           "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not refine else None),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
-    if cache.exists() and not render:
+    if result is not None:
+        from . import cloth_job as cj
+        d, lines = cj.read_out(Path(result))
+        if d["V"].shape != Xs.shape:
+            raise ClothError(f"result {result}: {len(d['V'])} vertices, this garment's sim mesh has {len(Xs)} (another "
+                             "garment, resolution or quality?)")
+        res["V_sim"], res["V_coarse"], res["V_prev"] = d["V"], None, d.get("Vprev")
+        res["log"] = "\n".join(lines)
+        if refine:  # a coarse result: carried onto the fine mesh (no refine run)
+            res["V_coarse"] = d["V"]
+            res["V_sim"] = transfer(Ms, d["V"], M)
+            res["V_prev"] = transfer(Ms, d["Vprev"], M) if d.get("Vprev") is not None else None
+    elif cache.exists() and not render:
         d = np.load(cache)
         res["V_sim"] = d["V"]
         res["V_coarse"] = d["Vc"] if "Vc" in d else None
@@ -1575,7 +1751,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         cfg = {"fabric": fab_s, "frames": int(frames or g.get("frames", 90)), "state": state, "name": name,
                "color": g.get("color", "#5b7fa6"), "render": render,
                "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", []),
-               "placement": g.get("placement", "fitted"),
+               "placement": placement_of(g), **({"zozo": dict(g["zozo"])} if g.get("zozo") else {}),
                "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in Ms["names"]},
                "made": made_pieces(Ms, stiff_s),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
@@ -1596,7 +1772,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
                       piece=Ms["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64), **harr, **lower,
                       **({"bodyPoses": np.stack([body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)]
-                                                + [body.V]), "bodyV0": body_p.V} if smooth else {}))
+                                                + [body.V]), "bodyV0": body_p.V, "rest": rest_s} if smooth else {}))
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
         d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
         Vs = d["V"]
@@ -1661,7 +1837,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             res["V_sim"] = V
     # the clean-up pass (what artists do in ZBrush/Blender after the sim): crinkle smoothed, big folds kept, seams
     # welded, the cloth kept off the body
-    cu = g.get("cleanup", {})
+    # ZOZO's surface needs no smoothing (its sim crinkle is low): Taubin rounded its fold crests 20-40% (sleeve crest
+    # radius p50 12 -> 17 mm at 1 cm) and wiped its smaller folds; welding and the push off the body stay
+    cu = g.get("cleanup", {"smooth": 0} if backend == "zozo" else {})
     res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
                                        cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
@@ -1692,6 +1870,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         res["support"] = hangmod.support(res["V_sim"], M, hx, pins_h, res.get("V_prev"), frames_apart=PREV_APART)
         res["on_hanger"] = hangmod.on_hanger(res["V"], M, hg) if hg is not None else None
         res["hanger_ok"], res["hanger_line"] = hangmod.verdict(res["support"], res["on_hanger"])
+        res["sleeves"] = sleeve_angles(res["V"], M, Bp)
     # the verdict reads both: a pattern smaller than the body (negative ease) can't show as a small garment in the
     # sim (the body holds it out), it shows as cloth stretched past its limit there
     tight = [r for r, v in res["sizing"]["rows"].items() if v["ease"] < -0.01]  # under the body by over 1%
@@ -2163,7 +2342,7 @@ class ClothError(ValueError):
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
-                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "_trace"}
+                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -2245,11 +2424,17 @@ def validate(spec: dict) -> None:
             if k in g and not (isinstance(g[k], (int, float)) and lo <= g[k] <= hi):
                 raise ClothError(f"{where}: {k} is a triangle size in m ({lo}..{hi})")
         if g.get("placement", "fitted") not in ("fitted", "smooth"):
-            raise ClothError(f'{where}: placement is "fitted" (default: the start is the rest shape, folds and fins '
-                             'laid isometrically) or "smooth" (for solvers resting on the flat pattern: ZOZO)')
-        if g.get("backend", "blender") not in ("blender", "file", "remote"):
-            raise ClothError(f'{where}: backend is "blender" (default), "file" (write the job, wait for its result) or '
-                             '"remote" ($HIFIPUSHIE_CLOTH_REMOTE runs it): see cloth_job.py')
+            raise ClothError(f'{where}: placement is "fitted" (Blender\'s default: the start is the rest shape, folds '
+                             'and fins laid isometrically) or "smooth" (ZOZO\'s default: rests on the flat pattern)')
+        if g.get("backend", "blender") not in ("blender", "zozo", "file", "remote"):
+            raise ClothError(f'{where}: backend is "blender" (default), "zozo" (ZOZO\'s contact solver, here or on a GPU '
+                             'box), "file" (write the job, wait for its result) or "remote" ($HIFIPUSHIE_CLOTH_REMOTE '
+                             'runs it): see cloth_job.py')
+        if g.get("placement") == "smooth" and cloth_job_backend(g) == "blender":
+            raise ClothError(f'{where}: placement "smooth" needs backend "zozo" (Blender rests on the placement)')
+        if "zozo" in g and not isinstance(g["zozo"], dict):
+            raise ClothError(f'{where}: zozo is a dict of solver options (contact_gap, strain_limit, dt, ...: '
+                             'cloth_zozo.py)')
         if "color" in g and not _is_hex(g["color"]):
             raise ClothError(f'{where}: color is "#rrggbb"')
         cu = g.get("cleanup")
@@ -2433,6 +2618,9 @@ def report(gname: str, res: dict) -> str:
         + f" (the sim before the clean-up: {ig['sim']['self_intersections']} crossings)")
     if res.get("hanger_line"):
         L.append("  hanger: " + res["hanger_line"])
+    if res.get("sleeves"):
+        L.append("  sleeves from vertical (cap top -> hem centre; hanging straight is under ~5 deg): " + ", ".join(
+            f"{k} {v:.1f} deg" for k, v in res["sleeves"].items()))
     sh = res["shape"]
     L.append(f"  surface (sim -> final): crinkle {sh['sim']['crinkle_deg']} -> {sh['final']['crinkle_deg']} deg median "
              f"between neighbouring triangles (smooth cloth reads ~3-5), {sh['sim']['crinkle_mm']} -> "
@@ -2789,10 +2977,13 @@ def _cylinder(a, b, r, n=20):
 
 
 def look(name: str, which: list | None = None, views=("front", "side", "back", "three"), strain: bool = True,
-         size: int = 640, focus=None, zoom: float = 0.4, body: bool = True, textured: bool = False):
+         size: int = 640, focus=None, zoom: float = 0.4, body: bool = True, textured: bool = False,
+         result: str | None = None):
     """Renders of the model's simulated garments on their body (clay, each garment its colour) + the strain map, and
     the text report per garment. focus: [x, y, z] or "garment:piece" (that piece's middle) with zoom m across: a
     close-up. textured: EEVEE with the detail maps (seams, topstitching, hems, buttons) instead of clay.
+    result: an out.npz from a cloth job folder (any solver) shown for the one garment named, instead of its cached
+    sim: a result whose cache key has moved can still be judged.
     Returns (sheet PIL image, text)."""
     from PIL import Image, ImageDraw
     from . import store
@@ -2804,7 +2995,14 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
     for gn in which:
         if gn not in gs:
             raise ClothError(f"no garment {gn!r} (have {', '.join(gs) or 'none'})")
-        res = cached(name, spec, gn)
+        if result:
+            if len(which) != 1:
+                raise ClothError("look with a result: name the one garment it is for")
+            g = gs[gn]
+            res = build(_garment_for_sim(g), model_body(name, spec, g), f"{name}:{gn}", log=lambda *_: None,
+                        result=result)
+        else:
+            res = cached(name, spec, gn)
         if res is None:
             st = status(name, gn, gs[gn])
             texts.append(f"{gn}: not simulated ({st['state']}" + (f": {st['lines'][-1]}" if st["lines"] else "")

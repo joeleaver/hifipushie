@@ -46,6 +46,37 @@ def _dedupe(P, names):
     return np.asarray([P[i] for i in keep]), out_names
 
 
+def _points_on_outline(P: np.ndarray, names: dict, pts: dict, tol: float = 2e-6) -> tuple:
+    """Named points lying on the outline between its vertices (a pleat's fold marks along a waist edge) inserted as
+    outline vertices, so seams can address them ("tail:cbTop>fold1Top")."""
+    n = len(P)
+    ins = {}  # edge index -> [(t, name, point)]
+    for k, q in pts.items():
+        A, B = P, np.roll(P, -1, axis=0)
+        d = B - A
+        L2 = np.maximum((d * d).sum(1), 1e-18)
+        t = np.clip(((q - A) * d).sum(1) / L2, 0, 1)
+        dist = np.linalg.norm(A + t[:, None] * d - q, axis=1)
+        e = int(np.argmin(dist))
+        if dist[e] < tol and 1e-4 < t[e] * np.sqrt(L2[e]) < np.sqrt(L2[e]) - 1e-4:
+            ins.setdefault(e, []).append((float(t[e]), k, A[e] + t[e] * d[e]))
+    if not ins:
+        return P, names
+    out, remap, extra = [], {}, {}
+    for i in range(n):
+        remap[i] = len(out)
+        out.append(P[i])
+        for t, k, q in sorted(ins.get(i, []), key=lambda r: r[0]):
+            if np.linalg.norm(q - out[-1]) < 1e-6:
+                extra[k] = len(out) - 1
+                continue
+            extra[k] = len(out)
+            out.append(q)
+    names = {k: remap[i] for k, i in names.items()}
+    names.update(extra)
+    return np.asarray(out), names
+
+
 def _fs_xy(v):
     return np.array([v[0], -v[1]]) / 1000.0
 
@@ -81,6 +112,8 @@ def from_freesewing(part: dict, name: str, fold: str | None = None) -> dict:
             for k in name_at(cur):
                 names.setdefault(k, len(P) - 1)
     P, names = _dedupe(np.asarray(P), names)
+    P, names = _points_on_outline(P, names, {k: v for k, v in pts.items() if not k.startswith("__")
+                                             and k not in names and k != "title"})
     piece = {"name": name, "P": P, "names": names, "marks": {}, "lines": {}, "grain": 90.0}
     for s in part.get("snippets", []):
         if s.get("at"):

@@ -1,9 +1,16 @@
-"""Run a hifipushie cloth job (src/hifipushie/cloth_job.py) with ZOZO's contact solver (ppf-contact-solver, Apache-2.0:
-intersection-free IPC-style contact, strain limiting, stitches). Runs on CUDA, ROCm (this laptop's Radeon 890M, from the
-release's own bundled HIP runtime) or CPU.
+"""The ZOZO cloth backend's runner: a hifipushie cloth job (cloth_job.py) run with ZOZO's contact solver
+(ppf-contact-solver, Apache-2.0: intersection-free IPC-style contact, strain limiting, stitches). Runs on CUDA, ROCm
+(the laptop's Radeon 890M, from the release's own bundled HIP runtime) or CPU.
 
-    <ppf>/python/bin/python3.12 run_zozo.py <job folder> [--set key=json ...] [--frames N]
+This file runs inside the ZOZO release's own Python (it never imports hifipushie): garment key `backend: "zozo"` runs
+it through `cloth_job.run_zozo` (locally under resources.heavy, or on a GPU box through $HIFIPUSHIE_ZOZO_REMOTE, which
+copies this file with the job). By hand:
+
+    <ppf>/python/bin/python3.12 cloth_zozo.py <job folder> [--set key=json ...] [--frames N]
     (env: CARGO_TARGET_DIR=<ppf>/target/rocm|cuda|cpu, PYTHONPATH=<ppf>; spikes/gpu_cloth/zozo.sh sets them)
+
+Options: job.json's top-level keys, then its "zozo" dict (the garment's `zozo` key: contact_gap, strain_limit, dt,
+bend, young_mod, body_offset, hanger_offset, air_friction, ...), then --set.
 
 Mapping (one session for the whole schedule, times at the job's 24 fps):
 - placement "smooth" jobs (cloth.place(smooth=True), the way to run ZOZO): the garment's membrane REST is the flat
@@ -62,9 +69,10 @@ class _Pruner(threading.Thread):
     KEEP_LAST (a 1 cm coat writes ~2 MB a frame, every frame), and stops the run when free disk falls under
     STOP_FREE_GB."""
 
-    def __init__(self, out_dir: Path, snap: int):
+    def __init__(self, out_dir: Path, snap: int, total: int = 0):
         super().__init__(daemon=True)
         self.out_dir, self.snap, self.stop_flag, self.low = out_dir, snap, threading.Event(), None
+        self.total, self.last, self.t0, self.said = total, 0, time.time(), 0.0
 
     def prune(self):
         frames = []
@@ -75,6 +83,7 @@ class _Pruner(threading.Thread):
         if not frames:
             return
         last = max(k for k, _ in frames)
+        self.last = last
         for k, f in frames:
             if k == 0 or k > last - KEEP_LAST or (self.snap and k % self.snap == 0):
                 continue
@@ -83,6 +92,10 @@ class _Pruner(threading.Thread):
     def run(self):
         while not self.stop_flag.wait(5.0):
             self.prune()
+            if self.total and time.time() - self.said > 60 and self.last:  # progress for dress/status
+                self.said = time.time()
+                el = self.said - self.t0
+                log(f"progress: frame {self.last}/{self.total}, {el:.0f} s, ~{el / self.last * (self.total - self.last):.0f} s left")
             free = _free_gb(self.out_dir if self.out_dir.exists() else self.out_dir.parent.parent)
             if free < STOP_FREE_GB:
                 self.low = free
@@ -90,6 +103,115 @@ class _Pruner(threading.Thread):
                 from frontend import App
                 App.terminate()
                 return
+
+
+def _shrunk(V: np.ndarray, T: np.ndarray, iters: int) -> np.ndarray:
+    """A mesh pulled toward its own skeleton: umbrella smoothing (Laplacian, step 1) `iters` times, so limbs and the
+    torso thin toward their axes."""
+    n = len(V)
+    E = np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]
+    E = np.r_[E, E[:, ::-1]]
+    deg = np.bincount(E[:, 0], minlength=n).astype(float)
+    S = V.copy()
+    for _ in range(iters):
+        acc = np.zeros_like(S)
+        np.add.at(acc, E[:, 0], S[E[:, 1]])
+        S = np.where(deg[:, None] > 0, acc / np.maximum(deg, 1)[:, None], S)
+    return S
+
+
+def _start_stretch(R: np.ndarray, X: np.ndarray, F: np.ndarray) -> np.ndarray:
+    """The largest principal stretch of each triangle from rest R (3D, any orientation) to X."""
+    e1, e2 = R[F[:, 1]] - R[F[:, 0]], R[F[:, 2]] - R[F[:, 0]]
+    u = e1 / np.maximum(np.linalg.norm(e1, axis=1, keepdims=True), 1e-12)
+    w = e2 - (e2 * u).sum(1, keepdims=True) * u
+    v = w / np.maximum(np.linalg.norm(w, axis=1, keepdims=True), 1e-12)
+    Dm = np.zeros((len(F), 2, 2))
+    Dm[:, 0, 0] = (e1 * u).sum(1)
+    Dm[:, 0, 1] = (e2 * u).sum(1)
+    Dm[:, 1, 1] = (e2 * v).sum(1)
+    Ds = np.stack([X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]]], -1)
+    det = Dm[:, 0, 0] * Dm[:, 1, 1]
+    ok = np.abs(det) > 1e-14
+    inv = np.zeros_like(Dm)
+    inv[ok, 0, 0] = 1 / Dm[ok, 0, 0]
+    inv[ok, 0, 1] = -Dm[ok, 0, 1] / det[ok]
+    inv[ok, 1, 1] = 1 / Dm[ok, 1, 1]
+    return np.linalg.svd(Ds @ inv, compute_uv=False)[:, 0]
+
+
+BEND_SCALE = 1.28e-5  # ZOZO's shell_bend_stiffness.kernel.cpp: hinge k = BEND_SCALE * bend * |e|^2 / area * areal density
+
+
+def zozo_bend(P: dict) -> float:
+    """ZOZO's dimensionless `bend` for a fabric's flexural rigidity B (N m, cloth_job.PHYSICAL "bend"). ZOZO's hinge
+    stiffness is BEND_SCALE * bend * areal density * |e|^2 / (A1 + A2) (Discrete Shells, density-normalised), i.e. a
+    flexural rigidity B = BEND_SCALE * bend * density: bend = B / (BEND_SCALE * density). Shirting 2e-6 N m at
+    120 g/m2: 1.3; wool coating 2e-5 at 450 g/m2: 3.5."""
+    return float(P.get("bend", 2e-6)) / (BEND_SCALE * float(P["density"]))
+
+
+def membrane(P: dict, job: dict) -> tuple[float, float]:
+    """ZOZO's (young-mod, poiss-rat) for a fabric. Its Baraff-Witkin membrane takes stretch along the threads with
+    mu = E / (2 (1 + nu)) and shear with lambda = E nu / ((1 + nu)(1 - 2 nu)) (builder.rs convert_prop), both per unit
+    density. A woven cloth shears ~10x easier than it stretches (PHYSICAL shear/stretch 0.1-0.17): nu = r / (2 (1 + r)),
+    E = 2 (1 + nu) stretch / density. (The old fixed nu 0.3 made shear 1.5x STIFFER than stretch: with the strain limit
+    on the principal stretch, a sleeve couldn't shear its cap to hang down.) BUT the patch test (spikes/gpu_cloth/
+    zozo_patch.py, a 0.2 m square under gravity) says the opposite: "woven" (E 418, nu 0.045) stretched 0.49% and
+    sheared 2.4 deg vs "fixed" (E 200, nu 0.3) 1.27% / 3.8 deg: stiffer both ways (mu = E / 2(1 + nu) is what shear
+    sees too). So job "shear_model" defaults to "fixed" (young = stretch / density, nu 0.3); "woven" kept as an
+    option; "poisson"/"young_mod" override."""
+    dens = float(P["density"])
+    if job.get("shear_model", "fixed") == "fixed" or "shear" not in P:
+        nu, young = 0.3, P["stretch"] / dens
+    else:
+        r = float(P["shear"]) / float(P["stretch"])
+        nu = r / (2 * (1 + r))
+        young = 2 * (1 + nu) * float(P["stretch"]) / dens
+    nu = float(job.get("poisson", nu))
+    young = float(job.get("young_mod", young))
+    return young, nu
+
+
+def profile(data: Path, times: dict, fps: float) -> dict:
+    """Where a session's time went, per stage of the schedule (ZOZO's per-step records in output/data): ms per frame,
+    steps per frame, how much of dt each step advanced (the time of impact: contact or the strain limit), newton
+    steps, PCG iterations, contacts, the largest stretch, and ms per step of the big phases."""
+    def load(nm):
+        f = data / f"{nm}.out"
+        try:
+            a_ = np.loadtxt(f, ndmin=2)
+            return a_ if a_.shape[1] >= 2 else None
+        except (OSError, ValueError):
+            return None
+    rec = {k: load(f"advance.{k}" if k else "advance") for k in (
+        "", "toi", "SL_toi", "contact_toi", "newton_steps", "iter", "num_contact", "max_sigma", "linsolve",
+        "matrix_assembly", "asm_contact", "check_intersection", "line_search")}
+    if rec[""] is None:
+        return {}
+    out = {}
+    for nm, (t0, t1) in times.items():
+        def sel(k):
+            a_ = rec.get(k)
+            if a_ is None:
+                return np.zeros(0)
+            return a_[(a_[:, 0] >= t0) & (a_[:, 0] < t1), 1]
+        steps = sel("")
+        if not len(steps):
+            continue
+        frames = max(1e-9, (t1 - t0) * fps)
+        toi, sl = sel("toi"), sel("SL_toi")
+        out[nm] = {"frames": int(round(frames)), "ms_per_frame": float(steps.sum() / frames),
+                   "steps_per_frame": float(len(steps) / frames),
+                   "toi": float(toi.mean()) if len(toi) else 1.0,
+                   "sl_bound": float(np.mean(sl <= toi + 1e-9)) if len(sl) and len(sl) == len(toi) and toi.mean() < 0.999 else 0.0,
+                   "newton": float(sel("newton_steps").mean()) if len(sel("newton_steps")) else 0.0,
+                   "pcg": float(sel("iter").mean()) if len(sel("iter")) else 0.0,
+                   "contacts": float(sel("num_contact").mean()) if len(sel("num_contact")) else 0.0,
+                   "max_sigma": float(sel("max_sigma").max()) if len(sel("max_sigma")) else 0.0,
+                   "ms": {k: float(sel(k).mean()) if len(sel(k)) else 0.0 for k in (
+                       "linsolve", "matrix_assembly", "asm_contact", "check_intersection", "line_search")}}
+    return out
 
 
 def _tube(a, b, r, n=16):
@@ -118,6 +240,8 @@ def main():
     a = ap.parse_args()
     jd = Path(a.job)
     job = json.loads((jd / "job.json").read_text())
+    job.update(job.pop("zozo", None) or {})  # the garment's solver options
+    a.snap = a.snap or int(job.get("snap", 0))  # snapshots S<frame> in out.npz (zozo option "snap": every N frames)
     for kv in a.set:
         k, v = kv.split("=", 1)
         job[k] = json.loads(v)
@@ -148,7 +272,13 @@ def main():
         raise RuntimeError(f"only {free:.1f} GB free under {data_root} (need {MIN_FREE_GB}): not starting")
     app = App.create(name)
     app_root = data_root / name  # the session's files: deleted after the run (out.npz has what we keep)
-    app.asset.add.tri("garment", X.astype(np.float64), F)
+    # the flat pattern as the mesh's UV: ZOZO's Baraff-Witkin membrane takes its thread directions (stretch along u
+    # and v, shear between them) from the UV; without one each triangle's own first edge was its "warp", a random
+    # anisotropy that only an isotropic material (shear as stiff as stretch) hides
+    if job.get("uv_frame", True) and "uv" in d:
+        app.asset.add.tri("garment", np.c_[X, np.asarray(d["uv"], float)].astype(np.float64), F)
+    else:
+        app.asset.add.tri("garment", X.astype(np.float64), F)
     Ind = np.c_[sew[:, 0], sew[:, 1], sew[:, 1], sew[:, 1]].astype(np.int64)
     W = np.tile([1.0, 1.0, 0.0, 0.0], (len(sew), 1))
     app.asset.add.stitch("seams", (Ind, W))
@@ -173,9 +303,9 @@ def main():
             parts = []
             for nm_, ff in (("body", bT[~fm]), ("arms", bT[fm])):
                 used = np.unique(ff)
-                re = -np.ones(len(bV0), np.int64)
-                re[used] = np.arange(len(used))
-                parts.append((nm_, used, re[ff]))
+                remap = -np.ones(len(bV0), np.int64)
+                remap[used] = np.arange(len(used))
+                parts.append((nm_, used, remap[ff]))
         for nm_, used, ff in parts:
             app.asset.add.tri(nm_, bV0[used], ff)
     scene = app.scene.create()
@@ -183,8 +313,12 @@ def main():
     if not job.get("no_stitch"):
         g.stitch("seams")
     dens = float(P["density"])
-    g.param.set("density", dens).set("young-mod", float(job.get("young_mod", P["stretch"] / dens)))
-    g.param.set("poiss-rat", float(job.get("poisson", 0.3))).set("bend", float(job.get("bend", 1.0)))
+    young, poisson = membrane(P, job)
+    g.param.set("density", dens).set("young-mod", young)
+    bend = zozo_bend(P) if job.get("bend") is None else float(job["bend"])
+    log(f"zozo: bend {bend:.2f} (ZOZO's dimensionless shell bend; the fabric's rigidity {P.get('bend', 0):.2g} N m"
+        f" = {P.get('bend', 0) / 9.807e-5:.3f} gf cm2/cm at {P['density'] * 1000:.0f} g/m2)")
+    g.param.set("poiss-rat", poisson).set("bend", bend)
     g.param.set("strain-limit", float(job.get("strain_limit", 0.05))).set("friction", float(P.get("friction", 0.4)))
     g.param.set("contact-gap", float(job.get("contact_gap", 1e-3)))
     # rest "flat": the membrane rests on the flat pattern (set on the built scene below), the start is the placement
@@ -199,9 +333,50 @@ def main():
         uv = np.asarray(d["uv"], float)
         flat3 = np.c_[uv, np.zeros(len(uv))]
         made = np.isin(pid, [job["pieces"].index(nm) for nm in job.get("made", [])])  # cloth.made_pieces
-        flat3[made] = X[made]
+        if "rest" in d:  # cloth.rest_shape: the made pieces as made (before the start was pushed clear of the body)
+            flat3[made] = np.asarray(d["rest"], float)[made]
+        else:
+            flat3[made] = X[made]
+        for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
+            sel_ = pid == job["pieces"].index(nm)
+            flat3[sel_] = X[sel_]
+        for nm in job.get("rest_flat", []):  # (experiments: these made pieces rest on the flat pattern)
+            sel_ = pid == job["pieces"].index(nm)
+            flat3[sel_] = np.c_[uv, np.zeros(len(uv))][sel_]
+            made[sel_] = False
         ref = flat3.copy()
         g.set_bend_rest_vert(ref)
+        # a made piece pushed clear of the body starts stretched past its rest (a cuff round a wrist fatter than it
+        # was made for); a strain-limited solver can't start past the limit, so those pieces get a limit above their
+        # start stretch, and contract onto the body to their made size
+        lim = float(job.get("strain_limit", 0.05))
+        sig = _start_stretch(flat3, X, F)
+        fm = made[F].all(1)
+        need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
+        # (experiment) job "zone_limit": {"pieces": [...whole], "top": {piece: m from its pattern top}, "value": 0.15}:
+        # another strain limit there (the shoulder/yoke dome)
+        zl = job.get("zone_limit")
+        zone = np.zeros(len(pid))
+        if zl:
+            for nm in zl.get("pieces", []):
+                zone[pid == job["pieces"].index(nm)] = 1.0
+            for nm, dy in (zl.get("top") or {}).items():
+                sel_ = pid == job["pieces"].index(nm)
+                zone[sel_ & (uv[:, 1] > uv[sel_, 1].max() - float(dy))] = 1.0
+            zone[made] = 0.0
+        tgt = min(1.0, 1.3 * need + 0.02) if need > 0.8 * lim else None
+        if tgt is not None or zone.any():
+            zv = float(zl["value"]) if zl else lim
+            T = max(tgt or 0.0, zv)
+            w = (made.astype(float) * ((tgt - lim) / (T - lim) if tgt else 0.0)
+                 + zone * (zv - lim) / max(T - lim, 1e-9))
+            g.param.set("strain-limit", lim)
+            g.set_param_spatial("strain-limit", np.clip(w, 0, 1), T)
+            if tgt:
+                log(f"zozo: made pieces start up to {need * 100:.0f}% stretched past their rest: their strain limit "
+                    f"{tgt * 100:.0f}%")
+            if zone.any():
+                log(f"zozo: strain limit {zv * 100:.0f}% on {int(zone.sum())} zone vertices")
     else:
         g.param.set("bend-rest-from-geometry", float(job.get("bend_rest_geom", 1.0)))
     # the start's own few crossings (a coat's under sleeve against the back's armhole edge, a collar pushed off the jaw
@@ -212,7 +387,7 @@ def main():
     if job.get("stitch_stiffness"):
         g.param.set("stitch-stiffness", float(job["stitch_stiffness"]))
     if stiff.max() > 0 and job.get("interfacing", True):  # interfacing: bending and stretch up towards their interfaced values
-        g.set_param_spatial("bend", stiff, float(job.get("bend", 1.0)) * float(P.get("interfacing_bend", 10)))
+        g.set_param_spatial("bend", stiff, bend * float(job.get("interfacing_bend", P.get("interfacing_bend", 10))))
     asm = job.get("assemble") or {}
     sew_end = 0.0
     for s in stages:
@@ -290,10 +465,54 @@ def main():
             if hang is not None:  # the body stops colliding as the coat is lifted to its hook (moved away down
                 # through the sleeves, it dragged them down against the hanger pins: CCD failed at the strain limit).
                 # Windows act on solved objects only: a static collider kept holding the sleeves out, so the body is
-                # given a still move to make it one
-                b.collision_windows([(0.0, times[hang["name"]][0])])
-                if nm_ == "body" and len(parts) > 1:
-                    bp.move_by([0.0, 0.0, 0.0], times[hang["name"]][0], times[hang["name"]][0] + 0.05)
+                # given a still move to make it one. job "release" (experiments): "window" (default) | "keep" (the
+                # body stays, gravity off over the hang) | "sink" (the body moves down `release_drop` m over
+                # `release_frames`, colliding) | "shrink" (it shrinks toward a heavily smoothed copy of itself)
+                th = times[hang["name"]][0]
+                rel = job.get("release", "window")
+                rdur = float(job.get("release_frames", 30)) / fps
+                cur = (np.asarray(d[posers[-1][1]], float)[-1] if posers else bV0)[used]
+                if rel == "keep":
+                    pass
+                elif rel in ("sink", "shrink"):
+                    if rel == "sink":
+                        tgt = cur + [0.0, 0.0, -float(job.get("release_drop", 0.6))]
+                    else:
+                        tgt = _shrunk(np.asarray(d[posers[-1][1]], float)[-1] if posers else bV0, bT,
+                                      int(job.get("shrink_iters", 300)))[used]
+                    n_ = 6
+                    for k in range(n_):
+                        bp.move_to(cur + (tgt - cur) * (k + 1) / n_, th + rdur * k / n_, th + rdur * (k + 1) / n_)
+                    b.collision_windows([(0.0, th + rdur)])
+                else:
+                    b.collision_windows([(0.0, th)])
+                    if nm_ == "body" and len(parts) > 1:
+                        bp.move_by([0.0, 0.0, 0.0], th, th + 0.05)
+    st_ = job.get("set")
+    if st_ and st_.get("from") in times:
+        # the garment takes a set (bend plasticity: each hinge's rest angle creeps toward its current angle at `rate`
+        # per second) while `from` .. `to` stages run: a coat on a hanger keeps the shape the arms-down pose gave its
+        # sleeves instead of springing back to the angle its flat-pattern rest prefers
+        ta = times[st_["from"]][0]
+        tb = times[st_.get("to", st_["from"])][1]
+        if st_.get("to_frac") is not None:  # only the first part of the last stage
+            t0_ = times[st_.get("to", st_["from"])][0]
+            tb = t0_ + float(st_["to_frac"]) * (tb - t0_)
+        r_ = float(st_.get("rate", 1.0))
+        end_ = max(v[1] for v in times.values()) + 1.0
+        scene.set_param_anim_times([0.0, max(ta - 1e-3, 1e-4), ta, tb, tb + 1e-3, end_])
+        if r_ > 0:
+            g.set_param_anim("bend-plasticity", [0.0, 0.0, r_, r_, 0.0, 0.0])
+            g.param.set("bend-plasticity-threshold", float(st_.get("threshold", 0.0)))
+        # membrane plasticity: a coarse membrane can't buckle its compressed cloth into fine folds the way woven
+        # cloth does (the underarm compressed ~4% by the arm pressed to the side), so it pushes back like a spring
+        # (a hung sleeve swung 13-18 deg out in 8 frames once the body went); creeping the rest toward the current
+        # state outside a dead zone takes that compression up
+        rs_ = float(st_.get("stretch_rate", 0.0))
+        if rs_ > 0:
+            g.set_param_anim("plasticity", [0.0, 0.0, rs_, rs_, 0.0, 0.0])
+            g.param.set("plasticity-threshold", float(st_.get("stretch_threshold", 0.01)))
+        log(f"zozo: plasticity (bend {r_}/s, membrane {rs_}/s) from {ta:.2f} to {tb:.2f} s (the garment takes a set)")
     try:
         scene = scene.build()
     except Exception as e:
@@ -319,12 +538,16 @@ def main():
         mask[idx] = 1
         scene._concat_rest_vert, scene._rest_vert_mask = rv, mask
     gidx = np.asarray(scene._map_by_name["garment"], np.int64)
+    # the garment's rows in the session's vert_N.bin (ZOZO reorders): for looking into a running session
+    np.save(jd / "zozo_rows.npy", gidx)
     sess = app.session.create(scene)
     prm = sess.param
     prm.set("fps", fps).set("frames", total).set("dt", float(job.get("dt", 0.01)))
     prm.set("gravity", [0.0, 0.0, 0.0] if sew_end > 0 else [0.0, 0.0, -9.8])
     if sew_end > 0:
-        prm.dyn("gravity").time(sew_end).hold().change([0.0, 0.0, -9.8])
+        gdyn = prm.dyn("gravity").time(sew_end).hold().change([0.0, 0.0, -9.8])
+        if job.get("release") == "keep" and hang is not None:  # (experiment) the hang without gravity, body kept
+            gdyn.time(times[hang["name"]][0]).hold().change([0.0, 0.0, 0.0])
     if job.get("air_friction") is not None:
         prm.set("air-friction", float(job["air_friction"]))
     sess = sess.build()
@@ -337,7 +560,7 @@ def main():
     log(f"zozo: {n} verts, {len(F)} tris, {len(sew)} stitches, {total} frames at {fps:.0f} fps, sewing until "
         f"{sew_end:.2f} s, mode {job.get('mode', 'sim')}")
     tt = time.time()
-    pruner = _Pruner(app_root / "session" / "output", a.snap)
+    pruner = _Pruner(app_root / "session" / "output", a.snap, total)
     pruner.start()
     try:
         sess.start(blocking=True)
@@ -386,7 +609,16 @@ def main():
     if got_p is not None:
         snaps["Vprev"] = np.asarray(got_p[0], float)[rows]
     out = Path(a.out) if a.out else jd / "out.npz"
-    np.savez(out, V=V, **snaps, log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
+    prof = profile(app_root / "session" / "output" / "data", times, fps)
+    for nm_, st in prof.items():
+        log(f"zozo {nm_}: {st['frames']} frames, {st['ms_per_frame']:.0f} ms/frame, {st['steps_per_frame']:.1f} steps/frame "
+            f"(step advanced {st['toi'] * 100:.0f}% of dt, strain limit binding in {st['sl_bound'] * 100:.0f}% of "
+            f"steps), {st['newton']:.1f} newton, {st['pcg']:.0f} pcg iters, {st['contacts']:.0f} contacts, max sigma "
+            f"{st['max_sigma']:.3f}; ms/step: linsolve {st['ms']['linsolve']:.0f}, assembly "
+            f"{st['ms']['matrix_assembly']:.0f}, contact {st['ms']['asm_contact']:.0f}, intersection check "
+            f"{st['ms']['check_intersection']:.0f}")
+    np.savez(out, V=V, **snaps, log=np.array(LOG), timing=np.array(json.dumps(
+        {"total_s": wall, "ms_per_frame": per, "stages": prof})))
     print("cloth: wrote", out, flush=True)
     if not a.keep_session:
         shutil.rmtree(app_root, ignore_errors=True)
