@@ -15,7 +15,7 @@ name="$(basename "$(dirname "$job")")_$(basename "$job")"
 port="${GPU_SSH_PORT:-22}"
 wd="${GPU_WORKDIR:-/root/gpucloth}"
 runner="${GPU_RUNNER:-zozo}"
-ssh_opts=(-p "$port" -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ServerAliveInterval=30)
+ssh_opts=(-p "$port" ${GPU_SSH_OPTS:-} -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ServerAliveInterval=30)  # (ssh keeps the first value of an option: GPU_SSH_OPTS wins)
 [ -n "${GPU_SSH_KEY:-}" ] && ssh_opts+=(-i "$GPU_SSH_KEY")
 rsh="ssh ${ssh_opts[*]}"
 rsync -az -e "$rsh" --exclude out.npz "$job/" "$GPU_SSH_HOST:$wd/jobs/$name/"
@@ -24,11 +24,11 @@ case "$runner" in
     rsync -az -e "$rsh" "$here/../../src/hifipushie/cloth_zozo.py" "$GPU_SSH_HOST:$wd/cloth_zozo.py"
     ppf="${GPU_PPF_ROOT:-$wd/ppf}"
     dev="${GPU_ZOZO_DEVICE:-cuda}"
-    ssh "${ssh_opts[@]}" "$GPU_SSH_HOST" "cd $wd && CARGO_TARGET_DIR=$ppf/target/$dev PYTHONPATH=$ppf PYTHONNOUSERSITE=1 \
+    ssh -n "${ssh_opts[@]}" "$GPU_SSH_HOST" "cd $wd && CARGO_TARGET_DIR=$ppf/target/$dev PYTHONPATH=$ppf PYTHONNOUSERSITE=1 \
       PYTHONDONTWRITEBYTECODE=1 $ppf/python/bin/python3.12 cloth_zozo.py jobs/$name ${GPU_RUN_ARGS:-}" ;;
   newton)
     rsync -az -e "$rsh" "$here/run_newton.py" "$GPU_SSH_HOST:$wd/run_newton.py"
-    ssh "${ssh_opts[@]}" "$GPU_SSH_HOST" "cd $wd && ${GPU_PYTHON:-python3} run_newton.py jobs/$name ${GPU_RUN_ARGS:-}" ;;
+    ssh -n "${ssh_opts[@]}" "$GPU_SSH_HOST" "cd $wd && ${GPU_PYTHON:-python3} run_newton.py jobs/$name ${GPU_RUN_ARGS:-}" ;;
   *) echo "GPU_RUNNER is zozo or newton, got $runner" >&2; exit 2 ;;
 esac
 rsync -az -e "$rsh" "$GPU_SSH_HOST:$wd/jobs/$name/out.npz" "$job/out.npz"

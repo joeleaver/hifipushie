@@ -810,7 +810,6 @@ LAYER = 0.004  # how far an overlapping layer starts outside the one under it
 CLEAR = 0.008  # the least start clearance from the body (Blender: cloth 3 mm + body 4 mm collision distances)
 SMOOTH_CLEAR = 0.004  # ZOZO bands (cuffs, neck pieces): its contact offset 2 mm + gap 1 mm + 1 mm
 SMOOTH_FACE_CLEAR = 0.0035  # ... and the least clearance of their faces (centres, edge midpoints)
-SMOOTH_FOLD = 0.005  # ... and how far a turned collar's fall lies outside its stand (at least half a triangle)
 
 
 def _sewn_arc(B: dict, M: dict, nm: str, R: float):
@@ -1242,12 +1241,6 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # "fold": [rise, layer] a turned-down collar: up `rise` from its sewn edge, then folded down outside
             # itself `layer` further out (placed folded, so the rest shape holds the fold; arc length kept per row)
             fold = w.get("fold")
-            if fold and smooth:  # the fall one contact layer outside the stand, not the design's 8-10 mm: laid that
-                # far out a 60 mm neck's fall is 13-17% longer than its pattern, and resting as placed (a made piece) it
-                # stood out round the neck with its points up
-                # (at least half a triangle: 2 cm triangles laid closer cut through the stand's top)
-                hmed = float(np.median(np.linalg.norm(uv[M["F"][:, 0]] - uv[M["F"][:, 1]], axis=1)))
-                fold = [fold[0], min(float(fold[1]), max(SMOOTH_FOLD, 0.5 * hmed))]
             # a curved band (a stand, a collar: its sewn edge an arc in the flat) lies isometrically on a cone, not a
             # cylinder: the sewn edge's circle (centre c, radius rho) rolls round the base at R, the band narrowing
             # toward the apex. On a cylinder its ends started high and sewing bent the band in its plane: ruffles.

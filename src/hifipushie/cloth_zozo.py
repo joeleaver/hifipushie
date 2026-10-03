@@ -136,6 +136,28 @@ def zozo_bend(P: dict) -> float:
     return float(P.get("bend", 2e-6)) / (BEND_SCALE * float(P["density"]))
 
 
+def membrane(P: dict, job: dict) -> tuple[float, float]:
+    """ZOZO's (young-mod, poiss-rat) for a fabric. Its Baraff-Witkin membrane takes stretch along the threads with
+    mu = E / (2 (1 + nu)) and shear with lambda = E nu / ((1 + nu)(1 - 2 nu)) (builder.rs convert_prop), both per unit
+    density. A woven cloth shears ~10x easier than it stretches (PHYSICAL shear/stretch 0.1-0.17): nu = r / (2 (1 + r)),
+    E = 2 (1 + nu) stretch / density. (The old fixed nu 0.3 made shear 1.5x STIFFER than stretch: with the strain limit
+    on the principal stretch, a sleeve couldn't shear its cap to hang down.) BUT the patch test (spikes/gpu_cloth/
+    zozo_patch.py, a 0.2 m square under gravity) says the opposite: "woven" (E 418, nu 0.045) stretched 0.49% and
+    sheared 2.4 deg vs "fixed" (E 200, nu 0.3) 1.27% / 3.8 deg: stiffer both ways (mu = E / 2(1 + nu) is what shear
+    sees too). So job "shear_model" defaults to "fixed" (young = stretch / density, nu 0.3); "woven" kept as an
+    option; "poisson"/"young_mod" override."""
+    dens = float(P["density"])
+    if job.get("shear_model", "fixed") == "fixed" or "shear" not in P:
+        nu, young = 0.3, P["stretch"] / dens
+    else:
+        r = float(P["shear"]) / float(P["stretch"])
+        nu = r / (2 * (1 + r))
+        young = 2 * (1 + nu) * float(P["stretch"]) / dens
+    nu = float(job.get("poisson", nu))
+    young = float(job.get("young_mod", young))
+    return young, nu
+
+
 def profile(data: Path, times: dict, fps: float) -> dict:
     """Where a session's time went, per stage of the schedule (ZOZO's per-step records in output/data): ms per frame,
     steps per frame, how much of dt each step advanced (the time of impact: contact or the strain limit), newton
@@ -235,7 +257,13 @@ def main():
         raise RuntimeError(f"only {free:.1f} GB free under {data_root} (need {MIN_FREE_GB}): not starting")
     app = App.create(name)
     app_root = data_root / name  # the session's files: deleted after the run (out.npz has what we keep)
-    app.asset.add.tri("garment", X.astype(np.float64), F)
+    # the flat pattern as the mesh's UV: ZOZO's Baraff-Witkin membrane takes its thread directions (stretch along u
+    # and v, shear between them) from the UV; without one each triangle's own first edge was its "warp", a random
+    # anisotropy that only an isotropic material (shear as stiff as stretch) hides
+    if job.get("uv_frame", True) and "uv" in d:
+        app.asset.add.tri("garment", np.c_[X, np.asarray(d["uv"], float)].astype(np.float64), F)
+    else:
+        app.asset.add.tri("garment", X.astype(np.float64), F)
     Ind = np.c_[sew[:, 0], sew[:, 1], sew[:, 1], sew[:, 1]].astype(np.int64)
     W = np.tile([1.0, 1.0, 0.0, 0.0], (len(sew), 1))
     app.asset.add.stitch("seams", (Ind, W))
@@ -270,11 +298,12 @@ def main():
     if not job.get("no_stitch"):
         g.stitch("seams")
     dens = float(P["density"])
-    g.param.set("density", dens).set("young-mod", float(job.get("young_mod", P["stretch"] / dens)))
+    young, poisson = membrane(P, job)
+    g.param.set("density", dens).set("young-mod", young)
     bend = zozo_bend(P) if job.get("bend") is None else float(job["bend"])
     log(f"zozo: bend {bend:.2f} (ZOZO's dimensionless shell bend; the fabric's rigidity {P.get('bend', 0):.2g} N m"
         f" = {P.get('bend', 0) / 9.807e-5:.3f} gf cm2/cm at {P['density'] * 1000:.0f} g/m2)")
-    g.param.set("poiss-rat", float(job.get("poisson", 0.3))).set("bend", bend)
+    g.param.set("poiss-rat", poisson).set("bend", bend)
     g.param.set("strain-limit", float(job.get("strain_limit", 0.05))).set("friction", float(P.get("friction", 0.4)))
     g.param.set("contact-gap", float(job.get("contact_gap", 1e-3)))
     # rest "flat": the membrane rests on the flat pattern (set on the built scene below), the start is the placement
@@ -419,9 +448,18 @@ def main():
         r_ = float(st_.get("rate", 1.0))
         end_ = max(v[1] for v in times.values()) + 1.0
         scene.set_param_anim_times([0.0, max(ta - 1e-3, 1e-4), ta, tb, tb + 1e-3, end_])
-        g.set_param_anim("bend-plasticity", [0.0, 0.0, r_, r_, 0.0, 0.0])
-        g.param.set("bend-plasticity-threshold", float(st_.get("threshold", 0.0)))
-        log(f"zozo: bend plasticity {r_}/s from {ta:.2f} to {tb:.2f} s (the garment takes a set)")
+        if r_ > 0:
+            g.set_param_anim("bend-plasticity", [0.0, 0.0, r_, r_, 0.0, 0.0])
+            g.param.set("bend-plasticity-threshold", float(st_.get("threshold", 0.0)))
+        # membrane plasticity: a coarse membrane can't buckle its compressed cloth into fine folds the way woven
+        # cloth does (the underarm compressed ~4% by the arm pressed to the side), so it pushes back like a spring
+        # (a hung sleeve swung 13-18 deg out in 8 frames once the body went); creeping the rest toward the current
+        # state outside a dead zone takes that compression up
+        rs_ = float(st_.get("stretch_rate", 0.0))
+        if rs_ > 0:
+            g.set_param_anim("plasticity", [0.0, 0.0, rs_, rs_, 0.0, 0.0])
+            g.param.set("plasticity-threshold", float(st_.get("stretch_threshold", 0.01)))
+        log(f"zozo: plasticity (bend {r_}/s, membrane {rs_}/s) from {ta:.2f} to {tb:.2f} s (the garment takes a set)")
     try:
         scene = scene.build()
     except Exception as e:
