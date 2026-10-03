@@ -644,7 +644,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     rod crosses no cloth, cloth behind it (4/4 back sectors) and on both sides from 3 cm under the arms to 8 cm up (an open front
     is fine: lapels, V necks). NOT ON ITS HANGER leads the
     verdict; a coat floating in front fails (`tests/test_cloth.py`). ZOZO 2 cm (h04): on the hanger, arms 56/44%, 0
-    pins, reads as a coat on a hanger. Disk: run_zozo prunes vert_N.bin while running, deletes its session after, and
+    pins, reads as a coat on a hanger. 1 cm on a 4090 (h12 ZOZO 911 s, h13 Newton 361 s): both ON THE HANGER (arms 100%,
+    still), ZOZO's collar sits round the hook; crossings at the back vent (ZOZO 80, Newton 190), sleeves still ~20 deg
+    out (arms_down stops 7 cm off the torso), Newton's splayed (no lower stage). Blender final h11 smooth (4.3 deg). Disk: run_zozo prunes vert_N.bin while running, deletes its session after, and
     refuses < 20 GB free / stops < 10 GB; cloth sims refuse < 20 GB.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
