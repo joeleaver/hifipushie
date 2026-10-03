@@ -116,7 +116,9 @@ def inject(spec: dict) -> dict:
         # and without it parted lips showed a hole into the head)
         iu, il = head["lm68"][62], head["lm68"][66]  # inner lip midpoints
         mc = np.array(joints["lm_mouth_corner.L"]["pos"])
-        if float(np.linalg.norm(iu - il)) > 0.0015:  # parted lips (a fill behind closed ones made them pout)
+        if (b.get("head") or {}).get("interior"):  # a mouth that can open (face shapes): slit, bag, teeth, tongue
+            out["blobs"] = {**(out.get("blobs") or spec.get("blobs") or {}), **mouth_interior(head, b["head"])}
+        elif float(np.linalg.norm(iu - il)) > 0.0015:  # parted lips (a fill behind closed ones made them pout)
             blobs = dict(out.get("blobs") or spec.get("blobs") or {})
             blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (iu + il) + [0, 0.012, 0]],
                                             "size": [round(float(mc[0]) * 0.8, 4), 0.008,
@@ -140,6 +142,41 @@ def inject(spec: dict) -> dict:
         out["blobs"] = blobs
     out["joints"] = joints
     return out
+
+
+def mouth_lips(head: dict) -> dict:
+    """The grafted head's mouth for the face kit's interior and face shapes, from its landmarks: the parting line
+    (inner-lip midpoints) by u = |x| / the corner's, the frame, lip radii, width and gap."""
+    lm = head["lm68"]
+    out = _unit(head["forward"])
+    up = np.array([0.0, 0.0, 1.0])
+    up = _unit(up - out * (up @ out))
+    side = np.cross(-out, up)
+    M = 0.5 * (lm[62] + lm[66])
+    pts = [M, 0.5 * (lm[63] + lm[65]), lm[64], lm[54]]
+    xs = [(p - M) @ side for p in pts]
+    knots = np.clip(np.array(xs) / xs[-1], 0, 1)
+    return {"M": M, "out": out, "up": up, "side": side, "knots": knots, "pts": np.array(pts),
+            "width": float((lm[54] - lm[48]) @ side), "ru": 0.5 * float(np.linalg.norm(lm[51] - lm[62])),
+            "rl": 0.5 * float(np.linalg.norm(lm[57] - lm[66])), "gap": float(np.linalg.norm(lm[62] - lm[66]))}
+
+
+def mouth_interior(head: dict, hd: dict) -> dict:
+    """The face kit's mouth interior (kits._interior: slit, bag, teeth and tongue parts) behind a GNM head's lips
+    (head["interior"], same keys). GNM's own mouth bag, teeth and tongue are not used: the head's style pushes move
+    the lips (6 mm back on the golfer) and left GNM's teeth standing in front of them."""
+    from . import kits
+    m = mouth_lips(head)
+    pts, knots = m["pts"], m["knots"]
+
+    def on_skin(u, dz, o):
+        p = np.array([np.interp(u, knots, pts[:, j]) for j in range(3)])
+        p = p + m["side"] * ((u * (pts[-1] - m["M"]) @ m["side"]) - (p - m["M"]) @ m["side"])  # x exactly u
+        return p + m["up"] * dz + m["out"] * o
+    o = kits._Out({}, "base")
+    kits._interior({"interior": hd["interior"]}, None, on_skin, np.linspace(0.0, 1.0, 7), kits._frame(m["out"]),
+                   m["width"], m["ru"], m["rl"], m["gap"], o, "face")
+    return o.blobs
 
 
 def _catmull_clark(V, faces):
@@ -1193,10 +1230,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             a = np.array([gap(V + 1e-3 * g["expression_basis"][i]) - gap(V) for i in lower]) / 1e-3
     k_eye = float(head.get("eyes", 1.0))
     r_eye = [float(np.median(np.linalg.norm(V[m] - J[2 + i], axis=1))) for i, m in enumerate(g["eye"])]
+    esc = np.ones(len(V))  # how much the eye scaling magnifies each vertex's neighbourhood (face shapes carry deltas)
     if k_eye != 1.0:  # the eyes and the orbits round them scaled about each eye centre, fading out over ~2 radii
         for j in (2, 3):
             d = np.linalg.norm(V - J[j], axis=1)
-            V = J[j] + (V - J[j]) * (1 + (k_eye - 1) * np.exp(-(d / (2.2 * r_eye[j - 2])) ** 2))[:, None]
+            f = 1 + (k_eye - 1) * np.exp(-(d / (2.2 * r_eye[j - 2])) ** 2)
+            V = J[j] + (V - J[j]) * f[:, None]
+            esc *= f
     mid = 0.5 * (J[2] + J[3])
     V[:, 0] = mid[0] + (V[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
     J[:, 0] = mid[0] + (J[:, 0] - mid[0]) * float(head.get("narrow", 1.0))
@@ -1289,6 +1329,11 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     skin_index, zipped = None, 0
     if head.get("mouth_gap") is not None and float(head["mouth_gap"]) < 0.0015 and head.get("zip_lips", True):
         W, faces, skin_index, zipped = _zip_lips(W, faces, 0.5 * (lm[62] + lm[66]))
+    # what face shapes need to carry GNM expression deltas onto the head (faceshapes.GnmFace): the posed GNM vertices
+    # in its own frame, the placement, the skin's polygons before subdividing (deltas subdivide like positions)
+    carry = {"V": V, "esc": esc, "R": R, "s": s, "mid": mid, "eye_mid": np.asarray(eye_mid, float),
+             "narrow": float(head.get("narrow", 1.0)), "skin": skin, "faces": [list(f) for f in faces],
+             "skin_index": skin_index, "subdivide": int(head.get("subdivide", 1))}
     for _ in range(int(head.get("subdivide", 1))):
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)
@@ -1314,7 +1359,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
             "eyes": eyes, "eye_r": r_ball, "forward": -back,
             "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height
-            "lm68": lm, "skin_index": skin_index, "lips_zipped": zipped,
+            "lm68": lm, "skin_index": skin_index, "lips_zipped": zipped, "carry": carry,
             "plane": (cut, pn, s * GNM_BAND)}
 
 

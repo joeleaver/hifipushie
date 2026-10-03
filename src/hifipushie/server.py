@@ -317,10 +317,10 @@ in its part and layer. Walls thinner than ~2 voxels break up at the build resolu
 @mcp.tool(structured_output=False)
 def kit_reference() -> str:
     """Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatten), paint and plans."""
-    from . import assemble, garments, kits, materials, strokes
+    from . import assemble, faceshapes, garments, kits, materials, strokes
     from . import realism
     return ("REALISM\n" + realism.__doc__ + "\n\nREPETITION AND SOLIDS\n" + assemble.__doc__ + "\n" + SOLIDS + "\n\n" + kits.__doc__ + "\n\nGARMENTS\n" + garments.__doc__ + "\n\nSTROKES\n" + strokes.__doc__ + "\n\nPAINT\n" + paintmod.__doc__
-            + "\n\nMATERIALS\n" + materials.__doc__
+            + "\n\nMATERIALS\n" + materials.__doc__ + "\n\nFACE SHAPES\n" + faceshapes.__doc__
             + "\n\nPLANS\n" + planmod.__doc__)
 
 
@@ -999,7 +999,8 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
-                 hide: list[str] | None = None, save: str | None = None, rig: bool = False, fbx: bool = False):
+                 hide: list[str] | None = None, save: str | None = None, rig: bool = False, fbx: bool = False,
+                 face_shapes: bool | list[str] = False):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
     roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic, glTF packing) and height (16-bit; low
@@ -1030,11 +1031,21 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     blended within the nearest bone's family): characters. Decimated triangles bend less cleanly than modelled
     edge loops at elbows and knees; judge it with the `rig` tool first. fbx: also <name>.fbx (Blender converts the
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
+    face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
+    character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
+    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). True
+    = all 52 ARKit names (mouth and jaw, lids, brows, cheeks, nose, and eyeLook*, which turn the eyeballs' own part)
+    plus the corrective jawOpen_mouthClose, which a player sets to min(jawOpen, mouthClose) each frame: mouthClose
+    alone only seals the lips (Audio2Face drives it with the jaw shut). On every part that moves (the head's part,
+    teeth, tongue, eyeballs), the same vertices as the neutral (mouth closed), each shape its full extent at weight
+    1, additive; names in glTF mesh.extras.targetNames, FBX blend shapes, and the json's face_shapes. Tune amounts /
+    the jaw in
+    spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing, rig, fbx)
+                        instancing, rig, fbx, face_shapes or None)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"

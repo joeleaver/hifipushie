@@ -59,23 +59,34 @@ def min_part(triangles: int) -> int:
     return max(300, triangles // 100)
 
 
-def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel: float = 0.0) -> tuple[dict, dict]:
+def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel: float = 0.0,
+            tri_focus: list | None = None) -> tuple[dict, dict]:
     """Decimate + unwrap in Blender. cfg: {part: {"weight": triangle weight, "density": texel density,
     "atlas": index}}, sizes: {atlas index: texels}, voxel: the scene voxel (flat regions within a quarter of it
     are dissolved before the collapse). Returns ({part: {verts, corner_vert, uv, normal, tangent, sign,
     atlas}}, info from Blender: per part the joint decimation's count, the budget and whether it came out mirrored;
-    timings)."""
+    timings). tri_focus: [[x, y, z, radius, k]]: the mesh is decimated magnified k x round those spheres and put
+    back (focuswarp.py): more triangles where face shapes deform (lids, lips)."""
     import hashlib
     st = high.stat()
     # what the decimation depends on (not the atlases): a regroup for other atlas sizes re-unwraps only
     key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, int(triangles), float(voxel),
-                                   {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()}],
+                                   {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()},
+                                  tri_focus or []],
                                   sort_keys=True, default=str).encode()).hexdigest()
+    if tri_focus:  # decimate a magnified copy (its own file: flatten and the decimation cache key on the path)
+        from . import focuswarp
+        with np.load(high) as z:
+            arrs = {k: z[k] for k in z.files}
+        arrs["verts"] = focuswarp.warp(arrs["verts"], tri_focus).astype(arrs["verts"].dtype)
+        high = out.with_name("high_focus.npz")
+        np.savez(high, **arrs)
     flat = flatten_parts(high, out.with_name(out.stem + "_flat.npz"), list(cfg), 0.25 * float(voxel))
     _blender({"mode": "lowpoly", "mesh": str(high), "out": str(out), "parts": cfg, "triangles": int(triangles), "flat": flat,
               "min_part": min_part(triangles), "voxel": float(voxel), "textures": {str(a): int(t) for a, t in sizes.items()},
               "margins": {str(a): margin_px(int(t)) for a, t in sizes.items()},
-              "decimated": {"path": str(out.with_name(out.stem + "_decimated.npz")), "key": key}}, timeout=3600)
+              "decimated": {"path": str(out.with_name(out.stem + "_decimated.npz")), "key": key},
+              "focus_warp": tri_focus or []}, timeout=3600)
     z = np.load(out)
     names = [str(n) for n in z["part_names"]]
     parts = {pn: {k: z[f"{i}_{k}"] for k in ("verts", "corner_vert", "uv", "normal", "tangent", "sign")}
@@ -325,7 +336,8 @@ def density_groups(units: dict, loads: dict, fixed: dict, max_texture: int, fill
     return out
 
 
-def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: int = 2) -> dict:
+def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: int = 2,
+          voxels: dict | None = None) -> dict:
     """What gets meshed and baked: the model's parts, minus the instances of shared prefabs, plus one copy of each
     shared prefab's parts (named "<prefab>/<part>") taken from its bake instance (the first unmirrored one).
     A prefab is shared when it has `min_share`+ instances (the scene uses 1: every instance is a movable object),
@@ -333,7 +345,7 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
     baked into the scene like any element). Returns {"streams": {export part: prims}, "origin": {export part:
     model part}, "frames": {export part: (lo, voxel, shape)}, "voxel": scene voxel, "full": {model part: prims}
     (the whole model: AO, sky and paint context), "prefabs": {prefab: {"bake": instance, "instances": {instance:
-    local -> world 4x4}, "parts": [export parts]}}}."""
+    local -> world 4x4}, "parts": [export parts]}}}. voxels: {part: voxel} at most (face shapes: the lips' slit)."""
     prims = compile_prims(spec)
     full = {ps[0].part: ps for ps in sdf.streams(prims)}
     lo, voxel, shape = sdf.frame(prims, resolution)
@@ -375,6 +387,8 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
         if key == origin[key]:
             from . import scene as scenemod
             pv, _ = scenemod.part_voxel(ps, voxel)
+            if (voxels or {}).get(key):
+                pv = min(pv, float(voxels[key]))
             # a part finer than the model's voxel (a shirt collar's 6 mm sheet, a strap) on its own grid, as the
             # scene meshes it: at the model's 7.8 mm the collar came out as shreds
             frames[key] = (lo, voxel, shape) if pv >= voxel else scenemod._frame(ps, pv)
@@ -1122,7 +1136,35 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
             attrs["JOINTS_0"] = add(np.ascontiguousarray(J, np.uint8 if nb <= 256 else np.uint16), 34962,
                                     5121 if nb <= 256 else 5123, "VEC4")
             attrs["WEIGHTS_0"] = add(np.ascontiguousarray(W, np.float32), 34962, 5126, "VEC4")
-        return {"attributes": attrs, "indices": add(idx, 34963, 5125, "SCALAR"), "material": material_of(pn, p)}
+        prim = {"attributes": attrs, "indices": add(idx, 34963, 5125, "SCALAR"), "material": material_of(pn, p)}
+        if p.get("shapes"):  # face shapes (faceshapes.py): a morph target per shape, POSITION and NORMAL deltas
+            prim["targets"] = [morph(d, n0, n1, src, nrm) for d, n0, n1 in p["shapes"].values()]
+        return prim
+
+    def morph(d, n0, n1, src, nrm):
+        """One morph target: per glTF vertex the move (Blender -> glTF axes) and the turn of its own normal (the
+        vertex normal's turn from the neutral to the target). Sparse accessors: a face shape moves a few percent of
+        a body's vertices."""
+        dp = (np.asarray(d, np.float64)[src] @ _Z_TO_Y.T).astype(np.float32)
+        nn = _safe_unit(nrm.astype(np.float64) @ _Z_TO_Y, [0.0, 0.0, 1.0])  # back to Blender axes, as n0/n1
+        from .faceshapes import turn
+        dn = ((turn(nn, n0[src], n1[src]) - nn) @ _Z_TO_Y.T).astype(np.float32)
+        return {"POSITION": sparse(dp, True), "NORMAL": sparse(dn)}
+
+    def sparse(data, minmax=False):
+        rows = np.flatnonzero(np.abs(data).max(1) > 1e-7).astype(np.uint32)
+        acc = {"componentType": 5126, "count": len(data), "type": "VEC3"}
+        if minmax:
+            acc["min"], acc["max"] = data.min(0).tolist(), data.max(0).tolist()
+        if len(rows):  # (none: an accessor without a buffer view is all zeros)
+            vi = add(rows, None, 5125, "SCALAR")
+            vv = add(np.ascontiguousarray(data[rows]), None, 5126, "VEC3")
+            accessors.pop()
+            accessors.pop()
+            acc["sparse"] = {"count": len(rows), "indices": {"bufferView": len(views) - 2, "componentType": 5125},
+                             "values": {"bufferView": len(views) - 1}}
+        accessors.append(acc)
+        return len(accessors) - 1
     prefabs = prefabs or {}
     in_prefab = {pn for d in prefabs.values() for pn in d["parts"]}
     skins, top = [], []
@@ -1147,6 +1189,9 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         if pn in in_prefab:
             continue
         meshes.append({"name": pn, "primitives": [primitive(p, pn)]})
+        if p.get("shapes"):  # names in extras.targetNames (the glTF convention engines and Blender read)
+            meshes[-1]["weights"] = [0.0] * len(p["shapes"])
+            meshes[-1]["extras"] = {"targetNames": list(p["shapes"])}
         nodes.append({"name": f"{name}_{pn}", "mesh": len(meshes) - 1, **({"skin": 0} if pn in skinned else {})})
         top.append(len(nodes) - 1)
     for pf, d in prefabs.items():
@@ -1206,7 +1251,7 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False,
-            fbx: bool = False) -> dict:
+            fbx: bool = False, face_shapes: bool | list | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
     the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own.
@@ -1217,13 +1262,25 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     (prefabs.<p>.export = "unique" bakes a prefab's instances into the scene instead). `triangles` counts the
     triangles drawn (a prefab's once per instance); the file holds fewer. With instancing every instance is a
     movable asset (a prefab of one instance too), as in the Blender scene. The paint and AO maps are baked by
-    Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects)."""
+    Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects).
+    face_shapes: True (every ARKit shape faceshapes.py makes) or a list of names: morph targets on the parts that
+    move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json."""
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
     defs = spec.get("parts") or {}
+    fine, tri_focus = {}, []
+    if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
+        # triangles at the lids and lips
+        from . import faceshapes
+        faceshapes.names_of(face_shapes)
+        fface = faceshapes.face_of(spec)
+        fine, tri_focus = fface.voxels(), fface.tri_focus()
     out_dir.mkdir(parents=True, exist_ok=True)
-    ctx = split(spec, resolution, instancing, log, min_share=1)
+    ctx = split(spec, resolution, instancing, log, min_share=1, voxels=fine)
+    for pn, v in fine.items():
+        if ctx["frames"].get(pn) and ctx["frames"][pn][1] <= v:
+            log.append(f"{pn}: meshed at {ctx['frames'][pn][1] * 1000:.2f} mm for the face shapes (the lips' slit, teeth)")
     origin = ctx["origin"]
     tm = time.time()
     high = mesh_parts(ctx, out_dir / "high.npz")
@@ -1286,7 +1343,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                        {"min": _min_triangles(defs, origin[pn])}),
                     **({"fixed": topo[pn][0], "fixed_sum": topo[pn][1]} if pn in topo else {})} for pn in areas}
         t1 = time.time()
-        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"])
+        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"], tri_focus)
         if not texel_density:
             break
         # the size each atlas needs for every part to get its density, now that it's packed
@@ -1431,6 +1488,16 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                           if pn not in pf_of}, smooth=3)}
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
                    f"{bones[0]['name']!r}), {len(rigged['weights'])} parts skinned, {time.time() - tr:.1f}s")
+    shapes = {}
+    if face_shapes:  # after the bake and the skin: both use the meshed (open-mouthed) low poly
+        from . import faceshapes
+        tf = time.time()
+        shapes = faceshapes.apply(spec, {pn: p for pn, p in parts.items()
+                                         if pn not in pf_of and not report[pn].get("curves")}, face_shapes, log)
+        for pn, nms in shapes.items():
+            report[pn]["face_shapes"] = nms
+        log.append(f"face shapes: {len(faceshapes.names_of(face_shapes))} on {len(shapes)} parts in "
+                   f"{time.time() - tf:.1f}s")
     write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
@@ -1440,6 +1507,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()
     high.unlink()
+    out_dir.joinpath("high_focus.npz").unlink(missing_ok=True)
     # where everything ends up: scene parts as they are, a prefab at each of its instances
     placed = [p["verts"] for pn, p in parts.items() if pn not in pf_of]
     prefabs = {}
@@ -1465,6 +1533,17 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
             "parts": report, "prefabs": prefabs,
+            **({"face_shapes": {"names": faceshapes.names_of(face_shapes), "parts": shapes,
+                                "correctives": {c: f"{op}({a}, {b})" for c, (op, a, b) in faceshapes.CORRECTIVES.items()
+                                                if c in faceshapes.names_of(face_shapes)},
+                                "convention": "ARKit blendshape names; glTF morph targets (names in mesh.extras."
+                                              "targetNames, default weights 0), FBX blend shapes of the same names; "
+                                              "neutral = mouth closed, each shape its full extent at 1.0, additive; "
+                                              "correctives are not ARKit channels: set each to its formula of the "
+                                              "ARKit weights every frame (jawOpen_mouthClose = min(jawOpen, "
+                                              "mouthClose) seals the lips over an open jaw); left at 0 the lips "
+                                              "just stay parted"}}
+               if face_shapes else {}),
             "conventions": {"up": "+Y (glTF)", "front": "+Z", "units": "metres", "normal_map": "OpenGL (+Y), MikkTSpace",
                             "height": "0.5 = low-poly surface, 0/1 = -/+ height_range_m (per atlas) along the normal",
                             "orm": "R ambient occlusion, G roughness, B metallic",
@@ -1479,12 +1558,14 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
 
 def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
             hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None,
-            denoise: bool = True) -> Image.Image:
+            denoise: bool = True, poses: list[dict] | None = None):
     """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
     walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene.look
     takes), so the preview compares with the painted look; default a neutral studio under Standard. cameras:
-    perspective panels as look takes them (model coordinates, Z up), for close-ups of the textures."""
+    perspective panels as look takes them (model coordinates, Z up), for close-ups of the textures.
+    poses: [{shape name: weight}] (face shapes, the GLB's morph targets): one Blender run renders the views once per
+    pose and a list of contact sheets comes back, one per pose."""
     bounds = np.array(json.loads(glb.with_suffix(".json").read_text())["bounds_blender"])
     with tempfile.TemporaryDirectory(prefix="hifipushie-prev-") as tmp:
         frames = (render.view_frames(bounds, views, focus, zoom) if views else []) + [
@@ -1492,6 +1573,9 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
         _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
-                  "hide": list(hide or []), "lighting": lighting, "denoise": denoise})
-        imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
-    return render.contact_sheet(imgs, frames)
+                  "hide": list(hide or []), "lighting": lighting, "denoise": denoise, "poses": poses},
+                 timeout=600 + 60 * len(poses or []))
+        if poses is None:
+            return render.contact_sheet([Image.open(f["out"]).convert("RGB") for f in frames], frames)
+        return [render.contact_sheet([Image.open(f"{f['out'][:-4]}_p{i}.png").convert("RGB") for f in frames], frames)
+                for i in range(len(poses))]

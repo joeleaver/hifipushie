@@ -673,6 +673,16 @@ def lowpoly(job):
         obs.append(ob)
         info[pn] = {"joint_count": int((z["sizes"] - 2).sum()), "budget": int((z["sizes"] - 2).sum()),
                     "flat": 0.0, "symmetric": False, "fixed": True}
+    if job.get("focus_warp"):  # the mesh came magnified round focus spheres (focuswarp.py): put back
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import focuswarp
+        for ob in obs:
+            if info.get(ob.name, {}).get("fixed"):
+                continue
+            P = np.empty(len(ob.data.vertices) * 3)
+            ob.data.vertices.foreach_get("co", P)
+            ob.data.vertices.foreach_set("co", focuswarp.unwarp(P.reshape(-1, 3), job["focus_warp"]).ravel())
+            ob.data.update()
     for ob in obs:
         ob.data.shade_smooth()
     t1b = time.time()
@@ -935,6 +945,20 @@ def preview(job):
     cam = bpy.data.objects.new("cam", cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
+    poses = job.get("poses")
+    if poses is None:
+        _render_views(job, scene, cam, cam_data, "")
+        return
+    keyed = [ob for ob in scene.objects if ob.type == "MESH" and ob.data.shape_keys]
+    for i, pose in enumerate(poses):  # face shapes: the morph targets (shape keys on import) at these weights
+        for ob in keyed:
+            for kb in ob.data.shape_keys.key_blocks[1:]:
+                kb.slider_min = min(kb.slider_min, -1.0)
+                kb.value = float(pose.get(kb.name, 0.0))
+        _render_views(job, scene, cam, cam_data, f"_p{i}")
+
+
+def _render_views(job, scene, cam, cam_data, sfx):
     for v in job["views"]:
         d = Vector(v["dir"]).normalized()
         up = Vector(v["up"])
@@ -948,7 +972,7 @@ def preview(job):
             cam_data.type = "ORTHO"
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ Matrix((right, up, d)).transposed().to_4x4()
             cam_data.ortho_scale = v["scale"]
-        scene.render.filepath = v["out"]
+        scene.render.filepath = v["out"][:-4] + sfx + ".png" if sfx else v["out"]
         bpy.ops.render.render(write_still=True)
 
 

@@ -86,8 +86,8 @@ def _numeric(v) -> bool:
 def geometry(spec: dict) -> dict:
     """The spec without what doesn't shape the surface (paint, plan, story), so editing those doesn't rebuild or
     re-seat anything."""
-    skip = ("paint", "plan", "story", "rig", "hair", "cloth")  # hair: curve locks, cloth: simulated garment meshes
-    # (cloth.py): both live in the Blender scene, not the field
+    skip = ("paint", "plan", "story", "rig", "hair", "cloth", "face_shapes")  # hair: curve locks, cloth: simulated
+    # garment meshes (cloth.py): both live in the Blender scene, not the field; face_shapes: export morph targets
     unshaped = ("paint", "look", "sheet")  # a paint style, a look preset, the sheet's name shape nothing either
     st = spec.get("style") or {}
     if not any(k in spec for k in skip) and not any(k in st for k in unshaped):
