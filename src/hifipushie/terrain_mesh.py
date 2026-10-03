@@ -3924,9 +3924,12 @@ LIGHTS = {  # render_tiles(light=...) presets: the sky's dust/air (Nishita), sun
     "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8,
               # the sky as the camera sees it, deeper (camera and glossy rays only: the light it casts is unchanged), and
               # the sea a deep blue body with water's IOR (measured against the photo: the sea there h 212 s 0.45-0.49)
-              "sky_sat": 1.3, "water": [0.006, 0.028, 0.065], "water_roughness": 0.12,
+              "sky_sat": 1.3, "sky_value": 1.12, "sky_horizon_tint": [0.5, 0.72, 1.0],
+              "water": [0.006, 0.028, 0.065], "water_roughness": 0.12,
               "haze_scale": 3.0},  # (clear air: the photo's sea stays deep blue to the horizon, 3 km off)
 }
+
+
 def _light(light):
     """A light preset's settings (render_tiles(light=)): a LIGHTS name, a dict, or {} for none."""
     if isinstance(light, str):

@@ -1568,9 +1568,11 @@ regresses, bisect by building one spec at each commit and diffing heights.
       off it with every corner on it. Now buried = centre off and not all corners on the front (requiring every corner
       off promoted the back's edge faces round caves into the visible prim: shards and map seams).
     - Routes are worn ground only off mown turf (`Materials._route`, gated by the mown + first-cut kinds).
-    - `light="clear"`: `sky_sat` (Hue/Saturation on camera and glossy rays only: the light the sky casts is unchanged),
-      `water` / `water_roughness` (a deep blue body, IOR 1.33), `haze_scale` 3. Sea measured h 189-194 s 0.12-0.25 ->
-      206 / 0.44 (photo 212 / 0.43-0.49).
+    - `light="clear"`: `sky_sat`/`sky_value` (Hue/Saturation on camera and glossy rays only: the light the sky casts
+      is unchanged), `sky_horizon_tint` (Nishita's low sky is near white; multiplied toward blue up to ~20 deg),
+      `water` / `water_roughness` (a deep blue body, IOR 1.33), `haze_scale` 3. Hole 7 at noon (`skysea.py`-style, from
+      the id pass): sky top s 0.45 (photo 0.44), low sky s 0.02 -> 0.15 (0.33), far sea s 0.12 -> 0.25 (0.49), near sea
+      0.44; AgX's highlight desaturation limits the rest.
     - Bushes: `blender_terrain._scrub` (stems forking from a crown, ~600 small leaf clusters over a lumpy shell with
       gaps); lumps read as stones, big clusters as crumpled paper. Tussocks 20-70 m out are more and bigger
       (`terrain_ground.CLUTTER_MID`).

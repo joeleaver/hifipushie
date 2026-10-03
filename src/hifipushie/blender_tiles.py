@@ -817,6 +817,23 @@ def run(job):
         hs.inputs["Saturation"].default_value = float(L["sky_sat"])
         hs.inputs["Value"].default_value = float(L.get("sky_value", 1.0))
         world.node_tree.links.new(sky.outputs["Color"], hs.inputs["Color"])
+        if L.get("sky_horizon_tint"):  # (Nishita's low sky is near white; a photo's stays blue to the horizon: tinted
+            # toward the horizon, fading out by ~20 deg up)
+            tc = wn.new("ShaderNodeTexCoord")
+            sz = wn.new("ShaderNodeSeparateXYZ")
+            world.node_tree.links.new(tc.outputs["Generated"], sz.inputs["Vector"])
+            mr = wn.new("ShaderNodeMapRange")
+            mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = 0.0, 0.35
+            mr.inputs["To Min"].default_value, mr.inputs["To Max"].default_value = 1.0, 0.0
+            world.node_tree.links.new(sz.outputs["Z"], mr.inputs["Value"])
+            tm_ = wn.new("ShaderNodeMix")
+            tm_.data_type, tm_.blend_type = "RGBA", "MULTIPLY"
+            tm_.inputs["B"].default_value = tuple(L["sky_horizon_tint"]) + (1.0,)
+            world.node_tree.links.new(mr.outputs["Result"], tm_.inputs["Factor"])
+            world.node_tree.links.new(hs.outputs["Color"], tm_.inputs["A"])
+            hs_out = tm_.outputs["Result"]
+        else:
+            hs_out = hs.outputs["Color"]
         lp = wn.new("ShaderNodeLightPath")
         mx = wn.new("ShaderNodeMix")
         mx.data_type = "RGBA"
@@ -826,7 +843,7 @@ def run(job):
         world.node_tree.links.new(lp.outputs["Is Glossy Ray"], mxr.inputs[1])
         world.node_tree.links.new(mxr.outputs[0], mx.inputs["Factor"])
         world.node_tree.links.new(sky.outputs["Color"], mx.inputs["A"])
-        world.node_tree.links.new(hs.outputs["Color"], mx.inputs["B"])
+        world.node_tree.links.new(hs_out, mx.inputs["B"])
         world.node_tree.links.new(mx.outputs["Result"], wn["Background"].inputs["Color"])
     else:
         world.node_tree.links.new(sky.outputs["Color"], world.node_tree.nodes["Background"].inputs["Color"])
