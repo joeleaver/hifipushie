@@ -13,6 +13,8 @@ in.npz (metres, Z up, the model's frame)
   sew    (k, 2)  vertex pairs sewn shut (seams); stitch (j, 2) pairs sewn the same way (buttons to holes)
   stiff  (n,)    0..1 interfacing per vertex (stiffer bending, shear and stretch)
   bodyV, bodyT   the collider (the body; for a hung garment only while it is dressed)
+  bodyV0, bodyPoses   placement "smooth": the body the garment starts on (straight arms) and the poses (k, nV, 3)
+                 it moves through, evenly over the "pose" stage, ending at bodyV
 
 job.json
   format, mode ("sim" | "refine"), name, pieces
@@ -96,6 +98,10 @@ def stages(cfg: dict) -> list:
                     "note": "the bodice sewn alone; the fixed vertices go back to their start after it"})
     out.append({"name": "sew", "frames": f1, "gravity": 0, "sew": True, "sew_force": sew_force,
                 "self_collision": sew_self, "fixed": "assemble.hold" if asm else [], "body": True})
+    if cfg.get("placement") == "smooth":  # dressed on straight arms: the body bends its elbows back (bodyV0 ->
+        # bodyPoses, the last = bodyV) before gravity, the cloth carried by contact
+        out.append({"name": "pose", "frames": int(cfg.get("pose_frames", 36)), "gravity": 0, "sew": True,
+                    "sew_force": sew_force, "self_collision": sew_self, "fixed": [], "body": True, "pose": True})
     out.append({"name": "settle", "frames": int(cfg.get("worn_frames", 40)) if hang else int(cfg.get("frames", 90)),
                 "gravity": 1, "sew": True, "sew_force": None, "self_collision": sc, "fixed": [], "body": True})
     if hang:
