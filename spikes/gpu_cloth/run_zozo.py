@@ -86,10 +86,9 @@ def main():
         bV0 = np.asarray(d["bodyV0"] if "bodyV0" in d else d["bodyV"], float)
         bT = np.asarray(d["bodyT"], np.int64)
         # a body that moves is solved (pinned, prescribed): 2.5x the cost of a static collider. Only the part that
-        # moves is: the arms (faces with a vertex the poses move) apart from the static rest. A hung garment's body
-        # leaves whole
+        # moves is: the arms (faces with a vertex the poses move) apart from the static rest
         parts = [("body", np.arange(len(bV0)), bT)]
-        if "bodyPoses" in d and not any(st.get("hang") for st in stages) and job.get("split_body", True):
+        if "bodyPoses" in d and job.get("split_body", True):
             mv = (np.abs(np.asarray(d["bodyPoses"], float) - bV0).max(axis=(0, 2)) > 1e-7)
             fm = mv[bT].any(1)
             parts = []
@@ -126,9 +125,10 @@ def main():
         g.set_bend_rest_vert(ref)
     else:
         g.param.set("bend-rest-from-geometry", float(job.get("bend_rest_geom", 1.0)))
-    # a moving body (the "pose" stage) passed straight through a garment allowed its existing intersections: the
-    # smooth placement starts clean, so only the fitted one (sleeve fins) needs the allowance
-    if job.get("allow_existing", rest != "flat"):
+    # the start's own few crossings (a coat's under sleeve against the back's armhole edge, a collar pushed off the jaw
+    # into its stand: all at seams that close) are linked by the scene check and exempt; everything else collides.
+    # (The pass-through that once looked like this allowance was the pins': `pin_pass`)
+    if job.get("allow_existing", True):
         g.param.set("allow-existing-intersection", 1.0)  # the placement's own few overlaps (sleeve fins) aren't fatal
     if job.get("stitch_stiffness"):
         g.param.set("stitch-stiffness", float(job["stitch_stiffness"]))
@@ -174,9 +174,13 @@ def main():
                 poses = np.asarray(d["bodyPoses"], float)[:, used]
                 for k in range(len(poses)):
                     bp.move_to(poses[k], t0 + (t1 - t0) * k / len(poses), t0 + (t1 - t0) * (k + 1) / len(poses))
-            if hang is not None:  # the body leaves downward while the coat is lifted to its hook
-                t0, t1 = times[hang["name"]]
-                bp.move_by([0.0, 0.0, -3.0], t0, t0 + 0.4 * (t1 - t0))
+            if hang is not None:  # the body stops colliding as the coat is lifted to its hook (moved away down
+                # through the sleeves, it dragged them down against the hanger pins: CCD failed at the strain limit).
+                # Windows act on solved objects only: a static collider kept holding the sleeves out, so the body is
+                # given a still move to make it one
+                b.collision_windows([(0.0, times[hang["name"]][0])])
+                if nm_ == "body" and len(parts) > 1:
+                    bp.move_by([0.0, 0.0, 0.0], times[hang["name"]][0], times[hang["name"]][0] + 0.05)
     try:
         scene = scene.build()
     except Exception as e:
@@ -201,6 +205,7 @@ def main():
         rv[idx] = flat3
         mask[idx] = 1
         scene._concat_rest_vert, scene._rest_vert_mask = rv, mask
+    gidx = np.asarray(scene._map_by_name["garment"], np.int64)
     sess = app.session.create(scene)
     prm = sess.param
     prm.set("fps", fps).set("frames", total).set("dt", float(job.get("dt", 0.01)))
@@ -210,6 +215,12 @@ def main():
     if job.get("air_friction") is not None:
         prm.set("air-friction", float(job["air_friction"]))
     sess = sess.build()
+    cw = getattr(scene, "_collision_windows_data", None) or {}
+    if cw:  # the session's dyn_param.txt (gravity) is written over the scene's: the collision windows were lost and
+        # the hung coat's sleeves stayed up on the body's arms. Appended back
+        with open(Path(sess.info.path) / "dyn_param.txt", "a") as f:
+            for key, wins in cw.items():
+                f.write(f"[{key}]\n" + "".join(f"{float(a_)} {float(b_)}\n" for a_, b_ in wins))
     log(f"zozo: {n} verts, {len(F)} tris, {len(sew)} stitches, {total} frames at {fps:.0f} fps, sewing until "
         f"{sew_end:.2f} s, mode {job.get('mode', 'sim')}")
     tt = time.time()
@@ -224,12 +235,17 @@ def main():
     first = sess.get.vertex(0)
     if first is None:
         raise RuntimeError("no frame 0 to map ZOZO's vertex order back")
-    from scipy.spatial import cKDTree
-    dd, ii = cKDTree(X).query(np.asarray(first[0], float)[:n])
-    if dd.max() > 1e-5 or len(np.unique(ii)) != n:
-        raise RuntimeError(f"frame 0 isn't a permutation of the start ({dd.max() * 1000:.3f} mm off)")
-    V = np.empty((n, 3))
-    V[ii] = np.asarray(Vall[:n], float)
+    F0 = np.asarray(first[0], float)
+    # the garment's rows in ZOZO's concatenated output (`map_by_name`); checked on frame 0 (matching frame 0 by
+    # nearest start vertex failed on a coat whose start has coincident vertices)
+    rows = gidx if len(F0) > gidx.max() and np.abs(F0[gidx] - X).max() < 1e-5 else None
+    if rows is None:
+        from scipy.spatial import cKDTree
+        dd, ii = cKDTree(F0).query(X)
+        if dd.max() > 1e-5:
+            raise RuntimeError(f"frame 0 doesn't hold the start ({dd.max() * 1000:.3f} mm off)")
+        rows = ii
+    V = np.asarray(Vall, float)[rows]
     try:
         ms = sess.get.log.numbers("time-per-frame")
         per = sum(v for _, v in ms) / max(1, len(ms))
@@ -242,11 +258,10 @@ def main():
     for f in range(a.snap, frame, a.snap) if a.snap else ():
         got_f = sess.get.vertex(f)
         if got_f is not None:
-            Vf = np.empty((n, 3))
-            Vf[ii] = np.asarray(got_f[0][:n], float)
+            Vf = np.asarray(got_f[0], float)[rows]
             snaps[f"S{f}"] = Vf
     out = Path(a.out) if a.out else jd / "out.npz"
-    np.savez(out, V=V, **snaps, rest_rows=np.asarray(Vall[n:], float), log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
+    np.savez(out, V=V, **snaps, log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
     print("cloth: wrote", out, flush=True)
 
 

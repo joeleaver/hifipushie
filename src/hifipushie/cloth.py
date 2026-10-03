@@ -875,8 +875,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # the cap's top at the shoulder point (the tape's shoulder-to-wrist starts there), not at the joint:
                 # from the joint the whole sleeve sat ~4 cm down the arm and its cuff closed round the hand
                 spt = np.asarray(body.at["shoulder.L"], float) * ([1, 1, 1] if side == "L" else [-1, 1, 1])
-                t0 = float(w.get("t0", min(-0.02, float((spt - sh) @ (el - sh)) / seg[0]))) + (_down or {}).get(nm, 0.0)
+                t0 = float(w.get("t0", min(-0.02, float((spt - sh) @ (el - sh)) / seg[0])))
                 t_of = lambda Q, ytop=ytop, t0=t0: t0 + (ytop - Q[..., 1])
+            if (_down or {}).get(nm):  # smooth: moved down the arm to start clear of the bodice (and its followers)
+                t_of = lambda Q, f=t_of, dn=_down[nm]: f(Q) + dn
             placed[nm] = {"t": t_of}
             t = t_of(U)
             # a cylinder round the arm at the widest row's girth (isometric: the placed piece keeps its pattern's
@@ -1154,20 +1156,28 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     mv = np.linalg.norm(Xp - X, axis=1)
     # what pushing the start out of the body moved: it becomes stretch in the rest shape (rest = placed)
     B["push"] = {nm: round(float(mv[pid == k].max() * 1000), 1) for k, nm in enumerate(names) if mv[pid == k].max() > 0.002}
-    if smooth and _out is None:
+    if smooth and (_out or {}).get("_n", 0) < 3:
         # resting on the flat pattern, a vertex pushed out of the body is stretch the solver starts with (a sleeve cap
         # pushed 6 mm off the deltoid: 7.5%, past a 5% strain limit): a sleeve (not closed on itself) stands that much
         # further out as a whole instead, still a cylinder
         more = {nm: float(mv[pid == k].max()) + 0.001 for k, nm in enumerate(names)
                 if pcs[nm]["wrap"].get("to", "").startswith("arm.") and not _closed_girth(M, nm)
                 and mv[pid == k].max() > 0.0015}
-        if more:
-            return place(B, M, body, gap, _blouse=_blouse, smooth=True, _out=more, _down=_down)
+        if more:  # (again until clear: a further-out cylinder can meet the hand further down)
+            out_ = dict(_out or {})
+            for nm, v in more.items():
+                out_[nm] = out_.get(nm, 0.0) + v
+            out_["_n"] = out_.get("_n", 0) + 1
+            return place(B, M, body, gap, _blouse=_blouse, smooth=True, _out=out_, _down=_down)
     if smooth:
         # nothing may start through anything else (a solver that keeps its contacts can't undo it): a sleeve whose cap
         # starts through the bodice round the armhole goes 1 cm further down the arm at a time (the sewing pulls it up)
         hit = {a for a, b in _piece_crossings(Xp, M) for a in (a, b)
                if pcs[a]["wrap"].get("to", "").startswith("arm.") and "follow" not in pcs[a]["wrap"]}
+        # a sleeve still pushed off the body where it stands out further already (a coat's under sleeve's corner at
+        # the armpit: 12% stretch) goes down the arm too
+        hit |= {nm for k, nm in enumerate(names) if pcs[nm]["wrap"].get("to", "").startswith("arm.")
+                and not _closed_girth(M, nm) and "follow" not in pcs[nm]["wrap"] and mv[pid == k].max() > 0.0015}
         down = dict(_down or {})
         if hit and max([down.get(nm, 0.0) for nm in hit]) < 0.10:
             for nm in hit:

@@ -558,6 +558,28 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     ZOZO's coat: stitches whose ends start together give a NaN force (dropped now); then 2.3 s/frame, unfinished (90
     of 364 frames) at the pod's deadline. Runner defaults now: 10 substeps x 20 iterations + 3% strain limit worn,
     30 substeps hung.
+    ZOZO round 3 (2026-10-02, local 890M at 2 cm, renders z0x): the 4090 sleeves rode up and tore because ZOZO sets a
+    pin's pass-through (`allow_intersection`) once at build and keeps it after the unpin: every piece pinned while the
+    bodice assembled (sleeves, cuffs, collar) passed through the body for the whole sim; and the cuff hold was (hold -
+    fixed) = empty. Now garment key `placement: "smooth"` (backend file/remote only): ZOZO's membrane rests on the
+    FLAT PATTERN (rest_vert written into the built scene: the frontend only derives a rest from pins), the made pieces
+    (`cloth.made_pieces`, wholly interfaced) rest as placed in stretch and bending (`set_bend_rest_vert`; spatial bend
+    x40 on them ran without the old non-PD failure); the garment is placed on `Body.straight_arms` (forearms turned
+    into line, blended over +-4 cm at the elbow's mitre plane) and a "pose" stage bends them back through 4 poses with
+    the sleeves on (sleeves are tubes on one straight fitted axis: a wandering axis stretched the cap 7%, past the
+    limit; blousing compressed along the arm, not turned under); the start must be clean: `_piece_crossings` moves
+    sleeves down the arm / overlapping torso pieces a layer apart, a cuff's outer layer moves out with the inner one,
+    cuffs clear the wrist by CLEAR + h/4. Strain-limited solvers can't START past the limit: check sigma of flat ->
+    start per triangle before a run. Runner for smooth jobs: no pins on pieces (a pinned cuff on the wrist is two
+    prescribed things in contact: "contact starts overlapping"), allow-existing-intersection on (only the start's
+    linked pairs are exempt), the arms split off the static body (a body with a move is solved: 2.95 -> 1.24 s/frame),
+    a hung garment's body stops colliding by `collision_windows` (moved away down through the sleeves it dragged them
+    against the hanger pins; windows act on solved objects only, so the static body gets a still move; and the session's
+    dyn_param.txt (gravity) overwrote the scene's windows file: run_zozo appends them back), output rows by `map_by_name` (frame-0 matching failed on coincident vertices; `zozo_recover.py` rebuilds
+    out.npz from a session's vert_N.bin). Mesh: FreeSewing notches were vertices 0.47 mm inside the outline (the 1 cm
+    sliver edges); marks within 0.4 h of the outline are its vertex now (min edge 4.1 mm, min quality 0.26).
+    Shirt 2 cm: fits, 0 crossings, nothing crumpled, sleeves to the wrists on the bent arms, collar turned down; reads
+    crinkly at 2 cm (9.5 deg), strain p95 5.5% (outside of the elbows).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
