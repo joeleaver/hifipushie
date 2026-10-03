@@ -59,6 +59,41 @@ def min_part(triangles: int) -> int:
     return max(300, triangles // 100)
 
 
+def planar_uvs(part: dict) -> dict:
+    """0..1 UVs projected along the part's thinnest axis (PCA of its vertices), upright (image up = world up),
+    aspect kept and centred; tangents
+    and signs to match (MikkTSpace-consistent for a flat surface: the U axis on the tangent plane). For a flat,
+    swappable surface (parts.<p>.uv = "planar"): its front fills the texture as a 2D image would. Its back and rim
+    land on the same texels (only the front's look matters: an engine replaces the texture)."""
+    V = np.asarray(part["verts"], np.float64)
+    cv = np.asarray(part["corner_vert"])
+    c = V.mean(0)
+    _, _, vt = np.linalg.svd(V - c, full_matrices=False)
+    na = vt[2]  # the thinnest axis: the projection direction
+    nrm = np.asarray(part["normal"], np.float64)
+    if (nrm @ na).mean() < 0:  # look at the side most corners face (the front)
+        na = -na
+    # image up = world up (+Z) on the surface; a lying surface (a table top): up = toward its back (+Y; creatures and
+    # props face -Y). (u, v, n) right-handed, so the front reads as an image: upright, not mirrored
+    up = np.array([0.0, 0.0, 1.0])
+    va = up - (up @ na) * na
+    if np.linalg.norm(va) < 0.3:
+        up = np.array([0.0, 1.0, 0.0])
+        va = up - (up @ na) * na
+    va /= np.linalg.norm(va)
+    ua = np.cross(va, na)
+    P = V[cv] - c
+    u, v = P @ ua, P @ va
+    span = max(np.ptp(u), np.ptp(v), 1e-9)
+    uv = np.stack([(u - u.min()) / span + (1 - np.ptp(u) / span) / 2,
+                   (v - v.min()) / span + (1 - np.ptp(v) / span) / 2], -1)
+    t = ua[None, :] - nrm * (nrm @ ua)[:, None]
+    t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-12)
+    sign = np.where(np.einsum("ij,ij->i", np.cross(nrm, t), np.broadcast_to(va, t.shape)) >= 0, 1.0, -1.0)
+    return {"uv": uv.astype(np.asarray(part["uv"]).dtype), "tangent": t.astype(np.asarray(part["tangent"]).dtype),
+            "sign": sign.astype(np.asarray(part["sign"]).dtype)}
+
+
 def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel: float = 0.0,
             tri_focus: list | None = None) -> tuple[dict, dict]:
     """Decimate + unwrap in Blender. cfg: {part: {"weight": triangle weight, "density": texel density,
@@ -1089,7 +1124,8 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                                      "metallicFactor": 1.0, "roughnessFactor": 1.0},
             "normalTexture": {"index": ti["normal"]},
             "occlusionTexture": {"index": ti["orm"]},
-            # specular 0..1 in the texture's alpha; 0.5 = F0 0.04 (dielectric default), as Blender's IOR level
+            # specular 0..1 in the texture's alpha; 0.5 = F0 0.04 (dielectric default), as Blender's IOR level: the
+            # colour factor 2 maps that back (F0 = 0.04 x 2 x 0.5); KHR_materials_specular allows factors > 1
             "extensions": {"KHR_materials_specular": {"specularTexture": {"index": ti["specular"]},
                                                       "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]},
                            **((extra_ext or {}).get(len(materials)) or {})},
@@ -1254,7 +1290,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             fbx: bool = False, face_shapes: bool | list | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
-    the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own.
+    the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own; "uv": "planar" gives
+    a swappable flat surface (a dial, a sign, a screen) its own material and upright 0..1 planar UVs.
     texel_density (texels per metre): atlases are opened as needed to give every part that (x its own weight) at
     most `texture`^2 each, each atlas the smallest power of two that holds its parts. Without it, `atlases` (n)
     atlases of `texture`^2 split the parts by load.
@@ -1313,6 +1350,11 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     rel ={pn: w(pn, "texel_density") * (texel_density or 1.0) for pn in areas}
     loads = texture_loads(high, rel, focus)
     fixed = {pn: str(defs[origin[pn]]["atlas"]) for pn in areas if (defs.get(origin[pn]) or {}).get("atlas") is not None}
+    # parts.<p>.uv = "planar": a swappable surface (a clock's dial, a sign, a screen) gets its own material and 0..1
+    # planar UVs, so an engine swaps its texture by one property (s0urc3: the dial needed a custom UV shader)
+    planar = {pn for pn in areas if (defs.get(origin[pn]) or {}).get("uv") == "planar"}
+    for pn in planar:
+        fixed.setdefault(pn, f"planar_{pn}")
     pf_of = {pn: pf for pf, d in ctx["prefabs"].items() for pn in d["parts"]}
     units: dict[str, list] = {}
     for pn in areas:  # a prefab's parts go on one atlas together (one material per instance where possible)
@@ -1344,6 +1386,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                     **({"fixed": topo[pn][0], "fixed_sum": topo[pn][1]} if pn in topo else {})} for pn in areas}
         t1 = time.time()
         parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"], tri_focus)
+        for pn in planar & set(parts):
+            parts[pn].update(planar_uvs(parts[pn]))
+            log.append(f"{pn}: own material, planar 0..1 UVs (uv: planar)")
         if not texel_density:
             break
         # the size each atlas needs for every part to get its density, now that it's packed
@@ -1377,7 +1422,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                       "mm_per_texel": round(tsz[pn]["mm_per_texel"], 2), "area_m2": round(tsz[pn]["area_m2"], 3),
                       "islands": b.get("islands"), "joint_decimation_share": b["joint_count"],
                       "mirrored": b["symmetric"], "texel_density": cfg[pn]["density"],
-                      "triangle_weight": cfg[pn]["weight"]}
+                      "triangle_weight": cfg[pn]["weight"],
+                      **({"uv": "planar", "material": f"{name}_{names[p['atlas']]}_material"} if pn in planar else {})}
         if pn in pf_of:
             report[pn]["prefab"] = pf_of[pn]
         if "focus_mm_per_texel" in tsz[pn]:

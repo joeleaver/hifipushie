@@ -882,8 +882,10 @@ def render(job):
             _paint_material(part, base, [ly for ly in prog["layers"] if part in ly["parts"] or "*" in ly["parts"]],
                             prog["quantiles"], None, prog["packing"].get(part, {}), show=job["show_layer"])
     hide = set(job.get("hide") or ())
+    hair = bpy.data.collections.get("hair") if job.get("hide_hair") else None
+    hair_obs = set(hair.all_objects) if hair is not None else set()
     for ob in bpy.data.objects:  # parts left out (scene objects and prefab sources alike: instances follow)
-        if ob.get("hp_part") in hide:
+        if ob.get("hp_part") in hide or (job.get("hide_hair") and (ob in hair_obs or ob.get("hp_hair_cap"))):
             ob.hide_render = True
     if job.get("flat"):  # unlit colour: each material's base colour straight out
         for m in bpy.data.materials:

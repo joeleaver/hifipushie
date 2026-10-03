@@ -893,10 +893,10 @@ def part_hashes(prog: dict | None, bases: dict) -> dict:
 def look(name: str, views: list[str] | None = None, cameras: list[dict] | None = None, size: int = 640,
          save: str | None = None, show_layer: str | None = None, hide_parts: list[str] | None = None,
          only_parts: list[str] | None = None, flat: bool = False, clip=None, focus=None, zoom: float = 1.0,
-         lighting: dict | None = None):
+         lighting: dict | None = None, hide_hair: bool = False):
     """Render the saved scene with EEVEE: named views (as look) and/or perspective cameras {"eye": [x,y,z],
     "target", "fov"}. show_layer: one paint layer's mask, orange on grey clay. hide_parts / only_parts: leave
-    parts out (prefab parts too, in every instance); with only_parts the views frame what's shown. flat: unlit
+    parts out (prefab parts too, in every instance; hide_hair: the hair's locks and caps); with only_parts the views frame what's shown. flat: unlit
     base colour. clip (as look): everything beyond the planes is left out of the render (the materials turn
     transparent there) and the cut solids get flat caps, their part's colour darkened. focus + zoom: the named
     views framed on that point, zoom times closer (painted close-ups at the scene's mesh resolution).
@@ -929,6 +929,7 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         # refracting the room behind it wants more
         glass = any((d or {}).get("transmission") or (d or {}).get("alpha", 1) < 1 for d in (spec.get("parts") or {}).values())
         job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
+               "hide_hair": hide_hair,
                "samples": 32 if glass else 16,
                "lighting": lighting if lighting is not None else (spec.get("style") or {}).get("look")}
         planes = store.clip_planes(clip)
