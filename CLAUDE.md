@@ -640,7 +640,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     Report `hanger:` line (`hanger.support`, `on_hanger`, `verdict`): the load each support carries = cloth mass by
     nearest support over the cloth graph (contact within 8 mm, by part, pins), still moving (p99 move over the last 6
     frames, `Vprev` from every runner), floor; inside = rays front/back/up from 40-95% along each arm meet cloth, the
-    rod crosses no cloth, cloth in 6+ of 8 sectors round it near the garment's top. NOT ON ITS HANGER leads the
+    rod crosses no cloth, cloth behind it (4/4 back sectors) and on both sides from the arms to 8 cm up (an open front
+    is fine: lapels, V necks). NOT ON ITS HANGER leads the
     verdict; a coat floating in front fails (`tests/test_cloth.py`). ZOZO 2 cm (h04): on the hanger, arms 56/44%, 0
     pins, reads as a coat on a hanger. Disk: run_zozo prunes vert_N.bin while running, deletes its session after, and
     refuses < 20 GB free / stops < 10 GB; cloth sims refuse < 20 GB.

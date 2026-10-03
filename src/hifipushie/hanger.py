@@ -402,7 +402,7 @@ def on_hanger(V: np.ndarray, M: dict, h: dict) -> dict:
     """Is the hanger INSIDE the garment? From points along each arm (40-90% out), rays forward (-y), back (+y) and up
     must all meet the cloth within 25 / 25 / 10 cm (a coat floating in front of its hanger has nothing behind the arms);
     the hook's rod must leave through the neck opening: no cloth crosses the rod, and round the rod at the garment's
-    top the cloth surrounds it (horizontal rays in 8 directions, 6+ meet cloth within 15 cm). Returns {"arms": {side:
+    neck the cloth is behind it (4 of 4 sectors) and on both sides. Returns {"arms": {side:
     {"front", "back", "up"} hit fractions}, "hook": {"crossings", "surround", "above_mm"}, "ok", "why"}."""
     V = np.asarray(V, float)
     F = M["F"]
@@ -437,16 +437,22 @@ def on_hanger(V: np.ndarray, M: dict, h: dict) -> dict:
     # the garment's top round the rod
     rr = np.hypot(V[:, 0] - a[0], V[:, 1] - a[1]) < 0.12
     ztop = float(V[rr, 2].max()) if rr.any() else -np.inf
-    # the neck opening round the rod: cloth near the garment's top (within 4 cm under it, 15 cm of the rod) in each of
-    # 8 sectors round it (a collar round the hook fills all 8; a coat hanging in front of it only the front ones)
-    band = rr & (V[:, 2] > ztop - 0.04) & (np.hypot(V[:, 0] - a[0], V[:, 1] - a[1]) < 0.15)
+    # the neck opening round the rod: cloth from just under the arms to 8 cm over them, within 12 cm of the rod, in each
+    # of the 4 sectors BEHIND it and on both sides (a collar or neckband round the hook; an open front - a coat's lapels,
+    # a V neck - leaves the front sectors empty, and a coat hanging in front of its hanger leaves the back ones empty)
+    band = rr & (V[:, 2] > a[2] - 0.01) & (V[:, 2] < a[2] + 0.08)
     az = np.arctan2(V[band, 1] - a[1], V[band, 0] - a[0])
-    sur = int(len(np.unique(np.floor((az + np.pi) / (2 * np.pi) * 8).astype(int) % 8)))
-    res["hook"] = {"crossings": cross, "surround": sur, "above_mm": round((b[2] - ztop) * 1000, 1)}
+    secs = set(np.floor((az + np.pi) / (2 * np.pi) * 8).astype(int) % 8)  # 4..7: behind (+y)
+    sur = len(secs)
+    back = len(secs & {4, 5, 6, 7})
+    sides = bool(np.any(V[band, 0] > a[0] + 0.02)) and bool(np.any(V[band, 0] < a[0] - 0.02))
+    res["hook"] = {"crossings": cross, "surround": sur, "behind": back, "sides": sides,
+                   "above_mm": round((b[2] - ztop) * 1000, 1)}
     if cross:
         why.append(f"the hook's rod crosses the cloth {cross}x (not through the neck opening)")
-    if sur < 6:
-        why.append(f"the cloth surrounds the hook at the collar in only {sur}/8 directions")
+    if back < 4 or not sides:
+        why.append(f"the hook isn't in the neck opening (cloth behind it in {back}/4 directions, "
+                   f"{'both sides' if sides else 'not on both sides'})")
     if b[2] < ztop - 0.01:
         why.append("the hook doesn't come out above the garment")
     res["ok"] = not why
@@ -478,6 +484,6 @@ def verdict(sup: dict, onh: dict | None) -> tuple[bool, str]:
     if onh is not None:
         line += ("; arms inside (front/back/up hits): " + ", ".join(
             f"{k} {v['front']:.1f}/{v['back']:.1f}/{v['up']:.1f}" for k, v in onh["arms"].items())
-            + f"; hook: {onh['hook']['crossings']} crossings, surrounded {onh['hook']['surround']}/8, "
+            + f"; hook: {onh['hook']['crossings']} crossings, cloth behind it {onh['hook']['behind']}/4, "
             f"{onh['hook']['above_mm']:.0f} mm above the cloth")
     return not why, ("ON THE HANGER: " if not why else "NOT ON ITS HANGER (" + "; ".join(why) + "): ") + line
