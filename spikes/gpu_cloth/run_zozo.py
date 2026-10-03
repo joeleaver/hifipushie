@@ -17,8 +17,11 @@ Mapping (one session for the whole schedule, times at the job's 24 fps):
 - other jobs: the REST is the start placement X (isometric to the pattern, like Blender's), bending rest from that
   geometry, the placement's overlaps (sleeve fins) allowed, assemble.fixed / assemble.hold pinned as in Blender;
 - seams and stitches: ZOZO stitches (vertex to vertex) from t = 0; gravity 0 while sewing, then on;
-- hung garments: the body moves away down after the worn settle while the hanger-loop vertices (pinned from the
-  start) move up under the hook. No rack (yet);
+- hung on a hanger (job "hanger", stage "hanger"): the hanger and rail meshes (in.npz hangerV/F, railV/F) are static
+  colliders from the start, inside the body while the garment is dressed; the body stops colliding at the hang
+  (collision window + a still move) and the garment settles onto the hanger by contact. No pins;
+- the old pinned hang: the hanger-loop vertices (pinned from the start) move up under the hook, the rack's arms rise
+  with them;
 - material: young-mod = stretch / density (ZOZO's is normalised by density), `bend` (dimensionless, ZOZO's scale),
   strain limit (`strain_limit`, default 5%), friction.
 - a scene check that fails names each violation's pieces (`--set debug_violations=true`: the raw record).
@@ -103,8 +106,14 @@ def main():
         # a body that moves is solved (pinned, prescribed): 2.5x the cost of a static collider. Only the part that
         # moves is: the arms (faces with a vertex the poses move) apart from the static rest
         parts = [("body", np.arange(len(bV0)), bT)]
-        if "bodyPoses" in d and job.get("split_body", True):
-            mv = (np.abs(np.asarray(d["bodyPoses"], float) - bV0).max(axis=(0, 2)) > 1e-7)
+        # stages that move the body: "pose" true = bodyPoses (elbows bent back), or the array's name (bodyLower: the
+        # arms brought down to the sides before a garment goes on its hanger)
+        posers = [(st, "bodyPoses" if st["pose"] is True else st["pose"]) for st in stages if st.get("pose")]
+        posers = [(st, k) for st, k in posers if k in d]
+        if posers and job.get("split_body", True):
+            mv = np.zeros(len(bV0), bool)
+            for _, k in posers:
+                mv |= (np.abs(np.asarray(d[k], float) - bV0).max(axis=(0, 2)) > 1e-7)
             fm = mv[bT].any(1)
             parts = []
             for nm_, ff in (("body", bT[~fm]), ("arms", bT[fm])):
@@ -170,7 +179,7 @@ def main():
         g.pin(fixed, allow_intersection=pp).unpin(times["assemble"][1])
     if hold:
         g.pin(sorted(hold), allow_intersection=pp).unpin(times["sew"][1])
-    hang = next((s for s in stages if s.get("hang")), None)
+    hang = next((s for s in stages if s.get("hang") or s.get("hanger")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):
         t0, t1 = times[hang["name"]]
@@ -202,15 +211,25 @@ def main():
             if near:
                 rp.move_by(list(map(float, lift)), t0, t0 + 0.4 * (t1 - t0))
                 o_.collision_windows([(t0, t1 + 1e3)])
+    if hang is not None and hang.get("hanger") and job.get("use_hanger", True):
+        # on a hanger: the hanger (arms, hook, bar) and the rail stand still from the start, inside the body while the
+        # garment is dressed (the cloth never meets them until the body stops colliding), then carry it by contact
+        for nm_ in ("hanger", "rail"):
+            if f"{nm_}V" not in d:
+                continue
+            app.asset.add.tri(nm_, np.asarray(d[f"{nm_}V"], float), np.asarray(d[f"{nm_}F"], np.int64))
+            o_ = scene.add(nm_)
+            o_.param.set("contact-offset", float(job.get("hanger_offset", job.get("body_offset", 0.002))))
+            o_.param.set("friction", float(job.get("hanger_friction", max(0.5, float(P.get("friction", 0.4))))))
+            o_.pin()
     if has_body:
-        pose = next((st for st in stages if st.get("pose")), None)
         for nm_, used, _ in parts:
             b = scene.add(nm_)
             b.param.set("contact-offset", float(job.get("body_offset", 0.002))).set("friction", float(P.get("friction", 0.4)))
             bp = b.pin()
-            if pose is not None and "bodyPoses" in d and (nm_ == "arms" or len(parts) == 1):
+            for pose, key in (posers if (nm_ == "arms" or len(parts) == 1) else []):
                 t0, t1 = times[pose["name"]]
-                poses = np.asarray(d["bodyPoses"], float)[:, used]
+                poses = np.asarray(d[key], float)[:, used]
                 for k in range(len(poses)):
                     bp.move_to(poses[k], t0 + (t1 - t0) * k / len(poses), t0 + (t1 - t0) * (k + 1) / len(poses))
             if hang is not None:  # the body stops colliding as the coat is lifted to its hook (moved away down
@@ -299,6 +318,9 @@ def main():
         if got_f is not None:
             Vf = np.asarray(got_f[0], float)[rows]
             snaps[f"S{f}"] = Vf
+    got_p = sess.get.vertex(max(0, frame - 6)) if frame > 6 else None  # cloth.PREV_APART: the "still moving" measure
+    if got_p is not None:
+        snaps["Vprev"] = np.asarray(got_p[0], float)[rows]
     out = Path(a.out) if a.out else jd / "out.npz"
     np.savez(out, V=V, **snaps, log=np.array(LOG), timing=np.array(json.dumps({"total_s": wall, "ms_per_frame": per})))
     print("cloth: wrote", out, flush=True)

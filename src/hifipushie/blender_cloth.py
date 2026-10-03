@@ -142,6 +142,9 @@ def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, q
 
 
 TRACE = {}
+PREV = {}  # the last stage's positions PREV_APART frames before its end (cloth.py's "still moving" measure)
+PREV_APART = 6
+HANG_AIR = 8.0  # air damping while a garment settles onto its hanger (job "hang_air")
 
 
 def _grab(ob):
@@ -163,6 +166,8 @@ def _run(ob, frames, trace=()):
             print(f"cloth: progress {ob.name} {f}/{frames} {time.time() - t:.0f}s", flush=True)
         if f in trace:
             TRACE[f"{ob.name}_{f}"] = _grab(ob)
+        if f == frames - PREV_APART:
+            PREV["V"] = _grab(ob).astype(np.float64)
     dg = bpy.context.evaluated_depsgraph_get()
     ev = ob.evaluated_get(dg)
     me = ev.to_mesh()
@@ -234,7 +239,58 @@ def sim(job, d):
     V, dt = _run(ob, f2)
     log(f"stage 2 (gravity, worn): {f2} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
     n0 = len(V)
-    if hang:
+    hanger = bool(job.get("hanger"))
+    if hang and hanger:
+        # hung the way a person hangs it: the hanger has been inside the garment all along (inside the body, under its
+        # shoulders, the hook up through the neck opening); the body goes, the hanger collides, and gravity settles
+        # the garment onto it. Nothing is pinned: contact carries the weight
+        if job.get("lower") and "bodyLower" in d:
+            # first the body's arms come down to its sides with the garment on (a coat taken off a dummy in the A-pose
+            # kept its sleeves splayed on the hanger): the body's poses as shape keys, one after another
+            fl = int(job.get("lower_frames", 48))
+            P = np.asarray(d["bodyLower"], np.float32)
+            body.shape_key_add(name="Basis")
+            seg = fl / len(P)
+            for k in range(len(P)):
+                sk = body.shape_key_add(name=f"lower{k}")
+                sk.data.foreach_set("co", P[k].ravel())
+                for fr, val in ((1 + seg * k, 0.0), (1 + seg * (k + 1), 1.0)) + (((1 + seg * (k + 2), 0.0),)
+                                                                                   if k + 1 < len(P) else ()):
+                    sk.value = val
+                    sk.keyframe_insert("value", frame=fr)
+            bpy.data.objects.remove(ob)
+            ob = _sim_object("garment_lower", V, F, sew, uv, stiff, [], fab, bool(job.get("self_collision", True)),
+                             fl + 12)
+            V, dt = _run(ob, fl + 12)
+            stages["lowered"] = V.copy()
+            log(f"stage 2b (arms down, {len(P)} poses): {fl + 12} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
+        stages["worn"] = V.copy()
+        bpy.data.objects.remove(body)
+        _hanger(d, float(job.get("hanger_thickness", 0.003)))
+        fh = int(job.get("hang_frames", 240))
+        bpy.data.objects.remove(ob)
+        # seams welded shut while it hangs (as Newton's runner does): as sewing springs they opened under the coat's
+        # weight once the body stopped carrying it (seam gaps 7 -> 36 mm mean, the hem rose 15 cm, still swinging)
+        Vw, Fw, sew_w, uv_w, stiff_w, wmap = _weld(V, F, sew, uv, stiff, float(job.get("weld_gap", 0.01)))
+        log(f"  welded {len(V) - len(Vw)} seam vertices for the hang; {len(sew_w)} pairs left as springs")
+        ob = _sim_object("garment_hang", Vw, Fw, sew_w, uv_w, stiff_w, [], fab, bool(job.get("self_collision", True)), fh)
+        # quasi-static: air damping while the support moves from the body to the hanger (at the fabric's 1 the freed
+        # sleeves swung in, overshot, and one folded up over its shoulder by frame 60)
+        ob.modifiers["cloth"].settings.air_damping = float(job.get("hang_air", HANG_AIR))
+        V, dt = _run(ob, fh, trace=(1, 5, 10, 30, 60, 90))
+        V = V[wmap]  # back to every original vertex (both sides of a welded seam on the one vertex)
+        for k in [k for k in TRACE if k.startswith("garment_hang_")]:
+            TRACE[k] = TRACE[k][wmap]
+        if "V" in PREV:
+            PREV["V"] = PREV["V"][wmap]
+        for f in (1, 5, 10, 30, 60, 90):
+            T_ = TRACE.get(f"garment_hang_{f}")
+            if T_ is not None:
+                log(f"  hang frame {f}: z p5 {np.percentile(T_[:, 2], 5):.3f} p50 {np.median(T_[:, 2]):.3f} max "
+                    f"{T_[:, 2].max():.3f}")
+        log(f"stage 3 (on the hanger): {fh} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
+        pins = np.zeros(0, np.int64)
+    elif hang:
         stages["worn"] = V.copy()
         bpy.data.objects.remove(body)
         hook = np.asarray(job["hook"], float)
@@ -262,16 +318,18 @@ def sim(job, d):
                 log(f"  hang frame {f}: z p5 {np.percentile(T_[:n0, 2], 5):.3f} p50 {np.median(T_[:n0, 2]):.3f}")
         log(f"stage 3 (hung): {fh} frames, {dt:.1f} s, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
         X, F_, sew, uv, stiff, pins = Va, F, sew_h, uv_h, stiff_h, pins_h
-    if job.get("self_collision", True):
+    if job.get("self_collision", True) and not (hang and hanger):  # (on a hanger the hang self-collides already)
         f3 = int(job.get("settle_frames", 24))
         bpy.data.objects.remove(ob)
         ob = _sim_object("garment3", V, F, sew, uv, stiff, pins if hang else [], fab, True, f3)
-        if hang:
+        if hang and not hanger:
             ob.modifiers["cloth"].settings.sewing_force_max = 0.0
         V, dt = _run(ob, f3)
         log(f"stage 4 (self-collision): {f3} frames, {dt:.1f} s")
     gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1) if len(sew) else np.zeros(1)
     log(f"final seam gaps mean {gap.mean() * 1000:.1f} mm, p95 {np.percentile(gap, 95) * 1000:.1f} mm")
+    if "V" in PREV:
+        stages["Vprev"] = PREV["V"]
     np.savez(job["out"], V=V[:n0], **{k: v[:n0] for k, v in stages.items()}, **{k: v[:n0] for k, v in TRACE.items()})
 
 
@@ -292,10 +350,27 @@ def refine(job, d):
         body.collision.cloth_friction = 5.0
         body.collision.damping = 0.6
     _rack(job.get("rack") or [])
+    if job.get("hanger"):
+        _hanger(d, float(job.get("hanger_thickness", 0.003)))
     X = np.asarray(X, float).copy()
     if len(pins):  # held where they hang: their input never moves
         X[pins] = S[pins]
     frames = int(job.get("refine_frames", 40))
+    if job.get("hanger"):
+        # on a hanger: the coarse hang carried onto the fine mesh is the start AND the rest (the fine placement's
+        # seams lie open, so a welded rest there is no shape at all), seams welded, settled quasi-statically
+        Vw, Fw, sew_w, uv_w, st_w, wmap = _weld(np.asarray(S, float), F, sew, uv, d["stiff"],
+                                                float(job.get("weld_gap", 0.01)))
+        ob = _sim_object("garment_fine", Vw, Fw, sew_w, uv_w, st_w, [], fab, bool(job.get("self_collision", True)),
+                         frames)
+        ob.modifiers["cloth"].settings.air_damping = float(job.get("hang_air", HANG_AIR))
+        V, dt = _run(ob, frames)
+        V = V[wmap]
+        if "V" in PREV:
+            PREV["V"] = PREV["V"][wmap]
+        log(f"refine on the hanger ({len(X)} verts, {len(X) - len(Vw)} welded): {frames} frames, {dt:.1f} s")
+        np.savez(job["out"], V=V, **({"Vprev": PREV["V"]} if "V" in PREV else {}))
+        return
     ob = _sim_object("garment_fine", X, F, sew, uv, d["stiff"], pins, fab, bool(job.get("self_collision", True)),
                      frames, start=S, ease=int(job.get("refine_ease", 15)))
     if len(pins):
@@ -304,7 +379,61 @@ def refine(job, d):
     gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1) if len(sew) else np.zeros(1)
     log(f"refine ({len(X)} verts): {frames} frames, {dt:.1f} s, seam gaps mean {gap.mean() * 1000:.1f} mm, "
         f"p95 {np.percentile(gap, 95) * 1000:.1f} mm")
-    np.savez(job["out"], V=V)
+    np.savez(job["out"], V=V, **({"Vprev": PREV["V"]} if "V" in PREV else {}))
+
+
+def _weld(V, F, sew, uv, stiff, max_gap):
+    """Sewn pairs closer than max_gap merged into one vertex (union-find; a merge that would put two corners of one
+    triangle in a group is left as a spring). Returns (V, F, sew pairs left, uv, stiff, map original -> welded)."""
+    n = len(V)
+    par = np.arange(n)
+
+    def find(i):
+        while par[i] != i:
+            par[i] = par[par[i]]
+            i = par[i]
+        return i
+    tris = [set() for _ in range(n)]
+    for t, f in enumerate(F):
+        for v in f:
+            tris[v].add(t)
+    left = []
+    for a, b in sew:
+        a, b = int(a), int(b)
+        if np.linalg.norm(V[a] - V[b]) > max_gap:
+            left.append((a, b))
+            continue
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            continue
+        if tris[ra] & tris[rb]:
+            left.append((a, b))
+            continue
+        par[rb] = ra
+        tris[ra] |= tris[rb]
+    root = np.array([find(i) for i in range(n)])
+    roots, wmap = np.unique(root, return_inverse=True)
+    cnt = np.bincount(wmap).astype(float)
+    Vw = np.zeros((len(roots), 3))
+    np.add.at(Vw, wmap, V)
+    Vw /= cnt[:, None]
+    Fw = wmap[np.asarray(F)]
+    Fw = Fw[(Fw[:, 0] != Fw[:, 1]) & (Fw[:, 1] != Fw[:, 2]) & (Fw[:, 0] != Fw[:, 2])]
+    sw = wmap[np.asarray(left, np.int64).reshape(-1, 2)]
+    sw = sw[sw[:, 0] != sw[:, 1]]
+    return Vw, Fw, sw, np.asarray(uv)[roots], np.asarray(stiff)[roots], wmap
+
+
+def _hanger(d, thick=0.003):
+    """The hanger (one closed mesh: arms, hook, bar) and the rail as colliders (in.npz hangerV/F, railV/F)."""
+    for nm in ("hanger", "rail"):
+        if f"{nm}V" not in d:
+            continue
+        ob = _mesh(nm, d[f"{nm}V"], d[f"{nm}F"])
+        ob.modifiers.new("collision", "COLLISION")
+        ob.collision.thickness_outer = thick  # (see cloth.build: half a triangle)
+        ob.collision.cloth_friction = 5.0  # wood under wool: the shoulders mustn't slide off the arms
+        ob.collision.damping = 0.6
 
 
 def _rack(rack):

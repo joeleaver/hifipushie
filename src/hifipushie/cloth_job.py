@@ -15,6 +15,8 @@ in.npz (metres, Z up, the model's frame)
   bodyV, bodyT   the collider (the body; for a hung garment only while it is dressed)
   bodyV0, bodyPoses   placement "smooth": the body the garment starts on (straight arms) and the poses (k, nV, 3)
                  it moves through, evenly over the "pose" stage, ending at bodyV
+  bodyLower      hung on a hanger: (k, nV, 3) poses from bodyV to the arms down at the sides, evenly over the stage
+                 whose "pose" names it ("lower"); a stage's "pose" true means bodyPoses
 
 job.json
   format, mode ("sim" | "refine"), name, pieces
@@ -24,11 +26,15 @@ job.json
                    "sew" (true | "fixed-free": only pairs between free vertices), "sew_force", "self_collision",
                    "fixed" (vertices held where they are), "body" (collide with it), "hang" (move the pins under the
                    hook and hold them there, rack colliders), "start" (refine: ease from S over `ease` frames)}
-  pins, hook, rack, pin_spread   hung garments (rack = [[a, b, radius], ...] capsule colliders)
+  hanger           hung on a hanger (hanger.to_job: segments, arms, rod, rail); its colliders are in.npz hangerV/F
+                   (one closed mesh: arms, hook, bar) and railV/F (rail + posts). They sit inside the body while the
+                   garment is dressed and collide from the "hanger" stages on (the body gone, nothing pinned)
+  pins, hook, rack, pin_spread   the old pinned hang (rack = [[a, b, radius], ...] capsule colliders)
   fps              24
   out              where out.npz goes (a runner may write it beside job.json instead)
 
-out.npz: V (n, 3) the settled positions (the result); optional per-stage snapshots (V1, worn); `log` lines; `timing`.
+out.npz: V (n, 3) the settled positions (the result); Vprev the positions cloth.PREV_APART (6) frames before the end
+(the "still moving" measure); optional per-stage snapshots (V1, worn); `log` lines; `timing`.
 
 Backends (garment key "backend", or $HIFIPUSHIE_CLOTH_BACKEND; default "blender"):
   "blender"  blender_cloth.py here (the default; it reads the same folder).
@@ -83,7 +89,7 @@ def stages(cfg: dict) -> list:
         return [{"name": "refine", "frames": int(cfg.get("refine_frames", 40)), "gravity": 1, "sew": True,
                  "sew_force": 0.0 if pins else None, "self_collision": bool(cfg.get("self_collision", True)),
                  "fixed": "pins" if pins else [], "body": bool(cfg.get("body", True)), "rack": bool(pins),
-                 "start": True, "ease": int(cfg.get("refine_ease", 15))}]
+                 "hanger": bool(cfg.get("hanger")), "start": True, "ease": int(cfg.get("refine_ease", 15))}]
     sc = bool(cfg.get("self_collision", True))
     sew_self = bool(cfg.get("self_collision_sew", True)) and sc
     sew_force = float(cfg.get("sew_force", 6.0))
@@ -104,14 +110,24 @@ def stages(cfg: dict) -> list:
                     "sew_force": sew_force, "self_collision": sew_self, "fixed": [], "body": True, "pose": True})
     out.append({"name": "settle", "frames": int(cfg.get("worn_frames", 40)) if hang else int(cfg.get("frames", 90)),
                 "gravity": 1, "sew": True, "sew_force": None, "self_collision": sc, "fixed": [], "body": True})
-    if hang:
+    hanger = bool(cfg.get("hanger"))
+    if hang and hanger and cfg.get("lower"):  # the body's arms come down to its sides with the garment on
+        # (in.npz bodyLower: the poses, evenly over the stage), so the sleeves hang beside it on the hanger
+        out.append({"name": "lower", "frames": int(cfg.get("lower_frames", 48)), "gravity": 1, "sew": True,
+                    "sew_force": None, "self_collision": sc, "fixed": [], "body": True, "pose": "bodyLower"})
+    if hang and hanger:  # on a hanger: the body goes, the hanger (inside the garment since the start) collides, gravity
+        # settles the garment onto it; nothing pinned
+        out.append({"name": "hang", "frames": int(cfg.get("hang_frames", 240)), "gravity": 1, "sew": True,
+                    "sew_force": None, "self_collision": sc, "fixed": [], "body": False, "hanger": True})
+    elif hang:  # the old pinned hang: pins moved under `hook`, rack capsules
         out.append({"name": "hang", "frames": int(cfg.get("hang_frames", 120)), "gravity": 1, "sew": True,
                     "sew_force": float(cfg.get("hang_sew_force", sew_force)), "self_collision": sc, "fixed": [],
                     "body": False, "hang": True, "rack": True})
-    if sc:
+    if sc and not (hang and hanger):  # (on a hanger the hang stage self-collides already)
         out.append({"name": "self_settle", "frames": int(cfg.get("settle_frames", 24)), "gravity": 1, "sew": True,
-                    "sew_force": 0.0 if hang else None, "self_collision": True, "fixed": "pins" if hang else [],
-                    "body": not hang, "rack": hang})
+                    "sew_force": 0.0 if hang and not hanger else None, "self_collision": True,
+                    "fixed": "pins" if hang and not hanger else [], "body": not hang, "rack": hang and not hanger,
+                    "hanger": hang and hanger})
     return out
 
 

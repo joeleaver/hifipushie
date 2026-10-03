@@ -16,7 +16,8 @@ def test_validate():
     ok = {"base": {"body": {"source": "makehuman"}}, "cloth": {"shirt": {"pattern": {"from": "simon"}}}}
     cloth.validate(ok)
     for bad, word in (({"pattern": {"from": "nope"}}, "pattern"), ({"pattern": {"from": "simon"}, "fabric": "x"}, "fabric"),
-                      ({"pattern": {"from": "simon"}, "state": "hung"}, "hang"),
+                      ({"pattern": {"from": "simon"}, "state": {"hang": {"hanger": {"kind": "plastic"}}}}, "hanger"),
+                      ({"pattern": {"from": "simon"}, "state": {"hang": {"hanger": {}, "rack": []}}}, "hang"),
                       ({"pattern": {"from": "simon"}, "colour": "#fff"}, "unknown keys"),
                       ({"pattern": {"from": "simon", "ease": {"chestt": 0.1}}}, "ease")):
         try:
@@ -106,6 +107,46 @@ def test_piece_crossings():
     r = M["uv"][:, 0] > 0.1
     Y[r] = np.c_[0.1 - (M["uv"][r, 0] - 0.1), M["uv"][r, 1], 0.05 * np.sin(8 * M["uv"][r, 1])]
     assert ("cloth", "cloth") in cloth._piece_crossings(Y, M)
+
+
+def _on_hanger_case():
+    """A hanger (level arms at z 1, a hook up to 1.1) and a 'coat': an elliptic tube closed over the arms by a
+    shoulder sheet with a neck hole round the hook."""
+    from hifipushie import hanger
+    c = np.array([0.0, 0.0, 1.0])
+    segs = [(c, c + [sg * 0.18, 0, 0], (0.008, 0.011), (0.02, 0.013), f"arm.{s}") for s, sg in (("L", 1), ("R", -1))]
+    rod = (c + [0, 0, 0.005], c + [0, 0, 0.1])
+    segs.append((rod[0], rod[1], (0.003, 0.003), (0.003, 0.003), "hook"))
+    h = {"segments": segs, "rail": [], "arms": {"L": (c, c + [0.18, 0, 0]), "R": (c, c - [0.18, 0, 0])}, "rod": rod}
+    nt, rx, ry, top = 64, 0.2, 0.12, 1.0 + 0.011 + 0.004
+    rings = [(1.0, z) for z in np.linspace(0.5, top, 26)] + [(s, top) for s in np.linspace(1.0, 0.45, 9)[1:]]
+    th = np.linspace(0, 2 * np.pi, nt, endpoint=False)
+    V = np.concatenate([np.c_[rx * s * np.cos(th), ry * s * np.sin(th), np.full(nt, z)] for s, z in rings])
+    F = []
+    for k in range(len(rings) - 1):
+        for i in range(nt):
+            a, b, cc, d = k * nt + i, k * nt + (i + 1) % nt, (k + 1) * nt + (i + 1) % nt, (k + 1) * nt + i
+            F += [[a, b, cc], [a, cc, d]]
+    M = {"F": np.asarray(F), "sew": np.zeros((0, 2), np.int64)}
+    return hanger, h, V, M
+
+
+def test_hanger_measures():
+    hanger, h, V, M = _on_hanger_case()
+    sup = hanger.support(V, M, h)
+    on = hanger.on_hanger(V, M, h)
+    ok, line = hanger.verdict(sup, on)
+    assert on["ok"], on
+    assert sup["share"].get("arm.L", 0) > 0.3 and sup["share"].get("arm.R", 0) > 0.3, sup
+    assert ok and line.startswith("ON THE HANGER"), line
+    # the same coat floating 30 cm in front of its hanger fails, and says why
+    Vf = V + [0, -0.3, 0]
+    ok, line = hanger.verdict(hanger.support(Vf, M, h), hanger.on_hanger(Vf, M, h))
+    assert not ok and "NOT ON ITS HANGER" in line and "arm" in line, line
+    # held by pins (the old hang): the pins carry it
+    pins = np.where(V[:, 2] > 1.01)[0]
+    ok, line = hanger.verdict(hanger.support(Vf, M, h, pins), None)
+    assert not ok and "pins carry" in line, line
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ Spec `spec["cloth"][name]`:
    "pieces": {name: piece spec (pattern.from_spec) + "wrap"}, "seams": [[a, b], ...], "stitches": [[a, b]...]
              (own pieces, or added to a design's), "drop": [pieces of the design left out],
    "alter": [pattern ops], "fabric": preset name or {...}, "interfaced": [pieces], "color": "#rrggbb",
-   "state": "worn" | {"hang": {"pins": ["piece:point", ...], "hook": [x, y, z]}},
+   "state": "worn" | "hung" (on a hanger: hanger.py) | {"hang": {"hanger": {...}, "rail": {...}}} | "draped",
    "resolution": m (triangle size, default 0.02)}
 
 The garment is a recipe: ease is relative to the body and the draft is made to measure on whatever body it goes on
@@ -39,6 +39,8 @@ from . import pattern, tailor
 DESIGNS = Path(__file__).with_name("cloth_designs.json")
 SCRIPT = Path(__file__).with_name("blender_cloth.py")
 SIM_NOISE = 0.06  # the strain a well-fitting garment shows in the sim (see build's verdict)
+HANGER_SKIN = 0.25  # the hanger's collision skin in triangle sizes (5 mm at 2 cm; 1 cm held a coat 4 cm up, bouncing)
+PREV_APART = 6  # frames between the sim's last positions and Vprev (the "still moving" measure)
 VERSION = 1  # bump with any change to the mesh, placement or sim job: results are cached by it
 
 # Blender cloth settings per fabric (mass per vertex at ~2 cm triangles, spring stiffnesses in Blender's units),
@@ -600,6 +602,74 @@ class Body:
         b = Body({"V": V, "F": self._faces, "J": J})
         b._m = self.m  # the tape is the body's own (drafting, landmarks on the torso)
         return b, pose
+
+    def arms_down(self, gap: float = 0.07, band: float = 0.05, steps: int = 4) -> list:
+        """Poses lowering both arms about the shoulder joints toward the body's sides (the way a coat is taken off a
+        dummy: arms down first, so the sleeves hang beside the body on the hanger instead of staying splayed in the
+        A-pose). Each arm turns in its own plane (the upper arm and straight down) until its forearm and hand come
+        within `gap` of the torso; blended over +-band across the plane through the shoulder joint square to the
+        upper arm. Returns [V (n, 3)] for `steps` poses evenly from here to fully down (the last fully down)."""
+        V0 = self.V
+        turns = []
+        for side, sg in (("L", 1.0), ("R", -1.0)):
+            try:
+                sh, el, wr = (self.J[f"{j}.{side}"] for j in ("shoulder", "elbow", "wrist"))
+            except KeyError:
+                continue
+            d1 = (el - sh) / np.linalg.norm(el - sh)
+            down = np.array([0.0, 0.0, -1.0])
+            ax = np.cross(d1, down)
+            if np.linalg.norm(ax) < 1e-3:
+                continue
+            ax /= np.linalg.norm(ax)
+            lim = float(np.linalg.norm(el - sh) + np.linalg.norm(wr - el)) + 0.25
+            d2 = (wr - el) / np.linalg.norm(wr - el)
+
+            def weight(P, sh=sh, el=el, d1=d1, d2=d2, sg=sg, lim=lim):
+                P = np.atleast_2d(P)
+                s = (P - sh) @ d1
+                w = np.clip((s + band) / (2 * band), 0, 1)
+                w = w * w * (3 - 2 * w)
+                ru = np.linalg.norm(P - sh - np.outer(np.clip(s, 0, None), d1), axis=1)
+                t = (P - el) @ d2
+                rf = np.linalg.norm(P - el - np.outer(np.clip(t, 0, lim), d2), axis=1)
+                arm = (sg * (P[:, 0] - sh[0] * 0.5) > 0) & (np.minimum(ru, rf) < 0.14) & (s < lim)
+                return np.where(arm, w, 0.0)
+
+            turns.append((sh, ax, weight(V0), side))
+        if not turns:
+            return [V0.copy()]
+        # the torso: what neither arm moves
+        moving = np.zeros(len(V0), bool)
+        for _, _, w, _ in turns:
+            moving |= w > 0.01
+        tree = cKDTree(V0[~moving])
+
+        def rot(P, c, ax, ang):
+            P = P - c
+            ca, sa = np.cos(ang)[:, None], np.sin(ang)[:, None]
+            return c + P * ca + np.cross(ax, P) * sa + np.outer(P @ ax, ax) * (1 - ca)
+
+        full = []
+        for sh, ax, w, side in turns:
+            el, wr = self.J[f"elbow.{side}"], self.J[f"wrist.{side}"]
+            # the forearm and hand: what meets the torso first (the upper arm's inside lies against the lat already)
+            far = (w > 0.99) & ((V0 - el) @ ((wr - el) / np.linalg.norm(wr - el)) > 0.0)
+            best = 0.0
+            for ang in np.radians(np.arange(2.0, 80.0, 2.0)):
+                P = rot(V0[far], sh, ax, np.full(far.sum(), ang))
+                if tree.query(P)[0].min() < gap:
+                    break
+                best = ang
+            full.append(best)
+        poses = []
+        for k in range(1, steps + 1):
+            V = V0.copy()
+            for (sh, ax, w, _), ang in zip(turns, full):
+                V = rot(V, sh, ax, ang * k / steps * w)
+            poses.append(V)
+        self._arms_down_deg = [float(np.degrees(a)) for a in full]
+        return poses
 
     def neck_rows(self) -> list:
         """Sections across the neck axis every 5 mm (-40..+120 mm from the neck joint): girth, centroid offset from
@@ -1393,6 +1463,23 @@ def rest_shape(M: dict, X0: np.ndarray, stiff: np.ndarray, smooth: bool) -> np.n
     return R
 
 
+def _hang_pins(state: dict, Mx: dict, Xx: np.ndarray) -> np.ndarray:
+    """The old pinned hang's vertices (state {"hang": {"pins": [...], "hook", "rack"}}): a hanger loop holds a patch,
+    not a vertex: every vertex within `radius` of a named pin point (start positions)."""
+    pins = [Mx["points"].get(p, Mx["marks"].get(p)) for p in state["hang"].get("pins", [])]
+    if None in pins:
+        raise KeyError(f"hang pins: no such point/mark in {state['hang'].get('pins')}")
+    rad = float(state["hang"].get("radius", 0.03))
+    return np.unique(np.concatenate([np.where(np.linalg.norm(Xx - Xx[p], axis=1) < rad)[0] for p in pins]))
+
+
+def _rack_hanger(state: dict) -> dict:
+    """The old pinned hang's rack capsules as a hanger dict (for the support measure: no arms, no hook)."""
+    segs = [(np.asarray(a, float), np.asarray(b, float), (r, r), (r, r), "rack")
+            for a, b, r in (state["hang"].get("rack") or [])]
+    return {"segments": segs, "rail": []}
+
+
 def cloth_job_backend(g: dict) -> str:
     from . import cloth_job
     return cloth_job.backend_of(g)
@@ -1435,13 +1522,25 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         M, X0 = Ms, Xs
     fab_s, fab = _fabric_at(g, hs), _fabric_at(g, h)
     state = g.get("state", "worn")
-    hang = isinstance(state, dict) and "hang" in state
+    hang = isinstance(state, dict) and "hang" in state or state == "hung"
+    from . import hanger as hangmod
+    hspec = hangmod.spec_of(state)
+    # hung on a hanger: the hanger is put inside the dressed garment where the body's shoulders were (its hook clear of
+    # the collar the garment starts with), the body goes and the garment settles onto it; no pins
+    hg = hangmod.fit(body, hspec, garment_X=Xs) if hspec is not None else None
+    hmesh = hangmod.meshes(hg) if hg is not None else []
+    harr = {}
+    for o in hmesh:
+        harr[f"{o['name']}V"], harr[f"{o['name']}F"] = o["V"], o["F"]
+    # before the body goes, its arms come down to its sides with the garment on (stage "lower"): taken off a dummy in
+    # the A-pose, a coat's sleeves stayed splayed on the hanger
+    lower = {"bodyLower": np.stack(body.arms_down())} if hg is not None and g.get("lower_arms", True) else {}
     code = hashlib.sha1(SCRIPT.read_bytes()).hexdigest()
     # keyed on the sim's inputs themselves (start positions, pattern, triangles, seams, stitches, interfacing, both
     # meshes) and the Blender side's code, not on cloth.py: a change there that moves nothing doesn't re-simulate
     inputs = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
         Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
-        *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ())))).hexdigest()
+        *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values()))).hexdigest()
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
     from . import cloth_job
     backend = cloth_job.backend_of(g)
@@ -1453,11 +1552,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     cache = _cache_dir() / f"{key}.npz"
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth),
-           "coarse_mesh": Ms if refine else None, "hung": hang}
+           "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
     if cache.exists() and not render:
         d = np.load(cache)
         res["V_sim"] = d["V"]
         res["V_coarse"] = d["Vc"] if "Vc" in d else None
+        res["V_prev"] = d["Vprev"] if "Vprev" in d else None
         res["log"] = str(d["log"])
     elif cached_only:
         return None
@@ -1472,25 +1572,22 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in Ms["names"]},
                "made": made_pieces(Ms, stiff_s),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
-                                    "hang_frames", "hang_sew_force") if k in g}}
+                                    "hang_frames", "hang_sew_force", "hang_air", "lower_frames") if k in g}}
         if g.get("assemble", True):
             cfg["assemble"] = _assembly(Bp, Ms, body)
         pins_of = None
-        if hang:
+        if hg is not None:
+            cfg["hanger"], cfg["hanger_thickness"] = hangmod.to_job(hg), HANGER_SKIN * hs
+            cfg["lower"] = bool(lower)
+        elif hang:
             def pins_of(Mx, Xx):
-                pins = [Mx["points"].get(p, Mx["marks"].get(p)) for p in state["hang"].get("pins", [])]
-                if None in pins:
-                    raise KeyError(f"hang pins: no such point/mark in {state['hang'].get('pins')}")
-                # a hanger loop holds a patch, not a vertex: every vertex within `radius` of a pin (start positions)
-                rad = float(state["hang"].get("radius", 0.03))
-                return np.unique(np.concatenate([np.where(np.linalg.norm(Xx - Xx[p], axis=1) < rad)[0]
-                                                 for p in pins]))
+                return _hang_pins(state, Mx, Xx)
             cfg["pins"] = [int(i) for i in pins_of(Ms, Xs)]
             cfg["hook"] = state["hang"].get("hook")
             cfg["rack"] = state["hang"].get("rack")  # [[a, b, radius], ...] colliders (a coat rack's pole, arms)
             cfg["pin_spread"] = state["hang"].get("spread", 0.3)
         arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
-                      piece=Ms["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64),
+                      piece=Ms["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64), **harr, **lower,
                       **({"bodyPoses": np.stack([body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)]
                                                 + [body.V]), "bodyV0": body_p.V} if smooth else {}))
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
@@ -1504,21 +1601,27 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                     "refine_frames": int(g.get("refine_frames", 40)), "refine_ease": int(g.get("refine_ease", 15)),
                     "body": not hang}
             pins = np.zeros(0, np.int64)
-            if hang:
+            if hg is not None:
+                rcfg["hanger"], rcfg["hanger_thickness"] = hangmod.to_job(hg), HANGER_SKIN * h
+            elif hang:
                 pins = pins_of(M, X0)
                 rcfg["pins"] = [int(i) for i in pins]
                 rcfg["rack"] = state["hang"].get("rack")
             progress(f"refine at {h * 100:.1f} cm: {len(X0)} verts")
             d2, lines2 = _blender_job(job_dir, rcfg, dict(X=X0, S=S, uv=M["uv"], F=M["F"], sew=M["sew"],
                                                           stitch=M["stitch"], stiff=interfacing(Bp, M),
-                                                          bodyV=body.V, bodyT=body.T, piece=M["piece"]), name, log,
+                                                          bodyV=body.V, bodyT=body.T, piece=M["piece"], **harr),
+                                            name, log,
                                             progress, backend=backend, names=M["names"])
             Vs = d2["V"]
+            d = d2
             lines = lines + lines2
         res["V_sim"], res["V_coarse"] = Vs, Vc
+        res["V_prev"] = d.get("Vprev")
         res["log"] = "\n".join(lines)
         log(f"cloth {name}: simulated in {time.time() - t:.0f} s")
-        np.savez_compressed(cache, V=Vs, log=res["log"], **({"Vc": Vc} if Vc is not None else {}))
+        np.savez_compressed(cache, V=Vs, log=res["log"], **({"Vc": Vc} if Vc is not None else {}),
+                            **({"Vprev": res["V_prev"]} if res.get("V_prev") is not None else {}))
         if out_dir is None and not os.environ.get("HIFIPUSHIE_CLOTH_KEEP"):  # the job's files (MBs) go
             import shutil
             shutil.rmtree(job_dir, ignore_errors=True)
@@ -1565,6 +1668,14 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                                "corrupt_pieces": ig_sim["corrupt_pieces"],
                                "crumpled": {p: v["crumpled"] for p, v in ig_sim["pieces"].items() if v["crumpled"] > 0.01}}
     res["sizing"] = sizing(res)
+    if hang:  # what carries it: the hanger's arms by contact (pins: the old pinned hang), and is the hanger inside it
+        if hg is not None:
+            pins_h, hx = np.zeros(0, np.int64), hg
+        else:
+            pins_h, hx = _hang_pins(state, M, X0), _rack_hanger(state)
+        res["support"] = hangmod.support(res["V_sim"], M, hx, pins_h, res.get("V_prev"), frames_apart=PREV_APART)
+        res["on_hanger"] = hangmod.on_hanger(res["V"], M, hg) if hg is not None else None
+        res["hanger_ok"], res["hanger_line"] = hangmod.verdict(res["support"], res["on_hanger"])
     # the verdict reads both: a pattern smaller than the body (negative ease) can't show as a small garment in the
     # sim (the body holds it out), it shows as cloth stretched past its limit there
     tight = [r for r, v in res["sizing"]["rows"].items() if v["ease"] < -0.01]  # under the body by over 1%
@@ -1579,6 +1690,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     elif strained:
         res["fit"]["verdict"] = "STRAINED at " + ", ".join(strained)
     ig = res["integrity"]
+    if hang and not res["hanger_ok"]:  # hung: a garment not hanging on its hanger is said before anything else
+        res["fit"]["verdict"] = res["hanger_line"].split(": supported by")[0] + " | " + res["fit"]["verdict"]
     if ig["corrupt_pieces"] or ig["twisted_seams"]:  # a tangled garment's fit means nothing: said first
         res["fit"]["verdict"] = ("CORRUPT: " + ", ".join(
             f"{p} ({ig['pieces'][p]['crumpled'] * 100:.0f}% crumpled, {ig['pieces'][p]['intersections']} crossings)"
@@ -2033,8 +2146,8 @@ class ClothError(ValueError):
 
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
-                "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "refine_frames",
-                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "_trace"}
+                "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
+                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "_trace"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -2091,10 +2204,15 @@ def validate(spec: dict) -> None:
             if len(st) != 1 or next(iter(st)) not in ("hang", "drape"):
                 raise ClothError(f'{where}: state is "worn", "hung", "draped", {{"hang": {{...}}}} or {{"drape": {{...}}}}')
             if "hang" in st:
-                hg = st["hang"]
-                if not isinstance(hg.get("pins"), list) or not hg["pins"]:
-                    raise ClothError(f'{where}: hang needs "pins": ["piece:point", ...] (a named outline point or mark)')
-                if not (isinstance(hg.get("hook"), list) and len(hg["hook"]) == 3):
+                hg = st["hang"] or {}
+                if not hg.get("pins"):  # on a hanger (the way a person hangs it)
+                    from . import hanger as hangmod
+                    bad = set(hg) - {"hanger", "rail"}
+                    if bad:
+                        raise ClothError(f'{where}: hang is {{"hanger": {{...}}, "rail": {{...}} | false}} (or the old '
+                                         f'pinned {{"pins", "hook", "rack"}}); unknown {sorted(bad)}')
+                    hangmod.validate(hg, where)
+                elif not (isinstance(hg.get("hook"), list) and len(hg["hook"]) == 3):
                     raise ClothError(f'{where}: hang needs "hook": [x, y, z]')
                 for r in hg.get("rack") or []:
                     if not (isinstance(r, list) and len(r) == 3 and len(r[0]) == 3 and len(r[1]) == 3):
@@ -2105,9 +2223,6 @@ def validate(spec: dict) -> None:
                     raise ClothError(f'{where}: drape "over" is "model" (its whole surface) or "body" (its base body)')
         elif st not in ("worn", "hung", "draped"):
             raise ClothError(f'{where}: state is "worn", "hung", "draped" or an object (see guide(topic="cloth"))')
-        if st == "hung":
-            raise ClothError(f'{where}: "hung" needs where: {{"hang": {{"pins": ["stand:bottomLeft"], "hook": [x, y, z], '
-                             '"rack": [[a, b, r], ...]}}}')
         if g.get("quality", "final") not in ("draft", "final"):
             raise ClothError(f'{where}: quality is "draft" (one coarse sim, ~1 min) or "final" (coarse then refined)')
         for k, lo, hi in (("resolution", 0.004, 0.05), ("coarse", 0.008, 0.05)):
@@ -2147,6 +2262,8 @@ def _state(g: dict) -> dict | str:
     st = g.get("state", "worn")
     if st == "draped":
         return {"drape": {}}
+    if st == "hung":  # on the default hanger, on a rail
+        return {"hang": {"hanger": {}}}
     return st
 
 
@@ -2298,6 +2415,8 @@ def report(gname: str, res: dict) -> str:
         + (f"; crumpled > 1%: {', '.join(f'{p} {v * 100:.0f}%' for p, v in cr.items())}" if cr else "; nothing crumpled")
         + (f"; twisted seams {ig['twisted_seams']}" if ig["twisted_seams"] else "")
         + f" (the sim before the clean-up: {ig['sim']['self_intersections']} crossings)")
+    if res.get("hanger_line"):
+        L.append("  hanger: " + res["hanger_line"])
     sh = res["shape"]
     L.append(f"  surface (sim -> final): crinkle {sh['sim']['crinkle_deg']} -> {sh['final']['crinkle_deg']} deg median "
              f"between neighbouring triangles (smooth cloth reads ~3-5), {sh['sim']['crinkle_mm']} -> "
@@ -2682,8 +2801,11 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         return None, "\n".join(texts)
     bod = results[0][2]["body"]
     hung = [g for _, g, _ in results if isinstance(_state(g), dict) and "hang" in _state(g)]
-    if hung and len(hung) == len(results):  # hung garments: the body is gone, the rack shows
+    if hung and len(hung) == len(results):  # hung garments: the body is gone, the hanger and rail (or rack) show
         body = False
+        for gn, _, res in results:
+            for o in res.get("hanger_meshes") or []:
+                objs.append(dict(o, name=f"{o['name']}_{gn}"))
         for k, (a, b, r) in enumerate([c for g in hung for c in (_state(g)["hang"].get("rack") or [])]):
             V, F = _cylinder(a, b, r)
             objs.append({"name": f"rack{k}", "V": V, "F": F, "color": "#8a6b45"})
@@ -2699,7 +2821,7 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g)
             o.update(uv=uv, maps={k: str(v) for k, v in maps.items() if k != "texels_per_m"})
         objs.append(o)
-    allV = np.concatenate([o["V"] for o in objs])
+    allV = np.concatenate([o["V"] for o in objs if not o["name"].startswith("rail_")])  # the rail runs out of frame
     box = (allV.min(0) - 0.05, allV.max(0) + 0.05)
     if focus is not None:
         if isinstance(focus, str):
