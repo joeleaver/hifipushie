@@ -1156,6 +1156,8 @@ class Field:
             self.H = cut_neck(T, self.H, c)
         from . import terrain_ground
         gcfg = terrain_ground.config(T)
+        if gcfg is not None:  # (mown ground graded smooth: terrain_ground.grade_mown)
+            self.H = terrain_ground.grade_mown(T, self.H, self.c)
         if gcfg is None:  # (no ground character: sand traps dug into the grid, as 2-cell blurs)
             for m, depth, *_ in bunkers or ():
                 self.H = dig_bunker(T, self.H, m, depth)
@@ -4627,7 +4629,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -4645,7 +4647,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     (terrain_ground.clutter: bushes on the scrub, tussocks and tall grass in rough grass, boulders on the shore;
     0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
     blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
-    "exposure"}; default the hazy sky every earlier round was judged under."""
+    "exposure"}; default the hazy sky every earlier round was judged under. grass=False leaves the turf's tiling
+    detail out (to tell what it adds)."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -4722,7 +4725,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
         notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
     GD = M.get("ground_detail")
-    if GD and textured and not channel:  # the turf's tiling detail over the baked maps (as an engine draws it)
+    if GD and textured and not channel and grass:  # the turf's tiling detail over the baked maps (as an engine draws it)
         job["grass"] = [{"albedo": str((out / g["albedo"]).resolve()), "normal": str((out / g["normal"]).resolve()),
                          "size": g["size_m"], "fade": g.get("fade_m", GD["fade_m"]), "weights": g["weights"]}
                         for g in GD.get("swatches") or [GD]]

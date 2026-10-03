@@ -74,6 +74,27 @@ def config(T):
     return {"lip": {**LIP, **(g.get("lip") or {})}, "bunker": {**BUNKER, **(g.get("bunker") or {})}}
 
 
+MOWN_GRADE = {"smooth": 5.0, "max": 0.4}  # mown ground graded: smoothed over ~5 m, by at most 0.4 m (Field: grade_mown)
+
+
+def grade_mown(T, H, c):
+    """Mown ground (fairways, greens, lawns) is graded: the grid's player-scale lumps (terrain_detail's undulation and
+    hummocks, a few metres across) smoothed out under it, by at most MOWN_GRADE["max"] (a lip or a bank beside it isn't
+    dragged in). Under a high sun those lumps shaded a fairway in soft dark and light blotches."""
+    from . import terrain_design as design
+    m = np.zeros(H.shape)
+    for name, mask in (getattr(T, "cover", None) or {}).items():
+        typ = design._spec_cover(T, name).get("type", name)
+        if KIND_OF.get(typ) == "mown":
+            m = np.maximum(m, np.clip(np.asarray(mask, float), 0, 1))
+    if not m.any():
+        return H
+    m = ndimage.gaussian_filter(m, 1.0)
+    Hs = ndimage.gaussian_filter(H, MOWN_GRADE["smooth"] / c)
+    d = np.clip(Hs - H, -MOWN_GRADE["max"], MOWN_GRADE["max"])
+    return H + m * d
+
+
 def _grid_at(a, xy, x0, y0, c):
     """A per-cell grid [iy, ix] at points, as Materials._grid reads it (cubic B-spline, no prefilter)."""
     from . import fieldjit
@@ -633,8 +654,9 @@ def write_grass(out_dir, layers=None):
     return {**{k: v for k, v in out[0].items() if k != "kind"}, "swatches": out,
             "projection": "top: uv = world (x, y) / size_m", "fade_m": list(GRASS_FADE),
             "recipe": "Per swatch, where its layers weigh w (_WEIGHTS / the weights map), on ground and cliff tiles: "
-                      "uv = worldpos.xy / size_m, and a second sampling at uv / 1.618 + (0.37, 0.71), mixed 50/50 to "
-                      "break the repeat; albedo: macro x (1 + w f (2 albedo - 1)); normal: the detail normal (+x east, "
+                      "uv = worldpos.xy / size_m, and a second sampling at uv / 1.618 + (0.37, 0.71), CHOSEN between "
+                      "by a smooth noise mask over ~8 m patches (smoothstep 0.42..0.58 of value noise at worldpos / 8 m) "
+                      "to break the repeat (mixed 50/50 the two lattices beat into ~5 m blotches under a high sun); albedo: macro x (1 + w f (2 albedo - 1)); normal: the detail normal (+x east, "
                       "+y north) RNM-combined onto the macro normal by w f; f = 1 - smoothstep(fade_m[0], fade_m[1], "
                       "view distance)."}
 

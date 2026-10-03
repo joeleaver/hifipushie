@@ -519,7 +519,12 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
             tn[live] = _unit(t2)
     # roughness varies over a metre or so (one value per layer read as plastic, the wet band most of all)
     with _span("bake/roughness grain"):
-        rgh = np.clip((Wt @ layers_rough) * (0.85 + 0.35 * _grain(X)), 0.05, 1.0)
+        # (on rock and wet rock; grass and sand only a little: a mown fairway's 0.77-1.0 roughness patches caught a
+        # high sun as soft sheen blotches a few metres across)
+        lr = getattr(mats, "layers", None) or []
+        stony = sum((Wt[:, i] for i, nm in enumerate(lr) if nm in ("rock", "wet_rock")), np.zeros(len(Wt)))
+        amp = 0.35 * stony + 0.06 * (1.0 - stony)
+        rgh = np.clip((Wt @ layers_rough) * (1.0 - amp * (0.43 - _grain(X))), 0.05, 1.0)
     q8 = lambda a: np.round(a * 255).clip(0, 255).astype(np.uint8)
     out = {"height": height, "normal": q8(tn * 0.5 + 0.5), "basecolor": q8(np.clip(col, 0, 1)),
            "rough": q8(np.clip(rgh, 0.02, 1)), "bad": bad,

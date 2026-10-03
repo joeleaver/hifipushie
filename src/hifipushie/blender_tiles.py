@@ -365,8 +365,8 @@ def _detail(m, D, lines=None):
 
 def _grass(m, G):
     """The grass detail as the manifest's ground_detail recipe draws it: the turf swatch laid from above (uv = world
-    x, y / size, a second sampling at 1.618 x offset mixed in half), weighted by the grass/scrub layers' weights and
-    faded out with the view distance; albedo multiplies the baked base colour, the normal is RNM-combined onto the
+    x, y / size, a second sampling at 1.618 x offset, chosen between in ~8 m patches), weighted by the grass/scrub
+    layers' weights and faded out with the view distance; albedo multiplies the baked base colour, the normal is RNM-combined onto the
     baked one."""
     nt = m.node_tree
     bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
@@ -394,14 +394,25 @@ def _grass(m, G):
     uv = _xyz(nt, P[0], P[1], 0.0)
     v1 = _vmath(nt, "SCALE", uv, scale=1.0 / G["size"])
     v2 = _vmath(nt, "ADD", _vmath(nt, "SCALE", uv, scale=1.0 / (G["size"] * 1.618)), _xyz(nt, 0.37, 0.71, 0.0))
+    # the two samplings CHOSEN between by a smooth mask over ~8 m patches, not averaged: averaged, their normals
+    # cancelled where the two lattices ran out of phase and added where in phase, and the beat of the 2 m and 3.2 m
+    # periods (~5 m) shaded the turf in soft dark and light blotches under a high sun (hole 7 at noon)
+    mz = nt.nodes.new("ShaderNodeTexNoise")
+    mz.inputs["Scale"].default_value = 1.0 / 8.0
+    mz.inputs["Detail"].default_value = 1.0
+    nt.links.new(uv, mz.inputs["Vector"])
+    mk = nt.nodes.new("ShaderNodeMapRange")
+    mk.interpolation_type = "SMOOTHSTEP"
+    mk.inputs["From Min"].default_value, mk.inputs["From Max"].default_value = 0.42, 0.58
+    nt.links.new(mz.outputs["Fac"], mk.inputs["Value"])
     am = nt.nodes.new("ShaderNodeMix")
     am.data_type = "RGBA"
-    am.inputs["Factor"].default_value = 0.5
+    nt.links.new(mk.outputs["Result"], am.inputs["Factor"])
     nt.links.new(_tex(nt, G["albedo"], v1), am.inputs["A"])
     nt.links.new(_tex(nt, G["albedo"], v2), am.inputs["B"])
     dec = lambda col: _vmath(nt, "SUBTRACT", _vmath(nt, "SCALE", col, scale=2.0), 1.0)
-    nd = _sep(nt, _vmath(nt, "NORMALIZE", _vmath(nt, "ADD", dec(_tex(nt, G["normal"], v1)),
-                                                   dec(_tex(nt, G["normal"], v2)))))
+    nd = _sep(nt, _vmath(nt, "NORMALIZE", _mixv(nt, dec(_tex(nt, G["normal"], v1)), dec(_tex(nt, G["normal"], v2)),
+                                                mk.outputs["Result"])))
     proj = lambda A: _vmath(nt, "NORMALIZE", _vmath(nt, "SUBTRACT", A, _vmath(
         nt, "SCALE", Nv, scale=_vmath(nt, "DOT_PRODUCT", Nv, A))))
     Tt, Bt = proj(_xyz(nt, 1.0, 0.0, 0.0)), proj(_xyz(nt, 0.0, 1.0, 0.0))
@@ -648,7 +659,9 @@ def _water(level, L=None):
     """The sea: a plane with a noise ripple. L (the light preset) may set "water" (linear base colour) and
     "water_roughness"; water's IOR is 1.33 (the Principled default 1.5 reflected ~40% more of the pale low sky)."""
     L = L or {}
-    bpy.ops.mesh.primitive_plane_add(size=8000, location=(500, 400, level))
+    # (out past the horizon: an 8 km plane ended ~4 km off and the sky below the horizon showed as a pale band between
+    # the sea's edge and the sky; the eye's horizon is ~16 km from 20 m up, ~45 km from 150 m)
+    bpy.ops.mesh.primitive_plane_add(size=200000, location=(500, 400, level))
     w = bpy.context.object
     wm = bpy.data.materials.new("water")
     wm.use_nodes = True
@@ -726,6 +739,9 @@ def run(job):
                 for s, m in enumerate(ob.data.materials):
                     if not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
                         ob.data.materials[s] = mat
+                    elif ch and m.name not in done:  # (first: under the detail recipe a channel view drew everything)
+                        _channel(m, ch)
+                        done.add(m.name)
                     elif job.get("layers") and m.name not in done:
                         _layered(m, job["layers"])
                         done.add(m.name)
@@ -733,9 +749,6 @@ def run(job):
                         stem = os.path.splitext(os.path.basename(p))[0]
                         ln = os.path.join(os.path.dirname(p), "maps", stem + "_lines.png")
                         _detail(m, job["detail"], ln if os.path.exists(ln) else None)
-                        done.add(m.name)
-                    elif ch and m.name not in done:
-                        _channel(m, ch)
                         done.add(m.name)
                 if not len(ob.data.materials):
                     ob.data.materials.append(mat)
@@ -840,7 +853,8 @@ def run(job):
         mxr = wn.new("ShaderNodeMath")  # (and in reflections: the sea mirrors the sky the eye sees)
         mxr.operation = "MAXIMUM"
         world.node_tree.links.new(lp.outputs["Is Camera Ray"], mxr.inputs[0])
-        world.node_tree.links.new(lp.outputs["Is Glossy Ray"], mxr.inputs[1])
+        if L.get("sky_glossy", True):
+            world.node_tree.links.new(lp.outputs["Is Glossy Ray"], mxr.inputs[1])
         world.node_tree.links.new(mxr.outputs[0], mx.inputs["Factor"])
         world.node_tree.links.new(sky.outputs["Color"], mx.inputs["A"])
         world.node_tree.links.new(hs_out, mx.inputs["B"])
@@ -856,7 +870,7 @@ def run(job):
     sun.data.angle = 0.02
     scene.collection.objects.link(sun)
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
-    cam.data.clip_start, cam.data.clip_end = 0.1, 8000
+    cam.data.clip_start, cam.data.clip_end = 0.1, 250000  # (the sea reaches the horizon)
     scene.collection.objects.link(cam)
     scene.camera = cam
     lamp = bpy.data.objects.new("lamp", bpy.data.lights.new("lamp", "POINT"))  # a headlamp for views inside caves
