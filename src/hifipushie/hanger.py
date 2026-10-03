@@ -239,11 +239,16 @@ def field(P: np.ndarray, h: dict, parts: tuple | None = None, rail: bool = True,
     return (d, np.asarray(names)[k]) if with_part else d
 
 
-def meshes(h: dict, voxel: float = 0.0025) -> list:
+def meshes(h: dict, voxel: float = 0.0025, guard: float = 0.0) -> list:
     """[{"name", "V", "F", "color"}]: the hanger as one closed mesh (its own field meshed: arms, hook, bar), the rail
-    and posts as another."""
+    and posts as another. guard > 0 (the sim's collider, not the render): the hook's rod is that thick, so cloth
+    triangles much larger than the 6 mm wire can't fold through it (the collar crossed the rod 2-4x at 2 cm)."""
     from skimage import measure
     out = []
+    if guard > 0:
+        a, b = h["rod"]
+        b = b - [0, 0, guard]  # (under the curl: the rail sits in it)
+        h = dict(h, segments=list(h["segments"]) + [(a, b, (guard, guard), (guard, guard), "hook")])
     for nm, parts, rail, col in (("hanger", None, False, h["colour"]), ("rail", ("rail", "post"), True, RAIL_COLOUR)):
         segs = [s for s in h["segments"] if parts is None or s[4] in parts] if not rail else []
         rl = h["rail"] if rail else []

@@ -144,7 +144,7 @@ def _sim_object(name, X, F, sew, uv, stiff, pins, fab, self_collision, frames, q
 TRACE = {}
 PREV = {}  # the last stage's positions PREV_APART frames before its end (cloth.py's "still moving" measure)
 PREV_APART = 6
-HANG_AIR = 8.0  # air damping while a garment settles onto its hanger (job "hang_air")
+HANG_AIR = 15.0  # air damping while a garment settles onto its hanger (job "hang_air")
 
 
 def _grab(ob):

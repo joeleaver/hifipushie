@@ -620,6 +620,30 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the stand/collar 18/11% crumpled where the hanger loop is gathered (the 2 cm run: 0 crossings). Open: cuffs start
     as circles round an elliptic wrist (pushed out 18 mm, so the made cuff is too big and ruffles), collar points stand
     up, the back crossings at 1 cm.
+  - On a hanger (2026-10-02, "hanger" agent, renders h01-h1x; the user: "none of the coats ended up hanging on their
+    hangers": every backend held the coat by pin patches at the neck, the rack decoration). `hanger.py`: a shaped
+    hanger fitted to the body (`fit`: arms under the shoulders' upper surface (vertical rays, `clear` 8 mm) along their
+    slope, width = shoulder points - 2 cm, wood arms 1.6 cm round at the centre broadening to 4 cm deep rounded ends,
+    optional `bar`; the hook's rod up the neck's centre to 5 cm over the garment's start collar, curled over a face-out
+    bar running BACK to a post: a through rail put a post in front of the coat), meshed from its own field as one
+    closed collider (OUTWARD normals: the first mesh's inward faces held the cloth inside the arms and the coat climbed
+    them). State "hung" = `{"hang": {"hanger": {...}, "rail": {...}}}` (the old pinned hang kept). It sits inside the
+    body while the garment is dressed; stage "lower" (`Body.arms_down`: arms turned about the shoulder joints until the
+    forearms are 7 cm off the torso, 26 deg here; poses `bodyLower`) brings the sleeves to the sides (left in the A-pose
+    they hung splayed); then the body goes and gravity settles it onto the hanger with nothing pinned. Blender: seams
+    WELDED while hung (as springs they opened under the weight, 36 mm mean, and the arms came out through the shoulder
+    seams), hanger skin `HANGER_SKIN` 0.25 h (1 cm held the coat 4 cm up, bouncing), air damping `HANG_AIR`, 240
+    frames, the sim's rod thickened to `HOOK_GUARD` 0.4 h (2 cm cloth folded through the 6 mm wire); the fine refine is
+    SKIPPED on a hanger (the coarse hang carried onto the 1 cm mesh: the settle flailed 62 mm/frame and crossed at the
+    back). ZOZO: hanger + rail static colliders from the start, the body's collision window ends at the hang; the
+    lower stage moves the arms object. Newton: static meshes; it can't move its body, so "lower" is skipped there.
+    Report `hanger:` line (`hanger.support`, `on_hanger`, `verdict`): the load each support carries = cloth mass by
+    nearest support over the cloth graph (contact within 8 mm, by part, pins), still moving (p99 move over the last 6
+    frames, `Vprev` from every runner), floor; inside = rays front/back/up from 40-95% along each arm meet cloth, the
+    rod crosses no cloth, cloth in 6+ of 8 sectors round it near the garment's top. NOT ON ITS HANGER leads the
+    verdict; a coat floating in front fails (`tests/test_cloth.py`). ZOZO 2 cm (h04): on the hanger, arms 56/44%, 0
+    pins, reads as a coat on a hanger. Disk: run_zozo prunes vert_N.bin while running, deletes its session after, and
+    refuses < 20 GB free / stops < 10 GB; cloth sims refuse < 20 GB.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

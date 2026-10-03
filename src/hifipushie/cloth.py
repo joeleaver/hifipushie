@@ -40,6 +40,7 @@ DESIGNS = Path(__file__).with_name("cloth_designs.json")
 SCRIPT = Path(__file__).with_name("blender_cloth.py")
 SIM_NOISE = 0.06  # the strain a well-fitting garment shows in the sim (see build's verdict)
 HANGER_SKIN = 0.25  # the hanger's collision skin in triangle sizes (5 mm at 2 cm; 1 cm held a coat 4 cm up, bouncing)
+HOOK_GUARD = 0.4  # the hook's rod as the sim sees it: this many coarse triangle sizes thick (8 mm at 2 cm)
 SIM_MIN_FREE_GB = 20.0  # a cloth sim isn't started with less free disk (run_zozo.py also stops a run under 10 GB)
 PREV_APART = 6  # frames between the sim's last positions and Vprev (the "still moving" measure)
 VERSION = 1  # bump with any change to the mesh, placement or sim job: results are cached by it
@@ -1536,7 +1537,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     hg = hangmod.fit(body, hspec, garment_X=Xs) if hspec is not None else None
     hmesh = hangmod.meshes(hg) if hg is not None else []
     harr = {}
-    for o in hmesh:
+    for o in hangmod.meshes(hg, guard=HOOK_GUARD * hc) if hg is not None else []:  # the sim's colliders
         harr[f"{o['name']}V"], harr[f"{o['name']}F"] = o["V"], o["F"]
     # before the body goes, its arms come down to its sides with the garment on (stage "lower"): taken off a dummy in
     # the A-pose, a coat's sleeves stayed splayed on the hanger
@@ -1600,7 +1601,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
         Vs = d["V"]
         Vc = None
-        if refine:
+        if refine and hg is not None:
+            # on a hanger the fine settle is skipped: the coarse hang carried onto the fine mesh is the result (a
+            # 40-frame settle of it in Blender flailed, 62 mm/frame at the end, and crossed at centre back: interpolated
+            # sleeves and fronts lying close cross at 1 cm; the clean-up smooths the carried surface)
+            Vc = Vs
+            Vs = transfer(Ms, Vs, M)
+            if d.get("Vprev") is not None:
+                d = dict(d, Vprev=transfer(Ms, d["Vprev"], M))
+            lines = lines + ["cloth: refine on the hanger skipped: the coarse hang carried onto the fine mesh"]
+        elif refine:
             Vc = Vs
             S = transfer(Ms, Vs, M)
             rcfg = {"mode": "refine", "fabric": fab, "self_collision": bool(g.get("self_collision", True)),
