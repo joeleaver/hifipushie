@@ -674,7 +674,7 @@ def _face(T, p, z):
 
 # ---------------------------------------------------------------- the field
 
-def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None):
+def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None, thin=None):
     """Solid rock character as a field offset (+ carves, - builds): planar facets meeting in crisp creases, and bedding
     (a V notch at each bedding plane, each bed standing proud or set back on its own, stepping over at its edge).
     Continuous everywhere with C0 creases, never jumps: a jump (the nearest cell's plane alone) meshed as steps whose
@@ -682,7 +682,8 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None):
     with split normals (`split_normals`). The heightfield's own rock (terrain_rock) moves the ground in plan only;
     this can overhang. fd: the ground's gradient per point (the face's orientation: facets on irregular triangles laid
     on the face, `facet`); u: 0..1 how much of the point's relief comes from a volume (a cave's walls and roof, which
-    the ground's gradient says nothing about: facets in 3D there)."""
+    the ground's gradient says nothing about: facets in 3D there); thin: 0..1 per point, thin rock (Field.thin_at),
+    where the soft beds are picked out (`strata`: fins and stacks are where the sea does that)."""
     fac = lambda size, seed: facet(p, size, seed, fd, u)
     uvol = u  # (the volumes' share; `u` is reused below)
     profiling.count("facets pts", len(p))
@@ -756,11 +757,58 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None):
                     ob = blk[kb]
                 out = out + 0.0
                 out[kb] += (np.ones(len(p)) * wb)[kb] * ob
+    if thin is not None and THIN_STRATA["depth"] > 0:
+        kt = np.flatnonzero(np.asarray(thin, float) > 1e-3)
+        if len(kt):
+            out = out + 0.0
+            zoff = r["bed_offset"](p[kt, :2]) if r.get("bed_offset") else 0.0
+            # (sqrt: a fin's faces are only partly "thin" by the grid's measure, and the beds should run on across it;
+            # not on the volumes' walls)
+            wv = 1.0 if uvol is None else (1.0 - np.asarray(uvol, float)[kt]) ** 2
+            out[kt] += np.sqrt(np.asarray(thin, float)[kt]) * wv * strata(p[kt], zoff, r["seed"])
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
         with _span("field.joints", leaf=True):
             out = out + _joints(p, r, fd) * (1.0 if jw is None else jw)
     return out
+
+
+def _bed_hash(k, seed):
+    """0..1 per integer bed index (and seed)."""
+    x = np.sin(np.asarray(k, float) * 12.9898 + seed * 78.233) * 43758.5453
+    return x - np.floor(x)
+
+
+def strata(p, zoff, seed, tone=False):
+    """Thin rock's strata (+ carves): beds 1-3 m thick (THIN_STRATA spacing x (1 +- 2 jitter)) in the bed coordinate
+    z + zoff, each with its own hardness: soft beds sit back up to `depth`, hard ones stand flush, how far changing
+    along the strike (~12 m, the bed index a noise coordinate) so no bed is a ruled line. Beds hand over across +-ramp
+    (>= 2 voxels in all: finer meshed as sawtooth). Durdle Door's fin reads by these, not by its facets.
+    tone=True: each point's bed softness instead (0..1, eased across the planes the same way: the colour's banding)."""
+    S, J, ramp, depth = (THIN_STRATA[k] for k in ("spacing", "jitter", "ramp", "depth"))
+    zb = p[:, 2] + zoff
+    i0 = np.floor(zb / S).astype(np.int64)
+    bnd = lambda i: (i + J * (2 * _bed_hash(i, seed + 31) - 1)) * S  # (bed i spans bnd(i) .. bnd(i + 1))
+    k = np.where(zb < bnd(i0), i0 - 1, np.where(zb >= bnd(i0 + 1), i0 + 1, i0))
+    xy = p[:, :2]
+
+    def rec(i, q):  # how far bed i sits back at points q: soft beds the most, wandering along the strike
+        # (interbedded: about half the beds soft, 0.55-1, the rest hard and flush, as limestone and shale)
+        hsh = _bed_hash(i, seed + 37)
+        soft = np.where(hsh < 0.5, 0.55 + 0.9 * hsh, 0.0)
+        if tone:
+            return soft
+        along = noise.fbm(np.c_[q, i * 13.7], 12.0, 2, seed=seed + 41)
+        return depth * soft * np.clip(0.2 + 1.4 * along, 0, 1)
+    v0 = rec(k, xy)
+    v = v0.copy()
+    # (each plane: half way between the two beds' values on it, eased over +-ramp; beds are >= 2 ramps thick)
+    for side, d in ((-1, zb - bnd(k)), (1, bnd(k + 1) - zb)):
+        t = smoothstep(ramp, -ramp, d)
+        j = np.flatnonzero(t > 0)
+        if len(j):
+            v[j] += t[j] * (rec(k[j] + side, xy[j]) - v0[j])
+    return v
 
 
 def _joints(p, r, fd=None):
@@ -1046,6 +1094,52 @@ def dig_doline(T, H, d):
     return H - d["depth"] * (1 - s) ** 2
 
 
+THIN_LEVELS = 48  # at most this many height levels per thin piece (_local_thickness)
+
+
+def _local_thickness(H, c, r_open, thin):
+    """Where the ground is thin (`thin` > 0: fins, stacks, narrow headlands), the rock's local half-thickness per
+    height level: at each level z, the radius of the largest disc inside {H > z} that covers the cell (the
+    Hildebrand-Ruegsegger local thickness, in whole cells up to r_open), carried 2 cells out into the air and smoothed.
+    Returns (labels, comps): labels (the grid, 0 = not thin) and per piece (j0, i0, z0, dz, hw (nz, ny, nx) m,
+    tw (nz, ny, nx): how much the cap applies, 0 where the rock is r_open thick)."""
+    m = thin > 0.02
+    if not m.any():
+        return None
+    lab, n = ndimage.label(ndimage.binary_dilation(m, iterations=2))
+    pad = 2 * r_open + 3
+    big = r_open * c
+    comps = []
+    for li, sl in enumerate(ndimage.find_objects(lab), 1):
+        j0, j1 = max(sl[0].start - pad, 0), min(sl[0].stop + pad, H.shape[0])
+        i0, i1 = max(sl[1].start - pad, 0), min(sl[1].stop + pad, H.shape[1])
+        Hs, own = H[j0:j1, i0:i1], lab[j0:j1, i0:i1] == li
+        th = thin[j0:j1, i0:i1]
+        zlo = float(Hs[own].min()) - 1.0
+        zhi = float(Hs[own].max()) + 1.0
+        nz = int(min(THIN_LEVELS, max(2, math.ceil((zhi - zlo) / c) + 1)))
+        dz = (zhi - zlo) / (nz - 1)
+        hw = np.zeros((nz,) + Hs.shape)
+        for iz in range(nz):
+            M = Hs > zlo + iz * dz
+            if not M.any():
+                continue
+            edt = ndimage.distance_transform_edt(M)
+            h = np.where(M, 0.5, 0.0)
+            for R in range(1, r_open + 1):
+                core = edt >= R
+                if not core.any():
+                    break
+                # (the cells within R of a core cell: an EDT, not a disc dilation, which cost R^2 per cell)
+                h[(ndimage.distance_transform_edt(~core) <= R) & M] = R
+            # (into the air a little: the surface lies between cells, and carving reaches out to it)
+            h = ndimage.grey_dilation(h, size=(5, 5))
+            hw[iz] = ndimage.gaussian_filter(h, 0.8) * c
+        tw = th[None] * (1.0 - smoothstep(0.6 * big, big, hw))
+        comps.append((j0, i0, zlo, dz, hw, tw))
+    return lab, comps
+
+
 class Field:
     def __init__(self, T, vols: list[Tube], rock=None, dolines=None, cuts=None, bunkers=None):
         self.H = np.ascontiguousarray(T.H, float)
@@ -1080,7 +1174,15 @@ class Field:
             disc = (xx * xx + yy * yy) <= r_open * r_open
             thin = smoothstep(0.5, 2.5, self.H - ndimage.grey_opening(self.H, footprint=disc))
             self.thin = ndimage.gaussian_filter(thin, 1.0)
+            # The relief's own weight keeps thin rock (an arch's fin, slim stacks, narrow headlands): bounded there by
+            # the rock's local half-thickness at the point's height (`thin_cap`), so it can't carve through or cut a
+            # top off. Field.steep (the cliff region, fallen blocks, the heightfield facets' removal) stays as before.
+            self.relief_w = self.steep if THIN_RELIEF <= 0 else self.steep.copy()
             self.steep = self.steep * (1 - 0.9 * self.thin)
+            if THIN_RELIEF <= 0:
+                self.relief_w = self.steep
+            else:
+                self.thin_parts = _local_thickness(self.H, self.c, r_open, self.thin)
             self.grain = _structure_grain(T, self.H, self.c)
             # the heightfield's own facets (terrain_rock: tipped planes on jittered ~5-17 m cells) taken back out where
             # the solid rock gets its own: two facet systems on one face made a moire of lozenges
@@ -1154,6 +1256,48 @@ class Field:
         q = (np.asarray(x, float) - self.x0) / self.c
         return ndimage.map_coordinates(self.steep, [r, q], order=3, prefilter=False, mode="nearest")
 
+    def relief_at(self, x, y):
+        """The rock relief's weight at columns: Field.steep without thin rock's cut (`thin_cap` bounds it there)."""
+        rw = getattr(self, "relief_w", None)
+        if rw is None or rw is self.steep:
+            return self.steep_at(x, y)
+        if fieldjit.ON:
+            return fieldjit.grid_at(rw, _f64(x), _f64(y), self.x0, self.y0, self.c)
+        r = (np.asarray(y, float) - self.y0) / self.c
+        q = (np.asarray(x, float) - self.x0) / self.c
+        return ndimage.map_coordinates(rw, [r, q], order=3, prefilter=False, mode="nearest")
+
+    def thin_at(self, p):
+        """Thin rock at points: (hw, t): the rock's local half-thickness at the point's height (m; inf off thin rock)
+        and how much thin rock's rules apply there (0..1: 0 where the rock is thick)."""
+        hw_, t_ = np.full(len(p), np.inf), np.zeros(len(p))
+        parts = getattr(self, "thin_parts", None)
+        if not parts:
+            return hw_, t_
+        lab, comps = parts
+        iy = np.clip(np.rint((p[:, 1] - self.y0) / self.c).astype(np.int64), 0, lab.shape[0] - 1)
+        ix = np.clip(np.rint((p[:, 0] - self.x0) / self.c).astype(np.int64), 0, lab.shape[1] - 1)
+        L = lab[iy, ix]
+        for li in np.unique(L[L > 0]):
+            k = np.flatnonzero(L == li)
+            j0, i0, z0, dz, hw, tw = comps[li - 1]
+            q = [(p[k, 2] - z0) / dz, (p[k, 1] - self.y0) / self.c - j0, (p[k, 0] - self.x0) / self.c - i0]
+            hw_[k] = ndimage.map_coordinates(hw, q, order=1, mode="nearest")
+            t_[k] = ndimage.map_coordinates(tw, q, order=1, mode="nearest")
+        return hw_, t_
+
+    @staticmethod
+    def thin_cap(R, hw, t):
+        """Rock relief R (+ carves) on thin rock, bounded by its local half-thickness hw: a soft clamp
+        THIN_RELIEF x hw x tanh(R / that), blended in by t (0 where the rock is thick)."""
+        k = np.flatnonzero(t > 0)
+        if not len(k):
+            return R
+        out = np.asarray(R, float).copy()
+        cap = np.maximum(THIN_RELIEF * hw[k], 1e-6)
+        out[k] = out[k] + t[k] * (cap * np.tanh(out[k] / cap) - out[k])
+        return out
+
     def fall_at(self, x, y):
         """0..1: the fallen blocks' density at columns (0 where there are none)."""
         if self.fall is None:
@@ -1166,9 +1310,9 @@ class Field:
         h, s = self.column(p[:, 0], p[:, 1])
         return (p[:, 2] - h) * s
 
-    def volumes(self, p, F, near=None):
+    def volumes(self, p, F, near=None, dvoid=None):
         """Each volume combined into F in order; `near` (if given) gets how close each point is to a volume, 0..1
-        (rock character applies there)."""
+        (rock character applies there); `dvoid` (if given) the distance to the nearest void (a subtract volume)."""
         for vol in self.vols:
             k = np.flatnonzero(np.all((p >= vol.lo) & (p <= vol.hi), axis=1))
             if not len(k):
@@ -1179,6 +1323,9 @@ class Field:
                 F[k] = smax(F[k], np.minimum(rc - np.hypot(p[k, 0] - vol.xy[0], p[k, 1] - vol.xy[1]), p[k, 2] - zc),
                             0.4)
             F[k] = smax(F[k], -d, vol.blend) if vol.op == "subtract" else smin(F[k], d, vol.blend)
+            if dvoid is not None and vol.op == "subtract" and getattr(vol, "kind", None) != "arch":
+                # (an arch goes through thin rock by design: its fin keeps thin rock's rules)
+                dvoid[k] = np.minimum(dvoid[k], d)
             if near is not None:
                 # rock relief on walls and roofs, scaled to the passage (a 1 m slot doesn't take 0.8 m facets), and
                 # none on floors (a person walks there)
@@ -1199,7 +1346,8 @@ class Field:
         near = np.zeros(len(p))
         self.floor_guard = np.ones(len(p))
         depth = -np.asarray(F, float).copy()  # (how far under the open ground: joints are a surface thing)
-        F = self.volumes(p, F, near)
+        dvoid = np.full(len(p), np.inf) if getattr(self, "thin_parts", None) else None
+        F = self.volumes(p, F, near, dvoid)
         guard, self.floor_guard = self.floor_guard, None
         if self.fall is not None:  # fallen blocks at the faces' feet, unioned with a small fillet
             fz = self.fall_at(p[:, 0], p[:, 1])
@@ -1212,12 +1360,24 @@ class Field:
                     F[kf] = smin(F[kf], sd, 0.3)  # (a fillet ~a voxel: a razor contact crease made slivers)
         if self.rock is not None:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
-            w = np.maximum(self.steep_at(p[:, 0], p[:, 1]) * guard, near)
+            rw = self.relief_at(p[:, 0], p[:, 1])
+            nv = None
+            if dvoid is not None:
+                # near a void (a cave or notch; arches go through thin rock by design) the rule stays the old one: the
+                # rock between a face and the void behind it is thin whatever the grid says (full relief over a sea
+                # cave's mouth cut a piece of its roof free 4 m over the heightmap; capping it by the slab's thickness
+                # instead folded cave walls into shards)
+                nv = smoothstep(THIN_VOID, 0.5 * THIN_VOID, dvoid)
+                j = np.flatnonzero(nv > 0)
+                if len(j):
+                    rw = rw.copy()
+                    rw[j] += nv[j] * (self.steep_at(p[j, 0], p[j, 1]) - rw[j])
+            w = np.maximum(rw * guard, near)
             k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 g = self.grain_at(p[k, 0], p[k, 1]) if self.grain is not None else None
                 fd = self.face_dir(p[k, 0], p[k, 1])
-                a_ = self.steep_at(p[k, 0], p[k, 1]) * guard[k]
+                a_ = rw[k] * guard[k]
                 u = near[k] / np.maximum(a_ + near[k], 1e-9)  # (the volumes' share of the relief)
                 profiling.count("field.rock pts", len(k))
                 blk = I = None
@@ -1230,8 +1390,13 @@ class Field:
                                                           sharp=getattr(self.micro, "sharp", None))
                         if "sharp" in I:  # (the maps' share of the blocks weighted as rock_relief weights them)
                             I["sharp"] = I["sharp"] * smoothstep(4.0, 1.5, depth[k]) * (1.0 - u) ** 3
+                hw, tw = self.thin_at(p[k]) if THIN_RELIEF > 0 else (None, None)
+                if nv is not None and tw is not None:  # (none of thin rock's rules near a void: see above)
+                    tw = tw * (1.0 - nv[k])
+                ts = tw
                 with _span("field.rock_relief", leaf=True):
-                    F[k] = F[k] + w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u, blk)
+                    R = w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u, blk, thin=ts)
+                    F[k] = F[k] + (R if tw is None else self.thin_cap(R, hw, tw))
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
                         F[k] = F[k] + w[k] * self.micro(p[k], fd, u, g, I)
@@ -1434,7 +1599,18 @@ class Materials:
             kinds["cut"] = cut
         return W, kinds, mown, rest
 
-    def _paint(self, xy, wxy):
+    def _route(self, xy, kinds):
+        """0..0.8: how worn the routes' ground is at points (None: no routes). Only off mown turf: a way across a fairway
+        or a green is walked on grass (painted over everything it read as a pale sandy band across the fairways)."""
+        if self.routes is None:
+            return None
+        r = np.clip(self._grid(self.routes.astype(float), xy), 0, 1) * 0.8
+        if self.ground is not None and kinds:
+            turf = np.clip(np.asarray(kinds.get("mown", 0.0) + kinds.get("cut", 0.0), float), 0, 1)
+            r = r * (1.0 - smoothstep(0.1, 0.6, turf))
+        return r
+
+    def _paint(self, xy, wxy, rd=None):
         """The display colour before the ground's character: the bare ground's grid (at the warped points), each
         cover's colour painted over it in order with its weight (crisp-edged covers at the points themselves, the
         rest at the warped ones), the roads over everything (sRGB)."""
@@ -1449,9 +1625,9 @@ class Materials:
             acc += (d * rest)[:, None] * self.cover_col[name]
             rest = rest * (1 - d)
         c = acc + rest[:, None] * c
-        if self.routes is not None:
+        if rd is not None:
             arid = self.T.world["kind"] in ("canyon", "dunes", "plateau")
-            rd = np.clip(self._grid(self.routes.astype(float), wxy), 0, 1)[:, None] * 0.8
+            rd = np.broadcast_to(np.asarray(rd, float), (len(xy),))[:, None]
             c = c * (1 - rd) + (np.array([0.78, 0.66, 0.5]) if arid else np.array([0.55, 0.47, 0.36])) * rd
         return c
 
@@ -1481,8 +1657,8 @@ class Materials:
         n = len(P)
         W, kinds, mown, rest = self._covers(P)
         W["earth"] += rest
-        if self.routes is not None:
-            r = np.clip(self._grid(self.routes.astype(float), xy), 0, 1) * 0.8
+        r = self._route(xy, kinds)
+        if r is not None:
             for key in W:
                 W[key] *= 1 - r
             W["earth"] += r
@@ -1526,7 +1702,7 @@ class Materials:
         if self.ground is not None:  # (cover edges wander ~0.6 m: not the grid's straight runs)
             Pf = P * np.array([1.0, 1.0, 0.0])
             wxy = xy + 0.6 * np.c_[noise.fbm(Pf, 4.0, 2, seed=631) - 0.5, noise.fbm(Pf, 4.0, 2, seed=632) - 0.5]
-            c = self._paint(xy, wxy)
+            c = self._paint(xy, wxy, self._route(wxy, kinds))
         else:
             c = np.stack([self._grid(self.display[..., i], xy) for i in range(3)], 1)
         if self.ground is not None:
@@ -1563,6 +1739,19 @@ class Materials:
             if r.get("blocks"):
                 rc = block_colour(P, N, rc, r, self.field.face_dir(P[:, 0], P[:, 1]),
                                   lines=not getattr(self, "lines_in_maps", False))
+            bf = self.field
+            while bf is not None and not hasattr(bf, "thin_at"):
+                bf = getattr(bf, "base", None)
+            if THIN_RELIEF > 0 and THIN_STRATA["depth"] > 0 and bf is not None and getattr(bf, "thin_parts", None):
+                # thin rock's strata in colour too: soft beds (sitting back) darker and warmer, hard ones paler
+                _, tw = bf.thin_at(P)
+                kt = np.flatnonzero(tw > 1e-3)
+                if len(kt):
+                    zoff = r["bed_offset"](P[kt, :2]) if r.get("bed_offset") else 0.0
+                    so = strata(P[kt], zoff, r["seed"], tone=True)
+                    st = np.sqrt(tw[kt])  # (as the geometry's strata)
+                    f = 1 + st * THIN_STRATA["tone"] * (0.3 - so)
+                    rc[kt] = rc[kt] * f[:, None] * (1 + st[:, None] * 0.06 * so[:, None] * np.array([1.0, 0.0, -1.0]))
         # crevices, joints and the backs of overhangs darker (how open the field is half a metre out along the
         # normal: a cheap occlusion that needs no ray tracing, the same in every engine)
         d = 0.8
@@ -1578,6 +1767,11 @@ class Materials:
         return Wm.astype(np.float32), c
 
 
+THIN_STRATA = {"spacing": 1.7, "jitter": 0.2, "ramp": 0.5, "depth": 1.0, "tone": 1.0}  # thin rock's strata
+# (`strata`): bed spacing, jitter share, plane ramp, soft beds' set-back (m); tone: soft beds' darkening
+THIN_VOID = 8.0  # m: within this of a cave or notch thin rock keeps the old rule (Field.steep's tenth)
+THIN_RELIEF = 0.35  # thin rock's relief: at most this share of its local half-thickness (Field.thin_cap); 0 = the old
+# rule (thin fins and stacks took a tenth of the relief: smooth, Durdle Door without its beds)
 THIN_TONE = 1.0  # how much of the full bed tone thin fins take back (Materials, rock colour)
 BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
               "along": 0.10, "under_ledge": 0.12}
@@ -3459,7 +3653,12 @@ def _job_tile(ij):
             if hasattr(field, "front"):
                 # a cliff shell: faces off the visible rock (its back, buried under the heightmap) go in their own
                 # primitive, so an engine or a bake can skip them
-                bur = np.abs(field.front(Ps[Fs].mean(1))) > max(0.3, 2 * cfg["error"][k])
+                # (off it at the centre, unless all three corners are on it: a big face across the turf's step or a
+                # lip's crease has its centre 0.3 m+ off the rock with every corner on it; taken for buried, it was
+                # drawn with the plain matte material: the pale flat triangles at cliff lips. A face with one corner
+                # on the front is the back's edge where it meets it: still buried)
+                thr = max(0.3, 2 * cfg["error"][k])
+                bur = (np.abs(field.front(Ps[Fs].mean(1))) > thr) & (np.abs(field.front(Ps))[Fs].max(1) > thr)
         stem = f"tile_{i}_{j}_lod{k}"
         images, binfo, deferred = None, None, None
         if cfg.get("maps") and (~bur).any():
@@ -3722,8 +3921,22 @@ LIGHTS = {  # render_tiles(light=...) presets: the sky's dust/air (Nishita), sun
     "hazy": {"dust": 0.3, "air": 0.8, "sun_energy": 2.4, "sky_strength": 0.12, "exposure": 0.0},
     # matched to a clear sunny photo (the Pebble 7th): its sky deep blue (v ~0.75 s ~0.45 at the top), crisp shadows
     # exposure metered on the sun's height (`meter` stops per doubling of sin(height) over 25 deg)
-    "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8},
+    "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8,
+              # the sky as the camera sees it, deeper (camera and glossy rays only: the light it casts is unchanged), and
+              # the sea a deep blue body with water's IOR (measured against the photo: the sea there h 212 s 0.45-0.49)
+              "sky_sat": 1.3, "sky_value": 1.12, "sky_horizon_tint": [0.5, 0.72, 1.0],
+              "water": [0.006, 0.028, 0.065], "water_roughness": 0.12,
+              "haze_scale": 3.0},  # (clear air: the photo's sea stays deep blue to the horizon, 3 km off)
 }
+
+
+def _light(light):
+    """A light preset's settings (render_tiles(light=)): a LIGHTS name, a dict, or {} for none."""
+    if isinstance(light, str):
+        return LIGHTS.get(light, {})
+    return light or {}
+
+
 RELIEF_CHART = 2.5  # the ground's maps-only relief on cliff tiles is band-limited as if their texel were this x larger:
 # their charts' texel grids don't line up across a tile border (ground tiles' do), so fine relief differed there
 BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
@@ -4414,7 +4627,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -4432,7 +4645,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     (terrain_ground.clutter: bushes on the scrub, tussocks and tall grass in rough grass, boulders on the shore;
     0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
     blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
-    "exposure"}; default the hazy sky every earlier round was judged under."""
+    "exposure"}; default the hazy sky every earlier round was judged under. grass=False leaves the turf's tiling
+    detail out (to tell what it adds)."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -4473,7 +4687,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
            "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
            "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
-           "haze": float(haze) if haze else None, "notes": notes,
+           "haze": (float(haze) * float(_light(light).get("haze_scale", 1.0))) if haze else None, "notes": notes,
            "props": _site_props(T, box) if props else [], "grade": grade,
            "light": LIGHTS.get(light, light) if isinstance(light, str) else light}
     if textured == "layered":  # the engine recipe: tiling layers over the baked maps
@@ -4509,7 +4723,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
         notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
     GD = M.get("ground_detail")
-    if GD and textured and not channel:  # the turf's tiling detail over the baked maps (as an engine draws it)
+    if GD and textured and not channel and grass:  # the turf's tiling detail over the baked maps (as an engine draws it)
         job["grass"] = [{"albedo": str((out / g["albedo"]).resolve()), "normal": str((out / g["normal"]).resolve()),
                          "size": g["size_m"], "fade": g.get("fade_m", GD["fade_m"]), "weights": g["weights"]}
                         for g in GD.get("swatches") or [GD]]

@@ -245,7 +245,7 @@ def _clutter_mat(kind, sea=None):
         dk = nt.nodes.new("ShaderNodeMapRange")
         nt.links.new(vo.outputs["Distance"], dk.inputs["Value"])
         dk.inputs["From Min"].default_value, dk.inputs["From Max"].default_value = 0.0, 0.6
-        dk.inputs["To Min"].default_value, dk.inputs["To Max"].default_value = 1.15, 0.55
+        dk.inputs["To Min"].default_value, dk.inputs["To Max"].default_value = 1.1, 0.75
         mx = nt.nodes.new("ShaderNodeMix")
         mx.data_type = "RGBA"
         mx.blend_type = "MULTIPLY"
@@ -338,6 +338,95 @@ def _tuft(rng, n, h, spread, lean, dry):
     return np.array(V), F, np.array(C)
 
 
+def _scrub(rng, v):
+    """A coastal scrub bush (~1.1 m across, ~0.8 m tall): woody stems forking up and out from a root crown, and a few
+    hundred small leaf clusters (flattened, jittered 20-face balls) along the twigs' ends and over a lumpy canopy
+    shell, sparse enough that the dark inside and the twigs show between them. Built of lumps (14-22 smooth spheres)
+    it read as a soft stone at a few metres. Sage grey-green, some clusters dry or grey, one variant in four with a
+    few yellow flowers."""
+    import bmesh
+    bm = bmesh.new()
+    sage = np.array([0.095, 0.125, 0.06]) * rng.uniform(0.85, 1.15)  # (linear; darker read as rubble at 10 m)
+    wood = np.array([0.045, 0.035, 0.025])
+    dry = np.array([0.11, 0.09, 0.06])
+    flower = v == 1  # (one variant in four in flower: more read as rubble from 150 m)
+    cols = []
+
+    def tube(pts, r0, r1, sides=5):
+        rings = []
+        for i, p in enumerate(pts):
+            t = i / (len(pts) - 1)
+            d = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]
+            d = d / max(np.linalg.norm(d), 1e-9)
+            a_ = np.cross(d, [0.0, 0.0, 1.0]) if abs(d[2]) < 0.95 else np.cross(d, [1.0, 0.0, 0.0])
+            a_ /= np.linalg.norm(a_)
+            b_ = np.cross(d, a_)
+            r = r0 * (1 - t) + r1 * t
+            rings.append([bm.verts.new(tuple(p + r * (math.cos(k * 2 * math.pi / sides) * a_ +
+                                                   math.sin(k * 2 * math.pi / sides) * b_))) for k in range(sides)])
+            cols.extend([wood] * sides)
+        for ra, rb in zip(rings, rings[1:]):
+            for k in range(sides):
+                bm.faces.new((ra[k], ra[(k + 1) % sides], rb[(k + 1) % sides], rb[k]))
+
+    # the canopy: a lumpy dome (a few lobes), as a radius per direction
+    lobes = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.15, 0.35)) for _ in range(int(rng.integers(3, 6)))]
+
+    def canopy(az):
+        return 0.5 * (1 + sum(h * math.cos(az - a0) ** 8 for a0, h in lobes))
+
+    tips = []
+    for _ in range(int(rng.integers(6, 10))):  # stems from the crown, forking once or twice
+        az = rng.uniform(0, 2 * math.pi)
+        out = np.array([math.cos(az), math.sin(az), 0.0])
+        base = np.array([0.0, 0.0, -0.05]) + 0.06 * rng.normal(0, 1, 3) * [1, 1, 0]
+        R = canopy(az) * rng.uniform(0.45, 0.8)
+        top = np.array([0.0, 0.0, rng.uniform(0.3, 0.6)]) + out * R
+        mid = base + 0.45 * (top - base) + np.array([0, 0, 0.12]) + 0.05 * rng.normal(0, 1, 3)
+        pts = [base + (mid - base) * t for t in (0, 0.5, 1.0)] + [mid + (top - mid) * t for t in (0.5, 1.0)]
+        tube(np.array(pts), 0.018, 0.006)
+        tips.append(top)
+        for _ in range(int(rng.integers(1, 3))):  # side twigs off the stem's upper half
+            s0 = mid + (top - mid) * rng.uniform(0.0, 0.6)
+            az2 = az + rng.uniform(-1.0, 1.0)
+            e = s0 + rng.uniform(0.1, 0.22) * np.array([math.cos(az2), math.sin(az2), rng.uniform(0.4, 1.2)])
+            tube(np.array([s0, 0.5 * (s0 + e) + 0.02 * rng.normal(0, 1, 3), e]), 0.007, 0.003, 4)
+            tips.append(e)
+    tips = np.array(tips)
+    # leaf clusters: round each twig's end and over the canopy's shell down to the ground (biased outward: the inside
+    # stays dark), small (big clusters read as crumpled paper)
+    centres = [t + 0.07 * rng.normal(0, 1, 3) for t in tips for _ in range(5)]
+    for _ in range(int(rng.integers(560, 720))):
+        az = rng.uniform(0, 2 * math.pi)
+        el = math.asin(rng.uniform(0.0, 1.0) ** 0.8)
+        R = canopy(az) * (0.72 + 0.32 * rng.random() ** 0.4)
+        centres.append(np.array([R * math.cos(el) * math.cos(az), R * math.cos(el) * math.sin(az),
+                                 0.04 + 1.0 * R * math.sin(el)]))
+    for c0 in centres:
+        if rng.random() < 0.1:  # (gaps: twigs and the dark inside show through)
+            continue
+        r = rng.uniform(0.035, 0.07)
+        res = bmesh.ops.create_icosphere(bm, subdivisions=1, radius=r, matrix=Matrix.Translation(tuple(c0)))
+        sq = rng.uniform(0.45, 0.9)
+        c = sage * rng.uniform(0.75, 1.3)
+        u = rng.random()
+        if u < 0.12:
+            c = dry * rng.uniform(0.8, 1.2)
+        elif u < 0.2:
+            c = sage * 0.6 + np.array([0.07, 0.075, 0.06])  # (grey, silvery leaves)
+        if flower and rng.random() < 0.15:
+            c = np.array([0.30, 0.24, 0.04])
+        for vert in res["verts"]:
+            vert.co.z = c0[2] + (vert.co.z - c0[2]) * sq
+            vert.co += Vector(rng.normal(0, 0.25 * r, 3))
+            cols.append(c)
+    bm.verts.index_update()
+    V = np.array([tuple(vv.co) for vv in bm.verts])
+    F = [tuple(vv.index for vv in f.verts) for f in bm.faces]
+    bm.free()
+    return V, F, cols
+
+
 def _clutter_variant(kind, v, sea=None):
     """Variant v of a clutter placeholder (hidden; instanced): grass tufts (tussock: a dense clump ~0.45 m; tallgrass:
     a looser sheaf ~0.7 m), a coastal scrub bush (sage-green lumps, some in yellow flower, ~1 m), a boulder (a
@@ -350,30 +439,7 @@ def _clutter_variant(kind, v, sea=None):
             V, F, C = _tuft(rng, 22, 0.62, 0.16, 0.38, 0.12)
         ob = _mesh_ob(f"clutter_{kind}_{v}", V, F, C)
     elif kind == "bush":
-        import bmesh
-        bm = bmesh.new()
-        sage = np.array([0.075, 0.095, 0.05]) * rng.uniform(0.85, 1.15)
-        flower = v == 1  # (one variant in four, a few lumps: gorse/lupin in flower; more read as rubble from 150 m)
-        cols = []
-        nl = int(rng.integers(14, 22))
-        for i in range(nl):
-            a = rng.uniform(0, 2 * math.pi)
-            rr = 0.55 * math.sqrt(rng.uniform(0, 1))
-            z = 0.25 + 0.4 * (1 - rr / 0.55) * rng.uniform(0.6, 1.0)
-            r = rng.uniform(0.16, 0.32)
-            res = bmesh.ops.create_icosphere(bm, subdivisions=3, radius=r,
-                                             matrix=Matrix.Translation((rr * math.cos(a), rr * math.sin(a), z)))
-            c = sage * rng.uniform(0.8, 1.2)
-            if flower and rng.random() < 0.2:
-                c = np.array([0.30, 0.24, 0.04])  # (gorse / lupin yellow, muted)
-            for vert in res["verts"]:
-                vert.co.z = max(vert.co.z * 0.85, -0.05)
-                vert.co += Vector(rng.normal(0, 0.025, 3))
-                cols.append(c)
-        bm.verts.index_update()
-        V = np.array([tuple(vv.co) for vv in bm.verts])
-        F = [tuple(vv.index for vv in f.verts) for f in bm.faces]
-        bm.free()
+        V, F, cols = _scrub(rng, v)
         ob = _mesh_ob(f"clutter_bush_{v}", V, F, np.array(cols))
     else:
         import bmesh
