@@ -1156,8 +1156,6 @@ class Field:
             self.H = cut_neck(T, self.H, c)
         from . import terrain_ground
         gcfg = terrain_ground.config(T)
-        if gcfg is not None:  # (mown ground graded smooth: terrain_ground.grade_mown)
-            self.H = terrain_ground.grade_mown(T, self.H, self.c)
         if gcfg is None:  # (no ground character: sand traps dug into the grid, as 2-cell blurs)
             for m, depth, *_ in bunkers or ():
                 self.H = dig_bunker(T, self.H, m, depth)

@@ -1562,7 +1562,8 @@ regresses, bisect by building one spec at each commit and diffing heights.
       shards. Thin rock also gets `strata` (interbedded 1-3 m beds, about half soft and set back up to 1 m, eased over
       +-0.5 m, wandering along the strike) in geometry AND colour (Materials: soft darker/warmer, hard paler,
       THIN_STRATA tone). Honest read: relief on pebble is ~0.5 m rms whatever the rule, invisible at 30-60 m; the fin
-      reads layered only through the colour bands. Durdle Door's crisp many-bedded look is still far.
+      reads layered only through the colour bands. Durdle Door's crisp many-bedded look is still far: accepted (the
+      main session) as a limit of the 0.5 m voxel; thin rock would need finer voxels (beds < 2 voxels mesh as shards).
     - The pale flat triangles at lips were the cliff mesh's "buried" split: a face whose CENTRE was > 0.3 m off the
       visible front went to the plain matte (COLOR_0) primitive, and big faces across the turf step have their centre
       off it with every corner on it. Now buried = centre off and not all corners on the front (requiring every corner
@@ -1573,6 +1574,19 @@ regresses, bisect by building one spec at each commit and diffing heights.
       `water` / `water_roughness` (a deep blue body, IOR 1.33), `haze_scale` 3. Hole 7 at noon (`skysea.py`-style, from
       the id pass): sky top s 0.45 (photo 0.44), low sky s 0.02 -> 0.15 (0.33), far sea s 0.12 -> 0.25 (0.49), near sea
       0.44; AgX's highlight desaturation limits the rest.
+    - The fairway's soft blotches under a high sun (hole 7 at noon) were the baked ROUGHNESS: `terrain_bake` multiplied
+      every layer's roughness by a ~1 m fbm grain (0.85-1.2: turf 0.77-1.0), and a high sun shows that as sheen
+      patches. Full grain on rock/wet rock only, +-3% elsewhere. Found by channel: base colour and clay were clean, the
+      turf detail off changed nothing (`render_tiles` channel views had been ignored under the detail recipe: fixed;
+      `grass=False` leaves the turf detail out). The turf detail's two samplings are chosen by an 8 m mask now, not
+      averaged (recipe text updated).
+    - The pale band at the horizon: the sea was an 8 km plane under an 8 km camera clip; now 200 km / 250 km.
+    - Regression (cold, loaded machine): pebble 363 s, 0 failures, floating 0, shards LOD 0/1/2 0.0066/0.026/0.30%,
+      Khronos 1040 files 0/0; alps 3x3 165 s, 0 failures, Khronos 72 files 0/0; test_fieldjit (bit-identical),
+      test_swatch, test_level_look (+ thin rock, routes), test_tooling pass. Margin: pebble's cliff-map `lod1` normal
+      p95 is 14.2 deg against a 15 limit (main 12.6; grading mown ground smooth took it to 14.95: dropped). The points
+      over 15 deg sit twice as often near the turf's edge (26% vs 13% of border points) and not on thin rock: likely the
+      faces across the turf step now baked as visible. Watch it.
     - Bushes: `blender_terrain._scrub` (stems forking from a crown, ~600 small leaf clusters over a lumpy shell with
       gaps); lumps read as stones, big clusters as crumpled paper. Tussocks 20-70 m out are more and bigger
       (`terrain_ground.CLUTTER_MID`).
