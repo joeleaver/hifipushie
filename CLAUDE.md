@@ -1994,6 +1994,145 @@ breaks through cliffs, peak forms and wall structure, surroundings beyond the fr
 4. DONE: MCP tools.
 Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
 
+## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
+
+The user's track: game/video-ready trees, shrubs, grass, in styles from blobs to photoreal, with wind, seasons, LODs;
+"start with a best-in-class tree algorithm", hero trees editable, forest sets, and "how do real artists work".
+Research summary + plan: the first hand-back (SpeedTree's generator hierarchy with hand-drawn overrides, The Grove's
+grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob trees, Nanite assemblies, impostors).
+- `vegetation.py`: `grow(spec)` = a self-organising tree (Palubicki et al. 2009): shadow-propagation light on a voxel
+  grid (cell = one metamer), extended Borchert-Honda allocation (`apical` per order = the continuing axis's share; the
+  trunk's fades to `apical_old`), shoots = bud direction + light + tropism per order + `plagio` (pull to an elevation) +
+  per-order `jitter` + forces, shedding by light per internode, pipe-model widths with a memory of shed wood, bend under
+  weight that sets (`_pose`: each node's internode in its parent's rest frame + a bend angle that never decreases).
+  Numba kernels (`_collect`, `_distribute`, `_pipe`, `_pose`, `_shed`); nodes are appended parent-first and compacted
+  after shedding. Randomness is hashed from each bud's lineage key (`_child`, `_u`): same spec = same tree, and an
+  edit changes only what it shades. Unit = `habit.unit` m per metamer; with `height`, an unedited run sets the unit
+  first so guides/prunes stay in metres. 5-40k nodes grow in 0.3-3 s (first call compiles ~3 s).
+  Direct controls (the main session's condition: what SpeedTree artists have): `guides` (a drawn path at ANY order:
+  attaches to the nearest node at `from_year`, its nodes lie exactly on the path, pinned = never shed or bent, children
+  regrow from it; a path from the origin at year 0 is the trunk), `prune` (box / sphere / above / `below` = clear the
+  trunk), `envelope` (soft crown shape as shade outside it), `forces`, `environment` (light direction, wind = lean +
+  windward buds suffer, `setting: forest` = a canopy rising with the tree, `neighbours`), `decay.min_radius` (a dead
+  tree: thin wood has fallen), `habit.clear` (m of trunk that never branches).
+  Presets: `vegetation_presets/*.json` (oak, birch, scots_pine, norway_spruce, weeping_willow), bundles of habit +
+  leaves + colours; every key overridable, unknown habit keys raise.
+- Judging by measure: `silhouette` (PIL, ms), `shape_measures` (width/height, bole, widest height, lopsided, porosity,
+  profile), `outline_iou` (row-filled outlines at equal height, feet together), `branch_angles`, `reference_mask`
+  (photo against sky: colour vs the row's background at the crop's edges; or a traced `polygon`), `match`,
+  `fit_habit` (random + shrinking search of named habit numbers on IoU and ratios; ~1 min; how the presets were
+  tuned: inverse procedural modelling, small). References: `workspace/veg_refs/` (README, masks.json).
+- `veg_mesh.py` (tubes per axis with axis/order/along/radius/tan per vertex; `collar` flares a branch's first rings
+  into its parent: a flare, not yet a welded fork), `veg_look.py` (`render`, `reference_sheet`: photo | outlines |
+  clay | bare | in leaf | close-up + numbers; 5-12 s), `veg_tools.py` (plant.json + history in
+  `workspace/plants/<name>/`). `tests/test_vegetation.py`. Renders `workspace/veg_renders/vg_*`.
+- Species pass + first foliage (same day, the main session's order after seeing vg_01-09: "birch fails, spruce a pagoda,
+  trunks too slim; pull stage 2 ahead"):
+  - Girth: `habit.ring` = m of radius every living piece of wood adds a year, on top of the pipe model (the pipe model
+    alone under-sizes a trunk under a sparse crown: oak 0.8 -> 1.7 m at 90 years with ring 0.0022).
+  - Shadow weights: a leafy node shades by its internode's length. Without it short internodes (a spruce's 15 cm
+    branch metamers, six leaf-years deep) shaded themselves to death: every branch a 3-node stub. A spruce also needs
+    a narrow shallow shadow (`shadow` [0.03, 3, 2]: shade-tolerant) or the 45 deg pyramid under each whorl starves
+    the tips of the whorl below, and branch metamers a third of the leader's (`length` [1, 0.32, 0.45], shoot_max 1):
+    the cone's width is the ratio of the two growth rates.
+  - `force_orders` (per order: how far wind and forces turn a shoot; trunk 0.15): a birch in wind 0.8 leans, it no
+    longer lies down.
+  - `veg_leaf.py`: `leaf_mesh` (shape ovate / triangular / lanceolate / lobed, length, width, lobes, fold, curl,
+    petiole, serrate), `twig_mesh` (a short shoot with leaves by its own arrangement, or needles: `needle_tuft` round
+    the shoot's end, `needle_spray` = a flat spray with side shoots; per-vertex tone, leaf ids, wood/leaf material per
+    face; variants by hash), `place` (a twig ends every young shoot, more along shoots born within `twig.steps`:
+    per_m, golden angle, spread, up; `where: "ends"`). Mesh needles are far wider than life (`needle_width`): a
+    1.2 mm needle is sub-pixel at any view of a tree, and a spruce is its needle surface. Counts: 12-35k twigs,
+    2-40M instanced triangles, 4-11 s in EEVEE.
+  - `blender_vegetation.py`: twig protos per variant instanced on point meshes (Geometry Nodes; rot/size/tint
+    attributes; the leaf shader reads `col` + the instancer's `tint`, Principled mixed with Translucent); bark
+    without UVs = a 3D noise stretched along each branch by the mesh's `tan` attribute (kinds furrowed / lenticel /
+    plates; `base_color` under `base_height` = a birch's black foot, `upper_color` above `upper_from` = a pine's
+    orange crown wood, `twig_color` where thin). View transform Khronos PBR Neutral (AgX and a strong blue world
+    greyed everything).
+  - Fit: `fit_habit` now also charges bole misses harder, `droop` (shoot ends hanging under the crown's base, away
+    from the trunk) and, for winter photos, branch directions: `line_directions` (structure tensor: angle from the
+    vertical of the lines in an image) on the photo inside the tree's outline (`photo_branch_directions`) vs on our bare
+    silhouette at the same pixel scale (`tree_branch_directions`). Honest limit: the photo's measure is full of
+    fine level twigs we don't have (oak photo p50 53 deg from vertical, ours ~24): it pulls the right way but the
+    numbers don't meet.
+  - Presets after the pass: oak (IoU 0.88, plagio 0.34 toward ~4 deg: level heavy limbs), birch (leader 1, apical
+    0.63, hanging orders 3+, twigs hang), scots_pine (needle tufts on 3-year shoots, orange upper bark), norway_spruce
+    (above), weeping_willow (trunk loses its lead early, scaffold at 45 deg, orders 2+ hang).
+- Lessons so far: the raw shadow grid's gradient stacked shoots in voxel layers (smooth it, cap the pull); a
+  normalised light pull and a sag constant 1e5 too big made everything curl; straight shoots read as a broom whatever
+  the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
+  to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves
+  (the stand-in sprays failed birch and pine by eye; the same skeletons pass with twigs).
+- Cards, bark maps, forks, look (same day; the main session after vg_10-16: "spruce and pine need needle MASS", "a
+  real sky and sun so the judgement isn't of a diagram"; renders vg_20-25):
+  - Atlases + cards (`veg_leaf.atlas`): each card variant's twig rasterised from above in numpy/PIL (painter's order by
+    height; `rasterize`: colour with the alpha's edge bled outward, alpha, tangent normal, mask R = light comes
+    through / G = roughness / B = shade), 4 variants in a 2 x 2 atlas (768 px); `card_mesh` cuts a convex polygon of
+    <= 7 corners round the alpha (`_enclose`: drop the edge whose neighbours meet nearest), a cupped fan in the twig's
+    frame, `cross` 2 for tufts. `leaves.card` = what the PICTURE is made from (`card_spec`: a card can afford 400-500
+    true-width needles and a 3-year fan with `sub_shoots`; a mesh twig can't): that is where the conifers' mass came
+    from. `render(foliage="cards" | "mesh")`, cards the default: 7-14 triangles a twig, 90-300k foliage triangles a
+    tree (mesh twigs: 2-40M). `fill` (alpha / card area) is reported: 0.3-0.5 on oak/pine/spruce, 0.13-0.22 on the
+    long thin birch and willow twigs (overdraw to fix: cut those cards as strips).
+  - Colours in plant specs are sRGB like the rest of the repo; `blender_vegetation.lin` converts. (They were being fed
+    to shaders as linear; and `rasterize` once converted them a second time: pale teal spruce.)
+  - `veg_bark.py`: bark as tiling maps on the torus (FFT noise + Voronoi with wrapped distances): furrowed (tall
+    interlacing ridges), plates (flaky plates between cracks), scales, lenticel (dashes and peeling bands round the
+    stem); height, normal, albedo multiplier, roughness; tile sizes in metres. `veg_mesh.tubes` now has `uv` (u round
+    the branch in WHOLE tiles, v along it in tiles; a doubled seam column). `bark.base_kind` = a second map set under
+    `base_height` (birch: furrowed black foot). The colour zones (base / upper / twig) stay shader mixes.
+  - Forks: `tubes(weld=True)`: the collar's first ring is carried back along the branch onto its parent's surface
+    (ray-cylinder), so a branch starts on the bark, flared. Not shared topology: a seated fork, no blended normals.
+    `tip` tapers shoot ends.
+  - Look: Blender's sky texture with its sun where the lamp is, a grass-toned ground to the horizon, the sun set per
+    view from behind the eye's left shoulder; a shadowless upward "bounce" lamp (EEVEE has no bounce: foliage in shade
+    lit by the sky alone went blue). Perspective views (`eye`/`look`/`fov`): the sheet adds "from 70 m" and "from 5 m".
+  - Birch: straight dominant trunk (jitter 0.04, apical 0.66, leader to 0.9), fewer scaffold limbs (`bud_break` 0.4
+    on the trunk), ring 0.0024.
+- Lessons so far: the raw shadow grid's gradient stacked shoots in voxel layers (smooth it, cap the pull); a
+  normalised light pull and a sag constant 1e5 too big made everything curl; straight shoots read as a broom whatever
+  the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
+  to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves;
+  mass in conifers comes from the card's picture, not from more geometry; judge colour only under a sky with a
+  bounce, and check the colour space before blaming the light.
+- Tools (same day; the main session: "MCP tools + guide first: an LLM can't use any of this yet"): `grow_plant`
+  (spec or merge patch -> saved version -> report; "" lists plants and presets), `edit_plant` (ops: guide,
+  remove_guide, prune, clear_prunes, envelope, force, clear_forces, set "habit.apical.0"), `look_plant` (views clay /
+  bare / leaf / far / near / close, or the reference sheet), `plant_reference` (photo + crop/foot or traced polygon,
+  optional `fit`), `export_plant`, `plant_history`; `guide(topic="vegetation")` = `vegetation_guide.md` (stages:
+  reference, skeleton, direction, foliage and bark, export; the habit table; what goes wrong).
+  `veg_tools.report` measures the grown plant (form on its own silhouettes, limb angles, twigs, each guide's order /
+  reached its end / branches from it, the reference match) with WARNINGs. `examples/plant_tool.py` calls the tools
+  from a shell. `veg_export.write_glb`: `wood` (bark colour x albedo, normal, roughness, REPEAT) + `foliage` (every
+  card realised into one mesh, atlas with alpha MASK, double sided, COLOR_0 tint), Y up, textures embedded, Khronos
+  validator 0 errors (2 warnings: no tangents). One LOD, no wind/seasons yet.
+  Strip cards (`card.strips`): a ladder of quads along a long twig; it gives hanging twigs their droop but did NOT
+  raise fill (birch 0.25, willow 0.23): the pictures themselves are sparse between the leaves.
+- Blind rounds (2026-10-05; fresh agents with only the guide + a brief: old pollard willows by a ditch, a wind-flagged
+  pine, a veteran oak, a stand): what they could not say became vocabulary, what misled them was fixed.
+  - `cuts` (`{"year", volume, "every", "until_year", "sprouts"}`): the wood in the volume is cut AT that year and each
+    stub (the 12 stoutest) sprouts: pollards, coppice, lopped limbs, storm breaks. `prune` with `from_year` = held
+    for ever; without = a cut after growth. Volumes: box, sphere, above, below, under. Unknown keys anywhere are
+    refused (`resolve`): a tester's `prune.until_year` had been silently ignored.
+  - `habit.angle` is indexed by the PARENT's order (angle[0] had been unused: testers set it and nothing moved);
+    a side shoot's first segment keeps its angle (0.2 weight of light/tropism/jitter). Jitter has momentum
+    (independent kicks read as wire kinks). `trunk_diameter` + `trunk_taper`, `habit.clear` (also on a drawn trunk),
+    guide `bare` / `on` / `until_year` (paces the axis to the path's end), envelope "umbrella" + `center` + `lean`.
+  - A guide that leaves existing wood must not clear that wood's tip: it killed a young trunk's leader (half trees).
+  - `veg_export.budget` (wood min radius + card keep share solved for the triangle count; the count written is the
+    count asked, e.g. 11994/12000) and `look_plant(triangles=)` renders that object: the full-detail look had said
+    nothing about what a 12k export looks like. Looks: file names carry azimuth/budget, a ruler pole, water level,
+    the eye lifted onto a hillside, `look_plants` in real coordinates. Edit echoes are diffs of the RESOLVED spec.
+  - The report measures cover above the crown base (the trunk had counted), trunk lean, each guide's reach, each
+    cut, and warns on a prune that removed everything, `height` with a drawn trunk, an age far past the preset's.
+  - Not built (said in the guide): buttresses/roots/foot on a slope, swollen pollard bolls, deadwood beyond stubs,
+    banks/ditches, a non-weeping willow preset, needle and willow card pictures (feathers, bamboo), an ortho side
+    view that isn't mostly hillside on a slope.
+- Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
+  ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
+  not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.
