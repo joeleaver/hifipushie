@@ -27,7 +27,7 @@ from . import paint
 from .spec import SpecError
 
 NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings",
-          "image"}
+          "image", "spot", "tile"}
 QUANTILES = json.loads(Path(__file__).with_name("noise_quantiles.json").read_text())
 
 
@@ -172,6 +172,16 @@ class _Compiler:
                 out["expose"] = {"within": path + ["within"]}
             return {**out, "gen": "near", "attr": self.attr("dist", layer, e["near"], key=(e["near"],), parts=self.parts),
                     "within": within, "soft": soft}
+        if gen == "spot":  # soft balls / a tapered line round resolved points: per pixel from wpos
+            s = paint.resolve_spot(self.spec, e["spot"], f"paint {layer!r}")
+            return {**out, "gen": "spot", "c": np.round(s["c"], 6).tolist(), "r": np.round(s["r"], 6).tolist(),
+                    "soft": s["soft"], "line": s["line"]}
+        if gen == "tile":  # a tiling grey image, triplanar, per pixel (mip-mapped: no sparkle from afar)
+            t = e["tile"]
+            path, size = paint.tile_source(t)
+            return {**out, "gen": "tile", "path": str(path), "size": size, "vary": bool(t.get("vary", True)),
+                    "seed": int(t.get("seed", 0)), "range": [float(x) for x in t.get("range", [0.0, 1.0])],
+                    "vary_k": list(paint.TILE_VARY)}
         if gen == "image":  # a projected decal, drawn per pixel from the image file (images.frame)
             from . import images
             parts = None if "*" in self.parts else list(self.parts)
@@ -242,14 +252,14 @@ class _Compiler:
                 ly["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]):
             raise SpecError(f"paint {name!r}: \"color\": \"image\" needs the layer's own flat \"image\" key")
         return {"name": name, "color_from": img["key"] if img else None, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
-                "height": float(ly.get("height", 0.0)),
+                "height": float(ly.get("height", 0.0)), "mix": ly.get("mix", "mix"),
                 "opacity": float(ly.get("opacity", 1.0)), "entries": entries, "expose": expose}
 
 
 def compile(spec: dict) -> dict:
     """{"layers": [...], "inputs": [field inputs], "fallbacks": {attr: what}, "quantiles": ...}."""
     c = _Compiler(spec)
-    layers = [c.layer(n, ly) for n, ly in paint.layers(spec).items()] if spec.get("paint") else []
+    layers = [c.layer(n, ly) for n, ly in paint.layers(spec).items()] if (spec.get("paint") or spec.get("skin")) else []
     # per part, the scalar inputs its layers read, packed three to a vector attribute (hp0, hp1, ...)
     need: dict = {}
     for ly in layers:

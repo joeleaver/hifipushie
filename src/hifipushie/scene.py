@@ -845,14 +845,21 @@ def sync(name: str, resolution: int = 256) -> dict:
     spec = store.load(name)
     defs = spec.get("parts") or {}
     bases = {}
+    from . import skin
+    sk = skin.part_base(spec)  # the skin part starts from its tone and shading; the part's own keys win
     for o in objs:
         d = defs.get(o["part"]) or {}
         from .paint import style_rgb
+        if sk and o["part"] == sk[0]:
+            d = {**{k: v for k, v in sk[1].items() if not k.startswith("_")}, **d}
+            if "color" not in (defs.get(o["part"]) or {}):
+                o = {**o, "color": sk[1]["color"]}
         rgb = style_rgb(o["color"][:3], (spec.get("style") or {}).get("paint") or {})
         bases[o["part"]] = {"color": [float(x) for x in rgb], "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5)),
                             **{k: float(d[k]) for k in ("transmission", "alpha", "ior", "subsurface",
-                                                         "subsurface_scale") if k in d},
+                                                         "subsurface_scale", "coat", "coat_roughness", "sheen",
+                                                         "sheen_roughness", "thickness") if k in d},
                             **({"subsurface_radius": [float(x) for x in d["subsurface_radius"]]}
                                if "subsurface_radius" in d else {})}
     ph = part_hashes(prog, bases)

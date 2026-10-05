@@ -6,6 +6,8 @@ from its clay colour, spec["parts"][p]["color"]). Paint never changes geometry, 
 
 layer = {"color": [r, g, b] (0..1, sRGB, as you'd pick it) | "#rrggbb", "roughness", "metallic", "specular": 0..1,
          (any of these channels; a layer changes only the ones it gives), "opacity": 0..1 (1),
+         "mix": "mix" (default: the colour replaces what's under it) | "multiply" (ink, stains, tattoos: it darkens
+         and tints, the variation under it shows through) | "screen" | "overlay" | "soft_light" (colour only),
          "part": name | [names] | "*" (default "body"), "height": m (relief, see below), plus any of the masks
          below as flat keys (multiplied together) and/or a "mask" stack (below). No mask = the whole part.}
 Each part starts from spec["parts"][p]: "color" (clay palette), "roughness" (0.6), "metallic" (0), "specular"
@@ -79,6 +81,19 @@ Masks (generators, each 0..1 per point):
            size in m round the surface, "seam" deg), "sphere" (a globe, a ball) or "surface" (a sticker lying on any
            curved surface: geodesic coordinates from its centre). "style": true runs its colours through the
            paint style. Details: images.py; look shows it per pixel, exports bake it.
+  spot:    {"at": point | [points], "radius": m | [rx, ry, rz] (or one per point), "soft": 0..1 (0.5), "line": false}:
+           a soft ball (an ellipsoid on the world axes) round each point: 1 at its centre and out to (1 - soft) of
+           the radius, 0 at the radius. A point is a joint, [x, y, z] or {"at": joint, "offset": [x, y, z]}, so it
+           follows the model (the face's lm_* landmarks, finger joints, an elbow). Several points: the strongest.
+           "line": true joins the points into one tapered line (radius per point): a scar, a crease, a lash line.
+           Drawn per pixel, never mirrored by itself: give both sides' points.
+  zone:    "name" | {"name", "grow": 1.0}: a named anatomical zone of a human built on a base (skin.py: "cheek.L",
+           "forehead", "nose", "under_eye.R", "knuckles", "palm.L", ...; a name without .L/.R is both sides): spots
+           placed from the face landmarks and body joints. `skin_reference` lists them.
+  tile:    {"swatch": "pores" | "lines" | "coarse" | "lips" (skin_swatch.py) | "file": path, "size": m (one repeat,
+           default the swatch's own), "range": [lo, hi], "vary": true}: a tiling grey image laid on the three axis
+           planes and blended by the normal, read as a 0..1 mask: micro relief (pores, skin lines) far finer than
+           the mesh or a baked texel. "vary" mixes a second, larger copy in patches so the repeat doesn't show.
   tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
            "mode": "gaps" (1 in the joints, fading over "bevel") | "bevel" (0 at a joint rising to 1: a tile's
            rounded face, for height) | "id" (random per tile)}: bricks, planks, flagstones, shingles.
@@ -175,7 +190,8 @@ def colour(c, what: str = "color") -> np.ndarray:
 
 
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
-              "random", "rings", "painted", "outline", "image", "mask")
+              "random", "rings", "painted", "outline", "image", "spot", "tile", "zone", "mask")
+MIXES = ("mix", "multiply", "screen", "overlay", "soft_light")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
@@ -185,10 +201,15 @@ ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur")
 def layers(spec: dict) -> dict:
     """The spec's paint layers with material layers expanded into their sub-layers (materials.py), in order, with
     the spec's paint style applied (`style_layer`)."""
-    from . import materials
+    from . import materials, skin
     st = (spec.get("style") or {}).get("paint") or {}
     out = {}
-    for name, ly in (spec.get("paint") or {}).items():
+    own = spec.get("paint") or {}
+    src = {**skin.layers(spec), **own} if spec.get("skin") else own  # the skin's layers lie under the model's own
+    zoned = skin.uses_zones(src)
+    for name, ly in src.items():
+        if zoned:
+            ly = skin.expand_zones(spec, ly, f"paint {name!r}")
         if "material" in ly:
             if st:
                 ly = dict(ly)
@@ -276,7 +297,9 @@ def validate(spec: dict) -> None:
             if c in ly and not 0 <= float(ly[c]) <= 1:
                 raise SpecError(f"paint {name!r}: {c} is 0..1")
         flat = {g: ly[g] for g in GENERATORS if g in ly and g != "mask"}
-        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "_of", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
+        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
+        if ly.get("mix", "mix") not in MIXES:
+            raise SpecError(f"paint {name!r}: mix is one of {', '.join(MIXES)}")
         if unknown:
             raise SpecError(f"paint {name!r}: unknown keys {sorted(unknown)}")
         for g in flat:
@@ -464,6 +487,20 @@ def _check_generator(name: str, g: str, e: dict) -> None:
                             f"image's aspect)" + ("; or a span in degrees" if wrap in ("cylinder", "sphere") else ""))
         if "at" not in img and not (wrap == "cylinder" and "axis" in img):
             raise SpecError(f"paint {name!r}: image needs \"at\" (its centre: a joint, a blob, [x, y, z])")
+    if g == "spot":
+        sp = e[g]
+        if not (isinstance(sp, dict) and "at" in sp and "radius" in sp and set(sp) <= {"at", "radius", "soft", "line"}):
+            raise SpecError(f"paint {name!r}: spot is {{\"at\": point | [points], \"radius\": m | [rx, ry, rz], "
+                            f"\"soft\"?: 0..1, \"line\"?: true}}")
+    if g == "tile":
+        t = e[g]
+        from . import skin_swatch
+        if not (isinstance(t, dict) and (("swatch" in t) != ("file" in t)) and set(t) <= {"swatch", "file", "size", "range", "vary", "seed"}):
+            raise SpecError(f"paint {name!r}: tile is {{\"swatch\": name | \"file\": path, \"size\"?: m, \"range\"?, \"vary\"?}}")
+        if "swatch" in t and t["swatch"] not in skin_swatch.KINDS:
+            raise SpecError(f"paint {name!r}: tile swatch is one of {', '.join(skin_swatch.KINDS)}")
+        if "file" in t and "size" not in t:
+            raise SpecError(f"paint {name!r}: a tile from a file needs \"size\" (m of surface per repeat)")
     if g == "cavity" and e[g] not in ("concave", "convex"):
         raise SpecError(f"paint {name!r}: cavity is \"concave\" or \"convex\"")
     if g in ("ao", "thickness", "sky") and not (isinstance(e[g], list) and len(e[g]) == 2):
@@ -486,7 +523,7 @@ _CODE = _code_hash()
 
 def key(spec: dict) -> str:
     """What painted colours depend on besides the mesh (and the painting code)."""
-    return hashlib.sha1(json.dumps([spec.get("paint"), spec.get("parts"), (spec.get("story") or {}).get("directions"),
+    return hashlib.sha1(json.dumps([spec.get("paint"), spec.get("skin"), spec.get("parts"), (spec.get("story") or {}).get("directions"),
                                     _CODE], sort_keys=True,
                                    default=float).encode()).hexdigest()[:12]
 
@@ -548,7 +585,7 @@ def apply_channels(spec: dict, pts, base: dict, stats: dict | None = None, masks
     (a surface.Points: mesh vertices, or texels of a baked texture). masks, if given, gets each layer's mask
     over all points (0 off its parts)."""
     out = {c: np.array(v, float) for c, v in base.items()}
-    if not spec.get("paint"):
+    if not (spec.get("paint") or spec.get("skin")):
         return out
     validate(spec)
     for name, ly in layers(spec).items():
@@ -815,10 +852,88 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
         if view.mirror:
             fr = {**fr, "flip": not fr["flip"]}
         return images.evaluate(fr, v, n)[0]
+    if gen == "spot":
+        return spot_mask(resolve_spot(spec, e["spot"], f"paint {name!r}"), v)
+    if gen == "tile":
+        return tile_mask(e["tile"], v, n)
     if gen == "mask":
         sub = e["mask"]
         return _stack(spec, tag, sub, list(range(len(sub))), view)
     raise SpecError(f"paint {name!r}: unknown generator {gen!r}")
+
+
+# ---- spots and tiling images -------------------------------------------------------------------------------------
+
+def resolve_spot(spec: dict, sp: dict, what: str = "spot") -> dict:
+    """A spot's points in world space: {"c": (k, 3), "r": (k, 3), "soft", "line"}."""
+    from .spec import resolve_point
+    exp = _expanded(spec)
+    at = sp["at"]
+    pts = at if isinstance(at, list) and not (len(at) == 3 and all(isinstance(x, (int, float)) for x in at)) else [at]
+    C = []
+    for p in pts:
+        try:
+            if isinstance(p, dict) and "at" in p and set(p) <= {"at", "offset"}:
+                C.append(np.asarray(resolve_point(exp, p["at"]), float) + np.asarray(p.get("offset", [0, 0, 0]), float))
+            else:
+                C.append(np.asarray(resolve_point(exp, p), float))
+        except (KeyError, SpecError, ValueError, TypeError) as err:
+            raise SpecError(f"{what}: spot point {p!r} isn't a joint, [x, y, z] or {{\"at\": joint, \"offset\"}} ({err})")
+    r = sp["radius"]
+    if isinstance(r, (int, float)):
+        R = np.full((len(C), 3), float(r))
+    elif len(r) == 3 and all(isinstance(x, (int, float)) for x in r) and len(C) != 3:
+        R = np.tile(np.asarray(r, float), (len(C), 1))
+    else:
+        if len(r) != len(C):
+            raise SpecError(f"{what}: spot radius is one number, [rx, ry, rz], or one per point ({len(C)} points)")
+        R = np.array([np.full(3, float(x)) if isinstance(x, (int, float)) else np.asarray(x, float) for x in r])
+    if np.any(R <= 0):
+        raise SpecError(f"{what}: spot radius must be > 0")
+    return {"c": np.array(C), "r": R, "soft": float(np.clip(sp.get("soft", 0.5), 1e-3, 1.0)), "line": bool(sp.get("line"))}
+
+
+def spot_mask(s: dict, v: np.ndarray) -> np.ndarray:
+    out = np.zeros(len(v))
+    C, R, soft = s["c"], s["r"], s["soft"]
+    if s["line"] and len(C) > 1:
+        for a, b, ra, rb in zip(C[:-1], C[1:], R[:-1, 0], R[1:, 0]):
+            ba = b - a
+            h = np.clip((v - a) @ ba / max(float(ba @ ba), 1e-18), 0, 1)
+            d = np.linalg.norm(v - a - h[:, None] * ba, axis=1) / (ra + (rb - ra) * h)
+            out = np.maximum(out, _ramp(d, 1.0, 1.0 - soft))
+        return out
+    for c, r in zip(C, R):
+        out = np.maximum(out, _ramp(np.linalg.norm((v - c) / r, axis=1), 1.0, 1.0 - soft))
+    return out
+
+
+TILE_VARY = (1.618, 5.0)  # the second copy's size, and the patch size of the mix between them (x the tile's size)
+
+
+def tile_source(t: dict) -> tuple:
+    """(path, size m) of a tile's image."""
+    from . import skin_swatch
+    if "swatch" in t:
+        return skin_swatch.make(t["swatch"]), float(t.get("size", skin_swatch.PERIOD[t["swatch"]]))
+    return Path(t["file"]), float(t["size"])
+
+
+def tile_mask(t: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
+    from . import skin_swatch
+    src = t["swatch"] if "swatch" in t else t["file"]
+    size = tile_source(t)[1]
+    w = np.abs(n) ** 4
+    w /= np.maximum(w.sum(1, keepdims=True), 1e-12)
+
+    def tri(sz, off):
+        return sum(w[:, k] * skin_swatch.sample(src, v[:, [a, b]] / sz + off) for k, (a, b) in enumerate(((1, 2), (0, 2), (0, 1))))
+    val = tri(size, 0.0)
+    if t.get("vary", True):
+        m = _ramp(fbm(v, TILE_VARY[1] * size, 2, int(t.get("seed", 0)) + 17), 0.4, 0.6)
+        val = val * (1 - m) + tri(size * TILE_VARY[0], 0.37) * m
+    lo, hi = t.get("range", [0.0, 1.0])
+    return np.clip((val - lo) / max(hi - lo, 1e-9), 0, 1)
 
 
 # ---- hand-painted masks -----------------------------------------------------------------------------------------

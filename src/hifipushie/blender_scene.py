@@ -73,11 +73,13 @@ def _lin(c):
 
 
 class _Nodes:
-    def __init__(self, tree, quantiles, packing):
+    def __init__(self, tree, quantiles, packing, prefix="hpm:"):
         self.t, self.q, self.packing = tree, quantiles, packing
         self.x = 0
         self.attrs = {}
+        self.prefix, self.count, self.trees = prefix, 0, []
         self.colours = {}  # an image entry's key -> its colour (linear), for a layer with "color": "image"
+        self.memo = {}  # a generator's nodes by its definition: zones and swatches are read by many layers
 
     def node(self, kind, **props):
         n = self.t.nodes.new(kind)
@@ -222,8 +224,108 @@ class _Nodes:
         path = e.get("expose", {}).get(key)
         return self.value(v, "hp:" + json.dumps(path)) if path else float(v)
 
+    def group(self, build):
+        """build() run in a node group of its own (it returns one value); the group's output socket in the tree we
+        were in. Linking a node costs time in proportion to the tree's size (1000 nodes: 10 s, 2000: 65 s), so
+        every mask is its own small tree and the material's tree only mixes them."""
+        g = self.subtree(build)
+        return self.instance(g)
+
+    def subtree(self, build):
+        self.count += 1
+        g = bpy.data.node_groups.new(f"{self.prefix}{self.count}", "ShaderNodeTree")
+        g.interface.new_socket(name="v", in_out="OUTPUT", socket_type="NodeSocketFloat")
+        self.trees.append((self.t, self.attrs, self.x))
+        self.t, self.attrs, self.x = g, {}, 0
+        try:
+            v = build()
+            out = self.node("NodeGroupOutput")
+            if hasattr(v, "is_output"):
+                g.links.new(v, out.inputs[0])
+            else:
+                val = self.node("ShaderNodeValue")
+                val.outputs[0].default_value = float(v)
+                g.links.new(val.outputs[0], out.inputs[0])
+        finally:
+            self.t, self.attrs, self.x = self.trees.pop()
+        return g
+
+    def instance(self, g):
+        n = self.node("ShaderNodeGroup")
+        n.node_tree = g
+        return n.outputs[0]
+
     def gen(self, e):
+        if e["gen"] in ("spot", "tile", "mask") and not _exposes(e) and not _has_image(e):
+            # shared by every layer that reads the same (a zone, a swatch): one group, instanced
+            k = json.dumps({kk: vv for kk, vv in e.items() if kk not in ("blend", "weight", "post", "expose")},
+                           sort_keys=True, default=str)
+            if k not in self.memo:
+                self.memo[k] = self.subtree(lambda: self._gen(e))
+            return self.instance(self.memo[k])
+        return self._gen(e)
+
+    def spot(self, e):
+        p = self.attr("wpos", True)
+        out = None
+        C, R, soft = e["c"], e["r"], e["soft"]
+        if e["line"] and len(C) > 1:
+            for a, b, ra, rb in zip(C[:-1], C[1:], R[:-1], R[1:]):
+                ba = [b[k] - a[k] for k in range(3)]
+                pa = self.vmath("SUBTRACT", p, a)
+                h = self.math("DIVIDE", self.vmath("DOT_PRODUCT", pa, ba), max(sum(x * x for x in ba), 1e-18), clamp=True)
+                d = self.vmath("LENGTH", self.vmath("SUBTRACT", pa, self.vmath("SCALE", ba, scale=h)))
+                rr = self.math("ADD", ra[0], self.math("MULTIPLY", h, rb[0] - ra[0])) if rb[0] != ra[0] else ra[0]
+                v = self.ramp(self.math("DIVIDE", d, rr), 1.0, 1.0 - soft)
+                out = v if out is None else self.math("MAXIMUM", out, v)
+            return out
+        for c, r in zip(C, R):
+            q = self.vmath("MULTIPLY", self.vmath("SUBTRACT", p, c), [1.0 / x for x in r])
+            v = self.ramp(self.vmath("LENGTH", q), 1.0, 1.0 - soft)
+            out = v if out is None else self.math("MAXIMUM", out, v)
+        return out
+
+    def tile(self, e):
+        """paint.tile_mask: the image on the three axis planes, weighted by |normal|^4; a second, larger copy mixed
+        in by a patchy noise."""
+        p = self.attr("wpos", True)
+        sep = self.node("ShaderNodeSeparateXYZ")
+        self._in(sep.inputs[0], self.vmath("ABSOLUTE", self.vmath("NORMALIZE", self.attr("wnrm", True))))
+        w = [self.math("POWER", sep.outputs[k], 4.0) for k in range(3)]
+        tot = self.math("MAXIMUM", self.math("ADD", self.math("ADD", w[0], w[1]), w[2]), 1e-12)
+        ps = self.node("ShaderNodeSeparateXYZ")
+        self._in(ps.inputs[0], p)
+        im = self.image(e["path"], True)
+
+        def tri(size, off):
+            acc = None
+            for k, (a, b) in enumerate(((1, 2), (0, 2), (0, 1))):
+                uv = self.node("ShaderNodeCombineXYZ")
+                self._in(uv.inputs[0], self.math("ADD", self.math("DIVIDE", ps.outputs[a], size), off))
+                self._in(uv.inputs[1], self.math("ADD", self.math("DIVIDE", ps.outputs[b], size), off))
+                t = self.node("ShaderNodeTexImage", interpolation="Linear", extension="REPEAT")
+                t.image = im
+                self._in(t.inputs["Vector"], uv.outputs[0])
+                val = self.math("MULTIPLY", t.outputs["Color"], self.math("DIVIDE", w[k], tot))
+                acc = val if acc is None else self.math("ADD", acc, val)
+            return acc
+        val = tri(e["size"], 0.0)
+        if e["vary"]:
+            k2, kp = e["vary_k"]
+            m = self.ramp(self.noise(p, kp * e["size"], 2, e["seed"] + 17), 0.4, 0.6)
+            b = tri(e["size"] * k2, 0.37)
+            val = self.math("ADD", val, self.math("MULTIPLY", m, self.math("SUBTRACT", b, val)))
+        lo, hi = e["range"]
+        if (lo, hi) != (0.0, 1.0):
+            val = self.math("DIVIDE", self.math("SUBTRACT", val, lo), max(hi - lo, 1e-9), clamp=True)
+        return val
+
+    def _gen(self, e):
         g = e["gen"]
+        if g == "spot":
+            return self.spot(e)
+        if g == "tile":
+            return self.tile(e)
         if g == "facing":
             if e["dir"] == "grain":  # along the vertex's element, either way
                 d = self.math("ABSOLUTE", self.vmath("DOT_PRODUCT", self.vmath("NORMALIZE", self.attr("wnrm", True)),
@@ -465,6 +567,30 @@ class _Nodes:
         return 1.0 if m is None else m
 
 
+def _exposes(e):
+    return bool(e.get("expose")) or any(_exposes(s) for s in e.get("entries") or [])
+
+
+def _has_image(e):
+    return e.get("gen") == "image" or any(_has_image(s) for s in e.get("entries") or [])
+
+
+def _drop_groups(prefix):
+    for g in list(bpy.data.node_groups):
+        if g.name.startswith(prefix):
+            bpy.data.node_groups.remove(g)
+
+
+def _layer_mask(N, ly):
+    """A layer's mask, in a group of its own unless it carries an image's colours out (those stay in the tree)."""
+    if any(_has_image(e) for e in ly["entries"]):
+        return N.stack(ly["entries"])
+    return N.group(lambda: N.stack(ly["entries"]))
+
+
+MIX = {"mix": "MIX", "multiply": "MULTIPLY", "screen": "SCREEN", "overlay": "OVERLAY", "soft_light": "SOFT_LIGHT"}
+
+
 def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None):
     """A part's material: its base channels, then every layer on it mixed in by opacity x mask. show: a layer
     name: the material shows only that layer's mask, glowing orange 0..1 on grey clay (0 where the layer isn't on
@@ -477,9 +603,10 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         m.use_nodes = True
         t = m.node_tree
         t.nodes.clear()
-        N = _Nodes(t, quantiles, packing)
+        _drop_groups(f"hpm:{part}:")
+        N = _Nodes(t, quantiles, packing, f"hpm:{part}:")
         ly = next((ly for ly in layers if ly["name"] == show or ly["name"].startswith(show + ":")), None)
-        mask = N.stack(ly["entries"]) if ly else 0.0
+        mask = _layer_mask(N, ly) if ly else 0.0
         # lit grey clay, the mask glowing orange on it: the shape reads where the mask is 0
         bsdf = N.node("ShaderNodeBsdfPrincipled")
         bsdf.inputs["Base Color"].default_value = (0.18, 0.18, 0.18, 1.0)
@@ -494,7 +621,8 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     m.use_nodes = True
     t = m.node_tree
     t.nodes.clear()
-    N = _Nodes(t, quantiles, packing)
+    _drop_groups(f"hpm:{part}:")
+    N = _Nodes(t, quantiles, packing, f"hpm:{part}:")
     col = N.node("ShaderNodeRGB").outputs[0]
     col.default_value = (*_lin(base["color"]), 1.0)
     ch = {"roughness": float(base["roughness"]), "metallic": float(base["metallic"]),
@@ -502,7 +630,7 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     height = None  # painted relief (paint.bump): the layers' height x mask, summed (m)
     for i, ly in enumerate(layers):
         N.x = 400 * (i + 1)
-        mask = N.stack(ly["entries"])
+        mask = _layer_mask(N, ly)
         if ly.get("height"):
             hm = N.math("MULTIPLY", N.math("MAXIMUM", N.math("MINIMUM", mask, 1.0), 0.0), ly["height"]) \
                 if not isinstance(mask, float) else ly["height"] * mask
@@ -512,7 +640,7 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         a = N.math("MAXIMUM", N.math("MINIMUM", a, 1.0), 0.0)
         for c, v in ly["channels"].items():
             if c == "color" and v == "image":  # the picture's own colours
-                mix = N.node("ShaderNodeMix", data_type="RGBA", blend_type="MIX")
+                mix = N.node("ShaderNodeMix", data_type="RGBA", blend_type=MIX[ly.get("mix", "mix")])
                 N._in(mix.inputs[0], a)
                 N._in(mix.inputs[6], col)
                 N._in(mix.inputs[7], N.colours[ly["color_from"]])
@@ -523,7 +651,7 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
                 if "color" in ly["expose"]:
                     rgb.name = rgb.label = "hp:" + json.dumps(ly["expose"]["color"])
                     rgb["hp_set"] = list(rgb.outputs[0].default_value)[:3]
-                mix = N.node("ShaderNodeMix", data_type="RGBA", blend_type="MIX")
+                mix = N.node("ShaderNodeMix", data_type="RGBA", blend_type=MIX[ly.get("mix", "mix")])
                 N._in(mix.inputs[0], a)
                 N._in(mix.inputs[6], col)
                 N._in(mix.inputs[7], rgb.outputs[0])
@@ -548,6 +676,12 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         bsdf.inputs["Subsurface Weight"].default_value = float(base["subsurface"])
         bsdf.inputs["Subsurface Radius"].default_value = base.get("subsurface_radius", [1.0, 0.35, 0.2])
         bsdf.inputs["Subsurface Scale"].default_value = float(base.get("subsurface_scale", 0.004))
+    if float(base.get("coat", 0.0)) > 0:  # a second, tighter highlight (skin's oily film; lacquer)
+        bsdf.inputs["Coat Weight"].default_value = float(base["coat"])
+        bsdf.inputs["Coat Roughness"].default_value = float(base.get("coat_roughness", 0.1))
+    if float(base.get("sheen", 0.0)) > 0:  # soft light at grazing angles (vellus hair, velvet)
+        bsdf.inputs["Sheen Weight"].default_value = float(base["sheen"])
+        bsdf.inputs["Sheen Roughness"].default_value = float(base.get("sheen_roughness", 0.5))
     if al < 1:  # see-through by coverage (a fade, a gauze curtain)
         bsdf.inputs["Alpha"].default_value = al
         m.surface_render_method = "BLENDED"
@@ -559,7 +693,14 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         bump.inputs["Distance"].default_value = 1.0
         t.links.new(hn.outputs[0], bump.inputs["Height"])
         t.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        t.links.new(bump.outputs["Normal"], bsdf.inputs["Coat Normal"])  # the film lies on the same relief
     t.links.new(bsdf.outputs[0], out.inputs[0])
+    if float(base.get("thickness", 0.0)) > 0 and "Thickness" in out.inputs:  # EEVEE: subsurface light crosses
+        tv = N.node("ShaderNodeValue")  # what is thinner than this (m): back-lit ears and nostrils glow
+        tv.outputs[0].default_value = float(base["thickness"])
+        t.links.new(tv.outputs[0], out.inputs["Thickness"])
+        m.thickness_mode = "SLAB"
+        m.use_thickness_from_shadow = True
     m["hp_prog"] = prog_hash
     return m
 
@@ -660,7 +801,11 @@ def pull(job):
     for m in bpy.data.materials:  # paint numbers exposed as named nodes; the same layer can sit in several parts
         if not m.name.startswith("part:") or not m.node_tree:
             continue
-        for n in m.node_tree.nodes:
+        nodes = list(m.node_tree.nodes)  # masks live in node groups named after the part
+        for g in bpy.data.node_groups:
+            if g.name.startswith(f"hpm:{m.name[5:]}:"):
+                nodes += list(g.nodes)
+        for n in nodes:
             if not n.name.startswith("hp:"):
                 continue
             v = n.outputs[0].default_value
