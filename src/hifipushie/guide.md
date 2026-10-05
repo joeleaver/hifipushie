@@ -426,7 +426,19 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   of its surface, then the weights are evened over the garment's own mesh. A part that only reaches up beside the
   jaw (a collar, a scarf, a strap) is worn on the body: it keeps the neck's weights and does not turn with the
   head; a part that is mostly on the head (a cap, glasses) is all head. `parts.<p>.rig_head = true | false` says
-  so outright (a hood that should turn with the head: true); `parts.<p>.rig_bone` binds a prop to one joint.
+  so outright (a hood that should turn with the head: true); `parts.<p>.rig_bone` binds a prop to one joint, and
+  `parts.<p>.rig_attach = "<bound part>"` hands a part over to that prop's joint where it comes within
+  `rig_attach_length` (8 cm) of it: a strap's end goes with its bag, the rest of it with the body.
+  `parts.<p>.rig_smooth = rounds` (6) evens a garment's weights more or less.
+- **Hems.** Shorts, a shirt's hem, a skirt are sheets hanging off the body, and skinning can only bend them with
+  the limb under them: past ~45 deg of thigh the crotch of a pair of shorts and a loose hem fold. What game riggers
+  do, in order of cost: delete the skin under the garment (the export does: hidden faces are dropped, so nothing
+  pokes through), smooth the garment's weights so the hem takes some of the pelvis and of both thighs (done:
+  raise `rig_smooth` on a long hem), and for skirts, coats and anything that must swing, extra bones (a ring of
+  short chains from the waist, driven by the thighs or by a spring / cloth solver in the engine: Unity's cloth and
+  dynamic-bone components, Unreal's Chaos cloth and its RBAN skirt chains, VRM spring bones). This rig has no hem
+  bones: a skirt will follow the thighs and fold between them. Judge with `rig(pose={"LeftUpLeg": [[1, 0, 0],
+  -60]}, glb=...)` and keep hems short or close-fitting if the character has to kick.
 - **Check the numbers.** `rig` prints, under the bone list, a twist test per chain (the hand rolled 75 and 105
   deg, the arm 60, foot and thigh 40): the skin's twist by station along the segment, what is left at the joint,
   the largest step, the worst section's area against rest (flagged CANDY WRAPPER under 0.8) and the worst
