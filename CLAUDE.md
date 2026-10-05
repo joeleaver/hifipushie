@@ -847,15 +847,33 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
     shows one mask; prints the face's measurements beside the photographs' with hints.
   - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
-    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls (seeded identities): a child
-    gets an adult's face shape.
-  - WIP when the usage limit stopped the round (2026-10-05, branch worktree-agent-a692991f8b9a26e48): `headfit.py` (a
-    MakeHuman body's age/sex/weight shape the GNM head: landmark moves via `makehuman_lm68.json` solved in GNM's identity,
-    head scale from the body's interocular, graft plane follows the chin, neck held; default for heads without fit /
-    identity / regions; `tests/test_headfit.py` passes; clay-checked on the child and the old man, whose neck collar is
-    gone), `base.cornea`, window-shaped highlight lights and the eyeball tear line are UNTESTED in renders; only 2 of the
-    6 humans were rebuilt (workspace/skin_h_*, sheets sk_02/sk_03 are stale); the tear line's `near: ["base"]` may not
-    validate. Not started: lash cards, re-measuring against the 24 photos, export fixes, grooms.
+    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls of their own (seeded
+    identities): see headfit below.
+  - Heads follow the body (2026-10-05, `headfit.py`, renders sk_07 / sk_08; the main session: every head was the same
+    adult face). MakeHuman's topology is fixed, so `makehuman_lm68.json` (made once by `spikes/headfit/make_table.py`:
+    the two neutral heads aligned by eye centres, similarity ICP on the face, a local ICP per feature, nearest
+    vertices, pairs forced symmetric; checked in a picture) names its vertices at GNM's 68 landmarks + 4 cranium
+    points. For a body, the landmarks' MOVE from MakeHuman's reference head (25 years, sex 0.5) to the body's own, in
+    interocular units round the eye midpoint, is added to the seeded GNM head's landmarks (delta transfer: the
+    table's millimetres of mismatch cancel, the seed's individuality stays) and solved in 120 identity components
+    (ridge, components past +-2.6 sigma fixed and the rest re-solved), eye centres held. Head scale = the body's
+    interocular / the fitted GNM's (0.74 for a 7-year-old, ~0.92 adults; the old default 1.4 made every head a
+    doll's). On by default when base.head has no `fit` / `identity` / `regions` (an authored head, the golfer's, is
+    untouched); `follow_body` forces it on or off, `follow` scales it. 60-70% of the asked move is made.
+    What it took: lids and lips weighted 0.3 / 0.5 / 0.15 (in full, the child's lips twisted and lid margins tore);
+    the neck and bib HELD (90 skin vertices under the chin: no landmark sees them, and left free the fit flared the
+    bib up to the graft plane = the stand-up collar round old bodies' necks; with them held the head's neck matches
+    the body's within a few mm); the graft plane follows the chin; a monotone neck taper. `tests/test_headfit.py`.
+    Honest read: the child and the men read as their age; the old woman reads as an old man (GNM's space and a
+    bald head), the adult woman androgynous.
+  - Eyes, second pass: `base.cornea` (a smaller sphere proud of the eyeball where the gaze leaves it, ONE group with
+    its eyeball: as two elements with different blends the scene's chunked evaluation blew the mirrored eye up to
+    twice its size, in the scene only, the clay look was fine); look lights take `"window"` (the highlight from a
+    rectangular area light, the sun keeps diffuse + shadow) and `"specular": 0` on fills: one window catchlight, not
+    two discs; a tear line on the eyeball where the lower lid meets it (paint `near: ["base"]` works).
+    `look_skin`'s stage key now includes base.py / headfit.py: a stale stage hid two fixes for an hour.
+    Not done: lash cards, re-measuring against the 24 photos, export fixes, grooms; nostrils show a pale thing
+    behind them on followed heads.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
