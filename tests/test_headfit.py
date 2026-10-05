@@ -97,7 +97,7 @@ def test_age_and_sex_reach_the_head():
     assert np.abs(np.array(list(a.values())) - np.array(list(b.values()))).max() > 0.5
     # dimorphism: a woman's jaw is narrower still with it, a man's wider; 0 = MakeHuman's own sexes
     j = lambda sex, dm: _shape(base(None, like={"sex": sex}, dimorphism=dm))[2]  # noqa: E731
-    assert j(0.0, 1.0) < j(0.0, 0.0) < j(1.0, 0.0) < j(1.0, 1.0)
+    assert j(0.0, 1.0) < j(0.0, 0.0) < j(1.0, 0.0) < j(1.0, 1.0) and j(1.0, 1.0) - j(1.0, 0.0) < j(0.0, 0.0) - j(0.0, 1.0)
     assert abs(j(0.5, 1.0) - j(0.5, 0.0)) < 1e-9
     F = headfit.fields()
     assert F["ref"].shape[1] == 3 and F["age_sex"].shape[:2] == (len(F["ages"]), 2) and F["valid"].sum() > 9000

@@ -140,6 +140,7 @@ def field_vertices(desc: dict) -> np.ndarray:
         # sexual dimorphism a little past MakeHuman's own (its sexes differ by ~6 mm rms; on a bald head, under another
         # person's individuality, that much reads as neither)
         dm = float(desc.get("dimorphism", 0.0)) * (1 - 2 * s)
+        dm *= 1.0 if dm > 0 else 0.5  # (a man pushed as far reads as a brute: heavy brow and jaw add up faster)
         if dm:
             d = d + 0.5 * dm * ((1 - t) * (T[i, 0].astype(float) - T[i, 1]) + t * (T[i + 1, 0].astype(float) - T[i + 1, 1]))
         j = int(np.searchsorted(ages, REF["age"]))  # (sex 0.5 isn't exactly the mean of the two sexes' heads)
