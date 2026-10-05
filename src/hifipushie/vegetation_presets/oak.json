@@ -1,0 +1,47 @@
+{
+ "about": "English oak (Quercus robur), open-grown: a short stout bole, heavy spreading limbs, a broad rounded dome as wide as tall when old",
+ "age": 90,
+ "habit": {
+  "years_per_step": 2.5,
+  "unit": 0.32,
+  "vigour": 4.0,
+  "apical": [
+   0.48,
+   0.53
+  ],
+  "apical_old": 0.4,
+  "apical_fade": [
+   0.25,
+   0.6
+  ],
+  "shoot_max": [
+   2,
+   2
+  ],
+  "angle": [
+   74,
+   55,
+   50
+  ],
+  "tropism": [
+   0.15,
+   0.0,
+   0.03
+  ],
+  "light": 0.25,
+  "jitter": 0.22,
+  "shed": 0.1,
+  "bud_life": 6,
+  "sag": 1.1,
+  "pipe": 2.2,
+  "flare": 1.7,
+  "flare_height": 0.8,
+  "clear": 3.0
+ },
+ "leaves": {
+  "type": "broad",
+  "size": 0.1,
+  "per_node": 16,
+  "spread": 0.35
+ }
+}

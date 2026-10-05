@@ -1,0 +1,58 @@
+{
+ "about": "Weeping willow (Salix babylonica): a short thick trunk, ascending scaffold limbs, curtains of long thin shoots hanging to the ground",
+ "age": 35,
+ "habit": {
+  "years_per_step": 1.2,
+  "unit": 0.34,
+  "vigour": 4.5,
+  "apical": [
+   0.5,
+   0.52,
+   0.55,
+   0.6
+  ],
+  "apical_old": 0.42,
+  "shoot_max": [
+   2,
+   2,
+   3,
+   4
+  ],
+  "length": [
+   1,
+   1,
+   1,
+   1.1
+  ],
+  "angle": [
+   50,
+   55,
+   75,
+   60
+  ],
+  "tropism": [
+   0.3,
+   0.25,
+   -0.55,
+   -1.2
+  ],
+  "light": 0.15,
+  "jitter": 0.1,
+  "shed": 0.06,
+  "bud_life": 5,
+  "sag": 3.0,
+  "sag_max": 0.35,
+  "pipe": 2.3,
+  "flare": 1.6,
+  "clear": 1.8,
+  "max_order": 4,
+  "leaf_steps": 3
+ },
+ "leaves": {
+  "type": "strap",
+  "size": 0.09,
+  "per_node": 16,
+  "spread": 0.12,
+  "droop": 1.0
+ }
+}
