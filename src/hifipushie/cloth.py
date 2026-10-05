@@ -2344,6 +2344,8 @@ def sizing(res: dict) -> dict:
                     wi = max(0.0, max(sgn * x for x in xs))
             per[nm] = round(wi * 1000, 1)
             w += wi
+        if w <= 0:  # the garment doesn't reach that girth (a skirt has no chest)
+            continue
         g = w * 1000
         bb = body.m["mm"][reg]
         rows[reg] = {"body_mm": bb, "garment_mm": round(g, 1), "ease_mm": round(g - bb, 1),
@@ -2390,7 +2392,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate"}
+                "design", "folds", "generate", "method", "made"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -2477,6 +2479,9 @@ def validate(spec: dict) -> None:
                     raise ClothError(f'{where}: drape "over" is "model" (its whole surface) or "body" (its base body)')
         elif st not in ("worn", "hung", "draped"):
             raise ClothError(f'{where}: state is "worn", "hung", "draped" or an object (see guide(topic="cloth"))')
+        if g.get("method", "simulate") not in ("simulate", "settle"):
+            raise ClothError(f'{where}: method is "simulate" (sew and simulate everything) or "settle" (made pieces '
+                             "constructed finished, the loose cloth settled lightly)")
         if g.get("quality", "final") not in ("draft", "final"):
             raise ClothError(f'{where}: quality is "draft" (one coarse sim, ~1 min) or "final" (coarse then refined)')
         for k, lo, hi in (("resolution", 0.004, 0.05), ("coarse", 0.008, 0.05)):

@@ -59,7 +59,9 @@ def _quarter(W: float, S: float, seat_y: float, L: float, flare: float, dart: fl
     else:
         xs = W
     pts += [("sideWaist", [xs, 0.01])]
-    hip = _curve([xs, 0.01], [S, 0.4 * seat_y], [S, seat_y])
+    # the hip curve runs into the side seam without a corner: its control point lies on the seam line produced
+    k = (0.65 * seat_y) / (L + seat_y) if L + seat_y > 1e-6 else 0.0
+    hip = _curve([xs, 0.01], [S + flare * k, 0.35 * seat_y], [S, seat_y])
     pts += [list(p) for p in hip[:-1]] + [("sideSeat", list(hip[-1]))]
     pts += [("sideHem", [S + flare, -L]), (f"{centre}Hem", [0.0, -L])]
     return pts
@@ -157,7 +159,7 @@ def skirt_block(m: dict, opts: dict) -> dict:
     if hb > 0:
         out["generate"] = [{"band": "waistband", "role": "waistband", "along": chain, "ratio": 1.0, "height": hb,
                             "overlap": float(opts.get("overlap", 0.035)), "interfaced": True,
-                            "wrap": {"to": "torso", "side": "front", "level": "waist"}}]
+                            "wrap": {"to": "torso", "side": "front", "level": "waist", "out": 0.004}}]
     return out
 
 

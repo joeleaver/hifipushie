@@ -129,9 +129,12 @@ hairline and clumps carried onto the head); sync(hair_only=True) puts the locks 
 
 Clothes are sewn, not sculpted: spec["cloth"] garments are drafted to the body's measurements (FreeSewing designs or
 your own pattern pieces), sewn and settled by Blender's cloth sim, cleaned up, with seams/stitching/hems from the
-pattern. Read guide(topic="cloth"), then dress (starts the sim in the background; quality "draft" first) -> look_cloth
-(renders, strain map, fit/integrity report) -> dress(spec=patch) ...; states worn / draped (tablecloths, blankets) /
-hung; sync(cloth_only=True) puts them in scene.blend, pull brings colour and sculpt edits back.
+pattern. Work in a maker's stages (guide(topic="cloth")): design_garment (the design sheet: kind, fabric, fit, every
+construction choice; garment_reference lists them) -> look_pattern (the flat pattern sheet + checks: seams, ease, each
+choice evidenced) -> check_garment (construction plan, arrangement on the body) -> dress (quality "draft" first; it
+refuses to simulate over construction failures) -> look_cloth (renders, strain map, report, numeric targets) -> final.
+Fix faults in the pattern, never in the solver. States worn / draped (tablecloths, blankets) / hung;
+sync(cloth_only=True) puts garments in scene.blend, pull brings colour and sculpt edits back.
 
 Terrain (landscapes and game levels) is separate: a height field described in a level designer's words (a basin, a
 pass, a village site, a road, forest here, "this must be visible from there"). Read guide(topic="terrain"), then
@@ -275,8 +278,9 @@ def guide(topic: str = "") -> str:
     basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools.
     topic="hair": stylised hair as sculpted locks, the way artists groom it (silhouette, big shapes, clumps, breakup),
     with groom_hair, look_hair, hair_reference and sync(hair_only=True).
-    topic="cloth": garments the way garment artists make them (pattern, sew, simulate coarse then fine, clean up,
-    seams and stitching), with dress, look_cloth and sync(cloth_only=True)."""
+    topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
+    pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
+    check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True)."""
     if topic.strip().lower() == "terrain":
         return (Path(__file__).with_name("terrain_guide.md")).read_text()
     if topic.strip().lower() == "hair":

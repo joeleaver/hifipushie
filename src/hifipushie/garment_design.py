@@ -34,7 +34,8 @@ from . import pattern
 KB_PATH = Path(__file__).with_name("garment_kb.json")
 DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", "waistband", "fly", "skirt_closure",
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch")
-SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes"}
+SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made"}
+METHODS = ("simulate", "settle")
 
 
 class DesignError(ValueError):
@@ -85,6 +86,12 @@ def validate(sheet: dict, where: str = "design") -> None:
         if f not in K["fabrics"] and f not in FABRICS:
             raise ClothError(f"{where}: fabric {f!r} unknown (have {', '.join(k for k in K['fabrics'] if not k.startswith('_'))} "
                              f"or a preset: {', '.join(FABRICS)})")
+    if sheet.get("method") is not None and sheet["method"] not in METHODS:
+        raise ClothError(f'{where}: method is "simulate" (sewn and fully simulated) or "settle" (structured parts '
+                         "constructed finished, the loose cloth settled lightly from the fitted placement)")
+    if sheet.get("made") is not None and not (isinstance(sheet["made"], dict) and all(
+            v in ("made", "draped") for v in sheet["made"].values())):
+        raise ClothError(f'{where}: made is {{piece or role: "made" | "draped"}}')
     for d, v in (sheet.get("details") or {}).items():
         if d not in K["details"]:
             raise ClothError(f"{where}: detail {d!r} unknown (have {', '.join(k for k in K['details'] if not k.startswith('_'))})")
@@ -195,6 +202,8 @@ def compile_sheet(sheet: dict) -> dict:
     if sheet.get("pattern") and "pattern" in out:
         out["pattern"] = _merge(out["pattern"], sheet["pattern"])
     out["fabric"] = r["fabric"]["solver"]
+    if sheet.get("method"):
+        out["method"] = sheet["method"]
     if drop:
         out["drop"] = drop
     if folds:
@@ -292,6 +301,35 @@ def roles(Bp: dict) -> dict:
     out: dict = {}
     for nm, pc in Bp["pieces"].items():
         out.setdefault(role_of(nm, pc), []).append(nm)
+    return out
+
+
+def made_or_draped(Bp: dict, res: dict | None = None, sheet: dict | None = None) -> dict:
+    """{piece: ("made" | "draped", why)}: how each piece gets its shape. Made = constructed finished, as a tailor
+    makes it on the table before it goes on the body (a collar turned and pressed, a cuff, a waistband, a placket):
+    its shape comes from its construction (fold lines, interfacing), never from simulating it into shape. Draped =
+    loose cloth whose shape is the body, gravity and its seams (fronts, backs, sleeves, skirt panels). From: the
+    sheet's own "made" {piece or role: ...}, else the knowledge base (a detail's made_of rests "as_made" / "flat"),
+    else interfacing (wholly interfaced = made)."""
+    pcs = Bp["pieces"]
+    whole = {e for e in Bp["interfaced"] if isinstance(e, str)}
+    by_role = {}
+    for d, info in ((res or {}).get("details") or {}).items():
+        for part in info["kb"].get("made_of", []):
+            if part.get("rests"):
+                by_role[part["role"]] = ("made" if part["rests"] == "as_made" else "draped", f"{d} {info['choice']}")
+    own = (sheet or {}).get("made") or {}
+    out = {}
+    for nm, pc in pcs.items():
+        role = role_of(nm, pc)
+        if nm in own or role in own:
+            out[nm] = (own.get(nm, own.get(role)), "the sheet says so")
+        elif role in by_role:
+            out[nm] = by_role[role]
+        elif nm in whole:
+            out[nm] = ("made", "wholly interfaced")
+        else:
+            out[nm] = ("draped", "loose cloth")
     return out
 
 

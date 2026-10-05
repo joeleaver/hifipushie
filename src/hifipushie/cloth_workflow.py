@@ -236,24 +236,38 @@ def stage_construction(c: Ctx) -> dict:
     bands = [e for e in Bp["interfaced"] if not isinstance(e, str)]
     o["info"].append(f"interfacing (bending x{fab.get('stiff')} over the shell): whole {', '.join(whole) or 'none'}; bands "
                      + (", ".join(f"{e['piece']} near {e['near']} within {e.get('within', 0.02) * 1000:.0f} mm" for e in bands) or "none"))
-    o["info"].append(f"rest as made (wholly interfaced: they keep their placed shape): {', '.join(whole) or 'none'}")
+    o["info"].append(f"rest as made in the solver today (wholly interfaced: they keep their placed shape): {', '.join(whole) or 'none'}")
+    # made vs draped: what is constructed finished on the table, and what takes its shape from the body
+    md = garment_design.made_or_draped(Bp, c.res, c.sheet)
+    folded = {f.get("piece") for f in Bp.get("folds") or []} | {n for n in pcs if (pcs[n].get("wrap") or {}).get("fold")}
+    o["info"].append("pieces, made (constructed finished and pressed, never simulated into shape) or draped (loose "
+                     "cloth: body, gravity, seams):")
+    for n, (how, why) in md.items():
+        o["info"].append(f"  {n}: {how} ({why})" + ("; fold line" if n in folded else "")
+                         + ("; interfaced" if n in whole else ""))
+        if how == "made" and n not in whole:
+            o["warn"].append(f"{n} is a made piece but isn't wholly interfaced: the solver will drape it")
+        if how == "draped" and n in whole:
+            o["fail"].append(f"{n} is draped cloth (it must hang or roll) but is wholly interfaced, so the solver "
+                             "rests it as made (frozen as placed): interface a band instead")
+    method = c.gx.get("method", "simulate")
+    st_ = cloth._state(c.g)
+    o["info"].append(f"method: {method} (simulate = sew and simulate everything; settle = made pieces constructed "
+                     "finished by geometry, the draped cloth settled lightly from the fitted placement, fine folds "
+                     "authored at tension points; full simulation is for states like hung and draped)")
+    if method == "settle":
+        if isinstance(st_, dict):
+            o["warn"].append("method settle on a hung/draped state: those want the full simulation")
+        o["warn"].append('method "settle" is the artists\' default path under test (clothsim): the solver side isn\'t '
+                         "wired yet, so dress still runs the full simulation")
+        for n, (how, _) in md.items():
+            if how == "made" and n not in folded and garment_design.role_of(n, pcs[n]) in ("collar_fall", "facing"):
+                o["fail"].append(f"{n} is made but has no fold line: it can't be constructed turned without one")
     K = garment_design.kb()
     lo, hi = 3, 40
     if not (lo <= float(fab.get("stiff", 0)) <= hi):
         o["warn"].append(f"interfacing multiplier {fab.get('stiff')} outside practice ({lo}-{hi}x the shell's bending)")
     if c.res:
-        R = garment_design.roles(Bp)
-        for d, info in c.res["details"].items():
-            for part in info["kb"].get("made_of", []):
-                names = R.get(part["role"], [])
-                if part.get("rests") == "flat":
-                    frozen = [n for n in names if n in whole]
-                    if frozen:
-                        o["fail"].append(f"{d} {info['choice']}: {', '.join(frozen)} must stay free (rests on the flat "
-                                         "pattern, e.g. to roll) but is wholly interfaced, so it rests as made: interface a band")
-                if part.get("rests") == "as_made" and names and not any(n in whole for n in names):
-                    o["warn"].append(f"{d} {info['choice']}: {part['role']} is usually made (wholly interfaced, rests as "
-                                     "made); here it isn't")
         ph = c.res["fabric"]["physical"]
         o["info"].append(f"fabric {c.res['fabric']['name']}: " + json.dumps(ph) + f"; solver {json.dumps(fab, default=str)}")
         if c.kind in ("coat", "jacket"):
@@ -333,16 +347,23 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     body_p = c.body.straight_arms()[0] if smooth else c.body
     X = cloth.place(Bp, M, body_p, smooth=smooth)
     cr = sorted(cloth._piece_crossings(X, M))
-    if cr:
-        o["fail"].append(f"the start has pieces through each other: {', '.join(f'{a}/{b}' for a, b in cr)} (the sim "
-                         "grows these into tangles: move a piece, change its layer (wrap out) or its order)")
+    if cr and smooth:
+        o["fail"].append(f"the start has pieces through each other: {', '.join(f'{a}/{b}' for a, b in cr)} (a contact "
+                         "solver can't undo a start that is already crossed: move a piece, change its layer (wrap out))")
+    elif cr:
+        o["warn"].append(f"the start has pieces through each other: {', '.join(f'{a}/{b}' for a, b in cr)} (placement "
+                         '"fitted": Blender pushes them apart while sewing, and this is where a CORRUPT result starts; '
+                         "a sleeve cap inside the armhole and a cuff's own overlap are usual at 2 cm)")
     else:
         o["info"].append("start: no piece passes through another")
     push = Bp.get("push") or {}
     for p, v in push.items():
-        to = Bp["pieces"][p]["wrap"].get("to", "")
-        if to == "neck" and v > 8:
-            o["fail"].append(f"{p} started {v} mm inside the neck/jaw: the band is taller than this neck allows (lower it)")
+        pc = Bp["pieces"][p]
+        stands = pc["wrap"].get("to", "") == "neck" and not pc["wrap"].get("fold") and \
+            not any(f.get("piece") == p for f in Bp.get("folds") or [])
+        if stands and v > 8:
+            o["fail"].append(f"{p} ({garment_design.role_of(p, pc)}) started {v} mm inside the neck/jaw: the band is "
+                             "taller than this neck allows (lower it: the draft's stand/band width option)")
         elif v > 15:
             o["warn"].append(f"{p} was pushed {v} mm off the body at the start (that stretch goes into the rest shape)")
     if push:

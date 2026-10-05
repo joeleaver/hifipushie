@@ -30,9 +30,9 @@
 
  "kinds": {
   "_doc": "Garment kinds. fit: ease bands per girth (fraction of the body girth, from the flat pattern). details: the default choice per detail (garment_design fills these in when the sheet leaves them out). required: details every garment of the kind must state or take by default. cap_ease: the sleeve cap's ease into the armhole. lap: which front laps over at a closure (the buttonhole side is the outer one). sewing_order: roles in the order a maker joins them (the construction plan follows it). region: upper (shoulders carry it), lower (waist carries it), whole.",
-  "shirt": {"region": "upper", "fabric": "cotton_shirting", "lap": "left_over_right", "cap_ease": [0.0, 0.03],
-            "fit": {"slim": {"chest": [0.06, 0.14], "waist": [0.06, 0.20], "hips": [0.04, 0.20]},
-                    "regular": {"chest": [0.10, 0.24], "waist": [0.12, 0.35], "hips": [0.08, 0.30]},
+  "shirt": {"region": "upper", "fabric": "cotton_shirting", "lap": "left_over_right", "cap_ease": [-0.01, 0.03],
+            "fit": {"slim": {"chest": [0.06, 0.14], "waist": [0.06, 0.20], "hips": [0.0, 0.20]},
+                    "regular": {"chest": [0.10, 0.24], "waist": [0.12, 0.35], "hips": [0.0, 0.30]},
                     "relaxed": {"chest": [0.20, 0.40], "waist": [0.25, 0.50], "hips": [0.15, 0.40]}},
             "details": {"collar": "shirt_collar", "cuff": "barrel", "sleeve_placket": "tower", "front_closure": "buttons",
                         "placket": "folded", "hem": "shirttail", "yoke": "single", "topstitch": "edge"},
@@ -82,7 +82,7 @@
              "sewing_order": ["leg_front", "fly", "leg_back", "waistband"]},
   "skirt": {"region": "lower", "fabric": "cotton_twill", "lap": null,
             "fit": {"straight": {"waist": [0.0, 0.03], "hips": [0.03, 0.08], "seat": [0.03, 0.08]},
-                    "a_line": {"waist": [0.0, 0.03], "hips": [0.04, 0.12], "seat": [0.05, 0.15]},
+                    "a_line": {"waist": [0.0, 0.03], "hips": [0.03, 0.12], "seat": [0.05, 0.15]},
                     "full": {"waist": [0.0, 0.03], "hips": [0.10, 0.60], "seat": [0.15, 1.00]}},
             "details": {"waistband": "straight", "skirt_closure": "cb_zip", "darts": "waist", "hem": "blind"},
             "required": ["waistband", "skirt_closure", "hem"],
@@ -336,7 +336,7 @@
   "_doc": "What each draft source can make: per detail choice, the recipe (FreeSewing options, pieces dropped, fold lines, generated pieces) and what it can't make yet (and why). A sheet choice a design can't make is a hard failure in stage 1. fit_options: draft options per fit. pattern_from: the cloth design table / block name (default: the design's own name).",
   "simon": {"kind": "shirt", "kinds": ["shirt", "blouse"],
     "can": {
-     "collar": {"shirt_collar": {"folds": [{"piece": "collar", "line": {"edge": "collar:leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 15, "kind": "roll", "radius": 0.003, "strength": 0.6, "name": "collar roll"}]},
+     "collar": {"shirt_collar": {"options": {"collarGap": 0, "collarWidth": 1.45}, "folds": [{"piece": "collar", "line": {"edge": "collar:leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 15, "kind": "roll", "radius": 0.003, "strength": 0.6, "name": "collar roll"}]},
                 "band": {"drop": ["collar"]}},
      "cuff": {"barrel": {"options": {"cuffStyle": "angledBarrelCuff"}},
               "french": {"options": {"cuffStyle": "straightFrenchCuff"},
