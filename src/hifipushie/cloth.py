@@ -3242,7 +3242,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         cu = {"smooth": int(round(1.5 * (hs / h) ** 2 * max(1.0, (h / 0.01) ** 2))), "keep": 0.3 * hs}
         if res["constructed"].get("fine_settle"):  # settled at the fine size: what is left of the coarse facets only
             cu = {"smooth": 3, "keep": 0.002}
-    res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
+    # (the REAL body: layered, `body` is padded out over the garment underneath, and pushing the finished jacket
+    # off that pad moved it 7 mm at p95 and through its own collar: 88 crossings the sim didn't have)
+    res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body_real,  # hung: the body is gone
                                        cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
     if construct and not res["constructed"].get("fine_settle"):  # (the smoothing can bring cloth back out through a
@@ -3261,9 +3263,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         if h <= 0.012 and not hang:
             res["V"], rms = cloth_detail.displace(M, res["V"], res["fold_dabs"], fabn, do["fold_opts"], interfacing(Bp, M))
             res["folds_in_geometry"] = round(rms, 2)
-    if construct and res["constructed"].get("fine_settle"):
-        # the clean-up and the folds put into the geometry must not make the cloth cross itself where the settle left
-        # it clean: those places go back to the settled surface
+    if not hang:
+        # the clean-up (welds, the push off the body) and the folds put into the geometry must not make the cloth
+        # cross itself where the sim left it clean: those places go back to the sim's surface. For every garment:
+        # it used to run only after a fine settle, and a jacket's clean-up crossed its collar ends
         A_, B_ = _graph(M)
         for _ in range(4):
             bad = _crossing_verts(res["V"], M)
@@ -3293,6 +3296,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         res["closures"] = closuremod.measure(res["V"], M)
         res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
+    res["seam_gaps"] = seam_gaps(res["V_sim"], res["V"], M)
     res["shape"] = {"sim": shape_numbers(res["V_sim"], M), "final": shape_numbers(res["V"], M)}
     res["fit"] = fit(res)
     res["integrity"] = integrity(res["V"], M, Bp, X0)
@@ -3412,6 +3416,28 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
 
 
 CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004}
+
+
+SEAM_GAP_MM = 0.5  # a finished seam's two sides further apart than this at p95 shows as an open seam
+
+
+def seam_gaps(V_sim: np.ndarray, V: np.ndarray, M: dict) -> dict:
+    """How far apart the two sides of the seams are (mm), as the sim left them and after the clean-up's weld; `open` =
+    sewn pairs still over SEAM_GAP_MM in the finished surface, `worst` = the seam (piece pair) with the widest."""
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    if not len(sw):
+        return {}
+    out = {}
+    for tag, X in (("sim", V_sim), ("final", V)):
+        d = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1) * 1000
+        out[tag] = {"p50": round(float(np.median(d)), 2), "p95": round(float(np.percentile(d, 95)), 2),
+                    "max": round(float(d.max()), 1)}
+    i = int(np.argmax(d))
+    out["open"] = int((d > SEAM_GAP_MM).sum())
+    out["pairs"] = int(len(d))
+    out["worst"] = " / ".join(sorted({M["names"][M["piece"][sw[i, 0]]], M["names"][M["piece"][sw[i, 1]]]}))
+    out["ok"] = bool(out["final"]["p95"] <= SEAM_GAP_MM)
+    return out
 
 
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
@@ -4187,6 +4213,12 @@ def report(gname: str, res: dict) -> str:
             L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
                      "allows and crumples; lower it (the design's stand/collar width option, e.g. simon \"options\": "
                      "{\"collarStandWidth\": 0.045}, default 0.08)")
+    sg = res.get("seam_gaps")
+    if sg:
+        L.append(f"  {'ok ' if sg['ok'] else '!! '}seams: sides apart p50 {sg['final']['p50']} / p95 {sg['final']['p95']} / max "
+                 f"{sg['final']['max']} mm after the clean-up (the sim left {sg['sim']['p50']} / {sg['sim']['p95']} / "
+                 f"{sg['sim']['max']}; closed <= {SEAM_GAP_MM} at p95)"
+                 + ("" if not sg["open"] else f"; {sg['open']} of {sg['pairs']} sewn pairs still OPEN, widest at {sg['worst']}"))
     if res.get("closures"):
         from . import closures as closuremod
         L.append(closuremod.text(res["closures"]))
