@@ -38,15 +38,9 @@ def _yup(v):
     return np.stack([v[:, 0], v[:, 2], -v[:, 1]], 1)
 
 
-def foliage_mesh(tree: dict, at: dict, keep: float = 1.0) -> dict:
-    """Every twig's card placed on the tree, as one mesh: V, F, uv, tint (per vertex). keep < 1 draws that share of
-    the twigs (chosen by their own hash), each larger by 1 / sqrt(keep): the same cover from fewer cards."""
-    tw = veg_leaf.place(tree)
-    if keep < 1 and len(tw["pos"]):
-        rank = np.argsort(np.argsort(vegetation._u(tw["key"], 91)))
-        sel = rank < int(np.floor(len(rank) * keep + 1e-9))  # (exactly that many: a threshold on the hash overshot budgets)
-        tw = {k: v[sel] for k, v in tw.items()}
-        tw["scale"] = tw["scale"] * min(1.0 / np.sqrt(max(keep, 1e-6)), 2.5)
+def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.0, protect=None) -> dict:
+    """Every twig's card placed on the tree, as one mesh: V, F, uv, tint (per vertex). keep < 1: see pick_twigs."""
+    tw = pick_twigs(tree, keep, min_radius, protect)[0]
     if not len(tw["pos"]):
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0)}
     nv = len(at["cards"])
@@ -68,34 +62,93 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0) -> dict:
     return {"V": np.vstack(Vs), "F": np.vstack(Fs), "uv": np.vstack(Us), "tint": np.concatenate(Ts)}
 
 
+def protected(tree: dict) -> np.ndarray:
+    """Per node: wood a triangle budget keeps far longer than its girth earns (down to a quarter of the cut-off radius): what the artist marked (dead wood kept on the
+    tree, drawn guides). Without it a 20k stag-headed oak lost its antlers: they are the thinnest wood on it."""
+    pr = np.zeros(len(tree["pos"]), bool)
+    if tree.get("dead") is not None:
+        pr |= tree["dead"]
+    for ai in (tree.get("guides") or {}).values():
+        pr |= (tree["axis"] == ai) & tree["pin"]
+    return pr
+
+
+def kept_wood(tree: dict, min_radius: float, protect=None) -> np.ndarray:
+    """Per node: is its axis drawn at this cut-off radius?"""
+    ax, rad = tree["axis"], tree["radius"]
+    first = np.full(int(ax.max()) + 1, -1)
+    idx = np.arange(len(ax))[::-1]
+    first[ax[idx]] = idx  # an axis's first node
+    ok = rad[first[ax]] >= min_radius
+    if protect is not None:
+        ok |= protect[first[ax]] & (rad[first[ax]] >= min_radius * veg_mesh.PROTECT)
+    ok[:2] = True
+    return ok
+
+
+def pick_twigs(tree: dict, keep: float, min_radius: float = 0.0, protect=None, tw: dict | None = None) -> tuple[dict, float]:
+    """The twigs a budget draws: `keep` of them, each larger by 1 / sqrt(keep). Those standing on drawn wood (or within
+    a card's reach of it along the branch) go first: cards chosen by their hash alone were left floating round bare
+    spars. Returns (twigs, the share of the kept ones farther than that from drawn wood)."""
+    tw = veg_leaf.place(tree) if tw is None else tw
+    n = len(tw["pos"])
+    if not n or keep >= 1:
+        return tw, 0.0
+    grow = min(1.0 / np.sqrt(max(keep, 1e-6)), 2.5)
+    ok = kept_wood(tree, min_radius, protect)
+    par, P = tree["parent"], tree["pos"]
+    seg = np.linalg.norm(P - P[par], axis=1)
+    d = np.zeros(len(P))
+    for i in range(2, len(P)):  # distance back along the branch to drawn wood (parents come first)
+        d[i] = 0.0 if ok[i] else d[par[i]] + seg[i]
+    lf = tree["spec"]["leaves"]
+    reach = 0.6 * float((lf.get("card") or {}).get("twig", {}).get("length", (lf.get("twig") or {}).get("length", 0.3))) * grow
+    far = d[tw["node"]] > reach
+    rank = np.argsort(np.argsort(far.astype(float) + 0.999 * vegetation._u(tw["key"], 91)))
+    sel = rank < int(np.floor(n * keep + 1e-9))  # (exactly that many: a threshold on the hash overshot budgets)
+    out = {k: v[sel] for k, v in tw.items()}
+    out["scale"] = out["scale"] * grow
+    return out, float(far[sel].mean()) if sel.any() else 0.0
+
+
 def budget(tree: dict, triangles: int | None, tile, card_triangles: int) -> dict:
     """What a triangle budget leaves of a plant: {"wood": the tube mesh, "sides", "min_radius" (thinner wood is left
-    out), "keep" (the share of twigs drawn, each larger by 1 / sqrt(keep)), "total", "over": triangles past the
-    budget (the trunk alone can be more than a tiny budget)}. Half the budget is the wood's, the rest the foliage's."""
-    n_tw = len(veg_leaf.place(tree)["pos"])
-    W = veg_mesh.tubes(tree, tile=tile)
-    out = {"wood": W, "sides": (3, 12), "min_radius": 0.0, "keep": 1.0}
-    if triangles:
-        wood_budget = triangles * (0.5 if n_tw else 1.0)
-        if len(W["F"]) > wood_budget:  # fewer sides first, then leave out the thinnest axes
-            out["sides"] = (3, 8)
-            W = veg_mesh.tubes(tree, tile=tile, sides=(3, 8))
+    out, except `protected` wood), "keep" (the share of twigs drawn, each larger by 1 / sqrt(keep)), "floating" (the
+    share of drawn twigs with no drawn wood near them), "total", "over": triangles past the budget (the trunk alone can
+    be more than a tiny budget)}. Half the budget is the wood's; two thirds when at half too many cards would float."""
+    tw = veg_leaf.place(tree)
+    n_tw = len(tw["pos"])
+    pr = protected(tree)
+    W0 = veg_mesh.tubes(tree, tile=tile)
+    out = {"wood": W0, "sides": (3, 12), "min_radius": 0.0, "keep": 1.0, "floating": 0.0, "protect": pr}
+    for share in ((0.5, 0.66, 0.8) if n_tw else (1.0,)) if triangles else ():
+        W = W0
+        out.update(sides=(3, 12), min_radius=0.0, simplify=0.0)
+        wood_budget = triangles * share
+        for sides, simp in (((3, 10), 0.15), ((3, 8), 0.3), ((3, 7), 0.5)):  # fewer rings and sides before any wood goes
+            if len(W["F"]) <= wood_budget:
+                break
+            out.update(sides=sides, simplify=simp)
+            W = veg_mesh.tubes(tree, tile=tile, sides=sides, simplify=simp)
+        if len(W["F"]) > wood_budget:  # then leave out the thinnest axes
+            kw = dict(tile=tile, sides=out["sides"], simplify=out["simplify"], protect=pr)
             radii = np.unique(tree["radius"][1:])
             lo_, hi_ = 0, len(radii) - 1
-            while len(W["F"]) > wood_budget and lo_ < hi_:  # the smallest cut-off radius that fits
+            while lo_ < hi_:  # the smallest cut-off radius that fits
                 mid = (lo_ + hi_) // 2
-                Wm = veg_mesh.tubes(tree, tile=tile, sides=(3, 8), min_radius=float(radii[mid]))
-                if len(Wm["F"]) > wood_budget:
+                if len(veg_mesh.tubes(tree, min_radius=float(radii[mid]), **kw)["F"]) > wood_budget:
                     lo_ = mid + 1
                 else:
                     hi_ = mid
-            if len(W["F"]) > wood_budget:
-                out["min_radius"] = float(radii[hi_])
-                W = veg_mesh.tubes(tree, tile=tile, sides=(3, 8), min_radius=out["min_radius"])
+            out["min_radius"] = float(radii[hi_])
+            W = veg_mesh.tubes(tree, min_radius=out["min_radius"], **kw)
         out["wood"] = W
         if n_tw:
             left = max(triangles - len(W["F"]), 0)
             out["keep"] = float(np.clip((left // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))
+            out["floating"] = pick_twigs(tree, out["keep"], out["min_radius"], pr, tw)[1]
+        if out["floating"] <= 0.2 or out["min_radius"] == 0.0:
+            break
     fol = int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0
@@ -181,14 +234,15 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     for k, (t, nm) in enumerate(zip(trees, names)):
         bud = budget(t, triangles, tile, at["triangles"] if at else 0)
         W = bud["wood"]
-        L = foliage_mesh(t, at, bud["keep"]) if at and len(veg_leaf.place(t)["pos"]) else None
+        L = foliage_mesh(t, at, bud["keep"], bud["min_radius"], bud["protect"]) if at and len(veg_leaf.place(t)["pos"]) else None
         pre = "" if len(trees) == 1 else f"{nm}_"
         kids = []
         meshes.append({"name": pre + "wood", "primitives": [prim(W["V"], W["F"], W["uv"], 0)]})
         nodes.append({"name": pre + "wood", "mesh": len(meshes) - 1})
         kids.append(len(nodes) - 1)
         c = {"name": nm, "height_m": round(t["height"], 2), "wood_triangles": int(len(W["F"])), "foliage_triangles": 0,
-             "twigs_kept": round(bud["keep"], 3), "wood_min_radius_m": round(bud["min_radius"], 4)}
+             "twigs_kept": round(bud["keep"], 3), "wood_min_radius_m": round(bud["min_radius"], 4),
+             "floating": round(bud["floating"], 3)}
         if L is not None and len(L["F"]):
             meshes.append({"name": pre + "foliage", "primitives": [prim(L["V"], L["F"], L["uv"], 1, L["tint"])]})
             nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
@@ -202,7 +256,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             roots.append(len(nodes) - 1)
         per.append(c)
     counts = {"wood_triangles": sum(c["wood_triangles"] for c in per), "foliage_triangles": sum(c["foliage_triangles"] for c in per),
-              "twigs_kept": per[0]["twigs_kept"], "wood_min_radius_m": per[0]["wood_min_radius_m"], "budget": triangles}
+              "twigs_kept": per[0]["twigs_kept"], "wood_min_radius_m": per[0]["wood_min_radius_m"], "budget": triangles,
+              "floating": max(c["floating"] for c in per)}
     if at is not None:
         counts["atlas_px"] = int(at["color"].shape[0])
     if len(trees) > 1:

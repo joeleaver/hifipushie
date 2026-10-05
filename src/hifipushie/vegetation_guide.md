@@ -61,11 +61,14 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 - `dead`: `[{"limb": "SW2", "min_radius": 0.03}, {"above": 15, "min_radius": 0.04}]`: wood that died and stayed
   on the living tree (a limb by its name, or a volume: box, sphere, above): leafless, barkless silver-grey
   (`bark.dead_color`), everything thinner than `min_radius` broken off. A stag-headed veteran = `above` just under
-  the top; a snag limb = one limb. (A whole dead tree: `season: "dead"` + `decay`.)
+  the top; a snag limb = one limb (`"from": m` = only past that far along it; a guide's name works as the limb).
+  The report says how much died and broke off. (A whole dead tree: `season: "dead"` + `decay`.)
 - `roots`: `{"count": 5, "spread": 1.6, "height": 0.5}`: root flares at the foot: the trunk's section swells toward
   each root by `spread` x at the ground, fading over `height` m (spread 2+ and height 1+ = buttresses). The trunk
   always runs 0.3-0.5 m into the ground, so it meets a slope without a gap.
-- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are). With
+- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are), limbs too;
+  with `limb_diameter` (m: the stoutest limb where it leaves the trunk) the two are sized apart: a very fat old
+  trunk under ordinary limbs. (Over a long life `habit.ring` x age is what makes everything fat.) With
   `trunk_taper` (0-1: the share of that diameter the trunk loses by its top; 0.1 = a column, as a pollard's) the
   trunk keeps its girth whatever it carries. Without it the
   girth comes from what the trunk carries plus `habit.ring` per year, so a denser crown means a fatter trunk.
@@ -155,7 +158,9 @@ height, form, limb angles.
   carries. `edit_plant` op `{"op": "take_limb", "limb": "SW2", "name": "low_bough"}` makes that grown limb a guide of
   the same place and shape; then redraw it (op `guide` with a new path), or give `"path"` at once. The names
   belong to THIS grown tree: after an edit the other limbs may be renamed or change (the tree regrows around every
-  edit), a taken limb keeps its name and path.
+  edit), a taken limb keeps its name and path. Each limb also has an **id** ("Lk7f3", from its bud's lineage) that
+  lasts through edits; wherever a limb is named (`dead`, take_limb) a compass name, an id or a guide's name works,
+  and a compass name is stored as the id. "Length" follows the limb's stoutest wood to a shoot's end.
 - `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}, {"under": z}]`. `below`
   removes limbs that LEAVE the trunk under that height (a limb starting higher may still hang lower); `under`
   removes everything but the trunk under that height (a browse line, a lifted crown); `above` tops the tree.
@@ -263,7 +268,9 @@ and writes the file again. The spec stays the source of truth: nothing else in t
 
 A budget leaves out thin wood and draws fewer, larger cards. `look_plant(name, views=["leaf", "far"],
 triangles=12000)` renders exactly what `export_plant(name, triangles=12000)` writes. Judge that picture, not the
-full-detail one; raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+full-detail one. A budget first gives branches fewer rings and sides, then leaves out the thinnest wood (wood you
+marked, dead wood and drawn guides, stays down to a quarter of that girth), and draws the twigs that stand on wood
+it kept; the export WARNS when cards would float. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
 
 ## Not built yet
 

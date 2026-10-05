@@ -531,6 +531,58 @@ def test_boll_dead_roots_and_habit_extras():
         assert t["stats"]["nodes"] > 5 and np.isfinite(t["pos"]).all(), sp
 
 
+def test_budget_keeps_marked_wood_and_cards_on_wood():
+    from hifipushie import veg_export, veg_leaf, veg_mesh
+    T = v.grow({"species": "oak", "age": 70, "dead": [{"above": 9.0, "min_radius": 0.02}]})
+    assert T["dead"].any()
+    bud = veg_export.budget(T, 12000, (0.5, 1.0), 7)
+    assert bud["total"] <= 12000 and bud["min_radius"] > 0.02  # thin live wood went ...
+    assert bud["wood"]["dead"].sum() > 0  # ... the dead antlers (thinner than the cut-off) did not
+    ok = veg_export.kept_wood(T, bud["min_radius"], bud["protect"])
+    thin = T["radius"] < bud["min_radius"]
+    assert ok[T["dead"] & thin].mean() > 3 * ok[~T["dead"] & thin].mean()  # thin dead wood is drawn, thin live wood is not
+    tw, floating = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"])
+    rnd = veg_leaf.place(T)
+    far_all = 1 - ok[rnd["node"]].mean()
+    assert floating <= 0.2 or floating < 0.5 * far_all, (floating, far_all)
+    full, simp = veg_mesh.tubes(T), veg_mesh.tubes(T, simplify=0.3)
+    assert len(simp["F"]) < 0.92 * len(full["F"]) and abs(simp["V"][:, 2].max() - full["V"][:, 2].max()) < 0.05
+
+
+def test_limb_ids_last_and_report_says():
+    import tempfile
+    from hifipushie import store, veg_tools as vt
+    old = store.HOME
+    with tempfile.TemporaryDirectory() as tmp:
+        store.HOME = __import__("pathlib").Path(tmp)
+        try:
+            base = {"species": "birch", "age": 28, "environment": {"ground": {"slope": 15, "toward": [1, 0]}}}
+            T = v.grow(base)
+            L = max(v.limbs(T), key=lambda q: q["diameter"])
+            vt.save("d", {**base, "dead": [{"limb": L["name"], "min_radius": 0.008}]}, note="t")
+            sp = vt.load("d")
+            assert sp["dead"][0]["limb"] == L["id"] and L["id"].startswith("L")  # stored by its lasting id
+            D = vt.grown("d")
+            p0 = D["pos"][D["axes"][v.find_limb(D, L["id"])]["node"]]
+            vt.edit("d", [{"op": "set", "path": "habit.jitter", "value": [0.05, 0.3, 0.3, 0.2]}])
+            D2 = vt.grown("d")
+            ai = v.find_limb(D2, L["id"])
+            assert ai is not None and np.linalg.norm(D2["pos"][D2["axes"][ai]["node"]] - p0) < 1.0  # the same bud's limb
+            assert D2["dead"][D2["axes"][ai]["node"]]
+            r = vt.report("d")
+            assert "dead wood (limb " + L["id"] in r and "lowest wood:" in r and "(id L" in r
+            vt.save("d", patch={"dead": [{"limb": "Lzzzz"}]})
+            assert "is not on this tree any more" in vt.report("d")
+            # a fat trunk under ordinary limbs
+            a = v.grow({**base, "trunk_diameter": 1.2})
+            b = v.grow({**base, "trunk_diameter": 1.2, "limb_diameter": 0.2})
+            la, lb_ = max(q["diameter"] for q in v.limbs(a)), max(q["diameter"] for q in v.limbs(b))
+            assert abs(lb_ - 0.2) < 0.03 and la > 1.5 * lb_ and abs(2 * b["radius"][1] - 1.2) < 0.05
+        finally:
+            store.HOME = old
+            vt._GROWN.clear()
+
+
 def test_fit_improves():
     ref = v.silhouette(v.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
     start = {**SMALL, "habit": {"apical": [0.45, 0.5]}}

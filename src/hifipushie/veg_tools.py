@@ -49,6 +49,21 @@ def load(name: str) -> dict:
 SET = {"count": 5, "age": [0.55, 1.0], "height": None, "vigour": 0.12, "keep_guides": False, "lean": 0.0}
 
 
+def _lasting_limbs(spec: dict) -> None:
+    """`dead` entries naming a limb by its compass name ("SW2": a name of one grown tree) are stored by the limb's id,
+    read off the tree as it grows without them: a later edit can't make them point at another limb."""
+    todo = [d for d in spec.get("dead") or [] if isinstance(d.get("limb"), str) and d["limb"] not in (spec.get("guides") or {})
+            and not (len(d["limb"]) == 5 and d["limb"][0] == "L")]
+    if not todo:
+        return
+    T = _tree_of({k: v for k, v in spec.items() if k != "dead"})
+    by = {L["name"]: L["id"] for L in vegetation.limbs(T)}
+    for d in todo:
+        if d["limb"] not in by:
+            raise ValueError(f"dead: no limb {d['limb']!r} on this tree; its limbs: {sorted(by)} (or a guide's name, or a limb id)")
+        d["limb"] = by[d["limb"]]
+
+
 def variants(spec: dict) -> list[dict]:
     """The plants of a spec's `set`: the same description grown from other seeds at a spread of ages (shares of the
     spec's age, youngest first; or `ages` in years), vigour varied +-`vigour`, an optional `height` range [lo, hi] m
@@ -119,6 +134,7 @@ def save(name: str, spec: dict | None = None, patch: dict | None = None, note: s
         raise ValueError(f"{name} is a plant of a set: change the set through its plant ({name.partition('#')[0]}), or copy "
                          f"it out with grow_plant(new_name, copy_from=\"{name}\")")
     vegetation.resolve(spec)
+    _lasting_limbs(spec)
     for v_ in variants(spec):
         vegetation.resolve(v_)
     d = _dir(name)
@@ -288,10 +304,11 @@ def report(name: str) -> str:
                    f"{ang['elevation_p10_50_90'][1]} deg above level ({ang['elevation_p10_50_90'][0]} to {ang['elevation_p10_50_90'][2]})")
     lb = vegetation.limbs(T)
     if lb:
-        out.append("main limbs (name: leaves the trunk at height, base diameter, length, where its end is, the span of what it "
-                   "carries; edit_plant take_limb makes one a guide you can redraw):")
+        out.append("main limbs (name: leaves the trunk at height, base diameter, its length along its stoutest wood and where that "
+                   "ends, the span of everything it carries. The compass name is by where its farthest wood lies and "
+                   "is THIS tree's; the id lasts through edits. edit_plant take_limb makes one a guide you can redraw):")
         for L in lb:
-            out.append(f"  {L['name']}{' (drawn)' if L['guide'] else ''}: at {L['height']} m, {L['diameter'] * 100:.0f} cm, "
+            out.append(f"  {L['name']}{' (drawn)' if L['guide'] else ' (id ' + L['id'] + ')'}: at {L['height']} m, {L['diameter'] * 100:.0f} cm, "
                        f"{L['length']} m long to [{L['end'][0]:+.1f}, {L['end'][1]:+.1f}, {L['end'][2]:.1f}], "
                        f"carries {L['low']}-{L['high']} m high, {L['reach']} m out, since year {L['born_year']}")
     tw = veg_leaf.place(T)
@@ -332,6 +349,33 @@ def report(name: str) -> str:
         out.append(f"reference: outline IoU {m['iou']:.2f} (best from azimuth {m['azimuth']}); width/height "
                    f"{o['width_over_height']:.2f} vs {r['width_over_height']:.2f}, bole {o['bole']:.2f} vs {r['bole']:.2f}, "
                    f"widest at {o['widest_at']:.2f} vs {r['widest_at']:.2f}")
+    for dd in st.get("dead") or []:
+        if dd.get("missing"):
+            warn.append(f"dead: {dd['what']} is not on this tree any more (an edit regrew it without that limb): nothing died there")
+        else:
+            out.append(f"dead wood ({dd['what']}): {dd['nodes']} nodes died, {dd['broken_off']} of them (the thin ends) broken off; "
+                       f"what stands is bare and grey, {dd['low']}-{dd['high']} m high")
+            if dd["nodes"] and dd["broken_off"] >= dd["nodes"] - 1:
+                warn.append(f"dead {dd['what']}: all of it broke off (min_radius is thicker than the wood there): nothing shows")
+            if not dd["nodes"]:
+                warn.append(f"dead {dd['what']}: no wood there (a limb shorter than its `from`, or an empty volume)")
+    side = T["order"] > 0
+    if side.any():  # clearance over the ground as it lies (a hillside rises under the uphill limbs)
+        from . import veg_look
+        Pn = T["pos"][side]
+        gz = np.array([veg_look.ground_z(s, q) for q in Pn[:, :2]]) if (s.get("environment") or {}).get("ground", {}).get("slope") else np.zeros(len(Pn))
+        cl = Pn[:, 2] - gz
+        i_ = int(np.argmin(cl))
+        out.append(f"lowest wood: {cl[i_]:.1f} m above the ground at [{Pn[i_][0]:+.1f}, {Pn[i_][1]:+.1f}]"
+                   + (f" (the ground there is {gz[i_]:+.1f} m against the foot)" if abs(gz[i_]) > 0.05 else ""))
+        if cl[i_] < -0.05:
+            warn.append(f"{int((cl < 0).sum())} nodes are under the ground (down to {cl[i_]:.1f} m) round [{Pn[i_][0]:+.1f}, {Pn[i_][1]:+.1f}]: "
+                        f"raise that limb's path, prune {{\"under\": z}}, or lower habit.sag")
+    longest = max((L["length"] for L in lb), default=0.0)
+    if rad_ > 0.9 * H or longest > 1.4 * H:
+        warn.append(f"the crown is {2 * rad_:.0f} m across on a {H:.0f} m tree (longest limb {longest:.0f} m): limbs ran away. "
+                    f"With fewer branch orders (max_order) or less shedding the same vigour goes into fewer, longer shoots: "
+                    f"lower habit.vigour / shoot_max, or set tip_life for the limbs")
     for c in st.get("cuts") or []:
         out.append(f"cut at year {c['year']}: {c['nodes']} nodes of wood removed, {c['stubs']} stubs left to sprout")
     lost = st.get("pruned_nodes", 0)
@@ -352,7 +396,7 @@ def report(name: str) -> str:
         p_age = vegetation.preset(s["species"]).get("age") if s.get("species") else None
     except ValueError:
         p_age = None
-    if p_age and s["age"] > 1.4 * p_age:
+    if p_age and s["age"] > 1.4 * p_age and not s.get("height"):
         warn.append(f"age {s['age']} is well past the age the {s['species']} preset was tuned at ({p_age}): size keeps growing with "
                     f"age here ({T['height']:.0f} m); for an older-looking tree of normal size set `height`, or lower habit.vigour")
     if s["habit"]["clear"] > 0.9 * tip[2]:
@@ -527,7 +571,8 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
         elif k == "take_limb":  # a grown limb becomes a guide: same place and shape, now yours to redraw
             T = T0 = T0 or _tree_of(spec0)  # (the tree as it stood before this batch: the names the caller saw)
             lb = {L["name"]: L for L in vegetation.limbs(T)}
-            L = next((q for q in lb.values() if o.get("key") and q["key"] == o["key"]), None) or lb.get(o.get("limb"))
+            L = next((q for q in lb.values() if o.get("key") and q["key"] == o["key"]), None) or lb.get(o.get("limb")) \
+                or next((q for q in vegetation.limbs(T, 99, 0.0) if q["id"] == o.get("limb")), None)
             if L is None:
                 raise ValueError(f"op {i}: no limb {o.get('limb')!r}; this tree's limbs: {sorted(lb)} (the report lists them)")
             if L["guide"]:
@@ -535,11 +580,15 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
             g = o.get("name") or f"limb_{o.get('limb') or L['name']}"
             path = o.get("path") or vegetation.limb_path(T, L, int(o.get("points", 6)))
             path = [[round(float(x), 3) for x in q] for q in path]
-            nodes = np.flatnonzero(T["axis"] == L["axis"])
+            nodes = vegetation.stout_path(T, T["axes"][L["axis"]]["node"])
             yps = T["spec"]["habit"]["years_per_step"]
             spec.setdefault("guides", {})[g] = {
                 "path": path, "on": "trunk", "from_year": L["born_year"],
                 "until_year": round(float(min((T["born"][nodes[-1]] + 1) * yps, T["spec"]["age"])), 1), "replaces": [L["key"]]}
+        elif k == "dead":  # {"op": "dead", "limb": "SW2" | a volume, "min_radius"}; a compass name is stored as the limb's id
+            spec.setdefault("dead", []).append(o)
+        elif k == "clear_dead":
+            spec["dead"] = []
         elif k == "remove_guide":
             if o.get("name") not in (spec.get("guides") or {}):
                 raise ValueError(f"op {i}: no guide {o.get('name')!r}; guides: {sorted(spec.get('guides') or {})}")
@@ -577,7 +626,7 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
                     cur = cur.setdefault(p_, {})
                 cur[parts[-1]] = o["value"]
         else:
-            raise ValueError(f"op {i}: unknown op {k!r} (guide, take_limb, remove_guide, prune, remove_prune, clear_prunes, cut, "
+            raise ValueError(f"op {i}: unknown op {k!r} (guide, take_limb, dead, clear_dead, remove_guide, prune, remove_prune, clear_prunes, cut, "
                              f"clear_cuts, envelope, force, clear_forces, set)")
     return save(name, spec, note=note or "edit")
 

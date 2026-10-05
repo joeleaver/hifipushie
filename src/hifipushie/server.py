@@ -1949,7 +1949,8 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "cut", "year": N, <a volume as for prune>, "every": years, "until_year", "sprouts": n}: the wood in the
     volume is cut AT that year (and again every `every` years) and the stubs sprout `sprouts` new shoots each: a
     pollard ("above": 2.5, "every": 6), a coppice ("above": 0.3), a lopped limb or a storm break (a box, sprouts 0-2).
-    {"op": "clear_cuts"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    {"op": "clear_cuts"}. {"op": "dead", "limb": name | id | guide (or a volume), "min_radius", "from": m along it},
+    {"op": "clear_dead"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
     "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
     {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
     Returns the report after regrowing, with what changed in size."""
@@ -2066,6 +2067,9 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
             + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
             + (f"\nWARNING: {c['over']} triangles over the budget: the wood alone needs {c['wood_triangles']} "
                f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")
+            + (f"\nWARNING: {c['floating']:.0%} of the cards have no drawn wood near them (they will float): raise the budget"
+               if c.get("floating", 0) > 0.2 else "")
+            + ("\nWood you marked (dead wood, drawn guides) is kept down to a quarter of that girth." if triangles else "")
             + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles})" if triangles else "")
             + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
 

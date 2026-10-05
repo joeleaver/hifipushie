@@ -15,8 +15,35 @@ import math
 import numpy as np
 
 
+PROTECT = 0.25
+
+
+def _rdp(pts, eps, rr) -> np.ndarray:
+    """Indices of a polyline's points kept by Douglas-Peucker with a tolerance per point; a stretch is also split where
+    the radius has strayed 20% from a straight taper."""
+    keep = np.zeros(len(pts), bool)
+    keep[[0, -1]] = True
+    stack = [(0, len(pts) - 1)]
+    while stack:
+        a, b = stack.pop()
+        if b - a < 2:
+            continue
+        d = pts[b] - pts[a]
+        L = np.linalg.norm(d)
+        q = pts[a + 1:b] - pts[a]
+        t = np.clip(q @ d / max(L * L, 1e-12), 0, 1)
+        off = np.linalg.norm(q - t[:, None] * d, axis=1)
+        dr = np.abs(rr[a + 1:b] - (rr[a] + t * (rr[b] - rr[a]))) / np.maximum(rr[a + 1:b], 1e-6)
+        score = np.maximum(off / eps[a + 1:b], dr / 0.2)
+        i = int(np.argmax(score))
+        if score[i] > 1:
+            keep[a + 1 + i] = True
+            stack += [(a, a + 1 + i), (a + 1 + i, b)]
+    return np.flatnonzero(keep)
+
+
 def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.9, weld: bool = True,
-          tip: float = 0.45, tile=(0.5, 1.0)) -> dict:
+          tip: float = 0.45, tile=(0.5, 1.0), protect=None, simplify: float = 0.0) -> dict:
     P, par, rad, ax, order = tree["pos"], tree["parent"], tree["radius"], tree["axis"], tree["order"]
     n = len(P)
     idx = np.argsort(ax[1:], kind="stable") + 1  # nodes by axis, in growth order within one
@@ -31,12 +58,15 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
     for a, b in zip(bounds[:-1], bounds[1:]):
         nodes = idx[a:b]
         r0 = rad[nodes[0]]
-        if r0 < min_radius:
-            continue
+        if r0 < min_radius * (PROTECT if protect is not None and protect[nodes[0]] else 1.0):
+            continue  # (`protect`: per node, axes a budget keeps down to a quarter of the cut-off: dead antlers, drawn limbs)
         k = int(np.clip(round(sides[0] + (sides[1] - sides[0]) * math.sqrt(r0 / rmax)), sides[0], sides[1]))
         root = par[nodes[0]]
         pts = np.vstack([P[root], P[nodes]])
         rr = np.concatenate([[min(r0 * 1.15, rad[root]) if root > 0 else r0], rad[nodes]])
+        if simplify > 0 and len(pts) > 2:  # fewer rings: drop nodes the axis runs nearly straight through (within
+            keep_ = _rdp(pts, simplify * np.maximum(rr, 0.004), rr)  # `simplify` x its radius), and keep its taper
+            pts, rr = pts[keep_], rr[keep_]
         foot = root == 0 and order[nodes[0]] == 0
         n_under = 0
         if foot:  # the trunk goes into the ground (a foot on a slope shows no gap), with rings enough for its root flares
