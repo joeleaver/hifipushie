@@ -648,6 +648,48 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   clumps take `"split"` (`split_tips`: tip into n narrower locks fanned apart, the clump tapering out under them, held
   inside the hairline); look keys `band_shift` (each lock's sheen band slides along it) and `tip`/`tip_amount`. The
   look's reference image is the trace's own (no golfer default).
+  Soft, loose hair (2026-10-05, "hair cards" agent, branch worktree-agent-aff168a4b06a3ed59; cards s0urc3's Tess:
+  plates, hard hairline, stiff one-sided tail; renders `workspace/hair_renders/hc_*`, references
+  `workspace/hair_refs/` (CC photos + CC-BY Sketchfab card models, refs.json; `ponytail_right.jpg` is the target look);
+  guide part "Hair: soft, loose hair as strand cards" with the artists' method and sources). STATE: two spikes, a
+  decision pending with the user (Blender's hair system vs our cards); nothing is wired into MCP, tests or docs yet.
+  - Built (numpy, works in look_hair's pipeline): `hair.style: "cards"` (default "locks": untouched path, but NOT yet
+    checked bit-for-bit) realises every lock as layered cards (`hair_cards.py`: `atlas` = generated strand atlas, 10
+    tiles dense/medium/sparse/hairline/fly/baby/band with colour+alpha, normal, aux root/id/depth/alpha; `spine` /
+    `frames` / `_lock_cards` / `mesh` / `fit_budget` / `join`), `hair.strands` numbers (wave, wavelength, curl, random,
+    clump, frizz, flyaway, layers, card_width, tips, baby, soft, round), the underlayer as a hair cap wearing the
+    hairline tile (`hair.card_cap`), baby hairs (`hair.baby_locks`), `blender_hair.card_material/card_object` (dithered
+    alpha, bent custom normals, id pass and clay for cards), tied hair `groom.tie` (`hair_tied.py`: gather rows to a
+    tie point, tail round a core line under gravity, coil = bun, plait, escape strands, a band mesh), locks that leave
+    the head (`"space": "xyz"`, `free`, `core`; `hair.lock_world` / `lock_address`; pull writes them back in their
+    space), solid locks' `Free` input (node group VERSION 11: a hanging lock's underside is lit), `hair.export_cards`
+    + asset.py COLOR_0 / alpha MASK / extras (WRITTEN, NEVER RUN).
+  - Blender's own hair, spiked on the user's question (scratch scripts kept in `spikes/hair_strands/`: strands.py +
+    bl_strands.py, atlas_bake.py + bl_atlas.py, look.py, tess.py, refs.py): our locks' spines as guides of a Hair
+    Curves object + the Essentials node groups loaded headless from
+    `<blender>/5.1/datafiles/assets/nodes/procedural_hair_node_assets.blend` (Duplicate, Clump, Curl, Frizz, Noise,
+    Shrinkwrap, Set Hair Curve Profile; Braid has a hair-tie input; Interpolate needs a surface UV map: not tried),
+    Principled Hair BSDF. Works headless with no fuss. Cycles strands are far the best LOOK (hc_12: tess's scalp hair
+    and hairline read as real hair; hc_13: the golfer as realistic combed hair): 42k strands / 1.9M points, ~20-25 s
+    a 640 px frame on the laptop's CPU, evaluation < 1 s. EEVEE draws the hair BSDF near black (needs its own
+    material) at ~8 s a frame. Settings are touchy: frizz / noise distances of 2-4 mm made a cloud (0.2-0.4 mm is
+    right), Clump at 0.15-0.35 collapses every guide's strands into a round ROPE (dreadlocks), 0 gives the soft mass.
+    A lock as a broad FLAT clump (the golfer's sculpted look) is not one Essentials setting: Duplicate spreads
+    radially; it needs our own lens-shaped child distribution or guides per clump edge. The golfer as strands is
+    bigger and softer than his reference (IoU 0.57 vs 0.63 cards, ~0.74 locks) and has no distinct clumps.
+  - "Volumised" strands (points -> volume -> mesh, 2 mm voxels, decimated 379k -> 12k): a lumpy blob / shower cap
+    (hc_13 lower row). As tried it fails; no source for the remembered production pipeline was found in one search.
+  - Atlas baked from Blender strand clumps (bl_atlas.py, Cycles, 10 s): works; first try has too little coverage in
+    the dense tile, no ragged tips, lit colour baked in (hc_15: scalp shows through). Needs tuning + id/depth/root
+    passes; then it replaces `hair_cards.atlas`'s drawing, the card mesh / budget / export code stays.
+  - Recommended to the coordinator (not yet agreed): groom + look = Blender Hair Curves with our locks as guides
+    (Cycles strands as the truthful look and the video path); game path = our card mesh from the same guides with
+    an atlas baked from those strands; stylised solid locks stay as they are.
+  - Open, in order, whatever is decided: the grey band / hard arc at tess's forehead (on the old dark-skin stage it
+    was skin's shaved-scalp paint; hc_tess was re-synced without it, not re-judged with numpy cards), scalp gather
+    coverage holes above the ear, tail collision with neck / shoulders (only the head's rays are used), export never
+    run, bit-for-bit check of style "locks", MCP tools (groom_hair docs for tie / strands, look_hair numbers:
+    triangles, hairline softness), tests, guide workflow section.
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
