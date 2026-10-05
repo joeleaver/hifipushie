@@ -1938,6 +1938,8 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "guide", "name", "path": [[x, y, z], ...] (m), "from_year", "until_year", "vigour"}: a drawn axis at any
     branch order (it starts from the nearest wood at from_year, lies exactly on the path, is never shed or bent, and
     branches grow from it; a path from [0, 0, 0] at year 0 is the trunk). {"op": "remove_guide", "name"}.
+    {"op": "take_limb", "limb": "SW1", "name"?, "path"?}: a GROWN main limb (the report names them) becomes a guide of
+    the same place and shape, which you can then redraw; the rest of the tree regrows around it (it may change).
     The same with "on": another guide's name (or "trunk") makes it leave THAT axis. Paths are splined through
     their points ("straight": true keeps corners).
     {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (limbs LEAVING the trunk under
@@ -1986,8 +1988,10 @@ def look_plants(names: list[str], at: list | None = None, spacing: float | None 
     """Several plants standing together in one picture (a stand, a hedge line, a tree with its neighbours): do they
     belong together, do their sizes relate? at: [[x, y], ...] m per plant, or spacing m apart on a loose ring
     (default 0.35 x the tallest). views: "far" (default), "near", "clay", "top", or a camera {"eye", "look", "fov"}.
-    The first plant's environment (ground slope) sets the scene. The same plant may be named more than once."""
+    The first plant's environment (ground slope) sets the scene. The same plant may be named more than once.
+    A plant with a `set` (grow_plant patch {"set": {"count": 5}}): "oak#*" names its whole set, "oak#2" one of it."""
     from . import veg_tools as vt
+    names = [m for n in names for m in (vt.set_names(n[:-2]) if n.endswith("#*") else [n])]
     got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage)
     out = [_out(PILImage.open(p), None) for _, p in got]
     out.append("\n".join(f"{k}: {p}" for k, p in got))
@@ -2037,14 +2041,22 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 
 
 @mcp.tool(structured_output=False)
-def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None) -> str:
+def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False) -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
     twig atlas with alpha MASK, double sided, COLOR_0 = a per-twig tint; the atlas's mask texture is listed in the
     material's extras). triangles: a budget for the whole plant (a game tree: 10-40k; without it everything grown is
     written, often 100-400k): the thinnest wood is left out and branches get fewer sides, twigs are thinned and the
-    rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
+    rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts.
+    set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
+    materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
     from . import veg_tools as vt
+    if set:
+        c = vt.export_set(name, out_dir, triangles)
+        return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all, "
+                f"one bark + one foliage material\n" + "\n".join(
+                    f"  {q['name']}: {q['height_m']} m, wood {q['wood_triangles']} + foliage {q['foliage_triangles']} triangles"
+                    for q in c["plants"]) + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
     c = vt.export(name, out_dir, triangles)
     return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
             + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
@@ -2056,6 +2068,30 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")
             + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles})" if triangles else "")
             + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
+
+
+@mcp.tool(structured_output=False)
+def sync_plant(name: str, pull_only: bool = False) -> str:
+    """The plant as a Blender file a person (or you, through a Blender session) can edit by hand:
+    workspace/plants/<name>/plant.blend holds the plant with its guides (orange, collection "guides") and its named
+    main limbs (blue, "limbs") as Bezier curves. First every edit made there comes back into the spec: a guide curve
+    moved or given more points = that guide redrawn; a limb curve moved = that limb taken over as a guide with the
+    new shape; a curve added to "guides" = a new guide; a guide curve deleted = removed. Then (unless pull_only) the
+    file is written again from the spec. A running Blender with the file open is read live and reloaded. Only
+    what moved from what the last sync wrote counts: syncing twice changes nothing. Returns what came back and the
+    report."""
+    from . import veg_tools as vt
+    before, prev = vt.grown(name)["stats"], vt.load(name)
+    if pull_only:
+        came, head = vt.pull(name), ""
+    else:
+        r = vt.sync(name)
+        came = r["pulled"]
+        head = (f"wrote {r['blend']} ({r['guides']} guide curves, {r['limbs']} limb curves"
+                + (", the running Blender reloaded it" if r["live"] else "") + ")\n")
+    if not came:
+        return head + "nothing was changed in Blender since the last sync"
+    return head + "from Blender:\n" + "\n".join(f"  {c}" for c in came) + "\n" + vt.change_note(name, prev, before) + "\n" + vt.report(name)
 
 
 @mcp.tool(structured_output=False)

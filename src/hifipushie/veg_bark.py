@@ -106,8 +106,10 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
         lens = (1 - _smooth(f1, 0.0, 0.03)) * on
         bands = _noise(shape, 2, 10, seed + 6, stretch=(6.0, 1.0))  # stretched round the stem
         peel = _smooth(bands, 0.62, 0.7)
-        s1, s2, sid, sn = _cells(shape, 9, seed + 30, aspect=0.45, warp=warp)
-        scar = (1 - _smooth(s1, 0.0, 0.05)) * (rng.random(sn) < 0.6)[sid]
+        s1, s2, sid, sn = _cells(shape, 12, seed + 30, aspect=0.4, warp=warp)
+        scar = (1 - _smooth(s1, 0.0, 0.085)) * (rng.random(sn) < 0.6)[sid]  # (the black marks that read from 20 m)
+        ring = _smooth(_noise(shape, 1, 5, seed + 44, stretch=(8.0, 1.0)), 0.6, 0.75)  # darker bands round the stem
+        scar = np.maximum(scar, 0.45 * ring * (0.5 + 0.5 * fine))
         height = 0.6 + 0.25 * peel - 0.5 * lens - 0.45 * scar + 0.06 * fine
         albedo = 1.0 + 0.1 * (bands - 0.5) + 0.06 * peel - 0.75 * lens - 0.8 * scar + 0.06 * (fine - 0.5)
         rough = 0.55 + 0.3 * lens + 0.3 * scar + 0.1 * fine

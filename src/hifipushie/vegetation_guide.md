@@ -58,6 +58,13 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
   up to `shoot_max` segments of `unit` x `length` m. So a 9 m tree in 14 steps has 0.65 m segments (coarse, few
   nodes); for the same height with finer segments lower `years_per_step` (more steps) and let `height` rescale the
   unit, or leave `height` out and set age and unit yourself. Without `height` the tree is as tall as it grows.
+- `dead`: `[{"limb": "SW2", "min_radius": 0.03}, {"above": 15, "min_radius": 0.04}]`: wood that died and stayed
+  on the living tree (a limb by its name, or a volume: box, sphere, above): leafless, barkless silver-grey
+  (`bark.dead_color`), everything thinner than `min_radius` broken off. A stag-headed veteran = `above` just under
+  the top; a snag limb = one limb. (A whole dead tree: `season: "dead"` + `decay`.)
+- `roots`: `{"count": 5, "spread": 1.6, "height": 0.5}`: root flares at the foot: the trunk's section swells toward
+  each root by `spread` x at the ground, fading over `height` m (spread 2+ and height 1+ = buttresses). The trunk
+  always runs 0.3-0.5 m into the ground, so it meets a slope without a gap.
 - `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are). With
   `trunk_taper` (0-1: the share of that diameter the trunk loses by its top; 0.1 = a column, as a pollard's) the
   trunk keeps its girth whatever it carries. Without it the
@@ -90,6 +97,8 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 | `max_order` | deepest branching (spruce 2, broadleaves 5) | |
 | `shed` | light per segment under which a branch is dropped: higher = cleaner trunk and open interior; too high and the tree starves | 0-0.3 |
 | `shadow` | [strength, falloff, depth] of each leaf's shade. Shade-tolerant, dense (spruce): [0.03, 3, 2]; light-demanding, open: [0.25, 1.6, 6] | |
+| `tip_life` | per order: growth steps an axis keeps extending, 0 = for ever. Short-lived hanging branchlets 6-10 (spruce); limbs that stop reaching 20-30 | [0] |
+| `uneven` | per order: each axis grows at its own pace, +- this share: a ragged outline instead of a turned cone | 0-0.5 |
 | `clear` | m of trunk that never branches | 0-6 |
 | `sag`, `sag_max` | bending under weight (it sets): long thin limbs droop | 0.3-3 |
 | `ring` | m of radius all wood adds a year: girth. Stout trunk 0.002-0.003, slender 0.001 | |
@@ -138,8 +147,15 @@ height, form, limb angles.
   sprouts `sprouts` new shoots (0 = a dead stub) which grow on by the habit: a **pollard** (`above` the trunk
   height you want, every 4-8 years: a column trunk with a knuckled head of rods; make the rods straight and upright
   with tropism + low jitter on orders 1+ and `max_order` 2), a **coppice** (`above` 0.3), a **lopped limb** or a
-  **storm break** (a box or sphere round it, one year, sprouts 0-2). The report lists each cut made. A cut the tree
+  **storm break** (a box or sphere round it, one year, sprouts 0-2). `"boll": 1.4-1.8` swells the cut end into
+  the knuckled head a pollard gets from being cut again and again. The report lists each cut made. A cut the tree
   never regrows from is a `prune`.
+- Named limbs: the report lists the tree's main limbs ("SW2" = the second limb up the trunk that ends to the
+  south-west; +y is north, +x east) with where each leaves the trunk, its girth, its end, and the span of what it
+  carries. `edit_plant` op `{"op": "take_limb", "limb": "SW2", "name": "low_bough"}` makes that grown limb a guide of
+  the same place and shape; then redraw it (op `guide` with a new path), or give `"path"` at once. The names
+  belong to THIS grown tree: after an edit the other limbs may be renamed or change (the tree regrows around every
+  edit), a taken limb keeps its name and path.
 - `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}, {"under": z}]`. `below`
   removes limbs that LEAVE the trunk under that height (a limb starting higher may still hang lower); `under`
   removes everything but the trunk under that height (a browse line, a lifted crown); `above` tops the tree.
@@ -174,6 +190,9 @@ height, form, limb angles.
   Foliage is drawn as cards (each twig's picture on a cut card: what a game draws) by default;
   `look_plant(foliage="mesh")` shows real leaf meshes. `card: {"twig": {...}, "leaf": {...}, "scale" 0.8-1.5,
   "cross" 1 | 2 (2 = two crossed cards: tufts), "strips" 0 | 3-5 (a ladder of quads along a long hanging twig)}`:
+  A card's picture should be a SPRAY, not one shoot: `card.twig.side_shoots` 4-8 side twigs (`side_angle` deg off
+  the twig: 30-40 a fan, 8-15 hanging strands; `side_length` 0.6-1.0 of the twig; `side_taper` 0.58 = shorter toward
+  the tip, 0.1 = even strands; needle sprays: `spray_angle`, `sub_shoots`). One shoot per card read as bamboo.
   `card.twig` / `card.leaf` override the twig and leaf ONLY for the card's picture (which can afford many more,
   thinner leaves or needles than a mesh twig: `card.twig.leaves` 400 with `card.leaf.needle_width` 0.03-0.1).
 - `bark`: `kind` ("furrowed" ridges, "plates", "scales", "lenticel" smooth with dashes), `scale` (x the pattern's
@@ -221,6 +240,25 @@ Give them the same `environment` (e.g. `setting: "forest"`). See them together w
 `look_plants(names=[...], spacing=2.5)`: the only way to judge whether they belong together. Export each
 (`export_plant(name, triangles=12000)`).
 
+## A forest set: one description, several plants
+
+`grow_plant(name, patch={"set": {"count": 5}})`: the plant's **set** = the same description grown from other seeds
+at a spread of ages (`"age": [0.55, 1.0]` shares of the plant's age, youngest first; or `"ages": [years...]`), with
+`"vigour": 0.12` (+-12% each), `"height": [lo, hi]` m, `"lean": deg` (each trunk leaning its own way), `"patch"`
+(a patch for all, or a list of one per plant). A set is the species, not copies of one tree: the hero's guides,
+prunes and one-off cuts are dropped (`"keep_guides": true` keeps them; repeated cuts, i.e. management, stay).
+The report lists each plant (`name#1`...). `look_plants(["name#*"])` shows them together, `look_plant("name#3")`
+one; `export_plant(name, set=True)` writes one file with a node per plant sharing the bark and foliage materials.
+To turn a set's plant into a hero: `grow_plant("hero", copy_from="name#3")`. For a forest use
+`environment.setting: "forest"` on the plant: the whole set grows with clear boles and high crowns.
+
+## By hand in Blender
+
+`sync_plant(name)` writes `workspace/plants/<name>/plant.blend`: the plant with its guides (orange curves) and its
+named main limbs (blue curves). A person moves curve points there (or a whole limb), adds a curve to the "guides"
+collection, or deletes one; the next `sync_plant` brings that back as spec edits (a moved limb becomes a guide)
+and writes the file again. The spec stays the source of truth: nothing else in the file is read back.
+
 ## The export is another object: look at it
 
 A budget leaves out thin wood and draws fewer, larger cards. `look_plant(name, views=["leaf", "far"],
@@ -231,6 +269,5 @@ full-detail one; raise the budget if the crown falls apart (a game tree: 10-40k;
 
 Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
 proxies; shrubs, grass, flowers, palms; style sheets (blob to photoreal); a multi-stem base, exposed roots, burrs,
-fluted or buttressed trunks, a foot fitted to the slope, dead limbs kept on a live tree (a `cuts` entry with
-sprouts 0 leaves a stub); thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
+fluted trunks, surface roots running out over the ground, hollows and cavities; thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
 water level); a tree that sees the other plants you made (use `setting`/`neighbours`).

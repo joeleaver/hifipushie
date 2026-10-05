@@ -102,21 +102,23 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int) -> dict
     return out
 
 
-def write_glb(tree: dict, path: str, name: str = "plant", triangles: int | None = None) -> dict:
+def write_glb(tree, path: str, name="plant", triangles: int | None = None, spacing: float | None = None) -> dict:
     """Write the plant to `path` (.glb). Returns counts: triangles per mesh, texture sizes, bytes. `triangles` = a
     budget: thin wood is left out and branches get fewer sides until the wood fits half of it; twigs are thinned
-    (the rest drawn larger) until the foliage fits the other half."""
+    (the rest drawn larger) until the foliage fits the other half.
+    A list of trees (and names) writes a SET: one file, one bark and one foliage material (the first tree's leaves
+    and bark: a set is one species), a node per plant holding its wood and foliage, stood `spacing` m apart in a
+    row along x (0 = all at the origin); the budget is each plant's own. Counts then carry "plants": [per plant]."""
+    trees = tree if isinstance(tree, list) else [tree]
+    names = name if isinstance(name, list) else [name]
+    tree = trees[0]
     s = tree["spec"]
     bark = s.get("bark") or {}
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
     sc = float(bark.get("scale", 1.0))
     tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
-    n_tw = len(veg_leaf.place(tree)["pos"])
-    has_leaves = n_tw > 0
+    has_leaves = any(len(veg_leaf.place(t)["pos"]) for t in trees)
     at = veg_leaf.atlas(s["leaves"], bark.get("twig_color") or [0.45, 0.4, 0.35]) if has_leaves else None
-    bud = budget(tree, triangles, tile, at["triangles"] if at else 0)
-    W, keep, min_r = bud["wood"], bud["keep"], bud["min_radius"]
-    L = foliage_mesh(tree, at, keep) if at else None
     buf = bytearray()
     views, accessors, images, textures, materials, meshes, nodes = [], [], [], [], [], [], []
 
@@ -162,11 +164,7 @@ def write_glb(tree: dict, path: str, name: str = "plant", triangles: int | None 
         "baseColorTexture": {"index": tex(_png(base), True)},
         "metallicRoughnessTexture": {"index": tex(_png(orm), True)}},
         "normalTexture": {"index": tex(_png(bm["normal"]), True)}})
-    meshes.append({"name": "wood", "primitives": [prim(W["V"], W["F"], W["uv"], 0)]})
-    nodes.append({"name": "wood", "mesh": 0})
-    counts = {"wood_triangles": int(len(W["F"])), "foliage_triangles": 0, "twigs_kept": round(keep, 3),
-              "wood_min_radius_m": round(min_r, 4), "budget": triangles}
-    if L is not None and len(L["F"]):
+    if at is not None:
         m = at["mask"]
         orm = np.stack([np.ones_like(m[..., 1]), m[..., 1], np.zeros_like(m[..., 1])], -1)
         materials.append({"name": "foliage", "pbrMetallicRoughness": {
@@ -176,22 +174,50 @@ def write_glb(tree: dict, path: str, name: str = "plant", triangles: int | None 
             "alphaMode": "MASK", "alphaCutoff": 0.4, "doubleSided": True,
             "extras": {"mask_texture": "R = light comes through (leaf), G = roughness, B = shade",
                        "card_fill": round(at["fill"], 3)}})
-        mask_tex = tex(_png(at["mask"]), False)
-        materials[-1]["extras"]["mask_texture_index"] = mask_tex
-        meshes.append({"name": "foliage", "primitives": [prim(L["V"], L["F"], L["uv"], 1, L["tint"])]})
-        nodes.append({"name": "foliage", "mesh": 1})
-        counts["foliage_triangles"] = int(len(L["F"]))
+        materials[-1]["extras"]["mask_texture_index"] = tex(_png(at["mask"]), False)
+    per, roots = [], []
+    if spacing is None:
+        spacing = 0.0 if len(trees) == 1 else 1.2 * max(float(np.percentile(np.linalg.norm(t["pos"][:, :2], axis=1), 98)) for t in trees) * 2
+    for k, (t, nm) in enumerate(zip(trees, names)):
+        bud = budget(t, triangles, tile, at["triangles"] if at else 0)
+        W = bud["wood"]
+        L = foliage_mesh(t, at, bud["keep"]) if at and len(veg_leaf.place(t)["pos"]) else None
+        pre = "" if len(trees) == 1 else f"{nm}_"
+        kids = []
+        meshes.append({"name": pre + "wood", "primitives": [prim(W["V"], W["F"], W["uv"], 0)]})
+        nodes.append({"name": pre + "wood", "mesh": len(meshes) - 1})
+        kids.append(len(nodes) - 1)
+        c = {"name": nm, "height_m": round(t["height"], 2), "wood_triangles": int(len(W["F"])), "foliage_triangles": 0,
+             "twigs_kept": round(bud["keep"], 3), "wood_min_radius_m": round(bud["min_radius"], 4)}
+        if L is not None and len(L["F"]):
+            meshes.append({"name": pre + "foliage", "primitives": [prim(L["V"], L["F"], L["uv"], 1, L["tint"])]})
+            nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
+            kids.append(len(nodes) - 1)
+            c["foliage_triangles"] = int(len(L["F"]))
+        if len(trees) == 1:
+            roots = kids
+        else:
+            nodes.append({"name": nm, "children": kids, "translation": [float((k - (len(trees) - 1) / 2) * spacing), 0.0, 0.0],
+                          "extras": {"height_m": c["height_m"], "seed": t["spec"].get("seed"), "age": t["spec"].get("age")}})
+            roots.append(len(nodes) - 1)
+        per.append(c)
+    counts = {"wood_triangles": sum(c["wood_triangles"] for c in per), "foliage_triangles": sum(c["foliage_triangles"] for c in per),
+              "twigs_kept": per[0]["twigs_kept"], "wood_min_radius_m": per[0]["wood_min_radius_m"], "budget": triangles}
+    if at is not None:
         counts["atlas_px"] = int(at["color"].shape[0])
+    if len(trees) > 1:
+        counts["plants"] = per
+    name = names[0] if len(trees) == 1 else "set"
     while len(buf) % 4:
         buf.append(0)
     gltf = {"asset": {"version": "2.0", "generator": "hifipushie vegetation"},
-            "scene": 0, "scenes": [{"nodes": list(range(len(nodes)))}], "nodes": nodes, "meshes": meshes,
+            "scene": 0, "scenes": [{"nodes": roots}], "nodes": nodes, "meshes": meshes,
             "materials": materials, "textures": textures, "images": images,
             "samplers": [{"wrapS": 10497, "wrapT": 10497, "magFilter": 9729, "minFilter": 9987},
                          {"wrapS": 33071, "wrapT": 33071, "magFilter": 9729, "minFilter": 9987}],
             "accessors": accessors, "bufferViews": views, "buffers": [{"byteLength": len(buf)}],
             "extras": {"hifipushie_plant": {"name": name, "species": s.get("species"), "age": s.get("age"),
-                                            "height_m": round(tree["height"], 2), "stats": tree["stats"], **counts,
+                                            "height_m": round(tree["height"], 2), "stats": tree["stats"], **counts, "set": len(trees) if len(trees) > 1 else None,
                                             "bark_tile_m": bm["tile"], "lods": 1, "wind": None}}}
     js = json.dumps(gltf, separators=(",", ":")).encode()
     js += b" " * (-len(js) % 4)

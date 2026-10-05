@@ -18,7 +18,7 @@ LEAF = {"shape": "ovate", "length": 0.07, "width": 0.55, "lobes": 4, "fold": 0.2
 # needle has to cover what hundreds of real ones do)
 TWIG = {"length": 0.3, "leaves": 9, "arrangement": "alternate", "angle": 55, "droop": 0.15, "side_shoots": 0,
         "variants": 3, "per_m": 5.0, "where": "shoots", "spread": 45, "up": 0.3, "scale": [0.8, 1.15], "radius": 0.0025,
-        "min_order": 1, "steps": 2, "sub_shoots": 0}
+        "min_order": 1, "steps": 2, "sub_shoots": 0, "side_angle": 40, "side_length": 0.6, "side_taper": 0.58, "spray_angle": 57}
 CARD = {"variants": 4, "size": 384, "verts": 7, "cup": 0.1, "cross": 1, "scale": 1.0, "twig": {}, "leaf": {}, "strips": 0}
 
 
@@ -140,7 +140,8 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                     s = 0.15 + 0.7 * j / ns
                     p, d = at(s)
                     ln = L * (0.55 - 0.3 * j / ns) * (0.8 + 0.4 * rnd(40 + 2 * j + (side > 0)))
-                    out = _norm(np.array([side * 0.85, 0.55, -0.12 - 0.15 * rnd(60 + j)]))
+                    sa_ = math.radians(float(tw["spray_angle"]))
+                    out = _norm(np.array([side * math.sin(sa_), math.cos(sa_), -0.12 - 0.15 * rnd(60 + j)]))
                     tt = np.linspace(0, 1, 4)[:, None]
                     pts = p + out * ln * tt + np.array([0, 0, -0.1 * ln]) * tt ** 2
                     V, F = _stem(pts, tw["radius"] * 0.6, tw["radius"] * 0.3)
@@ -189,26 +190,52 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
         M = leaf_mesh(lf)
         n = int(tw["leaves"])
         ang = math.radians(tw["angle"])
-        for j in range(n):
-            terminal = j == n - 1
-            s = 1.0 if terminal else 0.12 + 0.86 * j / max(n - 1, 1)
-            p, d = at(min(s, 0.999))
-            Fr = _frame(d)
-            if tw["arrangement"] == "alternate":  # two ranks, leaning up
-                az = (0 if j % 2 else math.pi) + (rnd(400 + j) - 0.5) * 0.7
-            elif tw["arrangement"] == "opposite":
-                az = (j % 2) * math.pi + (j // 2) * math.pi / 2
-            else:  # spiral
-                az = 2.399963 * j
-            side = math.cos(az) * Fr[:, 0] + math.sin(az) * Fr[:, 2]
-            dirv = d if terminal else _norm(d * math.cos(ang) + side * math.sin(ang) + np.array([0, 0, -lf.get("hang", 0.0)]))
-            R = _frame(dirv, up=_norm(np.array([0, 0, 1.0]) + 0.5 * side))
-            R = R @ _rot(np.array([0, 1.0, 0]), (rnd(500 + j) - 0.5) * 0.9)  # each blade rolls a little
-            sc = 0.75 + 0.45 * rnd(600 + j) if not terminal else 1.0
-            V = (M["V"] * sc) @ R.T + p
-            tone = 0.82 + 0.3 * rnd(700 + j)
-            add(V, M["F"], 1, 1.0, j)
-            Cs[-1] = M["shade"] * tone
+        shoots = [(axis, 1.0)]
+        ns = int(tw["side_shoots"])
+        for j in range(ns):  # a spray: side twigs left and right in turn, shorter toward the tip, hanging as the twig does
+            side = -1 if j % 2 else 1
+            sj = 0.12 + 0.7 * (j + 0.5 * rnd(800 + j)) / ns
+            p, d = at(min(sj, 0.99))
+            ln = L * float(tw.get("side_length", 0.6)) * (1 - float(tw.get("side_taper", 0.58)) * sj) * (0.75 + 0.5 * rnd(820 + j))
+            sa = math.radians(float(tw.get("side_angle", 40)) * (0.75 + 0.5 * rnd(840 + j)))
+            out = _norm(d * math.cos(sa) + np.array([side, 0, 0.0]) * math.sin(sa) + np.array([0, 0, 0.25 * (rnd(860 + j) - 0.5)]))
+            tt = np.linspace(0, 1, 5)[:, None]
+            pts = p + out * ln * tt + np.array([0, 0, -tw["droop"] * ln]) * tt ** 2 \
+                + np.array([side * 0.06 * ln, 0, 0]) * np.sin(3 * tt + 6 * rnd(880 + j))
+            V, F = _stem(pts, tw["radius"] * 0.6, tw["radius"] * 0.3)
+            add(V, F, 0, 1.0, -1)
+            shoots.append((pts, 0.9))
+        lens = np.array([np.linalg.norm(np.diff(pts, axis=0), axis=1).sum() for pts, _ in shoots])
+        share = np.maximum(np.round(n * lens / lens.sum()).astype(int), 2 if ns else n)
+        lid = 0
+        for si, (pts, sc0) in enumerate(shoots):
+            seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+            cum = np.concatenate([[0], np.cumsum(seg)])
+            nj = int(share[si])
+            for j in range(nj):
+                terminal = j == nj - 1
+                s_ = (1.0 if terminal else 0.12 + 0.86 * j / max(nj - 1, 1)) * cum[-1] * 0.999
+                i = min(np.searchsorted(cum, s_, side="right") - 1, len(pts) - 2)
+                p = pts[i] + (s_ - cum[i]) / max(seg[i], 1e-9) * (pts[i + 1] - pts[i])
+                d = _norm(pts[i + 1] - pts[i])
+                Fr = _frame(d)
+                q = 1000 * si + j
+                if tw["arrangement"] == "alternate":  # two ranks, leaning up
+                    az = (0 if j % 2 else math.pi) + (rnd(400 + q) - 0.5) * 0.7
+                elif tw["arrangement"] == "opposite":
+                    az = (j % 2) * math.pi + (j // 2) * math.pi / 2
+                else:  # spiral
+                    az = 2.399963 * j
+                side = math.cos(az) * Fr[:, 0] + math.sin(az) * Fr[:, 2]
+                dirv = d if terminal else _norm(d * math.cos(ang) + side * math.sin(ang) + np.array([0, 0, -lf.get("hang", 0.0)]))
+                R = _frame(dirv, up=_norm(np.array([0, 0, 1.0]) + 0.5 * side))
+                R = R @ _rot(np.array([0, 1.0, 0]), (rnd(500 + q) - 0.5) * 0.9)  # each blade rolls a little
+                sc = (0.75 + 0.45 * rnd(600 + q) if not terminal else 1.0) * sc0
+                V = (M["V"] * sc) @ R.T + p
+                tone = 0.82 + 0.3 * rnd(700 + q)
+                add(V, M["F"], 1, 1.0, lid)
+                Cs[-1] = M["shade"] * tone
+                lid += 1
     return {"V": np.vstack(Vs), "F": np.vstack(Fs), "mat": np.concatenate(Ms), "col": np.concatenate(Cs),
             "leaf": np.concatenate(Ls)}
 
