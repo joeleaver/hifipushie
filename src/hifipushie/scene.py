@@ -891,7 +891,8 @@ def part_hashes(prog: dict | None, bases: dict) -> dict:
     out = {}
     for part, base in bases.items():
         layers = [ly for ly in (prog or {}).get("layers", []) if part in ly["parts"] or "*" in ly["parts"]]
-        out[part] = hashlib.sha1(json.dumps([layers, (prog or {}).get("packing", {}).get(part, {}),
+        out[part] = hashlib.sha1(json.dumps([layers, ((prog or {}).get("pre") or {}).get(part),
+                                             (prog or {}).get("packing", {}).get(part, {}),
                                              (prog or {}).get("quantiles"), base, code], sort_keys=True,
                                             default=str).encode()).hexdigest()[:12]
     return out

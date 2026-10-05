@@ -91,7 +91,7 @@ Masks (generators, each 0..1 per point):
            "forehead", "nose", "under_eye.R", "knuckles", "palm.L", ...; a name without .L/.R is both sides): spots
            placed from the face landmarks and body joints. `skin_reference` lists them.
   tile:    {"swatch": "pores" | "lines" | "coarse" | "lips" (skin_swatch.py) | "file": path, "size": m (one repeat,
-           default the swatch's own), "range": [lo, hi], "vary": true}: a tiling grey image laid on the three axis
+           default the swatch's own), "range": [lo, hi], "vary": true, "rotate": false (true: turned a quarter turn)}: a tiling grey image laid on the three axis
            planes and blended by the normal, read as a 0..1 mask: micro relief (pores, skin lines) far finer than
            the mesh or a baked texel. "vary" mixes a second, larger copy in patches so the repeat doesn't show.
   tiles:   {"size": [along, across] (m), "gap" (m), "offset": 0.5 | "random" (row stagger), "dir", "seed",
@@ -297,7 +297,7 @@ def validate(spec: dict) -> None:
             if c in ly and not 0 <= float(ly[c]) <= 1:
                 raise SpecError(f"paint {name!r}: {c} is 0..1")
         flat = {g: ly[g] for g in GENERATORS if g in ly and g != "mask"}
-        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
+        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", "_pre", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
         if ly.get("mix", "mix") not in MIXES:
             raise SpecError(f"paint {name!r}: mix is one of {', '.join(MIXES)}")
         if unknown:
@@ -426,8 +426,8 @@ def _check_stack(name: str, stack) -> None:
         unknown = set(e) - allowed
         if unknown:
             raise SpecError(f"{where}: unknown keys {sorted(unknown)} (allowed here: {sorted(allowed)})")
-        if not gens and not any(k in e for k in ("levels", "invert", "blur")):
-            raise SpecError(f"{where}: needs a generator ({', '.join(GENERATORS)}) or an op (levels, invert, blur)")
+        if not gens and not any(k in e for k in ("levels", "invert", "blur", "breakup")):
+            raise SpecError(f"{where}: needs a generator ({', '.join(GENERATORS)}) or an op (levels, invert, blur, breakup)")
         if gens:
             _check_generator(name, gens[0], e)
             if gens[0] == "mask":
@@ -495,7 +495,7 @@ def _check_generator(name: str, g: str, e: dict) -> None:
     if g == "tile":
         t = e[g]
         from . import skin_swatch
-        if not (isinstance(t, dict) and (("swatch" in t) != ("file" in t)) and set(t) <= {"swatch", "file", "size", "range", "vary", "seed"}):
+        if not (isinstance(t, dict) and (("swatch" in t) != ("file" in t)) and set(t) <= {"swatch", "file", "size", "range", "vary", "seed", "rotate"}):
             raise SpecError(f"paint {name!r}: tile is {{\"swatch\": name | \"file\": path, \"size\"?: m, \"range\"?, \"vary\"?}}")
         if "swatch" in t and t["swatch"] not in skin_swatch.KINDS:
             raise SpecError(f"paint {name!r}: tile swatch is one of {', '.join(skin_swatch.KINDS)}")
@@ -862,6 +862,39 @@ def _generate(spec: dict, name: str, gen: str, e: dict, tag: str, view: _View) -
     raise SpecError(f"paint {name!r}: unknown generator {gen!r}")
 
 
+# ---- layers composited per point ahead of the node program ------------------------------------------------------
+
+def pre_layers(spec: dict) -> dict:
+    """The layers marked "_pre" (the skin's broad colour layers): composited here per vertex into one base the
+    scene's material starts from, instead of each being a branch of its node program (a renderer's shader has
+    room for a few dozen layers: Cycles' stack ran out near 45, EEVEE compiled 100 for minutes)."""
+    return {n: ly for n, ly in layers(spec).items() if ly.get("_pre")}
+
+
+def precomposite(spec: dict, view, base: dict, pre: dict) -> np.ndarray:
+    """(n, 5): linear r, g, b, roughness, specular at the view's points after the pre layers, from the part's base
+    channels (sRGB colour). Mixed in linear colour, as the node program mixes."""
+    col = np.tile(srgb_to_linear(np.asarray(base["color"], float)[:3]), (len(view), 1))
+    rough = np.full(len(view), float(base.get("roughness", 0.6)))
+    spc = np.full(len(view), float(base.get("specular", 0.5)))
+    for name, ly in pre.items():
+        a = np.clip(float(ly.get("opacity", 1.0)) * layer_mask(spec, name, ly, view), 0, 1)
+        if "color" in ly:
+            c = srgb_to_linear(colour(ly["color"]))
+            mode = ly.get("mix", "mix")
+            if mode == "multiply":
+                col = col * (1 - a[:, None] + a[:, None] * c)
+            elif mode == "screen":
+                col = col + a[:, None] * ((1 - (1 - col) * (1 - c)) - col)
+            else:
+                col = col + a[:, None] * (c - col)
+        if "roughness" in ly:
+            rough = rough + a * (float(ly["roughness"]) - rough)
+        if "specular" in ly:
+            spc = spc + a * (float(ly["specular"]) - spc)
+    return np.column_stack([col, rough, spc])
+
+
 # ---- spots and tiling images -------------------------------------------------------------------------------------
 
 def resolve_spot(spec: dict, sp: dict, what: str = "spot") -> dict:
@@ -908,7 +941,7 @@ def spot_mask(s: dict, v: np.ndarray) -> np.ndarray:
     return out
 
 
-TILE_VARY = (1.618, 5.0)  # the second copy's size, and the patch size of the mix between them (x the tile's size)
+TILE_VARY = (1.618, 0.07)  # the second copy's size (x the tile's), and the patch size of the mix between them (m)
 
 
 def tile_source(t: dict) -> tuple:
@@ -926,11 +959,14 @@ def tile_mask(t: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
     w = np.abs(n) ** 4
     w /= np.maximum(w.sum(1, keepdims=True), 1e-12)
 
+    rot = bool(t.get("rotate"))
+
     def tri(sz, off):
-        return sum(w[:, k] * skin_swatch.sample(src, v[:, [a, b]] / sz + off) for k, (a, b) in enumerate(((1, 2), (0, 2), (0, 1))))
+        return sum(w[:, k] * skin_swatch.sample(src, v[:, [b, a] if rot else [a, b]] / sz + off)
+                   for k, (a, b) in enumerate(((1, 2), (0, 2), (0, 1))))
     val = tri(size, 0.0)
     if t.get("vary", True):
-        m = _ramp(fbm(v, TILE_VARY[1] * size, 2, int(t.get("seed", 0)) + 17), 0.4, 0.6)
+        m = _ramp(fbm(v, TILE_VARY[1], 2, int(t.get("seed", 0)) + 17), 0.4, 0.6)
         val = val * (1 - m) + tri(size * TILE_VARY[0], 0.37) * m
     lo, hi = t.get("range", [0.0, 1.0])
     return np.clip((val - lo) / max(hi - lo, 1e-9), 0, 1)

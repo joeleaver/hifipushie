@@ -300,6 +300,8 @@ class _Nodes:
         def tri(size, off):
             acc = None
             for k, (a, b) in enumerate(((1, 2), (0, 2), (0, 1))):
+                if e.get("rotate"):
+                    a, b = b, a
                 uv = self.node("ShaderNodeCombineXYZ")
                 self._in(uv.inputs[0], self.math("ADD", self.math("DIVIDE", ps.outputs[a], size), off))
                 self._in(uv.inputs[1], self.math("ADD", self.math("DIVIDE", ps.outputs[b], size), off))
@@ -312,7 +314,10 @@ class _Nodes:
         val = tri(e["size"], 0.0)
         if e["vary"]:
             k2, kp = e["vary_k"]
-            m = self.ramp(self.noise(p, kp * e["size"], 2, e["seed"] + 17), 0.4, 0.6)
+            vk = ("vary", id(self.t), kp, e["seed"])
+            if vk not in self.memo:
+                self.memo[vk] = self.ramp(self.noise(p, kp, 2, e["seed"] + 17), 0.4, 0.6)
+            m = self.memo[vk]
             b = tri(e["size"] * k2, 0.37)
             val = self.math("ADD", val, self.math("MULTIPLY", m, self.math("SUBTRACT", b, val)))
         lo, hi = e["range"]
@@ -348,7 +353,14 @@ class _Nodes:
                 wn.inputs["Detail"].default_value = 1
                 off = self.vmath("SUBTRACT", wn.outputs["Color"], [0.5, 0.5, 0.5])
                 q = self.vmath("ADD", q, self.vmath("SCALE", off, scale=self.math("MULTIPLY", scale, 2 * e["warp"] * 3.0)))
-            v = self.noise(q, scale, e["octaves"], e["seed"])
+            nk = None if hasattr(scale, "is_output") else ("noise", id(self.t), scale, e["octaves"], e["seed"], e["warp"],
+                                                           json.dumps(e["stretch"]))
+            if nk is None or nk not in self.memo:  # the same noise read through two ranges (a band) is one node
+                v = self.noise(q, scale, e["octaves"], e["seed"])
+                if nk is not None:
+                    self.memo[nk] = v
+            else:
+                v = self.memo[nk]
             return self.ramp(v, self.exposed(e, "range0", e["range"][0]), self.exposed(e, "range1", e["range"][1]))
         if g == "tiles":
             n = self.vmath("ABSOLUTE", self.attr("wnrm", True))
@@ -375,7 +387,10 @@ class _Nodes:
                 n.inputs["Scale"].default_value = 1.0 / e["scale"]
                 n.inputs["Randomness"].default_value = e["jitter"]
                 return n
-            f1 = vor("F1")
+            vk = ("vor", id(self.t), e["scale"], e["jitter"], e["seed"], json.dumps(e["stretch"]))
+            if vk not in self.memo:  # a dot's shape (distance) and its dice (id) read the same cells
+                self.memo[vk] = vor("F1")
+            f1 = self.memo[vk]
             if e["mode"] == "edges":
                 val = self.math("SUBTRACT", vor("F2").outputs["Distance"], f1.outputs["Distance"])
             elif e["mode"] == "distance":
@@ -591,7 +606,7 @@ def _layer_mask(N, ly):
 MIX = {"mix": "MIX", "multiply": "MULTIPLY", "screen": "SCREEN", "overlay": "OVERLAY", "soft_light": "SOFT_LIGHT"}
 
 
-def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None):
+def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None, pre=None):
     """A part's material: its base channels, then every layer on it mixed in by opacity x mask. show: a layer
     name: the material shows only that layer's mask, glowing orange 0..1 on grey clay (0 where the layer isn't on
     this part). A material's name shows its first sub-layer (its main coverage)."""
@@ -627,6 +642,12 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     col.default_value = (*_lin(base["color"]), 1.0)
     ch = {"roughness": float(base["roughness"]), "metallic": float(base["metallic"]),
           "specular": float(base["specular"])}
+    if pre:  # the base as composited per vertex from the pre layers (paint.precomposite): linear rgb, roughness, specular
+        cmb = N.node("ShaderNodeCombineColor")
+        for k in range(3):
+            N._in(cmb.inputs[k], N.attr(pre[k]))
+        col = cmb.outputs[0]
+        ch["roughness"], ch["specular"] = N.attr(pre[3]), N.attr(pre[4])
     height = None  # painted relief (paint.bump): the layers' height x mask, summed (m)
     for i, ly in enumerate(layers):
         N.x = 400 * (i + 1)
@@ -646,15 +667,17 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
                 N._in(mix.inputs[7], N.colours[ly["color_from"]])
                 col = mix.outputs[2]
             elif c == "color":
-                rgb = N.node("ShaderNodeRGB")
-                rgb.outputs[0].default_value = (*_lin(v), 1.0)
-                if "color" in ly["expose"]:
-                    rgb.name = rgb.label = "hp:" + json.dumps(ly["expose"]["color"])
-                    rgb["hp_set"] = list(rgb.outputs[0].default_value)[:3]
                 mix = N.node("ShaderNodeMix", data_type="RGBA", blend_type=MIX[ly.get("mix", "mix")])
                 N._in(mix.inputs[0], a)
                 N._in(mix.inputs[6], col)
-                N._in(mix.inputs[7], rgb.outputs[0])
+                if "color" in ly["expose"]:  # a named node a person can change (pull reads it back)
+                    rgb = N.node("ShaderNodeRGB")
+                    rgb.outputs[0].default_value = (*_lin(v), 1.0)
+                    rgb.name = rgb.label = "hp:" + json.dumps(ly["expose"]["color"])
+                    rgb["hp_set"] = list(rgb.outputs[0].default_value)[:3]
+                    N._in(mix.inputs[7], rgb.outputs[0])
+                else:  # a constant on the socket: no node (Cycles keeps every leaf node's value on its stack)
+                    mix.inputs[7].default_value = (*_lin(v), 1.0)
                 col = mix.outputs[2]
             else:
                 ch[c] = N.math("ADD", ch[c], N.math("MULTIPLY", a, N.math("SUBTRACT", float(v), ch[c])))
@@ -676,6 +699,7 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         bsdf.inputs["Subsurface Weight"].default_value = float(base["subsurface"])
         bsdf.inputs["Subsurface Radius"].default_value = base.get("subsurface_radius", [1.0, 0.35, 0.2])
         bsdf.inputs["Subsurface Scale"].default_value = float(base.get("subsurface_scale", 0.004))
+        m["hp_skin"] = 1
     if float(base.get("coat", 0.0)) > 0:  # a second, tighter highlight (skin's oily film; lacquer)
         bsdf.inputs["Coat Weight"].default_value = float(base["coat"])
         bsdf.inputs["Coat Roughness"].default_value = float(base.get("coat_roughness", 0.1))
@@ -908,7 +932,7 @@ def sync(job):
             if m is None or m.get("hp_prog") != h:
                 rebuilt.append(part)
             _paint_material(part, base, [ly for ly in prog["layers"] if part in ly["parts"] or "*" in ly["parts"]],
-                            prog["quantiles"], h, prog["packing"].get(part, {}))
+                            prog["quantiles"], h, prog["packing"].get(part, {}), pre=(prog.get("pre") or {}).get(part))
     print("@@rebuilt", json.dumps(rebuilt))
     parts = _coll("parts")
     insts = _coll("instances")
@@ -1024,7 +1048,8 @@ def render(job):
     if job.get("show_layer"):  # one layer's mask on every part (not saved)
         prog = job["program"]
         for part, base in job["bases"].items():
-            _paint_material(part, base, [ly for ly in prog["layers"] if part in ly["parts"] or "*" in ly["parts"]],
+            _paint_material(part, base, [ly for ly in prog["layers"] + (prog.get("pre_layers") or [])
+                                         if part in ly["parts"] or "*" in ly["parts"]],
                             prog["quantiles"], None, prog["packing"].get(part, {}), show=job["show_layer"])
     hide = set(job.get("hide") or ())
     hair = bpy.data.collections.get("hair") if job.get("hide_hair") else None
@@ -1054,7 +1079,24 @@ def render(job):
         nt.nodes["Principled BSDF"].inputs["Roughness"].default_value = 1.0
         me.materials.append(cm)
         scene.collection.objects.link(bpy.data.objects.new("hp_caps", me))
-    scene.render.engine = "BLENDER_EEVEE"
+    cycles = job.get("engine") == "cycles"  # path traced: real subsurface scattering, and no shader compile (EEVEE
+    # compiles a material's whole node program into one GPU shader: a human skin's ~100 layers took > 5 min and 10 GB)
+    scene.render.engine = "CYCLES" if cycles else "BLENDER_EEVEE"
+    if cycles:
+        cy = scene.cycles
+        cy.device = "CPU"
+        cy.samples = int(job.get("samples", 48))
+        cy.use_adaptive_sampling = True
+        cy.adaptive_threshold = 0.03
+        cy.use_denoising = bool(job.get("denoise", True))
+        cy.max_bounces, cy.diffuse_bounces, cy.glossy_bounces = 4, 2, 2
+        cy.transmission_bounces, cy.volume_bounces = 2, 0
+        scene.render.threads_mode = "FIXED"
+        scene.render.threads = int(job.get("threads", 12))
+        for m in bpy.data.materials:
+            for n in (m.node_tree.nodes if m.node_tree else []):
+                if n.type == "BSDF_PRINCIPLED":
+                    n.subsurface_method = "RANDOM_WALK_SKIN" if m.get("hp_skin") else "RANDOM_WALK"
     # ray-traced reflections and indirect light: without them everything indoors reflects the open sky (glossy
     # jars and cups get a bright rim) and rooms get no bounce light
     ee = scene.eevee

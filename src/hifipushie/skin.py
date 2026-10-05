@@ -335,7 +335,7 @@ def zone(spec: dict, name: str, grow: float = 1.0, what: str = "zone") -> list:
     sides = [side] if side else [".L", ".R"]
     try:
         if stem in OUTLINES:
-            return [{"outline": {"points": OUTLINES[stem], "dir": [0, 1, 0], "soft": 0.0012, "depth": 0.03}}]
+            return [{"outline": {"points": OUTLINES[stem], "dir": [0, 1, 0], "soft": 0.0012 * grow, "depth": 0.03}}]
         key = stem + ".L" if stem + ".L" in FACE or stem + ".L" in UNIONS or stem + ".L" in LINES or stem + ".L" in BODY else stem
         if key in UNIONS:
             out = []
@@ -507,6 +507,7 @@ _LAYERS: dict = {}
 def _build(spec: dict, J: dict) -> dict:
     p = params(spec)
     part, t, seed = p["part"], p["tone"], p["seed"]
+    no_pores = []
     var, det, age = p["variation"], p["detail"], p["age"]
     face = "lm_nose_tip" in J
     hands = "finger1_0.L" in J and "wrist.L" in J
@@ -526,7 +527,7 @@ def _build(spec: dict, J: dict) -> dict:
             return
         if "opacity" in ly:
             ly["opacity"] = round(float(np.clip(ly["opacity"] * s, 0, 1)), 4)
-        out[f"skin:{name}"] = {"part": part, **ly}
+        out[f"skin:{name}"] = {"part": part, "_pre": True, **ly}
 
     # 1. colour zones: where blood shows (mid-face, ears, nose, fingertips), where it doesn't (forehead: yellower),
     #    the cooler lower third, thin skin round the eyes, lighter palms and soles, darker rougher joints
@@ -554,7 +555,7 @@ def _build(spec: dict, J: dict) -> dict:
 
     # 2. mottling: blood is never even (blotches of 1-2 cm, redder and paler), nor is pigment
     def mottle(name, scale, rng, sd, opacity, **tone):
-        out[f"skin:{name}"] = {"part": part, "color": T(**tone), "opacity": round(float(np.clip(opacity * var, 0, 1)), 4),
+        out[f"skin:{name}"] = {"part": part, "_pre": True, "color": T(**tone), "opacity": round(float(np.clip(opacity * var, 0, 1)), 4),
                                "mask": [{"noise": {"scale": scale, "range": rng, "seed": seed + sd, "octaves": 3}}]}
     mottle("mottle_red", 0.014, [0.42, 0.85], 11, 0.34 + 0.1 * thin, blood=2.0)
     mottle("mottle_pale", 0.02, [0.42, 0.88], 12, 0.3, blood=0.45, melanin=0.92)
@@ -566,12 +567,16 @@ def _build(spec: dict, J: dict) -> dict:
     if face:
         lp = p["lips"]
         lm = (0.55 + 0.4 * dark) * lp["melanin"]
-        out["skin:lips_upper"] = {"part": part, "color": T(melanin=lm * 1.15, blood=9.0 * lp["blood"], epidermis=0.5,
+        out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=9.0 * lp["blood"], epidermis=0.5,
                                                            oxygenation=0.62), "opacity": 0.92, "roughness": lp["roughness"] + 0.04,
-                                  "mask": _z("lip_upper")}
-        out["skin:lips_lower"] = {"part": part, "color": T(melanin=lm * 0.9, blood=10.0 * lp["blood"], epidermis=0.45, oxygenation=0.68),
-                                  "opacity": 0.92, "roughness": lp["roughness"], "mask": _z("lip_lower")}
-        out["skin:lip_seam"] = {"part": part, "color": T(melanin=lm * 1.6, blood=3.2, oxygenation=0.5), "opacity": 0.7,
+                                  "mask": _z("lip_upper", grow=2.2)}
+        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=10.0 * lp["blood"], epidermis=0.45, oxygenation=0.68),
+                                  "opacity": 0.92, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=2.2)}
+        # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
+        out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
+                                  "mask": [{"zone": {"name": "lips", "grow": 3.5}},
+                                                              {"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
+        out["skin:lip_seam"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.6, blood=3.2, oxygenation=0.5), "opacity": 0.7,
                                 "mask": [{"spot": {"at": ["lm_mouth_corner.R", "lm_lip_inner_upper.R", "lm_lip_seam",
                                                           "lm_lip_inner_upper.L", "lm_mouth_corner.L"],
                                                    "radius": [0.0008, 0.0016, 0.0018, 0.0016, 0.0008], "soft": 0.8, "line": True}}]}
@@ -582,48 +587,43 @@ def _build(spec: dict, J: dict) -> dict:
     # 4. roughness: sebum on the T-zone, drier rougher joints, and it is never even
     base_r = _roughness(p)
     if face:
-        out["skin:rough_tzone"] = {"part": part, "roughness": round(float(np.clip(base_r - 0.07 - 0.12 * (p["oil"] - 0.3), 0.18, 0.9)), 3),
+        out["skin:rough_tzone"] = {"part": part, "_pre": True, "roughness": round(float(np.clip(base_r - 0.07 - 0.12 * (p["oil"] - 0.3), 0.18, 0.9)), 3),
                                    "opacity": 0.8, "mask": _z("forehead", "glabella", "nose_bridge", "nose_tip", "nose_wing") +
                                    [{"zone": "chin", "blend": "max", "weight": 0.6}, {"zone": "eyelid", "blend": "max", "weight": 0.8}]}
     if hands or joints_:
-        out["skin:rough_joints"] = {"part": part, "roughness": round(min(base_r + 0.16, 0.95), 3), "opacity": 0.8,
+        out["skin:rough_joints"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.16, 0.95), 3), "opacity": 0.8,
                                     "mask": _z(*((["knuckles"] if hands else []) + joints_))}
-    out["skin:rough_patches"] = {"part": part, "roughness": round(min(base_r + 0.1, 0.95), 3), "opacity": 0.75,
+    out["skin:rough_patches"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.1, 0.95), 3), "opacity": 0.75,
                                  "mask": [{"noise": {"scale": 0.007, "range": [0.4, 0.8], "seed": seed + 21}}]}
-    out["skin:rough_sheen"] = {"part": part, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": 0.6,
+    out["skin:rough_fine"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.14, 0.95), 3), "opacity": 0.6,
+                              "mask": [{"noise": {"scale": 0.0022, "range": [0.42, 0.7], "seed": seed + 23}}]}
+    out["skin:rough_sheen"] = {"part": part, "_pre": True, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": 0.6,
                                "mask": [{"noise": {"scale": 0.011, "range": [0.55, 0.85], "seed": seed + 22, "warp": 0.6}}]}
 
     from . import skin_features
-    skin_features.build(spec, p, J, out, T, {"face": face, "hands": hands, "arms": arms, "legs": legs, "feet": feet,
-                                             "child": child, "old": old, "thin": thin, "base_r": base_r})
+    smooth = skin_features.build(spec, p, J, out, T, {"face": face, "hands": hands, "arms": arms, "legs": legs, "feet": feet,
+                                                      "child": child, "old": old, "thin": thin, "base_r": base_r})
+    no_pores = [{"mask": s, "blend": "subtract"} for s in smooth]  # scar tissue is smooth
 
-    # last: micro relief (pores, the polygonal net of skin lines), over everything, ink and make-up included
+    # last: micro relief (pores, the polygonal net of skin lines, the grain between them), over everything, ink and
+    # make-up included: tiling swatches, relief + darker, rougher furrows (cavity: "pores catch no light")
     if det > 0:
         d = det * (1 - 0.45 * child)
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:
-            micro.append(("pores", "pores", 0.00013 * d, _z("face") + [{"zone": "lips", "blend": "subtract"}]))
-            micro.append(("pores_big", "pores", 0.0001 * d * (0.6 + 0.8 * p["oil"]),
-                          [{"mask": _z("nose_tip", "nose_wing", "cheek", grow=1.1)}], 0.022))
+            micro.append(("pores", "pores", 0.00021 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
-            micro.append(("lines", "lines", 0.00011 * d * body_k, [{"mask": _z("face"), "invert": True}]))
+            micro.append(("lines", "lines", 0.00018 * d * body_k, [{"mask": _z("face"), "invert": True}]))
         else:
-            micro.append(("lines", "lines", 0.00011 * d * body_k, None))
+            micro.append(("lines", "lines", 0.00018 * d * body_k, None))
         if hands or joints_:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
-        for name, sw, depth, mask, *size in micro:
-            tile = {"tile": {"swatch": sw, **({"size": size[0]} if size else {})}}
-            stack = [tile] + ([{"mask": mask, "blend": "multiply"}] if mask else [])
-            out[f"skin:micro_{name}"] = {"part": part, "height": -round(depth, 7), "mask": stack}
-            # the furrows are darker and rougher (cavity: Marmoset's "pores catch no light")
-            out[f"skin:micro_{name}_cavity"] = {"part": part, "color": [0.8, 0.66, 0.62], "mix": "multiply", "opacity": round(min(0.7 * d, 1), 3),
-                                                "roughness": round(min(base_r + 0.22, 0.95), 3), "mask": copy.deepcopy(stack)}
-        # meso relief: between a pore and a wrinkle the surface undulates (follicle bumps, fine swelling)
-        out["skin:meso"] = {"part": part, "height": round(0.0001 * d, 7),
-                            "mask": [{"noise": {"scale": 0.0016, "range": [0.25, 0.8], "seed": seed + 31, "octaves": 3}}]}
-        out["skin:meso2"] = {"part": part, "height": round(0.00018 * d * (1 + old), 7),
-                             "mask": [{"noise": {"scale": 0.006, "range": [0.3, 0.8], "seed": seed + 32, "octaves": 2}}]}
+        for name, sw, depth, mask in micro:
+            stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply"}] if mask else []) + copy.deepcopy(no_pores)
+            out[f"skin:micro_{name}"] = {"part": part, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
+                                         "opacity": round(min(0.6 * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "mask": stack}
     return out
 
 
