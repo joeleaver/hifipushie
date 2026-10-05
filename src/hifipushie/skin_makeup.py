@@ -75,8 +75,8 @@ def build(spec, p, J, layer, T, ctx) -> None:
         o = item("blush")
         if o:
             col = _hex(o["color"]) if "color" in o else T(blood=5.0, oxygenation=0.9, melanin=1.0 + 0.2 * dark)
-            layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=0.5 * o["amount"],
-                  mask=[{"mask": _zones(o.get("where") or ["cheekbone", "cheek"], 0.9)}])
+            layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=0.32 * o["amount"],
+                  mask=[{"mask": _zones(o.get("where") or ["cheekbone", "cheek"], 1.15)}, {"levels": [0.0, 1.0, 0.6]}])
         o = item("highlight")
         if o:
             layer("makeup_highlight", o.get("mask"), pre=True, color=T(melanin=0.5, blood=0.7), opacity=0.35 * o["amount"],
@@ -96,16 +96,13 @@ def build(spec, p, J, layer, T, ctx) -> None:
             col = _hex(o.get("color", "#120e0d"))
             w = float(o.get("width", 0.0012))
             wing = float(o.get("wing", 0.0))
-            lines = []
-            for s, sx in ((".L", 1), (".R", -1)):
-                P = [{"at": f"lm_eye_inner{s}", "offset": [round(0.03 * sx * io, 5), 0, round(0.02 * io, 5)]},
-                     {"at": f"lm_lid_upper{s}", "offset": [0, round(-0.01 * io, 5), round(-0.005 * io, 5)]},
-                     {"at": f"lm_eye_outer{s}", "offset": [0, 0, round(0.012 * io, 5)]}]
-                R = [0.5 * w, w, 1.15 * w]
-                if wing > 0:
-                    P.append({"at": f"lm_eye_outer{s}", "offset": [round(sx * 0.75 * wing, 5), round(0.55 * wing, 5), round(0.012 * io + 0.55 * wing, 5)]})
-                    R.append(0.35 * w)
-                lines.append({"spot": {"at": P, "radius": [round(r, 6) for r in R], "soft": 0.5, "line": True}, **({"blend": "max"} if lines else {})})
+            k = w / 0.0012
+            lines = [{"zone": {"name": "lash_upper", "grow": round(0.8 * k, 3)}}]  # along the upper lid's margin
+            if wing > 0:
+                for sd, sx in ((".L", 1), (".R", -1)):
+                    P = [{"at": f"lm_eye_outer{sd}", "offset": [0, round(-0.025 * io, 5), round(0.012 * io, 5)]},
+                         {"at": f"lm_eye_outer{sd}", "offset": [round(sx * 0.75 * wing, 5), round(-0.02 * io + 0.45 * wing, 5), round(0.012 * io + 0.55 * wing, 5)]}]
+                    lines.append({"spot": {"at": P, "radius": [round(1.1 * w, 6), round(0.35 * w, 6)], "soft": 0.5, "line": True}, "blend": "max"})
             layer("makeup_eyeliner", o.get("mask"), color=col, opacity=0.95 * min(o["amount"], 1), roughness=0.4, mask=lines)
         o = item("mascara")
         if o:

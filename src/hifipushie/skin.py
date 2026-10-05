@@ -118,7 +118,7 @@ def tone_rgb(tone: dict | None, melanin: float = 1.0, blood: float = 1.0, oxygen
     p = tone_params(tone)
     mel = MELANIN[0] * (MELANIN[1] / MELANIN[0]) ** p["melanin"] * melanin
     bl = (BLOOD[0] * (BLOOD[1] / BLOOD[0]) ** p["blood"]) * blood * (1 + 0.35 * max(-p["undertone"], 0))
-    car = 0.1 + 0.45 * max(p["undertone"], 0) - 0.1 * max(-p["undertone"], 0) + yellow
+    car = 0.1 + 0.45 * max(p["undertone"], 0) * (1 - 0.6 * p["melanin"]) - 0.1 * max(-p["undertone"], 0) + yellow
     rgb = _srgb(reflectance(min(mel, 0.95), min(bl, 0.5), p["oxygenation"] if oxygenation is None else oxygenation,
                             max(car, 0.0), epidermis))
     if grey:
@@ -171,13 +171,6 @@ LINES = {  # tapered lines: [(anchor, offset)], radius (interocular distances)
     "marionette.L": ([("lm_mouth_corner.L", (0.06, 0.02, -0.03)), ("lm_mouth_corner.L", (0.12, 0.05, -0.42))], [0.06, 0.035]),
     "brow.L": ([("lm_brow_inner.L", (0.0, 0, 0)), ("lm_brow_mid.L", (0, 0, 0)), ("lm_brow_outer.L", (0, 0, -0.01))],
                [0.085, 0.09, 0.045]),
-    # (the lid margin bows forward over the eyeball: quarter points pushed out, or the line cuts behind the lid)
-    "lash_upper.L": ([("lm_eye_inner.L", (0.04, -0.015, 0.02)), ("lm_lid_upper.L", (-0.13, -0.035, -0.015)), ("lm_lid_upper.L", (0, -0.04, 0.0)),
-                      ("lm_lid_upper.L", (0.13, -0.03, -0.015)), ("lm_eye_outer.L", (0.0, -0.025, 0.012))],
-                     [0.012, 0.022, 0.026, 0.026, 0.018]),
-    "lash_lower.L": ([("lm_eye_inner.L", (0.07, -0.015, -0.015)), ("lm_lid_lower.L", (-0.1, -0.045, -0.012)), ("lm_lid_lower.L", (0, -0.05, -0.02)),
-                      ("lm_lid_lower.L", (0.1, -0.035, -0.012)), ("lm_eye_outer.L", (-0.01, -0.02, -0.012))],
-                     [0.008, 0.014, 0.016, 0.016, 0.012]),
 }
 OUTLINES = {  # closed landmark outlines seen from the front
     "lips": ["lm_mouth_corner.R", "lm_lip_upper_side.R", "lm_lip_peak.R", "lm_lip_upper", "lm_lip_peak.L",
@@ -190,6 +183,7 @@ OUTLINES = {  # closed landmark outlines seen from the front
                   "lm_mouth_corner.L", "lm_lip_lower_side.L", "lm_lip_lower_mid.L", "lm_lip_lower", "lm_lip_lower_mid.R",
                   "lm_lip_lower_side.R"],
 }
+EXTRA = ("lash_upper.L", "lash_lower.L")
 BODY = ("shoulder.L", "elbow.L", "knee.L", "knuckles.L", "hand.L", "palm.L", "back_of_hand.L", "fingertips.L",
         "nails.L", "forearm.L", "upper_arm.L", "wrist_inner.L", "foot.L", "sole.L", "chest", "collarbone")
 
@@ -326,7 +320,7 @@ def _body_zone(spec: dict, J: dict, name: str, s: str, grow: float) -> list:
 
 
 def zone_names() -> list:
-    names = set(FACE) | set(UNIONS) | set(LINES) | set(OUTLINES) | set(BODY)
+    names = set(FACE) | set(UNIONS) | set(LINES) | set(OUTLINES) | set(BODY) | set(EXTRA)
     return sorted(names | {n[:-2] + ".R" for n in names if n.endswith(".L")} | {n[:-2] for n in names if n.endswith(".L")})
 
 
@@ -337,6 +331,15 @@ def zone(spec: dict, name: str, grow: float = 1.0, what: str = "zone") -> list:
     stem, side = (name[:-2], name[-2:]) if name.endswith((".L", ".R")) else (name, "")
     sides = [side] if side else [".L", ".R"]
     try:
+        if stem in ("lash_upper", "lash_lower"):
+            # the lid's margin is the skin that touches the eyeball: found from the eyeballs themselves (a line drawn
+            # from the lid landmarks sat behind the rim on one head and in the air on the next)
+            eyes = [f"eye{sd}" for sd in sides]
+            if any(e not in J for e in eyes):
+                raise KeyError(eyes[0])
+            up = stem == "lash_upper"
+            return [{"near": eyes, "within": round((0.0014 if up else 0.001) * grow, 5), "soft": round(0.0016 * grow, 5)},
+                    {"axis": {"dir": [0, 0, 1], "at": eyes[0], "from": 0.0003 if up else -0.0003, "to": 0.0022 if up else -0.0022}}]
         if stem in OUTLINES:
             return [{"outline": {"points": OUTLINES[stem], "dir": [0, 1, 0], "soft": 0.0012 * grow, "depth": 0.03}}]
         key = stem + ".L" if stem + ".L" in FACE or stem + ".L" in UNIONS or stem + ".L" in LINES or stem + ".L" in BODY else stem
@@ -570,10 +573,11 @@ def _build(spec: dict, J: dict) -> dict:
     if face:
         lp = p["lips"]
         lm = (0.55 + 0.4 * dark) * lp["melanin"]
-        out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=0.5,
+        le = 0.5 + 0.4 * dark  # dark lips keep most of their pigment: the upper one browner, the lower pinker
+        out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=le,
                                                            oxygenation=0.62), "opacity": 0.85, "roughness": lp["roughness"] + 0.04,
                                   "mask": _z("lip_upper", grow=2.2)}
-        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=7.0 * lp["blood"], epidermis=0.45, oxygenation=0.68),
+        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=7.0 * lp["blood"], epidermis=le - 0.08, oxygenation=0.68),
                                   "opacity": 0.85, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=2.2)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),

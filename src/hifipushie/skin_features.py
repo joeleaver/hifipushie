@@ -123,7 +123,7 @@ def hair_default(tone: dict, age: float) -> list:
     """Hair colour when none is given: dark brown, greying from ~45."""
     g = float(np.clip((age - 55) / 30, 0, 1))
     base = np.array([0.13, 0.085, 0.06]) * (1.0 - 0.3 * tone["melanin"])
-    return [round(float(x), 4) for x in base + g * (np.array([0.62, 0.62, 0.62]) - base)]
+    return [round(float(x), 4) for x in base + g * (np.array([0.5, 0.5, 0.5]) - base)]
 
 
 def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
@@ -201,9 +201,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
         w = _where(o, ["temple", "cheekbone", "cheek_side", "back_of_hand", "forearm"], ctx) + \
             [{"vertex": True, "mask": _zones(["forehead", "scalp"]), "blend": "max", "weight": 0.35}] if ctx["face"] else _where(o, ["back_of_hand", "forearm"], ctx)
         a = float(np.clip(o["amount"], 0, 1.5))
-        layer("age_spots", o.get("mask"), pre=True, color=T(melanin=3.0 + 1.5 * (1 - dark), blood=0.9), opacity=0.55 * show,
+        layer("age_spots", o.get("mask"), pre=True, color=T(melanin=1.6 + 2.9 * (1 - dark), blood=0.9), opacity=0.55 * show * (1 - 0.4 * dark),
               mask=[{"noise": {"scale": sz, "range": [0.74 - 0.14 * a, 0.78 - 0.14 * a], "seed": seed + 57, "octaves": 2, "warp": 0.5}}] + w)
-        layer("age_spots_small", o.get("mask"), color=T(melanin=3.6, blood=0.9), opacity=0.5 * show,
+        layer("age_spots_small", o.get("mask"), color=T(melanin=1.8 + 1.8 * (1 - dark), blood=0.9), opacity=0.5 * show * (1 - 0.4 * dark),
               mask=[{"tile": {"swatch": "freckles", "size": 0.11, "range": [0.62 - 0.2 * min(a, 1), 0.8 - 0.2 * min(a, 1)], "vary": False}}] + w)
     o = _opt(f.get("blemishes"), "features.blemishes", ("size",))
     if o:
@@ -343,7 +343,7 @@ def _hair(p, J, layer, T, ctx) -> None:
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
-            col = [round(c + g * (0.7 - c), 4) for c in col]
+            col = [round(c + g * (0.55 - c), 4) for c in col]
             dens = float(np.clip(o.get("density", 0.8) * o["amount"], 0.05, 1.6))
             thick = float(o.get("thickness", 1.0)) * (1 - 0.2 * ctx["child"])
             # the brow is a drawn picture of hairs (skin_swatch.brow_image), laid from the brow's landmarks

@@ -18,8 +18,8 @@ from . import skin_measure, store
 STUDIO = {"lights": [{"dir": [-0.55, -0.7, 0.45], "energy": 3.6, "color": [1.0, 0.96, 0.9], "angle": 12},
                      {"dir": [0.7, -0.5, 0.1], "energy": 0.5, "color": [0.85, 0.9, 1.0], "angle": 40, "shadow": False}],
           "world": {"color": [0.55, 0.58, 0.62], "strength": 0.5}, "view": "Khronos PBR Neutral", "exposure": -0.6}
-SOFT = {"lights": [{"dir": [-0.2, -0.9, 0.35], "energy": 2.4, "color": [1.0, 0.98, 0.95], "angle": 60},
-                   {"dir": [0.6, -0.6, 0.2], "energy": 1.0, "color": [0.95, 0.97, 1.0], "angle": 60, "shadow": False}],
+SOFT = {"lights": [{"dir": [-0.2, -0.9, 0.35], "energy": 2.4, "color": [1.0, 0.98, 0.95], "angle": 25},
+                   {"dir": [0.6, -0.6, 0.2], "energy": 1.0, "color": [0.95, 0.97, 1.0], "angle": 25, "shadow": False}],
         "world": {"color": [0.7, 0.72, 0.75], "strength": 0.8}, "view": "Khronos PBR Neutral", "exposure": -0.6}
 BACK = {"lights": [{"dir": [-0.35, 0.9, 0.2], "energy": 7.0, "color": [1.0, 0.97, 0.92], "angle": 6},
                    {"dir": [-0.6, -0.7, 0.2], "energy": 0.3, "angle": 40, "shadow": False}],
