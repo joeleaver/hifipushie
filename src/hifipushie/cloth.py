@@ -3771,8 +3771,8 @@ def sizing(res: dict) -> dict:
             tops = [float(pcs[nm]["P"][:, 1].max()) for nm in torso
                     if not pcs[nm]["wrap"].get("align") and not pcs[nm]["wrap"].get("level")]
             low = [t for t in tops if yb - 0.15 < t < yb]
-            if low:
-                y_cap = min(low) - 0.005
+            if low:  # (3 cm under its top: the top is the armhole's U, whose horns alone are a few mm wide)
+                y_cap = min(low) - 0.03
         for nm in torso:
             P = pcs[nm]["P"]
             dz = 0.0
