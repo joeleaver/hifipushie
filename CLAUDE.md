@@ -915,6 +915,96 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     in hip-length blocks, pockets / linings, head wrap, kimono placement, seat ease not reported for leg pieces
     (sizing reads torso pieces), trousers' length option for bare feet, a waistband that grips.
     `tests/test_pattern_draft.py`, `tests/test_pattern_styles.py`.
+  - Round 2 (2026-10-05, "drafting" agent, branch worktree-agent-aaf5034835ab4c449; renders pd_40..pd_4x; scratch
+    in the session scratchpad `drafting/`: run.sh <script>, st.py (stages), pl.py (place + crossings by pair + start
+    strain by piece), dj.sh (dress + look in its own session), jg2.py (blazer vs Jaeger)).
+    - HINGES (`pattern_draft.apply_hinges`, run at unfold): one cloth placed on two parts of the body. `D["hinges"]`
+      {piece, at, dir, mid, origin, x, wrap, fold, part}: the piece is cut along the line for PLACEMENT only, the far
+      part "<piece>_<part>" moved into its own frame with its own wrap, joined by a seam noted `"virtual": true`
+      (seam_notes; `_sewn_arc` skips it; the maps should not draw a groove there: not done). Pieces traced from it
+      (`pc["traced"]`: facings) are cut the same way, fold lines that cross are cut with it (`_split_fold`; a
+      line point ON the hinge counts as across), and the cut gets a vertex where each fold crosses. `op_shawl` uses
+      it: the collar past the neck point goes on the neck wrap (`flip`: pattern face out, `girth`: the whole circle
+      a partial band belongs to, `apart`, `out`). The start-gap warning's 279 mm neck seam is now 88 mm.
+    - The shawl's back collar needs SPRING: a strip run straight on from the roll line can't turn down (a cylinder's
+      top has no isometric fold). It is an annular sector now (`spring` = outer edge - neck seam; default from the
+      fall), laid on a cone flaring up, its fall folded at the ONE isometric angle (2 x the cone's half angle) as a
+      single crease (a roll's rows round a curved line stretched the flap 70%).
+    - `wrap.lies_on` + `cloth._lay_on`: a facing is placed as its front's placed surface, LIES 3 mm off the inside
+      face (so on a turned lapel it is the side that shows), with a small untangle against that piece; it takes the
+      front's fold lines (same mesh rows). Wrapped and folded by itself it had to pass through its front. The left
+      front laps 4 mm + 12 (a fold) + 4 (a facing) out: what lies between the fronts. `style_line` panels start
+      2 mm apart (`wrap.shift`): edge on edge they read as crossings. `cloth.mesh`: a roll's rows each end on their
+      own outline vertex (sharing one bent every row's end: 150% stretch at the piece's edge).
+    - Two-piece sleeve: the under sleeve was built wrong side up (folded-in strips) and so went round the arm the
+      other way: both sleeve seams started ~15 cm apart and the sewing knotted the sleeve at the shoulder. Turned
+      over now. `elbow` (m the wrist comes forward) bends each piece about its forearm seam's elbow point
+      (`pattern.bend` / `unbend`; `wrap.bend`: place lays the straight sleeve): forearm seams equal, the top's
+      hindarm 9 mm longer (elbow ease, declared), hem square to the forearm. A jacket sleeve needs `hem_width`
+      ~0.28 (the block's default is a shirt cuff's: the forearms read red).
+    - `pattern_tailor.py`: `contour` (an edge moved in / out per level: shaped CB seam, hem spring; a style line's
+      name shapes BOTH its edges), `join` (two pieces sewn together become one: a side panel with no side seam; the
+      seam's shaping is reported lost; b's clashing names become "name@b"), `round_corner` (cut-away hem; the corner's
+      name stays on the curve's middle), `fisheye` (run on to the hem as a closed 3 mm cut: no holes in a cloth mesh;
+      `darts: true` on a hip-length bodice now makes them), lapel `gorge: "straight"` + `gorge_drop` + `notch`.
+      `take_in` on a STRAIGHT cut shaped nothing (two vertices): edges are densified first; a shaped panel seam's
+      length difference under 2% is declared (`press_note`: pressed / eased on). `tests/test_pattern_tailor.py`.
+      Blazer vs Jaeger again (pd_45): waist +16% (Jaeger +17), hem +12% (+12), CB length +1 mm, CB seam and side
+      panel there; left: Jaeger's narrower side panel, its under sleeve's S-shaped top, chest +8% vs +4%.
+    - ZOZO start: stage 4 passes for the jacket (0 crossings). Draped triangles that start past the strain limit by
+      construction (fold rows on a curving chest, a stand pushed 1-3 mm: 0.7%, up to 16%) get the local strain
+      limit in cloth_zozo (`start_over` 3%) and are info in stage 4; more, or > 60%, still fails.
+    - Trousers: block `length` words (TROUSER_LENGTHS: floor, shoe, ankle (default: barefoot bodies), cropped, calf,
+      knee, shorts); stage 2 `leg_ease`: seat ease in the fit's band from the legs' pieces, per-leg thigh / knee / hem
+      against the body's own leg. The waistband slid 9-10 cm because it STARTED wrong: `place`'s torso hull ran up to
+      the shoulders for every garment (`max(ytop, -0.03)`: a bug), so a waistband alone lay on the chest's curve,
+      its back half 16-25 cm from the trousers. Now the hull stops at the pieces' own top, a band buttoned to itself
+      alone on the torso lies at its CLOSED girth a few mm off the waist with its lap a layer out (start gap 161
+      -> 46 mm). `waistband` op: the generate entry's chain is made at unfold from the waist edges as they are
+      then (it had to be written by hand).
+    - Stage 4 `seam_start_gaps`: `turned` = the rotation that lays one side of a seam on the other is > 35 deg
+      with a median gap > 8 cm, for seams with a chain side. A waistband mis-ordered by half a turn has gaps of
+      only a waist's diameter (247 mm < the 250 mm "far" limit: the distance check did NOT fire); a ring inside a
+      ring (hood vs neckline) and a shoulder seam are not turned. `tests/test_cloth_workflow.py`.
+    - Placement by hinge again: `kimono` (the sleeve past the underarm-to-shoulder line on the arm: `wrap.cx` =
+      the pattern x along the top of the arm, front half `front: -1`, back `+1`, mirrored on the right arm: pair
+      pieces on arms in unfold); wrap `head` (hoods: one plan curve round the head from the back, the sides `apart`
+      by the centre seam's bow). `pocket` (patch, kangaroo: traced, `lies_on` + `face: "out"`, tacked by
+      `sym_stitches` mirrored at unfold; a tacked piece counts as attached in stage 2), `lining` (every body piece
+      traced, seams repeated, laid inside, sewn to the shell at hems / sleeve hems / back neck; same outline, no
+      pleat, one fabric). Not drafted: welt / flap / in-seam pockets.
+    - `skirt` block for the ops (pattern_blocks.skirt; a cut ACROSS a piece names the upper part first and keeps the
+      centre seam on both parts; a pleat on a piece cut on the fold is pressed on both halves; pleat `underlays`
+      are not girth in `sizing`).
+    - Two new garments from prose through the tools (sheets in examples/garment_sheets): `raglan_anorak` (bodice
+      cf fold, neckline, sleeve, raglan, hood, kangaroo pocket; model pd_anorak) and `yoke_skirt` (skirt block,
+      yokes, a pleat each side, flared back, waistband op; model pd_skirt). What the tools lacked on the way, all
+      fixed: a tacked pocket read "sewn to nothing"; the hoodie had no boxy fit band (a straight body on a V-shaped
+      torso is +51% at the waist); the turned check fired on a raglan seam (single edges at an angle) and on the
+      hood (ring in ring); the kangaroo pocket's default ran past a short hem; the skirt had no block for ops and no
+      waistband op; the yoke's centre seam and the second pleat were missing; pleat cloth read as +12% seat ease.
+    - Results (renders pd_41 Blender jacket, pd_44 ZOZO jacket (raw V), pd_46 trousers, pd_47 tunic, pd_50 anorak,
+      pd_51 skirt): the shawl jacket on ZOZO settle: "fits", 0 crossings, strain p95 1.5% (646 s at 2 cm), lapels
+      turned, sleeves smooth; its raw surface had the centre back OPEN from the neck (coincident centre-seam
+      stitches are dropped by the solver: centre seams now start 2 mm apart, NOT re-run). Blender draft: reads as
+      the jacket, 1 crossing, facing collar 4% crumpled, puffy. The skirt stays at the waist (Blender); the
+      trousers on Blender still slide 99 mm (run before the waistband start fix; the ZOZO run never started).
+      The anorak's body, pocket and hood read, its RAGLAN SLEEVES crumple at the shoulders (22 crossings): the
+      sleeve's shoulder part lies along the arm, 173 mm and ~60 deg from the body's cut. Stage 4 names it
+      (turned). Fix = a hinge in `op_raglan`: the shoulder parts placed on the torso in the coordinates they were
+      cut in, the sleeve on the arm. The tunic reads as a wrap tunic but is over-cinched (take_in 56 / 62 mm over
+      9 cm now really shapes) and strained at the tie.
+    - THE ZOZO RELEASE IN THE SCRATCHPAD BROKE during this session (its python/lib/python3.12 lost most of the
+      standard library some time after 12:49 on 2026-10-05: "No module named 'encodings'"): every zozo job fails
+      until it is unpacked again (asset pack "zozo"). Not caused by these changes.
+    - Open, in order: re-run jacket + trousers on ZOZO once the release is back (dj.sh); the raglan hinge; a
+      facing's free inner edge (tack it, or settle's treatment of made pieces that lie on draped cloth: asked
+      clothsim); virtual seams still draw a groove in the detail maps and the pattern sheet draws hinge parts
+      apart from their piece; welt / in-seam pockets; lining trimmed to the facing; the under sleeve's S-shaped
+      top; `hem height spread` reads designed curves and yokes as unevenness (skirt 490 mm, tunic 82 mm).
+    - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
+      nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
+      seams, or replace the sheet.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).

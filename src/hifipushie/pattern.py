@@ -339,6 +339,33 @@ def move_point(piece: dict, point: str, by, falloff: float = 0.05) -> dict:
     return dict(piece, P=P)
 
 
+def bend(P, pivot, angle: float, y: float, band: float = 0.05) -> np.ndarray:
+    """Points turned about `pivot` by `angle` (rad, + counter-clockwise) below the level y, the turn easing in over
+    +-band round it (a tailored sleeve bent at the elbow: the part below the elbow line swings about the forearm
+    seam's elbow point, the hindarm seam opens over the elbow)."""
+    P = np.asarray(P, float).reshape(-1, 2)
+    pivot = np.asarray(pivot, float)
+    w = np.clip((y + band - P[:, 1]) / (2 * band), 0, 1)
+    th = angle * w * w * (3 - 2 * w)
+    v = P - pivot
+    c, s = np.cos(th), np.sin(th)
+    return pivot + np.c_[c * v[:, 0] - s * v[:, 1], s * v[:, 0] + c * v[:, 1]]
+
+
+def unbend(P, pivot, angle: float, y: float, band: float = 0.05) -> np.ndarray:
+    """The inverse of `bend` (the straight sleeve's coordinates of a bent sleeve's points: what is laid round an arm)."""
+    P = np.asarray(P, float).reshape(-1, 2)
+    pivot = np.asarray(pivot, float)
+    Q = P.copy()
+    for _ in range(12):
+        w = np.clip((y + band - Q[:, 1]) / (2 * band), 0, 1)
+        th = -angle * w * w * (3 - 2 * w)
+        v = P - pivot
+        c, s = np.cos(th), np.sin(th)
+        Q = pivot + np.c_[c * v[:, 0] - s * v[:, 1], s * v[:, 0] + c * v[:, 1]]
+    return Q
+
+
 def _poly_inside(P: np.ndarray, Q: np.ndarray) -> np.ndarray:
     x, y = Q[:, 0][:, None], Q[:, 1][:, None]
     a, b = P[None, :, :], np.roll(P, -1, axis=0)[None, :, :]
