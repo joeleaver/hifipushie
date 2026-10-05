@@ -338,6 +338,10 @@ def main():
         else:
             flat3[made] = X[made]
         lifted = made.copy()  # pieces that may start past the strain limit (placed folded or closed round a limb)
+        if "carryIdx" in d:  # held pieces (method "settle") rest as they start: nothing in them is solved
+            ci = np.asarray(d["carryIdx"], np.int64)
+            flat3[ci] = X[ci]
+            made[ci] = True
         for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
             sel_ = pid == job["pieces"].index(nm)
             flat3[sel_] = X[sel_]
@@ -419,6 +423,17 @@ def main():
         g.pin(fixed, allow_intersection=pp).unpin(times["assemble"][1])
     if hold:
         g.pin(sorted(hold), allow_intersection=pp).unpin(times["sew"][1])
+    if "carryIdx" in d and len(d["carryIdx"]):
+        # method "settle": the made pieces are held as constructed for the whole sim and ride the body through its
+        # poses (their positions per pose come with the job: a rigid move fitted to the body under each)
+        ci = np.asarray(d["carryIdx"], np.int64)
+        cp = g.pin(list(map(int, ci)), allow_intersection=False)
+        for pose, key in [(st, "bodyPoses" if st["pose"] is True else st["pose"]) for st in stages if st.get("pose") is True]:
+            t0, t1 = times[pose["name"]]
+            cposes = np.asarray(d["carryPoses"], float)
+            for k in range(len(cposes)):
+                cp.move_to(cposes[k], t0 + (t1 - t0) * k / len(cposes), t0 + (t1 - t0) * (k + 1) / len(cposes))
+        log(f"zozo: {len(ci)} vertices of made pieces held as constructed and carried with the body")
     hang = next((s for s in stages if s.get("hang") or s.get("hanger")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):
