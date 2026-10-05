@@ -773,6 +773,74 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
     leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
     maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
+- Skin (2026-10-05, "skin" agent; the user: humans read "flat, plastic-like"; textures "for humans of all sexes, ages,
+  and genders", incl. cosmetics, scars, tattoos, wrinkles, freckles; renders `workspace/skin_renders/sk_*`, references
+  `workspace/skin_refs/` (24 CC photos, README + refs.json with skin-only boxes; never in the repo)). Guide:
+  `guide(topic="skin")` = `skin_guide.md` (the artists' stages with sources); tools `skin`, `look_skin`, `skin_reference`.
+  - Diagnosis (`skin_measure.py`: CIE Lab contrast per octave of feature size inside skin-only boxes, zone colour,
+    highlight share / blob size / breakup, micro contrast; same code on renders and photos; a*/b* hardly see the light, so
+    they read albedo). Flat colour + one roughness vs 13 photographed faces: lightness contrast at 0.35-1.4 mm 0.04-0.08 vs
+    0.8-1.3; a* contrast at 1.4-11 mm 0.04-0.11 vs 0.4-0.6; no highlight at all vs 5-13% of a patch; cheek a* +0.3 vs
+    +1..7. Ranked: no fine relief / highlight breakup, one albedo colour, no visible specular, no scattering colour, flat
+    painted lips/brows.
+  - `skin.py`: `spec["skin"]` (tone, age, variation, detail, oil, thin, sun, zones, lips, features, wrinkles, hair, scars,
+    tattoos, makeup, shading) expands into ORDINARY paint layers "skin:<x>" laid under the model's own (`paint.layers`),
+    plus the skin part's base (`part_base`: tone colour, roughness, specular 0.36 = F0 0.028, subsurface by tone, a coat
+    lobe scaled by `oil` on the same bump, sheen; `scene.sync` merges it under the part's own keys). `spec.geometry`
+    strips it. Tone = pigments, not a colour: melanosome fraction of the epidermis x haemoglobin fraction of the dermis ->
+    spectral reflectance (Jacques' numbers, Kubelka-Munk dermis, Wyman CIE fits) -> sRGB (`tone_rgb(tone, melanin=,
+    blood=, oxygenation=, epidermis=, yellow=, grey=)`); every layer is "this skin with more/less of a pigment", so
+    cheeks, lips, palms, scars are right on any tone. Calibrated by eye to F1 #cda590 .. F6 #55331c (the raw model went
+    orange at high melanin: a 130/cm flat term on melanin and a small back-scatter term fixed hue and floor).
+  - Zones (`skin.zone`, paint generator `{"zone": name | {"name", "grow"}}`, expanded in `paint.layers` before anything
+    else sees them): FACE (spots at lm_* landmarks in interocular units), LINES (tapered polylines: nasolabial, brow,
+    lash lines), OUTLINES (lips), UNIONS (beard, nose, t_zone), BODY (shoulder, elbow/knee on the extensor side, hand,
+    palm = hand x facing the palm normal from the finger chains, knuckles, fingertips, nails, forearm, sole). ".L"/".R"
+    or both. A missing joint says which.
+  - New general paint pieces: generator `spot` (soft ellipsoids / tapered polylines at joints, native per pixel), `tile`
+    (a tiling grey image triplanar, `vary` = a second copy at 1.618x mixed by a 7 cm noise, `rotate`; native image nodes:
+    mip-mapped), layer `mix` (multiply/screen/overlay/soft_light), entry op `"vertex": true` (measure this entry per
+    vertex), a breakup-only entry.
+  - THE LIMIT that shaped it: a renderer's shader holds a few dozen layers. EEVEE compiles a material into one GPU
+    shader: the first 96-layer skin took > 5 min and 10 GB before I killed it (stage 1's 42 layers: 60 s). Cycles ran out
+    of SVM stack ("out of SVM stack space": black skin, no exception) from exposed Value/RGB leaf nodes (every leaf is
+    computed first and held: 96 colours x 3 slots), then from the Bump node (it compiles its height subgraph three
+    times; one mask of ~20 tapered lines alone overflowed). So: (1) layers marked `_pre` (broad, soft: zones, mottling,
+    lips, roughness patches, flush/tan, shadows under hair, foundation/blush...) are composited per VERTEX in Python
+    (`paint.precomposite`, linear colour) into five measured scalars the material starts from (`prog["pre"]`); (2) what
+    needs detail finer than the mesh is built ONLY from tiling swatches, images and a few line spots, never procedural
+    noise/Voronoi (`skin_swatch.py`: depth swatches pores / lines / coarse / lips with the 0.5-3 mm grain folded in; mark
+    swatches stubble / freckles / wrinkles / hairs; `brow_image` = a drawn picture of ~900 tapered hairs laid as a decal
+    from the brow landmarks: noise strokes read as a smudge); (3) zone masks confining fine layers are measured per
+    vertex (`"vertex": true`); (4) skin layers expose no named nodes, unexposed colours are socket constants; (5) one
+    layer carries relief + cavity tint + roughness (one mask instance). Heavy test character (63 layers, 26 fine): EEVEE
+    compile 130 s -> 75 s, 6-7 s a frame; export bakes (no Bump in emission passes) compile.
+    Also: node LINKING is quadratic in tree size (1000 nodes 10 s, 2000 65 s, 3000 168 s in a bare Blender): every mask
+    is now its own node group (`_Nodes.group/subtree/instance`, groups named `hpm:<part>:<n>`, dropped on rebuild; pull
+    reads `hp:` nodes inside them). Round trip on a copy of dg_fix2: renders mean 0.18/255 apart (every object was
+    re-meshed), both pulls empty, spec unchanged.
+  - Features (`skin_features.py`, each a number or {"amount", "where": [zones], "mask": [...], ...}): freckles, moles
+    (scattered or `at`), age_spots (default age x sun), blemishes, veins (default from age / thin), flush, sunburn, tan
+    (`mask` for tan lines); wrinkles default from age (folds / crow's feet / under-eye as tapered lines, forehead / neck /
+    lip lines / cheek lines from the wrinkles swatch, crepe from the coarse one); hair: brows, lashes (lash lines only),
+    stubble (cool shadow pre + dots), body; scars cut / surgical (stitch dots) / keloid / burn / pockmarks with age 0..1
+    and no pores on scar tissue; tattoos (`tattoo_image`: the picture blurred by years in its own mm, black toward
+    blue-green, colours faded; multiplied into the skin under its relief). Make-up (`skin_makeup.py`): foundation (also
+    hides 75% x coverage of the fine pigment layers, which composite after the pre base), concealer, contour, blush,
+    highlight, eyeshadow, eyeliner + wing, mascara, brows, lipstick, nails; each with a finish (roughness / specular /
+    metallic).
+  - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin/<model>_<head|arm>` (bare skin + eyes, ~1 mm),
+    re-synced when the spec or the skin code changes, EEVEE under fixed lights (studio / soft / back) or `engine=
+    "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
+    shows one mask; prints the face's measurements beside the photographs' with hints.
+  - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
+    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls (seeded identities): a child
+    gets an adult's face shape.
+  - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
+    shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
+    / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
+    skin (Bump x3); per-vertex pre layers need a body voxel <= ~1.5 mm to hold 3 mm mottling (look_skin's stages do).
+    `tests/test_skin.py`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
