@@ -23,7 +23,7 @@
  },
  "makehuman": {
   "needed_by": "base.body {\"source\": \"makehuman\"} (makehuman.py)",
-  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, targets/macrodetails/*-male-*.target",
+  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, targets/macrodetails/*-male-*.target and *-female-*.target",
   "licence": "CC0 for the MakeHuman core assets (base mesh, targets, skeleton; makehumancommunity.org license page). The program code is AGPL and is NOT used: hifipushie reads these files with its own loader.",
   "files": [
    {
@@ -275,6 +275,246 @@
     "path": "targets/macrodetails/universal-male-young-minmuscle-minweight.target",
     "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-male-young-minmuscle-minweight.target",
     "sha256": "3af713db636eb41f32af5010981bad30efe743a3ab1d4a61c619c664b610a51a"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-averagemuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-averagemuscle-averageweight.target",
+    "sha256": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-averagemuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-averagemuscle-maxweight.target",
+    "sha256": "891e93b4674797a1c6cc1b871d86206fe8348fe8c35299b4893c26e0c596a1fd"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-averagemuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-averagemuscle-minweight.target",
+    "sha256": "9bfb8e4f6813c36e6dbffa426f97245dcaf68802e95cbb540b3b75b5a20c5174"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-maxmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-maxmuscle-averageweight.target",
+    "sha256": "09afe0e0d15212d4d98d533c145793bc9b0fe8755dbaf593fd0fafabb0064fa6"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-maxmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-maxmuscle-maxweight.target",
+    "sha256": "ab874f2286e7f9e78717d9ee8e6056b5f4bddf2b903e0f8f1e148b6b8e1373e7"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-maxmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-maxmuscle-minweight.target",
+    "sha256": "5d0953c33a5ce44b46d0962d8b923683f345ab919088c208cf967f7f0cda61a9"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-minmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-minmuscle-averageweight.target",
+    "sha256": "eabee9dc7a10d497d773c695d644bdef1c12eff83f4ef75ad22a43deb8164aef"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-minmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-minmuscle-maxweight.target",
+    "sha256": "b423d9e90fb7dd46c5b13d589c1870fa77e99ae26a5142d0766343cce8dcd8b8"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-baby-minmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-baby-minmuscle-minweight.target",
+    "sha256": "a22bb4435518fbf4d519149eb1979c8445d9cdaf70582cf2ea4a36f65d279d14"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-averagemuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-averagemuscle-averageweight.target",
+    "sha256": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-averagemuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-averagemuscle-maxweight.target",
+    "sha256": "311017f8768f42de2f4fa9142381de527a3a3e8bef09190f97e5cd17f5ec4c2a"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-averagemuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-averagemuscle-minweight.target",
+    "sha256": "a48d2f7589706e61f5776f115bfe30ce2e12dd1d4cdd5680f288b0e5d6ee69b6"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-maxmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-maxmuscle-averageweight.target",
+    "sha256": "1888abdf3939a332921db2dfb2af29b29cf56fb1ed89245ffb8575ef78aa9f7c"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-maxmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-maxmuscle-maxweight.target",
+    "sha256": "c16f0b9dfc13103a5735b07e11683204aeb3c3414561740003c9824e8cc0c5b7"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-maxmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-maxmuscle-minweight.target",
+    "sha256": "c3a23a9a3060f09be7e498ba9b77f089aa2364e94371ae2dabe606b308ab9913"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-minmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-minmuscle-averageweight.target",
+    "sha256": "5d2f9ef31873c6f8bd7b639206b4d78ce24919dda341b97ff62adce5ea65a197"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-minmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-minmuscle-maxweight.target",
+    "sha256": "adbe50e6a09db6087ad7e936f0990ef3d22c2a8ea8c30f2409299f27d4fcb592"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-child-minmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-child-minmuscle-minweight.target",
+    "sha256": "7e4b2d9b4569e477b235e3123eb8e7f5f1a0a5fbf15f050dbba78d991b43a627"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-averagemuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-averagemuscle-averageweight.target",
+    "sha256": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-averagemuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-averagemuscle-maxweight.target",
+    "sha256": "3648e7f9b34d947726161b563b90ba92b29860bac4c4f82aea3cec37bad2bb4e"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-averagemuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-averagemuscle-minweight.target",
+    "sha256": "e53a4afc87ac2703460a59e8290b1111478aeee5c02ece6735328c1f8c62eb63"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-maxmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-maxmuscle-averageweight.target",
+    "sha256": "2e56b09b44a8497b927585447fdaac5ea7293521d1f3a3df1059495873c53f4e"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-maxmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-maxmuscle-maxweight.target",
+    "sha256": "1b4600abf475b517db2379338a4d36a5f77fb1ad94fd0b210451bfeaa9e7e9b6"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-maxmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-maxmuscle-minweight.target",
+    "sha256": "05351f0063429f4e1e484501b73997a6fb129b93939db355d108f98d5479fb10"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-minmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-minmuscle-averageweight.target",
+    "sha256": "ab588aadac1ce474969f38b3dbc08c2dc081e861a223f70250e5cae135d054a3"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-minmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-minmuscle-maxweight.target",
+    "sha256": "66600ccaea3d4c54b1427c81f49160a7cbb2794fbcb7a695ec6e6a4743d72364"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-young-minmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-young-minmuscle-minweight.target",
+    "sha256": "856167f0a03efedd69f91e1cbad065957c8e8fef6acaaaf5b85a32b0f018fa67"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-averagemuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-averagemuscle-averageweight.target",
+    "sha256": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-averagemuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-averagemuscle-maxweight.target",
+    "sha256": "c7ff884ece15a4ea161bf9843c9668261e486135aa4c408ecc88dd7e5bc366b2"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-averagemuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-averagemuscle-minweight.target",
+    "sha256": "ebb291456482aab827ca0d0bb3928553b422ee0fc6900ae9c9d5fa75195dc23a"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-maxmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-maxmuscle-averageweight.target",
+    "sha256": "c8ab63d583bd1bcf75a3bbbd6b5e43ee30782a704584ea01a3aecbfec510dc42"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-maxmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-maxmuscle-maxweight.target",
+    "sha256": "11549de05d8ab39daee36ca692a56a737f3778006a89684c56f70208c2e7c452"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-maxmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-maxmuscle-minweight.target",
+    "sha256": "453f066a5972f59f40b238bc7d9e6ea68e96d0f1e49cf28f486c3c8c674c192b"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-minmuscle-averageweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-minmuscle-averageweight.target",
+    "sha256": "89c2756e3abacf3d2fb9fae1cc05e68c3e0a244ba2ff244a1f3831da5897a26b"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-minmuscle-maxweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-minmuscle-maxweight.target",
+    "sha256": "788850da7e8e75f74f37003a91473270d84a6e599b5851ed7a6fecafff8fdbd8"
+   },
+   {
+    "path": "targets/macrodetails/universal-female-old-minmuscle-minweight.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/universal-female-old-minmuscle-minweight.target",
+    "sha256": "806f995cb9356c70645da92a6b64dddbd8de9ac5480420f64b6d1a651cff254d"
+   },
+   {
+    "path": "targets/macrodetails/african-female-baby.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/african-female-baby.target",
+    "sha256": "b1d4b5c76c73107b8f433bba6e224addf9da542287612868a02109d0f5a1c235"
+   },
+   {
+    "path": "targets/macrodetails/african-female-child.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/african-female-child.target",
+    "sha256": "f88b8f252df8a9a3f35f78e1664983e9a30756bca1e454afce39438296eb7b41"
+   },
+   {
+    "path": "targets/macrodetails/african-female-young.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/african-female-young.target",
+    "sha256": "92d61eeb3c164b421fd5a7c3537ee45e7e1a51de4d49bf312e19c3df2be1d8fc"
+   },
+   {
+    "path": "targets/macrodetails/african-female-old.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/african-female-old.target",
+    "sha256": "c165e7caf01aaf45511ebc78a441c8c73ead13231af1a8c6666941345f088b61"
+   },
+   {
+    "path": "targets/macrodetails/asian-female-baby.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/asian-female-baby.target",
+    "sha256": "43c2a05ac425c4084f9dc30687a294cc5b61699d7c075985536f7e9c3b23f78d"
+   },
+   {
+    "path": "targets/macrodetails/asian-female-child.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/asian-female-child.target",
+    "sha256": "a4fffea45a475a24a0a7332dac28a07dfd60a9af9eb50b61ed5abd1178197f75"
+   },
+   {
+    "path": "targets/macrodetails/asian-female-young.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/asian-female-young.target",
+    "sha256": "095fe79694fa19e1fe98d93009ec116199bd524e081c640351a10eccf2cca1eb"
+   },
+   {
+    "path": "targets/macrodetails/asian-female-old.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/asian-female-old.target",
+    "sha256": "1a90cb281df640df55fbce3acd6588f27b28affeb96a7f693f6f038aefc204d8"
+   },
+   {
+    "path": "targets/macrodetails/caucasian-female-baby.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/caucasian-female-baby.target",
+    "sha256": "2ae0b8f760a3608b8e628b9af80054592d0fd0ac4b7867f81d8fc86b5a75c170"
+   },
+   {
+    "path": "targets/macrodetails/caucasian-female-child.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/caucasian-female-child.target",
+    "sha256": "17fc408839c0a407bf4efd96d9af7eebcdf20d74698659f3597b0647ed6b147e"
+   },
+   {
+    "path": "targets/macrodetails/caucasian-female-young.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/caucasian-female-young.target",
+    "sha256": "118379f6e8ba9266247fdb8788a20e1df40a239f97ced0b9905bcbcc74f6e820"
+   },
+   {
+    "path": "targets/macrodetails/caucasian-female-old.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/caucasian-female-old.target",
+    "sha256": "6560982486c4b1a7a0b1d82b0ad3f09770c16b4f87c8f949537dc9cfc941a0b0"
    }
   ]
  },

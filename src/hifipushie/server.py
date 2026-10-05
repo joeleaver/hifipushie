@@ -280,15 +280,24 @@ def guide(topic: str = "") -> str:
     with groom_hair, look_hair, hair_reference and sync(hair_only=True).
     topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
     pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
-    check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True)."""
+    check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
+    topic="skin": human skin the way character artists texture it, in stages (base tone, colour zones, large
+    features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
+    topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then
+    limbs drawn and pruned, judged against a photo, foliage and bark, export), with grow_plant, edit_plant,
+    look_plant, plant_reference, export_plant and plant_history."""
     if topic.strip().lower() == "terrain":
         return (Path(__file__).with_name("terrain_guide.md")).read_text()
     if topic.strip().lower() == "hair":
         return (Path(__file__).with_name("hair_guide.md")).read_text()
+    if topic.strip().lower() == "vegetation":
+        return (Path(__file__).with_name("vegetation_guide.md")).read_text()
     if topic.strip().lower() == "cloth":
         return (Path(__file__).with_name("cloth_guide.md")).read_text()
+    if topic.strip().lower() == "skin":
+        return (Path(__file__).with_name("skin_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth" or "terrain"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "skin", "terrain" or "vegetation"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -1527,6 +1536,95 @@ def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | 
     return [_out(sheet, save), text + "\n\n" + "\n".join(extra)]
 
 
+def _merge_patch(base, patch):
+    """patch merged into base: objects key by key, null deletes, anything else replaces."""
+    if not isinstance(patch, dict) or not isinstance(base, dict):
+        return patch
+    out = dict(base)
+    for k, v in patch.items():
+        if v is None:
+            out.pop(k, None)
+        else:
+            out[k] = _merge_patch(out.get(k), v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+@mcp.tool(structured_output=False)
+def skin(name: str, skin: dict | None = None, replace: bool = False, note: str = "") -> str:
+    """Describe a human's skin (spec["skin"]) and save it: the description expands into ordinary paint layers
+    ("skin:<layer>", under the model's own paint) and the skin part's shading. guide(topic="skin") is the artist's
+    workflow in stages; skin_reference lists every key, default and zone. For a model built on a `base` (MakeHuman /
+    template body, GNM head): zones are placed from its joints and lm_* face landmarks.
+    skin: a patch merged into the stored description (objects key by key, null deletes; replace=True starts over):
+      {"tone": {"fitzpatrick": 1..6 | "melanin": 0..1, "blood": 0..1, "undertone": -1 cool .. 1 warm},
+       "age": years, "variation": 1, "detail": 1, "oil": 0..1, "thin": 0..1, "sun": 0..1,
+       "features": {"freckles": 0.6, "moles": {"at": [...]}, "age_spots", "blemishes", "veins", "flush", "sunburn",
+                    "tan": {"amount", "mask": [...]}},
+       "wrinkles": {"amount": 1, "forehead": ..., "crows_feet": ...},          (default: from age)
+       "hair": {"brows": {"color", "density", "thickness"}, "lashes", "stubble": 0.7, "body": 0.5},
+       "scars": [{"kind": "cut" | "surgical" | "keloid" | "burn" | "pockmarks", "path": [points] | "zone": name, "age": 0..1}],
+       "tattoos": [{"image": {"file" | "text": {...}, "at", "size", "dir", "wrap"}, "age": years}],
+       "makeup": {"foundation": {"amount", "finish"}, "blush", "contour", "highlight", "eyeshadow": {"color", "finish"},
+                  "eyeliner": {"wing"}, "mascara", "brows", "lipstick": {"color", "finish": "matte" | "satin" | "gloss"}, "nails"},
+       "zones": {built-in zone layer: strength}, "lips": {...}, "shading": {...}, "part": "body"}
+    Any layer of the model's own paint can use the same anatomy: {"zone": "cheekbone.L"} in edit_model paint ops.
+    Then look_skin (fast cropped close-ups + measurements), or sync + look for the whole model.
+    Returns the tone's colours and the layers the description made."""
+    from . import paint
+    from . import skin as skinmod
+    spec = store.load(name)
+    patch = _spec_arg(skin) if skin is not None else {}
+    cur = {} if replace else (spec.get("skin") or {})
+    new = _merge_patch(cur, patch)
+    new_spec = {**spec, "skin": new}
+    p = skinmod.params(new_spec)
+    layers = [k[5:] for k in paint.layers(new_spec) if k.startswith("skin:")]
+    v = store.save(name, new_spec, note=note or "skin")
+    base = skinmod.part_base(new_spec)[1]
+    hx = lambda c: "#" + "".join(f"{int(round(x * 255)):02x}" for x in c)  # noqa: E731
+    t = new.get("tone")
+    return (f"saved {name} v{v}: skin on part {p['part']!r}, melanin {p['tone']['melanin']:.2f} blood {p['tone']['blood']:.2f} "
+            f"undertone {p['tone']['undertone']:+.1f}, age {p['age']:.0f}\n"
+            f"base {hx(base['color'])}, cheeks {hx(skinmod.tone_rgb(t, blood=2.7))}, lips {hx(skinmod.tone_rgb(t, melanin=0.7, blood=10, epidermis=0.45))}, "
+            f"palms {hx(skinmod.tone_rgb(t, melanin=0.25, blood=1.7))}; roughness {base['roughness']:.2f}, subsurface "
+            f"{base['subsurface_scale'] * 1000:.1f} mm, coat {base['coat']:.2f}\n"
+            f"{len(layers)} layers: {', '.join(layers)}\n"
+            f"look_skin(\"{name}\") renders close-ups and measures them; look(paint_layer=\"skin:<layer>\") or "
+            f"look_skin(layer=...) shows one layer's mask")
+
+
+@mcp.tool(structured_output=False)
+def skin_reference() -> str:
+    """Everything the `skin` description takes: the anatomical zones (also usable by any paint layer as
+    {"zone": name}), the tone model, features, wrinkles, hair, scars, tattoos and make-up with their keys and
+    defaults."""
+    from . import skin as skinmod
+    from . import skin_makeup
+    return skinmod.reference() + "\n\n" + skin_makeup.reference()
+
+
+@mcp.tool(structured_output=False)
+def look_skin(name: str, views: list[str] | None = None, size: int = 768, light: str | None = None,
+              flat: bool = False, layer: str | None = None, engine: str = "eevee", save: str | None = None):
+    """Close looks at the skin, fast: bare-skin crops of the model (head and shoulders; forearm and hand: without
+    clothes or hair, ~1 mm mesh, kept between calls) rendered under fixed lights, with measurements of the face next
+    to what photographs of real skin measure (contrast per feature size in lightness and colour, colour zones,
+    highlight size and breakup, micro contrast) and hints. The first look of a region meshes it (~2 min); after a
+    skin or paint edit ~20-40 s.
+    views: any of bust, face, three_quarter, side, cheek (macro), eye, mouth, forehead, ear (back-lit: light through
+    the ear), hand, palm, forearm (default face, three_quarter, cheek, eye, mouth, ear).
+    light: "studio" (a key from the model's right + a weak fill), "soft" (broad frontal: colour without highlights),
+    "back" (back-lit); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
+    ("freckles" = "skin:freckles"; or any paint layer's name).
+    engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
+    shadow edges and back-lit ears).
+    Judge in this order: flat colour at bust distance (tone, zones), then the lit bust, then the close-ups."""
+    from . import skin_look
+    sheet, text, _ = skin_look.look(name, views=tuple(views) if views else skin_look.DEFAULT, size=size, light=light,
+                                    flat=flat, layer=layer, engine=engine)
+    return [_out(sheet, save), text]
+
+
 def _save_suffix(save: str | None, tag: str) -> str | None:
     if not save:
         return None
@@ -1814,6 +1912,181 @@ def terrain_history(name: str, revert_to: int | None = None) -> str:
         v = tt.save(name, tt.version_spec(name, revert_to), f"revert to v{revert_to}")
         return f"terrain {name} v{v} = v{revert_to}\n" + tt.report(name)
     return "\n".join(f"v{h['version']}  {h['time']}  {h['note']}" for h in tt.history(name))
+
+
+# ---------------------------------------------------------------- vegetation
+
+@mcp.tool(structured_output=False)
+def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, note: str = "",
+               copy_from: str | None = None) -> str:
+    """Create or change a plant and grow it (guide(topic="vegetation") has the vocabulary and the stages). `spec`
+    replaces the whole spec; `patch` merges into the stored one (objects merge key by key, null deletes:
+    {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
+    A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
+    "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
+    "bark": {...}, "season", "decay"}. The same spec always grows the same plant. Every version is kept
+    (plant_history). Returns the report: size, form measured on its own silhouettes, limbs, foliage, guides, the
+    reference match if it has one, WARNINGS last, and (for a patch) every changed value old -> new with what the tree
+    did. In a patch, lists REPLACE (give the whole per-order list; `"prune": null` removes every prune: use
+    edit_plant to add or remove one). copy_from: start `name` as a copy of another plant (+ patch): variants of one
+    description, e.g. {"seed": 2, "age": 14}. Use get_plant first to see the values you are about to override.
+    With no arguments but a name: the report of the stored plant; name "" lists the plants and the species presets."""
+    from . import veg_tools as vt
+    from . import vegetation
+    if not name:
+        return json.dumps({"plants": vt.list_plants(), "species": {k: vegetation.preset(k).get("about", "") for k in vegetation.species()}}, indent=1)
+    if spec is None and patch is None and not copy_from:
+        return vt.report(name)
+    exists = (vt._dir(name) / "plant.json").exists()
+    prev = vt.load(name) if exists else None
+    stats = vt.grown(name)["stats"] if exists else None
+    if copy_from:
+        base = vt.load(copy_from)
+        new = vt.merge(base, _spec_arg(patch)) if patch is not None else base
+    else:
+        new = _spec_arg(spec) if spec is not None else vt.merge(prev or {}, _spec_arg(patch))
+    if prev is not None and prev == new:
+        return f"plant {name}: nothing changed (still v{len(vt.history(name))})\n" + vt.report(name)
+    v = vt.save(name, new, note=note or (f"copy of {copy_from}" if copy_from else "grow_plant" if spec is not None else "patch"))
+    ch = vt.change_note(name, prev if not copy_from else vt.load(copy_from), stats)
+    return f"saved plant {name} v{v}" + (f" (a copy of {copy_from})" if copy_from else "") + "\n" + (ch + "\n" if ch else "") + vt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
+    """Direct the plant the way an artist does between growth years; it regrows around every edit. ops, in order:
+    {"op": "guide", "name", "path": [[x, y, z], ...] (m), "from_year", "until_year", "vigour"}: a drawn axis at any
+    branch order (it starts from the nearest wood at from_year, lies exactly on the path, is never shed or bent, and
+    branches grow from it; a path from [0, 0, 0] at year 0 is the trunk). {"op": "remove_guide", "name"}.
+    The same with "on": another guide's name (or "trunk") makes it leave THAT axis. Paths are splined through
+    their points ("straight": true keeps corners).
+    {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (limbs LEAVING the trunk under
+    z) | "under": z (nothing but the trunk hangs under z)}: a clean cut on the finished tree, nothing else changes;
+    with "from_year" it is cut from that year on and the tree answers it (regrows elsewhere).
+    {"op": "remove_prune", "index"}, {"op": "clear_prunes"}.
+    {"op": "cut", "year": N, <a volume as for prune>, "every": years, "until_year", "sprouts": n}: the wood in the
+    volume is cut AT that year (and again every `every` years) and the stubs sprout `sprouts` new shoots each: a
+    pollard ("above": 2.5, "every": 6), a coppice ("above": 0.3), a lopped limb or a storm break (a box, sprouts 0-2).
+    {"op": "clear_cuts"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
+    {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
+    Returns the report after regrowing, with what changed in size."""
+    from . import veg_tools as vt
+    before, prev = vt.grown(name)["stats"], vt.load(name)
+    v = vt.edit(name, ops, note)
+    return f"plant {name} v{v}\n" + vt.change_note(name, prev, before) + "\n" + vt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size: int = 640,
+               foliage: str | None = None, sheet: bool = False, triangles: int | None = None):
+    """Images of a plant (Blender, 5-40 s). views, any of: "clay" (the bare skeleton as clay: judge the structure
+    here first), "bare" (in colour, no leaves), "leaf" (in leaf; these three are side views from `azimuth`, 0 = looking
+    along +y), "far" (at eye height from far enough that the tree is half the picture: how it reads in a scene), "near"
+    (standing by it, 2-5 m, looking up: trunk, bark, forks), "close" (foliage: leaves and twigs), or a camera of your
+    own {"name", "eye": [x, y, z], "look": [x, y, z], "fov": deg, "clay": bool}. Default clay + leaf + far. The ground
+    is flat grass unless the spec has environment.ground {"slope": deg, "toward": [x, y], "water": z} (a hillside
+    falling that way; a water level z m against the foot). clay and bare show a pole banded every metre (every fifth
+    band red) beside the plant. triangles=N shows the plant as export_plant(triangles=N) writes it (thin wood left
+    out, fewer and larger cards): judge the budgeted plant before exporting it. Files carry the view, azimuth and
+    version in their names. foliage: "cards" (the twig
+    atlas on cut cards: what a game draws; default) or "mesh" (real leaf meshes: close-ups, video).
+    sheet=True returns the reference sheet instead (photo | outlines over each other | every view, with the numbers);
+    it needs plant_reference first. Files are also written to workspace/plants/<name>/. Read the images."""
+    from . import veg_tools as vt
+    got = vt.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet, triangles)
+    out = [_out(PILImage.open(p), None) for _, p in got]
+    out.append(vt.report(name) + "\n" + "\n".join(f"{k}: {p}" for k, p in got))
+    return out
+
+
+@mcp.tool(structured_output=False)
+def look_plants(names: list[str], at: list | None = None, spacing: float | None = None, views: list | None = None,
+                azimuth: float = 0.0, size: int = 640, foliage: str | None = None):
+    """Several plants standing together in one picture (a stand, a hedge line, a tree with its neighbours): do they
+    belong together, do their sizes relate? at: [[x, y], ...] m per plant, or spacing m apart on a loose ring
+    (default 0.35 x the tallest). views: "far" (default), "near", "clay", "top", or a camera {"eye", "look", "fov"}.
+    The first plant's environment (ground slope) sets the scene. The same plant may be named more than once."""
+    from . import veg_tools as vt
+    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage)
+    out = [_out(PILImage.open(p), None) for _, p in got]
+    out.append("\n".join(f"{k}: {p}" for k, p in got))
+    return out
+
+
+@mcp.tool(structured_output=False)
+def get_plant(name: str = "", species: str = "") -> str:
+    """A plant's spec as stored ("own"), what it RESOLVES to once its species preset and the defaults are under it
+    ("resolved": every habit, leaf, twig and bark value actually in force), what each number usually is
+    ("habit_ranges", "leaf_twig_ranges") and how many growth steps its age makes. Read this before overriding
+    anything: an override replaces the resolved value, and per-order lists are replaced whole. With `species` and
+    no name: that preset resolved (to see what a species gives before using it)."""
+    from . import veg_tools as vt
+    if not name and not species:
+        raise ValueError("give a plant's name, or species=<preset> to see a preset")
+    return json.dumps(vt.describe(name or None, species or None), indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
+
+
+@mcp.tool(structured_output=False)
+def plant_reference(name: str, image_path: str, crop: list[int] | None = None, foot: int | None = None,
+                    polygon: list[list[float]] | None = None, tol: float = 30.0, horizon: int | None = None,
+                    bare: bool = False, credit: str = "", fit: dict | None = None, fit_iters: int = 40) -> str:
+    """Give the plant a reference photo and measure against it. The silhouette is taken from the photo either by
+    `polygon` (the tree's outline traced on the photo in image pixels, closed: use this when the tree fills the frame
+    or stands against other trees) or by `crop` [x0, y0, x1, y1] + `foot` (the trunk's x in px): pixels more than
+    `tol` from the sky colour at the crop's edges are tree; below `horizon` (image y where ground or far trees
+    start) only the trunk counts. bare=True for a winter photo (compared without leaves). Returns outline IoU,
+    width/height, bole and widest height, ours vs the photo's.
+    fit = {habit path: [lo, hi]} searches those habit numbers for the best match (~1-2 min; e.g. {"apical.0":
+    [0.45, 0.65], "angle.0": [40, 80], "vigour": [3, 6], "sag": [0.2, 2]}; integer bounds stay integers) and saves them
+    into the plant's habit; it also charges limbs drooped under the crown's base, so it can't cheat the outline."""
+    from . import veg_tools as vt
+    from . import vegetation
+    mask = {"polygon": polygon} if polygon else {"crop": crop, "foot": foot, "tol": tol, "horizon": horizon}
+    if not polygon and (crop is None or foot is None):
+        raise ValueError("give polygon (a traced outline), or crop [x0, y0, x1, y1] + foot (the trunk's x)")
+    ref = vt.set_reference(name, image_path, mask, bare, credit)
+    msg = ""
+    if fit:
+        R = vegetation.reference_mask(ref["image"], **ref["mask"])
+        dirs = vegetation.photo_branch_directions(ref["image"], ref["mask"]) if bare else None
+        r = vegetation.fit_habit(vt.load(name), R, fit, bare=bare, iters=int(fit_iters), directions=dirs)
+        v = vt.save(name, patch={"habit": r["habit"]}, note="fit to reference")
+        msg = f"fitted v{v}: outline IoU {r['iou']} with habit {json.dumps(r['habit'])}\n"
+    return msg + vt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None) -> str:
+    """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
+    colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
+    twig atlas with alpha MASK, double sided, COLOR_0 = a per-twig tint; the atlas's mask texture is listed in the
+    material's extras). triangles: a budget for the whole plant (a game tree: 10-40k; without it everything grown is
+    written, often 100-400k): the thinnest wood is left out and branches get fewer sides, twigs are thinned and the
+    rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
+    from . import veg_tools as vt
+    c = vt.export(name, out_dir, triangles)
+    return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
+            + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
+            + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")
+            + f", foliage {c['foliage_triangles']} triangles"
+            + (f" ({c['twigs_kept']:.0%} of the twigs, drawn larger)" if c["twigs_kept"] < 1 else "")
+            + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
+            + (f"\nWARNING: {c['over']} triangles over the budget: the wood alone needs {c['wood_triangles']} "
+               f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")
+            + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles})" if triangles else "")
+            + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
+
+
+@mcp.tool(structured_output=False)
+def plant_history(name: str, revert_to: int | None = None) -> str:
+    """List a plant's versions (plant_history(name)), or restore one: plant_history(name, revert_to=3) saves version
+    3's spec again as a new version, so nothing is lost."""
+    from . import veg_tools as vt
+    if revert_to is not None:
+        v = vt.revert(name, revert_to)
+        return f"plant {name} v{v} = v{revert_to}\n" + vt.report(name)
+    return "\n".join(f"v{h['version']}  {h['note']}" for h in vt.history(name))
 
 
 def main():

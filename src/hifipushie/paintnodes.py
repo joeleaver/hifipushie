@@ -27,7 +27,7 @@ from . import paint
 from .spec import SpecError
 
 NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings",
-          "image"}
+          "image", "spot", "tile"}
 QUANTILES = json.loads(Path(__file__).with_name("noise_quantiles.json").read_text())
 
 
@@ -80,8 +80,8 @@ class _Compiler:
             if "blur" in e:
                 raise NotImplementedError("blur on the mask so far")
             return {**out, "gen": None}
-        if gen not in NATIVE or "blur" in e:
-            raw = {k: v for k, v in e.items() if k not in ("breakup", "levels", "invert", "blend", "weight")}
+        if gen not in NATIVE or "blur" in e or e.get("vertex"):
+            raw = {k: v for k, v in e.items() if k not in ("breakup", "levels", "invert", "blend", "weight", "vertex")}
             # a path is seated by its tag; every other generator is the same wherever it's written
             key = (layer, name, raw, tag) if gen == "path" else (raw,)
             return {**out, "gen": "input", "attr": self.attr("gen", layer, name, raw, tag, key=key, parts=self.parts),
@@ -172,6 +172,17 @@ class _Compiler:
                 out["expose"] = {"within": path + ["within"]}
             return {**out, "gen": "near", "attr": self.attr("dist", layer, e["near"], key=(e["near"],), parts=self.parts),
                     "within": within, "soft": soft}
+        if gen == "spot":  # soft balls / a tapered line round resolved points: per pixel from wpos
+            s = paint.resolve_spot(self.spec, e["spot"], f"paint {layer!r}")
+            return {**out, "gen": "spot", "c": np.round(s["c"], 6).tolist(), "r": np.round(s["r"], 6).tolist(),
+                    "soft": s["soft"], "line": s["line"]}
+        if gen == "tile":  # a tiling grey image, triplanar, per pixel (mip-mapped: no sparkle from afar)
+            t = e["tile"]
+            path, size = paint.tile_source(t)
+            return {**out, "gen": "tile", "path": str(path), "size": size, "vary": bool(t.get("vary", True)),
+                    "rotate": bool(t.get("rotate")),
+                    "seed": int(t.get("seed", 0)), "range": [float(x) for x in t.get("range", [0.0, 1.0])],
+                    "vary_k": list(paint.TILE_VARY)}
         if gen == "image":  # a projected decal, drawn per pixel from the image file (images.frame)
             from . import images
             parts = None if "*" in self.parts else list(self.parts)
@@ -206,7 +217,10 @@ class _Compiler:
     def layer(self, name: str, ly: dict) -> dict:
         ps = ly.get("part", "body")
         self.parts = ("*",) if ps == "*" else tuple([ps] if isinstance(ps, str) else ps)
-        own = "_of" not in ly  # a spec-level layer (not a material's sub-layer): its numbers are exposed
+        # a spec-level layer (not a material's or the skin's sub-layer): its numbers are exposed as named nodes.
+        # (Each exposed number is a leaf node, and Cycles computes every leaf first and keeps it on its 255-slot
+        # stack: the skin's ~100 layers with a colour and an opacity each ran out of it.)
+        own = "_of" not in ly and not name.startswith("skin:")
         stack = [{g: ly[g], **{k: ly[k] for k in paint.PARAMS.get(g, ()) if k in ly}} for g in paint.GENERATORS
                  if g in ly and g != "mask"]
         tags = [None] * len(stack)
@@ -242,16 +256,27 @@ class _Compiler:
                 ly["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]):
             raise SpecError(f"paint {name!r}: \"color\": \"image\" needs the layer's own flat \"image\" key")
         return {"name": name, "color_from": img["key"] if img else None, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
-                "height": float(ly.get("height", 0.0)),
+                "height": float(ly.get("height", 0.0)), "mix": ly.get("mix", "mix"), "detail": bool(ly.get("_detail")),
                 "opacity": float(ly.get("opacity", 1.0)), "entries": entries, "expose": expose}
 
 
 def compile(spec: dict) -> dict:
     """{"layers": [...], "inputs": [field inputs], "fallbacks": {attr: what}, "quantiles": ...}."""
     c = _Compiler(spec)
-    layers = [c.layer(n, ly) for n, ly in paint.layers(spec).items()] if spec.get("paint") else []
+    every = paint.layers(spec) if (spec.get("paint") or spec.get("skin")) else {}
+    layers = [c.layer(n, ly) for n, ly in every.items() if not ly.get("_pre")]
+    pre = {n: ly for n, ly in every.items() if ly.get("_pre")}
+    pre_attrs, pre_layers = {}, []
+    if pre:  # composited per vertex into the part's base (paint.precomposite): five measured scalars
+        from . import skin
+        part, base = skin.part_base(spec)
+        base = _pre_base(spec, part, base)
+        pk = hashlib.sha1(json.dumps([pre, base], sort_keys=True, default=str).encode()).hexdigest()[:12]
+        pre_attrs[part] = [c.attr("pre", part, k, key=("pre", part, k, pk), parts=(part,)) for k in range(5)]
+        c.mirror_images = False
+        pre_layers = [c.layer(n, {k: v for k, v in ly.items() if k != "_pre"}) for n, ly in pre.items()]  # for show_layer
     # per part, the scalar inputs its layers read, packed three to a vector attribute (hp0, hp1, ...)
-    need: dict = {}
+    need: dict = {p: list(a) for p, a in pre_attrs.items()}
     for ly in layers:
         used = sorted(_attrs(ly["entries"]))
         for p in ly["parts"]:
@@ -263,8 +288,18 @@ def compile(spec: dict) -> dict:
             need.setdefault(p, [])
             need[p] += [a for a in star if a not in need[p]]
     packing = {p: {a: [f"hp{i // 3}", i % 3] for i, a in enumerate(attrs)} for p, attrs in need.items()}
-    return {"layers": layers, "inputs": sorted(c.inputs), "fallbacks": c.fallbacks, "quantiles": QUANTILES,
+    return {"layers": layers, "pre": pre_attrs, "pre_layers": pre_layers, "inputs": sorted(c.inputs), "fallbacks": c.fallbacks,
+            "quantiles": QUANTILES,
             "where": {k: sorted(v) for k, v in c.where.items()}, "packing": packing}
+
+
+def _pre_base(spec: dict, part: str, base: dict) -> dict:
+    """The skin part's base channels as the scene gives them to its material (the part's own keys win; styled)."""
+    d = (spec.get("parts") or {}).get(part) or {}
+    out = {"color": d.get("color", base["color"]), "roughness": float(d.get("roughness", base["roughness"])),
+           "specular": float(d.get("specular", base["specular"]))}
+    out["color"] = [float(x) for x in paint.style_rgb(paint.colour(out["color"]), (spec.get("style") or {}).get("paint") or {})]
+    return out
 
 
 def _only_images(stack: list) -> bool:
@@ -318,7 +353,17 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
         ps = prog["where"].get(attr) or ["*"]
         ps = names if "*" in ps else ps
         idx = np.flatnonzero(np.isin(part, [names.index(p) for p in ps if p in names]))
-        if kind == "dist":
+        if kind == "pre":
+            _, ppart, comp = fb
+            if "pre" not in decals:
+                from . import skin
+                full = np.zeros((len(pos), 5), np.float32)
+                if len(idx):
+                    base = _pre_base(spec, ppart, skin.part_base(spec)[1])
+                    full[idx] = paint.precomposite(spec, paint._View(pts, idx), base, paint.pre_layers(spec))
+                decals["pre"] = full
+            val = decals["pre"][:, comp].copy()
+        elif kind == "dist":
             _, lname, near = fb
             val[idx] = _distance(spec, lname, near, pos[idx])
         elif kind == "decal":  # a surface decal's u, v (flipped as asked) and weight, per vertex

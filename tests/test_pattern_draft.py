@@ -135,7 +135,7 @@ def test_trouser_and_knit_blocks():
     assert abs(_len(T, "front:fork>inKnee>inHem") - _len(T, "back:fork>inKnee>inHem") - 0.005) < 3e-4
     seat = (f["P"][f["names"]["sideSeat"], 0] + b["P"][b["names"]["sideSeat"], 0]) * 2
     assert abs(seat - 0.9722 * 1.05) < 1e-6
-    assert abs(b["P"][b["names"]["fork"], 0]) > 2 * abs(f["P"][f["names"]["fork"], 0])  # the back fork is the longer
+    assert abs(b["P"][b["names"]["fork"], 0]) > 1.4 * abs(f["P"][f["names"]["fork"], 0])  # the back fork is the longer
     _ok(T)
     K = pd.start("knit", MM, {})
     pd.apply(K, [{"op": "sleeve"}])

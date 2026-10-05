@@ -526,7 +526,22 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `facing` | A new piece traced from a piece along edges | Sewn 1:1, turned in |
 | `collar` | Drafted from the neckline as it is now: `band` (stands), `flat` (lies flat), `roll` (between) | Sewn edge = the neckline |
 | `sleeve` | Drafted into the armhole as it is now, whatever was cut before | Cap = armhole + declared ease |
-| `two_piece` | Top and under sleeve from the one-piece | Cap length, matched seams |
+| `two_piece` | Top and under sleeve from the one-piece, both bent at the elbow | Cap length, matched seams |
+| `neckline` | Redraws the neckline on front and back together: `widen` along the shoulder, `front` / `back` lower, round / v / square | The shoulder seams equal |
+| `shawl` | A shawl collar cut on with the front: stand, break point, roll line, the collar grown on past the neck point, a CB collar seam | Neck seam = the back neck; a roll fold |
+| `lapel` | A notched lapel (stand, break point, lapel point, roll fold); then `collar` with `"stop"` ends the collar at the gorge | The neckline; `lapel_edge` and `gorge` for a facing |
+| `cut_away` | Cuts along a line and keeps the side holding a point: V necks, slanted hems, asymmetric fronts | The kept side's seams |
+| `darts_to_seam` | Two darts of a piece joined through their tips into a panel seam | The darts' suppression |
+| `raglan` | Front and back cut from neck to armhole, the shoulder parts joined to the sleeve (after `sleeve`) | The underarm's cap / armhole lengths |
+| `kimono` | The sleeve cut in one with the body (pattern only) | |
+| `hood` | A two-piece hood on the neckline (pattern only) | Neck edge = the neckline |
+| `pleat` | Spreads a piece by twice the depth along a line across it; two press folds | Seams skip the underlay |
+| `buttons`, `stitch` | Button marks down a lapped front; a point stitch (a wrap's tie) | |
+| `unfold` | Halves into whole pieces. Put it in the list yourself to work on ONE side afterwards (`front.L`): asymmetric designs | Seams mirrored |
+
+`facing` takes several edges in a row (`["shawl_edge", "centre_front"]`): it is the part of the piece within its
+width of them, so it follows the piece's own outline past their ends. `collar` takes `"ratio"` (a rib band cut 0.85
+x the neckline, the ease declared). `take_in` gives the SIDE panel 65% of the shaping (`share`), as a tailor cuts.
 
 Two things make these composable. **Points have names**, and a point spec can be a name or a place on an edge
 (`{"edge": "hps>shoulder", "t": 0.5}`, or `"dist"` in metres, or `"y"` at a level). **Named edges survive
@@ -554,10 +569,40 @@ hollows the front armhole 9 mm more (Aldrich's narrower across-front), and for t
 35 mm narrower with a 26 mm higher cap: Brian widens its sleeve by its own rule, ours solves the cap for the width
 asked.
 
-Not built yet: shawl and notched collars drafted on the roll line, hoods, raglan and kimono sleeves, pockets,
-linings, pleats as folds, elbow shaping in the two-piece sleeve, operations on whole (unfolded) pieces for
-asymmetric designs, and leg placement for trousers (the trouser block drafts and checks, but can't be put on a
-body).
+**Trousers** are placed now: wrap `leg.L` / `leg.R` (the trouser block sets it). Each leg's pieces start on one
+upright surface round that half of the body, cut flat between the legs; the fork lies on the flat; the inseam and
+side seam start open and the sewing closes the legs. Give a waistband by `generate`, its `along` chain starting at
+the band's own opening (a band wrapped `side: front` opens at centre back: start the chain at `back.R:cWaist`); a
+chain that starts half a turn away sews the band on twisted (verdict CORRUPT, twisted seams).
+
+**Three garments designed from prose through these tools** (sheets and draft renders `workspace/cloth_renders/
+pd_20..22_*`), judged honestly:
+- *Wide-leg trousers* (trouser block, relaxed, waistband generated): all stages pass; the 2 cm draft reads as
+  trousers, verdict "fits", 0 crossings, strain p95 5.9%. Wrong: they slide 9 cm down (a waistband 17 mm over the
+  waist holds nothing), pool on the feet (the block's length runs to 3 cm off the floor), and balloon at the hem.
+- *Asymmetric wrap tunic* (bodice, neckline widened, princess lines, `unfold`, the left front extended 22 cm and
+  both fronts cut to V lines, tied by a stitch): reads as a wrap tunic; 2 crossings, strain 11.8%, the hem hangs
+  9 cm lower on the wrap side, the under front bunches at the neck. The gate was right three times on the way
+  (waist ease outside the fit, a take-in that ran into the hips): shaping lives at the DRAFT's waist line, the
+  check measures at the body's.
+- *Cropped shawl-collar princess jacket* (bodice, princess lines, `shawl`, facing, one button, two-piece sleeve):
+  the pattern and construction stages pass and the sheet reads as that jacket. The draft sim is CORRUPT: the
+  cut-on collar starts standing up the front of the neck and Blender's sewing doesn't bring it round (twisted
+  collar seams), and the two-piece sleeves bunch at the shoulders. This design needs a start that lays the collar
+  round the neck (a fold-aware placement) and method "settle"; neither was available here.
+
+**A blazer from our blocks against FreeSewing's Jaeger** on the same body (`pd_30_blazer_vs_jaeger.png`): centre
+back length, shoulder seam, upper armhole and back neck agree within 1-5 mm, the armhole within 12 mm (2%), top +
+under sleeve width within 2 mm. Where a tailor's draft differs from ours, and what to build next: Jaeger shapes the
+centre back seam and cuts a side panel that drops from the armhole (ours: a straight CB and a diagonal style line);
+its waist is 17% over the body where ours is 29% (the fitted block leaves 36 mm a quarter for seams we only half
+used); its hem has 12% over the seat (ours 2%: hips ease is taken at the high hip); its sleeve is 30 mm longer,
+bent far more at the elbow, with a hollowed under sleeve and a hem 39 mm wider; its gorge is a straight line and the
+front hem is cut away in a curve.
+
+Not built yet: pockets and linings as pieces, a head wrap (hoods) and a sleeve grown on a torso piece (kimono) in the
+placement, a start that lays a cut-on collar round the neck, a tailor's two-piece sleeve (hollowed under sleeve),
+a shaped centre back seam, fish-eye darts in a hip-length block, pleats that die inside a piece.
 
 ## A new garment kind, start to finish (the skirt)
 
