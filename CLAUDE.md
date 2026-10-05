@@ -875,7 +875,36 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       limit in cloth_zozo (`start_over` 3%) and are info in stage 4; more, or > 60%, still fails.
     - Trousers: block `length` words (TROUSER_LENGTHS: floor, shoe, ankle (default: barefoot bodies), cropped, calf,
       knee, shorts); stage 2 `leg_ease`: seat ease in the fit's band from the legs' pieces, per-leg thigh / knee / hem
-      against the body's own leg.
+      against the body's own leg. The waistband slid 9-10 cm because it STARTED wrong: `place`'s torso hull ran up to
+      the shoulders for every garment (`max(ytop, -0.03)`: a bug), so a waistband alone lay on the chest's curve,
+      its back half 16-25 cm from the trousers. Now the hull stops at the pieces' own top, a band buttoned to itself
+      alone on the torso lies at its CLOSED girth a few mm off the waist with its lap a layer out (start gap 161
+      -> 46 mm). `waistband` op: the generate entry's chain is made at unfold from the waist edges as they are
+      then (it had to be written by hand).
+    - Stage 4 `seam_start_gaps`: `turned` = the rotation that lays one side of a seam on the other is > 35 deg
+      with a median gap > 8 cm, for seams with a chain side. A waistband mis-ordered by half a turn has gaps of
+      only a waist's diameter (247 mm < the 250 mm "far" limit: the distance check did NOT fire); a ring inside a
+      ring (hood vs neckline) and a shoulder seam are not turned. `tests/test_cloth_workflow.py`.
+    - Placement by hinge again: `kimono` (the sleeve past the underarm-to-shoulder line on the arm: `wrap.cx` =
+      the pattern x along the top of the arm, front half `front: -1`, back `+1`, mirrored on the right arm: pair
+      pieces on arms in unfold); wrap `head` (hoods: one plan curve round the head from the back, the sides `apart`
+      by the centre seam's bow). `pocket` (patch, kangaroo: traced, `lies_on` + `face: "out"`, tacked by
+      `sym_stitches` mirrored at unfold; a tacked piece counts as attached in stage 2), `lining` (every body piece
+      traced, seams repeated, laid inside, sewn to the shell at hems / sleeve hems / back neck; same outline, no
+      pleat, one fabric). Not drafted: welt / flap / in-seam pockets.
+    - `skirt` block for the ops (pattern_blocks.skirt; a cut ACROSS a piece names the upper part first and keeps the
+      centre seam on both parts; a pleat on a piece cut on the fold is pressed on both halves; pleat `underlays`
+      are not girth in `sizing`).
+    - Two new garments from prose through the tools (sheets in examples/garment_sheets): `raglan_anorak` (bodice
+      cf fold, neckline, sleeve, raglan, hood, kangaroo pocket; model pd_anorak) and `yoke_skirt` (skirt block,
+      yokes, a pleat each side, flared back, waistband op; model pd_skirt). What the tools lacked on the way, all
+      fixed: a tacked pocket read "sewn to nothing"; the hoodie had no boxy fit band (a straight body on a V-shaped
+      torso is +51% at the waist); the turned check fired on a raglan seam (single edges at an angle) and on the
+      hood (ring in ring); the kangaroo pocket's default ran past a short hem; the skirt had no block for ops and no
+      waistband op; the yoke's centre seam and the second pleat were missing; pleat cloth read as +12% seat ease.
+    - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
+      nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
+      seams, or replace the sheet.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
