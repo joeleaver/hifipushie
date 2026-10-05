@@ -1143,9 +1143,26 @@ def render(job):
         ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
         if job.get("clip") or L.get("shadow") is False:  # a section: what's cut away would still cast the
             ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
+        if "specular" in L:  # a fill that lights without its own highlight (two round catchlights in an eye: a toy)
+            ld.specular_factor = float(L["specular"])
         sun = bpy.data.objects.new(f"hp_sun{i}", ld)
         scene.collection.objects.link(sun)
         sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
+        if L.get("window"):  # the light's HIGHLIGHT comes from a rectangle (a window, a soft box) instead of the sun's
+            # disc: the sun keeps the diffuse light and shadows; an area light of the same irradiance at the target
+            # gives only the reflection (P = 4 pi S d^2)
+            w = L["window"]
+            size, dist = w.get("size", [1.0, 1.4]), float(w.get("distance", 2.5))
+            ld.specular_factor = 0.0
+            al = bpy.data.lights.new(f"hp_window{i}", "AREA")
+            al.shape, al.size, al.size_y = "RECTANGLE", float(size[0]), float(size[1])
+            al.energy = 4 * np.pi * float(L.get("energy", 3.5)) * dist ** 2 * float(w.get("gain", 1.0))
+            al.color, al.diffuse_factor, al.use_shadow = ld.color, 0.0, False
+            ao = bpy.data.objects.new(f"hp_window{i}", al)
+            scene.collection.objects.link(ao)
+            dv = Vector(L["dir"]).normalized()
+            ao.location = Vector(w.get("target", lt.get("target", [0, 0, 0]))) + dv * dist
+            ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
     cam_data = bpy.data.cameras.new("hp_cam")
     cam_data.clip_start, cam_data.clip_end = 0.01, 1000
     cam = bpy.data.objects.new("hp_cam", cam_data)
