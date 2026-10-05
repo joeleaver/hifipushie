@@ -1269,7 +1269,12 @@ def apply_hinges(D: dict) -> None:
             op_style_line(D, nm, name=hn, names=[f"{nm}__a", f"{nm}__b"], curve=False, apart=False, via=via,
                           **{"from": "_ha", "to": "_hb"})
             pa, pb_ = D["pieces"][f"{nm}__a"], D["pieces"][f"{nm}__b"]
-            far, base = (pa, pb_) if (pa["P"].mean(0) - a) @ u > (pb_["P"].mean(0) - a) @ u else (pb_, pa)
+            if hg.get("far") is not None:  # the part that holds (is nearest) this point takes the other placement
+                fq = np.asarray(hg["far"], float)
+                far, base = (pa, pb_) if np.linalg.norm(pa["P"] - fq, axis=1).min() < np.linalg.norm(pb_["P"] - fq, axis=1).min() \
+                    else (pb_, pa)
+            else:
+                far, base = (pa, pb_) if (pa["P"].mean(0) - a) @ u > (pb_["P"].mean(0) - a) @ u else (pb_, pa)
             seam = D["seams"][-1]
             D["notes"][json.dumps(seam)] = {"ease": [-0.004, 0.004], "virtual": True,
                                             "why": f"{nm} and its {part} are one cloth: cut here only to place them"}
@@ -1408,6 +1413,12 @@ def unfold(D: dict) -> dict:
                     c["wrap"]["lies_on"] = f"{c['wrap']['lies_on']}.{S}"
                 if str(c["wrap"].get("to", "")).startswith("leg."):
                     c["wrap"]["to"] = f"leg.{S}"
+                if str(c["wrap"].get("to", "")).startswith("arm."):  # a pair piece on an arm (a kimono sleeve's half):
+                    c["wrap"]["to"] = f"arm.{S}"  # the mirrored one goes round its arm the other way
+                    if S == "R":
+                        c["wrap"]["front"] = -float(c["wrap"].get("front", 1))
+                        if "cx" in c["wrap"]:
+                            c["wrap"]["cx"] = -float(c["wrap"]["cx"])
             out[f"{nm}.L"], out[f"{nm}.R"] = L, R
 
     def side_spec(spec, S):

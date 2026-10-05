@@ -456,6 +456,14 @@ def op_kimono(D: dict, length: float | None = None, angle: float = 25.0, wrist: 
         keepl, keepm, darts = pc.get("lines"), pc.get("marks"), pc.get("darts")
         _ring_from(pc, pts)
         pc["lines"], pc["marks"], pc["darts"] = keepl or {}, keepm or {}, darts or {}
+        # one cloth, two placements: the body on the torso, the sleeve (past the line from the underarm to the
+        # shoulder point) round the arm, its overarm seam along the top of the arm (the front half goes round the
+        # front, the back half round the back)
+        ex = np.array([-d[1], d[0]])
+        D.setdefault("hinges", []).append({
+            "piece": which, "name": "sleeveHinge", "part": "sleeve", "at": g.tolist(), "dir": _unit(sh - g).tolist(),
+            "mid": (0.5 * (g + sh)).tolist(), "far": w1.tolist(), "origin": sh.tolist(), "x": ex.tolist(), "role": "sleeve",
+            "wrap": {"to": "arm.L", "front": -1 if which == "front" else 1, "cx": 0.0}})
     D["seams"] = [s for s in D["seams"] if not any(x in e for side in s for e in _flat(side)
                                                    for x in (":shoulder>hps", ":armhole>"))]
     low = D["meta"]["low"]
@@ -466,7 +474,8 @@ def op_kimono(D: dict, length: float | None = None, angle: float = 25.0, wrist: 
     D["edges"]["sleeve_hem"] = ["front:wristTop>wristBottom", "back:wristTop>wristBottom"]
     D["meta"]["kimono"] = True
     D["log"].append(f"kimono sleeve: overarm {Ls * 1000:.0f} mm at {angle:.0f} deg, wrist {2 * hw * 1000:.0f} mm, underarm "
-                    f"{drop * 1000:.0f} mm under the armhole; front and back alike (placement can't arrange it yet)")
+                    f"{drop * 1000:.0f} mm under the armhole; front and back alike; placed in two parts each (body on the "
+                    "torso, sleeve round the arm)")
 
 
 def op_hood(D: dict, height: float | None = None, depth: float | None = None, name: str = "hood", **o) -> None:
@@ -484,7 +493,7 @@ def op_hood(D: dict, height: float | None = None, depth: float | None = None, na
     pts += [(None, q) for q in pb.bez([max(F[0], Dp) + 0.01, H * 0.96], [Dp * 0.75, H * 1.03], [Dp * 0.35, H * 1.02], [0.06, H * 0.9])[:-1]]
     pts += [("crown", [0.06, H * 0.9])]
     pts += [(None, q) for q in pb.bez([0.06, H * 0.9], [-0.035, H * 0.72], [-0.03, H * 0.25], [0.0, 0.0])[:-1]]
-    pc = pb.make_piece(name, pts, "hood", {"to": "head"}, "pair")
+    pc = pb.make_piece(name, pts, "hood", {"to": "head", "apart": 0.0015}, "pair")
     # the neck edge as drawn is a little under Ln (straight): scale x so it is exact
     k = Ln / pb.edge_length(pc, "neckBack>neckMid>neckFront")
     pc["P"][:, 0] *= k
@@ -495,7 +504,7 @@ def op_hood(D: dict, height: float | None = None, depth: float | None = None, na
     D["edges"]["hood_face"] = [f"{name}:neckFront>faceTop"]
     D["log"].append(f"hood: neck edge {Ln * 1000:.0f} mm (the half neckline), {H * 1000:.0f} mm high, {Dp * 1000:.0f} mm deep "
                     f"(head girth {'measured' if 'head' in m else 'estimated'} {head * 1000:.0f} mm); two sides, a centre seam "
-                    "(placement can't arrange it yet)")
+                    "placed round the head")
 
 
 def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, **o) -> None:

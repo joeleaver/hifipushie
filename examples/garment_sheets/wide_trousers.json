@@ -4,7 +4,7 @@
   "ops": [],
   "details": {"waistband": "straight", "fly": "none", "pockets": "none", "hem": "blind", "pleats": "none"}
  },
- "spec": {"quality": "draft", "color": "#56604a",
+ "spec": {"quality": "draft", "color": "#56604a", "backend": "zozo",
           "generate": [{"band": "waistband", "role": "waistband",
                         "along": ["back.R:cWaist>dartA", "back.R:dartB>sideWaist", "front.R:sideWaist>cWaist",
                                   "front.L:cWaist>sideWaist", "back.L:sideWaist>dartB", "back.L:dartA>cWaist"],

@@ -1126,6 +1126,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                    if pcs[nm]["wrap"].get("side", "front") == "front"
                    and abs(pcs[nm]["P"][:, 0].min() + pcs[nm]["P"][:, 0].max()) > 0.05)  # one-sided pieces
         m = float(np.clip((Wmax - over - P0) / (2 * np.pi), gap, 0.15))
+        band_closed = [_closed_girth(M, nm) for nm in torso]
+        if all(band_closed):
+            # only bands buttoned to themselves on the torso (a waistband over trouser legs): the curve's girth is
+            # the band's CLOSED girth, as near the body as a band may start. A waistband grips: laid a start gap
+            # off the waist it was 8 cm too short to close, and the sewing left it gathered and low on the hips
+            m = float(np.clip((max(band_closed) - P0) / (2 * np.pi), SMOOTH_CLEAR, 0.15))
         # densified: each piece starts at the hull's point nearest its centre line, and a convex hull's front is
         # one long edge between the pecs (its nearest vertex was 69 mm off centre: the bodice started turned round
         # the body and sewing dragged it back ~10 cm, lifting the armholes and the sleeves with them)
@@ -1137,6 +1143,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     neck_R0 = None  # the first neck piece's radius
     arm_ang = {}  # vertex -> its angle round its arm (pieces placed so far)
     leg_curve = {}  # "leg.L" -> (its plan curve, the flat's x, the waist's z)
+    head_curve = None  # the plan curve round the head (hoods)
     placed_neck = []
     for k, nm in enumerate(names):
         w = pcs[nm]["wrap"]
@@ -1151,6 +1158,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             else:
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(cy - Cw[:, 1], 0))]
             q = _arc_point(Cw, start, U[:, 0] + dxs.get(nm, 0.0), 1.0)
+            cg_ = _closed_girth(M, nm)
+            if cg_:  # a band closed on itself: its overlapping end a layer outside the end under it
+                lap_ = max(float(np.ptp(U[:, 0])) - cg_, 1e-6)
+                ramp_ = np.clip((U[:, 0] - (U[:, 0].max() - 2.0 * lap_)) / lap_, 0, 1)
+                rd_ = q - Cw.mean(0)
+                q = q + rd_ / np.maximum(np.linalg.norm(rd_, axis=1, keepdims=True), 1e-9) * (LAYER * ramp_)[:, None]
             X[sel] = np.c_[q, hps[2] + U[:, 1] + dzs.get(nm, 0.0)]
         elif to.startswith("arm."):
             side = to[4:]
@@ -1218,6 +1231,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 rmax = rmax + dev
             Rp = max(R, float(rmax[on].max()) + gap if on.any() else R)
             cx = 0.5 * (P[:, 0].max() + P[:, 0].min())
+            if "cx" in w:  # the pattern x that lies along the top of the arm (a kimono sleeve's overarm seam: its
+                cx = float(w["cx"])  # front and back halves each start there)
             # a piece buttoned to itself (a cuff) starts closed: round its closed girth (the stitched marks' distance
             # along it) on a slight spiral, the overlap one layer outside, arc length kept along it. (Laid open round
             # the hand, 108 mm apart, the stitch snapped a stiff cuff shut and crumpled it.)
@@ -1584,11 +1599,32 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 ramp = np.clip(-sgn * U[:, 0] / 0.02, 0.0, 1.0)
                 zz = zz - np.maximum(zz - zc, 0.0) * ramp
             X[sel] = np.c_[sgn * q[:, 0], q[:, 1], zz]
+        elif to == "head":
+            # A hood's sides (pattern x = 0 at centre back, the face edge at +-x, y = 0 at the neck point's height):
+            # on ONE vertical generalized cylinder round the head, the hull of the head's and neck's sections from
+            # the neck point up, from the back of the head round each side toward the face; arc length x height.
+            # The crown stands open above the head: the centre seam closes it over the top.
+            if head_curve is None:
+                ztop = float(body.V[:, 2].max())
+                lp_ = []
+                for z in np.arange(float(hps[2]) + 0.01, ztop, 0.015):
+                    lp_ += [L_[:, :2] for L_ in tailor.slice_loops(body.V, body.T, [0, 0, float(z)], [0, 0, 1.0])
+                            if L_[:, 0].min() < -0.02 and L_[:, 0].max() > 0.02]
+                Hh = np.concatenate(lp_)
+                Hh = Hh[ConvexHull(Hh).vertices]
+                Wh = sum(float(np.ptp(pcs[o]["P"][:, 0])) for o in names if pcs[o]["wrap"].get("to") == "head")
+                m_h = float(np.clip((Wh - pattern.length(Hh, closed=True)) / (2 * np.pi), gap, 0.10))
+                head_curve = _densify(_offset_hull(Hh, m_h), 0.002)
+            cy_h = 0.5 * (head_curve[:, 1].max() + head_curve[:, 1].min())
+            start_h = head_curve[np.argmin(np.abs(head_curve[:, 0]) + 10 * np.maximum(cy_h - head_curve[:, 1], 0))]
+            xo = float(w.get("half", 0)) * float(w.get("apart", 0.0015))
+            q = _arc_point(head_curve, start_h, U[:, 0] + xo, 1.0)
+            X[sel] = np.c_[q, hps[2] + U[:, 1] + float(w.get("lift", 0.0))]
         elif to == "flat":  # laid flat at a height (a tablecloth, a blanket): pattern x, y -> world x, y
             o = np.asarray(w.get("at", [0, 0, 1.0]), float)
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
         else:
-            raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, leg.L, leg.R, neck, flat)")
+            raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, leg.L, leg.R, neck, head, flat)")
     gaps = np.full(len(X), gap)
     for k, nm in enumerate(names):
         wto = B["pieces"][nm]["wrap"].get("to", "")
@@ -3466,7 +3502,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
                 "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support"}
-WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "flat")
+WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "flat")
 
 
 def _is_hex(c) -> bool:
