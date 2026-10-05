@@ -871,7 +871,7 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     FOLLOW the hand's / foot's roll (shares rising to 1.0 at the wrist); the upper arm's and thigh's COUNTER their
     own joint's roll (-1.0 at the shoulder: the deltoid stays put). Nothing animates them: an engine drives them
     from the listed shares (the export's json has the recipe per engine), and undriven they change nothing.
-    spec["rig"]["twist"] = false | count | {"arm": 2, "forearm": 2, "upleg": 1, "leg": 1} (the default; up to 4).
+    spec["rig"]["twist"] = false | count | {"arm": 2, "forearm": 3, "upleg": 1, "leg": 1} (the default; up to 4).
     The head is rigid: skull, face, jaw, teeth, tongue and eyes are Head 1.0, the falloff to the neck is on the
     throat (spec["rig"]["rigid_head"] = false | {"band": m, "under": m}).
     pose: {rig bone: [[axis x, y, z] or "roll", degrees]} instead of the default test pose ("roll" = about the

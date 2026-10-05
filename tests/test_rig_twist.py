@@ -51,7 +51,7 @@ def test_base_set_unchanged():
     _, off, _, _ = _skin(twist=False)
     _, on, _, _ = _skin()
     assert not any(b.get("twist") for b in off)
-    assert len(on) == len(off) + 12, (len(on), len(off))
+    assert len(on) == len(off) + 14, (len(on), len(off))
     for a, b in zip(off, on):
         assert a["name"] == b["name"] and a["parent"] == b["parent"] and a["end"] == b["end"]
         assert np.allclose(a["head"], b["head"], atol=0)
@@ -70,14 +70,14 @@ def test_base_set_unchanged():
         else:
             assert -1 <= tw["share"] < 0 and abs(tw["share"] + 1 - tw["station"]) < 1e-6
     fa = [b["twist"] for b in on if b["name"].startswith(P + "LeftForeArmTwist")]
-    assert [t["share"] for t in fa] == [0.5, 1.0]
+    assert [t["share"] for t in fa] == [0.3333, 0.6667, 1.0]
     ua = [b["twist"] for b in on if b["name"].startswith(P + "LeftArmTwist")]
     assert [t["share"] for t in ua] == [-1.0, -0.5] and [t["station"] for t in ua] == [0.0, 0.5]
 
 
 def test_options():
     m = _model()
-    for tw, n in ((False, 0), (0, 0), (1, 8), (3, 24), ({"forearm": 3, "leg": 0}, 2 * (2 + 3 + 1))):
+    for tw, n in ((False, 0), (0, 0), (1, 8), (3, 24), ({"forearm": 2, "leg": 0}, 2 * (2 + 2 + 1))):
         spec = {**m["spec"], "rig": {"twist": tw}}
         assert sum(1 for b in rig.rig_bones(spec) if b.get("twist")) == n, tw
     for bad in ({"wrist": 2}, {"arm": 9}):
@@ -101,16 +101,17 @@ def test_undriven_is_the_old_skin():
     A = rig.pose(off, m["V"], J0, W0, turns)
     B = rig.pose(on, m["V"], J1, W1, turns)
     d = np.linalg.norm(A - B, axis=1)
-    # (not exactly 0 everywhere: a vertex with four bones before the split can have five after, and a trace of a
-    # bone, <= rig.TWIST_TRACE, is dropped)
-    assert d.max() < 2e-3 and np.percentile(d, 95) < 2e-4, (d.max(), np.percentile(d, 95))
+    # (not exactly 0 everywhere: a vertex with four bones before the split can have five after, and its smallest
+    # weight is dropped; the goblin's arms are fused to its belly, the worst case: a web of four-bone vertices)
+    assert d.max() < 8e-3 and np.percentile(d, 95) < 5e-4 and (d > 1e-3).mean() < 0.03, \
+        (d.max(), np.percentile(d, 95), (d > 1e-3).mean())
     # a vertex's twist weights add up to what its segment's bone had
     names = [b["name"] for b in on]
     for seg in ("LeftForeArm", "RightArm", "LeftUpLeg", "RightLeg"):
         own = [i for i, n in enumerate(names) if n == P + seg or n.startswith(P + seg + "Twist")]
         w1 = (W1 * np.isin(J1, own)).sum(1)
         w0 = (W0 * (J0 == names.index(P + seg))).sum(1)
-        assert np.percentile(np.abs(w1 - w0), 99.9) < 0.02, seg
+        assert np.percentile(np.abs(w1 - w0), 99) < 0.05, seg
 
 
 def test_roll_decomposition():
@@ -129,7 +130,7 @@ def test_forearm_twist_spreads():
     _, on, J, W = _skin()
     _, off, J0, W0 = _skin(twist=False)
     for side in ("Left", "Right"):
-        for deg, area in ((75.0, 0.85), (105.0, 0.75)):
+        for deg, area in ((75.0, 0.9), (105.0, 0.82)):
             old = rig.twist_check(off, m["V"], m["F"], J0, W0, P + side + "Hand", deg, False)
             new = rig.twist_check(on, m["V"], m["F"], J, W, P + side + "Hand", deg, True)
             assert old["at_end"] > 0.7 * deg and old["area_min"] < new["area_min"], (old, new)
@@ -137,10 +138,10 @@ def test_forearm_twist_spreads():
             assert new["step"] < 0.2 * deg and new["area_min"] > area, new
             assert all(b >= a - 1.0 for a, b in zip(new["twist"], new["twist"][1:])), new["twist"]  # monotone
             assert new["tri_p1"] > old["tri_p1"], (old["tri_p1"], new["tri_p1"])
-    # three twist bones: smaller steps, less loss
-    _, b3, J3, W3 = _skin(twist={"forearm": 3})
-    r3 = rig.twist_check(b3, m["V"], m["F"], J3, W3, P + "RightHand", 105.0, True)
-    r2 = rig.twist_check(on, m["V"], m["F"], J, W, P + "RightHand", 105.0, True)
+    # three twist bones (the default) against two: smaller steps, less loss
+    _, b2, J2, W2 = _skin(twist={"forearm": 2})
+    r3 = rig.twist_check(on, m["V"], m["F"], J, W, P + "RightHand", 105.0, True)
+    r2 = rig.twist_check(b2, m["V"], m["F"], J2, W2, P + "RightHand", 105.0, True)
     assert r3["area_min"] > r2["area_min"] + 0.04, (r2["area_min"], r3["area_min"])
 
 

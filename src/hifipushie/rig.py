@@ -335,11 +335,13 @@ def humanoid(spec: dict) -> list[dict] | None:
 # node extras "hifipushie_twist" and the export json's rig.twist carry driver, axis and share.
 TWIST = {"Arm": ("counter", "arm", "ForeArm"), "ForeArm": ("follow", "forearm", "Hand"),
          "UpLeg": ("counter", "upleg", "Leg"), "Leg": ("follow", "leg", "Foot")}
-# two per arm segment as Unreal's mannequin (one leaves a 0 -> 75 deg step over the forearm: sections lose a third
-# of their area half way, two keep 90%); one per leg segment (a foot or thigh rolls 30-45 deg, not 105)
-TWIST_DEFAULT = {"arm": 2, "forearm": 2, "upleg": 1, "leg": 1}
+# Linear blend skinning between two stations turned apart by d loses cos^2(d / 2) of a section's area half way, so
+# the count follows how far a segment rolls. Upper arm: two, as Unreal's mannequin (60 deg: 0.93 of the area kept).
+# Forearm: three: a hand turns 75 deg palm down and 105 in gestures; measured at 105 on the MakeHuman body, none
+# 0.49, two 0.80, three 0.87. Legs: one each (a foot or thigh rolls 30-45 deg: 0.88).
+TWIST_DEFAULT = {"arm": 2, "forearm": 3, "upleg": 1, "leg": 1}
 TWIST_MAX = 4
-TWIST_TRACE = 0.015  # a weight this small may be dropped to keep a vertex at four bones
+TWIST_MERGE = 3.0  # at a fifth bone: a split whose smaller half is under this x the smallest weight goes back together
 ROLL_OF_PARENT = ("Hand", "Foot")  # their "roll" is about the segment they end
 
 
@@ -428,9 +430,10 @@ def _spread_twist(rb: list[dict], verts: np.ndarray, J: np.ndarray, W: np.ndarra
         w = W[rows, cols]
         J2[rows, cols], W2[rows, cols] = bi[lo], w * (1 - f)
         J2[rows, kk + cols], W2[rows, kk + cols] = bi[hi], w * f
-    # more than k bones now: drop the smallest if it is a trace (a forearm vertex with a whiff of two fingers keeps
-    # its split), else put the smallest split back together (a belly vertex on Spine, Spine1, Hips and the arm, the
-    # arm split in two: dropping a bone there moved the skin 10 mm with nothing driven).
+    # more than k bones now. Dropping the smallest weight moves undriven skin (a belly vertex on Spine, Spine1, Hips
+    # and the arm, the arm split in two: 10 mm when Spine1's 0.13 went); putting a split back together steps the twist
+    # against the neighbours' when driven (thigh vertices with 2-4% of three other bones: sheared triangles). So the
+    # cheaper of the two: the split goes back only if its smaller half is within TWIST_MERGE x the smallest weight.
     for _ in range(kk):
         over = np.flatnonzero((W2 > 0).sum(1) > k)
         if not len(over):
@@ -441,7 +444,7 @@ def _spread_twist(rb: list[dict], verts: np.ndarray, J: np.ndarray, W: np.ndarra
         c = pair.argmin(1)
         alone = np.where(W2[over] > 0, W2[over], np.inf)
         s = alone.argmin(1)
-        merge = np.isfinite(pair[r, c]) & ((alone[r, s] > TWIST_TRACE) | (pair[r, c] <= alone[r, s]))
+        merge = np.isfinite(pair[r, c]) & (pair[r, c] <= TWIST_MERGE * alone[r, s])
         mo, mc = over[merge], c[merge]
         keep_b = W2[mo, kk + mc] > W2[mo, mc]
         tot = W2[mo, mc] + W2[mo, kk + mc]
