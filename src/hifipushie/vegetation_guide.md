@@ -7,7 +7,8 @@ the same tree. Units are metres, Z up, the trunk's foot at [0, 0, 0]; "azimuth 0
 
 Tools: `get_plant` (the stored spec, what it resolves to, and what each number usually is), `grow_plant` (create /
 change / copy / report), `edit_plant` (guides, prunes, envelope, forces), `look_plant` (images of one plant),
-`look_plants` (several standing together), `plant_reference` (measure against a photo, optionally fit),
+`look_plants` (several standing together), `wind_plant` (the export swaying), `sync_plant` (the Blender file a person
+edits), `plant_reference` (measure against a photo, optionally fit),
 `export_plant` (GLB, with a triangle budget), `plant_history` (`plant_history(name)` lists versions,
 `plant_history(name, revert_to=3)` restores one). `grow_plant(name="")` lists the plants and the species presets.
 
@@ -61,11 +62,14 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 - `dead`: `[{"limb": "SW2", "min_radius": 0.03}, {"above": 15, "min_radius": 0.04}]`: wood that died and stayed
   on the living tree (a limb by its name, or a volume: box, sphere, above): leafless, barkless silver-grey
   (`bark.dead_color`), everything thinner than `min_radius` broken off. A stag-headed veteran = `above` just under
-  the top; a snag limb = one limb. (A whole dead tree: `season: "dead"` + `decay`.)
+  the top; a snag limb = one limb (`"from": m` = only past that far along it; a guide's name works as the limb).
+  The report says how much died and broke off. (A whole dead tree: `season: "dead"` + `decay`.)
 - `roots`: `{"count": 5, "spread": 1.6, "height": 0.5}`: root flares at the foot: the trunk's section swells toward
   each root by `spread` x at the ground, fading over `height` m (spread 2+ and height 1+ = buttresses). The trunk
   always runs 0.3-0.5 m into the ground, so it meets a slope without a gap.
-- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are). With
+- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are), limbs too;
+  with `limb_diameter` (m: the stoutest limb where it leaves the trunk) the two are sized apart: a very fat old
+  trunk under ordinary limbs. (Over a long life `habit.ring` x age is what makes everything fat.) With
   `trunk_taper` (0-1: the share of that diameter the trunk loses by its top; 0.1 = a column, as a pollard's) the
   trunk keeps its girth whatever it carries. Without it the
   girth comes from what the trunk carries plus `habit.ring` per year, so a denser crown means a fatter trunk.
@@ -92,7 +96,7 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 | `jitter` | per order: how crooked shoots run. Straight trunk 0.03-0.1; gnarled limbs 0.4+; straight limbs read as a broom | |
 | `light` | pull toward open light (fills gaps, avoids its own shade) | 0.1-0.4 |
 | `buds`, `whorl`, `divergence`, `plane` | per order: side buds per node (conifer trunk 4-6 with whorl true), degrees between successive buds (137.5 spiral, 180 two-ranked), flat sprays | |
-| `bud_break` | per order: chance a bud can ever grow. Lower on order 1 = fewer, stronger limbs | 0.3-1 |
+| `bud_break` | by the NEW shoot's order ([1] = limbs off the trunk): chance a bud can ever grow. Lower [1] = fewer, stronger limbs | 0.3-1 |
 | `bud_life` | steps a bud stays able to grow: longer = denser inside | 3-7 |
 | `max_order` | deepest branching (spruce 2, broadleaves 5) | |
 | `shed` | light per segment under which a branch is dropped: higher = cleaner trunk and open interior; too high and the tree starves | 0-0.3 |
@@ -124,6 +128,8 @@ height, form, limb angles.
   than its `height` (m, reached when the tree is ~80% of its age) within 2 x `radius` of `at`, and pushes growth
   away. Give real sizes: a neighbour 1.6 m away with radius 4 covers the whole tree and starves it; for a close
   neighbour use radius 1-2. The tree does not see other plants you made: neighbours are only these blobs.
+- `light: [x, y, z]`: where the light comes from (default straight up [0, 0, 1]). Keep z near 1: [0.3, 0, 1] is a
+  tree at a wood's edge leaning out; [1, 0, 0.8] sweeps every limb sideways.
 - `ground: {"slope": deg, "toward": [x, y], "water": z}`: the hillside it stands on and a water level (m against
   the plant's foot: -0.5 = half a metre below it), for the pictures. It does not change the growth: lean the trunk
   with a guide or wind. Only a uniform slope: no banks or ditches.
@@ -148,14 +154,19 @@ height, form, limb angles.
   height you want, every 4-8 years: a column trunk with a knuckled head of rods; make the rods straight and upright
   with tropism + low jitter on orders 1+ and `max_order` 2), a **coppice** (`above` 0.3), a **lopped limb** or a
   **storm break** (a box or sphere round it, one year, sprouts 0-2). `"boll": 1.4-1.8` swells the cut end into
-  the knuckled head a pollard gets from being cut again and again. The report lists each cut made. A cut the tree
+  the knuckled head a pollard gets from being cut again and again. Timing: the first cut after the trunk has passed
+  the cut height (the report warns when a cut found nothing); the LAST cut 4-8 years before the tree's age
+  (`until_year`), or the head is two-year stubble; `habit.clear` must be under the cut height (a bole that may
+  never branch can't sprout). A pollard's `height` is ignored (it sizes the uncut tree). The report lists each cut made. A cut the tree
   never regrows from is a `prune`.
 - Named limbs: the report lists the tree's main limbs ("SW2" = the second limb up the trunk that ends to the
   south-west; +y is north, +x east) with where each leaves the trunk, its girth, its end, and the span of what it
   carries. `edit_plant` op `{"op": "take_limb", "limb": "SW2", "name": "low_bough"}` makes that grown limb a guide of
   the same place and shape; then redraw it (op `guide` with a new path), or give `"path"` at once. The names
   belong to THIS grown tree: after an edit the other limbs may be renamed or change (the tree regrows around every
-  edit), a taken limb keeps its name and path.
+  edit), a taken limb keeps its name and path. Each limb also has an **id** ("Lk7f3", from its bud's lineage) that
+  lasts through edits; wherever a limb is named (`dead`, take_limb) a compass name, an id or a guide's name works,
+  and a compass name is stored as the id. "Length" follows the limb's stoutest wood to a shoot's end.
 - `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}, {"under": z}]`. `below`
   removes limbs that LEAVE the trunk under that height (a limb starting higher may still hang lower); `under`
   removes everything but the trunk under that height (a browse line, a lifted crown); `above` tops the tree.
@@ -187,6 +198,10 @@ height, form, limb angles.
   Needles: `needle_width` (a needle's width / length: 0.08-0.45 on mesh twigs, far wider than life so they cover
   what hundreds of real needles do), `twig.leaves` 90-220 needles, `twig.side_shoots` (flat sprays).
   `get_plant` lists these with the values in force.
+  `leaves.color` is the leaf as you SEE it in the sun (sRGB), not a dark "albedo": a summer birch in a photo is
+  about [0.64, 0.7, 0.35] (hue 60-75, value 0.6-0.7), a spruce [0.3, 0.36, 0.2]. Foliage is shaded as a volume
+  (`leaves.round` 0.7: each leaf's normal bent outward from the crown's middle); 0 = every card by its own normal
+  (dark, spiky).
   Foliage is drawn as cards (each twig's picture on a cut card: what a game draws) by default;
   `look_plant(foliage="mesh")` shows real leaf meshes. `card: {"twig": {...}, "leaf": {...}, "scale" 0.8-1.5,
   "cross" 1 | 2 (2 = two crossed cards: tufts), "strips" 0 | 3-5 (a ladder of quads along a long hanging twig)}`:
@@ -263,7 +278,30 @@ and writes the file again. The spec stays the source of truth: nothing else in t
 
 A budget leaves out thin wood and draws fewer, larger cards. `look_plant(name, views=["leaf", "far"],
 triangles=12000)` renders exactly what `export_plant(name, triangles=12000)` writes. Judge that picture, not the
-full-detail one; raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+full-detail one. A budget first gives branches fewer rings and sides, then leaves out the thinnest wood (wood you
+marked, dead wood and drawn guides, stays down to a quarter of that girth), and draws the twigs that stand on wood
+it kept; the export WARNS when cards would float. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+
+## Game-ready: LODs, wind, seasons, collision
+
+`export_plant(name, triangles=20000, lods=3, impostor=True, seasons=["summer", "autumn", "winter"], wet=True,
+lod_files=True)`:
+- **LODs**: 100 / 45 / 18% of the budget from the same tree, then (impostor) two crossed quads with the plant's
+  picture. `<name>.glb` shows LOD 0 and hangs the rest on it (MSFT_lod; extras list each LOD's triangles and the screen
+  height to switch under). `lod_files` writes `<name>_LOD<k>.glb` too: most engines take LODs as separate meshes.
+- **Wind**: every vertex carries trunk sway (0 at the foot, 1 at the top), branch sway (0 where its limb leaves the
+  trunk, 1 at the limb's end), a phase per limb, and leaf flutter (0 at a card's foot, 1 at its tip): TEXCOORD_1 =
+  (trunk, branch), TEXCOORD_2 = (phase, flutter), and all four in `_WIND`. The shader recipe is in the file's extras.
+  `wind_plant(name)` renders the export swaying by that recipe: look at it (the foot still, limbs out of step).
+- **Seasons** are states of the plant (`"season": "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
+  `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
+  material variants in the export (KHR_materials_variants: summer / autumn / winter / snow / wet). Snow lying on wood
+  is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
+- **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh.
+- What importers do with the file (checked here: Blender 5.1, Godot 4.7; NOT checked: Unity, Unreal):
+  Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
+  1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
+  (LOD 0; use the LOD files), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`.
 
 ## Not built yet
 

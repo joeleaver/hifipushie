@@ -198,9 +198,39 @@ def bark_material(name, bark, height):
     return m
 
 
+def _hull_normal(N, L, leaf):
+    """The crown shaded as a volume (foliage artists' normal transfer): each leaf's normal bent toward the direction
+    out from the crown's middle by `round` (0.7). With their own normals, hanging cards catch the sun edge-on and a lit
+    crown rendered at 0.4 of a photo's brightness."""
+    w = float(leaf.get("round", 0.7))
+    if w <= 0 or leaf.get("crown") is None:
+        return None
+    geo = N.new("ShaderNodeNewGeometry")
+    out = N.new("ShaderNodeVectorMath")
+    out.operation = "SUBTRACT"
+    L.new(geo.outputs["Position"], out.inputs[0])
+    out.inputs[1].default_value = leaf["crown"]
+    nrm = N.new("ShaderNodeVectorMath")
+    nrm.operation = "NORMALIZE"
+    L.new(out.outputs[0], nrm.inputs[0])
+    mx = N.new("ShaderNodeMix")
+    mx.data_type = "VECTOR"
+    mx.inputs["Factor"].default_value = w
+    a_, b_ = [i for i in mx.inputs if i.name == "A" and i.type == "VECTOR"][0], [i for i in mx.inputs if i.name == "B" and i.type == "VECTOR"][0]
+    L.new(geo.outputs["Normal"], a_)
+    L.new(nrm.outputs[0], b_)
+    fin = N.new("ShaderNodeVectorMath")
+    fin.operation = "NORMALIZE"
+    L.new([o for o in mx.outputs if o.type == "VECTOR"][0], fin.inputs[0])
+    return fin.outputs[0]
+
+
 def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
     """Leaf shading: Principled + light coming through (Translucent), mixed by `through`."""
     bsdf = N["Principled BSDF"]
+    hull = _hull_normal(N, L, leaf)
+    if hull is not None and not bsdf.inputs["Normal"].is_linked:
+        L.new(hull, bsdf.inputs["Normal"])
     out = N["Material Output"]
     L.new(base, bsdf.inputs["Base Color"])
     if hasattr(rough, "links"):
@@ -210,7 +240,7 @@ def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
     tr = N.new("ShaderNodeBsdfTranslucent")
     tc = N.new("ShaderNodeVectorMath")
     tc.operation = "MULTIPLY"
-    tc.inputs[1].default_value = leaf.get("through", [1.6, 1.9, 0.6])
+    tc.inputs[1].default_value = leaf.get("through", [1.9, 1.9, 0.45])
     L.new(base, tc.inputs[0])
     L.new(tc.outputs[0], tr.inputs["Color"])
     mx = N.new("ShaderNodeMixShader")
@@ -237,6 +267,64 @@ def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
                 pass
     L.new(last, out.inputs["Surface"])
     m.use_backface_culling = False
+
+
+def _weather(m, snow=0.0, wet=0.0, crown=None):
+    """Snow lying on what faces up (wood by its own normal, foliage by the crown's outward direction: its upper side
+    whitens) and rain (darker, glossier), put between a finished material's colour / roughness and its Principled."""
+    if not snow and not wet:
+        return
+    N, L = m.node_tree.nodes, m.node_tree.links
+    bsdf = N["Principled BSDF"]
+
+    def src(name):
+        s_ = bsdf.inputs[name]
+        if s_.is_linked:
+            a = s_.links[0].from_socket
+            L.remove(s_.links[0])
+            return a
+        v = N.new("ShaderNodeRGB" if name == "Base Color" else "ShaderNodeValue")
+        v.outputs[0].default_value = s_.default_value
+        return v.outputs[0]
+
+    col, rgh = src("Base Color"), src("Roughness")
+    if wet:
+        d = N.new("ShaderNodeVectorMath")
+        d.operation = "SCALE"
+        d.inputs["Scale"].default_value = 1 - 0.35 * wet
+        L.new(col, d.inputs[0])
+        col = d.outputs[0]
+        rgh = _math(N, L, "MULTIPLY", rgh, 1 - 0.6 * wet)
+    if snow:
+        geo = N.new("ShaderNodeNewGeometry")
+        if crown is not None:
+            o = N.new("ShaderNodeVectorMath")
+            o.operation = "SUBTRACT"
+            L.new(geo.outputs["Position"], o.inputs[0])
+            o.inputs[1].default_value = crown
+            nrm = N.new("ShaderNodeVectorMath")
+            nrm.operation = "NORMALIZE"
+            L.new(o.outputs[0], nrm.inputs[0])
+            vec = nrm.outputs[0]
+        else:
+            vec = geo.outputs["Normal"]
+        sp = N.new("ShaderNodeSeparateXYZ")
+        L.new(vec, sp.inputs[0])
+        nz = N.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = 6.0
+        up = _math(N, L, "ADD", sp.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", nz.outputs[0], 0.5), 0.5))
+        r = N.new("ShaderNodeMapRange")
+        r.inputs["From Min"].default_value, r.inputs["From Max"].default_value = 1.0 - 1.3 * snow, 1.25 - 1.3 * snow
+        L.new(up, r.inputs["Value"])
+        mx = N.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        L.new(r.outputs["Result"], mx.inputs["Factor"])
+        L.new(col, mx.inputs["A"])
+        mx.inputs["B"].default_value = (0.9, 0.92, 0.95, 1)
+        col = mx.outputs["Result"]
+        rgh = _math(N, L, "MAXIMUM", rgh, _math(N, L, "MULTIPLY", r.outputs["Result"], 0.6))
+    L.new(col, bsdf.inputs["Base Color"])
+    L.new(rgh, bsdf.inputs["Roughness"])
 
 
 def _tint(N, L):
@@ -279,7 +367,8 @@ def card_material(name, leaf, cards):
     # (off by default: on instanced cards the tangent frame turned leaves near black from some sides)
     nm.inputs["Strength"].default_value = leaf.get("card_normal", 0.0)
     L.new(n_.outputs["Color"], nm.inputs["Color"])
-    L.new(nm.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
+    if leaf.get("card_normal", 0.0) > 0:
+        L.new(nm.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
     _leaf_out(m, N, L, base.outputs[0], c.outputs["Alpha"], sepm.outputs[0], sepm.outputs[1], leaf)
     return m
 
@@ -382,6 +471,7 @@ def add_plant(pj, tag, clay):
     has_tw = "tw_pos" in d and len(d["tw_pos"])
     bk = pj.get("bark") or {}
     bark = bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
+    _weather(bark, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
     twig_wood = _flat(f"twig_wood{tag}", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
     wood = _mesh(f"wood{tag}", V, d["F"], d["uv"] if "uv" in d else None)
     a = wood.data.attributes.new("tan", "FLOAT_VECTOR", "POINT")
@@ -397,7 +487,11 @@ def add_plant(pj, tag, clay):
     if has_tw:
         from mathutils import Euler, Matrix
         cards = pj.get("cards")
-        mat = card_material(f"cards{tag}", pj.get("leaf") or {}, cards) if cards else leaf_material(f"leaf{tag}", pj.get("leaf") or {})
+        lf_ = dict(pj.get("leaf") or {})
+        tp_ = place(d["tw_pos"])
+        lf_["crown"] = [float(tp_[:, 0].mean()), float(tp_[:, 1].mean()), float(np.percentile(tp_[:, 2], 30))]
+        mat = card_material(f"cards{tag}", lf_, cards) if cards else leaf_material(f"leaf{tag}", lf_)
+        _weather(mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)), lf_["crown"])
         nv = int(d["tw_var"].max()) + 1
         tw_pos = place(d["tw_pos"])
         pts_all.append(tw_pos)
@@ -537,7 +631,7 @@ def build(job):
     aim_sun(math.degrees(sa), math.degrees(se))
     # the ground's bounce: EEVEE has none, and shade lit by the sky alone turns every leaf blue
     fill = bpy.data.objects.new("bounce", bpy.data.lights.new("bounce", "SUN"))
-    fill.data.color = job.get("bounce_color", [0.75, 0.8, 0.45])
+    fill.data.color = job.get("bounce_color", [0.85, 0.8, 0.4])
     fill.data.use_shadow = False
     sc.collection.objects.link(fill)
     fill.rotation_euler = Vector((0, 0, -1)).to_track_quat("Z", "Y").to_euler()
@@ -583,7 +677,7 @@ def build(job):
         isclay = bool(v.get("clay"))
         if v.get("sun"):
             aim_sun(*v["sun"])
-        fill.data.energy = 0.0 if isclay else job.get("bounce", 0.7)
+        fill.data.energy = 0.0 if isclay else job.get("bounce", 1.1)
         for o in twig_obs:
             o.hide_render = not v.get("leaves", True)
         for l in list(w.node_tree.links):
@@ -600,7 +694,7 @@ def build(job):
         for p_ in plants:
             p_["wood"].data.materials[0] = clay if isclay else p_["bark"]
         sun.data.energy = 7.0 if isclay else job.get("sun_energy", 3.6)
-        sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "AgX")
+        sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "Khronos PBR Neutral")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)
         ground.hide_render = bool(v.get("no_ground"))
         for o in rulers:

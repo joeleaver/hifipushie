@@ -41,6 +41,8 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     from . import veg_bark, veg_leaf
     s = tree["spec"]
     lf = s["leaves"]
+    if s.get("season") == "autumn" and not lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")):
+        lf = {**lf, "color": lf.get("autumn", [0.78, 0.56, 0.16])}  # (veg_export.AUTUMN)
     foliage = foliage or lf.get("foliage", "cards")
     bark = dict(s.get("bark") or {})
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
@@ -55,11 +57,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         ct = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
         bud = veg_export.budget(tree, triangles, tile, ct)
         M = bud["wood"]
-        if bud["keep"] < 1 and len(tw["pos"]):
-            rank = np.argsort(np.argsort(vegetation._u(tw["key"], 91)))
-            sel = rank < int(np.floor(len(rank) * bud["keep"] + 1e-9))
-            tw = {k: v[sel] for k, v in tw.items()}
-            tw["scale"] = tw["scale"] * min(1.0 / np.sqrt(bud["keep"]), 2.5)
+        tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw)[0]
     arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"], "dead": M["dead"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
     at = None
@@ -89,8 +87,9 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     if bark.get("base_kind"):
         bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / f"bark_base{tag}"))
     pj = {"npz": str(npz), "bark": bark,
-          "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal") if k in lf},
-          "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None}
+          "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal", "round") if k in lf},
+          "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None,
+          "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0)}
     return pj, info
 
 
@@ -174,6 +173,11 @@ def overlay(ref_mask: np.ndarray, ours: np.ndarray, size: int = 420):
     return Image.fromarray(im[:, max(cols[0] - 8, 0): cols[-1] + 8])
 
 
+def veg_leaf_place(T):
+    from . import veg_leaf
+    return veg_leaf.place(T)["pos"]
+
+
 def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, title: str = "", height: int = 520,
                     foliage: str | None = None) -> dict:
     """One row: the photo | outlines over each other | clay skeleton | leafed, with the numbers under it.
@@ -215,7 +219,7 @@ def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, 
 
     views = [{"name": "clay", "azimuth": az, "out": str(tmp / "clay.png"), "size": sz, "leaves": False, "clay": True},
              {"name": "bare", "azimuth": az, "elevation": 4, "out": str(tmp / "bare.png"), "size": sz, "leaves": False}]
-    has_leaves = T["spec"].get("season") not in ("winter", "bare", "dead") and not T["spec"].get("decay")
+    has_leaves = len(veg_leaf_place(T)) > 0
     lv = has_leaves
     views += [{"name": "leaf", "azimuth": az, "elevation": 4, "out": str(tmp / "leaf.png"), "size": sz, "leaves": lv},
               {"name": "far", "eye": eye(max(70.0, 3.5 * H), 1.7), "look": [0, 0, 0.42 * H], "fov": 22,
