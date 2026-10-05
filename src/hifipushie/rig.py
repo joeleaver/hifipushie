@@ -29,6 +29,7 @@ from .spec import compile_prims, expand_mirror, resolve_point
 ROOTS = ("pelvis", "hips", "root", "hip")
 FALLOFF = 0.5  # weight falls by e over this fraction of a bone's radius past the nearest bone
 SMOOTH = 10  # rounds of averaging weights with neighbouring vertices
+WORN_SMOOTH = 6  # the same over a worn part's own mesh, after it read the skin's weights (`skin_parts`)
 
 
 def skeleton(spec: dict) -> list[dict]:
@@ -672,7 +673,18 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                 for c in range(3):
                     np.add.at(N, F[:, c], fn)
                 N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
-            J, W = rig_template.top_k(rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None))
+            D = rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None)
+            if pn not in skin and len(F) and WORN_SMOOTH:
+                # cloth is a sheet of its own: the weights it read off the skin are evened over ITS mesh, as a rigger
+                # smooths a transfer. A collar's two faces and its edge read three places on the shoulder, and its
+                # wing crumpled when the arm rose. Seam-split vertices are one vertex here (or they'd crack).
+                _, inv = np.unique(np.round(V / 1e-5).astype(np.int64), axis=0, return_inverse=True)
+                inv = inv.ravel()
+                cnt = np.bincount(inv).astype(np.float64)[:, None]
+                Dw = np.zeros((len(cnt), D.shape[1]))
+                np.add.at(Dw, inv, D)
+                D = _smooth(Dw / cnt, inv[F], WORN_SMOOTH)[inv]
+            J, W = rig_template.top_k(D)
             out[pn] = _spread_twist(rb, V, J, W) if spread else (J, W)
         else:
             out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
