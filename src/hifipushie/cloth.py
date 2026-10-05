@@ -1649,6 +1649,11 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         # there. Its long edges are drawn back and the clearance restored, a few rounds
         if len(body.V):
             made_v = np.isin(pid, [names.index(nm) for nm in made_pieces(M, interfacing(B, M))])
+            for fd in M.get("folds") or []:  # (a fold's rows and flap are constructed: left as laid)
+                from . import folds as foldmod
+                made_v[foldmod._geom(M, fd)["rows"][0]["v"]] = True
+                for row in fd["rows"]:
+                    made_v[row] = True
             for _ in range(3):
                 _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
                 if hi_[~made_v[M["F"]].any(1)].max() <= 1.04:
