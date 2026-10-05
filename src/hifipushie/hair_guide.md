@@ -452,3 +452,110 @@ More sources (cards):
   11k low / 25k mid), Ellie Porfyridou, [Real-time hair](https://www.digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+) (up to ~100k in current games).
 - Superhive, [Fiberbake](https://superhivemarket.com/products/fiberbake-hair-cards): strand effects (curl, clump,
   braid, frizz), atlas packing, a live triangle readout.
+
+# From a strand groom to game hair: what artists do, and where we stand
+
+Research of 2026-10-05 (the user: "do more research on how to turn blender hair into game-ready assets"). Claims
+marked (snippet) were read in a search summary only, not on the page; "not found" means no source turned up.
+
+## The method every tool shares
+
+1. **Groom a few strand CLUMPS, not the head**: 4-16 variants from dense and opaque to sparse, fly-away and
+   tip-heavy.
+2. **Bake them orthographically onto a plane = the atlas.** Passes, the union across tools: opacity, depth / height,
+   normal, root-to-tip gradient, per-strand id / random, AO, flow (tangent), colour. Unreal's minimal set is
+   diffuse, depth, root, unique id (80.lv XGen breakdown); FiberShop writes 10 at 4K (albedo, alpha, height, normal,
+   id, root/tip, flow, AO, translucency, specular; snippet); FiberBake (a Blender add-on, GPL, paid) bakes 12 with
+   Cycles and packs the atlas: the proof that a Cycles bake of Hair Curves is the Blender way.
+3. **Place cards in layers by opacity**: the base layer is the most opaque and hides the scalp; each layer above is
+   more transparent; break-up and fly-aways last. Epic's Hair Card Generator tutorial gives the only published
+   numbers (a messy bun, LOD 0, ~54.5k triangles):
+
+   | layer | clumps | triangles | atlas islands |
+   |---|---|---|---|
+   | coverage | 50 | 2,000 | 25 |
+   | mid | 200 | 7,500 | 60 |
+   | top | 500 | 25,000 | 60 |
+   | fly-aways | 371 single-strand cards | 10,000 | 25 |
+   | short hairs | 500 | 10,000 | 75 |
+
+   It makes the cards automatically: strands are clustered into clumps, three cards a clump, then the atlas. LODs
+   either cut triangles on the same textures or regenerate cards into reserved atlas space.
+
+Tools and what each teaches (none is a dependency: paid ones are method references only):
+- Hair Tool (B. Styperek, paid): cards generated from hair curves or a geometry-nodes hair system; bakes normal, AO,
+  diffuse, tangent, id, root, flow, depth; automatic UVs (snippet).
+- D. Bystedt's "Hair cards from curves" (free geometry nodes): card meshes deformed along hair curves, twist aligned
+  to the head surface. Cards from guides need nothing but nodes.
+- GS CurveTools is Maya only (curve-controlled cards with per-point width and twist, layers). HairNet makes guides,
+  not cards.
+- Blender Conference 2024, "Mesh Hair with Geometry Nodes and Hair Curves" (S. Matsumoto): editable cards and tubes
+  from nodes, hair curves used to make their textures.
+- Hair cap and hairline: only tutorial-level sources. Houdini's docs describe finer "transitional" cards between
+  layers; the usual scalp texture baked from the groom + single-strand cards along the hairline has no primary source.
+
+## Engines
+
+- **Unreal**: a Groom asset from an Alembic file. Schema (Epic's docs): `groom_version_major/minor` (1, 5),
+  per curve `groom_guide`, `groom_group_id`, `groom_id`, `groom_root_uv`, optional `groom_closest_guides` /
+  `groom_guide_weights`, per vertex `groom_color`, widths from the curves (`groom_width`). Each groom LOD is
+  strands, cards or a mesh; card textures are Depth, Coverage, Tangent, Attributes (root uv / coord u / seed),
+  Material, Auxiliary. Strands run on Windows, Mac (M2+), Linux, PS5, Xbox Series; cards and meshes everywhere.
+  Card shading: the Hair shading model with the tangent in place of the normal, dithered opacity resolved by
+  TAA / TSR, the depth map into pixel depth offset (snippet).
+- **Unity**: `com.unity.demoteam.hair` (strands from Alembic curves, clustering LODs, GPU simulation); HDRP's Hair
+  material is Kajiya-Kay ("approximate", for cards) or Marschner ("physical").
+- **Godot**: no strand hair. Cards with alpha scissor / alpha hash + TAA or alpha-to-coverage, anisotropy with a
+  flow map or a custom Kajiya-Kay shader.
+- **glTF**: `MASK` + alpha-to-coverage, or two passes (an opaque clip pass ~0.7 for depth, then a blended pass for
+  soft edges). `KHR_materials_anisotropy` is a brushed-metal lobe, not a hair BSDF: no transmission, no root / id
+  inputs. Hair in glTF is cards + a recipe for the engine's own hair shader.
+- **Blender writes strands**: Hair Curves go into Alembic and USD since 4.2 (release notes). Whether the stock
+  exporter passes named `groom_*` attributes through is unverified (a third-party exporter writes them with
+  pyalembic); Unreal wants centimetres (scale 100) and applied transforms.
+
+## Budgets (what could be sourced)
+
+Aloy (Horizon Zero Dawn): ~100k hair triangles on ~50 splines (snippet). A student LOD study: the same style at
+65k / 30k / 13k / 6k / 4k / 2.5k, quality holding "down to a point"; complex female hair 19k. Epic's tutorial: ~54k
+at LOD 0. Textures: 4K on marketplace assets, 512 px cited once for production (snippets). No published per-LOD
+table for NPC or mobile hair was found; cards -> fewer cards -> a helmet mesh matches Unreal's strands / cards /
+mesh LOD types but is not sourced as numbers.
+
+## "Volumised" strands (the user's remembered production pipeline)
+
+Nothing documented matches a strand-to-solid-mesh conversion. Sprite Fright's hair meshes were sculpted and
+retopologised by hand beside the particle hair and "updated to match grooming" (production log, May 2021). Blender
+Studio's procedural hair nodes post only notes that larger radii self-intersect when converted to mesh. No Charge or
+Wing It write-up, no per-clump Points to Volume pipeline. The nearest real practice is a profile swept along each
+clump's curve (Curve to Mesh): which is what our solid locks are.
+
+## Where our pipeline stands against that practice
+
+| practice | ours today | gap |
+|---|---|---|
+| groom on strands | Hair Curves from the spec's locks (`style: "strands"`) | in progress |
+| clump variants baked to an atlas, 8+ passes | a drawn numpy atlas (colour, alpha, normal, aux) | bake from the groom's own clumps with Cycles: alpha, depth, normal, root-tip, id, flow, AO; unlit colour |
+| cards generated from clumps, 3 a clump, layered by opacity | cards cut from each lock, 1-3 layers | cut from the strand groom's clumps; Epic's five layers and triangle shares as the default recipe |
+| scalp cap texture + hairline cards | a cap mesh wearing a hairline tile, baby cards | bake the scalp layer onto the scalp's UV; single-strand hairline cards |
+| LODs: fewer triangles on one atlas, then a helmet | one budget | LOD chain; the solid locks / cap as the last LOD |
+| engine shader: tangent-space hair BSDF, dithered alpha, depth offset | glTF MASK + anisotropy + extras | ship root / id / depth / flow maps + a recipe per engine |
+| strands for film and high-end engines | none | Alembic groom (`groom_*`) + USD beside the cards |
+
+## Sources (this section)
+
+- Epic, Alembic for grooms: https://dev.epicgames.com/documentation/unreal-engine/using-alembic-for-grooms-in-unreal-engine
+- Epic, Hair Card Generator tutorial: https://dev.epicgames.com/documentation/unreal-engine/creating-hair-cards-and-lods-using-hair-card-generator
+- Epic, cards and meshes for grooms: https://dev.epicgames.com/documentation/unreal-engine/setting-up-cards-and-meshes-for-grooms-in-unreal-engine
+- Epic, groom platform support: https://dev.epicgames.com/documentation/unreal-engine/groom-platform-support-in-unreal-engine
+- Blender 4.2 release notes, I/O: https://developer.blender.org/docs/release_notes/4.2/pipeline_assets_io/
+- Groom Exporter for Unreal (third party): https://blenderartists.org/t/groom-exporter-for-unreal-engine/1415778
+- 80.lv, hair for real-time projects (XGen): https://80.lv/articles/creating-hair-for-real-time-projects/
+- 80.lv, Bystedt's free hair cards from curves: https://80.lv/articles/free-hair-cards-from-curves-setup-for-blender/
+- FiberBake: https://superhivemarket.com/products/fiberbake-hair-cards
+- Unity demo team hair: https://github.com/Unity-Technologies/com.unity.demoteam.hair
+- Blender Studio, procedural hair nodes: https://studio.blender.org/blog/procedural-hair-nodes
+- Sprite Fright production log: https://studio.blender.org/films/sprite-fright/production-logs/2021/may
+- BCon24, mesh hair with geometry nodes: https://conference.blender.org/2024/presentations/1990/
+- DAE graduation work, real-time hair LODs: https://digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+
+- Godot BaseMaterial3D: https://docs.godotengine.org/en/4.3/classes/class_basematerial3d.html

@@ -1579,7 +1579,10 @@ def hair_look(job):
         np.save(job["dump"], blender_hair.hair_points(names=names))
         json.dump(sorted(set(names)), open(job["dump"] + ".names.json", "w"))
         np.save(job["dump"] + ".ids.npy", np.searchsorted(sorted(set(names)), names).astype(np.int32))
-    render({**job, "opened": True})
+    if (job.get("hair") or {}).get("strands"):
+        import blender_strands
+        print("@@strands", json.dumps(blender_strands.stats()), flush=True)
+    render({**job, "opened": True, "engine": job.get("look_engine", "eevee")})
     if job.get("clay_views"):  # the same views with the hair as clay: form without the material's help
         blender_hair.clay()
         for ob in list(bpy.data.objects):

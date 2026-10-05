@@ -119,7 +119,7 @@ MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper
        "twist": "Twist", "flip": "Flip", "grey": "Grey", "edge": "Edge", "free": "Free"}
 LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002, "edge": 0.8,
                  "free": 0.0}
-STYLES = ("locks", "cards")  # hair.style: solid sculpted locks (stylised), or strand cards (hair_cards.py)
+STYLES = ("locks", "cards", "strands")  # hair.style: solid sculpted locks (stylised), or strand cards (hair_cards.py)
 WORDS = {"back": (0, 1, 0), "forward": (0, -1, 0), "down": (0, 0, -1), "up": (0, 0, 1), "left": (1, 0, 0),
          "right": (-1, 0, 0), "away": None}
 
@@ -1620,7 +1620,8 @@ def streams(sc: Scalp, g: dict, V) -> dict:
             "lock": (rng.uniform(0, 1, len(edges))[i]).astype(np.float32)}
 
 
-def job(name: str, spec: dict | None = None, only=None, budget: int | None = None, cap_step: float = 1.0) -> dict:
+def job(name: str, spec: dict | None = None, only=None, budget: int | None = None, cap_step: float = 1.0,
+        count: int | None = None) -> dict:
     """What Blender needs to show the hair: the locks, the cap (or the mass), the material. `only`: lock names or
     fnmatch patterns ("sweep*") to show alone on the underlayer (finding which locks make a patch)."""
     spec = store.load(name) if spec is None else spec
@@ -1650,6 +1651,9 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
            "centre": sc.C.tolist()}
     if h.get("style") == "cards" and stage != "mass":
         out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget)
+    if h.get("style") == "strands" and stage != "mass":
+        from . import hair_strands
+        out["strands"] = hair_strands.job(sc, g, spec, locks, tmp, count=count)
     return out
 
 
@@ -1817,7 +1821,7 @@ def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
 
 def look(name: str, views=("front", "three_quarter", "side", "back", "top"), size: int = 480, save: str | None = None,
          reference: str | None = None, spec: dict | None = None, caption: str = "", clay: bool = True,
-         only=None) -> tuple:
+         only=None, engine: str = "eevee", count: int | None = None, samples: int | None = None) -> tuple:
     """A fast hair look: the head-cropped stage file + the hair from the spec, EEVEE, a few perspective views, a
     thumbnail (how it reads small) and the reference beside. Returns (sheet image, seconds)."""
     from PIL import Image, ImageDraw
@@ -1846,9 +1850,16 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         idf = [{**f, "out": str(Path(tmp) / f"id_{f['name']}.png"),
                 "size": 480 if f["name"].startswith("matched") else 240} for f in frames]  # (matched ones finer:
         # the hairline's edge is measured on them)
-        j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size, "hair": job(name, spec, only=only),
-             "samples": 16, "dump": dump, "clay_views": cf, "id_views": idf}
-        out = _blender(j)
+        j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size,
+             "hair": job(name, spec, only=only, count=count),
+             "samples": samples or (32 if engine == "cycles" else 16), "dump": dump, "clay_views": cf, "id_views": idf,
+             "look_engine": engine}
+        if engine == "cycles":  # path-traced strands: minutes of every core, one such job at a time on the machine
+            from . import resources
+            with resources.heavy(f"hair look {name} (cycles)"):
+                out = _blender(j, timeout=3600)
+        else:
+            out = _blender(j)
         clays = [Image.open(f["out"]).convert("RGB") for f in cf]
         look.mass_share, look.lit_mass, masks = {}, {}, {}
         for f, fm in zip(idf, frames):  # red = the underlayer, green = locks (flat emission, nothing else drawn)

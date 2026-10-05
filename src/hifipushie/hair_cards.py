@@ -36,6 +36,17 @@ STRANDS = {
     "atlas": 1024,  # px across the strand atlas
     "baby": 1.0,  # baby hairs along the hairline: cards per cm x this (0 = none)
     "soft": 0.008,  # m: the hairline fades over this width (the cap's edge breaks up into strands)
+    # --- strand grooms (hair_strands.py: Blender Hair Curves); the cards above are cut from the same groom
+    "count": 30000,  # strands in a look (the export's atlas bake and video renders may ask for more)
+    "thickness": 1.0,  # x the strand's width (0.16 mm at 30k strands: fewer strands are drawn wider)
+    "clump_size": 0.007,  # m between the sub clumps strands gather into inside a lock (0.004 fine .. 0.02 chunky)
+    "clump_shape": 0.6,  # 0..1: where along a strand the gathering happens (0 = all along: ropes, 1 = only the tips)
+    "tip_spread": 0.3,  # 0..1: tips open out of their clump again (a brushed, airy end)
+    "loose": 0.3,  # 0..1: strands wander together off the lock's line (0 = combed flat, 1 = unbrushed)
+    "roots": 0.3,  # 0..1: strands of a lock start at different places along its root (no cut line at a root)
+    "under": 1.0,  # x the scalp layer's density (hair rooted all over the scalp under the locks; 0 = none)
+    "under_length": 0.04,  # m: how far the scalp layer's hairs run before they are under the locks
+    "flat": 1.0,  # x a lock's thickness for its strands (1 = the lock's own lens; 2 = a rounder, fuller lock)
 }
 # (kind, px wide at a 1024 atlas): what the cards choose from. Two of each so neighbours differ.
 TILES = [("dense", 136), ("dense", 136), ("medium", 136), ("medium", 136), ("sparse", 104), ("sparse", 104),

@@ -348,6 +348,7 @@ def id_pass():
         nt.links.new(e.outputs[0], o.inputs["Surface"])
         return m
     red, green, black = emit("hp_id_mass", (1, 0, 0)), emit("hp_id_lock", (0, 1, 0)), emit("hp_id_else", (0, 0, 0))
+    strands = bpy.data.objects.get("hair_scalp") is not None
     atlas_img = bpy.data.images.get("hp_hair_atlas")
 
     def cut(name, rgb):  # a card: the colour where its strands are (alpha over a half), nothing elsewhere
@@ -373,7 +374,7 @@ def id_pass():
             if n.type == "SET_MATERIAL":
                 n.inputs["Material"].default_value = green
     for ob in bpy.data.objects:
-        if ob.type not in ("MESH", "CURVE"):
+        if ob.type not in ("MESH", "CURVE") or (strands and (ob.get("hp_hair_scalp") or ob.get("hp_band"))):
             continue
         mat = red if ob.get("hp_hair_cap") else green if ob.get("hp_lock") else black
         if ob.get("hp_cards"):
@@ -385,6 +386,9 @@ def id_pass():
             ob.data.materials.clear()
             ob.data.materials.append(green)
             ob.update_tag()
+    if strands:
+        import blender_strands
+        blender_strands.id_pass()
     bpy.context.view_layer.update()
     sc = bpy.context.scene
     sc.view_settings.view_transform = "Standard"
@@ -396,6 +400,9 @@ def id_pass():
 
 def clay():
     """The hair material as plain clay (a mid grey-brown, no gaps, sheen or grooves): judge the forms alone."""
+    if bpy.data.objects.get("hair_scalp") is not None:
+        import blender_strands
+        blender_strands.clay()
     m = bpy.data.materials.get("hp_hair")
     if m is None:
         return
@@ -647,6 +654,14 @@ def show(hair: dict):
     """Apply a hair job (hair.job): the locks and the cap."""
     if not hair:
         return []
+    import blender_strands
+    if hair.get("strands"):  # strand hair (blender_strands.py): Hair Curves guides, no solid locks, no shell
+        coll = bpy.data.collections.get("hair")
+        for ob in list(coll.objects) if coll else []:
+            if ob.get("hp_lock") is not None or ob.get("hp_hair_cap") or ob.get("hp_cards"):
+                bpy.data.objects.remove(ob)
+        return blender_strands.show(hair["strands"])
+    blender_strands.clear()
     material(hair["look"])
     made = apply(hair["locks"], hair["look"])
     cd = hair.get("cards")
@@ -767,6 +782,9 @@ def hair_points(coll_name: str = "hair", names: list | None = None):
     coll = bpy.data.collections.get(coll_name)
     if coll is None:
         return np.zeros((0, 3), np.float32)
+    if bpy.data.objects.get("hair_scalp") is not None:
+        import blender_strands
+        return blender_strands.points(names)
     dg = bpy.context.evaluated_depsgraph_get()
     out = []
     for ob in coll.objects:
