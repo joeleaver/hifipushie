@@ -132,10 +132,23 @@ def template_weights(spec: dict, rb: list[dict], surf: dict) -> np.ndarray | Non
     have = (src >= 0) & (tot[np.maximum(src, 0)] > 1e-6)
     out = np.zeros((len(src), len(rb)))
     out[have] = D[src[have]] / tot[src[have], None]
-    if (~have).any():  # the grafted neck / unweighted helpers: the nearest weighted vertex's (the neck loop's)
-        _, k = cKDTree(Wq[have]).query(Wq[~have])
+    if (~have).any():
+        # the grafted neck and head: the nearest weighted vertex's (the neck loop's) next to it, handing over to the
+        # Neck joint alone within GRAFT_REACH (the rigid head rule makes the head Head after). Copied all the way
+        # up, the loop's shoulder and upper-arm shares (0.38 / 0.19 on the golfer) held the whole neck and the
+        # throat's falloff band: an arm raised 60 deg pulled the neck's side and the collar round it 25-36 mm.
+        d, k = cKDTree(Wq[have]).query(Wq[~have])
         out[~have] = out[np.flatnonzero(have)[k]]
+        if PREFIX + "Neck" in names:
+            t = np.clip(d / GRAFT_REACH, 0.0, 1.0)
+            t = (t * t * (3 - 2 * t))[:, None]
+            neck = np.zeros(len(rb))
+            neck[names.index(PREFIX + "Neck")] = 1.0
+            out[~have] = (1 - t) * out[~have] + t * neck
     return out
+
+
+GRAFT_REACH = 0.04  # m from the template's own vertices over which a grafted neck's weights become the Neck joint's
 
 
 def _fallback(name: str, names: list[str]) -> str:
