@@ -1090,6 +1090,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       direction (NaN) and were dropped, so nothing sewed the seam (the "drafting" agent's jacket CB stood open).
       `cloth_zozo.part_stitches`: each such end steps 1 mm back into its own cloth (layers part along the normal),
       held/made ends stay; job `stitch_gap` (0 = drop as before).
+    - STATE when the usage limit stopped clothsim (2026-10-05): `over` / `support` / `layer_gap` are in the design
+      sheet, validation and stages 3 / 5 (untested beyond the cloth tests). The shirt regression run after the merge
+      of drafting's placement + parted stitches (scratch log fl_17) was NOT judged: its settle finished (1135 s on a
+      loaded machine, was 263 s), the fine settle reported "start stretch up to 120%" and was waiting for the heavy
+      slot. Next: judge that run against fl_16's numbers, then `ly_01` (Jaeger over Simon; ZOZO at
+      $HIFIPUSHIE_ZOZO=/mnt/data/hifipushie/assets/zozo/release), then the joint settle and the lapel facing.
     - Open: the yoke ridge behind the collar; the upper sleeve's folds still read busy; Carlton pinned to
       `method: "simulate"` (upper-back pleat bunches, tail knife pleat is a seam gap, cap split +7.5 / -5.0%, stand
       +4%, collar +4.5%).
