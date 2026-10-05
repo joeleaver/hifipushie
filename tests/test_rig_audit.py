@@ -267,6 +267,27 @@ def test_grafted_neck_and_worn_parts():
         assert "UpLeg" in str(e)
 
 
+def test_bound_parts_do_not_bury_their_neighbours():
+    """A rigged export drops faces buried in another part, but not across parts that move apart: the golfer's
+    shorts had a hole where the hip bag (rig_bone Hips) sat at rest, shown as soon as the thigh lifted."""
+    from hifipushie import surface
+    from hifipushie.spec import compile_prims
+    spec = {"joints": {"a": {"pos": [0, 0, 1], "r": 0.1}, "b": {"pos": [0.12, 0, 1], "r": 0.1}},
+            "blobs": {"leg": {"at": "a", "size": [0.1, 0.1, 0.1]},
+                      "bag": {"at": "b", "size": [0.1, 0.1, 0.1], "part": "bag"},
+                      "cuff": {"at": "a", "size": [0.12, 0.12, 0.03], "part": "cuff"}},
+            "parts": {"bag": {"rig_bone": "Hips"}, "cuff": {}}}
+    st = {}
+    for q in compile_prims(spec):
+        st.setdefault(q.part, []).append(q)
+    names = list(st)
+    X = np.array([[0.09, 0, 1.0], [0.0, 0.09, 1.0], [0, 0, 1.09]])  # on the leg: in the bag, in the cuff, free
+    part = np.full(3, names.index("body"))
+    assert surface.hidden(st, X, part, names, 0.005).tolist() == [1, 1, 0], (names, surface.hidden(st, X, part, names, 0.005))
+    apart = {pn: (spec["parts"].get(pn) or {}).get("rig_bone") for pn in names}
+    assert surface.hidden(st, X, part, names, 0.005, apart).tolist() == [0, 1, 0]
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
