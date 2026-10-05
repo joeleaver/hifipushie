@@ -74,8 +74,9 @@ sits in the dermis, so it is multiplied INTO the skin's colour under its relief 
 like a sticker; with years the lines spread, black drifts blue-green and thins, colours fade [14].
 
 ### 5. Hair on the skin
-`"hair"`: `brows` are hairs, not a painted arc: strokes that grow up at the inner end, along the brow in the middle
-and out-and-down at the tail (`density`, `thickness`, `color`, `grey`); `lashes` darken the lash lines; `stubble` is
+`"hair"`: `brows` are hairs, not a painted arc: a drawn picture of ~900 tapered hairs that grow up at the inner end,
+along the brow in the middle and out-and-down at the tail (`density`, `thickness`, `color`, `grey`), laid from the brow
+landmarks; `lashes` darken the lid margins (the skin touching the eyeball); `stubble` is
 a cool shadow under the skin (dark hair seen through it) plus dots, full on chin and lip and thinning up the cheek;
 `body` is fine hairs on forearms and chest. Long lashes, beards and head hair are geometry (`groom_hair`).
 
@@ -102,6 +103,9 @@ leave one flat roughness. A highlight that is one clean blob is the plastic tell
 `nails`. Every product changes roughness and specular, not only colour; the skin's pores stay on top of all of it.
 
 ### 9. Shading check
+- `look_skin` renders in EEVEE: seconds a view once the material is compiled (a skin edit costs 20-150 s, more with
+  many scars, tattoos and make-up). `engine="cycles"` path-traces instead (real subsurface scattering: use it for this
+  check); a skin with very many fine layers can exceed what Cycles' shader holds and renders BLACK: thin it out.
 - `look_skin(views=["face", "ear"])`: under the studio light the shadow edge should turn redder, not grey; back-lit,
   ears and nostril wings should glow. `"shading"`: `subsurface` weight, `radius` per channel (red travels 2-3x
   further than green and blue [18]), `scale` (m). Too much scattering reads as wax, especially on hands [21].
