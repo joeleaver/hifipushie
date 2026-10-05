@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import veg_bark, veg_leaf, veg_mesh, vegetation
+from . import veg_bark, veg_bough, veg_leaf, veg_mesh, vegetation
 
 
 def _normals(V, F):
@@ -60,11 +60,12 @@ def wind_nodes(tree: dict) -> dict:
 
 
 def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.0, protect=None, cap: float = 2.5,
-                 back: float = 0.0) -> dict:
+                 back: float = 0.0, tw: dict | None = None) -> dict:
     """Every twig's card placed on the tree, as one mesh: V, F, uv, tint, node (the tree node it stands on), flutter
     (0 at the card's foot .. 1 at its tip), N (normals bent out from the crown's middle: a crown shades as a volume).
     keep < 1: see pick_twigs."""
-    tw = pick_twigs(tree, keep, min_radius, protect, cap=cap, back=back)[0]
+    if tw is None:  # (given: bough cards, placed by veg_bough)
+        tw = pick_twigs(tree, keep, min_radius, protect, cap=cap, back=back)[0]
     if not len(tw["pos"]):
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0),
                 "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3)), "reach": np.zeros(0), "phase": np.zeros(0)}
@@ -249,7 +250,10 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: fl
             out.update(out2)
             out["keep"] = float(np.clip(((triangles - len(out["wood"]["F"])) // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))
             out["floating"] = 0.0
-    fol = int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
+        if not tree.get("clump"):  # a grown tree: cards of its own boughs, as many as the foliage's share buys
+            out["boughs"] = int(min(max(triangles - len(out["wood"]["F"]), 0) // veg_bough.TRIS, veg_bough.most(tree)))
+            out["boughs"] = len(veg_bough.plan(tree, out["boughs"])["roots"])
+    fol = out["boughs"] * veg_bough.TRIS if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0
     return out
@@ -268,15 +272,16 @@ def evergreen(spec: dict) -> bool:
     return bool(lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")))
 
 
-def season_atlas(spec: dict, season: str, twig_color) -> dict | None:
+def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
     """The foliage atlas in a season: summer as specified; autumn = the same leaves in `leaves.autumn` (deciduous only;
     an evergreen keeps its colour); snow = the summer picture frosted. None = no leaves then (a deciduous winter)."""
     lf = spec["leaves"]
+    make = make or veg_leaf.atlas  # (bough cards: veg_bough.atlas of the tree)
     if season in ("winter", "bare") and not evergreen(spec):
         return None
     if season == "autumn" and not evergreen(spec):
-        return veg_leaf.atlas({**lf, "color": lf.get("autumn", AUTUMN)}, twig_color)
-    at = veg_leaf.atlas(lf, twig_color)
+        return make({**lf, "color": lf.get("autumn", AUTUMN)}, twig_color)
+    at = make(lf, twig_color)
     if season == "snow":
         rng = np.random.default_rng(5)
         h, w = at["color"].shape[:2]
@@ -467,15 +472,19 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             W = bud["wood"]
             lf_c, cap_c, back_c = cluster_leaves(s["leaves"], bud["keep"])
             at_c, m_c, vf_c = at, M_FOL, var_fol
-            if at is not None and lf_c is not s["leaves"]:  # bough cards: their own picture (and its season variants)
-                ck = json.dumps(lf_c["card"], sort_keys=True)
+            tw_c = None
+            boughs = bool(bud.get("boughs")) and at is not None
+            if at is not None and (boughs or lf_c is not s["leaves"]):  # bough cards: their own picture (and its season variants)
+                ck = f"boughs{li}" if boughs else json.dumps(lf_c["card"], sort_keys=True)
                 if ck not in cluster_mats:
-                    sp_c = {**s, "leaves": lf_c}
-                    at_c = veg_leaf.atlas(lf_c, twc)
+                    # (a set shares one bough atlas per LOD: baked from the first plant that needs it)
+                    make = (lambda lf_, twc_, t0=t, nb=bud["boughs"]: veg_bough.atlas(t0, lf_, twc_, nb)) if boughs else veg_leaf.atlas
+                    sp_c = {**s, "leaves": s["leaves"] if boughs else lf_c}
+                    at_c = make(sp_c["leaves"], twc)
                     m_ = foliage_material(at_c, f"foliage_boughs{len(cluster_mats) + 1}")
                     vf_ = {}
                     for se in seasons:
-                        a_ = season_atlas(sp_c, se, twc) if se != "summer" else at_c
+                        a_ = season_atlas(sp_c, se, twc, make) if se != "summer" else at_c
                         if a_ is None:
                             materials.append({**json.loads(json.dumps(materials[m_])), "name": f"{materials[m_]['name']}_{se}", "alphaCutoff": 1.01})
                             vf_[se] = len(materials) - 1
@@ -489,7 +498,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                         vf_["wet"] = len(materials) - 1
                     cluster_mats[ck] = (at_c, m_, vf_)
                 at_c, m_c, vf_c = cluster_mats[ck]
-            L = foliage_mesh(t, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c) \
+                if boughs:
+                    tw_c = veg_bough.place(t, bud["boughs"], at_c)
+            L = foliage_mesh(t, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c, tw=tw_c) \
                 if at and len(veg_leaf.place(t)["pos"]) else None
             pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
             kids = []

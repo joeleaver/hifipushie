@@ -50,6 +50,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
     M = veg_mesh.tubes(tree, tile=tile)
     tw = veg_leaf.place(tree)
+    at_b = None
     if triangles:  # the budgeted plant, exactly as export_plant(triangles=) writes it
         from . import veg_export
         if foliage != "cards":
@@ -57,14 +58,20 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         ct = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
         bud = veg_export.budget(tree, triangles, tile, ct)
         M = bud["wood"]
-        lf, cap_c, back_c = veg_export.cluster_leaves(lf, bud["keep"])
-        tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
+        if bud.get("boughs"):  # cards of the tree's own boughs
+            from . import veg_bough
+            at_b = veg_bough.atlas(tree, lf, bark.get("twig_color") or [0.45, 0.4, 0.35], bud["boughs"])
+            tw = veg_bough.place(tree, bud["boughs"], at_b)
+        else:
+            lf, cap_c, back_c = veg_export.cluster_leaves(lf, bud["keep"])
+            tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
     arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"], "dead": M["dead"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
     at = None
+
     if len(tw["pos"]):
         if foliage == "cards":
-            at = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
+            at = at_b or veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
             nv = len(at["cards"])
             var = veg_leaf.card_variant(tw, nv)
             for i, c in enumerate(at["cards"]):

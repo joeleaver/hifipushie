@@ -66,7 +66,7 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
         rr = np.concatenate([[min(r0 * 1.15, rad[root]) if root > 0 else r0], rad[nodes]])
         nid = np.concatenate([[nodes[0]], nodes])  # the node each ring belongs to (wind weights, per-node data)
         if simplify > 0 and len(pts) > 2:  # fewer rings: drop nodes the axis runs nearly straight through (within
-            keep_ = _rdp(pts, simplify * np.maximum(rr, 0.004), rr)  # `simplify` x its radius), and keep its taper
+            keep_ = _rdp(pts, simplify * np.clip(rr, 0.004, 0.12), rr)  # `simplify` x its radius), and keep its taper
             pts, rr, nid = pts[keep_], rr[keep_], nid[keep_]
         foot = root == 0 and order[nodes[0]] == 0
         n_under = 0
