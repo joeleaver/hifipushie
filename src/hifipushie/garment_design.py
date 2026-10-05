@@ -247,46 +247,9 @@ def expand(g: dict) -> dict:
 
 
 def fold_polyline(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
-    """A fold entry's line in its piece's pattern coordinates, (k, 2), clipped to the piece. Line forms:
-    a line name of the piece; [pointOrMark, pointOrMark] (pattern._line, "name+[dx,dy]" offsets); [[x, y], ...];
-    {"edge": "piece:a>b", "offset": m} (parallel to that edge, `offset` into the piece); {"mid": "x" | "y"} (a straight
-    line through the piece's middle along x (a band's lengthwise middle) or along y)."""
-    nm = f["piece"]
-    if nm not in pcs:
-        raise KeyError(f"fold {f.get('name', '')}: no piece {nm!r} (have {', '.join(pcs)})")
-    pc = pcs[nm]
-    P = pc["P"]
-    ln = f["line"]
-    if isinstance(ln, dict) and "edge" in ln:
-        enm, arc = ln["edge"].split(":", 1)
-        if enm != nm:
-            raise ValueError(f"fold on {nm}: its edge {ln['edge']!r} is on another piece")
-        L = P[pattern.arc_indices(pc, arc)]
-        n = max(3, int(pattern.length(L) / step) + 1)
-        seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
-        cum = np.r_[0, np.cumsum(seg)]
-        s = np.linspace(0, cum[-1], n)
-        L = np.c_[np.interp(s, cum, L[:, 0]), np.interp(s, cum, L[:, 1])]
-        t = np.gradient(L, axis=0)
-        nrm = np.c_[-t[:, 1], t[:, 0]]
-        nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
-        if np.mean(np.sum((P.mean(0) - L) * nrm, 1)) < 0:
-            nrm = -nrm
-        Q = L + float(ln.get("offset", 0.0)) * nrm
-    elif isinstance(ln, dict) and "mid" in ln:
-        lo, hi = P.min(0), P.max(0)
-        c = 0.5 * (lo + hi)
-        Q = np.array([[lo[0], c[1]], [hi[0], c[1]]]) if ln["mid"] == "x" else np.array([[c[0], lo[1]], [c[0], hi[1]]])
-    elif isinstance(ln, str):
-        Q = np.asarray(pc["lines"][ln], float)
-    else:
-        Q = np.asarray(pattern._line(pc, ln), float)
-    # keep what lies inside the piece (an offset edge runs past its ends' corners)
-    from .cloth import _inside
-    if len(Q) == 2:  # a straight line: densify before clipping
-        Q = Q[0] + (Q[1] - Q[0]) * np.linspace(0, 1, max(2, int(np.linalg.norm(Q[1] - Q[0]) / step) + 1))[:, None]
-    ins = _inside(P, Q)
-    return Q[ins] if ins.sum() >= 2 else Q
+    """A fold entry's line in its piece's pattern coordinates: `pattern.fold_line` (the one resolver; it also runs
+    the ends out to the outline)."""
+    return pattern.fold_line(pcs, f, step)
 
 
 # ---------------------------------------------------------------- roles

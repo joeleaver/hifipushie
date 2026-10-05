@@ -196,6 +196,9 @@
    "continuous": {"label": "continuous bound placket (a strip binding the slit)",
      "made_of": [{"role": "sleeve_placket", "count": 1}], "dims": {"slit": [70, 100]},
      "evidence": [{"piece": "sleeve_placket"}]},
+   "slit": {"label": "bound slit: the sleeve cut open 120-150 mm on the little-finger side (pattern op slit), its edges left as a narrow binding; the cuff's seam starts and ends at it, so the cuff's ends can lap. No placket strips",
+     "dims": {"slit": [120, 150]}, "evidence": [],
+     "lessons": ["With the slit the cuff opens where a cuff opens (the little-finger side), not under the arm, and the sleeve tube no longer has to stretch round the cuff's lap."]},
    "none": {"label": "no placket (sleeve end open or knit)", "evidence": []}
   },
   "front_closure": {
@@ -342,7 +345,7 @@
               "french": {"options": {"cuffStyle": "straightFrenchCuff"},
                          "folds": [{"piece": "cuff.L", "line": {"mid": "x"}, "angle": 0, "kind": "press", "name": "cuff turn-back"},
                                    {"piece": "cuff.R", "line": {"mid": "x"}, "angle": 0, "kind": "press", "name": "cuff turn-back"}]}},
-     "sleeve_placket": {"none": {}},
+     "sleeve_placket": {"slit": {}, "none": {}},
      "front_closure": {"buttons": {}},
      "placket": {"folded": {}},
      "hem": {"shirttail": {}, "straight_double": {"options": {"hemCurve": 0.25}}},
@@ -352,8 +355,8 @@
      "pockets": {"none": {}}
     },
     "cannot": {
-     "sleeve_placket.tower": "Simon drafts sleevePlacketUnderlap/Overlap and a placketCut line, but our design table doesn't cut the slit or sew the plackets yet (audit fix 6). Choose \"none\" and accept the cuff join's -1.8% (it shows as a twisted, ruffled join), or build the slit",
-     "sleeve_placket.continuous": "no slit op yet (see tower)",
+     "sleeve_placket.tower": "the table cuts the placket slit and sews the cuff from it (choose \"slit\"), but the underlap and overlap strips Simon drafts aren't sewn on yet",
+     "sleeve_placket.continuous": "the slit is cut (choose \"slit\"); no binding strip piece yet",
      "yoke.double": "one layer only",
      "placket.separate": "separateButtonPlacket isn't in the design table"
     }},
@@ -365,8 +368,8 @@
      "hem": {"coat": {}},
      "lining": {"none": {}},
      "shoulder": {"none": {}},
-     "back_vent": {"none": {}},
-     "belt": {"none": {}},
+     "back_vent": {"lapped_vent": {}, "none": {}},
+     "belt": {"back_belt": {}, "none": {}},
      "darts": {"back_shoulder": {}, "none": {}},
      "pockets": {"none": {}},
      "topstitch": {"edge": {}, "none": {}}
@@ -374,9 +377,7 @@
     "cannot": {
      "lining.full": "the table is the shell only (no lining pieces)",
      "lining.half": "the table is the shell only",
-     "shoulder.pad_and_head": "no pads or sleeve heads",
-     "belt.back_belt": "carlton.belt is drafted by FreeSewing but not in the table yet (zozo2 is adding it)",
-     "back_vent.lapped_vent": "the tail's CB is sewn full length (zozo2 is adding the lapped pleat)"
+     "shoulder.pad_and_head": "no pads or sleeve heads"
     }},
   "draft": {"kind": "any", "kinds": ["shirt", "blouse", "tee", "hoodie", "jacket", "coat", "trousers", "shorts", "skirt", "dress", "flat"], "can": {}, "_doc": "block + ops (pattern_draft.py): judged by evidence in the pieces, not by a recipe table"},
   "skirt_block": {"kind": "skirt", "kinds": ["skirt"],

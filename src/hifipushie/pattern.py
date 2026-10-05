@@ -339,8 +339,177 @@ def move_point(piece: dict, point: str, by, falloff: float = 0.05) -> dict:
     return dict(piece, P=P)
 
 
+def _poly_inside(P: np.ndarray, Q: np.ndarray) -> np.ndarray:
+    x, y = Q[:, 0][:, None], Q[:, 1][:, None]
+    a, b = P[None, :, :], np.roll(P, -1, axis=0)[None, :, :]
+    cond = (a[..., 1] > y) != (b[..., 1] > y)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        xc = a[..., 0] + (y - a[..., 1]) * (b[..., 0] - a[..., 0]) / (b[..., 1] - a[..., 1])
+    return (np.sum(cond & (x < xc), axis=1) % 2) == 1
+
+
+def _resampled(L: np.ndarray, step: float) -> np.ndarray:
+    seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
+    cum = np.r_[0, np.cumsum(seg)]
+    s = np.linspace(0, cum[-1], max(2, int(np.ceil(cum[-1] / step)) + 1))
+    return np.c_[np.interp(s, cum, L[:, 0]), np.interp(s, cum, L[:, 1])]
+
+
+def _outline_hit(P: np.ndarray, a: np.ndarray, d: np.ndarray) -> float | None:
+    """The smallest t >= -1e-9 where the ray a + t d meets the closed outline P (None if it doesn't)."""
+    A, B = P, np.roll(P, -1, axis=0)
+    e = B - A
+    den = d[0] * e[:, 1] - d[1] * e[:, 0]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = ((A[:, 0] - a[0]) * e[:, 1] - (A[:, 1] - a[1]) * e[:, 0]) / den
+        u = ((A[:, 0] - a[0]) * d[1] - (A[:, 1] - a[1]) * d[0]) / den
+    ok = (np.abs(den) > 1e-14) & (t >= -1e-9) & (u >= -1e-9) & (u <= 1 + 1e-9)
+    return float(t[ok].min()) if ok.any() else None
+
+
+def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
+    """A fold entry's line in its piece's pattern coordinates, (k, 2), running from outline to outline. Line forms:
+    a line name of the piece; [pointOrMark, pointOrMark] (`_line`, "name+[dx,dy]" offsets); [[x, y], ...];
+    {"edge": "piece:a>b", "offset": m} (parallel to that edge, `offset` into the piece); {"mid": "x" | "y"} (straight
+    through the piece's middle along x (a band's lengthwise middle) or along y). What lies outside the piece is cut
+    off, and an end that stops short of the outline by less than `reach` (default 1.5 cm) runs on straight to it (a
+    drafted fold line often stops at the seam allowance or a notch)."""
+    nm = f["piece"]
+    if nm not in pcs:
+        raise KeyError(f"fold {f.get('name', '')}: no piece {nm!r} (have {', '.join(pcs)})")
+    pc = pcs[nm]
+    P = pc["P"]
+    ln = f["line"]
+    if isinstance(ln, dict) and "edge" in ln:
+        enm, _, arc = ln["edge"].rpartition(":")
+        if enm and enm != nm:
+            raise ValueError(f"fold on {nm}: its edge {ln['edge']!r} is on another piece")
+        L = _resampled(P[arc_indices(pc, arc)], step)
+        t = np.gradient(L, axis=0)
+        nrm = np.c_[-t[:, 1], t[:, 0]]
+        nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
+        off = float(ln.get("offset", 0.0))
+        probe = L + max(off, 1e-3) * nrm
+        if _poly_inside(P, probe).mean() < 0.5:
+            nrm = -nrm
+        Q = L + off * nrm
+    elif isinstance(ln, dict) and "mid" in ln:
+        lo, hi = P.min(0), P.max(0)
+        c = 0.5 * (lo + hi)
+        Q = np.array([[lo[0], c[1]], [hi[0], c[1]]]) if ln["mid"] == "x" else np.array([[c[0], lo[1]], [c[0], hi[1]]])
+    elif isinstance(ln, str):
+        if ln not in pc["lines"]:
+            raise KeyError(f"fold on {nm}: no line {ln!r} (has {', '.join(sorted(pc['lines']))})")
+        Q = np.asarray(pc["lines"][ln], float)
+    else:
+        Q = np.asarray(_line(pc, ln), float)
+    Q = _resampled(Q, step)
+    ins = _poly_inside(P, Q)
+    if ins.sum() >= 2:  # the longest run inside the piece
+        runs, s0 = [], None
+        for i, v in enumerate(np.r_[ins, False]):
+            if v and s0 is None:
+                s0 = i
+            elif not v and s0 is not None:
+                runs.append((s0, i))
+                s0 = None
+        a, b = max(runs, key=lambda r: r[1] - r[0])
+        Q = Q[a:b]
+    reach = float(f.get("reach", 0.015))
+    out = [Q]
+    for end, sgn in ((0, -1), (-1, 1)):  # each end out to the outline
+        d = (Q[end] - Q[end + (1 if end == 0 else -1) * min(3, len(Q) - 1)])
+        d /= np.linalg.norm(d) + 1e-12
+        t = _outline_hit(P, Q[end], d)
+        if t is not None and t <= reach + step:
+            p = Q[end] + t * d
+            if t > 1e-6:
+                out = [p[None]] + out if end == 0 else out + [p[None]]
+    return np.concatenate(out)
+
+
+def slit(piece: dict, line, width: float = 0.003, name: str | None = None) -> dict:
+    """Cut a slit from the outline into the piece along a straight line (a line name or two points; the end on the
+    outline is its mouth): a sleeve placket's opening, a vent. The outline runs in along one lip to the tip and back
+    out along the other, the lips `width` apart at the mouth (the cloth a bound slit takes up), parallel up to a point at the tip (a wedge's
+    lips close to nothing toward the tip: mesh vertices 0.02 mm apart, which no contact solver holds apart). Names:
+    "<name>.a" and
+    "<name>.b" (the lips at the mouth, .a the lower x or y side), "<name>.tip"."""
+    L = piece["lines"][line] if isinstance(line, str) else np.asarray(_line(piece, line), float)
+    nm = name or (line if isinstance(line, str) else "slit")
+    P, names = piece["P"], dict(piece["names"])
+    ends = [np.asarray(L[0], float), np.asarray(L[-1], float)]
+    dist = [float(np.min(np.linalg.norm(P - e, axis=1))) for e in ends]
+    A, B = P, np.roll(P, -1, axis=0)
+
+    def on_outline(q):
+        d = B - A
+        t = np.clip(((q - A) * d).sum(1) / np.maximum((d * d).sum(1), 1e-18), 0, 1)
+        dd = np.linalg.norm(A + t[:, None] * d - q, axis=1)
+        e = int(np.argmin(dd))
+        return e, float(t[e]), float(dd[e])
+    hits = [on_outline(e) for e in ends]
+    m = 0 if hits[0][2] <= hits[1][2] else 1
+    mouth, tip = ends[m], ends[1 - m]
+    e, t, dd = hits[m]
+    if dd > 2e-3:
+        raise ValueError(f"{piece['name']}: slit {nm!r} doesn't start on the outline ({dd * 1000:.1f} mm off)")
+    ed = (B[e] - A[e]) / np.linalg.norm(B[e] - A[e])  # the outline's direction at the mouth
+    La = mouth - ed * width / 2  # reached first going round
+    Lb = mouth + ed * width / 2
+    up = (tip - mouth) / np.linalg.norm(tip - mouth)
+    back = min(1.5 * width, 0.5 * float(np.linalg.norm(tip - mouth)))
+    Sa, Sb = tip - up * back - ed * width / 2, tip - up * back + ed * width / 2  # the lips' shoulders under the tip
+    n = len(P)
+    # keep the outline's vertices clear of the lips
+    keep = np.ones(n, bool)
+    for i in (e, (e + 1) % n):
+        if np.linalg.norm(P[i] - mouth) < width:
+            keep[i] = False
+    new, remap = [], {}
+    for i in range(n):
+        if keep[i]:
+            remap[i] = len(new)
+            new.append(P[i])
+        if i == e:
+            ia = len(new)
+            new += [La, Sa, tip, Sb, Lb]
+    for k, i in list(names.items()):
+        if i in remap:
+            names[k] = remap[i]
+        else:  # a named point on the mouth goes to the nearer lip
+            names[k] = ia if np.linalg.norm(P[i] - La) <= np.linalg.norm(P[i] - Lb) else ia + 4
+    lo_first = (La[0], La[1]) <= (Lb[0], Lb[1])
+    names[nm + (".a" if lo_first else ".b")] = ia
+    names[nm + ".tip"] = ia + 2
+    names[nm + (".b" if lo_first else ".a")] = ia + 4
+    return dict(piece, P=np.asarray(new), names=names)
+
+
+def trim(piece: dict, edge: str, dist: float, name: str = "trim") -> dict:
+    """Cut the piece square across `dist` along its edge "a>b" from a, keeping a's side (a band cut to the length of
+    the edge it is sewn to). The cut's ends are named "<name>.a" (on the edge) and "<name>.b" (across)."""
+    a_name = edge.split(">")[0]
+    L = piece["P"][arc_indices(piece, edge)]
+    seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
+    cum = np.r_[0, np.cumsum(seg)]
+    if not 1e-6 < dist < cum[-1] - 1e-6:
+        raise ValueError(f"{piece['name']}: trim at {dist * 1000:.0f} mm along {edge} ({cum[-1] * 1000:.0f} mm long)")
+    i = int(np.searchsorted(cum, dist) - 1)
+    d = (L[i + 1] - L[i]) / seg[i]
+    q = L[i] + (dist - cum[i]) * d
+    n = np.array([-d[1], d[0]])
+    out = turn(piece, [(q - n).tolist(), (q + n).tolist()], keep_point=a_name)
+    names = dict(out["names"])
+    ia, ib = names.pop("turn.a"), names.pop("turn.b")
+    if np.linalg.norm(out["P"][ib] - q) < np.linalg.norm(out["P"][ia] - q):
+        ia, ib = ib, ia
+    names[name + ".a"], names[name + ".b"] = ia, ib
+    return dict(out, names=names)
+
+
 def apply(pieces: dict, ops: list) -> dict:
-    """Apply alteration ops in order: {"op": "slash_spread" | "turn" | "move" | "scale", "piece", ...}."""
+    """Apply alteration ops in order: {"op": "slash_spread" | "turn" | "move" | "scale" | "slit", "piece", ...}."""
     pieces = {k: copy.copy(v) for k, v in pieces.items()}
     for op in ops or []:
         kind = op["op"]
@@ -358,8 +527,15 @@ def apply(pieces: dict, ops: list) -> dict:
                 pieces[nm] = move_point(p, op["point"], op["by"], float(op.get("falloff", 0.05)))
             elif kind == "scale":
                 pieces[nm] = slash_spread(p, _line(p, op["line"]), float(op["amount"]), "none")
+            elif kind == "slit":
+                pieces[nm] = slit(p, op["line"], float(op.get("width", 0.003)), op.get("name"))
+            elif kind == "trim":  # "length": m, or "match": edges ("piece:a>b") whose summed length it is cut to
+                dist = float(op["length"]) if "length" in op else sum(
+                    length(pieces[e.split(":")[0]]["P"][arc_indices(pieces[e.split(":")[0]], e.split(":", 1)[1])])
+                    for e in op["match"])
+                pieces[nm] = trim(p, op["edge"], dist, op.get("name", "trim"))
             else:
-                raise ValueError(f"unknown alteration op {kind!r} (slash_spread, turn, move, scale)")
+                raise ValueError(f"unknown alteration op {kind!r} (slash_spread, turn, move, scale, slit)")
     return pieces
 
 
