@@ -66,7 +66,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         if foliage == "cards":
             at = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
             nv = len(at["cards"])
-            var = (vegetation._child(tw["key"], 11) % np.uint64(nv)).astype(int)
+            var = veg_leaf.card_variant(tw, nv)
             for i, c in enumerate(at["cards"]):
                 arrays.update({f"card{i}_V": c["V"], f"card{i}_F": c["F"], f"card{i}_uv": c["uv"]})
             info.update(leaf_triangles=int(len(tw["pos"]) * at["triangles"]), card_fill=round(at["fill"], 2),

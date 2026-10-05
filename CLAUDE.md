@@ -2521,7 +2521,34 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   sheet); (4) wet smear, snow on ground and limbs, wind measured by vertex displacement, the 8k pine set and the
   three forest-kit trees re-run; (5) stage 3 small plants + palm, stage 5 styles, terrain integration. Report at each
   mergeable point with an all-species sheet (vg_36_all_inleaf.png was made by cropping each sheet's lower row).
-- Open (read of vg_36, 2026-10-06): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
+- Vegetation 2 (2026-10-05/06, branch `vegetation2`, renders vg_60-62; scratch scripts in the worktree's untracked
+  `scratchpad/`: q.py one look, sweep.py = silhouettes of habit variants in a column (the fast loop: 1 s a tree),
+  sheet.py / allsheet.py <tag> = the species sheets + `vg_<tag>_all_inleaf.png`, sprdiag.py = limbs by height band).
+  Masks traced for willow_f, willow_e, pine_c, pine_e (masks.json).
+  - Weeping willow: the mushroom was hanging orders that grew for ever with `shed` 0 under a dome envelope. Now no
+    envelope: scaffold `plagio` toward 50 deg, the order below the curtains level (22-25 deg, `tip_life` 12), hanging
+    orders with `tip_life` 8 / 6 and `uneven` 0.5, `shed` 0.05, `prune under 1.2` (browse line). Order 2 with a
+    negative elevation ran straight to the ground as spokes. IoU 0.79 on willow_f; reads as a weeping willow.
+  - Scots pine: `habit.bud_each` (bud_break drawn per bud: with it per node, whole whorls of four broke or none =
+    a pagoda of tiers on a bare pole), trunk `apical` 0.72 so it runs on through the crown, `pipe` 1.95, 11 limbs,
+    bark `twig_radius` (orange only on wood over 5-14 cm: every thin branch orange read as a fan of sticks).
+    Card = a bottlebrush tuft: `twig.fascicle` 2 (pairs), `needle_angle` [75, 30], `bud`, `card.cross` 2 + `card.end`
+    (a third card across the shoot with the tuft seen from its tip, its own atlas cell, a shallow cone).
+  - Norway spruce's cage of brown hoops (the user's arrows), by measure (sprdiag): lowest limbs 32 cm thick under a
+    60 cm trunk (`ring` added to ALL wood: now per order, [0.003, 0.0005, 0.0002] -> 8 cm), foliage only on the last
+    17-20% of each limb (branchlets stopped at `tip_life` 7; given longer life they hung 4 m: `habit.slowing` = an old
+    axis's segments shrink, so branchlets creep and their needle-bearing ends stay by the limb: foliage from ~45%),
+    twigs 20 per m, cards x1.15. Before/after with the photo: vg_62_spruce_cage.png. Cost: 60k nodes, 42k twigs,
+    Blender 45-120 s. Honest read: the cage is gone, but the cone is now too even and solid (no tiers, no dark gaps).
+  - White willow: vigour 6.5, shed 0.035, crooked limbs: a small vase-shaped tree, thin.
+  - Small-plant groundwork in veg_leaf (not yet used by a plant): leaf shapes linear / strap / round / petal, twig
+    arrangements `basal` and `pinnate`, `taper`, `flower` (ray / cup / spike, own colours through a per-vertex `rgb`),
+    `leaves.parts` (several pictures in one atlas: `part_specs`, `part_cards`, `card_variant`), `tree["twigs"]`
+    (a plant that brings its own card placements).
+  - Looks: snow / wet lie on the ground too; `wind_plant` reports displacement in metres per class of vertex
+    (foot, trunk top, limb ends, leaf tips) and how far the limbs swing in step, with warnings.
+  - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
+- Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
   Not done: wet smear, snow on ground/limbs, wind measured by displacement, 8k pine set re-run. Earlier: low LODs need bough-sized cluster cards (20k oak = a few big clumps); spruce close-ups are feather cards;

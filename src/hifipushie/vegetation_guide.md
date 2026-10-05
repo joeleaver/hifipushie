@@ -97,15 +97,17 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 | `light` | pull toward open light (fills gaps, avoids its own shade) | 0.1-0.4 |
 | `buds`, `whorl`, `divergence`, `plane` | per order: side buds per node (conifer trunk 4-6 with whorl true), degrees between successive buds (137.5 spiral, 180 two-ranked), flat sprays | |
 | `bud_break` | by the NEW shoot's order ([1] = limbs off the trunk): chance a bud can ever grow. Lower [1] = fewer, stronger limbs | 0.3-1 |
+| `bud_each` | true: `bud_break` is drawn for every bud of a whorl by itself (a pine keeps one or two limbs of each whorl of four: limbs at many heights, a deep crown); false: for the whole whorl (whole tiers or none: a pagoda when `bud_break` is low) | false |
 | `bud_life` | steps a bud stays able to grow: longer = denser inside | 3-7 |
 | `max_order` | deepest branching (spruce 2, broadleaves 5) | |
 | `shed` | light per segment under which a branch is dropped: higher = cleaner trunk and open interior; too high and the tree starves | 0-0.3 |
 | `shadow` | [strength, falloff, depth] of each leaf's shade. Shade-tolerant, dense (spruce): [0.03, 3, 2]; light-demanding, open: [0.25, 1.6, 6] | |
 | `tip_life` | per order: growth steps an axis keeps extending, 0 = for ever. Short-lived hanging branchlets 6-10 (spruce); limbs that stop reaching 20-30 | [0] |
+| `slowing` | per order: steps after which an axis's new segments are half as long (0 = never). Old branchlets creep: their young, needle-bearing ends stay close to the limb all along it instead of hanging metres below (spruce [0, 0, 4]) | [0] |
 | `uneven` | per order: each axis grows at its own pace, +- this share: a ragged outline instead of a turned cone | 0-0.5 |
 | `clear` | m of trunk that never branches | 0-6 |
 | `sag`, `sag_max` | bending under weight (it sets): long thin limbs droop | 0.3-3 |
-| `ring` | m of radius all wood adds a year: girth. Stout trunk 0.002-0.003, slender 0.001 | |
+| `ring` | m of radius wood adds a year whatever it carries: girth. Stout trunk 0.002-0.003, slender 0.001. One number for all wood, or per order: a conifer's old low branches stay thin (`[0.003, 0.0005, 0.0002]`; with one number a 50-year spruce's lowest limbs were 32 cm thick under a 60 cm trunk: a cage of brown hoops) | |
 | `pipe` | how fast branches thin (2 = thick limbs, 2.5 = thin) | 2-2.5 |
 | `flare`, `flare_height` | the foot's swelling | 1.3-1.8 |
 | `force_orders` | per order: how much wind and forces turn shoots (the trunk resists) | [0.15, 0.6, 1] |
@@ -212,7 +214,9 @@ height, form, limb angles.
   thinner leaves or needles than a mesh twig: `card.twig.leaves` 400 with `card.leaf.needle_width` 0.03-0.1).
 - `bark`: `kind` ("furrowed" ridges, "plates", "scales", "lenticel" smooth with dashes), `scale` (x the pattern's
   size: 0.5 = finer, for a small tree's trunk), `color`, `twig_color`, `base_color` + `base_height` (+ `base_kind`:
-  an old dark foot), `upper_color` + `upper_from` (m) + `upper_blend` (m the change takes; patchy).
+  an old dark foot), `upper_color` + `upper_from` (m) + `upper_blend` (m the change takes; patchy), `twig_radius` ([m, m]: wood
+  thinner than the first is all `twig_color`, thicker than the second none; a pine's [0.015, 0.05] keeps the orange
+  to its stout wood: every thin branch orange read as a fan of sticks).
 
 ## Reading the report
 
@@ -246,6 +250,14 @@ outline; it says nothing about branch character or foliage: look.
 - `height` asked, something else grown: `height` sizes the unedited tree; with a drawn trunk, the path decides.
 - Size runs away with age (a 130-year pine at 35 m): presets are tuned at their own `age` (get_plant shows it); for
   an old tree of normal size set `height` or lower `vigour`.
+- A conifer in tiers with bare trunk between (a pagoda): whorls break whole or not at all: `bud_each: true`.
+- A weeping tree as a column of curtains to the ground: the hanging orders grow for ever and nothing sheds inside.
+  Give them `tip_life` (6-8 steps), some `shed` (0.05), and let the order below them run level (`plagio` toward
+  20-25 deg) so the curtains start from the crown's OUTSIDE; `prune: [{"under": 1.2}]` is the browse line.
+- A conifer's lower half is a cage of bare brown hoops: measure before changing anything. Usual causes: one `ring`
+  number thickening every old branch like a trunk (give it per order); needles only on the last years' growth of
+  each limb, because the branchlets along it stopped (`tip_life`) or ran on down for metres (`slowing` keeps them
+  short and alive); foliage cards too small to hide the limb they hang from.
 - An unknown key anywhere (a prune's `until_year`, a misspelt habit key) is refused with the keys that exist.
 
 ## A stand or a group
@@ -297,7 +309,7 @@ whole tree's read and for colour. What a description says, and the key it sets:
 | leaves or shoots pendulous | `leaves.hang`, `twig.up` < 0, `twig.droop`, habit `tropism` < 0 on the last orders | |
 | sun leaves at all angles / shade leaves in a flat mosaic | `twig.light` 0-1 (blades turned to the sky), `twig.face` 0-1 (whole twigs flat to the sky) | sun 0.3-0.6, shade 0.8-1 |
 | needles singly on pegs all round the shoot (spruce) | `leaves.shape: "needle_spray"`, `twig.needles: "radial"`, `parted` (thinner underneath), `forward` | |
-| needles in fascicles of 2/3/5 on dwarf shoots (pines) | `shape: "needle_tuft"`, `twig.needles: "fascicles"` | |
+| needles in fascicles of 2/3/5 on dwarf shoots (pines) | `shape: "needle_tuft"`, `twig.needles: "fascicles"`, `card.twig.fascicle` 2/3/5, `card.twig.needle_angle` [75, 30] (old needles stand out, the youngest lie forward: a bottlebrush), `card.twig.bud`, `card.cross` 2 + `card.end` true (a card across the shoot: the tuft is round from its end too) | |
 | needles flat, in two ranks with a parting (fir, yew, hemlock) | `twig.needles: "ranked"` | |
 | needle length | `leaves.length` | spruce 0.01-0.025, Scots pine 0.04-0.06 |
 | needles persist N years | `leaves.retention` (years) | spruce 4-10, Scots pine 2-6 |
