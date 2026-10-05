@@ -74,9 +74,12 @@ def build(spec, p, J, layer, T, ctx) -> None:
             layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.42 * o["amount"], mask=[{"mask": _zones(o["where"])}] if o.get("where") else m)
         o = item("blush")
         if o:
-            col = _hex(o["color"]) if "color" in o else T(blood=5.0, oxygenation=0.9, melanin=1.0 + 0.2 * dark)
-            layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=0.32 * o["amount"],
-                  mask=[{"mask": _zones(o.get("where") or ["cheekbone", "cheek"], 1.15)}, {"levels": [0.0, 1.0, 0.6]}])
+            # blush shifts the skin's own pigment toward blood (a given colour is mixed half-way with that): on dark skin a
+            # pink paint reads as a patch, more blood in the same melanin reads as a flush
+            own = T(blood=4.5 + 2.0 * dark, oxygenation=0.9, melanin=1.0)
+            col = [round(0.5 * a + 0.5 * b, 4) for a, b in zip(_hex(o["color"]), own)] if "color" in o else own
+            layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=0.36 * o["amount"],
+                  mask=[{"mask": _zones(o.get("where") or ["cheekbone", "cheek"], 1.3)}, {"levels": [0.15, 1.0, 0.45]}, {"blur": 0.006}])
         o = item("highlight")
         if o:
             layer("makeup_highlight", o.get("mask"), pre=True, color=T(melanin=0.5, blood=0.7), opacity=0.35 * o["amount"],

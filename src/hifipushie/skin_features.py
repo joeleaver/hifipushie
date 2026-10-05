@@ -25,6 +25,9 @@ HAIR (skin.hair; colours sRGB):
              growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
   stubble    {"amount", "color", "where"}: the beard area: a shadow under the skin plus hair dots.
+  scalp      {"amount", "color", "hairline": 0..1 (0.5: how far it comes down the forehead)}: a shaved or cropped
+             head: the shadow of hair under the scalp's skin plus cut hairs, with a hairline. (Longer hair is geometry:
+             groom_hair.)
   body       {"amount", "color"}: fine dark hairs on forearms, shins, chest.
 SCARS (skin.scars: a list): {"kind": "cut" | "surgical" | "keloid" | "burn" | "pockmarks", "path": [points] (cut,
   surgical, keloid: along a line) | "at": point + "radius": m | "zone": name (burn, pockmarks, keloid: a patch),
@@ -47,7 +50,7 @@ from .spec import SpecError
 
 FEATURES = ("freckles", "moles", "age_spots", "blemishes", "veins", "flush", "sunburn", "tan")
 WRINKLES = ("amount", "forehead", "glabella", "crows_feet", "under_eye", "nasolabial", "marionette", "lip_lines", "neck", "crepe")
-HAIR = ("brows", "lashes", "stubble", "body")
+HAIR = ("brows", "lashes", "stubble", "scalp", "body")
 SCARS = ("cut", "surgical", "keloid", "burn", "pockmarks")
 COMMON = {"amount", "where", "mask", "seed"}
 
@@ -294,12 +297,18 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
     # the lines of expression, each a tapered groove, in one layer: every group's strength scales its own mask
     groups = [
         ("glabella", 1.0, rays([("lm_brow_inner.L", (-0.035, -0.01, 0.09), (-0.015, -0.01, -0.09))], 0.02)),
-        ("crows_feet", 0.7, rays([("lm_eye_outer.L", (0.06, 0.03, 0.01), (0.34, 0.22, 0.14)), ("lm_eye_outer.L", (0.07, 0.03, -0.02), (0.38, 0.25, -0.02)),
+        ("crows_feet_rays", 0.7, rays([("lm_eye_outer.L", (0.06, 0.03, 0.01), (0.34, 0.22, 0.14)), ("lm_eye_outer.L", (0.07, 0.03, -0.02), (0.38, 0.25, -0.02)),
                                   ("lm_eye_outer.L", (0.06, 0.03, -0.05), (0.33, 0.22, -0.18)), ("lm_eye_outer.L", (0.05, 0.03, -0.09), (0.24, 0.16, -0.3))], 0.014)),
-        ("under_eye", 0.65, rays([("lm_lid_lower.L", (-0.22, 0.02, -0.07), (0.24, 0.06, -0.11)), ("lm_lid_lower.L", (-0.2, 0.02, -0.15), (0.28, 0.08, -0.2)),
+        ("under_eye_rays", 0.65, rays([("lm_lid_lower.L", (-0.22, 0.02, -0.07), (0.24, 0.06, -0.11)), ("lm_lid_lower.L", (-0.2, 0.02, -0.15), (0.28, 0.08, -0.2)),
                                   ("lm_lid_lower.L", (-0.12, 0.01, -0.24), (0.3, 0.1, -0.3))], 0.014)),
         ("nasolabial", 1.0, _zones(["nasolabial"], 1.45)), ("marionette", 0.9, _zones(["marionette"], 1.4))]
-    for lname, members in (("folds", ("glabella", "nasolabial", "marionette")), ("crows_feet", ("crows_feet",)), ("under_eye", ("under_eye",))):
+    amt["crows_feet_rays"], amt["under_eye_rays"] = 0.5 * amt["crows_feet"], 0.4 * amt["under_eye"]
+    for nm, zs, size, rot in (("crows_feet", ["crows_feet"], 0.022, False), ("under_eye", ["under_eye"], 0.026, False)):
+        a = amt[nm]
+        if a > 0.02:  # a fan of fine creases of uneven depth, under the few drawn ones
+            groove(nm + "_fine", a, 0.0004, [{"tile": {"swatch": "wrinkles", "size": size, "rotate": rot, "range": [0.5 - 0.42 * min(a, 1), 1.0],
+                                                       "vary": False}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.2)
+    for lname, members in (("folds", ("glabella", "nasolabial", "marionette")), ("crows_feet", ("crows_feet_rays",)), ("under_eye", ("under_eye_rays",))):
         stack = []
         for name, k, m in groups:
             a = float(np.clip(amt[name] * k, 0, 1.6))
@@ -311,15 +320,15 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
     # fields of lines: a tiling swatch of wandering lines, laid across (forehead, neck) or turned (above the lip)
     a = amt["forehead"]
     if a > 0.02:
-        groove("forehead", a, 0.0007, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.6 - 0.55 * min(a, 1), 0.9], "vary": False}},
-                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.28)
+        groove("forehead", a, 0.0009, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.5 - 0.42 * min(a, 1), 1.0], "vary": False}},
+                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.2)
     a = amt["lip_lines"]
     if a > 0.02:
-        groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.7 - 0.5 * min(a, 1), 1.0], "vary": False}},
+        groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.55 - 0.45 * min(a, 1), 1.0], "vary": False}},
                                          {"vertex": True, "mask": _zones(["upper_lip", "soul_patch"], 0.95)}, {"zone": "lips", "blend": "subtract"}], 0.35)
     a = amt["neck"]
     if a > 0.02:
-        groove("neck", a, 0.0005, [{"tile": {"swatch": "wrinkles", "size": 0.11, "range": [0.8 - 0.55 * min(a, 1), 1.0], "vary": False}}, {"vertex": True, "mask": _zones(["neck"], 0.9)}], 0.35)
+        groove("neck", a, 0.0005, [{"tile": {"swatch": "wrinkles", "size": 0.1, "range": [0.5 - 0.42 * min(a, 1), 1.0], "vary": False}}, {"vertex": True, "mask": _zones(["neck"], 0.9)}], 0.2)
     a = amt["crepe"]
     if a > 0.02:  # old skin: the primary lines deepen into a visible cross-hatch, the fine ones go
         zs = ["cheek", "cheek_side", "under_eye", "neck", "upper_lip", "chin", "jaw", "forehead"] + \
@@ -384,6 +393,29 @@ def _hair(p, J, layer, T, ctx) -> None:
             layer("stubble", o.get("mask"), color=col, opacity=0.9 * min(0.5 + 0.5 * a, 1), roughness=min(base_r + 0.12, 0.9),
                   height=round(0.00007 * (1 + float(o.get("length", 0.0)) / 0.001), 7),
                   mask=[{"tile": {"swatch": "stubble", "range": [round(0.45 - 0.35 * min(a, 1), 3), round(0.75 - 0.35 * min(a, 1), 3)]}}, {"mask": area}])
+    o = _opt(h.get("scalp"), "hair.scalp", ("color", "hairline")) if ctx["face"] and "head" in J else None
+    if o:
+        from .skin import interocular
+        io = interocular(J)
+        a = float(o["amount"])
+        col = _hex(o["color"]) if "color" in o else dflt
+        hl = float(o.get("hairline", 0.5))
+        # the hair-bearing scalp: the cranium behind a hairline that crosses the forehead and drops in front of the ears
+        hd = J["head"]
+        top = [{"at": "head", "offset": [0, round(0.42 * io, 5), round((0.95 - 0.25 * hl) * io, 5)]},
+               {"at": "head", "offset": [0, round(0.75 * io, 5), round(0.25 * io, 5)]}]
+        sides = [{"at": "head", "offset": [round(sx * 0.62 * io, 5), round(0.35 * io, 5), round(0.2 * io, 5)]} for sx in (1, -1)]
+        area = [{"spot": {"at": top + sides, "radius": [[round(1.02 * io, 5), round((1.0 + 0.25 * hl) * io, 5), round(0.8 * io, 5)],
+                                                         [round(0.95 * io, 5), round(0.85 * io, 5), round(0.95 * io, 5)],
+                                                         [round(0.5 * io, 5), round(0.75 * io, 5), round(0.85 * io, 5)]] * 1 +
+                          [[round(0.5 * io, 5), round(0.75 * io, 5), round(0.85 * io, 5)]], "soft": 0.22}},
+                {"vertex": True, "mask": _zones(["ear"], 0.9), "blend": "subtract"},
+                {"breakup": {"amount": 0.12, "scale": 0.006, "sharpness": 0.5, "seed": seed + 105}}]
+        cast = [round(float(c), 4) for c in (np.array(T(grey=0.7)) * (0.5 + 0.25 * t["melanin"]) + 0.25 * np.array(col))]
+        layer("scalp_shadow", o.get("mask"), pre=True, color=cast, opacity=0.6 * min(a, 1.2), mask=area)
+        layer("scalp_stubble", o.get("mask"), color=col, opacity=0.9 * min(0.5 + 0.5 * a, 1), roughness=min(base_r + 0.15, 0.9), height=0.00008,
+              mask=[{"tile": {"swatch": "stubble", "size": 0.009, "range": [round(0.4 - 0.32 * min(a, 1), 3), round(0.7 - 0.32 * min(a, 1), 3)]}},
+                    {"vertex": True, "mask": area}])
     o = _opt(h.get("body"), "hair.body", ("color",))
     if o:
         col = _hex(o["color"]) if "color" in o else dflt

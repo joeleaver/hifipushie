@@ -600,8 +600,8 @@ def _build(spec: dict, J: dict) -> dict:
     if hands or joints_:
         out["skin:rough_joints"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.16, 0.95), 3), "opacity": 0.8,
                                     "mask": _z(*((["knuckles"] if hands else []) + joints_))}
-    out["skin:rough_patches"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.1, 0.95), 3), "opacity": 0.75,
-                                 "mask": [{"noise": {"scale": 0.007, "range": [0.4, 0.8], "seed": seed + 21}}]}
+    out["skin:rough_patches"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.12 + 0.08 * dark, 0.95), 3), "opacity": 0.8,
+                                 "mask": [{"noise": {"scale": 0.005, "range": [0.38, 0.72], "seed": seed + 21}}]}
     out["skin:rough_fine"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.14, 0.95), 3), "opacity": 0.6,
                               "mask": [{"noise": {"scale": 0.0022, "range": [0.42, 0.7], "seed": seed + 23}}]}
     out["skin:rough_sheen"] = {"part": part, "_pre": True, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": 0.6,
@@ -615,7 +615,7 @@ def _build(spec: dict, J: dict) -> dict:
     # last: micro relief (pores, the polygonal net of skin lines, the grain between them), over everything, ink and
     # make-up included: tiling swatches, relief + darker, rougher furrows (cavity: "pores catch no light")
     if det > 0:
-        d = det * (1 - 0.45 * child)
+        d = det * (1 - 0.45 * child) * (1 + 0.5 * dark)  # dark skin shows its highlight more: the same relief must break it up
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:

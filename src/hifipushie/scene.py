@@ -118,6 +118,17 @@ def _blender(job: dict, timeout: float = 900, progress=None) -> str:
             out, err = "".join(lines), "".join(errs)
         if code:
             raise RuntimeError(f"blender failed:\n{out[-3000:]}\n{err[-3000:]}")
+        if "out of SVM stack space" in out or "out of SVM stack space" in err:
+            # Cycles gives up on a material too big for its 255-slot shader stack and renders or bakes it BLACK
+            # without failing: say so instead of handing back black maps
+            import re
+            which = sorted(set(re.findall(r'shader "([^"]+)" too big', out + err)))
+            raise RuntimeError(
+                f"Cycles ran out of shader stack on material(s) {which or '?'}: it would render or bake them black. A part's "
+                f"material holds a few dozen paint layers in Cycles (each layer's exposed numbers and every layer with "
+                f"\"height\" cost stack; the Bump node compiles the height layers three times). Thin the part's layers "
+                f"(fewer layers with height, merge masks, measure broad masks per vertex with \"vertex\": true, or for "
+                f"skin fewer scars / tattoos / make-up items), or look with EEVEE.")
         return out
 
 

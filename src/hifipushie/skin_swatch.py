@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 9
+VERSION = 10
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -102,7 +102,7 @@ def _pits(pts, rng, n: int, r_mm: tuple, period_mm: float, stretch: float = 1.0,
 def _meso(rng) -> np.ndarray:
     """The grain between a pore and a wrinkle (follicle bumps, fine swelling at 0.5-3 mm): a gentle undulation of the
     surface under the furrows."""
-    return 0.3 * (1 - _smooth_noise(rng, 14)) + 0.22 * (1 - _smooth_noise(rng, 6)) + 0.14 * (1 - _smooth_noise(rng, 30))
+    return 0.34 * (1 - _smooth_noise(rng, 14)) + 0.3 * (1 - _smooth_noise(rng, 6)) + 0.2 * (1 - _smooth_noise(rng, 30))
 
 
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
@@ -197,16 +197,24 @@ def depth(kind: str) -> np.ndarray:
         d = np.maximum(d, 1.0 * _pits(P, rng, int(0.012 * mm * mm), (0.9, 1.6), mm, 1.3, clump) ** 0.5)
         d = d * (0.55 + 0.45 * _smooth_noise(rng, 14))
     elif kind == "wrinkles":
-        # lines across u: level curves of a field rising along v and wobbled by noise; they pinch out and fork
-        v = P[:, 1]
-        wob = 0.045 * (_smooth_noise(rng, 5) - 0.5) + 0.012 * (_smooth_noise(rng, 14) - 0.5)
-        ph = (v + wob) * 7.0  # 7 lines per period
-        dist = np.abs(ph - np.round(ph)) / 7.0 * mm  # mm to the nearest line
-        strength = np.clip((_smooth_noise(rng, 5) - 0.1) * 1.7, 0, 1)  # a line runs on for centimetres, deeper and shallower
-        d = np.clip(1 - dist / (0.45 + 0.4 * strength), 0, 1) ** 1.3 * (0.25 + 0.75 * strength)
-        ph2 = (v + 1.6 * wob + 0.07) * 14.0
-        d2 = np.abs(ph2 - np.round(ph2)) / 14.0 * mm
-        d = np.maximum(d, 0.35 * np.clip(1 - d2 / 0.18, 0, 1) * np.clip((_smooth_noise(rng, 9) - 0.45) * 3, 0, 1))
+        # Creases across u, as real ones lie: each varies in depth along its length and fades out at its ends (never a
+        # ruled line), neighbours branch into each other, they sit in a broader undulation of the skin, and the skin
+        # between them is finely creped the same way.
+        u, v = P[:, 0], P[:, 1]
+        wob = 0.05 * (_smooth_noise(rng, 4) - 0.5) + 0.014 * (_smooth_noise(rng, 13) - 0.5)
+
+        def family(n, wob_k, shift, cells, lo, width):
+            ph = (v + wob_k * wob + shift + 0.01 * np.sin(2 * np.pi * (u + shift))) * n
+            dist = np.abs(ph - np.round(ph)) / n * mm  # mm to the nearest crease
+            amp = np.clip((_smooth_noise(rng, cells) - lo) / (1 - lo), 0, 1)
+            amp = amp * amp * (3 - 2 * amp)  # eases to nothing: the ends taper
+            w = width * (0.45 + 0.75 * amp)  # deeper stretches are wider
+            return np.clip(1 - dist / np.maximum(w, 1e-6), 0, 1) ** 1.6 * amp
+        main = family(6, 1.0, 0.0, 4, 0.3, 0.75)
+        branch = family(6, 1.9, 0.083, 6, 0.5, 0.55)  # a neighbour wandering across: forks and joins
+        fine = family(19, 2.6, 0.03, 9, 0.35, 0.22)
+        swell = _smooth_noise(rng, 3) * (0.5 + 0.5 * np.cos(2 * np.pi * 6 * (v + wob)))  # the roll between two creases
+        d = np.maximum(main, 0.7 * branch) + 0.22 * fine + 0.1 * (1 - swell)
     elif kind == "hairs":
         n = SIZE
         img = np.zeros((n, n), np.float32)
