@@ -1,0 +1,19 @@
+{"design": {
+  "kind": "jacket", "block": "bodice", "fit": "regular", "fabric": "wool_suiting",
+  "block_options": {"fitted": true, "length": "hips", "length_bonus": -0.13, "cb": "seam"},
+  "ops": [
+    {"op": "style_line", "piece": "front", "name": "princessF", "from": {"edge": "hps>shoulder", "t": 0.5},
+     "to": {"edge": "hem>cfHem", "t": 0.45}, "via": ["bust"], "names": ["front", "side_front"], "take_in": 0.03},
+    {"op": "style_line", "piece": "back", "name": "princessB", "from": {"edge": "hps>shoulder", "t": 0.5},
+     "to": {"edge": "hem>cbHem", "t": 0.45}, "via": [[0.09, -0.30]], "names": ["back", "side_back"], "take_in": 0.035},
+    {"op": "shawl", "break_y": 0.40, "stand": 0.02, "height": 0.075},
+    {"op": "facing", "piece": "front", "edges": ["shawl_edge", "centre_front"], "width": 0.07},
+    {"op": "buttons", "piece": "front", "n": 1},
+    {"op": "sleeve", "cap_ease": 0.04},
+    {"op": "two_piece"}
+  ],
+  "details": {"collar": "shawl", "front_closure": "single_button", "lining": "none", "shoulder": "none",
+              "pockets": "none", "hem": "blind", "cuff": "hemmed"}
+ },
+ "spec": {"quality": "draft", "color": "#3a4a6a"}
+}

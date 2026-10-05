@@ -259,6 +259,22 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     mm["waistToFloor"] = W - zmin
     if "knee.L" in J:
         mm["waistToKnee"] = W - float(J["knee.L"][2])
+    # the crotch: the highest level where the body's section no longer holds the centre line (two legs): the body
+    # rise a trouser draft needs (FreeSewing: waistToUpperLeg; inseam = crotch to floor)
+    try:
+        cy = float(np.mean(loops["seat"][:, 1]))
+        zc = None
+        for z in np.arange(at["seat_z"], at["seat_z"] - 0.30, -0.004):
+            Ls = slice_loops(V, T, [0, 0, z], Z)
+            if Ls and not any(_encloses(L_, np.array([0.0, cy, z]), Z) for L_ in Ls):
+                zc = float(z) + 0.002
+                break
+        if zc is not None:
+            at["crotch_z"] = zc
+            mm["waistToUpperLeg"] = W - zc
+            mm["inseam"] = zc - zmin
+    except Exception:  # a body the scan can't read keeps the estimate (pattern_blocks.trouser)
+        pass
     mm["height"] = float(V[:, 2].max() - zmin)
     out = {k: (round(v * 1000.0, 1) if k != "shoulderSlope" else round(v, 2)) for k, v in mm.items()}
     return {"mm": out, "at": {k: (np.asarray(v).tolist() if not np.isscalar(v) else float(v)) for k, v in at.items()},

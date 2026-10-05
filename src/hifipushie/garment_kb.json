@@ -209,6 +209,11 @@
    "double_breasted": {"label": "double-breasted: two columns of buttons, the fronts overlapping 90-120 mm",
      "dims": {"button_spacing": [85, 120], "button_size_coat": [20, 25]},
      "evidence": [{"stitches": "front", "min": 2}, {"lap": "front"}]},
+   "single_button": {"label": "one button at the break point (a shawl or one-button jacket), the fronts lapped by the button stand",
+     "dims": {"button_stand": [15, 30]},
+     "evidence": [{"stitches": "front", "min": 1}, {"lap": "front"}]},
+   "wrap_tie": {"label": "wrap front: one front laps right across the other and is tied or tacked at the side",
+     "evidence": [{"stitches": "front", "min": 1}, {"lap": "front"}]},
    "zip": {"label": "zip front (a separating zip between the fronts)", "evidence": [{"seam": ["front", "front"]}]},
    "pullover": {"label": "no front opening (pulled over the head)", "evidence": []},
    "open": {"label": "open front (no closure)", "evidence": []}
@@ -537,7 +542,63 @@
    "two_piece": {
     "does": "top and under sleeve from the one-piece: seams moved under the arm",
     "use": "jackets, coats",
-    "keeps": "cap length; seams matched"
+    "keeps": "cap length; seams matched; both pieces bent alike at the elbow (forearm seam hollowed, hindarm bowed)",
+    "limits": "a split one-piece sleeve: the under sleeve is not hollowed or widened as a tailor's (against FreeSewing Jaeger: under sleeve 16 mm narrower, hem 39 mm narrower, 30 mm shorter)"
+   },
+   "neckline": {
+    "does": "redraws the neckline on front and back together: neck point moved along the shoulder by the same amount on both, centre front / back lowered; round, V or square",
+    "use": "wide and boat necks, V necks, before a collar, facing or cut",
+    "keeps": "the shoulder seams equal (both shortened alike)",
+    "why": "cutting one side's neck wider leaves the other shoulder longer: the seam no longer matches"
+   },
+   "shawl": {
+    "does": "a shawl collar cut on with the front: button stand, break point, a roll line from it past the neck point, the collar grown on beyond the shoulder with its neck seam the back neck's length and a centre back seam",
+    "use": "shawl jackets, dressing gowns, cardigans",
+    "keeps": "neck seam = back neck; the two collar halves' CB seam equal; a roll fold on the front",
+    "limits": "the placement lays the collar up the front of the neck; sewing must bring it round (Blender's draft sim crumples it): needs a fold-aware start"
+   },
+   "lapel": {
+    "does": "a notched lapel: front edge extended, break point, lapel point set from the roll line, roll fold; then collar with \"stop\" ends the collar at the gorge",
+    "use": "blazers, coats",
+    "keeps": "the neckline for the collar; the lapel and gorge as named edges for a facing"
+   },
+   "cut_away": {
+    "does": "cuts a piece along a line and discards one side; the new edge is named",
+    "use": "V necklines, cut-away fronts, cropped or slanted hems, asymmetric designs (after unfold)",
+    "keeps": "the kept side's seams (shortened where the cut crossed them: consistency then fails until the mate is shortened too: start a neck cut at the neck point, or widen both with neckline)"
+   },
+   "darts_to_seam": {
+    "does": "joins two darts of a piece through their tips into a panel seam: the dart legs become the seam's shaping",
+    "use": "princess seams from a darted block (shoulder or armhole princess)",
+    "keeps": "the suppression of both darts; the two new edges sewn to each other"
+   },
+   "raglan": {
+    "does": "front and back cut from the neckline to the armhole; the shoulder parts joined to the sleeve cap, the shoulder seam left as an overarm dart",
+    "use": "raglan tees, sweatshirts, coats",
+    "keeps": "armhole / cap lengths of the remaining underarm; the neckline now runs over the sleeve"
+   },
+   "kimono": {
+    "does": "the sleeve cut in one with the body: the shoulder line run on to the wrist, an underarm curve",
+    "use": "kimono and dolman tops, batwings",
+    "limits": "pattern only: no placement for a sleeve grown onto a torso piece yet"
+   },
+   "hood": {
+    "does": "a two-piece hood from the head's measures, its neck edge the neckline's length",
+    "use": "hoodies, parkas",
+    "limits": "pattern only: no head wrap in the placement yet"
+   },
+   "pleat": {
+    "does": "spreads a piece by twice the depth along a line that crosses it and adds the two press folds; seams skip the underlay",
+    "use": "box and knife pleats, a shirt's back pleat run to the hem",
+    "limits": "a pleat that dies inside the piece isn't a fold the solver takes (a fold line must cross its piece)"
+   },
+   "buttons": {
+    "does": "button marks down a line of a paired piece, stitched right to left when unfolded",
+    "use": "any lapped front"
+   },
+   "stitch": {
+    "does": "a point stitch between two named points (a tie, a tack)",
+    "use": "wrap fronts, tabs"
    },
    "unfold": {
     "does": "halves into the garment's pieces, seams mirrored",

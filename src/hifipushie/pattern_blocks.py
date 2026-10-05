@@ -351,24 +351,26 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     mm = lambda k: float(m[k]) / 1000.0
     waist, seat = mm("waist"), mm("seat")
     wts = mm("waistToSeat")
-    rise = float(o["rise"]) if o["rise"] else (mm("crotchDepth") if "crotchDepth" in m else 0.175 * waist + 0.154)
+    measured = "waistToUpperLeg" in m
+    rise = float(o["rise"]) if o["rise"] else (mm("waistToUpperLeg") if measured else 0.175 * waist + 0.154)
     rise += o["rise_ease"]
+    wts = min(wts, rise - 0.075)  # the hip line the crotch curve springs from: at least 75 mm above the crotch line
     L = float(o["length"]) if o["length"] else mm("waistToFloor") - 0.03
     knee_y = mm("waistToKnee") if "waistToKnee" in m else rise + 0.45 * (L - rise)
     sq = seat * (1 + o["seat_ease"]) / 4
     wq = waist * (1 + o["waist_ease"]) / 4
     fork_f = seat / 16 + 0.005
-    fork_b = 2 * fork_f + 0.01
+    fork_b = 1.5 * fork_f + 0.005  # Aldrich: the front's + half of it + 5 mm
     hem = float(o["hem"]) if o["hem"] else 0.22
     knee = float(o["knee"]) if o["knee"] else hem + 0.03
     log = [f"trouser: seat quarter {sq * 1000:.0f} (front -10, back +10 mm), body rise {rise * 1000:.0f} mm "
-           f"({'given' if o['rise'] or 'crotchDepth' in m else 'estimated 0.175 x waist + 154 mm'}), forks front "
+           f"({'given' if o['rise'] else 'measured: waist to the crotch + ease' if measured else 'estimated 0.175 x waist + 154 mm'}), forks front "
            f"{fork_f * 1000:.0f} / back {fork_b * 1000:.0f} mm, knee {knee * 1000:.0f}, hem {hem * 1000:.0f} mm"]
     out = {}
     Y = lambda y: -y
     drop = 0.0  # the back fork point is dropped until the back inseam is 5 mm SHORTER than the front's (it is
     # stretched onto the front between fork and knee: that hollows the back thigh under the seat)
-    for which in ("front", "back", "back", "back", "back"):
+    for which in ("front", "back", "back", "back", "back", "back", "back"):
         fr = which == "front"
         if not fr and "back" in out:
             diff = edge_length(out["back"], "fork>inKnee>inHem") - (edge_length(out["front"], "fork>inKnee>inHem") - 0.005)
@@ -392,8 +394,9 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
             pts += [("dartA", [dx, Y(-up * 0.5)]), ("dartTip", [dx + dart / 2, Y(0.11)]), ("dartB", [dx + dart, Y(-up * 0.5)])]
         pts += [("sideWaist", [min(side_w, w + 0.01), Y(0.0)])]
         pts += _curve_pts(bez([min(side_w, w + 0.01), 0], [w, Y(0.4 * wts)], [w, Y(0.8 * wts)], [w, Y(wts)]))
-        pts += [("sideSeat", [w, Y(wts)]), ("sideCrotch", [w, Y(rise)])]
-        pts += _curve_pts(bez([w, Y(rise)], [w, Y(rise + 0.3 * (knee_y - rise))], [crease + kn, Y(knee_y - 0.3 * (knee_y - rise))],
+        pts += [("sideSeat", [w, Y(wts)])]
+        # one smooth line from the hip to the knee (a straight drop to the crotch line and then a curve kinked)
+        pts += _curve_pts(bez([w, Y(wts)], [w, Y(wts + 0.45 * (knee_y - wts))], [crease + kn, Y(knee_y - 0.40 * (knee_y - wts))],
                               [crease + kn, Y(knee_y)]))
         pts += [("sideKnee", [crease + kn, Y(knee_y)]), ("sideHem", [crease + hm, Y(L)]), ("inHem", [crease - hm, Y(L)]),
                 ("inKnee", [crease - kn, Y(knee_y)])]
@@ -409,6 +412,11 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         if dart > 0:
             pc["darts"]["dart"] = ("dartA", "dartTip", "dartB")
         out[which] = pc
+    # the side seams trued: the back's top is raised (or dropped) until both are the same length (its waist then
+    # runs up from the side to the centre back a little less)
+    for _ in range(3):
+        diff = edge_length(out["front"], "sideWaist>sideSeat>sideHem") - edge_length(out["back"], "sideWaist>sideSeat>sideHem")
+        out["back"]["P"][out["back"]["names"]["sideWaist"], 1] += diff
     seams = [["front:sideWaist>sideSeat>sideHem", "back:sideWaist>sideSeat>sideHem"],
              ["front:fork>inKnee>inHem", "back:fork>inKnee>inHem"]]
     notes = {'["front:fork>inKnee>inHem", "back:fork>inKnee>inHem"]': {
