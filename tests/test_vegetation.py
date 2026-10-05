@@ -422,6 +422,81 @@ def test_budget_is_what_is_written():
     assert full["keep"] == 1.0 and full["min_radius"] == 0.0
 
 
+def test_named_limbs_take_and_sets():
+    import tempfile
+    from hifipushie import store, veg_tools as vt
+    old = store.HOME
+    with tempfile.TemporaryDirectory() as tmp:
+        store.HOME = __import__("pathlib").Path(tmp)
+        try:
+            vt.save("o", {"species": "birch", "age": 28, "habit": {"apical": [0.5, 0.55, 0.6]}}, note="t")
+            T = vt.grown("o")
+            lb = v.limbs(T)
+            assert len(lb) >= 3 and len({L["name"] for L in lb}) == len(lb)
+            L = max(lb, key=lambda q: q["diameter"])
+            vt.edit("o", [{"op": "take_limb", "limb": L["name"], "name": "mine"}])
+            T2 = vt.grown("o")
+            g = vt.load("o")["guides"]["mine"]
+            ai = T2["guides"]["mine"]
+            nodes = np.flatnonzero((T2["axis"] == ai) & T2["pin"])
+            assert np.linalg.norm(T2["pos"][nodes[-1]] - np.array(g["path"][-1])) < 0.3  # same end as the grown limb's
+            assert np.linalg.norm(np.array(g["path"][-1]) - np.array(L["end"])) < 0.05
+            assert not (T2["key"] == np.uint64(int(L["key"]))).any()  # the shoot it replaces is not grown beside it
+            assert "mine (drawn)" in vt.report("o")
+            # a set: deterministic, different plants, the hero's guide dropped, one file
+            vt.save("o", patch={"set": {"count": 3}})
+            a, b = vt.load("o#1"), vt.load("o#3")
+            assert a["seed"] != b["seed"] and a["age"] < b["age"] and "guides" not in a and vt.load("o#1") == a
+            assert vt.grown("o#1")["height"] < vt.grown("o#3")["height"]
+            c = vt.export_set("o", triangles=3000)
+            assert len(c["plants"]) == 3 and all(q["wood_triangles"] + q["foliage_triangles"] <= 3000 for q in c["plants"])
+            try:
+                vt.save("o#1", patch={"age": 3})
+                raise AssertionError("saved into a set's plant")
+            except ValueError:
+                pass
+        finally:
+            store.HOME = old
+            vt._GROWN.clear()
+
+
+def test_blender_round_trip():
+    """A guide moved, a limb moved, a curve added in plant.blend come back as spec edits; a second pull is empty."""
+    import subprocess
+    import tempfile
+    from hifipushie import render, store, veg_tools as vt
+    os_ = __import__("os")
+    old, nl = store.HOME, os_.environ.get("HIFIPUSHIE_NO_LIVE")
+    os_.environ["HIFIPUSHIE_NO_LIVE"] = "1"
+    with tempfile.TemporaryDirectory() as tmp:
+        store.HOME = __import__("pathlib").Path(tmp)
+        try:
+            vt.save("r", {"species": "birch", "age": 22, "guides": {"g": {"path": [[0, 0, 3], [1.5, 0, 4], [3, 0, 4.5]], "from_year": 6}}}, note="t")
+            r = vt.sync("r")
+            assert r["pulled"] == [] and r["guides"] == 1 and r["limbs"] >= 1
+            code = ("import bpy\nfrom mathutils import Vector\n"
+                    "g = bpy.data.collections['guides']; l = bpy.data.collections['limbs']\n"
+                    "bp = g.objects['g'].data.splines[0].bezier_points[-1]; bp.co = Vector(bp.co) + Vector((0, 0, 1.5))\n"
+                    "l.objects[0].location.z += 0.5\n"
+                    "cu = bpy.data.curves.new('n', 'CURVE'); cu.dimensions = '3D'; sp = cu.splines.new('BEZIER'); sp.bezier_points.add(1)\n"
+                    "sp.bezier_points[0].co = (0, 0, 5); sp.bezier_points[1].co = (0, 2, 6.5)\n"
+                    "g.objects.link(bpy.data.objects.new('new one', cu))\nbpy.ops.wm.save_mainfile()\n")
+            q = subprocess.run([render.BLENDER, "-b", r["blend"], "--python-expr", code], capture_output=True, text=True)
+            assert q.returncode == 0, q.stderr[-500:]
+            came = vt.pull("r")
+            assert len(came) == 3, came
+            sp = vt.load("r")
+            assert abs(sp["guides"]["g"]["path"][-1][2] - 6.0) < 1e-3 and "new_one" in sp["guides"]
+            assert any(k.startswith("limb_") and gd.get("replaces") for k, gd in sp["guides"].items())
+            assert vt.pull("r") == []  # (not yet re-synced: still nothing twice)
+            assert vt.sync("r")["pulled"] == [] and vt.pull("r") == []
+        finally:
+            store.HOME = old
+            vt._GROWN.clear()
+            if nl is None:
+                os_.environ.pop("HIFIPUSHIE_NO_LIVE", None)
+
+
 def test_fit_improves():
     ref = v.silhouette(v.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
     start = {**SMALL, "habit": {"apical": [0.45, 0.5]}}

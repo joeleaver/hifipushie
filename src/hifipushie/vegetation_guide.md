@@ -140,6 +140,12 @@ height, form, limb angles.
   with tropism + low jitter on orders 1+ and `max_order` 2), a **coppice** (`above` 0.3), a **lopped limb** or a
   **storm break** (a box or sphere round it, one year, sprouts 0-2). The report lists each cut made. A cut the tree
   never regrows from is a `prune`.
+- Named limbs: the report lists the tree's main limbs ("SW2" = the second limb up the trunk that ends to the
+  south-west; +y is north, +x east) with where each leaves the trunk, its girth, its end, and the span of what it
+  carries. `edit_plant` op `{"op": "take_limb", "limb": "SW2", "name": "low_bough"}` makes that grown limb a guide of
+  the same place and shape; then redraw it (op `guide` with a new path), or give `"path"` at once. The names
+  belong to THIS grown tree: after an edit the other limbs may be renamed or change (the tree regrows around every
+  edit), a taken limb keeps its name and path.
 - `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}, {"under": z}]`. `below`
   removes limbs that LEAVE the trunk under that height (a limb starting higher may still hang lower); `under`
   removes everything but the trunk under that height (a browse line, a lifted crown); `above` tops the tree.
@@ -220,6 +226,25 @@ Make one individual, then copies: `grow_plant(name="birch_b", copy_from="birch_a
 Give them the same `environment` (e.g. `setting: "forest"`). See them together with
 `look_plants(names=[...], spacing=2.5)`: the only way to judge whether they belong together. Export each
 (`export_plant(name, triangles=12000)`).
+
+## A forest set: one description, several plants
+
+`grow_plant(name, patch={"set": {"count": 5}})`: the plant's **set** = the same description grown from other seeds
+at a spread of ages (`"age": [0.55, 1.0]` shares of the plant's age, youngest first; or `"ages": [years...]`), with
+`"vigour": 0.12` (+-12% each), `"height": [lo, hi]` m, `"lean": deg` (each trunk leaning its own way), `"patch"`
+(a patch for all, or a list of one per plant). A set is the species, not copies of one tree: the hero's guides,
+prunes and one-off cuts are dropped (`"keep_guides": true` keeps them; repeated cuts, i.e. management, stay).
+The report lists each plant (`name#1`...). `look_plants(["name#*"])` shows them together, `look_plant("name#3")`
+one; `export_plant(name, set=True)` writes one file with a node per plant sharing the bark and foliage materials.
+To turn a set's plant into a hero: `grow_plant("hero", copy_from="name#3")`. For a forest use
+`environment.setting: "forest"` on the plant: the whole set grows with clear boles and high crowns.
+
+## By hand in Blender
+
+`sync_plant(name)` writes `workspace/plants/<name>/plant.blend`: the plant with its guides (orange curves) and its
+named main limbs (blue curves). A person moves curve points there (or a whole limb), adds a curve to the "guides"
+collection, or deletes one; the next `sync_plant` brings that back as spec edits (a moved limb becomes a guide)
+and writes the file again. The spec stays the source of truth: nothing else in the file is read back.
 
 ## The export is another object: look at it
 

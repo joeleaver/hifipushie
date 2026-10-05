@@ -95,7 +95,8 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
 
 
 def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
-           keep: str | None = None, others: list | None = None, triangles: int | None = None, at=None) -> dict:
+           keep: str | None = None, others: list | None = None, triangles: int | None = None, at=None,
+           curves: list | None = None) -> dict:
     """Render views in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on cut cards: what a
     game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`, else cards.
     others: [(tree, [x, y], yaw deg)] more plants standing in the same scene (a stand). `keep` = a folder for the
@@ -118,6 +119,8 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         if env.get("ground"):
             job["ground"] = {**(job.get("ground") or {}), **env["ground"]}
         job["ruler"] = float(np.ceil(tree["height"]))
+        if curves is not None:
+            job["curves"] = curves
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(job))
         t1 = time.perf_counter()

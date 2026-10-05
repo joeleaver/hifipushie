@@ -161,7 +161,7 @@ def resolve(spec: dict) -> dict:
         if "year" not in c or not vol & set(c):
             raise ValueError(f"cut {i} needs a year and one of {sorted(vol)}")
     for g, gd in (s.get("guides") or {}).items():
-        keys(f"guide {g}", gd, {"path", "from_year", "until_year", "vigour", "free", "on", "straight", "bare"})
+        keys(f"guide {g}", gd, {"path", "from_year", "until_year", "vigour", "free", "on", "straight", "bare", "replaces"})
         if len(gd.get("path") or []) < 2:
             raise ValueError(f"guide {g} needs a path of at least two [x, y, z] points")
     return s
@@ -502,6 +502,75 @@ def steps_of(s: dict) -> int:
     return int(np.clip(round(s["age"] / s["habit"]["years_per_step"]), 2, 80))
 
 
+def limbs(tree: dict, count: int = 12, min_share: float = 0.12) -> list[dict]:
+    """The tree's main limbs, named so they can be talked about and taken over: first-order branches, the stoutest
+    `count` whose base is at least `min_share` of the trunk's radius there. A drawn limb has its guide's name; a grown
+    one is named by where its end points and its rank up the trunk ("SW2" = the second limb up that ends to the
+    south-west). Names are of THIS grown tree: an edit that regrows it may rename them; take_limb makes one a guide,
+    which keeps its name and shape."""
+    P, par, ax, rad = tree["pos"], tree["parent"], tree["axis"], tree["radius"]
+    yps = tree["spec"]["habit"]["years_per_step"]
+    gname = {ai: g for g, ai in tree["guides"].items()}
+    kids = {}
+    for i in range(1, len(par)):
+        kids.setdefault(int(par[i]), []).append(i)
+    out = []
+    for ai, a in enumerate(tree["axes"]):
+        if a["order"] != 1 or "node" not in a:
+            continue
+        n0 = a["node"]
+        if n0 >= len(P) or tree["order"][n0] != 1 or ax[n0] != ai:
+            continue
+        nodes = np.flatnonzero(ax == ai)
+        if len(nodes) < 3:
+            continue
+        base = int(par[n0])
+        if rad[n0] < min_share * rad[base] and ai not in gname:
+            continue
+        sub, stack = [], [int(n0)]
+        while stack:
+            q = stack.pop()
+            sub.append(q)
+            stack.extend(kids.get(q, ()))
+        sub = np.array(sub)
+        far = P[sub][np.argmax(np.linalg.norm(P[sub] - P[base], axis=1))]
+        d = far - P[base]
+        seg = np.linalg.norm(np.diff(np.vstack([P[base], P[nodes]]), axis=0), axis=1).sum()
+        out.append({"axis": ai, "guide": gname.get(ai), "at": P[base].round(2).tolist(), "height": round(float(P[base][2]), 2),
+                    "diameter": round(float(2 * rad[n0]), 3), "length": round(float(seg), 2), "end": P[nodes[-1]].round(2).tolist(),
+                    "reach": round(float(np.linalg.norm(P[sub][:, :2] - P[1][:2], axis=1).max()), 2), "low": round(float(P[sub][:, 2].min()), 2),
+                    "high": round(float(P[sub][:, 2].max()), 2), "nodes": int(len(sub)),
+                    "born_year": round(float(tree["born"][n0] * yps), 1), "key": str(int(tree["key"][n0])),
+                    "compass": _compass_name(d)})
+    out.sort(key=lambda L: -L["diameter"])
+    keep = [L for L in out if L["guide"]] + [L for L in out if not L["guide"]][:count]
+    keep.sort(key=lambda L: L["height"])
+    seen = {}
+    for L in keep:
+        if L["guide"]:
+            L["name"] = L["guide"]
+        else:
+            seen[L["compass"]] = seen.get(L["compass"], 0) + 1
+            L["name"] = f"{L['compass']}{seen[L['compass']]}"
+    return keep
+
+
+def _compass_name(d) -> str:
+    if np.linalg.norm(d[:2]) < 0.25 * abs(d[2]):
+        return "UP"
+    a = math.degrees(math.atan2(d[0], d[1])) % 360  # +y = north, +x = east
+    return ("N", "NE", "E", "SE", "S", "SW", "W", "NW")[int((a + 22.5) // 45) % 8]
+
+
+def limb_path(tree: dict, limb: dict, points: int = 7) -> list:
+    """A limb's own axis as a guide path: from where it leaves the trunk to its end, `points` of them evenly along."""
+    nodes = np.flatnonzero(tree["axis"] == limb["axis"])
+    pts = np.vstack([tree["pos"][tree["parent"][nodes[0]]], tree["pos"][nodes]])
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+    k = int(max(3, min(points, len(pts))))
+    return [_along(pts, cum, t).round(3).tolist() for t in np.linspace(0, cum[-1], k)]
+
+
 def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     """Grow the tree. Returns arrays in metres (pos, parent, radius, order, born, axis, key, tip, leafy), axes, and
     stats. With `height`, an unedited run is grown first and its height sets the unit, so edits stay in metres."""
@@ -556,6 +625,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                        "vigour": float(g.get("vigour", 1.0)), "done": False, "free": bool(g.get("free", False)),
                        "on": g.get("on"), "bare": float(g.get("bare", 0.0))})
     guides.sort(key=lambda g: (g["start"], g["name"]))
+    # a limb taken over as a guide: the shoot it was grown from is not made again (its lineage key)
+    replaced = np.array([int(k) for g in (s.get("guides") or {}).values() for k in (g.get("replaces") or [])], np.uint64)
 
     T = _Nodes()
     T.add(1, key=_mix(seed), tip=False, guide=-1, R=np.eye(3))
@@ -815,6 +886,9 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             ang = np.radians(_per(h["angle"], o_new - 1)) * (0.85 + 0.3 * _u(T.key[src], 20 + 1))  # by the PARENT's order
             d0 = a_ * np.cos(ang)[:, None] + (u_ * np.cos(phi)[:, None] + w_ * np.sin(phi)[:, None]) * np.sin(ang)[:, None]
             keys = _child(T.key[src], 100 + bud)
+            if len(replaced):
+                ok_ = ~np.isin(_child(keys, 10), replaced)
+                src, bud, o_new, d0, keys = src[ok_], bud[ok_], o_new[ok_], d0[ok_], keys[ok_]
             ax0 = len(axes)
             for k_ in range(len(src)):
                 new_axis(o_new[k_])

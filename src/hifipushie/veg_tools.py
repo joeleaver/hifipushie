@@ -21,6 +21,7 @@ def home() -> Path:
 
 
 def _dir(name: str) -> Path:
+    name = name.partition("#")[0]  # ("oak#3" = the third plant of oak's set: it lives in oak's folder)
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", name):
         raise ValueError("plant names may only contain letters, digits, _ and -")
     return home() / name
@@ -31,10 +32,68 @@ def list_plants() -> list[str]:
 
 
 def load(name: str) -> dict:
-    p = _dir(name) / "plant.json"
+    base, _, k = name.partition("#")
+    p = _dir(base) / "plant.json"
     if not p.exists():
-        raise ValueError(f"no plant {name!r}; existing: {list_plants()}")
-    return json.loads(p.read_text())
+        raise ValueError(f"no plant {base!r}; existing: {list_plants()}")
+    spec = json.loads(p.read_text())
+    if k:
+        vs = variants(spec)
+        if not k.isdigit() or not 1 <= int(k) <= len(vs):
+            raise ValueError(f"{base} has a set of {len(vs)} (\"{base}#1\" .. \"{base}#{len(vs)}\"); set one with "
+                             f"grow_plant(patch={{\"set\": {{\"count\": 5}}}})")
+        return vs[int(k) - 1]
+    return spec
+
+
+SET = {"count": 5, "age": [0.55, 1.0], "height": None, "vigour": 0.12, "keep_guides": False, "lean": 0.0}
+
+
+def variants(spec: dict) -> list[dict]:
+    """The plants of a spec's `set`: the same description grown from other seeds at a spread of ages (shares of the
+    spec's age, youngest first; or `ages` in years), vigour varied +-`vigour`, an optional `height` range [lo, hi] m
+    over the set (the unit follows), `lean` deg of trunk lean in a different direction each. Hero edits (guides, cuts
+    without `every`, prunes) are dropped unless keep_guides: a set is the species, not copies of one tree.
+    Deterministic: variant k of a spec is always the same plant."""
+    st = spec.get("set")
+    if not st:
+        return []
+    bad = set(st) - set(SET) - {"ages", "seeds", "patch"}
+    if bad:
+        raise ValueError(f"set: unknown keys {sorted(bad)}; it takes {sorted(set(SET) | {'ages', 'seeds', 'patch'})}")
+    st = {**SET, **st}
+    n = int(st["count"])
+    if not 1 <= n <= 24:
+        raise ValueError("set.count: 1-24 plants")
+    age0 = vegetation.resolve({k: v for k, v in spec.items() if k != "set"})["age"]
+    out = []
+    for k in range(n):
+        u = (k + 0.5) / n if n > 1 else 1.0
+        t = k / (n - 1) if n > 1 else 1.0
+        key = vegetation._child(vegetation._mix(np.uint64(int(spec.get("seed", 1)) + 7919)), k)
+        v = {kk: json.loads(json.dumps(vv)) for kk, vv in spec.items() if kk != "set"}
+        if not st["keep_guides"]:
+            for kk in ("guides", "prune", "envelope", "forces"):
+                v.pop(kk, None)
+            if v.get("cuts"):
+                v["cuts"] = [c for c in v["cuts"] if c.get("every")]  # (management stays: every tree of a pollard row is a pollard)
+        v["seed"] = int((st.get("seeds") or [])[k]) if k < len(st.get("seeds") or []) else int(spec.get("seed", 1)) * 1000 + k + 1
+        v["age"] = float(st["ages"][k]) if st.get("ages") else round(age0 * (st["age"][0] + (st["age"][1] - st["age"][0]) * t), 1)
+        if st.get("height"):
+            v["height"] = round(float(st["height"][0] + (st["height"][1] - st["height"][0]) * t), 2)
+        else:
+            v.pop("height", None) if not st.get("ages") and st["age"] != [1.0, 1.0] else None
+        if st["vigour"]:
+            hb = vegetation.resolve(v)["habit"]["vigour"]
+            v.setdefault("habit", {})["vigour"] = round(float(hb * (1 + st["vigour"] * (2 * float(vegetation._u(key, 3)) - 1))), 3)
+        if st["lean"]:
+            a = 2 * np.pi * float(vegetation._u(key, 4))
+            m = np.tan(np.radians(st["lean"] * (0.4 + 0.6 * float(vegetation._u(key, 5)))))
+            v.setdefault("forces", []).append({"dir": [round(float(np.cos(a) * m), 3), round(float(np.sin(a) * m), 3), 0], "orders": [0]})
+        if st.get("patch"):
+            v = merge(v, st["patch"][k] if isinstance(st["patch"], list) else st["patch"])
+        out.append(v)
+    return out
 
 
 def merge(base: dict, patch: dict) -> dict:
@@ -56,7 +115,12 @@ def save(name: str, spec: dict | None = None, patch: dict | None = None, note: s
         spec = merge(load(name), patch or {})
     elif patch:
         spec = merge(spec, patch)
+    if "#" in name:
+        raise ValueError(f"{name} is a plant of a set: change the set through its plant ({name.partition('#')[0]}), or copy "
+                         f"it out with grow_plant(new_name, copy_from=\"{name}\")")
     vegetation.resolve(spec)
+    for v_ in variants(spec):
+        vegetation.resolve(v_)
     d = _dir(name)
     (d / "history").mkdir(parents=True, exist_ok=True)
     v = len(list((d / "history").glob("*.json"))) + 1
@@ -145,6 +209,7 @@ def change_note(name: str, before_spec: dict | None, before_stats: dict | None) 
 
 def grown(name: str) -> dict:
     spec = load(name)
+    spec = {k: v for k, v in spec.items() if k != "set"}
     key = hashlib.sha1(json.dumps([spec, vegetation.VERSION], sort_keys=True).encode()).hexdigest()
     if _GROWN.get(name, ("",))[0] != key:
         _GROWN[name] = (key, vegetation.grow(spec))
@@ -221,6 +286,14 @@ def report(name: str) -> str:
         out.append(f"limbs: {ang['n']} first-order branches ({drawn} drawn; medians of so few jump about), leaving the trunk at {ang['insertion_p10_50_90'][1]} deg "
                    f"(p10-p90 {ang['insertion_p10_50_90'][0]}-{ang['insertion_p10_50_90'][2]}), their far halves "
                    f"{ang['elevation_p10_50_90'][1]} deg above level ({ang['elevation_p10_50_90'][0]} to {ang['elevation_p10_50_90'][2]})")
+    lb = vegetation.limbs(T)
+    if lb:
+        out.append("main limbs (name: leaves the trunk at height, base diameter, length, where its end is, the span of what it "
+                   "carries; edit_plant take_limb makes one a guide you can redraw):")
+        for L in lb:
+            out.append(f"  {L['name']}{' (drawn)' if L['guide'] else ''}: at {L['height']} m, {L['diameter'] * 100:.0f} cm, "
+                       f"{L['length']} m long to [{L['end'][0]:+.1f}, {L['end'][1]:+.1f}, {L['end'][2]:.1f}], "
+                       f"carries {L['low']}-{L['high']} m high, {L['reach']} m out, since year {L['born_year']}")
     tw = veg_leaf.place(T)
     if len(tw["pos"]):
         out.append(f"foliage: {len(tw['pos'])} twigs ({s['leaves'].get('shape', 'ovate')} leaves, "
@@ -293,6 +366,8 @@ def report(name: str) -> str:
     if down > 0.35 and min(vegetation._per(s["habit"]["tropism"], np.arange(6))) > -0.3:
         warn.append(f"{down:.0%} of the shoot ends hang though the habit isn't a weeping one: lower habit.sag ({s['habit']['sag']}) "
                     f"or raise tropism on the high orders")
+    if load(name.partition("#")[0]).get("set") and "#" not in name:
+        out.append(set_report(name))
     return "\n".join(out + [f"WARNING: {w}" for w in warn])
 
 
@@ -440,6 +515,7 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
     {"op": "envelope", ...} (or "envelope": null to remove), {"op": "force", "dir", "strength", "orders"},
     {"op": "clear_forces"}, {"op": "set", "path": "habit.apical.0", "value": 0.6}."""
     spec = load(name)
+    spec0, T0 = json.loads(json.dumps(spec)), None
     for i, o in enumerate(ops):
         o = dict(o)
         k = o.pop("op", None)
@@ -448,6 +524,22 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
             if not g or "path" not in o or len(o["path"]) < 2:
                 raise ValueError(f"op {i}: a guide needs a name and a path of at least two [x, y, z] points (m)")
             spec.setdefault("guides", {})[g] = o
+        elif k == "take_limb":  # a grown limb becomes a guide: same place and shape, now yours to redraw
+            T = T0 = T0 or _tree_of(spec0)  # (the tree as it stood before this batch: the names the caller saw)
+            lb = {L["name"]: L for L in vegetation.limbs(T)}
+            L = next((q for q in lb.values() if o.get("key") and q["key"] == o["key"]), None) or lb.get(o.get("limb"))
+            if L is None:
+                raise ValueError(f"op {i}: no limb {o.get('limb')!r}; this tree's limbs: {sorted(lb)} (the report lists them)")
+            if L["guide"]:
+                raise ValueError(f"op {i}: {L['name']} is already a guide: redraw it with op guide")
+            g = o.get("name") or f"limb_{o.get('limb') or L['name']}"
+            path = o.get("path") or vegetation.limb_path(T, L, int(o.get("points", 6)))
+            path = [[round(float(x), 3) for x in q] for q in path]
+            nodes = np.flatnonzero(T["axis"] == L["axis"])
+            yps = T["spec"]["habit"]["years_per_step"]
+            spec.setdefault("guides", {})[g] = {
+                "path": path, "on": "trunk", "from_year": L["born_year"],
+                "until_year": round(float(min((T["born"][nodes[-1]] + 1) * yps, T["spec"]["age"])), 1), "replaces": [L["key"]]}
         elif k == "remove_guide":
             if o.get("name") not in (spec.get("guides") or {}):
                 raise ValueError(f"op {i}: no guide {o.get('name')!r}; guides: {sorted(spec.get('guides') or {})}")
@@ -485,9 +577,151 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
                     cur = cur.setdefault(p_, {})
                 cur[parts[-1]] = o["value"]
         else:
-            raise ValueError(f"op {i}: unknown op {k!r} (guide, remove_guide, prune, remove_prune, clear_prunes, cut, "
+            raise ValueError(f"op {i}: unknown op {k!r} (guide, take_limb, remove_guide, prune, remove_prune, clear_prunes, cut, "
                              f"clear_cuts, envelope, force, clear_forces, set)")
     return save(name, spec, note=note or "edit")
+
+
+def _tree_of(spec: dict) -> dict:
+    spec = {k: v for k, v in spec.items() if k != "set"}
+    key = hashlib.sha1(json.dumps([spec, vegetation.VERSION], sort_keys=True).encode()).hexdigest()
+    for k_, t in _GROWN.values():
+        if k_ == key:
+            return t
+    return vegetation.grow(spec)
+
+
+def set_names(name: str) -> list[str]:
+    return [f"{name}#{k + 1}" for k in range(len(variants(load(name))))]
+
+
+def set_report(name: str) -> str:
+    """The set's plants in a line each: seed, age, height, crown width, trunk, nodes."""
+    out = []
+    for n_ in set_names(name):
+        T = grown(n_)
+        st = T["stats"]
+        w = 2 * float(np.percentile(np.linalg.norm(T["pos"][:, :2], axis=1), 98))
+        out.append(f"  {n_}: seed {T['spec']['seed']}, age {T['spec']['age']}, {st['height_m']} m tall, crown {w:.1f} m wide, "
+                   f"trunk {st['trunk_diameter_m']} m, {st['nodes']} nodes" + (" STARVED" if st["nodes"] < 12 * st["steps"] else ""))
+    hs = [grown(n_)["height"] for n_ in set_names(name)]
+    return f"set of {len(hs)} from {name} (heights {min(hs):.1f}-{max(hs):.1f} m):\n" + "\n".join(out)
+
+
+def export_set(name: str, out_dir: str | None = None, triangles: int | None = None) -> dict:
+    """The set as ONE GLB (<name>_set.glb): a node per plant, one bark and one foliage material shared."""
+    from . import veg_export
+    names = set_names(name)
+    if not names:
+        raise ValueError(f"{name} has no set: grow_plant(name, patch={{\"set\": {{\"count\": 5}}}})")
+    out = Path(out_dir) if out_dir else _dir(name) / "export"
+    c = veg_export.write_glb([grown(n_) for n_ in names], str(out / f"{name}_set.glb"),
+                             [n_.replace("#", "_") for n_ in names], triangles=triangles)
+    c["total"] = c["wood_triangles"] + c["foliage_triangles"]
+    return c
+
+
+# ---------------------------------------------------------------- the Blender scene: guides and limbs as curves
+
+def blend_path(name: str) -> Path:
+    return _dir(name) / "plant.blend"
+
+
+def _curves(T: dict) -> list:
+    s = T["spec"]
+    out = [{"name": g, "kind": "guides", "points": gd["path"], "radius": 0.035} for g, gd in (s.get("guides") or {}).items()]
+    for L in vegetation.limbs(T):
+        if not L["guide"]:
+            out.append({"name": L["name"], "kind": "limbs", "points": vegetation.limb_path(T, L, 6), "radius": 0.02, "key": L["key"]})
+    return out
+
+
+def _read_scene(name: str) -> dict | None:
+    """The scene's curves: from the person's running Blender when it has plant.blend open, else from the file."""
+    import subprocess
+    import tempfile
+    from . import render as _render, scene as _scene, veg_look
+    bp = blend_path(name)
+    code = ("import sys, importlib\n" f"sys.path.insert(0, {str(veg_look.SCRIPT.parent)!r})\n"
+            "import blender_vegetation as B\nimportlib.reload(B)\nresult = B.read_curves()")
+    r = _scene._live_call(code, timeout=60.0)
+    if r and r.get("status") == "ok" and (r.get("result") or {}).get("file") and \
+            Path(r["result"]["file"]).resolve() == bp.resolve():
+        return {**r["result"], "live": True}
+    if not bp.exists():
+        return None
+    with tempfile.TemporaryDirectory(prefix="hifipushie-veg-") as tmp:
+        out = Path(tmp) / "curves.json"
+        q = subprocess.run([_render.BLENDER, "-b", str(bp), "--python-exit-code", "1", "--python", str(veg_look.SCRIPT),
+                            "--", "pull", str(out)], capture_output=True, text=True, timeout=300)
+        if q.returncode:
+            raise RuntimeError(f"blender failed:\n{q.stdout[-1500:]}\n{q.stderr[-1500:]}")
+        return {**json.loads(out.read_text()), "live": False}
+
+
+def _moved(a, b, tol=2e-3) -> bool:
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    return a.shape != b.shape or float(np.abs(a - b).max()) > tol
+
+
+def pull(name: str) -> list[str]:
+    """Bring a person's edits of plant.blend back into the spec: a guide curve they moved (or gave more points) is
+    that guide's new path; a LIMB curve they moved becomes a guide (take_limb with their path); a curve they added
+    to "guides" is a new guide (it attaches to the nearest wood); a guide curve they deleted is removed. Only what
+    moved from what the sync wrote counts, so pulling twice changes nothing. Returns what changed."""
+    sc = _read_scene(name)
+    if sc is None:
+        return []
+    spec = load(name)
+    guides = spec.get("guides") or {}
+    ops, said = [], []
+    seen = set()
+    for c in sc["guides"]:
+        seen.add(c["name"])
+        if len(c["points"]) < 2:
+            continue
+        if c["name"] in guides:
+            if c["set"] is not None and _moved(c["points"], c["set"]) and _moved(c["points"], guides[c["name"]]["path"]):
+                ops.append({"op": "guide", "name": c["name"], **{**guides[c["name"]], "path": c["points"]}})
+                said.append(f"guide {c['name']}: redrawn ({len(c['points'])} points)")
+        elif c["name"] not in sc["made"].get("guides", []) or c["set"] is None:
+            nm = re.sub(r"[^A-Za-z0-9_]+", "_", c["name"])
+            if nm in guides and not _moved(c["points"], guides[nm]["path"]):
+                continue  # (pulled before, the scene not written since)
+            ops.append({"op": "guide", "name": nm, "path": c["points"]})
+            said.append(f"guide {nm}: new, from a curve added in Blender")
+    for g in sc["made"].get("guides", []):
+        if g not in seen and g in guides:
+            ops.append({"op": "remove_guide", "name": g})
+            said.append(f"guide {g}: deleted in Blender")
+    for c in sc["limbs"]:
+        if c["set"] is not None and len(c["points"]) >= 2 and _moved(c["points"], c["set"]):
+            if any(c.get("key") in (gd.get("replaces") or []) for gd in guides.values()):
+                continue  # (taken on an earlier pull)
+            ops.append({"op": "take_limb", "limb": c["name"], "key": c.get("key"), "path": c["points"]})
+            said.append(f"limb {c['name']}: moved in Blender, now guide limb_{c['name']}")
+    if ops:
+        edit(name, ops, note="pulled from Blender: " + "; ".join(said))
+    return said
+
+
+def sync(name: str) -> dict:
+    """Pull, then write workspace/plants/<name>/plant.blend from the spec: the plant (bark, foliage instances, ground,
+    sun) with its guides (orange) and named limbs (blue) as Bezier curves. Open it in Blender, move curve points
+    (or a whole limb), save, and sync again (or pull). A running Blender with the file open is read live and told
+    to reload the rewritten file."""
+    from . import scene as _scene, veg_look
+    came = pull(name)
+    T = grown(name)
+    bp = blend_path(name)
+    info = veg_look.render(T, [], save=str(bp), curves=_curves(T), keep=str(_dir(name) / "scene_maps"))
+    live = False
+    r = _scene._live_call("import bpy\nresult = {'file': bpy.data.filepath}", timeout=5.0)
+    if r and r.get("status") == "ok" and (r.get("result") or {}).get("file") and Path(r["result"]["file"]).resolve() == bp.resolve():
+        _scene._live_call("import bpy\nbpy.ops.wm.revert_mainfile()\nresult = {}", timeout=120.0)
+        live = True
+    return {"blend": str(bp), "pulled": came, "live": live, "guides": len(T["spec"].get("guides") or {}),
+            "limbs": sum(1 for L in vegetation.limbs(T) if not L["guide"]), **info}
 
 
 def _seed_habit(spec: dict, key: str) -> dict:

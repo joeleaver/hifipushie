@@ -11,6 +11,7 @@ The npz: V, F, tan, radius, uv (wood); twig{i}_V/F/mat/col per mesh variant or c
 """
 
 import json
+import os
 import math
 import sys
 
@@ -422,6 +423,62 @@ def add_plant(pj, tag, clay):
     return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": np.vstack(pts_all)}
 
 
+def add_curves(job):
+    """The plant's guides and named limbs as Bezier curves a person can edit (collections "guides", "limbs";
+    hide_render). Each is stamped with the points the sync wrote (`hp_set`): pull compares against it. The names the
+    sync made are kept on the collection (`hp_made`), so a deleted curve is seen as deleted."""
+    sc = bpy.context.scene
+    for coll_name, colour in (("guides", (1.0, 0.45, 0.05, 1)), ("limbs", (0.2, 0.7, 1.0, 1))):
+        items = [c for c in job.get("curves") or [] if c["kind"] == coll_name]
+        coll = bpy.data.collections.get(coll_name)
+        if coll is None:
+            coll = bpy.data.collections.new(coll_name)
+            sc.collection.children.link(coll)
+        for o in list(coll.objects):
+            bpy.data.objects.remove(o, do_unlink=True)
+        for c in items:
+            cu = bpy.data.curves.new(c["name"], "CURVE")
+            cu.dimensions = "3D"
+            cu.bevel_depth = float(c.get("radius", 0.03))
+            cu.bevel_resolution = 1
+            sp = cu.splines.new("BEZIER")
+            sp.bezier_points.add(len(c["points"]) - 1)
+            for bp, p_ in zip(sp.bezier_points, c["points"]):
+                bp.co = p_
+                bp.handle_left_type = bp.handle_right_type = "AUTO"
+            ob = bpy.data.objects.new(c["name"], cu)
+            ob["hp_set"] = json.dumps(c["points"])
+            if c.get("key"):
+                ob["hp_key"] = c["key"]
+            ob.color = colour
+            ob.hide_render = True
+            ob.show_in_front = True
+            m = bpy.data.materials.get("hp_" + coll_name) or _flat("hp_" + coll_name, list(colour[:3]), 0.6)
+            cu.materials.append(m)
+            coll.objects.link(ob)
+        coll["hp_made"] = json.dumps([c["name"] for c in items])
+
+
+def read_curves():
+    """Every curve in "guides" / "limbs" as it stands now: world-space control points, the stamp, and what the sync
+    made (for deletions). Works in a live session too."""
+    out = {"file": bpy.data.filepath, "guides": [], "limbs": [], "made": {}}
+    for coll_name in ("guides", "limbs"):
+        coll = bpy.data.collections.get(coll_name)
+        if coll is None:
+            continue
+        out["made"][coll_name] = json.loads(coll.get("hp_made", "[]"))
+        for ob in coll.objects:
+            if ob.type != "CURVE" or not ob.data.splines:
+                continue
+            sp = ob.data.splines[0]
+            pts = sp.bezier_points if sp.type == "BEZIER" else sp.points
+            P = [list(ob.matrix_world @ Vector(p_.co[:3])) for p_ in pts]
+            out[coll_name].append({"name": ob.name, "points": [[round(x, 4) for x in q] for q in P],
+                                   "set": json.loads(ob["hp_set"]) if "hp_set" in ob else None, "key": ob.get("hp_key")})
+    return out
+
+
 def build(job):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
@@ -547,9 +604,20 @@ def build(job):
         sc.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
         print("@@rendered", v["out"])
+    if job.get("curves") is not None:
+        add_curves(job)
     if job.get("save"):
-        bpy.ops.wm.save_as_mainfile(filepath=job["save"])
+        for o in twig_obs:
+            o.hide_render = False
+        bpy.ops.wm.save_as_mainfile(filepath=job["save"], check_existing=False)
+        b1 = job["save"] + "1"
+        if os.path.exists(b1):
+            os.remove(b1)
 
 
 if __name__ == "__main__":
-    build(json.loads(open(sys.argv[sys.argv.index("--") + 1]).read()))
+    args = sys.argv[sys.argv.index("--") + 1:]
+    if args[0] == "pull":  # blender -b plant.blend --python this -- pull out.json
+        open(args[1], "w").write(json.dumps(read_curves()))
+    else:
+        build(json.loads(open(args[0]).read()))
