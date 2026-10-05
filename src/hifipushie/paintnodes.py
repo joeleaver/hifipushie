@@ -80,8 +80,8 @@ class _Compiler:
             if "blur" in e:
                 raise NotImplementedError("blur on the mask so far")
             return {**out, "gen": None}
-        if gen not in NATIVE or "blur" in e:
-            raw = {k: v for k, v in e.items() if k not in ("breakup", "levels", "invert", "blend", "weight")}
+        if gen not in NATIVE or "blur" in e or e.get("vertex"):
+            raw = {k: v for k, v in e.items() if k not in ("breakup", "levels", "invert", "blend", "weight", "vertex")}
             # a path is seated by its tag; every other generator is the same wherever it's written
             key = (layer, name, raw, tag) if gen == "path" else (raw,)
             return {**out, "gen": "input", "attr": self.attr("gen", layer, name, raw, tag, key=key, parts=self.parts),

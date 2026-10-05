@@ -620,7 +620,7 @@ def _build(spec: dict, J: dict) -> dict:
         if hands or joints_:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
         for name, sw, depth, mask in micro:
-            stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply"}] if mask else []) + copy.deepcopy(no_pores)
+            stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
                                          "opacity": round(min(0.6 * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}

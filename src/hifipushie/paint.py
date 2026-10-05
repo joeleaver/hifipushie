@@ -121,6 +121,8 @@ before blending (or, in an entry with no generator, to the mask so far):
            cavity/ao/facing into weathering (see the recipes).
   "levels": [lo, hi] or [lo, hi, gamma]: remap lo..hi to 0..1 (contrast; gamma > 1 grows the mask).
   "invert": true.
+  "vertex": true: evaluate this entry per mesh vertex instead of per pixel in the scene's material (a broad, soft
+           mask such as a zone confining a fine pattern: it costs the shader one number instead of its nodes).
   "blur": m: average over a disc of that radius across the surface. Only points near a change are resampled,
            but it evaluates the blurred part 12 times there: blur cheap generators (path, near, noise).
 
@@ -195,7 +197,7 @@ MIXES = ("mix", "multiply", "screen", "overlay", "soft_light")
 PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
-ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur")
+ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur", "vertex")
 
 
 def layers(spec: dict) -> dict:

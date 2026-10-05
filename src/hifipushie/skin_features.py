@@ -76,7 +76,7 @@ def _zones(names, grow=1.0) -> list:
 def _where(o: dict, default: list, have: dict) -> list:
     """The feature's zones as one nested mask entry (zones the model has no joints for are left out)."""
     names = o.get("where") or [z for z in default if _has(z, have)]
-    return [{"mask": _zones(names)}] if names else []
+    return [{"vertex": True, "mask": _zones(names)}] if names else []
 
 
 BODY_NEED = {"shoulder": "arms", "elbow": "arms", "forearm": "arms", "upper_arm": "arms", "knee": "legs", "foot": "feet",
@@ -121,7 +121,7 @@ def _shade(c, k: float) -> list:
 
 def hair_default(tone: dict, age: float) -> list:
     """Hair colour when none is given: dark brown, greying from ~45."""
-    g = float(np.clip((age - 45) / 35, 0, 1))
+    g = float(np.clip((age - 55) / 30, 0, 1))
     base = np.array([0.13, 0.085, 0.06]) * (1.0 - 0.3 * tone["melanin"])
     return [round(float(x), 4) for x in base + g * (np.array([0.62, 0.62, 0.62]) - base)]
 
@@ -179,15 +179,16 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
         w = _where(o, ["nose", "cheek", "cheekbone", "forehead", "upper_lip", "chin", "shoulder", "forearm", "collarbone"], ctx)
         lo = float(np.clip(0.5 - 0.42 * min(a, 1.2), 0.02, 0.6))  # more of the swatch's faint macules show as it rises
         layer("freckles", o.get("mask"), color=T(melanin=3.4 + 2.0 * (1 - dark), blood=1.25), opacity=min(0.55 + 0.3 * a, 0.9) * show,
-              mask=[{"tile": {"swatch": "freckles", "size": round(0.06 * k, 5), "range": [round(lo, 3), round(lo + 0.3, 3)],
-                              "seed": int(o.get("seed", 0))}}] + w)
+              mask=[{"tile": {"swatch": "freckles", "size": round(0.06 * k, 5), "range": [round(lo, 3), round(lo + 0.3, 3)], "vary": False}}] + w)
     o = _opt(f.get("moles"), "features.moles", ("at", "size"))
     if o:
         sz = float(o.get("size", 0.0025))
         sd = seed + int(o.get("seed", 0))
         stacks = []
         if not o.get("at") or (isinstance(f.get("moles"), dict) and "amount" in f["moles"]):
-            stacks.append(_dots(0.03, 0.5 * sz, min(0.22 * o["amount"], 1.0), sd + 55, soft=0.35) + (_where(o, [], ctx)))
+            hi = float(np.clip(0.955 - 0.05 * o["amount"], 0.8, 0.96))  # only the swatch's few strongest marks
+            stacks.append([{"tile": {"swatch": "freckles", "size": round(0.06 * sz / 0.0016, 4), "range": [round(hi, 3), round(hi + 0.04, 3)],
+                                     "vary": False, "rotate": True}}] + (_where(o, [], ctx)))
         if o.get("at"):
             pts = o["at"] if isinstance(o["at"], list) and not (len(o["at"]) == 3 and all(isinstance(x, (int, float)) for x in o["at"])) else [o["at"]]
             stacks.append([{"spot": {"at": pts, "radius": 0.5 * sz, "soft": 0.35}}])
@@ -197,24 +198,27 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     o = _opt(spots, "features.age_spots", ("size",))
     if o:
         sz = float(o.get("size", 0.006))
-        w = _where(o, ["temple", "cheekbone", "forehead", "cheek_side", "back_of_hand", "forearm", "scalp"], ctx)
+        w = _where(o, ["temple", "cheekbone", "cheek_side", "back_of_hand", "forearm"], ctx) + \
+            [{"vertex": True, "mask": _zones(["forehead", "scalp"]), "blend": "max", "weight": 0.35}] if ctx["face"] else _where(o, ["back_of_hand", "forearm"], ctx)
         a = float(np.clip(o["amount"], 0, 1.5))
         layer("age_spots", o.get("mask"), pre=True, color=T(melanin=3.0 + 1.5 * (1 - dark), blood=0.9), opacity=0.55 * show,
               mask=[{"noise": {"scale": sz, "range": [0.74 - 0.14 * a, 0.78 - 0.14 * a], "seed": seed + 57, "octaves": 2, "warp": 0.5}}] + w)
         layer("age_spots_small", o.get("mask"), color=T(melanin=3.6, blood=0.9), opacity=0.5 * show,
-              mask=[{"tile": {"swatch": "freckles", "size": 0.11, "range": [0.62 - 0.2 * min(a, 1), 0.8 - 0.2 * min(a, 1)], "seed": 3}}] + w)
+              mask=[{"tile": {"swatch": "freckles", "size": 0.11, "range": [0.62 - 0.2 * min(a, 1), 0.8 - 0.2 * min(a, 1)], "vary": False}}] + w)
     o = _opt(f.get("blemishes"), "features.blemishes", ("size",))
     if o:
         sz = float(o.get("size", 0.003))
         sd = seed + int(o.get("seed", 0))
         a = float(o["amount"])
         w = _where(o, ["cheek", "cheek_side", "chin", "forehead", "jaw", "nose_wing"], ctx)
-        share = float(np.clip(0.45 * a, 0.03, 1))
-        cell = 3.2 * sz
-        layer("blemish_halo", o.get("mask"), color=T(blood=5.5, oxygenation=0.8), opacity=0.7 * (0.5 + 0.5 * show),
-              mask=_dots(cell, 1.1 * sz, share, sd + 61, soft=0.85) + w)
+        # the freckle swatch's marks at a larger size, another way up: the halo is a mark's whole extent, the bump its core
+        size = round(0.06 * sz / 0.0013, 4)
+        lo = float(np.clip(0.75 - 0.5 * min(a, 1.2), 0.1, 0.8))
+        tile = {"swatch": "freckles", "size": size, "vary": False, "rotate": True}
+        layer("blemish_halo", o.get("mask"), color=T(blood=5.5, oxygenation=0.8), opacity=0.75 * (0.5 + 0.5 * show),
+              mask=[{"tile": {**tile, "range": [round(lo, 3), round(lo + 0.25, 3)]}}] + w)
         layer("blemish_bump", o.get("mask"), color=T(blood=6.5, melanin=1.15), opacity=0.6 * (0.5 + 0.5 * show), roughness=max(base_r - 0.14, 0.2),
-              height=0.0004, mask=_dots(cell, 0.45 * sz, share, sd + 61, soft=0.9) + w)
+              height=0.0004, mask=[{"tile": {**tile, "range": [round(lo + 0.3, 3), round(lo + 0.5, 3)]}}] + w)
 
     # ---- veins
     v_def = max(0.0, 0.25 * thin - 0.05 + 0.6 * old) * (1 - 0.6 * dark)
@@ -231,7 +235,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
             groups.append(("", [0.3, 0.2, 1.0], ["temple"]))
         for i, (sx, d, zs) in enumerate(groups):
             zs = o.get("where") or zs
-            m = _lines(0.016, 0.045, d, 3.0, seed + 70 + i, warp=0.7) + [{"mask": _zones(zs)}]
+            rot = abs(d[2]) > 0.6  # the swatch's lines run across it: turned to run along the limb
+            m = [{"tile": {"swatch": "wrinkles", "size": 0.075, "rotate": bool(rot), "range": [0.25, 0.8], "vary": False}}, {"vertex": True, "mask": _zones(zs)}]
             layer(f"veins{sx.replace('.', '_')}", o.get("mask"), color=[0.72, 0.84, 0.86], mix="multiply", opacity=min(0.5 * a, 0.9) * (0.6 if not sx else 1) * show,
                   mask=m, **({"height": round(0.0005 * old * min(a, 1.5), 6)} if sx and old > 0.2 else {}))
 
@@ -286,39 +291,40 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
 
     # the lines of expression, each a tapered groove, in one layer: every group's strength scales its own mask
     groups = [
-        ("glabella", 1.0, rays([("lm_brow_inner.L", (-0.03, -0.01, 0.2), (-0.01, -0.01, -0.07))], 0.022)),
+        ("glabella", 1.0, rays([("lm_brow_inner.L", (-0.035, -0.01, 0.09), (-0.015, -0.01, -0.09))], 0.02)),
         ("crows_feet", 0.7, rays([("lm_eye_outer.L", (0.06, 0.03, 0.01), (0.34, 0.22, 0.14)), ("lm_eye_outer.L", (0.07, 0.03, -0.02), (0.38, 0.25, -0.02)),
                                   ("lm_eye_outer.L", (0.06, 0.03, -0.05), (0.33, 0.22, -0.18)), ("lm_eye_outer.L", (0.05, 0.03, -0.09), (0.24, 0.16, -0.3))], 0.014)),
         ("under_eye", 0.65, rays([("lm_lid_lower.L", (-0.22, 0.02, -0.07), (0.24, 0.06, -0.11)), ("lm_lid_lower.L", (-0.2, 0.02, -0.15), (0.28, 0.08, -0.2)),
                                   ("lm_lid_lower.L", (-0.12, 0.01, -0.24), (0.3, 0.1, -0.3))], 0.014)),
-        ("nasolabial", 1.3, _zones(["nasolabial"])), ("marionette", 1.1, _zones(["marionette"]))]
-    stack = []
-    for name, k, m in groups:
-        a = float(np.clip(amt[name] * k, 0, 1.6))
-        if a <= 0.03:
-            continue
-        stack.append({"mask": m + [{"levels": [0.0, round(1.6 / a, 3)]}], **({"blend": "max"} if stack else {})})
-    if stack:
-        layer("wrinkle_lines", height=-0.00065, color=crease, mix="multiply", opacity=0.75, roughness=min(base_r + 0.1, 0.95), mask=stack)
+        ("nasolabial", 1.0, _zones(["nasolabial"], 1.45)), ("marionette", 0.9, _zones(["marionette"], 1.4))]
+    for lname, members in (("folds", ("glabella", "nasolabial", "marionette")), ("crows_feet", ("crows_feet",)), ("under_eye", ("under_eye",))):
+        stack = []
+        for name, k, m in groups:
+            a = float(np.clip(amt[name] * k, 0, 1.6))
+            if name not in members or a <= 0.03:
+                continue
+            stack.append({"mask": m + [{"levels": [0.0, round(1.6 / a, 3)]}], **({"blend": "max"} if stack else {})})
+        if stack:  # (one mask of all ~20 tapered lines ran Cycles out of stack under the bump)
+            layer(f"wrinkle_{lname}", height=-0.00065, color=crease, mix="multiply", opacity=0.75, roughness=min(base_r + 0.1, 0.95), mask=stack)
     # fields of lines: a tiling swatch of wandering lines, laid across (forehead, neck) or turned (above the lip)
     a = amt["forehead"]
     if a > 0.02:
-        groove("forehead", a, 0.00042, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.75 - 0.6 * min(a, 1), 1.0]}},
-                                        {"mask": _zones(["forehead"], 0.85)}], 0.45)
+        groove("forehead", a, 0.0007, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.6 - 0.55 * min(a, 1), 0.9], "vary": False}},
+                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.28)
     a = amt["lip_lines"]
     if a > 0.02:
-        groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.7 - 0.5 * min(a, 1), 1.0]}},
-                                         {"mask": _zones(["upper_lip", "soul_patch"], 0.95)}, {"zone": "lips", "blend": "subtract"}], 0.35)
+        groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.7 - 0.5 * min(a, 1), 1.0], "vary": False}},
+                                         {"vertex": True, "mask": _zones(["upper_lip", "soul_patch"], 0.95)}, {"zone": "lips", "blend": "subtract"}], 0.35)
     a = amt["neck"]
     if a > 0.02:
-        groove("neck", a, 0.0005, [{"tile": {"swatch": "wrinkles", "size": 0.11, "range": [0.8 - 0.55 * min(a, 1), 1.0]}}, {"mask": _zones(["neck"], 0.9)}], 0.35)
+        groove("neck", a, 0.0005, [{"tile": {"swatch": "wrinkles", "size": 0.11, "range": [0.8 - 0.55 * min(a, 1), 1.0], "vary": False}}, {"vertex": True, "mask": _zones(["neck"], 0.9)}], 0.35)
     a = amt["crepe"]
     if a > 0.02:  # old skin: the primary lines deepen into a visible cross-hatch, the fine ones go
         zs = ["cheek", "cheek_side", "under_eye", "neck", "upper_lip", "chin", "jaw", "forehead"] + \
              (["back_of_hand", "forearm"] if ctx["hands"] and ctx["arms"] else [])
-        groove("crepe", a, 0.00028, [{"tile": {"swatch": "coarse", "size": 0.03}}, {"mask": _zones(zs, 1.1)}], 0.3)
-        groove("cheek_lines", a, 0.00034, [{"tile": {"swatch": "wrinkles", "size": 0.035, "rotate": True, "range": [0.35, 1.0], "seed": 5}},
-                                           {"mask": _zones(["cheek", "cheek_side", "jaw"], 1.0)}], 0.3)
+        groove("crepe", a, 0.00028, [{"tile": {"swatch": "coarse", "size": 0.03}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.3)
+        groove("cheek_lines", a, 0.00034, [{"tile": {"swatch": "wrinkles", "size": 0.035, "rotate": True, "range": [0.35, 1.0], "vary": False}},
+                                           {"vertex": True, "mask": _zones(["cheek", "cheek_side", "jaw"], 1.0)}], 0.3)
 
 
 def _hair(p, J, layer, T, ctx) -> None:
@@ -368,7 +374,7 @@ def _hair(p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else dflt
             zs = o.get("where") or ["beard"]
             # where the beard grows: full on chin, lip and jaw, thinning up the cheek, none on the lips
-            area = [{"mask": _zones(zs)}, {"zone": "lips", "blend": "subtract"}]
+            area = [{"vertex": True, "mask": _zones(zs)}, {"zone": "lips", "blend": "subtract"}]
             # hair under the skin: on light skin a cool grey-blue cast, on dark skin just darker
             cast = [round(float(c), 4) for c in (np.array(T(grey=0.75, melanin=1.0)) * (0.55 + 0.25 * t["melanin"]) + 0.2 * np.array(col))]
             layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=0.42 * min(a, 1.2),
@@ -387,7 +393,7 @@ def _hair(p, J, layer, T, ctx) -> None:
                 rot = abs(d[2]) < 0.6 * np.linalg.norm(d)  # hairs lie along the limb
             lo = 0.55 - 0.35 * min(o["amount"], 1.2)
             layer("body_hair", o.get("mask"), color=col, opacity=0.75,
-                  mask=[{"tile": {"swatch": "hairs", "rotate": bool(rot), "range": [round(lo, 3), round(lo + 0.35, 3)]}}, {"mask": _zones(zs)}])
+                  mask=[{"tile": {"swatch": "hairs", "rotate": bool(rot), "range": [round(lo, 3), round(lo + 0.35, 3)], "vary": False}}, {"vertex": True, "mask": _zones(zs)}])
 
 
 def _points(v, what):
@@ -459,12 +465,11 @@ def _scars(spec, p, J, layer, T, ctx) -> None:
             layer(n, m_extra, pre=True, color=T(melanin=0.45, blood=2.4 - 1.2 * old), opacity=0.85 * amt, roughness=max(base_r - 0.17, 0.2), mask=ragged)
             layer(n + "_red", m_extra, pre=True, color=T(melanin=1.5, blood=4.0 - 1.5 * old, oxygenation=0.6), opacity=0.6 * amt,
                   mask=[{"noise": {"scale": 0.007, "range": [0.5, 0.62], "seed": sd + 1, "warp": 0.9}}, {"mask": ragged}])
-            layer(n + "_webs", m_extra, height=round(0.0005 * amt, 6),  # taut ridges of contracted tissue
-                  mask=[{"cells": {"scale": 0.009, "mode": "edges", "range": [0.3, 0.0], "seed": sd + 2,
-                                   "stretch": {"dir": [0.3, 0.2, 1], "factor": 2.2}}}, {"mask": area}])
+            layer(n + "_webs", m_extra, height=round(-0.0006 * amt, 6),  # a net of taut furrows in contracted tissue
+                  mask=[{"tile": {"swatch": "coarse", "size": 0.05, "vary": False}}, {"mask": area}])
         elif kind == "pockmarks":
             w = float(sc.get("width", 0.002))
-            dots = _dots(3.0 * w, 0.5 * w, 0.6 * min(amt, 1), sd + 4, soft=0.8) + [{"mask": area}]
+            dots = [{"tile": {"swatch": "stubble", "size": round(0.012 * w / 0.00018, 4), "range": [0.2, 0.8], "vary": False}}, {"mask": area}]
             layer(n, m_extra, color=T(melanin=0.8, blood=1.3 - 0.4 * old), opacity=0.4, height=round(-0.00038 * amt, 6), mask=dots)
             continue  # the skin between the pits keeps its pores
         ctx["smooth"].append(area if not m_extra else area + [{"mask": m_extra}])

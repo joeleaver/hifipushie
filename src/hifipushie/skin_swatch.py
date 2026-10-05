@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 5
+VERSION = 8
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -124,7 +124,7 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
         im = Image.new("L", (W * S, H * S), 0)
         dr = ImageDraw.Draw(im)
         rng = np.random.default_rng(700 + seed)
-        n = int(520 * density * thickness)
+        n = int(1150 * density * thickness)
         # the brow's spine: rises from the inner end to the arch (~62% along), then falls into the tail
         def spine(t):
             return 0.56 - 0.2 * np.sin(np.clip(t / 0.62, 0, 1) * np.pi / 2) + 0.3 * np.clip((t - 0.62) / 0.38, 0, 1) ** 1.6
@@ -145,7 +145,7 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
             for k in range(8):
                 a2 = a + np.radians(curl - 9) * k / 8
                 pts.append((pts[-1][0] + np.cos(a2) * L / 8, pts[-1][1] - np.sin(a2) * L / 8))
-            w0 = rng.uniform(0.075, 0.12) * ppm  # root width, mm -> px
+            w0 = rng.uniform(0.11, 0.17) * ppm  # root width, mm -> px
             for k in range(8):
                 wk = w0 * (1 - 0.8 * k / 8)
                 dr.line([(pts[k][0] * S, pts[k][1] * S), (pts[k + 1][0] * S, pts[k + 1][1] * S)],
@@ -203,7 +203,7 @@ def depth(kind: str) -> np.ndarray:
         ph = (v + wob) * 7.0  # 7 lines per period
         dist = np.abs(ph - np.round(ph)) / 7.0 * mm  # mm to the nearest line
         strength = np.clip((_smooth_noise(rng, 7) - 0.3) * 2.2, 0, 1)
-        d = np.clip(1 - dist / (0.25 + 0.3 * strength), 0, 1) ** 1.5 * strength
+        d = np.clip(1 - dist / (0.5 + 0.5 * strength), 0, 1) ** 1.3 * strength
         ph2 = (v + 1.6 * wob + 0.07) * 14.0
         d2 = np.abs(ph2 - np.round(ph2)) / 14.0 * mm
         d = np.maximum(d, 0.35 * np.clip(1 - d2 / 0.18, 0, 1) * np.clip((_smooth_noise(rng, 9) - 0.45) * 3, 0, 1))
