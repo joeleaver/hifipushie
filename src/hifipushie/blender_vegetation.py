@@ -269,6 +269,64 @@ def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
     m.use_backface_culling = False
 
 
+def _weather(m, snow=0.0, wet=0.0, crown=None):
+    """Snow lying on what faces up (wood by its own normal, foliage by the crown's outward direction: its upper side
+    whitens) and rain (darker, glossier), put between a finished material's colour / roughness and its Principled."""
+    if not snow and not wet:
+        return
+    N, L = m.node_tree.nodes, m.node_tree.links
+    bsdf = N["Principled BSDF"]
+
+    def src(name):
+        s_ = bsdf.inputs[name]
+        if s_.is_linked:
+            a = s_.links[0].from_socket
+            L.remove(s_.links[0])
+            return a
+        v = N.new("ShaderNodeRGB" if name == "Base Color" else "ShaderNodeValue")
+        v.outputs[0].default_value = s_.default_value
+        return v.outputs[0]
+
+    col, rgh = src("Base Color"), src("Roughness")
+    if wet:
+        d = N.new("ShaderNodeVectorMath")
+        d.operation = "SCALE"
+        d.inputs["Scale"].default_value = 1 - 0.35 * wet
+        L.new(col, d.inputs[0])
+        col = d.outputs[0]
+        rgh = _math(N, L, "MULTIPLY", rgh, 1 - 0.6 * wet)
+    if snow:
+        geo = N.new("ShaderNodeNewGeometry")
+        if crown is not None:
+            o = N.new("ShaderNodeVectorMath")
+            o.operation = "SUBTRACT"
+            L.new(geo.outputs["Position"], o.inputs[0])
+            o.inputs[1].default_value = crown
+            nrm = N.new("ShaderNodeVectorMath")
+            nrm.operation = "NORMALIZE"
+            L.new(o.outputs[0], nrm.inputs[0])
+            vec = nrm.outputs[0]
+        else:
+            vec = geo.outputs["Normal"]
+        sp = N.new("ShaderNodeSeparateXYZ")
+        L.new(vec, sp.inputs[0])
+        nz = N.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = 6.0
+        up = _math(N, L, "ADD", sp.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", nz.outputs[0], 0.5), 0.5))
+        r = N.new("ShaderNodeMapRange")
+        r.inputs["From Min"].default_value, r.inputs["From Max"].default_value = 1.0 - 1.3 * snow, 1.25 - 1.3 * snow
+        L.new(up, r.inputs["Value"])
+        mx = N.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        L.new(r.outputs["Result"], mx.inputs["Factor"])
+        L.new(col, mx.inputs["A"])
+        mx.inputs["B"].default_value = (0.9, 0.92, 0.95, 1)
+        col = mx.outputs["Result"]
+        rgh = _math(N, L, "MAXIMUM", rgh, _math(N, L, "MULTIPLY", r.outputs["Result"], 0.6))
+    L.new(col, bsdf.inputs["Base Color"])
+    L.new(rgh, bsdf.inputs["Roughness"])
+
+
 def _tint(N, L):
     tint = N.new("ShaderNodeAttribute")
     tint.attribute_type = "INSTANCER"
@@ -413,6 +471,7 @@ def add_plant(pj, tag, clay):
     has_tw = "tw_pos" in d and len(d["tw_pos"])
     bk = pj.get("bark") or {}
     bark = bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
+    _weather(bark, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
     twig_wood = _flat(f"twig_wood{tag}", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
     wood = _mesh(f"wood{tag}", V, d["F"], d["uv"] if "uv" in d else None)
     a = wood.data.attributes.new("tan", "FLOAT_VECTOR", "POINT")
@@ -432,6 +491,7 @@ def add_plant(pj, tag, clay):
         tp_ = place(d["tw_pos"])
         lf_["crown"] = [float(tp_[:, 0].mean()), float(tp_[:, 1].mean()), float(np.percentile(tp_[:, 2], 30))]
         mat = card_material(f"cards{tag}", lf_, cards) if cards else leaf_material(f"leaf{tag}", lf_)
+        _weather(mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)), lf_["crown"])
         nv = int(d["tw_var"].max()) + 1
         tw_pos = place(d["tw_pos"])
         pts_all.append(tw_pos)

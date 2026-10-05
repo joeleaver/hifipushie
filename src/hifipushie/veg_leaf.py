@@ -251,7 +251,8 @@ def place(tree: dict) -> dict:
     n = len(P)
     empty = {"pos": np.zeros((0, 3)), "frame": np.zeros((0, 3, 3)), "scale": np.zeros(0), "variant": np.zeros(0, int),
              "node": np.zeros(0, int), "key": np.zeros(0, np.uint64)}
-    if s.get("season") in ("winter", "bare", "dead") or s.get("decay") or n < 3:
+    evergreen = bool(lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")))
+    if s.get("season") in ("bare", "dead") or (s.get("season") == "winter" and not evergreen) or s.get("decay") or n < 3:
         return empty
     leafy = (tree["steps"] - 1 - tree["born"]) < tw["steps"]  # shoots this young carry twigs
     leafy[:2] = False

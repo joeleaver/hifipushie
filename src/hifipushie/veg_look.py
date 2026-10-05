@@ -41,6 +41,8 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     from . import veg_bark, veg_leaf
     s = tree["spec"]
     lf = s["leaves"]
+    if s.get("season") == "autumn" and not lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")):
+        lf = {**lf, "color": lf.get("autumn", [0.78, 0.56, 0.16])}  # (veg_export.AUTUMN)
     foliage = foliage or lf.get("foliage", "cards")
     bark = dict(s.get("bark") or {})
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
@@ -86,7 +88,8 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / f"bark_base{tag}"))
     pj = {"npz": str(npz), "bark": bark,
           "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal", "round") if k in lf},
-          "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None}
+          "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None,
+          "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0)}
     return pj, info
 
 
@@ -170,6 +173,11 @@ def overlay(ref_mask: np.ndarray, ours: np.ndarray, size: int = 420):
     return Image.fromarray(im[:, max(cols[0] - 8, 0): cols[-1] + 8])
 
 
+def veg_leaf_place(T):
+    from . import veg_leaf
+    return veg_leaf.place(T)["pos"]
+
+
 def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, title: str = "", height: int = 520,
                     foliage: str | None = None) -> dict:
     """One row: the photo | outlines over each other | clay skeleton | leafed, with the numbers under it.
@@ -211,7 +219,7 @@ def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, 
 
     views = [{"name": "clay", "azimuth": az, "out": str(tmp / "clay.png"), "size": sz, "leaves": False, "clay": True},
              {"name": "bare", "azimuth": az, "elevation": 4, "out": str(tmp / "bare.png"), "size": sz, "leaves": False}]
-    has_leaves = T["spec"].get("season") not in ("winter", "bare", "dead") and not T["spec"].get("decay")
+    has_leaves = len(veg_leaf_place(T)) > 0
     lv = has_leaves
     views += [{"name": "leaf", "azimuth": az, "elevation": 4, "out": str(tmp / "leaf.png"), "size": sz, "leaves": lv},
               {"name": "far", "eye": eye(max(70.0, 3.5 * H), 1.7), "look": [0, 0, 0.42 * H], "fov": 22,

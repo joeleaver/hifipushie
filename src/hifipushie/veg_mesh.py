@@ -64,9 +64,10 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
         root = par[nodes[0]]
         pts = np.vstack([P[root], P[nodes]])
         rr = np.concatenate([[min(r0 * 1.15, rad[root]) if root > 0 else r0], rad[nodes]])
+        nid = np.concatenate([[nodes[0]], nodes])  # the node each ring belongs to (wind weights, per-node data)
         if simplify > 0 and len(pts) > 2:  # fewer rings: drop nodes the axis runs nearly straight through (within
             keep_ = _rdp(pts, simplify * np.maximum(rr, 0.004), rr)  # `simplify` x its radius), and keep its taper
-            pts, rr = pts[keep_], rr[keep_]
+            pts, rr, nid = pts[keep_], rr[keep_], nid[keep_]
         foot = root == 0 and order[nodes[0]] == 0
         n_under = 0
         if foot:  # the trunk goes into the ground (a foot on a slope shows no gap), with rings enough for its root flares
@@ -78,6 +79,7 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
             under = float((roots or {}).get("under", 0.5 if roots else 0.3))
             pts = np.vstack([pts[0] - [0, 0, under], pts[0], *ins, pts[1:]]) if ins else np.vstack([pts[0] - [0, 0, under], pts])
             rr = np.concatenate([[rr[0] * 1.05], [rr[0]], ri, rr[1:]])
+            nid = np.concatenate([[0], [0], np.zeros(len(ri), nid.dtype), nid[1:]])
             n_under = 1
             if roots:
                 k = max(k, min(6 * int(roots.get("count", 5)), 40))
@@ -93,6 +95,7 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
             if s2 > s1 > 1e-6:
                 pts = np.vstack([pts[0], pts[0] + d0 * (s1 / L0), pts[0] + d0 * (s2 / L0), pts[1:]])
                 rr = np.concatenate([[min(rp, r0 * collar)], [min(rp, r0 * (1 + 0.55 * (collar - 1)))], [r0 * 1.04], rr[1:]])
+                nid = np.concatenate([[root, root, nid[0]], nid[1:]])
                 seated = weld
         m = len(pts)
         t = np.diff(pts, axis=0)
@@ -150,7 +153,9 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
         tipf = np.stack([last + np.arange(k), last + np.arange(k) + 1, np.full(k, m * kk)], 1)
         Fs.append(np.vstack([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]], tipf]) + base)
         seg = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
-        at = np.empty((m * kk + 1, 5))
+        at = np.empty((m * kk + 1, 6))
+        at[:-1, 5] = np.repeat(nid, kk)
+        at[-1, 5] = nid[-1]
         at[:, 4] = float(dead[nodes[0]]) if dead is not None else 0.0
         at[:-1, 0] = ax[nodes[0]]
         at[:-1, 1] = order[nodes[0]]
@@ -175,7 +180,7 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
         base += len(V)
     if not Vs:
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "axis": np.zeros(0), "order": np.zeros(0),
-                "along": np.zeros(0), "dead": np.zeros(0), "radius": np.zeros(0), "tan": np.zeros((0, 3)), "uv": np.zeros((0, 2))}
+                "along": np.zeros(0), "dead": np.zeros(0), "node": np.zeros(0, np.int64), "radius": np.zeros(0), "tan": np.zeros((0, 3)), "uv": np.zeros((0, 2))}
     At = np.vstack(At)
     return {"V": np.vstack(Vs), "F": np.vstack(Fs), "axis": At[:, 0], "order": At[:, 1], "along": At[:, 2],
-            "dead": At[:, 4], "radius": At[:, 3], "tan": np.vstack(Ts), "uv": np.vstack(Us)}
+            "dead": At[:, 4], "node": At[:, 5].astype(np.int64), "radius": At[:, 3], "tan": np.vstack(Ts), "uv": np.vstack(Us)}

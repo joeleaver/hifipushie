@@ -583,6 +583,63 @@ def test_limb_ids_last_and_report_says():
             vt._GROWN.clear()
 
 
+def _glb(path):
+    import json
+    import struct
+    b = open(path, "rb").read()
+    n = struct.unpack("<I", b[12:16])[0]
+    return json.loads(b[20:20 + n]), b[20 + n + 8:]
+
+
+def test_export_lods_wind_seasons_collision():
+    import tempfile
+    from hifipushie import veg_export, veg_leaf
+    T = v.grow({"species": "birch", "age": 25})
+    with tempfile.TemporaryDirectory() as tmp:
+        imp = {"image": np.ones((8, 16, 4), np.float32), "size": 10.0, "height": 5.0}
+        c = veg_export.write_glb(T, tmp + "/b.glb", "b", triangles=9000, lods=3, seasons=["summer", "autumn", "winter", "snow"],
+                                 wet=True, impostor=imp)
+        g, bin_ = _glb(c["path"])
+        tri = [l_["triangles"] for l_ in c["lods"]]
+        assert len(tri) == 4 and tri[0] <= 9000 and tri[1] <= 0.45 * 9000 + 1 and tri[2] <= 0.18 * 9000 + 1 and tri[3] == 4
+        assert tri[0] > tri[1] > tri[2]
+        assert set(g["extensionsUsed"]) == {"KHR_materials_variants", "MSFT_lod"}
+        assert [x["name"] for x in g["extensions"]["KHR_materials_variants"]["variants"]] == ["summer", "autumn", "winter", "snow", "wet"]
+        head = g["nodes"][g["scenes"][0]["nodes"][0]]
+        assert len(head["extensions"]["MSFT_lod"]["ids"]) == 3 and head["name"].endswith("LOD0")
+        mats = {m["name"]: m for m in g["materials"]}
+        assert mats["foliage_winter"]["alphaCutoff"] > 1 and mats["foliage_autumn"]["pbrMetallicRoughness"]["baseColorTexture"]["index"] \
+            != mats["foliage"]["pbrMetallicRoughness"]["baseColorTexture"]["index"]
+        wood = next(m for m in g["meshes"] if m["name"] == "LOD0_wood")["primitives"][0]
+        fol = next(m for m in g["meshes"] if m["name"] == "LOD0_foliage")["primitives"][0]
+        for k in ("TEXCOORD_1", "TEXCOORD_2", "_WIND"):
+            assert k in wood["attributes"] and k in fol["attributes"]
+        assert len(fol["extensions"]["KHR_materials_variants"]["mappings"]) >= 3
+
+        def arr(i, cols):
+            a_ = g["accessors"][i]
+            bv = g["bufferViews"][a_["bufferView"]]
+            return np.frombuffer(bin_, np.float32, a_["count"] * cols, bv["byteOffset"]).reshape(-1, cols)
+
+        P, W = arr(wood["attributes"]["POSITION"], 3), arr(wood["attributes"]["_WIND"], 4)
+        low, high = P[:, 1] < 0.3, P[:, 1] > 0.8 * P[:, 1].max()  # (Y up in the file)
+        assert W[low][:, 0].max() < 0.02 and W[high][:, 0].min() > 0.6 and W[:, 3].max() == 0  # the foot stands; wood doesn't flutter
+        Wf = arr(fol["attributes"]["_WIND"], 4)
+        assert Wf[:, 3].max() > 0.9 and Wf[:, 1].min() > 0 and 0 < Wf[:, 2].std()
+        hp = g["extras"]["hifipushie_plant"]
+        caps = hp["collision"][0]["capsules"]
+        assert 2 <= len(caps) <= 24 and caps[0]["ra"] > 0.03 and "sin" in hp["wind"]
+        assert g["nodes"][hp["collision"][0]["mesh_node"]]["name"] == "b_collision"
+    # seasons on the plant itself
+    ev = v.grow({"species": "norway_spruce", "age": 20, "season": "winter"})
+    de = v.grow({"species": "birch", "age": 20, "season": "winter"})
+    assert len(veg_leaf.place(ev)["pos"]) > 0 and len(veg_leaf.place(de)["pos"]) == 0
+    assert veg_export.season_atlas(de["spec"], "winter", [0.4, 0.3, 0.3]) is None
+    su, au = veg_export.season_atlas(de["spec"], "summer", [0.4, 0.3, 0.3]), veg_export.season_atlas(de["spec"], "autumn", [0.4, 0.3, 0.3])
+    m = su["color"][..., 3] > 0.6
+    assert (au["color"][m][:, 0] - au["color"][m][:, 1]).mean() > (su["color"][m][:, 0] - su["color"][m][:, 1]).mean() + 0.1
+
+
 def test_fit_improves():
     ref = v.silhouette(v.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
     start = {**SMALL, "habit": {"apical": [0.45, 0.5]}}

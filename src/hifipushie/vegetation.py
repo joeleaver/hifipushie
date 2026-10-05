@@ -82,7 +82,8 @@ DEFAULT = {
     "guides": {}, "prune": [], "envelope": None, "forces": [],
     "leaves": {"shape": "ovate", "length": 0.07, "color": [0.16, 0.3, 0.08], "twig": {}},  # see veg_leaf.LEAF / TWIG
     "bark": {"kind": "furrowed"},
-    "season": "summer",
+    "season": "summer",  # summer | autumn (leaves.autumn colour) | winter (deciduous: bare) | bare | dead
+    "snow": 0.0, "wet": 0.0,  # 0..1: snow lying on what faces up; rain-dark, glossy bark and leaves (looks; export variants)
     "decay": None,  # {"min_radius": m}: wood thinner than this has fallen (a dead or storm-broken tree)
     "trunk_diameter": None,  # m at the foot: thick wood is scaled to it
     "limb_diameter": None,  # m: the stoutest limb's girth where it leaves the trunk (trunk_diameter then sizes the trunk alone)

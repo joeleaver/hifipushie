@@ -7,7 +7,8 @@ the same tree. Units are metres, Z up, the trunk's foot at [0, 0, 0]; "azimuth 0
 
 Tools: `get_plant` (the stored spec, what it resolves to, and what each number usually is), `grow_plant` (create /
 change / copy / report), `edit_plant` (guides, prunes, envelope, forces), `look_plant` (images of one plant),
-`look_plants` (several standing together), `plant_reference` (measure against a photo, optionally fit),
+`look_plants` (several standing together), `wind_plant` (the export swaying), `sync_plant` (the Blender file a person
+edits), `plant_reference` (measure against a photo, optionally fit),
 `export_plant` (GLB, with a triangle budget), `plant_history` (`plant_history(name)` lists versions,
 `plant_history(name, revert_to=3)` restores one). `grow_plant(name="")` lists the plants and the species presets.
 
@@ -280,6 +281,27 @@ triangles=12000)` renders exactly what `export_plant(name, triangles=12000)` wri
 full-detail one. A budget first gives branches fewer rings and sides, then leaves out the thinnest wood (wood you
 marked, dead wood and drawn guides, stays down to a quarter of that girth), and draws the twigs that stand on wood
 it kept; the export WARNS when cards would float. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+
+## Game-ready: LODs, wind, seasons, collision
+
+`export_plant(name, triangles=20000, lods=3, impostor=True, seasons=["summer", "autumn", "winter"], wet=True,
+lod_files=True)`:
+- **LODs**: 100 / 45 / 18% of the budget from the same tree, then (impostor) two crossed quads with the plant's
+  picture. `<name>.glb` shows LOD 0 and hangs the rest on it (MSFT_lod; extras list each LOD's triangles and the screen
+  height to switch under). `lod_files` writes `<name>_LOD<k>.glb` too: most engines take LODs as separate meshes.
+- **Wind**: every vertex carries trunk sway (0 at the foot, 1 at the top), branch sway (0 where its limb leaves the
+  trunk, 1 at the limb's end), a phase per limb, and leaf flutter (0 at a card's foot, 1 at its tip): TEXCOORD_1 =
+  (trunk, branch), TEXCOORD_2 = (phase, flutter), and all four in `_WIND`. The shader recipe is in the file's extras.
+  `wind_plant(name)` renders the export swaying by that recipe: look at it (the foot still, limbs out of step).
+- **Seasons** are states of the plant (`"season": "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
+  `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
+  material variants in the export (KHR_materials_variants: summer / autumn / winter / snow / wet). Snow lying on wood
+  is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
+- **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh.
+- What importers do with the file (checked here: Blender 5.1, Godot 4.7; NOT checked: Unity, Unreal):
+  Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
+  1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
+  (LOD 0; use the LOD files), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`.
 
 ## Not built yet
 

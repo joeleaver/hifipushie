@@ -426,7 +426,7 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
     """Blender view jobs for named views or camera dicts; (jobs, [(name, path)])."""
     from . import veg_look
     import math
-    has_leaves = T["spec"].get("season") not in ("winter", "bare", "dead") and not T["spec"].get("decay")
+    has_leaves = len(veg_look.veg_leaf_place(T)) > 0
     H = T["height"]
     c_, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
     toward = np.array([-s_, -c_, 0.0])
@@ -550,14 +550,105 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
     return got
 
 
-def export(name: str, out_dir: str | None = None, triangles: int | None = None) -> dict:
+def impostor(name: str, px: int = 512) -> dict:
+    """The plant from two sides (along +y and along -x) as one RGBA picture, for the last LOD's crossed quads:
+    {"image" (h, 2w, 4) 0..1, "size": the square each view covers (m), "height": its middle's height (m)}."""
+    from PIL import Image
+    import tempfile
+    from . import veg_look
+    T = grown(name)
+    H = T["height"]
+    R = float(np.percentile(np.linalg.norm(T["pos"][:, :2], axis=1), 99.5))
+    S = float(max(H, 2 * R) * 1.06)
+    with tempfile.TemporaryDirectory(prefix="hifipushie-vegimp-") as tmp:
+        jobs = [{"out": f"{tmp}/v{i}.png", "size": [px, px], "azimuth": az, "elevation": 0, "focus": [0, 0, 0.5 * H], "span": S,
+                 "leaves": True, "transparent": True, "no_ground": True, "sun": [az + 235, 50]} for i, az in enumerate((0, 90))]
+        veg_look.render(T, jobs)
+        im = np.concatenate([np.asarray(Image.open(j["out"]).convert("RGBA"), np.float32) / 255 for j in jobs], axis=1)
+    return {"image": im, "size": S, "height": 0.5 * H}
+
+
+def export(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1, seasons=("summer",),
+           wet: bool = False, impostor_lod: bool = False, lod_files: bool = False) -> dict:
+    """The plant's GLB (see veg_export.write_glb). lods 1-3 mesh LODs (+ impostor_lod: crossed quads with its picture
+    as the last); lod_files also writes each LOD as <name>_LOD<k>.glb for engines without MSFT_lod."""
     from . import veg_export
     T = grown(name)
     out = Path(out_dir) if out_dir else _dir(name) / "export"
-    c = veg_export.write_glb(T, str(out / f"{name}.glb"), name, triangles=triangles)
+    imp = impostor(name) if impostor_lod else None
+    stem = name.replace("#", "_")
+    c = veg_export.write_glb(T, str(out / f"{stem}.glb"), stem, triangles=triangles, lods=lods, seasons=seasons, wet=wet, impostor=imp)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
     c["over"] = max(0, c["total"] - triangles) if triangles else 0
+    c["files"] = [c["path"]]
+    if lod_files and len(c["lods"]) > 1:
+        base = triangles or c["lods"][0]["triangles"]
+        for li, L in enumerate(c["lods"]):
+            if L.get("impostor"):
+                f = veg_export.write_impostor(T, str(out / f"{stem}_LOD{li}.glb"), stem, imp)
+            else:
+                f = veg_export.write_glb(T, str(out / f"{stem}_LOD{li}.glb"), stem, triangles=int(base * veg_export.LODS[li][0]),
+                                         seasons=seasons, wet=wet, cap=veg_export.LODS[li][1])["path"]
+            c["files"].append(f)
     return c
+
+
+def blender_import(glb: str, frames: int = 0, out: str | None = None, **job) -> dict:
+    """Open a GLB with Blender's own glTF importer and report what arrived (objects, uv sets, attributes, variants);
+    with frames, also render it swaying from its wind channels into `out`."""
+    import subprocess
+    import tempfile
+    from . import render as _render
+    script = Path(__file__).with_name("blender_veg_wind.py")
+    with tempfile.TemporaryDirectory(prefix="hifipushie-vegwind-") as tmp:
+        rp = Path(tmp) / "report.json"
+        jp = Path(tmp) / "job.json"
+        jp.write_text(json.dumps({"glb": str(glb), "frames": frames, "out": out, "report": str(rp), **job}))
+        r = subprocess.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(script),
+                            "--", str(jp)], capture_output=True, text=True, timeout=1800)
+        if r.returncode:
+            raise RuntimeError(f"blender failed:\n{r.stdout[-1500:]}\n{r.stderr[-1500:]}")
+        return json.loads(rp.read_text())
+
+
+def wind(name: str, triangles: int | None = 20000, seconds: float = 4.0, fps: int = 12, strength: float = 1.0,
+         wind_from: float = 270.0, azimuth: float = 0.0, size: int = 480) -> dict:
+    """The exported plant swaying: its GLB (at `triangles`) imported by Blender's glTF importer and moved from the
+    file's own wind channels by the recipe an engine shader would use. Writes wind_v<n>.mp4 (when ffmpeg is there),
+    the frames, and wind_v<n>_strip.png (six frames side by side + their difference from frame 0); returns paths, the
+    importer's report and how far the plant moved."""
+    import shutil
+    import subprocess
+    from PIL import Image
+    from . import veg_export
+    T = grown(name)
+    d = _dir(name)
+    v = len(history(name))
+    stem = name.replace("#", "_")
+    glb = veg_export.write_glb(T, str(d / "export" / f"{stem}_wind.glb"), stem, triangles=triangles)["path"]
+    fr = d / f"wind_v{v}"
+    if fr.exists():
+        shutil.rmtree(fr)
+    fr.mkdir(parents=True)
+    n = int(round(seconds * fps))
+    rep = blender_import(glb, frames=n, out=str(fr), fps=fps, strength=strength, height=T["height"], azimuth=azimuth,
+                         size=[size, int(size * 1.12)], **{"from": wind_from})
+    files = sorted(fr.glob("f_*.png"))
+    ims = [np.asarray(Image.open(f).convert("RGB"), np.float32) for f in files]
+    pick = [int(round(i * (len(ims) - 1) / 5)) for i in range(6)]
+    top = np.concatenate([ims[i] for i in pick], axis=1)
+    diff = np.concatenate([np.clip(np.abs(ims[i] - ims[0]) * 4, 0, 255) for i in pick], axis=1)
+    strip = str(d / f"wind_v{v}_strip.png")
+    Image.fromarray(np.concatenate([top, diff], axis=0).astype(np.uint8)).save(strip)
+    moved = float(np.mean([(np.abs(i_ - ims[0]).max(-1) > 24).mean() for i_ in ims[1:]])) if len(ims) > 1 else 0.0
+    out = {"frames": str(fr), "strip": strip, "glb": glb, "import": rep, "moved_share": round(moved, 3), "n": len(files)}
+    if shutil.which("ffmpeg"):
+        mp4 = str(d / f"wind_v{v}.mp4")
+        q = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(fps), "-i", str(fr / "f_%03d.png"),
+                            "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", mp4], capture_output=True, text=True)
+        if q.returncode == 0:
+            out["mp4"] = mp4
+    return out
 
 
 def edit(name: str, ops: list[dict], note: str = "") -> int:
@@ -664,7 +755,8 @@ def set_report(name: str) -> str:
     return f"set of {len(hs)} from {name} (heights {min(hs):.1f}-{max(hs):.1f} m):\n" + "\n".join(out)
 
 
-def export_set(name: str, out_dir: str | None = None, triangles: int | None = None) -> dict:
+def export_set(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1,
+               seasons=("summer",), wet: bool = False) -> dict:
     """The set as ONE GLB (<name>_set.glb): a node per plant, one bark and one foliage material shared."""
     from . import veg_export
     names = set_names(name)
@@ -672,7 +764,7 @@ def export_set(name: str, out_dir: str | None = None, triangles: int | None = No
         raise ValueError(f"{name} has no set: grow_plant(name, patch={{\"set\": {{\"count\": 5}}}})")
     out = Path(out_dir) if out_dir else _dir(name) / "export"
     c = veg_export.write_glb([grown(n_) for n_ in names], str(out / f"{name}_set.glb"),
-                             [n_.replace("#", "_") for n_ in names], triangles=triangles)
+                             [n_.replace("#", "_") for n_ in names], triangles=triangles, lods=lods, seasons=seasons, wet=wet)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
     return c
 
