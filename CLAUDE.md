@@ -915,8 +915,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     table's millimetres of mismatch cancel, the seed's individuality stays) and solved in 120 identity components
     (ridge, components past +-2.6 sigma fixed and the rest re-solved), eye centres held. Head scale = the body's
     interocular / the fitted GNM's (0.74 for a 7-year-old, ~0.92 adults; the old default 1.4 made every head a
-    doll's). On by default when base.head has no `fit` / `identity` / `regions` (an authored head, the golfer's, is
-    untouched); `follow_body` forces it on or off, `follow` scales it. 60-70% of the asked move is made.
+    doll's). OFF unless asked: `base.head.follow_body: true` or a strength 0..1.5 (the main session: existing
+    characters with seed-only heads, s0urc3's Garrett, must not change; without the key the built base is
+    bit-identical to main's, checked by checksum on three bodies and in `tests/test_headfit.py`); the `skin` tool
+    hints at it and the skin guide's stage 0 recommends it for new characters. 60-70% of the asked move is made.
     What it took: lids and lips weighted 0.3 / 0.5 / 0.15 (in full, the child's lips twisted and lid margins tore);
     the neck and bib HELD (90 skin vertices under the chin: no landmark sees them, and left free the fit flared the
     bib up to the graft plane = the stand-up collar round old bodies' necks; with them held the head's neck matches

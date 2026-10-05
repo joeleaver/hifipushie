@@ -21,7 +21,8 @@ def have():
 
 
 def base(body, **head):
-    return {"body": {"source": "makehuman", **body}, "head": {"source": "gnm", "seed": 5, "spread": 0.7, **head}}
+    h = {"source": "gnm", "seed": 5, "spread": 0.7, "follow_body": True, **head}
+    return {"body": {"source": "makehuman", **body}, "head": {k: v for k, v in h.items() if v is not None}}
 
 
 def test_table():
@@ -37,11 +38,12 @@ def test_table():
 
 
 def test_when_it_applies():
+    assert not headfit.applies(base({"age": 8}, follow_body=None))  # off unless asked: existing characters keep their heads
     assert headfit.applies(base({"age": 8}))
-    assert not headfit.applies(base({"age": 8}, fit={"jaw_width": 1.6}))  # an authored head is left alone
-    assert headfit.applies(base({"age": 8}, fit={"jaw_width": 1.6}, follow_body=True))
-    assert not headfit.applies(base({"age": 8}, follow_body=False))
-    assert not headfit.applies({"head": {"source": "gnm"}})  # the template body has no head of its own age
+    assert headfit.applies(base({"age": 8}, fit={"jaw_width": 1.6}))
+    assert headfit.applies(base({"age": 8}, follow_body=0.5))
+    assert not headfit.applies(base({"age": 8}, follow_body=False)) and not headfit.applies(base({"age": 8}, follow_body=0))
+    assert not headfit.applies({"head": {"source": "gnm", "follow_body": True}})  # the template body has no head of its age
     for f in ("examples/disc_golfer_mh.json", "examples/disc_golfer_style.json", "examples/gnm_talk.json"):
         assert not headfit.applies(json.loads((ROOT / f).read_text())["base"]), f  # the golfer keeps his face
 
@@ -80,10 +82,30 @@ def test_age_and_sex_reach_the_head():
     for p in ({"age": 7, "sex": 0.5}, {"age": 82, "sex": 1.0}):  # most of the move is made
         r = headfit.report(base(p))
         assert r["left_io"] < 0.55 * r["asked_io"], r
-    half = _shape(base({"age": 7, "sex": 0.5}, follow=0.5))
+    half = _shape(base({"age": 7, "sex": 0.5}, follow_body=0.5))
     assert child[0] < half[0] < man[0]  # "follow" scales it
-    own = headfit.follow(base({"age": 7}, identity={"head_000": 1.5}), {"source": "gnm", "seed": 5, "identity": {"head_000": 1.5}})
+    own = headfit.follow(base({"age": 7}, identity={"head_000": 1.5}),
+                         {"source": "gnm", "seed": 5, "follow_body": True, "identity": {"head_000": 1.5}})
     assert own["identity"]["head_000"] == 1.5  # the head's own identity entries win
+
+
+def test_without_the_key_nothing_changes():
+    """A seed-only head on a MakeHuman body, as existing characters have: the head built is gnm_head of the head dict
+    as given (no identity added, the default scale, the fixed graft plane), bit for bit."""
+    from hifipushie import base as basemod
+    b = {"body": {"source": "makehuman", "age": 60, "sex": 1.0, "weight": 0.6}, "eyes": "eyes",
+         "head": {"source": "gnm", "seed": 5, "spread": 0.7, "mouth_gap": 0.0}}
+    s = basemod.inject({"base": b, "joints": {}})
+    h = basemod.head_of({"joints": s["joints"]}, b)
+    assert not h.get("room")
+    tpl, tj, J = basemod.source(b), basemod.template_joints(b), s["joints"]
+    eb = np.array(tpl["face"]["landmarks"]["eye.L"]) * [0, 1, 1]
+    mid = np.array(J["head"]["pos"], float) + eb - np.array(tj["head"]["pos"])
+    ref = basemod.gnm_head(b["head"], mid, np.array([0, 0, 1.0]))
+    assert h["verts"].shape == ref["verts"].shape and np.array_equal(h["verts"], ref["verts"])
+    assert np.array_equal(h["plane"][0], ref["plane"][0])
+    on = basemod.head_of({"joints": s["joints"]}, {**b, "head": {**b["head"], "follow_body": True}})
+    assert on.get("room") and not np.array_equal(on["verts"][:100], ref["verts"][:100])
 
 
 if __name__ == "__main__":

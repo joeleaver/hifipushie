@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 69  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 70  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -597,7 +597,7 @@ def _neck_loops(tpl):
             if abs(round(wn)) != 1:
                 continue
             if Q[:, 2].max() > chin_z - 0.025 or np.abs(Q[:, 0]).max() > 0.12:
-                if Q[:, 2].max() <= chin_z - 0.012 and np.abs(Q[:, 0]).max() <= 0.17:
+                if Q[:, 2].max() <= chin_z - 0.012 and np.abs(Q[:, 0]).max() <= 0.16:
                     loose.append((float(Q[:, 2].max()), path))
                 continue
             found.append((float(Q[:, 2].max()), path))

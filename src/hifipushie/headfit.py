@@ -9,9 +9,9 @@ own landmarks (its seeded identity is kept: delta transfer, so the table's milli
 in GNM's identity components by ridge least squares, eye centres held. The head's scale = the body's interocular
 over the fitted GNM's, so the head is the body's own head's size.
 
-base.head keys: `follow_body` (default: on for a MakeHuman body when the head has no `fit` / `identity` / `regions`
-of its own, i.e. nobody authored its shape; true forces it, false turns it off), `follow` 0..1.5 (how much of the
-move, default 1), `scale` given = kept.
+base.head key `follow_body`: OFF unless asked (existing characters keep their heads bit for bit); true, or a strength
+0..1.5 (how much of the move), turns it on. New characters on a MakeHuman body should set it. The head's own
+`identity` entries and a given `scale` win over what it solves.
 """
 from __future__ import annotations
 
@@ -46,9 +46,12 @@ def applies(base: dict) -> bool:
     if (base.get("body") or {}).get("source") != "makehuman" or head.get("source", "gnm") != "gnm":
         return False
     f = head.get("follow_body")
-    if f is not None:
-        return bool(f)
-    return not any(head.get(k) for k in ("fit", "identity", "regions"))
+    return bool(f) and float(f) > 0
+
+
+def _amount(head: dict) -> float:
+    f = head.get("follow_body")
+    return 1.0 if f is True else float(f)
 
 
 def body_points(params: dict) -> tuple:
@@ -93,7 +96,7 @@ def follow(base: dict, head: dict) -> dict:
     """The head dict with the body's shape in it: "identity" (the seeded identity + the solved move; the head's own
     identity entries win) and "scale" (unless given). Cached."""
     body = {k: v for k, v in (base.get("body") or {}).items() if k != "source"}
-    amount = float(head.get("follow", 1.0))
+    amount = _amount(head)
     key = json.dumps([body, head.get("seed"), head.get("spread", 1.0), amount], sort_keys=True, default=float)
     if key not in _CACHE:
         from . import base as basemod
@@ -141,7 +144,6 @@ def follow(base: dict, head: dict) -> dict:
     out["identity"] = {**f["identity"], **(head.get("identity") or {})}
     out.setdefault("scale", f["scale"])
     out["plane_follows_chin"] = True
-    out.pop("fit", None) if head.get("follow_body") is None else None
     return out
 
 
@@ -152,5 +154,5 @@ def report(base: dict) -> dict:
         return {}
     follow(base, head)
     body = {k: v for k, v in (base.get("body") or {}).items() if k != "source"}
-    return _CACHE[json.dumps([body, head.get("seed"), head.get("spread", 1.0), float(head.get("follow", 1.0))],
+    return _CACHE[json.dumps([body, head.get("seed"), head.get("spread", 1.0), _amount(head)],
                              sort_keys=True, default=float)]["report"]
