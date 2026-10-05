@@ -1520,16 +1520,31 @@ def _save_suffix(save: str | None, tag: str) -> str | None:
 
 
 @mcp.tool(structured_output=False)
-def garment_reference(kind: str | None = None, detail: str | None = None) -> str:
+def garment_reference(kind: str | None = None, detail: str | None = None, principles: str | None = None) -> str:
     """The clothing knowledge base (garment_kb.json): garment kinds (fit ease bands, default details, sewing order),
     detail choices (collar, cuff, sleeve_placket, front_closure, placket, waistband, fly, skirt_closure, pockets, hem,
     yoke, darts, pleats, back_vent, belt, lining, shoulder, topstitch) with what each is made of, its seams, fold
     lines, interfacing, the dimensions a tailor works to and the evidence checks that prove it's in a pattern; fabrics
     with physical numbers; what each draft source (simon, carlton, skirt_block) can and can't make; the numeric
     targets a simulated garment is judged by. kind: one kind's entry; detail: one detail kind's choices. No args: the
-    index."""
+    index.
+    principles: how to DESIGN a garment that has no ready-made draft (block + operations): "blocks" (the basic
+    patterns and the rules they are drafted by), "operations" (dart moves, slash and spread, style lines, extensions,
+    facings, collars from the neckline, sleeves into the armhole: what each does and what it keeps matched),
+    "derivations" (per garment category: which block, which operations, why; or one name, e.g. "blazer"), "rules"
+    (ease, balance, grain, shaping, seams, proportions), "all"."""
     from . import garment_design
     K = garment_design.kb()
+    if principles:
+        P = K["principles"]
+        if principles == "all":
+            return json.dumps(P, indent=1)
+        if principles in P and not principles.startswith("_"):
+            return json.dumps({principles: P[principles], "three_principles": P["three_principles"]}, indent=1)
+        if principles in P["derivations"]:
+            return json.dumps({principles: P["derivations"][principles], "operations": P["operations"]}, indent=1)
+        raise ValueError(f"principles is blocks, operations, derivations, rules, all, or a derivation: "
+                         f"{', '.join(k for k in P['derivations'] if not k.startswith('_'))}")
     if kind:
         if kind not in K["kinds"]:
             raise ValueError(f"no kind {kind!r} (have {', '.join(k for k in K['kinds'] if not k.startswith('_'))})")
@@ -1546,6 +1561,9 @@ def garment_reference(kind: str | None = None, detail: str | None = None) -> str
          "draft sources: " + "; ".join(f"{d} -> {v['kind']} (can: {', '.join(f'{x}=' + '/'.join(c) for x, c in v['can'].items())})"
                                        for d, v in K["designs"].items() if not d.startswith("_")),
          "targets: " + ", ".join(k for k in K["targets"] if not k.startswith("_")),
+         "principles (designing a new garment = block + operations; garment_reference(principles=...)): blocks "
+         + ", ".join(K["principles"]["blocks"]) + "; operations " + ", ".join(K["principles"]["operations"])
+         + "; derivations " + ", ".join(k for k in K["principles"]["derivations"] if not k.startswith("_")),
          "lessons: " + " | ".join(x["lesson"] for x in K["lessons"])]
     return "\n".join(L)
 
@@ -1556,7 +1574,9 @@ def design_garment(name: str, garment: str, design: dict | None = None, spec: di
     """Stage 1 of the clothing workflow (guide(topic="cloth")): the design sheet, decided before any drafting, as a
     pattern maker does. Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
     replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
-    dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or leave out and give own
+    dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or DESIGN it: "block":
+    bodice | knit | trouser, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
+    "operations" | "derivations"): a garment with no ready-made draft is a block + operations); or leave out and give own
     pieces + seams in spec), "fit": the kind's fit (slim, regular, a_line...), "fabric": a fabric (cotton_shirting,
     oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit, french_terry) or a solver preset,
     "details": {collar: shirt_collar | band | convertible | notched_lapel | shawl | hood | rib_neckband | ...,

@@ -34,7 +34,8 @@ from . import pattern
 KB_PATH = Path(__file__).with_name("garment_kb.json")
 DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", "waistband", "fly", "skirt_closure",
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch")
-SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made"}
+SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
+              "block_options", "ops"}
 METHODS = ("simulate", "settle")
 
 
@@ -74,7 +75,15 @@ def validate(sheet: dict, where: str = "design") -> None:
         raise ClothError(f"{where}: design kind {kind!r} unknown (have {', '.join(kinds)})")
     designs = [d for d in K["designs"] if not d.startswith("_")]
     fr = sheet.get("from")
-    if fr is not None and fr not in designs:
+    if fr == "draft" or (fr is None and sheet.get("block")):
+        from . import pattern_blocks, pattern_draft
+        if sheet.get("block") not in ("bodice", "knit", "trouser"):
+            raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser (the skirt is from "
+                             "skirt_block), then \"ops\": [pattern operations]")
+        for k_, op in enumerate(sheet.get("ops") or []):
+            if not isinstance(op, dict) or op.get("op") not in list(pattern_draft.OPS) + ["unfold"]:
+                raise ClothError(f"{where}: ops[{k_}] is {{\"op\": one of {', '.join(pattern_draft.OPS)}, unfold, ...}}")
+    elif fr is not None and fr not in designs:
         raise ClothError(f"{where}: design from {fr!r}: no recipe (have {', '.join(designs)}; or leave it out and give "
                          "own pieces + seams on the garment)")
     fits = list(K["kinds"][kind].get("fit", {}))
@@ -111,8 +120,8 @@ def resolve(sheet: dict) -> dict:
     K = kb()
     kind = sheet["kind"]
     kd = K["kinds"][kind]
-    fr = sheet.get("from")
-    rec = K["designs"].get(fr) if fr else None
+    fr = sheet.get("from") or ("draft" if sheet.get("block") else None)
+    rec = K["designs"].get(fr) if (fr and fr != "draft") else None  # a drafted design is judged by evidence alone
     fit = sheet.get("fit") or (next(iter(kd.get("fit", {})), None))
     problems = []
     if rec and rec.get("kind") != kind and kind not in rec.get("kinds", []):
@@ -181,7 +190,13 @@ def compile_sheet(sheet: dict) -> dict:
     r = resolve(sheet)
     rec = r["recipe"] or {}
     out: dict = {}
-    if r["from"]:
+    if r["from"] == "draft":
+        bo = dict(sheet.get("block_options") or {})
+        band = r["fit_bands"].get("chest")
+        if band and "chest_ease" not in bo and sheet["block"] in ("bodice", "knit"):
+            bo["chest_ease"] = round(0.5 * (band[0] + band[1]), 3)  # ease by garment category: the fit's middle
+        out["pattern"] = {"from": "draft", "block": sheet["block"], "block_options": bo, "ops": list(sheet.get("ops") or [])}
+    elif r["from"]:
         pat = {"from": rec.get("pattern_from", r["from"])}
         fo = (rec.get("fit_options") or {}).get(r["fit"]) or {}
         pat = _merge(pat, fo)
@@ -232,46 +247,9 @@ def expand(g: dict) -> dict:
 
 
 def fold_polyline(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
-    """A fold entry's line in its piece's pattern coordinates, (k, 2), clipped to the piece. Line forms:
-    a line name of the piece; [pointOrMark, pointOrMark] (pattern._line, "name+[dx,dy]" offsets); [[x, y], ...];
-    {"edge": "piece:a>b", "offset": m} (parallel to that edge, `offset` into the piece); {"mid": "x" | "y"} (a straight
-    line through the piece's middle along x (a band's lengthwise middle) or along y)."""
-    nm = f["piece"]
-    if nm not in pcs:
-        raise KeyError(f"fold {f.get('name', '')}: no piece {nm!r} (have {', '.join(pcs)})")
-    pc = pcs[nm]
-    P = pc["P"]
-    ln = f["line"]
-    if isinstance(ln, dict) and "edge" in ln:
-        enm, arc = ln["edge"].split(":", 1)
-        if enm != nm:
-            raise ValueError(f"fold on {nm}: its edge {ln['edge']!r} is on another piece")
-        L = P[pattern.arc_indices(pc, arc)]
-        n = max(3, int(pattern.length(L) / step) + 1)
-        seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
-        cum = np.r_[0, np.cumsum(seg)]
-        s = np.linspace(0, cum[-1], n)
-        L = np.c_[np.interp(s, cum, L[:, 0]), np.interp(s, cum, L[:, 1])]
-        t = np.gradient(L, axis=0)
-        nrm = np.c_[-t[:, 1], t[:, 0]]
-        nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
-        if np.mean(np.sum((P.mean(0) - L) * nrm, 1)) < 0:
-            nrm = -nrm
-        Q = L + float(ln.get("offset", 0.0)) * nrm
-    elif isinstance(ln, dict) and "mid" in ln:
-        lo, hi = P.min(0), P.max(0)
-        c = 0.5 * (lo + hi)
-        Q = np.array([[lo[0], c[1]], [hi[0], c[1]]]) if ln["mid"] == "x" else np.array([[c[0], lo[1]], [c[0], hi[1]]])
-    elif isinstance(ln, str):
-        Q = np.asarray(pc["lines"][ln], float)
-    else:
-        Q = np.asarray(pattern._line(pc, ln), float)
-    # keep what lies inside the piece (an offset edge runs past its ends' corners)
-    from .cloth import _inside
-    if len(Q) == 2:  # a straight line: densify before clipping
-        Q = Q[0] + (Q[1] - Q[0]) * np.linspace(0, 1, max(2, int(np.linalg.norm(Q[1] - Q[0]) / step) + 1))[:, None]
-    ins = _inside(P, Q)
-    return Q[ins] if ins.sum() >= 2 else Q
+    """A fold entry's line in its piece's pattern coordinates: `pattern.fold_line` (the one resolver; it also runs
+    the ends out to the outline)."""
+    return pattern.fold_line(pcs, f, step)
 
 
 # ---------------------------------------------------------------- roles

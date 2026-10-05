@@ -337,6 +337,21 @@ def main():
             flat3[made] = np.asarray(d["rest"], float)[made]
         else:
             flat3[made] = X[made]
+        lifted = made.copy()  # pieces that may start past the strain limit (placed folded or closed round a limb)
+        if "releaseIdx" in d:
+            lifted[np.asarray(d["releaseIdx"], np.int64)] = True
+        if "carryIdx" in d:  # held pieces (method "settle") rest as they start: nothing in them is solved
+            ci = np.asarray(d["carryIdx"], np.int64)
+            # (the fine settle gives their made shape as "rest": a flap released after the press rests folded as made,
+            # not as it started, open)
+            if "restIdx" in d and "rest" in d:  # the fine settle: the made pieces (their free flaps too) rest as made;
+                # draped cloth held far from them rests flat like the cloth it is joined to
+                ri = np.asarray(d["restIdx"], np.int64)
+                flat3[ri] = np.asarray(d["rest"], float)[ri]
+                made[ri] = True
+            else:
+                flat3[ci] = X[ci]
+                made[ci] = True
         for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
             sel_ = pid == job["pieces"].index(nm)
             flat3[sel_] = X[sel_]
@@ -345,13 +360,15 @@ def main():
             flat3[sel_] = np.c_[uv, np.zeros(len(uv))][sel_]
             made[sel_] = False
         ref = flat3.copy()
+        if "bend_rest" in d:  # fold lines (folds.py): the flat pattern folded at its lines, where the cloth rests flat
+            ref[~made] = np.asarray(d["bend_rest"], float)[~made]
         g.set_bend_rest_vert(ref)
         # a made piece pushed clear of the body starts stretched past its rest (a cuff round a wrist fatter than it
         # was made for); a strain-limited solver can't start past the limit, so those pieces get a limit above their
         # start stretch, and contract onto the body to their made size
         lim = float(job.get("strain_limit", 0.05))
         sig = _start_stretch(flat3, X, F)
-        fm = made[F].all(1)
+        fm = lifted[F].all(1)
         need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
         # (experiment) job "zone_limit": {"pieces": [...whole], "top": {piece: m from its pattern top}, "value": 0.15}:
         # another strain limit there (the shoulder/yoke dome)
@@ -368,7 +385,7 @@ def main():
         if tgt is not None or zone.any():
             zv = float(zl["value"]) if zl else lim
             T = max(tgt or 0.0, zv)
-            w = (made.astype(float) * ((tgt - lim) / (T - lim) if tgt else 0.0)
+            w = (lifted.astype(float) * ((tgt - lim) / (T - lim) if tgt else 0.0)
                  + zone * (zv - lim) / max(T - lim, 1e-9))
             g.param.set("strain-limit", lim)
             g.set_param_spatial("strain-limit", np.clip(w, 0, 1), T)
@@ -386,8 +403,15 @@ def main():
         g.param.set("allow-existing-intersection", 1.0)  # the placement's own few overlaps (sleeve fins) aren't fatal
     if job.get("stitch_stiffness"):
         g.param.set("stitch-stiffness", float(job["stitch_stiffness"]))
-    if stiff.max() > 0 and job.get("interfacing", True):  # interfacing: bending and stretch up towards their interfaced values
-        g.set_param_spatial("bend", stiff, bend * float(job.get("interfacing_bend", P.get("interfacing_bend", 10))))
+    # interfacing: bending up towards its interfaced value; fold lines: the rows of a crease bend harder still (a
+    # pressed fold holds its angle), `fold_press` x the cloth's at strength 1. One multiplier per vertex
+    mult = np.ones(n)
+    if stiff.max() > 0 and job.get("interfacing", True):
+        mult += stiff * (float(job.get("interfacing_bend", P.get("interfacing_bend", 10))) - 1.0)
+    if "fold" in d and job.get("folds", True):
+        mult += np.asarray(d["fold"], float) * float(job.get("fold_press", 20.0))
+    if mult.max() > 1.0:
+        g.set_param_spatial("bend", (mult - 1.0) / (mult.max() - 1.0), bend * float(mult.max()))
     asm = job.get("assemble") or {}
     sew_end = 0.0
     for s in stages:
@@ -409,6 +433,28 @@ def main():
         g.pin(fixed, allow_intersection=pp).unpin(times["assemble"][1])
     if hold:
         g.pin(sorted(hold), allow_intersection=pp).unpin(times["sew"][1])
+    if "carryIdx" in d and len(d["carryIdx"]):
+        # method "settle": the made pieces are held as constructed for the whole sim and ride the body through its
+        # poses (their positions per pose come with the job: a rigid move fitted to the body under each)
+        ci = np.asarray(d["carryIdx"], np.int64)
+        cposes = np.asarray(d["carryPoses"], float)
+        # releaseIdx (the fine settle): the made pieces' turned-over flaps are let go once they have pressed the cloth
+        # down, and settle on it as stiff cloth resting folded (a fall lies on the shoulders' cloth: held, it stood
+        # off it or went through it)
+        rel = np.isin(ci, np.asarray(d["releaseIdx"], np.int64)) if "releaseIdx" in d else np.zeros(len(ci), bool)
+        pose_st = [st for st in stages if st.get("pose") is True]
+        for part, free in ((~rel, False), (rel, True)):
+            if not part.any() or (free and not pose_st):  # (flaps free from the start: never pinned)
+                continue
+            cp = g.pin(list(map(int, ci[part])), allow_intersection=False)
+            for pose in pose_st:
+                t0, t1 = times[pose["name"]]
+                for k in range(len(cposes)):
+                    cp.move_to(cposes[k][part], t0 + (t1 - t0) * k / len(cposes), t0 + (t1 - t0) * (k + 1) / len(cposes))
+            if free and pose_st:
+                cp.unpin(times[pose_st[-1]["name"]][1])
+        log(f"zozo: {len(ci)} vertices of made pieces held as constructed and carried with the body"
+            + (f"; {int(rel.sum())} of them (flaps) released after the press" if rel.any() else ""))
     hang = next((s for s in stages if s.get("hang") or s.get("hanger")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):

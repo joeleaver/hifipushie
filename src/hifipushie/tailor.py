@@ -159,14 +159,49 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     at["cf_neck"] = L[np.argmin(L[:, 1])]
     at["cb_neck"] = L[np.argmax(L[:, 1])]
     # shoulder point: top of the shoulder 1.5 cm out from the joint (a section across the body there)
-    xs = sh[0]
-    S = section(V, T, [xs, sh[1], sh[2]], [1.0, 0, 0], [xs, sh[1], sh[2] + 0.06])
-    top = S[np.argmax(S[:, 2] - 4 * np.abs(S[:, 1] - sh[1]))]
+    # The shoulder point is where the shoulder line turns down into the arm (the acromion's edge), not the top over
+    # the joint: the joint sits 2-3 cm inside it. (Taken at the joint's x, sleeves were drafted 3 cm long and placed
+    # 3 cm up the shoulder, the armhole seam rode on top of the shoulder and 3-4 cm of every shoulder seam bunched up
+    # at the neck: a knot at the neck point and a ridge of yoke behind the collar.) Scanning out from 4 cm inside the
+    # joint, it is the last top-of-shoulder point before the top's slope exceeds the shoulder line's own by 10 deg.
+    def top_at(x):
+        S_ = section(V, T, [x, sh[1], sh[2]], [1.0, 0, 0], [x, sh[1], sh[2] + 0.06])
+        if S_ is None:
+            return None
+        return S_[np.argmax(S_[:, 2] - 4 * np.abs(S_[:, 1] - sh[1]))]
+    step = 0.005
+    tops = [(x, top_at(x)) for x in np.arange(sh[0] - 0.04, sh[0] + 0.08 + 1e-9, step)]
+    tops = [(x, t_) for x, t_ in tops if t_ is not None]
+    top = top_at(sh[0])
+    if len(tops) >= 6:
+        zt = np.array([t_[2] for _, t_ in tops])
+        xt = np.array([x for x, _ in tops])
+        slope = np.degrees(np.arctan2(-np.diff(zt), np.diff(xt)))  # slope[i]: from tops[i] to tops[i + 1]
+        line = float(np.median(slope[xt[1:] <= sh[0] + 1e-9])) if (xt[1:] <= sh[0] + 1e-9).any() else float(slope[0])
+        over = np.where((slope > line + 10.0) & (xt[:-1] >= sh[0] - 1e-9))[0]  # (never inside the joint)
+        if len(over):
+            top = tops[int(over[0])][1]
     at["shoulder.L"] = top
     hps = at["hps.L"]
     mm["shoulderSlope"] = float(np.degrees(np.arctan2(hps[2] - top[2], top[0] - hps[0])))
-    B = section(V, T, top, Z, axis_at(top[2]) + [0, 0.05, 0])
-    back = arc(B, top, top * [-1, 1, 1], lambda P: P[:, 1])
+    # shoulder to shoulder: a taut tape across the back between the shoulder points. It lies in a plane through both
+    # that dips toward the back (over the shoulder blades), the shortest of the tilts tried; the level section at the
+    # shoulders' height runs far back round the base of the neck (21% longer than the chord here)
+    best, back = None, None
+    for tilt in (0.0, 15.0, 30.0, 45.0, 60.0):
+        n_ = np.array([0.0, -np.sin(np.radians(tilt)), np.cos(np.radians(tilt))])
+        Bs = section(V, T, top, n_, axis_at(top[2]) + [0, 0.05, 0])
+        if Bs is None:
+            continue
+        try:
+            a_ = arc(Bs, top, top * [-1, 1, 1], lambda P: P[:, 1])
+        except Exception:
+            continue
+        if len(a_) >= 3 and (best is None or length(a_) < best):
+            best, back = length(a_), a_
+    if back is None:
+        B = section(V, T, top, Z, axis_at(top[2]) + [0, 0.05, 0])
+        back = arc(B, top, top * [-1, 1, 1], lambda P: P[:, 1])
     mm["shoulderToShoulder"] = length(back)
     loops["shoulders"] = back
     # armpit: scan down from the shoulder joint for the first section that leaves the arm out
@@ -259,6 +294,22 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     mm["waistToFloor"] = W - zmin
     if "knee.L" in J:
         mm["waistToKnee"] = W - float(J["knee.L"][2])
+    # the crotch: the highest level where the body's section no longer holds the centre line (two legs): the body
+    # rise a trouser draft needs (FreeSewing: waistToUpperLeg; inseam = crotch to floor)
+    try:
+        cy = float(np.mean(loops["seat"][:, 1]))
+        zc = None
+        for z in np.arange(at["seat_z"], at["seat_z"] - 0.30, -0.004):
+            Ls = slice_loops(V, T, [0, 0, z], Z)
+            if Ls and not any(_encloses(L_, np.array([0.0, cy, z]), Z) for L_ in Ls):
+                zc = float(z) + 0.002
+                break
+        if zc is not None:
+            at["crotch_z"] = zc
+            mm["waistToUpperLeg"] = W - zc
+            mm["inseam"] = zc - zmin
+    except Exception:  # a body the scan can't read keeps the estimate (pattern_blocks.trouser)
+        pass
     mm["height"] = float(V[:, 2].max() - zmin)
     out = {k: (round(v * 1000.0, 1) if k != "shoulderSlope" else round(v, 2)) for k, v in mm.items()}
     return {"mm": out, "at": {k: (np.asarray(v).tolist() if not np.isscalar(v) else float(v)) for k, v in at.items()},

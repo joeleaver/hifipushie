@@ -196,6 +196,9 @@
    "continuous": {"label": "continuous bound placket (a strip binding the slit)",
      "made_of": [{"role": "sleeve_placket", "count": 1}], "dims": {"slit": [70, 100]},
      "evidence": [{"piece": "sleeve_placket"}]},
+   "slit": {"label": "bound slit: the sleeve cut open 120-150 mm on the little-finger side (pattern op slit), its edges left as a narrow binding; the cuff's seam starts and ends at it, so the cuff's ends can lap. No placket strips",
+     "dims": {"slit": [120, 150]}, "evidence": [],
+     "lessons": ["With the slit the cuff opens where a cuff opens (the little-finger side), not under the arm, and the sleeve tube no longer has to stretch round the cuff's lap."]},
    "none": {"label": "no placket (sleeve end open or knit)", "evidence": []}
   },
   "front_closure": {
@@ -206,6 +209,11 @@
    "double_breasted": {"label": "double-breasted: two columns of buttons, the fronts overlapping 90-120 mm",
      "dims": {"button_spacing": [85, 120], "button_size_coat": [20, 25]},
      "evidence": [{"stitches": "front", "min": 2}, {"lap": "front"}]},
+   "single_button": {"label": "one button at the break point (a shawl or one-button jacket), the fronts lapped by the button stand",
+     "dims": {"button_stand": [15, 30]},
+     "evidence": [{"stitches": "front", "min": 1}, {"lap": "front"}]},
+   "wrap_tie": {"label": "wrap front: one front laps right across the other and is tied or tacked at the side",
+     "evidence": [{"stitches": "front", "min": 1}, {"lap": "front"}]},
    "zip": {"label": "zip front (a separating zip between the fronts)", "evidence": [{"seam": ["front", "front"]}]},
    "pullover": {"label": "no front opening (pulled over the head)", "evidence": []},
    "open": {"label": "open front (no closure)", "evidence": []}
@@ -342,7 +350,7 @@
               "french": {"options": {"cuffStyle": "straightFrenchCuff"},
                          "folds": [{"piece": "cuff.L", "line": {"mid": "x"}, "angle": 0, "kind": "press", "name": "cuff turn-back"},
                                    {"piece": "cuff.R", "line": {"mid": "x"}, "angle": 0, "kind": "press", "name": "cuff turn-back"}]}},
-     "sleeve_placket": {"none": {}},
+     "sleeve_placket": {"slit": {}, "none": {}},
      "front_closure": {"buttons": {}},
      "placket": {"folded": {}},
      "hem": {"shirttail": {}, "straight_double": {"options": {"hemCurve": 0.25}}},
@@ -352,8 +360,8 @@
      "pockets": {"none": {}}
     },
     "cannot": {
-     "sleeve_placket.tower": "Simon drafts sleevePlacketUnderlap/Overlap and a placketCut line, but our design table doesn't cut the slit or sew the plackets yet (audit fix 6). Choose \"none\" and accept the cuff join's -1.8% (it shows as a twisted, ruffled join), or build the slit",
-     "sleeve_placket.continuous": "no slit op yet (see tower)",
+     "sleeve_placket.tower": "the table cuts the placket slit and sews the cuff from it (choose \"slit\"), but the underlap and overlap strips Simon drafts aren't sewn on yet",
+     "sleeve_placket.continuous": "the slit is cut (choose \"slit\"); no binding strip piece yet",
      "yoke.double": "one layer only",
      "placket.separate": "separateButtonPlacket isn't in the design table"
     }},
@@ -365,8 +373,8 @@
      "hem": {"coat": {}},
      "lining": {"none": {}},
      "shoulder": {"none": {}},
-     "back_vent": {"none": {}},
-     "belt": {"none": {}},
+     "back_vent": {"lapped_vent": {}, "none": {}},
+     "belt": {"back_belt": {}, "none": {}},
      "darts": {"back_shoulder": {}, "none": {}},
      "pockets": {"none": {}},
      "topstitch": {"edge": {}, "none": {}}
@@ -374,10 +382,9 @@
     "cannot": {
      "lining.full": "the table is the shell only (no lining pieces)",
      "lining.half": "the table is the shell only",
-     "shoulder.pad_and_head": "no pads or sleeve heads",
-     "belt.back_belt": "carlton.belt is drafted by FreeSewing but not in the table yet (zozo2 is adding it)",
-     "back_vent.lapped_vent": "the tail's CB is sewn full length (zozo2 is adding the lapped pleat)"
+     "shoulder.pad_and_head": "no pads or sleeve heads"
     }},
+  "draft": {"kind": "any", "kinds": ["shirt", "blouse", "tee", "hoodie", "jacket", "coat", "trousers", "shorts", "skirt", "dress", "flat"], "can": {}, "_doc": "block + ops (pattern_draft.py): judged by evidence in the pieces, not by a recipe table"},
   "skirt_block": {"kind": "skirt", "kinds": ["skirt"],
     "fit_options": {"straight": {"flare": 0.0, "ease": {"waist": 0.01, "seat": 0.05}},
                     "a_line": {"flare": 0.07, "ease": {"waist": 0.01, "seat": 0.07}},
@@ -427,5 +434,285 @@
   {"lesson": "A strain-limited solver can't start past its limit; nothing may start through anything else.", "where": "place stage: start_crossings, start strain"},
   {"lesson": "Interfaced pieces resting as made keep their placed shape: fine for a collar or cuff, wrong for anything that must roll (coat fronts).", "where": "construction check: not_made"},
   {"lesson": "Sleeves on a hanger hang within ~8 deg of vertical.", "where": "targets sleeve_angle_hung_deg"}
- ]
+ ],
+
+ "principles": {
+  "_doc": "How a garment that doesn't exist yet is designed: a block (a basic pattern drafted from the body by rule) + pattern-making operations (pattern_draft.py) + details. Flat pattern making as Aldrich, Armstrong and Mueller & Sohn teach it; FreeSewing's own designs are derived the same way (Simon and Teagan from the Brian block, Carlton and Jaeger from Bent = Brian with a two-piece sleeve, trousers from Titan). Ready-made drafts are references to check ours against, not the capability.",
+  "three_principles": [
+   "Dart manipulation: the shaping a body needs (a dart's angle) can be moved anywhere round its apex without changing the fit: to another edge, into a seam (princess), into ease, gathers, pleats or flare.",
+   "Added fullness: slash and spread (or close) to add (or take out) cloth where the design wants it; the hinge edge keeps its length.",
+   "Contouring: cloth lying closer than the block does over a hollow (under the bust, the waist, a cut-away armhole or neckline) has the excess taken out along a seam or edge."
+  ],
+  "blocks": {
+   "bodice": {
+    "from": "neck, shoulder width and slope, chest, waist, hips, hps-to-waist, waist-to-armpit, hps-to-bust",
+    "rules": [
+     "neck width = neck (1 + ease) / 4.8; back neck depth 5% of the neck; the front neck depth is SOLVED so back + front neckline = half the neck girth + ease",
+     "shoulder point at half the shoulder width, dropped by the shoulder slope from the neck point",
+     "armhole depth = hps-to-waist - waist-to-armpit (1 - 2% - half the biceps ease)",
+     "chest quarter = chest (1 + ease) / 4, front and back alike (a full bust or round back moves the side seam)",
+     "across back 98% of the half shoulder width at the pitch, across front 93% (the front armhole is hollowed more)",
+     "waist suppression = chest quarter - waist quarter: up to 40% (at most 25 mm) at the side seam, the rest (at most 35 mm) in a waist dart or left for panel seams",
+     "a bust dart from the side seam, level with the apex, when the bust is fuller than the high bust; the front below it is longer by its intake"
+    ],
+    "options": "chest_ease, waist_ease, hips_ease, collar_ease, shoulder_ease, biceps_ease, armhole_depth, length (hips | waist | m), fitted, darts, bust_dart, cb / cf (fold | seam | open)"
+   },
+   "knit": {
+    "from": "the bodice's measures",
+    "rules": [
+     "the bodice with 0-2% ease (the cloth stretches), no darts, a looser neck (it must pass the head), a cap without ease"
+    ]
+   },
+   "sleeve": {
+    "from": "biceps, shoulder-to-wrist, shoulder-to-elbow, wrist + the armhole it is sewn into",
+    "rules": [
+     "width = biceps (1 + ease)",
+     "cap length = armhole length (1 + cap ease): shirt 0-3%, jacket and coat 3-6%, knit 0",
+     "the cap HEIGHT is solved from the two: a wide sleeve gets a low flat cap (shirt: more lift, drag lines when the arm hangs), a narrow sleeve a high cap (tailored: clean when hanging, less lift); the top is shifted until the front and back parts match the front and back armholes",
+     "a sleeve wider than the armhole is long can't be capped: less ease or a deeper armhole"
+    ]
+   },
+   "skirt": {
+    "from": "waist, seat, waist-to-seat, waist-to-knee",
+    "rules": [
+     "quarters of waist and seat with ease; the difference shared between the side seam (half, at most 30 mm) and darts (the back's larger); the side waist raised 10 mm"
+    ]
+   },
+   "trouser": {
+    "from": "waist, seat, waist-to-seat, body rise, waist-to-knee, waist-to-floor",
+    "rules": [
+     "front seat quarter - 10 mm, back + 10 mm",
+     "body rise (crotch depth) from the waist: measured, or 0.175 x waist + 154 mm",
+     "fork (crotch extension) seat / 16 + 5 mm at the front, about twice that at the back (the seat needs it)",
+     "the back centre seam leans in 35 mm and rises 20 mm at the waist (the seat angle); a back dart takes the rest",
+     "a crease line midway between side seam and fork; knee and hem widths about it, the back 20 mm wider than the front",
+     "the back fork is dropped until the back inseam is 5 mm shorter: stretched onto the front it hollows the back thigh"
+    ]
+   }
+  },
+  "operations": {
+   "style_line": {
+    "does": "cuts a piece in two along a drawn line; the two new edges are the same line",
+    "use": "princess seams, yokes, panels, colour blocking",
+    "keeps": "sewn 1:1; with take_in both edges are shaved alike (contouring)"
+   },
+   "dart": {
+    "does": "moves a dart to another edge about its apex",
+    "use": "side dart to shoulder, neck, armhole, waist, centre front",
+    "keeps": "every seam length (the outline only turns)"
+   },
+   "dart_to_ease": {
+    "does": "closes a dart by straightening its edge",
+    "use": "gathers under a yoke, ease over a shoulder blade, a soft waist",
+    "keeps": "declares the intake as ease on that seam"
+   },
+   "flare": {
+    "does": "slash from an edge to a hinge and spread (or close)",
+    "use": "A-line, swing, peplum, bell sleeve, tapering",
+    "keeps": "the hinge edge's length; the slashed edge is trued to a curve"
+   },
+   "lengthen": {
+    "does": "moves everything below a level",
+    "use": "cropped, tunic, dress and coat lengths",
+    "keeps": "mating seams when both pieces are named"
+   },
+   "extend": {
+    "does": "pushes an edge out",
+    "use": "button stand (button diameter, at least 15-20 mm), wrap overlap, vent extension, cut-on facing",
+    "keeps": "the old edge as a line (the centre front, a fold)"
+   },
+   "reshape": {
+    "does": "moves a point, neighbours eased along",
+    "use": "lowered or widened necklines, curved hems, a dropped shoulder"
+   },
+   "facing": {
+    "does": "traces a new piece from a piece along edges",
+    "use": "front and neck facings, hem facings, waist facings",
+    "keeps": "sewn 1:1 to the edge it was traced from, turned in"
+   },
+   "collar": {
+    "does": "drafts a collar from the neckline as it is now",
+    "use": "band / stand (a strip: stands up), flat (the neckline's own curve: lies flat), roll (between: the straighter the sewn edge, the higher the stand)",
+    "keeps": "sewn edge = neckline length"
+   },
+   "sleeve": {
+    "does": "drafts the sleeve into the armhole as it is now (after any style lines)",
+    "keeps": "cap = armhole (1 + declared ease)"
+   },
+   "two_piece": {
+    "does": "top and under sleeve from the one-piece: seams moved under the arm",
+    "use": "jackets, coats",
+    "keeps": "cap length; seams matched; both pieces bent alike at the elbow (forearm seam hollowed, hindarm bowed)",
+    "limits": "a split one-piece sleeve: the under sleeve is not hollowed or widened as a tailor's (against FreeSewing Jaeger: under sleeve 16 mm narrower, hem 39 mm narrower, 30 mm shorter)"
+   },
+   "neckline": {
+    "does": "redraws the neckline on front and back together: neck point moved along the shoulder by the same amount on both, centre front / back lowered; round, V or square",
+    "use": "wide and boat necks, V necks, before a collar, facing or cut",
+    "keeps": "the shoulder seams equal (both shortened alike)",
+    "why": "cutting one side's neck wider leaves the other shoulder longer: the seam no longer matches"
+   },
+   "shawl": {
+    "does": "a shawl collar cut on with the front: button stand, break point, a roll line from it past the neck point, the collar grown on beyond the shoulder with its neck seam the back neck's length and a centre back seam",
+    "use": "shawl jackets, dressing gowns, cardigans",
+    "keeps": "neck seam = back neck; the two collar halves' CB seam equal; a roll fold on the front",
+    "limits": "the placement lays the collar up the front of the neck; sewing must bring it round (Blender's draft sim crumples it): needs a fold-aware start"
+   },
+   "lapel": {
+    "does": "a notched lapel: front edge extended, break point, lapel point set from the roll line, roll fold; then collar with \"stop\" ends the collar at the gorge",
+    "use": "blazers, coats",
+    "keeps": "the neckline for the collar; the lapel and gorge as named edges for a facing"
+   },
+   "cut_away": {
+    "does": "cuts a piece along a line and discards one side; the new edge is named",
+    "use": "V necklines, cut-away fronts, cropped or slanted hems, asymmetric designs (after unfold)",
+    "keeps": "the kept side's seams (shortened where the cut crossed them: consistency then fails until the mate is shortened too: start a neck cut at the neck point, or widen both with neckline)"
+   },
+   "darts_to_seam": {
+    "does": "joins two darts of a piece through their tips into a panel seam: the dart legs become the seam's shaping",
+    "use": "princess seams from a darted block (shoulder or armhole princess)",
+    "keeps": "the suppression of both darts; the two new edges sewn to each other"
+   },
+   "raglan": {
+    "does": "front and back cut from the neckline to the armhole; the shoulder parts joined to the sleeve cap, the shoulder seam left as an overarm dart",
+    "use": "raglan tees, sweatshirts, coats",
+    "keeps": "armhole / cap lengths of the remaining underarm; the neckline now runs over the sleeve"
+   },
+   "kimono": {
+    "does": "the sleeve cut in one with the body: the shoulder line run on to the wrist, an underarm curve",
+    "use": "kimono and dolman tops, batwings",
+    "limits": "pattern only: no placement for a sleeve grown onto a torso piece yet"
+   },
+   "hood": {
+    "does": "a two-piece hood from the head's measures, its neck edge the neckline's length",
+    "use": "hoodies, parkas",
+    "limits": "pattern only: no head wrap in the placement yet"
+   },
+   "pleat": {
+    "does": "spreads a piece by twice the depth along a line that crosses it and adds the two press folds; seams skip the underlay",
+    "use": "box and knife pleats, a shirt's back pleat run to the hem",
+    "limits": "a pleat that dies inside the piece isn't a fold the solver takes (a fold line must cross its piece)"
+   },
+   "buttons": {
+    "does": "button marks down a line of a paired piece, stitched right to left when unfolded",
+    "use": "any lapped front"
+   },
+   "stitch": {
+    "does": "a point stitch between two named points (a tie, a tack)",
+    "use": "wrap fronts, tabs"
+   },
+   "unfold": {
+    "does": "halves into the garment's pieces, seams mirrored",
+    "use": "runs last; operations after it address whole pieces (asymmetric designs)"
+   }
+  },
+  "derivations": {
+   "_doc": "Each garment category: which block, which operations, why. An LLM designs a new garment by writing this list for it.",
+   "shirt": {
+    "block": "bodice (dartless, 10-20% chest ease, to the hips)",
+    "ops": [
+     "style_line: back yoke",
+     "dart_to_ease or a pleat under the yoke",
+     "extend: button stands",
+     "collar: band + roll (stand and fall)",
+     "sleeve (cap ease 0-3%, a low cap)",
+     "cuffs from the sleeve hem, a placket slit"
+    ],
+    "why": "ease for movement, a low cap for reach, structure only at collar, cuffs and plackets"
+   },
+   "blazer": {
+    "block": "bodice (fitted, 8-15% chest ease, to below the seat)",
+    "ops": [
+     "dart: front waist dart, or style_line from the armhole (a side panel) with take_in",
+     "style_line: back panel or CB seam with take_in",
+     "extend: front edge for the button stand",
+     "notched lapel: a roll line from the break point (top button) to the neck, the lapel drawn on the front and mirrored over the roll line, the collar drafted on the roll line's extension",
+     "facing: the front edge and lapel",
+     "sleeve (cap ease 3-6%, a high cap) + two_piece",
+     "extend: back vent",
+     "lining = the shell's pieces with pleats for ease"
+    ],
+    "why": "the shaping moves into panel seams; the high cap and two-piece sleeve hang clean with the arm down; canvas and facing make the lapel roll"
+   },
+   "cropped_jacket_shawl": {
+    "block": "bodice (fitted, to just under the waist)",
+    "ops": [
+     "style_line: princess from shoulder or armhole through the apex, take_in at the waist",
+     "lengthen: negative, to the cropped length",
+     "shawl collar: the front extended past the neck point along the roll line by the back neck length, CB seam, the facing cut in one with the upper collar",
+     "sleeve + two_piece"
+    ],
+    "why": "princess seams carry the bust and waist shaping with no dart showing"
+   },
+   "wrap_dress": {
+    "block": "bodice (fitted, darted) + skirt, or a knit block to the knee",
+    "ops": [
+     "unfold first (asymmetric)",
+     "extend: each front past the centre by the wrap",
+     "reshape: the neckline to a V running into the wrap edge",
+     "dart: bust dart into the side seam or the wrap's gathers",
+     "flare: the skirt",
+     "ties sewn at the wrap's ends, an opening in one side seam",
+     "sleeve"
+    ],
+    "why": "the overlap is the closure; the V neckline's length is on the bias and is usually stayed"
+   },
+   "hoodie": {
+    "block": "knit (10-20% ease)",
+    "ops": [
+     "reshape: shoulder dropped and lengthened",
+     "sleeve into the deeper armhole (flat cap, no ease)",
+     "hood from head measures: two sides whose neck edge = the neckline, height = neck base to crown + ease, a centre seam or panel",
+     "kangaroo pocket: a patch traced on the front",
+     "rib bands at hem and cuffs at 80-90% of their edge"
+    ],
+    "why": "the knit's stretch replaces darts and cap ease; bands shorter than their edges pull the hem in"
+   },
+   "raglan": {
+    "block": "knit or bodice + sleeve",
+    "ops": [
+     "style_line on front and back from the neckline to the underarm",
+     "the cut-off shoulder parts are joined to the sleeve cap at the pitch points (a shoulder dart or overarm seam takes the angle)"
+    ],
+    "why": "the armhole seam becomes two diagonal seams; reach improves, the shoulder line softens"
+   },
+   "a_line_skirt": {
+    "block": "skirt",
+    "ops": [
+     "dart: half the dart closed into flare at the hem (slash from the hem to the dart tip)",
+     "flare at the side seams, equal front and back"
+    ],
+    "why": "closing a dart into flare keeps the waist fit while the hem opens"
+   },
+   "wide_trousers": {
+    "block": "trouser",
+    "ops": [
+     "flare from the hem to the seat line on both seams equally",
+     "lengthen above the waist for a high rise",
+     "front pleats: slash along the crease from the waist and spread",
+     "waistband from the waist edges"
+    ],
+    "why": "width is added equally either side of the crease so the leg still hangs on grain"
+   }
+  },
+  "rules": {
+   "ease": "Wearing ease (to move in) + design ease (the look). Chest, woven: fitted 5-8%, shirt 10-20%, jacket 8-15% over a shirt, coat 15-30% over a jacket; knits 0 to negative. Waist of a skirt or trousers 0-3% (it hangs there); seat 4-8%.",
+   "balance": "Front and back hang level from the shoulder: the front is longer than the back over a bust (the bust dart's intake) and the back longer over a round back; side seams are the same length and meet at the same levels.",
+   "grain": "The straight grain runs down the centre front and back, the sleeve's centre and the trouser crease, so each piece hangs plumb; collars, cuffs and waistbands lengthwise on grain (they don't stretch); bias only where drape or stretch is wanted.",
+   "shaping": "Shaping points at an apex (bust, shoulder blade, seat, elbow). A dart's intake is an angle; a seam through the apex can carry it invisibly. Darts stop 15-25 mm short of the apex.",
+   "seams": "Mating edges are the same length unless ease is intended: cap into armhole, back shoulder onto front (2-4%), back inseam onto front (5 mm). After any slash, true the edge to a smooth curve and check corners meet square at seams.",
+   "proportions": "Button stand = button diameter (15-20 mm shirts, 25-40 mm coats); facing 60-90 mm; hems by kind (see details.hem); collar stand 30-35 mm; princess line over the apex, 1/3 to 1/2 along the shoulder; back yoke 1/4 of the armhole depth below the neck; vent 180-250 mm."
+  },
+  "sources": [
+   "Winifred Aldrich, Metric Pattern Cutting (bodice, sleeve, skirt and trouser blocks; ease in the bodice: https://dresspatternmaking.com/patternmaking-basics/analyzing-other-block-making-intro/ease-in-the-bodice-aldrich)",
+   "Helen Joseph-Armstrong, Patternmaking for Fashion Design: the three principles (https://www.slideshare.net/slideshow/patternmaking-principles1pptx/253196411; dart manipulation: https://www.thecreativecurator.com/dart-manipulation-types-of-darts/)",
+   "M. Mueller & Sohn: lapel and shawl collars drafted on the break line (https://www.muellerundsohn.com/en/?p=2391)",
+   "Sleeve and armhole: https://minervapatterns.com/blog/the-sleeve-block-and-armhole-relationship-explained ; https://dresspatternmaking.com/blog/understanding-the-sleeve-part-2 ; https://www.threadsmagazine.com/2021/08/26/how-to-fit-a-perfect-sleeve",
+   "Shawl collar: https://www.threadsmagazine.com/2009/01/23/understanding-the-basic-shawl-collar-pattern",
+   "Princess seams from darts: https://minervapatterns.com/blog/princess-seams-drafting-and-their-dart-equivalents ; https://www.seamwork.com/articles/pattern-hack-turn-darts-into-princess-seams",
+   "Trouser block: https://www.fashioncapital.co.uk/tools/how-to-construct-a-basic-trouser-block/ ; https://minervapatterns.com/blog/the-trouser-block-drafting-trouser-patterns-that-fit",
+   "Raglan and kimono sleeves: https://www.thecreativecurator.com/how-to-draft-raglan-sleeve-pattern/ ; https://www.thecreativecurator.com/how-to-draft-kimono-sleeve-pattern",
+   "Ease: https://en.wikipedia.org/wiki/Ease_(sewing) ; https://www.seamwork.com/articles/understanding-ease",
+   "FreeSewing's blocks (Brian after Gareth Kershaw; Bent = Brian with a two-piece sleeve; Titan for trousers): https://freesewing.org/docs/designs/brian ; https://freesewing.eu/docs/designs/bent/ ; https://freesewing.org/docs/designs/titan"
+  ]
+ }
 }
