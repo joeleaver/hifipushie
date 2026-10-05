@@ -1113,25 +1113,30 @@ TWIST_RECIPE = {
               "joint here rests unrotated) about the segment's axis (extras.axis_parent, in the driver's parent's "
               "rest frame = model space at rest): with q = (w, v) the local rotation and a the axis, "
               "roll = 2 atan2(v . a, w) (swing-twist decomposition). Then set each twist joint's local rotation to "
-              "rest x turn(axis_local +Y, share x roll).",
+              "rest x turn(axis_local +Y, share x roll). After an import that re-orients bones (FBX), use "
+              "q = inverse(rest local rotation) x pose local rotation, and for a the direction from the segment's "
+              "joint to its child joint in that joint's rest frame; the twist joint still turns about its own "
+              "length.",
     "modes": "follow: the driver is the segment's child (Hand for ForeArmTwist, Foot for LegTwist); shares rise to "
              "1.0 at the wrist/ankle, so the joint itself keeps no twist. counter: the driver is the segment's own "
              "joint (Arm for ArmTwist, UpLeg for UpLegTwist); shares are negative, -1.0 at the shoulder/hip (that "
              "skin stays with the clavicle/pelvis) rising to 0 at the elbow/knee.",
     "godot": "Godot 4: a SkeletonModifier3D after the AnimationMixer (in _process_modification read "
              "get_bone_pose_rotation(driver), compute roll as above, set_bone_pose_rotation(twist, rest_rotation * "
-             "Quaternion(Vector3.UP, share * roll))); 4.5+ also has BoneTwistDisperser3D / CopyTransformModifier3D "
-             "for the follow chains. Bone names lose the colon on import (mixamorig_LeftForeArmTwist1).",
+             "Quaternion(Vector3.UP, share * roll))); newer versions also have BoneTwistDisperser3D, which spreads "
+             "a child's twist over a chain. Bone names lose the colon on import (mixamorig_LeftForeArmTwist1).",
     "unity": "Unity: Humanoid avatars ignore the extra joints (keep them as extra transforms: untick 'Strip bones' "
              "/ leave Optimize Game Objects off, or expose them), so Mixamo clips play unchanged; drive them in "
-             "LateUpdate, or with Animation Rigging's Twist Correction constraint (source = Hand, twist nodes with "
-             "weights = shares) for follow chains and a Twist Chain / script for counter chains. The avatar's own "
-             "'Upper/Lower Arm Twist' muscle settings move roll between the Mixamo joints only: set Lower Arm Twist "
-             "to 0 so the hand keeps the whole roll for the twist joints to spread.",
-    "unreal": "Unreal: in the Post Process Anim Blueprint (or Control Rig) add a Twist Corrective-style chain: "
-              "'Copy Bone'/'Apply a Percentage of Rotation' from hand to each ForeArmTwist with alpha = share, "
-              "rotation only, about the bone's Y (as the Mannequin's lowerarm_twist_01/02 and upperarm_twist_01/02 "
-              "are driven); map them as twist bones in the IK Rig so retargeting leaves them to the post process.",
+             "LateUpdate, or with the Animation Rigging package's Twist Correction constraint (source = the driver "
+             "joint, twist axis = the segment's, twist nodes with weights = the shares; its weights run -1..1, so "
+             "counter chains work too). The avatar's own 'Upper/Lower Arm Twist' muscle settings only move roll "
+             "between the two Mixamo joints of a limb (they know no extra bones): set them so the roll stays on the "
+             "hand / upper-arm joint, and let the twist joints spread it.",
+    "unreal": "Unreal: in a Post Process Anim Blueprint or Control Rig on the skeletal mesh (where the Mannequin "
+              "drives its lowerarm_twist_01/02 and upperarm_twist_01/02), per twist bone: read the driver's roll "
+              "about the segment axis and set the bone's local rotation to rest x (share x roll about its Y); "
+              "Control Rig's 'Twist Bones' node does a follow chain in one node. Keep the twist bones out of the IK "
+              "Rig's retarget chains so retargeted animation leaves them to the post process.",
 }
 
 
@@ -1354,7 +1359,7 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 
 
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
-            atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool = False,
+            atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of

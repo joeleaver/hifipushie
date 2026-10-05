@@ -276,6 +276,27 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   dropped, so clothes can't copy from it). A base's fingers (fingerN_k / thumb_k) fill the Mixamo hand.
   Export scene parts finer than the model voxel (`scene.part_voxel`) get their own grid (a 6 mm collar shredded at 7.8).
   `spec.geometry` strips `rig`.
+  Twist chains + rigid head (2026-10-05, s0urc3's Garrett: a hand turned 75-105 deg was wrung at the wrist, the jaw
+  lagged a head turn; renders `workspace/rig_renders/tw_*`): `_add_twist` appends leaf joints AFTER the Mixamo set
+  (its names / order / indices / rest unchanged), children of their segment's joint: `<Side>ForeArmTwist1..3` and
+  `LegTwist1` follow the Hand's / Foot's roll (share k/n at station k/n, 1.0 at the wrist), `ArmTwist1..2` and
+  `UpLegTwist1` counter their own joint's roll (-1.0 at the shoulder / hip). `spec.rig.twist` = false | n | {arm,
+  forearm, upleg, leg} (default 2/3/1/1: LBS between stations d apart keeps cos^2(d/2) of a section; forearm at
+  105 deg on MakeHuman: none 0.49, two 0.80, three 0.87). Twist bones carry no flesh (`_segments` skips them):
+  `_spread_twist` shares the segment bone's weight between the two stations a vertex lies between, so undriven the
+  skin is the old skin. A fifth bone: the smallest weight is dropped, unless a split's smaller half is within
+  `TWIST_MERGE` x it, then the split goes back (always dropping moved the goblin's arm/belly web 10 mm undriven;
+  always merging sheared thigh triangles when driven; now <= 3.5 mm on 2% of its vertices). Driving is the engine's
+  (glTF has no constraints): `drive_twist` / `roll_about` (swing-twist) are the reference, the GLB's twist joints
+  have local +Y along the segment and `extras.hifipushie_twist`, the json has `rig.twist` + `rig.twist_recipe`
+  (Godot / Unity / Unreal; `asset.TWIST_RECIPE`). `head_field`: h = 1 where a point is head, by the Head bone's
+  flesh being no farther than any other's (kit characters), a floor from GNM's jaw landmarks (chin -> jaw angle,
+  level behind, `HEAD_UNDER` lower), or typical proportions (a base without landmarks); `_rigid_head` blends weights
+  to Head by h (falloff `HEAD_BAND` on the throat), a part >= 0.9 head on average is all head (teeth, tongue,
+  eyes); the export then makes every vertex a face shape moves > 0.5 mm Head 1.0 (`rigid_near`). Judge with the
+  rig tool's text (`rig.report`: `twist_check` per chain, `head_check`) and `pose={"RightHand": ["roll", 105]}`.
+  Known: twist bones fix roll, not bend (shoulder dip, elbow crease stay); a 33 deg head turn folds the throat
+  under the jaw over the 3 cm band. `tests/test_rig_twist.py`.
 - `retopo.py`: character topology by template wrap (from `spikes/topology/wrap.py`): the CC0 template
   (`templates/male_stylized*`) carried onto a humanoid by its skeleton (`_skeleton_warp`), face landmarks by RBF, then
   patches cut at closed template loops and generated from the model *before* the fit and held fixed (the template flows

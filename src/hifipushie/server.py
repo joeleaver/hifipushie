@@ -1028,7 +1028,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
-                 hide: list[str] | None = None, save: str | None = None, rig: bool = False, fbx: bool = False,
+                 hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
                  face_shapes: bool | list[str] = False):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
@@ -1057,10 +1057,14 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.
     preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
     parts, instances or prefabs left out of it (e.g. roof and walls, to see an interior).
-    rig: an armature from the skeleton (a joint per additive bone, rooted at "pelvis"/"hips" or the skeleton's
-    middle) and the parts skinned to it (4 weights per vertex from each bone's own cone and the blobs on it,
-    blended within the nearest bone's family): characters. Decimated triangles bend less cleanly than modelled
-    edge loops at elbows and knees; judge it with the `rig` tool first. fbx: also <name>.fbx (Blender converts the
+    rig: the export rig (the `rig` tool's: Mixamo's skeleton for humanoids, named chains otherwise) and the parts
+    skinned to it, 4 weights per vertex: characters. Humanoids also get twist bones (extra leaf joints after the
+    Mixamo set; each has node extras.hifipushie_twist {driver, mode, share, axis} and the json's rig.twist +
+    rig.twist_recipe say how an engine drives them from the hand's / arm's roll; undriven they change nothing) and
+    a rigid head (face, jaw, teeth, tongue, eyes and whatever a face shape moves are Head 1.0). rig may be
+    {"twist": false | count | {"arm", "forearm", "upleg", "leg"}, "rigid_head": false} to override spec["rig"].
+    Decimated triangles bend less cleanly than modelled edge loops at elbows and knees; judge it with the `rig`
+    tool first. fbx: also <name>.fbx (Blender converts the
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
