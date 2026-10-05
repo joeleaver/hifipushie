@@ -71,12 +71,15 @@ DEFAULT = {
         "sag": 0.4, "sag_max": 0.25,  # bend under weight; the most one internode bends (rad)
         "pipe": 2.3,  # d^n = sum of the children's d^n
         "tip_radius": 0.004,  # m
+        "ring": 0.0008,  # m of radius every living piece of wood adds a year, whatever it carries (girth)
+        "force_orders": [0.15, 0.6, 1.0],  # per order: how much wind and forces turn a shoot (a trunk resists)
         "flare": 1.5, "flare_height": 0.6,  # the trunk's foot
         "clear": 0.0,  # m of trunk that never branches (the bole of a tree that grew up browsed or shaded)
     },
     "environment": {"setting": "open"},
     "guides": {}, "prune": [], "envelope": None, "forces": [],
-    "leaves": {"type": "broad", "size": 0.08, "per_node": 14, "spread": 0.3, "droop": 0.2},
+    "leaves": {"shape": "ovate", "length": 0.07, "color": [0.16, 0.3, 0.08], "twig": {}},  # see veg_leaf.LEAF / TWIG
+    "bark": {"kind": "furrowed"},
     "season": "summer",
     "decay": None,  # {"min_radius": m}: wood thinner than this has fallen (a dead or storm-broken tree)
 }
@@ -358,11 +361,12 @@ def _compass(d):
     return np.asarray(d, float)
 
 
-def _shadow(src, lo, dims, a, b, depth, tilt):
-    """The shadow grid of leafy points src (cell units, origin lo)."""
+def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
+    """The shadow grid of leafy points src (cell units, origin lo), each casting `weight` (its internode's length:
+    short internodes carry less leaf)."""
     C = np.zeros(dims)
     ij = np.clip((src - lo).astype(np.int64), 0, np.array(dims) - 1)
-    np.add.at(C, (ij[:, 0], ij[:, 1], ij[:, 2]), 1.0)
+    np.add.at(C, (ij[:, 0], ij[:, 1], ij[:, 2]), weight)
     S = np.zeros(dims)
     for q in range(depth + 1):
         w = 2 * q + 1
@@ -515,10 +519,11 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         while np.prod((hi - lo) / cell) > 6e6:
             cell *= 1.5
         dims = tuple(np.ceil((hi - lo) / cell).astype(int) + 1)
-        S = _shadow(P[leafy] / cell, lo / cell, dims, sa, sb, sd, tilt)
+        wl = np.clip(T.vig.astype(float), 0.05, 1.5)
+        S = _shadow(P[leafy] / cell, lo / cell, dims, sa, sb, sd, tilt, wl[leafy])
         ij = np.clip(((P - lo) / cell).astype(np.int64), 1, np.array(dims) - 2)
         s_here = S[ij[:, 0], ij[:, 1], ij[:, 2]]
-        Qn = np.clip(1.0 - s_here + sa * leafy, 0.0, 1.0)
+        Qn = np.clip(1.0 - s_here + sa * leafy * wl, 0.0, 1.0)
         Sg = ndimage.gaussian_filter(S, 1.5)  # (the raw grid's gradient stacks shoots in voxel layers)
         G = np.stack([Sg[ij[:, 0] + 1, ij[:, 1], ij[:, 2]] - Sg[ij[:, 0] - 1, ij[:, 1], ij[:, 2]],
                       Sg[ij[:, 0], ij[:, 1] + 1, ij[:, 2]] - Sg[ij[:, 0], ij[:, 1] - 1, ij[:, 2]],
@@ -638,11 +643,12 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                 rnd = np.stack([_u(kj, 1), _u(kj, 2), _u(kj, 3)], 1) * 2 - 1
                 dd = d[a] + h["light"] * V[src[a]]
                 dd = dd + eta[a, None] * up + jit[a, None] * rnd
+                fw = _per(h["force_orders"], order_new[a])[:, None]
                 for fv, fo in forces:
                     m_ = np.ones(len(a), bool) if fo is None else np.isin(order_new[a], fo)
-                    dd = dd + m_[:, None] * fv
+                    dd = dd + (m_[:, None] * fw if fo is None else m_[:, None]) * fv
                 if wind:
-                    dd = dd + 0.35 * wstr * wdir
+                    dd = dd + 0.5 * wstr * wdir * fw
                 dd = _norm(dd)
                 if pl[a].any():  # toward a set elevation, keeping the heading
                     hz = _norm(dd * [1, 1, 0] + 1e-9 * d[a])
@@ -737,7 +743,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         n = T.n
         area = np.zeros(n)
         _pipe(T.parent, T.mem, 1.0, h["pipe"], area)
-        rad = area * (h["tip_radius"] / unit)
+        rad = area * (h["tip_radius"] / unit) + (step + 1 - T.born) * (yps * h["ring"] / unit)
         leafy = (step - T.born) < h["leaf_steps"]
         if h["sag"] > 0:
             _pose(T.parent, T.off, T.pin, T.pinpos, T.order, rad, leafy, T.theta, h["sag"], h["sag_max"],
@@ -748,7 +754,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     n = T.n
     area = np.zeros(n)
     _pipe(T.parent, T.mem, 1.0, h["pipe"], area)
-    radius = area * h["tip_radius"]
+    radius = area * h["tip_radius"] + (steps - T.born) * (yps * h["ring"])
+    radius[0] = radius[1] if n > 1 else radius[0]
     pos = T.pos * unit
     # the foot flares
     radius = radius * (1 + (h["flare"] - 1) * np.exp(-pos[:, 2] / max(h["flare_height"], 1e-6)) * (T.order == 0))
@@ -798,39 +805,6 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     return out
 
 
-# ---------------------------------------------------------------- foliage (leaf instances)
-
-def foliage(tree: dict) -> dict:
-    """Leaf instances: pos (m), dir (the leaf's long axis), normal, size, key. Until twigs exist (stage 2), every
-    leafy node carries a spray of `per_node` leaves within `spread` m of its internode."""
-    s = tree["spec"]
-    lf = s["leaves"]
-    if s.get("season") in ("winter", "bare", "dead") or not lf.get("per_node"):
-        z = np.zeros((0, 3))
-        return {"pos": z, "dir": z, "normal": z, "size": np.zeros(0), "key": np.zeros(0, np.uint64), "node": np.zeros(0, np.int64)}
-    idx = np.flatnonzero(tree["leafy"] & (tree["order"] >= lf.get("min_order", 1)) | tree["leafy"] & tree["ends"])
-    k = int(lf["per_node"])
-    node = np.repeat(idx, k)
-    j = np.tile(np.arange(k), len(idx))
-    key = _child(tree["key"][node], 300 + j)
-    P, par = tree["pos"], tree["parent"]
-    a, b = P[par[node]], P[node]
-    t = _u(key, 1)
-    ax = _norm(b - a)
-    ref = np.where(np.abs(ax[:, 2:3]) > 0.95, np.array([[1.0, 0, 0]]), np.array([[0, 0, 1.0]]))
-    u = _norm(np.cross(ax, ref))
-    w = np.cross(u, ax)
-    phi = 2 * math.pi * _u(key, 2)
-    out = u * np.cos(phi)[:, None] + w * np.sin(phi)[:, None]
-    r = lf["spread"] * np.sqrt(_u(key, 3))
-    pos = a + (b - a) * t[:, None] + out * r[:, None]
-    d = _norm(out + 0.5 * ax + np.array([0, 0, lf.get("up", 0.0) - lf.get("droop", 0.2)]) + 0.4 * (np.stack([_u(key, 4), _u(key, 5), _u(key, 6)], 1) - 0.5))
-    nrm = _norm(np.array([0, 0, 1.0]) + 0.6 * out + 0.5 * (np.stack([_u(key, 7), _u(key, 8), _u(key, 9)], 1) - 0.5))
-    nrm = _norm(nrm - d * np.sum(nrm * d, 1, keepdims=True))
-    size = lf["size"] * (0.7 + 0.6 * _u(key, 10))
-    return {"pos": pos, "dir": d, "normal": nrm, "size": size, "key": key, "node": node}
-
-
 # ---------------------------------------------------------------- silhouettes and measures
 
 def silhouette(tree: dict, azimuth: float = 0.0, px_per_m: float = 20.0, leaves: bool = True, pad: float = 0.5):
@@ -841,9 +815,14 @@ def silhouette(tree: dict, azimuth: float = 0.0, px_per_m: float = 20.0, leaves:
     c, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
     x = P[:, 0] * c + P[:, 1] * s_
     z = P[:, 2]
-    L = foliage(tree) if leaves else None
-    lx = (L["pos"][:, 0] * c + L["pos"][:, 1] * s_) if L is not None and len(L["pos"]) else np.zeros(0)
-    lz = L["pos"][:, 2] if len(lx) else np.zeros(0)
+    lx = lz = lr = np.zeros(0)
+    if leaves:  # each twig as a disc of about its own size
+        from . import veg_leaf
+        tw = veg_leaf.place(tree)
+        if len(tw["pos"]):
+            tl = {**veg_leaf.TWIG, **(tree["spec"]["leaves"].get("twig") or {})}["length"]
+            cen = tw["pos"] + tw["frame"][:, :, 1] * (0.5 * tl * tw["scale"])[:, None]
+            lx, lz, lr = cen[:, 0] * c + cen[:, 1] * s_, cen[:, 2], 0.45 * tl * tw["scale"]
     x0 = min(x.min(), lx.min() if len(lx) else 0) - pad
     x1 = max(x.max(), lx.max() if len(lx) else 0) + pad
     z1 = max(z.max(), lz.max() if len(lz) else 0) + pad
@@ -856,7 +835,7 @@ def silhouette(tree: dict, azimuth: float = 0.0, px_per_m: float = 20.0, leaves:
         p = par[i]
         d.line([X[p], Y[p], X[i], Y[i]], fill=255, width=int(wpx[i]))
     if len(lx):
-        r = np.maximum(1.0, 0.6 * L["size"] * px_per_m)
+        r = np.maximum(1.0, lr * px_per_m)
         LX, LY = (lx - x0) * px_per_m, (z1 - lz) * px_per_m
         for i in range(len(lx)):
             d.ellipse([LX[i] - r[i], LY[i] - r[i], LX[i] + r[i], LY[i] + r[i]], fill=255)
@@ -1006,6 +985,67 @@ def reference_mask(image, crop=None, foot=None, tol=30.0, horizon=None, trunk=40
     return m
 
 
+def line_directions(gray: np.ndarray, region: np.ndarray, sigma: float = 1.5, rho: float = 5.0) -> dict:
+    """Which way the lines in an image run (branches against the sky, or our own silhouette), as angles from the
+    vertical (0 = upright, 90 = level): structure tensor, weighted by how line-like and how strong each pixel is,
+    inside `region`. Returns p25/p50/p75 and the share steeper than 30 deg / flatter than 60 deg. The same measure
+    on a winter photo and on a bare silhouette at the same pixel scale compares branch angles without tracing."""
+    g = np.asarray(gray, float)
+    gx = ndimage.gaussian_filter(g, sigma, order=(0, 1))
+    gy = ndimage.gaussian_filter(g, sigma, order=(1, 0))
+    jxx, jyy, jxy = (ndimage.gaussian_filter(v, rho) for v in (gx * gx, gy * gy, gx * gy))
+    tr = jxx + jyy
+    coh = np.sqrt((jxx - jyy) ** 2 + 4 * jxy ** 2) / np.maximum(tr, 1e-12)
+    th = 0.5 * np.arctan2(2 * jxy, jxx - jyy)  # the gradient's direction; the line runs across it
+    ang = np.degrees(np.abs(np.arctan2(np.sin(th), np.cos(th))))  # gradient from the x axis
+    ang = np.where(ang > 90, 180 - ang, ang)  # gradient level (0) = an upright line: already "from the vertical"
+    w = (coh * tr)[region]
+    a = ang[region]
+    if w.sum() <= 0:
+        return {"p25": 0.0, "p50": 0.0, "p75": 0.0, "upright": 0.0, "level": 0.0}
+    o = np.argsort(a)
+    cw = np.cumsum(w[o]) / w.sum()
+    q = lambda f: float(a[o][min(np.searchsorted(cw, f), len(a) - 1)])
+    return {"p25": round(q(0.25), 1), "p50": round(q(0.5), 1), "p75": round(q(0.75), 1),
+            "upright": round(float(w[a < 30].sum() / w.sum()), 3), "level": round(float(w[a > 60].sum() / w.sum()), 3)}
+
+
+def _filled(mask):
+    any_, left, right = _rows(mask)
+    f = np.zeros_like(mask)
+    for i in np.flatnonzero(any_):
+        f[i, left[i]: right[i] + 1] = True
+    return f
+
+
+def photo_branch_directions(image, mask_args: dict, crown_from: float = 0.3) -> dict:
+    """line_directions of a winter photo inside the tree's outline, above `crown_from` of its height (off the trunk)."""
+    from PIL import Image
+    R = reference_mask(image, **mask_args)
+    im = np.asarray(Image.open(image).convert("L")).astype(float)
+    if mask_args.get("polygon") is not None:
+        P = np.asarray(mask_args["polygon"])
+        x0, y0 = int(np.floor(P[:, 0].min())), int(np.floor(P[:, 1].min()))
+    else:
+        x0, y0 = mask_args["crop"][0], mask_args["crop"][1]
+    g = im[y0: y0 + R.shape[0], x0: x0 + R.shape[1]]
+    reg = _filled(R)[: g.shape[0], : g.shape[1]]
+    rows = np.flatnonzero(reg.any(1))
+    reg[int(rows[-1] - crown_from * (rows[-1] - rows[0])):] = False
+    out = line_directions(g, reg)
+    out["height_px"] = int(rows[-1] - rows[0])
+    return out
+
+
+def tree_branch_directions(tree: dict, azimuth: float, height_px: int, crown_from: float = 0.3) -> dict:
+    """The same measure on our bare silhouette, drawn as tall in pixels as the photo's tree."""
+    m, _ = silhouette(tree, azimuth, height_px / max(tree["height"], 1e-6), leaves=False)
+    reg = _filled(m)
+    rows = np.flatnonzero(reg.any(1))
+    reg[int(rows[-1] - crown_from * (rows[-1] - rows[0])):] = False
+    return line_directions(255.0 * (~m), reg)
+
+
 # ---------------------------------------------------------------- fitting a habit to a reference silhouette
 
 def _set_path(d: dict, path: str, value):
@@ -1036,8 +1076,19 @@ def match(tree: dict, ref_mask: np.ndarray, bare: bool = False, azimuths=(0, 90)
             "mask": best[2]}
 
 
+def droop(tree: dict, bole: float) -> float:
+    """Share of the shoot ends hanging under the crown's base (bole x height), more than 1.5 m out from the trunk:
+    limbs drooped to the ground, which an outline fit would otherwise reward."""
+    e = tree["pos"][tree["ends"]]
+    if not len(e):
+        return 0.0
+    low = (e[:, 2] < bole * tree["height"] * 0.85) & (np.linalg.norm(e[:, :2], axis=1) > 1.5)
+    return float(low.mean())
+
+
 def fit_habit(spec: dict, ref_mask: np.ndarray, params: dict, bare: bool = False, iters: int = 60, seeds=(1, 2),
-              nodes=(3000, 30000), rng_seed: int = 0, log=None) -> dict:
+              nodes=(3000, 30000), rng_seed: int = 0, log=None, directions: dict | None = None,
+              elevation: tuple | None = None, droop_max: float | None = None) -> dict:
     """Search habit numbers so the grown tree's outline matches a reference: `params` = {habit path: [lo, hi]}
     ("apical.0" = the list's element 0; integer bounds stay integers). Random search, then shrinking steps round
     the best; scored on outline IoU over `seeds` minus misses in width/height and bole, and node counts outside
@@ -1074,8 +1125,16 @@ def fit_habit(spec: dict, ref_mask: np.ndarray, params: dict, bare: bool = False
             m = match(T, ref_mask, bare=bare)
             n = T["stats"]["nodes"]
             pen = abs(m["ours"]["width_over_height"] - m["ref"]["width_over_height"]) * 0.3 \
-                + abs(m["ours"]["bole"] - m["ref"]["bole"]) * 0.4 \
+                + abs(m["ours"]["bole"] - m["ref"]["bole"]) * 0.8 \
+                + 1.5 * max(0.0, droop(T, m["ref"]["bole"]) - (0.02 if droop_max is None else droop_max)) \
                 + 0.15 * max(0.0, math.log(nodes[0] / max(n, 1))) + 0.15 * max(0.0, math.log(n / nodes[1]))
+            if directions:  # branch directions against the winter photo's (deg from vertical)
+                dv = tree_branch_directions(T, m["azimuth"], directions["height_px"])
+                pen += 0.006 * abs(dv["p50"] - directions["p50"]) + 0.3 * abs(dv["level"] - directions["level"])
+            if elevation:  # the first-order limbs' far halves, inside a stated band (deg above level)
+                el = branch_angles(T, 1)["elevation_p10_50_90"]
+                if el:
+                    pen += 0.006 * (max(0.0, elevation[0] - el[1]) + max(0.0, el[1] - elevation[1]))
             tot += m["iou"] - pen
             ious.append(m["iou"])
         return tot / len(seeds), float(np.mean(ious)), hb

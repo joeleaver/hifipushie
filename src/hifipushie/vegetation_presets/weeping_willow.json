@@ -6,12 +6,12 @@
   "unit": 0.3705,
   "vigour": 6.4234,
   "apical": [
-   0.5541,
-   0.4886,
-   0.5995,
+   0.46,
+   0.5,
+   0.55,
    0.6
   ],
-  "apical_old": 0.42,
+  "apical_old": 0.36,
   "shoot_max": [
    2,
    2,
@@ -25,44 +25,91 @@
    1.1
   ],
   "angle": [
-   60,
    55,
-   75,
+   50,
+   70,
    60
   ],
   "tropism": [
    0.3,
-   0.0,
-   -0.7698,
-   -1.2461
+   0.2,
+   -0.4,
+   -1.2
   ],
   "light": 0.15,
-  "jitter": 0.1,
+  "jitter": [
+   0.15,
+   0.25,
+   0.15,
+   0.08
+  ],
   "shed": 0.0,
   "bud_life": 4,
   "sag": 3.3358,
   "sag_max": 0.35,
   "pipe": 2.3,
   "flare": 1.6,
-  "clear": 2.1079,
+  "clear": 1.8,
   "max_order": 4,
-  "leaf_steps": 3
- },
- "leaves": {
-  "type": "strap",
-  "size": 0.09,
-  "per_node": 16,
-  "spread": 0.12,
-  "droop": 1.0,
-  "color": [
-   0.42,
-   0.52,
-   0.14
+  "leaf_steps": 3,
+  "apical_fade": [
+   0.1,
+   0.35
+  ],
+  "ring": 0.0022,
+  "plagio": [
+   0,
+   0.12,
+   0,
+   0
+  ],
+  "elevation": [
+   0,
+   45,
+   0,
+   0
   ]
  },
- "bark_color": [
-  0.3,
-  0.25,
-  0.18
- ]
+ "leaves": {
+  "shape": "lanceolate",
+  "length": 0.09,
+  "width": 0.16,
+  "hang": 0.6,
+  "color": [
+   0.3,
+   0.4,
+   0.1
+  ],
+  "twig": {
+   "length": 0.55,
+   "leaves": 20,
+   "arrangement": "alternate",
+   "angle": 40,
+   "per_m": 5,
+   "droop": 1.2,
+   "up": -0.9,
+   "spread": 25,
+   "min_order": 2,
+   "steps": 3
+  }
+ },
+ "bark": {
+  "kind": "furrowed",
+  "color": [
+   0.33,
+   0.29,
+   0.22
+  ],
+  "color2": [
+   0.13,
+   0.11,
+   0.08
+  ],
+  "twig_color": [
+   0.45,
+   0.42,
+   0.12
+  ],
+  "bump": 0.8
+ }
 }

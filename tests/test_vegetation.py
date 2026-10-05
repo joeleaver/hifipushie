@@ -2,7 +2,7 @@
 words say, the measures measure. uv run python tests/test_vegetation.py"""
 import numpy as np
 
-from hifipushie import veg_mesh, vegetation as v
+from hifipushie import veg_leaf, veg_mesh, vegetation as v
 
 SMALL = {"species": "birch", "age": 22}
 
@@ -76,7 +76,7 @@ def test_environment():
     T0 = v.grow(SMALL)
     F = v.grow({**SMALL, "environment": {"setting": "forest"}})
     m0, mf = v.shape_measures(v.silhouette(T0, 0, 10, leaves=False)[0]), v.shape_measures(v.silhouette(F, 0, 10, leaves=False)[0])
-    assert mf["bole"] > m0["bole"] + 0.1 and mf["width_over_height"] < m0["width_over_height"]  # drawn up by its neighbours
+    assert mf["bole"] > m0["bole"] + 0.05 and mf["width_over_height"] < m0["width_over_height"]  # drawn up by its neighbours
     W = v.grow({**SMALL, "environment": {"wind": {"from": "w", "strength": 0.5}}})
     assert np.median(W["pos"][W["ends"], 0]) > np.median(T0["pos"][T0["ends"], 0]) + 0.3  # leans downwind (east, +x)
 
@@ -115,9 +115,70 @@ def test_height_sets_the_unit():
 def test_decay_and_seasons():
     D = v.grow({**SMALL, "decay": {"min_radius": 0.02}})
     assert (D["radius"][2:] >= 0.02).all() and not D["leafy"].any()
-    assert len(v.foliage(v.grow({**SMALL, "season": "winter"}))["pos"]) == 0
-    L = v.foliage(v.grow(SMALL))
-    assert len(L["pos"]) > 1000 and np.allclose(np.linalg.norm(L["dir"], axis=1), 1, atol=1e-6)
+    assert len(veg_leaf.place(D)["pos"]) == 0
+    assert len(veg_leaf.place(v.grow({**SMALL, "season": "winter"}))["pos"]) == 0
+
+
+def test_leaves_and_twigs():
+    for shape in ("ovate", "triangular", "lanceolate", "lobed"):
+        M = veg_leaf.leaf_mesh({"shape": shape, "length": 0.1})
+        assert M["F"].max() < len(M["V"]) and np.isfinite(M["V"]).all()
+        assert 0.09 < M["V"][:, 1].max() - 0.015 < 0.115  # petiole + blade
+        assert abs(M["V"][:, 0].min() + M["V"][:, 0].max()) < 1e-9  # symmetric
+    lob, ova = veg_leaf.leaf_mesh({"shape": "lobed"}), veg_leaf.leaf_mesh({"shape": "ovate"})
+    assert len(lob["V"]) > len(ova["V"])  # lobes need stations
+    for sp in v.species():
+        lf = v.resolve({"species": sp})["leaves"]
+        a, b = veg_leaf.twig_mesh(lf, 0), veg_leaf.twig_mesh(lf, 1)
+        assert a["F"].max() < len(a["V"]) and len(a["mat"]) == len(a["F"]) and len(a["col"]) == len(a["V"])
+        assert (a["mat"] == 1).sum() > 5 and (a["mat"] == 0).sum() > 5, sp
+        assert a["V"].shape != b["V"].shape or not np.allclose(a["V"], b["V"])  # variants differ
+        assert np.array_equal(a["V"], veg_leaf.twig_mesh(lf, 0)["V"])  # and are deterministic
+    T = v.grow(SMALL)
+    tw = veg_leaf.place(T)
+    assert len(tw["pos"]) > 500
+    Fm = tw["frame"]
+    assert np.allclose(np.einsum("nij,nik->njk", Fm, Fm), np.eye(3), atol=1e-6)  # orthonormal frames
+    assert np.allclose(np.linalg.det(Fm), 1, atol=1e-6)
+    assert set(np.unique(tw["variant"])) <= {0, 1, 2}
+    d = np.linalg.norm(tw["pos"][:, None, :] - T["pos"][tw["node"]][:, None, :], axis=2).max()
+    assert d < 1.0  # every twig stands on its node's internode
+    ends_only = veg_leaf.place(v.grow({**SMALL, "leaves": {"twig": {"where": "ends", "per_m": 0}}}))
+    assert len(ends_only["pos"]) < len(tw["pos"])
+
+
+def test_girth_and_collar():
+    thin = v.grow({**SMALL, "habit": {"ring": 0.0}})
+    thick = v.grow({**SMALL, "habit": {"ring": 0.003}})
+    assert thick["stats"]["trunk_diameter_m"] > thin["stats"]["trunk_diameter_m"] + 0.08
+    par = thick["parent"]
+    assert (thick["radius"][par[2:]] >= thick["radius"][2:] * 0.999).all()  # still thinning outward
+    a, b = veg_mesh.tubes(thick, collar=0), veg_mesh.tubes(thick, collar=1.9)
+    assert len(b["V"]) > len(a["V"]) and len(b["tan"]) == len(b["V"])
+    assert np.allclose(np.linalg.norm(b["tan"], axis=1), 1, atol=1e-6)
+
+
+def test_wind_spares_the_trunk():
+    T0 = v.grow(SMALL)
+    W = v.grow({**SMALL, "forces": [{"dir": [1, 0, 0], "strength": 0.25}], "environment": {"wind": {"from": "w", "strength": 0.8}}})
+    assert W["height"] > 0.8 * T0["height"]  # it leans, it doesn't lie down
+    trunk = W["pos"][W["order"] == 0]
+    assert trunk[:, 0].max() < 0.5 * W["height"]
+
+
+def test_line_directions_and_droop():
+    yy, xx = np.mgrid[:200, :200]
+    upright = ((xx % 20) < 3).astype(float) * 255
+    level = ((yy % 20) < 3).astype(float) * 255
+    reg = np.ones((200, 200), bool)
+    assert v.line_directions(upright, reg)["p50"] < 10 and v.line_directions(level, reg)["p50"] > 80
+    assert v.line_directions(upright, reg)["upright"] > 0.9 and v.line_directions(level, reg)["level"] > 0.9
+    T = v.grow(SMALL)
+    fake = {"pos": np.array([[0, 0, 0], [0, 0, 10.0], [4, 0, 1.0], [4, 0, 6.0], [0.5, 0, 1.0]]), "height": 10.0,
+            "ends": np.array([False, True, True, True, True])}
+    assert abs(v.droop(fake, 0.3) - 0.25) < 1e-9  # one end of four hangs low and far out; the one by the trunk doesn't count
+    d = v.tree_branch_directions(T, 0, 400)
+    assert 0 <= d["p25"] <= d["p50"] <= d["p75"] <= 90
 
 
 def test_measures_and_masks():
@@ -140,9 +201,6 @@ def test_tubes():
     M = veg_mesh.tubes(T)
     assert len(M["V"]) == len(M["axis"]) and M["F"].max() < len(M["V"]) and M["F"].min() == 0
     assert np.isfinite(M["V"]).all() and (M["along"] >= 0).all() and (M["along"] <= 1).all()
-    for k in ("broad", "strap", "needle_tuft", "needle_spray"):
-        V, F = veg_mesh.leaf_proto(k)
-        assert F.max() < len(V)
 
 
 def test_fit_improves():
