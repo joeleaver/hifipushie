@@ -88,6 +88,41 @@ def test_projection():
     assert np.allclose(m2, 1) and col2[0, 0] > 0.9 and col2[1, 2] > 0.9
 
 
+def test_mirror_image():
+    """Symmetric anatomy: with "mirror_image" the mirrored placement shows the picture reflected (a brow's hairs run
+    from the nose outward on both sides); without, it reads the same way round (text). And the brow the skin lays."""
+    p = _png("lr3.png", LR)
+    spec = _board({"file": str(p), "at": "board", "size": [0.2, None]})
+    fr = {**images.frame(spec, spec["paint"]["pic"]["image"]), "c": [0.5, -0.01, 0], "mirror": True}
+    pos = np.array([[0.45, -0.01, 0.0], [0.55, -0.01, 0.0], [-0.45, -0.01, 0.0], [-0.55, -0.01, 0.0]])
+    nrm = np.tile([0, -1.0, 0], (4, 1))
+    _, plain = images.evaluate(fr, pos, nrm)
+    _, anat = images.evaluate({**fr, "mirror_image": True}, pos, nrm)
+    assert plain[0, 0] > 0.9 and plain[1, 2] > 0.9  # red toward the centre line (inner), blue outer, on the +x side
+    assert plain[3, 0] > 0.9 and plain[2, 2] > 0.9  # unmirrored: red is the OUTER end on the other side
+    assert anat[2, 0] > 0.9 and anat[3, 2] > 0.9  # mirrored picture: red inner on both sides
+    assert np.allclose(anat[:2], plain[:2])
+    P = np.random.default_rng(0).uniform([0.4, -0.01, -0.05], [0.6, -0.01, 0.05], (200, 3))
+    ma, ca = images.evaluate({**fr, "mirror_image": True}, P, np.tile([0, -1.0, 0], (200, 1)))
+    mb, cb = images.evaluate({**fr, "mirror_image": True}, P * [-1, 1, 1], np.tile([0, -1.0, 0], (200, 1)))
+    assert np.allclose(ma, mb) and np.allclose(ca, cb)  # the field on one side is the mirror of the other's
+    with pytest_raises(SpecError):
+        images.frame(spec, {"file": str(p), "at": "board", "mirror_picture": True})
+
+
+def pytest_raises(exc):
+    import contextlib
+
+    @contextlib.contextmanager
+    def cm():
+        try:
+            yield
+        except exc:
+            return
+        raise AssertionError(f"no {exc.__name__}")
+    return cm()
+
+
 def test_mask_and_channels():
     p = _png("lr2.png", LR)
     img = {"file": str(p), "at": "board", "size": [0.2, None], "channel": "r"}

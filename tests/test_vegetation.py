@@ -95,7 +95,8 @@ def test_cuts_are_local_and_girth_is_settable():
     assert (U["pos"][U["order"] > 0][:, 2] >= 4.0).all() and (U["order"] == 0).sum() == (T0["order"] == 0).sum()
     G = v.grow({**SMALL, "trunk_diameter": 0.5})
     assert abs(G["stats"]["trunk_diameter_m"] - 0.5) < 0.02 * 1.6  # (the foot's flare sits on top)
-    assert np.allclose(G["radius"][G["ends"]], T0["radius"][T0["ends"]], rtol=0.35)  # twigs are left as they are
+    ratio = G["radius"][G["ends"]] / T0["radius"][T0["ends"]]
+    assert abs(np.median(ratio) - 1) < 0.1 and np.percentile(ratio, 90) < 0.6 * G["radius"][1] / T0["radius"][1] + 0.4  # twigs stay
     lean = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6, "lean": [4, 0]}})
     up = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6}})
     hi = lambda t: t["pos"][t["pos"][:, 2] > 0.6 * t["height"], 0].mean()
@@ -124,8 +125,9 @@ def test_environment():
 
 
 def test_habit_words():
-    ex = v.grow({**SMALL, "habit": {"apical": [0.62, 0.5]}})
-    de = v.grow({**SMALL, "habit": {"apical": [0.44, 0.5]}})
+    ok = {"species": "oak", "age": 40}  # (no forced leader: a birch's leader holds its trunk whatever the apical share)
+    ex = v.grow({**ok, "habit": {"apical": [0.62, 0.5], "apical_old": None, "leader": 0}})
+    de = v.grow({**ok, "habit": {"apical": [0.44, 0.5], "apical_old": None, "leader": 0}})
     w = lambda t: v.shape_measures(v.silhouette(t, 0, 10, leaves=False)[0])["width_over_height"]
     assert w(de) > w(ex)  # less apical control: broader for its height
     up = v.grow({**SMALL, "habit": {"tropism": [0.35, 0.4, 0.3, 0.3], "sag": 0}})
@@ -271,7 +273,7 @@ def test_atlas_and_cards():
         assert 0.02 < (at["color"][..., 3] > 0.5).mean() < 0.9, sp
         assert 0.05 < at["fill"] <= 1.0, (sp, at["fill"])
         for c in at["cards"]:
-            assert c["F"].max() < len(c["V"]) == len(c["uv"]) and len(c["F"]) <= 2 * 8
+            assert c["F"].max() < len(c["V"]) == len(c["uv"]) and len(c["F"]) <= 3 * 8  # (crossed pair + an end card)
             assert c["uv"].min() > -0.05 and c["uv"].max() < 1.05
     # a card holds its twig's picture: every opaque texel of its cell lies inside the card's polygon
     lf = v.resolve({"species": "oak"})["leaves"]
@@ -353,9 +355,9 @@ def test_tools_and_export(tmp=None):
             assert magic == b"glTF" and ver == 2 and total == len(raw)
             jl = struct.unpack("<I", raw[12:16])[0]
             g = json.loads(raw[20: 20 + jl])
-            assert [m["name"] for m in g["meshes"]] == ["wood", "foliage"]
+            assert [m["name"] for m in g["meshes"]][:2] == ["wood", "foliage"]
             assert g["materials"][1]["alphaMode"] == "MASK" and g["materials"][1]["doubleSided"]
-            tris = sum(g["accessors"][m["primitives"][0]["indices"]]["count"] for m in g["meshes"]) // 3
+            tris = sum(g["accessors"][m["primitives"][0]["indices"]]["count"] for m in g["meshes"][:2]) // 3
             assert tris == c["wood_triangles"] + c["foliage_triangles"] > 1000
             for m in g["meshes"]:
                 pa = g["accessors"][m["primitives"][0]["attributes"]["POSITION"]]
@@ -422,12 +424,285 @@ def test_budget_is_what_is_written():
     assert full["keep"] == 1.0 and full["min_radius"] == 0.0
 
 
+def test_named_limbs_take_and_sets():
+    import tempfile
+    from hifipushie import store, veg_tools as vt
+    old = store.HOME
+    with tempfile.TemporaryDirectory() as tmp:
+        store.HOME = __import__("pathlib").Path(tmp)
+        try:
+            vt.save("o", {"species": "birch", "age": 28, "habit": {"apical": [0.5, 0.55, 0.6]}}, note="t")
+            T = vt.grown("o")
+            lb = v.limbs(T)
+            assert len(lb) >= 3 and len({L["name"] for L in lb}) == len(lb)
+            L = max(lb, key=lambda q: q["diameter"])
+            vt.edit("o", [{"op": "take_limb", "limb": L["name"], "name": "mine"}])
+            T2 = vt.grown("o")
+            g = vt.load("o")["guides"]["mine"]
+            ai = T2["guides"]["mine"]
+            nodes = np.flatnonzero((T2["axis"] == ai) & T2["pin"])
+            assert np.linalg.norm(T2["pos"][nodes[-1]] - np.array(g["path"][-1])) < 0.3  # same end as the grown limb's
+            assert np.linalg.norm(np.array(g["path"][-1]) - np.array(L["end"])) < 0.05
+            assert not (T2["key"] == np.uint64(int(L["key"]))).any()  # the shoot it replaces is not grown beside it
+            assert "mine (drawn)" in vt.report("o")
+            # a set: deterministic, different plants, the hero's guide dropped, one file
+            vt.save("o", patch={"set": {"count": 3}})
+            a, b = vt.load("o#1"), vt.load("o#3")
+            assert a["seed"] != b["seed"] and a["age"] < b["age"] and "guides" not in a and vt.load("o#1") == a
+            assert vt.grown("o#1")["height"] < vt.grown("o#3")["height"]
+            c = vt.export_set("o", triangles=3000)
+            assert len(c["plants"]) == 3 and all(q["wood_triangles"] + q["foliage_triangles"] <= 3000 for q in c["plants"])
+            try:
+                vt.save("o#1", patch={"age": 3})
+                raise AssertionError("saved into a set's plant")
+            except ValueError:
+                pass
+        finally:
+            store.HOME = old
+            vt._GROWN.clear()
+
+
+def test_blender_round_trip():
+    """A guide moved, a limb moved, a curve added in plant.blend come back as spec edits; a second pull is empty."""
+    import subprocess
+    import tempfile
+    from hifipushie import render, store, veg_tools as vt
+    os_ = __import__("os")
+    old, nl = store.HOME, os_.environ.get("HIFIPUSHIE_NO_LIVE")
+    os_.environ["HIFIPUSHIE_NO_LIVE"] = "1"
+    with tempfile.TemporaryDirectory() as tmp:
+        store.HOME = __import__("pathlib").Path(tmp)
+        try:
+            vt.save("r", {"species": "birch", "age": 22, "guides": {"g": {"path": [[0, 0, 3], [1.5, 0, 4], [3, 0, 4.5]], "from_year": 6}}}, note="t")
+            r = vt.sync("r")
+            assert r["pulled"] == [] and r["guides"] == 1 and r["limbs"] >= 1
+            code = ("import bpy\nfrom mathutils import Vector\n"
+                    "g = bpy.data.collections['guides']; l = bpy.data.collections['limbs']\n"
+                    "bp = g.objects['g'].data.splines[0].bezier_points[-1]; bp.co = Vector(bp.co) + Vector((0, 0, 1.5))\n"
+                    "l.objects[0].location.z += 0.5\n"
+                    "cu = bpy.data.curves.new('n', 'CURVE'); cu.dimensions = '3D'; sp = cu.splines.new('BEZIER'); sp.bezier_points.add(1)\n"
+                    "sp.bezier_points[0].co = (0, 0, 5); sp.bezier_points[1].co = (0, 2, 6.5)\n"
+                    "g.objects.link(bpy.data.objects.new('new one', cu))\nbpy.ops.wm.save_mainfile()\n")
+            q = subprocess.run([render.BLENDER, "-b", r["blend"], "--python-expr", code], capture_output=True, text=True)
+            assert q.returncode == 0, q.stderr[-500:]
+            came = vt.pull("r")
+            assert len(came) == 3, came
+            sp = vt.load("r")
+            assert abs(sp["guides"]["g"]["path"][-1][2] - 6.0) < 1e-3 and "new_one" in sp["guides"]
+            assert any(k.startswith("limb_") and gd.get("replaces") for k, gd in sp["guides"].items())
+            assert vt.pull("r") == []  # (not yet re-synced: still nothing twice)
+            assert vt.sync("r")["pulled"] == [] and vt.pull("r") == []
+        finally:
+            store.HOME = old
+            vt._GROWN.clear()
+            if nl is None:
+                os_.environ.pop("HIFIPUSHIE_NO_LIVE", None)
+
+
+def test_boll_dead_roots_and_habit_extras():
+    from hifipushie import veg_mesh
+    base = {"species": "white_willow"}
+    cut = {"year": 10, "above": 2.5, "every": 6, "until_year": 28, "sprouts": 6}
+    A = v.grow({**base, "cuts": [cut], "trunk_diameter": 0.7, "trunk_taper": 0.1})
+    B = v.grow({**base, "cuts": [{**cut, "boll": 1.7}], "trunk_diameter": 0.7, "trunk_taper": 0.1})
+    ra, rb = A["radius"][A["order"] == 0], B["radius"][B["order"] == 0]
+    assert abs(A["height"] - B["height"]) < 1e-6 and A["height"] < 9  # (a preset `height` no longer scales a pollard up to it)
+    assert 1.25 < rb[-1] / ra[-1] < 1.75 and abs(rb[1] - ra[1]) < 1e-6  # a head on the same trunk
+    T = v.grow({"species": "birch", "age": 25})
+    lb = v.limbs(T)
+    D = v.grow({"species": "birch", "age": 25, "dead": [{"limb": lb[0]["name"], "min_radius": 0.01}]})
+    assert D["dead"].any() and not D["leafy"][D["dead"]].any() and D["stats"]["nodes"] < T["stats"]["nodes"]
+    assert (D["radius"][D["dead"]] >= 0.01).all()
+    M = veg_mesh.tubes(D)
+    assert 0 < M["dead"].mean() < 0.5 and M["V"][:, 2].min() < -0.2  # dead wood marked; the trunk goes into the ground
+    R = veg_mesh.tubes({**T, "spec": {**T["spec"], "roots": {"count": 5, "spread": 2.0, "height": 0.6}}})
+    foot = lambda m_: np.linalg.norm(m_["V"][(m_["order"] == 0) & (np.abs(m_["V"][:, 2]) < 0.02)][:, :2], axis=1)
+    f0, f1 = foot(veg_mesh.tubes(T)), foot(R)
+    assert f1.max() > 1.6 * f0.max() and f1.min() < 1.25 * f0.max()  # flares between hollows, not a wider cone
+    # determinate axes and uneven pace
+    s0 = {"species": "norway_spruce", "age": 30, "habit": {"tip_life": [0], "uneven": [0]}}
+    a = v.grow(s0)
+    b = v.grow({**s0, "habit": {"tip_life": [0, 0, 4], "uneven": [0]}})
+    assert (b["order"] == 2).sum() < 0.7 * (a["order"] == 2).sum()
+    c = v.grow({**s0, "habit": {"tip_life": [0], "uneven": [0, 0.4]}})
+    seg = lambda t: np.linalg.norm(t["pos"] - t["pos"][t["parent"]], axis=1)[t["order"] == 1]
+    assert np.std(seg(c)) > 1.5 * np.std(seg(a))  # limbs at their own pace
+    for sp in v.species():  # every preset grows something sound
+        t = v.grow({"species": sp, "age": 12})
+        assert t["stats"]["nodes"] > 5 and np.isfinite(t["pos"]).all(), sp
+
+
+def test_budget_keeps_marked_wood_and_cards_on_wood():
+    from hifipushie import veg_export, veg_leaf, veg_mesh
+    T = v.grow({"species": "oak", "age": 70, "dead": [{"above": 9.0, "min_radius": 0.02}]})
+    assert T["dead"].any()
+    bud = veg_export.budget(T, 12000, (0.5, 1.0), 7)
+    assert bud["total"] <= 12000 and bud["min_radius"] > 0.02  # thin live wood went ...
+    assert bud["wood"]["dead"].sum() > 0  # ... the dead antlers (thinner than the cut-off) did not
+    ok = veg_export.kept_wood(T, bud["min_radius"], bud["protect"])
+    thin = T["radius"] < bud["min_radius"]
+    assert ok[T["dead"] & thin].mean() > 3 * ok[~T["dead"] & thin].mean()  # thin dead wood is drawn, thin live wood is not
+    tw, floating = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"])
+    rnd = veg_leaf.place(T)
+    far_all = 1 - ok[rnd["node"]].mean()
+    if bud["keep"] >= 0.25:  # twig cards stand on drawn wood (bough cards are spread over the crown instead)
+        assert floating <= 0.2 or floating < 0.5 * far_all, (floating, far_all)
+    else:
+        lf2, cap2, back2 = veg_export.cluster_leaves(T["spec"]["leaves"], bud["keep"])
+        assert back2 > 0 and lf2["card"]["twig"]["length"] > 1.25 * veg_leaf.card_spec(T["spec"]["leaves"])["twig"]["length"]
+        b2 = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"], cap=cap2, back=back2)[0]
+        spread = lambda q: len(np.unique(np.floor(q / 2.0).astype(int), axis=0))
+        assert spread(b2["pos"]) >= spread(tw["pos"])  # over the crown, not bunched on the limbs
+    full, simp = veg_mesh.tubes(T), veg_mesh.tubes(T, simplify=0.3)
+    assert len(simp["F"]) < 0.92 * len(full["F"]) and abs(simp["V"][:, 2].max() - full["V"][:, 2].max()) < 0.05
+
+
+def test_limb_ids_last_and_report_says():
+    import tempfile
+    from hifipushie import store, veg_tools as vt
+    old = store.HOME
+    with tempfile.TemporaryDirectory() as tmp:
+        store.HOME = __import__("pathlib").Path(tmp)
+        try:
+            base = {"species": "birch", "age": 28, "environment": {"ground": {"slope": 15, "toward": [1, 0]}}}
+            T = v.grow(base)
+            L = max(v.limbs(T), key=lambda q: q["diameter"])
+            vt.save("d", {**base, "dead": [{"limb": L["name"], "min_radius": 0.008}]}, note="t")
+            sp = vt.load("d")
+            assert sp["dead"][0]["limb"] == L["id"] and L["id"].startswith("L")  # stored by its lasting id
+            D = vt.grown("d")
+            p0 = D["pos"][D["axes"][v.find_limb(D, L["id"])]["node"]]
+            vt.edit("d", [{"op": "set", "path": "habit.jitter", "value": [0.05, 0.3, 0.3, 0.2]}])
+            D2 = vt.grown("d")
+            ai = v.find_limb(D2, L["id"])
+            assert ai is not None and np.linalg.norm(D2["pos"][D2["axes"][ai]["node"]] - p0) < 1.0  # the same bud's limb
+            assert D2["dead"][D2["axes"][ai]["node"]]
+            r = vt.report("d")
+            assert "dead wood (limb " + L["id"] in r and "lowest wood:" in r and "(id L" in r
+            vt.save("d", patch={"dead": [{"limb": "Lzzzz"}]})
+            assert "is not on this tree any more" in vt.report("d")
+            # a fat trunk under ordinary limbs
+            a = v.grow({**base, "trunk_diameter": 1.2})
+            b = v.grow({**base, "trunk_diameter": 1.2, "limb_diameter": 0.2})
+            la, lb_ = max(q["diameter"] for q in v.limbs(a)), max(q["diameter"] for q in v.limbs(b))
+            assert abs(lb_ - 0.2) < 0.03 and la > 1.5 * lb_ and abs(2 * b["radius"][1] - 1.2) < 0.05
+        finally:
+            store.HOME = old
+            vt._GROWN.clear()
+
+
+def _glb(path):
+    import json
+    import struct
+    b = open(path, "rb").read()
+    n = struct.unpack("<I", b[12:16])[0]
+    return json.loads(b[20:20 + n]), b[20 + n + 8:]
+
+
+def test_export_lods_wind_seasons_collision():
+    import tempfile
+    from hifipushie import veg_export, veg_leaf
+    T = v.grow({"species": "birch", "age": 25})
+    with tempfile.TemporaryDirectory() as tmp:
+        imp = {"image": np.ones((8, 16, 4), np.float32), "size": 10.0, "height": 5.0}
+        c = veg_export.write_glb(T, tmp + "/b.glb", "b", triangles=9000, lods=3, seasons=["summer", "autumn", "winter", "snow"],
+                                 wet=True, impostor=imp)
+        g, bin_ = _glb(c["path"])
+        tri = [l_["triangles"] for l_ in c["lods"]]
+        assert len(tri) == 4 and tri[0] <= 9000 and tri[1] <= 0.45 * 9000 + 1 and tri[2] <= 0.18 * 9000 + 1 and tri[3] == 4
+        assert tri[0] > tri[1] > tri[2]
+        assert set(g["extensionsUsed"]) == {"KHR_materials_variants", "MSFT_lod"}
+        assert [x["name"] for x in g["extensions"]["KHR_materials_variants"]["variants"]] == ["summer", "autumn", "winter", "snow", "wet"]
+        head = g["nodes"][g["scenes"][0]["nodes"][0]]
+        assert len(head["extensions"]["MSFT_lod"]["ids"]) == 3 and head["name"].endswith("LOD0")
+        mats = {m["name"]: m for m in g["materials"]}
+        assert mats["foliage_winter"]["alphaCutoff"] > 1 and mats["foliage_autumn"]["pbrMetallicRoughness"]["baseColorTexture"]["index"] \
+            != mats["foliage"]["pbrMetallicRoughness"]["baseColorTexture"]["index"]
+        wood = next(m for m in g["meshes"] if m["name"] == "LOD0_wood")["primitives"][0]
+        fol = next(m for m in g["meshes"] if m["name"] == "LOD0_foliage")["primitives"][0]
+        for k in ("TEXCOORD_1", "TEXCOORD_2", "_WIND"):
+            assert k in wood["attributes"] and k in fol["attributes"]
+        assert len(fol["extensions"]["KHR_materials_variants"]["mappings"]) >= 3
+
+        def arr(i, cols):
+            a_ = g["accessors"][i]
+            bv = g["bufferViews"][a_["bufferView"]]
+            return np.frombuffer(bin_, np.float32, a_["count"] * cols, bv["byteOffset"]).reshape(-1, cols)
+
+        P, W = arr(wood["attributes"]["POSITION"], 3), arr(wood["attributes"]["_WIND"], 4)
+        low, high = P[:, 1] < 0.3, P[:, 1] > 0.8 * P[:, 1].max()  # (Y up in the file)
+        assert W[low][:, 0].max() < 0.02 and W[high][:, 0].min() > 0.6 and W[:, 3].max() == 0  # the foot stands; wood doesn't flutter
+        Wf = arr(fol["attributes"]["_WIND"], 4)
+        assert Wf[:, 3].max() > 0.9 and Wf[:, 1].mean() > 0.3 and 0 < Wf[:, 2].std()
+        hp = g["extras"]["hifipushie_plant"]
+        caps = hp["collision"][0]["capsules"]
+        assert 2 <= len(caps) <= 24 and caps[0]["ra"] > 0.03 and "sin" in hp["wind"]
+        assert g["nodes"][hp["collision"][0]["mesh_node"]]["name"] == "b_collision"
+    # seasons on the plant itself
+    ev = v.grow({"species": "norway_spruce", "age": 20, "season": "winter"})
+    de = v.grow({"species": "birch", "age": 20, "season": "winter"})
+    assert len(veg_leaf.place(ev)["pos"]) > 0 and len(veg_leaf.place(de)["pos"]) == 0
+    assert veg_export.season_atlas(de["spec"], "winter", [0.4, 0.3, 0.3]) is None
+    su, au = veg_export.season_atlas(de["spec"], "summer", [0.4, 0.3, 0.3]), veg_export.season_atlas(de["spec"], "autumn", [0.4, 0.3, 0.3])
+    m = su["color"][..., 3] > 0.6
+    assert (au["color"][m][:, 0] - au["color"][m][:, 1]).mean() > (su["color"][m][:, 0] - su["color"][m][:, 1]).mean() + 0.1
+
+
 def test_fit_improves():
     ref = v.silhouette(v.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
     start = {**SMALL, "habit": {"apical": [0.45, 0.5]}}
     before = v.match(v.grow(start), ref, bare=True)["iou"]
     r = v.fit_habit(start, ref, {"apical.0": [0.44, 0.64]}, bare=True, iters=10, seeds=(1,), nodes=(300, 30000))
     assert r["iou"] >= before and "apical" in r["habit"]
+
+
+def _limbs_by_whorl(T):
+    """Limbs leaving the trunk, counted per trunk node."""
+    o, par = T["order"], T["parent"]
+    first = np.flatnonzero((o == 1) & (o[par] == 0))
+    return np.bincount(par[first])[np.unique(par[first])]
+
+
+def test_whorls_rings_and_creeping_branchlets():
+    # bud_each: a low bud_break keeps one or two limbs of a whorl, not whole whorls or none
+    base = {"species": "scots_pine", "age": 50, "habit": {"bud_break": [1, 0.3, 0.8, 0.9, 0.8]}}
+    whole = _limbs_by_whorl(v.grow(v._merge(base, {"habit": {"bud_each": False}})))
+    each = _limbs_by_whorl(v.grow(v._merge(base, {"habit": {"bud_each": True}})))
+    assert whole.max() >= 3 and each.mean() < whole.mean() and len(each) > len(whole), (whole, each)
+    # ring per order: old low branches stay thin under a stout trunk; slowing keeps foliage along the limbs
+    S = {"species": "norway_spruce", "age": 40}
+    one = v.grow(v._merge(S, {"habit": {"ring": 0.003, "slowing": [0], "tip_life": [0, 0, 7]}}))
+    per = v.grow(S)
+
+    def low_limb_girth(T):
+        o, par, P = T["order"], T["parent"], T["pos"]
+        f = np.flatnonzero((o == 1) & (o[par] == 0) & (P[:, 2] < 0.2 * T["height"]))
+        return float(np.median(2 * T["radius"][f]))
+
+    assert low_limb_girth(per) < 0.4 * low_limb_girth(one) and low_limb_girth(per) < 0.2 * per["stats"]["trunk_diameter_m"]
+
+    def foliage_from(T):  # the share of a low limb's length before its first twig
+        tw = veg_leaf.place(T)
+        o, par, P = T["order"], T["parent"], T["pos"]
+        has = np.zeros(len(P), bool)
+        has[tw["node"]] = True
+        limb, dist = np.zeros(len(P), np.int64), np.zeros(len(P))
+        for i in range(2, len(P)):
+            if o[i] > 0:
+                limb[i] = limb[par[i]] if o[par[i]] > 0 else i
+                dist[i] = dist[par[i]] + np.linalg.norm(P[i] - P[par[i]]) if o[par[i]] > 0 else 0.0
+        out = []
+        for r in np.unique(limb[limb > 0]):
+            m = limb == r
+            if P[r, 2] < 0.3 * T["height"] and (m & has).any():
+                out.append(dist[m & has].min() / max(dist[m & (o == 1)].max(), 1e-6))
+        return float(np.median(out))
+
+    assert foliage_from(per) < 0.8 * foliage_from(one), (foliage_from(per), foliage_from(one))
+    # a pine tuft is round: crossed cards plus one across the shoot, its picture in its own atlas cell
+    at = veg_leaf.atlas(v.resolve({"species": "scots_pine"})["leaves"])
+    c = at["cards"][0]
+    assert len(c["F"]) > 14 and np.ptp(c["V"][:, 0]) > 0.1 and np.ptp(c["V"][:, 2]) > 0.1
 
 
 if __name__ == "__main__":

@@ -1007,6 +1007,120 @@ def _neck_frame(body: "Body", nb: np.ndarray, d: np.ndarray, R: float, band: flo
     return float(base), origin
 
 
+def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm: str, w: dict,
+             body: "Body") -> np.ndarray:
+    """Wrap "seam": a piece laid from the edge it is sewn to (a tailored collar's stand on the jacket's neckline, a
+    collar on its stand, a band on an edge): its sewn edge lies ON the edge of the pieces already placed that it is
+    sewn to (the seam's own vertex pairs), and the piece runs on from there in one direction: `dir` "up" (default;
+    world z), or the body's outward normal there with `lean` deg (+ out, - in toward the body), square to the edge.
+    Pattern distances from the sewn edge and along it are kept (past the edge's ends it runs on straight); `out` m
+    lifts it off the body's normal. Where the placed edge curves otherwise than the pattern's the piece starts
+    stretched there: for draped pieces. A neck band as a circle (wrap "neck") can't follow a neckline that lies on
+    the shoulders and runs down onto the chest: placed so, a jacket's stand stood round the top of the neck."""
+    sw = M["sew"]
+    mine = np.where(pid == k)[0]
+    a = np.r_[sw[(pid[sw[:, 0]] == k) & (pid[sw[:, 1]] < k), 0], sw[(pid[sw[:, 1]] == k) & (pid[sw[:, 0]] < k), 1]]
+    b = np.r_[sw[(pid[sw[:, 0]] == k) & (pid[sw[:, 1]] < k), 1], sw[(pid[sw[:, 1]] == k) & (pid[sw[:, 0]] < k), 0]]
+    if len(np.unique(a)) < 3:
+        raise ClothError(f'piece {nm}: wrap "seam" needs a seam to a piece placed before it (pieces are placed in '
+                         "the order they are listed)")
+    ua, inv = np.unique(a, return_inverse=True)
+    Cp = np.zeros((len(ua), 3))
+    np.add.at(Cp, inv, X[b])
+    Cp /= np.bincount(inv)[:, None]
+    # the sewn edge in order: along its main direction in the pattern
+    Q = uv[ua]
+    ax = np.linalg.svd(Q - Q.mean(0))[2][0]
+    o = np.argsort((Q - Q.mean(0)) @ ax)
+    Q, Cp = Q[o], Cp[o]
+    vn, tree = body.normals()
+    lay = float(w.get("out", 0.0)) + 0.003
+    # the edge it lies on, at the PATTERN's lengths: the placed edge is not one curve yet (a neckline's pieces start
+    # apart: fronts on the front of the body, backs on the back, the shoulder seams open: 778 mm of placed edge for a
+    # 291 mm stand). From the middle of the sewn edge outward, each step goes the way the placed edge goes, as long
+    # as the pattern's segment, along the body's surface (`out` off it)
+    lq = np.linalg.norm(np.diff(Q, axis=0), axis=1)
+
+    def snap(P):
+        n = vn[tree.query(P)[1]]
+        return P - n * (float(body.clearance(P[None])[0]) - lay)
+    mid = int(np.argmin(np.abs(np.cumsum(np.r_[0, lq]) - 0.5 * lq.sum())))
+    Cs = np.zeros_like(Cp)
+    Cs[mid] = snap(Cp[mid])
+    whole = float(np.linalg.norm(np.diff(Cp, axis=0), axis=1).sum()) <= 1.15 * float(lq.sum())
+    if whole:  # one piece's edge, as long as the pattern's (a collar on its stand): that edge itself
+        Cs = Cp.copy()
+    for rng, sg in (() if whole else ((range(mid, len(Cp) - 1), 1), (range(mid, 0, -1), -1))):
+        jumped = False
+        for i in rng:
+            j = i + sg
+            dv = Cp[j] - Cp[i]
+            # past a gap between the placed pieces (back neck -> the front's neckline, the shoulder seam open) the
+            # placed edge's own direction means nothing here: head for where the edge ends (the gorge), along the body
+            jumped = jumped or np.linalg.norm(dv) > 1.5 * lq[min(i, j)] + 0.004
+            if jumped:
+                dv = Cp[-1 if sg > 0 else 0] - Cs[i]
+            n = vn[tree.query(Cs[i])[1]]
+            dv = dv - n * (dv @ n)
+            ln = np.linalg.norm(dv)
+            if ln < 1e-9:
+                dv, ln = Cp[j] - Cp[i], max(np.linalg.norm(Cp[j] - Cp[i]), 1e-9)
+            Cs[j] = snap(Cs[i] + dv / ln * lq[min(i, j)])
+    for _ in range(2):
+        Cs[1:-1] = 0.25 * Cs[:-2] + 0.5 * Cs[1:-1] + 0.25 * Cs[2:]
+    inside = uv[mine].mean(0)
+    hub = Cs.mean(0)
+    up0 = np.array([0.0, 0.0, 1.0])
+    lean = math.radians(float(w.get("lean", 0.0)))
+    out = np.zeros((len(mine), 3))
+    seg = Q[1:] - Q[:-1]
+    L2 = np.maximum((seg * seg).sum(1), 1e-18)
+    for i, v in enumerate(mine):
+        pnt = uv[v]
+        f = np.clip(((pnt - Q[:-1]) * seg).sum(1) / L2, 0.0, 1.0)
+        near = Q[:-1] + seg * f[:, None]
+        j = int(np.argmin(((near - pnt) ** 2).sum(1)))
+        tau = seg[j] / math.sqrt(L2[j])
+        nu = np.array([-tau[1], tau[0]])
+        if nu @ (inside - near[j]) < 0:
+            nu = -nu
+        rel = pnt - near[j]
+        al, t = float(rel @ tau), float(rel @ nu)
+        c3 = Cs[j] + (Cs[j + 1] - Cs[j]) * f[j]
+        T3 = Cs[j + 1] - Cs[j]
+        T3 = T3 / max(np.linalg.norm(T3), 1e-12)
+        n3 = vn[tree.query(c3)[1]]
+        n3 = n3 - T3 * (n3 @ T3)
+        n3 = n3 / max(np.linalg.norm(n3), 1e-12)
+        if w.get("dir", "up") == "normal":
+            U3 = n3
+        else:
+            # up, along the body's surface and square to the edge (a stand against the neck; on a shoulder's top,
+            # where up leaves the surface, toward the middle of the edge's curve: the neck)
+            U3 = up0 - T3 * (up0 @ T3)
+            U3 = U3 - n3 * (U3 @ n3)
+            alt = np.cross(n3, T3)
+            if alt @ (hub - c3) < 0:
+                alt = -alt
+            wq = min(1.0, float(np.linalg.norm(U3)) / 0.5)
+            U3 = wq * U3 / max(np.linalg.norm(U3), 1e-12) + (1 - wq) * alt
+            U3 = U3 / max(np.linalg.norm(U3), 1e-12)
+            U3 = math.cos(lean) * U3 + math.sin(lean) * n3
+        tr = w.get("turn")
+        if tr and t > float(tr["at"]):
+            # "turn": {"at": m from the sewn edge, "deg", "gap"}: past that line the piece is turned over (a
+            # collar's fall down outside its stand), `gap` further out; a fold line there marked "in_wrap" gives
+            # the crease its rest angle
+            th = math.radians(float(tr.get("deg", 160.0)))
+            D3 = math.cos(th) * U3 + math.sin(th) * n3
+            D3 = D3 / max(np.linalg.norm(D3), 1e-12)
+            out[i] = (c3 + al * T3 + float(tr["at"]) * U3 + (t - float(tr["at"])) * D3
+                      + (float(w.get("out", 0.0)) + float(tr.get("gap", 0.004))) * n3)
+        else:
+            out[i] = c3 + al * T3 + t * U3 + float(w.get("out", 0.0)) * n3
+    return out
+
+
 def _closed_girth(M: dict, nm: str) -> float:
     """A piece stitched to itself (a cuff's button and buttonhole): its girth when closed, the distance across it
     between the stitched vertices in the flat (0 if it doesn't close on itself)."""
@@ -1497,7 +1611,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             first_neck = neck_R0 is None
             # (wrap "girth": the whole circle a piece is part of, when it is only part of a band: a cut-on collar's
             # half round the back of the neck)
+            # (wrap "span": deg of the circle the band covers, instead of a girth: a tailored collar runs round the
+            # back and sides of the neck and down onto the chest, never closing: with "tilt" the circle tips forward)
+            if "span" in w and "girth" not in w:
+                w = dict(w, girth=width * 360.0 / float(w["span"]))
             R = float(w.get("girth", width)) / (2 * np.pi)
+            d0_ = d.copy()
             flip = -1.0 if w.get("flip") else 1.0  # pattern +x toward the body's right (a piece whose outside is
             # its pattern face: the neck's own bands are laid face in at the back, like back pieces)
             # "apart": the two halves of a pair start this far from the centre line each (edge on edge they read as
@@ -1575,6 +1694,13 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             side = np.cross(d, back)
             if side[0] < 0:
                 side = -side
+            if first_neck and w.get("pivot") == "back" and not np.allclose(d, d0_):
+                # the tilt turns the circle about its back point (the nape), not about the neck's centre: the back
+                # stays at its height and the front comes down onto the chest
+                b0_ = np.array([0, 1.0, 0]) - d0_ * d0_[1]
+                b0_ /= np.linalg.norm(b0_)
+                hb_ = neck_base + above
+                nb = nb + d0_ * hb_ + R * b0_ - d * hb_ - R * back
             # "fold": [rise, layer] a turned-down collar: up `rise` from its sewn edge, then folded down outside
             # itself `layer` further out (placed folded, so the rest shape holds the fold; arc length kept per row)
             fold = w.get("fold") if not any(fd["piece"] == nm for fd in M.get("folds") or []) else None
@@ -1737,11 +1863,13 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             xo = float(w.get("half", 0)) * float(w.get("apart", 0.0015))
             q = _arc_point(head_curve, start_h, U[:, 0] + xo, 1.0)
             X[sel] = np.c_[q, hps[2] + U[:, 1] + float(w.get("lift", 0.0))]
+        elif to == "seam":
+            X[sel] = _on_seam(M, X, uv, pid, k, nm, w, body)
         elif to == "flat":  # laid flat at a height (a tablecloth, a blanket): pattern x, y -> world x, y
             o = np.asarray(w.get("at", [0, 0, 1.0]), float)
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
         else:
-            raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, leg.L, leg.R, neck, head, flat)")
+            raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, leg.L, leg.R, neck, head, seam, flat)")
     gaps = np.full(len(X), gap)
     for k, nm in enumerate(names):
         wto = B["pieces"][nm]["wrap"].get("to", "")
@@ -1995,7 +2123,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
         obs = []
         if len(body.V):
             obs.append((body.V + bn * (clear - lay), bn, 0.008))
-        if fd["turn"] > 0 and to == "neck":  # a fold over a band: it lies on the pieces under it too (a collar's fall
+        if fd["turn"] > 0 and to in ("neck", "seam"):  # a fold over a band: it lies on the pieces under it too (a collar's fall
             # on its stand). Torso pieces lap each other either way (a coat's left front over its right): their flaps
             # lie on their own base
             for j, o in enumerate(names[:k]):
@@ -3626,6 +3754,18 @@ def sizing(res: dict) -> dict:
         # each piece's width at the draft's own girth line where it has one, else at the body's height, less the
         # closure's overlap past centre front
         w, per = 0.0, {}
+        # a panel that starts under the arm (a jacket's side panel: its top IS the armhole's base) lies below the
+        # body's chest line: measured there, the girth misses the whole panel and what is under the arm is armhole,
+        # not garment (Jaeger read -116 mm "TOO SMALL" and settled at +208). The chest is then taken just under
+        # that panel's top
+        y_cap = None
+        if reg == "chest":
+            yb = body.at[zk] - hps_z
+            tops = [float(pcs[nm]["P"][:, 1].max()) for nm in torso
+                    if not pcs[nm]["wrap"].get("align") and not pcs[nm]["wrap"].get("level")]
+            low = [t for t in tops if yb - 0.15 < t < yb]
+            if low:
+                y_cap = min(low) - 0.005
         for nm in torso:
             P = pcs[nm]["P"]
             dz = 0.0
@@ -3641,6 +3781,8 @@ def sizing(res: dict) -> dict:
             # outline is still curving in at the line's own height)
             if reg == "chest" and "armhole" in pcs[nm]["names"]:
                 y = float(P[pcs[nm]["names"]["armhole"], 1]) - 0.002
+            if y_cap is not None:
+                y = min(y, y_cap)
             wi = _piece_width_at(P, y)
             half = pcs[nm]["wrap"].get("half")
             if wi > 0 and (half or abs(P[:, 0].min() + P[:, 0].max()) > 0.05):
@@ -3709,7 +3851,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
                 "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin"}
-WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "flat")
+WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
 def _is_hex(c) -> bool:

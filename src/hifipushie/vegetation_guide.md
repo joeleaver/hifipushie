@@ -7,7 +7,8 @@ the same tree. Units are metres, Z up, the trunk's foot at [0, 0, 0]; "azimuth 0
 
 Tools: `get_plant` (the stored spec, what it resolves to, and what each number usually is), `grow_plant` (create /
 change / copy / report), `edit_plant` (guides, prunes, envelope, forces), `look_plant` (images of one plant),
-`look_plants` (several standing together), `plant_reference` (measure against a photo, optionally fit),
+`look_plants` (several standing together), `wind_plant` (the export swaying), `sync_plant` (the Blender file a person
+edits), `plant_reference` (measure against a photo, optionally fit),
 `export_plant` (GLB, with a triangle budget), `plant_history` (`plant_history(name)` lists versions,
 `plant_history(name, revert_to=3)` restores one). `grow_plant(name="")` lists the plants and the species presets.
 
@@ -58,7 +59,17 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
   up to `shoot_max` segments of `unit` x `length` m. So a 9 m tree in 14 steps has 0.65 m segments (coarse, few
   nodes); for the same height with finer segments lower `years_per_step` (more steps) and let `height` rescale the
   unit, or leave `height` out and set age and unit yourself. Without `height` the tree is as tall as it grows.
-- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are). With
+- `dead`: `[{"limb": "SW2", "min_radius": 0.03}, {"above": 15, "min_radius": 0.04}]`: wood that died and stayed
+  on the living tree (a limb by its name, or a volume: box, sphere, above): leafless, barkless silver-grey
+  (`bark.dead_color`), everything thinner than `min_radius` broken off. A stag-headed veteran = `above` just under
+  the top; a snag limb = one limb (`"from": m` = only past that far along it; a guide's name works as the limb).
+  The report says how much died and broke off. (A whole dead tree: `season: "dead"` + `decay`.)
+- `roots`: `{"count": 5, "spread": 1.6, "height": 0.5}`: root flares at the foot: the trunk's section swells toward
+  each root by `spread` x at the ground, fading over `height` m (spread 2+ and height 1+ = buttresses). The trunk
+  always runs 0.3-0.5 m into the ground, so it meets a slope without a gap.
+- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are), limbs too;
+  with `limb_diameter` (m: the stoutest limb where it leaves the trunk) the two are sized apart: a very fat old
+  trunk under ordinary limbs. (Over a long life `habit.ring` x age is what makes everything fat.) With
   `trunk_taper` (0-1: the share of that diameter the trunk loses by its top; 0.1 = a column, as a pollard's) the
   trunk keeps its girth whatever it carries. Without it the
   girth comes from what the trunk carries plus `habit.ring` per year, so a denser crown means a fatter trunk.
@@ -85,14 +96,18 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 | `jitter` | per order: how crooked shoots run. Straight trunk 0.03-0.1; gnarled limbs 0.4+; straight limbs read as a broom | |
 | `light` | pull toward open light (fills gaps, avoids its own shade) | 0.1-0.4 |
 | `buds`, `whorl`, `divergence`, `plane` | per order: side buds per node (conifer trunk 4-6 with whorl true), degrees between successive buds (137.5 spiral, 180 two-ranked), flat sprays | |
-| `bud_break` | per order: chance a bud can ever grow. Lower on order 1 = fewer, stronger limbs | 0.3-1 |
+| `bud_break` | by the NEW shoot's order ([1] = limbs off the trunk): chance a bud can ever grow. Lower [1] = fewer, stronger limbs | 0.3-1 |
+| `bud_each` | true: `bud_break` is drawn for every bud of a whorl by itself (a pine keeps one or two limbs of each whorl of four: limbs at many heights, a deep crown); false: for the whole whorl (whole tiers or none: a pagoda when `bud_break` is low) | false |
 | `bud_life` | steps a bud stays able to grow: longer = denser inside | 3-7 |
 | `max_order` | deepest branching (spruce 2, broadleaves 5) | |
 | `shed` | light per segment under which a branch is dropped: higher = cleaner trunk and open interior; too high and the tree starves | 0-0.3 |
 | `shadow` | [strength, falloff, depth] of each leaf's shade. Shade-tolerant, dense (spruce): [0.03, 3, 2]; light-demanding, open: [0.25, 1.6, 6] | |
+| `tip_life` | per order: growth steps an axis keeps extending, 0 = for ever. Short-lived hanging branchlets 6-10 (spruce); limbs that stop reaching 20-30 | [0] |
+| `slowing` | per order: steps after which an axis's new segments are half as long (0 = never). Old branchlets creep: their young, needle-bearing ends stay close to the limb all along it instead of hanging metres below (spruce [0, 0, 4]) | [0] |
+| `uneven` | per order: each axis grows at its own pace, +- this share: a ragged outline instead of a turned cone | 0-0.5 |
 | `clear` | m of trunk that never branches | 0-6 |
 | `sag`, `sag_max` | bending under weight (it sets): long thin limbs droop | 0.3-3 |
-| `ring` | m of radius all wood adds a year: girth. Stout trunk 0.002-0.003, slender 0.001 | |
+| `ring` | m of radius wood adds a year whatever it carries: girth. Stout trunk 0.002-0.003, slender 0.001. One number for all wood, or per order: a conifer's old low branches stay thin (`[0.003, 0.0005, 0.0002]`; with one number a 50-year spruce's lowest limbs were 32 cm thick under a 60 cm trunk: a cage of brown hoops) | |
 | `pipe` | how fast branches thin (2 = thick limbs, 2.5 = thin) | 2-2.5 |
 | `flare`, `flare_height` | the foot's swelling | 1.3-1.8 |
 | `force_orders` | per order: how much wind and forces turn shoots (the trunk resists) | [0.15, 0.6, 1] |
@@ -115,6 +130,8 @@ height, form, limb angles.
   than its `height` (m, reached when the tree is ~80% of its age) within 2 x `radius` of `at`, and pushes growth
   away. Give real sizes: a neighbour 1.6 m away with radius 4 covers the whole tree and starves it; for a close
   neighbour use radius 1-2. The tree does not see other plants you made: neighbours are only these blobs.
+- `light: [x, y, z]`: where the light comes from (default straight up [0, 0, 1]). Keep z near 1: [0.3, 0, 1] is a
+  tree at a wood's edge leaning out; [1, 0, 0.8] sweeps every limb sideways.
 - `ground: {"slope": deg, "toward": [x, y], "water": z}`: the hillside it stands on and a water level (m against
   the plant's foot: -0.5 = half a metre below it), for the pictures. It does not change the growth: lean the trunk
   with a guide or wind. Only a uniform slope: no banks or ditches.
@@ -138,8 +155,20 @@ height, form, limb angles.
   sprouts `sprouts` new shoots (0 = a dead stub) which grow on by the habit: a **pollard** (`above` the trunk
   height you want, every 4-8 years: a column trunk with a knuckled head of rods; make the rods straight and upright
   with tropism + low jitter on orders 1+ and `max_order` 2), a **coppice** (`above` 0.3), a **lopped limb** or a
-  **storm break** (a box or sphere round it, one year, sprouts 0-2). The report lists each cut made. A cut the tree
+  **storm break** (a box or sphere round it, one year, sprouts 0-2). `"boll": 1.4-1.8` swells the cut end into
+  the knuckled head a pollard gets from being cut again and again. Timing: the first cut after the trunk has passed
+  the cut height (the report warns when a cut found nothing); the LAST cut 4-8 years before the tree's age
+  (`until_year`), or the head is two-year stubble; `habit.clear` must be under the cut height (a bole that may
+  never branch can't sprout). A pollard's `height` is ignored (it sizes the uncut tree). The report lists each cut made. A cut the tree
   never regrows from is a `prune`.
+- Named limbs: the report lists the tree's main limbs ("SW2" = the second limb up the trunk that ends to the
+  south-west; +y is north, +x east) with where each leaves the trunk, its girth, its end, and the span of what it
+  carries. `edit_plant` op `{"op": "take_limb", "limb": "SW2", "name": "low_bough"}` makes that grown limb a guide of
+  the same place and shape; then redraw it (op `guide` with a new path), or give `"path"` at once. The names
+  belong to THIS grown tree: after an edit the other limbs may be renamed or change (the tree regrows around every
+  edit), a taken limb keeps its name and path. Each limb also has an **id** ("Lk7f3", from its bud's lineage) that
+  lasts through edits; wherever a limb is named (`dead`, take_limb) a compass name, an id or a guide's name works,
+  and a compass name is stored as the id. "Length" follows the limb's stoutest wood to a shoot's end.
 - `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}, {"under": z}]`. `below`
   removes limbs that LEAVE the trunk under that height (a limb starting higher may still hang lower); `under`
   removes everything but the trunk under that height (a browse line, a lifted crown); `above` tops the tree.
@@ -171,14 +200,23 @@ height, form, limb angles.
   Needles: `needle_width` (a needle's width / length: 0.08-0.45 on mesh twigs, far wider than life so they cover
   what hundreds of real needles do), `twig.leaves` 90-220 needles, `twig.side_shoots` (flat sprays).
   `get_plant` lists these with the values in force.
+  `leaves.color` is the leaf as you SEE it in the sun (sRGB), not a dark "albedo": a summer birch in a photo is
+  about [0.64, 0.7, 0.35] (hue 60-75, value 0.6-0.7), a spruce [0.3, 0.36, 0.2]. Foliage is shaded as a volume
+  (`leaves.round` 0.7: each leaf's normal bent outward from the crown's middle); 0 = every card by its own normal
+  (dark, spiky).
   Foliage is drawn as cards (each twig's picture on a cut card: what a game draws) by default;
   `look_plant(foliage="mesh")` shows real leaf meshes. `card: {"twig": {...}, "leaf": {...}, "scale" 0.8-1.5,
   "cross" 1 | 2 (2 = two crossed cards: tufts), "strips" 0 | 3-5 (a ladder of quads along a long hanging twig)}`:
+  A card's picture should be a SPRAY, not one shoot: `card.twig.side_shoots` 4-8 side twigs (`side_angle` deg off
+  the twig: 30-40 a fan, 8-15 hanging strands; `side_length` 0.6-1.0 of the twig; `side_taper` 0.58 = shorter toward
+  the tip, 0.1 = even strands; needle sprays: `spray_angle`, `sub_shoots`). One shoot per card read as bamboo.
   `card.twig` / `card.leaf` override the twig and leaf ONLY for the card's picture (which can afford many more,
   thinner leaves or needles than a mesh twig: `card.twig.leaves` 400 with `card.leaf.needle_width` 0.03-0.1).
 - `bark`: `kind` ("furrowed" ridges, "plates", "scales", "lenticel" smooth with dashes), `scale` (x the pattern's
   size: 0.5 = finer, for a small tree's trunk), `color`, `twig_color`, `base_color` + `base_height` (+ `base_kind`:
-  an old dark foot), `upper_color` + `upper_from` (m) + `upper_blend` (m the change takes; patchy).
+  an old dark foot), `upper_color` + `upper_from` (m) + `upper_blend` (m the change takes; patchy), `twig_radius` ([m, m]: wood
+  thinner than the first is all `twig_color`, thicker than the second none; a pine's [0.015, 0.05] keeps the orange
+  to its stout wood: every thin branch orange read as a fan of sticks).
 
 ## Reading the report
 
@@ -212,6 +250,14 @@ outline; it says nothing about branch character or foliage: look.
 - `height` asked, something else grown: `height` sizes the unedited tree; with a drawn trunk, the path decides.
 - Size runs away with age (a 130-year pine at 35 m): presets are tuned at their own `age` (get_plant shows it); for
   an old tree of normal size set `height` or lower `vigour`.
+- A conifer in tiers with bare trunk between (a pagoda): whorls break whole or not at all: `bud_each: true`.
+- A weeping tree as a column of curtains to the ground: the hanging orders grow for ever and nothing sheds inside.
+  Give them `tip_life` (6-8 steps), some `shed` (0.05), and let the order below them run level (`plagio` toward
+  20-25 deg) so the curtains start from the crown's OUTSIDE; `prune: [{"under": 1.2}]` is the browse line.
+- A conifer's lower half is a cage of bare brown hoops: measure before changing anything. Usual causes: one `ring`
+  number thickening every old branch like a trunk (give it per order); needles only on the last years' growth of
+  each limb, because the branchlets along it stopped (`tip_life`) or ran on down for metres (`slowing` keeps them
+  short and alive); foliage cards too small to hide the limb they hang from.
 - An unknown key anywhere (a prune's `until_year`, a misspelt habit key) is refused with the keys that exist.
 
 ## A stand or a group
@@ -221,16 +267,101 @@ Give them the same `environment` (e.g. `setting: "forest"`). See them together w
 `look_plants(names=[...], spacing=2.5)`: the only way to judge whether they belong together. Export each
 (`export_plant(name, triangles=12000)`).
 
+## A forest set: one description, several plants
+
+`grow_plant(name, patch={"set": {"count": 5}})`: the plant's **set** = the same description grown from other seeds
+at a spread of ages (`"age": [0.55, 1.0]` shares of the plant's age, youngest first; or `"ages": [years...]`), with
+`"vigour": 0.12` (+-12% each), `"height": [lo, hi]` m, `"lean": deg` (each trunk leaning its own way), `"patch"`
+(a patch for all, or a list of one per plant). A set is the species, not copies of one tree: the hero's guides,
+prunes and one-off cuts are dropped (`"keep_guides": true` keeps them; repeated cuts, i.e. management, stay).
+The report lists each plant (`name#1`...). `look_plants(["name#*"])` shows them together, `look_plant("name#3")`
+one; `export_plant(name, set=True)` writes one file with a node per plant sharing the bark and foliage materials.
+To turn a set's plant into a hero: `grow_plant("hero", copy_from="name#3")`. For a forest use
+`environment.setting: "forest"` on the plant: the whole set grows with clear boles and high crowns.
+
+## By hand in Blender
+
+`sync_plant(name)` writes `workspace/plants/<name>/plant.blend`: the plant with its guides (orange curves) and its
+named main limbs (blue curves). A person moves curve points there (or a whole limb), adds a curve to the "guides"
+collection, or deletes one; the next `sync_plant` brings that back as spec edits (a moved limb becomes a guide)
+and writes the file again. The spec stays the source of truth: nothing else in the file is read back.
+
 ## The export is another object: look at it
 
 A budget leaves out thin wood and draws fewer, larger cards. `look_plant(name, views=["leaf", "far"],
 triangles=12000)` renders exactly what `export_plant(name, triangles=12000)` writes. Judge that picture, not the
-full-detail one; raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+full-detail one. A budget first gives branches fewer rings and sides, then leaves out the thinnest wood (wood you
+marked, dead wood and drawn guides, stays down to a quarter of that girth), and draws the twigs that stand on wood
+it kept; the export WARNS when cards would float. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+
+## From a botanical description to our keys
+
+Take leaf and needle arrangement from a flora's TEXT (or a botanical plate), not from photos: photos are for the
+whole tree's read and for colour. What a description says, and the key it sets:
+
+| the flora says | key | values |
+|---|---|---|
+| leaves alternate / spirally arranged (2/5, 3/8) | `leaves.twig.arrangement: "spiral"`, `divergence` | 144 (2/5), 135-137.5 (3/8), 120 (1/3): the fraction is geometry; which species has which is an ASSUMPTION here |
+| leaves alternate in two ranks (distichous: elm, beech, lime) | `arrangement: "alternate"` | |
+| leaves opposite (maple, ash) / whorled | `arrangement: "opposite"` / `"whorled"` | |
+| leaf blade length, width / length | `leaves.length` (m), `leaves.width` | oak 0.10-0.12, 0.65; birch 0.03-0.07; willow 0.04-0.16, 0.12 |
+| petiole length / blade length | `leaves.petiole` | oak 0.03 (2-3 mm stalk); birch 0.3-0.5 (slender: the leaves tremble) |
+| leaves or shoots pendulous | `leaves.hang`, `twig.up` < 0, `twig.droop`, habit `tropism` < 0 on the last orders | |
+| sun leaves at all angles / shade leaves in a flat mosaic | `twig.light` 0-1 (blades turned to the sky), `twig.face` 0-1 (whole twigs flat to the sky) | sun 0.3-0.6, shade 0.8-1 |
+| needles singly on pegs all round the shoot (spruce) | `leaves.shape: "needle_spray"`, `twig.needles: "radial"`, `parted` (thinner underneath), `forward` | |
+| needles in fascicles of 2/3/5 on dwarf shoots (pines) | `shape: "needle_tuft"`, `twig.needles: "fascicles"`, `card.twig.fascicle` 2/3/5, `card.twig.needle_angle` [75, 30] (old needles stand out, the youngest lie forward: a bottlebrush), `card.twig.bud`, `card.cross` 2 + `card.end` true (a card across the shoot: the tuft is round from its end too) | |
+| needles flat, in two ranks with a parting (fir, yew, hemlock) | `twig.needles: "ranked"` | |
+| needle length | `leaves.length` | spruce 0.01-0.025, Scots pine 0.04-0.06 |
+| needles persist N years | `leaves.retention` (years) | spruce 4-10, Scots pine 2-6 |
+| branches in regular whorls | habit `whorl`, `buds` | |
+| branchlets pendulous from level limbs | habit `tropism` < 0 and `tip_life` on that order | |
+| crown conic / domed / flat-topped / columnar | habit `apical`, `apical_old`, `leader`, `tip_life`, `uneven` | |
+| bark | `bark.kind` (furrowed, plates, scales, lenticel) + colours, `upper_color` | |
+
+What the presets rest on (quoted from the sources):
+- Norway spruce: needles "four-sided and attached singly to small persistent peg-like structures (pulvini)", staying
+  "between four and ten years", branches "in regular whorls" (en.wikipedia.org/wiki/Spruce); leaves "1-2.5 cm, 4-angled
+  in cross section", "light to dark green", branches "the upper level or ascending, the lower drooping", "crown conic"
+  (conifers.org/pi/Picea_abies.php).
+- Scots pine: needles in fascicles of "two", "(2.5-)4-6(-9) cm long", "moderately to often strongly glaucous",
+  "persisting for 2-6(-9) years"; crown "dense, broadly domed or even flat-topped"; bark "thick, scaly-plated,
+  grey-brown" low, "thin, flaking, orange-red" above (conifers.org/pi/Pinus_sylvestris.php).
+- Silver birch: "the twigs are slender and often pendulous"; leaves "triangular with broad, untoothed, wedge-shaped
+  bases, slender pointed tips", "3 to 7 cm long", "short, slender stalks"; bark white, with age "irregular, dark, and
+  rugged" at the base (en.wikipedia.org/wiki/Betula_pendula).
+- Pedunculate oak: crown "spreading and unevenly domed ... massive lower branches"; leaves "arranged alternately along
+  the twigs", "10-12 cm long by 7-8 cm wide, with a short (typically 2-3 mm) petiole", "3-6 rounded lobes"; bark
+  "greyish-brown and closely grooved, with vertical plates" (en.wikipedia.org/wiki/Quercus_robur).
+- Weeping willow: leaves "alternate and spirally arranged, narrow, light green, 4-16 cm long and 0.5-2 cm broad",
+  "gold-yellow in autumn"; shoots "yellowish-brown" (en.wikipedia.org/wiki/Salix_babylonica).
+ASSUMPTIONS, not from a source: the `divergence` fraction given to each preset (oak and willow 144 = 2/5, birch
+120 = 1/3) and every `light` / `face` value (how far blades and twigs turn to the sky) were set by hand from general
+botany, and the SpeedTree manual's leaf pages refused the fetch. Replace them when a flora states the phyllotaxis.
+
+## Game-ready: LODs, wind, seasons, collision
+
+`export_plant(name, triangles=20000, lods=3, impostor=True, seasons=["summer", "autumn", "winter"], wet=True,
+lod_files=True)`:
+- **LODs**: 100 / 45 / 18% of the budget from the same tree, then (impostor) two crossed quads with the plant's
+  picture. `<name>.glb` shows LOD 0 and hangs the rest on it (MSFT_lod; extras list each LOD's triangles and the screen
+  height to switch under). `lod_files` writes `<name>_LOD<k>.glb` too: most engines take LODs as separate meshes.
+- **Wind**: every vertex carries trunk sway (0 at the foot, 1 at the top), branch sway (0 where its limb leaves the
+  trunk, 1 at the limb's end), a phase per limb, and leaf flutter (0 at a card's foot, 1 at its tip): TEXCOORD_1 =
+  (trunk, branch), TEXCOORD_2 = (phase, flutter), and all four in `_WIND`. The shader recipe is in the file's extras.
+  `wind_plant(name)` renders the export swaying by that recipe: look at it (the foot still, limbs out of step).
+- **Seasons** are states of the plant (`"season": "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
+  `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
+  material variants in the export (KHR_materials_variants: summer / autumn / winter / snow / wet). Snow lying on wood
+  is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
+- **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh.
+- What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
+  Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
+  1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
+  (LOD 0; use the LOD files), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`.
 
 ## Not built yet
 
 Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
 proxies; shrubs, grass, flowers, palms; style sheets (blob to photoreal); a multi-stem base, exposed roots, burrs,
-fluted or buttressed trunks, a foot fitted to the slope, dead limbs kept on a live tree (a `cuts` entry with
-sprouts 0 leaves a stub); thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
+fluted trunks, surface roots running out over the ground, hollows and cavities; thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
 water level); a tree that sees the other plants you made (use `setting`/`neighbours`).

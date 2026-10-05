@@ -58,26 +58,32 @@
   "width": 0.55,
   "lobes": 4,
   "color": [
-   0.396,
-   0.537,
-   0.272
+   0.445,
+   0.55,
+   0.264
   ],
   "twig": {
    "length": 0.32,
    "leaves": 11,
    "arrangement": "spiral",
    "angle": 55,
-   "per_m": 8,
+   "per_m": 4.8,
    "droop": 0.05,
-   "up": 0.4,
-   "steps": 4
+   "up": 0.12,
+   "steps": 4,
+   "face": 0.45,
+   "spread": 55,
+   "divergence": 144,
+   "light": 0.6
   },
   "card": {
    "twig": {
-    "leaves": 14,
-    "length": 0.4
+    "leaves": 34,
+    "length": 0.45,
+    "side_shoots": 4
    }
-  }
+  },
+  "petiole": 0.03
  },
  "bark": {
   "kind": "furrowed",

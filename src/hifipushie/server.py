@@ -865,58 +865,149 @@ def _closed(sil: dict, radius: float) -> dict:
 
 
 @mcp.tool(structured_output=False)
-def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None):
+def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None,
+        drive_twist: bool = True, glb: str | None = None, focus: str | None = None, zoom: float = 1.0,
+        views: list[str] | None = None, shapes: dict | None = None, engine: bool = True):
     """The export rig, a separate step over the modelling skeleton (spec bones stay for modelling): fits it,
     skins the model and renders a test pose (front and side), so weights are judged before export_asset(rig=True).
     Humanoids (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
     names (mixamorig:Hips ... LeftHandIndex4, fingers from the hand kit): Mixamo animations, Unity Humanoid and
     Unreal's IK retargeter map it as is. spec["rig"] = {"joints": {"LeftShoulder": joint or [x, y, z], ...}} moves
     a rig joint; {"type": "chains", "root": joint, "chains": {"spine": {"joints": [...]}, "tail": {"from": "spine",
-    "joints": [...]}, "leg_front.L": {...}}} gives any creature clean named chains ("<chain>_01"...). pose:
-    {rig bone: [[axis x, y, z], degrees]} instead of the default test pose. Rest pose = as modelled."""
+    "joints": [...]}, "leg_front.L": {...}}} gives any creature clean named chains ("<chain>_01"...).
+    Twist bones (humanoids): extra leaf joints AFTER the Mixamo set, "<Side><Arm|ForeArm|UpLeg|Leg>Twist<k>",
+    children of their segment's joint, that spread a roll along the segment instead of wringing one joint (a hand
+    turned palm down is ~75 deg of forearm roll: without them the wrist takes it all). The forearm's and shin's
+    FOLLOW the hand's / foot's roll (shares rising to 1.0 at the wrist); the upper arm's and thigh's COUNTER their
+    own joint's roll (-1.0 at the shoulder: the deltoid stays put). Nothing animates them: an engine drives them
+    from the listed shares (the export's json has the recipe per engine), and undriven they change nothing.
+    spec["rig"]["twist"] = false | count | {"arm": 2, "forearm": 3, "upleg": 1, "leg": 1} (the default; up to 4).
+    The head is rigid: skull, face, jaw, teeth, tongue and eyes are Head 1.0, the falloff to the neck is on the
+    throat (spec["rig"]["rigid_head"] = false | {"band": m, "under": m}).
+    pose: {rig bone: [[axis x, y, z] or "roll", degrees]} instead of the default test pose ("roll" = about the
+    bone's limb: the forearm for a Hand, its own length for an Arm); drive_twist=False leaves the twist bones still
+    (what an engine without drivers shows). The text reports each twist chain's test (hand rolled 75 and 105 deg:
+    twist by station along the forearm, what is left at the wrist, the worst cross-section's area against rest:
+    a candy wrapper is a dip under ~0.8), the head's weights by height, and the WEIGHTS AUDIT: every joint turned
+    alone through its usual range, with how far its own skin ends from a rigid turn, how far other bones' skin moved
+    (and whose), flipped triangles, weight one digit's bones hold on another digit, left / right asymmetry, sums and
+    influence counts; lines ending "<- BAD" are what to fix.
+    glb: an exported <name>.glb to judge INSTEAD of this tool's own build: the real low poly with the weights and
+    joints an engine gets. Do this for hands and faces: the look build here is coarse (the text says when its voxel
+    is too big for the fingers: they fuse at rest and no pose of them means anything). focus: a rig bone to centre
+    on (with zoom, e.g. focus="LeftHand", zoom=6), views: e.g. ["front", "left", "back"]; shapes: {face shape:
+    weight} added before posing (glb only: {"jawOpen": 1} with a head turn). pose = {} renders the rest pose: look
+    at it first, so a mesh fault isn't blamed on the weights. Rest pose = as modelled. With glb the image has two
+    rows: the GLB as an engine draws it (its maps and normal map: judge faces and silhouettes there) over its bare
+    mesh in clay (facets and folds); engine=False leaves the first out (faster)."""
     from . import rig as rigmod
     spec = store.load(name)
     try:
         bones = rigmod.rig_bones(spec)
     except ValueError as e:
         return str(e)
-    meta = store.build(name, resolution)
-    z = np.load(meta["mesh"])
-    V, F = z["verts"].astype(np.float64), z["faces"]
-    pv, pnames = z["part"], [str(n) for n in z["part_names"]]  # per part, as export_asset skins them
-    J, W = np.zeros((len(V), 4), int), np.zeros((len(V), 4))
-    fp = pv[F[:, 0]]
-    meshes = {}
-    for i, pn in enumerate(pnames):
-        sel = np.flatnonzero(pv == i)
-        if len(sel):
-            rm = np.full(len(V), -1)
-            rm[sel] = np.arange(len(sel))
-            meshes[pn] = (V[sel], rm[F[fp == i]], sel)
-    for pn, (Jp, Wp) in rigmod.skin_parts(spec, bones, {k: v[:2] for k, v in meshes.items()}).items():
-        J[meshes[pn][2]], W[meshes[pn][2]] = Jp, Wp
-    turns = {k: (v[0], v[1]) for k, v in pose.items()} if pose else rigmod.test_pose(bones)
-    P = rigmod.pose(bones, V, J, W, turns)
+    from . import rig_audit
+    extra = {}
+    if glb:  # the export itself: its mesh, joints and weights
+        g = rig_audit.read_glb(Path(glb).expanduser())
+        bones = g["bones"]
+        V, Fs, J, W, _, _ = rig_audit.joined(g["meshes"], shapes)
+        rep, F = rig_audit.weld(V, Fs)  # (seam-split vertices as one surface, for normals and the audit)
+        skip = rig_audit.bound(g["meshes"])
+        note = [f"judging {Path(glb).name}: {len(V)} vertices, {len(Fs)} triangles, the export's own joints and weights"]
+    else:
+        meta = store.build(name, resolution)
+        z = np.load(meta["mesh"])
+        V, F = z["verts"].astype(np.float64), z["faces"]
+        Fs, rep, skip = F, np.arange(len(V)), None
+        J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
+        extra = {k: z[k] for k in ("part", "part_names", "part_colors")}
+        note = []
+        _, girth, _, _ = rig_audit.owners(bones, V)
+        thin = [girth[i] for i, b in enumerate(bones) if i in girth and "Hand" in b["name"]
+                and b["name"][-1:].isdigit()]
+        if thin and meta["voxel"] > 0.5 * float(np.median(thin)):
+            note.append(f"WARNING: this look's voxel is {meta['voxel'] * 1e3:.1f} mm and the fingers are "
+                        f"~{2e3 * float(np.median(thin)):.0f} mm thick: they are fused or lumpy in this build AT REST. "
+                        "Don't judge hands here: export and pass glb=<the .glb> (the real mesh and weights)")
+    names = [b["name"] for b in bones]
+    if pose is not None and not pose:
+        turns = {}
+    elif pose:
+        bad = [k for k in pose if k not in names and rigmod.PREFIX + k not in names]
+        if bad:
+            return f"pose: no rig bone {bad} (have {', '.join(names)})"
+        turns = rigmod.resolve_turns(bones, {(k if k in names else rigmod.PREFIX + k): (v[0], v[1])
+                                             for k, v in pose.items()})
+    else:
+        turns = rigmod.test_pose(bones)
+    P = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, turns) if drive_twist else turns) if turns else V
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
     N = np.zeros_like(P)
     for k in range(3):
         np.add.at(N, F[:, k], fn)
+    N = N[rep]
     N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-12
+    at = None
+    if focus:
+        fb = focus if focus in names else rigmod.PREFIX + focus
+        if fb not in names:
+            return f"focus: no rig bone {focus!r}"
+        i = names.index(fb)
+        kids = [b["head"] for b in bones if b["parent"] == i and not b.get("twist")]
+        at = 0.5 * (bones[i]["head"] + (np.mean(kids, 0) if kids else bones[i]["head"]))
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "posed.npz"
-        np.savez(f, verts=P.astype(np.float32), faces=F, normals=N.astype(np.float32),
-                 **{k: z[k] for k in ("part", "part_names", "part_colors")})
-        frames = render.view_frames(P, ["front", "side"])
+        np.savez(f, verts=P.astype(np.float32), faces=Fs, normals=N.astype(np.float32), **extra)
+        frames = render.view_frames(P, views or ["front", "side"], focus=at, zoom=zoom)
         img = render.contact_sheet(render.render_views(f, frames, size, "clay_studio.exr"), frames)
+    if glb and engine and Path(glb).expanduser().with_suffix(".json").exists():
+        # the export as an engine draws it (its maps, its normal map, its own skinning in Blender's importer) over
+        # the clay: a 15k face reads lumpy in clay (7.5 mm facets) and smooth with its normal map
+        from PIL import Image as _Im
+        from . import asset
+        driven = rigmod.drive_twist(bones, turns) if (turns and drive_twist) else turns
+        one = dict(shapes or {})
+        one["turns"] = {k: [*(float(x) for x in v[0]), float(v[1])] for k, v in driven.items()}
+        try:
+            top = asset.preview(Path(glb).expanduser(), views or ["front", "side"], size=size, focus=at, zoom=zoom,
+                                poses=[one], lighting=(spec.get("style") or {}).get("look"))[0]
+            both = _Im.new("RGB", (max(top.width, img.width), top.height + img.height), (28, 29, 33))
+            both.paste(top, (0, 0))
+            both.paste(img, (0, top.height))
+            img = both
+            note.append("top row: the GLB as an engine draws it (maps + normal map); bottom row: its mesh in clay")
+        except Exception as e:  # Blender missing, a GLB without maps: the clay row alone
+            note.append(f"(no engine row: {str(e)[:200]})")
     used = np.bincount(J[W > 0.01], minlength=len(bones))
     empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"] and not b.get("noweight")]
-    text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}); posed: "
-            + ", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items())]
+    text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}; "
+            f"{sum(1 for b in bones if b.get('twist'))} of them twist bones, after the base set); posed: "
+            + (", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items()) or "nothing (REST)")
+            + ("" if drive_twist else "; twist bones NOT driven")]
     text += [f"  {b['name']} <- {b.get('src', '?')}" + (" (end)" if b["end"] else "")
-             + (f", child of {bones[b['parent']]['name']}" if b["parent"] >= 0 else " (root)") for b in bones]
+             + (f", child of {bones[b['parent']]['name']}" if b["parent"] >= 0 else " (root)")
+             + (f"; {b['twist']['mode']}s {b['twist']['driver']}'s roll x {b['twist']['share']:+g}"
+                if b.get("twist") else "") for b in bones]
     if empty:
         text.append("bones that got no skin: " + ", ".join(empty))
+    try:
+        note += rig_audit.fused_limbs(spec, rigmod.rig_bones(spec))
+    except Exception:
+        pass
+    from . import rig_template
+    if not glb and rig_template.weights_note(spec):
+        note.append(rig_template.weights_note(spec))
+    text = note + text
+    text += rigmod.report(spec, bones, V, F, J, W)
+    flesh = None
+    try:  # kit characters: skin belongs to the bone whose modelled flesh it is (a belly beside a hanging arm)
+        if len(bones) == len(rigmod.rig_bones(spec)):
+            flesh = rig_audit.flesh_distances(spec, rigmod.rig_bones(spec), V)
+    except Exception:
+        flesh = None
+    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W, skip=skip, flesh=flesh))
     return [_out(img, save), "\n".join(text)]
 
 
@@ -1021,7 +1112,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
-                 hide: list[str] | None = None, save: str | None = None, rig: bool = False, fbx: bool = False,
+                 hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
                  face_shapes: bool | list[str] = False):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
@@ -1050,10 +1141,14 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.
     preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
     parts, instances or prefabs left out of it (e.g. roof and walls, to see an interior).
-    rig: an armature from the skeleton (a joint per additive bone, rooted at "pelvis"/"hips" or the skeleton's
-    middle) and the parts skinned to it (4 weights per vertex from each bone's own cone and the blobs on it,
-    blended within the nearest bone's family): characters. Decimated triangles bend less cleanly than modelled
-    edge loops at elbows and knees; judge it with the `rig` tool first. fbx: also <name>.fbx (Blender converts the
+    rig: the export rig (the `rig` tool's: Mixamo's skeleton for humanoids, named chains otherwise) and the parts
+    skinned to it, 4 weights per vertex: characters. Humanoids also get twist bones (extra leaf joints after the
+    Mixamo set; each has node extras.hifipushie_twist {driver, mode, share, axis} and the json's rig.twist +
+    rig.twist_recipe say how an engine drives them from the hand's / arm's roll; undriven they change nothing) and
+    a rigid head (face, jaw, teeth, tongue, eyes and whatever a face shape moves are Head 1.0). rig may be
+    {"twist": false | count | {"arm", "forearm", "upleg", "leg"}, "rigid_head": false} to override spec["rig"].
+    Decimated triangles bend less cleanly than modelled edge loops at elbows and knees; judge it with the `rig`
+    tool first. fbx: also <name>.fbx (Blender converts the
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
@@ -1570,7 +1665,17 @@ def skin(name: str, skin: dict | None = None, replace: bool = False, note: str =
             f"{base['subsurface_scale'] * 1000:.1f} mm, coat {base['coat']:.2f}\n"
             f"{len(layers)} layers: {', '.join(layers)}\n"
             f"look_skin(\"{name}\") renders close-ups and measures them; look(paint_layer=\"skin:<layer>\") or "
-            f"look_skin(layer=...) shows one layer's mask")
+            f"look_skin(layer=...) shows one layer's mask" + _head_hint(new_spec))
+
+
+def _head_hint(spec: dict) -> str:
+    b = spec.get("base") or {}
+    h = b.get("head") or {}
+    if (b.get("body") or {}).get("source") != "makehuman" or h.get("source", "gnm") != "gnm" or "follow_body" in h:
+        return ""
+    return ("\nHINT: this head doesn't follow its body: base.head.follow_body is unset, so the face keeps one adult shape "
+            "and its own size whatever the body's age and sex. For a new character set base.head.follow_body: true "
+            "(guide(topic=\"skin\"), stage 0); leave it for a character whose head is already approved.")
 
 
 @mcp.tool(structured_output=False)
@@ -1938,6 +2043,8 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "guide", "name", "path": [[x, y, z], ...] (m), "from_year", "until_year", "vigour"}: a drawn axis at any
     branch order (it starts from the nearest wood at from_year, lies exactly on the path, is never shed or bent, and
     branches grow from it; a path from [0, 0, 0] at year 0 is the trunk). {"op": "remove_guide", "name"}.
+    {"op": "take_limb", "limb": "SW1", "name"?, "path"?}: a GROWN main limb (the report names them) becomes a guide of
+    the same place and shape, which you can then redraw; the rest of the tree regrows around it (it may change).
     The same with "on": another guide's name (or "trunk") makes it leave THAT axis. Paths are splined through
     their points ("straight": true keeps corners).
     {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (limbs LEAVING the trunk under
@@ -1947,7 +2054,8 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "cut", "year": N, <a volume as for prune>, "every": years, "until_year", "sprouts": n}: the wood in the
     volume is cut AT that year (and again every `every` years) and the stubs sprout `sprouts` new shoots each: a
     pollard ("above": 2.5, "every": 6), a coppice ("above": 0.3), a lopped limb or a storm break (a box, sprouts 0-2).
-    {"op": "clear_cuts"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    {"op": "clear_cuts"}. {"op": "dead", "limb": name | id | guide (or a volume), "min_radius", "from": m along it},
+    {"op": "clear_dead"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
     "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
     {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
     Returns the report after regrowing, with what changed in size."""
@@ -1982,13 +2090,17 @@ def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size:
 
 @mcp.tool(structured_output=False)
 def look_plants(names: list[str], at: list | None = None, spacing: float | None = None, views: list | None = None,
-                azimuth: float = 0.0, size: int = 640, foliage: str | None = None):
+                azimuth: float = 0.0, size: int = 640, foliage: str | None = None, triangles: int | None = None):
     """Several plants standing together in one picture (a stand, a hedge line, a tree with its neighbours): do they
     belong together, do their sizes relate? at: [[x, y], ...] m per plant, or spacing m apart on a loose ring
     (default 0.35 x the tallest). views: "far" (default), "near", "clay", "top", or a camera {"eye", "look", "fov"}.
-    The first plant's environment (ground slope) sets the scene. The same plant may be named more than once."""
+    The first plant's environment (ground slope) sets the scene. The same plant may be named more than once.
+    A plant with a `set` (grow_plant patch {"set": {"count": 5}}): "oak#*" names its whole set, "oak#2" one of it.
+    `at` goes with the names in order (a set's plants #1, #2... in turn). triangles=N shows every plant at that
+    budget, as export_plant(triangles=N) writes it."""
     from . import veg_tools as vt
-    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage)
+    names = [m for n in names for m in (vt.set_names(n[:-2]) if n.endswith("#*") else [n])]
+    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
     out.append("\n".join(f"{k}: {p}" for k, p in got))
     return out
@@ -2037,25 +2149,121 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 
 
 @mcp.tool(structured_output=False)
-def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None) -> str:
+def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False,
+                 lods: int = 1, impostor: bool = False, seasons: list[str] | None = None, wet: bool = False,
+                 lod_files: bool = False) -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
-    twig atlas with alpha MASK, double sided, COLOR_0 = a per-twig tint; the atlas's mask texture is listed in the
-    material's extras). triangles: a budget for the whole plant (a game tree: 10-40k; without it everything grown is
-    written, often 100-400k): the thinnest wood is left out and branches get fewer sides, twigs are thinned and the
-    rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
+    twig atlas with alpha MASK, double sided, normals bent out from the crown, COLOR_0 = a per-twig tint).
+    triangles: LOD 0's budget (a game tree: 10-40k; without it everything grown is written, often 100-400k):
+    branches get fewer rings and sides, the thinnest wood is left out (marked wood stays), twigs are thinned and the
+    rest drawn larger. lods: 1-3 mesh LODs (100 / 45 / 18% of the budget); impostor=True adds two crossed quads with
+    the plant's picture as the last LOD (a Blender render: +10-30 s). LOD 0 is the scene, the others hang on it
+    (MSFT_lod) and are listed in extras with the screen height to switch at; lod_files=True also writes each LOD as
+    its own <name>_LOD<k>.glb (Unreal, Unity, Godot take LODs as separate meshes).
+    Wind is always written: TEXCOORD_1 = (trunk, branch) sway weights, TEXCOORD_2 = (phase, flutter), the same four in
+    _WIND; the shader recipe is in extras. seasons: any of "summer", "autumn", "winter", "snow" as material variants
+    (KHR_materials_variants; a deciduous winter hides the foliage; "snow" frosts the foliage picture, snow on wood is
+    an engine shader: recipe in extras); wet=True adds a "wet" variant. Collision: capsules for the trunk and main
+    limbs in extras + a low `<name>_collision` mesh node outside the scene.
+    set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
+    materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
     from . import veg_tools as vt
-    c = vt.export(name, out_dir, triangles)
+    if set:
+        c = vt.export_set(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet)
+        return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all (LOD 0), "
+                f"one bark + one foliage material\n" + "\n".join(
+                    f"  {q['name']}: {q['height_m']} m, " + "; ".join(f"LOD{l_['lod']} {l_['triangles']}" for l_ in q["lods"]) + " triangles"
+                    + (f", {q['floating']:.0%} of the cards floating" if q.get("floating", 0) > 0.2 else "")
+                    for q in c["plants"]))
+    c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
+                  lod_files=lod_files)
     return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
             + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
             + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")
             + f", foliage {c['foliage_triangles']} triangles"
             + (f" ({c['twigs_kept']:.0%} of the twigs, drawn larger)" if c["twigs_kept"] < 1 else "")
             + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
+            + ("\nLODs: " + "; ".join(
+                f"LOD{l_['lod']} {l_['triangles']} triangles" + (" (impostor)" if l_.get("impostor") else "")
+                + (f", under {l_['switch_below_screen_height']:.0%} of the screen's height" if l_.get("switch_below_screen_height") else "")
+                for l_ in c["lods"]) if len(c["lods"]) > 1 else "")
+            + (f"\nvariants: {', '.join(c['variants'])}" if c["variants"] else "")
+            + f"\nwind: TEXCOORD_1 (trunk, branch), TEXCOORD_2 (phase, flutter), _WIND; collision: {c['collision_capsules']} capsules"
+              f" + a {c['collision_triangles']}-triangle mesh"
+            + (f"\nfiles: {', '.join(Path(f).name for f in c['files'])}" if len(c["files"]) > 1 else "")
             + (f"\nWARNING: {c['over']} triangles over the budget: the wood alone needs {c['wood_triangles']} "
                f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")
-            + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles})" if triangles else "")
-            + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
+            + (f"\nWARNING: {c['floating']:.0%} of the cards have no drawn wood near them (they will float): raise the budget"
+               if c.get("floating", 0) > 0.2 else "")
+            + ("\nWood you marked (dead wood, drawn guides) is kept down to a quarter of that girth." if triangles else "")
+            + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles}); "
+               f"wind_plant(name) renders it swaying" if triangles else ""))
+
+
+def _wind_disp(d: dict, height: float) -> str:
+    """The clip's motion in metres, with what it should be."""
+    if not d:
+        return ""
+    f = lambda k: f"{d[k]['mean_m'] * 100:.1f} cm mean / {d[k]['max_m'] * 100:.1f} cm most" if k in d else "none found"
+    out = (f"moved, measured on the vertices: foot {f('foot')}; trunk top {f('trunk_top')}; limb ends {f('limb_ends')}; "
+           f"leaf tips {f('leaf_tips')}")
+    if "limbs_in_step" in d:
+        out += f"; limbs in step {d['limbs_in_step']} (1 = all swing together, a board; 0.2-0.7 reads as a tree)"
+    warn = []
+    if d.get("foot", {}).get("max_m", 0) > 0.01:
+        warn.append("WARNING: the foot moves (trunk channel not 0 at the ground)")
+    if height and d.get("trunk_top", {}).get("max_m", 0) > 0.06 * height:
+        warn.append("WARNING: the trunk's top swings more than 6% of the height: rubber; lower strength")
+    if d.get("limb_ends", {}).get("max_m", 1) < 0.01:
+        warn.append("WARNING: limb ends move under 1 cm: the tree stands frozen; raise strength")
+    return out + ("\n" + "\n".join(warn) if warn else "") + "\n"
+
+
+@mcp.tool(structured_output=False)
+def wind_plant(name: str, triangles: int | None = 20000, seconds: float = 4.0, strength: float = 1.0,
+               wind_from: float = 270.0, azimuth: float = 0.0):
+    """The plant in the wind, as a game would move it: its export (at `triangles`) is opened with Blender's glTF importer
+    and swayed from the file's own wind channels (trunk sway, limbs each in their own phase, leaf flutter) by the
+    shader recipe in the file's extras. strength 0.3 = a breeze, 1 = a fresh wind, 2 = a gale; wind_from = the compass
+    bearing it blows from (270 = from the west, +x is east). Returns a strip of six frames over their difference from
+    the first (bright = moving: the trunk's foot must stay dark, the crown's edge and the limb ends bright), the mp4's
+    path, and what the importer found (uv sets, attributes, variants). 30-90 s."""
+    from . import veg_tools as vt
+    r = vt.wind(name, triangles, seconds, 12, strength, wind_from, azimuth)
+    imp = [o for o in r["import"]["objects"] if o.get("type") == "MESH"]
+    txt = (f"wind: {r['n']} frames at 12 fps -> {r.get('mp4', '(no ffmpeg: frames in ' + r['frames'] + ')')}\nstrip: {r['strip']}\n"
+           f"{r['moved_share']:.0%} of the picture changes against frame 0 (mean over the clip)\n"
+           + _wind_disp(r["import"].get("displacement") or {}, r.get("height", 0.0)) +
+           f"Blender {r['import']['blender']} import of {Path(r['glb']).name}: " + "; ".join(
+               f"{o['name']} {o['triangles']} triangles, uv sets {len(o['uv_layers'])}, attributes {o['attributes'] or 'none'}"
+               + (f", _WIND vs uv differ by {o['wind_custom_vs_uv_max_diff']}" if "wind_custom_vs_uv_max_diff" in o else "")
+               for o in imp))
+    return [_out(PILImage.open(r["strip"]), None), txt]
+
+
+@mcp.tool(structured_output=False)
+def sync_plant(name: str, pull_only: bool = False) -> str:
+    """The plant as a Blender file a person (or you, through a Blender session) can edit by hand:
+    workspace/plants/<name>/plant.blend holds the plant with its guides (orange, collection "guides") and its named
+    main limbs (blue, "limbs") as Bezier curves. First every edit made there comes back into the spec: a guide curve
+    moved or given more points = that guide redrawn; a limb curve moved = that limb taken over as a guide with the
+    new shape; a curve added to "guides" = a new guide; a guide curve deleted = removed. Then (unless pull_only) the
+    file is written again from the spec. A running Blender with the file open is read live and reloaded. Only
+    what moved from what the last sync wrote counts: syncing twice changes nothing. Returns what came back and the
+    report."""
+    from . import veg_tools as vt
+    before, prev = vt.grown(name)["stats"], vt.load(name)
+    if pull_only:
+        came, head = vt.pull(name), ""
+    else:
+        r = vt.sync(name)
+        came = r["pulled"]
+        head = (f"wrote {r['blend']} ({r['guides']} guide curves, {r['limbs']} limb curves"
+                + (", the running Blender reloaded it" if r["live"] else "") + ")\n")
+    if not came:
+        return head + "nothing was changed in Blender since the last sync"
+    return head + "from Blender:\n" + "\n".join(f"  {c}" for c in came) + "\n" + vt.change_note(name, prev, before) + "\n" + vt.report(name)
 
 
 @mcp.tool(structured_output=False)

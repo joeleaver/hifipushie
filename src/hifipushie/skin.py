@@ -11,6 +11,9 @@ spec["skin"] = {
            "oxygenation": 0..1 (0.75)},   a pigment model, not a colour: every layer below is this tone with more or
                                    less melanin and blood, so freckles, flush, lips, palms and scars stay right for
                                    any skin (`tone_rgb`)
+  "sex": 0 female .. 1 male (unset: neither): the skin's sex-linked defaults, each still settable itself: a woman's
+                                  finer thinner brows, darker lash lines, finer pores, fuller-coloured lips; a man's
+                                  heavier brows and coarser skin. (Beard shadow is `hair.stubble`: off unless asked.)
   "age": years (30),              drives wrinkles, uneven pigment, age spots, thinner drier skin; each can be set itself
   "variation": 1,                 strength of colour zones and mottling (0 = one flat tone)
   "detail": 1,                    strength of micro relief and wrinkles
@@ -43,7 +46,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 1
+VERSION = 2
 
 # ---- tone: melanin + haemoglobin -> albedo ----------------------------------------------------------------------
 # A two-layer model in the spirit of Donner & Jensen 2006 / Jimenez et al. 2010, with Jacques' skin optics numbers
@@ -407,7 +410,7 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex"}
 ZONE_LAYERS = {"forehead_yellow": 1.0, "midface_red": 1.0, "nose_red": 1.0, "ears_red": 1.0, "lower_cool": 1.0,
                "under_eye": 1.0, "eyelids": 1.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
                "elbows_knees": 1.0, "fingertips": 1.0, "nails": 1.0}
@@ -431,6 +434,11 @@ def params(spec: dict) -> dict:
     if not 0 <= age <= 120:
         raise SpecError("skin age is in years")
     p = {"part": sk.get("part", "body"), "tone": tone_params(sk.get("tone")), "age": age, "seed": int(sk.get("seed", 0))}
+    sx = sk.get("sex")
+    if sx is not None and not 0 <= float(sx) <= 1:
+        raise SpecError("skin sex is 0 (female) .. 1 (male)")
+    p["fem"] = 0.0 if sx is None else float(np.clip(1 - 2 * float(sx), 0, 1))
+    p["masc"] = 0.0 if sx is None else float(np.clip(2 * float(sx) - 1, 0, 1))
     for k, d in (("variation", 1.0), ("detail", 1.0), ("oil", 0.5), ("thin", 0.5), ("sun", 0.3)):
         p[k] = float(sk.get(k, d))
         if not 0 <= p[k] <= 3:
@@ -480,7 +488,7 @@ def part_base(spec: dict) -> tuple[str, dict] | None:
                        "subsurface": weight, "subsurface_radius": [float(x) for x in radius], "subsurface_scale": scale,
                        # the oily film is a second, tighter highlight over the skin's broad one (a dual lobe: Unreal's
                        # skin mixes two at 0.85); vellus hair gives a soft sheen at grazing angles
-                       "coat": float(sh.get("coat", 0.04 + 0.16 * p["oil"])), "coat_roughness": float(sh.get("coat_roughness", 0.28)),
+                       "coat": float(sh.get("coat", 0.015 + 0.07 * p["oil"])), "coat_roughness": float(sh.get("coat_roughness", 0.34)),
                        "sheen": float(sh.get("sheen", 0.12)), "sheen_roughness": 0.5,
                        "thickness": float(sh.get("thickness", 0.007)),  # light comes through what is thinner (ears, nostrils)
                        "_old": old}
@@ -488,7 +496,7 @@ def part_base(spec: dict) -> tuple[str, dict] | None:
 
 def _roughness(p: dict) -> float:
     child = 1 - _age_curve(p["age"], 6, 18)
-    return float(np.clip(0.46 - 0.05 * (p["oil"] - 0.5) + 0.06 * _age_curve(p["age"], 45, 85) - 0.03 * child, 0.2, 0.9))
+    return float(np.clip(0.49 - 0.05 * (p["oil"] - 0.5) + 0.06 * _age_curve(p["age"], 45, 85) - 0.03 * child, 0.2, 0.9))
 
 
 def _z(*names, grow=1.0) -> list:
@@ -517,6 +525,7 @@ def _build(spec: dict, J: dict) -> dict:
     part, t, seed = p["part"], p["tone"], p["seed"]
     no_pores = []
     var, det, age = p["variation"], p["detail"], p["age"]
+    det = det * (1 - 0.22 * p["fem"] + 0.12 * p["masc"])  # finer pores on a woman's face, coarser on a man's
     face = "lm_nose_tip" in J
     hands = "finger1_0.L" in J and "wrist.L" in J
     arms = all(k in J for k in ("shoulder.L", "elbow.L", "wrist.L"))
@@ -573,7 +582,7 @@ def _build(spec: dict, J: dict) -> dict:
 
     # 3. lips: thin epidermis over a lot of blood; less melanin than the face on light skin, still much on dark
     if face:
-        lp = p["lips"]
+        lp = {**p["lips"], "blood": p["lips"]["blood"] * (1 + 0.25 * p["fem"])}
         lm = (0.55 + 0.4 * dark) * lp["melanin"]
         le = 0.5 + 0.4 * dark  # dark lips keep most of their pigment: the upper one browner, the lower pinker
         out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=le,
@@ -611,7 +620,8 @@ def _build(spec: dict, J: dict) -> dict:
 
     from . import skin_features
     smooth = skin_features.build(spec, p, J, out, T, {"face": face, "hands": hands, "arms": arms, "legs": legs, "feet": feet,
-                                                      "child": child, "old": old, "thin": thin, "base_r": base_r})
+                                                      "child": child, "old": old, "thin": thin, "base_r": base_r,
+                                                      "fem": p["fem"], "masc": p["masc"]})
     no_pores = [{"mask": s, "blend": "subtract"} for s in smooth]  # scar tissue is smooth
 
     # last: micro relief (pores, the polygonal net of skin lines, the grain between them), over everything, ink and
@@ -621,17 +631,17 @@ def _build(spec: dict, J: dict) -> dict:
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:
-            micro.append(("pores", "pores", 0.00021 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
+            micro.append(("pores", "pores", 0.00034 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
-            micro.append(("lines", "lines", 0.00018 * d * body_k, [{"mask": _z("face"), "invert": True}]))
+            micro.append(("lines", "lines", 0.00013 * d * body_k, [{"mask": _z("face"), "invert": True}]))
         else:
-            micro.append(("lines", "lines", 0.00018 * d * body_k, None))
+            micro.append(("lines", "lines", 0.00013 * d * body_k, None))
         if hands or joints_:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
         for name, sw, depth, mask in micro:
             stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min(0.6 * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "opacity": round(min((0.45 if name in ("pores", "lip_lines") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
     return out
 

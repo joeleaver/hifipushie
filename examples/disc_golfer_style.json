@@ -728,6 +728,7 @@
   "strap": {
    "color": "#2d2f33",
    "roughness": 0.8,
+   "rig_attach": "bag",
    "shell": "shirt",
    "offset": 0.0045,
    "blend": 0.003

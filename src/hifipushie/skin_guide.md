@@ -27,6 +27,17 @@ roughness, scattering, then displacement from secondary forms down to micro [1][
 keys of the description; `look_skin(views=["bust"], flat=True)` shows colour without light, the default look the lit
 close-ups.
 
+### 0. The head under the skin
+Skin can't make a face young, old, male or female on its own: a seven-year-old's skin on an adult's skull is an
+adult. On a MakeHuman body with a GNM head, set `base.head.follow_body: true` (or a strength 0..1) when you make the
+character: the body's age, sex and weight then shape the head and size it to the body (a child's big cranium and
+small jaw, an old man's long heavy lower face). It is off unless you ask, so existing characters keep their heads.
+`base.cornea: true` gives the eyeballs a cornea's bulge.
+The head then takes MakeHuman's own head shape for that age and sex (a displacement of every vertex), with the
+difference between the sexes pushed a little further (`base.head.dimorphism`, 0.8; 0 = MakeHuman's own). Keep the
+seed's `spread` at 0.45 or less for women and children: a strong random individuality reads male on a bald head.
+`base.head.like: {"age", "sex", "weight"}` sets the head apart from the body.
+
 ### 1. Base tone: a pigment model, not a colour picker
 `skin(name, {"tone": {"fitzpatrick": 3, "undertone": 0.2}, "age": 35})`
 - Skin colour is two pigments: melanin in the epidermis (how dark: 1.3% of its volume in very fair skin to 43% in

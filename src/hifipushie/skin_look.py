@@ -15,11 +15,15 @@ import numpy as np
 
 from . import skin_measure, store
 
-STUDIO = {"lights": [{"dir": [-0.55, -0.7, 0.45], "energy": 3.6, "color": [1.0, 0.96, 0.9], "angle": 12},
-                     {"dir": [0.7, -0.5, 0.1], "energy": 0.5, "color": [0.85, 0.9, 1.0], "angle": 40, "shadow": False}],
+STUDIO = {"lights": [{"dir": [-0.55, -0.7, 0.45], "energy": 3.6, "color": [1.0, 0.96, 0.9], "angle": 12,
+                      "window": {"size": [0.45, 0.65], "distance": 2.4, "gain": 0.4}},  # one soft window-shaped highlight
+                     {"dir": [0.7, -0.5, 0.1], "energy": 0.5, "color": [0.85, 0.9, 1.0], "angle": 40, "shadow": False,
+                      "specular": 0.0}],
           "world": {"color": [0.55, 0.58, 0.62], "strength": 0.5}, "view": "Khronos PBR Neutral", "exposure": -0.6}
-SOFT = {"lights": [{"dir": [-0.2, -0.9, 0.35], "energy": 2.4, "color": [1.0, 0.98, 0.95], "angle": 25},
-                   {"dir": [0.6, -0.6, 0.2], "energy": 1.0, "color": [0.95, 0.97, 1.0], "angle": 25, "shadow": False}],
+SOFT = {"lights": [{"dir": [-0.2, -0.9, 0.35], "energy": 2.4, "color": [1.0, 0.98, 0.95], "angle": 25,
+                    "window": {"size": [0.8, 0.8], "distance": 2.2, "gain": 0.4}},
+                   {"dir": [0.6, -0.6, 0.2], "energy": 1.0, "color": [0.95, 0.97, 1.0], "angle": 25, "shadow": False,
+                    "specular": 0.0}],
         "world": {"color": [0.7, 0.72, 0.75], "strength": 0.8}, "view": "Khronos PBR Neutral", "exposure": -0.6}
 BACK = {"lights": [{"dir": [-0.35, 0.9, 0.2], "energy": 7.0, "color": [1.0, 0.97, 0.92], "angle": 6},
                    {"dir": [-0.6, -0.7, 0.2], "energy": 0.3, "angle": 40, "shadow": False}],
@@ -30,7 +34,7 @@ PHOTO = {"octaves_mm": [0.35, 0.7, 1.4, 2.8, 5.6, 11.2], "L": [1.2, 1.26, 0.83, 
          "a": [0.25, 0.29, 0.41, 0.47, 0.51, 0.6], "b": [0.24, 0.26, 0.4, 0.51, 0.62, 0.72], "micro": 0.051,
          "highlight_share": [0.05, 0.13], "highlight_breakup": [1.6, 2.4], "cheek_a": 1.2, "nose_a": 0.9}
 VIEWS = {"bust": "head", "face": "head", "three_quarter": "head", "side": "head", "cheek": "head", "eye": "head",
-         "mouth": "head", "forehead": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
+         "mouth": "head", "forehead": "head", "brows": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
 DEFAULT = ("face", "three_quarter", "cheek", "eye", "mouth", "ear")
 
 
@@ -106,7 +110,7 @@ def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str
     mark = d / "skin_look.key"
     code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_swatch.py", "paint.py", "paintnodes.py",
-                                  "blender_scene.py"))).hexdigest()[:12]
+                                  "blender_scene.py", "base.py", "headfit.py", "skin_look.py"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
         return sn
     t = time.time()
@@ -140,6 +144,7 @@ def cameras(spec: dict) -> dict:
             "eye": (eye + np.array([-0.03, -0.22, 0.01]) * k, eye + [0, 0, 0.004], 13, "soft"),
             "mouth": (mouth + np.array([-0.04, -0.24, 0.0]) * k, mouth, 14, "studio"),
             "forehead": (fh + np.array([-0.06, -0.24, 0.05]) * k, fh, 16, "studio"),
+            "brows": (J["lm_nose_bridge"] + np.array([0.0, -0.3, 0.03]) * k, J["lm_nose_bridge"] + [0, 0, 0.012 * k], 17, "soft"),
             "ear": (ear + np.array([-0.3, -0.12, 0.0]) * k, ear, 20, "back")})
     if "wrist.L" in J and "finger2_0.L" in J:
         from .skin import _palm_normal
@@ -223,7 +228,8 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
                     f["out"] = str(Path(tmp) / f"{v}.png")
                     frames.append(f)
                 job = {"mode": "render", "blend": str(scene.blend_path(sn)), "views": frames, "size": size, "hide": [],
-                       "flat": flat, "samples": 16, "lighting": LIGHTS[lt]}
+                       "flat": flat, "samples": 16,
+                       "lighting": {**LIGHTS[lt], "target": [round(float(x), 4) for x in cams[group[0]]["target"]]}}
                 if engine == "cycles" and not flat and not layer:  # path traced: real subsurface scattering
                     job.update(engine="cycles", samples=64)
                 if layer:

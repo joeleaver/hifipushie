@@ -1,18 +1,19 @@
 {
- "about": "Weeping willow (Salix babylonica): a short thick trunk, ascending scaffold limbs, curtains of long thin shoots hanging to the ground",
+ "about": "Weeping willow (Salix babylonica / x sepulcralis), mature and open-grown: a short stout trunk dissolving into a few ascending, arching scaffold limbs; level outer branches; curtains of long thin shoots hanging from the crown's outside, their ends uneven and off the ground (the preset's `prune under` is the browse / mowing line: remove it for curtains that sweep the ground)",
  "age": 35,
  "habit": {
   "years_per_step": 1.2,
   "unit": 0.3705,
-  "vigour": 6.4234,
+  "vigour": 6.4,
   "apical": [
-   0.46,
-   0.5,
-   0.55,
+   0.53,
+   0.56,
+   0.52,
    0.6
   ],
-  "apical_old": 0.36,
+  "apical_old": 0.45,
   "shoot_max": [
+   2,
    2,
    2,
    3,
@@ -21,84 +22,130 @@
   "length": [
    1,
    1,
+   0.9,
    1,
    1.1
   ],
   "angle": [
    50,
-   70,
-   60
+   60,
+   70
   ],
   "tropism": [
    0.3,
-   0.2,
-   -0.4,
-   -1.2
+   0.1,
+   0.0,
+   -1.1,
+   -1.4
   ],
   "light": 0.15,
   "jitter": [
-   0.15,
-   0.25,
-   0.15,
+   0.12,
+   0.38,
+   0.28,
+   0.1,
    0.08
   ],
-  "shed": 0.0,
-  "bud_life": 4,
-  "sag": 3.3358,
+  "shed": 0.05,
+  "bud_life": 5,
+  "sag": 0.4,
   "sag_max": 0.35,
-  "pipe": 2.3,
+  "pipe": 2.15,
   "flare": 1.6,
-  "clear": 1.8,
+  "clear": 3.0,
   "max_order": 4,
   "leaf_steps": 3,
   "apical_fade": [
    0.1,
    0.35
   ],
-  "ring": 0.0022,
+  "ring": 0.004,
   "plagio": [
    0,
-   0.12,
+   0.35,
+   0.3,
    0,
    0
   ],
   "elevation": [
    0,
-   45,
+   50,
+   25,
    0,
    0
+  ],
+  "bud_break": [
+   1,
+   0.4,
+   1,
+   1,
+   1
+  ],
+  "uneven": [
+   0.2,
+   0.4,
+   0.4,
+   0.5,
+   0.5
+  ],
+  "leader": 0,
+  "shadow_tail": 0.2,
+  "tip_life": [
+   0,
+   0,
+   12,
+   8,
+   6
+  ],
+  "shadow": [
+   0.13,
+   1.6,
+   5
   ]
  },
  "leaves": {
   "shape": "lanceolate",
-  "length": 0.09,
-  "width": 0.2,
-  "hang": 0.6,
+  "length": 0.11,
+  "width": 0.17,
+  "hang": 0.9,
   "color": [
-   0.584,
-   0.665,
-   0.349
+   0.509,
+   0.6,
+   0.372
   ],
   "twig": {
    "length": 0.55,
-   "leaves": 20,
-   "arrangement": "alternate",
-   "angle": 40,
-   "per_m": 12,
+   "leaves": 16,
+   "arrangement": "spiral",
+   "angle": 22,
+   "per_m": 8.5,
    "droop": 1.2,
    "up": -0.9,
    "spread": 25,
-   "min_order": 2,
-   "steps": 4
+   "min_order": 1,
+   "steps": 5,
+   "face": 0.25,
+   "divergence": 144,
+   "light": 0.2
   },
   "card": {
    "twig": {
-    "leaves": 60,
-    "length": 0.8
+    "leaves": 300,
+    "side_shoots": 6,
+    "side_angle": 8,
+    "side_length": 0.85,
+    "side_taper": 0.15,
+    "length": 0.9,
+    "angle": 22
    },
-   "scale": 1.2,
-   "strips": 4
-  }
+   "scale": 1.2
+  },
+  "translucency": 0.4,
+  "autumn": [
+   0.86,
+   0.68,
+   0.14
+  ]
  },
  "bark": {
   "kind": "furrowed",
@@ -118,5 +165,10 @@
    0.236
   ],
   "bump": 0.8
- }
+ },
+ "prune": [
+  {
+   "under": 1.2
+  }
+ ]
 }

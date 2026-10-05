@@ -268,9 +268,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
     e = e if isinstance(e, dict) else {}
-    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera"}
+    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera", "tear"}
     if bad:
-        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera)")
+        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera, tear)")
     from . import paint as _paint
     from . import skin_swatch
     from .skin import interocular
@@ -295,6 +295,12 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.55, 0.5, 0.5], "mix": "multiply", "opacity": 0.55,
                                       "mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5), "to": round(0.55 * r, 5)}},
                                                {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}]}
+        # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
+        if float(e.get("tear", 1.0)) > 0:
+            out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.96, 0.95, 0.94], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
+                                         "roughness": 0.02, "specular": 1.0,
+                                         "mask": [{"near": ["base"], "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
+                                                  {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
     pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
     layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
@@ -368,8 +374,8 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
     # fields of lines: a tiling swatch of wandering lines, laid across (forehead, neck) or turned (above the lip)
     a = amt["forehead"]
     if a > 0.02:
-        groove("forehead", a, 0.0009, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.5 - 0.42 * min(a, 1), 1.0], "vary": False}},
-                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.2)
+        groove("forehead", a, 0.0011, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.42 - 0.34 * min(a, 1), 1.0], "vary": False}},
+                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.08)
     a = amt["lip_lines"]
     if a > 0.02:
         groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.55 - 0.45 * min(a, 1), 1.0], "vary": False}},
@@ -379,11 +385,12 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
         groove("neck", a, 0.0005, [{"tile": {"swatch": "wrinkles", "size": 0.1, "range": [0.5 - 0.42 * min(a, 1), 1.0], "vary": False}}, {"vertex": True, "mask": _zones(["neck"], 0.9)}], 0.2)
     a = amt["crepe"]
     if a > 0.02:  # old skin: the primary lines deepen into a visible cross-hatch, the fine ones go
-        zs = ["cheek", "cheek_side", "under_eye", "neck", "upper_lip", "chin", "jaw", "forehead"] + \
+        # (relief first, hardly any tint: at bust distance crepe is a change of sheen, not drawn lines)
+        zs = ["cheek", "cheek_side", "under_eye", "neck", "upper_lip", "jaw"] + \
              (["back_of_hand", "forearm"] if ctx["hands"] and ctx["arms"] else [])
-        groove("crepe", a, 0.00028, [{"tile": {"swatch": "coarse", "size": 0.03}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.3)
-        groove("cheek_lines", a, 0.00034, [{"tile": {"swatch": "wrinkles", "size": 0.035, "rotate": True, "range": [0.35, 1.0], "vary": False}},
-                                           {"vertex": True, "mask": _zones(["cheek", "cheek_side", "jaw"], 1.0)}], 0.3)
+        groove("crepe", a, 0.00016, [{"tile": {"swatch": "coarse", "size": 0.024, "range": [0.12, 1.0]}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.1)
+        groove("cheek_lines", a, 0.00026, [{"tile": {"swatch": "wrinkles", "size": 0.04, "rotate": True, "range": [0.35, 1.0], "vary": False}},
+                                          {"vertex": True, "mask": _zones(["cheek", "cheek_side", "jaw"], 1.0)}], 0.1)
 
 
 def _hair(p, J, layer, T, ctx) -> None:
@@ -403,8 +410,9 @@ def _hair(p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
             col = [round(c + g * (0.55 - c), 4) for c in col]
-            dens = float(np.clip(o.get("density", 0.8) * o["amount"], 0.05, 1.6))
-            thick = float(o.get("thickness", 1.0)) * (1 - 0.2 * ctx["child"])
+            fem, masc = ctx.get("fem", 0.0), ctx.get("masc", 0.0)
+            dens = float(np.clip(o.get("density", 0.8 - 0.12 * fem + 0.1 * masc) * o["amount"], 0.05, 1.6))
+            thick = float(o.get("thickness", 1.0 - 0.32 * fem + 0.12 * masc)) * (1 - 0.2 * ctx["child"])
             # the brow is a drawn picture of hairs (skin_swatch.brow_image), laid from the brow's landmarks
             a_, m_, b_ = J["lm_brow_inner.L"], J["lm_brow_mid.L"], J["lm_brow_outer.L"]
             span = float(np.linalg.norm(b_ - a_))
@@ -418,14 +426,15 @@ def _hair(p, J, layer, T, ctx) -> None:
             slope = float(np.degrees(np.arctan2(b_[2] - a_[2], np.linalg.norm((b_ - a_)[:2]))))
             img = {"file": str(path), "at": [round(float(x), 5) for x in c], "dir": [round(float(x), 4) for x in d],
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,
-                   "mirror": True, "channel": "alpha"}
+                   "mirror": True, "mirror_image": True, "channel": "alpha"}  # (unmirrored, the other brow's hairs ran
+            # toward the nose: "the left eyebrow is backwards")
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col, opacity=0.3 * min(dens, 1) + 0.06,
                   mask=_zones(["brow"], 0.9 * thick))
             layer("brow_hairs", color=col, opacity=0.95, roughness=0.42, specular=0.45, height=0.00012, image=img)
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
-            layer("lashes", color=col, opacity=0.9 * min(o["amount"] + 0.2, 1), roughness=0.4,
+            layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
                   mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length"))
         if o:

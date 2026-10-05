@@ -33,7 +33,7 @@ import numpy as np
 from numba import njit
 from scipy import ndimage
 
-VERSION = 1
+VERSION = 2
 PRESETS = Path(__file__).with_name("vegetation_presets")
 
 # every habit key, with what it means (the guide lists these); per-order lists repeat their last entry
@@ -57,6 +57,7 @@ DEFAULT = {
         "whorl": [False],  # per order: lateral buds only on a flush's last metamer
         "angle": [50, 45],  # per order of the PARENT: [0] = limbs leaving the trunk, [1] = branches leaving limbs
         "bud_break": [1.0],  # per order: chance a lateral bud can ever break
+        "bud_each": False,  # the chance holds for each bud of a node by itself (one or two limbs of a whorl), not for the whorl
         "bud_life": 5,  # steps a lateral bud stays able to break
         "max_order": 5,
         "light": 0.35,  # pull toward the light (xi)
@@ -67,6 +68,7 @@ DEFAULT = {
         "shed": 0.12,  # light per internode under which a branch is dropped
         "shed_age": 2,
         "shadow": [0.25, 1.6, 6],  # a, b, depth of the shadow pyramid
+        "shadow_tail": 0.7,  # how the shade carries on below the pyramid (0 = it ends: light-demanding trees in layers)
         "leaf_steps": 2,  # steps a node keeps its leaves (evergreens: more)
         "sag": 0.4, "sag_max": 0.25,  # bend under weight; the most one internode bends (rad)
         "pipe": 2.3,  # d^n = sum of the children's d^n
@@ -74,16 +76,23 @@ DEFAULT = {
         "ring": 0.0008,  # m of radius every living piece of wood adds a year, whatever it carries (girth)
         "force_orders": [0.15, 0.6, 1.0],  # per order: how much wind and forces turn a shoot (a trunk resists)
         "flare": 1.5, "flare_height": 0.6,  # the trunk's foot
+        "uneven": [0.0],  # per order: each axis's own pace, +- this share of the segment length (ragged outlines)
+        "slowing": [0],  # per order: steps after which an axis's shoots are half as long (0 = never): old branchlets creep
+        "tip_life": [0],  # per order: steps an axis keeps extending (0 = for ever). Spruce branchlets, spur shoots
         "clear": 0.0,  # m of trunk that never branches (the bole of a tree that grew up browsed or shaded)
     },
     "environment": {"setting": "open"},
     "guides": {}, "prune": [], "envelope": None, "forces": [],
     "leaves": {"shape": "ovate", "length": 0.07, "color": [0.16, 0.3, 0.08], "twig": {}},  # see veg_leaf.LEAF / TWIG
     "bark": {"kind": "furrowed"},
-    "season": "summer",
+    "season": "summer",  # summer | autumn (leaves.autumn colour) | winter (deciduous: bare) | bare | dead
+    "snow": 0.0, "wet": 0.0,  # 0..1: snow lying on what faces up; rain-dark, glossy bark and leaves (looks; export variants)
     "decay": None,  # {"min_radius": m}: wood thinner than this has fallen (a dead or storm-broken tree)
     "trunk_diameter": None,  # m at the foot: thick wood is scaled to it
+    "limb_diameter": None,  # m: the stoutest limb's girth where it leaves the trunk (trunk_diameter then sizes the trunk alone)
     "trunk_taper": None,  # with trunk_diameter: the share of it the trunk loses by its top (0.1 = a column)
+    "dead": [],  # [{a volume | "limb": name, "min_radius": m}]: wood that died and stayed: leafless, barkless, its thin ends gone
+    "roots": None,  # {"count": 5, "spread": 2.0, "height": 0.8}: root flares at the foot (buttresses when tall)
     "cuts": [],  # [{"year", a volume, "every", "until_year", "sprouts"}]: cut then, and the tree sprouts from the cut
 }
 
@@ -100,17 +109,22 @@ HABIT_INFO = {
     "buds": "1-6 per order: side buds per node", "divergence": "deg per order: 137.5 spiral, 180 two-ranked",
     "plane": "per order: buds lie level (flat sprays)", "whorl": "per order: buds only at each step's last segment",
     "angle": "30-80 deg, by the parent's order: [0] = limbs off the trunk, [1] = branches off limbs", "bud_break": "0.3-1 per order: chance a bud can ever grow",
+    "bud_each": "true: `bud_break` is drawn for each bud of a node (a pine keeps one or two limbs of a whorl of four); false: for the node's buds together (whole whorls or none)",
     "bud_life": "2-7 steps a bud stays able to grow", "max_order": "2-5: deepest branching",
     "light": "0.1-0.4: pull toward open light", "tropism": "-1.2..0.5 per order: + up, - down (hanging)",
     "plagio": "0-0.6 per order: pull toward `elevation`", "elevation": "deg above level per order, for plagio",
     "jitter": "0.03-0.5 per order: crookedness (curving, with momentum). trunk 0.03-0.15, gnarled limbs 0.4-0.5",
     "shed": "0-0.3: light per segment under which a branch is dropped", "shed_age": "steps before a branch can be shed",
     "shadow": "[strength 0.03-0.25, falloff 1.6-3, depth 2-6]: each leafy segment's shade",
+    "shadow_tail": "0-0.8: shade carried on below `shadow`'s depth; 0.7 keeps crowns from forming level bands, 0 for shade-bearers that hold foliage to the ground (spruce)",
     "leaf_steps": "2-6: steps a segment keeps its leaves (evergreens more)", "sag": "0.3-3: bend under weight",
     "sag_max": "0.2-0.35 rad: the most one segment bends", "pipe": "2-2.5: how fast branches thin (2 = thick limbs)",
-    "tip_radius": "0.003-0.006 m: a shoot end's radius", "ring": "0.0008-0.003 m of radius all wood adds a year (girth)",
+    "tip_radius": "0.003-0.006 m: a shoot end's radius", "ring": "0.0008-0.003 m of radius wood adds a year whatever it carries (girth); one number for all wood, or per order: a conifer's side branches barely thicken ([0.003, 0.0005, 0.0002]) while an oak's limbs do",
     "force_orders": "per order: how much wind/forces turn shoots", "flare": "1.3-1.8: the foot's swelling",
-    "flare_height": "m the flare fades over", "clear": "0-6 m of trunk that never branches",
+    "flare_height": "m the flare fades over",
+    "uneven": "0-0.5 per order: every axis grows at its own pace, +- this share (a ragged outline instead of a turned cone)",
+    "slowing": "per order: growth steps after which an axis's new segments are half as long, a third at twice that... (0 = never). A spruce's hanging branchlets 3-5: they creep on for decades, so their young needles stay near the limb all along it",
+    "tip_life": "per order: growth steps an axis keeps extending, 0 = for ever (short-lived hanging branchlets: 6-10; limbs that stop reaching: 20-30)", "clear": "0-6 m of trunk that never branches",
 }
 
 
@@ -157,11 +171,17 @@ def resolve(spec: dict) -> dict:
         if not vol & set(pr):
             raise ValueError(f"prune {i} needs one of {sorted(vol)}")
     for i, c in enumerate(s.get("cuts") or []):
-        keys(f"cut {i}", c, vol | {"year", "every", "until_year", "sprouts", "sprout_nodes"})
+        keys(f"cut {i}", c, vol | {"year", "every", "until_year", "sprouts", "sprout_nodes", "boll"})
         if "year" not in c or not vol & set(c):
             raise ValueError(f"cut {i} needs a year and one of {sorted(vol)}")
+    for i, c in enumerate(s.get("dead") or []):
+        keys(f"dead {i}", c, vol | {"limb", "min_radius", "from"})
+        if not (vol | {"limb"}) & set(c):
+            raise ValueError(f"dead {i} needs a limb's name or one of {sorted(vol)}")
+    if s.get("roots"):
+        keys("roots", s["roots"], {"count", "spread", "height", "under"})
     for g, gd in (s.get("guides") or {}).items():
-        keys(f"guide {g}", gd, {"path", "from_year", "until_year", "vigour", "free", "on", "straight", "bare"})
+        keys(f"guide {g}", gd, {"path", "from_year", "until_year", "vigour", "free", "on", "straight", "bare", "replaces"})
         if len(gd.get("path") or []) < 2:
             raise ValueError(f"guide {g} needs a path of at least two [x, y, z] points")
     return s
@@ -410,7 +430,10 @@ def _compass(d):
     return np.asarray(d, float)
 
 
-def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
+TAIL = 0.7
+
+
+def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0, tail=TAIL):
     """The shadow grid of leafy points src (cell units, origin lo), each casting `weight` (its internode's length:
     short internodes carry less leaf)."""
     C = np.zeros(dims)
@@ -427,6 +450,16 @@ def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
             S[:, :, :-q] += a * b ** (-q) * B[:, :, q:]
         else:
             S += a * B
+    # below the pyramid the shade fades instead of ending: cut off at `depth`, the light came back exactly that far
+    # under every foliage layer and the next layer formed there (crowns in level bands `depth` cells apart)
+    if tail > 0 and depth > 0 and dims[2] > depth + 1:
+        last = a * b ** (-depth) * B
+        acc = np.zeros(dims[:2])
+        for z in range(dims[2] - 1, -1, -1):
+            zs = z + depth + 1
+            if zs < dims[2]:
+                acc = tail * (acc + last[:, :, zs])
+            S[:, :, z] += acc
     return S
 
 
@@ -502,6 +535,114 @@ def steps_of(s: dict) -> int:
     return int(np.clip(round(s["age"] / s["habit"]["years_per_step"]), 2, 80))
 
 
+def limb_id(key) -> str:
+    """A limb's lasting name: from its bud's lineage, so the same bud has it whatever else changes on the tree."""
+    v_, out = int(key) % 36 ** 4, ""
+    for _ in range(4):
+        out = "0123456789abcdefghijklmnopqrstuvwxyz"[v_ % 36] + out
+        v_ //= 36
+    return "L" + out
+
+
+def find_limb(tree: dict, ref: str):
+    """The axis a limb reference names: a guide's name, a limb id ("Lk7f3", lasting), or a compass name ("SW2", of
+    this grown tree only). None when the tree has no such limb."""
+    if ref in tree["guides"]:
+        return tree["guides"][ref]
+    if isinstance(ref, str) and len(ref) == 5 and ref[0] == "L":
+        for ai, a in enumerate(tree["axes"]):
+            if a["order"] == 1 and "node" in a and a["node"] < len(tree["key"]) and tree["axis"][a["node"]] == ai \
+                    and limb_id(tree["key"][a["node"]]) == ref:
+                return ai
+    L = next((q for q in limbs(tree) if q["name"] == ref), None)
+    return None if L is None else L["axis"]
+
+
+def stout_path(tree: dict, n0: int, kids: dict | None = None) -> np.ndarray:
+    """A limb as an eye follows it: from node n0 on through the stoutest child at every fork, to a shoot's end. (The
+    growth's own axis often ends a metre out, where a side shoot took over.)"""
+    if kids is None:
+        kids = {}
+        for i in range(1, len(tree["parent"])):
+            kids.setdefault(int(tree["parent"][i]), []).append(i)
+    rad, out, q = tree["radius"], [int(n0)], int(n0)
+    while kids.get(q):
+        q = max(kids[q], key=lambda c: rad[c])
+        out.append(q)
+    return np.array(out)
+
+
+def limbs(tree: dict, count: int = 12, min_share: float = 0.12) -> list[dict]:
+    """The tree's main limbs, named so they can be talked about and taken over: first-order branches, the stoutest
+    `count` whose base is at least `min_share` of the trunk's radius there. A drawn limb has its guide's name; a grown
+    one is named by where its end points and its rank up the trunk ("SW2" = the second limb up that ends to the
+    south-west). Names are of THIS grown tree: an edit that regrows it may rename them; take_limb makes one a guide,
+    which keeps its name and shape."""
+    P, par, ax, rad = tree["pos"], tree["parent"], tree["axis"], tree["radius"]
+    yps = tree["spec"]["habit"]["years_per_step"]
+    gname = {ai: g for g, ai in tree["guides"].items()}
+    kids = {}
+    for i in range(1, len(par)):
+        kids.setdefault(int(par[i]), []).append(i)
+    out = []
+    for ai, a in enumerate(tree["axes"]):
+        if a["order"] != 1 or "node" not in a:
+            continue
+        n0 = a["node"]
+        if n0 >= len(P) or tree["order"][n0] != 1 or ax[n0] != ai:
+            continue
+        nodes = np.flatnonzero(ax == ai)
+        if len(nodes) < 3:
+            continue
+        base = int(par[n0])
+        if rad[n0] < min_share * rad[base] and ai not in gname:
+            continue
+        sub, stack = [], [int(n0)]
+        while stack:
+            q = stack.pop()
+            sub.append(q)
+            stack.extend(kids.get(q, ()))
+        sub = np.array(sub)
+        far = P[sub][np.argmax(np.linalg.norm(P[sub] - P[base], axis=1))]
+        d = far - P[base]
+        nodes = stout_path(tree, n0, kids)
+        seg = np.linalg.norm(np.diff(np.vstack([P[base], P[nodes]]), axis=0), axis=1).sum()
+        out.append({"axis": ai, "guide": gname.get(ai), "at": P[base].round(2).tolist(), "height": round(float(P[base][2]), 2),
+                    "diameter": round(float(2 * rad[n0]), 3), "length": round(float(seg), 2), "end": P[nodes[-1]].round(2).tolist(),
+                    "reach": round(float(np.linalg.norm(P[sub][:, :2] - P[1][:2], axis=1).max()), 2), "low": round(float(P[sub][:, 2].min()), 2),
+                    "high": round(float(P[sub][:, 2].max()), 2), "nodes": int(len(sub)),
+                    "born_year": round(float(tree["born"][n0] * yps), 1), "key": str(int(tree["key"][n0])),
+                    "id": gname.get(ai) or limb_id(tree["key"][n0]),
+                    "compass": _compass_name(d)})
+    out.sort(key=lambda L: -L["diameter"])
+    keep = [L for L in out if L["guide"]] + [L for L in out if not L["guide"]][:count]
+    keep.sort(key=lambda L: L["height"])
+    seen = {}
+    for L in keep:
+        if L["guide"]:
+            L["name"] = L["guide"]
+        else:
+            seen[L["compass"]] = seen.get(L["compass"], 0) + 1
+            L["name"] = f"{L['compass']}{seen[L['compass']]}"
+    return keep
+
+
+def _compass_name(d) -> str:
+    if np.linalg.norm(d[:2]) < 0.25 * abs(d[2]):
+        return "UP"
+    a = math.degrees(math.atan2(d[0], d[1])) % 360  # +y = north, +x = east
+    return ("N", "NE", "E", "SE", "S", "SW", "W", "NW")[int((a + 22.5) // 45) % 8]
+
+
+def limb_path(tree: dict, limb: dict, points: int = 7) -> list:
+    """A limb's own axis as a guide path: from where it leaves the trunk to its end, `points` of them evenly along."""
+    nodes = stout_path(tree, tree["axes"][limb["axis"]]["node"])
+    pts = np.vstack([tree["pos"][tree["parent"][nodes[0]]], tree["pos"][nodes]])
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+    k = int(max(3, min(points, len(pts))))
+    return [_along(pts, cum, t).round(3).tolist() for t in np.linspace(0, cum[-1], k)]
+
+
 def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     """Grow the tree. Returns arrays in metres (pos, parent, radius, order, born, axis, key, tip, leafy), axes, and
     stats. With `height`, an unedited run is grown first and its height sets the unit, so edits stay in metres."""
@@ -509,7 +650,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     h = s["habit"]
     t0 = time.perf_counter()
     if s.get("height") and unit_scale is None:
-        bare = {k: v for k, v in spec.items() if k not in ("guides", "prune", "envelope", "forces", "height")}
+        bare = {k: v for k, v in spec.items() if k not in ("guides", "prune", "envelope", "forces", "height", "cuts", "dead")}
         ref = grow(bare, unit_scale=1.0)
         k = float(s["height"]) / max(ref["height"], 1e-6)
         if abs(k - 1) > 0.02:
@@ -543,6 +684,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             ys.append(ys[-1] + float(c["every"]))
         cuts.append(({int(round(q / yps)) for q in ys}, c))
     cut_log = []
+    bolls = {}  # node key -> swelling: where a pollard is cut again and again the wood heals into a knuckled head
     envl = s.get("envelope")
 
     # guides: paths in metres -> units; each starts at a step
@@ -556,6 +698,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                        "vigour": float(g.get("vigour", 1.0)), "done": False, "free": bool(g.get("free", False)),
                        "on": g.get("on"), "bare": float(g.get("bare", 0.0))})
     guides.sort(key=lambda g: (g["start"], g["name"]))
+    # a limb taken over as a guide: the shoot it was grown from is not made again (its lineage key)
+    replaced = np.array([int(k) for g in (s.get("guides") or {}).values() for k in (g.get("replaces") or [])], np.uint64)
 
     T = _Nodes()
     T.add(1, key=_mix(seed), tip=False, guide=-1, R=np.eye(3))
@@ -569,10 +713,14 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         axes[0]["guide"] = trunk["name"]
 
     def new_axis(order, guide=None):
-        axes.append({"order": int(order), "guide": guide})
+        axes.append({"order": int(order), "guide": guide, "born": step})
         return len(axes) - 1
 
     lam_young = list(h["apical"])
+    ring_l = h["ring"] if isinstance(h["ring"], (list, tuple)) else [h["ring"]]  # (per order, or one number for all wood)
+    step = 0
+    tip_life = any(h["tip_life"])
+    slowing = any(h["slowing"])
     for step in range(steps):
         for when, c in cuts:  # a cut made now: the wood goes, the stubs sprout (pollard, coppice, a lopped limb)
             if step not in when or T.n < 3:
@@ -590,6 +738,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             for i in range(2, T.n):
                 gone[i] |= gone[par_[i]]
             if not gone.any():
+                cut_log.append({"year": round(step * yps, 1), "nodes": 0, "stubs": 0})
                 continue
             first_ = gone & ~gone[par_]
             stubs = np.unique(par_[first_])
@@ -601,6 +750,10 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                         g["done"] = True
             stubs = new[stubs]
             stubs = stubs[stubs > 0]
+            if float(c.get("boll", 1.0)) > 1.0:
+                for q_ in stubs:
+                    k_b = int(T.key[q_])
+                    bolls[k_b] = min(bolls.get(k_b, 1.0) + (float(c["boll"]) - 1.0) * 0.5, float(c["boll"]))
             k_sp = int(c.get("sprouts", 4))
             if k_sp:
                 more = [stubs]
@@ -632,7 +785,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             cell *= 1.5
         dims = tuple(np.ceil((hi - lo) / cell).astype(int) + 1)
         wl = np.clip(T.vig.astype(float), 0.05, 1.5)
-        S = _shadow(P[leafy] / cell, lo / cell, dims, sa, sb, sd, tilt, wl[leafy])
+        S = _shadow(P[leafy] / cell, lo / cell, dims, sa, sb, sd, tilt, wl[leafy], tail=float(h["shadow_tail"]))
         ij = np.clip(((P - lo) / cell).astype(np.int64), 1, np.array(dims) - 2)
         s_here = S[ij[:, 0], ij[:, 1], ij[:, 2]]
         Qn = np.clip(1.0 - s_here + sa * leafy * wl, 0.0, 1.0)
@@ -722,6 +875,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         per_bud = np.where(T.nb > 0, vlat / np.maximum(T.nb, 1), 0)
         ob = np.minimum(order + 1, 99)
         can = (_u(T.key, 7) < _per(h["bud_break"], ob)) | (T.budstep > 0)  # (a cut's sprouts always can)
+        if h["bud_each"]:
+            can = can | (T.nb > 1)  # (each bud is drawn below)
         nl = np.minimum(np.floor(per_bud).astype(int), _per(h["shoot_max"], ob).astype(int)) * (T.nb > 0) * can
         nl[order >= h["max_order"]] = 0
         # starving tips die
@@ -730,6 +885,12 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         st[hungry] = np.minimum(st[hungry] + 1, 200)
         st[~hungry] = 0
         T.tip[(st > 3) & (T.order > 0) & ~T.pin] = False
+        if tip_life:  # determinate axes: after their years they stop reaching (their buds may still break)
+            ab = np.fromiter((a.get("born", 0) for a in axes), np.int64, len(axes))
+            lf_ = _per(h["tip_life"], order)
+            old = T.tip & (lf_ > 0) & (step - ab[T.axis] >= lf_) & ~T.pin
+            T.tip[old] = False
+            nt[old] = 0
 
         par = T.parent
         dir_here = _norm(T.pos - T.pos[par])
@@ -744,6 +905,11 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             turn = np.where(is_main[:, None], dir_here[src] - dir_here[par[src]], 0.0)
             alive = np.arange(len(src))
             ln = (0.45 + 0.55 * np.clip(vres / _per(h["shoot_max"], order_new), 0, 1)) * _per(h["length"], order_new)
+            ln = ln * (1 + _per(h["uneven"], order_new) * (2 * _u(_mix(axis_ids.astype(np.uint64) + seed), 9) - 1))
+            if slowing:  # an old axis creeps
+                sl_ = _per(h["slowing"], order_new)
+                born_ = np.fromiter((axes[a_].get("born", 0) for a_ in axis_ids), np.float64, len(axis_ids))
+                ln = np.where(sl_ > 0, ln / (1 + (step - born_) / np.maximum(sl_, 1e-9)), ln)
             eta = _per(h["tropism"], order_new)
             jit = _per(h["jitter"], order_new)
             pl = _per(h["plagio"], order_new)
@@ -815,6 +981,12 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             ang = np.radians(_per(h["angle"], o_new - 1)) * (0.85 + 0.3 * _u(T.key[src], 20 + 1))  # by the PARENT's order
             d0 = a_ * np.cos(ang)[:, None] + (u_ * np.cos(phi)[:, None] + w_ * np.sin(phi)[:, None]) * np.sin(ang)[:, None]
             keys = _child(T.key[src], 100 + bud)
+            if h["bud_each"]:
+                ok_ = (T.nb[src] <= 1) | (_u(keys, 7) < _per(h["bud_break"], o_new)) | (T.budstep[src] > 0)
+                src, bud, o_new, d0, keys = src[ok_], bud[ok_], o_new[ok_], d0[ok_], keys[ok_]
+            if len(replaced):
+                ok_ = ~np.isin(_child(keys, 10), replaced)
+                src, bud, o_new, d0, keys = src[ok_], bud[ok_], o_new[ok_], d0[ok_], keys[ok_]
             ax0 = len(axes)
             for k_ in range(len(src)):
                 new_axis(o_new[k_])
@@ -877,7 +1049,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         n = T.n
         area = np.zeros(n)
         _pipe(T.parent, T.mem, 1.0, h["pipe"], area)
-        rad = area * (h["tip_radius"] / unit) + (step + 1 - T.born) * (yps * h["ring"] / unit)
+        rad = area * (h["tip_radius"] / unit) + (step + 1 - T.born) * (yps * _per(ring_l, T.order) / unit)
         leafy = (step - T.born) < h["leaf_steps"]
         if h["sag"] > 0:
             _pose(T.parent, T.off, T.pin, T.pinpos, T.order, rad, leafy, T.theta, h["sag"], h["sag_max"],
@@ -888,7 +1060,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     n = T.n
     area = np.zeros(n)
     _pipe(T.parent, T.mem, 1.0, h["pipe"], area)
-    radius = area * h["tip_radius"] + (steps - T.born) * (yps * h["ring"])
+    radius = area * h["tip_radius"] + (steps - T.born) * (yps * _per(ring_l, T.order))
     radius[0] = radius[1] if n > 1 else radius[0]
     pos = T.pos * unit
     # the foot flares
@@ -915,6 +1087,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         r1, tip_r = float(radius[1]), 3 * h["tip_radius"]
         k_ = 0.5 * float(s["trunk_diameter"]) / max(r1, 1e-9)
         w_ = np.clip((radius - tip_r) / max(r1 - tip_r, 1e-9), 0, 1) ** 0.5
+        if s.get("limb_diameter"):  # the trunk alone
+            w_ = w_ * (T.order == 0)
         out["radius"] = radius = radius * (1 + (k_ - 1) * w_)
         if s.get("trunk_taper") is not None:  # a column: the trunk keeps its girth to its top, whatever it carries
             tr = np.flatnonzero(T.order == 0)
@@ -922,6 +1096,12 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             want = 0.5 * float(s["trunk_diameter"]) * (1 - float(s["trunk_taper"]) * pos[tr, 2] / zt)
             radius[tr] = np.maximum(radius[tr], want) if not s.get("cuts") else want
             out["radius"] = radius
+    if s.get("limb_diameter") and (T.order == 1).any():  # limbs sized by themselves: a fat trunk under ordinary limbs
+        o1 = np.flatnonzero((T.order == 1) & (T.order[T.parent] == 0))
+        rl, tip_r = float(radius[o1].max()), 3 * h["tip_radius"]
+        k_ = 0.5 * float(s["limb_diameter"]) / max(rl, 1e-9)
+        w_ = np.clip((radius - tip_r) / max(rl - tip_r, 1e-9), 0, 1) ** 0.5 * (T.order > 0)
+        out["radius"] = radius = radius * (1 + (k_ - 1) * w_)
 
     def subset(keep, leafless=False):
         nonlocal n
@@ -932,7 +1112,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             keep[i] &= keep[par0[i]]
         new = -np.ones(len(keep), np.int64)
         new[keep] = np.arange(int(keep.sum()))
-        for k_ in ("pos", "radius", "order", "born", "axis", "key", "tip", "leafy", "main", "pin"):
+        for k_ in ("pos", "radius", "order", "born", "axis", "key", "tip", "leafy", "main", "pin", "dead"):
             out[k_] = out[k_][keep]
         par = new[par0[keep]]
         par[0] = 0
@@ -950,6 +1130,21 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             if i in first:
                 a["node"] = first[i]
 
+    if bolls:  # swell the cut ends, easing out ~4 radii down the wood that carries them
+        r_ = out["radius"]
+        fac = np.ones(n)
+        for i_ in np.flatnonzero(np.isin(out["key"], np.array(list(bolls), np.uint64))):
+            if out["order"][i_] > 1:
+                continue  # (a head, not every rod's stub)
+            k_b, q_, d_ = bolls[int(out["key"][i_])], int(i_), 0.0
+            reach = max(4.0 * float(r_[i_]), 0.3)
+            while q_ > 0 and d_ < reach:
+                fac[q_] = max(fac[q_], 1 + (k_b - 1) * (1 - d_ / reach) ** 2)
+                p_ = int(out["parent"][q_])
+                d_ += float(np.linalg.norm(out["pos"][q_] - out["pos"][p_]))
+                q_ = p_
+        out["radius"] = r_ * fac
+    out["dead"] = np.zeros(n, bool)
     cut_n = 0
     for vol in prunes:  # cuts on the finished tree: nothing else changes
         if "from_year" in vol:
@@ -966,13 +1161,45 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             before = n
             subset(~c_)
             cut_n += before - n
+    dead_log = []
+    for dd in s.get("dead") or []:  # dead wood kept on the live tree: a stag-headed oak's antlers, a snag limb
+        if "limb" in dd:
+            ai_ = find_limb(out, dd["limb"])
+            if ai_ is None or "node" not in out["axes"][ai_]:  # (an edit regrew the tree without it: said, not fatal)
+                dead_log.append({"what": f"limb {dd['limb']}", "missing": True})
+                continue
+            m_ = np.zeros(n, bool)
+            m_[out["axes"][ai_]["node"]] = True
+            if dd.get("from"):  # only past this many metres along it
+                nd_ = stout_path(out, out["axes"][ai_]["node"])
+                cum_ = np.cumsum(np.linalg.norm(out["pos"][nd_] - out["pos"][out["parent"][nd_]], axis=1))
+                m_[:] = False
+                later = nd_[cum_ >= float(dd["from"])]
+                if len(later):
+                    m_[later[0]] = True
+        elif "under" in dd or "below" in dd:
+            raise ValueError("dead takes box, sphere, above or a limb")
+        else:
+            m_ = _inside(out["pos"], dd)
+            m_[:2] = False
+        for i_ in range(2, n):
+            m_[i_] |= m_[out["parent"][i_]]
+        out["dead"] |= m_
+        out["leafy"] = out["leafy"] & ~m_
+        gone = m_ & (out["radius"] < float(dd.get("min_radius", 0.012)))
+        zs_ = out["pos"][m_][:, 2] if m_.any() else np.zeros(1)
+        before_ = n
+        if gone.any():
+            subset(~gone)
+        dead_log.append({"what": f"limb {dd['limb']}" if "limb" in dd else next(f"{k_} {dd[k_]}" for k_ in ("above", "box", "sphere") if k_ in dd),
+                         "nodes": int(m_.sum()), "broken_off": int(before_ - n), "low": round(float(zs_.min()), 1), "high": round(float(zs_.max()), 1)})
     dec = s.get("decay")
     if dec and dec.get("min_radius"):
         subset(out["radius"] >= float(dec["min_radius"]), leafless=True)
     out["stats"] = {"nodes": int(n), "steps": steps, "height_m": round(out["height"], 2),
                     "trunk_diameter_m": round(float(2 * out["radius"][1]) if n > 1 else 0, 3),
                     "max_order": int(out["order"].max()), "grow_s": round(time.perf_counter() - t0, 3),
-                    "pruned_nodes": int(cut_n), "cuts": cut_log}
+                    "pruned_nodes": int(cut_n), "cuts": cut_log, "dead": dead_log}
     return out
 
 

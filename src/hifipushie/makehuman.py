@@ -22,7 +22,24 @@ _CACHE: dict = {}
 
 def root() -> Path:
     from . import assets
-    return assets.pack("makehuman")  # says how to fetch it when missing
+    # only what every body needs: the pack grew (female targets, the hand-made weights), and a machine holding the
+    # older copy must still open a male body. The later files are checked where they are read.
+    return assets.pack("makehuman", CORE)  # says how to fetch it when missing
+
+
+CORE = ["3dobjs/base.obj", "rigs/default.mhskel"]
+WEIGHTS = "rigs/default_weights.mhw"
+
+
+def weights_note() -> str | None:
+    """None when the hand-made weights are in the pack; else the WARNING for whoever rigs (the rig falls back to
+    distance weights: fingers and thighs drag their neighbours)."""
+    from . import assets
+    if (root() / WEIGHTS).exists():
+        return None
+    return ("WARNING: MakeHuman's hand-made skin weights are not on this machine, so this rig uses DISTANCE weights "
+            "(worse: neighbouring fingers and the two thighs drag each other). "
+            + assets.missing("makehuman", WEIGHTS, "the template weights, needed only to rig / export with rig=True"))
 
 
 def _raw():
@@ -43,12 +60,36 @@ def _raw():
     return _CACHE["raw"]
 
 
+def skeleton() -> dict:
+    """MakeHuman's default skeleton as it ships: {"bones": {name: {"head", "tail" (joint names), "parent"}},
+    "joints": {joint: helper vertex ids}}."""
+    if "skel" not in _CACHE:
+        _CACHE["skel"] = json.loads((root() / "rigs" / "default.mhskel").read_text())
+    return _CACHE["skel"]
+
+
+def weights() -> dict | None:
+    """MakeHuman's own hand-made skin weights for its default skeleton (rigs/default_weights.mhw, CC0): {bone:
+    (vertex ids in base.obj's numbering, weights)}, or None if the file isn't in the pack."""
+    if "weights" not in _CACHE:
+        p = root() / WEIGHTS
+        _CACHE["weights"] = None
+        if p.exists():
+            w = json.loads(p.read_text())["weights"]
+            _CACHE["weights"] = {b: (np.array([r[0] for r in rows], np.int64), np.array([r[1] for r in rows], float))
+                                 for b, rows in w.items() if rows}
+    return _CACHE["weights"]
+
+
 def _target(name: str) -> tuple[np.ndarray, np.ndarray]:
     if name not in _CACHE:
         p = root() / "targets" / "macrodetails" / name
         if not p.exists():
-            raise FileNotFoundError(f"MakeHuman target {name} isn't in {p.parent}: fetch the pack again "
-                                    f"(`uv run hifipushie-assets fetch makehuman`; the female targets were added later)")
+            from . import assets
+            why = ("a female target: needed because base.body.sex is under 1, or base.head.follow_body is set (its "
+                   "reference head is sex 0.5); a body with sex 1 (the default) and no follow_body loads without it"
+                   if "-female-" in name else "a body target")
+            raise FileNotFoundError(assets.missing("makehuman", f"targets/macrodetails/{name}", why))
         rows = [ln.split() for ln in p.read_text().splitlines() if ln.strip() and not ln.startswith("#")]
         _CACHE[name] = (np.array([int(r[0]) for r in rows], dtype=np.int64),
                         np.array([[float(x) for x in r[1:4]] for r in rows], dtype=float).reshape(-1, 3))
@@ -141,7 +182,12 @@ def body(params: dict) -> dict:
     remap[used] = np.arange(len(used))
     F = [[int(remap[v]) for v in f] for f in faces]
     eye = jp("eye.L____head")
-    out = {"name": "makehuman", "P": V[used], "L": np.array([v for f in F for v in f]),
+    bones = {n: (jp(b["head"]), jp(b["tail"])) for n, b in skeleton()["bones"].items()}
+    nk, hd = J["neck"], J["head"]
+    f = float((bones["head"][0] - nk) @ (hd - nk) / ((hd - nk) @ (hd - nk)))
+    # where the export rig's Neck and Head pivot (rig.humanoid): the "neck" joint here is the neck's base
+    rig_hint = {"Neck": ["neck", "head", 0.0], "Head": ["neck", "head", round(f, 4)]}
+    out = {"name": "makehuman", "vid": used, "bones": bones, "rig": rig_hint, "P": V[used], "L": np.array([v for f in F for v in f]),
            "S": np.array([len(f) for f in F]), "J": J, "chin_z": float(jp("jaw____tail")[2]),
            "face": {"landmarks": {"eye.L": eye.tolist()}}}
     _CACHE[("body", key)] = out

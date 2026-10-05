@@ -29,6 +29,7 @@ from .spec import compile_prims, expand_mirror, resolve_point
 ROOTS = ("pelvis", "hips", "root", "hip")
 FALLOFF = 0.5  # weight falls by e over this fraction of a bone's radius past the nearest bone
 SMOOTH = 10  # rounds of averaging weights with neighbouring vertices
+WORN_SMOOTH = 6  # the same over a worn part's own mesh, after it read the skin's weights (`skin_parts`)
 
 
 def skeleton(spec: dict) -> list[dict]:
@@ -276,14 +277,29 @@ def humanoid(spec: dict) -> list[dict] | None:
     add("Spine", pelvis + (chest - pelvis) / 3, "Hips")
     add("Spine1", pelvis + 2 * (chest - pelvis) / 3, "Spine")
     add("Spine2", chest, "Spine1", src="chest")
-    add("Neck", chest + t * (neck - chest), "Spine2")
-    add("Head", neck, "Neck", src="neck")
+    collar = chest + t * (neck - chest)  # the spine at shoulder height: where the clavicles start
+    # Where Neck and Head pivot. Kit characters: the "neck" joint is the skull's base (the head bone starts there), so
+    # Head sits on it and Neck at shoulder height. A template may say otherwise (`rig` in its dict: {rig joint: [joint
+    # a, joint b, t]}): MakeHuman's "neck" joint is the neck's BASE (C7) and its head bone starts 63% of the way to
+    # the "head" joint; Head on the "neck" joint there pivoted the head at the bottom of the neck, 10 cm low, and the
+    # whole neck's turn had to happen in the skin under the jaw.
+    hint = {}
+    if spec.get("base"):
+        from . import base as basemod
+        hint = basemod.source(spec["base"]).get("rig") or {}
+
+    def hinted(name, default):
+        if name in hint:
+            a, b, f = hint[name]
+            return _joint(s, a) + float(f) * (_joint(s, b) - _joint(s, a))
+        return default
+    add("Neck", hinted("Neck", collar), "Spine2", src="template" if "Neck" in hint else "placed")
+    add("Head", hinted("Head", neck), "Neck", src="template" if "Head" in hint else "neck")
     up = (head - neck) / max(np.linalg.norm(head - neck), 1e-9)
     add("HeadTop_End", _surface_along(spec, head, up, 2 * np.linalg.norm(head - neck) + 0.5), "Head", True)
     for side, S in (("L", "Left"), ("R", "Right")):
         j = {k: _joint(s, f"{k}.{side}") for k in ("shoulder", "elbow", "wrist", "hip", "knee", "ankle")}
-        base = bones[[b["name"] for b in bones].index(PREFIX + "Neck")]["head"]
-        add(f"{S}Shoulder", base + 0.2 * (j["shoulder"] - base), "Spine2")
+        add(f"{S}Shoulder", collar + 0.2 * (j["shoulder"] - collar), "Spine2")
         add(f"{S}Arm", j["shoulder"], f"{S}Shoulder", src=f"shoulder.{side}")
         add(f"{S}ForeArm", j["elbow"], f"{S}Arm", src=f"elbow.{side}")
         add(f"{S}Hand", j["wrist"], f"{S}ForeArm", src=f"wrist.{side}")
@@ -313,7 +329,249 @@ def humanoid(spec: dict) -> list[dict] | None:
         fwd[2] = 0
         fwd /= max(np.linalg.norm(fwd), 1e-9)
         add(f"{S}Toe_End", _surface_along(spec, toe, fwd, 0.5), f"{S}ToeBase", True)
-    return bones
+    return _add_twist(bones, twist_counts(spec))
+
+
+# ---- twist bones ------------------------------------------------------------------------------------------------
+# A limb segment's roll about its own axis is not a rotation of one joint in a person: pronation is the radius
+# turning over the ulna along the whole forearm, and the upper arm's roll is taken up at the shoulder, not by the
+# deltoid's skin. With one bone per segment the whole roll lands on one joint (a hand turned 75 deg was wrung at the
+# wrist: s0urc3's Garrett). So each segment gets a TWIST CHAIN, as Unreal's mannequin has (upperarm_twist_01/02,
+# lowerarm_twist_01/02, thigh_twist, calf_twist) and VRM's roll constraint describes: extra LEAF bones, children of
+# the segment's own bone, standing at stations along it, each turning about the segment's axis by a share of a
+# driver's roll.
+#   follow  (forearm, calf): the driver is the segment's CHILD (Hand, Foot). Share k/n at station k/n: nothing at the
+#           elbow, the hand's whole roll at the wrist, so the wrist joint itself doesn't twist.
+#   counter (upper arm, thigh): the driver is the segment's OWN bone. Share -(1 - (k-1)/n) at station (k-1)/n: the
+#           bone at the shoulder turns back the whole of the arm's roll (the deltoid stays with the clavicle), the
+#           elbow end follows the bone.
+# The Mixamo set is untouched: the twist bones come after it in the list, nothing hangs from them, and with no
+# driver they sit still on their parent, where the skin is exactly what it was without them (their weights are their
+# parent's weight shared out along the segment, `_spread_twist`). An engine drives them (glTF has no constraints):
+# node extras "hifipushie_twist" and the export json's rig.twist carry driver, axis and share.
+TWIST = {"Arm": ("counter", "arm", "ForeArm"), "ForeArm": ("follow", "forearm", "Hand"),
+         "UpLeg": ("counter", "upleg", "Leg"), "Leg": ("follow", "leg", "Foot")}
+# Linear blend skinning between two stations turned apart by d loses cos^2(d / 2) of a section's area half way, so
+# the count follows how far a segment rolls. Upper arm: two, as Unreal's mannequin (60 deg: 0.93 of the area kept).
+# Forearm: three: a hand turns 75 deg palm down and 105 in gestures; measured at 105 on the MakeHuman body, none
+# 0.49, two 0.80, three 0.87. Legs: one each (a foot or thigh rolls 30-45 deg: 0.88).
+TWIST_DEFAULT = {"arm": 2, "forearm": 3, "upleg": 1, "leg": 1}
+TWIST_MAX = 4
+TWIST_MERGE = 3.0  # at a fifth bone: a split whose smaller half is under this x the smallest weight goes back together
+ROLL_OF_PARENT = ("Hand", "Foot")  # their "roll" is about the segment they end
+
+
+def twist_counts(spec: dict) -> dict:
+    """spec["rig"]["twist"]: false / 0 (none), an int (that many on every segment), or {"arm", "forearm", "upleg",
+    "leg": count}; left out = TWIST_DEFAULT."""
+    t = (spec.get("rig") or {}).get("twist", True)
+    if t is True or t is None:
+        return dict(TWIST_DEFAULT)
+    if t is False:
+        return {k: 0 for k in TWIST_DEFAULT}
+    if isinstance(t, (int, float)):
+        t = {k: int(t) for k in TWIST_DEFAULT}
+    bad = [k for k in t if str(k).lower() not in TWIST_DEFAULT]
+    if bad:
+        raise ValueError(f"rig.twist: unknown segment(s) {bad} (have {', '.join(TWIST_DEFAULT)})")
+    out = dict(TWIST_DEFAULT)
+    for k, v in t.items():
+        n = int(v)
+        if not 0 <= n <= TWIST_MAX:
+            raise ValueError(f"rig.twist.{k}: {v} (0 to {TWIST_MAX} twist bones a segment)")
+        out[str(k).lower()] = n
+    return out
+
+
+def _add_twist(bones: list[dict], counts: dict) -> list[dict]:
+    """The twist chains, appended after the Mixamo set (its names, order and indices stay as they were)."""
+    idx = {b["name"]: i for i, b in enumerate(bones)}
+    extra = []
+    for S in ("Left", "Right"):
+        for seg, (mode, key, child) in TWIST.items():
+            n = counts.get(key, 0)
+            i, c = idx.get(PREFIX + S + seg), idx.get(PREFIX + S + child)
+            if not n or i is None or c is None:
+                continue
+            a, b = bones[i]["head"], bones[c]["head"]
+            L = float(np.linalg.norm(b - a))
+            if L < 1e-6:
+                continue
+            for k in range(1, n + 1):
+                t = k / n if mode == "follow" else (k - 1) / n
+                share = k / n if mode == "follow" else -(1.0 - (k - 1) / n)
+                driver = PREFIX + S + (child if mode == "follow" else seg)
+                extra.append({"name": f"{PREFIX}{S}{seg}Twist{k}", "head": a + t * (b - a), "parent": i, "end": False,
+                              "src": f"twist, {t:.2f} along {S}{seg}",
+                              "twist": {"of": bones[i]["name"], "driver": driver, "mode": mode,
+                                        "share": round(share, 4), "station": round(t, 4), "length": L,
+                                        "axis": (b - a) / L}})
+    return bones + extra
+
+
+def twist_table(bones: list[dict]) -> list[dict]:
+    """What an engine needs to drive the twist bones: [{"bone", "parent", "driver", "mode", "share", "station",
+    "axis" (unit, Blender axes, the rest pose; the bone's local +Y in the GLB)}]."""
+    return [{"bone": b["name"], "parent": b["twist"]["of"], "driver": b["twist"]["driver"], "mode": b["twist"]["mode"],
+             "share": b["twist"]["share"], "station": b["twist"]["station"],
+             "axis": [round(float(x), 6) for x in b["twist"]["axis"]]} for b in bones if b.get("twist")]
+
+
+def _spread_twist(rb: list[dict], verts: np.ndarray, J: np.ndarray, W: np.ndarray, k: int = 4):
+    """Each twisted segment's weight shared out along it: a vertex's weight on the segment's bone is split between
+    the two stations it lies between (the bone itself is the station at the undriven end), linearly. Undriven, the
+    twist bones move with their parent, so the skin is what it was; driven, the roll runs linearly joint to joint."""
+    chains: dict = {}
+    for i, b in enumerate(rb):
+        if b.get("twist"):
+            chains.setdefault(b["parent"], []).append(i)
+    if not chains:
+        return J, W
+    V = np.asarray(verts, np.float64)
+    kk = J.shape[1]
+    J2 = np.concatenate([J, np.zeros_like(J)], 1)
+    W2 = np.concatenate([W, np.zeros_like(W)], 1)
+    for seg, tw in chains.items():
+        t0 = rb[tw[0]]["twist"]
+        st = sorted([(rb[i]["twist"]["station"], i) for i in tw] + [(0.0 if t0["mode"] == "follow" else 1.0, seg)])
+        ts = np.array([s[0] for s in st])
+        bi = np.array([s[1] for s in st])
+        rows, cols = np.nonzero((J == seg) & (W > 0))
+        if not len(rows):
+            continue
+        t = np.clip(((V[rows] - rb[seg]["head"]) @ t0["axis"]) / t0["length"], ts[0], ts[-1])
+        hi = np.clip(np.searchsorted(ts, t, side="right"), 1, len(ts) - 1)
+        lo = hi - 1
+        f = (t - ts[lo]) / np.maximum(ts[hi] - ts[lo], 1e-9)
+        w = W[rows, cols]
+        J2[rows, cols], W2[rows, cols] = bi[lo], w * (1 - f)
+        J2[rows, kk + cols], W2[rows, kk + cols] = bi[hi], w * f
+    # more than k bones now. Dropping the smallest weight moves undriven skin (a belly vertex on Spine, Spine1, Hips
+    # and the arm, the arm split in two: 10 mm when Spine1's 0.13 went); putting a split back together steps the twist
+    # against the neighbours' when driven (thigh vertices with 2-4% of three other bones: sheared triangles). So the
+    # cheaper of the two: the split goes back only if its smaller half is within TWIST_MERGE x the smallest weight.
+    for _ in range(kk):
+        over = np.flatnonzero((W2 > 0).sum(1) > k)
+        if not len(over):
+            break
+        r = np.arange(len(over))
+        a, b = W2[over, :kk], W2[over, kk:]
+        pair = np.where((a > 0) & (b > 0), np.minimum(a, b), np.inf)
+        c = pair.argmin(1)
+        alone = np.where(W2[over] > 0, W2[over], np.inf)
+        s = alone.argmin(1)
+        merge = np.isfinite(pair[r, c]) & (pair[r, c] <= TWIST_MERGE * alone[r, s])
+        mo, mc = over[merge], c[merge]
+        keep_b = W2[mo, kk + mc] > W2[mo, mc]
+        tot = W2[mo, mc] + W2[mo, kk + mc]
+        J2[mo, mc] = np.where(keep_b, J2[mo, kk + mc], J2[mo, mc])
+        W2[mo, mc], W2[mo, kk + mc] = tot, 0.0
+        W2[over[~merge], s[~merge]] = 0.0
+    order = np.argsort(-W2, axis=1, kind="stable")[:, :k]
+    Jk = np.take_along_axis(J2, order, 1)
+    Wk = np.take_along_axis(W2, order, 1)
+    Wk /= np.maximum(Wk.sum(1, keepdims=True), 1e-12)
+    Jk[Wk <= 0] = 0
+    return Jk, Wk
+
+
+def _quat(axis, deg) -> np.ndarray:
+    ax = np.asarray(axis, float)
+    ax = ax / max(np.linalg.norm(ax), 1e-12)
+    h = np.radians(deg) / 2
+    return np.r_[np.cos(h), np.sin(h) * ax]
+
+
+def roll_about(axis, turn) -> float:
+    """The roll (degrees) of a turn (axis, degrees) about a unit axis: the twist of its swing-twist decomposition.
+    This is the driver's side of every engine recipe: decompose the driver's LOCAL rotation from rest about the
+    segment's axis, keep the twist angle."""
+    q = _quat(turn[0], turn[1])
+    return float(np.degrees(2 * np.arctan2(q[1:] @ np.asarray(axis, float), q[0])))
+
+
+def roll_axis(bones: list[dict], name: str) -> np.ndarray:
+    """The axis a bone rolls about: the segment it ends for hands and feet (the forearm, the shin), else its own."""
+    i = [b["name"] for b in bones].index(name)
+    b = bones[i]
+    if name.endswith(ROLL_OF_PARENT) and b["parent"] >= 0:
+        d = b["head"] - bones[b["parent"]]["head"]
+    else:
+        seg = _segments(bones)
+        d = seg[i][1] - seg[i][0] if i in seg else np.array([0, 0, 1.0])
+    return d / max(np.linalg.norm(d), 1e-12)
+
+
+def resolve_turns(bones: list[dict], turns: dict) -> dict:
+    """Turns with the axis "roll" given their bone's roll axis (`roll_axis`)."""
+    return {k: ((roll_axis(bones, k) if isinstance(ax, str) else ax), deg) for k, (ax, deg) in turns.items()}
+
+
+def drive_twist(bones: list[dict], turns: dict) -> dict:
+    """The turns plus every twist bone's own: its share of its driver's roll about the segment's axis (what an
+    engine's driver does each frame; the documented shares, so a pose made with this is the proof of them)."""
+    out = dict(turns)
+    for b in bones:
+        tw = b.get("twist")
+        if tw and tw["driver"] in turns and b["name"] not in turns:
+            ang = tw["share"] * roll_about(tw["axis"], turns[tw["driver"]])
+            if abs(ang) > 1e-9:
+                out[b["name"]] = (tw["axis"], ang)
+    return out
+
+
+def twist_check(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray, driver: str,
+                deg: float = 75.0, drive: bool = True, bins: int = 10) -> dict:
+    """A segment's twist test: its driver rolled `deg` about the segment's axis (twist bones driven by their shares,
+    or left still: what an engine without drivers shows), measured on the segment's skin by station along it:
+    "twist" (how far the skin has turned about the axis, deg), "area" (cross-section area against rest, from the
+    skin's distance to the axis: the candy wrapper is a dip), plus "at_end" / "at_start" (the twist left to the
+    joints: hand roll minus the skin's turn by the wrist; the skin's turn by the elbow), "step" (the largest change
+    of twist between neighbouring stations), "area_min", "tri_min" (the worst triangle's quality against its rest
+    quality, 4 sqrt(3) area / sum of squared edges)."""
+    names = [b["name"] for b in bones]
+    d = names.index(driver)
+    follow = driver.endswith(ROLL_OF_PARENT)
+    seg = bones[d]["parent"] if follow else d
+    a = bones[seg]["head"]
+    ax = roll_axis(bones, driver)
+    kids = [b["head"] for b in bones if b["parent"] == seg and not b.get("twist") and not b["end"]]
+    L = max(float((k - a) @ ax) for k in kids)
+    own = {seg} | {i for i, b in enumerate(bones) if b.get("twist") and b["parent"] == seg}
+    if follow:
+        own.add(d)
+    turns = {driver: (ax, deg)}
+    P = pose(bones, V, J, W, drive_twist(bones, turns) if drive else turns)
+    t = ((V - a) @ ax) / L
+    wown = (W * np.isin(J, list(own))).sum(1)
+    rel0 = V - a
+    rad0 = rel0 - np.outer(rel0 @ ax, ax)
+    rel1 = P - a
+    rad1 = rel1 - np.outer(rel1 @ ax, ax)
+    r0, r1 = np.linalg.norm(rad0, axis=1), np.linalg.norm(rad1, axis=1)
+    sel = (wown > 0.6) & (t > -0.05) & (t < 1.1) & (r0 > 1e-4)
+    ang = np.degrees(np.arctan2(np.cross(rad0, rad1) @ ax, (rad0 * rad1).sum(1)))
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    tw, ar, st = [], [], []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = sel & (t >= lo) & (t < hi)
+        if m.sum() < 6:
+            continue
+        st.append(round(float(0.5 * (lo + hi)), 3))
+        tw.append(round(float(np.median(ang[m])), 1))
+        ar.append(round(float((r1[m].mean() / r0[m].mean()) ** 2), 3))
+    Fm = F[sel[F].all(1)]
+
+    def quality(X):
+        e = [X[Fm[:, (i + 1) % 3]] - X[Fm[:, i]] for i in range(3)]
+        A = 0.5 * np.linalg.norm(np.cross(e[0], -e[2]), axis=1)
+        return 4 * np.sqrt(3) * A / np.maximum(sum((x * x).sum(1) for x in e), 1e-18)
+    q = quality(P) / np.maximum(quality(V), 1e-9) if len(Fm) else np.ones(1)
+    return {"driver": driver, "deg": deg, "driven": bool(drive), "station": st, "twist": tw, "area": ar,
+            "at_start": tw[0] if tw else None, "at_end": round(deg - tw[-1], 1) if tw else None,
+            "step": round(float(np.max(np.abs(np.diff([0.0] + tw + [deg])))), 1) if tw else None,
+            "area_min": min(ar) if ar else None, "tri_min": round(float(q.min()), 3),
+            "tri_p1": round(float(np.percentile(q, 1)), 3)}
 
 
 def chains(spec: dict) -> list[dict]:
@@ -359,31 +617,47 @@ def test_pose(bones: list[dict]) -> dict:
     names = {b["name"] for b in bones}
     if PREFIX + "Hips" in names:
         want = {"LeftForeArm": ([1, 0, 0], -75), "RightArm": ([0, 1, 0], 45), "LeftUpLeg": ([1, 0, 0], -35),
-                "RightLeg": ([1, 0, 0], 60), "Spine1": ([0, 1, 0], 12), "Neck": ([0, 0, 1], 25)}
-        return {PREFIX + k: v for k, v in want.items() if PREFIX + k in names}
+                "RightLeg": ([1, 0, 0], 60), "Spine1": ([0, 1, 0], 12), "Neck": ([0, 0, 1], 25),
+                "RightHand": ("roll", 75)}  # palm turned: the forearm's twist bones take it (`drive_twist`)
+        return resolve_turns(bones, {PREFIX + k: v for k, v in want.items() if PREFIX + k in names})
     return {b["name"]: ([1, 0, 0], 35) for b in bones if b["name"].endswith("_02")}
 
 
 def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -> dict:
     """Weights for every part {name: (verts, tris)} -> {name: (J, W)}. parts.<p>.rig_bone (a rig bone, the prefix
     optional) binds a part rigidly (a bag on the hip, a disc in the hand: split between bones they tore); with a base
-    body the other parts copy the weights of the body's nearest vertex (clothes move with the skin under them:
-    weighted on their own they drifted from it and the body poked through)."""
-    from scipy.spatial import cKDTree
+    body every other part reads the base body's weights off its surface (clothes move with the skin under them:
+    weighted on their own they drifted from it and the body poked through), and those are the template's own
+    hand-made weights when it has them (MakeHuman: rig_template.py; spec["rig"]["weights"] = "distance" for ours)."""
+    from . import rig_template
     defs = spec.get("parts") or {}
     names = [b["name"] for b in rb]
     out = {}
     ref = None
+    hf = head_field(spec, rb)
+    opts = spec.get("rig") or {}
+    sp = opts.get("skin_part") or ("body" if "body" in meshes else None)
+    if sp is None and hf is not None:  # no part called "body": the skin is the part with the most of the head
+        n = {pn: int((hf["h"](V) > 0.999).sum()) for pn, (V, F) in meshes.items()
+             if len(V) and not (defs.get(pn) or {}).get("rig_bone") and float(hf["h"](V).mean()) < HEAD_PART}
+        sp = max(n, key=n.get) if n else None
+    skin = {sp} | set((spec.get("face_shapes") or {}).get("parts") or ())
     if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
         from . import base as basemod
         from .spec import expand_mirror as _em
-        Wq, fq = basemod.surface(basemod.inject(_em(spec)), spec["base"])["quads"]
+        surf = basemod.surface(basemod.inject(_em(spec)), spec["base"])
+        Wq, fq = surf["quads"]
         Wq = np.asarray(Wq, float)
         Tq = np.array([(f[0], f[j], f[j + 1]) for f in fq for j in range(1, len(f) - 1)])
-        ref = rig_weights(spec, rb, Wq, Tq, smooth=smooth)
-        tree = cKDTree(Wq)
+        # a template with hand-made weights (MakeHuman): its own, by topology (rig_template.py); else ours by distance
+        ref = rig_template.template_weights(spec, rb, surf)
+        spread = ref is not None  # the template knows no twist bones: shared out per part, after the transfer
+        if ref is None:
+            Jr, Wr = rig_weights(spec, rb, Wq, Tq, smooth=smooth)
+            ref = np.zeros((len(Wq), len(rb)))
+            np.add.at(ref, (np.repeat(np.arange(len(Wq)), Jr.shape[1]), Jr.ravel()), Wr.ravel())
     for pn, (V, F) in meshes.items():
-        bone =(defs.get(pn) or {}).get("rig_bone")
+        bone = (defs.get(pn) or {}).get("rig_bone")
         if bone:
             full = bone if bone in names else PREFIX + bone
             if full not in names:
@@ -394,20 +668,302 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             W[:, 0] = 1.0
             out[pn] = (J, W)
         elif ref is not None:
-            d, k = tree.query(np.asarray(V, float), k=4)  # inverse-distance blend of the 4 nearest (the base's
-            w = 1.0 / np.maximum(d, 1e-5) ** 2  # quads are ~1 cm apart: one nearest vertex left steps)
-            w /= w.sum(1, keepdims=True)
-            dense = np.zeros((len(V), len(rb)))
-            rows = np.arange(len(V))[:, None]
-            for c in range(4):
-                np.add.at(dense, (np.repeat(rows, 4, 1), ref[0][k[:, c]]), ref[1][k[:, c]] * w[:, c:c + 1])
-            J = np.argsort(-dense, 1)[:, :4]
-            W = np.take_along_axis(dense, J, 1)
-            W /= np.maximum(W.sum(1, keepdims=True), 1e-12)
-            out[pn] = (J, W)
+            # read off the base's SURFACE where it faces the way the vertex does (rig_template.from_surface): the
+            # nearest base VERTICES of a finger's side are as often the next finger's (weights bled 0.4-0.57 across)
+            V = np.asarray(V, float)
+            F = np.asarray(F)
+            N = np.zeros_like(V)
+            if len(F):
+                fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+                for c in range(3):
+                    np.add.at(N, F[:, c], fn)
+                N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
+            D = rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None)
+            rounds = int((defs.get(pn) or {}).get("rig_smooth", 0 if pn in skin else WORN_SMOOTH))
+            if len(F) and rounds:
+                # cloth is a sheet of its own: the weights it read off the skin are evened over ITS mesh, as a rigger
+                # smooths a transfer. A collar's two faces and its edge read three places on the shoulder, and its
+                # wing crumpled when the arm rose. Seam-split vertices are one vertex here (or they'd crack).
+                _, inv = np.unique(np.round(V / 1e-5).astype(np.int64), axis=0, return_inverse=True)
+                inv = inv.ravel()
+                cnt = np.bincount(inv).astype(np.float64)[:, None]
+                Dw = np.zeros((len(cnt), D.shape[1]))
+                np.add.at(Dw, inv, D)
+                D = _smooth(Dw / cnt, inv[F], rounds)[inv]
+            J, W = rig_template.top_k(D)
+            out[pn] = _spread_twist(rb, V, J, W) if spread else (J, W)
         else:
             out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
+        if hf is not None and not bone and len(V):  # the head is rigid: the falloff to the neck is on the throat
+            h = hf["h"](V)
+            share = float(h.mean())
+            worn = (defs.get(pn) or {}).get("rig_head")
+            if worn is None:  # anything but the skin (and what moves with the face) is worn
+                worn = not (pn in skin or share >= HEAD_WORN)
+            else:
+                worn = not worn
+            if share >= HEAD_PART:  # a part of the head (teeth, tongue, eyes, lashes): all of it
+                h = np.ones(len(V))
+            elif worn:
+                # a collar, a scarf, a strap over the shoulder: it sits on the body and reaches up beside the jaw.
+                # It keeps the weights of the neck under it (the golfer's collar top, 1-2 cm above the floor at the
+                # nape, was Head 1.0 and turned with the face: 47 mm off the shirt, 299 triangles inside out)
+                continue
+            out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h, hf["bone"])
+    # parts.<p>.rig_attach = "<part>" | [parts]: where this part comes within rig_attach_length (ATTACH) of a part
+    # bound to one joint (rig_bone), it blends to that joint: a strap's end goes with the bag it carries, the rest
+    # of it with the body it lies on. (The golfer's strap read the thigh next to a bag bound to Hips and tore.)
+    from scipy.spatial import cKDTree
+    for pn, (V, F) in meshes.items():
+        d_ = defs.get(pn) or {}
+        to = d_.get("rig_attach")
+        if not to or d_.get("rig_bone") or not len(V):
+            continue
+        reach = float(d_.get("rig_attach_length", ATTACH))
+        for other in ([to] if isinstance(to, str) else to):
+            ob = (defs.get(other) or {}).get("rig_bone")
+            if other not in meshes or not ob or not len(meshes[other][0]):
+                raise ValueError(f"parts.{pn}.rig_attach: {other!r} must be an exported part with a rig_bone")
+            dist, _ = cKDTree(np.asarray(meshes[other][0], float)).query(np.asarray(V, float), distance_upper_bound=reach)
+            h = 1.0 - _ss(np.where(np.isfinite(dist), dist, reach) / reach)
+            out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h,
+                                  names.index(ob if ob in names else PREFIX + ob))
     return out
+
+
+ATTACH = 0.08  # m: the length over which a part hands over to the bound part it is attached to (parts.<p>.rig_attach)
+
+
+# ---- the rigid head -----------------------------------------------------------------------------------------------
+# A skull doesn't bend: riggers weight the whole head (cranium, face, jaw, and everything in it: eyes, teeth, tongue)
+# 1.0 to the head joint and put the falloff to the neck on the throat, under the jawline. Distance-based weights
+# don't: the chin hangs in front of the neck, as near the neck's and the clavicles' bones as the skull's (Garrett's
+# chin was Head 0.42 / Neck 0.42 / shoulders 0.16 and followed a head turn half way; the goblin's 0.34 / 0.32 / 0.33).
+# `head_field` says how much of the head a point is (1 = rigid); `_rigid_head` blends each vertex's weights toward
+# Head by it. Three sources, in order:
+#   landmarks  a GNM head's lm_chin / lm_jaw_*: the floor is the mandible's lower border from the chin back to the
+#              jaw's angle, level behind it, dropped HEAD_UNDER (the soft skin under the chin moves with the jaw);
+#   flesh      modelling prims: a point is head where the Head bone's flesh (skull, jaw, face kit) is no farther than
+#              any other bone's; the falloff runs by how much farther it is;
+#   generic    a base body without landmarks: the landmark floor at a typical head's proportions from the rig joints.
+HEAD_BAND = 0.12   # the falloff's height below the floor, x the head's size (Head joint -> HeadTop_End): ~3 cm
+HEAD_FALL = 0.2    # on a base body (a floor by height): the falloff's height, ~5 cm. At 3 cm a Head-only turn of 33 deg
+#                    sheared the throat into a shelf under the jaw (skin fold p99 40 deg on the bare human, 20 on the
+#                    golfer; at 5 cm 24 / 12, nod 56 -> 43). Longer on the FRONT only changed nothing: the fold is at
+#                    the sides and the nape. spec.rig.rigid_head.band sets it in metres.
+HEAD_UNDER = 0.04  # the floor's drop under the jaw's border, x the head's size: ~1 cm
+HEAD_PART = 0.9    # a part this much head on average is all head (teeth, tongue, eyes, lashes, brows)
+HEAD_WORN = 0.5    # a part other than the skin and less head than this is worn on the body: no head rule (a collar);
+#                    parts.<p>.rig_head = true | false says so outright, spec.rig.skin_part names the skin ("body")
+MOVED = (5e-4, 3e-3)  # m: a vertex a face shape moves this far is a little / wholly the head's (`rigid_near`)
+
+
+def _ss(x):
+    x = np.clip(x, 0.0, 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def head_field(spec: dict, rb: list[dict]) -> dict | None:
+    """{"h": f(points) -> 0..1 (1 = moves rigidly with the Head bone), "bone": Head's index, "band" (m), "how"}, or
+    None (no Head bone, or spec["rig"]["rigid_head"] = false). spec["rig"]["rigid_head"] = {"band": m, "under": m}
+    sets the falloff's height and the floor's drop."""
+    opts = (spec.get("rig") or {}).get("rigid_head", True)
+    names = [b["name"] for b in rb]
+    if opts is False or PREFIX + "Head" not in names:
+        return None
+    opts = opts if isinstance(opts, dict) else {}
+    hi = names.index(PREFIX + "Head")
+    s = expand_mirror(spec)
+    Jn = s["joints"]
+    # sizes are counted from the modelling "neck" joint (the Head bone's own head on kit characters; a template's rig
+    # hint may put Head higher)
+    hj = _joint(s, "neck") if "neck" in Jn else rb[hi]["head"]
+    top = rb[names.index(PREFIX + "HeadTop_End")]["head"] if PREFIX + "HeadTop_End" in names else hj + [0, 0, 0.25]
+    size = max(float(np.linalg.norm(top - hj)), 1e-3)
+    band = float(opts.get("band", HEAD_BAND * size))
+    under = float(opts.get("under", HEAD_UNDER * size))
+    fall = float(opts.get("band", HEAD_FALL * size))
+    if spec.get("base"):
+        if "lm_chin" in Jn and "lm_jaw_4.L" in Jn:
+            pts = [resolve_point(s, "lm_chin")] + [0.5 * (resolve_point(s, f"lm_jaw_{i}.L")
+                                                          + resolve_point(s, f"lm_jaw_{i}.R") * [-1, 1, 1])
+                                                   for i in (7, 6, 5, 4)]
+            pts = np.array(pts)[:, 1:]  # (y, z): the jaw's border from the chin back to its angle
+            how = "jaw landmarks"
+        else:
+            pts = np.array([[hj[1] - 0.65 * size, hj[2]], [hj[1] - 0.28 * size, hj[2] + 0.10 * size]])
+            how = "generic (no jaw landmarks: typical proportions from the Head joint)"
+        y0, z0, (y1, z1) = float(pts[:, 0].min()), float(pts[:, 1].min()), pts[-1]
+        slope = (z1 - z0) / max(y1 - y0, 1e-6)
+        z0 -= max(0.0, float(np.max(z0 + slope * (pts[:, 0] - y0) - pts[:, 1])))  # under every border point
+
+        # behind the jaw's angle the floor climbs a little up the ramus and runs level from the Head joint back:
+        # level at the jaw angle's own height, more of the nape under the skull was head than a skull covers.
+        fy, fz = [y0, float(y1)], [z0, z0 + slope * (float(y1) - y0)]
+        if how == "jaw landmarks" and "lm_jaw_3.L" in Jn:
+            # one landmark up the ramus, reached at the Head joint: the ear lobes (the next landmark's height) stay
+            # above it. Up to the Head joint itself (the skull's base on MakeHuman) the lobes fell in the band and
+            # 30 triangles under each ear turned inside out at 33 deg.
+            sy, sz = float(rb[hi]["head"][1]), float(resolve_point(s, "lm_jaw_3.L")[2]) - (float(z1) - fz[-1])
+            if sz > fz[-1] and sy > fy[-1] + 0.01:
+                fy.append(sy)
+                fz.append(sz)
+
+        def h(V):
+            V = np.asarray(V, np.float64)
+            floor = np.interp(V[:, 1], fy, fz) - under
+            return 1.0 - _ss((floor - V[:, 2]) / fall)
+        return {"h": h, "bone": hi, "band": band, "how": f"{how}, floor {under * 1e3:.0f} mm under the jaw"}
+    ids, carry = _flesh_tree(spec, rb)
+    if hi not in ids:
+        return None
+    n = list(ids).index(hi)
+
+    def h(V):
+        V = np.asarray(V, np.float64)
+        D = [np.min([_flesh(p, c.get("cuts", ()), V) for p in c["prims"]], 0) for c in carry]
+        rest = np.min([d for i, d in enumerate(D) if i != n], 0) if len(D) > 1 else np.full(len(V), np.inf)
+        return 1.0 - _ss((D[n] - rest) / band)
+    return {"h": h, "bone": hi, "band": band, "how": f"flesh ({len(carry[n]['prims'])} head primitives)"}
+
+
+def _rigid_head(J: np.ndarray, W: np.ndarray, h: np.ndarray, bone: int):
+    """Weights blended toward the head bone by h: (1 - h) x what they were + h on Head."""
+    k = J.shape[1]
+    h = np.clip(np.asarray(h, np.float64), 0.0, 1.0)
+    h[h > 0.995] = 1.0
+    if not (h > 0).any():
+        return J, W
+    J2 = np.concatenate([J, np.full((len(J), 1), bone, J.dtype)], 1)
+    W2 = np.concatenate([W * (1 - h[:, None]), h[:, None]], 1)
+    same = J == bone  # already among its bones: its weight joins the new slot
+    W2[:, k] += (W2[:, :k] * same).sum(1)
+    W2[:, :k][same] = 0.0
+    order = np.argsort(-W2, axis=1, kind="stable")[:, :k]
+    Jk = np.take_along_axis(J2, order, 1)
+    Wk = np.take_along_axis(W2, order, 1)
+    Wk /= np.maximum(Wk.sum(1, keepdims=True), 1e-12)
+    Jk[Wk <= 0] = 0
+    return Jk, Wk
+
+
+def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: float | None = None) -> dict:
+    """Everything a face shape moves is head too: {part: (J, W)} with every vertex some shape moves MOVED[1] or more
+    (`moved`: {part: the largest move per vertex, m}) weighted 1.0 to Head, the vertices within `band` of one
+    blended toward it, and vertices moved less (down to MOVED[0]) in proportion (the export, after the face shapes
+    are made)."""
+    from scipy.spatial import cKDTree
+    names = [b["name"] for b in rb]
+    if PREFIX + "Head" not in names or not moved:
+        return skins
+    hi = names.index(PREFIX + "Head")
+    if band is None:
+        top = rb[names.index(PREFIX + "HeadTop_End")]["head"] if PREFIX + "HeadTop_End" in names else None
+        band = HEAD_BAND * (float(np.linalg.norm(top - rb[hi]["head"])) if top is not None else 0.25)
+    lo, hi_ = MOVED
+    full = {p: np.asarray(m, np.float64) >= hi_ for p, m in moved.items() if p in verts}
+    pts = [np.asarray(verts[p], np.float64)[m] for p, m in full.items() if m.any()]
+    tree = cKDTree(np.concatenate(pts)) if pts else None
+    out = dict(skins)
+    for pn, (J, W) in skins.items():
+        if pn not in verts:
+            continue
+        h = np.zeros(len(verts[pn]))
+        if tree is not None:
+            d, _ = tree.query(np.asarray(verts[pn], np.float64), distance_upper_bound=band)
+            h = 1.0 - _ss(np.where(np.isfinite(d), d, band) / band)
+        if pn in moved:  # moved a little (skin sliding on the throat, a chest a big jaw's field reaches): a little
+            h = np.maximum(h, _ss((np.asarray(moved[pn], np.float64) - lo) / (hi_ - lo)))
+        if (h > 0).any():
+            out[pn] = _rigid_head(np.asarray(J), np.asarray(W, np.float64), h, hi)
+    return out
+
+
+def head_check(bones: list[dict], V: np.ndarray, J: np.ndarray, W: np.ndarray, deg: float = 33.0) -> dict | None:
+    """The head's test: its weights on the front of the face by height (rows of {"z", "rel" (height over the Head
+    joint / the head's size), "head", "neck", "arms" (clavicles and arms), "lag_mm"}), where lag is how far a vertex
+    ends from where a rigid head would put it with the Head bone turned `deg` about the vertical. A rigid face reads
+    head 1.00 / lag 0 down to the jaw, and the falloff sits below."""
+    names = [b["name"] for b in bones]
+    if PREFIX + "Head" not in names or PREFIX + "HeadTop_End" not in names:
+        return None
+    hi = names.index(PREFIX + "Head")
+    hj, top = bones[hi]["head"], bones[names.index(PREFIX + "HeadTop_End")]["head"]
+    size = float(np.linalg.norm(top - hj))
+    wh = (W * (J == hi)).sum(1)
+    wn = (W * (J == names.index(PREFIX + "Neck"))).sum(1) if PREFIX + "Neck" in names else np.zeros(len(V))
+    arms = [i for i, n in enumerate(names) if "Shoulder" in n or "Arm" in n]
+    wa = (W * np.isin(J, arms)).sum(1)
+    P = pose(bones, V, J, W, {PREFIX + "Head": ([0, 0, 1], deg)})
+    c, s = np.cos(np.radians(deg)), np.sin(np.radians(deg))
+    rigid = (V - hj) @ np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]]).T + hj
+    lag = np.linalg.norm(P - rigid, axis=1)
+    front = (np.abs(V[:, 0] - hj[0]) < 0.25 * size) & (V[:, 1] < hj[1] - 0.15 * size)
+    rows = []
+    for rel in np.arange(-0.3, 0.55, 0.1):
+        m = front & (np.abs(V[:, 2] - hj[2] - rel * size) < 0.05 * size)
+        if m.sum() > 3:
+            rows.append({"z": round(float(hj[2] + rel * size), 3), "rel": round(float(rel), 2),
+                         "head": round(float(wh[m].mean()), 2), "neck": round(float(wn[m].mean()), 2),
+                         "arms": round(float(wa[m].mean()), 2), "lag_mm": round(float(lag[m].mean() * 1e3), 1)})
+    return {"deg": deg, "size": size, "rows": rows, "head_weight": wh, "lag": lag}
+
+
+def report(spec: dict, bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray) -> list[str]:
+    """The rig tool's numbers: each twist chain's test and the head's."""
+    names = [b["name"] for b in bones]
+    out = []
+    tests = [("RightHand", 75.0), ("RightHand", 105.0), ("RightArm", 60.0), ("RightFoot", 40.0),
+             ("RightUpLeg", 40.0)]
+    tw = [b for b in bones if b.get("twist")]
+    if PREFIX + "RightHand" in names:
+        out.append("twist tests (a driver rolled about its limb; twist = how far the skin has turned by station "
+                   "along the segment, joint to joint; area = the worst cross-section against rest):")
+        for drv, deg in tests:
+            if PREFIX + drv not in names:
+                continue
+            chain = [b for b in tw if b["twist"]["driver"] == PREFIX + drv]
+            for drive in ((True, False) if chain and drv == "RightHand" and deg == 75.0 else (bool(chain),)):
+                r = twist_check(bones, V, F, J, W, PREFIX + drv, deg, drive)
+                if not r["twist"]:
+                    continue
+                follow = drv.endswith(ROLL_OF_PARENT)
+                left = r["at_end"] if follow else r["at_start"]
+                where = ("the wrist" if "Hand" in drv else "the ankle") if follow else \
+                    ("the shoulder" if "Arm" in drv else "the hip")
+                kind = f"{len(chain)} twist bones driven" if drive else \
+                    ("twist bones NOT driven" if chain else "no twist bones")
+                bad = " <- CANDY WRAPPER" if r["area_min"] < 0.8 or (r["step"] or 0) > 0.6 * deg else ""
+                out.append(f"  {drv} {deg:g} deg, {kind}: twist {' '.join(f'{x:.0f}' for x in r['twist'])}; "
+                           f"{abs(left) if follow else abs(left):.0f} deg {'left at' if follow else 'turned at'} "
+                           f"{where}, largest step {r['step']:.0f} deg, area min {r['area_min']:.2f}, triangle "
+                           f"quality against rest: worst 1% {r['tri_p1']:.2f}, worst {r['tri_min']:.2f}{bad}")
+    hc = head_check(bones, V, J, W)
+    if hc:
+        hf = head_field(spec, bones)
+        out.append(f"head (rigid by {hf['how'] if hf else 'nothing: rig.rigid_head is off'}); front of the face by "
+                   f"height over the Head joint, Head turned {hc['deg']:g} deg:")
+        out += [f"  {r['rel']:+.1f} head (z {r['z']:.3f}): Head {r['head']:.2f} Neck {r['neck']:.2f} "
+                f"clavicles/arms {r['arms']:.2f}, {r['lag_mm']:.1f} mm behind a rigid head" for r in hc["rows"]]
+    return out
+
+
+def skin_mesh(spec: dict, rb: list[dict], V: np.ndarray, F: np.ndarray, part: np.ndarray, part_names,
+              smooth: int = SMOOTH) -> tuple[np.ndarray, np.ndarray]:
+    """(J, W) for a built model's one mesh (store.build's verts / faces / per-vertex part), skinned part by part as
+    the export does (`skin_parts`)."""
+    J, W = np.zeros((len(V), 4), int), np.zeros((len(V), 4))
+    fp = part[F[:, 0]]
+    meshes = {}
+    for i, pn in enumerate(part_names):
+        sel = np.flatnonzero(part == i)
+        if len(sel):
+            rm = np.full(len(V), -1)
+            rm[sel] = np.arange(len(sel))
+            meshes[str(pn)] = (V[sel], rm[F[fp == i]], sel)
+    for pn, (Jp, Wp) in skin_parts(spec, rb, {k: v[:2] for k, v in meshes.items()}, smooth).items():
+        J[meshes[pn][2]], W[meshes[pn][2]] = Jp, Wp
+    return J, W
 
 
 def rig_bones(spec: dict) -> list[dict]:
@@ -425,11 +981,11 @@ def _segments(rb: list[dict]):
     """Each weight-carrying rig bone as a segment: its head to its (first non-end or only) child's head."""
     kids: dict = {}
     for i, b in enumerate(rb):
-        if b["parent"] >= 0:
+        if b["parent"] >= 0 and not b.get("twist"):
             kids.setdefault(b["parent"], []).append(i)
     seg = {}
     for i, b in enumerate(rb):
-        if b["end"] or b.get("noweight"):
+        if b["end"] or b.get("noweight") or b.get("twist"):  # twist bones take their share after (_spread_twist)
             continue
         if "tail" in b:
             seg[i] = (b["head"], b["tail"])
@@ -472,7 +1028,16 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
     of every modelling cone it lies along (Spine, Spine1, Spine2 split the one spine cone), modelling bones lying
     inside its segment (a finger's pieces), and the rest of the modelling bones (a tusk, an ear, a collar) with
     go to the rig bone nearest their middle, blobs to the rig bone nearest their middle; a rig bone left with none (a hand, the toes) gets a cone
-    along its own segment. Then `weights` on the rig tree: nearest-flesh distances, family-limited, smoothed."""
+    along its own segment. Then `weights` on the rig tree: nearest-flesh distances, family-limited, smoothed. Then
+    the twist chains take their segments' weight (`_spread_twist`)."""
+    ids, carry = _flesh_tree(spec, rb)
+    J, W = weights(carry, verts, faces, k=k, smooth=smooth)
+    return _spread_twist(rb, verts, np.asarray(ids)[J], W, k)
+
+
+def _flesh_tree(spec: dict, rb: list[dict]):
+    """(rig bone indices, [{"name", "parent", "prims", "prim", "cuts"}]): the weight-carrying rig bones with their
+    flesh, as `weights` takes them."""
     seg = _segments(rb)
     ids = list(seg)
     A = np.array([seg[i][0] for i in ids])
@@ -565,7 +1130,6 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
         if "ra" not in c["prim"].params:  # a blob-only bone: its falloff from the blob's size
             sz = float(np.min(c["prim"].hi - c["prim"].lo)) / 2
             c["falloff_r"] = sz
-    J, W = weights(carry, verts, faces, k=k, smooth=smooth)
-    return np.asarray(ids)[J], W
+    return ids, carry
 
 

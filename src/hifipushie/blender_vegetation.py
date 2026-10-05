@@ -11,6 +11,7 @@ The npz: V, F, tan, radius, uv (wood); twig{i}_V/F/mat/col per mesh variant or c
 """
 
 import json
+import os
 import math
 import sys
 
@@ -116,17 +117,21 @@ def bark_material(name, bark, height):
     fac_base = None
     if bark.get("base_color") is not None:  # the old foot, breaking up with height, only on thick wood
         h0 = bark.get("base_height", 1.5)
-        zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", bigv, h0 * 1.2))
-        fac_base = _math(N, L, "MULTIPLY", ramp01(zz, h0 * 1.6, h0 * 0.6), ramp01(rad.outputs["Fac"], 0.03, 0.08))
+        zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", bigv, 0.5), h0 * 1.2))
+        fac_base = _math(N, L, "MULTIPLY", ramp01(zz, h0 * 1.5, h0 * 0.4), ramp01(rad.outputs["Fac"], 0.03, 0.08))
         col = mix(col, fac_base, lin(bark["base_color"]))
     if bark.get("upper_color") is not None:
         u0 = bark.get("upper_from", 0.5 * height)
         ub = bark.get("upper_blend", 0.2 * height)  # m the change takes (patchy: the noise moves it +- 0.15 x height)
         zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", bigv, 0.5), 0.3 * height))
         col = mix(col, ramp01(zz, u0, u0 + max(ub, 0.01)), lin(bark["upper_color"]))
-    fac_twig = ramp01(rad.outputs["Fac"], 0.02, 0.006)
+    tr_ = bark.get("twig_radius", [0.006, 0.02])  # m of radius: all twig colour under [0], none over [1]
+    fac_twig = ramp01(rad.outputs["Fac"], float(tr_[1]), float(tr_[0]))
     if bark.get("twig_color") is not None:
         col = mix(col, fac_twig, lin(bark["twig_color"]))
+    dead = N.new("ShaderNodeAttribute")  # dead wood: barkless, weathered silver-grey
+    dead.attribute_name = "dead"
+    col = mix(col, dead.outputs["Fac"], lin(bark.get("dead_color", [0.66, 0.63, 0.58])))
     maps = bark.get("maps")
     if maps:
         def tex_set(mp):
@@ -194,9 +199,39 @@ def bark_material(name, bark, height):
     return m
 
 
+def _hull_normal(N, L, leaf):
+    """The crown shaded as a volume (foliage artists' normal transfer): each leaf's normal bent toward the direction
+    out from the crown's middle by `round` (0.7). With their own normals, hanging cards catch the sun edge-on and a lit
+    crown rendered at 0.4 of a photo's brightness."""
+    w = float(leaf.get("round", 0.7))
+    if w <= 0 or leaf.get("crown") is None:
+        return None
+    geo = N.new("ShaderNodeNewGeometry")
+    out = N.new("ShaderNodeVectorMath")
+    out.operation = "SUBTRACT"
+    L.new(geo.outputs["Position"], out.inputs[0])
+    out.inputs[1].default_value = leaf["crown"]
+    nrm = N.new("ShaderNodeVectorMath")
+    nrm.operation = "NORMALIZE"
+    L.new(out.outputs[0], nrm.inputs[0])
+    mx = N.new("ShaderNodeMix")
+    mx.data_type = "VECTOR"
+    mx.inputs["Factor"].default_value = w
+    a_, b_ = [i for i in mx.inputs if i.name == "A" and i.type == "VECTOR"][0], [i for i in mx.inputs if i.name == "B" and i.type == "VECTOR"][0]
+    L.new(geo.outputs["Normal"], a_)
+    L.new(nrm.outputs[0], b_)
+    fin = N.new("ShaderNodeVectorMath")
+    fin.operation = "NORMALIZE"
+    L.new([o for o in mx.outputs if o.type == "VECTOR"][0], fin.inputs[0])
+    return fin.outputs[0]
+
+
 def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
     """Leaf shading: Principled + light coming through (Translucent), mixed by `through`."""
     bsdf = N["Principled BSDF"]
+    hull = _hull_normal(N, L, leaf)
+    if hull is not None and not bsdf.inputs["Normal"].is_linked:
+        L.new(hull, bsdf.inputs["Normal"])
     out = N["Material Output"]
     L.new(base, bsdf.inputs["Base Color"])
     if hasattr(rough, "links"):
@@ -206,7 +241,7 @@ def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
     tr = N.new("ShaderNodeBsdfTranslucent")
     tc = N.new("ShaderNodeVectorMath")
     tc.operation = "MULTIPLY"
-    tc.inputs[1].default_value = leaf.get("through", [1.6, 1.9, 0.6])
+    tc.inputs[1].default_value = leaf.get("through", [1.9, 1.9, 0.45])
     L.new(base, tc.inputs[0])
     L.new(tc.outputs[0], tr.inputs["Color"])
     mx = N.new("ShaderNodeMixShader")
@@ -233,6 +268,75 @@ def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
                 pass
     L.new(last, out.inputs["Surface"])
     m.use_backface_culling = False
+
+
+def _weather(m, snow=0.0, wet=0.0, crown=None):
+    """Snow lying on what faces up (wood by its own normal, foliage by the crown's outward direction: its upper side
+    whitens) and rain (darker, glossier), put between a finished material's colour / roughness and its Principled."""
+    if not snow and not wet:
+        return
+    N, L = m.node_tree.nodes, m.node_tree.links
+    bsdf = N["Principled BSDF"]
+
+    def src(name):
+        s_ = bsdf.inputs[name]
+        if s_.is_linked:
+            a = s_.links[0].from_socket
+            L.remove(s_.links[0])
+            return a
+        v = N.new("ShaderNodeRGB" if name == "Base Color" else "ShaderNodeValue")
+        v.outputs[0].default_value = s_.default_value
+        return v.outputs[0]
+
+    col, rgh = src("Base Color"), src("Roughness")
+    if wet:
+        d = N.new("ShaderNodeVectorMath")
+        d.operation = "SCALE"
+        d.inputs["Scale"].default_value = 1 - 0.35 * wet
+        L.new(col, d.inputs[0])
+        col = d.outputs[0]
+        # (leaves: a little gloss only. At 0.4 x roughness every card mirrored the sky: grey smears through the crown)
+        rgh = _math(N, L, "MULTIPLY", rgh, 1 - (0.25 if crown is not None else 0.6) * wet)
+    if snow:
+        geo = N.new("ShaderNodeNewGeometry")
+        if crown is not None:
+            o = N.new("ShaderNodeVectorMath")
+            o.operation = "SUBTRACT"
+            L.new(geo.outputs["Position"], o.inputs[0])
+            o.inputs[1].default_value = crown
+            nrm = N.new("ShaderNodeVectorMath")
+            nrm.operation = "NORMALIZE"
+            L.new(o.outputs[0], nrm.inputs[0])
+            # snow lies on every plate and spray that faces up, wherever it is in the crown (by the crown's direction
+            # alone only the top of the tree went white), more on the crown's upper side
+            tsp = N.new("ShaderNodeSeparateXYZ")
+            L.new(geo.outputs["True Normal"], tsp.inputs[0])
+            csp = N.new("ShaderNodeSeparateXYZ")
+            L.new(nrm.outputs[0], csp.inputs[0])
+            zz = _math(N, L, "ADD", _math(N, L, "MULTIPLY", _math(N, L, "ABSOLUTE", tsp.outputs["Z"]), 0.75),
+                       _math(N, L, "MULTIPLY", csp.outputs["Z"], 0.4))
+            cmb = N.new("ShaderNodeCombineXYZ")
+            L.new(zz, cmb.inputs["Z"])
+            vec = cmb.outputs[0]
+        else:
+            vec = geo.outputs["Normal"]
+        sp = N.new("ShaderNodeSeparateXYZ")
+        L.new(vec, sp.inputs[0])
+        nz = N.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = 6.0
+        up = _math(N, L, "ADD", sp.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", nz.outputs[0], 0.5), 0.5))
+        r = N.new("ShaderNodeMapRange")
+        r.inputs["From Min"].default_value, r.inputs["From Max"].default_value = 1.0 - 1.3 * snow, 1.25 - 1.3 * snow
+        L.new(up, r.inputs["Value"])
+        mx = N.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        L.new(r.outputs["Result"], mx.inputs["Factor"])
+        L.new(col, mx.inputs["A"])
+        mx.inputs["B"].default_value = (0.9, 0.92, 0.95, 1)
+        col = mx.outputs["Result"]
+        rgh = _math(N, L, "MAXIMUM", rgh, _math(N, L, "MULTIPLY", r.outputs["Result"], 0.6))
+    L.new(col, bsdf.inputs["Base Color"])
+    L.new(rgh, bsdf.inputs["Roughness"])
 
 
 def _tint(N, L):
@@ -275,7 +379,8 @@ def card_material(name, leaf, cards):
     # (off by default: on instanced cards the tangent frame turned leaves near black from some sides)
     nm.inputs["Strength"].default_value = leaf.get("card_normal", 0.0)
     L.new(n_.outputs["Color"], nm.inputs["Color"])
-    L.new(nm.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
+    if leaf.get("card_normal", 0.0) > 0:
+        L.new(nm.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
     _leaf_out(m, N, L, base.outputs[0], c.outputs["Alpha"], sepm.outputs[0], sepm.outputs[1], leaf)
     return m
 
@@ -357,7 +462,26 @@ def _world(sc, job):
         for k_, v_ in (("dust_density", 0.3), ("air_density", 1.0)):
             if hasattr(sky, k_):
                 setattr(sky, k_, v_)
-        L.new(sky.outputs["Color"], bg.inputs["Color"])
+        # the sky is what the camera sees; what LIGHTS the plant from it is far less blue (a clear sky's fill on shaded
+        # bark rendered blue-black, shaded leaves 30-50 deg colder in hue than photos): the sky's colour pulled 70% to grey
+        lp = N.new("ShaderNodeLightPath")
+        grey = N.new("ShaderNodeMix")
+        grey.data_type = "RGBA"
+        grey.inputs["Factor"].default_value = job.get("sky_fill_grey", 0.7)
+        L.new(sky.outputs["Color"], grey.inputs["A"])
+        bw = N.new("ShaderNodeRGBToBW")
+        L.new(sky.outputs["Color"], bw.inputs[0])
+        warm = N.new("ShaderNodeVectorMath")
+        warm.operation = "SCALE"
+        warm.inputs[0].default_value = (1.05, 1.0, 0.92)
+        L.new(bw.outputs[0], warm.inputs["Scale"])
+        L.new(warm.outputs[0], grey.inputs["B"])
+        pick = N.new("ShaderNodeMix")
+        pick.data_type = "RGBA"
+        L.new(lp.outputs["Is Camera Ray"], pick.inputs["Factor"])
+        L.new(grey.outputs["Result"], pick.inputs["A"])
+        L.new(sky.outputs["Color"], pick.inputs["B"])
+        L.new(pick.outputs["Result"], bg.inputs["Color"])
         bg.inputs[1].default_value = job.get("sky_strength", 0.07)
     except Exception:
         bg.inputs[0].default_value = (*job.get("sky", [0.5, 0.66, 0.9]), 1)
@@ -378,10 +502,13 @@ def add_plant(pj, tag, clay):
     has_tw = "tw_pos" in d and len(d["tw_pos"])
     bk = pj.get("bark") or {}
     bark = bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
+    _weather(bark, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
     twig_wood = _flat(f"twig_wood{tag}", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
     wood = _mesh(f"wood{tag}", V, d["F"], d["uv"] if "uv" in d else None)
     a = wood.data.attributes.new("tan", "FLOAT_VECTOR", "POINT")
     a.data.foreach_set("vector", (d["tan"] @ Rz.T).astype(np.float32).ravel())
+    a = wood.data.attributes.new("dead", "FLOAT", "POINT")
+    a.data.foreach_set("value", d["dead"].astype(np.float32) if "dead" in d else np.zeros(len(d["V"]), np.float32))
     a = wood.data.attributes.new("radius", "FLOAT", "POINT")
     a.data.foreach_set("value", d["radius"].astype(np.float32))
     wood.data.materials.append(bark)
@@ -391,7 +518,11 @@ def add_plant(pj, tag, clay):
     if has_tw:
         from mathutils import Euler, Matrix
         cards = pj.get("cards")
-        mat = card_material(f"cards{tag}", pj.get("leaf") or {}, cards) if cards else leaf_material(f"leaf{tag}", pj.get("leaf") or {})
+        lf_ = dict(pj.get("leaf") or {})
+        tp_ = place(d["tw_pos"])
+        lf_["crown"] = [float(tp_[:, 0].mean()), float(tp_[:, 1].mean()), float(np.percentile(tp_[:, 2], 30))]
+        mat = card_material(f"cards{tag}", lf_, cards) if cards else leaf_material(f"leaf{tag}", lf_)
+        _weather(mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)), lf_["crown"])
         nv = int(d["tw_var"].max()) + 1
         tw_pos = place(d["tw_pos"])
         pts_all.append(tw_pos)
@@ -422,6 +553,62 @@ def add_plant(pj, tag, clay):
     return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": np.vstack(pts_all)}
 
 
+def add_curves(job):
+    """The plant's guides and named limbs as Bezier curves a person can edit (collections "guides", "limbs";
+    hide_render). Each is stamped with the points the sync wrote (`hp_set`): pull compares against it. The names the
+    sync made are kept on the collection (`hp_made`), so a deleted curve is seen as deleted."""
+    sc = bpy.context.scene
+    for coll_name, colour in (("guides", (1.0, 0.45, 0.05, 1)), ("limbs", (0.2, 0.7, 1.0, 1))):
+        items = [c for c in job.get("curves") or [] if c["kind"] == coll_name]
+        coll = bpy.data.collections.get(coll_name)
+        if coll is None:
+            coll = bpy.data.collections.new(coll_name)
+            sc.collection.children.link(coll)
+        for o in list(coll.objects):
+            bpy.data.objects.remove(o, do_unlink=True)
+        for c in items:
+            cu = bpy.data.curves.new(c["name"], "CURVE")
+            cu.dimensions = "3D"
+            cu.bevel_depth = float(c.get("radius", 0.03))
+            cu.bevel_resolution = 1
+            sp = cu.splines.new("BEZIER")
+            sp.bezier_points.add(len(c["points"]) - 1)
+            for bp, p_ in zip(sp.bezier_points, c["points"]):
+                bp.co = p_
+                bp.handle_left_type = bp.handle_right_type = "AUTO"
+            ob = bpy.data.objects.new(c["name"], cu)
+            ob["hp_set"] = json.dumps(c["points"])
+            if c.get("key"):
+                ob["hp_key"] = c["key"]
+            ob.color = colour
+            ob.hide_render = True
+            ob.show_in_front = True
+            m = bpy.data.materials.get("hp_" + coll_name) or _flat("hp_" + coll_name, list(colour[:3]), 0.6)
+            cu.materials.append(m)
+            coll.objects.link(ob)
+        coll["hp_made"] = json.dumps([c["name"] for c in items])
+
+
+def read_curves():
+    """Every curve in "guides" / "limbs" as it stands now: world-space control points, the stamp, and what the sync
+    made (for deletions). Works in a live session too."""
+    out = {"file": bpy.data.filepath, "guides": [], "limbs": [], "made": {}}
+    for coll_name in ("guides", "limbs"):
+        coll = bpy.data.collections.get(coll_name)
+        if coll is None:
+            continue
+        out["made"][coll_name] = json.loads(coll.get("hp_made", "[]"))
+        for ob in coll.objects:
+            if ob.type != "CURVE" or not ob.data.splines:
+                continue
+            sp = ob.data.splines[0]
+            pts = sp.bezier_points if sp.type == "BEZIER" else sp.points
+            P = [list(ob.matrix_world @ Vector(p_.co[:3])) for p_ in pts]
+            out[coll_name].append({"name": ob.name, "points": [[round(x, 4) for x in q] for q in P],
+                                   "set": json.loads(ob["hp_set"]) if "hp_set" in ob else None, "key": ob.get("hp_key")})
+    return out
+
+
 def build(job):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
@@ -440,6 +627,9 @@ def build(job):
         from mathutils import Matrix
         ground.rotation_euler = Matrix.Rotation(math.radians(gj["slope"]), 4, axis).to_euler()
     ground_mat = ground_material("ground", job.get("ground") or {})
+    # the weather lies on the ground too (a snowy tree stood on a summer lawn)
+    _weather(ground_mat, max(float(pj.get("snow", 0.0)) for pj in job["plants"]),
+             max(float(pj.get("wet", 0.0)) for pj in job["plants"]))
     if gj.get("water") is not None:  # a water level (m, against the plant's foot): a lake shore, a ditch
         bpy.ops.mesh.primitive_circle_add(vertices=64, radius=max(60 * R, 400.0), fill_type="NGON", location=(0, 0, float(gj["water"])))
         water = bpy.context.object
@@ -475,7 +665,7 @@ def build(job):
     aim_sun(math.degrees(sa), math.degrees(se))
     # the ground's bounce: EEVEE has none, and shade lit by the sky alone turns every leaf blue
     fill = bpy.data.objects.new("bounce", bpy.data.lights.new("bounce", "SUN"))
-    fill.data.color = job.get("bounce_color", [0.75, 0.8, 0.45])
+    fill.data.color = job.get("bounce_color", [0.85, 0.8, 0.4])
     fill.data.use_shadow = False
     sc.collection.objects.link(fill)
     fill.rotation_euler = Vector((0, 0, -1)).to_track_quat("Z", "Y").to_euler()
@@ -521,7 +711,7 @@ def build(job):
         isclay = bool(v.get("clay"))
         if v.get("sun"):
             aim_sun(*v["sun"])
-        fill.data.energy = 0.0 if isclay else job.get("bounce", 0.7)
+        fill.data.energy = 0.0 if isclay else job.get("bounce", 1.1)
         for o in twig_obs:
             o.hide_render = not v.get("leaves", True)
         for l in list(w.node_tree.links):
@@ -538,7 +728,7 @@ def build(job):
         for p_ in plants:
             p_["wood"].data.materials[0] = clay if isclay else p_["bark"]
         sun.data.energy = 7.0 if isclay else job.get("sun_energy", 3.6)
-        sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "AgX")
+        sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "Khronos PBR Neutral")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)
         ground.hide_render = bool(v.get("no_ground"))
         for o in rulers:
@@ -547,9 +737,20 @@ def build(job):
         sc.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)
         print("@@rendered", v["out"])
+    if job.get("curves") is not None:
+        add_curves(job)
     if job.get("save"):
-        bpy.ops.wm.save_as_mainfile(filepath=job["save"])
+        for o in twig_obs:
+            o.hide_render = False
+        bpy.ops.wm.save_as_mainfile(filepath=job["save"], check_existing=False)
+        b1 = job["save"] + "1"
+        if os.path.exists(b1):
+            os.remove(b1)
 
 
 if __name__ == "__main__":
-    build(json.loads(open(sys.argv[sys.argv.index("--") + 1]).read()))
+    args = sys.argv[sys.argv.index("--") + 1:]
+    if args[0] == "pull":  # blender -b plant.blend --python this -- pull out.json
+        open(args[1], "w").write(json.dumps(read_curves()))
+    else:
+        build(json.loads(open(args[0]).read()))
