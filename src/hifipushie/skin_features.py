@@ -453,15 +453,16 @@ def _hair(p, J, layer, T, ctx) -> None:
         # one ellipsoid bigger than the skull (the head joint sits at brow height, the cranium ~1.5 interoculars
         # round it): where it leaves the skull is the hairline (~35 deg up the forehead at 0.5), the nape's edge and
         # the line over the ears; two side spots bring it down in front of and behind each ear.
-        cy = round((1.0 + 0.6 * (0.5 - hl)) * io, 5)
+        cy = round((0.8 + 0.6 * (0.5 - hl)) * io, 5)
         top = [{"at": "head", "offset": [0, cy, round(1.1 * io, 5)]}]
         sides = [{"at": "head", "offset": [round(sx * 1.1 * io, 5), round(0.3 * io, 5), round(-0.05 * io, 5)]} for sx in (1, -1)]
         area = [{"spot": {"at": top + sides, "radius": [[round(1.9 * io, 5), round(2.2 * io, 5), round(2.1 * io, 5)]] +
-                          [[round(0.5 * io, 5), round(0.75 * io, 5), round(0.9 * io, 5)]] * 2, "soft": 0.12}},
+                          [[round(0.5 * io, 5), round(0.75 * io, 5), round(0.9 * io, 5)]] * 2, "soft": 0.06}},
                 {"vertex": True, "mask": _zones(["ear"], 0.9), "blend": "subtract"},
                 {"breakup": {"amount": 0.12, "scale": 0.006, "sharpness": 0.5, "seed": seed + 105}}]
-        cast = [round(float(c), 4) for c in (np.array(T(grey=0.7)) * (0.5 + 0.25 * t["melanin"]) + 0.25 * np.array(col))]
-        layer("scalp_shadow", o.get("mask"), pre=True, color=cast, opacity=0.6 * min(a, 1.2), mask=area)
+        cast = [round(float(c), 4) for c in (0.45 * np.array(T(grey=0.7)) * (0.5 + 0.25 * t["melanin"]) + 0.55 * np.array(col))]  # cropped hair is mostly its own colour
+        # matt: cut hair scatters, it doesn't shine like the oiled skin of a bald head (left glossy it read as a grey cap)
+        layer("scalp_shadow", o.get("mask"), pre=True, color=cast, opacity=min(0.75 * a, 0.9), roughness=0.85, specular=0.12, mask=area)
         layer("scalp_stubble", o.get("mask"), color=col, opacity=0.9 * min(0.5 + 0.5 * a, 1), roughness=min(base_r + 0.15, 0.9), height=0.00008,
               mask=[{"tile": {"swatch": "stubble", "size": 0.009, "range": [round(0.4 - 0.32 * min(a, 1), 3), round(0.7 - 0.32 * min(a, 1), 3)]}},
                     {"vertex": True, "mask": area}])

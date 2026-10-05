@@ -118,6 +118,9 @@ class _Nodes:
                 n = self.node("ShaderNodeAttribute", attribute_type="GEOMETRY", attribute_name=name)
                 self.attrs[key] = n.outputs["Vector"]
             else:
+                if name not in self.packing:
+                    raise KeyError(f"measured input {name} isn't packed for this part (showing a pre-composited layer "
+                                   f"whose mask has per-vertex entries isn't supported: evaluate it with paint.layer_mask)")
                 pk, ch = self.packing[name]
                 if (pk, "sep") not in self.attrs:
                     sep = self.node("ShaderNodeSeparateXYZ")

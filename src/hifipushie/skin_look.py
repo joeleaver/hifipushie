@@ -52,6 +52,12 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
     J = _J(spec)
     for kind in ("bones", "blobs", "strokes"):
         s[kind] = {k: v for k, v in (s.get(kind) or {}).items() if v.get("part", "body") in keep}
+    for k, j in list((s.get("joints") or {}).items()):  # a joint seated on a dropped part (a button on the shirt)
+        if isinstance(j.get("on"), dict) and (j["on"].get("part") or "body") not in keep:
+            s["joints"].pop(k)
+    gone = lambda at: isinstance(at, str) and at not in s["joints"] and at.replace(".R", ".L") not in s["joints"]
+    for kind in ("bones", "blobs"):
+        s[kind] = {k: v for k, v in s[kind].items() if not (gone(v.get("at")) or gone(v.get("a")) or gone(v.get("b")))}
     for k in ("hair", "cloth", "kits", "story", "weather", "rig", "plan", "face_shapes"):
         if k == "kits":
             s[k] = {n: v for n, v in (s.get(k) or {}).items() if v.get("part", "body") in keep and v.get("type") not in ("neckline",)}
