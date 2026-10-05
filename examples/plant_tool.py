@@ -14,7 +14,7 @@ from pathlib import Path
 from hifipushie import server
 
 TOOLS = ["guide", "get_plant", "grow_plant", "edit_plant", "look_plant", "look_plants", "plant_reference", "export_plant",
-         "plant_history"]
+         "plant_history", "sync_plant"]
 
 if len(sys.argv) < 2 or sys.argv[1] == "help":
     for t in TOOLS:
