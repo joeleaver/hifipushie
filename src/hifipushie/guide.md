@@ -421,7 +421,9 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
 - **The head is rigid.** Skull, face, jaw, teeth, tongue, eyes (and, in an export with face shapes, every vertex a
   shape moves) are weighted 1.0 to Head; the falloff to the neck is on the throat under the jawline, and clavicles
   never reach the face. From the jaw landmarks on a GNM head, from the head's own primitives on a kit character.
-  `spec["rig"]["rigid_head"] = false | {"band": m, "under": m}`.
+  `spec["rig"]["rigid_head"] = false | {"band": m, "under": m}`. On a base body the falloff is ~5 cm high (`band`):
+  at 3 cm a Head-only turn of 33 deg sheared the throat into a shelf under the jaw. It still folds on a hard
+  Head-only turn or nod: animate a head turn as riggers and mocap do, shared between Neck and Head (about 40 / 60).
 - **Clothes follow the skin under them.** On a base body every part reads the body's weights at the nearest point
   of its surface, then the weights are evened over the garment's own mesh. A part that only reaches up beside the
   jaw (a collar, a scarf, a strap) is worn on the body: it keeps the neck's weights and does not turn with the
