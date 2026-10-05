@@ -83,7 +83,7 @@
   "twig": {
    "length": 0.38,
    "leaves": 260,
-   "per_m": 5,
+   "per_m": 9,
    "where": "shoots",
    "up": 0.25,
    "spread": 40,
@@ -107,7 +107,7 @@
    "cross": 2,
    "scale": 1.15
   },
-  "retention": 3
+  "retention": 6
  },
  "bark": {
   "kind": "plates",
