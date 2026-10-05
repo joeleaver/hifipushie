@@ -2471,6 +2471,22 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   layer formed (`_shadow` now fades below it; `habit.shadow_tail`, 0 for spruce: with the tail its skirt went bare).
   Blue-black bark = the sky's fill: the world lights plants with the sky 70% greyed, the camera sees it blue.
   `cluster_leaves`: under a quarter of the twigs drawn, a card shows a bough (spread per crown cell, 35% wood).
+- HANDOVER (2026-10-06, the agent's context was full; a fresh agent should take over from here). Branch `vegetation`
+  = main 79e4ebe + this note. How to work: `guide(topic="vegetation")` first; presets in
+  `src/hifipushie/vegetation_presets/`; a species sheet = `veg_look.reference_sheet(spec, {"image", "mask", "credit"},
+  out)` with masks from `workspace/veg_refs/masks.json` (oak_winter_b, birch_a, pine_b, spruce_a, willow_a); quick
+  silhouettes = `vegetation.silhouette`; fit = `vegetation.fit_habit(spec, reference_mask, {"habit.key": [lo, hi]})`
+  (~1-2 min); leaf HSV vs photo and card-normal histograms were scratch scripts (re-write: 30 lines each).
+  The coordinator's order: (1) weeping willow and Scots pine against the NEW whole-tree photos (veg_refs willow_f,
+  willow_e, pine_c, pine_e: trace a `polygon` mask for each into masks.json, they have none): willow = broad rounded
+  crown on a short stout trunk, arching scaffold, curtains from the crown's outside, bottoms uneven and off the
+  ground, NOT the preset's dome envelope over a column (remove `envelope` from weeping_willow.json once the habit
+  spreads by itself); pine = a few stout crooked limbs, foliage plates in clumps, orange trunk continuing into the
+  crown, thicker trunk (ring / trunk_diameter), plus a younger conical one; (2) pine card as crossed bottlebrush
+  tufts judged at 2 m against botanical/plate_pine.jpg; (3) white_willow re-render (preset changed after its last
+  sheet); (4) wet smear, snow on ground and limbs, wind measured by vertex displacement, the 8k pine set and the
+  three forest-kit trees re-run; (5) stage 3 small plants + palm, stage 5 styles, terrain integration. Report at each
+  mergeable point with an all-species sheet (vg_36_all_inleaf.png was made by cropping each sheet's lower row).
 - Open (read of vg_36, 2026-10-06): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
