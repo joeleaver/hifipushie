@@ -82,7 +82,7 @@ def side_dist(L: np.ndarray, Q: np.ndarray) -> tuple:
     return sd, u, si.astype(np.int64), fr
 
 
-def rows(pcs: dict, f: dict, h: float, sewn: np.ndarray | None = None) -> dict:
+def rows(pcs: dict, f: dict, h: float, sewn: np.ndarray | None = None, min_width: float = 0.0) -> dict:
     """A fold's rows in its piece's pattern coordinates: {"lines": [polyline, ...] (the line, then the rows a roll adds
     toward the flap), "sign": the flap's side of the line (+1 left of its direction), "turn": rad per row (+ = over
     onto the outside)}. sewn: sample points of the piece's sewn edges (they decide the flap: the side with less)."""
@@ -108,17 +108,28 @@ def rows(pcs: dict, f: dict, h: float, sewn: np.ndarray | None = None) -> dict:
             s = side_dist(L, G)[0]
             sign = 1.0 if (s > 0).sum() <= (s < 0).sum() else -1.0
     turn = math.radians(180.0 - float(f["angle"]))
-    k = 1
-    arc = float(f.get("radius", 0.0)) * abs(turn)
-    if f.get("kind") == "roll" and arc > 0:
-        k = int(np.clip(round(arc / max(0.4 * h, 0.003)) + 1, 1, 5))
+    # a roll: k hinges each turning turn / k, the rows between them `s` apart so the polygon is as wide as the arc's
+    # circle (2 x radius for a full turn); as many rows as stay max(0.2 h, 2.5 mm) apart (closer rows are slivers), so
+    # a tight roll on a coarse mesh is one crease
+    k, s = 1, 0.0
+    r = float(f.get("radius", 0.0))
+    if f.get("kind") == "roll" and r > 0:
+        for kk in range(5, 1, -1):
+            den = sum(math.sin(j * abs(turn) / kk) for j in range(1, kk))
+            sk = r * (1 - math.cos(abs(turn))) / max(den, 1e-9)
+            if sk >= max(0.2 * h, 0.0025):
+                k, s = kk, sk
+                break
+    if min_width > 0 and abs(turn) > math.pi / 2 and s * max(k - 1, 1) < min_width:
+        # a solver whose layers can't lie closer than its collision distance (Blender): a U two rows across
+        k, s = 2, min_width
     lines = [L]
     t = np.gradient(L, axis=0)
     nrm = np.c_[-t[:, 1], t[:, 0]]
     nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
     for j in range(1, k):
-        lines.append(pattern.fold_line(pcs, {"piece": f["piece"], "line": (L + sign * (j * arc / (k - 1)) * nrm).tolist(),
-                                             "reach": 2 * arc + 0.015}))
+        lines.append(pattern.fold_line(pcs, {"piece": f["piece"], "line": (L + sign * j * s * nrm).tolist(),
+                                             "reach": 2 * k * s + 0.015}))
     return {"lines": lines, "sign": sign, "turn": turn / k}
 
 
@@ -258,7 +269,7 @@ def samples(X: np.ndarray, F: np.ndarray, face: float = 1.0) -> tuple[np.ndarray
 
 
 def apply(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, obstacles: list | None = None, lay: float = 0.002,
-          t_max: float | None = None, t_min: float = 0.0, steps: int = 24, own_base: bool = True) -> tuple:
+          t_max: float | None = None, t_min: float = 0.0, steps: int = 40, own_base: bool = True) -> tuple:
     """The fold's flap turned as far as the fold asks, or as far as it stays clear of what is under it. obstacles:
     [(points, outward normals)] the flap stays outside of (the body, other pieces) by `lay`; the piece's own base side
     is one too (the flap lies on it: outside for a fold over, inside for a fold under). The turn is chosen per station
@@ -270,28 +281,34 @@ def apply(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, obstacles: list |
     t_hi = min(1.0, PLACE_TURN / max(full, 1e-9)) if t_max is None else t_max
     flap = g["rows"][0]["v"]
     over = 1.0 if fd["turn"] >= 0 else -1.0
-    obs = [(np.asarray(p), np.asarray(n), 1.0) for p, n in (obstacles or []) if len(p)]
+    # (points, normals, side, reach): a flap vertex is against an obstacle only where it stands over it (within
+    # `reach` of a sample across the surface: past a band's edge its plane says nothing)
+    hm = float(np.median(np.linalg.norm(X[g["tris"][:, 0]] - X[g["tris"][:, 1]], axis=1)))
+    obs = [(np.asarray(o[0]), np.asarray(o[1]), 1.0, float(o[2]) if len(o) > 2 else 0.4 * hm) for o in (obstacles or [])
+           if len(o[0])]
     if own_base and len(g["base_tris"]):
         p, n = samples(X, g["base_tris"], face)
-        obs.append((p, n, over))
+        obs.append((p, n, over, 0.4 * hm))
     if not obs or not len(flap):
         Xo = turn_flap(X, M, fd, t_hi, face)
         return Xo, {"t": [t_hi], "turn_deg": [round(math.degrees(full * t_hi), 1)] * 3}
-    trees = [(cKDTree(p), p, n, s) for p, n, s in obs]
-    need = np.minimum(lay, 0.35 * g["d0"][flap])
+    trees = [(cKDTree(p), p, n, s, rc) for p, n, s, rc in obs]
+    # (a single crease is a wedge: the flap may come as near its base as a 4.5 deg wedge allows, `lay` off it at most)
+    need = np.minimum(lay, 0.08 * g["d0"][flap])
     u = g["rows"][0]["u"]
     tot = g["rows"][0]["len"]
     nb = max(1, int(round(tot / max(1e-6, np.median(np.linalg.norm(np.diff(M["uv"][g["rows"][0]["row"]], axis=0), axis=1))))))
     b = np.minimum((u / max(tot, 1e-9) * nb).astype(int), nb - 1)
-    cand = np.linspace(t_hi, t_min, steps)
+    cand = t_hi - (t_hi - t_min) * np.linspace(0, 1, steps) ** 2  # (finer near the full turn)
     best = np.full(nb, np.nan)
     for t in cand:
         Xt = turn_flap(X, M, fd, t, face)[flap]
         ok = np.ones(len(flap), bool)
-        for tree, p, n, s in trees:
+        for tree, p, n, s, rc in trees:
             d, i = tree.query(Xt)
-            sd = ((Xt - p[i]) * n[i]).sum(1) * s
-            ok &= (d > 0.03) | (sd >= need)
+            sd = ((Xt - p[i]) * n[i]).sum(1)
+            tang = np.sqrt(np.maximum(d * d - sd * sd, 0.0))
+            ok &= (tang > rc) | (sd * s >= need) | (d > 0.03)
         bad = np.bincount(b[~ok], minlength=nb) > 0
         new = np.isnan(best) & ~bad
         best[new] = t

@@ -12,7 +12,7 @@
    "cuff.L": {"part": "simon.cuff", "wrap": {"to": "arm.L", "front": 1, "follow": ["sleeve.L", "cuffMid", "bottomLeft"]}},
    "cuff.R": {"part": "simon.cuff", "wrap": {"to": "arm.R", "front": 1, "follow": ["sleeve.R", "cuffMid", "bottomLeft"]}},
    "stand": {"part": "simon.collarStand", "wrap": {"to": "neck", "edge": "bottomMid"}},
-   "collar": {"part": "simon.collar", "wrap": {"to": "neck", "edge": "bottomMid", "above": 0.03, "fold": [0.006, 0.01]}}
+   "collar": {"part": "simon.collar", "wrap": {"to": "neck", "edge": "bottomMid", "above": 0.03}}
   },
   "alter": [
    {"op": "turn", "piece": "front.R", "line": "placketOuterFold", "keep": "neck"},
@@ -39,6 +39,10 @@
    ["front.R:button5", "front.L:buttonhole5"], ["front.R:button6", "front.L:buttonhole6"],
    ["front.R:button7", "front.L:buttonhole7"],
    ["cuff.L:button1", "cuff.L:buttonhole1"], ["cuff.R:button1", "cuff.R:buttonhole1"]
+  ],
+  "options": {"collarGap": 0, "collarWidth": 1.45, "collarEase": 0.03},
+  "folds": [
+   {"name": "collar roll", "piece": "collar", "line": {"edge": "leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 0, "kind": "roll", "radius": 0.0015, "strength": 0.6}
   ],
   "interfaced": ["stand", "collar", "cuff.L", "cuff.R", {"piece": "front.L", "near": "frontCenter", "within": 0.02}, {"piece": "front.R", "near": "frontCenter", "within": 0.016}],
   "fit_alterations": {

@@ -43,7 +43,7 @@ HANGER_SKIN = 0.25  # the hanger's collision skin in triangle sizes (5 mm at 2 c
 HOOK_GUARD = 0.4  # the hook's rod as the sim sees it: this many coarse triangle sizes thick (8 mm at 2 cm)
 SIM_MIN_FREE_GB = 20.0  # a cloth sim isn't started with less free disk (run_zozo.py also stops a run under 10 GB)
 PREV_APART = 6  # frames between the sim's last positions and Vprev (the "still moving" measure)
-VERSION = 1  # bump with any change to the mesh, placement or sim job: results are cached by it
+VERSION = 2  # bump with any change to the mesh, placement or sim job: results are cached by it
 
 # Blender cloth settings per fabric (mass per vertex at ~2 cm triangles, spring stiffnesses in Blender's units),
 # the stretch past which the fabric is strained (fit check), interfaced pieces' bending multiplier (`stiff`).
@@ -123,7 +123,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
                              f"{', '.join(k for k in designs() if not k.startswith('_'))})")
         m = dict(meas_mm)
         m.update(pat.get("measurements") or {})
-        opts = dict(pat.get("options") or {})
+        opts = dict(tbl.get("options") or {})  # the table's own draft defaults (a collar wide enough to cover its stand)
+        opts.update(pat.get("options") or {})
         words = tbl.get("words", {})
         for k, v in (pat.get("ease") or {}).items():
             if k not in words.get("ease", {}):
@@ -191,7 +192,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
     stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
     # fold lines (cloth_guide "Fold lines"): the design table's own, then the garment's
-    folds = [f for f in list(folds_tbl) + list(g.get("folds") or []) if f.get("piece") in keep]
+    folds = [dict(f) for f in folds_tbl]
+    for f in g.get("folds") or []:  # the garment's folds; one named like a table's replaces it ("off": drops it)
+        folds = [o for o in folds if not (f.get("name") and o.get("name") == f["name"])] + [dict(f)]
+    folds = [f for f in folds if f.get("piece") in keep and not f.get("off")]
     return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
             "draft": draft_info, "folds": folds}
@@ -258,7 +262,7 @@ def _fold_line(B: dict, nm: str, h: float) -> np.ndarray | None:
     return None
 
 
-def mesh(B: dict, h: float = 0.02) -> dict:
+def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     """One flat mesh of all pieces: {"uv" (n, 2) pattern coords, "piece" (n,) index, "names", "F" (m, 3),
     "sew" (k, 2) vertex pairs, "sew_seam" (k,) seam index, "stitch" (s, 2), "marks" {piece:mark: vertex},
     "points" {piece:point: vertex} (named outline points), "border" (n,) bool}."""
@@ -316,6 +320,10 @@ def mesh(B: dict, h: float = 0.02) -> dict:
                     sew_keys.append((si, ka, kb))
     uv, piece_of, F, border = [], [], [], []
     key_vid, points, marks = {}, {}, {}
+    from . import folds as foldmod
+    fold_recs = []
+    fold_entries = foldmod.entries(B)
+    folded = {f["piece"] for f in fold_entries}
     for pi, nm in enumerate(names):
         h = ph[nm]
         pc = pcs[nm]
@@ -381,12 +389,42 @@ def mesh(B: dict, h: float = 0.02) -> dict:
             Q = Q[_seg_dist(Q, ring) > 0.6 * h]
         # a piece placed folded (a turned-down collar) gets a row of vertices on its fold line, so edges run along
         # the crease: 1 cm edges across a 6 mm fold were shortened up to 52% in the rest shape and the band crimped
-        fl = _fold_line(B, nm, h)
+        fl = _fold_line(B, nm, h) if nm not in folded else None
         if fl is not None and len(fl):
             fl = fl[_inside(ring, fl) & (_seg_dist(fl, ring) > 0.45 * h)]
             if len(fl) and len(Q):
                 Q = Q[cKDTree(fl).query(Q)[0] > 0.5 * h]
             Q = np.r_[Q, fl] if len(fl) else Q
+        # fold lines (folds.py): a row of vertices on each (rows over the arc for a roll), their ends on the outline
+        FL, row_ids = np.zeros((0, 2)), []
+        for f in fold_entries:
+            if f["piece"] != nm:
+                continue
+            sewn = np.concatenate(list(fixed[nm].values())) if fixed[nm] else None
+            fr = foldmod.rows(pcs, f, h, sewn, fold_width)
+            for d_end in (fr["lines"][0][0], fr["lines"][0][-1]):
+                if _seg_dist(d_end[None], Pp)[0] > 1e-3:
+                    raise ValueError(f"fold {f['name']}: its line must run from edge to edge of {nm} (an end is "
+                                     f"{_seg_dist(d_end[None], Pp)[0] * 1000:.0f} mm inside; give \"reach\" or another line)")
+            rec_rows = []
+            for S_ in foldmod.row_samples(fr["lines"], ring, h):
+                ids = []
+                for j, q in enumerate(S_):
+                    if j in (0, len(S_) - 1):  # an end: the outline's nearest vertex moves onto it
+                        i = int(np.argmin(np.linalg.norm(ring - q, axis=1)))
+                        if np.linalg.norm(ring[i] - q) < 0.6 * h:
+                            ring[i] = q
+                            ids.append(("ring", i))
+                            continue
+                    ids.append(("fold", len(FL)))
+                    FL = np.r_[FL, q[None]]
+                rec_rows.append(ids)
+            row_ids.append((f, fr, rec_rows))
+            if len(Q):
+                for Lr in fr["lines"]:
+                    Q = Q[_seg_dist(Q, Lr, closed=False) > 0.45 * h]
+        nQ0 = len(Q)
+        Q = np.r_[Q, FL] if len(FL) else Q
         mk = {k: np.asarray(v, float) for k, v in pc["marks"].items()}
         for k, v in list(mk.items()):  # a mark just off the outline (a button on a spread slash) comes back in
             if len(v) == 2 and not _inside(ring, v[None])[0] and _seg_dist(v[None], ring)[0] < 2 * h:
@@ -411,10 +449,11 @@ def mesh(B: dict, h: float = 0.02) -> dict:
             else:
                 own[k] = v
         mk = own
-        if mk and len(Q):
+        if mk and nQ0:
             M = np.array(list(mk.values()))
-            d = cKDTree(M).query(Q)[0]
-            Q = Q[d > 0.5 * h]
+            d = cKDTree(M).query(Q[:nQ0])[0]
+            Q = np.r_[Q[:nQ0][d > 0.5 * h], Q[nQ0:]]
+            nQ0 = int((d > 0.5 * h).sum())
         Mk = np.array(list(mk.values())) if mk else np.zeros((0, 2))
         X = np.r_[ring, Q, Mk]
         tri = Delaunay(X).simplices
@@ -429,6 +468,13 @@ def mesh(B: dict, h: float = 0.02) -> dict:
         kept[tri[~sliver].ravel()] = True
         sliver &= ~np.any(~kept[tri], axis=1)  # never orphan an outline vertex (a named point sits on it)
         tri = tri[~sliver]
+        for f, fr, rec_rows in row_ids:  # the rows' vertices joined by edges (the crease runs along mesh edges)
+            loc = [[i if kind == "ring" else len(ring) + nQ0 + i for kind, i in ids] for ids in rec_rows]
+            pairs = [(a_, b_) for ids in loc for a_, b_ in zip(ids[:-1], ids[1:]) if a_ != b_]
+            tri, miss = foldmod.force_edges(X, tri, pairs)
+            fold_recs.append({"piece": nm, "name": f["name"], "kind": f["kind"], "strength": f["strength"],
+                              "angle": f["angle"], "turn": fr["turn"], "sign": fr["sign"], "missing_edges": miss,
+                              "rows": [[len(uv) + i for i in ids] for ids in loc]})
         # orient counter-clockwise in the pattern (normals out of the pattern's face)
         a, b, c = X[tri[:, 0]], X[tri[:, 1]], X[tri[:, 2]]
         cw = ((b - a)[:, 0] * (c - a)[:, 1] - (b - a)[:, 1] * (c - a)[:, 0]) < 0
@@ -474,7 +520,9 @@ def mesh(B: dict, h: float = 0.02) -> dict:
         cand = np.where((pid_n == pi) & border_n)[0]
         q = pcs[nm]["P"][pcs[nm]["names"][pt]]
         pts_n[k] = int(cand[np.argmin(np.linalg.norm(uv_n[cand] - q, axis=1))])
-    return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F],
+    for fd in fold_recs:
+        fd["rows"] = [np.array([remap[i] for i in dict.fromkeys(row) if used[i]], np.int64) for row in fd["rows"]]
+    return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
             "marks": {k: int(remap[v]) for k, v in marks.items() if used[v]},
             "points": pts_n, "border": border_n}
@@ -872,13 +920,16 @@ def _sewn_arc(B: dict, M: dict, nm: str, R: float):
     return c, rho
 
 
-def _neck_frame(body: "Body", nb: np.ndarray, d: np.ndarray, R: float) -> tuple[float, np.ndarray]:
+def _neck_frame(body: "Body", nb: np.ndarray, d: np.ndarray, R: float, low: bool = False) -> tuple[float, np.ndarray]:
     """(height up the neck axis where a band of radius R can sit, the axis' origin moved onto the neck's centre).
     The neck joint sits ~22 mm behind the neck's centre, and from 40 mm up the sections cut the jaw."""
     rows = body.neck_rows()
     origin = nb + np.mean([r["off"] for r in rows if r["neck"]], axis=0)
     base = None
-    for r in rows:
+    if low:  # a band laid round the neck's own shape (place(): the hull spiral) sits at the neck's base: from where a
+        # circle of its girth fits, a 3 cm stand on a short neck reached the jaw
+        base = min(r["h"] for r in rows if r["neck"])
+    for r in rows if base is None else ():
         if r["neck"] and r["girth"] <= 2 * np.pi * (R - CLEAR / 2):
             base = r["h"]
             break
@@ -906,7 +957,7 @@ def _closure(M: dict, nm: str) -> tuple[float, float]:
 
 
 def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo: float, lay: float, cx: float,
-                 sgn: float, turn: float, frame_t) -> tuple | None:
+                 sgn: float, turn: float, frame_t, m_min: float | None = None) -> tuple | None:
     """A piece closed on itself round an arm (a cuff) laid on a spiral that follows the arm's sections: the radial
     function of their convex hull (over the piece's length, in the cuff's frame) + m(phi), m growing by `lay` a turn,
     m's start solved so the stitched points (x_lo and x_lo + closed along the pattern) land exactly one turn apart, arc
@@ -946,10 +997,15 @@ def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo
     lo, hi = -0.5 * float(rH.min()), 0.2
     if turn_err(lo) < 0:  # the cuff can't close even right on the arm: as small as it goes, pushed out later
         hi = lo
-    for _ in range(50):
+    for _ in range(50 if closed else 0):
         mid = 0.5 * (lo + hi)
         lo, hi = (mid, hi) if turn_err(mid) > 0 else (lo, mid)
-    s, r = spiral(0.5 * (lo + hi))
+    m0 = 0.5 * (lo + hi) if closed else float(m_min or 0.0)
+    if m_min is not None:  # never nearer the body than this (a band too short to close there stays open)
+        m0 = max(m0, float(m_min))
+    s, r = spiral(m0)
+    if x is None:  # the spiral itself: arc position from cx -> (angle, radius)
+        return lambda xs: (np.interp(xs, s, phi), np.interp(np.interp(xs, s, phi), phi, r))
     th = np.interp(x - cx, s, phi)
     return th, np.interp(th, phi, r)
 
@@ -1014,6 +1070,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     placed = {}
     neck_base = None  # height up the neck axis where the neck pieces' sewn edges start (shared: a collar on a stand)
     neck_tilt = None  # the neck pieces' axis (shared; wrap "tilt")
+    neck_R, neck_lay, neck_sp = None, 0.0, None  # a buttoned stand's radius, its spiral's growth a turn, the spiral
+    neck_R0 = None  # the first neck piece's radius
     placed_neck = []
     for k, nm in enumerate(names):
         w = pcs[nm]["wrap"]
@@ -1217,10 +1275,19 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # neck is narrow enough for it, as the bodice's neckline (the same length) settles there too. Clearing
             # the neck from its joint up put a 400 mm stand at r 103 mm (the trapezius' flare), 62% of the circle,
             # and sewing re-bent the interfaced band to r 60: ruffles.
+            # a band buttoned to itself (a stand: its button and buttonhole stitched) closes at that girth, its ends
+            # overlapping a layer apart on a slight spiral; the pieces sewn onto it (a collar) share its radius and
+            # spiral, so a fall turned down over a stand lies on it (each at its own length / 2 pi, a stand that only
+            # met at its ends stood 4 mm outside its collar: the folded fall landed inside it)
+            closed_n = _closed_girth(M, nm) if neck_R is None else 0.0
+            first_neck = neck_R0 is None
             R = width / (2 * np.pi)
+            if first_neck:
+                hm_ = float(np.median(np.linalg.norm(uv[M["F"][:, 0]] - uv[M["F"][:, 1]], axis=1)))
+                neck_lay = (0.0025 + hm_ ** 2 / (4 * R)) if smooth else LAYER
             above = float(w.get("above", 0.0))
             if neck_base is None:
-                neck_base, nb = _neck_frame(body, nb, d, R)
+                neck_base, nb = _neck_frame(body, nb, d, width / (2 * np.pi), low=not w.get("circle"))
             else:
                 nb = neck_base[1]
                 neck_base = neck_base[0]
@@ -1238,8 +1305,13 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             for hgt in np.linspace(neck_base + above + (P[:, 1].min() - e[1]),
                                    neck_base + above + (P[:, 1].max() - e[1]), 6):
                 rc = body.neck_radius(hgt)
-                if rc is not None:
+                if rc is not None and neck_R is None:
                     R = max(R, rc + CLEAR / 2)
+            if first_neck:
+                neck_R0 = R
+            else:  # a piece on a neck piece already placed (a collar on its stand) takes that piece's radius: its
+                # fall turns down onto it (each cleared the neck over its own heights: the collar stood 5 mm inside)
+                R = neck_R0
             # wrap "tilt" (deg, + tips the front down; shared by the neck pieces): the band's axis turned from the
             # neck's about the side axis. Off by default: on the thin body (a 3 cm neck under the jaw) no tilt from
             # -15 to 25 deg cleared a 3 cm stand + collar better than square (the collar pushed 19-34 mm: the open
@@ -1282,12 +1354,38 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 side = -side
             # "fold": [rise, layer] a turned-down collar: up `rise` from its sewn edge, then folded down outside
             # itself `layer` further out (placed folded, so the rest shape holds the fold; arc length kept per row)
-            fold = w.get("fold")
+            fold = w.get("fold") if not any(fd["piece"] == nm for fd in M.get("folds") or []) else None
             # a curved band (a stand, a collar: its sewn edge an arc in the flat) lies isometrically on a cone, not a
             # cylinder: the sewn edge's circle (centre c, radius rho) rolls round the base at R, the band narrowing
             # toward the apex. On a cylinder its ends started high and sewing bent the band in its plane: ruffles.
             cone = _sewn_arc(B, M, nm, R)
             out = np.zeros((len(U), 3))
+            if first_neck and not w.get("circle"):
+                # round the neck's own sections (their hull over the band's height) a clearance off the skin, not a
+                # circle clear of its widest radius (a neck is deeper than wide: that circle was 20-30% longer than
+                # the band, which stood open and far off the neck's sides). A band buttoned to itself (its stitched
+                # points) closes exactly where it is long enough to; a shorter one stays open at the front
+                hts = neck_base + above + (P[:, 1] - e[1])
+                neck_sp = _cuff_spiral(body, np.array([hts.min(), hts.max()]), None, closed_n,
+                                       (_closure(M, nm)[1] - e[0]) if closed_n else 0.0, neck_lay, 0.0, 1.0, 0.0,
+                                       lambda ti: (nb + d * ti, back, side, d),
+                                       m_min=(SMOOTH_CLEAR if smooth else CLEAR) + 0.0005)
+                if neck_sp is not None:  # the spiral's mean radius stands for R in the cone's terms
+                    a_, r_ = neck_sp(np.linspace(-0.15, 0.15, 61))
+                    R = neck_R0 = float(np.mean(r_))
+                    cone = _sewn_arc(B, M, nm, R)
+            sp_ = None
+            if neck_sp is not None:  # every vertex's angle and radius on the shared spiral, at its arc position
+                pre = []
+                for x, y in U:
+                    if cone is not None:
+                        c, rho = cone
+                        up = 1.0 if c[1] > e[1] else -1.0
+                        phi = math.atan2(x - c[0], up * (c[1] - y)) - math.atan2(e[0] - c[0], up * (c[1] - e[1]))
+                        pre.append(phi * rho)
+                    else:
+                        pre.append(x - e[0])
+                sp_ = neck_sp(np.asarray(pre))
             for i, (x, y) in enumerate(U):
                 if cone is not None:  # centre above the band: apex above, narrowing up; below: flaring up
                     c, rho = cone
@@ -1302,6 +1400,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                     ang = phi * rho / R
                 else:
                     dy, rad, ang = y - e[1], R, (x - e[0]) / R
+                if sp_ is not None:
+                    ang, rad = float(sp_[0][i]), float(sp_[1][i]) + (rad - R)
                 r, hgt = rad, above + dy
                 if fold and dy > fold[0]:  # the fall turned down outside the stand round a U one layer across
                     sf, rho_f = dy - fold[0], fold[1] / 2
@@ -1333,7 +1433,11 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     if shifts and _blouse is None:
         return place(B, M, body, gap, _blouse=shifts, smooth=smooth, _out=_out, _down=_down)
     # the made pieces' (cuff, collar) shape before the push: their rest (the push only clears the start)
-    B["start_unpushed"] = X.copy()
+    B["start_unpushed"] = _place_folds(B, M, body, X, smooth)
+    fl_ = np.zeros(len(X), bool)  # the folds' flaps: turned at the end, about rows already pushed clear
+    for fd in M.get("folds") or []:
+        from . import folds as foldmod
+        fl_[foldmod._geom(M, fd)["rows"][0]["v"]] = True
     Xp = body.push_out(X, gaps)
     if smooth:  # every face of a band clear of the body (centres and edge midpoints): its vertices go further out
         F = M["F"]
@@ -1369,7 +1473,11 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 big = np.linalg.norm(D[j], axis=1) > np.linalg.norm(D[outer], axis=1)
                 D[outer[big]] = D[j[big]]
                 Xp[sel] = X[sel] + D
-    mv = np.linalg.norm(Xp - X, axis=1)
+    if fl_.any():
+        # fold lines: the flaps are turned about their rows after the rest of the piece is pushed clear of the body
+        # (pushed after, a stand moved out through the fall lying on it)
+        Xp = _place_folds(B, M, body, np.where(fl_[:, None], X, Xp), smooth)
+    mv = np.where(fl_, 0.0, np.linalg.norm(Xp - X, axis=1))
     # what pushing the start out of the body moved: it becomes stretch in the rest shape (rest = placed)
     B["push"] = {nm: round(float(mv[pid == k].max() * 1000), 1) for k, nm in enumerate(names) if mv[pid == k].max() > 0.002}
     if smooth and (_out or {}).get("_n", 0) < 3:
@@ -1401,6 +1509,58 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             return place(B, M, body, gap, _blouse=None, smooth=True, _out=_out, _down=down)
         B["start_crossings"] = sorted(_piece_crossings(Xp, M))
     return Xp
+
+
+def piece_faces(M: dict, X: np.ndarray, body: "Body", pcs: dict) -> dict:
+    """{piece: +1 | -1}: whether a piece's pattern face (its triangles' normals, counter-clockwise in the pattern) is
+    placed away from the body (+1) or toward it. Pieces laid flat: +1."""
+    out = {}
+    F = M["F"]
+    for k, nm in enumerate(M["names"]):
+        if pcs[nm]["wrap"].get("to", "torso") == "flat" or not len(body.V):
+            out[nm] = 1.0
+            continue
+        Fk = F[M["piece"][F[:, 0]] == k]
+        n = np.cross(X[Fk[:, 1]] - X[Fk[:, 0]], X[Fk[:, 2]] - X[Fk[:, 0]])
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        c = X[Fk].mean(1)
+        out[nm] = 1.0 if float(np.mean(body.clearance(c + 0.004 * n) - body.clearance(c - 0.004 * n))) >= 0 else -1.0
+    return out
+
+
+FOLD_WIDTH_FITTED = 0.008  # a fold's U in a "fitted" placement (Blender: its cloth's collision distances apart)
+FOLD_LAY = 0.0015  # how far a placed flap starts off what it lies on (a contact solver's gap, with room for chords)
+
+
+def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) -> np.ndarray:
+    """The garment's fold lines made in the placement (folds.apply): each piece was laid on its wrap unfolded; its
+    flaps are turned about their rows as far as the fold asks or as they clear what they lie on (the piece's own base
+    side, the pieces placed before it on the same part of the body, the body)."""
+    fds = M.get("folds") or []
+    if not fds:
+        return X
+    from . import folds as foldmod
+    pcs, names, pid, F = B["pieces"], M["names"], M["piece"], M["F"]
+    faces = piece_faces(M, X, body, pcs)
+    B["faces"] = faces
+    lay = FOLD_LAY if smooth else LAYER
+    clear = SMOOTH_CLEAR if smooth else CLEAR
+    info = {}
+    bn, _ = body.normals() if len(body.V) else (np.zeros((0, 3)), None)
+    for fd in fds:
+        nm = fd["piece"]
+        k = names.index(nm)
+        to = pcs[nm]["wrap"].get("to", "torso")
+        obs = []
+        if len(body.V):
+            obs.append((body.V + bn * (clear - lay), bn, 0.008))
+        if fd["turn"] > 0:  # a fold over: it lies on the pieces under it too (a collar's fall on its stand)
+            for j, o in enumerate(names[:k]):
+                if pcs[o]["wrap"].get("to", "torso") == to:
+                    obs.append(foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o]))
+        X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay)
+    B["fold_info"] = info
+    return X
 
 
 def _piece_crossings(X: np.ndarray, M: dict) -> set:
@@ -1704,8 +1864,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     if quality == "draft":
         h = max(h, hc)
     hs = hc if refine else h
-    Ms = mesh(Bp, hs)
     smooth = placement_of(g) == "smooth"
+    # fold lines: a contact solver's layers lie nearly touching (one crease); Blender's cloth keeps its collision
+    # distance between layers, so a fold there is a U that wide (as the old collar U was)
+    fw_ = 0.0 if smooth else FOLD_WIDTH_FITTED
+    Ms = mesh(Bp, hs, fw_)
     if smooth and backend == "blender":
         raise ClothError('placement "smooth" is for solvers resting on the flat pattern (backend "zozo"); '
                          "Blender rests on the placement")
@@ -1715,7 +1878,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     push = dict(Bp.get("push") or {})
     if refine:
-        M = mesh(Bp, h)
+        M = mesh(Bp, h, fw_)
         # the fine mesh's rest shape is the coarse one's placement carried onto it (the same surface, sampled finer):
         # placed again at 1 cm, its cuff spiral and pushed-off rows differed from the coarse rest the sim had settled,
         # and easing between the two crumpled one interfaced cuff
@@ -1750,10 +1913,19 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # smooth: the rest the solver gets (flat pattern + the made pieces' unpushed placement) is an input too
     made_s = _made_rest(Bp, Ms, Xs) if smooth else None
     rest_s = rest_shape(Ms, Xs, interfacing(Bp, Ms), True, made_s) if smooth else None
+    # fold lines: where the cloth rests on the flat pattern, the hinges along a fold rest at its angle (the flat
+    # pattern folded: folds.bend_reference) and bend harder (fold weights); made pieces and Blender's cloth rest on the
+    # placement, which holds the fold
+    from . import folds as foldmod
+    fold_s = {}
+    if Ms.get("folds"):
+        fold_s["fold"] = foldmod.weights(Ms)
+        if smooth:
+            fold_s["bend_rest"] = foldmod.bend_reference(Ms, np.c_[Ms["uv"], np.zeros(len(Ms["uv"]))], Bp.get("faces"))
     inputs = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
         Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
         *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values(),
-        *((rest_s,) if smooth else ())))).hexdigest()
+        *((rest_s,) if smooth else ()), *fold_s.values()))).hexdigest()
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
     gs.pop("backend", None)
     keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab]
@@ -1814,6 +1986,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             cfg["pin_spread"] = state["hang"].get("spread", 0.3)
         arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
                       piece=Ms["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64), **harr, **lower,
+                      **fold_s,
                       **({"bodyPoses": np.stack([body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)]
                                                 + [body.V]), "bodyV0": body_p.V, "rest": rest_s} if smooth else {}))
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
