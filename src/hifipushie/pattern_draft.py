@@ -98,7 +98,10 @@ def _point(D: dict, pc: dict, ps, name: str | None = None) -> int:
     seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
     cum = np.r_[0, np.cumsum(seg)]
     if "y" in ps:
-        y = float(ps["y"])
+        # (a level by name: "waist", "hips", "chest": the block's own line)
+        if isinstance(ps["y"], str) and f"{ps['y']}_y" not in D["meta"]:
+            raise DraftError(f"{pc['name']}: no level {ps['y']!r} in this block (a y in m, or waist / hips / chest)")
+        y = float(D["meta"][f"{ps['y']}_y"]) if isinstance(ps["y"], str) else float(ps["y"])
         hit = [k for k in range(len(L) - 1) if (L[k, 1] - y) * (L[k + 1, 1] - y) <= 0 and L[k, 1] != L[k + 1, 1]]
         if not hit:
             raise DraftError(f"{pc['name']}: edge {ps['edge']} doesn't cross y = {y}")

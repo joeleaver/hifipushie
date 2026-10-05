@@ -1,18 +1,18 @@
 {"design": {
   "kind": "dress", "block": "bodice", "fit": "regular", "fabric": "linen",
-  "block_options": {"fitted": true, "darts": false, "hips_ease": 0.18, "length": "hips", "length_bonus": 0.12},
+  "block_options": {"fitted": true, "darts": false, "chest_ease": 0.10, "hips_ease": 0.185, "length": "hips", "length_bonus": 0.12},
   "ops": [
     {"op": "neckline", "widen": 0.02, "back": 0.005},
     {"op": "style_line", "piece": "front", "name": "princessF", "from": {"edge": "hps>shoulder", "t": 0.5},
-     "to": {"edge": "hem>cfHem", "t": 0.45}, "via": ["bust"], "names": ["front", "side_front"]}, {"op": "take_in", "line": "princessF", "amount": 0.056, "length": 0.09},
+     "to": {"edge": "hem>cfHem", "t": 0.45}, "via": ["bust"], "names": ["front", "side_front"]}, {"op": "take_in", "line": "princessF", "amount": 0.040, "length": 0.10},
     {"op": "style_line", "piece": "back", "name": "princessB", "from": {"edge": "hps>shoulder", "t": 0.5},
-     "to": {"edge": "hem>cbHem", "t": 0.45}, "via": [[0.09, -0.30]], "names": ["back", "side_back"]}, {"op": "take_in", "line": "princessB", "amount": 0.062, "length": 0.09},
+     "to": {"edge": "hem>cbHem", "t": 0.45}, "via": [[0.09, -0.30]], "names": ["back", "side_back"]}, {"op": "take_in", "line": "princessB", "amount": 0.046, "length": 0.10},
     {"op": "sleeve", "length": 0.40, "hem_width": 0.30, "cap_ease": 0.02},
     {"op": "unfold"},
     {"op": "extend", "piece": "front.L", "edge": "cfNeck>cfHem", "amount": 0.22, "name": "wrap"},
     {"op": "round_corner", "piece": "front.L", "corner": "wrap.b", "along": [0.16, 0.14]},
-    {"op": "cut_away", "piece": "front.L", "keep": "princessF.b", "from": "hps", "to": {"edge": "wrap.a>wrap.b", "t": 0.50}, "name": "vneck"},
-    {"op": "cut_away", "piece": "front.R", "keep": "princessF.b", "from": "hps", "to": {"edge": "cfNeck>cfHem", "t": 0.45}, "name": "vneckR"},
+    {"op": "cut_away", "piece": "front.L", "keep": "princessF.b", "from": "hps", "to": {"edge": "wrap.a>wrap.b", "y": "waist"}, "name": "vneck"},
+    {"op": "cut_away", "piece": "front.R", "keep": "princessF.b", "from": "hps", "to": {"edge": "cfNeck>cfHem", "y": "waist"}, "name": "vneckR"},
     {"op": "stitch", "a": "front.L:vneck.b", "b": "side_front.R:waist"},
     {"op": "stitch", "a": "front.R:vneckR.b", "b": "side_front.L:waist"}
   ],
