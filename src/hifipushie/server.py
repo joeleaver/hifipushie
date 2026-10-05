@@ -866,7 +866,8 @@ def _closed(sil: dict, radius: float) -> dict:
 
 @mcp.tool(structured_output=False)
 def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None,
-        drive_twist: bool = True):
+        drive_twist: bool = True, glb: str | None = None, focus: str | None = None, zoom: float = 1.0,
+        views: list[str] | None = None, shapes: dict | None = None):
     """The export rig, a separate step over the modelling skeleton (spec bones stay for modelling): fits it,
     skins the model and renders a test pose (front and side), so weights are judged before export_asset(rig=True).
     Humanoids (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
@@ -887,19 +888,49 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     bone's limb: the forearm for a Hand, its own length for an Arm); drive_twist=False leaves the twist bones still
     (what an engine without drivers shows). The text reports each twist chain's test (hand rolled 75 and 105 deg:
     twist by station along the forearm, what is left at the wrist, the worst cross-section's area against rest:
-    a candy wrapper is a dip under ~0.8) and the head's weights by height. Rest pose = as modelled."""
+    a candy wrapper is a dip under ~0.8), the head's weights by height, and the WEIGHTS AUDIT: every joint turned
+    alone through its usual range, with how far its own skin ends from a rigid turn, how far other bones' skin moved
+    (and whose), flipped triangles, weight one digit's bones hold on another digit, left / right asymmetry, sums and
+    influence counts; lines ending "<- BAD" are what to fix.
+    glb: an exported <name>.glb to judge INSTEAD of this tool's own build: the real low poly with the weights and
+    joints an engine gets. Do this for hands and faces: the look build here is coarse (the text says when its voxel
+    is too big for the fingers: they fuse at rest and no pose of them means anything). focus: a rig bone to centre
+    on (with zoom, e.g. focus="LeftHand", zoom=6), views: e.g. ["front", "left", "back"]; shapes: {face shape:
+    weight} added before posing (glb only: {"jawOpen": 1} with a head turn). pose = {} renders the rest pose: look
+    at it first, so a mesh fault isn't blamed on the weights. Rest pose = as modelled."""
     from . import rig as rigmod
     spec = store.load(name)
     try:
         bones = rigmod.rig_bones(spec)
     except ValueError as e:
         return str(e)
-    meta = store.build(name, resolution)
-    z = np.load(meta["mesh"])
-    V, F = z["verts"].astype(np.float64), z["faces"]
-    J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
+    from . import rig_audit
+    extra = {}
+    if glb:  # the export itself: its mesh, joints and weights
+        g = rig_audit.read_glb(Path(glb).expanduser())
+        bones = g["bones"]
+        V, Fs, J, W, _, _ = rig_audit.joined(g["meshes"], shapes)
+        rep, F = rig_audit.weld(V, Fs)  # (seam-split vertices as one surface, for normals and the audit)
+        note = [f"judging {Path(glb).name}: {len(V)} vertices, {len(Fs)} triangles, the export's own joints and weights"]
+    else:
+        meta = store.build(name, resolution)
+        z = np.load(meta["mesh"])
+        V, F = z["verts"].astype(np.float64), z["faces"]
+        Fs, rep = F, np.arange(len(V))
+        J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
+        extra = {k: z[k] for k in ("part", "part_names", "part_colors")}
+        note = []
+        _, girth, _, _ = rig_audit.owners(bones, V)
+        thin = [girth[i] for i, b in enumerate(bones) if i in girth and "Hand" in b["name"]
+                and b["name"][-1:].isdigit()]
+        if thin and meta["voxel"] > 0.5 * float(np.median(thin)):
+            note.append(f"WARNING: this look's voxel is {meta['voxel'] * 1e3:.1f} mm and the fingers are "
+                        f"~{2e3 * float(np.median(thin)):.0f} mm thick: they are fused or lumpy in this build AT REST. "
+                        "Don't judge hands here: export and pass glb=<the .glb> (the real mesh and weights)")
     names = [b["name"] for b in bones]
-    if pose:
+    if pose is not None and not pose:
+        turns = {}
+    elif pose:
         bad = [k for k in pose if k not in names and rigmod.PREFIX + k not in names]
         if bad:
             return f"pose: no rig bone {bad} (have {', '.join(names)})"
@@ -907,24 +938,32 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
                                              for k, v in pose.items()})
     else:
         turns = rigmod.test_pose(bones)
-    P = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, turns) if drive_twist else turns)
+    P = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, turns) if drive_twist else turns) if turns else V
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
     N = np.zeros_like(P)
     for k in range(3):
         np.add.at(N, F[:, k], fn)
+    N = N[rep]
     N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-12
+    at = None
+    if focus:
+        fb = focus if focus in names else rigmod.PREFIX + focus
+        if fb not in names:
+            return f"focus: no rig bone {focus!r}"
+        i = names.index(fb)
+        kids = [b["head"] for b in bones if b["parent"] == i and not b.get("twist")]
+        at = 0.5 * (bones[i]["head"] + (np.mean(kids, 0) if kids else bones[i]["head"]))
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "posed.npz"
-        np.savez(f, verts=P.astype(np.float32), faces=F, normals=N.astype(np.float32),
-                 **{k: z[k] for k in ("part", "part_names", "part_colors")})
-        frames = render.view_frames(P, ["front", "side"])
+        np.savez(f, verts=P.astype(np.float32), faces=Fs, normals=N.astype(np.float32), **extra)
+        frames = render.view_frames(P, views or ["front", "side"], focus=at, zoom=zoom)
         img = render.contact_sheet(render.render_views(f, frames, size, "clay_studio.exr"), frames)
     used = np.bincount(J[W > 0.01], minlength=len(bones))
     empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"] and not b.get("noweight")]
     text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}; "
             f"{sum(1 for b in bones if b.get('twist'))} of them twist bones, after the base set); posed: "
-            + ", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items())
+            + (", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items()) or "nothing (REST)")
             + ("" if drive_twist else "; twist bones NOT driven")]
     text += [f"  {b['name']} <- {b.get('src', '?')}" + (" (end)" if b["end"] else "")
              + (f", child of {bones[b['parent']]['name']}" if b["parent"] >= 0 else " (root)")
@@ -932,7 +971,9 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
                 if b.get("twist") else "") for b in bones]
     if empty:
         text.append("bones that got no skin: " + ", ".join(empty))
+    text = note + text
     text += rigmod.report(spec, bones, V, F, J, W)
+    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W))
     return [_out(img, save), "\n".join(text)]
 
 
