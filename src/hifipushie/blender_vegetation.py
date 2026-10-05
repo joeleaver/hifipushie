@@ -82,7 +82,7 @@ def build(job):
     d = np.load(job["npz"])
     bark = _mat("bark", job.get("bark", [0.25, 0.19, 0.14]), 0.9)
     leaf = _mat("leaf", job.get("leaf", [0.16, 0.33, 0.08]), 0.55, translucent=0.15)
-    clay = _mat("clay", [0.6, 0.6, 0.6], 0.8)
+    clay = _mat("clay", [0.8, 0.78, 0.74], 0.9)
     wood = _mesh("wood", d["V"], d["F"])
     wood.data.materials.append(bark)
     for p in wood.data.polygons:
@@ -107,7 +107,7 @@ def build(job):
     bpy.ops.mesh.primitive_circle_add(vertices=64, radius=3 * R, fill_type="NGON", location=(0, 0, 0))
     ground = bpy.context.object
     ground_mat = _mat("ground", job.get("ground", [0.42, 0.44, 0.36]), 1.0)
-    clay_ground = _mat("clay_ground", [0.3, 0.3, 0.3], 1.0)
+    clay_ground = _mat("clay_ground", [0.12, 0.12, 0.12], 1.0)
     ground.data.materials.append(ground_mat)
     sa, se = [math.radians(v) for v in job.get("sun", [135, 50])]
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))
@@ -155,9 +155,10 @@ def build(job):
         if "leaves" in obs:
             obs["leaves"].hide_render = not v.get("leaves", True)
         isclay = bool(v.get("clay"))
-        w.node_tree.nodes["Background"].inputs[0].default_value = (0.2, 0.22, 0.25, 1) if isclay else (*job.get("sky", [0.62, 0.74, 0.9]), 1)
+        w.node_tree.nodes["Background"].inputs[0].default_value = (0.035, 0.04, 0.05, 1) if isclay else (*job.get("sky", [0.62, 0.74, 0.9]), 1)
         ground.data.materials[0] = clay_ground if isclay else ground_mat
         wood.data.materials[0] = clay if isclay else bark
+        sun.data.energy = 7.0 if isclay else 3.5
         ground.hide_render = bool(v.get("no_ground"))
         sc.render.film_transparent = bool(v.get("transparent"))
         sc.render.filepath = v["out"]

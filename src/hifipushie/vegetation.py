@@ -63,7 +63,7 @@ DEFAULT = {
         "tropism": [0.25, 0.05, 0.0],  # per order: + up, - down (eta)
         "plagio": [0.0],  # per order: pull toward a set elevation (horizontal branches)
         "elevation": [10],  # per order: that elevation, degrees
-        "jitter": 0.12,
+        "jitter": [0.12],  # per order: how crooked the shoots run
         "shed": 0.12,  # light per internode under which a branch is dropped
         "shed_age": 2,
         "shadow": [0.25, 1.6, 6],  # a, b, depth of the shadow pyramid
@@ -624,6 +624,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             alive = np.arange(len(src))
             ln = (0.45 + 0.55 * np.clip(vres / _per(h["shoot_max"], order_new), 0, 1)) * _per(h["length"], order_new)
             eta = _per(h["tropism"], order_new)
+            jit = _per(h["jitter"], order_new)
             pl = _per(h["plagio"], order_new)
             el = np.radians(_per(h["elevation"], order_new))
             nbuds = _per(h["buds"], np.minimum(order_new, 99)).astype(int)
@@ -636,7 +637,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                 kj = _child(keys[a], 10 + j)
                 rnd = np.stack([_u(kj, 1), _u(kj, 2), _u(kj, 3)], 1) * 2 - 1
                 dd = d[a] + h["light"] * V[src[a]]
-                dd = dd + eta[a, None] * up + h["jitter"] * rnd
+                dd = dd + eta[a, None] * up + jit[a, None] * rnd
                 for fv, fo in forces:
                     m_ = np.ones(len(a), bool) if fo is None else np.isin(order_new[a], fo)
                     dd = dd + m_[:, None] * fv
@@ -823,7 +824,7 @@ def foliage(tree: dict) -> dict:
     out = u * np.cos(phi)[:, None] + w * np.sin(phi)[:, None]
     r = lf["spread"] * np.sqrt(_u(key, 3))
     pos = a + (b - a) * t[:, None] + out * r[:, None]
-    d = _norm(out + 0.5 * ax - np.array([0, 0, lf.get("droop", 0.2)]) + 0.4 * (np.stack([_u(key, 4), _u(key, 5), _u(key, 6)], 1) - 0.5))
+    d = _norm(out + 0.5 * ax + np.array([0, 0, lf.get("up", 0.0) - lf.get("droop", 0.2)]) + 0.4 * (np.stack([_u(key, 4), _u(key, 5), _u(key, 6)], 1) - 0.5))
     nrm = _norm(np.array([0, 0, 1.0]) + 0.6 * out + 0.5 * (np.stack([_u(key, 7), _u(key, 8), _u(key, 9)], 1) - 0.5))
     nrm = _norm(nrm - d * np.sum(nrm * d, 1, keepdims=True))
     size = lf["size"] * (0.7 + 0.6 * _u(key, 10))
@@ -890,8 +891,8 @@ def shape_measures(mask: np.ndarray, levels: int = 20) -> dict:
     filled = sum(int(r - l + 1) for a, l, r in zip(any_, left, right) if a)
     t = (np.arange(levels) + 0.5) / levels
     hh = np.arange(H) / H
-    return {"width_over_height": round(float(wmax / H), 3), "bole": round(crown0 / H, 3),
-            "widest_at": round(float(np.argmax(sm)) / H, 3),
+    return {"width_over_height": round(float(wmax / H), 3), "bole": round(float(crown0 / H), 3),
+            "widest_at": round(float(np.argmax(sm) / H), 3),
             "crown_aspect": round(float(wmax / max(H - crown0, 1)), 3),
             "lopsided": round(float((ndimage.uniform_filter1d(rgt, k).max() - ndimage.uniform_filter1d(lft, k).max()) / max(wmax, 1)), 3),
             "porosity": round(float(1 - mask.sum() / max(filled, 1)), 3),

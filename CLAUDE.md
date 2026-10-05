@@ -1864,6 +1864,46 @@ breaks through cliffs, peak forms and wall structure, surroundings beyond the fr
 4. DONE: MCP tools.
 Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
 
+## Vegetation (2026-10-05, branch `vegetation`; stage 1 of 6: trees)
+
+The user's track: game/video-ready trees, shrubs, grass, in styles from blobs to photoreal, with wind, seasons, LODs;
+"start with a best-in-class tree algorithm", hero trees editable, forest sets, and "how do real artists work".
+Research summary + plan: the first hand-back (SpeedTree's generator hierarchy with hand-drawn overrides, The Grove's
+grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob trees, Nanite assemblies, impostors).
+- `vegetation.py`: `grow(spec)` = a self-organising tree (Palubicki et al. 2009): shadow-propagation light on a voxel
+  grid (cell = one metamer), extended Borchert-Honda allocation (`apical` per order = the continuing axis's share; the
+  trunk's fades to `apical_old`), shoots = bud direction + light + tropism per order + `plagio` (pull to an elevation) +
+  per-order `jitter` + forces, shedding by light per internode, pipe-model widths with a memory of shed wood, bend under
+  weight that sets (`_pose`: each node's internode in its parent's rest frame + a bend angle that never decreases).
+  Numba kernels (`_collect`, `_distribute`, `_pipe`, `_pose`, `_shed`); nodes are appended parent-first and compacted
+  after shedding. Randomness is hashed from each bud's lineage key (`_child`, `_u`): same spec = same tree, and an
+  edit changes only what it shades. Unit = `habit.unit` m per metamer; with `height`, an unedited run sets the unit
+  first so guides/prunes stay in metres. 5-40k nodes grow in 0.3-3 s (first call compiles ~3 s).
+  Direct controls (the main session's condition: what SpeedTree artists have): `guides` (a drawn path at ANY order:
+  attaches to the nearest node at `from_year`, its nodes lie exactly on the path, pinned = never shed or bent, children
+  regrow from it; a path from the origin at year 0 is the trunk), `prune` (box / sphere / above / `below` = clear the
+  trunk), `envelope` (soft crown shape as shade outside it), `forces`, `environment` (light direction, wind = lean +
+  windward buds suffer, `setting: forest` = a canopy rising with the tree, `neighbours`), `decay.min_radius` (a dead
+  tree: thin wood has fallen), `habit.clear` (m of trunk that never branches).
+  Presets: `vegetation_presets/*.json` (oak, birch, scots_pine, norway_spruce, weeping_willow), bundles of habit +
+  leaves + colours; every key overridable, unknown habit keys raise.
+- Judging by measure: `silhouette` (PIL, ms), `shape_measures` (width/height, bole, widest height, lopsided, porosity,
+  profile), `outline_iou` (row-filled outlines at equal height, feet together), `branch_angles`, `reference_mask`
+  (photo against sky: colour vs the row's background at the crop's edges; or a traced `polygon`), `match`,
+  `fit_habit` (random + shrinking search of named habit numbers on IoU and ratios; ~1 min; how the presets were
+  tuned: inverse procedural modelling, small). References: `workspace/veg_refs/` (README, masks.json).
+- `veg_mesh.py` (tubes per axis with axis/order/along/radius per vertex; stand-in leaf protos), `blender_vegetation.py`
+  (one wood mesh + leaves as Geometry Nodes instances on a point mesh; clay / colour EEVEE views), `veg_look.py`
+  (`render`, `reference_sheet`: photo | outlines | clay | leafed + numbers; 2-10 s), `veg_tools.py` (plant.json +
+  history in `workspace/plants/<name>/`). `tests/test_vegetation.py`. Renders `workspace/veg_renders/vg_*`.
+- Lessons so far: the raw shadow grid's gradient stacked shoots in voxel layers (smooth it, cap the pull); a
+  normalised light pull and a sag constant 1e5 too big made everything curl; straight shoots read as a broom whatever
+  the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
+  to fill an outline: check bole and the clay view, not IoU alone; foliage is a stand-in spray per node until stage 2
+  twigs, and is what most stops birch and pine reading by eye.
+- Next: stage 1 items 3-5 (auto-named limbs, Blender round trip for guides, forest sets), then leaves/twigs/bark,
+  small plants (+ palm), game-ready (LODs, wind, seasons, GLB), styles, MCP tools + guide.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.

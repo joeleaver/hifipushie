@@ -93,7 +93,7 @@ def leaf_proto(kind: str) -> tuple[np.ndarray, np.ndarray]:
     if kind in ("needle_tuft", "needle_spray"):
         V, F = [], []
         rng = np.random.default_rng(5)
-        cnt = 14 if kind == "needle_tuft" else 16
+        cnt = 26 if kind == "needle_tuft" else 24
         for j in range(cnt):
             if kind == "needle_tuft":  # a bottle brush round the shoot
                 a = 2 * math.pi * j / cnt * 3.1
@@ -106,7 +106,7 @@ def leaf_proto(kind: str) -> tuple[np.ndarray, np.ndarray]:
             side = np.cross(d, [0, 1, 0.3])
             side /= np.linalg.norm(side)
             p0 = np.array([0, y0, 0])
-            L, w = 0.45, 0.035
+            L, w = 0.32, 0.02
             b = len(V)
             V += [p0 - side * w, p0 + side * w, p0 + d * L]
             F += [[b, b + 1, b + 2]]
