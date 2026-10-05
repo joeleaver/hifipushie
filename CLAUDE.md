@@ -342,6 +342,22 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     ear lobes in the band (30 flipped triangles under each ear). The audit counts smoothed cloth as leak and cloth
     folding at 60 deg as flipped: read its cloth rows with the renders. Open: a strap shell beside a rigidly bound
     bag shreds at the hip, hems fold (no hem bones), fingers touching round a held disc read the wrong finger.
+    Then: `parts.<p>.rig_attach = "<part with rig_bone>"` (within `ATTACH` 8 cm of it the part blends to that
+    joint: the strap's end goes with the bag; 48 flipped strap triangles at a 60 deg thigh -> 9), `rig_smooth`.
+    A neighbour-majority mend of stray digit vertices was tried and dropped (it missed the one welded vertex in
+    the web and worsened another). Hems: guide only (no hem bones).
+  - Judge exports as an engine draws them: `rig(glb=)` leads with `asset.preview` of the GLB (maps + normal map;
+    preview poses take `"turns": {joint: [x, y, z, deg]}`, carried into each imported bone's rest frame as
+    rest^-1 R rest, plus face shapes) over the clay row. The human's "lumpy mouth" was clay: 7.5 mm facets at 15k
+    (1,541 face triangles; 40k: 3,690, 4.9 mm) read smooth with the normal map, and jawOpen is symmetric as a
+    shape. Real at 15k: a crease beside the nose in jawOpen and kinked smile corners (gone at 40k); real at both:
+    the blink's lid line is ragged (open: seal the lids on the low poly as `Face.seal` does the lips).
+  - Kit creatures on REAL exports: the goblin (goblin_talk) tears a slab of skin at the shoulder and webs when the
+    arm rises, because its arms are modelled against the belly: one skin once meshed. `rig_audit.fused_limbs`
+    (the rig tool's WARNING): the share of a limb segment's own flesh surface within `GAP` 8 mm of unrelated
+    flesh (goblin_talk 25%, goblin_anat 2%, trolls 8-12%; warns over 20%). The audit takes ownership from the
+    modelled flesh on kit characters (`flesh_distances`): by bone segment the arms "owned" 830 belly vertices and
+    read 116 mm off a rigid turn.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
