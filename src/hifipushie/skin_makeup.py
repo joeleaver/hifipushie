@@ -92,8 +92,8 @@ def build(spec, p, J, layer, T, ctx) -> None:
             extra = {"metallic": 0.7} if fin == "metallic" else ({"specular": 0.7} if fin == "shimmer" else {})
             layer("makeup_eyeshadow", o.get("mask"), pre=True, color=col, opacity=0.8 * o["amount"], roughness=FINISH[fin], **extra,
                   mask=[{"mask": _zones(o.get("where") or ["eyelid"], 1.15 * reach)}])
-            layer("makeup_eyeshadow_blend", o.get("mask"), pre=True, color=col, opacity=0.3 * o["amount"],
-                  mask=[{"mask": _zones(o.get("where") or ["eyelid"], 1.7 * reach)}])
+            layer("makeup_eyeshadow_blend", o.get("mask"), pre=True, color=col, opacity=0.22 * o["amount"],
+                  mask=[{"mask": _zones(o.get("where") or ["eyelid"], 1.4 * reach)}])
         o = item("eyeliner", ("width", "wing"))
         if o:
             col = _hex(o.get("color", "#120e0d"))

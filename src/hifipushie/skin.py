@@ -157,7 +157,7 @@ FACE = {
     "ear.L": [("lm_jaw_0.L", (0.12, 0.3, 0.2), (0.28, 0.42, 0.48))],
     "ear_lobe.L": [("lm_jaw_0.L", (0.1, 0.22, -0.12), (0.18, 0.22, 0.16))],
     "neck": [("neck", (0, -0.3, -0.45), (0.85, 0.95, 0.8))],
-    "scalp": [("head", (0, 0.3, 0.75), (1.0, 1.25, 0.75))],
+    "scalp": [("head", (0, 0.7, 1.0), (1.6, 2.0, 1.4))],  # the head joint is at brow height, the cranium ~1.5 io round it
     "face": [("lm_nose_base", (0, 0.55, 0.15), (1.15, 1.0, 1.55))],
 }
 # zones made of others (their union)

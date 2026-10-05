@@ -78,7 +78,14 @@ like a sticker; with years the lines spread, black drifts blue-green and thins, 
 along the brow in the middle and out-and-down at the tail (`density`, `thickness`, `color`, `grey`), laid from the brow
 landmarks; `lashes` darken the lid margins (the skin touching the eyeball); `stubble` is
 a cool shadow under the skin (dark hair seen through it) plus dots, full on chin and lip and thinning up the cheek;
-`body` is fine hairs on forearms and chest. Long lashes, beards and head hair are geometry (`groom_hair`).
+`body` is fine hairs on forearms and chest; `scalp` is a shaved or cropped head (`amount`, `color`, `hairline` 0..1:
+how far it comes down the forehead): the shadow of the hair under the skin plus cut hairs, so a head without a groom
+isn't a mannequin. Long lashes, beards and head hair are geometry (`groom_hair`).
+
+`"eyes"` (on by default when the body has eyeballs): `iris` colour, `iris_size`, `pupil`, `veins`, `sclera`. The iris
+is fibres running out from the pupil with a paler collarette and a dark limbal ring, the white is never white (pinker
+toward the corners, a few vessels), the upper lid shades the top of the eye, and the inner corner has a pink wet
+caruncle. A flat coloured disc with a black dot is the toy-eye tell.
 
 ### 6. Micro detail: tiling, never painted per character
 The skin's microrelief is polygonal plateaus between furrows (primary lines 20-100 um deep, the only ones the eye

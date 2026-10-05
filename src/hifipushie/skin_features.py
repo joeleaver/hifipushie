@@ -296,9 +296,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                                       "mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5), "to": round(0.55 * r, 5)}},
                                                {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
-    pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(-sx * 0.035 * io, 5), round(-0.012 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
+    pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
     layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
-          mask=[{"spot": {"at": pts, "radius": round(0.05 * io, 5), "soft": 0.6}}])
+          mask=[{"spot": {"at": pts, "radius": round(0.036 * io, 5), "soft": 0.6}}])
     layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=0.5, roughness=0.15, mask=_zones(["lash_lower"], 0.7))
 
 
@@ -450,13 +450,14 @@ def _hair(p, J, layer, T, ctx) -> None:
         hl = float(o.get("hairline", 0.5))
         # the hair-bearing scalp: the cranium behind a hairline that crosses the forehead and drops in front of the ears
         hd = J["head"]
-        top = [{"at": "head", "offset": [0, round(0.42 * io, 5), round((0.95 - 0.25 * hl) * io, 5)]},
-               {"at": "head", "offset": [0, round(0.75 * io, 5), round(0.25 * io, 5)]}]
-        sides = [{"at": "head", "offset": [round(sx * 0.62 * io, 5), round(0.35 * io, 5), round(0.2 * io, 5)]} for sx in (1, -1)]
-        area = [{"spot": {"at": top + sides, "radius": [[round(1.02 * io, 5), round((1.0 + 0.25 * hl) * io, 5), round(0.8 * io, 5)],
-                                                         [round(0.95 * io, 5), round(0.85 * io, 5), round(0.95 * io, 5)],
-                                                         [round(0.5 * io, 5), round(0.75 * io, 5), round(0.85 * io, 5)]] * 1 +
-                          [[round(0.5 * io, 5), round(0.75 * io, 5), round(0.85 * io, 5)]], "soft": 0.22}},
+        # one ellipsoid bigger than the skull (the head joint sits at brow height, the cranium ~1.5 interoculars
+        # round it): where it leaves the skull is the hairline (~35 deg up the forehead at 0.5), the nape's edge and
+        # the line over the ears; two side spots bring it down in front of and behind each ear.
+        cy = round((1.0 + 0.6 * (0.5 - hl)) * io, 5)
+        top = [{"at": "head", "offset": [0, cy, round(1.1 * io, 5)]}]
+        sides = [{"at": "head", "offset": [round(sx * 1.1 * io, 5), round(0.3 * io, 5), round(-0.05 * io, 5)]} for sx in (1, -1)]
+        area = [{"spot": {"at": top + sides, "radius": [[round(1.9 * io, 5), round(2.2 * io, 5), round(2.1 * io, 5)]] +
+                          [[round(0.5 * io, 5), round(0.75 * io, 5), round(0.9 * io, 5)]] * 2, "soft": 0.12}},
                 {"vertex": True, "mask": _zones(["ear"], 0.9), "blend": "subtract"},
                 {"breakup": {"amount": 0.12, "scale": 0.006, "sharpness": 0.5, "seed": seed + 105}}]
         cast = [round(float(c), 4) for c in (np.array(T(grey=0.7)) * (0.5 + 0.25 * t["melanin"]) + 0.25 * np.array(col))]

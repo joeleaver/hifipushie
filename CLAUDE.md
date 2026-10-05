@@ -829,6 +829,19 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     hides 75% x coverage of the fine pigment layers, which composite after the pre base), concealer, contour, blush,
     highlight, eyeshadow, eyeliner + wing, mascara, brows, lipstick, nails; each with a finish (roughness / specular /
     metallic).
+  - Eyes (`skin.eyes`, on where the base has eyeballs; `_eyes`): a painted picture per eyeball (`skin_swatch.eye_image`:
+    radial iris fibres, collarette, limbal ring, soft pupil, a sclera pinker toward its edge with forking vessels) laid
+    as a decal on the eyes part, wet (roughness 0.04), a shadow under the upper lid; caruncle and waterline on the skin.
+    Flat iris/pupil paint on `eye_front` read as toy eyes at bust distance. No cornea bulge, no lash geometry yet.
+  - Shaved / cropped heads (`hair.scalp`: amount, color, hairline): the hair's shadow under the scalp skin (pre) + cut
+    hairs from the stubble swatch, inside ONE ellipsoid bigger than the skull whose exit from the skull is the hairline,
+    nape and the line over the ears. The head joint is at brow height and the cranium ~1.5 interoculars round it
+    (interocular = pupil distance, 6-9 cm on these heads): the first version's spots, sized by guess, ended just inside
+    the skull and nothing showed, though the mask read 1 at test points (which were inside the head). Test masks at
+    points found on the surface (a ray through `sdf.field_at`), not at joint + offset.
+  - Wrinkle swatch: three families of wandering lines (main, a branch family crossing them at a slight angle, fine),
+    each line's depth from noise much longer along the line than across (`_smooth_noise(cells, cells_u)`), so creases run
+    on for centimetres, fade at their ends and fork. Isotropic depth noise chopped them into dashes ("scratches").
   - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin_<model>_<head|arm>` (bare skin + eyes, ~1 mm),
     re-synced when the spec or the skin code changes, EEVEE under fixed lights (studio / soft / back) or `engine=
     "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`

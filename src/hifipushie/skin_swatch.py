@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 11
+VERSION = 12
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -68,13 +68,15 @@ def _edges(pts, seeds, width: float, stretch: float = 1.0) -> np.ndarray:
     return (1 - t) ** 2
 
 
-def _smooth_noise(rng, cells: int) -> np.ndarray:
-    """Periodic smooth noise 0..1 with `cells` features across (random lattice, cubic-interpolated by FFT zoom)."""
-    f = np.fft.rfft2(rng.standard_normal((cells, cells)))
+def _smooth_noise(rng, cells: int, cells_u: int | None = None) -> np.ndarray:
+    """Periodic smooth noise 0..1 with `cells` features across (random lattice, interpolated by FFT zoom); cells_u:
+    another count along u (features longer one way)."""
+    cu = cells_u or cells
+    f = np.fft.rfft2(rng.standard_normal((cells, cu)))
     big = np.zeros((SIZE, SIZE // 2 + 1), complex)
-    h = cells // 2
-    big[:h, :h + 1] = f[:h, :h + 1]
-    big[-h:, :h + 1] = f[-h:, :h + 1]
+    h, hu = max(cells // 2, 1), max(cu // 2, 1)
+    big[:h, :hu + 1] = f[:h, :hu + 1]
+    big[-h:, :hu + 1] = f[-h:, :hu + 1]
     z = np.fft.irfft2(big, s=(SIZE, SIZE))
     z = (z - z.min()) / max(float(np.ptp(z)), 1e-12)
     return z.reshape(-1)
@@ -282,13 +284,13 @@ def depth(kind: str) -> np.ndarray:
         def family(n, wob_k, shift, cells, lo, width):
             ph = (v + wob_k * wob + shift + 0.01 * np.sin(2 * np.pi * (u + shift))) * n
             dist = np.abs(ph - np.round(ph)) / n * mm  # mm to the nearest crease
-            amp = np.clip((_smooth_noise(rng, cells) - lo) / (1 - lo), 0, 1)
+            amp = np.clip((_smooth_noise(rng, cells, 2) - lo) / (1 - lo), 0, 1)  # a crease runs on for centimetres
             amp = amp * amp * (3 - 2 * amp)  # eases to nothing: the ends taper
             w = width * (0.45 + 0.75 * amp)  # deeper stretches are wider
             return np.clip(1 - dist / np.maximum(w, 1e-6), 0, 1) ** 1.6 * amp
-        main = family(6, 1.0, 0.0, 4, 0.3, 0.75)
-        branch = family(6, 1.9, 0.083, 6, 0.5, 0.55)  # a neighbour wandering across: forks and joins
-        fine = family(19, 2.6, 0.03, 9, 0.35, 0.22)
+        main = family(6, 1.0, 0.0, 6, 0.22, 0.75)
+        branch = family(6, 1.9, 0.083, 8, 0.45, 0.55)  # a neighbour wandering across: forks and joins
+        fine = family(19, 2.6, 0.03, 12, 0.3, 0.22)
         swell = _smooth_noise(rng, 3) * (0.5 + 0.5 * np.cos(2 * np.pi * 6 * (v + wob)))  # the roll between two creases
         d = np.maximum(main, 0.7 * branch) + 0.22 * fine + 0.1 * (1 - swell)
     elif kind == "hairs":
