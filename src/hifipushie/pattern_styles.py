@@ -580,9 +580,14 @@ def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, 
         {"y": [float(min(A[1], B[1])), float(max(A[1], B[1]))], "width": float(2 * depth)}]  # (not girth: cloth.sizing)
     D["pieces"][piece] = new
     _remap(D, piece, work, imap, {piece: new})
-    D["folds"].append({"piece": piece, "line": [A.tolist(), B.tolist()], "angle": 0, "kind": "press", "name": f"{name} outer"})
+    D["folds"].append({"piece": piece, "line": [A.tolist(), B.tolist()], "angle": 0, "kind": "press", "name": f"{name} outer",
+                       "in_wrap": True})
     D["folds"].append({"piece": piece, "line": [(A + v / 2).tolist(), (B + v / 2).tolist()], "angle": 360, "kind": "press",
-                       "name": f"{name} inner"})
+                       "name": f"{name} inner", "in_wrap": True})
+    # laid closed by the wrap (cloth.place): the folds above give the mesh its rows and the solver its creases
+    new["wrap"] = dict(new.get("wrap") or {})
+    new["wrap"]["pleats"] = list(new["wrap"].get("pleats") or []) + [
+        {"a": A.tolist(), "b": B.tolist(), "depth": float(depth), "sign": 1.0 if nrm[0] >= 0 else -1.0}]
     D["log"].append(f"pleat {name} on {piece}: {depth * 1000:.0f} mm deep ({2 * depth * 1000:.0f} mm of cloth folded away) "
                     f"along {np.linalg.norm(B - A) * 1000:.0f} mm; the seams at its ends skip the underlay")
 

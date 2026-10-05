@@ -13,5 +13,5 @@
   ],
   "details": {"waistband": "straight", "skirt_closure": "none", "darts": "none", "hem": "blind", "pleats": "knife"}
  },
- "spec": {"quality": "draft", "color": "#5a6a8a"}
+ "spec": {"quality": "draft", "color": "#5a6a8a", "backend": "zozo"}
 }

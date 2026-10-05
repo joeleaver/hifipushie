@@ -290,7 +290,9 @@ def op_style_line(D: dict, piece: str, **o) -> None:
         nv = np.array([-dv[1], dv[0]]) / max(np.linalg.norm(dv), 1e-12)
         nv = nv if nv @ (c1 - c0) > 0 else -nv
         sh0 = np.asarray(built[order[1]][0]["wrap"].get("shift", [0.0, 0.0]), float)
-        built[order[1]][0]["wrap"]["shift"] = (sh0 + 0.002 * nv).round(5).tolist()
+        # (a cut ACROSS the piece, a yoke: 4 mm, its corners at the side seams overlapped at 2)
+        across_ = all(np.sum(np.abs(h_["P"][:, 0]) < 1e-6) >= 2 for h_, _ in built)
+        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.004 if across_ else 0.002) * nv).round(5).tolist()
     for nm, k in zip(names, order):
         h, pos = built[k]
         h["name"] = nm
@@ -1411,6 +1413,9 @@ def unfold(D: dict) -> dict:
         base = {k: v for k, v in pc.items() if k not in ("sym", "darts")}
         if sym == "fold":
             whole = pattern.mirror_fold(dict(base, name=nm))
+            mirp = lambda pl: dict(pl, a=[-pl["a"][0], pl["a"][1]], b=[-pl["b"][0], pl["b"][1]], sign=-pl["sign"])
+            if (whole.get("wrap") or {}).get("pleats"):  # a pleat on each half
+                whole["wrap"] = dict(whole["wrap"], pleats=whole["wrap"]["pleats"] + [mirp(p_) for p_ in whole["wrap"]["pleats"]])
             out[nm] = whole
         elif sym == "copy":
             for S in ("L", "R"):
@@ -1431,6 +1436,9 @@ def unfold(D: dict) -> dict:
             R = pattern.mirror_x(copy.deepcopy(base))
             R["name"] = f"{nm}.R"
             R["wrap"] = dict(base.get("wrap") or {})
+            if R["wrap"].get("pleats"):
+                R["wrap"]["pleats"] = [dict(pl, a=[-pl["a"][0], pl["a"][1]], b=[-pl["b"][0], pl["b"][1]], sign=-pl["sign"])
+                                       for pl in R["wrap"]["pleats"]]
             if "shift" in R["wrap"]:
                 R["wrap"]["shift"] = [-R["wrap"]["shift"][0], R["wrap"]["shift"][1]]
             if D["centre"].get(nm) == "open" and L["wrap"].get("to") == "torso":
