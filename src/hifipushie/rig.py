@@ -29,6 +29,7 @@ from .spec import compile_prims, expand_mirror, resolve_point
 ROOTS = ("pelvis", "hips", "root", "hip")
 FALLOFF = 0.5  # weight falls by e over this fraction of a bone's radius past the nearest bone
 SMOOTH = 10  # rounds of averaging weights with neighbouring vertices
+WORN_SMOOTH = 6  # the same over a worn part's own mesh, after it read the skin's weights (`skin_parts`)
 
 
 def skeleton(spec: dict) -> list[dict]:
@@ -634,6 +635,8 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
     out = {}
     ref = None
     hf = head_field(spec, rb)
+    opts = spec.get("rig") or {}
+    skin = {opts.get("skin_part", "body")} | set((spec.get("face_shapes") or {}).get("parts") or ())
     if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
         from . import base as basemod
         from .spec import expand_mirror as _em
@@ -670,14 +673,36 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                 for c in range(3):
                     np.add.at(N, F[:, c], fn)
                 N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
-            J, W = rig_template.top_k(rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None))
+            D = rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None)
+            if pn not in skin and len(F) and WORN_SMOOTH:
+                # cloth is a sheet of its own: the weights it read off the skin are evened over ITS mesh, as a rigger
+                # smooths a transfer. A collar's two faces and its edge read three places on the shoulder, and its
+                # wing crumpled when the arm rose. Seam-split vertices are one vertex here (or they'd crack).
+                _, inv = np.unique(np.round(V / 1e-5).astype(np.int64), axis=0, return_inverse=True)
+                inv = inv.ravel()
+                cnt = np.bincount(inv).astype(np.float64)[:, None]
+                Dw = np.zeros((len(cnt), D.shape[1]))
+                np.add.at(Dw, inv, D)
+                D = _smooth(Dw / cnt, inv[F], WORN_SMOOTH)[inv]
+            J, W = rig_template.top_k(D)
             out[pn] = _spread_twist(rb, V, J, W) if spread else (J, W)
         else:
             out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
         if hf is not None and not bone and len(V):  # the head is rigid: the falloff to the neck is on the throat
             h = hf["h"](V)
-            if float(h.mean()) >= HEAD_PART:  # a part of the head (teeth, tongue, eyes, lashes): all of it
+            share = float(h.mean())
+            worn = (defs.get(pn) or {}).get("rig_head")
+            if worn is None:  # anything but the skin (and what moves with the face) is worn
+                worn = not (pn in skin or share >= HEAD_WORN)
+            else:
+                worn = not worn
+            if share >= HEAD_PART:  # a part of the head (teeth, tongue, eyes, lashes): all of it
                 h = np.ones(len(V))
+            elif worn:
+                # a collar, a scarf, a strap over the shoulder: it sits on the body and reaches up beside the jaw.
+                # It keeps the weights of the neck under it (the golfer's collar top, 1-2 cm above the floor at the
+                # nape, was Head 1.0 and turned with the face: 47 mm off the shirt, 299 triangles inside out)
+                continue
             out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h, hf["bone"])
     return out
 
@@ -697,6 +722,8 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
 HEAD_BAND = 0.12   # the falloff's height below the floor, x the head's size (Head joint -> HeadTop_End): ~3 cm
 HEAD_UNDER = 0.04  # the floor's drop under the jaw's border, x the head's size: ~1 cm
 HEAD_PART = 0.9    # a part this much head on average is all head (teeth, tongue, eyes, lashes, brows)
+HEAD_WORN = 0.5    # a part other than the skin and less head than this is worn on the body: no head rule (a collar);
+#                    parts.<p>.rig_head = true | false says so outright, spec.rig.skin_part names the skin ("body")
 MOVED = (5e-4, 3e-3)  # m: a vertex a face shape moves this far is a little / wholly the head's (`rigid_near`)
 
 
@@ -738,9 +765,21 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
         slope = (z1 - z0) / max(y1 - y0, 1e-6)
         z0 -= max(0.0, float(np.max(z0 + slope * (pts[:, 0] - y0) - pts[:, 1])))  # under every border point
 
+        # behind the jaw's angle the floor climbs a little up the ramus and runs level from the Head joint back:
+        # level at the jaw angle's own height, more of the nape under the skull was head than a skull covers.
+        fy, fz = [y0, float(y1)], [z0, z0 + slope * (float(y1) - y0)]
+        if how == "jaw landmarks" and "lm_jaw_3.L" in Jn:
+            # one landmark up the ramus, reached at the Head joint: the ear lobes (the next landmark's height) stay
+            # above it. Up to the Head joint itself (the skull's base on MakeHuman) the lobes fell in the band and
+            # 30 triangles under each ear turned inside out at 33 deg.
+            sy, sz = float(rb[hi]["head"][1]), float(resolve_point(s, "lm_jaw_3.L")[2]) - (float(z1) - fz[-1])
+            if sz > fz[-1] and sy > fy[-1] + 0.01:
+                fy.append(sy)
+                fz.append(sz)
+
         def h(V):
             V = np.asarray(V, np.float64)
-            floor = np.minimum(z0 + slope * (V[:, 1] - y0), z0 + slope * (y1 - y0)) - under
+            floor = np.interp(V[:, 1], fy, fz) - under
             return 1.0 - _ss((floor - V[:, 2]) / band)
         return {"h": h, "bone": hi, "band": band, "how": f"{how}, floor {under * 1e3:.0f} mm under the jaw"}
     ids, carry = _flesh_tree(spec, rb)

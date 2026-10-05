@@ -911,12 +911,13 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         bones = g["bones"]
         V, Fs, J, W, _, _ = rig_audit.joined(g["meshes"], shapes)
         rep, F = rig_audit.weld(V, Fs)  # (seam-split vertices as one surface, for normals and the audit)
+        skip = rig_audit.bound(g["meshes"])
         note = [f"judging {Path(glb).name}: {len(V)} vertices, {len(Fs)} triangles, the export's own joints and weights"]
     else:
         meta = store.build(name, resolution)
         z = np.load(meta["mesh"])
         V, F = z["verts"].astype(np.float64), z["faces"]
-        Fs, rep = F, np.arange(len(V))
+        Fs, rep, skip = F, np.arange(len(V)), None
         J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
         extra = {k: z[k] for k in ("part", "part_names", "part_colors")}
         note = []
@@ -973,7 +974,7 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         text.append("bones that got no skin: " + ", ".join(empty))
     text = note + text
     text += rigmod.report(spec, bones, V, F, J, W)
-    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W))
+    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W, skip=skip))
     return [_out(img, save), "\n".join(text)]
 
 

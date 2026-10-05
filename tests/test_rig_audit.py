@@ -143,7 +143,8 @@ def test_template_weights_on_a_makehuman_body():
     J, W = rig_template.top_k(D)
     a = rig_audit.audit(bones, Wq, Tq, J, W)
     s = a["static"]
-    assert s["asymmetry"]["max"] < 1e-6, s["asymmetry"]
+    # the grafted neck fades to the Neck joint by distance from the template's loop: as symmetric as the graft (0.5 mm)
+    assert s["asymmetry"]["p99"] < 1e-3 and s["asymmetry"]["max"] < 0.03, s["asymmetry"]
     assert not [r for r in s["digit_bleed"] if r["max"] > rig_audit.BAD["bleed"]], s["digit_bleed"][:3]
     digits = [r for r in a["bones"] if "Hand" in r["bone"] and r["bone"][-1].isdigit()]
     assert len(digits) == 30 and not [r for r in digits if rig_audit.is_bad(r)], [r for r in digits if rig_audit.is_bad(r)]
@@ -187,6 +188,49 @@ def test_parts_read_the_base_surface():
     assert (W * np.isin(J, tw)).sum() > 100  # the forearm and upper arm are shared out along their twist bones
     r = rig.twist_check(bones, Wq + 0.001 * N, Tq, J, W, P + "RightHand", 105.0, True)
     assert r["at_end"] < 8 and r["area_min"] > 0.82, r
+
+
+def test_grafted_neck_and_worn_parts():
+    """The grafted neck is the Neck joint's a few cm above the template's own loop (copied all the way up, the
+    loop's shoulder and upper-arm shares pulled the neck with a raised arm), and a part worn on the body (a collar
+    reaching above the jaw's floor) keeps the neck's weights where the skin itself becomes head."""
+    h = _human()
+    if h is None:
+        return
+    spec, bones, Wq, Tq, surf = h
+    names = [b["name"] for b in bones]
+    D = rig_template.template_weights(spec, bones, surf)
+    src = np.asarray(surf["src"])
+    from scipy.spatial import cKDTree
+    d, _ = cKDTree(Wq[src >= 0]).query(Wq)
+    far = (src < 0) & (d > rig_template.GRAFT_REACH)
+    assert far.sum() > 500
+    arms = [i for i, n in enumerate(names) if "Arm" in n or "Shoulder" in n]
+    assert D[far][:, arms].max() < 1e-9 and D[far, names.index(P + "Neck")].min() > 1 - 1e-9
+    hf = rig.head_field(spec, bones)
+    hv = hf["h"](Wq)
+    ring = (hv > 0.3) & (hv < 1.0) & (Wq[:, 1] > bones[names.index(P + "Head")]["head"][1])  # the nape's band
+    assert ring.sum() > 20
+    N = np.zeros_like(Wq)
+    fn = np.cross(Wq[Tq[:, 1]] - Wq[Tq[:, 0]], Wq[Tq[:, 2]] - Wq[Tq[:, 0]])
+    for c in range(3):
+        np.add.at(N, Tq[:, c], fn)
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
+    low = hv < 1.0  # a "collar": everything under the head, 4 mm off the skin; a "cap": the head, 4 mm off
+    use = np.flatnonzero(low | (hv >= 1.0))
+    sk = rig.skin_parts(spec, bones, {"body": (Wq, Tq), "collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int)),
+                                     "cap": (Wq[~low] + 0.004 * N[~low], np.zeros((0, 3), int))})
+    hi = names.index(P + "Head")
+
+    def head_w(J, W):
+        return (W * (J == hi)).sum(1)
+    assert head_w(*sk["body"])[ring].min() > 0.25          # the skin's nape blends toward the head
+    assert head_w(*sk["collar"])[ring[low]].max() < 0.02   # the collar round it doesn't
+    assert head_w(*sk["cap"]).min() > 0.999                # and what sits on the head is all head
+    spec2 = copy.deepcopy(spec)
+    spec2.setdefault("parts", {}).setdefault("collar", {})["rig_head"] = True
+    sk2 = rig.skin_parts(spec2, bones, {"collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int))})
+    assert head_w(*sk2["collar"])[ring[low]].min() > 0.2
 
 
 if __name__ == "__main__":
