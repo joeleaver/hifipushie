@@ -81,7 +81,7 @@ def core_line(sc, tp: dict, tl: dict, n: int = 14):
     out = dirs(az, el)
     P0 = sc.point(az, el, float(tp["out"]))
     L = float(tl["length"])
-    d = _unit(np.asarray(tl["dir"], float)) if tl.get("dir") is not None else _unit(out + 0.55 * DOWN)
+    d = _unit(np.asarray(tl["dir"], float)) if tl.get("dir") is not None else _unit(0.7 * out + DOWN * 0.6)
     turns = float(tl.get("coil", 0.0))
     if turns > 0:  # a bun: the hair wound round the tie
         e1 = _unit(np.cross(out, [0, 0, 1.0]))
@@ -93,7 +93,7 @@ def core_line(sc, tp: dict, tl: dict, n: int = 14):
         return P0 + rr[:, None] * (np.cos(ang)[:, None] * e1 + np.sin(ang)[:, None] * e2) + (0.012 * np.sin(np.pi * t))[:, None] * out
     ds = L / (n - 1)
     P = [P0]
-    k = (1 - float(tl["stiff"])) ** 2 * 14.0  # how fast the direction falls, per metre
+    k = (1 - float(tl["stiff"])) ** 2 * 45.0  # how fast the direction falls, per metre
     for i in range(n - 1):
         d = _unit(d + k * ds * DOWN)
         q = _clear(sc, (P[-1] + ds * d)[None], float(tl["fullness"]) * 0.9 + 0.006)[0]
@@ -138,16 +138,18 @@ def grow(sc, g: dict, line, rng) -> dict:
                 f = r / rows * 0.75
                 for i in range(nr):
                     az = a0 + (a1 - a0) * (i + 0.5 * (r % 2) + un * rng.uniform(-0.3, 0.3)) / nr
-                    el = float(_line_at(line, az)) + 4.0
+                    el = float(_line_at(line, az)) + 1.5
+                    for _ in range(4):  # (a steep stretch of the line: up until it is inside the hair)
+                        if float(inside(sc, line, az, el)) >= 0.003:
+                            break
+                        el += 4.0
                     root = _slerp(dirs(az, el), tie_dir, [f])[0]
                     t = np.linspace(0, 1, 7)
                     D = _slerp(root, tie_dir, t)
                     aa, ee = az_el(D)
-                    if float(inside(sc, line, aa[0], ee[0])) < 0.002:
-                        continue
                     lift = float(ga["lift"]) * (1 + un * rng.uniform(-0.5, 0.8))
                     hb = 0.002 + 0.003 * (rows - 1 - r)
-                    h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t) ** 0.6) + t ** 3 * float(tp["out"]) * 0.8
+                    h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t)) + t ** 3 * float(tp["out"]) * 0.8
                     aa = aa + un * 2.0 * np.sin(np.pi * t) * rng.uniform(-1, 1)
                     locks[f"{pre}g{r}_{i}"] = {
                         "tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)]
@@ -216,3 +218,35 @@ def grow(sc, g: dict, line, rng) -> dict:
                                   "taper": 0.0, "belly": 0.5, "root": 1.0, "cup": 0.0, "grey": 0.0,
                                   "strands": {"layers": 1, "flyaway": 0.0, "wave": 0.0}}
     return locks
+
+
+def band_mesh(lk: dict, tiles: list, sides: int = 8) -> dict:
+    """The tie as a solid ring (a torus round the band lock's ring of points), in hair_cards' mesh form, wearing
+    the atlas's plain "band" tile."""
+    P = np.asarray(lk["pts"], float)[:-1]
+    c = P.mean(0)
+    n = len(P)
+    r = float(lk["inputs"]["Thickness"]) * 0.75
+    ax = _unit(np.cross(P[1] - P[0], P[2] - P[1]))
+    t = next(t for t in tiles if t["kind"] == "band")
+    V, N = [], []
+    for i in range(n):
+        o = _unit(P[i] - c)
+        for j in range(sides):
+            a = 2 * np.pi * j / sides
+            d = np.cos(a) * o + np.sin(a) * ax
+            V.append(P[i] + r * d)
+            N.append(d)
+    V, N = np.asarray(V), np.asarray(N)
+    F = []
+    for i in range(n):
+        for j in range(sides):
+            a, b = i * sides + j, i * sides + (j + 1) % sides
+            c2, d2 = ((i + 1) % n) * sides + (j + 1) % sides, ((i + 1) % n) * sides + j
+            F += [[a, b, c2], [a, c2, d2]]
+    m = len(V)
+    tan = np.repeat(_unit(np.roll(P, -1, 0) - np.roll(P, 1, 0)), sides, 0)
+    return {"verts": V.astype(np.float32), "tris": np.asarray(F, np.int32),
+            "uv": np.tile([[0.5 * (t["u0"] + t["u1"]), 0.5]], (m, 1)).astype(np.float32),
+            "normal": N.astype(np.float32), "tangent": tan.astype(np.float32), "col": np.ones((m, 3), np.float32),
+            "along": np.full(m, 0.5, np.float32), "layer": np.full(m, 9.0, np.float32), "card": np.zeros(m, np.int32)}

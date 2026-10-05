@@ -29,7 +29,7 @@ STRANDS = {
     "frizz": 0.2,  # 0..1: single strands wander in the pictures
     "flyaway": 0.15,  # stray cards per card (single hairs standing off the lock)
     "layers": 2,  # card layers per lock: 1 = dense only (far LODs), 2, 3 (hero)
-    "card_width": 0.03,  # m: the widest a card gets
+    "card_width": 0.022,  # m: the widest a card gets
     "segment": 0.012,  # m of card per segment (a triangle budget coarsens it)
     "round": 0.55,  # 0..1: card normals bent toward the hair volume's own (soft, even shading)
     "tips": 0.5,  # 0..1: how ragged the ends are (cards and strands of different lengths)
@@ -38,14 +38,18 @@ STRANDS = {
     "soft": 0.008,  # m: the hairline fades over this width (the cap's edge breaks up into strands)
 }
 # (kind, px wide at a 1024 atlas): what the cards choose from. Two of each so neighbours differ.
-TILES = [("dense", 160), ("dense", 160), ("medium", 160), ("medium", 160), ("sparse", 128), ("sparse", 128),
-         ("fly", 64), ("baby", 64)]
+TILES = [("dense", 136), ("dense", 136), ("medium", 136), ("medium", 136), ("sparse", 104), ("sparse", 104),
+         ("hairline", 144), ("fly", 64), ("baby", 48), ("band", 16)]
 KIND = {  # n strands per 160 px, sub clumps, how hard they gather, strand length range, px thick, opaque base share
     "dense": {"n": 260, "clumps": 6, "cl": 0.3, "len": (0.8, 1.0), "thick": 1.5, "base": 0.62},
     "medium": {"n": 120, "clumps": 4, "cl": 0.7, "len": (0.6, 1.0), "thick": 1.4, "base": 0.0},
     "sparse": {"n": 44, "clumps": 3, "cl": 0.85, "len": (0.45, 1.0), "thick": 1.2, "base": 0.0},
     "fly": {"n": 14, "clumps": 0, "cl": 0.0, "len": (0.5, 1.0), "thick": 1.0, "base": 0.0, "wander": 3.0},
-    "baby": {"n": 80, "clumps": 0, "cl": 0.0, "len": (0.15, 0.6), "thick": 0.9, "base": 0.0, "wander": 2.5},
+    "baby": {"n": 150, "clumps": 0, "cl": 0.0, "len": (0.2, 0.75), "thick": 1.3, "base": 0.0, "wander": 2.5},
+    # the hair's edge on the skin: strands that start one by one over the first third (thin at the line, a full
+    # head of hair behind it), then opaque like a dense tile
+    "hairline": {"n": 330, "clumps": 6, "cl": 0.25, "len": (0.85, 1.0), "thick": 1.4, "base": 0.62, "start": 0.34},
+    "band": {},  # a plain opaque tile in the look's `band` colour: the tie
 }
 _ATLAS: dict = {}
 
@@ -86,6 +90,9 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3) -> dict:
     1 on top), all (H, w) floats."""
     from PIL import Image, ImageDraw
     from scipy import ndimage
+    if kind == "band":
+        one = np.ones((H, w), np.float32)
+        return {"alpha": one, "id": one * 0.5, "depth": one, "band": True}
     k = KIND[kind]
     W2, H2 = w * ss, H * ss
     ims = [Image.new("L", (W2, H2), 0) for _ in range(3)]
@@ -112,9 +119,10 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3) -> dict:
     tw, fw = 0.006 + 0.035 * S["curl"], 2.0 + 4.0 * S["curl"]
     ph = rng.uniform(0, 1, (n, 2))
     t = np.linspace(0, 1, 44)
+    v0 = rng.uniform(0, 1, n) ** 1.6 * float(k.get("start", 0.0))  # where each strand's root is
     thick = k["thick"] * ss * w / 160 * 1.0 if kind in ("fly", "baby") else k["thick"] * ss
     for i in np.argsort(depth):
-        v = t * L[i]
+        v = v0[i] + t * (L[i] - v0[i])
         x = x0[i] + (xt[i] - x0[i]) * cl * _ss(v / 0.75)
         env = _ss(v / 0.12)
         x = x + fz * 0.03 * (np.sin(2 * np.pi * (1.3 * v + ph[i, 0])) + 0.6 * np.sin(2 * np.pi * (3.1 * v + ph[i, 1]))) * env
@@ -136,10 +144,12 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3) -> dict:
         col = (col - col.min()) / max(float(np.ptp(col)), 1e-9)
         vv = (np.arange(H)[:, None] + 0.5) / H
         floor = 1 - _ss((vv - (k["base"] - 0.2 + 0.3 * col[None])) / 0.2)
+        if k.get("start"):  # no base at the line itself: it comes in behind the first roots
+            floor = floor * _ss((vv - k["start"] * (0.75 + 0.5 * col[None])) / 0.14)
         streak = np.repeat(ndimage.gaussian_filter1d(rng.uniform(0, 1, w), 0.7, mode="wrap")[None], H, 0)
         under = a < floor
         idm = np.where(under, a * idm + (1 - a) * streak, idm)
-        dep = np.where(under, a * dep + (1 - a) * 0.12, dep)
+        dep = np.where(under, a * dep + (1 - a) * 0.3, dep)
         a = np.maximum(a, floor)
     solid = a > 0.03
     if solid.any():  # values carried past the alpha's edge (no dark fringe under filtering)
@@ -153,7 +163,7 @@ def atlas(S: dict, look: dict) -> dict:
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "frizz", "curl", "tips", "atlas")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary")}], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band")}], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -171,6 +181,12 @@ def atlas(S: dict, look: dict) -> dict:
     shade = (0.25 + 0.75 * dep ** 0.8)[..., None]
     val = (1 + float(look.get("vary", 0.25)) * 1.6 * (idm - 0.5))[..., None]
     col = _srgb((gap[None, None] * (1 - shade) + lit[None, None] * shade) * val)
+    x = 0
+    for c in cols:  # the tie's own colour
+        w = c["alpha"].shape[1]
+        if c.get("band"):
+            col[:, x:x + w] = np.array([int(look.get("band", "#23252b").lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)])
+        x += w
     hgt = ndimage.gaussian_filter(dep * (a > 0.1), 0.8)
     gx, gy = np.gradient(hgt, axis=1) * 2.2, np.gradient(hgt, axis=0) * 0.6
     nrm = _unit(np.stack([-gx, gy, np.ones_like(gx)], -1)) * 0.5 + 0.5
@@ -280,6 +296,8 @@ def _lock_cards(lk: dict, C, S: dict, rng, n: int = 72) -> list:
 
     def card(x, yo, kind, layer, u0=0.0, u1=1.0, hw=None, drift=None, amp=1.0):
         a = 0.35 * x + rng.normal(0, 0.12)
+        if layer > 0 and drift is None:  # upper cards lift off the ones under them by their own amount: depth
+            yo = yo + th * R * rng.uniform(0.0, 1.2) * np.sin(np.pi * np.clip(u, 0, 1)) ** 0.8
         X = _unit(B * np.cos(a) - N * np.sin(a))
         Nc = np.cross(X, T)
         # a lock lying on the head is held by the hair round it: it waves a little, in its own plane; free hair
@@ -296,17 +314,22 @@ def _lock_cards(lk: dict, C, S: dict, rng, n: int = 72) -> list:
             return
         h = (hw0 if hw is None else np.full(len(u), hw))[sel]
         out.append({"P": Pc[sel], "X": X[sel], "N": Nc[sel], "hw": h, "u": u[sel], "s": s[sel], "kind": kind,
+                    "cval": 1 + R * rng.uniform(-0.28, 0.28),
                     "layer": layer, "bend": _unit(P[sel] - (cen[sel] if len(cen) > 1 else cen[0])), "T": T[sel]})
 
+    edge = bool(lk.get("at_hairline"))
     for la in range(L):
-        kind = "dense" if la == 0 else ("medium" if la == 1 else "sparse")
+        kind = ("hairline" if edge else "dense") if la == 0 else ("medium" if la == 1 else "sparse")
         nl = na if la == 0 else max(1, na - (la % 2))
         for j in range(nl):
             x = ((j + 0.5 + R * rng.uniform(-0.25, 0.25)) / nl - 0.5) * 2 if nl > 1 else R * rng.uniform(-0.3, 0.3)
             yo = th * (-0.15 + 0.6 * la / max(L - 1, 1)) + th * rng.uniform(-0.05, 0.05)
-            k2 = kind if (L > 1 or j % 2 == 0) else "medium"
+            k2 = kind if (L > 1 or j % 2 == 0 or edge) else "medium"
             u1 = 1.0 - S["tips"] * R * rng.uniform(0.0, 0.22) if la > 0 else 1.0
-            card(x, yo, k2, la, 0.0, u1)
+            u0 = R * rng.uniform(0.0, 0.3) if la > 0 else 0.0  # (their roots staggered up the lock)
+            if edge and la > 0:  # the line stays the thin layer's: upper cards start behind it
+                u0 = max(u0, min(0.3, 0.02 / max(s[-1], 1e-6)))
+            card(x, yo, k2, la, u0, u1)
     nf = rng.poisson(float(S["flyaway"]) * na * L)
     for _ in range(int(nf)):
         u0 = rng.uniform(0.0, 0.5)
@@ -364,8 +387,9 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         Tn.append(np.repeat(c["T"], 2, 0))
         ramp = rootd + (1 - rootd) * _ss(c["u"] / max(rootl, 1e-3))
         ramp = ramp * (1 + tip_amt * 0.35 * _ss((c["u"] - 0.55) / 0.45))
-        lay = 0.78 + 0.22 * min(c["layer"], 2) / 2
-        COL.append(np.repeat(np.clip(ramp * lay * c.get("value", 1.0), 0, 1)[:, None] * np.ones(3)[None], 2, 0))
+        lay = 0.6 + 0.4 * min(c["layer"], 2) / 2
+        COL.append(np.repeat(np.clip(ramp * lay * c.get("value", 1.0) * c.get("cval", 1.0), 0, 1)[:, None]
+                             * np.ones(3)[None], 2, 0))
         AL.append(np.repeat(c["u"], 2))
         LAY.append(np.full(2 * m, c["layer"], np.float32))
         CID.append(np.full(2 * m, ci, np.int32))

@@ -107,7 +107,8 @@ GROOM = {
 }
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
-        "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0}  # edge: how far across a lock its edges darken; root: how far
+        "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
+        "band": "#23252b", "strand_relief": 0.6}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands"}
@@ -1658,17 +1659,34 @@ def card_cap(sc: Scalp, g: dict, S: dict, tiles: list, V, F) -> dict:
     line = hairline(sc, g)
     az, el, _ = sc.coords(V)
     d_in = inside(sc, line, az, el)
-    t = next(t for t in tiles if t["kind"] == "dense")
+    t = next(t for t in tiles if t["kind"] == "hairline")
     x = np.radians(az) * 0.09 / 0.03
+    tan = streams(sc, g, V)["tangent"]
+    tie = g.get("tie")
+    if tie:  # tied hair runs to the tie: the cap's strands converge there (round the nearest tie's own direction)
+        from . import hair_tied
+        D = _unit(np.asarray(V, float) - sc.C)
+        best = np.full(len(V), -2.0)
+        for tp in hair_tied.params(tie):
+            ax = dirs(*tp["at"])
+            e1 = _unit(np.cross(ax, [0.0, 0.0, 1.0]))
+            e2 = np.cross(ax, e1)
+            c = D @ ax
+            xa = np.arctan2(D @ e2, D @ e1) * 0.09 / 0.03
+            toward = _unit(ax[None] - c[:, None] * D)
+            x = np.where(c > best, xa, x)
+            tan = np.where((c > best)[:, None], toward, tan)
+            best = np.maximum(best, c)
     tri = np.abs((x % 2.0) - 1.0)
-    vt = 0.5 + 0.48 * (1 - np.clip(d_in / max(float(S["soft"]), 1e-4), 0, 1))
+    # the tile's first 45% (single roots, then more, then the opaque base) laid over 3 x soft from the line in
+    vt = 0.45 * np.clip(d_in / max(3 * float(S["soft"]), 1e-4), 0, 1)
     uv = np.stack([t["u0"] + (t["u1"] - t["u0"]) * tri, 1 - vt], 1)
     F = np.asarray(F)
     tris = np.concatenate([F[:, [0, 1, 2]], F[:, [0, 2, 3]]])
     n = len(V)
     return {"verts": np.asarray(V, np.float32), "tris": tris.astype(np.int32), "uv": uv.astype(np.float32),
-            "normal": sc.normal(az, el).astype(np.float32), "tangent": streams(sc, g, V)["tangent"],
-            "col": np.full((n, 3), 0.8, np.float32), "along": np.full(n, 0.5, np.float32),
+            "normal": sc.normal(az, el).astype(np.float32), "tangent": np.asarray(tan, np.float32),
+            "col": np.full((n, 3), 0.9, np.float32), "along": np.full(n, 0.5, np.float32),
             "layer": np.full(n, -1.0, np.float32), "card": np.zeros(n, np.int32)}
 
 
@@ -1692,8 +1710,10 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
         de, da = np.degrees(0.002 / r), np.degrees(0.002 / max(r * np.cos(np.radians(el)), 0.02))
         gn = float(inside(sc, line, az, el + de) - inside(sc, line, az, el - de))  # which way is into the hair
         ge = float(inside(sc, line, az + da, el) - inside(sc, line, az - da, el))
-        th = np.arctan2(ge, gn) + rng.uniform(-1.9, 1.9)
-        ln = rng.uniform(0.012, 0.03)
+        # most lie back into the hair (they soften the edge), a quarter stray out over the skin
+        stray = rng.uniform() < 0.25
+        th = np.arctan2(ge, gn) + (np.pi + rng.uniform(-1.0, 1.0) if stray else rng.normal(0, 0.8))
+        ln = rng.uniform(0.008, 0.016) if stray else rng.uniform(0.015, 0.035)
         pts = []
         for f in (-0.12, 0.3, 0.65, 1.0):
             e2 = el + np.degrees(np.cos(th) * ln * f / r) + de * 1.5
@@ -1714,16 +1734,30 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     S = hc.strands_of(spec)
     lk = {**LOOK, **(h.get("look") or {})}
     at = hc.atlas(S, lk)
-    cards = hc.cards_of(locks, sc.C, S, lk)
-    info = {}
-    seg = None
-    if budget:
-        cards, seg, info = hc.fit_budget(cards, S, int(budget))
+    import re
+    bands = [k_ for k_ in locks if re.fullmatch(r"t\d*band", k_["name"])]  # the tie is its own mesh, not hair
+    line = hairline(sc, g)
+    for k_ in locks:  # locks rooted at the hairline wear the thin-rooted tile there
+        if not k_.get("free"):
+            a0, e0, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
+            k_["at_hairline"] = bool(h0[0] < 0.01 and inside(sc, line, a0, e0)[0] < 0.008)
+    cards = hc.cards_of([k_ for k_ in locks if k_ not in bands], sc.C, S, lk)
+    cap = card_cap(sc, g, S, at["tiles"], V, F)
     baby = hc.cards_of(baby_locks(sc, g, S, int(g.get("seed", 0))), sc.C, S, lk)
     for c in baby:
         c["kind"], c["layer"] = "baby", 1
-    m = hc.mesh(cards + baby, S, lk, at["tiles"], segment=seg)
-    cap = card_cap(sc, g, S, at["tiles"], V, F)
+    info = {}
+    seg = None
+    mb = hc.mesh(baby, S, lk, at["tiles"])
+    band = []
+    if bands:
+        from . import hair_tied
+        band = [hair_tied.band_mesh(b, at["tiles"]) for b in bands]
+    if budget:  # the budget is the whole hair's: the cap, the baby hairs and the tie come off it first
+        fixed = len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
+        cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
+        info["asked"], info["fixed"] = int(budget), int(fixed)
+    m = hc.join(hc.mesh(cards, S, lk, at["tiles"], segment=seg), mb, *band)
     np.savez(tmp / "cards.npz", **m)
     np.savez(tmp / "cards_cap.npz", **cap)
     files = hc.write_atlas(at, str(tmp / "hair"))
@@ -2228,6 +2262,8 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
     spec = store.load(name) if spec is None else spec
     if not hair_of(spec).get("locks"):
         return None
+    if hair_of(spec).get("style") == "cards":
+        return export_cards(name, Path(out_dir), spec, log)
     ex = {**EXPORT, **((spec.get("hair") or {}).get("export") or {})}
     segments = int(segments or ex["segments"])
     sides = int(sides or ex["sides"])
@@ -2252,6 +2288,67 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
     Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 128], np.uint8), "RGBA").save(files["specular"])
     log.append(f"hair: {len(T)} triangles ({segments} x {sides} per lock + the underlayer), maps {texture}^2 baked by Cycles "
                f"from the locks' own material in {time.time() - t:.1f}s")
+    return part, files
+
+
+EXPORT_CARDS = {"triangles": 12000, "cap_step": 6.0, "alpha_cutoff": 0.33}  # spec["hair"]["export"] overrides
+CARD_RECIPE = (
+    "Hair cards. Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
+    "volume: do not flip them on back faces). Alpha: the base colour's alpha, alpha-tested at alpha_cutoff with "
+    "dithering + temporal AA, or alpha-to-coverage with MSAA; keep the alpha's coverage in the mips (or bias mips "
+    "-1). COLOR_0 multiplies the base colour: the root-to-tip ramp, a value per lock and per card, lower layers "
+    "darker. Anisotropic highlight along the hair: TANGENT's bitangent (the atlas's v) runs root to tip. The aux "
+    "texture holds R = root gradient (1 at the root), G = a value per strand (shift the highlight and the value "
+    "with it), B = depth in the clump (0 deep: darker, less specular; usable as pixel depth offset), A = alpha. "
+    "LODs: drop the cards of `layer` 2, then 1 (extras.layers gives each layer's triangle range).")
+
+
+def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict, dict]:
+    """The hair as cards for an engine: the card mesh + the cap (coarse) in one mesh on the strand atlas, within
+    `hair.export.triangles`. Part keys as export_part's, plus "vcolor" (per vertex: COLOR_0) and "hair" (the
+    material's facts: alpha cutoff, layers' triangle ranges, the recipe); maps basecolor (RGBA), orm, normal,
+    specular, aux."""
+    from PIL import Image
+    from . import hair_cards as hc
+    t = time.time()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    h = hair_of(spec)
+    ex = {**EXPORT_CARDS, **{k: v for k, v in (h.get("export") or {}).items() if k in EXPORT_CARDS}}
+    j = job(name, spec, budget=int(ex["triangles"]), cap_step=float(ex["cap_step"]))
+    cd = j["cards"]
+    cap, cards = dict(np.load(cd["cap"])), dict(np.load(cd["mesh"]))
+    o = np.argsort(cards["layer"][cards["tris"][:, 0]], kind="stable")  # triangles by layer: a LOD is a range
+    cards["tris"] = cards["tris"][o]
+    M = hc.join(cap, cards)
+    V, T = M["verts"].astype(np.float64), M["tris"]
+    UV = M["uv"][T].reshape(-1, 2).astype(np.float64)
+    _, tt, sg = _tangents(V, T, UV)
+    n = M["normal"][T].reshape(-1, 3).astype(np.float64)
+    tt = tt - (tt * n).sum(1, keepdims=True) * n
+    tt = np.where(np.linalg.norm(tt, axis=1, keepdims=True) > 1e-9, _unit(tt), _unit(np.cross(n, [0.0, 0.0, 1.0])))
+    lay = M["layer"][T[:, 0]]
+    ranges = {("cap" if k < 0 else "tie" if k > 8 else f"layer{int(k)}"): [int(np.nonzero(lay == k)[0][0]), int((lay == k).sum())]
+              for k in np.unique(lay)}
+    lk = j["look"]
+    part = {"verts": V.astype(np.float32), "corner_vert": T.ravel().astype(np.int64), "uv": UV.astype(np.float32),
+            "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
+            "vcolor": M["col"].astype(np.float32),
+            "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": CARD_RECIPE,
+                     "strands": hc.strands_of(spec), "budget": cd["budget"]}}
+    aux = np.asarray(Image.open(cd["aux"]).convert("RGBA"), np.float32) / 255
+    files = {"basecolor": out_dir / "hair_basecolor.png", "orm": out_dir / "hair_orm.png",
+             "normal": out_dir / "hair_normal.png", "specular": out_dir / "hair_specular_gltf.png",
+             "aux": out_dir / "hair_aux.png"}
+    Image.open(cd["color"]).save(files["basecolor"])
+    Image.open(cd["normal"]).convert("RGB").save(files["normal"])
+    Image.open(cd["aux"]).save(files["aux"])
+    rough = np.clip(float(lk.get("roughness", 0.42)) * (1.25 - 0.4 * aux[..., 2]), 0.05, 1.0)
+    occ = 0.55 + 0.45 * aux[..., 2]
+    Image.fromarray((np.stack([occ, rough, np.zeros_like(occ)], -1) * 255 + 0.5).astype(np.uint8)).save(files["orm"])
+    Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 128], np.uint8), "RGBA").save(files["specular"])
+    log.append(f"hair: {len(T)} triangles as cards (asked {ex['triangles']}: {cd['cards']} cards + {cd['baby']} baby "
+               f"hairs, the cap {cd['cap_triangles']}; {cd['budget']}), strand atlas {aux.shape[1]}^2 generated, "
+               f"{time.time() - t:.1f}s")
     return part, files
 
 
