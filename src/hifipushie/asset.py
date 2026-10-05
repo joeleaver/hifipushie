@@ -1079,6 +1079,62 @@ def _trs(M: np.ndarray) -> dict:
     return {"translation": (_Z_TO_Y @ M[:3, 3]).tolist(), "rotation": q.tolist(), "scale": (np.diag(D) * sc).tolist()}
 
 
+def _arc_quat(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The shortest turn from unit a to unit b as a glTF quaternion (x, y, z, w)."""
+    c = float(a @ b)
+    if c < -1 + 1e-9:  # opposite: half a turn about any axis across a
+        ax = np.cross(a, [1.0, 0, 0]) if abs(a[0]) < 0.9 else np.cross(a, [0, 0, 1.0])
+        return np.r_[ax / np.linalg.norm(ax), 0.0]
+    q = np.r_[np.cross(a, b), 1.0 + c]
+    return q / np.linalg.norm(q)
+
+
+def _quat_matrix(q: np.ndarray) -> np.ndarray:
+    x, y, z, w = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+FACE_MOVED = 5e-4  # m: a vertex some face shape moves this far is part of the face (rigid on the Head bone)
+
+
+def _head_share(rigged: dict, pn: str, bone: int) -> np.ndarray:
+    J, W = rigged["weights"][pn]
+    return (np.asarray(W) * (np.asarray(J) == bone)).sum(1)
+
+
+TWIST_RECIPE = {
+    "what": "Twist bones are extra leaf joints after the Mixamo set (children of the Arm / ForeArm / UpLeg / Leg "
+            "joints, named <segment>Twist<k>, k counted away from the body). Nothing animates them: left alone they "
+            "ride their parent and the skin is what it would be without them. Drive them every frame, after the "
+            "animation, to spread a segment's roll along it.",
+    "driver": "roll = the twist of the DRIVER joint's local rotation (its pose relative to its rest; every Mixamo "
+              "joint here rests unrotated) about the segment's axis (extras.axis_parent, in the driver's parent's "
+              "rest frame = model space at rest): with q = (w, v) the local rotation and a the axis, "
+              "roll = 2 atan2(v . a, w) (swing-twist decomposition). Then set each twist joint's local rotation to "
+              "rest x turn(axis_local +Y, share x roll).",
+    "modes": "follow: the driver is the segment's child (Hand for ForeArmTwist, Foot for LegTwist); shares rise to "
+             "1.0 at the wrist/ankle, so the joint itself keeps no twist. counter: the driver is the segment's own "
+             "joint (Arm for ArmTwist, UpLeg for UpLegTwist); shares are negative, -1.0 at the shoulder/hip (that "
+             "skin stays with the clavicle/pelvis) rising to 0 at the elbow/knee.",
+    "godot": "Godot 4: a SkeletonModifier3D after the AnimationMixer (in _process_modification read "
+             "get_bone_pose_rotation(driver), compute roll as above, set_bone_pose_rotation(twist, rest_rotation * "
+             "Quaternion(Vector3.UP, share * roll))); 4.5+ also has BoneTwistDisperser3D / CopyTransformModifier3D "
+             "for the follow chains. Bone names lose the colon on import (mixamorig_LeftForeArmTwist1).",
+    "unity": "Unity: Humanoid avatars ignore the extra joints (keep them as extra transforms: untick 'Strip bones' "
+             "/ leave Optimize Game Objects off, or expose them), so Mixamo clips play unchanged; drive them in "
+             "LateUpdate, or with Animation Rigging's Twist Correction constraint (source = Hand, twist nodes with "
+             "weights = shares) for follow chains and a Twist Chain / script for counter chains. The avatar's own "
+             "'Upper/Lower Arm Twist' muscle settings move roll between the Mixamo joints only: set Lower Arm Twist "
+             "to 0 so the hand keeps the whole roll for the twist joints to spread.",
+    "unreal": "Unreal: in the Post Process Anim Blueprint (or Control Rig) add a Twist Corrective-style chain: "
+              "'Copy Bone'/'Apply a Percentage of Rotation' from hand to each ForeArmTwist with alpha = share, "
+              "rotation only, about the bone's Y (as the Mannequin's lowerarm_twist_01/02 and upperarm_twist_01/02 "
+              "are driven); map them as twist bones in the IK Rig so retargeting leaves them to the post process.",
+}
+
+
 def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]],
               prefabs: dict | None = None, looks: dict | None = None, rig: dict | None = None,
               extra_ext: dict | None = None):
@@ -1208,16 +1264,28 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         bones = rig["bones"]
         base = len(nodes)
         head = np.array([_Z_TO_Y @ np.asarray(b["head"], float) for b in bones])
+        ibm = np.tile(np.eye(4, dtype=np.float32), (nb, 1, 1))
+        ibm[:, :3, 3] = -head  # bind pose: every joint unrotated at its head
         for i, b in enumerate(bones):
             ref = head[b["parent"]] if b["parent"] >= 0 else np.zeros(3)
             nodes.append({"name": b["name"], "translation": (head[i] - ref).tolist()})
+            tw = b.get("twist")
+            if tw:  # a twist bone (rig.py): a leaf whose local +Y is its segment's axis, so a driver sets "turn
+                # about Y by share x the driver's roll"; what to drive it from is in its extras
+                a = _Z_TO_Y @ np.asarray(tw["axis"], float)
+                q = _arc_quat(np.array([0.0, 1.0, 0.0]), a)
+                R = _quat_matrix(q)
+                nodes[-1]["rotation"] = [float(x) for x in q]
+                nodes[-1]["extras"] = {"hifipushie_twist": {
+                    "driver": tw["driver"], "mode": tw["mode"], "share": tw["share"], "station": tw["station"],
+                    "axis_local": [0.0, 1.0, 0.0], "axis_parent": [round(float(x), 6) for x in a]}}
+                ibm[i, :3, :3] = R.T
+                ibm[i, :3, 3] = -R.T @ head[i]
         for i, b in enumerate(bones):
             if b["parent"] >= 0:
                 nodes[base + b["parent"]].setdefault("children", []).append(base + i)
         nodes.append({"name": "rig", "children": [base + i for i, b in enumerate(bones) if b["parent"] < 0]})
         top.append(len(nodes) - 1)
-        ibm = np.tile(np.eye(4, dtype=np.float32), (nb, 1, 1))
-        ibm[:, :3, 3] = -head  # bind pose: every joint unrotated at its head
         skins.append({"name": f"{name}_rig", "joints": list(range(base, base + nb)), "skeleton": len(nodes) - 1,
                       "inverseBindMatrices": add(np.ascontiguousarray(ibm.transpose(0, 2, 1)).reshape(nb, 16),
                                                  None, 5126, "MAT4")})
@@ -1528,12 +1596,19 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     if rig:  # an armature from the skeleton, the parts (not prefabs) skinned to it
         from . import rig as rigmod
         tr = time.time()
-        bones = rigmod.rig_bones(spec)
+        rspec = spec
+        if isinstance(rig, dict):  # export options over spec["rig"]: {"twist": ..., "rigid_head": ...}
+            rspec = {**spec, "rig": {**(spec.get("rig") or {}), **rig}}
+        bones = rigmod.rig_bones(rspec)
+        skin_at = {pn: np.array(p["verts"], np.float64) for pn, p in parts.items() if pn not in pf_of}
         rigged = {"bones": bones, "weights": rigmod.skin_parts(
-            spec, bones, {pn: (p["verts"], p["corner_vert"].reshape(-1, 3)) for pn, p in parts.items()
-                          if pn not in pf_of}, smooth=3)}
+            rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3)) for pn in skin_at}, smooth=3)}
+        hf = rigmod.head_field(rspec, bones)
+        ntw = sum(1 for b in bones if b.get("twist"))
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
-                   f"{bones[0]['name']!r}), {len(rigged['weights'])} parts skinned, {time.time() - tr:.1f}s")
+                   f"{bones[0]['name']!r}; {ntw} twist bones after the base set), {len(rigged['weights'])} parts "
+                   f"skinned, head rigid by {hf['how'] if hf else 'nothing (off, or no Head bone)'}, "
+                   f"{time.time() - tr:.1f}s")
     shapes = {}
     if face_shapes:  # after the bake and the skin: both use the meshed (open-mouthed) low poly
         from . import faceshapes
@@ -1544,6 +1619,19 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             report[pn]["face_shapes"] = nms
         log.append(f"face shapes: {len(faceshapes.names_of(face_shapes))} on {len(shapes)} parts in "
                    f"{time.time() - tf:.1f}s")
+        if rigged and hf is not None:  # whatever a face shape moves is head: it must not also bend with the neck
+            moved = {}
+            for pn in shapes:
+                d = [np.linalg.norm(np.asarray(x[0]), axis=1) for x in (parts[pn].get("shapes") or {}).values()]
+                if d and pn in skin_at and len(d[0]) == len(skin_at[pn]):
+                    moved[pn] = np.max(d, 0) > FACE_MOVED
+            before = {pn: _head_share(rigged, pn, hf["bone"]) for pn in moved}
+            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"])
+            for pn, m in moved.items():
+                if m.any():
+                    b0 = before[pn][m]
+                    log.append(f"rig: {pn}: {int(m.sum())} vertices the face shapes move are Head 1.0 "
+                               f"({int((b0 < 0.99).sum())} weren't: least {b0.min():.2f})")
     write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
@@ -1579,6 +1667,17 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
             "parts": report, "prefabs": prefabs,
+            **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
+                        "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
+                        "rest": "every base joint unrotated at its head, pose as modelled; twist joints rotated so "
+                                "local +Y runs along their segment",
+                        "twist": rigmod.twist_table(rigged["bones"]),
+                        "twist_axes": "Blender axes here (Z up, faces -Y); the GLB's node extras.hifipushie_twist "
+                                      "carry the same per joint in glTF axes (axis_parent) and local (+Y)",
+                        "twist_recipe": TWIST_RECIPE,
+                        "head": (f"rigid: {hf['how']}; falloff to the neck over {hf['band'] * 1e3:.0f} mm below; "
+                                 "face-shape vertices, teeth, tongue and eyes Head 1.0") if hf else "not rigid"}}
+               if rigged else {}),
             **({"face_shapes": {"names": faceshapes.names_of(face_shapes), "parts": shapes,
                                 "correctives": {c: f"{op}({a}, {b})" for c, (op, a, b) in faceshapes.CORRECTIVES.items()
                                                 if c in faceshapes.names_of(face_shapes)},
