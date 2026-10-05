@@ -2799,7 +2799,8 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
     T = body.T
     E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
     covered = pad > 0
-    for _ in range(3):  # spread over the vertices between the garment's own (max), then even out
+    for _ in range(1):  # spread onto the vertices between the garment's own (max: one ring; three rings carried
+        # every fold's crest 3 cm round, a pad of 29 mm at the median over a shirt 8-16 mm off the body), then even out
         m = pad.copy()
         np.maximum.at(m, E[:, 0], pad[E[:, 1]])
         np.maximum.at(m, E[:, 1], pad[E[:, 0]])
@@ -2815,6 +2816,43 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
     b = Body({"V": body.V + vn * pad[:, None], "F": body._faces, "J": body.J})
     b.pad = pad
     return b
+
+
+UNDER_CAP = 0.008  # m off the body: how far a garment's loose cloth stands under another worn over it
+
+
+def pressed(under: dict, body: "Body", cap: float = UNDER_CAP) -> np.ndarray:
+    """A finished garment as it lies UNDER another: its loose cloth pressed toward the body to at most `cap` off it
+    (a shirt blouses 2-5 cm at the sleeves and the back; a jacket's sleeve and body flatten that, and frozen as
+    simulated the shirt held the jacket out like a puffer), its made pieces (collar, stand, cuffs: what shows) as
+    they are, the cloth next to them eased over a few cm. Vertices move along the body's normal; nothing is solved."""
+    res = under["res"]
+    M, V = res["mesh"], np.array(under["V"], float)
+    vn, tree = body.normals()
+    n = vn[tree.query(V)[1]]
+    cl = body.clearance(V)
+    made = np.isin(M["piece"], [M["names"].index(nm) for nm in made_pieces(M, interfacing(res["pieces"], M)) if nm in M["names"]])
+    keep = np.where(made, 1.0, 0.0)  # 1 = stays as simulated
+    F = M["F"]
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]], np.asarray(M["sew"]).reshape(-1, 2)], 1), axis=0)
+    hm = float(np.median(np.linalg.norm(V[F[:, 0]] - V[F[:, 1]], axis=1)))
+    for _ in range(max(2, int(round(0.03 / max(hm, 1e-4))))):  # ease over ~3 cm from the made pieces
+        acc, wt = np.zeros(len(V)), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], keep[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], keep[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        keep = np.where(made, 1.0, np.maximum(keep * 0.0, acc / np.maximum(wt, 1)))
+    move = np.maximum(cl - cap, 0.0) * (1.0 - keep)
+    for _ in range(2):  # (even: neighbours pressed alike)
+        acc, wt = np.zeros(len(V)), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], move[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], move[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        move = np.where(made, 0.0, 0.5 * move + 0.5 * acc / np.maximum(wt, 1))
+    move = np.minimum(move, np.maximum(cl - 0.002, 0.0))
+    return V - n * move[:, None]
 
 
 def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
@@ -2893,6 +2931,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         body_real._m = body_meas.m  # (the tape reads the body, not its pads)
     body = body_real
     if under is not None:
+        if under.get("res") is not None:  # the garment under this one as it lies under it (pressed)
+            under = dict(under, V=pressed(under, body_real, float(g.get("under_cap", UNDER_CAP))))
         body = padded_body(body_real, body_src, under["V"], float(g.get("layer_gap", 0.003)))
         body._m = body_real.m
     Bp = pieces(g, body_real.m["mm"] if g.get("pattern") else {})
@@ -3243,7 +3283,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     res["sizing"] = sizing(res)
     if under is not None and under.get("res") is not None:  # layered: the tailoring tells against the garment under it
         from . import cloth_layers
-        res["tells"] = cloth_layers.tells(res, under["res"])
+        res["under_V"] = np.asarray(under["V"], float)  # the under garment as pressed under this one
+        res["tells"] = cloth_layers.tells(res, dict(under["res"], V=res["under_V"]))
     if hang:  # what carries it: the hanger's arms by contact (pins: the old pinned hang), and is the hanger inside it
         if hg is not None:
             pins_h, hx = np.zeros(0, np.int64), hg
@@ -3372,13 +3413,27 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         L = np.linalg.norm(D, axis=1)
         cap = float(o["keep"])
         X = X + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
+    def weld():
+        # only seams the sim closed (a gap over 1.5 triangles is a seam it couldn't close: welding it drags cloth).
+        # Sewn vertices are welded as GROUPS (a vertex in two seams, three pieces meeting at a point: pair by pair
+        # the last pair won and the others stayed open by the solver's few mm: "stitches super visible"), each group
+        # at its mean, weighted toward interfaced vertices (a made collar's edge stays, the cloth comes to it)
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+        s_ = np.asarray(M["sew"]).reshape(-1, 2)
+        s_ = s_[np.linalg.norm(X[s_[:, 0]] - X[s_[:, 1]], axis=1) < 1.5 * h]
+        if not len(s_):
+            return
+        A = coo_matrix((np.ones(len(s_)), (s_[:, 0], s_[:, 1])), shape=(len(X), len(X)))
+        _, lab = connected_components(A, directed=False)
+        vs = np.unique(s_)
+        wv = 1.0 + 20.0 * (np.zeros(len(vs)) if stiff is None else np.clip(np.asarray(stiff, float)[vs], 0, 1))
+        _, gi = np.unique(lab[vs], return_inverse=True)
+        acc = np.zeros((gi.max() + 1, 3))
+        np.add.at(acc, gi, X[vs] * wv[:, None])
+        X[vs] = (acc / np.bincount(gi, weights=wv)[:, None])[gi]
     if o["weld"] and len(M["sew"]):
-        s = M["sew"]
-        # only seams the sim closed (a gap over 1.5 triangles is a seam it couldn't close: welding it drags cloth)
-        s = s[np.linalg.norm(X[s[:, 0]] - X[s[:, 1]], axis=1) < 1.5 * h]
-        mid = 0.5 * (X[s[:, 0]] + X[s[:, 1]])
-        X[s[:, 0]] = mid
-        X[s[:, 1]] = mid
+        weld()
     if o["clear"] and body is not None and len(body.V):
         vn, tree = body.normals()
         _, i = tree.query(X)
@@ -3387,6 +3442,8 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         bad &= np.linalg.norm(X - body.V[i], axis=1) < 0.05  # only near the body (far vertices: a hang, a drape)
         if bad.any():
             X[bad] = body.push_out(X[bad], o["clear"])
+            if o["weld"] and len(M["sew"]):  # (the push moved one side of a seam and not the other)
+                weld()
     moved = np.linalg.norm(X - V, axis=1)
     return X, {"passes": n, "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
                "moved_max_mm": round(float(moved.max() * 1000), 2)}
@@ -3754,7 +3811,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
