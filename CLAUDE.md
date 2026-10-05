@@ -829,7 +829,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     hides 75% x coverage of the fine pigment layers, which composite after the pre base), concealer, contour, blush,
     highlight, eyeshadow, eyeliner + wing, mascara, brows, lipstick, nails; each with a finish (roughness / specular /
     metallic).
-  - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin/<model>_<head|arm>` (bare skin + eyes, ~1 mm),
+  - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin_<model>_<head|arm>` (bare skin + eyes, ~1 mm),
     re-synced when the spec or the skin code changes, EEVEE under fixed lights (studio / soft / back) or `engine=
     "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
     shows one mask; prints the face's measurements beside the photographs' with hints.

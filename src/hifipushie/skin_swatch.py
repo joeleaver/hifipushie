@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 8
+VERSION = 9
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -202,8 +202,8 @@ def depth(kind: str) -> np.ndarray:
         wob = 0.045 * (_smooth_noise(rng, 5) - 0.5) + 0.012 * (_smooth_noise(rng, 14) - 0.5)
         ph = (v + wob) * 7.0  # 7 lines per period
         dist = np.abs(ph - np.round(ph)) / 7.0 * mm  # mm to the nearest line
-        strength = np.clip((_smooth_noise(rng, 7) - 0.3) * 2.2, 0, 1)
-        d = np.clip(1 - dist / (0.5 + 0.5 * strength), 0, 1) ** 1.3 * strength
+        strength = np.clip((_smooth_noise(rng, 5) - 0.1) * 1.7, 0, 1)  # a line runs on for centimetres, deeper and shallower
+        d = np.clip(1 - dist / (0.45 + 0.4 * strength), 0, 1) ** 1.3 * (0.25 + 0.75 * strength)
         ph2 = (v + 1.6 * wob + 0.07) * 14.0
         d2 = np.abs(ph2 - np.round(ph2)) / 14.0 * mm
         d = np.maximum(d, 0.35 * np.clip(1 - d2 / 0.18, 0, 1) * np.clip((_smooth_noise(rng, 9) - 0.45) * 3, 0, 1))

@@ -1,6 +1,6 @@
 """Fast, close looks at a character's skin (the `look_skin` tool): a cropped copy of the model per body region (the
 head and shoulders, a forearm and hand: bare skin at ~1 mm, without clothes or hair), kept in
-workspace/_skin/<model>_<region> and re-synced only when the spec changes (a paint-only change re-measures and
+workspace/_skin_<model>_<region> and re-synced only when the spec changes (a paint-only change re-measures and
 rebuilds the material: ~10-30 s; a geometry change re-meshes: ~2 min), rendered in EEVEE under fixed lights, with the
 numbers `skin_measure` reads off the render next to what photographs of real skin measure."""
 from __future__ import annotations
@@ -40,7 +40,7 @@ def _J(spec: dict) -> dict:
 
 
 def stage_name(name: str, region: str) -> str:
-    return f"_skin/{name.replace('/', '_')}_{region}"
+    return f"_skin_{name}_{region}"
 
 
 def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:

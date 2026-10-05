@@ -171,10 +171,13 @@ LINES = {  # tapered lines: [(anchor, offset)], radius (interocular distances)
     "marionette.L": ([("lm_mouth_corner.L", (0.06, 0.02, -0.03)), ("lm_mouth_corner.L", (0.12, 0.05, -0.42))], [0.06, 0.035]),
     "brow.L": ([("lm_brow_inner.L", (0.0, 0, 0)), ("lm_brow_mid.L", (0, 0, 0)), ("lm_brow_outer.L", (0, 0, -0.01))],
                [0.085, 0.09, 0.045]),
-    "lash_upper.L": ([("lm_eye_inner.L", (0.02, 0, 0.01)), ("lm_lid_upper.L", (0, -0.01, -0.012)), ("lm_eye_outer.L", (0.01, 0, 0.005))],
-                     [0.012, 0.022, 0.02]),
-    "lash_lower.L": ([("lm_eye_inner.L", (0.05, 0, -0.01)), ("lm_lid_lower.L", (0, -0.01, 0.012)), ("lm_eye_outer.L", (0.0, 0, -0.005))],
-                     [0.008, 0.014, 0.014]),
+    # (the lid margin bows forward over the eyeball: quarter points pushed out, or the line cuts behind the lid)
+    "lash_upper.L": ([("lm_eye_inner.L", (0.04, -0.015, 0.02)), ("lm_lid_upper.L", (-0.13, -0.035, -0.015)), ("lm_lid_upper.L", (0, -0.04, 0.0)),
+                      ("lm_lid_upper.L", (0.13, -0.03, -0.015)), ("lm_eye_outer.L", (0.0, -0.025, 0.012))],
+                     [0.012, 0.022, 0.026, 0.026, 0.018]),
+    "lash_lower.L": ([("lm_eye_inner.L", (0.07, -0.015, -0.015)), ("lm_lid_lower.L", (-0.1, -0.045, -0.012)), ("lm_lid_lower.L", (0, -0.05, -0.02)),
+                      ("lm_lid_lower.L", (0.1, -0.035, -0.012)), ("lm_eye_outer.L", (-0.01, -0.02, -0.012))],
+                     [0.008, 0.014, 0.016, 0.016, 0.012]),
 }
 OUTLINES = {  # closed landmark outlines seen from the front
     "lips": ["lm_mouth_corner.R", "lm_lip_upper_side.R", "lm_lip_peak.R", "lm_lip_upper", "lm_lip_peak.L",
@@ -567,11 +570,11 @@ def _build(spec: dict, J: dict) -> dict:
     if face:
         lp = p["lips"]
         lm = (0.55 + 0.4 * dark) * lp["melanin"]
-        out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=9.0 * lp["blood"], epidermis=0.5,
-                                                           oxygenation=0.62), "opacity": 0.92, "roughness": lp["roughness"] + 0.04,
+        out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=0.5,
+                                                           oxygenation=0.62), "opacity": 0.85, "roughness": lp["roughness"] + 0.04,
                                   "mask": _z("lip_upper", grow=2.2)}
-        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=10.0 * lp["blood"], epidermis=0.45, oxygenation=0.68),
-                                  "opacity": 0.92, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=2.2)}
+        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=7.0 * lp["blood"], epidermis=0.45, oxygenation=0.68),
+                                  "opacity": 0.85, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=2.2)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
                                   "mask": [{"zone": {"name": "lips", "grow": 3.5}},

@@ -177,9 +177,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
         a = float(o["amount"])
         k = float(o.get("size", 0.0018)) / 0.0018
         w = _where(o, ["nose", "cheek", "cheekbone", "forehead", "upper_lip", "chin", "shoulder", "forearm", "collarbone"], ctx)
-        lo = float(np.clip(0.5 - 0.42 * min(a, 1.2), 0.02, 0.6))  # more of the swatch's faint macules show as it rises
-        layer("freckles", o.get("mask"), color=T(melanin=3.4 + 2.0 * (1 - dark), blood=1.25), opacity=min(0.55 + 0.3 * a, 0.9) * show,
-              mask=[{"tile": {"swatch": "freckles", "size": round(0.06 * k, 5), "range": [round(lo, 3), round(lo + 0.3, 3)], "vary": False}}] + w)
+        lo = float(np.clip(0.42 - 0.3 * min(a, 1.2), 0.04, 0.6))  # more of the swatch's faint macules show as it rises
+        layer("freckles", o.get("mask"), color=T(melanin=2.6 + 1.6 * (1 - dark), blood=1.3), opacity=min(0.4 + 0.3 * a, 0.75) * show,
+              mask=[{"tile": {"swatch": "freckles", "size": round(0.042 * k, 5), "range": [round(lo, 3), round(lo + 0.55, 3)], "vary": False}}] + w)
     o = _opt(f.get("moles"), "features.moles", ("at", "size"))
     if o:
         sz = float(o.get("size", 0.0025))
