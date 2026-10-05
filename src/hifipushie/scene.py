@@ -118,6 +118,17 @@ def _blender(job: dict, timeout: float = 900, progress=None) -> str:
             out, err = "".join(lines), "".join(errs)
         if code:
             raise RuntimeError(f"blender failed:\n{out[-3000:]}\n{err[-3000:]}")
+        if "out of SVM stack space" in out or "out of SVM stack space" in err:
+            # Cycles gives up on a material too big for its 255-slot shader stack and renders or bakes it BLACK
+            # without failing: say so instead of handing back black maps
+            import re
+            which = sorted(set(re.findall(r'shader "([^"]+)" too big', out + err)))
+            raise RuntimeError(
+                f"Cycles ran out of shader stack on material(s) {which or '?'}: it would render or bake them black. A part's "
+                f"material holds a few dozen paint layers in Cycles (each layer's exposed numbers and every layer with "
+                f"\"height\" cost stack; the Bump node compiles the height layers three times). Thin the part's layers "
+                f"(fewer layers with height, merge masks, measure broad masks per vertex with \"vertex\": true, or for "
+                f"skin fewer scars / tattoos / make-up items), or look with EEVEE.")
         return out
 
 
@@ -845,14 +856,21 @@ def sync(name: str, resolution: int = 256) -> dict:
     spec = store.load(name)
     defs = spec.get("parts") or {}
     bases = {}
+    from . import skin
+    sk = skin.part_base(spec)  # the skin part starts from its tone and shading; the part's own keys win
     for o in objs:
         d = defs.get(o["part"]) or {}
         from .paint import style_rgb
+        if sk and o["part"] == sk[0]:
+            d = {**{k: v for k, v in sk[1].items() if not k.startswith("_")}, **d}
+            if "color" not in (defs.get(o["part"]) or {}):
+                o = {**o, "color": sk[1]["color"]}
         rgb = style_rgb(o["color"][:3], (spec.get("style") or {}).get("paint") or {})
         bases[o["part"]] = {"color": [float(x) for x in rgb], "roughness": float(d.get("roughness", 0.6)),
                             "metallic": float(d.get("metallic", 0.0)), "specular": float(d.get("specular", 0.5)),
                             **{k: float(d[k]) for k in ("transmission", "alpha", "ior", "subsurface",
-                                                         "subsurface_scale") if k in d},
+                                                         "subsurface_scale", "coat", "coat_roughness", "sheen",
+                                                         "sheen_roughness", "thickness") if k in d},
                             **({"subsurface_radius": [float(x) for x in d["subsurface_radius"]]}
                                if "subsurface_radius" in d else {})}
     ph = part_hashes(prog, bases)
@@ -884,7 +902,8 @@ def part_hashes(prog: dict | None, bases: dict) -> dict:
     out = {}
     for part, base in bases.items():
         layers = [ly for ly in (prog or {}).get("layers", []) if part in ly["parts"] or "*" in ly["parts"]]
-        out[part] = hashlib.sha1(json.dumps([layers, (prog or {}).get("packing", {}).get(part, {}),
+        out[part] = hashlib.sha1(json.dumps([layers, ((prog or {}).get("pre") or {}).get(part),
+                                             (prog or {}).get("packing", {}).get(part, {}),
                                              (prog or {}).get("quantiles"), base, code], sort_keys=True,
                                             default=str).encode()).hexdigest()[:12]
     return out

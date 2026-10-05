@@ -26,7 +26,7 @@ def _dir(name: str) -> Path:
 
 
 def list_models() -> list[str]:
-    return sorted(p.parent.name for p in HOME.glob("*/spec.json"))
+    return sorted(p.parent.name for p in HOME.glob("*/spec.json") if not p.parent.name.startswith("_skin_"))  # look_skin's crops
 
 
 def load(name: str) -> dict:
