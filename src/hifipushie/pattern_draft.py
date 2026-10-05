@@ -293,9 +293,14 @@ def op_style_line(D: dict, piece: str, **o) -> None:
         nv = np.array([-dv[1], dv[0]]) / max(np.linalg.norm(dv), 1e-12)
         nv = nv if nv @ (c1 - c0) > 0 else -nv
         sh0 = np.asarray(built[order[1]][0]["wrap"].get("shift", [0.0, 0.0]), float)
-        # (a cut ACROSS the piece, a yoke: 4 mm, its corners at the side seams overlapped at 2)
+        # (a cut ACROSS the piece, a yoke: 6 mm, its corners at the side seams overlapped at 2, and at 4 once an
+        # in-seam pocket put more vertices on the side seam)
         across_ = all(np.sum(np.abs(h_["P"][:, 0]) < 1e-6) >= 2 for h_, _ in built)
-        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.004 if across_ else 0.002) * nv).round(5).tolist()
+        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.006 if across_ else 0.002) * nv).round(5).tolist()
+        if across_:
+            # ... and the lower part a layer further out: once it is flared (pivoted at the seam) its top corner at
+            # the side seam rises past the yoke's (12 mm on the skirt), on the same surface: read as a crossing
+            built[order[1]][0]["wrap"]["out"] = round(float(built[order[1]][0]["wrap"].get("out", 0.0)) + 0.003, 5)
     for nm, k in zip(names, order):
         h, pos = built[k]
         h["name"] = nm
@@ -790,6 +795,11 @@ def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None 
     fpc["wrap"]["out"] = -0.003  # inside the piece it faces
     fpc["wrap"]["lies_on"] = piece  # placed as that piece's own surface, a layer inside it (cloth.place)
     fpc["traced"] = piece
+    # a facing is FUSED to its piece: one cloth for the sim (cloth.pieces sets it aside as Bp["fused"]). As a
+    # separate interfaced piece it was held as made: a rigid plank 16-64 mm off its front, its seams never closed
+    # ("separate": true keeps it a piece of its own)
+    if not o.get("separate"):
+        fpc["wrap"]["fused"] = piece
     D["pieces"][name] = fpc
     seam = [f"{name}:edge.a>edge.m>edge.b", chain[0] if len(chain) == 1 else chain]
     D["seams"].append(seam)
@@ -1346,6 +1356,8 @@ def apply_hinges(D: dict) -> None:
             far["wrap"] = dict(hg["wrap"])
             if w_old.get("lies_on"):
                 far["wrap"]["lies_on"] = f"{w_old['lies_on']}_{part}"
+            if w_old.get("fused"):
+                far["wrap"]["fused"] = f"{w_old['fused']}_{part}"
             far["of"] = nm
             en = far["wrap"].get("edge")
             if en and en not in far["names"]:  # (a traced piece's part: the frame's origin end of it)
@@ -1431,6 +1443,8 @@ def unfold(D: dict) -> dict:
                     w["align"] = [w["align"][0], f"{w['align'][1]}.{S}", w["align"][2]]
                 if "lies_on" in w:
                     w["lies_on"] = f"{w['lies_on']}.{S}"
+                if "fused" in w:
+                    w["fused"] = f"{w['fused']}.{S}"
                 c["wrap"] = w
                 out[f"{nm}.{S}"] = c
         else:
@@ -1447,8 +1461,11 @@ def unfold(D: dict) -> dict:
             if D["centre"].get(nm) == "open" and L["wrap"].get("to") == "torso":
                 # the left front laps over: a layer out, and a layer more for what lies between the two fronts (the
                 # right front's lapel turned back onto it, a facing inside the left)
-                lap = 0.004 + 0.012 * any(f.get("piece") == nm for f in D["folds"]) + \
-                    0.004 * any((p_.get("wrap") or {}).get("lies_on") == nm for p_ in halves.values())
+                # (as little as holds the layers apart: 20 mm stood the whole left front off the body and left its
+                # panel seam 8 mm open after the settle)
+                lap = 0.004 + 0.010 * any(f.get("piece") == nm for f in D["folds"]) + \
+                    0.004 * any((p_.get("wrap") or {}).get("lies_on") == nm and not (p_.get("wrap") or {}).get("fused")
+                                for p_ in halves.values())
                 L["wrap"]["out"] = max(float(L["wrap"].get("out", 0)), lap)
             if D["centre"].get(nm) == "seam" and L["wrap"].get("to", "torso") == "torso":
                 # the two halves of a centre seam start 2 mm apart: edge on edge, a contact solver drops the seam's
@@ -1460,6 +1477,8 @@ def unfold(D: dict) -> dict:
                 c["wrap"]["half"] = 1 if S == "L" else -1  # which side of x = 0 (its centre line) the piece is on
                 if "lies_on" in c["wrap"]:
                     c["wrap"]["lies_on"] = f"{c['wrap']['lies_on']}.{S}"
+                if "fused" in c["wrap"]:
+                    c["wrap"]["fused"] = f"{c['wrap']['fused']}.{S}"
                 if str(c["wrap"].get("to", "")).startswith("leg."):
                     c["wrap"]["to"] = f"leg.{S}"
                 if str(c["wrap"].get("to", "")).startswith("arm."):  # a pair piece on an arm (a kimono sleeve's half):

@@ -269,6 +269,50 @@ def _sewing_order(c: Ctx) -> list:
     return steps
 
 
+def openings(c: Ctx) -> list:
+    """[(text, ok)]: every pair of pieces "<name>.L" / "<name>.R" on the torso or legs, and whether something joins
+    the two sides: a seam between them (a centre seam; a zip is sewn as one), stitches from one side's pieces to the
+    other's (buttons, a tie), or a band buttoned to itself sewn to both (a waistband). Not joined = an opening: fine
+    only when the sheet says so."""
+    Bp = c.Bp
+    pcs = Bp["pieces"]
+    flat = lambda s: [s] if isinstance(s, str) else list(s)
+    side_of = lambda e: e.split(":")[0]
+    declared = set((c.sheet or {}).get("open") or [])
+    det = (c.res or {}).get("details") or {}
+    open_words = {d: str(v.get("choice")) for d, v in det.items() if d in ("front_closure", "skirt_closure", "fly")}
+    out = []
+    bases = sorted({n[:-2] for n in pcs if n.endswith(".L") and n[:-2] + ".R" in pcs
+                    and pcs[n]["wrap"].get("to", "torso") in ("torso", "leg.L")})
+    self_closed = {a.split(":")[0] for a, b in Bp["stitches"] if a.split(":")[0] == b.split(":")[0]}
+    for b in bases:
+        L, R = b + ".L", b + ".R"
+        seam = any({L, R} <= ({side_of(e) for e in flat(s[0])} | {side_of(e) for e in flat(s[1])})
+                   and any(side_of(e) == L for e in flat(s[0]) + flat(s[1])) and
+                   (({side_of(e) for e in flat(s[0])} == {L} and {side_of(e) for e in flat(s[1])} == {R}) or
+                    ({side_of(e) for e in flat(s[0])} == {R} and {side_of(e) for e in flat(s[1])} == {L}))
+                   for s in Bp["seams"])
+        st = [1 for a, b_ in Bp["stitches"] if {side_of(a)[-2:], side_of(b_)[-2:]} == {".L", ".R"}
+              and (side_of(a) in (L, R) or side_of(b_) in (L, R))]
+        role = garment_design.role_of(L, pcs[L])
+        if seam:
+            continue
+        # joined through other pieces all the way (side panels, a back): only CENTRE pieces can be open: those
+        # with an edge near x = 0 that is sewn to nothing
+        P = pcs[L]["P"]
+        if float(np.abs(P[:, 0]).min()) > 0.03 and not st:
+            continue
+        if st:
+            out.append((f"opening between {L} and {R}: closed by {len(st)} stitch(es) (buttons / tie)", True))
+            continue
+        said = b in declared or L in declared or any("open" in w or "wrap" in w for w in open_words.values())
+        out.append((f"opening between {L} and {R} ({role}): nothing closes it"
+                    + (" (declared open in the sheet)" if said else
+                       ": add a closure (op buttons / stitch; a zip = block centre \"seam\", or op closure) or declare "
+                       f"it: design \"open\": [\"{b}\"]"), said))
+    return out
+
+
 def stage_construction(c: Ctx) -> dict:
     o = _out("construction")
     Bp, pcs = c.Bp, c.Bp["pieces"]
@@ -287,6 +331,11 @@ def stage_construction(c: Ctx) -> dict:
     outs = {n: float(pcs[n]["wrap"].get("out", 0)) for n in pcs}
     lay = [f"{n} {v * 1000:.0f} mm out" for n, v in outs.items() if v > 0]
     o["info"].append("layers (start offsets; the outer lies over): " + (", ".join(lay) or "none"))
+    # openings: a left and a right piece of the same name that nothing joins is an OPEN edge. It needs a closure
+    # (buttons / a tie = stitches across; a zip = the opening sewn shut) or to be declared open in the sheet
+    # (front_closure / skirt_closure "open", or "open": [piece names])
+    for line, ok in openings(c):
+        (o["info"] if ok else o["fail"]).append(line)
     # folds
     for f in Bp.get("folds") or []:
         try:
@@ -602,6 +651,19 @@ def sim_measures(res: dict, c: Ctx) -> dict:
     gaps = _layer_gaps(V, M, Bp, _overlap_pairs(Bp))
     if gaps:
         out["layer_gap_mm"] = gaps
+    # seams must END closed: an open seam shows as a line of light down the garment. p95 over all sewn pairs, and
+    # the worst seams by name; closures (button / zip stitches) the same
+    if len(M.get("sew", [])):
+        sw = np.asarray(M["sew"])
+        gp = np.linalg.norm(V[sw[:, 0]] - V[sw[:, 1]], axis=1) * 1000
+        out["seam_gap_p95_mm"] = round(float(np.percentile(gp, 95)), 2)
+        if "sew_seam" in M:
+            ss = np.asarray(M["sew_seam"])
+            worst = sorted(((float(np.percentile(gp[ss == si], 95)), int(si)) for si in np.unique(ss)), reverse=True)[:3]
+            out["_open_seams"] = [f"{json.dumps(Bp['seams'][si])[:90]}: {g_:.1f} mm" for g_, si in worst if g_ > 0.5]
+    st = np.asarray(M.get("stitch", [])).reshape(-1, 2)
+    if len(st):
+        out["closure_gap_max_mm"] = round(float(np.linalg.norm(V[st[:, 0]] - V[st[:, 1]], axis=1).max()) * 1000, 1)
     ix = lambda n: np.where(M["piece"] == M["names"].index(n))[0]
     # the collar: how far the fall's edge lies below the neckline seam at CB, and its points on the shirt
     if R.get("collar_fall") and R.get("collar_stand"):
@@ -693,6 +755,11 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
             o["warn"].append(txt + f" - not judged at {q} {h * 1000:.0f} mm")
         else:
             o["info"].append(txt)
+    if "seam_gap_p95_mm" in meas:
+        judge("seam_gap_p95_mm", meas["seam_gap_p95_mm"], "seams left open, p95 of sewn pairs (mm)"
+              + ("; widest: " + "; ".join(meas["_open_seams"]) if meas.get("_open_seams") else ""))
+    if "closure_gap_max_mm" in meas:
+        judge("closure_gap_max_mm", meas["closure_gap_max_mm"], "closures (button / zip stitches), widest gap (mm)")
     if "layer_gap_mm" in meas:
         judge("layer_gap_mm", meas["layer_gap_mm"], "layer gaps (mm)")
     if "collar_cover_mm" in meas:

@@ -208,7 +208,20 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     for src in ((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("made"), g.get("made")):
         if src:
             made_own.update(src if isinstance(src, dict) else {nm: "made" for nm in src})
-    return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
+    # pieces FUSED to another (a facing to its front: wrap "fused"): one cloth in the sim. Set aside with their seams
+    # (Bp["fused"]: the pattern sheet and the cutting list still have them)
+    fused = {nm: pc for nm, pc in out.items() if (pc.get("wrap") or {}).get("fused")}
+    fused_seams = []
+    if fused:
+        out = {nm: pc for nm, pc in out.items() if nm not in fused}
+        keep = set(out)
+        fused_seams = [s for s in seams if not (side_ok(s[0]) and side_ok(s[1]))]
+        seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
+        stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
+        folds = [f for f in folds if f.get("piece") in keep]
+        seam_notes = {k: v for k, v in seam_notes.items() if not any(f'"{nm}:' in k for nm in fused)}
+    return {"fused": {"pieces": fused, "seams": fused_seams},
+            "pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
             "draft": draft_info, "folds": folds, "seam_notes": seam_notes, "made": made_own,
             "tacks": [t for t in list((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("tacks") or [])
@@ -1124,10 +1137,69 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         if not len(ys):  # only a band on the torso (a waistband over trouser legs)
             ys = np.array([0.5 * (ylo + ytop)])
         Wmax = max(sum(_piece_width_at(pcs[nm]["P"], y - dzs.get(nm, 0)) for nm in torso) for y in ys)
+        if smooth:
+            # the width the pieces take ROUND THE BODY at a level: pleats laid closed, a band at its closed girth,
+            # nothing for a piece laid on another
+            def _lw(nm, y):
+                w_ = pcs[nm]["wrap"]
+                if w_.get("lies_on"):
+                    return 0.0
+                P_ = pcs[nm]["P"]
+                yy = y - dzs.get(nm, 0)
+                if not (P_[:, 1].min() < yy < P_[:, 1].max()):
+                    return 0.0
+                cg = _closed_girth(M, nm)
+                if cg:
+                    return float(cg)
+                wd = _piece_width_at(P_, yy)
+                for pl in w_.get("pleats") or []:
+                    if min(pl["a"][1], pl["b"][1]) <= yy <= max(pl["a"][1], pl["b"][1]):
+                        wd -= 2 * float(pl["depth"])
+                return max(wd, 0.0)
+            Wmax = max(sum(_lw(nm, y) for nm in torso) for y in ys)
+            def _lx(nm, y):
+                """(lo, hi) of a piece round the body at a level, from its centre line (pleats laid closed)."""
+                w_ = pcs[nm]["wrap"]
+                yy = y - dzs.get(nm, 0)
+                xs = _piece_xs_at(pcs[nm]["P"], yy)
+                if len(xs) < 2:
+                    return None
+                lo, hi = min(xs), max(xs)
+                for pl in w_.get("pleats") or []:
+                    if min(pl["a"][1], pl["b"][1]) <= yy <= max(pl["a"][1], pl["b"][1]):
+                        if float(pl["sign"]) > 0:
+                            hi -= 2 * float(pl["depth"])
+                        else:
+                            lo += 2 * float(pl["depth"])
+                return lo + dxs.get(nm, 0.0), hi + dxs.get(nm, 0.0)
+
+            def _span(y):
+                """What the pieces take round the body at a level. The pieces of a side lie side by side from its
+                centre line (or over each other: lapped fronts, a yoke's curved seam): the SPAN of each side, not
+                their sum (the sum read 1.15 m where yoke and skirt share levels: a 4 cm bulge in the start). nan
+                where a side has no cloth."""
+                sp = {}
+                for nm in torso:
+                    cg = _closed_girth(M, nm)
+                    if cg or pcs[nm]["wrap"].get("lies_on"):
+                        continue
+                    iv = _lx(nm, y)
+                    if iv:
+                        sd = pcs[nm]["wrap"].get("side", "front")
+                        sp[sd] = (min(iv[0], sp[sd][0]), max(iv[1], sp[sd][1])) if sd in sp else iv
+                bnd = max([_lw(nm, y) for nm in torso if _closed_girth(M, nm)], default=0.0)
+                if len(sp) == 2:
+                    return max(sum(hi - lo for lo, hi in sp.values()), bnd)
+                return bnd if bnd else np.nan
         # the fronts overlap at the closure: the girth is the total width less the overlap past centre front
         over = sum(min(abs(pcs[nm]["P"][:, 0].min()), abs(pcs[nm]["P"][:, 0].max())) for nm in torso
                    if pcs[nm]["wrap"].get("side", "front") == "front"
                    and abs(pcs[nm]["P"][:, 0].min() + pcs[nm]["P"][:, 0].max()) > 0.05)  # one-sided pieces
+        if smooth:
+            Wsp = np.array([_span(y) for y in ys])
+            if np.isfinite(Wsp).any():
+                Wmax = float(np.nanmax(Wsp))
+                over = 0.0  # (lapped fronts are one span)
         m = float(np.clip((Wmax - over - P0) / (2 * np.pi), gap, 0.15))
         band_closed = [_closed_girth(M, nm) for nm in torso]
         if all(band_closed):
@@ -1160,6 +1232,21 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(Cw[:, 1] - cy, 0))]
             else:
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(cy - Cw[:, 1], 0))]
+            cg_b = _closed_girth(M, nm)
+            if cg_b and smooth and not all(band_closed):
+                # a band closed on itself among other torso pieces (a skirt's waistband on its yokes): on its OWN
+                # curve, the body's hull at its own level out to its closed girth. On the garment's one cylinder
+                # (hip girth) it stood open by 30 cm at the back, and it is a made piece, carried as placed: it could
+                # never close, and the yokes stitched to its ends were held apart in a V ("the skirt is unzipped")
+                zb = hps[2] + float(np.median(U[:, 1])) + dzs.get(nm, 0.0)
+                hb_ = [h for zz in (zb - 0.02, zb, zb + 0.02) if 0.05 < zz < hps[2] - 0.01 and (h := body.hull(zz)) is not None]
+                if hb_:
+                    Hb = np.concatenate(hb_)
+                    Hb = Hb[ConvexHull(Hb).vertices]
+                    m_b = float(np.clip((cg_b - pattern.length(Hb, closed=True)) / (2 * np.pi), SMOOTH_CLEAR, 0.15))
+                    Cw = _densify(_offset_hull(Hb, m_b + LAYER + float(w.get("out", 0.0))), 0.002)
+                    cy = 0.5 * (Cw[:, 1].max() + Cw[:, 1].min())
+                    start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum((Cw[:, 1] - cy) * (1 if w.get("side", "front") == "front" else -1), 0))]
             xs_, ys_, lay_ = U[:, 0].copy(), U[:, 1].copy(), np.zeros(len(U))
             # wrap "pleats" [{a, b, depth, sign}]: the cloth past the line a-b (on side `sign` of it) runs BACK a
             # depth over the cloth before it (mirrored in the line), then on again over that (moved back two depths):
@@ -3254,6 +3341,16 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         bad &= np.linalg.norm(X - body.V[i], axis=1) < 0.05  # only near the body (far vertices: a hang, a drape)
         if bad.any():
             X[bad] = body.push_out(X[bad], o["clear"])
+            if o["weld"] and len(M["sew"]):
+                # the push moved one side of a seam and not the other: closed again, at the side further out (a seam
+                # left a hair open shows as a pale line down every panel)
+                s = M["sew"]
+                s = s[np.linalg.norm(X[s[:, 0]] - X[s[:, 1]], axis=1) < 1.5 * h]
+                for _ in range(3):  # (vertices where seams meet belong to several pairs)
+                    d0, d1 = body.clearance(X[s[:, 0]]), body.clearance(X[s[:, 1]])
+                    tgt = np.where((d0 >= d1)[:, None], X[s[:, 0]], X[s[:, 1]])
+                    X[s[:, 0]] = tgt
+                    X[s[:, 1]] = tgt
     moved = np.linalg.norm(X - V, axis=1)
     return X, {"passes": n, "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
                "moved_max_mm": round(float(moved.max() * 1000), 2)}
@@ -4392,6 +4489,8 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
             uv, side = atlas_uv(res["mesh"])
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g, extra=fine_folds(res, g, uv, side))
             o.update(uv=uv, maps={k: str(v) for k, v in maps.items() if k != "texels_per_m"})
+        else:
+            o["F"] = welded_faces(res["mesh"], res["V"])
         objs.append(o)
     allV = np.concatenate([o["V"] for o in objs if not o["name"].startswith("rail_")])  # the rail runs out of frame
     box = (allV.min(0) - 0.05, allV.max(0) + 0.05)
@@ -4446,6 +4545,29 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
 
 
 # ---------------------------------------------------------------- views
+
+
+def welded_faces(M: dict, V: np.ndarray, tol: float = 0.0006) -> np.ndarray:
+    """The mesh's faces with the two vertices of every CLOSED seam pair made one (the clay look: a sewn seam is one
+    surface. As two rows of vertices at the same place, each with its own normal, every seam rendered as a pale
+    line, read as visible stitching or a gap)."""
+    F, sew = np.asarray(M["F"]), np.asarray(M["sew"]).reshape(-1, 2)
+    if not len(sew):
+        return F
+    root = np.arange(len(V))
+
+    def find(i):
+        while root[i] != i:
+            root[i] = root[root[i]]
+            i = root[i]
+        return i
+    for a_, b_ in sew[np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1) <= tol]:
+        ra, rb = find(int(a_)), find(int(b_))
+        if ra != rb:
+            root[max(ra, rb)] = min(ra, rb)
+    rm = np.array([find(i) for i in range(len(V))])
+    Fw = rm[F]
+    return Fw[(Fw[:, 0] != Fw[:, 1]) & (Fw[:, 1] != Fw[:, 2]) & (Fw[:, 0] != Fw[:, 2])]
 
 
 def strain_colors(strain: np.ndarray, limit: float) -> np.ndarray:

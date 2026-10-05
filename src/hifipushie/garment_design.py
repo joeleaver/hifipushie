@@ -35,7 +35,7 @@ KB_PATH = Path(__file__).with_name("garment_kb.json")
 DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", "waistband", "fly", "skirt_closure",
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch")
 SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
-              "block_options", "ops", "over", "support", "layer_gap"}
+              "block_options", "ops", "over", "support", "layer_gap", "open"}
 METHODS = ("simulate", "settle")
 
 
@@ -413,6 +413,9 @@ def _check(ev: dict, Bp: dict, R: dict, D: dict, entry: dict, lap: str | None) -
     anyint = {e if isinstance(e, str) else e["piece"] for e in Bp["interfaced"]}
     if "piece" in ev:
         r = ev["piece"]
+        fz = [n for n, pc in ((Bp.get("fused") or {}).get("pieces") or {}).items() if role_of(n, pc) == r]
+        if r not in R and fz:  # (cut as its own piece, fused to another: one cloth in the sim)
+            return True, f"a {r} piece: {', '.join(fz)} (fused to its piece)"
         return (r in R), f"a {r} piece" + (f": {', '.join(R[r])}" if r in R else " (none in the pattern)")
     if "no_piece" in ev:
         r = ev["no_piece"]
