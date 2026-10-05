@@ -773,6 +773,87 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
     leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
     maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
+- Skin (2026-10-05, "skin" agent; the user: humans read "flat, plastic-like"; textures "for humans of all sexes, ages,
+  and genders", incl. cosmetics, scars, tattoos, wrinkles, freckles; renders `workspace/skin_renders/sk_*`, references
+  `workspace/skin_refs/` (24 CC photos, README + refs.json with skin-only boxes; never in the repo)). Guide:
+  `guide(topic="skin")` = `skin_guide.md` (the artists' stages with sources); tools `skin`, `look_skin`, `skin_reference`.
+  - Diagnosis (`skin_measure.py`: CIE Lab contrast per octave of feature size inside skin-only boxes, zone colour,
+    highlight share / blob size / breakup, micro contrast; same code on renders and photos; a*/b* hardly see the light, so
+    they read albedo). Flat colour + one roughness vs 13 photographed faces: lightness contrast at 0.35-1.4 mm 0.04-0.08 vs
+    0.8-1.3; a* contrast at 1.4-11 mm 0.04-0.11 vs 0.4-0.6; no highlight at all vs 5-13% of a patch; cheek a* +0.3 vs
+    +1..7. Ranked: no fine relief / highlight breakup, one albedo colour, no visible specular, no scattering colour, flat
+    painted lips/brows.
+  - `skin.py`: `spec["skin"]` (tone, age, variation, detail, oil, thin, sun, zones, lips, features, wrinkles, hair, scars,
+    tattoos, makeup, shading) expands into ORDINARY paint layers "skin:<x>" laid under the model's own (`paint.layers`),
+    plus the skin part's base (`part_base`: tone colour, roughness, specular 0.36 = F0 0.028, subsurface by tone, a coat
+    lobe scaled by `oil` on the same bump, sheen; `scene.sync` merges it under the part's own keys). `spec.geometry`
+    strips it. Tone = pigments, not a colour: melanosome fraction of the epidermis x haemoglobin fraction of the dermis ->
+    spectral reflectance (Jacques' numbers, Kubelka-Munk dermis, Wyman CIE fits) -> sRGB (`tone_rgb(tone, melanin=,
+    blood=, oxygenation=, epidermis=, yellow=, grey=)`); every layer is "this skin with more/less of a pigment", so
+    cheeks, lips, palms, scars are right on any tone. Calibrated by eye to F1 #cda590 .. F6 #55331c (the raw model went
+    orange at high melanin: a 130/cm flat term on melanin and a small back-scatter term fixed hue and floor).
+  - Zones (`skin.zone`, paint generator `{"zone": name | {"name", "grow"}}`, expanded in `paint.layers` before anything
+    else sees them): FACE (spots at lm_* landmarks in interocular units), LINES (tapered polylines: nasolabial, brow,
+    lash lines), OUTLINES (lips), UNIONS (beard, nose, t_zone), BODY (shoulder, elbow/knee on the extensor side, hand,
+    palm = hand x facing the palm normal from the finger chains, knuckles, fingertips, nails, forearm, sole). ".L"/".R"
+    or both. A missing joint says which.
+  - New general paint pieces: generator `spot` (soft ellipsoids / tapered polylines at joints, native per pixel), `tile`
+    (a tiling grey image triplanar, `vary` = a second copy at 1.618x mixed by a 7 cm noise, `rotate`; native image nodes:
+    mip-mapped), layer `mix` (multiply/screen/overlay/soft_light), entry op `"vertex": true` (measure this entry per
+    vertex), a breakup-only entry.
+  - THE LIMIT that shaped it: a renderer's shader holds a few dozen layers. EEVEE compiles a material into one GPU
+    shader: the first 96-layer skin took > 5 min and 10 GB before I killed it (stage 1's 42 layers: 60 s). Cycles ran out
+    of SVM stack ("out of SVM stack space": black skin, no exception) from exposed Value/RGB leaf nodes (every leaf is
+    computed first and held: 96 colours x 3 slots), then from the Bump node (it compiles its height subgraph three
+    times; one mask of ~20 tapered lines alone overflowed). So: (1) layers marked `_pre` (broad, soft: zones, mottling,
+    lips, roughness patches, flush/tan, shadows under hair, foundation/blush...) are composited per VERTEX in Python
+    (`paint.precomposite`, linear colour) into five measured scalars the material starts from (`prog["pre"]`); (2) what
+    needs detail finer than the mesh is built ONLY from tiling swatches, images and a few line spots, never procedural
+    noise/Voronoi (`skin_swatch.py`: depth swatches pores / lines / coarse / lips with the 0.5-3 mm grain folded in; mark
+    swatches stubble / freckles / wrinkles / hairs; `brow_image` = a drawn picture of ~900 tapered hairs laid as a decal
+    from the brow landmarks: noise strokes read as a smudge); (3) zone masks confining fine layers are measured per
+    vertex (`"vertex": true`); (4) skin layers expose no named nodes, unexposed colours are socket constants; (5) one
+    layer carries relief + cavity tint + roughness (one mask instance). Heavy test character (63 layers, 26 fine): EEVEE
+    compile 130 s -> 75 s, 6-7 s a frame; export bakes (no Bump in emission passes) compile.
+    Also: node LINKING is quadratic in tree size (1000 nodes 10 s, 2000 65 s, 3000 168 s in a bare Blender): every mask
+    is now its own node group (`_Nodes.group/subtree/instance`, groups named `hpm:<part>:<n>`, dropped on rebuild; pull
+    reads `hp:` nodes inside them). Round trip on a copy of dg_fix2: renders mean 0.18/255 apart (every object was
+    re-meshed), both pulls empty, spec unchanged.
+  - Features (`skin_features.py`, each a number or {"amount", "where": [zones], "mask": [...], ...}): freckles, moles
+    (scattered or `at`), age_spots (default age x sun), blemishes, veins (default from age / thin), flush, sunburn, tan
+    (`mask` for tan lines); wrinkles default from age (folds / crow's feet / under-eye as tapered lines, forehead / neck /
+    lip lines / cheek lines from the wrinkles swatch, crepe from the coarse one); hair: brows, lashes (lash lines only),
+    stubble (cool shadow pre + dots), body; scars cut / surgical (stitch dots) / keloid / burn / pockmarks with age 0..1
+    and no pores on scar tissue; tattoos (`tattoo_image`: the picture blurred by years in its own mm, black toward
+    blue-green, colours faded; multiplied into the skin under its relief). Make-up (`skin_makeup.py`): foundation (also
+    hides 75% x coverage of the fine pigment layers, which composite after the pre base), concealer, contour, blush,
+    highlight, eyeshadow, eyeliner + wing, mascara, brows, lipstick, nails; each with a finish (roughness / specular /
+    metallic).
+  - Eyes (`skin.eyes`, on where the base has eyeballs; `_eyes`): a painted picture per eyeball (`skin_swatch.eye_image`:
+    radial iris fibres, collarette, limbal ring, soft pupil, a sclera pinker toward its edge with forking vessels) laid
+    as a decal on the eyes part, wet (roughness 0.04), a shadow under the upper lid; caruncle and waterline on the skin.
+    Flat iris/pupil paint on `eye_front` read as toy eyes at bust distance. No cornea bulge, no lash geometry yet.
+  - Shaved / cropped heads (`hair.scalp`: amount, color, hairline): the hair's shadow under the scalp skin (pre) + cut
+    hairs from the stubble swatch, inside ONE ellipsoid bigger than the skull whose exit from the skull is the hairline,
+    nape and the line over the ears. The head joint is at brow height and the cranium ~1.5 interoculars round it
+    (interocular = pupil distance, 6-9 cm on these heads): the first version's spots, sized by guess, ended just inside
+    the skull and nothing showed, though the mask read 1 at test points (which were inside the head). Test masks at
+    points found on the surface (a ray through `sdf.field_at`), not at joint + offset.
+  - Wrinkle swatch: three families of wandering lines (main, a branch family crossing them at a slight angle, fine),
+    each line's depth from noise much longer along the line than across (`_smooth_noise(cells, cells_u)`), so creases run
+    on for centimetres, fade at their ends and fork. Isotropic depth noise chopped them into dashes ("scratches").
+  - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin_<model>_<head|arm>` (bare skin + eyes, ~1 mm),
+    re-synced when the spec or the skin code changes, EEVEE under fixed lights (studio / soft / back) or `engine=
+    "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
+    shows one mask; prints the face's measurements beside the photographs' with hints.
+  - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
+    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls (seeded identities): a child
+    gets an adult's face shape.
+  - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
+    shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
+    / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
+    skin (Bump x3); per-vertex pre layers need a body voxel <= ~1.5 mm to hold 3 mm mottling (look_skin's stages do).
+    `tests/test_skin.py`.
 - Principle-based pattern drafting (2026-10-05, "clothflow" agent; the user: ready-made drafts are references, "we
   also need to distill the _principles_ so we can design jackets that don't exist yet, or any other arbitrary
   clothing"; sheets `workspace/cloth_renders/pd_*`). A new garment = a block + operations + details, as pattern makers
@@ -834,6 +915,96 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     in hip-length blocks, pockets / linings, head wrap, kimono placement, seat ease not reported for leg pieces
     (sizing reads torso pieces), trousers' length option for bare feet, a waistband that grips.
     `tests/test_pattern_draft.py`, `tests/test_pattern_styles.py`.
+  - Round 2 (2026-10-05, "drafting" agent, branch worktree-agent-aaf5034835ab4c449; renders pd_40..pd_4x; scratch
+    in the session scratchpad `drafting/`: run.sh <script>, st.py (stages), pl.py (place + crossings by pair + start
+    strain by piece), dj.sh (dress + look in its own session), jg2.py (blazer vs Jaeger)).
+    - HINGES (`pattern_draft.apply_hinges`, run at unfold): one cloth placed on two parts of the body. `D["hinges"]`
+      {piece, at, dir, mid, origin, x, wrap, fold, part}: the piece is cut along the line for PLACEMENT only, the far
+      part "<piece>_<part>" moved into its own frame with its own wrap, joined by a seam noted `"virtual": true`
+      (seam_notes; `_sewn_arc` skips it; the maps should not draw a groove there: not done). Pieces traced from it
+      (`pc["traced"]`: facings) are cut the same way, fold lines that cross are cut with it (`_split_fold`; a
+      line point ON the hinge counts as across), and the cut gets a vertex where each fold crosses. `op_shawl` uses
+      it: the collar past the neck point goes on the neck wrap (`flip`: pattern face out, `girth`: the whole circle
+      a partial band belongs to, `apart`, `out`). The start-gap warning's 279 mm neck seam is now 88 mm.
+    - The shawl's back collar needs SPRING: a strip run straight on from the roll line can't turn down (a cylinder's
+      top has no isometric fold). It is an annular sector now (`spring` = outer edge - neck seam; default from the
+      fall), laid on a cone flaring up, its fall folded at the ONE isometric angle (2 x the cone's half angle) as a
+      single crease (a roll's rows round a curved line stretched the flap 70%).
+    - `wrap.lies_on` + `cloth._lay_on`: a facing is placed as its front's placed surface, LIES 3 mm off the inside
+      face (so on a turned lapel it is the side that shows), with a small untangle against that piece; it takes the
+      front's fold lines (same mesh rows). Wrapped and folded by itself it had to pass through its front. The left
+      front laps 4 mm + 12 (a fold) + 4 (a facing) out: what lies between the fronts. `style_line` panels start
+      2 mm apart (`wrap.shift`): edge on edge they read as crossings. `cloth.mesh`: a roll's rows each end on their
+      own outline vertex (sharing one bent every row's end: 150% stretch at the piece's edge).
+    - Two-piece sleeve: the under sleeve was built wrong side up (folded-in strips) and so went round the arm the
+      other way: both sleeve seams started ~15 cm apart and the sewing knotted the sleeve at the shoulder. Turned
+      over now. `elbow` (m the wrist comes forward) bends each piece about its forearm seam's elbow point
+      (`pattern.bend` / `unbend`; `wrap.bend`: place lays the straight sleeve): forearm seams equal, the top's
+      hindarm 9 mm longer (elbow ease, declared), hem square to the forearm. A jacket sleeve needs `hem_width`
+      ~0.28 (the block's default is a shirt cuff's: the forearms read red).
+    - `pattern_tailor.py`: `contour` (an edge moved in / out per level: shaped CB seam, hem spring; a style line's
+      name shapes BOTH its edges), `join` (two pieces sewn together become one: a side panel with no side seam; the
+      seam's shaping is reported lost; b's clashing names become "name@b"), `round_corner` (cut-away hem; the corner's
+      name stays on the curve's middle), `fisheye` (run on to the hem as a closed 3 mm cut: no holes in a cloth mesh;
+      `darts: true` on a hip-length bodice now makes them), lapel `gorge: "straight"` + `gorge_drop` + `notch`.
+      `take_in` on a STRAIGHT cut shaped nothing (two vertices): edges are densified first; a shaped panel seam's
+      length difference under 2% is declared (`press_note`: pressed / eased on). `tests/test_pattern_tailor.py`.
+      Blazer vs Jaeger again (pd_45): waist +16% (Jaeger +17), hem +12% (+12), CB length +1 mm, CB seam and side
+      panel there; left: Jaeger's narrower side panel, its under sleeve's S-shaped top, chest +8% vs +4%.
+    - ZOZO start: stage 4 passes for the jacket (0 crossings). Draped triangles that start past the strain limit by
+      construction (fold rows on a curving chest, a stand pushed 1-3 mm: 0.7%, up to 16%) get the local strain
+      limit in cloth_zozo (`start_over` 3%) and are info in stage 4; more, or > 60%, still fails.
+    - Trousers: block `length` words (TROUSER_LENGTHS: floor, shoe, ankle (default: barefoot bodies), cropped, calf,
+      knee, shorts); stage 2 `leg_ease`: seat ease in the fit's band from the legs' pieces, per-leg thigh / knee / hem
+      against the body's own leg. The waistband slid 9-10 cm because it STARTED wrong: `place`'s torso hull ran up to
+      the shoulders for every garment (`max(ytop, -0.03)`: a bug), so a waistband alone lay on the chest's curve,
+      its back half 16-25 cm from the trousers. Now the hull stops at the pieces' own top, a band buttoned to itself
+      alone on the torso lies at its CLOSED girth a few mm off the waist with its lap a layer out (start gap 161
+      -> 46 mm). `waistband` op: the generate entry's chain is made at unfold from the waist edges as they are
+      then (it had to be written by hand).
+    - Stage 4 `seam_start_gaps`: `turned` = the rotation that lays one side of a seam on the other is > 35 deg
+      with a median gap > 8 cm, for seams with a chain side. A waistband mis-ordered by half a turn has gaps of
+      only a waist's diameter (247 mm < the 250 mm "far" limit: the distance check did NOT fire); a ring inside a
+      ring (hood vs neckline) and a shoulder seam are not turned. `tests/test_cloth_workflow.py`.
+    - Placement by hinge again: `kimono` (the sleeve past the underarm-to-shoulder line on the arm: `wrap.cx` =
+      the pattern x along the top of the arm, front half `front: -1`, back `+1`, mirrored on the right arm: pair
+      pieces on arms in unfold); wrap `head` (hoods: one plan curve round the head from the back, the sides `apart`
+      by the centre seam's bow). `pocket` (patch, kangaroo: traced, `lies_on` + `face: "out"`, tacked by
+      `sym_stitches` mirrored at unfold; a tacked piece counts as attached in stage 2), `lining` (every body piece
+      traced, seams repeated, laid inside, sewn to the shell at hems / sleeve hems / back neck; same outline, no
+      pleat, one fabric). Not drafted: welt / flap / in-seam pockets.
+    - `skirt` block for the ops (pattern_blocks.skirt; a cut ACROSS a piece names the upper part first and keeps the
+      centre seam on both parts; a pleat on a piece cut on the fold is pressed on both halves; pleat `underlays`
+      are not girth in `sizing`).
+    - Two new garments from prose through the tools (sheets in examples/garment_sheets): `raglan_anorak` (bodice
+      cf fold, neckline, sleeve, raglan, hood, kangaroo pocket; model pd_anorak) and `yoke_skirt` (skirt block,
+      yokes, a pleat each side, flared back, waistband op; model pd_skirt). What the tools lacked on the way, all
+      fixed: a tacked pocket read "sewn to nothing"; the hoodie had no boxy fit band (a straight body on a V-shaped
+      torso is +51% at the waist); the turned check fired on a raglan seam (single edges at an angle) and on the
+      hood (ring in ring); the kangaroo pocket's default ran past a short hem; the skirt had no block for ops and no
+      waistband op; the yoke's centre seam and the second pleat were missing; pleat cloth read as +12% seat ease.
+    - Results (renders pd_41 Blender jacket, pd_44 ZOZO jacket (raw V), pd_46 trousers, pd_47 tunic, pd_50 anorak,
+      pd_51 skirt): the shawl jacket on ZOZO settle: "fits", 0 crossings, strain p95 1.5% (646 s at 2 cm), lapels
+      turned, sleeves smooth; its raw surface had the centre back OPEN from the neck (coincident centre-seam
+      stitches are dropped by the solver: centre seams now start 2 mm apart, NOT re-run). Blender draft: reads as
+      the jacket, 1 crossing, facing collar 4% crumpled, puffy. The skirt stays at the waist (Blender); the
+      trousers on Blender still slide 99 mm (run before the waistband start fix; the ZOZO run never started).
+      The anorak's body, pocket and hood read, its RAGLAN SLEEVES crumple at the shoulders (22 crossings): the
+      sleeve's shoulder part lies along the arm, 173 mm and ~60 deg from the body's cut. Stage 4 names it
+      (turned). Fix = a hinge in `op_raglan`: the shoulder parts placed on the torso in the coordinates they were
+      cut in, the sleeve on the arm. The tunic reads as a wrap tunic but is over-cinched (take_in 56 / 62 mm over
+      9 cm now really shapes) and strained at the tie.
+    - THE ZOZO RELEASE IN THE SCRATCHPAD BROKE during this session (its python/lib/python3.12 lost most of the
+      standard library some time after 12:49 on 2026-10-05: "No module named 'encodings'"): every zozo job fails
+      until it is unpacked again (asset pack "zozo"). Not caused by these changes.
+    - Open, in order: re-run jacket + trousers on ZOZO once the release is back (dj.sh); the raglan hinge; a
+      facing's free inner edge (tack it, or settle's treatment of made pieces that lie on draped cloth: asked
+      clothsim); virtual seams still draw a groove in the detail maps and the pattern sheet draws hinge parts
+      apart from their piece; welt / in-seam pockets; lining trimmed to the facing; the under sleeve's S-shaped
+      top; `hem height spread` reads designed curves and yokes as unevenness (skirt 490 mm, tunic 82 mm).
+    - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
+      nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
+      seams, or replace the sheet.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
@@ -1993,6 +2164,145 @@ breaks through cliffs, peak forms and wall structure, surroundings beyond the fr
    designer's words matched to options).
 4. DONE: MCP tools.
 Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
+
+## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
+
+The user's track: game/video-ready trees, shrubs, grass, in styles from blobs to photoreal, with wind, seasons, LODs;
+"start with a best-in-class tree algorithm", hero trees editable, forest sets, and "how do real artists work".
+Research summary + plan: the first hand-back (SpeedTree's generator hierarchy with hand-drawn overrides, The Grove's
+grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob trees, Nanite assemblies, impostors).
+- `vegetation.py`: `grow(spec)` = a self-organising tree (Palubicki et al. 2009): shadow-propagation light on a voxel
+  grid (cell = one metamer), extended Borchert-Honda allocation (`apical` per order = the continuing axis's share; the
+  trunk's fades to `apical_old`), shoots = bud direction + light + tropism per order + `plagio` (pull to an elevation) +
+  per-order `jitter` + forces, shedding by light per internode, pipe-model widths with a memory of shed wood, bend under
+  weight that sets (`_pose`: each node's internode in its parent's rest frame + a bend angle that never decreases).
+  Numba kernels (`_collect`, `_distribute`, `_pipe`, `_pose`, `_shed`); nodes are appended parent-first and compacted
+  after shedding. Randomness is hashed from each bud's lineage key (`_child`, `_u`): same spec = same tree, and an
+  edit changes only what it shades. Unit = `habit.unit` m per metamer; with `height`, an unedited run sets the unit
+  first so guides/prunes stay in metres. 5-40k nodes grow in 0.3-3 s (first call compiles ~3 s).
+  Direct controls (the main session's condition: what SpeedTree artists have): `guides` (a drawn path at ANY order:
+  attaches to the nearest node at `from_year`, its nodes lie exactly on the path, pinned = never shed or bent, children
+  regrow from it; a path from the origin at year 0 is the trunk), `prune` (box / sphere / above / `below` = clear the
+  trunk), `envelope` (soft crown shape as shade outside it), `forces`, `environment` (light direction, wind = lean +
+  windward buds suffer, `setting: forest` = a canopy rising with the tree, `neighbours`), `decay.min_radius` (a dead
+  tree: thin wood has fallen), `habit.clear` (m of trunk that never branches).
+  Presets: `vegetation_presets/*.json` (oak, birch, scots_pine, norway_spruce, weeping_willow), bundles of habit +
+  leaves + colours; every key overridable, unknown habit keys raise.
+- Judging by measure: `silhouette` (PIL, ms), `shape_measures` (width/height, bole, widest height, lopsided, porosity,
+  profile), `outline_iou` (row-filled outlines at equal height, feet together), `branch_angles`, `reference_mask`
+  (photo against sky: colour vs the row's background at the crop's edges; or a traced `polygon`), `match`,
+  `fit_habit` (random + shrinking search of named habit numbers on IoU and ratios; ~1 min; how the presets were
+  tuned: inverse procedural modelling, small). References: `workspace/veg_refs/` (README, masks.json).
+- `veg_mesh.py` (tubes per axis with axis/order/along/radius/tan per vertex; `collar` flares a branch's first rings
+  into its parent: a flare, not yet a welded fork), `veg_look.py` (`render`, `reference_sheet`: photo | outlines |
+  clay | bare | in leaf | close-up + numbers; 5-12 s), `veg_tools.py` (plant.json + history in
+  `workspace/plants/<name>/`). `tests/test_vegetation.py`. Renders `workspace/veg_renders/vg_*`.
+- Species pass + first foliage (same day, the main session's order after seeing vg_01-09: "birch fails, spruce a pagoda,
+  trunks too slim; pull stage 2 ahead"):
+  - Girth: `habit.ring` = m of radius every living piece of wood adds a year, on top of the pipe model (the pipe model
+    alone under-sizes a trunk under a sparse crown: oak 0.8 -> 1.7 m at 90 years with ring 0.0022).
+  - Shadow weights: a leafy node shades by its internode's length. Without it short internodes (a spruce's 15 cm
+    branch metamers, six leaf-years deep) shaded themselves to death: every branch a 3-node stub. A spruce also needs
+    a narrow shallow shadow (`shadow` [0.03, 3, 2]: shade-tolerant) or the 45 deg pyramid under each whorl starves
+    the tips of the whorl below, and branch metamers a third of the leader's (`length` [1, 0.32, 0.45], shoot_max 1):
+    the cone's width is the ratio of the two growth rates.
+  - `force_orders` (per order: how far wind and forces turn a shoot; trunk 0.15): a birch in wind 0.8 leans, it no
+    longer lies down.
+  - `veg_leaf.py`: `leaf_mesh` (shape ovate / triangular / lanceolate / lobed, length, width, lobes, fold, curl,
+    petiole, serrate), `twig_mesh` (a short shoot with leaves by its own arrangement, or needles: `needle_tuft` round
+    the shoot's end, `needle_spray` = a flat spray with side shoots; per-vertex tone, leaf ids, wood/leaf material per
+    face; variants by hash), `place` (a twig ends every young shoot, more along shoots born within `twig.steps`:
+    per_m, golden angle, spread, up; `where: "ends"`). Mesh needles are far wider than life (`needle_width`): a
+    1.2 mm needle is sub-pixel at any view of a tree, and a spruce is its needle surface. Counts: 12-35k twigs,
+    2-40M instanced triangles, 4-11 s in EEVEE.
+  - `blender_vegetation.py`: twig protos per variant instanced on point meshes (Geometry Nodes; rot/size/tint
+    attributes; the leaf shader reads `col` + the instancer's `tint`, Principled mixed with Translucent); bark
+    without UVs = a 3D noise stretched along each branch by the mesh's `tan` attribute (kinds furrowed / lenticel /
+    plates; `base_color` under `base_height` = a birch's black foot, `upper_color` above `upper_from` = a pine's
+    orange crown wood, `twig_color` where thin). View transform Khronos PBR Neutral (AgX and a strong blue world
+    greyed everything).
+  - Fit: `fit_habit` now also charges bole misses harder, `droop` (shoot ends hanging under the crown's base, away
+    from the trunk) and, for winter photos, branch directions: `line_directions` (structure tensor: angle from the
+    vertical of the lines in an image) on the photo inside the tree's outline (`photo_branch_directions`) vs on our bare
+    silhouette at the same pixel scale (`tree_branch_directions`). Honest limit: the photo's measure is full of
+    fine level twigs we don't have (oak photo p50 53 deg from vertical, ours ~24): it pulls the right way but the
+    numbers don't meet.
+  - Presets after the pass: oak (IoU 0.88, plagio 0.34 toward ~4 deg: level heavy limbs), birch (leader 1, apical
+    0.63, hanging orders 3+, twigs hang), scots_pine (needle tufts on 3-year shoots, orange upper bark), norway_spruce
+    (above), weeping_willow (trunk loses its lead early, scaffold at 45 deg, orders 2+ hang).
+- Lessons so far: the raw shadow grid's gradient stacked shoots in voxel layers (smooth it, cap the pull); a
+  normalised light pull and a sag constant 1e5 too big made everything curl; straight shoots read as a broom whatever
+  the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
+  to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves
+  (the stand-in sprays failed birch and pine by eye; the same skeletons pass with twigs).
+- Cards, bark maps, forks, look (same day; the main session after vg_10-16: "spruce and pine need needle MASS", "a
+  real sky and sun so the judgement isn't of a diagram"; renders vg_20-25):
+  - Atlases + cards (`veg_leaf.atlas`): each card variant's twig rasterised from above in numpy/PIL (painter's order by
+    height; `rasterize`: colour with the alpha's edge bled outward, alpha, tangent normal, mask R = light comes
+    through / G = roughness / B = shade), 4 variants in a 2 x 2 atlas (768 px); `card_mesh` cuts a convex polygon of
+    <= 7 corners round the alpha (`_enclose`: drop the edge whose neighbours meet nearest), a cupped fan in the twig's
+    frame, `cross` 2 for tufts. `leaves.card` = what the PICTURE is made from (`card_spec`: a card can afford 400-500
+    true-width needles and a 3-year fan with `sub_shoots`; a mesh twig can't): that is where the conifers' mass came
+    from. `render(foliage="cards" | "mesh")`, cards the default: 7-14 triangles a twig, 90-300k foliage triangles a
+    tree (mesh twigs: 2-40M). `fill` (alpha / card area) is reported: 0.3-0.5 on oak/pine/spruce, 0.13-0.22 on the
+    long thin birch and willow twigs (overdraw to fix: cut those cards as strips).
+  - Colours in plant specs are sRGB like the rest of the repo; `blender_vegetation.lin` converts. (They were being fed
+    to shaders as linear; and `rasterize` once converted them a second time: pale teal spruce.)
+  - `veg_bark.py`: bark as tiling maps on the torus (FFT noise + Voronoi with wrapped distances): furrowed (tall
+    interlacing ridges), plates (flaky plates between cracks), scales, lenticel (dashes and peeling bands round the
+    stem); height, normal, albedo multiplier, roughness; tile sizes in metres. `veg_mesh.tubes` now has `uv` (u round
+    the branch in WHOLE tiles, v along it in tiles; a doubled seam column). `bark.base_kind` = a second map set under
+    `base_height` (birch: furrowed black foot). The colour zones (base / upper / twig) stay shader mixes.
+  - Forks: `tubes(weld=True)`: the collar's first ring is carried back along the branch onto its parent's surface
+    (ray-cylinder), so a branch starts on the bark, flared. Not shared topology: a seated fork, no blended normals.
+    `tip` tapers shoot ends.
+  - Look: Blender's sky texture with its sun where the lamp is, a grass-toned ground to the horizon, the sun set per
+    view from behind the eye's left shoulder; a shadowless upward "bounce" lamp (EEVEE has no bounce: foliage in shade
+    lit by the sky alone went blue). Perspective views (`eye`/`look`/`fov`): the sheet adds "from 70 m" and "from 5 m".
+  - Birch: straight dominant trunk (jitter 0.04, apical 0.66, leader to 0.9), fewer scaffold limbs (`bud_break` 0.4
+    on the trunk), ring 0.0024.
+- Lessons so far: the raw shadow grid's gradient stacked shoots in voxel layers (smooth it, cap the pull); a
+  normalised light pull and a sag constant 1e5 too big made everything curl; straight shoots read as a broom whatever
+  the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
+  to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves;
+  mass in conifers comes from the card's picture, not from more geometry; judge colour only under a sky with a
+  bounce, and check the colour space before blaming the light.
+- Tools (same day; the main session: "MCP tools + guide first: an LLM can't use any of this yet"): `grow_plant`
+  (spec or merge patch -> saved version -> report; "" lists plants and presets), `edit_plant` (ops: guide,
+  remove_guide, prune, clear_prunes, envelope, force, clear_forces, set "habit.apical.0"), `look_plant` (views clay /
+  bare / leaf / far / near / close, or the reference sheet), `plant_reference` (photo + crop/foot or traced polygon,
+  optional `fit`), `export_plant`, `plant_history`; `guide(topic="vegetation")` = `vegetation_guide.md` (stages:
+  reference, skeleton, direction, foliage and bark, export; the habit table; what goes wrong).
+  `veg_tools.report` measures the grown plant (form on its own silhouettes, limb angles, twigs, each guide's order /
+  reached its end / branches from it, the reference match) with WARNINGs. `examples/plant_tool.py` calls the tools
+  from a shell. `veg_export.write_glb`: `wood` (bark colour x albedo, normal, roughness, REPEAT) + `foliage` (every
+  card realised into one mesh, atlas with alpha MASK, double sided, COLOR_0 tint), Y up, textures embedded, Khronos
+  validator 0 errors (2 warnings: no tangents). One LOD, no wind/seasons yet.
+  Strip cards (`card.strips`): a ladder of quads along a long twig; it gives hanging twigs their droop but did NOT
+  raise fill (birch 0.25, willow 0.23): the pictures themselves are sparse between the leaves.
+- Blind rounds (2026-10-05; fresh agents with only the guide + a brief: old pollard willows by a ditch, a wind-flagged
+  pine, a veteran oak, a stand): what they could not say became vocabulary, what misled them was fixed.
+  - `cuts` (`{"year", volume, "every", "until_year", "sprouts"}`): the wood in the volume is cut AT that year and each
+    stub (the 12 stoutest) sprouts: pollards, coppice, lopped limbs, storm breaks. `prune` with `from_year` = held
+    for ever; without = a cut after growth. Volumes: box, sphere, above, below, under. Unknown keys anywhere are
+    refused (`resolve`): a tester's `prune.until_year` had been silently ignored.
+  - `habit.angle` is indexed by the PARENT's order (angle[0] had been unused: testers set it and nothing moved);
+    a side shoot's first segment keeps its angle (0.2 weight of light/tropism/jitter). Jitter has momentum
+    (independent kicks read as wire kinks). `trunk_diameter` + `trunk_taper`, `habit.clear` (also on a drawn trunk),
+    guide `bare` / `on` / `until_year` (paces the axis to the path's end), envelope "umbrella" + `center` + `lean`.
+  - A guide that leaves existing wood must not clear that wood's tip: it killed a young trunk's leader (half trees).
+  - `veg_export.budget` (wood min radius + card keep share solved for the triangle count; the count written is the
+    count asked, e.g. 11994/12000) and `look_plant(triangles=)` renders that object: the full-detail look had said
+    nothing about what a 12k export looks like. Looks: file names carry azimuth/budget, a ruler pole, water level,
+    the eye lifted onto a hillside, `look_plants` in real coordinates. Edit echoes are diffs of the RESOLVED spec.
+  - The report measures cover above the crown base (the trunk had counted), trunk lean, each guide's reach, each
+    cut, and warns on a prune that removed everything, `height` with a drawn trunk, an age far past the preset's.
+  - Not built (said in the guide): buttresses/roots/foot on a slope, swollen pollard bolls, deadwood beyond stubs,
+    banks/ditches, a non-weeping willow preset, needle and willow card pictures (feathers, bamboo), an ortho side
+    view that isn't mostly hillside on a slope.
+- Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
+  ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
+  not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

@@ -222,7 +222,7 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
     meta = {"kind": "knit" if knit else "bodice", "armhole_front": edge_length(f, "armhole>armholePitch>shoulder"),
             "armhole_back": edge_length(b, "armhole>armholePitch>shoulder"), "armhole_depth": ay - sy,
             "neck_front": edge_length(f, "cfNeck>hps"), "neck_back": edge_length(b, "cbNeck>hps"),
-            "waist_left": left, "waist_y": -wy, "hips_y": -hy, "chest_quarter": cx, "waist_quarter": wq,
+            "waist_left": left, "waist_dart": dart, "waist_y": -wy, "hips_y": -hy, "chest_y": -ay, "chest_quarter": cx, "waist_quarter": wq,
             "bust": None if bust is None else [float(bust[0]), float(-bust[1])], "options": o, "low": low,
             "biceps_ease": o["biceps_ease"], "knit": knit}
     log.append(f"armhole front {meta['armhole_front'] * 1000:.0f} + back {meta['armhole_back'] * 1000:.0f} mm; neckline "
@@ -339,9 +339,64 @@ def cap_mate(body: dict) -> list:
     return [f"{n}:{a}" for n, a in fr] + [f"{n}:{rev(a)}" for n, a in bk]
 
 
+# ---------------------------------------------------------------- skirt
+
+
+SKIRT_DEFAULTS = {"waist_ease": 0.02, "seat_ease": 0.05, "length": 0.55, "darts": True, "cb": "seam", "cf": "fold",
+                  "flare": 0.0}
+
+
+def skirt(m: dict, opts: dict | None = None) -> dict:
+    """The straight skirt block as HALF pieces for the operations (y = 0 at the waist at the centre, x = 0 on the
+    centre line): seat quarter = seat (1 + ease) / 4 at the seat line, waist quarter = waist (1 + ease) / 4; the
+    difference is taken at the side seam (half, at most 30 mm) and in a waist dart (the rest; with "darts": false
+    all of it at the side seam, for a yoke or panel seams to take over); the side waist is raised 12 mm (the waist
+    curves up over the hip); "flare" m added at the hem's side."""
+    o = dict(SKIRT_DEFAULTS, **(opts or {}))
+    mm = lambda k: float(m[k]) / 1000.0
+    waist, seat = mm("waist"), mm("seat")
+    wts = mm("waistToSeat") if "waistToSeat" in m else 0.22
+    sq, wq = seat * (1 + o["seat_ease"]) / 4, waist * (1 + o["waist_ease"]) / 4
+    supp = max(sq - wq, 0.0)
+    side = min(0.5 * supp, 0.03) if o["darts"] else supp
+    dart = supp - side
+    L = float(o["length"])
+    Y = lambda y: -y
+    out = {}
+    for which in ("front", "back"):
+        fr = which == "front"
+        dl = 0.09 if fr else 0.13
+        pts = [("cWaist", [0.0, 0.0])]
+        if dart > 0:
+            dx = 0.5 * wq
+            pts += [("dartA", [dx, 0.004]), ("dartTip", [dx + dart / 2, Y(dl)]), ("dartB", [dx + dart, 0.006])]
+        sw = wq + dart
+        pts += [("sideWaist", [sw, 0.012])]
+        pts += _curve_pts(bez([sw, 0.012], [sw + 0.35 * (sq - sw), Y(0.3 * wts)], [sq, Y(0.6 * wts)], [sq, Y(wts)]))
+        pts += [("sideSeat", [sq, Y(wts)]), ("hem", [sq + float(o["flare"]), Y(L)]), ("cHem", [0.0, Y(L)])]
+        sym = ("fold" if o["cf"] == "fold" else "pair") if fr else ("fold" if o["cb"] == "fold" else "pair")
+        pc = make_piece(which, pts, "skirt_front" if fr else "skirt_back", {"to": "torso", "side": which, "level": "waist"},
+                        sym, {}, {"seat": [[0, Y(wts)], [sq, Y(wts)]]})
+        if dart > 0:
+            pc["darts"]["dart"] = ("dartA", "dartTip", "dartB")
+        out[which] = pc
+    seams = [["front:sideWaist>sideSeat>hem", "back:sideWaist>sideSeat>hem"]]
+    if dart > 0:
+        seams += [[f"{k}:dartA>dartTip", f"{k}:dartB>dartTip"] for k in ("front", "back")]
+    log = [f"skirt: seat quarter {sq * 1000:.0f} mm (ease {o['seat_ease'] * 100:.0f}%), waist quarter {wq * 1000:.0f}; "
+           f"{supp * 1000:.0f} mm a quarter to take out: side seam {side * 1000:.0f}, dart {dart * 1000:.0f}; length {L * 1000:.0f} mm"]
+    return {"pieces": out, "seams": seams, "log": log, "centre": {"front": o["cf"], "back": o["cb"]},
+            "meta": {"kind": "skirt", "options": o, "low": "hem", "waist_y": 0.0, "hips_y": -wts, "waist_quarter": wq,
+                     "waist_dart": 0.0}}
+
+
 # ---------------------------------------------------------------- trouser
 
 
+# where a trouser hem ends, as metres above the floor: "floor" (a wide leg's hem over a heel), "shoe" (a break on
+# the shoe: for a body that wears shoes), "ankle" (the default: these bodies are barefoot, and a hem cut for a shoe
+# pools on the foot), "cropped", "calf"; "knee" and "shorts" are set from the knee and the rise
+TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None, "shorts": None}
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
                     "length": None, "back_dart": 0.02}
 
@@ -355,7 +410,17 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     rise = float(o["rise"]) if o["rise"] else (mm("waistToUpperLeg") if measured else 0.175 * waist + 0.154)
     rise += o["rise_ease"]
     wts = min(wts, rise - 0.075)  # the hip line the crotch curve springs from: at least 75 mm above the crotch line
-    L = float(o["length"]) if o["length"] else mm("waistToFloor") - 0.03
+    # the length: metres from the waist, or where the hem ends (TROUSER_LENGTHS: above the floor)
+    lw = o["length"] if isinstance(o["length"], str) else None
+    if lw is not None and lw not in TROUSER_LENGTHS:
+        raise ValueError(f"trouser length {lw!r}: metres from the waist, or one of {', '.join(TROUSER_LENGTHS)}")
+    if lw in ("knee", "shorts"):
+        knee_ = mm("waistToKnee") if "waistToKnee" in m else rise + 0.33
+        L = knee_ - (0.02 if lw == "knee" else 0.5 * (knee_ - rise))
+    elif lw:
+        L = mm("waistToFloor") - TROUSER_LENGTHS[lw]
+    else:
+        L = float(o["length"]) if o["length"] else mm("waistToFloor") - TROUSER_LENGTHS["ankle"]
     knee_y = mm("waistToKnee") if "waistToKnee" in m else rise + 0.45 * (L - rise)
     sq = seat * (1 + o["seat_ease"]) / 4
     wq = waist * (1 + o["waist_ease"]) / 4
@@ -363,7 +428,8 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     fork_b = 1.5 * fork_f + 0.005  # Aldrich: the front's + half of it + 5 mm
     hem = float(o["hem"]) if o["hem"] else 0.22
     knee = float(o["knee"]) if o["knee"] else hem + 0.03
-    log = [f"trouser: seat quarter {sq * 1000:.0f} (front -10, back +10 mm), body rise {rise * 1000:.0f} mm "
+    log = [f"trouser length {L * 1000:.0f} mm from the waist ({lw or ('given' if o['length'] else 'ankle: the default')})",
+           f"trouser: seat quarter {sq * 1000:.0f} (front -10, back +10 mm), body rise {rise * 1000:.0f} mm "
            f"({'given' if o['rise'] else 'measured: waist to the crotch + ease' if measured else 'estimated 0.175 x waist + 154 mm'}), forks front "
            f"{fork_f * 1000:.0f} / back {fork_b * 1000:.0f} mm, knee {knee * 1000:.0f}, hem {hem * 1000:.0f} mm"]
     out = {}

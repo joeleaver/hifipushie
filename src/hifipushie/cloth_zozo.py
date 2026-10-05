@@ -368,7 +368,15 @@ def main():
         # start stretch, and contract onto the body to their made size
         lim = float(job.get("strain_limit", 0.05))
         sig = _start_stretch(flat3, X, F)
-        fm = lifted[F].all(1)
+        # so do the few triangles of draped cloth that start past it by construction (the rows of a roll line turned
+        # round a chest that curves, a cut-on collar's stand pushed a millimetre off the neck): a local limit above
+        # their start, never more than START_OVER of the cloth (more is a placement fault: cloth_workflow stage 4)
+        over = (sig > 1.0 + lim) & ~lifted[F].all(1)
+        if 0 < over.mean() <= float(job.get("start_over", 0.03)):
+            lifted[np.unique(F[over])] = True
+            log(f"zozo: {int(over.sum())} triangles of draped cloth start up to {(float(sig[over].max()) - 1) * 100:.0f}% "
+                "stretched (fold rows, pushed bands): a local strain limit there")
+        fm = lifted[F].all(1) | over
         need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
         # (experiment) job "zone_limit": {"pieces": [...whole], "top": {piece: m from its pattern top}, "value": 0.15}:
         # another strain limit there (the shoulder/yoke dome)

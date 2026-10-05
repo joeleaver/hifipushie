@@ -127,6 +127,21 @@ def test_two_piece_sleeve():
     assert abs(_len(D, D["edges"]["cap"]) - cap) < 2e-3  # the cap is the same length, over three edges
     assert abs(_len(D, D["edges"]["sleeve_hem"]) - hem) < 3e-3
     _ok(D)
+    t, u = D["pieces"]["top"], D["pieces"]["under"]
+    # the under sleeve is turned right side up: its forearm edge on the side that meets the top's under the arm
+    assert t["P"][t["names"]["tsF"], 0] > 0 > u["P"][u["names"]["usF"], 0]
+    # bent at the elbow: forearm seams equal, the top's hindarm longer (elbow ease, declared), the wrist forward
+    assert abs(_len(D, "top:tsF>tsHemF") - _len(D, "under:usF>usHemF")) < 1e-3
+    assert 0.003 < _len(D, "top:tsB>tsHemB") - _len(D, "under:usB>usHemB") < 0.02
+    assert t["P"][t["names"]["tsHemF"], 1] > t["P"][t["names"]["tsHemB"], 1] + 0.01  # the hem square to the forearm
+    from hifipushie import pattern
+    bd = t["wrap"]["bend"]
+    assert np.abs(pattern.bend(pattern.unbend(t["P"], **bd), **bd) - t["P"]).max() < 1e-6
+    S = pd.start("bodice", MM, {"chest_ease": 0.14})
+    pd.apply(S, [{"op": "sleeve", "cap_ease": 0.045, "biceps_ease": 0.18}, {"op": "two_piece", "elbow": 0}])
+    s = S["pieces"]["top"]
+    for k in ("tsHemF", "tsHemB", "tsF", "tsB"):  # unbent, it is the straight sleeve
+        assert np.linalg.norm(pattern.unbend(t["P"][t["names"][k]], **bd)[0] - s["P"][s["names"][k]]) < 1e-6
 
 
 def test_trouser_and_knit_blocks():
