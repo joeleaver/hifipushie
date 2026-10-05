@@ -1636,6 +1636,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                    f"{bones[0]['name']!r}; {ntw} twist bones after the base set), {len(rigged['weights'])} parts "
                    f"skinned, head rigid by {hf['how'] if hf else 'nothing (off, or no Head bone)'}, "
                    f"{time.time() - tr:.1f}s")
+        from . import rig_template as _rt
+        if _rt.weights_note(rspec):
+            log.append(_rt.weights_note(rspec))
     shapes = {}
     if face_shapes:  # after the bake and the skin: both use the meshed (open-mouthed) low poly
         from . import faceshapes
