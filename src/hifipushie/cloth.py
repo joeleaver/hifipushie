@@ -2595,15 +2595,26 @@ def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body",
     # body by its nearest vertices' planes; a body vertex 1.6-1.9 mm under the middle of a sleeve's triangle stopped
     # the solver at its first step)
     vn, _ = body.normals()
+    # (with the body's edge midpoints: an edge of the body 1.9 mm from an edge of the cloth, both ends of each
+    # further off, stopped the solver the same way: "edge-edge pair's separation has collapsed")
+    bT = body.T
+    bE = np.unique(np.sort(np.r_[bT[:, [0, 1]], bT[:, [1, 2]], bT[:, [2, 0]]], 1), axis=0)
+    BP = np.r_[body.V, 0.5 * (body.V[bE[:, 0]] + body.V[bE[:, 1]])]
+    BN = np.r_[vn, vn[bE[:, 0]] + vn[bE[:, 1]]]
+    BN /= np.maximum(np.linalg.norm(BN, axis=1, keepdims=True), 1e-12)
+    near_ = cKDTree(V[free]).query(BP, distance_upper_bound=0.05)[0] < 0.05 if free.any() else np.zeros(len(BP), bool)
+    BP, vn = BP[near_], BN[near_]
     for _ in range(4):
+        if not len(BP):
+            break
         tc = cKDTree(V[Ff].mean(1))
-        _, nb = tc.query(body.V, k=min(12, len(Ff)))
-        nb = nb.reshape(len(body.V), -1)
+        _, nb = tc.query(BP, k=min(12, len(Ff)))
+        nb = nb.reshape(len(BP), -1)
         push = np.zeros(len(V))
         dirs = np.zeros_like(V)
         for k in range(nb.shape[1]):
             T = Ff[nb[:, k]]
-            dd = _pt_tri(body.V, V[T[:, 0]], V[T[:, 1]], V[T[:, 2]])
+            dd = _pt_tri(BP, V[T[:, 0]], V[T[:, 1]], V[T[:, 2]])
             bad = np.where(dd < face_gap)[0]
             for c in range(3):
                 np.maximum.at(push, T[bad, c], face_gap - dd[bad] + 3e-4)
