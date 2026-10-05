@@ -94,7 +94,8 @@
    0,
    0.3,
    0.2
-  ]
+  ],
+  "shadow_tail": 0.0
  },
  "leaves": {
   "shape": "needle_spray",
@@ -158,7 +159,7 @@
    0.2,
    0.154
   ],
-  "scale": 1.5,
+  "scale": 0.6,
   "bump": 0.6
  }
 }

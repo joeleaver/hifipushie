@@ -71,15 +71,15 @@
  },
  "leaves": {
   "shape": "triangular",
-  "length": 0.05,
+  "length": 0.055,
   "width": 0.75,
   "serrate": 0.12,
   "petiole": 0.4,
   "hang": 0.5,
   "color": [
-   0.642,
-   0.7,
-   0.35
+   0.55,
+   0.66,
+   0.33
   ],
   "twig": {
    "length": 0.4,
@@ -98,15 +98,16 @@
   },
   "card": {
    "twig": {
-    "leaves": 130,
-    "length": 0.7,
-    "side_shoots": 7,
+    "leaves": 70,
+    "length": 0.55,
+    "side_shoots": 5,
     "side_angle": 14,
     "side_length": 0.9,
     "droop": 0.1
    },
    "leaf": {
-    "length": 0.045
+    "length": 0.06,
+    "width": 0.8
    },
    "scale": 1.0
   },

@@ -289,7 +289,7 @@ whole tree's read and for colour. What a description says, and the key it sets:
 
 | the flora says | key | values |
 |---|---|---|
-| leaves alternate / spirally arranged (2/5, 3/8) | `leaves.twig.arrangement: "spiral"`, `divergence` | 144 (2/5), 135-137.5 (3/8), 120 (1/3) |
+| leaves alternate / spirally arranged (2/5, 3/8) | `leaves.twig.arrangement: "spiral"`, `divergence` | 144 (2/5), 135-137.5 (3/8), 120 (1/3): the fraction is geometry; which species has which is an ASSUMPTION here |
 | leaves alternate in two ranks (distichous: elm, beech, lime) | `arrangement: "alternate"` | |
 | leaves opposite (maple, ash) / whorled | `arrangement: "opposite"` / `"whorled"` | |
 | leaf blade length, width / length | `leaves.length` (m), `leaves.width` | oak 0.10-0.12, 0.65; birch 0.03-0.07; willow 0.04-0.16, 0.12 |
@@ -322,8 +322,9 @@ What the presets rest on (quoted from the sources):
   "greyish-brown and closely grooved, with vertical plates" (en.wikipedia.org/wiki/Quercus_robur).
 - Weeping willow: leaves "alternate and spirally arranged, narrow, light green, 4-16 cm long and 0.5-2 cm broad",
   "gold-yellow in autumn"; shoots "yellowish-brown" (en.wikipedia.org/wiki/Salix_babylonica).
-Not from a source (the SpeedTree manual's leaf pages refused the fetch): the divergence fractions per species and
-the sun/shade `light` values above are textbook generalities, set by me.
+ASSUMPTIONS, not from a source: the `divergence` fraction given to each preset (oak and willow 144 = 2/5, birch
+120 = 1/3) and every `light` / `face` value (how far blades and twigs turn to the sky) were set by hand from general
+botany, and the SpeedTree manual's leaf pages refused the fetch. Replace them when a flora states the phyllotaxis.
 
 ## Game-ready: LODs, wind, seasons, collision
 
