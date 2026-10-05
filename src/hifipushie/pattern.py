@@ -194,6 +194,16 @@ def mirror_x(piece: dict) -> dict:
                 lines={k: v * [-1, 1] for k, v in piece["lines"].items()})
 
 
+def mirror_y(piece: dict) -> dict:
+    """The piece turned upside down (y -> -y): a draft drawn with its sewn edge at the top (a jacket's collar and
+    stand, neckline edge up) put the way the wraps read pieces, sewn edge down. Names stay on their points."""
+    n = len(piece["P"])
+    P = (piece["P"] * [1, -1])[::-1]
+    names = {k: n - 1 - i for k, i in piece["names"].items()}
+    return dict(piece, P=P, names=names, marks={k: v * [1, -1] for k, v in piece["marks"].items()},
+                lines={k: v * [1, -1] for k, v in piece["lines"].items()})
+
+
 def from_spec(name: str, d: dict) -> dict:
     """A piece written in the spec: {"outline": [[x, y] | {"at": [x, y], "name": n} | {"arc": [cx, cy], "to": ...}...],
     "marks": {n: [x, y]}, "lines": {n: [[x, y], ...]}, "grain": deg}. Coordinates in metres. A "rect": [w, h]
@@ -337,6 +347,33 @@ def move_point(piece: dict, point: str, by, falloff: float = 0.05) -> dict:
     w = w * w * (3 - 2 * w)
     P += w[:, None] * np.asarray(by, float)
     return dict(piece, P=P)
+
+
+def bend(P, pivot, angle: float, y: float, band: float = 0.05) -> np.ndarray:
+    """Points turned about `pivot` by `angle` (rad, + counter-clockwise) below the level y, the turn easing in over
+    +-band round it (a tailored sleeve bent at the elbow: the part below the elbow line swings about the forearm
+    seam's elbow point, the hindarm seam opens over the elbow)."""
+    P = np.asarray(P, float).reshape(-1, 2)
+    pivot = np.asarray(pivot, float)
+    w = np.clip((y + band - P[:, 1]) / (2 * band), 0, 1)
+    th = angle * w * w * (3 - 2 * w)
+    v = P - pivot
+    c, s = np.cos(th), np.sin(th)
+    return pivot + np.c_[c * v[:, 0] - s * v[:, 1], s * v[:, 0] + c * v[:, 1]]
+
+
+def unbend(P, pivot, angle: float, y: float, band: float = 0.05) -> np.ndarray:
+    """The inverse of `bend` (the straight sleeve's coordinates of a bent sleeve's points: what is laid round an arm)."""
+    P = np.asarray(P, float).reshape(-1, 2)
+    pivot = np.asarray(pivot, float)
+    Q = P.copy()
+    for _ in range(12):
+        w = np.clip((y + band - Q[:, 1]) / (2 * band), 0, 1)
+        th = -angle * w * w * (3 - 2 * w)
+        v = P - pivot
+        c, s = np.cos(th), np.sin(th)
+        Q = pivot + np.c_[c * v[:, 0] - s * v[:, 1], s * v[:, 0] + c * v[:, 1]]
+    return Q
 
 
 def _poly_inside(P: np.ndarray, Q: np.ndarray) -> np.ndarray:

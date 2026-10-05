@@ -35,7 +35,7 @@ KB_PATH = Path(__file__).with_name("garment_kb.json")
 DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", "waistband", "fly", "skirt_closure",
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch")
 SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
-              "block_options", "ops"}
+              "block_options", "ops", "over", "support", "layer_gap"}
 METHODS = ("simulate", "settle")
 
 
@@ -77,9 +77,9 @@ def validate(sheet: dict, where: str = "design") -> None:
     fr = sheet.get("from")
     if fr == "draft" or (fr is None and sheet.get("block")):
         from . import pattern_blocks, pattern_draft
-        if sheet.get("block") not in ("bodice", "knit", "trouser"):
-            raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser (the skirt is from "
-                             "skirt_block), then \"ops\": [pattern operations]")
+        if sheet.get("block") not in ("bodice", "knit", "trouser", "skirt"):
+            raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser | skirt, then "
+                             "\"ops\": [pattern operations]")
         for k_, op in enumerate(sheet.get("ops") or []):
             if not isinstance(op, dict) or op.get("op") not in list(pattern_draft.OPS) + ["unfold"]:
                 raise ClothError(f"{where}: ops[{k_}] is {{\"op\": one of {', '.join(pattern_draft.OPS)}, unfold, ...}}")
@@ -98,6 +98,8 @@ def validate(sheet: dict, where: str = "design") -> None:
     if sheet.get("method") is not None and sheet["method"] not in METHODS:
         raise ClothError(f'{where}: method is "simulate" (sewn and fully simulated) or "settle" (structured parts '
                          "constructed finished, the loose cloth settled lightly from the fitted placement)")
+    if sheet.get("over") is not None and not isinstance(sheet["over"], str):
+        raise ClothError(f'{where}: over is the name of the garment this one is worn over (a jacket over "shirt")')
     if sheet.get("made") is not None and not (isinstance(sheet["made"], dict) and all(
             v in ("made", "draped") for v in sheet["made"].values())):
         raise ClothError(f'{where}: made is {{piece or role: "made" | "draped"}}')
@@ -219,6 +221,9 @@ def compile_sheet(sheet: dict) -> dict:
     out["fabric"] = r["fabric"]["solver"]
     if sheet.get("method"):
         out["method"] = sheet["method"]
+    for k in ("over", "support", "layer_gap"):  # layering: worn over another garment, with its structure pieces
+        if sheet.get(k) is not None:
+            out[k] = sheet[k]
     if drop:
         out["drop"] = drop
     if folds:

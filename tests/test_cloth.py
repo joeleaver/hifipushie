@@ -178,6 +178,39 @@ def test_zozo_backend_keys():
             raise AssertionError(f"not rejected: {bad}")
 
 
+def test_coincident_stitches_are_parted_not_dropped():
+    """Two panels drafted edge to edge (a centre back seam): the stitches' ends start on one point. ZOZO has no
+    direction for them; dropped, nothing sews the seam. The runner steps each end back into its own cloth."""
+    from hifipushie.cloth_zozo import part_stitches
+    h = 0.02
+    gx, gy = np.meshgrid(np.arange(4) * h, np.arange(5) * h, indexing="ij")
+    A = np.c_[gx.ravel() - 3 * h, gy.ravel(), np.zeros(gx.size)]  # x from -3h to 0
+    B = np.c_[gx.ravel(), gy.ravel(), np.zeros(gx.size)]  # x from 0 to 3h
+    quad = [(i * 5 + j, (i + 1) * 5 + j, (i + 1) * 5 + j + 1, i * 5 + j + 1) for i in range(3) for j in range(4)]
+    Fa = np.array([t for q in quad for t in ((q[0], q[1], q[2]), (q[0], q[2], q[3]))])
+    X, F = np.r_[A, B], np.r_[Fa, Fa + 20]
+    sew = np.c_[15 + np.arange(5), np.arange(5)] + [0, 20]  # A's x = 0 column to B's
+    X2, sew2, info = part_stitches(X, F, sew)
+    d = np.linalg.norm(X2[sew2[:, 0]] - X2[sew2[:, 1]], axis=1)
+    assert len(sew2) == 5 and info["coincident"] == 5 and d.min() > 0.0012 and d.max() < 0.0025, (d, info)
+    assert (X2[15:20, 0] < 0).all() and (X2[20:25, 0] > 0).all() and np.abs(X2 - X).max() < 0.0011
+    # one side held as made: only the other steps back; both held: dropped
+    held = np.zeros(len(X), bool)
+    held[15:20] = True
+    X3, sew3, _ = part_stitches(X, F, sew, held)
+    assert np.allclose(X3[15:20], X[15:20]) and len(sew3) == 5
+    assert np.linalg.norm(X3[sew3[:, 0]] - X3[sew3[:, 1]], axis=1).min() > 0.0008
+    held[20:25] = True
+    assert len(part_stitches(X, F, sew, held)[1]) == 0
+    # two layers on each other (a facing on its front): they part along the normal
+    X4, sew4, info4 = part_stitches(np.r_[A, A], F, np.c_[np.arange(20), 20 + np.arange(20)])
+    d4 = np.linalg.norm(X4[sew4[:, 0]] - X4[sew4[:, 1]], axis=1)
+    assert len(sew4) == 20 and d4.min() > 0.0008 and info4["by_normal"] == 20, (d4.min(), info4)
+    # stitches that start apart are left alone
+    X5, sew5, info5 = part_stitches(X + np.r_[np.zeros((20, 3)), np.tile([0.01, 0, 0], (20, 1))], F, sew)
+    assert info5["coincident"] == 0 and len(sew5) == 5 and np.allclose(X5[:20], X[:20])
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

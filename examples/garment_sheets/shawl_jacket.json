@@ -9,11 +9,11 @@
     {"op": "shawl", "break_y": 0.40, "stand": 0.02, "height": 0.075},
     {"op": "facing", "piece": "front", "edges": ["shawl_edge", "centre_front"], "width": 0.07},
     {"op": "buttons", "piece": "front", "n": 1},
-    {"op": "sleeve", "cap_ease": 0.04},
+    {"op": "sleeve", "cap_ease": 0.04, "hem_width": 0.28},
     {"op": "two_piece"}
   ],
   "details": {"collar": "shawl", "front_closure": "single_button", "lining": "none", "shoulder": "none",
               "pockets": "none", "hem": "blind", "cuff": "hemmed"}
  },
- "spec": {"quality": "draft", "color": "#3a4a6a"}
+ "spec": {"quality": "draft", "color": "#3a4a6a", "backend": "zozo", "fine_settle": false}
 }

@@ -1668,7 +1668,7 @@ def design_garment(name: str, garment: str, design: dict | None = None, spec: di
     pattern maker does. Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
     replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
     dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or DESIGN it: "block":
-    bodice | knit | trouser, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
+    bodice | knit | trouser | skirt, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
     "operations" | "derivations"): a garment with no ready-made draft is a block + operations); or leave out and give own
     pieces + seams in spec), "fit": the kind's fit (slim, regular, a_line...), "fabric": a fabric (cotton_shirting,
     oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit, french_terry) or a solver preset,

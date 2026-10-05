@@ -98,7 +98,10 @@ def _point(D: dict, pc: dict, ps, name: str | None = None) -> int:
     seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
     cum = np.r_[0, np.cumsum(seg)]
     if "y" in ps:
-        y = float(ps["y"])
+        # (a level by name: "waist", "hips", "chest": the block's own line)
+        if isinstance(ps["y"], str) and f"{ps['y']}_y" not in D["meta"]:
+            raise DraftError(f"{pc['name']}: no level {ps['y']!r} in this block (a y in m, or waist / hips / chest)")
+        y = float(D["meta"][f"{ps['y']}_y"]) if isinstance(ps["y"], str) else float(ps["y"])
         hit = [k for k in range(len(L) - 1) if (L[k, 1] - y) * (L[k + 1, 1] - y) <= 0 and L[k, 1] != L[k + 1, 1]]
         if not hit:
             raise DraftError(f"{pc['name']}: edge {ps['edge']} doesn't cross y = {y}")
@@ -197,12 +200,15 @@ def _replace(D: dict, old_name: str, new: dict) -> None:
     pcs = dict(D["pieces"], **new)
     D["pieces"] = {k: pcs[k] for k in order}
     for k in ("centre",):
-        if old_name in D[k] and old_name not in new:
-            v = D[k].pop(old_name)
-            # the centre edge goes with the piece that holds the centre line (x = 0)
+        if old_name in D[k]:
+            v = D[k][old_name] if old_name in new else D[k].pop(old_name)
+            # the centre edge goes with every piece that holds the centre line (x = 0): a cut across the piece (a
+            # yoke) leaves both parts on it (the yoke of a back with a centre seam had none: its halves weren't sewn)
             for nm, pc in new.items():
                 if np.sum(np.abs(pc["P"][:, 0]) < 1e-6) >= 2:
                     D[k][nm] = v
+                elif nm == old_name:
+                    D[k].pop(nm, None)
 
 
 def edge_points(D: dict, chain) -> np.ndarray:
@@ -275,7 +281,21 @@ def op_style_line(D: dict, piece: str, **o) -> None:
     # which half holds the centre line: it is named first
     cx = [float(np.abs(h["P"][:, 0]).min()) + 1e-3 * float(h["P"][:, 0].mean()) for h, _ in built]
     order = [0, 1] if cx[0] <= cx[1] else [1, 0]
+    if all(np.sum(np.abs(h["P"][:, 0]) < 1e-6) >= 2 for h, _ in built):
+        # a cut ACROSS the piece (a yoke): both parts hold the centre line; the upper one is named first
+        order = [0, 1] if built[0][0]["P"][:, 1].mean() >= built[1][0]["P"][:, 1].mean() else [1, 0]
     names = names or [f"{piece}_centre", f"{piece}_side"]
+    if o.get("apart", True):
+        # the two parts start a little apart (their cut edges are the same line: laid edge on edge, a contact solver
+        # sees them through each other): the part away from the centre moves off along the cut's normal
+        c0, c1 = built[order[0]][0]["P"].mean(0), built[order[1]][0]["P"].mean(0)
+        dv = work["P"][ib] - work["P"][ia]
+        nv = np.array([-dv[1], dv[0]]) / max(np.linalg.norm(dv), 1e-12)
+        nv = nv if nv @ (c1 - c0) > 0 else -nv
+        sh0 = np.asarray(built[order[1]][0]["wrap"].get("shift", [0.0, 0.0]), float)
+        # (a cut ACROSS the piece, a yoke: 4 mm, its corners at the side seams overlapped at 2)
+        across_ = all(np.sum(np.abs(h_["P"][:, 0]) < 1e-6) >= 2 for h_, _ in built)
+        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.004 if across_ else 0.002) * nv).round(5).tolist()
     for nm, k in zip(names, order):
         h, pos = built[k]
         h["name"] = nm
@@ -310,6 +330,7 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
     for spec, part in zip((sa, sb), shares):
         nm, arc = spec.split(":", 1)
         pc = D["pieces"][nm]
+        densify_edge(pc, arc)  # (a straight cut has only its two ends: nothing to carry the curve, nothing was taken in)
         ix = pattern.arc_indices(pc, arc)
         L = pc["P"][ix]
         t = np.gradient(L, axis=0)
@@ -326,8 +347,39 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
             mv[k] = [np.sign(nrm[k, 0]) * amount * part * w[k], 0.0]
         pc["P"][ix] = L + mv
     la, lb = edge_length(D, sa), edge_length(D, sb)
+    press_note(D, line)
     D["log"].append(f"take in {line}: {amount * 1000:.0f} mm at y {y * 1000:.0f} mm, {share * 100:.0f}% from the side "
                     f"panel ({la * 1000:.1f} / {lb * 1000:.1f} mm)")
+
+
+def press_note(D: dict, line: str) -> None:
+    """A shaped panel seam's two edges differ a little in length (the more hollowed one is the longer): a tailor
+    stretches the straighter one onto it with the iron, or eases the hollow in. Under 2% that is declared on the
+    seam; more is left for `consistency` to name (the shares are wrong)."""
+    sa, sb = D["lines"][line]
+    for s in D["seams"]:
+        if s == [sa, sb] or s == [sb, sa]:
+            la, lb = edge_length(D, s[0]), edge_length(D, s[1])
+            e_s = la / max(lb, 1e-9) - 1
+            key = json.dumps(s)
+            if 0.003 < abs(e_s) <= 0.02:
+                D["notes"][key] = {"ease": [round(e_s - 0.004, 4), round(e_s + 0.004, 4)],
+                                   "why": f"panel seam {line}: one edge is {abs(la - lb) * 1000:.0f} mm longer after "
+                                          "shaping, pressed / eased on"}
+            elif abs(e_s) <= 0.003:
+                D["notes"].pop(key, None)
+
+
+def densify_edge(pc: dict, arc: str, step: float = 0.03) -> None:
+    """Vertices added along an edge until none of its segments is longer than `step` (an edge about to be shaped)."""
+    for _ in range(300):
+        ix = pattern.arc_indices(pc, arc)
+        seg = np.linalg.norm(np.diff(pc["P"][ix], axis=0), axis=1)
+        k = int(np.argmax(seg))
+        if seg[k] <= step:
+            return
+        a, b = ix[k], ix[k + 1]
+        _insert(pc, a if (a + 1) % len(pc["P"]) == b else b, 0.5 * (pc["P"][a] + pc["P"][b]))
 
 
 def _rot(P, c, ang):
@@ -736,6 +788,8 @@ def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None 
     pts[mid] = ("edge.m", L[mid])
     fpc = pb.make_piece(name, pts, "facing", dict(pc.get("wrap") or {}), pc.get("sym", "pair"))
     fpc["wrap"]["out"] = -0.003  # inside the piece it faces
+    fpc["wrap"]["lies_on"] = piece  # placed as that piece's own surface, a layer inside it (cloth.place)
+    fpc["traced"] = piece
     D["pieces"][name] = fpc
     seam = [f"{name}:edge.a>edge.m>edge.b", chain[0] if len(chain) == 1 else chain]
     D["seams"].append(seam)
@@ -859,7 +913,12 @@ def _rev(spec: str) -> str:
 def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     """A two-piece sleeve from the one-piece: the sleeve is folded edge to centre (the fold lines a quarter in from
     each side), the folds become seams moved `shift` under the arm so they are hidden: a top sleeve (the middle) and
-    an under sleeve (the two outer strips joined along the old underarm seam)."""
+    an under sleeve (the two outer strips joined along the old underarm seam; its top edge is the hollow of the two
+    underarm curves). "shift_back": the hindarm seam's own shift (default 0.6 x shift: it runs over the elbow).
+    Then the sleeve is BENT as a tailor cuts it: below the elbow line each piece swings toward its forearm seam by
+    "elbow" (m the wrist comes forward; 0 = straight), about the forearm seam's elbow point: the forearm seams stay
+    equal and hollow, the hindarm seams open over the elbow, the top sleeve's a little more than the under's (elbow
+    ease, declared), the hem ends up square to the forearm."""
     if "sleeve" not in D["pieces"]:
         raise DraftError("two_piece: draft the sleeve first")
     pc = D["pieces"]["sleeve"]
@@ -869,7 +928,8 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     lo = pc["P"][:, 1].min()
     # the seam lines: a quarter in from each side at the biceps and at the hem (they follow the taper), `shift` under
     lf = (np.array([W / 4 + shift, 0.0]), np.array([hw / 4 + shift, lo]))
-    lb = (np.array([-(W / 4 + shift), 0.0]), np.array([-(hw / 4 + shift), lo]))
+    sb_ = float(o.get("shift_back", 0.6 * shift))
+    lb = (np.array([-(W / 4 + sb_), 0.0]), np.array([-(hw / 4 + sb_), lo]))
     work = copy.deepcopy(pc)
     # cut points on the cap and on the hem at the two seam lines
 
@@ -937,6 +997,12 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     under_pts += [("usHemMid", 0.5 * (b_hem[0] + f_hem[-1])), ("usHemF", f_hem[-1])]  # the under hem: one straight line
     under = pb.make_piece("under", under_pts, "sleeve", {"to": "arm.L", "front": 1, "turn": 180,
                                                          "align": ["usF", "top", "tsF"]}, "copy")
+    # the strips were folded in: the piece as built is seen from its wrong side. Turned over (mirrored), so its
+    # pattern face is its outside like every other piece, and laid under the arm its forearm edge meets the top's
+    # (unmirrored it went round the arm the other way: both sleeve seams started ~15 cm apart and the sewing
+    # twisted the sleeve into a knot at the shoulder)
+    under["P"] = (under["P"] * [-1.0, 1.0])[::-1]
+    under["names"] = {k_: len(under["P"]) - 1 - i_ for k_, i_ in under["names"].items()}
     tpts = [(("tsB" if k == i["tsB"] else "tsF" if k == i["tsF"] else "tsHemF" if k == i["tsHemF"] else
               "tsHemB" if k == i["tsHemB"] else "capTop" if k == i["capTop"] else None), work["P"][k]) for k in top]
     topp = pb.make_piece("top", tpts, "sleeve", {"to": "arm.L", "front": 1}, "copy",
@@ -944,19 +1010,31 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     # the elbow: a tailored sleeve follows the arm's bend. Both pieces are sheared alike about the elbow line (the
     # forearm seam hollows, the hindarm seam bows out over the elbow point), so the mating seams stay the same curves;
     # and the under sleeve's hindarm is hollowed a little more than the top's bows (the cloth cups over the elbow)
-    elbow = float(o.get("elbow", 0.018))
+    elbow = float(o.get("elbow", 0.035))
     ey = float(np.mean(pc["lines"]["elbow"][:, 1])) if "elbow" in (pc.get("lines") or {}) else 0.45 * lo
+    theta = elbow / max(ey - lo, 1e-6)
     if elbow > 0:
-        def bend(P):
-            y = P[:, 1]
-            up = np.clip((0 - y) / max(0 - ey, 1e-6), 0, 1)  # 0 at the biceps line, 1 at the elbow
-            dn = np.clip((y - lo) / max(ey - lo, 1e-6), 0, 1)  # 0 at the hem, 1 at the elbow
-            w = np.where(y >= ey, up * up * (3 - 2 * up), dn * dn * (3 - 2 * dn))
-            w = np.where(y > 0, 0.0, w)
-            return np.c_[P[:, 0] - elbow * w, y]  # the elbow goes back (the front of the sleeve is +x)
-        topp["P"], under["P"] = bend(topp["P"]), bend(under["P"])
-        for k_ in list(topp["lines"]):
-            topp["lines"][k_] = bend(np.asarray(topp["lines"][k_], float))
+        for pcx, edge, sgn in ((topp, "tsF>tsHemF", 1.0), (under, "usF>usHemF", -1.0)):
+            for yy in np.linspace(ey + 0.07, ey - 0.07, 9):  # both seam edges need points to carry the curve
+                try:
+                    _point(D, pcx, {"edge": edge, "y": float(yy)})
+                except DraftError:
+                    pass
+            ix = pattern.arc_indices(pcx, edge)
+            E = pcx["P"][ix]
+            o_ = np.argsort(E[:, 1])
+            piv = np.array([float(np.interp(ey, E[o_, 1], E[o_, 0])), ey])
+            other = "tsB>tsHemB" if pcx is topp else "usB>usHemB"
+            for yy in np.linspace(ey + 0.07, ey - 0.07, 9):
+                try:
+                    _point(D, pcx, {"edge": other, "y": float(yy)})
+                except DraftError:
+                    pass
+            bd = {"pivot": piv.round(5).tolist(), "angle": round(sgn * theta, 5), "y": round(ey, 5), "band": 0.05}
+            pcx["P"] = pattern.bend(pcx["P"], **bd)
+            for k_ in list(pcx["lines"]):
+                pcx["lines"][k_] = pattern.bend(np.asarray(pcx["lines"][k_], float), **bd)
+            pcx["wrap"]["bend"] = bd  # (cloth.place lays the straight sleeve: the bend is undone for the start)
     del D["pieces"]["sleeve"]
     D["pieces"]["top"], D["pieces"]["under"] = topp, under
     # seams: the cap (top's part + the under's two parts) into the armhole; the two sleeve seams
@@ -967,17 +1045,40 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     D["seams"] += [new_cap, ["top:tsF>tsHemF", "under:usF>usHemF"], ["top:tsB>tsHemB", "under:usB>usHemB"]]
     if note:
         D["notes"][json.dumps(new_cap)] = note
+    if elbow > 0:
+        hb = (edge_length(D, "top:tsB>tsHemB"), edge_length(D, "under:usB>usHemB"))
+        e_ = hb[0] / hb[1] - 1
+        D["notes"][json.dumps(D["seams"][-1])] = {
+            "ease": [round(e_ - 0.004, 4), round(e_ + 0.004, 4)],
+            "why": f"elbow ease: the top sleeve's hindarm is {(hb[0] - hb[1]) * 1000:.0f} mm longer, eased in over the elbow"}
+        fa = (edge_length(D, "top:tsF>tsHemF"), edge_length(D, "under:usF>usHemF"))
+        if abs(fa[0] - fa[1]) > 0.001:
+            D["notes"][json.dumps(D["seams"][-2])] = {
+                "ease": [round(fa[0] / fa[1] - 1 - 0.003, 4), round(fa[0] / fa[1] - 1 + 0.003, 4)],
+                "why": "the forearm seams bent about their own elbow points"}
     D["edges"]["sleeve_hem"] = ["top:tsHemB>tsHemF", "under:usHemF>usHemMid>usHemB"]
     D["meta"]["sleeve"]["two_piece"] = True
     D["edges"]["cap"] = new_cap[0]
     lf = (edge_length(D, "top:tsF>tsHemF"), edge_length(D, "under:usF>usHemF"))
     lb = (edge_length(D, "top:tsB>tsHemB"), edge_length(D, "under:usB>usHemB"))
     D["log"].append(f"two-piece sleeve: seams {shift * 1000:.0f} mm under the quarter lines; front seam top/under "
-                    f"{lf[0] * 1000:.0f}/{lf[1] * 1000:.0f} mm, back {lb[0] * 1000:.0f}/{lb[1] * 1000:.0f} mm; bent {elbow * 1000:.0f} mm "
-                    "at the elbow (forearm seam hollowed, hindarm seam bowed, the same on both pieces)")
+                    f"{lf[0] * 1000:.0f}/{lf[1] * 1000:.0f} mm, back {lb[0] * 1000:.0f}/{lb[1] * 1000:.0f} mm; bent "
+                    f"{math.degrees(theta):.1f} deg at the elbow (the wrist {elbow * 1000:.0f} mm forward: forearm seam "
+                    "hollowed, hindarm seam opened over the elbow, the top's more: elbow ease)")
 
 
-OPS = {"style_line": op_style_line, "take_in": op_take_in, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
+def op_waistband(D: dict, height: float = 0.04, overlap: float = 0.035, ratio: float = 1.0, **o) -> None:
+    """A straight waistband generated from the waist edges as they are at the end (after darts, pleats, yokes): a
+    strip their length x ratio (+ the overlap, buttoned at the centre back), sewn round the waist in order, held at
+    the body's waist. ratio < 1: cut shorter and the waist eased onto it (an elasticated or gathered waist)."""
+    if "waist_front" not in D["edges"]:
+        raise DraftError("waistband: needs a block with waist edges (trouser, skirt)")
+    D["waistband"] = dict(o, height=height, overlap=overlap, ratio=ratio)
+    D["log"].append(f"waistband: {height * 1000:.0f} mm high, {overlap * 1000:.0f} mm overlap, x{ratio:.2f} the waist edge "
+                    "(generated at unfold from the waist edges as they are then)")
+
+
+OPS = {"waistband": op_waistband, "style_line": op_style_line, "take_in": op_take_in, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
        "flare": op_flare, "lengthen": op_lengthen, "extend": op_extend, "reshape": op_reshape, "facing": op_facing,
        "collar": op_collar, "sleeve": op_sleeve, "two_piece": op_two_piece}
 
@@ -1007,13 +1108,26 @@ def start(block: str, meas_mm: dict, opts: dict | None = None) -> dict:
                  "centre_back": ["back:cWaist>cSeat>fork"],
                  "waist_back": ["back:cWaist>dartA", "back:dartB>sideWaist"] if "dartA" in B["pieces"]["back"]["names"]
                  else ["back:cWaist>sideWaist"]}
+    elif block == "skirt":
+        B = pb.skirt(meas_mm, opts)
+        dart = "dartA" in B["pieces"]["front"]["names"]
+        edges = {"hem_front": ["front:hem>cHem"], "hem_back": ["back:hem>cHem"],
+                 "centre_front": ["front:cWaist>cHem"], "centre_back": ["back:cWaist>cHem"],
+                 "side_front": ["front:sideWaist>sideSeat>hem"], "side_back": ["back:sideWaist>sideSeat>hem"],
+                 "waist_front": ["front:cWaist>dartA", "front:dartB>sideWaist"] if dart else ["front:cWaist>sideWaist"],
+                 "waist_back": ["back:cWaist>dartA", "back:dartB>sideWaist"] if dart else ["back:cWaist>sideWaist"]}
     else:
-        raise DraftError(f"no block {block!r} (have bodice, knit, trouser; the skirt is pattern from skirt_block)")
+        raise DraftError(f"no block {block!r} (have bodice, knit, trouser, skirt)")
     D = {"pieces": B["pieces"], "seams": B["seams"], "edges": edges, "centre": dict(B["centre"]), "meta": B["meta"],
          "log": [f"block {block}:"] + ["  " + x for x in B["log"]], "notes": dict(B.get("notes") or {}), "folds": [],
          "interfaced": [],
          "stitches": [], "generate": [], "lines": {}, "block": block}
     D["meta"]["measurements"] = dict(meas_mm)
+    if block in ("bodice", "knit") and D["meta"].get("waist_dart", 0) > 0 and D["meta"]["low"] == "hem":
+        # a fitted block past the waist: its waist darts are fish-eye darts (at the waist edge of a block that ends
+        # there they are ordinary darts)
+        for which in ("front", "back"):
+            OPS["fisheye"](D, which)
     return D
 
 
@@ -1051,6 +1165,218 @@ def consistency(D: dict, tol: float = 0.004) -> list:
     return out
 
 
+# ---------------------------------------------------------------- hinges (one cloth, two placements)
+
+
+def _rename_piece(D: dict, old: str, new: str) -> None:
+    """A piece renamed everywhere the draft names it."""
+    if old == new:
+        return
+    ren = lambda e: new + e[len(old):] if isinstance(e, str) and e.startswith(old + ":") else e
+    side = lambda s: ren(s) if isinstance(s, str) else [ren(e) for e in s]
+    D["pieces"] = {(new if k == old else k): v for k, v in D["pieces"].items()}
+    D["pieces"][new]["name"] = new
+    seams, notes = [], {}
+    for s in D["seams"]:
+        ns = [side(s[0]), side(s[1])]
+        if json.dumps(s) in D["notes"]:
+            notes[json.dumps(ns)] = D["notes"][json.dumps(s)]
+        seams.append(ns)
+    D["seams"], D["notes"] = seams, notes
+    D["edges"] = {k: [ren(e) for e in v] for k, v in D["edges"].items()}
+    D["lines"] = {k: tuple(ren(e) for e in v) for k, v in D["lines"].items()}
+    for key in ("pair_seams", "pair_stitches"):
+        if key in D:
+            D[key] = [ren(e) for e in D[key]]
+    D["stitches"] = [[ren(a), ren(b)] for a, b in D["stitches"]]
+    D["interfaced"] = [new if e == old else e for e in D["interfaced"]]
+    if old in D["centre"]:
+        D["centre"][new] = D["centre"].pop(old)
+    for f in D["folds"]:
+        if f.get("piece") == old:
+            f["piece"] = new
+    for pc in D["pieces"].values():
+        w = pc.get("wrap") or {}
+        if w.get("lies_on") == old:
+            w["lies_on"] = new
+        if pc.get("traced") == old:
+            pc["traced"] = new
+
+
+def _line_hits(pc: dict, a: np.ndarray, d: np.ndarray) -> list:
+    """Where the line a + t d crosses the outline: [(t, outline index before it, point or None when it is that
+    vertex)] by t."""
+    P = pc["P"]
+    n = len(P)
+    sd = (P - a) @ np.array([-d[1], d[0]])
+    out = []
+    for i in range(n):
+        j = (i + 1) % n
+        if abs(sd[i]) < 1e-9:
+            out.append((float((P[i] - a) @ d), i, None))
+        elif sd[i] * sd[j] < 0 and abs(sd[j]) >= 1e-9:
+            q = P[i] + (P[j] - P[i]) * sd[i] / (sd[i] - sd[j])
+            out.append((float((q - a) @ d), i, q))
+    return sorted(out, key=lambda h: h[0])
+
+
+def _split_fold(f: dict, a: np.ndarray, u: np.ndarray):
+    """A fold whose line is a list of points, cut where it crosses the line through `a` square to `u`: (the part on
+    the side u points away from, the part on u's side), either None."""
+    if not isinstance(f.get("line"), list) or not f["line"] or not isinstance(f["line"][0], (list, tuple)):
+        return f, None
+    L = np.asarray(f["line"], float)
+    s = (L - a) @ u
+    if (s <= 1e-9).all():
+        return f, None
+    if (s >= -1e-9).all():
+        return None, f
+    lo, hi = [], []
+    for k in range(len(L)):
+        (hi if s[k] > 0 else lo).append(L[k])
+        if k + 1 < len(L) and s[k] * s[k + 1] < 0:
+            q = L[k] + (L[k + 1] - L[k]) * s[k] / (s[k] - s[k + 1])
+            lo.append(q)
+            hi.append(q)
+    return dict(f, line=[q.tolist() for q in lo]), dict(f, line=[q.tolist() for q in hi])
+
+
+def apply_hinges(D: dict) -> None:
+    """D["hinges"]: a piece that is ONE cloth but lies on two parts of the body (a shawl collar cut on with the front:
+    the front on the torso, the collar round the back of the neck; a cut-on stand; a grown-on hood). The piece is
+    cut along the hinge line for PLACEMENT only: the part past the line becomes "<piece>_<part>" in its own frame
+    (origin and x axis given by the hinge) with its own wrap, joined to the rest by a seam noted "virtual" (sewn 1:1,
+    no allowance, no groove in the maps). Pieces traced from it (facings) are cut the same way. Fold lines that cross
+    the hinge are cut with it. Runs once, before unfold."""
+    for hg in D.get("hinges") or []:
+        a, dirn = np.asarray(hg["at"], float), np.asarray(hg["dir"], float)
+        dirn = dirn / np.linalg.norm(dirn)
+        mid = np.asarray(hg["mid"], float)
+        o, ex = np.asarray(hg["origin"], float), np.asarray(hg["x"], float)
+        ex = ex / np.linalg.norm(ex)
+        ey = np.array([-ex[1], ex[0]])
+        u = np.array([dirn[1], -dirn[0]])
+        if u @ ex < 0:
+            u = -u  # the far side (the part that takes the other placement) is the side the frame's x points to
+        part = hg.get("part", "neck")
+        group = [hg["piece"]] + [n for n, pc in D["pieces"].items() if pc.get("traced") == hg["piece"]]
+        for nm in group:
+            if nm not in D["pieces"]:
+                continue
+            pc = D["pieces"][nm]
+            hits = _line_hits(pc, a, dirn)
+            tm = float((mid - a) @ dirn)
+            lo = [h for h in hits if h[0] <= tm]
+            hi = [h for h in hits if h[0] > tm]
+            from .cloth import _inside
+            if not lo or not hi or not _inside(pc["P"], mid[None])[0]:
+                continue  # the hinge doesn't cross this piece
+            h1, h2 = lo[-1], hi[0]
+            centre = D["centre"].get(nm)
+            for tag, h in sorted((("_hb", h2), ("_ha", h1)), key=lambda x: -x[1][1]):  # the higher index first
+                if h[2] is None:
+                    pc["names"][tag] = h[1]
+                else:
+                    _insert(pc, h[1], h[2], tag)
+            hn = f"{hg.get('name', 'hinge')}_{nm}"
+            # where the piece's fold lines cross the hinge, both parts get a vertex (the folds' rows end on it: a
+            # facing's rows then end where its front's do)
+            via = []
+            for f in D["folds"]:
+                if f.get("piece") == nm and isinstance(f.get("line"), list) and not isinstance(f["line"][0], str):
+                    Lf = np.asarray(f["line"], float)
+                    sf = (Lf - a) @ u
+                    for k in range(len(Lf) - 1):
+                        if (sf[k] < -1e-9) != (sf[k + 1] < -1e-9):  # (a point ON the hinge counts as across)
+                            q = Lf[k] + (Lf[k + 1] - Lf[k]) * sf[k] / (sf[k] - sf[k + 1])
+                            # (and a few beside it, 4 mm apart: a roll's other rows end on the hinge too, and a
+                            # row end snapped to a far vertex bends the row: its flap was stretched 150% there)
+                            for kk in range(-3, 4):
+                                qk = q + dirn * 0.004 * kk
+                                if h1[0] + 0.004 < (qk - a) @ dirn < h2[0] - 0.004:
+                                    via.append(qk)
+            via.sort(key=lambda q: float((q - a) @ dirn))
+            op_style_line(D, nm, name=hn, names=[f"{nm}__a", f"{nm}__b"], curve=False, apart=False, via=via,
+                          **{"from": "_ha", "to": "_hb"})
+            pa, pb_ = D["pieces"][f"{nm}__a"], D["pieces"][f"{nm}__b"]
+            if hg.get("far") is not None:  # the part that holds (is nearest) this point takes the other placement
+                fq = np.asarray(hg["far"], float)
+                far, base = (pa, pb_) if np.linalg.norm(pa["P"] - fq, axis=1).min() < np.linalg.norm(pb_["P"] - fq, axis=1).min() \
+                    else (pb_, pa)
+            else:
+                far, base = (pa, pb_) if (pa["P"].mean(0) - a) @ u > (pb_["P"].mean(0) - a) @ u else (pb_, pa)
+            seam = D["seams"][-1]
+            D["notes"][json.dumps(seam)] = {"ease": [-0.004, 0.004], "virtual": True,
+                                            "why": f"{nm} and its {part} are one cloth: cut here only to place them"}
+            fname = f"{nm}_{part}"
+            hinge_len = edge_length(D, seam[0])
+            _rename_piece(D, base["name"], nm)
+            _rename_piece(D, far["name"], fname)
+            D["centre"].pop(fname, None)
+            if centre is not None:
+                D["centre"][nm] = centre
+            # stitches at marks, pair lists: to the part that holds the point now
+            def owner(e):
+                p_, x_ = e.split(":", 1)
+                if p_ != nm:
+                    return e
+                first = x_.split(">")[0]
+                if first in D["pieces"][nm]["names"] or first in D["pieces"][nm]["marks"]:
+                    return e
+                return f"{fname}:{x_}"
+            for key in ("pair_seams", "pair_stitches"):
+                D[key] = [owner(e) for e in D.get(key) or []]
+            D["stitches"] = [[owner(x), owner(y)] for x, y in D["stitches"]]
+            if nm in D["interfaced"]:
+                D["interfaced"].append(fname)
+            # the far part in its own frame
+            far = D["pieces"][fname]
+            tr = lambda Q: np.c_[(np.asarray(Q, float).reshape(-1, 2) - o) @ ex, (np.asarray(Q, float).reshape(-1, 2) - o) @ ey]
+            if hg.get("matrix") is not None:  # any rigid map (a reflection too): far = M (p - origin) + offset
+                Mh, th = np.asarray(hg["matrix"], float), np.asarray(hg.get("offset", [0.0, 0.0]), float)
+                tr = lambda Q: (np.asarray(Q, float).reshape(-1, 2) - o) @ Mh.T + th
+                if np.linalg.det(Mh) < 0:  # turned over: the outline runs the other way round
+                    n_far = len(far["P"])
+                    far["P"] = far["P"][::-1]
+                    far["names"] = {k_: n_far - 1 - i_ for k_, i_ in far["names"].items()}
+            far["P"] = tr(far["P"])
+            far["marks"] = {k: tr(v)[0] for k, v in far["marks"].items()}
+            far["lines"] = {k: tr(v) for k, v in far["lines"].items()}
+            w_old = dict(far.get("wrap") or {})
+            far["wrap"] = dict(hg["wrap"])
+            if w_old.get("lies_on"):
+                far["wrap"]["lies_on"] = f"{w_old['lies_on']}_{part}"
+            far["of"] = nm
+            en = far["wrap"].get("edge")
+            if en and en not in far["names"]:  # (a traced piece's part: the frame's origin end of it)
+                far["names"][en] = int(np.argmin(np.linalg.norm(far["P"], axis=1)))
+            if hg.get("role") and not far.get("traced"):
+                far["role"] = hg["role"]
+            far["sym"] = "pair"
+            folds = []
+            for f in D["folds"]:
+                if f.get("piece") != nm:
+                    folds.append(f)
+                    continue
+                f_lo, f_hi = _split_fold(f, a, u)
+                if f_lo is not None:
+                    folds.append(f_lo)
+                if f_hi is not None and f_hi is not f:
+                    g = dict(f_hi, piece=fname, line=tr(f_hi["line"]).tolist(), name=f"{f.get('name', 'fold')} ({part})")
+                    g.pop("flap", None)
+                    for k_ in ("flap", "angle", "radius", "strength", "kind"):
+                        if k_ in (hg.get("fold") or {}):
+                            g[k_] = hg["fold"][k_]
+                    fl, sp = g.get("flap"), D["pieces"].get(f"{hg['piece']}_{part}")
+                    if fl and fl not in far["names"] and fl not in far["marks"] and sp is not None:
+                        far["marks"][fl] = np.array(sp["marks"][fl] if fl in sp["marks"] else sp["P"][sp["names"][fl]], float)
+                    folds.append(g)
+            D["folds"] = folds
+            D["log"].append(f"hinge {hn}: {nm} is placed in two parts ({nm} + {fname} -> {hg['wrap'].get('to')}), one "
+                            f"cloth, joined along {hinge_len * 1000:.0f} mm")
+    D["hinges"] = []
+
+
 # ---------------------------------------------------------------- unfold
 
 
@@ -1062,6 +1388,22 @@ def unfold(D: dict) -> dict:
     """Halves -> the garment's pieces; seams mirrored. Idempotent."""
     if D.get("unfolded"):
         return D
+    # a piece traced from another (a facing) takes that piece's fold lines where they cross it: it is laid on the
+    # piece and turns with it (and its mesh gets the same rows, so it can follow the crease)
+    from .cloth import _inside
+    for nm, pc in D["pieces"].items():
+        src = pc.get("traced")
+        for f in list(D["folds"]) if src else []:
+            if f.get("piece") != src or not isinstance(f.get("line"), list) or isinstance(f["line"][0], str):
+                continue
+            L = np.asarray(f["line"], float)
+            Q = np.concatenate([L[k] + (L[k + 1] - L[k]) * np.linspace(0, 1, 12)[:, None] for k in range(len(L) - 1)])
+            if _inside(pc["P"], Q).mean() > 0.3 and not any(g.get("piece") == nm and g.get("name") == f.get("name") for g in D["folds"]):
+                D["folds"].append(dict(copy.deepcopy(f), piece=nm))
+                fl, sp = f.get("flap"), D["pieces"].get(src)
+                if fl and sp is not None and fl not in pc["names"] and fl not in pc["marks"]:
+                    pc["marks"][fl] = np.array(sp["marks"][fl] if fl in sp["marks"] else sp["P"][sp["names"][fl]], float)
+    apply_hinges(D)
     halves = D["pieces"]
     out, kind = {}, {}
     for nm, pc in halves.items():
@@ -1074,6 +1416,9 @@ def unfold(D: dict) -> dict:
         base = {k: v for k, v in pc.items() if k not in ("sym", "darts")}
         if sym == "fold":
             whole = pattern.mirror_fold(dict(base, name=nm))
+            mirp = lambda pl: dict(pl, a=[-pl["a"][0], pl["a"][1]], b=[-pl["b"][0], pl["b"][1]], sign=-pl["sign"])
+            if (whole.get("wrap") or {}).get("pleats"):  # a pleat on each half
+                whole["wrap"] = dict(whole["wrap"], pleats=whole["wrap"]["pleats"] + [mirp(p_) for p_ in whole["wrap"]["pleats"]])
             out[nm] = whole
         elif sym == "copy":
             for S in ("L", "R"):
@@ -1084,6 +1429,8 @@ def unfold(D: dict) -> dict:
                     w["to"] = f"arm.{S}"
                 if "align" in w:
                     w["align"] = [w["align"][0], f"{w['align'][1]}.{S}", w["align"][2]]
+                if "lies_on" in w:
+                    w["lies_on"] = f"{w['lies_on']}.{S}"
                 c["wrap"] = w
                 out[f"{nm}.{S}"] = c
         else:
@@ -1092,13 +1439,41 @@ def unfold(D: dict) -> dict:
             R = pattern.mirror_x(copy.deepcopy(base))
             R["name"] = f"{nm}.R"
             R["wrap"] = dict(base.get("wrap") or {})
+            if R["wrap"].get("pleats"):
+                R["wrap"]["pleats"] = [dict(pl, a=[-pl["a"][0], pl["a"][1]], b=[-pl["b"][0], pl["b"][1]], sign=-pl["sign"])
+                                       for pl in R["wrap"]["pleats"]]
+            if "shift" in R["wrap"]:
+                R["wrap"]["shift"] = [-R["wrap"]["shift"][0], R["wrap"]["shift"][1]]
             if D["centre"].get(nm) == "open" and L["wrap"].get("to") == "torso":
-                L["wrap"]["out"] = max(float(L["wrap"].get("out", 0)), 0.004)  # the left front laps over
+                # the left front laps over: a layer out, and a layer more for what lies between the two fronts (the
+                # right front's lapel turned back onto it, a facing inside the left)
+                lap = 0.004 + 0.012 * any(f.get("piece") == nm for f in D["folds"]) + \
+                    0.004 * any((p_.get("wrap") or {}).get("lies_on") == nm for p_ in halves.values())
+                L["wrap"]["out"] = max(float(L["wrap"].get("out", 0)), lap)
+            if D["centre"].get(nm) == "seam" and L["wrap"].get("to", "torso") == "torso":
+                # the two halves of a centre seam start 2 mm apart: edge on edge, a contact solver drops the seam's
+                # zero-length stitches (ZOZO: the jacket's centre back stayed open from the neck down)
+                for c_, sg_ in ((L, 1.0), (R, -1.0)):
+                    sh_ = c_["wrap"].get("shift", [0.0, 0.0])
+                    c_["wrap"]["shift"] = [round(float(sh_[0]) + sg_ * 0.001, 5), float(sh_[1])]
             for S, c in (("L", L), ("R", R)):
                 c["wrap"]["half"] = 1 if S == "L" else -1  # which side of x = 0 (its centre line) the piece is on
+                if "lies_on" in c["wrap"]:
+                    c["wrap"]["lies_on"] = f"{c['wrap']['lies_on']}.{S}"
                 if str(c["wrap"].get("to", "")).startswith("leg."):
                     c["wrap"]["to"] = f"leg.{S}"
+                if str(c["wrap"].get("to", "")).startswith("arm."):  # a pair piece on an arm (a kimono sleeve's half):
+                    c["wrap"]["to"] = f"arm.{S}"  # the mirrored one goes round its arm the other way
+                    if S == "R":
+                        c["wrap"]["front"] = -float(c["wrap"].get("front", 1))
+                        if "cx" in c["wrap"]:
+                            c["wrap"]["cx"] = -float(c["wrap"]["cx"])
             out[f"{nm}.L"], out[f"{nm}.R"] = L, R
+
+    for c_ in out.values():  # (a pair piece lying on a piece cut on the fold: that piece has no .L / .R)
+        lo_ = (c_.get("wrap") or {}).get("lies_on")
+        if lo_ and lo_ not in out and lo_[:-2] in out:
+            c_["wrap"]["lies_on"] = lo_[:-2]
 
     def side_spec(spec, S):
         nm, arc = spec.split(":", 1)
@@ -1135,6 +1510,19 @@ def unfold(D: dict) -> dict:
     for e in D.get("pair_stitches") or []:  # buttons: the right front's mark to the left front's
         if kind.get(e.split(":")[0]) == "pair":
             stitches.append([side_spec(e, "R"), side_spec(e, "L")])
+    def side_pt(e, S):  # a point or mark of a half piece, on side S of the garment
+        nm, pt = e.split(":", 1)
+        k = kind[nm]
+        if k == "fold":
+            h = halves[nm]
+            x = h["P"][h["names"][pt], 0] if pt in h["names"] else float(np.asarray(h["marks"][pt])[0])
+            return e if (S == "L" or abs(x) < 1e-6) else f"{nm}:{pt}.m"
+        return f"{nm}.{S}:{pt}"
+    for a_, b_ in D.get("sym_stitches") or []:  # tacks drawn on the half: on both sides of the garment
+        for S in ("L", "R"):
+            st = [side_pt(a_, S), side_pt(b_, S)]
+            if st not in stitches:
+                stitches.append(st)
     D["stitches"] = stitches
     edges = {}
     for k_, chain in D["edges"].items():
@@ -1153,11 +1541,33 @@ def unfold(D: dict) -> dict:
             elif isinstance(g.get("line"), list) and S == "R" and k != "fold":
                 g["line"] = [[-float(q[0]), float(q[1])] for q in g["line"]]  # points: mirrored with the piece
             if k == "fold" and S == "R":
-                continue  # one fold line runs across the whole piece (declared on the left half's edge)
+                # one fold line runs across the whole piece (declared on the left half's edge); a line given by
+                # points that stays off the centre (a pleat on each side) is mirrored to the other half
+                Lp = g.get("line")
+                if isinstance(Lp, list) and Lp and not isinstance(Lp[0], str) and min(abs(float(q[0])) for q in Lp) > 1e-4:
+                    g["line"] = [[-float(q[0]), float(q[1])] for q in Lp]
+                    g["name"] = f"{g.get('name', 'fold')} (R)"
+                    if isinstance(g.get("flap"), str):
+                        g["flap"] = g["flap"] + ".m"
+                    folds.append(g)
+                continue
             folds.append(g)
     for nm in D["interfaced"]:
         k = kind.get(nm)
         inter += [nm] if k == "fold" else [f"{nm}.L", f"{nm}.R"]
+    wb = D.get("waistband")
+    if wb:
+        # the waistband's chain round the waist from the centre back: the right back out to the side, the right front
+        # in to the centre, the left front out, the left back in (each half's waist edges run centre -> side)
+        rv = lambda ch: [_rev(e) for e in reversed(ch)]
+        chain = list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", [])) + \
+            list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", []))
+        if not chain:
+            raise DraftError("waistband: the draft has no waist edges (waist_front / waist_back: a trouser or skirt block)")
+        D["generate"].append({"band": wb.get("name", "waistband"), "role": "waistband", "along": chain,
+                              "ratio": float(wb.get("ratio", 1.0)), "height": float(wb.get("height", 0.04)),
+                              "overlap": float(wb.get("overlap", 0.035)), "interfaced": True,
+                              "wrap": {"to": "torso", "side": "front", "level": "waist", "out": 0.004}})
     D.update(pieces=out, seams=seams, notes=notes, edges=edges, folds=folds, interfaced=inter, unfolded=True)
     D["log"].append(f"unfold: {', '.join(out)}")
     return D
@@ -1182,4 +1592,5 @@ def build(meas_mm: dict, pat: dict) -> dict:
 
 
 
+from . import pattern_tailor  # noqa: E402,F401  (registers contour, join, round_corner, fisheye)
 from . import pattern_styles  # noqa: E402,F401  (registers shawl, lapel, cut_away, darts_to_seam, raglan, kimono, hood, pleat...)
