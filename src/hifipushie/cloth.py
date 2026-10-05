@@ -920,21 +920,25 @@ def _sewn_arc(B: dict, M: dict, nm: str, R: float):
     return c, rho
 
 
-def _neck_frame(body: "Body", nb: np.ndarray, d: np.ndarray, R: float, low: bool = False) -> tuple[float, np.ndarray]:
+def _neck_frame(body: "Body", nb: np.ndarray, d: np.ndarray, R: float, band: float | None = None) -> tuple[float, np.ndarray]:
     """(height up the neck axis where a band of radius R can sit, the axis' origin moved onto the neck's centre).
     The neck joint sits ~22 mm behind the neck's centre, and from 40 mm up the sections cut the jaw."""
     rows = body.neck_rows()
     origin = nb + np.mean([r["off"] for r in rows if r["neck"]], axis=0)
     base = None
-    if low:  # a band laid round the neck's own shape (place(): the hull spiral) sits at the neck's base: from where a
-        # circle of its girth fits, a 3 cm stand on a short neck reached the jaw
-        base = min(r["h"] for r in rows if r["neck"])
-    for r in rows if base is None else ():
+    for r in rows:
         if r["neck"] and r["girth"] <= 2 * np.pi * (R - CLEAR / 2):
             base = r["h"]
             break
     if base is None:
         base = min((r for r in rows if r["neck"]), key=lambda r: r["girth"])["h"]
+    if band is not None:
+        # a band `band` tall laid round the neck's own shape (place(): the hull spiral): where its girth fits (the
+        # neckline was drafted for that girth: seated lower, at the neck's base, the yoke had a centimetre of cloth
+        # too much and bunched up behind the collar), but no higher than keeps its top on the neck (a 3 cm stand on a
+        # short neck reached the jaw)
+        hs_ = [r["h"] for r in rows if r["neck"]]
+        base = float(np.clip(base, min(hs_), max(min(hs_), max(hs_) - band)))
     return float(base), origin
 
 
@@ -1306,7 +1310,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 neck_lay = (0.0025 + hm_ ** 2 / (4 * R)) if smooth else LAYER
             above = float(w.get("above", 0.0))
             if neck_base is None:
-                neck_base, nb = _neck_frame(body, nb, d, width / (2 * np.pi), low=not w.get("circle"))
+                neck_base, nb = _neck_frame(body, nb, d, width / (2 * np.pi),
+                                            band=None if w.get("circle") else abs(pattern.area(P)) / max(width, 1e-9))
             else:
                 nb = neck_base[1]
                 neck_base = neck_base[0]
@@ -1385,7 +1390,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # the band, which stood open and far off the neck's sides). A band buttoned to itself (its stitched
                 # points) closes exactly where it is long enough to; a shorter one stays open at the front
                 hts = neck_base + above + (P[:, 1] - e[1])
-                neck_sp = _cuff_spiral(body, np.array([hts.min(), hts.max()]), None, closed_n,
+                neck_sp = _cuff_spiral(body, np.array([hts.min(), hts.max() + 0.008]), None, closed_n,
                                        (_closure(M, nm)[1] - e[0]) if closed_n else 0.0, neck_lay, 0.0, 1.0, 0.0,
                                        lambda ti: (nb + d * ti, back, side, d),
                                        m_min=(SMOOTH_CLEAR if smooth else CLEAR) + 0.0005)
@@ -1548,6 +1553,7 @@ def piece_faces(M: dict, X: np.ndarray, body: "Body", pcs: dict) -> dict:
 
 
 FOLD_WIDTH_FITTED = 0.008  # a fold's U in a "fitted" placement (Blender: its cloth's collision distances apart)
+FOLD_WIDTH_MADE = 0.0016  # a fold's U on a constructed (never simulated) mesh: two layers of cloth nearly touching
 FOLD_LAY = 0.0015  # how far a placed flap starts off what it lies on (a contact solver's gap, with room for chords)
 
 
@@ -1577,7 +1583,9 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
             for j, o in enumerate(names[:k]):
                 if pcs[o]["wrap"].get("to", "torso") == to:
                     obs.append(foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o]))
-        X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay)
+        hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
+        X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay,
+                                            wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
     B["fold_info"] = info
     return X
 
@@ -1916,6 +1924,7 @@ def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf
         k = len(fd["rows"])
         # from where it was made: a little further down if nothing is under it, back up where the cloth is in the way
         V, info[fd["name"]] = _relay(V, M, fd, faces.get(fd["piece"], 1.0), obs)
+    V = _tuck(V, M, held, body)
     sew = M["sew"]
     a, b = sew[:, 0], sew[:, 1]
     d_all = []
@@ -1940,8 +1949,39 @@ def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf
         D2 = acc / np.maximum(wt, 1)[:, None]
         D = np.where(fixed[:, None], D, 0.85 * D2)
     V = np.where(fixed[:, None], V, Vd + D)
+    V = _tuck(V, M, held, body)
     return V, Vd, {"pieces": list(carry["pieces"]), "folds": info,
                    "seam_mm": [round(float(np.median(d_all)) * 1000, 1), round(float(d_all.max()) * 1000, 1)] if len(d_all) else None}
+
+
+def _tuck(V: np.ndarray, M: dict, held: np.ndarray, body: "Body", lay: float | None = None) -> np.ndarray:
+    """Loose cloth that pokes out through a made piece's turned-over flap (a shirt's shoulder through its collar's
+    fall) is tucked back under it: moved in along the flap's normal to `lay` under. The made pieces don't move."""
+    from . import folds as foldmod
+    lay = FOLD_LAY if lay is None else lay
+    V = V.copy()
+    names = M["names"]
+    for fd in M.get("folds") or []:
+        k = names.index(fd["piece"])
+        if fd["turn"] <= 0 or not held[M["piece"] == k].all():
+            continue
+        g = foldmod._geom(M, fd)
+        Tf = g["tris"][g["flap0"][g["tris"]].all(1)]
+        if not len(Tf):
+            continue
+        hm = float(np.median(np.linalg.norm(V[Tf[:, 0]] - V[Tf[:, 1]], axis=1)))
+        loose = np.where(~held)[0]
+        for _ in range(3):
+            P = foldmod.samples(V, Tf, 1.0)[0]
+            N = _out_normals(V, Tf, body)
+            d, i = cKDTree(P).query(V[loose])
+            sd = ((V[loose] - P[i]) * N[i]).sum(1)
+            tang = np.sqrt(np.maximum(d * d - sd * sd, 0.0))
+            bad = (tang < 0.45 * hm) & (sd > -lay) & (sd < 0.015)
+            if not bad.any():
+                break
+            V[loose[bad]] -= (sd[bad] + lay)[:, None] * N[i[bad]]
+    return V
 
 
 def _out_normals(V: np.ndarray, T: np.ndarray, body: "Body") -> np.ndarray:
@@ -1963,7 +2003,8 @@ def _relay(V: np.ndarray, M: dict, fd: dict, face: float, obs: list) -> tuple:
     full = abs(math.degrees(fd["turn"])) * k
     # folds.apply turns by t x the fold's turn from the state it is given: here from the made fold
     t_hi = max(0.0, (178.0 - cur) / full)
-    Vn, info = foldmod.apply(V, M, fd, face, obs, FOLD_LAY, t_max=t_hi, t_min=-40.0 / full, steps=30, own_base=True)
+    Vn, info = foldmod.apply(V, M, fd, face, obs, FOLD_LAY, t_max=t_hi, t_min=-40.0 / full, steps=30, own_base=True,
+                             wedge=0.03)  # (nothing simulates this: the layers as near as cloth lies)
     info["was_deg"] = cur
     return Vn, info
 
@@ -2031,7 +2072,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # and easing between the two crumpled one interfaced cuff
         X0 = transfer(Ms, Xs, M)
     elif construct:
-        M = mesh(Bp, h, fw_)
+        # the fine mesh is never simulated: its folds are a U as wide as two layers of cloth lie apart (a sim's start
+        # needs a contact gap at its first ring of vertices, so a simulated crease is a wedge 5-7 deg open)
+        M = mesh(Bp, h, FOLD_WIDTH_MADE)
         Bf = dict(Bp)
         X0 = place(Bf, M, body_p, smooth=smooth)  # the fine mesh's own placement: its made pieces as constructed
         Bp["faces"] = Bf.get("faces", Bp.get("faces"))
@@ -2225,6 +2268,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
                                        cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
+    if construct:  # (the smoothing can bring cloth back out through a made flap)
+        held_ = np.isin(M["piece"], [M["names"].index(nm) for nm in res["constructed"]["pieces"]])
+        res["V"] = _tuck(res["V"], M, held_, body)
     sc = g.get("sculpt")
     if sc and sc.get("key") == key:
         f = Path(sc["file"])
