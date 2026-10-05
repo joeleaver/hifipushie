@@ -262,6 +262,72 @@ def test_tubes_uv_and_weld():
     assert tip["radius"].min() < blunt["radius"].min()
 
 
+def test_strip_cards():
+    lf = v.resolve({"species": "weeping_willow"})["leaves"]
+    tm = veg_leaf.twig_mesh(veg_leaf.card_spec(lf), 0)
+    R = veg_leaf.rasterize(tm, lf["color"], [0.4, 0.3, 0.2], 128)
+    one = veg_leaf.card_mesh(R["alpha"], R["frame"], 7, 0.0)
+    lad = veg_leaf.card_mesh(R["alpha"], R["frame"], 7, 0.0, strips=4)
+    assert len(lad["F"]) == 8 and len(lad["V"]) == 10
+    assert one["area"] > 0 and lad["area"] > 0
+    ys, xs = np.nonzero(R["alpha"] > 0.5)
+    u, w = (xs + 0.5) / 128, 1 - (ys + 0.5) / 128
+    assert lad["uv"][:, 0].min() <= u.min() + 0.02 and lad["uv"][:, 0].max() >= u.max() - 0.02
+    assert lad["uv"][:, 1].min() <= w.min() + 0.02 and lad["uv"][:, 1].max() >= w.max() - 0.02
+
+
+def test_tools_and_export(tmp=None):
+    import json
+    import struct
+    import tempfile
+    from hifipushie import store, veg_tools as vt
+    old = store.HOME
+    with tempfile.TemporaryDirectory() as d:
+        store.HOME = __import__("pathlib").Path(d)
+        try:
+            assert vt.save("t1", {"species": "birch", "age": 20}) == 1
+            r = vt.report("t1")
+            assert "form (in leaf" in r and "limbs:" in r and "foliage:" in r
+            n0 = vt.grown("t1")["stats"]["nodes"]
+            v2 = vt.edit("t1", [{"op": "guide", "name": "low", "path": [[0, 0, 3], [2, 0, 4], [4.5, 0, 4.4]], "from_year": 5,
+                                 "until_year": 15},
+                                {"op": "prune", "above": 8.0}, {"op": "set", "path": "habit.jitter.1", "value": 0.4},
+                                {"op": "set", "path": "seed", "value": 3}])
+            assert v2 == 2 and vt.load("t1")["habit"]["jitter"][1] == 0.4 and vt.load("t1")["seed"] == 3
+            r = vt.report("t1")
+            assert "guide low: order 1" in r and "drawn to its end" in r
+            assert vt.grown("t1")["pos"][:, 2].max() < 8.0 + 1.0 and vt.grown("t1")["stats"]["nodes"] != n0
+            for bad in ([{"op": "guide", "name": "x"}], [{"op": "nonsense"}], [{"op": "remove_guide", "name": "nope"}],
+                        [{"op": "set", "path": "habit.wibble", "value": 1}]):
+                try:
+                    vt.edit("t1", bad)
+                    raise AssertionError(f"accepted {bad}")
+                except ValueError:
+                    pass
+            assert len(vt.history("t1")) == 2 and vt.revert("t1", 1) == 3 and "guides" not in vt.load("t1")
+            c = vt.export("t1")
+            raw = open(c["path"], "rb").read()
+            magic, ver, total = struct.unpack("<4sII", raw[:12])
+            assert magic == b"glTF" and ver == 2 and total == len(raw)
+            jl = struct.unpack("<I", raw[12:16])[0]
+            g = json.loads(raw[20: 20 + jl])
+            assert [m["name"] for m in g["meshes"]] == ["wood", "foliage"]
+            assert g["materials"][1]["alphaMode"] == "MASK" and g["materials"][1]["doubleSided"]
+            tris = sum(g["accessors"][m["primitives"][0]["indices"]]["count"] for m in g["meshes"]) // 3
+            assert tris == c["wood_triangles"] + c["foliage_triangles"] > 1000
+            for m in g["meshes"]:
+                pa = g["accessors"][m["primitives"][0]["attributes"]["POSITION"]]
+                assert pa["min"][1] > -1.0 and pa["max"][1] > 3.0  # Y is up
+            assert g["extras"]["hifipushie_plant"]["name"] == "t1"
+            from hifipushie import server
+            assert "species" in json.loads(server.grow_plant(""))
+            assert "nothing changed" in server.grow_plant("t1", patch={})
+            assert "saved plant t1" in server.grow_plant("t1", patch={"age": 22})
+            assert "guide" in server.guide("vegetation").lower()
+        finally:
+            store.HOME = old
+
+
 def test_fit_improves():
     ref = v.silhouette(v.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
     start = {**SMALL, "habit": {"apical": [0.45, 0.5]}}

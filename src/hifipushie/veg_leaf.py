@@ -19,7 +19,7 @@ LEAF = {"shape": "ovate", "length": 0.07, "width": 0.55, "lobes": 4, "fold": 0.2
 TWIG = {"length": 0.3, "leaves": 9, "arrangement": "alternate", "angle": 55, "droop": 0.15, "side_shoots": 0,
         "variants": 3, "per_m": 5.0, "where": "shoots", "spread": 45, "up": 0.3, "scale": [0.8, 1.15], "radius": 0.0025,
         "min_order": 1, "steps": 2, "sub_shoots": 0}
-CARD = {"variants": 4, "size": 384, "verts": 7, "cup": 0.1, "cross": 1, "scale": 1.0, "twig": {}, "leaf": {}}
+CARD = {"variants": 4, "size": 384, "verts": 7, "cup": 0.1, "cross": 1, "scale": 1.0, "twig": {}, "leaf": {}, "strips": 0}
 
 
 def _profile(shape: str, t: np.ndarray, lobes: int) -> np.ndarray:
@@ -363,32 +363,55 @@ def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, 
             "coverage": float((a > 0.5).mean())}
 
 
+def _strip_outline(alpha: np.ndarray, strips: int):
+    """A ladder round a long thin picture: per band along the twig the alpha's own left and right, as uv rows
+    (bottom to top) of [left, right, v]."""
+    n = alpha.shape[0]
+    m = alpha > 0.08
+    rows = np.flatnonzero(m.any(1))
+    r0, r1 = rows[0], rows[-1] + 1
+    edges = np.linspace(r0, r1, strips + 1)
+    left = np.where(m.any(1), m.argmax(1), n).astype(float)
+    right = np.where(m.any(1), n - m[:, ::-1].argmax(1), 0).astype(float)
+    out = []
+    for j, e in enumerate(edges):  # each rung spans the bands it borders
+        a = int(np.floor(edges[max(j - 1, 0)]))
+        b = int(np.ceil(edges[min(j + 1, strips)]))
+        out.append([left[a:b].min() / n, right[a:b].max() / n, 1 - e / n])
+    return np.array(out[::-1])
+
+
 def card_mesh(alpha: np.ndarray, frame, verts: int = 7, cup: float = 0.1, cross: int = 1, droop: float = 0.0,
-              length: float = 0.3) -> dict:
+              length: float = 0.3, strips: int = 0) -> dict:
     """A card cut tight round a twig's picture: a convex polygon of at most `verts` corners round the alpha, as a
     fan from its middle (cupped, drooping like the twig), in the twig's own frame; uv = 0..1 in the picture.
-    cross 2 adds the same card turned a quarter round the twig (tufts)."""
+    cross 2 adds the same card turned a quarter round the twig (tufts). `strips` n cuts a long thin twig as a
+    ladder of n quads following its own width instead (a hanging birch or willow twig fills a fifth of one polygon)."""
     from scipy.spatial import ConvexHull
     n = alpha.shape[0]
     ys, xs = np.nonzero(alpha > 0.08)
     if len(xs) < 3:
         raise ValueError("an empty twig picture")
-    pts = np.c_[np.r_[xs, xs + 1, xs, xs + 1], np.r_[ys, ys, ys + 1, ys + 1]].astype(float)
-    hull = pts[ConvexHull(pts).vertices]
-    poly = _enclose(hull, verts)
     x0, y0, side = frame
-    uv = np.c_[poly[:, 0] / n, 1 - poly[:, 1] / n]
-    uv = np.clip(uv, -0.05, 1.05)
-    c_uv = uv.mean(0)
-    UV = np.vstack([c_uv, uv])
+    if strips and strips > 1:
+        lad = _strip_outline(alpha, int(strips))
+        UV = np.vstack([np.c_[lad[:, 0], lad[:, 2]], np.c_[lad[:, 1], lad[:, 2]]])
+        m_ = len(lad)
+        F = np.array([t for i in range(m_ - 1) for t in ([i, m_ + i, m_ + i + 1], [i, m_ + i + 1, i + 1])])
+    else:
+        pts = np.c_[np.r_[xs, xs + 1, xs, xs + 1], np.r_[ys, ys, ys + 1, ys + 1]].astype(float)
+        hull = pts[ConvexHull(pts).vertices]
+        poly = _enclose(hull, verts)
+        uv = np.clip(np.c_[poly[:, 0] / n, 1 - poly[:, 1] / n], -0.05, 1.05)
+        UV = np.vstack([uv.mean(0), uv])
+        k = len(poly)
+        F = np.array([[0, 1 + i, 1 + (i + 1) % k] for i in range(k)])
     X = x0 + UV[:, 0] * side
     Y = y0 + UV[:, 1] * side
     hw = max(np.abs(X).max(), 1e-6)
     Z = cup * hw * (np.abs(X) / hw) ** 2 - droop * length * np.clip(Y / max(length, 1e-6), 0, 1.5) ** 2
     V = np.c_[X, Y, Z]
-    k = len(poly)
-    F = np.array([[0, 1 + i, 1 + (i + 1) % k] for i in range(k)])
-    if np.cross(V[F[0, 1]] - V[0], V[F[0, 2]] - V[0])[2] < 0:
+    if np.cross(V[F[0, 1]] - V[F[0, 0]], V[F[0, 2]] - V[F[0, 0]])[2] < 0:
         F = F[:, ::-1]
     if cross > 1:
         V2 = np.c_[-V[:, 2], V[:, 1], V[:, 0]]
@@ -420,7 +443,8 @@ def atlas(leaves: dict, wood_color=(0.2, 0.15, 0.1)) -> dict:
         A["color"][sl][..., 3] = R["alpha"]
         A["normal"][sl] = R["normal"]
         A["mask"][sl] = R["mask"]
-        cm = card_mesh(R["alpha"], R["frame"], int(cd["verts"]), cd["cup"], int(cd["cross"]), tw["droop"], tw["length"])
+        cm = card_mesh(R["alpha"], R["frame"], int(cd["verts"]), cd["cup"], int(cd["cross"]), tw["droop"], tw["length"],
+                       int(cd["strips"]))
         cm["V"] = cm["V"] * cd["scale"]
         px_area = float((R["alpha"] > 0.5).sum()) * (R["frame"][2] / size) ** 2 * cd["scale"] ** 2
         fills.append(px_area / max(cm["area"] / int(cd["cross"]) * cd["scale"] ** 2, 1e-12))

@@ -280,15 +280,20 @@ def guide(topic: str = "") -> str:
     with groom_hair, look_hair, hair_reference and sync(hair_only=True).
     topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
     pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
-    check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True)."""
+    check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
+    topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then
+    limbs drawn and pruned, judged against a photo, foliage and bark, export), with grow_plant, edit_plant,
+    look_plant, plant_reference, export_plant and plant_history."""
     if topic.strip().lower() == "terrain":
         return (Path(__file__).with_name("terrain_guide.md")).read_text()
     if topic.strip().lower() == "hair":
         return (Path(__file__).with_name("hair_guide.md")).read_text()
+    if topic.strip().lower() == "vegetation":
+        return (Path(__file__).with_name("vegetation_guide.md")).read_text()
     if topic.strip().lower() == "cloth":
         return (Path(__file__).with_name("cloth_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth" or "terrain"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "terrain" or "vegetation"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -1774,6 +1779,122 @@ def terrain_history(name: str, revert_to: int | None = None) -> str:
         v = tt.save(name, tt.version_spec(name, revert_to), f"revert to v{revert_to}")
         return f"terrain {name} v{v} = v{revert_to}\n" + tt.report(name)
     return "\n".join(f"v{h['version']}  {h['time']}  {h['note']}" for h in tt.history(name))
+
+
+# ---------------------------------------------------------------- vegetation
+
+@mcp.tool(structured_output=False)
+def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, note: str = "") -> str:
+    """Create or change a plant and grow it (guide(topic="vegetation") has the vocabulary and the stages). `spec`
+    replaces the whole spec; `patch` merges into the stored one (objects merge key by key, null deletes:
+    {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
+    A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
+    "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
+    "bark": {...}, "season", "decay"}. The same spec always grows the same plant. Every version is kept
+    (plant_history). Returns the report: size, form measured on its own silhouettes, limbs, foliage, guides, the
+    reference match if it has one, WARNINGS last. With no arguments but a name: the report of the stored plant;
+    name "" lists the plants and the species presets."""
+    from . import veg_tools as vt
+    from . import vegetation
+    if not name:
+        return json.dumps({"plants": vt.list_plants(), "species": {k: vegetation.preset(k).get("about", "") for k in vegetation.species()}}, indent=1)
+    if spec is None and patch is None:
+        return vt.report(name)
+    exists = (vt._dir(name) / "plant.json").exists()
+    prev = vt.load(name) if exists else None
+    new = _spec_arg(spec) if spec is not None else vt.merge(prev or {}, _spec_arg(patch))
+    if prev is not None and prev == new:
+        return f"plant {name}: nothing changed (still v{len(vt.history(name))})\n" + vt.report(name)
+    v = vt.save(name, new, note=note or ("grow_plant" if spec is not None else "patch"))
+    return f"saved plant {name} v{v}\n" + vt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
+    """Direct the plant the way an artist does between growth years; it regrows around every edit. ops, in order:
+    {"op": "guide", "name", "path": [[x, y, z], ...] (m), "from_year", "until_year", "vigour"}: a drawn axis at any
+    branch order (it starts from the nearest wood at from_year, lies exactly on the path, is never shed or bent, and
+    branches grow from it; a path from [0, 0, 0] at year 0 is the trunk). {"op": "remove_guide", "name"}.
+    {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (clear the trunk), "from_year"}.
+    {"op": "clear_prunes"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
+    {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
+    Returns the report after regrowing, with what changed in size."""
+    from . import veg_tools as vt
+    before = vt.grown(name)["stats"]
+    v = vt.edit(name, ops, note)
+    after = vt.grown(name)["stats"]
+    return (f"plant {name} v{v}: {before['nodes']} -> {after['nodes']} nodes, {before['height_m']} -> {after['height_m']} m\n"
+            + vt.report(name))
+
+
+@mcp.tool(structured_output=False)
+def look_plant(name: str, views: list[str] | None = None, azimuth: float = 0.0, size: int = 640,
+               foliage: str | None = None, sheet: bool = False):
+    """Images of a plant (Blender, 5-40 s). views, any of: "clay" (the bare skeleton as clay: judge the structure
+    here first), "bare" (in colour, no leaves), "leaf" (in leaf; these three are side views from `azimuth`, 0 = looking
+    along +y), "far" (from 70 m at eye height: how it reads in a scene), "near" (from 5 m looking up: trunk, bark,
+    forks), "close" (2.4 m of foliage: leaves and twigs). Default clay + leaf + far. foliage: "cards" (the twig
+    atlas on cut cards: what a game draws; default) or "mesh" (real leaf meshes: close-ups, video).
+    sheet=True returns the reference sheet instead (photo | outlines over each other | every view, with the numbers);
+    it needs plant_reference first. Files are also written to workspace/plants/<name>/. Read the images."""
+    from . import veg_tools as vt
+    got = vt.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet)
+    out = [_out(PILImage.open(p), None) for _, p in got]
+    out.append("\n".join(f"{k}: {p}" for k, p in got) + "\n" + vt.report(name))
+    return out
+
+
+@mcp.tool(structured_output=False)
+def plant_reference(name: str, image_path: str, crop: list[int] | None = None, foot: int | None = None,
+                    polygon: list[list[float]] | None = None, tol: float = 30.0, horizon: int | None = None,
+                    bare: bool = False, credit: str = "", fit: dict | None = None, fit_iters: int = 40) -> str:
+    """Give the plant a reference photo and measure against it. The silhouette is taken from the photo either by
+    `polygon` (the tree's outline traced on the photo in image pixels, closed: use this when the tree fills the frame
+    or stands against other trees) or by `crop` [x0, y0, x1, y1] + `foot` (the trunk's x in px): pixels more than
+    `tol` from the sky colour at the crop's edges are tree; below `horizon` (image y where ground or far trees
+    start) only the trunk counts. bare=True for a winter photo (compared without leaves). Returns outline IoU,
+    width/height, bole and widest height, ours vs the photo's.
+    fit = {habit path: [lo, hi]} searches those habit numbers for the best match (~1-2 min; e.g. {"apical.0":
+    [0.45, 0.65], "angle.0": [40, 80], "vigour": [3, 6], "sag": [0.2, 2]}; integer bounds stay integers) and saves them
+    into the plant's habit; it also charges limbs drooped under the crown's base, so it can't cheat the outline."""
+    from . import veg_tools as vt
+    from . import vegetation
+    mask = {"polygon": polygon} if polygon else {"crop": crop, "foot": foot, "tol": tol, "horizon": horizon}
+    if not polygon and (crop is None or foot is None):
+        raise ValueError("give polygon (a traced outline), or crop [x0, y0, x1, y1] + foot (the trunk's x)")
+    ref = vt.set_reference(name, image_path, mask, bare, credit)
+    msg = ""
+    if fit:
+        R = vegetation.reference_mask(ref["image"], **ref["mask"])
+        dirs = vegetation.photo_branch_directions(ref["image"], ref["mask"]) if bare else None
+        r = vegetation.fit_habit(vt.load(name), R, fit, bare=bare, iters=int(fit_iters), directions=dirs)
+        v = vt.save(name, patch={"habit": r["habit"]}, note="fit to reference")
+        msg = f"fitted v{v}: outline IoU {r['iou']} with habit {json.dumps(r['habit'])}\n"
+    return msg + vt.report(name)
+
+
+@mcp.tool(structured_output=False)
+def export_plant(name: str, out_dir: str | None = None) -> str:
+    """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
+    colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
+    twig atlas with alpha MASK, double sided, COLOR_0 = a per-twig tint; the atlas's mask texture is listed in the
+    material's extras). One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
+    from . import veg_tools as vt
+    c = vt.export(name, out_dir)
+    return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): wood {c['wood_triangles']} triangles, foliage "
+            f"{c['foliage_triangles']} triangles" + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
+            + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
+
+
+@mcp.tool(structured_output=False)
+def plant_history(name: str, revert_to: int | None = None) -> str:
+    """List a plant's versions, or restore one (saved as a new version, so nothing is lost)."""
+    from . import veg_tools as vt
+    if revert_to is not None:
+        v = vt.revert(name, revert_to)
+        return f"plant {name} v{v} = v{revert_to}\n" + vt.report(name)
+    return "\n".join(f"v{h['version']}  {h['note']}" for h in vt.history(name))
 
 
 def main():

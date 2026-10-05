@@ -99,7 +99,8 @@
     "leaves": 22,
     "length": 0.5
    },
-   "scale": 1.25
+   "scale": 1.25,
+   "strips": 4
   }
  },
  "bark": {
