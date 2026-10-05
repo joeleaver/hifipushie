@@ -2419,16 +2419,35 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   - Not built (said in the guide): buttresses/roots/foot on a slope, swollen pollard bolls, deadwood beyond stubs,
     banks/ditches, a non-weeping willow preset, needle and willow card pictures (feathers, bamboo), an ortho side
     view that isn't mostly hillside on a slope.
-- STATE 2026-10-05 (stopped at the usage limit, WIP on branch `vegetation`, main NOT merged in since b549ce3): done =
-  named limbs/take_limb, plant.blend round trip (`sync_plant`), forest sets (`spec.set`, `name#k`, one GLB), species
-  pass (spray cards, birch/spruce/willow habits, white_willow, tip_life/uneven, boll, `dead`, `roots`); sheets
-  workspace/veg_renders/vg_32_*. Open from blind round 3 (one brief run, second not started): a triangle budget
-  drops dead antlers and leaves cards floating (protect features), `dead` has no report line, limb names reshuffle
-  on edits, limb girth coupled to trunk_diameter, no ground clearance on slopes. Weeping willow still a hedge block,
-  spruce close-ups are paddles, foliage renders dull. Full test run not repeated after the last commit.
-- Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
-  ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
-  not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.
+- Named limbs, Blender, sets (2026-10-05/06): `vegetation.limbs` (first-order limbs by compass + rank, each with a
+  lasting id `limb_id(key)` "Lk7f3" from its bud's lineage; `stout_path` = a limb as the eye follows it: the growth's
+  own axis often ends a metre out). `take_limb` -> a guide with `replaces` (the bud's shoot is not grown beside it).
+  `veg_tools.sync/pull` + `blender_vegetation.add_curves/read_curves`: plant.blend with guides and limbs as stamped
+  Bezier curves; pull must be idempotent WITHOUT a re-sync (compare against the spec too) and take_limb ops resolve on
+  the tree as it stood before the batch (earlier ops regrow it: the wrong limb was taken). `spec.set` -> `variants`
+  (`name#k`, hero edits dropped), one GLB with shared materials.
+- Species pass: a card is a SPRAY (`twig.side_shoots`, side_angle/length/taper, needle `spray_angle`): one shoot per
+  card read as bamboo/ivy. `habit.tip_life` (spruce branchlets hung for metres: a witch's hat), `habit.uneven`
+  (ragged outline). Bark tiles: >= 3 round any branch, the pattern scaled with it. Cut `boll`, `dead` (limb or volume;
+  barkless grey; `tubes` carries `dead`/`node` per vertex), `roots` (lobed section at the foot), the trunk 0.3 m under.
+- Foliage colour by measurement (`scratch hsv.py`: lit/shade HSV of leaf pixels, photo vs render): we were V 0.43 /
+  hue 85-117 against a photo birch's 0.69 / 58. Causes: the atlas's median leaf was 0.7 of `leaves.color` (tones x
+  blade shade x mask shade: now normalised to it), cards lit by their own normals (now bent out from the crown,
+  `leaves.round`, in looks and in the export's normals), AgX (now Khronos PBR Neutral), cold presets. After: birch lit
+  (73, 0.46, 0.61), willow (76, 0.55, 0.75) vs photo (69, 0.35, 0.87); shade hue still 20-40 deg colder than photos.
+- Budgets (`veg_export.budget`): rings and sides first (`tubes(simplify=)`, RDP by radius), then the thinnest axes;
+  `protected` wood (dead, guides) stays to a quarter of the cut-off (absolute protection was 23k triangles of antlers);
+  `pick_twigs` draws twigs standing on kept wood first and reports `floating`.
+- Stage 4 (`write_glb`): LODs 100/45/18% + an impostor (two renders, crossed quads), MSFT_lod + `<name>_LOD<k>.glb`;
+  wind = TEXCOORD_1 (trunk, branch), TEXCOORD_2 (phase, flutter), `_WIND` (`wind_nodes`); `wind_plant` =
+  `blender_veg_wind.py`: Blender's own importer + the shader recipe per frame (also the importer check: all nodes come
+  in, v flipped on every uv set, `_WIND` an attribute; Godot 4.7: scene nodes only, UV2 unflipped, TEXCOORD_2 ->
+  CUSTOM0, `_WIND` dropped; Unity/Unreal unchecked). Seasons/snow/wet: spec states for looks (`_weather` on the
+  finished materials) and KHR_materials_variants in the export. Collision: capsules + a low mesh. Khronos: 0 errors.
+- Open: low LODs need bough-sized cluster cards (20k oak = a few big clumps); spruce close-ups are feather cards;
+  weeping willow is a ragged column, not a dome; snow doesn't lie on the ground; wind clip's difference image is
+  muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
+  terrain integration not started.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

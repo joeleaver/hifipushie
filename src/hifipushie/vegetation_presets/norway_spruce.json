@@ -100,9 +100,9 @@
   "shape": "needle_spray",
   "length": 0.03,
   "color": [
-   0.2,
    0.29,
-   0.1
+   0.36,
+   0.198
   ],
   "translucency": 0.05,
   "twig": {
@@ -119,17 +119,18 @@
   },
   "needle_width": 0.45,
   "card": {
+   "size": 512,
    "twig": {
-    "leaves": 2000,
-    "side_shoots": 12,
+    "leaves": 1800,
+    "side_shoots": 10,
     "sub_shoots": 2,
-    "length": 0.75,
+    "length": 0.7,
     "droop": 0.2,
-    "spray_angle": 38
+    "spray_angle": 40
    },
    "leaf": {
-    "needle_width": 0.17,
-    "length": 0.022
+    "needle_width": 0.1,
+    "length": 0.02
    },
    "verts": 7,
    "cross": 2

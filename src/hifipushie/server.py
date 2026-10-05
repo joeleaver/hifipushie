@@ -2020,7 +2020,8 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "cut", "year": N, <a volume as for prune>, "every": years, "until_year", "sprouts": n}: the wood in the
     volume is cut AT that year (and again every `every` years) and the stubs sprout `sprouts` new shoots each: a
     pollard ("above": 2.5, "every": 6), a coppice ("above": 0.3), a lopped limb or a storm break (a box, sprouts 0-2).
-    {"op": "clear_cuts"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    {"op": "clear_cuts"}. {"op": "dead", "limb": name | id | guide (or a volume), "min_radius", "from": m along it},
+    {"op": "clear_dead"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
     "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
     {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
     Returns the report after regrowing, with what changed in size."""
@@ -2055,15 +2056,17 @@ def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size:
 
 @mcp.tool(structured_output=False)
 def look_plants(names: list[str], at: list | None = None, spacing: float | None = None, views: list | None = None,
-                azimuth: float = 0.0, size: int = 640, foliage: str | None = None):
+                azimuth: float = 0.0, size: int = 640, foliage: str | None = None, triangles: int | None = None):
     """Several plants standing together in one picture (a stand, a hedge line, a tree with its neighbours): do they
     belong together, do their sizes relate? at: [[x, y], ...] m per plant, or spacing m apart on a loose ring
     (default 0.35 x the tallest). views: "far" (default), "near", "clay", "top", or a camera {"eye", "look", "fov"}.
     The first plant's environment (ground slope) sets the scene. The same plant may be named more than once.
-    A plant with a `set` (grow_plant patch {"set": {"count": 5}}): "oak#*" names its whole set, "oak#2" one of it."""
+    A plant with a `set` (grow_plant patch {"set": {"count": 5}}): "oak#*" names its whole set, "oak#2" one of it.
+    `at` goes with the names in order (a set's plants #1, #2... in turn). triangles=N shows every plant at that
+    budget, as export_plant(triangles=N) writes it."""
     from . import veg_tools as vt
     names = [m for n in names for m in (vt.set_names(n[:-2]) if n.endswith("#*") else [n])]
-    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage)
+    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
     out.append("\n".join(f"{k}: {p}" for k, p in got))
     return out
@@ -2112,33 +2115,77 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 
 
 @mcp.tool(structured_output=False)
-def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False) -> str:
+def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False,
+                 lods: int = 1, impostor: bool = False, seasons: list[str] | None = None, wet: bool = False,
+                 lod_files: bool = False) -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
-    twig atlas with alpha MASK, double sided, COLOR_0 = a per-twig tint; the atlas's mask texture is listed in the
-    material's extras). triangles: a budget for the whole plant (a game tree: 10-40k; without it everything grown is
-    written, often 100-400k): the thinnest wood is left out and branches get fewer sides, twigs are thinned and the
-    rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts.
+    twig atlas with alpha MASK, double sided, normals bent out from the crown, COLOR_0 = a per-twig tint).
+    triangles: LOD 0's budget (a game tree: 10-40k; without it everything grown is written, often 100-400k):
+    branches get fewer rings and sides, the thinnest wood is left out (marked wood stays), twigs are thinned and the
+    rest drawn larger. lods: 1-3 mesh LODs (100 / 45 / 18% of the budget); impostor=True adds two crossed quads with
+    the plant's picture as the last LOD (a Blender render: +10-30 s). LOD 0 is the scene, the others hang on it
+    (MSFT_lod) and are listed in extras with the screen height to switch at; lod_files=True also writes each LOD as
+    its own <name>_LOD<k>.glb (Unreal, Unity, Godot take LODs as separate meshes).
+    Wind is always written: TEXCOORD_1 = (trunk, branch) sway weights, TEXCOORD_2 = (phase, flutter), the same four in
+    _WIND; the shader recipe is in extras. seasons: any of "summer", "autumn", "winter", "snow" as material variants
+    (KHR_materials_variants; a deciduous winter hides the foliage; "snow" frosts the foliage picture, snow on wood is
+    an engine shader: recipe in extras); wet=True adds a "wet" variant. Collision: capsules for the trunk and main
+    limbs in extras + a low `<name>_collision` mesh node outside the scene.
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
     materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
     from . import veg_tools as vt
     if set:
-        c = vt.export_set(name, out_dir, triangles)
-        return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all, "
+        c = vt.export_set(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet)
+        return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all (LOD 0), "
                 f"one bark + one foliage material\n" + "\n".join(
-                    f"  {q['name']}: {q['height_m']} m, wood {q['wood_triangles']} + foliage {q['foliage_triangles']} triangles"
-                    for q in c["plants"]) + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
-    c = vt.export(name, out_dir, triangles)
+                    f"  {q['name']}: {q['height_m']} m, " + "; ".join(f"LOD{l_['lod']} {l_['triangles']}" for l_ in q["lods"]) + " triangles"
+                    + (f", {q['floating']:.0%} of the cards floating" if q.get("floating", 0) > 0.2 else "")
+                    for q in c["plants"]))
+    c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
+                  lod_files=lod_files)
     return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
             + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
             + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")
             + f", foliage {c['foliage_triangles']} triangles"
             + (f" ({c['twigs_kept']:.0%} of the twigs, drawn larger)" if c["twigs_kept"] < 1 else "")
             + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
+            + ("\nLODs: " + "; ".join(
+                f"LOD{l_['lod']} {l_['triangles']} triangles" + (" (impostor)" if l_.get("impostor") else "")
+                + (f", under {l_['switch_below_screen_height']:.0%} of the screen's height" if l_.get("switch_below_screen_height") else "")
+                for l_ in c["lods"]) if len(c["lods"]) > 1 else "")
+            + (f"\nvariants: {', '.join(c['variants'])}" if c["variants"] else "")
+            + f"\nwind: TEXCOORD_1 (trunk, branch), TEXCOORD_2 (phase, flutter), _WIND; collision: {c['collision_capsules']} capsules"
+              f" + a {c['collision_triangles']}-triangle mesh"
+            + (f"\nfiles: {', '.join(Path(f).name for f in c['files'])}" if len(c["files"]) > 1 else "")
             + (f"\nWARNING: {c['over']} triangles over the budget: the wood alone needs {c['wood_triangles']} "
                f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")
-            + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles})" if triangles else "")
-            + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
+            + (f"\nWARNING: {c['floating']:.0%} of the cards have no drawn wood near them (they will float): raise the budget"
+               if c.get("floating", 0) > 0.2 else "")
+            + ("\nWood you marked (dead wood, drawn guides) is kept down to a quarter of that girth." if triangles else "")
+            + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles}); "
+               f"wind_plant(name) renders it swaying" if triangles else ""))
+
+
+@mcp.tool(structured_output=False)
+def wind_plant(name: str, triangles: int | None = 20000, seconds: float = 4.0, strength: float = 1.0,
+               wind_from: float = 270.0, azimuth: float = 0.0):
+    """The plant in the wind, as a game would move it: its export (at `triangles`) is opened with Blender's glTF importer
+    and swayed from the file's own wind channels (trunk sway, limbs each in their own phase, leaf flutter) by the
+    shader recipe in the file's extras. strength 0.3 = a breeze, 1 = a fresh wind, 2 = a gale; wind_from = the compass
+    bearing it blows from (270 = from the west, +x is east). Returns a strip of six frames over their difference from
+    the first (bright = moving: the trunk's foot must stay dark, the crown's edge and the limb ends bright), the mp4's
+    path, and what the importer found (uv sets, attributes, variants). 30-90 s."""
+    from . import veg_tools as vt
+    r = vt.wind(name, triangles, seconds, 12, strength, wind_from, azimuth)
+    imp = [o for o in r["import"]["objects"] if o.get("type") == "MESH"]
+    txt = (f"wind: {r['n']} frames at 12 fps -> {r.get('mp4', '(no ffmpeg: frames in ' + r['frames'] + ')')}\nstrip: {r['strip']}\n"
+           f"{r['moved_share']:.0%} of the picture changes against frame 0 (mean over the clip)\n"
+           f"Blender {r['import']['blender']} import of {Path(r['glb']).name}: " + "; ".join(
+               f"{o['name']} {o['triangles']} triangles, uv sets {len(o['uv_layers'])}, attributes {o['attributes'] or 'none'}"
+               + (f", _WIND vs uv differ by {o['wind_custom_vs_uv_max_diff']}" if "wind_custom_vs_uv_max_diff" in o else "")
+               for o in imp))
+    return [_out(PILImage.open(r["strip"]), None), txt]
 
 
 @mcp.tool(structured_output=False)

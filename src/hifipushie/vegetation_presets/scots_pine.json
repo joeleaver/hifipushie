@@ -75,9 +75,9 @@
   "shape": "needle_tuft",
   "length": 0.09,
   "color": [
-   0.3,
-   0.4,
-   0.2
+   0.366,
+   0.44,
+   0.282
   ],
   "translucency": 0.1,
   "twig": {
