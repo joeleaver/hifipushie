@@ -2913,6 +2913,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                                "corrupt_pieces": ig_sim["corrupt_pieces"],
                                "crumpled": {p: v["crumpled"] for p, v in ig_sim["pieces"].items() if v["crumpled"] > 0.01}}
     res["sizing"] = sizing(res)
+    if under is not None and under.get("res") is not None:  # layered: the tailoring tells against the garment under it
+        from . import cloth_layers
+        res["tells"] = cloth_layers.tells(res, under["res"])
     if hang:  # what carries it: the hanger's arms by contact (pins: the old pinned hang), and is the hanger inside it
         if hg is not None:
             pins_h, hx = np.zeros(0, np.int64), hg
@@ -3405,7 +3408,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "flat")
 
 
@@ -3560,7 +3563,7 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
             ures = build(_garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
                          log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": ures["V"], "F": ures["mesh"]["F"], "key": ures["key"],
-                                                              "name": ug})
+                                                              "name": ug, "res": ures})
             if ures is None:
                 src["under_missing"] = ug
         return src
@@ -3740,6 +3743,10 @@ def report(gname: str, res: dict) -> str:
             L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
                      "allows and crumples; lower it (the design's stand/collar width option, e.g. simon \"options\": "
                      "{\"collarStandWidth\": 0.045}, default 0.08)")
+    if res.get("tells"):
+        from . import cloth_layers
+        L.append("  layered over " + str((res.get("under") or {}).get("name")) + ":")
+        L.append(cloth_layers.tells_text(res["tells"]).replace("\n", "\n  "))
     return "\n".join(L)
 
 
@@ -4032,10 +4039,22 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
     from . import hair as hairmod
     out_dir = Path(out_dir)
     parts = []
-    for gname, g, res in garments(name, spec, log, simulate=True):
+    built = garments(name, spec, log, simulate=True)
+    for gname, g, res in built:
         M, V = res["mesh"], res["V"].astype(np.float64)
         F = M["F"]
         uv, side = atlas_uv(M)
+        # layered: the faces of this garment that the garments worn over it hide are left out (a shirt under a jacket
+        # is exported as collar, front V and cuffs); garment key "export_hidden": true keeps them
+        hide = np.zeros(len(F), bool)
+        if not g.get("export_hidden"):
+            from . import cloth_layers
+            for on, og, ores in built:
+                if expanded(og).get("over") == gname:
+                    hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+        if hide.any():
+            log(f"cloth {gname}: {int(hide.sum())} of {len(F)} triangles hidden under another garment, left out")
+            F = F[~hide]
         # vertex normals (area weighted)
         fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
         vn = np.zeros_like(V)
