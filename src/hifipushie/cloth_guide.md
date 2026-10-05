@@ -530,6 +530,8 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `contour` | Shapes an edge by an amount per level (`at`: [[level, m] ...]; top, chest, waist, hips, hem or a y): a shaped centre-back seam, a hem's spring. A style line's name shapes both its edges | Mirror seams equal; a panel seam's small difference declared |
 | `join` | Two pieces sewn together become one, the seam gone: a side panel with no side seam, a yoke cut on | Every other seam and edge; says how much shaping the seam's curve carried (now lost) |
 | `round_corner` | A corner rounded (`radius` or `along` [m, m]): a cut-away front hem, pocket corners. Before facings | The corner's name, on the curve |
+| `pocket` | A pocket laid on a piece's outside and tacked along its sewn edges: `type` patch (`at` [x, y] the top edge's middle, `width`, `height`) or kangaroo (on a front cut on the fold) | The piece under it |
+| `lining` | Every body piece traced as `<piece>_lining`, sewn to each other as the shells are, laid inside them, sewn to the shell along `attach` (hems, sleeve hems, back neck). Last, before unfold | The shells' seam matches |
 | `fisheye` | A double-pointed waist dart on a piece that runs past the waist (run on to the hem as a closed cut). `darts: true` on a hip-length bodice makes them | Its legs equal |
 | `neckline` | Redraws the neckline on front and back together: `widen` along the shoulder, `front` / `back` lower, round / v / square | The shoulder seams equal |
 | `shawl` | A shawl collar cut on with the front: stand, break point, roll line, the collar grown on past the neck point, a CB collar seam | Neck seam = the back neck; a roll fold |
@@ -537,8 +539,8 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `cut_away` | Cuts along a line and keeps the side holding a point: V necks, slanted hems, asymmetric fronts | The kept side's seams |
 | `darts_to_seam` | Two darts of a piece joined through their tips into a panel seam | The darts' suppression |
 | `raglan` | Front and back cut from neck to armhole, the shoulder parts joined to the sleeve (after `sleeve`) | The underarm's cap / armhole lengths |
-| `kimono` | The sleeve cut in one with the body (pattern only) | |
-| `hood` | A two-piece hood on the neckline (pattern only) | Neck edge = the neckline |
+| `kimono` | The sleeve cut in one with the body; placed in two parts (body on the torso, sleeve round the arm) | |
+| `hood` | A two-piece hood on the neckline, placed round the head | Neck edge = the neckline |
 | `pleat` | Spreads a piece by twice the depth along a line across it; two press folds | Seams skip the underlay |
 | `buttons`, `stitch` | Button marks down a lapped front; a point stitch (a wrap's tie) | |
 | `unfold` | Halves into whole pieces. Put it in the list yourself to work on ONE side afterwards (`front.L`): asymmetric designs | Seams mirrored |
@@ -604,9 +606,19 @@ used); its hem has 12% over the seat (ours 2%: hips ease is taken at the high hi
 bent far more at the elbow, with a hollowed under sleeve and a hem 39 mm wider; its gorge is a straight line and the
 front hem is cut away in a curve.
 
-Not built yet: pockets and linings as pieces, a head wrap (hoods) and a sleeve grown on a torso piece (kimono) in the
-placement, a start that lays a cut-on collar round the neck, a tailor's two-piece sleeve (hollowed under sleeve),
-a shaped centre back seam, fish-eye darts in a hip-length block, pleats that die inside a piece.
+Since then: `contour` (the shaped centre back, the hem's spring), `join` (the side panel with no side seam), the
+straight gorge, `round_corner` (the cut-away hem), `fisheye`, the bent two-piece sleeve, and `take_in` on a straight
+cut (it had shaped nothing: the cut had no vertices) bring the same blazer to waist +16% (Jaeger +17%) and hem +12%
+(+12%).
+
+One cloth on two parts of the body: a shawl collar's back (past the neck point) lies round the neck, a kimono
+sleeve round the arm, while the rest of the piece lies on the torso. The draft cuts such a piece for placement only
+(a "hinge"; the seam list shows the join as declared, "one cloth: cut here only to place them"). You don't write
+hinges: `shawl` and `kimono` make them. A facing (and a lining, a pocket) is LAID ON the piece it was traced from,
+so it follows that piece round a roll line.
+
+Not built yet: welt, flap and in-seam pockets; a lining with its own pleat and trimmed to the facing; a skirt block
+for the operations (the skirt is still `from: "skirt_block"`); pleats that die inside a piece.
 
 ## A new garment kind, start to finish (the skirt)
 
@@ -650,7 +662,7 @@ A draft source we don't have: write own `pieces` (outlines in metres with named 
 Still open (the checks say so where they can):
 - Carlton's facing and lapel roll; pleats as folds (they are seam gaps: a fold that dies out inside a piece is a
   cone, and a pleat's layers are finer than a 1-2 cm mesh); double-layer (bagged) cuffs and collars;
-- leg wraps (trousers), hoods, linings, pockets as pieces;
+- welt / flap / in-seam pockets; a lining's own pleat and fabric;
 - button size and buttonhole direction per design in the detail maps;
 - crease width and fold spacing measured by the tools; grain anisotropy.
 

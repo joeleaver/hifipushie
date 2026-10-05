@@ -383,4 +383,53 @@ def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 
                     f"({'top and bottom; the slanted sides open' if type == 'kangaroo' else 'sides and bottom; the top open'})")
 
 
-pd.OPS.update({"pocket": op_pocket, "contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})
+def op_lining(D: dict, pieces: list | None = None, attach: list | None = None, suffix: str = "_lining", **o) -> None:
+    """A lining derived from its shell: every body piece (or `pieces`) traced as "<piece>_lining" (the same outline:
+    a tailor then adds a centre-back pleat and trims the fronts to the facing, not done here), the seams between
+    lined pieces repeated between their linings, each lining laid inside its shell, and the lining sewn to the shell
+    along the named edges in `attach` (default: the hems, the sleeve hems and the back neck: a bagged lining). Do it
+    last, after the shell's shaping, collar and sleeves, before unfold."""
+    body = pieces or [n for n, pc in D["pieces"].items() if pc.get("role") in ("front", "back", "sleeve")
+                      and not pc.get("traced")]
+    if not body:
+        raise DraftError("lining: no body pieces to line")
+    ren = lambda e: e.split(":", 1)[0] + suffix + ":" + e.split(":", 1)[1]
+    for n in body:
+        c = copy.deepcopy(D["pieces"][n])
+        c.update(name=n + suffix, role="lining", traced=n, darts={})
+        c["wrap"] = dict(c.get("wrap") or {}, lies_on=n)
+        c["wrap"].pop("out", None)
+        D["pieces"][n + suffix] = c
+        if n in D["centre"]:
+            D["centre"][n + suffix] = D["centre"][n]
+            if D["centre"][n] == "seam":  # its own centre seam, as its shell's
+                key = "centre_front" if str(D["pieces"][n].get("role") or "").endswith("front") else "centre_back"
+                D.setdefault("pair_seams", []).extend(ren(e) for e in D["edges"].get(key, []) if e.split(":")[0] == n)
+    flat = lambda side: [side] if isinstance(side, str) else list(side)
+    one = lambda xs: xs[0] if len(xs) == 1 else xs
+    n_in = 0
+    for s in list(D["seams"]):
+        if all(e.split(":")[0] in body for side in s for e in flat(side)):
+            ns = [one([ren(e) for e in flat(s[0])]), one([ren(e) for e in flat(s[1])])]
+            D["seams"].append(ns)
+            n_in += 1
+            if json.dumps(s) in D["notes"]:
+                D["notes"][json.dumps(ns)] = dict(D["notes"][json.dumps(s)])
+    for e in D.get("pair_seams") or []:
+        if e.split(":")[0] in body:
+            D["pair_seams"].append(ren(e))
+    did = []
+    for key in (attach if attach is not None else ["hem_back", "hem_front", "sleeve_hem", "neck_back"]):
+        chain = [e for e in D["edges"].get(key, []) if e.split(":")[0] in body]
+        if not chain:
+            continue
+        seam = [one([ren(e) for e in chain]), one(list(chain))]
+        D["seams"].append(seam)
+        D["notes"][json.dumps(seam)] = {"ease": [-0.004, 0.004], "turned": "under",
+                                        "why": f"the lining is sewn to the shell along {key} (the same edge) and turned in"}
+        did.append(key)
+    D["log"].append(f"lining: {len(body)} pieces traced from their shells ({', '.join(body)}), {n_in} seams repeated "
+                    f"between them, sewn to the shell along {', '.join(did) or 'nothing'}; each lies inside its shell")
+
+
+pd.OPS.update({"lining": op_lining, "pocket": op_pocket, "contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})

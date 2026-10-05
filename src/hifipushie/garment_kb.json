@@ -566,6 +566,18 @@
     "keeps": "the corner's name (on the curve's middle), so edges named to it still run",
     "why": "do it before a facing or band is traced from those edges"
    },
+   "pocket": {
+    "does": "a pocket laid ON a piece: traced in its coordinates, placed on its outside face, tacked down by point stitches along its sewn edges. type patch (a rectangle, bottom corners cut, top open; at = [x, y] of the top edge's middle) or kangaroo (across the centre front of a piece cut on the fold; top and bottom sewn, slanted sides open)",
+    "use": "patch pockets on jackets, shirts, aprons; a hoodie's or anorak's kangaroo pocket",
+    "keeps": "nothing of the piece under it changes; the tacks are mirrored with the piece",
+    "limits": "welt, flap and in-seam pockets are not drafted: they need a cut inside a piece or a split seam with bags behind"
+   },
+   "lining": {
+    "does": "a lining derived from its shell: every body piece traced as <piece>_lining, the seams between lined pieces repeated between their linings, each laid inside its shell, sewn to the shell along attach (default the hems, sleeve hems and back neck)",
+    "use": "jackets, coats, lined skirts; do it last, before unfold",
+    "keeps": "every lining seam matches as its shell's does",
+    "limits": "the same outline as the shell: no centre-back pleat, not trimmed to the facing, one fabric for shell and lining"
+   },
    "fisheye": {
     "does": "a double-pointed dart inside a piece that runs past the waist; run on to the hem as a closed cut (a cloth mesh can't hold a cut that doesn't reach an edge)",
     "use": "fitting a hip-length block without panel seams; block option darts: true makes them on a hip-length bodice",

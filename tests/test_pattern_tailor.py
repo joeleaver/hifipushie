@@ -158,6 +158,24 @@ def test_pockets_are_laid_on_and_tacked():
         raise AssertionError("a pocket off its piece must be refused")
 
 
+def test_lining_is_derived_from_its_shell():
+    D = pd.start("bodice", MM, {"fitted": True, "cb": "seam"})
+    pd.apply(D, [{"op": "contour", "edge": "centre_back", "at": [["top", 0], ["waist", 0.02], ["hem", 0.01]]},
+                 {"op": "sleeve", "cap_ease": 0.04}, {"op": "lining"}])
+    _ok(D)
+    for n in ("front", "back", "sleeve"):
+        L = D["pieces"][n + "_lining"]
+        assert L["role"] == "lining" and L["wrap"]["lies_on"] == n and np.allclose(L["P"], D["pieces"][n]["P"])
+    # the linings are sewn to each other as their shells are, and to the shell at the hems and the back neck
+    assert ["front_lining:shoulder>hps", "back_lining:shoulder>hps"] in D["seams"]
+    att = [s for s in D["seams"] if "lining" in str(s[0]) and "lining" not in str(s[1])]
+    assert len(att) == 4, att
+    pd.unfold(D)
+    _ok(D)
+    assert D["pieces"]["back_lining.R"]["wrap"]["lies_on"] == "back.R"
+    assert any("back_lining.L:cbNeck" in str(s) and "back_lining.R:cbNeck" in str(s) for s in D["seams"])  # its own CB seam
+
+
 def test_kimono_and_hood_are_placed():
     D = pd.start("knit", MM, {"chest_ease": 0.16})
     pd.apply(D, [{"op": "kimono", "angle": 30, "drop": 0.08}, {"op": "hood"}])
