@@ -49,7 +49,7 @@
   "tropism": [
    0.5,
    0.05,
-   -0.5
+   -0.2
   ],
   "plagio": [
    0,
@@ -89,26 +89,26 @@
  },
  "leaves": {
   "shape": "needle_spray",
-  "length": 0.022,
+  "length": 0.03,
   "color": [
-   0.06,
-   0.14,
-   0.07
+   0.05,
+   0.13,
+   0.06
   ],
   "translucency": 0.05,
   "twig": {
-   "length": 0.3,
-   "leaves": 150,
-   "side_shoots": 4,
-   "per_m": 5,
-   "up": -0.25,
+   "length": 0.35,
+   "leaves": 180,
+   "side_shoots": 5,
+   "per_m": 10,
+   "up": -0.1,
    "spread": 50,
    "droop": 0.5,
    "variants": 3,
    "min_order": 1,
    "steps": 5
   },
-  "needle_width": 0.3
+  "needle_width": 0.45
  },
  "bark": {
   "kind": "plates",
@@ -123,9 +123,9 @@
    0.08
   ],
   "twig_color": [
-   0.3,
-   0.2,
-   0.12
+   0.1,
+   0.085,
+   0.05
   ],
   "scale": 1.5,
   "bump": 0.6

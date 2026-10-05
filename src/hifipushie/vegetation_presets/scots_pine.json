@@ -74,7 +74,7 @@
  },
  "leaves": {
   "shape": "needle_tuft",
-  "length": 0.075,
+  "length": 0.09,
   "color": [
    0.1,
    0.19,
@@ -82,18 +82,18 @@
   ],
   "translucency": 0.1,
   "twig": {
-   "length": 0.24,
-   "leaves": 130,
-   "per_m": 7,
+   "length": 0.34,
+   "leaves": 220,
+   "per_m": 10,
    "where": "shoots",
    "up": 0.5,
    "spread": 40,
    "droop": -0.1,
    "variants": 3,
-   "steps": 2,
+   "steps": 3,
    "min_order": 1
   },
-  "needle_width": 0.08
+  "needle_width": 0.09
  },
  "bark": {
   "kind": "plates",
@@ -114,9 +114,9 @@
   ],
   "upper_from": 8.0,
   "twig_color": [
-   0.4,
-   0.26,
-   0.14
+   0.3,
+   0.2,
+   0.12
   ],
   "bump": 0.9
  }
