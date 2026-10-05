@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 61  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 70  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -143,6 +143,22 @@ def inject(spec: dict) -> dict:
     if eb and b.get("eyes"):  # eyeballs as their own part, filling the base's sockets
         blobs = dict(out.get("blobs") or spec.get("blobs") or {})
         blobs.setdefault("eye.L", {"at": "eye.L", "size": [round(float(eb["r"]), 4)] * 3, "part": b["eyes"]})
+        if b.get("cornea") and "eye_front.L" in joints:  # the cornea's bulge over the iris (base "cornea": true |
+            # {"bulge": 0.09 (x the eyeball's radius), "radius": 0.62}): a smaller sphere standing proud where the
+            # gaze leaves the eyeball; highlights bend over it and the limbus gets a profile
+            co = b["cornea"] if isinstance(b["cornea"], dict) else {}
+            R = float(eb["r"])
+            rc, bulge = float(co.get("radius", 0.62)) * R, float(co.get("bulge", 0.09)) * R
+            for sd in (".L",):  # .R is its mirror (an explicit cornea.R blob came out as a second, giant eyeball)
+                c = np.array(joints[f"eye{sd}"]["pos"] if f"eye{sd}" in joints else np.array(joints["eye.L"]["pos"]) * [-1, 1, 1], float)
+                gz = np.array(joints[f"eye_front{sd}"]["pos"], float) - c
+                gz /= np.linalg.norm(gz)
+                # one group with its eyeball (joined softly, then unioned as one): as two elements with different
+                # blends the scene's chunked evaluation blew the mirrored eye up into a ball twice its size
+                grp = {"group": f"eyeball{sd}", "join": round(0.12 * R, 5), "blend": 0.0}
+                blobs[f"eye{sd}"] = {**blobs[f"eye{sd}"], **grp}
+                blobs.setdefault(f"cornea{sd}", {"at": [round(float(x), 5) for x in c + (R - rc + bulge) * gz],
+                                                  "size": [round(rc, 5)] * 3, "part": b["eyes"], **grp})
         out["blobs"] = blobs
     out["joints"] = joints
     return out
@@ -319,6 +335,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
 GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # in the assets pack "gnm" (assets.py; Apache 2.0, see SOURCE.txt)
 GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
+GNM_CHIN = 0.1912  # the mean head's chin landmark height, GNM's frame
 EYE_R = 0.96  # the eyeball's radius over GNM's eye (its median vertex distance)
 EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball
 GNM_TILT = 20.0  # degrees
@@ -333,6 +350,9 @@ def head_of(s: dict, base: dict):
         return None
     if head.get("source", "gnm") != "gnm":
         raise ValueError('base head: {"source": "gnm", ...} (the only head source so far)')
+    from . import headfit
+    if headfit.applies(base):  # the body's age / sex / weight shape the head too (headfit.py)
+        head = headfit.follow(base, head)
     tpl = source(base)
     tj = template_joints(base)
     J = s["joints"]
@@ -352,6 +372,8 @@ def head_of(s: dict, base: dict):
     key = ("head", json.dumps([head, mid.round(5).tolist(), up.round(5).tolist()], sort_keys=True))
     if key not in _CACHE:
         _CACHE[key] = gnm_head(head, mid, up)
+        if headfit.applies(base):
+            _CACHE[key]["room"] = True
     return _CACHE[key]
 
 
@@ -645,12 +667,19 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
     qb = Wb - c0 - np.outer((Wb - c0) @ n, n)
     s0 = np.clip((r0 - np.linalg.norm(qb, axis=1)) / np.maximum((ring0 - Wb) @ n, 1e-3), -1.5, 1.5)
     L = np.maximum(h_start, 1e-3)
+    m0, m1 = L * s0, L * s1
+    if head.get("room"):  # (heads that follow their body, headfit.py) a MONOTONE taper: where the body's neck is
+        # centimetres wider than the head's (MakeHuman's heavy and old bodies) the end slopes overshot, and the tube
+        # swelled out before it came in: a stand-up collar with a groove inside it (Fritsch-Carlson limits)
+        dr = R[0] - r0
+        m0 = np.where(m0 * dr <= 0, 0.0, np.sign(dr) * np.minimum(np.abs(m0), 3 * np.abs(dr)))
+        m1 = np.where(m1 * dr <= 0, 0.0, np.sign(dr) * np.minimum(np.abs(m1), 3 * np.abs(dr)))
     rings = []
     for kk in range(int(height / step) + 1):
         hh = kk * step
         t = np.clip(hh / L, 0, 1)
         h00, h10, h01, h11 = 2 * t ** 3 - 3 * t ** 2 + 1, t ** 3 - 2 * t ** 2 + t, -2 * t ** 3 + 3 * t ** 2, t ** 3 - t ** 2
-        r = h00 * r0 + h10 * L * s0 + h01 * R[0] + h11 * L * s1
+        r = h00 * r0 + h10 * m0 + h01 * R[0] + h11 * m1
         over = hh > L  # in the overlap: the head's radius at this vertex's u
         if over.any():
             u = (hh - L[over]) * npn - SEAM
@@ -1273,7 +1302,12 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         return eye_mid + s * (X - mid) @ R.T
     # the graft plane through the neck's axis, tilted GNM_TILT down at the front: level, it ran into the jaw under the
     # chin (the chin sits ~6 mm over GNM_CUT) while the back must stay above the bib's open edge
-    cut = place(np.array([mid[0], GNM_CUT, J[0][2]]))
+    cut_y = GNM_CUT
+    if head.get("plane_follows_chin"):  # (headfit.py) a longer or shorter jaw takes the plane with it: fixed, a low
+        # chin sat in the graft band
+        chin = sum(float(w) * V[int(v)] for v, w in zip(g["lm68"][8][0::2], g["lm68"][8][1::2]))
+        cut_y = float(np.clip(GNM_CUT + (chin[1] - GNM_CHIN), 0.155, 0.21))
+    cut = place(np.array([mid[0], cut_y, J[0][2]]))
     ta = np.radians(GNM_TILT)
     pn = R @ np.array([0.0, np.cos(ta), np.sin(ta)])
     lm = place(np.array([sum(float(w) * V[int(v)] for v, w in zip(row[0::2], row[1::2])) for row in g["lm68"]]))

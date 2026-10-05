@@ -268,9 +268,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
     e = e if isinstance(e, dict) else {}
-    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera"}
+    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera", "tear"}
     if bad:
-        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera)")
+        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera, tear)")
     from . import paint as _paint
     from . import skin_swatch
     from .skin import interocular
@@ -295,6 +295,12 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.55, 0.5, 0.5], "mix": "multiply", "opacity": 0.55,
                                       "mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5), "to": round(0.55 * r, 5)}},
                                                {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}]}
+        # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
+        if float(e.get("tear", 1.0)) > 0:
+            out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.96, 0.95, 0.94], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
+                                         "roughness": 0.02, "specular": 1.0,
+                                         "mask": [{"near": ["base"], "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
+                                                  {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
     pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
     layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,

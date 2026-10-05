@@ -1631,7 +1631,17 @@ def skin(name: str, skin: dict | None = None, replace: bool = False, note: str =
             f"{base['subsurface_scale'] * 1000:.1f} mm, coat {base['coat']:.2f}\n"
             f"{len(layers)} layers: {', '.join(layers)}\n"
             f"look_skin(\"{name}\") renders close-ups and measures them; look(paint_layer=\"skin:<layer>\") or "
-            f"look_skin(layer=...) shows one layer's mask")
+            f"look_skin(layer=...) shows one layer's mask" + _head_hint(new_spec))
+
+
+def _head_hint(spec: dict) -> str:
+    b = spec.get("base") or {}
+    h = b.get("head") or {}
+    if (b.get("body") or {}).get("source") != "makehuman" or h.get("source", "gnm") != "gnm" or "follow_body" in h:
+        return ""
+    return ("\nHINT: this head doesn't follow its body: base.head.follow_body is unset, so the face keeps one adult shape "
+            "and its own size whatever the body's age and sex. For a new character set base.head.follow_body: true "
+            "(guide(topic=\"skin\"), stage 0); leave it for a character whose head is already approved.")
 
 
 @mcp.tool(structured_output=False)
