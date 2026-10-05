@@ -849,6 +849,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
     slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls (seeded identities): a child
     gets an adult's face shape.
+  - WIP when the usage limit stopped the round (2026-10-05, branch worktree-agent-a692991f8b9a26e48): `headfit.py` (a
+    MakeHuman body's age/sex/weight shape the GNM head: landmark moves via `makehuman_lm68.json` solved in GNM's identity,
+    head scale from the body's interocular, graft plane follows the chin, neck held; default for heads without fit /
+    identity / regions; `tests/test_headfit.py` passes; clay-checked on the child and the old man, whose neck collar is
+    gone), `base.cornea`, window-shaped highlight lights and the eyeball tear line are UNTESTED in renders; only 2 of the
+    6 humans were rebuilt (workspace/skin_h_*, sheets sk_02/sk_03 are stale); the tear line's `near: ["base"]` may not
+    validate. Not started: lash cards, re-measuring against the 24 photos, export fixes, grooms.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
