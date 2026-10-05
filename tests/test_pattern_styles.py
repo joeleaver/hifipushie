@@ -43,9 +43,26 @@ def test_shawl_collar_on_the_roll_line():
     assert f["P"][f["names"]["collarCB"], 1] > f["P"][f["names"]["hps"], 1]
     assert any(fd["kind"] == "roll" and fd["piece"] == "front" for fd in D["folds"])
     assert D["pair_seams"], "the collar's centre back seam joins the two fronts"
+    # the back collar has spring: its outer edge is longer than its neck seam (a straight strip can't turn down)
+    assert f["P"][f["names"]["collarTop"]] is not None and D["hinges"]
     pd.unfold(D)
     _ok(D)
-    assert ["front.L:collarCB>collarTop", "front.R:collarCB>collarTop"] in D["seams"]
+    # one cloth, two placements: the collar past the neck point is its own piece on the neck, joined by a seam
+    # noted "virtual"; the facing is cut the same way and lies on the front
+    c = D["pieces"]["front_collar.L"]
+    assert c["wrap"]["to"] == "neck" and D["pieces"]["front.L"]["wrap"]["to"] == "torso"
+    assert pattern.length(c["P"][pattern.arc_indices(c, "collarTop>neckHinge_front.b")]) > \
+        1.25 * pattern.length(c["P"][pattern.arc_indices(c, "collarCB>hps")])
+    virt = [k for k, v in D["notes"].items() if v.get("virtual")]
+    assert len(virt) == 4 and any("front.L:neckHinge_front.a" in k and "front_collar.L" in k for k in virt)
+    assert D["pieces"]["front_facing.L"]["wrap"]["lies_on"] == "front.L"
+    assert D["pieces"]["front_facing_collar.R"]["wrap"]["lies_on"] == "front_collar.R"
+    assert ["front_collar.L:collarCB>collarTop", "front_collar.R:collarCB>collarTop"] in D["seams"]
+    # the roll line is cut with the piece: a roll on the front, one crease at the fall's isometric angle on the collar
+    fc = next(fd for fd in D["folds"] if fd["piece"] == "front_collar.L")
+    assert fc["kind"] == "press" and 20 < fc["angle"] < 90 and fc["flap"] == "collarTop"
+    assert any(fd["piece"] == "front_facing.L" for fd in D["folds"])  # the facing turns with its front
+    assert D["pieces"]["front.L"]["wrap"]["out"] > D["pieces"]["front.R"]["wrap"].get("out", 0) + 0.01
     assert len(D["stitches"]) == 1  # the one button, right front to left
     # the right front's roll line is the left's mirrored
     L = next(fd for fd in D["folds"] if fd["piece"] == "front.L")["line"]

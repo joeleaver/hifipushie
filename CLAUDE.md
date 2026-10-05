@@ -773,6 +773,87 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
     leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
     maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
+- Skin (2026-10-05, "skin" agent; the user: humans read "flat, plastic-like"; textures "for humans of all sexes, ages,
+  and genders", incl. cosmetics, scars, tattoos, wrinkles, freckles; renders `workspace/skin_renders/sk_*`, references
+  `workspace/skin_refs/` (24 CC photos, README + refs.json with skin-only boxes; never in the repo)). Guide:
+  `guide(topic="skin")` = `skin_guide.md` (the artists' stages with sources); tools `skin`, `look_skin`, `skin_reference`.
+  - Diagnosis (`skin_measure.py`: CIE Lab contrast per octave of feature size inside skin-only boxes, zone colour,
+    highlight share / blob size / breakup, micro contrast; same code on renders and photos; a*/b* hardly see the light, so
+    they read albedo). Flat colour + one roughness vs 13 photographed faces: lightness contrast at 0.35-1.4 mm 0.04-0.08 vs
+    0.8-1.3; a* contrast at 1.4-11 mm 0.04-0.11 vs 0.4-0.6; no highlight at all vs 5-13% of a patch; cheek a* +0.3 vs
+    +1..7. Ranked: no fine relief / highlight breakup, one albedo colour, no visible specular, no scattering colour, flat
+    painted lips/brows.
+  - `skin.py`: `spec["skin"]` (tone, age, variation, detail, oil, thin, sun, zones, lips, features, wrinkles, hair, scars,
+    tattoos, makeup, shading) expands into ORDINARY paint layers "skin:<x>" laid under the model's own (`paint.layers`),
+    plus the skin part's base (`part_base`: tone colour, roughness, specular 0.36 = F0 0.028, subsurface by tone, a coat
+    lobe scaled by `oil` on the same bump, sheen; `scene.sync` merges it under the part's own keys). `spec.geometry`
+    strips it. Tone = pigments, not a colour: melanosome fraction of the epidermis x haemoglobin fraction of the dermis ->
+    spectral reflectance (Jacques' numbers, Kubelka-Munk dermis, Wyman CIE fits) -> sRGB (`tone_rgb(tone, melanin=,
+    blood=, oxygenation=, epidermis=, yellow=, grey=)`); every layer is "this skin with more/less of a pigment", so
+    cheeks, lips, palms, scars are right on any tone. Calibrated by eye to F1 #cda590 .. F6 #55331c (the raw model went
+    orange at high melanin: a 130/cm flat term on melanin and a small back-scatter term fixed hue and floor).
+  - Zones (`skin.zone`, paint generator `{"zone": name | {"name", "grow"}}`, expanded in `paint.layers` before anything
+    else sees them): FACE (spots at lm_* landmarks in interocular units), LINES (tapered polylines: nasolabial, brow,
+    lash lines), OUTLINES (lips), UNIONS (beard, nose, t_zone), BODY (shoulder, elbow/knee on the extensor side, hand,
+    palm = hand x facing the palm normal from the finger chains, knuckles, fingertips, nails, forearm, sole). ".L"/".R"
+    or both. A missing joint says which.
+  - New general paint pieces: generator `spot` (soft ellipsoids / tapered polylines at joints, native per pixel), `tile`
+    (a tiling grey image triplanar, `vary` = a second copy at 1.618x mixed by a 7 cm noise, `rotate`; native image nodes:
+    mip-mapped), layer `mix` (multiply/screen/overlay/soft_light), entry op `"vertex": true` (measure this entry per
+    vertex), a breakup-only entry.
+  - THE LIMIT that shaped it: a renderer's shader holds a few dozen layers. EEVEE compiles a material into one GPU
+    shader: the first 96-layer skin took > 5 min and 10 GB before I killed it (stage 1's 42 layers: 60 s). Cycles ran out
+    of SVM stack ("out of SVM stack space": black skin, no exception) from exposed Value/RGB leaf nodes (every leaf is
+    computed first and held: 96 colours x 3 slots), then from the Bump node (it compiles its height subgraph three
+    times; one mask of ~20 tapered lines alone overflowed). So: (1) layers marked `_pre` (broad, soft: zones, mottling,
+    lips, roughness patches, flush/tan, shadows under hair, foundation/blush...) are composited per VERTEX in Python
+    (`paint.precomposite`, linear colour) into five measured scalars the material starts from (`prog["pre"]`); (2) what
+    needs detail finer than the mesh is built ONLY from tiling swatches, images and a few line spots, never procedural
+    noise/Voronoi (`skin_swatch.py`: depth swatches pores / lines / coarse / lips with the 0.5-3 mm grain folded in; mark
+    swatches stubble / freckles / wrinkles / hairs; `brow_image` = a drawn picture of ~900 tapered hairs laid as a decal
+    from the brow landmarks: noise strokes read as a smudge); (3) zone masks confining fine layers are measured per
+    vertex (`"vertex": true`); (4) skin layers expose no named nodes, unexposed colours are socket constants; (5) one
+    layer carries relief + cavity tint + roughness (one mask instance). Heavy test character (63 layers, 26 fine): EEVEE
+    compile 130 s -> 75 s, 6-7 s a frame; export bakes (no Bump in emission passes) compile.
+    Also: node LINKING is quadratic in tree size (1000 nodes 10 s, 2000 65 s, 3000 168 s in a bare Blender): every mask
+    is now its own node group (`_Nodes.group/subtree/instance`, groups named `hpm:<part>:<n>`, dropped on rebuild; pull
+    reads `hp:` nodes inside them). Round trip on a copy of dg_fix2: renders mean 0.18/255 apart (every object was
+    re-meshed), both pulls empty, spec unchanged.
+  - Features (`skin_features.py`, each a number or {"amount", "where": [zones], "mask": [...], ...}): freckles, moles
+    (scattered or `at`), age_spots (default age x sun), blemishes, veins (default from age / thin), flush, sunburn, tan
+    (`mask` for tan lines); wrinkles default from age (folds / crow's feet / under-eye as tapered lines, forehead / neck /
+    lip lines / cheek lines from the wrinkles swatch, crepe from the coarse one); hair: brows, lashes (lash lines only),
+    stubble (cool shadow pre + dots), body; scars cut / surgical (stitch dots) / keloid / burn / pockmarks with age 0..1
+    and no pores on scar tissue; tattoos (`tattoo_image`: the picture blurred by years in its own mm, black toward
+    blue-green, colours faded; multiplied into the skin under its relief). Make-up (`skin_makeup.py`): foundation (also
+    hides 75% x coverage of the fine pigment layers, which composite after the pre base), concealer, contour, blush,
+    highlight, eyeshadow, eyeliner + wing, mascara, brows, lipstick, nails; each with a finish (roughness / specular /
+    metallic).
+  - Eyes (`skin.eyes`, on where the base has eyeballs; `_eyes`): a painted picture per eyeball (`skin_swatch.eye_image`:
+    radial iris fibres, collarette, limbal ring, soft pupil, a sclera pinker toward its edge with forking vessels) laid
+    as a decal on the eyes part, wet (roughness 0.04), a shadow under the upper lid; caruncle and waterline on the skin.
+    Flat iris/pupil paint on `eye_front` read as toy eyes at bust distance. No cornea bulge, no lash geometry yet.
+  - Shaved / cropped heads (`hair.scalp`: amount, color, hairline): the hair's shadow under the scalp skin (pre) + cut
+    hairs from the stubble swatch, inside ONE ellipsoid bigger than the skull whose exit from the skull is the hairline,
+    nape and the line over the ears. The head joint is at brow height and the cranium ~1.5 interoculars round it
+    (interocular = pupil distance, 6-9 cm on these heads): the first version's spots, sized by guess, ended just inside
+    the skull and nothing showed, though the mask read 1 at test points (which were inside the head). Test masks at
+    points found on the surface (a ray through `sdf.field_at`), not at joint + offset.
+  - Wrinkle swatch: three families of wandering lines (main, a branch family crossing them at a slight angle, fine),
+    each line's depth from noise much longer along the line than across (`_smooth_noise(cells, cells_u)`), so creases run
+    on for centimetres, fade at their ends and fork. Isotropic depth noise chopped them into dashes ("scratches").
+  - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin_<model>_<head|arm>` (bare skin + eyes, ~1 mm),
+    re-synced when the spec or the skin code changes, EEVEE under fixed lights (studio / soft / back) or `engine=
+    "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
+    shows one mask; prints the face's measurements beside the photographs' with hints.
+  - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
+    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls (seeded identities): a child
+    gets an adult's face shape.
+  - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
+    shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
+    / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
+    skin (Bump x3); per-vertex pre layers need a body voxel <= ~1.5 mm to hold 3 mm mottling (look_skin's stages do).
+    `tests/test_skin.py`.
 - Principle-based pattern drafting (2026-10-05, "clothflow" agent; the user: ready-made drafts are references, "we
   also need to distill the _principles_ so we can design jackets that don't exist yet, or any other arbitrary
   clothing"; sheets `workspace/cloth_renders/pd_*`). A new garment = a block + operations + details, as pattern makers
@@ -834,6 +915,98 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     in hip-length blocks, pockets / linings, head wrap, kimono placement, seat ease not reported for leg pieces
     (sizing reads torso pieces), trousers' length option for bare feet, a waistband that grips.
     `tests/test_pattern_draft.py`, `tests/test_pattern_styles.py`.
+  - Round 2 (2026-10-05, "drafting" agent, branch worktree-agent-aaf5034835ab4c449; renders pd_40..pd_4x; scratch
+    in the session scratchpad `drafting/`: run.sh <script>, st.py (stages), pl.py (place + crossings by pair + start
+    strain by piece), dj.sh (dress + look in its own session), jg2.py (blazer vs Jaeger)).
+    - HINGES (`pattern_draft.apply_hinges`, run at unfold): one cloth placed on two parts of the body. `D["hinges"]`
+      {piece, at, dir, mid, origin, x, wrap, fold, part}: the piece is cut along the line for PLACEMENT only, the far
+      part "<piece>_<part>" moved into its own frame with its own wrap, joined by a seam noted `"virtual": true`
+      (seam_notes; `_sewn_arc` skips it; the maps should not draw a groove there: not done). Pieces traced from it
+      (`pc["traced"]`: facings) are cut the same way, fold lines that cross are cut with it (`_split_fold`; a
+      line point ON the hinge counts as across), and the cut gets a vertex where each fold crosses. `op_shawl` uses
+      it: the collar past the neck point goes on the neck wrap (`flip`: pattern face out, `girth`: the whole circle
+      a partial band belongs to, `apart`, `out`). The start-gap warning's 279 mm neck seam is now 88 mm.
+    - The shawl's back collar needs SPRING: a strip run straight on from the roll line can't turn down (a cylinder's
+      top has no isometric fold). It is an annular sector now (`spring` = outer edge - neck seam; default from the
+      fall), laid on a cone flaring up, its fall folded at the ONE isometric angle (2 x the cone's half angle) as a
+      single crease (a roll's rows round a curved line stretched the flap 70%).
+    - `wrap.lies_on` + `cloth._lay_on`: a facing is placed as its front's placed surface, LIES 3 mm off the inside
+      face (so on a turned lapel it is the side that shows), with a small untangle against that piece; it takes the
+      front's fold lines (same mesh rows). Wrapped and folded by itself it had to pass through its front. The left
+      front laps 4 mm + 12 (a fold) + 4 (a facing) out: what lies between the fronts. `style_line` panels start
+      2 mm apart (`wrap.shift`): edge on edge they read as crossings. `cloth.mesh`: a roll's rows each end on their
+      own outline vertex (sharing one bent every row's end: 150% stretch at the piece's edge).
+    - Two-piece sleeve: the under sleeve was built wrong side up (folded-in strips) and so went round the arm the
+      other way: both sleeve seams started ~15 cm apart and the sewing knotted the sleeve at the shoulder. Turned
+      over now. `elbow` (m the wrist comes forward) bends each piece about its forearm seam's elbow point
+      (`pattern.bend` / `unbend`; `wrap.bend`: place lays the straight sleeve): forearm seams equal, the top's
+      hindarm 9 mm longer (elbow ease, declared), hem square to the forearm. A jacket sleeve needs `hem_width`
+      ~0.28 (the block's default is a shirt cuff's: the forearms read red).
+    - `pattern_tailor.py`: `contour` (an edge moved in / out per level: shaped CB seam, hem spring; a style line's
+      name shapes BOTH its edges), `join` (two pieces sewn together become one: a side panel with no side seam; the
+      seam's shaping is reported lost; b's clashing names become "name@b"), `round_corner` (cut-away hem; the corner's
+      name stays on the curve's middle), `fisheye` (run on to the hem as a closed 3 mm cut: no holes in a cloth mesh;
+      `darts: true` on a hip-length bodice now makes them), lapel `gorge: "straight"` + `gorge_drop` + `notch`.
+      `take_in` on a STRAIGHT cut shaped nothing (two vertices): edges are densified first; a shaped panel seam's
+      length difference under 2% is declared (`press_note`: pressed / eased on). `tests/test_pattern_tailor.py`.
+      Blazer vs Jaeger again (pd_45): waist +16% (Jaeger +17), hem +12% (+12), CB length +1 mm, CB seam and side
+      panel there; left: Jaeger's narrower side panel, its under sleeve's S-shaped top, chest +8% vs +4%.
+    - ZOZO start: stage 4 passes for the jacket (0 crossings). Draped triangles that start past the strain limit by
+      construction (fold rows on a curving chest, a stand pushed 1-3 mm: 0.7%, up to 16%) get the local strain
+      limit in cloth_zozo (`start_over` 3%) and are info in stage 4; more, or > 60%, still fails.
+    - Trousers: block `length` words (TROUSER_LENGTHS: floor, shoe, ankle (default: barefoot bodies), cropped, calf,
+      knee, shorts); stage 2 `leg_ease`: seat ease in the fit's band from the legs' pieces, per-leg thigh / knee / hem
+      against the body's own leg. The waistband slid 9-10 cm because it STARTED wrong: `place`'s torso hull ran up to
+      the shoulders for every garment (`max(ytop, -0.03)`: a bug), so a waistband alone lay on the chest's curve,
+      its back half 16-25 cm from the trousers. Now the hull stops at the pieces' own top, a band buttoned to itself
+      alone on the torso lies at its CLOSED girth a few mm off the waist with its lap a layer out (start gap 161
+      -> 46 mm). `waistband` op: the generate entry's chain is made at unfold from the waist edges as they are
+      then (it had to be written by hand).
+    - Stage 4 `seam_start_gaps`: `turned` = the rotation that lays one side of a seam on the other is > 35 deg
+      with a median gap > 8 cm, for seams with a chain side. A waistband mis-ordered by half a turn has gaps of
+      only a waist's diameter (247 mm < the 250 mm "far" limit: the distance check did NOT fire); a ring inside a
+      ring (hood vs neckline) and a shoulder seam are not turned. `tests/test_cloth_workflow.py`.
+    - Placement by hinge again: `kimono` (the sleeve past the underarm-to-shoulder line on the arm: `wrap.cx` =
+      the pattern x along the top of the arm, front half `front: -1`, back `+1`, mirrored on the right arm: pair
+      pieces on arms in unfold); wrap `head` (hoods: one plan curve round the head from the back, the sides `apart`
+      by the centre seam's bow). `pocket` (patch, kangaroo: traced, `lies_on` + `face: "out"`, tacked by
+      `sym_stitches` mirrored at unfold; a tacked piece counts as attached in stage 2), `lining` (every body piece
+      traced, seams repeated, laid inside, sewn to the shell at hems / sleeve hems / back neck; same outline, no
+      pleat, one fabric). Not drafted: welt / flap / in-seam pockets.
+    - `skirt` block for the ops (pattern_blocks.skirt; a cut ACROSS a piece names the upper part first and keeps the
+      centre seam on both parts; a pleat on a piece cut on the fold is pressed on both halves; pleat `underlays`
+      are not girth in `sizing`).
+    - Two new garments from prose through the tools (sheets in examples/garment_sheets): `raglan_anorak` (bodice
+      cf fold, neckline, sleeve, raglan, hood, kangaroo pocket; model pd_anorak) and `yoke_skirt` (skirt block,
+      yokes, a pleat each side, flared back, waistband op; model pd_skirt). What the tools lacked on the way, all
+      fixed: a tacked pocket read "sewn to nothing"; the hoodie had no boxy fit band (a straight body on a V-shaped
+      torso is +51% at the waist); the turned check fired on a raglan seam (single edges at an angle) and on the
+      hood (ring in ring); the kangaroo pocket's default ran past a short hem; the skirt had no block for ops and no
+      waistband op; the yoke's centre seam and the second pleat were missing; pleat cloth read as +12% seat ease.
+    - Results (renders pd_41 Blender jacket, pd_44 ZOZO jacket (raw V), pd_46 trousers, pd_47 tunic, pd_50 anorak,
+      pd_51 skirt): the shawl jacket on ZOZO settle: "fits", 0 crossings, strain p95 1.5% (646 s at 2 cm), lapels
+      turned, sleeves smooth; its raw surface had the centre back OPEN from the neck (coincident centre-seam
+      stitches are dropped by the solver: centre seams now start 2 mm apart, NOT re-run). Blender draft: reads as
+      the jacket, 1 crossing, facing collar 4% crumpled, puffy. The skirt stays at the waist (Blender); the
+      trousers on Blender still slide 99 mm (run before the waistband start fix; the ZOZO run never started).
+      The anorak's body, pocket and hood read, its RAGLAN SLEEVES crumple at the shoulders (22 crossings): the
+      sleeve's shoulder part lies along the arm, 173 mm and ~60 deg from the body's cut. Stage 4 names it
+      (turned). Fix = a hinge in `op_raglan`: the shoulder parts placed on the torso in the coordinates they were
+      cut in, the sleeve on the arm. The tunic reads as a wrap tunic but is over-cinched (take_in 56 / 62 mm over
+      9 cm now really shapes) and strained at the tie.
+    - THE ZOZO RELEASE IN THE SCRATCHPAD BROKE during this session (its python/lib/python3.12 lost most of the
+      standard library some time after 12:49 on 2026-10-05: "No module named 'encodings'"): every zozo job fails
+      until it is unpacked again (asset pack "zozo"). Not caused by these changes.
+    - Open, in order: re-run jacket + trousers on ZOZO once the release is back (dj.sh); the raglan hinge; a
+      facing's free inner edge (tack it, or settle's treatment of made pieces that lie on draped cloth: asked
+      clothsim); virtual seams still draw a groove in the detail maps and the pattern sheet draws hinge parts
+      apart from their piece; welt / in-seam pockets; lining trimmed to the facing; the under sleeve's S-shaped
+      top; `hem height spread` reads designed curves and yokes as unevenness (skirt 490 mm, tunic 82 mm).
+    - Round 3 state at the stop (usage limit): added the raglan hinge (shoulder parts on the torso), pleats laid closed by the wrap (`wrap.pleats`, folds `in_wrap`), welt / flap / in-seam pockets, `y: "waist"` in point specs, the tunic re-cut at the waist. Facings are still wholly interfaced (= made); marking them draped (clothsim's advice) stretched them 100%+ round the roll's rows: reverted, open.
+      Sims queued through `drafting/seq.sh` and NOT judged: pd_52_jacket_zozo (running), pd_53_trousers_zozo, pd_54_anorak_blender, pd_55_skirt_zozo, pd_56_tunic_blender (logs in the scratchpad `drafting/<tag>.log`, renders in cloth_renders). Not started: the remaining Jaeger differences (under sleeve `shift_back`, side panel width, chest ease).
+    - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
+      nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
+      seams, or replace the sheet.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
@@ -882,19 +1055,52 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       past the coarse outline instead of clamping (two fine vertices beyond one coarse corner landed on one point:
       a zero-area triangle) and the slit had parallel lips (a wedge's lips were 0.02 mm apart near the tip). The
       tuck and the seam draw still make the rest: moving cloth vertices without contact.
-    - The fine settle (`fine_settle: true | [press, settle frames]`, opt-in; `_press_plan`, cloth_job mode
-      "fine_settle", cloth_zozo carryIdx / carryPoses / releaseIdx / rest): the made pieces prescribed, their flaps
-      starting FINE_OPEN 55 deg open and closing as far as leaves FINE_ROOM over the body, then released to rest folded
-      as made; the carried drape settles round them. NOT WORKING YET. What it took to get to frame 2:
-      `_clear_of_body` (ZOZO's fatal pairs were body VERTICES 1.6-1.9 mm under the middle of sleeve triangles: the
-      sampled clearance reads the body by its nearest vertices' planes; now an exact body-vertex to cloth-face pass),
-      held vertices cleared too, a strain limit the start can meet (a few dozen triangles at piece outlines start
-      5-70% stretched: sleeve.R 72% at its cap edge). It then stops on "21 intersecting pairs at the committed pose".
-      Next: relax the carried start in the pattern's own metric before the sim (those outline triangles), then look
-      at which pairs.
-    - Open: the fall opens ~10-20 deg over the shoulder cloth (it turns rigidly: a real leaf bends; the fine
-      settle's released flap is the intended fix); the yoke ridge behind the collar; the upper sleeve's folds still
-      read busy.
+    - The fine settle (default with method "settle"; `fine_settle: false | [press, settle frames]`; `_press_plan`,
+      cloth_job mode "fine_settle", cloth_zozo carryIdx / carryPoses / releaseIdx / restIdx; cached `<key>_fine.npz`):
+      the constructed fine mesh settled for ~36 frames with the made pieces held and their flaps FREE from frame 0,
+      resting folded as made (a fall bends over the shoulder cloth), LOCAL: only cloth within `FINE_REACH` 10 cm of a
+      made piece is solved, the rest is held (solving it all, the sleeves crumpled again). What it took, in order:
+      `_clear_of_body` (ZOZO's fatal pairs were body VERTICES 1.6-1.9 mm under the middle of sleeve triangles: now
+      an exact body-vertex to cloth-face pass, held vertices too); `_relax_stretch` + a strain limit the start can
+      meet (triangles at piece outlines started 5-70% stretched: "ccd failed"); flaps never prescribed against cloth
+      (two prescribed things squeezing a third: "intersecting pairs"), opened only as far as clears what is under
+      them; `_untangle` before and after; the clean-up reverts any vertex it would re-cross. Shirt: 0 crossings,
+      "fits", fall covers the neckline seam 7.9 mm at CB, fall over what is under it 2.4 mm median, collar points
+      5.4 / 2.2 mm off (with `tacks`: design key, points of a made piece held to the cloth under them, as collar
+      stays / buttons do), sleeve crease width 2.7 mm / spacing 6.3 mm (zz16: 6.7 / 19.7). ~260 s settle + 50-100 s
+      fine settle on the 890M. Fold flaps are stretch-capped in placement (`max_stretch` 0.30: at 0.04 the shirt
+      collar turned 2 deg), and the draped start is relaxed with fold rows and flaps left as laid.
+    - The neck-point knot (the main session: "diagnose it with numbers"): `tailor` put the shoulder point at the
+      shoulder JOINT's x, inside the arm's root: the shoulder seam was 183 mm for ends 134-139 mm apart. Now the point
+      where the shoulder line turns down (slope > the line's + 10 deg, never inside the joint) and shoulderToShoulder
+      as a taut tape: 176 vs 148. The 28 mm left: the stand's ~12 mm standoff, the shoulder end 7 mm inside, the
+      across-back drafted as a flat width (~10 mm). Three bodies re-checked: shoulderToWrist = the joints' path
+      (553 / 583 / 544 mm), hanger width 2 cm inside the shoulder points.
+    - Layered garments (`over: "<garment>"`, `cloth_layers.py`, renders ly_*; model `workspace/ly_suit`, Jaeger over
+      Simon): the under garment is built first and frozen; `_collider` joins its result to the body (riding the
+      body's poses by nearest body vertex), the outer garment is placed on `padded_body` (the body pushed out to
+      cover it + `layer_gap` 3 mm). `support` (`SUPPORTS`: shoulder_pad, sleeve_head) are pads on that body, not
+      cloth. `cloth_layers.tells` (in `res["tells"]`, the report, targets `layer_*` in garment_kb.json): under collar
+      showing above the outer at CB 10-20 mm, cuff past the sleeve 10-15 mm, lapel gap, collar hug, crossings between
+      the layers. `hidden` -> `export_part` leaves out the under garment's faces the outer covers (further than
+      `hidden_margin` 3 cm from its free edges; `export_hidden: true` keeps them). Jaeger's table (flip_y on stand /
+      collar, lapel roll folds on `breakLine`, vent folds, the armhole as one closed seam chain, pads) is in
+      cloth_designs.json; its seam check passes except cap ease +1.8% (band 3-6). NO JACKET SIM HAS RUN: the ZOZO
+      release was deleted from the scratchpad mid-work. Not built yet: the joint settle where the layers touch,
+      lapel facing + gorge, chest canvas, weights copied from the outer layer, `over` in the design sheet.
+    - ZOZO drops nothing now: stitches whose ends start together (edge-to-edge panels, a facing on its front) had no
+      direction (NaN) and were dropped, so nothing sewed the seam (the "drafting" agent's jacket CB stood open).
+      `cloth_zozo.part_stitches`: each such end steps 1 mm back into its own cloth (layers part along the normal),
+      held/made ends stay; job `stitch_gap` (0 = drop as before).
+    - STATE when the usage limit stopped clothsim (2026-10-05): `over` / `support` / `layer_gap` are in the design
+      sheet, validation and stages 3 / 5 (untested beyond the cloth tests). The shirt regression run after the merge
+      of drafting's placement + parted stitches (scratch log fl_17) was NOT judged: its settle finished (1135 s on a
+      loaded machine, was 263 s), the fine settle reported "start stretch up to 120%" and was waiting for the heavy
+      slot. Next: judge that run against fl_16's numbers, then `ly_01` (Jaeger over Simon; ZOZO at
+      $HIFIPUSHIE_ZOZO=/mnt/data/hifipushie/assets/zozo/release), then the joint settle and the lapel facing.
+    - Open: the yoke ridge behind the collar; the upper sleeve's folds still read busy; Carlton pinned to
+      `method: "simulate"` (upper-back pleat bunches, tail knife pleat is a seam gap, cap split +7.5 / -5.0%, stand
+      +4%, collar +4.5%).
     - `made` (design table and garment: {piece or role: "made" | "draped"} through garment_design.made_or_draped ->
       `M["made"]` -> `made_pieces`): interfaced-whole pieces can be draped. Carlton's fronts are, with roll-line folds
       `lapel.L/R` (placement only so far: the fronts turn back along the roll line into a V; no facing, no sim).

@@ -281,6 +281,8 @@ def guide(topic: str = "") -> str:
     topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
     pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
     check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
+    topic="skin": human skin the way character artists texture it, in stages (base tone, colour zones, large
+    features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
     topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then
     limbs drawn and pruned, judged against a photo, foliage and bark, export), with grow_plant, edit_plant,
     look_plant, plant_reference, export_plant and plant_history."""
@@ -292,8 +294,10 @@ def guide(topic: str = "") -> str:
         return (Path(__file__).with_name("vegetation_guide.md")).read_text()
     if topic.strip().lower() == "cloth":
         return (Path(__file__).with_name("cloth_guide.md")).read_text()
+    if topic.strip().lower() == "skin":
+        return (Path(__file__).with_name("skin_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "terrain" or "vegetation"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "skin", "terrain" or "vegetation"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -1512,6 +1516,95 @@ def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | 
     return [_out(sheet, save), text + "\n\n" + "\n".join(extra)]
 
 
+def _merge_patch(base, patch):
+    """patch merged into base: objects key by key, null deletes, anything else replaces."""
+    if not isinstance(patch, dict) or not isinstance(base, dict):
+        return patch
+    out = dict(base)
+    for k, v in patch.items():
+        if v is None:
+            out.pop(k, None)
+        else:
+            out[k] = _merge_patch(out.get(k), v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+@mcp.tool(structured_output=False)
+def skin(name: str, skin: dict | None = None, replace: bool = False, note: str = "") -> str:
+    """Describe a human's skin (spec["skin"]) and save it: the description expands into ordinary paint layers
+    ("skin:<layer>", under the model's own paint) and the skin part's shading. guide(topic="skin") is the artist's
+    workflow in stages; skin_reference lists every key, default and zone. For a model built on a `base` (MakeHuman /
+    template body, GNM head): zones are placed from its joints and lm_* face landmarks.
+    skin: a patch merged into the stored description (objects key by key, null deletes; replace=True starts over):
+      {"tone": {"fitzpatrick": 1..6 | "melanin": 0..1, "blood": 0..1, "undertone": -1 cool .. 1 warm},
+       "age": years, "variation": 1, "detail": 1, "oil": 0..1, "thin": 0..1, "sun": 0..1,
+       "features": {"freckles": 0.6, "moles": {"at": [...]}, "age_spots", "blemishes", "veins", "flush", "sunburn",
+                    "tan": {"amount", "mask": [...]}},
+       "wrinkles": {"amount": 1, "forehead": ..., "crows_feet": ...},          (default: from age)
+       "hair": {"brows": {"color", "density", "thickness"}, "lashes", "stubble": 0.7, "body": 0.5},
+       "scars": [{"kind": "cut" | "surgical" | "keloid" | "burn" | "pockmarks", "path": [points] | "zone": name, "age": 0..1}],
+       "tattoos": [{"image": {"file" | "text": {...}, "at", "size", "dir", "wrap"}, "age": years}],
+       "makeup": {"foundation": {"amount", "finish"}, "blush", "contour", "highlight", "eyeshadow": {"color", "finish"},
+                  "eyeliner": {"wing"}, "mascara", "brows", "lipstick": {"color", "finish": "matte" | "satin" | "gloss"}, "nails"},
+       "zones": {built-in zone layer: strength}, "lips": {...}, "shading": {...}, "part": "body"}
+    Any layer of the model's own paint can use the same anatomy: {"zone": "cheekbone.L"} in edit_model paint ops.
+    Then look_skin (fast cropped close-ups + measurements), or sync + look for the whole model.
+    Returns the tone's colours and the layers the description made."""
+    from . import paint
+    from . import skin as skinmod
+    spec = store.load(name)
+    patch = _spec_arg(skin) if skin is not None else {}
+    cur = {} if replace else (spec.get("skin") or {})
+    new = _merge_patch(cur, patch)
+    new_spec = {**spec, "skin": new}
+    p = skinmod.params(new_spec)
+    layers = [k[5:] for k in paint.layers(new_spec) if k.startswith("skin:")]
+    v = store.save(name, new_spec, note=note or "skin")
+    base = skinmod.part_base(new_spec)[1]
+    hx = lambda c: "#" + "".join(f"{int(round(x * 255)):02x}" for x in c)  # noqa: E731
+    t = new.get("tone")
+    return (f"saved {name} v{v}: skin on part {p['part']!r}, melanin {p['tone']['melanin']:.2f} blood {p['tone']['blood']:.2f} "
+            f"undertone {p['tone']['undertone']:+.1f}, age {p['age']:.0f}\n"
+            f"base {hx(base['color'])}, cheeks {hx(skinmod.tone_rgb(t, blood=2.7))}, lips {hx(skinmod.tone_rgb(t, melanin=0.7, blood=10, epidermis=0.45))}, "
+            f"palms {hx(skinmod.tone_rgb(t, melanin=0.25, blood=1.7))}; roughness {base['roughness']:.2f}, subsurface "
+            f"{base['subsurface_scale'] * 1000:.1f} mm, coat {base['coat']:.2f}\n"
+            f"{len(layers)} layers: {', '.join(layers)}\n"
+            f"look_skin(\"{name}\") renders close-ups and measures them; look(paint_layer=\"skin:<layer>\") or "
+            f"look_skin(layer=...) shows one layer's mask")
+
+
+@mcp.tool(structured_output=False)
+def skin_reference() -> str:
+    """Everything the `skin` description takes: the anatomical zones (also usable by any paint layer as
+    {"zone": name}), the tone model, features, wrinkles, hair, scars, tattoos and make-up with their keys and
+    defaults."""
+    from . import skin as skinmod
+    from . import skin_makeup
+    return skinmod.reference() + "\n\n" + skin_makeup.reference()
+
+
+@mcp.tool(structured_output=False)
+def look_skin(name: str, views: list[str] | None = None, size: int = 768, light: str | None = None,
+              flat: bool = False, layer: str | None = None, engine: str = "eevee", save: str | None = None):
+    """Close looks at the skin, fast: bare-skin crops of the model (head and shoulders; forearm and hand: without
+    clothes or hair, ~1 mm mesh, kept between calls) rendered under fixed lights, with measurements of the face next
+    to what photographs of real skin measure (contrast per feature size in lightness and colour, colour zones,
+    highlight size and breakup, micro contrast) and hints. The first look of a region meshes it (~2 min); after a
+    skin or paint edit ~20-40 s.
+    views: any of bust, face, three_quarter, side, cheek (macro), eye, mouth, forehead, ear (back-lit: light through
+    the ear), hand, palm, forearm (default face, three_quarter, cheek, eye, mouth, ear).
+    light: "studio" (a key from the model's right + a weak fill), "soft" (broad frontal: colour without highlights),
+    "back" (back-lit); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
+    ("freckles" = "skin:freckles"; or any paint layer's name).
+    engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
+    shadow edges and back-lit ears).
+    Judge in this order: flat colour at bust distance (tone, zones), then the lit bust, then the close-ups."""
+    from . import skin_look
+    sheet, text, _ = skin_look.look(name, views=tuple(views) if views else skin_look.DEFAULT, size=size, light=light,
+                                    flat=flat, layer=layer, engine=engine)
+    return [_out(sheet, save), text]
+
+
 def _save_suffix(save: str | None, tag: str) -> str | None:
     if not save:
         return None
@@ -1575,7 +1668,7 @@ def design_garment(name: str, garment: str, design: dict | None = None, spec: di
     pattern maker does. Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
     replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
     dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or DESIGN it: "block":
-    bodice | knit | trouser, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
+    bodice | knit | trouser | skirt, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
     "operations" | "derivations"): a garment with no ready-made draft is a block + operations); or leave out and give own
     pieces + seams in spec), "fit": the kind's fit (slim, regular, a_line...), "fabric": a fabric (cotton_shirting,
     oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit, french_terry) or a solver preset,

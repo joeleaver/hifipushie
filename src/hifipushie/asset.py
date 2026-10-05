@@ -1004,7 +1004,7 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
         t = time.time()
         out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
                               "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES,
-                              "supersample": BAKE_SS, "max_px": BAKE_SS_PX},
+                              "supersample": BAKE_SS, "max_px": BAKE_SS_PX, "detail": ctx.get("bake_detail", True)},
                              3 * 3600, progress=getattr(log, "note", None))
         bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
         log.append(f"paint and AO maps baked by Cycles from the scene in {time.time() - t:.1f}s ({bt})")
@@ -1151,7 +1151,14 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
             if lk.get("alpha", 1.0) < 1.0:
                 m["alphaMode"] = "BLEND"
                 m["pbrMetallicRoughness"]["baseColorFactor"] = [1.0, 1.0, 1.0, float(lk["alpha"])]
-            m["doubleSided"] = True
+            if lk.get("transmission") or lk.get("alpha", 1.0) < 1.0:
+                m["doubleSided"] = True
+            for e, v in (lk.get("ext") or {}).items():  # further ratified extensions for this part's material
+                m["extensions"][e] = v
+                if e not in used:
+                    used.append(e)
+            if lk.get("extras"):
+                m["extras"] = lk["extras"]
             materials.append(m)
             variants[key] = len(materials) - 1
         return variants[key]
@@ -1451,6 +1458,15 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             + (f" (focus {', '.join(f'{v:.1f}' for v in r['focus_mm_per_texel'])})" if "focus_mm_per_texel" in r else "")
             for pn, r in report.items() if r["atlas"] == an))
     atlas_files, maps_info, heights, cover = [], {}, {}, {}
+    skin_recipe = None
+    if spec.get("skin"):  # the skin's pores and lines are tiling maps beside the unique ones, not baked into them
+        from . import skin as skinmod
+        skin_recipe = skinmod.export_recipe(spec, out_dir, name)
+        ctx["bake_detail"] = not (skin_recipe and skin_recipe["detail"])
+        if skin_recipe and skin_recipe["detail"]:
+            log.append("skin: micro detail left out of the baked maps and written as tiling normal maps ("
+                       + ", ".join(d["normal"] for d in skin_recipe["detail"]) + "): the recipe is in the json and the skin "
+                       "material's extras")
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     for ai, an in enumerate(names):
         stem = name if len(names) == 1 else f"{name}_{an}"
@@ -1524,6 +1540,15 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     glb = out_dir / f"{name}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
+    if skin_recipe:  # the skin part's own material: the film's second lobe and the sheen as ratified extensions, the
+        sp = (spec.get("skin") or {}).get("part", "body")  # rest (scattering, tiling detail) in its extras
+        for pn in parts:
+            if origin[pn] == sp:
+                looks.setdefault(pn, {}).update(
+                    ext={"KHR_materials_clearcoat": {"clearcoatFactor": float(skin_recipe["specular"]["coat"]),
+                                                     "clearcoatRoughnessFactor": float(skin_recipe["specular"]["coat_roughness"])},
+                         "KHR_materials_sheen": {"sheenColorFactor": [float(skin_recipe["sheen"])] * 3, "sheenRoughnessFactor": 0.5}},
+                    extras={"hifipushie_skin": skin_recipe})
     rigged = None
     if rig:  # an armature from the skeleton, the parts (not prefabs) skinned to it
         from . import rig as rigmod
@@ -1578,7 +1603,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             "atlases": {an: {"size": sizes[ai], "maps": maps_info[an], "height_range_m": heights[an],
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
-            "parts": report, "prefabs": prefabs,
+            "parts": report, "prefabs": prefabs, **({"skin": skin_recipe} if skin_recipe else {}),
             **({"face_shapes": {"names": faceshapes.names_of(face_shapes), "parts": shapes,
                                 "correctives": {c: f"{op}({a}, {b})" for c, (op, a, b) in faceshapes.CORRECTIVES.items()
                                                 if c in faceshapes.names_of(face_shapes)},
