@@ -1726,7 +1726,7 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
         # round a tight roll the laid piece's chords can still cut the piece under it (their triangles differ):
         # the vertices of what crosses stand a little further off, until nothing does
         for _ in range(5):
-            bad = _crossing_verts(X, F, pid, k, j)
+            bad = _pair_crossing_verts(X, F, pid, k, j)
             if not len(bad):
                 break
             more[bad] += 0.0015
@@ -1734,7 +1734,7 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
     return X
 
 
-def _crossing_verts(X: np.ndarray, F: np.ndarray, pid: np.ndarray, ka: int, kb: int) -> np.ndarray:
+def _pair_crossing_verts(X: np.ndarray, F: np.ndarray, pid: np.ndarray, ka: int, kb: int) -> np.ndarray:
     """The vertices of piece ka on an edge or triangle that crosses piece kb (edges of each against the other's
     triangles)."""
     out = set()
