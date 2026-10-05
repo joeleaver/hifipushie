@@ -74,7 +74,10 @@ def _named(pc: dict, ix: list, skip: tuple = ()) -> list:
 
 
 def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand: float = 0.02, height: float = 0.075,
-             width: float = 0.07, roll_stand: float = 0.02, **o) -> None:
+             width: float = 0.07, roll_stand: float = 0.02, spring: float | None = None, **o) -> None:
+    """spring: how much longer the collar's outer edge is than its neck seam round the back of the neck (m; default:
+    what the fall needs to lie down over the stand onto the shoulders). The back collar is an arc, not a strip run
+    straight on from the roll line: a straight one has no length to turn down and stands up round the neck."""
     pc = D["pieces"][piece]
     if "neck_back" not in D["edges"] or "hps" not in pc["names"]:
         raise DraftError("shawl: needs a bodice front with its neckline (do it before unfold)")
@@ -91,17 +94,31 @@ def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand:
     if n @ (Rp - hps) < 0:
         n = -n
     Lbn = edge_length(D, D["edges"]["neck_back"])
-    Dp = hps + u * Lbn  # the collar's neck seam: the back neck's length on from the neck point
-    E = Dp + n * height  # the centre-back collar seam, square to the roll line
+    # the back collar: an annular sector beyond the line through the neck point square to the roll line. Its neck
+    # seam (the back neck's length) is an arc that leaves the neck point along the roll line's direction and bends
+    # back toward the shoulder, so the outer edge is longer than the seam by `spring`
+    alpha = float((Rp - hps) @ n)  # the roll line's distance from the neck seam (the stand at the back)
+    r_neck = Lbn / (math.pi / 2)  # the back neck as a quarter circle
+    if spring is None:
+        spring = Lbn * max(height - 2 * alpha, 0.005) * 0.8 / r_neck
+    rho = Lbn * height / max(float(spring), 1e-4)  # the seam arc's radius in the flat
+    Phi = Lbn / rho
+    C0 = hps - n * rho
+    arc = lambda r, ph: C0 + r * (math.cos(ph) * n + math.sin(ph) * u)
+    Dp = arc(rho, Phi)  # the collar's neck seam ends at centre back
+    E = arc(rho + height, Phi)  # the centre-back collar seam, square to the neck seam there
+    tE = -math.sin(Phi) * n + math.cos(Phi) * u
     ln = np.linalg.norm(E - B)
-    curve = pb.bez(B, B + n * width * 1.6 + u * 0.30 * ln, E - u * 0.30 * ln + n * 0.0, E, 20)
+    Eh = arc(rho + height, 0.0)  # the outer edge where it crosses the neck point's line
+    curve = np.r_[pb.bez(B, B + n * width * 1.6 + u * 0.30 * ln, Eh - u * 0.30 * np.linalg.norm(Eh - B), Eh, 16),
+                  [arc(rho + height, ph) for ph in np.linspace(0, Phi, 7)[1:]]]
     mid = len(curve) // 2
     old = copy.deepcopy(pc)
     keep = _avoiding(pc, "hps", low, "cfNeck")  # hps .. shoulder .. hem .. the centre front's low point
     pts = _named(pc, keep, skip=("cfNeck",))
     pts += [("standHem", [-stand, y_low]), ("break", B)]
     pts += [(("lapelMid" if k == mid else None), q) for k, q in enumerate(curve[:-1])]
-    pts += [("collarTop", E), ("collarCB", Dp)]
+    pts += [("collarTop", E), ("collarCB", Dp)] + [(None, arc(rho, ph)) for ph in np.linspace(Phi, 0, 7)[1:-1]]
     extra = {k: v for k, v in pc.items() if k not in ("P", "names")}
     _ring_from(pc, pts)
     pc.update({k: v for k, v in extra.items() if k not in ("name",)})
@@ -121,12 +138,32 @@ def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand:
     D["seams"].append([f"{piece}:collarCB>hps", list(D["edges"]["neck_back"])])
     D.setdefault("pair_seams", []).append(f"{piece}:collarCB>collarTop")
     D["centre"][piece] = "open"
-    roll_a, roll_b = B, Dp + n * roll_stand
-    D["folds"].append({"piece": piece, "line": [roll_a.tolist(), roll_b.tolist()], "angle": 10, "kind": "roll",
-                       "radius": 0.006, "strength": 0.5, "flap": "lapelMid", "name": "shawl roll"})
+    roll_a = B
+    roll_pts = [B.tolist()] + [arc(rho + alpha, ph).tolist() for ph in np.linspace(0, Phi, 7)]
+    # the flap's side of the roll line, named by a mark just inside the lapel (the curve's middle may lie either
+    # side of the hinge below)
+    fl = roll_a + 0.3 * (Rp - roll_a) + n * 0.008
+    half = math.degrees(math.asin(min(1.0, (girth_ := 2 * (D["meta"].get("neck_front", 0.0) + D["meta"].get("neck_back", Lbn)))
+                                      / (2 * math.pi) / rho)))
+    pc["marks"] = dict(pc.get("marks") or {})
+    pc["marks"]["lapelFlap"] = fl
+    D["folds"].append({"piece": piece, "line": roll_pts, "angle": 10, "kind": "roll",
+                       "radius": 0.004, "strength": 0.5, "flap": "lapelFlap", "name": "shawl roll"})
+    # one cloth, two placements: the front on the torso, the collar (past the neck point) round the back of the
+    # neck, its neck seam along the bottom, standing `roll_stand`, the fall turned down over it
+    girth = girth_
+    D.setdefault("hinges", []).append({
+        "piece": piece, "name": "neckHinge", "part": "collar", "at": hps.tolist(), "dir": n.tolist(),
+        "mid": (hps + n * height * 0.5).tolist(), "origin": Dp.tolist(), "x": tE.tolist(), "role": "collar_fall",
+        "wrap": {"to": "neck", "edge": "collarCB", "flip": True, "fixed_above": True, "girth": float(girth), "out": 0.003,
+                 "apart": 0.0015},
+        # (a curved crease folds isometrically at one angle: the fall is the stand's cone reflected)
+        # (and as ONE crease: a roll's rows round a curved line stretch the flap 70%)
+        "fold": {"flap": "collarTop", "angle": round(2 * half, 1), "kind": "press", "radius": 0.0, "strength": 0.3}})
     D["meta"]["break"] = [float(B[0]), float(B[1])]
     D["log"].append(f"shawl collar on {piece}: break point {abs(yb) * 1000:.0f} mm below the neck point, roll line "
-                    f"{np.linalg.norm(roll_b - roll_a) * 1000:.0f} mm, neck seam {Lbn * 1000:.0f} mm (= the back neck), "
+                    f"{pattern.length(np.asarray(roll_pts)) * 1000:.0f} mm, neck seam {Lbn * 1000:.0f} mm (= the back neck), outer edge "
+                    f"{spring * 1000:.0f} mm longer round the back (spring), "
                     f"collar {height * 1000:.0f} mm at CB ({roll_stand * 1000:.0f} stand + {(height - roll_stand) * 1000:.0f} "
                     f"fall), front edge extended {stand * 1000:.0f} mm")
 
