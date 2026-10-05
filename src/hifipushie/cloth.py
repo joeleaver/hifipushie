@@ -1038,12 +1038,15 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     # along a fixed plan curve x height is an isometry, so the placed pieces have their flat pattern's lengths
     # (the cloth's rest shape is taken from them). Hulls per height made the pieces' rows jump between shapes.
     C = None
-    dzs = {}
+    dzs, dxs = {}, {}
     for nm in torso:
         w = pcs[nm]["wrap"]
         if "align" in w:  # [my point, other piece, its point]: hang this piece so the two are level (a coat's
             mine, other, op = w["align"]  # skirt from the bodice's waist)
-            dzs[nm] = float(uv[M["points"][f"{other}:{op}"]][1] - uv[M["points"][f"{nm}:{mine}"]][1])
+            dzs[nm] = float(uv[M["points"][f"{other}:{op}"]][1] - uv[M["points"][f"{nm}:{mine}"]][1]) + dzs.get(other, 0.0)
+        if "align_x" in w:  # the same round the body: my point at the other piece's point's place (a belt's end at the
+            mine, other, op = w["align_x"]  # side seam, a tail's centre back line on the back's)
+            dxs[nm] = float(uv[M["points"][f"{other}:{op}"]][0] - uv[M["points"][f"{nm}:{mine}"]][0]) + dxs.get(other, 0.0)
         if w.get("level"):  # pattern y = 0 at the body's <level> line (a skirt or waistband hangs from the waist)
             dzs[nm] = dzs.get(nm, 0.0) + float(at[f"{w['level']}_z"]) - float(hps[2])
     if torso:
@@ -1072,6 +1075,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     neck_tilt = None  # the neck pieces' axis (shared; wrap "tilt")
     neck_R, neck_lay, neck_sp = None, 0.0, None  # a buttoned stand's radius, its spiral's growth a turn, the spiral
     neck_R0 = None  # the first neck piece's radius
+    arm_ang = {}  # vertex -> its angle round its arm (pieces placed so far)
     placed_neck = []
     for k, nm in enumerate(names):
         w = pcs[nm]["wrap"]
@@ -1085,7 +1089,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(Cw[:, 1] - cy, 0))]
             else:
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(cy - Cw[:, 1], 0))]
-            q = _arc_point(Cw, start, U[:, 0], 1.0)
+            q = _arc_point(Cw, start, U[:, 0] + dxs.get(nm, 0.0), 1.0)
             X[sel] = np.c_[q, hps[2] + U[:, 1] + dzs.get(nm, 0.0)]
         elif to.startswith("arm."):
             side = to[4:]
@@ -1200,6 +1204,20 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 rad[back] = Rp - 2 * rho
             out = np.zeros((len(U), 3))
             d1, d2 = (el - sh) / seg[0], (wr - el) / seg[1]
+            vi_ = np.where(sel)[0]
+            turn_w = math.radians(float(w.get("turn", 0)))
+            if closed and "turn" not in w:
+                # a piece closed on itself is turned round the arm to where the edge it is sewn to lies (a cuff's
+                # opening at the sleeve's placket slit, not always under the arm): the mean angle between its seam
+                # vertices and their partners on the pieces already placed
+                loc = {int(v): i for i, v in enumerate(vi_)}
+                dif = []
+                for a_, b_ in M["sew"]:
+                    for me, ot in ((int(a_), int(b_)), (int(b_), int(a_))):
+                        if me in loc and ot in arm_ang:
+                            dif.append(arm_ang[ot] - float(w.get("front", 1)) * (U[loc[me], 0] - cx) / (closed / (2 * np.pi)))
+                if dif:
+                    turn_w = float(np.arctan2(np.mean(np.sin(dif)), np.mean(np.cos(dif))))
 
             def frame_t(ti):
                 """The axis point at arc position t along the bent axis, the directions angle 0 and 90 deg point
@@ -1228,7 +1246,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # circle of that girth it was pushed 18-21 mm out across the wrist and rested (made piece: rest =
                 # placed) as a cuff that much too big, which ruffled
                 sp = _cuff_spiral(body, t, U[:, 0], closed, x_lo, lay, cx, float(w.get("front", 1)),
-                                  math.radians(float(w.get("turn", 0))), frame_t)
+                                  turn_w, frame_t)
                 if sp is not None:
                     th, rr = sp
             # The inside of the elbow: round the kinked axis each segment's cylinder runs past the mitre plane there
@@ -1243,10 +1261,11 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             for i, (x, yv) in enumerate(U):
                 ti = float(t[i])
                 if closed:
-                    ang = float(w.get("front", 1)) * th[i] + math.radians(float(w.get("turn", 0)))
+                    ang = float(w.get("front", 1)) * th[i] + turn_w
                     out[i] = at_t(ti, ang, rr[i])[0]
                     continue
-                ang = float(w.get("front", 1)) * (x - cx) / Rp + math.radians(float(w.get("turn", 0)))
+                ang = float(w.get("front", 1)) * (x - cx) / Rp + turn_w
+                arm_ang[vi_[i]] = ang
                 p, u = at_t(ti, ang, rad[i])
                 _, u1 = at_t(seg[0] - 1e-6, ang, rad[i])
                 dl = rad[i] * max(0.0, float(u1 @ nin)) * tan_h

@@ -481,6 +481,28 @@ def slit(piece: dict, line, width: float = 0.003, name: str | None = None) -> di
     return dict(piece, P=np.asarray(new), names=names)
 
 
+def trim(piece: dict, edge: str, dist: float, name: str = "trim") -> dict:
+    """Cut the piece square across `dist` along its edge "a>b" from a, keeping a's side (a band cut to the length of
+    the edge it is sewn to). The cut's ends are named "<name>.a" (on the edge) and "<name>.b" (across)."""
+    a_name = edge.split(">")[0]
+    L = piece["P"][arc_indices(piece, edge)]
+    seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
+    cum = np.r_[0, np.cumsum(seg)]
+    if not 1e-6 < dist < cum[-1] - 1e-6:
+        raise ValueError(f"{piece['name']}: trim at {dist * 1000:.0f} mm along {edge} ({cum[-1] * 1000:.0f} mm long)")
+    i = int(np.searchsorted(cum, dist) - 1)
+    d = (L[i + 1] - L[i]) / seg[i]
+    q = L[i] + (dist - cum[i]) * d
+    n = np.array([-d[1], d[0]])
+    out = turn(piece, [(q - n).tolist(), (q + n).tolist()], keep_point=a_name)
+    names = dict(out["names"])
+    ia, ib = names.pop("turn.a"), names.pop("turn.b")
+    if np.linalg.norm(out["P"][ib] - q) < np.linalg.norm(out["P"][ia] - q):
+        ia, ib = ib, ia
+    names[name + ".a"], names[name + ".b"] = ia, ib
+    return dict(out, names=names)
+
+
 def apply(pieces: dict, ops: list) -> dict:
     """Apply alteration ops in order: {"op": "slash_spread" | "turn" | "move" | "scale" | "slit", "piece", ...}."""
     pieces = {k: copy.copy(v) for k, v in pieces.items()}
@@ -502,6 +524,11 @@ def apply(pieces: dict, ops: list) -> dict:
                 pieces[nm] = slash_spread(p, _line(p, op["line"]), float(op["amount"]), "none")
             elif kind == "slit":
                 pieces[nm] = slit(p, op["line"], float(op.get("width", 0.003)), op.get("name"))
+            elif kind == "trim":  # "length": m, or "match": edges ("piece:a>b") whose summed length it is cut to
+                dist = float(op["length"]) if "length" in op else sum(
+                    length(pieces[e.split(":")[0]]["P"][arc_indices(pieces[e.split(":")[0]], e.split(":", 1)[1])])
+                    for e in op["match"])
+                pieces[nm] = trim(p, op["edge"], dist, op.get("name", "trim"))
             else:
                 raise ValueError(f"unknown alteration op {kind!r} (slash_spread, turn, move, scale, slit)")
     return pieces
