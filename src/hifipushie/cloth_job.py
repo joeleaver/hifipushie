@@ -103,6 +103,11 @@ def stages(cfg: dict) -> list:
                  "sew_force": 0.0 if pins else None, "self_collision": bool(cfg.get("self_collision", True)),
                  "fixed": "pins" if pins else [], "body": bool(cfg.get("body", True)), "rack": bool(pins),
                  "hanger": bool(cfg.get("hanger")), "start": True, "ease": int(cfg.get("refine_ease", 15))}]
+    if cfg.get("mode") == "fine_settle":  # method "settle"'s second step (cloth.build): the made pieces prescribed,
+        # their flaps closing from open over "press" (in.npz carryPoses), then the drape settling round them
+        base = {"gravity": 1, "sew": True, "sew_force": None, "self_collision": True, "fixed": [], "body": True}
+        return [dict(base, name="press", frames=int(cfg.get("press_frames", 16)), pose=True),
+                dict(base, name="settle", frames=int(cfg.get("frames", 20)))]
     sc = bool(cfg.get("self_collision", True))
     sew_self = bool(cfg.get("self_collision_sew", True)) and sc
     sew_force = float(cfg.get("sew_force", 6.0))

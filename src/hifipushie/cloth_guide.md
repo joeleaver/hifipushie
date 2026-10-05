@@ -203,8 +203,23 @@ The plan lists:
     right under (a hem, a facing, a placket).
   - `line` is a line name of the piece, two point names, points in metres, `{"edge": "piece:a>b", "offset": m}` (parallel
     to an edge) or `{"mid": "x"}` (lengthwise through a band's middle).
-  - The solver side of fold lines is being built; until it lands, a collar is still placed round a U (`wrap.fold`),
-    which the plan warns about.
+  - `kind` "press" is one sharp crease; "roll" spreads the turn over an arc of `radius` (as many vertex rows as
+    the mesh can carry; a tight roll on a coarse mesh is one crease). `strength` 0..1 is how hard the crease holds
+    its angle. `flap` (a point or mark name) says which side turns when the default (the side with less sewn edge,
+    then the smaller one) is wrong. A fold must run from edge to edge of its piece.
+  - What a fold does (`folds.py`):
+    - the mesh gets a row of vertices on the line, so edges run along the crease;
+    - the placement lays the piece on its wrap unfolded and turns the flap about the row, as far as the fold asks or
+      as it clears what is under it (its own base side, the pieces under it, the body), per station along the line:
+      a collar's fall lies on its stand and opens over the shoulders;
+    - the solver keeps it: made pieces rest as placed; ordinary cloth in ZOZO rests on the flat pattern with the
+      hinges along the fold resting at its angle and bending 20x harder at strength 1 (`fold_press`); Blender's
+      cloth rests on the placement, where a fold is a U 8 mm across (its collision distances).
+  - `look_cloth` / the report measure each fold: the turn across it, the gap between flap and base
+    (`folds.measure`).
+  - How tight a fold can be depends on who makes it. A simulated crease is a wedge 5-7 degrees open (the first ring
+    of vertices needs a contact gap), so its layers are 3-6 mm apart at 1-2 cm triangles. A constructed one (method
+    "settle") is a U two cloth layers across: 1.6 mm.
 - **Interfacing** and its bending multiplier (practice 5-20x the shell; whole pieces or a band along a line).
 - **Made or draped, per piece.** Made pieces are constructed finished and keep their made shape (collar, stand,
   cuffs, waistband). Draped pieces are loose cloth shaped by body, gravity and seams (fronts, backs, sleeves, skirt
@@ -233,10 +248,28 @@ the fit is right. A fitter reads drag lines: folds point at what is too tight or
 Two methods (sheet key `method`):
 - **`simulate`:** everything is sewn and simulated. Today's default, and the right one for states like hung and
   draped, where the whole shape is physics.
-- **`settle`:** construct, settle lightly, detail. Made pieces are built finished by geometry, the draped cloth gets
-  a short gentle settle from the fitted placement, and fine folds are authored at tension points. This is how
-  artists get clean worn clothes, and it is under test as the default path for worn garments. The plan already
-  marks made and draped pieces for it; the solver side isn't wired yet, so it runs as `simulate` and says so.
+- **`settle`:** construct, settle lightly, detail (backend "zozo"). This is how artists get clean worn clothes.
+  - **Made pieces** (wholly interfaced, or the garment's `"made": [names]`) are built finished by the placement:
+    folded at their fold lines, closed at their closures, hugging the neck or wrist. The solver never shapes them:
+    they are held as constructed and ride the body through its poses.
+  - **Draped cloth** is sewn onto them and settled at `coarse` (2 cm) in a short schedule (60 frames sewing, 30
+    posing, 60 settling: 150 against 330). The seams still have to close in the solver: the placement is isometric,
+    not sewn.
+  - **The result** is carried onto the `resolution` mesh without a fine sim: the draped cloth by transfer and
+    smoothing, the made pieces placed again at the fine size (their folds a U two layers across) and set where the
+    coarse ones were held, their flaps laid on the cloth that arrived under them.
+  - **Fine folds** are authored from the drape (`detail.folds`, on by default here; `cloth_detail.py`): where the
+    coarse cloth is left compressed, real cloth would have folds finer than the mesh. The compression gives where,
+    which way and how deep; the fabric gives the spacing (shirting 8-17 mm). They go into the normal map with the
+    sewing details, so the look isn't limited by the sim mesh. `detail.fold_gain` scales them.
+  - On the test shirt (2 cm settle + 1 cm construct, laptop GPU): 205 s against 290-450 s for the full 2 cm sim;
+    sleeve crease width 3.4 mm (full 1 cm sim 6.7), fold spacing 8.7 mm (19.7), the collar's fall 5 mm below the
+    neckline seam at centre back (12 mm above it).
+  - What it does worse: the clay geometry is the coarse drape smoothed, so big folds are soft and few (the larger
+    authored folds are put into the geometry of a 1 cm mesh, the fine ones are a normal map); where the constructed
+    fine pieces meet the carried cloth (a collar's ends on the fronts) some crossings stay (18 on the test shirt).
+  - `"fine_settle": true` (opt-in, not working yet) is the intended finish: a short settle at the fine size with
+    the made pieces prescribed and their flaps pressing the cloth down, instead of moving cloth by hand.
 
 A draft is one 2 cm simulation, about a minute. It looks puffy on purpose. Read:
 - the **verdict**: CORRUPT (tangled or crumpled), TOO SMALL, STRAINED at a girth, or fits;
@@ -322,7 +355,9 @@ These are drawn from the pattern itself into maps on the flat-pattern atlas (`de
 - a dashed topstitch `topstitch` m in from every edge (`stitch` length, `stitch_gap`);
 - a turned-up hem `hem` m deep along free edges;
 - buttons (discs with four holes) on marks named `button*`, and stitched slots on `buttonhole*`;
-- the thread colour (`thread`, default a shade lighter than the cloth).
+- the thread colour (`thread`, default a shade lighter than the cloth);
+- fine folds authored from the drape (`folds`: true | false, default on for method "settle"; `fold_gain`;
+  `fold_opts` overrides the fabric's `wavelength` [min, max], `length`, `sharp`).
 
 Judge them in close-ups:
 ```
@@ -465,8 +500,8 @@ A draft source we don't have: write own `pieces` (outlines in metres with named 
 | Pieces crossed or overstretched at the start | Stage 4 |
 
 Still open (the checks say so where they can):
-- the fold-line solver, pressed edges and the `settle` method;
-- Simon's sleeve placket, Carlton's belt, vent, facing and lapel roll;
+- Carlton's facing and lapel roll; pleats as folds (they are seam gaps: a fold that dies out inside a piece is a
+  cone, and a pleat's layers are finer than a 1-2 cm mesh); double-layer (bagged) cuffs and collars;
 - leg wraps (trousers), hoods, linings, pockets as pieces;
 - button size and buttonhole direction per design in the detail maps;
 - crease width and fold spacing measured by the tools; grain anisotropy.
