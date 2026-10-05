@@ -69,8 +69,12 @@
    "angle": 55,
    "per_m": 4.8,
    "droop": 0.05,
-   "up": 0.4,
-   "steps": 4
+   "up": 0.12,
+   "steps": 4,
+   "face": 0.45,
+   "spread": 55,
+   "divergence": 144,
+   "light": 0.6
   },
   "card": {
    "twig": {
@@ -78,7 +82,8 @@
     "length": 0.45,
     "side_shoots": 4
    }
-  }
+  },
+  "petiole": 0.03
  },
  "bark": {
   "kind": "furrowed",

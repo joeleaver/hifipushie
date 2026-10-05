@@ -282,6 +282,49 @@ full-detail one. A budget first gives branches fewer rings and sides, then leave
 marked, dead wood and drawn guides, stays down to a quarter of that girth), and draws the twigs that stand on wood
 it kept; the export WARNS when cards would float. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
 
+## From a botanical description to our keys
+
+Take leaf and needle arrangement from a flora's TEXT (or a botanical plate), not from photos: photos are for the
+whole tree's read and for colour. What a description says, and the key it sets:
+
+| the flora says | key | values |
+|---|---|---|
+| leaves alternate / spirally arranged (2/5, 3/8) | `leaves.twig.arrangement: "spiral"`, `divergence` | 144 (2/5), 135-137.5 (3/8), 120 (1/3) |
+| leaves alternate in two ranks (distichous: elm, beech, lime) | `arrangement: "alternate"` | |
+| leaves opposite (maple, ash) / whorled | `arrangement: "opposite"` / `"whorled"` | |
+| leaf blade length, width / length | `leaves.length` (m), `leaves.width` | oak 0.10-0.12, 0.65; birch 0.03-0.07; willow 0.04-0.16, 0.12 |
+| petiole length / blade length | `leaves.petiole` | oak 0.03 (2-3 mm stalk); birch 0.3-0.5 (slender: the leaves tremble) |
+| leaves or shoots pendulous | `leaves.hang`, `twig.up` < 0, `twig.droop`, habit `tropism` < 0 on the last orders | |
+| sun leaves at all angles / shade leaves in a flat mosaic | `twig.light` 0-1 (blades turned to the sky), `twig.face` 0-1 (whole twigs flat to the sky) | sun 0.3-0.6, shade 0.8-1 |
+| needles singly on pegs all round the shoot (spruce) | `leaves.shape: "needle_spray"`, `twig.needles: "radial"`, `parted` (thinner underneath), `forward` | |
+| needles in fascicles of 2/3/5 on dwarf shoots (pines) | `shape: "needle_tuft"`, `twig.needles: "fascicles"` | |
+| needles flat, in two ranks with a parting (fir, yew, hemlock) | `twig.needles: "ranked"` | |
+| needle length | `leaves.length` | spruce 0.01-0.025, Scots pine 0.04-0.06 |
+| needles persist N years | `leaves.retention` (years) | spruce 4-10, Scots pine 2-6 |
+| branches in regular whorls | habit `whorl`, `buds` | |
+| branchlets pendulous from level limbs | habit `tropism` < 0 and `tip_life` on that order | |
+| crown conic / domed / flat-topped / columnar | habit `apical`, `apical_old`, `leader`, `tip_life`, `uneven` | |
+| bark | `bark.kind` (furrowed, plates, scales, lenticel) + colours, `upper_color` | |
+
+What the presets rest on (quoted from the sources):
+- Norway spruce: needles "four-sided and attached singly to small persistent peg-like structures (pulvini)", staying
+  "between four and ten years", branches "in regular whorls" (en.wikipedia.org/wiki/Spruce); leaves "1-2.5 cm, 4-angled
+  in cross section", "light to dark green", branches "the upper level or ascending, the lower drooping", "crown conic"
+  (conifers.org/pi/Picea_abies.php).
+- Scots pine: needles in fascicles of "two", "(2.5-)4-6(-9) cm long", "moderately to often strongly glaucous",
+  "persisting for 2-6(-9) years"; crown "dense, broadly domed or even flat-topped"; bark "thick, scaly-plated,
+  grey-brown" low, "thin, flaking, orange-red" above (conifers.org/pi/Pinus_sylvestris.php).
+- Silver birch: "the twigs are slender and often pendulous"; leaves "triangular with broad, untoothed, wedge-shaped
+  bases, slender pointed tips", "3 to 7 cm long", "short, slender stalks"; bark white, with age "irregular, dark, and
+  rugged" at the base (en.wikipedia.org/wiki/Betula_pendula).
+- Pedunculate oak: crown "spreading and unevenly domed ... massive lower branches"; leaves "arranged alternately along
+  the twigs", "10-12 cm long by 7-8 cm wide, with a short (typically 2-3 mm) petiole", "3-6 rounded lobes"; bark
+  "greyish-brown and closely grooved, with vertical plates" (en.wikipedia.org/wiki/Quercus_robur).
+- Weeping willow: leaves "alternate and spirally arranged, narrow, light green, 4-16 cm long and 0.5-2 cm broad",
+  "gold-yellow in autumn"; shoots "yellowish-brown" (en.wikipedia.org/wiki/Salix_babylonica).
+Not from a source (the SpeedTree manual's leaf pages refused the fetch): the divergence fractions per species and
+the sun/shade `light` values above are textbook generalities, set by me.
+
 ## Game-ready: LODs, wind, seasons, collision
 
 `export_plant(name, triangles=20000, lods=3, impostor=True, seasons=["summer", "autumn", "winter"], wet=True,
@@ -298,7 +341,7 @@ lod_files=True)`:
   material variants in the export (KHR_materials_variants: summer / autumn / winter / snow / wet). Snow lying on wood
   is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
 - **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh.
-- What importers do with the file (checked here: Blender 5.1, Godot 4.7; NOT checked: Unity, Unreal):
+- What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
   1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
   (LOD 0; use the LOD files), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`.

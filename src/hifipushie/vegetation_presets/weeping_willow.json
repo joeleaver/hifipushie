@@ -87,21 +87,24 @@
   "width": 0.2,
   "hang": 0.6,
   "color": [
-   0.723,
-   0.8,
-   0.416
+   0.537,
+   0.62,
+   0.31
   ],
   "twig": {
    "length": 0.55,
    "leaves": 20,
-   "arrangement": "alternate",
+   "arrangement": "spiral",
    "angle": 40,
    "per_m": 6.0,
    "droop": 1.2,
    "up": -0.9,
    "spread": 25,
    "min_order": 1,
-   "steps": 4
+   "steps": 4,
+   "face": 0.25,
+   "divergence": 144,
+   "light": 0.2
   },
   "card": {
    "twig": {
@@ -114,7 +117,12 @@
    },
    "scale": 1.0
   },
-  "translucency": 0.6
+  "translucency": 0.4,
+  "autumn": [
+   0.86,
+   0.68,
+   0.14
+  ]
  },
  "bark": {
   "kind": "furrowed",

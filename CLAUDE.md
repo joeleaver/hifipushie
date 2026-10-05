@@ -330,6 +330,18 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Bone heat (Blender automatic weights) vs ours on kit characters (look builds): goblin 13 vs 17 BAD of 45 (rigid
     better, leak worse: 30 vs 13 mm arm <-> thigh), troll_anat 40 vs 38 of 51. Neither is good: their limbs are
     fused to the body in the look build. Not adopted; kit creatures' weights are an open problem.
+  - Dressed characters (2026-10-05, the golfer's export re-skinned; renders `rig_renders/wa_golfer_*`): (1) the
+    grafted neck/head copied the template neck LOOP's weights all the way up (Shoulder 0.38 / Arm 0.19): an arm at
+    60 deg pulled the neck's side and the collar 25-36 mm. Now it hands over to the Neck joint within
+    `rig_template.GRAFT_REACH` 4 cm. (2) The head rule is by height, so a collar's top (1-2 cm over the floor at the
+    nape) was Head 1.0 and turned with the face (47 mm, 299 flipped): a part other than the skin (`spec.rig.skin_part`,
+    "body", + face_shapes.parts) that is under `HEAD_WORN` 0.5 head is worn and takes no head rule;
+    `parts.<p>.rig_head` overrides. (3) A worn part's transferred weights are smoothed `WORN_SMOOTH` 6 rounds over
+    its own mesh, seam-split vertices welded (a collar's two faces and edge read three places: its wing crumpled).
+    (4) The head floor climbs one jaw landmark up the ramus behind the jaw's angle; up to the Head joint it put the
+    ear lobes in the band (30 flipped triangles under each ear). The audit counts smoothed cloth as leak and cloth
+    folding at 60 deg as flipped: read its cloth rows with the renders. Open: a strap shell beside a rigidly bound
+    bag shreds at the hip, hems fold (no hem bones), fingers touching round a held disc read the wrong finger.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.

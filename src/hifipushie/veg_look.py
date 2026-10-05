@@ -57,7 +57,8 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         ct = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
         bud = veg_export.budget(tree, triangles, tile, ct)
         M = bud["wood"]
-        tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw)[0]
+        lf, cap_c, back_c = veg_export.cluster_leaves(lf, bud["keep"])
+        tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
     arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"], "dead": M["dead"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
     at = None

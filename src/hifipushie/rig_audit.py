@@ -161,7 +161,20 @@ def owners(bones: list[dict], V: np.ndarray, F: np.ndarray | None = None):
 CLEAR = 0.7  # a vertex is clearly one side's when that side's nearest bone is this much nearer than the other's
 
 
-def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray, only=None) -> dict:
+def bound(meshes: dict) -> np.ndarray:
+    """Per vertex of `joined(meshes)`: in a mesh bound whole to one joint (parts.<p>.rig_bone: a bag on the hip, a
+    disc in the hand, hair on the head). Such a prop follows its joint, not the bones it happens to lie near, so the
+    audit leaves it out."""
+    out = []
+    for m in meshes.values():
+        J, W = np.asarray(m["J"]), np.asarray(m["W"])
+        top = J[np.arange(len(J)), W.argmax(1)]
+        out.append(np.full(len(J), bool(len(J)) and bool((W.max(1) > 0.999).all()) and bool((top == top[0]).all())))
+    return np.concatenate(out)
+
+
+def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray, only=None,
+          skip: np.ndarray | None = None) -> dict:
     """The skin's test on any skinned mesh (the look's build, or an export read back by `read_glb`).
     Static: weights summing to 1, influences per vertex, left / right asymmetry, and digit BLEED: weight one
     digit's bones hold on another digit's skin (neighbouring fingers are millimetres apart: what distance weighting
@@ -174,11 +187,12 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
       volume   the mesh's volume change as a share of the joint's own size (a rigid turn changes none);
       flipped  triangles turned inside out (of those wholly on one side of the joint).
     {"static": {...}, "bones": [rows, worst first by a score in mm]}. Self-intersection isn't measured: flipped
-    triangles and leak are its usual signs."""
+    triangles and leak are its usual signs. skip: vertices left out of every measure (`bound`: rigid props)."""
     from scipy.spatial import cKDTree
     names = [b["name"] for b in bones]
     n = len(bones)
     V = np.asarray(V, np.float64)
+    keep = np.ones(len(V), bool) if skip is None else ~np.asarray(skip, bool)
     fam = np.arange(n)
     for i, b in enumerate(bones):
         if b.get("twist"):
@@ -198,7 +212,7 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
         while p >= 0:
             desc[p, i] = True
             p = par[p]
-    static = {"vertices": int(len(V)), "sum_error": float(np.abs(W.sum(1) - 1).max()),
+    static = {"vertices": int(len(V)), "skipped": int((~keep).sum()), "sum_error": float(np.abs(W.sum(1) - 1).max()),
               "negative": int((W < -1e-9).sum()), "influences_max": int((W > 1e-6).sum(1).max()),
               "influences_mean": float((W > 1e-6).sum(1).mean())}
     swap = np.arange(n)
@@ -233,7 +247,7 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
             ia[[i for i, c in chain.items() if c == a]] = True
             # b's skin, clearly: its bone nearer than a's by CLEAR (the web between two fingers is nobody's)
             first = min(i for i, c in chain.items() if c == b)  # past the knuckle: the web there is shared
-            m = ((own_chain == b) & (nearest(ib) < CLEAR * nearest(ia))
+            m = (keep & (own_chain == b) & (nearest(ib) < CLEAR * nearest(ia))
                  & (np.linalg.norm(V - bones[first]["head"], axis=1) > 2.5 * girth.get(first, 0.008)))
             if m.any() and wa[m].max() > 0.02:
                 bleed.append({"holder": a, "on": b, "max": float(wa[m].max()),
@@ -269,13 +283,13 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
         strict = desc[i].copy()
         buried = b["name"].endswith(BURIED)
         strict[i] = not buried
-        follow = strict[own] & (dj > 1.6 * r) & (dm < CLEAR * do)
+        follow = keep & strict[own] & (dj > 1.6 * r) & (dm < CLEAR * do)
         if buried:
             for c in np.flatnonzero(par == i):
                 if c in seg:
                     follow &= np.linalg.norm(V - bones[c]["head"], axis=1) > 3.0 * girth.get(int(c), 0.02)
         r_own = max(girth.get(i, 0.02), 0.004)  # (a finger's blend reaches a finger's width, not the palm's)
-        stay = ~mine & ~(rel & (dj < 3.0 * r_own)) & (dj > 1.6 * r_own) & (do < CLEAR * dm)
+        stay = keep & ~mine & ~(rel & (dj < 3.0 * r_own)) & (dj > 1.6 * r_own) & (do < CLEAR * dm)
         worst = None
         for e in (e1, np.cross(ax, e1)):
             t = np.radians(deg)
@@ -286,7 +300,7 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
             ls = np.linalg.norm(P - V, axis=1)[stay]
             ar = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
             fm = mine[F].all(1)
-            pure = fm | (~mine[F]).all(1)
+            pure = (fm | (~mine[F]).all(1)) & keep[F].all(1)
             exp = np.where(fm[:, None], area0 @ R.T, area0)
             row = {"bone": b["name"], "deg": deg, "digit": i in chain,
                    "rigid_p95": float(np.percentile(er, 95) * 1e3) if len(er) else 0.0,

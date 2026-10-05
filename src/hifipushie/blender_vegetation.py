@@ -450,7 +450,26 @@ def _world(sc, job):
         for k_, v_ in (("dust_density", 0.3), ("air_density", 1.0)):
             if hasattr(sky, k_):
                 setattr(sky, k_, v_)
-        L.new(sky.outputs["Color"], bg.inputs["Color"])
+        # the sky is what the camera sees; what LIGHTS the plant from it is far less blue (a clear sky's fill on shaded
+        # bark rendered blue-black, shaded leaves 30-50 deg colder in hue than photos): the sky's colour pulled 70% to grey
+        lp = N.new("ShaderNodeLightPath")
+        grey = N.new("ShaderNodeMix")
+        grey.data_type = "RGBA"
+        grey.inputs["Factor"].default_value = job.get("sky_fill_grey", 0.7)
+        L.new(sky.outputs["Color"], grey.inputs["A"])
+        bw = N.new("ShaderNodeRGBToBW")
+        L.new(sky.outputs["Color"], bw.inputs[0])
+        warm = N.new("ShaderNodeVectorMath")
+        warm.operation = "SCALE"
+        warm.inputs[0].default_value = (1.05, 1.0, 0.92)
+        L.new(bw.outputs[0], warm.inputs["Scale"])
+        L.new(warm.outputs[0], grey.inputs["B"])
+        pick = N.new("ShaderNodeMix")
+        pick.data_type = "RGBA"
+        L.new(lp.outputs["Is Camera Ray"], pick.inputs["Factor"])
+        L.new(grey.outputs["Result"], pick.inputs["A"])
+        L.new(sky.outputs["Color"], pick.inputs["B"])
+        L.new(pick.outputs["Result"], bg.inputs["Color"])
         bg.inputs[1].default_value = job.get("sky_strength", 0.07)
     except Exception:
         bg.inputs[0].default_value = (*job.get("sky", [0.5, 0.66, 0.9]), 1)
