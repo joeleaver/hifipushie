@@ -1141,6 +1141,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             seg = [np.linalg.norm(el - sh), np.linalg.norm(wr - el)]
             out_dir = np.array([1.0 if side == "L" else -1.0, 0, 0])
             P = pcs[nm]["P"]
+            if w.get("bend"):  # a sleeve cut bent at the elbow is laid as the straight sleeve it was bent from
+                P, U = pattern.unbend(P, **w["bend"]), pattern.unbend(U, **w["bend"])
             if "follow" in w:  # this piece's point goes where another (placed) piece's point went, and the
                 # piece runs on toward the hand (a cuff: pattern +y toward the hand)
                 other, op, mine = w["follow"]

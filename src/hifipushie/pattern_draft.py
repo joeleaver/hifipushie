@@ -870,7 +870,12 @@ def _rev(spec: str) -> str:
 def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     """A two-piece sleeve from the one-piece: the sleeve is folded edge to centre (the fold lines a quarter in from
     each side), the folds become seams moved `shift` under the arm so they are hidden: a top sleeve (the middle) and
-    an under sleeve (the two outer strips joined along the old underarm seam)."""
+    an under sleeve (the two outer strips joined along the old underarm seam; its top edge is the hollow of the two
+    underarm curves). "shift_back": the hindarm seam's own shift (default 0.6 x shift: it runs over the elbow).
+    Then the sleeve is BENT as a tailor cuts it: below the elbow line each piece swings toward its forearm seam by
+    "elbow" (m the wrist comes forward; 0 = straight), about the forearm seam's elbow point: the forearm seams stay
+    equal and hollow, the hindarm seams open over the elbow, the top sleeve's a little more than the under's (elbow
+    ease, declared), the hem ends up square to the forearm."""
     if "sleeve" not in D["pieces"]:
         raise DraftError("two_piece: draft the sleeve first")
     pc = D["pieces"]["sleeve"]
@@ -880,7 +885,8 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     lo = pc["P"][:, 1].min()
     # the seam lines: a quarter in from each side at the biceps and at the hem (they follow the taper), `shift` under
     lf = (np.array([W / 4 + shift, 0.0]), np.array([hw / 4 + shift, lo]))
-    lb = (np.array([-(W / 4 + shift), 0.0]), np.array([-(hw / 4 + shift), lo]))
+    sb_ = float(o.get("shift_back", 0.6 * shift))
+    lb = (np.array([-(W / 4 + sb_), 0.0]), np.array([-(hw / 4 + sb_), lo]))
     work = copy.deepcopy(pc)
     # cut points on the cap and on the hem at the two seam lines
 
@@ -948,6 +954,12 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     under_pts += [("usHemMid", 0.5 * (b_hem[0] + f_hem[-1])), ("usHemF", f_hem[-1])]  # the under hem: one straight line
     under = pb.make_piece("under", under_pts, "sleeve", {"to": "arm.L", "front": 1, "turn": 180,
                                                          "align": ["usF", "top", "tsF"]}, "copy")
+    # the strips were folded in: the piece as built is seen from its wrong side. Turned over (mirrored), so its
+    # pattern face is its outside like every other piece, and laid under the arm its forearm edge meets the top's
+    # (unmirrored it went round the arm the other way: both sleeve seams started ~15 cm apart and the sewing
+    # twisted the sleeve into a knot at the shoulder)
+    under["P"] = (under["P"] * [-1.0, 1.0])[::-1]
+    under["names"] = {k_: len(under["P"]) - 1 - i_ for k_, i_ in under["names"].items()}
     tpts = [(("tsB" if k == i["tsB"] else "tsF" if k == i["tsF"] else "tsHemF" if k == i["tsHemF"] else
               "tsHemB" if k == i["tsHemB"] else "capTop" if k == i["capTop"] else None), work["P"][k]) for k in top]
     topp = pb.make_piece("top", tpts, "sleeve", {"to": "arm.L", "front": 1}, "copy",
@@ -955,19 +967,31 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     # the elbow: a tailored sleeve follows the arm's bend. Both pieces are sheared alike about the elbow line (the
     # forearm seam hollows, the hindarm seam bows out over the elbow point), so the mating seams stay the same curves;
     # and the under sleeve's hindarm is hollowed a little more than the top's bows (the cloth cups over the elbow)
-    elbow = float(o.get("elbow", 0.018))
+    elbow = float(o.get("elbow", 0.035))
     ey = float(np.mean(pc["lines"]["elbow"][:, 1])) if "elbow" in (pc.get("lines") or {}) else 0.45 * lo
+    theta = elbow / max(ey - lo, 1e-6)
     if elbow > 0:
-        def bend(P):
-            y = P[:, 1]
-            up = np.clip((0 - y) / max(0 - ey, 1e-6), 0, 1)  # 0 at the biceps line, 1 at the elbow
-            dn = np.clip((y - lo) / max(ey - lo, 1e-6), 0, 1)  # 0 at the hem, 1 at the elbow
-            w = np.where(y >= ey, up * up * (3 - 2 * up), dn * dn * (3 - 2 * dn))
-            w = np.where(y > 0, 0.0, w)
-            return np.c_[P[:, 0] - elbow * w, y]  # the elbow goes back (the front of the sleeve is +x)
-        topp["P"], under["P"] = bend(topp["P"]), bend(under["P"])
-        for k_ in list(topp["lines"]):
-            topp["lines"][k_] = bend(np.asarray(topp["lines"][k_], float))
+        for pcx, edge, sgn in ((topp, "tsF>tsHemF", 1.0), (under, "usF>usHemF", -1.0)):
+            for yy in np.linspace(ey + 0.07, ey - 0.07, 9):  # both seam edges need points to carry the curve
+                try:
+                    _point(D, pcx, {"edge": edge, "y": float(yy)})
+                except DraftError:
+                    pass
+            ix = pattern.arc_indices(pcx, edge)
+            E = pcx["P"][ix]
+            o_ = np.argsort(E[:, 1])
+            piv = np.array([float(np.interp(ey, E[o_, 1], E[o_, 0])), ey])
+            other = "tsB>tsHemB" if pcx is topp else "usB>usHemB"
+            for yy in np.linspace(ey + 0.07, ey - 0.07, 9):
+                try:
+                    _point(D, pcx, {"edge": other, "y": float(yy)})
+                except DraftError:
+                    pass
+            bd = {"pivot": piv.round(5).tolist(), "angle": round(sgn * theta, 5), "y": round(ey, 5), "band": 0.05}
+            pcx["P"] = pattern.bend(pcx["P"], **bd)
+            for k_ in list(pcx["lines"]):
+                pcx["lines"][k_] = pattern.bend(np.asarray(pcx["lines"][k_], float), **bd)
+            pcx["wrap"]["bend"] = bd  # (cloth.place lays the straight sleeve: the bend is undone for the start)
     del D["pieces"]["sleeve"]
     D["pieces"]["top"], D["pieces"]["under"] = topp, under
     # seams: the cap (top's part + the under's two parts) into the armhole; the two sleeve seams
@@ -978,14 +1002,26 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     D["seams"] += [new_cap, ["top:tsF>tsHemF", "under:usF>usHemF"], ["top:tsB>tsHemB", "under:usB>usHemB"]]
     if note:
         D["notes"][json.dumps(new_cap)] = note
+    if elbow > 0:
+        hb = (edge_length(D, "top:tsB>tsHemB"), edge_length(D, "under:usB>usHemB"))
+        e_ = hb[0] / hb[1] - 1
+        D["notes"][json.dumps(D["seams"][-1])] = {
+            "ease": [round(e_ - 0.004, 4), round(e_ + 0.004, 4)],
+            "why": f"elbow ease: the top sleeve's hindarm is {(hb[0] - hb[1]) * 1000:.0f} mm longer, eased in over the elbow"}
+        fa = (edge_length(D, "top:tsF>tsHemF"), edge_length(D, "under:usF>usHemF"))
+        if abs(fa[0] - fa[1]) > 0.001:
+            D["notes"][json.dumps(D["seams"][-2])] = {
+                "ease": [round(fa[0] / fa[1] - 1 - 0.003, 4), round(fa[0] / fa[1] - 1 + 0.003, 4)],
+                "why": "the forearm seams bent about their own elbow points"}
     D["edges"]["sleeve_hem"] = ["top:tsHemB>tsHemF", "under:usHemF>usHemMid>usHemB"]
     D["meta"]["sleeve"]["two_piece"] = True
     D["edges"]["cap"] = new_cap[0]
     lf = (edge_length(D, "top:tsF>tsHemF"), edge_length(D, "under:usF>usHemF"))
     lb = (edge_length(D, "top:tsB>tsHemB"), edge_length(D, "under:usB>usHemB"))
     D["log"].append(f"two-piece sleeve: seams {shift * 1000:.0f} mm under the quarter lines; front seam top/under "
-                    f"{lf[0] * 1000:.0f}/{lf[1] * 1000:.0f} mm, back {lb[0] * 1000:.0f}/{lb[1] * 1000:.0f} mm; bent {elbow * 1000:.0f} mm "
-                    "at the elbow (forearm seam hollowed, hindarm seam bowed, the same on both pieces)")
+                    f"{lf[0] * 1000:.0f}/{lf[1] * 1000:.0f} mm, back {lb[0] * 1000:.0f}/{lb[1] * 1000:.0f} mm; bent "
+                    f"{math.degrees(theta):.1f} deg at the elbow (the wrist {elbow * 1000:.0f} mm forward: forearm seam "
+                    "hollowed, hindarm seam opened over the elbow, the top's more: elbow ease)")
 
 
 OPS = {"style_line": op_style_line, "take_in": op_take_in, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
