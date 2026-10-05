@@ -358,6 +358,24 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     flesh (goblin_talk 25%, goblin_anat 2%, trolls 8-12%; warns over 20%). The audit takes ownership from the
     modelled flesh on kit characters (`flesh_distances`): by bone segment the arms "owned" 830 belly vertices and
     read 116 mm off a rigid turn.
+  - Blink (`GnmFace._lid_seal`, `LID_SEAL` / `LID_OVER` / `LID_BAND`; render `wa_gnm_blink_seal.png`): the basis
+    DID close the eye (front rays reaching the ball: 43% open, 0.1% blinked); the ragged line was each low-poly
+    margin vertex landing at its own height. Now 14 bins across the eye put both margins on a parabola through the
+    lower lid's (each vertex by its share of its margin's travel), then the band 1.5 mm either side is squeezed
+    onto its own lid's side. Clean line in clay on the 40k human; 1-2% of rays see the ball at the outer corner
+    (the fade past the corners). Not yet seen through a fresh export with maps; the face kit's `_blink` unchanged.
+  - Fresh golfer export (2026-10-06, 30k / 2048, scratch `rigtwist/exp_golfer`): Khronos 0 errors 0 warnings;
+    audit 11 BAD of 51 (old export 20, old meshes re-skinned 16-17), no digit bleed, Head not flagged; left: knee
+    onto the shorts' hem 17-27 mm, arm onto the collar 18-20 mm, forearm 10 mm, cloth flips. workspace/dg_fix2's
+    own spec has no `rig_attach` (only the examples do): its strap was exported unattached.
+  - HANDOVER (rigtwist agent, context full): branch `worktree-agent-aaa260409e3ad0ff7`. Scratch scripts in the
+    session scratchpad `rigtwist/`: aud.py (audit a GLB), reskin.py (re-skin a GLB's meshes with the code as it is;
+    env GR / WS / ATT), wa2.py (dressed before/after sheets), blink.py (lid seal before/after + rays), facesheet.py
+    (GLB with maps, 6 shapes), dbg8/10/12.py (whose vertices leak / where triangles flip / stray digit vertices),
+    fused.py, val/v.mjs (Khronos), expg.py (golfer export). Open, in order: (1) the blink through a fresh export
+    with maps + test in test_face_shapes; (2) goblin_anat and troll real exports audited (never run); (3) the
+    goblin: its model must be fixed (arms clear), the tool says so; "fail soft" weights for fused limbs not built;
+    (4) kinked smile corners at 15k; (5) the throat card; (6) hem bones; (7) a rig check in a real engine.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.

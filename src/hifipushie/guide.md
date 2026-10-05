@@ -439,6 +439,12 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   dynamic-bone components, Unreal's Chaos cloth and its RBAN skirt chains, VRM spring bones). This rig has no hem
   bones: a skirt will follow the thighs and fold between them. Judge with `rig(pose={"LeftUpLeg": [[1, 0, 0],
   -60]}, glb=...)` and keep hems short or close-fitting if the character has to kick.
+- **Model limbs clear of the body before rigging.** An arm lying against the belly is one skin with it once
+  meshed: raised, it tears a slab out of the torso and trails a web, whatever the weights (the goblin did). `rig`
+  prints a WARNING naming the limb and how much of its surface touches other flesh; fix the spec (joints out to an
+  A-pose until air shows between limb and body, or thinner flesh there), not the weights. A rigger handed such a
+  mesh would send it back, or cut the limb free and re-model the pit; weighting the fused patch to the body only
+  hides the tear behind a stretched web.
 - **Check the numbers.** `rig` prints, under the bone list, a twist test per chain (the hand rolled 75 and 105
   deg, the arm 60, foot and thigh 40): the skin's twist by station along the segment, what is left at the joint,
   the largest step, the worst section's area against rest (flagged CANDY WRAPPER under 0.8) and the worst
