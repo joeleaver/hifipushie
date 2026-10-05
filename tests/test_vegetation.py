@@ -698,7 +698,7 @@ def test_whorls_rings_and_creeping_branchlets():
                 out.append(dist[m & has].min() / max(dist[m & (o == 1)].max(), 1e-6))
         return float(np.median(out))
 
-    assert foliage_from(per) < 0.6 < foliage_from(one), (foliage_from(per), foliage_from(one))
+    assert foliage_from(per) < 0.8 * foliage_from(one), (foliage_from(per), foliage_from(one))
     # a pine tuft is round: crossed cards plus one across the shoot, its picture in its own atlas cell
     at = veg_leaf.atlas(v.resolve({"species": "scots_pine"})["leaves"])
     c = at["cards"][0]

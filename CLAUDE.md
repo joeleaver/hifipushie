@@ -2547,6 +2547,17 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     (a plant that brings its own card placements).
   - Looks: snow / wet lie on the ground too; `wind_plant` reports displacement in metres per class of vertex
     (foot, trunk top, limb ends, leaf tips) and how far the limbs swing in step, with warnings.
+  - Round 2 (vg_63-66): spruce on 2-year steps (`years_per_step` 2, `unit` 1.0: whorls 1 m apart ARE the tiers; 14k
+    nodes, 16k twigs, was 60k / 42k), limbs droop and turn up, twigs lie flatter (`face` 0.75). `bud_each` + strong
+    `uneven` on the spruce gave juniper lobes or a ragged column: not used. Pine: `apical_old` 0.46 from 40% of its
+    age (the bare leader spike was a trunk tip that kept its lead while its whorls rarely broke), limb jitter 0.42.
+    Willow: twigs 8.5 per m, cards x1.2; two buds per node on the hanging order starved it into a table with three
+    tassels (reverted). Snow: on every card that faces up (by the crown's direction alone only the tree's top went
+    white); wet leaves 0.75 x roughness (0.4 x mirrored the sky: grey smears). Bough cards drop the end-on card.
+    Wind on a 20k birch: foot 0, trunk top 31 cm, limb ends 25 cm mean / 55 most, limbs in step -0.2.
+    FAILS at low budgets: 8k pines (vg_63_pine_set_8k) and a 12k forest spruce (vg_63_forest_kit_12k) are heaps of
+    fern / palm-frond cards: `cluster_leaves` enlarges a twig's picture, it does not show a bough. What artists do:
+    bake a real limb end (its branchlets and twigs) into the card. Not built.
   - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);

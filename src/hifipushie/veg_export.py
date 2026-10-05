@@ -134,6 +134,7 @@ def cluster_leaves(leaves: dict, keep: float) -> tuple[dict, float, float]:
     card = dict(leaves.get("card") or {})
     card["twig"] = {**(card.get("twig") or {}), "length": round(tw["length"] * K, 3),
                     "leaves": int(tw["leaves"] * min(K * K, 5.0)), "side_shoots": int(round(max(tw["side_shoots"], 3) * min(K, 2.0)))}
+    card["end"] = False  # (a bough is a spray, not a round tuft: its end-on card was a third of each card's triangles)
     return {**leaves, "card": card}, 1.25, 0.45 * (K - 1) * tw["length"]
 
 
@@ -235,6 +236,9 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: fl
             break
     if n_tw and triangles and out["keep"] < 0.25:  # a crown of bough cards wants cover more than twig wood: 35% wood
         out2 = _wood_for(tree, tile, triangles * 0.35, pr)
+        if (tree["spec"]["leaves"].get("card") or {}).get("end"):  # bough cards drop the end-on card
+            cr_ = int((tree["spec"]["leaves"].get("card") or {}).get("cross", 1))
+            card_triangles = int(round(card_triangles * cr_ / (cr_ + 1)))
         if out2 is not None:
             out.update(out2)
             out["keep"] = float(np.clip(((triangles - len(out["wood"]["F"])) // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))
