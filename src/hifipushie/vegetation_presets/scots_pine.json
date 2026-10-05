@@ -73,36 +73,41 @@
  },
  "leaves": {
   "shape": "needle_tuft",
-  "length": 0.09,
+  "length": 0.05,
   "color": [
-   0.366,
-   0.44,
-   0.282
+   0.315,
+   0.42,
+   0.294
   ],
   "translucency": 0.1,
   "twig": {
-   "length": 0.34,
-   "leaves": 220,
-   "per_m": 5.0,
+   "length": 0.38,
+   "leaves": 260,
+   "per_m": 9,
    "where": "shoots",
-   "up": 0.5,
+   "up": 0.25,
    "spread": 40,
    "droop": -0.1,
    "variants": 3,
    "steps": 3,
-   "min_order": 1
+   "min_order": 1,
+   "face": 0.2,
+   "needles": "fascicles"
   },
   "needle_width": 0.09,
   "card": {
    "twig": {
-    "leaves": 520,
-    "side_shoots": 3
+    "leaves": 750,
+    "length": 0.38
    },
    "leaf": {
-    "needle_width": 0.03
+    "needle_width": 0.035,
+    "length": 0.05
    },
-   "cross": 2
-  }
+   "cross": 2,
+   "scale": 1.15
+  },
+  "retention": 6
  },
  "bark": {
   "kind": "plates",

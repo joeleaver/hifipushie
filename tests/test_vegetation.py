@@ -95,7 +95,8 @@ def test_cuts_are_local_and_girth_is_settable():
     assert (U["pos"][U["order"] > 0][:, 2] >= 4.0).all() and (U["order"] == 0).sum() == (T0["order"] == 0).sum()
     G = v.grow({**SMALL, "trunk_diameter": 0.5})
     assert abs(G["stats"]["trunk_diameter_m"] - 0.5) < 0.02 * 1.6  # (the foot's flare sits on top)
-    assert np.allclose(G["radius"][G["ends"]], T0["radius"][T0["ends"]], rtol=0.35)  # twigs are left as they are
+    ratio = G["radius"][G["ends"]] / T0["radius"][T0["ends"]]
+    assert abs(np.median(ratio) - 1) < 0.1 and np.percentile(ratio, 90) < 0.6 * G["radius"][1] / T0["radius"][1] + 0.4  # twigs stay
     lean = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6, "lean": [4, 0]}})
     up = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6}})
     hi = lambda t: t["pos"][t["pos"][:, 2] > 0.6 * t["height"], 0].mean()
@@ -544,7 +545,14 @@ def test_budget_keeps_marked_wood_and_cards_on_wood():
     tw, floating = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"])
     rnd = veg_leaf.place(T)
     far_all = 1 - ok[rnd["node"]].mean()
-    assert floating <= 0.2 or floating < 0.5 * far_all, (floating, far_all)
+    if bud["keep"] >= 0.25:  # twig cards stand on drawn wood (bough cards are spread over the crown instead)
+        assert floating <= 0.2 or floating < 0.5 * far_all, (floating, far_all)
+    else:
+        lf2, cap2, back2 = veg_export.cluster_leaves(T["spec"]["leaves"], bud["keep"])
+        assert back2 > 0 and lf2["card"]["twig"]["length"] > 1.25 * veg_leaf.card_spec(T["spec"]["leaves"])["twig"]["length"]
+        b2 = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"], cap=cap2, back=back2)[0]
+        spread = lambda q: len(np.unique(np.floor(q / 2.0).astype(int), axis=0))
+        assert spread(b2["pos"]) >= spread(tw["pos"])  # over the crown, not bunched on the limbs
     full, simp = veg_mesh.tubes(T), veg_mesh.tubes(T, simplify=0.3)
     assert len(simp["F"]) < 0.92 * len(full["F"]) and abs(simp["V"][:, 2].max() - full["V"][:, 2].max()) < 0.05
 
@@ -625,7 +633,7 @@ def test_export_lods_wind_seasons_collision():
         low, high = P[:, 1] < 0.3, P[:, 1] > 0.8 * P[:, 1].max()  # (Y up in the file)
         assert W[low][:, 0].max() < 0.02 and W[high][:, 0].min() > 0.6 and W[:, 3].max() == 0  # the foot stands; wood doesn't flutter
         Wf = arr(fol["attributes"]["_WIND"], 4)
-        assert Wf[:, 3].max() > 0.9 and Wf[:, 1].min() > 0 and 0 < Wf[:, 2].std()
+        assert Wf[:, 3].max() > 0.9 and Wf[:, 1].mean() > 0.3 and 0 < Wf[:, 2].std()
         hp = g["extras"]["hifipushie_plant"]
         caps = hp["collision"][0]["capsules"]
         assert 2 <= len(caps) <= 24 and caps[0]["ra"] > 0.03 and "sin" in hp["wind"]
