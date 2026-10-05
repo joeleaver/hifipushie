@@ -113,6 +113,12 @@ def main(job):
     wdir = -np.array([math.sin(wf), math.cos(wf), 0.0])
     st = float(job.get("strength", 1.0))
     fps = float(job.get("fps", 12))
+    # what moved, in metres (the picture's difference image is muddied by alpha dithering): per class of vertex the
+    # mean and the largest displacement over the clip, and how far out of step the limbs swing
+    cls = {"foot": lambda P, wv: P[:, 2] < 0.03 * H, "trunk_top": lambda P, wv: (wv[:, 0] > 0.9) & (wv[:, 1] < 0.05),
+           "limb_ends": lambda P, wv: (wv[:, 1] > 0.9) & (wv[:, 3] < 0.05), "leaf_tips": lambda P, wv: wv[:, 3] > 0.8}
+    acc = {k: [] for k in cls}
+    limb_x = []
     for f in range(int(job["frames"])):
         t = f / fps
         gust = st * (0.65 + 0.35 * math.sin(0.9 * t) + 0.15 * math.sin(2.1 * t + 1.0))
@@ -124,8 +130,30 @@ def main(job):
             d += N * (fl * 0.02 * (0.5 + gust) * np.sin(9.0 * t + 40 * ph + P @ np.array([3.0, 3.0, 3.0])))[:, None]
             ob.data.vertices.foreach_set("co", (P + d).ravel())
             ob.data.update()
+            # (glTF is Y up: the importer's objects carry the turn, so vertex z here may be the file's -y; classes
+            # that need height use the trunk channel instead)
+            dn = np.linalg.norm(d, axis=1)
+            for k, fn in cls.items():
+                m_ = (wv[:, 0] < 0.03) if k == "foot" else fn(P, wv)
+                if m_.any():
+                    acc[k].append((float(dn[m_].mean()), float(dn[m_].max())))
+            ends = (wv[:, 1] > 0.9) & (wv[:, 3] < 0.05)
+            if ends.any():
+                ph_bin = np.floor(wv[ends, 2] * 8).clip(0, 7).astype(int)
+                limb_x.append([float((d[ends] @ wdir)[ph_bin == b].mean()) if (ph_bin == b).any() else np.nan for b in range(8)])
         sc.render.filepath = f"{job['out']}/f_{f:03d}.png"
         bpy.ops.render.render(write_still=True)
+    disp = {k: {"mean_m": round(float(np.mean([a for a, _ in v])), 4), "max_m": round(float(max(b for _, b in v)), 4)}
+            for k, v in acc.items() if v}
+    if limb_x:  # limbs grouped by phase: how alike their swings are over the clip (1 = all in step, ~0 = each its own)
+        X = np.array(limb_x)
+        X = X[:, ~np.isnan(X).any(0)]
+        if X.shape[1] > 1 and X.shape[0] > 3:
+            C = np.corrcoef((X - X.mean(0)).T)
+            disp["limbs_in_step"] = round(float(C[np.triu_indices(len(C), 1)].mean()), 2)
+    rep["displacement"] = disp
+    if job.get("report"):
+        open(job["report"], "w").write(json.dumps(rep, indent=1))
     print("@@frames", job["frames"])
 
 

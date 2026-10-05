@@ -69,7 +69,7 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0),
                 "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3))}
     nv = len(at["cards"])
-    var = (vegetation._child(tw["key"], 11) % np.uint64(nv)).astype(int)
+    var = veg_leaf.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
     Vs, Fs, Us, Ts, Ns, Fl, Nr = [], [], [], [], [], [], []
     base = 0
