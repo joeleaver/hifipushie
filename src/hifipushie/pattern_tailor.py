@@ -49,17 +49,6 @@ def level(D: dict, pc: dict, lv) -> float:
     raise DraftError(f"no level {lv!r} (a number in m, top, hem, waist, hips, chest, or a line of the piece)")
 
 
-def _densify_edge(pc: dict, arc: str, step: float = 0.03) -> None:
-    for _ in range(300):
-        ix = pattern.arc_indices(pc, arc)
-        seg = np.linalg.norm(np.diff(pc["P"][ix], axis=0), axis=1)
-        k = int(np.argmax(seg))
-        if seg[k] <= step:
-            return
-        a, b = ix[k], ix[k + 1]
-        _insert(pc, a if (a + 1) % len(pc["P"]) == b else b, 0.5 * (pc["P"][a] + pc["P"][b]))
-
-
 def op_contour(D: dict, edge, at: list, **o) -> None:
     """Shape an edge: moved INTO its piece by an amount at each level, eased between ("at": [[level, m], ...]; level =
     a y in m, "top", "chest", "waist", "hips", "hem"; negative = let out). A shaped centre-back seam is
@@ -68,15 +57,19 @@ def op_contour(D: dict, edge, at: list, **o) -> None:
     the hem or neckline the edge meets gets that much shorter."""
     chain = []
     for e_ in ([edge] if isinstance(edge, str) else list(edge)):
-        chain += list(D["edges"][e_]) if e_ in D["edges"] else [e_]
+        # (a style line's name = BOTH its edges: a panel seam shaped on one side only no longer matches)
+        chain += list(D["lines"][e_]) if e_ in D["lines"] else list(D["edges"][e_]) if e_ in D["edges"] else [e_]
     did = []
     for spec in chain:
         pn, arc = spec.split(":", 1)
         pc = D["pieces"][pn]
-        _densify_edge(pc, arc)
+        pd.densify_edge(pc, arc)
         ix = pattern.arc_indices(pc, arc)
         L = pc["P"][ix]
-        lv = sorted((level(D, pc, k), float(v)) for k, v in at)
+        # ("top" / "hem" are the EDGE's own ends: a centre back starts below the neck point)
+        own = {"top": float(L[:, 1].max()), "neck": float(L[:, 1].max()), "hem": float(L[:, 1].min()),
+               "bottom": float(L[:, 1].min())}
+        lv = sorted((own[k] if k in own else level(D, pc, k), float(v)) for k, v in at)
         ys, am = np.array([q[0] for q in lv]), np.array([q[1] for q in lv])
         if len(ys) > 1:  # eased from each level to the next, held beyond the outer ones
             j = np.clip(np.searchsorted(ys, L[:, 1]) - 1, 0, len(ys) - 2)
@@ -88,6 +81,9 @@ def op_contour(D: dict, edge, at: list, **o) -> None:
         before = pattern.length(L)
         pc["P"][ix, 0] = L[:, 0] + sgn * a
         did.append(f"{spec} {before * 1000:.0f} -> {pattern.length(pc['P'][ix]) * 1000:.0f} mm")
+    for e_ in ([edge] if isinstance(edge, str) else list(edge)):
+        if e_ in D["lines"]:
+            pd.press_note(D, e_)
     D["log"].append("contour " + (edge if isinstance(edge, str) else " + ".join(edge)) + ": " +
                     ", ".join(f"{k} {float(v) * 1000:+.0f} mm" for k, v in at) + " into the piece; " + "; ".join(did))
 
@@ -101,8 +97,9 @@ def op_join(D: dict, a: str, b: str, name: str | None = None, **o) -> None:
     pa, pb_ = D["pieces"][a], D["pieces"][b]
     seam = None
     for s in D["seams"]:
-        if all(isinstance(x, str) for x in s) and {x.split(":")[0] for x in s} == {a, b}:
-            seam = s
+        if all(isinstance(x, str) for x in s) and {x.split(":")[0] for x in s} == {a, b} and \
+                (not o.get("along") or any(o["along"] in x.split(":", 1)[1].split(">") for x in s)):
+            seam = s  # ("along": a point name on the seam meant, when the two share more than one)
             break
     if seam is None:
         raise DraftError(f"join: no single seam between {a} and {b}")
@@ -170,6 +167,14 @@ def op_join(D: dict, a: str, b: str, name: str | None = None, **o) -> None:
     D["pieces"] = {k_: pcs[k_] for k_ in order}
     _remap(D, a, old_a, {w: [(nm, j)] for w, j in pos_a.items()}, {nm: new})
     _remap(D, b, old_b, {w: [(nm, j)] for w, j in pos_b.items()}, {nm: new})
+    def moved(spec):  # a style line's own edge specs (take_in reads them) on the joined piece
+        p_, arc = spec.split(":", 1)
+        if p_ == a:
+            return f"{nm}:{arc}"
+        if p_ == b:
+            return f"{nm}:" + ">".join(ren.get(x, x) for x in arc.split(">"))
+        return spec
+    D["lines"] = {k_: tuple(moved(x) for x in v) for k_, v in D["lines"].items()}
     if a in D["centre"] and nm != a:
         D["centre"][nm] = D["centre"].pop(a)
     D["centre"].pop(b, None)

@@ -319,6 +319,7 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
     for spec, part in zip((sa, sb), shares):
         nm, arc = spec.split(":", 1)
         pc = D["pieces"][nm]
+        densify_edge(pc, arc)  # (a straight cut has only its two ends: nothing to carry the curve, nothing was taken in)
         ix = pattern.arc_indices(pc, arc)
         L = pc["P"][ix]
         t = np.gradient(L, axis=0)
@@ -335,8 +336,39 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
             mv[k] = [np.sign(nrm[k, 0]) * amount * part * w[k], 0.0]
         pc["P"][ix] = L + mv
     la, lb = edge_length(D, sa), edge_length(D, sb)
+    press_note(D, line)
     D["log"].append(f"take in {line}: {amount * 1000:.0f} mm at y {y * 1000:.0f} mm, {share * 100:.0f}% from the side "
                     f"panel ({la * 1000:.1f} / {lb * 1000:.1f} mm)")
+
+
+def press_note(D: dict, line: str) -> None:
+    """A shaped panel seam's two edges differ a little in length (the more hollowed one is the longer): a tailor
+    stretches the straighter one onto it with the iron, or eases the hollow in. Under 2% that is declared on the
+    seam; more is left for `consistency` to name (the shares are wrong)."""
+    sa, sb = D["lines"][line]
+    for s in D["seams"]:
+        if s == [sa, sb] or s == [sb, sa]:
+            la, lb = edge_length(D, s[0]), edge_length(D, s[1])
+            e_s = la / max(lb, 1e-9) - 1
+            key = json.dumps(s)
+            if 0.003 < abs(e_s) <= 0.02:
+                D["notes"][key] = {"ease": [round(e_s - 0.004, 4), round(e_s + 0.004, 4)],
+                                   "why": f"panel seam {line}: one edge is {abs(la - lb) * 1000:.0f} mm longer after "
+                                          "shaping, pressed / eased on"}
+            elif abs(e_s) <= 0.003:
+                D["notes"].pop(key, None)
+
+
+def densify_edge(pc: dict, arc: str, step: float = 0.03) -> None:
+    """Vertices added along an edge until none of its segments is longer than `step` (an edge about to be shaped)."""
+    for _ in range(300):
+        ix = pattern.arc_indices(pc, arc)
+        seg = np.linalg.norm(np.diff(pc["P"][ix], axis=0), axis=1)
+        k = int(np.argmax(seg))
+        if seg[k] <= step:
+            return
+        a, b = ix[k], ix[k + 1]
+        _insert(pc, a if (a + 1) % len(pc["P"]) == b else b, 0.5 * (pc["P"][a] + pc["P"][b]))
 
 
 def _rot(P, c, ang):
