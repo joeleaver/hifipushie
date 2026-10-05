@@ -1966,9 +1966,22 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves;
   mass in conifers comes from the card's picture, not from more geometry; judge colour only under a sky with a
   bounce, and check the colour space before blaming the light.
-- Next: stage 1 items 3-5 (auto-named limbs, Blender round trip for guides, forest sets) and the MCP tools + guide
-  (soon: nothing here is reachable by an LLM yet); strip cards for thin twigs; welded fork topology; small plants
-  (+ palm); game-ready (LODs, wind, seasons, GLB); styles.
+- Tools (same day; the main session: "MCP tools + guide first: an LLM can't use any of this yet"): `grow_plant`
+  (spec or merge patch -> saved version -> report; "" lists plants and presets), `edit_plant` (ops: guide,
+  remove_guide, prune, clear_prunes, envelope, force, clear_forces, set "habit.apical.0"), `look_plant` (views clay /
+  bare / leaf / far / near / close, or the reference sheet), `plant_reference` (photo + crop/foot or traced polygon,
+  optional `fit`), `export_plant`, `plant_history`; `guide(topic="vegetation")` = `vegetation_guide.md` (stages:
+  reference, skeleton, direction, foliage and bark, export; the habit table; what goes wrong).
+  `veg_tools.report` measures the grown plant (form on its own silhouettes, limb angles, twigs, each guide's order /
+  reached its end / branches from it, the reference match) with WARNINGs. `examples/plant_tool.py` calls the tools
+  from a shell. `veg_export.write_glb`: `wood` (bark colour x albedo, normal, roughness, REPEAT) + `foliage` (every
+  card realised into one mesh, atlas with alpha MASK, double sided, COLOR_0 tint), Y up, textures embedded, Khronos
+  validator 0 errors (2 warnings: no tangents). One LOD, no wind/seasons yet.
+  Strip cards (`card.strips`): a ladder of quads along a long twig; it gives hanging twigs their droop but did NOT
+  raise fill (birch 0.25, willow 0.23): the pictures themselves are sparse between the leaves.
+- Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
+  ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
+  not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
