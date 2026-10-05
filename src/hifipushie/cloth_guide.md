@@ -225,6 +225,28 @@ The plan lists:
   cuffs, waistband). Draped pieces are loose cloth shaped by body, gravity and seams (fronts, backs, sleeves, skirt
   panels). The sheet's `"made": {piece or role: "made" | "draped"}` overrides. It fails when draped cloth is wholly
   interfaced (it would be frozen as placed: this is what stopped the coat's lapels rolling).
+- **Closures.** How each opening is fastened, as construction and not as a seam: garment / design-table key
+  `closures`, one entry per closure:
+  `{"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R", "edge": {"over": "a>b", "under":
+  "a>b"}, "band": {"over": 0.03, "under": 0.018}, "state": "closed"}`. `over` laps over `under` (the same piece for
+  a cuff or a waistband). Fastenings are the marks `buttonhole<n>` on `over` paired with `button<n>` on `under`
+  (other prefixes: `holes`, `buttons`; or `"at": [[over mark, under mark], ...]`). `band` + `edge` give the placket
+  its own edge in the mesh and raise it by its extra layers; `state` is "closed", "open" or `{"open_above": mark}`
+  (the top button undone). The entry makes the button stitches, the buttons as small geometry (also in the export
+  and the Blender scene) and a line in the report per closure: fastenings closed, how far apart their two sides
+  ended (closed is <= 6 mm). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure entry fails
+  here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]` (sewn when closed).
+- **Layers.** `"over": "<garment>"` wears this garment over another of the model (dress that one first). The one
+  underneath is frozen and pressed to 8 mm off the body where it is loose (`under_cap`), and is what this garment
+  is placed on and collides with. `"support": ["shoulder_pad", "sleeve_head"]` are pads on the body, not cloth.
+  After the sim the report lists the tailoring tells against their targets: the under collar showing above this
+  collar at centre back (10-20 mm), the under cuff past this sleeve (10-15 mm), lapels lying on the fronts, this
+  collar hugging the one under it, and no crossings between the layers. The export leaves out what this garment
+  hides of the one underneath.
+- **A piece laid from its seam.** Wrap `{"to": "seam"}` places a piece from the edge it is sewn to (a tailored
+  collar's stand on the jacket's neckline, a collar on its stand), along the body, at the pattern's lengths; `"turn":
+  {"at": m, "deg": 172, "gap": m}` lays its fall over. List the piece after the pieces it is sewn to. Use it where a
+  ring round the neck (`"to": "neck"`) is wrong: a neckline that lies on the shoulders and runs down to a lapel.
 - **The simulation's stages** as they will run.
 
 ### 4. Arrange (`check_garment(stages=["place"])`)
