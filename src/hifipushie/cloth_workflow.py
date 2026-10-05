@@ -148,6 +148,11 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         (o["fail"] if (not r["ok"] or r["notches_off"]) else o["info"]).append(line)
     # every piece sewn to something
     sewn = {e.split(":")[0] for s in Bp["seams"] for side in s for e in ([side] if isinstance(side, str) else side)}
+    tacked = {}  # a piece held by point stitches alone (a patch pocket tacked along its edges)
+    for a_, b_ in Bp["stitches"]:
+        for e in (a_, b_):
+            tacked[e.split(":")[0]] = tacked.get(e.split(":")[0], 0) + 1
+    sewn |= {n for n, k in tacked.items() if k >= 3}
     loose = [n for n in Bp["pieces"] if n not in sewn]
     if loose and len(Bp["pieces"]) > 1:
         o["fail"].append(f"pieces sewn to nothing: {', '.join(loose)} (a seam table entry is missing)")
@@ -472,6 +477,10 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
         gp = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
         far = []
         for r in seam_start_gaps(X, M):
+            # (turned is a chain's fault: a seam of single edges that stand at an angle, a raglan sleeve's shoulder
+            # along the arm against the body's cut on the chest, is only far or not)
+            sd_ = Bp["seams"][r["seam"]] if r["seam"] < len(Bp["seams"]) else ["", ""]
+            r["turned"] = r["turned"] and any(not isinstance(x, str) for x in sd_)
             if r["far"] or r["turned"]:
                 sd = Bp["seams"][r["seam"]] if r["seam"] < len(Bp["seams"]) else "?"
                 far.append((r["max"], f"{json.dumps(sd)[:110]}: median {r['median'] * 1000:.0f} mm, max {r['max'] * 1000:.0f} mm"

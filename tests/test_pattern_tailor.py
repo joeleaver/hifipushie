@@ -130,6 +130,53 @@ def test_straight_gorge():
     _ok(D)
 
 
+def test_pockets_are_laid_on_and_tacked():
+    D = pd.start("bodice", MM, {"cf": "fold", "chest_ease": 0.18})
+    pd.apply(D, [{"op": "pocket", "piece": "front", "type": "kangaroo", "width": 0.34, "height": 0.18}])
+    p = D["pieces"]["pocket"]
+    assert p["wrap"]["lies_on"] == "front" and p["wrap"]["face"] == "out" and p["role"] == "pocket"
+    n = len(D["sym_stitches"])
+    assert n >= 8
+    pd.unfold(D)
+    _ok(D)
+    # cut on the fold like its front: one piece, its tacks on both sides (those on the fold once)
+    assert "pocket" in D["pieces"] and n < len(D["stitches"]) <= 2 * n
+    marks = D["pieces"]["front"]["marks"]
+    for a, b in D["stitches"]:
+        assert a.split(":")[0] == "pocket" and b.split(":", 1)[1] in marks, (a, b)
+    # a patch pocket on a paired front: one per side, each lying on its own front
+    D = pd.start("bodice", MM, {})
+    pd.apply(D, [{"op": "pocket", "piece": "front", "type": "patch", "at": [0.13, -0.52], "width": 0.13, "height": 0.14}])
+    pd.unfold(D)
+    assert D["pieces"]["pocket.R"]["wrap"]["lies_on"] == "front.R"
+    assert all(a.split(":")[0][-2:] == b.split(":")[0][-2:] for a, b in D["stitches"])
+    try:
+        pd.apply(pd.start("bodice", MM, {}), [{"op": "pocket", "piece": "front", "type": "patch", "at": [0.5, -0.6]}])
+    except pd.DraftError as e:
+        assert "doesn't lie inside" in str(e)
+    else:
+        raise AssertionError("a pocket off its piece must be refused")
+
+
+def test_kimono_and_hood_are_placed():
+    D = pd.start("knit", MM, {"chest_ease": 0.16})
+    pd.apply(D, [{"op": "kimono", "angle": 30, "drop": 0.08}, {"op": "hood"}])
+    _ok(D)
+    pd.unfold(D)
+    _ok(D)
+    P = D["pieces"]
+    # the sleeve past the underarm-to-shoulder line is its own part on the arm: the front half round the front of
+    # the arm, the back half round the back, mirrored on the right arm; the overarm seam along the top (x = 0)
+    assert P["front_sleeve.L"]["wrap"] == dict(P["front_sleeve.L"]["wrap"], to="arm.L", front=-1, cx=0.0)
+    assert P["front_sleeve.R"]["wrap"]["to"] == "arm.R" and P["front_sleeve.R"]["wrap"]["front"] == 1
+    assert P["back_sleeve.L"]["wrap"]["front"] == 1 and P["back_sleeve.R"]["wrap"]["front"] == -1
+    fs = P["front_sleeve.L"]
+    assert abs(fs["P"][fs["names"]["shoulder"]]).max() < 1e-9 and fs["P"][:, 1].max() < 1e-6  # down the arm from the shoulder
+    assert fs["P"][:, 0].max() < 1e-6 and fs["P"][:, 0].min() < -0.1  # all on one side of the overarm line
+    assert sum(1 for v in D["notes"].values() if v.get("virtual")) == 4
+    assert P["hood.L"]["wrap"]["to"] == "head" and P["hood.L"]["wrap"]["apart"] > 0.02
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

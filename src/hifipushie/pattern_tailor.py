@@ -301,4 +301,86 @@ def op_fisheye(D: dict, piece: str, x: float | None = None, width: float | None 
                     f"{edge_length(D, s[0]) * 1000:.0f} / {edge_length(D, s[1]) * 1000:.0f} mm")
 
 
-pd.OPS.update({"contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})
+def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 0.14, height: float = 0.15,
+              name: str = "pocket", tack: float = 0.035, **o) -> None:
+    """A pocket laid ON a piece (traced in its coordinates, placed on its outside face, tacked down by point stitches
+    every `tack` m along the edges that are sewn):
+      "patch"     a rectangle with its bottom corners cut, top edge open: at = [x, y] of the top edge's middle (m in
+                  the piece's coordinates; default: below the waist, halfway to the side);
+      "kangaroo"  across the centre front of a piece cut on the fold (a half is drawn, x = 0 on the fold): the top
+                  and bottom edges sewn, the slanted sides open for the hands.
+    Welt and in-seam pockets need a cut inside the piece / a split seam with bags behind: not drafted yet (the detail
+    maps are where a welt shows)."""
+    from . import pattern_blocks as pb
+    pc = D["pieces"][piece]
+    wy = D["meta"].get("waist_y", -0.45)
+    P = pc["P"]
+    if type == "kangaroo":
+        if np.sum(np.abs(P[:, 0]) < 1e-6) < 2:
+            raise DraftError("kangaroo pocket: the piece must be cut on the fold at centre front (block cf: fold)")
+        w2, h = width / 2 if width > 0.2 else 0.16, height
+        # (default: its top just above the waist, or as high as keeps its bottom 3 cm above the hem)
+        top = float(at[1]) if at else max(wy + 0.02, float(P[:, 1].min()) + 0.03 + h)
+        pts = [("topC", [0.0, top]), ("topS", [0.55 * w2, top]), ("openLow", [w2, top - 0.55 * h]),
+               ("botS", [w2, top - h]), ("botC", [0.0, top - h])]
+        sewn = [("topC", "topS"), ("openLow", "botS"), ("botS", "botC")]
+        sym = "fold"
+    elif type == "patch":
+        if at is None:
+            at = [0.5 * (0.0 + float(P[:, 0].max())), wy - 0.05]
+        x0, top = float(at[0]) - width / 2, float(at[1])
+        c = min(0.02, 0.2 * width)
+        pts = [("topA", [x0, top]), ("topB", [x0 + width, top]), ("sideB", [x0 + width, top - height + c]),
+               ("botB", [x0 + width - c, top - height]), ("botA", [x0 + c, top - height]), ("sideA", [x0, top - height + c])]
+        sewn = [("topB", "sideB"), ("sideB", "botB"), ("botB", "botA"), ("botA", "sideA"), ("sideA", "topA")]
+        sym = pc.get("sym", "pair")
+    else:
+        raise DraftError(f"pocket type {type!r}: patch or kangaroo (welt and in-seam pockets aren't drafted yet)")
+    from .cloth import _inside
+    Q = np.array([q for _, q in pts], float)
+    if not _inside(P, Q * 0.98 + 0.02 * Q.mean(0)).all():
+        raise DraftError(f"pocket {name}: it doesn't lie inside {piece} (at {at}, {width * 1000:.0f} x {height * 1000:.0f} mm)")
+    # the tack points: vertices of the pocket's sewn edges, each stitched to a mark of the piece under it
+    ring, k = [], 0
+    by = dict(pts)
+    order = [nm_ for nm_, _ in pts]
+    tacks = []
+    for i, nm_ in enumerate(order):
+        a_, b_ = np.asarray(by[nm_], float), np.asarray(by[order[(i + 1) % len(order)]], float)
+        ring.append((nm_, a_))
+        if (nm_, order[(i + 1) % len(order)]) in sewn:
+            n_ = max(1, int(round(np.linalg.norm(b_ - a_) / tack)))
+            for j in range(n_ + 1):
+                q = a_ + (b_ - a_) * j / n_
+                if abs(q[0]) < 1e-6 and sym == "fold" and j not in (0, n_):
+                    continue
+                tn = f"t{k}"
+                k += 1
+                if j == 0:
+                    ring[-1] = (nm_, a_)
+                    tacks.append((nm_, q))
+                elif j == n_:
+                    tacks.append((order[(i + 1) % len(order)], q))
+                else:
+                    ring.append((tn, q))
+                    tacks.append((tn, q))
+    ppc = pb.make_piece(name, ring, "pocket", dict(pc.get("wrap") or {}), sym)
+    ppc["wrap"].update({"lies_on": piece, "face": "out"})
+    ppc["wrap"].pop("out", None)
+    D["pieces"][name] = ppc
+    if sym == "fold":
+        D["centre"][name] = "fold"
+    seen = set()
+    for tn, q in tacks:
+        if tn in seen:
+            continue
+        seen.add(tn)
+        mk = f"{name}_{tn}"
+        pc["marks"][mk] = np.asarray(q, float) + (np.array([0.0015, 0.0]) if abs(q[0]) < 1e-6 and sym == "fold" else 0.0)
+        D.setdefault("sym_stitches", []).append([f"{name}:{tn}", f"{piece}:{mk}"])
+    D["log"].append(f"{type} pocket {name} on {piece}: {np.ptp(Q[:, 0]) * (2 if sym == 'fold' else 1) * 1000:.0f} x "
+                    f"{np.ptp(Q[:, 1]) * 1000:.0f} mm, laid on its outside, {len(seen)} tacks along its sewn edges "
+                    f"({'top and bottom; the slanted sides open' if type == 'kangaroo' else 'sides and bottom; the top open'})")
+
+
+pd.OPS.update({"pocket": op_pocket, "contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})

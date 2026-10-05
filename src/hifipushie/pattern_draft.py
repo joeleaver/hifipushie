@@ -1456,6 +1456,19 @@ def unfold(D: dict) -> dict:
     for e in D.get("pair_stitches") or []:  # buttons: the right front's mark to the left front's
         if kind.get(e.split(":")[0]) == "pair":
             stitches.append([side_spec(e, "R"), side_spec(e, "L")])
+    def side_pt(e, S):  # a point or mark of a half piece, on side S of the garment
+        nm, pt = e.split(":", 1)
+        k = kind[nm]
+        if k == "fold":
+            h = halves[nm]
+            x = h["P"][h["names"][pt], 0] if pt in h["names"] else float(np.asarray(h["marks"][pt])[0])
+            return e if (S == "L" or abs(x) < 1e-6) else f"{nm}:{pt}.m"
+        return f"{nm}.{S}:{pt}"
+    for a_, b_ in D.get("sym_stitches") or []:  # tacks drawn on the half: on both sides of the garment
+        for S in ("L", "R"):
+            st = [side_pt(a_, S), side_pt(b_, S)]
+            if st not in stitches:
+                stitches.append(st)
     D["stitches"] = stitches
     edges = {}
     for k_, chain in D["edges"].items():

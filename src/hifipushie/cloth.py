@@ -1777,8 +1777,9 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
             p = wts @ X[Fo[t]]
             nn = wts @ N[Fo[t]]
             nn /= max(np.linalg.norm(nn), 1e-12)
-            X[v] = p - faces.get(on, 1.0) * LIES * nn
-            base[v], dirs[v] = p, -faces.get(on, 1.0) * nn
+            sg = -1.0 if pcs[nm]["wrap"].get("face") == "out" else 1.0  # (a pocket lies on the OUTSIDE)
+            X[v] = p - sg * faces.get(on, 1.0) * LIES * nn
+            base[v], dirs[v] = p, -sg * faces.get(on, 1.0) * nn
         # round a tight roll the laid piece's chords can still cut the piece under it (their triangles differ):
         # the vertices of what crosses stand a little further off, until nothing does
         for _ in range(10):
