@@ -61,7 +61,8 @@ FEATURES = {"brow_ridge": (list(range(17, 27)) + [27], 0.3, "sex", 1.0),
             "cheeks": ([2, 3, 4, 12, 13, 14, 31, 35, 48, 54], 0.4, "out", 1.0),
             "eyes": (list(range(36, 48)), 0.26, "child", 1.0),
             "cranium": (["top", "back", "side.L", "side.R", 19, 24], 0.75, "child", 1.0)}
-KEYS = ("follow_body", "like", "features")
+KEYS = ("follow_body", "like", "features", "toward", "dimorphism")
+DIMORPHISM = 0.8
 
 
 def table() -> dict:
@@ -115,6 +116,42 @@ def shape_delta(age: float, sex: float, weight: float = 0.5) -> tuple:
     return d, float(at(a["io"]))
 
 
+def fields() -> dict:
+    """MakeHuman's heads as displacement fields on GNM's vertices (spikes/headfit/make_field.py)."""
+    if "fields" not in _CACHE:
+        z = np.load(Path(__file__).with_name("head_fields.npz"))
+        _CACHE["fields"] = {k: z[k] for k in z.files}
+    return _CACHE["fields"]
+
+
+def field_vertices(desc: dict) -> np.ndarray:
+    """(GNM vertices, 3), interoculars: the mean GNM head -> MakeHuman's head of desc's age / sex / weight
+    (`toward` x the reference head + `amount` x the move from it)."""
+    key = ("field", json.dumps(desc, sort_keys=True))
+    if key not in _CACHE:
+        f = fields()
+        ages = f["ages"]
+        s = float(np.clip(desc["sex"], 0, 1))
+        x = float(np.clip(desc["age"], ages[0], ages[-1]))
+        i = int(np.clip(np.searchsorted(ages, x) - 1, 0, len(ages) - 2))
+        t = (x - ages[i]) / (ages[i + 1] - ages[i])
+        T = f["age_sex"]
+        d = ((1 - t) * ((1 - s) * T[i, 0].astype(float) + s * T[i, 1]) + t * ((1 - s) * T[i + 1, 0].astype(float) + s * T[i + 1, 1]))
+        # sexual dimorphism a little past MakeHuman's own (its sexes differ by ~6 mm rms; on a bald head, under another
+        # person's individuality, that much reads as neither)
+        dm = float(desc.get("dimorphism", 0.0)) * (1 - 2 * s)
+        dm *= 1.0 if dm > 0 else 0.5  # (a man pushed as far reads as a brute: heavy brow and jaw add up faster)
+        if dm:
+            d = d + 0.5 * dm * ((1 - t) * (T[i, 0].astype(float) - T[i, 1]) + t * (T[i + 1, 0].astype(float) - T[i + 1, 1]))
+        j = int(np.searchsorted(ages, REF["age"]))  # (sex 0.5 isn't exactly the mean of the two sexes' heads)
+        d = d - 0.5 * (T[j, 0].astype(float) + T[j, 1]) * (1 - abs(2 * s - 1)) * max(0.0, 1 - abs(x - REF["age"]) / 7)
+        w = float(np.clip(desc["weight"], 0, 1)) - 0.5
+        k = 0 if w < 0 else 1
+        d = d + abs(w) / 0.4 * ((1 - s) * f["weight"][0, k].astype(float) + s * f["weight"][1, k])
+        _CACHE[key] = desc.get("toward", 1.0) * f["ref"].astype(float) + desc.get("amount", 1.0) * d
+    return _CACHE[key]
+
+
 def _follows(base: dict) -> bool:
     f = (base.get("head") or {}).get("follow_body")
     return bool(f) and float(f) > 0 and (base.get("body") or {}).get("source") == "makehuman"
@@ -162,7 +199,7 @@ def _gnm():
         B = g["vertex_identity_basis"]
         L0 = np.array([sum(float(w) * V0[int(v)] for v, w in r) for r in rows])
         LB = np.array([[sum(float(w) * B[i][int(v)] for v, w in r) for r in rows] for i in comps], float)
-        _CACHE["gnm"] = {"names": names, "comps": comps, "L0": L0, "LB": LB,
+        _CACHE["gnm"] = {"names": names, "comps": comps, "L0": L0, "LB": LB, "rows": rows,
                          "J0": g["template_joint_positions"].astype(float)[2:4],
                          "JB": np.array([g["joint_identity_basis"][i][2:4] for i in comps], float)}
     return _CACHE["gnm"]
@@ -195,13 +232,20 @@ def _solve(d, c0, io_g, w):
 
 
 def _body_axes():
-    """Orthonormal directions in identity space along which sex, age and weight move a head (from the mean)."""
+    """Orthonormal directions in identity space along which sex, age and weight move a head: MakeHuman's own moves
+    (the fields) fitted in GNM's components over the whole skin. A seed loses its part along them (a random person
+    leans male or female, old or heavy, as much as the asked head does)."""
     if "axes" not in _CACHE:
-        g = _gnm()
+        from . import base
+        g, gd = _gnm(), base._gnm_data()
+        skin = np.asarray(gd["skin"], bool)
         io = float(abs(g["J0"][0][0] - g["J0"][1][0]))
-        z = np.zeros(len(g["comps"]))
-        D = np.array([_solve(shape_delta(**{**REF, **ax})[0], z, io, _weights()) for ax in AXES]).T
-        _CACHE["axes"] = np.linalg.qr(D)[0]
+        B = np.asarray(gd["vertex_identity_basis"])[g["comps"]][:, skin].reshape(len(g["comps"]), -1).astype(float).T
+        fv = lambda **kw: field_vertices({**REF, "toward": 0.0, "amount": 1.0, **kw})[skin].ravel() * io  # noqa: E731
+        moves = [fv(sex=1.0) - fv(sex=0.0), fv(age=80), fv(age=8), fv(weight=0.9) - fv(weight=0.15),
+                 fv(age=70, sex=1.0) - fv(age=70, sex=0.0)]
+        M = np.linalg.solve(B.T @ B + 1e-4 * np.eye(B.shape[1]), B.T @ np.array(moves).T)
+        _CACHE["axes"] = np.linalg.qr(M)[0]
     return _CACHE["axes"]
 
 
@@ -243,7 +287,7 @@ def _key(base: dict, head: dict) -> str:
         from . import makehuman
         b = makehuman.body({k: v for k, v in (base.get("body") or {}).items() if k != "source"})
         io = round(2 * abs(float(b["face"]["landmarks"]["eye.L"][0])), 6)
-    return json.dumps([w, io, head.get("seed"), head.get("spread", 1.0)], sort_keys=True, default=float)
+    return json.dumps([w, io, head.get("seed"), head.get("spread", 1.0), bool(head.get("like")), head.get("toward", 1.0), head.get("dimorphism", DIMORPHISM)], sort_keys=True, default=float)
 
 
 def follow(base: dict, head: dict) -> dict:
@@ -254,10 +298,8 @@ def follow(base: dict, head: dict) -> dict:
         from . import base as basemod
         g = _gnm()
         want = wanted(base)
-        d, _ = shape_delta(want["age"], want["sex"], want["weight"])
-        d = d * want["amount"]
-        if want["features"]:
-            d = d + _feature_move(want["features"])
+        shaped = want["follow"] or bool((head.get("like") or {}))
+        d = _feature_move(want["features"]) if want["features"] else np.zeros((len(g["L0"]), 3))
         w = _weights()
         c0 = basemod._gnm_coeffs(g["names"], None, head.get("seed"), head.get("spread", 1.0))[g["comps"]]
         Q = _body_axes()
@@ -296,6 +338,12 @@ def follow(base: dict, head: dict) -> dict:
                           "reached": round(1 - rms(after - d) / max(asked, 1e-9), 3) if asked else 1.0,
                           "stretch_max": round(float(np.abs(l1 / np.maximum(l0, 1e-9) - 1).max()), 3),
                           "components_max": round(float(np.abs(c).max()), 2)}}
+        if shaped:  # the age / sex / weight itself: MakeHuman's head of that description, as a field on the vertices
+            out["field"] = {"age": want["age"], "sex": want["sex"], "weight": want["weight"], "amount": round(want["amount"], 4),
+                            "toward": round(min(want["amount"], 1.0) * float(head.get("toward", 1.0)), 4),
+                            "dimorphism": round(float(head.get("dimorphism", DIMORPHISM)) * want["amount"], 4)}
+            fv = field_vertices(out["field"])
+            out["report"]["field_io"] = round(float(np.sqrt((fv[np.asarray(fields()["valid"])] ** 2).sum(1).mean())), 4)
         if want["follow"]:
             out["scale"] = round(json.loads(key)[1] / io_f, 5)
         _CACHE[key] = out
@@ -306,7 +354,27 @@ def follow(base: dict, head: dict) -> dict:
         out.setdefault("scale", f["scale"])
     out["plane_follows_chin"] = True
     out["warp"] = f["warp"]
+    if "field" in f:
+        out["field"] = f["field"]
     return out
+
+
+def solved_points(h: dict) -> np.ndarray:
+    """The fitted points (68 landmarks, cranium, dense; interoculars round the eye midpoint) of a head dict as
+    `follow` returns it: identity, then the field, then the warp."""
+    g = _gnm()
+    c = np.array([h["identity"][g["names"][i]] for i in g["comps"]])
+    L = g["L0"] + np.tensordot(c, g["LB"], 1)
+    J = g["J0"] + np.tensordot(c, g["JB"], 1)
+    io = float(abs(J[0][0] - J[1][0]))
+    if h.get("field"):
+        F = field_vertices(h["field"])
+        L = L + io * np.array([sum(float(w) * F[int(v)] for v, w in r) for r in g["rows"]])
+    wp = h.get("warp")
+    if wp:
+        P, C = np.asarray(wp["at"]), np.asarray(wp["coef"])
+        L = L + np.exp(-((L[:, None] - P[None]) ** 2).sum(-1) / (2 * wp["sigma"] ** 2)) @ C
+    return (L - J.mean(0)) / io
 
 
 def report(base: dict) -> dict:
