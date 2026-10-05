@@ -1679,6 +1679,32 @@ def _head_hint(spec: dict) -> str:
 
 
 @mcp.tool(structured_output=False)
+def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: float | None = None,
+          height: float | None = None, seed: int | None = None, outfit: str | None = None,
+          tone: float | dict | None = None, skin: dict | bool | None = None, head: dict | None = None,
+          note: str = "") -> str:
+    """A whole person from a description, saved as an ordinary model: "a 3-year-old girl" = human("mia", age=3,
+    sex="female"). The body has that age's MEASURED proportions and size by default (stature from WHO's growth
+    medians, the head-to-body proportion from children's anthropometry: 4.6 heads tall at 1 year, 5.4 at 3, 6.4 at 7,
+    7.1 at 11, 8 adult; a toddler has a belly and no neck to speak of, a child no waist), the head follows it, and the
+    figure is dressed. Then edit it like any model (edit_model, skin, look, look_skin, groom_hair, rig, export_asset).
+    age: years, 0..100 (under ~1 the shape stays a one-year-old's, scaled). sex: 0 / "female" .. 1 / "male" (under
+    ~10 it changes little, as in life). weight, muscle: 0..1 (0.5 average). height: m, instead of the median.
+    seed: the face (another number, another person). outfit: "tee_shorts" (default from 2 years), "onesie" (default
+    under 2), "underwear", "none". tone: Fitzpatrick 1..6 or the skin tool's tone dict; skin: more skin keys, or
+    false for clay only. head: base.head keys to merge (e.g. {"features": {"cheeks": 0.5}}, {"pose": {"smile": 0.004}}).
+    Returns the body measured against the references for its age and sex."""
+    from . import humans
+    sp = humans.spec(age=age, sex=sex, weight=weight, muscle=muscle, height=height, seed=seed, outfit_kind=outfit,
+                     tone=tone, skin=_spec_arg(skin) if isinstance(skin, str) else skin, head=_spec_arg(head) if head else None)
+    full = {**empty_spec(), **sp}
+    v = store.save(name, full, note or f"human: {humans.stage(float(age))}, {age:g} y")
+    return (f"saved {name} v{v}: {humans.describe(full)}\n"
+            f"parts: {', '.join(full['parts'])}. look(\"{name}\") for the figure, look_skin(\"{name}\") for the skin; "
+            f"guide(topic=\"skin\") stage 0 says what the body and head keys do.")
+
+
+@mcp.tool(structured_output=False)
 def skin_reference() -> str:
     """Everything the `skin` description takes: the anatomical zones (also usable by any paint layer as
     {"zone": name}), the tone model, features, wrinkles, hair, scars, tattoos and make-up with their keys and

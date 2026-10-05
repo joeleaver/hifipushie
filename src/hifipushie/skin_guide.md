@@ -27,7 +27,27 @@ roughness, scattering, then displacement from secondary forms down to micro [1][
 keys of the description; `look_skin(views=["bust"], flat=True)` shows colour without light, the default look the lit
 close-ups.
 
-### 0. The head under the skin
+### 0. The person under the skin
+Start a new person with the `human` tool: `human("mia", age=3, sex="female")` writes a whole dressed figure (body,
+head, eyes, simple clothes, a skin) with that age's MEASURED proportions and size, and returns its body measured
+against the references. Children are not small adults, and artists set proportion before anything else [23][24][25]:
+
+| age | stature (median, m / f) | heads tall | sitting height / stature | what reads |
+|---|---|---|---|---|
+| 1 | 76 / 74 cm | 4.6 | 0.64 | big cranium, no neck from the front, round belly, legs a third of the height |
+| 3 | 96 / 95 | 5.4 | 0.58 | belly still leads the profile, shoulders barely wider than the head |
+| 7 | 122 / 121 | 6.4 | 0.54 | no waist, long legs coming, a small jaw under full cheeks |
+| 11 | 143 / 145 | 7.1-7.3 | 0.52 | girls ahead of boys; adult proportions near, a child's face still |
+| 16 | 173 / 163 | 7.9 | 0.52 | adult proportions; the sexes have parted |
+| adult | 177 / 163 | 8.0 | 0.52 | |
+
+(Measured children [23][24]; artists' charts round the young ones' heads bigger: 4 heads at 1, 5 at 3, 6 at 5.)
+`base.body.age` under 25 gives these by default (MakeHuman's own straight-line blend made a 3-year-old 74 cm and a
+16-year-old 1.49 m; `"growth": false` brings that back), `base.body.height` overrides the size, `sex` matters
+little under ~10, `base.body.nipples: 0` smooths them off the chest (the tool does for children: they print through
+thin clothes). A head with `follow_body: true` and no `like` keeps its body's own neck: a toddler has almost none.
+Figures are dressed by default (`outfit`: tee_shorts, onesie under 2, underwear, none).
+
 Skin can't make a face young, old, male or female on its own: a seven-year-old's skin on an adult's skull is an
 adult. On a MakeHuman body with a GNM head, set `base.head.follow_body: true` (or a strength 0..1) when you make the
 character: the body's age, sex and weight then shape the head and size it to the body (a child's big cranium and
@@ -166,3 +186,6 @@ leave one flat roughness. A highlight that is one clean blob is the plastic tell
 [20] MetaHuman makeup material controls: dev.epicgames.com/documentation/metahuman/makeup-material-controls
 [21] nofilmschool.com/cgi-skin
 [22] Khronos glTF extension registry: github.com/KhronosGroup/glTF/blob/main/extensions/README.md
+[23] WHO Child Growth Standards (0-5 y) and growth reference (5-19 y): who.int/tools/child-growth-standards
+[24] Snyder et al. 1977, "Anthropometry of Infants, Children and Youths to Age 18" (UMTRI-77-17; tables at math.nist.gov/~SRessler/anthrokids)
+[25] Loomis, "Figure Drawing for All It's Worth" (1943): proportion charts by age (heads tall, the midpoint)

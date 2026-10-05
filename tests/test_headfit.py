@@ -125,13 +125,13 @@ def test_follows_its_body():
     h, ha = headfit.follow(b, b["head"]), headfit.follow(adult, adult["head"])
     assert h["scale"] < 0.95 * ha["scale"] and 0.8 < ha["scale"] < 1.05, (h["scale"], ha["scale"])
     w = headfit.wanted(b)
-    assert (w["age"], w["sex"]) == (7.0, 0.5)
+    assert 7.0 < w["age"] < 10.0 and w["sex"] == 0.5  # (the tables' age for a 7-year-old's measured proportions)
     half = headfit.wanted(base({"age": 7}, follow_body=0.5))
     assert half["amount"] == 0.5
     # the sampled table against MakeHuman itself, between its samples
     ref, _ = headfit.mh_points({**headfit.table()["reference"]})
     for p in ({"age": 11, "sex": 0.3, "weight": 0.6}, {"age": 58, "sex": 0.8, "weight": 0.3}):
-        d0 = headfit.mh_points({**p, "muscle": 0.5})[0] - ref
+        d0 = headfit.mh_points({**p, "muscle": 0.5, "growth": False})[0] - ref  # (sampled on MakeHuman's own ages)
         d1, _ = headfit.shape_delta(p["age"], p["sex"], p["weight"])
         assert np.sqrt(((d0 - d1) ** 2).sum(1).mean()) < 0.12 * np.sqrt((d0 ** 2).sum(1).mean()), p
 

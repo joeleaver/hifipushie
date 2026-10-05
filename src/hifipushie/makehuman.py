@@ -6,7 +6,11 @@ Macro targets are blended as MakeHuman blends them: the universal-male-<age>-<mu
 each weighted by the product of its age, muscle and weight weights. Age (years) maps to MakeHuman's slider (1 -> 0,
 11 -> 0.1875, 25 -> 0.5, 90 -> 1) and blends the two nearest of baby/child/young/old; muscle and weight in 0..1 (0.5
 average) blend min/average and average/max. "sex" is MakeHuman's gender slider, continuous: 1 male (default), 0
-female, anything between a blend of the male and female targets. Height scales the result uniformly (m). The skeleton is MakeHuman's default.mhskel: each joint the mean of a helper cube's vertices, which ride the
+female, anything between a blend of the male and female targets. Height scales the result uniformly (m).
+Under 25 years (`grows`; "growth": false for MakeHuman's own straight lines) the age slider is solved so the shape
+has that age's measured head-to-stature proportion and the body is scaled to its measured median stature
+(anthro.py: WHO, Snyder 1977): MakeHuman's baby is a one-year-old's shape at 60 cm, its child a ten-year-old.
+"nipples": 0..1 (1 as modelled) smooths them off the chest (under clothes). The skeleton is MakeHuman's default.mhskel: each joint the mean of a helper cube's vertices, which ride the
 targets, mapped to the template's joint names (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle/toe,
 fingerN_k / thumb_k), so `retopo._skeleton_warp` and `base` treat it like the template.
 """
@@ -126,18 +130,35 @@ JOINTS = {"pelvis": "root____tail", "chest": "spine02____head", "neck": "neck01_
           "toe.L": "toe3-1.L____head"}
 
 
-def body(params: dict) -> dict:
-    """A shaped MakeHuman body as a template dict (as retopo.load_template): {"name", "P" (metres, Z up, facing -Y,
-    feet at z = 0), "L", "S", "J", "face": {"landmarks": {"eye.L"}}, "chin_z"}."""
-    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex")}, sort_keys=True)
-    if ("body", key) in _CACHE:
-        return _CACHE[("body", key)]
+GROWN = 25.0  # years: from here MakeHuman's own shapes and sizes are used as they are
+
+
+def grows(params: dict) -> bool:
+    """Whether a body takes the measured growth (age under 25 unless "growth": false). MakeHuman blends baby (1 y)
+    -> child (10 y) -> young (25 y) in straight lines of age: its 3-year-old stood 74 cm (measured median 96), its
+    16-year-old 1.49 m (1.73), with a third of a child's shape left at 20."""
+    g = params.get("growth")
+    return float(params.get("age", 25)) < GROWN and (g is None or bool(g))
+
+
+def table_age(params: dict) -> float:
+    """The age at which MakeHuman's OWN straight-line blend has this body's shape (the body's age itself from 25, or
+    with "growth": false). headfit's head tables were sampled along those ages: a head that follows a grown
+    11-year-old is looked up at ~13."""
+    age = float(params.get("age", 25))
+    if not grows(params):
+        return age
+    a, _ = _growth_slider(params, age, float(np.clip(params.get("sex", 1.0), 0, 1)))
+    return float(np.interp(a, [0.0, 0.1875, 0.5], [1.0, 11.0, 25.0]))
+
+
+def _shaped(params: dict, slider: float, sex: float) -> np.ndarray:
+    """MakeHuman's vertices (m, Z up, facing -Y; not yet stood on the ground) for an age slider value."""
     V0, faces, joints = _raw()
     V = V0.copy()
-    wa = _age_weights(_age_slider(float(params.get("age", 25))))
+    wa = _age_weights(slider)
     wm = _three(float(params.get("muscle", 0.5)), "min", "average", "max")
     ww = _three(float(params.get("weight", 0.5)), "min", "average", "max")
-    sex = float(np.clip(params.get("sex", 1.0), 0, 1))  # MakeHuman's gender slider: 0 female .. 1 male, any mix
     ws = {g: s for g, s in (("male", sex), ("female", 1 - sex)) if s > 1e-6}
     for g, s in ws.items():
         for age, a in wa.items():
@@ -155,14 +176,122 @@ def body(params: dict) -> dict:
                 if s * a * rw > 1e-6:
                     idx, d = _target(f"{r}-{g}-{age}.target")
                     V[idx] += (a * rw / tot * d) if s == 1.0 else (s * a * rw / tot * d)
-    V = np.c_[V[:, 0], -V[:, 2], V[:, 1]] * 0.1  # dm, Y up, facing +Z -> m, Z up, facing -Y
+    return np.c_[V[:, 0], -V[:, 2], V[:, 1]] * 0.1  # dm, Y up, facing +Z -> m, Z up, facing -Y
+
+
+def _heads(V: np.ndarray) -> tuple:
+    """(stature, stature in head heights) of shaped vertices: the head from the crown to the chin landmark."""
+    from . import headfit
+    _, faces, _ = _raw()
+    used = _CACHE.setdefault("used", np.unique(np.concatenate(faces)))
+    chin = V[used[headfit.table()["lm68"][8]], 2]  # (the table indexes the body's own vertices, as body()["P"])
+    top, lo = V[used, 2].max(), V[used, 2].min()
+    return float(top - lo), float((top - lo) / (top - chin))
+
+
+def _growth_slider(params: dict, age: float, sex: float) -> tuple:
+    """The age slider whose SHAPE has the measured head-to-stature proportion of that age and sex (anthro.heads:
+    WHO stature over Snyder's head height), and the measured median stature to scale it to. Statures are WHO's x
+    (MakeHuman's own adult / WHO's at 19), so a 19-24-year-old is MakeHuman's adult, as at 25. Under ~1 year the
+    shape stays MakeHuman's baby (its proportions are a one-year-old's)."""
+    from . import anthro
+    key = ("slider", json.dumps([{k: params.get(k) for k in ("weight", "muscle", "race")}, age, sex], sort_keys=True))
+    if key not in _CACHE:
+        want = anthro.heads(age, sex)
+        lo, hi = 0.0, 0.5
+        f = lambda a: _heads(_shaped(params, a, sex))[1]  # noqa: E731
+        if want <= f(lo):
+            a = lo
+        elif want >= f(hi):
+            a = hi
+        else:
+            for _ in range(16):
+                a = 0.5 * (lo + hi)
+                lo, hi = (a, hi) if f(a) < want else (lo, a)
+            a = 0.5 * (lo + hi)
+        adult = _heads(_shaped(params, 0.5, sex))[0] / anthro.stature(anthro.ADULT, sex)
+        _CACHE[key] = (a, {"stature": anthro.stature(age, sex) * adult, "heads_wanted": want, "slider": a})
+    return _CACHE[key]
+
+
+def _smooth_nipples(V, faces, used, breast, amount: float):
+    """The modelled nipples taken off the chest ("nipples": 1 as modelled .. 0 gone): under a child's thin clothes
+    they printed through as two studs. Round the breast bone's tail (the nipple) the skin within 2.8% of the stature
+    is moved, along the chest's normal only, onto a quadratic sheet fitted through the ring of skin just outside it.
+    (Relaxing the vertices instead puckered the mesh: the nipple is a pole of small dense rings.)"""
+    V = V.copy()
+    H = float(V[used, 2].max() - V[used, 2].min())
+    body = np.zeros(len(V), bool)
+    body[used] = True
+    r = 0.04 * H
+    E = _CACHE.get("edges")
+    if E is None:
+        E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in faces for k in range(len(f))}))
+        _CACHE["edges"] = E
+    deg = np.bincount(E.ravel(), minlength=len(V)).astype(float)
+    ln = np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1)
+    el = np.zeros(len(V))
+    np.add.at(el, E[:, 0], ln)
+    np.add.at(el, E[:, 1], ln)
+    el = np.where(deg > 0, el / np.maximum(deg, 1), np.inf)  # each vertex's mean edge length
+    for sgn in (1.0, -1.0):
+        c0 = breast * [sgn, 1, 1]
+        near = body & (np.linalg.norm(V - c0, axis=1) < 1.4 * r)
+        if near.sum() < 12:
+            continue
+        c = V[np.flatnonzero(near)[np.argmin(el[near])]]  # the nipple's tip: where the mesh's rings are smallest
+        d = np.linalg.norm(V - c, axis=1)
+        ring = body & (d > r) & (d < 1.9 * r)
+        inner = body & (d <= r)
+        if ring.sum() < 8 or not inner.any():
+            continue
+        Q = V[ring] - V[ring].mean(0)
+        n = np.linalg.svd(Q, full_matrices=False)[2][2]
+        n = -n if n[1] > 0 else n  # out of the chest (the figure faces -y)
+        e1 = np.cross(n, [0, 0, 1.0])
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(n, e1)
+
+        def uvh(X):
+            Y = X - c
+            return Y @ e1, Y @ e2, Y @ n
+        u, v, h = uvh(V[ring])
+        A = np.c_[np.ones_like(u), u, v, u * u, u * v, v * v]
+        coef = np.linalg.lstsq(A, h, rcond=None)[0]
+        u, v, h = uvh(V[inner])
+        fit = np.c_[np.ones_like(u), u, v, u * u, u * v, v * v] @ coef
+        t = np.clip((r - d[inner]) / (0.9 * r), 0, 1)
+        w = amount * t * t * (3 - 2 * t)
+        V[inner] += (w * (fit - h))[:, None] * n
+    return V
+
+
+def body(params: dict) -> dict:
+    """A shaped MakeHuman body as a template dict (as retopo.load_template): {"name", "P" (metres, Z up, facing -Y,
+    feet at z = 0), "L", "S", "J", "face": {"landmarks": {"eye.L"}}, "chin_z"}."""
+    grow = grows(params)
+    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples")} | ({"growth": True} if grow else {}), sort_keys=True)
+    if ("body", key) in _CACHE:
+        return _CACHE[("body", key)]
+    V0, faces, joints = _raw()
+    sex = float(np.clip(params.get("sex", 1.0), 0, 1))  # MakeHuman's gender slider: 0 female .. 1 male, any mix
+    age = float(params.get("age", 25))
     used = np.unique(np.concatenate(faces))
+    if grow:  # the shape and size of that age as children are measured (anthro.py), not MakeHuman's straight lines
+        slider, info = _growth_slider(params, age, sex)
+    else:
+        slider, info = _age_slider(age), None
+    V = _shaped(params, slider, sex)
     lo = V[used, 2].min()
     V[:, 2] -= lo
     if params.get("height"):
         top = V[used, 2].max()
         V *= float(params["height"]) / top
+    elif grow:
+        V *= info["stature"] / V[used, 2].max()
     jp = lambda n: V[joints[n]].mean(0)
+    if params.get("nipples") is not None and float(params["nipples"]) < 1:
+        V = _smooth_nipples(V, faces, used, jp("breast.L____tail"), 1 - float(params["nipples"]))
     J = {k: jp(v) for k, v in JOINTS.items()}
     h0, h1 = jp("head____head"), jp("head____tail")
     J["head"] = h0 + 0.35 * (h1 - h0)

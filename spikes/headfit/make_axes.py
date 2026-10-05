@@ -26,14 +26,14 @@ def main():
     for a in AGES:
         row, ior = [], []
         for s in (0.0, 1.0):
-            X, io = headfit.mh_points({"age": a, "sex": s, "weight": 0.5, "muscle": 0.5})
+            X, io = headfit.mh_points({"age": a, "sex": s, "weight": 0.5, "muscle": 0.5, "growth": False})
             row.append(X - ref)
             ior.append(io)
         A.append(row)
         IO.append(ior)
     W = []
     for s in (0.0, 1.0):
-        mid, _ = headfit.mh_points({"age": 30, "sex": s, "weight": 0.5, "muscle": 0.5})
+        mid, _ = headfit.mh_points({"age": 30, "sex": s, "weight": 0.5, "muscle": 0.5, "growth": False})
         W.append([headfit.mh_points({"age": 30, "sex": s, "weight": w, "muscle": 0.5})[0] - mid for w in (0.1, 0.9)])
     dest = Path(headfit.__file__).with_name("head_axes.npz")
     np.savez_compressed(dest, ages=np.array(AGES, float), age_sex=np.array(A, np.float32), weight=np.array(W, np.float32),
@@ -43,7 +43,7 @@ def main():
     headfit._CACHE.pop("axes_data", None)
     for p in ({"age": 7, "sex": 0.5, "weight": 0.45}, {"age": 32, "sex": 0.0, "weight": 0.5}, {"age": 54, "sex": 1.0, "weight": 0.6},
               {"age": 78, "sex": 0.0, "weight": 0.4}, {"age": 82, "sex": 1.0, "weight": 0.5}, {"age": 16, "sex": 0.0, "weight": 0.42}):
-        d0 = headfit.mh_points({**p, "muscle": 0.5})[0] - ref
+        d0 = headfit.mh_points({**p, "muscle": 0.5, "growth": False})[0] - ref
         d1, io = headfit.shape_delta(p["age"], p["sex"], p["weight"])
         print(p, "table vs MakeHuman rms (io)", round(float(np.sqrt(((d0 - d1) ** 2).sum(1).mean())), 4), "of", round(float(np.sqrt((d0 ** 2).sum(1).mean())), 4))
 

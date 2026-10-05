@@ -1043,6 +1043,56 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     FAILS seen: the baby's nose is torn open (a ragged hole at the nostrils: the field at age 1 turns the nostril
     walls inside out); the toddler has a long thin neck (graft) and an adult-ish torso; every face is the same stern
     seed; no fat rolls; rig / hands / skin zones on a baby NOT checked.
+  - Whole children and babies (2026-10-05/06, "humans3" agent, branch `humans3`; renders sk_30_* (clay line-up),
+    measures sk_30_ages_lineup_measures.txt; references `workspace/skin_refs/ages/` (README = spikes/humans/
+    REFERENCES.md): WHO stature + head circumference, Snyder 1977 children's anthropometry from NIST AnthroKids,
+    compiled by `spikes/humans/make_growth.py` into `growth.json`). The sk_21 line-up failed; by MEASUREMENT the
+    causes were not the ones guessed:
+    - Heads were NOT too small. The "reference" heads-in-height (4 / 5 / 6 / 6.75) were artists' chart numbers from
+      memory; measured children (WHO stature / Snyder vertex-to-chin) are 4.6 at 1 y, 5.4 at 3, 6.4 at 7, 7.1-7.3 at
+      11, 8.0 adult. MakeHuman's proportions were within 2-3% of that at every age. Its SIZES were wrong: baby ->
+      child (10 y, not 11) -> young (25 y) blended in straight lines of age gave 60 / 74 / 103 / 149 cm at 1 / 3 / 7 /
+      16 (medians 75 / 96 / 122 / 173 for boys), and a 20-year-old was a third child. `makehuman.grows`: under 25 (and
+      unless `base.body.growth: false`) the age slider is SOLVED so the shape's heads-in-height = `anthro.heads(age,
+      sex)`, then the body is scaled to `anthro.stature(age, sex)` x (MakeHuman's adult / WHO's at 19: 0.98 / 0.975,
+      so 19-24 = the 25-year-old). From 25 nothing changes (bit-identical). `height` still overrides the size.
+      After: stature, heads, head height, sitting height, trochanter height, hand length within 0-5% of the
+      references from 1 to 19 y, both sexes. Off: MakeHuman's women have narrow shoulders (joint breadth 0.85 of
+      the taped biacromial; men 0.94-0.97), small feet (0.84-0.89) and slim waists (0.85); under 1 year the shape
+      stays a one-year-old's (heads 4.7 vs ~4.4 at 6 months).
+    - `anthro.py`: `stature`, `head_height`, `heads`, `head_circumference`, `reference(age, sex)` (Snyder's segment
+      means scaled to WHO's stature), `measure(P, J, chin_z)` (the same measures off a body mesh; girths = hulls of
+      level slices cut at the shoulder joints, so toddlers' waists read small) and `table`.
+    - The toddler's "long thin neck", the baby "cropped below the chest": the graft's neck tube. A followed head
+      brought GNM's adult neck, and `_neck_tube` took the loop `loops[-1]` when no loop cleared the plane (a baby's
+      chin lies on its chest): `_stitch` then cut the shoulders and arms off with the head. Now a head that follows
+      its body fully (`follow_body` true, no `like`, toward 1; `headfit.follow` sets `own_neck`; `base.head.neck:
+      "tube"` opts out) keeps the body's own neck: no cut, no tube (`src` = every template vertex: the hand-made
+      weights reach the whole neck), the head's points above the plane eased onto the body's own head along their
+      normals over `OWN_REACH` 3.5 cm x scale, the two point sets cross-faded as before. The GNM field head is the
+      body's own head within 2.5 mm mean (p95 6-9 mm; chin landmark 5-8 mm higher than the table's: definition).
+    - The "torn nose" at age 1 / the pale thing in followed heads' nostrils / flecks at the lip corners: the
+      mouth fill (`base.inject`) was sized in absolute metres for a head of scale ~1.1; in a child's head (0.74-0.84)
+      it came out through the nostrils and lips. Scaled by the head's scale for followed heads.
+    - The stern thin mouth: `mouth_gap: 0` (the least-change lip closing + zip) presses the lips into a line. With
+      the key left out the lips are GNM's own, a hair parted and full: `humans.spec` leaves it out. (Face shapes
+      still need `mouth_gap` >= 0.002 + `interior`.)
+    - "Breasts" on the toddler / child: mostly clay shading of MakeHuman's modelled nipples and the sk_21 strip's
+      crop (arms cut off, so the torso read narrow-shouldered); MakeHuman's female child (10 y) does have a waist
+      (waist / hip girth 0.70 vs a woman's 0.69, a toddler's 0.86). `base.body.nipples: 0` moves the skin round each
+      nipple (found as the smallest mesh rings near the breast bone's tail) onto a quadratic sheet fitted through the
+      ring outside it. Relaxing those vertices puckered the pole; a centre found by "most forward" landed on the
+      belly, by "most proud of its ring" 2.5 cm off (the pole then stayed and the body's field creased in a star).
+    - `humans.py` + tool `human(name, age, sex, weight, muscle, height, seed, outfit, tone, skin, head)`: a whole
+      DRESSED person as an ordinary spec (body with growth, followed head, eyes + cornea, outfit, skin) and its
+      measures against the references in the reply. Outfits (`humans.outfit`): tee_shorts, onesie (under 2),
+      underwear, none: plain shell parts whose region boxes / sleeve cones / neck hole are placed from the body's
+      joints, crotch and chin. The garment option (`close` / `hang` / tube) made studs at the nipples' rings, ruffs
+      in the armpits and a line at the tube's top on small bodies: not used. Children get muscle 0.35, nipples 0.
+      `tests/test_humans.py` (references, proportions 1-22 y both sexes, adults / opt-out unchanged, dressed by
+      default, own neck). `spikes/humans/lineup.py [clay|skin]`.
+    - Never render or send a child's figure unclothed: the tool dresses by default; diagnosis used numbers and
+      scratch-only clay.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy

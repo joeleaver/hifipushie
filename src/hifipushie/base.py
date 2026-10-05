@@ -39,11 +39,12 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 76  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 85  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
 TUBE_BAND = 0.08  # m: where a garment's torso tube hands over to the cloth from the body
+OWN_REACH = 0.035  # m (x the head's scale): how far over the graft plane a followed head eases onto its body's own
 LOW_LOOP = 0.004  # the neck loop's least clearance under the graft's overlap (see _neck_tube)
 _CACHE: dict = {}
 
@@ -120,6 +121,9 @@ def inject(spec: dict) -> dict:
         # and without it parted lips showed a hole into the head)
         iu, il = head["lm68"][62], head["lm68"][66]  # inner lip midpoints
         mc = np.array(joints["lm_mouth_corner.L"]["pos"])
+        # (a head that follows its body: the fill sized to the head. A child's head is 0.75-0.85 of the size the fill's
+        # numbers were set at, and the fill came out through the lips' corners and showed pale inside the nostrils)
+        ks = float(head["carry"]["s"]) / 1.1 if head.get("room") else 1.0
         if (b.get("head") or {}).get("interior"):  # a mouth that can open (face shapes): slit, bag, teeth, tongue
             out["blobs"] = {**(out.get("blobs") or spec.get("blobs") or {}), **mouth_interior(head, b["head"])}
         elif float(np.linalg.norm(iu - il)) > 0.0015:  # parted lips (a fill behind closed ones made them pout)
@@ -133,8 +137,9 @@ def inject(spec: dict) -> dict:
             # pocket in the head there: the export's topology wrap projected the lips and chin into it)
             blobs = dict(out.get("blobs") or spec.get("blobs") or {})
             seam = 0.5 * (iu + il)
-            blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in seam + [0, 0.036, -0.004]],
-                                            "size": [round(float(mc[0]) * 0.85, 4), 0.03, 0.02], "blend": 0.004})
+            blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in seam + np.array([0, 0.036, -0.004]) * ks],
+                                            "size": [round(float(mc[0]) * 0.85, 4), round(0.03 * ks, 4), round(0.02 * ks, 4)],
+                                            "blend": round(0.004 * ks, 4)})
             out["blobs"] = blobs
     elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
         off = np.array(eb["centre"]) - np.array(tj["head"]["pos"])
@@ -290,7 +295,12 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     if base.get("push"):
         W = _push(W, tpl, base["push"])
     head = head_of(spec_expanded, base)
-    if head is not None:  # a grafted head: the template's own head cut off at a neck loop under its jaw and the
+    own_neck = head is not None and bool(head.get("own_neck"))
+    if own_neck:  # (headfit.py) the head IS this body's head, a few mm apart everywhere: the body keeps its own neck,
+        # throat and nape and the two are cross-faded at the plane under the jaw. A tube from a neck loop up to the
+        # head's own (adult) neck gave a toddler, who has no neck to speak of, a long thin one
+        src = np.arange(len(W))
+    elif head is not None:  # a grafted head: the template's own head cut off at a neck loop under its jaw and the
         # neck extruded straight up as quads (its chin and jaw, bigger and lower than a real head's, stood out of the
         # graft band; columns of points built from its vertices left lips and ruffs)
         W, faces, src = _neck_tube(W, faces, tpl, spec_expanded, head)
@@ -310,13 +320,27 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         # plane, the two surfaces' few-mm mismatch left a ragged crack
         ub = (V - c) @ pn
         kb = (ub <= SEAM) | (axis_d > 0.2)
-        H = head["verts"]
-        uh = (H - c) @ pn
-        kh = uh > -SEAM
-
         def ramp(x):
             x = np.clip(x, 0, 1)
             return x ** 3 * (x * (6 * x - 15) + 10)
+        H = head["verts"]
+        uh = (H - c) @ pn
+        if own_neck:  # the head's skin eased onto the body's own head where they meet (they differ by millimetres:
+            # cross-faded as they were, the seam showed as a soft step), fading out OWN_REACH above the plane
+            reach = OWN_REACH * float(head["carry"]["s"])
+            near = np.flatnonzero((uh > -2 * SEAM) & (uh < reach))
+            dd, ii = cKDTree(V).query(H[near], k=8)
+            nh = head["normals"][near]
+            # (only body skin facing the same way: a baby's chin lies on its chest)
+            wn = np.where((N[ii] * nh[:, None, :]).sum(-1) > 0.3, 1.0 / np.maximum(dd, 1e-5) ** 2, 0.0)
+            ok = (wn.sum(1) > 0) & (dd[:, 0] < 0.02)
+            tgt = (V[ii] * wn[:, :, None]).sum(1) / np.maximum(wn.sum(1), 1e-12)[:, None]
+            off = np.where(ok, ((tgt - H[near]) * nh).sum(1), 0.0)  # along the head's normal only (no sliding)
+            f = 1 - ramp(np.clip(uh[near], 0, None) / reach)
+            H = H.copy()
+            H[near] += (f * off)[:, None] * nh
+        kh = uh > -SEAM
+
         wb = np.where(axis_d[kb] > 0.2, 1.0, 1 - ramp((ub[kb] + SEAM) / (2 * SEAM)))
         wh = ramp((uh[kh] + SEAM) / (2 * SEAM))
         V = np.r_[V[kb], H[kh]]
@@ -374,6 +398,7 @@ def head_of(s: dict, base: dict):
         _CACHE[key] = gnm_head(head, mid, up)
         if headfit.applies(base):
             _CACHE[key]["room"] = True
+            _CACHE[key]["own_neck"] = bool(head.get("own_neck"))
     return _CACHE[key]
 
 
