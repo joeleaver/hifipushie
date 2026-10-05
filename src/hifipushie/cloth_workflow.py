@@ -356,6 +356,27 @@ def stage_construction(c: Ctx) -> dict:
 # ---------------------------------------------------------------- 4 place
 
 
+def seam_start_gaps(X: np.ndarray, M: dict) -> list:
+    """Per seam, how far apart its two sides start: [{"seam", "median", "max", "twist", "far", "turned"}].
+    far: apart everywhere (median > 25 cm or max > 40 cm: more than a shoulder seam, whose front and back stand a
+    body depth apart). turned: the gaps point every way instead of one way (twist = 1 - |mean gap| / mean |gap| >
+    0.6 with a median over 8 cm): the two sides are turned against each other, as a waistband whose chain starts
+    half a turn from the band's own start (its gaps are only a waist's diameter, under any distance limit, but no
+    move brings the sides together: the sewing has to wind the band round the body). A seam standing apart one way
+    (a shoulder seam, a sleeve down its arm) has twist near 0."""
+    sw, ss = np.asarray(M["sew"]), np.asarray(M["sew_seam"])
+    g = X[sw[:, 0]] - X[sw[:, 1]]
+    d = np.linalg.norm(g, axis=1)
+    out = []
+    for si in np.unique(ss):
+        m = ss == si
+        med, mx = float(np.median(d[m])), float(d[m].max())
+        twist = 1.0 - float(np.linalg.norm(g[m].mean(0))) / max(float(d[m].mean()), 1e-9)
+        out.append({"seam": int(si), "median": med, "max": mx, "twist": twist, "far": med > 0.25 or mx > 0.40,
+                    "turned": twist > 0.6 and med > 0.08 and int(m.sum()) >= 6})
+    return out
+
+
 def _layer_gaps(X: np.ndarray, M: dict, Bp: dict, pairs: list) -> dict:
     """Median distance (mm) between an outer piece and the inner one where they overlap (outer vertices within 3 cm
     of the inner piece), along the inner piece's normal there."""
@@ -438,15 +459,15 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     # place (a band's chain starting half a turn from the band's opening, a sleeve turned round its arm) or its
     # piece is placed away from where it is sewn (a cut-on collar standing up the front of the neck)
     if len(M.get("sew", [])) and "sew_seam" in M:
-        sw, ss = np.asarray(M["sew"]), np.asarray(M["sew_seam"])
+        sw = np.asarray(M["sew"])
         gp = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
         far = []
-        for si in np.unique(ss):
-            g_ = gp[ss == si]
-            med, mx = float(np.median(g_)), float(g_.max())
-            if med > 0.25 or mx > 0.40:  # (a shoulder seam starts a body depth apart: front and back stand upright)
-                sd = Bp["seams"][int(si)] if int(si) < len(Bp["seams"]) else "?"
-                far.append((mx, f"{json.dumps(sd)[:110]}: median {med * 1000:.0f} mm, max {mx * 1000:.0f} mm"))
+        for r in seam_start_gaps(X, M):
+            if r["far"] or r["turned"]:
+                sd = Bp["seams"][r["seam"]] if r["seam"] < len(Bp["seams"]) else "?"
+                far.append((r["max"], f"{json.dumps(sd)[:110]}: median {r['median'] * 1000:.0f} mm, max {r['max'] * 1000:.0f} mm"
+                            + (" (its two sides are TURNED against each other: the gaps point every way, as when a "
+                               "band's chain starts part of a turn from the band's own start)" if r["turned"] else "")))
         if far:
             far.sort(reverse=True)
             o["warn"].append("seams whose sides START far apart (the sewing must drag the cloth there; a twisted or "

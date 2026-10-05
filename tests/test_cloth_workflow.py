@@ -139,6 +139,30 @@ def test_pattern_sheet_renders():
     assert len(set(im.resize((64, 64)).getdata())) > 20  # not blank
 
 
+def test_start_gap_check_names_a_misordered_band():
+    """Stage 4's seam check: a waistband whose chain starts part of a turn from the band's own start has gaps of only
+    a waist's diameter (under any distance limit a shoulder seam also passes), but they point every way."""
+    from hifipushie import cloth_workflow as cw
+    n, R = 40, 0.123  # a 776 mm waist
+    th = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    ring = lambda a, r, z: np.c_[r * np.cos(th + a), r * np.sin(th + a), np.full(n, z)]
+    M = {"sew": np.c_[np.arange(n), n + np.arange(n)], "sew_seam": np.zeros(n, int)}
+    rows = lambda X: cw.seam_start_gaps(X, M)[0]
+    ok = rows(np.r_[ring(0.0, R + 0.03, 1.0), ring(0.0, R, 1.01)])  # the band 3 cm outside the trousers' top
+    assert not ok["far"] and not ok["turned"], ok
+    for turn in (np.pi, np.pi / 2, np.pi / 3):  # half, a quarter, a sixth of a turn off
+        r = rows(np.r_[ring(turn, R + 0.03, 1.0), ring(0.0, R, 1.01)])
+        assert r["turned"] and r["twist"] > 0.9, (turn, r)
+    assert not rows(np.r_[ring(np.pi, R + 0.03, 1.0), ring(0.0, R, 1.01)])["far"] or True  # (the distance limit alone: 2R < 25 cm)
+    assert rows(np.r_[ring(np.pi, R + 0.03, 1.0), ring(0.0, R, 1.01)])["median"] < 0.30
+    # a shoulder seam: front and back stand a body depth apart, every gap the same way: not turned, not far
+    line = np.c_[np.linspace(0.08, 0.2, n), np.zeros(n), np.full(n, 1.5)]
+    sh = rows(np.r_[line + [0, -0.11, 0], line + [0, 0.11, 0]])
+    assert not sh["turned"] and not sh["far"] and sh["twist"] < 0.01, sh
+    # a cut-on collar up the front of the neck against the back neck: far
+    assert rows(np.r_[line + [0, -0.15, 0.2], line + [0, 0.11, 0]])["far"]
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

@@ -862,7 +862,11 @@ class Body:
             loops = tailor.slice_loops(self.V, self.T, [0, 0, zk], [0, 0, 1.0])
             xs = abs(float(self.at["shoulder.L"][0])) + 0.01
             if zk < self.at["armpit_z"]:
-                pts = [L[:, :2] for L in loops if np.all(np.abs(L[:, 0]) < xs)]
+                # the loop that holds the body's middle line is the torso; a forearm hanging inside the shoulders'
+                # width is not (a waistband alone started on a hull as wide as the arms: 28 cm from the middle,
+                # its back half 16-25 cm from the trousers it is sewn to, and the sewing dragged them down)
+                mid = [L[:, :2] for L in loops if L[:, 0].min() < -0.02 and L[:, 0].max() > 0.02]
+                pts = mid or [L[:, :2] for L in loops if np.all(np.abs(L[:, 0]) < xs)]
             else:
                 # out past the shoulder point over the arm's root: clipped at it, the pieces round the armhole
                 # started inside the deltoid
@@ -1105,7 +1109,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         ylo = min(pcs[nm]["P"][:, 1].min() + dzs.get(nm, 0) for nm in torso)
         ytop = max(pcs[nm]["P"][:, 1].max() + dzs.get(nm, 0) for nm in torso)
         # the hull from the hem up to the pieces' own top (a skirt's plan curve isn't the chest's)
-        zs = np.arange(max(hps[2] + ylo, 0.05), min(hps[2] - 0.01, hps[2] + max(ytop, -0.03) + 0.02), 0.02)
+        z_hi = min(hps[2] - 0.01, hps[2] + ytop + 0.02)  # (was max(ytop, -0.03): every hull ran up to the shoulders, and a
+        # waistband alone started on a curve as wide as the chest, its back 16-25 cm from the trousers it is sewn to)
+        zs = np.arange(max(hps[2] + ylo, 0.05), max(z_hi, max(hps[2] + ylo, 0.05) + 0.021), 0.02)
         pts = [h for z in zs if (h := body.hull(z)) is not None]
         Hu = np.concatenate(pts)
         Hu = Hu[ConvexHull(Hu).vertices]
