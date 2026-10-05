@@ -2462,7 +2462,19 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   in, v flipped on every uv set, `_WIND` an attribute; Godot 4.7: scene nodes only, UV2 unflipped, TEXCOORD_2 ->
   CUSTOM0, `_WIND` dropped; Unity/Unreal unchecked). Seasons/snow/wet: spec states for looks (`_weather` on the
   finished materials) and KHR_materials_variants in the export. Collision: capsules + a low mesh. Khronos: 0 errors.
-- Open: low LODs need bough-sized cluster cards (20k oak = a few big clumps); spruce close-ups are feather cards;
+- Foliage direction + species pass 2 (2026-10-06): the user saw "all the leaves on top of the branches"; measured, no
+  card had a normal below horizontal (71-85% faced up). `twig.face` (twigs rolled round their shoot), `twig.light`
+  (blades to the sky vs as the bud set them), spiral `divergence`, `twig.needles` radial / fascicles / ranked,
+  `leaves.retention` (years). Arrangement comes from flora TEXT and plates (workspace/veg_refs/botanical/), not photos:
+  guide table "from a botanical description to our keys"; divergence fractions and light values are marked assumptions.
+  Oak's level bands were the growth model: the shadow pyramid ended at its depth, light returned there and the next
+  layer formed (`_shadow` now fades below it; `habit.shadow_tail`, 0 for spruce: with the tail its skirt went bare).
+  Blue-black bark = the sky's fill: the world lights plants with the sky 70% greyed, the camera sees it blue.
+  `cluster_leaves`: under a quarter of the twigs drawn, a card shows a bough (spread per crown cell, 35% wood).
+- Open (read of vg_36, 2026-10-06): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
+  good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
+  white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
+  Not done: wet smear, snow on ground/limbs, wind measured by displacement, 8k pine set re-run. Earlier: low LODs need bough-sized cluster cards (20k oak = a few big clumps); spruce close-ups are feather cards;
   weeping willow is a ragged column, not a dome; snow doesn't lie on the ground; wind clip's difference image is
   muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
   terrain integration not started.

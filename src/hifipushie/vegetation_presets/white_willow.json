@@ -42,7 +42,7 @@
    0.18,
    0.12
   ],
-  "shed": 0.1,
+  "shed": 0.06,
   "bud_life": 4,
   "sag": 0.9,
   "sag_max": 0.35,
@@ -73,7 +73,8 @@
    0.8,
    1,
    1
-  ]
+  ],
+  "shadow_tail": 0.2
  },
  "leaves": {
   "shape": "lanceolate",

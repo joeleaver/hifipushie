@@ -67,6 +67,7 @@ DEFAULT = {
         "shed": 0.12,  # light per internode under which a branch is dropped
         "shed_age": 2,
         "shadow": [0.25, 1.6, 6],  # a, b, depth of the shadow pyramid
+        "shadow_tail": 0.7,  # how the shade carries on below the pyramid (0 = it ends: light-demanding trees in layers)
         "leaf_steps": 2,  # steps a node keeps its leaves (evergreens: more)
         "sag": 0.4, "sag_max": 0.25,  # bend under weight; the most one internode bends (rad)
         "pipe": 2.3,  # d^n = sum of the children's d^n
@@ -112,6 +113,7 @@ HABIT_INFO = {
     "jitter": "0.03-0.5 per order: crookedness (curving, with momentum). trunk 0.03-0.15, gnarled limbs 0.4-0.5",
     "shed": "0-0.3: light per segment under which a branch is dropped", "shed_age": "steps before a branch can be shed",
     "shadow": "[strength 0.03-0.25, falloff 1.6-3, depth 2-6]: each leafy segment's shade",
+    "shadow_tail": "0-0.8: shade carried on below `shadow`'s depth; 0.7 keeps crowns from forming level bands, 0 for shade-bearers that hold foliage to the ground (spruce)",
     "leaf_steps": "2-6: steps a segment keeps its leaves (evergreens more)", "sag": "0.3-3: bend under weight",
     "sag_max": "0.2-0.35 rad: the most one segment bends", "pipe": "2-2.5: how fast branches thin (2 = thick limbs)",
     "tip_radius": "0.003-0.006 m: a shoot end's radius", "ring": "0.0008-0.003 m of radius all wood adds a year (girth)",
@@ -427,7 +429,7 @@ def _compass(d):
 TAIL = 0.7
 
 
-def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
+def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0, tail=TAIL):
     """The shadow grid of leafy points src (cell units, origin lo), each casting `weight` (its internode's length:
     short internodes carry less leaf)."""
     C = np.zeros(dims)
@@ -446,13 +448,13 @@ def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
             S += a * B
     # below the pyramid the shade fades instead of ending: cut off at `depth`, the light came back exactly that far
     # under every foliage layer and the next layer formed there (crowns in level bands `depth` cells apart)
-    if depth > 0 and dims[2] > depth + 1:
-        tail = a * b ** (-depth) * B
+    if tail > 0 and depth > 0 and dims[2] > depth + 1:
+        last = a * b ** (-depth) * B
         acc = np.zeros(dims[:2])
         for z in range(dims[2] - 1, -1, -1):
             zs = z + depth + 1
             if zs < dims[2]:
-                acc = TAIL * (acc + tail[:, :, zs])
+                acc = tail * (acc + last[:, :, zs])
             S[:, :, z] += acc
     return S
 
@@ -777,7 +779,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             cell *= 1.5
         dims = tuple(np.ceil((hi - lo) / cell).astype(int) + 1)
         wl = np.clip(T.vig.astype(float), 0.05, 1.5)
-        S = _shadow(P[leafy] / cell, lo / cell, dims, sa, sb, sd, tilt, wl[leafy])
+        S = _shadow(P[leafy] / cell, lo / cell, dims, sa, sb, sd, tilt, wl[leafy], tail=float(h["shadow_tail"]))
         ij = np.clip(((P - lo) / cell).astype(np.int64), 1, np.array(dims) - 2)
         s_here = S[ij[:, 0], ij[:, 1], ij[:, 2]]
         Qn = np.clip(1.0 - s_here + sa * leafy * wl, 0.0, 1.0)
