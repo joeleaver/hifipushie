@@ -500,6 +500,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             tri, miss = foldmod.force_edges(X, tri, pairs)
             fold_recs.append({"piece": nm, "name": f["name"], "kind": f["kind"], "strength": f["strength"],
                               "angle": f["angle"], "turn": fr["turn"], "sign": fr["sign"], "missing_edges": miss,
+                              "in_wrap": bool(f.get("in_wrap")),
                               "rows": [[len(uv) + i for i in ids] for ids in loc]})
         # orient counter-clockwise in the pattern (normals out of the pattern's face)
         a, b, c = X[tri[:, 0]], X[tri[:, 1]], X[tri[:, 2]]
@@ -1159,14 +1160,37 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(Cw[:, 1] - cy, 0))]
             else:
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(cy - Cw[:, 1], 0))]
-            q = _arc_point(Cw, start, U[:, 0] + dxs.get(nm, 0.0), 1.0)
+            xs_, ys_, lay_ = U[:, 0].copy(), U[:, 1].copy(), np.zeros(len(U))
+            # wrap "pleats" [{a, b, depth, sign}]: the cloth past the line a-b (on side `sign` of it) runs BACK a
+            # depth over the cloth before it (mirrored in the line), then on again over that (moved back two depths):
+            # a Z in plan, three layers a LAYER apart, the pattern's lengths kept (a pleat laid closed; turned as two
+            # flaps, the whole side of the piece swung round twice and started 100% stretched)
+            for pl in sorted(w.get("pleats") or [], key=lambda p_: abs(p_["a"][0])):
+                a_, b_, d_ = np.asarray(pl["a"], float), np.asarray(pl["b"], float), float(pl["depth"])
+                dl_ = (b_ - a_) / np.linalg.norm(b_ - a_)
+                n_ = np.array([-dl_[1], dl_[0]])
+                n_ = n_ if n_[0] * float(pl["sign"]) > 0 else -n_
+                t_ = (xs_ - a_[0]) * n_[0] + (ys_ - a_[1]) * n_[1]
+                back_ = np.where(t_ <= 0, 0.0, np.where(t_ <= d_, 2 * t_, 2 * d_))
+                xs_, ys_ = xs_ - back_ * n_[0], ys_ - back_ * n_[1]
+                # (each layer leaves the one under it as a wedge over 2 cm (4 mm over 6 was a 20% stretch), and the top one eases back down over 8 cm)
+                lay_ = np.maximum(lay_, np.clip(t_ / min(0.02, 0.7 * d_), 0, 1) + np.clip((t_ - d_) / min(0.02, 0.7 * d_), 0, 1)
+                                  - 2.0 * np.clip((t_ - 2 * d_) / 0.08, 0, 1))
+            q = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0), 1.0)
+            if lay_.any():
+                # out along the curve's own normal (out from its middle sheared the layers 11% on the flat front)
+                tg_ = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) + 0.003, 1.0) - _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) - 0.003, 1.0)
+                nr_ = np.c_[tg_[:, 1], -tg_[:, 0]]
+                nr_ /= np.maximum(np.linalg.norm(nr_, axis=1, keepdims=True), 1e-9)
+                nr_ *= np.sign(np.sum(nr_ * (q - Cw.mean(0)), 1))[:, None]
+                q = q + nr_ * (LAYER * lay_)[:, None]
             cg_ = _closed_girth(M, nm)
             if cg_:  # a band closed on itself: its overlapping end a layer outside the end under it
                 lap_ = max(float(np.ptp(U[:, 0])) - cg_, 1e-6)
                 ramp_ = np.clip((U[:, 0] - (U[:, 0].max() - 2.0 * lap_)) / lap_, 0, 1)
                 rd_ = q - Cw.mean(0)
                 q = q + rd_ / np.maximum(np.linalg.norm(rd_, axis=1, keepdims=True), 1e-9) * (LAYER * ramp_)[:, None]
-            X[sel] = np.c_[q, hps[2] + U[:, 1] + dzs.get(nm, 0.0)]
+            X[sel] = np.c_[q, hps[2] + ys_ + dzs.get(nm, 0.0)]
         elif to.startswith("arm."):
             side = to[4:]
             sh, el, wr = (body.J[f"{j}.{side}"] for j in ("shoulder", "elbow", "wrist"))
@@ -1653,7 +1677,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     fl_ = np.zeros(len(X), bool)  # the folds' flaps: turned at the end, about rows already pushed clear
     for fd in M.get("folds") or []:
         from . import folds as foldmod
-        fl_[foldmod._geom(M, fd)["rows"][0]["v"]] = True
+        if not fd.get("in_wrap"):
+            fl_[foldmod._geom(M, fd)["rows"][0]["v"]] = True
     Xp = body.push_out(X, gaps)
     if smooth:  # every face of a band clear of the body (centres and edge midpoints): its vertices go further out
         F = M["F"]
@@ -1798,8 +1823,10 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
             nn = wts @ N[Fo[t]]
             nn /= max(np.linalg.norm(nn), 1e-12)
             sg = -1.0 if pcs[nm]["wrap"].get("face") == "out" else 1.0  # (a pocket lies on the OUTSIDE)
+            sg *= float(pcs[nm]["wrap"].get("lies_depth", 1))  # (the second bag of a pocket: two layers in)
             X[v] = p - sg * faces.get(on, 1.0) * LIES * nn
-            base[v], dirs[v] = p, -sg * faces.get(on, 1.0) * nn
+            base[v], dirs[v] = p, -np.sign(sg) * faces.get(on, 1.0) * nn
+            more[v] = (abs(sg) - 1.0) * LIES
         # round a tight roll the laid piece's chords can still cut the piece under it (their triangles differ):
         # the vertices of what crosses stand a little further off, until nothing does
         for _ in range(10):
@@ -1874,6 +1901,8 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
     info = {}
     bn, _ = body.normals() if len(body.V) else (np.zeros((0, 3)), None)
     for fd in fds:
+        if fd.get("in_wrap"):  # a pleat's folds are laid by the wrap itself (place: wrap "pleats")
+            continue
         nm = fd["piece"]
         k = names.index(nm)
         to = pcs[nm]["wrap"].get("to", "torso")
@@ -3673,6 +3702,27 @@ def validate(spec: dict) -> None:
         if g.get("method", "simulate") not in ("simulate", "settle"):
             raise ClothError(f'{where}: method is "simulate" (sew and simulate everything) or "settle" (made pieces '
                              "constructed finished, the loose cloth settled lightly)")
+        if g.get("over") is not None:  # layered: worn over another garment of this model
+            seen, cur = [gn], g.get("over")
+            while cur is not None:
+                if not isinstance(cur, str) or cur not in gs:
+                    raise ClothError(f"{where}: over {cur!r} isn't a garment of this model (have {', '.join(gs)})")
+                if cur in seen:
+                    raise ClothError(f"{where}: over runs in a circle ({' -> '.join(seen + [cur])})")
+                seen.append(cur)
+                cg = gs[cur]
+                cur = expanded(cg).get("over") if isinstance(cg, dict) else None
+            if isinstance(_state(g), dict) or isinstance(_state(gs[g["over"]]), dict):
+                raise ClothError(f'{where}: over needs both garments worn (state "worn"): a hung or draped garment '
+                                 "has no body under it to share")
+        for e in g.get("support") or []:
+            kd = e if isinstance(e, str) else (e or {}).get("kind") if isinstance(e, dict) else None
+            if kd not in SUPPORTS:
+                raise ClothError(f"{where}: support {e!r}: a kind name or {{\"kind\", ...}} of {', '.join(SUPPORTS)}")
+            if isinstance(e, dict) and set(e) - {"kind"} - set(SUPPORTS[kd]):
+                raise ClothError(f"{where}: support {kd} takes {', '.join(SUPPORTS[kd])}")
+        if "layer_gap" in g and not (isinstance(g["layer_gap"], (int, float)) and 0 <= g["layer_gap"] <= 0.03):
+            raise ClothError(f"{where}: layer_gap is the air between the layers at the start in m (0..0.03)")
         if g.get("quality", "final") not in ("draft", "final"):
             raise ClothError(f'{where}: quality is "draft" (one coarse sim, ~1 min) or "final" (coarse then refined)')
         for k, lo, hi in (("resolution", 0.004, 0.05), ("coarse", 0.008, 0.05)):

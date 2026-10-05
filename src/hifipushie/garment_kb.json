@@ -572,10 +572,10 @@
     "why": "do it before a facing or band is traced from those edges"
    },
    "pocket": {
-    "does": "a pocket laid ON a piece: traced in its coordinates, placed on its outside face, tacked down by point stitches along its sewn edges. type patch (a rectangle, bottom corners cut, top open; at = [x, y] of the top edge's middle) or kangaroo (across the centre front of a piece cut on the fold; top and bottom sewn, slanted sides open)",
-    "use": "patch pockets on jackets, shirts, aprons; a hoodie's or anorak's kangaroo pocket",
-    "keeps": "nothing of the piece under it changes; the tacks are mirrored with the piece",
-    "limits": "welt, flap and in-seam pockets are not drafted: they need a cut inside a piece or a split seam with bags behind"
+    "does": "a pocket by type. Laid ON a piece (traced in its coordinates, on its outside face, tacked by point stitches along its sewn edges): patch (a rectangle, bottom corners cut, top open; at = [x, y] of the top edge's middle), kangaroo (across the centre front of a piece cut on the fold; top and bottom sewn, slanted sides open), welt (a 12 mm strip sewn down all round: the slot's lip), flap (hangs from its top edge). IN A SEAM: in_seam (piece = the front, other = the back, top = m below the seam's upper end, opening, width, height): the seam is left unsewn over the opening and two bags are sewn to its lips and to each other, lying inside the front",
+    "use": "patch pockets on jackets, shirts, aprons; a kangaroo pocket; a tailored jacket's welt and flap pockets; side-seam pockets in skirts, trousers, dresses, coats",
+    "keeps": "the piece under a laid-on pocket is unchanged; an in-seam pocket splits its seam in two, both parts still matched",
+    "limits": "a welt / flap pocket's slot is not cut and has no bag (a cloth mesh has no holes; the bag never shows)"
    },
    "lining": {
     "does": "a lining derived from its shell: every body piece traced as <piece>_lining, the seams between lined pieces repeated between their linings, each laid inside its shell, sewn to the shell along attach (default the hems, sleeve hems and back neck)",

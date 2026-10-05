@@ -158,6 +158,39 @@ def test_pockets_are_laid_on_and_tacked():
         raise AssertionError("a pocket off its piece must be refused")
 
 
+def test_welt_flap_and_in_seam_pockets():
+    D = pd.start("bodice", MM, {})
+    pd.apply(D, [{"op": "pocket", "piece": "front", "type": "welt", "at": [0.13, -0.56], "width": 0.13, "name": "welt"},
+                 {"op": "pocket", "piece": "front", "type": "flap", "at": [0.13, -0.60], "width": 0.14, "name": "flap"}])
+    w, f = D["pieces"]["welt"], D["pieces"]["flap"]
+    assert np.ptp(w["P"][:, 1]) <= 0.0121 and "welt" in D["interfaced"] and w["wrap"]["face"] == "out"
+    n_w = sum(1 for a, b in D["sym_stitches"] if a.startswith("welt:"))
+    n_f = sum(1 for a, b in D["sym_stitches"] if a.startswith("flap:"))
+    assert n_w >= 8 and 3 <= n_f <= 6  # the welt sewn all round, the flap along its top only
+    tops = [f["P"][f["names"][a.split(":")[1]], 1] for a, b in D["sym_stitches"] if a.startswith("flap:")]
+    assert np.ptp(tops) < 1e-9 and abs(tops[0] - f["P"][:, 1].max()) < 1e-9
+    _ok(D)
+    # in the side seam of a yoked skirt: the seam (a chain) is left open, two bags sewn to its lips and each other
+    S = pd.start("skirt", MM, {"length": 0.56, "darts": False})
+    pd.apply(S, [{"op": "style_line", "piece": "front", "name": "yokeF", "from": {"edge": "cWaist>cHem", "dist": 0.10},
+                  "to": {"edge": "sideWaist>sideSeat", "y": -0.085}, "names": ["front_yoke", "front"]},
+                 {"op": "style_line", "piece": "back", "name": "yokeB", "from": {"edge": "cWaist>cHem", "dist": 0.10},
+                  "to": {"edge": "sideWaist>sideSeat", "y": -0.085}, "names": ["back_yoke", "back"]}])
+    n0 = len(S["seams"])
+    pd.apply(S, [{"op": "pocket", "type": "in_seam", "piece": "front", "other": "back", "top": 0.02, "opening": 0.15,
+                  "width": 0.12, "height": 0.22}])
+    _ok(S)
+    assert len(S["seams"]) == n0 + 5  # the side seam in two parts (+1), and four bag seams
+    bf, bb = S["pieces"]["pocket_front"], S["pieces"]["pocket_back"]
+    assert bf["wrap"]["lies_on"] == "front" and bb["wrap"]["lies_depth"] == 2 and np.allclose(bf["P"], bb["P"])
+    assert abs(pd.edge_length(S, "pocket_front:open.a>open.b") - 0.15) < 2e-3
+    # nothing sews the opening's two lips to each other any more
+    assert not any({"front:pocket.top>pocket.low", "back:pocket.top>pocket.low"} <= {str(x) for x in s} for s in S["seams"])
+    pd.unfold(S)
+    _ok(S)
+    assert {"pocket_front.L", "pocket_back.R"} <= set(S["pieces"])
+
+
 def test_lining_is_derived_from_its_shell():
     D = pd.start("bodice", MM, {"fitted": True, "cb": "seam"})
     pd.apply(D, [{"op": "contour", "edge": "centre_back", "at": [["top", 0], ["waist", 0.02], ["hem", 0.01]]},

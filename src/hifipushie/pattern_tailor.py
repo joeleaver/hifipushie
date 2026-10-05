@@ -312,6 +312,8 @@ def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 
     Welt and in-seam pockets need a cut inside the piece / a split seam with bags behind: not drafted yet (the detail
     maps are where a welt shows)."""
     from . import pattern_blocks as pb
+    if type == "in_seam":
+        return _in_seam_pocket(D, piece, name=name, width=width, height=height, **o)
     pc = D["pieces"][piece]
     wy = D["meta"].get("waist_y", -0.45)
     P = pc["P"]
@@ -334,8 +336,28 @@ def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 
                ("botB", [x0 + width - c, top - height]), ("botA", [x0 + c, top - height]), ("sideA", [x0, top - height + c])]
         sewn = [("topB", "sideB"), ("sideB", "botB"), ("botB", "botA"), ("botA", "sideA"), ("sideA", "topA")]
         sym = pc.get("sym", "pair")
+    elif type in ("welt", "flap"):
+        # what shows of a welt / flap pocket: a welt strip sewn down all round (the slot's lip), or a flap hanging
+        # from its top edge. The slot itself is not cut and no bag hangs inside (a cloth mesh has no holes; the
+        # bag never shows): the piece under it is whole
+        if at is None:
+            at = [0.5 * float(P[:, 0].max()), wy - 0.06]
+        if type == "welt":
+            height = min(height, 0.012) if height >= 0.05 else height
+        else:
+            height = 0.055 if height >= 0.1 else height
+        x0, top = float(at[0]) - width / 2, float(at[1])
+        c = 0.0 if type == "welt" else min(0.012, 0.2 * width)
+        pts = [("topA", [x0, top]), ("topB", [x0 + width, top]), ("sideB", [x0 + width, top - height + c]),
+               ("botB", [x0 + width - c, top - height]), ("botA", [x0 + c, top - height]), ("sideA", [x0, top - height + c])]
+        if type == "welt":
+            pts = [pts[0], pts[1], pts[3], pts[4]]
+            sewn = [("topA", "topB"), ("topB", "botB"), ("botB", "botA"), ("botA", "topA")]
+        else:
+            sewn = [("topA", "topB")]
+        sym = pc.get("sym", "pair")
     else:
-        raise DraftError(f"pocket type {type!r}: patch or kangaroo (welt and in-seam pockets aren't drafted yet)")
+        raise DraftError(f"pocket type {type!r}: patch, kangaroo, welt, flap or in_seam")
     from .cloth import _inside
     Q = np.array([q for _, q in pts], float)
     if not _inside(P, Q * 0.98 + 0.02 * Q.mean(0)).all():
@@ -364,6 +386,8 @@ def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 
                 else:
                     ring.append((tn, q))
                     tacks.append((tn, q))
+    if type in ("welt", "flap"):
+        D["interfaced"].append(name)
     ppc = pb.make_piece(name, ring, "pocket", dict(pc.get("wrap") or {}), sym)
     ppc["wrap"].update({"lies_on": piece, "face": "out"})
     ppc["wrap"].pop("out", None)
@@ -381,6 +405,92 @@ def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 
     D["log"].append(f"{type} pocket {name} on {piece}: {np.ptp(Q[:, 0]) * (2 if sym == 'fold' else 1) * 1000:.0f} x "
                     f"{np.ptp(Q[:, 1]) * 1000:.0f} mm, laid on its outside, {len(seen)} tacks along its sewn edges "
                     f"({'top and bottom; the slanted sides open' if type == 'kangaroo' else 'sides and bottom; the top open'})")
+
+
+def _in_seam_pocket(D: dict, piece: str, other: str | None = None, top: float | None = None, opening: float = 0.16,
+                    width: float = 0.14, height: float = 0.24, name: str = "pocket", along: str | None = None, **o) -> None:
+    """A pocket in the seam between `piece` (the front) and `other` (the back; default: the piece it shares a seam
+    with, "along": a point on the seam meant): the seam is left unsewn over `opening` m from `top` (m below the
+    seam's upper end; default 4 cm), and two bags (the same D shape, `width` deep into the front, `height` long) are
+    sewn one to each lip of the opening and to each other. Both lie inside the front."""
+    from . import pattern_blocks as pb
+    flat = lambda side: [side] if isinstance(side, str) else list(side)
+    one = lambda xs: xs[0] if len(xs) == 1 else xs
+    seam = None
+    for s in D["seams"]:
+        for A, B in ((flat(s[0]), flat(s[1])), (flat(s[1]), flat(s[0]))):
+            ia = [k for k, x in enumerate(A) if x.split(":")[0] == piece
+                  and (not along or along in x.split(":", 1)[1].split(">"))]
+            ib = [k for k, x in enumerate(B) if x.split(":")[0] != piece and (other is None or x.split(":")[0] == other)]
+            if ia and ib and not any(x.split(":")[0] == piece for x in B):
+                # (in a chain, the part of the other side that mates this one: the same place in the chain)
+                seam, i, j = s, ia[0], (ia[0] if ia[0] in ib else ib[0])
+                break
+        if seam is not None:
+            break
+    if seam is None:
+        raise DraftError(f"in-seam pocket: no seam between {piece} and {other or 'another piece'} (name it with \"other\" / \"along\")")
+    ea, eb = A[i], B[j]
+    other = eb.split(":")[0]
+    note = D["notes"].pop(json.dumps(seam), None)
+    top = 0.04 if top is None else float(top)
+    ends = {}
+    for tag, spec in (("F", ea), ("B", eb)):
+        pn, arc = spec.split(":", 1)
+        pcx = D["pieces"][pn]
+        a0, b0 = arc.split(">")[0], arc.split(">")[-1]
+        L = pb.edge_length(pcx, arc)
+        if top + opening > L - 0.02:
+            raise DraftError(f"in-seam pocket: the seam's part on {pn} is {L * 1000:.0f} mm, too short for an opening "
+                             f"{opening * 1000:.0f} mm from {top * 1000:.0f} mm")
+        pd._point(D, pcx, {"edge": arc, "dist": top}, f"{name}.top")
+        pd._point(D, pcx, {"edge": arc, "dist": top + opening}, f"{name}.low")
+        ends[tag] = (pn, a0, b0)
+    (pf, fa, fb), (pk, ka, kb) = ends["F"], ends["B"]
+    D["seams"] = [s for s in D["seams"] if s is not seam]
+    up = [one(A[:i] + [f"{pf}:{fa}>{name}.top"]), one(B[:j] + [f"{pk}:{ka}>{name}.top"])]
+    lo = [one([f"{pf}:{name}.low>{fb}"] + A[i + 1:]), one([f"{pk}:{name}.low>{kb}"] + B[j + 1:])]
+    D["seams"] += [up, lo]
+    if note:
+        D["notes"][json.dumps(up)] = dict(note)
+        D["notes"][json.dumps(lo)] = dict(note)
+    # named edges that ran over the old seam (a side seam edge): unchanged specs still resolve (the points were added)
+    f = D["pieces"][pf]
+    ix = pattern.arc_indices(f, f"{name}.top>{name}.low")
+    E = f["P"][ix]
+    T, Lw = E[0], E[-1]
+    d = (Lw - T) / np.linalg.norm(Lw - T)
+    nin = np.array([-d[1], d[0]])
+    if nin @ (f["P"].mean(0) - T) < 0:
+        nin = -nin  # into the front
+    # the bag: the opening's own line, then a D into the front, hanging below the opening
+    low_end = T + d * height
+    curve = pb.bez(Lw, Lw + d * 0.35 * (height - opening), low_end + nin * 0.25 * width, low_end + nin * 0.55 * width, 6)
+    curve2 = pb.bez(low_end + nin * 0.55 * width, low_end + nin * width, T + nin * width + d * 0.25 * height, T + nin * width * 0.8, 8)
+    pts = [("open.a", T)] + [(None, q) for q in E[1:-1]] + [("open.b", Lw)] + [(None, q) for q in curve[:-1]] + \
+        [("bagLow", curve[-1])] + [(None, q) for q in curve2[:-1]] + [("bagTop", curve2[-1])]
+    from .cloth import _inside
+    Q = np.array([q for _, q in pts], float)
+    if _inside(f["P"], Q * 0.97 + 0.03 * Q.mean(0)).mean() < 0.9:
+        raise DraftError(f"in-seam pocket {name}: the bag ({width * 1000:.0f} x {height * 1000:.0f} mm) doesn't fit inside {pf}")
+    for tag, depth in (("front", 1), ("back", 2)):
+        b = pb.make_piece(f"{name}_{tag}", pts, "pocket", dict(f.get("wrap") or {}), f.get("sym", "pair"))
+        b["wrap"].update({"lies_on": pf, "lies_depth": depth})
+        b["wrap"].pop("out", None)
+        b["traced"] = pf
+        D["pieces"][f"{name}_{tag}"] = b
+    s1 = [f"{name}_front:open.a>open.b", f"{pf}:{name}.top>{name}.low"]
+    s2 = [f"{name}_back:open.a>open.b", f"{pk}:{name}.top>{name}.low"]
+    s3 = [f"{name}_front:open.b>bagLow>bagTop", f"{name}_back:open.b>bagLow>bagTop"]
+    s4 = [f"{name}_front:bagTop>open.a", f"{name}_back:bagTop>open.a"]
+    D["seams"] += [s1, s2, s3, s4]
+    e2 = pd.edge_length(D, s2[0]) / max(pd.edge_length(D, s2[1]), 1e-9) - 1
+    D["notes"][json.dumps(s1)] = {"ease": [-0.004, 0.004], "why": f"{name}'s front bag is sewn to the opening's front lip"}
+    D["notes"][json.dumps(s2)] = {"ease": [round(e2 - 0.01, 4), round(e2 + 0.01, 4)],
+                                  "why": f"{name}'s back bag is sewn to the opening's back lip"}
+    D["log"].append(f"in-seam pocket {name}: the seam {pf} / {pk} left open {opening * 1000:.0f} mm from {top * 1000:.0f} mm "
+                    f"below its top; two bags {width * 1000:.0f} x {height * 1000:.0f} mm sewn to its lips and to each other, "
+                    f"lying inside {pf}")
 
 
 def op_lining(D: dict, pieces: list | None = None, attach: list | None = None, suffix: str = "_lining", **o) -> None:

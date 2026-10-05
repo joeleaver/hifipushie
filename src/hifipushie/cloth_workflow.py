@@ -329,11 +329,37 @@ def stage_construction(c: Ctx) -> dict:
     if method == "settle":
         if isinstance(st_, dict):
             o["warn"].append("method settle on a hung/draped state: those want the full simulation")
-        o["warn"].append('method "settle" is the artists\' default path under test (clothsim): the solver side isn\'t '
-                         "wired yet, so dress still runs the full simulation")
+        if cloth.cloth_job_backend(c.gx) != "zozo":
+            o["warn"].append('method "settle" needs backend "zozo" (made pieces held as constructed and carried with '
+                             "the body): with this backend dress runs the full simulation")
         for n, (how, _) in md.items():
             if how == "made" and n not in folded and garment_design.role_of(n, pcs[n]) in ("collar_fall", "facing"):
                 o["fail"].append(f"{n} is made but has no fold line: it can't be constructed turned without one")
+    # layering: what this garment is worn over, and what holds its shape from inside
+    ov = c.gx.get("over")
+    if ov:
+        ug = (c.spec.get("cloth") or {}).get(ov)
+        if ug is None:
+            o["fail"].append(f"worn over {ov!r}, which isn't a garment of this model")
+        else:
+            o["info"].append(f"layer: worn over {ov!r}. It is built first and frozen: its finished surface joins the "
+                             f"body as a collider; this garment's pieces start on the body padded out to cover it + "
+                             f"{float(c.gx.get('layer_gap', 0.003)) * 1000:.0f} mm of air. After the sim the tailoring "
+                             "tells are measured (under collar and cuff showing, lapels lying, collar hugging, no "
+                             "crossings between the layers) and the export leaves out what the outer layer hides")
+            if cloth.cached(c.name, c.spec, ov) is None:
+                o["warn"].append(f"{ov!r} isn't simulated yet: dress it first (this garment's start is laid on its "
+                                 "result)")
+    for other, og in (c.spec.get("cloth") or {}).items():
+        if other != c.gname and isinstance(og, dict) and cloth.expanded(og).get("over") == c.gname:
+            o["info"].append(f"layer: {other!r} is worn over this garment (changing this one re-simulates it)")
+    sup = c.gx.get("support") or []
+    if sup:
+        o["info"].append("structure (pads on the body under the cloth, not cloth): " + ", ".join(
+            (e if isinstance(e, str) else e["kind"]) for e in sup))
+    elif c.kind in ("coat", "jacket") and (c.spec.get("base")):
+        o["info"].append('no structure pieces: a tailored shoulder wants "support": ["shoulder_pad", "sleeve_head"] '
+                         "(the shoulder line and the sleeve cap are held out from inside)")
     K = garment_design.kb()
     lo, hi = 3, 40
     if not (lo <= float(fab.get("stiff", 0)) <= hi):
@@ -692,6 +718,16 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
             o["fail"].append(txt + ": the fold didn't hold (a made piece simulated out of shape?)")
         else:
             o["info"].append(txt)
+    for k_, label in (("collar_show_mm", "under collar above this collar at CB (mm)"),
+                      ("cuff_show_mm", "under cuff past this sleeve's hem (mm)"),
+                      ("lapel_gap_mm", "lapels off the fronts they lie on (mm)"),
+                      ("collar_hug_mm", "this collar off the under collar (mm)"),
+                      ("crossings", "crossings between the layers")):
+        t_ = (res.get("tells") or {}).get(k_)
+        if t_ is not None:
+            judge("layer_" + k_, t_["value"], "layered: " + label)
+        elif res.get("tells") is not None:
+            o["info"].append(f"layered: {label}: not measured (the garments don't have the pieces)")
     judge("crest_radius_p10_mm", meas.get("crest_radius_p10_mm", 0), "tightest folds, crest radius p10 (mm)")
     judge("strain_p95", meas["strain_p95"], "strain p95")
     o["info"].append("not measured by the tools yet: crease width, fold spacing (cloth_audit.md measured them on renders)")

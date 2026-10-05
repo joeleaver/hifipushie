@@ -1025,6 +1025,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       clothsim); virtual seams still draw a groove in the detail maps and the pattern sheet draws hinge parts
       apart from their piece; welt / in-seam pockets; lining trimmed to the facing; the under sleeve's S-shaped
       top; `hem height spread` reads designed curves and yokes as unevenness (skirt 490 mm, tunic 82 mm).
+    - Round 3 state at the stop (usage limit): added the raglan hinge (shoulder parts on the torso), pleats laid closed by the wrap (`wrap.pleats`, folds `in_wrap`), welt / flap / in-seam pockets, `y: "waist"` in point specs, the tunic re-cut at the waist. Facings are still wholly interfaced (= made); marking them draped (clothsim's advice) stretched them 100%+ round the roll's rows: reverted, open.
+      Sims queued through `drafting/seq.sh` and NOT judged: pd_52_jacket_zozo (running), pd_53_trousers_zozo, pd_54_anorak_blender, pd_55_skirt_zozo, pd_56_tunic_blender (logs in the scratchpad `drafting/<tag>.log`, renders in cloth_renders). Not started: the remaining Jaeger differences (under sleeve `shift_back`, side panel width, chest ease).
     - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
       nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
       seams, or replace the sheet.
@@ -1113,6 +1115,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       direction (NaN) and were dropped, so nothing sewed the seam (the "drafting" agent's jacket CB stood open).
       `cloth_zozo.part_stitches`: each such end steps 1 mm back into its own cloth (layers part along the normal),
       held/made ends stay; job `stitch_gap` (0 = drop as before).
+    - STATE when the usage limit stopped clothsim (2026-10-05): `over` / `support` / `layer_gap` are in the design
+      sheet, validation and stages 3 / 5 (untested beyond the cloth tests). The shirt regression run after the merge
+      of drafting's placement + parted stitches (scratch log fl_17) was NOT judged: its settle finished (1135 s on a
+      loaded machine, was 263 s), the fine settle reported "start stretch up to 120%" and was waiting for the heavy
+      slot. Next: judge that run against fl_16's numbers, then `ly_01` (Jaeger over Simon; ZOZO at
+      $HIFIPUSHIE_ZOZO=/mnt/data/hifipushie/assets/zozo/release), then the joint settle and the lapel facing.
     - Open: the yoke ridge behind the collar; the upper sleeve's folds still read busy; Carlton pinned to
       `method: "simulate"` (upper-back pleat bunches, tail knife pleat is a seam gap, cap split +7.5 / -5.0%, stand
       +4%, collar +4.5%).
