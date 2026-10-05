@@ -532,6 +532,10 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
                          "a sleeve cap inside the armhole and a cuff's own overlap are usual at 2 cm)")
     else:
         o["info"].append("start: no piece passes through another")
+    for p, v in (Bp.get("band_short") or {}).items():
+        o["fail"].append(f"{p} is {v} mm too short to close where it sits (the body's girth there + the solver's "
+                         f"{cloth.SMOOTH_CLEAR * 1000:.0f} mm clearance): it is held as made, so its button stays open and "
+                         "what is sewn to its ends is held apart. More waist ease, or a band that sits lower")
     push = Bp.get("push") or {}
     for p, v in push.items():
         pc = Bp["pieces"][p]

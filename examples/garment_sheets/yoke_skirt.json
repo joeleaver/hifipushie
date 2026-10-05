@@ -1,6 +1,6 @@
 {"design": {
   "kind": "skirt", "block": "skirt", "fit": "a_line", "fabric": "cotton_twill",
-  "block_options": {"length": 0.56, "darts": false, "seat_ease": 0.06},
+  "block_options": {"length": 0.56, "darts": false, "seat_ease": 0.06, "waist_ease": 0.03},
   "ops": [
     {"op": "style_line", "piece": "front", "name": "yokeF", "from": {"edge": "cWaist>cHem", "dist": 0.10},
      "to": {"edge": "sideWaist>sideSeat", "y": -0.085}, "names": ["front_yoke", "front"]},
@@ -13,7 +13,7 @@
      "width": 0.12, "height": 0.22},
     {"op": "waistband", "height": 0.035}
   ],
-  "details": {"waistband": "straight", "skirt_closure": "none", "darts": "none", "hem": "blind", "pleats": "knife", "pockets": "in_seam"}
+  "details": {"waistband": "straight", "skirt_closure": "cb_zip", "darts": "none", "hem": "blind", "pleats": "knife", "pockets": "in_seam"}
  },
- "spec": {"quality": "draft", "color": "#5a6a8a", "backend": "zozo"}
+ "spec": {"quality": "draft", "color": "#5a6a8a", "backend": "zozo", "zozo": {"stitch_stiffness": 8}}
 }

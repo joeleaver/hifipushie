@@ -1238,13 +1238,17 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # curve, the body's hull at its own level out to its closed girth. On the garment's one cylinder
                 # (hip girth) it stood open by 30 cm at the back, and it is a made piece, carried as placed: it could
                 # never close, and the yokes stitched to its ends were held apart in a V ("the skirt is unzipped")
-                zb = hps[2] + float(np.median(U[:, 1])) + dzs.get(nm, 0.0)
-                hb_ = [h for zz in (zb - 0.02, zb, zb + 0.02) if 0.05 < zz < hps[2] - 0.01 and (h := body.hull(zz)) is not None]
+                # (the narrowest of the band's own levels; a band shorter than that + the solver's clearance can't
+                # start closed: B["band_short"], a stage 4 failure)
+                z0b, z1b = hps[2] + U[:, 1].min() + dzs.get(nm, 0.0), hps[2] + U[:, 1].max() + dzs.get(nm, 0.0)
+                hb_ = [h for zz in np.arange(z0b, z1b + 0.005, 0.01) if 0.05 < zz < hps[2] - 0.01 and (h := body.hull(zz)) is not None]
                 if hb_:
-                    Hb = np.concatenate(hb_)
-                    Hb = Hb[ConvexHull(Hb).vertices]
+                    Hb = min((h[ConvexHull(h).vertices] for h in hb_), key=lambda h: pattern.length(h, closed=True))
                     m_b = float(np.clip((cg_b - pattern.length(Hb, closed=True)) / (2 * np.pi), SMOOTH_CLEAR, 0.15))
-                    Cw = _densify(_offset_hull(Hb, m_b + LAYER + float(w.get("out", 0.0))), 0.002)
+                    short_b = pattern.length(Hb, closed=True) + 2 * np.pi * SMOOTH_CLEAR - cg_b
+                    if short_b > 0.003:  # stage 4 says it: the band is smaller than the body where it sits
+                        B.setdefault("band_short", {})[nm] = round(float(short_b) * 1000, 1)
+                    Cw = _densify(_offset_hull(Hb, m_b + float(w.get("out", 0.0))), 0.002)
                     cy = 0.5 * (Cw[:, 1].max() + Cw[:, 1].min())
                     start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum((Cw[:, 1] - cy) * (1 if w.get("side", "front") == "front" else -1), 0))]
             xs_, ys_, lay_ = U[:, 0].copy(), U[:, 1].copy(), np.zeros(len(U))

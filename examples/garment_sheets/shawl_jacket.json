@@ -15,5 +15,5 @@
   "details": {"collar": "shawl", "front_closure": "single_button", "lining": "none", "shoulder": "none",
               "pockets": "none", "hem": "blind", "cuff": "hemmed"}
  },
- "spec": {"quality": "draft", "color": "#3a4a6a", "backend": "zozo", "fine_settle": false}
+ "spec": {"quality": "draft", "color": "#3a4a6a", "backend": "zozo", "zozo": {"stitch_stiffness": 8}, "fine_settle": false}
 }
