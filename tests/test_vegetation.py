@@ -124,8 +124,9 @@ def test_environment():
 
 
 def test_habit_words():
-    ex = v.grow({**SMALL, "habit": {"apical": [0.62, 0.5]}})
-    de = v.grow({**SMALL, "habit": {"apical": [0.44, 0.5]}})
+    ok = {"species": "oak", "age": 40}  # (no forced leader: a birch's leader holds its trunk whatever the apical share)
+    ex = v.grow({**ok, "habit": {"apical": [0.62, 0.5], "apical_old": None, "leader": 0}})
+    de = v.grow({**ok, "habit": {"apical": [0.44, 0.5], "apical_old": None, "leader": 0}})
     w = lambda t: v.shape_measures(v.silhouette(t, 0, 10, leaves=False)[0])["width_over_height"]
     assert w(de) > w(ex)  # less apical control: broader for its height
     up = v.grow({**SMALL, "habit": {"tropism": [0.35, 0.4, 0.3, 0.3], "sag": 0}})
@@ -495,6 +496,39 @@ def test_blender_round_trip():
             vt._GROWN.clear()
             if nl is None:
                 os_.environ.pop("HIFIPUSHIE_NO_LIVE", None)
+
+
+def test_boll_dead_roots_and_habit_extras():
+    from hifipushie import veg_mesh
+    base = {"species": "white_willow"}
+    cut = {"year": 10, "above": 2.5, "every": 6, "until_year": 28, "sprouts": 6}
+    A = v.grow({**base, "cuts": [cut], "trunk_diameter": 0.7, "trunk_taper": 0.1})
+    B = v.grow({**base, "cuts": [{**cut, "boll": 1.7}], "trunk_diameter": 0.7, "trunk_taper": 0.1})
+    ra, rb = A["radius"][A["order"] == 0], B["radius"][B["order"] == 0]
+    assert abs(A["height"] - B["height"]) < 1e-6 and A["height"] < 9  # (a preset `height` no longer scales a pollard up to it)
+    assert 1.25 < rb[-1] / ra[-1] < 1.75 and abs(rb[1] - ra[1]) < 1e-6  # a head on the same trunk
+    T = v.grow({"species": "birch", "age": 25})
+    lb = v.limbs(T)
+    D = v.grow({"species": "birch", "age": 25, "dead": [{"limb": lb[0]["name"], "min_radius": 0.01}]})
+    assert D["dead"].any() and not D["leafy"][D["dead"]].any() and D["stats"]["nodes"] < T["stats"]["nodes"]
+    assert (D["radius"][D["dead"]] >= 0.01).all()
+    M = veg_mesh.tubes(D)
+    assert 0 < M["dead"].mean() < 0.5 and M["V"][:, 2].min() < -0.2  # dead wood marked; the trunk goes into the ground
+    R = veg_mesh.tubes({**T, "spec": {**T["spec"], "roots": {"count": 5, "spread": 2.0, "height": 0.6}}})
+    foot = lambda m_: np.linalg.norm(m_["V"][(m_["order"] == 0) & (np.abs(m_["V"][:, 2]) < 0.02)][:, :2], axis=1)
+    f0, f1 = foot(veg_mesh.tubes(T)), foot(R)
+    assert f1.max() > 1.6 * f0.max() and f1.min() < 1.25 * f0.max()  # flares between hollows, not a wider cone
+    # determinate axes and uneven pace
+    s0 = {"species": "norway_spruce", "age": 30, "habit": {"tip_life": [0], "uneven": [0]}}
+    a = v.grow(s0)
+    b = v.grow({**s0, "habit": {"tip_life": [0, 0, 4], "uneven": [0]}})
+    assert (b["order"] == 2).sum() < 0.7 * (a["order"] == 2).sum()
+    c = v.grow({**s0, "habit": {"tip_life": [0], "uneven": [0, 0.4]}})
+    seg = lambda t: np.linalg.norm(t["pos"] - t["pos"][t["parent"]], axis=1)[t["order"] == 1]
+    assert np.std(seg(c)) > 1.5 * np.std(seg(a))  # limbs at their own pace
+    for sp in v.species():  # every preset grows something sound
+        t = v.grow({"species": sp, "age": 12})
+        assert t["stats"]["nodes"] > 5 and np.isfinite(t["pos"]).all(), sp
 
 
 def test_fit_improves():

@@ -75,15 +75,15 @@
   "shape": "needle_tuft",
   "length": 0.09,
   "color": [
-   0.349,
-   0.473,
-   0.366
+   0.3,
+   0.4,
+   0.2
   ],
   "translucency": 0.1,
   "twig": {
    "length": 0.34,
    "leaves": 220,
-   "per_m": 10,
+   "per_m": 5.0,
    "where": "shoots",
    "up": 0.5,
    "spread": 40,
@@ -95,7 +95,8 @@
   "needle_width": 0.09,
   "card": {
    "twig": {
-    "leaves": 520
+    "leaves": 520,
+    "side_shoots": 3
    },
    "leaf": {
     "needle_width": 0.03

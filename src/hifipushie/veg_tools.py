@@ -407,7 +407,7 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
         elif x == "far":  # from far enough that the tree is about half the picture's height
             j.update(eye=(toward * max(12.0, 4.5 * H) + [0, 0, 1.7]).tolist(), look=[0, 0, 0.45 * H], fov=24, leaves=has_leaves)
         elif x == "near":  # standing by it: a small tree from close, a big one from 5 m, looking at the trunk and up
-            dist = float(np.clip(0.45 * H, 2.0, 5.0))
+            dist = veg_look.near_distance(T, toward, float(np.clip(0.45 * H, 2.0, 5.0)))
             j.update(eye=(toward * dist + [0, 0, min(1.7, 0.6 * H)]).tolist(), look=[0, 0, min(0.5 * H, 5.0)], fov=62, leaves=has_leaves)
         elif x == "close":
             j.update(azimuth=azimuth, elevation=8, focus=veg_look.closeup_focus(T, azimuth), span=min(2.4, 0.6 * H), leaves=has_leaves)
