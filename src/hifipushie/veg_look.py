@@ -85,7 +85,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     if bark.get("base_kind"):
         bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / f"bark_base{tag}"))
     pj = {"npz": str(npz), "bark": bark,
-          "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal") if k in lf},
+          "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal", "round") if k in lf},
           "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None}
     return pj, info
 

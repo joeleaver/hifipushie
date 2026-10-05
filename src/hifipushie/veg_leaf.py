@@ -448,10 +448,24 @@ def card_mesh(alpha: np.ndarray, frame, verts: int = 7, cup: float = 0.1, cross:
     return {"V": V, "F": F, "uv": UV, "area": area}
 
 
+_ATLAS: dict = {}
+
+
 def atlas(leaves: dict, wood_color=(0.2, 0.15, 0.1)) -> dict:
     """The foliage atlas of a plant: every card variant's picture in a grid (color RGBA, normal, mask), and the cards
     cut to them with their uvs in the atlas. `fill` = the share of each card's area its alpha covers (overdraw's
-    other side: a card half empty is drawn twice for nothing)."""
+    other side: a card half empty is drawn twice for nothing). Kept by content (a dense needle atlas takes 20 s)."""
+    import json
+    key = json.dumps([leaves, list(wood_color)], sort_keys=True, default=float)
+    if key not in _ATLAS:
+        if len(_ATLAS) > 12:
+            _ATLAS.pop(next(iter(_ATLAS)))
+        _ATLAS[key] = _atlas(leaves, wood_color)
+    a = _ATLAS[key]
+    return {**a, "cards": [dict(c) for c in a["cards"]]}
+
+
+def _atlas(leaves, wood_color) -> dict:
     cd = {**CARD, **(leaves.get("card") or {})}
     cs = card_spec(leaves)
     tw = {**TWIG, **cs["twig"]}
@@ -477,6 +491,14 @@ def atlas(leaves: dict, wood_color=(0.2, 0.15, 0.1)) -> dict:
         fills.append(px_area / max(cm["area"] / int(cd["cross"]) * cd["scale"] ** 2, 1e-12))
         cm["uv"] = np.c_[(c + cm["uv"][:, 0]) / g, 1 - (r + 1 - cm["uv"][:, 1]) / g]
         cards.append(cm)
+    # `leaves.color` is the leaf as you SEE it lit: the per-leaf tones, blade shading and the mask's shade had the
+    # atlas's median leaf at 0.7 of it (a lit birch rendered at V 0.43 against a photo's 0.69)
+    leaf_px = (A["color"][..., 3] > 0.6) & (A["mask"][..., 0] > 0.5)
+    if leaf_px.any():
+        lum = lambda c_: 0.2126 * c_[..., 0] + 0.7152 * c_[..., 1] + 0.0722 * c_[..., 2]
+        seen = float(np.median(lum(A["color"][leaf_px][:, :3]) * A["mask"][leaf_px][:, 2]))
+        k_ = float(np.clip(lum(np.asarray(leaves.get("color", [0.16, 0.3, 0.08]), float)) / max(seen, 1e-6), 1.0, 1.8))
+        A["color"][..., :3] = np.clip(A["color"][..., :3] * k_, 0, 1)
     return {**A, "cards": cards, "fill": float(np.mean(fills)), "grid": g, "size": size,
             "triangles": int(np.mean([len(c["F"]) for c in cards]))}
 
