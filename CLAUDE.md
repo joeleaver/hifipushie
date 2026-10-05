@@ -1127,6 +1127,19 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       Still unlike the standard: shoulderToWrist 553 (630: these bodies' arms are short), slope 21 (13).
       The sim cache can't reuse an old sim across this: its key is the sim's own inputs (start, pattern, seams).
       Not yet verified by a sim when written; drafting's blocks use the same measures uncompensated.
+    - STATE at the usage-limit stop (2026-10-06, clothsim; branch worktree-agent-a2f0fa7013024989a, NOT mergeable):
+      nothing after ly_03 is verified by a sim. Unverified, in order of risk: the taut tape + shoulder slope (every
+      draft), the clean-up against the real body + crossings reverted for every garment + group welds, the fine
+      settle's body offset fitted to the start (`_start_separation`), closures (band rows, relief, buttons in look /
+      export / scene), `pressed` + the one-ring pad. Running when stopped: `cl_01` (zz_shirt with closures, scratch
+      log clothsim/cl_01.log; its coarse sim is cached, the fine settle was waiting for the heavy slot; it was
+      started BEFORE the shoulder-slope change, so its draft has the taut tape only). Next: judge cl_01 (front / cuff
+      close-ups, clay + textured, against fl_17; seam gaps line; closures line), re-run it on the final measures,
+      then `go.sh ly_03` again (ly_suit shirt re-simulates first), then pads (`support`), collar hug, vents (a
+      lapped vent = one extension flat under, the other folded: both are folded under today), drafting's tailored
+      collar (`{"op": "collar", "type": "tailored"}` on its branch, commit 112c5bf) in place of Jaeger's, Simon's
+      cuff seam (-3.0%: sleeve hem 198.9 into a 205.1 cuff, probably the slit's lips). Gates old vs new measures:
+      only pd_wrap changed (waist +11.1%, band +3..+10).
     - Seams (the user: "stitches super visible"): ZOZO leaves seams a few mm open (Jaeger mean 4.3 / p95 17.8 mm at
       stitch stiffness 1; drafting measured 30 closes them at 6x the time). `cleanup` welds sewn vertices as GROUPS
       (a vertex in two seams kept only its last pair), weighted toward interfaced vertices, and again after the push
