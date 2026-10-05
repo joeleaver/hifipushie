@@ -773,6 +773,53 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
     leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
     maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
+  - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
+    "appears thick", garments lacked construction; then the north star: artists construct and press collars and
+    cuffs, drape the loose cloth, author the fine folds).
+    - `folds.py`: garment/design key `folds` ({"piece", "line", "angle" (180 flat, 0 over onto the outside, 360
+      under), "kind" press | roll, "radius", "strength", "flap"}; `pattern.fold_line` resolves the line and runs
+      its ends out to the outline: a fold must cross its piece). `cloth.mesh` puts a vertex row on the line
+      (`folds.rows`/`row_samples`: ladder twins beside the outline, ends snapped onto ring vertices, `force_edges`
+      flips; `M["folds"]`). `cloth.place` lays every piece UNFOLDED on its wrap, pushes the base clear, then
+      `folds.apply` turns the flap about the row per station as far as asked or as it clears its obstacles (own
+      base, earlier pieces on the same body part, the body), eased along the line.
+    - A curved crease has ONE isometric fold angle (180 - 2 x the cone's half angle: the fall's cone reflected);
+      opened further the flap is stretched (130 deg: 17-75%). The collar blocked at 130 deg until both neck pieces
+      shared a radius: each used to clear the neck over its own heights, so the collar stood 4-5 mm inside its stand.
+    - Neck bands now go on the neck's own hull a clearance off the skin (`_cuff_spiral(m_min=)`, arc length kept),
+      seated where their girth fits but with their top still on the neck (`_neck_frame(band=)`): the old circle
+      clear of the neck's widest radius was 20-30% longer than the band, which stood open and far off the sides.
+      Seated at the neck's base (1 cm lower) the yoke bunched up behind the collar. A stitched stand (button to
+      buttonhole) closes exactly if it is long enough; Simon's isn't on a 4 mm solver standoff (it would need
+      ~15% collar ease), so the shirt is open-necked. tailor's "neck" is the narrowest girth (370 here); a collar
+      sits lower (385-397).
+    - Solver: made pieces rest as placed (the fold is in the placement). Cloth resting flat gets
+      `folds.bend_reference` (in.npz `bend_rest`: the flat pattern with flaps turned 170 deg; ZOZO reads hinge rest
+      angles from it) and `fold` weights (bend x (1 + 20 x strength) on the rows, one spatial multiplier with the
+      interfacing). `zozo.rest_flat: ["collar"]` runs a made piece that way: the collar held 157 deg (rest as
+      placed: 129, the shirt lifts the stiff fall), cover 8.5 mm. Blender: `mesh(fold_width=FOLD_WIDTH_FITTED)`
+      makes each fold a U 8 mm across (a single crease was blown open to 87 deg by its collision distances and
+      crumpled).
+    - A simulated crease can't have layers under ~3 mm apart: its first ring of vertices needs a contact gap
+      (`wedge` = 1.2 mm / h in `folds.apply`). Layers <= 2 mm come from construction, not from the solver.
+    - Method "settle" (`build`: `settle`/`construct`): `_carry` (made pieces pinned in ZOZO, in.npz carryIdx /
+      carryPoses = a Kabsch move per pose fitted to the body vertices under each piece; cloth_zozo pins them for
+      the whole sim), a 150-frame schedule without the assemble stage, then `_constructed`: transfer onto the fine
+      mesh, the made pieces from the fine mesh's own placement (`FOLD_WIDTH_MADE` 1.6 mm U) fitted rigidly to
+      where the coarse ones were held, flaps laid again (`_relay`), loose seam vertices drawn onto the made edges,
+      `_tuck`. The cache key leaves the fine size out. 184 s sim + ~20 s on the 890M.
+    - `cloth_detail.py`: fine folds from the drape's compression (per-triangle smallest principal stretch of
+      pattern -> drape; amplitude (L / pi) sqrt(c)), Gabor-like dabs into a height map on the atlas,
+      `cloth.fine_folds` -> `detail_maps(extra=)`. Sleeve crease width 6.7 -> 3.4 mm, spacing 19.7 -> 8.7 mm
+      against the 1 cm full sim (zz16), measured on renders with the audit's profile method.
+    - Open: 40-90 crossings where the fine collar meets the carried fronts (the tuck and the seam draw make them:
+      moving cloth vertices without contact; a short fine settle with the made pieces as colliders would be the
+      real fix); the fall opens ~20 deg over the shoulder cloth (it turns rigidly: a real leaf bends); collar
+      points 2-11 mm off the shirt; the authored folds read hatched on evenly compressed cloth.
+    - Also: pattern ops `slit` (Simon's sleeve placket: the cuff's seam chain starts and ends at the slit, the cuff
+      turned to it: `wrap.turn`, or the mean seam angle when unset) and `trim` (a band cut to the length of the
+      edges it is sewn to); torso wrap `align_x`; Carlton's belt (joined at CB), tail vent as a lapped fold
+      (seam check: back / belt / tail / side all within +-0.2%); `tests/test_folds.py`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

@@ -1311,7 +1311,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             above = float(w.get("above", 0.0))
             if neck_base is None:
                 neck_base, nb = _neck_frame(body, nb, d, width / (2 * np.pi),
-                                            band=None if w.get("circle") else abs(pattern.area(P)) / max(width, 1e-9))
+                                            band=None if (w.get("circle") or not smooth)
+                                            else abs(pattern.area(P)) / max(width, 1e-9))
             else:
                 nb = neck_base[1]
                 neck_base = neck_base[0]
@@ -1384,7 +1385,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # toward the apex. On a cylinder its ends started high and sewing bent the band in its plane: ruffles.
             cone = _sewn_arc(B, M, nm, R)
             out = np.zeros((len(U), 3))
-            if first_neck and not w.get("circle"):
+            if first_neck and smooth and not w.get("circle"):  # (Blender's start keeps the circle: its bands are
+                # sewn shut by its springs from 8 mm off the neck, and on the hull they crumpled)
                 # round the neck's own sections (their hull over the band's height) a clearance off the skin, not a
                 # circle clear of its widest radius (a neck is deeper than wide: that circle was 20-30% longer than
                 # the band, which stood open and far off the neck's sides). A band buttoned to itself (its stitched
@@ -1554,6 +1556,7 @@ def piece_faces(M: dict, X: np.ndarray, body: "Body", pcs: dict) -> dict:
 
 FOLD_WIDTH_FITTED = 0.008  # a fold's U in a "fitted" placement (Blender: its cloth's collision distances apart)
 FOLD_WIDTH_MADE = 0.0016  # a fold's U on a constructed (never simulated) mesh: two layers of cloth nearly touching
+RELAY_OPEN = 40.0  # deg a made flap opens to clear the cloth under it; past that the cloth is tucked under (_tuck)
 FOLD_LAY = 0.0015  # how far a placed flap starts off what it lies on (a contact solver's gap, with room for chords)
 
 
@@ -1904,6 +1907,9 @@ def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf
     Vd = transfer(Ms, Vc, M)
     V = Vd.copy()
     Xc_on_f = transfer(Ms, Xs, M)
+    dbg = (lambda tag, W: print(f"construct {tag}: {integrity(W, M, Bp, Xf)['self_intersections']} crossings", flush=True)) \
+        if os.environ.get("HIFIPUSHIE_CLOTH_DEBUG") else (lambda tag, W: None)
+    dbg("carried", V)
     held = np.zeros(len(V), bool)
     for nm in carry["pieces"]:
         sel = M["piece"] == M["names"].index(nm)
@@ -1911,6 +1917,7 @@ def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf
         R1, t1 = carry["moves"][nm]
         V[sel] = (Xf[sel] @ R0.T + t0) @ R1.T + t1
         held[sel] = True
+    dbg("made pieces set", V)
     # a fold's flap lies on the cloth that has arrived under it (the shirt under a collar's fall)
     from . import folds as foldmod
     faces = Bp.get("faces") or {}
@@ -1924,7 +1931,9 @@ def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf
         k = len(fd["rows"])
         # from where it was made: a little further down if nothing is under it, back up where the cloth is in the way
         V, info[fd["name"]] = _relay(V, M, fd, faces.get(fd["piece"], 1.0), obs)
+    dbg("flaps laid", V)
     V = _tuck(V, M, held, body)
+    dbg("tucked", V)
     sew = M["sew"]
     a, b = sew[:, 0], sew[:, 1]
     d_all = []
@@ -1949,7 +1958,9 @@ def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf
         D2 = acc / np.maximum(wt, 1)[:, None]
         D = np.where(fixed[:, None], D, 0.85 * D2)
     V = np.where(fixed[:, None], V, Vd + D)
+    dbg("seams drawn", V)
     V = _tuck(V, M, held, body)
+    dbg("tucked again", V)
     return V, Vd, {"pieces": list(carry["pieces"]), "folds": info,
                    "seam_mm": [round(float(np.median(d_all)) * 1000, 1), round(float(d_all.max()) * 1000, 1)] if len(d_all) else None}
 
@@ -2003,7 +2014,7 @@ def _relay(V: np.ndarray, M: dict, fd: dict, face: float, obs: list) -> tuple:
     full = abs(math.degrees(fd["turn"])) * k
     # folds.apply turns by t x the fold's turn from the state it is given: here from the made fold
     t_hi = max(0.0, (178.0 - cur) / full)
-    Vn, info = foldmod.apply(V, M, fd, face, obs, FOLD_LAY, t_max=t_hi, t_min=-40.0 / full, steps=30, own_base=True,
+    Vn, info = foldmod.apply(V, M, fd, face, obs, FOLD_LAY, t_max=t_hi, t_min=-RELAY_OPEN / full, steps=30, own_base=True,
                              wedge=0.03)  # (nothing simulates this: the layers as near as cloth lies)
     info["was_deg"] = cur
     return Vn, info
@@ -2124,7 +2135,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         *((carry["idx"], carry["poses"]) if carry else ())))).hexdigest()
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
     gs.pop("backend", None)
-    keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab]
+    if construct:  # the sim is the coarse one whatever the fine mesh: its size isn't in the key
+        gs.pop("resolution", None)
+    keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab_s if construct else fab]
     if solver != "blender":  # another solver's result is another result (Blender's keys stay as they were); the
         # solver, not the backend: ZOZO run here or on a pod is the same result
         keyed.append(["solver", solver])
@@ -2143,6 +2156,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                              "garment, resolution or quality?)")
         res["V_sim"], res["V_coarse"], res["V_prev"] = d["V"], None, d.get("Vprev")
         res["log"] = "\n".join(lines)
+        if construct:  # the coarse settle: the fine result is constructed from it below
+            res["V_coarse"], res["V_sim"], res["V_prev"] = d["V"], None, None
         if refine:  # a coarse result: carried onto the fine mesh (no refine run)
             res["V_coarse"] = d["V"]
             res["V_sim"] = transfer(Ms, d["V"], M)
