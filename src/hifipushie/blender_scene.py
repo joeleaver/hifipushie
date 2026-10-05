@@ -649,9 +649,16 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         col = cmb.outputs[0]
         ch["roughness"], ch["specular"] = N.attr(pre[3]), N.attr(pre[4])
     height = None  # painted relief (paint.bump): the layers' height x mask, summed (m)
+    detail = None  # a switch on the tiling micro-detail layers: the export's bakes turn them off (they ship as tiling maps)
     for i, ly in enumerate(layers):
         N.x = 400 * (i + 1)
         mask = _layer_mask(N, ly)
+        if ly.get("detail"):
+            if detail is None:
+                dn = N.node("ShaderNodeValue", name="hp_detail", label="hp_detail")
+                dn.outputs[0].default_value = 1.0
+                detail = dn.outputs[0]
+            mask = N.math("MULTIPLY", mask, detail)
         if ly.get("height"):
             hm = N.math("MULTIPLY", N.math("MAXIMUM", N.math("MINIMUM", mask, 1.0), 0.0), ly["height"]) \
                 if not isinstance(mask, float) else ly["height"] * mask
@@ -1253,6 +1260,11 @@ def bake_maps(job):
     scene.render.engine = "CYCLES"
     _device(scene, job.get("device", "CPU"))
     scene.cycles.samples = job.get("samples", 4)
+    if job.get("detail") is False:  # tiling micro detail stays out of the unique maps
+        for m in bpy.data.materials:
+            n = m.node_tree.nodes.get("hp_detail") if m.node_tree else None
+            if n is not None:
+                n.outputs[0].default_value = 0.0
     scene.render.bake.use_clear = False
     by_key = {ob["hp_key"]: ob for ob in bpy.data.objects if ob.get("hp_key")}
     highs = {}

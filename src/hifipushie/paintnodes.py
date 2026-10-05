@@ -256,7 +256,7 @@ class _Compiler:
                 ly["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]):
             raise SpecError(f"paint {name!r}: \"color\": \"image\" needs the layer's own flat \"image\" key")
         return {"name": name, "color_from": img["key"] if img else None, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
-                "height": float(ly.get("height", 0.0)), "mix": ly.get("mix", "mix"),
+                "height": float(ly.get("height", 0.0)), "mix": ly.get("mix", "mix"), "detail": bool(ly.get("_detail")),
                 "opacity": float(ly.get("opacity", 1.0)), "entries": entries, "expose": expose}
 
 

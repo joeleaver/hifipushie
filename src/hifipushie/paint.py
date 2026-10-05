@@ -299,7 +299,7 @@ def validate(spec: dict) -> None:
             if c in ly and not 0 <= float(ly[c]) <= 1:
                 raise SpecError(f"paint {name!r}: {c} is 0..1")
         flat = {g: ly[g] for g in GENERATORS if g in ly and g != "mask"}
-        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", "_pre", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
+        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", "_pre", "_detail", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
         if ly.get("mix", "mix") not in MIXES:
             raise SpecError(f"paint {name!r}: mix is one of {', '.join(MIXES)}")
         if unknown:

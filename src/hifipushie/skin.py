@@ -624,10 +624,56 @@ def _build(spec: dict, J: dict) -> dict:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
         for name, sw, depth, mask in micro:
             stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
-            out[f"skin:micro_{name}"] = {"part": part, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
+            out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
                                          "opacity": round(min(0.6 * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
     return out
+
+
+def export_recipe(spec: dict, out_dir, stem: str) -> dict | None:
+    """What an engine needs beside the baked maps to shade this skin: the tiling micro-detail normal maps (written
+    into out_dir; the unique maps hold everything down to the texel, the pores live here) and the scattering,
+    coat and sheen numbers. Goes into the skin material's extras ("hifipushie_skin") and the export's json."""
+    from pathlib import Path
+    from . import paint, skin_swatch
+    if not spec.get("skin"):
+        return None
+    base = part_base(spec)[1]
+    details = []
+    for name, ly in paint.layers(spec).items():
+        if not ly.get("_detail"):
+            continue
+        tile = next((e["tile"] for e in ly.get("mask") or [] if "tile" in e), None)
+        if tile is None:
+            continue
+        sw, depth = tile["swatch"], abs(float(ly["height"]))
+        f = Path(out_dir) / f"{stem}_skin_{sw}_normal.png"
+        skin_swatch.normal_map(sw, depth, f)
+        where = {"micro_pores": "the face (not the lips)", "micro_lip_lines": "the lips", "micro_lines": "the body (everything but the face)",
+                 "micro_coarse": "knuckles, elbows, knees"}.get(name[5:], name[5:])
+        details.append({"layer": name[5:], "normal": f.name, "period_m": float(tile.get("size", skin_swatch.PERIOD[sw])),
+                        "depth_m": round(depth, 7), "cavity_tint": ly.get("color"), "cavity_opacity": ly.get("opacity"),
+                        "cavity_roughness": ly.get("roughness"), "where": where})
+    r, sc = base["subsurface_radius"], base["subsurface_scale"]
+    return {
+        "detail": details,
+        "detail_recipe": "Each detail normal map tiles: one repeat = period_m metres of skin. Lay it by world/object position "
+                         "(triplanar by the normal: uv = position / period_m on the two axes across the dominant normal axis) or by "
+                         "a uv with a known scale, blend its normal over the baked normal map (whiteout / reoriented), darken base "
+                         "colour by cavity_tint x cavity_opacity and raise roughness toward cavity_roughness where the map's "
+                         "normal leans (its furrows). To hide the repeat, mix in a second copy at 1.618 x the period by a "
+                         "low-frequency (7 cm) noise. Fade the detail out with distance (past ~1.5 m it is sub-pixel).",
+        "subsurface": {"weight": base["subsurface"], "mean_free_path_m": [round(float(x) * sc, 6) for x in r],
+                       "note": "radius per channel (R, G, B): red travels furthest. Unreal: Subsurface Profile with Mean Free "
+                               "Path Color = radius / max and Distance = max in cm; Unity HDRP: Diffusion Profile scattering "
+                               "distance; Blender: Principled Subsurface Radius x Scale. glTF has no ratified subsurface "
+                               "extension (KHR_materials_diffuse_transmission is a release candidate)."},
+        "specular": {"f0": 0.028, "ior": 1.4, "coat": base["coat"], "coat_roughness": base["coat_roughness"],
+                     "note": "a tight second lobe over the broad one (the oily film): KHR_materials_clearcoat in the GLB; "
+                             "Unreal's dual specular (lobe mix) or Unity's dual lobe do the same"},
+        "sheen": base["sheen"],
+        "tone": tone_params((spec.get("skin") or {}).get("tone")), "base_color_srgb": base["color"],
+    }
 
 
 def reference() -> str:

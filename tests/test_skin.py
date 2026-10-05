@@ -134,6 +134,98 @@ def test_measure():
     assert abs(s["chroma_over_L_lit"]) < 0.02 and s["L_lit"] > s["L_shadow"]
 
 
+FULL = dict(tone={"fitzpatrick": 3}, age=60, sun=0.6,
+            features={"freckles": 0.6, "moles": {"amount": 0.5, "at": ["lm_chin"]}, "blemishes": 0.4, "flush": 0.3, "sunburn": 0.2,
+                      "tan": {"amount": 0.3, "mask": [{"zone": "forehead"}]}},
+            hair={"stubble": 0.7, "brows": {"density": 0.9}},
+            scars=[{"kind": "cut", "path": [{"at": "lm_brow_outer.L", "offset": [0, -0.005, 0.01]}, "lm_eye_outer.L"]},
+                   {"kind": "surgical", "path": ["lm_jaw_3.L", "lm_jaw_5.L"], "age": 0.4}, {"kind": "keloid", "at": "lm_chin", "radius": 0.006},
+                   {"kind": "burn", "zone": "cheek_side.R"}, {"kind": "pockmarks", "zone": "cheek.R"}],
+            makeup={"foundation": {"amount": 0.5, "finish": "matte"}, "blush": 0.5, "contour": 0.4, "highlight": 0.5, "concealer": 0.4,
+                    "eyeshadow": {"color": "#553322", "finish": "metallic"}, "eyeliner": {"wing": 0.005}, "mascara": 1, "brows": 0.4,
+                    "lipstick": {"color": "#a01030", "finish": "gloss"}})
+
+
+def _gens(e, found):
+    for k, v in e.items():
+        if k in ("noise", "cells"):
+            found.add(k)
+        if k == "mask":
+            for sub in v:
+                _gens(sub, found)
+
+
+def test_features_and_shader_budget(tmp=None):
+    import os
+    import tempfile
+    from hifipushie import store
+    with tempfile.TemporaryDirectory() as d:  # the brow picture and swatches go to the image store
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            spec = head_spec(**FULL)
+            L = paint.layers(spec)
+            paint.validate(spec)
+            pre = {k for k, v in L.items() if v.get("_pre")}
+            fine = {k: v for k, v in L.items() if not v.get("_pre")}
+            for want in ("skin:freckles", "skin:brow_hairs", "skin:stubble", "skin:wrinkle_forehead", "skin:scar0_cut",
+                         "skin:scar1_surgical_stitches", "skin:makeup_eyeliner", "skin:micro_pores"):
+                assert want in fine, want
+            for want in ("skin:midface_red", "skin:lips_lower", "skin:stubble_shadow", "skin:makeup_foundation", "skin:makeup_lipstick",
+                         "skin:flush", "skin:tan"):
+                assert want in pre, want
+            # what a renderer's shader must hold stays small, and none of it is procedural noise: swatches, images, spots
+            assert len(fine) <= 32, len(fine)
+            for k, v in fine.items():
+                found = set()
+                _gens({kk: vv for kk, vv in v.items() if kk == "mask"}, found)
+                per_pixel = set()
+                for e in v.get("mask") or []:
+                    if not e.get("vertex"):
+                        _gens(e, per_pixel)
+                assert not per_pixel, (k, per_pixel)
+            assert all("height" not in L[k] for k in pre), "a per-vertex layer can't carry relief"
+            assert L["skin:makeup_lipstick"]["roughness"] < 0.2 and L["skin:makeup_eyeshadow"]["metallic"] > 0.5
+            assert L["skin:freckles"]["opacity"] < paint.layers(head_spec(**{**FULL, "makeup": {}}))["skin:freckles"]["opacity"], \
+                "foundation hides the marks under it"
+            young = paint.layers(head_spec(tone={"fitzpatrick": 3}, age=18))
+            assert "skin:wrinkle_forehead" not in young and "skin:wrinkle_crepe" not in young and "skin:age_spots" not in young
+            # the pre layers composite to a base: the cheek ends up redder than the forehead, lipstick on the lips
+            from hifipushie.surface import Points
+            J = skin._joints(spec)
+            io = skin.interocular(J)
+            pts = np.array([J["lm_lid_lower.L"] + io * np.array([0.12, 0.1, -0.6]), J["lm_nose_bridge"] + io * np.array([0, 0.2, 0.9]),
+                            J["lm_lip_lower"] + [0, 0, 0.004]])
+            P = Points(spec, pts, np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
+            plain = head_spec(tone={"fitzpatrick": 3}, age=60)
+            base = skin.part_base(plain)[1]
+            c = paint.precomposite(plain, paint._View(P, np.arange(3)), base, paint.pre_layers(plain))
+            assert c.shape == (3, 5) and c[0, 0] / c[0, 1] > c[1, 0] / c[1, 1], c  # r/g: cheek vs forehead
+            c2 = paint.precomposite(spec, paint._View(P, np.arange(3)), base, paint.pre_layers(spec))
+            assert c2[2, 3] < 0.25 < c[2, 3], (c2[2], c[2])  # glossy lipstick's roughness on the lower lip
+            from hifipushie import paintnodes
+            prog = paintnodes.compile(spec)
+            assert len(prog["pre"]["body"]) == 5 and all(not ly["name"] in pre for ly in prog["layers"])
+            rec = skin.export_recipe(spec, d, "t")
+            assert rec["detail"] and all((store.HOME / x["normal"]).exists() or os.path.exists(os.path.join(d, x["normal"])) for x in rec["detail"])
+        finally:
+            store.HOME = home
+
+
+def test_makehuman_sex():
+    from hifipushie import assets, makehuman
+    try:
+        assets.pack("makehuman")
+    except Exception:
+        print("  (no MakeHuman pack: skipped)")
+        return
+    a = makehuman.body({"age": 30, "height": 1.7})
+    b = makehuman.body({"age": 30, "height": 1.7, "sex": 1.0})
+    assert np.array_equal(a["P"], b["P"]), "male stays the default, bit for bit"
+    f = makehuman.body({"age": 30, "height": 1.7, "sex": 0.0})
+    m = makehuman.body({"age": 30, "height": 1.7, "sex": 0.5})
+    assert np.abs(f["P"] - a["P"]).max() > 0.01 and np.abs(m["P"] - 0.5 * (f["P"] + a["P"])).max() < 0.02
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

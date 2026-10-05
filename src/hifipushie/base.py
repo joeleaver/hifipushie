@@ -563,14 +563,23 @@ def _neck_loops(tpl):
         chin_z = tpl.get("chin_z", eye[2] - 0.15)
         near = set(np.flatnonzero((P[:, 2] > chin_z - 0.14) & (P[:, 2] < chin_z + 0.05) & (np.abs(P[:, 0]) < 0.14)))
         top = int(np.argmax(P[:, 2]))
-        found = []
+        found, loose = [], []
         for path in retopo._loops_round(P, faces, nb, ef, near, 200):
             Q = P[path]
             ang = np.arctan2(Q[:, 1] - Q[:, 1].mean(), Q[:, 0])
             wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
-            if abs(round(wn)) != 1 or Q[:, 2].max() > chin_z - 0.025 or np.abs(Q[:, 0]).max() > 0.12:
+            if abs(round(wn)) != 1:
+                continue
+            if Q[:, 2].max() > chin_z - 0.025 or np.abs(Q[:, 0]).max() > 0.12:
+                if Q[:, 2].max() <= chin_z + 0.01 and np.abs(Q[:, 0]).max() <= 0.16:
+                    loose.append((float(Q[:, 2].max()), path))
                 continue
             found.append((float(Q[:, 2].max()), path))
+        if not found:  # a short, stooped neck (MakeHuman's old bodies): no loop clears the chin by 2.5 cm; take the
+            found = loose  # ones under it at all (an old male body raised IndexError here)
+        if not found:
+            raise ValueError("base: no closed loop round the body's neck under its chin to graft the head onto "
+                             "(try another body age / weight)")
         found.sort(key=lambda f: -f[0])
         _CACHE[key] = ([f[1] for f in found], top)
     return _CACHE[key]
