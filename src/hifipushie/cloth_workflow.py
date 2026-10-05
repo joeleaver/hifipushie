@@ -176,6 +176,8 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
                 o["fail"].append(line + ": TOO SMALL (negative ease)")
                 continue
             o["info"].append(line)
+    for line, ok in leg_ease(c, bands):
+        (o["info"] if ok else o["fail"]).append(line)
     if D:
         o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items()))
     if (Bp.get("draft") or {}).get("derived_mm"):
@@ -186,6 +188,60 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
                                            if c.kind else "")
         o["images"].append(("pattern", pattern_sheet.render(Bp, title, seam_rows=rows)))
     return o
+
+
+def leg_ease(c: Ctx, bands: dict) -> list:
+    """[(line, ok)]: a leg garment's ease from the flat pattern at the seat (both legs' pieces across the seat line
+    against the seat girth, in the fit's band), and per leg at the thigh, knee and hem against the body's own leg
+    there (must not be negative in a woven). Torso girths (cloth.sizing) don't see leg pieces."""
+    Bp = c.Bp
+    pcs = Bp["pieces"]
+    legs = [n for n in pcs if pcs[n]["wrap"].get("to") == "leg.L"]
+    if not legs or not c.meas or "waist_z" not in c.body.at:
+        return []
+    from . import tailor
+    at, zw = c.body.at, float(c.body.at["waist_z"])
+    Z = np.array([0, 0, 1.0])
+    width = lambda y: sum(cloth._piece_width_at(pcs[n]["P"], y) for n in legs)
+    out = []
+    if "seat_z" in at:
+        g = 2 * width(float(at["seat_z"]) - zw) * 1000
+        ease = g / c.meas["seat"] - 1
+        band = (bands or {}).get("seat")
+        line = f"ease at seat (the legs' pieces across the seat line): {ease * 100:+.1f}% (pattern {g:.0f} mm; body {c.meas['seat']:.0f} mm)"
+        ok = True
+        if band:
+            line += f", {c.res['fit'] if c.res else 'kind'} band {band[0] * 100:+.0f}..{band[1] * 100:+.0f}%"
+            ok = band[0] - 0.005 <= ease <= band[1] + 0.005
+            if not ok:
+                line += ": TOO SMALL" if ease < band[0] else ": outside the fit"
+        elif ease < -0.01 and c.fabric_class() != "knit":
+            ok, line = False, line + ": TOO SMALL (negative ease)"
+        out.append((line, ok))
+    ylo = min(pcs[n]["P"][:, 1].min() for n in legs)
+    levels = []
+    if "crotch_z" in at:
+        levels.append(("thigh", float(at["crotch_z"]) - 0.05 - zw))
+    if "waistToKnee" in c.meas:
+        levels.append(("knee", -c.meas["waistToKnee"] / 1000))
+    levels.append(("hem", ylo + 0.01))
+    parts = []
+    for name, y in levels:
+        if y < ylo + 0.005:
+            continue
+        loops = [L for L in tailor.slice_loops(c.body.V, c.body.T, [0, 0, zw + y], Z)
+                 if L[:, 0].mean() > 0.02 and abs(L[:, 0].mean()) < abs(float(at["shoulder.L"][0])) + 0.09]
+        if not loops:
+            continue
+        body_g = max(tailor.girth(L, Z) for L in loops) * 1000
+        g = width(y) * 1000
+        e = g / body_g - 1
+        parts.append(f"{name} {e * 100:+.0f}% ({g:.0f} mm round a {body_g:.0f} mm leg)")
+        if e < -0.01 and c.fabric_class() != "knit":
+            out.append((f"the leg is TOO SMALL at the {name}: {g:.0f} mm of cloth round a {body_g:.0f} mm leg", False))
+    if parts:
+        out.append(("ease per leg: " + ", ".join(parts), True))
+    return out
 
 
 # ---------------------------------------------------------------- 3 construction

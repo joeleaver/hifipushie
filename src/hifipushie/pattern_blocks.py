@@ -342,6 +342,10 @@ def cap_mate(body: dict) -> list:
 # ---------------------------------------------------------------- trouser
 
 
+# where a trouser hem ends, as metres above the floor: "floor" (a wide leg's hem over a heel), "shoe" (a break on
+# the shoe: for a body that wears shoes), "ankle" (the default: these bodies are barefoot, and a hem cut for a shoe
+# pools on the foot), "cropped", "calf"; "knee" and "shorts" are set from the knee and the rise
+TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None, "shorts": None}
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
                     "length": None, "back_dart": 0.02}
 
@@ -355,7 +359,17 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     rise = float(o["rise"]) if o["rise"] else (mm("waistToUpperLeg") if measured else 0.175 * waist + 0.154)
     rise += o["rise_ease"]
     wts = min(wts, rise - 0.075)  # the hip line the crotch curve springs from: at least 75 mm above the crotch line
-    L = float(o["length"]) if o["length"] else mm("waistToFloor") - 0.03
+    # the length: metres from the waist, or where the hem ends (TROUSER_LENGTHS: above the floor)
+    lw = o["length"] if isinstance(o["length"], str) else None
+    if lw is not None and lw not in TROUSER_LENGTHS:
+        raise ValueError(f"trouser length {lw!r}: metres from the waist, or one of {', '.join(TROUSER_LENGTHS)}")
+    if lw in ("knee", "shorts"):
+        knee_ = mm("waistToKnee") if "waistToKnee" in m else rise + 0.33
+        L = knee_ - (0.02 if lw == "knee" else 0.5 * (knee_ - rise))
+    elif lw:
+        L = mm("waistToFloor") - TROUSER_LENGTHS[lw]
+    else:
+        L = float(o["length"]) if o["length"] else mm("waistToFloor") - TROUSER_LENGTHS["ankle"]
     knee_y = mm("waistToKnee") if "waistToKnee" in m else rise + 0.45 * (L - rise)
     sq = seat * (1 + o["seat_ease"]) / 4
     wq = waist * (1 + o["waist_ease"]) / 4
@@ -363,7 +377,8 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     fork_b = 1.5 * fork_f + 0.005  # Aldrich: the front's + half of it + 5 mm
     hem = float(o["hem"]) if o["hem"] else 0.22
     knee = float(o["knee"]) if o["knee"] else hem + 0.03
-    log = [f"trouser: seat quarter {sq * 1000:.0f} (front -10, back +10 mm), body rise {rise * 1000:.0f} mm "
+    log = [f"trouser length {L * 1000:.0f} mm from the waist ({lw or ('given' if o['length'] else 'ankle: the default')})",
+           f"trouser: seat quarter {sq * 1000:.0f} (front -10, back +10 mm), body rise {rise * 1000:.0f} mm "
            f"({'given' if o['rise'] else 'measured: waist to the crotch + ease' if measured else 'estimated 0.175 x waist + 154 mm'}), forks front "
            f"{fork_f * 1000:.0f} / back {fork_b * 1000:.0f} mm, knee {knee * 1000:.0f}, hem {hem * 1000:.0f} mm"]
     out = {}
