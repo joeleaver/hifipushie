@@ -244,7 +244,9 @@ def _normals_and_h(V, faces):
 
 
 def surface(spec_expanded: dict, base: dict) -> dict:
-    """The posed, subdivided base: {"verts", "faces", "normals", "h", "quads" (the unsubdivided warp), "tree"}.
+    """The posed, subdivided base: {"verts", "faces", "normals", "h", "quads" (the unsubdivided warp), "src" (each
+    quad vertex's index in the template's own vertices, -1 for a grafted neck's: what carries the template's
+    hand-made skin weights, rig.py), "tree"}.
     Cached by the template, the joints it uses and the settings."""
     name = _source_key(base)
     tpl = source(base)
@@ -275,7 +277,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     if head is not None:  # a grafted head: the template's own head cut off at a neck loop under its jaw and the
         # neck extruded straight up as quads (its chin and jaw, bigger and lower than a real head's, stood out of the
         # graft band; columns of points built from its vertices left lips and ruffs)
-        W, faces = _neck_tube(W, faces, tpl, spec_expanded, head)
+        W, faces, src = _neck_tube(W, faces, tpl, spec_expanded, head)
+    else:
+        src = np.arange(len(W))
     V, F = W, faces
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
@@ -304,7 +308,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         h = np.r_[h[kb], head["h"][kh]]
         wt = np.maximum(np.r_[wb, wh], 1e-4)
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
-           "key": key, "head": None, "graft": head, "wt": wt if head is not None else None,
+           "key": key, "head": None, "graft": head, "src": src, "template": tpl.get("name"), "wt": wt if head is not None else None,
            "seam": (head["plane"][0], head["plane"][1], 0.2) if head is not None else None}
     if len(_CACHE) > 8:
         _CACHE.pop(next(k for k in _CACHE if not isinstance(k, tuple)))
@@ -656,8 +660,11 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
             r[over] = (1 - f) * R[j, cols] + f * R[j + 1, cols]
         rings.append(foot0 + hh * n + r[:, None] * d)
     tip = rings[-1].mean(0) + step * n
-    V, fl, _, _ = retopo._stitch(W, faces, {"neck": (list(loop), top, (rings, tip))})
-    return V, fl
+    V, fl, _, remap = retopo._stitch(W, faces, {"neck": (list(loop), top, (rings, tip))})
+    src = np.full(len(V), -1)  # each vertex's index in the mesh that came in (-1: the tube's own)
+    keep = np.flatnonzero(remap >= 0)
+    src[remap[keep]] = keep
+    return V, fl, src
 
 
 def _wlap(X, E, w):
