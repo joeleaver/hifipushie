@@ -82,9 +82,11 @@ DEFAULT = {
     "guides": {}, "prune": [], "envelope": None, "forces": [],
     "leaves": {"shape": "ovate", "length": 0.07, "color": [0.16, 0.3, 0.08], "twig": {}},  # see veg_leaf.LEAF / TWIG
     "bark": {"kind": "furrowed"},
-    "season": "summer",
+    "season": "summer",  # summer | autumn (leaves.autumn colour) | winter (deciduous: bare) | bare | dead
+    "snow": 0.0, "wet": 0.0,  # 0..1: snow lying on what faces up; rain-dark, glossy bark and leaves (looks; export variants)
     "decay": None,  # {"min_radius": m}: wood thinner than this has fallen (a dead or storm-broken tree)
     "trunk_diameter": None,  # m at the foot: thick wood is scaled to it
+    "limb_diameter": None,  # m: the stoutest limb's girth where it leaves the trunk (trunk_diameter then sizes the trunk alone)
     "trunk_taper": None,  # with trunk_diameter: the share of it the trunk loses by its top (0.1 = a column)
     "dead": [],  # [{a volume | "limb": name, "min_radius": m}]: wood that died and stayed: leafless, barkless, its thin ends gone
     "roots": None,  # {"count": 5, "spread": 2.0, "height": 0.8}: root flares at the foot (buttresses when tall)
@@ -167,7 +169,7 @@ def resolve(spec: dict) -> dict:
         if "year" not in c or not vol & set(c):
             raise ValueError(f"cut {i} needs a year and one of {sorted(vol)}")
     for i, c in enumerate(s.get("dead") or []):
-        keys(f"dead {i}", c, vol | {"limb", "min_radius"})
+        keys(f"dead {i}", c, vol | {"limb", "min_radius", "from"})
         if not (vol | {"limb"}) & set(c):
             raise ValueError(f"dead {i} needs a limb's name or one of {sorted(vol)}")
     if s.get("roots"):
@@ -514,6 +516,43 @@ def steps_of(s: dict) -> int:
     return int(np.clip(round(s["age"] / s["habit"]["years_per_step"]), 2, 80))
 
 
+def limb_id(key) -> str:
+    """A limb's lasting name: from its bud's lineage, so the same bud has it whatever else changes on the tree."""
+    v_, out = int(key) % 36 ** 4, ""
+    for _ in range(4):
+        out = "0123456789abcdefghijklmnopqrstuvwxyz"[v_ % 36] + out
+        v_ //= 36
+    return "L" + out
+
+
+def find_limb(tree: dict, ref: str):
+    """The axis a limb reference names: a guide's name, a limb id ("Lk7f3", lasting), or a compass name ("SW2", of
+    this grown tree only). None when the tree has no such limb."""
+    if ref in tree["guides"]:
+        return tree["guides"][ref]
+    if isinstance(ref, str) and len(ref) == 5 and ref[0] == "L":
+        for ai, a in enumerate(tree["axes"]):
+            if a["order"] == 1 and "node" in a and a["node"] < len(tree["key"]) and tree["axis"][a["node"]] == ai \
+                    and limb_id(tree["key"][a["node"]]) == ref:
+                return ai
+    L = next((q for q in limbs(tree) if q["name"] == ref), None)
+    return None if L is None else L["axis"]
+
+
+def stout_path(tree: dict, n0: int, kids: dict | None = None) -> np.ndarray:
+    """A limb as an eye follows it: from node n0 on through the stoutest child at every fork, to a shoot's end. (The
+    growth's own axis often ends a metre out, where a side shoot took over.)"""
+    if kids is None:
+        kids = {}
+        for i in range(1, len(tree["parent"])):
+            kids.setdefault(int(tree["parent"][i]), []).append(i)
+    rad, out, q = tree["radius"], [int(n0)], int(n0)
+    while kids.get(q):
+        q = max(kids[q], key=lambda c: rad[c])
+        out.append(q)
+    return np.array(out)
+
+
 def limbs(tree: dict, count: int = 12, min_share: float = 0.12) -> list[dict]:
     """The tree's main limbs, named so they can be talked about and taken over: first-order branches, the stoutest
     `count` whose base is at least `min_share` of the trunk's radius there. A drawn limb has its guide's name; a grown
@@ -547,12 +586,14 @@ def limbs(tree: dict, count: int = 12, min_share: float = 0.12) -> list[dict]:
         sub = np.array(sub)
         far = P[sub][np.argmax(np.linalg.norm(P[sub] - P[base], axis=1))]
         d = far - P[base]
+        nodes = stout_path(tree, n0, kids)
         seg = np.linalg.norm(np.diff(np.vstack([P[base], P[nodes]]), axis=0), axis=1).sum()
         out.append({"axis": ai, "guide": gname.get(ai), "at": P[base].round(2).tolist(), "height": round(float(P[base][2]), 2),
                     "diameter": round(float(2 * rad[n0]), 3), "length": round(float(seg), 2), "end": P[nodes[-1]].round(2).tolist(),
                     "reach": round(float(np.linalg.norm(P[sub][:, :2] - P[1][:2], axis=1).max()), 2), "low": round(float(P[sub][:, 2].min()), 2),
                     "high": round(float(P[sub][:, 2].max()), 2), "nodes": int(len(sub)),
                     "born_year": round(float(tree["born"][n0] * yps), 1), "key": str(int(tree["key"][n0])),
+                    "id": gname.get(ai) or limb_id(tree["key"][n0]),
                     "compass": _compass_name(d)})
     out.sort(key=lambda L: -L["diameter"])
     keep = [L for L in out if L["guide"]] + [L for L in out if not L["guide"]][:count]
@@ -576,7 +617,7 @@ def _compass_name(d) -> str:
 
 def limb_path(tree: dict, limb: dict, points: int = 7) -> list:
     """A limb's own axis as a guide path: from where it leaves the trunk to its end, `points` of them evenly along."""
-    nodes = np.flatnonzero(tree["axis"] == limb["axis"])
+    nodes = stout_path(tree, tree["axes"][limb["axis"]]["node"])
     pts = np.vstack([tree["pos"][tree["parent"][nodes[0]]], tree["pos"][nodes]])
     cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
     k = int(max(3, min(points, len(pts))))
@@ -676,6 +717,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             for i in range(2, T.n):
                 gone[i] |= gone[par_[i]]
             if not gone.any():
+                cut_log.append({"year": round(step * yps, 1), "nodes": 0, "stubs": 0})
                 continue
             first_ = gone & ~gone[par_]
             stubs = np.unique(par_[first_])
@@ -1015,6 +1057,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         r1, tip_r = float(radius[1]), 3 * h["tip_radius"]
         k_ = 0.5 * float(s["trunk_diameter"]) / max(r1, 1e-9)
         w_ = np.clip((radius - tip_r) / max(r1 - tip_r, 1e-9), 0, 1) ** 0.5
+        if s.get("limb_diameter"):  # the trunk alone
+            w_ = w_ * (T.order == 0)
         out["radius"] = radius = radius * (1 + (k_ - 1) * w_)
         if s.get("trunk_taper") is not None:  # a column: the trunk keeps its girth to its top, whatever it carries
             tr = np.flatnonzero(T.order == 0)
@@ -1022,6 +1066,12 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             want = 0.5 * float(s["trunk_diameter"]) * (1 - float(s["trunk_taper"]) * pos[tr, 2] / zt)
             radius[tr] = np.maximum(radius[tr], want) if not s.get("cuts") else want
             out["radius"] = radius
+    if s.get("limb_diameter") and (T.order == 1).any():  # limbs sized by themselves: a fat trunk under ordinary limbs
+        o1 = np.flatnonzero((T.order == 1) & (T.order[T.parent] == 0))
+        rl, tip_r = float(radius[o1].max()), 3 * h["tip_radius"]
+        k_ = 0.5 * float(s["limb_diameter"]) / max(rl, 1e-9)
+        w_ = np.clip((radius - tip_r) / max(rl - tip_r, 1e-9), 0, 1) ** 0.5 * (T.order > 0)
+        out["radius"] = radius = radius * (1 + (k_ - 1) * w_)
 
     def subset(keep, leafless=False):
         nonlocal n
@@ -1081,13 +1131,22 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             before = n
             subset(~c_)
             cut_n += before - n
+    dead_log = []
     for dd in s.get("dead") or []:  # dead wood kept on the live tree: a stag-headed oak's antlers, a snag limb
         if "limb" in dd:
-            L_ = next((q for q in limbs(out) if q["name"] == dd["limb"]), None)
-            if L_ is None:
-                raise ValueError(f"dead: no limb {dd['limb']!r} on this tree (the report lists the limbs)")
+            ai_ = find_limb(out, dd["limb"])
+            if ai_ is None or "node" not in out["axes"][ai_]:  # (an edit regrew the tree without it: said, not fatal)
+                dead_log.append({"what": f"limb {dd['limb']}", "missing": True})
+                continue
             m_ = np.zeros(n, bool)
-            m_[out["axes"][L_["axis"]]["node"]] = True
+            m_[out["axes"][ai_]["node"]] = True
+            if dd.get("from"):  # only past this many metres along it
+                nd_ = stout_path(out, out["axes"][ai_]["node"])
+                cum_ = np.cumsum(np.linalg.norm(out["pos"][nd_] - out["pos"][out["parent"][nd_]], axis=1))
+                m_[:] = False
+                later = nd_[cum_ >= float(dd["from"])]
+                if len(later):
+                    m_[later[0]] = True
         elif "under" in dd or "below" in dd:
             raise ValueError("dead takes box, sphere, above or a limb")
         else:
@@ -1098,15 +1157,19 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         out["dead"] |= m_
         out["leafy"] = out["leafy"] & ~m_
         gone = m_ & (out["radius"] < float(dd.get("min_radius", 0.012)))
+        zs_ = out["pos"][m_][:, 2] if m_.any() else np.zeros(1)
+        before_ = n
         if gone.any():
             subset(~gone)
+        dead_log.append({"what": f"limb {dd['limb']}" if "limb" in dd else next(f"{k_} {dd[k_]}" for k_ in ("above", "box", "sphere") if k_ in dd),
+                         "nodes": int(m_.sum()), "broken_off": int(before_ - n), "low": round(float(zs_.min()), 1), "high": round(float(zs_.max()), 1)})
     dec = s.get("decay")
     if dec and dec.get("min_radius"):
         subset(out["radius"] >= float(dec["min_radius"]), leafless=True)
     out["stats"] = {"nodes": int(n), "steps": steps, "height_m": round(out["height"], 2),
                     "trunk_diameter_m": round(float(2 * out["radius"][1]) if n > 1 else 0, 3),
                     "max_order": int(out["order"].max()), "grow_s": round(time.perf_counter() - t0, 3),
-                    "pruned_nodes": int(cut_n), "cuts": cut_log}
+                    "pruned_nodes": int(cut_n), "cuts": cut_log, "dead": dead_log}
     return out
 
 

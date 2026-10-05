@@ -904,8 +904,35 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
     shows one mask; prints the face's measurements beside the photographs' with hints.
   - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
-    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls (seeded identities): a child
-    gets an adult's face shape.
+    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls of their own (seeded
+    identities): see headfit below.
+  - Heads follow the body (2026-10-05, `headfit.py`, renders sk_07 / sk_08; the main session: every head was the same
+    adult face). MakeHuman's topology is fixed, so `makehuman_lm68.json` (made once by `spikes/headfit/make_table.py`:
+    the two neutral heads aligned by eye centres, similarity ICP on the face, a local ICP per feature, nearest
+    vertices, pairs forced symmetric; checked in a picture) names its vertices at GNM's 68 landmarks + 4 cranium
+    points. For a body, the landmarks' MOVE from MakeHuman's reference head (25 years, sex 0.5) to the body's own, in
+    interocular units round the eye midpoint, is added to the seeded GNM head's landmarks (delta transfer: the
+    table's millimetres of mismatch cancel, the seed's individuality stays) and solved in 120 identity components
+    (ridge, components past +-2.6 sigma fixed and the rest re-solved), eye centres held. Head scale = the body's
+    interocular / the fitted GNM's (0.74 for a 7-year-old, ~0.92 adults; the old default 1.4 made every head a
+    doll's). OFF unless asked: `base.head.follow_body: true` or a strength 0..1.5 (the main session: existing
+    characters with seed-only heads, s0urc3's Garrett, must not change; without the key the built base is
+    bit-identical to main's, checked by checksum on three bodies and in `tests/test_headfit.py`); the `skin` tool
+    hints at it and the skin guide's stage 0 recommends it for new characters. 60-70% of the asked move is made.
+    What it took: lids and lips weighted 0.3 / 0.5 / 0.15 (in full, the child's lips twisted and lid margins tore);
+    the neck and bib HELD (90 skin vertices under the chin: no landmark sees them, and left free the fit flared the
+    bib up to the graft plane = the stand-up collar round old bodies' necks; with them held the head's neck matches
+    the body's within a few mm); the graft plane follows the chin; a monotone neck taper. `tests/test_headfit.py`.
+    Honest read: the child and the men read as their age; the old woman reads as an old man (GNM's space and a
+    bald head), the adult woman androgynous.
+  - Eyes, second pass: `base.cornea` (a smaller sphere proud of the eyeball where the gaze leaves it, ONE group with
+    its eyeball: as two elements with different blends the scene's chunked evaluation blew the mirrored eye up to
+    twice its size, in the scene only, the clay look was fine); look lights take `"window"` (the highlight from a
+    rectangular area light, the sun keeps diffuse + shadow) and `"specular": 0` on fills: one window catchlight, not
+    two discs; a tear line on the eyeball where the lower lid meets it (paint `near: ["base"]` works).
+    `look_skin`'s stage key now includes base.py / headfit.py: a stale stage hid two fixes for an hour.
+    Not done: lash cards, re-measuring against the 24 photos, export fixes, grooms; nostrils show a pale thing
+    behind them on followed heads.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
@@ -2392,16 +2419,35 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   - Not built (said in the guide): buttresses/roots/foot on a slope, swollen pollard bolls, deadwood beyond stubs,
     banks/ditches, a non-weeping willow preset, needle and willow card pictures (feathers, bamboo), an ortho side
     view that isn't mostly hillside on a slope.
-- STATE 2026-10-05 (stopped at the usage limit, WIP on branch `vegetation`, main NOT merged in since b549ce3): done =
-  named limbs/take_limb, plant.blend round trip (`sync_plant`), forest sets (`spec.set`, `name#k`, one GLB), species
-  pass (spray cards, birch/spruce/willow habits, white_willow, tip_life/uneven, boll, `dead`, `roots`); sheets
-  workspace/veg_renders/vg_32_*. Open from blind round 3 (one brief run, second not started): a triangle budget
-  drops dead antlers and leaves cards floating (protect features), `dead` has no report line, limb names reshuffle
-  on edits, limb girth coupled to trunk_diameter, no ground clearance on slopes. Weeping willow still a hedge block,
-  spruce close-ups are paddles, foliage renders dull. Full test run not repeated after the last commit.
-- Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
-  ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
-  not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.
+- Named limbs, Blender, sets (2026-10-05/06): `vegetation.limbs` (first-order limbs by compass + rank, each with a
+  lasting id `limb_id(key)` "Lk7f3" from its bud's lineage; `stout_path` = a limb as the eye follows it: the growth's
+  own axis often ends a metre out). `take_limb` -> a guide with `replaces` (the bud's shoot is not grown beside it).
+  `veg_tools.sync/pull` + `blender_vegetation.add_curves/read_curves`: plant.blend with guides and limbs as stamped
+  Bezier curves; pull must be idempotent WITHOUT a re-sync (compare against the spec too) and take_limb ops resolve on
+  the tree as it stood before the batch (earlier ops regrow it: the wrong limb was taken). `spec.set` -> `variants`
+  (`name#k`, hero edits dropped), one GLB with shared materials.
+- Species pass: a card is a SPRAY (`twig.side_shoots`, side_angle/length/taper, needle `spray_angle`): one shoot per
+  card read as bamboo/ivy. `habit.tip_life` (spruce branchlets hung for metres: a witch's hat), `habit.uneven`
+  (ragged outline). Bark tiles: >= 3 round any branch, the pattern scaled with it. Cut `boll`, `dead` (limb or volume;
+  barkless grey; `tubes` carries `dead`/`node` per vertex), `roots` (lobed section at the foot), the trunk 0.3 m under.
+- Foliage colour by measurement (`scratch hsv.py`: lit/shade HSV of leaf pixels, photo vs render): we were V 0.43 /
+  hue 85-117 against a photo birch's 0.69 / 58. Causes: the atlas's median leaf was 0.7 of `leaves.color` (tones x
+  blade shade x mask shade: now normalised to it), cards lit by their own normals (now bent out from the crown,
+  `leaves.round`, in looks and in the export's normals), AgX (now Khronos PBR Neutral), cold presets. After: birch lit
+  (73, 0.46, 0.61), willow (76, 0.55, 0.75) vs photo (69, 0.35, 0.87); shade hue still 20-40 deg colder than photos.
+- Budgets (`veg_export.budget`): rings and sides first (`tubes(simplify=)`, RDP by radius), then the thinnest axes;
+  `protected` wood (dead, guides) stays to a quarter of the cut-off (absolute protection was 23k triangles of antlers);
+  `pick_twigs` draws twigs standing on kept wood first and reports `floating`.
+- Stage 4 (`write_glb`): LODs 100/45/18% + an impostor (two renders, crossed quads), MSFT_lod + `<name>_LOD<k>.glb`;
+  wind = TEXCOORD_1 (trunk, branch), TEXCOORD_2 (phase, flutter), `_WIND` (`wind_nodes`); `wind_plant` =
+  `blender_veg_wind.py`: Blender's own importer + the shader recipe per frame (also the importer check: all nodes come
+  in, v flipped on every uv set, `_WIND` an attribute; Godot 4.7: scene nodes only, UV2 unflipped, TEXCOORD_2 ->
+  CUSTOM0, `_WIND` dropped; Unity/Unreal unchecked). Seasons/snow/wet: spec states for looks (`_weather` on the
+  finished materials) and KHR_materials_variants in the export. Collision: capsules + a low mesh. Khronos: 0 errors.
+- Open: low LODs need bough-sized cluster cards (20k oak = a few big clumps); spruce close-ups are feather cards;
+  weeping willow is a ragged column, not a dome; snow doesn't lie on the ground; wind clip's difference image is
+  muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
+  terrain integration not started.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
