@@ -35,12 +35,12 @@
    ["stand:leftBottomCf>bottomMid>rightBottomCf", ["front.R:cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck"]],
    ["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopCf>topMid>rightTopCf"]
   ],
-  "stitches": [
-   ["front.R:button1", "front.L:buttonhole1"], ["front.R:button2", "front.L:buttonhole2"],
-   ["front.R:button3", "front.L:buttonhole3"], ["front.R:button4", "front.L:buttonhole4"],
-   ["front.R:button5", "front.L:buttonhole5"], ["front.R:button6", "front.L:buttonhole6"],
-   ["front.R:button7", "front.L:buttonhole7"],
-   ["cuff.L:button1", "cuff.L:buttonhole1"], ["cuff.R:button1", "cuff.R:buttonhole1"]
+  "closures": [
+   {"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R",
+    "edge": {"over": "placketFold1.a>placketFold1.b", "under": "placketOuterFold.a>placketOuterFold.b"},
+    "band": {"over": 0.030, "under": 0.018}},
+   {"name": "cuff.L", "kind": "buttons", "over": "cuff.L", "under": "cuff.L"},
+   {"name": "cuff.R", "kind": "buttons", "over": "cuff.R", "under": "cuff.R"}
   ],
   "options": {"collarGap": 0, "collarWidth": 1.45, "collarEase": 0.03},
   "tacks": [{"piece": "collar", "point": "leftTopEdge"}, {"piece": "collar", "point": "rightTopEdge"}],

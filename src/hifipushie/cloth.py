@@ -105,6 +105,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     g = expanded(g)
     pat = g.get("pattern")
     gen, folds_tbl, seam_notes = [], [], {}
+    closures_in = []
     from . import garment_blocks
     if pat and pat.get("from") in garment_blocks.BLOCKS:  # our own drafts (a skirt block): pieces + seams
         m = dict(meas_mm)
@@ -170,6 +171,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches += tbl.get("stitches", [])
         interfaced += tbl.get("interfaced", [])
         folds_tbl += tbl.get("folds", [])
+        closures_in += [dict(c) for c in tbl.get("closures", [])]
     for nm, pd in (g.get("pieces") or {}).items():
         pc = pattern.from_spec(nm, pd)
         pc["wrap"] = dict(pd.get("wrap") or {})
@@ -191,6 +193,15 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches += st_
         interfaced += i_
     interfaced = interfaced + [e for e in g.get("interfaced", []) if e not in interfaced]
+    # closures (closures.py): a lap held by fastenings; the garment's entry replaces the table's of that name
+    from . import closures as closuremod
+    for c in g.get("closures") or []:
+        closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(c)]
+    closuremod.validate(closures_in)
+    st_c, folds_c, seams_c, closures_out = closuremod.expand(closures_in, out)
+    stitches += [s_ for s_ in st_c if s_ not in stitches]
+    seams += seams_c
+    folds_tbl += folds_c
     keep = set(out)
     side_ok = lambda s: all(e.split(":")[0] in keep for e in ([s] if isinstance(s, str) else s))
     seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
@@ -208,7 +219,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     for src in ((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("made"), g.get("made")):
         if src:
             made_own.update(src if isinstance(src, dict) else {nm: "made" for nm in src})
-    return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
+    return {"closures": closures_out, "pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
             "draft": draft_info, "folds": folds, "seam_notes": seam_notes, "made": made_own,
             "tacks": [t for t in list((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("tacks") or [])
@@ -551,10 +562,12 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         fd["rows"] = [np.array([remap[i] for i in dict.fromkeys(row) if used[i]], np.int64) for row in fd["rows"]]
     from . import garment_design
     mod = garment_design.made_or_draped(dict(B, interfaced=B.get("interfaced", [])), None, {"made": B.get("made") or {}})
+    from . import closures as closuremod
+    marks_n = {k: int(remap[v]) for k, v in marks.items() if used[v]}
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "made": [nm for nm in names if mod[nm][0] == "made"],
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
-            "marks": {k: int(remap[v]) for k, v in marks.items() if used[v]},
+            "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n),
             "points": pts_n, "border": border_n}
 
 
@@ -3273,6 +3286,13 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 res["sculpted"] = int(np.sum(np.linalg.norm(off, axis=1) > 2e-4))
     elif sc:
         res["sculpt_stale"] = True  # hand edits made on another sim of this garment: not applied
+    # closures: the plackets' bands stand their extra layers proud, the buttons are small geometry on them, and each
+    # chosen closure is measured in the result
+    from . import closures as closuremod
+    if M.get("closures"):
+        res["closures"] = closuremod.measure(res["V"], M)
+        res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
+        res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
     res["shape"] = {"sim": shape_numbers(res["V_sim"], M), "final": shape_numbers(res["V"], M)}
     res["fit"] = fit(res)
     res["integrity"] = integrity(res["V"], M, Bp, X0)
@@ -3811,7 +3831,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -4167,6 +4187,9 @@ def report(gname: str, res: dict) -> str:
             L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
                      "allows and crumples; lower it (the design's stand/collar width option, e.g. simon \"options\": "
                      "{\"collarStandWidth\": 0.045}, default 0.08)")
+    if res.get("closures"):
+        from . import closures as closuremod
+        L.append(closuremod.text(res["closures"]))
     if res.get("tells"):
         from . import cloth_layers
         L.append("  layered over " + str((res.get("under") or {}).get("name")) + ":")
@@ -4597,6 +4620,9 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g, extra=fine_folds(res, g, uv, side))
             o.update(uv=uv, maps={k: str(v) for k, v in maps.items() if k != "texels_per_m"})
         objs.append(o)
+        if res.get("buttons"):
+            objs.append({"name": f"buttons_{gn}", "V": res["buttons"]["V"], "F": res["buttons"]["F"],
+                         "color": (g.get("detail") or {}).get("button") or "#ebe6dc"})
     allV = np.concatenate([o["V"] for o in objs if not o["name"].startswith("rail_")])  # the rail runs out of frame
     box = (allV.min(0) - 0.05, allV.max(0) + 0.05)
     if focus is not None:
