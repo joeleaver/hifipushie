@@ -902,6 +902,25 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       torso is +51% at the waist); the turned check fired on a raglan seam (single edges at an angle) and on the
       hood (ring in ring); the kangaroo pocket's default ran past a short hem; the skirt had no block for ops and no
       waistband op; the yoke's centre seam and the second pleat were missing; pleat cloth read as +12% seat ease.
+    - Results (renders pd_41 Blender jacket, pd_44 ZOZO jacket (raw V), pd_46 trousers, pd_47 tunic, pd_50 anorak,
+      pd_51 skirt): the shawl jacket on ZOZO settle: "fits", 0 crossings, strain p95 1.5% (646 s at 2 cm), lapels
+      turned, sleeves smooth; its raw surface had the centre back OPEN from the neck (coincident centre-seam
+      stitches are dropped by the solver: centre seams now start 2 mm apart, NOT re-run). Blender draft: reads as
+      the jacket, 1 crossing, facing collar 4% crumpled, puffy. The skirt stays at the waist (Blender); the
+      trousers on Blender still slide 99 mm (run before the waistband start fix; the ZOZO run never started).
+      The anorak's body, pocket and hood read, its RAGLAN SLEEVES crumple at the shoulders (22 crossings): the
+      sleeve's shoulder part lies along the arm, 173 mm and ~60 deg from the body's cut. Stage 4 names it
+      (turned). Fix = a hinge in `op_raglan`: the shoulder parts placed on the torso in the coordinates they were
+      cut in, the sleeve on the arm. The tunic reads as a wrap tunic but is over-cinched (take_in 56 / 62 mm over
+      9 cm now really shapes) and strained at the tie.
+    - THE ZOZO RELEASE IN THE SCRATCHPAD BROKE during this session (its python/lib/python3.12 lost most of the
+      standard library some time after 12:49 on 2026-10-05: "No module named 'encodings'"): every zozo job fails
+      until it is unpacked again (asset pack "zozo"). Not caused by these changes.
+    - Open, in order: re-run jacket + trousers on ZOZO once the release is back (dj.sh); the raglan hinge; a
+      facing's free inner edge (tack it, or settle's treatment of made pieces that lie on draped cloth: asked
+      clothsim); virtual seams still draw a groove in the detail maps and the pattern sheet draws hinge parts
+      apart from their piece; welt / in-seam pockets; lining trimmed to the facing; the under sleeve's S-shaped
+      top; `hem height spread` reads designed curves and yokes as unevenness (skirt 490 mm, tunic 82 mm).
     - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
       nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
       seams, or replace the sheet.
