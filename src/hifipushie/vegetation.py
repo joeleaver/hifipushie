@@ -716,6 +716,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             for i in range(2, T.n):
                 gone[i] |= gone[par_[i]]
             if not gone.any():
+                cut_log.append({"year": round(step * yps, 1), "nodes": 0, "stubs": 0})
                 continue
             first_ = gone & ~gone[par_]
             stubs = np.unique(par_[first_])

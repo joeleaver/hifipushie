@@ -1985,15 +1985,17 @@ def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size:
 
 @mcp.tool(structured_output=False)
 def look_plants(names: list[str], at: list | None = None, spacing: float | None = None, views: list | None = None,
-                azimuth: float = 0.0, size: int = 640, foliage: str | None = None):
+                azimuth: float = 0.0, size: int = 640, foliage: str | None = None, triangles: int | None = None):
     """Several plants standing together in one picture (a stand, a hedge line, a tree with its neighbours): do they
     belong together, do their sizes relate? at: [[x, y], ...] m per plant, or spacing m apart on a loose ring
     (default 0.35 x the tallest). views: "far" (default), "near", "clay", "top", or a camera {"eye", "look", "fov"}.
     The first plant's environment (ground slope) sets the scene. The same plant may be named more than once.
-    A plant with a `set` (grow_plant patch {"set": {"count": 5}}): "oak#*" names its whole set, "oak#2" one of it."""
+    A plant with a `set` (grow_plant patch {"set": {"count": 5}}): "oak#*" names its whole set, "oak#2" one of it.
+    `at` goes with the names in order (a set's plants #1, #2... in turn). triangles=N shows every plant at that
+    budget, as export_plant(triangles=N) writes it."""
     from . import veg_tools as vt
     names = [m for n in names for m in (vt.set_names(n[:-2]) if n.endswith("#*") else [n])]
-    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage)
+    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
     out.append("\n".join(f"{k}: {p}" for k, p in got))
     return out

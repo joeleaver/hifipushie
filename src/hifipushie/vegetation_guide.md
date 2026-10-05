@@ -95,7 +95,7 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 | `jitter` | per order: how crooked shoots run. Straight trunk 0.03-0.1; gnarled limbs 0.4+; straight limbs read as a broom | |
 | `light` | pull toward open light (fills gaps, avoids its own shade) | 0.1-0.4 |
 | `buds`, `whorl`, `divergence`, `plane` | per order: side buds per node (conifer trunk 4-6 with whorl true), degrees between successive buds (137.5 spiral, 180 two-ranked), flat sprays | |
-| `bud_break` | per order: chance a bud can ever grow. Lower on order 1 = fewer, stronger limbs | 0.3-1 |
+| `bud_break` | by the NEW shoot's order ([1] = limbs off the trunk): chance a bud can ever grow. Lower [1] = fewer, stronger limbs | 0.3-1 |
 | `bud_life` | steps a bud stays able to grow: longer = denser inside | 3-7 |
 | `max_order` | deepest branching (spruce 2, broadleaves 5) | |
 | `shed` | light per segment under which a branch is dropped: higher = cleaner trunk and open interior; too high and the tree starves | 0-0.3 |
@@ -127,6 +127,8 @@ height, form, limb angles.
   than its `height` (m, reached when the tree is ~80% of its age) within 2 x `radius` of `at`, and pushes growth
   away. Give real sizes: a neighbour 1.6 m away with radius 4 covers the whole tree and starves it; for a close
   neighbour use radius 1-2. The tree does not see other plants you made: neighbours are only these blobs.
+- `light: [x, y, z]`: where the light comes from (default straight up [0, 0, 1]). Keep z near 1: [0.3, 0, 1] is a
+  tree at a wood's edge leaning out; [1, 0, 0.8] sweeps every limb sideways.
 - `ground: {"slope": deg, "toward": [x, y], "water": z}`: the hillside it stands on and a water level (m against
   the plant's foot: -0.5 = half a metre below it), for the pictures. It does not change the growth: lean the trunk
   with a guide or wind. Only a uniform slope: no banks or ditches.
@@ -151,7 +153,10 @@ height, form, limb angles.
   height you want, every 4-8 years: a column trunk with a knuckled head of rods; make the rods straight and upright
   with tropism + low jitter on orders 1+ and `max_order` 2), a **coppice** (`above` 0.3), a **lopped limb** or a
   **storm break** (a box or sphere round it, one year, sprouts 0-2). `"boll": 1.4-1.8` swells the cut end into
-  the knuckled head a pollard gets from being cut again and again. The report lists each cut made. A cut the tree
+  the knuckled head a pollard gets from being cut again and again. Timing: the first cut after the trunk has passed
+  the cut height (the report warns when a cut found nothing); the LAST cut 4-8 years before the tree's age
+  (`until_year`), or the head is two-year stubble; `habit.clear` must be under the cut height (a bole that may
+  never branch can't sprout). A pollard's `height` is ignored (it sizes the uncut tree). The report lists each cut made. A cut the tree
   never regrows from is a `prune`.
 - Named limbs: the report lists the tree's main limbs ("SW2" = the second limb up the trunk that ends to the
   south-west; +y is north, +x east) with where each leaves the trunk, its girth, its end, and the span of what it

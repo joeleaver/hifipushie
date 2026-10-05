@@ -294,7 +294,7 @@ def report(name: str) -> str:
     out.append(f"trunk: {tip[2]:.1f} m to its top, leaning {lean:.0f} deg from upright"
                + (f" toward [{tip[0] / max(np.linalg.norm(tip[:2]), 1e-6):+.1f}, {tip[1] / max(np.linalg.norm(tip[:2]), 1e-6):+.1f}]" if lean > 3 else "")
                + f" (its top stands [{tip[0]:+.1f}, {tip[1]:+.1f}] m from its foot)")
-    out.append(f"crown: its middle sits [{cen[0]:+.1f}, {cen[1]:+.1f}] m from the trunk's foot ({np.linalg.norm(cen) / max(rad_, 1e-6):.2f} "
+    out.append(f"crown: its middle sits [{cen[0]:+.1f}, {cen[1]:+.1f}] m from the trunk's foot ({np.linalg.norm(cen) / max(rad_, 0.5):.2f} "
                f"of its radius {rad_:.1f} m: 0 = centred, 0.5+ = plainly swept to one side); cover {cover:.2f} (1 = solid from the side)")
     ang = vegetation.branch_angles(T, 1)
     if ang["n"]:
@@ -377,17 +377,21 @@ def report(name: str) -> str:
                     f"With fewer branch orders (max_order) or less shedding the same vigour goes into fewer, longer shoots: "
                     f"lower habit.vigour / shoot_max, or set tip_life for the limbs")
     for c in st.get("cuts") or []:
+        if not c["nodes"]:
+            warn.append(f"the cut at year {c['year']} cut nothing: the tree had no wood in that volume yet (a pollard's "
+                        f"first cut must come after the trunk has grown past the cut height)")
+            continue
         out.append(f"cut at year {c['year']}: {c['nodes']} nodes of wood removed, {c['stubs']} stubs left to sprout")
     lost = st.get("pruned_nodes", 0)
     if lost > 0.5 * (st["nodes"] + lost):
         warn.append(f"the prunes cut {lost} of {st['nodes'] + lost} nodes ({lost / (st['nodes'] + lost):.0%}): what is left is mostly "
                     f"stubs; shrink the prune volumes (get_plant lists them) or use a timed `cuts` entry so the tree regrows")
-    elif st["nodes"] < 12 * st["steps"]:
+    elif st["nodes"] < 12 * st["steps"] and not s.get("cuts"):
         warn.append(f"only {st['nodes']} nodes after {st['steps']} steps: the tree starved (raise habit.vigour, lower habit.shed, "
                     f"or it is shaded by its environment: neighbours/stand)")
     if st["nodes"] > 90000:
         warn.append("over 90k nodes: slow to look at and heavy to export (lower habit.vigour, bud_break or max_order)")
-    if s.get("height") and abs(T["height"] - s["height"]) > 0.15 * s["height"]:
+    if s.get("height") and abs(T["height"] - s["height"]) > 0.15 * s["height"] and not s.get("cuts"):
         warn.append(f"asked height {s['height']} m, grew {T['height']:.1f} m. `height` sizes the UNEDITED tree of this "
                     f"description (it sets the segment length); guides, prunes, cuts and envelopes then change what grows. "
                     + ("With a drawn trunk the trunk's own path decides: make the path as tall as you want it, and drop `height`."
@@ -476,14 +480,14 @@ def look(name: str, views=("clay", "leaf", "far"), azimuth: float = 0.0, size: i
         out = str(d / f"sheet_v{v}.png")
         veg_look.reference_sheet(load(name), ref, out, bare=ref["bare"], title=name, foliage=foliage)
         return [("sheet", out)]
-    suffix = (f"_az{int(round(azimuth))}" if azimuth else "") + (f"_{triangles}tris" if triangles else "")
+    suffix = (f"_{name.partition('#')[2]}" if "#" in name else "") + (f"_az{int(round(azimuth))}" if azimuth else "") + (f"_{triangles}tris" if triangles else "")
     jobs, got = _view_jobs(T, views, azimuth, size, lambda x: str(d / f"{x}{suffix}_v{v}.png"))
     veg_look.render(T, jobs, foliage=foliage, triangles=triangles)
     return got
 
 
 def look_group(names: list[str], at: list | None = None, spacing: float | None = None, views=("far",),
-               azimuth: float = 0.0, size: int = 640, foliage: str | None = None) -> list:
+               azimuth: float = 0.0, size: int = 640, foliage: str | None = None, triangles: int | None = None) -> list:
     """Several plants standing together in one picture. `at` = [[x, y], ...] per plant (m), or `spacing` m apart on a
     loose ring (default: 0.35 x the tallest's height). The first plant's environment (ground slope, look) sets the
     scene; "far"/"near" frame the whole group. Returns [(view, path)]."""
@@ -500,7 +504,10 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
     at = [np.asarray(a, float)[:2] for a in at]
     d = home() / "_groups"
     d.mkdir(parents=True, exist_ok=True)
-    tag = "+".join(names)[:80] + (f"_az{int(round(azimuth))}" if azimuth else "")
+    tag = "+".join(names).replace("#", "-")
+    if len(tag) > 60:  # (a cut-off name read as another plant's)
+        tag = f"{names[0].replace('#', '-')}+{len(names) - 1}more_{hashlib.sha1(tag.encode()).hexdigest()[:6]}"
+    tag += (f"_az{int(round(azimuth))}" if azimuth else "") + (f"_{triangles}tris" if triangles else "")
     c_, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
     toward = np.array([-s_, -c_, 0.0])
     right = np.array([c_, -s_, 0.0])
@@ -539,7 +546,7 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
         got.append((nm, o))
     others = [(t, a.tolist(), (i * 137.5) % 360 if names[i] in names[:i] else 0.0)
               for i, (t, a) in enumerate(zip(trees[1:], at[1:]), start=1)]  # (a repeated plant is turned; others stand as made)
-    veg_look.render(trees[0], jobs, foliage=foliage, others=others, at=at[0].tolist())
+    veg_look.render(trees[0], jobs, foliage=foliage, others=others, at=at[0].tolist(), triangles=triangles)
     return got
 
 
