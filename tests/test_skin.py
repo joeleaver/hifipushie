@@ -17,13 +17,14 @@ LM = {"lm_nose_bridge": [0, -0.156, 1.644], "lm_nose_tip": [0, -0.185, 1.591], "
       "lm_lip_peak.L": [0.014, -0.175, 1.553], "lm_lip_upper_side.L": [0.026, -0.167, 1.545],
       "lm_lip_lower_side.L": [0.026, -0.162, 1.535], "lm_lip_lower_mid.L": [0.016, -0.171, 1.533],
       "lm_lip_inner_upper.L": [0.018, -0.169, 1.542], "lm_lip_inner_lower.L": [0.018, -0.169, 1.543],
-      "eye_front.L": [0.043, -0.148, 1.64], "head": [0, -0.045, 1.654], "neck": [0, -0.011, 1.5],
+      "eye_front.L": [0.043, -0.148, 1.64], "eye.L": [0.043, -0.136, 1.64], "head": [0, -0.045, 1.654], "neck": [0, -0.011, 1.5],
       **{f"lm_jaw_{k}.L": [0.106 - 0.012 * k, -0.05 - 0.014 * k, 1.615 - 0.018 * k] for k in range(8)}}
 
 
 def head_spec(**sk) -> dict:
     return {"symmetry": True, "joints": {k: {"pos": v, "r": 0.06 if k in ("head", "neck") else 0.005} for k, v in LM.items()},
-            "bones": {}, "blobs": {"skull": {"at": "head", "size": [0.09, 0.115, 0.125]}}, "skin": sk}
+            "bones": {}, "blobs": {"skull": {"at": "head", "size": [0.09, 0.115, 0.125]},
+                               "eye.L": {"at": "eye.L", "size": [0.012, 0.012, 0.012]}}, "skin": sk}
 
 
 def test_tone():

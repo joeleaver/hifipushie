@@ -136,6 +136,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     dark = t["melanin"]
     ctx = {**ctx, "torso": "chest" in J}
     ctx["smooth"] = []
+    from . import paint as _paint
+    ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
     f0 = p["makeup"].get("foundation")
     cover = float(np.clip(f0 if isinstance(f0, (int, float)) else (f0 or {}).get("amount", 1.0 if f0 else 0.0), 0, 1)) if f0 else 0.0
     ctx["show"] = 1.0 - 0.75 * cover  # how much of the skin's own marks shows through foundation
@@ -363,7 +365,7 @@ def _hair(p, J, layer, T, ctx) -> None:
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col, opacity=0.3 * min(dens, 1) + 0.06,
                   mask=_zones(["brow"], 0.9 * thick))
             layer("brow_hairs", color=col, opacity=0.95, roughness=0.42, specular=0.45, height=0.00012, image=img)
-        o = _opt(h.get("lashes", 0.7), "hair.lashes", ("color",))
+        o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             layer("lashes", color=col, opacity=0.9 * min(o["amount"] + 0.2, 1), roughness=0.4,
