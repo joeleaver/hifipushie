@@ -211,6 +211,9 @@ def test_rigid_near_and_export_frames():
     assert wh[moved].min() > 0.999
     far = np.linalg.norm(m["V"] - c, axis=1) > 0.03 + 0.05
     assert np.array_equal(J2[far], J[far]) and np.allclose(W2[far], W[far])
+    # a part no shape moves (a collar beside the throat) keeps its weights, however near the moved skin it lies
+    out = rig.rigid_near(on, {"all": (J, W), "collar": (J, W)}, {"all": m["V"], "collar": m["V"]}, {"all": moved * 0.01})
+    assert np.array_equal(out["collar"][0], J) and np.array_equal(out["collar"][1], W)
     for b in on:
         if b.get("twist"):
             a = asset._Z_TO_Y @ b["twist"]["axis"]

@@ -916,7 +916,8 @@ def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: floa
     tree = cKDTree(np.concatenate(pts)) if pts else None
     out = dict(skins)
     for pn, (J, W) in skins.items():
-        if pn not in verts:
+        if pn not in verts or pn not in moved:  # a part no shape moves is worn or a prop: a collar beside the
+            # throat took Head 0.56 from the moved skin near it and turned with the face (26 mm off the shirt)
             continue
         h = np.zeros(len(verts[pn]))
         if tree is not None:
