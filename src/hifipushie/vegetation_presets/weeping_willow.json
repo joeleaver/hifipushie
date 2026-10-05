@@ -1,0 +1,122 @@
+{
+ "about": "Weeping willow (Salix babylonica): a short thick trunk, ascending scaffold limbs, curtains of long thin shoots hanging to the ground",
+ "age": 35,
+ "habit": {
+  "years_per_step": 1.2,
+  "unit": 0.3705,
+  "vigour": 6.4234,
+  "apical": [
+   0.46,
+   0.5,
+   0.55,
+   0.6
+  ],
+  "apical_old": 0.36,
+  "shoot_max": [
+   2,
+   2,
+   3,
+   4
+  ],
+  "length": [
+   1,
+   1,
+   1,
+   1.1
+  ],
+  "angle": [
+   50,
+   70,
+   60
+  ],
+  "tropism": [
+   0.3,
+   0.2,
+   -0.4,
+   -1.2
+  ],
+  "light": 0.15,
+  "jitter": [
+   0.15,
+   0.25,
+   0.15,
+   0.08
+  ],
+  "shed": 0.0,
+  "bud_life": 4,
+  "sag": 3.3358,
+  "sag_max": 0.35,
+  "pipe": 2.3,
+  "flare": 1.6,
+  "clear": 1.8,
+  "max_order": 4,
+  "leaf_steps": 3,
+  "apical_fade": [
+   0.1,
+   0.35
+  ],
+  "ring": 0.0022,
+  "plagio": [
+   0,
+   0.12,
+   0,
+   0
+  ],
+  "elevation": [
+   0,
+   45,
+   0,
+   0
+  ]
+ },
+ "leaves": {
+  "shape": "lanceolate",
+  "length": 0.09,
+  "width": 0.2,
+  "hang": 0.6,
+  "color": [
+   0.584,
+   0.665,
+   0.349
+  ],
+  "twig": {
+   "length": 0.55,
+   "leaves": 20,
+   "arrangement": "alternate",
+   "angle": 40,
+   "per_m": 12,
+   "droop": 1.2,
+   "up": -0.9,
+   "spread": 25,
+   "min_order": 2,
+   "steps": 4
+  },
+  "card": {
+   "twig": {
+    "leaves": 60,
+    "length": 0.8
+   },
+   "scale": 1.2,
+   "strips": 4
+  }
+ },
+ "bark": {
+  "kind": "furrowed",
+  "color": [
+   0.378,
+   0.356,
+   0.314
+  ],
+  "color2": [
+   0.246,
+   0.227,
+   0.194
+  ],
+  "twig_color": [
+   0.435,
+   0.422,
+   0.236
+  ],
+  "bump": 0.8
+ }
+}
