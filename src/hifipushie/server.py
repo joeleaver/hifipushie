@@ -865,58 +865,115 @@ def _closed(sil: dict, radius: float) -> dict:
 
 
 @mcp.tool(structured_output=False)
-def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None):
+def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None,
+        drive_twist: bool = True, glb: str | None = None, focus: str | None = None, zoom: float = 1.0,
+        views: list[str] | None = None, shapes: dict | None = None):
     """The export rig, a separate step over the modelling skeleton (spec bones stay for modelling): fits it,
     skins the model and renders a test pose (front and side), so weights are judged before export_asset(rig=True).
     Humanoids (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
     names (mixamorig:Hips ... LeftHandIndex4, fingers from the hand kit): Mixamo animations, Unity Humanoid and
     Unreal's IK retargeter map it as is. spec["rig"] = {"joints": {"LeftShoulder": joint or [x, y, z], ...}} moves
     a rig joint; {"type": "chains", "root": joint, "chains": {"spine": {"joints": [...]}, "tail": {"from": "spine",
-    "joints": [...]}, "leg_front.L": {...}}} gives any creature clean named chains ("<chain>_01"...). pose:
-    {rig bone: [[axis x, y, z], degrees]} instead of the default test pose. Rest pose = as modelled."""
+    "joints": [...]}, "leg_front.L": {...}}} gives any creature clean named chains ("<chain>_01"...).
+    Twist bones (humanoids): extra leaf joints AFTER the Mixamo set, "<Side><Arm|ForeArm|UpLeg|Leg>Twist<k>",
+    children of their segment's joint, that spread a roll along the segment instead of wringing one joint (a hand
+    turned palm down is ~75 deg of forearm roll: without them the wrist takes it all). The forearm's and shin's
+    FOLLOW the hand's / foot's roll (shares rising to 1.0 at the wrist); the upper arm's and thigh's COUNTER their
+    own joint's roll (-1.0 at the shoulder: the deltoid stays put). Nothing animates them: an engine drives them
+    from the listed shares (the export's json has the recipe per engine), and undriven they change nothing.
+    spec["rig"]["twist"] = false | count | {"arm": 2, "forearm": 3, "upleg": 1, "leg": 1} (the default; up to 4).
+    The head is rigid: skull, face, jaw, teeth, tongue and eyes are Head 1.0, the falloff to the neck is on the
+    throat (spec["rig"]["rigid_head"] = false | {"band": m, "under": m}).
+    pose: {rig bone: [[axis x, y, z] or "roll", degrees]} instead of the default test pose ("roll" = about the
+    bone's limb: the forearm for a Hand, its own length for an Arm); drive_twist=False leaves the twist bones still
+    (what an engine without drivers shows). The text reports each twist chain's test (hand rolled 75 and 105 deg:
+    twist by station along the forearm, what is left at the wrist, the worst cross-section's area against rest:
+    a candy wrapper is a dip under ~0.8), the head's weights by height, and the WEIGHTS AUDIT: every joint turned
+    alone through its usual range, with how far its own skin ends from a rigid turn, how far other bones' skin moved
+    (and whose), flipped triangles, weight one digit's bones hold on another digit, left / right asymmetry, sums and
+    influence counts; lines ending "<- BAD" are what to fix.
+    glb: an exported <name>.glb to judge INSTEAD of this tool's own build: the real low poly with the weights and
+    joints an engine gets. Do this for hands and faces: the look build here is coarse (the text says when its voxel
+    is too big for the fingers: they fuse at rest and no pose of them means anything). focus: a rig bone to centre
+    on (with zoom, e.g. focus="LeftHand", zoom=6), views: e.g. ["front", "left", "back"]; shapes: {face shape:
+    weight} added before posing (glb only: {"jawOpen": 1} with a head turn). pose = {} renders the rest pose: look
+    at it first, so a mesh fault isn't blamed on the weights. Rest pose = as modelled."""
     from . import rig as rigmod
     spec = store.load(name)
     try:
         bones = rigmod.rig_bones(spec)
     except ValueError as e:
         return str(e)
-    meta = store.build(name, resolution)
-    z = np.load(meta["mesh"])
-    V, F = z["verts"].astype(np.float64), z["faces"]
-    pv, pnames = z["part"], [str(n) for n in z["part_names"]]  # per part, as export_asset skins them
-    J, W = np.zeros((len(V), 4), int), np.zeros((len(V), 4))
-    fp = pv[F[:, 0]]
-    meshes = {}
-    for i, pn in enumerate(pnames):
-        sel = np.flatnonzero(pv == i)
-        if len(sel):
-            rm = np.full(len(V), -1)
-            rm[sel] = np.arange(len(sel))
-            meshes[pn] = (V[sel], rm[F[fp == i]], sel)
-    for pn, (Jp, Wp) in rigmod.skin_parts(spec, bones, {k: v[:2] for k, v in meshes.items()}).items():
-        J[meshes[pn][2]], W[meshes[pn][2]] = Jp, Wp
-    turns = {k: (v[0], v[1]) for k, v in pose.items()} if pose else rigmod.test_pose(bones)
-    P = rigmod.pose(bones, V, J, W, turns)
+    from . import rig_audit
+    extra = {}
+    if glb:  # the export itself: its mesh, joints and weights
+        g = rig_audit.read_glb(Path(glb).expanduser())
+        bones = g["bones"]
+        V, Fs, J, W, _, _ = rig_audit.joined(g["meshes"], shapes)
+        rep, F = rig_audit.weld(V, Fs)  # (seam-split vertices as one surface, for normals and the audit)
+        note = [f"judging {Path(glb).name}: {len(V)} vertices, {len(Fs)} triangles, the export's own joints and weights"]
+    else:
+        meta = store.build(name, resolution)
+        z = np.load(meta["mesh"])
+        V, F = z["verts"].astype(np.float64), z["faces"]
+        Fs, rep = F, np.arange(len(V))
+        J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
+        extra = {k: z[k] for k in ("part", "part_names", "part_colors")}
+        note = []
+        _, girth, _, _ = rig_audit.owners(bones, V)
+        thin = [girth[i] for i, b in enumerate(bones) if i in girth and "Hand" in b["name"]
+                and b["name"][-1:].isdigit()]
+        if thin and meta["voxel"] > 0.5 * float(np.median(thin)):
+            note.append(f"WARNING: this look's voxel is {meta['voxel'] * 1e3:.1f} mm and the fingers are "
+                        f"~{2e3 * float(np.median(thin)):.0f} mm thick: they are fused or lumpy in this build AT REST. "
+                        "Don't judge hands here: export and pass glb=<the .glb> (the real mesh and weights)")
+    names = [b["name"] for b in bones]
+    if pose is not None and not pose:
+        turns = {}
+    elif pose:
+        bad = [k for k in pose if k not in names and rigmod.PREFIX + k not in names]
+        if bad:
+            return f"pose: no rig bone {bad} (have {', '.join(names)})"
+        turns = rigmod.resolve_turns(bones, {(k if k in names else rigmod.PREFIX + k): (v[0], v[1])
+                                             for k, v in pose.items()})
+    else:
+        turns = rigmod.test_pose(bones)
+    P = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, turns) if drive_twist else turns) if turns else V
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
     N = np.zeros_like(P)
     for k in range(3):
         np.add.at(N, F[:, k], fn)
+    N = N[rep]
     N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-12
+    at = None
+    if focus:
+        fb = focus if focus in names else rigmod.PREFIX + focus
+        if fb not in names:
+            return f"focus: no rig bone {focus!r}"
+        i = names.index(fb)
+        kids = [b["head"] for b in bones if b["parent"] == i and not b.get("twist")]
+        at = 0.5 * (bones[i]["head"] + (np.mean(kids, 0) if kids else bones[i]["head"]))
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "posed.npz"
-        np.savez(f, verts=P.astype(np.float32), faces=F, normals=N.astype(np.float32),
-                 **{k: z[k] for k in ("part", "part_names", "part_colors")})
-        frames = render.view_frames(P, ["front", "side"])
+        np.savez(f, verts=P.astype(np.float32), faces=Fs, normals=N.astype(np.float32), **extra)
+        frames = render.view_frames(P, views or ["front", "side"], focus=at, zoom=zoom)
         img = render.contact_sheet(render.render_views(f, frames, size, "clay_studio.exr"), frames)
     used = np.bincount(J[W > 0.01], minlength=len(bones))
     empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"] and not b.get("noweight")]
-    text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}); posed: "
-            + ", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items())]
+    text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}; "
+            f"{sum(1 for b in bones if b.get('twist'))} of them twist bones, after the base set); posed: "
+            + (", ".join(f"{k} {v[1]:+g} deg" for k, v in turns.items()) or "nothing (REST)")
+            + ("" if drive_twist else "; twist bones NOT driven")]
     text += [f"  {b['name']} <- {b.get('src', '?')}" + (" (end)" if b["end"] else "")
-             + (f", child of {bones[b['parent']]['name']}" if b["parent"] >= 0 else " (root)") for b in bones]
+             + (f", child of {bones[b['parent']]['name']}" if b["parent"] >= 0 else " (root)")
+             + (f"; {b['twist']['mode']}s {b['twist']['driver']}'s roll x {b['twist']['share']:+g}"
+                if b.get("twist") else "") for b in bones]
     if empty:
         text.append("bones that got no skin: " + ", ".join(empty))
+    text = note + text
+    text += rigmod.report(spec, bones, V, F, J, W)
+    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W))
     return [_out(img, save), "\n".join(text)]
 
 
@@ -1021,7 +1078,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 @mcp.tool(structured_output=False)
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
-                 hide: list[str] | None = None, save: str | None = None, rig: bool = False, fbx: bool = False,
+                 hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
                  face_shapes: bool | list[str] = False):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
@@ -1050,10 +1107,14 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.
     preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
     parts, instances or prefabs left out of it (e.g. roof and walls, to see an interior).
-    rig: an armature from the skeleton (a joint per additive bone, rooted at "pelvis"/"hips" or the skeleton's
-    middle) and the parts skinned to it (4 weights per vertex from each bone's own cone and the blobs on it,
-    blended within the nearest bone's family): characters. Decimated triangles bend less cleanly than modelled
-    edge loops at elbows and knees; judge it with the `rig` tool first. fbx: also <name>.fbx (Blender converts the
+    rig: the export rig (the `rig` tool's: Mixamo's skeleton for humanoids, named chains otherwise) and the parts
+    skinned to it, 4 weights per vertex: characters. Humanoids also get twist bones (extra leaf joints after the
+    Mixamo set; each has node extras.hifipushie_twist {driver, mode, share, axis} and the json's rig.twist +
+    rig.twist_recipe say how an engine drives them from the hand's / arm's roll; undriven they change nothing) and
+    a rigid head (face, jaw, teeth, tongue, eyes and whatever a face shape moves are Head 1.0). rig may be
+    {"twist": false | count | {"arm", "forearm", "upleg", "leg"}, "rigid_head": false} to override spec["rig"].
+    Decimated triangles bend less cleanly than modelled edge loops at elbows and knees; judge it with the `rig`
+    tool first. fbx: also <name>.fbx (Blender converts the
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
