@@ -636,7 +636,12 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
     ref = None
     hf = head_field(spec, rb)
     opts = spec.get("rig") or {}
-    skin = {opts.get("skin_part", "body")} | set((spec.get("face_shapes") or {}).get("parts") or ())
+    sp = opts.get("skin_part") or ("body" if "body" in meshes else None)
+    if sp is None and hf is not None:  # no part called "body": the skin is the part with the most of the head
+        n = {pn: int((hf["h"](V) > 0.999).sum()) for pn, (V, F) in meshes.items()
+             if len(V) and not (defs.get(pn) or {}).get("rig_bone") and float(hf["h"](V).mean()) < HEAD_PART}
+        sp = max(n, key=n.get) if n else None
+    skin = {sp} | set((spec.get("face_shapes") or {}).get("parts") or ())
     if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
         from . import base as basemod
         from .spec import expand_mirror as _em
