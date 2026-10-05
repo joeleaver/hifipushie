@@ -34,7 +34,8 @@ from . import pattern
 KB_PATH = Path(__file__).with_name("garment_kb.json")
 DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", "waistband", "fly", "skirt_closure",
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch")
-SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made"}
+SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
+              "block_options", "ops"}
 METHODS = ("simulate", "settle")
 
 
@@ -74,7 +75,15 @@ def validate(sheet: dict, where: str = "design") -> None:
         raise ClothError(f"{where}: design kind {kind!r} unknown (have {', '.join(kinds)})")
     designs = [d for d in K["designs"] if not d.startswith("_")]
     fr = sheet.get("from")
-    if fr is not None and fr not in designs:
+    if fr == "draft" or (fr is None and sheet.get("block")):
+        from . import pattern_blocks, pattern_draft
+        if sheet.get("block") not in ("bodice", "knit", "trouser"):
+            raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser (the skirt is from "
+                             "skirt_block), then \"ops\": [pattern operations]")
+        for k_, op in enumerate(sheet.get("ops") or []):
+            if not isinstance(op, dict) or op.get("op") not in list(pattern_draft.OPS) + ["unfold"]:
+                raise ClothError(f"{where}: ops[{k_}] is {{\"op\": one of {', '.join(pattern_draft.OPS)}, unfold, ...}}")
+    elif fr is not None and fr not in designs:
         raise ClothError(f"{where}: design from {fr!r}: no recipe (have {', '.join(designs)}; or leave it out and give "
                          "own pieces + seams on the garment)")
     fits = list(K["kinds"][kind].get("fit", {}))
@@ -111,8 +120,8 @@ def resolve(sheet: dict) -> dict:
     K = kb()
     kind = sheet["kind"]
     kd = K["kinds"][kind]
-    fr = sheet.get("from")
-    rec = K["designs"].get(fr) if fr else None
+    fr = sheet.get("from") or ("draft" if sheet.get("block") else None)
+    rec = K["designs"].get(fr) if (fr and fr != "draft") else None  # a drafted design is judged by evidence alone
     fit = sheet.get("fit") or (next(iter(kd.get("fit", {})), None))
     problems = []
     if rec and rec.get("kind") != kind and kind not in rec.get("kinds", []):
@@ -181,7 +190,13 @@ def compile_sheet(sheet: dict) -> dict:
     r = resolve(sheet)
     rec = r["recipe"] or {}
     out: dict = {}
-    if r["from"]:
+    if r["from"] == "draft":
+        bo = dict(sheet.get("block_options") or {})
+        band = r["fit_bands"].get("chest")
+        if band and "chest_ease" not in bo and sheet["block"] in ("bodice", "knit"):
+            bo["chest_ease"] = round(0.5 * (band[0] + band[1]), 3)  # ease by garment category: the fit's middle
+        out["pattern"] = {"from": "draft", "block": sheet["block"], "block_options": bo, "ops": list(sheet.get("ops") or [])}
+    elif r["from"]:
         pat = {"from": rec.get("pattern_from", r["from"])}
         fo = (rec.get("fit_options") or {}).get(r["fit"]) or {}
         pat = _merge(pat, fo)

@@ -472,6 +472,26 @@ def op_dart_to_ease(D: dict, piece: str, dart: str, **o) -> None:
     before = {json.dumps(s): s for s in D["seams"]}
     D["pieces"][piece] = new
     _remap(D, piece, old, imap, {piece: new})
+
+    # an edge that skipped the dart now runs straight over it: the gap between the old leg ends joins the chain
+    def bridge(chain):
+        out = []
+        for e in chain:
+            if out and out[-1].startswith(piece + ":") and e.startswith(piece + ":"):
+                p_end, n_start = out[-1].split(">")[-1], e.split(":", 1)[1].split(">")[0]
+                if {p_end, n_start} == {a_n, b_n}:
+                    out.append(f"{piece}:{p_end}>{n_start}")
+            out.append(e)
+        return out
+    for k_ in D["edges"]:
+        D["edges"][k_] = bridge(D["edges"][k_])
+    for s in D["seams"]:
+        for j in (0, 1):
+            if not isinstance(s[j], str):
+                key = json.dumps(s)
+                s[j] = bridge(s[j])
+                if key in D["notes"]:
+                    D["notes"][json.dumps(s)] = D["notes"].pop(key)
     # the seam that ran over the dart now carries its intake as ease
     for s in D["seams"]:
         for side in s:
@@ -708,7 +728,7 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
                                for k in range(1, n - 1)] + [("front" if ext > 0 else "cf", edge[-1])]
     pts += [("frontTop", outer[-1])] + [(None, q) for q in outer[-2:0:-1]] + [("cbTop", outer[0])]
     # the half must have its centre back on x = 0: turn it so cb -> cbTop is the y axis
-    role = "collar_stand" if stand >= 0.75 else "collar_fall"
+    role = o.get("role") or ("collar_stand" if stand >= 0.75 else "collar_fall")
     pc = pb.make_piece(name, pts, role, {"to": "neck", "edge": "cb"}, "fold")
     v = pc["P"][pc["names"]["cbTop"]] - pc["P"][pc["names"]["cb"]]
     pc["P"] = _rot(pc["P"], pc["P"][pc["names"]["cb"]], math.pi / 2 - math.atan2(v[1], v[0]))

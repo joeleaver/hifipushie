@@ -117,6 +117,16 @@ def seam_rows(c: Ctx) -> list:
             r["band"] = cb
             r["kind"] = f"cap_{c.kind}"
             r["ok"] = cb[0] - 1e-9 <= r["ease"] <= cb[1] + 1e-9
+    # ease an operation declared (a dart released into gathers, a cap's designed ease, a stretched inseam)
+    notes = c.Bp.get("seam_notes") or {}
+    for r in rows:
+        n = notes.get(json.dumps([r["a"], r["b"]]))
+        if n:
+            lo, hi = n["ease"]
+            r["band"] = (min(lo, -hi) if lo >= 0 and r["ease"] < 0 else lo, hi)
+            r["kind"] = "declared"
+            r["why"] = n["why"]
+            r["ok"] = lo - 1e-6 <= abs(r["ease"]) <= hi + 1e-6 or lo - 1e-6 <= r["ease"] <= hi + 1e-6
     return rows
 
 

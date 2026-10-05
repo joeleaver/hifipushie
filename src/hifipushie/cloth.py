@@ -104,7 +104,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     out, seams, stitches, interfaced, draft_info = {}, [], [], [], None
     g = expanded(g)
     pat = g.get("pattern")
-    gen, folds_tbl = [], []
+    gen, folds_tbl, seam_notes = [], [], {}
     from . import garment_blocks
     if pat and pat.get("from") in garment_blocks.BLOCKS:  # our own drafts (a skirt block): pieces + seams
         m = dict(meas_mm)
@@ -114,6 +114,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         out, seams, stitches, interfaced = dict(blk["pieces"]), list(blk["seams"]), list(blk["stitches"]), list(blk["interfaced"])
         draft_info = blk["draft"]
         gen = list(blk.get("generate") or [])
+        folds_tbl += blk.get("folds") or []
+        seam_notes = dict(blk.get("seam_notes") or {})
         pat = None
     if pat:
         from . import freesewing
@@ -194,7 +196,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     folds = [f for f in list(folds_tbl) + list(g.get("folds") or []) if f.get("piece") in keep]
     return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
-            "draft": draft_info, "folds": folds}
+            "draft": draft_info, "folds": folds, "seam_notes": seam_notes}
 
 
 # ---------------------------------------------------------------- flat mesh

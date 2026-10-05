@@ -93,7 +93,17 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
     hips = mm("hips") if "hips" in m else chest
     nw = neck * (1 + o["collar_ease"]) / 4.8
     bn = o["back_neck"] * neck
-    fn = nw + 0.008
+    # the front neck's depth is SOLVED: back + front neckline = half the neck girth with its ease (a collar or band
+    # of that length then fits). It starts at the neck width (a quarter circle) and comes up or down
+    back_len = pattern.length(np.r_[[[0, -bn]], bez([0, -bn], [nw * 0.6, -bn], [nw * 0.92, -bn * 0.25], [nw, 0])])
+    target = neck * (1 + o["collar_ease"]) / 2 - back_len
+    lo_, hi_ = 0.3 * nw, 2.5 * nw
+    for _ in range(40):
+        fn = 0.5 * (lo_ + hi_)
+        ln_ = pattern.length(np.r_[[[0, -fn]], bez([0, -fn], [nw * 0.75, -fn], [nw, -fn * 0.45], [nw, 0])])
+        lo_, hi_ = (fn, hi_) if ln_ < target else (lo_, fn)
+    if o.get("front_neck") is not None:
+        fn = float(o["front_neck"])
     sx = mm("shoulderToShoulder") / 2 * (1 + o["shoulder_ease"])
     slope = math.radians(float(m.get("shoulderSlope", 13.0)))
     sy = (sx - nw) * math.tan(slope)
@@ -114,7 +124,8 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
     left = supp - side - dart  # what stays as ease at the waist, or is there for panel seams to take in
     log.append(f"neck width {nw * 1000:.0f} mm (neck x {1 + o['collar_ease']:.2f} / 4.8), shoulder point at "
                f"{sx * 1000:.0f}, {sy * 1000:.0f} down (slope {math.degrees(slope):.0f} deg), armhole depth {ay * 1000:.0f}, "
-               f"chest quarter {cx * 1000:.0f} (ease {o['chest_ease'] * 100:.0f}%), waist quarter {wq * 1000:.0f}")
+               f"chest quarter {cx * 1000:.0f} (ease {o['chest_ease'] * 100:.0f}%), waist quarter {wq * 1000:.0f}; front neck "
+               f"depth {fn * 1000:.0f} mm (solved: the neckline is half the neck girth + {o['collar_ease'] * 100:.0f}%)")
     log.append(f"waist suppression {supp * 1000:.0f} mm per quarter: side seam {side * 1000:.0f}, dart {dart * 1000:.0f}, "
                f"left as ease / for panel seams {left * 1000:.0f}")
     bust = None
@@ -144,7 +155,7 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         k1 = 0.35 * (py - sy)
         pts += _curve_pts(bez([sx, Y(sy)], np.array([sx, Y(sy)]) + dn * k1, [px, Y(py - 0.45 * (py - sy))], [px, Y(py)]))
         pts += [("armholePitch", [px, Y(py)])]
-        scoop = 0.62 if front else 0.52  # the front armhole is hollowed more than the back
+        scoop = 0.56 if front else 0.52  # the front armhole is hollowed a little more than the back
         pts += _curve_pts(bez([px, Y(py)], [px, Y(py + scoop * (ay - py))], [px + (1 - scoop * 1.05) * (cx - px), Y(ay)],
                               [cx, Y(ay)]))
         pts += [("armhole", [cx, Y(ay)])]
