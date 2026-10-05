@@ -329,6 +329,87 @@ Material settings go in `spec.hair.look` (sRGB hex colours):
 
 Adding small locks makes every one of these worse. Fix the big shapes first.
 
+# Hair: soft, loose hair as strand cards
+
+Sculpted locks (above) are the feature-animation answer. Soft, loose, wavy or tied hair is made another way in games:
+**hair cards**. `spec.hair.style = "cards"` draws the same locks as cards; everything above about silhouette, flow,
+hierarchy and the hairline still holds, because a lock stays the unit you design and edit.
+
+## How game artists do it
+
+The sources (listed at the end) agree on the method. Numbers are theirs.
+
+1. **A strand atlas.** A handful of pictures of strand clumps, each running root to tip: usually 6-8 of them, in a
+   density hierarchy. Sykutera's curly-hair atlas: 2 for volume, 3 for breakup, 1 of clumped strays and fly-aways, 1 of
+   short curls for the neckline. They are baked from a real strand groom (XGen, Blender hair curves, FiberShop,
+   Hair Card Designer, Fiberbake) or painted. Each picture comes as several maps: colour, **alpha**, and the three an
+   engine hair shader asks for: a **root** gradient (root-to-tip colour ramp), a per-strand **ID** (value variation)
+   and **depth** (strands deep in the clump darker, less specular; Unreal also offsets pixel depth with it), often
+   packed in one texture, plus a normal or flow/tangent map.
+2. **A hair cap first.** A "hair helmet" textured as hair under everything, so no scalp shows between cards and the
+   head already has the hair's base shading. Where the cap meets the skin, the scalp itself is painted with a hairline
+   shadow.
+3. **Cards in layers, most opaque first** (80.lv, CGMA, Polycount):
+   - a **base layer** of broad, nearly opaque cards blocking in the whole structure;
+   - one to three **breakup layers** of less and less opaque cards over it (clumps of 2-3 cards each);
+   - **fly-aways**: single-strand cards standing off the silhouette;
+   - last, the **transitions**: the hairline, temples, nape and ears, with short **baby hairs** (4-5 variations
+     round the neck, ears and temples, 2-3 on the forehead in the 80.lv ponytail).
+   Cards are few-segment strips, with edge loops only where they bend; a lengthwise fold or cup gives them body.
+   Roots are widened to hide the scalp. Leave negative space between clumps of curls.
+4. **Tied hair** (the 80.lv ponytail): cover the scalp with cards that run to the tie; define the tail's volume
+   with longer cards; then breakup cards, fly-aways and baby hairs. The tail hangs from the tie under gravity and
+   is fullest a little below it.
+5. **Shading.** Two-sided, one normal for both faces, bent toward the hair volume's own normal (transferred from
+   the cap or a proxy) so the mass shades as one soft form; anisotropic highlight along the strands, shifted per
+   strand by the ID map (Scheuermann); the root darker, tips lighter and more transparent; ambient occlusion baked
+   per layer into vertex colours.
+6. **Alpha.** Alpha blending sorts badly, so cards are drawn alpha-tested with dithering + temporal AA, or
+   alpha-to-coverage (hair "doesn't need blending, just alpha testing", and coverage antialiases it); mips must not
+   erode the alpha (visible scalp gaps come from too little overlap in the base layer or from mip erosion).
+7. **Budgets.** Marketplace game hair: 10-15k triangles "low", 25-37k "mid"; hero hair in current AAA games up to
+   ~100k. A whole character of the previous generation was 25-30k. Textures 1-2k for one head of hair. Three LODs,
+   the far ones dropping the upper layers and fly-aways.
+8. **Tools worth knowing:** GS CurveTools (Maya: cards bound to curves, so the groom stays curve-editable: what
+   our locks are), Hair Card Designer and Fiberbake (Blender: atlas baking + card grooming), FiberShop (atlas
+   baking), Unreal's Hair Card Generator (clusters a strand groom into clumps, one card per clump, textures shared
+   between similar clumps).
+
+What reads wrong: **plates** (cards too wide, too few, too opaque at the tips), **helmet** (no fly-aways, a clean
+outline), a **hard hairline** (no fade, no baby hairs), **scalp gaps**, **one-sided shading** (cards dark from
+behind), a **stiff tail** (no wave, every card the same length), **spaghetti** (only sparse cards, no base).
+
+## What the tools do (cards)
+
+- `hair.style: "cards"`: every lock becomes a stack of cards inside its own lens: a dense layer underneath, clumped
+  cards over it, wisps on top, fly-aways off it. The lock is still the Bezier curve you edit (numbers, or in
+  Blender + pull).
+- `hair.strands` (all optional):
+
+  | key | what |
+  |---|---|
+  | wave, wavelength | m the lock swings side to side, m per swing. Full on free hair, a third on hair lying on the head |
+  | curl | 0..1: how much of the wave leaves the lock's plane (1 = ringlets); free hair only |
+  | random | how far cards differ in phase, amplitude, length |
+  | clump | strands in the pictures gather into pointed sub clumps |
+  | frizz | single strands wander |
+  | flyaway | stray single-hair cards per card |
+  | layers | 1-3 card layers per lock |
+  | card_width | m, the widest card |
+  | tips | how ragged the ends are |
+  | baby | baby hairs per cm of hairline (0 = none) |
+  | soft | m over which the hairline breaks up into strands |
+  | round | how far normals bend to the volume's (soft shading) |
+
+  A lock can carry its own `"strands": {...}`.
+- The atlas is generated (8 tiles: dense x2, medium x2, sparse x2, fly-aways, baby hairs; colour + alpha, normal,
+  and an aux map: root / id / depth / alpha).
+- The underlayer is the hair cap: it wears a dense tile whose ragged end lies on the hairline.
+- **Tied hair**: `groom.tie` (see groom_hair): hair gathered over the head to a tie point, a tail that leaves it
+  (free under gravity, coiled into a bun, or plaited), the strands that escaped, the band.
+- Locks that leave the head are `"space": "xyz"` (metres from the head centre) with `"free": 1`: their underside
+  is hair, not the dark gap side (solid locks too).
+
 ## Sources
 
 - Hossimo, [The right way to think about doing hair as an artist](https://hossimo.com/articles/tips-and-tricks-an-artist-friendly-approach-to-sculpt-groom-hair/):
@@ -352,3 +433,22 @@ Adding small locks makes every one of these worse. Fix the big shapes first.
   tools; for big stylised locks, curves with a profile remain the editable choice.
 - AWN, [Rapunzel lets her hair down](https://www.awn.com/animationworld/rapunzel-lets-her-hair-down-tangled): rhythm,
   volume, twist and a designed swoop.
+\n
+More sources (cards):
+- 80.lv, [Creating a ponytail hairstyle with Maya XGen and Unreal Engine](https://80.lv/articles/creating-a-ponytail-hairstyle-with-maya-xgen-unreal-engine/):
+  scalp cards first, the tail's volume with longer cards, breakup, baby hairs (counts), FiberShop bakes, GS CurveTools, 3 LODs.
+- 80.lv, [Creating hair for real-time projects](https://80.lv/articles/creating-hair-for-real-time-projects/):
+  diffuse / alpha / depth / ID / root maps, layers placed by opacity, pixel depth offset.
+- 80.lv, [Tips and tricks on hair for games](https://80.lv/articles/tips-tricks-on-hair-for-games/): opaque base,
+  then breakup layers of less opaque cards, clumps of 2-3 cards, hairline and fly-aways last, AO per layer in the vertices.
+- Thomas Sykutera (Games Artist), [Curly hair breakdown](https://gamesartist.co.uk/curly-hair-character-breakdown-thomas-sykutera/):
+  the atlas's hierarchy, ~6 clump and 5 fly-away meshes reused, curls by bending cards along curves, a lengthwise
+  fold, negative space, shader settings.
+- Epic, [Photorealistic character: hair](https://docs.unrealengine.com/4.26/en-US/Resources/Showcases/PhotorealisticCharacter)
+  and [Hair Card Generator](https://dev.epicgames.com/documentation/unreal-engine/hair-card-generator-for-grooms-in-unreal-engine):
+  the hair shading model's textures (root, depth, ID), two-sided material, cards generated from clustered strands.
+- Polycount, [alpha test vs alpha-to-coverage for hair](https://polycount.com/discussion/comment/2500017).
+- Budgets: FlippedNormals game-hair listings ([short male](https://flippednormals.com/product/hair-short-male-hairstyle-16197):
+  11k low / 25k mid), Ellie Porfyridou, [Real-time hair](https://www.digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+) (up to ~100k in current games).
+- Superhive, [Fiberbake](https://superhivemarket.com/products/fiberbake-hair-cards): strand effects (curl, clump,
+  braid, frizz), atlas packing, a live triangle readout.

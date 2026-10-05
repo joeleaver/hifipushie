@@ -100,6 +100,7 @@ GROOM = {
     # row: 0.35 shows between the wedges, 1 is buried under the underlayer) or per row {stem: sink | false}
     "hairline_edge": None,  # {"inset": m (negative: tucked into the skin), "reach": m}: every drawn clump whose edge
     # comes within reach of the hairline lays that edge on it (the volume's rim showed between clump edges and skin)
+    "tie": None,  # tied hair (hair_tied.py): {"at": [az, el], "out", "gather", "tail", "escape", "band"} or a list
     "noise": 0.3,
     "seed": 0,
     "centre": "head",  # without face landmarks (a kit-built head): the joint (or [x, y, z]) the scalp is measured from
@@ -109,10 +110,15 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0}  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
-             "handles", "tier", "edge", "hand"}
+             "handles", "tier", "edge", "hand", "free", "space", "core", "strands"}
+# free: 0..1, the lock hangs clear of the head (its underside is hair too, not the dark gap side); space "xyz": pts
+# are metres from the head centre [x, y, z] (hair that leaves the head: a tail), not [az, el, h]; core: a polyline
+# (same space) the lock's outward side faces away from (a tail's own axis); strands: this lock's own card numbers
 MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
-       "twist": "Twist", "flip": "Flip", "grey": "Grey", "edge": "Edge"}
-LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002, "edge": 0.8}
+       "twist": "Twist", "flip": "Flip", "grey": "Grey", "edge": "Edge", "free": "Free"}
+LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002, "edge": 0.8,
+                 "free": 0.0}
+STYLES = ("locks", "cards")  # hair.style: solid sculpted locks (stylised), or strand cards (hair_cards.py)
 WORDS = {"back": (0, 1, 0), "forward": (0, -1, 0), "down": (0, 0, -1), "up": (0, 0, 1), "left": (1, 0, 0),
          "right": (-1, 0, 0), "away": None}
 
@@ -269,6 +275,12 @@ def groom_params(spec: dict) -> dict:
     bad = set(g) - set(GROOM)
     if bad:
         raise HairError(f"hair groom: unknown keys {sorted(bad)} (have {', '.join(sorted(GROOM))})")
+    if g.get("tie"):
+        from . import hair_tied
+        try:
+            hair_tied.params(g["tie"])
+        except ValueError as e:
+            raise HairError(str(e)) from None
     return _merge(GROOM, g)
 
 
@@ -602,6 +614,10 @@ def grow(sc: Scalp, g: dict) -> dict:
     names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g", "clumps": "k"}
     if g.get("drawn"):  # the top drawn by hand (clumps on the top view), the rest grown round it
         locks.update(drawn(sc, g, g["drawn"]))
+    if g.get("tie"):  # tied hair makes the whole groom (with any drawn clumps): no generated tiers under it
+        from . import hair_tied
+        locks.update(hair_tied.grow(sc, g, line, rng))
+        return locks
     if tiers.get("strip"):
         locks.update(_strips(sc, g, line, tiers["strip"], rng))
     designed = bool((tiers.get("clumps") or {}).get("list")) or bool(g.get("drawn"))
@@ -1086,7 +1102,7 @@ def validate(spec: dict) -> None:
     h = hair_of(spec)
     if not h:
         return
-    keys = {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed", "export"}
+    keys = {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed", "export", "style", "strands"}
     bad = set(h) - keys
     if bad:
         raise HairError(f"hair: unknown keys {sorted(bad)} (have {', '.join(sorted(keys))})")
@@ -1096,6 +1112,14 @@ def validate(spec: dict) -> None:
     if bad:
         raise HairError(f"hair look: unknown keys {sorted(bad)} (have {', '.join(sorted(LOOK))})")
     groom_params(spec)
+    if h.get("style", "locks") not in STYLES:
+        raise HairError(f'hair style is one of {", ".join(STYLES)}')
+    if h.get("strands") is not None:
+        from . import hair_cards
+        try:
+            hair_cards.strands_of(spec)
+        except ValueError as e:
+            raise HairError(str(e)) from None
     for n, lk in (h.get("locks") or {}).items():
         bad = set(lk) - LOCK_KEYS
         if bad:
@@ -1159,7 +1183,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
         new = {n: lk for n, lk in new.items() if n not in set(h.get("removed") or [])}
     keep = {} if replace else {n: lk for n, lk in old.items()
                                if lk.get("hand") or (not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
-                                                     and lk.get("tier") != "drawn")}
+                                                     and lk.get("tier") not in ("drawn", "tie"))}
     h["locks"] = {**new, **keep}
     v = store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     tiers: dict = {}
@@ -1180,8 +1204,7 @@ def hierarchy(spec: dict, sc: Scalp) -> dict:
         return {}
     W, A = [], []
     for lk in locks.values():
-        p = np.asarray(lk["pts"], float)
-        P = sc.point(p[:, 0], p[:, 1], p[:, 2])
+        P = lock_world(sc, lk, lk["pts"])
         L = float(np.linalg.norm(np.diff(_catmull(P, 24), axis=0), axis=1).sum())
         W.append(float(lk["width"]))
         A.append(float(lk["width"]) * L * 0.65)
@@ -1200,19 +1223,35 @@ def lock_hash(lk: dict, sc: Scalp) -> str:
                                    default=float).encode()).hexdigest()[:12]
 
 
+def lock_world(sc: Scalp, lk: dict, pts):
+    """A lock's points (its own space: [az, el, h] on the head, or "space": "xyz" metres from the head centre) in
+    world metres."""
+    pts = np.asarray(pts, float).reshape(-1, 3)
+    if lk.get("space") == "xyz":
+        return sc.C + pts
+    return sc.point(pts[:, 0], pts[:, 1], pts[:, 2])
+
+
+def lock_address(sc: Scalp, lk: dict, P) -> list:
+    """World points as the lock stores them."""
+    P = np.asarray(P, float).reshape(-1, 3)
+    if lk.get("space") == "xyz":
+        return [[round(float(v), 4) for v in q] for q in P - sc.C]
+    a, e, hh = sc.coords(P)
+    return [[round(float(a[i]), 2), round(float(e[i]), 2), round(float(hh[i]), 4)] for i in range(len(P))]
+
+
 def resolve(spec: dict, sc: Scalp) -> list:
     """The locks as Blender wants them: world control points, handles, radius, tilt and modifier inputs."""
     out = []
     for n, lk in sorted((hair_of(spec).get("locks") or {}).items()):
-        pts = np.asarray(lk["pts"], float)
-        W = sc.point(pts[:, 0], pts[:, 1], pts[:, 2])
+        W = lock_world(sc, lk, lk["pts"])
         H = None
         if lk.get("handles"):
             H = []
             for hd in lk["handles"]:
                 if hd:
-                    a = sc.point(hd[0], hd[1], hd[2])
-                    b = sc.point(hd[3], hd[4], hd[5])
+                    a, b = lock_world(sc, lk, [hd[:3], hd[3:]])
                     H.append([float(v) for v in list(a) + list(b)])
                 else:
                     H.append(None)
@@ -1220,7 +1259,9 @@ def resolve(spec: dict, sc: Scalp) -> list:
         inputs["Seed"] = (int(hashlib.md5(n.encode()).hexdigest()[:6], 16) % 1000) / 1000.0
         inputs["Centre"] = [float(v) for v in sc.C]
         out.append({"name": n, "pts": W.tolist(), "handles": H, "radius": lk.get("radius"), "tilt": lk.get("tilt"),
-                    "inputs": inputs, "hash": lock_hash(lk, sc)})
+                    "inputs": inputs, "hash": lock_hash(lk, sc), "free": float(lk.get("free", 0.0)),
+                    "strands": lk.get("strands"),
+                    "core": lock_world(sc, lk, lk["core"]).tolist() if lk.get("core") else None})
     return out
 
 
@@ -1513,7 +1554,8 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
     n = int(np.ceil((90.0 - la.min()) / step))
     t = np.linspace(0.0, 1.0, n + 1)
     AA = np.repeat(A[:, None], n + 3, 1)
-    EE = np.concatenate([(la - 2.5 * step)[:, None], (la - 1.2 * step)[:, None],
+    dive = min(step, 1.0)  # (a coarse cap, for exports, still dives just outside the line)
+    EE = np.concatenate([(la - 2.5 * dive)[:, None], (la - 1.2 * dive)[:, None],
                          la[:, None] + t[None, :] * (90.0 - la)[:, None]], 1)
     if mass:
         H, d_in = envelope(sc, g, line, AA, EE)
@@ -1577,7 +1619,7 @@ def streams(sc: Scalp, g: dict, V) -> dict:
             "lock": (rng.uniform(0, 1, len(edges))[i]).astype(np.float32)}
 
 
-def job(name: str, spec: dict | None = None, only=None) -> dict:
+def job(name: str, spec: dict | None = None, only=None, budget: int | None = None, cap_step: float = 1.0) -> dict:
     """What Blender needs to show the hair: the locks, the cap (or the mass), the material. `only`: lock names or
     fnmatch patterns ("sweep*") to show alone on the underlayer (finding which locks make a patch)."""
     spec = store.load(name) if spec is None else spec
@@ -1593,7 +1635,7 @@ def job(name: str, spec: dict | None = None, only=None) -> dict:
         from fnmatch import fnmatch
         pats = [only] if isinstance(only, str) else list(only)
         locks = [lk for lk in locks if any(fnmatch(lk["name"], q) for q in pats)]
-    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass",
+    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass", step=cap_step,
                     extra=lock_extents(sc, locks) if (locks and h.get("filler")) else None)
     extra = {k: v for k, v in streams(sc, g, V).items() if k == "tangent"} if stage != "mass" else {}  # (the
     # sawtooth clumps on the underlayer aliased into jagged stripes: the strips carry the clumps now)
@@ -1602,9 +1644,93 @@ def job(name: str, spec: dict | None = None, only=None) -> dict:
         pw = _part(sc, g, va, ve, 2 * float(g["parting"].get("width", 0.012)))
         extra["across"] = (0.45 + 0.55 * np.clip(pw * 1.5, 0, 1)).astype(np.float32)
     np.savez(tmp / "cap.npz", verts=V, faces=F, **extra)
-    return {"locks": locks, "cap": str(tmp / "cap.npz"),
-            "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
-            "centre": sc.C.tolist()}
+    out = {"locks": locks, "cap": str(tmp / "cap.npz"),
+           "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
+           "centre": sc.C.tolist()}
+    if h.get("style") == "cards" and stage != "mass":
+        out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget)
+    return out
+
+
+def card_cap(sc: Scalp, g: dict, S: dict, tiles: list, V, F) -> dict:
+    """The underlayer as a card mesh: it wears a dense strand tile whose ragged end lies along the hairline, so the
+    hair's edge on the skin breaks up into strands over `strands.soft` m instead of ending on a line."""
+    line = hairline(sc, g)
+    az, el, _ = sc.coords(V)
+    d_in = inside(sc, line, az, el)
+    t = next(t for t in tiles if t["kind"] == "dense")
+    x = np.radians(az) * 0.09 / 0.03
+    tri = np.abs((x % 2.0) - 1.0)
+    vt = 0.5 + 0.48 * (1 - np.clip(d_in / max(float(S["soft"]), 1e-4), 0, 1))
+    uv = np.stack([t["u0"] + (t["u1"] - t["u0"]) * tri, 1 - vt], 1)
+    F = np.asarray(F)
+    tris = np.concatenate([F[:, [0, 1, 2]], F[:, [0, 2, 3]]])
+    n = len(V)
+    return {"verts": np.asarray(V, np.float32), "tris": tris.astype(np.int32), "uv": uv.astype(np.float32),
+            "normal": sc.normal(az, el).astype(np.float32), "tangent": streams(sc, g, V)["tangent"],
+            "col": np.full((n, 3), 0.8, np.float32), "along": np.full(n, 0.5, np.float32),
+            "layer": np.full(n, -1.0, np.float32), "card": np.zeros(n, np.int32)}
+
+
+def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
+    """Baby hairs: short fine locks rooted just inside the hairline all the way round, lying on the skin at every
+    angle from along the line to straight out over it (resolved locks, for hair_cards)."""
+    n_cm = float(S.get("baby", 0.0))
+    if n_cm <= 0:
+        return []
+    line = hairline(sc, g)
+    rng = np.random.default_rng(seed + 31)
+    a = np.arange(0.0, 360.0, 0.5)
+    L = sc.point(a, _line_at(line, a), 0.0)
+    seg = np.linalg.norm(np.diff(L, axis=0, append=L[:1]), axis=1)
+    cum = np.r_[0.0, np.cumsum(seg)]
+    out = []
+    for k, d in enumerate(np.arange(0.0, cum[-1], 0.01 / n_cm)):
+        az = float(np.interp(d + rng.uniform(-0.3, 0.3) * 0.01 / n_cm, cum, np.r_[a, 360.0])) % 360
+        el = float(_line_at(line, az))
+        r = float(sc.r(az, el))
+        de, da = np.degrees(0.002 / r), np.degrees(0.002 / max(r * np.cos(np.radians(el)), 0.02))
+        gn = float(inside(sc, line, az, el + de) - inside(sc, line, az, el - de))  # which way is into the hair
+        ge = float(inside(sc, line, az + da, el) - inside(sc, line, az - da, el))
+        th = np.arctan2(ge, gn) + rng.uniform(-1.9, 1.9)
+        ln = rng.uniform(0.012, 0.03)
+        pts = []
+        for f in (-0.12, 0.3, 0.65, 1.0):
+            e2 = el + np.degrees(np.cos(th) * ln * f / r) + de * 1.5
+            a2 = az + np.degrees(np.sin(th) * ln * f / max(r * np.cos(np.radians(el)), 0.02))
+            pts.append(sc.point(a2, e2, 0.0012 + 0.002 * max(f, 0.0)))
+        out.append({"name": f"baby{k}", "pts": np.asarray(pts).tolist(), "handles": None, "radius": None, "tilt": None,
+                    "inputs": {"Width": rng.uniform(0.012, 0.02), "Thickness": 0.001, "Cup": 0.0, "Taper": 0.3,
+                               "Belly": 0.3, "Root": 0.8, "Twist": 0.0, "Flip": 0.0},
+                    "strands": {"layers": 1, "flyaway": 0.0, "wave": 0.0}, "free": 0.0, "core": None, "kind": "baby"})
+    return out
+
+
+def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None) -> dict:
+    """The hair as cards (hair_cards.py): the card mesh of every lock + baby hairs, the underlayer wearing the strand
+    atlas, and the atlas's pictures. `budget`: triangles for the cards (segments lengthen, then layers go)."""
+    from . import hair_cards as hc
+    h = hair_of(spec)
+    S = hc.strands_of(spec)
+    lk = {**LOOK, **(h.get("look") or {})}
+    at = hc.atlas(S, lk)
+    cards = hc.cards_of(locks, sc.C, S, lk)
+    info = {}
+    seg = None
+    if budget:
+        cards, seg, info = hc.fit_budget(cards, S, int(budget))
+    baby = hc.cards_of(baby_locks(sc, g, S, int(g.get("seed", 0))), sc.C, S, lk)
+    for c in baby:
+        c["kind"], c["layer"] = "baby", 1
+    m = hc.mesh(cards + baby, S, lk, at["tiles"], segment=seg)
+    cap = card_cap(sc, g, S, at["tiles"], V, F)
+    np.savez(tmp / "cards.npz", **m)
+    np.savez(tmp / "cards_cap.npz", **cap)
+    files = hc.write_atlas(at, str(tmp / "hair"))
+    return {"mesh": str(tmp / "cards.npz"), "cap": str(tmp / "cards_cap.npz"), "color": files["color"],
+            "normal": files["normal"], "aux": files["aux"], "triangles": int(len(m["tris"])),
+            "cap_triangles": int(len(cap["tris"])), "cards": len(cards), "baby": len(baby), "budget": info,
+            "coverage": at["coverage"]}
 
 
 def stage_path(name: str) -> Path:
@@ -1963,16 +2089,19 @@ def pull_locks(spec: dict, name: str, got: dict, log: list) -> dict:
         # since): an edit to it isn't an edit to this lock. The next sync replaces it. (A lock pulled from a saved
         # file reads back as itself until the next sync: not news.)
         P = np.asarray(st["pts"], float)
-        a, e, hh = sc.coords(P)
         new = dict(lk)
-        new["pts"] = [[round(float(a[i]), 2), round(float(e[i]), 2), round(float(hh[i]), 4)] for i in range(len(P))]
+        new["pts"] = lock_address(sc, lk, P)
         if st.get("handles"):
             H = []
             for hd in st["handles"]:
                 if hd:
-                    a1, e1, h1 = sc.coords(np.asarray(hd[:3]))
-                    a2, e2, h2 = sc.coords(np.asarray(hd[3:]))
-                    H.append([round(float(v), 4) for v in (a1, e1, h1, a2, e2, h2)])
+                    if lk.get("space") == "xyz":
+                        q = lock_address(sc, lk, [hd[:3], hd[3:]])
+                        H.append(q[0] + q[1])
+                    else:
+                        a1, e1, h1 = sc.coords(np.asarray(hd[:3]))
+                        a2, e2, h2 = sc.coords(np.asarray(hd[3:]))
+                        H.append([round(float(v), 4) for v in (a1, e1, h1, a2, e2, h2)])
                 else:
                     H.append(None)
             new["handles"] = H
