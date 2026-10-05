@@ -952,8 +952,6 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - `skin.sex` (0 female .. 1 male, unset = neither; `params` -> `fem` / `masc`): sex-linked DEFAULTS, each still
     settable: finer thinner brows, darker lash lines, finer pores (detail x 0.78), lips with 25% more blood for a
     woman; heavier brows and coarser skin for a man. Stubble stays `hair.stubble` (off unless asked).
-  - Brow decal: the ".L" brow layer's image entry has `mirror_image: true` (images.py: the mirrored placement shows the
-    picture mirrored; unmirrored, the other brow's hairs ran the wrong way).
   - Eyes, second pass: `base.cornea` (a smaller sphere proud of the eyeball where the gaze leaves it, ONE group with
     its eyeball: as two elements with different blends the scene's chunked evaluation blew the mirrored eye up to
     twice its size, in the scene only, the clay look was fine); look lights take `"window"` (the highlight from a
@@ -968,6 +966,49 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the brows set it. Lashes, lip lines and wrinkles are zone masks / tiling swatches, not mirrored pictures; eyes
     are one decal per side; tattoos and text stay unmirrored. `look_skin` view "brows"; sk_09; tests in
     test_images (`test_mirror_image`) and test_skin (`test_brows_mirror`).
+  - Heads as MakeHuman FIELDS (2026-10-05, "skin2" agent, branch worktree-agent-acd58d9aa9f53c1da; renders sk_20_*,
+    sk_2w_*, sk_21_*; replaces the identity solve + RBF warp for age / sex / weight, which reached "93%" of 426 sampled
+    points and still made a woman a soft man). Diagnosis by rendering MakeHuman's OWN heads beside ours: MakeHuman's f32
+    reads female, its f78 an old woman; ours didn't, because (1) only the DELTA from MakeHuman's neutral was added to a
+    GNM seed, and GNM's mean head is itself wider-jawed and heavier than MakeHuman's neutral (mean vs reference rms
+    0.14 interoculars: more than the whole female move, 0.11); (2) a seed's individuality at spread 0.7 is as large
+    as the sex move and reads male on a bald head; stripping the seed along a linear sex axis (landmark- or
+    dense-fitted) does not change that. Now `spikes/headfit/make_field.py` registers GNM's mean head onto MakeHuman's
+    reference head once (pairs RBF as a first guess, 4 rounds of closest point on MakeHuman's triangles facing the same
+    way for the OUTER skin, each displacement smoothed over GNM's mesh by Laplacian least squares; lids' insides, mouth
+    sock, ears ride; lips weighted 0.2; eyeballs / teeth carried by the skin beside them) and stores, per GNM vertex,
+    `ref` (GNM mean -> MakeHuman reference) and the moves to every age x sex and weight (`head_fields.npz`, 2.6 MB,
+    float16, interoculars; no MakeHuman pack at runtime). `headfit.field_vertices(desc)` -> `base.gnm_head` adds it
+    x the head's interocular (head["field"] = a small descriptor, not the array: head dicts are cache keys).
+    `follow` = seed stripped (`_body_axes`: the fields fitted in GNM's components) + field; `features` alone still go
+    through the identity solve + warp and get NO field. New opt-in keys: `base.head.dimorphism` (default 0.8: the
+    sex difference pushed past MakeHuman's own, half as far on the male side: a man at 0.8 read as a brute),
+    `base.head.toward` (share of the absolute move, 1). Abs transfer through the 426 pairs alone made a lumpy skull;
+    identity-space-only abs made a pouting boy. base.VERSION 76. `headfit.solved_points(h)` for tests.
+    READ: woman 32 and teen girl read female bald; the old woman reads as an old woman or an ambiguous elder (was: a
+    man); child fine; use `spread` <= ~0.45 for women and children (0.7 masculinises). The head's `scale` now comes
+    out ~0.88 child / 0.97 adult (the field carries the size ratio).
+  - Skin realism pass 2 (same agent): the "dried mud" was the `lines` / `coarse` swatches' Voronoi NET (every cell
+    outlined at one depth) + crepe laid at 2-4 mm with a dark tint. Now `skin_swatch._glyphics`: families of nearly
+    parallel furrows crossing at an angle with whole-number line counts (tiles), each fading in and out. Wrinkle
+    swatch: rounded troughs 2-3 mm wide with rolls between (a 0.7 mm V = a scratch), forehead tint 0.2 -> 0.08; crepe
+    relief 0.16 mm, tint 0.1, off forehead / chin; coat 0.04 + 0.16 oil -> 0.015 + 0.07 oil at roughness 0.34 (the
+    varnish), base roughness +0.03, pores 0.21 -> 0.34 mm relief with less tint. Elder woman, measured: lightness
+    contrast 0.7 / 1.4 / 2.8 / 5.6 mm 0.54 / 0.49 / 0.56 / 0.58 -> 0.38 / 0.47 / 0.57 / 0.61 (photos 1.26 / 0.83 / 0.78 /
+    1.2), highlight 10% blobs 4.8 mm breakup 1.69 -> 5% / 4.6 / 1.33, micro 0.019 -> 0.010 (photos 0.05): it reads
+    less like mud and MORE airbrushed by the numbers: fine relief is still 2-3x under the photographs. Dark woman:
+    micro 0.033, highlight 15% in 11 mm blobs: still oily.
+  - Whole humans by age, first honest line-up (the user: "we haven't seen any whole face-and-body children or
+    babies"; `spikes/headfit/lineup.py`, sk_21_ages_lineup_clay.png + sk_21_ages_lineup_measures.txt; clay, no skin
+    yet, the sheet's columns are mis-cropped). `base.body.age` goes to 1 through put_model; the pack has baby / child
+    targets. MEASURED (ours | MakeHuman's own head | reference charts): stature 60 / 74 / 103 / 131 cm at 1 / 3 / 7 / 11
+    (refs 75 / 95 / 122 / 144: MakeHuman's children are 10-20% short; pass `height`); heads in the height 4.87 / 5.51 /
+    6.52 / 7.29 (MakeHuman's own 4.59 / 5.20 / 6.16 / 6.89; refs 4 / 5 / 6 / 6.75; adults 7.7-8.3 vs 7.5): heads are
+    too SMALL at every age, MakeHuman's own by ~12% at 1 year, ours a further ~6% (partly lm_chin vs MakeHuman's
+    chin_z: not untangled); hip joint / stature 0.43 at 1 (crotch ref 0.36: legs too long); interocular 37.8 mm at 1.
+    FAILS seen: the baby's nose is torn open (a ragged hole at the nostrils: the field at age 1 turns the nostril
+    walls inside out); the toddler has a long thin neck (graft) and an adult-ish torso; every face is the same stern
+    seed; no fat rolls; rig / hands / skin zones on a baby NOT checked.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
