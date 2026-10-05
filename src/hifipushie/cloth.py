@@ -4436,6 +4436,10 @@ def scene_job(name: str, spec: dict, log: list | None = None) -> list:
             maps = write_maps(store._dir(name) / f"cloth_{gname}", res["mesh"], uv, side, g,
                               extra=fine_folds(res, g, uv, side))
             e["maps"] = {k: str(v) for k, v in maps.items() if k != "texels_per_m"}
+        if res.get("buttons") is not None:  # the closures' buttons: their own small object beside the garment
+            bp_ = store._dir(name) / f"cloth_{gname}_buttons.npz"
+            np.savez(bp_, verts=res["buttons"]["V"].astype(np.float32), faces=res["buttons"]["F"].astype(np.int32))
+            e["buttons"] = {"npz": str(bp_), "color": (g.get("detail") or {}).get("button") or "#ebe6dc"}
         entries.append(e)
     return entries
 
@@ -4552,6 +4556,12 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         Vall = np.r_[V, Vin]
         Fall = np.r_[F, F[:, [0, 2, 1]] + len(V)]
         UVall = np.r_[uv, uv]
+        bt = res.get("buttons")
+        if bt is not None:  # the closures' buttons: small geometry, coloured by the texel of the button drawn at
+            # their mark (every vertex of a button takes its mark's uv)
+            Fall = np.r_[Fall, np.asarray(bt["F"], np.int64) + len(Vall)]
+            Vall = np.r_[Vall, bt["V"]]
+            UVall = np.r_[UVall, uv[bt["at"]]]
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
         part = {"verts": Vall.astype(np.float32), "corner_vert": Fall.ravel().astype(np.int64),

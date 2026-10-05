@@ -244,8 +244,14 @@ def buttons_mesh(V: np.ndarray, M: dict, body, segs: int = 14) -> dict | None:
             ctr = len(rows) * segs
             for i in range(segs):
                 F.append(((len(rows) - 1) * segs + i, (len(rows) - 1) * segs + (i + 1) % segs, ctr))
+            F = np.asarray(F, np.int64)
+            # faces wound to face out of the button (single-sided materials: glTF, engines)
+            mid_ = p + n * 0.0009
+            fn_ = np.cross(Vb[F[:, 1]] - Vb[F[:, 0]], Vb[F[:, 2]] - Vb[F[:, 0]])
+            inward = (fn_ * (Vb[F].mean(1) - mid_)).sum(1) < 0
+            F[inward] = F[inward][:, [0, 2, 1]]
             Vs.append(Vb)
-            Fs.append(np.asarray(F, np.int64) + n0)
+            Fs.append(F + n0)
             at += [int(v)] * len(Vb)
             n0 += len(Vb)
     return {"V": np.concatenate(Vs), "F": np.concatenate(Fs), "at": np.asarray(at, np.int64)}
