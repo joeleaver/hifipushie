@@ -338,7 +338,7 @@ def zone(spec: dict, name: str, grow: float = 1.0, what: str = "zone") -> list:
             if any(e not in J for e in eyes):
                 raise KeyError(eyes[0])
             up = stem == "lash_upper"
-            return [{"near": eyes, "within": round((0.0014 if up else 0.001) * grow, 5), "soft": round(0.0016 * grow, 5)},
+            return [{"near": eyes, "within": round((0.0024 if up else 0.0015) * grow, 5), "soft": round(0.0018 * grow, 5)},
                     {"axis": {"dir": [0, 0, 1], "at": eyes[0], "from": 0.0003 if up else -0.0003, "to": 0.0022 if up else -0.0022}}]
         if stem in OUTLINES:
             return [{"outline": {"points": OUTLINES[stem], "dir": [0, 1, 0], "soft": 0.0012 * grow, "depth": 0.03}}]
