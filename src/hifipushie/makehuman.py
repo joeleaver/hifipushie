@@ -43,6 +43,27 @@ def _raw():
     return _CACHE["raw"]
 
 
+def skeleton() -> dict:
+    """MakeHuman's default skeleton as it ships: {"bones": {name: {"head", "tail" (joint names), "parent"}},
+    "joints": {joint: helper vertex ids}}."""
+    if "skel" not in _CACHE:
+        _CACHE["skel"] = json.loads((root() / "rigs" / "default.mhskel").read_text())
+    return _CACHE["skel"]
+
+
+def weights() -> dict | None:
+    """MakeHuman's own hand-made skin weights for its default skeleton (rigs/default_weights.mhw, CC0): {bone:
+    (vertex ids in base.obj's numbering, weights)}, or None if the file isn't in the pack."""
+    if "weights" not in _CACHE:
+        p = root() / "rigs" / "default_weights.mhw"
+        _CACHE["weights"] = None
+        if p.exists():
+            w = json.loads(p.read_text())["weights"]
+            _CACHE["weights"] = {b: (np.array([r[0] for r in rows], np.int64), np.array([r[1] for r in rows], float))
+                                 for b, rows in w.items() if rows}
+    return _CACHE["weights"]
+
+
 def _target(name: str) -> tuple[np.ndarray, np.ndarray]:
     if name not in _CACHE:
         p = root() / "targets" / "macrodetails" / name
@@ -141,7 +162,8 @@ def body(params: dict) -> dict:
     remap[used] = np.arange(len(used))
     F = [[int(remap[v]) for v in f] for f in faces]
     eye = jp("eye.L____head")
-    out = {"name": "makehuman", "P": V[used], "L": np.array([v for f in F for v in f]),
+    bones = {n: (jp(b["head"]), jp(b["tail"])) for n, b in skeleton()["bones"].items()}
+    out = {"name": "makehuman", "vid": used, "bones": bones, "P": V[used], "L": np.array([v for f in F for v in f]),
            "S": np.array([len(f) for f in F]), "J": J, "chin_z": float(jp("jaw____tail")[2]),
            "face": {"landmarks": {"eye.L": eye.tolist()}}}
     _CACHE[("body", key)] = out

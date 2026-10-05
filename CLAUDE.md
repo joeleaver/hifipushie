@@ -297,6 +297,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   rig tool's text (`rig.report`: `twist_check` per chain, `head_check`) and `pose={"RightHand": ["roll", 105]}`.
   Known: twist bones fix roll, not bend (shoulder dip, elbow crease stay); a 33 deg head turn folds the throat
   under the jaw over the 3 cm band. `tests/test_rig_twist.py`.
+  Weights audit, WIP (2026-10-05, stopped at the usage limit): `rig_audit.py` (`read_glb`, `audit`, `audit_text`) works and on the exported human finds 17 BAD joints (digit bleed up to 0.57, pinky / toes not following their bones, thigh on thigh); not yet in the `rig` tool or tests.
+  `rig_template.py` (MakeHuman's hand-made weights onto Mixamo joints, `from_surface` transfer) + `base.surface["src"]` + `makehuman.weights()` are written but NOT wired into `rig.skin_parts` and never run; the rig tool's 160-resolution look (fused fingers at rest) is not fixed; no wa_* renders; no audit card yet.
 - `retopo.py`: character topology by template wrap (from `spikes/topology/wrap.py`): the CC0 template
   (`templates/male_stylized*`) carried onto a humanoid by its skeleton (`_skeleton_warp`), face landmarks by RBF, then
   patches cut at closed template loops and generated from the model *before* the fit and held fixed (the template flows
