@@ -42,7 +42,7 @@
    137.5
   ],
   "angle": [
-   50,
+   66,
    50
   ],
   "tropism": [
@@ -63,19 +63,19 @@
   "light": 0.1,
   "jitter": [
    0.03,
-   0.08,
-   0.15
+   0.14,
+   0.2
   ],
   "shed": 0.0,
   "shed_age": 4,
   "bud_life": 3,
-  "leaf_steps": 6,
+  "leaf_steps": 14,
   "shadow": [
    0.03,
    3,
    2
   ],
-  "sag": 1.5,
+  "sag": 0.45,
   "pipe": 2.4,
   "flare": 1.3,
   "max_order": 2,
@@ -84,22 +84,32 @@
    1,
    1,
    0.3
+  ],
+  "tip_life": [
+   0,
+   0,
+   7
+  ],
+  "uneven": [
+   0,
+   0.3,
+   0.2
   ]
  },
  "leaves": {
   "shape": "needle_spray",
   "length": 0.03,
   "color": [
-   0.248,
-   0.396,
-   0.272
+   0.2,
+   0.29,
+   0.1
   ],
   "translucency": 0.05,
   "twig": {
    "length": 0.35,
    "leaves": 180,
    "side_shoots": 5,
-   "per_m": 10,
+   "per_m": 14,
    "up": -0.1,
    "spread": 50,
    "droop": 0.5,
@@ -110,16 +120,19 @@
   "needle_width": 0.45,
   "card": {
    "twig": {
-    "leaves": 420,
-    "side_shoots": 6,
+    "leaves": 2000,
+    "side_shoots": 12,
     "sub_shoots": 2,
-    "length": 0.5
+    "length": 0.75,
+    "droop": 0.2,
+    "spray_angle": 38
    },
    "leaf": {
-    "needle_width": 0.11,
-    "length": 0.017
+    "needle_width": 0.17,
+    "length": 0.022
    },
-   "verts": 7
+   "verts": 7,
+   "cross": 2
   }
  },
  "bark": {

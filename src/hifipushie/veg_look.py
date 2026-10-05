@@ -60,7 +60,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
             sel = rank < int(np.floor(len(rank) * bud["keep"] + 1e-9))
             tw = {k: v[sel] for k, v in tw.items()}
             tw["scale"] = tw["scale"] * min(1.0 / np.sqrt(bud["keep"]), 2.5)
-    arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"]}
+    arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"], "dead": M["dead"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
     at = None
     if len(tw["pos"]):
@@ -95,7 +95,8 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
 
 
 def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
-           keep: str | None = None, others: list | None = None, triangles: int | None = None, at=None) -> dict:
+           keep: str | None = None, others: list | None = None, triangles: int | None = None, at=None,
+           curves: list | None = None) -> dict:
     """Render views in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on cut cards: what a
     game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`, else cards.
     others: [(tree, [x, y], yaw deg)] more plants standing in the same scene (a stand). `keep` = a folder for the
@@ -118,6 +119,8 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         if env.get("ground"):
             job["ground"] = {**(job.get("ground") or {}), **env["ground"]}
         job["ruler"] = float(np.ceil(tree["height"]))
+        if curves is not None:
+            job["curves"] = curves
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(job))
         t1 = time.perf_counter()
@@ -127,6 +130,19 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
             raise RuntimeError(f"blender failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
     info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2), plants=len(plants))
     return info
+
+
+def near_distance(tree: dict, toward, least: float = 5.0) -> float:
+    """How far to stand for the near view: `least`, or 1.5 m clear of what the plant puts between 0.3 and 3 m high on
+    that side (5 m from a spruce's trunk the eye was inside its skirt, a branch filling the picture)."""
+    P = tree["pos"]
+    m = (P[:, 2] > 0.3) & (P[:, 2] < 3.0)
+    if not m.any():
+        return least
+    t = np.asarray(toward, float)[:2]
+    side = np.abs(P[m][:, :2] @ np.array([-t[1], t[0]])) < 2.0
+    reach = float((P[m][:, :2] @ t)[side].max()) if side.any() else 0.0
+    return max(least, reach + 0.5 + 1.5)
 
 
 def closeup_focus(tree: dict, azimuth: float = 0.0):
@@ -204,7 +220,7 @@ def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, 
     views += [{"name": "leaf", "azimuth": az, "elevation": 4, "out": str(tmp / "leaf.png"), "size": sz, "leaves": lv},
               {"name": "far", "eye": eye(max(70.0, 3.5 * H), 1.7), "look": [0, 0, 0.42 * H], "fov": 22,
                "out": str(tmp / "far.png"), "size": sz, "leaves": lv},
-              {"name": "near", "eye": eye(5.0, 1.7), "look": [0, 0, min(0.5 * H, 6.0)], "fov": 62,
+              {"name": "near", "eye": eye(near_distance(T, toward), 1.7), "look": [0, 0, min(0.5 * H, 6.0)], "fov": 62,
                "out": str(tmp / "near.png"), "size": sz, "leaves": lv}]
     if has_leaves:
         views.append({"name": "close", "azimuth": az, "elevation": 8, "out": str(tmp / "close.png"), "size": sz,

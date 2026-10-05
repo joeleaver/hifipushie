@@ -2392,6 +2392,13 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   - Not built (said in the guide): buttresses/roots/foot on a slope, swollen pollard bolls, deadwood beyond stubs,
     banks/ditches, a non-weeping willow preset, needle and willow card pictures (feathers, bamboo), an ortho side
     view that isn't mostly hillside on a slope.
+- STATE 2026-10-05 (stopped at the usage limit, WIP on branch `vegetation`, main NOT merged in since b549ce3): done =
+  named limbs/take_limb, plant.blend round trip (`sync_plant`), forest sets (`spec.set`, `name#k`, one GLB), species
+  pass (spray cards, birch/spruce/willow habits, white_willow, tip_life/uneven, boll, `dead`, `roots`); sheets
+  workspace/veg_renders/vg_32_*. Open from blind round 3 (one brief run, second not started): a triangle budget
+  drops dead antlers and leaves cards floating (protect features), `dead` has no report line, limb names reshuffle
+  on edits, limb girth coupled to trunk_diameter, no ground clearance on slopes. Weeping willow still a hedge block,
+  spruce close-ups are paddles, foliage renders dull. Full test run not repeated after the last commit.
 - Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
   ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
   not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.
