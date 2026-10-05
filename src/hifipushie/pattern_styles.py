@@ -374,6 +374,20 @@ def op_raglan(D: dict, neck: float = 0.035, arm: float = 0.35, **o) -> None:
         Q = cap_point(side, arm_len * (1 + e), f"q{side}")
         ang = math.atan2(*(Q - cap_top)[::-1]) - math.atan2(*(A0 - S0)[::-1])
         P = _rot(P, S0, ang) + (cap_top - S0)
+        # one cloth, two placements: the shoulder part stays on the TORSO, in the coordinates it was cut from the
+        # body in (beside the body's raglan line), the sleeve below it goes round the arm. Laid along the arm with
+        # the sleeve it started 17 cm and 60 deg from the body's cut and crumpled at the shoulder in the sim
+        ca, sa = math.cos(-ang), math.sin(-ang)
+        Minv = np.array([[ca, -sa], [sa, ca]])
+        if mirror:
+            Minv = np.diag([-1.0, 1.0]) @ Minv
+        S_orig = y["P"][y["names"]["shoulder"]].copy()
+        out_dir = _unit(y["P"][ix].mean(0) - D["pieces"][which]["P"].mean(0))  # away from the body piece
+        D.setdefault("hinges", []).append({
+            "piece": "sleeve", "name": f"raglanHinge{side}", "part": f"{which}_shoulder", "at": Q.tolist(),
+            "dir": _unit(cap_top - Q).tolist(), "mid": (0.5 * (Q + cap_top)).tolist(), "far": P[len(P) // 2].tolist(),
+            "origin": cap_top.tolist(), "x": [1.0, 0.0], "matrix": Minv.tolist(), "offset": S_orig.tolist(),
+            "role": which, "wrap": {"to": "torso", "side": which, "shift": (0.002 * out_dir).round(5).tolist()}})
         names = [None] * len(ix)
         names[0] = f"r{side}"
         names[ix.index(y["names"][f"{nm_}.a"])] = f"n{side}"

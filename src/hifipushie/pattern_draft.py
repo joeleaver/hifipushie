@@ -1327,6 +1327,13 @@ def apply_hinges(D: dict) -> None:
             # the far part in its own frame
             far = D["pieces"][fname]
             tr = lambda Q: np.c_[(np.asarray(Q, float).reshape(-1, 2) - o) @ ex, (np.asarray(Q, float).reshape(-1, 2) - o) @ ey]
+            if hg.get("matrix") is not None:  # any rigid map (a reflection too): far = M (p - origin) + offset
+                Mh, th = np.asarray(hg["matrix"], float), np.asarray(hg.get("offset", [0.0, 0.0]), float)
+                tr = lambda Q: (np.asarray(Q, float).reshape(-1, 2) - o) @ Mh.T + th
+                if np.linalg.det(Mh) < 0:  # turned over: the outline runs the other way round
+                    n_far = len(far["P"])
+                    far["P"] = far["P"][::-1]
+                    far["names"] = {k_: n_far - 1 - i_ for k_, i_ in far["names"].items()}
             far["P"] = tr(far["P"])
             far["marks"] = {k: tr(v)[0] for k, v in far["marks"].items()}
             far["lines"] = {k: tr(v) for k, v in far["lines"].items()}
