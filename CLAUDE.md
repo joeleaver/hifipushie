@@ -773,6 +773,41 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
     leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
     maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
+- Principle-based pattern drafting (2026-10-05, "clothflow" agent; the user: ready-made drafts are references, "we
+  also need to distill the _principles_ so we can design jackets that don't exist yet, or any other arbitrary
+  clothing"; sheets `workspace/cloth_renders/pd_*`). A new garment = a block + operations + details, as pattern makers
+  work (Armstrong's three principles: dart manipulation, added fullness, contouring; Aldrich's blocks; FreeSewing's
+  own designs derive from Brian/Bent/Titan the same way).
+  - `pattern_blocks.py`: blocks by stated rules from `tailor.measure`: `bodice` (dartless or darted, to waist/hips;
+    the front neck depth SOLVED so the neckline = half the neck girth + ease), `knit`, `sleeve` (drafted into an
+    armhole: `solve_cap` finds cap height and top shift so front/back cap parts = front/back armhole x (1 + ease) at
+    the asked biceps width; wider than the armhole is long -> not ok), `trouser` (forks, slanted back seam, the back
+    fork dropped until the back inseam is 5 mm short). HALF pieces, centre at x = 0, every construction point named,
+    `sym` = pair | fold | copy.
+  - `pattern_draft.py`: the draft D (pieces, seams, `edges`, `notes`, `log`) and `OPS`: style_line (+ take_in),
+    dart (pivot; the section holding the centre line never turns; an apex off the dart's centre line is trued onto
+    it), dart_to_ease, flare (the centre side stays, the slashed edge is trued to a cubic), lengthen, extend, reshape,
+    facing, collar (band / flat / roll from the neckline's own curve), sleeve, two_piece, unfold. What makes them
+    compose: NAMED EDGES SURVIVE (`D["edges"]`: armhole_front, neck_back, hem_front, shoulder_front, centre_front...;
+    `_remap` rewrites edges and seams through index maps when an outline is cut or a dart moves, breaking a chain
+    where two old neighbours aren't neighbours any more; arcs must be resolved on the piece WITH the cut points
+    inserted, or the bit up to the cut is lost). `consistency(D)`: every seam's sides equal, or its ease declared in
+    `D["notes"]` (cap ease, gathers, the inseam); carried to `Bp["seam_notes"]` and honoured by stage 2 as kind
+    "declared". `unfold` mirrors pieces and seams (fold pieces use ".m" names on the right).
+  - Wiring: pattern `{"from": "draft", "block", "block_options", "ops"}` through `garment_blocks.draft` and
+    `cloth.pieces`; the design sheet takes `block` / `block_options` / `ops` (chest ease defaults to the fit band's
+    middle; judged by evidence, no recipe table). Knowledge: `garment_kb.json` `principles` (three principles, blocks
+    with their rules, operations with what each keeps, derivations per garment category with why, rules of ease /
+    balance / grain / shaping / proportions, sources), `garment_reference(principles=...)`; guide section
+    "Designing a garment that doesn't exist". Don't re-dump garment_kb.json with json.dump (it reflows the file).
+  - Checked against FreeSewing's Brian on the same body at the same ease (`pd_00_block_vs_brian.png`): chest width,
+    armhole depth, shoulder and side seams equal to 0.1 mm, back armhole -2 mm, necklines within 1 mm, back outline
+    1.9 mm mean; our front armhole is 9 mm longer (across-front 93%), our sleeve 35 mm narrower with a 26 mm higher
+    cap (Brian widens the sleeve by its own rule). A drafted knit tee went through stages 1-4 (`workspace/pd_test`).
+  - Open (next): shawl / notched collars on the roll line, hoods, raglan / kimono, pockets, linings, pleats, elbow
+    shaping in the two-piece sleeve, ops on unfolded pieces (asymmetric designs), darts_to_seam for darted blocks, a
+    leg wrap (the trouser block can't be placed), the three novel garments and the blazer vs Jaeger comparison.
+    `tests/test_pattern_draft.py`.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).

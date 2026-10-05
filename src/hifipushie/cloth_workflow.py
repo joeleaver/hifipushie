@@ -117,6 +117,16 @@ def seam_rows(c: Ctx) -> list:
             r["band"] = cb
             r["kind"] = f"cap_{c.kind}"
             r["ok"] = cb[0] - 1e-9 <= r["ease"] <= cb[1] + 1e-9
+    # ease an operation declared (a dart released into gathers, a cap's designed ease, a stretched inseam)
+    notes = c.Bp.get("seam_notes") or {}
+    for r in rows:
+        n = notes.get(json.dumps([r["a"], r["b"]]))
+        if n:
+            lo, hi = n["ease"]
+            r["band"] = (min(lo, -hi) if lo >= 0 and r["ease"] < 0 else lo, hi)
+            r["kind"] = "declared"
+            r["why"] = n["why"]
+            r["ok"] = lo - 1e-6 <= abs(r["ease"]) <= hi + 1e-6 or lo - 1e-6 <= r["ease"] <= hi + 1e-6
     return rows
 
 
@@ -498,6 +508,16 @@ def sim_measures(res: dict, c: Ctx) -> dict:
     if len(cr):
         out["crest_radius_p10_mm"] = round(float(np.percentile(cr, 10)) * 1000, 1)
     out["strain_p95"] = round(float(res["fit"]["strain_p95"]), 4)
+    # each fold line as it lies: how far it turned, how wide the crease is, the gap between flap and base
+    from . import folds as foldsmod
+    fm = {}
+    for fd in M.get("folds") or []:
+        try:
+            fm[fd.get("name", fd.get("piece", "fold"))] = dict(foldsmod.measure(V, M, fd), asked_deg=fd.get("angle"))
+        except Exception as e:  # a fold that can't be measured is said, not hidden
+            fm[fd.get("name", "fold")] = {"error": f"{type(e).__name__}: {e}"}
+    if fm:
+        out["folds"] = fm
     return out
 
 
@@ -541,6 +561,19 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
         judge("waistband_at_waist_mm", meas["waistband_at_waist_mm"], "waistband's seam vs the body's waist (mm)")
     if "sleeve_angle_hung_deg" in meas:
         judge("sleeve_angle_hung_deg", meas["sleeve_angle_hung_deg"], "sleeves from vertical on the hanger (deg)")
+    for nm_, v_ in (meas.get("folds") or {}).items():
+        if "error" in v_:
+            o["warn"].append(f"fold {nm_}: not measured ({v_['error']})")
+            continue
+        turned = v_.get("turn_deg")
+        asked = v_.get("asked_deg")
+        want = None if asked is None else abs(180.0 - float(asked))
+        txt = (f"fold {nm_}: turned {turned} deg" + (f" (asked {want:.0f})" if want is not None else "")
+               + "".join(f", {k_} {v_[k_]}" for k_ in v_ if k_ not in ("turn_deg", "asked_deg")))
+        if turned is not None and want is not None and want > 60 and turned < 0.6 * want:
+            o["fail"].append(txt + ": the fold didn't hold (a made piece simulated out of shape?)")
+        else:
+            o["info"].append(txt)
     judge("crest_radius_p10_mm", meas.get("crest_radius_p10_mm", 0), "tightest folds, crest radius p10 (mm)")
     judge("strain_p95", meas["strain_p95"], "strain p95")
     o["info"].append("not measured by the tools yet: crease width, fold spacing (cloth_audit.md measured them on renders)")

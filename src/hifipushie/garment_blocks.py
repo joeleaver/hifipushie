@@ -22,10 +22,12 @@ import numpy as np
 
 from . import pattern
 
-BLOCKS = ("skirt_block",)
+BLOCKS = ("skirt_block", "draft")
 # the pattern keys each block takes (its options; also accepted inside "options")
 WORDS = {"skirt_block": ("length", "ease", "flare", "darts", "waistband", "overlap", "closure", "front_dart_length",
-                         "back_dart_length")}
+                         "back_dart_length"),
+         # "draft": a block + pattern-making operations (pattern_draft.py): a garment that has no ready-made draft
+         "draft": ("block", "block_options", "ops")}
 
 
 def _curve(p0, p1, p2, n=12):
@@ -166,6 +168,9 @@ def skirt_block(m: dict, opts: dict) -> dict:
 def draft(design: str, meas_mm: dict, opts: dict) -> dict:
     if design == "skirt_block":
         return skirt_block(meas_mm, opts)
+    if design == "draft":
+        from . import pattern_draft
+        return pattern_draft.build(meas_mm, opts)
     raise ValueError(f"no block {design!r} (have {', '.join(BLOCKS)})")
 
 
