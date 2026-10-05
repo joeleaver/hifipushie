@@ -246,7 +246,10 @@ def fused_limbs(spec: dict, bones: list[dict], limit: float = 0.2) -> list[str]:
             who = names[ids[other[int(np.bincount(D.argmin(1)[inside]).argmax())]]].split(":")[-1]
             out.append(f"WARNING: {nm} touches or lies in {who}'s flesh over {100 * inside.mean():.0f}% of its surface: "
                        "meshed, they are one skin and no weights can part them (it will tear or web when posed). "
-                       "Move the limb clear of the body in the spec (an A-pose), then rig")
+                       f"FIX THE MODEL, then rig: move the limb's joints out until a finger's width of air shows between "
+                       f"{nm} and the body in the front view (an A-pose, arms ~35-45 deg from the body, legs apart), "
+                       "or thin the limb / the belly there; spec[\"anatomy\"] = {} then shapes the shoulder and pit. "
+                       "Re-run rig: this line goes when under 20% touches")
     return out
 
 
