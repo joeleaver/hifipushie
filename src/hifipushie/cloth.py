@@ -3673,6 +3673,27 @@ def validate(spec: dict) -> None:
         if g.get("method", "simulate") not in ("simulate", "settle"):
             raise ClothError(f'{where}: method is "simulate" (sew and simulate everything) or "settle" (made pieces '
                              "constructed finished, the loose cloth settled lightly)")
+        if g.get("over") is not None:  # layered: worn over another garment of this model
+            seen, cur = [gn], g.get("over")
+            while cur is not None:
+                if not isinstance(cur, str) or cur not in gs:
+                    raise ClothError(f"{where}: over {cur!r} isn't a garment of this model (have {', '.join(gs)})")
+                if cur in seen:
+                    raise ClothError(f"{where}: over runs in a circle ({' -> '.join(seen + [cur])})")
+                seen.append(cur)
+                cg = gs[cur]
+                cur = expanded(cg).get("over") if isinstance(cg, dict) else None
+            if isinstance(_state(g), dict) or isinstance(_state(gs[g["over"]]), dict):
+                raise ClothError(f'{where}: over needs both garments worn (state "worn"): a hung or draped garment '
+                                 "has no body under it to share")
+        for e in g.get("support") or []:
+            kd = e if isinstance(e, str) else (e or {}).get("kind") if isinstance(e, dict) else None
+            if kd not in SUPPORTS:
+                raise ClothError(f"{where}: support {e!r}: a kind name or {{\"kind\", ...}} of {', '.join(SUPPORTS)}")
+            if isinstance(e, dict) and set(e) - {"kind"} - set(SUPPORTS[kd]):
+                raise ClothError(f"{where}: support {kd} takes {', '.join(SUPPORTS[kd])}")
+        if "layer_gap" in g and not (isinstance(g["layer_gap"], (int, float)) and 0 <= g["layer_gap"] <= 0.03):
+            raise ClothError(f"{where}: layer_gap is the air between the layers at the start in m (0..0.03)")
         if g.get("quality", "final") not in ("draft", "final"):
             raise ClothError(f'{where}: quality is "draft" (one coarse sim, ~1 min) or "final" (coarse then refined)')
         for k, lo, hi in (("resolution", 0.004, 0.05), ("coarse", 0.008, 0.05)):
