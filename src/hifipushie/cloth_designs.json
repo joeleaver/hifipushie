@@ -87,8 +87,11 @@
   ],
   "folds": [
    {"name": "vent.L", "piece": "tail.L", "line": ["fold1Top", "fold1Bottom"], "angle": 360, "kind": "press", "strength": 0.6},
-   {"name": "vent.R", "piece": "tail.R", "line": ["fold1Top", "fold1Bottom"], "angle": 360, "kind": "press", "strength": 0.6}
+   {"name": "vent.R", "piece": "tail.R", "line": ["fold1Top", "fold1Bottom"], "angle": 360, "kind": "press", "strength": 0.6},
+   {"name": "lapel.L", "piece": "front.L", "line": "rollLine", "angle": 15, "kind": "roll", "radius": 0.005, "strength": 0.6},
+   {"name": "lapel.R", "piece": "front.R", "line": "rollLine", "angle": 15, "kind": "roll", "radius": 0.005, "strength": 0.6}
   ],
+  "made": {"front.L": "draped", "front.R": "draped"},
   "seams": [
    ["back.L:cbNeck>bpStart>bpTop>bpBottom", "back.R:cbNeck>bpStart>bpTop>bpBottom"],
    ["back.L:dartLeft>dartTip", "back.L:dartRight>dartTip"],

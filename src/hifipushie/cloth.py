@@ -196,9 +196,17 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     for f in g.get("folds") or []:  # the garment's folds; one named like a table's replaces it ("off": drops it)
         folds = [o for o in folds if not (f.get("name") and o.get("name") == f["name"])] + [dict(f)]
     folds = [f for f in folds if f.get("piece") in keep and not f.get("off")]
+    # made or draped per piece (made = constructed finished and kept so: garment_design.made_or_draped): the design
+    # table's and the garment's "made" ({piece or role: "made" | "draped"}, or a list of made pieces) over the rule
+    # (wholly interfaced = made). A coat's fronts are interfaced whole and still draped: frozen as placed, their
+    # lapels couldn't roll
+    made_own = {}
+    for src in ((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("made"), g.get("made")):
+        if src:
+            made_own.update(src if isinstance(src, dict) else {nm: "made" for nm in src})
     return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
-            "draft": draft_info, "folds": folds}
+            "draft": draft_info, "folds": folds, "made": made_own}
 
 
 # ---------------------------------------------------------------- flat mesh
@@ -522,7 +530,10 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         pts_n[k] = int(cand[np.argmin(np.linalg.norm(uv_n[cand] - q, axis=1))])
     for fd in fold_recs:
         fd["rows"] = [np.array([remap[i] for i in dict.fromkeys(row) if used[i]], np.int64) for row in fd["rows"]]
+    from . import garment_design
+    mod = garment_design.made_or_draped(dict(B, interfaced=B.get("interfaced", [])), None, {"made": B.get("made") or {}})
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
+            "made": [nm for nm in names if mod[nm][0] == "made"],
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
             "marks": {k: int(remap[v]) for k, v in marks.items() if used[v]},
             "points": pts_n, "border": border_n}
@@ -1582,7 +1593,9 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
         obs = []
         if len(body.V):
             obs.append((body.V + bn * (clear - lay), bn, 0.008))
-        if fd["turn"] > 0:  # a fold over: it lies on the pieces under it too (a collar's fall on its stand)
+        if fd["turn"] > 0 and to == "neck":  # a fold over a band: it lies on the pieces under it too (a collar's fall
+            # on its stand). Torso pieces lap each other either way (a coat's left front over its right): their flaps
+            # lie on their own base
             for j, o in enumerate(names[:k]):
                 if pcs[o]["wrap"].get("to", "torso") == to:
                     obs.append(foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o]))
@@ -1793,6 +1806,8 @@ def made_pieces(M: dict, stiff: np.ndarray) -> list:
     """Pieces wholly interfaced (a collar, a stand, cuffs): their placed shape is the made shape. A solver resting on
     the flat pattern (placement "smooth") rests these as placed, in stretch and bending: a turned collar's U and a
     cuff's curl are how they were made, and a fold over coarse triangles isn't isometric to the flat."""
+    if M.get("made") is not None:  # (mesh(): the design's and the garment's say over the interfacing rule)
+        return list(M["made"])
     return [nm for k, nm in enumerate(M["names"]) if stiff[M["piece"] == k].mean() > 0.9]
 
 
@@ -2133,8 +2148,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     body_p, pose = body.straight_arms() if smooth else (body, None)
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     push = dict(Bp.get("push") or {})
-    carry = _carry(Bp, Ms, Xs, body_p, [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V],
-                   g.get("made")) if settle else None
+    carry = _carry(Bp, Ms, Xs, body_p, [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V]) \
+        if settle else None
     if refine:
         M = mesh(Bp, h, fw_)
         # the fine mesh's rest shape is the coarse one's placement carried onto it (the same surface, sampled finer):
