@@ -18,7 +18,10 @@ The paint generator `image` lays an image on the surface as a projected decal (p
             "channel": "alpha" (default: the image's coverage, PNG alpha) | "luma" | "r" | "g" | "b" | "coverage"
                 (the whole rectangle),
             "flip": true (mirror the picture left-right), "mirror": true (also at the X-mirrored placement, the
-                picture still reading the right way),
+                picture still reading the right way: text, a logo),
+            "mirror_image": true (with "mirror", or on a ".L" layer: the mirrored placement shows the picture
+                MIRRORED too, as symmetric anatomy is: a brow's hairs run from the nose outward on both sides;
+                planar decals),
             "wrap": "planar" (default) | "cylinder" | "sphere" | "surface" (below),
             "style": true (the picture's colours through the paint style's saturation and value),
             "on": part(s) whose surface a wrap measures (default the layer's parts),
@@ -77,7 +80,7 @@ MAX_PX = 4096  # a text page's longer side at most
 FACES = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1),
          "bottom": (0, 0, -1)}
 KEYS = {"file", "id", "text", "name", "at", "dir", "up", "size", "rotate", "depth", "facing", "channel", "flip",
-        "mirror", "wrap", "axis", "seam", "span", "style", "on", "unroll", "offset"}
+        "mirror", "mirror_image", "wrap", "axis", "seam", "span", "style", "on", "unroll", "offset"}
 WRAPS = ("planar", "cylinder", "sphere", "surface")
 PLACE_KEYS = {"id", "file", "text", "at", "dir", "up", "size", "rotate", "offset", "wrap", "axis", "seam", "span",
               "unroll", "on"}  # entries alike in these share one gizmo in the scene (scene.decal_gizmos)
@@ -480,7 +483,8 @@ def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "imag
     if ch not in CHANNELS:
         raise SpecError(f"{what}: channel is one of {', '.join(CHANNELS)}")
     base = {"path": str(path), "wrap": wrap, "facing": float(img.get("facing", 0.3)), "channel": ch,
-            "flip": bool(img.get("flip", False)), "mirror": bool(img.get("mirror", False)), "px": [pw, ph]}
+            "flip": bool(img.get("flip", False)), "mirror": bool(img.get("mirror", False)), "px": [pw, ph],
+            "mirror_image": bool(img.get("mirror_image", False))}
     if wrap in ("cylinder", "sphere"):
         return {**base, **_wrap_frame(spec, s, img, blob, R, wrap, pw, ph, parts, what)}
     d = img.get("dir", "front" if blob is not None else [0, -1, 0])
@@ -664,8 +668,10 @@ def mirrored(fr: dict) -> dict:
     """The placement reflected across X with the picture still reading the right way."""
     M = np.array([-1.0, 1.0, 1.0])
     c, d, up = np.array(fr["c"]) * M, np.array(fr["dir"]) * M, np.array(fr["up"]) * M
-    out = {**fr, "c": c.tolist(), "dir": d.tolist(), "up": up.tolist(), "right": np.cross(up, d).tolist(),
-           "mirror": False}
+    right = np.cross(up, d)
+    if fr.get("mirror_image") and fr.get("wrap", "planar") == "planar":  # the whole frame reflected: the picture too
+        right = np.array(fr["right"]) * M
+    out = {**fr, "c": c.tolist(), "dir": d.tolist(), "up": up.tolist(), "right": right.tolist(), "mirror": False}
     if fr.get("wrap") in ("cylinder", "sphere"):  # the seam's place mirrored too (angles run the other way)
         out.update(o=(np.array(fr["o"]) * M).tolist(), k=up.tolist(), seam=-fr["seam"],
                    dc=float(np.mod(fr["seam"], 2 * np.pi)))

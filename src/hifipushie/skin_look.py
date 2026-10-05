@@ -34,7 +34,7 @@ PHOTO = {"octaves_mm": [0.35, 0.7, 1.4, 2.8, 5.6, 11.2], "L": [1.2, 1.26, 0.83, 
          "a": [0.25, 0.29, 0.41, 0.47, 0.51, 0.6], "b": [0.24, 0.26, 0.4, 0.51, 0.62, 0.72], "micro": 0.051,
          "highlight_share": [0.05, 0.13], "highlight_breakup": [1.6, 2.4], "cheek_a": 1.2, "nose_a": 0.9}
 VIEWS = {"bust": "head", "face": "head", "three_quarter": "head", "side": "head", "cheek": "head", "eye": "head",
-         "mouth": "head", "forehead": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
+         "mouth": "head", "forehead": "head", "brows": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
 DEFAULT = ("face", "three_quarter", "cheek", "eye", "mouth", "ear")
 
 
@@ -144,6 +144,7 @@ def cameras(spec: dict) -> dict:
             "eye": (eye + np.array([-0.03, -0.22, 0.01]) * k, eye + [0, 0, 0.004], 13, "soft"),
             "mouth": (mouth + np.array([-0.04, -0.24, 0.0]) * k, mouth, 14, "studio"),
             "forehead": (fh + np.array([-0.06, -0.24, 0.05]) * k, fh, 16, "studio"),
+            "brows": (J["lm_nose_bridge"] + np.array([0.0, -0.3, 0.03]) * k, J["lm_nose_bridge"] + [0, 0, 0.012 * k], 17, "soft"),
             "ear": (ear + np.array([-0.3, -0.12, 0.0]) * k, ear, 20, "back")})
     if "wrist.L" in J and "finger2_0.L" in J:
         from .skin import _palm_normal

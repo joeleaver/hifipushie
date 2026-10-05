@@ -424,7 +424,8 @@ def _hair(p, J, layer, T, ctx) -> None:
             slope = float(np.degrees(np.arctan2(b_[2] - a_[2], np.linalg.norm((b_ - a_)[:2]))))
             img = {"file": str(path), "at": [round(float(x), 5) for x in c], "dir": [round(float(x), 4) for x in d],
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,
-                   "mirror": True, "channel": "alpha"}
+                   "mirror": True, "mirror_image": True, "channel": "alpha"}  # (unmirrored, the other brow's hairs ran
+            # toward the nose: "the left eyebrow is backwards")
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col, opacity=0.3 * min(dens, 1) + 0.06,
                   mask=_zones(["brow"], 0.9 * thick))
             layer("brow_hairs", color=col, opacity=0.95, roughness=0.42, specular=0.45, height=0.00012, image=img)
