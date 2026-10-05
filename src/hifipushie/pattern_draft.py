@@ -914,7 +914,7 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     """A two-piece sleeve from the one-piece: the sleeve is folded edge to centre (the fold lines a quarter in from
     each side), the folds become seams moved `shift` under the arm so they are hidden: a top sleeve (the middle) and
     an under sleeve (the two outer strips joined along the old underarm seam; its top edge is the hollow of the two
-    underarm curves). "shift_back": the hindarm seam's own shift (default 0.6 x shift: it runs over the elbow).
+    underarm curves). "shift_back": the hindarm seam's own shift (default 0.25 x shift: it runs over the elbow, near the back pitch).
     Then the sleeve is BENT as a tailor cuts it: below the elbow line each piece swings toward its forearm seam by
     "elbow" (m the wrist comes forward; 0 = straight), about the forearm seam's elbow point: the forearm seams stay
     equal and hollow, the hindarm seams open over the elbow, the top sleeve's a little more than the under's (elbow
@@ -928,7 +928,7 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     lo = pc["P"][:, 1].min()
     # the seam lines: a quarter in from each side at the biceps and at the hem (they follow the taper), `shift` under
     lf = (np.array([W / 4 + shift, 0.0]), np.array([hw / 4 + shift, lo]))
-    sb_ = float(o.get("shift_back", 0.6 * shift))
+    sb_ = float(o.get("shift_back", 0.25 * shift))  # (the hindarm seam sits near the back pitch: high on the cap)
     lb = (np.array([-(W / 4 + sb_), 0.0]), np.array([-(hw / 4 + sb_), lo]))
     work = copy.deepcopy(pc)
     # cut points on the cap and on the hem at the two seam lines
