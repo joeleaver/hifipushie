@@ -277,7 +277,7 @@ def samples(X: np.ndarray, F: np.ndarray, face: float = 1.0) -> tuple[np.ndarray
 
 def apply(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, obstacles: list | None = None, lay: float = 0.002,
           t_max: float | None = None, t_min: float = 0.0, steps: int = 40, own_base: bool = True,
-          wedge: float = 0.08) -> tuple:
+          wedge: float = 0.08, max_stretch: float | None = None) -> tuple:
     """The fold's flap turned as far as the fold asks, or as far as it stays clear of what is under it. obstacles:
     [(points, outward normals)] the flap stays outside of (the body, other pieces) by `lay`; the piece's own base side
     is one too (the flap lies on it: outside for a fold over, inside for a fold under). The turn is chosen per station
@@ -326,6 +326,23 @@ def apply(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, obstacles: list |
         if not np.isnan(best).any():
             break
     best = np.where(np.isnan(best), t_min, best)
+    if max_stretch is not None:
+        # a curved crease has one isometric fold angle (the flap's cone reflected in the crease's plane): turned
+        # further, or less, the flap is stretched (a jacket collar turned flat onto its stand: 150%). No further than
+        # the last turn whose flap stays within max_stretch of its pattern lengths (or the least stretched one)
+        F = g["tris"]
+        Ff = F[np.isin(F, flap).any(1)]
+        E = np.unique(np.sort(np.r_[Ff[:, [0, 1]], Ff[:, [1, 2]], Ff[:, [2, 0]]], 1), axis=0)
+        L0 = np.maximum(np.linalg.norm(M["uv"][E[:, 0]] - M["uv"][E[:, 1]], axis=1), 1e-9)
+        ts = np.linspace(t_hi, t_min, 25)
+        st = []
+        for t in ts:
+            Xt = turn_flap(X, M, fd, float(t), face)
+            st.append(float(np.percentile(np.abs(np.linalg.norm(Xt[E[:, 0]] - Xt[E[:, 1]], axis=1) / L0 - 1), 98)))
+        st = np.asarray(st)
+        ok = st <= max(max_stretch, st.min() + 0.01)
+        t_cap = float(ts[np.argmax(ok)])  # (ts runs from the full turn down: the first allowed one)
+        best = np.minimum(best, t_cap)
     # eased along the line: never more turned than a neighbour allows by much (the flap is one piece of cloth)
     sm = best.copy()
     for _ in range(2):
