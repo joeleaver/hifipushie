@@ -1940,7 +1940,10 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         V[sel] = (Xf[sel] @ R0.T + t0) @ R1.T + t1
         held[sel] = True
     if len(body.V):  # (a fine vertex on a coarse facet's chord can lie inside the solver's standoff from the body)
-        V[~held] = body.push_out(V[~held], 0.0034)
+        V = _clear_of_body(V, M["F"], ~held, body, 0.0042, 0.0034)
+        # (the made pieces too, by the little their rigid fit onto the coarse ones left them inside the standoff: a
+        # held vertex within it is fatal as well)
+        V = _clear_of_body(V, M["F"], held, body, 0.0032, 0.0027)
     faces = Bp.get("faces") or {}
     bn, _ = body.normals() if len(body.V) else (np.zeros((0, 3)), None)
     turns, info = [], {}
@@ -1970,6 +1973,67 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         flaps[foldmod._geom(M, fd)["rows"][0]["v"]] = True
     return {"start": start, "drape": Vd, "idx": idx, "poses": poses, "info": info, "pieces": list(carry["pieces"]),
             "release": np.where(flaps)[0], "made": V}
+
+
+def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body", gap: float, face_gap: float) -> np.ndarray:
+    """V with its `free` vertices at least `gap` off the body and every face they are in at least `face_gap` off it
+    (centres and edge midpoints: a triangle's chord reaches in between its vertices; a contact solver refuses a start
+    inside its standoff)."""
+    V = V.copy()
+    gaps = np.where(free, gap, 0.0)
+    X0 = V.copy()
+    Ff = F[free[F].any(1)]
+    for _ in range(6):
+        V[free] = body.push_out(X0[free], gaps[free])
+        Pf = np.concatenate([V[Ff].mean(1), 0.5 * (V[Ff[:, 0]] + V[Ff[:, 1]]), 0.5 * (V[Ff[:, 1]] + V[Ff[:, 2]]),
+                             0.5 * (V[Ff[:, 2]] + V[Ff[:, 0]])])
+        short = face_gap - body.clearance(Pf)
+        if short.max() <= 2e-4:
+            break
+        fi = np.tile(np.arange(len(Ff)), 4)
+        need = np.zeros(len(V))
+        for c in range(3):
+            np.maximum.at(need, Ff[fi, c], np.maximum(short, 0))
+        gaps = gaps + np.where(free, need + 2e-4 * (need > 0), 0.0)
+    # exactly, the other way round: no body vertex within face_gap of a cloth face (the sampled clearance reads the
+    # body by its nearest vertices' planes; a body vertex 1.6-1.9 mm under the middle of a sleeve's triangle stopped
+    # the solver at its first step)
+    vn, _ = body.normals()
+    for _ in range(4):
+        tc = cKDTree(V[Ff].mean(1))
+        _, nb = tc.query(body.V, k=min(12, len(Ff)))
+        nb = nb.reshape(len(body.V), -1)
+        push = np.zeros(len(V))
+        dirs = np.zeros_like(V)
+        for k in range(nb.shape[1]):
+            T = Ff[nb[:, k]]
+            dd = _pt_tri(body.V, V[T[:, 0]], V[T[:, 1]], V[T[:, 2]])
+            bad = np.where(dd < face_gap)[0]
+            for c in range(3):
+                np.maximum.at(push, T[bad, c], face_gap - dd[bad] + 3e-4)
+                np.add.at(dirs, T[bad, c], vn[bad])
+        mv = (push > 0) & free
+        if not mv.any():
+            break
+        dirs[mv] /= np.maximum(np.linalg.norm(dirs[mv], axis=1, keepdims=True), 1e-12)
+        V[mv] += dirs[mv] * push[mv, None]
+    return V
+
+
+def _pt_tri(P: np.ndarray, A: np.ndarray, B: np.ndarray, C: np.ndarray) -> np.ndarray:
+    """Distances from points P to triangles (A, B, C), row by row (clamped barycentric: exact inside, close at the
+    edges)."""
+    ab, ac, ap = B - A, C - A, P - A
+    d1, d2 = (ab * ap).sum(1), (ac * ap).sum(1)
+    d00, d01, d11 = (ab * ab).sum(1), (ab * ac).sum(1), (ac * ac).sum(1)
+    den = np.where(np.abs(d00 * d11 - d01 * d01) > 1e-18, d00 * d11 - d01 * d01, 1e-18)
+    v = np.clip((d11 * d1 - d01 * d2) / den, 0, 1)
+    w = np.clip((d00 * d2 - d01 * d1) / den, 0, 1)
+    sm = v + w
+    over = sm > 1
+    v[over] /= sm[over]
+    w[over] /= sm[over]
+    return np.linalg.norm(P - (A + v[:, None] * ab + w[:, None] * ac), axis=1)
 
 
 def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf: np.ndarray, carry: dict,
@@ -2327,11 +2391,13 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             import shutil
             shutil.rmtree(job_dir, ignore_errors=True)
     Bp["push"] = push
-    if construct and g.get("fine_settle", True):
+    if construct and g.get("fine_settle", False):
+        # (opt-in: "fine_settle": true | [press, settle frames]. It starts and runs two frames, then the solver stops
+        # on intersections: the carried start still has a few dozen triangles stretched 5-70% at piece outlines)
         # the fine settle: the made pieces prescribed (their flaps pressing down from open), the carried drape settling
         # round them by contact for a few frames; no geometry is moved by hand
         plan = _press_plan(Bp, Ms, Xs, res["V_coarse"], M, X0, carry, body)
-        fs = g.get("fine_settle", True)
+        fs = g.get("fine_settle")
         fr = [int(v) for v in (fs if isinstance(fs, (list, tuple)) else (16, 20))]
         stiff_f = interfacing(Bp, M)
         fold_f = {}
@@ -2356,7 +2422,18 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                         piece=M["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64),
                         carryIdx=plan["idx"], carryPoses=plan["poses"], releaseIdx=plan["release"],
                         rest=plan["made"], **fold_f)
-            progress(f"fine settle at {h * 100:.1f} cm: {len(plan['start'])} verts, {sum(fr)} frames")
+            # a strain-limited solver can't start past its limit: the carried drape, kept clear of the body vertex by
+            # vertex, starts stretched a few % in places (1 mm on a 1 cm triangle is 10%); the limit over this short
+            # settle is what the start needs, and the membrane takes the stretch back out
+            from . import cloth_detail
+            _, hi_, _, _ = cloth_detail.strain_field(M, plan["start"])
+            loose_t = ~np.isin(M["F"], plan["idx"]).any(1)
+            need_ = float(hi_[loose_t].max()) - 1.0 if loose_t.any() else 0.0
+            zz = dict(g.get("zozo") or {})
+            zz.setdefault("strain_limit", float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)))
+            fcfg["zozo"] = zz
+            progress(f"fine settle at {h * 100:.1f} cm: {len(plan['start'])} verts, {sum(fr)} frames, start stretch up to "
+                     f"{need_ * 100:.0f}% (strain limit {zz['strain_limit'] * 100:.0f}%)")
             df, lines_f = _blender_job(out_dir or (_cache_dir() / f"job_{key}"), fcfg, farr, name, log, progress,
                                        backend=backend, names=M["names"])
             res["log"] = res.get("log", "") + "\n" + "\n".join(lines_f)
@@ -2920,7 +2997,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made"}
+                "design", "folds", "generate", "method", "made", "fine_settle"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 

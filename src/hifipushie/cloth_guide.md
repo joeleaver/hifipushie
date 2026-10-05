@@ -265,9 +265,11 @@ Two methods (sheet key `method`):
   - On the test shirt (2 cm settle + 1 cm construct, laptop GPU): 205 s against 290-450 s for the full 2 cm sim;
     sleeve crease width 3.4 mm (full 1 cm sim 6.7), fold spacing 8.7 mm (19.7), the collar's fall 5 mm below the
     neckline seam at centre back (12 mm above it).
-  - What it does worse: the clay geometry is the coarse drape smoothed, so big folds are soft and few; the authored
-    folds are a normal map (the silhouette doesn't have them) and can read hatched where the compression is even;
-    where the constructed fine pieces meet the carried cloth (a collar's ends on the fronts) some crossings stay.
+  - What it does worse: the clay geometry is the coarse drape smoothed, so big folds are soft and few (the larger
+    authored folds are put into the geometry of a 1 cm mesh, the fine ones are a normal map); where the constructed
+    fine pieces meet the carried cloth (a collar's ends on the fronts) some crossings stay (18 on the test shirt).
+  - `"fine_settle": true` (opt-in, not working yet) is the intended finish: a short settle at the fine size with
+    the made pieces prescribed and their flaps pressing the cloth down, instead of moving cloth by hand.
 
 A draft is one 2 cm simulation, about a minute. It looks puffy on purpose. Read:
 - the **verdict**: CORRUPT (tangled or crumpled), TOO SMALL, STRAINED at a girth, or fits;

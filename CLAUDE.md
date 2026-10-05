@@ -812,10 +812,32 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       pattern -> drape; amplitude (L / pi) sqrt(c)), Gabor-like dabs into a height map on the atlas,
       `cloth.fine_folds` -> `detail_maps(extra=)`. Sleeve crease width 6.7 -> 3.4 mm, spacing 19.7 -> 8.7 mm
       against the 1 cm full sim (zz16), measured on renders with the audit's profile method.
-    - Open: 40-90 crossings where the fine collar meets the carried fronts (the tuck and the seam draw make them:
-      moving cloth vertices without contact; a short fine settle with the made pieces as colliders would be the
-      real fix); the fall opens ~20 deg over the shoulder cloth (it turns rigidly: a real leaf bends); collar
-      points 2-11 mm off the shirt; the authored folds read hatched on evenly compressed cloth.
+    - Folds, second pass (the main session: "combed/hatched"): `cloth_detail.fold_dabs` makes each dab ONE fold (a
+      crest or crease, envelope half a wavelength: no ripple trains), bowed, its direction jittered 10 deg, lengths
+      and wavelengths log-uniform, fewer where the compression is even; a second, sparse population 2.8x the size goes
+      into the GEOMETRY of a mesh <= 1.2 cm (`displace`: outward only, fading 2 cm from outlines; build sets
+      `folds_in_geometry`), the fine ones into the normal map.
+    - Crossings: 44-90 came down to 18 (collar / front.R 10, sleeves 4 + 4; verdict "fits") once `transfer` ran on
+      past the coarse outline instead of clamping (two fine vertices beyond one coarse corner landed on one point:
+      a zero-area triangle) and the slit had parallel lips (a wedge's lips were 0.02 mm apart near the tip). The
+      tuck and the seam draw still make the rest: moving cloth vertices without contact.
+    - The fine settle (`fine_settle: true | [press, settle frames]`, opt-in; `_press_plan`, cloth_job mode
+      "fine_settle", cloth_zozo carryIdx / carryPoses / releaseIdx / rest): the made pieces prescribed, their flaps
+      starting FINE_OPEN 55 deg open and closing as far as leaves FINE_ROOM over the body, then released to rest folded
+      as made; the carried drape settles round them. NOT WORKING YET. What it took to get to frame 2:
+      `_clear_of_body` (ZOZO's fatal pairs were body VERTICES 1.6-1.9 mm under the middle of sleeve triangles: the
+      sampled clearance reads the body by its nearest vertices' planes; now an exact body-vertex to cloth-face pass),
+      held vertices cleared too, a strain limit the start can meet (a few dozen triangles at piece outlines start
+      5-70% stretched: sleeve.R 72% at its cap edge). It then stops on "21 intersecting pairs at the committed pose".
+      Next: relax the carried start in the pattern's own metric before the sim (those outline triangles), then look
+      at which pairs.
+    - Open: the fall opens ~10-20 deg over the shoulder cloth (it turns rigidly: a real leaf bends; the fine
+      settle's released flap is the intended fix); the yoke ridge behind the collar; the upper sleeve's folds still
+      read busy.
+    - `made` (design table and garment: {piece or role: "made" | "draped"} through garment_design.made_or_draped ->
+      `M["made"]` -> `made_pieces`): interfaced-whole pieces can be draped. Carlton's fronts are, with roll-line folds
+      `lapel.L/R` (placement only so far: the fronts turn back along the roll line into a V; no facing, no sim).
+      Fold flaps of torso pieces lie on their own base only (earlier torso pieces lap them either way).
     - Also: pattern ops `slit` (Simon's sleeve placket: the cuff's seam chain starts and ends at the slit, the cuff
       turned to it: `wrap.turn`, or the mean seam angle when unset) and `trim` (a band cut to the length of the
       edges it is sewn to); torso wrap `align_x`; Carlton's belt (joined at CB), tail vent as a lapped fold
