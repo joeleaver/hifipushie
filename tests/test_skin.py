@@ -212,6 +212,34 @@ def test_features_and_shader_budget(tmp=None):
             store.HOME = home
 
 
+def test_brows_mirror():
+    """Both brows' hairs run from the nose outward: the right brow is the left one's mirror image (it was laid
+    unmirrored: "the left eyebrow is backwards")."""
+    import tempfile
+    from hifipushie import images, store
+    with tempfile.TemporaryDirectory() as d:
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            spec = head_spec(hair={"brows": 1.0})
+            ly = paint.layers(spec)["skin:brow_hairs"]
+            img = next(e["image"] for e in [ly] + list(ly.get("mask") or []) if isinstance(e, dict) and "image" in e)
+            assert img["mirror"] and img["mirror_image"]
+            fr = images.frame(spec, img)
+            mr = images.mirrored(fr)
+            M = np.array([-1.0, 1, 1])
+            for k in ("c", "right", "up", "dir"):  # a pure reflection of the left brow's frame
+                assert np.allclose(np.array(mr[k]), np.array(fr[k]) * M), k
+            rng = np.random.default_rng(1)
+            P = np.array(fr["c"]) + rng.uniform(-1, 1, (400, 1)) * 0.5 * fr["w"] * np.array(fr["right"]) \
+                + rng.uniform(-1, 1, (400, 1)) * 0.5 * fr["h"] * np.array(fr["up"])
+            N = np.tile(fr["dir"], (400, 1))
+            a, _ = images.evaluate(fr, P, N)
+            b, _ = images.evaluate(fr, P * M, N * M)
+            assert a.max() > 0.5 and np.allclose(a, b, atol=1e-6)  # the hair picture at mirrored points is the same
+        finally:
+            store.HOME = home
+
+
 def test_makehuman_sex():
     from hifipushie import assets, makehuman
     try:

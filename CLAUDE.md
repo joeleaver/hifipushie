@@ -945,6 +945,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     `look_skin`'s stage key now includes base.py / headfit.py: a stale stage hid two fixes for an hour.
     Not done: lash cards, re-measuring against the 24 photos, export fixes, grooms; nostrils show a pale thing
     behind them on followed heads.
+  - Mirrored decals (the user on sk_07: "the left eyebrow is backwards"): a mirrored image decal kept the picture
+    reading the same way round (right for text), so the other brow's hairs ran toward the nose. Image key
+    `mirror_image: true` reflects the whole frame (`images.mirrored`: right = the reflected right, planar decals);
+    the brows set it. Lashes, lip lines and wrinkles are zone masks / tiling swatches, not mirrored pictures; eyes
+    are one decal per side; tattoos and text stay unmirrored. `look_skin` view "brows"; sk_09; tests in
+    test_images (`test_mirror_image`) and test_skin (`test_brows_mirror`).
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy

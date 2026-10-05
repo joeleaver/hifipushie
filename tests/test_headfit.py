@@ -1,4 +1,5 @@
-"""The head follows the body (headfit.py): uv run python tests/test_headfit.py   (needs the gnm + makehuman packs)"""
+"""Heads with an age, a sex and a weight (headfit.py): uv run python tests/test_headfit.py   (needs the gnm pack; the
+MakeHuman pack only for the checks against it)"""
 import json
 from pathlib import Path
 
@@ -9,87 +10,135 @@ from hifipushie import assets, headfit
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def have():
+def have(mh=False):
     try:
         assets.path("gnm", "gnm/shape/data/versions/v3_0/gnm_head.npz")
-        from hifipushie import makehuman
-        makehuman.body({"age": 25})
+        if mh:
+            from hifipushie import makehuman
+            makehuman.body({"age": 25})
         return True
     except Exception as err:  # the packs aren't in the repo
         print("skipped:", str(err)[:80])
         return False
 
 
-def base(body, **head):
-    h = {"source": "gnm", "seed": 5, "spread": 0.7, "follow_body": True, **head}
-    return {"body": {"source": "makehuman", **body}, "head": {k: v for k, v in h.items() if v is not None}}
+def base(body=None, **head):
+    h = {"source": "gnm", "seed": 5, "spread": 0.7, **head}
+    b = {"head": {k: v for k, v in h.items() if v is not None}}
+    if body is not None:
+        b["body"] = {"source": "makehuman", **body}
+    return b
 
 
-def test_table():
+def test_tables():
     t = headfit.table()
     assert len(t["lm68"]) == 68 and set(t["extra"]) == set(t["gnm_extra"]) == set(headfit.CRANIUM)
-    X, io = headfit.body_points(t["reference"])
-    assert 0.05 < io < 0.07
-    assert np.abs(X[8][0]) < 1e-3 and X[8][1] < -1.4, X[8]  # the chin: on the centre line, under the eyes
-    assert X[68][1] > 1.5  # the top of the head
-    for a, b in ((0, 16), (36, 45), (48, 54), (31, 35)):  # pairs mirror
-        assert np.allclose(X[a] * [-1, 1, 1], X[b], atol=2e-3), (a, b)
-    assert X[30][2] > X[27][2] > X[36][2]  # the nose tip in front of the bridge, in front of an eye corner
+    assert len(t["dense_gnm"]) == len(t["dense_mh"]) > 200
+    a = headfit.axes()
+    n = 68 + 4 + len(t["dense_gnm"])
+    assert a["age_sex"].shape == (len(a["ages"]), 2, n, 3) and a["weight"].shape == (2, 2, n, 3)
+    d, io = headfit.shape_delta(25, 0.5, 0.5)
+    assert np.abs(d).max() < 1e-6 and 0.05 < io < 0.07  # the reference is no move
+    child, _ = headfit.shape_delta(6, 0.5)
+    man, _ = headfit.shape_delta(35, 1.0)
+    woman, _ = headfit.shape_delta(35, 0.0)
+    assert child[8][1] > 0.1 and child[68][1] > 0  # a child's chin is nearer the eyes, the cranium higher over them
+    assert man[8][1] < woman[8][1]  # a man's longer lower face
+    assert (man[12][0] - man[4][0]) > (woman[12][0] - woman[4][0])  # and wider jaw
+    for a_, b_ in ((0, 16), (36, 45), (48, 54)):  # moves mirror
+        assert np.allclose(man[a_] * [-1, 1, 1], man[b_], atol=3e-3), (a_, b_)
 
 
 def test_when_it_applies():
-    assert not headfit.applies(base({"age": 8}, follow_body=None))  # off unless asked: existing characters keep their heads
-    assert headfit.applies(base({"age": 8}))
-    assert headfit.applies(base({"age": 8}, fit={"jaw_width": 1.6}))
-    assert headfit.applies(base({"age": 8}, follow_body=0.5))
+    assert not headfit.applies(base({"age": 8}))  # off unless asked: existing characters keep their heads
+    assert headfit.applies(base({"age": 8}, follow_body=True)) and headfit.applies(base({"age": 8}, follow_body=0.5))
     assert not headfit.applies(base({"age": 8}, follow_body=False)) and not headfit.applies(base({"age": 8}, follow_body=0))
-    assert not headfit.applies({"head": {"source": "gnm", "follow_body": True}})  # the template body has no head of its age
+    assert not headfit.applies(base(None, follow_body=True))  # the template body has no age of its own to follow
+    assert headfit.applies(base(None, like={"sex": 0.0})) and headfit.applies(base(None, features={"jaw": -1}))
+    w = headfit.wanted(base({"age": 70, "sex": 0.0}, follow_body=True, like={"age": 30}))
+    assert (w["age"], w["sex"], w["weight"]) == (30.0, 0.0, 0.5)  # like sets one control apart from the body
+    w = headfit.wanted(base(None, like={"sex": 0.0}))
+    assert (w["age"], w["sex"]) == (25.0, 0.0) and not w["follow"]
+    for bad in ({"like": {"gender": 1}}, {"features": {"ears": 1}}):
+        try:
+            headfit.wanted(base(None, **bad))
+            raise AssertionError("accepted " + str(bad))
+        except ValueError:
+            pass
     for f in ("examples/disc_golfer_mh.json", "examples/disc_golfer_style.json", "examples/gnm_talk.json"):
         assert not headfit.applies(json.loads((ROOT / f).read_text())["base"]), f  # the golfer keeps his face
 
 
-def test_reference_is_no_move():
-    b = base(headfit.table()["reference"])
-    h = headfit.follow(b, b["head"])
-    r = headfit.report(b)
-    assert r["asked_io"] == 0 and r["left_io"] == 0, r
-    assert 0.85 < h["scale"] < 1.0, h["scale"]  # the head is the body's head's size (the old default 1.4 was a doll's)
-
-
 def _shape(b):
-    """(chin drop, cranium height, jaw width) of the followed GNM head, interocular units."""
-    from hifipushie import base as basemod
+    """(chin drop, cranium height, jaw width, brow height, the head dict, cheek width) of the head as solved (identity + warp), interoculars."""
     g = headfit._gnm()
     h = headfit.follow(b, b["head"])
     c = np.array([h["identity"][g["names"][i]] for i in g["comps"]])
     L = g["L0"] + np.tensordot(c, g["LB"], 1)
     J = g["J0"] + np.tensordot(c, g["JB"], 1)
-    io = abs(J[0][0] - J[1][0])
-    X = (L - J.mean(0)) / io
-    return -X[8][1], X[68][1], abs(X[12][0] - X[4][0]), h
+    wp = h["warp"]
+    P, C = np.asarray(wp["at"]), np.asarray(wp["coef"])
+    L = L + np.exp(-((L[:, None] - P[None]) ** 2).sum(-1) / (2 * wp["sigma"] ** 2)) @ C
+    X = (L - J.mean(0)) / abs(J[0][0] - J[1][0])
+    return -X[8][1], X[68][1], abs(X[12][0] - X[4][0]), X[19][1], h, abs(X[13][0] - X[3][0])
 
 
 def test_age_and_sex_reach_the_head():
-    child, man, woman, old = (_shape(base(p)) for p in ({"age": 7, "sex": 0.5}, {"age": 35, "sex": 1.0},
-                                                        {"age": 35, "sex": 0.0}, {"age": 82, "sex": 1.0}))
+    child, man, woman, old = (_shape(base(None, like=p)) for p in ({"age": 7}, {"age": 35, "sex": 1.0},
+                                                                   {"age": 35, "sex": 0.0}, {"age": 82, "sex": 1.0}))
     assert child[0] < woman[0] < man[0], (child[0], woman[0], man[0])  # a child's short lower face, a man's long one
     assert child[1] / child[0] > 1.08 * man[1] / man[0]  # more cranium over less face
     assert woman[2] < man[2]  # a narrower jaw
-    assert child[3]["scale"] < 0.85 * man[3]["scale"]  # and a smaller head
     for s in (child, man, woman, old):
-        assert max(abs(v) for v in s[3]["identity"].values()) <= headfit.CLIP + 1e-6
-        assert s[3]["plane_follows_chin"]
-    for p in ({"age": 7, "sex": 0.5}, {"age": 82, "sex": 1.0}):  # most of the move is made
-        r = headfit.report(base(p))
-        assert r["left_io"] < 0.55 * r["asked_io"], r
-    half = _shape(base({"age": 7, "sex": 0.5}, follow_body=0.5))
-    assert child[0] < half[0] < man[0]  # "follow" scales it
-    own = headfit.follow(base({"age": 7}, identity={"head_000": 1.5}),
-                         {"source": "gnm", "seed": 5, "follow_body": True, "identity": {"head_000": 1.5}})
+        assert max(abs(v) for v in s[4]["identity"].values()) <= headfit.CLIP + 1e-6 and s[4]["plane_follows_chin"]
+        assert "scale" not in s[4]  # only following a body sets the head's size
+    for p in ({"age": 7}, {"age": 35, "sex": 0.0}, {"age": 82, "sex": 1.0}):
+        r = headfit.report(base(None, like=p))
+        assert r["reached"] >= 0.88 > r["reached_identity"], r  # the warp takes it the rest of the way
+        assert r["stretch_max"] < 0.35, r
+    # the seed's own sex doesn't decide: every seed's woman has a narrower jaw than the same seed's man
+    for seed in (1, 5, 8, 11):
+        w_, m_ = (_shape({"head": {"source": "gnm", "seed": seed, "spread": 0.7, "like": {"sex": s}}}) for s in (0.0, 1.0))
+        assert w_[2] < m_[2] - 0.03 and w_[0] < m_[0], seed
+    # the same people across seeds differ (the seed keeps what is its own)
+    a, b = (_shape({"head": {"source": "gnm", "seed": s, "spread": 0.7, "like": {"sex": 0.0}}})[4]["identity"] for s in (5, 8))
+    assert np.abs(np.array(list(a.values())) - np.array(list(b.values()))).max() > 0.5
+    own = headfit.follow(base(None, like={"age": 7}, identity={"head_000": 1.5}),
+                         {"source": "gnm", "seed": 5, "like": {"age": 7}, "identity": {"head_000": 1.5}})
     assert own["identity"]["head_000"] == 1.5  # the head's own identity entries win
 
 
-def test_without_the_key_nothing_changes():
+def test_features():
+    n = _shape(base(None, like={"sex": 0.5}))
+    jaw = _shape(base(None, features={"jaw": 1.0}))
+    brow = _shape(base(None, features={"brow_ridge": 1.0}))
+    assert jaw[2] > n[2] + 0.02 and abs(jaw[1] - n[1]) < 0.02  # a wider jaw, the cranium where it was
+    assert brow[3] < n[3] - 0.01 and abs(brow[2] - n[2]) < 0.02  # a lower, heavier brow; the jaw where it was
+    cheeks = _shape(base(None, features={"cheeks": 1.0}))
+    assert cheeks[5] > n[5] + 0.02 and abs(cheeks[1] - n[1]) < 0.02  # fuller cheeks
+    M = headfit.feature_masks()
+    assert all(0 <= m.min() and m.max() > 0.9 for m in M.values())
+
+
+def test_follows_its_body():
+    """Needs MakeHuman: the head takes the body's age and sex and the body's own head's size."""
+    b = base({"age": 7, "sex": 0.5, "height": 1.22}, follow_body=True)
+    adult = base({"age": 35, "sex": 1.0, "height": 1.8}, follow_body=True)
+    h, ha = headfit.follow(b, b["head"]), headfit.follow(adult, adult["head"])
+    assert h["scale"] < 0.9 * ha["scale"] and 0.8 < ha["scale"] < 1.05, (h["scale"], ha["scale"])
+    w = headfit.wanted(b)
+    assert (w["age"], w["sex"]) == (7.0, 0.5)
+    half = headfit.wanted(base({"age": 7}, follow_body=0.5))
+    assert half["amount"] == 0.5
+    # the sampled table against MakeHuman itself, between its samples
+    ref, _ = headfit.mh_points({**headfit.table()["reference"]})
+    for p in ({"age": 11, "sex": 0.3, "weight": 0.6}, {"age": 58, "sex": 0.8, "weight": 0.3}):
+        d0 = headfit.mh_points({**p, "muscle": 0.5})[0] - ref
+        d1, _ = headfit.shape_delta(p["age"], p["sex"], p["weight"])
+        assert np.sqrt(((d0 - d1) ** 2).sum(1).mean()) < 0.12 * np.sqrt((d0 ** 2).sum(1).mean()), p
+
+
+def test_without_the_keys_nothing_changes():
     """A seed-only head on a MakeHuman body, as existing characters have: the head built is gnm_head of the head dict
     as given (no identity added, the default scale, the fixed graft plane), bit for bit."""
     from hifipushie import base as basemod
@@ -110,7 +159,10 @@ def test_without_the_key_nothing_changes():
 
 if __name__ == "__main__":
     if have():
-        for k, fn in list(globals().items()):
-            if k.startswith("test_"):
-                fn()
-                print("ok", k)
+        for fn in (test_tables, test_when_it_applies, test_age_and_sex_reach_the_head, test_features):
+            fn()
+            print("ok", fn.__name__)
+    if have(mh=True):
+        for fn in (test_follows_its_body, test_without_the_keys_nothing_changes):
+            fn()
+            print("ok", fn.__name__)

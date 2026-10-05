@@ -409,8 +409,9 @@ def _hair(p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
             col = [round(c + g * (0.55 - c), 4) for c in col]
-            dens = float(np.clip(o.get("density", 0.8) * o["amount"], 0.05, 1.6))
-            thick = float(o.get("thickness", 1.0)) * (1 - 0.2 * ctx["child"])
+            fem, masc = ctx.get("fem", 0.0), ctx.get("masc", 0.0)
+            dens = float(np.clip(o.get("density", 0.8 - 0.12 * fem + 0.1 * masc) * o["amount"], 0.05, 1.6))
+            thick = float(o.get("thickness", 1.0 - 0.32 * fem + 0.12 * masc)) * (1 - 0.2 * ctx["child"])
             # the brow is a drawn picture of hairs (skin_swatch.brow_image), laid from the brow's landmarks
             a_, m_, b_ = J["lm_brow_inner.L"], J["lm_brow_mid.L"], J["lm_brow_outer.L"]
             span = float(np.linalg.norm(b_ - a_))
@@ -424,14 +425,15 @@ def _hair(p, J, layer, T, ctx) -> None:
             slope = float(np.degrees(np.arctan2(b_[2] - a_[2], np.linalg.norm((b_ - a_)[:2]))))
             img = {"file": str(path), "at": [round(float(x), 5) for x in c], "dir": [round(float(x), 4) for x in d],
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,
-                   "mirror": True, "channel": "alpha"}
+                   "mirror": True, "mirror_image": True, "channel": "alpha"}  # (unmirrored, the other brow's hairs ran
+            # toward the nose: "the left eyebrow is backwards")
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col, opacity=0.3 * min(dens, 1) + 0.06,
                   mask=_zones(["brow"], 0.9 * thick))
             layer("brow_hairs", color=col, opacity=0.95, roughness=0.42, specular=0.45, height=0.00012, image=img)
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
-            layer("lashes", color=col, opacity=0.9 * min(o["amount"] + 0.2, 1), roughness=0.4,
+            layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
                   mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length"))
         if o:
