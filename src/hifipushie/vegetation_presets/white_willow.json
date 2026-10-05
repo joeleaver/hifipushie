@@ -88,14 +88,17 @@
   "twig": {
    "length": 0.55,
    "leaves": 20,
-   "arrangement": "alternate",
+   "arrangement": "spiral",
    "angle": 40,
    "per_m": 7,
    "droop": 0.2,
-   "up": 0.3,
+   "up": 0.1,
    "spread": 40,
    "min_order": 1,
-   "steps": 4
+   "steps": 4,
+   "face": 0.4,
+   "divergence": 144,
+   "light": 0.2
   },
   "card": {
    "twig": {
@@ -108,7 +111,12 @@
    },
    "scale": 1.0
   },
-  "translucency": 0.4
+  "translucency": 0.4,
+  "autumn": [
+   0.86,
+   0.68,
+   0.14
+  ]
  },
  "bark": {
   "kind": "furrowed",

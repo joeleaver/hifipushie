@@ -18,7 +18,9 @@ LEAF = {"shape": "ovate", "length": 0.07, "width": 0.55, "lobes": 4, "fold": 0.2
 # needle has to cover what hundreds of real ones do)
 TWIG = {"length": 0.3, "leaves": 9, "arrangement": "alternate", "angle": 55, "droop": 0.15, "side_shoots": 0,
         "variants": 3, "per_m": 5.0, "where": "shoots", "spread": 45, "up": 0.3, "scale": [0.8, 1.15], "radius": 0.0025,
-        "min_order": 1, "steps": 2, "sub_shoots": 0, "side_angle": 40, "side_length": 0.6, "side_taper": 0.58, "spray_angle": 57}
+        "min_order": 1, "steps": 2, "sub_shoots": 0, "side_angle": 40, "side_length": 0.6, "side_taper": 0.58, "spray_angle": 57,
+        "divergence": 137.5, "light": 0.7, "needles": "auto", "parted": 0.3, "forward": 0.7,
+        "face": 0.5}  # face: 1 = every twig's upper side to the sky (a roof of plates), 0 = rolled any way round its shoot
 CARD = {"variants": 4, "size": 384, "verts": 7, "cup": 0.1, "cross": 1, "scale": 1.0, "twig": {}, "leaf": {}, "strips": 0}
 
 
@@ -137,10 +139,12 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
             ns = int(tw["side_shoots"] or 4)
             for j in range(ns):
                 for side in (-1, 1):
-                    s = 0.15 + 0.7 * j / ns
+                    s = float(np.clip(0.15 + 0.7 * (j + 0.7 * (rnd(70 + 2 * j + (side > 0)) - 0.5)) / ns, 0.08, 0.92))
+                    if rnd(90 + 2 * j + (side > 0)) < 0.12:
+                        continue  # (a spray is never a stencil: shoots missing, uneven, off their rank)
                     p, d = at(s)
                     ln = L * (0.55 - 0.3 * j / ns) * (0.8 + 0.4 * rnd(40 + 2 * j + (side > 0)))
-                    sa_ = math.radians(float(tw["spray_angle"]))
+                    sa_ = math.radians(float(tw["spray_angle"]) * (0.75 + 0.5 * rnd(110 + 2 * j + (side > 0))))
                     out = _norm(np.array([side * math.sin(sa_), math.cos(sa_), -0.12 - 0.15 * rnd(60 + j)]))
                     tt = np.linspace(0, 1, 4)[:, None]
                     pts = p + out * ln * tt + np.array([0, 0, -0.1 * ln]) * tt ** 2
@@ -175,10 +179,16 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                 d = _norm(pts[i + 1] - pts[i])
                 Fr = _frame(d)
                 a = 2.399963 * j + 6.28 * rnd(100 + si)
-                if shape == "needle_spray":  # combed: mostly sideways and up
-                    side = math.cos(a) * Fr[:, 0] + (0.25 + 0.6 * abs(math.sin(a))) * Fr[:, 2]
-                    out = _norm(side + 0.7 * d)
-                else:
+                arr = tw["needles"] if tw["needles"] != "auto" else ("radial" if shape == "needle_spray" else "fascicles")
+                if arr == "ranked":  # fir, yew: flattened into two ranks with a parting above
+                    side = math.copysign(1.0, math.cos(a)) * Fr[:, 0] * (0.6 + 0.4 * abs(math.cos(a))) + 0.15 * abs(math.sin(a)) * Fr[:, 2]
+                    out = _norm(side + tw["forward"] * d)
+                elif arr == "radial":  # spruce: singly on pegs all round the shoot, brushed forward, thinner underneath
+                    sz_ = math.sin(a)
+                    if sz_ < 0:
+                        sz_ *= 1 - tw["parted"]
+                    out = _norm(math.cos(a) * Fr[:, 0] + sz_ * Fr[:, 2] + tw["forward"] * d)
+                else:  # fascicles (pine): bundles radiating round the shoot
                     out = _norm(math.cos(a) * Fr[:, 0] + math.sin(a) * Fr[:, 2] + 0.75 * d)
                 ln = nl * sc * (0.8 + 0.4 * float(_u(_child(key, 200 + si), j)))
                 wv = _norm(np.cross(out, d)) * (0.5 * nl * lf["needle_width"])
@@ -224,11 +234,14 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                     az = (0 if j % 2 else math.pi) + (rnd(400 + q) - 0.5) * 0.7
                 elif tw["arrangement"] == "opposite":
                     az = (j % 2) * math.pi + (j // 2) * math.pi / 2
-                else:  # spiral
-                    az = 2.399963 * j
+                elif tw["arrangement"] == "whorled":
+                    az = (j % 3) * 2 * math.pi / 3 + (j // 3) * math.pi / 3
+                else:  # spiral, by the species' divergence (137.5 deg ~ 3/8; 144 = 2/5; 120 = 1/3)
+                    az = math.radians(float(tw["divergence"])) * j
                 side = math.cos(az) * Fr[:, 0] + math.sin(az) * Fr[:, 2]
                 dirv = d if terminal else _norm(d * math.cos(ang) + side * math.sin(ang) + np.array([0, 0, -lf.get("hang", 0.0)]))
-                R = _frame(dirv, up=_norm(np.array([0, 0, 1.0]) + 0.5 * side))
+                lt_ = float(tw["light"])  # 1 = every blade's upper side to the sky; 0 = as the bud set it (toward the shoot's tip)
+                R = _frame(dirv, up=_norm(lt_ * (np.array([0, 0, 1.0]) + 0.5 * side) + (1 - lt_) * (d + 0.3 * side) + 1e-6))
                 R = R @ _rot(np.array([0, 1.0, 0]), (rnd(500 + q) - 0.5) * 0.9)  # each blade rolls a little
                 sc = (0.75 + 0.45 * rnd(600 + q) if not terminal else 1.0) * sc0
                 V = (M["V"] * sc) @ R.T + p
@@ -254,7 +267,10 @@ def place(tree: dict) -> dict:
     evergreen = bool(lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")))
     if s.get("season") in ("bare", "dead") or (s.get("season") == "winter" and not evergreen) or s.get("decay") or n < 3:
         return empty
-    leafy = (tree["steps"] - 1 - tree["born"]) < tw["steps"]  # shoots this young carry twigs
+    steps_ = tw["steps"]
+    if lf.get("retention"):  # years a shoot keeps its leaves (needles: spruce 4-10, Scots pine 2-6)
+        steps_ = max(1, int(math.ceil(float(lf["retention"]) / float(s["habit"]["years_per_step"]))))
+    leafy = (tree["steps"] - 1 - tree["born"]) < steps_  # shoots this young carry twigs
     leafy[:2] = False
     ends = tree["ends"] & (tree["leafy"] | leafy)
     d_node = _norm(P - P[par])
@@ -291,6 +307,10 @@ def place(tree: dict) -> dict:
     z[bad] = np.array([1.0, 0, 0]) - d[bad] * d[bad][:, :1]
     z = _norm(z)
     x = np.cross(d, z)
+    if tw["face"] < 1:  # rolled round its own run: not every twig lies flat with its upper side to the sky
+        roll = (1 - float(tw["face"])) * math.pi * (2 * _u(key, 12) - 1)
+        c_, s_ = np.cos(roll)[:, None], np.sin(roll)[:, None]
+        x, z = x * c_ + z * s_, z * c_ - x * s_
     lo, hi = tw["scale"]
     return {"pos": pos, "frame": np.stack([x, d, z], axis=2), "scale": lo + (hi - lo) * _u(key, 8),
             "variant": (_child(key, 9) % np.uint64(int(tw["variants"]))).astype(int), "node": node, "key": key}
@@ -364,7 +384,12 @@ def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, 
     tone = mesh["col"][F].mean(1)
     leaf = mesh["mat"] == 1
     lc, wc = np.asarray(leaf_color, float), np.asarray(wood_color, float)  # (spec colours are sRGB already)
-    col = np.where(leaf[:, None], lc[None] * np.clip(tone, 0, 1.6)[:, None], wc[None]) * (0.8 + 0.2 * zr)[:, None]
+    # a leaf is not one flat green: each blade half catches the light by its own tilt, pale ones run yellow and dark
+    # ones blue-green, lower ones sit in the upper ones' shade (flat per-leaf tones read as poster paint at 2 m)
+    lit = 0.7 + 0.42 * np.clip(fn @ np.array([-0.38, 0.42, 0.82]), 0, 1)
+    dev = np.clip((tone - np.median(tone[leaf]) if leaf.any() else tone * 0) * 2.2, -0.6, 0.6)
+    hue = np.stack([1 + 0.22 * dev, 1 + 0.06 * dev, 1 - 0.35 * dev], 1)
+    col = np.where(leaf[:, None], lc[None] * hue * (np.clip(tone, 0, 1.6) * lit)[:, None], wc[None]) * (0.72 + 0.28 * zr)[:, None]
     im_c = Image.new("RGB", (n, n), (0, 0, 0))
     im_a = Image.new("L", (n, n), 0)
     im_n = Image.new("RGB", (n, n), (128, 128, 255))
@@ -381,6 +406,8 @@ def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, 
     a = down(im_a)
     c = down(im_c)
     c = np.where(a[..., None] > 1e-3, c / np.maximum(a[..., None], 1e-3), 0)  # un-premultiply the box filter
+    grain = ndimage.gaussian_filter(np.random.default_rng(3).random((size, size)), 1.2)
+    c = c * (0.93 + 0.14 * (grain - grain.min()) / max(float(np.ptp(grain)), 1e-9))[..., None]
     solid = a > 0.02
     if solid.any():  # bleed the colour out past the edge (no dark fringe under filtering)
         idx = ndimage.distance_transform_edt(~solid, return_distances=False, return_indices=True)

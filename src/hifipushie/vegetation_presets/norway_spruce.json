@@ -98,11 +98,11 @@
  },
  "leaves": {
   "shape": "needle_spray",
-  "length": 0.03,
+  "length": 0.018,
   "color": [
-   0.29,
-   0.36,
-   0.198
+   0.241,
+   0.34,
+   0.17
   ],
   "translucency": 0.05,
   "twig": {
@@ -110,31 +110,36 @@
    "leaves": 180,
    "side_shoots": 5,
    "per_m": 14,
-   "up": -0.1,
+   "up": -0.25,
    "spread": 50,
    "droop": 0.5,
    "variants": 3,
    "min_order": 1,
-   "steps": 5
+   "steps": 5,
+   "face": 0.3,
+   "needles": "radial",
+   "parted": 0.3,
+   "forward": 0.8
   },
   "needle_width": 0.45,
   "card": {
    "size": 512,
    "twig": {
-    "leaves": 1800,
-    "side_shoots": 10,
-    "sub_shoots": 2,
-    "length": 0.7,
-    "droop": 0.2,
-    "spray_angle": 40
+    "leaves": 1900,
+    "side_shoots": 8,
+    "sub_shoots": 0,
+    "length": 0.5,
+    "droop": 0.25,
+    "spray_angle": 42
    },
    "leaf": {
-    "needle_width": 0.1,
-    "length": 0.02
+    "needle_width": 0.09,
+    "length": 0.018
    },
    "verts": 7,
    "cross": 2
-  }
+  },
+  "retention": 7
  },
  "bark": {
   "kind": "scales",

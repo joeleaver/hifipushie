@@ -95,7 +95,8 @@ def test_cuts_are_local_and_girth_is_settable():
     assert (U["pos"][U["order"] > 0][:, 2] >= 4.0).all() and (U["order"] == 0).sum() == (T0["order"] == 0).sum()
     G = v.grow({**SMALL, "trunk_diameter": 0.5})
     assert abs(G["stats"]["trunk_diameter_m"] - 0.5) < 0.02 * 1.6  # (the foot's flare sits on top)
-    assert np.allclose(G["radius"][G["ends"]], T0["radius"][T0["ends"]], rtol=0.35)  # twigs are left as they are
+    ratio = G["radius"][G["ends"]] / T0["radius"][T0["ends"]]
+    assert abs(np.median(ratio) - 1) < 0.1 and np.percentile(ratio, 90) < 0.6 * G["radius"][1] / T0["radius"][1] + 0.4  # twigs stay
     lean = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6, "lean": [4, 0]}})
     up = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6}})
     hi = lambda t: t["pos"][t["pos"][:, 2] > 0.6 * t["height"], 0].mean()

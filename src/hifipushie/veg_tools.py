@@ -419,7 +419,7 @@ def report(name: str) -> str:
     return "\n".join(out + [f"WARNING: {w}" for w in warn])
 
 
-VIEWS = ("clay", "bare", "leaf", "far", "near", "close")
+VIEWS = ("clay", "bare", "leaf", "far", "near", "close", "under")
 
 
 def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, list]:
@@ -457,6 +457,11 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
         elif x == "near":  # standing by it: a small tree from close, a big one from 5 m, looking at the trunk and up
             dist = veg_look.near_distance(T, toward, float(np.clip(0.45 * H, 2.0, 5.0)))
             j.update(eye=(toward * dist + [0, 0, min(1.7, 0.6 * H)]).tolist(), look=[0, 0, min(0.5 * H, 5.0)], fov=62, leaves=has_leaves)
+        elif x == "under":  # standing under the crown, looking up along a limb: is there foliage under and round the wood?
+            ends_ = T["pos"][T["ends"]]
+            q = ends_[np.argmax(ends_[:, :2] @ toward[:2])] if len(ends_) else np.array([0, 0, H])
+            j.update(eye=(toward * 0.25 * float(np.linalg.norm(q[:2])) + [0, 0, 1.6]).tolist(),
+                     look=[float(0.8 * q[0]), float(0.8 * q[1]), float(q[2])], fov=58, leaves=has_leaves)
         elif x == "close":
             j.update(azimuth=azimuth, elevation=8, focus=veg_look.closeup_focus(T, azimuth), span=min(2.4, 0.6 * H), leaves=has_leaves)
         if "eye" in j:  # the eye stands on the hillside, not on the level of the plant's foot

@@ -33,7 +33,7 @@ import numpy as np
 from numba import njit
 from scipy import ndimage
 
-VERSION = 1
+VERSION = 2
 PRESETS = Path(__file__).with_name("vegetation_presets")
 
 # every habit key, with what it means (the guide lists these); per-order lists repeat their last entry
@@ -424,6 +424,9 @@ def _compass(d):
     return np.asarray(d, float)
 
 
+TAIL = 0.7
+
+
 def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
     """The shadow grid of leafy points src (cell units, origin lo), each casting `weight` (its internode's length:
     short internodes carry less leaf)."""
@@ -441,6 +444,16 @@ def _shadow(src, lo, dims, a, b, depth, tilt, weight=1.0):
             S[:, :, :-q] += a * b ** (-q) * B[:, :, q:]
         else:
             S += a * B
+    # below the pyramid the shade fades instead of ending: cut off at `depth`, the light came back exactly that far
+    # under every foliage layer and the next layer formed there (crowns in level bands `depth` cells apart)
+    if depth > 0 and dims[2] > depth + 1:
+        tail = a * b ** (-depth) * B
+        acc = np.zeros(dims[:2])
+        for z in range(dims[2] - 1, -1, -1):
+            zs = z + depth + 1
+            if zs < dims[2]:
+                acc = TAIL * (acc + tail[:, :, zs])
+            S[:, :, z] += acc
     return S
 
 
