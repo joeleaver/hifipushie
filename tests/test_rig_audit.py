@@ -275,7 +275,7 @@ def test_bound_parts_do_not_bury_their_neighbours():
     spec = {"joints": {"a": {"pos": [0, 0, 1], "r": 0.1}, "b": {"pos": [0.12, 0, 1], "r": 0.1}},
             "blobs": {"leg": {"at": "a", "size": [0.1, 0.1, 0.1]},
                       "bag": {"at": "b", "size": [0.1, 0.1, 0.1], "part": "bag"},
-                      "cuff": {"at": "a", "size": [0.12, 0.12, 0.03], "part": "cuff"}},
+                      "cuff": {"at": "a", "size": [0.03, 0.12, 0.03], "part": "cuff"}},
             "parts": {"bag": {"rig_bone": "Hips"}, "cuff": {}}}
     st = {}
     for q in compile_prims(spec):
