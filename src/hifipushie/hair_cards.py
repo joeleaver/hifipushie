@@ -37,6 +37,7 @@ STRANDS = {
     "baby": 1.0,  # baby hairs along the hairline: cards per cm x this (0 = none)
     "soft": 0.008,  # m: the hairline fades over this width (the cap's edge breaks up into strands)
     # --- strand grooms (hair_strands.py: Blender Hair Curves); the cards above are cut from the same groom
+    "source": "groom",  # the cards' pictures: "groom" = this groom's own strands (Blender), "drawn" = made up here
     "count": 30000,  # strands in a look (the export's atlas bake and video renders may ask for more)
     "thickness": 1.0,  # x the strand's width (0.16 mm at 30k strands: fewer strands are drawn wider)
     "clump_size": 0.007,  # m between the sub clumps strands gather into inside a lock (0.004 fine .. 0.02 chunky)
@@ -71,7 +72,10 @@ def strands_of(spec: dict) -> dict:
     bad = set(s) - set(STRANDS)
     if bad:
         raise ValueError(f"hair strands: unknown keys {sorted(bad)} (have {', '.join(sorted(STRANDS))})")
-    return {**STRANDS, **s}
+    out = {**STRANDS, **s}
+    if out["source"] not in ("groom", "drawn"):
+        raise ValueError('hair strands: source is "groom" or "drawn"')
+    return out
 
 
 def _ss(x):
@@ -96,18 +100,9 @@ def _srgb(c):
 
 # ------------------------------------------------------------------------------------------------ the strand atlas
 
-def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3) -> dict:
-    """One tile: strands drawn root (row 0) to tip, lower ones first. alpha, id (a value per strand), depth (0 deep ..
-    1 on top), all (H, w) floats."""
-    from PIL import Image, ImageDraw
-    from scipy import ndimage
-    if kind == "band":
-        one = np.ones((H, w), np.float32)
-        return {"alpha": one, "id": one * 0.5, "depth": one, "band": True}
+def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
+    """Strands made up for a tile: [(x across 0..1, v along 0..1, depth 0..1, id 0..1), ...]."""
     k = KIND[kind]
-    W2, H2 = w * ss, H * ss
-    ims = [Image.new("L", (W2, H2), 0) for _ in range(3)]
-    da, di, dd = (ImageDraw.Draw(i) for i in ims)
     n = max(3, int(k["n"] * w / 160))
     m = 0.06
     x0 = rng.uniform(m, 1 - m, n)
@@ -131,20 +126,44 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3) -> dict:
     ph = rng.uniform(0, 1, (n, 2))
     t = np.linspace(0, 1, 44)
     v0 = rng.uniform(0, 1, n) ** 1.6 * float(k.get("start", 0.0))  # where each strand's root is
-    thick = k["thick"] * ss * w / 160 * 1.0 if kind in ("fly", "baby") else k["thick"] * ss
-    for i in np.argsort(depth):
+    out = []
+    for i in range(n):
         v = v0[i] + t * (L[i] - v0[i])
         x = x0[i] + (xt[i] - x0[i]) * cl * _ss(v / 0.75)
         env = _ss(v / 0.12)
         x = x + fz * 0.03 * (np.sin(2 * np.pi * (1.3 * v + ph[i, 0])) + 0.6 * np.sin(2 * np.pi * (3.1 * v + ph[i, 1]))) * env
         x = x + tw * np.sin(2 * np.pi * (v * fw + cph[i])) * env
-        x = np.clip(x, 0.025, 0.975)
-        pts = list(zip((x * W2).tolist(), (v * H2).tolist()))
+        out.append((x, v, float(depth[i]), float(ident[i])))
+    return out
+
+
+def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None) -> dict:
+    """One tile: strands drawn root (row 0) to tip, lower ones first. alpha, id (a value per strand), depth (0 deep ..
+    1 on top), all (H, w) floats."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    if kind == "band":
+        one = np.ones((H, w), np.float32)
+        return {"alpha": one, "id": one * 0.5, "depth": one, "band": True}
+    k = KIND[kind]
+    W2, H2 = w * ss, H * ss
+    ims = [Image.new("L", (W2, H2), 0) for _ in range(3)]
+    da, di, dd = (ImageDraw.Draw(i) for i in ims)
+    thick = k["thick"] * ss * w / 160 * 1.0 if kind in ("fly", "baby") else k["thick"] * ss
+    if lines is None:  # drawn strands (no groom at hand); else `lines` = real strands of the groom's own clumps
+        lines = _drawn_lines(kind, w, S, rng)
+    for x, v, dp, idn in sorted(lines, key=lambda q: q[2]):
+        x = np.clip(np.asarray(x, float), 0.025, 0.975)
+        pts = list(zip((x * W2).tolist(), (np.asarray(v, float) * H2).tolist()))
+        if len(pts) < 2:
+            continue
         cut = int(len(pts) * 0.82)
         for seg, wd in ((pts[:cut + 1], max(1, int(round(thick)))), (pts[cut:], max(1, int(round(thick * 0.5))))):
+            if len(seg) < 2:
+                continue
             da.line(seg, fill=255, width=wd)
-            di.line(seg, fill=int(1 + 254 * ident[i]), width=wd)
-            dd.line(seg, fill=int(1 + 254 * depth[i]), width=wd)
+            di.line(seg, fill=int(1 + 254 * idn), width=wd)
+            dd.line(seg, fill=int(1 + 254 * dp), width=wd)
     a, idm, dep = (np.asarray(i.resize((w, H), Image.BOX), np.float32) / 255 for i in ims)
     cov = np.maximum(a, 1e-3)
     idm, dep = np.clip(idm / cov, 0, 1), np.clip(dep / cov, 0, 1)
@@ -169,12 +188,12 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3) -> dict:
     return {"alpha": a, "id": idm, "depth": dep}
 
 
-def atlas(S: dict, look: dict) -> dict:
+def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = None, key: str = "") -> dict:
     """The strand atlas: {"color" (H, W, 4) sRGB floats, straight alpha; "normal" (H, W, 3); "aux" (H, W, 4): root
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "frizz", "curl", "tips", "atlas")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band")}], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band")}, key], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -184,9 +203,17 @@ def atlas(S: dict, look: dict) -> dict:
     cols, tiles, x = [], [], 0
     for kind, w0 in TILES:
         w = int(round(w0 * size / 1024))
-        cols.append(_tile(kind, w, H, S, rng))
+        cols.append(_tile(kind, w, H, S, rng, lines=(lines or {}).get(len(cols))))
         tiles.append({"kind": kind, "u0": (x + 2.0) / size, "u1": (x + w - 2.0) / size})
         x += w
+    if cap is not None:  # the scalp's own chart beside the tiles (hair_strands.cap_chart): the atlas is 2 : 1
+        from PIL import Image
+        rs = lambda m: np.asarray(Image.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(  # noqa: E731
+            (size, H), Image.BILINEAR), np.float32) / 255
+        cols.append({k: rs(cap[k]) for k in ("alpha", "id", "depth")})
+        for t_ in tiles:
+            t_["u0"], t_["u1"] = t_["u0"] / 2, t_["u1"] / 2
+        tiles.append({"kind": "cap", "u0": 0.5, "u1": 1.0})
     a, idm, dep = (np.concatenate([c[k] for c in cols], 1) for k in ("alpha", "id", "depth"))
     gap, lit = _lin(look.get("gap", "#221310")), _lin(look.get("lit", "#56352d"))
     shade = (0.25 + 0.75 * dep ** 0.8)[..., None]
@@ -204,7 +231,8 @@ def atlas(S: dict, look: dict) -> dict:
     root = np.repeat(1 - (np.arange(H)[:, None] + 0.5) / H, a.shape[1], 1)
     out = {"color": np.concatenate([col, a[..., None]], -1).astype(np.float32), "normal": nrm.astype(np.float32),
            "aux": np.stack([root, idm, dep, a], -1).astype(np.float32), "tiles": tiles, "size": size,
-           "coverage": {t["kind"]: round(float(c["alpha"].mean()), 2) for t, c in zip(tiles, cols)}}
+           "coverage": {t["kind"]: round(float(c["alpha"].mean()), 2) for t, c in zip(tiles, cols)},
+           "source": "groom" if lines else "drawn"}
     if len(_ATLAS) > 6:
         _ATLAS.pop(next(iter(_ATLAS)))
     _ATLAS[key] = out
@@ -325,12 +353,17 @@ def _lock_cards(lk: dict, C, S: dict, rng, n: int = 72) -> list:
             return
         h = (hw0 if hw is None else np.full(len(u), hw))[sel]
         out.append({"P": Pc[sel], "X": X[sel], "N": Nc[sel], "hw": h, "u": u[sel], "s": s[sel], "kind": kind,
+                    "prio": layer + 0.45 * min(abs(float(x)), 1.0) + (0.0 if free < 0.5 or W >= 0.016 else 0.3),
                     "cval": 1 + R * rng.uniform(-0.28, 0.28),
                     "layer": layer, "bend": _unit(P[sel] - (cen[sel] if len(cen) > 1 else cen[0])), "T": T[sel]})
 
     edge = bool(lk.get("at_hairline"))
     for la in range(L):
         kind = ("hairline" if edge else "dense") if la == 0 else ("medium" if la == 1 else "sparse")
+        if free > 0.5:  # hair off the head has nothing to hide under it: no opaque base (a solid ribbon), and a
+            kind = "sparse" if (W < 0.016 or la >= 2) else "medium"  # wisp is a few strands
+            if L == 1 and W >= 0.016:  # (the far tier: one card a lock has to be the lock)
+                kind = "dense"
         nl = na if la == 0 else max(1, na - (la % 2))
         for j in range(nl):
             x = ((j + 0.5 + R * rng.uniform(-0.25, 0.25)) / nl - 0.5) * 2 if nl > 1 else R * rng.uniform(-0.3, 0.3)
@@ -442,23 +475,26 @@ def triangles(cards: list, S: dict, segment: float | None = None) -> int:
 
 
 def fit_budget(cards: list, S: dict, budget: int) -> tuple[list, float, dict]:
-    """Cards and a segment length for a triangle budget: segments lengthen first (to 3 cm, or a sixth of the wave),
-    then fly-aways go, then the top layers. Returns (cards, segment, what was dropped)."""
+    """Cards and a segment length for a triangle budget: segments lengthen first (to 3 cm, or the tier's own
+    segment), then cards go one by one, the least needed first (`prio`: fly-aways and the top layers' outer cards
+    before the coverage layer's centre cards, so every lock keeps its middle card longest). Returns (cards,
+    segment, what was dropped)."""
     info = {"asked": int(budget)}
     seg = float(S["segment"])
+    seg_max = max(0.03, seg)
     keep = list(cards)
-    for step in range(40):
+    for _ in range(40):
         n = triangles(keep, S, seg)
-        if n <= budget:
+        if n <= budget or seg >= seg_max:
             break
-        if seg < 0.03:
-            seg = min(0.03, seg * max(1.08, min(n / budget, 2.0)))
-            continue
-        top = max((c["layer"] for c in keep), default=0)
-        if top == 0:
-            break
-        keep = [c for c in keep if c["layer"] < top]
-        info.setdefault("dropped_layers", []).append(int(top))
+        seg = min(seg_max, seg * max(1.08, min(n / budget, 2.0)))
+    if triangles(keep, S, seg) > budget:
+        order = sorted(range(len(keep)), key=lambda i: keep[i].get("prio", keep[i]["layer"]))
+        cost = np.cumsum([triangles([keep[i]], S, seg) for i in order])
+        m = max(1, int(np.searchsorted(cost, budget, side="right")))
+        kept = sorted(order[:m])
+        info["dropped_cards"] = len(keep) - m
+        keep = [keep[i] for i in kept]
     info["triangles"], info["segment"] = triangles(keep, S, seg), round(seg, 4)
     return keep, seg, info
 

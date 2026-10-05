@@ -196,14 +196,16 @@ def grow(sc, g: dict, line, rng) -> dict:
             az = (side * rng.choice([52, 68, 84, 150], p=[0.3, 0.3, 0.2, 0.2]) + rng.uniform(-6, 6)) % 360
             el = float(_line_at(line, az)) + 2.5
             p = sc.point(az, el, 0.002)
-            d = _unit(dirs(az, el) * 0.5 + np.array([0.0, -0.3 * abs(np.sin(np.radians(az))), -0.3]))
-            ln = rng.uniform(0.06, 0.14)
+            # out of the hairline a little, then down along the face: it falls beside the cheek, a few mm off it
+            # (leaving the head at 45 degrees, four of them a side stood out as tufts)
+            d = _unit(dirs(az, el) * 0.22 + np.array([0.0, -0.25 * abs(np.sin(np.radians(az))), -0.5]))
+            ln = rng.uniform(0.06, 0.15)
             P = [p]
             for _ in range(6):
-                d = _unit(d + 0.45 * DOWN)
-                P.append(_clear(sc, (P[-1] + d * ln / 6)[None], 0.005)[0])
+                d = _unit(d + 0.6 * DOWN)
+                P.append(_clear(sc, (P[-1] + d * ln / 6)[None], 0.004)[0])
             locks[f"{pre}s{k}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, P), "free": 1.0,
-                                  "width": round(float(rng.uniform(0.012, 0.022)), 4), "thickness": 0.002,
+                                  "width": round(float(rng.uniform(0.006, 0.014)), 4), "thickness": 0.002,
                                   "taper": 0.8, "belly": 0.3, "root": 0.5, "cup": 0.0,
                                   "strands": {"layers": 2, "flyaway": 0.6, "curl": 0.0}}
         if tl and float(tp.get("band") or 0) > 0:  # the tie: a short stiff ring of locks round the tail's start

@@ -21,11 +21,11 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 4  # bump when the lens group changes
+VERSION = 9  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
-OBJECTS = ("hair_guides", "hair_guides_free", "hair_under", "hair_scalp")
+OBJECTS = ("hair_guides", "hair_guides_free", "hair_under", "hair_scalp", "hair_collide")
 
 
 def essentials() -> dict:
@@ -66,9 +66,14 @@ def lens_group():
     it.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     it.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     for name, typ, dv, lo, hi in (("Amount", "NodeSocketFloat", 1.0, 0.0, 20.0), ("Tips", "NodeSocketFloat", 0.3, 0.0, 0.9),
-                                  ("Roots", "NodeSocketFloat", 0.03, 0.0, 0.5), ("Flyaway", "NodeSocketFloat", 0.05, 0.0, 1.0),
-                                  ("Flyaway Distance", "NodeSocketFloat", 0.012, 0.0, 0.2),
-                                  ("Edge", "NodeSocketFloat", 1.0, 0.2, 3.0), ("Seed", "NodeSocketInt", 0, 0, 10000)):
+                                  ("Roots", "NodeSocketFloat", 0.03, 0.0, 1.0), ("Flyaway", "NodeSocketFloat", 0.05, 0.0, 1.0),
+                                  ("Flyaway Distance", "NodeSocketFloat", 1.0, 0.0, 4.0),
+                                  ("Edge", "NodeSocketFloat", 1.0, 0.2, 3.0),
+                                  ("Clump", "NodeSocketFloat", 0.4, 0.0, 1.0), ("Clump Shape", "NodeSocketFloat", 0.6, 0.0, 1.0),
+                                  ("Tip Spread", "NodeSocketFloat", 0.3, 0.0, 1.0), ("Wave", "NodeSocketFloat", 0.0, 0.0, 0.05),
+                                  ("Wavelength", "NodeSocketFloat", 0.07, 0.005, 1.0), ("Curl", "NodeSocketFloat", 0.0, 0.0, 1.0),
+                                  ("Loose", "NodeSocketFloat", 0.001, 0.0, 0.02),
+                                  ("Seed", "NodeSocketInt", 0, 0, 10000)):
         s = it.new_socket(name, in_out="INPUT", socket_type=typ)
         s.default_value = dv
         s.min_value, s.max_value = lo, hi
@@ -135,31 +140,87 @@ def lens_group():
                               ("hp_root", 0.0, 1.0, 7)):
         geo = store(geo, name, rand(lo, hi, off))
     a = named("hp_a", "FLOAT")
-    # a^Edge keeps strands off the lens's thin rim (Edge > 1) or pushes them to it (< 1)
-    a_s = math("MULTIPLY", math("SIGN", a), math("POWER", math("ABSOLUTE", a), gi.outputs["Edge"]))
-    b_s = math("MULTIPLY", named("hp_b", "FLOAT"), math("SUBTRACT", 1.0, math("MULTIPLY", a_s, a_s)))
-    side, out = named("hp_side", "FLOAT_VECTOR"), named("hp_out", "FLOAT_VECTOR")
-    off = vmath("ADD", vmath("SCALE", side, scale=a_s), vmath("SCALE", out, scale=b_s))
-    # fly-aways: some copies drift off the lock toward the tip, in their own direction round it
     par = N.new("GeometryNodeSplineParameter")
     t = par.outputs["Factor"]
+    slen = N.new("GeometryNodeSplineLength").outputs["Length"]
+    s_m = math("MULTIPLY", t, slen)  # metres along the lock
+    side, out = named("hp_side", "FLOAT_VECTOR"), named("hp_out", "FLOAT_VECTOR")
+    side_n, out_n = vmath("NORMALIZE", side), vmath("NORMALIZE", out)
+    # sub clumps: the lock's width is cut into hp_k pieces; each strand belongs to the piece it starts in and is
+    # drawn toward that piece's own line as it runs out (Clump x t^shape), then lets go again at the very tip
+    K = math("MAXIMUM", named("hp_k", "FLOAT"), 1.0)
+    kf = math("MINIMUM", math("FLOOR", math("MULTIPLY", math("MULTIPLY", math("ADD", a, 1.0), 0.5), K)),
+              math("SUBTRACT", K, 1.0))
+    cid = math("ADD", math("MULTIPLY", named("hp_lock", "INT"), 131.0), kf)
+
+    def crand(lo, hi, seed_off):  # a number per sub clump
+        n = N.new("FunctionNodeRandomValue")
+        n.data_type = "FLOAT"
+        _sock(n, "Min", "VALUE").default_value = lo
+        _sock(n, "Max", "VALUE").default_value = hi
+        L.new(cid, n.inputs["ID"])
+        L.new(math("ADD", gi.outputs["Seed"], float(seed_off)), n.inputs["Seed"])
+        return _sock(n, "Value", "VALUE", out=True)
+
+    ac = math("SUBTRACT", math("MULTIPLY", math("DIVIDE", math("ADD", math("ADD", kf, 0.5), crand(-0.3, 0.3, 11)), K),
+                               2.0), 1.0)
+    # shape 0: gathered from the root (a rope) .. 1: only toward the tip
+    expo = math("ADD", 0.35, math("MULTIPLY", gi.outputs["Clump Shape"], 2.65))
+    open_tip = math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Tip Spread"],
+                                          math("POWER", math("MAXIMUM", math("MULTIPLY", math("SUBTRACT", t, 0.7), 3.3333), 0.0), 2.0)))
+    c = math("MULTIPLY", math("MULTIPLY", gi.outputs["Clump"], math("POWER", t, expo)), open_tip)
+    a_e = math("ADD", a, math("MULTIPLY", math("SUBTRACT", ac, a), c))
+    # a^Edge keeps strands off the lens's thin rim (Edge > 1) or pushes them to it (< 1)
+    a_s = math("MULTIPLY", math("SIGN", a_e), math("POWER", math("ABSOLUTE", a_e), gi.outputs["Edge"]))
+    bb = named("hp_b", "FLOAT")
+    b_e = math("ADD", bb, math("MULTIPLY", math("SUBTRACT", crand(-0.7, 0.7, 12), bb), c))
+    b_s = math("MULTIPLY", b_e, math("SUBTRACT", 1.0, math("MULTIPLY", a_s, a_s)))
+    off = vmath("ADD", vmath("SCALE", side, scale=a_s), vmath("SCALE", out, scale=b_s))
+    # each sub clump swings on its own (the lock's own wave is in the guide): loose hair is clumps out of step
+    env = math("MINIMUM", math("DIVIDE", s_m, 0.03), 1.0)
+    env = math("MULTIPLY", math("MULTIPLY", env, env), math("SUBTRACT", 3.0, math("MULTIPLY", env, 2.0)))
+    ph = math("ADD", math("DIVIDE", math("MULTIPLY", s_m, 6.2832), math("MULTIPLY", gi.outputs["Wavelength"],
+                                                                          crand(0.75, 1.3, 13))), crand(0.0, 6.2832, 14))
+    amp = math("MULTIPLY", math("MULTIPLY", gi.outputs["Wave"], crand(0.3, 1.3, 15)), env)
+    off = vmath("ADD", off, vmath("SCALE", side_n, scale=math("MULTIPLY", amp, math("SINE", ph))))
+    off = vmath("ADD", off, vmath("SCALE", out_n, scale=math("MULTIPLY", math("MULTIPLY", amp, gi.outputs["Curl"]),
+                                                               math("COSINE", ph))))
+    # single strands wander a little off their clump, slowly along the strand (not frizz: a different line)
+    wr = named("hp_fa", "FLOAT")
+    wph = math("ADD", math("DIVIDE", math("MULTIPLY", s_m, 6.2832), math("MULTIPLY", gi.outputs["Wavelength"], 0.61)),
+               math("MULTIPLY", wr, 7.0))
+    wam = math("MULTIPLY", math("MULTIPLY", gi.outputs["Loose"], env), math("ADD", 0.3, t))
+    off = vmath("ADD", off, vmath("SCALE", side_n, scale=math("MULTIPLY", wam, math("SINE", wph))))
+    off = vmath("ADD", off, vmath("SCALE", out_n, scale=math("MULTIPLY", wam, math("MULTIPLY", 0.6, math("COSINE", math("MULTIPLY", wph, 1.31))))))
+    # fly-aways: some copies let go of the lock part way along and drift off it, bending as they go
     fly = math("LESS_THAN", named("hp_f", "FLOAT"), gi.outputs["Flyaway"])
     fa = named("hp_fa", "FLOAT")
-    fdir = vmath("ADD", vmath("SCALE", vmath("NORMALIZE", side), scale=math("COSINE", fa)),
-                 vmath("SCALE", vmath("NORMALIZE", out), scale=math("ABSOLUTE", math("SINE", fa))))
-    famt = math("MULTIPLY", math("MULTIPLY", fly, gi.outputs["Flyaway Distance"]), math("POWER", t, 1.6))
+    t0 = math("MULTIPLY", named("hp_root", "FLOAT"), 0.6)  # where it lets go
+    ft = math("MAXIMUM", math("DIVIDE", math("SUBTRACT", t, t0), math("SUBTRACT", 1.0, t0)), 0.0)
+    fang = math("ADD", fa, math("MULTIPLY", ft, 2.2))
+    fdir = vmath("ADD", vmath("SCALE", side_n, scale=math("COSINE", fang)),
+                 vmath("SCALE", out_n, scale=math("ADD", 0.25, math("ABSOLUTE", math("SINE", fang)))))
+    famt = math("MULTIPLY", math("MULTIPLY", math("MULTIPLY", fly, math("MULTIPLY", gi.outputs["Flyaway Distance"],
+                                                                         named("hp_fd", "FLOAT"))),
+                                 math("ADD", 0.3, named("hp_rand", "FLOAT"))), math("POWER", ft, 1.7))
     off = vmath("ADD", off, vmath("SCALE", fdir, scale=famt))
+    geo = store(geo, "hp_sub", kf)
+    geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
     sp = N.new("GeometryNodeSetPosition")
     L.new(geo, sp.inputs["Geometry"])
     L.new(off, sp.inputs["Offset"])
-    # lengths: every strand ends (and starts) somewhere of its own, so tips thin out and roots don't line up
+    # lengths: every strand ends (and starts) somewhere of its own, so tips thin out and roots don't line up;
+    # sub clumps differ in length too (the ragged end of a tail)
     trim = N.new("GeometryNodeTrimCurve")
     trim.mode = "FACTOR"
     L.new(sp.outputs["Geometry"], trim.inputs["Curve"])
     ln = named("hp_len", "FLOAT")
-    L.new(math("MULTIPLY", named("hp_root", "FLOAT"), gi.outputs["Roots"]), _sock(trim, "Start", "VALUE"))
-    L.new(math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", ln, ln), gi.outputs["Tips"])),
-          _sock(trim, "End", "VALUE"))
+    cl = crand(0.0, 1.0, 16)
+    L.new(math("MINIMUM", math("MULTIPLY", math("MULTIPLY", named("hp_root", "FLOAT"), gi.outputs["Roots"]),
+                               named("hp_rs", "FLOAT")), 0.6), _sock(trim, "Start", "VALUE"))
+    short = math("ADD", math("MULTIPLY", math("MULTIPLY", ln, ln), 0.6), math("MULTIPLY", math("MULTIPLY", cl, cl), 0.4))
+    L.new(math("MAXIMUM", math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", short, gi.outputs["Tips"]),
+                                                      named("hp_ts", "FLOAT"))), 0.08), _sock(trim, "End", "VALUE"))
     L.new(trim.outputs["Curve"], go.inputs["Geometry"])
     return ng
 
@@ -228,7 +289,7 @@ def _drop(name):
         (bpy.data.meshes if isinstance(data, bpy.types.Mesh) else bpy.data.hair_curves).remove(data)
 
 
-def scalp_object(path: str):
+def scalp_object(path: str, tint=(0.02, 0.012, 0.008), amount: float = 0.85):
     z = np.load(path)
     V, F = z["verts"], z["faces"]
     me = bpy.data.meshes.new("hair_scalp")
@@ -250,8 +311,28 @@ def scalp_object(path: str):
     me.shade_smooth()
     ob = bpy.data.objects.new("hair_scalp", me)
     ob["hp_hair_scalp"] = 1
-    ob.hide_render = True
     ob.display_type = "WIRE"
+    # the scalp under hair is in the hair's shadow and full of roots: tinted with the hair's dark colour by the
+    # density (what a groomer paints on the skin, and what the game hair's cap texture is)
+    m = bpy.data.materials.get("hp_scalp_tint") or bpy.data.materials.new("hp_scalp_tint")
+    m.use_nodes = True
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    b.inputs["Base Color"].default_value = (*tint, 1.0)
+    b.inputs["Roughness"].default_value = 0.7
+    b.inputs["Specular IOR Level"].default_value = 0.1
+    at = nt.nodes.get("hp_density") or nt.nodes.new("ShaderNodeAttribute")
+    at.name = at.attribute_name = "hp_density"
+    mu = nt.nodes.get("hp_mul") or nt.nodes.new("ShaderNodeMath")
+    mu.name, mu.operation = "hp_mul", "MULTIPLY"
+    mu.inputs[1].default_value = float(amount)
+    nt.links.new(at.outputs["Fac"], mu.inputs[0])
+    nt.links.new(mu.outputs[0], b.inputs["Alpha"])
+    m.surface_render_method = "DITHERED"
+    me.materials.append(m)
+    ob.visible_shadow = False
+    if amount <= 0:
+        ob.hide_render = True
     _coll().objects.link(ob)
     return ob
 
@@ -269,15 +350,18 @@ def curves_object(name: str, path: str, scalp, mat):
     cu.attributes["position"].data.foreach_set("vector", P.ravel())
     for k, dt, dom, field in (("side", "FLOAT_VECTOR", "POINT", "vector"), ("out", "FLOAT_VECTOR", "POINT", "vector"),
                               ("n", "INT", "CURVE", "value"), ("lock", "INT", "CURVE", "value"),
+                              ("k", "INT", "CURVE", "value"), ("fd", "FLOAT", "CURVE", "value"),
+                              ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("tile", "INT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
-            at.data.foreach_set(field, z[k].astype(np.float32 if dt == "FLOAT_VECTOR" else np.int32).ravel())
+            at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
     if "uv" in z.files:
         at = cu.attributes.new("surface_uv_coordinate", "FLOAT2", "CURVE")
         at.data.foreach_set("vector", z["uv"].astype(np.float32).ravel())
-    cu.surface = scalp
-    cu.surface_uv_map = "UVMap"
+    if scalp is not None:
+        cu.surface = scalp
+        cu.surface_uv_map = "UVMap"
     cu.materials.append(mat)
     ob = bpy.data.objects.new(name, cu)
     ob["hp_strands"] = 1
@@ -334,8 +418,23 @@ def material(look: dict):
     hsv = N.new("ShaderNodeHueSaturation")
     mr = N.new("ShaderNodeMapRange")
     vary = float(look.get("vary", 0.25))
-    mr.inputs["To Min"].default_value, mr.inputs["To Max"].default_value = 1 - 0.6 * vary, 1 + 0.6 * vary
-    L.new(info.outputs["Random"], mr.inputs["Value"])
+    mr.inputs["To Min"].default_value, mr.inputs["To Max"].default_value = 1 - 1.0 * vary, 1 + 1.4 * vary
+    # a value per strand and, stronger, per sub clump (hp_cv): hair reads as streaks of lighter and darker locks
+    cv = N.new("ShaderNodeAttribute")
+    cv.attribute_name = "hp_cv"
+    mixv = N.new("ShaderNodeMath")
+    mixv.operation = "ADD"
+    half = N.new("ShaderNodeMath")
+    half.operation = "MULTIPLY"
+    half.inputs[1].default_value = 0.35
+    L.new(info.outputs["Random"], half.inputs[0])
+    half2 = N.new("ShaderNodeMath")
+    half2.operation = "MULTIPLY"
+    half2.inputs[1].default_value = 0.65
+    L.new(cv.outputs["Fac"], half2.inputs[0])
+    L.new(half.outputs[0], mixv.inputs[0])
+    L.new(half2.outputs[0], mixv.inputs[1])
+    L.new(mixv.outputs[0], mr.inputs["Value"])
     L.new(mr.outputs[0], hsv.inputs["Value"])
     L.new(ramp.outputs["Color"], hsv.inputs["Color"])
     col = hsv.outputs["Color"]
@@ -388,15 +487,28 @@ def material(look: dict):
 
 
 def clear():
-    for n in OBJECTS + ("hair_band",):
+    for n in [o.name for o in strand_objects()] + list(OBJECTS) + ["hair_band"]:
         _drop(n)
 
 
 def show(sd: dict):
     """Apply a strands job (hair_strands.job): the scalp, the guide objects with their stacks."""
     clear()
-    mat = material(sd["look"])
-    scalp = scalp_object(sd["scalp"])
+    mat = material(sd.get("look") or {})
+    lk = sd.get("look") or {}
+    scalp = None if not sd.get("scalp") else scalp_object(sd["scalp"], [0.5 * a + 0.5 * b for a, b in zip(_lin(lk.get("gap", "#221310")),
+                                                                         _lin(lk.get("lit", "#56352d")))],
+                         float(lk.get("scalp_tint", 0.85)))
+    if sd.get("collide"):
+        z = np.load(sd["collide"])
+        me = bpy.data.meshes.new("hair_collide")
+        me.from_pydata([tuple(map(float, v)) for v in z["verts"]], [], [tuple(map(int, f)) for f in z["faces"]])
+        me.update()
+        co = bpy.data.objects.new("hair_collide", me)
+        co["hp_hair_scalp"] = 2
+        co.hide_render = True
+        co.display_type = "BOUNDS"
+        _coll().objects.link(co)
     made = []
     for grp in sd["groups"]:
         ob = curves_object(grp["name"], grp["guides"], scalp, mat)
@@ -429,15 +541,16 @@ def show(sd: dict):
     return made
 
 
+def strand_objects() -> list:
+    return sorted((o for o in bpy.data.objects if o.get("hp_strands")), key=lambda o: o.name)
+
+
 def stats() -> dict:
     dg = bpy.context.evaluated_depsgraph_get()
     out = {}
-    for n in OBJECTS[:3]:
-        ob = bpy.data.objects.get(n)
-        if ob is None:
-            continue
+    for ob in strand_objects():
         d = ob.evaluated_get(dg).data
-        out[n] = {"guides": len(ob.data.curves), "strands": len(d.curves), "points": len(d.points)}
+        out[ob.name] = {"guides": len(ob.data.curves), "strands": len(d.curves), "points": len(d.points)}
     return out
 
 
@@ -445,47 +558,100 @@ def points(names: list | None = None, every: int = 3):
     """Evaluated strand points (world, every n-th), and which object each belongs to."""
     dg = bpy.context.evaluated_depsgraph_get()
     out = []
-    for n in OBJECTS[:3]:
-        ob = bpy.data.objects.get(n)
-        if ob is None:
-            continue
+    for ob in strand_objects():
         d = ob.evaluated_get(dg).data
         a = np.empty(len(d.points) * 3, np.float32)
         d.attributes["position"].data.foreach_get("vector", a)
         a = a.reshape(-1, 3)[::every]
         out.append(a)
         if names is not None:
-            names += [n] * len(a)
+            names += [ob.name] * len(a)
     return np.concatenate(out) if out else np.zeros((0, 3), np.float32)
 
 
-def dump(path: str, every: int = 1):
-    """Every evaluated strand (points, counts per curve, lock index, object) to an npz: the cards and the atlas bake
-    are made from these."""
+def dump(path: str):
+    """Every evaluated strand to an npz: pts, counts (points per strand), and per strand lock (the guide's lock
+    index), sub (its sub clump), rand, radius (at its root), obj (index into names). The cards, the atlas and the
+    cap texture are made from these."""
     dg = bpy.context.evaluated_depsgraph_get()
-    P, C, K, O, R = [], [], [], [], []
-    for oi, n in enumerate(OBJECTS[:3]):
-        ob = bpy.data.objects.get(n)
-        if ob is None:
-            continue
+    cols = {k: [] for k in ("pts", "counts", "lock", "sub", "rand", "radius", "obj")}
+    names = []
+    for oi, ob in enumerate(strand_objects()):
+        names.append(ob.name)
         d = ob.evaluated_get(dg).data
         a = np.empty(len(d.points) * 3, np.float32)
         d.attributes["position"].data.foreach_get("vector", a)
         cnt = np.empty(len(d.curves), np.int32)
         d.curves.foreach_get("points_length", cnt)
-        lk = np.zeros(len(d.curves), np.int32)
-        if "hp_lock" in d.attributes and d.attributes["hp_lock"].domain == "CURVE":
-            d.attributes["hp_lock"].data.foreach_get("value", lk)
-        rd = np.zeros(len(d.curves), np.float32)
-        if "hp_rand" in d.attributes and d.attributes["hp_rand"].domain == "CURVE":
-            d.attributes["hp_rand"].data.foreach_get("value", rd)
+
+        def curve_attr(name, dtype):
+            v = np.zeros(len(d.curves), dtype)
+            at = d.attributes.get(name)
+            if at is not None and at.domain == "CURVE":
+                at.data.foreach_get("value", v)
+            return v
+        rad = np.zeros(len(d.points), np.float32)
+        at = d.attributes.get("radius")
+        if at is not None and at.domain == "POINT":
+            at.data.foreach_get("value", rad)
+        first = np.r_[0, np.cumsum(cnt)[:-1]]
+        cols["pts"].append(a.reshape(-1, 3))
+        cols["counts"].append(cnt)
+        cols["lock"].append(curve_attr("hp_lock", np.int32))
+        cols["sub"].append(curve_attr("hp_sub", np.float32))
+        cols["rand"].append(curve_attr("hp_rand", np.float32) if "hp_rand" in d.attributes
+                            else np.random.default_rng(oi).uniform(0, 1, len(cnt)).astype(np.float32))
+        cols["radius"].append(rad[first] if len(cnt) else rad[:0])
+        cols["obj"].append(np.full(len(cnt), oi, np.int32))
+    np.savez(path, names=np.asarray(names), **{k: np.concatenate(v) for k, v in cols.items()})
+
+
+def export_groom(abc: str | None, usd: str | None) -> dict:
+    """The evaluated strands as ONE Hair Curves object "groom" written to Alembic (curves + widths, centimetres: what
+    Unreal's groom importer needs at the least) and USD (BasisCurves + widths + the groom_* attributes as primvars:
+    Blender's Alembic writer drops per-curve attributes, its USD writer keeps them)."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    P, C, G, R, I = [], [], [], [], []
+    for gi_, ob in enumerate(strand_objects()):
+        d = ob.evaluated_get(dg).data
+        a = np.empty(len(d.points) * 3, np.float32)
+        d.attributes["position"].data.foreach_get("vector", a)
+        cnt = np.empty(len(d.curves), np.int32)
+        d.curves.foreach_get("points_length", cnt)
+        rad = np.full(len(d.points), 0.00008, np.float32)
+        at = d.attributes.get("radius")
+        if at is not None and at.domain == "POINT":
+            at.data.foreach_get("value", rad)
         P.append(a.reshape(-1, 3))
         C.append(cnt)
-        K.append(lk)
-        R.append(rd)
-        O.append(np.full(len(cnt), oi, np.int32))
-    np.savez(path, pts=np.concatenate(P), counts=np.concatenate(C), lock=np.concatenate(K), obj=np.concatenate(O),
-             rand=np.concatenate(R))
+        R.append(rad)
+        G.append(np.full(len(cnt), gi_, np.int32))
+    P, C, R, G = np.concatenate(P), np.concatenate(C), np.concatenate(R), np.concatenate(G)
+    cu = bpy.data.hair_curves.new("groom")
+    cu.add_curves([int(c) for c in C])
+    cu.attributes["position"].data.foreach_set("vector", P.ravel())
+    (cu.attributes.get("radius") or cu.attributes.new("radius", "FLOAT", "POINT")).data.foreach_set("value", R)
+    n = len(C)
+    cu.attributes.new("groom_group_id", "INT", "CURVE").data.foreach_set("value", G)
+    cu.attributes.new("groom_id", "INT", "CURVE").data.foreach_set("value", np.arange(n, dtype=np.int32))
+    cu.attributes.new("groom_guide", "INT", "CURVE").data.foreach_set("value", (np.arange(n) % 40 == 0).astype(np.int32))
+    cu.attributes.new("groom_width", "FLOAT", "POINT").data.foreach_set("value", (R * 2 * 100).astype(np.float32))
+    ob = bpy.data.objects.new("groom", cu)
+    ob["groom_version_major"], ob["groom_version_minor"] = 1, 5
+    ob["groom_tool"] = "hifipushie"
+    bpy.context.scene.collection.objects.link(ob)
+    for o in bpy.context.view_layer.objects:
+        o.select_set(o is ob)
+    bpy.context.view_layer.objects.active = ob
+    out = {"strands": int(n), "points": int(len(P))}
+    if abc:
+        bpy.ops.wm.alembic_export(filepath=abc, selected=True, global_scale=100.0, export_custom_properties=True)
+        out["abc"] = os.path.getsize(abc)
+    if usd:
+        bpy.ops.wm.usd_export(filepath=usd, selected_objects_only=True)
+        out["usd"] = os.path.getsize(usd)
+    bpy.data.objects.remove(ob)
+    return out
 
 
 def _emit(name, rgb):
@@ -504,11 +670,9 @@ def id_pass():
     """Strands green, the scalp inside the hairline red (it is shown for this pass: red pixels = scalp seen through
     the hair), all else black."""
     g, r = _emit("hp_id_lock", (0, 1, 0)), _emit("hp_id_mass", (1, 0, 0))
-    for n in OBJECTS[:3]:
-        ob = bpy.data.objects.get(n)
-        if ob is not None:
-            ob.data.materials.clear()
-            ob.data.materials.append(g)
+    for ob in strand_objects():
+        ob.data.materials.clear()
+        ob.data.materials.append(g)
     sc = bpy.data.objects.get("hair_scalp")
     if sc is not None:
         sc.hide_render = False
@@ -537,10 +701,8 @@ def read() -> dict:
     """What a person changed: guide curves whose points moved from the stamp the sync wrote (their new points), added
     and deleted curves, and modifier numbers that moved. {object: {"moved": {index: pts}, "names", "stack": {...}}}."""
     out = {}
-    for n in OBJECTS[:3]:
-        ob = bpy.data.objects.get(n)
-        if ob is None or not ob.get("hp_strands"):
-            continue
+    for ob in strand_objects():
+        n = ob.name
         cu = ob.data
         cnt = np.empty(len(cu.curves), np.int32)
         cu.curves.foreach_get("points_length", cnt)
