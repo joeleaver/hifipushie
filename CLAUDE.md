@@ -1092,12 +1092,40 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       direction (NaN) and were dropped, so nothing sewed the seam (the "drafting" agent's jacket CB stood open).
       `cloth_zozo.part_stitches`: each such end steps 1 mm back into its own cloth (layers part along the normal),
       held/made ends stay; job `stitch_gap` (0 = drop as before).
-    - STATE when the usage limit stopped clothsim (2026-10-05): `over` / `support` / `layer_gap` are in the design
-      sheet, validation and stages 3 / 5 (untested beyond the cloth tests). The shirt regression run after the merge
-      of drafting's placement + parted stitches (scratch log fl_17) was NOT judged: its settle finished (1135 s on a
-      loaded machine, was 263 s), the fine settle reported "start stretch up to 120%" and was waiting for the heavy
-      slot. Next: judge that run against fl_16's numbers, then `ly_01` (Jaeger over Simon; ZOZO at
-      $HIFIPUSHIE_ZOZO=/mnt/data/hifipushie/assets/zozo/release), then the joint settle and the lapel facing.
+    - Jacket rounds (2026-10-06, renders ly_01-ly_03, models `workspace/ly_jkt` (Jaeger alone) / `ly_suit`):
+      ly_01 (Jaeger over Simon) was a puffer with a ruff. Causes, each separated on the jacket alone first:
+      (1) `padded_body` spread every fold's crest three rings round (pad 29 mm at the median, to 71, over a shirt
+      8-16 mm off the body: "biceps" 534 vs 340). Now one ring, and the under garment is `pressed` first (its loose
+      cloth to `UNDER_CAP` 8 mm off the body along the body's normals, made pieces as they are, eased 3 cm round
+      them; garment key `under_cap`): that pressed surface is the pad, the sim's collider, what the tells read and
+      what renders show under the jacket (`res["under_V"]`).
+      (2) The neck wrap is a ring round the neck: a tailored collar's stand (291 mm, sewn to a neckline that lies on
+      the shoulders and runs down to the gorge) stood under the skull; tilted it went through the shoulders. Wrap
+      `"to": "seam"` (`cloth._on_seam`): the piece's sewn edge laid on the edge it is sewn to (the seam's own vertex
+      pairs), at the PATTERN's lengths, marched from the middle along the body's surface (the placed neckline is
+      not one curve: fronts and backs start apart, 778 mm for 291; past a gap it heads for the edge's end), the piece
+      running up the surface from there; `turn` {at, deg, gap} lays a fall over in the wrap (its fold `in_wrap`).
+      Pieces are placed in listed order: what it is sewn to must come first.
+      (3) `sizing` read -116 mm at the chest: the body's chest line is 10 cm above Jaeger's side panel's top, so the
+      panel wasn't measured; the chest is now taken just under a panel that starts under the arm.
+      Jaeger alone, 2 cm ZOZO settle: reads as a jacket, 0 sim crossings (4 from the clean-up at the vent), strain
+      0.8%, sleeves to the wrists, lapels 164 deg; the collar is a lumpy roll (its fall starts 1.25x stretched: in
+      FreeSewing's draft the collar's outer edge is SHORTER than its neck edge, both bow toward the fall; the author's
+      own comment says the collar wants a redesign), fronts spread below the buttons (no facing), surface crinkly.
+    - Seams (the user: "stitches super visible"): ZOZO leaves seams a few mm open (Jaeger mean 4.3 / p95 17.8 mm at
+      stitch stiffness 1; drafting measured 30 closes them at 6x the time). `cleanup` welds sewn vertices as GROUPS
+      (a vertex in two seams kept only its last pair), weighted toward interfaced vertices, and again after the push
+      off the body. Gaps over 1.5 h stay: a seam the solver didn't close should fail, not be hidden.
+    - Closures (`closures.py`, design-table / garment key `closures`; the user on the shirt: "doesn't have a placket
+      or buttons"; schema agreed with drafting): {name, kind buttons | zip | hooks | tie, over, under (same piece for
+      a cuff / waistband), holes / buttons mark prefixes or `at` pairs, edge {over, under}, band, size, lift, state
+      closed | open | {open_above}}. `expand` -> the stitches (one per closed fastening), a vertex row on each
+      band's inner line (a fold entry at 180 deg, `in_wrap`), zips' seams; `M["closures"]` = vertex pairs;
+      after the sim `measure` (`res["closures"]`, the report, stage 5: fastenings closed, sides <= 6 mm apart, none
+      lost in the mesh), `relief` (bands `lift` 0.8 mm proud) and `buttons_mesh` (`res["buttons"]`: discs with a rim
+      on the over layer; in `look`). Stage 3 lists them and fails a chosen front_closure / cuff / fly with no entry.
+      Simon's front and cuffs are entries now (its table's bare stitches are gone). Not done: buttons in the export
+      and the scene, drafting's zip-in-a-seam / fly / waistband extension, `cloth_workflow.openings` reading state.
     - Open: the yoke ridge behind the collar; the upper sleeve's folds still read busy; Carlton pinned to
       `method: "simulate"` (upper-back pleat bunches, tail knife pleat is a seam gap, cap split +7.5 / -5.0%, stand
       +4%, collar +4.5%).
