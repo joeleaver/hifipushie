@@ -1432,6 +1432,12 @@ def unfold(D: dict) -> dict:
                 lap = 0.004 + 0.012 * any(f.get("piece") == nm for f in D["folds"]) + \
                     0.004 * any((p_.get("wrap") or {}).get("lies_on") == nm for p_ in halves.values())
                 L["wrap"]["out"] = max(float(L["wrap"].get("out", 0)), lap)
+            if D["centre"].get(nm) == "seam" and L["wrap"].get("to", "torso") == "torso":
+                # the two halves of a centre seam start 2 mm apart: edge on edge, a contact solver drops the seam's
+                # zero-length stitches (ZOZO: the jacket's centre back stayed open from the neck down)
+                for c_, sg_ in ((L, 1.0), (R, -1.0)):
+                    sh_ = c_["wrap"].get("shift", [0.0, 0.0])
+                    c_["wrap"]["shift"] = [round(float(sh_[0]) + sg_ * 0.001, 5), float(sh_[1])]
             for S, c in (("L", L), ("R", R)):
                 c["wrap"]["half"] = 1 if S == "L" else -1  # which side of x = 0 (its centre line) the piece is on
                 if "lies_on" in c["wrap"]:
