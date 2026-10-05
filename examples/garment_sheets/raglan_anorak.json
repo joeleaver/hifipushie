@@ -11,5 +11,5 @@
   "details": {"collar": "hood", "cuff": "hemmed", "front_closure": "pullover", "hem": "straight_double",
               "pockets": "kangaroo"}
  },
- "spec": {"quality": "draft", "color": "#9a5a2a"}
+ "spec": {"quality": "draft", "color": "#9a5a2a", "backend": "zozo"}
 }

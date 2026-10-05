@@ -19,5 +19,5 @@
   "details": {"collar": "none", "front_closure": "wrap_tie", "skirt_closure": "none", "darts": "none",
               "hem": "blind", "cuff": "hemmed"}
  },
- "spec": {"quality": "draft", "color": "#b8a27a"}
+ "spec": {"quality": "draft", "color": "#b8a27a", "backend": "zozo"}
 }

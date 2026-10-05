@@ -228,7 +228,7 @@ def op_cut_away(D: dict, piece: str, keep: str, name: str | None = None, **o) ->
     """Cut `piece` along a line ("from", "to", "via" as style_line) and keep the side holding the point `keep`."""
     name = name or f"cut{pd._counter(D)}"
     centre = D["centre"].get(piece)
-    pd.op_style_line(D, piece, name=name, names=[f"{piece}__a", f"{piece}__b"], **{k: v for k, v in o.items()
+    pd.op_style_line(D, piece, name=name, names=[f"{piece}__a", f"{piece}__b"], apart=False, **{k: v for k, v in o.items()
                                                                                if k in ("from", "to", "via", "curve")})
     a, b = D["pieces"][f"{piece}__a"], D["pieces"][f"{piece}__b"]
     kp, drop = (a, b) if keep in a["names"] else (b, a)
