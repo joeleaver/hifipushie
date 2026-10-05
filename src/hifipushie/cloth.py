@@ -3966,6 +3966,12 @@ def validate(spec: dict) -> None:
                 raise ClothError(f"{where}: support {e!r}: a kind name or {{\"kind\", ...}} of {', '.join(SUPPORTS)}")
             if isinstance(e, dict) and set(e) - {"kind"} - set(SUPPORTS[kd]):
                 raise ClothError(f"{where}: support {kd} takes {', '.join(SUPPORTS[kd])}")
+        if g.get("closures") is not None:
+            from . import closures as closuremod
+            try:
+                closuremod.validate(g["closures"], f"{where} closures")
+            except closuremod.ClosureError as e:
+                raise ClothError(str(e))
         if "layer_gap" in g and not (isinstance(g["layer_gap"], (int, float)) and 0 <= g["layer_gap"] <= 0.03):
             raise ClothError(f"{where}: layer_gap is the air between the layers at the start in m (0..0.03)")
         if g.get("quality", "final") not in ("draft", "final"):
