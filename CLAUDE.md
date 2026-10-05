@@ -297,8 +297,42 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   rig tool's text (`rig.report`: `twist_check` per chain, `head_check`) and `pose={"RightHand": ["roll", 105]}`.
   Known: twist bones fix roll, not bend (shoulder dip, elbow crease stay); a 33 deg head turn folds the throat
   under the jaw over the 3 cm band. `tests/test_rig_twist.py`.
-  Weights audit, WIP (2026-10-05, stopped at the usage limit): `rig_audit.py` (`read_glb`, `audit`, `audit_text`) works and on the exported human finds 17 BAD joints (digit bleed up to 0.57, pinky / toes not following their bones, thigh on thigh); not yet in the `rig` tool or tests.
-  `rig_template.py` (MakeHuman's hand-made weights onto Mixamo joints, `from_surface` transfer) + `base.surface["src"]` + `makehuman.weights()` are written but NOT wired into `rig.skin_parts` and never run; the rig tool's 160-resolution look (fused fingers at rest) is not fixed; no wa_* renders; no audit card yet.
+  Weights audit + template weights (2026-10-05/06; the user on the twist sheets: "the fingers are getting mangled and
+  so is the jaw. We might have serious issues with how our skin weights are getting made"; renders `rig_renders/wa_*`).
+  Three things were tangled: (1) the rig tool's look build (11 mm voxels on a human: fingers fused AT REST; the real
+  export's hand is fine at rest); (2) the weights: by distance, one finger's bones held 0.2 of the next finger and
+  moved it 4-8 mm, a thigh moved the other thigh 20 mm; (3) the RIG: on MakeHuman bodies the "neck" joint is the
+  neck's BASE, so Head (placed on it) pivoted 10 cm low, at chin height, and Neck sat inside the chest.
+  - `rig_audit.py`: `read_glb` (an export as an engine gets it), `audit` (each joint turned alone through
+    `AUDIT_TURN`: rigid = its own skin against a rigid turn, leak = other bones' skin moved and whose, flipped
+    triangles, volume on closed meshes; digit bleed; L/R asymmetry; sums, influences) and `audit_text` ("<- BAD").
+    Ownership is by nearest bone segment, so it only judges CLEAR skin (`CLEAR` 0.7: the web between two fingers and
+    the knuckle zone are nobody's; `BURIED` bones, clavicle and thumb metacarpal, are judged on their descendants):
+    without that it called MakeHuman's own hand-made weights bad (bleed "0.94") while every pose was clean.
+  - `rig_template.py`: a base body made from MakeHuman takes MakeHuman's hand-made weights (`makehuman.weights()`,
+    rigs/default_weights.mhw, CC0) by TOPOLOGY (`base.surface()["src"]` = each quad vertex's template index, kept
+    through the neck graft), its 139 bones folded onto the Mixamo joints (`_mixamo`; spine / neck bones by where
+    they lie, `_central`; face, jaw, tongue, eye bones -> Head). Every other mesh (the export's low poly, clothes)
+    reads the base's weights at the closest point of its SURFACE that faces the same way (`from_surface`,
+    `AGAINST`): the 4 nearest base VERTICES of a finger's side were as often the next finger's. Then
+    `_spread_twist`, then the rigid head. `spec.rig.weights = "distance"` for ours; the stylised template and kit
+    characters have no hand-made weights and stay on distance (now also read by surface).
+  - `rig.humanoid`: a template's `rig` hint ({rig joint: [joint a, joint b, t]}; `makehuman.body`) places Neck on
+    the "neck" joint and Head 63% of the way to "head" (MakeHuman's own head bone); clavicles stay where they were.
+    This MOVES Neck and Head on MakeHuman characters (names / order unchanged): re-export, and a game's cached rest
+    pose changes.
+  - Exported human (15k), same mesh re-skinned: BAD joints 13 -> 5 of 51; digit bleed 0.21 -> none; fingers'
+    leak 4-8 mm -> 0; thigh on thigh 20 mm -> 0; knee rigid 5 mm -> 0. Left BAD are MakeHuman's own choices at our
+    thresholds (elbow at 90 deg moves upper-arm skin 8.6 mm, the foot's weight runs 25 cm up the shin) and 35
+    flipped triangles in one groin at 60 deg.
+  - The mouth and jaw that looked "mangled": at REST the 15k export's mouth is already faceted and lumpy, and
+    jawOpen alone (no weights) is lopsided: the low poly and the face shape, not the skin. Not fixed here.
+  - Bone heat (Blender automatic weights) vs ours on kit characters (look builds): goblin 13 vs 17 BAD of 45 (rigid
+    better, leak worse: 30 vs 13 mm arm <-> thigh), troll_anat 40 vs 38 of 51. Neither is good: their limbs are
+    fused to the body in the look build. Not adopted; kit creatures' weights are an open problem.
+  - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
+    `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
+    `tests/test_rig_audit.py`.
 - `retopo.py`: character topology by template wrap (from `spikes/topology/wrap.py`): the CC0 template
   (`templates/male_stylized*`) carried onto a humanoid by its skeleton (`_skeleton_warp`), face landmarks by RBF, then
   patches cut at closed template loops and generated from the model *before* the fit and held fixed (the template flows
