@@ -59,11 +59,12 @@ def wind_nodes(tree: dict) -> dict:
             "phase": np.where(order > 0, vegetation._u(tree["key"][limb], 55), 0.0)}
 
 
-def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.0, protect=None, cap: float = 2.5) -> dict:
+def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.0, protect=None, cap: float = 2.5,
+                 back: float = 0.0) -> dict:
     """Every twig's card placed on the tree, as one mesh: V, F, uv, tint, node (the tree node it stands on), flutter
     (0 at the card's foot .. 1 at its tip), N (normals bent out from the crown's middle: a crown shades as a volume).
     keep < 1: see pick_twigs."""
-    tw = pick_twigs(tree, keep, min_radius, protect, cap=cap)[0]
+    tw = pick_twigs(tree, keep, min_radius, protect, cap=cap, back=back)[0]
     if not len(tw["pos"]):
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0),
                 "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3))}
@@ -121,8 +122,23 @@ def kept_wood(tree: dict, min_radius: float, protect=None) -> np.ndarray:
     return ok
 
 
+def cluster_leaves(leaves: dict, keep: float) -> tuple[dict, float, float]:
+    """When a budget draws under a quarter of the twigs, each card must show a BOUGH, not a twig blown up: the leaves
+    spec with the card's twig K x longer, with more side shoots and K^2 x the leaves (the leaves keep their size).
+    Returns (leaves spec, cap: how much a kept card may still be enlarged, back: metres to seat the longer card back
+    along its shoot so the crown doesn't grow). Twig cards scaled 2.5x left a 20k oak a few clumps of giant leaves."""
+    if keep >= 0.25:
+        return leaves, 2.5, 0.0
+    K = float(np.clip(0.75 / np.sqrt(max(keep, 1e-4)), 1.3, 3.0))
+    tw = {**veg_leaf.TWIG, **veg_leaf.card_spec(leaves)["twig"]}
+    card = dict(leaves.get("card") or {})
+    card["twig"] = {**(card.get("twig") or {}), "length": round(tw["length"] * K, 3),
+                    "leaves": int(tw["leaves"] * min(K * K, 5.0)), "side_shoots": int(round(max(tw["side_shoots"], 3) * min(K, 2.0)))}
+    return {**leaves, "card": card}, 1.25, 0.45 * (K - 1) * tw["length"]
+
+
 def pick_twigs(tree: dict, keep: float, min_radius: float = 0.0, protect=None, tw: dict | None = None,
-               cap: float = 2.5) -> tuple[dict, float]:
+               cap: float = 2.5, back: float = 0.0) -> tuple[dict, float]:
     """The twigs a budget draws: `keep` of them, each larger by 1 / sqrt(keep). Those standing on drawn wood (or within
     a card's reach of it along the branch) go first: cards chosen by their hash alone were left floating round bare
     spars. Returns (twigs, the share of the kept ones farther than that from drawn wood)."""
@@ -140,11 +156,41 @@ def pick_twigs(tree: dict, keep: float, min_radius: float = 0.0, protect=None, t
     lf = tree["spec"]["leaves"]
     reach = 0.6 * float((lf.get("card") or {}).get("twig", {}).get("length", (lf.get("twig") or {}).get("length", 0.3))) * grow
     far = d[tw["node"]] > reach
-    rank = np.argsort(np.argsort(far.astype(float) + 0.999 * vegetation._u(tw["key"], 91)))
+    if back:  # bough cards: spread over the crown first (one per cell of about a card's size, then a second each...)
+        cell = np.floor(tw["pos"] / max(2.2 * back + 0.3, 0.3)).astype(np.int64)
+        cid = np.unique(cell, axis=0, return_inverse=True)[1].ravel()
+        h_ = vegetation._u(tw["key"], 91)
+        order_ = np.lexsort((h_, cid))
+        within = np.empty(n, np.int64)
+        start = np.r_[0, np.flatnonzero(np.diff(cid[order_])) + 1]
+        within[order_] = np.arange(n) - np.repeat(start, np.diff(np.r_[start, n]))
+        rank = np.argsort(np.argsort(within + 0.999 * h_))
+        far = far & False
+    else:
+        rank = np.argsort(np.argsort(far.astype(float) + 0.999 * vegetation._u(tw["key"], 91)))
     sel = rank < int(np.floor(n * keep + 1e-9))  # (exactly that many: a threshold on the hash overshot budgets)
     out = {k: v[sel] for k, v in tw.items()}
     out["scale"] = out["scale"] * grow
+    if back:
+        out["pos"] = out["pos"] - out["frame"][:, :, 1] * (back * out["scale"])[:, None]
     return out, float(far[sel].mean()) if sel.any() else 0.0
+
+
+def _wood_for(tree, tile, wood_budget, pr):
+    """The wood within a triangle count: {"wood", "sides", "simplify", "min_radius"}."""
+    out = {"sides": (3, 7), "simplify": 0.5}
+    kw = dict(tile=tile, sides=(3, 7), simplify=0.5, protect=pr)
+    radii = np.unique(tree["radius"][1:])
+    lo_, hi_ = 0, len(radii) - 1
+    while lo_ < hi_:
+        mid = (lo_ + hi_) // 2
+        if len(veg_mesh.tubes(tree, min_radius=float(radii[mid]), **kw)["F"]) > wood_budget:
+            lo_ = mid + 1
+        else:
+            hi_ = mid
+    out["min_radius"] = float(radii[hi_])
+    out["wood"] = veg_mesh.tubes(tree, min_radius=out["min_radius"], **kw)
+    return out
 
 
 def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: float = 2.5) -> dict:
@@ -158,6 +204,8 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: fl
     W0 = veg_mesh.tubes(tree, tile=tile)
     out = {"wood": W0, "sides": (3, 12), "min_radius": 0.0, "keep": 1.0, "floating": 0.0, "protect": pr}
     for share in ((0.5, 0.66, 0.8) if n_tw else (1.0,)) if triangles else ():
+        if share > 0.5 and out["keep"] < 0.25:
+            break  # (bough cards stand off the wood anyway: the foliage keeps its half)
         W = W0
         out.update(sides=(3, 12), min_radius=0.0, simplify=0.0)
         wood_budget = triangles * share
@@ -185,6 +233,12 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: fl
             out["floating"] = pick_twigs(tree, out["keep"], out["min_radius"], pr, tw, cap=cap)[1]
         if out["floating"] <= 0.2 or out["min_radius"] == 0.0:
             break
+    if n_tw and triangles and out["keep"] < 0.25:  # a crown of bough cards wants cover more than twig wood: 35% wood
+        out2 = _wood_for(tree, tile, triangles * 0.35, pr)
+        if out2 is not None:
+            out.update(out2)
+            out["keep"] = float(np.clip(((triangles - len(out["wood"]["F"])) // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))
+            out["floating"] = 0.0
     fol = int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0
@@ -386,6 +440,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             "alphaMode": "MASK", "alphaCutoff": 0.5, "doubleSided": True})
         M_IMP = len(materials) - 1
     per, roots = [], []
+    cluster_mats = {}
     if spacing is None:
         spacing = 0.0 if len(trees) == 1 else 1.2 * max(float(np.percentile(np.linalg.norm(t["pos"][:, :2], axis=1), 98)) for t in trees) * 2
     n_lod = int(np.clip(lods, 1, len(LODS)))
@@ -400,7 +455,32 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 full = lod_info[0]["triangles"]
                 bud = budget(t, int(full * share), tile, at["triangles"] if at else 0, cap_i)
             W = bud["wood"]
-            L = foliage_mesh(t, at, bud["keep"], bud["min_radius"], bud["protect"], cap_i) if at and len(veg_leaf.place(t)["pos"]) else None
+            lf_c, cap_c, back_c = cluster_leaves(s["leaves"], bud["keep"])
+            at_c, m_c, vf_c = at, M_FOL, var_fol
+            if at is not None and lf_c is not s["leaves"]:  # bough cards: their own picture (and its season variants)
+                ck = json.dumps(lf_c["card"], sort_keys=True)
+                if ck not in cluster_mats:
+                    sp_c = {**s, "leaves": lf_c}
+                    at_c = veg_leaf.atlas(lf_c, twc)
+                    m_ = foliage_material(at_c, f"foliage_boughs{len(cluster_mats) + 1}")
+                    vf_ = {}
+                    for se in seasons:
+                        a_ = season_atlas(sp_c, se, twc) if se != "summer" else at_c
+                        if a_ is None:
+                            materials.append({**json.loads(json.dumps(materials[m_])), "name": f"{materials[m_]['name']}_{se}", "alphaCutoff": 1.01})
+                            vf_[se] = len(materials) - 1
+                        else:
+                            vf_[se] = m_ if a_ is at_c else foliage_material(a_, f"{materials[m_]['name']}_{se}")
+                    if wet:
+                        mw_ = json.loads(json.dumps(materials[m_]))
+                        mw_["name"] += "_wet"
+                        mw_["pbrMetallicRoughness"].update(baseColorFactor=[0.78, 0.8, 0.76, 1.0], roughnessFactor=0.45)
+                        materials.append(mw_)
+                        vf_["wet"] = len(materials) - 1
+                    cluster_mats[ck] = (at_c, m_, vf_)
+                at_c, m_c, vf_c = cluster_mats[ck]
+            L = foliage_mesh(t, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c) \
+                if at and len(veg_leaf.place(t)["pos"]) else None
             pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
             kids = []
             wn_w = W["node"]
@@ -413,9 +493,10 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                  "floating": round(bud["floating"], 3)}
             if L is not None and len(L["F"]):
                 fn = L["node"]
-                p_ = prim(L["V"], L["F"], L["uv"], M_FOL, (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"]),
+                p_ = prim(L["V"], L["F"], L["uv"], m_c, (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"]),
                           L["tint"], L["N"])
-                meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, var_fol, M_FOL)]})
+                meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, vf_c, m_c)]})
+                c["boughs"] = at_c is not at
                 nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                 kids.append(len(nodes) - 1)
                 c["foliage_triangles"] = int(len(L["F"]))
