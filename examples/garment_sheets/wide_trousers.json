@@ -1,0 +1,13 @@
+{"design": {
+  "kind": "trousers", "block": "trouser", "fit": "relaxed", "fabric": "cotton_twill",
+  "block_options": {"hem": 0.30, "knee": 0.31, "seat_ease": 0.10, "rise_ease": 0.015},
+  "ops": [],
+  "details": {"waistband": "straight", "fly": "none", "pockets": "none", "hem": "blind", "pleats": "none"}
+ },
+ "spec": {"quality": "draft", "color": "#56604a",
+          "generate": [{"band": "waistband", "role": "waistband",
+                        "along": ["back.R:cWaist>dartA", "back.R:dartB>sideWaist", "front.R:sideWaist>cWaist",
+                                  "front.L:cWaist>sideWaist", "back.L:sideWaist>dartB", "back.L:dartA>cWaist"],
+                        "ratio": 1.0, "height": 0.04, "overlap": 0.035, "interfaced": true,
+                        "wrap": {"to": "torso", "side": "front", "level": "waist", "out": 0.004}}]}
+}

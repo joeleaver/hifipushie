@@ -773,6 +773,67 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
     leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
     maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
+- Principle-based pattern drafting (2026-10-05, "clothflow" agent; the user: ready-made drafts are references, "we
+  also need to distill the _principles_ so we can design jackets that don't exist yet, or any other arbitrary
+  clothing"; sheets `workspace/cloth_renders/pd_*`). A new garment = a block + operations + details, as pattern makers
+  work (Armstrong's three principles: dart manipulation, added fullness, contouring; Aldrich's blocks; FreeSewing's
+  own designs derive from Brian/Bent/Titan the same way).
+  - `pattern_blocks.py`: blocks by stated rules from `tailor.measure`: `bodice` (dartless or darted, to waist/hips;
+    the front neck depth SOLVED so the neckline = half the neck girth + ease), `knit`, `sleeve` (drafted into an
+    armhole: `solve_cap` finds cap height and top shift so front/back cap parts = front/back armhole x (1 + ease) at
+    the asked biceps width; wider than the armhole is long -> not ok), `trouser` (forks, slanted back seam, the back
+    fork dropped until the back inseam is 5 mm short). HALF pieces, centre at x = 0, every construction point named,
+    `sym` = pair | fold | copy.
+  - `pattern_draft.py`: the draft D (pieces, seams, `edges`, `notes`, `log`) and `OPS`: style_line (+ take_in),
+    dart (pivot; the section holding the centre line never turns; an apex off the dart's centre line is trued onto
+    it), dart_to_ease, flare (the centre side stays, the slashed edge is trued to a cubic), lengthen, extend, reshape,
+    facing, collar (band / flat / roll from the neckline's own curve), sleeve, two_piece, unfold. What makes them
+    compose: NAMED EDGES SURVIVE (`D["edges"]`: armhole_front, neck_back, hem_front, shoulder_front, centre_front...;
+    `_remap` rewrites edges and seams through index maps when an outline is cut or a dart moves, breaking a chain
+    where two old neighbours aren't neighbours any more; arcs must be resolved on the piece WITH the cut points
+    inserted, or the bit up to the cut is lost). `consistency(D)`: every seam's sides equal, or its ease declared in
+    `D["notes"]` (cap ease, gathers, the inseam); carried to `Bp["seam_notes"]` and honoured by stage 2 as kind
+    "declared". `unfold` mirrors pieces and seams (fold pieces use ".m" names on the right).
+  - Wiring: pattern `{"from": "draft", "block", "block_options", "ops"}` through `garment_blocks.draft` and
+    `cloth.pieces`; the design sheet takes `block` / `block_options` / `ops` (chest ease defaults to the fit band's
+    middle; judged by evidence, no recipe table). Knowledge: `garment_kb.json` `principles` (three principles, blocks
+    with their rules, operations with what each keeps, derivations per garment category with why, rules of ease /
+    balance / grain / shaping / proportions, sources), `garment_reference(principles=...)`; guide section
+    "Designing a garment that doesn't exist". Don't re-dump garment_kb.json with json.dump (it reflows the file).
+  - Checked against FreeSewing's Brian on the same body at the same ease (`pd_00_block_vs_brian.png`): chest width,
+    armhole depth, shoulder and side seams equal to 0.1 mm, back armhole -2 mm, necklines within 1 mm, back outline
+    1.9 mm mean; our front armhole is 9 mm longer (across-front 93%), our sleeve 35 mm narrower with a 26 mm higher
+    cap (Brian widens the sleeve by its own rule). A drafted knit tee went through stages 1-4 (`workspace/pd_test`).
+  - Style ops (`pattern_styles.py`, registered into `pattern_draft.OPS`; 2026-10-05, sheets pd_10..pd_17): `neckline`
+    (widened on front AND back, so the shoulders still match), `shawl` (cut on, on the roll line; neck seam = back
+    neck; `pair_seams` = an edge sewn to its own mirror at unfold), `lapel` + `collar` `"stop"`, `cut_away`,
+    `darts_to_seam`, `raglan`, `kimono` and `hood` (pattern only: no placement), `pleat`, `buttons`
+    (`pair_stitches`), `stitch`. `unfold` may be put in the ops list: ops after it work on one side (asymmetric).
+    Bugs these found: a collar's outer edge was drawn on the neck hole's side (flat / roll collars shorter than
+    their neck edge, crossing themselves; a band's top longer than its base): the body lies AWAY from the hole;
+    a facing as a plain offset of its edge made beaks at corners (now the piece's own band within the width);
+    a take-in inside a cropped hem left a hook (its end slides along the hem); point-given fold lines weren't
+    mirrored at unfold; `cut_away` dropped the shortened shoulder seam instead of letting consistency fail.
+  - `cloth.place` wrap `leg.L` / `leg.R`: one vertical generalized cylinder per leg (hull of that half of the body
+    from waist to hem, cut flat 4 mm off the middle plane; outer part of each piece round the outside from the
+    front / back corner, the fork's extension on the flat; isometric except the crotch hollow, squeezed under the
+    crotch). Slices its own loops: `Body.hull` drops loops wider than the shoulders as arms, i.e. an A-pose's calves
+    (the pieces started 37-52 mm inside the legs). Leg pieces count as torso for the assembly stage. `sizing`:
+    facings / linings add no girth, pieces carry `wrap.half` (which side of x = 0 they're on: what crosses is
+    overlap), side panels measure from their own inner edge (a princess jacket read +74% chest).
+  - Three garments from prose through the tools (models `workspace/pd_trousers`, `pd_wrap`, `pd_jacket`; renders
+    pd_20..22): wide trousers fit (0 crossings; slide 9 cm down, pool at the feet); the asymmetric wrap tunic reads
+    as one (strain 11.8%, hem 9 cm lower on the wrap side); the shawl jacket's pattern and plan pass but its draft
+    sim is CORRUPT (the cut-on collar starts up the front of the neck and Blender doesn't bring it round; two-piece
+    sleeves bunch at the shoulders). No ZOZO release was on the machine: method "settle" untested on these.
+  - Blazer from our blocks vs FreeSewing Jaeger (`pd_30_blazer_vs_jaeger.png`, scratch script): CB length, shoulder,
+    back neck, upper armhole within 1-5 mm, armhole 2%, sleeve width 2 mm; Jaeger's shaped CB seam, side panel
+    from the armhole, waist +17% (ours +29%), hem +12% over the seat (ours +2%), longer bent sleeve with a hollowed
+    under sleeve and a straight gorge are what ours lacks.
+  - Open: a start that lays a cut-on collar round the neck, a tailor's under sleeve, shaped CB seam, fish-eye darts
+    in hip-length blocks, pockets / linings, head wrap, kimono placement, seat ease not reported for leg pieces
+    (sizing reads torso pieces), trousers' length option for bare feet, a waistband that grips.
+    `tests/test_pattern_draft.py`, `tests/test_pattern_styles.py`.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
