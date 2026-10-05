@@ -21,7 +21,8 @@ Operations (`OPS`; each is {"op": name, ...}):
   dart         move a dart to another edge point (pivot about its tip or an apex): the outline between the old dart
                and the new position turns rigidly, the old dart closes, the new opens. Seam lengths don't change.
   dart_to_ease close a dart by straightening its edge: the intake becomes ease (or gathers) declared on that seam.
-  darts_to_seam  join two darts (or a dart and an edge point) into a panel seam: the dart legs become the seam.
+  (not yet: darts_to_seam, joining two darts into a panel seam on a darted block; on a dartless block a style_line
+               with take_in does the same job)
   flare        slash from an edge to a hinge point and spread (added fullness: an A-line, a flared hem); or close
                (negative amount: tapering). The hinge edge keeps its length.
   lengthen     lengthen / shorten below a level on every piece named (the side seams stay matched when both sides
