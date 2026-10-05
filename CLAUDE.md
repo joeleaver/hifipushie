@@ -2616,6 +2616,18 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     FAILS at low budgets: 8k pines (vg_63_pine_set_8k) and a 12k forest spruce (vg_63_forest_kit_12k) are heaps of
     fern / palm-frond cards: `cluster_leaves` enlarges a twig's picture, it does not show a bough. What artists do:
     bake a real limb end (its branchlets and twigs) into the card. Not built.
+  - Bough cards (`veg_bough.py`, 2026-10-06; the coordinator: "bake real limb ends, hierarchy by LOD"; sheets
+    vg_67_lods_*.png = full | 20k | 12k | 8k at 30 m and 100 m, vg_68_sets.png): `subtrees` (twigs carried and reach
+    along the wood per node), `plan(tree, cards)` = the smallest bough size whose roots (reach <= size < the
+    parent's) number no more than the budget's cards: every twig belongs to one bough; `atlas` bakes 4 of the tree's
+    own boughs (60-97th percentile by twigs x length) with `veg_leaf.rasterize`, each from its FACE and from its SIDE
+    (two crossed cards, 14 triangles); `place` stands a card on every bough root, scaled by its length against the
+    picture's. A bough's face = the plane its twigs spread in (PCA; thinnest axis): from above only, a spruce's
+    hanging combs were slats of a blind. `budget` sets `boughs` when keep < 0.25 (trees only; clumps keep
+    `cluster_leaves`); write_glb and the looks take them through `foliage_mesh(tw=)`; seasons through
+    `season_atlas(make=)`. Wood `simplify` tolerance is capped at 12 cm of radius (a budget straightened the pine's
+    sinuous trunk). Read: oak at 8k ~ the full tree at 100 m; pine good; spruce recognisable but gappy, a big card on
+    its leader. Not done: twig cards on top of boughs for mid LODs, depth / subsurface maps beyond the twig maps.
   - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);

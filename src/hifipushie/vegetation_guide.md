@@ -292,7 +292,13 @@ A budget leaves out thin wood and draws fewer, larger cards. `look_plant(name, v
 triangles=12000)` renders exactly what `export_plant(name, triangles=12000)` writes. Judge that picture, not the
 full-detail one. A budget first gives branches fewer rings and sides, then leaves out the thinnest wood (wood you
 marked, dead wood and drawn guides, stays down to a quarter of that girth), and draws the twigs that stand on wood
-it kept; the export WARNS when cards would float. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+it kept; the export WARNS when cards would float.
+When a budget buys fewer than a quarter of the twigs, the foliage is drawn as **bough cards** instead: the tree's own
+limb ends (wood, branchlets, every twig) baked into pictures, each bough seen from its face and from its side on two
+crossed cards, standing where the tree has such a bough. The smaller the budget, the larger the boughs the foliage is
+cut into, so LODs step down from the same tree (a set shares one bough atlas per LOD). Judge them at the distance
+they are for: `look_plant(name, views=["far"], triangles=8000)`. Broadleaves and pines hold up to 8k; a spruce's
+low LODs are gappier than the full tree. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
 
 ## From a botanical description to our keys
 
