@@ -937,6 +937,23 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the body's within a few mm); the graft plane follows the chin; a monotone neck taper. `tests/test_headfit.py`.
     Honest read: the child and the men read as their age; the old woman reads as an old man (GNM's space and a
     bald head), the adult woman androgynous.
+  - Heads by age / sex / weight, second pass (2026-10-05, renders sk_10 grid, sk_h_*; supersedes the solve described
+    above): MakeHuman isn't needed at runtime. `head_axes.npz` (spikes/headfit/make_axes.py) samples how the table's
+    points (68 landmarks, 4 cranium points, ~350 dense pairs over face / cranium / neck) MOVE from MakeHuman's
+    reference head (25 y, sex 0.5, weight 0.5) across ages x sex and with weight (`headfit.shape_delta`). The move is
+    made in two steps: GNM identity components by ridge (60-70% of it), then the residual as a Gaussian RBF warp of
+    the head (`head["warp"]`: jaw / chin width, brow ridge, neck girth; lids and lips take little of either). The seed
+    first loses its OWN component along the sex / age / weight directions (`_body_axes`: a heavy-jawed seed left a
+    woman a man). Keys, all opt-in (without them the base is bit-identical): `base.head.follow_body` (true |
+    strength: age, sex, weight and scale from the MakeHuman body), `base.head.like` {"age", "sex" 0 female .. 1 male,
+    "weight"} (set apart from the body, or on any body incl. the stylised template), `base.head.features`
+    {brow_ridge, jaw, chin, nose, lips, cheeks, eyes, cranium: -1.5..1.5} (one part of the sex / child move on its
+    own). `headfit.report(base)`: asked move, share reached by identity / after the warp, largest local stretch.
+  - `skin.sex` (0 female .. 1 male, unset = neither; `params` -> `fem` / `masc`): sex-linked DEFAULTS, each still
+    settable: finer thinner brows, darker lash lines, finer pores (detail x 0.78), lips with 25% more blood for a
+    woman; heavier brows and coarser skin for a man. Stubble stays `hair.stubble` (off unless asked).
+  - Brow decal: the ".L" brow layer's image entry has `mirror_image: true` (images.py: the mirrored placement shows the
+    picture mirrored; unmirrored, the other brow's hairs ran the wrong way).
   - Eyes, second pass: `base.cornea` (a smaller sphere proud of the eyeball where the gaze leaves it, ONE group with
     its eyeball: as two elements with different blends the scene's chunked evaluation blew the mirrored eye up to
     twice its size, in the scene only, the clay look was fine); look lights take `"window"` (the highlight from a
