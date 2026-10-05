@@ -69,7 +69,7 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0),
                 "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3))}
     nv = len(at["cards"])
-    var = (vegetation._child(tw["key"], 11) % np.uint64(nv)).astype(int)
+    var = veg_leaf.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
     Vs, Fs, Us, Ts, Ns, Fl, Nr = [], [], [], [], [], [], []
     base = 0
@@ -134,6 +134,7 @@ def cluster_leaves(leaves: dict, keep: float) -> tuple[dict, float, float]:
     card = dict(leaves.get("card") or {})
     card["twig"] = {**(card.get("twig") or {}), "length": round(tw["length"] * K, 3),
                     "leaves": int(tw["leaves"] * min(K * K, 5.0)), "side_shoots": int(round(max(tw["side_shoots"], 3) * min(K, 2.0)))}
+    card["end"] = False  # (a bough is a spray, not a round tuft: its end-on card was a third of each card's triangles)
     return {**leaves, "card": card}, 1.25, 0.45 * (K - 1) * tw["length"]
 
 
@@ -235,6 +236,9 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: fl
             break
     if n_tw and triangles and out["keep"] < 0.25:  # a crown of bough cards wants cover more than twig wood: 35% wood
         out2 = _wood_for(tree, tile, triangles * 0.35, pr)
+        if (tree["spec"]["leaves"].get("card") or {}).get("end"):  # bough cards drop the end-on card
+            cr_ = int((tree["spec"]["leaves"].get("card") or {}).get("cross", 1))
+            card_triangles = int(round(card_triangles * cr_ / (cr_ + 1)))
         if out2 is not None:
             out.update(out2)
             out["keep"] = float(np.clip(((triangles - len(out["wood"]["F"])) // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))

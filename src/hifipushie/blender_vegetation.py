@@ -125,7 +125,8 @@ def bark_material(name, bark, height):
         ub = bark.get("upper_blend", 0.2 * height)  # m the change takes (patchy: the noise moves it +- 0.15 x height)
         zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", bigv, 0.5), 0.3 * height))
         col = mix(col, ramp01(zz, u0, u0 + max(ub, 0.01)), lin(bark["upper_color"]))
-    fac_twig = ramp01(rad.outputs["Fac"], 0.02, 0.006)
+    tr_ = bark.get("twig_radius", [0.006, 0.02])  # m of radius: all twig colour under [0], none over [1]
+    fac_twig = ramp01(rad.outputs["Fac"], float(tr_[1]), float(tr_[0]))
     if bark.get("twig_color") is not None:
         col = mix(col, fac_twig, lin(bark["twig_color"]))
     dead = N.new("ShaderNodeAttribute")  # dead wood: barkless, weathered silver-grey
@@ -294,7 +295,8 @@ def _weather(m, snow=0.0, wet=0.0, crown=None):
         d.inputs["Scale"].default_value = 1 - 0.35 * wet
         L.new(col, d.inputs[0])
         col = d.outputs[0]
-        rgh = _math(N, L, "MULTIPLY", rgh, 1 - 0.6 * wet)
+        # (leaves: a little gloss only. At 0.4 x roughness every card mirrored the sky: grey smears through the crown)
+        rgh = _math(N, L, "MULTIPLY", rgh, 1 - (0.25 if crown is not None else 0.6) * wet)
     if snow:
         geo = N.new("ShaderNodeNewGeometry")
         if crown is not None:
@@ -305,7 +307,17 @@ def _weather(m, snow=0.0, wet=0.0, crown=None):
             nrm = N.new("ShaderNodeVectorMath")
             nrm.operation = "NORMALIZE"
             L.new(o.outputs[0], nrm.inputs[0])
-            vec = nrm.outputs[0]
+            # snow lies on every plate and spray that faces up, wherever it is in the crown (by the crown's direction
+            # alone only the top of the tree went white), more on the crown's upper side
+            tsp = N.new("ShaderNodeSeparateXYZ")
+            L.new(geo.outputs["True Normal"], tsp.inputs[0])
+            csp = N.new("ShaderNodeSeparateXYZ")
+            L.new(nrm.outputs[0], csp.inputs[0])
+            zz = _math(N, L, "ADD", _math(N, L, "MULTIPLY", _math(N, L, "ABSOLUTE", tsp.outputs["Z"]), 0.75),
+                       _math(N, L, "MULTIPLY", csp.outputs["Z"], 0.4))
+            cmb = N.new("ShaderNodeCombineXYZ")
+            L.new(zz, cmb.inputs["Z"])
+            vec = cmb.outputs[0]
         else:
             vec = geo.outputs["Normal"]
         sp = N.new("ShaderNodeSeparateXYZ")
@@ -615,6 +627,9 @@ def build(job):
         from mathutils import Matrix
         ground.rotation_euler = Matrix.Rotation(math.radians(gj["slope"]), 4, axis).to_euler()
     ground_mat = ground_material("ground", job.get("ground") or {})
+    # the weather lies on the ground too (a snowy tree stood on a summer lawn)
+    _weather(ground_mat, max(float(pj.get("snow", 0.0)) for pj in job["plants"]),
+             max(float(pj.get("wet", 0.0)) for pj in job["plants"]))
     if gj.get("water") is not None:  # a water level (m, against the plant's foot): a lake shore, a ditch
         bpy.ops.mesh.primitive_circle_add(vertices=64, radius=max(60 * R, 400.0), fill_type="NGON", location=(0, 0, float(gj["water"])))
         water = bpy.context.object

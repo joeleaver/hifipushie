@@ -94,6 +94,16 @@ def _central(tpl: dict, names: list[str]) -> dict:
     return {b: {PREFIX + k: v for k, v in sh.items() if PREFIX + k in names} for b, sh in out.items()}
 
 
+def weights_note(spec: dict) -> str | None:
+    """A WARNING when this spec would take MakeHuman's hand-made weights but the pack on this machine lacks them."""
+    b = spec.get("base") or {}
+    if ((b.get("body") or {}).get("source") != "makehuman"
+            or (spec.get("rig") or {}).get("weights", "template") == "distance"):
+        return None
+    from . import makehuman
+    return makehuman.weights_note()
+
+
 def template_weights(spec: dict, rb: list[dict], surf: dict) -> np.ndarray | None:
     """Dense weights (base quad vertices x rig bones) from the base's template, or None when it has none (a
     template other than MakeHuman, the weights file not in the pack, spec["rig"]["weights"] = "distance", or a

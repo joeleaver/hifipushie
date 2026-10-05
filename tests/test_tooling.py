@@ -512,6 +512,61 @@ def test_hair_hairline_edge_round3():
                    {"name": "c", "width": 4}], out
 
 
+def test_older_makehuman_pack_still_opens_a_male_body():
+    """2026-10-05 (s0urc3 BLOCKER): the makehuman pack grew (female targets, rigs/default_weights.mhw) and every
+    runner still holding the older pack failed to open ANY MakeHuman model: `assets.pack` wanted all 99 files. A
+    male body needs none of the new ones; a female one says which file and how to fetch it; a rig without the
+    hand-made weights falls back to distance weights with a WARNING; the text reaches a tool's caller."""
+    import os
+    import tempfile
+    from pathlib import Path
+    from hifipushie import assets, makehuman, rig_template
+    try:
+        full = assets.pack("makehuman")
+    except FileNotFoundError as e:
+        print("skipped:", str(e)[:60])
+        return
+    keep_env, keep_cache = os.environ.get("HIFIPUSHIE_ASSETS"), dict(makehuman._CACHE)
+    with tempfile.TemporaryDirectory() as tmp:
+        old = Path(tmp) / "makehuman"
+        for f in assets.manifest()["makehuman"]["files"]:  # the pack as it was before fba835a
+            if "-female-" in f["path"] or f["path"] == makehuman.WEIGHTS:
+                continue
+            (old / f["path"]).parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(full / f["path"], old / f["path"])
+        try:
+            os.environ["HIFIPUSHIE_ASSETS"] = tmp
+            makehuman._CACHE.clear()
+            b = makehuman.body({"age": 45, "weight": 0.6, "height": 1.8})  # male (the default): loads
+            assert b is not None
+            try:
+                assets.pack("makehuman")  # the whole pack is still reported incomplete when asked for whole
+                raise AssertionError("an incomplete pack passed the full check")
+            except FileNotFoundError:
+                pass
+            for params in ({"age": 30, "sex": 0.0}, {"age": 30, "sex": 0.5}):
+                try:
+                    makehuman.body(params)
+                    raise AssertionError("a female body loaded without its targets")
+                except FileNotFoundError as e:
+                    text = server._error_text(e)
+                    assert "hifipushie-assets fetch makehuman" in text and "sex" in text and "-female-" in text, text
+            assert makehuman.weights() is None
+            spec = {"base": {"body": {"source": "makehuman", "age": 45}}}
+            note = rig_template.weights_note(spec)
+            assert note and note.startswith("WARNING") and "fetch makehuman" in note and "DISTANCE" in note, note
+            assert rig_template.weights_note({**spec, "rig": {"weights": "distance"}}) is None  # asked for: no warning
+            assert rig_template.weights_note({"joints": {}}) is None
+        finally:
+            makehuman._CACHE.clear()
+            makehuman._CACHE.update(keep_cache)
+            if keep_env is None:
+                os.environ.pop("HIFIPUSHIE_ASSETS", None)
+            else:
+                os.environ["HIFIPUSHIE_ASSETS"] = keep_env
+    assert rig_template.weights_note({"base": {"body": {"source": "makehuman"}}}) is None  # the full pack: no warning
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

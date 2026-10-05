@@ -1013,6 +1013,21 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the body's within a few mm); the graft plane follows the chin; a monotone neck taper. `tests/test_headfit.py`.
     Honest read: the child and the men read as their age; the old woman reads as an old man (GNM's space and a
     bald head), the adult woman androgynous.
+  - Heads by age / sex / weight, second pass (2026-10-05, renders sk_10 grid, sk_h_*; supersedes the solve described
+    above): MakeHuman isn't needed at runtime. `head_axes.npz` (spikes/headfit/make_axes.py) samples how the table's
+    points (68 landmarks, 4 cranium points, ~350 dense pairs over face / cranium / neck) MOVE from MakeHuman's
+    reference head (25 y, sex 0.5, weight 0.5) across ages x sex and with weight (`headfit.shape_delta`). The move is
+    made in two steps: GNM identity components by ridge (60-70% of it), then the residual as a Gaussian RBF warp of
+    the head (`head["warp"]`: jaw / chin width, brow ridge, neck girth; lids and lips take little of either). The seed
+    first loses its OWN component along the sex / age / weight directions (`_body_axes`: a heavy-jawed seed left a
+    woman a man). Keys, all opt-in (without them the base is bit-identical): `base.head.follow_body` (true |
+    strength: age, sex, weight and scale from the MakeHuman body), `base.head.like` {"age", "sex" 0 female .. 1 male,
+    "weight"} (set apart from the body, or on any body incl. the stylised template), `base.head.features`
+    {brow_ridge, jaw, chin, nose, lips, cheeks, eyes, cranium: -1.5..1.5} (one part of the sex / child move on its
+    own). `headfit.report(base)`: asked move, share reached by identity / after the warp, largest local stretch.
+  - `skin.sex` (0 female .. 1 male, unset = neither; `params` -> `fem` / `masc`): sex-linked DEFAULTS, each still
+    settable: finer thinner brows, darker lash lines, finer pores (detail x 0.78), lips with 25% more blood for a
+    woman; heavier brows and coarser skin for a man. Stubble stays `hair.stubble` (off unless asked).
   - Eyes, second pass: `base.cornea` (a smaller sphere proud of the eyeball where the gaze leaves it, ONE group with
     its eyeball: as two elements with different blends the scene's chunked evaluation blew the mirrored eye up to
     twice its size, in the scene only, the clay look was fine); look lights take `"window"` (the highlight from a
@@ -1027,6 +1042,49 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the brows set it. Lashes, lip lines and wrinkles are zone masks / tiling swatches, not mirrored pictures; eyes
     are one decal per side; tattoos and text stay unmirrored. `look_skin` view "brows"; sk_09; tests in
     test_images (`test_mirror_image`) and test_skin (`test_brows_mirror`).
+  - Heads as MakeHuman FIELDS (2026-10-05, "skin2" agent, branch worktree-agent-acd58d9aa9f53c1da; renders sk_20_*,
+    sk_2w_*, sk_21_*; replaces the identity solve + RBF warp for age / sex / weight, which reached "93%" of 426 sampled
+    points and still made a woman a soft man). Diagnosis by rendering MakeHuman's OWN heads beside ours: MakeHuman's f32
+    reads female, its f78 an old woman; ours didn't, because (1) only the DELTA from MakeHuman's neutral was added to a
+    GNM seed, and GNM's mean head is itself wider-jawed and heavier than MakeHuman's neutral (mean vs reference rms
+    0.14 interoculars: more than the whole female move, 0.11); (2) a seed's individuality at spread 0.7 is as large
+    as the sex move and reads male on a bald head; stripping the seed along a linear sex axis (landmark- or
+    dense-fitted) does not change that. Now `spikes/headfit/make_field.py` registers GNM's mean head onto MakeHuman's
+    reference head once (pairs RBF as a first guess, 4 rounds of closest point on MakeHuman's triangles facing the same
+    way for the OUTER skin, each displacement smoothed over GNM's mesh by Laplacian least squares; lids' insides, mouth
+    sock, ears ride; lips weighted 0.2; eyeballs / teeth carried by the skin beside them) and stores, per GNM vertex,
+    `ref` (GNM mean -> MakeHuman reference) and the moves to every age x sex and weight (`head_fields.npz`, 2.6 MB,
+    float16, interoculars; no MakeHuman pack at runtime). `headfit.field_vertices(desc)` -> `base.gnm_head` adds it
+    x the head's interocular (head["field"] = a small descriptor, not the array: head dicts are cache keys).
+    `follow` = seed stripped (`_body_axes`: the fields fitted in GNM's components) + field; `features` alone still go
+    through the identity solve + warp and get NO field. New opt-in keys: `base.head.dimorphism` (default 0.8: the
+    sex difference pushed past MakeHuman's own, half as far on the male side: a man at 0.8 read as a brute),
+    `base.head.toward` (share of the absolute move, 1). Abs transfer through the 426 pairs alone made a lumpy skull;
+    identity-space-only abs made a pouting boy. base.VERSION 76. `headfit.solved_points(h)` for tests.
+    READ: woman 32 and teen girl read female bald; the old woman reads as an old woman or an ambiguous elder (was: a
+    man); child fine; use `spread` <= ~0.45 for women and children (0.7 masculinises). The head's `scale` now comes
+    out ~0.88 child / 0.97 adult (the field carries the size ratio).
+  - Skin realism pass 2 (same agent): the "dried mud" was the `lines` / `coarse` swatches' Voronoi NET (every cell
+    outlined at one depth) + crepe laid at 2-4 mm with a dark tint. Now `skin_swatch._glyphics`: families of nearly
+    parallel furrows crossing at an angle with whole-number line counts (tiles), each fading in and out. Wrinkle
+    swatch: rounded troughs 2-3 mm wide with rolls between (a 0.7 mm V = a scratch), forehead tint 0.2 -> 0.08; crepe
+    relief 0.16 mm, tint 0.1, off forehead / chin; coat 0.04 + 0.16 oil -> 0.015 + 0.07 oil at roughness 0.34 (the
+    varnish), base roughness +0.03, pores 0.21 -> 0.34 mm relief with less tint. Elder woman, measured: lightness
+    contrast 0.7 / 1.4 / 2.8 / 5.6 mm 0.54 / 0.49 / 0.56 / 0.58 -> 0.38 / 0.47 / 0.57 / 0.61 (photos 1.26 / 0.83 / 0.78 /
+    1.2), highlight 10% blobs 4.8 mm breakup 1.69 -> 5% / 4.6 / 1.33, micro 0.019 -> 0.010 (photos 0.05): it reads
+    less like mud and MORE airbrushed by the numbers: fine relief is still 2-3x under the photographs. Dark woman:
+    micro 0.033, highlight 15% in 11 mm blobs: still oily.
+  - Whole humans by age, first honest line-up (the user: "we haven't seen any whole face-and-body children or
+    babies"; `spikes/headfit/lineup.py`, sk_21_ages_lineup_clay.png + sk_21_ages_lineup_measures.txt; clay, no skin
+    yet, the sheet's columns are mis-cropped). `base.body.age` goes to 1 through put_model; the pack has baby / child
+    targets. MEASURED (ours | MakeHuman's own head | reference charts): stature 60 / 74 / 103 / 131 cm at 1 / 3 / 7 / 11
+    (refs 75 / 95 / 122 / 144: MakeHuman's children are 10-20% short; pass `height`); heads in the height 4.87 / 5.51 /
+    6.52 / 7.29 (MakeHuman's own 4.59 / 5.20 / 6.16 / 6.89; refs 4 / 5 / 6 / 6.75; adults 7.7-8.3 vs 7.5): heads are
+    too SMALL at every age, MakeHuman's own by ~12% at 1 year, ours a further ~6% (partly lm_chin vs MakeHuman's
+    chin_z: not untangled); hip joint / stature 0.43 at 1 (crotch ref 0.36: legs too long); interocular 37.8 mm at 1.
+    FAILS seen: the baby's nose is torn open (a ragged hole at the nostrils: the field at age 1 turns the nostril
+    walls inside out); the toddler has a long thin neck (graft) and an adult-ish torso; every face is the same stern
+    seed; no fat rolls; rig / hands / skin zones on a baby NOT checked.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
@@ -2563,7 +2621,45 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   sheet); (4) wet smear, snow on ground and limbs, wind measured by vertex displacement, the 8k pine set and the
   three forest-kit trees re-run; (5) stage 3 small plants + palm, stage 5 styles, terrain integration. Report at each
   mergeable point with an all-species sheet (vg_36_all_inleaf.png was made by cropping each sheet's lower row).
-- Open (read of vg_36, 2026-10-06): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
+- Vegetation 2 (2026-10-05/06, branch `vegetation2`, renders vg_60-62; scratch scripts in the worktree's untracked
+  `scratchpad/`: q.py one look, sweep.py = silhouettes of habit variants in a column (the fast loop: 1 s a tree),
+  sheet.py / allsheet.py <tag> = the species sheets + `vg_<tag>_all_inleaf.png`, sprdiag.py = limbs by height band).
+  Masks traced for willow_f, willow_e, pine_c, pine_e (masks.json).
+  - Weeping willow: the mushroom was hanging orders that grew for ever with `shed` 0 under a dome envelope. Now no
+    envelope: scaffold `plagio` toward 50 deg, the order below the curtains level (22-25 deg, `tip_life` 12), hanging
+    orders with `tip_life` 8 / 6 and `uneven` 0.5, `shed` 0.05, `prune under 1.2` (browse line). Order 2 with a
+    negative elevation ran straight to the ground as spokes. IoU 0.79 on willow_f; reads as a weeping willow.
+  - Scots pine: `habit.bud_each` (bud_break drawn per bud: with it per node, whole whorls of four broke or none =
+    a pagoda of tiers on a bare pole), trunk `apical` 0.72 so it runs on through the crown, `pipe` 1.95, 11 limbs,
+    bark `twig_radius` (orange only on wood over 5-14 cm: every thin branch orange read as a fan of sticks).
+    Card = a bottlebrush tuft: `twig.fascicle` 2 (pairs), `needle_angle` [75, 30], `bud`, `card.cross` 2 + `card.end`
+    (a third card across the shoot with the tuft seen from its tip, its own atlas cell, a shallow cone).
+  - Norway spruce's cage of brown hoops (the user's arrows), by measure (sprdiag): lowest limbs 32 cm thick under a
+    60 cm trunk (`ring` added to ALL wood: now per order, [0.003, 0.0005, 0.0002] -> 8 cm), foliage only on the last
+    17-20% of each limb (branchlets stopped at `tip_life` 7; given longer life they hung 4 m: `habit.slowing` = an old
+    axis's segments shrink, so branchlets creep and their needle-bearing ends stay by the limb: foliage from ~45%),
+    twigs 20 per m, cards x1.15. Before/after with the photo: vg_62_spruce_cage.png. Cost: 60k nodes, 42k twigs,
+    Blender 45-120 s. Honest read: the cage is gone, but the cone is now too even and solid (no tiers, no dark gaps).
+  - White willow: vigour 6.5, shed 0.035, crooked limbs: a small vase-shaped tree, thin.
+  - Small-plant groundwork in veg_leaf (not yet used by a plant): leaf shapes linear / strap / round / petal, twig
+    arrangements `basal` and `pinnate`, `taper`, `flower` (ray / cup / spike, own colours through a per-vertex `rgb`),
+    `leaves.parts` (several pictures in one atlas: `part_specs`, `part_cards`, `card_variant`), `tree["twigs"]`
+    (a plant that brings its own card placements).
+  - Looks: snow / wet lie on the ground too; `wind_plant` reports displacement in metres per class of vertex
+    (foot, trunk top, limb ends, leaf tips) and how far the limbs swing in step, with warnings.
+  - Round 2 (vg_63-66): spruce on 2-year steps (`years_per_step` 2, `unit` 1.0: whorls 1 m apart ARE the tiers; 14k
+    nodes, 16k twigs, was 60k / 42k), limbs droop and turn up, twigs lie flatter (`face` 0.75). `bud_each` + strong
+    `uneven` on the spruce gave juniper lobes or a ragged column: not used. Pine: `apical_old` 0.46 from 40% of its
+    age (the bare leader spike was a trunk tip that kept its lead while its whorls rarely broke), limb jitter 0.42.
+    Willow: twigs 8.5 per m, cards x1.2; two buds per node on the hanging order starved it into a table with three
+    tassels (reverted). Snow: on every card that faces up (by the crown's direction alone only the tree's top went
+    white); wet leaves 0.75 x roughness (0.4 x mirrored the sky: grey smears). Bough cards drop the end-on card.
+    Wind on a 20k birch: foot 0, trunk top 31 cm, limb ends 25 cm mean / 55 most, limbs in step -0.2.
+    FAILS at low budgets: 8k pines (vg_63_pine_set_8k) and a 12k forest spruce (vg_63_forest_kit_12k) are heaps of
+    fern / palm-frond cards: `cluster_leaves` enlarges a twig's picture, it does not show a bough. What artists do:
+    bake a real limb end (its branchlets and twigs) into the card. Not built.
+  - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
+- Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
   Not done: wet smear, snow on ground/limbs, wind measured by displacement, 8k pine set re-run. Earlier: low LODs need bough-sized cluster cards (20k oak = a few big clumps); spruce close-ups are feather cards;

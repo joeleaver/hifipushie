@@ -273,7 +273,7 @@ def test_atlas_and_cards():
         assert 0.02 < (at["color"][..., 3] > 0.5).mean() < 0.9, sp
         assert 0.05 < at["fill"] <= 1.0, (sp, at["fill"])
         for c in at["cards"]:
-            assert c["F"].max() < len(c["V"]) == len(c["uv"]) and len(c["F"]) <= 2 * 8
+            assert c["F"].max() < len(c["V"]) == len(c["uv"]) and len(c["F"]) <= 3 * 8  # (crossed pair + an end card)
             assert c["uv"].min() > -0.05 and c["uv"].max() < 1.05
     # a card holds its twig's picture: every opaque texel of its cell lies inside the card's polygon
     lf = v.resolve({"species": "oak"})["leaves"]
@@ -654,6 +654,55 @@ def test_fit_improves():
     before = v.match(v.grow(start), ref, bare=True)["iou"]
     r = v.fit_habit(start, ref, {"apical.0": [0.44, 0.64]}, bare=True, iters=10, seeds=(1,), nodes=(300, 30000))
     assert r["iou"] >= before and "apical" in r["habit"]
+
+
+def _limbs_by_whorl(T):
+    """Limbs leaving the trunk, counted per trunk node."""
+    o, par = T["order"], T["parent"]
+    first = np.flatnonzero((o == 1) & (o[par] == 0))
+    return np.bincount(par[first])[np.unique(par[first])]
+
+
+def test_whorls_rings_and_creeping_branchlets():
+    # bud_each: a low bud_break keeps one or two limbs of a whorl, not whole whorls or none
+    base = {"species": "scots_pine", "age": 50, "habit": {"bud_break": [1, 0.3, 0.8, 0.9, 0.8]}}
+    whole = _limbs_by_whorl(v.grow(v._merge(base, {"habit": {"bud_each": False}})))
+    each = _limbs_by_whorl(v.grow(v._merge(base, {"habit": {"bud_each": True}})))
+    assert whole.max() >= 3 and each.mean() < whole.mean() and len(each) > len(whole), (whole, each)
+    # ring per order: old low branches stay thin under a stout trunk; slowing keeps foliage along the limbs
+    S = {"species": "norway_spruce", "age": 40}
+    one = v.grow(v._merge(S, {"habit": {"ring": 0.003, "slowing": [0], "tip_life": [0, 0, 7]}}))
+    per = v.grow(S)
+
+    def low_limb_girth(T):
+        o, par, P = T["order"], T["parent"], T["pos"]
+        f = np.flatnonzero((o == 1) & (o[par] == 0) & (P[:, 2] < 0.2 * T["height"]))
+        return float(np.median(2 * T["radius"][f]))
+
+    assert low_limb_girth(per) < 0.4 * low_limb_girth(one) and low_limb_girth(per) < 0.2 * per["stats"]["trunk_diameter_m"]
+
+    def foliage_from(T):  # the share of a low limb's length before its first twig
+        tw = veg_leaf.place(T)
+        o, par, P = T["order"], T["parent"], T["pos"]
+        has = np.zeros(len(P), bool)
+        has[tw["node"]] = True
+        limb, dist = np.zeros(len(P), np.int64), np.zeros(len(P))
+        for i in range(2, len(P)):
+            if o[i] > 0:
+                limb[i] = limb[par[i]] if o[par[i]] > 0 else i
+                dist[i] = dist[par[i]] + np.linalg.norm(P[i] - P[par[i]]) if o[par[i]] > 0 else 0.0
+        out = []
+        for r in np.unique(limb[limb > 0]):
+            m = limb == r
+            if P[r, 2] < 0.3 * T["height"] and (m & has).any():
+                out.append(dist[m & has].min() / max(dist[m & (o == 1)].max(), 1e-6))
+        return float(np.median(out))
+
+    assert foliage_from(per) < 0.8 * foliage_from(one), (foliage_from(per), foliage_from(one))
+    # a pine tuft is round: crossed cards plus one across the shoot, its picture in its own atlas cell
+    at = veg_leaf.atlas(v.resolve({"species": "scots_pine"})["leaves"])
+    c = at["cards"][0]
+    assert len(c["F"]) > 14 and np.ptp(c["V"][:, 0]) > 0.1 and np.ptp(c["V"][:, 2]) > 0.1
 
 
 if __name__ == "__main__":

@@ -747,6 +747,10 @@ ATTACH = 0.08  # m: the length over which a part hands over to the bound part it
 #              any other bone's; the falloff runs by how much farther it is;
 #   generic    a base body without landmarks: the landmark floor at a typical head's proportions from the rig joints.
 HEAD_BAND = 0.12   # the falloff's height below the floor, x the head's size (Head joint -> HeadTop_End): ~3 cm
+HEAD_FALL = 0.2    # on a base body (a floor by height): the falloff's height, ~5 cm. At 3 cm a Head-only turn of 33 deg
+#                    sheared the throat into a shelf under the jaw (skin fold p99 40 deg on the bare human, 20 on the
+#                    golfer; at 5 cm 24 / 12, nod 56 -> 43). Longer on the FRONT only changed nothing: the fold is at
+#                    the sides and the nape. spec.rig.rigid_head.band sets it in metres.
 HEAD_UNDER = 0.04  # the floor's drop under the jaw's border, x the head's size: ~1 cm
 HEAD_PART = 0.9    # a part this much head on average is all head (teeth, tongue, eyes, lashes, brows)
 HEAD_WORN = 0.5    # a part other than the skin and less head than this is worn on the body: no head rule (a collar);
@@ -778,6 +782,7 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
     size = max(float(np.linalg.norm(top - hj)), 1e-3)
     band = float(opts.get("band", HEAD_BAND * size))
     under = float(opts.get("under", HEAD_UNDER * size))
+    fall = float(opts.get("band", HEAD_FALL * size))
     if spec.get("base"):
         if "lm_chin" in Jn and "lm_jaw_4.L" in Jn:
             pts = [resolve_point(s, "lm_chin")] + [0.5 * (resolve_point(s, f"lm_jaw_{i}.L")
@@ -807,7 +812,7 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
         def h(V):
             V = np.asarray(V, np.float64)
             floor = np.interp(V[:, 1], fy, fz) - under
-            return 1.0 - _ss((floor - V[:, 2]) / band)
+            return 1.0 - _ss((floor - V[:, 2]) / fall)
         return {"h": h, "bone": hi, "band": band, "how": f"{how}, floor {under * 1e3:.0f} mm under the jaw"}
     ids, carry = _flesh_tree(spec, rb)
     if hi not in ids:

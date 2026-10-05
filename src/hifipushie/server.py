@@ -996,6 +996,9 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         note += rig_audit.fused_limbs(spec, rigmod.rig_bones(spec))
     except Exception:
         pass
+    from . import rig_template
+    if not glb and rig_template.weights_note(spec):
+        note.append(rig_template.weights_note(spec))
     text = note + text
     text += rigmod.report(spec, bones, V, F, J, W)
     flesh = None
@@ -2198,6 +2201,25 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                f"wind_plant(name) renders it swaying" if triangles else ""))
 
 
+def _wind_disp(d: dict, height: float) -> str:
+    """The clip's motion in metres, with what it should be."""
+    if not d:
+        return ""
+    f = lambda k: f"{d[k]['mean_m'] * 100:.1f} cm mean / {d[k]['max_m'] * 100:.1f} cm most" if k in d else "none found"
+    out = (f"moved, measured on the vertices: foot {f('foot')}; trunk top {f('trunk_top')}; limb ends {f('limb_ends')}; "
+           f"leaf tips {f('leaf_tips')}")
+    if "limbs_in_step" in d:
+        out += f"; limbs in step {d['limbs_in_step']} (1 = all swing together, a board; 0.2-0.7 reads as a tree)"
+    warn = []
+    if d.get("foot", {}).get("max_m", 0) > 0.01:
+        warn.append("WARNING: the foot moves (trunk channel not 0 at the ground)")
+    if height and d.get("trunk_top", {}).get("max_m", 0) > 0.06 * height:
+        warn.append("WARNING: the trunk's top swings more than 6% of the height: rubber; lower strength")
+    if d.get("limb_ends", {}).get("max_m", 1) < 0.01:
+        warn.append("WARNING: limb ends move under 1 cm: the tree stands frozen; raise strength")
+    return out + ("\n" + "\n".join(warn) if warn else "") + "\n"
+
+
 @mcp.tool(structured_output=False)
 def wind_plant(name: str, triangles: int | None = 20000, seconds: float = 4.0, strength: float = 1.0,
                wind_from: float = 270.0, azimuth: float = 0.0):
@@ -2212,6 +2234,7 @@ def wind_plant(name: str, triangles: int | None = 20000, seconds: float = 4.0, s
     imp = [o for o in r["import"]["objects"] if o.get("type") == "MESH"]
     txt = (f"wind: {r['n']} frames at 12 fps -> {r.get('mp4', '(no ffmpeg: frames in ' + r['frames'] + ')')}\nstrip: {r['strip']}\n"
            f"{r['moved_share']:.0%} of the picture changes against frame 0 (mean over the clip)\n"
+           + _wind_disp(r["import"].get("displacement") or {}, r.get("height", 0.0)) +
            f"Blender {r['import']['blender']} import of {Path(r['glb']).name}: " + "; ".join(
                f"{o['name']} {o['triangles']} triangles, uv sets {len(o['uv_layers'])}, attributes {o['attributes'] or 'none'}"
                + (f", _WIND vs uv differ by {o['wind_custom_vs_uv_max_diff']}" if "wind_custom_vs_uv_max_diff" in o else "")
