@@ -729,6 +729,50 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     points, `pattern._points_on_outline`). Open: hung sleeves spring out 13-26 deg within ~8 frames of the body
     going (at 8-10 deg at the end of lowering; not bend, not mesh size, not the hanger; compressed underarm cloth
     springing back is the lead), collars stand up, the coat's back side seam is 4 cm shorter than the front's.
+- Clothing workflow (2026-10-03/05, "clothflow" agent; the user: "what artists actually do: building tools so LLMs can
+  operate like real artists", and "all these learnings need to be codified"; renders `workspace/cloth_renders/wf_*`).
+  The rule: construction before solver. A day of solver tuning chased what were pattern faults (cap ease 44%, a
+  stretched stand, a missing belt, a pleat sewn shut, no sleeve placket, no lapel roll or facing, nothing pressed, one
+  bend for every fabric). Stages, each readable before the next (`cloth_workflow.py`, `guide(topic="cloth")`):
+  1. design sheet (`design_garment`, `spec.cloth.<g>.design`; `garment_design.py`): kind, from (draft source), fit,
+     fabric, details, method, made. Defaults come from `garment_kb.json`; `cloth.expanded(g)` compiles the sheet into
+     the ordinary garment keys (pattern options, drop, folds, generate, fabric, detail), the garment's own keys win.
+     A choice the source can't make, or one that needs another (barrel cuff -> sleeve placket), fails.
+  2. pattern (`look_pattern`; `pattern_sheet.py`): the flat sheet image (roles, grain, notches, seams numbered both
+     sides, folds, interfacing) + evidence that every choice is in the pieces/seams (`garment_design.evidence`, roles
+     not piece names), `cloth_check` seam bands (cap band by kind), ease per girth in the fit's band, loose pieces.
+  3. construction (`check_garment`): sewing order, layers/lap, fold lines, interfacing, each piece made or draped
+     (`made_or_draped`: draped cloth wholly interfaced fails, it is frozen as placed), the sim's stages.
+  4. place: the start rendered and checked (crossings: fail for "smooth"/ZOZO, warn for Blender; neck band pushed
+     > 8 mm; start stretch past ZOZO's strain limit; layer gaps).
+  5. sim: verdict + `garment_kb.json` targets (`sim_measures`: collar cover, layer gaps, collar points, hem level,
+     waistband height, sleeves hung, crest radius), each judged at draft or final; appended to `look_cloth`.
+  `dress` (the MCP tool) runs `cloth_workflow.gate` (stages 1-3) and refuses to start a sim on hard failures unless
+  `force=True`; `cloth.build`/`cloth.dress` in Python aren't gated.
+  - `garment_kb.json` is the knowledge base (`garment_reference`): kinds (fit ease bands, default details, cap ease,
+    lap, sewing order), details (collar, cuff, sleeve_placket, front_closure, placket, waistband, fly, skirt_closure,
+    pockets, hem, yoke, darts, pleats, back_vent, belt, lining, shoulder, topstitch; each choice: made_of, seams,
+    folds, needs, dims, evidence, lessons), fabrics with physical numbers -> solver preset + overrides, `designs` (what
+    simon / carlton / skirt_block can and can't make, with recipes), targets, lessons. New kinds and details go there.
+  - Fold lines: garment/design-table key `folds` [{piece, line, angle, strength, kind press|roll, radius}], angle on
+    the pattern-face side (180 flat, 0 over onto the face, 360 under); `garment_design.fold_polyline` resolves the
+    line forms; carried in `Bp["folds"]`. The solver side (mesh rows, placement, rest dihedral) is the "clothsim"
+    agent's; until then evidence also accepts the old `wrap.fold` U and stage 3 warns.
+  - `garment_blocks.py`: own drafts (`pattern.from: "skirt_block"`: front, two backs, darts, CB seam) and `generate`
+    (bands sized from the drafted edges they're sewn to: waistband with lap + button, rib neckband as a ring).
+    Torso wrap `"level": "waist"` (pattern y = 0 at that body line; the hull's z range stops at the pieces' top);
+    `sizing` skips bands closed on themselves and girths the garment doesn't reach (a skirt read "TOO SMALL at chest").
+  - `method: "settle"` (construct made pieces finished, settle draped cloth lightly, author fine folds; full sim for
+    hung/draped) is the path under test by clothsim: the sheet and plan carry it, the solver doesn't yet.
+  - Proved on Simon (`workspace/wf_simon`) and a new kind, the skirt (`workspace/wf_skirt`), at draft quality. Simon:
+    the gate stops it (no sleeve placket, cuff seam -1.8%); forced, the collar-cover target reads -19 mm (the funnel).
+    The recipe now drafts Simon's collar with no gap and width 1.45 (the seam was -2.4%, the fall covered 3 mm).
+    Skirt: stages connect; the draft reads as a skirt but is strained at the dart tips, its hem dips 28 mm and it
+    sits 21 mm low; with 11% seat ease one side seam gaped and the waistband crumpled (the pieces start on a cylinder
+    far wider than the waist: a waist-fitted start is needed).
+  - Open: Simon's sleeve placket (a slit op + cuff start at the slit), Carlton's belt/vent/facing/roll (clothsim),
+    leg wraps for trousers, hoods/linings/pockets as pieces, button size and buttonhole direction per design in the
+    maps, crease width and fold spacing as tool measures, per-piece fabrics. `tests/test_cloth_workflow.py`.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
