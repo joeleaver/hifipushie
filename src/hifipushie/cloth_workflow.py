@@ -403,7 +403,13 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
         lim = float((c.gx.get("zozo") or {}).get("strain_limit", 0.05))
         madep = np.isin(M["piece"][M["F"][:, 0]], [M["names"].index(n) for n in cloth.made_pieces(M, stiff)])
         over = (tri > lim) & ~madep
-        if over.mean() > 0.002:
+        if 0.002 < over.mean() <= 0.03 and float(tri[over].max()) < 0.6:
+            # a few triangles by construction (the rows of a roll line turned round a curving chest, a band pushed a
+            # millimetre off the neck): the solver gives them their own limit (cloth_zozo "start_over")
+            o["info"].append(f"start stretch: {int(over.sum())} triangles ({over.mean() * 100:.1f}%) start up to "
+                             f"{float(tri[over].max()) * 100:.0f}% stretched (fold rows, pushed bands): they get a local "
+                             "strain limit in the solver")
+        elif over.mean() > 0.002:
             worst = {}
             for t in np.where(over)[0]:
                 p = M["names"][M["piece"][M["F"][t, 0]]]

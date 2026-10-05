@@ -1061,6 +1061,11 @@ def start(block: str, meas_mm: dict, opts: dict | None = None) -> dict:
          "interfaced": [],
          "stitches": [], "generate": [], "lines": {}, "block": block}
     D["meta"]["measurements"] = dict(meas_mm)
+    if block in ("bodice", "knit") and D["meta"].get("waist_dart", 0) > 0 and D["meta"]["low"] == "hem":
+        # a fitted block past the waist: its waist darts are fish-eye darts (at the waist edge of a block that ends
+        # there they are ordinary darts)
+        for which in ("front", "back"):
+            OPS["fisheye"](D, which)
     return D
 
 
@@ -1220,10 +1225,14 @@ def apply_hinges(D: dict) -> None:
                     Lf = np.asarray(f["line"], float)
                     sf = (Lf - a) @ u
                     for k in range(len(Lf) - 1):
-                        if sf[k] * sf[k + 1] < 0:
+                        if (sf[k] < -1e-9) != (sf[k + 1] < -1e-9):  # (a point ON the hinge counts as across)
                             q = Lf[k] + (Lf[k + 1] - Lf[k]) * sf[k] / (sf[k] - sf[k + 1])
-                            if h1[0] + 0.004 < (q - a) @ dirn < h2[0] - 0.004:
-                                via.append(q)
+                            # (and a few beside it, 4 mm apart: a roll's other rows end on the hinge too, and a
+                            # row end snapped to a far vertex bends the row: its flap was stretched 150% there)
+                            for kk in range(-3, 4):
+                                qk = q + dirn * 0.004 * kk
+                                if h1[0] + 0.004 < (qk - a) @ dirn < h2[0] - 0.004:
+                                    via.append(qk)
             via.sort(key=lambda q: float((q - a) @ dirn))
             op_style_line(D, nm, name=hn, names=[f"{nm}__a", f"{nm}__b"], curve=False, apart=False, via=via,
                           **{"from": "_ha", "to": "_hb"})
@@ -1451,4 +1460,5 @@ def build(meas_mm: dict, pat: dict) -> dict:
 
 
 
+from . import pattern_tailor  # noqa: E402,F401  (registers contour, join, round_corner, fisheye)
 from . import pattern_styles  # noqa: E402,F401  (registers shawl, lapel, cut_away, darts_to_seam, raglan, kimono, hood, pleat...)

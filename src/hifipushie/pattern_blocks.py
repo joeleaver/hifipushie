@@ -222,7 +222,7 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
     meta = {"kind": "knit" if knit else "bodice", "armhole_front": edge_length(f, "armhole>armholePitch>shoulder"),
             "armhole_back": edge_length(b, "armhole>armholePitch>shoulder"), "armhole_depth": ay - sy,
             "neck_front": edge_length(f, "cfNeck>hps"), "neck_back": edge_length(b, "cbNeck>hps"),
-            "waist_left": left, "waist_y": -wy, "hips_y": -hy, "chest_quarter": cx, "waist_quarter": wq,
+            "waist_left": left, "waist_dart": dart, "waist_y": -wy, "hips_y": -hy, "chest_y": -ay, "chest_quarter": cx, "waist_quarter": wq,
             "bust": None if bust is None else [float(bust[0]), float(-bust[1])], "options": o, "low": low,
             "biceps_ease": o["biceps_ease"], "knit": knit}
     log.append(f"armhole front {meta['armhole_front'] * 1000:.0f} + back {meta['armhole_back'] * 1000:.0f} mm; neckline "

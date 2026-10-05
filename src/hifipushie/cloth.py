@@ -419,13 +419,25 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
                     raise ValueError(f"fold {f['name']}: its line must run from edge to edge of {nm} (an end is "
                                      f"{_seg_dist(d_end[None], Pp)[0] * 1000:.0f} mm inside; give \"reach\" or another line)")
             rec_rows = []
+            taken = set()  # outline vertices that are already a row's end (a roll's rows end 3-4 mm apart: sharing
+            # one vertex, every row's last segment bent to it and the flap turned about bent rows was stretched 150%)
             for S_ in foldmod.row_samples(fr["lines"], ring, h):
                 ids = []
                 for j, q in enumerate(S_):
                     if j in (0, len(S_) - 1):  # an end: the outline's nearest vertex moves onto it
-                        i = int(np.argmin(np.linalg.norm(ring - q, axis=1)))
-                        if np.linalg.norm(ring[i] - q) < 0.6 * h:
-                            ring[i] = q
+                        dq = np.linalg.norm(ring - q, axis=1)
+                        i = int(np.argmin(dq))
+                        ok = dq[i] < 0.6 * h
+                        if ok and i in taken and dq[i] > 1e-4:
+                            # the next free vertex beside it, on the row end's side of it (else the rows share one)
+                            for i2 in ((i + 1) % len(ring), (i - 1) % len(ring)):
+                                if i2 not in taken and dq[i2] < 1.3 * h and (q - ring[i]) @ (ring[i2] - ring[i]) > 0:
+                                    i = i2
+                                    break
+                        if ok:
+                            if i not in taken:
+                                ring[i] = q
+                                taken.add(i)
                             ids.append(("ring", i))
                             continue
                     ids.append(("fold", len(FL)))
@@ -1727,7 +1739,7 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
             base[v], dirs[v] = p, -faces.get(on, 1.0) * nn
         # round a tight roll the laid piece's chords can still cut the piece under it (their triangles differ):
         # the vertices of what crosses stand a little further off, until nothing does
-        for _ in range(5):
+        for _ in range(10):
             bad = _pair_crossing_verts(X, F, pid, k, j)
             if not len(bad):
                 break

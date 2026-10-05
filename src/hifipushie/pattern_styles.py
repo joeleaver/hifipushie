@@ -148,14 +148,14 @@ def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand:
     pc["marks"] = dict(pc.get("marks") or {})
     pc["marks"]["lapelFlap"] = fl
     D["folds"].append({"piece": piece, "line": roll_pts, "angle": 10, "kind": "roll",
-                       "radius": 0.004, "strength": 0.5, "flap": "lapelFlap", "name": "shawl roll"})
+                       "radius": float(o.get("roll_radius", 0.004)), "strength": 0.5, "flap": "lapelFlap", "name": "shawl roll"})
     # one cloth, two placements: the front on the torso, the collar (past the neck point) round the back of the
     # neck, its neck seam along the bottom, standing `roll_stand`, the fall turned down over it
     girth = girth_
     D.setdefault("hinges", []).append({
         "piece": piece, "name": "neckHinge", "part": "collar", "at": hps.tolist(), "dir": n.tolist(),
         "mid": (hps + n * height * 0.5).tolist(), "origin": Dp.tolist(), "x": tE.tolist(), "role": "collar_fall",
-        "wrap": {"to": "neck", "edge": "collarCB", "flip": True, "fixed_above": True, "girth": float(girth), "out": 0.003,
+        "wrap": {"to": "neck", "edge": "collarCB", "flip": True, "fixed_above": True, "girth": float(girth), "out": float(o.get("collar_out", 0.006)),
                  "apart": 0.0015},
         # (a curved crease folds isometrically at one angle: the fall is the stand's cone reflected)
         # (and as ONE crease: a roll's rows round a curved line stretch the flap 70%)
@@ -196,6 +196,23 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
     ix = pattern.arc_indices(pc, "break>lapelPoint")
     for k, i in enumerate(ix[1:-1], start=1):
         pc["P"][i] = B + (P_new - B) * k / (len(ix) - 1)
+    if o.get("gorge") == "straight":
+        # a tailored gorge: the front neck is ONE straight line from the neck point to the lapel's point; the collar
+        # ends `notch` short of the point (the lapel's own top edge beyond it is the notch's lower side)
+        if o.get("gorge_drop") is not None:  # the lapel point's height below the neck point, kept `width` off the roll
+            yv = hps[1] - abs(float(o["gorge_drop"]))
+            base = B + n * width
+            P_new = base + u * ((yv - base[1]) / u[1])
+            pc["P"][pc["names"]["lapelPoint"]] = P_new
+            ix = pattern.arc_indices(pc, "break>lapelPoint")
+            for k, i in enumerate(ix[1:-1], start=1):
+                pc["P"][i] = B + (P_new - B) * k / (len(ix) - 1)
+        notch = float(o.get("notch", 0.035))
+        gdir = _unit(hps - P_new)
+        C = P_new + gdir * notch
+        ixn = _avoiding(pc, "hps", "cfNeck", "shoulder")
+        for k, i in enumerate(ixn):
+            pc["P"][i] = hps + (C - hps) * k / (len(ixn) - 1)
     D["edges"]["lapel_edge"] = [f"{piece}:break>lapelPoint"]
     D["edges"]["gorge"] = [f"{piece}:lapelPoint>cfNeck"]
     D["centre"][piece] = "open"
