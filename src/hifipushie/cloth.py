@@ -1798,25 +1798,20 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
         A, Bv, C = uv[Fo[:, 0]], uv[Fo[:, 1]], uv[Fo[:, 2]]
         tree = cKDTree((A + Bv + C) / 3)
         sel = np.where(pid == k)[0]
-        _, cand = tree.query(uv[sel], k=min(12, len(Fo)))
-        cand = cand.reshape(len(sel), -1)
+        # the triangle of the piece under it that holds each point: EVERY triangle is tried (the k nearest centroids
+        # missed the big triangle a point lay in whenever a roll's rows of small ones were nearer: a third of a
+        # facing was snapped onto the wrong triangles and started 50-300% stretched)
+        d0, d1 = Bv - A, C - A
+        den = d0[:, 0] * d1[:, 1] - d0[:, 1] * d1[:, 0]
+        den = np.where(np.abs(den) < 1e-14, np.nan, den)
         for i, v in enumerate(sel):
             q = uv[v]
-            best, bw = None, None
-            for t in cand[i]:
-                d0, d1, d2 = Bv[t] - A[t], C[t] - A[t], q - A[t]
-                den = d0[0] * d1[1] - d0[1] * d1[0]
-                if abs(den) < 1e-14:
-                    continue
-                b1 = (d2[0] * d1[1] - d2[1] * d1[0]) / den
-                b2 = (d0[0] * d2[1] - d0[1] * d2[0]) / den
-                wts = np.array([1 - b1 - b2, b1, b2])
-                worst = float(wts.min())
-                if best is None or worst > best:
-                    best, bw = worst, (t, wts)
-                if worst >= -1e-9:
-                    break
-            t, wts = bw
+            d2 = q - A
+            b1 = (d2[:, 0] * d1[:, 1] - d2[:, 1] * d1[:, 0]) / den
+            b2 = (d0[:, 0] * d2[:, 1] - d0[:, 1] * d2[:, 0]) / den
+            worst = np.nan_to_num(np.minimum(np.minimum(1 - b1 - b2, b1), b2), nan=-np.inf)
+            t = int(np.argmax(worst))
+            wts = np.array([1 - b1[t] - b2[t], b1[t], b2[t]])
             wts = np.clip(wts, 0, None)  # (past the outline's chords: the nearest triangle's edge)
             wts /= wts.sum()
             p = wts @ X[Fo[t]]
