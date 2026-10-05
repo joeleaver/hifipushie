@@ -17,8 +17,8 @@
   "alter": [
    {"op": "turn", "piece": "front.R", "line": "placketOuterFold", "keep": "neck"},
    {"op": "turn", "piece": "front.L", "line": "placketFold1", "keep": "neck"},
-   {"op": "slit", "piece": "sleeve.L", "line": "placketCut", "width": 0.0006},
-   {"op": "slit", "piece": "sleeve.R", "line": "placketCut", "width": 0.0006}
+   {"op": "slit", "piece": "sleeve.L", "line": "placketCut", "width": 0.0025},
+   {"op": "slit", "piece": "sleeve.R", "line": "placketCut", "width": 0.0025}
   ],
   "seams": [
    ["back:hem>armhole", "front.L:hem>armhole"],

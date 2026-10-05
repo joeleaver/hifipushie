@@ -96,7 +96,7 @@ def test_slit_and_trim():
     pc = pattern.from_spec("s", {"rect": [0.2, 0.3]})
     s = pattern.slit(pc, [[0.02, -0.15], [0.02, 0.0]], 0.002, "placket")
     P = s["P"]
-    assert abs(abs(pattern.area(P)) - (0.06 - 0.5 * 0.002 * 0.15)) < 1e-9  # a thin wedge of cloth is taken
+    assert abs(abs(pattern.area(P)) - (0.06 - 0.002 * 0.147 - 0.5 * 0.002 * 0.003)) < 1e-9  # a thin strip is taken
     a, b, t = (P[s["names"][f"placket.{k}"]] for k in ("a", "b", "tip"))
     assert abs(a[0] - 0.019) < 1e-9 and abs(b[0] - 0.021) < 1e-9 and np.allclose(t, [0.02, 0.0])
     assert pattern.arc_indices(s, "placket.b>se")[0] == s["names"]["placket.b"]

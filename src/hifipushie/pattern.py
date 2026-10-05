@@ -431,7 +431,9 @@ def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
 def slit(piece: dict, line, width: float = 0.003, name: str | None = None) -> dict:
     """Cut a slit from the outline into the piece along a straight line (a line name or two points; the end on the
     outline is its mouth): a sleeve placket's opening, a vent. The outline runs in along one lip to the tip and back
-    out along the other, the lips `width` apart at the mouth (the cloth a bound slit takes up). Names: "<name>.a" and
+    out along the other, the lips `width` apart at the mouth (the cloth a bound slit takes up), parallel up to a point at the tip (a wedge's
+    lips close to nothing toward the tip: mesh vertices 0.02 mm apart, which no contact solver holds apart). Names:
+    "<name>.a" and
     "<name>.b" (the lips at the mouth, .a the lower x or y side), "<name>.tip"."""
     L = piece["lines"][line] if isinstance(line, str) else np.asarray(_line(piece, line), float)
     nm = name or (line if isinstance(line, str) else "slit")
@@ -455,6 +457,9 @@ def slit(piece: dict, line, width: float = 0.003, name: str | None = None) -> di
     ed = (B[e] - A[e]) / np.linalg.norm(B[e] - A[e])  # the outline's direction at the mouth
     La = mouth - ed * width / 2  # reached first going round
     Lb = mouth + ed * width / 2
+    up = (tip - mouth) / np.linalg.norm(tip - mouth)
+    back = min(1.5 * width, 0.5 * float(np.linalg.norm(tip - mouth)))
+    Sa, Sb = tip - up * back - ed * width / 2, tip - up * back + ed * width / 2  # the lips' shoulders under the tip
     n = len(P)
     # keep the outline's vertices clear of the lips
     keep = np.ones(n, bool)
@@ -468,16 +473,16 @@ def slit(piece: dict, line, width: float = 0.003, name: str | None = None) -> di
             new.append(P[i])
         if i == e:
             ia = len(new)
-            new += [La, tip, Lb]
+            new += [La, Sa, tip, Sb, Lb]
     for k, i in list(names.items()):
         if i in remap:
             names[k] = remap[i]
         else:  # a named point on the mouth goes to the nearer lip
-            names[k] = ia if np.linalg.norm(P[i] - La) <= np.linalg.norm(P[i] - Lb) else ia + 2
+            names[k] = ia if np.linalg.norm(P[i] - La) <= np.linalg.norm(P[i] - Lb) else ia + 4
     lo_first = (La[0], La[1]) <= (Lb[0], Lb[1])
     names[nm + (".a" if lo_first else ".b")] = ia
-    names[nm + ".tip"] = ia + 1
-    names[nm + (".b" if lo_first else ".a")] = ia + 2
+    names[nm + ".tip"] = ia + 2
+    names[nm + (".b" if lo_first else ".a")] = ia + 4
     return dict(piece, P=np.asarray(new), names=names)
 
 

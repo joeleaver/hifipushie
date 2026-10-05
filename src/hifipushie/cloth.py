@@ -1795,7 +1795,9 @@ def transfer(Ms: dict, Vs: np.ndarray, M: dict) -> np.ndarray:
         w2 = (d00 * d21 - d01 * d20) / den
         W = np.stack([1 - w1 - w2, w1, w2], -1)
         best = np.argmax(W.min(-1), axis=1)
-        w = np.clip(W[np.arange(len(Q)), best], 0, None)
+        # (a vertex just outside the coarse outline runs on in its nearest triangle's plane: clamped onto the triangle,
+        # two fine vertices beyond one coarse corner landed on the same point, a zero-area triangle)
+        w = np.clip(W[np.arange(len(Q)), best], -0.6, None)
         w /= w.sum(1, keepdims=True)
         T = Fc[cand[np.arange(len(Q)), best]]
         out[sel] = np.einsum("nk,nkd->nd", w, Vs[T])
