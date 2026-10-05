@@ -1093,6 +1093,37 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       default, own neck). `spikes/humans/lineup.py [clay|skin]`.
     - Never render or send a child's figure unclothed: the tool dresses by default; diagnosis used numbers and
       scratch-only clay.
+    - The head tables (head_axes / head_fields) were sampled along MakeHuman's OWN straight-line ages, so a head
+      following a grown body is looked up at `makehuman.table_age(body)` (the age whose old slider has this shape:
+      a grown 11-year-old -> ~13); `like.age` under 25 is converted the same way when the pack is there.
+      spikes/headfit/make_axes.py / make_field.py pass `"growth": false`. base.VERSION 85.
+    - STATE AT THE STOP (usage limit, 2026-10-06; branch `humans3`, last commit = this note): tests green at commit
+      0f967b6 + the table_age fix (test_humans, test_headfit alone, test_skin, test_images, test_bodywarp; the last
+      seq1 run's test results are in the worktree's `scratchpad/seq1.log`, read it first). NOT YET REPORTED to main
+      and NOT JUDGED: the final clay line-up `workspace/skin_renders/sk_30_ages_lineup.png` + `_measures.txt` (14
+      dressed figures, front + side, at true height, faces under). The copy I last looked at still showed the OLD
+      composition (one face per person, 12 + 2 rows) and nipples as RINGS on the adults' tees although the script
+      (`spikes/humans/lineup.py`, face row = front + three-quarter, two rows) and the smoothing (r 0.04 H, blend
+      0.9 r) had changed: check whether the file was really rewritten (COMPOSE=1 re-lays the sheet from the
+      panels in the session scratchpad `humans3/lineup/` without rebuilding) before believing it.
+      My read of the previous render: babies, toddlers, 7s, 11s read as their ages and sizes (72-74 / 93-94 / 118-119 /
+      140-141 cm), whole, arms on, no long necks, no torn noses. Still failing: tees are skin-tight shells (adults'
+      muscles, navels and nipple rings print through: they read as body paint, not cloth); all faces are near one
+      face (seeds at spread 0.35-0.5 after the seed loses its sex / age part: raise spread per person or add
+      `features`); eyes read half shut at line-up size; a hatch of fine marks on the throat where head and body
+      point sets cross-fade (own neck: try a wider band than +-SEAM); faint ring where a nipple was; shorts' box hem.
+    - NEXT, in order: (1) verify + judge sk_30, SendMessage to "main" with branch, commit, tests, sheet path, the
+      measured table and a blunt read; (2) looser cloth without the garment option's studs (a patch over each
+      nipple pole, or fix `base.garment` closing at dense poles), varied faces, open eyes; (3) skin on
+      (`lineup.py skin`: needs scene syncs, heavy), per-person front / three-quarter / side rows, face close-ups
+      (look_skin stages take the base: check they handle own_neck and the onesie); (4) rig, hands, skin zones on a
+      baby (rig_template reads `src`: now every vertex has one; rig.humanoid Neck / Head on a neckless toddler
+      unchecked; retopo.graft_head / export topology "wrap" with own_neck UNTESTED and likely needs the no-cut
+      path); (5) the `human` tool in guide.md / the skill; (6) priority 2 list from the task (elder woman, fine
+      relief, oiliness, lashes, export of one human).
+    - Scratch (worktree `scratchpad/`, untracked): run.sh (env), one.py <age> <sex> <outfit> [zoom] (one clay human),
+      face.py (face variants), t4.py (bodies vs references table), t5.py (GNM head vs the body's own), quick.py (a
+      PIL clay view of a mesh without Blender), seq1.sh (line-up then tests).
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
