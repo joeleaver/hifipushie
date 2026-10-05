@@ -231,6 +231,17 @@ def test_grafted_neck_and_worn_parts():
     spec2.setdefault("parts", {}).setdefault("collar", {})["rig_head"] = True
     sk2 = rig.skin_parts(spec2, bones, {"collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int))})
     assert head_w(*sk2["collar"])[ring[low]].min() > 0.2
+    # a strap attached to a bag bound to Hips: beside the bag it is the bag's joint's, far from it the body's
+    knee = bones[names.index(P + "LeftLeg")]["head"]
+    thigh = np.linalg.norm(Wq - (knee + [0, 0, 0.12]), axis=1) < 0.12
+    bag = knee + [0.08, 0, 0.12] + 0.01 * np.random.default_rng(0).normal(size=(50, 3))
+    spec3 = copy.deepcopy(spec)
+    spec3.setdefault("parts", {}).update({"bag": {"rig_bone": "Hips"}, "strap": {"rig_attach": "bag"}})
+    none = np.zeros((0, 3), int)
+    sk3 = rig.skin_parts(spec3, bones, {"bag": (bag, none), "strap": (Wq[thigh], none)})
+    hips = (sk3["strap"][1] * (sk3["strap"][0] == names.index(P + "Hips"))).sum(1)
+    d = np.linalg.norm(Wq[thigh][:, None] - bag[None], axis=2).min(1)
+    assert hips[d < 0.02].min() > 0.8 and hips[d > rig.ATTACH].max() < 0.05, (hips[d < 0.02].min(), hips[d > rig.ATTACH].max())
 
 
 if __name__ == "__main__":

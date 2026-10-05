@@ -679,7 +679,8 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                     np.add.at(N, F[:, c], fn)
                 N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
             D = rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None)
-            if pn not in skin and len(F) and WORN_SMOOTH:
+            rounds = int((defs.get(pn) or {}).get("rig_smooth", 0 if pn in skin else WORN_SMOOTH))
+            if len(F) and rounds:
                 # cloth is a sheet of its own: the weights it read off the skin are evened over ITS mesh, as a rigger
                 # smooths a transfer. A collar's two faces and its edge read three places on the shoulder, and its
                 # wing crumpled when the arm rose. Seam-split vertices are one vertex here (or they'd crack).
@@ -688,7 +689,7 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                 cnt = np.bincount(inv).astype(np.float64)[:, None]
                 Dw = np.zeros((len(cnt), D.shape[1]))
                 np.add.at(Dw, inv, D)
-                D = _smooth(Dw / cnt, inv[F], WORN_SMOOTH)[inv]
+                D = _smooth(Dw / cnt, inv[F], rounds)[inv]
             J, W = rig_template.top_k(D)
             out[pn] = _spread_twist(rb, V, J, W) if spread else (J, W)
         else:
@@ -709,7 +710,28 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                 # nape, was Head 1.0 and turned with the face: 47 mm off the shirt, 299 triangles inside out)
                 continue
             out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h, hf["bone"])
+    # parts.<p>.rig_attach = "<part>" | [parts]: where this part comes within rig_attach_length (ATTACH) of a part
+    # bound to one joint (rig_bone), it blends to that joint: a strap's end goes with the bag it carries, the rest
+    # of it with the body it lies on. (The golfer's strap read the thigh next to a bag bound to Hips and tore.)
+    from scipy.spatial import cKDTree
+    for pn, (V, F) in meshes.items():
+        d_ = defs.get(pn) or {}
+        to = d_.get("rig_attach")
+        if not to or d_.get("rig_bone") or not len(V):
+            continue
+        reach = float(d_.get("rig_attach_length", ATTACH))
+        for other in ([to] if isinstance(to, str) else to):
+            ob = (defs.get(other) or {}).get("rig_bone")
+            if other not in meshes or not ob or not len(meshes[other][0]):
+                raise ValueError(f"parts.{pn}.rig_attach: {other!r} must be an exported part with a rig_bone")
+            dist, _ = cKDTree(np.asarray(meshes[other][0], float)).query(np.asarray(V, float), distance_upper_bound=reach)
+            h = 1.0 - _ss(np.where(np.isfinite(dist), dist, reach) / reach)
+            out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h,
+                                  names.index(ob if ob in names else PREFIX + ob))
     return out
+
+
+ATTACH = 0.08  # m: the length over which a part hands over to the bound part it is attached to (parts.<p>.rig_attach)
 
 
 # ---- the rigid head -----------------------------------------------------------------------------------------------

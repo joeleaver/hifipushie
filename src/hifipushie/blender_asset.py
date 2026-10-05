@@ -979,11 +979,27 @@ def preview(job):
         _render_views(job, scene, cam, cam_data, "")
         return
     keyed = [ob for ob in scene.objects if ob.type == "MESH" and ob.data.shape_keys]
+    arms = [ob for ob in scene.objects if ob.type == "ARMATURE"]
     for i, pose in enumerate(poses):  # face shapes: the morph targets (shape keys on import) at these weights
         for ob in keyed:
             for kb in ob.data.shape_keys.key_blocks[1:]:
                 kb.slider_min = min(kb.slider_min, -1.0)
                 kb.value = float(pose.get(kb.name, 0.0))
+        # "turns": {joint: [x, y, z, deg]}: each joint turned about a model-space axis through its own head, on top
+        # of its parent's turn (rig.pose's convention). The importer gives bones its own rest axes, so the turn is
+        # carried into each bone's rest frame.
+        turns = pose.get("turns") or {}
+        for arm in arms:
+            for pb in arm.pose.bones:
+                pb.rotation_mode = "QUATERNION"
+                t = turns.get(pb.name)
+                if t is None:
+                    pb.rotation_quaternion = (1, 0, 0, 0)
+                    continue
+                rest = pb.bone.matrix_local.to_3x3()
+                r = Matrix.Rotation(math.radians(float(t[3])), 3, Vector(t[:3]).normalized())
+                pb.rotation_quaternion = (rest.inverted() @ r @ rest).to_quaternion()
+        bpy.context.view_layer.update()
         _render_views(job, scene, cam, cam_data, f"_p{i}")
 
 
