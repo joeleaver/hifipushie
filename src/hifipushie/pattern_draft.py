@@ -814,7 +814,14 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     """A collar drafted from the neckline as it is now (edges neck_back + neck_front), as a half cut on the fold at
     centre back. "band": a stand: a strip the neckline's length, its sewn edge slightly convex (it then leans in to
     the neck); "flat": the sewn edge is the neckline's own curve (shoulder seams laid together): it lies flat on
-    the shoulders with no stand; "roll": between the two (`stand` 0..1: 1 = band, 0 = flat)."""
+    the shoulders with no stand; "roll": between the two (`stand` 0..1: 1 = band, 0 = flat).
+    "tailored": a jacket's collar in one piece, stand + fall with a roll line between: `stand_height` (0.03) up the
+    neck, `fall` (0.045) back down over it, ending at the lapel's gorge (`stop`). Its back part is an annular sector
+    (the shawl collar's lesson: a strip run straight can't turn down round a neck): the outer edge is longer than
+    the neck edge by `spring` (default (fall - stand_height + 8 mm) x pi / 2: what the fall's edge needs to lie on
+    the shoulders a fall's overhang outside the neck seam); the front part runs on straight to the gorge.
+    `point` (0.0) moves the end's outer corner along the collar (the notch's shape). Points cbNeck, cbRoll,
+    cbOuter, endNeck, endRoll, endOuter; a roll fold `stand_height` from the neck edge."""
     nb, nf = D["edges"].get("neck_back"), D["edges"].get("neck_front")
     if not nb or not nf:
         raise DraftError("collar: the draft has no neckline edges (neck_back / neck_front)")
@@ -852,6 +859,14 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     n = 40
     si = np.linspace(0, s[-1], n)
     a_i = np.interp(si, s, ang - ang[0]) * (1 - stand) + (-0.12 * stand) * (si / s[-1]) ** 2
+    tailored = type == "tailored"
+    if tailored:
+        sh_, fl_ = float(o.get("stand_height", 0.03)), float(o.get("fall", 0.045))
+        stand = 0.5  # (its role: a collar that turns)
+        height = sh_ + fl_
+        spring = float(o.get("spring", (fl_ - sh_ + 0.008) * math.pi / 2))
+        R0 = lb * height / max(spring, 1e-4)
+        a_i = np.minimum(si * ratio, lb) / R0  # turns (outer edge on the outside) over the back neck, then straight
     ds = (Ln) / (n - 1)
     edge = [np.zeros(2)]
     for k in range(1, n):
@@ -864,11 +879,17 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     # the collar's body lies AWAY from the neck hole (the hole is on the left of cb -> hps -> cf): a flat collar's
     # outer edge is then longer than its neck edge, a band's top edge a little shorter (it leans in to the neck)
     outer = edge - nrm * hgt[:, None]
+    if tailored and o.get("point"):
+        outer[-1] = outer[-1] + t[-1] / np.linalg.norm(t[-1]) * float(o["point"])
     k_sh = int(np.argmin(np.abs(si - lb)))
     k_cf = int(np.argmin(np.abs(si - (lb + lf))))
     pts = [("cb", edge[0])] + [(("shoulderNotch" if k == k_sh else "cf" if (k == k_cf and ext > 0) else None), edge[k])
                                for k in range(1, n - 1)] + [("front" if ext > 0 else "cf", edge[-1])]
+    if tailored:  # the roll line's ends are outline points (the end edge, the centre back fold)
+        pts += [("endRoll", edge[-1] + (outer[-1] - edge[-1]) * (sh_ / height))]
     pts += [("frontTop", outer[-1])] + [(None, q) for q in outer[-2:0:-1]] + [("cbTop", outer[0])]
+    if tailored:
+        pts += [("cbRoll", edge[0] + (outer[0] - edge[0]) * (sh_ / height))]
     # the half must have its centre back on x = 0: turn it so cb -> cbTop is the y axis
     role = o.get("role") or ("collar_stand" if stand >= 0.75 else "collar_fall")
     pc = pb.make_piece(name, pts, role, {"to": "neck", "edge": "cb"}, "fold")
@@ -880,6 +901,12 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
         pc["P"] = pc["P"][::-1]
         m = len(pc["P"]) - 1
         pc["names"] = {k_: m - i for k_, i in pc["names"].items()}
+    if tailored:
+        for alias, src in (("cbNeck", "cb"), ("cbOuter", "cbTop"), ("endNeck", "cf"), ("endOuter", "frontTop")):
+            pc["names"][alias] = pc["names"][src]
+        D["edges"][f"{name}_neck"] = [f"{name}:cb>shoulderNotch>cf"]
+        D["edges"][f"{name}_outer"] = [f"{name}:frontTop>cbTop"]
+        D["edges"][f"{name}_end"] = [f"{name}:cf>endRoll>frontTop"]
     D["pieces"][name] = pc
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"
@@ -889,7 +916,13 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
             "ease": [ratio - 1 - 0.01, ratio - 1 + 0.01],
             "why": f"{name} is cut {ratio:.2f} x the neckline and stretched on (a rib band hugs the neck)"}
     D["interfaced"].append(name)
-    if stand < 0.75:
+    if tailored:
+        D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": sh_}, "angle": 15,
+                           "kind": "roll", "radius": 0.004, "name": f"{name} roll"})
+        D["log"].append(f"collar {name} (tailored): stand {sh_ * 1000:.0f} + fall {fl_ * 1000:.0f} mm, spring "
+                        f"{spring * 1000:.0f} mm: outer edge {edge_length(D, D['edges'][name + '_outer']) * 1000:.0f} mm for a "
+                        f"neck edge of {edge_length(D, seam_edge) * 1000:.0f} (half)")
+    elif stand < 0.75 and not tailored:
         D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": 0.004 + 0.02 * stand}, "angle": 15,
                            "kind": "roll", "radius": 0.003, "name": f"{name} roll"})
     D["log"].append(f"collar {name} ({type}, stand {stand:.2f}): sewn edge {edge_length(D, seam_edge) * 1000:.0f} mm for a "
