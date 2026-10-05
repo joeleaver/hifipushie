@@ -339,6 +339,7 @@ TWIST = {"Arm": ("counter", "arm", "ForeArm"), "ForeArm": ("follow", "forearm", 
 # of their area half way, two keep 90%); one per leg segment (a foot or thigh rolls 30-45 deg, not 105)
 TWIST_DEFAULT = {"arm": 2, "forearm": 2, "upleg": 1, "leg": 1}
 TWIST_MAX = 4
+TWIST_TRACE = 0.015  # a weight this small may be dropped to keep a vertex at four bones
 ROLL_OF_PARENT = ("Hand", "Foot")  # their "roll" is about the segment they end
 
 
@@ -427,6 +428,26 @@ def _spread_twist(rb: list[dict], verts: np.ndarray, J: np.ndarray, W: np.ndarra
         w = W[rows, cols]
         J2[rows, cols], W2[rows, cols] = bi[lo], w * (1 - f)
         J2[rows, kk + cols], W2[rows, kk + cols] = bi[hi], w * f
+    # more than k bones now: drop the smallest if it is a trace (a forearm vertex with a whiff of two fingers keeps
+    # its split), else put the smallest split back together (a belly vertex on Spine, Spine1, Hips and the arm, the
+    # arm split in two: dropping a bone there moved the skin 10 mm with nothing driven).
+    for _ in range(kk):
+        over = np.flatnonzero((W2 > 0).sum(1) > k)
+        if not len(over):
+            break
+        r = np.arange(len(over))
+        a, b = W2[over, :kk], W2[over, kk:]
+        pair = np.where((a > 0) & (b > 0), np.minimum(a, b), np.inf)
+        c = pair.argmin(1)
+        alone = np.where(W2[over] > 0, W2[over], np.inf)
+        s = alone.argmin(1)
+        merge = np.isfinite(pair[r, c]) & ((alone[r, s] > TWIST_TRACE) | (pair[r, c] <= alone[r, s]))
+        mo, mc = over[merge], c[merge]
+        keep_b = W2[mo, kk + mc] > W2[mo, mc]
+        tot = W2[mo, mc] + W2[mo, kk + mc]
+        J2[mo, mc] = np.where(keep_b, J2[mo, kk + mc], J2[mo, mc])
+        W2[mo, mc], W2[mo, kk + mc] = tot, 0.0
+        W2[over[~merge], s[~merge]] = 0.0
     order = np.argsort(-W2, axis=1, kind="stable")[:, :k]
     Jk = np.take_along_axis(J2, order, 1)
     Wk = np.take_along_axis(W2, order, 1)
