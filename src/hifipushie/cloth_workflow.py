@@ -378,6 +378,25 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
             o["warn"].append(f"{p} was pushed {v} mm off the body at the start (that stretch goes into the rest shape)")
     if push:
         o["info"].append(f"start pushed off the body (mm): {push}")
+    # how far apart each seam's two sides start: a seam whose sides start far apart everywhere is sewn to the wrong
+    # place (a band's chain starting half a turn from the band's opening, a sleeve turned round its arm) or its
+    # piece is placed away from where it is sewn (a cut-on collar standing up the front of the neck)
+    if len(M.get("sew", [])) and "sew_seam" in M:
+        sw, ss = np.asarray(M["sew"]), np.asarray(M["sew_seam"])
+        gp = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
+        far = []
+        for si in np.unique(ss):
+            g_ = gp[ss == si]
+            med, mx = float(np.median(g_)), float(g_.max())
+            if med > 0.25 or mx > 0.40:  # (a shoulder seam starts a body depth apart: front and back stand upright)
+                sd = Bp["seams"][int(si)] if int(si) < len(Bp["seams"]) else "?"
+                far.append((mx, f"{json.dumps(sd)[:110]}: median {med * 1000:.0f} mm, max {mx * 1000:.0f} mm"))
+        if far:
+            far.sort(reverse=True)
+            o["warn"].append("seams whose sides START far apart (the sewing must drag the cloth there; a twisted or "
+                             "crumpled result starts here: check the chain's order / the piece's wrap, turn or fold): "
+                             + "; ".join(t for _, t in far[:5]))
+        o["info"].append(f"start seam gaps: median {np.median(gp) * 1000:.0f} mm, p95 {np.percentile(gp, 95) * 1000:.0f} mm")
     stiff = cloth.interfacing(Bp, M)
     if smooth:
         tri, _ = cloth.edge_strain(X, M["uv"], M["F"])  # the rest is the flat pattern (made pieces left out below)
