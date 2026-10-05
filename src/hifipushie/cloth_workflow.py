@@ -477,15 +477,13 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
         gp = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
         far = []
         for r in seam_start_gaps(X, M):
-            # (turned is a chain's fault: a seam of single edges that stand at an angle, a raglan sleeve's shoulder
-            # along the arm against the body's cut on the chest, is only far or not)
-            sd_ = Bp["seams"][r["seam"]] if r["seam"] < len(Bp["seams"]) else ["", ""]
-            r["turned"] = r["turned"] and any(not isinstance(x, str) for x in sd_)
             if r["far"] or r["turned"]:
                 sd = Bp["seams"][r["seam"]] if r["seam"] < len(Bp["seams"]) else "?"
                 far.append((r["max"], f"{json.dumps(sd)[:110]}: median {r['median'] * 1000:.0f} mm, max {r['max'] * 1000:.0f} mm"
-                            + (" (its two sides are TURNED against each other: the gaps point every way, as when a "
-                               "band's chain starts part of a turn from the band's own start)" if r["turned"] else "")))
+                            + (f" (its two sides are TURNED {r['turn_deg']:.0f} deg against each other: a band's chain "
+                               "that starts part of a turn from the band's own start, or a piece lying at an angle "
+                               "to the edge it is sewn to: a raglan sleeve's shoulder along the arm against the "
+                               "body's cut on the chest crumpled at the shoulder in the sim)" if r["turned"] else "")))
         if far:
             far.sort(reverse=True)
             o["warn"].append("seams whose sides START far apart (the sewing must drag the cloth there; a twisted or "
