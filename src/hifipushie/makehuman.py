@@ -163,7 +163,11 @@ def body(params: dict) -> dict:
     F = [[int(remap[v]) for v in f] for f in faces]
     eye = jp("eye.L____head")
     bones = {n: (jp(b["head"]), jp(b["tail"])) for n, b in skeleton()["bones"].items()}
-    out = {"name": "makehuman", "vid": used, "bones": bones, "P": V[used], "L": np.array([v for f in F for v in f]),
+    nk, hd = J["neck"], J["head"]
+    f = float((bones["head"][0] - nk) @ (hd - nk) / ((hd - nk) @ (hd - nk)))
+    # where the export rig's Neck and Head pivot (rig.humanoid): the "neck" joint here is the neck's base
+    rig_hint = {"Neck": ["neck", "head", 0.0], "Head": ["neck", "head", round(f, 4)]}
+    out = {"name": "makehuman", "vid": used, "bones": bones, "rig": rig_hint, "P": V[used], "L": np.array([v for f in F for v in f]),
            "S": np.array([len(f) for f in F]), "J": J, "chin_z": float(jp("jaw____tail")[2]),
            "face": {"landmarks": {"eye.L": eye.tolist()}}}
     _CACHE[("body", key)] = out

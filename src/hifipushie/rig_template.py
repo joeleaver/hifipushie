@@ -57,8 +57,16 @@ def _central(tpl: dict, names: list[str]) -> dict:
     pelvis, chest, neck, head = (np.asarray(J[k], float) for k in ("pelvis", "chest", "neck", "head"))
     sh_z = 0.5 * (J["shoulder.L"][2] + J["shoulder.R"][2])
     t = float(np.clip((sh_z - chest[2]) / max(neck[2] - chest[2], 1e-6), 0.2, 0.8))
-    pts = [pelvis, pelvis + (chest - pelvis) / 3, pelvis + 2 * (chest - pelvis) / 3, chest,
-           chest + t * (neck - chest), neck, neck + 4 * (head - neck)]
+    hint = tpl.get("rig") or {}
+
+    def at(name, default):  # as rig.humanoid places Neck and Head
+        if name in hint:
+            a, b, f = hint[name]
+            return np.asarray(J[a], float) + float(f) * (np.asarray(J[b], float) - np.asarray(J[a], float))
+        return default
+    nk, hd = at("Neck", chest + t * (neck - chest)), at("Head", neck)
+    pts = [pelvis, pelvis + (chest - pelvis) / 3, pelvis + 2 * (chest - pelvis) / 3, chest, nk, hd,
+           hd + 4 * (head - neck)]
     cum = np.r_[0, np.cumsum([np.linalg.norm(b - a) for a, b in zip(pts, pts[1:])])]
     stretch = ["Hips", "Spine", "Spine1", "Spine2", "Neck", "Head"]
 

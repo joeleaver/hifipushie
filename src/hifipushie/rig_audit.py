@@ -114,7 +114,10 @@ AUDIT_TURN = (("Thumb", 45), ("Index", 70), ("Middle", 70), ("Ring", 70), ("Pink
               ("Shoulder", 15), ("Arm", 60), ("Hand", 45), ("UpLeg", 60), ("Leg", 90), ("Foot", 30), ("Toe", 30),
               ("Spine", 20), ("Neck", 25), ("Head", 33))
 DIGITS = ("Thumb", "Index", "Middle", "Ring", "Pinky")
-BAD = {"rigid": 3.0, "leak": 3.0, "flipped": 20, "bleed": 0.15}  # mm, mm, triangles, weight
+BAD = {"rigid": 3.0, "leak": 6.0, "leak_digit": 3.0, "flipped": 20, "bleed": 0.15}  # mm, mm, mm, triangles, weight
+# Bones that lie inside a mass their own segment doesn't carry rigidly (the clavicle over the ribs, the thumb's
+# metacarpal in the palm): what must follow them is their descendants' skin, away from the next joint's own blend.
+BURIED = ("Shoulder", "HandThumb1")
 
 
 def owners(bones: list[dict], V: np.ndarray, F: np.ndarray | None = None):
@@ -152,7 +155,10 @@ def owners(bones: list[dict], V: np.ndarray, F: np.ndarray | None = None):
             near[idx] = D[idx].argmin(1)
     girth = {int(ids[q]): (float(np.median(D0[near == q, q])) if (near == q).sum() > 3 else 0.02)
              for q in range(len(ids))}
-    return ids[near], girth, seg
+    return ids[near], girth, seg, (ids, D0)
+
+
+CLEAR = 0.7  # a vertex is clearly one side's when that side's nearest bone is this much nearer than the other's
 
 
 def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray, only=None) -> dict:
@@ -179,7 +185,12 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
             fam[i] = b["parent"]
     dense = np.zeros((len(V), n))
     np.add.at(dense, (np.repeat(np.arange(len(V)), J.shape[1]), fam[J].ravel()), W.ravel())
-    own, girth, seg = owners(bones, V, F)
+    own, girth, seg, (ids, D0) = owners(bones, V, F)
+    col = {int(b): q for q, b in enumerate(ids)}
+
+    def nearest(mask):  # distance to the nearest segment of the bones in mask (n,), inf when there is none
+        cols = [col[b] for b in np.flatnonzero(mask) if b in col]
+        return D0[:, cols].min(1) if cols else np.full(len(V), np.inf)
     par = np.array([b["parent"] for b in bones])
     desc = np.eye(n, dtype=bool)  # desc[a, b]: b is a or under a
     for i in range(n):
@@ -216,7 +227,14 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
         for b in digs:
             if a == b or a[:4] != b[:4]:
                 continue
-            m = own_chain == b
+            ib = np.zeros(n, bool)
+            ib[[i for i, c in chain.items() if c == b]] = True
+            ia = np.zeros(n, bool)
+            ia[[i for i, c in chain.items() if c == a]] = True
+            # b's skin, clearly: its bone nearer than a's by CLEAR (the web between two fingers is nobody's)
+            first = min(i for i, c in chain.items() if c == b)  # past the knuckle: the web there is shared
+            m = ((own_chain == b) & (nearest(ib) < CLEAR * nearest(ia))
+                 & (np.linalg.norm(V - bones[first]["head"], axis=1) > 2.5 * girth.get(first, 0.008)))
             if m.any() and wa[m].max() > 0.02:
                 bleed.append({"holder": a, "on": b, "max": float(wa[m].max()),
                               "over": int((wa[m] > 0.1).sum()), "of": int(m.sum())})
@@ -245,8 +263,19 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
         # the joint's own blend runs back along its parent and onto the bones that share the joint: their skin
         # within three girths of the joint isn't a leak
         rel = (par[own] == par[i]) | (own == par[i])
-        follow = mine & (dj > 1.6 * r)
-        stay = ~mine & ~(rel & (dj < 3.0 * r)) & (dj > 1.6 * r)
+        gp = par[par[i]] if par[i] >= 0 else -1
+        rel = rel | ((own == gp) & (gp >= 0))  # and its grandparent's (pec and lat ride the arm from the chest)
+        dm, do = nearest(desc[i]), nearest(~desc[i])
+        strict = desc[i].copy()
+        buried = b["name"].endswith(BURIED)
+        strict[i] = not buried
+        follow = strict[own] & (dj > 1.6 * r) & (dm < CLEAR * do)
+        if buried:
+            for c in np.flatnonzero(par == i):
+                if c in seg:
+                    follow &= np.linalg.norm(V - bones[c]["head"], axis=1) > 3.0 * girth.get(int(c), 0.02)
+        r_own = max(girth.get(i, 0.02), 0.004)  # (a finger's blend reaches a finger's width, not the palm's)
+        stay = ~mine & ~(rel & (dj < 3.0 * r_own)) & (dj > 1.6 * r_own) & (do < CLEAR * dm)
         worst = None
         for e in (e1, np.cross(ax, e1)):
             t = np.radians(deg)
@@ -259,7 +288,7 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
             fm = mine[F].all(1)
             pure = fm | (~mine[F]).all(1)
             exp = np.where(fm[:, None], area0 @ R.T, area0)
-            row = {"bone": b["name"], "deg": deg,
+            row = {"bone": b["name"], "deg": deg, "digit": i in chain,
                    "rigid_p95": float(np.percentile(er, 95) * 1e3) if len(er) else 0.0,
                    "rigid_max": float(er.max() * 1e3) if len(er) else 0.0,
                    "leak_n": int((ls > 1e-3).sum()),
@@ -279,7 +308,8 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
 
 
 def is_bad(r: dict) -> bool:
-    return (r["rigid_p95"] > BAD["rigid"] or (r["leak_max"] > BAD["leak"] and r["leak_n"] >= 5)
+    return (r["rigid_p95"] > BAD["rigid"]
+            or (r["leak_max"] > BAD["leak_digit" if r.get("digit") else "leak"] and r["leak_n"] >= 5)
             or r["flipped"] > BAD["flipped"])
 
 

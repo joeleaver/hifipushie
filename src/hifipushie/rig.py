@@ -276,14 +276,29 @@ def humanoid(spec: dict) -> list[dict] | None:
     add("Spine", pelvis + (chest - pelvis) / 3, "Hips")
     add("Spine1", pelvis + 2 * (chest - pelvis) / 3, "Spine")
     add("Spine2", chest, "Spine1", src="chest")
-    add("Neck", chest + t * (neck - chest), "Spine2")
-    add("Head", neck, "Neck", src="neck")
+    collar = chest + t * (neck - chest)  # the spine at shoulder height: where the clavicles start
+    # Where Neck and Head pivot. Kit characters: the "neck" joint is the skull's base (the head bone starts there), so
+    # Head sits on it and Neck at shoulder height. A template may say otherwise (`rig` in its dict: {rig joint: [joint
+    # a, joint b, t]}): MakeHuman's "neck" joint is the neck's BASE (C7) and its head bone starts 63% of the way to
+    # the "head" joint; Head on the "neck" joint there pivoted the head at the bottom of the neck, 10 cm low, and the
+    # whole neck's turn had to happen in the skin under the jaw.
+    hint = {}
+    if spec.get("base"):
+        from . import base as basemod
+        hint = basemod.source(spec["base"]).get("rig") or {}
+
+    def hinted(name, default):
+        if name in hint:
+            a, b, f = hint[name]
+            return _joint(s, a) + float(f) * (_joint(s, b) - _joint(s, a))
+        return default
+    add("Neck", hinted("Neck", collar), "Spine2", src="template" if "Neck" in hint else "placed")
+    add("Head", hinted("Head", neck), "Neck", src="template" if "Head" in hint else "neck")
     up = (head - neck) / max(np.linalg.norm(head - neck), 1e-9)
     add("HeadTop_End", _surface_along(spec, head, up, 2 * np.linalg.norm(head - neck) + 0.5), "Head", True)
     for side, S in (("L", "Left"), ("R", "Right")):
         j = {k: _joint(s, f"{k}.{side}") for k in ("shoulder", "elbow", "wrist", "hip", "knee", "ankle")}
-        base = bones[[b["name"] for b in bones].index(PREFIX + "Neck")]["head"]
-        add(f"{S}Shoulder", base + 0.2 * (j["shoulder"] - base), "Spine2")
+        add(f"{S}Shoulder", collar + 0.2 * (j["shoulder"] - collar), "Spine2")
         add(f"{S}Arm", j["shoulder"], f"{S}Shoulder", src=f"shoulder.{side}")
         add(f"{S}ForeArm", j["elbow"], f"{S}Arm", src=f"elbow.{side}")
         add(f"{S}Hand", j["wrist"], f"{S}ForeArm", src=f"wrist.{side}")
@@ -610,9 +625,10 @@ def test_pose(bones: list[dict]) -> dict:
 def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -> dict:
     """Weights for every part {name: (verts, tris)} -> {name: (J, W)}. parts.<p>.rig_bone (a rig bone, the prefix
     optional) binds a part rigidly (a bag on the hip, a disc in the hand: split between bones they tore); with a base
-    body the other parts copy the weights of the body's nearest vertex (clothes move with the skin under them:
-    weighted on their own they drifted from it and the body poked through)."""
-    from scipy.spatial import cKDTree
+    body every other part reads the base body's weights off its surface (clothes move with the skin under them:
+    weighted on their own they drifted from it and the body poked through), and those are the template's own
+    hand-made weights when it has them (MakeHuman: rig_template.py; spec["rig"]["weights"] = "distance" for ours)."""
+    from . import rig_template
     defs = spec.get("parts") or {}
     names = [b["name"] for b in rb]
     out = {}
@@ -621,13 +637,19 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
     if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
         from . import base as basemod
         from .spec import expand_mirror as _em
-        Wq, fq = basemod.surface(basemod.inject(_em(spec)), spec["base"])["quads"]
+        surf = basemod.surface(basemod.inject(_em(spec)), spec["base"])
+        Wq, fq = surf["quads"]
         Wq = np.asarray(Wq, float)
         Tq = np.array([(f[0], f[j], f[j + 1]) for f in fq for j in range(1, len(f) - 1)])
-        ref = rig_weights(spec, rb, Wq, Tq, smooth=smooth)
-        tree = cKDTree(Wq)
+        # a template with hand-made weights (MakeHuman): its own, by topology (rig_template.py); else ours by distance
+        ref = rig_template.template_weights(spec, rb, surf)
+        spread = ref is not None  # the template knows no twist bones: shared out per part, after the transfer
+        if ref is None:
+            Jr, Wr = rig_weights(spec, rb, Wq, Tq, smooth=smooth)
+            ref = np.zeros((len(Wq), len(rb)))
+            np.add.at(ref, (np.repeat(np.arange(len(Wq)), Jr.shape[1]), Jr.ravel()), Wr.ravel())
     for pn, (V, F) in meshes.items():
-        bone =(defs.get(pn) or {}).get("rig_bone")
+        bone = (defs.get(pn) or {}).get("rig_bone")
         if bone:
             full = bone if bone in names else PREFIX + bone
             if full not in names:
@@ -638,17 +660,18 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             W[:, 0] = 1.0
             out[pn] = (J, W)
         elif ref is not None:
-            d, k = tree.query(np.asarray(V, float), k=4)  # inverse-distance blend of the 4 nearest (the base's
-            w = 1.0 / np.maximum(d, 1e-5) ** 2  # quads are ~1 cm apart: one nearest vertex left steps)
-            w /= w.sum(1, keepdims=True)
-            dense = np.zeros((len(V), len(rb)))
-            rows = np.arange(len(V))[:, None]
-            for c in range(4):
-                np.add.at(dense, (np.repeat(rows, 4, 1), ref[0][k[:, c]]), ref[1][k[:, c]] * w[:, c:c + 1])
-            J = np.argsort(-dense, 1)[:, :4]
-            W = np.take_along_axis(dense, J, 1)
-            W /= np.maximum(W.sum(1, keepdims=True), 1e-12)
-            out[pn] = (J, W)
+            # read off the base's SURFACE where it faces the way the vertex does (rig_template.from_surface): the
+            # nearest base VERTICES of a finger's side are as often the next finger's (weights bled 0.4-0.57 across)
+            V = np.asarray(V, float)
+            F = np.asarray(F)
+            N = np.zeros_like(V)
+            if len(F):
+                fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+                for c in range(3):
+                    np.add.at(N, F[:, c], fn)
+                N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
+            J, W = rig_template.top_k(rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None))
+            out[pn] = _spread_twist(rb, V, J, W) if spread else (J, W)
         else:
             out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
         if hf is not None and not bone and len(V):  # the head is rigid: the falloff to the neck is on the throat
@@ -692,13 +715,15 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
         return None
     opts = opts if isinstance(opts, dict) else {}
     hi = names.index(PREFIX + "Head")
-    hj = rb[hi]["head"]
+    s = expand_mirror(spec)
+    Jn = s["joints"]
+    # sizes are counted from the modelling "neck" joint (the Head bone's own head on kit characters; a template's rig
+    # hint may put Head higher)
+    hj = _joint(s, "neck") if "neck" in Jn else rb[hi]["head"]
     top = rb[names.index(PREFIX + "HeadTop_End")]["head"] if PREFIX + "HeadTop_End" in names else hj + [0, 0, 0.25]
     size = max(float(np.linalg.norm(top - hj)), 1e-3)
     band = float(opts.get("band", HEAD_BAND * size))
     under = float(opts.get("under", HEAD_UNDER * size))
-    s = expand_mirror(spec)
-    Jn = s["joints"]
     if spec.get("base"):
         if "lm_chin" in Jn and "lm_jaw_4.L" in Jn:
             pts = [resolve_point(s, "lm_chin")] + [0.5 * (resolve_point(s, f"lm_jaw_{i}.L")
