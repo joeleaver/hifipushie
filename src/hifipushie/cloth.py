@@ -1991,6 +1991,11 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
             start, inf = foldmod.apply(start, M, fd, face, obs, 0.004, t_max=0.0, t_min=-70.0 / full, steps=36,
                                        own_base=True, wedge=0.03)
             info[fd["name"]]["start_open_deg"] = inf["turn_deg"]
+        # what still passes through an opened flap (the stations are eased along the line) is smoothed out from under it
+        start, ut = _untangle(start, M, ~held)
+        if len(ut) > 1 and len(body.V):
+            start = _clear_of_body(start, M["F"], ~held, body, 0.0042, 0.0034)
+        Bp["untangled"] = (Bp.get("untangled") or []) + ["flaps"] + ut + [int(_crossing_verts(start, M).sum())]
     # press: the flaps prescribed closed, then released (two prescribed things squeezing cloth between them stopped
     # the solver on intersections). Default: the flaps are free cloth from the first frame, resting folded as made:
     # their stiff fold closes them onto whatever lies under them, and they bend over it
