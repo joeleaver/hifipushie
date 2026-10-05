@@ -710,6 +710,35 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                 # nape, was Head 1.0 and turned with the face: 47 mm off the shirt, 299 triangles inside out)
                 continue
             out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h, hf["bone"])
+    # parts.<p>.rig_drop = [joints]: a garment never follows these joints; their weight goes up the chain to the
+    # nearest joint it keeps. What a rigger does after a weight transfer: prune the influences a garment has no
+    # business with. Shorts that end at the knee read the skin's knee blend, so the shin bent their hem (17-27 mm
+    # on the golfer): ["Leg"] gives it to the thigh, and the hem stays a tube. A name without a side is both sides;
+    # a segment's twist joints go with it.
+    for pn in meshes:
+        drop = (defs.get(pn) or {}).get("rig_drop")
+        if not drop or pn not in out or (defs.get(pn) or {}).get("rig_bone"):
+            continue
+        gone = drop_joints(rb, [drop] if isinstance(drop, str) else list(drop), f"parts.{pn}.rig_drop")
+        J, W = np.asarray(out[pn][0]).copy(), np.asarray(out[pn][1], np.float64).copy()
+        to = np.arange(len(rb))
+        for i in np.flatnonzero(gone):
+            q = rb[i]["parent"]
+            while q >= 0 and gone[q]:
+                q = rb[q]["parent"]
+            if q < 0:
+                raise ValueError(f"parts.{pn}.rig_drop: nothing is left above {rb[i]['name']}")
+            to[i] = q
+        J = to[J]
+        for c in range(1, J.shape[1]):  # a joint now in two slots: one slot
+            for c0 in range(c):
+                same = (J[:, c] == J[:, c0]) & (W[:, c] > 0)
+                W[same, c0] += W[same, c]
+                W[same, c] = 0.0
+        order = np.argsort(-W, axis=1, kind="stable")
+        J, W = np.take_along_axis(J, order, 1), np.take_along_axis(W, order, 1)
+        J[W <= 0] = 0
+        out[pn] = (J, W / np.maximum(W.sum(1, keepdims=True), 1e-12))
     # parts.<p>.rig_attach = "<part>" | [parts]: where this part comes within rig_attach_length (ATTACH) of a part
     # bound to one joint (rig_bone), it blends to that joint: a strap's end goes with the bag it carries, the rest
     # of it with the body it lies on. (The golfer's strap read the thigh next to a bag bound to Hips and tore.)
@@ -729,6 +758,27 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h,
                                   names.index(ob if ob in names else PREFIX + ob))
     return out
+
+
+def drop_joints(rb: list[dict], names: list[str], what: str = "rig_drop") -> np.ndarray:
+    """Which rig joints a list of names means (bool per joint): "LeftLeg" is that joint, "Leg" both sides', each
+    with the twist joints of its segment; the prefix is optional. An unknown name raises, listing what there is."""
+    import re
+
+    def base(n):  # "mixamorig:LeftLegTwist1" -> ("Left", "Leg")
+        n = re.sub(r"Twist\d+$", "", n[len(PREFIX):] if n.startswith(PREFIX) else n)
+        m = re.match(r"(Left|Right)(.+)", n)
+        return (m.group(1), m.group(2)) if m else ("", n)
+    have = [base(b["name"]) for b in rb]
+    gone = np.zeros(len(rb), bool)
+    for nm in names:
+        side, core = base(nm)
+        hit = np.array([c == core and (not side or sd == side) for sd, c in have])
+        if not hit.any():
+            raise ValueError(f"{what}: no rig joint {nm!r} (have {', '.join(sorted({c for _, c in have}))}; "
+                             f"prefix a side, e.g. \"LeftLeg\", for one side only)")
+        gone |= hit
+    return gone
 
 
 ATTACH = 0.08  # m: the length over which a part hands over to the bound part it is attached to (parts.<p>.rig_attach)

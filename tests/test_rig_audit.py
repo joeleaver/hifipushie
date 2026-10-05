@@ -242,6 +242,29 @@ def test_grafted_neck_and_worn_parts():
     hips = (sk3["strap"][1] * (sk3["strap"][0] == names.index(P + "Hips"))).sum(1)
     d = np.linalg.norm(Wq[thigh][:, None] - bag[None], axis=2).min(1)
     assert hips[d < 0.02].min() > 0.8 and hips[d > rig.ATTACH].max() < 0.05, (hips[d < 0.02].min(), hips[d > rig.ATTACH].max())
+    # shorts ending at the knee, with the shin pruned (rig_drop): the hem is the thigh's, sums stay 1, and a name
+    # without a side takes both sides and the twist joints of the segment
+    hem = np.linalg.norm(Wq - knee, axis=1) < 0.07
+    spec4 = copy.deepcopy(spec)
+    spec4.setdefault("parts", {})["shorts"] = {}
+    mesh = {"shorts": (Wq[hem] + 0.004 * N[hem], none)}
+    leg = rig.drop_joints(bones, ["Leg"])
+    assert {names[i][len(P):] for i in np.flatnonzero(leg)} >= {"LeftLeg", "RightLeg", "LeftLegTwist1"}
+    assert not leg[names.index(P + "LeftUpLeg")] and not rig.drop_joints(bones, ["LeftLeg"])[names.index(P + "RightLeg")]
+    J0, W0 = rig.skin_parts(spec4, bones, mesh)["shorts"]
+    spec4["parts"]["shorts"]["rig_drop"] = ["Leg"]
+    J1, W1 = rig.skin_parts(spec4, bones, mesh)["shorts"]
+    up = names.index(P + "LeftUpLeg")
+    upt = [i for i, n in enumerate(names) if n.startswith(P + "LeftUpLeg")]
+    assert (W0 * leg[J0]).sum(1).max() > 0.3                      # the transfer gave the hem to the shin
+    assert (W1 * leg[J1]).sum(1).max() == 0.0                      # pruned
+    assert np.allclose(W1.sum(1), 1.0) and (W1 * np.isin(J1, upt)).sum(1).min() > 0.95
+    assert np.allclose((W1 * (J1 == up)).sum(1), (W0 * (J0 == up)).sum(1) + (W0 * leg[J0]).sum(1), atol=1e-9)
+    try:
+        rig.drop_joints(bones, ["Shin"])
+        raise AssertionError("an unknown joint passed")
+    except ValueError as e:
+        assert "UpLeg" in str(e)
 
 
 if __name__ == "__main__":

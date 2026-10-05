@@ -432,6 +432,12 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   `parts.<p>.rig_attach = "<bound part>"` hands a part over to that prop's joint where it comes within
   `rig_attach_length` (8 cm) of it: a strap's end goes with its bag, the rest of it with the body.
   `parts.<p>.rig_smooth = rounds` (6) evens a garment's weights more or less.
+  `parts.<p>.rig_drop = [joints]` prunes a garment's influences, as a rigger does after a weight transfer: the
+  garment never follows those joints, and their weight goes up the chain to the nearest joint it keeps. Shorts that
+  end at the knee: `["Leg"]` (the shin bent their hem 17-27 mm; with it the hem stays a tube on the thigh and the
+  knee bends inside it). Short sleeves: `["ForeArm"]` on the shirt. A collar: `["Arm"]`. A name without a side
+  means both sides; a segment's twist joints go with it. Don't drop what the garment covers: long trousers need
+  the shin.
 - **Hems.** Shorts, a shirt's hem, a skirt are sheets hanging off the body, and skinning can only bend them with
   the limb under them: past ~45 deg of thigh the crotch of a pair of shorts and a loose hem fold. What game riggers
   do, in order of cost: delete the skin under the garment (the export does: hidden faces are dropped, so nothing
