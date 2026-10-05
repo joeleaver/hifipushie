@@ -46,7 +46,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 1
+VERSION = 2
 
 # ---- tone: melanin + haemoglobin -> albedo ----------------------------------------------------------------------
 # A two-layer model in the spirit of Donner & Jensen 2006 / Jimenez et al. 2010, with Jacques' skin optics numbers
@@ -488,7 +488,7 @@ def part_base(spec: dict) -> tuple[str, dict] | None:
                        "subsurface": weight, "subsurface_radius": [float(x) for x in radius], "subsurface_scale": scale,
                        # the oily film is a second, tighter highlight over the skin's broad one (a dual lobe: Unreal's
                        # skin mixes two at 0.85); vellus hair gives a soft sheen at grazing angles
-                       "coat": float(sh.get("coat", 0.04 + 0.16 * p["oil"])), "coat_roughness": float(sh.get("coat_roughness", 0.28)),
+                       "coat": float(sh.get("coat", 0.015 + 0.07 * p["oil"])), "coat_roughness": float(sh.get("coat_roughness", 0.34)),
                        "sheen": float(sh.get("sheen", 0.12)), "sheen_roughness": 0.5,
                        "thickness": float(sh.get("thickness", 0.007)),  # light comes through what is thinner (ears, nostrils)
                        "_old": old}
@@ -496,7 +496,7 @@ def part_base(spec: dict) -> tuple[str, dict] | None:
 
 def _roughness(p: dict) -> float:
     child = 1 - _age_curve(p["age"], 6, 18)
-    return float(np.clip(0.46 - 0.05 * (p["oil"] - 0.5) + 0.06 * _age_curve(p["age"], 45, 85) - 0.03 * child, 0.2, 0.9))
+    return float(np.clip(0.49 - 0.05 * (p["oil"] - 0.5) + 0.06 * _age_curve(p["age"], 45, 85) - 0.03 * child, 0.2, 0.9))
 
 
 def _z(*names, grow=1.0) -> list:
@@ -631,17 +631,17 @@ def _build(spec: dict, J: dict) -> dict:
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:
-            micro.append(("pores", "pores", 0.00021 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
+            micro.append(("pores", "pores", 0.00034 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
-            micro.append(("lines", "lines", 0.00018 * d * body_k, [{"mask": _z("face"), "invert": True}]))
+            micro.append(("lines", "lines", 0.00013 * d * body_k, [{"mask": _z("face"), "invert": True}]))
         else:
-            micro.append(("lines", "lines", 0.00018 * d * body_k, None))
+            micro.append(("lines", "lines", 0.00013 * d * body_k, None))
         if hands or joints_:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
         for name, sw, depth, mask in micro:
             stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min(0.6 * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "opacity": round(min((0.45 if name in ("pores", "lip_lines") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
     return out
 

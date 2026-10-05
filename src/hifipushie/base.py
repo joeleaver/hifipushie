@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 73  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 76  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -1261,6 +1261,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         np.tensordot(ce, g["expression_basis"], 1)
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
+    if head.get("field"):  # (headfit.py) MakeHuman's head of an age / sex / weight, as a displacement of the vertices
+        from . import headfit
+        V = V + headfit.field_vertices(head["field"]) * float(abs(J[2][0] - J[3][0]))
     if head.get("warp"):  # (headfit.py) what the identity space couldn't make of the body's head, as a smooth warp
         wp = head["warp"]
         P_, C_ = np.asarray(wp["at"], float), np.asarray(wp["coef"], float)
