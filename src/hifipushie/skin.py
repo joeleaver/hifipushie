@@ -24,6 +24,8 @@ spec["skin"] = {
   "hair": {"stubble", "brows", "body"}                                                             (see HAIR)
   "scars": [{"kind": "cut" | "surgical" | "burn" | "keloid" | "pockmarks", ...}]                   (see SCARS)
   "tattoos": [{"image": {...paint image...}, "age": years, "opacity"}]
+  "eyes": {"iris": "#5a3a1e", "iris_size": m (0.0118), "pupil": 0..1 (0.36 of the iris), "veins": 0..1 (0.4),
+           "sclera": colour} | false   the eyeballs (the base's eyes part): see EYES
   "makeup": {"foundation", "concealer", "blush", "contour", "highlight", "eyeshadow", "eyeliner", "mascara",
              "brows", "lipstick", "nails"}                                                         (see MAKEUP)
   "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1}
@@ -405,7 +407,7 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes"}
 ZONE_LAYERS = {"forehead_yellow": 1.0, "midface_red": 1.0, "nose_red": 1.0, "ears_red": 1.0, "lower_cool": 1.0,
                "under_eye": 1.0, "eyelids": 1.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
                "elbows_knees": 1.0, "fingertips": 1.0, "nails": 1.0}
@@ -449,7 +451,7 @@ def params(spec: dict) -> dict:
     if bad:
         raise SpecError(f"skin shading: unknown keys {sorted(bad)} (have subsurface, radius, scale, specular, roughness)")
     p["shading"] = sh
-    for k in ("features", "wrinkles", "hair", "makeup", "nails"):
+    for k in ("features", "wrinkles", "hair", "makeup", "nails", "eyes"):
         p[k] = sk.get(k) or {}
         if not isinstance(p[k], dict):
             raise SpecError(f"skin {k} is an object")

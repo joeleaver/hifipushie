@@ -164,7 +164,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     # ---- broad colour: tan, sunburn, flush
     o = _opt(f.get("tan"), "features.tan")
     if o:
-        layer("tan", o.get("mask"), pre=True, color=T(melanin=1 + 1.4 * o["amount"], blood=1.1), opacity=0.85, mask=_where(o, [], ctx))
+        bare = [z for z in ("palm", "sole", "lips") if _has(z, ctx)]  # what never tans
+        layer("tan", o.get("mask"), pre=True, color=T(melanin=1 + 1.0 * o["amount"], blood=1.1), opacity=0.8,
+              mask=(_where(o, [], ctx) or [{"levels": [0.0, 1.0]}]) + [{"mask": _zones(bare), "blend": "subtract"}] if bare else _where(o, [], ctx))
     o = _opt(f.get("sunburn"), "features.sunburn")
     if o:
         w = _where(o, ["forehead", "nose", "cheekbone", "shoulder", "collarbone"], ctx)
@@ -245,6 +247,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
             layer(f"veins{sx.replace('.', '_')}", o.get("mask"), color=[0.72, 0.84, 0.86], mix="multiply", opacity=min(0.5 * a, 0.9) * (0.6 if not sx else 1) * show,
                   mask=m, **({"height": round(0.0005 * old * min(a, 1.5), 6)} if sx and old > 0.2 else {}))
 
+    _eyes(spec, p, J, out, layer, T, ctx)
     _wrinkles(p, J, layer, T, ctx)
     _hair(p, J, layer, T, ctx)
     _scars(spec, p, J, layer, T, ctx)
@@ -252,6 +255,51 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     from . import skin_makeup
     skin_makeup.build(spec, p, J, layer, T, ctx)
     return ctx["smooth"]
+
+
+def _eyes(spec, p, J, out, layer, T, ctx) -> None:
+    """EYES (skin.eyes; on by default where the base has eyeballs; false turns it off and leaves the model's own eye
+    paint): the eyeball is a painted picture laid on its front (skin_swatch.eye_image: an iris of radial fibres, a
+    collarette, a limbal ring, a soft pupil; a sclera pinker toward its edge with fine vessels), wet (roughness 0.04),
+    darkened under the upper lid; on the skin, the pink wet caruncle at the inner corner and the waterline of the
+    lower lid. {"iris": colour, "iris_size": m, "pupil": 0..1, "veins": 0..1, "sclera": colour}. No lash geometry:
+    lashes are the lid margins darkened (skin.hair.lashes)."""
+    e = spec.get("skin", {}).get("eyes")
+    if e is False or not ctx["eyes"] or "eye_front.L" not in J:
+        return
+    e = e if isinstance(e, dict) else {}
+    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera"}
+    if bad:
+        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera)")
+    from . import paint as _paint
+    from . import skin_swatch
+    from .skin import interocular
+    io = interocular(J)
+    part = (_paint._expanded(spec)["blobs"]["eye.L"]).get("part", "body")
+    iris = _hex(e.get("iris", "#5a3a1e"))
+    old = ctx["old"]
+    scl = _hex(e["sclera"]) if "sclera" in e else [round(x, 4) for x in (0.92 - 0.05 * old, 0.89 - 0.06 * old, 0.85 - 0.09 * old)]
+    veins = float(e.get("veins", 0.4 + 0.4 * old))
+    span = 2.1
+    path = skin_swatch.eye_image(iris, float(e.get("pupil", 0.36)), veins, tuple(scl), p["seed"], span)
+    for sd in (".L", ".R"):
+        c, f = J[f"eye{sd}"], J[f"eye_front{sd}"]
+        r = float(np.linalg.norm(f - c))
+        d = (f - c) / max(r, 1e-9)
+        size = float(e.get("iris_size", 0.0118 * r / 0.0123)) * span
+        nm = sd.replace(".", "_")
+        out[f"skin:eye{nm}"] = {"part": part, "color": "image", "roughness": 0.04, "specular": 0.6,
+                                "image": {"file": str(path), "at": [round(float(x), 5) for x in f], "dir": [round(float(x), 4) for x in d],
+                                          "size": [round(size, 5), round(size, 5)], "depth": round(1.2 * r, 5), "facing": 0.05}}
+        # the upper lid's shadow on the ball
+        out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.55, 0.5, 0.5], "mix": "multiply", "opacity": 0.55,
+                                      "mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5), "to": round(0.55 * r, 5)}},
+                                               {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}]}
+    # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
+    pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(-sx * 0.035 * io, 5), round(-0.012 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
+    layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
+          mask=[{"spot": {"at": pts, "radius": round(0.05 * io, 5), "soft": 0.6}}])
+    layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=0.5, roughness=0.15, mask=_zones(["lash_lower"], 0.7))
 
 
 def _wrinkles(p, J, layer, T, ctx) -> None:

@@ -139,11 +139,11 @@ def cameras(spec: dict) -> dict:
         from .skin import _palm_normal
         pn = _palm_normal(J, ".L")
         w = J["wrist.L"]
-        c = 0.5 * (w + J["finger2_1.L"])
+        c = 0.5 * (w + J["finger2_3.L"])  # the whole hand, fingertips and nails in frame
         up = J["finger2_1.L"] - w
         up = (up / np.linalg.norm(up)).tolist()
-        out["hand"] = (c - 0.36 * pn, c, 24, "studio", up)
-        out["palm"] = (c + 0.36 * pn, c, 24, "soft", up)
+        out["hand"] = (c - 0.46 * pn, c, 26, "studio", up)
+        out["palm"] = (c + 0.46 * pn, c, 26, "soft", up)
         if "elbow.L" in J:
             m = 0.45 * J["elbow.L"] + 0.55 * w
             ax = w - J["elbow.L"]

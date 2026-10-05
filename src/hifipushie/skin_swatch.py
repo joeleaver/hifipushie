@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 10
+VERSION = 11
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -157,6 +157,82 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
         Image.fromarray(np.round(rgba * 255).astype(np.uint8), "RGBA").save(tmp)
         tmp.replace(out)
     return out, [width_mm, h_mm]
+
+
+def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89, 0.85), seed: int = 0, span: float = 2.1):
+    """The front of an eyeball as a picture (RGB PNG in the image store), `span` iris diameters across: an iris of
+    radial fibres with a paler collarette round the pupil, a dark limbal ring fading into the white, a soft-edged
+    pupil (`pupil` = its share of the iris' radius); the sclera warmer and pinker toward its edge, with fine
+    vessels wandering in from the corners (`veins`). iris: sRGB colour. Returns the path."""
+    import hashlib
+    from PIL import Image, ImageDraw, ImageFilter
+    from . import images
+    iris = tuple(round(float(c), 4) for c in iris)
+    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION)).encode()).hexdigest()[:12]
+    out = images.store_dir() / f"eye_{key}.png"
+    if out.exists():
+        return out
+    S = 1024
+    rng = np.random.default_rng(900 + seed)
+    y, x = np.mgrid[0:S, 0:S].astype(np.float64)
+    cx = cy = (S - 1) / 2
+    R = S / (2 * span)  # the iris' radius in px
+    r = np.hypot(x - cx, y - cy) / R
+    th = np.arctan2(y - cy, x - cx)
+    # sclera: off-white, warmer and pinker outward
+    t = np.clip((r - 1.0) / (span - 1.0), 0, 1)[..., None]
+    img = np.asarray(sclera)[None, None] * (1 - 0.1 * t) + t * 0.16 * (np.array([0.9, 0.62, 0.58]) - np.asarray(sclera))
+    # vessels: thin wandering lines from the rim inward, mostly at the sides (toward the corners)
+    vim = Image.new("L", (S, S), 0)
+    d = ImageDraw.Draw(vim)
+    for _ in range(int(30 * veins)):
+        a = rng.choice([0.0, np.pi]) + rng.normal(0, 0.5)
+        rr, pts, drift = span * 0.99, [], rng.normal(0, 0.006)
+        stop = rng.uniform(1.1, 1.7)
+        while rr > stop:  # a vessel wanders inward, turning slowly, and forks once or twice
+            pts.append((cx + rr * R * np.cos(a), cy + rr * R * np.sin(a)))
+            rr -= 0.012
+            drift = 0.92 * drift + rng.normal(0, 0.0035)
+            a += drift
+            if len(pts) > 15 and rng.random() < 0.02:
+                a2, r2, d2, q = a, rr, -2.5 * drift + rng.choice([-1, 1]) * 0.012, []
+                for _k in range(int(rng.uniform(10, 30))):
+                    q.append((cx + r2 * R * np.cos(a2), cy + r2 * R * np.sin(a2)))
+                    r2 -= 0.01
+                    a2 += d2
+                    d2 *= 0.97
+                d.line(q, fill=int(rng.uniform(60, 130)), width=1)
+        if len(pts) > 1:
+            d.line(pts, fill=int(rng.uniform(80, 190)), width=int(rng.choice([1, 1, 2])))
+    v = np.asarray(vim.filter(ImageFilter.GaussianBlur(1.1)), np.float64)[..., None] / 255.0
+    img = img + 0.55 * v * (np.array([0.72, 0.2, 0.18]) - img)
+    # iris: radial fibres (angular noise, slowly changing with radius), collarette, limbal ring
+    c = np.asarray(iris, np.float64)
+    n = 720
+    fib = np.zeros((4, n))
+    for k, (fr, amp) in enumerate(((90, 0.5), (37, 0.3), (240, 0.2), (13, 0.25))):
+        ph = rng.uniform(0, 2 * np.pi, fr)
+        g = rng.normal(0, 1, fr)
+        ang = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        fib[k] = amp * np.interp(ang, np.linspace(0, 2 * np.pi, fr, endpoint=False), g, period=2 * np.pi)
+    ai = ((th + np.pi) / (2 * np.pi) * n).astype(int) % n
+    twist = ((th + np.pi + 0.25 * r) / (2 * np.pi) * n).astype(int) % n
+    f = fib[0][ai] + fib[1][twist] + fib[2][ai] * np.clip(r * 1.3, 0, 1) + fib[3][ai]
+    f = np.clip(0.5 + 0.28 * f, 0, 1)
+    col = c[None, None] * (0.55 + 0.9 * f[..., None])
+    coll = np.exp(-0.5 * ((r - (pupil + 0.16)) / 0.09) ** 2)[..., None]  # the collarette: a paler, yellower ring
+    col = col + coll * 0.45 * (np.clip(c * 1.5 + np.array([0.16, 0.1, 0.0]), 0, 1) - col)
+    limb = np.clip((r - 0.78) / 0.2, 0, 1)[..., None] ** 1.5  # the limbal ring
+    col = col * (1 - 0.72 * limb)
+    edge = np.clip((1.04 - r) / 0.07, 0, 1)[..., None]  # iris into sclera, soft
+    img = img * (1 - edge) + col * edge
+    pup = np.clip((pupil - r) / 0.035 + 0.5, 0, 1)[..., None]
+    img = img * (1 - pup) + pup * np.array([0.012, 0.01, 0.01])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".tmp.png")
+    Image.fromarray(np.round(np.clip(img, 0, 1) * 255).astype(np.uint8), "RGB").save(tmp)
+    tmp.replace(out)
+    return out
 
 
 def depth(kind: str) -> np.ndarray:
