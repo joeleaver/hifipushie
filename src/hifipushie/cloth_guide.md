@@ -530,7 +530,7 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `contour` | Shapes an edge by an amount per level (`at`: [[level, m] ...]; top, chest, waist, hips, hem or a y): a shaped centre-back seam, a hem's spring. A style line's name shapes both its edges | Mirror seams equal; a panel seam's small difference declared |
 | `join` | Two pieces sewn together become one, the seam gone: a side panel with no side seam, a yoke cut on | Every other seam and edge; says how much shaping the seam's curve carried (now lost) |
 | `round_corner` | A corner rounded (`radius` or `along` [m, m]): a cut-away front hem, pocket corners. Before facings | The corner's name, on the curve |
-| `pocket` | A pocket laid on a piece's outside and tacked along its sewn edges: `type` patch (`at` [x, y] the top edge's middle, `width`, `height`) or kangaroo (on a front cut on the fold) | The piece under it |
+| `pocket` | `type` patch / kangaroo / welt / flap: laid on a piece's outside and tacked along its sewn edges (`at` [x, y] the top edge's middle, `width`, `height`). `type` in_seam (`piece` front, `other` back, `top`, `opening`): the seam left open, two bags sewn to its lips, lying inside the front | The piece under it; the split seam's two parts |
 | `lining` | Every body piece traced as `<piece>_lining`, sewn to each other as the shells are, laid inside them, sewn to the shell along `attach` (hems, sleeve hems, back neck). Last, before unfold | The shells' seam matches |
 | `fisheye` | A double-pointed waist dart on a piece that runs past the waist (run on to the hem as a closed cut). `darts: true` on a hip-length bodice makes them | Its legs equal |
 | `neckline` | Redraws the neckline on front and back together: `widen` along the shoulder, `front` / `back` lower, round / v / square | The shoulder seams equal |
@@ -617,8 +617,11 @@ sleeve round the arm, while the rest of the piece lies on the torso. The draft c
 hinges: `shawl` and `kimono` make them. A facing (and a lining, a pocket) is LAID ON the piece it was traced from,
 so it follows that piece round a roll line.
 
-Not built yet: welt, flap and in-seam pockets; a lining with its own pleat and trimmed to the facing; a skirt block
-for the operations (the skirt is still `from: "skirt_block"`); pleats that die inside a piece.
+A pleat is laid CLOSED by the placement (the cloth past its line runs back a depth and on again: three layers), a
+raglan sleeve's shoulder parts stay on the torso, and a point may be given by level: `{"edge": ..., "y": "waist"}`.
+
+Not built yet: a welt pocket's cut and bag; a lining with its own pleat and trimmed to the facing; pleats that die
+inside a piece.
 
 ## A new garment kind, start to finish (the skirt)
 
