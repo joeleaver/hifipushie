@@ -197,12 +197,15 @@ def _replace(D: dict, old_name: str, new: dict) -> None:
     pcs = dict(D["pieces"], **new)
     D["pieces"] = {k: pcs[k] for k in order}
     for k in ("centre",):
-        if old_name in D[k] and old_name not in new:
-            v = D[k].pop(old_name)
-            # the centre edge goes with the piece that holds the centre line (x = 0)
+        if old_name in D[k]:
+            v = D[k][old_name] if old_name in new else D[k].pop(old_name)
+            # the centre edge goes with every piece that holds the centre line (x = 0): a cut across the piece (a
+            # yoke) leaves both parts on it (the yoke of a back with a centre seam had none: its halves weren't sewn)
             for nm, pc in new.items():
                 if np.sum(np.abs(pc["P"][:, 0]) < 1e-6) >= 2:
                     D[k][nm] = v
+                elif nm == old_name:
+                    D[k].pop(nm, None)
 
 
 def edge_points(D: dict, chain) -> np.ndarray:
@@ -1509,7 +1512,16 @@ def unfold(D: dict) -> dict:
             elif isinstance(g.get("line"), list) and S == "R" and k != "fold":
                 g["line"] = [[-float(q[0]), float(q[1])] for q in g["line"]]  # points: mirrored with the piece
             if k == "fold" and S == "R":
-                continue  # one fold line runs across the whole piece (declared on the left half's edge)
+                # one fold line runs across the whole piece (declared on the left half's edge); a line given by
+                # points that stays off the centre (a pleat on each side) is mirrored to the other half
+                Lp = g.get("line")
+                if isinstance(Lp, list) and Lp and not isinstance(Lp[0], str) and min(abs(float(q[0])) for q in Lp) > 1e-4:
+                    g["line"] = [[-float(q[0]), float(q[1])] for q in Lp]
+                    g["name"] = f"{g.get('name', 'fold')} (R)"
+                    if isinstance(g.get("flap"), str):
+                        g["flap"] = g["flap"] + ".m"
+                    folds.append(g)
+                continue
             folds.append(g)
     for nm in D["interfaced"]:
         k = kind.get(nm)
