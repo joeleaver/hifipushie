@@ -571,7 +571,7 @@ def _neck_loops(tpl):
             if abs(round(wn)) != 1:
                 continue
             if Q[:, 2].max() > chin_z - 0.025 or np.abs(Q[:, 0]).max() > 0.12:
-                if Q[:, 2].max() <= chin_z + 0.01 and np.abs(Q[:, 0]).max() <= 0.16:
+                if Q[:, 2].max() <= chin_z - 0.012 and np.abs(Q[:, 0]).max() <= 0.16:
                     loose.append((float(Q[:, 2].max()), path))
                 continue
             found.append((float(Q[:, 2].max()), path))

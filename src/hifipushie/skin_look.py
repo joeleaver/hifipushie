@@ -67,8 +67,10 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
             raise ValueError("look_skin: the model has no head joint")
         top = max(J["head"][2] + 0.14, J.get("lm_nose_bridge", J["head"])[2] + 0.12)
         lo = J.get("neck", J["head"] - [0, 0, 0.16])[2] - 0.1
-        c = [0.0, float(J["head"][1]), float((top + lo) / 2)]
-        size = [0.17, 0.18, float((top - lo) / 2)]
+        front = min(J["head"][1] - 0.16, J.get("lm_nose_tip", J["head"])[1] - 0.03)  # clear of the nose tip (a box 2 cm
+        back = J["head"][1] + 0.17  # short sliced one head's nose off flat)
+        c = [0.0, float((front + back) / 2), float((top + lo) / 2)]
+        size = [0.17, float((back - front) / 2), float((top - lo) / 2)]
         vx = 0.001
     elif region == "arm":
         need = ["elbow.L", "wrist.L"]
