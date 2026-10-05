@@ -374,8 +374,8 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
     # fields of lines: a tiling swatch of wandering lines, laid across (forehead, neck) or turned (above the lip)
     a = amt["forehead"]
     if a > 0.02:
-        groove("forehead", a, 0.0009, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.5 - 0.42 * min(a, 1), 1.0], "vary": False}},
-                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.2)
+        groove("forehead", a, 0.0011, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.42 - 0.34 * min(a, 1), 1.0], "vary": False}},
+                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.08)
     a = amt["lip_lines"]
     if a > 0.02:
         groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.55 - 0.45 * min(a, 1), 1.0], "vary": False}},
@@ -385,11 +385,12 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
         groove("neck", a, 0.0005, [{"tile": {"swatch": "wrinkles", "size": 0.1, "range": [0.5 - 0.42 * min(a, 1), 1.0], "vary": False}}, {"vertex": True, "mask": _zones(["neck"], 0.9)}], 0.2)
     a = amt["crepe"]
     if a > 0.02:  # old skin: the primary lines deepen into a visible cross-hatch, the fine ones go
-        zs = ["cheek", "cheek_side", "under_eye", "neck", "upper_lip", "chin", "jaw", "forehead"] + \
+        # (relief first, hardly any tint: at bust distance crepe is a change of sheen, not drawn lines)
+        zs = ["cheek", "cheek_side", "under_eye", "neck", "upper_lip", "jaw"] + \
              (["back_of_hand", "forearm"] if ctx["hands"] and ctx["arms"] else [])
-        groove("crepe", a, 0.00028, [{"tile": {"swatch": "coarse", "size": 0.03}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.3)
-        groove("cheek_lines", a, 0.00034, [{"tile": {"swatch": "wrinkles", "size": 0.035, "rotate": True, "range": [0.35, 1.0], "vary": False}},
-                                           {"vertex": True, "mask": _zones(["cheek", "cheek_side", "jaw"], 1.0)}], 0.3)
+        groove("crepe", a, 0.00016, [{"tile": {"swatch": "coarse", "size": 0.024, "range": [0.12, 1.0]}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.1)
+        groove("cheek_lines", a, 0.00026, [{"tile": {"swatch": "wrinkles", "size": 0.04, "rotate": True, "range": [0.35, 1.0], "vary": False}},
+                                          {"vertex": True, "mask": _zones(["cheek", "cheek_side", "jaw"], 1.0)}], 0.1)
 
 
 def _hair(p, J, layer, T, ctx) -> None:

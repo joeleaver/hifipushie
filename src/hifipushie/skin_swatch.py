@@ -9,10 +9,10 @@ across, 10-90 per cm2):
 
   pores   the face: pores as pits (a clustered Poisson set, each its own size and depth, some drawn out along the
           skin's lines), joined by a faint net of furrows, and fine secondary lines between.
-  lines   the body (neck, arms, backs of hands, torso): the polygonal net itself, two generations (primary cells
-          ~1 mm, secondary ~0.35 mm), stretched one way a little (skin lines follow tension), with a pore at some
-          crossings.
-  coarse  knuckles, elbows, knees, heels, old skin: deep primary folds in diamonds ~1.6 mm, cracked plateaus.
+  lines   the body (neck, arms, backs of hands, torso): two families of nearly parallel furrows crossing at an angle
+          (rhomboids ~1 mm, longer along the skin's tension), each furrow fading in and out, a finer generation
+          between, a pore here and there. Not a net of closed cells (`_glyphics`).
+  coarse  knuckles, elbows, knees, heels, old skin: the same, deeper and ~1.7 mm apart.
   lips    lip skin: creases running one way (the caller lays it vertical), cut by a few cross lines.
 Marks (1 = the mark, the same way: a mask):
   stubble   cut hairs as dots, 0.1-0.2 mm, ~200 per cm2, uneven.
@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 12
+VERSION = 13
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -105,6 +105,27 @@ def _meso(rng) -> np.ndarray:
     """The grain between a pore and a wrinkle (follicle bumps, fine swelling at 0.5-3 mm): a gentle undulation of the
     surface under the furrows."""
     return 0.34 * (1 - _smooth_noise(rng, 14)) + 0.3 * (1 - _smooth_noise(rng, 6)) + 0.2 * (1 - _smooth_noise(rng, 30))
+
+
+def _glyphics(rng, mm: float, fams) -> np.ndarray:
+    """The skin's line pattern as it is: families of nearly parallel furrows crossing at an angle (rhomboids, longer
+    one way: lines follow the skin's tension), every furrow deeper and shallower along its length and gone for
+    stretches. Never a net of closed cells: each cell outlined all round at one depth is dried mud (the Voronoi net
+    this replaced read so on old and dark faces). fams: (lines across u, lines across v, wander, patch cells, share
+    of a line that is missing, half width mm, weight); the line counts are whole numbers, so it tiles."""
+    P = _grid()
+    u, v = P[:, 0], P[:, 1]
+    wob = 0.05 * (_smooth_noise(rng, 4) - 0.5) + 0.014 * (_smooth_noise(rng, 13) - 0.5)
+    out = np.zeros(len(P))
+    for ku, kv, wk, cells, lo, width, weight in fams:
+        n = float(np.hypot(ku, kv))
+        ph = ku * u + kv * v + n * wk * wob
+        dist = np.abs(ph - np.round(ph)) / n * mm
+        amp = np.clip((_smooth_noise(rng, cells) - lo) / (1 - lo), 0, 1)
+        amp = amp * amp * (3 - 2 * amp)
+        w = width * (0.5 + 0.7 * amp)
+        out = np.maximum(out, weight * np.clip(1 - dist / np.maximum(w, 1e-6), 0, 1) ** 1.5 * amp)
+    return out
 
 
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
@@ -255,15 +276,15 @@ def depth(kind: str) -> np.ndarray:
         d = np.maximum(big, 0.45 * small) + 0.3 * net * (0.4 + 0.6 * _smooth_noise(rng, 10)) + 0.14 * fine
         d = d + _meso(rng)
     elif kind == "lines":
-        prim = _edges(P, _seeds(rng, int((mm / 0.95) ** 2)), 0.13 / mm, 1.6)
-        sec = _edges(P, _seeds(rng, int((mm / 0.36) ** 2)), 0.06 / mm, 1.35)
+        prim = _glyphics(rng, mm, [(5, 16, 1.0, 7, 0.3, 0.13, 1.0), (-9, 13, 1.6, 9, 0.42, 0.11, 0.8)])
+        sec = _glyphics(rng, mm, [(13, 38, 2.0, 14, 0.35, 0.05, 1.0), (-30, 24, 2.4, 12, 0.45, 0.05, 0.8)])
         pits = _pits(P, rng, int(1.6 * mm * mm), (0.04, 0.09), mm)
-        d = 0.85 * prim * (0.55 + 0.45 * _smooth_noise(rng, 8)) + 0.38 * sec + 0.35 * pits
+        d = 0.85 * prim + 0.3 * sec + 0.35 * pits
         d = d + _meso(rng)
     elif kind == "coarse":
-        prim = _edges(P, _seeds(rng, int((mm / 1.7) ** 2)), 0.26 / mm, 1.9)
-        sec = _edges(P, _seeds(rng, int((mm / 0.6) ** 2)), 0.1 / mm, 1.5)
-        d = prim * (0.6 + 0.4 * _smooth_noise(rng, 6)) + 0.4 * sec + 0.12 * _smooth_noise(rng, 48)
+        prim = _glyphics(rng, mm, [(4, 13, 1.0, 6, 0.28, 0.24, 1.0), (-8, 10, 1.7, 7, 0.4, 0.2, 0.85)])
+        sec = _glyphics(rng, mm, [(12, 34, 2.0, 12, 0.35, 0.09, 1.0), (-27, 20, 2.4, 11, 0.45, 0.08, 0.8)])
+        d = prim + 0.32 * sec + 0.12 * _smooth_noise(rng, 48)
     elif kind == "stubble":
         d = np.maximum(_pits(P, rng, int(1.9 * mm * mm), (0.06, 0.1), mm, 1.0, _smooth_noise(rng, 5)),
                        0.8 * _pits(P, rng, int(1.2 * mm * mm), (0.045, 0.075), mm))
@@ -287,12 +308,14 @@ def depth(kind: str) -> np.ndarray:
             amp = np.clip((_smooth_noise(rng, cells, 2) - lo) / (1 - lo), 0, 1)  # a crease runs on for centimetres
             amp = amp * amp * (3 - 2 * amp)  # eases to nothing: the ends taper
             w = width * (0.45 + 0.75 * amp)  # deeper stretches are wider
-            return np.clip(1 - dist / np.maximum(w, 1e-6), 0, 1) ** 1.6 * amp
-        main = family(6, 1.0, 0.0, 6, 0.22, 0.75)
-        branch = family(6, 1.9, 0.083, 8, 0.45, 0.55)  # a neighbour wandering across: forks and joins
-        fine = family(19, 2.6, 0.03, 12, 0.3, 0.22)
-        swell = _smooth_noise(rng, 3) * (0.5 + 0.5 * np.cos(2 * np.pi * 6 * (v + wob)))  # the roll between two creases
-        d = np.maximum(main, 0.7 * branch) + 0.22 * fine + 0.1 * (1 - swell)
+            t = np.clip(1 - dist / np.maximum(w, 1e-6), 0, 1)
+            return t * t * (3 - 2 * t) * amp  # a rounded trough: a V with a sharp floor is a scratch
+        # (a forehead line is a soft valley 2-3 mm across between rolls of skin, not a cut 0.7 mm wide)
+        main = family(6, 1.0, 0.0, 6, 0.22, 1.7)
+        branch = family(6, 1.9, 0.083, 8, 0.45, 1.2)  # a neighbour wandering across: forks and joins
+        fine = family(19, 2.6, 0.03, 12, 0.3, 0.3)
+        swell = 0.5 + 0.5 * np.cos(2 * np.pi * 6 * (v + wob))  # the roll between two creases
+        d = np.maximum(main, 0.7 * branch) + 0.14 * fine + 0.3 * (1 - swell) * (0.4 + 0.6 * _smooth_noise(rng, 3))
     elif kind == "hairs":
         n = SIZE
         img = np.zeros((n, n), np.float32)
