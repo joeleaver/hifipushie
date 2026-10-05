@@ -497,6 +497,9 @@ def op_hood(D: dict, height: float | None = None, depth: float | None = None, na
     # the neck edge as drawn is a little under Ln (straight): scale x so it is exact
     k = Ln / pb.edge_length(pc, "neckBack>neckMid>neckFront")
     pc["P"][:, 0] *= k
+    # (the centre seam bows past x = 0 over the back of the head: each side starts that far off the middle, or the
+    # two sides start through each other)
+    pc["wrap"]["apart"] = round(float(-pc["P"][:, 0].min()) + 0.002, 4)
     D["pieces"][name] = pc
     nb, nf = D["edges"]["neck_back"], D["edges"]["neck_front"]
     D["seams"].append([f"{name}:neckBack>neckMid>neckFront", list(nb) + list(nf)])

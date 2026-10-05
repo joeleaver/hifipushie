@@ -359,11 +359,12 @@ def stage_construction(c: Ctx) -> dict:
 def seam_start_gaps(X: np.ndarray, M: dict) -> list:
     """Per seam, how far apart its two sides start: [{"seam", "median", "max", "twist", "far", "turned"}].
     far: apart everywhere (median > 25 cm or max > 40 cm: more than a shoulder seam, whose front and back stand a
-    body depth apart). turned: the gaps point every way instead of one way (twist = 1 - |mean gap| / mean |gap| >
-    0.6 with a median over 8 cm): the two sides are turned against each other, as a waistband whose chain starts
-    half a turn from the band's own start (its gaps are only a waist's diameter, under any distance limit, but no
-    move brings the sides together: the sewing has to wind the band round the body). A seam standing apart one way
-    (a shoulder seam, a sleeve down its arm) has twist near 0."""
+    body depth apart). turned: one side must TURN to meet the other (the rotation that best lays side a on side b,
+    both about their own middles, is over 35 deg, with a median gap over 8 cm): a waistband whose chain starts
+    half a turn from the band's own start. Its gaps are only a waist's diameter, under any distance limit, but no
+    move brings the sides together: the sewing has to wind the band round the body. A seam standing apart one way
+    (a shoulder seam, a sleeve down its arm) or one ring inside another (a hood round the head against the
+    neckline out on the chest) needs no turn. twist = 1 - |mean gap| / mean |gap| is reported too."""
     sw, ss = np.asarray(M["sew"]), np.asarray(M["sew_seam"])
     g = X[sw[:, 0]] - X[sw[:, 1]]
     d = np.linalg.norm(g, axis=1)
@@ -372,8 +373,16 @@ def seam_start_gaps(X: np.ndarray, M: dict) -> list:
         m = ss == si
         med, mx = float(np.median(d[m])), float(d[m].max())
         twist = 1.0 - float(np.linalg.norm(g[m].mean(0))) / max(float(d[m].mean()), 1e-9)
-        out.append({"seam": int(si), "median": med, "max": mx, "twist": twist, "far": med > 0.25 or mx > 0.40,
-                    "turned": twist > 0.6 and med > 0.08 and int(m.sum()) >= 6})
+        A, B = X[sw[m, 0]], X[sw[m, 1]]
+        A, B = A - A.mean(0), B - B.mean(0)
+        turn = 0.0
+        sv = np.linalg.svd(A, compute_uv=False)
+        if int(m.sum()) >= 6 and sv[1] > 0.2 * sv[0]:  # (a straight seam has no turn to measure: any roll fits)
+            U_, _, Vt = np.linalg.svd(A.T @ B)
+            R_ = U_ @ np.diag([1.0, 1.0, np.sign(np.linalg.det(U_ @ Vt))]) @ Vt
+            turn = float(np.degrees(np.arccos(np.clip((np.trace(R_) - 1) / 2, -1, 1))))
+        out.append({"seam": int(si), "median": med, "max": mx, "twist": twist, "turn_deg": turn,
+                    "far": med > 0.25 or mx > 0.40, "turned": turn > 35.0 and med > 0.08})
     return out
 
 

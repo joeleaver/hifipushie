@@ -152,13 +152,16 @@ def test_start_gap_check_names_a_misordered_band():
     assert not ok["far"] and not ok["turned"], ok
     for turn in (np.pi, np.pi / 2, np.pi / 3):  # half, a quarter, a sixth of a turn off
         r = rows(np.r_[ring(turn, R + 0.03, 1.0), ring(0.0, R, 1.01)])
-        assert r["turned"] and r["twist"] > 0.9, (turn, r)
+        assert r["turned"] and abs(r["turn_deg"] - np.degrees(turn)) < 2, (turn, r)
     assert not rows(np.r_[ring(np.pi, R + 0.03, 1.0), ring(0.0, R, 1.01)])["far"] or True  # (the distance limit alone: 2R < 25 cm)
     assert rows(np.r_[ring(np.pi, R + 0.03, 1.0), ring(0.0, R, 1.01)])["median"] < 0.30
     # a shoulder seam: front and back stand a body depth apart, every gap the same way: not turned, not far
     line = np.c_[np.linspace(0.08, 0.2, n), np.zeros(n), np.full(n, 1.5)]
     sh = rows(np.r_[line + [0, -0.11, 0], line + [0, 0.11, 0]])
     assert not sh["turned"] and not sh["far"] and sh["twist"] < 0.01, sh
+    # one ring inside another (a hood round the head, the neckline out on the chest): gaps every way, but no turn
+    conc = rows(np.r_[ring(0.0, R + 0.10, 1.0), ring(0.0, R, 1.01)])
+    assert conc["twist"] > 0.9 and not conc["turned"], conc
     # a cut-on collar up the front of the neck against the back neck: far
     assert rows(np.r_[line + [0, -0.15, 0.2], line + [0, 0.11, 0]])["far"]
 
