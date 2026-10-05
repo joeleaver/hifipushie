@@ -1396,7 +1396,7 @@ def _cloth_status(st: dict) -> str:
 
 @mcp.tool(structured_output=False)
 def dress(name: str, garment: str | None = None, spec: dict | None = None, state: str | dict | None = None,
-          quality: str | None = None, replace: bool = False, wait: float = 50.0, note: str = ""):
+          quality: str | None = None, replace: bool = False, wait: float = 50.0, note: str = "", force: bool = False):
     """Put a garment on the model and simulate it: drafted to the body's measurements, sewn, settled by Blender's
     cloth, cleaned up (guide(topic="cloth") is the workflow). Garments live in spec["cloth"][garment].
     spec: the garment (merged into the stored one key by key, null deletes; replace=True replaces it), e.g.
@@ -1419,7 +1419,10 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
       via $HIFIPUSHIE_ZOZO_REMOTE; `zozo` = solver options). Judge ZOZO at "resolution": 0.02 locally.
     The sim runs in the background (one at a time on the machine); this waits up to `wait` s and returns either the
     report (when done) or the progress. Call dress(name) again (no spec) or look_cloth to see where it is: a sim
-    already running or cached isn't started again. Returns the save, then per garment: status, report."""
+    already running or cached isn't started again. Returns the save, then per garment: status, report.
+    Before a sim starts, the workflow's stages 1-3 are checked (design sheet, pattern, construction: the same as
+    check_garment); hard failures stop it (the spec is still saved) unless force=True. A day of solver tuning once
+    chased what were construction faults: fix the pattern first."""
     from . import cloth
     if spec is not None or state is not None or quality is not None:
         if garment is None:
@@ -1441,6 +1444,19 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
         head = ""
         if garment is not None and garment not in (store.load(name).get("cloth") or {}):
             raise ValueError(f"no garment {garment!r}: give its spec (dress(name, garment, spec={{...}}))")
+    if not force:  # the workflow's gate: no sim over a pattern that fails its own construction checks
+        from . import cloth_workflow
+        spec_g = store.load(name)
+        blocked = []
+        for gn in ([garment] if garment else list(spec_g.get("cloth") or {})):
+            if cloth.cached(name, spec_g, gn) is not None:
+                continue  # already simulated: nothing new starts
+            fails = cloth_workflow.gate(name, gn, spec_g)
+            if fails:
+                blocked.append(f"{gn}: NOT simulated, {len(fails)} construction failures (check_garment for the "
+                               "full stages; dress(..., force=True) simulates anyway):\n" + "\n".join(f"  {x}" for x in fails))
+        if blocked:
+            return head + "\n".join(blocked)
     sts = cloth.dress(name, [garment] if garment else None, wait=float(wait))
     out = []
     spec_now = store.load(name)
@@ -1475,7 +1491,129 @@ def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | 
                              size=size, focus=focus, zoom=zoom, body=body, textured=textured, result=result)
     if sheet is None:
         return text
-    return [_out(sheet, save), text]
+    from . import cloth_workflow
+    spec_now = store.load(name)
+    extra = []
+    for gn in (garments or list(spec_now.get("cloth") or {})):  # stage 5: the numeric targets
+        try:
+            r = cloth_workflow.run(name, gn, ("sim",), images=False, spec=spec_now)
+            extra.append(f"targets {gn} (stage 5):\n" + cloth_workflow.text(r))
+        except Exception as e:
+            extra.append(f"targets {gn}: could not measure: {e}")
+    return [_out(sheet, save), text + "\n\n" + "\n".join(extra)]
+
+
+def _save_suffix(save: str | None, tag: str) -> str | None:
+    if not save:
+        return None
+    p = Path(save)
+    return str(p.with_name(f"{p.stem}_{tag}{p.suffix or '.png'}"))
+
+
+@mcp.tool(structured_output=False)
+def garment_reference(kind: str | None = None, detail: str | None = None) -> str:
+    """The clothing knowledge base (garment_kb.json): garment kinds (fit ease bands, default details, sewing order),
+    detail choices (collar, cuff, sleeve_placket, front_closure, placket, waistband, fly, skirt_closure, pockets, hem,
+    yoke, darts, pleats, back_vent, belt, lining, shoulder, topstitch) with what each is made of, its seams, fold
+    lines, interfacing, the dimensions a tailor works to and the evidence checks that prove it's in a pattern; fabrics
+    with physical numbers; what each draft source (simon, carlton, skirt_block) can and can't make; the numeric
+    targets a simulated garment is judged by. kind: one kind's entry; detail: one detail kind's choices. No args: the
+    index."""
+    from . import garment_design
+    K = garment_design.kb()
+    if kind:
+        if kind not in K["kinds"]:
+            raise ValueError(f"no kind {kind!r} (have {', '.join(k for k in K['kinds'] if not k.startswith('_'))})")
+        srcs = [d for d, v in K["designs"].items() if not d.startswith("_") and kind in v.get("kinds", [v.get("kind")])]
+        return json.dumps({"kind": kind, **K["kinds"][kind], "draft_sources": srcs}, indent=1)
+    if detail:
+        if detail not in K["details"]:
+            raise ValueError(f"no detail {detail!r} (have {', '.join(k for k in K['details'] if not k.startswith('_'))})")
+        return json.dumps(K["details"][detail], indent=1)
+    L = ["kinds: " + ", ".join(f"{k} (fits {'/'.join(v.get('fit', {})) or '-'})" for k, v in K["kinds"].items() if not k.startswith("_")),
+         "details: " + "; ".join(f"{d}: {', '.join(c for c in v if not c.startswith('_'))}" for d, v in K["details"].items()
+                                 if not d.startswith("_")),
+         "fabrics: " + ", ".join(f"{k} ({v.get('gsm')} g/m2, {v.get('stretch')})" for k, v in K["fabrics"].items() if not k.startswith("_")),
+         "draft sources: " + "; ".join(f"{d} -> {v['kind']} (can: {', '.join(f'{x}=' + '/'.join(c) for x, c in v['can'].items())})"
+                                       for d, v in K["designs"].items() if not d.startswith("_")),
+         "targets: " + ", ".join(k for k in K["targets"] if not k.startswith("_")),
+         "lessons: " + " | ".join(x["lesson"] for x in K["lessons"])]
+    return "\n".join(L)
+
+
+@mcp.tool(structured_output=False)
+def design_garment(name: str, garment: str, design: dict | None = None, spec: dict | None = None,
+                   replace: bool = False, note: str = "") -> str:
+    """Stage 1 of the clothing workflow (guide(topic="cloth")): the design sheet, decided before any drafting, as a
+    pattern maker does. Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
+    replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
+    dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or leave out and give own
+    pieces + seams in spec), "fit": the kind's fit (slim, regular, a_line...), "fabric": a fabric (cotton_shirting,
+    oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit, french_terry) or a solver preset,
+    "details": {collar: shirt_collar | band | convertible | notched_lapel | shawl | hood | rib_neckband | ...,
+    cuff: barrel | french | rib | hemmed | ..., sleeve_placket, front_closure, placket, waistband, skirt_closure, hem,
+    darts, ...: a choice or {"type": choice, "options": {raw draft options}}}, "pattern": {draft words: ease, length,
+    options...}, "notes"}. Left-out details take the kind's defaults (garment_reference(kind=...)).
+    spec: other garment keys (color, state, quality, backend, resolution...), merged the same way.
+    Returns the resolved sheet (every choice, where it came from, the dimensions to work to) with hard failures first:
+    a choice the source can't make, a choice that needs another (a barrel cuff needs a sleeve placket). Next:
+    look_pattern."""
+    from . import cloth_workflow
+    from .hair import merge_patch
+    full = store.load(name)
+    gs = full.setdefault("cloth", {})
+    g = {} if replace else dict(gs.get(garment) or {})
+    if design is not None:
+        g["design"] = merge_patch(dict(g.get("design") or {}), _spec_arg(design))
+    if spec is not None:
+        g = merge_patch(g, _spec_arg(spec))
+    if not g.get("design"):
+        raise ValueError("give the design sheet: design={'kind': ..., 'from': ..., 'details': {...}}")
+    gs[garment] = g
+    v = store.save(name, full, note or f"design {garment}")
+    r = cloth_workflow.run(name, garment, ("design",), images=False)
+    return f"saved {name} v{v}\n" + cloth_workflow.text(r) + "\nnext: look_pattern(name, garment)"
+
+
+@mcp.tool(structured_output=False)
+def look_pattern(name: str, garment: str, save: str | None = None):
+    """Stage 2 of the clothing workflow: the garment drafted to the body and laid out flat on a pattern sheet (every
+    piece at one scale with its name, role, size, grain arrow, notches, buttons/buttonholes, fold lines (blue dashed,
+    with angle), interfacing (hatched), each seam in its own colour numbered on both sides S3a/S3b, a 10 cm bar, the
+    seam list with each seam's ease), plus the checks before any sim, failures first: every design-sheet choice
+    evidenced in the pieces and seam table (a turned collar has a fold line, a barrel cuff is closed and interfaced,
+    the fall covers the stand...), every seam's ease in its band (sleeve cap by kind, bands, plain seams), notches
+    aligned, ease against the body per girth inside the fit's band, every piece sewn to something, the details'
+    dimensions. Fix failures in the design sheet (design_garment) or the garment's pattern options before going on.
+    Next: check_garment(stages=["construction", "place"])."""
+    from . import cloth_workflow
+    res = cloth_workflow.run(name, garment, ("design", "pattern"), images=True)
+    ims = [im for r in res for _, im in r["images"]]
+    txt = cloth_workflow.text(res)
+    if not ims:
+        return txt
+    return [_out(ims[0], save), txt]
+
+
+@mcp.tool(structured_output=False)
+def check_garment(name: str, garment: str, stages: list[str] | None = None, images: bool = True,
+                  save: str | None = None):
+    """Run the clothing workflow's checks (guide(topic="cloth")), failures first. stages (default all, in order):
+    "design" (the sheet), "pattern" (the draft vs the sheet and the body), "construction" (sewing order, layers and
+    lap, fold/press lines with angles, interfacing and what rests as made, the sim's stage schedule; fails when
+    something that must roll is frozen as made), "place" (the pieces arranged round the body before any sim: pieces
+    through each other, pushed off the body, start stretch past the solver's strain limit, layer gaps; renders the
+    start), "sim" (after dress: the verdict plus the numeric targets: layer gaps, collar cover and points, hem level,
+    waistband height, sleeves on a hanger, crest radius, strain; each judged at the quality it belongs to).
+    images: the pattern sheet and the placed start as images (save=path writes them with _pattern/_place suffixes)."""
+    from . import cloth_workflow
+    res = cloth_workflow.run(name, garment, tuple(stages or cloth_workflow.STAGES), images=images)
+    out = []
+    for r in res:
+        for tag, im in r["images"]:
+            out.append(_out(im, _save_suffix(save, tag)))
+    out.append(cloth_workflow.text(res))
+    return out if len(out) > 1 else out[0]
 
 
 # ---------------------------------------------------------------- terrain

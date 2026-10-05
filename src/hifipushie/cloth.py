@@ -75,7 +75,17 @@ def designs() -> dict:
     return json.loads(DESIGNS.read_text())
 
 
+def expanded(g: dict) -> dict:
+    """The garment with its design sheet (garment_design: the staged workflow's stage 1) compiled into the ordinary
+    garment keys (pattern, fabric, folds, generate, detail...); keys written on the garment itself win."""
+    if g.get("design"):
+        from . import garment_design
+        return garment_design.expand(g)
+    return g
+
+
 def fabric(g: dict) -> dict:
+    g = expanded(g)
     f = g.get("fabric", "shirting")
     if isinstance(f, str):
         if f not in FABRICS:
@@ -92,7 +102,19 @@ def fabric(g: dict) -> dict:
 def pieces(g: dict, meas_mm: dict) -> dict:
     """{"pieces": {name: piece (+ "wrap")}, "seams", "stitches", "interfaced", "draft"}."""
     out, seams, stitches, interfaced, draft_info = {}, [], [], [], None
+    g = expanded(g)
     pat = g.get("pattern")
+    gen, folds_tbl = [], []
+    from . import garment_blocks
+    if pat and pat.get("from") in garment_blocks.BLOCKS:  # our own drafts (a skirt block): pieces + seams
+        m = dict(meas_mm)
+        m.update(pat.get("measurements") or {})
+        bo = dict(pat.get("options") or {}, **{k: v for k, v in pat.items() if k not in ("from", "options", "measurements")})
+        blk = garment_blocks.draft(pat["from"], m, bo)
+        out, seams, stitches, interfaced = dict(blk["pieces"]), list(blk["seams"]), list(blk["stitches"]), list(blk["interfaced"])
+        draft_info = blk["draft"]
+        gen = list(blk.get("generate") or [])
+        pat = None
     if pat:
         from . import freesewing
         tbl = designs().get(pat["from"])
@@ -120,6 +142,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             if pd.get("mirror"):
                 pc = pattern.mirror_x(pc)
             pc["wrap"] = dict(pd.get("wrap") or {})
+            if pd.get("role"):
+                pc["role"] = pd["role"]
             out[nm] = pc
         for nm in g.get("drop", []):
             out.pop(nm, None)
@@ -140,23 +164,37 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         seams += tbl.get("seams", [])
         stitches += tbl.get("stitches", [])
         interfaced += tbl.get("interfaced", [])
+        folds_tbl += tbl.get("folds", [])
     for nm, pd in (g.get("pieces") or {}).items():
         pc = pattern.from_spec(nm, pd)
         pc["wrap"] = dict(pd.get("wrap") or {})
+        if pd.get("role"):
+            pc["role"] = pd["role"]
         out[nm] = pc
     for nm in g.get("drop", []):
         out.pop(nm, None)
     out = pattern.apply(out, g.get("alter"))
     seams += g.get("seams", [])
     stitches += g.get("stitches", [])
+    # generated pieces (garment_blocks.generate: bands sized from the drafted edges they're sewn to)
+    for e in gen + list(g.get("generate") or []):
+        if any(x.split(":")[0] not in out for x in ([e.get("along")] if isinstance(e.get("along"), str) else e.get("along") or [])):
+            continue  # what it is sewn to was dropped
+        p_, s_, st_, i_ = garment_blocks.generate(out, e)
+        out.update(p_)
+        seams += s_
+        stitches += st_
+        interfaced += i_
     interfaced = interfaced + [e for e in g.get("interfaced", []) if e not in interfaced]
     keep = set(out)
     side_ok = lambda s: all(e.split(":")[0] in keep for e in ([s] if isinstance(s, str) else s))
     seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
     stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
+    # fold lines (cloth_guide "Fold lines"): the design table's own, then the garment's
+    folds = [f for f in list(folds_tbl) + list(g.get("folds") or []) if f.get("piece") in keep]
     return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
-            "draft": draft_info}
+            "draft": draft_info, "folds": folds}
 
 
 # ---------------------------------------------------------------- flat mesh
@@ -950,15 +988,19 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         if "align" in w:  # [my point, other piece, its point]: hang this piece so the two are level (a coat's
             mine, other, op = w["align"]  # skirt from the bodice's waist)
             dzs[nm] = float(uv[M["points"][f"{other}:{op}"]][1] - uv[M["points"][f"{nm}:{mine}"]][1])
+        if w.get("level"):  # pattern y = 0 at the body's <level> line (a skirt or waistband hangs from the waist)
+            dzs[nm] = dzs.get(nm, 0.0) + float(at[f"{w['level']}_z"]) - float(hps[2])
     if torso:
         ylo = min(pcs[nm]["P"][:, 1].min() + dzs.get(nm, 0) for nm in torso)
-        zs = np.arange(max(hps[2] + ylo, 0.05), hps[2] - 0.01, 0.02)
+        ytop = max(pcs[nm]["P"][:, 1].max() + dzs.get(nm, 0) for nm in torso)
+        # the hull from the hem up to the pieces' own top (a skirt's plan curve isn't the chest's)
+        zs = np.arange(max(hps[2] + ylo, 0.05), min(hps[2] - 0.01, hps[2] + max(ytop, -0.03) + 0.02), 0.02)
         pts = [h for z in zs if (h := body.hull(z)) is not None]
         Hu = np.concatenate(pts)
         Hu = Hu[ConvexHull(Hu).vertices]
         P0 = pattern.length(Hu, closed=True)
         # the girth where the pieces must meet round the chest (a coat's flared skirt would make it a tent)
-        ys = np.arange(max(ylo, -0.45), -0.25, 0.01)
+        ys = np.arange(max(ylo, -0.45), -0.25, 0.01) if ytop > -0.1 else np.arange(max(ylo, ytop - 0.3), ytop - 0.04, 0.01)
         Wmax = max(sum(_piece_width_at(pcs[nm]["P"], y - dzs.get(nm, 0)) for nm in torso) for y in ys)
         # the fronts overlap at the closure: the girth is the total width less the overlap past centre front
         over = sum(min(abs(pcs[nm]["P"][:, 0].min()), abs(pcs[nm]["P"][:, 0].max())) for nm in torso
@@ -1467,7 +1509,8 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
     return stiff
 
 
-NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note")  # garment keys that never change the sim
+NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note", "design", "_design")  # never change the sim
+# (a design sheet changes the sim only through the keys it compiles into)
 
 
 def _fabric_at(g: dict, h: float) -> dict:
@@ -2260,7 +2303,9 @@ def sizing(res: dict) -> dict:
     opts = d.get("options", {})
     rows = {}
     pcs = B["pieces"]
-    torso = [nm for nm in pcs if pcs[nm]["wrap"].get("to") == "torso"]
+    # a band closed on itself (a waistband buttoned round the waist) measures its own girth, not the body pieces'
+    own = {a.split(":")[0] for a, b in B.get("stitches", []) if a.split(":")[0] == b.split(":")[0]}
+    torso = [nm for nm in pcs if pcs[nm]["wrap"].get("to") == "torso" and nm not in own]
     if not torso or "hps.L" not in body.at:
         return {"options": opts, "rows": rows}
     hps_z = body.at["hps.L"][2]
@@ -2278,6 +2323,8 @@ def sizing(res: dict) -> dict:
             if al:  # a piece hung from another's point (a coat's skirt): its own pattern y is shifted
                 mine, other, op = al
                 dz = float(pcs[other]["P"][pcs[other]["names"][op], 1] - P[pcs[nm]["names"][mine], 1])
+            if pcs[nm]["wrap"].get("level"):  # pattern y = 0 at that body line
+                dz += float(body.at[f"{pcs[nm]['wrap']['level']}_z"]) - hps_z
             L = pcs[nm]["lines"].get(reg)
             y = float(np.mean(L[:, 1])) if L is not None else body.at[zk] - hps_z - dz  # the draft's line, or the
             # body's height (pattern y, hps at 0); the chest at the armhole's bottom (where a chest line ends: the
@@ -2342,7 +2389,8 @@ class ClothError(ValueError):
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
-                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace"}
+                "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
+                "design", "folds", "generate"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -2366,12 +2414,23 @@ def validate(spec: dict) -> None:
         bad = set(g) - GARMENT_KEYS
         if bad:
             raise ClothError(f"{where}: unknown keys {sorted(bad)} (have {', '.join(sorted(GARMENT_KEYS - {'_trace'}))})")
+        if g.get("design") is not None:  # the staged workflow's design sheet: checked, then what it compiles into
+            from . import garment_design
+            garment_design.validate(g["design"], where)
+            g = expanded(g)
+        from . import garment_blocks
         pat = g.get("pattern")
         if pat is None and not g.get("pieces"):
-            raise ClothError(f'{where}: needs "pattern": {{"from": design}} ({", ".join(names)}) or own "pieces" + "seams"')
-        if pat is not None:
+            raise ClothError(f'{where}: needs "pattern": {{"from": design}} ({", ".join(names + list(garment_blocks.BLOCKS))}) '
+                             'or own "pieces" + "seams", or a "design" sheet (design_garment)')
+        if pat is not None and isinstance(pat, dict) and pat.get("from") in garment_blocks.BLOCKS:
+            okp = {"from", "options", "measurements"} | set(garment_blocks.WORDS[pat["from"]])
+            bad = set(pat) - okp
+            if bad:
+                raise ClothError(f"{where}: pattern keys {sorted(bad)} unknown for {pat['from']} (have {sorted(okp)})")
+        elif pat is not None:
             if not isinstance(pat, dict) or pat.get("from") not in names:
-                raise ClothError(f'{where}: pattern is {{"from": one of {names}, "ease": {{...}}, "length"...}}')
+                raise ClothError(f'{where}: pattern is {{"from": one of {names + list(garment_blocks.BLOCKS)}, "ease": {{...}}, "length"...}}')
             words = designs()[pat["from"]].get("words", {})
             okp = {"from", "ease", "options", "measurements", "alterations", "sa"} | set(words)
             bad = set(pat) - okp
@@ -2484,7 +2543,8 @@ def model_body(name: str, spec: dict, g: dict) -> dict:
 
 
 def _garment_for_sim(g: dict) -> dict:
-    """The garment as build() takes it: the named states turned into their objects."""
+    """The garment as build() takes it: its design sheet compiled, the named states turned into their objects."""
+    g = expanded(g)
     out = dict(g)
     out["state"] = _state(g)
     return out
@@ -2669,7 +2729,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     (0..1, darkening in grooves), "thread" (0..1 where stitches show), "texels_per_m"}."""
     from PIL import Image, ImageDraw
     from scipy import ndimage
-    o = dict(DETAIL, **(g.get("detail") or {}))
+    o = dict(DETAIL, **(expanded(g).get("detail") or {}))
     T = int(texture or o["texture"])
     mpt = side / T  # metres per texel
     px = lambda q: (q[0] * T, (1 - q[1]) * T)
