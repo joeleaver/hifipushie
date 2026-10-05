@@ -339,6 +339,57 @@ def cap_mate(body: dict) -> list:
     return [f"{n}:{a}" for n, a in fr] + [f"{n}:{rev(a)}" for n, a in bk]
 
 
+# ---------------------------------------------------------------- skirt
+
+
+SKIRT_DEFAULTS = {"waist_ease": 0.02, "seat_ease": 0.05, "length": 0.55, "darts": True, "cb": "seam", "cf": "fold",
+                  "flare": 0.0}
+
+
+def skirt(m: dict, opts: dict | None = None) -> dict:
+    """The straight skirt block as HALF pieces for the operations (y = 0 at the waist at the centre, x = 0 on the
+    centre line): seat quarter = seat (1 + ease) / 4 at the seat line, waist quarter = waist (1 + ease) / 4; the
+    difference is taken at the side seam (half, at most 30 mm) and in a waist dart (the rest; with "darts": false
+    all of it at the side seam, for a yoke or panel seams to take over); the side waist is raised 12 mm (the waist
+    curves up over the hip); "flare" m added at the hem's side."""
+    o = dict(SKIRT_DEFAULTS, **(opts or {}))
+    mm = lambda k: float(m[k]) / 1000.0
+    waist, seat = mm("waist"), mm("seat")
+    wts = mm("waistToSeat") if "waistToSeat" in m else 0.22
+    sq, wq = seat * (1 + o["seat_ease"]) / 4, waist * (1 + o["waist_ease"]) / 4
+    supp = max(sq - wq, 0.0)
+    side = min(0.5 * supp, 0.03) if o["darts"] else supp
+    dart = supp - side
+    L = float(o["length"])
+    Y = lambda y: -y
+    out = {}
+    for which in ("front", "back"):
+        fr = which == "front"
+        dl = 0.09 if fr else 0.13
+        pts = [("cWaist", [0.0, 0.0])]
+        if dart > 0:
+            dx = 0.5 * wq
+            pts += [("dartA", [dx, 0.004]), ("dartTip", [dx + dart / 2, Y(dl)]), ("dartB", [dx + dart, 0.006])]
+        sw = wq + dart
+        pts += [("sideWaist", [sw, 0.012])]
+        pts += _curve_pts(bez([sw, 0.012], [sw + 0.35 * (sq - sw), Y(0.3 * wts)], [sq, Y(0.6 * wts)], [sq, Y(wts)]))
+        pts += [("sideSeat", [sq, Y(wts)]), ("hem", [sq + float(o["flare"]), Y(L)]), ("cHem", [0.0, Y(L)])]
+        sym = ("fold" if o["cf"] == "fold" else "pair") if fr else ("fold" if o["cb"] == "fold" else "pair")
+        pc = make_piece(which, pts, "skirt_front" if fr else "skirt_back", {"to": "torso", "side": which, "level": "waist"},
+                        sym, {}, {"seat": [[0, Y(wts)], [sq, Y(wts)]]})
+        if dart > 0:
+            pc["darts"]["dart"] = ("dartA", "dartTip", "dartB")
+        out[which] = pc
+    seams = [["front:sideWaist>sideSeat>hem", "back:sideWaist>sideSeat>hem"]]
+    if dart > 0:
+        seams += [[f"{k}:dartA>dartTip", f"{k}:dartB>dartTip"] for k in ("front", "back")]
+    log = [f"skirt: seat quarter {sq * 1000:.0f} mm (ease {o['seat_ease'] * 100:.0f}%), waist quarter {wq * 1000:.0f}; "
+           f"{supp * 1000:.0f} mm a quarter to take out: side seam {side * 1000:.0f}, dart {dart * 1000:.0f}; length {L * 1000:.0f} mm"]
+    return {"pieces": out, "seams": seams, "log": log, "centre": {"front": o["cf"], "back": o["cb"]},
+            "meta": {"kind": "skirt", "options": o, "low": "hem", "waist_y": 0.0, "hips_y": -wts, "waist_quarter": wq,
+                     "waist_dart": 0.0}}
+
+
 # ---------------------------------------------------------------- trouser
 
 

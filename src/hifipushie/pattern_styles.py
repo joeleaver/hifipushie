@@ -562,6 +562,8 @@ def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, 
             imap[w] = [(piece, pos_s[w])]
         else:
             imap[w] = [(piece, pos_m[w])]
+    new["underlays"] = list(work.get("underlays") or []) + [
+        {"y": [float(min(A[1], B[1])), float(max(A[1], B[1]))], "width": float(2 * depth)}]  # (not girth: cloth.sizing)
     D["pieces"][piece] = new
     _remap(D, piece, work, imap, {piece: new})
     D["folds"].append({"piece": piece, "line": [A.tolist(), B.tolist()], "angle": 0, "kind": "press", "name": f"{name} outer"})

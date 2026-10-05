@@ -3452,6 +3452,10 @@ def sizing(res: dict) -> dict:
                     sgn = float(half) if half else 1.0 if P[:, 0].max() > -P[:, 0].min() else -1.0
                     # (a side panel that starts off the centre measures from its own inner edge)
                     wi = max(0.0, max(sgn * x for x in xs) - max(min(sgn * x for x in xs), 0.0))
+            # cloth folded away in a pleat is not girth (pattern_styles pleat: "underlays" [{y: [lo, hi], width}])
+            for ul in pcs[nm].get("underlays") or []:
+                if ul["y"][0] - 1e-9 <= y <= ul["y"][1] + 1e-9:
+                    wi = max(0.0, wi - float(ul["width"]) * (2.0 if (not half and abs(P[:, 0].min() + P[:, 0].max()) <= 0.05) else 1.0))
             per[nm] = round(wi * 1000, 1)
             w += wi
         if w <= 0:  # the garment doesn't reach that girth (a skirt has no chest)

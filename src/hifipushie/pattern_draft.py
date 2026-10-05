@@ -275,6 +275,9 @@ def op_style_line(D: dict, piece: str, **o) -> None:
     # which half holds the centre line: it is named first
     cx = [float(np.abs(h["P"][:, 0]).min()) + 1e-3 * float(h["P"][:, 0].mean()) for h, _ in built]
     order = [0, 1] if cx[0] <= cx[1] else [1, 0]
+    if all(np.sum(np.abs(h["P"][:, 0]) < 1e-6) >= 2 for h, _ in built):
+        # a cut ACROSS the piece (a yoke): both parts hold the centre line; the upper one is named first
+        order = [0, 1] if built[0][0]["P"][:, 1].mean() >= built[1][0]["P"][:, 1].mean() else [1, 0]
     names = names or [f"{piece}_centre", f"{piece}_side"]
     if o.get("apart", True):
         # the two parts start a little apart (their cut edges are the same line: laid edge on edge, a contact solver
@@ -1056,7 +1059,18 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
                     "hollowed, hindarm seam opened over the elbow, the top's more: elbow ease)")
 
 
-OPS = {"style_line": op_style_line, "take_in": op_take_in, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
+def op_waistband(D: dict, height: float = 0.04, overlap: float = 0.035, ratio: float = 1.0, **o) -> None:
+    """A straight waistband generated from the waist edges as they are at the end (after darts, pleats, yokes): a
+    strip their length x ratio (+ the overlap, buttoned at the centre back), sewn round the waist in order, held at
+    the body's waist. ratio < 1: cut shorter and the waist eased onto it (an elasticated or gathered waist)."""
+    if "waist_front" not in D["edges"]:
+        raise DraftError("waistband: needs a block with waist edges (trouser, skirt)")
+    D["waistband"] = dict(o, height=height, overlap=overlap, ratio=ratio)
+    D["log"].append(f"waistband: {height * 1000:.0f} mm high, {overlap * 1000:.0f} mm overlap, x{ratio:.2f} the waist edge "
+                    "(generated at unfold from the waist edges as they are then)")
+
+
+OPS = {"waistband": op_waistband, "style_line": op_style_line, "take_in": op_take_in, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
        "flare": op_flare, "lengthen": op_lengthen, "extend": op_extend, "reshape": op_reshape, "facing": op_facing,
        "collar": op_collar, "sleeve": op_sleeve, "two_piece": op_two_piece}
 
@@ -1086,8 +1100,16 @@ def start(block: str, meas_mm: dict, opts: dict | None = None) -> dict:
                  "centre_back": ["back:cWaist>cSeat>fork"],
                  "waist_back": ["back:cWaist>dartA", "back:dartB>sideWaist"] if "dartA" in B["pieces"]["back"]["names"]
                  else ["back:cWaist>sideWaist"]}
+    elif block == "skirt":
+        B = pb.skirt(meas_mm, opts)
+        dart = "dartA" in B["pieces"]["front"]["names"]
+        edges = {"hem_front": ["front:hem>cHem"], "hem_back": ["back:hem>cHem"],
+                 "centre_front": ["front:cWaist>cHem"], "centre_back": ["back:cWaist>cHem"],
+                 "side_front": ["front:sideWaist>sideSeat>hem"], "side_back": ["back:sideWaist>sideSeat>hem"],
+                 "waist_front": ["front:cWaist>dartA", "front:dartB>sideWaist"] if dart else ["front:cWaist>sideWaist"],
+                 "waist_back": ["back:cWaist>dartA", "back:dartB>sideWaist"] if dart else ["back:cWaist>sideWaist"]}
     else:
-        raise DraftError(f"no block {block!r} (have bodice, knit, trouser; the skirt is pattern from skirt_block)")
+        raise DraftError(f"no block {block!r} (have bodice, knit, trouser, skirt)")
     D = {"pieces": B["pieces"], "seams": B["seams"], "edges": edges, "centre": dict(B["centre"]), "meta": B["meta"],
          "log": [f"block {block}:"] + ["  " + x for x in B["log"]], "notes": dict(B.get("notes") or {}), "folds": [],
          "interfaced": [],
@@ -1492,6 +1514,19 @@ def unfold(D: dict) -> dict:
     for nm in D["interfaced"]:
         k = kind.get(nm)
         inter += [nm] if k == "fold" else [f"{nm}.L", f"{nm}.R"]
+    wb = D.get("waistband")
+    if wb:
+        # the waistband's chain round the waist from the centre back: the right back out to the side, the right front
+        # in to the centre, the left front out, the left back in (each half's waist edges run centre -> side)
+        rv = lambda ch: [_rev(e) for e in reversed(ch)]
+        chain = list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", [])) + \
+            list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", []))
+        if not chain:
+            raise DraftError("waistband: the draft has no waist edges (waist_front / waist_back: a trouser or skirt block)")
+        D["generate"].append({"band": wb.get("name", "waistband"), "role": "waistband", "along": chain,
+                              "ratio": float(wb.get("ratio", 1.0)), "height": float(wb.get("height", 0.04)),
+                              "overlap": float(wb.get("overlap", 0.035)), "interfaced": True,
+                              "wrap": {"to": "torso", "side": "front", "level": "waist", "out": 0.004}})
     D.update(pieces=out, seams=seams, notes=notes, edges=edges, folds=folds, interfaced=inter, unfolded=True)
     D["log"].append(f"unfold: {', '.join(out)}")
     return D

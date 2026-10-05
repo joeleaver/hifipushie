@@ -77,9 +77,9 @@ def validate(sheet: dict, where: str = "design") -> None:
     fr = sheet.get("from")
     if fr == "draft" or (fr is None and sheet.get("block")):
         from . import pattern_blocks, pattern_draft
-        if sheet.get("block") not in ("bodice", "knit", "trouser"):
-            raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser (the skirt is from "
-                             "skirt_block), then \"ops\": [pattern operations]")
+        if sheet.get("block") not in ("bodice", "knit", "trouser", "skirt"):
+            raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser | skirt, then "
+                             "\"ops\": [pattern operations]")
         for k_, op in enumerate(sheet.get("ops") or []):
             if not isinstance(op, dict) or op.get("op") not in list(pattern_draft.OPS) + ["unfold"]:
                 raise ClothError(f"{where}: ops[{k_}] is {{\"op\": one of {', '.join(pattern_draft.OPS)}, unfold, ...}}")
