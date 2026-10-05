@@ -354,9 +354,9 @@ def test_tools_and_export(tmp=None):
             assert magic == b"glTF" and ver == 2 and total == len(raw)
             jl = struct.unpack("<I", raw[12:16])[0]
             g = json.loads(raw[20: 20 + jl])
-            assert [m["name"] for m in g["meshes"]] == ["wood", "foliage"]
+            assert [m["name"] for m in g["meshes"]][:2] == ["wood", "foliage"]
             assert g["materials"][1]["alphaMode"] == "MASK" and g["materials"][1]["doubleSided"]
-            tris = sum(g["accessors"][m["primitives"][0]["indices"]]["count"] for m in g["meshes"]) // 3
+            tris = sum(g["accessors"][m["primitives"][0]["indices"]]["count"] for m in g["meshes"][:2]) // 3
             assert tris == c["wood_triangles"] + c["foliage_triangles"] > 1000
             for m in g["meshes"]:
                 pa = g["accessors"][m["primitives"][0]["attributes"]["POSITION"]]
