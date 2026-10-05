@@ -1096,9 +1096,6 @@ def _quat_matrix(q: np.ndarray) -> np.ndarray:
                      [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
 
 
-FACE_MOVED = 5e-4  # m: a vertex some face shape moves this far is part of the face (rigid on the Head bone)
-
-
 def _head_share(rigged: dict, pn: str, bone: int) -> np.ndarray:
     J, W = rigged["weights"][pn]
     return (np.asarray(W) * (np.asarray(J) == bone)).sum(1)
@@ -1629,13 +1626,15 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             for pn in shapes:
                 d = [np.linalg.norm(np.asarray(x[0]), axis=1) for x in (parts[pn].get("shapes") or {}).values()]
                 if d and pn in skin_at and len(d[0]) == len(skin_at[pn]):
-                    moved[pn] = np.max(d, 0) > FACE_MOVED
+                    moved[pn] = np.max(d, 0)
             before = {pn: _head_share(rigged, pn, hf["bone"]) for pn in moved}
             rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"])
-            for pn, m in moved.items():
+            for pn, mv in moved.items():
+                m = mv >= rigmod.MOVED[1]
                 if m.any():
-                    b0 = before[pn][m]
-                    log.append(f"rig: {pn}: {int(m.sum())} vertices the face shapes move are Head 1.0 "
+                    b0, b1 = before[pn][m], _head_share(rigged, pn, hf["bone"])[m]
+                    log.append(f"rig: {pn}: {int(m.sum())} vertices the face shapes move "
+                               f"{rigmod.MOVED[1] * 1e3:g} mm or more are Head {b1.min():.2f}+ "
                                f"({int((b0 < 0.99).sum())} weren't: least {b0.min():.2f})")
     write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import

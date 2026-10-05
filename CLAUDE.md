@@ -293,7 +293,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   flesh being no farther than any other's (kit characters), a floor from GNM's jaw landmarks (chin -> jaw angle,
   level behind, `HEAD_UNDER` lower), or typical proportions (a base without landmarks); `_rigid_head` blends weights
   to Head by h (falloff `HEAD_BAND` on the throat), a part >= 0.9 head on average is all head (teeth, tongue,
-  eyes); the export then makes every vertex a face shape moves > 0.5 mm Head 1.0 (`rigid_near`). Judge with the
+  eyes); the export then makes every vertex a face shape moves 3 mm or more Head 1.0, less in proportion from 0.5 mm (`rigid_near`; a big jaw's field reaches the goblin's chest by fractions of a mm). Judge with the
   rig tool's text (`rig.report`: `twist_check` per chain, `head_check`) and `pose={"RightHand": ["roll", 105]}`.
   Known: twist bones fix roll, not bend (shoulder dip, elbow crease stay); a 33 deg head turn folds the throat
   under the jaw over the 3 cm band. `tests/test_rig_twist.py`.

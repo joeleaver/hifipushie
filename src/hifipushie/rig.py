@@ -674,6 +674,7 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
 HEAD_BAND = 0.12   # the falloff's height below the floor, x the head's size (Head joint -> HeadTop_End): ~3 cm
 HEAD_UNDER = 0.04  # the floor's drop under the jaw's border, x the head's size: ~1 cm
 HEAD_PART = 0.9    # a part this much head on average is all head (teeth, tongue, eyes, lashes, brows)
+MOVED = (5e-4, 3e-3)  # m: a vertex a face shape moves this far is a little / wholly the head's (`rigid_near`)
 
 
 def _ss(x):
@@ -751,26 +752,32 @@ def _rigid_head(J: np.ndarray, W: np.ndarray, h: np.ndarray, bone: int):
 
 
 def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: float | None = None) -> dict:
-    """Everything a face shape moves is head too: {part: (J, W)} with every vertex in `moved` ({part: bool per
-    vertex}) weighted 1.0 to Head and the vertices within `band` of one blended toward it (the export, after the
-    face shapes are made). Parts bound by rig_bone aren't in `skins`' changes unless they have moved vertices."""
+    """Everything a face shape moves is head too: {part: (J, W)} with every vertex some shape moves MOVED[1] or more
+    (`moved`: {part: the largest move per vertex, m}) weighted 1.0 to Head, the vertices within `band` of one
+    blended toward it, and vertices moved less (down to MOVED[0]) in proportion (the export, after the face shapes
+    are made)."""
     from scipy.spatial import cKDTree
     names = [b["name"] for b in rb]
-    if PREFIX + "Head" not in names or not any(np.any(m) for m in moved.values()):
+    if PREFIX + "Head" not in names or not moved:
         return skins
     hi = names.index(PREFIX + "Head")
     if band is None:
         top = rb[names.index(PREFIX + "HeadTop_End")]["head"] if PREFIX + "HeadTop_End" in names else None
         band = HEAD_BAND * (float(np.linalg.norm(top - rb[hi]["head"])) if top is not None else 0.25)
-    pts = np.concatenate([np.asarray(verts[p], np.float64)[np.asarray(m, bool)] for p, m in moved.items()
-                          if p in verts and np.any(m)])
-    tree = cKDTree(pts)
+    lo, hi_ = MOVED
+    full = {p: np.asarray(m, np.float64) >= hi_ for p, m in moved.items() if p in verts}
+    pts = [np.asarray(verts[p], np.float64)[m] for p, m in full.items() if m.any()]
+    tree = cKDTree(np.concatenate(pts)) if pts else None
     out = dict(skins)
     for pn, (J, W) in skins.items():
         if pn not in verts:
             continue
-        d, _ = tree.query(np.asarray(verts[pn], np.float64), distance_upper_bound=band)
-        h = 1.0 - _ss(np.where(np.isfinite(d), d, band) / band)
+        h = np.zeros(len(verts[pn]))
+        if tree is not None:
+            d, _ = tree.query(np.asarray(verts[pn], np.float64), distance_upper_bound=band)
+            h = 1.0 - _ss(np.where(np.isfinite(d), d, band) / band)
+        if pn in moved:  # moved a little (skin sliding on the throat, a chest a big jaw's field reaches): a little
+            h = np.maximum(h, _ss((np.asarray(moved[pn], np.float64) - lo) / (hi_ - lo)))
         if (h > 0).any():
             out[pn] = _rigid_head(np.asarray(J), np.asarray(W, np.float64), h, hi)
     return out

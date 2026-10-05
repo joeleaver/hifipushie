@@ -205,7 +205,7 @@ def test_rigid_near_and_export_frames():
     c = m["V"][np.argmin(np.linalg.norm(m["V"] - (hj + [0, -0.1, -0.02]), axis=1))]  # a patch under the chin
     moved = np.linalg.norm(m["V"] - c, axis=1) < 0.03
     assert moved.sum() > 20
-    out = rig.rigid_near(on, {"all": (J, W)}, {"all": m["V"]}, {"all": moved})
+    out = rig.rigid_near(on, {"all": (J, W)}, {"all": m["V"]}, {"all": moved * 0.01})
     J2, W2 = out["all"]
     wh = (W2 * (J2 == hi)).sum(1)
     assert wh[moved].min() > 0.999
