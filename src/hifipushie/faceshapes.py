@@ -822,6 +822,7 @@ HOLD = 0.5   # the weight of holding a landmark a shape doesn't move
 LID_SEAL = True   # blinks: both lids' margins brought onto one smooth line on the low poly (GnmFace._lid_seal)
 LID_OVER = 0.0003  # m the upper lid's margin goes past that line
 LID_BAND = 0.0015  # m either side of the line squeezed onto each lid's own side
+LID_PINCH = 3     # how hard that band is drawn to the line: linear (1) parked the margins ~0.5 mm either side of it, a 1.2 mm slit
 GNM_OPEN = 14.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16)
 
 
@@ -1245,8 +1246,8 @@ class GnmFace(Face):
         ln = np.interp(u, bc, line)
         hp = h0 + d @ up
         t = np.clip((hp - (ln - LID_BAND)) / (2 * LID_BAND), 0.0, 1.0)
-        for sel, new in ((zone & upper & (hp < ln + LID_BAND), ln - LID_OVER + t * (LID_BAND + LID_OVER)),
-                         (zone & ~upper & (hp > ln - LID_BAND), ln - LID_BAND + t * LID_BAND)):
+        for sel, new in ((zone & upper & (hp < ln + LID_BAND), ln - LID_OVER + t ** LID_PINCH * (LID_BAND + LID_OVER)),
+                         (zone & ~upper & (hp > ln - LID_BAND), ln - LID_BAND * (1 - t) ** LID_PINCH)):
             if sel.any():
                 d[sel] += ((new[sel] - hp[sel]) * ends[sel])[:, None] * up
         return d
