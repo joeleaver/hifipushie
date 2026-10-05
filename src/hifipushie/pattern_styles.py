@@ -74,7 +74,10 @@ def _named(pc: dict, ix: list, skip: tuple = ()) -> list:
 
 
 def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand: float = 0.02, height: float = 0.075,
-             width: float = 0.07, roll_stand: float = 0.02, **o) -> None:
+             width: float = 0.07, roll_stand: float = 0.02, spring: float | None = None, **o) -> None:
+    """spring: how much longer the collar's outer edge is than its neck seam round the back of the neck (m; default:
+    what the fall needs to lie down over the stand onto the shoulders). The back collar is an arc, not a strip run
+    straight on from the roll line: a straight one has no length to turn down and stands up round the neck."""
     pc = D["pieces"][piece]
     if "neck_back" not in D["edges"] or "hps" not in pc["names"]:
         raise DraftError("shawl: needs a bodice front with its neckline (do it before unfold)")
@@ -91,17 +94,31 @@ def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand:
     if n @ (Rp - hps) < 0:
         n = -n
     Lbn = edge_length(D, D["edges"]["neck_back"])
-    Dp = hps + u * Lbn  # the collar's neck seam: the back neck's length on from the neck point
-    E = Dp + n * height  # the centre-back collar seam, square to the roll line
+    # the back collar: an annular sector beyond the line through the neck point square to the roll line. Its neck
+    # seam (the back neck's length) is an arc that leaves the neck point along the roll line's direction and bends
+    # back toward the shoulder, so the outer edge is longer than the seam by `spring`
+    alpha = float((Rp - hps) @ n)  # the roll line's distance from the neck seam (the stand at the back)
+    r_neck = Lbn / (math.pi / 2)  # the back neck as a quarter circle
+    if spring is None:
+        spring = Lbn * max(height - 2 * alpha, 0.005) * 0.8 / r_neck
+    rho = Lbn * height / max(float(spring), 1e-4)  # the seam arc's radius in the flat
+    Phi = Lbn / rho
+    C0 = hps - n * rho
+    arc = lambda r, ph: C0 + r * (math.cos(ph) * n + math.sin(ph) * u)
+    Dp = arc(rho, Phi)  # the collar's neck seam ends at centre back
+    E = arc(rho + height, Phi)  # the centre-back collar seam, square to the neck seam there
+    tE = -math.sin(Phi) * n + math.cos(Phi) * u
     ln = np.linalg.norm(E - B)
-    curve = pb.bez(B, B + n * width * 1.6 + u * 0.30 * ln, E - u * 0.30 * ln + n * 0.0, E, 20)
+    Eh = arc(rho + height, 0.0)  # the outer edge where it crosses the neck point's line
+    curve = np.r_[pb.bez(B, B + n * width * 1.6 + u * 0.30 * ln, Eh - u * 0.30 * np.linalg.norm(Eh - B), Eh, 16),
+                  [arc(rho + height, ph) for ph in np.linspace(0, Phi, 7)[1:]]]
     mid = len(curve) // 2
     old = copy.deepcopy(pc)
     keep = _avoiding(pc, "hps", low, "cfNeck")  # hps .. shoulder .. hem .. the centre front's low point
     pts = _named(pc, keep, skip=("cfNeck",))
     pts += [("standHem", [-stand, y_low]), ("break", B)]
     pts += [(("lapelMid" if k == mid else None), q) for k, q in enumerate(curve[:-1])]
-    pts += [("collarTop", E), ("collarCB", Dp)]
+    pts += [("collarTop", E), ("collarCB", Dp)] + [(None, arc(rho, ph)) for ph in np.linspace(Phi, 0, 7)[1:-1]]
     extra = {k: v for k, v in pc.items() if k not in ("P", "names")}
     _ring_from(pc, pts)
     pc.update({k: v for k, v in extra.items() if k not in ("name",)})
@@ -121,12 +138,32 @@ def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand:
     D["seams"].append([f"{piece}:collarCB>hps", list(D["edges"]["neck_back"])])
     D.setdefault("pair_seams", []).append(f"{piece}:collarCB>collarTop")
     D["centre"][piece] = "open"
-    roll_a, roll_b = B, Dp + n * roll_stand
-    D["folds"].append({"piece": piece, "line": [roll_a.tolist(), roll_b.tolist()], "angle": 10, "kind": "roll",
-                       "radius": 0.006, "strength": 0.5, "flap": "lapelMid", "name": "shawl roll"})
+    roll_a = B
+    roll_pts = [B.tolist()] + [arc(rho + alpha, ph).tolist() for ph in np.linspace(0, Phi, 7)]
+    # the flap's side of the roll line, named by a mark just inside the lapel (the curve's middle may lie either
+    # side of the hinge below)
+    fl = roll_a + 0.3 * (Rp - roll_a) + n * 0.008
+    half = math.degrees(math.asin(min(1.0, (girth_ := 2 * (D["meta"].get("neck_front", 0.0) + D["meta"].get("neck_back", Lbn)))
+                                      / (2 * math.pi) / rho)))
+    pc["marks"] = dict(pc.get("marks") or {})
+    pc["marks"]["lapelFlap"] = fl
+    D["folds"].append({"piece": piece, "line": roll_pts, "angle": 10, "kind": "roll",
+                       "radius": float(o.get("roll_radius", 0.004)), "strength": 0.5, "flap": "lapelFlap", "name": "shawl roll"})
+    # one cloth, two placements: the front on the torso, the collar (past the neck point) round the back of the
+    # neck, its neck seam along the bottom, standing `roll_stand`, the fall turned down over it
+    girth = girth_
+    D.setdefault("hinges", []).append({
+        "piece": piece, "name": "neckHinge", "part": "collar", "at": hps.tolist(), "dir": n.tolist(),
+        "mid": (hps + n * height * 0.5).tolist(), "origin": Dp.tolist(), "x": tE.tolist(), "role": "collar_fall",
+        "wrap": {"to": "neck", "edge": "collarCB", "flip": True, "fixed_above": True, "girth": float(girth), "out": float(o.get("collar_out", 0.006)),
+                 "apart": 0.0015},
+        # (a curved crease folds isometrically at one angle: the fall is the stand's cone reflected)
+        # (and as ONE crease: a roll's rows round a curved line stretch the flap 70%)
+        "fold": {"flap": "collarTop", "angle": round(2 * half, 1), "kind": "press", "radius": 0.0, "strength": 0.3}})
     D["meta"]["break"] = [float(B[0]), float(B[1])]
     D["log"].append(f"shawl collar on {piece}: break point {abs(yb) * 1000:.0f} mm below the neck point, roll line "
-                    f"{np.linalg.norm(roll_b - roll_a) * 1000:.0f} mm, neck seam {Lbn * 1000:.0f} mm (= the back neck), "
+                    f"{pattern.length(np.asarray(roll_pts)) * 1000:.0f} mm, neck seam {Lbn * 1000:.0f} mm (= the back neck), outer edge "
+                    f"{spring * 1000:.0f} mm longer round the back (spring), "
                     f"collar {height * 1000:.0f} mm at CB ({roll_stand * 1000:.0f} stand + {(height - roll_stand) * 1000:.0f} "
                     f"fall), front edge extended {stand * 1000:.0f} mm")
 
@@ -159,6 +196,23 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
     ix = pattern.arc_indices(pc, "break>lapelPoint")
     for k, i in enumerate(ix[1:-1], start=1):
         pc["P"][i] = B + (P_new - B) * k / (len(ix) - 1)
+    if o.get("gorge") == "straight":
+        # a tailored gorge: the front neck is ONE straight line from the neck point to the lapel's point; the collar
+        # ends `notch` short of the point (the lapel's own top edge beyond it is the notch's lower side)
+        if o.get("gorge_drop") is not None:  # the lapel point's height below the neck point, kept `width` off the roll
+            yv = hps[1] - abs(float(o["gorge_drop"]))
+            base = B + n * width
+            P_new = base + u * ((yv - base[1]) / u[1])
+            pc["P"][pc["names"]["lapelPoint"]] = P_new
+            ix = pattern.arc_indices(pc, "break>lapelPoint")
+            for k, i in enumerate(ix[1:-1], start=1):
+                pc["P"][i] = B + (P_new - B) * k / (len(ix) - 1)
+        notch = float(o.get("notch", 0.035))
+        gdir = _unit(hps - P_new)
+        C = P_new + gdir * notch
+        ixn = _avoiding(pc, "hps", "cfNeck", "shoulder")
+        for k, i in enumerate(ixn):
+            pc["P"][i] = hps + (C - hps) * k / (len(ixn) - 1)
     D["edges"]["lapel_edge"] = [f"{piece}:break>lapelPoint"]
     D["edges"]["gorge"] = [f"{piece}:lapelPoint>cfNeck"]
     D["centre"][piece] = "open"
@@ -402,6 +456,14 @@ def op_kimono(D: dict, length: float | None = None, angle: float = 25.0, wrist: 
         keepl, keepm, darts = pc.get("lines"), pc.get("marks"), pc.get("darts")
         _ring_from(pc, pts)
         pc["lines"], pc["marks"], pc["darts"] = keepl or {}, keepm or {}, darts or {}
+        # one cloth, two placements: the body on the torso, the sleeve (past the line from the underarm to the
+        # shoulder point) round the arm, its overarm seam along the top of the arm (the front half goes round the
+        # front, the back half round the back)
+        ex = np.array([-d[1], d[0]])
+        D.setdefault("hinges", []).append({
+            "piece": which, "name": "sleeveHinge", "part": "sleeve", "at": g.tolist(), "dir": _unit(sh - g).tolist(),
+            "mid": (0.5 * (g + sh)).tolist(), "far": w1.tolist(), "origin": sh.tolist(), "x": ex.tolist(), "role": "sleeve",
+            "wrap": {"to": "arm.L", "front": -1 if which == "front" else 1, "cx": 0.0}})
     D["seams"] = [s for s in D["seams"] if not any(x in e for side in s for e in _flat(side)
                                                    for x in (":shoulder>hps", ":armhole>"))]
     low = D["meta"]["low"]
@@ -412,7 +474,8 @@ def op_kimono(D: dict, length: float | None = None, angle: float = 25.0, wrist: 
     D["edges"]["sleeve_hem"] = ["front:wristTop>wristBottom", "back:wristTop>wristBottom"]
     D["meta"]["kimono"] = True
     D["log"].append(f"kimono sleeve: overarm {Ls * 1000:.0f} mm at {angle:.0f} deg, wrist {2 * hw * 1000:.0f} mm, underarm "
-                    f"{drop * 1000:.0f} mm under the armhole; front and back alike (placement can't arrange it yet)")
+                    f"{drop * 1000:.0f} mm under the armhole; front and back alike; placed in two parts each (body on the "
+                    "torso, sleeve round the arm)")
 
 
 def op_hood(D: dict, height: float | None = None, depth: float | None = None, name: str = "hood", **o) -> None:
@@ -430,10 +493,13 @@ def op_hood(D: dict, height: float | None = None, depth: float | None = None, na
     pts += [(None, q) for q in pb.bez([max(F[0], Dp) + 0.01, H * 0.96], [Dp * 0.75, H * 1.03], [Dp * 0.35, H * 1.02], [0.06, H * 0.9])[:-1]]
     pts += [("crown", [0.06, H * 0.9])]
     pts += [(None, q) for q in pb.bez([0.06, H * 0.9], [-0.035, H * 0.72], [-0.03, H * 0.25], [0.0, 0.0])[:-1]]
-    pc = pb.make_piece(name, pts, "hood", {"to": "head"}, "pair")
+    pc = pb.make_piece(name, pts, "hood", {"to": "head", "apart": 0.0015}, "pair")
     # the neck edge as drawn is a little under Ln (straight): scale x so it is exact
     k = Ln / pb.edge_length(pc, "neckBack>neckMid>neckFront")
     pc["P"][:, 0] *= k
+    # (the centre seam bows past x = 0 over the back of the head: each side starts that far off the middle, or the
+    # two sides start through each other)
+    pc["wrap"]["apart"] = round(float(-pc["P"][:, 0].min()) + 0.002, 4)
     D["pieces"][name] = pc
     nb, nf = D["edges"]["neck_back"], D["edges"]["neck_front"]
     D["seams"].append([f"{name}:neckBack>neckMid>neckFront", list(nb) + list(nf)])
@@ -441,7 +507,7 @@ def op_hood(D: dict, height: float | None = None, depth: float | None = None, na
     D["edges"]["hood_face"] = [f"{name}:neckFront>faceTop"]
     D["log"].append(f"hood: neck edge {Ln * 1000:.0f} mm (the half neckline), {H * 1000:.0f} mm high, {Dp * 1000:.0f} mm deep "
                     f"(head girth {'measured' if 'head' in m else 'estimated'} {head * 1000:.0f} mm); two sides, a centre seam "
-                    "(placement can't arrange it yet)")
+                    "placed round the head")
 
 
 def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, **o) -> None:
@@ -496,6 +562,8 @@ def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, 
             imap[w] = [(piece, pos_s[w])]
         else:
             imap[w] = [(piece, pos_m[w])]
+    new["underlays"] = list(work.get("underlays") or []) + [
+        {"y": [float(min(A[1], B[1])), float(max(A[1], B[1]))], "width": float(2 * depth)}]  # (not girth: cloth.sizing)
     D["pieces"][piece] = new
     _remap(D, piece, work, imap, {piece: new})
     D["folds"].append({"piece": piece, "line": [A.tolist(), B.tolist()], "angle": 0, "kind": "press", "name": f"{name} outer"})

@@ -1,6 +1,6 @@
 {"design": {
   "kind": "dress", "block": "bodice", "fit": "regular", "fabric": "linen",
-  "block_options": {"fitted": true, "hips_ease": 0.18, "length": "hips", "length_bonus": 0.12},
+  "block_options": {"fitted": true, "darts": false, "hips_ease": 0.18, "length": "hips", "length_bonus": 0.12},
   "ops": [
     {"op": "neckline", "widen": 0.02, "back": 0.005},
     {"op": "style_line", "piece": "front", "name": "princessF", "from": {"edge": "hps>shoulder", "t": 0.5},
@@ -10,9 +10,11 @@
     {"op": "sleeve", "length": 0.40, "hem_width": 0.30, "cap_ease": 0.02},
     {"op": "unfold"},
     {"op": "extend", "piece": "front.L", "edge": "cfNeck>cfHem", "amount": 0.22, "name": "wrap"},
+    {"op": "round_corner", "piece": "front.L", "corner": "wrap.b", "along": [0.16, 0.14]},
     {"op": "cut_away", "piece": "front.L", "keep": "princessF.b", "from": "hps", "to": {"edge": "wrap.a>wrap.b", "t": 0.50}, "name": "vneck"},
     {"op": "cut_away", "piece": "front.R", "keep": "princessF.b", "from": "hps", "to": {"edge": "cfNeck>cfHem", "t": 0.45}, "name": "vneckR"},
-    {"op": "stitch", "a": "front.L:vneck.b", "b": "side_front.R:waist"}
+    {"op": "stitch", "a": "front.L:vneck.b", "b": "side_front.R:waist"},
+    {"op": "stitch", "a": "front.R:vneckR.b", "b": "side_front.L:waist"}
   ],
   "details": {"collar": "none", "front_closure": "wrap_tie", "skirt_closure": "none", "darts": "none",
               "hem": "blind", "cuff": "hemmed"}

@@ -52,7 +52,8 @@
           "required": ["collar", "cuff", "hem"],
           "sewing_order": ["front", "back", "neckband", "sleeve"]},
   "hoodie": {"region": "upper", "fabric": "french_terry", "lap": null, "cap_ease": [-0.03, 0.03],
-             "fit": {"regular": {"chest": [0.10, 0.25], "waist": [0.10, 0.35], "hips": [0.05, 0.25]}},
+             "fit": {"regular": {"chest": [0.10, 0.25], "waist": [0.10, 0.35], "hips": [0.05, 0.25]},
+                     "boxy": {"chest": [0.14, 0.35], "waist": [0.25, 0.65], "hips": [0.10, 0.40]}},
              "details": {"collar": "hood", "cuff": "rib", "front_closure": "pullover", "hem": "rib_band", "pockets": "kangaroo"},
              "required": ["collar", "cuff", "hem"],
              "sewing_order": ["front", "back", "pocket", "hood", "sleeve", "cuff", "hem_band"]},
@@ -408,6 +409,11 @@
   "layer_gap_mm": {"woven_light": [0, 2], "woven_heavy": [0, 4], "knit": [0, 2], "stage": "final"},
   "collar_cover_mm": {"range": [6, 14], "stage": "draft", "_doc": "how far the fall's edge lies below the neckline seam at CB (+ = covers)"},
   "collar_points_off_mm": {"range": [0, 3], "stage": "final"},
+  "layer_collar_show_mm": {"range": [10, 20], "stage": "draft", "_doc": "layered (cloth_layers.tells): the under garment's collar above the outer collar at CB (a shirt collar over a jacket's)"},
+  "layer_cuff_show_mm": {"range": [10, 15], "stage": "draft", "_doc": "layered: the under cuff past the outer sleeve's hem, along the forearm"},
+  "layer_lapel_gap_mm": {"range": [0, 6], "stage": "draft", "_doc": "layered or not: a lapel's flap off the front it lies on"},
+  "layer_collar_hug_mm": {"range": [0, 6], "stage": "draft", "_doc": "layered: the outer collar and stand off the under collar's surface (median)"},
+  "layer_crossings": {"range": [0, 0], "stage": "draft", "_doc": "layered: edges of either garment through the other's triangles"},
   "sleeve_angle_hung_deg": {"range": [0, 8], "stage": "draft"},
   "hem_level_mm": {"range": [0, 15], "stage": "draft", "_doc": "hem height spread across the front (hung: hem swing) or round the body (a skirt worn)"},
   "waistband_at_waist_mm": {"range": [-25, 25], "stage": "draft", "_doc": "waistband's median height minus the body's waist line"},
@@ -542,8 +548,45 @@
    "two_piece": {
     "does": "top and under sleeve from the one-piece: seams moved under the arm",
     "use": "jackets, coats",
-    "keeps": "cap length; seams matched; both pieces bent alike at the elbow (forearm seam hollowed, hindarm bowed)",
-    "limits": "a split one-piece sleeve: the under sleeve is not hollowed or widened as a tailor's (against FreeSewing Jaeger: under sleeve 16 mm narrower, hem 39 mm narrower, 30 mm shorter)"
+    "keeps": "cap length; forearm seams equal; the top's hindarm a little longer (elbow ease, declared)",
+    "options": "shift (forearm seam under the quarter line, 0.02), shift_back (hindarm), elbow (m the wrist comes forward: each piece swings below the elbow line about its forearm seam's elbow point; 0 = straight)",
+    "why": "a tailored sleeve hangs bent like the arm: the forearm seam hollows, the hindarm opens over the elbow, the hem ends square to the forearm. A jacket sleeve also wants sleeve hem_width ~0.28 (the block's default is a shirt cuff's)",
+    "limits": "the under sleeve's top is the two underarm hollows joined (symmetric), not a tailor's S curve"
+   },
+   "contour": {
+    "does": "shapes an edge: moved into its piece (negative: out) by an amount per level, eased between: {\"edge\": \"centre_back\", \"at\": [[\"top\", 0], [\"chest\", 0.006], [\"waist\", 0.02], [\"hem\", 0.004]]}",
+    "use": "a shaped centre-back seam (block cb: seam), side seams shaped on front and back alike, a hem's spring over the seat, a style line let out below the waist (its name shapes BOTH edges)",
+    "keeps": "mirror seams (centre back) equal; a panel seam's small difference declared as pressed / eased on",
+    "why": "a straight centre back stands away from the hollow of the back; 15-25 mm out at the waist is half a tailored back's shape"
+   },
+   "join": {
+    "does": "two pieces sewn together become one piece, the seam gone: {\"a\": \"side_front\", \"b\": \"side_back\", \"name\": \"side\"} (\"along\": a point on the seam meant, when they share two)",
+    "use": "a side panel that drops from the armhole with no side seam (cut front and back from the armhole to the hem, join the two side parts), a yoke or band cut on, front and back in one",
+    "keeps": "every other seam and named edge (the armhole, the hem run over the joined piece); b's clashing point names become name@b",
+    "why": "the seam's CURVE carried shaping: joined, the two edges meet only at their ends and that shaping is lost (the log says how many mm): take it in the panel seams beside it"
+   },
+   "round_corner": {
+    "does": "a corner of the outline rounded: {\"piece\": \"front\", \"corner\": \"cfHem\", \"along\": [0.09, 0.06]}",
+    "use": "a cut-away front hem, patch pocket corners, cuffs, collar points",
+    "keeps": "the corner's name (on the curve's middle), so edges named to it still run",
+    "why": "do it before a facing or band is traced from those edges"
+   },
+   "pocket": {
+    "does": "a pocket laid ON a piece: traced in its coordinates, placed on its outside face, tacked down by point stitches along its sewn edges. type patch (a rectangle, bottom corners cut, top open; at = [x, y] of the top edge's middle) or kangaroo (across the centre front of a piece cut on the fold; top and bottom sewn, slanted sides open)",
+    "use": "patch pockets on jackets, shirts, aprons; a hoodie's or anorak's kangaroo pocket",
+    "keeps": "nothing of the piece under it changes; the tacks are mirrored with the piece",
+    "limits": "welt, flap and in-seam pockets are not drafted: they need a cut inside a piece or a split seam with bags behind"
+   },
+   "lining": {
+    "does": "a lining derived from its shell: every body piece traced as <piece>_lining, the seams between lined pieces repeated between their linings, each laid inside its shell, sewn to the shell along attach (default the hems, sleeve hems and back neck)",
+    "use": "jackets, coats, lined skirts; do it last, before unfold",
+    "keeps": "every lining seam matches as its shell's does",
+    "limits": "the same outline as the shell: no centre-back pleat, not trimmed to the facing, one fabric for shell and lining"
+   },
+   "fisheye": {
+    "does": "a double-pointed dart inside a piece that runs past the waist; run on to the hem as a closed cut (a cloth mesh can't hold a cut that doesn't reach an edge)",
+    "use": "fitting a hip-length block without panel seams; block option darts: true makes them on a hip-length bodice",
+    "keeps": "its two legs equal; the hem edge (in two parts either side)"
    },
    "neckline": {
     "does": "redraws the neckline on front and back together: neck point moved along the shoulder by the same amount on both, centre front / back lowered; round, V or square",

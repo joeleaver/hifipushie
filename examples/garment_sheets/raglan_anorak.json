@@ -1,0 +1,15 @@
+{"design": {
+  "kind": "hoodie", "block": "bodice", "fit": "boxy", "fabric": "cotton_twill",
+  "block_options": {"chest_ease": 0.18, "cf": "fold", "length": "hips", "length_bonus": 0.06},
+  "ops": [
+    {"op": "neckline", "widen": 0.02, "front": 0.03},
+    {"op": "sleeve", "cap_ease": 0.0, "hem_width": 0.26},
+    {"op": "raglan"},
+    {"op": "hood"},
+    {"op": "pocket", "piece": "front", "type": "kangaroo", "width": 0.34, "height": 0.18}
+  ],
+  "details": {"collar": "hood", "cuff": "hemmed", "front_closure": "pullover", "hem": "straight_double",
+              "pockets": "kangaroo"}
+ },
+ "spec": {"quality": "draft", "color": "#9a5a2a"}
+}

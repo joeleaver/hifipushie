@@ -148,6 +148,11 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         (o["fail"] if (not r["ok"] or r["notches_off"]) else o["info"]).append(line)
     # every piece sewn to something
     sewn = {e.split(":")[0] for s in Bp["seams"] for side in s for e in ([side] if isinstance(side, str) else side)}
+    tacked = {}  # a piece held by point stitches alone (a patch pocket tacked along its edges)
+    for a_, b_ in Bp["stitches"]:
+        for e in (a_, b_):
+            tacked[e.split(":")[0]] = tacked.get(e.split(":")[0], 0) + 1
+    sewn |= {n for n, k in tacked.items() if k >= 3}
     loose = [n for n in Bp["pieces"] if n not in sewn]
     if loose and len(Bp["pieces"]) > 1:
         o["fail"].append(f"pieces sewn to nothing: {', '.join(loose)} (a seam table entry is missing)")
@@ -176,6 +181,8 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
                 o["fail"].append(line + ": TOO SMALL (negative ease)")
                 continue
             o["info"].append(line)
+    for line, ok in leg_ease(c, bands):
+        (o["info"] if ok else o["fail"]).append(line)
     if D:
         o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items()))
     if (Bp.get("draft") or {}).get("derived_mm"):
@@ -186,6 +193,60 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
                                            if c.kind else "")
         o["images"].append(("pattern", pattern_sheet.render(Bp, title, seam_rows=rows)))
     return o
+
+
+def leg_ease(c: Ctx, bands: dict) -> list:
+    """[(line, ok)]: a leg garment's ease from the flat pattern at the seat (both legs' pieces across the seat line
+    against the seat girth, in the fit's band), and per leg at the thigh, knee and hem against the body's own leg
+    there (must not be negative in a woven). Torso girths (cloth.sizing) don't see leg pieces."""
+    Bp = c.Bp
+    pcs = Bp["pieces"]
+    legs = [n for n in pcs if pcs[n]["wrap"].get("to") == "leg.L"]
+    if not legs or not c.meas or "waist_z" not in c.body.at:
+        return []
+    from . import tailor
+    at, zw = c.body.at, float(c.body.at["waist_z"])
+    Z = np.array([0, 0, 1.0])
+    width = lambda y: sum(cloth._piece_width_at(pcs[n]["P"], y) for n in legs)
+    out = []
+    if "seat_z" in at:
+        g = 2 * width(float(at["seat_z"]) - zw) * 1000
+        ease = g / c.meas["seat"] - 1
+        band = (bands or {}).get("seat")
+        line = f"ease at seat (the legs' pieces across the seat line): {ease * 100:+.1f}% (pattern {g:.0f} mm; body {c.meas['seat']:.0f} mm)"
+        ok = True
+        if band:
+            line += f", {c.res['fit'] if c.res else 'kind'} band {band[0] * 100:+.0f}..{band[1] * 100:+.0f}%"
+            ok = band[0] - 0.005 <= ease <= band[1] + 0.005
+            if not ok:
+                line += ": TOO SMALL" if ease < band[0] else ": outside the fit"
+        elif ease < -0.01 and c.fabric_class() != "knit":
+            ok, line = False, line + ": TOO SMALL (negative ease)"
+        out.append((line, ok))
+    ylo = min(pcs[n]["P"][:, 1].min() for n in legs)
+    levels = []
+    if "crotch_z" in at:
+        levels.append(("thigh", float(at["crotch_z"]) - 0.05 - zw))
+    if "waistToKnee" in c.meas:
+        levels.append(("knee", -c.meas["waistToKnee"] / 1000))
+    levels.append(("hem", ylo + 0.01))
+    parts = []
+    for name, y in levels:
+        if y < ylo + 0.005:
+            continue
+        loops = [L for L in tailor.slice_loops(c.body.V, c.body.T, [0, 0, zw + y], Z)
+                 if L[:, 0].mean() > 0.02 and abs(L[:, 0].mean()) < abs(float(at["shoulder.L"][0])) + 0.09]
+        if not loops:
+            continue
+        body_g = max(tailor.girth(L, Z) for L in loops) * 1000
+        g = width(y) * 1000
+        e = g / body_g - 1
+        parts.append(f"{name} {e * 100:+.0f}% ({g:.0f} mm round a {body_g:.0f} mm leg)")
+        if e < -0.01 and c.fabric_class() != "knit":
+            out.append((f"the leg is TOO SMALL at the {name}: {g:.0f} mm of cloth round a {body_g:.0f} mm leg", False))
+    if parts:
+        out.append(("ease per leg: " + ", ".join(parts), True))
+    return out
 
 
 # ---------------------------------------------------------------- 3 construction
@@ -300,6 +361,36 @@ def stage_construction(c: Ctx) -> dict:
 # ---------------------------------------------------------------- 4 place
 
 
+def seam_start_gaps(X: np.ndarray, M: dict) -> list:
+    """Per seam, how far apart its two sides start: [{"seam", "median", "max", "twist", "far", "turned"}].
+    far: apart everywhere (median > 25 cm or max > 40 cm: more than a shoulder seam, whose front and back stand a
+    body depth apart). turned: one side must TURN to meet the other (the rotation that best lays side a on side b,
+    both about their own middles, is over 35 deg, with a median gap over 8 cm): a waistband whose chain starts
+    half a turn from the band's own start. Its gaps are only a waist's diameter, under any distance limit, but no
+    move brings the sides together: the sewing has to wind the band round the body. A seam standing apart one way
+    (a shoulder seam, a sleeve down its arm) or one ring inside another (a hood round the head against the
+    neckline out on the chest) needs no turn. twist = 1 - |mean gap| / mean |gap| is reported too."""
+    sw, ss = np.asarray(M["sew"]), np.asarray(M["sew_seam"])
+    g = X[sw[:, 0]] - X[sw[:, 1]]
+    d = np.linalg.norm(g, axis=1)
+    out = []
+    for si in np.unique(ss):
+        m = ss == si
+        med, mx = float(np.median(d[m])), float(d[m].max())
+        twist = 1.0 - float(np.linalg.norm(g[m].mean(0))) / max(float(d[m].mean()), 1e-9)
+        A, B = X[sw[m, 0]], X[sw[m, 1]]
+        A, B = A - A.mean(0), B - B.mean(0)
+        turn = 0.0
+        sv = np.linalg.svd(A, compute_uv=False)
+        if int(m.sum()) >= 6 and sv[1] > 0.2 * sv[0]:  # (a straight seam has no turn to measure: any roll fits)
+            U_, _, Vt = np.linalg.svd(A.T @ B)
+            R_ = U_ @ np.diag([1.0, 1.0, np.sign(np.linalg.det(U_ @ Vt))]) @ Vt
+            turn = float(np.degrees(np.arccos(np.clip((np.trace(R_) - 1) / 2, -1, 1))))
+        out.append({"seam": int(si), "median": med, "max": mx, "twist": twist, "turn_deg": turn,
+                    "far": med > 0.25 or mx > 0.40, "turned": turn > 35.0 and med > 0.08})
+    return out
+
+
 def _layer_gaps(X: np.ndarray, M: dict, Bp: dict, pairs: list) -> dict:
     """Median distance (mm) between an outer piece and the inner one where they overlap (outer vertices within 3 cm
     of the inner piece), along the inner piece's normal there."""
@@ -382,15 +473,17 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     # place (a band's chain starting half a turn from the band's opening, a sleeve turned round its arm) or its
     # piece is placed away from where it is sewn (a cut-on collar standing up the front of the neck)
     if len(M.get("sew", [])) and "sew_seam" in M:
-        sw, ss = np.asarray(M["sew"]), np.asarray(M["sew_seam"])
+        sw = np.asarray(M["sew"])
         gp = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
         far = []
-        for si in np.unique(ss):
-            g_ = gp[ss == si]
-            med, mx = float(np.median(g_)), float(g_.max())
-            if med > 0.25 or mx > 0.40:  # (a shoulder seam starts a body depth apart: front and back stand upright)
-                sd = Bp["seams"][int(si)] if int(si) < len(Bp["seams"]) else "?"
-                far.append((mx, f"{json.dumps(sd)[:110]}: median {med * 1000:.0f} mm, max {mx * 1000:.0f} mm"))
+        for r in seam_start_gaps(X, M):
+            if r["far"] or r["turned"]:
+                sd = Bp["seams"][r["seam"]] if r["seam"] < len(Bp["seams"]) else "?"
+                far.append((r["max"], f"{json.dumps(sd)[:110]}: median {r['median'] * 1000:.0f} mm, max {r['max'] * 1000:.0f} mm"
+                            + (f" (its two sides are TURNED {r['turn_deg']:.0f} deg against each other: a band's chain "
+                               "that starts part of a turn from the band's own start, or a piece lying at an angle "
+                               "to the edge it is sewn to: a raglan sleeve's shoulder along the arm against the "
+                               "body's cut on the chest crumpled at the shoulder in the sim)" if r["turned"] else "")))
         if far:
             far.sort(reverse=True)
             o["warn"].append("seams whose sides START far apart (the sewing must drag the cloth there; a twisted or "
@@ -403,7 +496,13 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
         lim = float((c.gx.get("zozo") or {}).get("strain_limit", 0.05))
         madep = np.isin(M["piece"][M["F"][:, 0]], [M["names"].index(n) for n in cloth.made_pieces(M, stiff)])
         over = (tri > lim) & ~madep
-        if over.mean() > 0.002:
+        if 0.002 < over.mean() <= 0.03 and float(tri[over].max()) < 0.6:
+            # a few triangles by construction (the rows of a roll line turned round a curving chest, a band pushed a
+            # millimetre off the neck): the solver gives them their own limit (cloth_zozo "start_over")
+            o["info"].append(f"start stretch: {int(over.sum())} triangles ({over.mean() * 100:.1f}%) start up to "
+                             f"{float(tri[over].max()) * 100:.0f}% stretched (fold rows, pushed bands): they get a local "
+                             "strain limit in the solver")
+        elif over.mean() > 0.002:
             worst = {}
             for t in np.where(over)[0]:
                 p = M["names"][M["piece"][M["F"][t, 0]]]
