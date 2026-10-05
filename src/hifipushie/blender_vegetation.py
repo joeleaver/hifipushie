@@ -121,8 +121,9 @@ def bark_material(name, bark, height):
         col = mix(col, fac_base, lin(bark["base_color"]))
     if bark.get("upper_color") is not None:
         u0 = bark.get("upper_from", 0.5 * height)
-        zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", bigv, 0.15 * height))
-        col = mix(col, ramp01(zz, u0, u0 + 0.2 * height), lin(bark["upper_color"]))
+        ub = bark.get("upper_blend", 0.2 * height)  # m the change takes (patchy: the noise moves it +- 0.15 x height)
+        zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", bigv, 0.5), 0.3 * height))
+        col = mix(col, ramp01(zz, u0, u0 + max(ub, 0.01)), lin(bark["upper_color"]))
     fac_twig = ramp01(rad.outputs["Fac"], 0.02, 0.006)
     if bark.get("twig_color") is not None:
         col = mix(col, fac_twig, lin(bark["twig_color"]))
@@ -439,6 +440,20 @@ def build(job):
         from mathutils import Matrix
         ground.rotation_euler = Matrix.Rotation(math.radians(gj["slope"]), 4, axis).to_euler()
     ground_mat = ground_material("ground", job.get("ground") or {})
+    if gj.get("water") is not None:  # a water level (m, against the plant's foot): a lake shore, a ditch
+        bpy.ops.mesh.primitive_circle_add(vertices=64, radius=max(60 * R, 400.0), fill_type="NGON", location=(0, 0, float(gj["water"])))
+        water = bpy.context.object
+        wm = _flat("water", lin(gj.get("water_color", [0.16, 0.26, 0.32])), 0.08)
+        water.data.materials.append(wm)
+    rulers = []
+    if job.get("ruler"):  # a pole banded every metre (every fifth band red), beside the plant in the clay and bare views
+        m_w, m_r, m_k = _flat("rule_w", [0.9, 0.9, 0.9], 0.6), _flat("rule_r", [0.8, 0.1, 0.08], 0.6), _flat("rule_k", [0.05, 0.05, 0.05], 0.6)
+        for i in range(int(job["ruler"])):
+            bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.035 + 0.004 * R, depth=1.0,
+                                                location=(float(hi[0]) + 0.5, float((lo[1] + hi[1]) / 2), i + 0.5))
+            o = bpy.context.object
+            o.data.materials.append(m_r if i % 5 == 4 else (m_w if i % 2 == 0 else m_k))
+            rulers.append(o)
     clay_ground = _flat("clay_ground", [0.12, 0.12, 0.12], 1.0)
     ground.data.materials.append(ground_mat)
     sa, se = [math.radians(v) for v in job.get("sun", [140, 42])]
@@ -526,6 +541,8 @@ def build(job):
         sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "AgX")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)
         ground.hide_render = bool(v.get("no_ground"))
+        for o in rulers:
+            o.hide_render = not v.get("ruler", False)
         sc.render.film_transparent = bool(v.get("transparent"))
         sc.render.filepath = v["out"]
         bpy.ops.render.render(write_still=True)

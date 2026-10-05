@@ -120,7 +120,7 @@ def test_environment():
     m0, mf = v.shape_measures(v.silhouette(T0, 0, 10, leaves=False)[0]), v.shape_measures(v.silhouette(F, 0, 10, leaves=False)[0])
     assert mf["bole"] > m0["bole"] + 0.05 and mf["width_over_height"] < m0["width_over_height"]  # drawn up by its neighbours
     W = v.grow({**SMALL, "environment": {"wind": {"from": "w", "strength": 0.5}}})
-    assert np.median(W["pos"][W["ends"], 0]) > np.median(T0["pos"][T0["ends"], 0]) + 0.3  # leans downwind (east, +x)
+    assert W["pos"][W["ends"], 0].mean() > T0["pos"][T0["ends"], 0].mean() + 0.3  # leans downwind (east, +x)
 
 
 def test_habit_words():
@@ -368,6 +368,58 @@ def test_tools_and_export(tmp=None):
             assert "guide" in server.guide("vegetation").lower()
         finally:
             store.HOME = old
+
+
+def test_cuts_regrow_and_keys_are_checked():
+    base = {"species": "birch", "age": 30}
+    T0 = v.grow(base)
+    P = v.grow({**base, "cuts": [{"year": 10, "above": 3.0, "every": 5, "until_year": 20, "sprouts": 5}], "trunk_diameter": 0.4, "trunk_taper": 0.1})
+    trunk = P["pos"][P["order"] == 0]
+    assert trunk[:, 2].max() < 3.0 + 0.6 and P["height"] > 4.0  # a short trunk carrying a head that grew back
+    assert len(P["stats"]["cuts"]) >= 3 and all(c["nodes"] > 0 for c in P["stats"]["cuts"])
+    assert P["height"] < T0["height"] and (P["order"] > 0).sum() > 100
+    r = P["radius"][P["order"] == 0]
+    assert r.min() > 0.5 * 0.4 * 0.85  # a column: the trunk keeps its girth to its top
+    held = v.grow({**base, "prune": [{"above": 3.0, "from_year": 10}]})  # held for ever: nothing above it
+    assert held["pos"][:, 2].max() < 3.0 + 0.6
+    stub = v.grow({**base, "cuts": [{"year": 20, "above": 5.0, "sprouts": 0}]})
+    assert stub["pos"][stub["order"] == 0][:, 2].max() < 5.6
+    for bad in ({"prune": [{"above": 3, "until_year": 9}]}, {"cuts": [{"above": 3}]}, {"guides": {"g": {"path": [[0, 0, 1]]}}},
+                {"wibble": 1}, {"guides": {"g": {"path": [[0, 0, 1], [1, 0, 2]], "untill": 3}}}):
+        try:
+            v.grow({**base, **bad})
+            raise AssertionError(f"accepted {bad}")
+        except ValueError:
+            pass
+
+
+def test_angle_clear_and_bare():
+    b = {"species": "birch", "age": 25}
+    lo = v.branch_angles(v.grow({**b, "habit": {"angle": [35, 55, 60]}}), 1)["insertion_p10_50_90"][1]
+    hi = v.branch_angles(v.grow({**b, "habit": {"angle": [70, 55, 60]}}), 1)["insertion_p10_50_90"][1]
+    assert abs(lo - 35) < 8 and abs(hi - 70) < 12 and hi > lo + 20  # angle[0] IS the limbs' angle off the trunk
+    path = [[0, 0, 0], [0.5, 0, 3], [1.5, 0, 6], [1.8, 0, 9]]
+    G = v.grow({**b, "habit": {"clear": 4.0}, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 15}}})
+    lat = (G["order"] == 1) & ~G["main"]
+    assert lat.any() and (G["pos"][G["parent"][lat], 2] >= 4.0 - 0.6).all()  # a drawn trunk has its clear bole too
+    limb = [[0, 0, 4], [2, 0, 4.8], [5, 0, 5.2]]
+    L = v.grow({**b, "guides": {"limb": {"path": limb, "from_year": 8, "until_year": 18, "bare": 2.5}}})
+    ai = L["guides"]["limb"]
+    kids = np.flatnonzero((~L["main"]) & (L["axis"][L["parent"]] == ai) & L["pin"][L["parent"]])
+    assert len(kids) and (np.linalg.norm(L["pos"][L["parent"][kids]] - np.array(limb[0]), axis=1) > 2.0).all()
+    U = v.grow({**b, "envelope": {"shape": "umbrella", "radius": 4, "top": 9, "base": 2}})
+    assert U["stats"]["nodes"] > 100
+
+
+def test_budget_is_what_is_written():
+    from hifipushie import veg_export
+    T = v.grow({"species": "birch", "age": 25})
+    for n in (4000, 12000):
+        bud = veg_export.budget(T, n, (0.4, 0.8), 8)
+        assert bud["total"] <= n or bud["over"] == bud["total"] - n
+        assert bud["total"] <= n, (n, bud["total"])
+    full = veg_export.budget(T, None, (0.4, 0.8), 8)
+    assert full["keep"] == 1.0 and full["min_radius"] == 0.0
 
 
 def test_fit_improves():

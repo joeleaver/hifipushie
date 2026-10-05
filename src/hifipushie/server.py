@@ -1830,7 +1830,11 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (limbs LEAVING the trunk under
     z) | "under": z (nothing but the trunk hangs under z)}: a clean cut on the finished tree, nothing else changes;
     with "from_year" it is cut from that year on and the tree answers it (regrows elsewhere).
-    {"op": "remove_prune", "index"}, {"op": "clear_prunes"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    {"op": "remove_prune", "index"}, {"op": "clear_prunes"}.
+    {"op": "cut", "year": N, <a volume as for prune>, "every": years, "until_year", "sprouts": n}: the wood in the
+    volume is cut AT that year (and again every `every` years) and the stubs sprout `sprouts` new shoots each: a
+    pollard ("above": 2.5, "every": 6), a coppice ("above": 0.3), a lopped limb or a storm break (a box, sprouts 0-2).
+    {"op": "clear_cuts"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
     "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
     {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
     Returns the report after regrowing, with what changed in size."""
@@ -1842,20 +1846,24 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
 
 @mcp.tool(structured_output=False)
 def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size: int = 640,
-               foliage: str | None = None, sheet: bool = False):
+               foliage: str | None = None, sheet: bool = False, triangles: int | None = None):
     """Images of a plant (Blender, 5-40 s). views, any of: "clay" (the bare skeleton as clay: judge the structure
     here first), "bare" (in colour, no leaves), "leaf" (in leaf; these three are side views from `azimuth`, 0 = looking
     along +y), "far" (at eye height from far enough that the tree is half the picture: how it reads in a scene), "near"
     (standing by it, 2-5 m, looking up: trunk, bark, forks), "close" (foliage: leaves and twigs), or a camera of your
     own {"name", "eye": [x, y, z], "look": [x, y, z], "fov": deg, "clay": bool}. Default clay + leaf + far. The ground
-    is flat grass unless the spec has environment.ground {"slope": deg, "toward": [x, y]} (a hillside falling that way). foliage: "cards" (the twig
+    is flat grass unless the spec has environment.ground {"slope": deg, "toward": [x, y], "water": z} (a hillside
+    falling that way; a water level z m against the foot). clay and bare show a pole banded every metre (every fifth
+    band red) beside the plant. triangles=N shows the plant as export_plant(triangles=N) writes it (thin wood left
+    out, fewer and larger cards): judge the budgeted plant before exporting it. Files carry the view, azimuth and
+    version in their names. foliage: "cards" (the twig
     atlas on cut cards: what a game draws; default) or "mesh" (real leaf meshes: close-ups, video).
     sheet=True returns the reference sheet instead (photo | outlines over each other | every view, with the numbers);
     it needs plant_reference first. Files are also written to workspace/plants/<name>/. Read the images."""
     from . import veg_tools as vt
-    got = vt.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet)
+    got = vt.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
-    out.append("\n".join(f"{k}: {p}" for k, p in got) + "\n" + vt.report(name))
+    out.append(vt.report(name) + "\n" + "\n".join(f"{k}: {p}" for k, p in got))
     return out
 
 
@@ -1925,11 +1933,15 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
     from . import veg_tools as vt
     c = vt.export(name, out_dir, triangles)
-    return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): wood {c['wood_triangles']} triangles"
+    return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
+            + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
             + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")
             + f", foliage {c['foliage_triangles']} triangles"
             + (f" ({c['twigs_kept']:.0%} of the twigs, drawn larger)" if c["twigs_kept"] < 1 else "")
             + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
+            + (f"\nWARNING: {c['over']} triangles over the budget: the wood alone needs {c['wood_triangles']} "
+               f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")
+            + (f"\nLook at it before using it: look_plant(name, views=['leaf', 'far'], triangles={triangles})" if triangles else "")
             + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
 
 

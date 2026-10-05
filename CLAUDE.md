@@ -1979,6 +1979,26 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   validator 0 errors (2 warnings: no tangents). One LOD, no wind/seasons yet.
   Strip cards (`card.strips`): a ladder of quads along a long twig; it gives hanging twigs their droop but did NOT
   raise fill (birch 0.25, willow 0.23): the pictures themselves are sparse between the leaves.
+- Blind rounds (2026-10-05; fresh agents with only the guide + a brief: old pollard willows by a ditch, a wind-flagged
+  pine, a veteran oak, a stand): what they could not say became vocabulary, what misled them was fixed.
+  - `cuts` (`{"year", volume, "every", "until_year", "sprouts"}`): the wood in the volume is cut AT that year and each
+    stub (the 12 stoutest) sprouts: pollards, coppice, lopped limbs, storm breaks. `prune` with `from_year` = held
+    for ever; without = a cut after growth. Volumes: box, sphere, above, below, under. Unknown keys anywhere are
+    refused (`resolve`): a tester's `prune.until_year` had been silently ignored.
+  - `habit.angle` is indexed by the PARENT's order (angle[0] had been unused: testers set it and nothing moved);
+    a side shoot's first segment keeps its angle (0.2 weight of light/tropism/jitter). Jitter has momentum
+    (independent kicks read as wire kinks). `trunk_diameter` + `trunk_taper`, `habit.clear` (also on a drawn trunk),
+    guide `bare` / `on` / `until_year` (paces the axis to the path's end), envelope "umbrella" + `center` + `lean`.
+  - A guide that leaves existing wood must not clear that wood's tip: it killed a young trunk's leader (half trees).
+  - `veg_export.budget` (wood min radius + card keep share solved for the triangle count; the count written is the
+    count asked, e.g. 11994/12000) and `look_plant(triangles=)` renders that object: the full-detail look had said
+    nothing about what a 12k export looks like. Looks: file names carry azimuth/budget, a ruler pole, water level,
+    the eye lifted onto a hillside, `look_plants` in real coordinates. Edit echoes are diffs of the RESOLVED spec.
+  - The report measures cover above the crown base (the trunk had counted), trunk lean, each guide's reach, each
+    cut, and warns on a prune that removed everything, `height` with a drawn trunk, an age far past the preset's.
+  - Not built (said in the guide): buttresses/roots/foot on a slope, swollen pollard bolls, deadwood beyond stubs,
+    banks/ditches, a non-weeping willow preset, needle and willow card pictures (feathers, bamboo), an ortho side
+    view that isn't mostly hillside on a slope.
 - Next: named limbs + the Blender round trip for guides, forest sets; then the species fixes (spruce: cards read as
   ivy at 70 m and its bark scales are far too big; birch: no lenticel bands or dark foot showing, foliage in clumps
   not a veil), overdraw measurement, LODs / wind / seasons, small plants (+ palm), styles.

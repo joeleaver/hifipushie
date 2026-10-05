@@ -36,7 +36,7 @@ def ground_z(spec: dict, at) -> float:
     return float(-math.tan(math.radians(g["slope"])) * (np.asarray(at, float)[:2] @ t))
 
 
-def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None) -> tuple[dict, dict]:
+def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, triangles: int | None = None) -> tuple[dict, dict]:
     """One plant's arrays (an npz) and its part of the Blender job; also its counts."""
     from . import veg_bark, veg_leaf
     s = tree["spec"]
@@ -45,8 +45,21 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None) 
     bark = dict(s.get("bark") or {})
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
     sc = float(bark.get("scale", 1.0))
-    M = veg_mesh.tubes(tree, tile=[bm["tile"][0] * sc, bm["tile"][1] * sc])
+    tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
+    M = veg_mesh.tubes(tree, tile=tile)
     tw = veg_leaf.place(tree)
+    if triangles:  # the budgeted plant, exactly as export_plant(triangles=) writes it
+        from . import veg_export
+        if foliage != "cards":
+            raise ValueError("a triangle budget is for cards (what the export draws): foliage='cards'")
+        ct = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
+        bud = veg_export.budget(tree, triangles, tile, ct)
+        M = bud["wood"]
+        if bud["keep"] < 1 and len(tw["pos"]):
+            rank = np.argsort(np.argsort(vegetation._u(tw["key"], 91)))
+            sel = rank < int(np.floor(len(rank) * bud["keep"] + 1e-9))
+            tw = {k: v[sel] for k, v in tw.items()}
+            tw["scale"] = tw["scale"] * min(1.0 / np.sqrt(bud["keep"]), 2.5)
     arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
     at = None
@@ -82,7 +95,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None) 
 
 
 def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
-           keep: str | None = None, others: list | None = None) -> dict:
+           keep: str | None = None, others: list | None = None, triangles: int | None = None, at=None) -> dict:
     """Render views in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on cut cards: what a
     game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`, else cards.
     others: [(tree, [x, y], yaw deg)] more plants standing in the same scene (a stand). `keep` = a folder for the
@@ -92,16 +105,19 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
     with tempfile.TemporaryDirectory(prefix="hifipushie-veg-") as tmp:
         out = Path(keep or tmp)
         out.mkdir(parents=True, exist_ok=True)
-        pj, info = _plant_job(tree, Path(tmp), out, "", foliage)
+        pj, info = _plant_job(tree, Path(tmp), out, "", foliage, triangles)
+        if at is not None:
+            pj.update(at=list(at), z=ground_z(s, at))
         plants = [pj]
         for i, (t_, at_, yaw_) in enumerate(others or []):
-            pj2, _ = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage)
+            pj2, _ = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage, triangles)
             pj2.update(at=list(at_), yaw=float(yaw_), z=ground_z(s, at_))
             plants.append(pj2)
         env = s.get("environment") or {}
         job = {"plants": plants, "views": views, "save": save, **(s.get("look") or {})}
         if env.get("ground"):
             job["ground"] = {**(job.get("ground") or {}), **env["ground"]}
+        job["ruler"] = float(np.ceil(tree["height"]))
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(job))
         t1 = time.perf_counter()

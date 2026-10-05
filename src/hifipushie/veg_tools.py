@@ -102,6 +102,11 @@ TWIG_INFO = {
     "twig.spread": "25-55 deg a twig leans off its shoot", "twig.up": "-0.9..0.6: twigs turn up to the light (+) or hang (-)",
     "twig.droop": "-0.1..1.2: the twig's own sag along its length", "twig.min_order": "1-2: lowest branch order that carries twigs",
     "twig.where": '"shoots" or "ends" (only shoot ends)', "twig.angle": "40-60 deg a leaf leaves the twig at",
+    "leaves.needle_width": "0.08-0.45: a mesh needle's width / length (wider than life on purpose)",
+    "twig.side_shoots": "0-6 pairs of side shoots on a needle spray", "card.cross": "1 or 2 crossed cards (2 for tufts)",
+    "card.strips": "0, or 3-5 quads along a long hanging twig", "card.scale": "0.8-1.5 x the card's size",
+    "card.twig / card.leaf": "overrides used only for the card's picture (e.g. leaves 400, needle_width 0.03-0.1)",
+    "bark.scale": "0.3-1.5 x the bark pattern's size (finer for a small trunk)", "bark.upper_blend": "m the upper colour takes to come in",
 }
 
 
@@ -122,22 +127,15 @@ def diff(a, b, path="") -> list[str]:
 
 
 def change_note(name: str, before_spec: dict | None, before_stats: dict | None) -> str:
-    """After a save: what changed in the spec (old -> new, resolved values for what was unset) and in the tree."""
+    """After a save: every value that changed in force, old -> new (the old ones from the preset or the defaults
+    when the plant hadn't set them), and what the tree did."""
     after = load(name)
     lines = []
     if before_spec is not None:
-        res_old = vegetation.resolve(before_spec)
-        for d_ in diff(before_spec, after):
-            key = d_.split(":")[0]
-            if "(unset)" in d_:  # show what the preset had been giving
-                cur = res_old
-                try:
-                    for part in key.split("."):
-                        cur = cur[part]
-                    d_ = d_.replace("(unset)", f"{json.dumps(cur)} (from the preset/defaults)")
-                except (KeyError, TypeError):
-                    pass
-            lines.append("  " + d_)
+        try:
+            lines = ["  " + d_ for d_ in diff(vegetation.resolve(before_spec), vegetation.resolve(after))]
+        except ValueError:
+            lines = ["  " + d_ for d_ in diff(before_spec, after)]
     st = grown(name)["stats"]
     if before_stats:
         lines.append(f"  tree: {before_stats['nodes']} -> {st['nodes']} nodes, {before_stats['height_m']} -> {st['height_m']} m tall, "
@@ -195,14 +193,26 @@ def report(name: str) -> str:
     ms = [vegetation.shape_measures(vegetation.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
     f = lambda k: round(float(np.mean([m[k] for m in ms])), 2)
     H = T["height"]
-    ends = T["pos"][T["ends"]]
+    ends = T["pos"][T["ends"] & (T["order"] > 0)]
+    if not len(ends):
+        ends = T["pos"][T["ends"]]
     cen = ends[:, :2].mean(0) if len(ends) else np.zeros(2)
     rad_ = float(np.percentile(np.linalg.norm(ends[:, :2] - cen, axis=1), 90)) if len(ends) else 0.0
     zlow = float(np.percentile(ends[:, 2], 3)) if len(ends) else 0.0
-    cover = 1 - float(np.mean([m["porosity"] for m in ms]))
+    covs = []
+    for az in (0, 90):  # cover of the CROWN: the side view above the crown's base, trunk rows left out
+        m_, fr = vegetation.silhouette(T, az, 12, leaves=True)
+        top = int(max((fr["z1"] - zlow) * fr["px_per_m"], 1))
+        covs.append(1 - vegetation.shape_measures(m_[:top])["porosity"] if m_[:top].any() else 0.0)
+    cover = float(np.mean(covs))
+    tr = T["pos"][T["order"] == 0]
+    tip = tr[np.argmax(tr[:, 2])]
+    lean = float(np.degrees(np.arctan2(np.linalg.norm(tip[:2]), max(tip[2], 1e-6))))
     out.append(f"form (in leaf, two side views): width/height {f('width_over_height')}; widest at {f('widest_at')} of the "
-               f"height; crown starts at {f('bole') * H:.1f} m (bole {f('bole')}: the lowest height a quarter as wide as the "
-               f"widest; the lowest shoot ends hang at {zlow:.1f} m)")
+               f"height; crown base (the lowest branch ends) at {zlow:.1f} m = {zlow / max(H, 1e-6):.2f} of the height")
+    out.append(f"trunk: {tip[2]:.1f} m to its top, leaning {lean:.0f} deg from upright"
+               + (f" toward [{tip[0] / max(np.linalg.norm(tip[:2]), 1e-6):+.1f}, {tip[1] / max(np.linalg.norm(tip[:2]), 1e-6):+.1f}]" if lean > 3 else "")
+               + f" (its top stands [{tip[0]:+.1f}, {tip[1]:+.1f}] m from its foot)")
     out.append(f"crown: its middle sits [{cen[0]:+.1f}, {cen[1]:+.1f}] m from the trunk's foot ({np.linalg.norm(cen) / max(rad_, 1e-6):.2f} "
                f"of its radius {rad_:.1f} m: 0 = centred, 0.5+ = plainly swept to one side); cover {cover:.2f} (1 = solid from the side)")
     ang = vegetation.branch_angles(T, 1)
@@ -228,8 +238,14 @@ def report(name: str) -> str:
             continue
         end = float(np.linalg.norm(T["pos"][nodes[-1]] - path[-1]))
         kids = int(np.isin(T["parent"], nodes).sum() - len(nodes) + 1)
+        sub = np.zeros(len(T["parent"]), bool)
+        sub[nodes] = True
+        for i_ in range(int(nodes[0]), len(sub)):
+            sub[i_] |= sub[T["parent"][i_]]
+        reach = float(np.linalg.norm(T["pos"][sub][:, :2], axis=1).max())
         out.append(f"guide {g}: order {T['axes'][ai]['order']}, {len(nodes)} nodes on its path, "
-                   f"{'drawn to its end' if end < 0.3 else f'{end:.1f} m short of its end'}, {kids} branches from it")
+                   f"{'drawn to its end' if end < 0.3 else f'{end:.1f} m short of its end'}, {kids} branches from it; "
+                   f"with what grew from it, it reaches {reach:.1f} m out from the foot, {T['pos'][sub][:, 2].min():.1f}-{T['pos'][sub][:, 2].max():.1f} m high")
         if end >= 0.3:
             warn.append(f"guide {g} stops {end:.1f} m short: give it more years (until_year) or more vigour")
     for g in (s.get("guides") or {}):
@@ -243,13 +259,31 @@ def report(name: str) -> str:
         out.append(f"reference: outline IoU {m['iou']:.2f} (best from azimuth {m['azimuth']}); width/height "
                    f"{o['width_over_height']:.2f} vs {r['width_over_height']:.2f}, bole {o['bole']:.2f} vs {r['bole']:.2f}, "
                    f"widest at {o['widest_at']:.2f} vs {r['widest_at']:.2f}")
-    if st["nodes"] < 12 * st["steps"]:
+    for c in st.get("cuts") or []:
+        out.append(f"cut at year {c['year']}: {c['nodes']} nodes of wood removed, {c['stubs']} stubs left to sprout")
+    lost = st.get("pruned_nodes", 0)
+    if lost > 0.5 * (st["nodes"] + lost):
+        warn.append(f"the prunes cut {lost} of {st['nodes'] + lost} nodes ({lost / (st['nodes'] + lost):.0%}): what is left is mostly "
+                    f"stubs; shrink the prune volumes (get_plant lists them) or use a timed `cuts` entry so the tree regrows")
+    elif st["nodes"] < 12 * st["steps"]:
         warn.append(f"only {st['nodes']} nodes after {st['steps']} steps: the tree starved (raise habit.vigour, lower habit.shed, "
                     f"or it is shaded by its environment: neighbours/stand)")
     if st["nodes"] > 90000:
         warn.append("over 90k nodes: slow to look at and heavy to export (lower habit.vigour, bud_break or max_order)")
     if s.get("height") and abs(T["height"] - s["height"]) > 0.15 * s["height"]:
-        warn.append(f"asked height {s['height']} m, grew {T['height']:.1f} m (edits changed it: a pruned top is shorter)")
+        warn.append(f"asked height {s['height']} m, grew {T['height']:.1f} m. `height` sizes the UNEDITED tree of this "
+                    f"description (it sets the segment length); guides, prunes, cuts and envelopes then change what grows. "
+                    + ("With a drawn trunk the trunk's own path decides: make the path as tall as you want it, and drop `height`."
+                       if any(T["axes"][a]["order"] == 0 for a in T["guides"].values()) else "Change age or habit.unit, or the edits."))
+    try:
+        p_age = vegetation.preset(s["species"]).get("age") if s.get("species") else None
+    except ValueError:
+        p_age = None
+    if p_age and s["age"] > 1.4 * p_age:
+        warn.append(f"age {s['age']} is well past the age the {s['species']} preset was tuned at ({p_age}): size keeps growing with "
+                    f"age here ({T['height']:.0f} m); for an older-looking tree of normal size set `height`, or lower habit.vigour")
+    if s["habit"]["clear"] > 0.9 * tip[2]:
+        warn.append(f"habit.clear {s['habit']['clear']} m is nearly the whole trunk ({tip[2]:.1f} m): no limbs can leave it")
     dr = vegetation.droop(T, max(f("bole"), 0.1))
     if dr > 0.1:
         warn.append(f"{dr:.0%} of the shoot ends hang under the crown's base away from the trunk (habit.sag, tropism)")
@@ -290,9 +324,9 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
             raise ValueError(f"unknown view {x!r}: {list(VIEWS)} or a camera {{'eye', 'look', 'fov'}}")
         j = {"out": stem(x), "size": sz, "sun": [azimuth + 235, 40]}
         if x == "clay":
-            j.update(azimuth=azimuth, leaves=False, clay=True)
+            j.update(azimuth=azimuth, leaves=False, clay=True, ruler=True)
         elif x == "bare":
-            j.update(azimuth=azimuth, elevation=4, leaves=False)
+            j.update(azimuth=azimuth, elevation=4, leaves=False, ruler=True)
         elif x == "leaf":
             j.update(azimuth=azimuth, elevation=4, leaves=has_leaves)
         elif x == "far":  # from far enough that the tree is about half the picture's height
@@ -302,13 +336,15 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
             j.update(eye=(toward * dist + [0, 0, min(1.7, 0.6 * H)]).tolist(), look=[0, 0, min(0.5 * H, 5.0)], fov=62, leaves=has_leaves)
         elif x == "close":
             j.update(azimuth=azimuth, elevation=8, focus=veg_look.closeup_focus(T, azimuth), span=min(2.4, 0.6 * H), leaves=has_leaves)
+        if "eye" in j:  # the eye stands on the hillside, not on the level of the plant's foot
+            j["eye"] = [j["eye"][0], j["eye"][1], j["eye"][2] + veg_look.ground_z(T["spec"], j["eye"])]
         jobs.append(j)
         got.append((x, j["out"]))
     return jobs, got
 
 
 def look(name: str, views=("clay", "leaf", "far"), azimuth: float = 0.0, size: int = 640, foliage: str | None = None,
-         sheet: bool = False) -> list:
+         sheet: bool = False, triangles: int | None = None) -> list:
     """Render views of the plant; returns [(view name, png path)]. See look_plant (the tool) for the views."""
     from . import veg_look
     T = grown(name)
@@ -321,8 +357,9 @@ def look(name: str, views=("clay", "leaf", "far"), azimuth: float = 0.0, size: i
         out = str(d / f"sheet_v{v}.png")
         veg_look.reference_sheet(load(name), ref, out, bare=ref["bare"], title=name, foliage=foliage)
         return [("sheet", out)]
-    jobs, got = _view_jobs(T, views, azimuth, size, lambda x: str(d / f"{x}_v{v}.png"))
-    veg_look.render(T, jobs, foliage=foliage)
+    suffix = (f"_az{int(round(azimuth))}" if azimuth else "") + (f"_{triangles}tris" if triangles else "")
+    jobs, got = _view_jobs(T, views, azimuth, size, lambda x: str(d / f"{x}{suffix}_v{v}.png"))
+    veg_look.render(T, jobs, foliage=foliage, triangles=triangles)
     return got
 
 
@@ -341,36 +378,49 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
         at = [[r * math.cos(2.4 * i + 0.5) * (0.8 + 0.2 * ((i * 7) % 3)), r * math.sin(2.4 * i + 0.5)] for i in range(len(names))]
     if len(at) != len(names):
         raise ValueError(f"{len(names)} plants but {len(at)} positions")
-    at = [np.asarray(a, float)[:2] - np.asarray(at[0], float)[:2] for a in at]  # (the first plant stands at the origin)
+    at = [np.asarray(a, float)[:2] for a in at]
     d = home() / "_groups"
     d.mkdir(parents=True, exist_ok=True)
-    tag = "+".join(names)[:80]
-    span = max(float(np.linalg.norm(a)) for a in at) + 0.4 * H
+    tag = "+".join(names)[:80] + (f"_az{int(round(azimuth))}" if azimuth else "")
     c_, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
     toward = np.array([-s_, -c_, 0.0])
+    right = np.array([c_, -s_, 0.0])
     cen = np.r_[np.mean(at, axis=0), 0.0]
+    # the group's width as this view sees it (crowns included), and the eye's distance to fill ~80% of the frame
+    rads = [float(np.percentile(np.linalg.norm(t["pos"][:, :2], axis=1), 98)) for t in trees]
+    xs = [float(np.r_[a, 0] @ right) for a in at]
+    width = max(x + r for x, r in zip(xs, rads)) - min(x - r for x, r in zip(xs, rads))
+    depth = max(float(np.r_[a, 0] @ -toward) + r for a, r in zip(at, rads))
+    aspect = 1.3
+
+    def frame(fov):  # vertical fov deg -> eye distance from the group's middle
+        tv = math.tan(math.radians(fov) / 2)
+        return max(H / (2 * tv), width / (2 * tv * aspect)) * 1.2 + max(depth, 0.0)
+
     jobs, got = [], []
     for k, x in enumerate(views):
         nm = x if isinstance(x, str) else x.get("name", f"camera{k + 1}")
         o = str(d / f"{tag}_{nm}.png")
-        j = {"out": o, "size": [int(size * 1.3), size], "sun": [azimuth + 235, 40]}
-        if isinstance(x, dict):
-            j.update(eye=x["eye"], look=x["look"], fov=x.get("fov", 40))
-        elif x == "far":
-            j.update(eye=(cen + toward * max(15.0, 3.2 * (H + span)) + [0, 0, 1.7]).tolist(), look=(cen + [0, 0, 0.45 * H]).tolist(), fov=28)
+        j = {"out": o, "size": [int(size * aspect), size], "sun": [azimuth + 235, 40]}
+        if isinstance(x, dict):  # (world metres, the same frame as `at`)
+            j.update(eye=x["eye"], look=x["look"], fov=x.get("fov", 40), clay=bool(x.get("clay")))
+        elif x in ("far", "clay"):
+            j.update(eye=(cen + toward * frame(30) + [0, 0, 1.7]).tolist(), look=(cen + [0, 0, 0.47 * H]).tolist(), fov=30)
+            if x == "clay":
+                j.update(clay=True, leaves=False)
         elif x == "near":
-            j.update(eye=(cen + toward * (span + 3.0) + [0, 0, 1.7]).tolist(), look=(cen + [0, 0, 0.45 * H]).tolist(), fov=60)
-        elif x == "clay":
-            j.update(eye=(cen + toward * max(15.0, 3.2 * (H + span)) + [0, 0, 1.7]).tolist(), look=(cen + [0, 0, 0.45 * H]).tolist(),
-                     fov=28, clay=True, leaves=False)
+            j.update(eye=(cen + toward * (0.5 * frame(62) + 2.0) + [0, 0, 1.7]).tolist(), look=(cen + [0, 0, 0.4 * H]).tolist(), fov=62)
         elif x == "top":
-            j.update(eye=(cen + [0, -0.01, 3.0 * (H + span)]).tolist(), look=cen.tolist(), fov=30)
+            j.update(eye=(cen + [0, -0.01, 2.4 * max(width, H)]).tolist(), look=cen.tolist(), fov=30)
         else:
             raise ValueError(f"group views: far, near, clay, top or a camera {{'eye', 'look', 'fov'}} (got {x!r})")
+        if isinstance(x, str):  # (the eye stands on the hillside)
+            j["eye"] = [j["eye"][0], j["eye"][1], j["eye"][2] + veg_look.ground_z(trees[0]["spec"], j["eye"])]
         jobs.append(j)
         got.append((nm, o))
-    others = [(t, a.tolist(), (i * 137.5) % 360) for i, (t, a) in enumerate(zip(trees[1:], at[1:]), start=1)]
-    veg_look.render(trees[0], jobs, foliage=foliage, others=others)
+    others = [(t, a.tolist(), (i * 137.5) % 360 if names[i] in names[:i] else 0.0)
+              for i, (t, a) in enumerate(zip(trees[1:], at[1:]), start=1)]  # (a repeated plant is turned; others stand as made)
+    veg_look.render(trees[0], jobs, foliage=foliage, others=others, at=at[0].tolist())
     return got
 
 
@@ -378,7 +428,10 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None) 
     from . import veg_export
     T = grown(name)
     out = Path(out_dir) if out_dir else _dir(name) / "export"
-    return veg_export.write_glb(T, str(out / f"{name}.glb"), name, triangles=triangles)
+    c = veg_export.write_glb(T, str(out / f"{name}.glb"), name, triangles=triangles)
+    c["total"] = c["wood_triangles"] + c["foliage_triangles"]
+    c["over"] = max(0, c["total"] - triangles) if triangles else 0
+    return c
 
 
 def edit(name: str, ops: list[dict], note: str = "") -> int:
@@ -410,6 +463,10 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
             spec["prune"].pop(i_)
         elif k == "clear_prunes":
             spec["prune"] = []
+        elif k == "cut":
+            spec.setdefault("cuts", []).append(o)
+        elif k == "clear_cuts":
+            spec["cuts"] = []
         elif k == "envelope":
             spec["envelope"] = o or None
         elif k == "force":
@@ -428,8 +485,8 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
                     cur = cur.setdefault(p_, {})
                 cur[parts[-1]] = o["value"]
         else:
-            raise ValueError(f"op {i}: unknown op {k!r} (guide, remove_guide, prune, clear_prunes, envelope, force, "
-                             f"clear_forces, set)")
+            raise ValueError(f"op {i}: unknown op {k!r} (guide, remove_guide, prune, remove_prune, clear_prunes, cut, "
+                             f"clear_cuts, envelope, force, clear_forces, set)")
     return save(name, spec, note=note or "edit")
 
 
