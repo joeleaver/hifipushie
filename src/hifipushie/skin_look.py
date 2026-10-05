@@ -16,12 +16,12 @@ import numpy as np
 from . import skin_measure, store
 
 STUDIO = {"lights": [{"dir": [-0.55, -0.7, 0.45], "energy": 3.6, "color": [1.0, 0.96, 0.9], "angle": 12,
-                      "window": {"size": [0.9, 1.3], "distance": 2.2}},  # one soft window-shaped highlight
+                      "window": {"size": [0.45, 0.65], "distance": 2.4, "gain": 0.4}},  # one soft window-shaped highlight
                      {"dir": [0.7, -0.5, 0.1], "energy": 0.5, "color": [0.85, 0.9, 1.0], "angle": 40, "shadow": False,
                       "specular": 0.0}],
           "world": {"color": [0.55, 0.58, 0.62], "strength": 0.5}, "view": "Khronos PBR Neutral", "exposure": -0.6}
 SOFT = {"lights": [{"dir": [-0.2, -0.9, 0.35], "energy": 2.4, "color": [1.0, 0.98, 0.95], "angle": 25,
-                    "window": {"size": [1.4, 1.4], "distance": 2.0}},
+                    "window": {"size": [0.8, 0.8], "distance": 2.2, "gain": 0.4}},
                    {"dir": [0.6, -0.6, 0.2], "energy": 1.0, "color": [0.95, 0.97, 1.0], "angle": 25, "shadow": False,
                     "specular": 0.0}],
         "world": {"color": [0.7, 0.72, 0.75], "strength": 0.8}, "view": "Khronos PBR Neutral", "exposure": -0.6}
@@ -110,7 +110,7 @@ def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str
     mark = d / "skin_look.key"
     code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_swatch.py", "paint.py", "paintnodes.py",
-                                  "blender_scene.py"))).hexdigest()[:12]
+                                  "blender_scene.py", "base.py", "headfit.py", "skin_look.py"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
         return sn
     t = time.time()

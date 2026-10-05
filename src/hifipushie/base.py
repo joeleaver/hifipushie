@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 66  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 69  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -149,14 +149,16 @@ def inject(spec: dict) -> dict:
             co = b["cornea"] if isinstance(b["cornea"], dict) else {}
             R = float(eb["r"])
             rc, bulge = float(co.get("radius", 0.62)) * R, float(co.get("bulge", 0.09)) * R
-            for sd in (".L", ".R"):
-                if f"eye_front{sd}" not in joints:  # (without a look_at only .L exists: it mirrors)
-                    continue
+            for sd in (".L",):  # .R is its mirror (an explicit cornea.R blob came out as a second, giant eyeball)
                 c = np.array(joints[f"eye{sd}"]["pos"] if f"eye{sd}" in joints else np.array(joints["eye.L"]["pos"]) * [-1, 1, 1], float)
                 gz = np.array(joints[f"eye_front{sd}"]["pos"], float) - c
                 gz /= np.linalg.norm(gz)
+                # one group with its eyeball (joined softly, then unioned as one): as two elements with different
+                # blends the scene's chunked evaluation blew the mirrored eye up into a ball twice its size
+                grp = {"group": f"eyeball{sd}", "join": round(0.12 * R, 5), "blend": 0.0}
+                blobs[f"eye{sd}"] = {**blobs[f"eye{sd}"], **grp}
                 blobs.setdefault(f"cornea{sd}", {"at": [round(float(x), 5) for x in c + (R - rc + bulge) * gz],
-                                                  "size": [round(rc, 5)] * 3, "part": b["eyes"], "blend": round(0.12 * R, 5)})
+                                                  "size": [round(rc, 5)] * 3, "part": b["eyes"], **grp})
         out["blobs"] = blobs
     out["joints"] = joints
     return out
