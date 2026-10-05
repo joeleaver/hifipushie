@@ -18,7 +18,8 @@ LEAF = {"shape": "ovate", "length": 0.07, "width": 0.55, "lobes": 4, "fold": 0.2
 # needle has to cover what hundreds of real ones do)
 TWIG = {"length": 0.3, "leaves": 9, "arrangement": "alternate", "angle": 55, "droop": 0.15, "side_shoots": 0,
         "variants": 3, "per_m": 5.0, "where": "shoots", "spread": 45, "up": 0.3, "scale": [0.8, 1.15], "radius": 0.0025,
-        "min_order": 1, "steps": 2}
+        "min_order": 1, "steps": 2, "sub_shoots": 0}
+CARD = {"variants": 4, "size": 384, "verts": 7, "cup": 0.1, "cross": 1, "scale": 1.0, "twig": {}, "leaf": {}}
 
 
 def _profile(shape: str, t: np.ndarray, lobes: int) -> np.ndarray:
@@ -145,6 +146,17 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                     V, F = _stem(pts, tw["radius"] * 0.6, tw["radius"] * 0.3)
                     add(V, F, 0, 1.0, -1)
                     shoots.append((pts, 0.8))
+                    for q in range(int(tw["sub_shoots"])):  # last year's side shoots carry their own: a fan
+                        for s2 in (-1, 1):
+                            u2 = 0.3 + 0.5 * q / max(int(tw["sub_shoots"]), 1)
+                            p2 = pts[0] + (pts[-1] - pts[0]) * u2
+                            o2 = _norm(_norm(pts[-1] - pts[0]) * 0.6 + np.array([0, 1.0, 0]) * 0.5 * s2 * side
+                                       + np.array([side * 0.3 * s2, 0, -0.1]))
+                            l2 = ln * (0.45 - 0.15 * q / max(int(tw["sub_shoots"]), 1))
+                            pts2 = p2 + o2 * l2 * tt + np.array([0, 0, -0.08 * l2]) * tt ** 2
+                            V, F = _stem(pts2, tw["radius"] * 0.4, tw["radius"] * 0.2)
+                            add(V, F, 0, 1.0, -1)
+                            shoots.append((pts2, 0.7))
         nl = lf["length"]
         per = int(tw["leaves"])
         lid = 0
@@ -254,3 +266,175 @@ def place(tree: dict) -> dict:
     lo, hi = tw["scale"]
     return {"pos": pos, "frame": np.stack([x, d, z], axis=2), "scale": lo + (hi - lo) * _u(key, 8),
             "variant": (_child(key, 9) % np.uint64(int(tw["variants"]))).astype(int), "node": node, "key": key}
+
+
+# ---------------------------------------------------------------- atlases and cards
+
+def _srgb(c):
+    c = np.clip(np.asarray(c, float), 0, 1)
+    return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
+
+
+def card_spec(leaves: dict) -> dict:
+    """The leaves spec a card's picture is made from: the mesh twig's, with `leaves.card.twig` / `.leaf` over it (a
+    picture can afford thousands of true-width needles and a three-year fan where a mesh twig can't)."""
+    cd = {**CARD, **(leaves.get("card") or {})}
+    out = {**leaves, **cd["leaf"]}
+    out["twig"] = {**(leaves.get("twig") or {}), **cd["twig"], "variants": cd["variants"]}
+    return out
+
+
+def _enclose(poly: np.ndarray, k: int) -> np.ndarray:
+    """A convex polygon of at most k corners round a convex one: drop the edge whose neighbours meet nearest."""
+    P = [np.asarray(q, float) for q in poly]
+    while len(P) > k:
+        n = len(P)
+        best = None
+        for i in range(n):
+            a0, a1, b0, b1 = P[i - 1], P[i], P[(i + 1) % n], P[(i + 2) % n]
+            d1, d2 = a1 - a0, b0 - b1
+            den = d1[0] * d2[1] - d1[1] * d2[0]
+            if abs(den) < 1e-12:
+                continue
+            t = ((b1[0] - a0[0]) * d2[1] - (b1[1] - a0[1]) * d2[0]) / den
+            if t < 1:  # the neighbours diverge: this edge can't go
+                continue
+            X = a0 + t * d1
+            area = 0.5 * abs((b0[0] - a1[0]) * (X[1] - a1[1]) - (b0[1] - a1[1]) * (X[0] - a1[0]))
+            if best is None or area < best[0]:
+                best = (area, i, X)
+        if best is None:
+            break
+        _, i, X = best
+        j = (i + 1) % n
+        P[i] = X
+        del P[j]
+    return np.array(P)
+
+
+def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, rough=(0.5, 0.85)) -> dict:
+    """A twig seen from above (its upper side toward the eye, running up the picture) as maps: color (sRGB, the
+    colour bled past the alpha's edge), alpha, normal (tangent space of the card), mask (R = light comes through:
+    leaf 1 / wood 0, thinner where leaves overlap; G = roughness; B = shade: lower leaves darker). `frame` = the
+    picture's square in the twig's metres [x0, y0, side]."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    V, F = mesh["V"], mesh["F"]
+    lo, hi = V[:, :2].min(0), V[:, :2].max(0)
+    side = float(max(hi - lo)) * 1.06
+    cx = 0.5 * (lo[0] + hi[0])
+    x0, y0 = cx - side / 2, lo[1] - 0.03 * side
+    n = size * ss
+    px = (V[:, 0] - x0) / side * n
+    py = (1 - (V[:, 1] - y0) / side) * n
+    tri = V[F]
+    fn = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+    fn[fn[:, 2] < 0] *= -1
+    zmean = tri[:, :, 2].mean(1)
+    zr = (zmean - zmean.min()) / max(np.ptp(zmean), 1e-9)
+    tone = mesh["col"][F].mean(1)
+    leaf = mesh["mat"] == 1
+    lc, wc = np.asarray(leaf_color, float), np.asarray(wood_color, float)  # (spec colours are sRGB already)
+    col = np.where(leaf[:, None], lc[None] * np.clip(tone, 0, 1.6)[:, None], wc[None]) * (0.8 + 0.2 * zr)[:, None]
+    im_c = Image.new("RGB", (n, n), (0, 0, 0))
+    im_a = Image.new("L", (n, n), 0)
+    im_n = Image.new("RGB", (n, n), (128, 128, 255))
+    im_m = Image.new("RGB", (n, n), (0, 255, 255))
+    dc, da, dn, dm = (ImageDraw.Draw(i) for i in (im_c, im_a, im_n, im_m))
+    cnt = np.zeros((n, n), np.float32)
+    for f in np.argsort(zmean):  # painter's order: the upper leaves last
+        pts = [(float(px[v]), float(py[v])) for v in F[f]]
+        dc.polygon(pts, fill=tuple(int(v) for v in np.clip(col[f] * 255, 0, 255)))
+        da.polygon(pts, fill=255)
+        dn.polygon(pts, fill=tuple(int(v) for v in np.clip((fn[f] * 0.5 + 0.5) * 255, 0, 255)))
+        dm.polygon(pts, fill=(255 if leaf[f] else 0, int(255 * (rough[0] if leaf[f] else rough[1])), int(255 * (0.55 + 0.45 * zr[f]))))
+    down = lambda im: np.asarray(im.resize((size, size), Image.BOX)).astype(np.float32) / 255
+    a = down(im_a)
+    c = down(im_c)
+    c = np.where(a[..., None] > 1e-3, c / np.maximum(a[..., None], 1e-3), 0)  # un-premultiply the box filter
+    solid = a > 0.02
+    if solid.any():  # bleed the colour out past the edge (no dark fringe under filtering)
+        idx = ndimage.distance_transform_edt(~solid, return_distances=False, return_indices=True)
+        c = c[idx[0], idx[1]]
+    nrm = down(im_n)
+    m = down(im_m)
+    return {"color": np.clip(c, 0, 1), "alpha": a, "normal": nrm, "mask": m, "frame": [x0, y0, side],
+            "coverage": float((a > 0.5).mean())}
+
+
+def card_mesh(alpha: np.ndarray, frame, verts: int = 7, cup: float = 0.1, cross: int = 1, droop: float = 0.0,
+              length: float = 0.3) -> dict:
+    """A card cut tight round a twig's picture: a convex polygon of at most `verts` corners round the alpha, as a
+    fan from its middle (cupped, drooping like the twig), in the twig's own frame; uv = 0..1 in the picture.
+    cross 2 adds the same card turned a quarter round the twig (tufts)."""
+    from scipy.spatial import ConvexHull
+    n = alpha.shape[0]
+    ys, xs = np.nonzero(alpha > 0.08)
+    if len(xs) < 3:
+        raise ValueError("an empty twig picture")
+    pts = np.c_[np.r_[xs, xs + 1, xs, xs + 1], np.r_[ys, ys, ys + 1, ys + 1]].astype(float)
+    hull = pts[ConvexHull(pts).vertices]
+    poly = _enclose(hull, verts)
+    x0, y0, side = frame
+    uv = np.c_[poly[:, 0] / n, 1 - poly[:, 1] / n]
+    uv = np.clip(uv, -0.05, 1.05)
+    c_uv = uv.mean(0)
+    UV = np.vstack([c_uv, uv])
+    X = x0 + UV[:, 0] * side
+    Y = y0 + UV[:, 1] * side
+    hw = max(np.abs(X).max(), 1e-6)
+    Z = cup * hw * (np.abs(X) / hw) ** 2 - droop * length * np.clip(Y / max(length, 1e-6), 0, 1.5) ** 2
+    V = np.c_[X, Y, Z]
+    k = len(poly)
+    F = np.array([[0, 1 + i, 1 + (i + 1) % k] for i in range(k)])
+    if np.cross(V[F[0, 1]] - V[0], V[F[0, 2]] - V[0])[2] < 0:
+        F = F[:, ::-1]
+    if cross > 1:
+        V2 = np.c_[-V[:, 2], V[:, 1], V[:, 0]]
+        V, F, UV = np.vstack([V, V2]), np.vstack([F, F + len(V)]), np.vstack([UV, UV])
+    area = 0.5 * np.abs(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])).sum(-1 if V.shape[1] == 2 else None) if False else \
+        float(0.5 * np.linalg.norm(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]), axis=1).sum())
+    return {"V": V, "F": F, "uv": UV, "area": area}
+
+
+def atlas(leaves: dict, wood_color=(0.2, 0.15, 0.1)) -> dict:
+    """The foliage atlas of a plant: every card variant's picture in a grid (color RGBA, normal, mask), and the cards
+    cut to them with their uvs in the atlas. `fill` = the share of each card's area its alpha covers (overdraw's
+    other side: a card half empty is drawn twice for nothing)."""
+    cd = {**CARD, **(leaves.get("card") or {})}
+    cs = card_spec(leaves)
+    tw = {**TWIG, **cs["twig"]}
+    nv, size = int(cd["variants"]), int(cd["size"])
+    g = int(math.ceil(math.sqrt(nv)))
+    A = {"color": np.zeros((g * size, g * size, 4), np.float32), "normal": np.zeros((g * size, g * size, 3), np.float32),
+         "mask": np.zeros((g * size, g * size, 3), np.float32)}
+    A["normal"][...] = (0.5, 0.5, 1.0)
+    cards, fills = [], []
+    for i in range(nv):
+        tm = twig_mesh(cs, i)
+        R = rasterize(tm, leaves.get("color", [0.16, 0.3, 0.08]), wood_color, size)
+        r, c = divmod(i, g)
+        sl = (slice(r * size, (r + 1) * size), slice(c * size, (c + 1) * size))
+        A["color"][sl][..., :3] = R["color"]
+        A["color"][sl][..., 3] = R["alpha"]
+        A["normal"][sl] = R["normal"]
+        A["mask"][sl] = R["mask"]
+        cm = card_mesh(R["alpha"], R["frame"], int(cd["verts"]), cd["cup"], int(cd["cross"]), tw["droop"], tw["length"])
+        cm["V"] = cm["V"] * cd["scale"]
+        px_area = float((R["alpha"] > 0.5).sum()) * (R["frame"][2] / size) ** 2 * cd["scale"] ** 2
+        fills.append(px_area / max(cm["area"] / int(cd["cross"]) * cd["scale"] ** 2, 1e-12))
+        cm["uv"] = np.c_[(c + cm["uv"][:, 0]) / g, 1 - (r + 1 - cm["uv"][:, 1]) / g]
+        cards.append(cm)
+    return {**A, "cards": cards, "fill": float(np.mean(fills)), "grid": g, "size": size,
+            "triangles": int(np.mean([len(c["F"]) for c in cards]))}
+
+
+def write_atlas(at: dict, stem: str) -> dict:
+    """<stem>_color.png (RGBA), _normal.png, _mask.png (R through, G rough, B shade)."""
+    from PIL import Image
+    out = {}
+    for k in ("color", "normal", "mask"):
+        out[k] = f"{stem}_{k}.png"
+        Image.fromarray(np.clip(at[k] * 255 + 0.5, 0, 255).astype(np.uint8)).save(out[k])
+    return out

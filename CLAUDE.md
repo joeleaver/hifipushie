@@ -1864,7 +1864,7 @@ breaks through cliffs, peak forms and wall structure, surroundings beyond the fr
 4. DONE: MCP tools.
 Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
 
-## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, first foliage)
+## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
 
 The user's track: game/video-ready trees, shrubs, grass, in styles from blobs to photoreal, with wind, seasons, LODs;
 "start with a best-in-class tree algorithm", hero trees editable, forest sets, and "how do real artists work".
@@ -1934,9 +1934,41 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
   to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves
   (the stand-in sprays failed birch and pine by eye; the same skeletons pass with twigs).
-- Next: welded forks, bark as baked tiling maps, leaf/twig atlases and cards; stage 1 items 3-5 (auto-named limbs,
-  Blender round trip for guides, forest sets); small plants (+ palm), game-ready (LODs, wind, seasons, GLB), styles,
-  MCP tools + guide.
+- Cards, bark maps, forks, look (same day; the main session after vg_10-16: "spruce and pine need needle MASS", "a
+  real sky and sun so the judgement isn't of a diagram"; renders vg_20-25):
+  - Atlases + cards (`veg_leaf.atlas`): each card variant's twig rasterised from above in numpy/PIL (painter's order by
+    height; `rasterize`: colour with the alpha's edge bled outward, alpha, tangent normal, mask R = light comes
+    through / G = roughness / B = shade), 4 variants in a 2 x 2 atlas (768 px); `card_mesh` cuts a convex polygon of
+    <= 7 corners round the alpha (`_enclose`: drop the edge whose neighbours meet nearest), a cupped fan in the twig's
+    frame, `cross` 2 for tufts. `leaves.card` = what the PICTURE is made from (`card_spec`: a card can afford 400-500
+    true-width needles and a 3-year fan with `sub_shoots`; a mesh twig can't): that is where the conifers' mass came
+    from. `render(foliage="cards" | "mesh")`, cards the default: 7-14 triangles a twig, 90-300k foliage triangles a
+    tree (mesh twigs: 2-40M). `fill` (alpha / card area) is reported: 0.3-0.5 on oak/pine/spruce, 0.13-0.22 on the
+    long thin birch and willow twigs (overdraw to fix: cut those cards as strips).
+  - Colours in plant specs are sRGB like the rest of the repo; `blender_vegetation.lin` converts. (They were being fed
+    to shaders as linear; and `rasterize` once converted them a second time: pale teal spruce.)
+  - `veg_bark.py`: bark as tiling maps on the torus (FFT noise + Voronoi with wrapped distances): furrowed (tall
+    interlacing ridges), plates (flaky plates between cracks), scales, lenticel (dashes and peeling bands round the
+    stem); height, normal, albedo multiplier, roughness; tile sizes in metres. `veg_mesh.tubes` now has `uv` (u round
+    the branch in WHOLE tiles, v along it in tiles; a doubled seam column). `bark.base_kind` = a second map set under
+    `base_height` (birch: furrowed black foot). The colour zones (base / upper / twig) stay shader mixes.
+  - Forks: `tubes(weld=True)`: the collar's first ring is carried back along the branch onto its parent's surface
+    (ray-cylinder), so a branch starts on the bark, flared. Not shared topology: a seated fork, no blended normals.
+    `tip` tapers shoot ends.
+  - Look: Blender's sky texture with its sun where the lamp is, a grass-toned ground to the horizon, the sun set per
+    view from behind the eye's left shoulder; a shadowless upward "bounce" lamp (EEVEE has no bounce: foliage in shade
+    lit by the sky alone went blue). Perspective views (`eye`/`look`/`fov`): the sheet adds "from 70 m" and "from 5 m".
+  - Birch: straight dominant trunk (jitter 0.04, apical 0.66, leader to 0.9), fewer scaffold limbs (`bud_break` 0.4
+    on the trunk), ring 0.0024.
+- Lessons so far: the raw shadow grid's gradient stacked shoots in voxel layers (smooth it, cap the pull); a
+  normalised light pull and a sag constant 1e5 too big made everything curl; straight shoots read as a broom whatever
+  the outline (oak needed jitter 0.4 on its limbs; the trunk keeps 0.14); the fit happily droops limbs to the ground
+  to fill an outline: check bole and the clay view, not IoU alone; a tree doesn't read without real twigs and leaves;
+  mass in conifers comes from the card's picture, not from more geometry; judge colour only under a sky with a
+  bounce, and check the colour space before blaming the light.
+- Next: stage 1 items 3-5 (auto-named limbs, Blender round trip for guides, forest sets) and the MCP tools + guide
+  (soon: nothing here is reachable by an LLM yet); strip cards for thin twigs; welded fork topology; small plants
+  (+ palm); game-ready (LODs, wind, seasons, GLB); styles.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

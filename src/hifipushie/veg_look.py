@@ -4,6 +4,7 @@ each other, renders, numbers)."""
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import tempfile
 import time
@@ -22,31 +23,58 @@ def _euler(frames: np.ndarray) -> np.ndarray:
     return Rotation.from_matrix(frames).as_euler("xyz") if len(frames) else np.zeros((0, 3))
 
 
-def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900) -> dict:
-    """Render views of a grown tree in Blender (see blender_vegetation's job). Returns timings and counts."""
-    from . import veg_leaf
+BARK_OF = {"furrowed": "furrowed", "plates": "plates", "lenticel": "lenticel", "scales": "scales"}
+
+
+def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
+           keep: str | None = None) -> dict:
+    """Render views of a grown tree in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on
+    cut cards: what a game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`,
+    else cards. `keep` = a folder for the atlas and bark maps (else a temp one). Returns timings and counts."""
+    from . import veg_bark, veg_leaf
     s = tree["spec"]
+    lf = s["leaves"]
+    foliage = foliage or lf.get("foliage", "cards")
     t0 = time.perf_counter()
-    M = veg_mesh.tubes(tree)
+    bark = dict(s.get("bark") or {})
+    kind = bark.get("kind", "furrowed")
+    bm = veg_bark.bark_maps(kind, 256, seed=int(s.get("seed", 1)))
+    M = veg_mesh.tubes(tree, tile=bm["tile"])
     tw = veg_leaf.place(tree)
-    arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"]}
-    tris = 0
+    arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"]}
+    info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
+    at = None
     if len(tw["pos"]):
-        nv = int(tw["variant"].max()) + 1
-        per = []
-        for i in range(nv):
-            tm = veg_leaf.twig_mesh(s["leaves"], i)
-            arrays.update({f"twig{i}_V": tm["V"], f"twig{i}_F": tm["F"], f"twig{i}_mat": tm["mat"], f"twig{i}_col": tm["col"]})
-            per.append(len(tm["F"]))
-        tris = int(sum(per[v] for v in tw["variant"]))
-        arrays.update(tw_pos=tw["pos"], tw_rot=_euler(tw["frame"]), tw_scale=tw["scale"], tw_var=tw["variant"],
+        if foliage == "cards":
+            at = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
+            nv = len(at["cards"])
+            var = tw["variant"] % nv if nv <= int(tw["variant"].max()) else (vegetation._child(tw["key"], 11) % np.uint64(nv)).astype(int)
+            for i, c in enumerate(at["cards"]):
+                arrays.update({f"card{i}_V": c["V"], f"card{i}_F": c["F"], f"card{i}_uv": c["uv"]})
+            info.update(leaf_triangles=int(len(tw["pos"]) * at["triangles"]), card_fill=round(at["fill"], 2),
+                        atlas_px=int(at["color"].shape[0]))
+        else:
+            nv = int(tw["variant"].max()) + 1
+            var = tw["variant"]
+            per = []
+            for i in range(nv):
+                tm = veg_leaf.twig_mesh(lf, i)
+                arrays.update({f"twig{i}_V": tm["V"], f"twig{i}_F": tm["F"], f"twig{i}_mat": tm["mat"], f"twig{i}_col": tm["col"]})
+                per.append(len(tm["F"]))
+            info["leaf_triangles"] = int(sum(per[v] for v in var))
+        arrays.update(tw_pos=tw["pos"], tw_rot=_euler(tw["frame"]), tw_scale=tw["scale"], tw_var=var,
                       tw_tint=vegetation._u(tw["key"], 77))
     with tempfile.TemporaryDirectory(prefix="hifipushie-veg-") as tmp:
+        out = Path(keep or tmp)
+        out.mkdir(parents=True, exist_ok=True)
         npz = Path(tmp) / "plant.npz"
         np.savez(npz, **arrays)
-        lf = s["leaves"]
-        job = {"npz": str(npz), "views": views, "save": save, "bark": s.get("bark") or {},
-               "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness") if k in lf},
+        bark["maps"] = veg_bark.write(bm, str(out / "bark"))
+        if bark.get("base_kind"):
+            bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / "bark_base"))
+        job = {"npz": str(npz), "views": views, "save": save, "bark": bark,
+               "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut") if k in lf},
+               "cards": veg_leaf.write_atlas(at, str(out / "foliage")) if at is not None else None,
                **(s.get("look") or {})}
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(job))
@@ -55,14 +83,13 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
                             str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
-    return {"mesh_s": round(t1 - t0, 2), "blender_s": round(time.perf_counter() - t1, 2),
-            "triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "leaf_triangles": tris}
+    info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2))
+    return info
 
 
 def closeup_focus(tree: dict, azimuth: float = 0.0):
     """A point on the crown's near side at about half height, with twigs: where a close-up shows the foliage."""
     from . import veg_leaf
-    import math
     tw = veg_leaf.place(tree)
     P = tw["pos"] if len(tw["pos"]) else tree["pos"][tree["ends"]]
     c, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
@@ -89,7 +116,8 @@ def overlay(ref_mask: np.ndarray, ours: np.ndarray, size: int = 420):
     return Image.fromarray(im[:, max(cols[0] - 8, 0): cols[-1] + 8])
 
 
-def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, title: str = "", height: int = 520) -> dict:
+def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, title: str = "", height: int = 520,
+                    foliage: str | None = None) -> dict:
     """One row: the photo | outlines over each other | clay skeleton | leafed, with the numbers under it.
     ref = {"image", "mask": reference_mask kwargs, "credit"} or None."""
     from PIL import Image, ImageDraw
@@ -119,28 +147,46 @@ def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, 
                 f"far-half elevation {ang['elevation_p10_50_90']} deg")
     info["angles"] = ang
     tmp = Path(tempfile.mkdtemp(prefix="hifipushie-vegsheet-"))
-    asp = 0.95
-    views = [{"name": "clay", "azimuth": az, "out": str(tmp / "clay.png"), "size": [int(height * asp), height],
-              "leaves": False, "clay": True},
-             {"name": "bare", "azimuth": az, "elevation": 4, "out": str(tmp / "bare.png"),
-              "size": [int(height * asp), height], "leaves": False}]
+    sz = [int(height * 0.95), height]
+    H = T["height"]
+    c_, s_ = math.cos(math.radians(az)), math.sin(math.radians(az))
+    toward = np.array([-s_, -c_, 0.0])  # from the tree toward the ortho views' camera
+
+    def eye(dist, z):
+        return (toward * dist + [0, 0, z]).tolist()
+
+    views = [{"name": "clay", "azimuth": az, "out": str(tmp / "clay.png"), "size": sz, "leaves": False, "clay": True},
+             {"name": "bare", "azimuth": az, "elevation": 4, "out": str(tmp / "bare.png"), "size": sz, "leaves": False}]
     has_leaves = T["spec"].get("season") not in ("winter", "bare", "dead") and not T["spec"].get("decay")
+    lv = has_leaves
+    views += [{"name": "leaf", "azimuth": az, "elevation": 4, "out": str(tmp / "leaf.png"), "size": sz, "leaves": lv},
+              {"name": "far", "eye": eye(max(70.0, 3.5 * H), 1.7), "look": [0, 0, 0.42 * H], "fov": 22,
+               "out": str(tmp / "far.png"), "size": sz, "leaves": lv},
+              {"name": "near", "eye": eye(5.0, 1.7), "look": [0, 0, min(0.5 * H, 6.0)], "fov": 62,
+               "out": str(tmp / "near.png"), "size": sz, "leaves": lv}]
     if has_leaves:
-        views.append({"name": "leaf", "azimuth": az, "elevation": 4, "out": str(tmp / "leaf.png"),
-                      "size": [int(height * asp), height]})
-        views.append({"name": "close", "azimuth": az, "elevation": 8, "out": str(tmp / "close.png"),
-                      "size": [int(height * asp), height], "focus": closeup_focus(T, az), "span": 2.4})
-    info["render"] = render(T, views)
-    text.append(f"look: mesh {info['render']['mesh_s']} s + Blender {info['render']['blender_s']} s, "
-                f"{info['render']['triangles']} branch triangles, {info['render']['twigs']} twigs "
-                f"({info['render']['leaf_triangles']} instanced triangles)")
+        views.append({"name": "close", "azimuth": az, "elevation": 8, "out": str(tmp / "close.png"), "size": sz,
+                      "focus": closeup_focus(T, az), "span": 2.4})
+    else:
+        views.pop(2)
+    for v_ in views:  # the sun from behind the eye's left shoulder: a lit side and a shaded side in every view
+        v_["sun"] = [az + 180 + 55, 40]
+    info["render"] = render(T, views, foliage=foliage)
+    r_ = info["render"]
+    text.append(f"look: mesh {r_['mesh_s']} s + Blender {r_['blender_s']} s; {r_['triangles']} branch triangles; "
+                f"{r_['twigs']} twigs as {r_['foliage']} = {r_['leaf_triangles']} triangles"
+                + (f" (card fill {r_['card_fill']}, atlas {r_['atlas_px']} px)" if "card_fill" in r_ else ""))
+    text.append("panels: photo | outlines | clay | bare | in leaf | from 70 m | from 5 m | foliage close-up (2.4 m across)")
     panels += [Image.open(v["out"]).convert("RGB") for v in views]
-    W = sum(p.width for p in panels) + 6 * (len(panels) - 1)
-    S = Image.new("RGB", (max(W, 900), height + 16 * len(text) + 12), "white")
-    x = 0
-    for p in panels:
-        S.paste(p, (x, 0))
-        x += p.width + 6
+    rows = [panels[: (len(panels) + 1) // 2], panels[(len(panels) + 1) // 2:]] if len(panels) > 4 else [panels]
+    W = max(sum(p.width for p in r) + 6 * (len(r) - 1) for r in rows)
+    S = Image.new("RGB", (max(W, 900), (height + 6) * len(rows) + 16 * len(text) + 12), "white")
+    for j, r in enumerate(rows):
+        x = 0
+        for p in r:
+            S.paste(p, (x, j * (height + 6)))
+            x += p.width + 6
+    height = (height + 6) * len(rows)
     d = ImageDraw.Draw(S)
     for i, t in enumerate(text):
         d.text((6, height + 6 + 16 * i), t, fill=(0, 0, 0))

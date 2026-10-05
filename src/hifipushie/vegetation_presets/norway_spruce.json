@@ -91,9 +91,9 @@
   "shape": "needle_spray",
   "length": 0.03,
   "color": [
-   0.05,
-   0.13,
-   0.06
+   0.248,
+   0.396,
+   0.272
   ],
   "translucency": 0.05,
   "twig": {
@@ -108,24 +108,37 @@
    "min_order": 1,
    "steps": 5
   },
-  "needle_width": 0.45
+  "needle_width": 0.45,
+  "card": {
+   "twig": {
+    "leaves": 420,
+    "side_shoots": 6,
+    "sub_shoots": 2,
+    "length": 0.5
+   },
+   "leaf": {
+    "needle_width": 0.11,
+    "length": 0.017
+   },
+   "verts": 7
+  }
  },
  "bark": {
-  "kind": "plates",
+  "kind": "scales",
   "color": [
-   0.3,
-   0.22,
-   0.17
+   0.362,
+   0.314,
+   0.278
   ],
   "color2": [
-   0.13,
-   0.1,
-   0.08
+   0.246,
+   0.216,
+   0.194
   ],
   "twig_color": [
-   0.1,
-   0.085,
-   0.05
+   0.216,
+   0.2,
+   0.154
   ],
   "scale": 1.5,
   "bump": 0.6

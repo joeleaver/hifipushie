@@ -73,42 +73,49 @@
  "leaves": {
   "shape": "lanceolate",
   "length": 0.09,
-  "width": 0.16,
+  "width": 0.2,
   "hang": 0.6,
   "color": [
-   0.3,
-   0.4,
-   0.1
+   0.584,
+   0.665,
+   0.349
   ],
   "twig": {
    "length": 0.55,
    "leaves": 20,
    "arrangement": "alternate",
    "angle": 40,
-   "per_m": 8,
+   "per_m": 12,
    "droop": 1.2,
    "up": -0.9,
    "spread": 25,
    "min_order": 2,
-   "steps": 3
+   "steps": 4
+  },
+  "card": {
+   "twig": {
+    "leaves": 60,
+    "length": 0.8
+   },
+   "scale": 1.2
   }
  },
  "bark": {
   "kind": "furrowed",
   "color": [
-   0.33,
-   0.29,
-   0.22
+   0.378,
+   0.356,
+   0.314
   ],
   "color2": [
-   0.13,
-   0.11,
-   0.08
+   0.246,
+   0.227,
+   0.194
   ],
   "twig_color": [
-   0.45,
-   0.42,
-   0.12
+   0.435,
+   0.422,
+   0.236
   ],
   "bump": 0.8
  }

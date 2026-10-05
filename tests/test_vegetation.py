@@ -2,7 +2,7 @@
 words say, the measures measure. uv run python tests/test_vegetation.py"""
 import numpy as np
 
-from hifipushie import veg_leaf, veg_mesh, vegetation as v
+from hifipushie import veg_bark, veg_leaf, veg_mesh, vegetation as v
 
 SMALL = {"species": "birch", "age": 22}
 
@@ -201,6 +201,65 @@ def test_tubes():
     M = veg_mesh.tubes(T)
     assert len(M["V"]) == len(M["axis"]) and M["F"].max() < len(M["V"]) and M["F"].min() == 0
     assert np.isfinite(M["V"]).all() and (M["along"] >= 0).all() and (M["along"] <= 1).all()
+
+
+def test_bark_maps_tile():
+    for kind in veg_bark.KINDS:
+        m = veg_bark.bark_maps(kind, 128, seed=3)
+        h = m["height"]
+        assert h.shape[1] == 128 and h.shape[0] == round(128 * m["tile"][1] / m["tile"][0])
+        assert 0 <= h.min() and h.max() <= 1 and abs(m["albedo"].mean() - 1) < 1e-6
+        assert np.allclose(np.linalg.norm(m["normal"] * 2 - 1, axis=2), 1, atol=1e-6)
+        # the wrap seam is no worse than a line anywhere else in the tile
+        inside = max(veg_bark.tileability(np.roll(h, (sy, sx), (0, 1))) for sx, sy in ((37, 61), (64, 128), (90, 20)))
+        assert veg_bark.tileability(h) < max(1.5, 1.6 * inside), (kind, veg_bark.tileability(h), inside)
+        assert np.array_equal(h, veg_bark.bark_maps(kind, 128, seed=3)["height"])
+    furrow, lent = veg_bark.bark_maps("furrowed", 128), veg_bark.bark_maps("lenticel", 128)
+    gx = lambda a: np.abs(np.diff(a, axis=1)).mean() / np.abs(np.diff(a, axis=0)).mean()
+    assert gx(furrow["height"]) > 1.5  # furrows run along the branch: the height changes across it
+    assert gx(lent["albedo"]) < 1.0  # lenticels and peeling run round it
+
+
+def test_atlas_and_cards():
+    for sp in v.species():
+        lf = v.resolve({"species": sp})["leaves"]
+        at = veg_leaf.atlas(lf)
+        n = at["color"].shape[0]
+        assert at["color"].shape == (n, n, 4) and at["normal"].shape == (n, n, 3) and at["mask"].shape == (n, n, 3)
+        assert 0.02 < (at["color"][..., 3] > 0.5).mean() < 0.9, sp
+        assert 0.05 < at["fill"] <= 1.0, (sp, at["fill"])
+        for c in at["cards"]:
+            assert c["F"].max() < len(c["V"]) == len(c["uv"]) and len(c["F"]) <= 2 * 8
+            assert c["uv"].min() > -0.05 and c["uv"].max() < 1.05
+    # a card holds its twig's picture: every opaque texel of its cell lies inside the card's polygon
+    lf = v.resolve({"species": "oak"})["leaves"]
+    tm = veg_leaf.twig_mesh(veg_leaf.card_spec(lf), 0)
+    R = veg_leaf.rasterize(tm, lf["color"], [0.4, 0.3, 0.2], 128)
+    cm = veg_leaf.card_mesh(R["alpha"], R["frame"], 7, 0.0)
+    P = cm["uv"][1:]
+    ys, xs = np.nonzero(R["alpha"] > 0.5)
+    q = np.c_[(xs + 0.5) / 128, 1 - (ys + 0.5) / 128]
+    e = np.roll(P, -1, axis=0) - P
+    cr = e[None, :, 0] * (q[:, None, 1] - P[None, :, 1]) - e[None, :, 1] * (q[:, None, 0] - P[None, :, 0])
+    inside = (cr >= -0.02).all(1) | (cr <= 0.02).all(1)  # on one side of every edge of the convex card
+    assert inside.mean() > 0.995, inside.mean()
+    assert len(cm["F"]) <= 7
+    k8 = veg_leaf._enclose(np.array([[np.cos(a), np.sin(a)] for a in np.linspace(0, 2 * np.pi, 40, endpoint=False)]), 6)
+    assert len(k8) == 6 and (np.linalg.norm(k8, axis=1) >= 1 - 1e-9).all()  # it encloses the circle it started from
+
+
+def test_tubes_uv_and_weld():
+    T = v.grow(SMALL)
+    M = veg_mesh.tubes(T, tile=(0.5, 1.0))
+    assert len(M["uv"]) == len(M["V"]) and np.isfinite(M["uv"]).all()
+    # u spans whole tiles round every branch (the seam column is doubled, so a ring's u runs 0..n exactly)
+    assert np.allclose(M["uv"][:, 0].max() % 1.0, 0, atol=1e-9) or M["uv"][:, 0].max() >= 1
+    plain = veg_mesh.tubes(T, weld=False)
+    moved = np.linalg.norm(M["V"] - plain["V"], axis=1)
+    assert 0 < (moved > 1e-9).mean() < 0.2  # only the first rings of branches are carried onto their parents
+    assert moved.max() < 1.0
+    tip, blunt = veg_mesh.tubes(T, tip=0.3), veg_mesh.tubes(T, tip=1.0)
+    assert tip["radius"].min() < blunt["radius"].min()
 
 
 def test_fit_improves():
