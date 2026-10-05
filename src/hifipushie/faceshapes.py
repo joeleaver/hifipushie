@@ -819,6 +819,9 @@ LEFT = {"corner": 54, "inner_corner": 64, "upper": [52, 53, 63], "lower": [55, 5
         "lid_upper": [(43, 47), (44, 46)], "jaw_side": [12, 13, 14]}
 JAW_SHAPES = ("jawOpen", "jawForward", "jawLeft", "jawRight", "tongueOut")
 HOLD = 0.5   # the weight of holding a landmark a shape doesn't move
+LID_SEAL = True   # blinks: both lids' margins brought onto one smooth line on the low poly (GnmFace._lid_seal)
+LID_OVER = 0.0003  # m the upper lid's margin goes past that line
+LID_BAND = 0.0015  # m either side of the line squeezed onto each lid's own side
 GNM_OPEN = 14.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16)
 
 
@@ -1172,6 +1175,82 @@ class GnmFace(Face):
             out[sel] = out[sel] * (1 - lips[sel, None]) + sided * lips[sel, None]
         return out, _bump(d[:, 0], 0.002, 0.006)
 
+    def _lid_seal(self, s: str, Xn: np.ndarray, d: np.ndarray) -> np.ndarray:
+        """A blink's lids brought onto ONE smooth line, on the low poly. The basis closes the eye (no ball shows), but
+        each low-poly vertex of a lid's margin lands at its own height: a wavy line with dark slots between the
+        margins. Across the eye in bins: the upper lid's lowest and the lower lid's highest front vertex as posed; the
+        line = a parabola through the lower lid's; each lid is moved onto it (the upper LID_OVER past it), every
+        vertex by its own share of its margin's blink travel, so the brow and cheek stay."""
+        ev = self.eyes[s]
+        c, r = np.asarray(ev["c"], float), float(ev["r"])
+        lm = np.asarray(self.head["lm68"], float)
+        ci, co = _mirror_ids([42, 45], s)  # the eye's inner and outer corners
+        pairs = [(a_, b_) for a_, b_ in zip(_mirror_ids([43, 44], s), _mirror_ids([47, 46], s))]
+        side = lm[co] - lm[ci]
+        width = float(np.linalg.norm(side))
+        side = side / width
+        up = self.up - side * (self.up @ side)
+        up /= np.linalg.norm(up)
+        out = np.cross(side, up)
+        out = out if out @ self.out > 0 else -out
+        mid = 0.5 * (lm[ci] + lm[co])
+        R0 = Xn - mid
+        u, h0, f0 = R0 @ side, R0 @ up, (Xn - c) @ out
+        # the opening's centre line at rest: through the corners and half way between each pair of lid landmarks
+        ku = [-0.5 * width] + [float((0.5 * (lm[a_] + lm[b_]) - mid) @ side) for a_, b_ in pairs] + [0.5 * width]
+        kh = [0.0] + [float((0.5 * (lm[a_] + lm[b_]) - mid) @ up) for a_, b_ in pairs] + [0.0]
+        order = np.argsort(ku)
+        hc = np.interp(u, np.array(ku)[order], np.array(kh)[order])
+        rad = np.linalg.norm(Xn - c, axis=1)
+        zone = (np.abs(u) < 0.62 * width) & (rad < 1.9 * r) & (f0 > 0.3 * r)
+        front = zone & (rad > r + 2e-4)  # (the skin behind the margins, on the ball, is not a margin)
+        upper = h0 > hc
+        dh = d @ up
+        hp = h0 + dh
+        nb = 14
+        edges = np.linspace(-0.5 * width, 0.5 * width, nb + 1)
+        bc = 0.5 * (edges[1:] + edges[:-1])
+        bi = np.clip(np.searchsorted(edges, u) - 1, 0, nb - 1)
+        lo_u, hi_l, tr_u, tr_l = (np.full(nb, np.nan) for _ in range(4))
+        for k in range(nb):
+            mu = np.flatnonzero(front & upper & (bi == k) & (dh < -5e-4))
+            ml = np.flatnonzero(front & ~upper & (bi == k))
+            if len(mu):
+                j = mu[np.argmin(hp[mu])]
+                lo_u[k], tr_u[k] = hp[j], -dh[j]
+            if len(ml):
+                j = ml[np.argmax(hp[ml])]
+                hi_l[k], tr_l[k] = hp[j], dh[j]
+        ok = np.isfinite(lo_u) & np.isfinite(hi_l)
+        if ok.sum() < 4:
+            return d
+
+        def fill(a_):
+            return np.interp(bc, bc[np.isfinite(a_)], a_[np.isfinite(a_)])
+        lo_u, hi_l, tr_u, tr_l = fill(lo_u), fill(hi_l), fill(tr_u), fill(tr_l)
+        line = np.polyval(np.polyfit(bc, hi_l, 2), bc)
+        ends = _bump(np.abs(u), 0.5 * width, 0.62 * width)  # (fades out past the corners)
+        d = d.copy()
+        for sel, cur, tgt, trav, sgn in ((zone & upper, lo_u, line - LID_OVER, tr_u, -1.0),
+                                         (zone & ~upper, hi_l, line, tr_l, 1.0)):
+            if not sel.any():
+                continue
+            shift = np.interp(u[sel], bc, np.convolve(np.pad(tgt - cur, 1, mode="edge"), [0.25, 0.5, 0.25], "valid"))
+            travel = np.maximum(np.interp(u[sel], bc, trav), 1e-3)
+            share = np.clip(sgn * dh[sel] / travel, 0.0, 1.0)
+            d[sel] += (np.clip(shift, -0.004, 0.004) * share * ends[sel])[:, None] * up
+        # then no vertex of a lid is left across the line: the band LID_BAND either side of it is squeezed onto its
+        # own lid's side (bins put each margin NEAR the line; its vertices still sat a little over and under it,
+        # which is the wavy edge)
+        ln = np.interp(u, bc, line)
+        hp = h0 + d @ up
+        t = np.clip((hp - (ln - LID_BAND)) / (2 * LID_BAND), 0.0, 1.0)
+        for sel, new in ((zone & upper & (hp < ln + LID_BAND), ln - LID_OVER + t * (LID_BAND + LID_OVER)),
+                         (zone & ~upper & (hp > ln - LID_BAND), ln - LID_BAND + t * LID_BAND)):
+            if sel.any():
+                d[sel] += ((new[sel] - hp[sel]) * ends[sel])[:, None] * up
+        return d
+
     @staticmethod
     def _idw(d):
         w = 1 / np.maximum(d, 1e-5) ** 2
@@ -1255,6 +1334,10 @@ class GnmFace(Face):
                     d *= mouth_mask[:, None]
                 elif fam == "eye":
                     d *= eye_mask[:, None]
+                if name.startswith("eyeBlink") and LID_SEAL:
+                    for sd in self.eyes:
+                        if name.endswith(sd):
+                            d = self._lid_seal(sd, Xn, d)
                 # nothing may sink into an eyeball (a blink's lid slides over it), but no deeper than where the
                 # neutral already has it: pushed out to a fixed clearance, the lower lids (a hair inside it in the
                 # neutral) took the same 3-6 mm offset in EVERY shape, and A2F's sums dragged them 10-27 mm

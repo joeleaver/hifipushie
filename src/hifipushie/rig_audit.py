@@ -120,17 +120,26 @@ BAD = {"rigid": 3.0, "leak": 6.0, "leak_digit": 3.0, "flipped": 20, "bleed": 0.1
 BURIED = ("Shoulder", "HandThumb1")
 
 
-def owners(bones: list[dict], V: np.ndarray, F: np.ndarray | None = None):
+def owners(bones: list[dict], V: np.ndarray, F: np.ndarray | None = None, flesh=None):
     """Per vertex: the weight-carrying bone it belongs to, each bone's girth (the median distance of its own
     vertices), the segments. Belonging = the nearest bone segment, corrected over the surface: a patch labelled
     with a bone but not connected to that bone's main patch (thigh skin beside a hanging hand, a finger's side
     nearer its neighbour's bone) goes to the next nearest bone whose patch it does touch. Without faces: distance
-    alone."""
+    alone. flesh: (bone indices, distances (vertices x those bones) to each bone's own modelled flesh:
+    `flesh_distances`): belonging starts from the nearest FLESH instead. A fat belly's skin is nearer the bone of
+    the arm hanging beside it than the spine deep inside (the goblin's arms "owned" 830 belly vertices and read
+    116 mm off a rigid turn); girths and the clear-skin margins stay on the bone segments."""
     seg = _segments(bones)
     ids = np.array(list(seg))
     D = np.stack([_seg_dist(V, seg[i][0], seg[i][1]) for i in ids], 1)
-    near = D.argmin(1)
     D0 = D.copy()
+    if flesh is not None:
+        fid, Df = flesh
+        col = {int(b): k for k, b in enumerate(fid)}
+        Dm = np.stack([Df[:, col[int(i)]] if int(i) in col else np.full(len(V), np.inf) for i in ids], 1)
+        # by flesh, the segment distance breaking ties (and deciding among bones without flesh of their own)
+        D = np.where(np.isfinite(Dm), Dm + 1e-3 * D, 10.0 + D)
+    near = D.argmin(1)
     if F is not None and len(F):
         from scipy.sparse import coo_matrix
         from scipy.sparse.csgraph import connected_components
@@ -173,8 +182,79 @@ def bound(meshes: dict) -> np.ndarray:
     return np.concatenate(out)
 
 
+def flesh_distances(spec: dict, bones: list[dict], V: np.ndarray):
+    """(bone indices, distances vertices x bones) to each rig bone's modelled flesh, for `owners` / `audit`; None for
+    a base body (its flesh is one surface: nothing to tell bones apart by)."""
+    if spec.get("base"):
+        return None
+    from . import rig
+    ids, carry = rig._flesh_tree(spec, bones)
+    V = np.asarray(V, np.float64)
+    D = np.stack([np.min([rig._flesh(p, c.get("cuts", ()), V) for p in c["prims"]], 0) for c in carry], 1)
+    return np.asarray(list(ids)), D
+
+
+GAP = 0.008  # m between a limb's flesh and other flesh under which the meshed skin joins them
+
+
+def fused_limbs(spec: dict, bones: list[dict], limit: float = 0.2) -> list[str]:
+    """WARNING lines for limb bones modelled inside other flesh at rest (kit characters): an arm lying against the
+    belly is ONE surface with it once meshed, and no weights can part them (the goblin's raised arm tore a slab of
+    belly skin out and trailed a web). Measured on each limb segment's own flesh surface (rays out from the axis at
+    5 stations x 12 directions): the share of it under another, unrelated bone's flesh."""
+    if spec.get("base"):
+        return []
+    from . import rig
+    ids, carry = rig._flesh_tree(spec, bones)
+    ids = list(ids)
+    names = [b["name"] for b in bones]
+    seg = _segments(bones)
+
+    def dist(k, P):
+        c = carry[k]
+        return np.min([rig._flesh(p, c.get("cuts", ()), P) for p in c["prims"]], 0)
+    out = []
+    for k, i in enumerate(ids):
+        nm = names[i].split(":")[-1]
+        if not any(nm.endswith(x) for x in ("Arm", "ForeArm", "UpLeg", "Leg")) or bones[i].get("twist"):
+            continue
+        a, b = (np.asarray(x, float) for x in seg[i])
+        ax = b - a
+        L = float(np.linalg.norm(ax))
+        if L < 1e-4:
+            continue
+        ax /= L
+        u = np.cross(ax, [0, 0, 1.0] if abs(ax[2]) < 0.9 else [1.0, 0, 0])
+        u /= np.linalg.norm(u)
+        v = np.cross(ax, u)
+        ang = np.linspace(0, 2 * np.pi, 12, endpoint=False)
+        dirs = np.cos(ang)[:, None] * u + np.sin(ang)[:, None] * v
+        base = np.repeat(a + np.linspace(0.25, 0.75, 5)[:, None] * L * ax, 12, 0)
+        dirs = np.tile(dirs, (5, 1))
+        r = np.zeros(len(base))
+        for _ in range(40):  # sphere-trace out to the limb's own surface
+            d = dist(k, base + r[:, None] * dirs)
+            r += np.where(d < -1e-4, np.minimum(-d, 0.02), 0.0)
+        P = base + r[:, None] * dirs
+        fam = {i, bones[i]["parent"]} | {j for j, bb in enumerate(bones) if bb["parent"] == i}
+        other = [q for q, j in enumerate(ids) if j not in fam and bones[j]["parent"] not in fam]
+        if not other:
+            continue
+        D = np.stack([dist(q, P) for q in other], 1)
+        inside = D.min(1) < GAP  # under it, or nearer than a blend / a couple of voxels closes
+        if inside.mean() > limit:
+            who = names[ids[other[int(np.bincount(D.argmin(1)[inside]).argmax())]]].split(":")[-1]
+            out.append(f"WARNING: {nm} touches or lies in {who}'s flesh over {100 * inside.mean():.0f}% of its surface: "
+                       "meshed, they are one skin and no weights can part them (it will tear or web when posed). "
+                       f"FIX THE MODEL, then rig: move the limb's joints out until a finger's width of air shows between "
+                       f"{nm} and the body in the front view (an A-pose, arms ~35-45 deg from the body, legs apart), "
+                       "or thin the limb / the belly there; spec[\"anatomy\"] = {} then shapes the shoulder and pit. "
+                       "Re-run rig: this line goes when under 20% touches")
+    return out
+
+
 def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray, only=None,
-          skip: np.ndarray | None = None) -> dict:
+          skip: np.ndarray | None = None, flesh=None) -> dict:
     """The skin's test on any skinned mesh (the look's build, or an export read back by `read_glb`).
     Static: weights summing to 1, influences per vertex, left / right asymmetry, and digit BLEED: weight one
     digit's bones hold on another digit's skin (neighbouring fingers are millimetres apart: what distance weighting
@@ -199,7 +279,7 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
             fam[i] = b["parent"]
     dense = np.zeros((len(V), n))
     np.add.at(dense, (np.repeat(np.arange(len(V)), J.shape[1]), fam[J].ravel()), W.ravel())
-    own, girth, seg, (ids, D0) = owners(bones, V, F)
+    own, girth, seg, (ids, D0) = owners(bones, V, F, flesh)
     col = {int(b): q for q, b in enumerate(ids)}
 
     def nearest(mask):  # distance to the nearest segment of the bones in mask (n,), inf when there is none

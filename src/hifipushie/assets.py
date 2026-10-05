@@ -39,14 +39,17 @@ def root() -> Path:
     return store.HOME / "_templates"
 
 
-def pack(name: str) -> Path:
+def pack(name: str, files: list[str] | None = None) -> Path:
     """A pack's directory, checked present (every file of the manifest exists; sizes/checksums are `verify`'s job,
-    so this stays cheap enough to call on every use)."""
+    so this stays cheap enough to call on every use). `files`: only these paths must be there (a pack that grew:
+    a reader that needs two of its files must not fail on a machine still holding the older pack; whoever needs
+    one of the later files checks for it and says so, `missing`)."""
     m = manifest()
     if name not in m:
         raise ValueError(f"no asset pack {name!r} (have {', '.join(m)})")
     d = root() / name
-    missing = [f["path"] for f in m[name]["files"] if not (d / f["path"]).exists()]
+    want = [f["path"] for f in m[name]["files"]] if files is None else list(files)
+    missing = [p for p in want if not (d / p).exists()]
     if missing:
         raise FileNotFoundError(
             f"asset pack {name!r} ({m[name]['needed_by']}) is missing from {d} ({len(missing)} files, e.g. "
@@ -79,6 +82,14 @@ def _unpack(tgz: Path, dest: Path) -> None:
             # any pointing outside the tree)
         t.extractall(tmp, members=members, filter="data")
     tmp.replace(dest)
+
+
+def missing(name: str, rel: str, why: str) -> str:
+    """The message for one file a pack on this machine lacks (an older copy of a pack that grew)."""
+    m = manifest()[name]
+    return (f"asset pack {name!r} in {root() / name} has no {rel} ({why}): this copy of the pack is older than "
+            f"the code. Run `uv run hifipushie-assets fetch {name}` (it downloads only what is missing; source: "
+            f"{m['source']}), or set HIFIPUSHIE_ASSETS to an up-to-date copy")
 
 
 def path(name: str, rel: str) -> Path:
