@@ -98,7 +98,10 @@ def _point(D: dict, pc: dict, ps, name: str | None = None) -> int:
     seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
     cum = np.r_[0, np.cumsum(seg)]
     if "y" in ps:
-        y = float(ps["y"])
+        # (a level by name: "waist", "hips", "chest": the block's own line)
+        if isinstance(ps["y"], str) and f"{ps['y']}_y" not in D["meta"]:
+            raise DraftError(f"{pc['name']}: no level {ps['y']!r} in this block (a y in m, or waist / hips / chest)")
+        y = float(D["meta"][f"{ps['y']}_y"]) if isinstance(ps["y"], str) else float(ps["y"])
         hit = [k for k in range(len(L) - 1) if (L[k, 1] - y) * (L[k + 1, 1] - y) <= 0 and L[k, 1] != L[k + 1, 1]]
         if not hit:
             raise DraftError(f"{pc['name']}: edge {ps['edge']} doesn't cross y = {y}")
@@ -290,7 +293,9 @@ def op_style_line(D: dict, piece: str, **o) -> None:
         nv = np.array([-dv[1], dv[0]]) / max(np.linalg.norm(dv), 1e-12)
         nv = nv if nv @ (c1 - c0) > 0 else -nv
         sh0 = np.asarray(built[order[1]][0]["wrap"].get("shift", [0.0, 0.0]), float)
-        built[order[1]][0]["wrap"]["shift"] = (sh0 + 0.002 * nv).round(5).tolist()
+        # (a cut ACROSS the piece, a yoke: 4 mm, its corners at the side seams overlapped at 2)
+        across_ = all(np.sum(np.abs(h_["P"][:, 0]) < 1e-6) >= 2 for h_, _ in built)
+        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.004 if across_ else 0.002) * nv).round(5).tolist()
     for nm, k in zip(names, order):
         h, pos = built[k]
         h["name"] = nm
@@ -1327,6 +1332,13 @@ def apply_hinges(D: dict) -> None:
             # the far part in its own frame
             far = D["pieces"][fname]
             tr = lambda Q: np.c_[(np.asarray(Q, float).reshape(-1, 2) - o) @ ex, (np.asarray(Q, float).reshape(-1, 2) - o) @ ey]
+            if hg.get("matrix") is not None:  # any rigid map (a reflection too): far = M (p - origin) + offset
+                Mh, th = np.asarray(hg["matrix"], float), np.asarray(hg.get("offset", [0.0, 0.0]), float)
+                tr = lambda Q: (np.asarray(Q, float).reshape(-1, 2) - o) @ Mh.T + th
+                if np.linalg.det(Mh) < 0:  # turned over: the outline runs the other way round
+                    n_far = len(far["P"])
+                    far["P"] = far["P"][::-1]
+                    far["names"] = {k_: n_far - 1 - i_ for k_, i_ in far["names"].items()}
             far["P"] = tr(far["P"])
             far["marks"] = {k: tr(v)[0] for k, v in far["marks"].items()}
             far["lines"] = {k: tr(v) for k, v in far["lines"].items()}
@@ -1404,6 +1416,9 @@ def unfold(D: dict) -> dict:
         base = {k: v for k, v in pc.items() if k not in ("sym", "darts")}
         if sym == "fold":
             whole = pattern.mirror_fold(dict(base, name=nm))
+            mirp = lambda pl: dict(pl, a=[-pl["a"][0], pl["a"][1]], b=[-pl["b"][0], pl["b"][1]], sign=-pl["sign"])
+            if (whole.get("wrap") or {}).get("pleats"):  # a pleat on each half
+                whole["wrap"] = dict(whole["wrap"], pleats=whole["wrap"]["pleats"] + [mirp(p_) for p_ in whole["wrap"]["pleats"]])
             out[nm] = whole
         elif sym == "copy":
             for S in ("L", "R"):
@@ -1424,6 +1439,9 @@ def unfold(D: dict) -> dict:
             R = pattern.mirror_x(copy.deepcopy(base))
             R["name"] = f"{nm}.R"
             R["wrap"] = dict(base.get("wrap") or {})
+            if R["wrap"].get("pleats"):
+                R["wrap"]["pleats"] = [dict(pl, a=[-pl["a"][0], pl["a"][1]], b=[-pl["b"][0], pl["b"][1]], sign=-pl["sign"])
+                                       for pl in R["wrap"]["pleats"]]
             if "shift" in R["wrap"]:
                 R["wrap"]["shift"] = [-R["wrap"]["shift"][0], R["wrap"]["shift"][1]]
             if D["centre"].get(nm) == "open" and L["wrap"].get("to") == "torso":
@@ -1451,6 +1469,11 @@ def unfold(D: dict) -> dict:
                         if "cx" in c["wrap"]:
                             c["wrap"]["cx"] = -float(c["wrap"]["cx"])
             out[f"{nm}.L"], out[f"{nm}.R"] = L, R
+
+    for c_ in out.values():  # (a pair piece lying on a piece cut on the fold: that piece has no .L / .R)
+        lo_ = (c_.get("wrap") or {}).get("lies_on")
+        if lo_ and lo_ not in out and lo_[:-2] in out:
+            c_["wrap"]["lies_on"] = lo_[:-2]
 
     def side_spec(spec, S):
         nm, arc = spec.split(":", 1)

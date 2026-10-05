@@ -374,6 +374,20 @@ def op_raglan(D: dict, neck: float = 0.035, arm: float = 0.35, **o) -> None:
         Q = cap_point(side, arm_len * (1 + e), f"q{side}")
         ang = math.atan2(*(Q - cap_top)[::-1]) - math.atan2(*(A0 - S0)[::-1])
         P = _rot(P, S0, ang) + (cap_top - S0)
+        # one cloth, two placements: the shoulder part stays on the TORSO, in the coordinates it was cut from the
+        # body in (beside the body's raglan line), the sleeve below it goes round the arm. Laid along the arm with
+        # the sleeve it started 17 cm and 60 deg from the body's cut and crumpled at the shoulder in the sim
+        ca, sa = math.cos(-ang), math.sin(-ang)
+        Minv = np.array([[ca, -sa], [sa, ca]])
+        if mirror:
+            Minv = np.diag([-1.0, 1.0]) @ Minv
+        S_orig = y["P"][y["names"]["shoulder"]].copy()
+        out_dir = _unit(y["P"][ix].mean(0) - D["pieces"][which]["P"].mean(0))  # away from the body piece
+        D.setdefault("hinges", []).append({
+            "piece": "sleeve", "name": f"raglanHinge{side}", "part": f"{which}_shoulder", "at": Q.tolist(),
+            "dir": _unit(cap_top - Q).tolist(), "mid": (0.5 * (Q + cap_top)).tolist(), "far": P[len(P) // 2].tolist(),
+            "origin": cap_top.tolist(), "x": [1.0, 0.0], "matrix": Minv.tolist(), "offset": S_orig.tolist(),
+            "role": which, "wrap": {"to": "torso", "side": which, "shift": (0.002 * out_dir).round(5).tolist()}})
         names = [None] * len(ix)
         names[0] = f"r{side}"
         names[ix.index(y["names"][f"{nm_}.a"])] = f"n{side}"
@@ -566,9 +580,14 @@ def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, 
         {"y": [float(min(A[1], B[1])), float(max(A[1], B[1]))], "width": float(2 * depth)}]  # (not girth: cloth.sizing)
     D["pieces"][piece] = new
     _remap(D, piece, work, imap, {piece: new})
-    D["folds"].append({"piece": piece, "line": [A.tolist(), B.tolist()], "angle": 0, "kind": "press", "name": f"{name} outer"})
+    D["folds"].append({"piece": piece, "line": [A.tolist(), B.tolist()], "angle": 0, "kind": "press", "name": f"{name} outer",
+                       "in_wrap": True})
     D["folds"].append({"piece": piece, "line": [(A + v / 2).tolist(), (B + v / 2).tolist()], "angle": 360, "kind": "press",
-                       "name": f"{name} inner"})
+                       "name": f"{name} inner", "in_wrap": True})
+    # laid closed by the wrap (cloth.place): the folds above give the mesh its rows and the solver its creases
+    new["wrap"] = dict(new.get("wrap") or {})
+    new["wrap"]["pleats"] = list(new["wrap"].get("pleats") or []) + [
+        {"a": A.tolist(), "b": B.tolist(), "depth": float(depth), "sign": 1.0 if nrm[0] >= 0 else -1.0}]
     D["log"].append(f"pleat {name} on {piece}: {depth * 1000:.0f} mm deep ({2 * depth * 1000:.0f} mm of cloth folded away) "
                     f"along {np.linalg.norm(B - A) * 1000:.0f} mm; the seams at its ends skip the underlay")
 
