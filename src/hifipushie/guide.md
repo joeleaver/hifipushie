@@ -422,6 +422,11 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   shape moves) are weighted 1.0 to Head; the falloff to the neck is on the throat under the jawline, and clavicles
   never reach the face. From the jaw landmarks on a GNM head, from the head's own primitives on a kit character.
   `spec["rig"]["rigid_head"] = false | {"band": m, "under": m}`.
+- **Clothes follow the skin under them.** On a base body every part reads the body's weights at the nearest point
+  of its surface, then the weights are evened over the garment's own mesh. A part that only reaches up beside the
+  jaw (a collar, a scarf, a strap) is worn on the body: it keeps the neck's weights and does not turn with the
+  head; a part that is mostly on the head (a cap, glasses) is all head. `parts.<p>.rig_head = true | false` says
+  so outright (a hood that should turn with the head: true); `parts.<p>.rig_bone` binds a prop to one joint.
 - **Check the numbers.** `rig` prints, under the bone list, a twist test per chain (the hand rolled 75 and 105
   deg, the arm 60, foot and thigh 40): the skin's twist by station along the segment, what is left at the joint,
   the largest step, the worst section's area against rest (flagged CANDY WRAPPER under 0.8) and the worst
