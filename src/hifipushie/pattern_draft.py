@@ -1470,6 +1470,11 @@ def unfold(D: dict) -> dict:
                             c["wrap"]["cx"] = -float(c["wrap"]["cx"])
             out[f"{nm}.L"], out[f"{nm}.R"] = L, R
 
+    for c_ in out.values():  # (a pair piece lying on a piece cut on the fold: that piece has no .L / .R)
+        lo_ = (c_.get("wrap") or {}).get("lies_on")
+        if lo_ and lo_ not in out and lo_[:-2] in out:
+            c_["wrap"]["lies_on"] = lo_[:-2]
+
     def side_spec(spec, S):
         nm, arc = spec.split(":", 1)
         k = kind[nm]
