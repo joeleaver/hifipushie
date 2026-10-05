@@ -38,7 +38,8 @@ PRESETS = Path(__file__).with_name("vegetation_presets")
 
 # every habit key, with what it means (the guide lists these); per-order lists repeat their last entry
 DEFAULT = {
-    "plant": "tree",
+    "plant": "tree",  # "tree" = grown (this module); "clump" = assembled from cards in layers (veg_small: grass, ferns, flowers, palms)
+    "clump": None,  # {"layers": [...], "size": 1.0}: see veg_small.LAYER
     "age": 40, "seed": 1, "height": None,
     "habit": {
         "years_per_step": 1.5,  # one simulated flush = this many years (old trees: > 1)
@@ -180,6 +181,11 @@ def resolve(spec: dict) -> dict:
             raise ValueError(f"dead {i} needs a limb's name or one of {sorted(vol)}")
     if s.get("roots"):
         keys("roots", s["roots"], {"count", "spread", "height", "under"})
+    if s.get("plant") not in ("tree", "clump"):
+        raise ValueError(f'plant {s.get("plant")!r}: "tree" (grown) or "clump" (assembled from cards in layers)')
+    if s.get("plant") == "clump":
+        from . import veg_small
+        veg_small.validate(s)
     for g, gd in (s.get("guides") or {}).items():
         keys(f"guide {g}", gd, {"path", "from_year", "until_year", "vigour", "free", "on", "straight", "bare", "replaces"})
         if len(gd.get("path") or []) < 2:
@@ -647,6 +653,9 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     """Grow the tree. Returns arrays in metres (pos, parent, radius, order, born, axis, key, tip, leafy), axes, and
     stats. With `height`, an unedited run is grown first and its height sets the unit, so edits stay in metres."""
     s = resolve(spec)
+    if s.get("plant") == "clump":  # assembled, not grown
+        from . import veg_small
+        return veg_small.grow(s)
     h = s["habit"]
     t0 = time.perf_counter()
     if s.get("height") and unit_scale is None:

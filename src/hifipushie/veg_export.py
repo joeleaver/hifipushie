@@ -67,11 +67,11 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
     tw = pick_twigs(tree, keep, min_radius, protect, cap=cap, back=back)[0]
     if not len(tw["pos"]):
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0),
-                "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3))}
+                "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3)), "reach": np.zeros(0), "phase": np.zeros(0)}
     nv = len(at["cards"])
     var = veg_leaf.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
-    Vs, Fs, Us, Ts, Ns, Fl, Nr = [], [], [], [], [], [], []
+    Vs, Fs, Us, Ts, Ns, Fl, Nr, Rc, Ph = [], [], [], [], [], [], [], [], []
     base = 0
     for i, c in enumerate(at["cards"]):
         sel = np.flatnonzero(var == i)
@@ -86,6 +86,8 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         Ns.append(np.repeat(tw["node"][sel], k))
         Fl.append(np.tile(np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1), len(sel)))
         Nr.append(np.repeat(tw["frame"][sel][:, :, 2], k, axis=0))  # the card's own upper side
+        Rc.append(np.repeat(tw["scale"][sel] * float(c["V"][:, 1].max()), k))  # how long the card is, m
+        Ph.append(np.repeat(vegetation._u(tw["key"][sel], 56), k))
         base += len(sel) * k
     V = np.vstack(Vs)
     cen = np.array([tw["pos"][:, 0].mean(), tw["pos"][:, 1].mean(), np.percentile(tw["pos"][:, 2], 30)])
@@ -94,8 +96,12 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
     w = float(tree["spec"]["leaves"].get("round", 0.7))
     N = (1 - w) * np.vstack(Nr) + w * out_
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9)
+    if tree.get("clump") and tree["spec"]["leaves"].get("normals", "up") == "up":
+        # a small plant shades with the ground it stands on: normals lean up (cards lit each by its own face flicker)
+        N = N * [1, 1, 0.35] + [0, 0, 1.0]
+        N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9)
     return {"V": V, "F": np.vstack(Fs), "uv": np.vstack(Us), "tint": np.concatenate(Ts), "node": np.concatenate(Ns),
-            "flutter": np.concatenate(Fl), "N": N}
+            "flutter": np.concatenate(Fl), "N": N, "reach": np.concatenate(Rc), "phase": np.concatenate(Ph)}
 
 
 def protected(tree: dict) -> np.ndarray:
@@ -497,7 +503,13 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                  "floating": round(bud["floating"], 3)}
             if L is not None and len(L["F"]):
                 fn = L["node"]
-                p_ = prim(L["V"], L["F"], L["uv"], m_c, (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"]),
+                wch = (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"])
+                if t.get("clump"):  # a small plant's card bends as a whole from its foot, each in its own phase; long
+                    # cards swing further (the recipe's limb amplitude is 0.25 m: a 30 cm tuft's tip moves ~5 cm)
+                    own = L["flutter"] ** 1.5 * np.clip(L["reach"] / 1.2, 0.08, 1.0)
+                    wch = (wn["trunk"][fn], np.maximum(wn["branch"][fn], own), np.where(wn["branch"][fn] > own, wn["phase"][fn], L["phase"]),
+                           0.5 * L["flutter"])
+                p_ = prim(L["V"], L["F"], L["uv"], m_c, wch,
                           L["tint"], L["N"])
                 meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, vf_c, m_c)]})
                 c["boughs"] = at_c is not at
