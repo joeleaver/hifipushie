@@ -867,7 +867,7 @@ def _closed(sil: dict, radius: float) -> dict:
 @mcp.tool(structured_output=False)
 def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None,
         drive_twist: bool = True, glb: str | None = None, focus: str | None = None, zoom: float = 1.0,
-        views: list[str] | None = None, shapes: dict | None = None):
+        views: list[str] | None = None, shapes: dict | None = None, engine: bool = True):
     """The export rig, a separate step over the modelling skeleton (spec bones stay for modelling): fits it,
     skins the model and renders a test pose (front and side), so weights are judged before export_asset(rig=True).
     Humanoids (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle .L/.R) get Mixamo's skeleton and
@@ -897,7 +897,9 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     is too big for the fingers: they fuse at rest and no pose of them means anything). focus: a rig bone to centre
     on (with zoom, e.g. focus="LeftHand", zoom=6), views: e.g. ["front", "left", "back"]; shapes: {face shape:
     weight} added before posing (glb only: {"jawOpen": 1} with a head turn). pose = {} renders the rest pose: look
-    at it first, so a mesh fault isn't blamed on the weights. Rest pose = as modelled."""
+    at it first, so a mesh fault isn't blamed on the weights. Rest pose = as modelled. With glb the image has two
+    rows: the GLB as an engine draws it (its maps and normal map: judge faces and silhouettes there) over its bare
+    mesh in clay (facets and folds); engine=False leaves the first out (faster)."""
     from . import rig as rigmod
     spec = store.load(name)
     try:
@@ -960,6 +962,24 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         np.savez(f, verts=P.astype(np.float32), faces=Fs, normals=N.astype(np.float32), **extra)
         frames = render.view_frames(P, views or ["front", "side"], focus=at, zoom=zoom)
         img = render.contact_sheet(render.render_views(f, frames, size, "clay_studio.exr"), frames)
+    if glb and engine and Path(glb).expanduser().with_suffix(".json").exists():
+        # the export as an engine draws it (its maps, its normal map, its own skinning in Blender's importer) over
+        # the clay: a 15k face reads lumpy in clay (7.5 mm facets) and smooth with its normal map
+        from PIL import Image as _Im
+        from . import asset
+        driven = rigmod.drive_twist(bones, turns) if (turns and drive_twist) else turns
+        one = dict(shapes or {})
+        one["turns"] = {k: [*(float(x) for x in v[0]), float(v[1])] for k, v in driven.items()}
+        try:
+            top = asset.preview(Path(glb).expanduser(), views or ["front", "side"], size=size, focus=at, zoom=zoom,
+                                poses=[one], lighting=(spec.get("style") or {}).get("look"))[0]
+            both = _Im.new("RGB", (max(top.width, img.width), top.height + img.height), (28, 29, 33))
+            both.paste(top, (0, 0))
+            both.paste(img, (0, top.height))
+            img = both
+            note.append("top row: the GLB as an engine draws it (maps + normal map); bottom row: its mesh in clay")
+        except Exception as e:  # Blender missing, a GLB without maps: the clay row alone
+            note.append(f"(no engine row: {str(e)[:200]})")
     used = np.bincount(J[W > 0.01], minlength=len(bones))
     empty = [b["name"] for b, u in zip(bones, used) if not u and not b["end"] and not b.get("noweight")]
     text = [f"{len(bones)} rig bones ({(spec.get('rig') or {}).get('type', 'humanoid')}; "
