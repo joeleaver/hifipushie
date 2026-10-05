@@ -206,7 +206,9 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             made_own.update(src if isinstance(src, dict) else {nm: "made" for nm in src})
     return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
-            "draft": draft_info, "folds": folds, "made": made_own}
+            "draft": draft_info, "folds": folds, "made": made_own,
+            "tacks": [t for t in list((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("tacks") or [])
+                      + list(g.get("tacks") or []) if t.get("piece") in keep]}
 
 
 # ---------------------------------------------------------------- flat mesh
@@ -1915,6 +1917,7 @@ def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: l
     return {"idx": np.concatenate(idx), "poses": np.concatenate(P, axis=1), "moves": moves, "pieces": names}
 
 
+FINE_REACH = 0.10  # m from a made piece within which the fine settle moves the draped cloth
 FINE_FREE = 40.0  # deg a made flap starts open when it is free in the fine settle (it closes by its own stiff fold)
 FINE_OPEN = 55.0  # deg a made flap starts open in the fine settle (clear of the cloth it then presses down)
 FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth under it (m)
@@ -1999,10 +2002,26 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
     # press: the flaps prescribed closed, then released (two prescribed things squeezing cloth between them stopped
     # the solver on intersections). Default: the flaps are free cloth from the first frame, resting folded as made:
     # their stiff fold closes them onto whatever lies under them, and they bend over it
-    idx = np.where(held if press else held & ~flaps)[0]
+    # only the cloth near the made pieces is settled (within FINE_REACH of them): the rest keeps the carried drape,
+    # held. (Settled everywhere, the sleeves took on 1 cm sim crumple again under the strain limit the start needs.)
+    far = np.zeros(len(V), bool)
+    if not press and held.any():
+        dn, _ = cKDTree(start[held]).query(start)
+        far = ~held & (dn > FINE_REACH)
+    # tacks: a point of a made flap stitched to the cloth under it (a collar's points held down: stays, buttons)
+    tacks = []
+    for tk in Bp.get("tacks") or []:
+        v = M["points"].get(f"{tk['piece']}:{tk['point']}", M["marks"].get(f"{tk['piece']}:{tk['point']}"))
+        if v is None or tk["piece"] not in carry["pieces"]:
+            continue
+        cand = np.where(~held & ~far)[0]
+        if len(cand):
+            tacks.append((int(v), int(cand[np.argmin(np.linalg.norm(start[cand] - start[v], axis=1))])))
+    idx = np.where(held if press else (held & ~flaps) | far)[0]
     poses = np.stack([at(a)[idx] for a in (0.25, 0.5, 0.75, 1.0)]) if press else start[idx][None]
     return {"start": start, "drape": Vd, "idx": idx, "poses": poses, "info": info, "pieces": list(carry["pieces"]),
-            "release": np.where(flaps)[0], "made": V}
+            "release": np.where(flaps)[0], "made": V, "rest_idx": np.where(held)[0],
+            "tacks": np.asarray(tacks, np.int64).reshape(-1, 2)}
 
 
 def _crossing_verts(X: np.ndarray, M: dict) -> np.ndarray:
@@ -2279,6 +2298,60 @@ def _relay(V: np.ndarray, M: dict, fd: dict, face: float, obs: list) -> tuple:
     return Vn, info
 
 
+def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "Body":
+    """The body grown along its normals to cover the points U (a garment worn on it) plus `air`: what the next
+    garment's pieces are placed on and kept clear of. A closed body again, so the tape, the sections and the arm axes
+    work on it as on the bare one."""
+    vn, tree = body.normals()
+    _, i = tree.query(U)
+    h = ((U - body.V[i]) * vn[i]).sum(1)
+    pad = np.zeros(len(body.V))
+    np.maximum.at(pad, i, np.clip(h, 0.0, 0.08))
+    T = body.T
+    E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
+    covered = pad > 0
+    for _ in range(3):  # spread over the vertices between the garment's own (max), then even out
+        m = pad.copy()
+        np.maximum.at(m, E[:, 0], pad[E[:, 1]])
+        np.maximum.at(m, E[:, 1], pad[E[:, 0]])
+        pad = m
+    for _ in range(3):
+        acc, wt = np.zeros(len(pad)), np.zeros(len(pad))
+        np.add.at(acc, E[:, 0], pad[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], pad[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        pad = np.maximum(pad * covered, 0.5 * pad + 0.5 * acc / np.maximum(wt, 1))
+    pad = np.where(pad > 1e-4, pad + air, 0.0)
+    b = Body({"V": body.V + vn * pad[:, None], "F": src["F"], "J": src["J"]})
+    b.pad = pad
+    return b
+
+
+def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
+    """The sim's collider arrays (cloth_job: bodyV / bodyT, and for a smooth placement bodyV0 + bodyPoses: straight
+    arms bending back): the body, and with it the garment worn under this one, one mesh. The under garment rides the
+    body through the poses by its nearest body vertices' moves (a collider only: at the last pose it is exactly its
+    own finished shape)."""
+    poses = [body.straight_arms(frac=f)[0].V for f in (1.0, 0.75, 0.5, 0.25)] if smooth else []
+    V, T = body.V, body.T
+    if under is None:
+        out = {"bodyV": V, "bodyT": T}
+        if smooth:
+            out.update(bodyV0=poses[0], bodyPoses=np.stack(poses[1:] + [V]))
+        return out
+    U = np.asarray(under["V"], float)
+    d, i = cKDTree(V).query(U, k=4)
+    w = 1.0 / np.maximum(d, 1e-4) ** 2
+    w /= w.sum(1, keepdims=True)
+    carry = lambda P: U + np.einsum("nk,nkd->nd", w, (P - V)[i])
+    out = {"bodyV": np.r_[V, U], "bodyT": np.r_[T, np.asarray(under["F"], np.int64) + len(V)]}
+    if smooth:
+        out.update(bodyV0=np.r_[poses[0], carry(poses[0])],
+                   bodyPoses=np.stack([np.r_[P, carry(P)] for P in poses[1:]] + [out["bodyV"]]))
+    return out
+
+
 def cloth_job_backend(g: dict) -> str:
     from . import cloth_job
     return cloth_job.backend_of(g)
@@ -2289,6 +2362,9 @@ def method_of(g: dict) -> str:
     simulate everything: Blender, and states where the whole shape is physics: hung, draped)."""
     if g.get("method"):
         return g["method"]
+    tm = (designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("method")
+    if tm:  # the design table's own (a design not yet proven on "settle")
+        return tm
     return "settle" if cloth_job_backend(g) == "zozo" and g.get("state", "worn") == "worn" else "simulate"
 
 
@@ -2309,8 +2385,19 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     result: an out.npz (a job folder's, from any solver) applied instead of the cached/simulated one, for judging a
     result whose key has moved; it isn't cached."""
     progress = progress or (lambda s: None)
-    body = Body(body_src)
-    Bp = pieces(g, body.m["mm"] if g.get("pattern") else {})
+    if body_src.get("under_missing"):
+        if cached_only:
+            return None
+        raise ClothError(f"the garment under this one ({body_src['under_missing']}) isn't dressed yet")
+    body_real = Body(body_src)
+    # layered (garment key "over"): the finished garment under this one is a frozen collider with the body. Pieces are
+    # placed on, and kept clear of, the body padded out to cover it (+ "layer_gap" of air, default 3 mm); the sim
+    # collides with the real body and the under garment's own mesh
+    under = body_src.get("under")
+    body = body_real
+    if under is not None:
+        body = padded_body(body_real, body_src, under["V"], float(g.get("layer_gap", 0.003)))
+    Bp = pieces(g, body_real.m["mm"] if g.get("pattern") else {})
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     quality = g.get("quality", "final")
     hc = float(g.get("coarse", 0.02))
@@ -2405,6 +2492,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     if construct:  # the sim is the coarse one whatever the fine mesh: its size isn't in the key
         gs.pop("resolution", None)
     keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab_s if construct else fab]
+    if under is not None:  # another under garment (or another drape of it) is another result
+        keyed.append(["under", under["key"]])
     if solver != "blender":  # another solver's result is another result (Blender's keys stay as they were); the
         # solver, not the backend: ZOZO run here or on a pod is the same result
         keyed.append(["solver", solver])
@@ -2412,7 +2501,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         keyed.append(["result", hashlib.sha1(Path(result).read_bytes()).hexdigest()])
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
-    res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body, "fabric": fab, "key": key, "refined": refine,
+    coll = _collider(body_real, under, smooth)
+    res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body_real, "collider": body, "under": under,
+           "fabric": fab, "key": key, "refined": refine,
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not (refine or construct) else None),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
     if result is not None:
@@ -2466,10 +2557,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             cfg["rack"] = state["hang"].get("rack")  # [[a, b, radius], ...] colliders (a coat rack's pole, arms)
             cfg["pin_spread"] = state["hang"].get("spread", 0.3)
         arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
-                      piece=Ms["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64), **harr, **lower,
+                      piece=Ms["piece"], pins=np.zeros(0, np.int64), **harr, **lower,
                       **fold_s, **({"carryIdx": carry["idx"], "carryPoses": carry["poses"]} if carry else {}),
-                      **({"bodyPoses": np.stack([body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)]
-                                                + [body.V]), "bodyV0": body_p.V, "rest": rest_s} if smooth else {}))
+                      **coll, **({"rest": rest_s} if smooth else {}))
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
         d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
         Vs = d["V"]
@@ -2532,7 +2622,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             fold_f = {"fold": foldmod.weights(M),
                       "bend_rest": foldmod.bend_reference(M, np.c_[M["uv"], np.zeros(len(M["uv"]))], Bp.get("faces"))}
         fkey = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
-            plan["start"], plan["poses"], plan["release"], M["F"], M["sew"], body.V)) + json.dumps(
+            plan["start"], plan["poses"], plan["release"], plan["idx"], plan["tacks"], M["F"], M["sew"], body.V)) + json.dumps(
             [fr, fab, g.get("zozo"), code], sort_keys=True, default=str).encode()).hexdigest()[:16]
         fcache = _cache_dir() / f"{fkey}_fine.npz"
         if fcache.exists():
@@ -2545,10 +2635,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                     "self_collision": True, "press_frames": fr[0], "frames": fr[1], "carry": True,
                     "made": made_pieces(M, stiff_f), "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in M["names"]},
                     **({"zozo": dict(g["zozo"])} if g.get("zozo") else {})}
-            farr = dict(X=plan["start"], uv=M["uv"], F=M["F"], sew=M["sew"], stitch=M["stitch"], stiff=stiff_f,
-                        piece=M["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64),
+            farr = dict(X=plan["start"], uv=M["uv"], F=M["F"], sew=M["sew"],
+                        stitch=np.r_[M["stitch"].reshape(-1, 2), plan["tacks"]], stiff=stiff_f,
+                        piece=M["piece"], bodyV=coll["bodyV"], bodyT=coll["bodyT"], pins=np.zeros(0, np.int64),
                         carryIdx=plan["idx"], carryPoses=plan["poses"], releaseIdx=plan["release"],
-                        rest=plan["made"], **fold_f)
+                        restIdx=plan["rest_idx"], rest=plan["made"], **fold_f)
             # a strain-limited solver can't start past its limit: the carried drape, kept clear of the body vertex by
             # vertex, starts stretched a few % in places (1 mm on a 1 cm triangle is 10%); the limit over this short
             # settle is what the start needs, and the membrane takes the stretch back out
@@ -3139,7 +3230,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support"}
 WRAPS = ("torso", "arm.L", "arm.R", "neck", "flat")
 
 
@@ -3279,13 +3370,25 @@ def _state(g: dict) -> dict | str:
     return st
 
 
-def model_body(name: str, spec: dict, g: dict) -> dict:
+def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
     """The collider a garment settles on: the model's base body (worn, hung: dressed on it first), or for a drape
     over the "model" the model's whole built surface (a table under a tablecloth, a bed under a blanket)."""
     st = _state(g)
     over = st["drape"].get("over", "model") if isinstance(st, dict) and "drape" in st else "body"
     if over == "body" and spec.get("base"):
-        return body_mesh(spec=spec)
+        src = body_mesh(spec=spec)
+        ug = expanded(g).get("over")
+        if ug:  # layered: the garment under this one, finished, joins the body as a frozen collider
+            if ug not in (spec.get("cloth") or {}):
+                raise ClothError(f"over: no garment {ug!r} in this model's cloth (have {', '.join(spec.get('cloth') or {})})")
+            u = spec["cloth"][ug]
+            ures = build(_garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
+                         log=lambda *_: None, cached_only=not simulate)
+            src = dict(src, under=None if ures is None else {"V": ures["V"], "F": ures["mesh"]["F"], "key": ures["key"],
+                                                              "name": ug})
+            if ures is None:
+                src["under_missing"] = ug
+        return src
     from . import spec as specmod, store
     meta = store.build(name, int((st.get("drape") or {}).get("resolution", 192)) if isinstance(st, dict) else 192)
     z = np.load(store._dir(name) / "build" / "mesh.npz")
@@ -3364,7 +3467,7 @@ def _run_job(name: str, gname: str, g: dict, jid: str) -> None:
 def cached(name: str, spec: dict, gname: str):
     """The garment's built result if its sim is cached, else None (never simulates)."""
     g = spec["cloth"][gname]
-    src = model_body(name, spec, g)
+    src = model_body(name, spec, g, simulate=False)
     return build(_garment_for_sim(g), src, f"{name}:{gname}", log=lambda *_: None, cached_only=True)
 
 
@@ -3644,7 +3747,7 @@ def garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
     result) for those whose sim is cached (dress runs them); simulate=True runs the missing ones here (export)."""
     out = []
     for gname, g in (spec.get("cloth") or {}).items():
-        src = model_body(name, spec, g)
+        src = model_body(name, spec, g, simulate=simulate)
         res = build(_garment_for_sim(g), src, f"{name}:{gname}", log=log, cached_only=not simulate)
         if res is None:
             log(f"cloth {gname}: not simulated yet (dress the model first): left out")

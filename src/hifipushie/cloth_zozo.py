@@ -344,12 +344,14 @@ def main():
             ci = np.asarray(d["carryIdx"], np.int64)
             # (the fine settle gives their made shape as "rest": a flap released after the press rests folded as made,
             # not as it started, open)
-            flat3[ci] = np.asarray(d["rest"], float)[ci] if "releaseIdx" in d and "rest" in d else X[ci]
-            made[ci] = True
-            if "releaseIdx" in d and "rest" in d:  # flaps free from the start rest as made too
-                ri = np.asarray(d["releaseIdx"], np.int64)
+            if "restIdx" in d and "rest" in d:  # the fine settle: the made pieces (their free flaps too) rest as made;
+                # draped cloth held far from them rests flat like the cloth it is joined to
+                ri = np.asarray(d["restIdx"], np.int64)
                 flat3[ri] = np.asarray(d["rest"], float)[ri]
                 made[ri] = True
+            else:
+                flat3[ci] = X[ci]
+                made[ci] = True
         for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
             sel_ = pid == job["pieces"].index(nm)
             flat3[sel_] = X[sel_]

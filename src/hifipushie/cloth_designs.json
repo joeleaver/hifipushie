@@ -43,6 +43,7 @@
    ["cuff.L:button1", "cuff.L:buttonhole1"], ["cuff.R:button1", "cuff.R:buttonhole1"]
   ],
   "options": {"collarGap": 0, "collarWidth": 1.45, "collarEase": 0.03},
+  "tacks": [{"piece": "collar", "point": "leftTopEdge"}, {"piece": "collar", "point": "rightTopEdge"}],
   "folds": [
    {"name": "collar roll", "piece": "collar", "line": {"edge": "leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 0, "kind": "roll", "radius": 0.0015, "strength": 0.6}
   ],
@@ -92,6 +93,7 @@
    {"name": "lapel.R", "piece": "front.R", "line": "rollLine", "angle": 15, "kind": "roll", "radius": 0.005, "strength": 0.6}
   ],
   "made": {"front.L": "draped", "front.R": "draped"},
+  "method": "simulate",
   "seams": [
    ["back.L:cbNeck>bpStart>bpTop>bpBottom", "back.R:cbNeck>bpStart>bpTop>bpBottom"],
    ["back.L:dartLeft>dartTip", "back.L:dartRight>dartTip"],
