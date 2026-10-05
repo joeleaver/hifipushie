@@ -992,9 +992,19 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
                 if b.get("twist") else "") for b in bones]
     if empty:
         text.append("bones that got no skin: " + ", ".join(empty))
+    try:
+        note += rig_audit.fused_limbs(spec, rigmod.rig_bones(spec))
+    except Exception:
+        pass
     text = note + text
     text += rigmod.report(spec, bones, V, F, J, W)
-    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W, skip=skip))
+    flesh = None
+    try:  # kit characters: skin belongs to the bone whose modelled flesh it is (a belly beside a hanging arm)
+        if len(bones) == len(rigmod.rig_bones(spec)):
+            flesh = rig_audit.flesh_distances(spec, rigmod.rig_bones(spec), V)
+    except Exception:
+        flesh = None
+    text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W, skip=skip, flesh=flesh))
     return [_out(img, save), "\n".join(text)]
 
 
