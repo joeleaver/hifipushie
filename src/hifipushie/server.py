@@ -996,6 +996,9 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         note += rig_audit.fused_limbs(spec, rigmod.rig_bones(spec))
     except Exception:
         pass
+    from . import rig_template
+    if not glb and rig_template.weights_note(spec):
+        note.append(rig_template.weights_note(spec))
     text = note + text
     text += rigmod.report(spec, bones, V, F, J, W)
     flesh = None
