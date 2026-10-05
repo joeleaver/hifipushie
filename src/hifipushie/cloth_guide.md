@@ -526,10 +526,14 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `facing` | A new piece traced from a piece along edges | Sewn 1:1, turned in |
 | `collar` | Drafted from the neckline as it is now: `band` (stands), `flat` (lies flat), `roll` (between) | Sewn edge = the neckline |
 | `sleeve` | Drafted into the armhole as it is now, whatever was cut before | Cap = armhole + declared ease |
-| `two_piece` | Top and under sleeve from the one-piece, both bent at the elbow | Cap length, matched seams |
+| `two_piece` | Top and under sleeve from the one-piece; `elbow` (m the wrist comes forward) bends each about its forearm seam's elbow point | Cap length, forearm seams equal, elbow ease on the hindarm declared |
+| `contour` | Shapes an edge by an amount per level (`at`: [[level, m] ...]; top, chest, waist, hips, hem or a y): a shaped centre-back seam, a hem's spring. A style line's name shapes both its edges | Mirror seams equal; a panel seam's small difference declared |
+| `join` | Two pieces sewn together become one, the seam gone: a side panel with no side seam, a yoke cut on | Every other seam and edge; says how much shaping the seam's curve carried (now lost) |
+| `round_corner` | A corner rounded (`radius` or `along` [m, m]): a cut-away front hem, pocket corners. Before facings | The corner's name, on the curve |
+| `fisheye` | A double-pointed waist dart on a piece that runs past the waist (run on to the hem as a closed cut). `darts: true` on a hip-length bodice makes them | Its legs equal |
 | `neckline` | Redraws the neckline on front and back together: `widen` along the shoulder, `front` / `back` lower, round / v / square | The shoulder seams equal |
 | `shawl` | A shawl collar cut on with the front: stand, break point, roll line, the collar grown on past the neck point, a CB collar seam | Neck seam = the back neck; a roll fold |
-| `lapel` | A notched lapel (stand, break point, lapel point, roll fold); then `collar` with `"stop"` ends the collar at the gorge | The neckline; `lapel_edge` and `gorge` for a facing |
+| `lapel` | A notched lapel (stand, break point, lapel point, roll fold; `gorge: "straight"` + `gorge_drop` + `notch`: the tailored straight gorge); then `collar` with `"stop"` ends the collar at the gorge | The neckline; `lapel_edge` and `gorge` for a facing |
 | `cut_away` | Cuts along a line and keeps the side holding a point: V necks, slanted hems, asymmetric fronts | The kept side's seams |
 | `darts_to_seam` | Two darts of a piece joined through their tips into a panel seam | The darts' suppression |
 | `raglan` | Front and back cut from neck to armhole, the shoulder parts joined to the sleeve (after `sleeve`) | The underarm's cap / armhole lengths |
