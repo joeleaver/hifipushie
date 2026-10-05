@@ -187,6 +187,11 @@ TWIG_INFO = {
     "card.strips": "0, or 3-5 quads along a long hanging twig", "card.scale": "0.8-1.5 x the card's size",
     "card.twig / card.leaf": "overrides used only for the card's picture (e.g. leaves 400, needle_width 0.03-0.1)",
     "bark.scale": "0.3-1.5 x the bark pattern's size (finer for a small trunk)", "bark.upper_blend": "m the upper colour takes to come in",
+    "bark.twig_radius": "[m, m]: wood thinner than [0] is all `twig_color`, thicker than [1] none (pine [0.015, 0.05]: only stout wood is orange)",
+    "twig.fascicle": "needles per bundle on a pine's shoot: 2 (Scots), 3, 5 (white pines)",
+    "twig.needle_angle": "[deg, deg] a needle stands off the shoot at the foliage's base and at its tip ([75, 30] = a bottlebrush)",
+    "twig.bud": "m: the resting bud at a shoot's end (pine 0.012-0.02)",
+    "card.end": "true: one more card ACROSS the shoot with the tuft seen from its tip, so a tuft is round from every side (pine tufts)",
 }
 
 
@@ -646,7 +651,8 @@ def wind(name: str, triangles: int | None = 20000, seconds: float = 4.0, fps: in
     strip = str(d / f"wind_v{v}_strip.png")
     Image.fromarray(np.concatenate([top, diff], axis=0).astype(np.uint8)).save(strip)
     moved = float(np.mean([(np.abs(i_ - ims[0]).max(-1) > 24).mean() for i_ in ims[1:]])) if len(ims) > 1 else 0.0
-    out = {"frames": str(fr), "strip": strip, "glb": glb, "import": rep, "moved_share": round(moved, 3), "n": len(files)}
+    out = {"frames": str(fr), "strip": strip, "glb": glb, "import": rep, "moved_share": round(moved, 3), "n": len(files),
+           "height": float(T["height"]), "displacement": rep.get("displacement") or {}}
     if shutil.which("ffmpeg"):
         mp4 = str(d / f"wind_v{v}.mp4")
         q = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(fps), "-i", str(fr / "f_%03d.png"),

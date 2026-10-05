@@ -4,7 +4,7 @@
  "habit": {
   "years_per_step": 1.2,
   "unit": 0.3705,
-  "vigour": 5.2,
+  "vigour": 6.5,
   "apical": [
    0.58,
    0.6,
@@ -38,24 +38,24 @@
   "light": 0.3,
   "jitter": [
    0.12,
-   0.2,
-   0.18,
-   0.12
+   0.3,
+   0.26,
+   0.15
   ],
-  "shed": 0.06,
+  "shed": 0.035,
   "bud_life": 4,
-  "sag": 0.9,
+  "sag": 0.5,
   "sag_max": 0.35,
   "pipe": 2.3,
   "flare": 1.6,
-  "clear": 2.5,
+  "clear": 3.0,
   "max_order": 4,
   "leaf_steps": 3,
   "apical_fade": [
    0.1,
    0.35
   ],
-  "ring": 0.0022,
+  "ring": 0.003,
   "plagio": [
    0,
    0,

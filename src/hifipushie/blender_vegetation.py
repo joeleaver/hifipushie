@@ -125,7 +125,8 @@ def bark_material(name, bark, height):
         ub = bark.get("upper_blend", 0.2 * height)  # m the change takes (patchy: the noise moves it +- 0.15 x height)
         zz = _math(N, L, "ADD", sep.outputs["Z"], _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", bigv, 0.5), 0.3 * height))
         col = mix(col, ramp01(zz, u0, u0 + max(ub, 0.01)), lin(bark["upper_color"]))
-    fac_twig = ramp01(rad.outputs["Fac"], 0.02, 0.006)
+    tr_ = bark.get("twig_radius", [0.006, 0.02])  # m of radius: all twig colour under [0], none over [1]
+    fac_twig = ramp01(rad.outputs["Fac"], float(tr_[1]), float(tr_[0]))
     if bark.get("twig_color") is not None:
         col = mix(col, fac_twig, lin(bark["twig_color"]))
     dead = N.new("ShaderNodeAttribute")  # dead wood: barkless, weathered silver-grey
@@ -615,6 +616,9 @@ def build(job):
         from mathutils import Matrix
         ground.rotation_euler = Matrix.Rotation(math.radians(gj["slope"]), 4, axis).to_euler()
     ground_mat = ground_material("ground", job.get("ground") or {})
+    # the weather lies on the ground too (a snowy tree stood on a summer lawn)
+    _weather(ground_mat, max(float(pj.get("snow", 0.0)) for pj in job["plants"]),
+             max(float(pj.get("wet", 0.0)) for pj in job["plants"]))
     if gj.get("water") is not None:  # a water level (m, against the plant's foot): a lake shore, a ditch
         bpy.ops.mesh.primitive_circle_add(vertices=64, radius=max(60 * R, 400.0), fill_type="NGON", location=(0, 0, float(gj["water"])))
         water = bpy.context.object
