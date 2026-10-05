@@ -144,6 +144,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             pc = pattern.from_freesewing(part, nm, fold=pd.get("fold"))
             if pd.get("mirror"):
                 pc = pattern.mirror_x(pc)
+            if pd.get("flip_y"):
+                pc = pattern.mirror_y(pc)
             pc["wrap"] = dict(pd.get("wrap") or {})
             if pd.get("role"):
                 pc["role"] = pd["role"]
@@ -1723,6 +1725,24 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             for nm in hit:
                 down[nm] = down.get(nm, 0.0) + 0.01
             return place(B, M, body, gap, _blouse=None, smooth=True, _out=_out, _down=down)
+        # draped cloth pushed clear of the body starts stretched where the body stands proud of the piece's wrap (an
+        # under sleeve at the armpit 37-125%, a back's neck over a shirt collar): a strain-limited solver can't start
+        # there. Its long edges are drawn back and the clearance restored, a few rounds
+        if len(body.V):
+            made_v = np.isin(pid, [names.index(nm) for nm in made_pieces(M, interfacing(B, M))])
+            for fd in M.get("folds") or []:  # (a fold's rows and flap are constructed: left as laid)
+                from . import folds as foldmod
+                made_v[foldmod._geom(M, fd)["rows"][0]["v"]] = True
+                for row in fd["rows"]:
+                    made_v[row] = True
+            for _ in range(3):
+                _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
+                if hi_[~made_v[M["F"]].any(1)].max() <= 1.04:
+                    break
+                Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
+                Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
+            _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
+            B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
         B["start_crossings"] = sorted(_piece_crossings(Xp, M))
     return Xp
 
@@ -1870,7 +1890,8 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
                     obs.append(foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o]))
         hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
         X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay,
-                                            wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
+                                            wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08,
+                                            max_stretch=0.30)  # (made pieces start up to that far past their flat lengths: the solver lifts their limit)
         info[fd["name"]].pop("_tv", None)
     B["fold_info"] = info
     return X
@@ -2565,6 +2586,50 @@ def _relay(V: np.ndarray, M: dict, fd: dict, face: float, obs: list) -> tuple:
     return Vn, info
 
 
+SUPPORTS = {
+    # a shoulder pad: thickest at the shoulder's edge, thinning to nothing toward the neck over `reach` m of the
+    # shoulder line, `width` m front to back, running `past` m beyond the shoulder point (the sleeve head it holds out)
+    "shoulder_pad": {"thickness": 0.008, "reach": 0.11, "width": 0.07, "past": 0.012},
+    # a sleeve-head roll: a soft ridge just past the shoulder point that holds the top of the sleeve cap out
+    "sleeve_head": {"thickness": 0.005, "reach": 0.02, "width": 0.06, "past": 0.03},
+}
+
+
+def supports(body: "Body", spec: list | None) -> "Body | None":
+    """The body with a garment's support pieces on it (garment key `support`: [{"kind": "shoulder_pad" |
+    "sleeve_head", ...its numbers}] or just the kind names): each a pad grown along the body's normals over the
+    shoulder line (hps -> shoulder point and a little past it), both sides. None without supports."""
+    if not spec or not body.m.get("at"):
+        return None
+    at = body.at
+    vn, _ = body.normals()
+    pad = np.zeros(len(body.V))
+    for e in spec:
+        e = {"kind": e} if isinstance(e, str) else dict(e)
+        if e["kind"] not in SUPPORTS:
+            raise ClothError(f"support kind {e['kind']!r} unknown (have {', '.join(SUPPORTS)})")
+        o = dict(SUPPORTS[e["kind"]], **{k: v for k, v in e.items() if k != "kind"})
+        for sx in (1.0, -1.0):
+            h = np.asarray(at["hps.L"], float) * [sx, 1, 1]
+            sp = np.asarray(at["shoulder.L"], float) * [sx, 1, 1]
+            L = float(np.linalg.norm(sp - h))
+            d = (sp - h) / L
+            rel = body.V - sp
+            u = rel @ d  # along the shoulder line from the shoulder point (+ = past it, down the arm's top)
+            off = rel - np.outer(u, d)
+            across = np.abs(off[:, 1])  # front to back
+            ramp = np.clip((u + o["reach"]) / o["reach"], 0, 1) * np.clip((o["past"] - u) / max(o["past"], 1e-6) + 1, 0, 1)
+            ramp = np.where(u > 0, np.clip(1 - u / max(o["past"], 1e-6), 0, 1), ramp)
+            w = ramp * np.clip(1 - (across / o["width"]) ** 2, 0, 1)
+            up = (vn[:, 2] > 0.25) & (np.abs(off[:, 2]) < 0.05) & (np.sign(body.V[:, 0]) == sx)
+            pad = np.maximum(pad, np.where(up, o["thickness"] * w * w * (3 - 2 * w), 0.0))
+    if pad.max() <= 0:
+        return None
+    b = Body({"V": body.V + vn * pad[:, None], "F": body._faces, "J": body.J})
+    b.support_pad = pad
+    return b
+
+
 def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "Body":
     """The body grown along its normals to cover the points U (a garment worn on it) plus `air`: what the next
     garment's pieces are placed on and kept clear of. A closed body again, so the tape, the sections and the arm axes
@@ -2590,7 +2655,7 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
         np.add.at(wt, E[:, 1], 1.0)
         pad = np.maximum(pad * covered, 0.5 * pad + 0.5 * acc / np.maximum(wt, 1))
     pad = np.where(pad > 1e-4, pad + air, 0.0)
-    b = Body({"V": body.V + vn * pad[:, None], "F": src["F"], "J": src["J"]})
+    b = Body({"V": body.V + vn * pad[:, None], "F": body._faces, "J": body.J})
     b.pad = pad
     return b
 
@@ -2661,9 +2726,18 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # placed on, and kept clear of, the body padded out to cover it (+ "layer_gap" of air, default 3 mm); the sim
     # collides with the real body and the under garment's own mesh
     under = body_src.get("under")
+    # support (garment key): structure that shapes the garment without being cloth of it (shoulder pads, a sleeve-head
+    # roll): the body the garment is built on is padded there, in the placement and in the sim; never rendered or
+    # exported
+    sup = supports(body_real, g.get("support", (designs().get((g.get("pattern") or {}).get("from") or "", {}) or {})
+                                    .get("support")))
+    if sup is not None:
+        body_meas, body_real = body_real, sup
+        body_real._m = body_meas.m  # (the tape reads the body, not its pads)
     body = body_real
     if under is not None:
         body = padded_body(body_real, body_src, under["V"], float(g.get("layer_gap", 0.003)))
+        body._m = body_real.m
     Bp = pieces(g, body_real.m["mm"] if g.get("pattern") else {})
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     quality = g.get("quality", "final")
@@ -3010,6 +3084,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                                "corrupt_pieces": ig_sim["corrupt_pieces"],
                                "crumpled": {p: v["crumpled"] for p, v in ig_sim["pieces"].items() if v["crumpled"] > 0.01}}
     res["sizing"] = sizing(res)
+    if under is not None and under.get("res") is not None:  # layered: the tailoring tells against the garment under it
+        from . import cloth_layers
+        res["tells"] = cloth_layers.tells(res, under["res"])
     if hang:  # what carries it: the hanger's arms by contact (pins: the old pinned hang), and is the hanger inside it
         if hg is not None:
             pins_h, hx = np.zeros(0, np.int64), hg
@@ -3506,7 +3583,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "flat")
 
 
@@ -3661,7 +3738,7 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
             ures = build(_garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
                          log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": ures["V"], "F": ures["mesh"]["F"], "key": ures["key"],
-                                                              "name": ug})
+                                                              "name": ug, "res": ures})
             if ures is None:
                 src["under_missing"] = ug
         return src
@@ -3841,6 +3918,10 @@ def report(gname: str, res: dict) -> str:
             L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
                      "allows and crumples; lower it (the design's stand/collar width option, e.g. simon \"options\": "
                      "{\"collarStandWidth\": 0.045}, default 0.08)")
+    if res.get("tells"):
+        from . import cloth_layers
+        L.append("  layered over " + str((res.get("under") or {}).get("name")) + ":")
+        L.append(cloth_layers.tells_text(res["tells"]).replace("\n", "\n  "))
     return "\n".join(L)
 
 
@@ -4133,10 +4214,22 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
     from . import hair as hairmod
     out_dir = Path(out_dir)
     parts = []
-    for gname, g, res in garments(name, spec, log, simulate=True):
+    built = garments(name, spec, log, simulate=True)
+    for gname, g, res in built:
         M, V = res["mesh"], res["V"].astype(np.float64)
         F = M["F"]
         uv, side = atlas_uv(M)
+        # layered: the faces of this garment that the garments worn over it hide are left out (a shirt under a jacket
+        # is exported as collar, front V and cuffs); garment key "export_hidden": true keeps them
+        hide = np.zeros(len(F), bool)
+        if not g.get("export_hidden"):
+            from . import cloth_layers
+            for on, og, ores in built:
+                if expanded(og).get("over") == gname:
+                    hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+        if hide.any():
+            log(f"cloth {gname}: {int(hide.sum())} of {len(F)} triangles hidden under another garment, left out")
+            F = F[~hide]
         # vertex normals (area weighted)
         fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
         vn = np.zeros_like(V)

@@ -1053,19 +1053,46 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       past the coarse outline instead of clamping (two fine vertices beyond one coarse corner landed on one point:
       a zero-area triangle) and the slit had parallel lips (a wedge's lips were 0.02 mm apart near the tip). The
       tuck and the seam draw still make the rest: moving cloth vertices without contact.
-    - The fine settle (`fine_settle: true | [press, settle frames]`, opt-in; `_press_plan`, cloth_job mode
-      "fine_settle", cloth_zozo carryIdx / carryPoses / releaseIdx / rest): the made pieces prescribed, their flaps
-      starting FINE_OPEN 55 deg open and closing as far as leaves FINE_ROOM over the body, then released to rest folded
-      as made; the carried drape settles round them. NOT WORKING YET. What it took to get to frame 2:
-      `_clear_of_body` (ZOZO's fatal pairs were body VERTICES 1.6-1.9 mm under the middle of sleeve triangles: the
-      sampled clearance reads the body by its nearest vertices' planes; now an exact body-vertex to cloth-face pass),
-      held vertices cleared too, a strain limit the start can meet (a few dozen triangles at piece outlines start
-      5-70% stretched: sleeve.R 72% at its cap edge). It then stops on "21 intersecting pairs at the committed pose".
-      Next: relax the carried start in the pattern's own metric before the sim (those outline triangles), then look
-      at which pairs.
-    - Open: the fall opens ~10-20 deg over the shoulder cloth (it turns rigidly: a real leaf bends; the fine
-      settle's released flap is the intended fix); the yoke ridge behind the collar; the upper sleeve's folds still
-      read busy.
+    - The fine settle (default with method "settle"; `fine_settle: false | [press, settle frames]`; `_press_plan`,
+      cloth_job mode "fine_settle", cloth_zozo carryIdx / carryPoses / releaseIdx / restIdx; cached `<key>_fine.npz`):
+      the constructed fine mesh settled for ~36 frames with the made pieces held and their flaps FREE from frame 0,
+      resting folded as made (a fall bends over the shoulder cloth), LOCAL: only cloth within `FINE_REACH` 10 cm of a
+      made piece is solved, the rest is held (solving it all, the sleeves crumpled again). What it took, in order:
+      `_clear_of_body` (ZOZO's fatal pairs were body VERTICES 1.6-1.9 mm under the middle of sleeve triangles: now
+      an exact body-vertex to cloth-face pass, held vertices too); `_relax_stretch` + a strain limit the start can
+      meet (triangles at piece outlines started 5-70% stretched: "ccd failed"); flaps never prescribed against cloth
+      (two prescribed things squeezing a third: "intersecting pairs"), opened only as far as clears what is under
+      them; `_untangle` before and after; the clean-up reverts any vertex it would re-cross. Shirt: 0 crossings,
+      "fits", fall covers the neckline seam 7.9 mm at CB, fall over what is under it 2.4 mm median, collar points
+      5.4 / 2.2 mm off (with `tacks`: design key, points of a made piece held to the cloth under them, as collar
+      stays / buttons do), sleeve crease width 2.7 mm / spacing 6.3 mm (zz16: 6.7 / 19.7). ~260 s settle + 50-100 s
+      fine settle on the 890M. Fold flaps are stretch-capped in placement (`max_stretch` 0.30: at 0.04 the shirt
+      collar turned 2 deg), and the draped start is relaxed with fold rows and flaps left as laid.
+    - The neck-point knot (the main session: "diagnose it with numbers"): `tailor` put the shoulder point at the
+      shoulder JOINT's x, inside the arm's root: the shoulder seam was 183 mm for ends 134-139 mm apart. Now the point
+      where the shoulder line turns down (slope > the line's + 10 deg, never inside the joint) and shoulderToShoulder
+      as a taut tape: 176 vs 148. The 28 mm left: the stand's ~12 mm standoff, the shoulder end 7 mm inside, the
+      across-back drafted as a flat width (~10 mm). Three bodies re-checked: shoulderToWrist = the joints' path
+      (553 / 583 / 544 mm), hanger width 2 cm inside the shoulder points.
+    - Layered garments (`over: "<garment>"`, `cloth_layers.py`, renders ly_*; model `workspace/ly_suit`, Jaeger over
+      Simon): the under garment is built first and frozen; `_collider` joins its result to the body (riding the
+      body's poses by nearest body vertex), the outer garment is placed on `padded_body` (the body pushed out to
+      cover it + `layer_gap` 3 mm). `support` (`SUPPORTS`: shoulder_pad, sleeve_head) are pads on that body, not
+      cloth. `cloth_layers.tells` (in `res["tells"]`, the report, targets `layer_*` in garment_kb.json): under collar
+      showing above the outer at CB 10-20 mm, cuff past the sleeve 10-15 mm, lapel gap, collar hug, crossings between
+      the layers. `hidden` -> `export_part` leaves out the under garment's faces the outer covers (further than
+      `hidden_margin` 3 cm from its free edges; `export_hidden: true` keeps them). Jaeger's table (flip_y on stand /
+      collar, lapel roll folds on `breakLine`, vent folds, the armhole as one closed seam chain, pads) is in
+      cloth_designs.json; its seam check passes except cap ease +1.8% (band 3-6). NO JACKET SIM HAS RUN: the ZOZO
+      release was deleted from the scratchpad mid-work. Not built yet: the joint settle where the layers touch,
+      lapel facing + gorge, chest canvas, weights copied from the outer layer, `over` in the design sheet.
+    - ZOZO drops nothing now: stitches whose ends start together (edge-to-edge panels, a facing on its front) had no
+      direction (NaN) and were dropped, so nothing sewed the seam (the "drafting" agent's jacket CB stood open).
+      `cloth_zozo.part_stitches`: each such end steps 1 mm back into its own cloth (layers part along the normal),
+      held/made ends stay; job `stitch_gap` (0 = drop as before).
+    - Open: the yoke ridge behind the collar; the upper sleeve's folds still read busy; Carlton pinned to
+      `method: "simulate"` (upper-back pleat bunches, tail knife pleat is a seam gap, cap split +7.5 / -5.0%, stand
+      +4%, collar +4.5%).
     - `made` (design table and garment: {piece or role: "made" | "draped"} through garment_design.made_or_draped ->
       `M["made"]` -> `made_pieces`): interfaced-whole pieces can be draped. Carlton's fronts are, with roll-line folds
       `lapel.L/R` (placement only so far: the fronts turn back along the roll line into a V; no facing, no sim).

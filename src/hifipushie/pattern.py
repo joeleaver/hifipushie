@@ -194,6 +194,16 @@ def mirror_x(piece: dict) -> dict:
                 lines={k: v * [-1, 1] for k, v in piece["lines"].items()})
 
 
+def mirror_y(piece: dict) -> dict:
+    """The piece turned upside down (y -> -y): a draft drawn with its sewn edge at the top (a jacket's collar and
+    stand, neckline edge up) put the way the wraps read pieces, sewn edge down. Names stay on their points."""
+    n = len(piece["P"])
+    P = (piece["P"] * [1, -1])[::-1]
+    names = {k: n - 1 - i for k, i in piece["names"].items()}
+    return dict(piece, P=P, names=names, marks={k: v * [1, -1] for k, v in piece["marks"].items()},
+                lines={k: v * [1, -1] for k, v in piece["lines"].items()})
+
+
 def from_spec(name: str, d: dict) -> dict:
     """A piece written in the spec: {"outline": [[x, y] | {"at": [x, y], "name": n} | {"arc": [cx, cy], "to": ...}...],
     "marks": {n: [x, y]}, "lines": {n: [[x, y], ...]}, "grain": deg}. Coordinates in metres. A "rect": [w, h]
