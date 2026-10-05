@@ -1589,6 +1589,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
         hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
         X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay,
                                             wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
+        info[fd["name"]].pop("_tv", None)
     B["fold_info"] = info
     return X
 
@@ -1897,6 +1898,63 @@ def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: l
     return {"idx": np.concatenate(idx), "poses": np.concatenate(P, axis=1), "moves": moves, "pieces": names}
 
 
+FINE_OPEN = 55.0  # deg a made flap starts open in the fine settle (clear of the cloth it then presses down)
+FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth under it (m)
+
+
+def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf: np.ndarray, carry: dict,
+                body: "Body") -> dict:
+    """Method "settle"'s fine settle, set up: the coarse drape carried onto the fine mesh M (kept clear of the body),
+    the made pieces from the fine placement set where the coarse ones were held, their turned-over flaps OPENED
+    (FINE_OPEN) so nothing starts through them, and the positions they close through (`poses`): down to the made
+    fold, or as far as leaves FINE_ROOM over the body for the cloth under them. In the sim the made pieces are
+    prescribed: the flap presses the cloth down as an iron does, and the cloth settles round them by contact.
+    Returns {"start", "drape" (the plain carried drape), "idx" (the made pieces' vertices), "poses" (k, m, 3),
+    "info"}."""
+    from . import folds as foldmod
+    Vd = transfer(Ms, Vc, M)
+    V = Vd.copy()
+    Xc_on_f = transfer(Ms, Xs, M)
+    held = np.zeros(len(V), bool)
+    for nm in carry["pieces"]:
+        sel = M["piece"] == M["names"].index(nm)
+        R0, t0 = _kabsch(Xf[sel], Xc_on_f[sel])
+        R1, t1 = carry["moves"][nm]
+        V[sel] = (Xf[sel] @ R0.T + t0) @ R1.T + t1
+        held[sel] = True
+    if len(body.V):  # (a fine vertex on a coarse facet's chord can lie inside the solver's standoff from the body)
+        V[~held] = body.push_out(V[~held], 0.0034)
+    faces = Bp.get("faces") or {}
+    bn, _ = body.normals() if len(body.V) else (np.zeros((0, 3)), None)
+    turns, info = [], {}
+    Vt = V.copy()
+    for fd in M.get("folds") or []:
+        if fd["piece"] not in carry["pieces"] or fd["turn"] <= 0:
+            continue
+        face = faces.get(fd["piece"], 1.0)
+        full = abs(math.degrees(fd["turn"])) * len(fd["rows"])
+        cur = foldmod.measure(Vt, M, fd, face).get("turn_deg", 170.0)
+        obs = [(body.V + bn * (FINE_ROOM - FOLD_LAY), bn, 0.008)] if len(body.V) else []
+        Vt, inf = foldmod.apply(Vt, M, fd, face, obs, FOLD_LAY, t_max=max(0.0, (179.0 - cur) / full),
+                                t_min=-RELAY_OPEN / full, steps=30, own_base=True, wedge=0.03)
+        turns.append((fd, face, inf.pop("_tv"), -FINE_OPEN / full))
+        info[fd["name"]] = dict(inf, was_deg=cur)
+
+    def at(a):  # the made pieces with every flap a (0 open .. 1 pressed) of the way closed
+        W = V.copy()
+        for fd, face, tv, t_open in turns:
+            W = foldmod.turn_flap(W, M, fd, t_open + (tv - t_open) * a, face)
+        return W
+    idx = np.where(held)[0]
+    start = at(0.0)
+    poses = np.stack([at(a)[idx] for a in (0.25, 0.5, 0.75, 1.0)])
+    flaps = np.zeros(len(V), bool)
+    for fd, *_r in turns:
+        flaps[foldmod._geom(M, fd)["rows"][0]["v"]] = True
+    return {"start": start, "drape": Vd, "idx": idx, "poses": poses, "info": info, "pieces": list(carry["pieces"]),
+            "release": np.where(flaps)[0], "made": V}
+
+
 def _constructed(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf: np.ndarray, carry: dict,
                  body: "Body") -> tuple:
     """Method "settle"'s result on the fine mesh M without a fine sim: the loose cloth is the coarse drape Vc carried
@@ -2017,6 +2075,7 @@ def _relay(V: np.ndarray, M: dict, fd: dict, face: float, obs: list) -> tuple:
     Vn, info = foldmod.apply(V, M, fd, face, obs, FOLD_LAY, t_max=t_hi, t_min=-RELAY_OPEN / full, steps=30, own_base=True,
                              wedge=0.03)  # (nothing simulates this: the layers as near as cloth lies)
     info["was_deg"] = cur
+    info.pop("_tv", None)
     return Vn, info
 
 
@@ -2251,7 +2310,44 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             import shutil
             shutil.rmtree(job_dir, ignore_errors=True)
     Bp["push"] = push
-    if construct:
+    if construct and g.get("fine_settle", True):
+        # the fine settle: the made pieces prescribed (their flaps pressing down from open), the carried drape settling
+        # round them by contact for a few frames; no geometry is moved by hand
+        plan = _press_plan(Bp, Ms, Xs, res["V_coarse"], M, X0, carry, body)
+        fs = g.get("fine_settle", True)
+        fr = [int(v) for v in (fs if isinstance(fs, (list, tuple)) else (16, 20))]
+        stiff_f = interfacing(Bp, M)
+        fold_f = {}
+        if M.get("folds"):
+            fold_f = {"fold": foldmod.weights(M),
+                      "bend_rest": foldmod.bend_reference(M, np.c_[M["uv"], np.zeros(len(M["uv"]))], Bp.get("faces"))}
+        fkey = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
+            plan["start"], plan["poses"], plan["release"], M["F"], M["sew"], body.V)) + json.dumps(
+            [fr, fab, g.get("zozo"), code], sort_keys=True, default=str).encode()).hexdigest()[:16]
+        fcache = _cache_dir() / f"{fkey}_fine.npz"
+        if fcache.exists():
+            df = dict(np.load(fcache))
+        elif cached_only:
+            return None
+        else:
+            t = time.time()
+            fcfg = {"mode": "fine_settle", "fabric": fab, "state": "worn", "name": name, "placement": "smooth",
+                    "self_collision": True, "press_frames": fr[0], "frames": fr[1], "carry": True,
+                    "made": made_pieces(M, stiff_f), "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in M["names"]},
+                    **({"zozo": dict(g["zozo"])} if g.get("zozo") else {})}
+            farr = dict(X=plan["start"], uv=M["uv"], F=M["F"], sew=M["sew"], stitch=M["stitch"], stiff=stiff_f,
+                        piece=M["piece"], bodyV=body.V, bodyT=body.T, pins=np.zeros(0, np.int64),
+                        carryIdx=plan["idx"], carryPoses=plan["poses"], releaseIdx=plan["release"],
+                        rest=plan["made"], **fold_f)
+            progress(f"fine settle at {h * 100:.1f} cm: {len(plan['start'])} verts, {sum(fr)} frames")
+            df, lines_f = _blender_job(out_dir or (_cache_dir() / f"job_{key}"), fcfg, farr, name, log, progress,
+                                       backend=backend, names=M["names"])
+            res["log"] = res.get("log", "") + "\n" + "\n".join(lines_f)
+            log(f"cloth {name}: fine settle in {time.time() - t:.0f} s")
+            np.savez_compressed(fcache, V=df["V"], **({"Vprev": df["Vprev"]} if df.get("Vprev") is not None else {}))
+        res["V_sim"], res["V_drape"], res["V_prev"] = df["V"], plan["drape"], df.get("Vprev")
+        res["constructed"] = {"pieces": plan["pieces"], "folds": plan["info"], "fine_settle": fr}
+    elif construct:
         res["V_sim"], res["V_drape"], res["constructed"] = _constructed(Bp, Ms, Xs, res["V_coarse"], M, X0, carry, body)
         res["V_prev"] = None
     # A piece the fine settle tangled or crumpled that the coarse drape had clean keeps the coarse drape carried onto
@@ -2280,12 +2376,27 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # the coarse drape carried onto the fine mesh is its facets: smoothed over about a coarse triangle (the made
         # pieces, constructed at the fine size, are left: cleanup doesn't smooth interfaced cloth)
         cu = {"smooth": int(round(1.5 * (hs / h) ** 2 * max(1.0, (h / 0.01) ** 2))), "keep": 0.3 * hs}
+        if res["constructed"].get("fine_settle"):  # settled at the fine size: what is left of the coarse facets only
+            cu = {"smooth": 3, "keep": 0.002}
     res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
                                        cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
-    if construct:  # (the smoothing can bring cloth back out through a made flap)
+    if construct and not res["constructed"].get("fine_settle"):  # (the smoothing can bring cloth back out through a
+        # made flap)
         held_ = np.isin(M["piece"], [M["names"].index(nm) for nm in res["constructed"]["pieces"]])
         res["V"] = _tuck(res["V"], M, held_, body)
+    do = dict(DETAIL, **(g.get("detail") or {})) if g.get("detail", {}) is not False else {"folds": False}
+    if do["folds"] if do["folds"] is not None else settle:
+        # the folds the drape implies but the mesh couldn't make (cloth_detail): the big ones into the geometry here
+        # (the silhouette has them), the fine ones into the normal map (fine_folds)
+        from . import cloth_detail
+        fabn = res["fabric"].get("name", "shirting")
+        Vd_ = res["V_drape"] if res.get("V_drape") is not None else res["V_sim"]
+        res["fold_dabs"], res["fold_info"] = cloth_detail.fold_dabs(M, Vd_, fabn, interfacing(Bp, M),
+                                                                    float(do["fold_gain"]), opts=do["fold_opts"])
+        if h <= 0.012 and not hang:
+            res["V"], rms = cloth_detail.displace(M, res["V"], res["fold_dabs"], fabn, do["fold_opts"], interfacing(Bp, M))
+            res["folds_in_geometry"] = round(rms, 2)
     sc = g.get("sculpt")
     if sc and sc.get("key") == key:
         f = Path(sc["file"])
@@ -3137,10 +3248,14 @@ def fine_folds(res: dict, g: dict, uv: np.ndarray, side: float, texture: int | N
     from . import cloth_detail
     T = int(texture or o["texture"])
     Vd = res["V_drape"] if res.get("V_drape") is not None else res["V_sim"]
-    H, info = cloth_detail.wrinkle_height(res["mesh"], Vd, uv, side, T, res["fabric"].get("name", "shirting"),
-                                          interfacing(res["pieces"], res["mesh"]), gain=float(o["fold_gain"]),
-                                          opts=o["fold_opts"])
-    res["fine_folds"] = info
+    fabn = res["fabric"].get("name", "shirting")
+    if res.get("fold_dabs") is None:
+        res["fold_dabs"], res["fold_info"] = cloth_detail.fold_dabs(
+            res["mesh"], Vd, fabn, interfacing(res["pieces"], res["mesh"]), float(o["fold_gain"]), opts=o["fold_opts"])
+    # (the big folds are in the geometry when the build put them there: the map takes the fine ones only)
+    H, info = cloth_detail.wrinkle_height(res["mesh"], Vd, uv, side, T, fabn, opts=o["fold_opts"], dabs=res["fold_dabs"],
+                                          big=False if res.get("folds_in_geometry") else None)
+    res["fine_folds"] = dict(res.get("fold_info") or {}, **info)
     return H
 
 

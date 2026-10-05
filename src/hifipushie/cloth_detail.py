@@ -72,65 +72,152 @@ def compression(M: dict, V: np.ndarray, smooth: int = 3) -> tuple:
     return acc[:, 0] * np.clip(coh, 0, 1), np.c_[np.cos(a2), np.sin(a2)]
 
 
-def wrinkle_height(M: dict, V: np.ndarray, uv: np.ndarray, side: float, T: int, fabric: str = "shirting",
-                   stiff: np.ndarray | None = None, gain: float = 1.0, seed: int = 7, opts: dict | None = None) -> tuple:
-    """A height map (T, T; m; image rows run down, as cloth.detail_maps) of the fine folds the drape V implies, on
-    the atlas `uv` (0..1; `side` m across). Interfaced cloth (stiff 0..1) takes none. Returns (height, info)."""
-    from PIL import Image, ImageDraw
+def fold_dabs(M: dict, V: np.ndarray, fabric: str = "shirting", stiff: np.ndarray | None = None, gain: float = 1.0,
+              seed: int = 7, opts: dict | None = None) -> tuple:
+    """The folds the drape V implies, as dabs in pattern coordinates: each one fold (a crest or a crease with its
+    shoulders: a narrow envelope, so no ripple trains), long along the fold and a little curved, lying across the local
+    compression (its direction jittered), its wavelength, length and depth drawn from the fabric's ranges. Two sizes:
+    fine ones (the fabric's `wavelength`; they only fit a normal map) and big ones (`big` x that, sparse: a mesh of
+    5-10 mm can carry them, so they go into the geometry and the silhouette). Fewer where the compression is even (a
+    smooth band of compression makes a few folds, not a comb). Returns ({"p", "k" piece, "d", "lam", "len", "amp",
+    "ph", "kap", "big"}, info)."""
     o = dict(FOLDS.get(fabric, FOLDS["shirting"]), **(opts or {}))
     c, d = compression(M, V)
     if stiff is not None:
         c = c * np.clip(1.0 - 1.5 * np.asarray(stiff), 0, 1)
     rng = np.random.default_rng(seed)
+    F, uv = M["F"], M["uv"]
+    a_, b_, c_ = uv[F[:, 0]], uv[F[:, 1]], uv[F[:, 2]]
+    area = 0.5 * np.abs((b_ - a_)[:, 0] * (c_ - a_)[:, 1] - (b_ - a_)[:, 1] * (c_ - a_)[:, 0])
+    cf = c[F].mean(1)
+    # how uneven the compression is round each triangle (its corners' spread over their mean)
+    un = np.clip((c[F].max(1) - c[F].min(1)) / np.maximum(cf, 1e-4) / 0.5, 0, 1)
+    want = area * np.clip(cf / 0.02, 0, 1) * (0.45 + 0.55 * un)
+    info = {"folded_area_m2": round(float((area * np.clip(cf / 0.02, 0, 1)).sum()), 4),
+            "compression_p50_p95": [round(float(v), 4) for v in np.percentile(c, [50, 95])]}
+    out = {k: [] for k in ("p", "k", "d", "lam", "len", "amp", "ph", "kap", "big")}
+    if want.sum() <= 0:
+        info["dabs"] = [0, 0]
+        return {k: np.zeros((0, 2)) if k in ("p", "d") else np.zeros(0) for k in out}, info
+    big = float(o.get("big", 2.8))
+    counts = []
+    for is_big, wl, ln_, dens in ((False, o["wavelength"], o["length"], float(o.get("density", 1.6))),
+                                  (True, tuple(big * v for v in o["wavelength"]), tuple(1.8 * v for v in o["length"]),
+                                   float(o.get("density_big", 0.7)))):
+        lam_m, len_m = 0.5 * (wl[0] + wl[1]), 0.5 * (ln_[0] + ln_[1])
+        n = int(min(float(o.get("max_dabs", 6000)), dens * want.sum() / (len_m * lam_m)))
+        counts.append(n)
+        if n <= 0:
+            continue
+        ti = rng.choice(len(F), n, p=want / want.sum())
+        w = rng.dirichlet([1, 1, 1], n)
+        cc = np.einsum("nk,nk->n", w, c[F[ti]])
+        dd = d[F[ti][:, 0]]
+        jit = rng.normal(0, np.radians(10.0), n)  # (a comb is every fold exactly parallel)
+        dd = np.c_[dd[:, 0] * np.cos(jit) - dd[:, 1] * np.sin(jit), dd[:, 0] * np.sin(jit) + dd[:, 1] * np.cos(jit)]
+        lam = np.exp(rng.uniform(np.log(wl[0]), np.log(wl[1]), n))
+        ln = np.exp(rng.uniform(np.log(ln_[0]), np.log(ln_[1]), n)) * (0.6 + 0.8 * np.clip(cc / 0.04, 0, 1))
+        amp = np.minimum(lam / np.pi * np.sqrt(np.maximum(cc, 0)) * gain, 0.22 * lam) * rng.uniform(0.5, 1.2, n)
+        out["p"].append(np.einsum("nk,nkd->nd", w, uv[F[ti]]))
+        out["k"].append(M["piece"][F[ti][:, 0]])
+        out["d"].append(dd)
+        out["lam"].append(lam)
+        out["len"].append(ln)
+        out["amp"].append(amp * (0.7 if is_big else 1.0))
+        out["ph"].append(rng.choice([0.0, np.pi], n) + rng.normal(0, 0.5, n))
+        out["kap"].append(rng.normal(0, 0.35, n) / ln)  # a bow of ~ a third of a wavelength over its length
+        out["big"].append(np.full(n, is_big))
+    info["dabs"] = counts
+    return {k: np.concatenate(v) if v else np.zeros(0) for k, v in out.items()}, info
+
+
+def _dab(D: dict, i: int, du, dv, sharp: float):
+    """Dab i's height at offsets (du, dv) (m, pattern axes) from its centre."""
+    ex, ey = D["d"][i]
+    l = -du * ey + dv * ex
+    a = du * ex + dv * ey + D["kap"][i] * l * l  # across the fold (along the compression), bowed along it
+    sa, sl = 0.5 * D["lam"][i], D["len"][i] / 2.4
+    env = np.exp(-0.5 * (a / sa) ** 2 - 0.5 * (l / sl) ** 2)
+    wave = np.cos(2 * np.pi * a / D["lam"][i] + D["ph"][i])
+    return D["amp"][i] * env * np.sign(wave) * np.abs(wave) ** sharp
+
+
+def height_at(D: dict, M: dict, big: bool | None = None, fabric: str = "shirting", opts: dict | None = None) -> np.ndarray:
+    """The dabs' summed height at every vertex of M (pattern coordinates, each piece its own dabs). big: only the big
+    folds (True), only the fine ones (False), or all."""
+    sharp = float(dict(FOLDS.get(fabric, FOLDS["shirting"]), **(opts or {}))["sharp"])
+    H = np.zeros(len(M["uv"]))
+    for i in range(len(D["lam"])):
+        if big is not None and bool(D["big"][i]) != big:
+            continue
+        sel = np.where(M["piece"] == D["k"][i])[0]
+        q = M["uv"][sel] - D["p"][i]
+        near = np.abs(q).max(1) < 3 * max(0.5 * D["lam"][i], D["len"][i] / 2.4)
+        if near.any():
+            H[sel[near]] += _dab(D, i, q[near, 0], q[near, 1], sharp)
+    return H
+
+
+def displace(M: dict, V: np.ndarray, D: dict, fabric: str = "shirting", opts: dict | None = None,
+             stiff: np.ndarray | None = None, edge: float = 0.02) -> tuple:
+    """V with the big folds in its geometry: each vertex out along its normal by the big dabs' height (outward only: a
+    fold lifts off the body), fading to nothing within `edge` of a piece's outline (seams stay shut) and on interfaced
+    cloth. Returns (V, rms mm)."""
+    from scipy.spatial import cKDTree
+    h = height_at(D, M, True, fabric, opts)
+    h = np.maximum(h, 0.0) + 0.35 * np.minimum(h, 0.0)
+    bd = np.where(M["border"])[0]
+    dist = cKDTree(M["uv"][bd]).query(M["uv"])[0] if len(bd) else np.full(len(V), 1.0)
+    same = M["piece"][bd[cKDTree(M["uv"][bd]).query(M["uv"])[1]]] == M["piece"] if len(bd) else np.ones(len(V), bool)
+    f = np.clip(dist / edge, 0, 1)
+    h = h * np.where(same, f * f * (3 - 2 * f), 1.0)
+    if stiff is not None:
+        h = h * np.clip(1.0 - 1.5 * np.asarray(stiff), 0, 1)
     F = M["F"]
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    N = np.zeros_like(V)
+    for c_ in range(3):
+        np.add.at(N, F[:, c_], fn)
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    return V + N * h[:, None], float(np.sqrt(np.mean(h ** 2)) * 1000)
+
+
+def wrinkle_height(M: dict, V: np.ndarray, uv: np.ndarray, side: float, T: int, fabric: str = "shirting",
+                   stiff: np.ndarray | None = None, gain: float = 1.0, seed: int = 7, opts: dict | None = None,
+                   dabs: dict | None = None, big: bool | None = None, out_sign: float = 1.0) -> tuple:
+    """A height map (T, T; m; image rows run down, as cloth.detail_maps) of the folds the drape V implies (fold_dabs,
+    or the `dabs` given), on the atlas `uv` (0..1; `side` m across). big False: the fine folds only (the big ones are
+    in the geometry: displace). Interfaced cloth (stiff 0..1) takes none. Returns (height, info)."""
+    from PIL import Image, ImageDraw
+    o = dict(FOLDS.get(fabric, FOLDS["shirting"]), **(opts or {}))
+    info = {}
+    if dabs is None:
+        dabs, info = fold_dabs(M, V, fabric, stiff, gain, seed, opts)
     mpt = side / T
     pid_img = Image.new("I", (T, T), 0)
     dr = ImageDraw.Draw(pid_img)
+    off = {}
     for k in range(len(M["names"])):
         ring = np.where((M["piece"] == k) & M["border"])[0]
         if len(ring) >= 3:
             dr.polygon([(uv[i, 0] * T, (1 - uv[i, 1]) * T) for i in ring], fill=k + 1)
+            off[k] = uv[ring[0]] * side - M["uv"][ring[0]]  # the atlas is each piece's pattern moved, at one scale
     PID = np.asarray(pid_img)
     H = np.zeros((T, T), np.float32)
-    # dabs: centres drawn over the triangles by area x compression; each covers ~ length x 2 wavelengths
-    a_, b_, c_ = M["uv"][F[:, 0]], M["uv"][F[:, 1]], M["uv"][F[:, 2]]
-    area = 0.5 * np.abs((b_ - a_)[:, 0] * (c_ - a_)[:, 1] - (b_ - a_)[:, 1] * (c_ - a_)[:, 0])
-    cf = c[F].mean(1)
-    lam_m = 0.5 * (o["wavelength"][0] + o["wavelength"][1])
-    len_m = 0.5 * (o["length"][0] + o["length"][1])
-    want = area * np.clip(cf / 0.02, 0, 1)  # the area that folds (full where the cloth is 2% short)
-    n_dabs = int(min(float(o.get("max_dabs", 6000)), float(o.get("density", 2.2)) * want.sum() / (len_m * 2 * lam_m)))
-    info = {"dabs": n_dabs, "folded_area_m2": round(float(want.sum()), 4),
-            "compression_p50_p95": [round(float(v), 4) for v in np.percentile(c, [50, 95])]}
-    if n_dabs <= 0:
-        return H, info
-    ti = rng.choice(len(F), n_dabs, p=want / want.sum())
-    w = rng.dirichlet([1, 1, 1], n_dabs)
-    cu = np.einsum("nk,nkd->nd", w, uv[F[ti]])  # atlas position
-    cc = np.einsum("nk,nk->n", w, c[F[ti]])
-    dd = d[F[ti][:, 0]]  # (a direction: no sign to blend across the corners)
-    pk = M["piece"][F[ti][:, 0]] + 1
-    lam = rng.uniform(*o["wavelength"], n_dabs)
-    ln = rng.uniform(*o["length"], n_dabs)
-    amp = np.minimum(lam / np.pi * np.sqrt(np.maximum(cc, 0)) * gain, 0.22 * lam)
-    ph = rng.uniform(0, 2 * np.pi, n_dabs)
     sharp = float(o["sharp"])
-    for i in range(n_dabs):
-        sa, sl = 0.75 * lam[i], ln[i] / 2.4
-        r = int(np.ceil(3 * max(sa, sl) / mpt))
-        cx, cy = cu[i, 0] * T, (1 - cu[i, 1]) * T
+    for i in range(len(dabs["lam"])):
+        if (big is not None and bool(dabs["big"][i]) != big) or int(dabs["k"][i]) not in off:
+            continue
+        c = (dabs["p"][i] + off[int(dabs["k"][i])]) / side
+        r = int(np.ceil(3 * max(0.5 * dabs["lam"][i], dabs["len"][i] / 2.4) / mpt))
+        cx, cy = c[0] * T, (1 - c[1]) * T
         x0, x1, y0, y1 = max(int(cx) - r, 0), min(int(cx) + r + 1, T), max(int(cy) - r, 0), min(int(cy) + r + 1, T)
         if x1 <= x0 or y1 <= y0:
             continue
         du = (np.arange(x0, x1) + 0.5 - cx)[None, :] * mpt
         dv = -(np.arange(y0, y1) + 0.5 - cy)[:, None] * mpt
-        ex, ey = dd[i]
-        a = du * ex + dv * ey  # across the fold (along the compression)
-        l = -du * ey + dv * ex
-        env = np.exp(-0.5 * (a / sa) ** 2 - 0.5 * (l / sl) ** 2)
-        wave = np.cos(2 * np.pi * a / lam[i] + ph[i])
-        wave = np.sign(wave) * np.abs(wave) ** sharp
-        H[y0:y1, x0:x1] += np.where(PID[y0:y1, x0:x1] == pk[i], amp[i] * env * wave, 0).astype(np.float32)
-    info["height_mm_rms_p99"] = [round(float(np.sqrt(np.mean(H[PID > 0] ** 2)) * 1000), 3),
-                                 round(float(np.percentile(np.abs(H[PID > 0]), 99)) * 1000, 2)]
+        H[y0:y1, x0:x1] += np.where(PID[y0:y1, x0:x1] == int(dabs["k"][i]) + 1, _dab(dabs, i, du, dv, sharp), 0).astype(np.float32)
+    if (PID > 0).any():
+        info["height_mm_rms_p99"] = [round(float(np.sqrt(np.mean(H[PID > 0] ** 2)) * 1000), 3),
+                                     round(float(np.percentile(np.abs(H[PID > 0]), 99)) * 1000, 2)]
     return H, info

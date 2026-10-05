@@ -122,10 +122,15 @@ def test_fine_folds_follow_the_compression():
     px = lambda q: (int(q[0] * 512), int((1 - q[1]) * 512))
     L_ = H[:, : px(uv[np.argmin(np.abs(M["uv"][:, 0]))])[0] - 20]
     R_ = H[:, px(uv[np.argmin(np.abs(M["uv"][:, 0]))])[0] + 110:]  # (dabs and the smoothed compression reach a few cm over)
-    assert info["dabs"] > 0 and np.abs(L_).max() > 5e-4 and np.abs(R_).max() < 1e-4, info
+    assert sum(info["dabs"]) > 0 and np.abs(L_).max() > 5e-4 and np.abs(R_).max() < 1e-4, info
     # the folds run across the compression: the height varies along x, little along y
     gy, gx = np.gradient(L_)
-    assert np.abs(gx).mean() > 2.5 * np.abs(gy).mean()
+    assert np.abs(gx).mean() > 2.0 * np.abs(gy).mean()
+    # the big folds go into the geometry, lifted off the surface, none at the outline
+    D, _ = cloth_detail.fold_dabs(M, Vc)
+    Vg, rms = cloth_detail.displace(M, Vc, D)
+    dz = Vg[:, 2] - Vc[:, 2]
+    assert D["big"].any() and dz.max() > 3e-4 and np.abs(dz[M["border"]]).max() < 1e-9 and dz.min() > -dz.max()
 
 
 if __name__ == "__main__":

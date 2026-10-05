@@ -340,7 +340,9 @@ def main():
         lifted = made.copy()  # pieces that may start past the strain limit (placed folded or closed round a limb)
         if "carryIdx" in d:  # held pieces (method "settle") rest as they start: nothing in them is solved
             ci = np.asarray(d["carryIdx"], np.int64)
-            flat3[ci] = X[ci]
+            # (the fine settle gives their made shape as "rest": a flap released after the press rests folded as made,
+            # not as it started, open)
+            flat3[ci] = np.asarray(d["rest"], float)[ci] if "releaseIdx" in d and "rest" in d else X[ci]
             made[ci] = True
         for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
             sel_ = pid == job["pieces"].index(nm)
@@ -427,13 +429,24 @@ def main():
         # method "settle": the made pieces are held as constructed for the whole sim and ride the body through its
         # poses (their positions per pose come with the job: a rigid move fitted to the body under each)
         ci = np.asarray(d["carryIdx"], np.int64)
-        cp = g.pin(list(map(int, ci)), allow_intersection=False)
-        for pose, key in [(st, "bodyPoses" if st["pose"] is True else st["pose"]) for st in stages if st.get("pose") is True]:
-            t0, t1 = times[pose["name"]]
-            cposes = np.asarray(d["carryPoses"], float)
-            for k in range(len(cposes)):
-                cp.move_to(cposes[k], t0 + (t1 - t0) * k / len(cposes), t0 + (t1 - t0) * (k + 1) / len(cposes))
-        log(f"zozo: {len(ci)} vertices of made pieces held as constructed and carried with the body")
+        cposes = np.asarray(d["carryPoses"], float)
+        # releaseIdx (the fine settle): the made pieces' turned-over flaps are let go once they have pressed the cloth
+        # down, and settle on it as stiff cloth resting folded (a fall lies on the shoulders' cloth: held, it stood
+        # off it or went through it)
+        rel = np.isin(ci, np.asarray(d["releaseIdx"], np.int64)) if "releaseIdx" in d else np.zeros(len(ci), bool)
+        pose_st = [st for st in stages if st.get("pose") is True]
+        for part, free in ((~rel, False), (rel, True)):
+            if not part.any():
+                continue
+            cp = g.pin(list(map(int, ci[part])), allow_intersection=False)
+            for pose in pose_st:
+                t0, t1 = times[pose["name"]]
+                for k in range(len(cposes)):
+                    cp.move_to(cposes[k][part], t0 + (t1 - t0) * k / len(cposes), t0 + (t1 - t0) * (k + 1) / len(cposes))
+            if free and pose_st:
+                cp.unpin(times[pose_st[-1]["name"]][1])
+        log(f"zozo: {len(ci)} vertices of made pieces held as constructed and carried with the body"
+            + (f"; {int(rel.sum())} of them (flaps) released after the press" if rel.any() else ""))
     hang = next((s for s in stages if s.get("hang") or s.get("hanger")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):

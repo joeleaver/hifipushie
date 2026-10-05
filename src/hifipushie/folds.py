@@ -300,7 +300,7 @@ def apply(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, obstacles: list |
         obs.append((p, n, over, 0.4 * hm))
     if not obs or not len(flap):
         Xo = turn_flap(X, M, fd, t_hi, face)
-        return Xo, {"t": [t_hi], "turn_deg": [round(math.degrees(full * t_hi), 1)] * 3}
+        return Xo, {"_tv": np.full(len(X), t_hi), "t": [t_hi], "turn_deg": [round(math.degrees(full * t_hi), 1)] * 3}
     trees = [(cKDTree(p), p, n, s, rc) for p, n, s, rc in obs]
     # (a single crease is a wedge: the flap may come as near its base as a wedge of slope `wedge` allows (4.5 deg; a
     # sim's start wants its first ring of vertices a contact gap off the base: place() sets it from the triangle
@@ -339,7 +339,7 @@ def apply(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, obstacles: list |
         tv[r["v"]] = np.interp(r["u"] * tot / max(r["len"], 1e-9), cen, sm)
     Xo = turn_flap(X, M, fd, tv, face)
     deg = np.degrees(full * sm)
-    return Xo, {"t": sm.round(3).tolist(), "turn_deg": [round(float(v), 1) for v in (deg.min(), np.median(deg), deg.max())]}
+    return Xo, {"_tv": tv, "t": sm.round(3).tolist(), "turn_deg": [round(float(v), 1) for v in (deg.min(), np.median(deg), deg.max())]}
 
 
 def bend_reference(M: dict, ref: np.ndarray, faces: dict | None = None, skip: set | None = None) -> np.ndarray:
