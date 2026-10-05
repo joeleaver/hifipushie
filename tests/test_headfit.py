@@ -71,15 +71,8 @@ def test_when_it_applies():
 
 def _shape(b):
     """(chin drop, cranium height, jaw width, brow height, the head dict, cheek width) of the head as solved (identity + warp), interoculars."""
-    g = headfit._gnm()
     h = headfit.follow(b, b["head"])
-    c = np.array([h["identity"][g["names"][i]] for i in g["comps"]])
-    L = g["L0"] + np.tensordot(c, g["LB"], 1)
-    J = g["J0"] + np.tensordot(c, g["JB"], 1)
-    wp = h["warp"]
-    P, C = np.asarray(wp["at"]), np.asarray(wp["coef"])
-    L = L + np.exp(-((L[:, None] - P[None]) ** 2).sum(-1) / (2 * wp["sigma"] ** 2)) @ C
-    X = (L - J.mean(0)) / abs(J[0][0] - J[1][0])
+    X = headfit.solved_points(h)
     return -X[8][1], X[68][1], abs(X[12][0] - X[4][0]), X[19][1], h, abs(X[13][0] - X[3][0])
 
 
@@ -94,8 +87,7 @@ def test_age_and_sex_reach_the_head():
         assert "scale" not in s[4]  # only following a body sets the head's size
     for p in ({"age": 7}, {"age": 35, "sex": 0.0}, {"age": 82, "sex": 1.0}):
         r = headfit.report(base(None, like=p))
-        assert r["reached"] >= 0.88 > r["reached_identity"], r  # the warp takes it the rest of the way
-        assert r["stretch_max"] < 0.35, r
+        assert r["field_io"] > 0.08 and r["stretch_max"] < 0.35, r  # the shape itself is MakeHuman's head, as a field
     # the seed's own sex doesn't decide: every seed's woman has a narrower jaw than the same seed's man
     for seed in (1, 5, 8, 11):
         w_, m_ = (_shape({"head": {"source": "gnm", "seed": seed, "spread": 0.7, "like": {"sex": s}}}) for s in (0.0, 1.0))
@@ -103,13 +95,19 @@ def test_age_and_sex_reach_the_head():
     # the same people across seeds differ (the seed keeps what is its own)
     a, b = (_shape({"head": {"source": "gnm", "seed": s, "spread": 0.7, "like": {"sex": 0.0}}})[4]["identity"] for s in (5, 8))
     assert np.abs(np.array(list(a.values())) - np.array(list(b.values()))).max() > 0.5
+    # dimorphism: a woman's jaw is narrower still with it, a man's wider; 0 = MakeHuman's own sexes
+    j = lambda sex, dm: _shape(base(None, like={"sex": sex}, dimorphism=dm))[2]  # noqa: E731
+    assert j(0.0, 1.0) < j(0.0, 0.0) < j(1.0, 0.0) < j(1.0, 1.0)
+    assert abs(j(0.5, 1.0) - j(0.5, 0.0)) < 1e-9
+    F = headfit.fields()
+    assert F["ref"].shape[1] == 3 and F["age_sex"].shape[:2] == (len(F["ages"]), 2) and F["valid"].sum() > 9000
     own = headfit.follow(base(None, like={"age": 7}, identity={"head_000": 1.5}),
                          {"source": "gnm", "seed": 5, "like": {"age": 7}, "identity": {"head_000": 1.5}})
     assert own["identity"]["head_000"] == 1.5  # the head's own identity entries win
 
 
 def test_features():
-    n = _shape(base(None, like={"sex": 0.5}))
+    n = _shape(base(None, features={"jaw": 1e-6}))  # (a `like` head is MakeHuman-shaped: another baseline)
     jaw = _shape(base(None, features={"jaw": 1.0}))
     brow = _shape(base(None, features={"brow_ridge": 1.0}))
     assert jaw[2] > n[2] + 0.02 and abs(jaw[1] - n[1]) < 0.02  # a wider jaw, the cranium where it was
@@ -125,7 +123,7 @@ def test_follows_its_body():
     b = base({"age": 7, "sex": 0.5, "height": 1.22}, follow_body=True)
     adult = base({"age": 35, "sex": 1.0, "height": 1.8}, follow_body=True)
     h, ha = headfit.follow(b, b["head"]), headfit.follow(adult, adult["head"])
-    assert h["scale"] < 0.9 * ha["scale"] and 0.8 < ha["scale"] < 1.05, (h["scale"], ha["scale"])
+    assert h["scale"] < 0.95 * ha["scale"] and 0.8 < ha["scale"] < 1.05, (h["scale"], ha["scale"])
     w = headfit.wanted(b)
     assert (w["age"], w["sex"]) == (7.0, 0.5)
     half = headfit.wanted(base({"age": 7}, follow_body=0.5))

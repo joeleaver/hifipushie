@@ -8,6 +8,7 @@ midpoint, GNM's frame, as moves from the reference head (age 25, sex 0.5, weight
   age_sex  (ages, 2, points, 3)   the head at each age for sex 0 (female) and 1 (male), weight 0.5
   weight   (2, 2, points, 3)      [sex][light 0.1, heavy 0.9] minus that sex's weight-0.5 head, at age 30
   io       (ages, 2)              the interocular (m) at height-free scale, for the head's size
+  ref      (points, 3)            the reference head's own points (what MakeHuman's head IS, for headfit's `toward`)
 """
 from pathlib import Path
 
@@ -36,7 +37,7 @@ def main():
         W.append([headfit.mh_points({"age": 30, "sex": s, "weight": w, "muscle": 0.5})[0] - mid for w in (0.1, 0.9)])
     dest = Path(headfit.__file__).with_name("head_axes.npz")
     np.savez_compressed(dest, ages=np.array(AGES, float), age_sex=np.array(A, np.float32), weight=np.array(W, np.float32),
-                        io=np.array(IO, np.float32))
+                        io=np.array(IO, np.float32), ref=np.array(ref, np.float32))
     print("wrote", dest, np.array(A).shape, "rms move child", float(np.sqrt((np.array(A)[2] ** 2).sum(-1).mean())))
     # how well the table reproduces MakeHuman between its samples
     headfit._CACHE.pop("axes_data", None)
