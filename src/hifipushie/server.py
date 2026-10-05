@@ -1784,7 +1784,8 @@ def terrain_history(name: str, revert_to: int | None = None) -> str:
 # ---------------------------------------------------------------- vegetation
 
 @mcp.tool(structured_output=False)
-def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, note: str = "") -> str:
+def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, note: str = "",
+               copy_from: str | None = None) -> str:
     """Create or change a plant and grow it (guide(topic="vegetation") has the vocabulary and the stages). `spec`
     replaces the whole spec; `patch` merges into the stored one (objects merge key by key, null deletes:
     {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
@@ -1792,21 +1793,30 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
     "bark": {...}, "season", "decay"}. The same spec always grows the same plant. Every version is kept
     (plant_history). Returns the report: size, form measured on its own silhouettes, limbs, foliage, guides, the
-    reference match if it has one, WARNINGS last. With no arguments but a name: the report of the stored plant;
-    name "" lists the plants and the species presets."""
+    reference match if it has one, WARNINGS last, and (for a patch) every changed value old -> new with what the tree
+    did. In a patch, lists REPLACE (give the whole per-order list; `"prune": null` removes every prune: use
+    edit_plant to add or remove one). copy_from: start `name` as a copy of another plant (+ patch): variants of one
+    description, e.g. {"seed": 2, "age": 14}. Use get_plant first to see the values you are about to override.
+    With no arguments but a name: the report of the stored plant; name "" lists the plants and the species presets."""
     from . import veg_tools as vt
     from . import vegetation
     if not name:
         return json.dumps({"plants": vt.list_plants(), "species": {k: vegetation.preset(k).get("about", "") for k in vegetation.species()}}, indent=1)
-    if spec is None and patch is None:
+    if spec is None and patch is None and not copy_from:
         return vt.report(name)
     exists = (vt._dir(name) / "plant.json").exists()
     prev = vt.load(name) if exists else None
-    new = _spec_arg(spec) if spec is not None else vt.merge(prev or {}, _spec_arg(patch))
+    stats = vt.grown(name)["stats"] if exists else None
+    if copy_from:
+        base = vt.load(copy_from)
+        new = vt.merge(base, _spec_arg(patch)) if patch is not None else base
+    else:
+        new = _spec_arg(spec) if spec is not None else vt.merge(prev or {}, _spec_arg(patch))
     if prev is not None and prev == new:
         return f"plant {name}: nothing changed (still v{len(vt.history(name))})\n" + vt.report(name)
-    v = vt.save(name, new, note=note or ("grow_plant" if spec is not None else "patch"))
-    return f"saved plant {name} v{v}\n" + vt.report(name)
+    v = vt.save(name, new, note=note or (f"copy of {copy_from}" if copy_from else "grow_plant" if spec is not None else "patch"))
+    ch = vt.change_note(name, prev if not copy_from else vt.load(copy_from), stats)
+    return f"saved plant {name} v{v}" + (f" (a copy of {copy_from})" if copy_from else "") + "\n" + (ch + "\n" if ch else "") + vt.report(name)
 
 
 @mcp.tool(structured_output=False)
@@ -1815,26 +1825,30 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     {"op": "guide", "name", "path": [[x, y, z], ...] (m), "from_year", "until_year", "vigour"}: a drawn axis at any
     branch order (it starts from the nearest wood at from_year, lies exactly on the path, is never shed or bent, and
     branches grow from it; a path from [0, 0, 0] at year 0 is the trunk). {"op": "remove_guide", "name"}.
-    {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (clear the trunk), "from_year"}.
-    {"op": "clear_prunes"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
+    The same with "on": another guide's name (or "trunk") makes it leave THAT axis. Paths are splined through
+    their points ("straight": true keeps corners).
+    {"op": "prune", "box": [[lo], [hi]] | "sphere": [[c], r] | "above": z | "below": z (limbs LEAVING the trunk under
+    z) | "under": z (nothing but the trunk hangs under z)}: a clean cut on the finished tree, nothing else changes;
+    with "from_year" it is cut from that year on and the tree answers it (regrows elsewhere).
+    {"op": "remove_prune", "index"}, {"op": "clear_prunes"}. {"op": "envelope", "shape": ellipsoid | cone | column | dome, "radius", "top", "base",
     "soft"} (a soft crown shape; no other keys = remove). {"op": "force", "dir": [x, y, z], "strength", "orders"},
     {"op": "clear_forces"}. {"op": "set", "path": "habit.apical.0" | "age" | "leaves.length"..., "value"}.
     Returns the report after regrowing, with what changed in size."""
     from . import veg_tools as vt
-    before = vt.grown(name)["stats"]
+    before, prev = vt.grown(name)["stats"], vt.load(name)
     v = vt.edit(name, ops, note)
-    after = vt.grown(name)["stats"]
-    return (f"plant {name} v{v}: {before['nodes']} -> {after['nodes']} nodes, {before['height_m']} -> {after['height_m']} m\n"
-            + vt.report(name))
+    return f"plant {name} v{v}\n" + vt.change_note(name, prev, before) + "\n" + vt.report(name)
 
 
 @mcp.tool(structured_output=False)
-def look_plant(name: str, views: list[str] | None = None, azimuth: float = 0.0, size: int = 640,
+def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size: int = 640,
                foliage: str | None = None, sheet: bool = False):
     """Images of a plant (Blender, 5-40 s). views, any of: "clay" (the bare skeleton as clay: judge the structure
     here first), "bare" (in colour, no leaves), "leaf" (in leaf; these three are side views from `azimuth`, 0 = looking
-    along +y), "far" (from 70 m at eye height: how it reads in a scene), "near" (from 5 m looking up: trunk, bark,
-    forks), "close" (2.4 m of foliage: leaves and twigs). Default clay + leaf + far. foliage: "cards" (the twig
+    along +y), "far" (at eye height from far enough that the tree is half the picture: how it reads in a scene), "near"
+    (standing by it, 2-5 m, looking up: trunk, bark, forks), "close" (foliage: leaves and twigs), or a camera of your
+    own {"name", "eye": [x, y, z], "look": [x, y, z], "fov": deg, "clay": bool}. Default clay + leaf + far. The ground
+    is flat grass unless the spec has environment.ground {"slope": deg, "toward": [x, y]} (a hillside falling that way). foliage: "cards" (the twig
     atlas on cut cards: what a game draws; default) or "mesh" (real leaf meshes: close-ups, video).
     sheet=True returns the reference sheet instead (photo | outlines over each other | every view, with the numbers);
     it needs plant_reference first. Files are also written to workspace/plants/<name>/. Read the images."""
@@ -1843,6 +1857,33 @@ def look_plant(name: str, views: list[str] | None = None, azimuth: float = 0.0, 
     out = [_out(PILImage.open(p), None) for _, p in got]
     out.append("\n".join(f"{k}: {p}" for k, p in got) + "\n" + vt.report(name))
     return out
+
+
+@mcp.tool(structured_output=False)
+def look_plants(names: list[str], at: list | None = None, spacing: float | None = None, views: list | None = None,
+                azimuth: float = 0.0, size: int = 640, foliage: str | None = None):
+    """Several plants standing together in one picture (a stand, a hedge line, a tree with its neighbours): do they
+    belong together, do their sizes relate? at: [[x, y], ...] m per plant, or spacing m apart on a loose ring
+    (default 0.35 x the tallest). views: "far" (default), "near", "clay", "top", or a camera {"eye", "look", "fov"}.
+    The first plant's environment (ground slope) sets the scene. The same plant may be named more than once."""
+    from . import veg_tools as vt
+    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage)
+    out = [_out(PILImage.open(p), None) for _, p in got]
+    out.append("\n".join(f"{k}: {p}" for k, p in got))
+    return out
+
+
+@mcp.tool(structured_output=False)
+def get_plant(name: str = "", species: str = "") -> str:
+    """A plant's spec as stored ("own"), what it RESOLVES to once its species preset and the defaults are under it
+    ("resolved": every habit, leaf, twig and bark value actually in force), what each number usually is
+    ("habit_ranges", "leaf_twig_ranges") and how many growth steps its age makes. Read this before overriding
+    anything: an override replaces the resolved value, and per-order lists are replaced whole. With `species` and
+    no name: that preset resolved (to see what a species gives before using it)."""
+    from . import veg_tools as vt
+    if not name and not species:
+        raise ValueError("give a plant's name, or species=<preset> to see a preset")
+    return json.dumps(vt.describe(name or None, species or None), indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
 
 
 @mcp.tool(structured_output=False)
@@ -1875,21 +1916,27 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 
 
 @mcp.tool(structured_output=False)
-def export_plant(name: str, out_dir: str | None = None) -> str:
+def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None) -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
     twig atlas with alpha MASK, double sided, COLOR_0 = a per-twig tint; the atlas's mask texture is listed in the
-    material's extras). One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
+    material's extras). triangles: a budget for the whole plant (a game tree: 10-40k; without it everything grown is
+    written, often 100-400k): the thinnest wood is left out and branches get fewer sides, twigs are thinned and the
+    rest drawn larger. One LOD for now: LODs, wind data and seasons are not exported yet. Returns triangle counts."""
     from . import veg_tools as vt
-    c = vt.export(name, out_dir)
-    return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): wood {c['wood_triangles']} triangles, foliage "
-            f"{c['foliage_triangles']} triangles" + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
+    c = vt.export(name, out_dir, triangles)
+    return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): wood {c['wood_triangles']} triangles"
+            + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")
+            + f", foliage {c['foliage_triangles']} triangles"
+            + (f" ({c['twigs_kept']:.0%} of the twigs, drawn larger)" if c["twigs_kept"] < 1 else "")
+            + (f", atlas {c['atlas_px']} px" if "atlas_px" in c else "")
             + "\nNot in this file yet: LODs, wind channels, season variants, a collision proxy.")
 
 
 @mcp.tool(structured_output=False)
 def plant_history(name: str, revert_to: int | None = None) -> str:
-    """List a plant's versions, or restore one (saved as a new version, so nothing is lost)."""
+    """List a plant's versions (plant_history(name)), or restore one: plant_history(name, revert_to=3) saves version
+    3's spec again as a new version, so nothing is lost."""
     from . import veg_tools as vt
     if revert_to is not None:
         v = vt.revert(name, revert_to)

@@ -5,9 +5,17 @@ model (buds competing for light, year by year) makes the skeleton; then you dire
 artist does (draw limbs, prune, bend, shape the crown) and it regrows around your edits. The same spec always grows
 the same tree. Units are metres, Z up, the trunk's foot at [0, 0, 0]; "azimuth 0" looks along +y.
 
-Tools: `grow_plant` (create / change / report), `edit_plant` (guides, prunes, envelope, forces), `look_plant`
-(images), `plant_reference` (measure against a photo, optionally fit), `export_plant` (GLB), `plant_history`.
-`grow_plant(name="")` lists the plants and the species presets.
+Tools: `get_plant` (the stored spec, what it resolves to, and what each number usually is), `grow_plant` (create /
+change / copy / report), `edit_plant` (guides, prunes, envelope, forces), `look_plant` (images of one plant),
+`look_plants` (several standing together), `plant_reference` (measure against a photo, optionally fit),
+`export_plant` (GLB, with a triangle budget), `plant_history` (`plant_history(name)` lists versions,
+`plant_history(name, revert_to=3)` restores one). `grow_plant(name="")` lists the plants and the species presets.
+
+**Before overriding anything, read it:** `get_plant(species="birch")` or `get_plant(name)` shows every value in
+force (the preset's and the defaults') with its usual range. An override REPLACES the resolved value; a per-order
+list is replaced whole (to change the limbs' jitter, give the whole list). Change numbers by small steps from what
+is there: vigour 5.5 -> 7 on a broadleaf is 100k+ nodes and a metre-thick trunk. Every save echoes old -> new and
+what the tree did (nodes, height, trunk).
 
 ## Work in stages (don't skip ahead: foliage hides a bad skeleton)
 
@@ -46,7 +54,14 @@ wrong species (straight limbs read as a broom; an even cone reads as a witch's h
 - `age` (years): the main size control. Young trees are narrow and keep their leader; old broadleaves lose it.
 - `seed`: another individual of the same description (use for forest variants).
 - `height` (m, optional): scales the growth so an UNEDITED tree of this description is this tall; guides and prunes
-  stay in metres.
+  stay in metres. How size comes about: growth steps = age / `habit.years_per_step` (2-80); each step a shoot adds
+  up to `shoot_max` segments of `unit` x `length` m. So a 9 m tree in 14 steps has 0.65 m segments (coarse, few
+  nodes); for the same height with finer segments lower `years_per_step` (more steps) and let `height` rescale the
+  unit, or leave `height` out and set age and unit yourself. Without `height` the tree is as tall as it grows.
+- `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are). Without it the
+  girth comes from what the trunk carries plus `habit.ring` per year, so a denser crown means a fatter trunk.
+- Variants: `grow_plant(name="b", copy_from="a", patch={"seed": 2, "age": 14})`. Individuals of one stand share
+  everything but seed, age and small habit differences.
 - `season`: "summer" or "winter" (bare). `decay: {"min_radius": 0.05}`: a dead tree (wood thinner than this has
   fallen).
 
@@ -85,12 +100,21 @@ height, form, limb angles.
 
 ### environment
 
-- `setting`: "open" (default: low broad crown) or "forest" (a canopy rising with the tree: tall bare bole, narrow
-  high crown). `stand: {"gap": 0.18, "depth": 0.35, "strength": 1}` tunes it.
+- `setting`: "open" (default: low broad crown) or "forest" (the tree grows inside a closed stand of its own height:
+  the canopy's top rises with it, so only the top of the crown is in the light: a tall bare bole and a narrow
+  high crown). `stand` tunes it, all as shares of the tree's own height at the time: `gap` 0.18 = the radius of
+  open sky straight above it (smaller = narrower crown), `depth` 0.35 = how far below the canopy's top the light
+  reaches (smaller = higher crown base), `strength` 0-1.5 = how dark the stand is (lower it if the tree starves),
+  `floor` 0.5 = shade at ground level. For young trees in a grove use `strength` 0.5-0.8.
 - `wind: {"from": "w" | [x, y, 0], "strength": 0-1}`: the tree leans downwind, the windward side is thinned. 0.3 = an
   exposed field, 0.7 = a coastal hill. ("from w" blows toward +x.)
 - `light: [x, y, z]`: where the light comes from (a tree at a forest edge leans out).
-- `neighbours: [{"at": [x, y], "height": m, "radius": m}]`: crowns beside it that shade it.
+- `neighbours: [{"at": [x, y], "height": m, "radius": m}]`: single crowns beside it. Each shades everything lower
+  than its `height` (m, reached when the tree is ~80% of its age) within 2 x `radius` of `at`, and pushes growth
+  away. Give real sizes: a neighbour 1.6 m away with radius 4 covers the whole tree and starves it; for a close
+  neighbour use radius 1-2. The tree does not see other plants you made: neighbours are only these blobs.
+- `ground: {"slope": deg, "toward": [x, y]}`: the hillside it stands on, for the pictures (the ground falls toward
+  that direction). It does not change the growth: lean the trunk with a guide or wind.
 
 ### Direct control (edit_plant ops, or the same keys in a spec)
 
@@ -99,24 +123,42 @@ height, form, limb angles.
   the path exactly, reaching its end by `until_year`; it is never shed or bent, and branches grow from it by the
   species' own rules. Works at any order: a limb, then a branch drawn on that limb (a later `from_year`). A path
   starting at [0, 0, 0] with `from_year` 0 is the trunk itself (a leaning, forked or twisted trunk).
+  The path is splined through its points (`"straight": true` keeps corners). `"on": "<guide name>"` or
+  `"on": "trunk"` makes it leave that axis; otherwise it leaves the stoutest wood near its first point.
   The report says, per guide, its order, whether it was drawn to its end, and how many branches left it.
-- `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}]` (+ `from_year`). `below`
-  clears the trunk of limbs under that height; `above` tops the tree.
-- `envelope`: `{"shape": "ellipsoid" | "cone" | "column" | "dome", "radius", "top", "base", "soft"}`: a soft crown
-  shape (growth outside it is shaded out). Use sparingly: an envelope makes a clipped look.
+- `prune`: `[{"box": [[lo], [hi]]}, {"sphere": [[c], r]}, {"above": z}, {"below": z}, {"under": z}]`. `below`
+  removes limbs that LEAVE the trunk under that height (a limb starting higher may still hang lower); `under`
+  removes everything but the trunk under that height (a browse line, a lifted crown); `above` tops the tree.
+  A prune is a clean cut on the finished tree: nothing else changes. With `"from_year"` the cut is kept from that
+  year on while the tree grows, and it answers (the freed light and growth go elsewhere, so the rest changes too).
+  In a `grow_plant` patch `"prune": [...]` replaces the whole list and `null` removes all: use `edit_plant` ops
+  (`prune`, `remove_prune` by index, `clear_prunes`) to change one.
+- Edits that feed back into growth (habit numbers, guides, wind, a prune with `from_year`) change the whole tree
+  somewhat: buds compete for the same light and growth. Randomness is tied to each bud's lineage, so what an edit
+  doesn't shade or starve keeps its shape, but expect the node count to move.
+- `envelope`: `{"shape": "ellipsoid" | "cone" | "column" | "dome", "radius", "top", "base", "soft", "center": [x, y],
+  "lean": [dx, dy]}`: a soft crown shape (growth outside it is shaded out). `lean` moves the crown's middle that
+  far by its top: a wedge or flag swept downwind. Use sparingly: an envelope makes a clipped look.
 - `forces`: `[{"dir": [x, y, z], "strength": 0.1-0.5, "orders": [1, 2]}]`: a steady push on growing shoots (a
   tree reaching over water, limbs swept one way).
 
 ### leaves and bark
 
 - `leaves`: `shape` ("ovate", "triangular", "lanceolate", "lobed", or needles: "needle_tuft" round shoot ends,
-  "needle_spray" flat sprays), `length` (m), `width` (x length), `lobes`, `serrate`, `color` (sRGB), `hang`,
-  `twig: {"length", "leaves", "arrangement": "alternate" | "opposite" | "spiral", "per_m", "steps", "droop", "up",
-  "spread", "min_order", "where": "shoots" | "ends"}` (the twig is the unit of foliage: a short shoot with its
-  leaves; `per_m` twigs per metre of young shoot, on shoots up to `steps` growth steps old).
-  `card: {...}` overrides for the picture game cards are cut from.
-- `bark`: `kind` ("furrowed", "plates", "scales", "lenticel"), `color`, `twig_color`, `base_color` + `base_height`
-  (+ `base_kind`: an old dark foot), `upper_color` + `upper_from` (m).
+  "needle_spray" flat sprays), `length` (m: birch 0.05, hawthorn 0.04, oak 0.11), `width` (x length), `lobes`,
+  `serrate` 0-0.2, `color` (sRGB 0-1), `hang` 0-1 (leaves hang from the twig).
+  `twig` (the unit of foliage: a short shoot with its leaves): `length` 0.2-0.8 m, `leaves` 8-30 on it,
+  `arrangement` "alternate" | "opposite" | "spiral", `per_m` 3-12 twigs per metre of young shoot, `steps` 2-6 (shoots
+  up to this many growth steps old carry twigs: more = foliage deeper into the crown, a denser mass), `spread`
+  25-55 deg off the shoot, `up` -0.9..0.6 (+ twigs turn up to the light, - they hang), `droop` -0.1..1.2 (the
+  twig's own sag), `min_order` 1-2, `where` "shoots" | "ends". A thin crown: raise `steps` and `per_m` first.
+  `get_plant` lists these with the values in force.
+  Foliage is drawn as cards (each twig's picture on a cut card: what a game draws) by default;
+  `look_plant(foliage="mesh")` shows real leaf meshes. `card: {"twig": {...}, "leaf": {...}, "scale"}` changes what
+  the card's picture is made from.
+- `bark`: `kind` ("furrowed" ridges, "plates", "scales", "lenticel" smooth with dashes), `scale` (x the pattern's
+  size: 0.5 = finer, for a small tree's trunk), `color`, `twig_color`, `base_color` + `base_height` (+ `base_kind`:
+  an old dark foot), `upper_color` + `upper_from` (m).
 
 ## Reading the report
 
@@ -125,8 +167,12 @@ form (in leaf, two side views): width/height 1.17, bole 0.20 of the height, wide
 limbs: 5 first-order branches, leaving the trunk at 69 deg, their far halves 5 deg above level
 ```
 - width/height: 0.3-0.6 columnar/conic, 0.8-1 oval, > 1.1 spreading.
-- bole: where the crown starts (the lowest height a quarter as wide as the widest). A forest tree 0.5+, an
-  open-grown oak 0.2, a spruce 0.
+- bole: where the crown starts, measured as the lowest height a quarter as wide as the widest (so one long low
+  limb lowers it, and clearing the trunk can move it either way: read "the lowest shoot ends hang at" beside it).
+  A forest tree 0.5+, an open-grown oak 0.2, a spruce 0.
+- crown line: how far the crown's middle sits from the trunk's foot, as a share of its radius (0.5+ = swept).
+- shoot ends: the share pointing steeply down (weeping) or up.
+- trunk DIAMETER is at the foot, with its flare.
 - limbs' far-half elevation: ~70 = a vase, ~40 = spreading, ~5 = level, negative = weeping.
 - WARNINGS name what to change.
 
@@ -144,7 +190,16 @@ outline; it says nothing about branch character or foliage: look.
 - A guide "stops short": more years (`until_year`), more `vigour`, or a shorter path.
 - A wind-bent tree lies flat: lower the wind's strength or `force_orders[0]`.
 
+## A stand or a group
+
+Make one individual, then copies: `grow_plant(name="birch_b", copy_from="birch_a", patch={"seed": 2, "age": 13})`.
+Give them the same `environment` (e.g. `setting: "forest"`). See them together with
+`look_plants(names=[...], spacing=2.5)`: the only way to judge whether they belong together. Export each
+(`export_plant(name, triangles=12000)`).
+
 ## Not built yet
 
-LODs, wind animation data, autumn/snow/wet variants, collision proxies, shrubs, grass, flowers, palms, style
-sheets (blob to photoreal), forest sets as one call (use `seed` and `age` per plant for now).
+Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
+proxies; shrubs, grass, flowers, palms; style sheets (blob to photoreal); a multi-stem base, exposed roots, burrs,
+fluted trunks, deadwood on a live tree; thorns, flowers and fruit on twigs; a tree that sees the other plants you
+made (use `setting`/`neighbours`).

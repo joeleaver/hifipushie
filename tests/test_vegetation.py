@@ -7,6 +7,11 @@ from hifipushie import veg_bark, veg_leaf, veg_mesh, vegetation as v
 SMALL = {"species": "birch", "age": 22}
 
 
+def _curve(path, T):
+    """The curve a guide follows: the drawn points on a Catmull-Rom spline, as the model resamples it."""
+    return v._path(np.asarray(path, float) / T["unit"])[0] * T["unit"]
+
+
 def _polyline_dist(p, P):
     best = 1e9
     for a, b in zip(P[:-1], P[1:]):
@@ -43,8 +48,10 @@ def test_guides_any_order_exact_and_regrown():
         assert T["axes"][ai]["order"] == order, (name, T["axes"][ai])
         nodes = np.flatnonzero((T["axis"] == ai) & T["pin"])
         assert len(nodes) > 5
-        assert max(_polyline_dist(T["pos"][n], np.array(path, float)) for n in nodes) < 1e-6
+        assert max(_polyline_dist(T["pos"][n], _curve(path, T)) for n in nodes) < 1e-6
         assert np.linalg.norm(T["pos"][nodes[-1]] - np.array(path[-1])) < 0.05  # drawn to its end
+        for q in path[1:]:  # the curve goes through the drawn points
+            assert _polyline_dist(np.array(q, float), _curve(path, T)) < 1e-6
         kids = np.isin(T["parent"], nodes) & ~np.isin(np.arange(len(T["parent"])), nodes)
         assert kids.sum() >= 2, name  # growth goes on from the drawn axis
     # the second guide grew out of the first
@@ -57,7 +64,42 @@ def test_drawn_trunk():
     T = v.grow({**SMALL, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 16}}})
     assert T["axes"][T["guides"]["trunk"]]["order"] == 0
     nodes = np.flatnonzero(T["pin"])
-    assert max(_polyline_dist(T["pos"][n], np.array(path, float)) for n in nodes) < 1e-6
+    assert max(_polyline_dist(T["pos"][n], _curve(path, T)) for n in nodes) < 1e-6
+    S = v.grow({**SMALL, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 16, "straight": True}}})
+    assert max(_polyline_dist(S["pos"][n], np.array(path, float)) for n in np.flatnonzero(S["pin"])) < 1e-6
+
+
+def test_guide_on_a_guide_and_stout_wood():
+    limb = [[0, 0, 3], [2.5, 0, 4.5], [5.5, 0, 5.2]]
+    sub = [[2.5, 0, 4.5], [2.8, 0, 6.5], [2.6, 0, 8.5]]
+    T = v.grow({**SMALL, "age": 30, "guides": {"limb": {"path": limb, "from_year": 6, "until_year": 18},
+                                               "sub": {"path": sub, "from_year": 16, "until_year": 26, "on": "limb"}}})
+    first = T["axes"][T["guides"]["sub"]]["node"]
+    assert T["axis"][T["parent"][first]] == T["guides"]["limb"] and T["axes"][T["guides"]["sub"]]["order"] == 2
+    # a limb drawn from a point on the trunk leaves the TRUNK (order 1), not a twig that happens to pass there
+    L = v.grow({**SMALL, "age": 30, "guides": {"low": {"path": [[0, 0, 4], [2, 0, 4.6], [4, 0, 4.8]], "from_year": 20}}})
+    assert L["axes"][L["guides"]["low"]]["order"] == 1
+
+
+def test_cuts_are_local_and_girth_is_settable():
+    T0 = v.grow(SMALL)
+    box = [[1.0, -30, 0], [30, 30, 40]]
+    T = v.grow({**SMALL, "prune": [{"box": box}]})
+    keep = ~np.isin(T0["key"], T["key"])
+    assert T["stats"]["pruned_nodes"] == keep.sum() > 10
+    same = np.isin(T0["key"], T["key"])
+    assert np.array_equal(T0["pos"][same], T["pos"]) and np.allclose(T0["radius"][same], T["radius"])  # nothing else moved
+    R = v.grow({**SMALL, "prune": [{"box": box, "from_year": 8}]})  # with a year it is a cut the tree answers
+    assert not np.isin(R["key"], T0["key"]).all()
+    U = v.grow({**SMALL, "prune": [{"under": 4.0}]})
+    assert (U["pos"][U["order"] > 0][:, 2] >= 4.0).all() and (U["order"] == 0).sum() == (T0["order"] == 0).sum()
+    G = v.grow({**SMALL, "trunk_diameter": 0.5})
+    assert abs(G["stats"]["trunk_diameter_m"] - 0.5) < 0.02 * 1.6  # (the foot's flare sits on top)
+    assert np.allclose(G["radius"][G["ends"]], T0["radius"][T0["ends"]], rtol=0.35)  # twigs are left as they are
+    lean = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6, "lean": [4, 0]}})
+    up = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6}})
+    hi = lambda t: t["pos"][t["pos"][:, 2] > 0.6 * t["height"], 0].mean()
+    assert hi(lean) > hi(up) + 0.8
 
 
 def test_prune_and_envelope():
@@ -109,7 +151,7 @@ def test_height_sets_the_unit():
     g = {"limb": {"path": [[0, 0, 2], [2, 0, 3], [4, 0, 3.2]], "from_year": 5, "until_year": 15}}
     T = v.grow({**SMALL, "height": 9.0, "guides": g})  # a guide stays in metres whatever the unit
     nodes = np.flatnonzero(T["pin"])
-    assert max(_polyline_dist(T["pos"][n], np.array(g["limb"]["path"], float)) for n in nodes) < 1e-6
+    assert max(_polyline_dist(T["pos"][n], _curve(g["limb"]["path"], T)) for n in nodes) < 1e-6
 
 
 def test_decay_and_seasons():

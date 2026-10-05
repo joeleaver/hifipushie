@@ -26,20 +26,26 @@ def _euler(frames: np.ndarray) -> np.ndarray:
 BARK_OF = {"furrowed": "furrowed", "plates": "plates", "lenticel": "lenticel", "scales": "scales"}
 
 
-def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
-           keep: str | None = None) -> dict:
-    """Render views of a grown tree in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on
-    cut cards: what a game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`,
-    else cards. `keep` = a folder for the atlas and bark maps (else a temp one). Returns timings and counts."""
+def ground_z(spec: dict, at) -> float:
+    """The ground's height at [x, y] on the plant's hillside (environment.ground: slope deg, falling `toward`)."""
+    g = (spec.get("environment") or {}).get("ground") or {}
+    if not g.get("slope"):
+        return 0.0
+    t = np.asarray(g.get("toward", [1, 0]), float)
+    t = t / max(np.linalg.norm(t), 1e-9)
+    return float(-math.tan(math.radians(g["slope"])) * (np.asarray(at, float)[:2] @ t))
+
+
+def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None) -> tuple[dict, dict]:
+    """One plant's arrays (an npz) and its part of the Blender job; also its counts."""
     from . import veg_bark, veg_leaf
     s = tree["spec"]
     lf = s["leaves"]
     foliage = foliage or lf.get("foliage", "cards")
-    t0 = time.perf_counter()
     bark = dict(s.get("bark") or {})
-    kind = bark.get("kind", "furrowed")
-    bm = veg_bark.bark_maps(kind, 256, seed=int(s.get("seed", 1)))
-    M = veg_mesh.tubes(tree, tile=bm["tile"])
+    bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
+    sc = float(bark.get("scale", 1.0))
+    M = veg_mesh.tubes(tree, tile=[bm["tile"][0] * sc, bm["tile"][1] * sc])
     tw = veg_leaf.place(tree)
     arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
@@ -48,7 +54,7 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         if foliage == "cards":
             at = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
             nv = len(at["cards"])
-            var = tw["variant"] % nv if nv <= int(tw["variant"].max()) else (vegetation._child(tw["key"], 11) % np.uint64(nv)).astype(int)
+            var = (vegetation._child(tw["key"], 11) % np.uint64(nv)).astype(int)
             for i, c in enumerate(at["cards"]):
                 arrays.update({f"card{i}_V": c["V"], f"card{i}_F": c["F"], f"card{i}_uv": c["uv"]})
             info.update(leaf_triangles=int(len(tw["pos"]) * at["triangles"]), card_fill=round(at["fill"], 2),
@@ -64,18 +70,38 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
             info["leaf_triangles"] = int(sum(per[v] for v in var))
         arrays.update(tw_pos=tw["pos"], tw_rot=_euler(tw["frame"]), tw_scale=tw["scale"], tw_var=var,
                       tw_tint=vegetation._u(tw["key"], 77))
+    npz = tmp / f"plant{tag}.npz"
+    np.savez(npz, **arrays)
+    bark["maps"] = veg_bark.write(bm, str(out / f"bark{tag}"))
+    if bark.get("base_kind"):
+        bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / f"bark_base{tag}"))
+    pj = {"npz": str(npz), "bark": bark,
+          "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal") if k in lf},
+          "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None}
+    return pj, info
+
+
+def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
+           keep: str | None = None, others: list | None = None) -> dict:
+    """Render views in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on cut cards: what a
+    game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`, else cards.
+    others: [(tree, [x, y], yaw deg)] more plants standing in the same scene (a stand). `keep` = a folder for the
+    atlas and bark maps (else a temp one). Returns timings and the first plant's counts."""
+    s = tree["spec"]
+    t0 = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="hifipushie-veg-") as tmp:
         out = Path(keep or tmp)
         out.mkdir(parents=True, exist_ok=True)
-        npz = Path(tmp) / "plant.npz"
-        np.savez(npz, **arrays)
-        bark["maps"] = veg_bark.write(bm, str(out / "bark"))
-        if bark.get("base_kind"):
-            bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / "bark_base"))
-        job = {"npz": str(npz), "views": views, "save": save, "bark": bark,
-               "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut") if k in lf},
-               "cards": veg_leaf.write_atlas(at, str(out / "foliage")) if at is not None else None,
-               **(s.get("look") or {})}
+        pj, info = _plant_job(tree, Path(tmp), out, "", foliage)
+        plants = [pj]
+        for i, (t_, at_, yaw_) in enumerate(others or []):
+            pj2, _ = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage)
+            pj2.update(at=list(at_), yaw=float(yaw_), z=ground_z(s, at_))
+            plants.append(pj2)
+        env = s.get("environment") or {}
+        job = {"plants": plants, "views": views, "save": save, **(s.get("look") or {})}
+        if env.get("ground"):
+            job["ground"] = {**(job.get("ground") or {}), **env["ground"]}
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(job))
         t1 = time.perf_counter()
@@ -83,7 +109,7 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
                             str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
-    info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2))
+    info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2), plants=len(plants))
     return info
 
 

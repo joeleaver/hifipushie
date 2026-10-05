@@ -97,7 +97,9 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
         at[:-1, 2] = np.repeat(seg / max(seg[-1], 1e-9), kk)
         at[:-1, 3] = np.repeat(rr, kk)
         at[-1] = [ax[nodes[0]], order[nodes[0]], 1.0, rr[-1]]
-        nu_ = max(1, int(round(2 * math.pi * float(np.mean(rr)) / tile[0])))  # whole bark tiles round the branch
+        # whole bark tiles round the branch, counted at its base (by its mean radius a long limb's thick end got one
+        # tile stretched round it: bark scales the size of cobbles)
+        nu_ = max(1, int(round(2 * math.pi * float(r0) / tile[0])))
         uv = np.empty((m * kk + 1, 2))
         uv[:-1, 0] = np.tile(np.arange(kk) / k * nu_, m)
         uv[:-1, 1] = np.repeat(seg / tile[1], kk) + (ax[nodes[0]] * 0.37) % 1.0

@@ -38,9 +38,14 @@ def _yup(v):
     return np.stack([v[:, 0], v[:, 2], -v[:, 1]], 1)
 
 
-def foliage_mesh(tree: dict, at: dict) -> dict:
-    """Every twig's card placed on the tree, as one mesh: V, F, uv, tint (per vertex)."""
+def foliage_mesh(tree: dict, at: dict, keep: float = 1.0) -> dict:
+    """Every twig's card placed on the tree, as one mesh: V, F, uv, tint (per vertex). keep < 1 draws that share of
+    the twigs (chosen by their own hash), each larger by 1 / sqrt(keep): the same cover from fewer cards."""
     tw = veg_leaf.place(tree)
+    if keep < 1 and len(tw["pos"]):
+        sel = vegetation._u(tw["key"], 91) < keep
+        tw = {k: v[sel] for k, v in tw.items()}
+        tw["scale"] = tw["scale"] * min(1.0 / np.sqrt(max(keep, 1e-6)), 2.5)
     if not len(tw["pos"]):
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0)}
     nv = len(at["cards"])
@@ -62,15 +67,39 @@ def foliage_mesh(tree: dict, at: dict) -> dict:
     return {"V": np.vstack(Vs), "F": np.vstack(Fs), "uv": np.vstack(Us), "tint": np.concatenate(Ts)}
 
 
-def write_glb(tree: dict, path: str, name: str = "plant") -> dict:
-    """Write the plant to `path` (.glb). Returns counts: triangles per mesh, texture sizes, bytes."""
+def write_glb(tree: dict, path: str, name: str = "plant", triangles: int | None = None) -> dict:
+    """Write the plant to `path` (.glb). Returns counts: triangles per mesh, texture sizes, bytes. `triangles` = a
+    budget: thin wood is left out and branches get fewer sides until the wood fits half of it; twigs are thinned
+    (the rest drawn larger) until the foliage fits the other half."""
     s = tree["spec"]
     bark = s.get("bark") or {}
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
-    W = veg_mesh.tubes(tree, tile=bm["tile"])
-    has_leaves = len(veg_leaf.place(tree)["pos"]) > 0
+    sc = float(bark.get("scale", 1.0))
+    tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
+    W = veg_mesh.tubes(tree, tile=tile)
+    n_tw = len(veg_leaf.place(tree)["pos"])
+    has_leaves = n_tw > 0
     at = veg_leaf.atlas(s["leaves"], bark.get("twig_color") or [0.45, 0.4, 0.35]) if has_leaves else None
-    L = foliage_mesh(tree, at) if at else None
+    keep, min_r = 1.0, 0.0
+    if triangles:
+        wood_budget = triangles * (0.5 if has_leaves else 1.0)
+        if len(W["F"]) > wood_budget:  # fewer sides first, then drop the thinnest axes
+            W = veg_mesh.tubes(tree, tile=tile, sides=(3, 8))
+            radii = np.sort(tree["radius"][1:])
+            lo_, hi_ = 0, len(radii) - 1
+            while len(W["F"]) > wood_budget and lo_ < hi_:
+                mid = (lo_ + hi_) // 2
+                Wm = veg_mesh.tubes(tree, tile=tile, sides=(3, 8), min_radius=float(radii[mid]))
+                if len(Wm["F"]) > wood_budget:
+                    lo_ = mid + 1
+                else:
+                    hi_, W, min_r = mid, Wm, float(radii[mid])
+                if hi_ - lo_ < max(2, len(radii) // 200):
+                    break
+        if has_leaves:
+            keep = float(min(1.0, (triangles - len(W["F"])) / max(n_tw * at["triangles"], 1)))
+            keep = max(keep, 0.02)
+    L = foliage_mesh(tree, at, keep) if at else None
     buf = bytearray()
     views, accessors, images, textures, materials, meshes, nodes = [], [], [], [], [], [], []
 
@@ -118,7 +147,8 @@ def write_glb(tree: dict, path: str, name: str = "plant") -> dict:
         "normalTexture": {"index": tex(_png(bm["normal"]), True)}})
     meshes.append({"name": "wood", "primitives": [prim(W["V"], W["F"], W["uv"], 0)]})
     nodes.append({"name": "wood", "mesh": 0})
-    counts = {"wood_triangles": int(len(W["F"])), "foliage_triangles": 0}
+    counts = {"wood_triangles": int(len(W["F"])), "foliage_triangles": 0, "twigs_kept": round(keep, 3),
+              "wood_min_radius_m": round(min_r, 4)}
     if L is not None and len(L["F"]):
         m = at["mask"]
         orm = np.stack([np.ones_like(m[..., 1]), m[..., 1], np.zeros_like(m[..., 1])], -1)

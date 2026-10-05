@@ -271,7 +271,8 @@ def card_material(name, leaf, cards):
     L.new(_math(N, L, "MULTIPLY", _tint(N, L), sepm.outputs[2]), base.inputs["Scale"])
     nm = N.new("ShaderNodeNormalMap")
     nm.uv_map = "uv"
-    nm.inputs["Strength"].default_value = leaf.get("card_normal", 0.7)
+    # (off by default: on instanced cards the tangent frame turned leaves near black from some sides)
+    nm.inputs["Strength"].default_value = leaf.get("card_normal", 0.0)
     L.new(n_.outputs["Color"], nm.inputs["Color"])
     L.new(nm.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
     _leaf_out(m, N, L, base.outputs[0], c.outputs["Alpha"], sepm.outputs[0], sepm.outputs[1], leaf)
@@ -364,37 +365,42 @@ def _world(sc, job):
     return w, bg, sky
 
 
-def build(job):
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    sc = bpy.context.scene
-    d = np.load(job["npz"])
-    lo, hi = d["V"].min(0), d["V"].max(0)
+def add_plant(pj, tag, clay):
+    """One plant from its npz at pj["at"] ([x, y], turned pj["yaw"] deg): returns its objects and its points."""
+    d = np.load(pj["npz"])
+    at = np.array(list(pj.get("at", [0, 0])) + [float(pj.get("z", 0.0))])
+    yaw = math.radians(pj.get("yaw", 0.0))
+    c, s_ = math.cos(yaw), math.sin(yaw)
+    Rz = np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1.0]])
+    place = lambda P: P @ Rz.T + at
+    V = place(d["V"])
     has_tw = "tw_pos" in d and len(d["tw_pos"])
-    if has_tw:
-        lo, hi = np.minimum(lo, d["tw_pos"].min(0) - 0.3), np.maximum(hi, d["tw_pos"].max(0) + 0.3)
-    bk = job.get("bark") or {}
-    bark = bark_material("bark", bk, float(hi[2]))
-    twig_wood = _flat("twig_wood", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
-    clay = _flat("clay", [0.8, 0.78, 0.74], 0.9)
-    wood = _mesh("wood", d["V"], d["F"], d["uv"] if "uv" in d else None)
+    bk = pj.get("bark") or {}
+    bark = bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
+    twig_wood = _flat(f"twig_wood{tag}", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
+    wood = _mesh(f"wood{tag}", V, d["F"], d["uv"] if "uv" in d else None)
     a = wood.data.attributes.new("tan", "FLOAT_VECTOR", "POINT")
-    a.data.foreach_set("vector", d["tan"].astype(np.float32).ravel())
+    a.data.foreach_set("vector", (d["tan"] @ Rz.T).astype(np.float32).ravel())
     a = wood.data.attributes.new("radius", "FLOAT", "POINT")
     a.data.foreach_set("value", d["radius"].astype(np.float32))
     wood.data.materials.append(bark)
     wood.data.polygons.foreach_set("use_smooth", np.ones(len(wood.data.polygons), bool))
     twig_obs = []
+    pts_all = [V]
     if has_tw:
-        cards = job.get("cards")
-        mat = card_material("cards", job.get("leaf") or {}, cards) if cards else leaf_material("leaf", job.get("leaf") or {})
+        from mathutils import Euler, Matrix
+        cards = pj.get("cards")
+        mat = card_material(f"cards{tag}", pj.get("leaf") or {}, cards) if cards else leaf_material(f"leaf{tag}", pj.get("leaf") or {})
         nv = int(d["tw_var"].max()) + 1
+        tw_pos = place(d["tw_pos"])
+        pts_all.append(tw_pos)
         for i in range(nv):
             if cards:
-                proto = _mesh(f"card_{i}", d[f"card{i}_V"], d[f"card{i}_F"], d[f"card{i}_uv"])
+                proto = _mesh(f"card{tag}_{i}", d[f"card{i}_V"], d[f"card{i}_F"], d[f"card{i}_uv"])
                 proto.data.materials.append(mat)
                 proto.data.polygons.foreach_set("use_smooth", np.ones(len(proto.data.polygons), bool))
             else:
-                proto = _mesh(f"twig_{i}", d[f"twig{i}_V"], d[f"twig{i}_F"])
+                proto = _mesh(f"twig{tag}_{i}", d[f"twig{i}_V"], d[f"twig{i}_F"])
                 proto.data.materials.append(twig_wood)
                 proto.data.materials.append(mat)
                 proto.data.polygons.foreach_set("material_index", d[f"twig{i}_mat"].astype(np.int32))
@@ -403,16 +409,35 @@ def build(job):
             proto.hide_render = True
             proto.hide_viewport = True
             sel = d["tw_var"] == i
-            pts = _mesh(f"twigs_{i}", d["tw_pos"][sel], np.zeros((0, 3), np.int32))
+            pts = _mesh(f"twigs{tag}_{i}", d["tw_pos"][sel], np.zeros((0, 3), np.int32))
             for nm_, kind, key, field in (("rot", "FLOAT_VECTOR", "tw_rot", "vector"), ("size", "FLOAT", "tw_scale", "value"),
                                           ("tint", "FLOAT", "tw_tint", "value")):
-                at = pts.data.attributes.new(nm_, kind, "POINT")
-                at.data.foreach_set(field, d[key][sel].astype(np.float32).ravel())
+                at_ = pts.data.attributes.new(nm_, kind, "POINT")
+                at_.data.foreach_set(field, d[key][sel].astype(np.float32).ravel())
             _instancer(pts, proto)
+            pts.location = at.tolist()  # (the instances' own frames ride the object's turn)
+            pts.rotation_euler = (0, 0, yaw)
             twig_obs.append(pts)
+    return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": np.vstack(pts_all)}
+
+
+def build(job):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    clay = _flat("clay", [0.8, 0.78, 0.74], 0.9)
+    plants = [add_plant(pj, f"_{i}" if i else "", clay) for i, pj in enumerate(job["plants"])]
+    allp = np.vstack([p_["points"] for p_ in plants])
+    lo, hi = allp.min(0) - 0.3, allp.max(0) + 0.3
+    twig_obs = [o for p_ in plants for o in p_["twigs"]]
     R = float(max(hi[0] - lo[0], hi[1] - lo[1], hi[2]))
-    bpy.ops.mesh.primitive_circle_add(vertices=64, radius=60 * R, fill_type="NGON", location=(0, 0, 0))
+    bpy.ops.mesh.primitive_circle_add(vertices=64, radius=max(60 * R, 400.0), fill_type="NGON", location=(0, 0, 0))
     ground = bpy.context.object
+    gj = job.get("ground") or {}
+    if gj.get("slope"):  # a hillside: the ground falls toward `toward` at `slope` deg (the plant's foot stays put)
+        tw_ = Vector(list(gj.get("toward", [1, 0])) + [0]).normalized()
+        axis = Vector((0, 0, 1)).cross(tw_)
+        from mathutils import Matrix
+        ground.rotation_euler = Matrix.Rotation(math.radians(gj["slope"]), 4, axis).to_euler()
     ground_mat = ground_material("ground", job.get("ground") or {})
     clay_ground = _flat("clay_ground", [0.12, 0.12, 0.12], 1.0)
     ground.data.materials.append(ground_mat)
@@ -448,7 +473,6 @@ def build(job):
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
     sc.collection.objects.link(cam)
     sc.camera = cam
-    allp = d["V"] if not has_tw else np.vstack([d["V"], d["tw_pos"]])
     sky_links = [(l.from_socket, l.to_socket) for l in w.node_tree.links if l.to_socket == bg.inputs[0]]
     for v in job["views"]:
         wpx, hpx = v.get("size", [700, 900])
@@ -460,7 +484,7 @@ def build(job):
             cam.data.type = "PERSP"
             cam.data.sensor_fit = "VERTICAL"
             cam.data.angle = math.radians(v.get("fov", 40))
-            cam.data.clip_start, cam.data.clip_end = 0.05, 100 * R
+            cam.data.clip_start, cam.data.clip_end = 0.05, max(100 * R, 1000.0)
         else:
             az, el = math.radians(v.get("azimuth", 0)), math.radians(v.get("elevation", 0))
             back = Vector((-math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)))
@@ -475,10 +499,10 @@ def build(job):
             else:
                 cen = Vector(right) * float((xs.min() + xs.max()) / 2) + Vector((0, 0, hi[2] / 2))
                 need = max(float(xs.max() - xs.min()) * big / wpx, float(hi[2]) * big / hpx) * 1.08
-            cam.location = cen + back * (4 * R)
+            cam.location = cen + back * (4 * R + 10)
             cam.data.type = "ORTHO"
             cam.data.ortho_scale = need
-            cam.data.clip_start, cam.data.clip_end = 0.1, 20 * R
+            cam.data.clip_start, cam.data.clip_end = 0.1, 20 * R + 50
         isclay = bool(v.get("clay"))
         if v.get("sun"):
             aim_sun(*v["sun"])
@@ -496,7 +520,8 @@ def build(job):
                 w.node_tree.links.new(a_, b_)
             bg.inputs[1].default_value = job.get("sky_strength", 0.07) if sky_links else 0.6
         ground.data.materials[0] = clay_ground if isclay else ground_mat
-        wood.data.materials[0] = clay if isclay else bark
+        for p_ in plants:
+            p_["wood"].data.materials[0] = clay if isclay else p_["bark"]
         sun.data.energy = 7.0 if isclay else job.get("sun_energy", 3.6)
         sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "AgX")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)
