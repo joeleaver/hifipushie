@@ -1,0 +1,160 @@
+{
+ "about": "Ox-eye daisy: a few flowers on thin stalks 30-50 cm over a rosette of spoon-shaped leaves; white rays round a yellow eye, facing the sky",
+ "plant": "clump",
+ "age": 1,
+ "leaves": {
+  "shape": "petal",
+  "length": 0.09,
+  "width": 0.3,
+  "fold": 0.15,
+  "curl": 0.2,
+  "petiole": 0.0,
+  "serrate": 0.15,
+  "color": [
+   0.33,
+   0.48,
+   0.2
+  ],
+  "translucency": 0.4,
+  "evergreen": true,
+  "twig": {
+   "length": 0.02,
+   "leaves": 7,
+   "arrangement": "basal",
+   "angle": 75,
+   "droop": 0.0,
+   "radius": 0.0015,
+   "light": 1.0,
+   "variants": 2
+  },
+  "card": {
+   "variants": 2,
+   "size": 256,
+   "cross": 1,
+   "cup": 0.1
+  },
+  "parts": {
+   "head": {
+    "twig": {
+     "length": 0.004,
+     "leaves": 0,
+     "radius": 0.001,
+     "flower": {
+      "form": "ray",
+      "petals": 21,
+      "radius": 0.022,
+      "color": [
+       0.96,
+       0.96,
+       0.93
+      ],
+      "center": [
+       0.93,
+       0.74,
+       0.12
+      ],
+      "center_size": 0.34
+     }
+    },
+    "card": {
+     "variants": 2,
+     "size": 256,
+     "cup": -0.15
+    }
+   },
+   "stemleaf": {
+    "shape": "lanceolate",
+    "length": 0.04,
+    "width": 0.25,
+    "twig": {
+     "length": 0.05,
+     "leaves": 3,
+     "arrangement": "alternate",
+     "angle": 40
+    },
+    "card": {
+     "variants": 1,
+     "size": 128
+    }
+   }
+  }
+ },
+ "bark": {
+  "kind": "lenticel",
+  "color": [
+   0.4,
+   0.5,
+   0.24
+  ],
+  "twig_color": [
+   0.42,
+   0.52,
+   0.26
+  ]
+ },
+ "clump": {
+  "layers": [
+   {
+    "name": "rosette",
+    "part": "main",
+    "count": 7,
+    "ring": [
+     0.0,
+     0.02
+    ],
+    "lean": [
+     62,
+     84
+    ],
+    "scale": [
+     1.2,
+     1.8
+    ],
+    "facing": "up"
+   },
+   {
+    "name": "stalks",
+    "part": "head",
+    "count": 4,
+    "ring": [
+     0.0,
+     0.04
+    ],
+    "lean": [
+     4,
+     20
+    ],
+    "stem": [
+     0.2,
+     0.36
+    ],
+    "stem_radius": 0.002,
+    "bend": 0.7,
+    "tilt": 78,
+    "scale": [
+     0.85,
+     1.15
+    ]
+   },
+   {
+    "name": "leaves",
+    "part": "stemleaf",
+    "count": 8,
+    "on": "stalks",
+    "along": [
+     0.15,
+     0.7
+    ],
+    "lean": [
+     30,
+     60
+    ],
+    "scale": [
+     0.7,
+     1.1
+    ],
+    "facing": "up"
+   }
+  ]
+ }
+}

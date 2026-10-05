@@ -14,7 +14,7 @@ import numpy as np
 from .vegetation import _child, _norm, _u
 
 LEAF = {"shape": "ovate", "length": 0.07, "width": 0.55, "lobes": 4, "fold": 0.25, "curl": 0.25, "petiole": 0.15,
-        "serrate": 0.0, "needle_width": 0.1}  # needle_width: a needle's width / length (far wider than life: a mesh
+        "serrate": 0.0, "needle_width": 0.1, "bend": 0.0}  # bend: the blade curves sideways (a grass blade's arc), x its length  # needle_width: a needle's width / length (far wider than life: a mesh
 # needle has to cover what hundreds of real ones do)
 TWIG = {"length": 0.3, "leaves": 9, "arrangement": "alternate", "angle": 55, "droop": 0.15, "side_shoots": 0,
         "variants": 3, "per_m": 5.0, "where": "shoots", "spread": 45, "up": 0.3, "scale": [0.8, 1.15], "radius": 0.0025,
@@ -62,7 +62,8 @@ def leaf_mesh(leaf: dict) -> dict:
     y = lf["petiole"] * L + t * L
     zmid = -lf["curl"] * L * t ** 2
     zedge = zmid + lf["fold"] * w
-    V = np.vstack([np.c_[np.zeros(k + 1), y, zmid], np.c_[-w, y, zedge], np.c_[w, y, zedge],
+    xb = lf["bend"] * L * t ** 2
+    V = np.vstack([np.c_[xb, y, zmid], np.c_[xb - w, y, zedge], np.c_[xb + w, y, zedge],
                    [[-0.004 * L / 0.07, 0, 0], [0.004 * L / 0.07, 0, 0]]])
     F = []
     for i in range(k):
@@ -287,7 +288,8 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                     sc = sc0 * (0.92 + 0.16 * rnd(600 + q)) * min(u_s / 0.18, 1.0) ** 0.6 * (0.35 if terminal else 1.0)
                 if tw["taper"]:
                     sc = sc * (1 - float(tw["taper"]) * u_s)
-                V = (M["V"] * sc) @ R.T + p
+                Vm = M["V"] * ([-1, 1, 1] if lf["bend"] and rnd(650 + q) < 0.5 else [1, 1, 1])  # arcs to either side
+                V = (Vm * sc) @ R.T + p
                 tone = 0.82 + 0.3 * rnd(700 + q)
                 add(V, M["F"], 1, 1.0, lid)
                 Cs[-1] = M["shade"] * tone

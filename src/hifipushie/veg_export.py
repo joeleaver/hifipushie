@@ -576,9 +576,10 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             thr = max(0.05, 0.3 * float(t["radius"][1]))
             C = veg_mesh.tubes(t, sides=(4, 5), min_radius=thr, simplify=1.5, collar=0, tile=tile)
             z4 = np.zeros(len(C["V"]))
-            meshes.append({"name": f"{nm}_collision", "primitives": [prim(C["V"], C["F"], C["uv"], M_BARK, (z4, z4, z4, z4))]})
-            nodes.append({"name": f"{nm}_collision", "mesh": len(meshes) - 1, "extras": {"collision": True}})
-            c0["collision_node"] = len(nodes) - 1
+            if len(C["F"]):  # (a shrub's stems can be thinner than anything a player bumps into)
+                meshes.append({"name": f"{nm}_collision", "primitives": [prim(C["V"], C["F"], C["uv"], M_BARK, (z4, z4, z4, z4))]})
+                nodes.append({"name": f"{nm}_collision", "mesh": len(meshes) - 1, "extras": {"collision": True}})
+                c0["collision_node"] = len(nodes) - 1
             c0["collision_triangles"] = int(len(C["F"]))
         per.append(c0)
     counts = {"wood_triangles": sum(c["wood_triangles"] for c in per), "foliage_triangles": sum(c["foliage_triangles"] for c in per),

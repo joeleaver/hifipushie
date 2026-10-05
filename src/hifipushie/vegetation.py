@@ -80,6 +80,7 @@ DEFAULT = {
         "uneven": [0.0],  # per order: each axis's own pace, +- this share of the segment length (ragged outlines)
         "slowing": [0],  # per order: steps after which an axis's shoots are half as long (0 = never): old branchlets creep
         "tip_life": [0],  # per order: steps an axis keeps extending (0 = for ever). Spruce branchlets, spur shoots
+        "stems": 1, "stem_angle": 22,  # stems from the foot (a shrub, a hazel stool, a multi-stemmed birch) and how far they lean out, deg
         "clear": 0.0,  # m of trunk that never branches (the bole of a tree that grew up browsed or shaded)
     },
     "environment": {"setting": "open"},
@@ -125,6 +126,7 @@ HABIT_INFO = {
     "flare_height": "m the flare fades over",
     "uneven": "0-0.5 per order: every axis grows at its own pace, +- this share (a ragged outline instead of a turned cone)",
     "slowing": "per order: growth steps after which an axis's new segments are half as long, a third at twice that... (0 = never). A spruce's hanging branchlets 3-5: they creep on for decades, so their young needles stay near the limb all along it",
+    "stems": "1-12 stems rising from the foot: a shrub or a multi-stemmed tree (each is a trunk: order 0)", "stem_angle": "deg the extra stems lean outward at the foot (10 tight, 35 open)",
     "tip_life": "per order: growth steps an axis keeps extending, 0 = for ever (short-lived hanging branchlets: 6-10; limbs that stop reaching: 20-30)", "clear": "0-6 m of trunk that never branches",
 }
 
@@ -717,6 +719,13 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     if trunk is None:  # the first internode: straight up
         T.add(1, pos=[0, 0, 1.0], off=[0, 0, 1.0], parent=0, main=True, key=_child(_mix(seed), 0), tip=True,
               nb=0, guide=-1, R=np.eye(3), vig=1.0)
+        for si_ in range(1, int(h["stems"])):  # more stems from the same foot, leaning out round it
+            a_ = 2.399963 * si_ + 6.283 * float(_u(_child(_mix(seed), 300), 1))
+            t_ = math.radians(float(h["stem_angle"]) * (0.6 + 0.8 * float(_u(_child(_mix(seed), 300 + si_), 2))))
+            d_ = [math.sin(t_) * math.cos(a_), math.sin(t_) * math.sin(a_), math.cos(t_)]
+            axes.append({"order": 0, "node": T.n, "guide": None, "born": 0})
+            T.add(1, pos=d_, off=d_, parent=0, main=True, key=_child(_mix(seed), 300 + si_), tip=True,
+                  nb=0, guide=-1, R=np.eye(3), vig=1.0, axis=len(axes) - 1)
     else:  # a drawn trunk: its path is the seedling
         trunk.update(node=0, axis=0)
         axes[0]["guide"] = trunk["name"]

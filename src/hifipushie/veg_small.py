@@ -19,7 +19,7 @@ from .vegetation import _child, _mix, _u
 
 LAYER = {"part": "main", "count": 12, "ring": [0.0, 0.1], "lean": [0, 25], "scale": [0.8, 1.2], "stem": [0.0, 0.0],
          "stem_radius": 0.004, "bend": 0.3, "facing": "auto", "on": None, "along": [1.0, 1.0], "turn": 0.0,
-         "trunk": False, "segments": 0, "sink": 0.02}
+         "trunk": False, "segments": 0, "sink": 0.02, "tilt": 0.0}
 LAYER_INFO = {
     "part": '"main" (the plant\'s `leaves`) or a name in `leaves.parts`: which picture this layer\'s cards show',
     "count": "cards (and stalks) in the layer",
@@ -31,6 +31,7 @@ LAYER_INFO = {
     "on": "another layer's name (its index as text, or its `name`): stand on that layer's stalks instead of the ground (a palm's fronds on its trunk, leaves up a flower's stalk)",
     "along": "[lo, hi] share of the stalk's height the cards sit at, with `on` (1 = the top)",
     "turn": "deg: cards twisted about their own run (0 = flat as `facing` says)",
+    "tilt": "deg the card is tipped over from its stalk's direction: 90 = it lies across the stalk's top, its face along the stalk (a daisy's head, a clover leaf, a lily pad)",
     "trunk": "true: the stalk is the plant's trunk (stout, barked, never sways at its foot): a palm, a tree fern, a yucca",
     "segments": "rings along a stalk (0 = by its height)", "sink": "m the card's foot sits under the ground (no gap on a slope)",
 }
@@ -40,11 +41,11 @@ def _norm(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
-def part_length(leaves: dict, part: str) -> float:
-    """How long a part's card is (m): its picture's twig x the card's scale."""
-    sp = veg_leaf.part_specs(leaves)[part]
-    cs = veg_leaf.card_spec(sp)
-    return float({**veg_leaf.TWIG, **cs["twig"]}["length"]) * float({**veg_leaf.CARD, **(sp.get("card") or {})}["scale"])
+def part_length(leaves: dict, part: str, wood=(0.45, 0.4, 0.35)) -> float:
+    """How long a part's card is (m): measured on the cards cut for it (a tuft of basal blades is as tall as its
+    blades, not as its twig)."""
+    at = veg_leaf.atlas(leaves, list(wood))
+    return float(np.mean([at["cards"][i]["V"][:, 1].max() for i in veg_leaf.part_cards(leaves)[part]]))
 
 
 def validate(s: dict):
@@ -59,7 +60,7 @@ def validate(s: dict):
         bad = set(L) - set(LAYER) - {"name"}
         if bad:
             raise ValueError(f"clump layer {i}: unknown keys {sorted(bad)}; it takes {sorted(LAYER) + ['name']}")
-        if L.get("part", "main") not in parts:
+        if L.get("part", "main") is not None and L.get("part", "main") not in parts:
             raise ValueError(f"clump layer {i}: no part {L.get('part')!r}; this plant's parts: {sorted(parts)} (add it under leaves.parts)")
         if L.get("on") is not None and str(L["on"]) not in names:
             raise ValueError(f"clump layer {i}: `on` {L['on']!r} names no layer; layers: {sorted(n for n in names if n)}")
@@ -78,6 +79,7 @@ def grow(s: dict) -> dict:
     # skeleton: node 0 under the ground, node 1 at the foot; then one chain per stalk
     pos, par, rad, order, axis, key, pin = [[0, 0, -0.05], [0, 0, 0.0]], [0, 0], [0.002, 0.002], [0, 0], [0, 0], [seed, _child(seed, 1)], [False, False]
     axes = [{"order": 0, "node": 1, "guide": None}]
+    free = []
     tops = {}  # layer index -> [(node ids along the stalk, positions)]
     T = {k: [] for k in ("pos", "frame", "scale", "node", "key", "card")}
     by_name = {}
@@ -91,7 +93,6 @@ def grow(s: dict) -> dict:
         hosts = tops.get(by_name[str(L["on"])]) if L["on"] is not None else None
         if L["on"] is not None and not hosts:
             raise ValueError(f"clump layer {li}: layer {L['on']!r} has no stalks to stand on (give it a `stem`)")
-        ln = part_length(lf, L["part"]) * size
         tops[li] = []
         for j in range(n):
             kj = _child(k0, j)
@@ -114,7 +115,12 @@ def grow(s: dict) -> dict:
                 node, base_order = 1, 0
             d = _norm(up * math.cos(lean) + out * math.sin(lean))
             h = (L["stem"][0] + (L["stem"][1] - L["stem"][0]) * r(5)) * size
-            if h > 0:  # a stalk: curving over toward its lean
+            if h > 0 and float(L["stem_radius"]) <= 0:  # an unseen stalk: the card stands at its top (leaves seen from above)
+                tt = np.linspace(0, 1, 4)[1:]
+                w = ((1 - float(L["bend"])) + float(L["bend"]) * tt ** 1.5)[:, None]
+                dirs = _norm(up[None] * (1 - w) + d[None] * w)
+                base, d = base + (dirs * (h / 3)).sum(0), dirs[-1]
+            elif h > 0:  # a stalk: curving over toward its lean
                 m = int(L["segments"]) or max(3, int(math.ceil(h / 0.35)) + 1)
                 tt = np.linspace(0, 1, m + 1)[1:]
                 bend = float(L["bend"])
@@ -126,6 +132,11 @@ def grow(s: dict) -> dict:
                 axes.append({"order": o_, "guide": None, "born": 0, "node": len(pos)})
                 ids, prev = [node], node
                 r0 = float(L["stem_radius"]) * (size if not L["trunk"] else 1.0)
+                if hosts is None and not L["trunk"]:  # its own foot on the ground
+                    pos.append(P[0].tolist()); par.append(node); rad.append(r0); order.append(o_); axis.append(ax)
+                    key.append(_child(kj, 50)); pin.append(False); free.append(len(pos) - 1)
+                    prev = len(pos) - 1
+                    ids = [prev]
                 for q in range(1, m + 1):
                     pos.append(P[q].tolist())
                     par.append(prev)
@@ -139,6 +150,19 @@ def grow(s: dict) -> dict:
                 tops[li].append((ids, P))
                 base, node, d = P[-1], prev, dirs[-1]
             if L["part"] is None or not cards_of.get(L["part"]):
+                continue
+            if L["tilt"]:  # tipped over from the stalk: its run turns outward, its face follows the stalk
+                tl_ = math.radians(float(L["tilt"]))
+                o_ = out - d * (d @ out)
+                o_ = _norm(o_) if np.linalg.norm(o_) > 1e-3 else _norm(np.cross(d, [0.0, 1.0, 0.3]))
+                d_card, z_card = _norm(d * math.cos(tl_) + o_ * math.sin(tl_)), _norm(d * math.sin(tl_) - o_ * math.cos(tl_))
+                T["pos"].append(base)
+                T["frame"].append(np.stack([np.cross(d_card, z_card), d_card, z_card], axis=1))
+                T["scale"].append(sc)
+                T["node"].append(node)
+                T["key"].append(kj)
+                cs_ = cards_of[L["part"]]
+                T["card"].append(cs_[int(_child(kj, 9) % np.uint64(len(cs_)))])
                 continue
             # the card's frame: y = its run, z = its upper side
             facing = L["facing"] if L["facing"] != "auto" else ("up" if math.degrees(lean) > 40 else "any")
@@ -162,7 +186,6 @@ def grow(s: dict) -> dict:
             T["node"].append(node)
             T["key"].append(kj)
             T["card"].append(cs_[int(_child(kj, 9) % np.uint64(len(cs_)))])
-            _ = ln
     n = len(pos)
     P = np.asarray(pos, float)
     par = np.asarray(par, np.int32)
@@ -173,7 +196,8 @@ def grow(s: dict) -> dict:
         tw = {k: v[:0] for k, v in tw.items()}  # a herb in winter has died back to its foot
     tips = [P[:, 2].max()]
     if len(tw["pos"]):  # the plant's height: its stalks and the tips of its cards
-        reach = np.array([part_length(lf, p_) for p_ in veg_leaf.part_specs(lf)])
+        wood = (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35]
+        reach = np.array([part_length(lf, p_, wood) for p_ in veg_leaf.part_specs(lf)])
         owner = np.zeros(max(max(c) for c in cards_of.values()) + 1, int)
         for pi, (p_, cc) in enumerate(cards_of.items()):
             owner[cc] = pi
@@ -185,7 +209,10 @@ def grow(s: dict) -> dict:
            "born": np.zeros(n, np.int32), "axis": np.asarray(axis, np.int32), "key": np.asarray(key, np.uint64),
            "tip": kids == 0, "leafy": np.zeros(n, bool), "main": np.ones(n, bool), "pin": np.asarray(pin, bool),
            "ends": kids == 0, "unit": 1.0, "steps": 1, "axes": axes, "guides": {}, "height": float(max(tips)), "spec": s,
-           "dead": np.zeros(n, bool), "twigs": tw, "clump": True}
+           "dead": np.zeros(n, bool), "twigs": tw, "clump": True, "free": np.isin(np.arange(n), free)}
+    tr_ = [i for i, a_ in enumerate(axes) if a_["order"] == 0 and i > 0]
+    if tr_:  # a trunk: the foot's girth is its girth
+        out["radius"][:2] = out["radius"][np.asarray(axis) == tr_[0]][0]
     out["stats"] = {"nodes": n, "steps": 1, "height_m": round(out["height"], 3), "trunk_diameter_m": round(2 * float(out["radius"][1]), 3),
                     "max_order": int(out["order"].max()), "grow_s": round(time.perf_counter() - t0, 3), "pruned_nodes": 0,
                     "cuts": [], "dead": [], "cards": int(len(tw["pos"])), "stalks": len(axes) - 1}

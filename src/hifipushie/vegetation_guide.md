@@ -365,9 +365,59 @@ lod_files=True)`:
   1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
   (LOD 0; use the LOD files), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`.
 
+## Small plants: grass, ferns, flowers, groundcover, palms (assembled, not grown)
+
+Game foliage artists do not grow a grass tuft: they make a few PICTURES (a fan of blades, a frond, a flower head),
+cut each onto a card as tight as its outline, and ARRANGE cards in a clump; clumps are scattered by the thousand.
+So a small plant here is `"plant": "clump"`: `leaves` (+ `leaves.parts`) are its pictures, `clump.layers` its
+arrangement. Everything downstream is the tree's: `grow_plant`, `look_plant`, `export_plant` (budgets, LODs, wind),
+sets (`set: {"count": 5}` = variants to scatter). Presets: `meadow_grass`, `fern`, `daisy`, `clover`, `feather_palm`;
+`shrub` is GROWN (a tree with `habit.stems` 6: bushes branch like trees). `get_plant(species="fern")` shows a
+preset's pictures and layers with what each layer key means.
+
+Stages, as for a tree: (1) reference: height, spread, what the eye reads (a shuttlecock of fronds; white dots over a
+green mat); (2) the pictures: look at the atlas (`look_plant` shows it for a clump); a picture must read by its
+outline; (3) the arrangement: layers; (4) the look from standing height AND from above (that is how small plants are
+seen); (5) the export at 50-600 triangles a plant.
+
+```json
+{"species": "daisy", "seed": 3,
+ "leaves": {"parts": {"head": {"twig": {"flower": {"petals": 13, "color": [0.95, 0.8, 0.2]}}}}},
+ "clump": {"size": 1.2, "layers": [
+   {"name": "rosette", "part": "main", "count": 7, "ring": [0, 0.02], "lean": [62, 84], "facing": "up"},
+   {"name": "stalks", "part": "head", "count": 4, "ring": [0, 0.04], "lean": [4, 20], "stem": [0.2, 0.36], "tilt": 78},
+   {"name": "leaves", "part": "stemleaf", "count": 8, "on": "stalks", "along": [0.15, 0.7], "lean": [30, 60]}]}}
+```
+
+Layer keys: `part` (which picture), `count`, `ring` [m, m] from the middle, `lean` [deg, deg] off upright (0-25 a
+standing tuft, 30-65 arching fronds, 70-90 a rosette on the ground, over 90 hanging), `scale`, `facing` ("up" =
+the card's face to the sky: fronds, rosette leaves; "any" = standing cards turned any way: grass), `stem` [m, m]
+(a stalk carries the card at its top; `stem_radius` 0 = the stalk is not drawn: leaves seen from above), `bend`,
+`tilt` (90 = the card lies across its stalk's top: a daisy's head, a clover leaf), `on` + `along` (stand on another
+layer's stalks: a palm's fronds on its trunk, leaves up a flower's stalk), `trunk` (the stalk is a barked trunk),
+`clump.size` (the whole plant's scale). In a `grow_plant` patch `clump.layers` is replaced whole.
+
+Pictures: `leaves.shape` "linear" (grass blade) / "strap" / "round" / "petal" besides the trees' shapes;
+`twig.arrangement` "basal" (every leaf from the foot: a tuft) or "pinnate" (pairs along the stalk, `taper`: a
+frond); `leaves.bend` (blades arc); `twig.flower` {form "ray" | "cup" | "spike", petals, radius, color, center};
+`card.strips` 4-5 for long arching fronds (the card bends with `twig.droop`). `leaves.parts` = {name: overrides}.
+
+What the practice is, and where it comes from: cards in clumps, normals pointing UP (or taken from a dome) so a
+clump shades with the ground instead of flickering card by card (polycount's foliage threads; here
+`leaves.normals: "up"` is the default for clumps); few distinct assets per ecotope, scattered by density maps
+(Guerrilla, "GPU-based procedural placement in Horizon Zero Dawn", GDC 2017); grass in clumps that share height
+and lean, wind by height along the blade (Sucker Punch, "Procedural Grass in Ghost of Tsushima", GDC 2021). Wind
+here: each card bends from its foot in its own phase; long cards swing further.
+
+What goes wrong: cards all upright in a tight ring read as a shaving brush (widen `lean`, add an outer layer of
+shorter, flatter cards); a rosette that floats (lean 70+, `sink`); one picture repeated reads as a stencil (3-4
+`card.variants`); thousands of triangles in one tuft (the report warns over 3000; scatter wants 50-600).
+Not built: scattering on terrain, grass as GPU blades, ivy and creepers that follow a surface, fan palms, bamboo,
+reeds in water, mushrooms, per-plant colour maps from a terrain, bent/trampled states.
+
 ## Not built yet
 
 Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
-proxies; shrubs, grass, flowers, palms; style sheets (blob to photoreal); a multi-stem base, exposed roots, burrs,
+proxies; style sheets (blob to photoreal); a multi-stem base, exposed roots, burrs,
 fluted trunks, surface roots running out over the ground, hollows and cavities; thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
 water level); a tree that sees the other plants you made (use `setting`/`neighbours`).
