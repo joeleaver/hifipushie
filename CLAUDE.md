@@ -1112,6 +1112,21 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       0.8%, sleeves to the wrists, lapels 164 deg; the collar is a lumpy roll (its fall starts 1.25x stretched: in
       FreeSewing's draft the collar's outer edge is SHORTER than its neck edge, both bow toward the fall; the author's
       own comment says the collar wants a redesign), fronts spread below the buttons (no facing), surface crinkly.
+    - BODY MEASUREMENTS MOVED (2026-10-06; every draft changes, results before it are not comparable). Checked
+      against FreeSewing's own standard masculine body (packages/models neckstimate: chest 1000, hpsToWaistBack 470,
+      waistToArmpit 210, hpsToBust 280, shoulderToShoulder 450, biceps 350, shoulderSlope 13):
+      (1) the down-the-body tapes are TAUT now (a hull over the lumbar hollow and the slices' bumps; `tailor.down`).
+      hpsToWaistBack standard / heavy / thin body: 545 -> 486, 536 -> 510, 542 -> 481 mm; hpsToBust 331 -> 282.
+      FreeSewing's armhole depth is hpsToWaistBack - waistToArmpit: 314 -> 255 (its standard: 260). Simon's and
+      Jaeger's armhole base sat 331 mm below hps on a body whose armpit is 207 below it: the "bomber" jacket, the
+      rolls across the upper back with the arms out, the body of every shirt 6 cm long. Now 273; Jaeger's CB length
+      802 -> 732.
+      (2) shoulderSlope is the slope of the shoulder LINE (a fit through the top of the shoulder from 2 cm outside
+      hps to the shoulder point), not the chord from hps, which is taken 2 cm up the neck's side: 28 -> 21, 26 -> 26,
+      29 -> 22 deg (the hanger's own fit to the surface had read 17; `at["shoulder_slope_chord"]` keeps the old one).
+      Still unlike the standard: shoulderToWrist 553 (630: these bodies' arms are short), slope 21 (13).
+      The sim cache can't reuse an old sim across this: its key is the sim's own inputs (start, pattern, seams).
+      Not yet verified by a sim when written; drafting's blocks use the same measures uncompensated.
     - Seams (the user: "stitches super visible"): ZOZO leaves seams a few mm open (Jaeger mean 4.3 / p95 17.8 mm at
       stitch stiffness 1; drafting measured 30 closes them at 6x the time). `cleanup` welds sewn vertices as GROUPS
       (a vertex in two seams kept only its last pair), weighted toward interfaced vertices, and again after the push

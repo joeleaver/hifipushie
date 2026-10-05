@@ -2627,6 +2627,31 @@ def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body",
     return V
 
 
+def _start_separation(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bT: np.ndarray) -> float:
+    """The least distance between the cloth and its collider at the start (m), both ways: the collider's vertices
+    and three points along each of its edges against the cloth's triangles, and the cloth's against the
+    collider's (an edge-edge approach lies between the vertices of both)."""
+    def pts(Vx, Fx):
+        E = np.unique(np.sort(np.r_[Fx[:, [0, 1]], Fx[:, [1, 2]], Fx[:, [2, 0]]], 1), axis=0)
+        return np.concatenate([Vx] + [Vx[E[:, 0]] + t * (Vx[E[:, 1]] - Vx[E[:, 0]]) for t in (0.25, 0.5, 0.75)])
+    best = np.inf
+    for (Va, Fa), (Vb, Fb) in (((bV, bT), (V, F)), ((V, F), (bV, bT))):
+        P = pts(np.asarray(Va, float), np.asarray(Fa, np.int64))
+        Vb, Fb = np.asarray(Vb, float), np.asarray(Fb, np.int64)
+        cen = Vb[Fb].mean(1)
+        tree = cKDTree(cen)
+        d0, _ = tree.query(P)
+        P = P[d0 < 0.03]  # (only what is near: the rest can't be the minimum)
+        if not len(P):
+            continue
+        _, nb = tree.query(P, k=min(10, len(Fb)))
+        nb = nb.reshape(len(P), -1)
+        for k in range(nb.shape[1]):
+            T = Fb[nb[:, k]]
+            best = min(best, float(_pt_tri(P, Vb[T[:, 0]], Vb[T[:, 1]], Vb[T[:, 2]]).min()))
+    return float(best)
+
+
 def _pt_tri(P: np.ndarray, A: np.ndarray, B: np.ndarray, C: np.ndarray) -> np.ndarray:
     """Distances from points P to triangles (A, B, C), row by row (clamped barycentric: exact inside, close at the
     edges)."""
@@ -3211,6 +3236,15 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             need_ = float(hi_[loose_t].max()) - 1.0 if loose_t.any() else 0.0
             zz = dict(g.get("zozo") or {})
             zz.setdefault("strain_limit", float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)))
+            # a contact solver can't start inside its standoff either, and the made pieces are held where the coarse
+            # sim carried them (a cuff round a wrist can't be pushed clear on one side without closing on the other):
+            # the body's contact offset for this settle is what the start leaves (it stopped on a pair 1.9 mm apart
+            # under a 2 mm offset)
+            sep_ = _start_separation(plan["start"], M["F"], coll["bodyV"], coll["bodyT"])
+            if sep_ < 0.0022:
+                zz.setdefault("body_offset", float(max(0.0006, 0.7 * sep_)))
+                progress(f"fine settle: the start comes within {sep_ * 1000:.2f} mm of the body: its contact offset "
+                         f"{zz['body_offset'] * 1000:.2f} mm for this settle")
             fcfg["zozo"] = zz
             progress(f"fine settle at {h * 100:.1f} cm: {len(plan['start'])} verts, {sum(fr)} frames, start stretch up to "
                      f"{need_ * 100:.0f}% (strain limit {zz['strain_limit'] * 100:.0f}%)")

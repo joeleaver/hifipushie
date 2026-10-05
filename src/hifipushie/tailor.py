@@ -184,6 +184,16 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     at["shoulder.L"] = top
     hps = at["hps.L"]
     mm["shoulderSlope"] = float(np.degrees(np.arctan2(hps[2] - top[2], top[0] - hps[0])))
+    # the slope of the shoulder LINE itself (the top of the shoulder from just outside the neck to the shoulder
+    # point), not of the chord from hps: hps is taken on the neck's side 2 cm up the neck, above the shoulder line's
+    # own start, and its chord read 28 deg on a body whose shoulder lies at 17 (FreeSewing's standard: 13). A draft
+    # with shoulders 10 deg too steep has cloth to spare at the neck and none at the shoulder's end
+    ins = [(x, t_) for x in np.arange(hps[0] + 0.02, top[0] - 0.004, 0.005) if (t_ := top_at(x)) is not None]
+    if len(ins) >= 3:
+        xs_ = np.array([t_[0] for _, t_ in ins] + [top[0]])
+        zs_ = np.array([t_[2] for _, t_ in ins] + [top[2]])
+        at["shoulder_slope_chord"] = mm["shoulderSlope"]
+        mm["shoulderSlope"] = float(np.degrees(np.arctan(-np.polyfit(xs_, zs_, 1)[0])))
     # shoulder to shoulder: a taut tape across the back between the shoulder points. It lies in a plane through both
     # that dips toward the back (over the shoulder blades), the shortest of the tilts tried; the level section at the
     # shoulders' height runs far back round the base of the neck (21% longer than the chord here)
