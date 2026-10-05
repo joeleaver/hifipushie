@@ -96,9 +96,35 @@ def main():
     up = np.flatnonzero(X[:, 2] > me[0][2])
     gx = {"top": int(gi[up[np.argmax(X[up][:, 2])]]), "back": int(gi[up[np.argmax(X[up][:, 1])]]),
           "side.L": int(gi[up[np.argmax(X[up][:, 0])]]), "side.R": int(gi[up[np.argmin(X[up][:, 0])]])}
+    # dense pairs: points spread over GNM's outer skin (face between the landmarks, cranium, ears' surround, neck)
+    # with the nearest MakeHuman vertex after the global alignment. A few mm off anatomically, which the delta
+    # transfer cancels; they carry what no landmark sees (cheek fullness, brow ridge, the neck's girth).
+    names = [str(n) for n in base._gnm_data()["groups"]]
+    ext = base._gnm_data()["groups"]["skin_exterior"][skin] > 0.5
+    Vg = V[skin]
+    cand_g = np.flatnonzero(ext & (Vg[:, 1] > 0.15) & (X[:, 0] > -1e-4))
+    sel = [int(cand_g[np.argmax(X[cand_g][:, 2])])]
+    dmin = np.linalg.norm(X[cand_g] - X[sel[0]], axis=1)
+    while len(sel) < 240 and dmin.max() > 0:  # farthest point sampling on the +x half
+        k = int(np.argmax(dmin))
+        sel.append(int(cand_g[k]))
+        dmin = np.minimum(dmin, np.linalg.norm(X[cand_g] - X[cand_g[k]], axis=1))
+    gtree = cKDTree(X)
+    dense_g, dense_m = [], []
+    for k in sel:
+        d, j = tree.query(X[k])
+        if d > 0.01:
+            continue
+        pairs = [(k, int(idx[j]))]
+        if X[k][0] > 0.004:  # and its mirror
+            pairs.append((int(gtree.query(X[k] * [-1, 1, 1])[1]), int(mtree.query(P[idx[j]] * [-1, 1, 1])[1])))
+        for a, b in pairs:
+            dense_g.append(int(gi[a]))
+            dense_m.append(b)
+    print("dense pairs", len(dense_g))
     dest = Path(base.__file__).with_name("makehuman_lm68.json")
     dest.write_text(json.dumps({"reference": REF, "vertices": len(P), "lm68": [out[i] for i in range(68)], "extra": extra,
-                                "gnm_extra": gx}))
+                                "gnm_extra": gx, "dense_gnm": dense_g, "dense_mh": dense_m}))
     print("wrote", dest, extra, gx)
     from PIL import Image, ImageDraw
     im = Image.new("RGB", (2000, 1100), "white")
@@ -117,6 +143,10 @@ def main():
         for v in extra.values():
             x, y = to(P[v])
             dr.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(0, 0, 220))
+        for v in dense_m:
+            if sel[v]:
+                x, y = to(P[v])
+                dr.ellipse((x - 2, y - 2, x + 2, y + 2), outline=(0, 140, 0))
     im.save(sys.argv[1] if len(sys.argv) > 1 else "table.png")
 
 
