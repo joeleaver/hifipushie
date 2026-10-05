@@ -295,7 +295,8 @@ def _weather(m, snow=0.0, wet=0.0, crown=None):
         d.inputs["Scale"].default_value = 1 - 0.35 * wet
         L.new(col, d.inputs[0])
         col = d.outputs[0]
-        rgh = _math(N, L, "MULTIPLY", rgh, 1 - 0.6 * wet)
+        # (leaves: a little gloss only. At 0.4 x roughness every card mirrored the sky: grey smears through the crown)
+        rgh = _math(N, L, "MULTIPLY", rgh, 1 - (0.25 if crown is not None else 0.6) * wet)
     if snow:
         geo = N.new("ShaderNodeNewGeometry")
         if crown is not None:
@@ -306,7 +307,17 @@ def _weather(m, snow=0.0, wet=0.0, crown=None):
             nrm = N.new("ShaderNodeVectorMath")
             nrm.operation = "NORMALIZE"
             L.new(o.outputs[0], nrm.inputs[0])
-            vec = nrm.outputs[0]
+            # snow lies on every plate and spray that faces up, wherever it is in the crown (by the crown's direction
+            # alone only the top of the tree went white), more on the crown's upper side
+            tsp = N.new("ShaderNodeSeparateXYZ")
+            L.new(geo.outputs["True Normal"], tsp.inputs[0])
+            csp = N.new("ShaderNodeSeparateXYZ")
+            L.new(nrm.outputs[0], csp.inputs[0])
+            zz = _math(N, L, "ADD", _math(N, L, "MULTIPLY", _math(N, L, "ABSOLUTE", tsp.outputs["Z"]), 0.75),
+                       _math(N, L, "MULTIPLY", csp.outputs["Z"], 0.4))
+            cmb = N.new("ShaderNodeCombineXYZ")
+            L.new(zz, cmb.inputs["Z"])
+            vec = cmb.outputs[0]
         else:
             vec = geo.outputs["Normal"]
         sp = N.new("ShaderNodeSeparateXYZ")

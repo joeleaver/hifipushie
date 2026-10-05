@@ -118,12 +118,12 @@
    "leaves": 16,
    "arrangement": "spiral",
    "angle": 22,
-   "per_m": 6.0,
+   "per_m": 8.5,
    "droop": 1.2,
    "up": -0.9,
    "spread": 25,
    "min_order": 1,
-   "steps": 4,
+   "steps": 5,
    "face": 0.25,
    "divergence": 144,
    "light": 0.2
@@ -138,7 +138,7 @@
     "length": 0.9,
     "angle": 22
    },
-   "scale": 1.0
+   "scale": 1.2
   },
   "translucency": 0.4,
   "autumn": [
