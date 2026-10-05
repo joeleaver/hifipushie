@@ -416,7 +416,7 @@
  "freesewing": {
   "needed_by": "cloth drafts from FreeSewing designs (spec cloth.<g>.draft.design; freesewing.py runs them in Node >= 20)",
   "optional": true,
-  "source": "npm registry tarballs of FreeSewing 4.10.2 (codeberg.org/freesewing/freesewing, released 2026-09-13): core, core-plugins + plugins, config, library, designs brian/bent/simon/carlton/teagan; their npm dependencies bezier-js 6.1.4, hooks 0.3.2, lodash.get/set/unset/clonedeep",
+  "source": "npm registry tarballs of FreeSewing 4.10.2 (codeberg.org/freesewing/freesewing, released 2026-09-13): core, core-plugins + plugins, config, library, designs brian/bent/simon/carlton/teagan/jaeger; their npm dependencies bezier-js 6.1.4, hooks 0.3.2, lodash.get/set/unset/clonedeep",
   "licence": "MIT (every package: FreeSewing, bezier-js, hooks, lodash.*)",
   "files": [
    {
@@ -454,6 +454,12 @@
     "url": "https://registry.npmjs.org/@freesewing/core-plugins/-/core-plugins-4.10.2.tgz",
     "sha256": "531ab9afe884ea95c1b6e95bf0901aca69db1abf43ef0fe3625e8975fefc1261",
     "unpack": "node_modules/@freesewing/core-plugins"
+   },
+   {
+    "path": "tgz/@freesewing__jaeger-4.10.2.tgz",
+    "url": "https://registry.npmjs.org/@freesewing/jaeger/-/jaeger-4.10.2.tgz",
+    "sha256": "845b274154f53d76edb3c958acd830aec11fdcfcc9c8fe34f06b100bb9ad534c",
+    "unpack": "node_modules/@freesewing/jaeger"
    },
    {
     "path": "tgz/@freesewing__library-4.10.2.tgz",
