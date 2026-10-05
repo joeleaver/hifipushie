@@ -804,10 +804,36 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     armhole depth, shoulder and side seams equal to 0.1 mm, back armhole -2 mm, necklines within 1 mm, back outline
     1.9 mm mean; our front armhole is 9 mm longer (across-front 93%), our sleeve 35 mm narrower with a 26 mm higher
     cap (Brian widens the sleeve by its own rule). A drafted knit tee went through stages 1-4 (`workspace/pd_test`).
-  - Open (next): shawl / notched collars on the roll line, hoods, raglan / kimono, pockets, linings, pleats, elbow
-    shaping in the two-piece sleeve, ops on unfolded pieces (asymmetric designs), darts_to_seam for darted blocks, a
-    leg wrap (the trouser block can't be placed), the three novel garments and the blazer vs Jaeger comparison.
-    `tests/test_pattern_draft.py`.
+  - Style ops (`pattern_styles.py`, registered into `pattern_draft.OPS`; 2026-10-05, sheets pd_10..pd_17): `neckline`
+    (widened on front AND back, so the shoulders still match), `shawl` (cut on, on the roll line; neck seam = back
+    neck; `pair_seams` = an edge sewn to its own mirror at unfold), `lapel` + `collar` `"stop"`, `cut_away`,
+    `darts_to_seam`, `raglan`, `kimono` and `hood` (pattern only: no placement), `pleat`, `buttons`
+    (`pair_stitches`), `stitch`. `unfold` may be put in the ops list: ops after it work on one side (asymmetric).
+    Bugs these found: a collar's outer edge was drawn on the neck hole's side (flat / roll collars shorter than
+    their neck edge, crossing themselves; a band's top longer than its base): the body lies AWAY from the hole;
+    a facing as a plain offset of its edge made beaks at corners (now the piece's own band within the width);
+    a take-in inside a cropped hem left a hook (its end slides along the hem); point-given fold lines weren't
+    mirrored at unfold; `cut_away` dropped the shortened shoulder seam instead of letting consistency fail.
+  - `cloth.place` wrap `leg.L` / `leg.R`: one vertical generalized cylinder per leg (hull of that half of the body
+    from waist to hem, cut flat 4 mm off the middle plane; outer part of each piece round the outside from the
+    front / back corner, the fork's extension on the flat; isometric except the crotch hollow, squeezed under the
+    crotch). Slices its own loops: `Body.hull` drops loops wider than the shoulders as arms, i.e. an A-pose's calves
+    (the pieces started 37-52 mm inside the legs). Leg pieces count as torso for the assembly stage. `sizing`:
+    facings / linings add no girth, pieces carry `wrap.half` (which side of x = 0 they're on: what crosses is
+    overlap), side panels measure from their own inner edge (a princess jacket read +74% chest).
+  - Three garments from prose through the tools (models `workspace/pd_trousers`, `pd_wrap`, `pd_jacket`; renders
+    pd_20..22): wide trousers fit (0 crossings; slide 9 cm down, pool at the feet); the asymmetric wrap tunic reads
+    as one (strain 11.8%, hem 9 cm lower on the wrap side); the shawl jacket's pattern and plan pass but its draft
+    sim is CORRUPT (the cut-on collar starts up the front of the neck and Blender doesn't bring it round; two-piece
+    sleeves bunch at the shoulders). No ZOZO release was on the machine: method "settle" untested on these.
+  - Blazer from our blocks vs FreeSewing Jaeger (`pd_30_blazer_vs_jaeger.png`, scratch script): CB length, shoulder,
+    back neck, upper armhole within 1-5 mm, armhole 2%, sleeve width 2 mm; Jaeger's shaped CB seam, side panel
+    from the armhole, waist +17% (ours +29%), hem +12% over the seat (ours +2%), longer bent sleeve with a hollowed
+    under sleeve and a straight gorge are what ours lacks.
+  - Open: a start that lays a cut-on collar round the neck, a tailor's under sleeve, shaped CB seam, fish-eye darts
+    in hip-length blocks, pockets / linings, head wrap, kimono placement, seat ease not reported for leg pieces
+    (sizing reads torso pieces), trousers' length option for bare feet, a waistband that grips.
+    `tests/test_pattern_draft.py`, `tests/test_pattern_styles.py`.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).

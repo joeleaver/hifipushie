@@ -765,7 +765,8 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
         _point(D, fpc, {"edge": farc, "dist": max(lf - stop, 0.01)}, "gorgeNotch")
         nf = [f"{fpn}:{farc.split('>')[0]}>gorgeNotch"]
         lf = edge_length(D, nf)
-    Ln = lb + lf + ext
+    ratio = float(o.get("ratio", 1.0))  # a rib band is cut shorter than the neckline and stretched on (0.85)
+    Ln = (lb + lf + ext) * ratio
     stand = {"band": 1.0, "flat": 0.0, "roll": 0.5}.get(type, 1.0) if "stand" not in o else float(o["stand"])
     # the neckline's own curve: back neck from cb to hps, then the front (turned to continue it) from hps to cf
     Pb = np.concatenate(edge_points(D, nb))
@@ -819,6 +820,10 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"
     D["seams"].append([seam_edge, list(nb) + list(nf)])
+    if abs(ratio - 1) > 1e-6:
+        D["notes"][json.dumps(D["seams"][-1])] = {
+            "ease": [ratio - 1 - 0.01, ratio - 1 + 0.01],
+            "why": f"{name} is cut {ratio:.2f} x the neckline and stretched on (a rib band hugs the neck)"}
     D["interfaced"].append(name)
     if stand < 0.75:
         D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": 0.004 + 0.02 * stand}, "angle": 15,
