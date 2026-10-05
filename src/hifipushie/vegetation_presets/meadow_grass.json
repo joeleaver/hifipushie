@@ -1,0 +1,23 @@
+{
+ "about": "Meadow grass, a tuft 30-40 cm tall with a few seed heads: fans of blades on crossed cards standing in a ring, taller in the middle; seed stalks above. Scatter many, varied by seed and clump.size",
+ "plant": "clump",
+ "age": 1,
+ "leaves": {
+  "shape": "linear", "length": 0.34, "width": 0.035, "fold": 0.25, "curl": 0.05, "petiole": 0.0, "bend": 0.22,
+  "color": [0.42, 0.55, 0.2], "translucency": 0.5, "evergreen": true,
+  "twig": {"length": 0.03, "leaves": 16, "arrangement": "basal", "angle": 24, "droop": 0.0, "radius": 0.0012, "light": 0.0, "variants": 4},
+  "card": {"variants": 4, "size": 256, "cross": 1, "cup": 0.05, "scale": 1.0},
+  "parts": {
+   "seed": {"shape": "lanceolate", "length": 0.012, "width": 0.4, "color": [0.72, 0.66, 0.4],
+            "twig": {"length": 0.5, "leaves": 2, "arrangement": "alternate", "angle": 15, "droop": 0.06, "radius": 0.0012,
+                     "flower": {"form": "spike", "petals": 22, "radius": 0.016, "color": [0.74, 0.68, 0.42], "spike": 0.3}},
+            "card": {"variants": 2, "size": 256, "cross": 1, "cup": 0.0}}
+  }
+ },
+ "bark": {"kind": "lenticel", "color": [0.45, 0.5, 0.25], "twig_color": [0.5, 0.52, 0.28]},
+ "clump": {"layers": [
+  {"name": "blades", "part": "main", "count": 9, "ring": [0.0, 0.07], "lean": [0, 22], "scale": [0.7, 1.15], "facing": "any"},
+  {"name": "outer", "part": "main", "count": 6, "ring": [0.05, 0.11], "lean": [18, 40], "scale": [0.5, 0.8], "facing": "any"},
+  {"name": "heads", "part": "seed", "count": 3, "ring": [0.0, 0.05], "lean": [2, 14], "scale": [0.85, 1.15], "facing": "any"}
+ ]}
+}

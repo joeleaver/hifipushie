@@ -1,0 +1,122 @@
+{
+ "about": "A feather palm (date / coconut type), 7 m: one slender ringed trunk leaning a little, a crown of two dozen arching pinnate fronds, the oldest hanging",
+ "plant": "clump",
+ "age": 20,
+ "leaves": {
+  "shape": "strap",
+  "length": 0.5,
+  "width": 0.07,
+  "fold": 0.3,
+  "curl": 0.3,
+  "petiole": 0.0,
+  "hang": 0.35,
+  "color": [
+   0.3,
+   0.45,
+   0.17
+  ],
+  "translucency": 0.3,
+  "evergreen": true,
+  "twig": {
+   "length": 3.0,
+   "leaves": 84,
+   "arrangement": "pinnate",
+   "angle": 58,
+   "droop": 0.45,
+   "radius": 0.02,
+   "taper": 0.45,
+   "light": 0.6,
+   "variants": 3
+  },
+  "card": {
+   "variants": 3,
+   "size": 512,
+   "cross": 1,
+   "cup": -0.12,
+   "strips": 5,
+   "scale": 1.0
+  }
+ },
+ "bark": {
+  "kind": "scales",
+  "color": [
+   0.5,
+   0.44,
+   0.36
+  ],
+  "color2": [
+   0.34,
+   0.29,
+   0.24
+  ],
+  "twig_color": [
+   0.42,
+   0.4,
+   0.2
+  ],
+  "scale": 0.8
+ },
+ "clump": {
+  "layers": [
+   {
+    "name": "trunk",
+    "part": null,
+    "count": 1,
+    "ring": [
+     0,
+     0
+    ],
+    "lean": [
+     3,
+     9
+    ],
+    "stem": [
+     6.0,
+     6.0
+    ],
+    "stem_radius": 0.17,
+    "bend": 0.8,
+    "trunk": true,
+    "segments": 10
+   },
+   {
+    "name": "crown",
+    "part": "main",
+    "count": 16,
+    "on": "trunk",
+    "along": [
+     0.985,
+     1.0
+    ],
+    "lean": [
+     12,
+     78
+    ],
+    "scale": [
+     0.85,
+     1.1
+    ],
+    "facing": "up"
+   },
+   {
+    "name": "old",
+    "part": "main",
+    "count": 7,
+    "on": "trunk",
+    "along": [
+     0.96,
+     0.985
+    ],
+    "lean": [
+     85,
+     128
+    ],
+    "scale": [
+     0.8,
+     1.0
+    ],
+    "facing": "up"
+   }
+  ]
+ }
+}

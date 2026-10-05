@@ -166,6 +166,11 @@ def describe(name: str | None = None, species: str | None = None) -> dict:
     own = load(name) if name else {"species": species}
     full = vegetation.resolve(own)
     full["leaves"] = {**veg_leaf.LEAF, **full["leaves"], "twig": {**veg_leaf.TWIG, **(full["leaves"].get("twig") or {})}}
+    if full.get("plant") == "clump":
+        from . import veg_small
+        return {"own": own, "resolved": {k: v for k, v in full.items() if k != "habit"}, "layer_keys": veg_small.LAYER_INFO,
+                "leaf_twig_ranges": TWIG_INFO, "note": "an assembled plant (plant: clump): `habit`, guides, prunes and cuts do not apply; "
+                "its form is `clump.layers`, its pictures are `leaves` + `leaves.parts`"}
     out = {"own": own, "resolved": full, "habit_ranges": vegetation.HABIT_INFO,
            "leaf_twig_ranges": TWIG_INFO, "growth": {"steps": vegetation.steps_of(full),
                                                      "note": "steps = age / habit.years_per_step, 2-80"}}
@@ -187,6 +192,10 @@ TWIG_INFO = {
     "card.strips": "0, or 3-5 quads along a long hanging twig", "card.scale": "0.8-1.5 x the card's size",
     "card.twig / card.leaf": "overrides used only for the card's picture (e.g. leaves 400, needle_width 0.03-0.1)",
     "bark.scale": "0.3-1.5 x the bark pattern's size (finer for a small trunk)", "bark.upper_blend": "m the upper colour takes to come in",
+    "leaves.shape (small plants)": '"linear" a grass blade, "strap" iris / a palm leaflet, "round" clover / lily pad, "petal" spoon-shaped, widest near the tip',
+    "leaves.bend": "0-0.4: a blade arcs sideways (grass)", "twig.arrangement (small plants)": '"basal": every leaf from the foot, fanned by `angle` (a tuft, a rosette); "pinnate": pairs along the stalk, sized by `taper` (a frond)',
+    "twig.taper": "0-0.9: leaflets shrink toward the tip by this share", "twig.flower": '{"form": "ray" (daisy, seen from its face) | "cup" (tulip, from the side) | "spike" (lupin, a seed head), "petals", "radius" m, "color", "center", "center_size"}',
+    "leaves.parts": "{name: overrides of leaves / twig / card}: more pictures in the same atlas (a flower head, a seed stalk); layers name them",
     "bark.twig_radius": "[m, m]: wood thinner than [0] is all `twig_color`, thicker than [1] none (pine [0.015, 0.05]: only stout wood is orange)",
     "twig.fascicle": "needles per bundle on a pine's shoot: 2 (Scots), 3, 5 (white pines)",
     "twig.needle_angle": "[deg, deg] a needle stands off the shoot at the foliage's base and at its tip ([75, 30] = a bottlebrush)",
@@ -264,6 +273,34 @@ def set_reference(name: str, image: str, mask: dict, bare: bool = False, credit:
     return ref
 
 
+def _report_clump(name: str, T: dict) -> str:
+    """An assembled plant in numbers: size, cards per layer, how they stand, cover from above, triangles."""
+    from . import veg_leaf, veg_small
+    s, m = T["spec"], veg_small.measures(T)
+    at = veg_leaf.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
+    pc = veg_leaf.part_cards(s["leaves"])
+    tw = T["twigs"]
+    out = [f"plant {name}: {s.get('species') or 'no preset'}, assembled from cards (plant: clump), seed {s.get('seed', 1)}",
+           f"size: {m['height_m']} m tall, {m['spread_m']} m across; {m['cards']} cards on {m.get('stalks', 0)} stalks; "
+           f"{sum(len(at['cards'][c]['F']) for c in tw['card'])} foliage triangles at full detail",
+           f"cards stand at {m['card_elevation_p10_50_90'][1]:.0f} deg above level (p10-p90 {m['card_elevation_p10_50_90'][0]:.0f} to "
+           f"{m['card_elevation_p10_50_90'][2]:.0f}: 90 = upright blades, 0 = lying flat); cover seen from above {m['cover_from_above']} of its footprint"]
+    for i, L in enumerate(s["clump"]["layers"]):
+        n_ = int(np.isin(tw["card"], pc.get(L.get("part") or "", [])).sum()) if L.get("part", "main") else 0
+        out.append(f"  layer {i}" + (f" '{L['name']}'" if L.get("name") else "") + f": part {L.get('part', 'main')}, count {L.get('count', 12)}"
+                   + (f", on stalks {L['stem']} m" if L.get("stem") else "") + (f", standing on layer {L['on']}" if L.get("on") is not None else "")
+                   + (f" ({n_} cards of this part in all)" if n_ else ""))
+    out.append(f"pictures (parts of the atlas): {', '.join(f'{k} x{len(v)}' for k, v in pc.items())}; atlas {at['color'].shape[0]} px, card fill {at['fill']:.2f}")
+    warn = []
+    if m["cards"] * at["triangles"] > 3000:
+        warn.append(f"WARNING: {m['cards'] * at['triangles']} foliage triangles for one small plant; a scattered plant wants 50-600 (fewer, larger cards)")
+    if at["fill"] < 0.15:
+        warn.append(f"WARNING: card fill {at['fill']:.2f}: the cards are mostly empty (overdraw); `card.strips` for long thin pictures, or fuller pictures")
+    if m["height_m"] > 0 and tw["pos"][:, 2].min() < -0.06:
+        warn.append("WARNING: cards start more than 6 cm under the ground")
+    return "\n".join(out + warn)
+
+
 def report(name: str) -> str:
     """The grown plant in numbers: size, form (measured on its own silhouettes), limbs, foliage, guides, and its
     reference match when it has one. WARNINGS last."""
@@ -272,10 +309,16 @@ def report(name: str) -> str:
     s = T["spec"]
     st = T["stats"]
     warn = []
+    if T.get("clump"):
+        return _report_clump(name, T)
     out = [f"plant {name}: {s.get('species') or 'no preset'}, age {s['age']} ({st['steps']} growth steps), "
            f"{st['nodes']} nodes, grown in {st['grow_s']} s",
            f"size: {st['height_m']} m tall, trunk DIAMETER {st['trunk_diameter_m']} m at the foot (with its flare), "
            f"branch orders to {st['max_order']}" + (f", {st['pruned_nodes']} nodes cut by prunes" if st.get("pruned_nodes") else "")]
+    if st.get("on_ground"):
+        out.append(f"ground: {st['on_ground']} nodes drooped to the ground and lie along it (nothing is drawn under it)")
+    if st.get("dead_stubs"):
+        out.append(f"dead wood: {st['dead_stubs']} nodes of grey stubs where the shade killed limbs within the last {s['habit']['dead_keep']} years")
     ms = [vegetation.shape_measures(vegetation.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
     f = lambda k: round(float(np.mean([m[k] for m in ms])), 2)
     H = T["height"]
@@ -491,6 +534,29 @@ def look(name: str, views=("clay", "leaf", "far"), azimuth: float = 0.0, size: i
         veg_look.reference_sheet(load(name), ref, out, bare=ref["bare"], title=name, foliage=foliage)
         return [("sheet", out)]
     suffix = (f"_{name.partition('#')[2]}" if "#" in name else "") + (f"_az{int(round(azimuth))}" if azimuth else "") + (f"_{triangles}tris" if triangles else "")
+    if T.get("clump"):  # a small plant is seen from the side, from standing height and from above; and its pictures
+        import math
+        from PIL import Image
+        from . import veg_leaf, veg_small
+        s = T["spec"]
+        at = veg_leaf.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
+        c = at["color"]
+        img = np.clip(c[..., :3] * c[..., 3:] + np.array([0.75, 0.78, 0.82]) * (1 - c[..., 3:]), 0, 1)
+        pa = str(d / f"atlas{suffix}_v{v}.png")
+        Image.fromarray((img * 255).astype(np.uint8)).resize((size, size)).save(pa)
+        H, R = T["height"], max(veg_small.measures(T)["spread_m"] / 2, 0.1)
+        D = 2.2 * max(H, 2 * R)
+        ca, sa = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
+        e = lambda dist, z: [-sa * dist, -ca * dist, z]
+        jobs = [{"name": "side", "eye": e(D, 0.45 * H), "look": [0, 0, 0.45 * H], "fov": 40},
+                {"name": "stand", "eye": e(max(1.5, 1.5 * D), 1.6), "look": [0, 0, 0.45 * H], "fov": 28 if H < 1 else 46},
+                {"name": "above", "eye": e(0.3 * D, 1.6 * D), "look": [0, 0, 0.3 * H], "fov": 40}]
+        got = [("atlas", pa)]
+        for j in jobs:
+            j.update(out=str(d / f"{j['name']}{suffix}_v{v}.png"), size=[size, size], sun=[azimuth + 235, 40])
+            got.append((j["name"], j["out"]))
+        veg_look.render(T, jobs, foliage=foliage, triangles=triangles)
+        return got
     jobs, got = _view_jobs(T, views, azimuth, size, lambda x: str(d / f"{x}{suffix}_v{v}.png"))
     veg_look.render(T, jobs, foliage=foliage, triangles=triangles)
     return got
