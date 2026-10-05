@@ -93,7 +93,9 @@
    1.6,
    6
   ],
-  "bud_each": true
+  "bud_each": true,
+  "dead_keep": 10,
+  "stand_shed": 0.04
  },
  "leaves": {
   "shape": "needle_tuft",

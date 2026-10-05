@@ -706,6 +706,29 @@ def test_whorls_rings_and_creeping_branchlets():
     assert len(c["F"]) > 14 and np.ptp(c["V"][:, 0]) > 0.1 and np.ptp(c["V"][:, 2]) > 0.1
 
 
+def test_ground_and_stand_forms():
+    # nothing under the ground: an open-grown spruce's lowest limbs lie along it, its twigs' tips stay above it
+    S = {"species": "norway_spruce", "age": 44}
+    op = v.grow(S)
+    assert op["pos"][2:, 2].min() > 0 and op["stats"]["on_ground"] >= 0
+    tw = veg_leaf.place(op)
+    tl = v.resolve(S)["leaves"]["twig"]["length"]
+    assert (tw["pos"][:, 2] + tw["frame"][:, 2, 1] * tl * tw["scale"]).min() > -0.01
+    up = v.grow({**S, "environment": {"ground": {"level": 1.0}}})  # the plane is a parameter
+    assert up["pos"][up["order"] > 0][:, 2].min() > 1.0
+    # one word for where it stands: an interior tree has a higher crown base and keeps dead stubs; an edge tree is one-sided
+    inner = v.grow({**S, "environment": {"setting": "forest"}})
+    edge = v.grow({**S, "environment": {"setting": "edge", "open_side": [1, 0]}})
+    low = lambda t: float(np.percentile(veg_leaf.place(t)["pos"][:, 2], 5)) / t["height"]
+    assert low(inner) > low(op) + 0.2 and inner["stats"]["dead_stubs"] > 10 and op["stats"]["dead_stubs"] == 0
+    assert inner["dead"].any() and not inner["leafy"][inner["dead"]].any()
+    ex = veg_leaf.place(edge)["pos"]
+    lowx = ex[ex[:, 2] < 0.4 * edge["height"]][:, 0]
+    assert len(lowx) and (lowx > 0).mean() > 0.7  # foliage down the open side
+    # a pine sheds cleaner than a spruce
+    assert v.resolve({"species": "scots_pine"})["habit"]["dead_keep"] < v.resolve(S)["habit"]["dead_keep"]
+
+
 def test_small_plants_are_assembled():
     from hifipushie import veg_small, veg_export
     clumps = [sp for sp in v.species() if v.preset(sp).get("plant") == "clump"]

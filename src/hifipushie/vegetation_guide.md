@@ -117,6 +117,13 @@ height, form, limb angles.
 
 ### environment
 
+- **Where it stands is one word**: `setting` "open" | "edge" | "forest". The same species grows three trees: open-grown
+  (foliage to the ground on a conifer, a low broad crown on a broadleaf), a stand's edge (`"open_side": [x, y]`:
+  foliage down that side only, the closed side self-pruned), a stand's interior (a long clean bole, a live crown
+  only in the top third to half, and under it the limbs the shade killed: thin, grey, leafless, drooping stubs that
+  stay `habit.dead_keep` years: a spruce's ladder of dead whorls 25-40 years, a pine sheds cleaner 8-12, a birch
+  2-4). A forest set wants all three of each species. `habit.stand_shed` is how much harder a species self-prunes
+  in a stand than in the open (spruce 0.17: it holds a skirt in the open).
 - `setting`: "open" (default: low broad crown) or "forest" (the tree grows inside a closed stand of its own height:
   the canopy's top rises with it, so only the top of the crown is in the light: a tall bare bole and a narrow
   high crown). `stand` tunes it, all as shares of the tree's own height at the time: `gap` 0.18 = the radius of
@@ -132,6 +139,8 @@ height, form, limb angles.
   neighbour use radius 1-2. The tree does not see other plants you made: neighbours are only these blobs.
 - `light: [x, y, z]`: where the light comes from (default straight up [0, 0, 1]). Keep z near 1: [0.3, 0, 1] is a
   tree at a wood's edge leaning out; [1, 0, 0.8] sweeps every limb sideways.
+- The ground is a plane nothing passes through: wood that droops to it lies along it, twigs that would run into it
+  are lifted (`ground: {"level": m}` moves it; with `slope` it tilts). The report says how many nodes lie on it.
 - `ground: {"slope": deg, "toward": [x, y], "water": z}`: the hillside it stands on and a water level (m against
   the plant's foot: -0.5 = half a metre below it), for the pictures. It does not change the growth: lean the trunk
   with a guide or wind. Only a uniform slope: no banks or ditches.

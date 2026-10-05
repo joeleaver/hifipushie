@@ -315,6 +315,10 @@ def report(name: str) -> str:
            f"{st['nodes']} nodes, grown in {st['grow_s']} s",
            f"size: {st['height_m']} m tall, trunk DIAMETER {st['trunk_diameter_m']} m at the foot (with its flare), "
            f"branch orders to {st['max_order']}" + (f", {st['pruned_nodes']} nodes cut by prunes" if st.get("pruned_nodes") else "")]
+    if st.get("on_ground"):
+        out.append(f"ground: {st['on_ground']} nodes drooped to the ground and lie along it (nothing is drawn under it)")
+    if st.get("dead_stubs"):
+        out.append(f"dead wood: {st['dead_stubs']} nodes of grey stubs where the shade killed limbs within the last {s['habit']['dead_keep']} years")
     ms = [vegetation.shape_measures(vegetation.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
     f = lambda k: round(float(np.mean([m[k] for m in ms])), 2)
     H = T["height"]

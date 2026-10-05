@@ -2628,6 +2628,39 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     `season_atlas(make=)`. Wood `simplify` tolerance is capped at 12 cm of radius (a budget straightened the pine's
     sinuous trunk). Read: oak at 8k ~ the full tree at 100 m; pine good; spruce recognisable but gappy, a big card on
     its leader. Not done: twig cards on top of boughs for mid LODs, depth / subsurface maps beyond the twig maps.
+  - Stage 3, small plants (`veg_small.py`, sheet vg_70_small_plants.png; guide section "Small plants"): ASSEMBLED,
+    not grown: `"plant": "clump"`, pictures = `leaves` + `leaves.parts` (one atlas), arrangement = `clump.layers`
+    (part, count, ring, lean, scale, facing, stem / stem_radius / bend / tilt, on + along, trunk; `clump.size`).
+    `grow` returns a tree-shaped dict (a tiny skeleton: stalks; `twigs` = its own card placements; `free` = stalks
+    that start at their own foot, read by `veg_mesh.tubes`), so looks, budgets, wind and export are the tree's.
+    Presets meadow_grass, fern, daisy, clover, feather_palm; `shrub` is grown (`habit.stems` 6 + `stem_angle`).
+    Clump normals lean up (`leaves.normals`), each card bends from its foot in its own phase (wind). Tools:
+    grow_plant / get_plant (layer keys) / look_plant (atlas | side | stand | above for a clump) / export_plant work;
+    report = `veg_tools._report_clump`. Read: all six read as what they are; fern thin, daisy leggy, clover sparse,
+    palm trunk a plain pole, grass seed heads too big. Not built: scatter on terrain, GPU blade grass, ivy, reeds.
+  - Ground + where it stands (2026-10-06, the user: branches went through the ground; forest-interior conifers are
+    bare below a live top; sheet vg_71_open_edge_interior.png): `vegetation.ground_at` (environment.ground level /
+    slope): wood under it is laid along it at the end of `grow` (stats `on_ground`), `veg_leaf.place` lifts twigs
+    whose tips would go under. `environment.setting` "open" | "edge" (+ `open_side`) | "forest": `habit.stand_shed`
+    is added to `shed` inside a stand (spruce 0.17: skirt in the open, live crown in the top half in a stand),
+    `habit.dead_keep` years (spruce 30, pine 10, oak 8, birch 3): first-order limbs the shade killed are remembered
+    in the shed step (`dead_log_`) and put back at the end as thin grey drooping 3-node stubs (`dead` wood).
+    Read: the three forms are plainly different and right in kind; stubs are pale straight spikes (no twigs, no
+    lichen), the edge spruce shows bare live limbs on its closed side, the stand from inside is sunlit with a
+    lawn floor. No forest-interior photo was fetched to put beside it.
+  - HANDOVER (2026-10-06, context full). Branch `vegetation2` (see git log; main merged in at 6f996de). Scratch
+    scripts are in this worktree's untracked `scratchpad/` (q.py, sweep.py, allsheet.py, sprview.py, lodsheet.py,
+    small.py, forest.py, kit.py, sprdiag.py, setpreset.py): copy what you need. NOT DONE, in the coordinator's order:
+    (1) spruce LODs: cap the leader's card, an inner core of darker cards near the trunk, faster atlas (PIL
+    rasterising 1900 needles x hundreds of twigs: 95-190 s; rasterise each twig variant once and composite);
+    (2) pine leader spike across a set's ages / seeds (cause: bud_break 0.15 leaves young tops bare; fix = every
+    whorl breaks and lower limbs are shed by shade: a re-tune); (3) the forest-kit picture with trees side by
+    side (pass `at=[[-18, 0], [0, 0], [18, 0]]` to look_plants in scratchpad/kit.py); (4) twig cards on top of
+    bough cards for mid LODs; (5) spruce width (photo w/h 0.58) and ground-hugging lowest limbs, pine limb girth
+    at the trunk, snow thickness / drift; (6) dead stubs with twigs and lichen, a dark forest floor in stand looks,
+    a forest-interior photo; (7) stage 5 styles (blob to photoreal), terrain integration (scatter, slopes).
+    The all-species sheet vg_66 predates the forest/ground changes (spruce shed, dead_keep): re-render first
+    (`scratchpad/allsheet.py <tag>`).
   - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);

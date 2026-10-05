@@ -395,7 +395,20 @@ def place(tree: dict) -> dict:
         c_, s_ = np.cos(roll)[:, None], np.sin(roll)[:, None]
         x, z = x * c_ + z * s_, z * c_ - x * s_
     lo, hi = tw["scale"]
-    return {"pos": pos, "frame": np.stack([x, d, z], axis=2), "scale": lo + (hi - lo) * _u(key, 8),
+    sc_ = lo + (hi - lo) * _u(key, 8)
+    from .vegetation import ground_at  # no twig runs into the ground: one that would is lifted to lie along it
+    gz = ground_at(s, pos[:, :2]) + 0.04
+    pos[:, 2] = np.maximum(pos[:, 2], gz)
+    need = (gz - pos[:, 2]) / np.maximum(tw["length"] * sc_, 1e-6)  # the least rise of its run that keeps its tip above
+    under = d[:, 2] < need
+    if under.any():
+        dz = np.minimum(need[under], 0.0)
+        hz = _norm(d[under] * [1, 1, 0] + 1e-9)
+        d[under] = hz * np.sqrt(np.maximum(1 - dz ** 2, 0))[:, None] + np.array([0, 0, 1.0]) * dz[:, None]
+        zz = up[None] - d[under] * d[under][:, 2:3]
+        z[under] = _norm(zz)
+        x[under] = np.cross(d[under], z[under])
+    return {"pos": pos, "frame": np.stack([x, d, z], axis=2), "scale": sc_,
             "variant": (_child(key, 9) % np.uint64(int(tw["variants"]))).astype(int), "node": node, "key": key}
 
 
