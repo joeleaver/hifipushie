@@ -289,8 +289,8 @@ def stage_construction(c: Ctx) -> dict:
     from . import cloth_job
     st = cloth._state(c.g)
     cfg = {"state": st, "placement": cloth.placement_of(c.gx),
-           "assemble": bool({pcs[n]["wrap"].get("to", "torso") for n in pcs} - {"torso"}) and
-           any(pcs[n]["wrap"].get("to", "torso") == "torso" for n in pcs),
+           "assemble": bool({pcs[n]["wrap"].get("to", "torso") for n in pcs} - {"torso", "leg.L", "leg.R"}) and
+           any(pcs[n]["wrap"].get("to", "torso") in ("torso", "leg.L", "leg.R") for n in pcs),
            "hanger": isinstance(st, dict) and "hang" in st and not (st["hang"] or {}).get("pins"), "lower": True}
     o["info"].append("sim stages: " + " -> ".join(f"{s['name']} ({s['frames']} fr{', gravity' if s.get('gravity') else ''})"
                                                     for s in cloth_job.stages(cfg)))

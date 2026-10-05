@@ -16,6 +16,8 @@ pattern_draft.OPS. Same contract: named points, named edges kept, mating edges m
   pleat          fullness folded away along a line that crosses the piece: the piece is spread by twice the depth,
                  the seams skip the underlay, two fold lines press it.
   buttons        button marks along a line of a paired piece, stitched left to right.
+  neckline       the neckline redrawn on front and back together: widened along the shoulder by the same amount on
+                 both (the shoulder seams stay equal), lowered at centre front / back, round, V or square.
 """
 from __future__ import annotations
 
@@ -189,7 +191,7 @@ def op_cut_away(D: dict, piece: str, keep: str, name: str | None = None, **o) ->
         key = json.dumps([A, Bs])
         fa = [ren(e) for e in _flat(A) if not e.startswith(dn + ":")]
         fb = [ren(e) for e in _flat(Bs) if not e.startswith(dn + ":")]
-        if not fa or not fb or any(e.split(":")[0] == piece and name + "." in e for e in fa + fb):
+        if not fa or not fb:  # the cut's own seam, and seams of the part cut away
             continue
         ns = [fa[0] if len(fa) == 1 else fa, fb[0] if len(fb) == 1 else fb]
         if key in D["notes"]:
@@ -522,6 +524,67 @@ def op_stitch(D: dict, a: str, b: str, **o) -> None:
     D["log"].append(f"stitch {a} to {b}")
 
 
-pd.OPS.update({"shawl": op_shawl, "lapel": op_lapel, "cut_away": op_cut_away, "darts_to_seam": op_darts_to_seam,
+def op_neckline(D: dict, widen: float = 0.0, front: float = 0.0, back: float = 0.0, shape: str = "round",
+                shape_back: str = "round", **o) -> None:
+    """Redraw the neckline: the neck point moved `widen` along the shoulder on front AND back (so the shoulder seams
+    still match), the centre front lowered by `front`, the centre back by `back`; "round" (leaves the centre square to
+    it and the shoulder square to the seam), "v" (straight) or "square". Do it before a collar, facing or cut."""
+    moved = {}
+    for edge, low, shp in (("neck_front", front, shape), ("neck_back", back, shape_back)):
+        chain = D["edges"].get(edge) or []
+        if len(chain) != 1:
+            raise DraftError(f"neckline: {edge} is cut into {len(chain)} parts; redraw the neckline before style lines")
+        pn, arc = chain[0].split(":", 1)
+        pc = D["pieces"][pn]
+        cname = "cfNeck" if "cfNeck" in pc["names"] else "cbNeck"
+        ix = pattern.arc_indices(pc, arc)
+        if pc["names"][cname] != ix[0]:
+            ix = ix[::-1]
+        if pc["names"][cname] != ix[0] or pc["names"]["hps"] != ix[-1]:
+            raise DraftError(f"neckline: {edge} doesn't run from {cname} to hps")
+        while len(ix) < 8:  # a straight neckline: give it points to carry a curve
+            k = int(np.argmax(np.linalg.norm(np.diff(pc["P"][ix], axis=0), axis=1)))
+            a, b = ix[k], ix[k + 1]
+            _insert(pc, a if (a + 1) % len(pc["P"]) == b else b, 0.5 * (pc["P"][a] + pc["P"][b]))
+            ix = pattern.arc_indices(pc, arc)
+            if pc["names"][cname] != ix[0]:
+                ix = ix[::-1]
+        sh_edge = D["edges"]["shoulder_front" if edge == "neck_front" else "shoulder_back"]
+        Ps = np.concatenate(pd.edge_points(D, sh_edge))
+        hps = pc["P"][ix[-1]].copy()
+        far = Ps[int(np.argmax(np.linalg.norm(Ps - hps, axis=1)))]
+        sdir = _unit(far - hps)
+        if widen >= np.linalg.norm(far - hps) - 0.02:
+            raise DraftError("neckline: widened past the shoulder")
+        H = hps + sdir * widen
+        C = pc["P"][ix[0]] + np.array([0.0, -abs(low)])
+        n = len(ix)
+        if shp == "v":
+            new = C + (H - C) * np.linspace(0, 1, n)[:, None]
+        elif shp == "square":
+            corner = np.array([H[0], C[1]])
+            cum = np.r_[0, np.linalg.norm(corner - C), np.linalg.norm(corner - C) + np.linalg.norm(H - corner)]
+            s_ = np.linspace(0, cum[-1], n)
+            pl = np.array([C, corner, H])
+            new = np.c_[np.interp(s_, cum, pl[:, 0]), np.interp(s_, cum, pl[:, 1])]
+            new[int(np.argmin(np.linalg.norm(new - corner, axis=1)))] = corner
+        else:
+            # leaves the centre at right angles to it, arrives at the neck point square to the shoulder seam
+            perp = np.array([-sdir[1], sdir[0]])
+            if perp[1] > 0:
+                perp = -perp
+            d = np.linalg.norm(H - C)
+            B = np.r_[[C], pb.bez(C, C + np.array([0.45 * d, 0.0]), H + perp * min(0.35 * d, 0.9 * abs(H[1] - C[1])), H, n=4 * n)]
+            cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(B, axis=0), axis=1))]
+            s_ = np.linspace(0, cum[-1], n)
+            new = np.c_[np.interp(s_, cum, B[:, 0]), np.interp(s_, cum, B[:, 1])]
+        pc["P"][ix] = new
+        moved[edge] = edge_length(D, chain)
+    D["log"].append(f"neckline: neck point moved {widen * 1000:.0f} mm along the shoulder on front and back, centre front "
+                    f"{front * 1000:.0f} mm lower ({shape}), centre back {back * 1000:.0f} mm lower; neckline now front "
+                    f"{moved['neck_front'] * 1000:.0f} + back {moved['neck_back'] * 1000:.0f} mm per half")
+
+
+pd.OPS.update({"neckline": op_neckline, "shawl": op_shawl, "lapel": op_lapel, "cut_away": op_cut_away, "darts_to_seam": op_darts_to_seam,
                "raglan": op_raglan, "kimono": op_kimono, "hood": op_hood, "pleat": op_pleat, "buttons": op_buttons,
                "stitch": op_stitch})

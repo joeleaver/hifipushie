@@ -209,6 +209,11 @@
    "double_breasted": {"label": "double-breasted: two columns of buttons, the fronts overlapping 90-120 mm",
      "dims": {"button_spacing": [85, 120], "button_size_coat": [20, 25]},
      "evidence": [{"stitches": "front", "min": 2}, {"lap": "front"}]},
+   "single_button": {"label": "one button at the break point (a shawl or one-button jacket), the fronts lapped by the button stand",
+     "dims": {"button_stand": [15, 30]},
+     "evidence": [{"stitches": "front", "min": 1}, {"lap": "front"}]},
+   "wrap_tie": {"label": "wrap front: one front laps right across the other and is tied or tacked at the side",
+     "evidence": [{"stitches": "front", "min": 1}, {"lap": "front"}]},
    "zip": {"label": "zip front (a separating zip between the fronts)", "evidence": [{"seam": ["front", "front"]}]},
    "pullover": {"label": "no front opening (pulled over the head)", "evidence": []},
    "open": {"label": "open front (no closure)", "evidence": []}

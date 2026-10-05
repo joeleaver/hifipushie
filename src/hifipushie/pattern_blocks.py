@@ -412,6 +412,11 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         if dart > 0:
             pc["darts"]["dart"] = ("dartA", "dartTip", "dartB")
         out[which] = pc
+    # the side seams trued: the back's top is raised (or dropped) until both are the same length (its waist then
+    # runs up from the side to the centre back a little less)
+    for _ in range(3):
+        diff = edge_length(out["front"], "sideWaist>sideSeat>sideHem") - edge_length(out["back"], "sideWaist>sideSeat>sideHem")
+        out["back"]["P"][out["back"]["names"]["sideWaist"], 1] += diff
     seams = [["front:sideWaist>sideSeat>sideHem", "back:sideWaist>sideSeat>sideHem"],
              ["front:fork>inKnee>inHem", "back:fork>inKnee>inHem"]]
     notes = {'["front:fork>inKnee>inHem", "back:fork>inKnee>inHem"]': {

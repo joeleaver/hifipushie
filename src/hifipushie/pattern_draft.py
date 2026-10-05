@@ -319,8 +319,12 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
             nrm = -nrm  # into the piece
         w = np.clip(1 - np.abs(L[:, 1] - y) / length, 0, 1)
         w = w * w * (3 - 2 * w)
-        w[0] = w[-1] = 0.0 if (abs(L[0, 1] - y) > 0.3 * length and abs(L[-1, 1] - y) > 0.3 * length) else w[0]
-        pc["P"][ix] = L + nrm * (amount * part * w)[:, None]
+        mv = nrm * (amount * part * w)[:, None]
+        # an end the shaping hasn't faded out at (a cropped hem inside the taper) slides along its own edge: level
+        # (held, the points next to it moved and left a hook at the hem)
+        for k in (0, -1):
+            mv[k] = [np.sign(nrm[k, 0]) * amount * part * w[k], 0.0]
+        pc["P"][ix] = L + mv
     la, lb = edge_length(D, sa), edge_length(D, sb)
     D["log"].append(f"take in {line}: {amount * 1000:.0f} mm at y {y * 1000:.0f} mm, {share * 100:.0f}% from the side "
                     f"panel ({la * 1000:.1f} / {lb * 1000:.1f} mm)")
@@ -671,18 +675,63 @@ def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None 
         cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(L, axis=0), axis=1))]
         s_ = np.unique(np.r_[cum, np.linspace(0, cum[-1], 5)])
         L = np.c_[np.interp(s_, cum, L[:, 0]), np.interp(s_, cum, L[:, 1])]
+    # the facing is the part of the piece within `width` of the edge: past the edge's two ends it follows the
+    # piece's own outline until that is `width` away, and its inner edge is the line `width` from the edge (round
+    # the ends too). A plain offset of the edge alone made beaks at corners and a square end across the piece.
+    from .cloth import _inside, _seg_dist
+    P = pc["P"]
+    n_ = len(P)
+
+    def nearest(q):
+        return int(np.argmin(np.linalg.norm(P - q, axis=1)))
+
+    ia, ib = nearest(L[0]), nearest(L[-1])
+    on = set(int(np.argmin(np.linalg.norm(P - q, axis=1))) for q in L)
+
+    def run_on(i0):  # along the outline away from the edge until `width` from it
+        step = 1 if (i0 + 1) % n_ not in on else -1
+        out, prev, dprev = [], P[i0], 0.0
+        for k in range(1, n_):
+            q = P[(i0 + step * k) % n_]
+            if (i0 + step * k) % n_ in on:
+                break
+            sub = np.linspace(0, 1, max(2, int(np.linalg.norm(q - prev) / 0.004) + 1))[1:]
+            for u_ in sub:
+                x = prev + (q - prev) * u_
+                d = float(_seg_dist(x[None], L, closed=False)[0])
+                if d >= width:
+                    w_ = (width - dprev) / max(d - dprev, 1e-9)
+                    out.append(out[-1] + (x - out[-1]) * w_ if out else x)
+                    return out
+                out.append(x)
+                dprev = d
+            prev = q
+        return out
+
+    tail_b, tail_a = run_on(ib), run_on(ia)
     t = np.gradient(L, axis=0)
+    t /= np.linalg.norm(t, axis=1, keepdims=True) + 1e-12
     nrm = np.c_[-t[:, 1], t[:, 0]]
-    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
-    if np.mean(np.sum((pc["P"].mean(0) - L) * nrm, 1)) < 0:
+    if np.mean(np.sum((P.mean(0) - L) * nrm, 1)) < 0:
         nrm = -nrm
-    inner = L + nrm * width
-    # drop the inner line's self-crossings at concave corners (points closer to the edge than the width)
-    from .cloth import _seg_dist
-    ok = _seg_dist(inner, L, closed=False) > width * 0.98
-    ok[0] = ok[-1] = True
+    arc = np.linspace(0, math.pi / 2, 9)[:-1]
+    cap_b = [L[-1] + width * (math.cos(a_) * t[-1] + math.sin(a_) * nrm[-1]) for a_ in arc]
+    cap_a = [L[0] + width * (-math.cos(a_) * t[0] + math.sin(a_) * nrm[0]) for a_ in arc[::-1]]
+    inner = np.array(cap_b + list((L + nrm * width)[::-1]) + cap_a)
+    ok = (_seg_dist(inner, L, closed=False) > width * 0.98) & _inside(P, inner)
     inner = inner[ok]
-    pts = [("edge.a", L[0])] + [(None, q) for q in L[1:-1]] + [("edge.b", L[-1])] + [(None, q) for q in inner[::-1]]
+    for _ in range(4):  # the joins of the offset line and the round ends: eased (a pattern maker draws one curve)
+        if len(inner) > 4:
+            inner[1:-1] = 0.25 * inner[:-2] + 0.5 * inner[1:-1] + 0.25 * inner[2:]
+    # thin the tails' points that sit on the piece's straight runs; keep corners
+    ring = [q for q in tail_b] + [q for q in inner] + [q for q in tail_a[::-1]]
+    keep_r = [ring[0]] if ring else []
+    for q in ring[1:]:
+        if np.linalg.norm(q - keep_r[-1]) > 0.002:
+            keep_r.append(q)
+    while keep_r and np.linalg.norm(keep_r[-1] - L[0]) < 0.002:
+        keep_r.pop()
+    pts = [("edge.a", L[0])] + [(None, q) for q in L[1:-1]] + [("edge.b", L[-1])] + [(None, q) for q in keep_r]
     mid = len(L) // 2
     pts[mid] = ("edge.m", L[mid])
     fpc = pb.make_piece(name, pts, "facing", dict(pc.get("wrap") or {}), pc.get("sym", "pair"))
@@ -747,7 +796,9 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     nrm = np.c_[-t[:, 1], t[:, 0]]
     nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
     hgt = np.interp(si / s[-1], [0, 1], [height, float(o.get("height_front", height))])
-    outer = edge + nrm * hgt[:, None]
+    # the collar's body lies AWAY from the neck hole (the hole is on the left of cb -> hps -> cf): a flat collar's
+    # outer edge is then longer than its neck edge, a band's top edge a little shorter (it leans in to the neck)
+    outer = edge - nrm * hgt[:, None]
     k_sh = int(np.argmin(np.abs(si - lb)))
     k_cf = int(np.argmin(np.abs(si - (lb + lf))))
     pts = [("cb", edge[0])] + [(("shoulderNotch" if k == k_sh else "cf" if (k == k_cf and ext > 0) else None), edge[k])
@@ -1039,6 +1090,7 @@ def unfold(D: dict) -> dict:
             if D["centre"].get(nm) == "open" and L["wrap"].get("to") == "torso":
                 L["wrap"]["out"] = max(float(L["wrap"].get("out", 0)), 0.004)  # the left front laps over
             for S, c in (("L", L), ("R", R)):
+                c["wrap"]["half"] = 1 if S == "L" else -1  # which side of x = 0 (its centre line) the piece is on
                 if str(c["wrap"].get("to", "")).startswith("leg."):
                     c["wrap"]["to"] = f"leg.{S}"
             out[f"{nm}.L"], out[f"{nm}.R"] = L, R
@@ -1093,6 +1145,8 @@ def unfold(D: dict) -> dict:
             g["piece"] = f["piece"] if k == "fold" else f"{f['piece']}.{S}"
             if isinstance(g.get("line"), dict) and "edge" in g["line"]:
                 g["line"]["edge"] = side_spec(g["line"]["edge"], S)
+            elif isinstance(g.get("line"), list) and S == "R" and k != "fold":
+                g["line"] = [[-float(q[0]), float(q[1])] for q in g["line"]]  # points: mirrored with the piece
             if k == "fold" and S == "R":
                 continue  # one fold line runs across the whole piece (declared on the left half's edge)
             folds.append(g)
