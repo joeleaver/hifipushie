@@ -108,7 +108,7 @@ GROOM = {
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
-        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "eevee_gain": 1.6, "light": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "eevee_gain": 1.6, "light": None, "card_gain": 1.0}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands"}
@@ -1639,7 +1639,9 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
         from fnmatch import fnmatch
         pats = [only] if isinstance(only, str) else list(only)
         locks = [lk for lk in locks if any(fnmatch(lk["name"], q) for q in pats)]
-    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass", step=cap_step,
+    far = isinstance(budget, str) and CARD_TIERS.get(budget, {}).get("cap") == "mass"  # (a far tier's cap IS the
+    # hair on the head: the groom's full volume, not the layer under its locks)
+    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass" and not far, step=cap_step,
                     extra=lock_extents(sc, locks) if (locks and h.get("filler")) else None)
     extra = {k: v for k, v in streams(sc, g, V).items() if k == "tangent"} if stage != "mass" else {}  # (the
     # sawtooth clumps on the underlayer aliased into jagged stripes: the strips carry the clumps now)
@@ -1726,7 +1728,8 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
     seg = np.linalg.norm(np.diff(L, axis=0, append=L[:1]), axis=1)
     cum = np.r_[0.0, np.cumsum(seg)]
     out = []
-    for k, d in enumerate(np.arange(0.0, cum[-1], 0.01 / n_cm)):
+    for k, d in enumerate(np.arange(0.0, cum[-1], 0.025 / n_cm)):  # (the soft line itself is painted in the cap's
+        # chart: cards only add stray hairs over it; one a cm overlapped into smudges)
         az = float(np.interp(d + rng.uniform(-0.3, 0.3) * 0.01 / n_cm, cum, np.r_[a, 360.0])) % 360
         el = float(_line_at(line, az))
         r = float(sc.r(az, el))
@@ -1753,11 +1756,18 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # Generator tutorial spends ~54k on a hero's LOD 0 in five layers (coverage 4%, mid 14%, top 46%, fly-aways 18%, short
 # hairs 18%); a game character whose whole body is ~46k can't. The layers below are ours: 0 = the opaque coverage
 # (dense / hairline tiles), 1 = mid, 2+ = top and break-up, fly-aways and baby hairs on top; the cap is the scalp chart.
+# group: how big a clump of strands one card stands for (hair_cards.clump_cards): a lower tier has FEWER, WIDER cards
+# from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
+# (the scalp chart) and the tail's core carry the rest.
 CARD_TIERS = {
-    "hero": {"triangles": 40000, "cap_step": 4.0, "layers": 4, "card_width": 0.014, "segment": 0.008},
-    "main": {"triangles": 16000, "cap_step": 5.0, "layers": 3, "card_width": 0.02, "segment": 0.012},
-    "npc": {"triangles": 6000, "cap_step": 7.0, "layers": 2, "card_width": 0.03, "segment": 0.03, "flyaway": 0.05},
-    "far": {"triangles": 1500, "cap_step": 12.0, "layers": 1, "card_width": 0.06, "segment": 0.05, "flyaway": 0.0, "baby": 0.0},
+    "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
+             "fly": 2, "core_sides": 12},
+    "main": {"triangles": 16000, "cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
+             "baby": 0.6, "core_sides": 10},
+    "npc": {"triangles": 6000, "cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.04, "segment": 0.025,
+            "baby": 0.0, "core_sides": 8},
+    "far": {"triangles": 1500, "cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
+            "baby": 0.0, "core_sides": 6},
 }
 
 
@@ -1772,7 +1782,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         if budget not in CARD_TIERS:
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
         tier = CARD_TIERS[budget]
-        S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step")}}
+        S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         budget = int(tier["triangles"])
     lk = {**LOOK, **(h.get("look") or {})}
     D, e_chart = None, None
@@ -1792,7 +1802,14 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         if not k_.get("free"):
             a0, e0, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
             k_["at_hairline"] = bool(h0[0] < 0.01 and inside(sc, line, a0, e0)[0] < 0.008)
-    cards = hc.cards_of([k_ for k_ in locks if k_ not in bands], sc.C, S, lk)
+    hair_locks = [k_ for k_ in locks if k_ not in bands]
+    core = None
+    if D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
+        cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
+        tc = hc.tail_cores(D, hair_locks, sides=int(S.get("core_sides", 10)))
+        core = hc.core_mesh(tc, at["tiles"]) if tc is not None else None
+    else:
+        cards = hc.cards_of(hair_locks, sc.C, S, lk)
     # a coarse cap's flat faces cut under the round head between their corners (skin through the hair): it is
     # lifted by that sagitta
     Vc = np.asarray(V, float)
@@ -1800,20 +1817,23 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     Vc = Vc + lift * _unit(Vc - sc.C)
     cap = card_cap(sc, g, S, at["tiles"], Vc, F, e0=e_chart)
     baby = hc.cards_of(baby_locks(sc, g, S, int(g.get("seed", 0))), sc.C, S, lk)
-    for c in baby:
-        c["kind"], c["layer"] = "baby", 1
+    for c in baby:  # (the first to go under a budget, after single fly-aways)
+        c["kind"], c["layer"], c["prio"] = "baby", 1, float(S["layers"]) + 0.6
     info = {}
     seg = None
+    if budget:  # baby hairs are cards like any others: they go before coverage does
+        cards, baby = cards + baby, []
     mb = hc.mesh(baby, S, lk, at["tiles"])
     band = []
     if bands:
         from . import hair_tied
         band = [hair_tied.band_mesh(b, at["tiles"]) for b in bands]
     if budget:  # the budget is the whole hair's: the cap, the baby hairs and the tie come off it first
-        fixed = len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
+        fixed = (len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
+                 + (len(core["tris"]) if core is not None else 0))
         cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
         info["asked"], info["fixed"] = int(budget), int(fixed)
-    m = hc.join(hc.mesh(cards, S, lk, at["tiles"], segment=seg), mb, *band)
+    m = hc.join(core, hc.mesh(cards, S, lk, at["tiles"], segment=seg), mb, *band)
     np.savez(tmp / "cards.npz", **m)
     np.savez(tmp / "cards_cap.npz", **cap)
     files = hc.write_atlas(at, str(tmp / "hair"))
@@ -2070,6 +2090,91 @@ def look_glb(name: str, glb, views=("wide_r", "back_quarter", "close_front", "th
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
     info = next((json.loads(ln[6:]) for ln in out.splitlines() if ln.startswith("@@glb")), {})
     return imgs, info, round(time.time() - t, 1)
+
+
+def check_tiers(name: str, export: dict | str | Path, tiers=None, save: str | None = None, size: int = 400,
+                views=("wide_r", "back_quarter", "close_front", "three_quarter"), solid: bool = True,
+                spec: dict | None = None) -> dict:
+    """An export's card tiers judged as an engine draws them, against the strand groom: each tier's GLB re-imported
+    on the head (alpha TEST at its cutoff, and dithered), the strands and the bald head in the same views and light.
+    Per tier and view (hair_checks.compare): iou / missing (strand silhouette left bare), value and saturation x the
+    strands', detached rectangular blobs (cards showing as stamps), straight outline share (plank ends); per tier
+    the card mesh's own numbers (cards, widths, triangles by layer, what the budget dropped) and WARNING lines.
+    `save`: a sheet: strands | per tier alpha test, dithered, and (solid=True) the cards as solid quads coloured by
+    layer | the atlas. `export`: export_hair's report or its folder. Returns {"tiers": {...}, "warnings": [...],
+    "sheet": path}."""
+    from PIL import Image, ImageDraw
+    from . import hair_checks as hk
+    if not isinstance(export, dict):
+        export = json.loads((Path(export) / f"{name}_hair.json").read_text())
+    spec = store.load(name) if spec is None else spec
+    tiers = list(tiers or export["tiers"])
+    bald, _, _ = look_glb(name, None, views=views, size=size, spec=spec)
+    sp = {**spec, "hair": {**hair_of(spec), "style": "strands"}}
+    sheet, _, _ = look(name, views=views, size=size, spec=sp, clay=False)
+    strands = [sheet.crop((i * size, 22, (i + 1) * size, 22 + size)) for i in range(len(views))]
+    rows = [("strands (the groom)", strands)]
+    out = {"tiers": {}, "warnings": []}
+    for tier in tiers:
+        e = export["tiers"][tier]
+        r = {"triangles": e["triangles"], "budget": e.get("budget"), "layers": e.get("layers")}
+        for alpha in ("test", "dither"):
+            imgs, info, _ = look_glb(name, e["glb"], views=views, size=size, alpha=alpha, spec=spec)
+            r[alpha] = {v: hk.compare(s_, im, b) for v, s_, im, b in zip(views, strands, imgs, bald)}
+            rows.append((f"{tier}: the GLB re-imported, alpha {alpha}   {e['triangles']} triangles", imgs))
+        r["warnings"] = sorted(set(hk.verdict(r["test"], far=tier == "far") + hk.verdict(r["dither"], far=tier == "far")))
+        out["warnings"] += [f"{tier}: {w}" for w in r["warnings"]]
+        if solid and tier in CARD_TIERS:
+            sc_ = {**spec, "hair": {**hair_of(spec), "style": "cards"}}
+            sh, _, _ = look(name, views=views, size=size, spec=sc_, clay=False, budget=tier, debug="layers")
+            rows.append((f"{tier}: cards as solid quads by layer (cap + core grey, 0 red, 1 green, 2 blue, 3 yellow, "
+                         f"above magenta; back faces dark)",
+                         [sh.crop((i * size, 22, (i + 1) * size, 22 + size)) for i in range(len(views))]))
+        out["tiers"][tier] = r
+    if save:
+        W_ = size * len(views)
+        maps = export.get("maps") or {}
+        atl = Image.open(maps["basecolor"]).convert("RGBA") if maps.get("basecolor") else None
+        extra = 2 * (W_ // 2 + 18) if atl is not None else 0
+        img = Image.new("RGB", (W_, len(rows) * (size + 18) + extra), (30, 31, 35))
+        d = ImageDraw.Draw(img)
+        y = 0
+        for lab, ims in rows:
+            d.text((6, y + 3), lab, fill=(240, 220, 160))
+            for i, im in enumerate(ims):
+                img.paste(im.resize((size, size)), (i * size, y + 18))
+            y += size + 18
+        if atl is not None:
+            bg = Image.new("RGBA", atl.size, (140, 140, 140, 255))
+            for lab, im in (("atlas: base colour over grey (left: clump tiles, right: the scalp chart)",
+                             Image.alpha_composite(bg, atl).convert("RGB")), ("atlas: alpha", atl.split()[3].convert("RGB"))):
+                d.text((6, y + 3), lab, fill=(240, 220, 160))
+                img.paste(im.resize((W_, W_ // 2)), (0, y + 18))
+                y += W_ // 2 + 18
+        img.save(save)
+        out["sheet"] = str(save)
+        stem = str(save)[:-4]
+        for lab, ims in rows:  # each row alone too (the whole sheet is tall)
+            rr = Image.new("RGB", (W_, size))
+            for i, im in enumerate(ims):
+                rr.paste(im.resize((size, size)), (i * size, 0))
+            tag = lab.split(":")[0].split(" ")[0] + ("_solid" if "solid" in lab else "_dither" if "dither" in lab
+                                                     else "_test" if "test" in lab else "")
+            rr.save(f"{stem}_{tag}.png")
+    return out
+
+
+def tiers_text(chk: dict) -> str:
+    """check_tiers' numbers as a table."""
+    lines = ["tier     tris   view            iou   bare  value   sat  stamps straight   (alpha test | dithered)"]
+    for tier, r in chk["tiers"].items():
+        for v in r["test"]:
+            a, b = r["test"][v], r["dither"][v]
+            lines.append(f"{tier:<6} {r['triangles']:>6}   {v:<14} {a['iou']:.2f}  {a['missing']:.2f}   {a['value']:.2f}  {a['sat']:.2f}"
+                         f"   {a['stamps']}    {a['straight']:.2f}   |  {b['iou']:.2f}  {b['missing']:.2f}   {b['value']:.2f}  {b['sat']:.2f}"
+                         f"   {b['stamps']}    {b['straight']:.2f}")
+    lines += chk["warnings"] or ["no warnings"]
+    return "\n".join(lines)
 
 
 def _project_frame(fm: dict, P, W: int):
@@ -2404,7 +2509,7 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
     Image.fromarray(_srgb8(col[..., :3])).save(files["basecolor"])
     r8 = (np.clip(rough[..., 0], 0, 1) * 255 + 0.5).astype(np.uint8)
     Image.fromarray(np.stack([np.full_like(r8, 255), r8, np.zeros_like(r8)], -1)).save(files["orm"])
-    Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 128], np.uint8), "RGBA").save(files["specular"])
+    Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 64], np.uint8), "RGBA").save(files["specular"])
     log.append(f"hair: {len(T)} triangles ({segments} x {sides} per lock + the underlayer), maps {texture}^2 baked by Cycles "
                f"from the locks' own material in {time.time() - t:.1f}s")
     return part, files
@@ -2446,7 +2551,11 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
         sheen = [round(float(c), 3) for c in srgb_to_linear(lk["sheen"])]
         asset.write_glb(glb, f"{name}_hair", {"hair": part}, [("hair", files)],
                         looks={"hair": {"alpha_cutoff": hc_["alpha_cutoff"], "extras": {"hifipushie_hair": hc_}}},
-                        extra_ext={0: {"KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
+                        extra_ext={0: {"KHR_materials_specular": {  # (a card is a sheet standing for many round
+                            # hairs: at a dielectric's white F0 it mirrors a light as one pale plate; half of it, and
+                            # in the hair's own colour, as light off and through hairs is)
+                            "specularFactor": 0.5, "specularColorFactor": [round(float(c / max(max(sheen), 1e-6)), 3) for c in sheen]},
+                                       "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                                                     "anisotropyRotation": 1.5708},
                                        "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}})
         rep["tiers"][tier] = {"glb": str(glb), "triangles": len(part["corner_vert"]) // 3, "layers": hc_["layers"],
@@ -2512,7 +2621,7 @@ def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict,
     Image.open(cd["color"]).save(files["basecolor"])
     Image.open(cd["normal"]).convert("RGB").save(files["normal"])
     Image.open(cd["aux"]).save(files["aux"])
-    rough = np.clip(float(lk.get("roughness", 0.42)) * (1.25 - 0.4 * aux[..., 2]), 0.05, 1.0)
+    rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.5) * (1.25 - 0.4 * aux[..., 2]), 0.05, 1.0)
     occ = 0.55 + 0.45 * aux[..., 2]
     Image.fromarray((np.stack([occ, rough, np.zeros_like(occ)], -1) * 255 + 0.5).astype(np.uint8)).save(files["orm"])
     Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 128], np.uint8), "RGBA").save(files["specular"])

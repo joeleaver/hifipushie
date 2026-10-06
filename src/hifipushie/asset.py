@@ -1190,7 +1190,7 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                                                       "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]},
                            **((extra_ext or {}).get(len(materials)) or {})},
         })
-    used = ["KHR_materials_specular"] + sorted({e for x in (extra_ext or {}).values() for e in x})
+    used = ["KHR_materials_specular"] + sorted({e for x in (extra_ext or {}).values() for e in x} - {"KHR_materials_specular"})
     variants = {}
 
     def material_of(pn, p):

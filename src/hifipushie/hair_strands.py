@@ -88,6 +88,12 @@ def physical(S: dict, free: bool = False) -> dict:
     }
 
 
+def is_gather(lk: dict) -> bool:
+    """A lock that runs over the head into a tie (hair_tied's gather rows)."""
+    import re
+    return bool(re.fullmatch(r"t\d*g\d+_\d+", str(lk.get("name", ""))))
+
+
 def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free: int = 32) -> dict:
     """{"head": G, "free": G}: G = {"counts", "pts", "side", "out", "weight", "lock", "names"} (the guide arrays of
     blender_strands.curves_object; `weight` = each lock's share of the strands, by its section)."""
@@ -99,7 +105,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         if not sel:
             continue
         n = n_free if key == "free" else n_head
-        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_ = ([] for _ in range(11))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_ = ([] for _ in range(12))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
@@ -114,7 +120,12 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # open toward the tip and the strands end one by one instead (lens group "Tips")
             floor = (0.4 if key == "free" else 0.4) + 0.3 * float(np.clip(Sl["tip_spread"], 0, 1))
             floor *= float(np.clip((W - 0.012) / 0.02, 0.0, 1.0))  # (a thin wisp keeps its point)
-            lw = lw + np.clip(floor - lw, 0.0, None) * _ss((u - belly) / 0.3)
+            gather = is_gather(lk)
+            if gather:  # hair drawn to a tie ends IN the tie: the lock narrows into it and every strand gets there
+                # (kept open and trimmed like loose hair, the gather stood round the tie as a fan of plates and tufts)
+                lw = lw * (1 - 0.75 * _ss((u - 0.5) / 0.5))
+            else:
+                lw = lw + np.clip(floor - lw, 0.0, None) * _ss((u - belly) / 0.3)
             fr = float(lk.get("free", 0.0))
             R = float(Sl["random"])
             A = 0.6 * float(Sl["wave"]) * (0.3 + 0.7 * fr) * (1 + R * rng.uniform(-0.4, 0.4))
@@ -139,8 +150,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             W_.append(W * max(th * float(Sl["flat"]), 0.004 if key == "head" else 0.0015)
                       * (1.0 if key == "head" else 0.9 if thin else 2.5))
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
-            F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W))
+            F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W) * (0.3 if gather else 1.0))
             R_.append(4.0 if lk.get("at_hairline") else 1.0)
+            TS_.append(0.0 if gather else 1.0)
             WS_.append(ws)
             WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
@@ -148,7 +160,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             N_.append(lk["name"])
         out[key] = {"counts": np.full(len(sel), n, np.int32), "pts": np.concatenate(P_).astype(np.float32),
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
-                    "weight": np.asarray(W_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.ones(len(R_), np.float32),
+                    "weight": np.asarray(W_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
                     "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
                     "names": np.asarray(N_)}
     return out
@@ -458,8 +470,10 @@ def strands_of_model(sd: dict) -> dict:
 
 TILE_LEN = 0.16  # m: a tile's strands run this far (a card stretches its picture along the lock)
 TILE_KIND = {  # per atlas tile kind: strands at a 160 px tile, sub clumps, tips x, where roots start (0..1 of the length), guide length x
-    "dense": (260, 6, 0.5, 0.02, 1.0), "medium": (120, 4, 1.0, 0.04, 1.0), "sparse": (44, 3, 1.4, 0.06, 1.0),
-    "fly": (12, 1, 1.0, 0.3, 1.0), "baby": (260, 1, 1.2, 0.25, 0.8), "hairline": (330, 6, 0.5, 0.34, 1.0),
+    # (upper layers' roots start one by one over the first quarter: a row of cards has no root edge; a baby tile is
+    # a few thin hairs with empty margins: dense and parallel they filled their quad, a brown stamp on the skin)
+    "dense": (260, 6, 0.5, 0.02, 1.0), "medium": (120, 4, 1.0, 0.25, 1.0), "sparse": (44, 3, 1.4, 0.3, 1.0),
+    "fly": (12, 1, 1.0, 0.3, 1.0), "baby": (16, 1, 1.6, 0.45, 0.85), "hairline": (330, 6, 0.5, 0.34, 1.0),
 }
 
 
@@ -475,7 +489,7 @@ def tile_job(S: dict, tmp: Path, seed: int = 11) -> dict:
         width = TILE_LEN * w / 1024.0
         y = -np.linspace(0, TILE_LEN * ln, n)
         P.append(np.stack([np.full(n, i * 0.2), y, np.zeros(n)], 1))
-        Sd.append(np.tile([0.46 * width, 0.0, 0.0], (n, 1)))
+        Sd.append(np.tile([(0.3 if kind in ("fly", "baby") else 0.46) * width, 0.0, 0.0], (n, 1)))
         O.append(np.tile([0.0, 0.0, 0.002], (n, 1)))
         N.append(max(1, int(round(cnt * w / 160 / 8.0))))
         K.append(clumps)
@@ -493,7 +507,7 @@ def tile_job(S: dict, tmp: Path, seed: int = 11) -> dict:
     st = [[LENS, {"Amount": 8.0, "Tips": tips, "Roots": 1.0, "Flyaway": 0.0, "Flyaway Distance": 1.0, "Edge": 1.0,
                   "Clump": ph["clump"], "Clump Shape": ph["clump_shape"], "Tip Spread": ph["tip_spread01"],
                   "Wave": float(min(0.12 * ph["wave"], 0.0012)), "Wavelength": ph["wavelength"], "Curl": 0.0,
-                  "Loose": ph["wander"], "Wave Random": ph["wave_random"], "Stray": ph["stray"],
+                  "Loose": ph["wander"], "Wave Random": 0.15, "Stray": ph["stray"],
                   "Seed": int(seed)}]]
     if ph["loose"] > 0:
         st.append(["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": 0.5 * ph["loose"],
@@ -571,7 +585,7 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
     soft = max(float(S["soft"]), 0.001)
     rng = np.random.default_rng(5)
     streak = np.repeat(rng.uniform(0, 1, (1, W)), H, 0).astype(np.float32)
-    base = _ss((d_in - 0.6 * soft) / soft)
+    base = _ss((d_in - 0.25 * soft) / soft)
     pw = float(g["parting"].get("width", 0.012))
     base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
     a_ = np.where(d_in > -0.004, a_, 0.0)

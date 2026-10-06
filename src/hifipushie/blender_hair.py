@@ -680,10 +680,27 @@ def show(hair: dict):
                 bpy.data.meshes.remove(me)
     if cd:
         mat = card_material(hair["look"], cd["color"], cd["normal"])
-        if cd.get("debug") == "layers":
+        dbg = cd.get("debug")
+        if dbg == "layers":
             _debug_layers(mat)
+        elif dbg in ("no_normal", "unlit"):  # isolate what makes a pattern: the normal map, or the lighting at all
+            nt = mat.node_tree
+            bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+            for l in list(bsdf.inputs["Normal"].links):
+                nt.links.remove(l)
+            if dbg == "unlit":
+                src = bsdf.inputs["Base Color"].links[0].from_socket
+                nt.links.new(src, bsdf.inputs["Emission Color"])
+                bsdf.inputs["Emission Strength"].default_value = 1.0
+                for l in list(bsdf.inputs["Base Color"].links):
+                    nt.links.remove(l)
+                bsdf.inputs["Base Color"].default_value = (0, 0, 0, 1)
+                bsdf.inputs["Specular IOR Level"].default_value = 0.0
         card_object("hair_cap", cd["cap"], mat, coll)["hp_hair_cap"] = "under"
         card_object("hair_cards", cd["mesh"], mat, coll)
+        if dbg in ("cap_only", "cards_only"):
+            ob = bpy.data.objects["hair_cards" if dbg == "cap_only" else "hair_cap"]
+            ob.hide_render = ob.hide_viewport = True
     else:
         cap(hair["cap"], hair.get("cap_kind", "cap"))
     return made
@@ -731,9 +748,15 @@ def card_material(look: dict, color_png: str, normal_png: str):
     tan = nt.nodes.new("ShaderNodeAttribute")
     tan.attribute_name = "hp_tangent"
     nt.links.new(tan.outputs["Vector"], bsdf.inputs["Tangent"])
-    bsdf.inputs["Roughness"].default_value = float(look.get("roughness", 0.42))
-    bsdf.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5))
-    bsdf.inputs["Anisotropic"].default_value = float(look.get("anisotropic", 0.7))
+    # a card is a flat sheet standing for many round hairs: at the lock's own gloss it mirrors a light as one white
+    # plate. Rougher, half the specular, and the highlight takes the hair's colour (as light through hairs does)
+    bsdf.inputs["Roughness"].default_value = max(float(look.get("roughness", 0.42)), 0.5)
+    bsdf.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5)) * 0.5
+    try:
+        bsdf.inputs["Specular Tint"].default_value = (*[min(1.0, 3.0 * c) for c in [((int(look.get("sheen", "#86524a").lstrip("#")[i:i + 2], 16) / 255) ** 2.2) for i in (0, 2, 4)]], 1)
+    except (KeyError, TypeError):
+        pass
+    bsdf.inputs["Anisotropic"].default_value = float(look.get("anisotropic", 0.7)) * 0.7
     for attr, val in (("surface_render_method", "DITHERED"), ("use_transparent_shadow", True),
                       ("blend_method", "HASHED")):
         try:

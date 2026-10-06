@@ -151,11 +151,11 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     W2, H2 = w * ss, H * ss
     ims = [Image.new("L", (W2, H2), 0) for _ in range(3)]
     da, di, dd = (ImageDraw.Draw(i) for i in ims)
-    thick = k["thick"] * ss * w / 160 * 1.0 if kind in ("fly", "baby") else k["thick"] * ss
+    thick = max(k["thick"] * ss * w / 160, 1.15 * ss) if kind in ("fly", "baby") else k["thick"] * ss
     if lines is None:  # drawn strands (no groom at hand); else `lines` = real strands of the groom's own clumps
         lines = _drawn_lines(kind, w, S, rng)
     for x, v, dp, idn in sorted(lines, key=lambda q: q[2]):
-        x = np.clip(np.asarray(x, float), 0.025, 0.975)
+        x = np.clip(np.asarray(x, float), *((0.12, 0.88) if kind in ("fly", "baby") else (0.025, 0.975)))
         pts = list(zip((x * W2).tolist(), (np.asarray(v, float) * H2).tolist()))
         if len(pts) < 2:
             continue
@@ -169,8 +169,10 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     a, idm, dep = (np.asarray(i.resize((w, H), Image.BOX), np.float32) / 255 for i in ims)
     cov = np.maximum(a, 1e-3)
     idm, dep = np.clip(idm / cov, 0, 1), np.clip(dep / cov, 0, 1)
-    if kind in ("fly", "baby"):
-        a = a * 0.85
+    if kind in ("fly", "baby"):  # nothing touches the quad's border: a card's rectangle must never show
+        xx = (np.arange(w) + 0.5) / w
+        vv_ = (np.arange(H)[:, None] + 0.5) / H
+        a = a * (_ss(xx / 0.1) * _ss((1 - xx) / 0.1))[None] * _ss((1 - vv_) / 0.08)
     if k["base"] > 0:  # an opaque base under the strands, its end ragged per column: the cards that hide the scalp
         col = ndimage.gaussian_filter1d(rng.uniform(0, 1, w), 1.5, mode="wrap")
         col = (col - col.min()) / max(float(np.ptp(col)), 1e-9)
@@ -195,7 +197,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "frizz", "curl", "tips", "atlas")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band")}, key], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain")}, key], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -218,9 +220,10 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         tiles.append({"kind": "cap", "u0": 0.5, "u1": 1.0})
     a, idm, dep = (np.concatenate([c[k] for c in cols], 1) for k in ("alpha", "id", "depth"))
     gap, lit = _lin(look.get("gap", "#221310")), _lin(look.get("lit", "#56352d"))
-    shade = (0.25 + 0.75 * dep ** 0.8)[..., None]
-    val = (1 + float(look.get("vary", 0.25)) * 1.6 * (idm - 0.5))[..., None]
-    col = _srgb((gap[None, None] * (1 - shade) + lit[None, None] * shade) * val)
+    shade = (0.45 + 0.55 * dep ** 0.8)[..., None]
+    val = (1 + float(look.get("vary", 0.25)) * 2.2 * (idm - 0.5))[..., None]
+    gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
+    col = _srgb(np.clip((gap[None, None] * (1 - shade) + lit[None, None] * shade) * val * gain, 0, 1))
     x = 0
     for c in cols:  # the tie's own colour
         w = c["alpha"].shape[1]
@@ -433,7 +436,7 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         Tn.append(np.repeat(c["T"], 2, 0))
         ramp = rootd + (1 - rootd) * _ss(c["u"] / max(rootl, 1e-3))
         ramp = ramp * (1 + tip_amt * 0.35 * _ss((c["u"] - 0.55) / 0.45))
-        lay = 0.6 + 0.4 * min(c["layer"], 2) / 2
+        lay = 1.0  # (lower layers were darkened here AND by the atlas's depth: a dark band wherever layer 0 showed)
         COL.append(np.repeat(np.clip(ramp * lay * c.get("value", 1.0) * c.get("cval", 1.0), 0, 1)[:, None]
                              * np.ones(3)[None], 2, 0))
         AL.append(np.repeat(c["u"], 2))
@@ -469,6 +472,331 @@ def cards_of(locks: list, C, S: dict, look: dict | None = None) -> list:
     return out
 
 
+# ------------------------------------------------------------------------------------------ cards from the strands
+
+GRID = 40  # stations along a lock at which its strands are compared
+
+
+def strand_grid(D: dict, locks: list, n: int = GRID) -> dict:
+    """The groom's lock strands (not the scalp layer) on a common grid: every strand resampled at `n` stations of
+    its LOCK's parameter (NaN where the strand hasn't started or has ended: roots are staggered, tips ragged), so
+    strands of one clump can be averaged station by station. {"A" (strands, n, 3), "lock", "sub", "rand", "free"}."""
+    from scipy.spatial import cKDTree
+    names = [str(x) for x in D["names"]]
+    first = np.r_[0, np.cumsum(D["counts"])]
+    U = np.linspace(0.0, 1.0, n)
+    trees = {}
+    A, LK, SUB, RND = [], [], [], []
+    for j in range(len(D["counts"])):
+        if names[int(D["obj"][j])] not in ("hair_guides", "hair_guides_free") or D["counts"][j] < 2:
+            continue
+        li = int(D["lock"][j])
+        if li >= len(locks):
+            continue
+        if li not in trees:
+            P, *_ = spine(locks[li], 96)
+            trees[li] = cKDTree(P)
+        Q = D["pts"][first[j]:first[j + 1]].astype(float)
+        _, k = trees[li].query(Q[[0, -1]])
+        u0, u1 = k[0] / 95.0, k[1] / 95.0
+        if u1 - u0 < 0.05:
+            continue
+        s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+        t = (U - u0) / (u1 - u0)
+        ok = (t >= 0) & (t <= 1)
+        a = np.full((n, 3), np.nan)
+        if ok.sum() < 2:
+            continue
+        a[ok] = np.stack([np.interp(t[ok] * s[-1], s, Q[:, c]) for c in range(3)], 1)
+        A.append(a)
+        LK.append(li)
+        SUB.append(int(D["sub"][j]))
+        RND.append(float(D["rand"][j]))
+    return {"A": np.asarray(A), "lock": np.asarray(LK, int), "sub": np.asarray(SUB, int), "rand": np.asarray(RND),
+            "u": U}
+
+
+def _nan_smooth(x, k: int = 2):
+    out = x.copy()
+    for i in range(len(x)):
+        out[i] = np.nanmean(x[max(0, i - k):i + k + 1])
+    return out
+
+
+def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04):
+    """A set of strands (m, n, 3 with NaN) as one clump: its centre line, frame and spread, over the stations where
+    at least `min_share` of its strands run. None if too short."""
+    with np.errstate(invalid="ignore"):
+        cnt = np.isfinite(A[..., 0]).sum(0)
+    ok = cnt >= max(1, int(np.ceil(min_share * len(A))))
+    idx = np.nonzero(ok)[0]
+    if len(idx) < 4:
+        return None
+    # a clump starts where its FIRST strands do (roots are staggered: the card's picture fades its root in; started
+    # where a third of them run, the front row stood as a ledge 1.5 cm behind the hairline) and ends where few are left
+    first = np.nonzero(cnt >= max(1, int(np.ceil(start_share * len(A)))))[0]
+    idx = np.r_[first[0], idx] if first[0] < idx[0] else idx
+    sl = slice(idx[0], idx[-1] + 1)
+    with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+        __import__("warnings").simplefilter("ignore")
+        P = np.nanmean(A[:, sl], 0)
+    if not np.isfinite(P).all():
+        good = np.isfinite(P[:, 0])
+        k = np.arange(len(P))
+        P = np.stack([np.interp(k, k[good], P[good, c]) for c in range(3)], 1)
+    T = _unit(np.gradient(P, axis=0))
+    cen = cen_of(P)
+    out = _unit(P - cen)
+    perp = out - (out * T).sum(-1, keepdims=True) * T
+    # where the hair runs straight away from the head (into a tie, off a crown) "outward" says nothing about which
+    # way a card faces: the frame is carried on from where it was sure (cards stood on edge round the tie as flaps)
+    N = np.zeros_like(P)
+    i0 = int(np.argmax(np.linalg.norm(perp, axis=1)))
+    prev = _unit(perp[i0])
+    for rng_ in (range(i0, len(P)), range(i0 - 1, -1, -1)):
+        prev_ = prev
+        for i in rng_:
+            w = float(np.clip((np.linalg.norm(perp[i]) - 0.35) / 0.4, 0.0, 1.0))
+            pt = prev_ - (prev_ @ T[i]) * T[i]
+            v = w * _unit(perp[i]) + (1 - w) * _unit(pt)
+            N[i] = v / max(np.linalg.norm(v), 1e-9)
+            prev_ = N[i]
+    X = _unit(np.cross(T, N))
+    with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+        __import__("warnings").simplefilter("ignore")
+        d = A[:, sl] - P[None]
+        dx, dn = (d * X[None]).sum(-1), (d * N[None]).sum(-1)
+        sx, sn = np.nanstd(dx, 0), np.nanstd(dn, 0)
+        mx = np.nanmedian(dx, 1)  # each strand's side of the clump
+    sx, sn = np.nan_to_num(sx), np.nan_to_num(sn)
+    return {"P": P, "T": T, "N": N, "X": X, "sx": _nan_smooth(sx), "sn": _nan_smooth(sn), "u": U[sl], "mx": mx,
+            "bend": out, "share": cnt[sl] / max(len(A), 1), "i0": int(idx[0])}
+
+
+def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed: int = 0) -> list:
+    """Cards cut from the groom's own STRANDS (what the card tools do: cluster strands into clumps, a few cards a
+    clump, layered by opacity): each card's centre line is the mean of its clump's strands, so cards wave, part and
+    end where the strands do, and its width is their spread. `S["group"]`: how big a clump is: "sub" (the groom's
+    sub clumps: a hero), "pair" (two sub clumps), "lock" (a whole lock: fewer, wider cards), "free" (locks off the
+    head only: the cap carries the rest). A clump wider than `card_width` is cut across into slices, each its own
+    card on its own strands. Layers: 0 = coverage (dense tile, just under the clump's middle), 1 = medium over it,
+    2+ = sparse break-up; a hero also gets single fly-away strands. Card dicts as _lock_cards'."""
+    from .hair_strands import is_gather
+    look = look or {}
+    G = strand_grid(D, locks)
+    if not len(G["A"]):
+        return []
+    rng = np.random.default_rng(seed + 3)
+    group = str(S.get("group", "sub"))
+    L = max(1, int(S["layers"]))
+    cw = float(S["card_width"])
+    vary = float(look.get("vary", 0.25))
+    Rr = float(S["random"])
+    C = np.asarray(C, float)
+    out = []
+    for li in np.unique(G["lock"]):
+        lk = locks[int(li)]
+        free = float(lk.get("free", 0.0)) > 0.5
+        if group == "free" and not free:
+            continue
+        sel = G["lock"] == li
+        A, sub = G["A"][sel], G["sub"][sel]
+        core = lk.get("core")
+        if core is not None and len(core) >= 2:
+            K = np.asarray(core, float)
+
+            def cen_of(P, K=K):
+                a, b = K[:-1], K[1:]
+                ab = b - a
+                tt = np.clip(((P[:, None] - a[None]) * ab[None]).sum(-1) / np.maximum((ab * ab).sum(-1), 1e-12)[None], 0, 1)
+                near = a[None] + tt[..., None] * ab[None]
+                return near[np.arange(len(P)), np.linalg.norm(P[:, None] - near, axis=-1).argmin(1)]
+        else:
+            def cen_of(P):
+                return C[None]
+        lrng = np.random.default_rng(int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16))
+        val = 1 + vary * 0.8 * (lrng.uniform() - 0.5)
+        if group == "sub":
+            keys = sub
+        elif group == "pair":
+            keys = sub // 2
+        else:
+            keys = np.zeros(len(sub), int)
+        edge = bool(lk.get("at_hairline"))
+        gather = is_gather(lk)
+        for kk in np.unique(keys):
+            Ag = A[keys == kk]
+            c0 = _clump(Ag, G["u"], cen_of)
+            if c0 is None:
+                continue
+            width = 2 * 1.7 * float(np.percentile(c0["sx"], 75))
+            na = max(1, int(np.ceil(width / cw)))
+            order = np.argsort(c0["mx"])
+            for j in range(na):
+                part = Ag[order[j * len(order) // na:(j + 1) * len(order) // na]] if na > 1 else Ag
+                if len(part) < 1:
+                    continue
+                c = _clump(part, G["u"], cen_of) if na > 1 else c0
+                if c is None:
+                    continue
+                s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(c["P"], axis=0), axis=1))]
+                if s[-1] < 0.01:
+                    continue
+                # (cards overlap their neighbours by a third: where they only met, every seam was a slit of shadow)
+                hw_full = np.clip(2.5 * c["sx"], 0.003, 0.9 * cw)
+                thin = free and float(lk["inputs"]["Width"]) < 0.016  # (a wisp: a lock of a few hairs off the head)
+                if thin:  # a wisp is a few hairs: a narrow card that runs out to a point (at full width an alpha
+                    # test at any distance fills it: a brown slat down the cheek)
+                    hw_full = np.clip(1.2 * c["sx"], 0.0015, 0.004) * (1 - 0.7 * _ss((s / s[-1] - 0.5) / 0.5))
+                off_c = abs((j + 0.5) / na - 0.5) * 2 if na > 1 else 0.0
+                nl = min(L, 2) if thin else L
+                for la in range(nl):
+                    if la == 0:
+                        kind = "hairline" if (edge and not free) else ("medium" if thin else "dense")
+                    else:
+                        # hair lying on the head is a combed, closed surface: its second layer is dense too (over a
+                        # medium one the layer under it showed through as dark chop), on the tile whose ROOTS come in
+                        # one by one (the dense tile starts as a cut edge: under an alpha test every staggered card
+                        # root drew a line across the flow, a brick pattern); loose hair opens up sooner
+                        kind = ("hairline" if (la == 1 and not free and L > 2) else "medium") if (la <= 2 - int(free) and not thin) else "sparse"
+                    yo = c["sn"] * (-0.3 + 0.4 * la) + (0.0003 * la)  # (layers lie close: lifted, each cast a shadow line)
+                    xo = (rng.uniform(-0.35, 0.35) * hw_full if la > 0 else 0.0)
+                    hw = hw_full * (1.0 if la == 0 else 0.9)
+                    u0 = 0.0 if la == 0 else Rr * rng.uniform(0.0, 0.25)
+                    u1 = 1.0 if (la == 0 or gather) else 1.0 - float(S["tips"]) * Rr * rng.uniform(0.0, 0.2)
+                    if edge and la > 0:
+                        u0 = max(u0, min(0.3, 0.02 / max(s[-1], 1e-6)))
+                    f = (s / s[-1])
+                    keep = (f >= u0 - 1e-9) & (f <= u1 + 1e-9)
+                    if keep.sum() < 3:
+                        continue
+                    P = c["P"] + c["X"] * (np.zeros(len(s)) + xo)[:, None] + c["N"] * yo[:, None]
+                    out.append({"P": P[keep], "X": c["X"][keep], "N": c["N"][keep], "hw": hw[keep], "u": c["u"][keep],
+                                "s": s[keep], "kind": kind, "layer": la,
+                                "prio": la + 0.3 * off_c + (0.25 if thin else 0.0),
+                                "cval": 1 + Rr * rng.uniform(-0.2, 0.2), "bend": c["bend"][keep], "T": c["T"][keep],
+                                "lock": lk["name"], "value": val})
+            nf = int(S.get("fly", 0))
+            if nf and not gather and len(Ag) >= 6:  # single strands that stand off the clump: a card each
+                with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+                    __import__("warnings").simplefilter("ignore")
+                    i0 = c0["i0"]
+                    far = np.nanmax(np.linalg.norm(Ag[:, i0:i0 + len(c0["P"])] - c0["P"][None], axis=-1), 1)
+                far = np.nan_to_num(far)
+                lim = max(3.0 * float(np.median(c0["sx"])), 0.004)
+                for i in np.argsort(-far)[:nf]:
+                    if far[i] < lim:
+                        break
+                    Q = Ag[i]
+                    okq = np.isfinite(Q[:, 0])
+                    if okq.sum() < 5:
+                        continue
+                    Pq = Q[okq]
+                    Tq = _unit(np.gradient(Pq, axis=0))
+                    cq = cen_of(Pq)
+                    oq = _unit(Pq - cq)
+                    Nq = _unit(oq - (oq * Tq).sum(-1, keepdims=True) * Tq)
+                    sq = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Pq, axis=0), axis=1))]
+                    out.append({"P": Pq, "X": _unit(np.cross(Tq, Nq)), "N": Nq, "hw": np.full(len(Pq), 0.004),
+                                "u": G["u"][okq], "s": sq, "kind": "fly", "layer": L, "prio": L + 1.0,
+                                "cval": 1.0, "bend": oq, "T": Tq, "lock": lk["name"], "value": val})
+    return out
+
+
+def tail_cores(D: dict, locks: list, sides: int = 10, stations: int = 28, fill: float = 0.8) -> dict | None:
+    """A solid surface inside each bundle of hair that hangs round a `core` line (a tied tail): the shape the tail's
+    own strands make, a little inside them (`fill` of their radius per direction), so cards over it never show air
+    between them and a far tier's tail is this shape alone. It follows the strands station by station (a tail that
+    swings to one side swings the core with it). A mesh like hair_cards.mesh's (uv: u round the tail in dense tiles
+    is set by the caller: "around" 0..1, "along" 0..1)."""
+    G = strand_grid(D, locks, n=stations)
+    if not len(G["A"]):
+        return None
+    groups: dict = {}
+    for li in np.unique(G["lock"]):
+        lk = locks[int(li)]
+        core = lk.get("core")
+        if core is None or len(core) < 2 or float(lk.get("free", 0.0)) <= 0.5:
+            continue
+        groups.setdefault(json.dumps(np.round(np.asarray(core, float), 4).tolist()), []).append(int(li))
+    V, F, AR, AL, NR, TN = [], [], [], [], [], []
+    off = 0
+    for key_, lis in groups.items():
+        if len(lis) < 3:
+            continue
+        A = G["A"][np.isin(G["lock"], lis)]
+        with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+            __import__("warnings").simplefilter("ignore")
+            cnt = np.isfinite(A[..., 0]).sum(0)
+            Pm = np.nanmean(A, 0)
+        ok = np.nonzero(cnt >= max(3, 0.2 * len(A)))[0]
+        if len(ok) < 4:
+            continue
+        sl = slice(ok[0], ok[-1] + 1)
+        Pm, A = Pm[sl], A[:, sl]
+        T = _unit(np.gradient(Pm, axis=0))
+        e1 = np.zeros_like(Pm)
+        v = np.cross(T[0], [0.0, 0.0, 1.0])
+        v = v if np.linalg.norm(v) > 1e-3 else np.cross(T[0], [1.0, 0.0, 0.0])
+        for i in range(len(Pm)):  # parallel transport
+            v = v - (v @ T[i]) * T[i]
+            v = v / max(np.linalg.norm(v), 1e-9)
+            e1[i] = v
+        e2 = np.cross(T, e1)
+        ang = np.linspace(0, 2 * np.pi, sides, endpoint=False)
+        Rr = np.zeros((len(Pm), sides))
+        with np.errstate(invalid="ignore"):
+            d = A - Pm[None]
+            x, y = (d * e1[None]).sum(-1), (d * e2[None]).sum(-1)
+            th, rr = np.arctan2(y, x), np.hypot(x, y)
+        for i in range(len(Pm)):
+            good = np.isfinite(rr[:, i])
+            if good.sum() < 3:
+                continue
+            base = float(np.percentile(rr[good, i], 60))
+            for a_i, a in enumerate(ang):
+                w = good & (np.abs(((th[:, i] - a + np.pi) % (2 * np.pi)) - np.pi) < 2 * np.pi / sides * 1.2)
+                Rr[i, a_i] = float(np.percentile(rr[w, i], 75)) if w.sum() >= 3 else base
+        for _ in range(2):  # smooth round and along
+            Rr = (np.roll(Rr, 1, 1) + 2 * Rr + np.roll(Rr, -1, 1)) / 4
+            Rr[1:-1] = (Rr[:-2] + 2 * Rr[1:-1] + Rr[2:]) / 4
+        Rr = np.maximum(Rr * fill, 0.002)
+        s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Pm, axis=0), axis=1))]
+        ns = len(Pm)
+        ring = (np.cos(ang)[None, :, None] * e1[:, None] + np.sin(ang)[None, :, None] * e2[:, None])  # (ns, sides, 3)
+        Vr = Pm[:, None] + ring * Rr[..., None]
+        # a seam column (u = 1) so the tiles wrap
+        Vr = np.concatenate([Vr, Vr[:, :1]], 1)
+        nr = np.concatenate([ring, ring[:, :1]], 1)
+        V.append(Vr.reshape(-1, 3))
+        NR.append(nr.reshape(-1, 3))
+        TN.append(np.repeat(T, sides + 1, 0))
+        AR.append(np.tile(np.arange(sides + 1) / sides, ns))
+        AL.append(np.repeat(s / max(s[-1], 1e-9), sides + 1))
+        i, j = np.meshgrid(np.arange(ns - 1), np.arange(sides), indexing="ij")
+        a = (i * (sides + 1) + j).ravel() + off
+        b, c, d_ = a + 1, a + sides + 2, a + sides + 1
+        F.append(np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, d_], 1)]))
+        off += ns * (sides + 1)
+    if not V:
+        return None
+    return {"verts": np.concatenate(V).astype(np.float32), "tris": np.concatenate(F).astype(np.int32),
+            "normal": np.concatenate(NR).astype(np.float32), "tangent": np.concatenate(TN).astype(np.float32),
+            "around": np.concatenate(AR).astype(np.float32), "along": np.concatenate(AL).astype(np.float32)}
+
+
+def core_mesh(core: dict, tiles: list, reps: int = 4) -> dict:
+    """tail_cores' surface wearing the dense tile round it (mirrored every other repeat, so it has no seam), root at
+    the tie, the tile's ragged end at the tail's end."""
+    t = next(t for t in tiles if t["kind"] == "dense")
+    tri = np.abs(((core["around"] * reps) % 2.0) - 1.0)
+    n = len(core["verts"])
+    return {"verts": core["verts"], "tris": core["tris"],
+            "uv": np.stack([t["u0"] + (t["u1"] - t["u0"]) * tri, 1 - core["along"]], 1).astype(np.float32),
+            "normal": core["normal"], "tangent": core["tangent"], "col": np.full((n, 3), 0.8, np.float32),
+            "along": core["along"], "layer": np.full(n, -1.0, np.float32), "card": np.zeros(n, np.int32)}
+
+
 def triangles(cards: list, S: dict, segment: float | None = None) -> int:
     seg = float(segment or S["segment"])
     lam = max(float(S["wavelength"]), 0.01)
@@ -483,7 +811,7 @@ def fit_budget(cards: list, S: dict, budget: int) -> tuple[list, float, dict]:
     segment, what was dropped)."""
     info = {"asked": int(budget)}
     seg = float(S["segment"])
-    seg_max = max(0.03, seg)
+    seg_max = seg * 1.5  # (stretching every card to 3 cm segments first made a hero's cards straight planks)
     keep = list(cards)
     for _ in range(40):
         n = triangles(keep, S, seg)
