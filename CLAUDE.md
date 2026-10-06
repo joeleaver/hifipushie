@@ -1549,6 +1549,57 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       turned to it: `wrap.turn`, or the mean seam angle when unset) and `trim` (a band cut to the length of the
       edges it is sewn to); torso wrap `align_x`; Carlton's belt (joined at CB), tail vent as a lapped fold
       (seam check: back / belt / tail / side all within +-0.2%); `tests/test_folds.py`.
+- Garments (2026-10-06, "garments" agent, branch `garments`: both cloth tracks merged; renders `cloth_renders/ga_*`;
+  scratch DURABLE in /mnt/data/hifipushie/garments/: env.sh, run.sh <script> (worktree code on the main workspace),
+  tests.sh, gates.py (stages 1-3 on every wf_ / pd_ / zz_ / ly_ / ga_ model), st.py (stages with the garment patched in
+  memory), pl.py (place only: crossings by pair, closure start gaps, saves the start), rs.py (clay render of a saved
+  start / result), lap.py (how an over band lies on its under piece, by height, for X0 / Vsim / V), band.py (a band's
+  closed girth against the body's hull per level), seglen.py, dbg_d.py (a named edge after each draft op), run.py +
+  q.sh <queue file> (sims one after another, logs <tag>.log, arrays out/<tag>.npz); prev/ = the two earlier agents'
+  scripts. The sandbox refuses heredocs with code and loops: write a script file and run it.)
+  - Gates: stages 1-3 no longer simulate a layered garment's under garment (the jacket's gate sat on the heavy slot);
+    a garment with no design sheet is judged on its kind's `regular` fit band (was the first: slim); design-table
+    `seam_notes` [{"seam": index, "ease", "why"}] (Simon's cuff is 3% longer than the sleeve hem because the placket
+    strips aren't sewn on: declared, not hidden); two seam CROSSINGS near each other aren't a notch miss. Jaeger's
+    armhole seam chain started at the front pitch and put the sleeve's top notch 27 mm off the shoulder seam (the
+    sleeve sewn in rotated): the chain starts top <-> shoulder now. `pattern._points_on_outline` tolerance 0.1 mm
+    (Carlton's rollLineEnd fell 2 um off the outline on the new measures and the table crashed). Carlton FAILS stage 2
+    honestly (cap split +10.2 / -7.1%, collar on stand +4.5%, chest "+78%": sizing counts the lapel overlap): legacy.
+  - `closures.seat` (in `build` after the clean-up, `cleanup.seat: false` turns it off; report line "lap ... laid
+    closed"; `res["closures_sim"]` = the sim's own gaps): between the first and last closed fastening the over band is
+    laid `LAY` 1.2 mm off the under piece along its normal, easing out over 3 cm; then each fastening's two sides are
+    brought together in the surface (half each, sigma 2.5 cm, only up to 12 mm). Why: on the old shirt (lap.py on
+    cl_01) the lap was 3-4.6 mm proud all down the chest (the solver's contact gap: construction, not physics, must
+    close it) and 22-53 mm apart above the top button and 33 mm at the hem (the fronts part there: as worn, left).
+  - Bands closed on themselves: `B["band_short"]` is now measured on EVERY path at the end of `place` (smooth only:
+    Blender sews bands shut): the start distance between a piece's own stitched points > 12 mm. A torso band (a
+    waistband, alone or among other pieces) lies on the hull of the narrowest level in its height at its closed
+    girth, `BAND_CLEAR` 2.5 mm off at least (was 4 mm + the wrap's `out` 4 mm = 50 mm of girth: the trousers' band
+    started 77 mm open, the skirt's 25); `B["band_clear"]` makes the ZOZO job run with body_offset 1 mm + contact_gap
+    0.5 mm. Stage 4: pd_trousers and pd_skirt start closed. NOT VERIFIED BY A SIM when written (queue q3).
+  - Neck bands: seated by their CLOSED girth when buttoned (not their length with the button extensions), and the
+    hull is taken over sections that are the neck (8 mm above a 3 cm stand on this body's 3.5 cm neck the sections cut
+    the chin, 44-48 mm forward: 6 cm of girth). A buttoned collar still can't start closed here: Simon's stand at
+    collarEase 0.12 starts 33 mm open, and more ease seats it lower where the neck is wider (the neck is 397 mm at
+    its base, 369 at its narrowest 2.5 cm up, and the 4.5 mm standoff is 28 mm of girth). The shirt stays
+    open-necked. To close it: a stand laid as a cone on the neck's own sections with the made-band clearance.
+  - Drafting: a SHAPED centre back seam (`contour` on centre_back) was dropped by the next style line
+    (`_replace` asked for two points on x = 0): the blazer's back was open from neck to hem and stage 2 passed; a
+    piece now keeps its centre if it holds an end of its named centre edge. An edge-form fold line on a piece cut
+    on the fold runs on across the fold at unfold (a collar's roll line stopped at centre back). `collar` type
+    "tailored" is laid from its seam (wrap "seam" + turn) with its roll fold `in_wrap`; KB front_closure
+    `button_stand` (a jacket's 2-3 buttons below the break, no placket).
+  - Model `workspace/ga_suit` (mk_blazer.py): ly_suit's shirt + a blazer from OUR blocks (bodice fitted, CB seam
+    shaped, side panel with no side seam, lapel with straight gorge, tailored collar, fused facing, 2 buttons, bent
+    two-piece sleeve; CB length 751 mm; gate passes; pattern sheet ga_02_blazer_pattern.png). Its START reads as a
+    tailored jacket's pieces (lapels turned, seat covered), 11 crossing vertices, but the tailored collar is WRONG
+    past the neck point: a band standing round the back of the neck that stops at the neck's sides, its seam to the
+    gorge 156 mm away and turned 54 deg. Cause (construction): the op gives the roll line a constant stand height to
+    the collar's end, and the collar is placed before the lapels are turned. In a real notched collar the roll line
+    runs from 3 cm above the neck edge at CB down to the neck edge where the lapel's roll line meets the neckline;
+    past that point the whole collar lies on the turned side, in the lapel's plane, sewn to the gorge. To build:
+    the op's fold line from cbRoll to that point; placement of the part past it AFTER the lapel flap is turned, as
+    a continuation of the flap (`lies_on` the turned lapel's plane), the part behind it as now.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

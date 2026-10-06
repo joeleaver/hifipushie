@@ -968,6 +968,9 @@ def _piece_width_at(P: np.ndarray, y: float) -> float:
 LAYER = 0.004  # how far an overlapping layer starts outside the one under it
 CLEAR = 0.008  # the least start clearance from the body (Blender: cloth 3 mm + body 4 mm collision distances)
 SMOOTH_CLEAR = 0.004  # ZOZO bands (cuffs, neck pieces): its contact offset 2 mm + gap 1 mm + 1 mm
+BAND_CLEAR = 0.0025  # a made band closed on itself round the torso (a waistband): it grips. The sim then runs with
+# the body's contact offset 1 mm + gap 0.5 mm (build(): B["band_clear"]). At 4 mm a band needs 25 mm more girth than
+# the body: a waistband with 2-3% ease could never start closed
 SMOOTH_FACE_CLEAR = 0.0035  # ... and the least clearance of their faces (centres, edge midpoints)
 
 
@@ -1364,7 +1367,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             else:
                 start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum(cy - Cw[:, 1], 0))]
             cg_b = _closed_girth(M, nm)
-            if cg_b and smooth and not all(band_closed):
+            if cg_b and smooth:
                 # a band closed on itself among other torso pieces (a skirt's waistband on its yokes): on its OWN
                 # curve, the body's hull at its own level out to its closed girth. On the garment's one cylinder
                 # (hip girth) it stood open by 30 cm at the back, and it is a made piece, carried as placed: it could
@@ -1375,11 +1378,13 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 hb_ = [h for zz in np.arange(z0b, z1b + 0.005, 0.01) if 0.05 < zz < hps[2] - 0.01 and (h := body.hull(zz)) is not None]
                 if hb_:
                     Hb = min((h[ConvexHull(h).vertices] for h in hb_), key=lambda h: pattern.length(h, closed=True))
-                    m_b = float(np.clip((cg_b - pattern.length(Hb, closed=True)) / (2 * np.pi), SMOOTH_CLEAR, 0.15))
-                    short_b = pattern.length(Hb, closed=True) + 2 * np.pi * SMOOTH_CLEAR - cg_b
+                    m_b = float(np.clip((cg_b - pattern.length(Hb, closed=True)) / (2 * np.pi), BAND_CLEAR, 0.15))
+                    short_b = pattern.length(Hb, closed=True) + 2 * np.pi * BAND_CLEAR - cg_b
+                    B["band_clear"] = BAND_CLEAR
+                    B.setdefault("torso_bands", []).append(nm)
                     if short_b > 0.003:  # stage 4 says it: the band is smaller than the body where it sits
                         B.setdefault("band_short", {})[nm] = round(float(short_b) * 1000, 1)
-                    Cw = _densify(_offset_hull(Hb, m_b + float(w.get("out", 0.0))), 0.002)
+                    Cw = _densify(_offset_hull(Hb, m_b), 0.002)  # (no wrap "out" on top: 4 mm out is 25 mm of girth, and the band stood that far open)
                     cy = 0.5 * (Cw[:, 1].max() + Cw[:, 1].min())
                     start = Cw[np.argmin(np.abs(Cw[:, 0]) + 10 * np.maximum((Cw[:, 1] - cy) * (1 if w.get("side", "front") == "front" else -1), 0))]
             xs_, ys_, lay_ = U[:, 0].copy(), U[:, 1].copy(), np.zeros(len(U))
@@ -1902,6 +1907,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # too big that ruffled. Their faces are checked below instead (coarse triangles reach in between the
             # vertices)
             gaps[pid == k] = SMOOTH_CLEAR if smooth else CLEAR
+        if nm in (B.get("torso_bands") or []):  # a waistband grips (BAND_CLEAR)
+            gaps[pid == k] = BAND_CLEAR
         if wto.startswith("leg."):
             # the fork's extension lies on the plane between the legs, where the thighs are closer together than
             # two clearances: pushed a full gap off one thigh it lands in the other (37-52 mm of rest stretch)
@@ -2014,7 +2021,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     # made band is held as placed, so one that starts with its button far from its buttonhole never closes, and what
     # is sewn to its ends is held apart (the trousers' band ended 77 mm open: only the torso path said band_short)
     st_ = np.asarray(M["stitch"]).reshape(-1, 2)
-    if len(st_):
+    if len(st_) and smooth:  # (Blender sews a band shut with its springs from wherever it starts)
         own = M["piece"][st_[:, 0]] == M["piece"][st_[:, 1]]
         for a_, b_ in st_[own]:
             nm_ = M["names"][M["piece"][a_]]
@@ -3253,6 +3260,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                       piece=Ms["piece"], pins=np.zeros(0, np.int64), **harr, **lower,
                       **fold_s, **({"carryIdx": carry["idx"], "carryPoses": carry["poses"]} if carry else {}),
                       **coll, **({"rest": rest_s} if smooth else {}))
+        if Bp.get("band_clear") and backend == "zozo":
+            # a gripping band starts BAND_CLEAR off the body: the body's contact offset + gap must be inside that
+            zc_ = cfg.setdefault("zozo", {})
+            zc_.setdefault("body_offset", 0.001)
+            zc_.setdefault("contact_gap", 0.0005)
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
         d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
         Vs = d["V"]
