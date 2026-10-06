@@ -46,7 +46,7 @@ def _dedupe(P, names):
     return np.asarray([P[i] for i in keep]), out_names
 
 
-def _points_on_outline(P: np.ndarray, names: dict, pts: dict, tol: float = 2e-6) -> tuple:
+def _points_on_outline(P: np.ndarray, names: dict, pts: dict, tol: float = 1e-4) -> tuple:
     """Named points lying on the outline between its vertices (a pleat's fold marks along a waist edge) inserted as
     outline vertices, so seams can address them ("tail:cbTop>fold1Top")."""
     n = len(P)

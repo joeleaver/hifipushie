@@ -60,7 +60,7 @@ class Ctx:
     @property
     def body(self) -> "cloth.Body":
         if self._body is None:
-            self._body = cloth.Body(cloth.model_body(self.name, self.spec, self.g))
+            self._body = cloth.Body(cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True)))
         return self._body
 
     @property
@@ -158,7 +158,9 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         o["fail"].append(f"pieces sewn to nothing: {', '.join(loose)} (a seam table entry is missing)")
     # ease vs the body, per girth, in the fit's band
     D = garment_design.dims(Bp, c.meas)
-    bands = (c.res or {}).get("fit_bands") or next(iter((c.kind_kb.get("fit") or {}).values()), {})
+    fits = c.kind_kb.get("fit") or {}
+    # (no design sheet = no fit stated: the kind's regular band, else its first)
+    bands = (c.res or {}).get("fit_bands") or fits.get("regular") or next(iter(fits.values()), {})
     if c.meas and any(Bp["pieces"][n]["wrap"].get("to", "torso") == "torso" for n in Bp["pieces"]):
         sz = cloth.sizing({"pieces": Bp, "body": c.body})["rows"]
         R = garment_design.roles(Bp)
@@ -836,6 +838,9 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
 
 def run(name: str, gname: str, stages=STAGES, images: bool = True, spec: dict | None = None) -> list:
     c = Ctx(name, gname, spec)
+    # stages 1-3 read the body's tape and the pattern only: a layered garment's under garment is not simulated for
+    # them (the gate of a jacket over a shirt sat waiting for the heavy slot to sim the shirt)
+    c.simulate = any(s in ("place", "sim") for s in stages)
     out = []
     for s in stages:
         try:

@@ -168,6 +168,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             applied[nm] = round(amount * 1000, 1)
         draft_info["alterations"] = applied
         seams += tbl.get("seams", [])
+        # a table seam's declared ease ("seam_notes": [{"seam": n (its index in the table), "ease": [lo, hi], "why"}]:
+        # what a draft's own notes are for drafted garments)
+        for n_ in tbl.get("seam_notes") or []:
+            seam_notes[json.dumps(tbl["seams"][int(n_["seam"])])] = {"ease": list(n_["ease"]), "why": n_["why"]}
         stitches += tbl.get("stitches", [])
         interfaced += tbl.get("interfaced", [])
         folds_tbl += tbl.get("folds", [])
