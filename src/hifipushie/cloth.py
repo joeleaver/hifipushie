@@ -1632,7 +1632,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # back and sides of the neck and down onto the chest, never closing: with "tilt" the circle tips forward)
             if "span" in w and "girth" not in w:
                 w = dict(w, girth=width * 360.0 / float(w["span"]))
-            R = float(w.get("girth", width)) / (2 * np.pi)
+            # (a band buttoned to itself is as big as its CLOSED girth, not its length with the button extensions:
+            # by its length a stand was seated 3 cm of girth too low on the neck's flare and started 7 cm open)
+            R = float(w.get("girth", closed_n or width)) / (2 * np.pi)
             d0_ = d.copy()
             flip = -1.0 if w.get("flip") else 1.0  # pattern +x toward the body's right (a piece whose outside is
             # its pattern face: the neck's own bands are laid face in at the back, like back pieces)
@@ -1733,7 +1735,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # the band, which stood open and far off the neck's sides). A band buttoned to itself (its stitched
                 # points) closes exactly where it is long enough to; a shorter one stays open at the front
                 hts = neck_base + above + (P[:, 1] - e[1])
-                neck_sp = _cuff_spiral(body, np.array([hts.min(), hts.max() + 0.008]), None, closed_n,
+                # (only over sections that are the neck: 8 mm above a 3 cm stand on a 4 cm neck the sections cut the
+                # chin, 44-48 mm forward: the hull was 6 cm of girth too big and a buttoned stand started 7 cm open)
+                top_n_ = max(r_["h"] for r_ in body.neck_rows() if r_["neck"])
+                neck_sp = _cuff_spiral(body, np.array([min(hts.min(), top_n_ - 0.01), min(hts.max() + 0.008, top_n_)]), None, closed_n,
                                        (_closure(M, nm)[1] - e[0]) if closed_n else 0.0, neck_lay, 0.0, 1.0, 0.0,
                                        lambda ti: (nb + d * ti, back, side, d),
                                        m_min=(SMOOTH_CLEAR if smooth else CLEAR) + 0.0005)
@@ -2005,6 +2010,17 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
         B["start_crossings"] = sorted(_piece_crossings(Xp, M))
+    # every band fastened to itself (a cuff, a stand, a waistband) must START closed, whatever path placed it: a
+    # made band is held as placed, so one that starts with its button far from its buttonhole never closes, and what
+    # is sewn to its ends is held apart (the trousers' band ended 77 mm open: only the torso path said band_short)
+    st_ = np.asarray(M["stitch"]).reshape(-1, 2)
+    if len(st_):
+        own = M["piece"][st_[:, 0]] == M["piece"][st_[:, 1]]
+        for a_, b_ in st_[own]:
+            nm_ = M["names"][M["piece"][a_]]
+            g_ = float(np.linalg.norm(Xp[a_] - Xp[b_]))
+            if g_ > 3 * LAYER and nm_ not in (B.get("band_short") or {}):
+                B.setdefault("band_short", {})[nm_] = round(g_ * 1000, 1)
     return Xp
 
 
@@ -3428,6 +3444,17 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # chosen closure is measured in the result
     from . import closures as closuremod
     if M.get("closures"):
+        res["closures_sim"] = closuremod.measure(res["V"], M)
+        if not hang and (g.get("cleanup") is not False) and (g.get("cleanup") or {}).get("seat", True):
+            # a closed lap lies closed (closures.seat): the over band laid on the under layer, the fastenings' two
+            # sides brought together; what crosses for it goes back
+            Vs_, res["closures_seat"] = closuremod.seat(res["V"], M, Bp["pieces"], body_real,
+                                                        fixed=np.isin(M["piece"], [M["names"].index(n_) for n_ in made_pieces(M, interfacing(Bp, M))]))
+            n0_ = int(_crossing_verts(res["V"], M).sum())
+            if int(_crossing_verts(Vs_, M).sum()) <= n0_:
+                res["V"] = Vs_
+            else:
+                res["closures_seat"] = [dict(r_, reverted="it crossed the cloth") for r_ in res["closures_seat"]]
         res["closures"] = closuremod.measure(res["V"], M)
         res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
@@ -3550,7 +3577,7 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
             "folds_mm": round(float(np.sqrt(np.mean(d_lo ** 2)) * 1000), 1)}
 
 
-CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004}
+CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True}
 
 
 SEAM_GAP_MM = 0.5  # a finished seam's two sides further apart than this at p95 shows as an open seam
@@ -4050,7 +4077,7 @@ def validate(spec: dict) -> None:
         elif isinstance(f, dict):
             if f.get("preset", "shirting") not in FABRICS:
                 raise ClothError(f"{where}: fabric preset {f.get('preset')!r} unknown (have {', '.join(FABRICS)})")
-            bad = set(f) - set(FABRICS["shirting"]) - {"preset", "quality", "sewing", "stiff_tension", "rest"}
+            bad = set(f) - set(FABRICS["shirting"]) - {"preset", "quality", "sewing", "stiff_tension", "rest", "physical"}
             if bad:
                 raise ClothError(f"{where}: fabric keys {sorted(bad)} unknown (have {sorted(FABRICS['shirting'])})")
         else:
@@ -4363,6 +4390,12 @@ def report(gname: str, res: dict) -> str:
     if res.get("closures"):
         from . import closures as closuremod
         L.append(closuremod.text(res["closures"]))
+        for r_ in res.get("closures_seat") or []:
+            sim_ = next((x for x in res.get("closures_sim") or [] if x["name"] == r_["name"]), {})
+            L.append(f"     lap {r_['name']} laid closed after the sim: {r_['laid']} vertices of the over band moved "
+                     f"{r_['moved_p50_mm']} mm (median; most {r_['moved_max_mm']}) onto the under layer; the sim had left "
+                     f"its fastenings up to {sim_.get('gap_max_mm')} mm apart"
+                     + (f" ({r_['reverted']}: not applied)" if r_.get("reverted") else ""))
     if res.get("tells"):
         from . import cloth_layers
         L.append("  layered over " + str((res.get("under") or {}).get("name")) + ":")

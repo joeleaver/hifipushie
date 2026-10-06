@@ -204,8 +204,12 @@ def _replace(D: dict, old_name: str, new: dict) -> None:
             v = D[k][old_name] if old_name in new else D[k].pop(old_name)
             # the centre edge goes with every piece that holds the centre line (x = 0): a cut across the piece (a
             # yoke) leaves both parts on it (the yoke of a back with a centre seam had none: its halves weren't sewn)
+            # (or an end of the piece's named centre edge: a SHAPED centre back seam (contour) no longer lies on
+            # x = 0, and a style line cut after it dropped the seam: the jacket's back was open from neck to hem)
+            ends = {pt for key in ("centre_front", "centre_back") for e in D["edges"].get(key, [])
+                    if e.split(":")[0] == old_name for pt in (e.split(":", 1)[1].split(">")[0], e.split(">")[-1])}
             for nm, pc in new.items():
-                if np.sum(np.abs(pc["P"][:, 0]) < 1e-6) >= 2:
+                if np.sum(np.abs(pc["P"][:, 0]) < 1e-6) >= 2 or any(pt in pc["names"] for pt in ends):
                     D[k][nm] = v
                 elif nm == old_name:
                     D[k].pop(nm, None)
@@ -907,6 +911,10 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
         D["edges"][f"{name}_neck"] = [f"{name}:cb>shoulderNotch>cf"]
         D["edges"][f"{name}_outer"] = [f"{name}:frontTop>cbTop"]
         D["edges"][f"{name}_end"] = [f"{name}:cf>endRoll>frontTop"]
+    if tailored:
+        # laid from the neckline it is sewn to (wrap "seam"), not as a ring round the neck: a jacket's neckline lies
+        # on the shoulders and runs down to the gorge; the fall is turned over in the wrap at the roll line
+        pc["wrap"] = dict({"to": "seam", "out": 0.004, "turn": {"at": sh_, "deg": 172, "gap": 0.004}}, **(o.get("wrap") or {}))
     D["pieces"][name] = pc
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"
@@ -917,8 +925,8 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
             "why": f"{name} is cut {ratio:.2f} x the neckline and stretched on (a rib band hugs the neck)"}
     D["interfaced"].append(name)
     if tailored:
-        D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": sh_}, "angle": 15,
-                           "kind": "roll", "radius": 0.004, "name": f"{name} roll"})
+        D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": sh_}, "angle": 20,
+                           "kind": "press", "strength": 0.6, "in_wrap": True, "reach": 0.08, "name": f"{name} roll"})
         D["log"].append(f"collar {name} (tailored): stand {sh_ * 1000:.0f} + fall {fl_ * 1000:.0f} mm, spring "
                         f"{spring * 1000:.0f} mm: outer edge {edge_length(D, D['edges'][name + '_outer']) * 1000:.0f} mm for a "
                         f"neck edge of {edge_length(D, seam_edge) * 1000:.0f} (half)")
@@ -1590,6 +1598,16 @@ def unfold(D: dict) -> dict:
             g["piece"] = f["piece"] if k == "fold" else f"{f['piece']}.{S}"
             if isinstance(g.get("line"), dict) and "edge" in g["line"]:
                 g["line"]["edge"] = side_spec(g["line"]["edge"], S)
+                if k == "fold" and S == "L":
+                    # an edge of a piece cut on the fold that starts or ends ON the fold runs on across the other
+                    # half (a collar's roll line offset from its neck edge stopped at the centre back, inside the piece)
+                    nm_, arc_ = g["line"]["edge"].split(":", 1)
+                    pp = arc_.split(">")
+                    if _on_fold(halves[nm_], pp[0]) and not _on_fold(halves[nm_], pp[-1]):
+                        pp = [q + ".m" for q in reversed(pp[1:])] + pp
+                    elif _on_fold(halves[nm_], pp[-1]) and not _on_fold(halves[nm_], pp[0]):
+                        pp = pp + [q + ".m" for q in reversed(pp[:-1])]
+                    g["line"]["edge"] = nm_ + ":" + ">".join(pp)
             elif isinstance(g.get("line"), list) and S == "R" and k != "fold":
                 g["line"] = [[-float(q[0]), float(q[1])] for q in g["line"]]  # points: mirrored with the piece
             if k == "fold" and S == "R":
