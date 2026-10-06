@@ -1579,10 +1579,29 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     0.5 mm. Stage 4: pd_trousers and pd_skirt start closed. NOT VERIFIED BY A SIM when written (queue q3).
   - Neck bands: seated by their CLOSED girth when buttoned (not their length with the button extensions), and the
     hull is taken over sections that are the neck (8 mm above a 3 cm stand on this body's 3.5 cm neck the sections cut
-    the chin, 44-48 mm forward: 6 cm of girth). A buttoned collar still can't start closed here: Simon's stand at
-    collarEase 0.12 starts 33 mm open, and more ease seats it lower where the neck is wider (the neck is 397 mm at
-    its base, 369 at its narrowest 2.5 cm up, and the 4.5 mm standoff is 28 mm of girth). The shirt stays
-    open-necked. To close it: a stand laid as a cone on the neck's own sections with the made-band clearance.
+    the chin, 44-48 mm forward: 6 cm of girth).
+  - A buttoned collar is CONSTRUCTED closed (the coordinator's rule: a made band is held, not contact-solved, so it
+    needs no solver standoff). `place`: a neck band with its own button stitch lies at its buttoned girth on the hull
+    of the neck's sections, each round its own centre (`_cuff_spiral(recentre=)`; this neck leans: the centres drift
+    8 mm over 3 cm, 2 cm of girth in one frame; each vertex is shifted by the drift at its height), over the band's
+    own height from where it sits (a curved stand's ends are 1-2 cm lower in the pattern: the hull took in the
+    trapezius), `HUG_CLEAR` 1.2 mm off the skin; `B["hug"]` (the stand and what shares its spiral) -> job array
+    `hugIdx` -> cloth_zozo pins those held vertices with allow_intersection (free of body contact), the job runs with
+    body_offset 1 mm + contact_gap 0.5, and a hug band's flap may lie HUG_CLEAR + 2 mm off the skin. Numbers (start):
+    collarEase 0.03 -> 30 mm open, 0.07 -> 17, 0.10 -> 6, 0.115 -> 4 (closed, a layer apart): 410 mm round a 397 mm
+    neck base = 13 mm of collar ease. The fall then stood up (turned 15 deg, every station at the same 8% = the
+    stretch cap): NOT the roll line's curvature (plan radius 72 mm open and buttoned alike) but the 30 mm stand on a
+    35 mm neck: pushed 7 mm off the chin, and the flap is turned from the unpushed row. collarStandWidth 0.055
+    (20 mm stand; collarWidth 2.0 keeps the fall 44): no push, the fall turns 155 deg. Simon's table has the
+    `collar` closure and these options now (ga_03_collar_closed_start.png: reads as a buttoned collar at 2 cm).
+    NOT YET SEEN SIMULATED when written (ga_14 / the shirt under ga_11). A general rule is missing: the stand's
+    height from the body's neck height (tailor has no neckHeight; `Body.neck_rows` has it: 35 mm here).
+  - Seams after the clean-up (stitch stiffness 1 + group welds; shirt ga_01 on the final measures): the sim leaves
+    p50 1.7 / p95 5.4 / max 8.8 mm, the clean-up p95 2.05 mm with 66 of 502 sewn pairs still open (target 0.5).
+    Cause found: the pass that sends the clean-up's crossings back to the sim's surface also took every crossing the
+    SIM itself has (the made collar's ends) and grew the patch two rings a round, undoing the welds round it; it now
+    reverts only crossings the clean-up made (not yet re-measured). Stitch stiffness 8 is not a default: the shirt's
+    2 cm coarse sim ran 27-30 s/frame (150 frames) against 287 s in all at stiffness 1.
   - Drafting: a SHAPED centre back seam (`contour` on centre_back) was dropped by the next style line
     (`_replace` asked for two points on x = 0): the blazer's back was open from neck to hem and stage 2 passed; a
     piece now keeps its centre if it holds an end of its named centre edge. An edge-form fold line on a piece cut
