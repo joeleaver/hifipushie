@@ -1235,6 +1235,22 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
         pieces per level (pleats closed, laid-on pieces out), not the sum of widths.
       - Across cuts (a yoke): the lower part starts 6 mm off and a 3 mm layer out (a flared panel's top corner rises
         past the yoke's at the side seam, on the same surface: crossings once a pocket added vertices there).
+      - Results (pd_66 jacket before/after, pd_67 / pd_65 skirt): jacket raw seam gaps 15.5 / 57.7 -> 1.4 / 2.5 mm
+        (mean / p95), after clean-up p95 0.5, no board, button 9 mm (target 6: fails), back collar 4% crumpled
+        (CORRUPT), body bloused and 6 cm shorter (stiffer stitches haul the fronts up to the carried collar). Skirt
+        19.3 / 97.1 -> 1.8 / 4.8 mm, closed at CB, fits; the top of the CB seam 14.8 mm and the band's button 25 mm
+        still open (a made band is pushed 4 mm off the body), pleat folds did not hold, pocket bags lump at the sides.
+      - `collar` type "tailored" (stand_height + fall on a roll line, back part an annular sector: outer edge 36 mm a
+        half longer than the neck edge, ends at the gorge; points cbNeck / cbRoll / cbOuter / endNeck / endRoll /
+        endOuter, edges collar_neck / _outer / _end). Pattern + unfold tested only; clothsim places it.
+      - STATE at the stop (usage limit, 2026-10-05): main merged in (60ffb1f). pd_64_trousers_zozo was queued behind
+        the heavy slot (log `drafting/pd_64_trousers_zozo.log`), not judged. The merge changed the sim cache key:
+        pd_62 / pd_63 need a re-sim for new looks. clothsim's taut `hpsToWaistBack` (on main after its merge) moved
+        every block: pd_wrap now fails stage 2 (waist ease +11.1%), and numeric y options in the sheets (lapel
+        break_y, style line y) need re-reading. Next: judge trousers; the button / band-top gaps (lap, the made
+        band's clearance); switch buttons / stitch / waistband ops to clothsim's `closures` key once merged and read
+        it in `cloth_workflow.openings`; re-fit the sheets to the new measures; anorak + tunic on ZOZO; run
+        tests/test_cloth.py; the ranked "any garment from prose" proposal.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
