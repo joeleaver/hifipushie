@@ -118,45 +118,65 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
 
 def render(tree: dict, views: list[dict], save: str | None = None, timeout: float = 900, foliage: str | None = None,
            keep: str | None = None, others: list | None = None, triangles: int | None = None, at=None,
-           curves: list | None = None) -> dict:
+           curves: list | None = None, scatter: list | None = None, job: dict | None = None, scale: float = 1.0,
+           yaw: float = 0.0) -> dict:
     """Render views in Blender (see blender_vegetation's job). foliage: "cards" (the twig atlas on cut cards: what a
     game draws) or "mesh" (twig meshes: close LODs, video); default the spec's `leaves.foliage`, else cards.
-    others: [(tree, [x, y], yaw deg)] more plants standing in the same scene (a stand). `keep` = a folder for the
-    atlas and bark maps (else a temp one). Returns timings and the first plant's counts."""
+    others: [(tree, [x, y], yaw deg[, triangles[, scale]])] more plants standing in the same scene (a stand); a
+    plant's own `triangles` (None = full detail) overrides the call's: near trees full, far ones budgeted. `scatter`:
+    [{"V", "F", "mat" per face, "colors": [[r, g, b]...], "pos" (n, 3), "yaw" deg, "scale"}] plain meshes instanced
+    on the ground (brash, stumps). `job`: more keys for the Blender job (haze, ground, sun_energy...). `keep` = a
+    folder for the atlas and bark maps (else a temp one). Returns timings and the first plant's counts."""
     s = tree["spec"]
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="hifipushie-veg-") as tmp:
         out = Path(keep or tmp)
         out.mkdir(parents=True, exist_ok=True)
         pj, info = _plant_job(tree, Path(tmp), out, "", foliage, triangles)
+        pj = {**pj, "scale": float(scale), "yaw": float(yaw)}
         if at is not None:
             pj.update(at=list(at), z=ground_z(s, at))
         plants = [pj]
-        made = {id(tree): pj}
-        for i, (t_, at_, yaw_) in enumerate(others or []):
-            if id(t_) not in made:  # (the same tree stood many times is meshed once)
-                made[id(t_)] = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage, triangles)[0]
-            pj2 = {**made[id(t_)], "at": list(at_), "yaw": float(yaw_), "z": ground_z(s, at_)}
-            plants.append(pj2)
+        made = {(id(tree), triangles): pj}
+        drawn = 0
+        for i, o_ in enumerate(others or []):
+            t_, at_, yaw_ = o_[:3]
+            tri_ = o_[3] if len(o_) > 3 else triangles
+            if (id(t_), tri_) not in made:  # (the same tree stood many times is meshed once per budget)
+                pj_, inf_ = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage, tri_)
+                pj_["_tris"] = inf_["triangles"] + inf_["leaf_triangles"]
+                made[(id(t_), tri_)] = pj_
+            m_ = made[(id(t_), tri_)]
+            drawn += m_.get("_tris", 0)
+            plants.append({**m_, "at": list(at_), "yaw": float(yaw_), "z": ground_z(s, at_), "scale": float(o_[4]) if len(o_) > 4 else 1.0})
         env = s.get("environment") or {}
-        job = {"plants": plants, "views": views, "save": save, **(s.get("look") or {})}
-        if env.get("setting") in ("forest", "edge", "stand") and "color" not in (job.get("ground") or {}):
-            job["ground"] = {**FOREST_FLOOR, **(job.get("ground") or {})}  # a stand's floor is litter, not a lawn
-            job.setdefault("bounce_color", [0.6, 0.5, 0.4])  # (and what it throws back up is dim and brown, not a lawn's yellow-green)
-            job.setdefault("bounce", 0.75)
+        jb = {"plants": plants, "views": views, "save": save, **(s.get("look") or {})}
+        if env.get("setting") in ("forest", "edge", "stand") and "color" not in (jb.get("ground") or {}):
+            jb["ground"] = {**FOREST_FLOOR, **(jb.get("ground") or {})}  # a stand's floor is litter, not a lawn
+            jb.setdefault("bounce_color", [0.6, 0.5, 0.4])  # (and what it throws back up is dim and brown, not a lawn's yellow-green)
+            jb.setdefault("bounce", 0.75)
         if env.get("ground"):
-            job["ground"] = {**(job.get("ground") or {}), **env["ground"]}
-        job["ruler"] = float(np.ceil(tree["height"]))
+            jb["ground"] = {**(jb.get("ground") or {}), **env["ground"]}
+        jb["ruler"] = float(np.ceil(tree["height"]))
+        for k_, v_ in (job or {}).items():
+            jb[k_] = {**jb[k_], **v_} if isinstance(v_, dict) and isinstance(jb.get(k_), dict) else v_
+        if scatter:
+            jb["scatter"] = []
+            for i, sc_ in enumerate(scatter):
+                f_ = Path(tmp) / f"scatter{i}.npz"
+                np.savez(f_, **{k_: np.asarray(sc_[k_]) for k_ in ("V", "F", "mat", "pos", "yaw", "scale")})
+                jb["scatter"].append({"npz": str(f_), "colors": sc_["colors"], "rough": sc_.get("rough", 0.9)})
         if curves is not None:
-            job["curves"] = curves
+            jb["curves"] = curves
         jp = Path(tmp) / "job.json"
-        jp.write_text(json.dumps(job))
+        jp.write_text(json.dumps(jb))
         t1 = time.perf_counter()
         r = subprocess.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python",
                             str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
-    info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2), plants=len(plants))
+    info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2), plants=len(plants), meshed=len(made),
+                others_triangles=int(drawn))
     return info
 
 

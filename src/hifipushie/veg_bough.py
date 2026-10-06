@@ -15,6 +15,8 @@ from .vegetation import _child, _u
 
 BOUGH = {"variants": 4, "size": 384, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
 TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles a bough card costs (a fan per card)
+DEAD_SHARE, DEAD_MIN = 0.08, 12  # of a budget's bough cards, the most that draw dead wood (and the fewest a tree with dead wood keeps)
+DEAD_THIN = 0.5  # the share of a dead bough's twigs its picture is baked from (real alpha gaps)
 _CACHE: dict = {}
 
 
@@ -77,7 +79,29 @@ def plan(tree: dict, cards: int) -> dict:
     for i in range(2, len(own)):
         if own[i] < 0:
             own[i] = own[par[i]]
-    return {"roots": best, "size": float(size), "owner": own[st["twigs"]["node"]], "node_owner": own}
+    pl = {"roots": best, "size": float(size), "owner": own[st["twigs"]["node"]], "node_owner": own}
+    # dead wood is a haze, not a mass: at a budget it gets few cards (`DEAD_SHARE` of them at most, the longest boughs),
+    # and the rest of its twigs are simply not drawn (every dead bough carded, a stand tree's bare stem wore a brown fur)
+    isd = dead_boughs(tree, pl)
+    cap = int(max(DEAD_SHARE * cards, min(DEAD_MIN, isd.sum())))
+    if isd.sum() > cap:
+        di = np.flatnonzero(isd)
+        # spread up the stem: the longest bough of each height band first
+        z = tree["pos"][best[di], 2]
+        band = np.minimum((np.argsort(np.argsort(z)) * cap // max(len(di), 1)), cap - 1)
+        keep_d = np.zeros(len(di), bool)
+        r_ = st["reach"][best[di]]
+        for b_ in range(cap):
+            m_ = np.flatnonzero(band == b_)
+            if len(m_):
+                keep_d[m_[np.argmax(r_[m_])]] = True
+        drop = np.zeros(len(best), bool)
+        drop[di[~keep_d]] = True
+        new = np.cumsum(~drop) - 1
+        new[drop] = -1
+        remap = lambda o: np.where(o >= 0, new[np.maximum(o, 0)], -1)
+        pl = {"roots": best[~drop], "size": float(size), "owner": remap(pl["owner"]), "node_owner": remap(own), "dead_left_out": int(drop.sum())}
+    return pl
 
 
 def dead_boughs(tree: dict, pl: dict) -> np.ndarray:
@@ -172,10 +196,16 @@ def _mesh(tree: dict, pl: dict, b: int, Fr: np.ndarray, leaves: dict) -> dict:
     for t in np.flatnonzero(pl["owner"] == b):
         v_ = int(tw["variant"][t]) % nv
         isd = part is not None and part[t] == 1  # a dead twig: bare, grey (its own part's picture)
+        if isd and float(_u(tw["key"][t:t + 1], 78)[0]) > DEAD_THIN:
+            continue  # (a dead bough's picture is thin: sky shows through it)
+        if isd:
+            v_ = int(tw["card"][t]) if tw.get("card") is not None else v_
         if (v_, isd) not in twm:
             m_ = veg_leaf.twig_mesh(cs_d if isd else cs, v_)
             if isd:
-                m_ = {**m_, "col": m_["col"] * 0 + 1.0, "rgb": np.tile(np.asarray(dp.get("wood_color", [0.45, 0.42, 0.38]), float), (len(m_["V"]), 1))}
+                wc_ = np.asarray(dp.get("wood_color", [0.45, 0.42, 0.38]), float)
+                own_ = np.isnan(m_["rgb"][:, 0])  # (lichen keeps its colour; wood takes the part's grey x its own tone)
+                m_ = {**m_, "rgb": np.where(own_[:, None], wc_[None] * m_["col"][:, None], m_["rgb"]), "col": m_["col"] * 0 + 1.0}
             twm[(v_, isd)] = m_
         m = twm[(v_, isd)]
         cd = float({**veg_leaf.CARD, **(leaves.get("card") or {})}["scale"])

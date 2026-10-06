@@ -114,11 +114,99 @@ def _stem(pts, r0, r1, sides=3):
     return np.array(V), np.array(F)
 
 
+DEAD_TWIG = {"forks": 9.0, "depth": 3, "crook": 0.35, "broken": 0.3, "lichen": 0.0, "lichen_color": [0.62, 0.66, 0.56],
+             "flat": 0.35, "fork_angle": [35, 80], "child": [0.25, 0.6]}
+
+
+def dead_twig_mesh(leaves: dict, variant: int = 0) -> dict:
+    """A dead branchlet as the eye meets it in a stand's dead zone: a crooked sagging axis that forks at uneven
+    intervals to either side (never in pairs: a spray's ranks drawn bare read as a fishbone), each fork shorter,
+    thinner and crooked itself, a share of them broken to stubs, every variant its own tangle. `twig` keys beside
+    length / radius / droop: `forks` (per m of wood), `depth` (fork generations), `crook`, `broken` (share snapped
+    short), `fork_angle` [deg, deg], `child` [shortest, longest share of the parent], `flat` (how far forks leave the
+    card's plane), `lichen` 0..1 (beard-lichen tufts hanging from the wood) + `lichen_color`. Wood tone varies per
+    branch (weathered grey to darker bark-on wood)."""
+    tw = {**TWIG, **DEAD_TWIG, **(leaves.get("twig") or {})}
+    key = _child(np.uint64(4391), 53 * variant + 11)
+    ctr = [0]
+
+    def rnd():
+        ctr[0] += 1
+        return float(_u(_child(key, ctr[0]), 5))
+
+    L = float(tw["length"])
+    Vs, Fs, Ms, Cs, Gs = [], [], [], [], []
+    base = [0]
+
+    def add(V, F, mat, col, rgb=None):
+        Vs.append(V)
+        Fs.append(F + base[0])
+        Ms.append(np.full(len(F), mat))
+        Cs.append(np.full(len(V), col))
+        Gs.append(np.full((len(V), 3), np.nan) if rgb is None else np.broadcast_to(np.asarray(rgb, float), (len(V), 3)).copy())
+        base[0] += len(V)
+
+    a0, a1 = [math.radians(float(v)) for v in tw["fork_angle"]]
+    c0, c1 = [float(v) for v in tw["child"]]
+    depth_max = int(tw["depth"])
+
+    def branch(p0, d, ln, r, depth):
+        n = max(3, int(4 + 6 * ln / L))
+        pts = [np.asarray(p0, float)]
+        turn = np.zeros(3)
+        seg = ln / (n - 1)
+        for i in range(1, n):  # a wandering line with momentum, sagging along its length
+            kick = np.array([rnd() - 0.5, 0.3 * (rnd() - 0.5), float(tw["flat"]) * (rnd() - 0.5)]) * float(tw["crook"])
+            turn = 0.6 * turn + kick
+            d = _norm(d + turn + np.array([0, 0, -float(tw["droop"]) * 0.25 * i / n]))
+            pts.append(pts[-1] + d * seg)
+        pts = np.array(pts)
+        tone = 0.75 + 0.5 * rnd()
+        V, F = _stem(pts, r, max(r * 0.35, 0.0006))
+        add(V, F, 0, tone)
+        if tw["lichen"] and rnd() < float(tw["lichen"]):  # a beard hanging from the wood
+            for _ in range(2 + int(5 * rnd())):  # (threads, a few together: in the card's plane they hang "down" the picture's side)
+                q = pts[int(rnd() * (n - 1))]
+                h_ = 0.03 + 0.07 * rnd()
+                sx = 0.5 * h_ * (rnd() - 0.5)
+                sy = (1 if rnd() < 0.5 else -1) * h_ * (0.5 + 0.5 * rnd())
+                thr = np.array([q, q + [0.5 * sx, 0.6 * sy, -0.3 * h_], q + [sx, sy, -0.6 * h_]])
+                Vl, Fl = _stem(thr, 0.0012, 0.0006)
+                add(Vl, Fl, 0, 0.85 + 0.3 * rnd(), tw["lichen_color"])
+        if depth >= depth_max or ln < 0.04:
+            return
+        k = int(float(tw["forks"]) * ln * (0.6 + 0.8 * rnd()) + rnd())
+        side = 1.0 if rnd() < 0.5 else -1.0
+        for _ in range(k):
+            s = 0.08 + 0.88 * rnd()
+            i = min(int(s * (n - 1)), n - 2)
+            f = s * (n - 1) - i
+            p = pts[i] + f * (pts[i + 1] - pts[i])
+            dd = _norm(pts[i + 1] - pts[i])
+            if rnd() < 0.72:  # mostly the other side from the last, never a mirrored pair
+                side = -side
+            ang = a0 + (a1 - a0) * rnd()
+            across = _norm(np.cross(dd, [0, 0, 1.0]) + 1e-9)
+            out = _norm(dd * math.cos(ang) + side * across * math.sin(ang) + np.array([0, 0, float(tw["flat"]) * 2 * (rnd() - 0.5)]) * math.sin(ang))
+            l2 = ln * (c0 + (c1 - c0) * rnd()) * (1 - 0.45 * s)
+            if rnd() < float(tw["broken"]):
+                l2 *= 0.12 + 0.2 * rnd()
+                branch(p, out, l2, r * 0.6, depth_max)  # a stub: no forks of its own
+            else:
+                branch(p, out, l2, r * (0.45 + 0.2 * rnd()), depth + 1)
+
+    branch([0, 0, 0], _norm(np.array([0.25 * (rnd() - 0.5), 1.0, 0])), L * (0.8 + 0.3 * rnd()), float(tw["radius"]), 1)
+    return {"V": np.vstack(Vs), "F": np.vstack(Fs), "mat": np.concatenate(Ms), "col": np.concatenate(Cs),
+            "leaf": np.full(sum(len(v) for v in Vs), -1), "rgb": np.vstack(Gs)}
+
+
 def twig_mesh(leaves: dict, variant: int = 0) -> dict:
     """A twig with its leaves or needles: V, F, mat per face (0 wood, 1 leaf), col per vertex (a grey multiplier of
     the leaf colour: per-leaf tone x the blade's shade), leaf (per-vertex leaf id, -1 on wood: wind flutter later)."""
     lf = {**LEAF, **{k: v for k, v in leaves.items() if k in LEAF}}
     tw = {**TWIG, **(leaves.get("twig") or {})}
+    if leaves.get("bare") and tw.get("form", "tangle") != "spray":  # dead twigs are their own thing, not a leafless spray
+        return dead_twig_mesh(leaves, variant)
     key = _child(np.uint64(977), 31 * variant + 7)
     rnd = lambda i: float(_u(_child(key, i), 3))
     L = tw["length"]
@@ -596,7 +684,7 @@ def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, 
     lit = 0.7 + 0.42 * np.clip(fn @ np.array([-0.38, 0.42, 0.82]), 0, 1)
     dev = np.clip((tone - np.median(tone[leaf]) if leaf.any() else tone * 0) * 2.2, -0.6, 0.6)
     hue = np.stack([1 + 0.22 * dev, 1 + 0.06 * dev, 1 - 0.35 * dev], 1)
-    col = np.where(leaf[:, None], lc[None] * hue * (np.clip(tone, 0, 1.6) * lit)[:, None], wc[None]) * (0.72 + 0.28 * zr)[:, None]
+    col = np.where(leaf[:, None], lc[None] * hue * (np.clip(tone, 0, 1.6) * lit)[:, None], wc[None] * np.clip(tone, 0.4, 1.6)[:, None]) * (0.72 + 0.28 * zr)[:, None]
     if "rgb" in mesh:  # parts with a colour of their own (petals, a flower's eye)
         own = mesh["rgb"][F].mean(1)
         has = ~np.isnan(own[:, 0])

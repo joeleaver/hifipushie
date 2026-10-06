@@ -87,8 +87,10 @@ DEFAULT = {
         "flare": 1.5, "flare_height": 0.6,  # the trunk's foot
         "uneven": [0.0],  # per order: each axis's own pace, +- this share of the segment length (ragged outlines)
         "slowing": [0],  # per order: steps after which an axis's shoots are half as long (0 = never): old branchlets creep
+        "limb_pace": None,  # per order: the most a side axis extends in a step, as a share of what the trunk's leader does then (apical control: the whole tree's shoots shorten together as it ages)
         "tip_life": [0],  # per order: steps an axis keeps extending (0 = for ever). Spruce branchlets, spur shoots
         "stand_shed": 0.0,  # added to `shed` inside a stand (setting forest / edge): shade-bearers that hold a skirt in the open self-prune there
+        "sdi_max": 1100,  # the most a closed stand of the species carries (Reineke's stand density index, metric): caps a stand tree's girth by its spacing
         "dead_keep": 0,  # years a limb the shade killed stays on the trunk as a thin grey stub (spruce 30, pine 10, broadleaves 3-8)
         "stems": 1, "stem_angle": 22,  # stems from the foot (a shrub, a hazel stool, a multi-stemmed birch) and how far they lean out, deg
         "clear": 0.0,  # m of trunk that never branches (the bole of a tree that grew up browsed or shaded)
@@ -138,9 +140,11 @@ HABIT_INFO = {
     "uneven": "0-0.5 per order: every axis grows at its own pace, +- this share (a ragged outline instead of a turned cone)",
     "slowing": "per order: growth steps after which an axis's new segments are half as long, a third at twice that... (0 = never). A spruce's hanging branchlets 3-5: they creep on for decades, so their young needles stay near the limb all along it",
     "stand_shed": "0-0.2 added to `shed` when the tree stands in a stand (setting forest or edge): a spruce keeps its skirt in the open (shed 0) and self-prunes to a top third of live crown in a forest (0.15-0.2)",
+    "sdi_max": "600-1600: Reineke's maximum stand density index (stems / ha at 25 cm dbh). In a stand with a spacing, a stem is no stouter than 25 cm x (sdi_max / stems per ha)^(1/1.6): Norway spruce ~1500, Scots pine ~1000, oak ~700, birch ~800 (Pretzsch & Biber 2005 give spruce 1609, pine 990, beech 1172, oak 578-ish; rounded); 0 = no cap",
     "dead_keep": "years a limb killed by shade stays on the trunk as dead wood (twiggy at first, a short spur at the end: `deadwood`) before it falls: Norway spruce 30-45 (a stand's interior is a ladder of dead whorls), Scots pine 15-25 (it sheds cleaner), oak 5-10, birch 2-4; 0 = they fall at once. Guesses: dead branches persist for decades (Makinen 1999), the years per species are not sourced",
     "stems": "1-12 stems rising from the foot: a shrub or a multi-stemmed tree (each is a trunk: order 0)", "stem_angle": "deg the extra stems lean outward at the foot (10 tight, 35 open)",
     "ground_clear": "0.03-1.5 m over the ground no shoot grows under: hanging shoots (a weeping willow's curtains) stop there (0.4-1.2 = a browse or mowing line), a limb that sags to the ground rests on it and its growing end turns up",
+    "limb_pace": "null or per order [-, 0.8, 0.6]: a side shoot's most growth in a step as a share of the leader's at that age (needs slowing[0]); under 1 the leader stays ahead for life (a conifer's spire, a stand-grown pole), over 1 old limbs catch it up (a rounded or flat old crown)",
     "tip_life": "per order: growth steps an axis keeps extending, 0 = for ever (short-lived hanging branchlets: 6-10; limbs that stop reaching: 20-30)", "clear": "0-6 m of trunk that never branches",
 }
 
@@ -875,8 +879,10 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             depth = stand.get("depth", 0.35) * max(top, 4.0)
             zc = top * stand.get("height", 1.0)
             r = np.linalg.norm(P[:, :2], axis=1)
-            side = np.clip((r - gap) / max(gap, 1e-6), 0, 1) * np.clip((zc - P[:, 2]) / max(depth, 1e-6), 0, 1.5)
-            below = np.clip((zc - depth - P[:, 2]) / max(depth, 1e-6), 0, 1) * stand.get("floor", 0.5)
+            side = np.clip((r - gap) / max(0.5 * gap, 1e-6), 0, 1) * np.clip((zc - P[:, 2]) / max(depth, 1e-6), 0, 1.5)  # (over a whole gap width, crowns 4 m apart interlocked 8 m wide)
+            # the canopy's own shade deepens steadily below its top (a step at one depth made a stand tree's crown all or nothing:
+            # live to the ground or a tuft, on a hair of `stand_shed`)
+            below = np.clip((zc - P[:, 2]) / max(2.0 * depth, 1e-6), 0, 1) * stand.get("floor", 0.8)
             closed = np.ones(n)
             if stand.get("open_side") is not None:  # the open side keeps its light
                 od = _norm(np.asarray(list(stand["open_side"])[:2], float))
@@ -928,6 +934,11 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         thr_ = np.full(n, float(h["shed"]))
         if stand is not None:  # a stand's shade-bearers self-prune (`stand_shed`); on an edge's open side they keep their skirt
             thr_ = thr_ + h["stand_shed"] * closed
+        # wood past its last living branch (no tip, no bud, no leaf beyond it) is dead: it goes like any shaded branch
+        # (a limb whose own tip had stopped trailed on for decades as a bare sagging snake)
+        LQ = np.zeros(n)
+        _collect(T.parent, leafy.astype(float), LQ, np.zeros(n, np.int64))
+        cut |= (Q <= 0) & (LQ <= 0) & (T.order > 0) & ~T.pin & ((step - T.born) >= h["shed_age"] + 2)
         _shed(T.parent, T.main, T.born, T.pin, Q, size, cut, step, thr_, h["shed_age"], dead)
         if dead.any():
             # the pipe model remembers what it carried
@@ -1012,6 +1023,11 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                 sl_ = _per(h["slowing"], order_new)
                 born_ = np.fromiter((axes[a_].get("born", 0) for a_ in axis_ids), np.float64, len(axis_ids))
                 ln = np.where(sl_ > 0, ln / (1 + (step - born_) / np.maximum(sl_, 1e-9)), ln)
+            if h["limb_pace"]:  # no side shoot outgrows the leader's pace at this age
+                s0_ = _per(h["slowing"], np.zeros(1, int))[0]
+                lead_ = _per(h["shoot_max"], np.zeros(1, int))[0] * _per(h["length"], np.zeros(1, int))[0] / (1 + (step / s0_ if s0_ > 0 else 0.0))
+                cap_ = _per(h["limb_pace"], order_new) * lead_ / np.maximum(_per(h["shoot_max"], order_new), 1)
+                ln = np.where(order_new > 0, np.minimum(ln, cap_), ln)
             eta = _per(h["tropism"], order_new)
             jit = _per(h["jitter"], order_new)
             pl = _per(h["plagio"], order_new)
@@ -1218,6 +1234,19 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             want = 0.5 * float(s["trunk_diameter"]) * (1 - float(s["trunk_taper"]) * pos[tr, 2] / zt)
             radius[tr] = np.maximum(radius[tr], want) if not s.get("cuts") else want
             out["radius"] = radius
+    elif stand is not None and (env.get("spacing") or stand.get("spacing")) and h["sdi_max"]:
+        # a stand's stems are as stout as its stocking allows (Reineke 1933: N x (dbh / 25 cm)^1.6 <= the species' most):
+        # the pipe model and the ring sized a tree by its own wood alone, and 3 m apart stood 42 cm stems (173 m2 / ha)
+        sp_ = float(env.get("spacing") or stand["spacing"])
+        cap = 0.25 * (float(h["sdi_max"]) / (1e4 / sp_ ** 2)) ** (1 / 1.6) * (1.0 if stand.get("open_side") is None else 1.25)
+        tr = np.flatnonzero(T.order == 0)
+        if len(tr) > 2 and pos[tr, 2].max() > 1.3:
+            dbh = 2 * float(np.interp(1.3, pos[tr, 2], radius[tr]))
+            if dbh > cap:
+                r1, tip_r = 0.5 * dbh, 3 * h["tip_radius"]
+                w_ = np.clip((radius - tip_r) / max(r1 - tip_r, 1e-9), 0, 1) ** 0.5
+                out["radius"] = radius = radius * (1 + (cap / dbh - 1) * w_)
+                out["stand_dbh_cap"] = round(cap, 3)
     if s.get("limb_diameter") and (T.order == 1).any():  # limbs sized by themselves: a fat trunk under ordinary limbs
         o1 = np.flatnonzero((T.order == 1) & (T.order[T.parent] == 0))
         rl, tip_r = float(radius[o1].max()), 3 * h["tip_radius"]
@@ -1751,3 +1780,119 @@ def fit_habit(spec: dict, ref_mask: np.ndarray, params: dict, bare: bool = False
                 log(f"{it}: score {r[0]:.3f} iou {r[1]:.3f} {json.dumps(r[2])}")
         hist.append((round(r[0], 3), round(r[1], 3)))
     return {"habit": best[2], "score": round(best[0], 3), "iou": round(best[1], 3), "log": hist}
+
+
+# ---------------------------------------------------------------- form across ages and settings
+
+def crown_measures(tree: dict) -> dict:
+    """The tree's form read off its own live foliage (not a silhouette): height (m), crown width / height (mean of four
+    azimuths, 1st-99th percentile of leafy wood), live crown depth / height (above the 3rd percentile of leafy wood),
+    the height of the widest level / height, girth at 1.3 m (cm), how far the top stands off the foot (m), and the
+    living first-order limbs. What a forester's crown ratio and crown width are, so targets can come from tables."""
+    P, o = tree["pos"], tree["order"]
+    live = tree["leafy"] & ~tree["dead"]
+    H = float(tree["height"])
+    L = P[live] if live.sum() > 3 else P
+    base = float(np.percentile(L[:, 2], 3))
+    w = []
+    for az in (0, 45, 90, 135):
+        x = L[:, 0] * math.cos(math.radians(az)) + L[:, 1] * math.sin(math.radians(az))
+        w.append(np.percentile(x, 99) - np.percentile(x, 1))
+    W = float(np.mean(w))
+    zs = np.linspace(base, H, 11)
+    reach = []
+    for a, b in zip(zs[:-1], zs[1:]):
+        m = (L[:, 2] >= a) & (L[:, 2] < b)
+        reach.append(float(np.percentile(np.linalg.norm(L[m, :2], axis=1), 95)) if m.sum() > 5 else 0.0)
+    k = int(np.argmax(reach))
+    tr = (o == 0) & ~tree["dead"]
+    dbh = 200 * float(np.interp(1.3, P[tr][:, 2], tree["radius"][tr])) if tr.sum() > 2 and H > 1.3 else 0.0
+    limbs_ = int(((o == 1) & (o[tree["parent"]] == 0) & ~tree["dead"]).sum())
+    return {"height": round(H, 2), "width_over_height": round(W / max(H, 1e-6), 3), "crown_ratio": round(1 - base / max(H, 1e-6), 3),
+            "widest_at": round(0.5 * (zs[k] + zs[k + 1]) / max(H, 1e-6), 3), "dbh_cm": round(dbh, 1),
+            "top_off": round(float(np.linalg.norm(P[int(np.argmax(P[:, 2])), :2])), 2), "limbs": limbs_,
+            "nodes": int(len(P))}
+
+
+def form_cases(spec: dict, cases: list, seeds=(1,)) -> list:
+    """Grow the spec once per case ({"age", "environment"?, "name"?, + target bands}) and seed; returns each case with
+    its mean `measures`. The same habit at several ages and settings: a preset tuned at one age is a single point."""
+    out = []
+    for c in cases:
+        ms = []
+        for sd in seeds:
+            sp = _merge(spec, {"seed": sd, "age": c["age"], "environment": c.get("environment") or {"setting": "open"}})
+            sp.pop("height", None)
+            ms.append(crown_measures(grow(sp)))
+        out.append({**c, "measures": {k: round(float(np.mean([m[k] for m in ms])), 3) for k in ms[0]},
+                    "spread": {k: round(float(np.ptp([m[k] for m in ms])), 3) for k in ("width_over_height", "crown_ratio")}})
+    return out
+
+
+FORM_KEYS = ("height", "width_over_height", "crown_ratio", "widest_at", "dbh_cm", "top_off", "nodes")
+
+
+def form_miss(cases: list) -> float:
+    """How far measured cases lie outside their target bands ({key: [lo, hi]}), each miss as a share of the band's
+    middle; 0 = every measure inside its band."""
+    tot = 0.0
+    for c in cases:
+        for k in FORM_KEYS:
+            if k in c:
+                lo, hi = c[k]
+                v = c["measures"][k]
+                tot += float(c.get("weight", 1.0)) * (max(0.0, lo - v) + max(0.0, v - hi)) / max(0.5 * (abs(lo) + abs(hi)), 1e-6)
+    return tot
+
+
+def fit_form(spec: dict, cases: list, params: dict, iters: int = 60, seeds=(1, 2), rng_seed: int = 0, log=None) -> dict:
+    """Search habit numbers so ONE habit meets crown targets at several ages and settings (`cases`: {"age",
+    "environment", and bands like "width_over_height": [0.4, 0.55], "crown_ratio", "widest_at", "height", "dbh_cm",
+    "nodes"}). `params` as fit_habit's. The outline fit (fit_habit) matches one photo; this keeps a species right
+    from a sapling to a veteran, in the open and in a stand, against numbers that can be sourced (yield tables,
+    crown-ratio studies, measured photos). Returns {"habit", "miss", "cases"}."""
+    rng = np.random.default_rng(rng_seed)
+    names = list(params)
+    lo = np.array([params[k][0] for k in names], float)
+    hi = np.array([params[k][1] for k in names], float)
+    isint = [all(isinstance(v, int) for v in params[k]) for k in names]
+    base = resolve(spec)["habit"]
+
+    def vec0():
+        out = []
+        for k in names:
+            a, _, i = k.partition(".")
+            v = base[a]
+            v = (v[min(int(i), len(v) - 1)] if isinstance(v, list) else v) if i else v
+            out.append(float(v if v is not None else 0.5 * (params[k][0] + params[k][1])))
+        return np.clip(np.array(out), lo, hi)
+
+    def score(x):
+        full = copy.deepcopy(base)
+        for k, v, ii in zip(names, x, isint):
+            a, _, i = k.partition(".")
+            if i and isinstance(full[a], list) and len(full[a]) <= int(i):
+                full[a] = full[a] + [full[a][-1]] * (int(i) + 1 - len(full[a]))
+            _set_path(full, k, int(round(v)) if ii else round(float(v), 4))
+        hb = {k: full[k] for k in {n.partition(".")[0] for n in names}}
+        cs = form_cases(_merge(spec, {"habit": hb}), cases, seeds)
+        return form_miss(cs), hb, cs
+
+    x = vec0()
+    best = (*score(x), x)
+    if log:
+        log(f"start: miss {best[0]:.3f}")
+    for it in range(iters):
+        if it < iters // 2:
+            c = lo + rng.random(len(names)) * (hi - lo) if it % 4 == 0 else np.clip(best[3] + rng.normal(0, 0.2, len(names)) * (hi - lo) * (rng.random(len(names)) < 0.6), lo, hi)
+        else:
+            w = 0.1 * (1 - (it - iters // 2) / max(iters - iters // 2, 1)) + 0.03
+            c = np.clip(best[3] + rng.normal(0, w, len(names)) * (hi - lo) * (rng.random(len(names)) < 0.4), lo, hi)
+        r = score(c)
+        if r[0] < best[0]:
+            best = (*r, c)
+            if log:
+                log(f"{it}: miss {r[0]:.3f} {json.dumps(r[1])}")
+        if best[0] <= 0:
+            break
+    return {"habit": best[1], "miss": round(best[0], 3), "cases": best[2]}

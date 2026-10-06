@@ -45,6 +45,39 @@ def _mesh(name, V, F, uv=None):
     return ob
 
 
+HAZE: dict = {}  # {"distance": m, "color": [r, g, b] (as seen), "strength"}: set from the job before materials are made
+
+
+def _hazed(N, L, shader):
+    """Air between the eye and the surface: the shader mixed toward the haze's colour by 1 - exp(-distance / haze
+    distance). A stand closes with distance the way a forest does; without it far trunks are as crisp as near ones."""
+    if not HAZE:
+        return shader
+    cam = N.new("ShaderNodeCameraData")
+    e = _math(N, L, "EXPONENT", _math(N, L, "MULTIPLY", cam.outputs["View Distance"], -1.0 / float(HAZE.get("distance", 60.0))))
+    fac = _math(N, L, "MULTIPLY", _math(N, L, "SUBTRACT", 1.0, e), float(HAZE.get("most", 0.92)))
+    em = N.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = (*lin(HAZE.get("color", [0.62, 0.68, 0.72])), 1)
+    em.inputs["Strength"].default_value = float(HAZE.get("strength", 1.0))
+    mx = N.new("ShaderNodeMixShader")
+    L.new(fac, mx.inputs[0])
+    L.new(shader, mx.inputs[1])
+    L.new(em.outputs[0], mx.inputs[2])
+    return mx.outputs[0]
+
+
+def _haze_out(m):
+    """Put the haze before an opaque material's output."""
+    if not HAZE:
+        return
+    N, L = m.node_tree.nodes, m.node_tree.links
+    out = N["Material Output"]
+    if not out.inputs["Surface"].is_linked:
+        return
+    src = out.inputs["Surface"].links[0].from_socket
+    L.new(_hazed(N, L, src), out.inputs["Surface"])
+
+
 def _flat(name, col, rough=0.8):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -199,6 +232,15 @@ def bark_material(name, bark, height):
     return m
 
 
+def _hull_dir(N):
+    """Out from the crown's middle, per twig: the instancer's "hull" attribute (hp_twigs stores it from the object's own
+    crown and turn, so copies of one plant share a material)."""
+    at = N.new("ShaderNodeAttribute")
+    at.attribute_type = "INSTANCER"
+    at.attribute_name = "hull"
+    return at.outputs["Vector"]
+
+
 def _hull_normal(N, L, leaf):
     """The crown shaded as a volume (foliage artists' normal transfer): each leaf's normal bent toward the direction
     out from the crown's middle by `round` (0.7). With their own normals, hanging cards catch the sun edge-on and a lit
@@ -207,19 +249,13 @@ def _hull_normal(N, L, leaf):
     if w <= 0 or leaf.get("crown") is None:
         return None
     geo = N.new("ShaderNodeNewGeometry")
-    out = N.new("ShaderNodeVectorMath")
-    out.operation = "SUBTRACT"
-    L.new(geo.outputs["Position"], out.inputs[0])
-    out.inputs[1].default_value = leaf["crown"]
-    nrm = N.new("ShaderNodeVectorMath")
-    nrm.operation = "NORMALIZE"
-    L.new(out.outputs[0], nrm.inputs[0])
+    nrm = _hull_dir(N)
     mx = N.new("ShaderNodeMix")
     mx.data_type = "VECTOR"
     mx.inputs["Factor"].default_value = w
     a_, b_ = [i for i in mx.inputs if i.name == "A" and i.type == "VECTOR"][0], [i for i in mx.inputs if i.name == "B" and i.type == "VECTOR"][0]
     L.new(geo.outputs["Normal"], a_)
-    L.new(nrm.outputs[0], b_)
+    L.new(nrm, b_)
     fin = N.new("ShaderNodeVectorMath")
     fin.operation = "NORMALIZE"
     L.new([o for o in mx.outputs if o.type == "VECTOR"][0], fin.inputs[0])
@@ -252,7 +288,7 @@ def _leaf_out(m, N, L, base, alpha, through, rough, leaf):
         L.new(_math(N, L, "MULTIPLY", through, t), mx.inputs[0])
     L.new(bsdf.outputs[0], mx.inputs[1])
     L.new(tr.outputs[0], mx.inputs[2])
-    last = mx.outputs[0]
+    last = _hazed(N, L, mx.outputs[0])
     if alpha is not None:  # cut out by the atlas's alpha
         tp = N.new("ShaderNodeBsdfTransparent")
         am = N.new("ShaderNodeMixShader")
@@ -300,19 +336,12 @@ def _weather(m, snow=0.0, wet=0.0, crown=None):
     if snow:
         geo = N.new("ShaderNodeNewGeometry")
         if crown is not None:
-            o = N.new("ShaderNodeVectorMath")
-            o.operation = "SUBTRACT"
-            L.new(geo.outputs["Position"], o.inputs[0])
-            o.inputs[1].default_value = crown
-            nrm = N.new("ShaderNodeVectorMath")
-            nrm.operation = "NORMALIZE"
-            L.new(o.outputs[0], nrm.inputs[0])
             # snow lies on every plate and spray that faces up, wherever it is in the crown (by the crown's direction
             # alone only the top of the tree went white), more on the crown's upper side
             tsp = N.new("ShaderNodeSeparateXYZ")
             L.new(geo.outputs["True Normal"], tsp.inputs[0])
             csp = N.new("ShaderNodeSeparateXYZ")
-            L.new(nrm.outputs[0], csp.inputs[0])
+            L.new(_hull_dir(N), csp.inputs[0])
             zz = _math(N, L, "ADD", _math(N, L, "MULTIPLY", _math(N, L, "ABSOLUTE", tsp.outputs["Z"]), 0.75),
                        _math(N, L, "MULTIPLY", csp.outputs["Z"], 0.4))
             cmb = N.new("ShaderNodeCombineXYZ")
@@ -409,7 +438,39 @@ def ground_material(name, ground):
     mid.color = (*lin(ground.get("dry", [0.5, 0.47, 0.25])), 1)
     f = lambda t: t.outputs["Fac"] if "Fac" in t.outputs else t.outputs[0]
     L.new(_math(N, L, "ADD", _math(N, L, "MULTIPLY", f(n1), 0.75), _math(N, L, "MULTIPLY", f(n2), 0.25)), r.inputs["Fac"])
-    L.new(r.outputs["Color"], bsdf.inputs["Base Color"])
+    col = r.outputs["Color"]
+    ms = ground.get("moss")
+    if ms:  # {"color", "amount" 0..1, "size" m}: moss in soft-edged patches over the litter (brighter where it is deep)
+        n3 = N.new("ShaderNodeTexNoise")
+        n3.inputs["Scale"].default_value = 1.0 / max(float(ms.get("size", 2.5)), 0.05)
+        n3.inputs["Detail"].default_value = 5.0
+        L.new(co.outputs["Object"], n3.inputs["Vector"])
+        mr = N.new("ShaderNodeMapRange")
+        a_ = float(ms.get("amount", 0.4))
+        mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = 0.62 - 0.3 * a_, 0.72 - 0.3 * a_
+        L.new(f(n3), mr.inputs["Value"])
+        mx = N.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        L.new(mr.outputs["Result"], mx.inputs["Factor"])
+        L.new(col, mx.inputs["A"])
+        mc = N.new("ShaderNodeVectorMath")
+        mc.operation = "SCALE"
+        mc.inputs[0].default_value = lin(ms.get("color", [0.3, 0.42, 0.14]))
+        L.new(_math(N, L, "ADD", 0.7, _math(N, L, "MULTIPLY", f(n2), 0.6)), mc.inputs["Scale"])
+        L.new(mc.outputs[0], mx.inputs["B"])
+        col = mx.outputs["Result"]
+    lt = ground.get("litter")
+    if lt:  # needle litter: fine pale and dark flecks (fallen needles, twigs, cone scales), a strength 0..1
+        n4 = N.new("ShaderNodeTexNoise")
+        n4.inputs["Scale"].default_value = 60.0
+        n4.inputs["Detail"].default_value = 2.0
+        L.new(co.outputs["Object"], n4.inputs["Vector"])
+        sc_ = N.new("ShaderNodeVectorMath")
+        sc_.operation = "SCALE"
+        L.new(col, sc_.inputs[0])
+        L.new(_math(N, L, "ADD", 1.0 - 0.5 * float(lt), _math(N, L, "MULTIPLY", f(n4), float(lt))), sc_.inputs["Scale"])
+        col = sc_.outputs[0]
+    L.new(col, bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = 0.9
     bump = N.new("ShaderNodeBump")
     bump.inputs["Strength"].default_value = 0.5
@@ -419,10 +480,14 @@ def ground_material(name, ground):
     return m
 
 
-def _instancer(points_ob, proto):
-    """Instance `proto` on the points' vertices: rotation from 'rot' (euler), scale from 'size'; 'tint' rides along."""
+def _instancer(points_ob, proto, crown, yaw=0.0):
+    """Instance `proto` on the points' vertices: rotation from 'rot' (euler), scale from 'size'; 'tint' rides along.
+    Each instance gets "hull" = the direction out from the plant's crown (`crown`, in the object's own frame), turned
+    by the object's `yaw`: both are modifier inputs, so copies of the object share the node group and the material."""
     ng = bpy.data.node_groups.new("hp_twigs", "GeometryNodeTree")
     ng.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    ng.interface.new_socket("Crown", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("Yaw", in_out="INPUT", socket_type="NodeSocketFloat")
     ng.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     N, L = ng.nodes, ng.links
     gi, go = N.new("NodeGroupInput"), N.new("NodeGroupOutput")
@@ -443,9 +508,31 @@ def _instancer(points_ob, proto):
     L.new(rot.outputs["Attribute"], e2r.inputs["Euler"])
     L.new(e2r.outputs["Rotation"], inst.inputs["Rotation"])
     L.new(size.outputs["Attribute"], inst.inputs["Scale"])
-    L.new(inst.outputs["Instances"], go.inputs[0])
+    pos = N.new("GeometryNodeInputPosition")
+    sub = N.new("ShaderNodeVectorMath")
+    sub.operation = "SUBTRACT"
+    L.new(pos.outputs[0], sub.inputs[0])
+    L.new(gi.outputs["Crown"], sub.inputs[1])
+    nrm = N.new("ShaderNodeVectorMath")
+    nrm.operation = "NORMALIZE"
+    L.new(sub.outputs[0], nrm.inputs[0])
+    vr = N.new("ShaderNodeVectorRotate")
+    vr.rotation_type = "Z_AXIS"
+    L.new(nrm.outputs[0], vr.inputs["Vector"])
+    L.new(gi.outputs["Yaw"], vr.inputs["Angle"])
+    st = N.new("GeometryNodeStoreNamedAttribute")
+    st.data_type = "FLOAT_VECTOR"
+    st.domain = "INSTANCE"
+    st.inputs["Name"].default_value = "hull"
+    L.new(inst.outputs["Instances"], st.inputs["Geometry"])
+    L.new(vr.outputs["Vector"], st.inputs["Value"])
+    L.new(st.outputs["Geometry"], go.inputs[0])
     md = points_ob.modifiers.new("twigs", "NODES")
     md.node_group = ng
+    ids = {it.name: it.identifier for it in ng.interface.items_tree if getattr(it, "in_out", "") == "INPUT"}
+    md[ids["Crown"]] = [float(v) for v in crown]
+    md[ids["Yaw"]] = float(yaw)
+    points_ob["hp_yaw_id"] = ids["Yaw"]
 
 
 def _world(sc, job):
@@ -490,23 +577,45 @@ def _world(sc, job):
     return w, bg, sky
 
 
+_BUILT: dict = {}
+
+
 def add_plant(pj, tag, clay):
-    """One plant from its npz at pj["at"] ([x, y], turned pj["yaw"] deg): returns its objects and its points."""
-    d = np.load(pj["npz"])
+    """One plant from its npz at pj["at"] ([x, y], turned pj["yaw"] deg): returns its objects and its points. A plant
+    stood again (the same npz) is a copy of the first's objects: meshes, materials and textures are shared (a stand of
+    54 trees each with its own atlas textures lost the GPU context)."""
     at = np.array(list(pj.get("at", [0, 0])) + [float(pj.get("z", 0.0))])
     yaw = math.radians(pj.get("yaw", 0.0))
+    k_sc = float(pj.get("scale", 1.0))
     c, s_ = math.cos(yaw), math.sin(yaw)
     Rz = np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1.0]])
-    place = lambda P: P @ Rz.T + at
-    V = place(d["V"])
+    place = lambda P: (P * k_sc) @ Rz.T + at
+    b = _BUILT.get(pj["npz"])
+    if b is not None:
+        col = bpy.context.scene.collection
+        wood = b["wood"].copy()
+        col.objects.link(wood)
+        wood.location, wood.rotation_euler, wood.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
+        twigs = []
+        for o in b["twigs"]:
+            o2 = o.copy()
+            col.objects.link(o2)
+            o2.location, o2.rotation_euler, o2.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
+            o2.modifiers["twigs"][o["hp_yaw_id"]] = float(yaw)
+            twigs.append(o2)
+        return {"wood": wood, "bark": b["bark"], "twigs": twigs, "points": place(b["local"])}
+    d = np.load(pj["npz"])
+    V = d["V"]
     has_tw = "tw_pos" in d and len(d["tw_pos"])
     bk = pj.get("bark") or {}
     bark = bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
     _weather(bark, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
+    _haze_out(bark)
     twig_wood = _flat(f"twig_wood{tag}", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
     wood = _mesh(f"wood{tag}", V, d["F"], d["uv"] if "uv" in d else None)
+    wood.location, wood.rotation_euler, wood.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
     a = wood.data.attributes.new("tan", "FLOAT_VECTOR", "POINT")
-    a.data.foreach_set("vector", (d["tan"] @ Rz.T).astype(np.float32).ravel())
+    a.data.foreach_set("vector", d["tan"].astype(np.float32).ravel())
     a = wood.data.attributes.new("dead", "FLOAT", "POINT")
     a.data.foreach_set("value", d["dead"].astype(np.float32) if "dead" in d else np.zeros(len(d["V"]), np.float32))
     a = wood.data.attributes.new("radius", "FLOAT", "POINT")
@@ -516,17 +625,18 @@ def add_plant(pj, tag, clay):
     twig_obs = []
     pts_all = [V]
     if has_tw:
-        from mathutils import Euler, Matrix
         cards = pj.get("cards")
         lf_ = dict(pj.get("leaf") or {})
-        tp_ = place(d["tw_pos"])
+        tp_ = d["tw_pos"]
         lf_["crown"] = [float(tp_[:, 0].mean()), float(tp_[:, 1].mean()), float(np.percentile(tp_[:, 2], 30))]
         mat = card_material(f"cards{tag}", lf_, cards) if cards else leaf_material(f"leaf{tag}", lf_)
         _weather(mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)), lf_["crown"])
         nv = int(d["tw_var"].max()) + 1
-        tw_pos = place(d["tw_pos"])
-        pts_all.append(tw_pos)
+        pts_all.append(tp_)
         for i in range(nv):
+            sel = d["tw_var"] == i
+            if not sel.any():
+                continue
             if cards:
                 proto = _mesh(f"card{tag}_{i}", d[f"card{i}_V"], d[f"card{i}_F"], d[f"card{i}_uv"])
                 proto.data.materials.append(mat)
@@ -540,17 +650,43 @@ def add_plant(pj, tag, clay):
                 ca.data.foreach_set("value", d[f"twig{i}_col"].astype(np.float32))
             proto.hide_render = True
             proto.hide_viewport = True
-            sel = d["tw_var"] == i
             pts = _mesh(f"twigs{tag}_{i}", d["tw_pos"][sel], np.zeros((0, 3), np.int32))
             for nm_, kind, key, field in (("rot", "FLOAT_VECTOR", "tw_rot", "vector"), ("size", "FLOAT", "tw_scale", "value"),
                                           ("tint", "FLOAT", "tw_tint", "value")):
                 at_ = pts.data.attributes.new(nm_, kind, "POINT")
                 at_.data.foreach_set(field, d[key][sel].astype(np.float32).ravel())
-            _instancer(pts, proto)
+            _instancer(pts, proto, lf_["crown"], yaw)
             pts.location = at.tolist()  # (the instances' own frames ride the object's turn)
             pts.rotation_euler = (0, 0, yaw)
+            pts.scale = (k_sc,) * 3
             twig_obs.append(pts)
-    return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": np.vstack(pts_all)}
+    local = np.vstack(pts_all)
+    _BUILT[pj["npz"]] = {"wood": wood, "bark": bark, "twigs": twig_obs, "local": local}
+    return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": place(local)}
+
+
+def add_scatter(sj, tag):
+    """A plain mesh (faces coloured by `mat` -> colors) instanced at points on the ground: brash, stumps, stones."""
+    d = np.load(sj["npz"])
+    proto = _mesh(f"scatter{tag}", d["V"], d["F"])
+    for i, c in enumerate(sj["colors"]):
+        m = _flat(f"scatter{tag}_{i}", lin(c), float(sj.get("rough", 0.9)))
+        _haze_out(m)
+        proto.data.materials.append(m)
+    proto.data.polygons.foreach_set("material_index", d["mat"].astype(np.int32))
+    proto.data.polygons.foreach_set("use_smooth", np.ones(len(proto.data.polygons), bool))
+    proto.hide_render = True
+    proto.hide_viewport = True
+    n = len(d["pos"])
+    pts = _mesh(f"scatter_pts{tag}", d["pos"], np.zeros((0, 3), np.int32))
+    rot = np.zeros((n, 3), np.float32)
+    rot[:, 2] = np.radians(d["yaw"])
+    for nm_, kind, val, field in (("rot", "FLOAT_VECTOR", rot, "vector"), ("size", "FLOAT", d["scale"], "value"),
+                                  ("tint", "FLOAT", np.zeros(n), "value")):
+        at_ = pts.data.attributes.new(nm_, kind, "POINT")
+        at_.data.foreach_set(field, np.asarray(val, np.float32).ravel())
+    _instancer(pts, proto, [0, 0, 0], 0.0)
+    return pts
 
 
 def add_curves(job):
@@ -613,7 +749,12 @@ def build(job):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     clay = _flat("clay", [0.8, 0.78, 0.74], 0.9)
+    HAZE.clear()
+    HAZE.update(job.get("haze") or {})
+    _BUILT.clear()
     plants = [add_plant(pj, f"_{i}" if i else "", clay) for i, pj in enumerate(job["plants"])]
+    for i, sj in enumerate(job.get("scatter") or []):
+        add_scatter(sj, f"_s{i}")
     allp = np.vstack([p_["points"] for p_ in plants])
     lo, hi = allp.min(0) - 0.3, allp.max(0) + 0.3
     twig_obs = [o for p_ in plants for o in p_["twigs"]]
@@ -630,6 +771,7 @@ def build(job):
     # the weather lies on the ground too (a snowy tree stood on a summer lawn)
     _weather(ground_mat, max(float(pj.get("snow", 0.0)) for pj in job["plants"]),
              max(float(pj.get("wet", 0.0)) for pj in job["plants"]))
+    _haze_out(ground_mat)
     if gj.get("water") is not None:  # a water level (m, against the plant's foot): a lake shore, a ditch
         bpy.ops.mesh.primitive_circle_add(vertices=64, radius=max(60 * R, 400.0), fill_type="NGON", location=(0, 0, float(gj["water"])))
         water = bpy.context.object
@@ -669,6 +811,14 @@ def build(job):
     fill.data.use_shadow = False
     sc.collection.objects.link(fill)
     fill.rotation_euler = Vector((0, 0, -1)).to_track_quat("Z", "Y").to_euler()
+    # under a closed canopy the light is the sky's, scattered down through the crowns: EEVEE's sun is shadowed out and
+    # its world light is dim, so a stand's interior rendered as night. A shadowless light from above stands in for it
+    amb = bpy.data.objects.new("ambient", bpy.data.lights.new("ambient", "SUN"))
+    amb.data.color = job.get("ambient_color", [0.8, 0.88, 0.82])
+    amb.data.use_shadow = False
+    amb.data.energy = 0.0
+    sc.collection.objects.link(amb)
+    amb.rotation_euler = Vector((0.25, 0.15, 1)).normalized().to_track_quat("Z", "Y").to_euler()
     sc.render.engine = "BLENDER_EEVEE"
     for attr, val in (("use_shadows", True), ("use_raytracing", False)):
         try:
@@ -712,6 +862,7 @@ def build(job):
         if v.get("sun"):
             aim_sun(*v["sun"])
         fill.data.energy = 0.0 if isclay else job.get("bounce", 1.1)
+        amb.data.energy = 0.0 if isclay else job.get("ambient", 0.0)
         for o in twig_obs:
             o.hide_render = not v.get("leaves", True)
         for l in list(w.node_tree.links):
