@@ -17,7 +17,7 @@ import bpy
 import numpy as np
 
 GROUP = "hp_lock"
-VERSION = 10  # bump when the node group changes: scenes rebuild it
+VERSION = 11  # bump when the node group changes: scenes rebuild it
 INPUTS = [  # (name, type, default, min, max) in modifier order; the spec's lock keys are these, lower case
     ("Width", "NodeSocketFloat", 0.03, 0.0, 1.0),
     ("Thickness", "NodeSocketFloat", 0.008, 0.0, 1.0),
@@ -30,6 +30,7 @@ INPUTS = [  # (name, type, default, min, max) in modifier order; the spec's lock
     ("Edge", "NodeSocketFloat", 0.8, 0.2, 4.0),
     ("Grey", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ("Seed", "NodeSocketFloat", 0.0, 0.0, 1.0),
+    ("Free", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ("Centre", "NodeSocketVector", (0.0, 0.0, 0.0), None, None),
     ("Segments", "NodeSocketInt", 32, 2, 256),
     ("Sides", "NodeSocketInt", 16, 3, 64),
@@ -221,6 +222,7 @@ def node_group():
     geo = _store(nt, geo, "hp_tangent", tangent, "FLOAT_VECTOR")
     geo = _store(nt, geo, "hp_lock", I["Seed"])
     geo = _store(nt, geo, "hp_grey", I["Grey"])
+    geo = _store(nt, geo, "hp_free", I["Free"])
     sm = nt.nodes.new("GeometryNodeSetShadeSmooth")
     nt.links.new(geo, sm.inputs["Geometry"])
     mat = nt.nodes.new("GeometryNodeSetMaterial")
@@ -246,7 +248,7 @@ def material(look: dict):
     along each lock's crown, grey where hp_grey says, fine strand grooves as bump (baked into the export's normal
     map). look: {"gap", "lit", "sheen", "grey", "roughness", "grooves", "groove_depth"}."""
     m = bpy.data.materials.get("hp_hair") or bpy.data.materials.new("hp_hair")
-    key = repr(sorted(look.items()))
+    key = repr(sorted(look.items())) + " v2"
     if m.get("hp_look") == key and m.node_tree and len(m.node_tree.nodes) > 3:
         return m
     m["hp_look"] = key
@@ -285,6 +287,9 @@ def material(look: dict):
     # the root in the scalp dark too
     edge = _smooth(nt, _math(nt, "ABSOLUTE", across), float(look.get("edge", 0.55)), 1.0)
     top = _smooth(nt, outf, -0.6, 0.4)
+    # a lock hanging clear of the head (hp_free, a tail) is hair on its underside too: only locks lying on the head
+    # have a gap side (seen from the head's side, a free tail was near black)
+    top = _math(nt, "MAXIMUM", top, _math(nt, "MULTIPLY", attr("hp_free"), 0.85))
     root = _smooth(nt, along, 0.0, float(look.get("root", 0.12)))
     expo = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", 1.0, edge), top), root)
     col = mix(rgb(look.get("gap", "#2a1712")), rgb(look.get("lit", "#6b3d2e")), expo)
@@ -343,15 +348,37 @@ def id_pass():
         nt.links.new(e.outputs[0], o.inputs["Surface"])
         return m
     red, green, black = emit("hp_id_mass", (1, 0, 0)), emit("hp_id_lock", (0, 1, 0)), emit("hp_id_else", (0, 0, 0))
+    strands = bpy.data.objects.get("hair_scalp") is not None
+    atlas_img = bpy.data.images.get("hp_hair_atlas")
+
+    def cut(name, rgb):  # a card: the colour where its strands are (alpha over a half), nothing elsewhere
+        m = emit(name, rgb)
+        nt = m.node_tree
+        o = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+        e = next(n for n in nt.nodes if n.type == "EMISSION")
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = atlas_img
+        tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+        mx = nt.nodes.new("ShaderNodeMixShader")
+        nt.links.new(_math(nt, "GREATER_THAN", tex.outputs["Alpha"], 0.5), mx.inputs[0])
+        nt.links.new(tr.outputs[0], mx.inputs[1])
+        nt.links.new(e.outputs[0], mx.inputs[2])
+        nt.links.new(mx.outputs[0], o.inputs["Surface"])
+        m.surface_render_method = "DITHERED"
+        m.use_backface_culling = False
+        return m
+    red_c, green_c = (cut("hp_id_mass_c", (1, 0, 0)), cut("hp_id_lock_c", (0, 1, 0))) if atlas_img else (red, green)
     ng = bpy.data.node_groups.get(GROUP)
     if ng is not None:
         for n in ng.nodes:
             if n.type == "SET_MATERIAL":
                 n.inputs["Material"].default_value = green
     for ob in bpy.data.objects:
-        if ob.type not in ("MESH", "CURVE"):
+        if ob.type not in ("MESH", "CURVE") or (strands and (ob.get("hp_hair_scalp") or ob.get("hp_band"))):
             continue
         mat = red if ob.get("hp_hair_cap") else green if ob.get("hp_lock") else black
+        if ob.get("hp_cards"):
+            mat = red_c if ob.get("hp_hair_cap") else green_c
         if ob.type == "MESH":
             ob.data.materials.clear()
             ob.data.materials.append(mat)
@@ -359,6 +386,9 @@ def id_pass():
             ob.data.materials.clear()
             ob.data.materials.append(green)
             ob.update_tag()
+    if strands:
+        import blender_strands
+        blender_strands.id_pass()
     bpy.context.view_layer.update()
     sc = bpy.context.scene
     sc.view_settings.view_transform = "Standard"
@@ -370,6 +400,9 @@ def id_pass():
 
 def clay():
     """The hair material as plain clay (a mid grey-brown, no gaps, sheen or grooves): judge the forms alone."""
+    if bpy.data.objects.get("hair_scalp") is not None:
+        import blender_strands
+        blender_strands.clay()
     m = bpy.data.materials.get("hp_hair")
     if m is None:
         return
@@ -382,6 +415,15 @@ def clay():
     bsdf.inputs["Roughness"].default_value = 0.6
     bsdf.inputs["Anisotropic"].default_value = 0.0
     m["hp_look"] = "clay"
+    mc = bpy.data.materials.get("hp_hair_cards")
+    if mc is not None and mc.node_tree:  # the cards as clay: their alpha kept, no picture, no relief
+        b2 = next(n for n in mc.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+        for k in ("Base Color", "Normal"):
+            for ln in list(b2.inputs[k].links):
+                mc.node_tree.links.remove(ln)
+        b2.inputs["Base Color"].default_value = (0.33, 0.25, 0.21, 1.0)
+        b2.inputs["Roughness"].default_value = 0.6
+        b2.inputs["Anisotropic"].default_value = 0.0
 
 
 def _set_inputs(mod, vals: dict):
@@ -612,10 +654,190 @@ def show(hair: dict):
     """Apply a hair job (hair.job): the locks and the cap."""
     if not hair:
         return []
+    import blender_strands
+    if hair.get("strands"):  # strand hair (blender_strands.py): Hair Curves guides, no solid locks, no shell
+        coll = bpy.data.collections.get("hair")
+        for ob in list(coll.objects) if coll else []:
+            if ob.get("hp_lock") is not None or ob.get("hp_hair_cap") or ob.get("hp_cards"):
+                bpy.data.objects.remove(ob)
+        return blender_strands.show(hair["strands"])
+    blender_strands.clear()
     material(hair["look"])
     made = apply(hair["locks"], hair["look"])
-    cap(hair["cap"], hair.get("cap_kind", "cap"))
+    cd = hair.get("cards")
+    coll = bpy.data.collections["hair"]
+    for ob in coll.objects:  # as cards, a lock's curve stays (what a person edits) but its solid lens is hidden
+        mod = ob.modifiers.get("hp_lock") if ob.get("hp_lock") is not None else None
+        if mod is not None and mod.show_render == bool(cd):
+            mod.show_render = mod.show_viewport = not cd
+            ob.update_tag()
+    for n in ("hair_cards", "hair_cap"):
+        old = bpy.data.objects.get(n)
+        if old is not None and (old.get("hp_cards") or n == "hair_cards"):
+            me = old.data
+            bpy.data.objects.remove(old)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+    if cd:
+        mat = card_material(hair["look"], cd["color"], cd["normal"])
+        dbg = cd.get("debug")
+        if dbg == "layers":
+            _debug_layers(mat)
+        elif dbg in ("no_normal", "unlit"):  # isolate what makes a pattern: the normal map, or the lighting at all
+            nt = mat.node_tree
+            bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+            for l in list(bsdf.inputs["Normal"].links):
+                nt.links.remove(l)
+            if dbg == "unlit":
+                src = bsdf.inputs["Base Color"].links[0].from_socket
+                nt.links.new(src, bsdf.inputs["Emission Color"])
+                bsdf.inputs["Emission Strength"].default_value = 1.0
+                for l in list(bsdf.inputs["Base Color"].links):
+                    nt.links.remove(l)
+                bsdf.inputs["Base Color"].default_value = (0, 0, 0, 1)
+                bsdf.inputs["Specular IOR Level"].default_value = 0.0
+        card_object("hair_cap", cd["cap"], mat, coll)["hp_hair_cap"] = "under"
+        card_object("hair_cards", cd["mesh"], mat, coll)
+        if dbg in ("cap_only", "cards_only"):
+            ob = bpy.data.objects["hair_cards" if dbg == "cap_only" else "hair_cap"]
+            ob.hide_render = ob.hide_viewport = True
+    else:
+        cap(hair["cap"], hair.get("cap_kind", "cap"))
     return made
+
+
+def card_material(look: dict, color_png: str, normal_png: str):
+    """The cards' material: the strand atlas (colour x the vertex colour's root-to-tip ramp, alpha dithered, a
+    normal map), anisotropic along the hair, the same from both sides."""
+    m = bpy.data.materials.get("hp_hair_cards") or bpy.data.materials.new("hp_hair_cards")
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
+    for old in ("hp_hair_atlas", "hp_hair_atlas_n"):
+        if old in bpy.data.images:
+            bpy.data.images.remove(bpy.data.images[old])
+    img = bpy.data.images.load(color_png)
+    img.name = "hp_hair_atlas"
+    img.pack()
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    tex.name = "hp_atlas"
+    imn = bpy.data.images.load(normal_png)
+    imn.name = "hp_hair_atlas_n"
+    imn.colorspace_settings.name = "Non-Color"
+    imn.pack()
+    texn = nt.nodes.new("ShaderNodeTexImage")
+    texn.image = imn
+    col = nt.nodes.new("ShaderNodeAttribute")
+    col.attribute_name = "hp_col"
+    mul = nt.nodes.new("ShaderNodeMix")
+    mul.data_type, mul.blend_type = "RGBA", "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    nt.links.new(tex.outputs["Color"], mul.inputs["A"])
+    nt.links.new(col.outputs["Color"], mul.inputs["B"])
+    mul.name = "hp_base"
+    nt.links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
+    nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nm.inputs["Strength"].default_value = float(look.get("strand_relief", 0.6))
+    nt.links.new(texn.outputs["Color"], nm.inputs["Color"])
+    nt.links.new(nm.outputs[0], bsdf.inputs["Normal"])
+    tan = nt.nodes.new("ShaderNodeAttribute")
+    tan.attribute_name = "hp_tangent"
+    nt.links.new(tan.outputs["Vector"], bsdf.inputs["Tangent"])
+    # a card is a flat sheet standing for many round hairs: at the lock's own gloss it mirrors a light as one white
+    # plate. Rougher, half the specular, and the highlight takes the hair's colour (as light through hairs does)
+    bsdf.inputs["Roughness"].default_value = max(float(look.get("roughness", 0.42)), 0.5)
+    bsdf.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5)) * 0.5
+    try:
+        bsdf.inputs["Specular Tint"].default_value = (*[min(1.0, 3.0 * c) for c in [((int(look.get("sheen", "#86524a").lstrip("#")[i:i + 2], 16) / 255) ** 2.2) for i in (0, 2, 4)]], 1)
+    except (KeyError, TypeError):
+        pass
+    bsdf.inputs["Anisotropic"].default_value = float(look.get("anisotropic", 0.7)) * 0.7
+    for attr, val in (("surface_render_method", "DITHERED"), ("use_transparent_shadow", True),
+                      ("blend_method", "HASHED")):
+        try:
+            setattr(m, attr, val)
+        except (AttributeError, TypeError):
+            pass
+    m.use_backface_culling = False
+    return m
+
+
+LAYER_COLORS = {-1: (0.35, 0.35, 0.35), 0: (0.8, 0.1, 0.1), 1: (0.1, 0.7, 0.1), 2: (0.1, 0.2, 0.9), 3: (0.9, 0.8, 0.1),
+                4: (0.9, 0.1, 0.9), 5: (0.1, 0.8, 0.8)}  # cap grey, coverage red, mid green, top blue, yellow, ...
+
+
+def _debug_layers(m):
+    """The cards as solid quads (alpha off), coloured by layer: what the geometry is without its pictures. Back
+    faces are drawn darker (a card seen from behind)."""
+    nt = m.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    for sk in ("Alpha", "Base Color", "Normal", "Tangent"):
+        for l in list(bsdf.inputs[sk].links):
+            nt.links.remove(l)
+    bsdf.inputs["Alpha"].default_value = 1.0
+    bsdf.inputs["Anisotropic"].default_value = 0.0
+    at = nt.nodes.new("ShaderNodeAttribute")
+    at.attribute_name = "hp_layer"
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = "CONSTANT"
+    el = ramp.color_ramp.elements
+    ks = sorted(LAYER_COLORS)
+    el[0].position, el[0].color = 0.0, (*LAYER_COLORS[ks[0]], 1)
+    el[1].position, el[1].color = (ks[1] + 0.5) / 8, (*LAYER_COLORS[ks[1]], 1)
+    for k in ks[2:]:
+        e = el.new((k + 0.5) / 8)
+        e.color = (*LAYER_COLORS[k], 1)
+    mr = nt.nodes.new("ShaderNodeMath")
+    mr.operation = "MULTIPLY_ADD"
+    mr.inputs[1].default_value, mr.inputs[2].default_value = 1 / 8, 1 / 8
+    nt.links.new(at.outputs["Fac"], mr.inputs[0])
+    nt.links.new(mr.outputs[0], ramp.inputs["Fac"])
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type, mix.blend_type = "RGBA", "MULTIPLY"
+    nt.links.new(geo.outputs["Backfacing"], mix.inputs["Factor"])
+    nt.links.new(ramp.outputs["Color"], mix.inputs["A"])
+    mix.inputs["B"].default_value = (0.35, 0.35, 0.35, 1)
+    nt.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
+
+
+def card_object(name: str, path: str, mat, coll):
+    """A card mesh (hair_cards.mesh's npz) as an object: uv, its bent normals as custom normals, hp_col, hp_tangent."""
+    z = np.load(path)
+    V, T = z["verts"], z["tris"]
+    me = bpy.data.meshes.new(name)
+    me.vertices.add(len(V))
+    me.vertices.foreach_set("co", V.astype(np.float32).ravel())
+    me.loops.add(len(T) * 3)
+    me.loops.foreach_set("vertex_index", T.astype(np.int32).ravel())
+    me.polygons.add(len(T))
+    me.polygons.foreach_set("loop_start", np.arange(0, len(T) * 3, 3, dtype=np.int32))
+    me.update()
+    me.validate()
+    uvl = me.uv_layers.new(name="UVMap")
+    lv = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get("vertex_index", lv)
+    uvl.data.foreach_set("uv", z["uv"][lv].astype(np.float32).ravel())
+    a = me.attributes.new("hp_col", "FLOAT_COLOR", "POINT")
+    a.data.foreach_set("color", np.concatenate([z["col"], np.ones((len(V), 1))], 1).astype(np.float32).ravel())
+    a = me.attributes.new("hp_tangent", "FLOAT_VECTOR", "POINT")
+    a.data.foreach_set("vector", z["tangent"].astype(np.float32).ravel())
+    for an in ("along", "layer"):
+        a = me.attributes.new("hp_" + an, "FLOAT", "POINT")
+        a.data.foreach_set("value", z[an].astype(np.float32))
+    me.shade_smooth()
+    if len(V) == len(me.vertices):
+        me.normals_split_custom_set_from_vertices(z["normal"].astype(np.float32).tolist())
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    ob["hp_cards"] = 1
+    coll.objects.link(ob)
+    return ob
 
 
 def hair_points(coll_name: str = "hair", names: list | None = None):
@@ -624,6 +846,9 @@ def hair_points(coll_name: str = "hair", names: list | None = None):
     coll = bpy.data.collections.get(coll_name)
     if coll is None:
         return np.zeros((0, 3), np.float32)
+    if bpy.data.objects.get("hair_scalp") is not None:
+        import blender_strands
+        return blender_strands.points(names)
     dg = bpy.context.evaluated_depsgraph_get()
     out = []
     for ob in coll.objects:

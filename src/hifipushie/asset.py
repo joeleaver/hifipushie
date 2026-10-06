@@ -1190,7 +1190,7 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                                                       "specularFactor": 1.0, "specularColorFactor": [2.0, 2.0, 2.0]},
                            **((extra_ext or {}).get(len(materials)) or {})},
         })
-    used = ["KHR_materials_specular"] + sorted({e for x in (extra_ext or {}).values() for e in x})
+    used = ["KHR_materials_specular"] + sorted({e for x in (extra_ext or {}).values() for e in x} - {"KHR_materials_specular"})
     variants = {}
 
     def material_of(pn, p):
@@ -1213,6 +1213,8 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                 m["pbrMetallicRoughness"]["baseColorFactor"] = [1.0, 1.0, 1.0, float(lk["alpha"])]
             if lk.get("transmission") or lk.get("alpha", 1.0) < 1.0:
                 m["doubleSided"] = True
+            if lk.get("alpha_cutoff") is not None:  # alpha-tested, both sides drawn (hair cards)
+                m["alphaMode"], m["alphaCutoff"], m["doubleSided"] = "MASK", float(lk["alpha_cutoff"]), True
             for e, v in (lk.get("ext") or {}).items():  # further ratified extensions for this part's material
                 m["extensions"][e] = v
                 if e not in used:
@@ -1231,6 +1233,8 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         pos, nrm, tan, uv, idx, src = _gltf_vertices(p)
         attrs = {"POSITION": add(pos, 34962, 5126, "VEC3", True), "NORMAL": add(nrm, 34962, 5126, "VEC3"),
                  "TANGENT": add(tan, 34962, 5126, "VEC4"), "TEXCOORD_0": add(uv, 34962, 5126, "VEC2")}
+        if p.get("vcolor") is not None:  # a colour per vertex (hair cards: root-to-tip ramp, a value per lock)
+            attrs["COLOR_0"] = add(np.ascontiguousarray(np.asarray(p["vcolor"], np.float32)[src]), 34962, 5126, "VEC3")
         if pn in skinned:
             J, W = skinned[pn]
             J, W = np.asarray(J)[src], np.asarray(W, np.float32)[src]
@@ -1587,6 +1591,11 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             maps_info[pn_h] = {k: str(v) for k, v in hfiles.items()}
             heights[pn_h], cover[pn_h] = 0.0, 1.0
             report[pn_h] = {"triangles": len(hpart["corner_vert"]) // 3, "atlas": pn_h, "curves": True}
+            hair_cards = hpart.pop("hair", None)
+            if hair_cards:
+                k0 = sum(len(i_) for _, i_ in atlas_files[:-1])
+                hair_cards["aux_texture"] = k0 + list(hfiles).index("aux")
+                report[pn_h].update(cards=True, layers=hair_cards["layers"], budget=hair_cards["budget"])
             names.append(pn_h)
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_h]["triangles"]
@@ -1615,6 +1624,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     glb = out_dir / f"{name}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
+    if (spec.get("hair") or {}).get("locks") and locals().get("hair_cards"):
+        looks.setdefault(pn_h, {}).update(alpha_cutoff=hair_cards["alpha_cutoff"],
+                                          extras={"hifipushie_hair": hair_cards})
     if skin_recipe:  # the skin part's own material: the film's second lobe and the sheen as ratified extensions, the
         sp = (spec.get("skin") or {}).get("part", "body")  # rest (scattering, tiling detail) in its extras
         for pn in parts:

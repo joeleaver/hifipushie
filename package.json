@@ -1,0 +1,17 @@
+{
+  "name": "agent-ace83aeb89c8746b2",
+  "version": "1.0.0",
+  "description": "An MCP server that lets an LLM sculpt characters and creatures.",
+  "main": "index.js",
+  "directories": {
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
