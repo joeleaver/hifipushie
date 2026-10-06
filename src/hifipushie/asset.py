@@ -517,7 +517,7 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
     defs = spec.get("parts") or {}
     out = {}
     for pn in ctx["streams"]:
-        if (defs.get(ctx["origin"][pn]) or {}).get("topology") != "wrap":
+        if (defs.get(ctx["origin"][pn]) or {}).get("topology") not in ("wrap", "template"):
             continue
         if ctx["origin"][pn] != "body":
             raise ValueError(f"parts.{pn}.topology = \"wrap\": only the body (a humanoid's) can be wrapped")
@@ -964,7 +964,9 @@ def mesh_quality(verts: np.ndarray, tris: np.ndarray, prims=None) -> dict:
     order = np.argsort(inv, kind="stable")
     first = np.searchsorted(inv[order], two)
     fa, fb = fid[order[first]], fid[order[first + 1]]
-    out["folds"] = int(((n[fa] * n[fb]).sum(1) < -0.5).sum())
+    fold = (n[fa] * n[fb]).sum(1) < -0.5
+    out["folds"] = int(fold.sum())
+    spots = [P[uniq[two[fold]]].mean(1)] if fold.any() else []
     ang = []
     for i in range(3):
         a, b = c[:, (i + 1) % 3] - c[:, i], c[:, (i + 2) % 3] - c[:, i]
@@ -976,7 +978,50 @@ def mesh_quality(verts: np.ndarray, tris: np.ndarray, prims=None) -> dict:
         d = np.abs(sdf.field_at(prims, probe, clip=False)) * 1000
         out.update(err_mm_p50=round(float(np.percentile(d, 50)), 2), err_mm_p99=round(float(np.percentile(d, 99)), 2),
                    err_mm_max=round(float(d.max()), 2))
+        # faces turned against the surface they lie on (their normal against the field's gradient): the inside of
+        # a tangle or a tear, drawn dark or culled by an engine. Only faces near the surface count (a face
+        # bridging a gap has no surface to disagree with).
+        fc = c.mean(1)
+        ok = (d[:len(fc)] < 2.0) & (area2 > 1e-12)
+        if ok.any():
+            h = 2e-4
+            g = np.stack([sdf.field_at(prims, fc[ok] + h * e, clip=False) - sdf.field_at(prims, fc[ok] - h * e, clip=False)
+                          for e in np.eye(3)], 1)
+            g /= np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
+            bad = (g * n[ok]).sum(1) < -0.3
+            out["turned"] = int(bad.sum())
+            if bad.any():
+                spots.append(fc[ok][bad])
+        else:
+            out["turned"] = 0
+    out["spots"] = np.concatenate(spots) if spots else np.zeros((0, 3))
     return out
+
+
+DEFECT_CLUSTER = 12  # this many folded edges / turned faces by one joint is a tear or a tangle someone will see
+
+
+def defect_regions(spots: np.ndarray, spec: dict) -> list[tuple[str, int]]:
+    """Where a mesh's folded edges and turned faces are, by the model's nearest joint: [(joint, count)] for every
+    joint with DEFECT_CLUSTER or more, most first (a model without joints: one entry per 10 cm cell, named by its
+    position)."""
+    if not len(spots):
+        return []
+    try:
+        from .spec import expand_mirror, resolve_point
+        s = expand_mirror(spec)
+        names = [k for k in s.get("joints", {}) if not k.startswith("lm_")]
+        J = np.array([resolve_point(s, k) for k in names], float)
+    except Exception:  # noqa: BLE001
+        names, J = [], np.zeros((0, 3))
+    if len(names):
+        from scipy.spatial import cKDTree
+        near = cKDTree(J).query(spots)[1]
+        lab = [names[i] for i in near]
+    else:
+        lab = ["[%.1f, %.1f, %.1f]" % tuple(np.round(q / 0.1) * 0.1) for q in spots]
+    u, cnt = np.unique(lab, return_counts=True)
+    return [(str(a), int(b)) for b, a in sorted(zip(cnt, u), reverse=True) if b >= DEFECT_CLUSTER]
 
 
 def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, log: list) -> dict:
@@ -1511,11 +1556,22 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         if "focus_mm_per_texel" in tsz[pn]:
             report[pn]["focus_mm_per_texel"] = tsz[pn]["focus_mm_per_texel"]
         q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn])
+        spots = q.pop("spots")
+        for other, st in ctx["streams"].items():  # what lies inside another part is never seen (the skin running
+            if other != pn and len(spots):       # on into the socket behind an eyeball, a tooth's root)
+                spots = spots[sdf.field_at(st, spots, clip=False) > 0]
+        where = defect_regions(spots, spec)
+        if where:
+            q["defects_by_joint"] = dict(where)
         report[pn]["quality"] = q
         vx_mm = ctx["frames"][pn][1] * 1000
         warn = [w for w, bad in ((f"p99 {q['err_mm_p99']:.1f} mm from the surface (> 4 voxels: bridged gaps or "
                                   f"cut corners; raise its triangle_weight)", q["err_mm_p99"] > 4 * vx_mm),
                                  (f"{q['folds']} folded edges", q["folds"] > 0),
+                                 (f"{q.get('turned', 0)} faces turned against the surface", q.get("turned", 0) > 0),
+                                 ("TORN OR TANGLED at " + ", ".join(f"{j} ({k})" for j, k in where[:4])
+                                  + ": folded edges / turned faces in a cluster; look at it in clay "
+                                    "(rig(glb=..., focus=...)) before shipping", bool(where)),
                                  (f"{q['non_manifold_edges']} non-manifold edges", q["non_manifold_edges"] > 0))
                 if bad]
         log.append(f"  {pn} quality: error p50/p99/max {q['err_mm_p50']}/{q['err_mm_p99']}/{q['err_mm_max']} mm, "

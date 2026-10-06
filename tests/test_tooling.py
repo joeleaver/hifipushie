@@ -313,6 +313,23 @@ def test_mesh_quality():
     fold = asset.mesh_quality(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.3, 0]], float), np.array([[0, 1, 2], [1, 0, 3]]))
     assert fold["folds"] == 1 and fold["open_edges"] == 4, fold  # the second face lies back over the first
     assert asset.mesh_quality(v, f[1:])["open_edges"] == 3
+    # A torn / tangled patch can't ship silently (the golfer's hands, torn at the webs at rest, went out with "217
+    # folded edges" in a log line nobody could place): faces turned against the field are counted, and clusters of
+    # them and of folded edges are named by the model's nearest joint.
+    if asset.mesh_quality(v, f, prims)["turned"] > len(f) // 2:
+        f = f[:, ::-1].copy()  # (skimage's winding against ours)
+    q = asset.mesh_quality(v, f, prims)
+    assert q["turned"] == 0 and len(q["spots"]) == 0, q["turned"]
+    spec = {"joints": {"palm": {"pos": [0.1, 0, 0], "r": 0.01}, "heel": {"pos": [-0.1, 0, 0], "r": 0.01}}}
+    torn = f.copy()
+    patch = np.flatnonzero(np.linalg.norm(v[f].mean(1) - [0.1, 0, 0], axis=1) < 0.03)
+    assert len(patch) >= asset.DEFECT_CLUSTER
+    torn[patch] = torn[patch][:, ::-1]
+    q = asset.mesh_quality(v, torn, prims)
+    assert q["turned"] == len(patch) and q["folds"] > 0, (q["turned"], len(patch), q["folds"])
+    where = asset.defect_regions(q["spots"], spec)
+    assert where and where[0][0] == "palm" and all(j != "heel" for j, _ in where), where
+    assert asset.defect_regions(q["spots"][:asset.DEFECT_CLUSTER - 1], spec) == []
 
 
 # Hand-shaping hair in Blender (2026-09-30): edits, deletions and Shift+D copies come back, and a regrow keeps them
