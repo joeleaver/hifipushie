@@ -43,9 +43,17 @@ import register as R  # noqa: E402
 
 from hifipushie import assets, base, makehuman  # noqa: E402
 
-RING = 14  # GNM's neck ring the head is cut at (rings counted up from its bib's open edge; ~3 cm over C)
+RING = 13  # GNM's neck ring the head is cut at (rings counted up from its bib's open edge; ~3 cm over C)
+C_RING = 10  # GNM's ring that lay where C is (the bridge continues GNM's uv grid down to it)
+MH_UP = 1   # MakeHuman's loop C: this many loops above the highest one clear of the chin by 2.5 cm (base._neck_loops):
+# that one lies on the trapezius' slope at the nape; one up, the bridge is on the neck's column all round
 FADE = 7   # rings above A over which GNM's identity / expression components come in
 STIFF = 5  # rings above A held hard onto MakeHuman's surface (the stitch must follow the body exactly)
+_g = [0.1, 0.25, 0.4]
+WGRID = [(a_, b_, c_, 1 - a_ - b_ - c_) for a_ in _g for b_ in _g for c_ in _g if 0.08 <= 1 - a_ - b_ - c_ <= 0.45]
+SHEAR = float(__import__("os").environ.get("OM_SHEAR", 0.6))
+ROW_AT = [0.0, 0.3, 0.65, 1.0]  # where the loops lie between A and C: row heights follow the quads' widths (3.3 mm
+# at A .. 8.6 mm at C), so quads stay near square
 COUNTS = [110, 82, 58, 42]  # vertices per loop: A, two new rings, C. Each row's reductions (4 edges : 2) number
 # (fine - coarse) / 2, an EVEN number, so a palindrome has no reduction on the back centre line (two rows with one
 # there left a 2-edge vertex), and are spread between plain quads by `patterns` (side by side they made 6-edge
@@ -113,27 +121,28 @@ def at(X, t):
 
 
 def row(fine, coarse, pattern, new_id):
-    """Quads between a fine loop and a coarse one (same start, same direction): [(quad, ...)], and the reduction
-    units' new vertices [(id, fine index it sits under)]. Units: P = (f0, f1, c1, c0); R = 4 fine edges onto 2
-    coarse ones round a new vertex p."""
+    """Quads between a fine loop and a coarse one (same start, same direction): [(quad, ...)], the reduction units'
+    new vertices [(id, fine index it hangs under, coarse index, share along that coarse edge)] and each coarse
+    vertex's fine partner. Units: P = (f0, f1, c1, c0); R = 3 fine edges onto 1 coarse one through two new vertices
+    q1, q2 under f1, f2: (f0, f1, q1, c0), (f1, f2, q2, q1), (f2, f3, c1, q2), (q1, q2, c1, c0). (A unit of 4 edges
+    onto 2 round ONE new vertex was tried first: its middle fine vertex is a 180 degree corner of a quad.)"""
     nf, nc = len(fine), len(coarse)
-    assert 4 * pattern.count("R") + pattern.count("P") == nf and 2 * pattern.count("R") + pattern.count("P") == nc
+    assert 3 * pattern.count("R") + pattern.count("P") == nf and pattern.count("R") + pattern.count("P") == nc
     assert pattern == pattern[::-1], "a row's pattern must be a palindrome (mirror symmetry)"
     quads, news, partner = [], [], {}
     i = j = 0
     for u in pattern:
-        f = [fine[(i + k) % nf] for k in range(5)]
-        c = [coarse[(j + k) % nc] for k in range(3)]
+        f = [fine[(i + k) % nf] for k in range(4)]
+        c = [coarse[(j + k) % nc] for k in range(2)]
+        partner[j % nc] = i % nf
         if u == "P":
             quads.append((f[0], f[1], c[1], c[0]))
-            partner[j % nc] = i % nf
             i, j = i + 1, j + 1
         else:
-            p = new_id + len(news)
-            news.append((p, (i + 2) % nf))
-            quads += [(f[0], f[1], p, c[0]), (f[1], f[2], f[3], p), (f[3], f[4], c[2], p), (c[0], p, c[2], c[1])]
-            partner[j % nc], partner[(j + 1) % nc] = i % nf, (i + 2) % nf
-            i, j = i + 4, j + 2
+            q1, q2 = new_id + len(news), new_id + len(news) + 1
+            news += [(q1, (i + 1) % nf, j % nc, 1 / 3), (q2, (i + 2) % nf, j % nc, 2 / 3)]
+            quads += [(f[0], f[1], q1, c[0]), (f[1], f[2], q2, q1), (f[2], f[3], c[1], q2), (q1, q2, c[1], c[0])]
+            i, j = i + 3, j + 1
     return quads, news, partner
 
 
@@ -144,7 +153,7 @@ def patterns(counts):
 
     def half(nf, nc, ph):
         nr = (nf - nc) // 4  # reductions in half a row
-        n_units = (nf // 2 - 4 * nr) + nr
+        n_units = nf // 2 - 2 * nr
         at_ = {int((i + ph) * n_units / nr) for i in range(nr)}
         if len(at_) != nr:
             return None
@@ -252,7 +261,7 @@ def build(log=print):
     A = start_front(ordered_loop([int(v) for v in np.flatnonzero(skin_c & (lev == RING))], adj), Xw, lambda v: mir_g[v] == v)
     # GNM's columns down the neck (ring k vertex j under ring k + 1 vertex j): the uv grid the bridge continues
     cols = {RING: A}
-    for k in range(RING - 1, 7, -1):
+    for k in range(RING - 1, C_RING - 1, -1):
         cols[k] = [next(w for w in adj[v] if lev[w] == k) for v in cols[k + 1]]
 
     # MakeHuman: its neck loop and what lies above it
@@ -262,16 +271,30 @@ def build(log=print):
         for k in range(4):
             madj[int(q[k])].add(int(q[(k + 1) % 4]))
             madj[int(q[(k + 1) % 4])].add(int(q[k]))
-    C = start_front([int(v) for v in loops_m[0]], P, lambda v: abs(P[v, 0]) < 1e-6)
-    cs = set(C)
-    above = {int(top)}
-    dq = collections.deque(above)
-    while dq:
-        v = dq.popleft()
-        for w in madj[v]:
-            if w not in above and w not in cs:
-                above.add(w)
-                dq.append(w)
+    def above_of(loop):
+        ls, ab = set(loop), {int(top)}
+        dq_ = collections.deque(ab)
+        while dq_:
+            v = dq_.popleft()
+            for w in madj[v]:
+                if w not in ab and w not in ls:
+                    ab.add(w)
+                    dq_.append(w)
+        return ab
+    C = [int(v) for v in loops_m[0]]
+    for _ in range(MH_UP):
+        ab = above_of(C)
+        # the far side of the strip of quads standing on the loop (its neighbours "above" are not all one loop where
+        # the mesh has a pole beside it: that set zigzagged at the back of the neck)
+        cs_, nxt = set(C), set()
+        for q in Fm:
+            on = [int(v) for v in q if int(v) in cs_]
+            if len(on) == 2 and any(int(v) in ab for v in q):
+                nxt |= {int(v) for v in q if int(v) not in cs_}
+        C = ordered_loop(sorted(nxt), madj)
+        assert len(C) == COUNTS[-1], f"MakeHuman's next neck loop has {len(C)} vertices"
+    C = start_front(C, P, lambda v: abs(P[v, 0]) < 1e-6)
+    above = above_of(C)
     keep_m = np.ones(len(P), bool)
     keep_m[sorted(above)] = False
     log(f"MakeHuman: {keep_m.sum()} of {len(P)} vertices kept (loop C {len(C)}); GNM: {keep_g.sum()} of {ng} kept "
@@ -300,45 +323,22 @@ def build(log=print):
     XA, XC = Xw[A], P[C]
     axis_c = 0.5 * (XA.mean(0) + XC.mean(0))
 
-    def ang(X):  # each loop vertex's turn round the neck (0 at the front centre, growing toward +X first), monotone
-        a_ = np.unwrap(np.arctan2(X[:, 0], -(X[:, 1] - axis_c[1])))
-        return (a_ - a_[0]) / (2 * np.pi)
+    def ang(X):  # each loop vertex's place round the neck, 0..1 from the front centre: its INDEX round the loop.
+        # The rows join vertices by index, so a new loop evenly spaced in this parameter has no shear. (The turn
+        # about a vertical axis, and arc length pinned at the sides, put C's 42 vertices 2 places off the new
+        # loops' at the back of the neck: quads folded there.)
+        return np.arange(len(X)) / len(X)
 
     def at(X, t):  # a loop's point at turn t
         ts_ = np.r_[ang(X), 1.0]
         Y = np.r_[X, X[:1]]
         return np.column_stack([np.interp(np.asarray(t) % 1.0, ts_, Y[:, k_]) for k_ in range(3)])
     tA = ang(XA)
-    ts, jf = [tA], [np.arange(len(A), dtype=float)]
-    bridge_q, Xnew, col_of = [], {}, {v: (float(j), float(RING)) for j, v in enumerate(Af)}
-    drop = (RING - 8) / nrow  # GNM rings per row: C lies where GNM's ring 8 did
-    for i, pt in enumerate(pats):
-        qs, news, part = row(rings[i], rings[i + 1], pt, k)
-        k += len(news)
-        bridge_q += qs
-        t_next = np.array([ts[i][part[j]] for j in range(len(rings[i + 1]))])
-        j_next = np.array([jf[i][part[j]] for j in range(len(rings[i + 1]))])
-        ts.append(t_next)
-        jf.append(j_next)
-        f1 = (i + 1) / nrow
-        if i + 1 < nrow:
-            pos = (1 - f1) * at(XA, t_next) + f1 * at(XC, t_next)
-            for j, v in enumerate(rings[i + 1]):
-                Xnew[v] = pos[j]
-        for j, v in enumerate(rings[i + 1]):
-            col_of[v] = (float(j_next[j]), RING - drop * (i + 1))
-        fp = (i + 0.5) / nrow
-        tp = np.array([ts[i][ii] for _, ii in news])
-        pos = (1 - fp) * at(XA, tp) + fp * at(XC, tp)
-        for (pv, ii), x in zip(news, pos):
-            Xnew[pv] = x
-            col_of[pv] = (float(jf[i][ii]), RING - drop * (i + 0.5))
-    n = k
-    Xbr = np.array([Xnew[v] for v in range(n0, n)])
-    # ... on MakeHuman's reference surface (its own neck there, now replaced)
     Tm = np.r_[Fm[:, [0, 1, 2]], Fm[:, [0, 2, 3]]]
-    near = np.flatnonzero((np.abs(P[Tm][:, :, 2] - Xbr[:, 2].mean()) < 0.1).all(1) & (np.abs(P[Tm][:, :, 0]) < 0.12).all(1))
+    zmid = 0.5 * (XA[:, 2].mean() + XC[:, 2].mean())
+    near = np.flatnonzero((np.abs(P[Tm][:, :, 2] - zmid) < 0.1).all(1) & (np.abs(P[Tm][:, :, 0]) < 0.12).all(1))
     cen = P[Tm[near]].mean(1)
+
     def project(Xq):
         _, cand = cKDTree(cen).query(Xq, k=16)
         bt, bb, best = np.zeros((len(Xq), 3), int), np.zeros((len(Xq), 3)), np.full(len(Xq), np.inf)
@@ -349,24 +349,63 @@ def build(log=print):
             take = dd < best
             best[take], bt[take], bb[take] = dd[take], t[take], w[take]
         return bt, bb, best
-    # relaxed between the two loops (which stay), on the surface, and symmetric
-    Xall = {v: x for v, x in zip(Af, XA)} | {v: x for v, x in zip(Cf, XC)}
+
+    def on_surface(Xq):
+        bt, bb, _ = project(Xq)
+        return (bb[:, :, None] * P[bt]).sum(1)
+    td = np.linspace(0, 1, 1441)[:-1]
+    bridge_q, Xnew, col_of = [], {}, {v: (float(j), float(RING)) for j, v in enumerate(Af)}
+    col_at = lambda t: np.interp(np.asarray(t) % 1.0, np.r_[tA, 1.0], np.arange(len(A) + 1.0)) % len(A)  # noqa: E731
+    tC = ang(XC)
+    for j, v in enumerate(Cf):
+        col_of[v] = (float(col_at(tC[j])), float(C_RING))
+    news_all, curves, ring_of, t_of, t_prev = [], {}, {}, {}, tA
+    for i, pt in enumerate(pats):
+        qs, news, part = row(rings[i], rings[i + 1], pt, k)
+        k += len(news)
+        bridge_q += qs
+        news_all.append(news)
+        if i + 1 < nrow:  # a new loop: the curve ROW_AT of the way from A to C, on the surface, its vertices evenly
+            # spaced along it from the front centre (inherited from the finer loop's vertices they were 1 and 2
+            # edges apart by turns, and every quad sheared)
+            f1 = ROW_AT[i + 1]
+            curve = on_surface((1 - f1) * at(XA, td) + f1 * at(XC, td))
+            sl = np.r_[0, np.cumsum(np.linalg.norm(np.diff(np.r_[curve, curve[:1]], axis=0), axis=1))]
+            nn = len(rings[i + 1])
+            tt = np.arange(nn) / nn  # (evenly spaced in the index parameter; by arc length they left C's own spacing)
+            # ... but only SHEAR of the way there: evenly spaced, the quads shear between reductions; under the finer
+            # loop's own vertices, they are 1 and 2 edges wide by turns
+            inh = np.array([t_prev[part[j]] for j in range(nn)])
+            tt = SHEAR * tt + (1 - SHEAR) * inh
+            t_prev = tt
+            for j, v in enumerate(rings[i + 1]):
+                t_of[v] = tt[j]
+            pos = on_surface((1 - f1) * at(XA, tt) + f1 * at(XC, tt))
+            curves[i + 1] = (curve, f1)
+            for j, v in enumerate(rings[i + 1]):
+                Xnew[v] = pos[j]
+                ring_of[v] = i + 1
+    n = k
+    # each reduction's own vertex: the middle of the four it joins, on the surface
+    Xall = {v: x for v, x in zip(Af, XA)} | {v: x for v, x in zip(Cf, XC)} | Xnew
     nbr = collections.defaultdict(set)
     for q in bridge_q:
         for j in range(4):
             nbr[q[j]].add(q[(j + 1) % 4])
             nbr[q[(j + 1) % 4]].add(q[j])
-    new_ids = list(range(n0, n))
-    pos = {v: Xbr[v - n0] for v in new_ids}
-    for it in range(30):
-        full = Xall | pos
-        nxt = np.array([np.mean([full[w] for w in nbr[v]], axis=0) for v in new_ids])
-        cur = np.array([pos[v] for v in new_ids])
-        cur = cur + 0.5 * (nxt - cur)
-        bt, bb, _ = project(cur)
-        cur = (bb[:, :, None] * P[bt]).sum(1)
-        pos = {v: x for v, x in zip(new_ids, cur)}
-    Xbr = np.array([pos[v] for v in new_ids])
+    for v, i_ in ring_of.items():
+        col_of[v] = (float(col_at(t_of[v])), RING - (RING - C_RING) * curves[i_][1])
+    for i, news in enumerate(news_all):  # a reduction's two vertices: halfway down from the fine vertex each hangs
+        # under to its place a third / two thirds along the coarse edge
+        for pv, fi, cj, sh in news:
+            fv, c0, c1 = rings[i][fi], rings[i + 1][cj], rings[i + 1][(cj + 1) % len(rings[i + 1])]
+            lo = (1 - sh) * Xall[c0] + sh * Xall[c1]
+            Xall[pv] = on_surface((0.5 * Xall[fv] + 0.5 * lo)[None])[0]
+            d0 = (col_of[c1][0] - col_of[c0][0] + len(A) / 2) % len(A) - len(A) / 2
+            cl = (col_of[c0][0] + sh * d0) % len(A)
+            dm = (cl - col_of[fv][0] + len(A) / 2) % len(A) - len(A) / 2
+            col_of[pv] = (float((col_of[fv][0] + 0.5 * dm) % len(A)), 0.5 * (col_of[fv][1] + col_of[c0][1]))
+    Xbr = np.array([Xall[v] for v in range(n0, n)])
     mb = cKDTree(Xbr).query(Xbr * [-1, 1, 1])[1]
     assert (mb[mb] == np.arange(len(Xbr))).all(), "the bridge's vertices don't pair up left / right"
     Xbr = 0.5 * (Xbr + Xbr[mb] * [-1, 1, 1])
@@ -432,7 +471,7 @@ def build(log=print):
         """uv at fractional column jf (0..nA from the front centre) and ring rho; side -1 / +1 picks the seam's."""
         out = []
         for rk in (int(np.floor(rho)), int(np.floor(rho)) + 1):
-            rk = min(max(rk, 8), RING)
+            rk = min(max(rk, C_RING), RING)
             ring = cols[rk]
             j0 = int(np.floor(jf)) % nA
             j1 = (j0 + 1) % nA
@@ -450,7 +489,7 @@ def build(log=print):
             if j0 == sj and f == 0:
                 a_ = one(j0, (j0 + side) % nA)
             out.append((1 - f) * a_ + f * b_)
-        fr = np.clip(rho - np.floor(rho), 0, 1) if 8 <= rho < RING else 0.0
+        fr = np.clip(rho - np.floor(rho), 0, 1) if C_RING <= rho < RING else 0.0
         return (1 - fr) * out[0] + fr * out[1]
     for k, f in enumerate(bridge):
         js = np.array([col_of[v][0] for v in f])

@@ -61,7 +61,9 @@ def outfit(base: dict, kind: str, colors: dict | None = None) -> dict:
     neck_z = float(neck[2] - 0.004 * H / 0.75) if neck[2] - sh[2] < 0.03 * H else float(sh[2] + 0.55 * (neck[2] - sh[2]))
     top_z = neck_z + 0.012 * H
     from . import headfit
-    chin = float(P[headfit.table()["lm68"][8], 2]) if len(P) == headfit.table()["vertices"] else top_z + 0.1 * H
+    tpl_ = basemod.source(base)
+    chin = (float(tpl_["chin_lm"]) if tpl_.get("chin_lm") is not None else
+            float(P[headfit.table()["lm68"][8], 2]) if len(P) == headfit.table()["vertices"] else top_z + 0.1 * H)
     box_top = min(top_z + 0.03 * H, chin - 0.01 * H)  # (under the chin: a toddler's lies on the chest, and the cloth's
     # region took a shell of it)
     def neck_hole(part):  # a round neckline: the cloth cut away round the neck's base
@@ -93,7 +95,8 @@ def outfit(base: dict, kind: str, colors: dict | None = None) -> dict:
 
 def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: float | None = None,
          height: float | None = None, seed: int | None = None, outfit_kind: str | None = None, tone: dict | float | None = None,
-         skin: dict | bool | None = None, colors: dict | None = None, head: dict | None = None) -> dict:
+         skin: dict | bool | None = None, colors: dict | None = None, head: dict | None = None,
+         source: str = "makehuman") -> dict:
     """A model spec for a person. sex: 0 / "female" .. 1 / "male" (children under ~10 differ little by it);
     height (m) overrides the measured median; seed picks the face (a different person per seed); tone = a
     Fitzpatrick number 1..6 or skin.tone's dict; skin = false for clay only, or skin keys to merge."""
@@ -116,6 +119,11 @@ def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: f
     # lips together, lids a little open
     hd = {"source": "gnm", "follow_body": True, "seed": seed, "spread": 0.35 if (young or sx < 0.5) else 0.5,
           "expression": {"left_eye_region_000": 0.6, "right_eye_region_000": 0.6}, **(head or {})}
+    if source == "human":  # one human mesh (onemesh.py): the head is the body's own, nothing to graft or follow
+        body["source"] = "human"
+        hd = {k: v for k, v in hd.items() if k not in ("source", "follow_body")}
+    elif source != "makehuman":
+        raise ValueError('human: source is "makehuman" (a GNM head grafted onto the body) or "human" (one mesh)')
     base = {"body": body, "eyes": "eyes", "cornea": True, "head": hd}
     from . import base as basemod
     P = np.asarray(basemod.source(base)["P"], float)
@@ -136,7 +144,8 @@ def measures(sp: dict) -> dict:
     from . import anthro, base as basemod, headfit
     tpl = basemod.source(sp["base"])
     P = np.asarray(tpl["P"], float)
-    chin = float(P[headfit.table()["lm68"][8], 2]) if tpl.get("name") == "makehuman" else float(tpl.get("chin_z"))
+    chin = (float(P[headfit.table()["lm68"][8], 2]) if tpl.get("name") == "makehuman" else
+            float(tpl["chin_mh"]) if tpl.get("chin_mh") is not None else float(tpl.get("chin_z")))
     return anthro.measure(P, tpl["J"], chin)
 
 

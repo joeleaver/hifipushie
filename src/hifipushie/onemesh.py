@@ -238,7 +238,9 @@ def template(base: dict) -> dict:
     assert min(min(f) for f in faces) >= 0
     out = {"name": "human", "P": V, "L": np.array([v for f in faces for v in f]), "S": np.array([len(f) for f in faces]),
            "J": mb["J"], "bones": mb["bones"], "rig": mb["rig"], "chin_z": mb["chin_z"], "face": mb["face"],
-           "fid": fid, "head_rows": hrow, "n_body": len(mh_rows) + len(br)}
+           "fid": fid, "head_rows": hrow, "n_body": len(mh_rows) + len(br), "n_mh": len(mh_rows),
+           # the chin: the head's own landmark (clothes stay under it), and the body's vertex the old path measures at
+           "chin_lm": float(ht["lm68"][8][2]), "chin_mh": float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])}
     _CACHE[key] = out
     return out
 
