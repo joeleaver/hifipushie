@@ -495,6 +495,22 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     - troll_anat's real export (15k / 1024, Khronos 0 / 0; `wc_troll_anat_*`): rest, thigh 60, knee 90 read fine;
       arm 60 drags a pale stretched patch of trapezius skin from the neck to the shoulder; fingers are fused
       (digit bleed 0.27-0.38, a finger joint moves its neighbours 20+ mm; audit 45 of 51 BAD). Body usable, hands not.
+    - The golfer shipped with all of it (dg_fix2 30k / 2048, /mnt/data/hifipushie/rig3/exp_golfer, 849 s, Khronos
+      0 / 0): body quality line 3 folded edges / 2 turned faces (was 217 / 416), p99 / max off the field 1.13 /
+      2.7 mm (2.26 / 16.5); audit 6 BAD of 51 (rig2's export 10; left: arm onto 30 neck-side vertices 18 mm, Spine1
+      onto the shirt hem 10 mm, cloth flips); sheets `wc2_golfer_*`, before / after `wc2_hand_before_after.png`
+      (hand at rest, maps + clay: clean), `wc2_handroll_hem_before_after.png` (hand roll 105: no cracks; hem at a
+      60 deg thigh: a smooth edge, no shards), `wc2_golfer_head_engine.png` (head 33: collar stays; nod: a lump of
+      nape skin still stands over the collar's stand, Head-only AND shared with Neck: NOT fixed), Godot
+      `wc2_golfer_godot.png`. The collar's line now says "TORN OR TANGLED at neck (24)": its fold (stand + fall)
+      reads as folded edges; a look shows nothing torn. A designed fold is a false alarm there.
+    - `rig_audit.fused_limbs` also warns when FINGERS are modelled touching (`DIGIT_AIR` 2 mm, past the first
+      phalanx): the troll's are (12 mm radii on axes 18 mm apart: 7.5 mm into each other at the first phalanx, 3.5
+      at the second), which is its fused mitten: MODEL, not weights. goblin_anat's fingers have 8-14 mm of air and
+      still bleed 0.4: that one is weights (distance weights between thin close chains). The troll's pale patch
+      from neck to shoulder is in the maps at rest too (clay is smooth at arm 60): paint / bake, not the skin.
+    - `base_quads` skips the head graft for body.source "human" (the "onemesh" agent's fused source: its quads
+      hold the head already).
     - A real engine: `spikes/godot_rig/` (check.gd, sheet.py): Godot 4.7 loads the GLB with its own importer at run
       time, poses the Skeleton3D, drives the twist joints from `<name>.json` `rig.twist` by the recipe, sets face
       shapes, writes PNGs. `godot --path spikes/godot_rig -s check.gd -- x.glb x.json <prefix> poses.json` (opens a
