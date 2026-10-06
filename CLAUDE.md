@@ -819,6 +819,74 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (7) MCP tools (groom_hair / look_hair docs for strands + tie, an export_hair tool), guide workflow section for
     strands, tests (none exist for hair), GLB preview render of each tier, usdc instead of 32 MB usda; (8) Braid
     node for plaits, tail collision beyond the proxy, baby tile nearly empty (coverage 0.06).
+  Hair 3 (2026-10-06, "hair3" agent, branch `hair3` = hair2 + main; renders `workspace/hair_renders/ht_*`, exports
+  /mnt/data/hifipushie/hair3/tess_export_v*, scratch in `spikes/hair_strands/hs3/`: run.sh <script>, var.py (rows of
+  spec variants), iso.py (what makes a pattern in a tier), diag.py (export + check_tiers), pair.py (GLBs side by
+  side, alpha test / dither), dist.py (tiers at their distances), clear.py (cards under the skin), tools.py (the MCP
+  tools called directly), cmp_locks.py, groom_check.py (Alembic / USD read back), regroom.py; Khronos validator in
+  /mnt/data/hifipushie/hair3/val). The user on hs_12: the strand look "is looking really good", the game export
+  "seems to get corrupted"; so this round was the card path. Supersedes the hair2 notes above where they differ.
+  - Cycles strand look works (87-270 s): three causes of the pale haze it was: `hair_strands.STRAND_RADIUS` is now
+    a real hair (0.04 mm) at `REAL_COUNT` 100k, wider by (100k / count)^0.8 (EEVEE draws >= 1 px, a path tracer the
+    true width); `hair_bounces` 10 (render() cut transmission at 2); lights `hair.LIGHTS["salon"]` (key, fill, rim;
+    default for strands / cards, `look.light`; locks keep the stage's sun). Own `hp_profile` group for the radius
+    (root, taper to the tip: `strands.taper`). Cycles reads lighter and more ginger than EEVEE: not reconciled.
+  - Pasta and crimp: sub clumps swing nearly in step (`Wave Random` = strands.random; they were on random phases
+    and wavelengths, and at 3x the lock's own amplitude: `SAFE["sub_wave"]` 0.25), `strands.stray` (strands that
+    only half join their clump fill between clumps), per-curve `hp_ws` / `hp_wl` (a wisp swings less and slower).
+    Gather locks (`hair_strands.is_gather`: name t<i>g<row>_<n>) narrow into the tie and are not tip-trimmed.
+    Lens group VERSION 10. Wisps root 8 mm inside the hairline (`hair_tied`: at 2.5 deg they rooted on skin).
+  - DIAGNOSIS of the "corrupted" tiers (ht_01, ht_02): not the atlas, UVs, normals or colour space. (1) baby-hair
+    cards under an alpha TEST = brown stamps; (2) the tail a lattice of thin ribbons on separate phases, no opaque
+    base; (3) fixed costs (cap, baby, tie) ate 22-68% of a tier and lower tiers were the same thin cards thinned
+    out; (4) shade applied twice (atlas depth AND vertex colour x0.6 on layer 0: the dark band above the forehead,
+    with every upper card starting 2 cm behind the line); (5) the budget stretched every hero card to 3 cm segments.
+  - Cards are cut from the STRANDS now (`hair_cards.strand_grid` / `_clump` / `clump_cards`): strands resampled on
+    a common grid of their lock's parameter (NaN outside each strand's own start / end), clustered by tier key
+    `group` ("sub" = the groom's sub clumps, "pair", "lock", "free" = only hair off the head), a card's centre = the
+    clump's mean, width = 2.5 x its spread (cards overlap a third: where they only met, every seam was a shadow
+    slit), wide clumps cut across into slices by strand; frame carried on where "outward" degenerates (cards stood
+    on edge round the tie). Layers: 0 dense (hairline tile at the line), 1 the hairline tile again (its roots come
+    in one by one: staggered roots on the dense tile drew brick lines under an alpha test), 2 medium, outlier
+    strands = fly cards (hero). Wisps (free lock < 16 mm): 2-3 thin cards on the fly tile (a few THICK hairs, 3
+    texels, root at full strength, no depth shade). `tail_cores` + `core_mesh`: a solid surface in a tied tail from
+    the strands' radial extent per station / direction (layer -1 like the cap). `hair.CARD_TIERS` hero / main /
+    npc / far: group sub / pair / lock / free, card_width 12 / 20 / 28 / 70 mm, far's cap = the groom's volume
+    (`cap: "mass"`, eased up from the line). `fit_budget`: segment x1.5 at most, then cards by `prio` (fly, baby,
+    top layers first; coverage last). Old lock-cut cards remain for `strands.source: "drawn"`.
+  - One shade: atlas colour = gap -> lit by depth (0.45 + 0.55 d) x a value per strand (x3 vary) x `look.card_gain`;
+    vertex colour = root-tip ramp x per lock / card value only. Card material and GLB: roughness >= 0.5, specular
+    halved and tinted to `look.sheen` (KHR_materials_specular without the texture; a card mirrored the rim light
+    as a white plate). Tiles (`hair_strands.TILE_KIND`): medium / sparse roots staggered over the first quarter,
+    baby = 4-6 hairs with empty margins, fly / baby lines >= 1 texel and faded before every quad border.
+  - `hair.card_clearance` (in every cards job): vertices under the skin (the head as the scalp's rays see it)
+    counted by lock, then moved out to `CARD_CLEAR` 1.5 mm; `detached` = free cards whose root lies outside the
+    hairline. Measured on Tess: 0 hero vertices under the skin (11-12 gather vertices <= 2.7 mm at main / npc);
+    the wisps "starting on skin" were roots faded by alpha + two rooted 3.7 mm outside the line.
+  - Tooling (what found all of the above): `hair.look_glb` (a GLB re-imported by Blender's glTF importer on the
+    head stage; alpha "test" | "dither" | "off"; `dist`), `hair.look(debug=)` "layers" | "cap_only" | "cards_only"
+    | "no_normal" | "unlit", `hair.check_tiers` + `tiers_text` (sheet, table, WARNINGs), `hair_checks.py` (iou /
+    bare / value / sat vs the strands, `stamps` = detached rectangular blobs, `straight_share` = plank edges,
+    `mesh_verdict`). MCP: `export_hair` (new; check=True, save=sheet), `look_hair(tier=, debug=, engine=)`,
+    `groom_hair(style=, strands=, look=)` + tie in its docs; guide section "Strand grooms through the tools".
+    `tests/test_hair_strands.py` (9 tests; the last exports npc through Blender on hs_tess).
+  - Tess after (export v8; ht_07 / ht_09 / ht_10 sheets): 39,986 / 15,990 / 5,984 / 1,468 triangles, 94 s for four
+    tiers + groom; Khronos 0 errors 0 warnings (infos: the unused specular texture). bare vs strands (alpha test)
+    hero 6-21%, main 7-24%, npc 8-28%, far 13-50% (front views: face wisps and the strands' fringe); value x strands
+    0.89-1.05 (back view 0.78: strands glow under the rim, cards don't transmit), sat 1.0-1.2; stamps 0. Groom read
+    back by Blender: 29,977 curves / 489,076 points; .abc in cm (position, radius), .usdc in m with groom_* (10 MB;
+    the .usda was 33).
+  - Style "locks" unchanged: hs_golfer's look with this branch vs main's src differs by <= 1 level on 2-11 of 1.57M
+    pixels, and main against itself by 9 (EEVEE's own run-to-run noise); same code twice can also be identical.
+  - READ: hero at bust distance is combed hair with a clean hairline and matching colour, still smoother and
+    flatter than the strands; a few dark slits between cards on the back / top; npc cards lift at the crown like
+    roof tiles; far = helmet + solid tail, no wisps; tails have mass at every tier.
+  - NOT DONE: Cycles atlas bake + flow / AO passes (the atlas is the numpy raster; said in the guide), Godot render
+    (godot is installed at ~/.local/bin/godot: untried), clearance against a decimated game skin, core for loose
+    long hair (only tied tails), the golfer as strands judged (hs_14: strands lose the designed clump shapes and
+    fail the silhouette gate 4.1 / 6.6 mm vs 1.3 / 1.4; my read: keep stylised hair on locks, no migration), the
+    per-clump volumise try, round trip (`blender_strands.read` exists; nothing consumes it), strand measures in
+    look_hair beyond the @@strands counts, hair_r3 / golfer card exports re-checked with the new cards.
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,

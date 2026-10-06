@@ -1418,7 +1418,7 @@ def export_hair(name: str, out_dir: str, tiers: list[str] | None = None, groom: 
     default main, npc, far), all on ONE atlas: cards cut from the groom's own strands (a lower tier = fewer, wider
     cards from bigger clumps; far = the cap + a solid tail), the cap wearing the scalp's chart, alpha MASK, two
     sided, the recipe for an engine's hair shader in the material's extras. groom=True also writes the strands
-    (`<name>_groom.abc` in cm for Unreal's groom import, `<name>_groom.usda` with groom_* primvars).
+    (`<name>_groom.abc` in cm for Unreal's groom import, `<name>_groom.usdc` with groom_* primvars).
     check=True re-imports every GLB on the head (as an engine gets it) and judges it against the strands in the same
     views and light, under a hard alpha TEST and dithered: per view iou / bare (strand silhouette left uncovered),
     value and saturation x the strands', detached rectangular blobs (cards showing as stamps), straight outline

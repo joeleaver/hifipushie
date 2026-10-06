@@ -559,3 +559,74 @@ clump's curve (Curve to Mesh): which is what our solid locks are.
 - BCon24, mesh hair with geometry nodes: https://conference.blender.org/2024/presentations/1990/
 - DAE graduation work, real-time hair LODs: https://digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+
 - Godot BaseMaterial3D: https://docs.godotengine.org/en/4.3/classes/class_basematerial3d.html
+
+# Strand grooms through the tools (realistic hair, and its game cards)
+
+For realistic hair the locks stay what you reason in, but they become GUIDES: `groom_hair(name, style="strands")`
+turns every lock into a flat clump of strands on Blender's Hair Curves, and a scalp layer of short hairs grows
+everywhere inside the hairline (the soft hairline, the cover under the locks). Solid stylised hair is style "locks"
+(the rest of this guide); nothing about it changes.
+
+## The stages
+
+1. **Groom the shapes** as for any hair: hairline, volume, parting; loose hair as drawn clumps; tied hair with
+   `groom.tie` (`{"at": [176, 30], "out": 0.03, "gather": {rows, locks, lift, width}, "tail": {length, fullness,
+   locks}, "escape": 6}` + `parting.side: "none"`). Judge the silhouette first (`stage: "mass"`).
+2. **Turn on strands and set the character of the hair** with `strands` (all 0..1 dials unless a unit is given; they
+   cannot reach values that stop reading as hair):
+
+   | dial | what it does | when wrong |
+   |---|---|---|
+   | count | strands in a look (30k default; 60-100k for a Cycles beauty) | too few: see-through in Cycles |
+   | clump, clump_size (m), clump_shape | strands gather into sub clumps; where along the strand | 1 / shape 0: ropes |
+   | stray | share of strands that only half join their clump | 0: each clump a rope with air between (pasta) |
+   | wave (m), wavelength (m), curl, random | the lock's swing; `random` = how far sub clumps fall out of step | random 1 on a tail: pasta |
+   | loose, frizz, flyaway | strands wandering together / singly / letting go | frizz high: a cloud |
+   | tips, roots, taper | ragged ends, staggered roots, strands thinning to a point | tips 0: a cut brush |
+   | under, under_length (m), soft (m), baby | the scalp layer and the hairline's fade | under 0: skin through the hair |
+
+   A thin lock (< 16 mm) is a wisp: it swings less and slower by itself (at a lock's wave a few hairs side by side
+   read as crimped ramen). Hair gathered into a tie narrows into it and every strand reaches it.
+3. **Look**: `look_hair` renders the strands in EEVEE in seconds under a key, a fill and a rim light (`look.light`
+   "salon"; "flat" = one sun). `engine="cycles"` path-traces them with the hair BSDF: the truthful look (1-4 min; it
+   waits for the machine's heavy slot). EEVEE draws every strand at least a pixel wide, Cycles at its true width:
+   a groom that looks full in EEVEE and thin in Cycles needs more `count`, not more thickness.
+4. **Export for a game**: `export_hair(name, out_dir, tiers=["hero", "main", "npc", "far"], save="sheet.png")`.
+   Cards are CUT FROM THE STRANDS: the strands of a lock are clustered (hero: the groom's sub clumps; main: pairs;
+   npc: whole locks; far: only hair off the head) and each card's centre line is the mean of its clump's strands,
+   its width their spread, so cards wave, part and end where the hair does, and a lower tier has fewer, WIDER cards,
+   not the same cards thinned out. Under them: the cap (the scalp's own chart, hairline painted in) and, in a tied
+   tail, a solid core shaped by the tail's strands. Under a budget, fly-aways and baby hairs go first and coverage
+   last. The groom itself goes out as Alembic (cm, Unreal) and USD (groom_* primvars).
+5. **Judge the export as an engine draws it.** The sheet shows the strands, then every tier's GLB re-imported on
+   the head under a hard alpha TEST and dithered, then the cards as solid quads by layer. The table per tier and
+   view: `iou` / `bare` (strand silhouette the tier leaves uncovered), `value` and `sat` x the strands', `stamps`
+   (detached rectangular blobs: a card's quad showing), `straight` (outline made of plank edges), plus WARNINGs for
+   card vertices under the skin and wisps whose root lies on bare skin. To find what makes a fault, `look_hair(tier=
+   "hero", debug=...)`: "layers" (solid quads by layer), "cap_only", "cards_only", "no_normal", "unlit". If a
+   pattern survives "unlit" it is in the colour (atlas or vertex colour); if it survives "no_normal" but not
+   "unlit" it is the cards' geometry and shading.
+
+## What went wrong on the way (so you can recognise it)
+
+- A dark band above the forehead: lower card layers darkened twice (vertex colour AND the atlas's depth shade) and
+  every upper card starting at one distance behind the line. One shade only; roots staggered and faded by alpha.
+- Brown stamps along the hairline: baby-hair tiles full of parallel hairs touching the quad's border, lines thinner
+  than a texel (an alpha test kept only where they crossed). A baby tile is 4-6 hairs with empty margins.
+- A "wire mesh" tail: thin ribbons on separate wave phases with no opaque base. Cards from the strands' own clumps
+  wave together; the core closes what is behind them.
+- Wisps as dark slashes that seem to start on the cheek: one filled ribbon whose root faded in. A wisp is 2-3 thin
+  cards of separate thick hairs on a tile whose root starts at full strength, rooted 8 mm inside the hairline. The
+  measurement said they were NOT under the skin; the visible part began lower because the root was faded.
+- Brick lines across the flow under an alpha test: staggered card roots on a tile that starts as a cut edge.
+- Cards as white plates under a rim light: a card is one flat sheet standing for many round hairs; half the
+  specular, tinted to the hair.
+
+## Limits today
+
+Cards are still smoother than strands at bust distance (less strand-to-strand contrast), a few dark slits show
+between cards on a combed-back top, npc cards lift at the crown like roof tiles, and the far tier is a helmet and a
+solid tail without wisps. The atlas is a numpy raster of Blender-evaluated strands (alpha, per-strand id, depth,
+root gradient, a normal from depth), not a Cycles bake; there is no flow or AO pass yet. Clearance is checked
+against the head as the scalp's rays see it, not against a game's decimated skin. Loose long hair has no core
+surface (only tied tails do): its coverage is the dense first layer.

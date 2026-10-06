@@ -2578,7 +2578,7 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
     """The hair alone, game-ready, from a strand (or card) groom: one GLB a tier (`<name>_hair_<tier>.glb`: LODs that
     share ONE atlas: cards cut from the groom's locks, the cap wearing the scalp chart) and, groom=True, the strands
     themselves for engines and renderers that draw them (`<name>_groom.abc` in centimetres for Unreal's groom
-    importer / Unity's hair package, `<name>_groom.usda` with the groom_* attributes as primvars). Returns the
+    importer / Unity's hair package, `<name>_groom.usdc` with the groom_* attributes as primvars). Returns the
     report (also `<name>_hair.json`)."""
     from . import asset, hair_cards as hc
     out_dir = Path(out_dir)
@@ -2617,10 +2617,12 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
         tmp = Path(tempfile.mkdtemp(prefix="hifipushie-groom-"))
         locks = [k for k in resolve(spec, sc) if not re.fullmatch(r"t\d*band", k["name"])]
         sd = hs.job(sc, g, spec, locks, tmp, count=int((h.get("export") or {}).get("strands", 0)) or None)
-        abc, usd = out_dir / f"{name}_groom.abc", out_dir / f"{name}_groom.usda"
+        abc, usd = out_dir / f"{name}_groom.abc", out_dir / f"{name}_groom.usdc"  # (binary: the .usda was 33 MB)
         r = hs.evaluate(sd, abc=str(abc), usd=str(usd))
         got = next((json.loads(ln[8:]) for ln in r.splitlines() if ln.startswith("@@groom")), {})
-        rep["groom"] = {"alembic": str(abc), "usd": str(usd), **got,
+        rep["groom"] = {**{k: v for k, v in got.items() if k not in ("abc", "usd")}, "alembic": str(abc), "usd": str(usd),
+                        "bytes": {"alembic": abc.stat().st_size if abc.exists() else 0,
+                                  "usd": usd.stat().st_size if usd.exists() else 0},
                         "note": "Alembic: curves + widths in cm (Unreal groom import; guides, ids and root uv are "
                                 "the importer's defaults: Blender's Alembic writer drops per-curve attributes). USD: "
                                 "BasisCurves + widths + groom_id / groom_guide / groom_group_id primvars, metres."}
