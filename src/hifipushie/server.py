@@ -285,7 +285,13 @@ def guide(topic: str = "") -> str:
     features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
     topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then
     limbs drawn and pruned, judged against a photo, foliage and bark, export), with grow_plant, edit_plant,
-    look_plant, plant_reference, export_plant and plant_history."""
+    look_plant, plant_reference, export_plant and plant_history.
+    topic="human": whole people on ONE mesh (human(source="human")) and how to measure and fit them without breaking
+    what you weren't looking at: measure_human, fit_human (set measures, a solver finds the sliders), nudge_human
+    (move a landmark), human_reference (match named points in reference images), with integrity and side-effect
+    reports on every change."""
+    if topic.strip().lower() in ("human", "humans"):
+        return (Path(__file__).with_name("human_guide.md")).read_text()
     if topic.strip().lower() == "terrain":
         return (Path(__file__).with_name("terrain_guide.md")).read_text()
     if topic.strip().lower() == "hair":
@@ -297,7 +303,7 @@ def guide(topic: str = "") -> str:
     if topic.strip().lower() == "skin":
         return (Path(__file__).with_name("skin_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "skin", "terrain" or "vegetation"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "skin", "human", "terrain" or "vegetation"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
