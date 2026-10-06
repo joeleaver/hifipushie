@@ -406,6 +406,35 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       leak and rigid error (arm 5.9 mm rigid / 14 mm leak -> 0, thigh on thigh 5 mm -> 0 at full strength, 4-5 at
       half), but blends get narrower and flipped triangles rise at elbows / knees (53 -> 130-270) and Spine2 (420).
       Digit bleed is unchanged on a look build (fingers fused at 3.6 mm voxels). Not adopted yet: see HANDOVER.
+    - `rigid_near` (the face-shape pass in the export) skips parts no shape moves: the golfer's collar took Head
+      0.56 from the moved throat skin beside it and turned with the face (26 mm at 33 deg) in every export WITH
+      face shapes (Garrett too); the worn-part rule held in `skin_parts` only.
+    - Fresh exports (all Khronos 0 / 0): `exp_golfer` (dg_fix2, 30k / 2048; BEFORE rig_drop and the hole fix:
+      audit 10 BAD of 51, no digit bleed), `exp_gnm` (tw_gnm 15k + face shapes: 5 BAD), `exp_talk` (model
+      `workspace/wb_dg_talk` = dg_fix2 + `base.head.interior` + mouth_gap 0.003, no wrap topology; 36k + face
+      shapes, with rig_drop and the hole fix, BEFORE the rigid_near fix: its head-turn sheet shows the collar going
+      with the head). Sheets `wb_golfer_*` (head33 good; nod: a lump of nape skin between hair and collar from the
+      side; arm60 clean; thigh60 shows the hole; handroll105: forearm smooth, dark cracked patches where the hand
+      grips the disc, unverified), `wb_talk_*` (thigh60 clean: no hole, hem a tube; blink closed with a clean line;
+      jawopen good), `wb_gnm_*` (15k blink: closed, small dark notches at the eye corners; smile fine).
+      workspace/dg_fix2's spec now has the strap's rig_attach and the three rig_drops (v8).
+  - HANDOVER (rig2 agent, stopped by the session's usage limit, 2026-10-06). Branch `rig2`. Tests green on the
+    head: test_rig_twist, test_rig_audit, test_tooling, test_face_shapes. State of jobs: a goblin_anat export
+    (15k / 1024) was running into /mnt/data/hifipushie/rig2/exp_goblin_anat (log scratch `rig2/exp_goblin_anat.txt`)
+    when the queues were stopped: check whether it finished. NOT started: troll_anat export, the golfer re-export
+    (dg_fix2 with rig_drop + hole fix, into exp_golfer) and the talk re-export (rigid_near fix, into exp_talk):
+    `bash rig2/run.sh exp.py <model> <out dir> '<json kwargs>'`, one at a time (they take the heavy slot; Oxidegen's
+    exports hold it for long stretches). Next, in order: (1) those three exports, Khronos (`node val/v.mjs x.glb`),
+    sheets (`run.sh sheets.py <model> <glb> <prefix> [poses]`), the talk head-turn sheet must show the collar
+    staying; (2) kit creatures: run `run.sh geo.py goblin_anat 256 <glb>` (ours vs geodesic on the REAL export;
+    `GATE=1.5,3.5 MIX=1` = the gated variant, the promising one: Euclidean blend kept, an influence cut where the
+    path along the skin is over 1.5-3.5 limb radii), render both in the test pose (`reskin.py` saves weights,
+    `cmp.py` draws them side by side), adopt it in `rig.weights` if the renders agree with the audit; watch the
+    flipped triangles at Spine2 (413 on the look build: probably the pec / lat sheets) and digit bleed on the real
+    mesh; (3) the audit card (id cmuvoqmmf00f8k6f29lu2bvex, NOT the project id) and the throat card
+    (cmuvmbarn00f6k6f2jcsm4x7b) still need this round's numbers; the twist and rigid-face cards were already DONE;
+    (4) open: hem bones, the nape lump on a nod, the hand / disc dark patches, the arm's 20-25 mm on trapezius
+    skin near the neck (MakeHuman's own Arm weight; sheet looks fine), a rig check in a real engine.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
