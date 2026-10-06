@@ -968,6 +968,8 @@ def _piece_width_at(P: np.ndarray, y: float) -> float:
 LAYER = 0.004  # how far an overlapping layer starts outside the one under it
 CLEAR = 0.008  # the least start clearance from the body (Blender: cloth 3 mm + body 4 mm collision distances)
 SMOOTH_CLEAR = 0.004  # ZOZO bands (cuffs, neck pieces): its contact offset 2 mm + gap 1 mm + 1 mm
+HUG_CLEAR = 0.0012  # a made band buttoned round the neck (a collar stand): it is HELD in the sim, not contact-solved, so
+# it needs no solver standoff: constructed closed this far off the skin and pinned free of body contact (B["hug"])
 BAND_CLEAR = 0.0025  # a made band closed on itself round the torso (a waistband): it grips. The sim then runs with
 # the body's contact offset 1 mm + gap 0.5 mm (build(): B["band_clear"]). At 4 mm a band needs 25 mm more girth than
 # the body: a waistband with 2-3% ease could never start closed
@@ -1160,20 +1162,29 @@ def _closure(M: dict, nm: str) -> tuple[float, float]:
 
 
 def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo: float, lay: float, cx: float,
-                 sgn: float, turn: float, frame_t, m_min: float | None = None) -> tuple | None:
+                 sgn: float, turn: float, frame_t, m_min: float | None = None, recentre: bool = False) -> tuple | None:
     """A piece closed on itself round an arm (a cuff) laid on a spiral that follows the arm's sections: the radial
     function of their convex hull (over the piece's length, in the cuff's frame) + m(phi), m growing by `lay` a turn,
     m's start solved so the stitched points (x_lo and x_lo + closed along the pattern) land exactly one turn apart, arc
     length along the spiral = pattern x (from the piece's middle cx, at angle `turn`). Returns (angle per vertex
     before sgn/turn, radius per vertex) for the placement's own angle convention, or None without sections."""
-    pts = []
-    for ti in np.arange(float(t.min()), float(t.max()) + 1e-9, 0.01):
+    pts, drift = [], []
+    for ti in np.arange(float(t.min()), float(t.max()) + 1e-9, 0.005 if recentre else 0.01):
         c, up, fw, d = frame_t(ti)
         L = tailor.section(body.V, body.T, c, d, c)
         if L is None or not tailor._encloses(L, c, d):
             continue
         Q = L - c
-        pts.append(np.c_[Q @ up, Q @ fw])
+        q2 = np.c_[Q @ up, Q @ fw]
+        if recentre:
+            # each section round its own centre (recentre: a neck leans, its sections' centres drift 8 mm over 3 cm:
+            # the hull of them all in one frame was 2 cm of girth bigger than any of them). The caller shifts each
+            # vertex by the drift at its height (fn.drift)
+            h2 = q2[ConvexHull(q2).vertices]
+            c2 = 0.5 * (h2.min(0) + h2.max(0))
+            drift.append((float(ti), c2[0], c2[1]))
+            q2 = q2 - c2
+        pts.append(q2)
     if not pts:
         return None
     P = np.concatenate(pts)
@@ -1208,7 +1219,9 @@ def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo
         m0 = max(m0, float(m_min))
     s, r = spiral(m0)
     if x is None:  # the spiral itself: arc position from cx -> (angle, radius)
-        return lambda xs: (np.interp(xs, s, phi), np.interp(np.interp(xs, s, phi), phi, r))
+        fn = lambda xs: (np.interp(xs, s, phi), np.interp(np.interp(xs, s, phi), phi, r))
+        fn.drift = np.asarray(drift, float) if drift else None
+        return fn
     th = np.interp(x - cx, s, phi)
     return th, np.interp(th, phi, r)
 
@@ -1350,6 +1363,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     neck_tilt = None  # the neck pieces' axis (shared; wrap "tilt")
     neck_R, neck_lay, neck_sp = None, 0.0, None  # a buttoned stand's radius, its spiral's growth a turn, the spiral
     neck_R0 = None  # the first neck piece's radius
+    neck_hug, neck_drift = False, None  # a buttoned stand held closed inside the contact standoff; its sections' drift
     arm_ang = {}  # vertex -> its angle round its arm (pieces placed so far)
     leg_curve = {}  # "leg.L" -> (its plan curve, the flat's x, the waist's z)
     head_curve = None  # the plan curve round the head (hoods)
@@ -1743,10 +1757,23 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # (only over sections that are the neck: 8 mm above a 3 cm stand on a 4 cm neck the sections cut the
                 # chin, 44-48 mm forward: the hull was 6 cm of girth too big and a buttoned stand started 7 cm open)
                 top_n_ = max(r_["h"] for r_ in body.neck_rows() if r_["neck"])
-                neck_sp = _cuff_spiral(body, np.array([min(hts.min(), top_n_ - 0.01), min(hts.max() + 0.008, top_n_)]), None, closed_n,
+                # a BUTTONED band is held closed in the sim (a made piece, carried): constructed closed at its
+                # buttoned girth HUG_CLEAR off the skin at least, free of body contact (B["hug"]); what it has over
+                # the neck's girth is collar ease
+                # (and over the band's own HEIGHT from where it sits: a curved stand's ends lie 1-2 cm lower in the
+                # pattern than its middle, and by its pattern heights the hull took in the trapezius under the neck)
+                bh_ = abs(pattern.area(P)) / max(width, 1e-9)
+                lo_n_ = min(max(neck_base + above, min(r_["h"] for r_ in body.neck_rows() if r_["neck"])), top_n_ - 0.01)
+                # (only for a buttoned band: an open stand keeps the hull over its pattern heights, as it was tuned)
+                rng_ = np.array([lo_n_, min(lo_n_ + bh_ + 0.008, top_n_)]) if closed_n else np.array([hts.min(), hts.max() + 0.008])
+                neck_sp = _cuff_spiral(body, rng_, None, closed_n,
                                        (_closure(M, nm)[1] - e[0]) if closed_n else 0.0, neck_lay, 0.0, 1.0, 0.0,
                                        lambda ti: (nb + d * ti, back, side, d),
-                                       m_min=(SMOOTH_CLEAR if smooth else CLEAR) + 0.0005)
+                                       m_min=HUG_CLEAR if closed_n else (SMOOTH_CLEAR if smooth else CLEAR) + 0.0005,
+                                       recentre=bool(closed_n))
+                if neck_sp is not None and closed_n:
+                    neck_hug = True
+                    neck_drift = neck_sp.drift
                 if neck_sp is not None:  # the spiral's mean radius stands for R in the cone's terms
                     a_, r_ = neck_sp(np.linspace(-0.15, 0.15, 61))
                     R = neck_R0 = float(np.mean(r_))
@@ -1789,7 +1816,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                         r, hgt = rad + fold[1], above + fold[0] - (sf - np.pi * rho_f)
                 radial = np.cos(ang) * back + np.sin(ang) * side
                 out[i] = nb + d * (neck_base + hgt) + r * radial
+                if neck_drift is not None:
+                    out[i] += back * np.interp(neck_base + hgt, neck_drift[:, 0], neck_drift[:, 1]) + \
+                        side * np.interp(neck_base + hgt, neck_drift[:, 0], neck_drift[:, 2])
             X[sel] = out
+            if neck_hug and nm not in B.setdefault("hug", []):
+                B["hug"].append(nm)
             neck_base = (neck_base, nb)
             placed_neck.append(nm)
         elif to.startswith("leg."):
@@ -1907,6 +1939,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # too big that ruffled. Their faces are checked below instead (coarse triangles reach in between the
             # vertices)
             gaps[pid == k] = SMOOTH_CLEAR if smooth else CLEAR
+        if nm in (B.get("hug") or []):
+            gaps[pid == k] = HUG_CLEAR
         if nm in (B.get("torso_bands") or []):  # a waistband grips (BAND_CLEAR)
             gaps[pid == k] = BAND_CLEAR
         if wto.startswith("leg."):
@@ -3259,6 +3293,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
                       piece=Ms["piece"], pins=np.zeros(0, np.int64), **harr, **lower,
                       **fold_s, **({"carryIdx": carry["idx"], "carryPoses": carry["poses"]} if carry else {}),
+                      **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in Bp["hug"]]))[0]}
+                         if Bp.get("hug") else {}),
                       **coll, **({"rest": rest_s} if smooth else {}))
         if Bp.get("band_clear") and backend == "zozo":
             # a gripping band starts BAND_CLEAR off the body: the body's contact offset + gap must be inside that
@@ -3344,6 +3380,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                         stitch=np.r_[M["stitch"].reshape(-1, 2), plan["tacks"]], stiff=stiff_f,
                         piece=M["piece"], bodyV=coll["bodyV"], bodyT=coll["bodyT"], pins=np.zeros(0, np.int64),
                         carryIdx=plan["idx"], carryPoses=plan["poses"], releaseIdx=plan["release"],
+                        **({"hugIdx": np.where(np.isin(M["piece"], [M["names"].index(n_) for n_ in Bp["hug"]]))[0]}
+                           if Bp.get("hug") else {}),
                         restIdx=plan["rest_idx"], rest=plan["made"], **fold_f)
             # a strain-limited solver can't start past its limit: the carried drape, kept clear of the body vertex by
             # vertex, starts stretched a few % in places (1 mm on a 1 cm triangle is 10%); the limit over this short

@@ -522,10 +522,13 @@ def main():
         # off it or went through it)
         rel = np.isin(ci, np.asarray(d["releaseIdx"], np.int64)) if "releaseIdx" in d else np.zeros(len(ci), bool)
         pose_st = [st for st in stages if st.get("pose") is True]
-        for part, free in ((~rel, False), (rel, True)):
+        # hugIdx: made bands constructed inside the body's contact standoff (a buttoned collar stand 1.2 mm off the
+        # neck): held, they need no contact with the body, and their pins pass through it
+        hug = np.isin(ci, np.asarray(d["hugIdx"], np.int64)) if "hugIdx" in d else np.zeros(len(ci), bool)
+        for part, free, thru in ((~rel & ~hug, False, False), (~rel & hug, False, True), (rel, True, False)):
             if not part.any() or (free and not pose_st):  # (flaps free from the start: never pinned)
                 continue
-            cp = g.pin(list(map(int, ci[part])), allow_intersection=False)
+            cp = g.pin(list(map(int, ci[part])), allow_intersection=thru)
             for pose in pose_st:
                 t0, t1 = times[pose["name"]]
                 for k in range(len(cposes)):
