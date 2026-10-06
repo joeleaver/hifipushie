@@ -467,11 +467,34 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       thigh, flipped 41 -> 23. Hems, what riggers do (web search + the guide's section from rig2): weights toward
       pelvis + thighs for shirts and shorts (have), skirt / coat chains driven by the thighs or springs in the
       engine (not built: no test garment needs it; build it with the first skirt, as leaf joints after the set).
-    - The golfer's "ragged shirt hem" and "dark cracked hand" are MESH, at rest, in clay: the shirt's open hem edge
-      is wavy after decimation (`wc_golfer_rest_hips.png`), and the right hand that grips the disc is torn at the
-      thumb web and the knuckles (`wc_golfer_hand_rest.png`: jagged holes; body: 493 open edges, 217 folded, 18
-      non-manifold in the export log). Not weights, not the bake. Cause not chased (the wrap topology on a curled
-      hand whose fingers touch, or faces dropped as hidden where finger meets palm): card.
+    - THE TORN HANDS (the coordinator: "the most important thing you found"; the user's first complaint was mangled
+      fingers). By stage on dg_fix2 (`rig3/stage.py`, sheets `wc_hand_stages_R.png`, `_L.png`): the body's field
+      meshed at the export voxel is clean, fingers apart; `retopo.wrap` tears BOTH hands at the webs and the thumb's
+      root, at rest, disc or no disc (the wrap sees only the body's prims): the stylised template's digit tubes and
+      palm carried onto MakeHuman's close-set fingers ("untangle: 2251 faces still turned after 12 passes" was in
+      every export log). Decimation, hidden-face pruning and the bake only inherit it. Fix at the cause: a base body
+      ships its OWN quads (`retopo.base_quads`: `base.surface()["quads"]`, MakeHuman's or the template's own
+      animation topology, each vertex dropped <= 4 mm onto the field (the cage stands 0.5 mm mean off it), a GNM head
+      grafted on as before). `parts.body.topology = "wrap"` now means that on a base; `"template"` = the old carry
+      (kit characters, which have no quads of their own, are unchanged). The whole body, before / after: folded edges
+      217 -> 33, faces turned against the field 416 -> 12, non-manifold edges 18 -> 0, p99 off the field 2.26 ->
+      1.41 mm; clusters at finger1_1.L 88, finger4_1.L 81, finger4_1.R 71, finger1_1.R 66, thumb_1.R 22, knee.L 46
+      -> none on the hands (ankle.L / toe.L 9 / 8, under the shoes).
+    - So it can't ship silently: `asset.mesh_quality` counts `turned` faces (normal against the field's gradient,
+      faces near the surface only) and returns the defects' `spots`; `asset.defect_regions` groups folded edges +
+      turned faces by the model's nearest joint (`DEFECT_CLUSTER` 12; spots inside another part don't count: the
+      skin behind an eyeball), and the export's quality line says "WARNING ... TORN OR TANGLED at finger1_1.L
+      (88), ..." with `quality.defects_by_joint` in the json. Tests: test_tooling `test_mesh_quality`,
+      test_handwarp `test_export_topology_is_the_bases_own`. Decimated bodies (wb_dg_talk, no wrap) had clean hands.
+    - The ragged shirt hem: the shirt is a SOLID shell with a smooth rounded rim (look build: fine); the export
+      dropped its faces "hidden in another part" exactly where it goes under (its inside lies in the body /
+      shorts), so the cut ran along the rim, a triangle deep and wavy, and shed shards over a lifted thigh.
+      `asset._deep_hidden` (`HIDDEN_RIM` 12 mm): a hidden vertex with a visible vertex of its own part within the
+      rim stays, in `prune_hidden` and `topology_parts`; the cut lies inside where nothing looks. Test
+      `test_hidden_faces_are_cut_inside_the_rim`.
+    - troll_anat's real export (15k / 1024, Khronos 0 / 0; `wc_troll_anat_*`): rest, thigh 60, knee 90 read fine;
+      arm 60 drags a pale stretched patch of trapezius skin from the neck to the shoulder; fingers are fused
+      (digit bleed 0.27-0.38, a finger joint moves its neighbours 20+ mm; audit 45 of 51 BAD). Body usable, hands not.
     - A real engine: `spikes/godot_rig/` (check.gd, sheet.py): Godot 4.7 loads the GLB with its own importer at run
       time, poses the Skeleton3D, drives the twist joints from `<name>.json` `rig.twist` by the recipe, sets face
       shapes, writes PNGs. `godot --path spikes/godot_rig -s check.gd -- x.glb x.json <prefix> poses.json` (opens a
