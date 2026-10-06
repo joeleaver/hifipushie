@@ -120,7 +120,7 @@ def state(base: dict) -> dict:
         raise ValueError('humanfit: the model\'s base is not the one human mesh (base.body.source "human"; make one with '
                          'the human tool, source="human")')
     tpl = onemesh.template(base)
-    ht = onemesh.head_template(base)
+    ht = onemesh.head_rest(base)
     L = np.r_[np.asarray(ht["lm68"], float), np.asarray(ht["eyes"], float)]
     if L[EYE_L, 0] < L[EYE_R, 0]:
         L[[EYE_L, EYE_R]] = L[[EYE_R, EYE_L]]
@@ -493,6 +493,10 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
         l1 = np.linalg.norm(P[E[:, 0]] - P[E[:, 1]], axis=1)
         l0 = np.maximum(np.linalg.norm(P0[E[:, 0]] - P0[E[:, 1]], axis=1), 1e-9)
         r = l1 / l0
+        hsel = reg["head"][E].all(1)
+        if hsel.any():  # a style's bigger head is a scale, not a distortion: stretch is read against the head's own size
+            num["head_scale"] = round(float(np.median(r[hsel])), 3)
+            r = np.where(hsel, r / max(float(np.median(r[hsel])), 1e-6), r)
         num["stretch"] = {}
         for k in ("lids", "lips", "nose", "ears", "neck bridge", "face"):
             sel = reg[k][E].all(1)

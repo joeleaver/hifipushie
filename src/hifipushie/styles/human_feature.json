@@ -1,0 +1,29 @@
+{
+ "name": "human_feature",
+ "about": "feature animation (large head and eyes, simple planes, a soft small nose, slimmer limbs, bigger hands). ROUND 0: hand-set starting values, NOT yet fitted to references (the reference rounds with fit_human / human_reference are the next step). For base.body.source \"human\" (the one mesh).",
+ "rules": {},
+ "spec": {
+  "base": {
+   "style": {
+    "eyes": 1.3,
+    "simplify": 1.2,
+    "human": {
+     "head_size": 1.22,
+     "cranium": 1.06,
+     "eye_height": -0.03,
+     "nose": 0.35,
+     "nose_width": 0.9,
+     "jaw": 0.18,
+     "cheeks": 0.25,
+     "mouth": 0.95,
+     "exaggerate": 1.15,
+     "legs": 0.97,
+     "limbs": 0.9,
+     "hands": 1.12,
+     "feet": 1.1,
+     "shoulders": 0.95
+    }
+   }
+  }
+ }
+}

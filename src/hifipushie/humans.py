@@ -125,7 +125,8 @@ def outfit(base: dict, kind: str, colors: dict | None = None) -> dict:
 def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: float | None = None,
          height: float | None = None, seed: int | None = None, outfit_kind: str | None = None, tone: dict | float | None = None,
          skin: dict | bool | None = None, colors: dict | None = None, head: dict | None = None,
-         bust: float | None = None, firmness: float | None = None, source: str = "makehuman") -> dict:
+         bust: float | None = None, firmness: float | None = None, source: str = "makehuman",
+         style: str | dict | None = None) -> dict:
     """A model spec for a person. sex: 0 / "female" .. 1 / "male" (children under ~10 differ little by it);
     height (m) overrides the measured median; seed picks the face (a different person per seed); tone = a
     Fitzpatrick number 1..6 or skin.tone's dict; skin = false for clay only, or skin keys to merge."""
@@ -156,12 +157,22 @@ def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: f
     elif source != "makehuman":
         raise ValueError('human: source is "makehuman" (a GNM head grafted onto the body) or "human" (one mesh)')
     base = {"body": body, "eyes": "eyes", "cornea": True, "head": hd}
+    sheet = None
+    if style:  # a style sheet (styles/human_*.json) or base.style keys: the one mesh reshaped, clothes placed on the result
+        if source != "human":
+            raise ValueError('human: style needs source="human" (the style sliders reshape the one mesh)')
+        if isinstance(style, str):
+            from . import stylesheet
+            sheet = style
+            base["style"] = dict(((stylesheet.load(style).get("spec") or {}).get("base") or {}).get("style") or {})
+        else:
+            base["style"] = dict(style)
     from . import base as basemod
     P = np.asarray(basemod.source(base)["P"], float)
     H = float(P[:, 2].max() - P[:, 2].min())
     base["look_at"] = [0.0, -4.0, round(0.93 * H, 3)]
     o = outfit(base, kind, colors)
-    out = {"symmetry": True, "blend": 0.035, "base": base,
+    out = {"symmetry": True, "blend": 0.035, "base": base, **({"style": {"sheet": sheet}} if sheet else {}),
            "parts": {"body": {}, "eyes": {"color": "#e8e0d6"}, **o["parts"]},
            "joints": o["joints"], "bones": o["bones"], "blobs": o["blobs"]}
     if skin is not False:

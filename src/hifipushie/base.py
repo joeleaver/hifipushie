@@ -1383,6 +1383,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         # toward the stitch at the neck
         from . import onemesh
         V, J = onemesh.hook(V, J, head, R, np.asarray(eye_mid, float), s, mid)
+        r_eye = [r * float(head["bound"].get("head_size", 1.0)) for r in r_eye]  # (a style's bigger head: its eyeballs too)
 
     def place(X):
         return eye_mid + s * (X - mid) @ R.T

@@ -164,6 +164,9 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
         Vn = Vn + fade * dv * float(abs(J[2][0] - J[3][0]))
     Jn = np.array(J, float)
     Jn[2:4] = mid + (bd["eyes"] - eye_mid) @ R / s + ((J[2:4] - Jt[2:4]) - shift)
+    if head.get("human_style"):  # (humanstyle.py) the style's head sliders, on the same vertices
+        from . import humanstyle
+        Vn, Jn = humanstyle.head_ops(Vn, Jn, head["human_style"], g, a["g_fade"].astype(float), g["lm68"])
     return Vn, Jn
 
 
@@ -196,6 +199,13 @@ def head_desc(base: dict) -> dict:
         if user.get("features"):
             hd["warp"] = f["warp"]
         hd.pop("seed", None)  # (it is in the identity now)
+    from . import humanstyle
+    hs = humanstyle.active(base, humanstyle.HEAD + ("exaggerate",))
+    if hs.get("exaggerate") is not None and hd.get("identity"):  # the same person, further from the mean
+        hd["identity"] = {k: round(float(v) * hs["exaggerate"], 4) for k, v in hd["identity"].items()}
+    hs.pop("exaggerate", None)
+    if hs:
+        hd["human_style"] = hs
     hd["scale"] = round(bd["k"] * _reference()["io_scale"], 9)
     dim = float(user.get("dimorphism", DIMORPHISM))
     sex = float(np.clip(params.get("sex", 1.0), 0, 1))
@@ -204,7 +214,7 @@ def head_desc(base: dict) -> dict:
         hd["dim"] = {"age": round(float(makehuman.table_age(params)), 3), "sex": sex, "weight": 0.5,
                      "dimorphism": round(dim * float(np.clip((float(params.get("age", 25)) - 12) / 6, 0, 1)), 4)}
     hd["subdivide"] = 0
-    hd["bound"] = {"body": params, "toward": toward}
+    hd["bound"] = {"body": params, "toward": toward, **({"head_size": hs["head_size"]} if hs.get("head_size") else {})}
     return hd
 
 
@@ -219,12 +229,17 @@ def head_template(base: dict) -> dict:
     return _CACHE[key]
 
 
+def _tkey(base: dict) -> str:
+    from . import humanstyle
+    return json.dumps([head_desc(base), humanstyle.active(base, humanstyle.BODY)], sort_keys=True, default=float)
+
+
 def template(base: dict) -> dict:
     """The one mesh shaped for this base, as a body template (retopo.load_template's keys): P, L, S, J, face, chin_z,
     bones, rig; plus "fid" (each vertex's index in the asset's full topology, what carries uv and skin weights),
     "head_rows" (its head vertices: rows of head_template(base)["verts"]) and "mh_rows"."""
     hd = head_desc(base)
-    key = ("tpl", json.dumps(hd, sort_keys=True, default=float))
+    key = ("tpl", _tkey(base))
     if key in _CACHE:
         return _CACHE[key]
     from . import base as basemod
@@ -262,22 +277,78 @@ def template(base: dict) -> dict:
         if (q >= 0).all():
             faces.append([int(v) for v in q])
     assert min(min(f) for f in faces) >= 0
+    from . import humanstyle
+    Jb, bones, chin_z, face, chin_lm, carry_fn = mb["J"], mb["bones"], mb["chin_z"], mb["face"], float(ht["lm68"][8][2]), None
+    chin_mh_ = float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])
+    bs = humanstyle.active(base, humanstyle.BODY)
+    if bs:  # (humanstyle.py) proportions: joints move and girths scale, and the mesh goes with them
+        from . import retopo
+        J2, girth = humanstyle.body_targets(Jb, bs)
+        V, _, _, carry_fn, _ = retopo._skeleton_warp(V, Jb, {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
+        mv = lambda X: carry_fn(np.atleast_2d(np.asarray(X, float)))[0]  # noqa: E731
+        dz = float(V[:, 2].min())
+        V = V - [0, 0, dz]
+        Jb = {k: np.asarray(v, float) - [0, 0, dz] for k, v in J2.items()}
+        bones = {n: (mv(h_)[0] - [0, 0, dz], mv(t_)[0] - [0, 0, dz]) for n, (h_, t_) in bones.items()}
+        chin_z = float(mv([0, 0, chin_z])[0][2] - dz)
+        face = {"landmarks": {"eye.L": (mv(face["landmarks"]["eye.L"])[0] - [0, 0, dz]).tolist()}}
+        chin_lm = float(mv(ht["lm68"][8])[0][2] - dz)
+        chin_mh_ = float(mv(P[__import__("hifipushie").headfit.table()["lm68"][8]])[0][2] - dz)
+        _CACHE[("style_carry", key[1])] = (carry_fn, dz)
     out = {"name": "human", "P": V, "L": np.array([v for f in faces for v in f]), "S": np.array([len(f) for f in faces]),
-           "J": mb["J"], "bones": mb["bones"], "rig": mb["rig"], "chin_z": mb["chin_z"], "face": mb["face"],
+           "J": Jb, "bones": bones, "rig": mb["rig"], "chin_z": chin_z, "face": face, "styled": bool(bs),
            "fid": fid, "head_rows": hrow, "n_body": len(mh_rows) + len(br), "n_mh": len(mh_rows),
            # the chin: the head's own landmark (clothes stay under it), and the body's vertex the old path measures at
-           "chin_lm": float(ht["lm68"][8][2]), "chin_mh": float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])}
+           "chin_lm": chin_lm, "chin_mh": chin_mh_}
     _CACHE[key] = out
     return out
+
+
+def _carried(ht: dict, mv, dz: float = 0.0) -> dict:
+    """A head dict moved by a point map (the skeleton warp's): vertices, landmarks, eyes, plane, and the rotation and
+    eye midpoint face shapes carry their deltas with."""
+    from scipy.spatial import cKDTree
+
+    from . import base as basemod
+    from . import retopo
+    sh = np.array([0.0, 0.0, dz])
+    W = mv(ht["verts"]) - sh
+    A0, A1 = ht["verts"] - ht["verts"].mean(0), W - W.mean(0)
+    U, _, Vt = np.linalg.svd(A0.T @ A1)
+    Rp = (U @ np.diag([1, 1, np.sign(np.linalg.det(U @ Vt))]) @ Vt).T
+    N, h = basemod._normals_and_h(W, ht["faces"])
+    cut, pn, band = ht["plane"]
+    carry = dict(ht["carry"])
+    carry["R"] = Rp @ carry["R"]
+    carry["eye_mid"] = mv(carry["eye_mid"])[0] - sh
+    k = float(np.sqrt((A1 ** 2).sum() / max((A0 ** 2).sum(), 1e-30)))
+    out = dict(ht)
+    out.update(verts=W, normals=N, h=h, hmax=float(h.max()), tree=cKDTree(W), eyes=[mv(e)[0] - sh for e in ht["eyes"]],
+               eye_r=float(ht["eye_r"]) * k, forward=Rp @ ht["forward"], lm68=mv(ht["lm68"]) - sh,
+               plane=(mv(cut)[0] - sh, Rp @ pn, band), carry=carry)
+    del retopo
+    return out
+
+
+def head_rest(base: dict) -> dict:
+    """The head as the TEMPLATE has it (head_template, carried by the style's body sliders if any)."""
+    tpl = template(base)
+    ht = head_template(base)
+    if not tpl.get("styled"):
+        return ht
+    key = ("head_rest", _tkey(base))
+    if key not in _CACHE:
+        fn, dz = _CACHE[("style_carry", _tkey(base))]
+        _CACHE[key] = _carried(ht, lambda X: fn(np.atleast_2d(np.asarray(X, float)))[0], dz)
+    return _CACHE[key]
 
 
 def head(s: dict, base: dict) -> dict:
     """The head's dict for everything that asks base.head_of (landmarks, eyes, mouth, face shapes), in the pose the
     spec's joints give the body: the template-pose head carried by the same skeleton warp as the body's vertices."""
-    from . import base as basemod
     from . import retopo
-    ht = head_template(base)
     tpl = template(base)
+    ht = head_rest(base)
     used = {}
     for k in tpl["J"]:
         for n in (k, retopo._model_name(k)):
@@ -286,7 +357,8 @@ def head(s: dict, base: dict) -> dict:
                 break
     rest = {k: [round(float(x), 6) for x in v] for k, v in tpl["J"].items()}
     posed = any(np.linalg.norm(np.array(used[k]) - np.array(rest[k])) > 2e-5 for k in used)
-    key = ("head_p", json.dumps([head_desc(base), used if posed else None, base.get("girth")], sort_keys=True, default=float))
+    key = ("head_p", json.dumps([head_desc(base), used if posed else None, base.get("girth"), (base.get("style") or {}).get("human")],
+                                sort_keys=True, default=float))
     if key in _CACHE:
         return _CACHE[key]
     out = dict(ht)
@@ -300,19 +372,9 @@ def head(s: dict, base: dict) -> dict:
                 girth.setdefault(j[:-2] + ".R", gv)
         _, _, _, apply, _ = retopo._skeleton_warp(tpl["P"], tpl["J"], s, [], girth=girth)
         mv = lambda X: apply(np.atleast_2d(np.asarray(X, float)))[0]  # noqa: E731
-        W = mv(ht["verts"])
-        A0, A1 = ht["verts"] - ht["verts"].mean(0), W - W.mean(0)
-        Rp = retopo._kabsch(A0, A1) if hasattr(retopo, "_kabsch") else np.eye(3)
-        if np.abs(Rp @ A0[0] - A1[0]).max() > np.abs(Rp.T @ A0[0] - A1[0]).max():
-            Rp = Rp.T
-        faces = ht["faces"]
-        N, h = basemod._normals_and_h(W, faces)
-        cut, pn, band = ht["plane"]
-        carry = dict(ht["carry"])
-        carry["R"] = Rp @ carry["R"]
-        carry["eye_mid"] = mv(carry["eye_mid"])[0]
-        out.update(verts=W, normals=N, h=h, hmax=float(h.max()), tree=cKDTree(W), eyes=[mv(e)[0] for e in ht["eyes"]],
-                   forward=Rp @ ht["forward"], lm68=mv(ht["lm68"]), plane=(mv(cut)[0], Rp @ pn, band), carry=carry)
+        out = _carried(ht, mv)
+        out["one_mesh"] = True
+        out["room"] = True
     out["carry"] = {**out["carry"], "fade": asset()["g_fade"].astype(float)}
     _CACHE[key] = out
     return out

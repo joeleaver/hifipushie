@@ -1761,7 +1761,8 @@ def _head_hint(spec: dict) -> str:
 def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: float | None = None,
           height: float | None = None, seed: int | None = None, outfit: str | None = None,
           tone: float | dict | None = None, skin: dict | bool | None = None, head: dict | None = None,
-          bust: float | None = None, firmness: float | None = None, note: str = "", source: str = "makehuman") -> str:
+          bust: float | None = None, firmness: float | None = None, note: str = "", source: str = "makehuman",
+          style: str | dict | None = None) -> str:
     """A whole person from a description, saved as an ordinary model: "a 3-year-old girl" = human("mia", age=3,
     sex="female"). The body has that age's MEASURED proportions and size by default (stature from WHO's growth
     medians, the head-to-body proportion from children's anthropometry: 4.6 heads tall at 1 year, 5.4 at 3, 6.4 at 7,
@@ -1780,11 +1781,17 @@ def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.
     source: "makehuman" (default: a GNM head grafted onto the MakeHuman body at build time) or "human" = ONE MESH
     (onemesh.py: GNM's head topology stitched once onto MakeHuman's body; the body's own head carries the face, so
     there is no neck tube, cross-fade or head scale, and the skin weights are hand-made everywhere).
+    style (source "human" only): a style sheet name ("human_feature", "human_cartoon", "human_anime",
+    "human_lowpoly": ROUND 0 values, not yet fitted to references) or base.style keys, e.g. {"eyes": 1.3, "human":
+    {"head_size": 1.2, "nose": 0.4, "jaw": 0.2, "legs": 1.1, "limbs": 0.85}}: macro sliders that reshape the SAME mesh
+    (head_size, cranium, eye_spacing, eye_height, nose, nose_width, jaw, chin, cheeks, mouth, mouth_height,
+    exaggerate; legs, arms, torso, shoulders, hips, hands, feet, limbs, waist, chest), each clamped to a range tried
+    on renders. A style is an artistic decision: shape is only part of it (shading, line and paint are not here).
     Returns the body measured against the references for its age and sex."""
     from . import humans
     sp = humans.spec(age=age, sex=sex, weight=weight, muscle=muscle, height=height, seed=seed, outfit_kind=outfit,
                      tone=tone, skin=_spec_arg(skin) if isinstance(skin, str) else skin, head=_spec_arg(head) if head else None,
-                     bust=bust, firmness=firmness, source=source)
+                     bust=bust, firmness=firmness, source=source, style=_spec_arg(style) if isinstance(style, str) and style.strip().startswith("{") else style)
     full = {**empty_spec(), **sp}
     v = store.save(name, full, note or f"human: {humans.stage(float(age))}, {age:g} y")
     return (f"saved {name} v{v}: {humans.describe(full)}\n"
