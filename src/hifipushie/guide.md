@@ -457,6 +457,12 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   A-pose until air shows between limb and body, or thinner flesh there), not the weights. A rigger handed such a
   mesh would send it back, or cut the limb free and re-model the pit; weighting the fused patch to the body only
   hides the tear behind a stretched web.
+- **Read the export's quality lines.** Each part's line counts folded edges and faces turned against the surface,
+  and says `TORN OR TANGLED at <joint> (n), ...` when they cluster by a joint (a hand torn at the finger webs, a
+  tangle in an armpit): look at that place in clay (`rig(glb=..., focus=..., zoom=...)`) before shipping; the json
+  has `parts.<p>.quality.defects_by_joint`. A character on a base body exports the base's own quads
+  (`parts.body.topology = "wrap"`): hands and feet come out as modelled; `"template"` carries the stylised
+  template's topology on instead (it tore MakeHuman's hands) and is only for comparison.
 - **Check the numbers.** `rig` prints, under the bone list, a twist test per chain (the hand rolled 75 and 105
   deg, the arm 60, foot and thigh 40): the skin's twist by station along the segment, what is left at the joint,
   the largest step, the worst section's area against rest (flagged CANDY WRAPPER under 0.8) and the worst

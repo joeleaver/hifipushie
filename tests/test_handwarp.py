@@ -6,7 +6,11 @@ averaged those frames across each joint: bulging knuckles, grooves, a ring round
 Uses the CC0 template in the package (no asset packs). Run: uv run python tests/test_handwarp.py"""
 import numpy as np
 
+from pathlib import Path
+
 from hifipushie import retopo
+
+ROOT = Path(__file__).resolve().parent.parent
 
 SIDE = "L"
 
@@ -154,6 +158,34 @@ def test_curled_fingers():
     sel = _hand_verts(P, Jt)
     b0, b1 = _bumpiness(P, faces, sel), _bumpiness(W, faces, sel)
     assert b1 < 1.15 * b0, (b0, b1)
+
+
+def test_export_topology_is_the_bases_own():
+    """A base body exports its OWN quads (retopo.base_quads), on the field, with clean hands: the stylised
+    template's digit tubes carried onto MakeHuman's fingers tore both of the golfer's hands at the webs (88 / 81 / 71
+    folded or turned faces by finger joints in the shipped GLB). Skipped without the asset packs."""
+    import copy
+    import json
+    from hifipushie import asset
+    from hifipushie.spec import compile_prims
+    try:
+        spec = json.loads((ROOT / "examples" / "disc_golfer_mh.json").read_text())
+        # the bare body in the golfer's pose (no graft: it keeps its own head, and no Blender in this test)
+        b = {k: v for k, v in copy.deepcopy(spec["base"]).items() if k not in ("head", "style", "eyes", "look_at")}
+        spec = {"joints": {k: v for k, v in spec.get("joints", {}).items() if "pos" in v}, "base": b}
+        log = []
+        r = retopo.base_quads(spec, log)
+    except Exception as e:  # the packs aren't here
+        print("  (skipped: %s)" % str(e).splitlines()[0][:80])
+        return
+    assert r is not None and (r["sizes"] == 4).mean() > 0.99, log
+    T = np.asarray(retopo.tris(r["loops"], r["sizes"]))
+    prims = [p for p in compile_prims(spec) if p.part == "body"]
+    q = asset.mesh_quality(np.asarray(r["verts"], float), T, prims)
+    where = asset.defect_regions(q["spots"], spec)
+    hands = [(j, n) for j, n in where if j.startswith(("finger", "thumb", "wrist", "hand"))]
+    assert not hands, hands
+    assert q["err_mm_p99"] < 2.5 and q["non_manifold_edges"] == 0, q
 
 
 if __name__ == "__main__":
