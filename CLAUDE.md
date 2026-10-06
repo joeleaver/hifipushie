@@ -435,6 +435,50 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (cmuvmbarn00f6k6f2jcsm4x7b) still need this round's numbers; the twist and rigid-face cards were already DONE;
     (4) open: hem bones, the nape lump on a nod, the hand / disc dark patches, the arm's 20-25 mm on trapezius
     skin near the neck (MakeHuman's own Arm weight; sheet looks fine), a rig check in a real engine.
+  - Rig round 3 (2026-10-06, "rig3" agent, branch `worktree-agent-ac0c3684da084a02f`; renders `rig_renders/wc_*`;
+    exports /mnt/data/hifipushie/rig3/exp_*; scratch in the session scratchpad `rig3/`: run.sh, exp.py, sheets.py
+    (poses incl. nod_shared, knee90, rest_hips, hand_rest, smile_far / smile_near), strip.py (several sheets' engine
+    rows side by side), reskin.py + cmp.py + leak.py (RS=<rs npz> = re-skinned weights), throat.py, geo.py,
+    queue1-3.sh, tests.sh, gposes.json (Godot poses)).
+    - Geodesic weights for kit creatures: NOT adopted. On the REAL goblin_anat export (15k) both variants are worse
+      than ours by the audit (knee rigid p95 14 -> 22-28 mm, elbow 7-8 -> 15-17, leaks 20 -> 25-30 mm; only the
+      shoulder's rigid error improves, 11 -> 3.7 mm, with 3x the flipped triangles) and they TEAR in the render
+      (cracks in the armpit and the groin: `wc_geo_goblin_knee90.png`, glb = ours on top). On a decimated mesh the
+      edge-path distance is 10-40% long and jumps between neighbours, so the gate cuts an influence on one vertex and
+      not the next. The spike's good numbers were a look build's dense mesh. goblin_anat's own export (never checked
+      before): Khronos 0 / 0, rest / arm 60 / thigh 60 read clean in the engine row (`wc_goblin_anat_*`); its audit
+      says 29 of 45 BAD, which on stubby limbs (a blend zone as long as the segment) is the audit's human
+      thresholds, not the skin. Digit bleed 0.40-0.45 on its 3-finger hands is real and unchanged.
+    - Head falloff (the throat card): on base bodies the head's weight now fades down the neck's LENGTH
+      (`HEAD_FALL` 0.44 x head size ~11 cm, was 5) inside the neck's column (`HEAD_COLUMN`: full within 9 cm of the
+      Neck -> Head line, none past 15.5; outside it the old 5 cm, `HEAD_SHORT`), and `rigid_near`'s band on base
+      bodies is `HEAD_NEAR` ~8 cm (was 3). What riggers paint: a head-to-neck gradient over the whole neck. Bare
+      human 15k, Head alone (throat.py): turn 33 deg fold p99 / max 25.8 / 161 -> 11.7 / 30 deg, nod 25 deg 36 / 153
+      -> 14.5 / 28, edges folded over 30 deg 16-33 -> 0 (`wc_throat_fall_gnm.png`). Either change alone did half.
+      By height alone the long falloff reached the shoulders (trapezius skin moved 70 mm): hence the column. And
+      under it a collar averaged over `HEAD_WORN` and turned with the face again (57 mm): which part is head or
+      worn is judged on the SHORT field (`hf["part"]`). A `nape` factor (longer behind) changed nothing: left at 1.
+      Garments never take the long falloff (tried: the collar crumples). Cost on a dressed character: on a hard
+      Head-only nod the nape skin swings back against the collar's stand and pokes a sliver through it
+      (`wc_throat_golfer_nod.png`); the chin still sinks into the collar. Both go when the nod is shared with Neck.
+      Kit characters unchanged. `spec.rig.rigid_head` = {fall, band, under, column, nape}.
+    - `rig_drop` takes shares: `{"UpLeg": 0.5}` = half that joint's weight (its twist joints' too) up the chain.
+      The shirt hem on the golfer hardly reads it (its hem is already the pelvis's): no visible change at a 60 deg
+      thigh, flipped 41 -> 23. Hems, what riggers do (web search + the guide's section from rig2): weights toward
+      pelvis + thighs for shirts and shorts (have), skirt / coat chains driven by the thighs or springs in the
+      engine (not built: no test garment needs it; build it with the first skirt, as leaf joints after the set).
+    - The golfer's "ragged shirt hem" and "dark cracked hand" are MESH, at rest, in clay: the shirt's open hem edge
+      is wavy after decimation (`wc_golfer_rest_hips.png`), and the right hand that grips the disc is torn at the
+      thumb web and the knuckles (`wc_golfer_hand_rest.png`: jagged holes; body: 493 open edges, 217 folded, 18
+      non-manifold in the export log). Not weights, not the bake. Cause not chased (the wrap topology on a curled
+      hand whose fingers touch, or faces dropped as hidden where finger meets palm): card.
+    - A real engine: `spikes/godot_rig/` (check.gd, sheet.py): Godot 4.7 loads the GLB with its own importer at run
+      time, poses the Skeleton3D, drives the twist joints from `<name>.json` `rig.twist` by the recipe, sets face
+      shapes, writes PNGs. `godot --path spikes/godot_rig -s check.gd -- x.glb x.json <prefix> poses.json` (opens a
+      window for a few seconds). All 79 joints found (colon -> underscore), skin, maps, twist driving and shapes
+      work as exported; nothing needed changing. Not checked: a Mixamo clip retargeted, Unity, Unreal.
+    - 15k smile (`wc_gnm15k_smile_distances.png`): fine at full-figure distance, the corners kink from a bust
+      shot inward; 36k (`wc_talk_smile.png`) is fine. Blink at 36k: closed, a clean line.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
@@ -1341,6 +1385,56 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
       nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
       seams, or replace the sheet.
+    - Round 4, construction faults (the user on pd_52 / pd_55: "lapels aren't attached right", "stitches super
+      visible", "the skirt is unzipped"; renders pd_62..pd_6x). Diagnosed on the raw sims, all three were the same two
+      things: MADE PIECES PLACED WHERE THEY CAN'T END, and ZOZO stitches too weak to close a seam.
+      - The jacket's board: `front_facing` (wholly interfaced = made = carried rigid by the settle) was a plank 54 mm
+        off the body, 16-64 mm off its front, its seams never closed. A facing is now FUSED to its piece
+        (`op_facing` sets `wrap.fused`; `cloth.pieces` sets fused pieces and their seams aside in `Bp["fused"]`: one
+        cloth for the sim; `"separate": true` keeps a piece). The left front's lap is 4 + 10 mm (was 20).
+        `folds.apply`: a flap is only the cloth BESIDE its line: the button stand below a roll line's break point was
+        turned 170 deg into the other front (28 crossings, a "70 mm push").
+      - The skirt's V at centre back: the waistband (made) was laid on the garment's one cylinder (hip girth), 30 cm
+        open at the back, and carried rigid: its button stitch ended 352 mm open and the yokes sewn to its ends were
+        held apart. Now a band closed on itself among other torso pieces lies on the body's hull at ITS OWN level
+        (the narrowest slice over its height) at its closed girth; shorter than that + the solver's 4 mm clearance
+        is `B["band_short"]`, a stage 4 failure (the skirt needed waist ease 3%: its band sits above the waist line).
+      - Seams: the runner's own last line had said it all along (seam gaps mean / p95: trousers 3.5 / 14.5 mm, jacket
+        15.5 / 57.7, skirt 19.3 / 97.1). ZOZO's `stitch-stiffness` (default 1, its force capped by
+        `stitch-length-factor`) at 30 closed every draped seam to ~1 mm (a side seam starting 124 mm apart: 1.4 mm)
+        at 7x the time; 8 gives mean 3.1 mm at 3x. The sheets set `zozo.stitch_stiffness: 8`; the default is
+        clothsim's call (it stays 1). Clean-up welds seams again after the push off the body (the push reopened
+        them) and clay looks draw welded faces (`cloth.welded_faces`: duplicate seam vertices shaded as a pale line).
+        Stage 5 measures `seam_gap_p95_mm` (target <= 0.5) and `closure_gap_max_mm` (<= 6) and fails on them.
+      - Closures: stage 3 `cloth_workflow.openings`: every pair "<name>.L" / "<name>.R" at the centre must be joined
+        by a seam (a zip is sewn as one), stitches (buttons, a tie) or be declared (`design.open: [name]`). The
+        skirt sheet said `skirt_closure: "none"`: now `cb_zip`. A zip has no record or geometry yet: clothsim's
+        `closures` key (kind, over / under, line, lap, at, state) is agreed; the draft ops (buttons, stitch,
+        waistband) should emit its entries once it is on main.
+      - Tried and dropped: a waist-SHAPED start (per-level plan curves: the body's hull at each level out to the
+        pieces' span there). Seam start gaps 124 -> 15 mm, but 10-30% shear in the start: a pattern puts its taper in
+        the side seams and darts, a level-by-level wrap spreads it round the body, and arcs from the centre drift
+        between levels. Like CLO, pieces start apart on a simple surface and the SEWING closes them: the stitch
+        strength is the lever. Kept from it: in smooth placement the cylinder's girth is the SPAN of each side's
+        pieces per level (pleats closed, laid-on pieces out), not the sum of widths.
+      - Across cuts (a yoke): the lower part starts 6 mm off and a 3 mm layer out (a flared panel's top corner rises
+        past the yoke's at the side seam, on the same surface: crossings once a pocket added vertices there).
+      - Results (pd_66 jacket before/after, pd_67 / pd_65 skirt): jacket raw seam gaps 15.5 / 57.7 -> 1.4 / 2.5 mm
+        (mean / p95), after clean-up p95 0.5, no board, button 9 mm (target 6: fails), back collar 4% crumpled
+        (CORRUPT), body bloused and 6 cm shorter (stiffer stitches haul the fronts up to the carried collar). Skirt
+        19.3 / 97.1 -> 1.8 / 4.8 mm, closed at CB, fits; the top of the CB seam 14.8 mm and the band's button 25 mm
+        still open (a made band is pushed 4 mm off the body), pleat folds did not hold, pocket bags lump at the sides.
+      - `collar` type "tailored" (stand_height + fall on a roll line, back part an annular sector: outer edge 36 mm a
+        half longer than the neck edge, ends at the gorge; points cbNeck / cbRoll / cbOuter / endNeck / endRoll /
+        endOuter, edges collar_neck / _outer / _end). Pattern + unfold tested only; clothsim places it.
+      - STATE at the stop (usage limit, 2026-10-05): main merged in (60ffb1f). pd_64_trousers_zozo was queued behind
+        the heavy slot (log `drafting/pd_64_trousers_zozo.log`), not judged. The merge changed the sim cache key:
+        pd_62 / pd_63 need a re-sim for new looks. clothsim's taut `hpsToWaistBack` (on main after its merge) moved
+        every block: pd_wrap now fails stage 2 (waist ease +11.1%), and numeric y options in the sheets (lapel
+        break_y, style line y) need re-reading. Next: judge trousers; the button / band-top gaps (lap, the made
+        band's clearance); switch buttons / stitch / waistband ops to clothsim's `closures` key once merged and read
+        it in `cloth_workflow.openings`; re-fit the sheets to the new measures; anorak + tunic on ZOZO; run
+        tests/test_cloth.py; the ranked "any garment from prose" proposal.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
@@ -1426,12 +1520,68 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       direction (NaN) and were dropped, so nothing sewed the seam (the "drafting" agent's jacket CB stood open).
       `cloth_zozo.part_stitches`: each such end steps 1 mm back into its own cloth (layers part along the normal),
       held/made ends stay; job `stitch_gap` (0 = drop as before).
-    - STATE when the usage limit stopped clothsim (2026-10-05): `over` / `support` / `layer_gap` are in the design
-      sheet, validation and stages 3 / 5 (untested beyond the cloth tests). The shirt regression run after the merge
-      of drafting's placement + parted stitches (scratch log fl_17) was NOT judged: its settle finished (1135 s on a
-      loaded machine, was 263 s), the fine settle reported "start stretch up to 120%" and was waiting for the heavy
-      slot. Next: judge that run against fl_16's numbers, then `ly_01` (Jaeger over Simon; ZOZO at
-      $HIFIPUSHIE_ZOZO=/mnt/data/hifipushie/assets/zozo/release), then the joint settle and the lapel facing.
+    - Jacket rounds (2026-10-06, renders ly_01-ly_03, models `workspace/ly_jkt` (Jaeger alone) / `ly_suit`):
+      ly_01 (Jaeger over Simon) was a puffer with a ruff. Causes, each separated on the jacket alone first:
+      (1) `padded_body` spread every fold's crest three rings round (pad 29 mm at the median, to 71, over a shirt
+      8-16 mm off the body: "biceps" 534 vs 340). Now one ring, and the under garment is `pressed` first (its loose
+      cloth to `UNDER_CAP` 8 mm off the body along the body's normals, made pieces as they are, eased 3 cm round
+      them; garment key `under_cap`): that pressed surface is the pad, the sim's collider, what the tells read and
+      what renders show under the jacket (`res["under_V"]`).
+      (2) The neck wrap is a ring round the neck: a tailored collar's stand (291 mm, sewn to a neckline that lies on
+      the shoulders and runs down to the gorge) stood under the skull; tilted it went through the shoulders. Wrap
+      `"to": "seam"` (`cloth._on_seam`): the piece's sewn edge laid on the edge it is sewn to (the seam's own vertex
+      pairs), at the PATTERN's lengths, marched from the middle along the body's surface (the placed neckline is
+      not one curve: fronts and backs start apart, 778 mm for 291; past a gap it heads for the edge's end), the piece
+      running up the surface from there; `turn` {at, deg, gap} lays a fall over in the wrap (its fold `in_wrap`).
+      Pieces are placed in listed order: what it is sewn to must come first.
+      (3) `sizing` read -116 mm at the chest: the body's chest line is 10 cm above Jaeger's side panel's top, so the
+      panel wasn't measured; the chest is now taken just under a panel that starts under the arm.
+      Jaeger alone, 2 cm ZOZO settle: reads as a jacket, 0 sim crossings (4 from the clean-up at the vent), strain
+      0.8%, sleeves to the wrists, lapels 164 deg; the collar is a lumpy roll (its fall starts 1.25x stretched: in
+      FreeSewing's draft the collar's outer edge is SHORTER than its neck edge, both bow toward the fall; the author's
+      own comment says the collar wants a redesign), fronts spread below the buttons (no facing), surface crinkly.
+    - BODY MEASUREMENTS MOVED (2026-10-06; every draft changes, results before it are not comparable). Checked
+      against FreeSewing's own standard masculine body (packages/models neckstimate: chest 1000, hpsToWaistBack 470,
+      waistToArmpit 210, hpsToBust 280, shoulderToShoulder 450, biceps 350, shoulderSlope 13):
+      (1) the down-the-body tapes are TAUT now (a hull over the lumbar hollow and the slices' bumps; `tailor.down`).
+      hpsToWaistBack standard / heavy / thin body: 545 -> 486, 536 -> 510, 542 -> 481 mm; hpsToBust 331 -> 282.
+      FreeSewing's armhole depth is hpsToWaistBack - waistToArmpit: 314 -> 255 (its standard: 260). Simon's and
+      Jaeger's armhole base sat 331 mm below hps on a body whose armpit is 207 below it: the "bomber" jacket, the
+      rolls across the upper back with the arms out, the body of every shirt 6 cm long. Now 273; Jaeger's CB length
+      802 -> 732.
+      (2) shoulderSlope is the slope of the shoulder LINE (a fit through the top of the shoulder from 2 cm outside
+      hps to the shoulder point), not the chord from hps, which is taken 2 cm up the neck's side: 28 -> 21, 26 -> 26,
+      29 -> 22 deg (the hanger's own fit to the surface had read 17; `at["shoulder_slope_chord"]` keeps the old one).
+      Still unlike the standard: shoulderToWrist 553 (630: these bodies' arms are short), slope 21 (13).
+      The sim cache can't reuse an old sim across this: its key is the sim's own inputs (start, pattern, seams).
+      Not yet verified by a sim when written; drafting's blocks use the same measures uncompensated.
+    - STATE at the usage-limit stop (2026-10-06, clothsim; branch worktree-agent-a2f0fa7013024989a, NOT mergeable):
+      nothing after ly_03 is verified by a sim. Unverified, in order of risk: the taut tape + shoulder slope (every
+      draft), the clean-up against the real body + crossings reverted for every garment + group welds, the fine
+      settle's body offset fitted to the start (`_start_separation`), closures (band rows, relief, buttons in look /
+      export / scene), `pressed` + the one-ring pad. Running when stopped: `cl_01` (zz_shirt with closures, scratch
+      log clothsim/cl_01.log; its coarse sim is cached, the fine settle was waiting for the heavy slot; it was
+      started BEFORE the shoulder-slope change, so its draft has the taut tape only). Next: judge cl_01 (front / cuff
+      close-ups, clay + textured, against fl_17; seam gaps line; closures line), re-run it on the final measures,
+      then `go.sh ly_03` again (ly_suit shirt re-simulates first), then pads (`support`), collar hug, vents (a
+      lapped vent = one extension flat under, the other folded: both are folded under today), drafting's tailored
+      collar (`{"op": "collar", "type": "tailored"}` on its branch, commit 112c5bf) in place of Jaeger's, Simon's
+      cuff seam (-3.0%: sleeve hem 198.9 into a 205.1 cuff, probably the slit's lips). Gates old vs new measures:
+      only pd_wrap changed (waist +11.1%, band +3..+10).
+    - Seams (the user: "stitches super visible"): ZOZO leaves seams a few mm open (Jaeger mean 4.3 / p95 17.8 mm at
+      stitch stiffness 1; drafting measured 30 closes them at 6x the time). `cleanup` welds sewn vertices as GROUPS
+      (a vertex in two seams kept only its last pair), weighted toward interfaced vertices, and again after the push
+      off the body. Gaps over 1.5 h stay: a seam the solver didn't close should fail, not be hidden.
+    - Closures (`closures.py`, design-table / garment key `closures`; the user on the shirt: "doesn't have a placket
+      or buttons"; schema agreed with drafting): {name, kind buttons | zip | hooks | tie, over, under (same piece for
+      a cuff / waistband), holes / buttons mark prefixes or `at` pairs, edge {over, under}, band, size, lift, state
+      closed | open | {open_above}}. `expand` -> the stitches (one per closed fastening), a vertex row on each
+      band's inner line (a fold entry at 180 deg, `in_wrap`), zips' seams; `M["closures"]` = vertex pairs;
+      after the sim `measure` (`res["closures"]`, the report, stage 5: fastenings closed, sides <= 6 mm apart, none
+      lost in the mesh), `relief` (bands `lift` 0.8 mm proud) and `buttons_mesh` (`res["buttons"]`: discs with a rim
+      on the over layer; in `look`). Stage 3 lists them and fails a chosen front_closure / cuff / fly with no entry.
+      Simon's front and cuffs are entries now (its table's bare stitches are gone). Not done: buttons in the export
+      and the scene, drafting's zip-in-a-seam / fly / waistband extension, `cloth_workflow.openings` reading state.
     - Open: the yoke ridge behind the collar; the upper sleeve's folds still read busy; Carlton pinned to
       `method: "simulate"` (upper-back pleat bunches, tail knife pleat is a seam gap, cap split +7.5 / -5.0%, stand
       +4%, collar +4.5%).

@@ -60,7 +60,7 @@ class Ctx:
     @property
     def body(self) -> "cloth.Body":
         if self._body is None:
-            self._body = cloth.Body(cloth.model_body(self.name, self.spec, self.g))
+            self._body = cloth.Body(cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True)))
         return self._body
 
     @property
@@ -158,7 +158,9 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         o["fail"].append(f"pieces sewn to nothing: {', '.join(loose)} (a seam table entry is missing)")
     # ease vs the body, per girth, in the fit's band
     D = garment_design.dims(Bp, c.meas)
-    bands = (c.res or {}).get("fit_bands") or next(iter((c.kind_kb.get("fit") or {}).values()), {})
+    fits = c.kind_kb.get("fit") or {}
+    # (no design sheet = no fit stated: the kind's regular band, else its first)
+    bands = (c.res or {}).get("fit_bands") or fits.get("regular") or next(iter(fits.values()), {})
     if c.meas and any(Bp["pieces"][n]["wrap"].get("to", "torso") == "torso" for n in Bp["pieces"]):
         sz = cloth.sizing({"pieces": Bp, "body": c.body})["rows"]
         R = garment_design.roles(Bp)
@@ -269,6 +271,50 @@ def _sewing_order(c: Ctx) -> list:
     return steps
 
 
+def openings(c: Ctx) -> list:
+    """[(text, ok)]: every pair of pieces "<name>.L" / "<name>.R" on the torso or legs, and whether something joins
+    the two sides: a seam between them (a centre seam; a zip is sewn as one), stitches from one side's pieces to the
+    other's (buttons, a tie), or a band buttoned to itself sewn to both (a waistband). Not joined = an opening: fine
+    only when the sheet says so."""
+    Bp = c.Bp
+    pcs = Bp["pieces"]
+    flat = lambda s: [s] if isinstance(s, str) else list(s)
+    side_of = lambda e: e.split(":")[0]
+    declared = set((c.sheet or {}).get("open") or [])
+    det = (c.res or {}).get("details") or {}
+    open_words = {d: str(v.get("choice")) for d, v in det.items() if d in ("front_closure", "skirt_closure", "fly")}
+    out = []
+    bases = sorted({n[:-2] for n in pcs if n.endswith(".L") and n[:-2] + ".R" in pcs
+                    and pcs[n]["wrap"].get("to", "torso") in ("torso", "leg.L")})
+    self_closed = {a.split(":")[0] for a, b in Bp["stitches"] if a.split(":")[0] == b.split(":")[0]}
+    for b in bases:
+        L, R = b + ".L", b + ".R"
+        seam = any({L, R} <= ({side_of(e) for e in flat(s[0])} | {side_of(e) for e in flat(s[1])})
+                   and any(side_of(e) == L for e in flat(s[0]) + flat(s[1])) and
+                   (({side_of(e) for e in flat(s[0])} == {L} and {side_of(e) for e in flat(s[1])} == {R}) or
+                    ({side_of(e) for e in flat(s[0])} == {R} and {side_of(e) for e in flat(s[1])} == {L}))
+                   for s in Bp["seams"])
+        st = [1 for a, b_ in Bp["stitches"] if {side_of(a)[-2:], side_of(b_)[-2:]} == {".L", ".R"}
+              and (side_of(a) in (L, R) or side_of(b_) in (L, R))]
+        role = garment_design.role_of(L, pcs[L])
+        if seam:
+            continue
+        # joined through other pieces all the way (side panels, a back): only CENTRE pieces can be open: those
+        # with an edge near x = 0 that is sewn to nothing
+        P = pcs[L]["P"]
+        if float(np.abs(P[:, 0]).min()) > 0.03 and not st:
+            continue
+        if st:
+            out.append((f"opening between {L} and {R}: closed by {len(st)} stitch(es) (buttons / tie)", True))
+            continue
+        said = b in declared or L in declared or any("open" in w or "wrap" in w for w in open_words.values())
+        out.append((f"opening between {L} and {R} ({role}): nothing closes it"
+                    + (" (declared open in the sheet)" if said else
+                       ": add a closure (op buttons / stitch; a zip = block centre \"seam\", or op closure) or declare "
+                       f"it: design \"open\": [\"{b}\"]"), said))
+    return out
+
+
 def stage_construction(c: Ctx) -> dict:
     o = _out("construction")
     Bp, pcs = c.Bp, c.Bp["pieces"]
@@ -287,6 +333,11 @@ def stage_construction(c: Ctx) -> dict:
     outs = {n: float(pcs[n]["wrap"].get("out", 0)) for n in pcs}
     lay = [f"{n} {v * 1000:.0f} mm out" for n, v in outs.items() if v > 0]
     o["info"].append("layers (start offsets; the outer lies over): " + (", ".join(lay) or "none"))
+    # openings: a left and a right piece of the same name that nothing joins is an OPEN edge. It needs a closure
+    # (buttons / a tie = stitches across; a zip = the opening sewn shut) or to be declared open in the sheet
+    # (front_closure / skirt_closure "open", or "open": [piece names])
+    for line, ok in openings(c):
+        (o["info"] if ok else o["fail"]).append(line)
     # folds
     for f in Bp.get("folds") or []:
         try:
@@ -335,6 +386,26 @@ def stage_construction(c: Ctx) -> dict:
         for n, (how, _) in md.items():
             if how == "made" and n not in folded and garment_design.role_of(n, pcs[n]) in ("collar_fall", "facing"):
                 o["fail"].append(f"{n} is made but has no fold line: it can't be constructed turned without one")
+    # closures: the laps and what holds them (closures.py); a closure the sheet chose must be in the pattern
+    cls = Bp.get("closures") or []
+    for cl in cls:
+        n_c = sum(cl["closed"])
+        o["info"].append(f"closure {cl['name']}: {cl['kind']}, {cl['over']} laps over {cl['under']}"
+                         + (f" by its band ({cl['band']})" if cl.get("band") else "")
+                         + f", {len(cl['pairs'])} fastenings, {n_c} closed (state {cl['state']}); the lap is held by "
+                         "stitches at the fastenings, not a seam; buttons are geometry on the over layer")
+    want = {"front_closure": ("buttons", "double_breasted", "single_button"), "cuff": ("barrel", "french"),
+            "fly": ("button_fly",)}
+    roles = {"front_closure": ("front",), "cuff": ("cuff",), "fly": ("fly", "front")}
+    for d, choices in want.items():
+        ch = (((c.res or {}).get("details") or {}).get(d) or {}).get("choice")
+        if ch in choices and not any(garment_design.role_of(cl["over"], pcs.get(cl["over"])) in roles[d] for cl in cls):
+            # (older tables write the same thing as bare stitches: still a closure, but nothing records it)
+            st_ = [a for a, b in Bp["stitches"] if garment_design.role_of(a.split(":")[0], pcs.get(a.split(":")[0])) in roles[d]]
+            (o["warn"] if st_ else o["fail"]).append(
+                f"{d}: {ch} was chosen but the pattern has no closure for it"
+                + (" (only bare stitches: write it as a `closures` entry so the lap, the band and the buttons are made "
+                   "and checked)" if st_ else " (design-table / garment key `closures`)"))
     # layering: what this garment is worn over, and what holds its shape from inside
     ov = c.gx.get("over")
     if ov:
@@ -483,6 +554,10 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
                          "a sleeve cap inside the armhole and a cuff's own overlap are usual at 2 cm)")
     else:
         o["info"].append("start: no piece passes through another")
+    for p, v in (Bp.get("band_short") or {}).items():
+        o["fail"].append(f"{p} is {v} mm too short to close where it sits (the body's girth there + the solver's "
+                         f"{cloth.SMOOTH_CLEAR * 1000:.0f} mm clearance): it is held as made, so its button stays open and "
+                         "what is sewn to its ends is held apart. More waist ease, or a band that sits lower")
     push = Bp.get("push") or {}
     for p, v in push.items():
         pc = Bp["pieces"][p]
@@ -602,6 +677,19 @@ def sim_measures(res: dict, c: Ctx) -> dict:
     gaps = _layer_gaps(V, M, Bp, _overlap_pairs(Bp))
     if gaps:
         out["layer_gap_mm"] = gaps
+    # seams must END closed: an open seam shows as a line of light down the garment. p95 over all sewn pairs, and
+    # the worst seams by name; closures (button / zip stitches) the same
+    if len(M.get("sew", [])):
+        sw = np.asarray(M["sew"])
+        gp = np.linalg.norm(V[sw[:, 0]] - V[sw[:, 1]], axis=1) * 1000
+        out["seam_gap_p95_mm"] = round(float(np.percentile(gp, 95)), 2)
+        if "sew_seam" in M:
+            ss = np.asarray(M["sew_seam"])
+            worst = sorted(((float(np.percentile(gp[ss == si], 95)), int(si)) for si in np.unique(ss)), reverse=True)[:3]
+            out["_open_seams"] = [f"{json.dumps(Bp['seams'][si])[:90]}: {g_:.1f} mm" for g_, si in worst if g_ > 0.5]
+    st = np.asarray(M.get("stitch", [])).reshape(-1, 2)
+    if len(st):
+        out["closure_gap_max_mm"] = round(float(np.linalg.norm(V[st[:, 0]] - V[st[:, 1]], axis=1).max()) * 1000, 1)
     ix = lambda n: np.where(M["piece"] == M["names"].index(n))[0]
     # the collar: how far the fall's edge lies below the neckline seam at CB, and its points on the shirt
     if R.get("collar_fall") and R.get("collar_stand"):
@@ -693,6 +781,11 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
             o["warn"].append(txt + f" - not judged at {q} {h * 1000:.0f} mm")
         else:
             o["info"].append(txt)
+    if "seam_gap_p95_mm" in meas:
+        judge("seam_gap_p95_mm", meas["seam_gap_p95_mm"], "seams left open, p95 of sewn pairs (mm)"
+              + ("; widest: " + "; ".join(meas["_open_seams"]) if meas.get("_open_seams") else ""))
+    if "closure_gap_max_mm" in meas:
+        judge("closure_gap_max_mm", meas["closure_gap_max_mm"], "closures (button / zip stitches), widest gap (mm)")
     if "layer_gap_mm" in meas:
         judge("layer_gap_mm", meas["layer_gap_mm"], "layer gaps (mm)")
     if "collar_cover_mm" in meas:
@@ -718,6 +811,11 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
             o["fail"].append(txt + ": the fold didn't hold (a made piece simulated out of shape?)")
         else:
             o["info"].append(txt)
+    for r_ in res.get("closures") or []:
+        txt = (f"closure {r_['name']} ({r_['kind']}): {r_['closed']} of {r_['fastenings']} fastenings closed"
+               + ("" if r_["gap_max_mm"] is None else f", sides {r_['gap_max_mm']} mm apart at most")
+               + (f", {r_['lost']} lost in the mesh" if r_["lost"] else ""))
+        (o["info"] if r_["ok"] else o["fail"]).append(txt + ("" if r_["ok"] else ": the closure isn't in the result as chosen"))
     for k_, label in (("collar_show_mm", "under collar above this collar at CB (mm)"),
                       ("cuff_show_mm", "under cuff past this sleeve's hem (mm)"),
                       ("lapel_gap_mm", "lapels off the fronts they lie on (mm)"),
@@ -740,6 +838,9 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
 
 def run(name: str, gname: str, stages=STAGES, images: bool = True, spec: dict | None = None) -> list:
     c = Ctx(name, gname, spec)
+    # stages 1-3 read the body's tape and the pattern only: a layered garment's under garment is not simulated for
+    # them (the gate of a jacket over a shirt sat waiting for the heavy slot to sim the shirt)
+    c.simulate = any(s in ("place", "sim") for s in stages)
     out = []
     for s in stages:
         try:

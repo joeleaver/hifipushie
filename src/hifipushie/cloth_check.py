@@ -102,7 +102,8 @@ def seams(Bp: dict, garment_kind: str = "") -> list:
             # (a mark of the other side that another of this side's marks already meets isn't this one's partner: a
             # belt's ends either side of the waist notch its own middle notch sits on)
             taken = any(abs(f2 - fb) * lb * 1000 <= NOTCH_MM for n2, f2 in marks[0] if n2 != na)
-            if abs(fa - fb) < 0.08 and d > NOTCH_MM and not taken:
+            # (two seam crossings needn't meet: a two-piece sleeve's hindarm seam lies near the back pitch, not on it)
+            if abs(fa - fb) < 0.08 and d > NOTCH_MM and not taken and not (na.startswith("|") and nb.startswith("|")):
                 miss.append((na, nb, round(d, 1)))
         rows.append({"a": A, "b": B, "kind": kind, "len_a_mm": round(la * 1000, 1), "len_b_mm": round(lb * 1000, 1),
                      "ease": round(ease, 4), "band": (lo, hi), "ok": bool(ok), "notches_off": miss})

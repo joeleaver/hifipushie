@@ -266,6 +266,34 @@ def _assets_default() -> str | None:
 
 # ---------------------------------------------------------------------------------------------- department API
 
+def packs_state(assets: str | None) -> dict:
+    """The REQUIRED asset packs (assets.json, not the optional ones) checked against THIS version's manifest:
+    {"ok", "problems": {pack: [first few]}, "dir"}. A version update can change a pack's files (MakeHuman's
+    hand-made weights, 2026-10-05) while the directory the runner was set up with stays as it was."""
+    if not assets:
+        return {"ok": False, "problems": {"assets": ["no asset packs directory (HIFIPUSHIE_ASSETS)"]}, "dir": None}
+    os.environ["HIFIPUSHIE_ASSETS"] = assets
+    from . import assets as packs
+    try:
+        required = [n for n, p in packs.manifest().items() if not p.get("optional")]
+        probs = {n: v[:5] for n, v in packs.verify(required).items() if v}
+    except (OSError, ValueError) as e:
+        probs = {"assets": [f"{type(e).__name__}: {e}"]}
+    return {"ok": not probs, "problems": probs, "dir": assets}
+
+
+def refetch_packs(assets: str, names: list[str]) -> str | None:
+    """Download what is missing or damaged in these packs (by checksum, into the runner's packs directory); the
+    error text when it couldn't."""
+    os.environ["HIFIPUSHIE_ASSETS"] = assets
+    from . import assets as packs
+    try:
+        packs.fetch([n for n in names if n in packs.manifest()], log=lambda m: log.info("packs: %s", m))
+    except Exception as e:  # (network, a changed source: the runner stays not ready and says so)
+        return f"{type(e).__name__}: {e}"
+    return None
+
+
 class HTTPError(Exception):
     def __init__(self, status: int, body: str):
         super().__init__(f"HTTP {status}: {body[:300]}")
@@ -443,6 +471,25 @@ class Runner:
         self.need_register = threading.Event()
         self.uploaded: set[str] = set()
         self.stop = threading.Event()
+        # Asset packs: checked now (quick: checksums); a damaged or outdated pack is refetched in the background and
+        # the runner registers NOT READY meanwhile (equipment.packs.ok false: the department offers it no sessions).
+        self.packs = packs_state(cfg.assets)
+        if not self.packs["ok"]:
+            log.warning("asset packs not usable: %s", self.packs["problems"])
+            if cfg.assets:
+                threading.Thread(target=self._refetch_packs, daemon=True, name="packs").start()
+
+    def _refetch_packs(self):
+        err = refetch_packs(self.cfg.assets, list(self.packs["problems"]))
+        state = packs_state(self.cfg.assets)
+        if err:
+            state.setdefault("problems", {}).setdefault("fetch", []).append(err)
+            log.error("asset packs: could not refetch (%s); this runner stays NOT READY. Fix: "
+                      "HIFIPUSHIE_ASSETS=%s hifipushie-assets fetch, then restart the runner", err, self.cfg.assets)
+        else:
+            log.info("asset packs: %s", "refetched, ready" if state["ok"] else f"still not usable: {state['problems']}")
+        self.packs = state
+        self.need_register.set()  # tell the department (re-registering is how equipment changes)
 
     # -- registration and heartbeat
 
@@ -451,6 +498,7 @@ class Runner:
         if self.gpu is not None:
             eq.update(eevee=self.gpu["eevee"], workbench=self.gpu["workbench"], gpu_renderer=self.gpu.get("renderer"),
                       gpu_backend=self.gpu.get("backend"))
+        eq["packs"] = {"ok": self.packs["ok"], "problems": self.packs["problems"]}
         body = {"name": self.cfg.name, "artist": ARTIST, "artist_version": artist_version(), "contract": CONTRACT,
                 "mode": self.cfg.mode, "equipment": eq, "capabilities": self.caps,
                 "instructions": instructions() + gpu_note(self.gpu)}
@@ -589,6 +637,8 @@ class Runner:
         except Exception as e:  # (the runner reports, it doesn't fall over)
             log.exception("task %s", tid)
             res = _error(f"{type(e).__name__}: {e}")
+        if res.get("status") == "error":  # in runner.log too: the department's copy is one task among many
+            log.warning("task %s (%s) failed: %s", tid, task.get("tool"), (res.get("error") or {}).get("message"))
         if task.get("tool") == "_open" and res.get("status") != "ok" and self.session \
                 and self.session.id == task.get("session_id"):
             self._drop_session()  # an open that failed (e.g. hydrating) leaves nothing behind
