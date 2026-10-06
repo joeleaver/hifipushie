@@ -105,6 +105,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     g = expanded(g)
     pat = g.get("pattern")
     gen, folds_tbl, seam_notes = [], [], {}
+    closures_in = []
     from . import garment_blocks
     if pat and pat.get("from") in garment_blocks.BLOCKS:  # our own drafts (a skirt block): pieces + seams
         m = dict(meas_mm)
@@ -170,6 +171,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches += tbl.get("stitches", [])
         interfaced += tbl.get("interfaced", [])
         folds_tbl += tbl.get("folds", [])
+        closures_in += [dict(c) for c in tbl.get("closures", [])]
     for nm, pd in (g.get("pieces") or {}).items():
         pc = pattern.from_spec(nm, pd)
         pc["wrap"] = dict(pd.get("wrap") or {})
@@ -191,6 +193,15 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches += st_
         interfaced += i_
     interfaced = interfaced + [e for e in g.get("interfaced", []) if e not in interfaced]
+    # closures (closures.py): a lap held by fastenings; the garment's entry replaces the table's of that name
+    from . import closures as closuremod
+    for c in g.get("closures") or []:
+        closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(c)]
+    closuremod.validate(closures_in)
+    st_c, folds_c, seams_c, closures_out = closuremod.expand(closures_in, out)
+    stitches += [s_ for s_ in st_c if s_ not in stitches]
+    seams += seams_c
+    folds_tbl += folds_c
     keep = set(out)
     side_ok = lambda s: all(e.split(":")[0] in keep for e in ([s] if isinstance(s, str) else s))
     seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
@@ -208,7 +219,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     for src in ((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("made"), g.get("made")):
         if src:
             made_own.update(src if isinstance(src, dict) else {nm: "made" for nm in src})
-    return {"pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
+    return {"closures": closures_out, "pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
             "draft": draft_info, "folds": folds, "seam_notes": seam_notes, "made": made_own,
             "tacks": [t for t in list((designs().get((g.get("pattern") or {}).get("from") or "", {}) or {}).get("tacks") or [])
@@ -551,10 +562,12 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         fd["rows"] = [np.array([remap[i] for i in dict.fromkeys(row) if used[i]], np.int64) for row in fd["rows"]]
     from . import garment_design
     mod = garment_design.made_or_draped(dict(B, interfaced=B.get("interfaced", [])), None, {"made": B.get("made") or {}})
+    from . import closures as closuremod
+    marks_n = {k: int(remap[v]) for k, v in marks.items() if used[v]}
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "made": [nm for nm in names if mod[nm][0] == "made"],
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
-            "marks": {k: int(remap[v]) for k, v in marks.items() if used[v]},
+            "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n),
             "points": pts_n, "border": border_n}
 
 
@@ -2582,15 +2595,26 @@ def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body",
     # body by its nearest vertices' planes; a body vertex 1.6-1.9 mm under the middle of a sleeve's triangle stopped
     # the solver at its first step)
     vn, _ = body.normals()
+    # (with the body's edge midpoints: an edge of the body 1.9 mm from an edge of the cloth, both ends of each
+    # further off, stopped the solver the same way: "edge-edge pair's separation has collapsed")
+    bT = body.T
+    bE = np.unique(np.sort(np.r_[bT[:, [0, 1]], bT[:, [1, 2]], bT[:, [2, 0]]], 1), axis=0)
+    BP = np.r_[body.V, 0.5 * (body.V[bE[:, 0]] + body.V[bE[:, 1]])]
+    BN = np.r_[vn, vn[bE[:, 0]] + vn[bE[:, 1]]]
+    BN /= np.maximum(np.linalg.norm(BN, axis=1, keepdims=True), 1e-12)
+    near_ = cKDTree(V[free]).query(BP, distance_upper_bound=0.05)[0] < 0.05 if free.any() else np.zeros(len(BP), bool)
+    BP, vn = BP[near_], BN[near_]
     for _ in range(4):
+        if not len(BP):
+            break
         tc = cKDTree(V[Ff].mean(1))
-        _, nb = tc.query(body.V, k=min(12, len(Ff)))
-        nb = nb.reshape(len(body.V), -1)
+        _, nb = tc.query(BP, k=min(12, len(Ff)))
+        nb = nb.reshape(len(BP), -1)
         push = np.zeros(len(V))
         dirs = np.zeros_like(V)
         for k in range(nb.shape[1]):
             T = Ff[nb[:, k]]
-            dd = _pt_tri(body.V, V[T[:, 0]], V[T[:, 1]], V[T[:, 2]])
+            dd = _pt_tri(BP, V[T[:, 0]], V[T[:, 1]], V[T[:, 2]])
             bad = np.where(dd < face_gap)[0]
             for c in range(3):
                 np.maximum.at(push, T[bad, c], face_gap - dd[bad] + 3e-4)
@@ -2601,6 +2625,31 @@ def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body",
         dirs[mv] /= np.maximum(np.linalg.norm(dirs[mv], axis=1, keepdims=True), 1e-12)
         V[mv] += dirs[mv] * push[mv, None]
     return V
+
+
+def _start_separation(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bT: np.ndarray) -> float:
+    """The least distance between the cloth and its collider at the start (m), both ways: the collider's vertices
+    and three points along each of its edges against the cloth's triangles, and the cloth's against the
+    collider's (an edge-edge approach lies between the vertices of both)."""
+    def pts(Vx, Fx):
+        E = np.unique(np.sort(np.r_[Fx[:, [0, 1]], Fx[:, [1, 2]], Fx[:, [2, 0]]], 1), axis=0)
+        return np.concatenate([Vx] + [Vx[E[:, 0]] + t * (Vx[E[:, 1]] - Vx[E[:, 0]]) for t in (0.25, 0.5, 0.75)])
+    best = np.inf
+    for (Va, Fa), (Vb, Fb) in (((bV, bT), (V, F)), ((V, F), (bV, bT))):
+        P = pts(np.asarray(Va, float), np.asarray(Fa, np.int64))
+        Vb, Fb = np.asarray(Vb, float), np.asarray(Fb, np.int64)
+        cen = Vb[Fb].mean(1)
+        tree = cKDTree(cen)
+        d0, _ = tree.query(P)
+        P = P[d0 < 0.03]  # (only what is near: the rest can't be the minimum)
+        if not len(P):
+            continue
+        _, nb = tree.query(P, k=min(10, len(Fb)))
+        nb = nb.reshape(len(P), -1)
+        for k in range(nb.shape[1]):
+            T = Fb[nb[:, k]]
+            best = min(best, float(_pt_tri(P, Vb[T[:, 0]], Vb[T[:, 1]], Vb[T[:, 2]]).min()))
+    return float(best)
 
 
 def _pt_tri(P: np.ndarray, A: np.ndarray, B: np.ndarray, C: np.ndarray) -> np.ndarray:
@@ -2799,7 +2848,8 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
     T = body.T
     E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
     covered = pad > 0
-    for _ in range(3):  # spread over the vertices between the garment's own (max), then even out
+    for _ in range(1):  # spread onto the vertices between the garment's own (max: one ring; three rings carried
+        # every fold's crest 3 cm round, a pad of 29 mm at the median over a shirt 8-16 mm off the body), then even out
         m = pad.copy()
         np.maximum.at(m, E[:, 0], pad[E[:, 1]])
         np.maximum.at(m, E[:, 1], pad[E[:, 0]])
@@ -2815,6 +2865,43 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
     b = Body({"V": body.V + vn * pad[:, None], "F": body._faces, "J": body.J})
     b.pad = pad
     return b
+
+
+UNDER_CAP = 0.008  # m off the body: how far a garment's loose cloth stands under another worn over it
+
+
+def pressed(under: dict, body: "Body", cap: float = UNDER_CAP) -> np.ndarray:
+    """A finished garment as it lies UNDER another: its loose cloth pressed toward the body to at most `cap` off it
+    (a shirt blouses 2-5 cm at the sleeves and the back; a jacket's sleeve and body flatten that, and frozen as
+    simulated the shirt held the jacket out like a puffer), its made pieces (collar, stand, cuffs: what shows) as
+    they are, the cloth next to them eased over a few cm. Vertices move along the body's normal; nothing is solved."""
+    res = under["res"]
+    M, V = res["mesh"], np.array(under["V"], float)
+    vn, tree = body.normals()
+    n = vn[tree.query(V)[1]]
+    cl = body.clearance(V)
+    made = np.isin(M["piece"], [M["names"].index(nm) for nm in made_pieces(M, interfacing(res["pieces"], M)) if nm in M["names"]])
+    keep = np.where(made, 1.0, 0.0)  # 1 = stays as simulated
+    F = M["F"]
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]], np.asarray(M["sew"]).reshape(-1, 2)], 1), axis=0)
+    hm = float(np.median(np.linalg.norm(V[F[:, 0]] - V[F[:, 1]], axis=1)))
+    for _ in range(max(2, int(round(0.03 / max(hm, 1e-4))))):  # ease over ~3 cm from the made pieces
+        acc, wt = np.zeros(len(V)), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], keep[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], keep[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        keep = np.where(made, 1.0, np.maximum(keep * 0.0, acc / np.maximum(wt, 1)))
+    move = np.maximum(cl - cap, 0.0) * (1.0 - keep)
+    for _ in range(2):  # (even: neighbours pressed alike)
+        acc, wt = np.zeros(len(V)), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], move[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], move[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        move = np.where(made, 0.0, 0.5 * move + 0.5 * acc / np.maximum(wt, 1))
+    move = np.minimum(move, np.maximum(cl - 0.002, 0.0))
+    return V - n * move[:, None]
 
 
 def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
@@ -2893,6 +2980,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         body_real._m = body_meas.m  # (the tape reads the body, not its pads)
     body = body_real
     if under is not None:
+        if under.get("res") is not None:  # the garment under this one as it lies under it (pressed)
+            under = dict(under, V=pressed(under, body_real, float(g.get("under_cap", UNDER_CAP))))
         body = padded_body(body_real, body_src, under["V"], float(g.get("layer_gap", 0.003)))
         body._m = body_real.m
     Bp = pieces(g, body_real.m["mm"] if g.get("pattern") else {})
@@ -3147,6 +3236,15 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             need_ = float(hi_[loose_t].max()) - 1.0 if loose_t.any() else 0.0
             zz = dict(g.get("zozo") or {})
             zz.setdefault("strain_limit", float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)))
+            # a contact solver can't start inside its standoff either, and the made pieces are held where the coarse
+            # sim carried them (a cuff round a wrist can't be pushed clear on one side without closing on the other):
+            # the body's contact offset for this settle is what the start leaves (it stopped on a pair 1.9 mm apart
+            # under a 2 mm offset)
+            sep_ = _start_separation(plan["start"], M["F"], coll["bodyV"], coll["bodyT"])
+            if sep_ < 0.0022:
+                zz.setdefault("body_offset", float(max(0.0006, 0.7 * sep_)))
+                progress(f"fine settle: the start comes within {sep_ * 1000:.2f} mm of the body: its contact offset "
+                         f"{zz['body_offset'] * 1000:.2f} mm for this settle")
             fcfg["zozo"] = zz
             progress(f"fine settle at {h * 100:.1f} cm: {len(plan['start'])} verts, {sum(fr)} frames, start stretch up to "
                      f"{need_ * 100:.0f}% (strain limit {zz['strain_limit'] * 100:.0f}%)")
@@ -3189,7 +3287,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         cu = {"smooth": int(round(1.5 * (hs / h) ** 2 * max(1.0, (h / 0.01) ** 2))), "keep": 0.3 * hs}
         if res["constructed"].get("fine_settle"):  # settled at the fine size: what is left of the coarse facets only
             cu = {"smooth": 3, "keep": 0.002}
-    res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body,  # hung: the body is gone
+    # (the REAL body: layered, `body` is padded out over the garment underneath, and pushing the finished jacket
+    # off that pad moved it 7 mm at p95 and through its own collar: 88 crossings the sim didn't have)
+    res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body_real,  # hung: the body is gone
                                        cu if isinstance(cu, dict) else {"smooth": 0}
                                        if cu is False else {}, stiff=interfacing(Bp, M))
     if construct and not res["constructed"].get("fine_settle"):  # (the smoothing can bring cloth back out through a
@@ -3208,9 +3308,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         if h <= 0.012 and not hang:
             res["V"], rms = cloth_detail.displace(M, res["V"], res["fold_dabs"], fabn, do["fold_opts"], interfacing(Bp, M))
             res["folds_in_geometry"] = round(rms, 2)
-    if construct and res["constructed"].get("fine_settle"):
-        # the clean-up and the folds put into the geometry must not make the cloth cross itself where the settle left
-        # it clean: those places go back to the settled surface
+    if not hang:
+        # the clean-up (welds, the push off the body) and the folds put into the geometry must not make the cloth
+        # cross itself where the sim left it clean: those places go back to the sim's surface. For every garment:
+        # it used to run only after a fine settle, and a jacket's clean-up crossed its collar ends
         A_, B_ = _graph(M)
         for _ in range(4):
             bad = _crossing_verts(res["V"], M)
@@ -3233,6 +3334,14 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 res["sculpted"] = int(np.sum(np.linalg.norm(off, axis=1) > 2e-4))
     elif sc:
         res["sculpt_stale"] = True  # hand edits made on another sim of this garment: not applied
+    # closures: the plackets' bands stand their extra layers proud, the buttons are small geometry on them, and each
+    # chosen closure is measured in the result
+    from . import closures as closuremod
+    if M.get("closures"):
+        res["closures"] = closuremod.measure(res["V"], M)
+        res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
+        res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
+    res["seam_gaps"] = seam_gaps(res["V_sim"], res["V"], M)
     res["shape"] = {"sim": shape_numbers(res["V_sim"], M), "final": shape_numbers(res["V"], M)}
     res["fit"] = fit(res)
     res["integrity"] = integrity(res["V"], M, Bp, X0)
@@ -3243,7 +3352,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     res["sizing"] = sizing(res)
     if under is not None and under.get("res") is not None:  # layered: the tailoring tells against the garment under it
         from . import cloth_layers
-        res["tells"] = cloth_layers.tells(res, under["res"])
+        res["under_V"] = np.asarray(under["V"], float)  # the under garment as pressed under this one
+        res["tells"] = cloth_layers.tells(res, dict(under["res"], V=res["under_V"]))
     if hang:  # what carries it: the hanger's arms by contact (pins: the old pinned hang), and is the hanger inside it
         if hg is not None:
             pins_h, hx = np.zeros(0, np.int64), hg
@@ -3353,6 +3463,28 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
 CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004}
 
 
+SEAM_GAP_MM = 0.5  # a finished seam's two sides further apart than this at p95 shows as an open seam
+
+
+def seam_gaps(V_sim: np.ndarray, V: np.ndarray, M: dict) -> dict:
+    """How far apart the two sides of the seams are (mm), as the sim left them and after the clean-up's weld; `open` =
+    sewn pairs still over SEAM_GAP_MM in the finished surface, `worst` = the seam (piece pair) with the widest."""
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    if not len(sw):
+        return {}
+    out = {}
+    for tag, X in (("sim", V_sim), ("final", V)):
+        d = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1) * 1000
+        out[tag] = {"p50": round(float(np.median(d)), 2), "p95": round(float(np.percentile(d, 95)), 2),
+                    "max": round(float(d.max()), 1)}
+    i = int(np.argmax(d))
+    out["open"] = int((d > SEAM_GAP_MM).sum())
+    out["pairs"] = int(len(d))
+    out["worst"] = " / ".join(sorted({M["names"][M["piece"][sw[i, 0]]], M["names"][M["piece"][sw[i, 1]]]}))
+    out["ok"] = bool(out["final"]["p95"] <= SEAM_GAP_MM)
+    return out
+
+
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """The pass artists make after the sim: the fine crinkle (frozen buckles a triangle or two across) smoothed away by
     Taubin passes (a band-limited smoothing that doesn't shrink the cloth: the folds, many triangles across, stay),
@@ -3372,13 +3504,27 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         L = np.linalg.norm(D, axis=1)
         cap = float(o["keep"])
         X = X + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
+    def weld():
+        # only seams the sim closed (a gap over 1.5 triangles is a seam it couldn't close: welding it drags cloth).
+        # Sewn vertices are welded as GROUPS (a vertex in two seams, three pieces meeting at a point: pair by pair
+        # the last pair won and the others stayed open by the solver's few mm: "stitches super visible"), each group
+        # at its mean, weighted toward interfaced vertices (a made collar's edge stays, the cloth comes to it)
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+        s_ = np.asarray(M["sew"]).reshape(-1, 2)
+        s_ = s_[np.linalg.norm(X[s_[:, 0]] - X[s_[:, 1]], axis=1) < 1.5 * h]
+        if not len(s_):
+            return
+        A = coo_matrix((np.ones(len(s_)), (s_[:, 0], s_[:, 1])), shape=(len(X), len(X)))
+        _, lab = connected_components(A, directed=False)
+        vs = np.unique(s_)
+        wv = 1.0 + 20.0 * (np.zeros(len(vs)) if stiff is None else np.clip(np.asarray(stiff, float)[vs], 0, 1))
+        _, gi = np.unique(lab[vs], return_inverse=True)
+        acc = np.zeros((gi.max() + 1, 3))
+        np.add.at(acc, gi, X[vs] * wv[:, None])
+        X[vs] = (acc / np.bincount(gi, weights=wv)[:, None])[gi]
     if o["weld"] and len(M["sew"]):
-        s = M["sew"]
-        # only seams the sim closed (a gap over 1.5 triangles is a seam it couldn't close: welding it drags cloth)
-        s = s[np.linalg.norm(X[s[:, 0]] - X[s[:, 1]], axis=1) < 1.5 * h]
-        mid = 0.5 * (X[s[:, 0]] + X[s[:, 1]])
-        X[s[:, 0]] = mid
-        X[s[:, 1]] = mid
+        weld()
     if o["clear"] and body is not None and len(body.V):
         vn, tree = body.normals()
         _, i = tree.query(X)
@@ -3387,6 +3533,8 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         bad &= np.linalg.norm(X - body.V[i], axis=1) < 0.05  # only near the body (far vertices: a hang, a drape)
         if bad.any():
             X[bad] = body.push_out(X[bad], o["clear"])
+            if o["weld"] and len(M["sew"]):  # (the push moved one side of a seam and not the other)
+                weld()
     moved = np.linalg.norm(X - V, axis=1)
     return X, {"passes": n, "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
                "moved_max_mm": round(float(moved.max() * 1000), 2)}
@@ -3668,8 +3816,8 @@ def sizing(res: dict) -> dict:
             tops = [float(pcs[nm]["P"][:, 1].max()) for nm in torso
                     if not pcs[nm]["wrap"].get("align") and not pcs[nm]["wrap"].get("level")]
             low = [t for t in tops if yb - 0.15 < t < yb]
-            if low:
-                y_cap = min(low) - 0.005
+            if low:  # (3 cm under its top: the top is the armhole's U, whose horns alone are a few mm wide)
+                y_cap = min(low) - 0.03
         for nm in torso:
             P = pcs[nm]["P"]
             dz = 0.0
@@ -3754,7 +3902,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -3863,6 +4011,12 @@ def validate(spec: dict) -> None:
                 raise ClothError(f"{where}: support {e!r}: a kind name or {{\"kind\", ...}} of {', '.join(SUPPORTS)}")
             if isinstance(e, dict) and set(e) - {"kind"} - set(SUPPORTS[kd]):
                 raise ClothError(f"{where}: support {kd} takes {', '.join(SUPPORTS[kd])}")
+        if g.get("closures") is not None:
+            from . import closures as closuremod
+            try:
+                closuremod.validate(g["closures"], f"{where} closures")
+            except closuremod.ClosureError as e:
+                raise ClothError(str(e))
         if "layer_gap" in g and not (isinstance(g["layer_gap"], (int, float)) and 0 <= g["layer_gap"] <= 0.03):
             raise ClothError(f"{where}: layer_gap is the air between the layers at the start in m (0..0.03)")
         if g.get("quality", "final") not in ("draft", "final"):
@@ -4110,6 +4264,15 @@ def report(gname: str, res: dict) -> str:
             L.append(f"  HINT: {', '.join(bad)} started inside the neck/jaw (> 8 mm): the band is taller than this neck "
                      "allows and crumples; lower it (the design's stand/collar width option, e.g. simon \"options\": "
                      "{\"collarStandWidth\": 0.045}, default 0.08)")
+    sg = res.get("seam_gaps")
+    if sg:
+        L.append(f"  {'ok ' if sg['ok'] else '!! '}seams: sides apart p50 {sg['final']['p50']} / p95 {sg['final']['p95']} / max "
+                 f"{sg['final']['max']} mm after the clean-up (the sim left {sg['sim']['p50']} / {sg['sim']['p95']} / "
+                 f"{sg['sim']['max']}; closed <= {SEAM_GAP_MM} at p95)"
+                 + ("" if not sg["open"] else f"; {sg['open']} of {sg['pairs']} sewn pairs still OPEN, widest at {sg['worst']}"))
+    if res.get("closures"):
+        from . import closures as closuremod
+        L.append(closuremod.text(res["closures"]))
     if res.get("tells"):
         from . import cloth_layers
         L.append("  layered over " + str((res.get("under") or {}).get("name")) + ":")
@@ -4324,6 +4487,10 @@ def scene_job(name: str, spec: dict, log: list | None = None) -> list:
             maps = write_maps(store._dir(name) / f"cloth_{gname}", res["mesh"], uv, side, g,
                               extra=fine_folds(res, g, uv, side))
             e["maps"] = {k: str(v) for k, v in maps.items() if k != "texels_per_m"}
+        if res.get("buttons") is not None:  # the closures' buttons: their own small object beside the garment
+            bp_ = store._dir(name) / f"cloth_{gname}_buttons.npz"
+            np.savez(bp_, verts=res["buttons"]["V"].astype(np.float32), faces=res["buttons"]["F"].astype(np.int32))
+            e["buttons"] = {"npz": str(bp_), "color": (g.get("detail") or {}).get("button") or "#ebe6dc"}
         entries.append(e)
     return entries
 
@@ -4440,6 +4607,12 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         Vall = np.r_[V, Vin]
         Fall = np.r_[F, F[:, [0, 2, 1]] + len(V)]
         UVall = np.r_[uv, uv]
+        bt = res.get("buttons")
+        if bt is not None:  # the closures' buttons: small geometry, coloured by the texel of the button drawn at
+            # their mark (every vertex of a button takes its mark's uv)
+            Fall = np.r_[Fall, np.asarray(bt["F"], np.int64) + len(Vall)]
+            Vall = np.r_[Vall, bt["V"]]
+            UVall = np.r_[UVall, uv[bt["at"]]]
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
         part = {"verts": Vall.astype(np.float32), "corner_vert": Fall.ravel().astype(np.int64),
@@ -4540,6 +4713,9 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g, extra=fine_folds(res, g, uv, side))
             o.update(uv=uv, maps={k: str(v) for k, v in maps.items() if k != "texels_per_m"})
         objs.append(o)
+        if res.get("buttons"):
+            objs.append({"name": f"buttons_{gn}", "V": res["buttons"]["V"], "F": res["buttons"]["F"],
+                         "color": (g.get("detail") or {}).get("button") or "#ebe6dc"})
     allV = np.concatenate([o["V"] for o in objs if not o["name"].startswith("rail_")])  # the rail runs out of frame
     box = (allV.min(0) - 0.05, allV.max(0) + 0.05)
     if focus is not None:

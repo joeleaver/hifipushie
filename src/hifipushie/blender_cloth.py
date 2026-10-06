@@ -710,7 +710,7 @@ def show(entries: list) -> list:
     if coll is None:
         coll = bpy.data.collections.new("cloth")
         bpy.context.scene.collection.children.link(coll)
-    want = {e["name"] for e in entries}
+    want = {e["name"] for e in entries} | {e["name"] + ".buttons" for e in entries if e.get("buttons")}
     for ob in list(coll.objects):
         if ob.name not in want:
             bpy.data.objects.remove(ob)
@@ -741,6 +741,20 @@ def show(entries: list) -> list:
                         e.get("maps"))
         me.materials.append(mat)
         made.append(e["name"])
+        oldb = bpy.data.objects.get(e["name"] + ".buttons")
+        if oldb is not None:
+            bpy.data.objects.remove(oldb)
+        if e.get("buttons"):  # the closures' buttons: small geometry of their own, riding the garment
+            zb = np.load(e["buttons"]["npz"])
+            mb = bpy.data.meshes.new(e["name"] + ".buttons")
+            mb.from_pydata(zb["verts"].tolist(), [], zb["faces"].tolist())
+            mb.validate()
+            for poly in mb.polygons:
+                poly.use_smooth = True
+            obb = bpy.data.objects.new(e["name"] + ".buttons", mb)
+            coll.objects.link(obb)
+            obb.parent = ob
+            mb.materials.append(_material(f"cloth:{e['name']}.buttons", e["buttons"].get("color", "#ebe6dc"), 0.35, None))
     return made
 
 

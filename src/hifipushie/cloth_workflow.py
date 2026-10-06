@@ -335,6 +335,26 @@ def stage_construction(c: Ctx) -> dict:
         for n, (how, _) in md.items():
             if how == "made" and n not in folded and garment_design.role_of(n, pcs[n]) in ("collar_fall", "facing"):
                 o["fail"].append(f"{n} is made but has no fold line: it can't be constructed turned without one")
+    # closures: the laps and what holds them (closures.py); a closure the sheet chose must be in the pattern
+    cls = Bp.get("closures") or []
+    for cl in cls:
+        n_c = sum(cl["closed"])
+        o["info"].append(f"closure {cl['name']}: {cl['kind']}, {cl['over']} laps over {cl['under']}"
+                         + (f" by its band ({cl['band']})" if cl.get("band") else "")
+                         + f", {len(cl['pairs'])} fastenings, {n_c} closed (state {cl['state']}); the lap is held by "
+                         "stitches at the fastenings, not a seam; buttons are geometry on the over layer")
+    want = {"front_closure": ("buttons", "double_breasted", "single_button"), "cuff": ("barrel", "french"),
+            "fly": ("button_fly",)}
+    roles = {"front_closure": ("front",), "cuff": ("cuff",), "fly": ("fly", "front")}
+    for d, choices in want.items():
+        ch = (((c.res or {}).get("details") or {}).get(d) or {}).get("choice")
+        if ch in choices and not any(garment_design.role_of(cl["over"], pcs.get(cl["over"])) in roles[d] for cl in cls):
+            # (older tables write the same thing as bare stitches: still a closure, but nothing records it)
+            st_ = [a for a, b in Bp["stitches"] if garment_design.role_of(a.split(":")[0], pcs.get(a.split(":")[0])) in roles[d]]
+            (o["warn"] if st_ else o["fail"]).append(
+                f"{d}: {ch} was chosen but the pattern has no closure for it"
+                + (" (only bare stitches: write it as a `closures` entry so the lap, the band and the buttons are made "
+                   "and checked)" if st_ else " (design-table / garment key `closures`)"))
     # layering: what this garment is worn over, and what holds its shape from inside
     ov = c.gx.get("over")
     if ov:
@@ -718,6 +738,11 @@ def stage_sim(c: Ctx, res: dict | None = None) -> dict:
             o["fail"].append(txt + ": the fold didn't hold (a made piece simulated out of shape?)")
         else:
             o["info"].append(txt)
+    for r_ in res.get("closures") or []:
+        txt = (f"closure {r_['name']} ({r_['kind']}): {r_['closed']} of {r_['fastenings']} fastenings closed"
+               + ("" if r_["gap_max_mm"] is None else f", sides {r_['gap_max_mm']} mm apart at most")
+               + (f", {r_['lost']} lost in the mesh" if r_["lost"] else ""))
+        (o["info"] if r_["ok"] else o["fail"]).append(txt + ("" if r_["ok"] else ": the closure isn't in the result as chosen"))
     for k_, label in (("collar_show_mm", "under collar above this collar at CB (mm)"),
                       ("cuff_show_mm", "under cuff past this sleeve's hem (mm)"),
                       ("lapel_gap_mm", "lapels off the fronts they lie on (mm)"),

@@ -184,6 +184,16 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     at["shoulder.L"] = top
     hps = at["hps.L"]
     mm["shoulderSlope"] = float(np.degrees(np.arctan2(hps[2] - top[2], top[0] - hps[0])))
+    # the slope of the shoulder LINE itself (the top of the shoulder from just outside the neck to the shoulder
+    # point), not of the chord from hps: hps is taken on the neck's side 2 cm up the neck, above the shoulder line's
+    # own start, and its chord read 28 deg on a body whose shoulder lies at 17 (FreeSewing's standard: 13). A draft
+    # with shoulders 10 deg too steep has cloth to spare at the neck and none at the shoulder's end
+    ins = [(x, t_) for x in np.arange(hps[0] + 0.02, top[0] - 0.004, 0.005) if (t_ := top_at(x)) is not None]
+    if len(ins) >= 3:
+        xs_ = np.array([t_[0] for _, t_ in ins] + [top[0]])
+        zs_ = np.array([t_[2] for _, t_ in ins] + [top[2]])
+        at["shoulder_slope_chord"] = mm["shoulderSlope"]
+        mm["shoulderSlope"] = float(np.degrees(np.arctan(-np.polyfit(xs_, zs_, 1)[0])))
     # shoulder to shoulder: a taut tape across the back between the shoulder points. It lies in a plane through both
     # that dips toward the back (over the shoulder blades), the shortest of the tilts tried; the level section at the
     # shoulders' height runs far back round the base of the neck (21% longer than the chord here)
@@ -269,7 +279,25 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
             near = L[np.abs(L[:, 0] - xt) < 0.015]
             if len(near):
                 pts.append(near[np.argmax(sign * near[:, 1])])
-        return np.array(pts)
+        P = np.array(pts)
+        # a tape is TAUT: it bridges the hollows (the lumbar curve, under the shoulder blades, between pecs and
+        # belly) and doesn't follow each slice's own bumps. Hugging the surface, hps to the waist down the back read
+        # 545 mm on a body whose taut tape is ~485: FreeSewing's armhole depth (that length - waist to armpit) came
+        # out 6 cm too deep, on shirts and jackets alike (a bomber's armhole: the body of the garment lifts with the
+        # arms and rolls across the upper back)
+        if len(P) >= 3:
+            q = np.c_[-P[:, 2], sign * P[:, 1]]  # along the tape (down), outward
+            keep = [0]
+            for i in range(1, len(q)):
+                while len(keep) >= 2:
+                    a_, b_ = q[keep[-2]], q[keep[-1]]
+                    if (b_[0] - a_[0]) * (q[i][1] - a_[1]) - (b_[1] - a_[1]) * (q[i][0] - a_[0]) >= 0:
+                        keep.pop()  # the middle point lies under the line: the tape lifts off it
+                    else:
+                        break
+                keep.append(i)
+            P = P[keep]
+        return P
     tape = down(W, hps[0], hps[0], 1)
     mm["hpsToWaistBack"] = length(tape)
     loops["hpsToWaistBack"] = tape
