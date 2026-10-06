@@ -101,6 +101,8 @@ GROOM = {
     "hairline_edge": None,  # {"inset": m (negative: tucked into the skin), "reach": m}: every drawn clump whose edge
     # comes within reach of the hairline lays that edge on it (the volume's rim showed between clump edges and skin)
     "tie": None,  # tied hair (hair_tied.py): {"at": [az, el], "out", "gather", "tail", "escape", "band"} or a list
+    "loose": None,  # loose hair (hair_loose.py): grown all over the scalp, combed at the roots, then falling / standing:
+    # {"length", "level", "spacing", "body", "lift", "stiff", "out", "back", "messy", "uneven", "ends", "fringe"}
     "noise": 0.3,
     "seed": 0,
     "centre": "head",  # without face landmarks (a kit-built head): the joint (or [x, y, z]) the scalp is measured from
@@ -280,6 +282,12 @@ def groom_params(spec: dict) -> dict:
         from . import hair_tied
         try:
             hair_tied.params(g["tie"])
+        except ValueError as e:
+            raise HairError(str(e)) from None
+    if g.get("loose"):
+        from . import hair_loose
+        try:
+            hair_loose.params(g["loose"])
         except ValueError as e:
             raise HairError(str(e)) from None
     return _merge(GROOM, g)
@@ -604,8 +612,9 @@ def _poisson(sc: Scalp, rng, spacing_at, ok, n_try=6000):
     return az[chosen], el[chosen]
 
 
-def grow(sc: Scalp, g: dict) -> dict:
-    """The first pass of locks from the groom: {name: lock}."""
+def grow(sc: Scalp, g: dict, col=None) -> dict:
+    """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose.collider) for
+    hair that falls off the head."""
     rng = np.random.default_rng(int(g.get("seed", 0)))
     noise = float(g.get("noise", 0.3))
     line = hairline(sc, g)
@@ -615,9 +624,14 @@ def grow(sc: Scalp, g: dict) -> dict:
     names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g", "clumps": "k"}
     if g.get("drawn"):  # the top drawn by hand (clumps on the top view), the rest grown round it
         locks.update(drawn(sc, g, g["drawn"]))
+    if g.get("loose"):  # loose hair is the whole groom too (with drawn clumps and any tie: half up)
+        from . import hair_loose
+        locks.update(hair_loose.grow(sc, g, line, rng, col))
     if g.get("tie"):  # tied hair makes the whole groom (with any drawn clumps): no generated tiers under it
         from . import hair_tied
         locks.update(hair_tied.grow(sc, g, line, rng))
+        return locks
+    if g.get("loose"):
         return locks
     if tiers.get("strip"):
         locks.update(_strips(sc, g, line, tiers["strip"], rng))
@@ -1176,7 +1190,11 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     validate(spec)
     sc = scalp(name, spec)
     g = groom_params(spec)
-    new = grow(sc, g)
+    col = None
+    if g.get("loose"):
+        from . import hair_loose
+        col = hair_loose.collider(name, spec, sc)
+    new = grow(sc, g, col)
     old = h.get("locks") or {}
     if replace:
         h.pop("removed", None)
@@ -1184,7 +1202,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
         new = {n: lk for n, lk in new.items() if n not in set(h.get("removed") or [])}
     keep = {} if replace else {n: lk for n, lk in old.items()
                                if lk.get("hand") or (not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
-                                                     and lk.get("tier") not in ("drawn", "tie"))}
+                                                     and lk.get("tier") not in ("drawn", "tie", "loose"))}
     h["locks"] = {**new, **keep}
     v = store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     tiers: dict = {}
@@ -1261,7 +1279,7 @@ def resolve(spec: dict, sc: Scalp) -> list:
         inputs["Centre"] = [float(v) for v in sc.C]
         out.append({"name": n, "pts": W.tolist(), "handles": H, "radius": lk.get("radius"), "tilt": lk.get("tilt"),
                     "inputs": inputs, "hash": lock_hash(lk, sc), "free": float(lk.get("free", 0.0)),
-                    "strands": lk.get("strands"),
+                    "strands": lk.get("strands"), "tier": lk.get("tier"),
                     "core": lock_world(sc, lk, lk["core"]).tolist() if lk.get("core") else None})
     return out
 
@@ -1659,7 +1677,11 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
         out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget, cap_step=cap_step)
     if h.get("style") == "strands" and stage != "mass":
         from . import hair_strands
-        out["strands"] = hair_strands.job(sc, g, spec, locks, tmp, count=count)
+        col = None
+        if g.get("loose"):
+            from . import hair_loose
+            col = hair_loose.collider(name, spec, sc)
+        out["strands"] = hair_strands.job(sc, g, spec, locks, tmp, count=count, col=col)
     return out
 
 
@@ -1887,23 +1909,29 @@ def card_clearance(sc: Scalp, M: dict, locks: list, fix: float | None = None) ->
     return out
 
 
-def stage_path(name: str) -> Path:
-    return store._dir(name) / "hair_stage.blend"
+def _bust(spec: dict | None) -> bool:
+    """Hair that leaves the head downward (groom.loose): looks and stages take in the neck and shoulders."""
+    return bool(spec and ((hair_of(spec).get("groom") or {}).get("loose")))
 
 
-def make_stage(name: str, pad: float = 0.1) -> Path:
+def stage_path(name: str, bust: bool = False) -> Path:
+    return store._dir(name) / ("hair_stage_bust.blend" if bust else "hair_stage.blend")
+
+
+def make_stage(name: str, pad: float = 0.1, spec: dict | None = None) -> Path:
     """A small .blend for fast hair looks: the scene cropped to a box round the head (painted skin, eyes, collar),
-    rebuilt when scene.blend is newer."""
+    rebuilt when scene.blend is newer. With loose hair the box takes in the shoulders and the back."""
     from .scene import _blender, blend_path
     bp = blend_path(name)
     if not bp.exists():
         raise HairError(f"{name}: no scene.blend yet (sync the model once)")
-    sp = stage_path(name)
+    bust = _bust(spec)
+    sp = stage_path(name, bust)
     if sp.exists() and sp.stat().st_mtime > bp.stat().st_mtime:
         return sp
     sc = scalp(name)
-    lo = (sc.C - [0.16, 0.2, 0.22]).tolist()
-    hi = (sc.C + [0.16, 0.16, 0.16]).tolist()
+    lo = (sc.C - ([0.32, 0.28, 0.7] if bust else [0.16, 0.2, 0.22])).tolist()
+    hi = (sc.C + ([0.32, 0.28, 0.16] if bust else [0.16, 0.16, 0.16])).tolist()
     _blender({"mode": "hair_stage", "blend": str(bp), "out": str(sp), "box": [lo, hi]})
     return sp
 
@@ -1924,7 +1952,12 @@ VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0)
          "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "side_r": (-90.0, 5.0),
          "back_quarter": (140.0, 8.0), "wide_r": (-95.0, 4.0, 0.95), "wide_back": (165.0, 6.0, 0.95),
          "wide_front": (-20.0, 4.0, 0.9), "close": (-30.0, 25.0, 0.45),
-         "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42)}
+         "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42),
+         # (az, el, distance, m the target sits under the head centre): the bust, for hair that falls
+         "bust_front": (0.0, 4.0, 1.25, 0.14), "bust_three_quarter": (40.0, 8.0, 1.25, 0.14),
+         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14),
+         "bust_back_quarter": (140.0, 8.0, 1.25, 0.14), "long_back": (180.0, 4.0, 1.9, 0.26),
+         "long_side": (90.0, 4.0, 1.9, 0.26)}
 
 
 def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
@@ -1932,8 +1965,9 @@ def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
     target = sc.C + np.array([0.0, 0.0, 0.0])
     for v in views:
         az, el, *dd = VIEWS[v]
-        eye = target + dirs(az, el) * (dd[0] if dd else dist)  # close-ups: the material at work
-        out.append({"name": v, "eye": eye.tolist(), "target": target.tolist(), "fov": fov})
+        tg = target - np.array([0.0, 0.0, dd[1] if len(dd) > 1 else 0.0])
+        eye = tg + dirs(az, el) * (dd[0] if dd else dist)  # close-ups: the material at work
+        out.append({"name": v, "eye": eye.tolist(), "target": tg.tolist(), "fov": fov})
     return out
 
 
@@ -1961,7 +1995,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
     from .scene import _blender
     t = time.time()
     spec = store.load(name) if spec is None else spec
-    sp = make_stage(name)
+    sp = make_stage(name, spec=spec)
     sc = scalp(name, spec)
     cams = cameras(sc, views)
     frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
@@ -2119,7 +2153,7 @@ def look_glb(name: str, glb, views=("wide_r", "back_quarter", "close_front", "th
     from .scene import _blender
     t = time.time()
     spec = store.load(name) if spec is None else spec
-    sp = make_stage(name)
+    sp = make_stage(name, spec=spec)
     sc = scalp(name, spec)
     cams = cameras(sc, views) if dist is None else cameras(sc, views, dist=dist)
     frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]

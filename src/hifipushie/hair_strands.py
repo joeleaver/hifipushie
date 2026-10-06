@@ -69,7 +69,8 @@ def physical(S: dict, free: bool = False) -> dict:
         "stray": c("stray"),
         "tip_radius": float(np.clip(1.0 - 0.8 * float(S["taper"]), 0.1, 1.0)),
         "clump": SAFE["clump"] * c("clump") * (float(_os.environ.get("HS_FREE_CLUMP", 0.7)) if free else 1.0),
-        "wave": SAFE["sub_wave"] * float(np.clip(S["wave"], 0.0, 0.03)) * (1.0 if free else 0.3),
+        # (a swing wider than ~a third of its wavelength folds back on itself: tight curls are small AND short)
+        "wave": min(SAFE["sub_wave"] * float(np.clip(S["wave"], 0.0, 0.03)), 0.35 * float(np.clip(S["wavelength"], 0.01, 1.0))) * (1.0 if free else 0.3),
         "wavelength": float(np.clip(S["wavelength"], 0.01, 1.0)),
         "curl01": c("curl") * (1.0 if free else 0.3),
         "wander": SAFE["wander_m"] * c("loose") * (2.0 if free else 1.0),
@@ -105,6 +106,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         if not sel:
             continue
         n = n_free if key == "free" else n_head
+        if key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
+            lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
+            n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
         P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_ = ([] for _ in range(12))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
@@ -132,7 +136,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # a wisp swings less and slower than a lock (at a lock's wave a few hairs side by side are ramen)
             ws = float(np.clip(W / 0.03, 0.2, 1.0))
             wl = 1.0 + 1.2 * float(np.clip(1.0 - W / 0.02, 0.0, 1.0))
-            A *= ws
+            A = min(A * ws, 0.3 * lam * wl)  # (never wider than a third of the wavelength: it would fold over)
             # neighbours wave nearly in step (a tail swings as sheets of hair; every lock on its own phase is pasta)
             ph = rng.uniform(-1, 1) * R * 1.2 + 2 * np.pi * s / (lam * wl)
             env = _ss(s / 0.03)
@@ -269,16 +273,20 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
         ok = eb > sc.EL[0] + 3
         az, el = np.r_[az, ab[ok]], np.r_[el, eb[ok]]
         L = np.r_[L, rng.uniform(0.006, 0.016, int(ok.sum()))]
-    head = [lk for lk in locks if float(lk.get("free", 0.0)) <= 0.5]
+    head = [lk for lk in locks if float(lk.get("free", 0.0)) <= 0.5 or lk.get("tier") == "loose"]  # (loose hair
+    # lies on the head before it falls: the scalp layer follows it there)
     tree = None
     if head:
         LP, LT = [], []
         for lk in head:
-            P, *_ = hc.spine(lk, 16)
+            P, *_ = hc.spine(lk, 16 if float(lk.get("free", 0.0)) <= 0.5 else 40)
             LP.append(P)
             LT.append(_unit(np.gradient(P, axis=0)))
         LP, LT = np.concatenate(LP), np.concatenate(LT)
         _, _, LH = sc.coords(LP)
+        near = LH < 0.035
+        if near.sum() >= 8:
+            LP, LT, LH = LP[near], LT[near], LH[near]
         tree = cKDTree(LP)
     p = sc.point(az, el, 0.0003)
     pts = [p]
@@ -362,7 +370,7 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
     return out
 
 
-def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = None) -> dict:
+def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = None, col=None) -> dict:
     """What blender_strands.show needs (files in tmp)."""
     import re
     from .hair import LOOK, hair_of, hairline
@@ -383,7 +391,8 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     sm = scalp_mesh(sc, g, line, S)
     area, e0 = sm.pop("area"), sm.pop("e0")
     np.savez(tmp / "strand_scalp.npz", **sm)
-    np.savez(tmp / "strand_collide.npz", **collide_mesh(sc))
+    np.savez(tmp / "strand_collide.npz", **(col.mesh() if col is not None else collide_mesh(sc)))  # (loose hair: the
+    # body's own surface down to the back, hair_loose.Collider)
     G = lock_guides(hair_locks, sc.C, S, seed)
     ug = under_guides(sc, g, line, hair_locks, S, seed)
     ph = physical(S)
