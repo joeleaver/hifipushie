@@ -511,6 +511,39 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       from neck to shoulder is in the maps at rest too (clay is smooth at arm 60): paint / bake, not the skin.
     - `base_quads` skips the head graft for body.source "human" (the "onemesh" agent's fused source: its quads
       hold the head already).
+    - The nape on a nod, by numbers (`rig3/nape.py`, `napes.py`): the golfer's collar stands to z 1.565, 0.8 cm under
+      the hairline and 6 cm under the Head joint; the floor ran level from the jaw (z ~1.57) and the falloff is long
+      (head size here is neck joint -> head top = 34 cm, so `HEAD_FALL` is ~15 cm, not 11), so the nape skin inside
+      and just over the collar was Head 0.98. A 25 deg nod about the Head joint swung it 16-28 mm back and 40 mm
+      up: 38 vertices came out past the collar's back by up to 8.4 mm, and the hair lifted 4.6 cm off it: the lump.
+      (Not hidden skin: it is the skin above the collar's top.) `HEAD_OCCIPUT` 0.1: behind the Head joint the floor
+      climbs to the skull's base; Head weight there 0.86, nothing past the collar (-2.9 mm; shared with Neck
+      -11.5), bare-human folds unchanged. A higher floor or a shorter nape falloff clears more and folds the bare
+      nape (nod p99 17-22, max 40-73 deg). The chin still sinks into the collar on a hard Head-only nod.
+    - `parts.<p>.folds = true`: folded by design (a turned collar): counts stay in the quality line, no TORN alarm.
+      Set on the collar of dg_fix2 and wb_dg_talk.
+    - Kit digits, tried and dropped: making digits exclusive in `rig.weights` (a finger's skin never takes another
+      finger's bones) turned the goblin's soft bleed (0.40-0.45, 13-17 vertices, 10 mm) into a few vertices wholly
+      on the wrong finger (0.89, 19 mm); limited to past the first phalanx it changed nothing. The bleed sits at the
+      knuckles: the anatomy's webs / pads and the first phalanges are handed to ONE finger's rig bone by their
+      middle (`rig_weights`), so a neighbour's side skin reads that bone. Next try: webs and pads to the Hand bone,
+      then exclusivity.
+    - Goblin proof of the guide's rule: `wc2_goblin_fused_vs_clear_arm60.png` (examples/goblin_talk.json exported
+      as it is: a torn jagged web under the raised arm; the same with goblin_anat's elbow / wrist + anatomy {}:
+      clean). Both Khronos 0 / 0; models `workspace/wc_goblin_talk`, `wc_goblin_talk_clear`.
+    - HANDOVER (rig3, 2026-10-06, context full). Exports in /mnt/data/hifipushie/rig3: exp_golfer (final:
+      re-exported last with the nape floor + collar folds; check `rig3/queue6.txt` says "golfer3 exit 0" and judge
+      `sheets.py dg_fix2 <glb> wc3_golfer nod nod_shared head33` for the nape), exp_talk (wb_dg_talk, decimated
+      body + face shapes, final falloff of round 3 before the nape floor: `wc2_talk_strip.png`), exp_talk_wrap
+      (`workspace/wc_dg_talk_wrap` = wb_dg_talk + parts.body.topology "wrap": FACE SHAPES ON THE BASE'S OWN QUADS,
+      the case s0urc3's Garrett needs; if this note still says so it was NOT judged: log `rig3/exp_talk_wrap.txt`,
+      then blink / jawOpen / smile / jaw_head33 sheets; expected trouble: the GNM head's fixed quads carry no mouth
+      interior (bag, teeth, tongue are their own parts or missing), the lips' slit isn't re-meshed, `Face.seal`
+      and the carry assume a decimated mesh), exp_troll_anat, exp_wc_goblin_talk(_clear). Open, in order: (1) that
+      face-shape check; (2) kit digit weights (above); (3) the chin into the collar on a nod, the 9 neck-side
+      vertices rigid_near's 8 cm band gives wholly to Head under the collar (talk export: Head leak 69 mm on 9
+      vertices); (4) hem bones with the first skirt; (5) a Mixamo clip retargeted in Godot; (6) 15k smile corners;
+      (7) the troll's fingers want re-modelling (the tool warns), its pale patch is card cmux1btxc000pk9f23weo12lj.
     - A real engine: `spikes/godot_rig/` (check.gd, sheet.py): Godot 4.7 loads the GLB with its own importer at run
       time, poses the Skeleton3D, drives the twist joints from `<name>.json` `rig.twist` by the recipe, sets face
       shapes, writes PNGs. `godot --path spikes/godot_rig -s check.gd -- x.glb x.json <prefix> poses.json` (opens a
