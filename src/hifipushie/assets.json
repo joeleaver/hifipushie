@@ -23,7 +23,7 @@
  },
  "makehuman": {
   "needed_by": "base.body {\"source\": \"makehuman\"} (makehuman.py)",
-  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target",
+  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target",
   "licence": "CC0 for the MakeHuman core assets (base mesh, targets, skeleton; makehumancommunity.org license page). The program code is AGPL and is NOT used: hifipushie reads these files with its own loader.",
   "files": [
    {
@@ -520,6 +520,1146 @@
     "path": "targets/macrodetails/caucasian-female-old.target",
     "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/macrodetails/caucasian-female-old.target",
     "sha256": "6560982486c4b1a7a0b1d82b0ad3f09770c16b4f87c8f949537dc9cfc941a0b0"
+   },
+   {
+    "path": "targets/breast/breast-dist-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-dist-decr.target",
+    "sha256": "a052af5c0b7bac35b0ce429ebbf240da036d93941370d8b576e19ec837d110a3"
+   },
+   {
+    "path": "targets/breast/breast-dist-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-dist-incr.target",
+    "sha256": "52f631c09ff5ebaa7d350cc966d2cc531017d9d554bd42a98bc3b0aee98af55f"
+   },
+   {
+    "path": "targets/breast/breast-point-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-point-decr.target",
+    "sha256": "aaf081541b8fc812f433b01d94ec27aa9c27e59280b0c291eb8b0962201d5ed6"
+   },
+   {
+    "path": "targets/breast/breast-point-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-point-incr.target",
+    "sha256": "0e5b90f891c9a84df0a19472014a78e98090247dfcc6e4edc8f2ede3215e1397"
+   },
+   {
+    "path": "targets/breast/breast-trans-down.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-trans-down.target",
+    "sha256": "8174c965a1c9cd8628a5a9cca9f695ced09688a8f6a53664765778c5d95c002e"
+   },
+   {
+    "path": "targets/breast/breast-trans-up.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-trans-up.target",
+    "sha256": "e8f4205ffd756416f9607afa6864291d151d6419dbb8149522c544d931ec3aca"
+   },
+   {
+    "path": "targets/breast/breast-volume-vert-down.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-volume-vert-down.target",
+    "sha256": "1689663bfae4a32e7480770269f78022b011b02c9a6a7246674a830f4f82a6b0"
+   },
+   {
+    "path": "targets/breast/breast-volume-vert-up.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/breast-volume-vert-up.target",
+    "sha256": "12345ed40a248104c51c63aac01380502ef651fcadd0c7e8e9445bde68427b05"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "8be6f61da3536a09c9f03717867bd0f2f791aad002375d8fa700efb68dac08bf"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "6ac85ee18cf424cfc8d15eb4ee4678d2ec24d27d7f1f6b3a8e1aa506ced389ec"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "1287b1dd4b67b3872b4dea44e83b0dc5437431cd9e9f87499f435ca54d9752ae"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "3eeac3052ad5fabcc8afa0796e7c5f00031326d796afccc314e0b6b129da89a8"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "6791cb94c9225adefafcf068178fb0666834e894ab3b199543c5e8622eed4bd2"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "b92a2de380ff77c50f64768b09f06ec815c2653ffb16fd0da8a54efafabe1125"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "b92a2de380ff77c50f64768b09f06ec815c2653ffb16fd0da8a54efafabe1125"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "b92a2de380ff77c50f64768b09f06ec815c2653ffb16fd0da8a54efafabe1125"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "2829e7dcc9bff9b283936dc3a7c96e760f7e9033d3768de633cbb4d07b97f3b2"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "e109f76b24d6440c1aaf498d15eff5faef4723b21e9f5ce060b3e124b63731d7"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "2c40384adfc19e7c2467814b2a5a7a0ed5df605473af3fda7f30f388073a1232"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "6a5c96e9dd4bf812a58a4862d7027f3fb99f26d363007d03fa99d47587e6bc41"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "f2462ffd82065bd5d9ef5dac37fc64ff397f85b5cf1297ddaeb483305b4c3fcf"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "6d3f536b954a05d54037981b6ec273dd715978b43bc7f7b2543c0d2389f9a8b4"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "6d3f536b954a05d54037981b6ec273dd715978b43bc7f7b2543c0d2389f9a8b4"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "6d3f536b954a05d54037981b6ec273dd715978b43bc7f7b2543c0d2389f9a8b4"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "d9a607382d166bff59e1516050514831b21b1073a0d222a8c3e24a7fc3dba2ad"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "e109f76b24d6440c1aaf498d15eff5faef4723b21e9f5ce060b3e124b63731d7"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "3a5ee60a9268c73a3536b020aada20eb6d09df234bef3f56c87b8acbe0102159"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "dc9434afcb50ab7d68d688fce668aaf44900cf95b850b2f5596721ee7a15c176"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "7f91887f5a5feddec41aaf4f7dfc9421fa55c073c5acf0d907ef3324718bef9b"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "12f345bf72dde714b9ed14e43406188a957c92bee20ccbc6db0c5689317f4d25"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "12f345bf72dde714b9ed14e43406188a957c92bee20ccbc6db0c5689317f4d25"
+   },
+   {
+    "path": "targets/breast/female-child-averagemuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-averagemuscle-minweight-mincup-minfirmness.target",
+    "sha256": "12f345bf72dde714b9ed14e43406188a957c92bee20ccbc6db0c5689317f4d25"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "5252bce227d728aac84862aa8f4bacf36f56edf8725cb6b9b14544bb37ff44d8"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "e109f76b24d6440c1aaf498d15eff5faef4723b21e9f5ce060b3e124b63731d7"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "9bd69313fb273efb09005fe6c79468375a36fc6ee6aec05e83cfab9a4fac61da"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "e1b93b57117b4ec7e5026e52f8f73c8ef42d81c4b85a5467db80474c5cd42607"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "040760f5bfb0d2482be93ad00125f3632755cd80d9a72563b9135939f654122d"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "8ee9b0bca9f6efbe797eee8a194944705475f73c9331bfa295de336452d98c15"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "8ee9b0bca9f6efbe797eee8a194944705475f73c9331bfa295de336452d98c15"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "8ee9b0bca9f6efbe797eee8a194944705475f73c9331bfa295de336452d98c15"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "08376a37f4bd5cadd5ef033567bb817ffc77c42d3f615f2b695456f9b609cf89"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "e109f76b24d6440c1aaf498d15eff5faef4723b21e9f5ce060b3e124b63731d7"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "90610fe85f6dd1236768b97412f8404bc81dccc2c936092f1ba30dc42ae78bc6"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "b68a1a7112aeb15cb625aad8d032668914ef957f10b02a80c1d9a2f05bf78d3f"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "08150fd5a45155f47df95958c1392da35851003bd13f539ba46f6021a8f9e726"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "26eabbd267d1e005ffb8a5c38ba78d30b1c6598359d20477e1b190295d580490"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "26eabbd267d1e005ffb8a5c38ba78d30b1c6598359d20477e1b190295d580490"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "26eabbd267d1e005ffb8a5c38ba78d30b1c6598359d20477e1b190295d580490"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "399fa65ee226d102f8332761158bee1fae924b8f6f5adb0aa705fd8026f457f8"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "e109f76b24d6440c1aaf498d15eff5faef4723b21e9f5ce060b3e124b63731d7"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "9f545220450650a337184f6bcad8f938821e5c4b62707320f1ff1f56ca253d15"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "b47c05ebc6e70240d1acb2887527db3354b7b7bb055415fa45b4c47a64fd1564"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "a631c8a1291a3dfb804b6a6670b885db4aae3d82682027922673f26151ecc205"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "4101c429b7a4967129a9457dc4cb69199d6a73f47a2a48fa5aac3d99c03bfd66"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "4101c429b7a4967129a9457dc4cb69199d6a73f47a2a48fa5aac3d99c03bfd66"
+   },
+   {
+    "path": "targets/breast/female-child-maxmuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-maxmuscle-minweight-mincup-minfirmness.target",
+    "sha256": "4101c429b7a4967129a9457dc4cb69199d6a73f47a2a48fa5aac3d99c03bfd66"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "793dae48f4ac5fde4f559b077a4fae298a8f1b376266e3efb373bf61428dc734"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "bfb5361da58ef7a5d09a9bd34fced1c63aa8f6d101a93d1d8c04b56defa2302c"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "df90a22ba6ce77531ce7adeae703e6e925372957e96e63064dff816891981a62"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "ff08ebd4087ab601e612ba840c9188b0b31f96976cd0cc7fa5abdd22b2c9611f"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "1a7bbb6bc6dc933007a4f688f902a087aaf8df62bdb804d00d47cc6e9012c288"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "6d3f536b954a05d54037981b6ec273dd715978b43bc7f7b2543c0d2389f9a8b4"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "6d3f536b954a05d54037981b6ec273dd715978b43bc7f7b2543c0d2389f9a8b4"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "6d3f536b954a05d54037981b6ec273dd715978b43bc7f7b2543c0d2389f9a8b4"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "f3e73d9eb98c98a1bff3a7b9a287b9fab26216b1e3e5cd9ef945e3ee83beadb2"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "c928ff99a9f917bafda0a812ed510b7bde8adec3dce7312c5020b1d05d9ebf7c"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "e4cef8d52578b2e46c5571411cc3de88766994186b2882c44a1c1a6caa9205b1"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "b83acb2bf83d82b266580bcbed49f2197f1a9fbb58d4d3e6aebb2ea7dff72663"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "0cf28aa8c9672a73954d4e58c23443152caf888a4ca08cf40611ccbcb5bebf85"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "8f9b4f7642563c6435eac5b0e41f48b88ba4b092f62b05f042b00833148f25c1"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "8f9b4f7642563c6435eac5b0e41f48b88ba4b092f62b05f042b00833148f25c1"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "8f9b4f7642563c6435eac5b0e41f48b88ba4b092f62b05f042b00833148f25c1"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "005d3fec765fefd294338e18c20dd9c8152cda4c616e0fdef1917d08450b9a3c"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "4351a601fa9d4020981d38122e8a50ef2259b23cbe177ef82d71d74df0fa0c79"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "1947efabd39e7410b250580b8781202f5cd6b22daa67f7b67d2607014abfd0ad"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "cc9d1e6686a4243418b0dad0d9468e5f09ab342181f326ae17f2d100dcd9b013"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "ea4019b1f442cc040e6e56f4d186a2bdd6580379f371ec4481e3b5ba882f0515"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "098df66d3ccd4efbf0c5fa23efb936bd2f3acbe1f27a8db8b689ac84c4e4b7d3"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "098df66d3ccd4efbf0c5fa23efb936bd2f3acbe1f27a8db8b689ac84c4e4b7d3"
+   },
+   {
+    "path": "targets/breast/female-child-minmuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-child-minmuscle-minweight-mincup-minfirmness.target",
+    "sha256": "098df66d3ccd4efbf0c5fa23efb936bd2f3acbe1f27a8db8b689ac84c4e4b7d3"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "8598aea676cdb96d93a9dcdc662a483045efab2fd32789fcadee8961d34e1b81"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "98a8378ed036a27f44a8010adf1d44f72f226c005ce2e16375cad116a9748b11"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "036c61a1a56a98bcced358f9f997b5d20d638d071c9afeda4611d1c04f8da3c5"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "aee90ac32cc8f529d2ede399d3d0d0409516ee3d23566a8a578d7cc8c9c4ac0a"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "9b61b0f8657797bca2cbd789e031763d04afa739286a5379508f220bd99c3362"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "13f4eab82fc190401f6d35e6828a2bbc7ad97a0d07dad0a87c93871ce5e2874e"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "13f4eab82fc190401f6d35e6828a2bbc7ad97a0d07dad0a87c93871ce5e2874e"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "13f4eab82fc190401f6d35e6828a2bbc7ad97a0d07dad0a87c93871ce5e2874e"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "c372b5e3a4d42c093fcc622c70b1b7ee758e44ff939f846d51ccac901284fedb"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "5a0cc6e300aaa7b0d4aca66d33f33d2614cec1e91af498e36791f784b75d3380"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "815d13e4d3035cdf20eb68692d1a2813fdbda34916a242bdfcdf38fc51609bb7"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "e4be003069674312b03beb863faa3c367312add58dc2939379537b32bcea4444"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "f6d7816e230327501652e78d52bb3a178c4f923f1ef41fcf77bbd6f77d049ff9"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "123e0988e60fba6dfae60afb0e4de3790eac80411f3f02cfd62301384461f653"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "123e0988e60fba6dfae60afb0e4de3790eac80411f3f02cfd62301384461f653"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "123e0988e60fba6dfae60afb0e4de3790eac80411f3f02cfd62301384461f653"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "b4a2b0cfb5208d1ef61284580a3ba5c248999aeacb47111fda750f350e8359ea"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "b4a2b0cfb5208d1ef61284580a3ba5c248999aeacb47111fda750f350e8359ea"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "31fd9f7675cbd61dc1fe1d9ae2dc1f349ae95291772bb5d5d377918183a31982"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "3f3ddd679ee72f3ad9d09c58ebd7450f06ab474039787f4db024e5ab114e7c3a"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "86db380ec947dea2416030fa9490114900c99784674ae9a3bf9f8312be0a6795"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "1ec30cec3bd25ffe4ad8388f570b84ee70cf446cb9e5b6b7998359c5a10238a4"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "1ec30cec3bd25ffe4ad8388f570b84ee70cf446cb9e5b6b7998359c5a10238a4"
+   },
+   {
+    "path": "targets/breast/female-old-averagemuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-averagemuscle-minweight-mincup-minfirmness.target",
+    "sha256": "1ec30cec3bd25ffe4ad8388f570b84ee70cf446cb9e5b6b7998359c5a10238a4"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "9c16b1c497ff3aa1303b8fd53d9758e13cdf98e1f0ed6fdce9dca48fbe611307"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "7be6b922be66f57fecdedc279eb35c03411ba44e4a9db4514cb6bcd6f3cdc07d"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "69d2b57c133017c41f7969c1bcec4f8f25aca16d6a906075c268fd07d636e4c6"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "8629aab40c06c21780cfd159232575ce55bf73d78428da34512ef61e71faf061"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "bcc6f37750cb00cb4243a623c84cb78fe29f92cf3aa32fd34165c16de9398835"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "7eb55cb317edcec94ba946e226b849b66260ac82e733d7e22ff2d9c44401403b"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "7eb55cb317edcec94ba946e226b849b66260ac82e733d7e22ff2d9c44401403b"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "7eb55cb317edcec94ba946e226b849b66260ac82e733d7e22ff2d9c44401403b"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "4d9beb05083a1baa2acc1ef1adf84591e29adc70bddb86cff52fd07ba409d2c4"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "609c7d7fe515656e27d332efc20f2570ac08c59251ddb2529f0ca58234a4af0c"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "a9de2de4e82bde1f13f5bf8413c06fc80eb4041c8e6566a6046ab911d6a09e09"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "4d9beb05083a1baa2acc1ef1adf84591e29adc70bddb86cff52fd07ba409d2c4"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "137a1b9095c75d25b1d952ecec2b158c6a074730908deafd607a8c6d5d80cf53"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "5c96e45b139f96852eae2b3caae9e6599d15ba185fb955bc3d2c5cb70409b560"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "5c96e45b139f96852eae2b3caae9e6599d15ba185fb955bc3d2c5cb70409b560"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "5c96e45b139f96852eae2b3caae9e6599d15ba185fb955bc3d2c5cb70409b560"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "cdbe6b8bffe2137fdd0bf7e9e424104a60d5c979bf726cce1983eb022127a042"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "25a9b76558a8518a5cbd9ccf0320cf88ca57b56deafb6be43a545b377a75949b"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "fe30750b6df1aa68b362c249439d474e185592d674ce664cc05dec42b0afa6f7"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "8f55f22e5c60dc99359eb485508b78261ba459a136d1a701f0f23007152b8ffa"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "6339bed7d94f58cddff4b5e127dbc44047436666ec67865a56175fa56450e4cb"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "b762a8b639336e6c04ef2aeba6ea83d415f8e752fac66b8de1ad79df4680ed09"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "b762a8b639336e6c04ef2aeba6ea83d415f8e752fac66b8de1ad79df4680ed09"
+   },
+   {
+    "path": "targets/breast/female-old-maxmuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-maxmuscle-minweight-mincup-minfirmness.target",
+    "sha256": "b762a8b639336e6c04ef2aeba6ea83d415f8e752fac66b8de1ad79df4680ed09"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "425e86bdd0b528df19086beaf676eee2b60a1c629a1c884e0afa373adf730802"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "599d42c2acd7c9f03183ef11a43d2bf68f79742dfdb892bab5b4fc194a22e281"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "835b679c41c93d32534c7f859d0f351d19dab8d9e59aa23d70027e4b1df7d665"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "42aba289a702a0003707ca8a3a1ea90b471fcfbd86c880f6d8748d6faaa45a75"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "4b241092e4d09027889728ce670ee187f6a77d7f4b3c3bf42ff750790d3d3837"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "dd6bd63583873e2867303008c8bd08e597e52dc3971bf58e58213a20aa4c4597"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "dd6bd63583873e2867303008c8bd08e597e52dc3971bf58e58213a20aa4c4597"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "dd6bd63583873e2867303008c8bd08e597e52dc3971bf58e58213a20aa4c4597"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "aea258da3a233920b226283057dcd7c254547de06352a7e76d5492f1e2f0bdff"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "503b6f3c2184014a9f84b4808b27a68d3626652120028b171b7ff529ad4d2da9"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "17df95a233fa83dc3e4ef7f14ab912e20e92021054de43cec3159a4450679a3b"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "97cd7f433ed79b53ae0ecf2e0379325750688fab22e91005d72f56e4cd954dd8"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "58263f04487bb2b20669b1a24be6661fe6400a6f925d782d101e805ce0a0b02b"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "4e2d421ce38bdbfd509b5a828ce3ce15fd6acaae3a602c91644123a4fb44944b"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "4e2d421ce38bdbfd509b5a828ce3ce15fd6acaae3a602c91644123a4fb44944b"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "4e2d421ce38bdbfd509b5a828ce3ce15fd6acaae3a602c91644123a4fb44944b"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "7290a217d143c98e34150e9979b327e9ce79b112d6befb01dae775ca61f998cc"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "476e737714bbc82c73282037aac4cc091440f55336b01783d032f2a2fe40dc1e"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "faa75b3abb5c34828e2f0ed4b5f3ef5d02b2631848376a65fefd99f4dde065bd"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "9d318fd60548c7fac4cafa9b4f30ef1a2035ca47a5cd11ac29a2db991e35d9e3"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "376cfc28eee204e01c06225201fe139e6da988da25a9f94bb82f3c34ed2c7325"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "3ed55f690b9b456250307a0ae73ee113f94eb3385b778fa8f0eb032e22c8ed97"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "3ed55f690b9b456250307a0ae73ee113f94eb3385b778fa8f0eb032e22c8ed97"
+   },
+   {
+    "path": "targets/breast/female-old-minmuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-old-minmuscle-minweight-mincup-minfirmness.target",
+    "sha256": "3ed55f690b9b456250307a0ae73ee113f94eb3385b778fa8f0eb032e22c8ed97"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "31f1d91824fcbb98ccf52f2c4d20c8e7c77c77ae596c58d1cf91c34801552b60"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "0034893c985e04012db712bc140d83a41ea3b9e12c48df1461dad388a716b553"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "b5aaa1595cf4efcee69022fc60034d93ab6f6fc473e6f8e162e5526803b074bf"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "76737472bf148e69bd5e80da982b88aa0926b51ef9ea1ac6217da88d86cf55cf"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "86b295a63ad779e7e86051a166a8b5fb76c35814c03b66a63b68b803edfcd5d3"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "65e4ca16353f6c0e23b420cf5d9b31d8993943b76e6cd3a6961943371dd6bc2f"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "65e4ca16353f6c0e23b420cf5d9b31d8993943b76e6cd3a6961943371dd6bc2f"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "65e4ca16353f6c0e23b420cf5d9b31d8993943b76e6cd3a6961943371dd6bc2f"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "02a3f8a7422aaf1655a9e8f0c3edd276581d07482ad8b59057d6c6397dfb4c90"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "71348a68fe579f11554afb702062220cedca22cf7ca6ae8222d34af0a9c62a84"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "05544ef4bed841fa7944335aedc887abad0b442c3209fa3254ba47f8631a9f82"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "16ccf9ae926c23b4b215173f4edde6b79d2cffc51ebe7108c61e1dfc3bb5fb89"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "8c05c6d7fcca0111ab9d08869748b0fe554a985381b53c527c3a7c916f25333a"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "f7b60522393f5b7d82ac3fa14ec903b26e031d77b83c41f8cffd80e845bf804f"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "f7b60522393f5b7d82ac3fa14ec903b26e031d77b83c41f8cffd80e845bf804f"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "f7b60522393f5b7d82ac3fa14ec903b26e031d77b83c41f8cffd80e845bf804f"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "cb35d792634d1cba1a532c7e172f44bd6db563ab45b42faa91fe794e8cb1e697"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "c1c1ac06662211505f5d710149275ef76f431f98ada24fdf0706d367c1e0760c"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "bc0653099dc3c7bd490642b0a5e718939bbeec33f86095b69d724567adfba3b6"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "2e975bc0268147d938198ca76093fdfc44279be08a80052e7e73926ab29e97fb"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "106393b8e3a1ee69eb0b17c3c2a37c99c061ed88210ae347480b1d71304ea112"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "f7c34c72a4461cbf8edc9f615613e2d19dd164a1d19022d72bd67efb7248f5ca"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "659b0475b08964d373a5af7f405e86c88ce8d76dbdbafff5db955b6bda65e005"
+   },
+   {
+    "path": "targets/breast/female-young-averagemuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-averagemuscle-minweight-mincup-minfirmness.target",
+    "sha256": "d7166c4bb33cc47c50a8a1b29c4e548d3ceca0783ecd24a26ea58359b4d89b57"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "2a7f7d1cfeab45fba2b2f89318694c89f7b5afa1ab4395fdf2f5e37c46e6f634"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "e841c5ea679fd911e8fd60e42d987ec4513185f81918d3545f9c3f52f9f6a0fa"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "ee30c72778b92897da2cb71c65cee08a0f9d299d19d26a99288ad7bf13e5b4b1"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "3a99cd342479e57e1b20aae5515d87cbd17499505dbdffd6346d1d734b250f65"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "e5dae9aba6fb8acbb4462c85fcbfd44e6041461c01130813fc7d372c33b77925"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "f9e827e1f0af0dec1f04f96f1ce771f281bb51fbcf6e4a01be5cb6be24a89383"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "f9e827e1f0af0dec1f04f96f1ce771f281bb51fbcf6e4a01be5cb6be24a89383"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "89a9fbb1ccb21da2a54a647a7c08ead8a527425786c2f3d2f218d5c81b14ffa2"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "1119cc2d73994980bb2bba6eca663395ddcdc0ef25825e545e72d20fdb68b191"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "3be15013427705e85aa0066017827fd0bcc2f45effca8b0b4c9ccfaa2dcd0d52"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "cea1964ff0831345fe431f288fdffacf60d252476d384e34b8b8ae144499caa9"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "bf446331f05d008280a35b4c6a02b4a45c8ca293f6c859076f3f1362516a6d39"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "2775ca7573c3528d048dcb06bfcdc46c75a771ad82e717be4719f569e9800099"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "ccae5bd0f7f146615e89a49db08e4457399331d1793353c6f30786c5999e52cc"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "fbf037406329c35d0271ecf283e3ea076d64e4a4aad013364fed6345f3b2d94c"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "539fd6a14663b06c2d1d6d912dbf34d07403cb70a90c41622fa9844fae6554ad"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "cb35d792634d1cba1a532c7e172f44bd6db563ab45b42faa91fe794e8cb1e697"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "c9cde97bdb7133e9a4edd76091123dfe8f89361dc9c986ec05e7c3012dbeaae8"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "1ea8f093dda8a93c04608a4f78bc54898e6979105244f21946e11db3f7514c2a"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "4a4230c96fbe4d7dc68f6088923c1705d47f81534c50573afd9366e191a96aac"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "e5291365623120b763a0ed391c403245e58176d66c5fbf6e2265fcf976bb70c8"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "1b6085d02be8be5dfd696ec665f9be30aac3515940d050a86100bac92b4031b1"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "04a0d1c6c549dc660695e6a79c57423c046bdabd122a500d3213a82f885879c8"
+   },
+   {
+    "path": "targets/breast/female-young-maxmuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-maxmuscle-minweight-mincup-minfirmness.target",
+    "sha256": "fef224d937ac950c8e420486bff9f86ddb87d282ab31d19e384f524d069754fe"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-averagecup-maxfirmness.target",
+    "sha256": "9ff0ace7b46b0fa6125878370ceb6a1d8b851c3b14f240d69ab0dfb81c15f674"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-averagecup-minfirmness.target",
+    "sha256": "74162081c370b9034398cd9b5f083741f1f428035a6d12a4d578b05a4568548e"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-maxcup-averagefirmness.target",
+    "sha256": "a7d6f2b5d5137ad5a0db49536e5444b4731a168694457d49010bb644948e258b"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-maxcup-maxfirmness.target",
+    "sha256": "b8a003853aa186aed5309990812c079e0c4271af989fdc42c30cbb2b180eab30"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-maxcup-minfirmness.target",
+    "sha256": "5fb89ec9b435e47c3423d7fe03d2a111f507ead15fd94cc540c4f2de1f9b3d2b"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-mincup-averagefirmness.target",
+    "sha256": "05b12acef7b7a925a0fb3ab45bb807e340eaccbe8489c4d74a75ed0080715e1b"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-mincup-maxfirmness.target",
+    "sha256": "05b12acef7b7a925a0fb3ab45bb807e340eaccbe8489c4d74a75ed0080715e1b"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-averageweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-averageweight-mincup-minfirmness.target",
+    "sha256": "05b12acef7b7a925a0fb3ab45bb807e340eaccbe8489c4d74a75ed0080715e1b"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-averagecup-maxfirmness.target",
+    "sha256": "59ec723fd1e302b927539a8c316937943464bf44dc080fe351494b7e16474279"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-averagecup-minfirmness.target",
+    "sha256": "63ca4f85add90fd93c1d9828923cc99a2d6ca2226c3e677852c4f3a7746c3df0"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-maxcup-averagefirmness.target",
+    "sha256": "f539179d07844f9c1d8da2546c17f629280ab2d6193e3468efbc9513a230255d"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-maxcup-maxfirmness.target",
+    "sha256": "d16f4bc9030b2d11cd058ae61e8f453da23c9a45b73da6801beb6ac05fd6ec4b"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-maxcup-minfirmness.target",
+    "sha256": "3469a74ca86b2d51183c71bc003867be9e1bccb7d95d00725f713665f560dd35"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-mincup-averagefirmness.target",
+    "sha256": "ffae4061ee4052322ce72bb329da3c36e5fba6d83aed6418ef83f4217ef687da"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-mincup-maxfirmness.target",
+    "sha256": "8fa69893682557517da462aeff32981475f037b925bc3cfb56494f14f565e842"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-maxweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-maxweight-mincup-minfirmness.target",
+    "sha256": "14f53af3f31f0c0a7d19c0e0dcf7fdeb75f337da5a55acd40a09dcece1e579a8"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-averagecup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-averagecup-maxfirmness.target",
+    "sha256": "cb35d792634d1cba1a532c7e172f44bd6db563ab45b42faa91fe794e8cb1e697"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-averagecup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-averagecup-minfirmness.target",
+    "sha256": "c1c1ac06662211505f5d710149275ef76f431f98ada24fdf0706d367c1e0760c"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-maxcup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-maxcup-averagefirmness.target",
+    "sha256": "1ea1ef84b46fa73ac64d411b4b1aee1189b31f52137844aa9da99f6206dd24a0"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-maxcup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-maxcup-maxfirmness.target",
+    "sha256": "4548bc7e2721d950b90a36fd3df688537e7c8b849b39dc5ecc2437dbad20c070"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-maxcup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-maxcup-minfirmness.target",
+    "sha256": "5be9bd2c0a6a4799038585dfea5b67b36f747cd564e8672ba79e401ffa520979"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-mincup-averagefirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-mincup-averagefirmness.target",
+    "sha256": "8c42c8301090775b6e545706fce62460a9eeedd7cf2f7e4b193a359b668871be"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-mincup-maxfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-mincup-maxfirmness.target",
+    "sha256": "e4b0dd2758d4620cf2f26e1f7829541b9773846140879f5ecb233a175fbf2d94"
+   },
+   {
+    "path": "targets/breast/female-young-minmuscle-minweight-mincup-minfirmness.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/female-young-minmuscle-minweight-mincup-minfirmness.target",
+    "sha256": "8ae3416520b514a150ea1d297a968855b0b3aebf53e9bc6a16abe5a748bd671d"
+   },
+   {
+    "path": "targets/breast/nipple-point-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/nipple-point-decr.target",
+    "sha256": "0f4fe64476e45dfc77a302bf373dffc33dc6b5f1b256589e3f74e23ce1fba120"
+   },
+   {
+    "path": "targets/breast/nipple-point-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/nipple-point-incr.target",
+    "sha256": "2f9ac628bf9cf2b2e84bc2d93c81764f4d703405b49016bf6ae8b39901616781"
+   },
+   {
+    "path": "targets/breast/nipple-size-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/nipple-size-decr.target",
+    "sha256": "af1a11c39faaef789dc0c9e9a88f9dc2f703df460a07a0c17a7d849dbd268d5c"
+   },
+   {
+    "path": "targets/breast/nipple-size-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/nipple-size-incr.target",
+    "sha256": "4b23e80e1f7678951900c903b3d6a90fedad2f023c57e4d164dd47701c33a8a7"
    }
   ]
  },

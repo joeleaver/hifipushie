@@ -160,6 +160,16 @@ def measure(P, J: dict, chin_z: float, top_z: float | None = None) -> dict:
     B = np.array([np.ptp(s[:, 0]) if len(s) else np.nan for s in sl])
     out["chest_circ"] = float(np.nanmax(G[(f > 0.68) & (f < 0.88)]))
     out["waist_circ"] = float(np.nanmin(G[(f > 0.35) & (f < 0.65)]))
+    # the bust: the fullest level of the chest's front off the centre line, its girth, and how far it stands
+    # ahead of the breast bone at that level (projection: ~1-2 cm a flat or male chest, 3-4 an A/B cup, 5-6 a C/D)
+    fr = np.array([s_[np.abs(s_[:, 0]) > 0.25 * xs][:, 1].min() if len(s_) > 8 else np.nan for s_ in sl])
+    kb = int(np.nanargmin(np.where((f > 0.6) & (f < 0.88), fr, np.nan)))
+    at = np.abs(zs - zs[kb]) < 0.02 * H
+    mid = P[(np.abs(P[:, 2] - zs[kb]) < 0.012 * H) & (P[:, 1] < float(np.median(P[:, 1])))]
+    mid = mid[np.argsort(np.abs(mid[:, 0]))[:6]]
+    if len(mid):
+        out["bust_circ"], out["bust_height"] = float(np.nanmax(G[at])), float(zs[kb] - z0)
+        out["bust_projection"] = float(mid[:, 1].min() - fr[kb])
     out["hip_circ"] = float(np.nanmax(G[(f > 0.02) & (f < 0.3)]))
     out["hip_breadth"] = float(np.nanmax(B[(f > 0.02) & (f < 0.3)]))
     out["waist_breadth"] = float(np.nanmin(B[(f > 0.35) & (f < 0.65)]))

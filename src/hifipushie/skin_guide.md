@@ -44,9 +44,22 @@ against the references. Children are not small adults, and artists set proportio
 (Measured children [23][24]; artists' charts round the young ones' heads bigger: 4 heads at 1, 5 at 3, 6 at 5.)
 `base.body.age` under 25 gives these by default (MakeHuman's own straight-line blend made a 3-year-old 74 cm and a
 16-year-old 1.49 m; `"growth": false` brings that back), `base.body.height` overrides the size, `sex` matters
-little under ~10, `base.body.nipples: 0` smooths them off the chest (the tool does for children: they print through
-thin clothes). A head with `follow_body: true` and no `like` keeps its body's own neck: a toddler has almost none.
-Figures are dressed by default (`outfit`: tee_shorts, onesie under 2, underwear, none).
+little under ~10. A head with `follow_body: true` and no `like` keeps its body's own neck: a toddler has almost none.
+
+The chest: `base.body.bust` and `firmness` (0..1, MakeHuman's cup size and firmness targets; 0.5 = the macro shape's
+own, which stands 18 mm ahead of the breast bone: an AA cup, small and pointed). The `human` tool gives an adult
+woman bust 0.7 (~30 mm, an A/B cup) growing in from 11 to 17 years, firmness falling with age (0.65 at 30, 0.4 at
+75) and +0.2 when dressed, which is what a bra does; children and men get none. Judge it by the number the tool
+prints (`bust_projection`: ~10-20 mm a flat chest, 30-40 an A/B cup, 50-60 a C/D), not by a clay render alone.
+`base.body.nipples: 0` flattens the nipples under cloth with MakeHuman's own nipple targets (then the last nub over
+a patch 1.2% of the stature wide; on a child, who has no breast, the small mound under each as well). Never smooth
+a wide patch on a woman's chest: 4% of the stature scooped a crater out of each breast, a dented ring in every render.
+
+Figures are dressed by default (`outfit`: tee_shorts, onesie under 2, underwear, none), in cloth with its own volume
+(`parts.<p>.garment`: closed over the body's dips, a tube hanging from the chest and belly): a shell of the skin is
+body paint, every navel, muscle and nipple prints through it. A baby's onesie goes over a nappy (a blob of bulk
+round the seat). Each seed is a different face (`humans.face`: nose, lips, cheeks, chin, jaw, brow, eye size drawn
+per person and leaning the way of the age and sex; lids opened to ~0.2 of the pupils' distance; lips together).
 
 Skin can't make a face young, old, male or female on its own: a seven-year-old's skin on an adult's skull is an
 adult. On a MakeHuman body with a GNM head, set `base.head.follow_body: true` (or a strength 0..1) when you make the

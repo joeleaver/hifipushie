@@ -85,11 +85,14 @@ def weights() -> dict | None:
     return _CACHE["weights"]
 
 
-def _target(name: str) -> tuple[np.ndarray, np.ndarray]:
+def _target(name: str, group: str = "macrodetails") -> tuple[np.ndarray, np.ndarray]:
     if name not in _CACHE:
-        p = root() / "targets" / "macrodetails" / name
+        p = root() / "targets" / group / name
         if not p.exists():
             from . import assets
+            if group != "macrodetails":
+                raise FileNotFoundError(assets.missing("makehuman", f"targets/{group}/{name}", "a bust / nipple target: needed "
+                                        "because base.body has bust, firmness or nipples"))
             why = ("a female target: needed because base.body.sex is under 1, or base.head.follow_body is set (its "
                    "reference head is sex 0.5); a body with sex 1 (the default) and no follow_body loads without it"
                    if "-female-" in name else "a body target")
@@ -176,7 +179,41 @@ def _shaped(params: dict, slider: float, sex: float) -> np.ndarray:
                 if s * a * rw > 1e-6:
                     idx, d = _target(f"{r}-{g}-{age}.target")
                     V[idx] += (a * rw / tot * d) if s == 1.0 else (s * a * rw / tot * d)
+    _bust(V, params, wa, wm, ww, 1 - sex)
     return np.c_[V[:, 0], -V[:, 2], V[:, 1]] * 0.1  # dm, Y up, facing +Z -> m, Z up, facing -Y
+
+
+def _bust(V, params: dict, wa: dict, wm: dict, ww: dict, female: float) -> None:
+    """MakeHuman's breast modifiers, applied only when asked: "bust" (cup size) and "firmness", 0..1 with 0.5 the
+    macro targets' own breast (no target at average cup + average firmness), weighted by how female, and by age,
+    muscle and weight as MakeHuman does (child / young / old targets: a baby has none); "nipples" 0..1 (1 as
+    modelled) flattens them with MakeHuman's own nipple targets (any sex or age)."""
+    cup, firm = params.get("bust"), params.get("firmness")
+    if (cup is not None or firm is not None) and female > 1e-6:
+        wc = _three(0.5 if cup is None else float(cup), "min", "average", "max")
+        wf = _three(0.5 if firm is None else float(firm), "min", "average", "max")
+        for age, a in wa.items():
+            if age == "baby":
+                continue
+            for mus, m in wm.items():
+                for wt, w in ww.items():
+                    for c, cw in wc.items():
+                        for f, fw in wf.items():
+                            k = female * a * m * w * cw * fw
+                            if k <= 1e-6 or (c == "average" and f == "average"):
+                                continue
+                            idx, d = _target(f"female-{age}-{mus}muscle-{wt}weight-{c}cup-{f}firmness.target", "breast")
+                            V[idx] += k * d
+    nip = params.get("nipples")
+    if nip is not None and float(nip) < 1:
+        # (the targets are an adult's millimetres: on a baby's chest, a third the size, they turned the skin inside out)
+        k = float(np.ptp(V[:, 1]) / np.ptp(_raw()[0][:, 1]))
+        for n in NIPPLE_TARGETS:
+            idx, d = _target(n, "breast")
+            V[idx] += (1 - float(nip)) * min(k, 1.0) * d
+
+
+NIPPLE_TARGETS = ("nipple-point-decr.target", "nipple-size-decr.target")
 
 
 def _heads(V: np.ndarray) -> tuple:
@@ -214,16 +251,18 @@ def _growth_slider(params: dict, age: float, sex: float) -> tuple:
     return _CACHE[key]
 
 
-def _smooth_nipples(V, faces, used, breast, amount: float):
-    """The modelled nipples taken off the chest ("nipples": 1 as modelled .. 0 gone): under a child's thin clothes
-    they printed through as two studs. Round the breast bone's tail (the nipple) the skin within 2.8% of the stature
-    is moved, along the chest's normal only, onto a quadratic sheet fitted through the ring of skin just outside it.
-    (Relaxing the vertices instead puckered the mesh: the nipple is a pole of small dense rings.)"""
+def _smooth_nipples(V, faces, used, breast, amount: float, wide: bool = False):
+    """What MakeHuman's nipple targets leave (a nub that prints through cloth as a stud) taken off: round the nipple's
+    tip the skin within 1.2% of the stature (the nipple itself: at 4% this scooped a crater out of each of a woman's
+    breasts, the "dented ring") is moved, along the chest's normal only, onto a quadratic sheet fitted through the
+    ring of skin just outside it. (Relaxing the vertices instead puckered the mesh: a pole of small dense rings.)"""
     V = V.copy()
     H = float(V[used, 2].max() - V[used, 2].min())
     body = np.zeros(len(V), bool)
     body[used] = True
-    r = 0.04 * H
+    r = max(0.012 * H, 0.011)  # (a baby's mesh has few vertices within 9 mm)
+    if wide:  # a child's chest: MakeHuman models a small mound under each nipple, which printed through a vest
+        r = 0.04 * H
     E = _CACHE.get("edges")
     if E is None:
         E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in faces for k in range(len(f))}))
@@ -236,14 +275,14 @@ def _smooth_nipples(V, faces, used, breast, amount: float):
     el = np.where(deg > 0, el / np.maximum(deg, 1), np.inf)  # each vertex's mean edge length
     for sgn in (1.0, -1.0):
         c0 = breast * [sgn, 1, 1]
-        near = body & (np.linalg.norm(V - c0, axis=1) < 1.4 * r)
+        near = body & (np.linalg.norm(V - c0, axis=1) < 0.056 * H)
         if near.sum() < 12:
             continue
         c = V[np.flatnonzero(near)[np.argmin(el[near])]]  # the nipple's tip: where the mesh's rings are smallest
         d = np.linalg.norm(V - c, axis=1)
         ring = body & (d > r) & (d < 1.9 * r)
         inner = body & (d <= r)
-        if ring.sum() < 8 or not inner.any():
+        if ring.sum() < 6 or not inner.any():
             continue
         Q = V[ring] - V[ring].mean(0)
         n = np.linalg.svd(Q, full_matrices=False)[2][2]
@@ -260,7 +299,7 @@ def _smooth_nipples(V, faces, used, breast, amount: float):
         coef = np.linalg.lstsq(A, h, rcond=None)[0]
         u, v, h = uvh(V[inner])
         fit = np.c_[np.ones_like(u), u, v, u * u, u * v, v * v] @ coef
-        t = np.clip((r - d[inner]) / (0.9 * r), 0, 1)
+        t = np.clip((r - d[inner]) / ((0.5 if wide else 0.9) * r), 0, 1)  # (wide: whole within half the radius)
         w = amount * t * t * (3 - 2 * t)
         V[inner] += (w * (fit - h))[:, None] * n
     return V
@@ -270,7 +309,7 @@ def body(params: dict) -> dict:
     """A shaped MakeHuman body as a template dict (as retopo.load_template): {"name", "P" (metres, Z up, facing -Y,
     feet at z = 0), "L", "S", "J", "face": {"landmarks": {"eye.L"}}, "chin_z"}."""
     grow = grows(params)
-    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples")} | ({"growth": True} if grow else {}), sort_keys=True)
+    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples", "bust", "firmness")} | ({"growth": True} if grow else {}), sort_keys=True)
     if ("body", key) in _CACHE:
         return _CACHE[("body", key)]
     V0, faces, joints = _raw()
@@ -291,7 +330,7 @@ def body(params: dict) -> dict:
         V *= info["stature"] / V[used, 2].max()
     jp = lambda n: V[joints[n]].mean(0)
     if params.get("nipples") is not None and float(params["nipples"]) < 1:
-        V = _smooth_nipples(V, faces, used, jp("breast.L____tail"), 1 - float(params["nipples"]))
+        V = _smooth_nipples(V, faces, used, jp("breast.L____tail"), 1 - float(params["nipples"]), wide=age < 11)
     J = {k: jp(v) for k, v in JOINTS.items()}
     h0, h1 = jp("head____head"), jp("head____tail")
     J["head"] = h0 + 0.35 * (h1 - h0)
