@@ -435,6 +435,50 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (cmuvmbarn00f6k6f2jcsm4x7b) still need this round's numbers; the twist and rigid-face cards were already DONE;
     (4) open: hem bones, the nape lump on a nod, the hand / disc dark patches, the arm's 20-25 mm on trapezius
     skin near the neck (MakeHuman's own Arm weight; sheet looks fine), a rig check in a real engine.
+  - Rig round 3 (2026-10-06, "rig3" agent, branch `worktree-agent-ac0c3684da084a02f`; renders `rig_renders/wc_*`;
+    exports /mnt/data/hifipushie/rig3/exp_*; scratch in the session scratchpad `rig3/`: run.sh, exp.py, sheets.py
+    (poses incl. nod_shared, knee90, rest_hips, hand_rest, smile_far / smile_near), strip.py (several sheets' engine
+    rows side by side), reskin.py + cmp.py + leak.py (RS=<rs npz> = re-skinned weights), throat.py, geo.py,
+    queue1-3.sh, tests.sh, gposes.json (Godot poses)).
+    - Geodesic weights for kit creatures: NOT adopted. On the REAL goblin_anat export (15k) both variants are worse
+      than ours by the audit (knee rigid p95 14 -> 22-28 mm, elbow 7-8 -> 15-17, leaks 20 -> 25-30 mm; only the
+      shoulder's rigid error improves, 11 -> 3.7 mm, with 3x the flipped triangles) and they TEAR in the render
+      (cracks in the armpit and the groin: `wc_geo_goblin_knee90.png`, glb = ours on top). On a decimated mesh the
+      edge-path distance is 10-40% long and jumps between neighbours, so the gate cuts an influence on one vertex and
+      not the next. The spike's good numbers were a look build's dense mesh. goblin_anat's own export (never checked
+      before): Khronos 0 / 0, rest / arm 60 / thigh 60 read clean in the engine row (`wc_goblin_anat_*`); its audit
+      says 29 of 45 BAD, which on stubby limbs (a blend zone as long as the segment) is the audit's human
+      thresholds, not the skin. Digit bleed 0.40-0.45 on its 3-finger hands is real and unchanged.
+    - Head falloff (the throat card): on base bodies the head's weight now fades down the neck's LENGTH
+      (`HEAD_FALL` 0.44 x head size ~11 cm, was 5) inside the neck's column (`HEAD_COLUMN`: full within 9 cm of the
+      Neck -> Head line, none past 15.5; outside it the old 5 cm, `HEAD_SHORT`), and `rigid_near`'s band on base
+      bodies is `HEAD_NEAR` ~8 cm (was 3). What riggers paint: a head-to-neck gradient over the whole neck. Bare
+      human 15k, Head alone (throat.py): turn 33 deg fold p99 / max 25.8 / 161 -> 11.7 / 30 deg, nod 25 deg 36 / 153
+      -> 14.5 / 28, edges folded over 30 deg 16-33 -> 0 (`wc_throat_fall_gnm.png`). Either change alone did half.
+      By height alone the long falloff reached the shoulders (trapezius skin moved 70 mm): hence the column. And
+      under it a collar averaged over `HEAD_WORN` and turned with the face again (57 mm): which part is head or
+      worn is judged on the SHORT field (`hf["part"]`). A `nape` factor (longer behind) changed nothing: left at 1.
+      Garments never take the long falloff (tried: the collar crumples). Cost on a dressed character: on a hard
+      Head-only nod the nape skin swings back against the collar's stand and pokes a sliver through it
+      (`wc_throat_golfer_nod.png`); the chin still sinks into the collar. Both go when the nod is shared with Neck.
+      Kit characters unchanged. `spec.rig.rigid_head` = {fall, band, under, column, nape}.
+    - `rig_drop` takes shares: `{"UpLeg": 0.5}` = half that joint's weight (its twist joints' too) up the chain.
+      The shirt hem on the golfer hardly reads it (its hem is already the pelvis's): no visible change at a 60 deg
+      thigh, flipped 41 -> 23. Hems, what riggers do (web search + the guide's section from rig2): weights toward
+      pelvis + thighs for shirts and shorts (have), skirt / coat chains driven by the thighs or springs in the
+      engine (not built: no test garment needs it; build it with the first skirt, as leaf joints after the set).
+    - The golfer's "ragged shirt hem" and "dark cracked hand" are MESH, at rest, in clay: the shirt's open hem edge
+      is wavy after decimation (`wc_golfer_rest_hips.png`), and the right hand that grips the disc is torn at the
+      thumb web and the knuckles (`wc_golfer_hand_rest.png`: jagged holes; body: 493 open edges, 217 folded, 18
+      non-manifold in the export log). Not weights, not the bake. Cause not chased (the wrap topology on a curled
+      hand whose fingers touch, or faces dropped as hidden where finger meets palm): card.
+    - A real engine: `spikes/godot_rig/` (check.gd, sheet.py): Godot 4.7 loads the GLB with its own importer at run
+      time, poses the Skeleton3D, drives the twist joints from `<name>.json` `rig.twist` by the recipe, sets face
+      shapes, writes PNGs. `godot --path spikes/godot_rig -s check.gd -- x.glb x.json <prefix> poses.json` (opens a
+      window for a few seconds). All 79 joints found (colon -> underscore), skin, maps, twist driving and shapes
+      work as exported; nothing needed changing. Not checked: a Mixamo clip retargeted, Unity, Unreal.
+    - 15k smile (`wc_gnm15k_smile_distances.png`): fine at full-figure distance, the corners kink from a bust
+      shot inward; 36k (`wc_talk_smile.png`) is fine. Blink at 36k: closed, a clean line.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.

@@ -260,6 +260,14 @@ def test_grafted_neck_and_worn_parts():
     assert (W1 * leg[J1]).sum(1).max() == 0.0                      # pruned
     assert np.allclose(W1.sum(1), 1.0) and (W1 * np.isin(J1, upt)).sum(1).min() > 0.95
     assert np.allclose((W1 * (J1 == up)).sum(1), (W0 * (J0 == up)).sum(1) + (W0 * leg[J0]).sum(1), atol=1e-9)
+    # a share: half of the thigh's weight (twist joints with it) to the pelvis, the shin's all the way up to both
+    spec4["parts"]["shorts"]["rig_drop"] = {"Leg": 1.0, "UpLeg": 0.5}
+    J2, W2 = rig.skin_parts(spec4, bones, mesh)["shorts"]
+    hip = names.index(P + "Hips")
+    th0 = (W1 * np.isin(J1, upt)).sum(1)
+    assert np.allclose(W2.sum(1), 1.0) and (W2 * leg[J2]).sum(1).max() == 0.0
+    assert np.allclose((W2 * np.isin(J2, upt)).sum(1), 0.5 * th0, atol=0.02)
+    assert np.allclose((W2 * (J2 == hip)).sum(1), (W1 * (J1 == hip)).sum(1) + 0.5 * th0, atol=0.02)
     try:
         rig.drop_joints(bones, ["Shin"])
         raise AssertionError("an unknown joint passed")

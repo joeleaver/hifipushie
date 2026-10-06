@@ -224,8 +224,8 @@ def test_rigid_near_and_export_frames():
 
 
 def test_gnm_floor():
-    """A GNM head's floor comes from its jaw landmarks: chin, lips and the jaw's angle are rigid, the throat 5 cm
-    under the chin is the neck's. Skipped without the asset packs."""
+    """A GNM head's floor comes from its jaw landmarks: chin, lips and the jaw's angle are rigid, the throat fades to the
+    neck's over the neck's length. Skipped without the asset packs."""
     try:
         spec = json.loads((ROOT / "examples" / "gnm_talk.json").read_text())
         from hifipushie.spec import expand_mirror, resolve_point
@@ -241,8 +241,10 @@ def test_gnm_floor():
     h = hf["h"](np.array(list(pts.values())))
     assert (h > 0.999).all(), dict(zip(pts, h))
     chin = pts["lm_chin"]
-    under = hf["h"](np.array([chin + [0, 0.02, -0.005], chin + [0, 0.08, -0.05], chin + [0, 0.1, -0.1]]))
-    assert under[0] > 0.9 and under[1] < 0.2 and under[2] == 0, under
+    # the head's weight fades down the whole neck (HEAD_FALL ~11 cm), not over a narrow band under the jaw
+    under = hf["h"](np.array([chin + [0, 0.02, -0.005], chin + [0, 0.08, -0.05], chin + [0, 0.1, -0.1],
+                              chin + [0, 0.1, -0.14]]))
+    assert under[0] > 0.9 and 0.3 < under[1] < 0.7 and under[2] < 0.02 and under[3] == 0, under
     names = [b["name"] for b in bones]
     assert hf["bone"] == names.index(P + "Head")
 
