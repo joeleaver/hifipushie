@@ -331,16 +331,85 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                 ring = np.array([[rc * math.cos(2 * math.pi * i / k_), rc * math.sin(2 * math.pi * i / k_), 0] for i in range(k_)])
                 Vc = np.vstack([[0, 0, 0.3 * rc], ring]) + p + zf * 1.5
                 add(Vc, np.array([[0, 1 + i, 1 + (i + 1) % k_] for i in range(k_)]), 1, 1.0, 9999, fl["center"])
-    return {"V": np.vstack(Vs), "F": np.vstack(Fs), "mat": np.concatenate(Ms), "col": np.concatenate(Cs),
+    out_ = {"V": np.vstack(Vs), "F": np.vstack(Fs), "mat": np.concatenate(Ms), "col": np.concatenate(Cs),
             "leaf": np.concatenate(Ls), "rgb": np.vstack(Gs)}
+    if leaves.get("bare"):  # a dead twig: its wood only
+        out_ = {**out_, "F": out_["F"][out_["mat"] == 0], "mat": out_["mat"][out_["mat"] == 0]}
+    return out_
+
+
+def dead_part(leaves: dict):
+    """The spec of the atlas part that draws dead twigs (`leaves.parts.dead`), or None."""
+    return part_specs(leaves).get("dead") if (leaves.get("parts") or {}).get("dead") is not None else None
+
+
+def place_dead(tree: dict) -> dict | None:
+    """Dead twig cards along the wood the shade killed (`tree["shade_dead"]`): the fine haze of bare twigs no tube can
+    draw (a 2 mm twig is under a pixel from anywhere; a stand's dead zone is thousands of them). Placements like
+    `place`'s, hanging; None when the plant has no dead part or no such wood."""
+    lf = tree["spec"]["leaves"]
+    dp = dead_part(lf)
+    sd = tree.get("shade_dead")
+    if dp is None or sd is None or not sd.any():
+        return None
+    tw = {**TWIG, **(dp.get("twig") or {})}
+    P, par = tree["pos"], tree["parent"]
+    src = np.flatnonzero(sd & (tree["radius"] < float(dp.get("max_radius", 0.03))))
+    seg = np.linalg.norm(P[src] - P[par[src]], axis=1)
+    cnt = np.floor(seg * tw["per_m"] + _u(tree["key"][src], 141)).astype(int)
+    rep = np.repeat(src, cnt)
+    if not len(rep):
+        return None
+    j = np.concatenate([np.arange(c) for c in cnt])
+    k = _child(tree["key"][rep], 1901 + j)
+    t = (j + _u(k, 1)) / np.maximum(np.repeat(cnt, cnt), 1)
+    a = _norm(P[rep] - P[par[rep]])
+    up = np.array([0, 0, 1.0])
+    ref = np.where(np.abs(a[:, 2:3]) > 0.95, np.array([[1.0, 0, 0]]), up[None])
+    u = _norm(np.cross(a, ref))
+    side = np.where(_u(k, 2) < 0.5, -1.0, 1.0)[:, None]
+    sp = np.radians(tw["spread"] * (0.6 + 0.8 * _u(k, 3)))[:, None]
+    d = _norm(a * np.cos(sp) + side * u * np.sin(sp) + tw["up"] * up + (np.stack([_u(k, 5), _u(k, 6), _u(k, 7)], 1) - 0.5) * 0.5)
+    z = up[None] - d * d[:, 2:3]
+    bad = np.linalg.norm(z, axis=1) < 1e-4
+    z[bad] = np.array([1.0, 0, 0]) - d[bad] * d[bad][:, :1]
+    z = _norm(z)
+    x = np.cross(d, z)
+    roll = math.pi * (2 * _u(k, 12) - 1) * 0.6
+    c_, s_ = np.cos(roll)[:, None], np.sin(roll)[:, None]
+    x, z = x * c_ + z * s_, z * c_ - x * s_
+    lo, hi = tw["scale"]
+    return {"pos": P[par[rep]] + (P[rep] - P[par[rep]]) * t[:, None], "frame": np.stack([x, d, z], axis=2),
+            "scale": lo + (hi - lo) * _u(k, 8), "variant": np.zeros(len(rep), int), "node": rep, "key": k}
 
 
 def place(tree: dict) -> dict:
+    """Every card placement of a grown tree: its twigs (`place_live`) and, where the shade killed limbs and the leaves
+    spec has a `parts.dead` picture, dead twig cards on them. With a dead part, placements carry `card` (the atlas
+    card each draws) and `part` (0 foliage, 1 dead)."""
+    if tree.get("twigs") is not None:  # a plant assembled from parts (veg_small) knows where its cards stand
+        return tree["twigs"]
+    live = place_live(tree)
+    lf = tree["spec"]["leaves"]
+    if dead_part(lf) is None:
+        return live
+    pc = part_cards(lf)
+    main, dc = np.asarray(pc["main"]), np.asarray(pc["dead"])
+    out = dict(live)
+    out["card"] = main[(_child(live["key"], 11) % np.uint64(len(main))).astype(int)] if len(live["pos"]) else np.zeros(0, int)
+    out["part"] = np.zeros(len(live["pos"]), int)
+    dd = place_dead(tree) if tree["spec"].get("season") not in ("dead",) else None
+    if dd is None:
+        return out
+    dd["card"] = dc[(_child(dd["key"], 11) % np.uint64(len(dc))).astype(int)]
+    dd["part"] = np.ones(len(dd["pos"]), int)
+    return {k_: (np.concatenate([out[k_], dd[k_]]) if k_ != "frame" else np.vstack([out[k_], dd[k_]])) for k_ in out}
+
+
+def place_live(tree: dict) -> dict:
     """Twig instances on a grown tree: pos, frames (3x3: x, y = the twig's run, z = its upper side), scale, variant,
     node, key. A twig ends every leafy shoot; more stand along leafy shoots (`twig.per_m`, turned by the golden angle,
     leaning out by `spread` and up to the light by `up`); `where: "ends"` keeps them to the shoot ends (pines)."""
-    if tree.get("twigs") is not None:  # a plant assembled from parts (veg_small) knows where its cards stand
-        return tree["twigs"]
     s = tree["spec"]
     lf = s["leaves"]
     tw = {**TWIG, **(lf.get("twig") or {})}
@@ -762,6 +831,7 @@ def _atlas_parts(parts, leaves, wood_color) -> dict:
 
 
 def _atlas_one(leaves, wood_color) -> dict:
+    wood_color = leaves.get("wood_color", wood_color)  # (a part's own: dead twigs are grey)
     cd = {**CARD, **(leaves.get("card") or {})}
     cs = card_spec(leaves)
     tw = {**TWIG, **cs["twig"]}

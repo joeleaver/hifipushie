@@ -318,7 +318,14 @@ def report(name: str) -> str:
     out_g, warn_g = ground_lines(T)
     out += out_g
     if st.get("dead_stubs"):
-        out.append(f"dead wood: {st['dead_stubs']} nodes of grey stubs where the shade killed limbs within the last {s['habit']['dead_keep']} years")
+        P_, d_ = T["pos"], T["dead"]
+        seg_ = np.linalg.norm(P_ - P_[T["parent"]], axis=1)
+        lv_ = T["leafy"] & ~d_
+        base_ = float(np.percentile(P_[lv_, 2], 5)) if lv_.any() else 0.0
+        out.append(f"dead wood: {int((d_ & (T['order'] == 1)).sum() and len(np.unique(T['axis'][d_ & (T['order'] == 1)])))} limbs the shade killed within the last "
+                   f"{s['habit']['dead_keep']} years are still on the trunk ({seg_[d_].sum():.0f} m of dead wood, from {P_[d_, 2].min():.1f} m up); "
+                   f"live crown from {base_:.1f} m = {1 - base_ / T['height']:.0%} of the height"
+                   + ("" if veg_leaf.dead_part(s["leaves"]) is not None else " (no `leaves.parts.dead` picture: its fine twigs are not drawn)"))
     ms = [vegetation.shape_measures(vegetation.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
     f = lambda k: round(float(np.mean([m[k] for m in ms])), 2)
     H = T["height"]
@@ -359,7 +366,7 @@ def report(name: str) -> str:
             out.append(f"  {L['name']}{' (drawn)' if L['guide'] else ' (id ' + L['id'] + ')'}: at {L['height']} m, {L['diameter'] * 100:.0f} cm, "
                        f"{L['length']} m long to [{L['end'][0]:+.1f}, {L['end'][1]:+.1f}, {L['end'][2]:.1f}], "
                        f"carries {L['low']}-{L['high']} m high, {L['reach']} m out, since year {L['born_year']}")
-    tw = veg_leaf.place(T)
+    tw = veg_leaf.place_live(T)
     if len(tw["pos"]):
         out.append(f"foliage: {len(tw['pos'])} twigs ({s['leaves'].get('shape', 'ovate')} leaves, "
                    f"{s['leaves'].get('length', 0.07)} m)")

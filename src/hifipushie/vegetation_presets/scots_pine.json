@@ -94,7 +94,7 @@
    6
   ],
   "bud_each": true,
-  "dead_keep": 10,
+  "dead_keep": 20,
   "stand_shed": 0.04
  },
  "leaves": {
@@ -143,7 +143,50 @@
    "end": true,
    "size": 384
   },
-  "retention": 6
+  "retention": 6,
+  "parts": {
+   "dead": {
+    "bare": true,
+    "wood_color": [
+     0.45,
+     0.42,
+     0.38
+    ],
+    "translucency": 0.0,
+    "twig": {
+     "length": 0.7,
+     "side_shoots": 6,
+     "sub_shoots": 1,
+     "per_m": 4,
+     "spread": 55,
+     "up": -0.45,
+     "droop": 0.5,
+     "radius": 0.004,
+     "scale": [
+      0.7,
+      1.3
+     ],
+     "spray_angle": 50,
+     "variants": 3
+    },
+    "card": {
+     "variants": 3,
+     "cross": 1,
+     "end": false,
+     "scale": 1.0,
+     "twig": {
+      "length": 0.7,
+      "side_shoots": 5,
+      "sub_shoots": 3,
+      "leaves": 0,
+      "radius": 0.006,
+      "spray_angle": 68,
+      "droop": 0.8
+     },
+     "leaf": {}
+    }
+   }
+  }
  },
  "bark": {
   "kind": "plates",
@@ -173,6 +216,11 @@
   "twig_radius": [
    0.025,
    0.07
+  ],
+  "dead_color": [
+   0.47,
+   0.43,
+   0.39
   ]
  }
 }

@@ -138,7 +138,7 @@ HABIT_INFO = {
     "uneven": "0-0.5 per order: every axis grows at its own pace, +- this share (a ragged outline instead of a turned cone)",
     "slowing": "per order: growth steps after which an axis's new segments are half as long, a third at twice that... (0 = never). A spruce's hanging branchlets 3-5: they creep on for decades, so their young needles stay near the limb all along it",
     "stand_shed": "0-0.2 added to `shed` when the tree stands in a stand (setting forest or edge): a spruce keeps its skirt in the open (shed 0) and self-prunes to a top third of live crown in a forest (0.15-0.2)",
-    "dead_keep": "years a limb killed by shade stays on the trunk as a dead grey stub before it falls: Norway spruce 25-40 (a stand's interior is a ladder of dead whorls), Scots pine 8-12 (it sheds cleaner), oak 5-10, birch 2-4; 0 = they fall at once",
+    "dead_keep": "years a limb killed by shade stays on the trunk as dead wood (twiggy at first, a short spur at the end: `deadwood`) before it falls: Norway spruce 30-45 (a stand's interior is a ladder of dead whorls), Scots pine 15-25 (it sheds cleaner), oak 5-10, birch 2-4; 0 = they fall at once. Guesses: dead branches persist for decades (Makinen 1999), the years per species are not sourced",
     "stems": "1-12 stems rising from the foot: a shrub or a multi-stemmed tree (each is a trunk: order 0)", "stem_angle": "deg the extra stems lean outward at the foot (10 tight, 35 open)",
     "ground_clear": "0.03-1.5 m over the ground no shoot grows under: hanging shoots (a weeping willow's curtains) stop there (0.4-1.2 = a browse or mowing line), a limb that sags to the ground rests on it and its growing end turns up",
     "tip_life": "per order: growth steps an axis keeps extending, 0 = for ever (short-lived hanging branchlets: 6-10; limbs that stop reaching: 20-30)", "clear": "0-6 m of trunk that never branches",
@@ -870,6 +870,8 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         top = P[:, 2].max()
         if stand is not None:  # a closed stand: the canopy's top rises with the tree; light falls off below it and away from the gap
             gap = stand.get("gap", 0.18) * max(top, 4.0)
+            if env.get("spacing") or stand.get("spacing"):  # m between the stand's trees: its own share of the canopy
+                gap = min(gap, 0.55 * float(env.get("spacing") or stand["spacing"]) / unit)
             depth = stand.get("depth", 0.35) * max(top, 4.0)
             zc = top * stand.get("height", 1.0)
             r = np.linalg.norm(P[:, :2], axis=1)
@@ -1412,7 +1414,7 @@ def silhouette(tree: dict, azimuth: float = 0.0, px_per_m: float = 20.0, leaves:
     lx = lz = lr = np.zeros(0)
     if leaves:  # each twig as a disc of about its own size
         from . import veg_leaf
-        tw = veg_leaf.place(tree)
+        tw = veg_leaf.place_live(tree)
         if len(tw["pos"]):
             tl = {**veg_leaf.TWIG, **(tree["spec"]["leaves"].get("twig") or {})}["length"]
             cen = tw["pos"] + tw["frame"][:, :, 1] * (0.5 * tl * tw["scale"])[:, None]
