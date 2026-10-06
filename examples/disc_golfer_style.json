@@ -640,6 +640,7 @@
    "rig_bone": "Head"
   },
   "shirt": {
+   "rig_drop": ["ForeArm"],
    "shell": "body",
    "offset": 0.008,
    "color": [
@@ -664,6 +665,7 @@
    "blend": 0.004
   },
   "shorts": {
+   "rig_drop": ["Leg"],
    "shell": "body",
    "offset": 0.005,
    "color": [
@@ -690,6 +692,7 @@
    ]
   },
   "collar": {
+   "rig_drop": ["Arm"],
    "color": [
     0.12,
     0.55,

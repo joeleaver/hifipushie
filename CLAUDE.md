@@ -376,6 +376,65 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     with maps + test in test_face_shapes; (2) goblin_anat and troll real exports audited (never run); (3) the
     goblin: its model must be fixed (arms clear), the tool says so; "fail soft" weights for fused limbs not built;
     (4) kinked smile corners at 15k; (5) the throat card; (6) hem bones; (7) a rig check in a real engine.
+  - Rig round 2 (2026-10-05/06, "rig2" agent, branch `rig2`; renders `rig_renders/wb_*`; exports in
+    /mnt/data/hifipushie/rig2/exp_*; scratch in the session scratchpad `rig2/`: run.sh <script> (worktree code on
+    the main workspace), exp.py (export), sheets.py (posed sheets through `rig(glb=)`), reskin.py + cmp.py (re-skin
+    an export's meshes with the code as it is, audit, clay rows side by side), throat.py (head falloff variants +
+    fold numbers), lidline.py (blink gap per bin), geo.py (surface-geodesic weights spike), val/v.mjs (Khronos)).
+    - Throat: the head's falloff on base bodies is `HEAD_FALL` 0.2 x head size (~5 cm), was 3 cm. Skin fold
+      (`throat.py`: change of dihedral across the neck's edges) p99 at a Head-only 33 deg turn: bare human 40 -> 24
+      deg, golfer 20 -> 12; nod 56 -> 43. A longer falloff on the FRONT of the throat only (the card's idea)
+      changed nothing: the fold is at the sides and the nape. Kit characters and `rigid_near` keep 3 cm. A hard
+      Head-only nod still folds (the chin meets the chest on these short necks): share it with Neck.
+    - Blink: `_lid_seal`'s last step mapped the band either side of the line LINEARLY, which parked the upper
+      margin ~0.5 mm above the line and the lower ~0.75 mm below: the thin slit that still showed (gap between the
+      margins +0.4 .. +1.5 mm on the head mesh). `LID_PINCH` 3 draws the band to the line: -0.5 .. +0.2 mm.
+      `tests/test_face_shapes.py::test_blink_lids_meet` (head mesh and pyfqmr-decimated to a third). A per-bin
+      vertex measure is NOT valid on a 15k export (bins without a margin vertex read 25 mm): judge those by render.
+    - `parts.<p>.rig_drop = [joints]` (`rig.drop_joints`): a garment's influences pruned, their weight up the chain
+      to the nearest kept joint (a name without a side = both sides + the segment's twist joints). Golfer: shorts
+      ["Leg"], shirt ["ForeArm"], collar ["Arm"]: knee -> hem 17-27 mm and elbow -> sleeve 10 mm gone, the hem stays
+      a tube on the thigh (`wb_drop_knee90.png`). This is the cheap answer to hems; hem BONES still not built.
+    - Export: with rig, parts bound to their own joint (`rig_bone`) don't bury their neighbours' faces
+      (`surface.hidden(apart=)`, `ctx["apart"]`): the golfer's shorts had a HOLE where the hip bag sat, shown by
+      a lifted thigh (a dark patch in every earlier thigh sheet, read as shadow).
+    - Assets: `assets.pack(name, files=)`; `makehuman.root` needs only base.obj + default.mhskel, so a male body
+      opens with the pack as it was before the female targets and default_weights.mhw were added (s0urc3 BLOCKER);
+      missing weights -> distance weights + a WARNING in `rig` and the export log (`rig_template.weights_note`).
+    - Kit creatures, spike (`geo.py`, goblin_anat look build at 256): weights from SURFACE GEODESIC distance to each
+      bone's own skin (scipy dijkstra over the welded mesh, max with the Euclidean flesh distance) remove every
+      leak and rigid error (arm 5.9 mm rigid / 14 mm leak -> 0, thigh on thigh 5 mm -> 0 at full strength, 4-5 at
+      half), but blends get narrower and flipped triangles rise at elbows / knees (53 -> 130-270) and Spine2 (420).
+      Digit bleed is unchanged on a look build (fingers fused at 3.6 mm voxels). Not adopted yet: see HANDOVER.
+    - `rigid_near` (the face-shape pass in the export) skips parts no shape moves: the golfer's collar took Head
+      0.56 from the moved throat skin beside it and turned with the face (26 mm at 33 deg) in every export WITH
+      face shapes (Garrett too); the worn-part rule held in `skin_parts` only.
+    - Fresh exports (all Khronos 0 / 0): `exp_golfer` (dg_fix2, 30k / 2048; BEFORE rig_drop and the hole fix:
+      audit 10 BAD of 51, no digit bleed), `exp_gnm` (tw_gnm 15k + face shapes: 5 BAD), `exp_talk` (model
+      `workspace/wb_dg_talk` = dg_fix2 + `base.head.interior` + mouth_gap 0.003, no wrap topology; 36k + face
+      shapes, with rig_drop and the hole fix, BEFORE the rigid_near fix: its head-turn sheet shows the collar going
+      with the head). Sheets `wb_golfer_*` (head33 good; nod: a lump of nape skin between hair and collar from the
+      side; arm60 clean; thigh60 shows the hole; handroll105: forearm smooth, dark cracked patches where the hand
+      grips the disc, unverified), `wb_talk_*` (thigh60 clean: no hole, hem a tube; blink closed with a clean line;
+      jawopen good), `wb_gnm_*` (15k blink: closed, small dark notches at the eye corners; smile fine).
+      workspace/dg_fix2's spec now has the strap's rig_attach and the three rig_drops (v8).
+  - HANDOVER (rig2 agent, stopped by the session's usage limit, 2026-10-06). Branch `rig2`. Tests green on the
+    head: test_rig_twist, test_rig_audit, test_tooling, test_face_shapes. State of jobs: a goblin_anat export
+    (15k / 1024) was running into /mnt/data/hifipushie/rig2/exp_goblin_anat (log scratch `rig2/exp_goblin_anat.txt`)
+    when the queues were stopped: check whether it finished. NOT started: troll_anat export, the golfer re-export
+    (dg_fix2 with rig_drop + hole fix, into exp_golfer) and the talk re-export (rigid_near fix, into exp_talk):
+    `bash rig2/run.sh exp.py <model> <out dir> '<json kwargs>'`, one at a time (they take the heavy slot; Oxidegen's
+    exports hold it for long stretches). Next, in order: (1) those three exports, Khronos (`node val/v.mjs x.glb`),
+    sheets (`run.sh sheets.py <model> <glb> <prefix> [poses]`), the talk head-turn sheet must show the collar
+    staying; (2) kit creatures: run `run.sh geo.py goblin_anat 256 <glb>` (ours vs geodesic on the REAL export;
+    `GATE=1.5,3.5 MIX=1` = the gated variant, the promising one: Euclidean blend kept, an influence cut where the
+    path along the skin is over 1.5-3.5 limb radii), render both in the test pose (`reskin.py` saves weights,
+    `cmp.py` draws them side by side), adopt it in `rig.weights` if the renders agree with the audit; watch the
+    flipped triangles at Spine2 (413 on the look build: probably the pec / lat sheets) and digit bleed on the real
+    mesh; (3) the audit card (id cmuvoqmmf00f8k6f29lu2bvex, NOT the project id) and the throat card
+    (cmuvmbarn00f6k6f2jcsm4x7b) still need this round's numbers; the twist and rigid-face cards were already DONE;
+    (4) open: hem bones, the nape lump on a nod, the hand / disc dark patches, the arm's 20-25 mm on trapezius
+    skin near the neck (MakeHuman's own Arm weight; sheet looks fine), a rig check in a real engine.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.

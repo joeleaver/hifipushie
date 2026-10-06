@@ -382,6 +382,86 @@ def test_focus_warp():
 
 
 
+def _lid_line(face, V, d, s, nb=10):
+    """A blink's lid line on a mesh: (gap per bin across the middle 84% of the eye, m: the upper margin's lowest
+    vertex minus the lower margin's highest, + = an open slit; the lower margin's roughness against a parabola)."""
+    lm = np.asarray(face.head["lm68"], float)
+    ev = face.eyes[s]
+    c, r = np.asarray(ev["c"], float), float(ev["r"])
+    ci, co = faceshapes._mirror_ids([42, 45], s)
+    pairs = list(zip(faceshapes._mirror_ids([43, 44], s), faceshapes._mirror_ids([47, 46], s)))
+    side = lm[co] - lm[ci]
+    width = float(np.linalg.norm(side))
+    side = side / width
+    up = face.up - side * (face.up @ side)
+    up /= np.linalg.norm(up)
+    out = np.cross(side, up)
+    out = out if out @ face.out > 0 else -out
+    mid = 0.5 * (lm[ci] + lm[co])
+    u, h0, f0 = (V - mid) @ side, (V - mid) @ up, (V - c) @ out
+    ku = [-0.5 * width] + [float((0.5 * (lm[a] + lm[b]) - mid) @ side) for a, b in pairs] + [0.5 * width]
+    kh = [0.0] + [float((0.5 * (lm[a] + lm[b]) - mid) @ up) for a, b in pairs] + [0.0]
+    o = np.argsort(ku)
+    upper = h0 > np.interp(u, np.array(ku)[o], np.array(kh)[o])
+    rad = np.linalg.norm(V - c, axis=1)
+    zone = (np.abs(u) < 0.42 * width) & (rad < 1.9 * r) & (f0 > 0.3 * r) & (rad > r + 2e-4)
+    hp = h0 + d @ up
+    edges = np.linspace(-0.42 * width, 0.42 * width, nb + 1)
+    bi = np.clip(np.searchsorted(edges, u) - 1, 0, nb - 1)
+    lo_u, hi_l = np.full(nb, np.nan), np.full(nb, np.nan)
+    for k in range(nb):
+        a, b = zone & upper & (bi == k), zone & ~upper & (bi == k)
+        if a.any() and b.any():
+            lo_u[k], hi_l[k] = hp[a].min(), hp[b].max()
+    ok = np.isfinite(lo_u)
+    bc = 0.5 * (edges[1:] + edges[:-1])
+    rough = float(np.std(hi_l[ok] - np.polyval(np.polyfit(bc[ok], hi_l[ok], 2), bc[ok])))
+    return (lo_u - hi_l)[ok], rough
+
+
+def test_blink_lids_meet():
+    """2026-10-05: a blink's lids must meet on one smooth line on a LOW POLY (GnmFace._lid_seal). Unsealed, each
+    margin vertex lands at its own height (the lids overlap by up to 5 mm in one place and gape in the next: a ragged
+    line with dark slots). The first seal then parked the margins ~0.5 mm either side of the line it had drawn: a
+    1.2 mm slit along the whole eye (gap +0.4 .. +1.5 mm), which is what still showed. Measured on the head mesh and
+    on it decimated to a third, the density of a 40k export's face. Slow (the head is built); skipped without GNM."""
+    got = _gnm()
+    if got is None:
+        print("skip: no GNM asset pack ($HIFIPUSHIE_ASSETS)")
+        return
+    import pyfqmr
+    spec, face = got
+    h = face.head
+    V = np.asarray(h["verts"], float)
+    T = np.array([(f[0], f[j], f[j + 1]) for f in h["faces"] for j in range(1, len(f) - 1)])
+    sp = pyfqmr.Simplify()
+    sp.setMesh(V, T)
+    sp.simplify_mesh(target_count=int(len(T) * 0.3), aggressiveness=5, preserve_border=True, verbose=False)
+    v2, f2, _ = sp.getMesh()
+    names = ["eyeBlinkLeft", "eyeBlinkRight"]
+    keep = faceshapes.LID_SEAL
+    try:
+        for X, F in ((V, T), (np.asarray(v2, float), np.asarray(f2))):
+            n0 = faceshapes.vertex_normals(X, F)
+            faceshapes.LID_SEAL = False
+            raw = face.displacements(X, X, n0, "skin", names)
+            faceshapes.LID_SEAL = True
+            D = face.displacements(X, X, n0, "skin", names)
+            for s in ("Left", "Right"):
+                g0, r0 = _lid_line(face, X, raw[f"eyeBlink{s}"], s)
+                g1, r1 = _lid_line(face, X, D[f"eyeBlink{s}"], s)
+                assert len(g1) >= 8, (s, len(g1))
+                assert g1.max() < 0.0006, (s, "an open slit between the lids", g1.max())
+                assert g1.min() > -0.0010, (s, "the lids cross", g1.min())
+                assert np.ptp(g1) < 0.4 * np.ptp(g0), (s, "no tidier than unsealed", np.ptp(g1), np.ptp(g0))
+                assert r1 < 0.00025 and r1 < r0, (s, "the lid line is ragged", r1, r0)
+                # the seal only moves the lids: nothing past the eye's own neighbourhood
+                far = np.linalg.norm(X - face.eyes[s]["c"], axis=1) > 2.2 * face.eyes[s]["r"]
+                assert np.abs(D[f"eyeBlink{s}"][far] - raw[f"eyeBlink{s}"][far]).max() < 1e-9
+    finally:
+        faceshapes.LID_SEAL = keep
+
+
 GNM_EXAMPLE = EXAMPLE.with_name("gnm_talk.json")
 
 
