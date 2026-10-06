@@ -3472,8 +3472,17 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # cross itself where the sim left it clean: those places go back to the sim's surface. For every garment:
         # it used to run only after a fine settle, and a jacket's clean-up crossed its collar ends
         A_, B_ = _graph(M)
+        # (only crossings the clean-up MADE: where the sim itself is crossed, a made collar's ends, going back to the
+        # sim's surface mends nothing, and each round grew the reverted patch by two rings: its welds were undone and
+        # the seams round it stayed open, 66 of 502 sewn pairs on the shirt)
+        sim_bad = _crossing_verts(res["V_sim"], M)
+        for _r in range(2):
+            gr = sim_bad.copy()
+            gr[A_[sim_bad[B_]]] = True
+            gr[B_[sim_bad[A_]]] = True
+            sim_bad = gr
         for _ in range(4):
-            bad = _crossing_verts(res["V"], M)
+            bad = _crossing_verts(res["V"], M) & ~sim_bad
             if not bad.any():
                 break
             for _r in range(2):
