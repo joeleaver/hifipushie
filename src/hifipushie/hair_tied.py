@@ -194,7 +194,12 @@ def grow(sc, g: dict, line, rng) -> dict:
         for k in range(int(tp.get("escape") or 0)):  # strands the tie missed: out of the hairline, then down
             side = 1 if k % 2 == 0 else -1
             az = (side * rng.choice([52, 68, 84, 150], p=[0.3, 0.3, 0.2, 0.2]) + rng.uniform(-6, 6)) % 360
-            el = float(_line_at(line, az)) + 2.5
+            el = float(_line_at(line, az)) + 4.0
+            for _ in range(8):  # its root is IN the hair, a good 8 mm inside the line (at 2.5 degrees over a steep
+                # sideburn or by the ear the root lay on bare skin: a wisp that started on the cheek)
+                if float(inside(sc, line, az, el)) >= 0.008:
+                    break
+                el += 3.0
             p = sc.point(az, el, 0.002)
             # out of the hairline a little, then down along the face: it falls beside the cheek, a few mm off it
             # (leaving the head at 45 degrees, four of them a side stood out as tufts)

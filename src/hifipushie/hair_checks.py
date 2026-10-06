@@ -111,6 +111,19 @@ def compare(strands_img, tier_img, bald_img) -> dict:
             "black": ct["black"], **stamps(mt), "straight": straight_share(mt), "straight_strands": straight_share(ms)}
 
 
+def mesh_verdict(clearance: dict | None) -> list:
+    """WARNING lines from the card mesh's own facts (hair.card_clearance): vertices that were under the skin before
+    they were moved out, wisps whose root lies on bare skin."""
+    out = []
+    c = clearance or {}
+    if c.get("under", 0) and c.get("deepest_mm", 0) > 3.0:
+        out.append(f"WARNING: {c['under']} card vertices were under the skin (deepest {c['deepest_mm']} mm; "
+                   f"{', '.join(f'{k} {v}' for k, v in list(c.get('locks', {}).items())[:5])}): moved out to the clearance")
+    for k, v in (c.get("detached") or {}).items():
+        out.append(f"WARNING: detached wisp {k}: its cards start {-v} mm outside the hairline, on bare skin")
+    return out
+
+
 def verdict(views: dict, far: bool = False) -> list:
     """WARNING lines for a tier: {view: compare()} -> what fails."""
     out = []

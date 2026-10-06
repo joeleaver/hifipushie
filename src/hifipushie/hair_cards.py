@@ -151,7 +151,11 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     W2, H2 = w * ss, H * ss
     ims = [Image.new("L", (W2, H2), 0) for _ in range(3)]
     da, di, dd = (ImageDraw.Draw(i) for i in ims)
-    thick = max(k["thick"] * ss * w / 160, 1.15 * ss) if kind in ("fly", "baby") else k["thick"] * ss
+    # fly: the tile of wisps and stray hairs, a few separate hairs drawn THICK (a wisp card is ~6 mm across 64 px:
+    # at 3 texels a hair is 0.3 mm, a few hairs lying together, and still there after an alpha test at arm's length;
+    # at one texel the whole wisp fell under the cutoff and vanished) from a root that starts at full strength (it
+    # comes out of the hair, its root buried there: faded in, the wisp seemed to start on bare skin lower down)
+    thick = (3.0 * ss if kind == "fly" else max(k["thick"] * ss * w / 160, 1.15 * ss)) if kind in ("fly", "baby") else k["thick"] * ss
     if lines is None:  # drawn strands (no groom at hand); else `lines` = real strands of the groom's own clumps
         lines = _drawn_lines(kind, w, S, rng)
     for x, v, dp, idn in sorted(lines, key=lambda q: q[2]):
@@ -169,6 +173,8 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     a, idm, dep = (np.asarray(i.resize((w, H), Image.BOX), np.float32) / 255 for i in ims)
     cov = np.maximum(a, 1e-3)
     idm, dep = np.clip(idm / cov, 0, 1), np.clip(dep / cov, 0, 1)
+    if kind in ("fly", "baby"):  # single hairs in the open are lit, not deep in a clump: no depth shade
+        dep = 0.8 + 0.2 * dep
     if kind in ("fly", "baby"):  # nothing touches the quad's border: a card's rectangle must never show
         xx = (np.arange(w) + 0.5) / w
         vv_ = (np.arange(H)[:, None] + 0.5) / H
@@ -221,7 +227,8 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     a, idm, dep = (np.concatenate([c[k] for c in cols], 1) for k in ("alpha", "id", "depth"))
     gap, lit = _lin(look.get("gap", "#221310")), _lin(look.get("lit", "#56352d"))
     shade = (0.45 + 0.55 * dep ** 0.8)[..., None]
-    val = (1 + float(look.get("vary", 0.25)) * 2.2 * (idm - 0.5))[..., None]
+    # a value per strand: what makes a card read as hairs, not a painted sheet (strands: +-vary and more)
+    val = (1 + float(look.get("vary", 0.25)) * 3.0 * (idm - 0.5))[..., None]
     gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
     col = _srgb(np.clip((gap[None, None] * (1 - shade) + lit[None, None] * shade) * val * gain, 0, 1))
     x = 0
@@ -647,12 +654,16 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                 thin = free and float(lk["inputs"]["Width"]) < 0.016  # (a wisp: a lock of a few hairs off the head)
                 if thin:  # a wisp is a few hairs: a narrow card that runs out to a point (at full width an alpha
                     # test at any distance fills it: a brown slat down the cheek)
-                    hw_full = np.clip(1.2 * c["sx"], 0.0015, 0.004) * (1 - 0.7 * _ss((s / s[-1] - 0.5) / 0.5))
+                    hw_full = np.clip(1.4 * c["sx"], 0.002, 0.0035) * (1 - 0.5 * _ss((s / s[-1] - 0.5) / 0.5))
+                if gather:  # into the tie a card runs out to nothing (its square end stood over the crown)
+                    hw_full = hw_full * (1 - 0.85 * _ss((s / s[-1] - 0.8) / 0.2))
                 off_c = abs((j + 0.5) / na - 0.5) * 2 if na > 1 else 0.0
-                nl = min(L, 2) if thin else L
+                nl = (3 if L > 2 else 2) if thin else L
                 for la in range(nl):
-                    if la == 0:
-                        kind = "hairline" if (edge and not free) else ("medium" if thin else "dense")
+                    if thin:  # a wisp: two or three thin cards of separate hairs side by side, never a filled
+                        kind = "fly"  # ribbon (under an alpha test that was a dark slash)
+                    elif la == 0:
+                        kind = "hairline" if (edge and not free) else "dense"
                     else:
                         # hair lying on the head is a combed, closed surface: its second layer is dense too (over a
                         # medium one the layer under it showed through as dark chop), on the tile whose ROOTS come in
@@ -661,6 +672,8 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                         kind = ("hairline" if (la == 1 and not free and L > 2) else "medium") if (la <= 2 - int(free) and not thin) else "sparse"
                     yo = c["sn"] * (-0.3 + 0.4 * la) + (0.0003 * la)  # (layers lie close: lifted, each cast a shadow line)
                     xo = (rng.uniform(-0.35, 0.35) * hw_full if la > 0 else 0.0)
+                    if thin:
+                        xo = (la - (nl - 1) / 2) * 0.9 * hw_full + rng.uniform(-0.2, 0.2) * hw_full
                     hw = hw_full * (1.0 if la == 0 else 0.9)
                     u0 = 0.0 if la == 0 else Rr * rng.uniform(0.0, 0.25)
                     u1 = 1.0 if (la == 0 or gather) else 1.0 - float(S["tips"]) * Rr * rng.uniform(0.0, 0.2)

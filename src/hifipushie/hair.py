@@ -1543,7 +1543,7 @@ def coverage(sc: Scalp, AA, EE, P, reach: float = 0.004):
 
 
 def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float = 1.0, sunk: bool = False,
-             extra=None):
+             extra=None, ease: float = 0.0):
     """The scalp inside the hairline pushed out: the dark underlayer (height m) or, mass=True, the groom's whole
     volume (stage a). Its edge dives under the skin just outside the hairline, so the line is crisp."""
     line = hairline(sc, g)
@@ -1565,6 +1565,8 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
             H = under(g, H, AA, EE, d_in)
             if extra is not None:  # the filler under the partings: where locks part at the outline, the sunk
                 H = _silhouette_fill(sc, AA, EE, H, d_in, extra, cap=H0)  # underlayer rises to close the dent (only there)
+        if ease > 0:  # the volume comes up from the hairline over `ease` m (a far tier's cap: at full height from
+            H = H * (0.3 + 0.7 * _ss(d_in / ease))  # the line it was a thick brim over the forehead)
         H = np.maximum(H, 0.0015 * _ss(d_in / 0.004))
     else:
         d_in = inside(sc, line, AA, EE)
@@ -1641,7 +1643,7 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
         locks = [lk for lk in locks if any(fnmatch(lk["name"], q) for q in pats)]
     far = isinstance(budget, str) and CARD_TIERS.get(budget, {}).get("cap") == "mass"  # (a far tier's cap IS the
     # hair on the head: the groom's full volume, not the layer under its locks)
-    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass" and not far, step=cap_step,
+    V, F = cap_mesh(sc, g, float(h.get("cap", 0.002)), mass=True, sunk=stage != "mass" and not far, step=cap_step, ease=0.035 if far else 0.0,
                     extra=lock_extents(sc, locks) if (locks and h.get("filler")) else None)
     extra = {k: v for k, v in streams(sc, g, V).items() if k == "tangent"} if stage != "mass" else {}  # (the
     # sawtooth clumps on the underlayer aliased into jagged stripes: the strips carry the clumps now)
@@ -1761,10 +1763,10 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # (the scalp chart) and the tail's core carry the rest.
 CARD_TIERS = {
     "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
-             "fly": 2, "core_sides": 12},
+             "fly": 2, "baby": 2.0, "core_sides": 12},
     "main": {"triangles": 16000, "cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
              "baby": 0.6, "core_sides": 10},
-    "npc": {"triangles": 6000, "cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.04, "segment": 0.025,
+    "npc": {"triangles": 6000, "cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
             "baby": 0.0, "core_sides": 8},
     "far": {"triangles": 1500, "cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
             "baby": 0.0, "core_sides": 6},
@@ -1833,14 +1835,56 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                  + (len(core["tris"]) if core is not None else 0))
         cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
         info["asked"], info["fixed"] = int(budget), int(fixed)
-    m = hc.join(core, hc.mesh(cards, S, lk, at["tiles"], segment=seg), mb, *band)
+    mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
+    clearance = card_clearance(sc, mc, [c.get("lock", "?") for c in cards], fix=CARD_CLEAR)
+    # hair off the head must come OUT of the hair: a free card whose root lies on bare skin outside the hairline
+    # is a detached wisp
+    free_names = {k_["name"] for k_ in hair_locks if float(k_.get("free", 0.0)) > 0.5 and k_.get("core") is None}
+    det: dict = {}
+    for c in cards:
+        if c.get("lock") in free_names:
+            a_, e_, _h = sc.coords(np.asarray(c["P"][:1], float))
+            d_ = float(inside(sc, line, a_, e_)[0])
+            if d_ < -0.003:
+                det[c["lock"]] = round(min(det.get(c["lock"], 0.0), d_) * 1000, 1)
+    clearance["detached"] = det
+    m = hc.join(core, mc, mb, *band)
     np.savez(tmp / "cards.npz", **m)
     np.savez(tmp / "cards_cap.npz", **cap)
     files = hc.write_atlas(at, str(tmp / "hair"))
     return {"mesh": str(tmp / "cards.npz"), "cap": str(tmp / "cards_cap.npz"), "color": files["color"],
             "normal": files["normal"], "aux": files["aux"], "triangles": int(len(m["tris"])),
             "cap_triangles": int(len(cap["tris"])), "cards": len(cards), "baby": len(baby), "budget": info,
-            "coverage": at["coverage"]}
+            "coverage": at["coverage"], "clearance": clearance}
+
+
+CARD_CLEAR = 0.0015  # m: every card vertex stays this far outside the head (None: measure only)
+
+
+def card_clearance(sc: Scalp, M: dict, locks: list, fix: float | None = None) -> dict:
+    """Card vertices under the skin: how many, the deepest, and by lock (the head as the scalp's rays see it: sc).
+    A card's centre line is the MEAN of its clump's strands and its width is laid flat: over a convex forehead or
+    temple both cut through the head like a chord, where the strands themselves were kept off it. fix: move every
+    vertex nearer than that out to it along its ray (in place). Reported as it was BEFORE the fix."""
+    V = M["verts"]
+    if not len(V):
+        return {"verts": 0, "under": 0, "deepest_mm": 0.0, "locks": {}}
+    az, el, h = sc.coords(V.astype(float))
+    ok = el > sc.EL[0] + 1.0  # (below the scalp's measured range there is no surface to compare with)
+    under = ok & (h < 0)
+    by: dict = {}
+    for ci in np.unique(M["card"][under]):
+        nm = locks[int(ci)] if int(ci) < len(locks) else "?"
+        by[nm] = min(by.get(nm, 0.0), float(h[under & (M["card"] == ci)].min()))
+    out = {"verts": int(len(V)), "under": int(under.sum()), "under_share": round(float(under.mean()), 4),
+           "deepest_mm": round(float(-h[under].min() * 1000), 1) if under.any() else 0.0,
+           "locks": {k: round(-v * 1000, 1) for k, v in sorted(by.items(), key=lambda kv: kv[1])[:12]}}
+    if fix is not None:
+        low = ok & (h < fix)
+        if low.any():
+            V[low] = sc.point(az[low], el[low], np.full(int(low.sum()), fix)).astype(V.dtype)
+        out["moved"] = int(low.sum())
+    return out
 
 
 def stage_path(name: str) -> Path:
@@ -2122,7 +2166,9 @@ def check_tiers(name: str, export: dict | str | Path, tiers=None, save: str | No
             imgs, info, _ = look_glb(name, e["glb"], views=views, size=size, alpha=alpha, spec=spec)
             r[alpha] = {v: hk.compare(s_, im, b) for v, s_, im, b in zip(views, strands, imgs, bald)}
             rows.append((f"{tier}: the GLB re-imported, alpha {alpha}   {e['triangles']} triangles", imgs))
-        r["warnings"] = sorted(set(hk.verdict(r["test"], far=tier == "far") + hk.verdict(r["dither"], far=tier == "far")))
+        r["clearance"] = e.get("clearance")
+        r["warnings"] = sorted(set(hk.verdict(r["test"], far=tier == "far") + hk.verdict(r["dither"], far=tier == "far")
+                                   + hk.mesh_verdict(e.get("clearance"))))
         out["warnings"] += [f"{tier}: {w}" for w in r["warnings"]]
         if solid and tier in CARD_TIERS:
             sc_ = {**spec, "hair": {**hair_of(spec), "style": "cards"}}
@@ -2527,7 +2573,8 @@ CARD_RECIPE = (
     "LODs: drop the cards of `layer` 2, then 1 (extras.layers gives each layer's triangle range).")
 
 
-def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = True, spec: dict | None = None) -> dict:
+def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = True, spec: dict | None = None,
+                check: bool = False, sheet: str | None = None) -> dict:
     """The hair alone, game-ready, from a strand (or card) groom: one GLB a tier (`<name>_hair_<tier>.glb`: LODs that
     share ONE atlas: cards cut from the groom's locks, the cap wearing the scalp chart) and, groom=True, the strands
     themselves for engines and renderers that draw them (`<name>_groom.abc` in centimetres for Unreal's groom
@@ -2559,7 +2606,7 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
                                                                     "anisotropyRotation": 1.5708},
                                        "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}})
         rep["tiers"][tier] = {"glb": str(glb), "triangles": len(part["corner_vert"]) // 3, "layers": hc_["layers"],
-                              "budget": hc_["budget"], "bytes": glb.stat().st_size}
+                              "budget": hc_["budget"], "bytes": glb.stat().st_size, "clearance": hc_.get("clearance")}
     rep["maps"] = {k: str(v) for k, v in files.items()}
     rep["log"] = log
     if groom and h.get("style") == "strands":
@@ -2578,6 +2625,14 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
                                 "the importer's defaults: Blender's Alembic writer drops per-curve attributes). USD: "
                                 "BasisCurves + widths + groom_id / groom_guide / groom_group_id primvars, metres."}
     (out_dir / f"{name}_hair.json").write_text(json.dumps(rep, indent=1, default=float))
+    if check or sheet:  # every tier re-imported and judged against the strands (check_tiers): WARNINGs in the report
+        chk = check_tiers(name, rep, tiers=tiers, save=sheet, spec=spec)
+        rep["checks"] = {t: {k: r[k] for k in ("test", "dither", "warnings")} for t, r in chk["tiers"].items()}
+        rep["warnings"] = chk["warnings"]
+        rep["checks_text"] = tiers_text(chk)
+        if sheet:
+            rep["sheet"] = str(sheet)
+        (out_dir / f"{name}_hair.json").write_text(json.dumps(rep, indent=1, default=float))
     return rep
 
 
@@ -2613,7 +2668,7 @@ def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict,
             "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
             "vcolor": M["col"].astype(np.float32),
             "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": CARD_RECIPE,
-                     "strands": hc.strands_of(spec), "budget": cd["budget"]}}
+                     "strands": hc.strands_of(spec), "budget": cd["budget"], "clearance": cd.get("clearance")}}
     aux = np.asarray(Image.open(cd["aux"]).convert("RGBA"), np.float32) / 255
     files = {"basecolor": out_dir / "hair_basecolor.png", "orm": out_dir / "hair_orm.png",
              "normal": out_dir / "hair_normal.png", "specular": out_dir / "hair_specular_gltf.png",

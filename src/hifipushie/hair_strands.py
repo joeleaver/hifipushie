@@ -473,7 +473,7 @@ TILE_KIND = {  # per atlas tile kind: strands at a 160 px tile, sub clumps, tips
     # (upper layers' roots start one by one over the first quarter: a row of cards has no root edge; a baby tile is
     # a few thin hairs with empty margins: dense and parallel they filled their quad, a brown stamp on the skin)
     "dense": (260, 6, 0.5, 0.02, 1.0), "medium": (120, 4, 1.0, 0.25, 1.0), "sparse": (44, 3, 1.4, 0.3, 1.0),
-    "fly": (12, 1, 1.0, 0.3, 1.0), "baby": (16, 1, 1.6, 0.45, 0.85), "hairline": (330, 6, 0.5, 0.34, 1.0),
+    "fly": (18, 1, 1.0, 0.03, 1.0), "baby": (16, 1, 1.6, 0.45, 0.85), "hairline": (330, 6, 0.5, 0.34, 1.0),
 }
 
 
