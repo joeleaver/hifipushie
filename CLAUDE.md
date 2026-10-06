@@ -961,6 +961,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the .usda was 33).
   - Style "locks" unchanged: hs_golfer's look with this branch vs main's src differs by <= 1 level on 2-11 of 1.57M
     pixels, and main against itself by 9 (EEVEE's own run-to-run noise); same code twice can also be identical.
+  - Cycles colour, one more data point (ht_t_cyc3.png: flat light | salon without denoise | vary 0.2 + no tip
+    colour): the strands read light ginger-blond in ALL three, so it is neither the rim light nor the per-strand
+    value: the hair BSDF's colour itself comes out ~2x lighter than `look.lit` (#5c3b28, dark brown) and than EEVEE.
+    Next step: calibrate the BSDF colour (a gain, or melanin) against lit by measurement. Without the denoiser
+    (200 samples) strands keep their grain; with it the mass goes waxy. The three renders waited 19 min, 107 min and
+    8 min for the heavy slot: queue Cycles looks and do other work.
   - Volumise, tried once and CLOSED (volumise.py, ht_12): Points to Volume -> Volume to Mesh per sub clump of the
     tail = 3.6M triangles in 45 s, rows of beads, no strand detail; written up in the guide. Stylised hair stays on
     locks.
