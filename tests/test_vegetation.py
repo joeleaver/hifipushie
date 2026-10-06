@@ -765,6 +765,55 @@ def test_small_plants_are_assembled():
     assert len(feet) == 6 and (s["order"][feet] == 0).all()  # six stems from one stool
 
 
+def test_nothing_under_the_ground():
+    """Cards are polygons round an anchor and hanging ones reach their whole length below it: no card corner, no
+    bough card and no limb wood may be under the ground (the user saw spruce limbs and willow curtains sunk in it)."""
+    from hifipushie import veg_ground as g
+    # 1. the rule itself, on made-up placements: a long card hanging from 0.3 m, a level one lying at 5 cm, one high up
+    card = {"V": np.array([[0, 0, 0], [-0.2, 0.3, 0], [0.2, 0.3, 0.02], [0.25, 0.8, -0.05], [-0.25, 0.8, -0.05], [0, 1.0, -0.1]], float)}
+    down = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], float).T  # columns x, y (the run: straight down), z
+    lvl = np.array([[0.2, 0.98, 0], [0.9, -0.18, -0.4], [0, 0, 1.0]], float)
+    lvl = np.stack([np.cross(lvl[1] / np.linalg.norm(lvl[1]), [0, 0, 1.0]), lvl[1] / np.linalg.norm(lvl[1]), [0, 0, 1.0]], axis=1)
+    tw = {"pos": np.array([[0, 0, 0.3], [2, 0, 0.05], [0, 0, 5.0], [1, 1, 0.9]]), "frame": np.stack([down, lvl, down, down]),
+          "scale": np.ones(4), "key": np.arange(4, dtype=np.uint64), "node": np.arange(4), "variant": np.zeros(4, int)}
+    spec = {"leaves": {}}
+    var = np.zeros(4, int)
+    assert (g.lowest(spec, tw, [card], var)[:2] < 0).all()
+    st = {}
+    out = g.clear(spec, tw, [card], var, stats=st)
+    assert (g.lowest(spec, out, [card], np.zeros(len(out["pos"]), int)) >= 0.03 - 1e-9).all()
+    assert st["dropped"] == 1 and st["turned"] == 1 and st["shortened"] == 1, st  # 0.3 m can't hold a 1 m hanging card at 0.4 x
+    keep = np.isin(tw["key"], out["key"])
+    assert keep.tolist() == [False, True, True, True]
+    assert np.array_equal(out["frame"][1], tw["frame"][2]) and out["scale"][1] == 1  # the high one untouched
+    assert out["scale"][2] < 1 and np.array_equal(out["frame"][2], tw["frame"][3])  # a hanging card is shortened, never turned
+    # 2. a weeping willow whose curtains may sweep the ground: shoots stop over it, no card corner under it
+    W = v.grow({"species": "weeping_willow", "prune": [], "habit": {"ground_clear": 0.4}})
+    limb = W["order"] > 0
+    assert W["pos"][limb, 2].min() > 0.02
+    d = v._norm(W["pos"] - W["pos"][W["parent"]])
+    hanging_low = limb & (d[:, 2] < -0.5) & (W["pos"][:, 2] < 0.39) & (W["pos"][W["parent"], 2] > 0.4)
+    assert hanging_low.sum() <= 0.002 * limb.sum(), hanging_low.sum()  # (sag may dip a few; none grows on downward)
+    a = g.audit(W)
+    assert a["wood"]["under"] == 0 and a["cards"]["under"] == 0 and a["anchors"] == 0, a
+    assert a["cleared"]["shortened"] + a["cleared"]["dropped"] + a["cleared"]["turned"] > 0  # (the rule had work to do)
+    g.CLEAR = False
+    try:
+        assert g.audit(W)["cards"]["under"] > 0  # without it the cards do reach under: the test bites
+    finally:
+        g.CLEAR = True
+    a8 = g.audit(W, 8000)  # the budgeted tree: bough cards, metres long
+    assert a8["boughs"] and a8["wood"]["under"] == 0 and a8["cards"]["under"] == 0, a8
+    assert not any(l_.startswith("WARNING") and "under the ground" in l_ for l_ in g.report(a8))
+    # 3. on a hillside the ground is the slope: a spruce's skirt rests on it uphill, nothing goes into it
+    S = v.grow({"species": "norway_spruce", "age": 30, "environment": {"ground": {"slope": 18, "toward": [1, 0]}}})
+    gz = v.ground_at(S["spec"], S["pos"][:, :2])
+    lo = (S["pos"][:, 2] - gz - S["radius"])[S["order"] > 0]
+    assert lo.min() > 0.0, lo.min()
+    wd = g.audit(S, d=g.drawn({**S, "spec": {**S["spec"], "season": "bare"}}))
+    assert wd["wood"]["under"] == 0 and wd["foot"]["under"] > 0, wd  # (the trunk's foot goes into the ground on purpose)
+
+
 if __name__ == "__main__":
     import sys
     import time

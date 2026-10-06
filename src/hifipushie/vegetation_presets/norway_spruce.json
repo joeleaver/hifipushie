@@ -106,7 +106,8 @@
    2.5
   ],
   "dead_keep": 30,
-  "stand_shed": 0.17
+  "stand_shed": 0.17,
+  "ground_clear": 0.6
  },
  "leaves": {
   "shape": "needle_spray",
@@ -152,7 +153,8 @@
    "cross": 2,
    "scale": 1.25
   },
-  "retention": 7
+  "retention": 7,
+  "clear": 0.05
  },
  "bark": {
   "kind": "scales",

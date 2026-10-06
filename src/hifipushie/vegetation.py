@@ -67,6 +67,7 @@ DEFAULT = {
         "elevation": [10],  # per order: that elevation, degrees
         "jitter": [0.12],  # per order: how crooked the shoots run
         "shed": 0.12,  # light per internode under which a branch is dropped
+        "ground_clear": 0.05,  # m over the ground no shoot grows under: a hanging shoot stops there, a limb that sags onto the ground rests on it and its end turns up
         "shed_age": 2,
         "shadow": [0.25, 1.6, 6],  # a, b, depth of the shadow pyramid
         "shadow_tail": 0.7,  # how the shade carries on below the pyramid (0 = it ends: light-demanding trees in layers)
@@ -131,6 +132,7 @@ HABIT_INFO = {
     "stand_shed": "0-0.2 added to `shed` when the tree stands in a stand (setting forest or edge): a spruce keeps its skirt in the open (shed 0) and self-prunes to a top third of live crown in a forest (0.15-0.2)",
     "dead_keep": "years a limb killed by shade stays on the trunk as a dead grey stub before it falls: Norway spruce 25-40 (a stand's interior is a ladder of dead whorls), Scots pine 8-12 (it sheds cleaner), oak 5-10, birch 2-4; 0 = they fall at once",
     "stems": "1-12 stems rising from the foot: a shrub or a multi-stemmed tree (each is a trunk: order 0)", "stem_angle": "deg the extra stems lean outward at the foot (10 tight, 35 open)",
+    "ground_clear": "0.03-1.5 m over the ground no shoot grows under: hanging shoots (a weeping willow's curtains) stop there (0.4-1.2 = a browse or mowing line), a limb that sags to the ground rests on it and its growing end turns up",
     "tip_life": "per order: growth steps an axis keeps extending, 0 = for ever (short-lived hanging branchlets: 6-10; limbs that stop reaching: 20-30)", "clear": "0-6 m of trunk that never branches",
 }
 
@@ -280,9 +282,10 @@ def _pipe(parent, mem, tip_area, expo, area):
 
 
 @njit(cache=True)
-def _pose(parent, off, pin, pinpos, order, radius, leafy, theta, sag, sag_max, sag_trunk, pos, R):
+def _pose(parent, off, pin, pinpos, order, radius, leafy, theta, sag, sag_max, sag_trunk, pos, R, g0, gx, gy):
     """Bend under weight, then forward kinematics. off = each node's internode in its parent's rest frame; theta =
-    how far its internode has bent so far (it never bends back: wood sets)."""
+    how far its internode has bent so far (it never bends back: wood sets). The ground (z = g0 + gx x + gy y) holds
+    up what sags onto it: a limb rests on it."""
     n = len(parent)
     m = np.zeros(n)
     mx = np.zeros(n)
@@ -327,7 +330,19 @@ def _pose(parent, off, pin, pinpos, order, radius, leafy, theta, sag, sag_max, s
         kn = math.sqrt(kx * kx + ky * ky)
         L = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
         t = theta[i] * (kn / L if L > 0 else 0.0)  # (a vertical internode has no lever)
-        if kn > 1e-9 and t > 1e-6:
+        if order[i] > 0 and kn > 1e-9 and L > 0:
+            # the ground stops the bend: an internode that would dip under it turns only as far as resting on it, and
+            # what it carries turns with it (a limb sagged onto the ground lies there and its end rises again)
+            fl = g0 + gx * (pos[p, 0] + d[0]) + gy * (pos[p, 1] + d[1]) + radius[i]
+            sn = (fl - pos[p, 2]) / L
+            if sn < 0.95:
+                e_min = math.asin(sn) if sn > -1.0 else -1.5708
+                e0 = math.asin(max(-1.0, min(1.0, d[2] / L)))
+                if e0 - t < e_min:
+                    t = e0 - e_min
+                    if t < -0.6:
+                        t = -0.6
+        if kn > 1e-9 and abs(t) > 1e-6:
             kx /= kn
             ky /= kn
             c, s = math.cos(t), math.sin(t)
@@ -356,6 +371,10 @@ def _pose(parent, off, pin, pinpos, order, radius, leafy, theta, sag, sag_max, s
                     R[i, a, b] = R[p, a, b]
         for a in range(3):
             pos[i, a] = pos[p, a] + d[a]
+        if order[i] > 0:
+            fl = g0 + gx * pos[i, 0] + gy * pos[i, 1] + radius[i]
+            if pos[i, 2] < fl:
+                pos[i, 2] = fl
 
 
 @njit(cache=True)
@@ -698,6 +717,13 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     wind = env.get("wind")
     wdir = _compass(wind["from"]) * -1 if wind else None  # the way it blows
     wstr = float(wind.get("strength", 0.5)) if wind else 0.0
+    g_ = env.get("ground") or {}  # the ground in growth units: z = g0u + [x, y] . gvu
+    g0u = float(g_.get("level", 0.0)) / unit
+    gvu = np.zeros(2)
+    if g_.get("slope"):
+        t_ = np.asarray(g_.get("toward", [1, 0]), float)
+        gvu = -math.tan(math.radians(float(g_["slope"]))) * t_ / max(np.linalg.norm(t_), 1e-9)
+    clear_u = float(h["ground_clear"]) / unit
     forces = [(np.asarray(f["dir"], float) * float(f.get("strength", 1.0)), f.get("orders")) for f in s.get("forces") or []]
     stand = env.get("stand") if env.get("setting") in ("forest", "stand", "edge") or env.get("stand") else None
     if env.get("setting") in ("forest", "edge") and stand is None:
@@ -984,8 +1010,28 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                     tgt = hz * np.cos(el[a])[:, None] + up * np.sin(el[a])[:, None]
                     dd = _norm(dd + pl[a, None] * (tgt - dd))
                 p0 = T.pos[last[a]]
-                Rp = T.R[last[a]]
                 o = dd * ln[a, None]
+                # the ground: nothing grows into it. A hanging shoot stops over it (`ground_clear`); any other slides
+                # along it, and its own pull to the light turns it up from there
+                end = p0 + o
+                fl_ = g0u + end[:, :2] @ gvu + clear_u
+                low_ = end[:, 2] < fl_
+                if low_.any():
+                    # (hanging: steeply down, or an order that hangs by habit; a side shoot's first segment always
+                    # grows: its axis is counted on)
+                    stop = low_ & ((dd[:, 2] < -0.5) | (eta[a] < -0.3)) & ((j > 0) | is_main[a])
+                    sl_ = low_ & ~stop
+                    oz = np.minimum(np.maximum(fl_ - p0[:, 2], 0.35 * ln[a]), 0.9 * ln[a])  # (its end turns up, ~20 deg; from under the line it climbs to it)
+                    hl = np.sqrt(np.maximum(ln[a] ** 2 - oz ** 2, 1e-12))
+                    hz_ = _norm(dd * [1, 1, 0] + 1e-9)
+                    o[sl_] = (hz_ * hl[:, None] + up * oz[:, None])[sl_]
+                    dd[sl_] = _norm(o[sl_])
+                    if stop.any():
+                        count[a[stop]] = j  # (it ends here; its tip lives and may try again when the tree has moved)
+                        a, kj, dd, o, p0 = a[~stop], kj[~stop], dd[~stop], o[~stop], p0[~stop]
+                        if not len(a):
+                            continue
+                Rp = T.R[last[a]]
                 off = np.einsum("nji,nj->ni", Rp, o)  # into the parent's rest frame
                 endm = (count[a] == j + 1)
                 nbn = np.where(whorl[a] & ~endm, 0, nbuds[a])
@@ -1097,7 +1143,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         leafy = (step - T.born) < h["leaf_steps"]
         if h["sag"] > 0:
             _pose(T.parent, T.off, T.pin, T.pinpos, T.order, rad, leafy, T.theta, h["sag"], h["sag_max"],
-                  0.0, T.pos, T.R)
+                  0.0, T.pos, T.R, g0u + 0.03 / unit, gvu[0], gvu[1])
         if log:
             log(f"step {step}: {T.n} nodes, top {T.pos[:, 2].max() * unit:.1f} m")
 
