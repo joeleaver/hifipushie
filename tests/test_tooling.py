@@ -584,6 +584,23 @@ def test_older_makehuman_pack_still_opens_a_male_body():
     assert rig_template.weights_note({"base": {"body": {"source": "makehuman"}}}) is None  # the full pack: no warning
 
 
+def test_hidden_faces_are_cut_inside_the_rim():
+    """Faces buried in another part are dropped only a rim's width in from what shows (asset._deep_hidden): cut right
+    at the line where a shirt goes under, its hem was a ragged edge a triangle deep."""
+    import numpy as np
+    from hifipushie import asset
+    x = np.linspace(0, 0.1, 101)
+    V = np.stack([x, 0 * x, 0 * x], 1)
+    hidden = x > 0.05
+    deep = asset._deep_hidden(V, hidden, np.zeros(len(V), int), rim=0.012)
+    assert not deep[x < 0.0615].any() and deep[x > 0.0625].all(), x[deep].min()
+    # per part: another part's visible vertices next to it keep nothing
+    part = (np.arange(len(V)) % 2).astype(int)
+    hid2 = hidden | (part == 1)
+    deep2 = asset._deep_hidden(V, hid2, part, rim=0.012)
+    assert deep2[part == 1].all() and not deep2[(part == 0) & (x < 0.061)].any()
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

@@ -528,6 +528,7 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         names = list(ctx["streams"])
         hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"],
                              ctx.get("apart")) > 0.5
+        hid = _deep_hidden(np.asarray(V, np.float64), hid, np.zeros(len(V), int))
         st = np.r_[0, np.cumsum(S)[:-1]]
         faces = [L[a:a + k] for a, k in zip(st, S)]
         kept = [f for f in faces if not hid[f].all()]
@@ -544,6 +545,26 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
     return out
 
 
+HIDDEN_RIM = 0.012  # m: buried skin and cloth is kept this far in from what shows
+
+
+def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float = HIDDEN_RIM) -> np.ndarray:
+    """Hidden vertices with no visible vertex of their own part within `rim`. Faces were dropped right where a part
+    goes under another, so the cut ran along every hem, cuff and neckline as a ragged edge one triangle deep (the
+    golfer's shirt hem: a solid shell whose inside was cut away exactly at its rounded rim, wavy at rest and
+    shedding shards over a lifted thigh). The cut now lies `rim` inside, where nothing looks."""
+    from scipy.spatial import cKDTree
+    deep = np.asarray(hidden, bool).copy()
+    for pi in np.unique(part):
+        m = part == pi
+        vis = m & ~deep
+        hid = np.flatnonzero(m & deep)
+        if vis.any() and len(hid):
+            d, _ = cKDTree(V[vis]).query(V[hid], distance_upper_bound=rim)
+            deep[hid[np.isfinite(d)]] = False
+    return deep
+
+
 def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
     """Drop faces buried inside another part (skin under solid clothing shells, the back of an eyeball in its
     socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space."""
@@ -551,6 +572,7 @@ def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
     names = [str(n) for n in z["part_names"]]
     hidden = surface.hidden(ctx["streams"], z["verts"].astype(np.float64), z["part"], names, ctx["voxel"],
                             ctx.get("apart")) > 0.5
+    hidden = _deep_hidden(z["verts"].astype(np.float64), hidden, z["part"])
     faces = z["faces"]
     keep = ~hidden[faces].all(1)
     dropped = {pn: int((~keep & (z["part"][faces[:, 0]] == i)).sum()) for i, pn in enumerate(names)}
