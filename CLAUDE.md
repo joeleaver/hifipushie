@@ -2952,6 +2952,38 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     The all-species sheet vg_66 predates the forest/ground changes (spruce shed, dead_keep): re-render first
     (`scratchpad/allsheet.py <tag>`).
   - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
+- Vegetation 3 (2026-10-06, branch `vegetation3`; scratch in the worktree's untracked `scratchpad/`: audit.py <tag>
+  (ground audit of all six trees at full / 20k / 12k / 8k + GLB), gshot.py (ground-level shots, one camera per species
+  kept in g_cam_*.json), gsheet.py (before / after sheet + table), sil.py (side silhouettes of spec patches, 1 s a tree),
+  commons.py (Wikimedia Commons search / fetch with licence lines; it is rate-limited: one query at a time)).
+  - The ground (the user on vg_72: spruce limbs and willow curtains "clip through the ground: placement or tree?").
+    Measured (`veg_ground.audit`, sheet vg_81_ground_before_after.png, table vg_81_ground_table.txt): NOT placement
+    (the foot is at the look's ground plane) and not wood (0 limb vertices under it on every tree and path: the old
+    end-of-growth clamp held). It was CARDS: a card is a polygon round its anchor and a hanging one reaches its whole
+    length below it. Spruce: 145 of 15.9k twig cards up to 333 mm under at full detail, 24-39 bough cards up to 0.97 m
+    under at 20k / 12k / 8k, the same in the exported GLB's three LODs. Weeping willow: 57 twig cards up to 1.16 m under,
+    16-27 bough cards up to 1.96 m under. Oak, birch, pine, white willow: nothing within 1 m of the ground.
+  - `veg_ground.py`: `clear(spec, tw, cards, var)` = placements with no card corner under `leaves.clear` m (default
+    0.03) over `vegetation.ground_at`: turned up about its foot (not a hanging card), shortened to >= 0.4, or left out;
+    called for twig cards, twig meshes and bough cards in `veg_look._plant_job` and `veg_export.foliage_mesh` (so
+    looks, budgets and every LOD of the GLB). `audit` (what a look / export draws at a budget), `audit_glb` (the file
+    read back), `report` (the `ground:` line + WARNING with counts) in grow_plant's report (cards only once the atlas
+    exists: `veg_tools.ground_lines`), look_plant(triangles=) and export_plant. View "ground" (eye 1 m, 8 m from the
+    lowest foliage). Clumps are not cleared (their cards stand on the ground).
+  - Growth: `habit.ground_clear` (m, default 0.05; spruce 0.6, weeping willow 1.0 with `leaves.clear` 0.3): a shoot
+    never grows under it; a hanging one (steeply down, or an order with tropism < -0.3) STOPS there (sliding instead,
+    a willow's curtains ran along the line as a squiggle), any other slides along and turns ~20 deg up. `_pose`: the
+    ground stops the sag ROTATION (the bend an internode takes is cut to what rests on the ground, and its subtree
+    turns with it), then clamps. The environment's slope is the ground in growth too.
+  - `veg_leaf.rasterize` is one numba pass (per pixel the highest face, within half a pixel: thin needles still draw)
+    instead of four PIL polygons a face: a spruce's 3-LOD export 1204 s -> 264 s, pictures the same to the eye.
+    Twig atlases are kept on disk by content + veg_leaf.py's hash ($HIFIPUSHIE_VEG_CACHE, else
+    ~/.cache/hifipushie/veg_atlas, 60 files; 8-bit, so a fresh and a cached atlas are the same). Bough atlases are not.
+  - Forest references fetched: workspace/veg_refs/forest/ (8 spruce stand interiors, 3 pine, 1 edge; fetched.jsonl
+    has titles, authors, licences). spruce_in_a / _b / _e = the dead-branch haze; spruce_in_g = a cut edge showing
+    interior trees (live crown the top ~35-40%).
+  - All-species re-render after the ground change: vg_80_all_inleaf.png (spruce skirt and willow curtains end over
+    the ground with a shadow gap; the willow regrew with a slightly leaning foot).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

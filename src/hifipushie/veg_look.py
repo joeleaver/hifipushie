@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from . import render as _render
-from . import veg_mesh, vegetation
+from . import veg_ground, veg_mesh, vegetation
 
 SCRIPT = Path(__file__).with_name("blender_vegetation.py")
 
@@ -73,6 +73,10 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         if foliage == "cards":
             at = at_b or veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
             nv = len(at["cards"])
+            if not tree.get("clump"):  # no card reaches under the ground
+                gst = {}
+                tw = veg_ground.clear(s, tw, at["cards"], veg_leaf.card_variant(tw, nv), stats=gst)
+                info["ground"] = gst
             var = veg_leaf.card_variant(tw, nv)
             for i, c in enumerate(at["cards"]):
                 arrays.update({f"card{i}_V": c["V"], f"card{i}_F": c["F"], f"card{i}_uv": c["uv"]})
@@ -82,6 +86,9 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
             nv = int(tw["variant"].max()) + 1
             var = tw["variant"]
             per = []
+            if not tree.get("clump"):  # (twig meshes: the same rule on their own vertices)
+                tw = veg_ground.clear(s, tw, [{"V": veg_leaf.twig_mesh(lf, i)["V"]} for i in range(nv)], var)
+                var = tw["variant"]
             for i in range(nv):
                 tm = veg_leaf.twig_mesh(lf, i)
                 arrays.update({f"twig{i}_V": tm["V"], f"twig{i}_F": tm["F"], f"twig{i}_mat": tm["mat"], f"twig{i}_col": tm["col"]})

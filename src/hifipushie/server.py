@@ -2097,7 +2097,9 @@ def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size:
     """Images of a plant (Blender, 5-40 s). views, any of: "clay" (the bare skeleton as clay: judge the structure
     here first), "bare" (in colour, no leaves), "leaf" (in leaf; these three are side views from `azimuth`, 0 = looking
     along +y), "far" (at eye height from far enough that the tree is half the picture: how it reads in a scene), "near"
-    (standing by it, 2-5 m, looking up: trunk, bark, forks), "close" (foliage: leaves and twigs), or a camera of your
+    (standing by it, 2-5 m, looking up: trunk, bark, forks), "close" (foliage: leaves and twigs), "under" (from under
+    the crown, up along a limb), "ground" (eye 1 m up, 8 m from the lowest foliage: where the plant meets the ground;
+    the report's `ground:` line counts what rests on it and what was turned, shortened or left out), or a camera of your
     own {"name", "eye": [x, y, z], "look": [x, y, z], "fov": deg, "clay": bool}. Default clay + leaf + far. The ground
     is flat grass unless the spec has environment.ground {"slope": deg, "toward": [x, y], "water": z} (a hillside
     falling that way; a water level z m against the foot). clay and bare show a pole banded every metre (every fifth
@@ -2110,7 +2112,12 @@ def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size:
     from . import veg_tools as vt
     got = vt.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
-    out.append(vt.report(name) + "\n" + "\n".join(f"{k}: {p}" for k, p in got))
+    rep = vt.report(name)
+    T = vt.grown(name)
+    if triangles and not T.get("clump") and not sheet:  # the budgeted plant's own cards against the ground
+        g_, w_ = vt.ground_lines(T, triangles)
+        rep += "\n" + "\n".join(g_ + w_)
+    out.append(rep + "\n" + "\n".join(f"{k}: {p}" for k, p in got))
     return out
 
 
@@ -2204,6 +2211,13 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                     for q in c["plants"]))
     c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
                   lod_files=lod_files)
+    gl = []
+    for mesh, g_ in (c.get("ground") or {}).items():
+        if g_["under"]:
+            gl.append(f"WARNING: {mesh}: {g_['under']} of {g_['vertices']} vertices are under the ground (deepest {g_['max_mm']} mm, "
+                      f"median {g_['p50_mm']} mm)")
+    ground = ("\nground: in the file, " + ("nothing but the trunk's foot is under it" if not gl else "geometry is under it")
+              + "".join("\n" + l_ for l_ in gl)) if c.get("ground") else ""
     return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
             + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
             + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")
@@ -2217,6 +2231,7 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
             + (f"\nvariants: {', '.join(c['variants'])}" if c["variants"] else "")
             + f"\nwind: TEXCOORD_1 (trunk, branch), TEXCOORD_2 (phase, flutter), _WIND; collision: {c['collision_capsules']} capsules"
               f" + a {c['collision_triangles']}-triangle mesh"
+            + ground
             + (f"\nfiles: {', '.join(Path(f).name for f in c['files'])}" if len(c["files"]) > 1 else "")
             + (f"\nWARNING: {c['over']} triangles over the budget: the wood alone needs {c['wood_triangles']} "
                f"(a trunk and its main limbs can't go lower); raise the budget" if c["over"] else "")

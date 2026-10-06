@@ -139,8 +139,17 @@ height, form, limb angles.
   neighbour use radius 1-2. The tree does not see other plants you made: neighbours are only these blobs.
 - `light: [x, y, z]`: where the light comes from (default straight up [0, 0, 1]). Keep z near 1: [0.3, 0, 1] is a
   tree at a wood's edge leaning out; [1, 0, 0.8] sweeps every limb sideways.
-- The ground is a plane nothing passes through: wood that droops to it lies along it, twigs that would run into it
-  are lifted (`ground: {"level": m}` moves it; with `slope` it tilts). The report says how many nodes lie on it.
+- The ground is a plane nothing is drawn under (`ground: {"level": m}` moves it; with `slope` it tilts), except the
+  trunk's own foot (0.3-0.5 m into it on purpose). Three rules keep it so, at every budget and in the export:
+  growth (a shoot never grows under `habit.ground_clear` m over it: a hanging shoot stops there, any other slides
+  along and its end turns up), weight (the ground stops a sagging limb: it rests there, and what it carries turns
+  with it), and cards (a card is a polygon round its anchor, and a hanging one reaches its whole length below it: a
+  twig or bough card whose corner would be under `leaves.clear` m, default 0.03, is turned up about its foot,
+  shortened to no less than 0.4 of its size, or left out). The report's `ground:` line says how much wood rests on
+  it and how many cards were turned / shortened / left out, and WARNs with counts if anything is still under it;
+  `look_plant(views=["ground"])` shows the place. Curtains that should end over a browse or mowing line:
+  `habit.ground_clear` 0.5-1.5 (shoots stop growing there) with `leaves.clear` a little lower (the cards' ends), or
+  the blunt cut `prune: [{"under": m}]`.
 - `ground: {"slope": deg, "toward": [x, y], "water": z}`: the hillside it stands on and a water level (m against
   the plant's foot: -0.5 = half a metre below it), for the pictures. It does not change the growth: lean the trunk
   with a guide or wind. Only a uniform slope: no banks or ditches.

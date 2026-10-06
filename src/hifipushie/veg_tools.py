@@ -315,8 +315,8 @@ def report(name: str) -> str:
            f"{st['nodes']} nodes, grown in {st['grow_s']} s",
            f"size: {st['height_m']} m tall, trunk DIAMETER {st['trunk_diameter_m']} m at the foot (with its flare), "
            f"branch orders to {st['max_order']}" + (f", {st['pruned_nodes']} nodes cut by prunes" if st.get("pruned_nodes") else "")]
-    if st.get("on_ground"):
-        out.append(f"ground: {st['on_ground']} nodes drooped to the ground and lie along it (nothing is drawn under it)")
+    out_g, warn_g = ground_lines(T)
+    out += out_g
     if st.get("dead_stubs"):
         out.append(f"dead wood: {st['dead_stubs']} nodes of grey stubs where the shade killed limbs within the last {s['habit']['dead_keep']} years")
     ms = [vegetation.shape_measures(vegetation.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
@@ -464,10 +464,31 @@ def report(name: str) -> str:
                     f"or raise tropism on the high orders")
     if load(name.partition("#")[0]).get("set") and "#" not in name:
         out.append(set_report(name))
-    return "\n".join(out + [f"WARNING: {w}" for w in warn])
+    return "\n".join(out + [f"WARNING: {w}" for w in warn] + warn_g)
 
 
-VIEWS = ("clay", "bare", "leaf", "far", "near", "close", "under")
+def ground_lines(T: dict, triangles: int | None = None, force: bool = False) -> tuple[list, list]:
+    """(lines, WARNING lines) on how the drawn plant stands on its ground (veg_ground.audit: wood, card corners). The
+    cards need the plant's atlas: when that isn't made yet (minutes for a needle atlas) only the wood is judged, and
+    the line says so; look_plant and export_plant always judge the cards."""
+    from . import veg_ground, veg_leaf
+    s = T["spec"]
+    twc = (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35]
+    if force or triangles or veg_leaf.atlas_ready(s["leaves"], twc):
+        lines = veg_ground.report(veg_ground.audit(T, triangles))
+    else:
+        d = veg_ground.drawn({**T, "spec": {**s, "season": "bare"}})
+        a = veg_ground.audit(T, d=d)
+        lines = [f"ground: lowest limb wood {a['lowest_wood_m']} m over it, {a['resting_m']} m of limbs rest on it "
+                 f"(cards not judged yet: look_plant does)"] + [l_ for l_ in veg_ground.report(a)[1:]]
+    return [l_ for l_ in lines if not l_.startswith("WARNING")], [l_ for l_ in lines if l_.startswith("WARNING")]
+
+
+VIEWS = ("clay", "bare", "leaf", "far", "near", "close", "under", "ground")
+
+
+def veg_look_ground(T: dict, P) -> np.ndarray:
+    return vegetation.ground_at(T["spec"], np.asarray(P)[:, :2])
 
 
 def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, list]:
@@ -510,6 +531,18 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
             q = ends_[np.argmax(ends_[:, :2] @ toward[:2])] if len(ends_) else np.array([0, 0, H])
             j.update(eye=(toward * 0.25 * float(np.linalg.norm(q[:2])) + [0, 0, 1.6]).tolist(),
                      look=[float(0.8 * q[0]), float(0.8 * q[1]), float(q[2])], fov=58, leaves=has_leaves)
+        elif x == "ground":  # where the plant meets the ground: eye 1 m up, 8 m from its lowest foliage, half from the side
+            E = T["pos"][T["ends"] & (T["order"] > 0)]
+            if len(E):
+                low = E[E[:, 2] - veg_look_ground(T, E) < np.percentile(E[:, 2] - veg_look_ground(T, E), 3) + 0.3]
+                q = low[np.argmax(low[:, :2] @ toward[:2] + 0.3 * np.linalg.norm(low[:, :2], axis=1))]
+            else:
+                q = np.zeros(3)
+            out_ = q[:2] / max(float(np.linalg.norm(q[:2])), 1e-6) if np.linalg.norm(q[:2]) > 0.3 else toward[:2]
+            eye = q[:2] + 5.0 * out_ + 6.2 * np.array([-out_[1], out_[0]])
+            gq = float(veg_look_ground(T, q[None])[0])
+            j.update(eye=[float(eye[0]), float(eye[1]), 1.0], look=[float(q[0]), float(q[1]), gq + 0.35], fov=42, leaves=has_leaves,
+                     sun=[math.degrees(math.atan2(eye[0] - q[0], eye[1] - q[1])) + 55, 40])
         elif x == "close":
             j.update(azimuth=azimuth, elevation=8, focus=veg_look.closeup_focus(T, azimuth), span=min(2.4, 0.6 * H), leaves=has_leaves)
         if "eye" in j:  # the eye stands on the hillside, not on the level of the plant's foot
@@ -657,6 +690,9 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
     c["over"] = max(0, c["total"] - triangles) if triangles else 0
     c["files"] = [c["path"]]
+    if not T.get("clump"):  # the file as an engine gets it: nothing but the trunk's foot under the ground
+        from . import veg_ground
+        c["ground"] = veg_ground.audit_glb(c["path"], T["spec"], float(T["radius"][1]))
     if lod_files and len(c["lods"]) > 1:
         base = triangles or c["lods"][0]["triangles"]
         for li, L in enumerate(c["lods"]):

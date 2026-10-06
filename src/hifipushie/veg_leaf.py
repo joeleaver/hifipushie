@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from numba import njit
 
 from .vegetation import _child, _norm, _u
 
@@ -456,6 +457,45 @@ def _enclose(poly: np.ndarray, k: int) -> np.ndarray:
     return np.array(P)
 
 
+@njit(cache=True)
+def _face_ids(px, py, F, z, n):
+    """Per pixel of an n x n picture: the highest face (by its own z) covering the pixel's centre, or within half a
+    pixel of it (a needle thinner than a pixel still draws, as a line); -1 = none."""
+    ids = np.full((n, n), -1, np.int64)
+    zb = np.full((n, n), -1e30)
+    for f in range(len(F)):
+        x0, y0 = px[F[f, 0]], py[F[f, 0]]
+        x1, y1 = px[F[f, 1]], py[F[f, 1]]
+        x2, y2 = px[F[f, 2]], py[F[f, 2]]
+        ix0 = max(int(math.floor(min(x0, x1, x2) - 1.0)), 0)
+        ix1 = min(int(math.ceil(max(x0, x1, x2) + 1.0)), n - 1)
+        iy0 = max(int(math.floor(min(y0, y1, y2) - 1.0)), 0)
+        iy1 = min(int(math.ceil(max(y0, y1, y2) + 1.0)), n - 1)
+        if ix1 < ix0 or iy1 < iy0:
+            continue
+        ar = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+        sg = 1.0 if ar >= 0 else -1.0
+        l0 = math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2) * 0.5
+        l1 = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) * 0.5
+        l2 = math.sqrt((x0 - x2) ** 2 + (y0 - y2) ** 2) * 0.5
+        zf = z[f]
+        for iy in range(iy0, iy1 + 1):
+            cy = iy + 0.5
+            for ix in range(ix0, ix1 + 1):
+                if zf < zb[iy, ix]:
+                    continue
+                cx = ix + 0.5
+                if sg * ((x1 - x0) * (cy - y0) - (y1 - y0) * (cx - x0)) < -l0:
+                    continue
+                if sg * ((x2 - x1) * (cy - y1) - (y2 - y1) * (cx - x1)) < -l1:
+                    continue
+                if sg * ((x0 - x2) * (cy - y2) - (y0 - y2) * (cx - x2)) < -l2:
+                    continue
+                zb[iy, ix] = zf
+                ids[iy, ix] = f
+    return ids
+
+
 def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, rough=(0.5, 0.85)) -> dict:
     """A twig seen from above (its upper side toward the eye, running up the picture) as maps: color (sRGB, the
     colour bled past the alpha's edge), alpha, normal (tangent space of the card), mask (R = light comes through:
@@ -490,21 +530,22 @@ def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, 
         own = mesh["rgb"][F].mean(1)
         has = ~np.isnan(own[:, 0])
         col[has] = own[has] * (np.clip(tone[has], 0, 1.6) * (0.85 + 0.15 * lit[has]))[:, None]
-    im_c = Image.new("RGB", (n, n), (0, 0, 0))
-    im_a = Image.new("L", (n, n), 0)
-    im_n = Image.new("RGB", (n, n), (128, 128, 255))
-    im_m = Image.new("RGB", (n, n), (0, 255, 255))
-    dc, da, dn, dm = (ImageDraw.Draw(i) for i in (im_c, im_a, im_n, im_m))
-    cnt = np.zeros((n, n), np.float32)
-    for f in np.argsort(zmean):  # painter's order: the upper leaves last
-        pts = [(float(px[v]), float(py[v])) for v in F[f]]
-        dc.polygon(pts, fill=tuple(int(v) for v in np.clip(col[f] * 255, 0, 255)))
-        da.polygon(pts, fill=255)
-        dn.polygon(pts, fill=tuple(int(v) for v in np.clip((fn[f] * 0.5 + 0.5) * 255, 0, 255)))
-        dm.polygon(pts, fill=(255 if leaf[f] else 0, int(255 * (rough[0] if leaf[f] else rough[1])), int(255 * (0.55 + 0.45 * zr[f]))))
-    down = lambda im: np.asarray(im.resize((size, size), Image.BOX)).astype(np.float32) / 255
-    a = down(im_a)
-    c = down(im_c)
+    # which face shows in each pixel: the upper faces over the lower (a painter's order, as a depth test on each
+    # face's own height). One compiled pass: PIL polygons, four a face, took 20 min for a spruce's bough atlas
+    ids = _face_ids(np.ascontiguousarray(px, np.float64), np.ascontiguousarray(py, np.float64),
+                    np.ascontiguousarray(F, np.int64), np.ascontiguousarray(zmean, np.float64), n)
+    hit = ids >= 0
+    fi = np.where(hit, ids, 0)
+
+    def paint(vals, empty):
+        img = np.asarray(vals, np.float32)[fi]
+        img[~hit] = empty
+        return img.reshape(size, ss, size, ss, -1).mean((1, 3))  # (a box filter down to the picture's size)
+
+    a = paint(np.ones((len(F), 1)), 0.0)[..., 0]
+    c = paint(np.clip(col, 0, 1), 0.0)
+    im_n = np.clip(fn * 0.5 + 0.5, 0, 1)
+    im_m = np.stack([leaf.astype(float), np.where(leaf, rough[0], rough[1]), 0.55 + 0.45 * zr], 1)
     c = np.where(a[..., None] > 1e-3, c / np.maximum(a[..., None], 1e-3), 0)  # un-premultiply the box filter
     grain = ndimage.gaussian_filter(np.random.default_rng(3).random((size, size)), 1.2)
     c = c * (0.93 + 0.14 * (grain - grain.min()) / max(float(np.ptp(grain)), 1e-9))[..., None]
@@ -512,8 +553,8 @@ def rasterize(mesh: dict, leaf_color, wood_color, size: int = 384, ss: int = 2, 
     if solid.any():  # bleed the colour out past the edge (no dark fringe under filtering)
         idx = ndimage.distance_transform_edt(~solid, return_distances=False, return_indices=True)
         c = c[idx[0], idx[1]]
-    nrm = down(im_n)
-    m = down(im_m)
+    nrm = paint(im_n, (128 / 255, 128 / 255, 1.0))
+    m = paint(im_m, (0.0, 1.0, 1.0))
     return {"color": np.clip(c, 0, 1), "alpha": a, "normal": nrm, "mask": m, "frame": [x0, y0, side],
             "coverage": float((a > 0.5).mean())}
 
@@ -583,14 +624,76 @@ def atlas(leaves: dict, wood_color=(0.2, 0.15, 0.1)) -> dict:
     """The foliage atlas of a plant: every card variant's picture in a grid (color RGBA, normal, mask), and the cards
     cut to them with their uvs in the atlas. `fill` = the share of each card's area its alpha covers (overdraw's
     other side: a card half empty is drawn twice for nothing). Kept by content (a dense needle atlas takes 20 s)."""
-    import json
-    key = json.dumps([leaves, list(wood_color)], sort_keys=True, default=float)
+    key = _atlas_key(leaves, wood_color)
     if key not in _ATLAS:
         if len(_ATLAS) > 12:
             _ATLAS.pop(next(iter(_ATLAS)))
-        _ATLAS[key] = _atlas(leaves, wood_color)
+        a = _disk_get(key)
+        if a is None:
+            a = _atlas(leaves, wood_color)
+            _disk_put(key, a)
+            a = _disk_get(key) or a  # (the same 8-bit maps whether it was just made or read back)
+        _ATLAS[key] = a
     a = _ATLAS[key]
     return {**a, "cards": [dict(c) for c in a["cards"]]}
+
+
+def _atlas_key(leaves, wood_color) -> str:
+    import json
+    return json.dumps([leaves, list(wood_color)], sort_keys=True, default=float)
+
+
+def atlas_ready(leaves: dict, wood_color=(0.2, 0.15, 0.1)) -> bool:
+    """Whether this atlas is already made (in memory or on disk): asking for it costs nothing."""
+    key = _atlas_key(leaves, wood_color)
+    return key in _ATLAS or _disk_path(key).exists()
+
+
+def _disk_path(key: str):
+    """Atlases are kept on disk by content and this module's source (a needle atlas takes minutes to rasterise):
+    $HIFIPUSHIE_VEG_CACHE, else ~/.cache/hifipushie/veg_atlas; the 60 most recently used are kept."""
+    import hashlib
+    import os
+    from pathlib import Path
+    root = Path(os.environ.get("HIFIPUSHIE_VEG_CACHE") or Path.home() / ".cache" / "hifipushie" / "veg_atlas")
+    code = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:10]
+    return root / f"{hashlib.sha1((code + key).encode()).hexdigest()[:24]}.npz"
+
+
+def _disk_get(key: str):
+    p = _disk_path(key)
+    if not p.exists():
+        return None
+    try:
+        z = np.load(p, allow_pickle=False)
+        import json
+        meta = json.loads(str(z["meta"]))
+        a = {k: z[k].astype(np.float32) / 255.0 for k in ("color", "normal", "mask")}
+        a["cards"] = [{"V": z[f"c{i}_V"], "F": z[f"c{i}_F"], "uv": z[f"c{i}_uv"], "area": float(ar)} for i, ar in enumerate(meta["areas"])]
+        a.update(meta["rest"])
+        p.touch()
+        return a
+    except Exception:
+        return None
+
+
+def _disk_put(key: str, a: dict) -> None:
+    import json
+    try:
+        p = _disk_path(key)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        arr = {k: np.clip(a[k] * 255 + 0.5, 0, 255).astype(np.uint8) for k in ("color", "normal", "mask")}
+        for i, c in enumerate(a["cards"]):
+            arr.update({f"c{i}_V": c["V"], f"c{i}_F": c["F"], f"c{i}_uv": c["uv"]})
+        rest = {k: v for k, v in a.items() if k not in ("color", "normal", "mask", "cards")}
+        tmp = p.with_suffix(".tmp.npz")
+        np.savez_compressed(tmp, meta=json.dumps({"areas": [c["area"] for c in a["cards"]], "rest": rest}, default=float), **arr)
+        tmp.replace(p)
+        old = sorted(p.parent.glob("*.npz"), key=lambda q: q.stat().st_mtime)[:-60]
+        for q in old:
+            q.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def part_specs(leaves: dict) -> dict:

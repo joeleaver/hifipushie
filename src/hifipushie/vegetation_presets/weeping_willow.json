@@ -101,7 +101,8 @@
    0.13,
    1.6,
    5
-  ]
+  ],
+  "ground_clear": 1.0
  },
  "leaves": {
   "shape": "lanceolate",
@@ -145,7 +146,8 @@
    0.86,
    0.68,
    0.14
-  ]
+  ],
+  "clear": 0.3
  },
  "bark": {
   "kind": "furrowed",

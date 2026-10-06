@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import veg_bark, veg_bough, veg_leaf, veg_mesh, vegetation
+from . import veg_bark, veg_bough, veg_ground, veg_leaf, veg_mesh, vegetation
 
 
 def _normals(V, F):
@@ -70,6 +70,10 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         return {"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "uv": np.zeros((0, 2)), "tint": np.zeros(0),
                 "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3)), "reach": np.zeros(0), "phase": np.zeros(0)}
     nv = len(at["cards"])
+    if not tree.get("clump") and veg_ground.CLEAR:  # no card reaches under the ground (turned up, shortened or left out)
+        tw = veg_ground.clear(tree["spec"], tw, at["cards"], veg_leaf.card_variant(tw, nv))
+        if not len(tw["pos"]):
+            return foliage_mesh(tree, at, tw={**tw, "pos": np.zeros((0, 3))})
     var = veg_leaf.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
     Vs, Fs, Us, Ts, Ns, Fl, Nr, Rc, Ph = [], [], [], [], [], [], [], [], []
