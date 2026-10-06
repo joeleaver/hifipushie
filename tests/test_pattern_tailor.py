@@ -228,6 +228,24 @@ def test_kimono_and_hood_are_placed():
     assert P["hood.L"]["wrap"]["to"] == "head" and P["hood.L"]["wrap"]["apart"] > 0.02
 
 
+
+
+def test_tailored_collar():
+    """One piece, stand + fall on a roll line, its outer edge sprung past the neck edge, ending at the gorge."""
+    D = pd.start("bodice", MM, {"fitted": True})
+    pd.apply(D, [{"op": "lapel", "break_y": 0.42, "stand": 0.025, "width": 0.085, "gorge": "straight", "gorge_drop": 0.09},
+                 {"op": "collar", "type": "tailored", "stop": 0.0, "stand_height": 0.03, "fall": 0.045}])
+    c = D["pieces"]["collar"]
+    for nm in ("cbNeck", "cbRoll", "cbOuter", "endNeck", "endRoll", "endOuter"):
+        assert nm in c["names"], nm
+    neck = pd.edge_length(D, D["edges"]["collar_neck"])
+    outer = pd.edge_length(D, D["edges"]["collar_outer"])
+    assert outer > neck + 0.02, (outer, neck)  # (Jaeger's is 16 mm SHORTER: its fall can't lie on the shoulders)
+    assert abs(np.linalg.norm(c["P"][c["names"]["cbRoll"]] - c["P"][c["names"]["cbNeck"]]) - 0.03) < 1e-6
+    assert any(f["piece"] == "collar" and f["kind"] == "roll" for f in D["folds"])
+    _ok(D)
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

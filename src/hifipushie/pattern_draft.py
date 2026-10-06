@@ -293,9 +293,14 @@ def op_style_line(D: dict, piece: str, **o) -> None:
         nv = np.array([-dv[1], dv[0]]) / max(np.linalg.norm(dv), 1e-12)
         nv = nv if nv @ (c1 - c0) > 0 else -nv
         sh0 = np.asarray(built[order[1]][0]["wrap"].get("shift", [0.0, 0.0]), float)
-        # (a cut ACROSS the piece, a yoke: 4 mm, its corners at the side seams overlapped at 2)
+        # (a cut ACROSS the piece, a yoke: 6 mm, its corners at the side seams overlapped at 2, and at 4 once an
+        # in-seam pocket put more vertices on the side seam)
         across_ = all(np.sum(np.abs(h_["P"][:, 0]) < 1e-6) >= 2 for h_, _ in built)
-        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.004 if across_ else 0.002) * nv).round(5).tolist()
+        built[order[1]][0]["wrap"]["shift"] = (sh0 + (0.006 if across_ else 0.002) * nv).round(5).tolist()
+        if across_:
+            # ... and the lower part a layer further out: once it is flared (pivoted at the seam) its top corner at
+            # the side seam rises past the yoke's (12 mm on the skirt), on the same surface: read as a crossing
+            built[order[1]][0]["wrap"]["out"] = round(float(built[order[1]][0]["wrap"].get("out", 0.0)) + 0.003, 5)
     for nm, k in zip(names, order):
         h, pos = built[k]
         h["name"] = nm
@@ -790,6 +795,11 @@ def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None 
     fpc["wrap"]["out"] = -0.003  # inside the piece it faces
     fpc["wrap"]["lies_on"] = piece  # placed as that piece's own surface, a layer inside it (cloth.place)
     fpc["traced"] = piece
+    # a facing is FUSED to its piece: one cloth for the sim (cloth.pieces sets it aside as Bp["fused"]). As a
+    # separate interfaced piece it was held as made: a rigid plank 16-64 mm off its front, its seams never closed
+    # ("separate": true keeps it a piece of its own)
+    if not o.get("separate"):
+        fpc["wrap"]["fused"] = piece
     D["pieces"][name] = fpc
     seam = [f"{name}:edge.a>edge.m>edge.b", chain[0] if len(chain) == 1 else chain]
     D["seams"].append(seam)
@@ -804,7 +814,14 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     """A collar drafted from the neckline as it is now (edges neck_back + neck_front), as a half cut on the fold at
     centre back. "band": a stand: a strip the neckline's length, its sewn edge slightly convex (it then leans in to
     the neck); "flat": the sewn edge is the neckline's own curve (shoulder seams laid together): it lies flat on
-    the shoulders with no stand; "roll": between the two (`stand` 0..1: 1 = band, 0 = flat)."""
+    the shoulders with no stand; "roll": between the two (`stand` 0..1: 1 = band, 0 = flat).
+    "tailored": a jacket's collar in one piece, stand + fall with a roll line between: `stand_height` (0.03) up the
+    neck, `fall` (0.045) back down over it, ending at the lapel's gorge (`stop`). Its back part is an annular sector
+    (the shawl collar's lesson: a strip run straight can't turn down round a neck): the outer edge is longer than
+    the neck edge by `spring` (default (fall - stand_height + 8 mm) x pi / 2: what the fall's edge needs to lie on
+    the shoulders a fall's overhang outside the neck seam); the front part runs on straight to the gorge.
+    `point` (0.0) moves the end's outer corner along the collar (the notch's shape). Points cbNeck, cbRoll,
+    cbOuter, endNeck, endRoll, endOuter; a roll fold `stand_height` from the neck edge."""
     nb, nf = D["edges"].get("neck_back"), D["edges"].get("neck_front")
     if not nb or not nf:
         raise DraftError("collar: the draft has no neckline edges (neck_back / neck_front)")
@@ -842,6 +859,14 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     n = 40
     si = np.linspace(0, s[-1], n)
     a_i = np.interp(si, s, ang - ang[0]) * (1 - stand) + (-0.12 * stand) * (si / s[-1]) ** 2
+    tailored = type == "tailored"
+    if tailored:
+        sh_, fl_ = float(o.get("stand_height", 0.03)), float(o.get("fall", 0.045))
+        stand = 0.5  # (its role: a collar that turns)
+        height = sh_ + fl_
+        spring = float(o.get("spring", (fl_ - sh_ + 0.008) * math.pi / 2))
+        R0 = lb * height / max(spring, 1e-4)
+        a_i = np.minimum(si * ratio, lb) / R0  # turns (outer edge on the outside) over the back neck, then straight
     ds = (Ln) / (n - 1)
     edge = [np.zeros(2)]
     for k in range(1, n):
@@ -854,11 +879,17 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     # the collar's body lies AWAY from the neck hole (the hole is on the left of cb -> hps -> cf): a flat collar's
     # outer edge is then longer than its neck edge, a band's top edge a little shorter (it leans in to the neck)
     outer = edge - nrm * hgt[:, None]
+    if tailored and o.get("point"):
+        outer[-1] = outer[-1] + t[-1] / np.linalg.norm(t[-1]) * float(o["point"])
     k_sh = int(np.argmin(np.abs(si - lb)))
     k_cf = int(np.argmin(np.abs(si - (lb + lf))))
     pts = [("cb", edge[0])] + [(("shoulderNotch" if k == k_sh else "cf" if (k == k_cf and ext > 0) else None), edge[k])
                                for k in range(1, n - 1)] + [("front" if ext > 0 else "cf", edge[-1])]
+    if tailored:  # the roll line's ends are outline points (the end edge, the centre back fold)
+        pts += [("endRoll", edge[-1] + (outer[-1] - edge[-1]) * (sh_ / height))]
     pts += [("frontTop", outer[-1])] + [(None, q) for q in outer[-2:0:-1]] + [("cbTop", outer[0])]
+    if tailored:
+        pts += [("cbRoll", edge[0] + (outer[0] - edge[0]) * (sh_ / height))]
     # the half must have its centre back on x = 0: turn it so cb -> cbTop is the y axis
     role = o.get("role") or ("collar_stand" if stand >= 0.75 else "collar_fall")
     pc = pb.make_piece(name, pts, role, {"to": "neck", "edge": "cb"}, "fold")
@@ -870,6 +901,12 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
         pc["P"] = pc["P"][::-1]
         m = len(pc["P"]) - 1
         pc["names"] = {k_: m - i for k_, i in pc["names"].items()}
+    if tailored:
+        for alias, src in (("cbNeck", "cb"), ("cbOuter", "cbTop"), ("endNeck", "cf"), ("endOuter", "frontTop")):
+            pc["names"][alias] = pc["names"][src]
+        D["edges"][f"{name}_neck"] = [f"{name}:cb>shoulderNotch>cf"]
+        D["edges"][f"{name}_outer"] = [f"{name}:frontTop>cbTop"]
+        D["edges"][f"{name}_end"] = [f"{name}:cf>endRoll>frontTop"]
     D["pieces"][name] = pc
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"
@@ -879,7 +916,13 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
             "ease": [ratio - 1 - 0.01, ratio - 1 + 0.01],
             "why": f"{name} is cut {ratio:.2f} x the neckline and stretched on (a rib band hugs the neck)"}
     D["interfaced"].append(name)
-    if stand < 0.75:
+    if tailored:
+        D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": sh_}, "angle": 15,
+                           "kind": "roll", "radius": 0.004, "name": f"{name} roll"})
+        D["log"].append(f"collar {name} (tailored): stand {sh_ * 1000:.0f} + fall {fl_ * 1000:.0f} mm, spring "
+                        f"{spring * 1000:.0f} mm: outer edge {edge_length(D, D['edges'][name + '_outer']) * 1000:.0f} mm for a "
+                        f"neck edge of {edge_length(D, seam_edge) * 1000:.0f} (half)")
+    elif stand < 0.75 and not tailored:
         D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": 0.004 + 0.02 * stand}, "angle": 15,
                            "kind": "roll", "radius": 0.003, "name": f"{name} roll"})
     D["log"].append(f"collar {name} ({type}, stand {stand:.2f}): sewn edge {edge_length(D, seam_edge) * 1000:.0f} mm for a "
@@ -914,7 +957,7 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     """A two-piece sleeve from the one-piece: the sleeve is folded edge to centre (the fold lines a quarter in from
     each side), the folds become seams moved `shift` under the arm so they are hidden: a top sleeve (the middle) and
     an under sleeve (the two outer strips joined along the old underarm seam; its top edge is the hollow of the two
-    underarm curves). "shift_back": the hindarm seam's own shift (default 0.6 x shift: it runs over the elbow).
+    underarm curves). "shift_back": the hindarm seam's own shift (default 0.25 x shift: it runs over the elbow, near the back pitch).
     Then the sleeve is BENT as a tailor cuts it: below the elbow line each piece swings toward its forearm seam by
     "elbow" (m the wrist comes forward; 0 = straight), about the forearm seam's elbow point: the forearm seams stay
     equal and hollow, the hindarm seams open over the elbow, the top sleeve's a little more than the under's (elbow
@@ -928,7 +971,7 @@ def op_two_piece(D: dict, shift: float = 0.02, **o) -> None:
     lo = pc["P"][:, 1].min()
     # the seam lines: a quarter in from each side at the biceps and at the hem (they follow the taper), `shift` under
     lf = (np.array([W / 4 + shift, 0.0]), np.array([hw / 4 + shift, lo]))
-    sb_ = float(o.get("shift_back", 0.6 * shift))
+    sb_ = float(o.get("shift_back", 0.25 * shift))  # (the hindarm seam sits near the back pitch: high on the cap)
     lb = (np.array([-(W / 4 + sb_), 0.0]), np.array([-(hw / 4 + sb_), lo]))
     work = copy.deepcopy(pc)
     # cut points on the cap and on the hem at the two seam lines
@@ -1346,6 +1389,8 @@ def apply_hinges(D: dict) -> None:
             far["wrap"] = dict(hg["wrap"])
             if w_old.get("lies_on"):
                 far["wrap"]["lies_on"] = f"{w_old['lies_on']}_{part}"
+            if w_old.get("fused"):
+                far["wrap"]["fused"] = f"{w_old['fused']}_{part}"
             far["of"] = nm
             en = far["wrap"].get("edge")
             if en and en not in far["names"]:  # (a traced piece's part: the frame's origin end of it)
@@ -1431,6 +1476,8 @@ def unfold(D: dict) -> dict:
                     w["align"] = [w["align"][0], f"{w['align'][1]}.{S}", w["align"][2]]
                 if "lies_on" in w:
                     w["lies_on"] = f"{w['lies_on']}.{S}"
+                if "fused" in w:
+                    w["fused"] = f"{w['fused']}.{S}"
                 c["wrap"] = w
                 out[f"{nm}.{S}"] = c
         else:
@@ -1447,8 +1494,11 @@ def unfold(D: dict) -> dict:
             if D["centre"].get(nm) == "open" and L["wrap"].get("to") == "torso":
                 # the left front laps over: a layer out, and a layer more for what lies between the two fronts (the
                 # right front's lapel turned back onto it, a facing inside the left)
-                lap = 0.004 + 0.012 * any(f.get("piece") == nm for f in D["folds"]) + \
-                    0.004 * any((p_.get("wrap") or {}).get("lies_on") == nm for p_ in halves.values())
+                # (as little as holds the layers apart: 20 mm stood the whole left front off the body and left its
+                # panel seam 8 mm open after the settle)
+                lap = 0.004 + 0.010 * any(f.get("piece") == nm for f in D["folds"]) + \
+                    0.004 * any((p_.get("wrap") or {}).get("lies_on") == nm and not (p_.get("wrap") or {}).get("fused")
+                                for p_ in halves.values())
                 L["wrap"]["out"] = max(float(L["wrap"].get("out", 0)), lap)
             if D["centre"].get(nm) == "seam" and L["wrap"].get("to", "torso") == "torso":
                 # the two halves of a centre seam start 2 mm apart: edge on edge, a contact solver drops the seam's
@@ -1460,6 +1510,8 @@ def unfold(D: dict) -> dict:
                 c["wrap"]["half"] = 1 if S == "L" else -1  # which side of x = 0 (its centre line) the piece is on
                 if "lies_on" in c["wrap"]:
                     c["wrap"]["lies_on"] = f"{c['wrap']['lies_on']}.{S}"
+                if "fused" in c["wrap"]:
+                    c["wrap"]["fused"] = f"{c['wrap']['fused']}.{S}"
                 if str(c["wrap"].get("to", "")).startswith("leg."):
                     c["wrap"]["to"] = f"leg.{S}"
                 if str(c["wrap"].get("to", "")).startswith("arm."):  # a pair piece on an arm (a kimono sleeve's half):

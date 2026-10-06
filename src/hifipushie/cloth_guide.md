@@ -546,7 +546,7 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `extend` | Pushes an edge out: button stand, wrap, vent | The old edge as a line |
 | `reshape` | Moves a named point, neighbours eased | |
 | `facing` | A new piece traced from a piece along edges | Sewn 1:1, turned in |
-| `collar` | Drafted from the neckline as it is now: `band` (stands), `flat` (lies flat), `roll` (between) | Sewn edge = the neckline |
+| `collar` | Drafted from the neckline as it is now: `band` (stands), `flat` (lies flat), `roll` (between), `tailored` (a jacket's: `stand_height` + `fall` on a roll line, outer edge longer by `spring` so the fall lies on the shoulders, ending at the lapel's gorge; points cbNeck / cbRoll / cbOuter / endNeck / endRoll / endOuter) | Sewn edge = the neckline |
 | `sleeve` | Drafted into the armhole as it is now, whatever was cut before | Cap = armhole + declared ease |
 | `two_piece` | Top and under sleeve from the one-piece; `elbow` (m the wrist comes forward) bends each about its forearm seam's elbow point | Cap length, forearm seams equal, elbow ease on the hindarm declared |
 | `contour` | Shapes an edge by an amount per level (`at`: [[level, m] ...]; top, chest, waist, hips, hem or a y): a shaped centre-back seam, a hem's spring. A style line's name shapes both its edges | Mirror seams equal; a panel seam's small difference declared |

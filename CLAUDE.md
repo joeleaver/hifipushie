@@ -1341,6 +1341,56 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     - Stale option trap: `design_garment` merges key by key, so an old `block_options.darts: true` (which did
       nothing at hip length) suddenly made fish-eye darts under a princess line. Give `"darts": false` with panel
       seams, or replace the sheet.
+    - Round 4, construction faults (the user on pd_52 / pd_55: "lapels aren't attached right", "stitches super
+      visible", "the skirt is unzipped"; renders pd_62..pd_6x). Diagnosed on the raw sims, all three were the same two
+      things: MADE PIECES PLACED WHERE THEY CAN'T END, and ZOZO stitches too weak to close a seam.
+      - The jacket's board: `front_facing` (wholly interfaced = made = carried rigid by the settle) was a plank 54 mm
+        off the body, 16-64 mm off its front, its seams never closed. A facing is now FUSED to its piece
+        (`op_facing` sets `wrap.fused`; `cloth.pieces` sets fused pieces and their seams aside in `Bp["fused"]`: one
+        cloth for the sim; `"separate": true` keeps a piece). The left front's lap is 4 + 10 mm (was 20).
+        `folds.apply`: a flap is only the cloth BESIDE its line: the button stand below a roll line's break point was
+        turned 170 deg into the other front (28 crossings, a "70 mm push").
+      - The skirt's V at centre back: the waistband (made) was laid on the garment's one cylinder (hip girth), 30 cm
+        open at the back, and carried rigid: its button stitch ended 352 mm open and the yokes sewn to its ends were
+        held apart. Now a band closed on itself among other torso pieces lies on the body's hull at ITS OWN level
+        (the narrowest slice over its height) at its closed girth; shorter than that + the solver's 4 mm clearance
+        is `B["band_short"]`, a stage 4 failure (the skirt needed waist ease 3%: its band sits above the waist line).
+      - Seams: the runner's own last line had said it all along (seam gaps mean / p95: trousers 3.5 / 14.5 mm, jacket
+        15.5 / 57.7, skirt 19.3 / 97.1). ZOZO's `stitch-stiffness` (default 1, its force capped by
+        `stitch-length-factor`) at 30 closed every draped seam to ~1 mm (a side seam starting 124 mm apart: 1.4 mm)
+        at 7x the time; 8 gives mean 3.1 mm at 3x. The sheets set `zozo.stitch_stiffness: 8`; the default is
+        clothsim's call (it stays 1). Clean-up welds seams again after the push off the body (the push reopened
+        them) and clay looks draw welded faces (`cloth.welded_faces`: duplicate seam vertices shaded as a pale line).
+        Stage 5 measures `seam_gap_p95_mm` (target <= 0.5) and `closure_gap_max_mm` (<= 6) and fails on them.
+      - Closures: stage 3 `cloth_workflow.openings`: every pair "<name>.L" / "<name>.R" at the centre must be joined
+        by a seam (a zip is sewn as one), stitches (buttons, a tie) or be declared (`design.open: [name]`). The
+        skirt sheet said `skirt_closure: "none"`: now `cb_zip`. A zip has no record or geometry yet: clothsim's
+        `closures` key (kind, over / under, line, lap, at, state) is agreed; the draft ops (buttons, stitch,
+        waistband) should emit its entries once it is on main.
+      - Tried and dropped: a waist-SHAPED start (per-level plan curves: the body's hull at each level out to the
+        pieces' span there). Seam start gaps 124 -> 15 mm, but 10-30% shear in the start: a pattern puts its taper in
+        the side seams and darts, a level-by-level wrap spreads it round the body, and arcs from the centre drift
+        between levels. Like CLO, pieces start apart on a simple surface and the SEWING closes them: the stitch
+        strength is the lever. Kept from it: in smooth placement the cylinder's girth is the SPAN of each side's
+        pieces per level (pleats closed, laid-on pieces out), not the sum of widths.
+      - Across cuts (a yoke): the lower part starts 6 mm off and a 3 mm layer out (a flared panel's top corner rises
+        past the yoke's at the side seam, on the same surface: crossings once a pocket added vertices there).
+      - Results (pd_66 jacket before/after, pd_67 / pd_65 skirt): jacket raw seam gaps 15.5 / 57.7 -> 1.4 / 2.5 mm
+        (mean / p95), after clean-up p95 0.5, no board, button 9 mm (target 6: fails), back collar 4% crumpled
+        (CORRUPT), body bloused and 6 cm shorter (stiffer stitches haul the fronts up to the carried collar). Skirt
+        19.3 / 97.1 -> 1.8 / 4.8 mm, closed at CB, fits; the top of the CB seam 14.8 mm and the band's button 25 mm
+        still open (a made band is pushed 4 mm off the body), pleat folds did not hold, pocket bags lump at the sides.
+      - `collar` type "tailored" (stand_height + fall on a roll line, back part an annular sector: outer edge 36 mm a
+        half longer than the neck edge, ends at the gorge; points cbNeck / cbRoll / cbOuter / endNeck / endRoll /
+        endOuter, edges collar_neck / _outer / _end). Pattern + unfold tested only; clothsim places it.
+      - STATE at the stop (usage limit, 2026-10-05): main merged in (60ffb1f). pd_64_trousers_zozo was queued behind
+        the heavy slot (log `drafting/pd_64_trousers_zozo.log`), not judged. The merge changed the sim cache key:
+        pd_62 / pd_63 need a re-sim for new looks. clothsim's taut `hpsToWaistBack` (on main after its merge) moved
+        every block: pd_wrap now fails stage 2 (waist ease +11.1%), and numeric y options in the sheets (lapel
+        break_y, style line y) need re-reading. Next: judge trousers; the button / band-top gaps (lap, the made
+        band's clearance); switch buttons / stitch / waistband ops to clothsim's `closures` key once merged and read
+        it in `cloth_workflow.openings`; re-fit the sheets to the new measures; anorak + tunic on ZOZO; run
+        tests/test_cloth.py; the ranked "any garment from prose" proposal.
   - Fold lines, method "settle", authored fine folds (2026-10-05, "clothsim" agent, renders fl_*; the user: the cloth
     "appears thick", garments lacked construction; then the north star: artists construct and press collars and
     cuffs, drape the loose cloth, author the fine folds).
