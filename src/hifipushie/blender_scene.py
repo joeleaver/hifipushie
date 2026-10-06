@@ -1101,6 +1101,11 @@ def render(job):
         cy.use_denoising = bool(job.get("denoise", True))
         cy.max_bounces, cy.diffuse_bounces, cy.glossy_bounces = 4, 2, 2
         cy.transmission_bounces, cy.volume_bounces = 2, 0
+        if job.get("hair_bounces"):  # strands: light goes THROUGH hairs (the hair BSDF's TT and TRT lobes); cut off
+            # after two it leaves fair hair grey and dark hair flat
+            cy.max_bounces = cy.transmission_bounces = cy.glossy_bounces = int(job["hair_bounces"])
+        if job.get("adaptive_threshold"):
+            cy.adaptive_threshold = float(job["adaptive_threshold"])
         scene.render.threads_mode = "FIXED"
         scene.render.threads = int(job.get("threads", 12))
         for m in bpy.data.materials:
@@ -1579,7 +1584,10 @@ def hair_look(job):
         np.save(job["dump"], blender_hair.hair_points(names=names))
         json.dump(sorted(set(names)), open(job["dump"] + ".names.json", "w"))
         np.save(job["dump"] + ".ids.npy", np.searchsorted(sorted(set(names)), names).astype(np.int32))
-    render({**job, "opened": True})
+    if (job.get("hair") or {}).get("strands"):
+        import blender_strands
+        print("@@strands", json.dumps(blender_strands.stats()), flush=True)
+    render({**job, "opened": True, "engine": job.get("look_engine", "eevee")})
     if job.get("clay_views"):  # the same views with the hair as clay: form without the material's help
         blender_hair.clay()
         for ob in list(bpy.data.objects):
@@ -1592,6 +1600,57 @@ def hair_look(job):
             if ob.name.startswith("hp_sun") or ob.name.startswith("hp_cam"):
                 bpy.data.objects.remove(ob)
         render({**job, "views": job["id_views"], "opened": True, "flat": False, "samples": 1})
+
+
+def hair_glb_look(job):
+    """An exported hair GLB as an engine gets it: Blender's own glTF importer on the head stage (the stage's hair
+    removed), its materials as imported, alpha by `alpha`: "test" (the importer's MASK set-up: a hard cut at the
+    material's alphaCutoff), "dither" (the texture's alpha, hashed: what TAA / alpha-to-coverage resolve to), "off"
+    (every card a solid quad: what the geometry itself is)."""
+    import blender_strands
+    _open(job["blend"])
+    blender_strands.clear()
+    coll = bpy.data.collections.get("hair")
+    for ob in list(coll.objects) if coll else []:
+        bpy.data.objects.remove(ob)
+    before = set(bpy.data.objects)
+    if job.get("glb"):
+        bpy.ops.import_scene.gltf(filepath=job["glb"])
+    new = [o for o in bpy.data.objects if o not in before]
+    info = {"objects": [], "materials": {}}
+    mode = job.get("alpha", "test")
+    for ob in new:
+        if ob.type != "MESH":
+            continue
+        me = ob.data
+        info["objects"].append({"name": ob.name, "verts": len(me.vertices), "tris": len(me.polygons),
+                                "attributes": sorted(a.name for a in me.attributes),
+                                "colors": sorted(a.name for a in me.color_attributes),
+                                "uv": [u.name for u in me.uv_layers]})
+        for m in me.materials:
+            nt = m.node_tree
+            info["materials"][m.name] = {"nodes": sorted(n.bl_idname for n in nt.nodes),
+                                         "culling": bool(m.use_backface_culling),
+                                         "method": getattr(m, "surface_render_method", "?")}
+            bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+            tex = next((l.from_node for l in nt.links if l.to_node == bsdf and l.to_socket.name == "Base Color"), None)
+            img = next((n for n in nt.nodes if n.type == "TEX_IMAGE" and n.image and n.image.alpha_mode != "NONE"
+                        and n.outputs["Alpha"].is_linked), None)
+            if mode == "off":
+                for l in list(bsdf.inputs["Alpha"].links):
+                    nt.links.remove(l)
+                bsdf.inputs["Alpha"].default_value = 1.0
+            elif mode == "dither" and img is not None:
+                for l in list(bsdf.inputs["Alpha"].links):
+                    nt.links.remove(l)
+                nt.links.new(img.outputs["Alpha"], bsdf.inputs["Alpha"])
+            try:
+                m.surface_render_method = "DITHERED"
+            except (AttributeError, TypeError):
+                pass
+            del tex
+    print("@@glb", json.dumps(info), flush=True)
+    render({**job, "opened": True, "engine": job.get("look_engine", "eevee")})
 
 
 def hair_sync(job):
@@ -1622,7 +1681,22 @@ def hair_export(job):
     blender_hair.export_bake(job)
 
 
-MODES = {"cloth_sync": cloth_sync, "hair_export": hair_export, "hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
+def hair_strands_eval(job):
+    """A strands job (hair_strands.job) built in an empty scene: every evaluated strand dumped to an npz, and / or
+    written as a groom (Alembic, USD)."""
+    import blender_strands
+    for ob in list(bpy.data.objects):
+        bpy.data.objects.remove(ob)
+    blender_strands.show(job["strands"])
+    bpy.context.view_layer.update()
+    print("@@strands", json.dumps(blender_strands.stats()), flush=True)
+    if job.get("out"):
+        blender_strands.dump(job["out"])
+    if job.get("abc") or job.get("usd"):
+        print("@@groom", json.dumps(blender_strands.export_groom(job.get("abc"), job.get("usd"))), flush=True)
+
+
+MODES = {"hair_glb_look": hair_glb_look, "hair_strands_eval": hair_strands_eval, "cloth_sync": cloth_sync, "hair_export": hair_export, "hair_stage": hair_stage, "hair_look": hair_look, "hair_sync": hair_sync, "pull": pull, "sync": sync, "render": render, "bake_maps": bake_maps, "bake_inputs": bake_inputs}
 
 if __name__ == "__main__" and "--" in sys.argv:  # run as a script by headless Blender; imported in a live session
     job = json.load(open(sys.argv[sys.argv.index("--") + 1]))

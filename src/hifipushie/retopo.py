@@ -1242,11 +1242,53 @@ def turned(V, T, prims, near=0.0015):
 
 # ---------------------------------------------------------------------------------------------------- main
 
+def base_quads(spec: dict, log: list) -> dict | None:
+    """A base body's OWN quads as its topology (the same dict as `wrap`): the posed body mesh the field is made from
+    (`base.surface()["quads"]`: MakeHuman's or the template's animation topology, fingers and all), its vertices
+    dropped onto the field (a subdivision cage stands a little off its limit surface; pushes and strokes count),
+    a grafted head bridged on as before. Carrying ANOTHER template onto a base (the stylised male's digit tubes
+    onto MakeHuman's close-set fingers) tore both hands at the webs and the thumb's root, at rest: the golfer's
+    "cracked" disc hand, 2251 faces still turned after the untangle. parts.body.topology = "template" for that path.
+    None when the base has no quads of its own."""
+    from . import base as basemod
+    s = expand_mirror(spec)
+    sf = basemod.surface(s, spec["base"])
+    if not sf.get("quads"):
+        return None
+    Vq, fq = sf["quads"]
+    V = np.array(Vq, float)
+    L = np.array([v for f in fq for v in f])
+    S = np.array([len(f) for f in fq])
+    prims = [p for p in compile_prims(spec) if p.part == "body"]
+    lo = np.min([p.lo for p in prims], 0)
+    hi = np.max([p.hi for p in prims], 0)
+    voxel = float((hi - lo).max()) / 200
+    V0 = V.copy()
+    V = surface.newton(prims, V, voxel * 0.125, voxel, iterations=12)[0]
+    # (the cage stands <= ~2.5 mm off; what moves further is the neck tube's upper rings inside a grafted head, cut
+    # away below, or a step that went astray)
+    far = np.linalg.norm(V - V0, axis=1) > 0.004
+    V[far] = V0[far]
+    mv = np.linalg.norm(V - V0, axis=1)[~far] * 1e3
+    log.append(f"wrapped: the base body's own quads, {len(V)} verts, {len(S)} faces ({(S == 4).mean():.0%} quads); "
+               f"moved onto the field by mean {mv.mean():.2f} p95 {np.percentile(mv, 95):.2f} max {mv.max():.1f} mm"
+               + (f", {int(far.sum())} left where they were" if far.any() else ""))
+    # (a fused one-mesh source, body.source "human", has its head in these quads already: no graft)
+    if (spec["base"].get("head") or {}).get("source", "gnm") == "gnm" and spec["base"].get("head") \
+            and (spec["base"].get("body") or {}).get("source") != "human":
+        V, L, S = graft_head(V, L, S, spec, prims, log)
+    return {"verts": V, "loops": L, "sizes": S, "origin": np.zeros(len(V), int), "log": log, "patches": {}}
+
+
 def wrap(spec: dict, template: str = "male_stylized", log: list | None = None) -> dict:
     """The model's body as the template's quads: {"verts", "loops", "sizes", "origin" (0 template, 1/2 generated),
     "log"}. The spec needs the humanoid joints (see is_humanoid); a face kit, hand kit and ear bones are used when
     present."""
     log = [] if log is None else log
+    if spec.get("base") and ((spec.get("parts") or {}).get("body") or {}).get("topology") != "template":
+        r = base_quads(spec, log)
+        if r is not None:
+            return r
     tpl = load_template(template)
     s = expand_mirror(spec)
     prims = [p for p in compile_prims(spec) if p.part == "body"]

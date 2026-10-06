@@ -1289,7 +1289,7 @@ def _hair_gates(look) -> str:
 
 @mcp.tool(structured_output=False)
 def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stage: str | None = None,
-               note: str = ""):
+               note: str = "", style: str | None = None, strands: dict | None = None, look: dict | None = None):
     """Grow the hair's locks from spec["hair"]["groom"] (the designer's words and numbers) and save them.
     Hair is curve locks (Bezier curves swept with a cupped lens profile) in the model's Blender scene, not part of
     the SDF body; guide(topic="hair") is the workflow. Needs a head with face landmarks (a `base` head) or a
@@ -1307,6 +1307,15 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
       an under-layer clump fills between neighbours; patch one by name: {"drawn": {"sweep2": {...}, "qf*": {...},
       "old": null}}), hairline_edge ({inset, reach} for every clump near the hairline), volume.edge_sink,
       parting.front, grey, noise, seed.
+      tie ({"at": [az, el] deg (az 180 = the back, el up), "out": m off the scalp, "gather": {rows, locks, lift,
+      width, uneven}, "tail": {length, fullness, locks, stiff, uneven, taper, coil, plait}, "escape": n wisps the tie
+      missed, "band": m}: hair gathered over the head into a tie and a tail leaving it; set parting.side "none").
+    style: "locks" (solid sculpted locks: stylised hair, the default), "strands" (the locks become GUIDES of a strand
+      groom on Blender's Hair Curves: realistic hair; the game export cuts cards from those strands), "cards".
+    strands: a patch of the strand dials (hair.strands; guide(topic="hair"), "Strand grooms"): count, thickness,
+      taper, clump, clump_size, clump_shape, stray, tip_spread, loose, wave (m), wavelength (m), curl, random, frizz,
+      flyaway, tips, roots, under, under_length, flat, soft, baby. look: a patch of the material (lit, gap, tip,
+      tip_amount, vary, root, roughness, light "salon" | "flat").
     stage: "mass" shows only the groom's volume as one shell (judge the silhouette first), "locks" the locks.
     Locks edited by hand (in Blender and pulled, or by edit_model) carry "hand": true and are kept; locks deleted in
     Blender (hair.removed) aren't grown again; replace=True regrows everything and forgets both.
@@ -1314,6 +1323,19 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
     the material with {"op": "set", "kind": "hair", "name": "look", "value": {"lit": "#5a3a2c"}}.
     Then look_hair. Returns the counts per tier."""
     from . import hair
+    if style is not None or strands or look:
+        sp = store.load(name)
+        h = sp.setdefault("hair", {})
+        if style is not None:
+            if style not in hair.STYLES:
+                raise ValueError(f"style is one of {', '.join(hair.STYLES)}")
+            h["style"] = style
+        if strands:
+            h["strands"] = hair.merge_patch(h.get("strands") or {}, _spec_arg(strands))
+        if look:
+            h["look"] = hair.merge_patch(h.get("look") or {}, _spec_arg(look))
+        hair.validate(sp)
+        store.save(name, sp, note or "hair: style / strands / look")
     r = hair.groom(name, replace=replace, note=note, patch=_spec_arg(groom) if groom else None, stage=stage)
     spec = store.load(name)
     return (f"saved {name} v{r['version']}: grew " + (", ".join(f"{t} {n}" for t, n in r["grown"].items()) or "nothing")
@@ -1325,7 +1347,8 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
 
 @mcp.tool(structured_output=False)
 def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: bool = True, layout: bool = False,
-              reference: str | None = None, save: str | None = None, only: list[str] | None = None):
+              reference: str | None = None, save: str | None = None, only: list[str] | None = None,
+              tier: str | None = None, debug: str | None = None, engine: str = "eevee"):
     """A fast look at the hair (4-30 s): the head cropped from the model's Blender scene with the hair from the spec,
     rendered in EEVEE. Rows: the material, the same in clay (shape without colour: judge clumps there), and with a
     matched reference camera (hair_reference) the matched render, its clay, the reference, a 50% blend and the traced
@@ -1339,6 +1362,11 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     Returns the images and the measured gates: the outline's dents (front, 3/4: a pinched temple reads as a divot),
     the bare-volume share per view (the volume showing between locks reads as a helmet), and with a trace the fit to
     the reference (part start px / direction deg, hairline px, silhouette IoU, outline px, clump directions).
+    A strand groom (hair.style "strands") renders its strands; engine="cycles" path-traces them with the hair BSDF
+    (the truthful look; minutes, and it waits for the machine's heavy slot). tier: "hero" | "main" | "npc" | "far"
+    shows the game CARDS of that tier instead (cut from the strands); debug then isolates what makes a fault:
+    "layers" (cards as solid quads coloured by layer: cap grey, 0 red, 1 green, 2 blue, 3 yellow), "cap_only",
+    "cards_only", "no_normal", "unlit". export_hair judges the exported files themselves.
     Needs the scene once: `sync` the model first."""
     from . import hair
     views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
@@ -1354,9 +1382,16 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
         raise ValueError(f"{name} has no hair: groom_hair(name, groom={{...}}) grows it")
     out = []
     text = _hair_counts(spec)
+    if tier is not None:
+        if tier not in hair.CARD_TIERS:
+            raise ValueError(f"tier is one of {', '.join(hair.CARD_TIERS)}")
+        spec = {**spec, "hair": {**spec["hair"], "style": "cards"}}
     if not only_layout:
-        sheet, secs, _ = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay,
-                                   only=only)
+        sheet, secs, fr = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay,
+                                    only=only, budget=tier, debug=debug, engine=engine)
+        st = next((ln[10:] for ln in fr if ln.startswith("@@strands")), None)
+        if st:
+            text += f"\nstrands: {st}"
         out.append(_out(sheet, save))
         gates = _hair_gates(hair.look)
         if (spec.get("hair") or {}).get("stage") == "mass":  # the volume is the surface on purpose at this stage
@@ -1379,6 +1414,44 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
             lp = str(p.with_name(p.stem + "_layout" + (p.suffix or ".png"))) if not only_layout else save
         out.append(_out(lay, lp))
     return [*out, text]
+
+
+@mcp.tool(structured_output=False)
+def export_hair(name: str, out_dir: str, tiers: list[str] | None = None, groom: bool = True, check: bool = True,
+                save: str | None = None):
+    """The hair alone, game-ready, from a strand groom (hair.style "strands"; guide(topic="hair"), "Strand grooms"):
+    one GLB a tier in out_dir (`<name>_hair_<tier>.glb`; tiers hero 40k / main 16k / npc 6k / far 1.5k triangles;
+    default main, npc, far), all on ONE atlas: cards cut from the groom's own strands (a lower tier = fewer, wider
+    cards from bigger clumps; far = the cap + a solid tail), the cap wearing the scalp's chart, alpha MASK, two
+    sided, the recipe for an engine's hair shader in the material's extras. groom=True also writes the strands
+    (`<name>_groom.abc` in cm for Unreal's groom import, `<name>_groom.usdc` with groom_* primvars).
+    check=True re-imports every GLB on the head (as an engine gets it) and judges it against the strands in the same
+    views and light, under a hard alpha TEST and dithered: per view iou / bare (strand silhouette left uncovered),
+    value and saturation x the strands', detached rectangular blobs (cards showing as stamps), straight outline
+    share (plank ends), with WARNING lines. save: the sheet (strands | each tier alpha test, dithered, cards as solid
+    quads by layer | the atlas); each row is also written beside it as <save stem>_<tier>_<test|dither|solid>.png.
+    Minutes with check (about one a tier). Returns the sheet and the table."""
+    from . import hair
+    spec = store.load(name)
+    if (spec.get("hair") or {}).get("style") != "strands":
+        raise ValueError(f"{name}'s hair style is {(spec.get('hair') or {}).get('style', 'locks')!r}: export_hair cuts "
+                         f"cards from a strand groom (groom_hair(name, style=\"strands\")); solid locks go out with "
+                         f"export_asset")
+    tiers = list(tiers) if tiers else ["main", "npc", "far"]
+    bad = [t for t in tiers if t not in hair.CARD_TIERS]
+    if bad:
+        raise ValueError(f"unknown tiers {bad} (have {', '.join(hair.CARD_TIERS)})")
+    rep = hair.export_hair(name, Path(out_dir).expanduser(), tiers=tuple(tiers), groom=groom, check=check, sheet=save)
+    lines = [f"{t}: {r['triangles']} triangles, {r['bytes'] // 1024} KB, {r['glb']}" for t, r in rep["tiers"].items()]
+    if rep.get("groom"):
+        lines.append(f"groom: {rep['groom'].get('alembic')}, {rep['groom'].get('usd')}")
+    if rep.get("checks_text"):
+        lines.append(rep["checks_text"])
+    out = []
+    if save and check:
+        from PIL import Image as _I
+        out.append(_png(_I.open(save)))
+    return [*out, "\n".join(lines)]
 
 
 @mcp.tool(structured_output=False)

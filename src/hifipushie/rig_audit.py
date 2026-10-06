@@ -250,7 +250,40 @@ def fused_limbs(spec: dict, bones: list[dict], limit: float = 0.2) -> list[str]:
                        f"{nm} and the body in the front view (an A-pose, arms ~35-45 deg from the body, legs apart), "
                        "or thin the limb / the belly there; spec[\"anatomy\"] = {} then shapes the shoulder and pit. "
                        "Re-run rig: this line goes when under 20% touches")
+    # digits: fingers modelled touching are one mitten once meshed (the troll's: 12 mm radii on axes 18 mm apart,
+    # 7.5 mm INTO each other at the first phalanx; a finger joint then moves its neighbours 20+ mm). Judged on the
+    # phalanges' axes: the air left between two neighbouring digits' flesh, away from the knuckle's web.
+    import re
+    dig = {}
+    for k, i in enumerate(ids):
+        m = re.match(r"(Left|Right)Hand(Thumb|Index|Middle|Ring|Pinky)([123])$", names[i].split(":")[-1])
+        if m and not bones[i].get("twist"):
+            dig.setdefault((m.group(1), m.group(2)), []).append((k, i))
+    for side in ("Left", "Right"):
+        ds = [d for d in dig if d[0] == side and d[1] != "Thumb"]
+        worst = None
+        for x in range(len(ds)):
+            for y in range(x + 1, len(ds)):
+                for k, i in dig[ds[x]]:
+                    if names[i][-1] == "1":  # past the first phalanx: the knuckles' webs and pads join by design
+                        continue
+                    a_, b_ = (np.asarray(v, float) for v in seg[i])
+                    P = a_ + np.linspace(0.2, 1.0, 8)[:, None] * (b_ - a_)
+                    own = -dist(k, P)  # the digit's own radius there
+                    air = np.min([dist(q, P) for q, _ in dig[ds[y]]], 0) - own
+                    if worst is None or air.min() < worst[0]:
+                        worst = (float(air.min()), ds[x][1], ds[y][1])
+        if worst is not None and worst[0] < DIGIT_AIR:
+            out.append(f"WARNING: {side} {worst[1]} and {worst[2]} fingers are modelled "
+                       + (f"{-worst[0] * 1e3:.0f} mm into each other" if worst[0] < -0.001 else
+                          f"touching ({worst[0] * 1e3:+.1f} mm of air)")
+                       + ": meshed, the fingers are one mitten and a finger joint drags its neighbours. FIX THE MODEL: "
+                         "spread the hand kit's fingers or thin them until a few mm of air (2+ export voxels) shows "
+                         "between neighbours along their whole length")
     return out
+
+
+DIGIT_AIR = 0.002  # m of air between neighbouring fingers under which they mesh as one
 
 
 def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.ndarray, only=None,
