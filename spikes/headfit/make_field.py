@@ -162,11 +162,11 @@ def main():
     ref = run(T_ref - Xg)
     out_as = []
     for a in AGES:
-        out_as.append([run(carried({"age": a, "sex": s, "weight": 0.5, "muscle": 0.5}) - T_ref) for s in (0.0, 1.0)])
+        out_as.append([run(carried({"age": a, "sex": s, "weight": 0.5, "muscle": 0.5, "growth": False}) - T_ref) for s in (0.0, 1.0)])
         print("age", a, "rms move", [round(float(np.sqrt((x[skin] ** 2).sum(1).mean())), 4) for x in out_as[-1]], flush=True)
     out_w = []
     for s in (0.0, 1.0):
-        mid = carried({"age": 30, "sex": s, "weight": 0.5, "muscle": 0.5})
+        mid = carried({"age": 30, "sex": s, "weight": 0.5, "muscle": 0.5, "growth": False})
         out_w.append([run(carried({"age": 30, "sex": s, "weight": w, "muscle": 0.5}) - mid) for w in (0.1, 0.9)])
     dest = Path(headfit.__file__).with_name("head_fields.npz")
     np.savez_compressed(dest, ages=np.array(AGES, float), ref=ref.astype(np.float16), age_sex=np.array(out_as).astype(np.float16),
