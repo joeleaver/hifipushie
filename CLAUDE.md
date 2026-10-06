@@ -3091,6 +3091,73 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
   terrain integration not started.
 
+## One human mesh (2026-10-06, "onemesh" agent, branch worktree-agent-aac6bb85823bc8809; renders `workspace/human_renders/om_*`)
+
+The user: "we seem to always be fighting the makehuman/GAN mesh combination ... So we had one mesh?", then a stretch
+goal (the same topology driving stylised humans: feature animation, cartoon, low-poly, anime, by macro sliders fitted
+to references), then two requirements on the interface: sliders are what a SOLVER sets ("sliders are always
+ambiguous"), and guard rails against "blind measurements while completely ignoring the integrity of the rest of the
+model".
+
+- Research (Phase 0): nothing open replaces GNM + MakeHuman. Anny (NAVER, Apache-2.0 code, MakeHuman's CC0 assets,
+  WHO-calibrated ages) IS MakeHuman's mesh + macros, i.e. what makehuman.py + anthro.py already are, with MakeHuman's
+  faces; MHR (Meta, Apache-2.0, scan-based, 7 LODs, 72 FACS shapes) has no eyes / teeth / mouth, PCA identity and no
+  children; SMPL-X / STAR / SUPR / FLAME non-commercial; MetaHuman Epic-only; GNM still head only (a body is on its
+  roadmap: the body half here stays swappable). MPFB's `faceunits01` (CC0, 52 ARKit shapes on MakeHuman's head) is a
+  reference for our face shapes. Decision (with the user): fuse GNM's head topology onto MakeHuman's body, once.
+- The asset: `src/hifipushie/human_mesh.npz` (2.1 MB, in the package), built by `spikes/onemesh/make_asset.py`
+  (deterministic, prints the arrays' sha256; `register.py` = make_field's registration returning the correspondence;
+  `sheet.py` = the hand-check sheets; `wire.py` / `meshview.py` = a PIL clay / wire viewer, no Blender).
+  MakeHuman's body below a neck loop C (42 vertices; one loop above `base._neck_loops`' top one: that one lies on the
+  trapezius), GNM's skin above its neck ring 13 (110 vertices) + sock + eyes + teeth + tongue, three bridge rows
+  110 -> 82 -> 58 -> 42. Row units: plain quads and 3-edges-onto-1 reductions through two new vertices, spread evenly,
+  palindromic from the front centre (mirror symmetry), phases searched for 3-5 edges per vertex. Dead ends, in order:
+  two rows 110 -> 56 -> 42 (6-edge and 2-edge vertices); 4-edges-onto-2 units round ONE vertex (the middle fine vertex
+  is a 180 degree corner of a quad: 36 "folded" quads); Laplacian relaxation (rows collapsed unevenly); placing the new
+  loops by the turn about a vertical axis, by arc length, by arc length pinned at the sides (each sheared or folded
+  where C climbs the neck's side: the rows join vertices BY INDEX, so the parameter must be the index). Now: no folded
+  quad, bridge aspect median 2.3 / p90 3.2 / worst ~4 (A and C are not parallel: the gap is 1 cm at the sides, 3 cm
+  front and back; an artist would tilt the cut). `edits.json` beside the script = hand corrections (moved vertices,
+  spun edges; `--obj` / `--edits-from` round trip through Blender), not yet used with a real edit.
+- The design that made it simple: every GNM skin vertex and bridge vertex is BOUND to a point of MakeHuman's
+  reference surface (triangle + barycentric; registration residual 0.17 mm rms). `onemesh.bound(params)`: any
+  MakeHuman body (growth, sex, weight, bust: whatever makehuman.body takes) carries the head = a similarity (the
+  head's size) + the remainder smoothed over GNM's mesh, held hard round the stitch; eyes / teeth / tongue rigid with
+  a scale from the skin beside them. Ring A lies within 0.2 mm of the body at every age; the bound head within 0.2 mm
+  mean / 0.5 mm p95 of the body's own head (follow_body: 2.5 / 6-9 mm). No per-age delta arrays, no head scale.
+- `base.gnm_head` runs unchanged and one hook (`head["bound"]` -> `onemesh.hook`) lays everything it made, as a
+  DIFFERENCE from GNM's template (identity, expression, regions, pose, eye size, planes; then pushes / simplify in
+  world), on the bound head, faded to 0 over 7 rings above the stitch. So landmarks, eye seating, lip zip, GnmFace's
+  carry keep working. `onemesh.head_desc`: the seed stripped of its own age / sex / weight and `features` solved by
+  headfit.follow on a pseudo base; `dimorphism` (0.8) from head_fields on the head only; `toward`.
+- Wiring (4 guarded branches in base.py; old paths bit-identical, checked by hashing the built base of the golfer, two
+  grafted humans and the template against main's code): `base.source` -> `onemesh.template` (fused quads at this
+  body's shape: "fid" = asset index, "n_mh", "n_body", "chin_lm", "chin_mh"), `base.head_of` -> `onemesh.head`
+  (posed by the same skeleton warp as the body), `base.surface`: one quad mesh -> Catmull-Clark -> IMLS, no tube /
+  cross-fade / seam weights, "graft" None, "src" = arange. `rig_template._one_mesh`: the asset's weights by index
+  (MakeHuman's hand-made ones; through the binding on the head; 139 bones folded as before), the arm's side handed to
+  Neck within GRAFT_REACH above the stitch; rig3's head rule runs on top as for any base with lm_* joints.
+  `humans.spec(source="human")` / `human(..., source="human")`.
+- `humanfit.py` + tools `measure_human`, `fit_human`, `nudge_human`, `human_reference`, `guide(topic="human")`:
+  named measures (body cm via anthro.measure; face mm from the 68 landmarks + eye centres, `FACE`; ratios "a/b");
+  `solve` = minimal-change Gauss-Newton (landmarks are LINEAR in GNM's identity components: headfit's LB tables, so
+  the Jacobian is analytic; body macros by finite differences), every measure not asked for held, far landmarks
+  held, ridge toward the current state, components clipped at 2.6 sigma, and the step CUT BACK where an unasked face
+  measure would move > 2x its tolerance (`COLLATERAL`); `nudge` (one landmark, mirror together, the rest a Gaussian
+  push in shape.push_more, reported as "the sliders can't do this"); `fit_views` (cameras + identity jointly on named
+  2D points, multi-view); `side_effects` (all measures before -> after, UNINTENDED, displacement outside the asked
+  region); `integrity` (faces folded BY THE EDIT, edge stretch per region against the same body with a plain head,
+  lids over eyeballs, lips crossed, sigma). A broken result is not saved unless forced. Lessons: comparing folds
+  against the plain head called every open lid broken (compare against the state before the edit); a zipped mouth's
+  topology depends on the shape (integrity unzips both); a centre landmark a hair off x = 0 got its push twice (the
+  mirror rule): pinned with an offset; one tiny lip face turns with any change (limit 6 faces).
+  Measured: nose_width +4 mm met with 2.6% of the mesh moved > 1 mm away from it; "eye_width x3" comes back at
+  +3.5 mm, held at 31% of the step; a synthetic two-view fit of another seed: 0.3 px, 3D landmarks 3.3 -> < 1.5 mm.
+- Tests: `tests/test_onemesh.py` (asset topology / symmetry / bridge, the stitch at 1-78 y, determinism, identity
+  fades at the stitch, old paths never call onemesh, measures vs the grafted path, weights by index),
+  `tests/test_humanfit.py` (measures, a met measure, adversarial requests, nudge, fit-back from images).
+- NOT DONE (in the order I would do it): see the HANDOVER at the end of this section.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.
