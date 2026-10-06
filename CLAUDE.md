@@ -1183,6 +1183,51 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     - Scratch (worktree `scratchpad/`, untracked): run.sh (env), one.py <age> <sex> <outfit> [zoom] (one clay human),
       face.py (face variants), t4.py (bodies vs references table), t5.py (GNM head vs the body's own), quick.py (a
       PIL clay view of a mesh without Blender), seq1.sh (line-up then tests).
+  - Chests, clothes with volume, faces, the throat (2026-10-06, "humans4" agent, branch
+    `worktree-agent-ab7ea373ab4099300`; sheet sk_40_ages_lineup.png + _measures.txt; the user on sk_30, arrows at the
+    woman's chest: "What is going on with this poor woman's boobs?"). Scratch in the worktree's untracked
+    `scratchpad/`: run.sh, d1.py / d3.py (bare adult chest views + bust numbers; scratch only), g1.py (one clothed
+    clay human, ZOOM=2.4 for a torso close-up), f1.py (face rows for a list of people), n1-n3.py (throat field
+    probes), z1.py (a close look at a joint), tile.py.
+    - THE CHEST, by measure (`anthro.measure` -> `bust_projection`: how far the fullest level of the chest's front
+      stands ahead of the breast bone; ~10-20 mm flat, 30-40 an A/B cup, 50-60 C/D): (1) `base.body.nipples: 0`
+      smoothed a patch 4% of the stature wide (6.4 cm on a woman) onto a sheet fitted through the ring outside it:
+      it scooped a crater out of each breast = the dented ring. (2) MakeHuman's own female at average cup stands
+      18 mm ahead of the breast bone, a small pointed AA cup, and our loader read only the macro targets: its
+      breast modifiers were never fetched. (3) The tee was a shell of the skin (see below). Now the pack has
+      targets/breast (228 files, CC0, in assets.json; `makehuman._bust`): `base.body.bust` / `firmness` 0..1
+      (female x age x muscle x weight x cup x firmness, as MakeHuman blends them; no target at average / average, so
+      a body without the keys is bit-identical), `nipples` = MakeHuman's nipple-point / nipple-size targets scaled
+      by the body's size (an adult's millimetres turned a baby's chest inside out), then `_smooth_nipples` over 1.2%
+      of the stature (wide, 4%, only under 11 years: MakeHuman models a mound under a child's nipple).
+      `humans.bust_default`: bust 0.7 growing in from 11 to 17, firmness 0.65 at 30 -> 0.4 at 75, +0.2 dressed (a
+      bra). Woman 30: 32 mm; children and men 0-2 mm. base.VERSION must be bumped when makehuman.py changes a body
+      (the build cache is keyed on it, not on makehuman's code: a stale build hid two fixes).
+    - CLOTHES: `humans.outfit` now uses `parts.<p>.garment` (close + hang + a torso tube; legs tubes for shorts),
+      lengths scaled by stature / 1.7. What had made it unusable on these bodies: (1) the garment's field was
+      EXACTLY 0 between 6 cm and the mesh's largest face size from the cloth (`_imls`'s far value, max(d - hmax, 0)),
+      so the region's box showed as slabs in the air before a loose tee: garment point sets carry `far_fit` (the
+      plane fit, capped at half the nearest vertex's distance; the body's own field is untouched); (2) the "studs
+      at the nipples" were the nipples (flattened now); (3) notches in the hem at the side: the torso's region box
+      was as wide as the shoulder joints and a woman's hips are wider (`tee_hips` box, `breadth()` = the torso's
+      half breadth with the arms left out), and the shorts lay outside the tee (thinner shorts, tube_ease 12 mm);
+      (4) tube key `"arms": "taper"` (what counts as arm narrows toward the wrist) and `"band"` (the hand-over's
+      length, scaled). Onesie: close 60 + a nappy (a layer-1 blob round the seat). Underwear: close 12 / 6.
+    - FACES (`humans.face(age, sex, seed)`): per-seed `features` (nose, lips, cheeks, chin, jaw, brow_ridge, eyes)
+      leaning with age and sex, spread 0.45 (women, children) .. 0.6, lids opened by `pose` (lid_upper -2.6 mm:
+      eye height 0.19-0.23 of the pupils' distance, was 0.15 = half shut), a trace of a smile, `mouth_gap` 0.001
+      (lips together; parted, the fill behind showed as ragged teeth).
+    - THE THROAT (own-neck graft, `base.surface`): three things were tangled. (1) Fine level lines down the whole
+      neck = MakeHuman's neck rings of long thin quads with the IMLS kernel at the MEAN edge length: now the
+      longest edge at each vertex (own-neck bodies only). (2) A ragged slot with shards under a child's jaw: there
+      the body's and the head's skins are different surfaces 5-10 mm apart inside the overlap, each with a
+      few-mm kernel, so the sheets ended in free edges: each point's kernel is now as wide as the gap (they blend
+      into one closed skin). (3) The head is eased onto the body's TRIANGLES (closest point facing the same way,
+      `rig_template.from_surface`) with trust falling off smoothly by distance and facing. Tried and dropped: a
+      step onto the body's IMLS field (tore a ring round the neck), snapping the overlap's points sideways onto the
+      body with its normals (a ribbed band). The mouth fill of a followed head is lower and flatter.
+    - NOT the cause, for the record: the IMLS and `soften` do not flatten the chest (the tool sets no soften).
+    - Read of sk_40: SEE THE REPORT LINE BELOW (filled in after judging).
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy

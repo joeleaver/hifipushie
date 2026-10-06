@@ -87,6 +87,44 @@ def test_nipples_smoothed():
     assert abs(a[moved, 0]).min() > 0.02 * H  # two patches, off the centre line
 
 
+def test_bust():
+    """An adult woman has a chest by default, with a control; children and men none; flattening the nipples under
+    cloth leaves the breast (a wide smoothing once scooped a crater out of each: a dented ring)."""
+    from hifipushie import humans, makehuman, anthro, headfit
+    chin = headfit.table()["lm68"][8]
+
+    def proj(params):
+        b = makehuman.body(params)
+        P = np.asarray(b["P"], float)
+        return anthro.measure(P, b["J"], float(P[chin, 2]))["bust_projection"]
+    w = humans.spec(30, 0.0, skin=False)["base"]["body"]
+    assert 0.6 < w["bust"] <= 0.8 and w["firmness"] > 0.7 and w["nipples"] == 0.0, w
+    assert 0.024 < proj(w) < 0.045, proj(w)
+    bare = {k: v for k, v in w.items() if k != "nipples"}
+    assert proj(w) > 0.85 * proj(bare), (proj(w), proj(bare))  # no crater
+    assert proj({**w, "bust": 1.0}) > proj(w) + 0.015 and proj({**w, "bust": 0.0}) < 0.012
+    assert proj({"age": 30, "sex": 0.0}) < 0.022  # MakeHuman's own average cup: small
+    for age, sex in ((1, 0.0), (7, 0.0), (10, 0.0), (30, 1.0), (75, 1.0)):
+        b = humans.spec(age, sex, skin=False)["base"]["body"]
+        assert "bust" not in b and "firmness" not in b, (age, sex, b)
+        assert proj(b) < 0.01, (age, sex, proj(b))
+    assert humans.spec(16, 0.0, skin=False)["base"]["body"]["bust"] < w["bust"]
+    old = humans.spec(75, 0.0, skin=False)["base"]["body"]
+    assert old["firmness"] < w["firmness"]
+    # without the keys a body is what it was
+    a, b = makehuman.body({"age": 30, "sex": 0.0})["P"], makehuman.body({"age": 30, "sex": 0.0, "bust": 0.5, "firmness": 0.5})["P"]
+    assert np.abs(np.asarray(a) - np.asarray(b)).max() == 0.0
+
+
+def test_faces_differ():
+    from hifipushie import humans
+    a, b = humans.face(30, 0.0, 3), humans.face(30, 0.0, 4)
+    assert a["features"] != b["features"] and a["pose"]["lid_upper"] < -0.0015
+    kid, man = humans.face(4, 0.5, 3)["features"], humans.face(40, 1.0, 3)["features"]
+    assert kid["cheeks"] > man["cheeks"] and kid["lips"] > man["lips"]
+    assert humans.face(75, 0.0, 3)["features"]["jaw"] < humans.face(75, 1.0, 3)["features"]["jaw"]
+
+
 def test_dressed_by_default():
     """humans.spec: a dressed figure whose clothes cover from the neck's base past the crotch at every age."""
     from hifipushie import humans
@@ -101,7 +139,10 @@ def test_dressed_by_default():
         assert hi > m["stature"] - m["head_height"] - 0.12 * m["stature"], (age, hi)
         assert sp["base"]["head"]["follow_body"] is True
         assert sp["base"]["body"]["nipples"] == 0.0
-    assert "nipples" not in humans.spec(30, 1.0, skin=False, outfit_kind="underwear")["base"]["body"]
+    assert "nipples" not in humans.spec(30, 1.0, skin=False, outfit_kind="none")["base"]["body"]
+    for kind in ("tee_shorts", "onesie", "underwear"):  # cloth with its own volume, never a bare shell of the skin
+        ps = humans.spec(2 if kind == "onesie" else 30, 0.0, skin=False, outfit_kind=kind)["parts"]
+        assert all(p.get("garment") for p in ps.values() if p.get("shell") == "body"), (kind, ps)
     assert humans.spec(1, 0.5, skin=False)["parts"].get("onesie") and humans.spec(4, 0.5, skin=False)["parts"].get("tee")
     assert humans.spec(30, "woman", skin=False)["base"]["body"]["sex"] == 0.0
     assert "skin" in humans.spec(5, "boy") and humans.spec(5, "boy")["skin"]["age"] == 5
@@ -135,7 +176,7 @@ def test_child_head_keeps_the_bodys_neck():
 if __name__ == "__main__":
     test_references()
     if have():
-        for fn in (test_children_have_their_age, test_adults_and_opt_out_unchanged, test_nipples_smoothed, test_dressed_by_default):
+        for fn in (test_children_have_their_age, test_adults_and_opt_out_unchanged, test_nipples_smoothed, test_bust, test_faces_differ, test_dressed_by_default):
             fn()
     if have(gnm=True):
         test_child_head_keeps_the_bodys_neck()

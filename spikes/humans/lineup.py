@@ -1,6 +1,6 @@
 """lineup.py [clay|skin] [labels,...]: whole dressed humans by age and sex at true relative height, a face row, and
 their measured proportions against the references (anthro.py). Built through the tool functions (server.human, look).
-Sheets go to workspace/skin_renders/sk_3x_*. Every figure is clothed."""
+Sheets go to workspace/skin_renders/sk_4x_*. Every figure is clothed."""
 import os, sys, time
 from pathlib import Path
 import numpy as np
@@ -9,7 +9,7 @@ from hifipushie import server, humans, store, anthro
 from hifipushie.spec import expand_mirror
 
 OUT = Path("/home/joe/dev/hifipushie/workspace/skin_renders")
-TMP = Path("/tmp/claude-1000/-home-joe-dev-hifipushie/1d5c679b-4c56-495b-8635-72e86a3b3567/scratchpad/humans3/lineup")
+TMP = Path("/tmp/claude-1000/-home-joe-dev-hifipushie/1d5c679b-4c56-495b-8635-72e86a3b3567/scratchpad/humans4/lineup")
 TMP.mkdir(parents=True, exist_ok=True)
 PEOPLE = [("baby girl 1", 1, 0.0, 21, 2.5), ("baby boy 1", 1, 1.0, 4, 4), ("toddler girl 3", 3, 0.0, 9, 3), ("toddler boy 3", 3, 1.0, 14, 5),
           ("girl 7", 7, 0.0, 12, 2), ("boy 7", 7, 1.0, 6, 4.5), ("girl 11", 11, 0.0, 17, 5), ("boy 11", 11, 1.0, 2, 3),
@@ -39,7 +39,7 @@ def main():
     for label, age, sex, seed, tone in PEOPLE:
         if only and label not in only:
             continue
-        name = "hum3_" + label.replace(" ", "_")
+        name = "hum4_" + label.replace(" ", "_")
         t = time.time()
         try:
             f1 = TMP / f"{name}_{mode}_body.png"
@@ -63,8 +63,10 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"{label}: FAILED {e!r}"[:600], flush=True)
         print(f"  {label}: {time.time() - t:.0f} s", flush=True)
-    tag = "sk_30_ages_lineup" if mode == "clay" else "sk_31_ages_lineup_skin"
-    txt = anthro.table(rows) + "\n\nours | reference (ratio); cm. References: WHO medians (stature), Snyder 1977 means scaled to it (the rest); " \
+    tag = "sk_40_ages_lineup" if mode == "clay" else "sk_41_ages_lineup_skin"
+    bust = "\n".join(f"{lb:16s} bust {m['bust_projection'] * 1000:5.1f} mm ahead of the breast bone, girth {m['bust_circ'] * 100:.1f} cm"
+                     for lb, _, _, m in rows if "bust_projection" in m)
+    txt = anthro.table(rows) + "\n\n" + bust + "\n\nours | reference (ratio); cm. References: WHO medians (stature), Snyder 1977 means scaled to it (the rest); " \
         "head height under 2.75 y estimated from WHO head circumference. biacromial = between the shoulder JOINTS here (inside the bone points)."
     (OUT / f"{tag}_measures.txt").write_text(txt)
     print(txt)
