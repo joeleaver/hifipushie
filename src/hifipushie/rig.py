@@ -815,6 +815,12 @@ HEAD_FALL = 0.44   # on a base body (a floor by height): the falloff's height, ~
 #                    sheared the throat into a shelf under the jaw (skin fold p99 40 deg on the bare human, 20 on the
 #                    golfer; at 5 cm 24 / 12, nod 56 -> 43). Longer on the FRONT only changed nothing: the fold is at
 #                    the sides and the nape. spec.rig.rigid_head.band sets it in metres.
+HEAD_OCCIPUT = 0.1  # x head size (neck joint -> head top, ~34 cm on a MakeHuman body) under the Head joint: the floor's
+#                    height at the nape, the skull's base. Golfer, nod 25 deg Head-only: nape skin by the collar's top
+#                    Head 0.98 -> 0.86, swung past the collar's back by +8.4 mm (38 vertices) -> -2.9 (none); shared with
+#                    Neck -4.8 -> -11.5. Bare human folds unchanged (turn p99 11.7 -> 10.7, nod 14.5 -> 15.8). Higher
+#                    (0.05, 0) clears more and folds the bare nape (nod p99 17-19, max 40-59); spec.rig.rigid_head.occiput
+HEAD_BACK = 0.3    # x head size behind the Head joint where the floor reaches it
 HEAD_NAPE = 1.0    # x the falloff's height at the nape (behind the Head joint); spec.rig.rigid_head.nape
 HEAD_SHORT = 0.2   # the falloff's height outside the neck's column (what HEAD_FALL was): ~5 cm
 HEAD_COLUMN = (0.36, 0.62)  # the neck's column: within 0.36 x head size (9 cm) of the Neck -> Head line the long
@@ -884,6 +890,16 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
             if sz > fz[-1] and sy > fy[-1] + 0.01:
                 fy.append(sy)
                 fz.append(sz)
+
+        # at the nape the floor climbs on to the skull's base (HEAD_OCCIPUT under the Head joint, reached HEAD_BACK
+        # behind it): level at the jaw's height, the back of the neck down to its base was Head 1.0 and a nod swung
+        # it 22-28 mm back and 40 up, out over a collar's stand (the golfer's lump of nape skin)
+        occ = opts.get("occiput", HEAD_OCCIPUT)
+        if occ is not None and occ is not False:
+            by, bz = hy + HEAD_BACK * size, float(rb[hi]["head"][2]) - float(occ) * size
+            if by > fy[-1] + 0.005 and bz > fz[-1]:
+                fy.append(by)
+                fz.append(bz)
 
         def h(V):
             V = np.asarray(V, np.float64)

@@ -1587,6 +1587,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             if other != pn and len(spots):       # on into the socket behind an eyeball, a tooth's root)
                 spots = spots[sdf.field_at(st, spots, clip=False) > 0]
         where = defect_regions(spots, spec)
+        if (defs.get(ctx["origin"][pn]) or {}).get("folds"):  # parts.<p>.folds = true: folded by design (a turned
+            where = []                                         # collar, a cuff, pleats): counts stay, no alarm
         if where:
             q["defects_by_joint"] = dict(where)
         report[pn]["quality"] = q

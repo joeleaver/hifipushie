@@ -460,7 +460,8 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
 - **Read the export's quality lines.** Each part's line counts folded edges and faces turned against the surface,
   and says `TORN OR TANGLED at <joint> (n), ...` when they cluster by a joint (a hand torn at the finger webs, a
   tangle in an armpit): look at that place in clay (`rig(glb=..., focus=..., zoom=...)`) before shipping; the json
-  has `parts.<p>.quality.defects_by_joint`. A character on a base body exports the base's own quads
+  has `parts.<p>.quality.defects_by_joint`. A part folded by design (a turned collar, a cuff, pleats) reads the
+  same: `parts.<p>.folds = true` keeps its counts and drops the alarm. A character on a base body exports the base's own quads
   (`parts.body.topology = "wrap"`): hands and feet come out as modelled; `"template"` carries the stylised
   template's topology on instead (it tore MakeHuman's hands) and is only for comparison.
 - **Check the numbers.** `rig` prints, under the bone list, a twist test per chain (the hand rolled 75 and 105
