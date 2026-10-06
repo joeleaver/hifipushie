@@ -1801,9 +1801,39 @@ def _human_base(name: str) -> tuple:
     return sp, b
 
 
-def _human_apply(name: str, sp: dict, new_base: dict, rep: dict, note: str, force: bool, save: bool, st0, focus=None) -> list:
+def _human_figure(name: str, spec_after: dict | None) -> PILImage.Image | None:
+    """The whole DRESSED figure before | after (front + side), through `look`: an edit is judged on the person, not on
+    the eye that was edited. A result that wasn't saved is built under a scratch name and removed."""
+    try:
+        ims = []
+        for label, nm in (("before", name), ("after", None)):
+            if nm is None:
+                if spec_after is None:
+                    break
+                nm = name + "__try"
+                store.save(nm, spec_after, "scratch: a fit's result for its whole-figure picture")
+            r = look(nm, views=["front", "side"], size=360, resolution=220)
+            im = PILImage.open(io.BytesIO(next(x for x in r if not isinstance(x, str)).data)).convert("RGB")
+            from PIL import ImageDraw
+            ImageDraw.Draw(im).text((44, 26), f"whole figure, {label}", fill=(255, 255, 160))
+            ims.append(im)
+        out = PILImage.new("RGB", (sum(i.width for i in ims), max(i.height for i in ims)), (30, 32, 36))
+        x = 0
+        for im in ims:
+            out.paste(im, (x, 0))
+            x += im.width
+        return out
+    except Exception as e:  # noqa: BLE001  (the picture must not lose the fit's report)
+        return None
+    finally:
+        shutil.rmtree(store.HOME / (name + "__try"), ignore_errors=True)
+
+
+def _human_apply(name: str, sp: dict, new_base: dict, rep: dict, note: str, force: bool, save: bool, st0, focus=None,
+                 figure: bool = True) -> list:
     from . import humanfit
     ok = rep["integrity"]["ok"]
+    fig = _human_figure(name, {**sp, "base": new_base}) if figure else None
     text = humanfit.report_text(rep)
     saved = ""
     if save and (ok or force):
@@ -1814,8 +1844,14 @@ def _human_apply(name: str, sp: dict, new_base: dict, rep: dict, note: str, forc
     else:
         saved = "not saved (save=False): a dry run."
     im = humanfit.head_sheet(st0, humanfit.state(new_base), focus=focus)
-    return [_png(im), text + "\n" + saved + "\n(The picture: before | after | where vertices moved. look(name) shows the whole "
-            "dressed figure: look at it before going on.)"]
+    if fig is not None:
+        both = PILImage.new("RGB", (max(im.width, fig.width), im.height + fig.height), (30, 32, 36))
+        both.paste(im, (0, 0))
+        both.paste(fig, (0, im.height))
+        im = both
+    return [_png(im), text + "\n" + saved + "\n(The picture: head before | after | where vertices moved"
+            + ("; under it the whole dressed figure before | after. Judge the person, not the part you edited.)" if fig is not None
+               else ". look(name) shows the whole dressed figure: look at it before going on.)")]
 
 
 @mcp.tool(structured_output=False)
@@ -1846,7 +1882,7 @@ def measure_human(name: str, since: int | None = None, picture: bool = True):
 
 @mcp.tool(structured_output=False)
 def fit_human(name: str, set: dict | str, free: list[str] | None = None, release: list[str] | None = None,
-              force: bool = False, save: bool = True, note: str = ""):
+              force: bool = False, save: bool = True, note: str = "", figure: bool = True):
     """Set MEASURES on a one-mesh human and let the solver find the sliders: set = {"nose_width": 34} (a value),
     {"eye_width": "+2"} (a change), {"jaw_width": "x0.95"}, {"eye_width/face_width": 0.19} (a ratio); several at once
     are solved together. free: ["identity"] (default: the face's GNM identity components), "body" (weight, muscle,
@@ -1856,7 +1892,9 @@ def fit_human(name: str, set: dict | str, free: list[str] | None = None, release
     the face can't meet comes back PARTLY met with the residual: it is not obeyed blindly. release = measures you
     allow to move; force = widen the range and save even a broken mesh. The reply leads with INTEGRITY: ok / BROKEN,
     lists what else moved (UNINTENDED), and shows before | after | where vertices moved. A broken result is not
-    saved. Requests like "eyes three times wider" are a STYLE (style sliders), not an identity: they come back held."""
+    saved. Requests like "eyes three times wider" are a STYLE (style sliders), not an identity: they come back held.
+    figure: the reply's picture also shows the whole DRESSED figure before | after (two builds, a minute or two);
+    false for a quick dry run."""
     from . import humanfit
     sp, b = _human_base(name)
     want = _spec_arg(set) if isinstance(set, str) else dict(set)
@@ -1864,12 +1902,12 @@ def fit_human(name: str, set: dict | str, free: list[str] | None = None, release
     nb, rep = humanfit.solve(b, want, free=tuple(free or ("identity",)), force=force, release=tuple(release or ()))
     pts = sorted({i for k in want for p in k.split("/") if p.strip() in humanfit.FACE for i in humanfit._points(p.strip())})
     focus = st0["L"][pts].mean(0) if pts else None
-    return _human_apply(name, sp, nb, rep, note or f"fit_human {json.dumps(want)}", force, save, st0, focus)
+    return _human_apply(name, sp, nb, rep, note or f"fit_human {json.dumps(want)}", force, save, st0, focus, figure)
 
 
 @mcp.tool(structured_output=False)
 def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: list[float] | None = None,
-                radius: float = 0.015, force: bool = False, save: bool = True, note: str = ""):
+                radius: float = 0.015, force: bool = False, save: bool = True, note: str = "", figure: bool = True):
     """Direct manipulation: move ONE face landmark by `move` [x, y, z] in metres (x = its left, -y = forward, z = up)
     or `to` a world point; every other landmark is held and a side landmark's mirror moves the mirrored way. The
     identity sliders take what they can within the plausible range; the rest becomes a small smooth correction at
@@ -1881,12 +1919,13 @@ def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: l
     sp, b = _human_base(name)
     st0 = humanfit.state(b)
     nb, rep = humanfit.nudge(b, landmark, move=move, to=to, radius=radius, force=force)
-    return _human_apply(name, sp, nb, rep, note or f"nudge_human {landmark}", force, save, st0, st0["L"][humanfit.point_index(landmark)])
+    return _human_apply(name, sp, nb, rep, note or f"nudge_human {landmark}", force, save, st0,
+                        st0["L"][humanfit.point_index(landmark)], figure)
 
 
 @mcp.tool(structured_output=False)
 def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: list[str] | None = None,
-                    force: bool = False, save: bool = True, note: str = ""):
+                    force: bool = False, save: bool = True, note: str = "", figure: bool = True):
     """Match a one-mesh human's FACE to reference images by named points: views = [{"image": path (optional, kept for
     the record), "size": [w, h] (pixels), "yaw": 0 front / 45 three-quarter from its left / 90 its left side (a hint),
     "points": {landmark: [u, v]}}] with u right, v down. One camera per view is fitted (pose + focal) and, with fit,
@@ -1901,7 +1940,7 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     st0 = humanfit.state(b)
     nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
     (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
-    return _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0)
+    return _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
 
 
 @mcp.tool(structured_output=False)
