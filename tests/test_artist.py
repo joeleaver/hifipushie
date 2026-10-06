@@ -641,3 +641,79 @@ def test_main_exits_77_on_a_refused_token_and_2_without_config(tmp_path, monkeyp
         assert e.value.code == artist.EXIT_UNAUTHORIZED
     finally:
         dept.server.shutdown()
+
+
+# ------------------------------------------------------------------------------------------- asset packs
+
+def _fake_manifest(monkeypatch):
+    """One required pack of one file, one optional pack (never checked by the runner)."""
+    import hashlib
+    from hifipushie import assets
+    body = b"hand-made weights"
+    man = {"makehuman": {"source": "test", "licence": "CC0", "files": [
+               {"path": "rigs/default_weights.mhw", "url": "https://example.invalid/w", "sha256": hashlib.sha256(body).hexdigest()}]},
+           "rock_scans": {"optional": True, "source": "test", "licence": "CC0", "files": [
+               {"path": "rock.jpg", "url": "https://example.invalid/r", "sha256": "0" * 64}]}}
+    monkeypatch.setattr(assets, "manifest", lambda: man)
+    return assets, body
+
+
+def test_packs_state_checks_the_required_packs_against_this_versions_manifest(tmp_path, monkeypatch):
+    assets, body = _fake_manifest(monkeypatch)
+    st = artist.packs_state(None)
+    assert st["ok"] is False and "no asset packs directory" in st["problems"]["assets"][0]
+    st = artist.packs_state(str(tmp_path))
+    assert st == {"ok": False, "problems": {"makehuman": ["missing rigs/default_weights.mhw"]}, "dir": str(tmp_path)}
+    f = tmp_path / "makehuman" / "rigs" / "default_weights.mhw"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"an older pack")
+    assert artist.packs_state(str(tmp_path))["problems"] == {"makehuman": ["checksum mismatch rigs/default_weights.mhw"]}
+    f.write_bytes(body)
+    assert artist.packs_state(str(tmp_path)) == {"ok": True, "problems": {}, "dir": str(tmp_path)}  # the optional pack isn't required
+
+
+def test_a_runner_with_an_outdated_pack_registers_not_ready_refetches_and_registers_again(tmp_path, monkeypatch):
+    assets, body = _fake_manifest(monkeypatch)
+    fetched = []
+
+    def fake_fetch(names=None, log=print):
+        fetched.append(list(names))
+        assert _wait(lambda: dept.registrations, 30)  # the runner registers (not ready) while this runs
+        f = tmp_path / "packs" / "makehuman" / "rigs" / "default_weights.mhw"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(body)
+
+    dept = FakeDepartment()
+    monkeypatch.setattr(assets, "fetch", fake_fetch)
+    cfg = artist.Config(url=dept.url, token=TOKEN, name="pack-box", work_root=tmp_path / "work", assets=str(tmp_path / "packs"),
+                        preload=["artist_test_tools"])
+    runner = artist.Runner(cfg)
+    runner.poll_secs = 0.5
+    t = threading.Thread(target=runner.run, daemon=True)
+    t.start()
+    try:
+        assert _wait(lambda: len(dept.registrations) >= 2, 40), dept.registrations
+        first, last = dept.registrations[0]["equipment"]["packs"], dept.registrations[-1]["equipment"]["packs"]
+        assert first == {"ok": False, "problems": {"makehuman": ["missing rigs/default_weights.mhw"]}}
+        assert last == {"ok": True, "problems": {}}
+        assert fetched == [["makehuman"]]
+    finally:
+        runner.stop.set()
+        t.join(10)
+        dept.server.shutdown()
+
+
+def test_a_failed_refetch_leaves_the_runner_not_ready_and_says_why(tmp_path, monkeypatch):
+    assets, _ = _fake_manifest(monkeypatch)
+
+    def no_network(names=None, log=print):
+        raise OSError("network is unreachable")
+
+    monkeypatch.setattr(assets, "fetch", no_network)
+    cfg = artist.Config(url="http://127.0.0.1:9", token=TOKEN, name="offline-box", work_root=tmp_path / "work",
+                        assets=str(tmp_path / "packs"), preload=["artist_test_tools"])
+    runner = artist.Runner(cfg)
+    assert _wait(lambda: runner.need_register.is_set(), 20)
+    assert runner.packs["ok"] is False
+    assert runner.packs["problems"]["fetch"] == ["OSError: network is unreachable"]
+    assert runner.packs["problems"]["makehuman"] == ["missing rigs/default_weights.mhw"]
