@@ -421,9 +421,12 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
 - **The head is rigid.** Skull, face, jaw, teeth, tongue, eyes (and, in an export with face shapes, every vertex a
   shape moves) are weighted 1.0 to Head; the falloff to the neck is on the throat under the jawline, and clavicles
   never reach the face. From the jaw landmarks on a GNM head, from the head's own primitives on a kit character.
-  `spec["rig"]["rigid_head"] = false | {"band": m, "under": m}`. On a base body the falloff is ~5 cm high (`band`):
-  at 3 cm a Head-only turn of 33 deg sheared the throat into a shelf under the jaw. It still folds on a hard
-  Head-only turn or nod: animate a head turn as riggers and mocap do, shared between Neck and Head (about 40 / 60).
+  `spec["rig"]["rigid_head"] = false | {"fall": m, "band": m, "under": m, "column": [r0, r1]}`. On a base body the
+  head's weight fades down the whole neck (`fall`, ~11 cm, inside the neck's column; ~5 cm on the shoulders beside
+  it), as a rigger paints it: a narrow band under the jaw is a hinge (a Head-only turn of 33 deg sheared the throat
+  into a shelf). Garments are not part of it: a collar stays on the shoulders and the neck turns inside it. A hard
+  Head-only nod still drives the chin into the chest or collar and pushes the nape back against a collar's stand:
+  animate a head move as riggers and mocap do, shared between Neck and Head (about 40 / 60).
 - **Clothes follow the skin under them.** On a base body every part reads the body's weights at the nearest point
   of its surface, then the weights are evened over the garment's own mesh. A part that only reaches up beside the
   jaw (a collar, a scarf, a strap) is worn on the body: it keeps the neck's weights and does not turn with the
@@ -435,7 +438,8 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   `parts.<p>.rig_drop = [joints]` prunes a garment's influences, as a rigger does after a weight transfer: the
   garment never follows those joints, and their weight goes up the chain to the nearest joint it keeps. Shorts that
   end at the knee: `["Leg"]` (the shin bent their hem 17-27 mm; with it the hem stays a tube on the thigh and the
-  knee bends inside it). Short sleeves: `["ForeArm"]` on the shirt. A collar: `["Arm"]`. A name without a side
+  knee bends inside it). Short sleeves: `["ForeArm"]` on the shirt. A collar: `["Arm"]`. `{joint: share}` moves only
+  that share up (`{"UpLeg": 0.5}` on a long shirt or tunic: its hem half with the pelvis). A name without a side
   means both sides; a segment's twist joints go with it. Don't drop what the garment covers: long trousers need
   the shin.
 - **Hems.** Shorts, a shirt's hem, a skirt are sheets hanging off the body, and skinning can only bend them with
