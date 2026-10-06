@@ -356,6 +356,8 @@ def place(tree: dict) -> dict:
         steps_ = max(1, int(math.ceil(float(lf["retention"]) / float(s["habit"]["years_per_step"]))))
     leafy = (tree["steps"] - 1 - tree["born"]) < steps_  # shoots this young carry twigs
     leafy[:2] = False
+    if tree.get("dead") is not None:  # dead wood carries nothing, however lately it grew
+        leafy &= ~tree["dead"]
     ends = tree["ends"] & (tree["leafy"] | leafy)
     d_node = _norm(P - P[par])
     up = np.array([0, 0, 1.0])

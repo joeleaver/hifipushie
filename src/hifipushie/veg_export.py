@@ -115,6 +115,8 @@ def protected(tree: dict) -> np.ndarray:
     pr = np.zeros(len(tree["pos"]), bool)
     if tree.get("dead") is not None:
         pr |= tree["dead"]
+        if tree.get("shade_dead") is not None:  # of limbs the shade killed only the limb itself: their twigs are a haze
+            pr &= ~(tree["shade_dead"] & (tree["order"] > 1))
     for ai in (tree.get("guides") or {}).values():
         pr |= (tree["axis"] == ai) & tree["pin"]
     return pr
