@@ -57,8 +57,11 @@ def source(b: dict) -> dict:
     if body.get("source") == "makehuman":
         from . import makehuman
         return makehuman.body(body)
+    if body.get("source") == "human":  # one human mesh (onemesh.py): MakeHuman's body and GNM's head, stitched once
+        from . import onemesh
+        return onemesh.template(b)
     if body.get("source") not in (None, "template"):
-        raise ValueError('base body: {"source": "makehuman", ...} or the template (default)')
+        raise ValueError('base body: {"source": "makehuman" | "human", ...} or the template (default)')
     return retopo.load_template(b.get("template", "male_stylized"))
 
 
@@ -295,8 +298,11 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     if base.get("push"):
         W = _push(W, tpl, base["push"])
     head = head_of(spec_expanded, base)
-    own_neck = head is not None and bool(head.get("own_neck"))
-    if own_neck:  # (headfit.py) the head IS this body's head, a few mm apart everywhere: the body keeps its own neck,
+    one = head is not None and bool(head.get("one_mesh"))  # (onemesh.py) the head is in the template's own quads
+    own_neck = head is not None and bool(head.get("own_neck")) and not one
+    if one:
+        src = np.arange(len(W))
+    elif own_neck:  # (headfit.py) the head IS this body's head, a few mm apart everywhere: the body keeps its own neck,
         # throat and nape and the two are cross-faded at the plane under the jaw. A tube from a neck loop up to the
         # head's own (adult) neck gave a toddler, who has no neck to speak of, a long thin one
         src = np.arange(len(W))
@@ -311,7 +317,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
     h = h * float(base.get("smooth", 1.0))
-    if head is not None:  # one point set: the body under the graft plane, the head over it (the tube tapers to the
+    if head is not None and not one:  # one point set: the body under the graft plane, the head over it (the tube tapers to the
         # head's neck at the plane, so they meet). Blending two fields across a band instead showed the band: where
         # the two surfaces differ, the blend weight's gradient tilts the normals (a collar in every render)
         c, pn, _ = head["plane"]
@@ -348,8 +354,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         h = np.r_[h[kb], head["h"][kh]]
         wt = np.maximum(np.r_[wb, wh], 1e-4)
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
-           "key": key, "head": None, "graft": head, "src": src, "template": tpl.get("name"), "wt": wt if head is not None else None,
-           "seam": (head["plane"][0], head["plane"][1], 0.2) if head is not None else None}
+           "key": key, "head": None, "graft": None if one else head, "src": src, "template": tpl.get("name"),
+           "wt": wt if head is not None and not one else None,
+           "seam": (head["plane"][0], head["plane"][1], 0.2) if head is not None and not one else None}
     if len(_CACHE) > 8:
         _CACHE.pop(next(k for k in _CACHE if not isinstance(k, tuple)))
     _CACHE[key] = out
@@ -369,6 +376,9 @@ LIP_RING = 2  # GNM: the inner-lip contact ring (landmarks 61-63, 65-67), rings 
 def head_of(s: dict, base: dict):
     """The grafted head (gnm_head) for a base with "head": {"source": "gnm", ...}, placed on the template's eye
     midpoint (the head joint's ride) and the neck -> head direction; None without one. Cached."""
+    if (base.get("body") or {}).get("source") == "human":  # one human mesh: the head is part of the body's mesh
+        from . import onemesh
+        return onemesh.head(s, base)
     head = base.get("head")
     if not head:
         return None
@@ -1331,6 +1341,10 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     up = up / np.linalg.norm(up)
     R = retopo._rot_between(np.array([0, 0, 1.0]), up) @ R
     s = float(head.get("scale", 1.4))
+    if head.get("bound"):  # (onemesh.py) the head its body carries, with all of the above laid on it and faded out
+        # toward the stitch at the neck
+        from . import onemesh
+        V, J = onemesh.hook(V, J, head, R, np.asarray(eye_mid, float), s, mid)
 
     def place(X):
         return eye_mid + s * (X - mid) @ R.T
