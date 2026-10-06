@@ -17,6 +17,10 @@ import numpy as np
 
 STAGES = ((1.5, "baby"), (4, "toddler"), (9, "child"), (13, "pre-teen"), (20, "teen"), (60, "adult"), (200, "elder"))
 OUTFITS = ("tee_shorts", "onesie", "underwear", "none")
+# the tee's cloth (adult metres). The tube starts 3 cm under the shoulder joints and stands 6 mm off its hull: from
+# 7.5 cm under them at 12 mm the cloth lay close over the shoulder blades and then stepped 1-2 cm BACK where the tube
+# took over, a hump between the blades in every side view (the body's own back is flat there: measured)
+TEE = {"top": 0.03, "band": 0.08, "ease": 0.004, "tube_ease": 0.006, "hang": 0.7, "folds": 0.6}
 COLORS = {"tee": "#8fa3b5", "shorts": "#5b6470", "onesie": "#d9d2c0", "top": "#b8b0a4", "briefs": "#b8b0a4"}
 
 
@@ -88,8 +92,9 @@ def outfit(base: dict, kind: str, colors: dict | None = None) -> dict:
         # cloth with its own volume (base.garment): closed over the body's dips, hanging from the chest and belly as a
         # tube down to the hem (no navel, no muscles, the bust bridged), the shorts' legs tubes from the thigh
         parts["tee"] = {"shell": "body", "offset": round(0.005 * k, 4), "color": c["tee"], "roughness": 0.85, "blend": 0.004,
-                        "garment": cloth(hang=0.7, tube={"top": round(float(sh[2]) - 0.075 * k, 4), "bottom": round(hem - 0.04 * k, 4),
-                                                         "folds": 0.6, "band": round(0.08 * k, 4), "arms": "taper"})}
+                        "garment": cloth(hang=TEE["hang"], ease=round(TEE["ease"] * k, 4), tube_ease=round(TEE["tube_ease"] * k, 4),
+                                         tube={"top": round(float(sh[2]) - TEE["top"] * k, 4), "bottom": round(hem - 0.04 * k, 4),
+                                               "folds": TEE["folds"], "band": round(TEE["band"] * k, 4), "arms": "taper"})}
         parts["shorts"] = {"shell": "body", "offset": round(0.003 * k, 4), "color": c["shorts"], "roughness": 0.9,
                            "garment": cloth(close=20, ease=round(0.001 * k, 4), tube_ease=round(0.008 * k, 4), legs={"folds": 0.5, "band": round(0.08 * k, 4)})}
         box("tee_torso", "tee", hem, box_top, x=float(sh[0] + 0.012 * H), round=round(0.02 * H, 4))
