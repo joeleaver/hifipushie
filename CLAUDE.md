@@ -1227,7 +1227,22 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       step onto the body's IMLS field (tore a ring round the neck), snapping the overlap's points sideways onto the
       body with its normals (a ribbed band). The mouth fill of a followed head is lower and flatter.
     - NOT the cause, for the record: the IMLS and `soften` do not flatten the chest (the tool sets no soften).
-    - Read of sk_40: SEE THE REPORT LINE BELOW (filled in after judging).
+    - Read of sk_40 (clay, 14 dressed figures): the clothes read as cloth (tees hang from the bust and belly, no
+      navel / muscles / nipples; the woman's chest is a normal chest under a tee, 33 mm; teen girl 28, woman 75
+      11 (MakeHuman's old shape hangs low), children and men -6..+4). Still wrong: shorts are puffed tubes, a level
+      crease across the bust where the tube takes over, one boat neckline for everyone, no sleeves' drape; babies'
+      mouths are lumpy and grim, children still stern; the woman of 75 still reads as an old man; a faint line
+      across the 11-year-old girl's throat; nostril interiors are lit pale dishes in clay.
+    - `look_skin`'s head stage is BARE skin: for a body under 18 it is cut just under the neck (never a child's bare
+      chest or shoulders).
+    - Tests: test_humans (+ test_bust, test_faces_differ), test_headfit, test_skin, test_images, test_bodywarp pass.
+    - NEXT, in the coordinator's order: (4) skin on (`lineup.py skin`: scene syncs, heavy, one at a time),
+      per-person front / three-quarter / side rows, face close-ups; rig, hands, skin zones, export topology on baby
+      proportions (retopo.graft_head / topology "wrap" with own_neck UNTESTED); (5) fine relief vs the photographs,
+      the dark woman's oiliness, lashes, nostril interior (a dark paint zone inside the nostrils), one human
+      exported. Also open from this round: baby / child mouths (try `features.lips` lower and no smile pose under
+      3), the elder woman (longer `dimorphism`, or hair), shorts as a real garment, a neckline per outfit, the
+      `human` tool in guide.md / the skill.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
