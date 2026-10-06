@@ -218,6 +218,12 @@ def _geom(M: dict, fd: dict) -> dict:
             d0 = np.zeros(len(uv))
             d0[sel] = np.abs(sd)
         flap = (fd["sign"] * sd > 1e-7) & ~in_rows[sel]
+        # only cloth BESIDE the line: what lies past its ends (a front's button stand below the break point, where
+        # a roll line starts on the edge) is not its flap. Counted, that strip was flipped 170 deg into the other front
+        Q_ = uv[sel]
+        d0_ = (L[1] - L[0]) / max(np.linalg.norm(L[1] - L[0]), 1e-12)
+        d1_ = (L[-1] - L[-2]) / max(np.linalg.norm(L[-1] - L[-2]), 1e-12)
+        flap &= ((Q_ - L[0]) @ d0_ > -0.004) & ((Q_ - L[-1]) @ d1_ < 0.004)
         seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
         out.append({"row": np.asarray(row), "v": sel[flap], "si": si[flap], "fr": fr[flap], "u": u[flap],
                     "len": float(seg.sum())})
