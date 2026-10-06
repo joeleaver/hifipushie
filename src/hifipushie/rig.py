@@ -639,7 +639,7 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
     sp = opts.get("skin_part") or ("body" if "body" in meshes else None)
     if sp is None and hf is not None:  # no part called "body": the skin is the part with the most of the head
         n = {pn: int((hf["h"](V) > 0.999).sum()) for pn, (V, F) in meshes.items()
-             if len(V) and not (defs.get(pn) or {}).get("rig_bone") and float(hf["h"](V).mean()) < HEAD_PART}
+             if len(V) and not (defs.get(pn) or {}).get("rig_bone") and float(hf.get("part", hf["h"])(V).mean()) < HEAD_PART}
         sp = max(n, key=n.get) if n else None
     skin = {sp} | set((spec.get("face_shapes") or {}).get("parts") or ())
     if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
@@ -696,7 +696,7 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
         if hf is not None and not bone and len(V):  # the head is rigid: the falloff to the neck is on the throat
             h = hf["h"](V)
-            share = float(h.mean())
+            share = float(hf.get("part", hf["h"])(V).mean())
             worn = (defs.get(pn) or {}).get("rig_head")
             if worn is None:  # anything but the skin (and what moves with the face) is worn
                 worn = not (pn in skin or share >= HEAD_WORN)
@@ -719,24 +719,34 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
         drop = (defs.get(pn) or {}).get("rig_drop")
         if not drop or pn not in out or (defs.get(pn) or {}).get("rig_bone"):
             continue
-        gone = drop_joints(rb, [drop] if isinstance(drop, str) else list(drop), f"parts.{pn}.rig_drop")
-        J, W = np.asarray(out[pn][0]).copy(), np.asarray(out[pn][1], np.float64).copy()
-        to = np.arange(len(rb))
-        for i in np.flatnonzero(gone):
+        # {joint: share}: only that share of the joint's weight goes up. A shirt's hem over the hips, {"UpLeg": 0.5}:
+        # half with the pelvis, half with the thigh, what a rigger paints on an untucked hem.
+        shares = dict(drop) if isinstance(drop, dict) else {d: 1.0 for d in ([drop] if isinstance(drop, str) else drop)}
+        J, W = np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64)
+        D = np.zeros((len(J), len(rb)))
+        np.add.at(D, (np.repeat(np.arange(len(J)), J.shape[1]), J.ravel()), W.ravel())
+        share = np.zeros(len(rb))
+        for nm, s in shares.items():
+            if not 0.0 <= float(s) <= 1.0:
+                raise ValueError(f"parts.{pn}.rig_drop: {nm!r}'s share must be 0..1, got {s!r}")
+            share[drop_joints(rb, [nm], f"parts.{pn}.rig_drop")] = float(s)
+        gone = share >= 1.0
+
+        def depth(i):
+            n = 0
+            while rb[i]["parent"] >= 0:
+                i, n = rb[i]["parent"], n + 1
+            return n
+        for i in sorted(np.flatnonzero(share > 0), key=lambda i: -depth(i)):  # leaves first: weight climbs
             q = rb[i]["parent"]
-            while q >= 0 and gone[q]:
+            while q >= 0 and (gone[q] or share[q] >= share[i]):  # a twist joint shares like its segment: past both
                 q = rb[q]["parent"]
             if q < 0:
                 raise ValueError(f"parts.{pn}.rig_drop: nothing is left above {rb[i]['name']}")
-            to[i] = q
-        J = to[J]
-        for c in range(1, J.shape[1]):  # a joint now in two slots: one slot
-            for c0 in range(c):
-                same = (J[:, c] == J[:, c0]) & (W[:, c] > 0)
-                W[same, c0] += W[same, c]
-                W[same, c] = 0.0
-        order = np.argsort(-W, axis=1, kind="stable")
-        J, W = np.take_along_axis(J, order, 1), np.take_along_axis(W, order, 1)
+            D[:, q] += share[i] * D[:, i]
+            D[:, i] *= 1.0 - share[i]
+        J = np.argsort(-D, axis=1, kind="stable")[:, :J.shape[1]]
+        W = np.take_along_axis(D, J, 1)
         J[W <= 0] = 0
         out[pn] = (J, W / np.maximum(W.sum(1, keepdims=True), 1e-12))
     # parts.<p>.rig_attach = "<part>" | [parts]: where this part comes within rig_attach_length (ATTACH) of a part
@@ -797,10 +807,21 @@ ATTACH = 0.08  # m: the length over which a part hands over to the bound part it
 #              any other bone's; the falloff runs by how much farther it is;
 #   generic    a base body without landmarks: the landmark floor at a typical head's proportions from the rig joints.
 HEAD_BAND = 0.12   # the falloff's height below the floor, x the head's size (Head joint -> HeadTop_End): ~3 cm
-HEAD_FALL = 0.2    # on a base body (a floor by height): the falloff's height, ~5 cm. At 3 cm a Head-only turn of 33 deg
+HEAD_FALL = 0.44   # on a base body (a floor by height): the falloff's height, ~11 cm = the neck's length, as a rigger
+#                    paints it (the head's weight fades down the whole neck; a narrow band is a hinge). With
+#                    HEAD_NEAR, bare human (15k), Head alone: skin fold p99 / max at a 33 deg turn 24.7 / 159 ->
+#                    9.7 / 26 deg, at a 25 deg nod 35.7 / 150 -> 14.1 / 31 (renders wc_throat_fall_gnm.png). Either one
+#                    alone did half of it. History: at 3 cm a Head-only turn of 33 deg
 #                    sheared the throat into a shelf under the jaw (skin fold p99 40 deg on the bare human, 20 on the
 #                    golfer; at 5 cm 24 / 12, nod 56 -> 43). Longer on the FRONT only changed nothing: the fold is at
 #                    the sides and the nape. spec.rig.rigid_head.band sets it in metres.
+HEAD_NAPE = 1.0    # x the falloff's height at the nape (behind the Head joint); spec.rig.rigid_head.nape
+HEAD_SHORT = 0.2   # the falloff's height outside the neck's column (what HEAD_FALL was): ~5 cm
+HEAD_COLUMN = (0.36, 0.62)  # the neck's column: within 0.36 x head size (9 cm) of the Neck -> Head line the long
+#                    falloff counts in full, past 0.62 (15.5 cm) not at all. (0.26, 0.46) cut into the neck's own
+#                    sides (bare human turn p99 20 deg, a 127 deg crease); wider gains nothing and creases at 160.
+HEAD_NEAR = 0.32   # on a base body: the band round face-shape vertices (`rigid_near`), ~8 cm (kit characters keep
+#                    HEAD_BAND: a big jaw's field reaches the goblin's chest)
 HEAD_UNDER = 0.04  # the floor's drop under the jaw's border, x the head's size: ~1 cm
 HEAD_PART = 0.9    # a part this much head on average is all head (teeth, tongue, eyes, lashes, brows)
 HEAD_WORN = 0.5    # a part other than the skin and less head than this is worn on the body: no head rule (a collar);
@@ -832,7 +853,12 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
     size = max(float(np.linalg.norm(top - hj)), 1e-3)
     band = float(opts.get("band", HEAD_BAND * size))
     under = float(opts.get("under", HEAD_UNDER * size))
-    fall = float(opts.get("band", HEAD_FALL * size))
+    fall = float(opts.get("fall", opts.get("band", HEAD_FALL * size)))
+    nape = float(opts.get("nape", HEAD_NAPE))
+    hy = float(rb[hi]["head"][1])
+    col = opts.get("column", HEAD_COLUMN)
+    hd = np.asarray(rb[hi]["head"], float)
+    nk = np.asarray(rb[rb[hi]["parent"]]["head"], float) if rb[hi]["parent"] >= 0 else hd - [0, 0, 0.4 * size]
     if spec.get("base"):
         if "lm_chin" in Jn and "lm_jaw_4.L" in Jn:
             pts = [resolve_point(s, "lm_chin")] + [0.5 * (resolve_point(s, f"lm_jaw_{i}.L")
@@ -862,8 +888,20 @@ def head_field(spec: dict, rb: list[dict]) -> dict | None:
         def h(V):
             V = np.asarray(V, np.float64)
             floor = np.interp(V[:, 1], fy, fz) - under
-            return 1.0 - _ss((floor - V[:, 2]) / fall)
-        return {"h": h, "bone": hi, "band": band, "how": f"{how}, floor {under * 1e3:.0f} mm under the jaw"}
+            back = _ss((V[:, 1] - hy) / (0.35 * size))  # 0 at the Head joint and in front, 1 at the nape
+            long = 1.0 - _ss((floor - V[:, 2]) / (fall * (1.0 + (nape - 1.0) * back)))
+            # the long falloff is the NECK's: by height alone it reached the tops of the shoulders (a 33 deg turn
+            # moved trapezius skin 70 mm). Past the neck's column only the short one counts.
+            tn = np.clip((V[:, 2] - nk[2]) / max(hd[2] - nk[2], 1e-6), -0.5, 1.5)
+            r = np.linalg.norm(V[:, :2] - (nk[:2] + tn[:, None] * (hd[:2] - nk[:2])), axis=1)
+            long *= 1.0 - _ss((r - col[0] * size) / ((col[1] - col[0]) * size))
+            return np.maximum(long, short(V))
+
+        def short(V):  # which PART is head or worn is judged on this one: under the long falloff a collar averaged
+            V = np.asarray(V, np.float64)  # over 0.5 head, took the head rule and turned with the face (57 mm)
+            return 1.0 - _ss((np.interp(V[:, 1], fy, fz) - under - V[:, 2]) / min(fall, HEAD_SHORT * size))
+        return {"h": h, "part": short, "bone": hi, "band": float(opts.get("band", HEAD_NEAR * size)),
+                "how": f"{how}, floor {under * 1e3:.0f} mm under the jaw"}
     ids, carry = _flesh_tree(spec, rb)
     if hi not in ids:
         return None
