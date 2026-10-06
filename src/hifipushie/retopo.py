@@ -1273,8 +1273,9 @@ def base_quads(spec: dict, log: list) -> dict | None:
     log.append(f"wrapped: the base body's own quads, {len(V)} verts, {len(S)} faces ({(S == 4).mean():.0%} quads); "
                f"moved onto the field by mean {mv.mean():.2f} p95 {np.percentile(mv, 95):.2f} max {mv.max():.1f} mm"
                + (f", {int(far.sum())} left where they were" if far.any() else ""))
+    # (a fused one-mesh source, body.source "human", has its head in these quads already: no graft)
     if (spec["base"].get("head") or {}).get("source", "gnm") == "gnm" and spec["base"].get("head") \
-            and not sf.get("head"):
+            and (spec["base"].get("body") or {}).get("source") != "human":
         V, L, S = graft_head(V, L, S, spec, prims, log)
     return {"verts": V, "loops": L, "sizes": S, "origin": np.zeros(len(V), int), "log": log, "patches": {}}
 
