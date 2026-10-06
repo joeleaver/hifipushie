@@ -108,7 +108,7 @@ GROOM = {
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
-        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "eevee_gain": 1.6}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "eevee_gain": 1.6, "light": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands"}
@@ -1873,10 +1873,23 @@ def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
     return out
 
 
+# Lights for strand / card looks (each a sun; "dir" points from the head toward the light). Hair is read by its
+# highlight band and by light coming through its edge: a key from the front, a soft fill, and a rim from behind
+# (what a portrait photographer calls the hair light). Solid locks keep the stage's single sun.
+LIGHTS = {
+    "salon": {"lights": [{"dir": [-0.45, -0.75, 0.55], "energy": 3.0, "angle": 8.0},
+                         {"dir": [0.8, -0.45, 0.15], "energy": 0.7, "angle": 30.0, "specular": 0.0,
+                          "color": [0.86, 0.9, 1.0]},
+                         {"dir": [0.35, 0.8, 0.5], "energy": 4.5, "angle": 5.0, "color": [1.0, 0.96, 0.9]}],
+              "world": {"color": [0.77, 0.81, 0.86], "strength": 0.5}},
+    "flat": {"lights": [{"dir": [-0.4, -0.7, 0.6], "energy": 3.5, "angle": 3.0}]},
+}
+
+
 def look(name: str, views=("front", "three_quarter", "side", "back", "top"), size: int = 480, save: str | None = None,
          reference: str | None = None, spec: dict | None = None, caption: str = "", clay: bool = True,
          only=None, engine: str = "eevee", count: int | None = None, samples: int | None = None,
-         budget: int | None = None) -> tuple:
+         budget: int | None = None, light=None, denoise: bool = True, debug: str | None = None) -> tuple:
     """A fast hair look: the head-cropped stage file + the hair from the spec, EEVEE, a few perspective views, a
     thumbnail (how it reads small) and the reference beside. Returns (sheet image, seconds)."""
     from PIL import Image, ImageDraw
@@ -1909,6 +1922,17 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
              "hair": job(name, spec, only=only, count=count, budget=budget),
              "samples": samples or (32 if engine == "cycles" else 16), "dump": dump, "clay_views": cf, "id_views": idf,
              "look_engine": engine}
+        style = hair_of(spec).get("style", "locks")
+        if debug and j["hair"].get("cards"):
+            j["hair"]["cards"]["debug"] = debug
+        light = light if light is not None else (hair_of(spec).get("look") or {}).get("light")
+        if light is None and style in ("strands", "cards"):
+            light = "salon"
+        if light:
+            j["lighting"] = LIGHTS[light] if isinstance(light, str) else light
+        if engine == "cycles" and style == "strands":
+            j.update(hair_bounces=10, denoise=bool(denoise), adaptive_threshold=0.01,
+                     samples=samples or 96)
         if engine == "cycles":  # path-traced strands: minutes of every core, one such job at a time on the machine
             from . import resources
             with resources.heavy(f"hair look {name} (cycles)"):
@@ -2017,6 +2041,35 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         sheet.save(save)
     frames_t = [line for line in out.splitlines() if line.startswith("@@")]
     return sheet, round(t_render, 1), frames_t
+
+
+def look_glb(name: str, glb, views=("wide_r", "back_quarter", "close_front", "three_quarter"), size: int = 480,
+             alpha: str = "test", light="salon", spec: dict | None = None, dist: float | None = None,
+             engine: str = "eevee") -> tuple:
+    """An exported hair GLB re-imported onto the model's head stage and rendered as an engine draws it (Blender's
+    glTF importer; alpha "test" = cut at the material's alphaCutoff, "dither" = hashed alpha, "off" = solid cards).
+    Returns ([image per view], what the importer made, seconds). `dist`: the camera's distance (m) in place of the
+    close look's 0.62: a tier is judged where it is meant to be seen."""
+    from PIL import Image
+    from . import render
+    from .scene import _blender
+    t = time.time()
+    spec = store.load(name) if spec is None else spec
+    sp = make_stage(name)
+    sc = scalp(name, spec)
+    cams = cameras(sc, views) if dist is None else cameras(sc, views, dist=dist)
+    frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in frames:
+            f["out"] = str(Path(tmp) / f"{f['name']}.png")
+        j = {"mode": "hair_glb_look", "blend": str(sp), "views": frames, "size": size, "glb": str(glb) if glb else None,
+             "alpha": alpha, "samples": 16, "look_engine": engine}
+        if light:
+            j["lighting"] = LIGHTS[light] if isinstance(light, str) else light
+        out = _blender(j)
+        imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
+    info = next((json.loads(ln[6:]) for ln in out.splitlines() if ln.startswith("@@glb")), {})
+    return imgs, info, round(time.time() - t, 1)
 
 
 def _project_frame(fm: dict, P, W: int):

@@ -39,11 +39,13 @@ STRANDS = {
     # --- strand grooms (hair_strands.py: Blender Hair Curves); the cards above are cut from the same groom
     "source": "groom",  # the cards' pictures: "groom" = this groom's own strands (Blender), "drawn" = made up here
     "count": 30000,  # strands in a look (the export's atlas bake and video renders may ask for more)
-    "thickness": 1.0,  # x the strand's width (0.16 mm at 30k strands: fewer strands are drawn wider)
+    "taper": 0.9,  # 0..1: strands thin toward their tips (uncut hair ends in a point; 0 = blunt, freshly cut)
+    "thickness": 1.0,  # x the strand's width (a real hair's 0.08 mm at 100k strands; fewer strands are drawn wider: 0.2 mm at 30k)
     "clump_size": 0.007,  # m between the sub clumps strands gather into inside a lock (0.004 fine .. 0.02 chunky)
     "clump_shape": 0.6,  # 0..1: where along a strand the gathering happens (0 = all along: ropes, 1 = only the tips)
     "tip_spread": 0.3,  # 0..1: tips open out of their clump again (a brushed, airy end)
     "loose": 0.3,  # 0..1: strands wander together off the lock's line (0 = combed flat, 1 = unbrushed)
+    "stray": 0.5,  # 0..1: how many strands only half join their clump (0 = every clump a tight rope with air between)
     "roots": 0.3,  # 0..1: strands of a lock start at different places along its root (no cut line at a root)
     "under": 1.0,  # x the scalp layer's density (hair rooted all over the scalp under the locks; 0 = none)
     "under_length": 0.04,  # m: how far the scalp layer's hairs run before they are under the locks

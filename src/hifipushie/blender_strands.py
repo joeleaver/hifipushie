@@ -21,7 +21,7 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 9  # bump when the lens group changes
+VERSION = 10  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
@@ -73,6 +73,8 @@ def lens_group():
                                   ("Tip Spread", "NodeSocketFloat", 0.3, 0.0, 1.0), ("Wave", "NodeSocketFloat", 0.0, 0.0, 0.05),
                                   ("Wavelength", "NodeSocketFloat", 0.07, 0.005, 1.0), ("Curl", "NodeSocketFloat", 0.0, 0.0, 1.0),
                                   ("Loose", "NodeSocketFloat", 0.001, 0.0, 0.02),
+                                  ("Wave Random", "NodeSocketFloat", 0.3, 0.0, 1.0),
+                                  ("Stray", "NodeSocketFloat", 0.5, 0.0, 1.0),
                                   ("Seed", "NodeSocketInt", 0, 0, 10000)):
         s = it.new_socket(name, in_out="INPUT", socket_type=typ)
         s.default_value = dv
@@ -137,7 +139,7 @@ def lens_group():
     # per copy (curve domain, so every point of a strand reads the same numbers)
     for name, lo, hi, off in (("hp_a", -1.0, 1.0, 1), ("hp_b", -1.0, 1.0, 2), ("hp_rand", 0.0, 1.0, 3),
                               ("hp_f", 0.0, 1.0, 4), ("hp_fa", 0.0, 6.2832, 5), ("hp_len", 0.0, 1.0, 6),
-                              ("hp_root", 0.0, 1.0, 7)):
+                              ("hp_root", 0.0, 1.0, 7), ("hp_cs", 0.0, 1.0, 8)):
         geo = store(geo, name, rand(lo, hi, off))
     a = named("hp_a", "FLOAT")
     par = N.new("GeometryNodeSplineParameter")
@@ -169,6 +171,10 @@ def lens_group():
     open_tip = math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Tip Spread"],
                                           math("POWER", math("MAXIMUM", math("MULTIPLY", math("SUBTRACT", t, 0.7), 3.3333), 0.0), 2.0)))
     c = math("MULTIPLY", math("MULTIPLY", gi.outputs["Clump"], math("POWER", t, expo)), open_tip)
+    # not every strand joins its clump as hard: with all of them on one line a clump is a rope with dark air between
+    # it and the next (pasta); strays fill between the clumps
+    cs = named("hp_cs", "FLOAT")
+    c = math("MULTIPLY", c, math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Stray"], math("MULTIPLY", cs, cs))))
     a_e = math("ADD", a, math("MULTIPLY", math("SUBTRACT", ac, a), c))
     # a^Edge keeps strands off the lens's thin rim (Edge > 1) or pushes them to it (< 1)
     a_s = math("MULTIPLY", math("SIGN", a_e), math("POWER", math("ABSOLUTE", a_e), gi.outputs["Edge"]))
@@ -179,15 +185,21 @@ def lens_group():
     # each sub clump swings on its own (the lock's own wave is in the guide): loose hair is clumps out of step
     env = math("MINIMUM", math("DIVIDE", s_m, 0.03), 1.0)
     env = math("MULTIPLY", math("MULTIPLY", env, env), math("SUBTRACT", 3.0, math("MULTIPLY", env, 2.0)))
-    ph = math("ADD", math("DIVIDE", math("MULTIPLY", s_m, 6.2832), math("MULTIPLY", gi.outputs["Wavelength"],
-                                                                          crand(0.75, 1.3, 13))), crand(0.0, 6.2832, 14))
-    amp = math("MULTIPLY", math("MULTIPLY", gi.outputs["Wave"], crand(0.3, 1.3, 15)), env)
+    # (sub clumps swing nearly in step, Wave Random apart: a tail moves as sheets of hair; every clump on its own
+    # phase and wavelength is pasta. hp_ws / hp_wl: a thin wisp swings less and slower than a lock)
+    wr_ = gi.outputs["Wave Random"]
+    wl = math("MULTIPLY", math("MULTIPLY", gi.outputs["Wavelength"], named("hp_wl", "FLOAT")),
+              math("ADD", 1.0, math("MULTIPLY", math("MULTIPLY", wr_, 0.25), crand(-1.0, 1.0, 13))))
+    ph = math("ADD", math("DIVIDE", math("MULTIPLY", s_m, 6.2832), wl),
+              math("MULTIPLY", math("MULTIPLY", wr_, 3.1416), crand(-1.0, 1.0, 14)))
+    amp = math("MULTIPLY", math("MULTIPLY", math("MULTIPLY", gi.outputs["Wave"], named("hp_ws", "FLOAT")),
+                                math("ADD", 1.0, math("MULTIPLY", math("MULTIPLY", wr_, 0.7), crand(-1.0, 0.4, 15)))), env)
     off = vmath("ADD", off, vmath("SCALE", side_n, scale=math("MULTIPLY", amp, math("SINE", ph))))
     off = vmath("ADD", off, vmath("SCALE", out_n, scale=math("MULTIPLY", math("MULTIPLY", amp, gi.outputs["Curl"]),
                                                                math("COSINE", ph))))
     # single strands wander a little off their clump, slowly along the strand (not frizz: a different line)
     wr = named("hp_fa", "FLOAT")
-    wph = math("ADD", math("DIVIDE", math("MULTIPLY", s_m, 6.2832), math("MULTIPLY", gi.outputs["Wavelength"], 0.61)),
+    wph = math("ADD", math("DIVIDE", math("MULTIPLY", s_m, 6.2832), math("MULTIPLY", math("MULTIPLY", gi.outputs["Wavelength"], named("hp_wl", "FLOAT")), 0.61)),
                math("MULTIPLY", wr, 7.0))
     wam = math("MULTIPLY", math("MULTIPLY", gi.outputs["Loose"], env), math("ADD", 0.3, t))
     off = vmath("ADD", off, vmath("SCALE", side_n, scale=math("MULTIPLY", wam, math("SINE", wph))))
@@ -222,6 +234,55 @@ def lens_group():
     L.new(math("MAXIMUM", math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", short, gi.outputs["Tips"]),
                                                       named("hp_ts", "FLOAT"))), 0.08), _sock(trim, "End", "VALUE"))
     L.new(trim.outputs["Curve"], go.inputs["Geometry"])
+    return ng
+
+
+PROFILE = "hp_profile"
+
+
+def profile_group():
+    """`hp_profile`: a strand's radius along it: Radius, thinner at the very root (Root x) and tapering over the last
+    `Taper` of its length to Tip x (a hair that was never cut ends in a point; cut hair is blunt: Tip 1)."""
+    ng = bpy.data.node_groups.get(PROFILE)
+    if ng is not None and ng.get("hp_version") == VERSION:
+        return ng
+    if ng is not None:
+        ng.name = PROFILE + "_old"
+    ng = bpy.data.node_groups.new(PROFILE, "GeometryNodeTree")
+    ng["hp_version"] = VERSION
+    ng.is_modifier = True
+    it = ng.interface
+    it.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    it.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    for name, dv, lo, hi in (("Radius", 0.00005, 0.0, 0.01), ("Tip", 0.25, 0.0, 1.0), ("Taper", 0.3, 0.01, 1.0),
+                             ("Root", 0.8, 0.0, 1.0)):
+        sk = it.new_socket(name, in_out="INPUT", socket_type="NodeSocketFloat")
+        sk.default_value, sk.min_value, sk.max_value = dv, lo, hi
+    N, L = ng.nodes, ng.links
+    gi, go = N.new("NodeGroupInput"), N.new("NodeGroupOutput")
+
+    def math(op, a, b=None):
+        n = N.new("ShaderNodeMath")
+        n.operation = op
+        for i, v in enumerate((a, b)):
+            if v is None:
+                continue
+            if isinstance(v, (int, float)):
+                n.inputs[i].default_value = v
+            else:
+                L.new(v, n.inputs[i])
+        return n.outputs[0]
+
+    t = N.new("GeometryNodeSplineParameter").outputs["Factor"]
+    x = math("MINIMUM", math("MAXIMUM", math("DIVIDE", math("SUBTRACT", t, math("SUBTRACT", 1.0, gi.outputs["Taper"])),
+                                             gi.outputs["Taper"]), 0.0), 1.0)
+    tip = math("ADD", 1.0, math("MULTIPLY", math("SUBTRACT", gi.outputs["Tip"], 1.0), math("MULTIPLY", x, x)))
+    r0 = math("MINIMUM", math("DIVIDE", t, 0.06), 1.0)
+    root = math("ADD", gi.outputs["Root"], math("MULTIPLY", math("SUBTRACT", 1.0, gi.outputs["Root"]), r0))
+    sr = N.new("GeometryNodeSetCurveRadius")
+    L.new(gi.outputs["Geometry"], sr.inputs[0])
+    L.new(math("MULTIPLY", math("MULTIPLY", gi.outputs["Radius"], tip), root), sr.inputs["Radius"])
+    L.new(sr.outputs[0], go.inputs["Geometry"])
     return ng
 
 
@@ -352,6 +413,7 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("n", "INT", "CURVE", "value"), ("lock", "INT", "CURVE", "value"),
                               ("k", "INT", "CURVE", "value"), ("fd", "FLOAT", "CURVE", "value"),
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
+                              ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
                               ("tile", "INT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
@@ -377,7 +439,7 @@ def add_stack(ob, stack: list):
     groups = essentials()
     wrote = {}
     for i, (gname, vals) in enumerate(stack):
-        ng = lens_group() if gname == LENS else groups[gname]
+        ng = lens_group() if gname == LENS else profile_group() if gname == PROFILE else groups[gname]
         mod = ob.modifiers.new(gname, "NODES")
         mod.node_group = ng
         _set(mod, vals)

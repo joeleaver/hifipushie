@@ -680,6 +680,8 @@ def show(hair: dict):
                 bpy.data.meshes.remove(me)
     if cd:
         mat = card_material(hair["look"], cd["color"], cd["normal"])
+        if cd.get("debug") == "layers":
+            _debug_layers(mat)
         card_object("hair_cap", cd["cap"], mat, coll)["hp_hair_cap"] = "under"
         card_object("hair_cards", cd["mesh"], mat, coll)
     else:
@@ -740,6 +742,45 @@ def card_material(look: dict, color_png: str, normal_png: str):
             pass
     m.use_backface_culling = False
     return m
+
+
+LAYER_COLORS = {-1: (0.35, 0.35, 0.35), 0: (0.8, 0.1, 0.1), 1: (0.1, 0.7, 0.1), 2: (0.1, 0.2, 0.9), 3: (0.9, 0.8, 0.1),
+                4: (0.9, 0.1, 0.9), 5: (0.1, 0.8, 0.8)}  # cap grey, coverage red, mid green, top blue, yellow, ...
+
+
+def _debug_layers(m):
+    """The cards as solid quads (alpha off), coloured by layer: what the geometry is without its pictures. Back
+    faces are drawn darker (a card seen from behind)."""
+    nt = m.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    for sk in ("Alpha", "Base Color", "Normal", "Tangent"):
+        for l in list(bsdf.inputs[sk].links):
+            nt.links.remove(l)
+    bsdf.inputs["Alpha"].default_value = 1.0
+    bsdf.inputs["Anisotropic"].default_value = 0.0
+    at = nt.nodes.new("ShaderNodeAttribute")
+    at.attribute_name = "hp_layer"
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = "CONSTANT"
+    el = ramp.color_ramp.elements
+    ks = sorted(LAYER_COLORS)
+    el[0].position, el[0].color = 0.0, (*LAYER_COLORS[ks[0]], 1)
+    el[1].position, el[1].color = (ks[1] + 0.5) / 8, (*LAYER_COLORS[ks[1]], 1)
+    for k in ks[2:]:
+        e = el.new((k + 0.5) / 8)
+        e.color = (*LAYER_COLORS[k], 1)
+    mr = nt.nodes.new("ShaderNodeMath")
+    mr.operation = "MULTIPLY_ADD"
+    mr.inputs[1].default_value, mr.inputs[2].default_value = 1 / 8, 1 / 8
+    nt.links.new(at.outputs["Fac"], mr.inputs[0])
+    nt.links.new(mr.outputs[0], ramp.inputs["Fac"])
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type, mix.blend_type = "RGBA", "MULTIPLY"
+    nt.links.new(geo.outputs["Backfacing"], mix.inputs["Factor"])
+    nt.links.new(ramp.outputs["Color"], mix.inputs["A"])
+    mix.inputs["B"].default_value = (0.35, 0.35, 0.35, 1)
+    nt.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
 
 
 def card_object(name: str, path: str, mat, coll):

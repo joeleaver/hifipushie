@@ -29,11 +29,14 @@ import numpy as np
 from . import hair_cards as hc
 
 LENS = "hp_lens"
-STRAND_RADIUS = 0.00008  # m at 30k strands (a real hair is 0.03-0.05 mm; fewer, wider strands cover the same)
+STRAND_RADIUS = 0.00004  # m: a real hair (0.03-0.05 mm), at REAL_COUNT strands; fewer strands are drawn wider so
+REAL_COUNT = 100000  # the head stays covered (a path tracer draws true widths: 30k hairs at 0.08 mm were a pale haze)
 UNDER_PER_M2 = 3.6e5  # scalp-layer strands per m2 of scalp at under = 1 and 30k strands
 SEED_SPACING = 0.011  # m between the scalp layer's flow guides
 # what each 0..1 dial may reach (the top of each range is where it still reads as hair)
+import os as _os
 SAFE = {
+    "sub_wave": float(_os.environ.get("HS_SUB_WAVE", 0.25)),  # a sub clump's own swing, x the lock's wave
     "frizz_m": 0.0006,  # single strands off their neighbours: 0.2-0.4 mm reads as hair, 2 mm+ as a cloud
     "loose_m": 0.006,  # strands wandering TOGETHER (low frequency): loosens a lock without fuzzing it
     "clump": 0.9,  # how far a strand is drawn to its sub clump's line at clump = 1 (never to the lock's one line)
@@ -61,9 +64,12 @@ def physical(S: dict, free: bool = False) -> dict:
     count = max(int(S["count"]), 200)
     return {
         "count": count,
-        "radius": float(STRAND_RADIUS * float(S["thickness"]) * np.clip(np.sqrt(30000.0 / count), 0.6, 3.0)),
-        "clump": SAFE["clump"] * c("clump") * (0.7 if free else 1.0),
-        "wave": 0.7 * float(np.clip(S["wave"], 0.0, 0.03)) * (1.0 if free else 0.3),
+        "radius": float(STRAND_RADIUS * float(S["thickness"]) * np.clip((REAL_COUNT / count) ** 0.8, 0.8, 4.0)),
+        "wave_random": c("random") * (1.0 if free else 0.6),
+        "stray": c("stray"),
+        "tip_radius": float(np.clip(1.0 - 0.8 * float(S["taper"]), 0.1, 1.0)),
+        "clump": SAFE["clump"] * c("clump") * (float(_os.environ.get("HS_FREE_CLUMP", 0.7)) if free else 1.0),
+        "wave": SAFE["sub_wave"] * float(np.clip(S["wave"], 0.0, 0.03)) * (1.0 if free else 0.3),
         "wavelength": float(np.clip(S["wavelength"], 0.01, 1.0)),
         "curl01": c("curl") * (1.0 if free else 0.3),
         "wander": SAFE["wander_m"] * c("loose") * (2.0 if free else 1.0),
@@ -93,7 +99,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         if not sel:
             continue
         n = n_free if key == "free" else n_head
-        P_, S_, O_, W_, I_, N_, K_, F_, R_ = ([] for _ in range(9))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_ = ([] for _ in range(11))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
@@ -112,9 +118,12 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             fr = float(lk.get("free", 0.0))
             R = float(Sl["random"])
             A = 0.6 * float(Sl["wave"]) * (0.3 + 0.7 * fr) * (1 + R * rng.uniform(-0.4, 0.4))
-            A *= float(np.clip(W / 0.02, 0.35, 1.0))  # (a wisp swings less than a lock: crimped otherwise)
+            # a wisp swings less and slower than a lock (at a lock's wave a few hairs side by side are ramen)
+            ws = float(np.clip(W / 0.03, 0.2, 1.0))
+            wl = 1.0 + 1.2 * float(np.clip(1.0 - W / 0.02, 0.0, 1.0))
+            A *= ws
             # neighbours wave nearly in step (a tail swings as sheets of hair; every lock on its own phase is pasta)
-            ph = rng.uniform(-1, 1) * R * 1.2 + 2 * np.pi * s / lam
+            ph = rng.uniform(-1, 1) * R * 1.2 + 2 * np.pi * s / (lam * wl)
             env = _ss(s / 0.03)
             P = P + B * (A * env * np.sin(ph))[:, None] + N * (A * env * float(Sl["curl"]) * fr * np.cos(ph))[:, None]
             hw = W / 2 * lw
@@ -132,12 +141,15 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W))
             R_.append(4.0 if lk.get("at_hairline") else 1.0)
+            WS_.append(ws)
+            WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
             I_.append(i)
             N_.append(lk["name"])
         out[key] = {"counts": np.full(len(sel), n, np.int32), "pts": np.concatenate(P_).astype(np.float32),
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
                     "weight": np.asarray(W_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.ones(len(R_), np.float32),
+                    "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
                     "names": np.asarray(N_)}
     return out
 
@@ -294,7 +306,8 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
         st = [[LENS, {"Amount": float(amount), "Tips": ph["tips"], "Roots": ph["roots"], "Flyaway": ph["flyaway"],
                       "Flyaway Distance": 1.0, "Edge": 0.8, "Clump": ph["clump"],
                       "Clump Shape": ph["clump_shape"], "Tip Spread": ph["tip_spread01"], "Wave": ph["wave"],
-                      "Wavelength": ph["wavelength"], "Curl": ph["curl01"], "Loose": ph["wander"], "Seed": int(seed)}]]
+                      "Wavelength": ph["wavelength"], "Curl": ph["curl01"], "Loose": ph["wander"], "Wave Random": ph["wave_random"],
+                      "Stray": ph["stray"], "Seed": int(seed)}]]
         if ph["loose"] > 0:  # strands wandering together (Blender's noise is coherent in space: neighbours agree)
             st.append(["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"], "Shape": 0.5,
                                              "Scale": ph["loose_scale"], "Scale along Curve": 0.35,
@@ -305,8 +318,7 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
         st.append(["Shrinkwrap Hair Curves", {"Surface:Object": body, "Factor": 1.0, "Above Surface": 0.0015,
                                               "Offset Distance": 0.0015, "Smoothing Steps": 1,
                                               "Lock Roots": False}])
-        st.append(["Set Hair Curve Profile", {"Replace Radius": True, "Radius": ph["radius"], "Shape": 0.35,
-                                              "Factor Min": 0.6, "Factor Max": 0.1}])
+        st.append(["hp_profile", {"Radius": ph["radius"], "Tip": ph["tip_radius"], "Taper": 0.3, "Root": 0.8}])
         return st
 
     out = {}
@@ -333,8 +345,7 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
                                    "Seed": int(seed) + 1, "Preserve Length": True}],
             ["Shrinkwrap Hair Curves", {"Surface:Object": body, "Factor": 1.0, "Above Surface": 0.0008,
                                         "Offset Distance": 0.0008, "Smoothing Steps": 1, "Lock Roots": True}],
-            ["Set Hair Curve Profile", {"Replace Radius": True, "Radius": ph["radius"] * 1.5, "Shape": 0.35,
-                                        "Factor Min": 0.6, "Factor Max": 0.05}],
+            ["hp_profile", {"Radius": ph["radius"], "Tip": 0.15, "Taper": 0.6, "Root": 0.8}],
         ]
     return out
 
@@ -476,12 +487,14 @@ def tile_job(S: dict, tmp: Path, seed: int = 11) -> dict:
              side=np.concatenate(Sd).astype(np.float32), out=np.concatenate(O).astype(np.float32),
              n=np.asarray(N, np.int32), k=np.asarray(K, np.int32), rs=np.asarray(RS, np.float32),
              ts=np.asarray(TS, np.float32), fd=np.asarray(FD, np.float32), lock=np.asarray(LK, np.int32),
+             ws=np.ones(len(kinds), np.float32), wl=np.ones(len(kinds), np.float32),
              names=np.asarray([k for _, k, _ in kinds]))
     tips = 0.25 + 0.75 * float(np.clip(S["tips"], 0, 1))
     st = [[LENS, {"Amount": 8.0, "Tips": tips, "Roots": 1.0, "Flyaway": 0.0, "Flyaway Distance": 1.0, "Edge": 1.0,
                   "Clump": ph["clump"], "Clump Shape": ph["clump_shape"], "Tip Spread": ph["tip_spread01"],
                   "Wave": float(min(0.12 * ph["wave"], 0.0012)), "Wavelength": ph["wavelength"], "Curl": 0.0,
-                  "Loose": ph["wander"], "Seed": int(seed)}]]
+                  "Loose": ph["wander"], "Wave Random": ph["wave_random"], "Stray": ph["stray"],
+                  "Seed": int(seed)}]]
     if ph["loose"] > 0:
         st.append(["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": 0.5 * ph["loose"],
                                          "Shape": 0.5, "Scale": ph["loose_scale"], "Scale along Curve": 0.35,
@@ -497,7 +510,7 @@ def tile_lines(S: dict) -> dict:
     evaluated by Blender from `tile_job` (cached by the strand numbers that shape them)."""
     import tempfile
     kk = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "clump_shape", "tip_spread", "frizz", "loose", "tips",
-                                                     "wave", "wavelength", "curl")}, TILE_KIND, hc.TILES, TILE_LEN],
+                                                     "wave", "wavelength", "curl", "random", "stray")}, TILE_KIND, hc.TILES, TILE_LEN],
                                  sort_keys=True, default=float).encode()).hexdigest()[:16]
     f = _cache() / f"tiles_{kk}_{_code()}.npz"
     if not f.exists():
