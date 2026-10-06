@@ -375,7 +375,8 @@ def head(s: dict, base: dict) -> dict:
         out = _carried(ht, mv)
         out["one_mesh"] = True
         out["room"] = True
-    out["carry"] = {**out["carry"], "fade": asset()["g_fade"].astype(float)}
+    # what face shapes multiply GNM's deltas by: 0 at the stitch .. 1 on the head, x a style's head size
+    out["carry"] = {**out["carry"], "fade": asset()["g_fade"].astype(float) * float(head_desc(base)["bound"].get("head_size", 1.0))}
     _CACHE[key] = out
     return out
 
