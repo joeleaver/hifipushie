@@ -154,6 +154,19 @@ height, form, limb angles.
   the plant's foot: -0.5 = half a metre below it), for the pictures. It does not change the growth: lean the trunk
   with a guide or wind. Only a uniform slope: no banks or ditches.
 
+- In a stand (`setting` forest or edge) conifers look nothing like their open-grown selves, and the difference is
+  dead wood (references: workspace/veg_refs/forest/README.md). `environment.spacing` (m between the stand's trees, 2.5-4
+  planted, 5-8 thinned) sets how wide a crown the tree may keep; without it the gap is 18% of the height (a wide,
+  thinned stand). `habit.stand_shed` kills shaded limbs (on an edge only on the closed side: the open side keeps its
+  skirt). With `habit.dead_keep` years, a limb the shade killed STAYS as dead wood: the limb as it was, its dead
+  branches on it, then decaying year by year (`deadwood`: {"break" share of its length lost by the end, "stub" m,
+  "twig" [m, m] radius under which twigs have fallen at death / at the end, "droop" [deg, deg], "bow", "shrink"}):
+  the youngest dead whorls under the live crown are whole and twiggy, the oldest near the ground short spurs. Its
+  fine twigs are drawn by cards, not tubes (a 2 mm twig is under a pixel from anywhere): `leaves.parts.dead` =
+  {"bare": true, "wood_color", "twig": {per_m, length, ...}, "card": {...}} is a bare-twig picture in the same atlas
+  (spruce and pine presets have one). Looks of a stand tree stand on litter with a dim brown bounce (not a lawn).
+  Read the report's dead wood line; a spruce at 3 m spacing should show a live crown of a third to a half.
+
 ### Direct control (edit_plant ops, or the same keys in a spec)
 
 - `guides`: `{name: {"path": [[x, y, z], ...], "from_year", "until_year", "vigour"}}`. A drawn axis: at `from_year`

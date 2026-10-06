@@ -547,7 +547,11 @@ def test_budget_keeps_marked_wood_and_cards_on_wood():
     rnd = veg_leaf.place(T)
     far_all = 1 - ok[rnd["node"]].mean()
     if bud["keep"] >= 0.25:  # twig cards stand on drawn wood (bough cards are spread over the crown instead)
-        assert floating <= 0.2 or floating < 0.5 * far_all, (floating, far_all)
+        # (dead wood carries no leaves now: on this tree, nearly half antlers, the live twigs stand on wood thinner
+        # than any 12k cut-off whether the antlers are kept or not: then the marked wood stays and the export warns)
+        free = veg_export._budget(T, 12000, (0.5, 1.0), 7, pr=np.zeros(len(T["pos"]), bool))
+        hopeless = veg_export.pick_twigs(T, free["keep"], free["min_radius"], free["protect"])[1] > 0.5
+        assert floating <= 0.2 or floating < 0.5 * far_all or hopeless, (floating, far_all)
     else:
         lf2, cap2, back2 = veg_export.cluster_leaves(T["spec"]["leaves"], bud["keep"])
         assert back2 > 0 and lf2["card"]["twig"]["length"] > 1.25 * veg_leaf.card_spec(T["spec"]["leaves"])["twig"]["length"]
@@ -812,6 +816,42 @@ def test_nothing_under_the_ground():
     assert lo.min() > 0.0, lo.min()
     wd = g.audit(S, d=g.drawn({**S, "spec": {**S["spec"], "season": "bare"}}))
     assert wd["wood"]["under"] == 0 and wd["foot"]["under"] > 0, wd  # (the trunk's foot goes into the ground on purpose)
+
+
+def test_stand_interior_dead_wood():
+    """Inside a stand a spruce is a bare stem under a live top: the limbs the shade killed stay as dead wood (twiggy
+    when lately dead, short spurs when old), drawn with dead-twig cards; an edge tree keeps its skirt on the open side."""
+    from hifipushie import veg_leaf
+    base = {"species": "norway_spruce", "age": 44}
+    O = v.grow(base)
+    F = v.grow({**base, "environment": {"setting": "forest", "spacing": 3.0}})
+    E = v.grow({**base, "environment": {"setting": "edge", "open_side": [-1, 0], "spacing": 3.0}})
+    assert not O["dead"].any() and F["shade_dead"].sum() > 200
+    live = lambda T: T["pos"][T["leafy"] & ~T["dead"]]
+    ratio = 1 - np.percentile(live(F)[:, 2], 5) / F["height"]
+    assert 0.2 < ratio < 0.6, ratio  # (open-grown: ~0.95)
+    assert 1 - np.percentile(live(O)[:, 2], 5) / O["height"] > 0.85
+    d = F["shade_dead"]
+    assert F["pos"][d, 2].min() < 0.35 * F["height"] and not F["leafy"][d].any()
+    assert (F["order"][d] >= 2).sum() > 0.3 * d.sum()  # its dead branches are on it: not bare poles
+    # the lately dead are longer than the long dead (broken back with the years)
+    first = np.flatnonzero(d & (F["order"] == 1) & (F["order"][F["parent"]] == 0))
+    z = F["pos"][first, 2]
+    reach = lambda lo, hi: np.linalg.norm((F["pos"][d] - [0, 0, 0])[:, :2], axis=1)[(F["pos"][d, 2] >= lo) & (F["pos"][d, 2] < hi)]
+    zs = np.sort(z)
+    low, high = reach(zs[0], np.median(zs)), reach(np.median(zs), zs[-1] + 1)
+    assert np.percentile(high, 90) > 1.3 * np.percentile(low, 90), (np.percentile(low, 90), np.percentile(high, 90))
+    # cards: foliage (part 0) only on live wood, dead-twig cards (part 1) only on dead wood, each on its own pictures
+    tw = veg_leaf.place(F)
+    pc = veg_leaf.part_cards(F["spec"]["leaves"])
+    assert (tw["part"] == 1).sum() > 100 and F["dead"][tw["node"][tw["part"] == 1]].all() and not F["dead"][tw["node"][tw["part"] == 0]].any()
+    assert np.isin(tw["card"][tw["part"] == 1], pc["dead"]).all() and np.isin(tw["card"][tw["part"] == 0], pc["main"]).all()
+    assert len(veg_leaf.place_live(F)["pos"]) == (tw["part"] == 0).sum()
+    # the edge: foliage to the ground on the open side, dead wood on the closed side
+    le = live(E)
+    assert np.percentile(le[le[:, 0] < -1.0, 2], 5) < 0.25 * E["height"]
+    dl = E["shade_dead"] & (E["order"] == 1)  # whole dead LIMBS stand on the closed side (inner dead twigs are everywhere)
+    assert dl.sum() > 20 and np.mean(E["pos"][dl, 0] > 0) > 0.8, np.mean(E["pos"][dl, 0] > 0)
 
 
 if __name__ == "__main__":

@@ -80,6 +80,18 @@ def plan(tree: dict, cards: int) -> dict:
     return {"roots": best, "size": float(size), "owner": own[st["twigs"]["node"]], "node_owner": own}
 
 
+def dead_boughs(tree: dict, pl: dict) -> np.ndarray:
+    """Per bough of the plan: it is dead wood (most of its cards are dead-twig cards)."""
+    part = subtrees(tree)["twigs"].get("part")
+    k = len(pl["roots"])
+    if part is None or not k:
+        return np.zeros(k, bool)
+    ok = pl["owner"] >= 0
+    tot = np.bincount(pl["owner"][ok], minlength=k)
+    dead = np.bincount(pl["owner"][ok], weights=(part[ok] == 1).astype(float), minlength=k)
+    return dead > 0.5 * np.maximum(tot, 1)
+
+
 def _frames(tree: dict, pl: dict):
     """Each bough's frame (columns x, y = its run from the root to the middle of its twigs, z = its upper side; a
     hanging or upright bough turns its face outward from the trunk) and its length along y (m)."""
@@ -154,11 +166,18 @@ def _mesh(tree: dict, pl: dict, b: int, Fr: np.ndarray, leaves: dict) -> dict:
         V, F = veg_leaf._stem(np.array([P[par[i]], P[i]]), max(float(rad[par[i]]), 0.003), max(float(rad[i]), 0.002), sides=4)
         add(V, F, 0, 1.0)
     twm = {}
+    dp = veg_leaf.dead_part(leaves)
+    cs_d = veg_leaf.card_spec(dp) if dp is not None else None
+    part = tw.get("part")
     for t in np.flatnonzero(pl["owner"] == b):
         v_ = int(tw["variant"][t]) % nv
-        if v_ not in twm:
-            twm[v_] = veg_leaf.twig_mesh(cs, v_)
-        m = twm[v_]
+        isd = part is not None and part[t] == 1  # a dead twig: bare, grey (its own part's picture)
+        if (v_, isd) not in twm:
+            m_ = veg_leaf.twig_mesh(cs_d if isd else cs, v_)
+            if isd:
+                m_ = {**m_, "col": m_["col"] * 0 + 1.0, "rgb": np.tile(np.asarray(dp.get("wood_color", [0.45, 0.42, 0.38]), float), (len(m_["V"]), 1))}
+            twm[(v_, isd)] = m_
+        m = twm[(v_, isd)]
         cd = float({**veg_leaf.CARD, **(leaves.get("card") or {})}["scale"])
         V = (m["V"] * (tw["scale"][t] * cd)) @ tw["frame"][t].T + tw["pos"][t]
         add(V, m["F"], m["mat"], m["col"] * (0.85 + 0.3 * float(_u(tw["key"][t:t + 1], 77)[0])), m.get("rgb"))
@@ -178,7 +197,10 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     Fr, ext, cnt = _frames(tree, pl)
     nv, size = BOUGH["variants"], BOUGH["size"]
     order = np.argsort(cnt * (0.5 + ext / max(ext.max(), 1e-9)), kind="stable")
-    pick = [int(order[int(q * (len(order) - 1))]) for q in np.linspace(0.6, 0.97, nv)] if len(order) else []
+    isd = dead_boughs(tree, pl)
+    lv_, dd_ = order[~isd[order]], order[isd[order]]  # live boughs' pictures, and (when the shade killed limbs) dead ones'
+    pick = [int(lv_[int(q * (len(lv_) - 1))]) for q in np.linspace(0.6, 0.97, nv)] if len(lv_) else []
+    pick += [int(dd_[int(q * (len(dd_) - 1))]) for q in np.linspace(0.6, 0.95, 2)] if len(dd_) else []
     g = int(math.ceil(math.sqrt(max(len(pick) * BOUGH["cross"], 1))))
     A = {"color": np.zeros((g * size, g * size, 4), np.float32), "normal": np.zeros((g * size, g * size, 3), np.float32),
          "mask": np.zeros((g * size, g * size, 3), np.float32)}
@@ -212,12 +234,18 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     if leaf_px.any():  # (as the twig atlas: `leaves.color` is the leaf as seen lit)
         lum = lambda c_: 0.2126 * c_[..., 0] + 0.7152 * c_[..., 1] + 0.0722 * c_[..., 2]
         seen = float(np.median(lum(A["color"][leaf_px][:, :3]) * A["mask"][leaf_px][:, 2]))
-        A["color"][..., :3] = np.clip(A["color"][..., :3] * float(np.clip(lum(np.asarray(col, float)) / max(seen, 1e-6), 1.0, 1.8)), 0, 1)
+        k_ = float(np.clip(lum(np.asarray(col, float)) / max(seen, 1e-6), 1.0, 1.8))
+        g_ = len(out_cards) and A["color"].shape[0] // size
+        for j_, dead_ in enumerate(isd[b_] for b_ in pick):  # (the foliage's pictures only: dead boughs keep their grey)
+            if not dead_:
+                for side in range(BOUGH["cross"]):
+                    r, c = divmod(BOUGH["cross"] * j_ + side, g_)
+                    A["color"][r * size:(r + 1) * size, c * size:(c + 1) * size, :3] = np.clip(A["color"][r * size:(r + 1) * size, c * size:(c + 1) * size, :3] * k_, 0, 1)
     if len(_CACHE) > 8:
         _CACHE.pop(next(iter(_CACHE)))
     _CACHE[key] = {**A, "cards": out_cards, "fill": float(np.mean(fills)) if fills else 0.0, "grid": g, "size": size,
                    "triangles": int(np.mean([len(c["F"]) for c in out_cards])) if out_cards else TRIS,
-                   "extent": extent, "size_m": pl["size"], "bough": True}
+                   "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick]}
     return _CACHE[key]
 
 
@@ -233,8 +261,14 @@ def place(tree: dict, cards: int, at: dict) -> dict:
     Fr, ext, cnt = _frames(tree, pl)
     key = _child(tree["key"][pl["roots"]], 31)
     E = np.asarray(at["extent"])
-    near = np.argsort(np.abs(np.log(np.maximum(ext[:, None], 1e-3) / np.maximum(E[None], 1e-3))), axis=1)[:, : min(2, len(E))]
-    card = near[np.arange(k), (_u(key, 3) * near.shape[1]).astype(int) % near.shape[1]]
+    cost = np.abs(np.log(np.maximum(ext[:, None], 1e-3) / np.maximum(E[None], 1e-3)))
+    kind = np.asarray(at.get("dead") or np.zeros(len(E), bool), bool)
+    isd = dead_boughs(tree, pl)
+    cost = cost + 100.0 * (isd[:, None] != kind[None])  # a dead bough draws a dead bough's picture
+    near = np.argsort(cost, axis=1)[:, : min(2, len(E))]
+    pick_ = (_u(key, 3) * near.shape[1]).astype(int) % near.shape[1]
+    pick_ = np.where(cost[np.arange(k), near[np.arange(k), pick_]] >= 100.0, 0, pick_)  # (never the other kind when its own exists)
+    card = near[np.arange(k), pick_]
     scale = np.clip(ext / np.maximum(E[card], 1e-6), 0.45, 1.35)
     return {"pos": tree["pos"][pl["roots"]], "frame": Fr, "scale": scale, "variant": card.astype(int), "node": pl["roots"].astype(int),
             "key": key, "card": card.astype(int), "size_m": pl["size"]}

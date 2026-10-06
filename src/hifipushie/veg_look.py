@@ -18,6 +18,11 @@ from . import veg_ground, veg_mesh, vegetation
 SCRIPT = Path(__file__).with_name("blender_vegetation.py")
 
 
+# needle litter and bare soil under a closed canopy (sRGB): what a look draws under a plant whose environment.setting is
+# a stand, unless the spec's look.ground gives colours
+FOREST_FLOOR = {"color": [0.25, 0.18, 0.12], "color2": [0.34, 0.25, 0.16], "dry": [0.29, 0.22, 0.15]}
+
+
 def _euler(frames: np.ndarray) -> np.ndarray:
     from scipy.spatial.transform import Rotation
     return Rotation.from_matrix(frames).as_euler("xyz") if len(frames) else np.zeros((0, 3))
@@ -83,6 +88,9 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
             info.update(leaf_triangles=int(len(tw["pos"]) * at["triangles"]), card_fill=round(at["fill"], 2),
                         atlas_px=int(at["color"].shape[0]))
         else:
+            if tw.get("part") is not None:  # (dead twig cards are cards: mesh foliage leaves them out)
+                m_ = tw["part"] == 0
+                tw = {k_: (v_[m_] if isinstance(v_, np.ndarray) and len(v_) == len(m_) else v_) for k_, v_ in tw.items() if k_ != "card"}
             nv = int(tw["variant"].max()) + 1
             var = tw["variant"]
             per = []
@@ -124,12 +132,18 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         if at is not None:
             pj.update(at=list(at), z=ground_z(s, at))
         plants = [pj]
+        made = {id(tree): pj}
         for i, (t_, at_, yaw_) in enumerate(others or []):
-            pj2, _ = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage, triangles)
-            pj2.update(at=list(at_), yaw=float(yaw_), z=ground_z(s, at_))
+            if id(t_) not in made:  # (the same tree stood many times is meshed once)
+                made[id(t_)] = _plant_job(t_, Path(tmp), out, f"_{i + 1}", foliage, triangles)[0]
+            pj2 = {**made[id(t_)], "at": list(at_), "yaw": float(yaw_), "z": ground_z(s, at_)}
             plants.append(pj2)
         env = s.get("environment") or {}
         job = {"plants": plants, "views": views, "save": save, **(s.get("look") or {})}
+        if env.get("setting") in ("forest", "edge", "stand") and "color" not in (job.get("ground") or {}):
+            job["ground"] = {**FOREST_FLOOR, **(job.get("ground") or {})}  # a stand's floor is litter, not a lawn
+            job.setdefault("bounce_color", [0.6, 0.5, 0.4])  # (and what it throws back up is dim and brown, not a lawn's yellow-green)
+            job.setdefault("bounce", 0.75)
         if env.get("ground"):
             job["ground"] = {**(job.get("ground") or {}), **env["ground"]}
         job["ruler"] = float(np.ceil(tree["height"]))

@@ -3042,6 +3042,45 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   - Forest references fetched: workspace/veg_refs/forest/ (8 spruce stand interiors, 3 pine, 1 edge; fetched.jsonl
     has titles, authors, licences). spruce_in_a / _b / _e = the dead-branch haze; spruce_in_g = a cut edge showing
     interior trees (live crown the top ~35-40%).
+  - Forest interior (task 1; sheet vg_82_forest_vs_photos.png = ours beside the fetched photos, vg_83_interior_spruce_
+    full_vs_12k.png; scratch stand1.py <out> <species> [patch] [sil] = open | edge | interior row with dead-wood and
+    live-crown numbers, inside.py = a stand of 54 from inside (more trees at full detail LOST THE GPU CONTEXT twice on
+    the 890M: keep stands under ~60 full trees or use budgets), fsheet.py):
+    - A limb the shade kills is no longer a 3-node white spike: its WOOD is remembered when `_shed` cuts it (first-
+      order limbs always; in a stand also the branches a living limb loses, attached by their parent's key) and put
+      back at the end as dead wood decayed by its years (`vegetation.DEAD`, spec `deadwood`: broken back, thin twigs
+      fallen, drooped and bowed). `tree["shade_dead"]` marks it (not `protected` in budgets: it goes by girth).
+    - Fine dead twigs are CARDS: `leaves.parts.dead` (a bare-twig picture: `"bare": true`, `wood_color`) in the same
+      atlas; `veg_leaf.place` = `place_live` + `place_dead` with `card` / `part` per placement (silhouettes and the
+      report's twig counts use `place_live`). Bough atlases bake dead boughs from the dead part's twigs and give dead
+      boughs dead pictures (`veg_bough.dead_boughs`, at["dead"]). Dead wood carries no leaves (artist's `dead` too:
+      antlers used to have twigs; that had hidden a budget fault: `veg_export.budget` now gives up the thinnest
+      marked wood when keeping it leaves the live cards floating, unless nothing helps).
+    - `environment.spacing` (m between a stand's trees) caps the canopy gap: at 3 m an interior spruce is a bare stem
+      with a narrow live crown of 36% (photo spruce_in_g: 35-45%), 60 dead limbs from 1.6 m up; without it (gap = 18% of
+      the height) 59% and a lollipop. `stand_shed` is per node: an edge tree keeps its skirt on the open side
+      (live crown 92%) and carries whole dead limbs on the closed side. Presets: spruce dead_keep 40, pine 20
+      (ASSUMPTIONS; sources and what is unsourced in workspace/veg_refs/forest/README.md).
+    - Stand looks stand on litter (`veg_look.FOREST_FLOOR`) with a dim brown bounce (the lawn's yellow-green bounce
+      turned grey twigs olive); a tree stood many times in a look is meshed once.
+    - BLUNT read: the spruce row is right in kind. From inside it reads as a plantation but the stand is too small
+      (open sky at the horizon, sun pouring in), the dead haze is far thinner than spruce_in_a / _b (ours: ~60 limbs
+      with ~200 m of dead wood a tree; the photos' young stands hold them to the ground), dead twig pictures are
+      fishbones, the floor is one flat brown. The 12k interior spruce's dead zone is a dense brown fur (bough
+      cards of dead limbs: too many, too opaque). The pine interior FAILS: a crooked stick with antlers, nothing like
+      pine_in_a's straight poles (its habit dissolves the leader; needs its own stand tuning).
+  - HANDOVER (vegetation3, context full). Done: the user's ground question (merged to main at 13863c9) and a first
+    forest-interior pass (this branch, after main was merged in). Open, in the coordinator's order:
+    (1) forest: denser dead haze low on young stands (dead_keep vs age; `deadwood.break`), irregular dead-twig
+    pictures (veg_leaf.twig_mesh draws ranked side shoots: jitter their angles and drop some for `bare`), dead
+    bough cards at budgets (fewer, thinner alpha), a closed stand look (fog or a ring of impostors rather than more
+    full trees), floor clutter (brash, needles, moss patches), pine stand habit (straight leader in a stand: apical
+    0.72 already; its interior tree bends and keeps antlers), open-grown trees on a lawn in the same row (the floor
+    is scene-wide); (2) spruce LODs (vg_81 top right: flat fern cards, a huge pale card: cap bough card size by the
+    tree's width at that height, small upright leader card, darker inner core), pine leader spike, kit picture, twig
+    cards over boughs; (3) small plants incl. ground clearance for clumps (veg_ground.clear skips clumps; audit them
+    first: `veg_ground.audit` works on any tree dict) and the weeping willow's leaning foot after the stop rule
+    (trunk jitter 0.12 + a changed growth history: try seed or `jitter[0]` 0.06); (4) styles, terrain.
   - All-species re-render after the ground change: vg_80_all_inleaf.png (spruce skirt and willow curtains end over
     the ground with a shadow gap; the willow regrew with a slightly leaning foot).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
