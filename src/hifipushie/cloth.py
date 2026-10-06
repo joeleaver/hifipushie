@@ -2196,7 +2196,10 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
         to = pcs[nm]["wrap"].get("to", "torso")
         obs = []
         if len(body.V):
-            obs.append((body.V + bn * (clear - lay), bn, 0.008))
+            # (a flap of a band that hugs the body, a buttoned collar's fall, may lie as near the skin as its band
+            # + a layer: at the solver's 4 mm it had no room over a stand 1.2 mm off the neck and stood up, 15 deg)
+            cl_ = HUG_CLEAR + 0.002 if nm in (B.get("hug") or []) else clear
+            obs.append((body.V + bn * (cl_ - lay), bn, 0.008))
         if fd["turn"] > 0 and to in ("neck", "seam"):  # a fold over a band: it lies on the pieces under it too (a collar's fall
             # on its stand). Torso pieces lap each other either way (a coat's left front over its right): their flaps
             # lie on their own base
@@ -3296,7 +3299,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                       **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in Bp["hug"]]))[0]}
                          if Bp.get("hug") else {}),
                       **coll, **({"rest": rest_s} if smooth else {}))
-        if Bp.get("band_clear") and backend == "zozo":
+        if (Bp.get("band_clear") or Bp.get("hug")) and backend == "zozo":
             # a gripping band starts BAND_CLEAR off the body: the body's contact offset + gap must be inside that
             zc_ = cfg.setdefault("zozo", {})
             zc_.setdefault("body_offset", 0.001)
