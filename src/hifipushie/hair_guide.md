@@ -530,6 +530,14 @@ Studio's procedural hair nodes post only notes that larger radii self-intersect 
 Wing It write-up, no per-clump Points to Volume pipeline. The nearest real practice is a profile swept along each
 clump's curve (Curve to Mesh): which is what our solid locks are.
 
+**Tried once and closed (2026-10-06, `spikes/hair_strands/hs3/volumise.py`, render ht_12_volumise_try.png):** each
+sub clump of Tess's tail (77 clumps), its strand points through Blender's Points to Volume (2 mm) -> Volume to Mesh
+(0.8 mm voxels): 3.6 million triangles in 45 s, and the result is rows of beads (strand points are 1 cm apart, so
+the spheres do not merge along a strand; resampling to under the radius multiplies the points by ten), with no
+strand detail and no material. It would still need a remesh, a retopology and a bake to be an asset: a worse route
+to what a swept lens lock already is. Stylised solid hair stays on locks (style "locks"); realistic hair is strands
++ cards. Do not reopen without a documented production pipeline to copy.
+
 ## Where our pipeline stands against that practice
 
 | practice | ours today | gap |

@@ -686,7 +686,7 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                     P = c["P"] + c["X"] * (np.zeros(len(s)) + xo)[:, None] + c["N"] * yo[:, None]
                     out.append({"P": P[keep], "X": c["X"][keep], "N": c["N"][keep], "hw": hw[keep], "u": c["u"][keep],
                                 "s": s[keep], "kind": kind, "layer": la,
-                                "prio": la + 0.3 * off_c + (0.25 if thin else 0.0),
+                                "prio": la + 0.3 * off_c + (0.25 if (thin and la > 0) else 0.0),
                                 "cval": 1 + Rr * rng.uniform(-0.2, 0.2), "bend": c["bend"][keep], "T": c["T"][keep],
                                 "lock": lk["name"], "value": val})
             nf = int(S.get("fly", 0))

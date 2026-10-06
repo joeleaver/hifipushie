@@ -878,6 +878,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     the .usda was 33).
   - Style "locks" unchanged: hs_golfer's look with this branch vs main's src differs by <= 1 level on 2-11 of 1.57M
     pixels, and main against itself by 9 (EEVEE's own run-to-run noise); same code twice can also be identical.
+  - Volumise, tried once and CLOSED (volumise.py, ht_12): Points to Volume -> Volume to Mesh per sub clump of the
+    tail = 3.6M triangles in 45 s, rows of beads, no strand detail; written up in the guide. Stylised hair stays on
+    locks.
   - READ: hero at bust distance is combed hair with a clean hairline and matching colour, still smoother and
     flatter than the strands; a few dark slits between cards on the back / top; npc cards lift at the crown like
     roof tiles; far = helmet + solid tail, no wisps; tails have mass at every tier.
@@ -885,7 +888,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (godot is installed at ~/.local/bin/godot: untried), clearance against a decimated game skin, core for loose
     long hair (only tied tails), the golfer as strands judged (hs_14: strands lose the designed clump shapes and
     fail the silhouette gate 4.1 / 6.6 mm vs 1.3 / 1.4; my read: keep stylised hair on locks, no migration), the
-    per-clump volumise try, round trip (`blender_strands.read` exists; nothing consumes it), strand measures in
+    round trip (`blender_strands.read` exists; nothing consumes it), strand measures in
     look_hair beyond the @@strands counts, hair_r3 / golfer card exports re-checked with the new cards.
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
