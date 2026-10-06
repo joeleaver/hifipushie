@@ -1713,6 +1713,118 @@ def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.
             f"guide(topic=\"skin\") stage 0 says what the body and head keys do.")
 
 
+def _human_base(name: str) -> tuple:
+    sp = store.load(name)
+    b = sp.get("base") or {}
+    if (b.get("body") or {}).get("source") != "human":
+        raise ValueError(f'{name}: not a one-mesh human (base.body.source "human"). Make one with human(name, ..., source="human"); '
+                         "the measuring and fitting tools read the one mesh's own landmarks.")
+    return sp, b
+
+
+def _human_apply(name: str, sp: dict, new_base: dict, rep: dict, note: str, force: bool, save: bool, st0, focus=None) -> list:
+    from . import humanfit
+    ok = rep["integrity"]["ok"]
+    text = humanfit.report_text(rep)
+    saved = ""
+    if save and (ok or force):
+        v = store.save(name, {**sp, "base": new_base}, note)
+        saved = f"saved {name} v{v}" + ("" if ok else " (FORCED over a broken mesh)") + f". revert(\"{name}\", {v - 1}) undoes it."
+    elif save:
+        saved = "NOT SAVED: the mesh would be broken (the lines above). Ask for less, release fewer measures, or force=True."
+    else:
+        saved = "not saved (save=False): a dry run."
+    im = humanfit.head_sheet(st0, humanfit.state(new_base), focus=focus)
+    return [_png(im), text + "\n" + saved + "\n(The picture: before | after | where vertices moved. look(name) shows the whole "
+            "dressed figure: look at it before going on.)"]
+
+
+@mcp.tool(structured_output=False)
+def measure_human(name: str, since: int | None = None, picture: bool = True):
+    """A one-mesh human MEASURED: the named measures an edit can be stated in (body in cm: stature, heads tall,
+    breadths, girths, limb lengths; face in mm from its landmarks: interocular, face / jaw / chin width, eye width and
+    height, nose length / width / projection, philtrum, mouth width, lip and chin height...; ratios as "a/b"), the
+    integrity gates (folded faces, edge stretch at lids / lips / nose / ears / the neck bridge, lids over the eyeballs,
+    lips not crossed, plausibility in sigma) and a clay picture of the head. since = an earlier version number: what
+    changed since then, as the side-effects report every edit gives (all measures before -> after, UNINTENDED flags).
+    Work like this: measure -> change ONE thing with fit_human / nudge_human -> read the INTEGRITY and UNINTENDED lines
+    and look at the whole picture -> only then go on. A fit matches shape; much of a style is shading, line and paint."""
+    from . import humanfit
+    sp, b = _human_base(name)
+    st = humanfit.state(b)
+    text = humanfit.verdict(humanfit.integrity(b, st)) + "\n" + humanfit.table(st["measures"])
+    st0 = None
+    if since is not None:
+        old = json.loads((store.HOME / name / "history" / f"{int(since):04d}.json").read_text())
+        old = old.get("spec", old)
+        st0 = humanfit.state(old["base"])
+        text += f"\nsince v{since}:\n" + humanfit.effects_text(humanfit.side_effects(st0, st, set()), top=30)
+    text += "\nlandmarks for nudge_human: " + ", ".join(humanfit.LANDMARKS) + ", eye.L, eye.R"
+    if not picture:
+        return text
+    return [_png(humanfit.head_sheet(st0, st) if st0 is not None else humanfit.head_sheet(st)), text]
+
+
+@mcp.tool(structured_output=False)
+def fit_human(name: str, set: dict | str, free: list[str] | None = None, release: list[str] | None = None,
+              force: bool = False, save: bool = True, note: str = ""):
+    """Set MEASURES on a one-mesh human and let the solver find the sliders: set = {"nose_width": 34} (a value),
+    {"eye_width": "+2"} (a change), {"jaw_width": "x0.95"}, {"eye_width/face_width": 0.19} (a ratio); several at once
+    are solved together. free: ["identity"] (default: the face's GNM identity components), "body" (weight, muscle,
+    height) for body measures. It is a MINIMAL-CHANGE solve: every measure you did not name is held, landmarks far
+    from the ones involved are held in place, and the step stops where a measure that wasn't asked for would move
+    more than twice its tolerance or an identity component would leave the plausible range (2.6 sigma). So a request
+    the face can't meet comes back PARTLY met with the residual: it is not obeyed blindly. release = measures you
+    allow to move; force = widen the range and save even a broken mesh. The reply leads with INTEGRITY: ok / BROKEN,
+    lists what else moved (UNINTENDED), and shows before | after | where vertices moved. A broken result is not
+    saved. Requests like "eyes three times wider" are a STYLE (style sliders), not an identity: they come back held."""
+    from . import humanfit
+    sp, b = _human_base(name)
+    want = _spec_arg(set) if isinstance(set, str) else dict(set)
+    st0 = humanfit.state(b)
+    nb, rep = humanfit.solve(b, want, free=tuple(free or ("identity",)), force=force, release=tuple(release or ()))
+    pts = sorted({i for k in want for p in k.split("/") if p.strip() in humanfit.FACE for i in humanfit._points(p.strip())})
+    focus = st0["L"][pts].mean(0) if pts else None
+    return _human_apply(name, sp, nb, rep, note or f"fit_human {json.dumps(want)}", force, save, st0, focus)
+
+
+@mcp.tool(structured_output=False)
+def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: list[float] | None = None,
+                radius: float = 0.015, force: bool = False, save: bool = True, note: str = ""):
+    """Direct manipulation: move ONE face landmark by `move` [x, y, z] in metres (x = its left, -y = forward, z = up)
+    or `to` a world point; every other landmark is held and a side landmark's mirror moves the mirrored way. The
+    identity sliders take what they can within the plausible range; the rest becomes a small smooth correction at
+    the landmark (a Gaussian push, radius m, kept through later changes) and is reported as "the sliders can't do
+    this": that names a slider the model lacks. Same reply as fit_human (INTEGRITY, UNINTENDED, the picture).
+    landmarks: chin, nose_tip, nose_base, nose_bridge, lip_upper, lip_lower, mouth_corner.L, jaw.L, jaw_back.L,
+    brow.L, brow_inner.L, eye_outer.L, eye_inner.L, lid_upper.L, lid_lower.L, ala.L, chin.L (and .R)."""
+    from . import humanfit
+    sp, b = _human_base(name)
+    st0 = humanfit.state(b)
+    nb, rep = humanfit.nudge(b, landmark, move=move, to=to, radius=radius, force=force)
+    return _human_apply(name, sp, nb, rep, note or f"nudge_human {landmark}", force, save, st0, st0["L"][humanfit.point_index(landmark)])
+
+
+@mcp.tool(structured_output=False)
+def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: list[str] | None = None,
+                    force: bool = False, save: bool = True, note: str = ""):
+    """Match a one-mesh human's FACE to reference images by named points: views = [{"image": path (optional, kept for
+    the record), "size": [w, h] (pixels), "yaw": 0 front / 45 three-quarter from its left / 90 its left side (a hint),
+    "points": {landmark: [u, v]}}] with u right, v down. One camera per view is fitted (pose + focal) and, with fit,
+    the identity sliders, all views sharing ONE face (a front + side + three-quarter turnaround fits jointly). Points:
+    the nudge_human landmarks, eye.L / eye.R (eyeball centres) or lm0..lm67 (the 68-point face convention, e.g. from
+    a detector). The reply: reprojection error per view in px and mm with the three worst points named, INTEGRITY,
+    what moved, the picture. Stored in <model>/human_refs.json with the fitted cameras. A single frontal image says
+    nothing about depth (nose projection, jaw depth stay as they were); the fit matches SHAPE at the points given."""
+    from . import humanfit
+    sp, b = _human_base(name)
+    vs = json.loads(views) if isinstance(views, str) else views
+    st0 = humanfit.state(b)
+    nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
+    (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
+    return _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0)
+
+
 @mcp.tool(structured_output=False)
 def skin_reference() -> str:
     """Everything the `skin` description takes: the anatomical zones (also usable by any paint layer as

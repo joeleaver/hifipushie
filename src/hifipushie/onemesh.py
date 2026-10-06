@@ -28,8 +28,10 @@ from pathlib import Path
 import numpy as np
 
 _CACHE: dict = {}
+DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
-HEAD_KEYS = ("toward",)  # head keys that are this module's own (the rest are base.gnm_head's)
+HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
+# rest are base.gnm_head's)
 
 
 def applies(base: dict | None) -> bool:
@@ -155,6 +157,11 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     shift = mid - 0.5 * (Jt[2] + Jt[3])
     fade = a["g_fade"].astype(float)[:, None]
     Vn = mid + (bd["B"] - eye_mid) @ R / s + fade * ((V - Vt) - shift)
+    if head.get("dim"):  # the sexes' difference a little past MakeHuman's own, on the head only (headfit's fields)
+        from . import headfit
+        d0 = {**head["dim"], "toward": 0.0, "amount": 1.0}
+        dv = headfit.field_vertices(d0) - headfit.field_vertices({**d0, "dimorphism": 0.0})
+        Vn = Vn + fade * dv * float(abs(J[2][0] - J[3][0]))
     Jn = np.array(J, float)
     Jn[2:4] = mid + (bd["eyes"] - eye_mid) @ R / s + ((J[2:4] - Jt[2:4]) - shift)
     return Vn, Jn
@@ -176,7 +183,26 @@ def head_desc(base: dict) -> dict:
               "simplify": float(hd.get("simplify", 0.0)) + float(st.get("simplify", 0.0)),
               **({"shape": {**st["shape"], **(hd.get("shape") or {})}} if st.get("shape") else {}),
               **({"simplify_keep": st["simplify_keep"]} if "simplify_keep" in st and "simplify_keep" not in hd else {})}
+    user = base.get("head") or {}
+    if hd.get("seed") is not None or user.get("features"):
+        # (headfit.py) the seed without its OWN age / sex / weight (the body gives the head those), and the features
+        # (nose, jaw, lips... as moves of the landmarks) solved in GNM's identity components + a small warp
+        from . import headfit
+        pseudo = {"body": {"source": "makehuman", **params},
+                  "head": {**{k: v for k, v in hd.items() if k in ("seed", "spread", "identity")}, "source": "gnm",
+                           "follow_body": True, **({"features": user["features"]} if user.get("features") else {})}}
+        f = headfit.follow(pseudo, pseudo["head"])
+        hd["identity"] = f["identity"]
+        if user.get("features"):
+            hd["warp"] = f["warp"]
+        hd.pop("seed", None)  # (it is in the identity now)
     hd["scale"] = round(bd["k"] * _reference()["io_scale"], 9)
+    dim = float(user.get("dimorphism", DIMORPHISM))
+    sex = float(np.clip(params.get("sex", 1.0), 0, 1))
+    if dim and abs(sex - 0.5) > 1e-6 and float(params.get("age", 25)) >= 12:
+        from . import makehuman
+        hd["dim"] = {"age": round(float(makehuman.table_age(params)), 3), "sex": sex, "weight": 0.5,
+                     "dimorphism": round(dim * float(np.clip((float(params.get("age", 25)) - 12) / 6, 0, 1)), 4)}
     hd["subdivide"] = 0
     hd["bound"] = {"body": params, "toward": toward}
     return hd
