@@ -50,7 +50,8 @@
    19,
    35
   ],
-  "ring": 0.0022
+  "ring": 0.0022,
+  "dead_keep": 8
  },
  "leaves": {
   "shape": "lobed",

@@ -1,0 +1,111 @@
+{
+ "about": "A deciduous shrub (hazel / dogwood type), 3 m: half a dozen stems from one stool, arching out, leafy to the ground. Grown like a tree (habit.stems); start other bushes from it",
+ "age": 7,
+ "habit": {
+  "stems": 6,
+  "stem_angle": 24,
+  "years_per_step": 1.0,
+  "unit": 0.2,
+  "vigour": 4.2,
+  "apical": [
+   0.54,
+   0.5,
+   0.5
+  ],
+  "shoot_max": [
+   2,
+   2,
+   2
+  ],
+  "angle": [
+   42,
+   45
+  ],
+  "tropism": [
+   0.3,
+   0.12,
+   0.0
+  ],
+  "jitter": [
+   0.14,
+   0.28,
+   0.3
+  ],
+  "light": 0.3,
+  "shed": 0.05,
+  "bud_life": 4,
+  "max_order": 3,
+  "clear": 0.0,
+  "sag": 0.9,
+  "ring": 0.0008,
+  "pipe": 2.3,
+  "flare": 1.15,
+  "bud_break": [
+   0.8,
+   0.7,
+   0.8
+  ],
+  "uneven": [
+   0.25,
+   0.3,
+   0.3
+  ],
+  "shadow": [
+   0.2,
+   1.6,
+   4
+  ]
+ },
+ "leaves": {
+  "shape": "ovate",
+  "length": 0.075,
+  "width": 0.7,
+  "serrate": 0.1,
+  "color": [
+   0.4,
+   0.55,
+   0.2
+  ],
+  "translucency": 0.4,
+  "autumn": [
+   0.8,
+   0.62,
+   0.15
+  ],
+  "twig": {
+   "length": 0.3,
+   "leaves": 9,
+   "arrangement": "alternate",
+   "angle": 50,
+   "per_m": 7,
+   "steps": 4,
+   "spread": 45,
+   "up": 0.2,
+   "droop": 0.2,
+   "min_order": 0,
+   "face": 0.5
+  },
+  "card": {
+   "twig": {
+    "leaves": 36,
+    "side_shoots": 4,
+    "side_angle": 38
+   },
+   "scale": 1.1
+  }
+ },
+ "bark": {
+  "kind": "lenticel",
+  "color": [
+   0.42,
+   0.36,
+   0.3
+  ],
+  "twig_color": [
+   0.4,
+   0.34,
+   0.24
+  ],
+  "scale": 0.4
+ }
+}

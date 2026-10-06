@@ -5,6 +5,7 @@ import numpy as np
 from hifipushie import veg_bark, veg_leaf, veg_mesh, vegetation as v
 
 SMALL = {"species": "birch", "age": 22}
+TREES = [sp for sp in v.species() if v.preset(sp).get("plant", "tree") == "tree"]  # grown; the others are assembled (veg_small)
 
 
 def _curve(path, T):
@@ -136,9 +137,9 @@ def test_habit_words():
 
 
 def test_species_presets_grow():
-    for sp in v.species():
+    for sp in TREES:
         T = v.grow({"species": sp})
-        assert 1000 < T["stats"]["nodes"] < 80000, (sp, T["stats"])
+        assert (200 if sp == "shrub" else 1000) < T["stats"]["nodes"] < 80000, (sp, T["stats"])
         assert T["stats"]["grow_s"] < 20, sp
     try:
         v.grow({"species": "oak", "habit": {"nonsense": 1}})
@@ -171,7 +172,7 @@ def test_leaves_and_twigs():
         assert abs(M["V"][:, 0].min() + M["V"][:, 0].max()) < 1e-9  # symmetric
     lob, ova = veg_leaf.leaf_mesh({"shape": "lobed"}), veg_leaf.leaf_mesh({"shape": "ovate"})
     assert len(lob["V"]) > len(ova["V"])  # lobes need stations
-    for sp in v.species():
+    for sp in TREES:
         lf = v.resolve({"species": sp})["leaves"]
         a, b = veg_leaf.twig_mesh(lf, 0), veg_leaf.twig_mesh(lf, 1)
         assert a["F"].max() < len(a["V"]) and len(a["mat"]) == len(a["F"]) and len(a["col"]) == len(a["V"])
@@ -529,7 +530,7 @@ def test_boll_dead_roots_and_habit_extras():
     assert np.std(seg(c)) > 1.5 * np.std(seg(a))  # limbs at their own pace
     for sp in v.species():  # every preset grows something sound
         t = v.grow({"species": sp, "age": 12})
-        assert t["stats"]["nodes"] > 5 and np.isfinite(t["pos"]).all(), sp
+        assert t["stats"]["nodes"] > (1 if t.get("clump") else 5) and np.isfinite(t["pos"]).all(), sp
 
 
 def test_budget_keeps_marked_wood_and_cards_on_wood():
@@ -703,6 +704,65 @@ def test_whorls_rings_and_creeping_branchlets():
     at = veg_leaf.atlas(v.resolve({"species": "scots_pine"})["leaves"])
     c = at["cards"][0]
     assert len(c["F"]) > 14 and np.ptp(c["V"][:, 0]) > 0.1 and np.ptp(c["V"][:, 2]) > 0.1
+
+
+def test_ground_and_stand_forms():
+    # nothing under the ground: an open-grown spruce's lowest limbs lie along it, its twigs' tips stay above it
+    S = {"species": "norway_spruce", "age": 44}
+    op = v.grow(S)
+    assert op["pos"][2:, 2].min() > 0 and op["stats"]["on_ground"] >= 0
+    tw = veg_leaf.place(op)
+    tl = v.resolve(S)["leaves"]["twig"]["length"]
+    assert (tw["pos"][:, 2] + tw["frame"][:, 2, 1] * tl * tw["scale"]).min() > -0.01
+    up = v.grow({**S, "environment": {"ground": {"level": 1.0}}})  # the plane is a parameter
+    assert up["pos"][up["order"] > 0][:, 2].min() > 1.0
+    # one word for where it stands: an interior tree has a higher crown base and keeps dead stubs; an edge tree is one-sided
+    inner = v.grow({**S, "environment": {"setting": "forest"}})
+    edge = v.grow({**S, "environment": {"setting": "edge", "open_side": [1, 0]}})
+    low = lambda t: float(np.percentile(veg_leaf.place(t)["pos"][:, 2], 5)) / t["height"]
+    assert low(inner) > low(op) + 0.2 and inner["stats"]["dead_stubs"] > 10 and op["stats"]["dead_stubs"] == 0
+    assert inner["dead"].any() and not inner["leafy"][inner["dead"]].any()
+    ex = veg_leaf.place(edge)["pos"]
+    lowx = ex[ex[:, 2] < 0.4 * edge["height"]][:, 0]
+    assert len(lowx) and (lowx > 0).mean() > 0.7  # foliage down the open side
+    # a pine sheds cleaner than a spruce
+    assert v.resolve({"species": "scots_pine"})["habit"]["dead_keep"] < v.resolve(S)["habit"]["dead_keep"]
+
+
+def test_small_plants_are_assembled():
+    from hifipushie import veg_small, veg_export
+    clumps = [sp for sp in v.species() if v.preset(sp).get("plant") == "clump"]
+    assert {"meadow_grass", "fern", "daisy", "clover", "feather_palm"} <= set(clumps)
+    for sp in clumps:
+        T = v.grow({"species": sp})
+        tw = veg_leaf.place(T)
+        m = veg_small.measures(T)
+        assert T.get("clump") and len(tw["pos"]) == m["cards"] > 5 and np.isfinite(tw["frame"]).all(), sp
+        assert np.allclose(np.linalg.det(tw["frame"]), 1, atol=1e-6), sp  # proper frames
+        at = veg_leaf.atlas(T["spec"]["leaves"])
+        assert tw["card"].max() < len(at["cards"]), sp
+        assert np.array_equal(v.grow({"species": sp})["twigs"]["pos"], tw["pos"])  # the same plant every time
+        assert not np.array_equal(v.grow({"species": sp, "seed": 2})["twigs"]["pos"], tw["pos"])
+    g = v.grow({"species": "meadow_grass"})
+    assert 0.3 < g["height"] < 0.8 and veg_small.measures(g)["card_elevation_p10_50_90"][1] > 55  # a tuft stands
+    assert veg_small.measures(v.grow({"species": "clover"}))["cover_from_above"] > 0.6  # a groundcover covers
+    p = v.grow({"species": "feather_palm"})
+    assert p["height"] > 6 and (p["order"] == 0).sum() > 8 and 0.2 < 2 * p["radius"][1] < 0.6  # a trunk under a crown
+    # parts: several pictures in one atlas, each layer drawing its own
+    pc = veg_leaf.part_cards(v.resolve({"species": "daisy"})["leaves"])
+    d = v.grow({"species": "daisy"})
+    assert set(pc) == {"main", "head", "stemleaf"} and set(np.unique(d["twigs"]["card"])) <= set(sum(pc.values(), []))
+    L = veg_export.foliage_mesh(g, veg_leaf.atlas(g["spec"]["leaves"]))
+    assert len(L["V"]) and L["N"][:, 2].mean() > 0.6 and L["reach"].max() < 1.0  # normals lean up; cards know their length
+    for bad in ({"clump": {"layers": [{"part": "nope"}]}}, {"clump": {"layers": [{"sizee": 1}]}}, {"clump": {"layers": []}}):
+        try:
+            v.grow({"species": "fern", **bad})
+            raise AssertionError(bad)
+        except ValueError:
+            pass
+    s = v.grow({"species": "shrub"})
+    feet = np.flatnonzero((s["parent"] == 0) & (np.arange(len(s["parent"])) > 0))
+    assert len(feet) == 6 and (s["order"][feet] == 0).all()  # six stems from one stool
 
 
 if __name__ == "__main__":

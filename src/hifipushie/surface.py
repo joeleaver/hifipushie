@@ -92,12 +92,15 @@ class Points:
         return out
 
 
-def hidden(streams: dict, X: np.ndarray, part: np.ndarray, part_names: list[str], voxel: float) -> np.ndarray:
-    """1 where a point is buried inside another part (skin under a solid shell, the back of an eyeball)."""
+def hidden(streams: dict, X: np.ndarray, part: np.ndarray, part_names: list[str], voxel: float,
+           apart: dict | None = None) -> np.ndarray:
+    """1 where a point is buried inside another part (skin under a solid shell, the back of an eyeball).
+    apart: {part: key}: only parts with the same key bury each other (a rigged export: a bag bound to the hip and
+    the shorts beside it move apart, so what one covers at rest shows when the leg lifts)."""
     out = np.zeros(len(X))
     for i, pn in enumerate(part_names):
         sel = np.flatnonzero(part == i)
-        others = [ps for o, ps in streams.items() if o != pn]
+        others = [ps for o, ps in streams.items() if o != pn and (apart is None or apart.get(o) == apart.get(pn))]
         if others and len(sel):
             f = sdf.field_at([p for ps in others for p in ps], X[sel])
             out[sel] = f < -0.5 * voxel

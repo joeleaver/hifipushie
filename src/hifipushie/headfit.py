@@ -181,6 +181,13 @@ def wanted(base: dict) -> dict:
     src = {"age": float(body.get("age", 25)), "sex": float(body.get("sex", 1.0)), "weight": float(body.get("weight", 0.5))} \
         if follow_on else dict(REF)
     out = {k: float(like.get(k, src[k])) for k in REF}
+    if out["age"] < 25 and (follow_on or "age" in like):  # the tables' ages are MakeHuman's straight-line ones
+        try:
+            from . import makehuman
+            out["age"] = round(makehuman.table_age({**({k: v for k, v in body.items() if k != "source"} if follow_on and "age" not in like else {}),
+                                                    "age": out["age"], "sex": out["sex"]}), 3)
+        except FileNotFoundError:  # (a `like` head without the MakeHuman pack: the age as given)
+            pass
     out.update(amount=(1.0 if f is True else float(f)) if follow_on else 1.0, follow=follow_on,
                features={k: float(np.clip(v, -1.5, 1.5)) for k, v in sorted(feats.items()) if v})
     return out
@@ -356,6 +363,11 @@ def follow(base: dict, head: dict) -> dict:
     out["warp"] = f["warp"]
     if "field" in f:
         out["field"] = f["field"]
+        fd = f["field"]
+        # the head is then its body's own head, millimetres apart: the body keeps its neck (base.surface)
+        if (_follows(base) and fd["amount"] == 1.0 and fd["toward"] == 1.0 and not head.get("like")
+                and head.get("neck", "own") != "tube"):
+            out["own_neck"] = True
     return out
 
 

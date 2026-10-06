@@ -526,7 +526,8 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         r = retopo.wrap(spec, log=tl)
         V, L, S = r["verts"], r["loops"], r["sizes"]
         names = list(ctx["streams"])
-        hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"]) > 0.5
+        hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"],
+                             ctx.get("apart")) > 0.5
         st = np.r_[0, np.cumsum(S)[:-1]]
         faces = [L[a:a + k] for a, k in zip(st, S)]
         kept = [f for f in faces if not hid[f].all()]
@@ -548,7 +549,8 @@ def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
     socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space."""
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
-    hidden = surface.hidden(ctx["streams"], z["verts"].astype(np.float64), z["part"], names, ctx["voxel"]) > 0.5
+    hidden = surface.hidden(ctx["streams"], z["verts"].astype(np.float64), z["part"], names, ctx["voxel"],
+                            ctx.get("apart")) > 0.5
     faces = z["faces"]
     keep = ~hidden[faces].all(1)
     dropped = {pn: int((~keep & (z["part"][faces[:, 0]] == i)).sum()) for i, pn in enumerate(names)}
@@ -1396,6 +1398,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         fine, tri_focus = fface.voxels(), fface.tri_focus()
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx = split(spec, resolution, instancing, log, min_share=1, voxels=fine)
+    if rig:  # parts bound to a joint of their own (parts.<p>.rig_bone) move apart from the rest: what they cover
+        # at rest is seen in a pose (the golfer's shorts had a hole where the hip bag sat, shown by a lifted thigh)
+        ctx["apart"] = {pn: (defs.get(ctx["origin"][pn]) or {}).get("rig_bone") for pn in ctx["streams"]}
     for pn, v in fine.items():
         if ctx["frames"].get(pn) and ctx["frames"][pn][1] <= v:
             log.append(f"{pn}: meshed at {ctx['frames'][pn][1] * 1000:.2f} mm for the face shapes (the lips' slit, teeth)")

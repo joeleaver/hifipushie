@@ -55,6 +55,7 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
     rkey = int((tree.get("spec") or {}).get("seed", 1))
     Vs, Fs, At, Ts, Us = [], [], [], [], []
     base = 0
+    free = tree.get("free")  # per node: its axis starts at itself, not at its parent (veg_small's stalks round a foot)
     for a, b in zip(bounds[:-1], bounds[1:]):
         nodes = idx[a:b]
         r0 = rad[nodes[0]]
@@ -65,8 +66,10 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
         pts = np.vstack([P[root], P[nodes]])
         rr = np.concatenate([[min(r0 * 1.15, rad[root]) if root > 0 else r0], rad[nodes]])
         nid = np.concatenate([[nodes[0]], nodes])  # the node each ring belongs to (wind weights, per-node data)
+        if free is not None and free[nodes[0]] and len(nodes) > 1:  # a stalk standing on the ground by itself
+            pts, rr, nid = P[nodes], rad[nodes], nodes.copy()
         if simplify > 0 and len(pts) > 2:  # fewer rings: drop nodes the axis runs nearly straight through (within
-            keep_ = _rdp(pts, simplify * np.maximum(rr, 0.004), rr)  # `simplify` x its radius), and keep its taper
+            keep_ = _rdp(pts, simplify * np.clip(rr, 0.004, 0.12), rr)  # `simplify` x its radius), and keep its taper
             pts, rr, nid = pts[keep_], rr[keep_], nid[keep_]
         foot = root == 0 and order[nodes[0]] == 0
         n_under = 0

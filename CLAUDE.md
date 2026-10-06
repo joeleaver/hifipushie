@@ -376,6 +376,65 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     with maps + test in test_face_shapes; (2) goblin_anat and troll real exports audited (never run); (3) the
     goblin: its model must be fixed (arms clear), the tool says so; "fail soft" weights for fused limbs not built;
     (4) kinked smile corners at 15k; (5) the throat card; (6) hem bones; (7) a rig check in a real engine.
+  - Rig round 2 (2026-10-05/06, "rig2" agent, branch `rig2`; renders `rig_renders/wb_*`; exports in
+    /mnt/data/hifipushie/rig2/exp_*; scratch in the session scratchpad `rig2/`: run.sh <script> (worktree code on
+    the main workspace), exp.py (export), sheets.py (posed sheets through `rig(glb=)`), reskin.py + cmp.py (re-skin
+    an export's meshes with the code as it is, audit, clay rows side by side), throat.py (head falloff variants +
+    fold numbers), lidline.py (blink gap per bin), geo.py (surface-geodesic weights spike), val/v.mjs (Khronos)).
+    - Throat: the head's falloff on base bodies is `HEAD_FALL` 0.2 x head size (~5 cm), was 3 cm. Skin fold
+      (`throat.py`: change of dihedral across the neck's edges) p99 at a Head-only 33 deg turn: bare human 40 -> 24
+      deg, golfer 20 -> 12; nod 56 -> 43. A longer falloff on the FRONT of the throat only (the card's idea)
+      changed nothing: the fold is at the sides and the nape. Kit characters and `rigid_near` keep 3 cm. A hard
+      Head-only nod still folds (the chin meets the chest on these short necks): share it with Neck.
+    - Blink: `_lid_seal`'s last step mapped the band either side of the line LINEARLY, which parked the upper
+      margin ~0.5 mm above the line and the lower ~0.75 mm below: the thin slit that still showed (gap between the
+      margins +0.4 .. +1.5 mm on the head mesh). `LID_PINCH` 3 draws the band to the line: -0.5 .. +0.2 mm.
+      `tests/test_face_shapes.py::test_blink_lids_meet` (head mesh and pyfqmr-decimated to a third). A per-bin
+      vertex measure is NOT valid on a 15k export (bins without a margin vertex read 25 mm): judge those by render.
+    - `parts.<p>.rig_drop = [joints]` (`rig.drop_joints`): a garment's influences pruned, their weight up the chain
+      to the nearest kept joint (a name without a side = both sides + the segment's twist joints). Golfer: shorts
+      ["Leg"], shirt ["ForeArm"], collar ["Arm"]: knee -> hem 17-27 mm and elbow -> sleeve 10 mm gone, the hem stays
+      a tube on the thigh (`wb_drop_knee90.png`). This is the cheap answer to hems; hem BONES still not built.
+    - Export: with rig, parts bound to their own joint (`rig_bone`) don't bury their neighbours' faces
+      (`surface.hidden(apart=)`, `ctx["apart"]`): the golfer's shorts had a HOLE where the hip bag sat, shown by
+      a lifted thigh (a dark patch in every earlier thigh sheet, read as shadow).
+    - Assets: `assets.pack(name, files=)`; `makehuman.root` needs only base.obj + default.mhskel, so a male body
+      opens with the pack as it was before the female targets and default_weights.mhw were added (s0urc3 BLOCKER);
+      missing weights -> distance weights + a WARNING in `rig` and the export log (`rig_template.weights_note`).
+    - Kit creatures, spike (`geo.py`, goblin_anat look build at 256): weights from SURFACE GEODESIC distance to each
+      bone's own skin (scipy dijkstra over the welded mesh, max with the Euclidean flesh distance) remove every
+      leak and rigid error (arm 5.9 mm rigid / 14 mm leak -> 0, thigh on thigh 5 mm -> 0 at full strength, 4-5 at
+      half), but blends get narrower and flipped triangles rise at elbows / knees (53 -> 130-270) and Spine2 (420).
+      Digit bleed is unchanged on a look build (fingers fused at 3.6 mm voxels). Not adopted yet: see HANDOVER.
+    - `rigid_near` (the face-shape pass in the export) skips parts no shape moves: the golfer's collar took Head
+      0.56 from the moved throat skin beside it and turned with the face (26 mm at 33 deg) in every export WITH
+      face shapes (Garrett too); the worn-part rule held in `skin_parts` only.
+    - Fresh exports (all Khronos 0 / 0): `exp_golfer` (dg_fix2, 30k / 2048; BEFORE rig_drop and the hole fix:
+      audit 10 BAD of 51, no digit bleed), `exp_gnm` (tw_gnm 15k + face shapes: 5 BAD), `exp_talk` (model
+      `workspace/wb_dg_talk` = dg_fix2 + `base.head.interior` + mouth_gap 0.003, no wrap topology; 36k + face
+      shapes, with rig_drop and the hole fix, BEFORE the rigid_near fix: its head-turn sheet shows the collar going
+      with the head). Sheets `wb_golfer_*` (head33 good; nod: a lump of nape skin between hair and collar from the
+      side; arm60 clean; thigh60 shows the hole; handroll105: forearm smooth, dark cracked patches where the hand
+      grips the disc, unverified), `wb_talk_*` (thigh60 clean: no hole, hem a tube; blink closed with a clean line;
+      jawopen good), `wb_gnm_*` (15k blink: closed, small dark notches at the eye corners; smile fine).
+      workspace/dg_fix2's spec now has the strap's rig_attach and the three rig_drops (v8).
+  - HANDOVER (rig2 agent, stopped by the session's usage limit, 2026-10-06). Branch `rig2`. Tests green on the
+    head: test_rig_twist, test_rig_audit, test_tooling, test_face_shapes. State of jobs: a goblin_anat export
+    (15k / 1024) was running into /mnt/data/hifipushie/rig2/exp_goblin_anat (log scratch `rig2/exp_goblin_anat.txt`)
+    when the queues were stopped: check whether it finished. NOT started: troll_anat export, the golfer re-export
+    (dg_fix2 with rig_drop + hole fix, into exp_golfer) and the talk re-export (rigid_near fix, into exp_talk):
+    `bash rig2/run.sh exp.py <model> <out dir> '<json kwargs>'`, one at a time (they take the heavy slot; Oxidegen's
+    exports hold it for long stretches). Next, in order: (1) those three exports, Khronos (`node val/v.mjs x.glb`),
+    sheets (`run.sh sheets.py <model> <glb> <prefix> [poses]`), the talk head-turn sheet must show the collar
+    staying; (2) kit creatures: run `run.sh geo.py goblin_anat 256 <glb>` (ours vs geodesic on the REAL export;
+    `GATE=1.5,3.5 MIX=1` = the gated variant, the promising one: Euclidean blend kept, an influence cut where the
+    path along the skin is over 1.5-3.5 limb radii), render both in the test pose (`reskin.py` saves weights,
+    `cmp.py` draws them side by side), adopt it in `rig.weights` if the renders agree with the audit; watch the
+    flipped triangles at Spine2 (413 on the look build: probably the pec / lat sheets) and digit bleed on the real
+    mesh; (3) the audit card (id cmuvoqmmf00f8k6f29lu2bvex, NOT the project id) and the throat card
+    (cmuvmbarn00f6k6f2jcsm4x7b) still need this round's numbers; the twist and rigid-face cards were already DONE;
+    (4) open: hem bones, the nape lump on a nod, the hand / disc dark patches, the arm's 20-25 mm on trapezius
+    skin near the neck (MakeHuman's own Arm weight; sheet looks fine), a rig check in a real engine.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
@@ -1155,6 +1214,87 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     FAILS seen: the baby's nose is torn open (a ragged hole at the nostrils: the field at age 1 turns the nostril
     walls inside out); the toddler has a long thin neck (graft) and an adult-ish torso; every face is the same stern
     seed; no fat rolls; rig / hands / skin zones on a baby NOT checked.
+  - Whole children and babies (2026-10-05/06, "humans3" agent, branch `humans3`; renders sk_30_* (clay line-up),
+    measures sk_30_ages_lineup_measures.txt; references `workspace/skin_refs/ages/` (README = spikes/humans/
+    REFERENCES.md): WHO stature + head circumference, Snyder 1977 children's anthropometry from NIST AnthroKids,
+    compiled by `spikes/humans/make_growth.py` into `growth.json`). The sk_21 line-up failed; by MEASUREMENT the
+    causes were not the ones guessed:
+    - Heads were NOT too small. The "reference" heads-in-height (4 / 5 / 6 / 6.75) were artists' chart numbers from
+      memory; measured children (WHO stature / Snyder vertex-to-chin) are 4.6 at 1 y, 5.4 at 3, 6.4 at 7, 7.1-7.3 at
+      11, 8.0 adult. MakeHuman's proportions were within 2-3% of that at every age. Its SIZES were wrong: baby ->
+      child (10 y, not 11) -> young (25 y) blended in straight lines of age gave 60 / 74 / 103 / 149 cm at 1 / 3 / 7 /
+      16 (medians 75 / 96 / 122 / 173 for boys), and a 20-year-old was a third child. `makehuman.grows`: under 25 (and
+      unless `base.body.growth: false`) the age slider is SOLVED so the shape's heads-in-height = `anthro.heads(age,
+      sex)`, then the body is scaled to `anthro.stature(age, sex)` x (MakeHuman's adult / WHO's at 19: 0.98 / 0.975,
+      so 19-24 = the 25-year-old). From 25 nothing changes (bit-identical). `height` still overrides the size.
+      After: stature, heads, head height, sitting height, trochanter height, hand length within 0-5% of the
+      references from 1 to 19 y, both sexes. Off: MakeHuman's women have narrow shoulders (joint breadth 0.85 of
+      the taped biacromial; men 0.94-0.97), small feet (0.84-0.89) and slim waists (0.85); under 1 year the shape
+      stays a one-year-old's (heads 4.7 vs ~4.4 at 6 months).
+    - `anthro.py`: `stature`, `head_height`, `heads`, `head_circumference`, `reference(age, sex)` (Snyder's segment
+      means scaled to WHO's stature), `measure(P, J, chin_z)` (the same measures off a body mesh; girths = hulls of
+      level slices cut at the shoulder joints, so toddlers' waists read small) and `table`.
+    - The toddler's "long thin neck", the baby "cropped below the chest": the graft's neck tube. A followed head
+      brought GNM's adult neck, and `_neck_tube` took the loop `loops[-1]` when no loop cleared the plane (a baby's
+      chin lies on its chest): `_stitch` then cut the shoulders and arms off with the head. Now a head that follows
+      its body fully (`follow_body` true, no `like`, toward 1; `headfit.follow` sets `own_neck`; `base.head.neck:
+      "tube"` opts out) keeps the body's own neck: no cut, no tube (`src` = every template vertex: the hand-made
+      weights reach the whole neck), the head's points above the plane eased onto the body's own head along their
+      normals over `OWN_REACH` 3.5 cm x scale, the two point sets cross-faded as before. The GNM field head is the
+      body's own head within 2.5 mm mean (p95 6-9 mm; chin landmark 5-8 mm higher than the table's: definition).
+    - The "torn nose" at age 1 / the pale thing in followed heads' nostrils / flecks at the lip corners: the
+      mouth fill (`base.inject`) was sized in absolute metres for a head of scale ~1.1; in a child's head (0.74-0.84)
+      it came out through the nostrils and lips. Scaled by the head's scale for followed heads.
+    - The stern thin mouth: `mouth_gap: 0` (the least-change lip closing + zip) presses the lips into a line. With
+      the key left out the lips are GNM's own, a hair parted and full: `humans.spec` leaves it out. (Face shapes
+      still need `mouth_gap` >= 0.002 + `interior`.)
+    - "Breasts" on the toddler / child: mostly clay shading of MakeHuman's modelled nipples and the sk_21 strip's
+      crop (arms cut off, so the torso read narrow-shouldered); MakeHuman's female child (10 y) does have a waist
+      (waist / hip girth 0.70 vs a woman's 0.69, a toddler's 0.86). `base.body.nipples: 0` moves the skin round each
+      nipple (found as the smallest mesh rings near the breast bone's tail) onto a quadratic sheet fitted through the
+      ring outside it. Relaxing those vertices puckered the pole; a centre found by "most forward" landed on the
+      belly, by "most proud of its ring" 2.5 cm off (the pole then stayed and the body's field creased in a star).
+    - `humans.py` + tool `human(name, age, sex, weight, muscle, height, seed, outfit, tone, skin, head)`: a whole
+      DRESSED person as an ordinary spec (body with growth, followed head, eyes + cornea, outfit, skin) and its
+      measures against the references in the reply. Outfits (`humans.outfit`): tee_shorts, onesie (under 2),
+      underwear, none: plain shell parts whose region boxes / sleeve cones / neck hole are placed from the body's
+      joints, crotch and chin. The garment option (`close` / `hang` / tube) made studs at the nipples' rings, ruffs
+      in the armpits and a line at the tube's top on small bodies: not used. Children get muscle 0.35, nipples 0.
+      `tests/test_humans.py` (references, proportions 1-22 y both sexes, adults / opt-out unchanged, dressed by
+      default, own neck). `spikes/humans/lineup.py [clay|skin]`.
+    - Never render or send a child's figure unclothed: the tool dresses by default; diagnosis used numbers and
+      scratch-only clay.
+    - The head tables (head_axes / head_fields) were sampled along MakeHuman's OWN straight-line ages, so a head
+      following a grown body is looked up at `makehuman.table_age(body)` (the age whose old slider has this shape:
+      a grown 11-year-old -> ~13); `like.age` under 25 is converted the same way when the pack is there.
+      spikes/headfit/make_axes.py / make_field.py pass `"growth": false`. base.VERSION 85.
+    - STATE AT THE STOP (usage limit, 2026-10-06; branch `humans3`, last commit = this note): tests green at commit
+      0f967b6 + the table_age fix (test_humans, test_headfit alone, test_skin, test_images, test_bodywarp; the last
+      seq1 run's test results are in the worktree's `scratchpad/seq1.log`, read it first). NOT YET REPORTED to main
+      and NOT JUDGED: the final clay line-up `workspace/skin_renders/sk_30_ages_lineup.png` + `_measures.txt` (14
+      dressed figures, front + side, at true height, faces under). The copy I last looked at still showed the OLD
+      composition (one face per person, 12 + 2 rows) and nipples as RINGS on the adults' tees although the script
+      (`spikes/humans/lineup.py`, face row = front + three-quarter, two rows) and the smoothing (r 0.04 H, blend
+      0.9 r) had changed: check whether the file was really rewritten (COMPOSE=1 re-lays the sheet from the
+      panels in the session scratchpad `humans3/lineup/` without rebuilding) before believing it.
+      My read of the previous render: babies, toddlers, 7s, 11s read as their ages and sizes (72-74 / 93-94 / 118-119 /
+      140-141 cm), whole, arms on, no long necks, no torn noses. Still failing: tees are skin-tight shells (adults'
+      muscles, navels and nipple rings print through: they read as body paint, not cloth); all faces are near one
+      face (seeds at spread 0.35-0.5 after the seed loses its sex / age part: raise spread per person or add
+      `features`); eyes read half shut at line-up size; a hatch of fine marks on the throat where head and body
+      point sets cross-fade (own neck: try a wider band than +-SEAM); faint ring where a nipple was; shorts' box hem.
+    - NEXT, in order: (1) verify + judge sk_30, SendMessage to "main" with branch, commit, tests, sheet path, the
+      measured table and a blunt read; (2) looser cloth without the garment option's studs (a patch over each
+      nipple pole, or fix `base.garment` closing at dense poles), varied faces, open eyes; (3) skin on
+      (`lineup.py skin`: needs scene syncs, heavy), per-person front / three-quarter / side rows, face close-ups
+      (look_skin stages take the base: check they handle own_neck and the onesie); (4) rig, hands, skin zones on a
+      baby (rig_template reads `src`: now every vertex has one; rig.humanoid Neck / Head on a neckless toddler
+      unchecked; retopo.graft_head / export topology "wrap" with own_neck UNTESTED and likely needs the no-cut
+      path); (5) the `human` tool in guide.md / the skill; (6) priority 2 list from the task (elder woman, fine
+      relief, oiliness, lashes, export of one human).
+    - Scratch (worktree `scratchpad/`, untracked): run.sh (env), one.py <age> <sex> <outfit> [zoom] (one clay human),
+      face.py (face variants), t4.py (bodies vs references table), t5.py (GNM head vs the body's own), quick.py (a
+      PIL clay view of a mesh without Blender), seq1.sh (line-up then tests).
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
@@ -2728,6 +2868,51 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     FAILS at low budgets: 8k pines (vg_63_pine_set_8k) and a 12k forest spruce (vg_63_forest_kit_12k) are heaps of
     fern / palm-frond cards: `cluster_leaves` enlarges a twig's picture, it does not show a bough. What artists do:
     bake a real limb end (its branchlets and twigs) into the card. Not built.
+  - Bough cards (`veg_bough.py`, 2026-10-06; the coordinator: "bake real limb ends, hierarchy by LOD"; sheets
+    vg_67_lods_*.png = full | 20k | 12k | 8k at 30 m and 100 m, vg_68_sets.png): `subtrees` (twigs carried and reach
+    along the wood per node), `plan(tree, cards)` = the smallest bough size whose roots (reach <= size < the
+    parent's) number no more than the budget's cards: every twig belongs to one bough; `atlas` bakes 4 of the tree's
+    own boughs (60-97th percentile by twigs x length) with `veg_leaf.rasterize`, each from its FACE and from its SIDE
+    (two crossed cards, 14 triangles); `place` stands a card on every bough root, scaled by its length against the
+    picture's. A bough's face = the plane its twigs spread in (PCA; thinnest axis): from above only, a spruce's
+    hanging combs were slats of a blind. `budget` sets `boughs` when keep < 0.25 (trees only; clumps keep
+    `cluster_leaves`); write_glb and the looks take them through `foliage_mesh(tw=)`; seasons through
+    `season_atlas(make=)`. Wood `simplify` tolerance is capped at 12 cm of radius (a budget straightened the pine's
+    sinuous trunk). Read: oak at 8k ~ the full tree at 100 m; pine good; spruce recognisable but gappy, a big card on
+    its leader. Not done: twig cards on top of boughs for mid LODs, depth / subsurface maps beyond the twig maps.
+  - Stage 3, small plants (`veg_small.py`, sheet vg_70_small_plants.png; guide section "Small plants"): ASSEMBLED,
+    not grown: `"plant": "clump"`, pictures = `leaves` + `leaves.parts` (one atlas), arrangement = `clump.layers`
+    (part, count, ring, lean, scale, facing, stem / stem_radius / bend / tilt, on + along, trunk; `clump.size`).
+    `grow` returns a tree-shaped dict (a tiny skeleton: stalks; `twigs` = its own card placements; `free` = stalks
+    that start at their own foot, read by `veg_mesh.tubes`), so looks, budgets, wind and export are the tree's.
+    Presets meadow_grass, fern, daisy, clover, feather_palm; `shrub` is grown (`habit.stems` 6 + `stem_angle`).
+    Clump normals lean up (`leaves.normals`), each card bends from its foot in its own phase (wind). Tools:
+    grow_plant / get_plant (layer keys) / look_plant (atlas | side | stand | above for a clump) / export_plant work;
+    report = `veg_tools._report_clump`. Read: all six read as what they are; fern thin, daisy leggy, clover sparse,
+    palm trunk a plain pole, grass seed heads too big. Not built: scatter on terrain, GPU blade grass, ivy, reeds.
+  - Ground + where it stands (2026-10-06, the user: branches went through the ground; forest-interior conifers are
+    bare below a live top; sheet vg_71_open_edge_interior.png): `vegetation.ground_at` (environment.ground level /
+    slope): wood under it is laid along it at the end of `grow` (stats `on_ground`), `veg_leaf.place` lifts twigs
+    whose tips would go under. `environment.setting` "open" | "edge" (+ `open_side`) | "forest": `habit.stand_shed`
+    is added to `shed` inside a stand (spruce 0.17: skirt in the open, live crown in the top half in a stand),
+    `habit.dead_keep` years (spruce 30, pine 10, oak 8, birch 3): first-order limbs the shade killed are remembered
+    in the shed step (`dead_log_`) and put back at the end as thin grey drooping 3-node stubs (`dead` wood).
+    Read: the three forms are plainly different and right in kind; stubs are pale straight spikes (no twigs, no
+    lichen), the edge spruce shows bare live limbs on its closed side, the stand from inside is sunlit with a
+    lawn floor. No forest-interior photo was fetched to put beside it.
+  - HANDOVER (2026-10-06, context full). Branch `vegetation2` (see git log; main merged in at 6f996de). Scratch
+    scripts are in this worktree's untracked `scratchpad/` (q.py, sweep.py, allsheet.py, sprview.py, lodsheet.py,
+    small.py, forest.py, kit.py, sprdiag.py, setpreset.py): copy what you need. NOT DONE, in the coordinator's order:
+    (1) spruce LODs: cap the leader's card, an inner core of darker cards near the trunk, faster atlas (PIL
+    rasterising 1900 needles x hundreds of twigs: 95-190 s; rasterise each twig variant once and composite);
+    (2) pine leader spike across a set's ages / seeds (cause: bud_break 0.15 leaves young tops bare; fix = every
+    whorl breaks and lower limbs are shed by shade: a re-tune); (3) the forest-kit picture with trees side by
+    side (pass `at=[[-18, 0], [0, 0], [18, 0]]` to look_plants in scratchpad/kit.py); (4) twig cards on top of
+    bough cards for mid LODs; (5) spruce width (photo w/h 0.58) and ground-hugging lowest limbs, pine limb girth
+    at the trunk, snow thickness / drift; (6) dead stubs with twigs and lichen, a dark forest floor in stand looks,
+    a forest-interior photo; (7) stage 5 styles (blob to photoreal), terrain integration (scatter, slopes).
+    The all-species sheet vg_66 predates the forest/ground changes (spruce shed, dead_keep): re-render first
+    (`scratchpad/allsheet.py <tag>`).
   - A sheet is not a heavy job (one EEVEE Blender): waiting for `resources.heavy` behind a cloth sim cost 25 min.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);

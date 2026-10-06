@@ -1,0 +1,99 @@
+{
+ "about": "A fern (male fern / bracken type), 60-80 cm: arching pinnate fronds in a shuttlecock from one crown, a few young ones upright in the middle",
+ "plant": "clump",
+ "age": 1,
+ "leaves": {
+  "shape": "lanceolate",
+  "length": 0.11,
+  "width": 0.24,
+  "fold": 0.1,
+  "curl": 0.1,
+  "petiole": 0.0,
+  "serrate": 0.25,
+  "hang": 0.0,
+  "color": [
+   0.3,
+   0.47,
+   0.16
+  ],
+  "translucency": 0.45,
+  "evergreen": false,
+  "autumn": [
+   0.62,
+   0.42,
+   0.16
+  ],
+  "twig": {
+   "length": 0.75,
+   "leaves": 60,
+   "arrangement": "pinnate",
+   "angle": 72,
+   "droop": 0.35,
+   "radius": 0.003,
+   "taper": 0.78,
+   "light": 1.0,
+   "variants": 3
+  },
+  "card": {
+   "variants": 3,
+   "size": 384,
+   "cross": 1,
+   "cup": -0.08,
+   "strips": 4,
+   "scale": 1.0
+  }
+ },
+ "bark": {
+  "kind": "lenticel",
+  "color": [
+   0.35,
+   0.3,
+   0.16
+  ],
+  "twig_color": [
+   0.4,
+   0.36,
+   0.18
+  ]
+ },
+ "clump": {
+  "layers": [
+   {
+    "name": "fronds",
+    "part": "main",
+    "count": 13,
+    "ring": [
+     0.0,
+     0.04
+    ],
+    "lean": [
+     30,
+     62
+    ],
+    "scale": [
+     0.8,
+     1.15
+    ],
+    "facing": "up"
+   },
+   {
+    "name": "young",
+    "part": "main",
+    "count": 4,
+    "ring": [
+     0.0,
+     0.02
+    ],
+    "lean": [
+     8,
+     24
+    ],
+    "scale": [
+     0.5,
+     0.75
+    ],
+    "facing": "up"
+   }
+  ]
+ }
+}
