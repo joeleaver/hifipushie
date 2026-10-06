@@ -3512,8 +3512,20 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # sides brought together; what crosses for it goes back
             Vs_, res["closures_seat"] = closuremod.seat(res["V"], M, Bp["pieces"], body_real,
                                                         fixed=np.isin(M["piece"], [M["names"].index(n_) for n_ in made_pieces(M, interfacing(Bp, M))]))
-            n0_ = int(_crossing_verts(res["V"], M).sum())
-            if int(_crossing_verts(Vs_, M).sum()) <= n0_:
+            # where laying the lap made the cloth cross itself, those vertices (and two rings round them) stay as
+            # they were; the rest of the lap is laid
+            was_ = _crossing_verts(res["V"], M)
+            bad_ = _crossing_verts(Vs_, M) & ~was_
+            if bad_.any():
+                A2_, B2_ = _graph(M)
+                for _r in range(2):
+                    gr_ = bad_.copy()
+                    gr_[A2_[bad_[B2_]]] = True
+                    gr_[B2_[bad_[A2_]]] = True
+                    bad_ = gr_
+                Vs_[bad_] = res["V"][bad_]
+                res["closures_seat"] = [dict(r_, kept_back=int(bad_.sum())) for r_ in res["closures_seat"]]
+            if int((_crossing_verts(Vs_, M) & ~was_).sum()) == 0:
                 res["V"] = Vs_
             else:
                 res["closures_seat"] = [dict(r_, reverted="it crossed the cloth") for r_ in res["closures_seat"]]
@@ -4457,6 +4469,7 @@ def report(gname: str, res: dict) -> str:
             L.append(f"     lap {r_['name']} laid closed after the sim: {r_['laid']} vertices of the over band moved "
                      f"{r_['moved_p50_mm']} mm (median; most {r_['moved_max_mm']}) onto the under layer; the sim had left "
                      f"its fastenings up to {sim_.get('gap_max_mm')} mm apart"
+                     + (f"; {r_['kept_back']} vertices kept back (laid, they crossed the cloth)" if r_.get("kept_back") else "")
                      + (f" ({r_['reverted']}: not applied)" if r_.get("reverted") else ""))
     if res.get("tells"):
         from . import cloth_layers

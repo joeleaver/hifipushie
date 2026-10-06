@@ -190,9 +190,10 @@ def band_mask(M: dict, pcs: dict, c: dict, side: str) -> np.ndarray:
     return mask
 
 
-LAY = 0.0012  # m: how far a closed lap's over layer lies off the under layer (two shirtings and a little air)
+LAY = 0.002  # m: how far a closed lap's over layer lies off the under layer (at 1.2 mm 1 cm facets cut through each other)
 SEAT_REACH = 0.03  # m past the band's inner line over which the over layer eases back to where the sim left it
-SEAT_MAX = 0.02  # m: a lap further open than this isn't a lap lying a little proud: left for the report to fail
+SEAT_MAX = 0.008  # m: a lap further open than this isn't a lap lying a little proud (the fronts parting above the
+# top button were 2-5 cm apart and at 20 mm some of that was "laid" 18 mm): left as the sim has it
 
 
 def _edge_dist(M: dict, pcs: dict, piece: str, arc: str) -> tuple[np.ndarray, np.ndarray]:
@@ -268,7 +269,7 @@ def seat(V: np.ndarray, M: dict, pcs: dict, body, fixed: np.ndarray | None = Non
         # the fronts part, as worn
         yb = M["uv"][vv[cl, 0], 1]
         y = M["uv"][sel, 1]
-        along = np.clip((y - (yb.min() - 0.04)) / 0.02, 0, 1) * np.clip(((yb.max() + 0.04) - y) / 0.02, 0, 1)
+        along = np.clip((y - (yb.min() - 0.025)) / 0.02, 0, 1) * np.clip(((yb.max() + 0.025) - y) / 0.02, 0, 1)
         t = np.clip((d - float(w_o)) / SEAT_REACH, 0, 1)
         wgt = along * (1 - t * t * (3 - 2 * t))
         act = wgt > 1e-3
@@ -295,10 +296,16 @@ def seat(V: np.ndarray, M: dict, pcs: dict, body, fixed: np.ndarray | None = Non
         for (va, vb), is_cl in zip(vv, cl):
             if not is_cl:
                 continue
-            dv = X[vb] - X[va]
+            # the button's own two sides: the over side LAY off the under side along the body's normal there (the
+            # band's lay above doesn't reach a top button whose sides the sim left 10 mm apart)
             n_ = N[pos[int(va)]] if int(va) in pos else np.zeros(3)
-            dv_t = dv - n_ * (dv @ n_)  # the in-surface part (the lay was set above)
+            if bn_ is not None:
+                n_ = bn_[tree.query(X[vb])[1]]
+            dv_t = X[vb] + n_ * LAY - X[va]
             g_ = float(np.linalg.norm(dv_t))
+            if g_ < 3e-4:
+                left.append(0.0)
+                continue
             if g_ > 0.012:
                 left.append(round(g_ * 1000, 1))
                 continue

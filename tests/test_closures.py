@@ -94,7 +94,7 @@ def test_a_closed_lap_is_laid_closed():
     before = closures.measure(V, M)[0]
     X, rows = closures.seat(V, M, pcs, None)
     after = closures.measure(X, M)[0]
-    assert before["gap_max_mm"] > 6 and after["gap_max_mm"] < 2.0 and after["ok"], (before, after)
+    assert before["gap_max_mm"] > 6 and after["gap_max_mm"] < 2.5 and after["ok"], (before, after)
     band = (piece == 0) & (uv[:, 0] < 0.028) & (uv[:, 1] < -0.1) & (uv[:, 1] > -0.3)
     assert np.abs(np.abs(X[band, 1]) - closures.LAY).max() < 4e-4  # the band lies 1.2 mm off the under front
     far = (piece == 0) & (uv[:, 0] > 0.12)
