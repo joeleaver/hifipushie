@@ -36,6 +36,13 @@ from scipy import ndimage
 VERSION = 2
 PRESETS = Path(__file__).with_name("vegetation_presets")
 
+DEAD_NODES = 600  # the most nodes remembered of one limb the shade killed
+# how a limb killed by shade decays over `habit.dead_keep` years (spec `deadwood` overrides): `break` = the share of its
+# length broken off by the end (never shorter than `stub` m), `twig` = [m, m] the radius under which twigs have fallen
+# when it has just died / at the end, `droop` = [deg, deg] how far it hangs down then, `bow` = how far it bows along its
+# length (m per m), `shrink` = barkless wood's girth against the living limb's
+DEAD = {"break": 0.75, "stub": 0.25, "twig": [0.0012, 0.009], "droop": [6, 28], "bow": 0.12, "shrink": 0.85}
+
 # every habit key, with what it means (the guide lists these); per-order lists repeat their last entry
 DEFAULT = {
     "plant": "tree",  # "tree" = grown (this module); "clump" = assembled from cards in layers (veg_small: grass, ferns, flowers, palms)
@@ -98,6 +105,7 @@ DEFAULT = {
     "trunk_taper": None,  # with trunk_diameter: the share of it the trunk loses by its top (0.1 = a column)
     "dead": [],  # [{a volume | "limb": name, "min_radius": m}]: wood that died and stayed: leafless, barkless, its thin ends gone
     "roots": None,  # {"count": 5, "spread": 2.0, "height": 0.8}: root flares at the foot (buttresses when tall)
+    "deadwood": None,  # how shade-killed limbs decay over habit.dead_keep years: see DEAD
     "cuts": [],  # [{"year", a volume, "every", "until_year", "sprouts"}]: cut then, and the tree sprouts from the cut
 }
 
@@ -130,7 +138,7 @@ HABIT_INFO = {
     "uneven": "0-0.5 per order: every axis grows at its own pace, +- this share (a ragged outline instead of a turned cone)",
     "slowing": "per order: growth steps after which an axis's new segments are half as long, a third at twice that... (0 = never). A spruce's hanging branchlets 3-5: they creep on for decades, so their young needles stay near the limb all along it",
     "stand_shed": "0-0.2 added to `shed` when the tree stands in a stand (setting forest or edge): a spruce keeps its skirt in the open (shed 0) and self-prunes to a top third of live crown in a forest (0.15-0.2)",
-    "dead_keep": "years a limb killed by shade stays on the trunk as a dead grey stub before it falls: Norway spruce 25-40 (a stand's interior is a ladder of dead whorls), Scots pine 8-12 (it sheds cleaner), oak 5-10, birch 2-4; 0 = they fall at once",
+    "dead_keep": "years a limb killed by shade stays on the trunk as dead wood (twiggy at first, a short spur at the end: `deadwood`) before it falls: Norway spruce 30-45 (a stand's interior is a ladder of dead whorls), Scots pine 15-25 (it sheds cleaner), oak 5-10, birch 2-4; 0 = they fall at once. Guesses: dead branches persist for decades (Makinen 1999), the years per species are not sourced",
     "stems": "1-12 stems rising from the foot: a shrub or a multi-stemmed tree (each is a trunk: order 0)", "stem_angle": "deg the extra stems lean outward at the foot (10 tight, 35 open)",
     "ground_clear": "0.03-1.5 m over the ground no shoot grows under: hanging shoots (a weeping willow's curtains) stop there (0.4-1.2 = a browse or mowing line), a limb that sags to the ground rests on it and its growing end turns up",
     "tip_life": "per order: growth steps an axis keeps extending, 0 = for ever (short-lived hanging branchlets: 6-10; limbs that stop reaching: 20-30)", "clear": "0-6 m of trunk that never branches",
@@ -386,7 +394,7 @@ def _shed(parent, main, born, pin, Q, size, cut, step, thr, age, dead):
             dead[i] = True
         elif cut[i]:
             dead[i] = True
-        elif (not main[i]) and (not pin[i]) and step - born[i] >= age and Q[i] < thr * size[i]:
+        elif (not main[i]) and (not pin[i]) and step - born[i] >= age and Q[i] < thr[i] * size[i]:
             dead[i] = True
         else:
             dead[i] = False
@@ -862,15 +870,19 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         top = P[:, 2].max()
         if stand is not None:  # a closed stand: the canopy's top rises with the tree; light falls off below it and away from the gap
             gap = stand.get("gap", 0.18) * max(top, 4.0)
+            if env.get("spacing") or stand.get("spacing"):  # m between the stand's trees: its own share of the canopy
+                gap = min(gap, 0.55 * float(env.get("spacing") or stand["spacing"]) / unit)
             depth = stand.get("depth", 0.35) * max(top, 4.0)
             zc = top * stand.get("height", 1.0)
             r = np.linalg.norm(P[:, :2], axis=1)
             side = np.clip((r - gap) / max(gap, 1e-6), 0, 1) * np.clip((zc - P[:, 2]) / max(depth, 1e-6), 0, 1.5)
             below = np.clip((zc - depth - P[:, 2]) / max(depth, 1e-6), 0, 1) * stand.get("floor", 0.5)
+            closed = np.ones(n)
             if stand.get("open_side") is not None:  # the open side keeps its light
                 od = _norm(np.asarray(list(stand["open_side"])[:2], float))
                 we = np.clip(0.5 - 0.5 * (P[:, :2] @ od) / max(gap, 1e-6), 0, 1)
                 side, below = side * we, below * we
+                closed = we
             Qn = np.clip(Qn - stand.get("strength", 1.0) * (side + below), 0, 1)
             V[:, :2] -= 0.5 * stand.get("strength", 1.0) * side[:, None] * _norm(np.c_[P[:, 0], P[:, 1]] + 1e-9)
         for nb_ in env.get("neighbours") or []:  # crowns beside it: {"at": [x, y], "height", "radius"} (m)
@@ -913,15 +925,35 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
         _distribute(T.parent, T.main, T.order, Q, qtip, qlat, lam, h["vigour"] * Q[0], v, vtip, vlat)
         # ---- 4 (before growth, on last step's light). shedding and pruning
         dead = np.zeros(n, bool)
-        _shed(T.parent, T.main, T.born, T.pin, Q, size, cut, step, h["shed"] + (h["stand_shed"] if stand is not None else 0.0), h["shed_age"], dead)
+        thr_ = np.full(n, float(h["shed"]))
+        if stand is not None:  # a stand's shade-bearers self-prune (`stand_shed`); on an edge's open side they keep their skirt
+            thr_ = thr_ + h["stand_shed"] * closed
+        _shed(T.parent, T.main, T.born, T.pin, Q, size, cut, step, thr_, h["shed_age"], dead)
         if dead.any():
             # the pipe model remembers what it carried
             area = np.zeros(n)
             _pipe(T.parent, T.mem, 1.0, h["pipe"], area)
             first = dead & ~dead[T.parent]
-            if h["dead_keep"]:  # a limb off the trunk dies but stays for years: remembered, put back as a stub at the end
-                for i_ in np.flatnonzero(first & (T.order == 1) & (T.order[T.parent] == 0)):
-                    dead_log_.append((int(T.key[T.parent[i_]]), (T.pos[i_] - T.pos[T.parent[i_]]).copy(), float(size[i_]), step, int(T.key[i_])))
+            if h["dead_keep"]:  # a limb off the trunk dies but stays for years: its wood is remembered as it was, and
+                # put back at the end as dead wood, as far decayed as its years (twigs fallen, broken back, drooping)
+                roots_ = first & (T.order == 1) & (T.order[T.parent] == 0)
+                if stand is not None:  # in a stand the branches a limb loses stay on it too: its dead twigs
+                    roots_ |= first & (T.order >= 2)
+                roots_ = np.flatnonzero(roots_)
+                if len(roots_):
+                    own = np.full(n, -1)
+                    own[roots_] = roots_
+                    for j_ in np.flatnonzero(dead):  # (parents come first)
+                        if own[j_] < 0:
+                            own[j_] = own[T.parent[j_]]
+                    rad_m = area * h["tip_radius"] + (step + 1 - T.born) * (yps * _per(ring_l, T.order))
+                    for i_ in roots_:
+                        ix = np.flatnonzero(own == i_)[:DEAD_NODES]
+                        loc = {int(q_): k_ for k_, q_ in enumerate(ix)}
+                        dead_log_.append({"pk": int(T.key[T.parent[i_]]), "step": step, "key": T.key[ix].copy(), "root": int(T.order[i_]),
+                                          "pos": (T.pos[ix] - T.pos[T.parent[i_]]) * unit,
+                                          "par": np.array([loc.get(int(T.parent[q_]), -1) for q_ in ix]), "rad": rad_m[ix].copy(),
+                                          "order": T.order[ix].copy(), "axis": T.axis[ix].copy(), "born": T.born[ix].copy()})
             np.add.at(T.mem, T.parent[first], 0.6 * area[first] ** h["pipe"])
             keep = ~dead
             new = T.keep(keep)
@@ -1202,7 +1234,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             keep[i] &= keep[par0[i]]
         new = -np.ones(len(keep), np.int64)
         new[keep] = np.arange(int(keep.sum()))
-        for k_ in ("pos", "radius", "order", "born", "axis", "key", "tip", "leafy", "main", "pin", "dead"):
+        for k_ in ("pos", "radius", "order", "born", "axis", "key", "tip", "leafy", "main", "pin", "dead", "shade_dead"):
             out[k_] = out[k_][keep]
         par = new[par0[keep]]
         par[0] = 0
@@ -1235,28 +1267,59 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
                 q_ = p_
         out["radius"] = r_ * fac
     out["dead"] = np.zeros(n, bool)
-    if dead_log_:  # the stubs of limbs the shade killed within `dead_keep` years: thin, grey, leafless, drooping, broken short
+    out["shade_dead"] = np.zeros(n, bool)
+    if dead_log_:  # the limbs the shade killed within `dead_keep` years, as dead wood on the trunk
         where = {int(k_): i_ for i_, k_ in enumerate(out["key"])}
         add = {k_: [] for k_ in ("pos", "parent", "radius", "order", "born", "axis", "key")}
-        for pk, d0, size_, st_, k0 in dead_log_:
-            age_ = (steps - st_) * yps
-            if age_ > float(h["dead_keep"]) or pk not in where:
+        keep_y = float(h["dead_keep"])
+        dk = {**DEAD, **(s.get("deadwood") or {})}
+        n_add = 0
+        for L_ in sorted(dead_log_, key=lambda e_: (e_["root"], e_["step"])):  # (limbs first: their dead branches hang on them)
+            age_ = (steps - L_["step"]) * yps
+            if age_ > keep_y or L_["pk"] not in where or len(L_["pos"]) == 0:
                 continue
-            u1, u2 = float(_u(_child(np.uint64(k0), 71), 1)), float(_u(_child(np.uint64(k0), 72), 1))
-            ln_ = min(0.35 + 0.22 * math.sqrt(size_) * unit * 3, 2.6) * (0.5 + 0.5 * u1) * (1 - 0.6 * age_ / float(h["dead_keep"]))
-            dd = _norm(_norm(d0) * [1, 1, 0.3] + [0, 0, -0.25 - 0.5 * age_ / float(h["dead_keep"])])
-            p_ = where[pk]
-            r_ = float(np.clip(0.03 * math.sqrt(size_) * h["tip_radius"] / 0.004, 0.005, 0.03)) * (0.7 + 0.6 * u2)
-            axes.append({"order": 1, "guide": None, "born": int(st_), "dead": True})
-            base_ = out["pos"][p_]
-            for q_ in range(1, 4):
-                add["pos"].append(base_ + dd * (ln_ * q_ / 3) + [0, 0, -0.06 * ln_ * (q_ / 3) ** 2])
-                add["parent"].append(p_ if q_ == 1 else n + len(add["pos"]) - 2)
-                add["radius"].append(r_ * (1 - 0.22 * q_))
-                add["order"].append(1)
-                add["born"].append(int(st_))
-                add["axis"].append(len(axes) - 1)
-                add["key"].append(_child(np.uint64(k0), 80 + q_))
+            f_ = age_ / keep_y  # 0 = just died .. 1 = about to fall
+            Pd, pr_, rd = L_["pos"], L_["par"], L_["rad"]
+            m0 = len(Pd)
+            u1, u2, u3 = (float(_u(_child(np.uint64(L_["key"][0]), 70 + q_), 1)) for q_ in range(3))
+            seg_ = np.linalg.norm(Pd - np.where(pr_[:, None] >= 0, Pd[np.maximum(pr_, 0)], 0.0), axis=1)
+            along = np.zeros(m0)
+            for q_ in range(m0):
+                along[q_] = seg_[q_] + (along[pr_[q_]] if pr_[q_] >= 0 else 0.0)
+            reach = float(along.max())
+            # broken back with the years (the oldest, lowest whorls are short spurs), fine twigs first
+            ok_ = along <= max(reach * (1 - dk["break"] * f_ ** 0.8) * (0.7 + 0.3 * u1), min(reach, dk["stub"]))
+            un = _u(L_["key"], 73)
+            ok_ &= (rd >= (dk["twig"][0] + (dk["twig"][1] - dk["twig"][0]) * f_) * (0.5 + un)) | (np.arange(m0) == 0)
+            for q_ in range(1, m0):
+                ok_[q_] &= pr_[q_] >= 0 and ok_[pr_[q_]]
+            ok_[0] = True
+            # it hangs: turned down about its foot, and bowed down along its length
+            hd = _norm(Pd[min(m0 - 1, 2)] * [1, 1, 0] + 1e-9)
+            ang = math.radians(dk["droop"][0] + (dk["droop"][1] - dk["droop"][0]) * f_) * (0.6 + 0.8 * u2)
+            hx = Pd @ hd
+            ca_, sa_ = math.cos(ang), math.sin(ang)
+            Pn = Pd + hd[None] * (hx * ca_ + Pd[:, 2] * sa_ - hx)[:, None]
+            Pn[:, 2] = -hx * sa_ + Pd[:, 2] * ca_ - dk["bow"] * (0.4 + 0.6 * f_) * along ** 2 / max(reach, 1e-6)
+            w_ = where[L_["pk"]]
+            base_ = out["pos"][w_] if w_ < n else np.asarray(add["pos"][w_ - n])
+            new_i = -np.ones(m0, np.int64)
+            amap = {}
+            for q_ in np.flatnonzero(ok_):
+                new_i[q_] = n + n_add
+                where.setdefault(int(L_["key"][q_]), n + n_add)
+                n_add += 1
+                a0 = int(L_["axis"][q_])
+                if a0 not in amap:
+                    amap[a0] = len(axes)
+                    axes.append({"order": int(L_["order"][q_]), "guide": None, "born": int(L_["born"][q_]), "dead": True})
+                add["pos"].append(base_ + Pn[q_])
+                add["parent"].append(where[L_["pk"]] if pr_[q_] < 0 else int(new_i[pr_[q_]]))
+                add["radius"].append(max(float(rd[q_]) * dk["shrink"], 0.0015))
+                add["order"].append(int(L_["order"][q_]))
+                add["born"].append(int(L_["born"][q_]))
+                add["axis"].append(amap[a0])
+                add["key"].append(_child(np.uint64(L_["key"][q_]), 80))
         m_ = len(add["pos"])
         if m_:
             out["pos"] = np.vstack([out["pos"], np.asarray(add["pos"])])
@@ -1269,6 +1332,7 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
             for k_, val in (("tip", False), ("leafy", False), ("main", True), ("pin", False)):
                 out[k_] = np.concatenate([out[k_], np.full(m_, val)])
             out["dead"] = np.concatenate([out["dead"], np.ones(m_, bool)])
+            out["shade_dead"] = np.concatenate([np.zeros(n, bool), np.ones(m_, bool)])  # (not an artist's dead wood)
             n += m_
             out["ends"] = np.bincount(out["parent"][1:], minlength=n) == 0
             for i_ in range(n - m_, n):
@@ -1350,7 +1414,7 @@ def silhouette(tree: dict, azimuth: float = 0.0, px_per_m: float = 20.0, leaves:
     lx = lz = lr = np.zeros(0)
     if leaves:  # each twig as a disc of about its own size
         from . import veg_leaf
-        tw = veg_leaf.place(tree)
+        tw = veg_leaf.place_live(tree)
         if len(tw["pos"]):
             tl = {**veg_leaf.TWIG, **(tree["spec"]["leaves"].get("twig") or {})}["length"]
             cen = tw["pos"] + tw["frame"][:, :, 1] * (0.5 * tl * tw["scale"])[:, None]

@@ -115,6 +115,8 @@ def protected(tree: dict) -> np.ndarray:
     pr = np.zeros(len(tree["pos"]), bool)
     if tree.get("dead") is not None:
         pr |= tree["dead"]
+        if tree.get("shade_dead") is not None:  # (limbs the shade killed are nobody's mark: they go by their girth)
+            pr &= ~tree["shade_dead"]
     for ai in (tree.get("guides") or {}).values():
         pr |= (tree["axis"] == ai) & tree["pin"]
     return pr
@@ -206,13 +208,29 @@ def _wood_for(tree, tile, wood_budget, pr):
 
 
 def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: float = 2.5) -> dict:
+    """`_budget`, with the marked wood (dead antlers, drawn limbs) kept only as far as the living tree can afford: when
+    keeping all of it leaves most cards with no drawn wood under them (a stag-headed oak's antlers took the whole wood
+    budget and the live limbs were cut at 20 cm), the thinnest marked wood goes by its girth like the rest."""
+    pr = protected(tree)
+    first = None
+    for rp in (0.0, 0.01, 0.02, 0.04, 0.08, 1e9):
+        out = _budget(tree, triangles, tile, card_triangles, cap, pr & (tree["radius"] >= rp))
+        first = first or out
+        if not triangles or not pr.any() or out.get("boughs") or not len(veg_leaf.place(tree)["pos"]):
+            return out
+        if pick_twigs(tree, out["keep"], out["min_radius"], out["protect"], cap=cap)[1] <= 0.5:
+            return out
+    return first  # (it floats whatever is given up: the marked wood stays, and the export says the budget is too small)
+
+
+def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: float = 2.5, pr=None) -> dict:
     """What a triangle budget leaves of a plant: {"wood": the tube mesh, "sides", "min_radius" (thinner wood is left
     out, except `protected` wood), "keep" (the share of twigs drawn, each larger by 1 / sqrt(keep)), "floating" (the
     share of drawn twigs with no drawn wood near them), "total", "over": triangles past the budget (the trunk alone can
     be more than a tiny budget)}. Half the budget is the wood's; two thirds when at half too many cards would float."""
     tw = veg_leaf.place(tree)
     n_tw = len(tw["pos"])
-    pr = protected(tree)
+    pr = protected(tree) if pr is None else pr
     W0 = veg_mesh.tubes(tree, tile=tile)
     out = {"wood": W0, "sides": (3, 12), "min_radius": 0.0, "keep": 1.0, "floating": 0.0, "protect": pr}
     for share in ((0.5, 0.66, 0.8) if n_tw else (1.0,)) if triangles else ():

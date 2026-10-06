@@ -1227,6 +1227,66 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     - Scratch (worktree `scratchpad/`, untracked): run.sh (env), one.py <age> <sex> <outfit> [zoom] (one clay human),
       face.py (face variants), t4.py (bodies vs references table), t5.py (GNM head vs the body's own), quick.py (a
       PIL clay view of a mesh without Blender), seq1.sh (line-up then tests).
+  - Chests, clothes with volume, faces, the throat (2026-10-06, "humans4" agent, branch
+    `worktree-agent-ab7ea373ab4099300`; sheet sk_40_ages_lineup.png + _measures.txt; the user on sk_30, arrows at the
+    woman's chest: "What is going on with this poor woman's boobs?"). Scratch in the worktree's untracked
+    `scratchpad/`: run.sh, d1.py / d3.py (bare adult chest views + bust numbers; scratch only), g1.py (one clothed
+    clay human, ZOOM=2.4 for a torso close-up), f1.py (face rows for a list of people), n1-n3.py (throat field
+    probes), z1.py (a close look at a joint), tile.py.
+    - THE CHEST, by measure (`anthro.measure` -> `bust_projection`: how far the fullest level of the chest's front
+      stands ahead of the breast bone; ~10-20 mm flat, 30-40 an A/B cup, 50-60 C/D): (1) `base.body.nipples: 0`
+      smoothed a patch 4% of the stature wide (6.4 cm on a woman) onto a sheet fitted through the ring outside it:
+      it scooped a crater out of each breast = the dented ring. (2) MakeHuman's own female at average cup stands
+      18 mm ahead of the breast bone, a small pointed AA cup, and our loader read only the macro targets: its
+      breast modifiers were never fetched. (3) The tee was a shell of the skin (see below). Now the pack has
+      targets/breast (228 files, CC0, in assets.json; `makehuman._bust`): `base.body.bust` / `firmness` 0..1
+      (female x age x muscle x weight x cup x firmness, as MakeHuman blends them; no target at average / average, so
+      a body without the keys is bit-identical), `nipples` = MakeHuman's nipple-point / nipple-size targets scaled
+      by the body's size (an adult's millimetres turned a baby's chest inside out), then `_smooth_nipples` over 1.2%
+      of the stature (wide, 4%, only under 11 years: MakeHuman models a mound under a child's nipple).
+      `humans.bust_default`: bust 0.7 growing in from 11 to 17, firmness 0.65 at 30 -> 0.4 at 75, +0.2 dressed (a
+      bra). Woman 30: 32 mm; children and men 0-2 mm. base.VERSION must be bumped when makehuman.py changes a body
+      (the build cache is keyed on it, not on makehuman's code: a stale build hid two fixes).
+    - CLOTHES: `humans.outfit` now uses `parts.<p>.garment` (close + hang + a torso tube; legs tubes for shorts),
+      lengths scaled by stature / 1.7. What had made it unusable on these bodies: (1) the garment's field was
+      EXACTLY 0 between 6 cm and the mesh's largest face size from the cloth (`_imls`'s far value, max(d - hmax, 0)),
+      so the region's box showed as slabs in the air before a loose tee: garment point sets carry `far_fit` (the
+      plane fit, capped at half the nearest vertex's distance; the body's own field is untouched); (2) the "studs
+      at the nipples" were the nipples (flattened now); (3) notches in the hem at the side: the torso's region box
+      was as wide as the shoulder joints and a woman's hips are wider (`tee_hips` box, `breadth()` = the torso's
+      half breadth with the arms left out), and the shorts lay outside the tee (thinner shorts, tube_ease 12 mm);
+      (4) tube key `"arms": "taper"` (what counts as arm narrows toward the wrist) and `"band"` (the hand-over's
+      length, scaled). Onesie: close 60 + a nappy (a layer-1 blob round the seat). Underwear: close 12 / 6.
+    - FACES (`humans.face(age, sex, seed)`): per-seed `features` (nose, lips, cheeks, chin, jaw, brow_ridge, eyes)
+      leaning with age and sex, spread 0.45 (women, children) .. 0.6, lids opened by `pose` (lid_upper -2.6 mm:
+      eye height 0.19-0.23 of the pupils' distance, was 0.15 = half shut), a trace of a smile, `mouth_gap` 0.001
+      (lips together; parted, the fill behind showed as ragged teeth).
+    - THE THROAT (own-neck graft, `base.surface`): three things were tangled. (1) Fine level lines down the whole
+      neck = MakeHuman's neck rings of long thin quads with the IMLS kernel at the MEAN edge length: now the
+      longest edge at each vertex (own-neck bodies only). (2) A ragged slot with shards under a child's jaw: there
+      the body's and the head's skins are different surfaces 5-10 mm apart inside the overlap, each with a
+      few-mm kernel, so the sheets ended in free edges: each point's kernel is now as wide as the gap (they blend
+      into one closed skin). (3) The head is eased onto the body's TRIANGLES (closest point facing the same way,
+      `rig_template.from_surface`) with trust falling off smoothly by distance and facing. Tried and dropped: a
+      step onto the body's IMLS field (tore a ring round the neck), snapping the overlap's points sideways onto the
+      body with its normals (a ribbed band). The mouth fill of a followed head is lower and flatter.
+    - NOT the cause, for the record: the IMLS and `soften` do not flatten the chest (the tool sets no soften).
+    - Read of sk_40 (clay, 14 dressed figures): the clothes read as cloth (tees hang from the bust and belly, no
+      navel / muscles / nipples; the woman's chest is a normal chest under a tee, 33 mm; teen girl 28, woman 75
+      11 (MakeHuman's old shape hangs low), children and men -6..+4). Still wrong: shorts are puffed tubes, a level
+      crease across the bust where the tube takes over, one boat neckline for everyone, no sleeves' drape; babies'
+      mouths are lumpy and grim, children still stern; the woman of 75 still reads as an old man; a faint line
+      across the 11-year-old girl's throat; nostril interiors are lit pale dishes in clay.
+    - `look_skin`'s head stage is BARE skin: for a body under 18 it is cut just under the neck (never a child's bare
+      chest or shoulders).
+    - Tests: test_humans (+ test_bust, test_faces_differ), test_headfit, test_skin, test_images, test_bodywarp pass.
+    - NEXT, in the coordinator's order: (4) skin on (`lineup.py skin`: scene syncs, heavy, one at a time),
+      per-person front / three-quarter / side rows, face close-ups; rig, hands, skin zones, export topology on baby
+      proportions (retopo.graft_head / topology "wrap" with own_neck UNTESTED); (5) fine relief vs the photographs,
+      the dark woman's oiliness, lashes, nostril interior (a dark paint zone inside the nostrils), one human
+      exported. Also open from this round: baby / child mouths (try `features.lips` lower and no smile pose under
+      3), the elder woman (longer `dimorphism`, or hair), shorts as a real garment, a neckline per outfit, the
+      `human` tool in guide.md / the skill.
   - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
     shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
     / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
@@ -2982,6 +3042,45 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   - Forest references fetched: workspace/veg_refs/forest/ (8 spruce stand interiors, 3 pine, 1 edge; fetched.jsonl
     has titles, authors, licences). spruce_in_a / _b / _e = the dead-branch haze; spruce_in_g = a cut edge showing
     interior trees (live crown the top ~35-40%).
+  - Forest interior (task 1; sheet vg_82_forest_vs_photos.png = ours beside the fetched photos, vg_83_interior_spruce_
+    full_vs_12k.png; scratch stand1.py <out> <species> [patch] [sil] = open | edge | interior row with dead-wood and
+    live-crown numbers, inside.py = a stand of 54 from inside (more trees at full detail LOST THE GPU CONTEXT twice on
+    the 890M: keep stands under ~60 full trees or use budgets), fsheet.py):
+    - A limb the shade kills is no longer a 3-node white spike: its WOOD is remembered when `_shed` cuts it (first-
+      order limbs always; in a stand also the branches a living limb loses, attached by their parent's key) and put
+      back at the end as dead wood decayed by its years (`vegetation.DEAD`, spec `deadwood`: broken back, thin twigs
+      fallen, drooped and bowed). `tree["shade_dead"]` marks it (not `protected` in budgets: it goes by girth).
+    - Fine dead twigs are CARDS: `leaves.parts.dead` (a bare-twig picture: `"bare": true`, `wood_color`) in the same
+      atlas; `veg_leaf.place` = `place_live` + `place_dead` with `card` / `part` per placement (silhouettes and the
+      report's twig counts use `place_live`). Bough atlases bake dead boughs from the dead part's twigs and give dead
+      boughs dead pictures (`veg_bough.dead_boughs`, at["dead"]). Dead wood carries no leaves (artist's `dead` too:
+      antlers used to have twigs; that had hidden a budget fault: `veg_export.budget` now gives up the thinnest
+      marked wood when keeping it leaves the live cards floating, unless nothing helps).
+    - `environment.spacing` (m between a stand's trees) caps the canopy gap: at 3 m an interior spruce is a bare stem
+      with a narrow live crown of 36% (photo spruce_in_g: 35-45%), 60 dead limbs from 1.6 m up; without it (gap = 18% of
+      the height) 59% and a lollipop. `stand_shed` is per node: an edge tree keeps its skirt on the open side
+      (live crown 92%) and carries whole dead limbs on the closed side. Presets: spruce dead_keep 40, pine 20
+      (ASSUMPTIONS; sources and what is unsourced in workspace/veg_refs/forest/README.md).
+    - Stand looks stand on litter (`veg_look.FOREST_FLOOR`) with a dim brown bounce (the lawn's yellow-green bounce
+      turned grey twigs olive); a tree stood many times in a look is meshed once.
+    - BLUNT read: the spruce row is right in kind. From inside it reads as a plantation but the stand is too small
+      (open sky at the horizon, sun pouring in), the dead haze is far thinner than spruce_in_a / _b (ours: ~60 limbs
+      with ~200 m of dead wood a tree; the photos' young stands hold them to the ground), dead twig pictures are
+      fishbones, the floor is one flat brown. The 12k interior spruce's dead zone is a dense brown fur (bough
+      cards of dead limbs: too many, too opaque). The pine interior FAILS: a crooked stick with antlers, nothing like
+      pine_in_a's straight poles (its habit dissolves the leader; needs its own stand tuning).
+  - HANDOVER (vegetation3, context full). Done: the user's ground question (merged to main at 13863c9) and a first
+    forest-interior pass (this branch, after main was merged in). Open, in the coordinator's order:
+    (1) forest: denser dead haze low on young stands (dead_keep vs age; `deadwood.break`), irregular dead-twig
+    pictures (veg_leaf.twig_mesh draws ranked side shoots: jitter their angles and drop some for `bare`), dead
+    bough cards at budgets (fewer, thinner alpha), a closed stand look (fog or a ring of impostors rather than more
+    full trees), floor clutter (brash, needles, moss patches), pine stand habit (straight leader in a stand: apical
+    0.72 already; its interior tree bends and keeps antlers), open-grown trees on a lawn in the same row (the floor
+    is scene-wide); (2) spruce LODs (vg_81 top right: flat fern cards, a huge pale card: cap bough card size by the
+    tree's width at that height, small upright leader card, darker inner core), pine leader spike, kit picture, twig
+    cards over boughs; (3) small plants incl. ground clearance for clumps (veg_ground.clear skips clumps; audit them
+    first: `veg_ground.audit` works on any tree dict) and the weeping willow's leaning foot after the stop rule
+    (trunk jitter 0.12 + a changed growth history: try seed or `jitter[0]` 0.06); (4) styles, terrain.
   - All-species re-render after the ground change: vg_80_all_inleaf.png (spruce skirt and willow curtains end over
     the ground with a shadow gap; the willow regrew with a slightly leaning foot).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a

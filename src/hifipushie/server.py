@@ -1682,7 +1682,7 @@ def _head_hint(spec: dict) -> str:
 def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: float | None = None,
           height: float | None = None, seed: int | None = None, outfit: str | None = None,
           tone: float | dict | None = None, skin: dict | bool | None = None, head: dict | None = None,
-          note: str = "", source: str = "makehuman") -> str:
+          bust: float | None = None, firmness: float | None = None, note: str = "", source: str = "makehuman") -> str:
     """A whole person from a description, saved as an ordinary model: "a 3-year-old girl" = human("mia", age=3,
     sex="female"). The body has that age's MEASURED proportions and size by default (stature from WHO's growth
     medians, the head-to-body proportion from children's anthropometry: 4.6 heads tall at 1 year, 5.4 at 3, 6.4 at 7,
@@ -1693,6 +1693,11 @@ def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.
     seed: the face (another number, another person). outfit: "tee_shorts" (default from 2 years), "onesie" (default
     under 2), "underwear", "none". tone: Fitzpatrick 1..6 or the skin tool's tone dict; skin: more skin keys, or
     false for clay only. head: base.head keys to merge (e.g. {"features": {"cheeks": 0.5}}, {"pose": {"smile": 0.004}}).
+    bust, firmness: 0..1, a woman's chest (MakeHuman's cup size and firmness; base.body bust / firmness). By default
+    an adult woman stands ~3 cm ahead of the breast bone (an A/B cup; MakeHuman's own average is 1.8 cm), growing in
+    from 11 to 17 years, softer with age, lifted when dressed (as a bra holds it); children and men have none.
+    Clothes are cloth with their own volume (they hang from the chest and belly, bridge the bust, cover the navel);
+    a baby's onesie goes over a nappy. The face is the seed's: features, lids and mouth differ per person.
     source: "makehuman" (default: a GNM head grafted onto the MakeHuman body at build time) or "human" = ONE MESH
     (onemesh.py: GNM's head topology stitched once onto MakeHuman's body; the body's own head carries the face, so
     there is no neck tube, cross-fade or head scale, and the skin weights are hand-made everywhere).
@@ -1700,7 +1705,7 @@ def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.
     from . import humans
     sp = humans.spec(age=age, sex=sex, weight=weight, muscle=muscle, height=height, seed=seed, outfit_kind=outfit,
                      tone=tone, skin=_spec_arg(skin) if isinstance(skin, str) else skin, head=_spec_arg(head) if head else None,
-                     source=source)
+                     bust=bust, firmness=firmness, source=source)
     full = {**empty_spec(), **sp}
     v = store.save(name, full, note or f"human: {humans.stage(float(age))}, {age:g} y")
     return (f"saved {name} v{v}: {humans.describe(full)}\n"

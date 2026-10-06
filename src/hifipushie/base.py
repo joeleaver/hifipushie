@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 85  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 104  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -140,8 +140,11 @@ def inject(spec: dict) -> dict:
             # pocket in the head there: the export's topology wrap projected the lips and chin into it)
             blobs = dict(out.get("blobs") or spec.get("blobs") or {})
             seam = 0.5 * (iu + il)
-            blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in seam + np.array([0, 0.036, -0.004]) * ks],
-                                            "size": [round(float(mc[0]) * 0.85, 4), round(0.03 * ks, 4), round(0.02 * ks, 4)],
+            # (a followed head: lower and flatter. At its full height the fill's top stood in the nostrils' floor, two
+            # pale pegs seen from the front under every nose)
+            zc, zr = (-0.008, 0.013) if head.get("room") else (-0.004, 0.02)
+            blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in seam + np.array([0, 0.036, zc]) * ks],
+                                            "size": [round(float(mc[0]) * 0.85, 4), round(0.03 * ks, 4), round(zr * ks, 4)],
                                             "blend": round(0.004 * ks, 4)})
             out["blobs"] = blobs
     elif eb:  # eye.L: the template eyeball's centre, riding the head joint (paint anchors, the eyes part)
@@ -316,6 +319,14 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
+    if own_neck:  # MakeHuman's neck is rings of long thin quads: with the mean edge as the kernel's width the field
+        # was faceted between the rings (fine level lines down the neck). The longest edge at each vertex instead.
+        E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in F for k in range(len(f))}))
+        ln = np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1)
+        hm = np.zeros(len(V))
+        np.maximum.at(hm, E[:, 0], ln)
+        np.maximum.at(hm, E[:, 1], ln)
+        h = np.maximum(h, 0.9 * hm)
     h = h * float(base.get("smooth", 1.0))
     if head is not None and not one:  # one point set: the body under the graft plane, the head over it (the tube tapers to the
         # head's neck at the plane, so they meet). Blending two fields across a band instead showed the band: where
@@ -335,23 +346,46 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             # cross-faded as they were, the seam showed as a soft step), fading out OWN_REACH above the plane
             reach = OWN_REACH * float(head["carry"]["s"])
             near = np.flatnonzero((uh > -2 * SEAM) & (uh < reach))
-            dd, ii = cKDTree(V).query(H[near], k=8)
             nh = head["normals"][near]
-            # (only body skin facing the same way: a baby's chin lies on its chest)
-            wn = np.where((N[ii] * nh[:, None, :]).sum(-1) > 0.3, 1.0 / np.maximum(dd, 1e-5) ** 2, 0.0)
-            ok = (wn.sum(1) > 0) & (dd[:, 0] < 0.02)
-            tgt = (V[ii] * wn[:, :, None]).sum(1) / np.maximum(wn.sum(1), 1e-12)[:, None]
-            off = np.where(ok, ((tgt - H[near]) * nh).sum(1), 0.0)  # along the head's normal only (no sliding)
+            # each head point's closest point of the body's own SKIN (its triangles; only skin facing the same way: a
+            # baby's chin lies on its chest), and the normal there. (The weighted mean of the nearest body VERTICES
+            # sat under the surface and drew the points onto the mesh's rings: a ribbed band round the throat.)
+            from . import rig_template
+            T = np.array([(q[0], q[j], q[j + 1]) for q in F for j in range(1, len(q) - 1)])
+            T = T[(((V[T].mean(1) - c) @ pn) > -4 * SEAM) & (((V[T].mean(1) - c) @ pn) < reach + 0.03)]
+            Q = rig_template.from_surface(V, T, np.c_[V, N], H[near], nh)
+            tgt, nb_ = Q[:, :3], Q[:, 3:]
+            # how far each point is trusted to be the same skin: by its distance and by facing the same way, without
+            # steps (a point eased next to one left alone tore the skin under a child's jaw into shards)
+            dist = np.linalg.norm(tgt - H[near], axis=1)
+            cosn = (nb_ * nh).sum(1) / np.maximum(np.linalg.norm(nb_, axis=1), 1e-12)
+            ok = (1 - ramp((dist - 0.02) / 0.015)) * ramp((cosn + 0.2) / 0.5)
+            off = ok * ((tgt - H[near]) * nh).sum(1)  # along the head's normal only (no sliding)
             f = 1 - ramp(np.clip(uh[near], 0, None) / reach)
             H = H.copy()
             H[near] += (f * off)[:, None] * nh
+            # (the whole way inside the overlap, sideways too, with the body's normals: a ribbed band round the throat)
+            # (a last step onto the body's field itself, tried against the fine lines on the throat, tore a ring
+            # round the neck at the plane: the lines were the body's own kernel width, see h above)
         kh = uh > -SEAM
 
         wb = np.where(axis_d[kb] > 0.2, 1.0, 1 - ramp((ub[kb] + SEAM) / (2 * SEAM)))
         wh = ramp((uh[kh] + SEAM) / (2 * SEAM))
+        hh = head["h"]
+        if own_neck:  # where the two skins still stand apart in the overlap (under a child's jaw the body's and the
+            # head's are different surfaces, 5-10 mm apart) each point's kernel is as wide as the gap, so the field
+            # blends them into one closed skin; with their own few-mm kernels the sheets ended in free edges: a slot
+            # across the throat with shards in it
+            gap = np.linalg.norm(tgt - H[near], axis=1) * (1 - ramp((uh[near] - SEAM) / SEAM))
+            hh = hh.copy()
+            hh[near] = np.maximum(hh[near], 1.3 * gap)
+            bn = np.flatnonzero(kb & (ub > -2 * SEAM) & (axis_d <= 0.2))
+            db, _ = cKDTree(H[near]).query(V[bn])
+            h = h.copy()
+            h[bn] = np.maximum(h[bn], 1.3 * np.minimum(db, 0.03) * ramp((ub[bn] + 2 * SEAM) / SEAM))
         V = np.r_[V[kb], H[kh]]
         N = np.r_[N[kb], head["normals"][kh]]
-        h = np.r_[h[kb], head["h"][kh]]
+        h = np.r_[h[kb], hh[kh]]
         wt = np.maximum(np.r_[wb, wh], 1e-4)
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
            "key": key, "head": None, "graft": None if one else head, "src": src, "template": tpl.get("name"),
@@ -864,21 +898,22 @@ def _garment_tube(X, keep, o, u, L, tb: dict, hang: float, ease: float, info: di
         faces = [f[::-1] for f in faces]
         N, h = _normals_and_h(V, faces)
     return {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
-            "head": None, "blend_info": {"o": o, "u": u, **info}}
+            "head": None, "far_fit": True, "blend_info": {"o": o, "u": u, **info}}
 
 
 def _tube_weight(X, m):
     """How much of the field at X is a tube's (the rest is the cloth made from the body): 0 at the tube's start,
     easing to 1 over TUBE_BAND along it, times its side (a trouser leg: x on its own side) and away from the arms
     (the torso). A smooth union of the two swelled ~k/6 where they crossed: a ridge round the chest."""
-    w = _smooth01(((X - m["o"]) @ m["u"]) / TUBE_BAND)
+    w = _smooth01(((X - m["o"]) @ m["u"]) / m.get("band", TUBE_BAND))
     if m.get("side"):
         w = w * _smooth01(m["side"] * X[:, 0] / 0.03 + 0.5)
     if m.get("arms"):
         dax = np.linalg.norm(np.cross(X - m["o"], m["u"]), axis=1)
         for a, b in m["arms"]:
             d, t = _seg_dist(X, a, b)
-            w = w * np.where(t > 0.08, _smooth01((d - 0.75 * dax) / 0.04 + 0.5), 1.0)
+            k = 0.75 - 0.4 * t if m.get("taper") else 0.75
+            w = w * np.where(t > 0.08, _smooth01((d - k * dax) / 0.04 + 0.5), 1.0)
     return w
 
 
@@ -894,6 +929,9 @@ def _tubes(X, J, g: dict, hang: float, B=None) -> list:
     out = []
     ease = float(g.get("tube_ease", 0.004))
     arm = np.zeros(len(X), bool)
+    # tube "arms": "taper" = what counts as arm narrows toward the wrist (0.75 -> 0.35 of the distance to the axis): a
+    # hand hanging by the hip claimed the hip's side, the tube was narrow there and its hem had a notch
+    near = (lambda t: 0.75 - 0.4 * np.clip(t, 0, 1)) if (g.get("tube") or {}).get("arms") == "taper" else (lambda t: 0.75)
     arms = [(J[f"shoulder.{sd}"], J[f"wrist.{sd}"]) for sd in "LR" if f"shoulder.{sd}" in J and f"wrist.{sd}" in J]
     if g.get("tube") is not None and "pelvis" in J and "chest" in J:
         tb = g["tube"] or {}
@@ -901,11 +939,11 @@ def _tubes(X, J, g: dict, hang: float, B=None) -> list:
         c = np.array([pel[0], 0.5 * (pel[1] + J["chest"][1])])
         for a, b in arms:
             d, t = _seg_dist(X, a, b)
-            arm |= (t > 0.08) & (d < 0.75 * np.linalg.norm(X[:, :2] - c, axis=1))
+            arm |= (t > 0.08) & (d < near(t) * np.linalg.norm(X[:, :2] - c, axis=1))
         zt = float(tb.get("top", J["shoulder.L"][2] - 0.07 if "shoulder.L" in J else J["chest"][2] + 0.1))
         zb = float(tb.get("bottom", J["hip.L"][2] - 0.15 if "hip.L" in J else pel[2] - 0.15))
         t = _garment_tube(X, ~arm, np.array([c[0], c[1], zt]), [0, 0, -1.0], zt - zb, tb, hang or 0.8, ease,
-                          {"arms": arms}, B)
+                          {"arms": arms, "band": float(tb.get("band", TUBE_BAND)), "taper": tb.get("arms") == "taper"}, B)
         if t is not None:
             out.append(t)
     if g.get("legs") is not None and "hip.L" in J and "knee.L" in J:
@@ -919,7 +957,7 @@ def _tubes(X, J, g: dict, hang: float, B=None) -> list:
             s = (X - o) @ u
             keep &= (s > -0.05) & (np.linalg.norm(np.cross(X - o, u), axis=1) < 0.2)
             t = _garment_tube(X, keep, o, u, float(lg.get("length", 0.9)) * ln, lg, hang or 0.5, ease,
-                              {"side": sign}, B)
+                              {"side": sign, "band": float(lg.get("band", TUBE_BAND))}, B)
             if t is not None:
                 out.append(t)
     return out
@@ -936,7 +974,7 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
       ease: m, extra looseness along the closed surface's normals (default 0.006);
       ease_at: [{"at": [x, y, z] | joint, "radius", "amount"}]: more (or less) room in places (a baggy back, a
         loose sleeve), smooth bumps along the normals;
-      tube: {} or {"bottom": z, "top": z, "folds", "seed"}: a shirt's or jacket's torso as a tube hanging from the
+      tube: {} or {"bottom": z, "top": z, "folds", "seed", "band": m (the hand-over's length, default 0.08: shorter on a child)}: a shirt's or jacket's torso as a tube hanging from the
         chest and belly over the seat and the crotch; legs: {} or {"start", "length", "folds", "seed"}: trouser legs
         as tubes along hip -> knee (`_tubes`); tube_ease: m.
     Returns a list of IMLS point sets (one primitive each; with tubes, one set mixing them by weight).
@@ -1003,7 +1041,7 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
             V[near] += np.maximum(offset - d, 0)[:, None] * N[near]
     N, h = _normals_and_h(V, F)
     out = [{"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "wt": None, "seam": None,
-            "head": None}]
+            "head": None, "far_fit": True}]
     tubes = _tubes(V, J, g, hang, Vb + offset * Nb) if J else []  # (from the subdivided cloth: slices of the coarse one missed points)
     if tubes:  # a torso hanging over the crotch and seat, trouser legs: tubes, handed over to the cloth from the
         # body by weight (_tube_weight)
@@ -1560,6 +1598,10 @@ def _imls(X, pr, k=K):
     ws = w.sum(1)
     imls = (w * s).sum(1) / np.maximum(ws, 1e-300)
     far = np.sign(imls) * np.maximum(d[:, 0] - pr["hmax"], 0.0)
+    if pr.get("far_fit"):  # garments: their regions reach many cm off the cloth, and where the nearest vertex was
+        # nearer than the mesh's largest face the far value was exactly 0 (slabs of the region's box in the air
+        # before a loose tee). There the plane fit itself, never more than half the nearest vertex's distance
+        far = np.where(far == 0, np.sign(imls) * np.minimum(np.abs(imls), 0.5 * d[:, 0]), far)
     t = np.clip((d[:, 0] - FAR) / FAR, 0.0, 1.0)  # past FAR from every vertex: conservative distance, for culling
     return np.where(ws > 1e-12, (1 - t) * imls + t * far, far)
 
