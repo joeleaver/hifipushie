@@ -3378,7 +3378,56 @@ model".
 - Tests: `tests/test_onemesh.py` (asset topology / symmetry / bridge, the stitch at 1-78 y, determinism, identity
   fades at the stitch, old paths never call onemesh, measures vs the grafted path, weights by index),
   `tests/test_humanfit.py` (measures, a met measure, adversarial requests, nudge, fit-back from images).
-- NOT DONE (in the order I would do it): see the HANDOVER at the end of this section.
+- Later the same day: GNM's lower neck rings (13..21) are SLID along their own columns on MakeHuman's surface so ring A
+  ends 21 mm above C all round (it was 1 cm at the sides, 3 cm front and back); the rows are still skewed at the
+  neck's side (A's and C's vertices are spaced differently round the neck, and rows join by index): bridge aspect
+  median 2.3 / p90 3.3 / worst ~5, no folded quad, no gap (the pale slivers in om_02_neck's three-quarter back view
+  were the PIL viewer culling warped quads at the silhouette: with back faces drawn the surface is closed; min quad
+  area 6 mm2). An artist's hand pass through edits.json is still the fix, and edits.json is still unexercised.
+  Image fits and solves hold the skull (`_skull_basis`: headfit's cranium and far dense points; it moved 16 mm
+  unseen before). Fit replies carry the whole DRESSED figure before | after (`_human_figure`, two looks, ~1-3 min).
+- Style, round 0 (`humanstyle.py`, `base.style.human`, `human(style=)`, sheets `styles/human_feature|cartoon|anime|
+  lowpoly.json`; scratch sheets only, adult clay): head sliders are ops on GNM's vertices inside `onemesh.hook`
+  (head_size about the neck's top, cranium, eye_spacing / eye_height as Gaussian moves of the orbits, nose toward the
+  face, jaw / chin as a narrowing of the lower face, cheeks along normals, mouth, exaggerate = the identity x a
+  factor), faded at the stitch; body sliders (legs, arms, torso, shoulders, hips, hands, feet, limbs, waist, chest)
+  are joint targets + girths through `retopo._skeleton_warp` inside `onemesh.template` (the head rides: `head_rest`,
+  `_carried`), so rig, weights, landmarks and face shapes stay. RANGES clamp each slider. What round 0 showed: a
+  short ramp for `cranium` made a ledge at the brows (now from the eye line up over 2 interoculars); jaw + chin at
+  full strength made the chin a line (capped at 62%); `face_flat` toward a plane collapses lids and lips (range cut
+  to 0.25: an anime face needs its features on a smooth proxy and its own eye part); girth on the neck -> head bone
+  squeezes the HEAD (no `neck` slider); `nose` leaves the nostrils as a dark pit; integrity now reads stretch against
+  the head's own scale. The four sheets are FIRST GUESSES: not fitted to any reference, not seen dressed, not judged.
+- HANDOVER (onemesh agent, context nearly full, 2026-10-06). Branch worktree-agent-aac6bb85823bc8809; tests
+  test_onemesh.py / test_humanfit.py pass at the last asset (sha c040e681...); main merged in at f5e7b3c.
+  Scratch (worktree `scratchpad/`, untracked): t3.py (one clothed person through the tool), hf1/hf2/hf3.py (fit
+  exercises through the tools), st1.py <png> [labels] (each style slider on an adult, clay, PIL: seconds), neck.py /
+  neckb.py / worst.py / flip2.py / chk.py (bridge views and numbers), oldhash.py + `orig/` (old paths bit-identical
+  against main's code: re-extract with git archive), lineup log. Line-up panels: /mnt/data/hifipushie/onemesh/lineup;
+  re-lay with COMPOSE=1 spikes/onemesh/lineup.py <that dir>.
+  Open, in the order I would take it:
+  1. Proof still owed: rig sheets on a one-mesh adult (arm raise 60, head turn 33, nod; `rig(name, pose=...)`), one
+     export through export_asset (topology = the base's own quads via retopo.base_quads, which already skips
+     graft_head for this source) + Khronos + rig audit, a face-shape sheet (GnmFace reads head["carry"]; carry has
+     "fade" per GNM vertex and subdivide 0: faceshapes must multiply deltas by fade and not assume one subdivision:
+     UNTESTED and likely needs two lines there).
+  2. Guard rails not built: functional checks as a pre-export gate (blink, jawOpen, rig pose), self-intersection
+     (lips / teeth; only lid landmarks vs the eyeball now), warnings that persist (each tool call re-runs integrity,
+     nothing is stored), plausibility for body sliders, outline / mask fits (stylised references are read by
+     silhouette), MediaPipe Face Landmarker + a 478 -> 68 table as the default detector (Apache-2.0, ~4 MB;
+     Depth Anything V2 SMALL only is Apache; the anime detector is MIT but drags mmdet / mmpose; Marigold's licence
+     unverified).
+  3. Style rounds against references (the user's stretch goal): fetch CC / permissive sheets into
+     workspace/human_refs/, landmarks -> human_reference for the face, outline fits for the body, tune the sheets,
+     send reference | ours | sliders. Missing sliders the rounds will want: neck thickness / length in head space,
+     an anime eye PART (bowl + iris disc, option of the same mesh), face projection onto a proxy, feature simplify
+     per region, per-style custom normals and the toon look / outline recipe in the export, low-poly as un-subdivided
+     levels with flat shading. A 1.45x eye already stretches lid edges ~2.3x against the head's scale (integrity
+     warns from 1.8x): a 3x anime eye will need the alternative eye part.
+  4. Template: the neck's side rows by hand (edits.json) or a hand-drawn GNM loop; thin GNM's neck for LOD1+; UV
+     repack; eyes / teeth / tongue / sock of the asset are unused by the field (blobs + the kit interior as before).
+  5. `like`, `neck`, follow_body's strength are ignored on this source; humanfit's body solves take minutes (finite
+     differences on MakeHuman builds); head_sheet is flat-shaded.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
