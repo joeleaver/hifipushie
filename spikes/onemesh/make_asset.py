@@ -52,6 +52,8 @@ STIFF = 5  # rings above A held hard onto MakeHuman's surface (the stitch must f
 _g = [0.1, 0.25, 0.4]
 WGRID = [(a_, b_, c_, 1 - a_ - b_ - c_) for a_ in _g for b_ in _g for c_ in _g if 0.08 <= 1 - a_ - b_ - c_ <= 0.45]
 SHEAR = float(__import__("os").environ.get("OM_SHEAR", 0.6))
+GAP = 0.021   # m: ring A above loop C, along the surface, after the slide
+SLIDE = 8     # rings above A re-spaced with it
 ROW_AT = [0.0, 0.3, 0.65, 1.0]  # where the loops lie between A and C: row heights follow the quads' widths (3.3 mm
 # at A .. 8.6 mm at C), so quads stay near square
 COUNTS = [110, 82, 58, 42]  # vertices per loop: A, two new rings, C. Each row's reductions (4 edges : 2) number
@@ -295,6 +297,63 @@ def build(log=print):
         assert len(C) == COUNTS[-1], f"MakeHuman's next neck loop has {len(C)} vertices"
     C = start_front(C, P, lambda v: abs(P[v, 0]) < 1e-6)
     above = above_of(C)
+
+    # GNM's lower neck rings SLID along their own columns on the surface (what an artist does to a loop that isn't
+    # parallel to the one it must meet): ring A ends GAP above C all round (it was 1 cm at the sides, 3 cm front and
+    # back: squashed and tall bridge quads), the rings up to RING + SLIDE evenly spaced above it. Shapes don't change
+    # (the points stay on MakeHuman's surface), only where the neck's vertices sit.
+    Tm_ = np.r_[Fm[:, [0, 1, 2]], Fm[:, [0, 2, 3]]]
+    zc = float(P[C][:, 2].mean())
+    near_ = np.flatnonzero((np.abs(P[Tm_][:, :, 2] - zc) < 0.14).all(1) & (np.abs(P[Tm_][:, :, 0]) < 0.14).all(1))
+    cen_ = P[Tm_[near_]].mean(1)
+    tree_ = cKDTree(cen_)
+
+    def bind_(Xq):
+        _, cand = tree_.query(Xq, k=16)
+        bt, bb, best = np.zeros((len(Xq), 3), int), np.zeros((len(Xq), 3)), np.full(len(Xq), np.inf)
+        for kk in range(16):
+            t = Tm_[near_[cand[:, kk]]]
+            p_, w_ = R.closest_on_tris(Xq, P[t[:, 0]], P[t[:, 1]], P[t[:, 2]])
+            dd = np.linalg.norm(p_ - Xq, axis=1)
+            take = dd < best
+            best[take], bt[take], bb[take] = dd[take], t[take], w_[take]
+        return bt, bb
+    up = {RING: A}
+    for k in range(RING, RING + SLIDE):
+        up[k + 1] = [next(w for w in adj[v] if lev[w] == k + 1 and w not in up[k]) for v in up[k]]
+    lo_ring = min(cols)
+    XC_ = P[C]
+    segC = np.r_[XC_, XC_[:1]]
+    dens = np.concatenate([np.linspace(segC[i], segC[i + 1], 12, endpoint=False) for i in range(len(XC_))])
+    ctree = cKDTree(dens)
+    Xw0 = Xw.copy()
+    r_tri, r_bar, r_val = r["tri"].copy(), r["bary"].copy(), r["valid"].copy()
+    moved_ = []
+    for j in range(len(A)):
+        chain = [cols[k][j] for k in range(lo_ring, RING)] + [up[k][j] for k in range(RING, RING + SLIDE + 1)]
+        Xc = Xw0[chain]
+        fine = np.concatenate([np.linspace(Xc[i], Xc[i + 1], 20, endpoint=False) for i in range(len(Xc) - 1)] + [Xc[-1:]])
+        sl = np.r_[0, np.cumsum(np.linalg.norm(np.diff(fine, axis=0), axis=1))]
+        s_c = sl[int(np.argmin(ctree.query(fine)[0]))]  # where this column crosses C
+        s_top = sl[-1]
+        s_a = min(s_c + GAP, s_top - 0.004 * SLIDE)
+        ss = np.linspace(s_a, s_top, SLIDE + 1)
+        new = np.column_stack([np.interp(ss, sl, fine[:, a_]) for a_ in range(3)])
+        for i_, v in enumerate([up[k][j] for k in range(RING, RING + SLIDE + 1)]):
+            Xw[v] = new[i_]
+            moved_.append(v)
+    moved_ = np.array(sorted(set(moved_)))
+    Xw[moved_] = 0.5 * (Xw[moved_] + Xw[mir_g[moved_]] * [-1, 1, 1])
+    bt_, bb_ = bind_(Xw[moved_])
+    Xw[moved_] = (bb_[:, :, None] * P[bt_]).sum(1)
+    Xw[moved_] = 0.5 * (Xw[moved_] + Xw[mir_g[moved_]] * [-1, 1, 1])
+    Xw[onc, 0] = 0.0
+    bt_, bb_ = bind_(Xw[moved_])
+    r_tri[moved_], r_bar[moved_], r_val[moved_] = bt_, bb_, True
+    Gn[moved_] += Xw[moved_] - Xw0[moved_]
+    r = {**r, "tri": r_tri, "bary": r_bar, "valid": r_val}
+    log(f"slid {len(moved_)} neck vertices (rings {RING}..{RING + SLIDE}) by up to {np.linalg.norm(Xw - Xw0, axis=1).max() * 1000:.1f} mm "
+        f"along their columns: ring A is {GAP * 1000:.0f} mm above C all round")
     keep_m = np.ones(len(P), bool)
     keep_m[sorted(above)] = False
     log(f"MakeHuman: {keep_m.sum()} of {len(P)} vertices kept (loop C {len(C)}); GNM: {keep_g.sum()} of {ng} kept "

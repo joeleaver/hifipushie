@@ -114,6 +114,10 @@ def test_fit_back_a_known_face_from_images():
     assert all(v["rms_px"] < 1.0 for v in rep["views"]), rep["views"]
     L1 = hf.state(nb)["L"]
     assert _rigid(L1, Lt) < 1.5 < _rigid(L0, Lt), (_rigid(L0, Lt), _rigid(L1, Lt))
+    # the skull, which no landmark sees, stays (it moved 16 mm before it was held)
+    P0, P1 = hf.state(b)["tpl"]["P"], hf.state(nb)["tpl"]["P"]
+    crown = P0[:, 2] > L0[19, 2] + 0.05
+    assert np.linalg.norm(P1 - P0, axis=1)[crown].max() < 0.007
     # one frontal view alone: fits in the image, and says nothing about depth
     nb1, rep1 = hf.fit_views(b, views[:1])
     assert rep1["views"][0]["rms_px"] < 1.5

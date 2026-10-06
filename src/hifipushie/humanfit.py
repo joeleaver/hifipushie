@@ -37,6 +37,7 @@ FOLD_LIMIT = 6    # faces an edit may turn over before the mesh counts as broken
 COLLATERAL = 2.0  # a solve stops where a measure that wasn't asked for would move this many times its tolerance
 UNINTENDED_BODY = 0.01  # ... a body measure: 1%
 HOLD = 0.35      # weight of holding the measures that weren't asked for (x 1 / mm)
+HOLD_SKULL = 0.25  # weight of holding the skull's own points (crown, back, neck) in image fits and solves (x 1 / mm)
 HOLD_LM = 0.12   # weight of holding landmarks far from the asked ones (x 1 / mm)
 RIDGE = 0.25     # weight of each component's step (per sigma)
 EYE_L, EYE_R = 68, 69  # the eye centres, after the 68 landmarks
@@ -170,6 +171,21 @@ def _lm_basis(st: dict) -> np.ndarray:
     return s * LB @ R.T
 
 
+def _skull_basis(st: dict) -> np.ndarray:
+    """d(skull points, world) / d(identity component): (120, n, 3), for headfit's cranium points and its dense pairs
+    more than 4 cm from every face landmark (crown, back of the head, neck). The 68 landmarks don't see these: an
+    image fit that isn't told to hold them moves the skull by centimetres unseen."""
+    from . import headfit
+    g = headfit._gnm()
+    c = st["head"]["carry"]
+    R, s_ = np.asarray(c["R"], float), float(c["s"])
+    L0 = g["L0"]
+    d = np.linalg.norm(L0[68:, None] - L0[None, :68], axis=-1).min(1)
+    sel = 68 + np.flatnonzero((d > 0.04) | (np.arange(len(L0) - 68) < 4))
+    LB = g["LB"][:, sel] - g["JB"].mean(1, keepdims=True)
+    return s_ * LB @ R.T
+
+
 def _with_identity(base: dict, c: np.ndarray) -> dict:
     from . import headfit
     g = headfit._gnm()
@@ -273,6 +289,11 @@ def solve(base: dict, want: dict, free=("identity",), hold: bool = True, force: 
             W = (HOLD_LM * 1000.0 * far)[None, :, None]
             A.extend(list(np.c_[(B * W).reshape(len(c), -1).T, np.zeros((210, len(bkeys)))]))
             y.extend(list(-((L - L0) * W[0]).reshape(-1)))
+        if use_id and hold:  # ... and the skull, which no face measure sees
+            S = _skull_basis(st)
+            Sm = (S * (HOLD_SKULL * 1000.0)).reshape(len(c), -1).T
+            A.extend(list(np.c_[Sm, np.zeros((Sm.shape[0], len(bkeys)))]))
+            y.extend(list(-(Sm @ (c - c0))))
         for i in range(nv):  # each step is ridged toward the current state; components also toward what they were
             e = np.zeros(nv)
             e[i] = RIDGE if i < (len(c) if use_id else 0) else 2.0
@@ -333,6 +354,9 @@ def nudge(base: dict, landmark: str | int, move=None, to=None, radius: float = 0
         for a in range(3):
             A.append(B[:, j, a] * w * 1000)
             y.append(t[a] * w * 1000)
+    Sm = (_skull_basis(st0) * (HOLD_SKULL * 1000.0)).reshape(len(c0), -1).T
+    A.extend(list(Sm))
+    y.extend([0.0] * Sm.shape[0])
     for k in range(len(c0)):
         e = np.zeros(len(c0))
         e[k] = RIDGE * 2
@@ -613,6 +637,7 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
     for it in range(rounds if use_id else 1):
         st = state(cur) if it else st0
         L, B = st["L"], (_lm_basis(st) if use_id else None)
+        S = _skull_basis(st) if use_id else None
         nc = len(c) if use_id else 0
 
         def unpack(x):
@@ -629,6 +654,7 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
             if use_id:
                 r.append(RIDGE * 1.5 * dc)
                 r.append(0.4 * RIDGE * (c + dc - c0))
+                r.append(HOLD_SKULL * 1000.0 * (np.tensordot(c + dc - c0, S, axes=(0, 0))).ravel())  # the skull stays
             return np.concatenate(r)
         x0 = np.concatenate([np.r_[cam["r"], cam["t"], cam["f"]] for cam in cams] + [np.zeros(nc)])
         sol = least_squares(resid, x0, x_scale=np.r_[np.tile([0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500.0], len(cams)), np.ones(nc)])
