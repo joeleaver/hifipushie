@@ -267,6 +267,21 @@ def test_relax_strain_takes_out_shear():
     assert s1.max() < 1.035, s1.max()
 
 
+def test_collar_from_the_neck():
+    # garment_kb kinds.shirt.collar through Simon's options: the stand as tall as the neck allows (less 13 mm under
+    # the jaw) within 20-35 mm, the fall 12 mm deeper at centre back
+    tbl = {"kind": "shirt", "collar_rule": "simon"}
+    o = {"collarEase": 0.115, "collarGap": 0}
+    short = cloth.collar_options(tbl, o, {"neck": 400.0, "neckHeight": 29.0})
+    tall = cloth.collar_options(tbl, o, {"neck": 400.0, "neckHeight": 60.0})
+    assert np.isclose(short["collarStandWidth"] * 400, 20.0, atol=0.05)  # 16 mm of room: the 20 mm floor
+    assert np.isclose(tall["collarStandWidth"] * 400, 35.0, atol=0.05)   # capped at 35
+    for r, s in ((short, 20.0), (tall, 35.0)):
+        assert np.isclose(s * r["collarWidth"] * 1.03, s + 12.0, atol=0.1)  # fall = stand + 12 (collarRoll 3%)
+        assert 0.0 < r["collarBend"] < 0.1
+    assert cloth.collar_options({"kind": "shirt"}, o, {"neck": 400.0, "neckHeight": 29.0}) == {}  # no rule: as drafted
+
+
 def test_leg_tube_follows_the_leg():
     # two splayed tapered legs; a front and a back trouser piece (pattern x from the centre line, the side seam at
     # +x, y down from the waist): under the crotch both lie round the leg off it by at least LEG_CLEAR, the side

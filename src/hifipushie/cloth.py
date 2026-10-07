@@ -99,6 +99,42 @@ def fabric(g: dict) -> dict:
 # ---------------------------------------------------------------- pieces
 
 
+def collar_options(tbl: dict, opts: dict, m: dict) -> dict:
+    """A shirt collar's draft options from the wearer's neck (garment_kb.json kinds.<kind>.collar; the table's
+    "collar_rule" names how its draft spells them: "simon" = FreeSewing Simon's options). The stand as tall as the
+    neck allows less a finger's room under the jaw (`under_jaw`), within the shirtmakers' 25-35 mm, never under
+    `stand[0]`; the fall at centre back `fall_over` deeper than the stand (it must cover the stand's seam); the points
+    `points` long. (Simon's defaults gave a 20 mm stand, a 41 mm fall and 57 mm points: "tall, tight, small points".)
+    Simon: stand = neck x collarStandWidth; fall at CB = stand x collarWidth x (1 + collarRoll); a point's edge
+    ~ (fall + collar length x collarBend) / sin(collarAngle), collar length = neck x (1 + collarEase - collarGap)."""
+    from . import garment_design
+    rule = ((garment_design.kb().get("kinds") or {}).get(tbl.get("kind")) or {}).get("collar")
+    neck, nh = m.get("neck"), m.get("neckHeight")
+    if not rule or not neck or not nh or tbl.get("collar_rule") != "simon":
+        return {}
+    s = float(np.clip(nh - 1000 * rule["under_jaw"], 1000 * rule["stand"][0], 1000 * rule["stand"][1]))
+    f = s + 1000 * rule["fall_over"]
+    roll = float(opts.get("collarRoll", 0.03))
+    L = neck * (1 + float(opts.get("collarEase", 0.02)) - float(opts.get("collarGap", 0.025)))
+    ang = math.radians(float(opts.get("collarAngle", 85)))
+    fl = math.radians(float(opts.get("collarFlare", 3.5)))
+
+    def point(bend):  # Simon's collar.mjs: the end edge from the bottom corner up to the top edge's line
+        bx, by = L / 2, f + L * bend  # (y down, angles up)
+        hx = L / 4
+        # hinge + t (cos fl, -sin fl) = bottom + u (cos ang, -sin ang)
+        A = np.array([[math.cos(fl), -math.cos(ang)], [-math.sin(fl), math.sin(ang)]])
+        t_, u_ = np.linalg.solve(A, [bx - hx, by])
+        return abs(u_)
+    lo, hi = 0.0, 0.10
+    for _ in range(40):
+        mid = 0.5 * (lo + hi)
+        lo, hi = (mid, hi) if point(mid) < 1000 * rule["points"] else (lo, mid)
+    return {"collarStandWidth": round(s / neck, 4),
+            "collarWidth": round(float(np.clip(f / (s * (1 + roll)), 0.9, 2.0)), 3),
+            "collarBend": round(0.5 * (lo + hi), 4)}
+
+
 def pieces(g: dict, meas_mm: dict) -> dict:
     """{"pieces": {name: piece (+ "wrap")}, "seams", "stitches", "interfaced", "draft"}."""
     out, seams, stitches, interfaced, draft_info = {}, [], [], [], None
@@ -128,6 +164,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         m = dict(meas_mm)
         m.update(pat.get("measurements") or {})
         opts = dict(tbl.get("options") or {})  # the table's own draft defaults (a collar wide enough to cover its stand)
+        if tbl.get("collar_rule"):  # the collar's proportions from the body's neck (garment_kb kinds.<kind>.collar)
+            opts.update(collar_options(tbl, opts, m))
         opts.update(pat.get("options") or {})
         words = tbl.get("words", {})
         for k, v in (pat.get("ease") or {}).items():
@@ -5350,6 +5388,12 @@ def fit(res: dict) -> dict:
     # on a well-fitting shirt), so the girth regions are read off the pieces' interiors
     seamv = np.zeros(len(V), bool)
     seamv[M["sew"].ravel()] = True
+    # fold rows too (a folded placket's, a closure band's): a 1-3 mm wedge of layers crushed across the row and
+    # stretched along it (row 0.3x, along 1.5-2.3x) is construction, not fit; on Simon's fronts they are the
+    # worst triangles of su_05 ("STRAINED at waist 17.8%" at +23% waist ease; the pieces' interiors p95 1.5-2%)
+    for fd in M.get("folds") or []:
+        for row in fd.get("rows") or []:
+            seamv[np.asarray(row, np.int64)] = True
     pin2 = pin2 | seamv
     pin2[M["F"][seamv[M["F"]].any(1)].ravel()] = True
     use = ~pin2[M["F"]].any(1)
