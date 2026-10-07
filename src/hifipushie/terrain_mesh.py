@@ -4590,11 +4590,12 @@ def map_seams(out, tiles, lods, kind="tiles", memo=None):
         r["ok"] = not bad
         r["bad"] = bad
         if bad:  # the borders it is worst on, per failing channel: [p95, tile, tile]
-            r["worst"] = {c: [list(w) for w in sorted(per.get(c, []), reverse=True)[:4]] for c in bad}
+            r["worst"] = {c: [list(w) for w in sorted(per.get(c, []), reverse=True)[:WORST_BORDERS]] for c in bad}
         res[name] = r
     return res
 
 
+WORST_BORDERS = 4  # borders listed per failing map channel
 SHARD_LIMIT = [0.01, 0.05, 0.5]  # % of a LOD's area allowed to have corner normals against its faces
 # the same border point decoded from both tiles' maps (each samples its own texels, 8-bit, bilinear): normals p50 and
 # p95 (deg) and colour p95 (0..1) allowed, per LOD. A seam would shift the median; a few aliased texels at sharp
