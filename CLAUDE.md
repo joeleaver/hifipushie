@@ -2172,6 +2172,60 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     "open": do the fronts hang straight or spread? shirt collar "open"); (5) trousers (slim straight leg, crease
     folds, fly, loops / belt); (6) shirt collar proportions as a KB rule from `Body.neck_rows`, the 12 mm front gape
     and the 17.8% waist strain by numbers; (7) all three on su_garrett against the concept. Not touched: 4-7.
+- Suit 3 (2026-10-07, "collar" agent, branch `worktree-agent-a5c847e94d5c52d32`; renders `cloth_renders/su_30..32_*`;
+  scratch DURABLE in /mnt/data/hifipushie/collar/: env.sh, run.sh, q.sh + run.py (renders now draw seams WELDED),
+  p.sh <tag> [-o] (blazer alone, collar made, place only; `-o` = the open start; collar numbers, CB column, notched-lay
+  info, worst edges), pl.sh (the same layered), pv.sh (p.sh + close-up), plb.py, cu.py (welds closed seams unless
+  `raw`), clr.py (collar neck edge vs partners: clearance off the body), fg.py (a seam's pairs: sim / final gap),
+  gapgeo.py, zig.py (a seam's line vs itself smoothed), hps.py (where collar / front / back put the neck point),
+  unmade.py, tests.sh (the nine + test_collar)).
+  - THE NOTCHED COLLAR'S MADE LAY (`cloth._notched_lay`, wrap `lay: "notched"`, set by `op_collar` type tailored
+    when the lapel's roll line meets the neck edge): two parts meeting where the roll line comes down to the neck edge.
+    The band: the stand runs up the body from the WORN neckline at the seam's clearance (`hug`), the fall turns about
+    the roll line station by station as far as clears what is under it (172 deg at CB, ~150 at the neck's side). The
+    end: FLAT in one plane through the lapel's roll line (as worn), turned about that line until it rests on the
+    chest (a board bridges hollows), isometric (edges 1.00). Stations share position / tangent map / normal / turn,
+    smoothed along the line; the sewn edge is a spline (laid per sample, the stand jumped 12-15 mm at every sample);
+    the end's plane takes every point past the meeting point ALONG THE NECK EDGE (by foot on the roll line the outer
+    end fanned 2-3x), eased over `NOTCH_BLEND` 4 cm; nothing turned stands over `NOTCH_BRIDGE` 12 mm off the body
+    (the plane run on past the shoulder's ridge stood up as a wing); a relax pass draws in long edges (`lay_limit`).
+    In `_on_seam`: `worn_pt` keeps to the body's own back / front (at the nape the nearest vertex in x, z was the
+    throat's: the back neckline charted 9 cm forward) and past the outline sits on the shoulder's top; the worn
+    neckline is a CHAIN at the pattern's lengths pulled toward the chart with a fading pull (`lay notched`; smoothing
+    the chart and snapping it out walked it 1-2 cm up the slope). Start (blazer alone): collar max 1.15x (p99 1.06),
+    0 collar crossings; layered over the pressed shirt 1.10x (9.6x in su_08). LAY_INFO[piece] keeps the lay's numbers.
+    The worn neckline rides 1.5-2.5 cm higher than the chart (the chain keeps the pattern's length, the neck narrows
+    upward): the jacket's neckline is cut to sit there, and the sim's back sews up to it.
+  - SEWN ON OPEN, THEN ROLLED (`_open_start`, method settle): the sim starts with the fall standing open
+    (`NOTCH_OPEN_DEG` 40 from the stand, eased in over `NOTCH_OPEN_FADE` 8 cm from the meeting points) and the
+    carried poses turn it down (`NOTCH_OPEN_STEPS` 1 / .75 / .5 / .25, last pose closed). Laid down from the start
+    (su_30) the fall was a LID over the seam: the draped back came to rest on top of it, 14 mm off the neck, the
+    neck seam open at 13 of 13 pairs. build's arrays X = `Xstart`; rest stays the closed lay.
+  - su_31 (blazer alone, ZOZO settle 2 cm, 443 s): reads as a tailored jacket, fits, 0 crossings, strain 0.6%; the
+    collar hugs the neck and lies on the back (stand off the neck at CB 7 mm, fall 157 deg over the seam, no roll).
+    Left: neck seam 10 of 13 pairs open (back neck pairs overlap 5-7 mm, 3 of 5 weld; the NECK POINT: front.L's hps
+    sits 16 mm forward of the collar's along the seam and 7 mm further out, shoulder seam open ~10 mm there: front,
+    back and collar disagree on hps; gorge 1-11 mm). Not fixed.
+  - The "CB zigzag" was never in the garment: the scratch renders drew raw faces (two rows of vertices per closed
+    seam, each with its own normal). look_cloth welds (`welded_faces`); the seam line is smooth (zig.py: su_31 final
+    max 3.6 mm). `test_cloth::test_cleaned_seam_is_a_smooth_line`.
+  - `_collider` drops the under garment's sliver faces (`UNDER_SLIVER`): ZOZO refused the layered job ("degenerate
+    shell face" in the pressed shirt).
+  - ga_suit / su_garrett: the jacket's `made: {collar: draped}` override is gone (that is why su_10's layered job had
+    no carried collar).
+  - su_32 (blazer OVER the shirt, first finished layered sim, 2 cm): BAD. The jacket collar stands high round the
+    shirt collar (collar_show -19 mm: the jacket covers the shirt collar; collar_hug 27 mm), shirt shows through
+    at the armholes / shoulders / back side seams (seams 0-11 open 22-63 mm), cuffs hidden (-29 / -33). The armhole
+    and side seams open is NOT the collar: alone (su_31) they close; under `over` the draped jacket is placed on the
+    padded body and its seams don't close. Diagnose that first (plb.py layered: start gaps / start stretch by seam vs
+    su_31's; padded_body thickness at the armholes), then lay the jacket collar on the shirt collar's OUTSIDE at
+    the jacket's own neckline height (the shirt collar 10-20 mm above it at CB): today `worn_pt` reads the padded
+    body, whose neck is the shirt collar's cylinder.
+  - Tests: the nine cloth / pattern files + test_collar pass (main 17ee597 merged in); merged to main at 2aea2ac.
+  - NEXT, in order: (1) su_32's open seams under `over`; (2) the jacket collar against the shirt collar (layer tells);
+    (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
+    settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
+    and su_garrett.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
