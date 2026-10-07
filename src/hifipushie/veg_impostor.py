@@ -162,7 +162,7 @@ def recipe(n: int, size: float, centre) -> str:
             "d = normalize(camera position in object space - centre), d.y clamped >= 0; right = normalize(cross(+Y, d)) (+X if ~0), "
             "up = cross(d, right); VERTEX = centre + (uv.x - 0.5) * size * right + (0.5 - uv.y) * size * up. Fragment: g = "
             "hemi-oct(d) = (px + pz, px - pz) with p = d / (|d.x| + |d.y| + |d.z|), grid = (g * 0.5 + 0.5) * (frames - 1); blend the "
-            "4 frames round it bilinearly; for each frame f (direction = decode of its grid point) its uv = (dot(P - centre, R(f)) / size + 0.5, "
+            "4 frames round it bilinearly (weights to the power blend_sharp 2, normalised: the nearest view dominates); for each frame f (direction = decode of its grid point) its uv = (dot(P - centre, R(f)) / size + 0.5, "
             "0.5 - dot(P - centre, U(f)) / size), P = the fragment's object-space position, atlas uv = (column + uv) / frames; one "
             "parallax step first: depth = (normal atlas alpha there - 0.5) * size, P <- P - d * depth, uv again; "
             "colour and normal premultiplied by alpha, alpha scissor 0.5; the normal map is OBJECT space (rgb * 2 - 1, glTF axes): "
@@ -170,7 +170,10 @@ def recipe(n: int, size: float, centre) -> str:
             "shadows on it (cast is fine: in the shadow pass the quad faces the light and draws the view from the sun's side).")
 
 
-def view(atlas: dict, d, out_px: int = 256, blend: bool = True, parallax: int = 1) -> np.ndarray:
+SHARP = 2.0  # (the frames' blend: bilinear weights to this power, normalised)
+
+
+def view(atlas: dict, d, out_px: int = 256, blend: bool = True, parallax: int = 1, sharp: float = SHARP) -> np.ndarray:
     """What the shader draws from direction d (glTF, toward the camera), as an RGBA float image in the quad's own frame:
     the reference the Godot shader is checked against and what tests hold the bake to."""
     img, n, size = atlas["image"], int(atlas["frames"]), float(atlas["size"])
@@ -190,7 +193,11 @@ def view(atlas: dict, d, out_px: int = 256, blend: bool = True, parallax: int = 
     acc = np.zeros(P.shape[:2] + (4,))
     corners = [(0, 0), (1, 0), (0, 1), (1, 1)] if blend else [(int(round(f[0])), int(round(f[1])))]
     for a, b in corners:
-        w = ((f[0] if a else 1 - f[0]) * (f[1] if b else 1 - f[1])) if blend else 1.0
+        if blend:  # (bilinear, sharpened: w^s normalised; the shader's blend_sharp)
+            sh_ = float(sharp)
+            w = ((f[0] if a else 1 - f[0]) ** sh_ * (f[1] if b else 1 - f[1]) ** sh_) / (((1 - f[0]) ** sh_ + f[0] ** sh_) * ((1 - f[1]) ** sh_ + f[1] ** sh_))
+        else:
+            w = 1.0
         if w <= 0:
             continue
         i, j = i0[0] + a, i0[1] + b

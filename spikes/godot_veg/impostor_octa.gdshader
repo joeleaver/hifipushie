@@ -16,6 +16,7 @@ uniform float size = 20.0;
 uniform vec3 centre = vec3(0.0, 10.0, 0.0);
 uniform float alpha_cut = 0.5;
 uniform float roughness_value = 0.9;
+uniform float blend_sharp = 2.0;
 
 varying vec3 obj_pos;
 varying vec3 view_dir;
@@ -68,7 +69,9 @@ void fragment() {
 	vec3 nacc = vec3(0.0);
 	for (int k = 0; k < 4; k++) {
 		vec2 o = vec2(float(k % 2), float(k / 2));
-		float w = mix(1.0 - f.x, f.x, o.x) * mix(1.0 - f.y, f.y, o.y);
+		// bilinear weights sharpened (blend_sharp > 1: the nearest view dominates, less ghosting and fewer sky holes filled)
+		float w = pow(mix(1.0 - f.x, f.x, o.x), blend_sharp) * pow(mix(1.0 - f.y, f.y, o.y), blend_sharp)
+			/ ((pow(1.0 - f.x, blend_sharp) + pow(f.x, blend_sharp)) * (pow(1.0 - f.y, blend_sharp) + pow(f.y, blend_sharp)));
 		if (w <= 0.0) {
 			continue;
 		}
