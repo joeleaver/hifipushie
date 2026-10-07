@@ -177,7 +177,7 @@
    "tier_height": 0.8,
    "tier_under": 0.25,
    "tier_uneven": 0.3,
-   "tier_cap": 0.3,
+   "tier_cap": 0.5,
    "tier_power": 0.85,
    "layers": [
     0.7,
@@ -216,10 +216,32 @@
     "width": 0.5,
     "core": 0.3
    },
-   "clump_min_cards": 40
+   "clump_min_cards": 80
   },
   "colour": {
    "value": 1.35
   }
+ },
+ "clump": {
+  "blades": [
+   8,
+   10
+  ],
+  "width": 0.08,
+  "thick": 0.45,
+  "curl": 0.55,
+  "heads": 3,
+  "ball": 0.035,
+  "stalk": 0.008,
+  "normals_up": 0.5,
+  "tones": 3,
+  "tone": [
+   0.7,
+   1.2
+  ],
+  "budget": 1500,
+  "roughness": 0.9,
+  "fan": 3,
+  "fan_angle": 16
  }
 }

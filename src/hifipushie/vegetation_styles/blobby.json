@@ -154,6 +154,8 @@
    1.15
   ],
   "budget": 800,
-  "roughness": 0.8
+  "roughness": 0.8,
+  "fan": 1,
+  "fan_angle": 18
  }
 }
