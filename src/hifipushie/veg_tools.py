@@ -690,7 +690,7 @@ def impostor(name: str, px: int = 512) -> dict:
     S = float(max(H, 2 * R) * 1.06)
     with tempfile.TemporaryDirectory(prefix="hifipushie-vegimp-") as tmp:
         jobs = [{"out": f"{tmp}/v{i}.png", "size": [px, px], "azimuth": az, "elevation": 0, "focus": [0, 0, 0.5 * H], "span": S,
-                 "leaves": True, "transparent": True, "no_ground": True, "sun": [az + 235, 50]} for i, az in enumerate((0, 90))]
+                 "leaves": True, "transparent": True, "no_ground": True, "flat": True, "sun": [az + 235, 50]} for i, az in enumerate((0, 90))]
         veg_look.render(T, jobs)
         im = np.concatenate([np.asarray(Image.open(j["out"]).convert("RGBA"), np.float32) / 255 for j in jobs], axis=1)
     return {"image": im, "size": S, "height": 0.5 * H}
@@ -721,6 +721,16 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
                 f = veg_export.write_glb(T, str(out / f"{stem}_LOD{li}.glb"), stem, triangles=int(base * veg_export.LODS[li][0]),
                                          seasons=seasons, wet=wet, cap=veg_export.LODS[li][1])["path"]
             c["files"].append(f)
+    # for engines that read neither MSFT_lod, out-of-scene nodes nor KHR_materials_variants (Godot 4.7 reads none of the three)
+    if not T.get("clump"):
+        f = veg_export.write_collision(T, str(out / f"{stem}_collision.glb"), stem)
+        if f:
+            c["files"].append(f)
+            c["collision_file"] = f
+    sj = veg_export.seasons_json(c["path"])
+    if sj:
+        c["files"].append(sj["path"])
+        c["seasons_file"] = sj["path"]
     return c
 
 

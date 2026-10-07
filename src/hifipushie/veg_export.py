@@ -444,7 +444,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*[min(c_ * g_, 1.0) for c_ in veg_style.lin(rgb or [0.5, 0.5, 0.5])], 1.0], "metallicFactor": 0.0,
                                                     "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
         if rgb is None:
-            m_.update(alphaMode="MASK", alphaCutoff=1.01)
+            m_.update(alphaMode="MASK", alphaCutoff=1.01, extras={"hidden": True})  # (bare then: the cut-off above 1 hides it in viewers that read variants)
         materials.append(m_)
         return len(materials) - 1
 
@@ -487,6 +487,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 var_fol[se] = M_FOL
             elif a_ is None:
                 materials.append({**json.loads(json.dumps(materials[M_FOL])), "name": f"foliage_{se}", "alphaCutoff": 1.01})
+                materials[-1]["extras"] = {**materials[-1].get("extras", {}), "hidden": True}
                 var_fol[se] = len(materials) - 1
             else:
                 var_fol[se] = foliage_material(a_, f"foliage_{se}")
@@ -518,7 +519,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     if impostor is not None:
         materials.append({"name": "impostor", "pbrMetallicRoughness": {
             "baseColorTexture": {"index": tex(_png(impostor["image"]), False)}, "metallicFactor": 0.0, "roughnessFactor": 0.9},
-            "alphaMode": "MASK", "alphaCutoff": 0.5, "doubleSided": True})
+            "alphaMode": "MASK", "alphaCutoff": 0.5, "doubleSided": False,
+            "extras": {"impostor": "unlit albedo picture (no lighting baked in); both sides are faces of their own with the same "
+                                   "up-and-out normal: a double-sided material flipped the back's normal and it rendered black"}})
         M_IMP = len(materials) - 1
     per, roots = [], []
     cluster_mats = {}
@@ -538,7 +541,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
                 W = D["wood"]
                 kids = []
-                meshes.append({"name": pre + "wood", "primitives": [with_variants(prim(W["V"], W["F"], W["uv"], M_BARK, D["wood_wind"]), var_bark, M_BARK)]})
+                meshes.append({"name": pre + "wood", "primitives": [with_variants(prim(W["V"], W["F"], W["uv"], M_BARK, D["wood_wind"], N=W["N"]), var_bark, M_BARK)]})
                 nodes.append({"name": pre + "wood", "mesh": len(meshes) - 1})
                 kids.append(len(nodes) - 1)
                 c = {"name": nm, "lod": li, "height_m": round(t["height"], 2), "wood_triangles": int(len(W["F"])), "foliage_triangles": 0,
@@ -580,6 +583,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                         a_ = season_atlas(sp_c, se, twc, make) if se != "summer" else at_c
                         if a_ is None:
                             materials.append({**json.loads(json.dumps(materials[m_])), "name": f"{materials[m_]['name']}_{se}", "alphaCutoff": 1.01})
+                            materials[-1]["extras"] = {**materials[-1].get("extras", {}), "hidden": True}
                             vf_[se] = len(materials) - 1
                         else:
                             vf_[se] = m_ if a_ is at_c else foliage_material(a_, f"{materials[m_]['name']}_{se}")
@@ -638,13 +642,15 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 Fq.append(np.array([[0, 1, 2], [0, 2, 3]]) + 4 * j)
                 Uq.append(np.array([[0, 0], [1, 0], [1, 1], [0, 1]]) * [0.5, 1] + [0.5 * j, 0])
             Vq, Fq, Uq = np.vstack(Vq), np.vstack(Fq), np.vstack(Uq)
+            Fq = np.vstack([Fq, Fq[:, ::-1]])  # the back of each quad is a face of its own (the material is single sided)
             zt = np.clip(Vq[:, 2] / max(t["height"], 1e-6), 0, 1) ** 1.5
-            up_ = np.tile([0, 0, 1.0], (len(Vq), 1))
+            up_ = Vq * [0.6, 0.6, 0.0] / (0.5 * S_) + [0, 0, 1.0]  # up, leaning out from the trunk: lit like a crown from any side
+            up_ /= np.linalg.norm(up_, axis=1, keepdims=True)
             p_ = prim(Vq, Fq, Uq, M_IMP, (zt, np.zeros(8), np.zeros(8), np.zeros(8)), N=up_)
             meshes.append({"name": f"LOD{n_lod}_impostor", "primitives": [p_]})
             nodes.append({"name": f"{nm}_LOD{0 if only_impostor else n_lod}", "mesh": len(meshes) - 1})
             lod_nodes.append([len(nodes) - 1])
-            lod_info.append({"name": nm, "lod": n_lod, "triangles": 4, "impostor": True})
+            lod_info.append({"name": nm, "lod": n_lod, "triangles": 8, "impostor": True})
         # screen heights (the plant's share of the view's height) under which an engine should switch down
         for li, c in enumerate(lod_info):
             c["switch_below_screen_height"] = [None, 0.45, 0.2, 0.08][li] if li < 4 else 0.05
@@ -662,12 +668,12 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         c0 = {"wood_triangles": 0, "foliage_triangles": 0, "twigs_kept": 1.0, "wood_min_radius_m": 0.0, "floating": 0.0,
               **lod_info[0]}
         c0["lods"] = lod_info
-        caps = [] if only_impostor else veg_style.capsules(veg_style.fit(t, st)["mini"]) if st else collision(t)
+        caps = [] if only_impostor else collision(t)  # (the grown tree's, whatever the style: a style must not change gameplay)
         c0["collision"] = [{"a": _yup(np.array([q["a"]]))[0].tolist(), "b": _yup(np.array([q["b"]]))[0].tolist(), "ra": q["ra"], "rb": q["rb"]}
                            for q in caps]
         if caps:
             thr = max(0.05, 0.3 * float(t["radius"][1]))
-            C = veg_mesh.tubes(veg_style.fit(t, st)["mini"] if st else t, sides=(4, 5), min_radius=0.0 if st else thr, simplify=1.5, collar=0, tile=tile)
+            C = veg_mesh.tubes(t, sides=(4, 5), min_radius=thr, simplify=1.5, collar=0, tile=tile)
             z4 = np.zeros(len(C["V"]))
             if len(C["F"]):  # (a shrub's stems can be thinner than anything a player bumps into)
                 meshes.append({"name": f"{nm}_collision", "primitives": [prim(C["V"], C["F"], C["uv"], M_BARK, (z4, z4, z4, z4))]})
@@ -727,6 +733,104 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     counts["bytes"] = out.stat().st_size
     counts["path"] = str(out)
     return counts
+
+
+def seasons_json(glb: str, images: bool = True) -> dict | None:
+    """For engines that drop KHR_materials_variants (Godot 4.7 does: only the default material arrives): what each
+    variant puts in each material slot, read back from the written GLB and saved beside it as <stem>_seasons.json:
+    {"variants", "default", "slots": {slot (the default material's name): {"material", "baseColorFactor",
+    "roughnessFactor", "alphaMode", "alphaCutoff", "doubleSided", "hidden", "baseColorTexture": {"image": index in the
+    GLB, "file": the same picture written beside it}}}, "seasons": {variant: {slot: the same keys}}}. `hidden` = the
+    slot is not drawn in that season (a deciduous winter): hide the mesh; don't rely on its alpha cut-off."""
+    raw = open(glb, "rb").read()
+    jl = struct.unpack("<I", raw[12:16])[0]
+    G = json.loads(raw[20:20 + jl])
+    binp = raw[20 + jl + 8:]
+    names = [v_["name"] for v_ in (G.get("extensions") or {}).get("KHR_materials_variants", {}).get("variants", [])]
+    if not names:
+        return None
+    stem = Path(glb).with_suffix("")
+    written = {}
+
+    def params(mi):
+        m = G["materials"][mi]
+        pbr = m.get("pbrMetallicRoughness", {})
+        d = {"material": m["name"], "baseColorFactor": pbr.get("baseColorFactor", [1, 1, 1, 1]), "roughnessFactor": pbr.get("roughnessFactor", 1.0),
+             "alphaMode": m.get("alphaMode", "OPAQUE"), "doubleSided": bool(m.get("doubleSided", False)),
+             "hidden": bool((m.get("extras") or {}).get("hidden"))}
+        if "alphaCutoff" in m:
+            d["alphaCutoff"] = m["alphaCutoff"]
+        for key, src in (("baseColorTexture", pbr.get("baseColorTexture")), ("normalTexture", m.get("normalTexture")),
+                         ("metallicRoughnessTexture", pbr.get("metallicRoughnessTexture"))):
+            if src is None:
+                continue
+            im = G["textures"][src["index"]]["source"]
+            d[key] = {"image": im}
+            if images and key == "baseColorTexture":
+                if im not in written:
+                    bv = G["bufferViews"][G["images"][im]["bufferView"]]
+                    f = Path(f"{stem}_{m['name']}.png")
+                    f.write_bytes(binp[bv.get("byteOffset", 0): bv.get("byteOffset", 0) + bv["byteLength"]])
+                    written[im] = f.name
+                d[key]["file"] = written[im]
+        return d
+
+    slots, seasons = {}, {n_: {} for n_ in names}
+    for mesh in G["meshes"]:
+        for p_ in mesh["primitives"]:
+            maps = (p_.get("extensions") or {}).get("KHR_materials_variants", {}).get("mappings")
+            if "material" not in p_:
+                continue
+            slot = G["materials"][p_["material"]]["name"]
+            if slot in slots or slot == "impostor":
+                continue
+            slots[slot] = params(p_["material"])
+            for mp in maps or []:
+                for vi in mp["variants"]:
+                    seasons[names[vi]][slot] = params(mp["material"])
+    for n_ in names:  # (a slot a variant doesn't map keeps its default)
+        for slot, d in slots.items():
+            seasons[n_].setdefault(slot, d)
+    out = {"glb": Path(glb).name, "variants": names, "default": names[0], "slots": slots, "seasons": seasons,
+           "note": "colours are linear RGBA factors (x the texture when there is one, x COLOR_0 where the mesh has it); "
+                   "hidden = don't draw that slot's meshes in that season"}
+    Path(f"{stem}_seasons.json").write_text(json.dumps(out, indent=1))
+    out["path"] = f"{stem}_seasons.json"
+    return out
+
+
+def write_collision(tree: dict, path: str, name: str) -> str | None:
+    """The collision mesh as a file of its own, its node in the scene and named `<name>_collision-colonly` (Godot's
+    importer makes a static body of a node so named and drops the mesh; the plant's own GLB keeps it outside the scene,
+    where Godot never sees it). Capsules in extras. The grown tree's, whatever its style."""
+    caps = collision(tree)
+    thr = max(0.05, 0.3 * float(tree["radius"][1]))
+    C = veg_mesh.tubes(tree, sides=(4, 5), min_radius=thr, simplify=1.5, collar=0)
+    if not len(C["F"]):
+        return None
+    V = _yup(C["V"]).astype(np.float32)
+    F = C["F"].astype(np.uint32).ravel()
+    buf = V.tobytes() + F.tobytes()
+    gltf = {"asset": {"version": "2.0", "generator": "hifipushie vegetation"}, "scene": 0, "scenes": [{"nodes": [0]}],
+            "nodes": [{"name": f"{name}_collision-colonly", "mesh": 0, "extras": {"collision": True}}],
+            "meshes": [{"name": f"{name}_collision", "primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+            "accessors": [{"bufferView": 0, "componentType": 5126, "count": len(V), "type": "VEC3", "min": V.min(0).tolist(), "max": V.max(0).tolist()},
+                          {"bufferView": 1, "componentType": 5125, "count": len(F), "type": "SCALAR"}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": V.nbytes, "target": 34962},
+                            {"buffer": 0, "byteOffset": V.nbytes, "byteLength": F.nbytes, "target": 34963}],
+            "buffers": [{"byteLength": len(buf)}],
+            "extras": {"hifipushie_collision": {"plant": name, "capsules": [
+                {"a": _yup(np.array([q["a"]]))[0].tolist(), "b": _yup(np.array([q["b"]]))[0].tolist(), "ra": q["ra"], "rb": q["rb"]} for q in caps]}}}
+    js = json.dumps(gltf, separators=(",", ":"), default=float).encode()
+    js += b" " * (-len(js) % 4)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(js) + 8 + len(buf)))
+        f.write(struct.pack("<I4s", len(js), b"JSON"))
+        f.write(js)
+        f.write(struct.pack("<I4s", len(buf), b"BIN\0"))
+        f.write(buf)
+    return str(path)
 
 
 def write_impostor(tree: dict, path: str, name: str, impostor: dict) -> str:

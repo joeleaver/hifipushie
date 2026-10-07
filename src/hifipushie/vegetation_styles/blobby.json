@@ -7,19 +7,31 @@
    4
   ],
   "radius": 1.5,
-  "taper_floor": 0.6,
+  "taper_floor": 0.7,
   "reach": 0.8,
   "trunk_reach": 0.7,
-  "smooth": 4,
-  "round_ends": true,
+  "smooth": 24,
+  "share": 0.4,
+  "flat": true,
+  "limb_min": 0.5,
+  "bury": 1.5,
+  "limb_mass": 0.19,
+  "keep_in": 0.5,
+  "reach_in": 0.9,
+  "stubs": 3,
+  "stub_reach": 0.85,
+  "stub_min": 2.0,
+  "stub_apart": 3.0,
+  "stub_radius": 0.7,
+  "blend": 0.7,
+  "voxel": 0.0,
   "sides": [
    9,
    12
   ],
-  "share": 0.22,
-  "flat": true,
-  "limb_min": 0.5,
-  "bury": 1.5
+  "trunk_mass": 0.27,
+  "trunk_floor": 0.8,
+  "foot": 1.25
  },
  "crown": {
   "kind": "masses",
@@ -30,7 +42,7 @@
   "spread": 1.6,
   "pad": 0.5,
   "min_feature": 0.6,
-  "blend": 1.2,
+  "blend": 0.7,
   "voxel": 0.0,
   "normals": 0.25,
   "tones": 3,
@@ -40,7 +52,9 @@
   ],
   "warm_top": 0.08,
   "roughness": 0.85,
-  "roundness": 0.6
+  "roundness": 0.6,
+  "core": 1.15,
+  "blend_share": 0.9
  },
  "colour": {
   "saturation": 1.3,

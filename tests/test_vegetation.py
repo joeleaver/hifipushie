@@ -614,7 +614,7 @@ def test_export_lods_wind_seasons_collision():
                                  wet=True, impostor=imp)
         g, bin_ = _glb(c["path"])
         tri = [l_["triangles"] for l_ in c["lods"]]
-        assert len(tri) == 4 and tri[0] <= 9000 and tri[1] <= 0.45 * 9000 + 1 and tri[2] <= 0.18 * 9000 + 1 and tri[3] == 4
+        assert len(tri) == 4 and tri[0] <= 9000 and tri[1] <= 0.45 * 9000 + 1 and tri[2] <= 0.18 * 9000 + 1 and tri[3] == 8  # (the impostor: two quads, each side a face of its own)
         assert tri[0] > tri[1] > tri[2]
         assert set(g["extensionsUsed"]) == {"KHR_materials_variants", "MSFT_lod"}
         assert [x["name"] for x in g["extensions"]["KHR_materials_variants"]["variants"]] == ["summer", "autumn", "winter", "snow", "wet"]

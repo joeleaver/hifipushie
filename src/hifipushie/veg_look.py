@@ -47,7 +47,7 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
     s = tree["spec"]
     D = veg_style.dress(tree, st, triangles, s.get("season", "summer"))
     W, C = D["wood"], D["crown"]
-    arrays = {"V": W["V"], "F": W["F"], "tan": W["tan"], "radius": W["radius"], "uv": W["uv"], "dead": W["dead"]}
+    arrays = {"V": W["V"], "F": W["F"], "tan": W["tan"], "radius": W["radius"], "uv": W["uv"], "dead": W["dead"], "wood_N": W["N"]}
     if C is not None:
         col = np.array(veg_style.lin(veg_style.season_color(s, s.get("season", "summer"), st)))
         arrays.update(solid_V=C["V"], solid_F=C["F"], solid_N=C["N"], solid_col=np.clip(col[None] * C["col"] * C["gain"], 0, 1))
