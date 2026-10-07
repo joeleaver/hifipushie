@@ -593,16 +593,22 @@ def op_pleat(D: dict, piece: str, depth: float = 0.02, name: str | None = None, 
 
 
 def op_buttons(D: dict, piece: str, n: int = 1, top: float | None = None, spacing: float = 0.09, x: float = 0.0,
-               **o) -> None:
+               state="closed", size: float | None = None, name: str = "front", **o) -> None:
     """n button marks down the line x (the centre front) from `top` (m below the neck point; default the break
-    point), stitched left front to right front when the piece is a pair."""
+    point). When the piece is a pair they become a CLOSURE at unfold (closures.py: left front over right, a fastening
+    per mark): `state` "closed" (default) | "open" (worn unbuttoned: no stitches, the buttons stay on the under
+    front) | {"open_above": "button2"} (those above that mark undone); `size` the button's diameter (m)."""
     pc = D["pieces"][piece]
     y0 = -abs(float(top)) if top is not None else float(D["meta"].get("break", [0, -0.3])[1]) - 0.015
+    marks = []
     for k in range(int(n)):
         nm = f"button{k + 1}"
         pc["marks"][nm] = np.array([float(x), y0 - k * spacing])
-        D.setdefault("pair_stitches", []).append(f"{piece}:{nm}")
-    D["log"].append(f"buttons on {piece}: {n} at x {x * 1000:.0f} mm from y {y0 * 1000:.0f} mm, {spacing * 1000:.0f} mm apart")
+        marks.append(nm)
+    D.setdefault("pair_closures", []).append({"name": name, "piece": piece, "marks": marks, "state": state,
+                                              **({"size": float(size)} if size else {})})
+    D["log"].append(f"buttons on {piece}: {n} at x {x * 1000:.0f} mm from y {y0 * 1000:.0f} mm, {spacing * 1000:.0f} mm apart"
+                    + ("" if state == "closed" else f", worn {state}"))
 
 
 def op_stitch(D: dict, a: str, b: str, **o) -> None:

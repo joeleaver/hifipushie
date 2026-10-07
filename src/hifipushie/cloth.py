@@ -116,6 +116,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         draft_info = blk["draft"]
         gen = list(blk.get("generate") or [])
         folds_tbl += blk.get("folds") or []
+        closures_in += [dict(c) for c in blk.get("closures") or []]
         seam_notes = dict(blk.get("seam_notes") or {})
         pat = None
     if pat:
@@ -197,10 +198,13 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches += st_
         interfaced += i_
     interfaced = interfaced + [e for e in g.get("interfaced", []) if e not in interfaced]
-    # closures (closures.py): a lap held by fastenings; the garment's entry replaces the table's of that name
+    # closures (closures.py): a lap held by fastenings; the garment's entry of a name is laid over the table's /
+    # the draft's key by key (so {"name": "collar", "state": "open"} is how a garment is WORN: top button undone;
+    # {"name": "front", "state": "open"}: a jacket hanging open), a new name is a new closure
     from . import closures as closuremod
     for c in g.get("closures") or []:
-        closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(c)]
+        base = next((o for o in closures_in if o.get("name") == c.get("name")), {})
+        closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(base, **c)]
     closuremod.validate(closures_in)
     st_c, folds_c, seams_c, closures_out = closuremod.expand(closures_in, out)
     stitches += [s_ for s_ in st_c if s_ not in stitches]

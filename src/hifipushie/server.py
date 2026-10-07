@@ -1618,8 +1618,11 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
       sleeve_length, options, measurements (a fixed size instead of made to measure), alterations), or own pieces +
       seams (a tablecloth is one piece wrapped "flat"), fabric (preset: shirting, jersey, linen, denim, wool_coating,
       or {"preset", overrides}), color, roughness, state, quality, resolution (final triangle size, 0.01), coarse
-      (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep} or false), detail (seam/stitch/hem maps:
-      {seam, topstitch, stitch, hem, buttons, thread} or false).
+      (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep, seams (welded seams pressed flat)} or false),
+      detail (seam/stitch/hem maps: {seam, topstitch, stitch, hem, buttons, thread} or false), closures (how its
+      openings are fastened AND worn: an entry of a name is laid over the design's own key by key, so
+      [{"name": "collar", "state": "open"}] is a shirt with the top button undone, [{"name": "front", "state":
+      "open"}] a jacket hanging open, {"open_above": mark} undoes the fastenings above a mark; see the guide).
     state: "worn" (default: sewn on the body and settled), "draped" (laid flat and dropped on the model's surface: a
       tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or "hung" (dressed first, a hanger put inside
       it under the shoulders with its hook through the neck opening, the body taken away: it settles onto the hanger,

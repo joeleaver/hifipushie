@@ -642,7 +642,7 @@
     "limits": "a pleat that dies inside the piece isn't a fold the solver takes (a fold line must cross its piece)"
    },
    "buttons": {
-    "does": "button marks down a line of a paired piece, stitched right to left when unfolded",
+    "does": "button marks down a line of a paired piece; at unfold they are a closure (left front over right, a fastening per mark) with a wear state: state closed | open (worn unbuttoned: buttons, no stitches) | {open_above: mark}; size = button diameter",
     "use": "any lapped front"
    },
    "stitch": {
