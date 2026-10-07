@@ -461,7 +461,7 @@ def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, 
     out.mkdir(parents=True, exist_ok=True)
     tri = int(triangles or 2 * (s["lod"]["budgets"][1] or 10000))
     files, rows = [], []
-    with resources.heavy("stand export"):
+    with resources.heavy("stand export", kind="stand_export"):
         for v in st["variants"]:
             imp = None
             if impostor:
