@@ -401,7 +401,10 @@ CONTRACT_LOG = {
        "to the camera, slot impostor's baseColorTexture = an N x N atlas of views over the upper hemisphere (sRGB + alpha), its "
        "object-space normal map (+ depth in alpha) in extras.hifipushie_impostor.normal_texture_index (NOT normalTexture), "
        "frames / size / centre / recipe there and in the seasons json `impostor` (+ impostorNormalTexture files per season); "
-       "reference Godot shader spikes/godot_veg/impostor_octa.gdshader. impostor=\"cross\" keeps the old two crossed quads",
+       "reference Godot shader spikes/godot_veg/impostor_octa.gdshader. impostor=\"cross\" keeps the old two crossed quads. "
+       "Slot heads (styled small plants) now carries COLOR_0 = each part's colour (petals / dab / ball, the flower's centre, the "
+       "stalk) with a WHITE baseColorFactor: switch vertex colour on for heads as for foliage. A style's clump block takes "
+       "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -727,7 +730,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                     Hd = D.get("heads")
                     if Hd is not None:  # a small plant's flower / seed heads: the foliage mesh's second primitive, slot `heads`
                         if "heads" not in head_mats:
-                            shown = {"name": "heads", "pbrMetallicRoughness": {"baseColorFactor": [*veg_style.lin(Hd["color"]), 1.0], "metallicFactor": 0.0,
+                            shown = {"name": "heads", "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0], "metallicFactor": 0.0,
                                                                                 "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
                             hid_ = {**json.loads(json.dumps(shown)), "alphaMode": "MASK", "alphaCutoff": 1.01, "extras": {"hidden": True}}
                             d_show = se0 in Hd["seasons"]
@@ -736,7 +739,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                             materials.extend([shown, hid_])
                             head_mats["heads"] = {se: len(materials) - (2 if se in Hd["seasons"] else 1) for se in seasons}
                         vh = head_mats["heads"]
-                        fp.append(with_variants(prim(Hd["V"], Hd["F"], Hd["uv"], vh[se0], Hd["wind"], N=Hd["N"]), vh, vh[se0]))
+                        hcol = np.array([veg_style.lin(c_) for c_ in Hd["part_colors"]])[Hd["part"]]  # (COLOR_0 = each part's colour, linear: petals, centre, stalk)
+                        fp.append(with_variants(prim(Hd["V"], Hd["F"], Hd["uv"], vh[se0], Hd["wind"], hcol, N=Hd["N"]), vh, vh[se0]))
                         c["heads_triangles"] = int(len(Hd["F"]))
                     meshes.append({"name": pre + "foliage", "primitives": fp})
                     nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})

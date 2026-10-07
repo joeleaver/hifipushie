@@ -58,7 +58,7 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
         if Hd is not None and s.get("season", "summer") in Hd["seasons"]:  # a small plant's flower / seed heads: their own colour
             sf = np.vstack([sf, Hd["F"] + len(sv)])
             sv, sn = np.vstack([sv, Hd["V"]]), np.vstack([sn, Hd["N"]])
-            scol = np.vstack([scol, np.tile(veg_style.lin(Hd["color"]), (len(Hd["V"]), 1))])
+            scol = np.vstack([scol, np.array([veg_style.lin(c_) for c_ in Hd["part_colors"]])[Hd["part"]]])
         arrays.update(solid_V=sv, solid_F=sf, solid_N=sn, solid_col=scol)
         if C.get("atlas") is not None:  # leaf clouds: cards cut by the dab atlas's alpha
             from PIL import Image

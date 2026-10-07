@@ -36,8 +36,8 @@
   "feed": 0,
   "feed_radius": 0.0,
   "s_bend": 0.07,
-  "taper": 0.7,
-  "flare": 0.35
+  "taper": 0.5,
+  "flare": 0.25
  },
  "crown": {
   "kind": "masses",
@@ -75,7 +75,7 @@
   "scallop": 8,
   "scallop_size": 0.42,
   "scallop_sink": 0.35,
-  "big_leaves": 9,
+  "big_leaves": 12,
   "big_leaf": 12.0,
   "big_leaf_sink": 0.3,
   "big_leaf_cup": 0.15,
@@ -84,7 +84,8 @@
   "zig": 0.12,
   "cone_height": 1.6,
   "masses_step": 2,
-  "scallop_join": 0.3
+  "scallop_join": 0.3,
+  "big_leaf_up": 0.25
  },
  "colour": {
   "saturation": 1.25,
@@ -184,11 +185,15 @@
    0.85,
    1.12
   ],
-  "budget": 900,
+  "budget": 1400,
   "roughness": 0.85,
   "fan": 1,
   "fan_angle": 18,
-  "heads_kind": "petals",
+  "heads_kind": {
+   "ray": "petals",
+   "cup": "petals",
+   "*": "ball"
+  },
   "dabs": 2,
   "ragged": 0.35,
   "petals": [

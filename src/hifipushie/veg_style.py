@@ -986,10 +986,10 @@ def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | Non
         return None
     L = float(cr.get("big_leaf", 4.0)) * float(lf.get("length", 0.1))
     W = L * float(lf.get("width", 0.5 * float(lf.get("length", 0.1)))) / max(float(lf.get("length", 0.1)), 1e-6)
-    cen = np.array([0.0, 0.0, float(np.median(V[:, 2]))])
-    rad = np.linalg.norm(V[:, :2], axis=1)
-    out_ = rad / max(float(rad.max()), 1e-6) + 0.6 * (V[:, 2] - cen[2]) / max(float(V[:, 2].max() - cen[2]), 1e-6)
-    cand = np.flatnonzero((out_ >= np.quantile(out_, 0.8)) & (N[:, 2] > -0.3))
+    cen = 0.5 * (V.min(0) + V.max(0))
+    half = np.maximum(0.5 * (V.max(0) - V.min(0)), 1e-6)
+    out_ = np.linalg.norm((V - cen) / half, axis=1)  # (out of the crown's middle in its own proportions: sides and top alike)
+    cand = np.flatnonzero((out_ >= np.quantile(out_, 0.7)) & (N[:, 2] > -0.2))
     if not len(cand):
         return None
     pick = [int(cand[np.argmax(out_[cand])])]
@@ -1008,7 +1008,7 @@ def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | Non
     Vs, Fs, Ns, uvs, cols, ms, ws, n0 = [], [], [], [], [], [], [], 0
     for q, i in enumerate(pick):
         nrm = N[i] / max(float(np.linalg.norm(N[i])), 1e-9)
-        ex = nrm + 0.5 * up
+        ex = nrm + float(cr.get("big_leaf_up", 0.25)) * up
         ex /= np.linalg.norm(ex)
         ez = up - ex * (up @ ex)
         ez = ez / np.linalg.norm(ez) if np.linalg.norm(ez) > 1e-3 else np.cross(ex, [1.0, 0, 0])
@@ -1207,7 +1207,11 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                 yaw.append(sgn * fa * ((k + 1) // 2) * (0.7 + 0.6 * float(vegetation._u(tw["key"][ci: ci + 1], 60 + k)[0])))
                 shrink.append(1.0 - 0.12 * ((k + 1) // 2))
         n_obj = len(pick) + len(heads)
-        hk = str(cs.get("heads_kind", "ball"))
+        hk = cs.get("heads_kind", "ball")
+        if isinstance(hk, dict):  # by the realistic flower's form: {"ray": "petals", "*": "ball"} (a daisy's rays, a grass's spike)
+            form = str(((parts[owner[int(tw["card"][heads[0]])]].get("twig") or {}).get("flower") or {}).get("form", "")) if len(heads) else ""
+            hk = hk.get(form, hk.get("*", "ball"))
+        hk = str(hk)
 
         def cost(a_, b_):  # triangles of every blade, stalk and head at that many sides and rings
             hs_, hr_, bs_, br_ = max(3, a_ // 2), max(b_, 2), max(5, a_ + 2), max(3, b_ // 2 + 2)
@@ -1263,7 +1267,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                 r_ = vegetation._u(tw["key"][ci] + np.atleast_1d(np.asarray(x)).astype(np.uint64), 70)
                 return r_ if np.ndim(x) else float(r_[0])
             hd = d - up * d[2] * (1 - float(cs.get("head_up", 0.6)))  # (a flower faces up and a little out along its stalk)
-            Vb, Fb, Nb, Pb = _head(str(cs.get("heads_kind", "ball")), path[-1], hd, float(cs["ball"]) * L, cs, su, max(5, sides + 2))
+            Vb, Fb, Nb, Pb = _head(hk, path[-1], hd, float(cs["ball"]) * L, cs, su, max(5, sides + 2))
             head_part.append(Pb)
             ph = float(vegetation._u(tw["key"][ci: ci + 1], 57)[0])
             for V_, F_, N_, t_ in ((V, F, N, tt), (Vb, Fb, Nb, np.ones(len(Vb)))):
@@ -1278,9 +1282,13 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             co = st.get("colour") or {}
             hpart = np.concatenate([np.r_[np.full(len(Vs[2 * q_]), 2), head_part[q_]] for q_ in range(len(head_part))])  # (stalk = 2, then the head: 0 petal / dab / ball, 1 its centre)
             out["heads"] = {"V": np.vstack(Vs), "F": np.vstack(Fs), "N": np.vstack(Ns), "uv": np.vstack(uvs), "part": hpart,
-                            "kind": str(cs.get("heads_kind", "ball")),
+                            "kind": hk,
                             "wind": tuple(wd[:, i] for i in range(4)),
                             "color": styled(fl.get("color") or parts[hp].get("color") or [0.8, 0.75, 0.4], co.get("saturation", 1.0), co.get("value", 1.0)),
+                            # each part's own colour (sRGB): the petals / dab / ball, the flower's centre, the stalk (the summer leaf)
+                            "part_colors": [styled(fl.get("color") or parts[hp].get("color") or [0.8, 0.75, 0.4], co.get("saturation", 1.0), co.get("value", 1.0)),
+                                            styled(fl.get("center") or [0.93, 0.74, 0.12], co.get("saturation", 1.0), co.get("value", 1.0)),
+                                            styled((veg_small.season_state(s, "summer") or {}).get("color") or [0.3, 0.45, 0.15], co.get("saturation", 1.0), co.get("value", 1.0))],
                             "seasons": [se for se in SEASONS if any(veg_small.layer_shown({**veg_small.LAYER, **L_}, se) for L_ in s["clump"]["layers"]
                                                                     if L_.get("part", "main") in flowery) and veg_small.season_state(s, se) is not None]}
             info.update(heads=len(heads), heads_triangles=int(len(out["heads"]["F"])), heads_kind=out["heads"]["kind"])

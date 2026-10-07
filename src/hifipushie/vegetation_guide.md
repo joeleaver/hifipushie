@@ -494,7 +494,9 @@ lod_files=True)`:
   seasons json `snow` numbers + `style`; impostor shade eased on bright colours. 5 = the `snow` variant of a
   leaf-dropping plant is its WINTER state (foliage hidden, `bark_forks` shown), not the crown painted white. 6 = the impostor
   is hemi-octahedral (one quad turned by the engine's shader, an N x N atlas of views, object-space normal + depth in
-  `extras.hifipushie_impostor`, `impostorNormalTexture` files, the seasons json `impostor`); `impostor="cross"` = 5's quads. Whoever adds,
+  `extras.hifipushie_impostor`, `impostorNormalTexture` files, the seasons json `impostor`); `impostor="cross"` = 5's quads;
+  slot `heads` carries COLOR_0 (each part's colour: petals / dab / ball, the flower's centre, the stalk) under a white
+  baseColorFactor. Whoever adds,
   renames or re-purposes a slot or a vertex channel bumps the number and adds a line to CONTRACT_LOG and here.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
@@ -690,8 +692,9 @@ spread (the report gives both against the realistic plant); every flowering pict
 becomes a ball (`ball` x its length) on a thin stalk, at most `heads`. One tone per blade in `tones` steps of `tone`
 (COLOR_0), normals leaned to the sky by `normals_up` so the tuft shades as one clump, wind = each blade bends from its
 foot in its own phase (the realistic card's). `budget` (800): LODs take sides and rings off the same blades. In the
-export the blades are slot `foliage`, the heads the foliage mesh's SECOND primitive, slot `heads` (its own colour;
-hidden, like `bark_forks`, in the seasons its layer doesn't show in).
+export the blades are slot `foliage`, the heads the foliage mesh's SECOND primitive, slot `heads` (COLOR_0 = each part's
+colour under a white factor: petals or ball, the flower's centre, the stalk; hidden, like `bark_forks`, in the seasons
+its layer doesn't show in). `heads_kind` "ball" | "dab" | "petals" (see the anime and cartoon notes).
 
 Seasons in a style: spring (fresh yellow-green; an anime conifer's fresh tips), summer, autumn (`leaves.autumn`),
 winter (deciduous: the bare drawn limbs and forks; evergreen: its crown), snow = THE WINTER STATE UNDER SNOW (contract
