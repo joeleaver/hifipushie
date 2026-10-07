@@ -267,6 +267,45 @@ def test_relax_strain_takes_out_shear():
     assert s1.max() < 1.035, s1.max()
 
 
+def _ball(r=0.1, n=40):
+    th, ph = np.meshgrid(np.linspace(0.05, np.pi - 0.05, n), np.linspace(0, 2 * np.pi, 2 * n, endpoint=False))
+    V = np.c_[(r * np.sin(th) * np.cos(ph)).ravel(), (r * np.sin(th) * np.sin(ph)).ravel(), (r * np.cos(th)).ravel()]
+    from scipy.spatial import ConvexHull
+    return V, ConvexHull(V).simplices
+
+
+def test_cleanup_clears_faces_off_a_convex_body():
+    # a coarse triangle over a ball, its corners 3 mm off it: its middle dips inside (the specks on tr_11's seat)
+    from hifipushie import closures
+    V, T = _ball()
+    body = cloth.Body({"V": V, "F": T, "J": {}})
+    body._m = {"mm": {}, "at": {}}
+    d = np.array([[1.0, 0, 0], [0.97, 0.24, 0], [0.97, 0, 0.24]])
+    d /= np.linalg.norm(d, axis=1, keepdims=True)
+    X = d * 0.103
+    M = {"F": np.array([[0, 1, 2]]), "uv": X[:, :2].copy(), "piece": np.zeros(3, int), "names": ["p"],
+         "sew": np.zeros((0, 2), int), "stitch": np.zeros((0, 2), int), "folds": []}
+    c = X.mean(0, keepdims=True)
+    q, _, _ = closures._closest_on(c, V, T)
+    assert np.linalg.norm(c) < 0.1 + 0.0005  # the middle starts at (or in) the ball
+    W, _ = cloth.cleanup(X, M, body, {"smooth": 0, "weld": False, "clear": 0.003, "seams": False, "press": False})
+    cw = W.mean(0)
+    q, _, _ = closures._closest_on(cw[None], V, T)
+    assert np.linalg.norm(cw - q[0]) > 0.0013 and np.linalg.norm(cw) > 0.1, np.linalg.norm(cw - q[0])
+
+
+def test_collider_takes_worn_parts():
+    # garment key "collide": the model's parts join the collider (carried with the body like an under garment)
+    V, T = _ball()
+    W, TW = _ball(0.05)
+    W = W + [0, 0, -0.12]
+    body = cloth.Body({"V": V, "F": T, "J": {}, "worn": {"V": W, "F": TW, "key": "k"}})
+    body._m = {"mm": {}, "at": {}}
+    out = cloth._collider(body, None, False)
+    assert len(out["bodyV"]) == len(V) + len(W) and out["bodyT"].max() == len(V) + len(W) - 1
+    assert np.allclose(out["bodyV"][len(V):], W)
+
+
 def test_collar_from_the_neck():
     # garment_kb kinds.shirt.collar through Simon's options: the stand as tall as the neck allows (less 13 mm under
     # the jaw) within 20-35 mm, the fall 12 mm deeper at centre back
