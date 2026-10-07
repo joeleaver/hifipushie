@@ -1,0 +1,22 @@
+{
+ "about": "Clay / vinyl-toy ground (the blobby plants' world): flat soft colour in a few big low-contrast tone steps, no blades or grain, pillow-smooth matte rock in two tones, sand with soft bands. Colour turned as the blobby plants' (saturation 1.3, value 1.15). Macro colour variation dropped; the baked normal kept at half (big forms only).",
+ "colour": {"saturation": 1.3, "value": 1.15},
+ "macro": 0.0,
+ "macro_normal": 0.5,
+ "detail": 0.0,
+ "layers": {
+  "*": {"scale_m": 12.0, "normal": 1.0, "ops": [{"op": "blotch", "size": 4.0, "steps": 3, "soft": 0.5, "albedo": 0.08, "height": 0.02}]},
+  "grass": {"scale_m": 16.0, "warm": [1.06, 1.04, 0.9], "cool": [0.92, 0.98, 1.06], "roughness": 0.95,
+            "ops": [{"op": "blotch", "size": 3.0, "steps": 3, "soft": 0.45, "albedo": 0.11, "height": 0.03},
+                    {"op": "blotch", "size": 8.0, "albedo": 0.05, "height": 0.04}]},
+  "rock": {"scale_m": 12.0, "projection": "triplanar", "roughness": 0.92, "warm": [1.04, 1.02, 0.96], "cool": [0.95, 0.97, 1.04],
+           "ops": [{"op": "blotch", "size": 5.0, "steps": 2, "soft": 0.5, "albedo": 0.09, "height": 0.06},
+                   {"op": "blotch", "size": 2.0, "albedo": 0.025, "height": 0.02}]},
+  "sand": {"scale_m": 8.0, "roughness": 0.95,
+           "ops": [{"op": "ripples", "spacing": 0.7, "angle": 15, "warp": 0.4, "warp_len": 4.0, "albedo": 0.04, "height": 0.012},
+                   {"op": "blotch", "size": 3.0, "steps": 2, "soft": 0.6, "albedo": 0.05, "height": 0.0}]},
+  "forest_floor": {"scale_m": 12.0, "ops": [{"op": "blotch", "size": 2.0, "steps": 3, "soft": 0.4, "albedo": 0.12, "height": 0.02}]}
+ },
+ "snow": {"color": [0.95, 0.96, 0.98], "coverage": 0.85, "breakup": 0.3, "breakup_m": 8.0, "edge": "soft"},
+ "rock": {"kind": "pillow"}
+}

@@ -3309,6 +3309,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if cfg.get("maps"):
         from . import terrain_bake
         layer_tex = terrain_bake.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
+    style_sec = None
+    if T.spec.get("styles"):  # (per-style tileable layer textures + zone maps for the engine's shader: terrain_style)
+        from . import terrain_style
+        style_sec = terrain_style.write(out, T, {nm: mats.layer_ref(nm) for nm in mats.layers},
+                                        tiles=[(i, j, tuple(float(x) for x in np.concatenate(G.bounds(i, j))))
+                                               for j in range(G.nj) for i in range(G.ni)], layers=mats.layers)
     detail = _CTX.get("detail_entry")
     _st.__exit__(None, None, None)
     manifest = {
@@ -3387,6 +3393,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     }
     if detail is not None:
         manifest["detail"] = detail
+    if style_sec is not None:
+        manifest["styles"] = style_sec
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
         from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)
