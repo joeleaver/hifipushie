@@ -68,6 +68,14 @@ def test_detail_maps():
     assert dm["normal"].shape == (512, 512, 3)
     assert dm["thread"].max() > 0.5  # a topstitch line along the hem
     assert dm["height"].max() > 0  # the turned hem stands proud
+    # a pressed crease (a press fold past 180 deg) is a sharp ridge along its row, in the middle of the cloth
+    k = np.where(M["piece"] == 0)[0]
+    mid = k[np.abs(M["uv"][k, 0] - np.median(M["uv"][k, 0])) < 0.026]
+    row = mid[np.argsort(M["uv"][mid, 1])]
+    M2 = dict(M, folds=[{"piece": M["names"][0], "kind": "press", "angle": 205.0, "strength": 0.6, "rows": [row.tolist()]}])
+    dm2 = cloth.detail_maps(M2, uv, side, dict(g, detail={"hem": 0, "topstitch": 0}), texture=512)
+    dm0 = cloth.detail_maps(M, uv, side, dict(g, detail={"hem": 0, "topstitch": 0}), texture=512)
+    assert (dm2["height"] - dm0["height"]).max() > 0.0004  # ~0.6 mm proud on the row
 
 
 def test_marks_make_no_slivers():
@@ -267,11 +275,26 @@ def test_relax_strain_takes_out_shear():
     assert s1.max() < 1.035, s1.max()
 
 
+def test_clay_looks_are_matte():
+    # dark wool read as leather under the workbench's specular highlight (tr_11): cloth clay looks switch it off
+    # unless a job asks, and textured looks take each object's roughness (Blender isn't run here: read the source)
+    from pathlib import Path
+    src = (Path(cloth.__file__).parent / "blender_cloth.py").read_text()
+    r = src[src.index("def render(job, d):"):src.index("def _render_textured")]
+    t = src[src.index("def _render_textured"):]
+    assert 'sh.show_specular_highlight = bool(job.get("specular", False))' in r
+    assert 'o.get("roughness"' in t
+
+
 def _ball(r=0.1, n=40):
     th, ph = np.meshgrid(np.linspace(0.05, np.pi - 0.05, n), np.linspace(0, 2 * np.pi, 2 * n, endpoint=False))
     V = np.c_[(r * np.sin(th) * np.cos(ph)).ravel(), (r * np.sin(th) * np.sin(ph)).ravel(), (r * np.cos(th)).ravel()]
     from scipy.spatial import ConvexHull
-    return V, ConvexHull(V).simplices
+    T = ConvexHull(V).simplices
+    n = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
+    inward = np.sum(n * V[T].mean(1), 1) < 0
+    T[inward] = T[inward][:, [0, 2, 1]]  # wound outward
+    return V, T
 
 
 def test_cleanup_clears_faces_off_a_convex_body():
@@ -280,7 +303,7 @@ def test_cleanup_clears_faces_off_a_convex_body():
     V, T = _ball()
     body = cloth.Body({"V": V, "F": T, "J": {}})
     body._m = {"mm": {}, "at": {}}
-    d = np.array([[1.0, 0, 0], [0.97, 0.24, 0], [0.97, 0, 0.24]])
+    d = np.array([[1.0, 0, 0], [0.9, 0.44, 0], [0.9, 0, 0.44]])
     d /= np.linalg.norm(d, axis=1, keepdims=True)
     X = d * 0.103
     M = {"F": np.array([[0, 1, 2]]), "uv": X[:, :2].copy(), "piece": np.zeros(3, int), "names": ["p"],
