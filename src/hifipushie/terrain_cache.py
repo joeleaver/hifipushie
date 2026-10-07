@@ -1,7 +1,7 @@
 """Built terrains cached on disk: a second export, look or check of the same spec (and the same code) skips the
 build (terrain.load: 50-150 s on the bigger maps; a cached one loads in about a second).
 
-Keyed by the spec's content without its 3D-only sections (`THREE_D`: caves, volumes, export, views, which only the
+Keyed by the spec's content without its 3D-only sections (`THREE_D`: caves, volumes, export, views, styles, which only the
 tile export and the views read), the saved terrain kinds (kinds.json: a kind the designer defined changes how its spec
 builds) and `codehash.digest("terrain")`: the source of every module the build imports, so a cache entry can't be
 read after a code change. The build itself never sees the 3D sections (they are attached after it, cached or not),
@@ -21,7 +21,7 @@ import time
 import zlib
 from pathlib import Path
 
-THREE_D = ("caves", "volumes", "export", "views")
+THREE_D = ("caves", "volumes", "export", "views", "styles")
 SUFFIX = ".terrain.z"
 _STATS = {"hits": 0, "misses": 0, "last": None}
 

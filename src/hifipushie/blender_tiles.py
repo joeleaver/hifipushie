@@ -109,6 +109,147 @@ def _layered(m, layers):
     nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 
 
+def _styled(m, S):
+    """The styles recipe (terrain_style.RECIPE) on an imported baked material: per style, its layer textures laid in
+    world metres (box projection = triplanar) weighted by the _WEIGHTS attributes, x mix(1, baked / R, macro); the
+    styles mixed by the weight maps (north-up over the extent, sampled at world x, y); the baked normal mixed toward
+    the geometry's by macro_normal, the styles' layer heights as a bump. A reference for an engine's shader."""
+    nt = m.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    base_in = bsdf.inputs["Base Color"].links[0].from_socket if bsdf.inputs["Base Color"].links else None
+    nrm_in = bsdf.inputs["Normal"].links[0].from_socket if bsdf.inputs["Normal"].links else None
+    if base_in is None:
+        return
+    L = lambda t: nt.nodes.new(t)
+
+    def math(op, a, b, clamp=False):
+        n = L("ShaderNodeMath")
+        n.operation = op
+        n.use_clamp = clamp
+        for k, v in enumerate((a, b)):
+            if isinstance(v, (int, float)):
+                n.inputs[k].default_value = v
+            else:
+                nt.links.new(v, n.inputs[k])
+        return n.outputs[0]
+
+    def mixc(op, a, b, fac=1.0):
+        n = L("ShaderNodeMix")
+        n.data_type = "RGBA"
+        n.blend_type = op
+        if isinstance(fac, (int, float)):
+            n.inputs["Factor"].default_value = fac
+        else:
+            nt.links.new(fac, n.inputs["Factor"])
+        for k, v in ((6, a), (7, b)):  # (the colour A / B sockets; "A" by name is the float one)
+            if isinstance(v, (list, tuple)):
+                n.inputs[k].default_value = (*v, 1.0)
+            else:
+                nt.links.new(v, n.inputs[k])
+        return n.outputs[2]
+
+    def image(path, srgb):
+        key = (path, srgb)
+        if key not in _IMAGES:
+            im = bpy.data.images.load(path, check_existing=False)
+            im.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
+            _IMAGES[key] = im
+        return _IMAGES[key]
+
+    geo = L("ShaderNodeNewGeometry")
+    # layer weights
+    wts = {}
+    for lay, (attr, ch) in S["weights"].items():
+        at = L("ShaderNodeAttribute")
+        at.attribute_name = attr
+        if ch == 3:
+            wts[lay] = at.outputs["Alpha"]
+        else:
+            sep = L("ShaderNodeSeparateColor")
+            nt.links.new(at.outputs["Color"], sep.inputs["Color"])
+            wts[lay] = sep.outputs[ch]
+    # R = sum w_l x realistic colour_l (linear)
+    R = None
+    for lay, w in wts.items():
+        t = mixc("MIX", [0, 0, 0], list(S["ref"][lay]), w)
+        R = t if R is None else mixc("ADD", R, t)
+    ratio = mixc("DIVIDE", base_in, R)
+    # the style weight maps
+    sw = {}
+    ext = S["extent"]
+    uv = L("ShaderNodeMapping")
+    uv.vector_type = "POINT"
+    nt.links.new(geo.outputs["Position"], uv.inputs["Vector"])
+    sx, sy = 1.0 / (ext[1][0] - ext[0][0]), 1.0 / (ext[1][1] - ext[0][1])
+    uv.inputs["Scale"].default_value = (sx, sy, 1.0)
+    uv.inputs["Location"].default_value = (-ext[0][0] * sx, -ext[0][1] * sy, 0.0)
+    for path, names in S["maps"]:
+        tx = L("ShaderNodeTexImage")
+        tx.image = image(path, False)
+        tx.extension = "EXTEND"
+        nt.links.new(uv.outputs["Vector"], tx.inputs["Vector"])
+        sep = L("ShaderNodeSeparateColor")
+        nt.links.new(tx.outputs["Color"], sep.inputs["Color"])
+        for k, nm in enumerate(names):
+            sw[nm] = tx.outputs["Alpha"] if k == 3 else sep.outputs[k]
+    col, hgt, mn = None, None, None
+    for st in S["styles"]:
+        A, H = None, None
+        for lay, T in st["layers"].items():
+            if lay not in wts:
+                continue
+            mp = L("ShaderNodeVectorMath")
+            mp.operation = "SCALE"
+            mp.inputs["Scale"].default_value = 1.0 / T["size"]
+            nt.links.new(geo.outputs["Position"], mp.inputs[0])
+            ta = L("ShaderNodeTexImage")
+            ta.image = image(T["albedo"], True)
+            ta.projection = "BOX"
+            ta.projection_blend = 0.3
+            nt.links.new(mp.outputs["Vector"], ta.inputs["Vector"])
+            t = mixc("MIX", [0, 0, 0], ta.outputs["Color"], wts[lay])
+            A = t if A is None else mixc("ADD", A, t)
+            th = L("ShaderNodeTexImage")
+            th.image = image(T["height"], False)
+            th.projection = "BOX"
+            th.projection_blend = 0.3
+            nt.links.new(mp.outputs["Vector"], th.inputs["Vector"])
+            h = math("MULTIPLY", math("SUBTRACT", th.outputs["Color"], 0.5), 2 * T["height_m"])
+            h = math("MULTIPLY", h, wts[lay])
+            H = h if H is None else math("ADD", H, h)
+        if A is None:
+            continue
+        a = mixc("MULTIPLY", A, mixc("MIX", [1, 1, 1], ratio, st["macro"]))
+        w = sw.get(st["name"])
+        if w is None:
+            continue
+        a = mixc("MIX", [0, 0, 0], a, w)
+        col = a if col is None else mixc("ADD", col, a)
+        hw = math("MULTIPLY", H, w)
+        hgt = hw if hgt is None else math("ADD", hgt, hw)
+        mw = math("MULTIPLY", w, st["macro_normal"])
+        mn = mw if mn is None else math("ADD", mn, mw)
+    if col is None:
+        return
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    nmix = L("ShaderNodeMix")
+    nmix.data_type = "VECTOR"
+    nt.links.new(mn, nmix.inputs["Factor"])
+    nt.links.new(geo.outputs["Normal"], nmix.inputs[4])
+    if nrm_in is not None:
+        nt.links.new(nrm_in, nmix.inputs[5])
+    else:
+        nt.links.new(geo.outputs["Normal"], nmix.inputs[5])
+    bump = L("ShaderNodeBump")
+    bump.inputs["Distance"].default_value = 1.0
+    bump.inputs["Strength"].default_value = 1.0
+    if "Filter Width" in bump.inputs:
+        bump.inputs["Filter Width"].default_value = 1.0
+    nt.links.new(hgt, bump.inputs["Height"])
+    nt.links.new(nmix.outputs[1], bump.inputs["Normal"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+
+
 def _img(path):
     if path not in _IMAGES:
         _IMAGES[path] = bpy.data.images.load(path)
@@ -741,6 +882,9 @@ def run(job):
                         ob.data.materials[s] = mat
                     elif ch and m.name not in done:  # (first: under the detail recipe a channel view drew everything)
                         _channel(m, ch)
+                        done.add(m.name)
+                    elif job.get("styles") and m.name not in done:
+                        _styled(m, job["styles"])
                         done.add(m.name)
                     elif job.get("layers") and m.name not in done:
                         _layered(m, job["layers"])

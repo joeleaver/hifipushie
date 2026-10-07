@@ -1,0 +1,23 @@
+{
+ "about": "Feature-animation ground (Pixar / Disney sets: Brave, Luca): realistic forms cleaned and softened, rich saturated colour, grass as soft blades at 4-8x real size, rock simplified and soft, sand warm and fine; the realistic detail swatches at half strength. Rock: realistic facets and beds at reduced strength, no jointed blocks, the ground softened a little.",
+ "colour": {"saturation": 1.15, "value": 1.05},
+ "macro": 0.8,
+ "macro_normal": 0.8,
+ "detail": 0.5,
+ "layers": {
+  "*": {"scale_m": 4.0, "normal": 0.5, "warm": [1.06, 1.03, 0.94], "cool": [0.94, 0.97, 1.05],
+        "ops": [{"op": "blotch", "size": 1.5, "albedo": 0.08, "height": 0.02}, {"op": "grain", "size": 0.08, "albedo": 0.06, "height": 0.003}]},
+  "grass": {"scale_m": 3.0, "roughness": 0.9, "warm": [1.08, 1.06, 0.88], "cool": [0.9, 0.96, 1.08],
+            "ops": [{"op": "blotch", "size": 1.2, "albedo": 0.08, "height": 0.0},
+                    {"op": "strokes", "per_m2": 650, "length": [0.1, 0.24], "width": [0.01, 0.018], "angle": 90, "spread": 40, "taper": 0.9,
+                     "tones": [-0.5, 0.7], "gap": -0.4, "cluster": 0.6, "cluster_tone": 0.25, "albedo": 0.25, "height": 0.005}]},
+  "rock": {"scale_m": 6.0, "projection": "triplanar", "roughness": 0.85,
+           "ops": [{"op": "blotch", "size": 1.5, "albedo": 0.1, "height": 0.05},
+                   {"op": "grain", "size": 0.25, "albedo": 0.08, "height": 0.015}]},
+  "sand": {"scale_m": 3.0, "roughness": 0.92, "warm": [1.06, 1.02, 0.92],
+           "ops": [{"op": "grain", "size": 0.02, "albedo": 0.08, "height": 0.001},
+                   {"op": "ripples", "spacing": 0.12, "angle": 20, "warp": 0.5, "warp_len": 1.5, "patches": 1.5, "albedo": 0.03, "height": 0.003}]}
+ },
+ "snow": {"color": [0.95, 0.96, 0.99], "coverage": 0.8, "breakup": 0.5, "breakup_m": 6.0, "edge": "soft"},
+ "rock": {"kind": "soft", "relief": {"facets": 0.7, "bedding": 0.6, "blocks": false}, "soften_m": 0.6, "fallen": 0.6, "micro": 0.5}
+}
