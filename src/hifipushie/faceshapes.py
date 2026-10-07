@@ -46,7 +46,8 @@ spec["face_shapes"] (optional, stripped from geometry): {"amount": {name: scale 
 
 The export log gives each skin part's most uneven shapes (`unevenness`: how far a vertex's move lies outside the
 range of its edge neighbours' moves, per metre of edge; a smooth shape reads ~0 however steep) and a WARNING over
-0.2: neighbouring vertices going different ways shear painted detail into a sawtooth (a blink's under-eye shadow).
+0.2 for lid, brow, cheek and nose shapes: neighbouring vertices going different ways shear painted detail into a
+sawtooth (a blink's under-eye shadow). Mouth shapes are listed but not warned: the lips part at the slit's ends.
 The json has them per part as face_shape_unevenness.
 """
 
@@ -713,7 +714,8 @@ def unevenness(V: np.ndarray, T: np.ndarray, d: np.ndarray, sel: np.ndarray | No
     neighbours' moves (per axis; 0 for any vertex between its neighbours, however steep the field), per metre of
     its mean edge: (worst, vertices over UNEVEN_COUNT, vertices with 4+ neighbours). A smooth field reads ~0 (a lid
     travelling 8 mm over 5 mm of skin is steep, not jagged); a vertex that goes further than everything round it
-    is a spike, and several of them a sawtooth in whatever is painted there. V, T welded (no uv-seam duplicates:
+    is a spike, and several of them a sawtooth in whatever is painted there. Vertices at a tear (the lips' slit:
+    neighbours moving opposite ways) are left out. V, T welded (no uv-seam duplicates:
     `weld`); sel limits the count to those vertices."""
     e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]])
     e = np.unique(np.sort(e, 1), axis=0)
@@ -722,18 +724,24 @@ def unevenness(V: np.ndarray, T: np.ndarray, d: np.ndarray, sel: np.ndarray | No
     n = len(V)
     lo, hi = np.full((n, 3), np.inf), np.full((n, 3), -np.inf)
     ls, cnt = np.zeros(n), np.zeros(n)
+    # a tear is not unevenness: the two lips meet along the slit and at its corners, and part (neighbours going
+    # opposite ways, both by more than a millimetre)
+    mv = np.linalg.norm(d, axis=1)
+    apart = ((d[e[:, 0]] * d[e[:, 1]]).sum(1) < 0) & (np.minimum(mv[e[:, 0]], mv[e[:, 1]]) > 1e-3)
+    torn = np.zeros(n, bool)
+    torn[e[apart].ravel()] = True
     for a, b in ((0, 1), (1, 0)):
         np.minimum.at(lo, e[:, a], d[e[:, b]])
         np.maximum.at(hi, e[:, a], d[e[:, b]])
         np.add.at(ls, e[:, a], L)
         np.add.at(cnt, e[:, a], 1)
-    ok = cnt >= 4
+    ok = (cnt >= 4) & ~torn
     if sel is not None:
         ok &= sel
     if not ok.any():
         return 0.0, 0, 0
     r = np.maximum(np.maximum(lo[ok] - d[ok], d[ok] - hi[ok]), 0.0)
-    q = np.linalg.norm(r, axis=1) / np.maximum(ls[ok] / cnt[ok], 1e-5)
+    q = np.linalg.norm(r, axis=1) / np.maximum(ls[ok] / cnt[ok], 2e-3)  # (a mesh finer than 2 mm: per 2 mm)
     return float(q.max()), int((q > UNEVEN_COUNT).sum()), int(ok.sum())
 
 
@@ -830,8 +838,9 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             top = sorted(un, key=lambda nm: -un[nm][0])[:3]
             log.append(f"face shapes: {pn} unevenness (a vertex's move outside its neighbours', per m of edge; "
                        f"smooth ~0, limit {UNEVEN_LIMIT}): " + ", ".join(f"{nm} {un[nm][0]:.2f}" for nm in top))
-            for nm in un:
-                if un[nm][0] > UNEVEN_LIMIT:
+            for nm in un:  # (mouth shapes part the lips at the slit's ends: steps there are the shape, not a fault;
+                # measured, the kit's read 0.2-1.6 on a handful of vertices at the corners. Listed, not warned.)
+                if un[nm][0] > UNEVEN_LIMIT and family(nm.split("_")[0]) != "mouth":
                     log.append(f"WARNING face shapes: {pn} {nm} moves unevenly ({un[nm][0]:.2f}, {un[nm][1]} "
                                f"vertices over {UNEVEN_COUNT}): neighbouring vertices go different ways, which "
                                "shears painted detail into a sawtooth. Look at it posed (rig(glb=, shapes=))")

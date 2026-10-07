@@ -496,7 +496,8 @@ def layers(V: np.ndarray, F: np.ndarray, part: np.ndarray, names: list[str], P: 
     """Parts that pass through each other when posed. For every pair of parts: the vertices of one (the outer) that
     lie just outside the other's surface at rest (within LAYER_REACH of it), and how many of them are under that same
     spot of the surface as posed (P), by more than LAYER_DEPTH. Rows {"outer", "inner", "through", "of", "worst_mm"},
-    most first; only pairs with something through. skip: part names left out (rigid props)."""
+    "at": where at rest, the middle of them}, most first; only pairs with something through. skip: part names left
+    out (rigid props)."""
     from scipy.spatial import cKDTree
 
     from .rig_template import _closest_on_triangles
@@ -541,7 +542,8 @@ def layers(V: np.ndarray, F: np.ndarray, part: np.ndarray, names: list[str], P: 
             thru = on & (s1 < -LAYER_DEPTH) & (l1 < LAYER_SLIDE)
             if thru.any():
                 rows.append({"outer": na, "inner": names[b], "through": int(thru.sum()), "of": int(on.sum()),
-                             "worst_mm": float(-s1[thru].min() * 1e3)})
+                             "worst_mm": float(-s1[thru].min() * 1e3),
+                             "at": [round(float(x), 3) for x in V[ia[thru]].mean(0)]})
     return sorted(rows, key=lambda r: -r["through"])
 
 
@@ -552,5 +554,6 @@ def layers_text(rows: list[dict], what: str = "seated (hips and knees 90 deg)", 
     out = [f"  layers, {what}: vertices of one part that lie on another at rest and are more than "
            f"{LAYER_DEPTH * 1e3:g} mm under it posed (the parts cross there: a jagged line; over {LAYER_BAD} is BAD):"]
     out += [f"    {r['outer']} through {r['inner']}: {r['through']} of {r['of']} vertices, worst {r['worst_mm']:.1f} mm"
+            + (f", round [{r['at'][0]:.2f}, {r['at'][1]:.2f}, {r['at'][2]:.2f}]" if r.get("at") else "")
             + (" <- BAD" if r["through"] > LAYER_BAD else "") for r in rows[:top]]
     return out
