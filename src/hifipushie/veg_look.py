@@ -47,13 +47,16 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
     s = tree["spec"]
     D = veg_style.dress(tree, st, triangles, s.get("season", "summer"))
     W, C = D["wood"], D["crown"]
-    arrays = {"V": W["V"], "F": W["F"], "tan": W["tan"], "radius": W["radius"], "uv": W["uv"], "dead": W["dead"], "wood_N": W["N"]}
+    K = D["forks"] if C is None else None  # (the forks show when the plant is bare)
+    cat = lambda k_: W[k_] if K is None else np.concatenate([W[k_], K[k_]])
+    arrays = {"V": cat("V"), "F": W["F"] if K is None else np.vstack([W["F"], K["F"] + len(W["V"])]), "tan": cat("tan"), "radius": cat("radius"),
+              "uv": cat("uv"), "dead": cat("dead"), "wood_N": cat("N")}
     if C is not None:
-        col = np.array(veg_style.lin(veg_style.season_color(s, s.get("season", "summer"), st)))
-        arrays.update(solid_V=C["V"], solid_F=C["F"], solid_N=C["N"], solid_col=np.clip(col[None] * C["col"] * C["gain"], 0, 1))
+        col = np.array(veg_style.material_color(veg_style.season_color(s, s.get("season", "summer"), st), st))
+        arrays.update(solid_V=C["V"], solid_F=C["F"], solid_N=C["N"], solid_col=np.clip(col[None] * C["col"], 0, 1))
     npz = tmp / f"plant{tag}.npz"
     np.savez(npz, **arrays)
-    info = {"triangles": int(len(W["F"])), "twigs": 0, "foliage": "masses", "leaf_triangles": int(len(C["F"])) if C is not None else 0,
+    info = {"triangles": int(len(arrays["F"])), "twigs": 0, "foliage": "masses", "leaf_triangles": int(len(C["F"])) if C is not None else 0,
             "style": D["info"]}
     pj = {"npz": str(npz), "bark": {"flat": veg_style.bark_color(s, st), "roughness": float(st["wood"].get("roughness", 0.9))},
           "leaf": {}, "cards": None, "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0),

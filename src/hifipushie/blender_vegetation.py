@@ -893,6 +893,9 @@ def build(job):
         for l in list(w.node_tree.links):
             if l.to_socket == bg.inputs[0]:
                 w.node_tree.links.remove(l)
+        for l in list(w.node_tree.links):  # (a flat view's ramp on the world's strength)
+            if l.to_socket == bg.inputs[1]:
+                w.node_tree.links.remove(l)
         if isclay:
             bg.inputs[0].default_value = (0.035, 0.04, 0.05, 1)
             bg.inputs[1].default_value = 0.9
@@ -912,6 +915,19 @@ def build(job):
                     w.node_tree.links.remove(l)
             bg.inputs[0].default_value = (1, 1, 1, 1)
             bg.inputs[1].default_value = 1.0
+            # an even white world from above fading to `under` from below: albedo with a little shade baked under
+            # crowns and limbs (wholly unlit, an impostor was flat and pale beside the mesh LOD's shaded underside)
+            WN, WL = w.node_tree.nodes, w.node_tree.links
+            if "hp_flat_ramp" not in WN:
+                geo_ = WN.new("ShaderNodeNewGeometry")
+                sep_ = WN.new("ShaderNodeSeparateXYZ")
+                mr_ = WN.new("ShaderNodeMapRange")
+                mr_.name = "hp_flat_ramp"
+                mr_.inputs["From Min"].default_value, mr_.inputs["From Max"].default_value = -1.0, 0.6
+                mr_.inputs["To Min"].default_value, mr_.inputs["To Max"].default_value = float(job.get("flat_under", 0.35)), 1.0
+                WL.new(geo_.outputs["Incoming"], sep_.inputs[0])
+                WL.new(sep_.outputs["Z"], mr_.inputs["Value"])
+            WL.new(WN["hp_flat_ramp"].outputs[0], bg.inputs[1])
             sun.data.energy = fill.data.energy = amb.data.energy = 0.0
         sc.view_settings.view_transform = "Standard" if isclay or isflat else job.get("view_transform", "Khronos PBR Neutral")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)

@@ -440,8 +440,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     M_BARK = 0
 
     def solid_material(nm, rgb):  # a style's closed crown: one colour (x COLOR_0, the tone of each mass); None = bare then
-        g_ = veg_style.color_gain(st)
-        m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*[min(c_ * g_, 1.0) for c_ in veg_style.lin(rgb or [0.5, 0.5, 0.5])], 1.0], "metallicFactor": 0.0,
+        m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*veg_style.material_color(rgb or [0.5, 0.5, 0.5], st), 1.0], "metallicFactor": 0.0,
                                                     "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
         if rgb is None:
             m_.update(alphaMode="MASK", alphaCutoff=1.01, extras={"hidden": True})  # (bare then: the cut-off above 1 hides it in viewers that read variants)
@@ -505,6 +504,16 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         materials.append(mw)
         var_bark["wet"] = len(materials) - 1
     variants = [v_ for v_ in seasons + (["wet"] if wet else []) if len(seasons) + bool(wet) > 1]
+    # a style's forks (the wood's second primitive): there when the foliage is not
+    M_FORK, var_fork = None, {}
+    if st and has_leaves:
+        bare = {se: veg_style.season_color(s, se, st) is None for se in seasons}
+        if any(bare.values()):
+            hid = {**json.loads(json.dumps(materials[M_BARK])), "name": "bark_forks", "alphaMode": "MASK", "alphaCutoff": 1.01, "extras": {"hidden": True}}
+            vis = {**json.loads(json.dumps(materials[M_BARK])), "name": "bark_forks_bare"}
+            materials.extend([hid, vis])
+            var_fork = {se: len(materials) - (1 if bare[se] else 2) for se in seasons}
+            M_FORK = var_fork[se0]
 
     def with_variants(p_, table, default):
         if variants and table:
@@ -523,6 +532,14 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             "extras": {"impostor": "unlit albedo picture (no lighting baked in); both sides are faces of their own with the same "
                                    "up-and-out normal: a double-sided material flipped the back's normal and it rendered black"}})
         M_IMP = len(materials) - 1
+        var_imp = {}
+        for se, im_ in (impostor.get("seasons") or {}).items():
+            if se in seasons and se != seasons[0]:
+                mi_ = json.loads(json.dumps(materials[M_IMP]))
+                mi_["name"] = f"impostor_{se}"
+                mi_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(im_), False)}
+                materials.append(mi_)
+                var_imp[se] = len(materials) - 1
     per, roots = [], []
     cluster_mats = {}
     if spacing is None:
@@ -541,7 +558,11 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
                 W = D["wood"]
                 kids = []
-                meshes.append({"name": pre + "wood", "primitives": [with_variants(prim(W["V"], W["F"], W["uv"], M_BARK, D["wood_wind"], N=W["N"]), var_bark, M_BARK)]})
+                wp = [with_variants(prim(W["V"], W["F"], W["uv"], M_BARK, D["wood_wind"], N=W["N"]), var_bark, M_BARK)]
+                K_ = D["forks"]
+                if K_ is not None and M_FORK is not None:
+                    wp.append(with_variants(prim(K_["V"], K_["F"], K_["uv"], M_FORK, K_["wind"], N=K_["N"]), var_fork, M_FORK))
+                meshes.append({"name": pre + "wood", "primitives": wp})
                 nodes.append({"name": pre + "wood", "mesh": len(meshes) - 1})
                 kids.append(len(nodes) - 1)
                 c = {"name": nm, "lod": li, "height_m": round(t["height"], 2), "wood_triangles": int(len(W["F"])), "foliage_triangles": 0,
@@ -647,7 +668,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             up_ = Vq * [0.6, 0.6, 0.0] / (0.5 * S_) + [0, 0, 1.0]  # up, leaning out from the trunk: lit like a crown from any side
             up_ /= np.linalg.norm(up_, axis=1, keepdims=True)
             p_ = prim(Vq, Fq, Uq, M_IMP, (zt, np.zeros(8), np.zeros(8), np.zeros(8)), N=up_)
-            meshes.append({"name": f"LOD{n_lod}_impostor", "primitives": [p_]})
+            meshes.append({"name": f"LOD{n_lod}_impostor", "primitives": [with_variants(p_, var_imp, M_IMP)]})
             nodes.append({"name": f"{nm}_LOD{0 if only_impostor else n_lod}", "mesh": len(meshes) - 1})
             lod_nodes.append([len(nodes) - 1])
             lod_info.append({"name": nm, "lod": n_lod, "triangles": 8, "impostor": True})
@@ -782,7 +803,7 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
             if "material" not in p_:
                 continue
             slot = G["materials"][p_["material"]]["name"]
-            if slot in slots or slot == "impostor":
+            if slot in slots:
                 continue
             slots[slot] = params(p_["material"])
             for mp in maps or []:
@@ -833,6 +854,6 @@ def write_collision(tree: dict, path: str, name: str) -> str | None:
     return str(path)
 
 
-def write_impostor(tree: dict, path: str, name: str, impostor: dict) -> str:
-    """The impostor LOD alone, as a file of its own."""
-    return write_glb(tree, path, name, impostor=impostor, only_impostor=True)["path"]
+def write_impostor(tree: dict, path: str, name: str, impostor: dict, seasons=("summer",)) -> str:
+    """The impostor LOD alone, as a file of its own (its pictures per season as variants)."""
+    return write_glb(tree, path, name, impostor=impostor, only_impostor=True, seasons=seasons)["path"]
