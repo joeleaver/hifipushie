@@ -41,8 +41,8 @@
  "crown": {
   "kind": "clouds",
   "masses": [
-   20,
-   36
+   6,
+   12
   ],
   "spread": 1.5,
   "pad": 0.4,
@@ -104,7 +104,7 @@
    "out": 0.6,
    "verts": 6
   },
-  "masses_step": 4,
+  "masses_step": 2,
   "masses_kind": "masses",
   "tier_power": 1.0,
   "tier_seat": 0.4,
@@ -113,17 +113,19 @@
   "tier_uneven": 0.0,
   "tier_cap": 0.0,
   "tier_under": null,
-  "clump_min_cards": 0
+  "clump_min_cards": 0,
+  "edge_share": 0.35,
+  "edge_count": 2.0
  },
  "colour": {
   "saturation": 1.2,
   "value": 1.1,
-  "bark_saturation": 0.6,
-  "bark_value": 1.15,
+  "bark_saturation": 0.5,
+  "bark_value": 0.8,
   "bark_mix": [
-   0.3,
-   0.32,
-   0.42
+   0.27,
+   0.24,
+   0.22
   ],
   "bark_mix_amount": 0.5
  },
@@ -177,7 +179,7 @@
    "tier_height": 0.8,
    "tier_under": 0.25,
    "tier_uneven": 0.3,
-   "tier_cap": 0.3,
+   "tier_cap": 0.5,
    "tier_power": 0.85,
    "layers": [
     0.7,
@@ -216,10 +218,32 @@
     "width": 0.5,
     "core": 0.3
    },
-   "clump_min_cards": 40
+   "clump_min_cards": 80
   },
   "colour": {
    "value": 1.35
   }
+ },
+ "clump": {
+  "blades": [
+   8,
+   10
+  ],
+  "width": 0.08,
+  "thick": 0.45,
+  "curl": 0.55,
+  "heads": 3,
+  "ball": 0.035,
+  "stalk": 0.008,
+  "normals_up": 0.5,
+  "tones": 3,
+  "tone": [
+   0.7,
+   1.2
+  ],
+  "budget": 1500,
+  "roughness": 0.9,
+  "fan": 3,
+  "fan_angle": 16
  }
 }

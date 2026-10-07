@@ -64,7 +64,9 @@
   "trunk_show": 0.0,
   "tier_uneven": 0.0,
   "tier_cap": 0.0,
-  "tier_under": null
+  "tier_under": null,
+  "edge_share": 0.0,
+  "edge_count": 1.5
  },
  "colour": {
   "saturation": 1.3,
@@ -154,6 +156,8 @@
    1.15
   ],
   "budget": 800,
-  "roughness": 0.8
+  "roughness": 0.8,
+  "fan": 1,
+  "fan_angle": 18
  }
 }
