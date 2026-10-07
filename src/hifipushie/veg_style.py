@@ -622,7 +622,7 @@ def _scallops(out: list, cr: dict, seed: int) -> list:
         nn /= np.linalg.norm(nn, axis=1, keepdims=True)
         for u, nv in zip(U, nn):
             p = e["c"] + (e["r"] * u) @ e["R"] - float(cr.get("scallop_sink", 0.45)) * rb * (nv @ e["R"])
-            out.append({"c": p, "R": np.eye(3), "r": np.full(3, rb), "n": 0, "of": j})
+            out.append({"c": p, "R": np.eye(3), "r": np.full(3, rb), "n": 0, "of": j, "join": float(cr.get("scallop_join", 0.35))})
     return out
 
 
@@ -675,7 +675,7 @@ def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, flo
         D[:, j] = np.where(k1 > 1e-9, k0 * (k0 - 1.0) / np.maximum(k1, 1e-9), -float(e["r"].min()))
     d = D[:, 0].copy()
     for j in range(1, len(ells)):
-        d = sdf.smin(d, D[:, j], blend)
+        d = sdf.smin(d, D[:, j], blend * float(ells[j].get("join", 1.0)))  # (a scallop bump joins its clump crisper: `join`)
     if floor is not None:
         d = np.maximum(d, floor - p[:, 2])
     return (d, D) if each else d
