@@ -3833,11 +3833,13 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             gr[A_[sim_bad[B_]]] = True
             gr[B_[sim_bad[A_]]] = True
             sim_bad = gr
-        for _ in range(4):
+        for it_ in range(8):
             bad = _crossing_verts(res["V"], M) & ~sim_bad
             if not bad.any():
                 break
-            for _r in range(2):
+            # (the crossing vertices alone first, then a ring, then two: two rings at once reopened every seam
+            # within 4 cm of one stubborn crossing at a collar's end, the shoulder seams with it)
+            for _r in range(min(it_, 2)):
                 gr = bad.copy()
                 gr[A_[bad[B_]]] = True
                 gr[B_[bad[A_]]] = True
@@ -4029,11 +4031,52 @@ def seam_gaps(V_sim: np.ndarray, V: np.ndarray, M: dict) -> dict:
     return out
 
 
+def _seam_relax(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, keep: float, iters: int = 4) -> np.ndarray:
+    """Welded seams pressed flat: each closed seam vertex (its sides as one) eased toward the mean of its neighbours
+    on both sides and along the seam, never more than `keep` from where the weld left it. A solver's stitches leave a
+    seam between two soft pieces puckered (a jacket's centre back seam at 2 cm: its vertices alternately 4 mm sunk
+    and 5-9 mm proud of the cloth beside them: the pale zigzag down the back); a sewn seam is pressed, and stiffer
+    than the cloth (its allowances). Interfaced vertices stay (a made edge is where it was made)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    s_ = np.asarray(M["sew"]).reshape(-1, 2)
+    s_ = s_[np.linalg.norm(X[s_[:, 0]] - X[s_[:, 1]], axis=1) < 1e-6]
+    if not len(s_):
+        return X
+    _, lab = connected_components(coo_matrix((np.ones(len(s_)), (s_[:, 0], s_[:, 1])), shape=(len(X), len(X))), directed=False)
+    seam = np.zeros(len(X), bool)
+    seam[s_.ravel()] = True
+    if stiff is not None:  # a group with an interfaced member stays
+        hard = np.zeros(lab.max() + 1, bool)
+        hard[lab[np.asarray(stiff) > 0.5]] = True
+        seam &= ~hard[lab]
+    if not seam.any():
+        return X
+    A_, B_ = _graph(M)
+    a = np.r_[A_, B_]
+    b = np.r_[B_, A_]
+    k = seam[a] & (lab[a] != lab[b])
+    a, b = a[k], b[k]
+    X0, X = X, X.copy()
+    for _ in range(iters):
+        acc, cnt = np.zeros((lab.max() + 1, 3)), np.zeros(lab.max() + 1)
+        np.add.at(acc, lab[a], X[b])
+        np.add.at(cnt, lab[a], 1.0)
+        tgt = acc[lab] / np.maximum(cnt[lab], 1)[:, None]
+        mv = seam & (cnt[lab] > 0)
+        X[mv] = 0.5 * X[mv] + 0.5 * tgt[mv]
+        D = X[mv] - X0[mv]
+        L = np.linalg.norm(D, axis=1)
+        X[mv] = X0[mv] + D * np.minimum(1.0, keep / np.maximum(L, 1e-12))[:, None]
+    return X
+
+
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """The pass artists make after the sim: the fine crinkle (frozen buckles a triangle or two across) smoothed away by
     Taubin passes (a band-limited smoothing that doesn't shrink the cloth: the folds, many triangles across, stay),
     seams welded (both sides at their midpoint), and anything the smoothing pulled toward the body pushed back out to
-    `clear`. opts: {"smooth": passes (0 = off), "weld": bool, "clear": m, "keep": m}. stiff (per vertex 0..1, the
+    `clear`. opts: {"smooth": passes (0 = off), "weld": bool, "clear": m, "keep": m, "seams": bool (welded seams
+    pressed flat, _seam_relax; default on)}. stiff (per vertex 0..1, the
     interfacing): interfaced pieces (collars, cuffs, plackets) aren't smoothed: they don't crinkle, and smoothing
     their tight folds and overlaps crumpled them (a cuff 2 -> 6%)."""
     o = dict(CLEANUP, **(opts or {}))
@@ -4069,6 +4112,8 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         X[vs] = (acc / np.bincount(gi, weights=wv)[:, None])[gi]
     if o["weld"] and len(M["sew"]):
         weld()
+        if o.get("seams", True):
+            X = _seam_relax(X, M, h, stiff, float(o["keep"]))
     if o["clear"] and body is not None and len(body.V):
         vn, tree = body.normals()
         _, i = tree.query(X)
