@@ -90,10 +90,21 @@ def workers(per_worker_gb: float, cap: int | None = None, jobs: int | None = Non
     return max(1, n)
 
 
+_HEAVY_DEPTH = 0
+
+
 @contextlib.contextmanager
 def heavy(name: str, log=print):
     """Hold one of the machine's heavy-job slots (a file lock shared by every process and agent) while a heavy
     job runs; waits for a free slot."""
+    global _HEAVY_DEPTH
+    if _HEAVY_DEPTH > 0:  # this process holds a slot already (a batch of looks under one wait): no second one
+        _HEAVY_DEPTH += 1
+        try:
+            yield
+        finally:
+            _HEAVY_DEPTH -= 1
+        return
     slots = max(1, int(os.environ.get("HIFIPUSHIE_HEAVY_SLOTS", 1)))
     d = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "hifipushie"
     d.mkdir(parents=True, exist_ok=True)
@@ -115,9 +126,11 @@ def heavy(name: str, log=print):
             time.sleep(2)
     if waited:
         log(f"{name}: started after {time.time() - t0:.0f} s wait")
+    _HEAVY_DEPTH = 1
     try:
         yield
     finally:
+        _HEAVY_DEPTH = 0
         fcntl.flock(f, fcntl.LOCK_UN)
         f.close()
 
