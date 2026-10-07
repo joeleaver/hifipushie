@@ -2025,11 +2025,28 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     off by up to 13 mm along the seam: fold rows on either side: a mesh fault, not fixed) and laid with `worn_pt`.
     Dead end: laying the collar's front as a continuation of the turned lapel where the lapel STARTS (the fronts
     start on a cylinder, the collar is made and held: 3.8x stretch).
-  - Seam-wrapped pieces take the bands' clearance (SMOOTH_CLEAR), not the draped 12 mm: UNVERIFIED (in su_08 if it
-    ran after 10:55; su_06 predates it and its open neck seam is what it is meant to fix).
+  - Seam-wrapped pieces take the bands' clearance (SMOOTH_CLEAR), not the draped 12 mm (the collar's neck edge was
+    held 8 mm outside the back neck). Blazer alone re-simulated with it (seamdiag.py, no render): neck / gorge
+    seam 6 in the sim 2.1-5.6 mm (was 9-15) with ONE pair at 14.8 mm: the pair beside the roll rows, where the
+    mesh pairs the seam's two sides up to 13 mm apart ALONG the seam (pairs.py: collar 0.132 <-> front 0.046; fold
+    rows inserted on each side shift the pairing): fix that pairing in `cloth.mesh` next. The clean-up left all 12
+    pairs as the sim had them (V = V_sim): the weld did not act on a seam between the made collar and draped
+    cloth: not understood (same for the CB seam's 4 pairs at 2.7 mm: the pale zigzag).
+  - Layered run (blazer over the shirt, su_08 / su_10): the GPU did NOT crash; ZOZO stops at frame 0, "ccd
+    failed", start 1650-1750% stretched. From the job's in.npz (fs_dbg.py): only the COLLAR, 24 triangles to 9.6x
+    at pattern |x| 0.09-0.13 (the roll's end / the blend into the front part), and in the layered job the collar
+    is not carried (carryIdx empty) and rests on the flat pattern, i.e. it is not treated as made there. pl.py's
+    start on `Ctx.body` shows only 1.58x: `build` places on `padded_body` (the pressed shirt, its collar round the
+    neck), where the worn chart and the seam frames meet the shirt collar's surface. Next: place with build's own
+    body (run.py's res["X0"] is saved in out/<tag>.npz only when the sim finishes: add a place-only path through
+    `cloth.build`), find why the collar is not made / carried when `over` is set, and lay the jacket collar over
+    the shirt collar (its stand OUTSIDE the shirt's, the "layer_collar" tell 10-20 mm).
+  - `worn_pt` returns the point at the body's depth (not a body vertex: two points on one vertex = a rest triangle
+    of no size).
   - Garrett: stages 1-3 PASS for shirt, blazer, trousers on `su_garrett`; never placed or simulated on him.
-  - Tests at 86629f8: test_pattern_draft, _styles, _tailor, test_folds, test_cloth_workflow pass; test_cloth.py NOT
-    run. Not mergeable until it is, and until su_08 is judged.
+  - Tests: test_pattern_draft, _styles, _tailor, test_folds, test_cloth_workflow, test_cloth, test_cloth_layers,
+    test_closures, test_cloth_check pass at 86629f8 (the worn_pt change after it: only the pattern / folds /
+    workflow set re-run). No test yet for the notched collar's roll line, wrap worn / turn.line or made groups.
   - NEXT, the coordinator's order: (1) the blazer's neck / gorge seam by construction: re-run `q.sh` with
     "su_09 ga_suit jacket over=null" on the clearance change and read seam 6 / 7 with seamdiag.py (if still open:
     where does the collar's neck edge start against the worn neckline, and does the front's turned gorge reach it:
@@ -2041,8 +2058,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     height, fall = stand + 10-15 mm, points 65-75 mm), the 12 mm front gape and the waist strain (stage 2 ease says
     +23% at the waist: so the strain is the lap / buttons, not size: unexplained); (5) trousers: slim straight leg
     to a slight break, crease folds, fly, loops; first place + sim on su_garrett. su_08 (blazer over the shirt,
-    the job that crashed the 890M in ccd_collision_edge_edge) was queued when this was written: read
-    /mnt/data/hifipushie/suit/su_08_blazer_over_shirt.log first.
+    the job that crashed the 890M in ccd_collision_edge_edge) fails at its start now: see above.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
