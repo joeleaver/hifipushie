@@ -545,7 +545,9 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   forest_floor, sand, earth, rock, wet_rock, snow; `like` another layer) a tileable texture built from ops: `blotch`
   (big soft colour fields, `steps` tones), `strokes` (directional brush dabs, warm-light / cool-shadow `tones`),
   `bands` (painted strata, level on cliffs), `ripples`, `dots`, `grain`, `cracks` (ink lines), `facets`, `pillow`;
-  `scale_m` (the texture's side), `projection` top | triplanar; `macro` (how much of the baked tile colour's variation
+  `scale_m` (the texture's side), `projection` top | triplanar (contract 2: soft layers are laid from the top
+  everywhere, even on steep ground, as artists lay ground; only rock layers are triplanar, and their side planes wander
+  `v_jitter_m` along the strike so painted strata don't repeat straight up a cliff); `macro` (how much of the baked tile colour's variation
   the style keeps: 1 realistic, 0 blobby), `macro_normal` (share of the baked normal kept), `detail` (the realistic
   tiling detail swatches), `overlay` (the style's own close-up swatch: anime brush dabs), `seasons` (per season per
   layer `{"mix": sRGB, "amount"}`, as the plants'), `snow` (numbers for the engine's snow, as the plants'), `rock`

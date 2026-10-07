@@ -204,14 +204,14 @@ def _styled(m, S):
             nt.links.new(geo.outputs["Position"], mp.inputs[0])
             ta = L("ShaderNodeTexImage")
             ta.image = image(T["albedo"], True)
-            ta.projection = "BOX"
+            ta.projection = "BOX" if T.get("projection") == "triplanar" else "FLAT"  # (soft layers top-down)
             ta.projection_blend = 0.3
             nt.links.new(mp.outputs["Vector"], ta.inputs["Vector"])
             t = mixc("MIX", [0, 0, 0], ta.outputs["Color"], wts[lay])
             A = t if A is None else mixc("ADD", A, t)
             th = L("ShaderNodeTexImage")
             th.image = image(T["height"], False)
-            th.projection = "BOX"
+            th.projection = "BOX" if T.get("projection") == "triplanar" else "FLAT"  # (soft layers top-down)
             th.projection_blend = 0.3
             nt.links.new(mp.outputs["Vector"], th.inputs["Vector"])
             h = math("MULTIPLY", math("SUBTRACT", th.outputs["Color"], 0.5), 2 * T["height_m"])
