@@ -1,32 +1,33 @@
 {
- "about": "Scots pine (Pinus sylvestris), mature and open-grown: a stout trunk, bare for its lower third and orange above, running on into a deep irregular crown of a few crooked stout limbs carrying flat plates of needle tufts",
+ "about": "Scots pine (Pinus sylvestris). One habit from sapling to veteran, fitted to crown ratios (vegetation.fit_form; targets from measured photos, workspace/veg_refs/pine_form): open-grown it is a broad cone with limbs to the ground when young (width / height 0.5-0.8), an ovoid crown over a short bole at 80, a rounded high crown over an orange stem when old; in a stand (environment.setting forest + spacing) a slender pole with a small high crown. Not an umbrella: that is Pinus pinea",
  "age": 80,
  "habit": {
   "years_per_step": 2.5,
   "unit": 0.3,
-  "vigour": 3.8564,
+  "vigour": 4,
   "apical": [
-   0.72,
+   0.6,
    0.56
   ],
-  "apical_old": 0.46,
+  "apical_old": null,
   "apical_fade": [
    0.4,
    0.75
   ],
-  "leader": 1,
-  "leader_until": 0.45,
+  "leader": 4,
+  "leader_until": 1.0,
   "shoot_max": [
+   4,
    2,
    2
   ],
   "buds": [
    4,
-   2,
+   3,
    2
   ],
   "whorl": [
-   true,
+   false,
    true,
    true
   ],
@@ -47,7 +48,7 @@
   ],
   "plagio": [
    0,
-   0.3,
+   0.21,
    0.25,
    0.2
   ],
@@ -57,24 +58,28 @@
    10,
    5
   ],
-  "light": 0.1582,
+  "light": 0.215,
   "jitter": [
-   0.14,
-   0.42,
-   0.34,
+   0.07,
+   0.2,
+   0.28,
    0.28
   ],
-  "shed": 0.13,
+  "shed": 0.1,
   "shed_age": 3,
   "bud_life": 6,
   "leaf_steps": 2,
-  "sag": 1.5,
-  "pipe": 1.95,
+  "sag": 0.35,
+  "pipe": 2.3,
   "flare": 1.3,
-  "clear": 6.0,
-  "tip_radius": 0.0055,
-  "ring": 0.0015,
-  "max_order": 4,
+  "clear": 0,
+  "tip_radius": 0.004,
+  "ring": [
+   0.001,
+   0.001,
+   0.0005
+  ],
+  "max_order": 3,
   "uneven": [
    0,
    0.5,
@@ -83,19 +88,42 @@
   ],
   "bud_break": [
    1,
-   0.15,
-   0.6,
+   0.4,
+   0.7,
    0.9,
    0.8
   ],
   "shadow": [
-   0.1439,
+   0.192,
    1.6,
    6
   ],
   "bud_each": true,
   "dead_keep": 20,
-  "stand_shed": 0.04
+  "stand_shed": 0.01,
+  "slowing": [
+   14,
+   20,
+   8
+  ],
+  "length": [
+   1,
+   0.74,
+   0.6,
+   0.5
+  ],
+  "tip_life": [
+   0,
+   44,
+   0,
+   6
+  ],
+  "limb_pace": [
+   1,
+   0.8,
+   0.7
+  ],
+  "sdi_max": 1000
  },
  "leaves": {
   "shape": "needle_tuft",
@@ -109,13 +137,13 @@
   "twig": {
    "length": 0.24,
    "leaves": 200,
-   "per_m": 13,
+   "per_m": 24,
    "where": "shoots",
    "up": 0.25,
    "spread": 40,
    "droop": -0.1,
    "variants": 3,
-   "steps": 4,
+   "steps": 6,
    "min_order": 1,
    "face": 0.2,
    "needles": "fascicles"
@@ -139,7 +167,7 @@
     "length": 0.06
    },
    "cross": 2,
-   "scale": 1.3,
+   "scale": 1.9,
    "end": true,
    "size": 384
   },
@@ -148,40 +176,49 @@
    "dead": {
     "bare": true,
     "wood_color": [
-     0.45,
-     0.42,
-     0.38
+     0.5,
+     0.47,
+     0.43
     ],
     "translucency": 0.0,
     "twig": {
-     "length": 0.7,
-     "side_shoots": 6,
-     "sub_shoots": 1,
-     "per_m": 4,
-     "spread": 55,
-     "up": -0.45,
-     "droop": 0.5,
+     "length": 0.8,
+     "per_m": 3,
+     "spread": 60,
+     "up": -0.5,
+     "droop": 0.6,
      "radius": 0.004,
      "scale": [
-      0.7,
-      1.3
+      0.6,
+      1.4
      ],
-     "spray_angle": 50,
-     "variants": 3
+     "variants": 5
     },
     "card": {
-     "variants": 3,
+     "variants": 5,
      "cross": 1,
      "end": false,
      "scale": 1.0,
+     "size": 384,
      "twig": {
-      "length": 0.7,
-      "side_shoots": 5,
-      "sub_shoots": 3,
+      "length": 0.8,
+      "radius": 0.0045,
+      "droop": 0.7,
+      "forks": 9,
+      "depth": 4,
+      "child": [
+       0.3,
+       0.7
+      ],
+      "crook": 0.35,
+      "broken": 0.3,
+      "lichen": 0.1,
       "leaves": 0,
-      "radius": 0.006,
-      "spray_angle": 68,
-      "droop": 0.8
+      "lichen_color": [
+       0.6,
+       0.61,
+       0.58
+      ]
      },
      "leaf": {}
     }
@@ -222,5 +259,13 @@
    0.43,
    0.39
   ]
+ },
+ "deadwood": {
+  "break": 0.9,
+  "droop": [
+   4,
+   14
+  ],
+  "bow": 0.04
  }
 }

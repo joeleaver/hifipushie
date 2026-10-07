@@ -3344,6 +3344,61 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     (trunk jitter 0.12 + a changed growth history: try seed or `jitter[0]` 0.06); (4) styles, terrain.
   - All-species re-render after the ground change: vg_80_all_inleaf.png (spruce skirt and willow curtains end over
     the ground with a shadow gap; the willow regrew with a slightly leaning foot).
+- Vegetation 4 (2026-10-06, branch `vegetation4`; scratch in the worktree's untracked `scratchpad/`: run.sh <script>
+  (env + uv), pm2.py out habit.json [patch] (the pine cases: measures vs bands + silhouettes, 10 s), pm3.py habit.json
+  'key=v1;v2' seeds cases (sweep one habit key), pinesheet.py (age / setting row), one.py (one tree), setp.py species
+  'json' (merge into a preset), stand_try.py stem 'stand json' views max_full, atl.py (a twig atlas as a picture),
+  ccat.py / commons.py (Commons category contact sheets / fetch), gridc.py (photos with a 10% grid to read boxes),
+  sheet90.py). The sandbox refuses compound shell commands that mention variables or heredocs: write scripts with the
+  Write tool and run them one per call.
+  - Scots pine by measurement (the user on vg_82: "those pine crowns look far too wide"; sheet
+    vg_90_pine_ages_vs_photos.png, references workspace/veg_refs/pine_form/ + fetched.jsonl). The preset was ONE point:
+    fitted to one open-grown photo at 80 y (w/h 0.90, crown 0.50), it was a bare pole at 15-35 y (`clear` 6 m,
+    bud_break 0.15), w/h 1.28 and dbh 2.9 m at 150 y, a crooked stick in a stand. `vegetation.crown_measures` (height,
+    crown width / height, live crown / height above the 8th percentile of leafy wood, widest level, dbh, top_off),
+    `form_cases` / `form_miss` / `fit_form` (one habit against target bands at several ages and settings; tool
+    `plant_form`). Targets: boxes read off 10 fetched whole-tree photos (young open-grown 0.85-0.97 wide, crown to
+    the ground: young solitary pines are BROAD cones, not narrow; mature solitary 0.69-0.79 / crown 0.8; stand trees
+    0.27 / 0.3; stand edge 0.42 / 0.4), Wikipedia (35 m, 1 m dbh, "long bare straight trunk topped by a rounded or
+    flat-topped mass"), a search snippet (stands > 80 y: dbh 30 +- 6 cm, 18.7 +- 2.3 m; the papers themselves were
+    403). The random-search fit ran at ~5 min an iteration on a machine at load 80: the preset was steered by hand
+    with pm2 / pm3 instead; `fit_form` is tested but has not produced a preset yet.
+    What it took: `clear` 0 (young trees branch from the ground), `leader` 4 + `slowing[0]` 14 (height 6.5 / 12 / 21 /
+    30 m at 15 / 35 / 80 / 160 y), `limb_pace` [1, 0.9, 0.75] (NEW: no side shoot outgrows that share of the leader's
+    pace at that age; without it limbs born late overtopped an old slow leader: umbrella tops), `tip_life[1]` 44
+    (old limbs stop: the veteran's crown lifts), `pipe` 2.45 + `ring` per order (dbh 50 cm at 80 y, was 98),
+    `sag` 0.35 and limb jitter 0.26 (long limbs were snakes), wood past its last living branch is shed (NEW in the
+    shed step, every species: bare dead-end snakes), twigs 18 per m on 5 steps of shoots, cards x1.6.
+    Stands: the canopy's shade now deepens steadily below its top (`below` over 2 x depth, floor 0.8; a step at one
+    depth made a stand crown all or nothing) and the side shade closes over half a gap (crowns 4 m apart interlocked
+    8 m wide); `habit.sdi_max` (NEW: Reineke; a stand stem no stouter than 25 cm x (sdi_max / stems per ha)^(1/1.6);
+    spruce 1500, pine 1000: 3 m apart 30 cm, was 42 cm = 173 m2 / ha). Spruce `stand_shed` 0.17 -> 0.09, pine 0.01.
+    After (seed 1): 15 y 0.49 / 0.69; 35 y 0.67 / 0.78; 80 y 0.79 / 0.77, dbh 50; 160 y 0.67 / 0.53, dbh 85; edge
+    0.63 / 0.81; stand 0.22 / 0.13-0.4, dbh 34. KNOWN: a stand pine's crown ratio is still on a cliff of `stand_shed`
+    (0 -> 0.41, 0.015 -> 0.17; seeds differ: pine's own shadow reaches only 6 cells = 1.8 m, so nothing lifts the
+    crown smoothly); the edge tree keeps too deep a crown (0.81 vs the photo's 0.4); the veteran's limbs are sparse.
+  - Dead twigs: `veg_leaf.dead_twig_mesh` (a `bare` part's picture: a crooked sagging axis forking at uneven
+    intervals to either side, never in pairs, forks shorter / thinner / some broken to stubs, lichen threads, tone per
+    branch; keys forks, depth, crook, broken, fork_angle, child, flat, lichen; `"form": "spray"` = the old leafless
+    spray = fishbones). 5 variants in the conifer presets, lichen-grey. Wood in card pictures takes its mesh tone.
+    At a budget `veg_bough.plan` keeps at most `DEAD_SHARE` 8% of the cards (>= `DEAD_MIN` 12) for dead boughs: the
+    longest of each height band up the stem; their pictures are baked from `DEAD_THIN` half of their twigs.
+  - Stands (`veg_stand.py`; tools `grow_stand`, `look_stand`, `export_stand`; guide section "A forest"): spec =
+    species (or a mix by share), age + spread, spacing, size, variants, edge sides, rows, clearings, paths, floor,
+    lod, haze, light. `grow` = interior variants (setting forest at the spacing) + edge variants (setting edge, open
+    side turned to face out) + a jittered offset grid + per-tree yaw / scale + the floor's scatter (brash under the
+    stems = `brash_mesh` from the dead twig tangle pressed flat; `stump_mesh`; ferns where light reaches);
+    `measures` / `report` = stems / ha, height, dbh, basal area, live crown, canopy cover + warnings; `lods` by
+    distance to the nearest eye; `look` (views inside / aisle / edge / above / canopy or cameras; at most `max_full`
+    full trees); `layout_json` + `export` (a GLB per variant with LODs + impostor, floor OBJs, layout.json; heavy).
+    Blender (`blender_vegetation`): a plant stood again is a COPY of the first's objects (`_BUILT` by npz: shared
+    meshes, materials, textures; 54 trees each with its own atlas textures was what lost the GPU context); the hull
+    normal and snow read a per-instance "hull" attribute stored by the hp_twigs node group from per-object modifier
+    inputs Crown / Yaw (a material can't know its object's crown once shared); per-plant `scale`; `add_scatter`;
+    `HAZE` (`_hazed`: every shader mixed toward the haze colour by 1 - exp(-distance / haze distance), before the
+    alpha cut on cards); an `ambient` shadowless light from above (under a closed canopy EEVEE rendered night);
+    ground `moss` patches and `litter` flecks. `veg_look.render(others=[(tree, at, yaw, triangles, scale)],
+    scatter=, job=, scale=, yaw=)`.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

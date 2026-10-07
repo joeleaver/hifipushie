@@ -854,6 +854,127 @@ def test_stand_interior_dead_wood():
     assert dl.sum() > 20 and np.mean(E["pos"][dl, 0] > 0) > 0.8, np.mean(E["pos"][dl, 0] > 0)
 
 
+def test_pine_form_across_ages_and_settings():
+    """One Scots pine habit from sapling to veteran, in the open and in a stand: never the umbrella on a pole (the
+    preset fitted to one photo was a bare pole at 35 years, as wide as tall at 80 and wider than tall at 150)."""
+    cases = [{"name": "15", "age": 15}, {"name": "35", "age": 35}, {"name": "80", "age": 80}, {"name": "160", "age": 160},
+             {"name": "stand", "age": 80, "environment": {"setting": "forest", "spacing": 4.0}}]
+    cs = {c["name"]: c["measures"] for c in v.form_cases({"species": "scots_pine"}, cases, seeds=(1, 2))}
+    for k in ("15", "35", "80", "160"):  # taller than wide at every age, with a real crown
+        assert 0.3 < cs[k]["width_over_height"] < 0.9, (k, cs[k])
+        assert cs[k]["top_off"] < 2.5, (k, cs[k])  # the trunk runs to the top
+    assert cs["15"]["crown_ratio"] > 0.6 and cs["35"]["crown_ratio"] > 0.6  # young pines are green to near the ground
+    assert cs["35"]["limbs"] >= 12  # (not three limbs on a pole)
+    assert 4.5 < cs["15"]["height"] < 8 and 10 < cs["35"]["height"] < 15.5 and 18 < cs["80"]["height"] < 25 and 24 < cs["160"]["height"] < 33
+    assert 35 < cs["80"]["dbh_cm"] < 65 and cs["160"]["dbh_cm"] < 110  # (the old preset: 98 and 287 cm)
+    assert cs["160"]["crown_ratio"] < cs["35"]["crown_ratio"]  # the crown lifts with age
+    s = cs["stand"]  # a slender pole with a small high crown
+    assert s["width_over_height"] < 0.34 and s["crown_ratio"] < 0.5 and s["widest_at"] > 0.6 and s["top_off"] < 1.0, s
+    assert s["dbh_cm"] < 0.85 * cs["80"]["dbh_cm"]
+    # the measure's bands and the miss
+    hit = v.form_miss([{"measures": cs["80"], "width_over_height": [0.3, 0.9]}])
+    miss = v.form_miss([{"measures": cs["80"], "width_over_height": [1.0, 1.2]}])
+    assert hit == 0 and miss > 0.1
+
+
+def test_limb_pace_and_dead_ends():
+    """`limb_pace` keeps side shoots under the leader's pace (a spire, not limbs overtopping an old leader), and wood
+    past its last living branch is shed (no bare snakes trailing from old limbs)."""
+    base = {"species": "scots_pine", "age": 120}
+    a = v.grow({**base, "habit": {"limb_pace": [1, 0.5, 0.5]}})
+    b = v.grow({**base, "habit": {"limb_pace": [1, 1.5, 1.2]}})
+    assert v.crown_measures(a)["width_over_height"] < v.crown_measures(b)["width_over_height"]
+    T = v.grow(base)
+    live = ~T["dead"]
+    # every living end of wood older than a few steps carries leaves or a tip
+    old_end = T["ends"] & live & (T["steps"] - T["born"] > 8)
+    assert (T["leafy"] | T["tip"])[old_end].mean() > 0.9 or old_end.sum() < 20, (old_end.sum(), (T["leafy"] | T["tip"])[old_end].mean())
+
+
+def test_stand_girth_follows_stocking():
+    """A stand tree's stem is no stouter than its spacing allows (Reineke): closer trees are thinner."""
+    g = lambda sp: v.crown_measures(v.grow({"species": "norway_spruce", "age": 60, "environment": {"setting": "forest", "spacing": sp}}))["dbh_cm"]
+    d3, d5 = g(3.0), g(5.0)
+    assert d3 < d5 and d3 <= 25 * (1500 / (1e4 / 9)) ** (1 / 1.6) + 0.5, (d3, d5)
+    n = 1e4 / 9
+    assert n * np.pi * (d3 / 200) ** 2 < 90  # basal area m2 / ha (uncapped: 170)
+
+
+def test_dead_twigs_are_tangles():
+    """A dead twig's picture is an irregular tangle, each variant its own, never a spray's mirrored ranks."""
+    lf = v.resolve({"species": "norway_spruce"})["leaves"]
+    dp = veg_leaf.dead_part(lf)
+    cs = veg_leaf.card_spec(dp)
+    ms = [veg_leaf.twig_mesh(cs, i) for i in range(3)]
+    for m in ms:
+        V = m["V"]
+        assert len(V) > 300 and (m["mat"] == 0).all()  # wood only (lichen threads are wood-coloured by their own rgb)
+        left, right = (V[:, 0] < -0.02).sum(), (V[:, 0] > 0.02).sum()
+        assert min(left, right) > 20
+        # not mirrored: reflected in x, the vertices do not land on vertices
+        from scipy.spatial import cKDTree
+        d = cKDTree(V[:, :2]).query(V[:, :2] * [-1, 1])[0]
+        assert np.median(d) > 0.004, np.median(d)
+        assert len(np.unique(np.round(m["col"], 2))) > 4  # branches differ in tone
+    assert not np.allclose(ms[0]["V"][:200], ms[1]["V"][:200])
+    assert np.isfinite(ms[0]["rgb"]).any()  # lichen
+
+
+def test_dead_boughs_are_few_at_a_budget():
+    """At a budget a stand tree's dead zone gets a few bough cards up the stem, not one per dead bough (a brown fur)."""
+    from hifipushie import veg_bough
+    F = v.grow({"species": "norway_spruce", "age": 50, "environment": {"setting": "forest", "spacing": 3.0}})
+    pl = veg_bough.plan(F, 500)
+    isd = veg_bough.dead_boughs(F, pl)
+    assert 0 < isd.sum() <= max(int(veg_bough.DEAD_SHARE * 500), veg_bough.DEAD_MIN), isd.sum()
+    assert pl.get("dead_left_out", 0) > 0
+    z = F["pos"][pl["roots"][isd], 2]
+    assert np.ptp(z) > 0.3 * F["height"]  # spread up the stem
+    assert (~isd).sum() > 20  # the live crown keeps its cards
+
+
+def test_stand_layout_lods_and_numbers():
+    from hifipushie import veg_stand
+    spec = {"species": [{"species": "norway_spruce", "share": 3}, {"species": "scots_pine", "share": 1}], "age": 40, "size": [30, 36],
+            "spacing": 3.0, "variants": 2, "edge": ["s"], "clearings": [{"at": [5, 5], "r": 4}],
+            "floor": {"ferns": 0.05, "brash": 0.2, "stumps": 0.01}}
+    st = veg_stand.grow(spec)
+    assert st is veg_stand.grow(spec)  # cached: the same stand
+    n = len(st["xy"])
+    assert 80 < n < 140
+    assert np.linalg.norm(st["xy"] - [5, 5], axis=1).min() > 4.0  # the clearing
+    from scipy.spatial import cKDTree
+    d = cKDTree(st["xy"]).query(st["xy"], k=2)[0][:, 1]
+    assert 1.2 < np.median(d) < 3.6 and d.min() > 0.4
+    roles = np.array([vv["role"] for vv in st["variants"]])[st["variant"]]
+    edge = st["edge"] >= 0
+    assert edge.sum() >= 8 and (roles[edge] == "edge").all() and (roles[~edge] == "interior").all()
+    assert st["xy"][edge, 1].max() < st["xy"][~edge, 1].mean()  # the south rank
+    # an edge tree's open side (its own -x) faces out of the stand (south = -y)
+    yaw = np.radians(st["yaw"][edge])
+    out_dir = np.c_[-np.cos(yaw), -np.sin(yaw)]
+    assert (out_dir[:, 1] < -0.8).all()
+    sp = {vv["spec"]["species"] for vv in st["variants"]}
+    assert sp == {"norway_spruce", "scots_pine"}
+    lod = veg_stand.lods(st, [[0, -10, 1.7]])
+    dist = np.linalg.norm(st["xy"] - [0, -10], axis=1)
+    assert (lod[dist < 13] == 0).all() and (lod[(dist > 15) & (dist < 44)] == 1).all()
+    m = veg_stand.measures(st)
+    assert 800 < m["stems_per_ha"] < 1400 and 20 < m["basal_area_m2_ha"] < 80 and m["crown_ratio"] < 0.75
+    fl = st["floor"]
+    assert len(fl["brash"]["xy"]) > 100 and len(fl["ferns"]["xy"]) > 5
+    lj = veg_stand.layout_json(st)
+    assert len(lj["trees"]) == n and set(lj["floor"]) == set(fl) and lj["variants"][0]["name"].startswith("norway_spruce")
+    assert "stems / ha" in veg_stand.report(st, [[0, -10, 1.7]])
+    for mesh in (veg_stand.brash_mesh(1), veg_stand.stump_mesh(0)):
+        assert mesh["V"][:, 2].min() >= 0 and len(mesh["F"]) == len(mesh["mat"]) > 20
+    try:
+        veg_stand.resolve({"spacings": 3})
+        assert False
+    except ValueError as e:
+        assert "unknown keys" in str(e)
+
+
 if __name__ == "__main__":
     import sys
     import time
