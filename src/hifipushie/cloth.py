@@ -1217,8 +1217,8 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
                 if ln_ is not None and len(ln_) >= 4:  # (past the point the roll line meets the edge the chart is of the unturned front)
                     ja, jb = sorted(int(np.argmin(((Q - np.asarray(q_, float)) ** 2).sum(1))) for q_ in (ln_[1], ln_[-2]))
                     wt_[:ja] = wt_[jb + 1:] = 0.02
-                for it_ in range(80):
-                    Cs += wt_[:, None] * (Wr - Cs)
+                for it_ in range(160):  # (the pull toward the chart fades out: the lengths and the body decide the end)
+                    Cs += (wt_ * max(0.0, 1.0 - it_ / 110.0))[:, None] * (Wr - Cs)
                     for _ in range(4):
                         d_ = Cs[1:] - Cs[:-1]
                         l_ = np.maximum(np.linalg.norm(d_, axis=1), 1e-9)
