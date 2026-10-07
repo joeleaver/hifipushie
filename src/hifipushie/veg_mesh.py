@@ -73,6 +73,12 @@ def tubes(tree: dict, sides=(3, 12), min_radius: float = 0.0, collar: float = 1.
             pts, rr, nid = pts[keep_], rr[keep_], nid[keep_]
         foot = root == 0 and order[nodes[0]] == 0
         n_under = 0
+        if foot and tree.get("clump") and len(nodes) <= 1:
+            # a small plant's root is a stub, not a trunk: run 0.3 m into the ground it was a thin stalk under the tuft
+            # wherever the ground fell away from its origin (the consumer saw it under every blobby grass clump)
+            foot = False
+            pts = pts.copy()
+            pts[0, 2] = pts[-1, 2] - 0.01
         if foot:  # the trunk goes into the ground (a foot on a slope shows no gap), with rings enough for its root flares
             hr = float((roots or {}).get("height", 0.0))
             zs = [z_ for z_ in (0.12 * hr, 0.3 * hr, 0.55 * hr, 0.8 * hr) if 1e-3 < z_ < pts[1][2] - 1e-3] if roots else []

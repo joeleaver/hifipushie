@@ -301,6 +301,19 @@ def _report_clump(name: str, T: dict) -> str:
         warn.append(f"WARNING: card fill {at['fill']:.2f}: the cards are mostly empty (overdraw); `card.strips` for long thin pictures, or fuller pictures")
     if m["height_m"] > 0 and tw["pos"][:, 2].min() < -0.06:
         warn.append("WARNING: cards start more than 6 cm under the ground")
+    se = s.get("season", "summer")
+    stt = veg_small.season_state(s, se)
+    hid = veg_small.hidden_parts(s, se)
+    out.append(f"season {se}: " + ("died back to its foot (not evergreen; give clump.seasons.winter a state to keep it)" if stt is None else
+                                   f"leaf colour {stt['color']}, cards laid down {stt['flatten']:.1f}, size x{stt['scale']:.2f}"
+                                   + (f"; layers out of season: {', '.join(hid)}" if hid else ""))
+               + " (clump.seasons; a layer's own `seasons` list)")
+    from . import veg_style
+    sty = veg_style.sheet(s)
+    if sty:  # what the style drew instead of the cards
+        inf_ = veg_style.dress(T, sty, season=se)["info"]
+        out += veg_style.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles; sheet numbers: get_plant shows them under `style` (block `clump`)"]
+        warn += veg_style.warnings(inf_)
     return "\n".join(out + warn)
 
 
@@ -678,24 +691,32 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
     return got
 
 
-def impostor(name: str, px: int = 512, season: str | None = None) -> dict:
-    """The plant from two sides (along +y and along -x) as one RGBA picture, for the last LOD's crossed quads:
-    {"image" (h, 2w, 4) 0..1, "size": the square each view covers (m), "height": its middle's height (m)}."""
+def impostor(name: str, px: int = 512, season: str | None = None, **over) -> dict:
+    """The plant from two sides (looking along +y, then along +x) for the last LOD's crossed quads: {"image" (h, 2w, 4)
+    0..1 = albedo with the shade of what stands above baked in, "normal" (h, 2w, 3) = its tangent-space normal map
+    (each half in its own quad's frame), "size": the square each view covers (m), "height": its middle's height (m)}.
+    Three unlit passes per view (blender_vegetation._pass_material: albedo, shading normal, sky reaching the point),
+    put together by veg_export.impostor_maps; `over` = its numbers (shade_amount, depth)."""
     from PIL import Image
     import tempfile
-    from . import veg_look
+    from . import veg_export, veg_look
     T = grown(name)
     if season:  # the same grown plant shown in another season ("snow" = as it stands, under snow)
-        T = {**T, "spec": {**T["spec"], **({"snow": 0.8} if season == "snow" else {"season": season})}}
+        T = {**T, "spec": {**T["spec"], **({"snow": 0.8, "season": "winter"} if season == "snow" else {"season": season})}}
     H = T["height"]
     R = float(np.percentile(np.linalg.norm(T["pos"][:, :2], axis=1), 99.5))
     S = float(max(H, 2 * R) * 1.06)
     with tempfile.TemporaryDirectory(prefix="hifipushie-vegimp-") as tmp:
-        jobs = [{"out": f"{tmp}/v{i}.png", "size": [px, px], "azimuth": az, "elevation": 0, "focus": [0, 0, 0.5 * H], "span": S,
-                 "leaves": True, "transparent": True, "no_ground": True, "flat": True, "sun": [az + 235, 50]} for i, az in enumerate((0, 90))]
+        jobs = [{"out": f"{tmp}/{kind}{i}.png", "size": [px, px], "azimuth": az, "elevation": 0, "focus": [0, 0, 0.5 * H], "span": S,
+                 "leaves": True, "transparent": True, "no_ground": True, "pass": kind}
+                for kind in ("albedo", "normal", "shade") for i, az in enumerate(veg_export.IMPOSTOR_AZIMUTHS)]
         veg_look.render(T, jobs)
-        im = np.concatenate([np.asarray(Image.open(j["out"]).convert("RGBA"), np.float32) / 255 for j in jobs], axis=1)
-    return {"image": im, "size": S, "height": 0.5 * H}
+        rd = lambda kind: [np.asarray(Image.open(f"{tmp}/{kind}{i}.png").convert("RGBA"), np.float32) / 255 for i in range(2)]
+        from . import veg_style
+        if "depth" not in over and not veg_style.sheet(T["spec"]):
+            over = {**over, "depth": veg_export.IMPOSTOR["depth_cards"]}
+        m = veg_export.impostor_maps(rd("albedo"), rd("normal"), rd("shade"), **over)
+    return {**m, "size": S, "height": 0.5 * H}
 
 
 def export(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1, seasons=("summer",),
@@ -707,7 +728,7 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
     out = Path(out_dir) if out_dir else _dir(name) / "export"
     imp = impostor(name, season=seasons[0] if seasons and seasons[0] != T["spec"].get("season", "summer") else None) if impostor_lod else None
     if imp is not None and len(seasons) > 1:  # a picture per season: the last LOD changes with the year like the others
-        imp["seasons"] = {se: impostor(name, season=se)["image"] for se in seasons[1:]}
+        imp["seasons"] = {se: {k_: v_ for k_, v_ in impostor(name, season=se).items() if k_ in ("image", "normal")} for se in seasons[1:]}
     stem = name.replace("#", "_")
     c = veg_export.write_glb(T, str(out / f"{stem}.glb"), stem, triangles=triangles, lods=lods, seasons=seasons, wet=wet, impostor=imp)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]

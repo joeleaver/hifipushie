@@ -76,6 +76,20 @@
                "details": {"waistband": "straight", "fly": "zip_fly", "pockets": "slant", "hem": "blind", "pleats": "none"},
                "required": ["waistband", "fly", "hem"],
                "sewing_order": ["leg_front", "fly", "leg_back", "pocket", "waistband"]},
+  "suit_trousers": {"region": "lower", "fabric": "wool_suiting", "lap": "left_over_right",
+               "_doc": "Men's tailored trousers, drafted by this kind itself (draft: the trouser block + the leg's cut per fit; each detail adds its own operation). A design sheet {kind: suit_trousers} with nothing else makes flat-front trousers with a zip fly, an extended waistband buttoned at the centre front, shaped back darts, pressed creases, belt loops and a belt, cut for a shoe.",
+               "fit": {"tailored": {"waist": [0.0, 0.03], "seat": [0.03, 0.07]},
+                       "slim": {"waist": [0.0, 0.03], "seat": [0.02, 0.05]},
+                       "classic": {"waist": [0.0, 0.04], "seat": [0.05, 0.10]}},
+               "draft": {"block": "trouser",
+                         "block_options": {"length": "shoe", "waist_ease": 0.02, "dart_taper": 0.6, "back_dart": 0.018},
+                         "fit_options": {"tailored": {"leg": "slim", "seat_ease": 0.05},
+                                         "slim": {"leg": "skinny", "seat_ease": 0.035},
+                                         "classic": {"leg": "straight", "seat_ease": 0.07}}},
+               "details": {"waistband": "extended", "fly": "zip_fly", "crease": "pressed", "darts": "waist", "belt_loops": "loops",
+                           "belt": "leather", "pockets": "none", "hem": "blind", "pleats": "none"},
+               "required": ["waistband", "fly", "hem", "crease"],
+               "sewing_order": ["leg_front", "fly", "leg_back", "pocket", "waistband"]},
   "shorts": {"region": "lower", "fabric": "cotton_twill", "lap": "left_over_right",
              "fit": {"regular": {"waist": [0.0, 0.04], "seat": [0.05, 0.14]}},
              "details": {"waistband": "straight", "fly": "zip_fly", "pockets": "slant", "hem": "straight_double"},
@@ -241,6 +255,11 @@
      "seams": [["waistband", "skirt_front", "band"], ["waistband", "skirt_back", "band"]],
      "dims": {"waistband_height": [28, 42], "waistband_over_waist": [0, 30], "waistband_overlap": [25, 40]},
      "evidence": [{"piece": "waistband"}, {"closed": "waistband"}, {"interfaced": "waistband"}, {"dim": "waistband_height"}, {"dim": "waistband_over_waist"}]},
+   "extended": {"label": "straight waistband opening at the CENTRE FRONT over the fly: 35-40 mm finished, interfaced, the left end laps over, the right end runs on 35-45 mm under it as an extension with the button (men's trousers)",
+     "made_of": [{"role": "waistband", "layers": 2, "interfaced": true, "rests": "as_made"}],
+     "dims": {"waistband_height": [30, 42], "waistband_over_waist": [0, 30], "waistband_overlap": [30, 50]},
+     "draft": {"ops": [{"op": "waistband", "opening": "front", "height": 0.038, "overlap": 0.04}]},
+     "evidence": [{"piece": "waistband"}, {"closed": "waistband"}, {"interfaced": "waistband"}, {"dim": "waistband_height"}, {"dim": "waistband_over_waist"}]},
    "contoured": {"label": "contoured (curved) waistband sitting below the waist", "made_of": [{"role": "waistband", "interfaced": true}],
      "dims": {"waistband_height": [35, 55]}, "evidence": [{"piece": "waistband"}, {"interfaced": "waistband"}]},
    "elastic": {"label": "elastic casing waistband (no closure)", "made_of": [{"role": "waistband", "interfaced": false}],
@@ -248,8 +267,9 @@
    "facing": {"label": "faced waist (no band)", "made_of": [{"role": "facing", "interfaced": true}], "evidence": [{"piece": "facing"}]}
   },
   "fly": {
-   "zip_fly": {"label": "zip fly: a fly extension on the left front, a fly shield behind the right", "made_of": [{"role": "fly", "interfaced": true}],
-     "dims": {"fly_length": [160, 200], "fly_width": [30, 40]}, "evidence": [{"piece": "fly"}]},
+   "zip_fly": {"label": "zip fly: the centre front seam is an opening from the waist down 160-200 mm, closed by a zip under the left front's lap (a closure, kind zip: sewn when worn closed), a J of topstitching on the left front, the seam below it sewn to the fork. The fly facing and shield are not cut as pieces (they never show); the J is in the detail maps",
+     "dims": {"fly_length": [160, 200], "fly_width": [30, 40]}, "draft": {"ops": [{"op": "fly"}]},
+     "evidence": [{"closure": "zip", "on": "leg_front"}]},
    "button_fly": {"label": "button fly", "made_of": [{"role": "fly", "interfaced": true}], "evidence": [{"piece": "fly"}, {"stitches": "leg_front", "min": 3}]},
    "none": {"label": "no fly (elastic waist)", "evidence": []}
   },
@@ -308,7 +328,20 @@
    "back_belt": {"label": "a half belt between back and tail (Carlton): it closes the gap the side seams need", "made_of": [{"role": "belt", "interfaced": true}],
      "evidence": [{"piece": "belt"}],
      "lessons": ["Leaving Carlton's belt out made back + tail 83 mm shorter than the front side seam (-20.5% / -5.6%)."]},
+   "leather": {"label": "a leather belt through the loops, 30-35 mm, buckled at the centre front: a TRIM (cloth_trims.py), built on the finished waistband, not simulated",
+     "needs": ["belt_loops"], "trims": [{"kind": "belt", "width": 0.032}], "evidence": [{"trim": "belt"}]},
    "none": {"label": "no belt", "evidence": []}
+  },
+  "belt_loops": {
+   "loops": {"label": "belt loops: 7 on men's trousers (centre back, two on the back, two behind the side seams, two at the front creases), 10 mm wide, standing a belt's thickness off the band: a TRIM built on the finished waistband",
+     "trims": [{"kind": "belt_loops", "count": 7}], "evidence": [{"trim": "belt_loops"}]},
+   "none": {"label": "no belt loops (side adjusters, braces)", "evidence": []}
+  },
+  "crease": {
+   "pressed": {"label": "a pressed crease front and back down the grain line (through the middle of knee and hem): the front's from the hem to the waistband, the back's to the seat. A press fold standing out (205 deg), strength 0.6",
+     "draft": {"ops": [{"op": "crease"}]}, "evidence": [{"fold": "leg_front"}, {"fold": "leg_back"}],
+     "lessons": ["Without a crease a suit trouser reads as a pyjama leg whatever its cut: the crease is what makes the leg hang as two planes."]},
+   "none": {"label": "no crease (jeans, chinos, casual trousers)", "evidence": []}
   },
   "lining": {
    "full": {"label": "fully lined (body and sleeves)", "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
@@ -498,7 +531,12 @@
      "fork (crotch extension) seat / 16 + 5 mm at the front, about twice that at the back (the seat needs it)",
      "the back centre seam leans in 35 mm and rises 20 mm at the waist (the seat angle); a back dart takes the rest",
      "a crease line midway between side seam and fork; knee and hem widths about it, the back 20 mm wider than the front",
-     "the back fork is dropped until the back inseam is 5 mm shorter: stretched onto the front it hollows the back thigh"
+     "the back fork is dropped until the back inseam is 5 mm shorter: stretched onto the front it hollows the back thigh",
+     "the leg's cut from the leg itself (option leg: skinny / slim / tapered / straight / wide; pattern_blocks.LEG_CUTS): finished knee = knee girth + ease (slim 20%, straight 32%), never under calf + ease (slim 8%: the leg must hang clear of the calf); finished hem = a share of the knee (slim 88%, straight 92%), never under the heel-and-instep girth + 20 mm (what the hem must pass over). Ready-to-wear on a 36-38 cm knee: slim suit trousers knee 42-44 cm, hem 36-38 cm; classic knee 48, hem 42-44 cm (Aldrich's men's block: bottom 25 cm flat classic, 20-22 slim; Cabrera: knee 19-20 in, bottom 17-18 in)",
+     "the crease IS the grain line: plumb through the middle of the knee line and the middle of the hem on both pieces, pressed from the hem to the waistband at the front and to the seat at the back (Cabrera: 'the crease line is the straight grain')",
+     "length: the hem of a suit trouser ends on the shoe's heel seam at the back (about 30 mm over the floor) and rests on the instep at the front with one shallow break (option length: shoe); a slim hem takes less break than a wide one",
+     "the back dart 15-20 mm x 90-120 mm, pointing at the fullest part of the seat, its legs equal and SHAPED (running in toward the fold over the last third: option dart_taper) so the point dies away; pressed toward the centre back",
+     "men's fly: left over right, the opening 160-200 mm from the waist, ending on the straight part of the centre seam above the crotch curve; the waistband opens with it, its right end extended 35-45 mm under the left with the button"
     ]
    }
   },
@@ -642,7 +680,7 @@
     "limits": "a pleat that dies inside the piece isn't a fold the solver takes (a fold line must cross its piece)"
    },
    "buttons": {
-    "does": "button marks down a line of a paired piece, stitched right to left when unfolded",
+    "does": "button marks down a line of a paired piece; at unfold they are a closure (left front over right, a fastening per mark) with a wear state: state closed | open (worn unbuttoned: buttons, no stitches) | {open_above: mark}; size = button diameter",
     "use": "any lapped front"
    },
    "stitch": {

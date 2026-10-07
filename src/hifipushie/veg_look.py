@@ -53,14 +53,30 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
               "uv": cat("uv"), "dead": cat("dead"), "wood_N": cat("N")}
     if C is not None:
         col = np.array(veg_style.material_color(veg_style.season_color(s, s.get("season", "summer"), st), st))
-        arrays.update(solid_V=C["V"], solid_F=C["F"], solid_N=C["N"], solid_col=np.clip(col[None] * C["col"], 0, 1))
+        sv, sf, sn, scol = C["V"], C["F"], C["N"], np.clip(col[None] * C["col"], 0, 1)
+        Hd = D.get("heads")
+        if Hd is not None and s.get("season", "summer") in Hd["seasons"]:  # a small plant's flower / seed heads: their own colour
+            sf = np.vstack([sf, Hd["F"] + len(sv)])
+            sv, sn = np.vstack([sv, Hd["V"]]), np.vstack([sn, Hd["N"]])
+            scol = np.vstack([scol, np.tile(veg_style.lin(Hd["color"]), (len(Hd["V"]), 1))])
+        arrays.update(solid_V=sv, solid_F=sf, solid_N=sn, solid_col=scol)
+        if C.get("atlas") is not None:  # leaf clouds: cards cut by the dab atlas's alpha
+            from PIL import Image
+            arrays["solid_uv"] = C["uv"]
+            Image.fromarray(C["atlas"]["color"]).save(tmp / f"dabs{tag}.png")
     npz = tmp / f"plant{tag}.npz"
     np.savez(npz, **arrays)
     info = {"triangles": int(len(arrays["F"])), "twigs": 0, "foliage": "masses", "leaf_triangles": int(len(C["F"])) if C is not None else 0,
             "style": D["info"]}
     pj = {"npz": str(npz), "bark": {"flat": veg_style.bark_color(s, st), "roughness": float(st["wood"].get("roughness", 0.9))},
           "leaf": {}, "cards": None, "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0),
-          "solid": {"roughness": float(st["crown"].get("roughness", 0.85))}}
+          "solid": {"roughness": float(st["crown"].get("roughness", 0.85)),
+                    **({"atlas": str(tmp / f"dabs{tag}.png"), "alpha_cut": float(st["crown"].get("alpha_cut", 0.5))}
+                       if C is not None and C.get("atlas") is not None else {})}}
+    if C is not None and C.get("atlas") is not None:
+        info.update(foliage="clouds", card_fill=round(C["atlas"]["fill"], 2))
+    if tree.get("clump"):
+        info["leaf_triangles"] += int(len(D["heads"]["F"])) if D.get("heads") is not None else 0
     return pj, info
 
 
@@ -76,6 +92,10 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         lf = {**lf, "color": lf.get("autumn", [0.78, 0.56, 0.16])}  # (veg_export.AUTUMN)
     if s.get("season") == "spring":
         lf = veg_export.spring_leaves(s)
+    if tree.get("clump"):  # a small plant's own season states
+        from . import veg_small
+        stt = veg_small.season_state(s)
+        lf = {**s["leaves"], **({"color": stt["color"]} if stt else {})}
     foliage = foliage or lf.get("foliage", "cards")
     bark = dict(s.get("bark") or {})
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))

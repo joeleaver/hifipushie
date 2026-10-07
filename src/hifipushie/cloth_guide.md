@@ -236,6 +236,13 @@ The plan lists:
   and the Blender scene) and a line in the report per closure: fastenings closed, how far apart their two sides
   ended (closed is <= 6 mm). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure entry fails
   here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]` (sewn when closed).
+  **How it is worn** is the closure's `state`, set on the garment without repeating the entry: a garment's
+  `closures` entry of a name is laid over the design table's (or the draft's) key by key, so
+  `"closures": [{"name": "collar", "state": "open"}]` is a shirt with its top button undone and
+  `[{"name": "front", "state": "open"}]` a jacket hanging open (its buttons stay on the under front, no stitches;
+  stage 3 lists it as "worn open", not as a missing closure). In a drafted garment the op
+  `{"op": "buttons", "piece": "front", "n": 2, "state": "open", "size": 0.02}` writes the closure itself (left
+  front over right, a fastening per mark; it used to write bare stitches).
 - **Layers.** `"over": "<garment>"` wears this garment over another of the model (dress that one first). The one
   underneath is frozen and pressed to 8 mm off the body where it is loose (`under_cap`), and is what this garment
   is placed on and collides with. `"support": ["shoulder_pad", "sleeve_head"]` are pads on the body, not cloth.
@@ -592,6 +599,9 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `hood` | A two-piece hood on the neckline, placed round the head | Neck edge = the neckline |
 | `pleat` | Spreads a piece by twice the depth along a line across it; two press folds | Seams skip the underlay |
 | `buttons`, `stitch` | Button marks down a lapped front; a point stitch (a wrap's tie) | |
+| `crease` | A pressed crease down a piece's `crease` line (a trouser leg's grain line), front and back: a press fold standing out (`angle` 205, `strength` 0.6) | The pattern (a fold line only) |
+| `fly` | The centre front seam from the waist down `length` (0.18) becomes an opening closed by a zip (a closure, left over right; `state` "open" leaves it unsewn); its J of topstitching is a `fly_stitch` line drawn in the detail maps | The seam below it |
+| `waistband` | A straight band generated from the waist edges at unfold; `opening: "front"` opens it over a fly (left end over, the right end's `overlap` runs on under it with the button), default at the centre back | Band length = the waist edges |
 | `unfold` | Halves into whole pieces. Put it in the list yourself to work on ONE side afterwards (`front.L`): asymmetric designs | Seams mirrored |
 
 `facing` takes several edges in a row (`["shawl_edge", "centre_front"]`): it is the part of the piece within its
@@ -691,6 +701,41 @@ A draft source we don't have: write own `pieces` (outlines in metres with named 
 `seams` on the garment, plus `generate` for bands sized from the edges they are sewn to:
 `{"band": "neckband", "role": "neckband", "along": ["front:neckL>neckR", ...], "ratio": 0.85, "height": 0.02,
 "ring": true, "fold": true, "wrap": {"to": "neck"}}`. The design sheet and every check still apply.
+
+## A kind that drafts itself (suit trousers)
+
+A kind in `garment_kb.json` can carry `draft` (block, block_options, `fit_options` per fit), and a detail choice can
+carry `draft.ops` (the operation that makes it) and `trims`. Then the sheet is only the decisions:
+
+```
+design_garment(name, "trousers", design={"kind": "suit_trousers", "fit": "tailored"},
+               spec={"quality": "draft", "backend": "zozo", "color": "#2e2f33"})
+look_pattern(name, "trousers")       # leg cut from HIS leg, seat ease in the fit's band, fly, creases, band, trims
+```
+
+makes flat-front tailored trousers: the trouser block with the leg cut from the leg's own girths, an `extended`
+waistband opening at the centre front, a `zip_fly`, `pressed` creases, shaped back darts, belt loops and a belt.
+Change a decision in `details` (`"crease": "none"`, `"belt": "none"`, `"fly": {"choice": "zip_fly", "op": {"length":
+0.16}}`), the cut in `fit` (tailored = slim leg, slim = skinny, classic = straight) or any number in `block_options`
+(they lie over the kind's). An op of the same name in the sheet's own `ops` replaces the detail's.
+
+What a pattern cutter decides first, and where it is here:
+- **The leg** (`block_options.leg`: skinny, slim, tapered, straight, wide; or `knee` / `hem` in metres as half the
+  finished circumference). Knee = the knee girth + the cut's ease, never tighter than the calf + its ease; hem = a
+  share of the knee, never under heel-and-instep + 20 mm (the hem must pass the foot). `tailor.measure` reads
+  `upperLeg`, `knee`, `calf`, `ankle`, `heel` off the body. Stage 2 says the ease per leg and whether the hem can be
+  pulled on.
+- **Length** (`length`: floor, shoe, ankle, cropped...). "shoe" ends the hem 3 cm over the floor: on a shoe's heel,
+  breaking once on the instep. These bodies are barefoot with the shoe a thin shell round the foot, so the foot
+  stands in for the shoe.
+- **The crease** is the grain line: through the middle of knee and hem on both pieces. Without it a suit trouser
+  reads as a pyjama leg whatever its cut.
+- **Seat ease** is read from the centre seam's line to the side seam; the forks lie between the legs.
+- **Back darts** (`back_dart` intake, `dart_length`, `dart_taper` 0..1): a shaped dart's legs run in toward the
+  fold over its last third, so the tip dies away; straight legs end in a poke that reads as an open tuck.
+- **Trims** (garment key `trims`, `cloth_trims.py`): a belt (with a buckle) and belt loops are built ON the
+  finished waistband after the sim, as artists model them on the simulated trousers; they are in `look_cloth`,
+  not in the sim, the scene or the export yet.
 
 ## Where each lesson lives
 

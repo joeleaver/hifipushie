@@ -446,20 +446,49 @@ lod_files=True)`:
   `wind_plant(name)` renders the export swaying by that recipe: look at it (the foot still, limbs out of step).
 - **Seasons** are states of the plant (`"season": "spring" | "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
   `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
-  material variants in the export (KHR_materials_variants: spring / summer / autumn / winter / snow / wet). Snow lying on wood
-  is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
+  material variants in the export (KHR_materials_variants: spring / summer / autumn / winter / snow / wet). SNOW IS THE
+  WINTER STATE WITH SNOW ON IT: the same slots hidden and shown as in winter (a leaf-dropping plant: crown hidden, the
+  bare wood and a style's forks shown; an evergreen keeps its crown, whose `snow` variant is the ready-mixed pale colour /
+  frosted picture; a clump by its own winter state), and the snow impostor is the bare tree under snow. Snow lying on
+  wood (and per pixel on anything) is the engine's shader: `<name>_seasons.json` `snow` gives the numbers our looks use
+  (linear colour, coverage, the normal's up threshold `by_normal.from` / `to` and the formula).
 - **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh node (outside the
   scene), and `<name>_collision.glb`: the same mesh as a file, its node IN the scene and named `<name>_collision-colonly`
   (Godot's importer makes a static body of a node so named and drops the mesh).
-- **The impostor** is an UNLIT albedo picture (rendered under an even white world: a lit picture, lit again by the
-  engine, was paler than LOD 2 and popped at the switch; measured on the blobby oak: foliage 0.49 / 0.63 / 0.27 against
-  the mesh's 0.47 / 0.63 / 0.20 sRGB). Its material is single sided and each quad's back is a face of its own (8
-  triangles), all with normals up and leaning out: on a double-sided material the back's normal flipped and one quad
-  rendered black from the sun's side. It carries the summer picture only (no season variants yet).
-- **`<name>_seasons.json`** beside the GLB (written whenever there are variants): variant -> per material slot (the
-  default material's name: bark, foliage, foliage_boughs<k>) its baseColorFactor, roughness, alpha mode and cut-off,
-  `hidden`, and the base colour picture (image index in the GLB + the same PNG written beside it). For engines that
-  drop KHR_materials_variants.
+- **The impostor** is lit by the engine like any mesh: an albedo picture (unlit; the shade of what stands above each
+  point baked in at half strength, since an engine casts no shadow inside a picture: limbs under a crown were as
+  bright as its top) and a tangent-space NORMAL MAP baked from the same two views (the shading normal the mesh LODs
+  use: a style's smooth mass normals, a leaf card's normal bent out of the crown). A picture per season, as variants
+  and in the seasons json (with the PNGs, `..._normal.png` too). The mesh: two crossed quads, each picture on the
+  quad that faced its camera; front and back are faces of their own (16 vertices, 8 triangles, single sided) with
+  opposite normals and their own TANGENT (w = -1 behind), so the one normal map reads mirrored through the quad from
+  behind. ENGINE: the impostor's material must not RECEIVE shadows (`receive_shadows: false` in its extras and in the
+  seasons json; Godot: `disable_receive_shadows`): the two quads shadow each other, a dark wedge down the middle.
+  Colour under the alpha is bled out from the plant (black there darkened every mip level: an edge-on quad is all low
+  mips). Measured in Godot 4.7.2 (`spikes/godot_veg/check.gd` + `measure.py`: LOD 2 and the impostor alone, 4 views x
+  3 suns, mean luma of foliage / wood pixels, impostor / mesh): blobby spruce foliage 0.98 (0.94-1.01); blobby oak foliage 0.95 (0.85-1.03), wood 1.08
+  (0.95-1.23); it was 1.20 (0.99-1.51) and 1.42 (1.15-1.73) with the unlit picture and up-and-out normals. Realistic
+  birch: foliage 0.94 (0.81-1.01), wood 0.97 (0.85-1.06). Lowest when the sun is behind the tree: a real crown lets
+  light through, a picture's normals face its camera (`depth` 0.5 for card foliage softens it; 1.0 for closed
+  styles). What stays: from a diagonal the two quads meet in a visible vertical line (each lit by its own normals);
+  an engine can fade each quad by how edge-on it is.
+- **`<name>_seasons.json`** beside the GLB (written whenever there are variants). It LEADS with `contract`
+  {"version", "changes" per version, "rule"} and `slot_list` [{"slot", "on": [{"mesh", "primitive"}], "hidden_in":
+  [seasons], "channels": the vertex attributes on it}]: an engine that maps materials by slot name should refuse a
+  version or a slot it doesn't know (a new slot drawn by default was how `bark_forks` showed in summer). Then:
+  variant -> per material slot (the default material's name: bark, bark_forks, foliage, foliage_boughs<k>, impostor)
+  its baseColorFactor, roughness, alpha mode and cut-off, `hidden`, `receive_shadows` (when false), and the base
+  colour and normal pictures (image index in the GLB + the same PNG written beside it). For engines that drop
+  KHR_materials_variants.
+- **The export contract** (`veg_export.CONTRACT`, in the GLB's extras.hifipushie_plant.contract and the seasons
+  json): version 5. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
+  collision file, seasons json. 2 = styled deciduous plants add slot `bark_forks` (the wood mesh's second primitive:
+  hidden except in bare seasons); impostor pictures per season. 3 = impostor normal map + TANGENT + 16 vertices, its
+  second picture no longer mirrored, baked shade; seasons json contract + slot_list + normal PNGs. 4 = style anime
+  (leaf-cloud foliage: alpha-MASK cards with a dab atlas, TEXCOORD_3 = (clump gradient, clump id), Godot CUSTOM0.zw);
+  seasons json `snow` numbers + `style`; impostor shade eased on bright colours. 5 = the `snow` variant of a
+  leaf-dropping plant is its WINTER state (foliage hidden, `bark_forks` shown), not the crown painted white. Whoever adds,
+  renames or re-purposes a slot or a vertex channel bumps the number and adds a line to CONTRACT_LOG and here.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
   1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
@@ -518,6 +547,17 @@ shorter, flatter cards); a rosette that floats (lean 70+, `sink`); one picture r
 `card.variants`); thousands of triangles in one tuft (the report warns over 3000; scatter wants 50-600).
 Not built: scattering on terrain, grass as GPU blades, ivy and creepers that follow a surface, fan palms, bamboo,
 reeds in water, mushrooms, per-plant colour maps from a terrain, bent/trampled states.
+
+Through the year (`"season"` on the spec, the export's season variants; realistic and styled alike): a clump has
+states, `clump.seasons` = {"spring" | "summer" | "autumn" | "winter" | "snow": {"color": [r, g, b] or {"mix": [r, g, b],
+"amount": 0-1} (what the leaf colour goes to), "flatten": 0-1 (how far the cards lie down: winter grass), "scale"}},
+merged over the defaults (spring: fresher and 0.8 the size; autumn: toward straw; winter: brown straw, flattened 0.6,
+0.85 the size; snow = winter under snow). A layer shows only in its own `"seasons": ["summer", "autumn"]` (seed heads,
+flowers in their months; default: always). A plant that isn't `leaves.evergreen` has died back in winter unless it
+sets a winter state. In looks the plant is assembled in its season (flattened, smaller, layers gone). In the EXPORT
+the geometry is the summer plant's and a season is a material variant: its colour, and the pictures of layers out
+of season blanked in that season's atlas (styled: the `heads` slot hidden); flatten and scale are not in the file
+(an engine can lean the cards by the wind channels; said in the reply).
 
 ## Styles: the same plant dressed another way
 
@@ -583,16 +623,51 @@ mass normal; TEXCOORD_0 = (height within its mass 0..1, (mass index + 0.5) / mas
 No lighting is baked: cel bands and outlines are the engine's. extras.hifipushie_plant.style carries the sheet, the
 "simplified" lines and every season's colour (sRGB).
 
+Conifers (needle trees) take the sheet's `conifer` block, merged over the rest (override it under
+`"style": {"sheet": "blobby", "conifer": {"crown": {...}}}`): crown kind "tiers" = stacked dumplings, `masses` [lo, hi]
+of them, one per height band of the foliage, and the wood is the trunk alone (`limbs` [0, 0]). Each tier is an upright
+EGG: round above its widest level (`tier_height` x its band), flat below it (`tier_under` x the band), seated
+`tier_seat` up its band, as wide as the foliage in the band's lower part (`spread`, `pad`). So a tier's dome closes
+under the next tier's wider foot: every tier overhangs the one below with an undercut (plain ellipsoids blended over
+0.3 x their radius were a soft-serve cone). `blend_share` / `blend` small (0.1 / 0.35 m) keeps the undercuts.
+`trunk_show` m of trunk stay bare under the lowest tier (`wood.trunk_mass` makes it fat); `tier_power` < 1 = upper
+bands shorter; `tier_uneven` 0..1 = bands and widths differ (the seed's own numbers, the same every time);
+`tier_cap` = the top tier no slimmer than that x its height (a narrow top band was a long finger); `tone`, `tones`,
+`warm_top` and `colour.value` have their own conifer numbers (a spruce's dark needles gave one dark green top to
+bottom). Cost: the Norway spruce's IoU falls from 0.85 (smooth tiers down to the ground) to ~0.75: the realistic
+tree's skirt sweeps the ground and the toy has a bare foot and notches; the report warns under 0.8. Lower
+`trunk_show` to get it back.
+
+Forks only when bare: a deciduous styled tree's wood is two primitives: slot `bark` (trunk + limbs, always drawn) and
+slot `bark_forks` (the limbs' forks: hidden while the crown is there, where they cluttered its underside; shown in
+the bare seasons through the variant `bark_forks_bare`, within `wood.forks_share` of the budget). Looks draw the
+forks when the season is bare. The slot is in the seasons json's `slot_list` with the seasons that hide it.
+
+Small plants in a style (sheet block `clump`; `"style": {"sheet": "blobby", "clump": {"blades": [4, 6]}}`): a clump's
+cards are pictures, and a style without leaves has none, so every leaf card becomes geometry: `blades` [fewest, most]
+FAT blades (closed paddles `width` x their length wide, `thick` x that through, curling over by `curl`, ending in a
+point), chosen among the realistic cards tallest first and then by the farthest tip, so the tuft keeps its height and
+spread (the report gives both against the realistic plant); every flowering picture (a part whose twig has a `flower`)
+becomes a ball (`ball` x its length) on a thin stalk, at most `heads`. One tone per blade in `tones` steps of `tone`
+(COLOR_0), normals leaned to the sky by `normals_up` so the tuft shades as one clump, wind = each blade bends from its
+foot in its own phase (the realistic card's). `budget` (800): LODs take sides and rings off the same blades. In the
+export the blades are slot `foliage`, the heads the foliage mesh's SECOND primitive, slot `heads` (its own colour;
+hidden, like `bark_forks`, in the seasons its layer doesn't show in).
+
 Seasons in a style: spring (fresh yellow-green), summer, autumn (`leaves.autumn`), winter (deciduous: the bare drawn
-limbs and forks; evergreen: its crown), snow (pale). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
+limbs and forks; evergreen: its crown), snow (winter's slots + snow: a deciduous tree is bare under snow, an
+evergreen's crown pale). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
 variant = `leaves.spring` colour (else the summer colour toward yellow-green) and leaves `leaves.spring_size` (0.75)
-of their length. Blossom and catkins are not built; clumps (grass, ferns, flowers) have no seasons of their own yet.
+of their length. Blossom and catkins are not built. Small plants have their own states: see "Small plants".
 
 What goes wrong: an IoU under ~0.85 usually means the realistic crown is ragged or hollow on one side (raise
 `crown.masses`' upper end, or lower `spread`); masses like separate balloons = `blend_share` too small or no `core`;
 limbs like wires = `limb_mass` / `trunk_mass`; a stick showing through a mass = raise `wood.keep_in`; a bare winter
-tree of a few noodles = more `stubs`. Known: at 5k the fork's fillet shades in angular patches from close (the wood
-gets 40% of the budget); LOD 2 can come out ~25% over its share (the masses and axes each keep a minimum).
+tree of a few noodles = more `stubs`. Tiers like a soft-serve cone = `blend_share` too large or no
+`tier_under`; a top like a finger = `tier_cap`; tiers of wildly different heights = `tier_uneven` over ~0.3.
+Known: from 5 m the fork's fillet shows a ragged shadow edge in the looks (EEVEE's shadow terminator on large smooth
+triangles; the clay view doesn't show it, and the consumer has not reported it from Godot). A styled fern or daisy is the grass rule
+applied to its cards (paddles and balls): not yet judged.
 
 ## Not built yet
 

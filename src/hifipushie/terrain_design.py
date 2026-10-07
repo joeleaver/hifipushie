@@ -688,7 +688,10 @@ def _search(T, name, r, maxg, cliffs=True, extra=None):
                                                             "\"valley\" toward where the route goes" if cove else
                                                             "; move a stop or add a 'via' past the cliff"))
                 return found
-            T.warnings.append(f"route {name!r}: no way from {a!r} to {b!r} (water or avoided zones close it off)")
+            wet = [x for x in (a, b) if isinstance(x, str) and getattr(T, "sea", None) and x in T.sea["coves"]]
+            T.warnings.append(f"route {name!r}: no way from {a!r} to {b!r} (water or avoided zones close it off)"
+                              + (f"; {wet[0]!r} is a cove, and a cove's address is its water: put a site at it "
+                                 f"(\"at\": {wet[0]!r}: it stands on the apron) and route to the site" if wet else ""))
             return None
         if strict is not None and strict_at is None:
             reach, (gy, gx) = strict

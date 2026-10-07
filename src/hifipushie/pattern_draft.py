@@ -979,6 +979,7 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
             pc["wrap"]["turn"] = dict(pc["wrap"]["turn"], line=[[-float(q[0]), float(q[1])] for q in Lw[:0:-1]]
                                       + [[float(q[0]), float(q[1])] for q in Lw])
             D["meta"]["collar_roll_end"] = float(sx)
+            pc["wrap"].setdefault("lay", "notched")  # (cloth._notched_lay: a band on the neck + a flat end in the lapel's plane)
     D["pieces"][name] = pc
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"
@@ -1307,6 +1308,9 @@ def _rename_piece(D: dict, old: str, new: str) -> None:
     for key in ("pair_seams", "pair_stitches"):
         if key in D:
             D[key] = [ren(e) for e in D[key]]
+    for c_ in D.get("pair_closures") or []:
+        if c_["piece"] == old:
+            c_["piece"] = new
     D["stitches"] = [[ren(a), ren(b)] for a, b in D["stitches"]]
     D["interfaced"] = [new if e == old else e for e in D["interfaced"]]
     if old in D["centre"]:
@@ -1445,6 +1449,9 @@ def apply_hinges(D: dict) -> None:
                 return f"{fname}:{x_}"
             for key in ("pair_seams", "pair_stitches"):
                 D[key] = [owner(e) for e in D.get(key) or []]
+            for c_ in D.get("pair_closures") or []:  # (to the part that holds its first mark)
+                if c_["piece"] == nm and c_["marks"]:
+                    c_["piece"] = owner(f"{nm}:{c_['marks'][0]}").split(":")[0]
             D["stitches"] = [[owner(x), owner(y)] for x, y in D["stitches"]]
             if nm in D["interfaced"]:
                 D["interfaced"].append(fname)
@@ -1638,6 +1645,22 @@ def unfold(D: dict) -> dict:
     for e in D.get("pair_stitches") or []:  # buttons: the right front's mark to the left front's
         if kind.get(e.split(":")[0]) == "pair":
             stitches.append([side_spec(e, "R"), side_spec(e, "L")])
+    # buttons down a pair's centre: a closure (closures.py), left over right; a fold piece buttons to nothing
+    D["closures"] = list(D.get("closures") or [])
+    for c in D.get("pair_closures") or []:
+        if kind.get(c["piece"]) == "pair" and c.get("kind") == "zip":
+            # a zip in a centre seam (a fly): that part of the seam is the closure's (sewn when worn closed); its
+            # topstitching (`<name>_stitch`) shows on the over side only
+            L_, R_ = f"{c['piece']}.L", f"{c['piece']}.R"
+            D["closures"].append({"name": c["name"], "kind": "zip", "over": L_, "under": R_,
+                                  "seam": [f"{L_}:{c['arc']}", f"{R_}:{c['arc']}"],
+                                  "edge": {"over": c["arc"], "under": c["arc"]}, "state": c.get("state", "closed")})
+            out[R_]["lines"].pop(f"{c['name']}_stitch", None)
+            continue
+        if kind.get(c["piece"]) == "pair":
+            D["closures"].append({"name": c["name"], "kind": "buttons", "over": f"{c['piece']}.L", "under": f"{c['piece']}.R",
+                                  "at": [[m_, m_] for m_ in c["marks"]], "state": c.get("state", "closed"),
+                                  **({"size": c["size"]} if c.get("size") else {})})
     def side_pt(e, S):  # a point or mark of a half piece, on side S of the garment
         nm, pt = e.split(":", 1)
         k = kind[nm]
@@ -1698,14 +1721,23 @@ def unfold(D: dict) -> dict:
         # the waistband's chain round the waist from the centre back: the right back out to the side, the right front
         # in to the centre, the left front out, the left back in (each half's waist edges run centre -> side)
         rv = lambda ch: [_rev(e) for e in reversed(ch)]
-        chain = list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", [])) + \
-            list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", []))
+        front = wb.get("opening", "back") == "front"
+        if front:
+            # opening at the centre front (over a fly): from the left front's centre round the back to the right
+            # front's; the left end laps OVER (men's lap), the extension with the button runs on under it from the right
+            chain = list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", [])) + \
+                list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", []))
+        else:
+            chain = list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", [])) + \
+                list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", []))
         if not chain:
             raise DraftError("waistband: the draft has no waist edges (waist_front / waist_back: a trouser or skirt block)")
         D["generate"].append({"band": wb.get("name", "waistband"), "role": "waistband", "along": chain,
                               "ratio": float(wb.get("ratio", 1.0)), "height": float(wb.get("height", 0.04)),
                               "overlap": float(wb.get("overlap", 0.035)), "interfaced": True,
-                              "wrap": {"to": "torso", "side": "front", "level": "waist", "out": 0.004}})
+                              **({"extension": "end"} if front else {}),
+                              "wrap": {"to": "torso", "side": "back" if front else "front", "level": "waist", "out": 0.004,
+                                       **({"over": "low"} if front else {})}})
     D.update(pieces=out, seams=seams, notes=notes, edges=edges, folds=folds, interfaced=inter, unfolded=True)
     D["log"].append(f"unfold: {', '.join(out)}")
     return D
@@ -1723,6 +1755,7 @@ def build(meas_mm: dict, pat: dict) -> dict:
         pc.setdefault("wrap", {})
     return {"pieces": D["pieces"], "seams": D["seams"], "stitches": D["stitches"], "interfaced": D["interfaced"],
             "folds": D["folds"], "generate": D["generate"], "seam_notes": D["notes"],
+            "closures": D.get("closures") or [],
             "draft": {"design": "draft", "block": D["block"], "options": pat.get("block_options") or {},
                       "measurements": dict(meas_mm), "log": D["log"], "meta": {k: v for k, v in D["meta"].items()
                                                                                if k != "measurements"}},

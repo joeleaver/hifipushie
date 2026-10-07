@@ -136,7 +136,11 @@ def _named(spec):
         out = {}
         for i, x in enumerate(v, 1):
             x = dict(x)
-            out[str(x.pop("name", None) or f"{sec.rstrip('s')}_{i}")] = x
+            nm = x.pop("name", None)
+            if not nm and sec == "cover" and isinstance(x.get("type"), str):
+                # (by its type: "cover_1".."cover_6" in the report and the map's legend didn't say which is the meadow)
+                nm = x["type"] if x["type"] not in out else f"{x['type']}_{i}"
+            out[str(nm or f"{sec.rstrip('s')}_{i}")] = x
         spec[sec] = out
     return spec
 
@@ -1639,8 +1643,17 @@ class Terrain:
                     out.append(f"  basin {closed[0]} is enclosed: real water would rise to {top:.0f} m and spill at its "
                                f"lowest rim point; the lake keeps its own level (fine for a designed level)")
                     continue
+                why = ""  # (what made it and what to change: a designer read an 8.6 m pit on an "open meadow" clifftop)
+                sea = getattr(self, "sea", None)
+                if sea and np.shape(sea.get("sd")) == H.shape and sea.get("cliff_asked"):
+                    dsea = float(np.abs(sea["sd"][yy, xx]).min())
+                    if dsea < 150:
+                        why = (f": {dsea:.0f} m behind the sea cliffs, whose tops are raised to their asked height "
+                               f"({sea['cliff_asked'][0]:g}-{sea['cliff_asked'][1]:g} m) above the ground the tilt "
+                               "brings to the coast, so the land behind them is a bowl; lower sea.cliffs.height, raise "
+                               "world.base or tilt less, or put a lake landform in it")
                 out.append(f"  hollow {_area(big[k] * self.cell ** 2)}, {depth[yy, xx].max():.1f} m deep at "
-                           f"[{self.xs[xx].mean():.0f}, {self.ys[yy].mean():.0f}]")
+                           f"[{self.xs[xx].mean():.0f}, {self.ys[yy].mean():.0f}]" + why)
         if n:
             sizes = ndimage.maximum(area, lab, range(1, n + 1))
             said = []

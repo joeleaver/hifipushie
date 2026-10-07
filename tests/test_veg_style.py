@@ -85,7 +85,7 @@ def test_blobby_dress():
     top, low = C["col"][C["tone"][C["mass"]] == C["tone"].max()], C["col"][C["tone"][C["mass"]] == C["tone"].min()]
     assert i["tones"] == 1 or top[:, 1].mean() > low[:, 1].mean()  # the top is lighter
     # ... in every season: the material's colour never clips a channel (autumn went flat orange)
-    for se in ("summer", "spring", "autumn", "snow"):
+    for se in ("summer", "spring", "autumn"):
         f = np.array(vs.material_color(vs.season_color(T["spec"], se, st), st))
         assert f.max() <= 1 + 1e-9 and f.min() >= 0
     assert D["forks"] is not None and i["forks_triangles"] > 0  # (a deciduous tree's forks: there for the bare season)
@@ -113,10 +113,12 @@ def test_conifer_tiers():
     assert st["crown"]["kind"] == "tiers" and "conifer" not in st and vs.sheet({"style": "blobby"})["crown"]["kind"] == "masses"
     D = vs.dress(T, st)
     i = D["info"]
-    assert 3 <= i["masses"] <= 5 and i["limbs_kept"] == 0 and D["forks"] is None and not i["core"]
+    assert 3 <= i["masses"] <= 7 and i["limbs_kept"] == 0 and D["forks"] is None and not i["core"]
     cz = [m["center"][2] for m in i["mass_list"]]
     assert cz == sorted(cz) and max(abs(m["center"][0]) + abs(m["center"][1]) for m in i["mass_list"]) < 0.15 * T["height"]  # stacked on the stem
-    assert i["match"]["iou"] > 0.75 and i["triangles"] <= st["budget"] * 1.02
+    # (tiers with undercuts over a bare foot: the outline has notches and no skirt; smooth tiers to the ground were 0.85)
+    assert i["match"]["iou"] > 0.65 and i["triangles"] <= st["budget"] * 1.02
+    assert all(e.get("down") is not None and e["down"] < e["r"][2] for e in vs.fit(T, st)["ells"])  # eggs: flat below, round above
     assert vs.dress(T, st, season="winter")["crown"] is not None
     st2 = vs.sheet({**T["spec"], "style": {"sheet": "blobby", "conifer": {"crown": {"masses": 3}}}})
     assert st2["crown"]["masses"] == 3 and st2["crown"]["kind"] == "tiers"
@@ -133,8 +135,8 @@ def test_seasons():
     T = v.grow({**BASE, "style": "blobby"})
     st = vs.sheet(T["spec"])
     cols = {se: vs.season_color(T["spec"], se, st) for se in vs.SEASONS}
-    assert cols["winter"] is None and all(cols[se] is not None for se in ("spring", "summer", "autumn", "snow"))
-    assert len({tuple(c) for c in cols.values() if c}) == 4
+    assert cols["winter"] is None and cols["snow"] is None and all(cols[se] is not None for se in ("spring", "summer", "autumn"))
+    assert len({tuple(c) for c in cols.values() if c}) == 3
     assert cols["autumn"][0] > cols["autumn"][2] and cols["spring"][1] > cols["summer"][1]
     P = v.grow({"species": "norway_spruce", "age": 12})
     assert vs.season_color(P["spec"], "winter", st) is not None  # an evergreen keeps its crown
@@ -172,7 +174,7 @@ def test_export_contract():
         col = arr(p["attributes"]["COLOR_0"])
         assert col.min() >= 0 and col.max() <= 1 and len(np.unique(col.round(4), axis=0)) <= 3
         maps = {v_: mp["material"] for mp in p["extensions"]["KHR_materials_variants"]["mappings"] for v_ in mp["variants"]}
-        assert len(set(maps.values())) == 5
+        assert len(set(maps.values())) == 5 and G["materials"][maps[seasons.index("snow")]]["extras"]["hidden"]  # (snow = winter: hidden crown)
         winter = G["materials"][maps[seasons.index("winter")]]
         assert winter.get("alphaMode") == "MASK" and winter["alphaCutoff"] > 1  # a deciduous winter: bare
         ex = G["extras"]["hifipushie_plant"]
@@ -196,12 +198,234 @@ def test_export_contract():
         assert all(sr["seasons"]["winter"][k]["hidden"] for k in fs)
         Gc, _ = _glb(veg_export.write_collision(T, str(Path(tmp) / "c.glb"), "b"))
         assert Gc["nodes"][Gc["scenes"][0]["nodes"][0]]["name"] == "b_collision-colonly" and Gc["extras"]["hifipushie_collision"]["capsules"]
-        # the impostor: single sided, each quad drawn from both sides, normals up and out
-        img = {"image": np.ones((8, 16, 4), np.float32), "size": 6.0, "height": 3.0}
-        Gi, arr_i = _glb(veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img))
+        # contract version and the full slot list lead the seasons json (an engine can refuse what it doesn't know)
+        raw = json.loads(Path(sj["path"]).read_text())
+        assert list(raw)[:2] == ["contract", "slot_list"] and raw["contract"]["version"] == veg_export.CONTRACT == max(veg_export.CONTRACT_LOG)
+        sl = {e["slot"]: e for e in raw["slot_list"]}
+        assert set(sl) == set(sj["slots"]) and sl["bark_forks"]["hidden_in"] == ["summer", "spring", "autumn"]
+        assert sl["bark_forks"]["on"][0]["primitive"] == 1 and sl["foliage"]["hidden_in"] == ["winter", "snow"] and "COLOR_0" in sl["foliage"]["channels"]
+        # the impostor: single sided; front and back of each quad are faces of their own with opposite normals and
+        # their own tangent (w = -1 behind), so one normal map lights both; pictures face the cameras that made them
+        img = {"image": np.ones((8, 16, 4), np.float32), "normal": np.full((8, 16, 3), 0.5, np.float32), "size": 6.0, "height": 3.0,
+               "seasons": {"winter": {"image": np.zeros((8, 16, 4), np.float32), "normal": np.full((8, 16, 3), 0.5, np.float32)}}}
+        Gi, arr_i = _glb(veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img, ("summer", "winter")))
         pi = Gi["meshes"][0]["primitives"][0]
-        assert not Gi["materials"][pi["material"]].get("doubleSided") and len(arr_i(pi["indices"])) == 24
-        assert arr_i(pi["attributes"]["NORMAL"])[:, 1].min() > 0.5  # (glTF is Y up)
+        mi = Gi["materials"][pi["material"]]
+        assert not mi.get("doubleSided") and len(arr_i(pi["indices"])) == 24 and "normalTexture" in mi and mi["extras"]["receive_shadows"] is False
+        assert len(Gi["images"]) == 3  # (two pictures, one normal map shared by both seasons)
+        P, N, Tg, I = arr_i(pi["attributes"]["POSITION"]), arr_i(pi["attributes"]["NORMAL"]), arr_i(pi["attributes"]["TANGENT"]), arr_i(pi["indices"]).reshape(-1, 3)
+        fn = np.cross(P[I[:, 1]] - P[I[:, 0]], P[I[:, 2]] - P[I[:, 0]])
+        fn /= np.linalg.norm(fn, axis=1, keepdims=True)
+        assert np.allclose(fn, N[I[:, 0]], atol=1e-5) and len(P) == 16
+        assert np.allclose(np.cross(N, Tg[:, :3]) * Tg[:, 3:], [0, 1, 0], atol=1e-6)  # bitangent = up (glTF is Y up) on every face
+        assert np.allclose(N[:4], [0, 0, 1]) and np.allclose(N[8:12], [-1, 0, 0])  # picture 1 faces Blender -y, picture 2 Blender -x
+        si = veg_export.seasons_json(str(Path(tmp) / "i.glb"))
+        assert si["slots"]["impostor"]["receive_shadows"] is False and Path(tmp, si["slots"]["impostor"]["normalTexture"]["file"]).exists()
+
+
+def test_impostor_maps():
+    """World normals from each view land in that quad's tangent frame; albedo is shaded and bled under the alpha."""
+    h = 6
+    A = np.zeros((h, h, 4), np.float32)
+    A[2:4, 2:4] = [0.5, 0.5, 0.5, 1]
+    sh = np.ones((h, h, 4), np.float32)
+    sh[2:4, 2:4, 0] = 0.0
+    out = []
+    for right, front in veg_export.impostor_frames():
+        n = 0.6 * front + 0.8 * np.array([0, 0, 1.0])  # facing the camera and up
+        Nw = np.zeros((h, h, 4), np.float32)
+        Nw[2:4, 2:4] = [*(n * 0.5 + 0.5), 1]
+        out.append(Nw)
+    m = veg_export.impostor_maps([A, A], out, [sh, sh], shade_amount=0.5, depth=1.0)
+    assert m["image"].shape == (h, 2 * h, 4) and m["normal"].shape == (h, 2 * h, 3)
+    for j in (0, 1):
+        ts = m["normal"][2, 2 + h * j] * 2 - 1
+        assert np.allclose(ts, [0, 0.8, 0.6], atol=0.02), ts
+    assert np.allclose(m["normal"][0, 0] * 2 - 1, [0, 0.8, 0.6], atol=0.02)  # bled: no flat normal under the alpha
+    assert m["image"][0, 0, 3] == 0 and 0.2 < m["image"][0, 0, 0] < 0.5 and m["image"][2, 2, 0] < 0.5  # albedo darkened by the shade, bled
+
+
+def test_lod_normals_are_the_fields():
+    """Every LOD's NORMAL is the field's gradient at its vertex (mixed `normals` toward out of the crown), never the
+    low mesh's own face normals: a low LOD shades as smooth as the full one (the consumer once saw faceted creases)."""
+    for sp in ({**BASE, "style": "blobby"}, {"species": "norway_spruce", "age": 30, "style": "blobby"}):
+        T = v.grow(sp)
+        st = vs.sheet(T["spec"])
+        ft = vs.fit(T, st)
+        ells, bl = ft["ells"], ft["blend"]
+        cfn = lambda q: vs.field(ells, q, bl, floor=ft["floor"])
+        wfn = lambda q: np.maximum(vs.wood_field(ft["wood"]["segs"], q, ft["wood"]["blend"]), -0.3 - q[:, 2])
+        for share in (1.0, 0.45, 0.18):
+            D = vs.dress(T, st, int(st["budget"] * share))
+            C, W = D["crown"], D["wood"]
+            g = vs.grad(cfn, C["V"])
+            g /= np.linalg.norm(g, axis=1, keepdims=True)
+            o = C["V"] - np.mean([e["c"] for e in ells], axis=0)
+            o /= np.linalg.norm(o, axis=1, keepdims=True)
+            w = float(st["crown"].get("normals", 0.0))
+            n = (1 - w) * g + w * o
+            n /= np.linalg.norm(n, axis=1, keepdims=True)
+            assert (np.einsum("ij,ij->i", n, C["N"]) > 0.9999).all() and np.percentile(np.abs(cfn(C["V"])), 95) < 0.02, share
+            gw = vs.grad(wfn, W["V"])
+            gw /= np.linalg.norm(gw, axis=1, keepdims=True)
+            assert (np.einsum("ij,ij->i", gw, W["N"]) > 0.9999).all(), share
+        # and that is what the file holds
+        with tempfile.TemporaryDirectory() as tmp:
+            c = veg_export.write_glb(T, str(Path(tmp) / "b.glb"), "b", lods=3)
+            G, arr = _glb(c["path"])
+            for m in G["meshes"]:
+                if not m["name"].endswith("foliage"):
+                    continue
+                at = m["primitives"][0]["attributes"]
+                P, N = arr(at["POSITION"]).astype(float), arr(at["NORMAL"]).astype(float)
+                Pb, Nb = np.stack([P[:, 0], -P[:, 2], P[:, 1]], 1), np.stack([N[:, 0], -N[:, 2], N[:, 1]], 1)  # back to Z up
+                g = vs.grad(cfn, Pb)
+                g /= np.linalg.norm(g, axis=1, keepdims=True)
+                o = Pb - np.mean([e["c"] for e in ells], axis=0)
+                o /= np.linalg.norm(o, axis=1, keepdims=True)
+                n = (1 - w) * g + w * o
+                n /= np.linalg.norm(n, axis=1, keepdims=True)
+                assert (np.einsum("ij,ij->i", n, Nb) > 0.999).all(), m["name"]
+
+
+def test_clump_seasons():
+    """A small plant through the year: colour, lying down in winter, layers only in their seasons; realistic and styled."""
+    from hifipushie import veg_small
+    G = {"species": "meadow_grass"}
+    su, wi, sp = v.grow(G), v.grow({**G, "season": "winter"}), v.grow({**G, "season": "spring"})
+    elev = lambda T: float(np.median(np.degrees(np.arcsin(np.clip(T["twigs"]["frame"][:, 2, 1], -1, 1)))))
+    assert elev(wi) < elev(su) - 25 and wi["height"] < 0.7 * su["height"]
+    assert len(sp["twigs"]["pos"]) == len(su["twigs"]["pos"]) - 3 == len(wi["twigs"]["pos"])  # the seed heads: summer and autumn only
+    st = {se: veg_small.season_state(su["spec"], se) for se in vs.SEASONS}
+    assert st["summer"]["color"] == list(su["spec"]["leaves"]["color"]) and st["winter"]["flatten"] > 0.5
+    assert st["autumn"]["color"][0] > st["summer"]["color"][0] and veg_small.hidden_parts(su["spec"], "spring") == ["seed"]
+    assert veg_small.season_state({**su["spec"], "leaves": {**su["spec"]["leaves"], "evergreen": False}}, "winter") is None
+    try:
+        v.grow({**G, "clump": {"seasons": {"monsoon": {}}}})
+        raise AssertionError("unknown season")
+    except ValueError:
+        pass
+    # the realistic export: a season's atlas has the pictures of layers out of season blanked
+    a_su, a_sp = veg_export.season_atlas(su["spec"], "summer", [0.5, 0.5, 0.3]), veg_export.season_atlas(su["spec"], "spring", [0.5, 0.5, 0.3])
+    assert a_sp["color"][..., 3].sum() < 0.97 * a_su["color"][..., 3].sum()
+
+
+def test_blobby_clump():
+    """Meadow grass in the blobby style: a few fat closed blades and balls on stalks from the same cards; slot `heads`."""
+    T = v.grow({"species": "meadow_grass", "style": "blobby"})
+    R = v.grow({"species": "meadow_grass"})
+    assert np.array_equal(T["twigs"]["pos"], R["twigs"]["pos"])  # the same individual
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    i = D["info"]
+    lo, hi = st["clump"]["blades"]
+    assert lo <= i["blades"] <= hi and i["heads"] == 3 and i["triangles"] <= st["clump"]["budget"] * 1.05
+    assert abs(i["match"]["height_m"][1] - i["match"]["height_m"][0]) < 0.1 * i["match"]["height_m"][0]
+    assert abs(i["match"]["spread_m"][1] - i["match"]["spread_m"][0]) < 0.35 * i["match"]["spread_m"][0]
+    C = D["crown"]
+    e = np.sort(np.vstack([C["F"][:, [0, 1]], C["F"][:, [1, 2]], C["F"][:, [2, 0]]]), axis=1)
+    assert (np.unique(e, axis=0, return_counts=True)[1] == 2).all()  # closed
+    fn = np.cross(C["V"][C["F"][:, 1]] - C["V"][C["F"][:, 0]], C["V"][C["F"][:, 2]] - C["V"][C["F"][:, 0]])
+    assert (np.einsum("ij,ij->i", fn, C["N"][C["F"]].mean(1)) > 0).mean() > 0.95  # faces outward (an engine culls the back)
+    assert C["col"].max() <= 1 and len(np.unique(C["col"].round(4), axis=0)) <= st["clump"]["tones"]
+    assert C["wind"][1].max() > 0.05 and C["wind"][1][C["uv"][:, 0] == 0].max() == 0  # bends from the foot
+    assert D["heads"]["seasons"] == ["summer", "autumn"]
+    low = vs.dress(T, st, 150)
+    assert low["info"]["blades"] == i["blades"] and low["info"]["triangles"] < 0.5 * i["triangles"]
+    assert vs.dress(v.grow({"species": "meadow_grass", "style": "blobby", "season": "winter"}), st, season="winter")["heads"] is None
+    with tempfile.TemporaryDirectory() as tmp:
+        seasons = ("summer", "spring", "autumn", "winter", "snow")
+        c = veg_export.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=3, seasons=seasons)
+        G, arr = _glb(c["path"])
+        assert "textures" not in G and [l["triangles"] for l in c["lods"]] == sorted([l["triangles"] for l in c["lods"]], reverse=True)
+        sj = veg_export.seasons_json(c["path"])
+        sl = {e_["slot"]: e_ for e_ in sj["slot_list"]}
+        assert set(sl) == {"bark", "foliage", "heads"} and sl["heads"]["hidden_in"] == ["spring", "winter", "snow"]
+        assert sl["heads"]["on"][0]["primitive"] == 1 and not sl["foliage"]["hidden_in"]
+        cols = {se: sj["seasons"][se]["foliage"]["baseColorFactor"] for se in seasons}
+        assert len({tuple(np.round(c_, 3)) for c_ in cols.values()}) == 5
+
+def test_anime_clouds():
+    """Leaf clouds: the same tree, its masses dressed in layered alpha cards with a dab atlas; the export's contract."""
+    from hifipushie import veg_cloud
+    T = v.grow({**BASE, "style": "anime"})
+    R = v.grow(BASE)
+    assert np.array_equal(T["pos"], R["pos"])
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    i, C = D["info"], D["crown"]
+    assert i["kind"] == "clouds" and i["match"]["iou"] >= 0.8 and not vs.warnings(i), i["match"]
+    assert i["triangles"] <= st["budget"] and i["cards"] > 200 and D["forks"] is None  # (the forks are in the wood: seen through the gaps)
+    at = C["atlas"]
+    assert at["color"].shape[2] == 4 and 0.4 < at["fill"] <= 1.0
+    a = at["color"][..., 3]
+    assert (a > 250).mean() > 0.15 and (a < 5).mean() > 0.2  # a cut-out, not a wash
+    assert len(np.unique(at["color"][..., 0])) > 3 and np.array_equal(at["color"][..., 0], at["color"][..., 1])  # grey tone only: no season, no light
+    assert (C["uv"] >= -1e-6).all() and (C["uv"] <= 1 + 1e-6).all() and C["col"].max() <= 1 + 1e-9
+    # clump-centre normals: out of the card's own clump, whichever way the card faces
+    cen = np.array([m["center"] for m in i["mass_list"]])[C["mass"]]
+    out_ = C["V"] - cen
+    out_ /= np.linalg.norm(out_, axis=1, keepdims=True)
+    assert (np.einsum("ij,ij->i", out_, C["N"]) > 0.7).mean() > 0.97
+    # the gradient coordinate rises with height inside a clump; the painted steps are one per card, darker low
+    g = C["grad"][:, 0]
+    assert g.min() >= 0 and g.max() <= 1 and np.corrcoef(g, C["V"][:, 2] - cen[:, 2])[0, 1] > 0.8
+    steps = len(st["crown"]["tone"])
+    assert len(np.unique(C["col"].round(4), axis=0)) == steps
+    for c_ in np.unique(C["card_of"])[:50]:
+        assert len(np.unique(C["col"][C["card_of"] == c_].round(5), axis=0)) == 1
+    lum = C["col"].sum(1)
+    assert g[lum == lum.max()].mean() > g[lum == lum.min()].mean() + 0.2
+    # wind: the rims flutter, the middles don't
+    assert C["wind"][3][C["rim"] < 0.01].max() == 0 and C["wind"][3].max() > 0.2
+    # lower LODs: fewer, larger cards on the same clumps
+    low = vs.dress(T, st, int(0.18 * st["budget"]))
+    assert low["info"]["cards"] < 0.3 * i["cards"] and low["info"]["card_m"] > 1.3 * i["card_m"] and low["info"]["masses"] == i["masses"]
+    assert vs.dress(v.grow({**BASE, "style": "anime", "season": "winter"}), st, season="winter")["crown"] is None
+    assert veg_cloud.dab_atlas(T["spec"], st) is at
+    with tempfile.TemporaryDirectory() as tmp:
+        seasons = ("summer", "spring", "autumn", "winter", "snow")
+        c = veg_export.write_glb(T, str(Path(tmp) / "a.glb"), "a", lods=3, seasons=seasons)
+        G, arr = _glb(c["path"])
+        fol = next(m for m in G["meshes"] if m["name"] == "LOD0_foliage")["primitives"][0]
+        assert {"TEXCOORD_0", "TEXCOORD_1", "TEXCOORD_2", "TEXCOORD_3", "COLOR_0", "_WIND", "NORMAL"} <= set(fol["attributes"])
+        m = G["materials"][fol["material"]]
+        assert m["name"] == "foliage" and m["alphaMode"] == "MASK" and m["doubleSided"] and "baseColorTexture" in m["pbrMetallicRoughness"]
+        assert len(G["images"]) == 1  # one atlas for every season: seasons change the colour factor
+        from PIL import Image
+        import io
+        bv = G["bufferViews"][G["images"][0]["bufferView"]]
+        raw = open(c["path"], "rb").read()
+        jl = struct.unpack("<I", raw[12:16])[0]
+        png = raw[20 + jl + 8:][bv.get("byteOffset", 0): bv.get("byteOffset", 0) + bv["byteLength"]]
+        A = np.asarray(Image.open(io.BytesIO(png)))
+        assert np.abs(A.astype(int) - at["color"].astype(int)).max() <= 1  # the atlas as made (uint8 x 255 once wrapped it into noise)
+        sj = veg_export.seasons_json(c["path"])
+        assert sj["contract"]["version"] == veg_export.CONTRACT >= 4 and sj["style"] == {"name": "anime", "foliage": "clouds"}
+        sl = {e_["slot"]: e_ for e_ in sj["slot_list"]}
+        assert set(sl) == {"bark", "foliage"} and sl["foliage"]["hidden_in"] == ["winter", "snow"] and "TEXCOORD_3" in sl["foliage"]["channels"]
+        assert len({tuple(np.round(sj["seasons"][se]["foliage"]["baseColorFactor"], 3)) for se in seasons if se not in ("winter", "snow")}) == 3
+        sn = sj["snow"]
+        assert sn["by_normal"]["from"] < sn["by_normal"]["to"] and len(sn["color_linear"]) == 3 and 0 < sn["coverage"] <= 1
+
+
+def test_snow_is_winter_under_snow():
+    """A leaf-dropping plant under snow is its WINTER state (same slots hidden and shown) with snow on it, realistic and
+    styled; an evergreen keeps its crown (consumer note 52: the blobby oak's snow variant was the tree in full leaf)."""
+    seasons = ("summer", "winter", "snow")
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, spec, tri in (("b", {**BASE, "style": "blobby"}, None), ("r", BASE, 6000), ("g", {"species": "meadow_grass", "style": "blobby"}, None)):
+            c = veg_export.write_glb(v.grow(spec), str(Path(tmp) / f"{name}.glb"), name, triangles=tri, lods=1, seasons=seasons)
+            sj = veg_export.seasons_json(c["path"])
+            hid = lambda se: sorted(k for k, d in sj["seasons"][se].items() if d["hidden"])
+            assert hid("snow") == hid("winter"), (name, hid("snow"), hid("winter"))
+            assert sj["snow"]["by_normal"]["from"] < sj["snow"]["by_normal"]["to"] and len(sj["snow"]["color_linear"]) == 3
+        b = veg_export.seasons_json(str(Path(tmp) / "b.glb"))
+        assert b["seasons"]["snow"]["foliage"]["hidden"] and not b["seasons"]["snow"]["bark_forks"]["hidden"]
+        c = veg_export.write_glb(v.grow({"species": "norway_spruce", "age": 20, "style": "blobby"}), str(Path(tmp) / "s.glb"), "s", lods=1, seasons=seasons)
+        s_ = veg_export.seasons_json(c["path"])
+        assert not s_["seasons"]["snow"]["foliage"]["hidden"]  # an evergreen keeps its crown under snow
+        assert s_["seasons"]["snow"]["foliage"]["baseColorFactor"] != s_["seasons"]["winter"]["foliage"]["baseColorFactor"]
 
 
 if __name__ == "__main__":

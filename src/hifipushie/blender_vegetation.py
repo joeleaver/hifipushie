@@ -665,7 +665,7 @@ def add_plant(pj, tag, clay):
             twig_obs.append(pts)
     solid = solid_mat = None
     if "solid_V" in d:  # a style's crown: one closed mesh, a colour per vertex (linear), its own smooth normals
-        solid = _mesh(f"crown{tag}", d["solid_V"], d["solid_F"])
+        solid = _mesh(f"crown{tag}", d["solid_V"], d["solid_F"], d["solid_uv"] if "solid_uv" in d else None)
         ca = solid.data.color_attributes.new("col", "FLOAT_COLOR", "POINT")
         ca.data.foreach_set("color", np.c_[d["solid_col"], np.ones(len(d["solid_col"]))].astype(np.float32).ravel())
         solid.data.polygons.foreach_set("use_smooth", np.ones(len(solid.data.polygons), bool))
@@ -675,10 +675,34 @@ def add_plant(pj, tag, clay):
         N_, L_ = solid_mat.node_tree.nodes, solid_mat.node_tree.links
         an = N_.new("ShaderNodeAttribute")
         an.attribute_name = "col"
-        L_.new(an.outputs["Color"], N_["Principled BSDF"].inputs["Base Color"])
-        N_["Principled BSDF"].inputs["Roughness"].default_value = float((pj.get("solid") or {}).get("roughness", 0.85))
-        _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
-        _haze_out(solid_mat)
+        sj_ = pj.get("solid") or {}
+        N_["Principled BSDF"].inputs["Roughness"].default_value = float(sj_.get("roughness", 0.85))
+        if sj_.get("atlas"):  # leaf clouds: the dab atlas's tone x the vertex colour, cut out by its alpha (both sides drawn)
+            tx = _image(N_, sj_["atlas"], True)  # (sRGB, as an engine reads a glTF base colour texture)
+            mu = N_.new("ShaderNodeVectorMath")
+            mu.operation = "MULTIPLY"
+            L_.new(an.outputs["Color"], mu.inputs[0])
+            L_.new(tx.outputs["Color"], mu.inputs[1])
+            L_.new(mu.outputs[0], N_["Principled BSDF"].inputs["Base Color"])
+            _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
+            out_ = N_["Material Output"]
+            last = _hazed(N_, L_, out_.inputs["Surface"].links[0].from_socket)
+            tp = N_.new("ShaderNodeBsdfTransparent")
+            am = N_.new("ShaderNodeMixShader")
+            L_.new(_math(N_, L_, "GREATER_THAN", tx.outputs["Alpha"], float(sj_.get("alpha_cut", 0.5))), am.inputs[0])
+            L_.new(tp.outputs[0], am.inputs[1])
+            L_.new(last, am.inputs[2])
+            L_.new(am.outputs[0], out_.inputs["Surface"])
+            for attr, val in (("surface_render_method", "DITHERED"), ("use_transparent_shadow", True), ("blend_method", "HASHED")):
+                try:
+                    setattr(solid_mat, attr, val)
+                except Exception:
+                    pass
+            solid_mat.use_backface_culling = False
+        else:
+            L_.new(an.outputs["Color"], N_["Principled BSDF"].inputs["Base Color"])
+            _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
+            _haze_out(solid_mat)
         solid.data.materials.append(solid_mat)
         solid.location, solid.rotation_euler, solid.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
         solid["hp_solid"] = 1
@@ -769,6 +793,78 @@ def read_curves():
     return out
 
 
+_PASS: dict = {}
+
+
+def _pass_material(m, kind):
+    """A copy of a finished material that draws one thing unlit, cut out by the same alpha: "albedo" = what goes into
+    its Principled's Base Color (after weather; no sky reflected in it: lit by a white world, a picture came out pale),
+    "normal" = the shading normal in world space x 0.5 + 0.5 (what the Principled is given: a leaf's normal bent out of
+    the crown, a style's own smooth normals), "shade" = how much of the sky straight above reaches the point (Cycles'
+    AO node with the normal forced up: 0 under a crown or a limb). An impostor's maps are made of these."""
+    key = (m.name, kind)
+    if key in _PASS:
+        return _PASS[key]
+    c = m.copy()
+    c.name = f"{m.name}:{kind}"
+    N, L = c.node_tree.nodes, c.node_tree.links
+    out = next((n for n in N if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None) or N["Material Output"]
+    bsdf = next((n for n in N if n.type == "BSDF_PRINCIPLED"), None)
+    alpha = None
+    for n in N:  # the cut-out: a mix with a Transparent BSDF in its first slot
+        if n.type == "MIX_SHADER" and n.inputs[1].is_linked and n.inputs[1].links[0].from_node.type == "BSDF_TRANSPARENT" and n.inputs[0].is_linked:
+            alpha = n.inputs[0].links[0].from_socket
+    em = N.new("ShaderNodeEmission")
+    if kind == "albedo":
+        if bsdf is not None and bsdf.inputs["Base Color"].is_linked:
+            L.new(bsdf.inputs["Base Color"].links[0].from_socket, em.inputs["Color"])
+        else:
+            em.inputs["Color"].default_value = bsdf.inputs["Base Color"].default_value if bsdf is not None else (0.5, 0.5, 0.5, 1)
+    elif kind == "normal":
+        if bsdf is not None and bsdf.inputs["Normal"].is_linked:
+            nsrc = bsdf.inputs["Normal"].links[0].from_socket
+        else:
+            nsrc = N.new("ShaderNodeNewGeometry").outputs["Normal"]
+        ma = N.new("ShaderNodeVectorMath")
+        ma.operation = "MULTIPLY_ADD"
+        ma.inputs[1].default_value, ma.inputs[2].default_value = (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)
+        L.new(nsrc, ma.inputs[0])
+        L.new(ma.outputs[0], em.inputs["Color"])
+    else:
+        ao = N.new("ShaderNodeAmbientOcclusion")
+        ao.samples = 16
+        ao.inputs["Distance"].default_value = 1000.0
+        ao.inputs["Normal"].default_value = (0, 0, 1)
+        L.new(ao.outputs["AO"], em.inputs["Color"])
+    last = em.outputs[0]
+    if alpha is not None:
+        tp = N.new("ShaderNodeBsdfTransparent")
+        am = N.new("ShaderNodeMixShader")
+        L.new(alpha, am.inputs[0])
+        L.new(tp.outputs[0], am.inputs[1])
+        L.new(last, am.inputs[2])
+        last = am.outputs[0]
+    L.new(last, out.inputs["Surface"])
+    _PASS[key] = c
+    return c
+
+
+def _pass_swap(kind):
+    """Every mesh's materials swapped for their pass copies; returns what to hand to _pass_restore."""
+    was = []
+    for me in bpy.data.meshes:
+        for i, m in enumerate(me.materials):
+            if m is not None and ":" not in m.name and m.use_nodes:
+                was.append((me, i, m))
+                me.materials[i] = _pass_material(m, kind)
+    return was
+
+
+def _pass_restore(was):
+    for me, i, m in was:
+        me.materials[i] = m
+
+
 def build(job):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
@@ -776,6 +872,7 @@ def build(job):
     HAZE.clear()
     HAZE.update(job.get("haze") or {})
     _BUILT.clear()
+    _PASS.clear()
     plants = [add_plant(pj, f"_{i}" if i else "", clay) for i, pj in enumerate(job["plants"])]
     for i, sj in enumerate(job.get("scatter") or []):
         add_scatter(sj, f"_s{i}")
@@ -936,7 +1033,22 @@ def build(job):
             o.hide_render = not v.get("ruler", False)
         sc.render.film_transparent = bool(v.get("transparent"))
         sc.render.filepath = v["out"]
+        swapped = None
+        if v.get("pass"):  # one unlit thing per pixel (see _pass_material); "shade" needs rays: Cycles
+            swapped = _pass_swap(v["pass"])
+            sc.view_settings.view_transform = "Standard" if v["pass"] == "albedo" else "Raw"
+            sun.data.energy = fill.data.energy = amb.data.energy = 0.0
+            if v["pass"] == "shade":
+                sc.render.engine = "CYCLES"
+                sc.cycles.device = "CPU"
+                sc.cycles.samples = int(v.get("samples", 12))
+                sc.cycles.use_denoising = False
+                sc.cycles.max_bounces = 0
+                sc.cycles.transparent_max_bounces = 64
         bpy.ops.render.render(write_still=True)
+        if swapped is not None:
+            _pass_restore(swapped)
+            sc.render.engine = "BLENDER_EEVEE"
         print("@@rendered", v["out"])
     if job.get("curves") is not None:
         add_curves(job)

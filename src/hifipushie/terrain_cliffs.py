@@ -60,6 +60,19 @@ class Region:
         self.thick = float(cfg.get("thick", self.push + 1.5))     # shell: rock kept behind the smooth ground
         self.sink = float(cfg.get("sink", self.thick + relief + 0.8))  # front buried at the region's edge
         self.wall = float(cfg["cave_wall"])
+        # the shell's back: the ground moved `thick` m into the rock (the solid eroded by a ball: a true offset surface,
+        # as a height grid like the terrain's, read as a cubic B-spline). It used to be `thick` behind the COLUMN's own
+        # plane, (z - h) x cos(slope) > -thick: the same on an even slope, but under a sheer face's columns (84 deg sea
+        # cliffs on 0.64 m cells: cos 0.04-0.1) that is thick / cos = 50-100 m straight down, a buried sheet thinner
+        # than a voxel hanging under every cliff (slice_a: 262k of one tile's 439k triangles more than 10 m under
+        # their column's ground, the lattice's bottom cutting it open at z -95), and behind the face a slab as thin as
+        # the face is wide in plan. Neither could be decimated: pyfqmr folds a sub-voxel sheet into fins at any count.
+        kc = max(1, int(math.ceil(self.thick / base.c)))
+        yy, xx = np.mgrid[-kc:kc + 1, -kc:kc + 1]
+        r2 = (xx * xx + yy * yy) * base.c ** 2
+        ball = np.sqrt(np.maximum(self.thick ** 2 - r2, 0.0))
+        self.back = np.ascontiguousarray(ndimage.gaussian_filter(
+            ndimage.grey_erosion(base.H, footprint=r2 <= self.thick ** 2, structure=ball, mode="nearest"), 0.7))
         m = float(cfg["cliff_margin"])
         self.nx = int(round(G.span[0] / d)) + 1
         self.ny = int(round(G.span[1] / d)) + 1
@@ -169,6 +182,21 @@ class Region:
         return b.edits.column(x, y, h, s, b._column, riser, wmin) if getattr(b, "edits", None) is not None \
             else (h, s)
 
+    def back_at(self, x, y):
+        """The shell's back at columns: its height and slope factor (see `back`)."""
+        b = self.base
+        if fieldjit.ON:
+            return fieldjit.column(self.back, tm._f64(x), tm._f64(y), b.x0, b.y0, b.c)
+        r = (np.asarray(y, float) - b.y0) / b.c
+        q = (np.asarray(x, float) - b.x0) / b.c
+        e = 0.5
+        rr = np.concatenate([r, r, r, r + e, r - e])
+        qq = np.concatenate([q, q + e, q - e, q, q])
+        v = ndimage.map_coordinates(self.back, [rr, qq], order=3, prefilter=False, mode="nearest").reshape(5, -1)
+        gx = (v[1] - v[2]) / (2 * e * b.c)
+        gy = (v[3] - v[4]) / (2 * e * b.c)
+        return v[0], 1.0 / np.sqrt(1.0 + gx * gx + gy * gy)
+
     def tile_holes(self, i, j, n):
         """The hole mask of tile (i, j): (n - 1) x (n - 1) cells, row 0 north (like the heightmap PNGs)."""
         a, b = i * (n - 1), j * (n - 1)
@@ -200,6 +228,10 @@ class CliffField:
 
     def steep_at(self, x, y):
         return self.base.steep_at(x, y)
+
+    def zlow(self, x, y):
+        """The lowest the shell reaches under columns: its back (the tile lattice's bottom; voids add their boxes)."""
+        return self.region.back_at(x, y)[0] - 1.0
 
     def ground(self, p):
         return self.base.ground(p)
@@ -244,7 +276,8 @@ class CliffField:
         front = self.base.solid(p[k], Fg[k] + R.sink * sink_share(S[k]), s[k])
         # (round a void the shell behind the face reaches 2 m past the cave wall, so it meets the rock round the
         # void: a gap between them left sealed air pockets inside the rock, meshed as floating bubbles)
-        back = np.minimum(-(Fg[k] + R.thick), dv[k] - (R.wall + 2.0))
+        hb, sb = R.back_at(p[k, 0], p[k, 1])  # (the ground moved `thick` into the rock: see Region.back)
+        back = np.minimum((hb - p[k, 2]) * sb, dv[k] - (R.wall + 2.0))
         # (rounded where front and back meet: a hard crease there shaded as shards)
         out[k] = tm.smax(front, back, 0.8)
         # round every void, the whole rock (unsunk) within cave_wall of it, up to just under the ground: the sunk
@@ -320,7 +353,9 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
     X, Y = np.meshgrid(lo[0] + s, lo[1] + s, indexing="ij")  # [ix, iy]
     Hh = R.height(X.ravel(), Y.ravel()).reshape(n, n)
     holes = R.tile_holes(i, j, n)  # rows north
-    hn = Hh.T[::-1].astype(np.float32)
+    # (C order on disk: `.T` alone saved the file column-major, fortran_order True in its header; numpy hides that, a
+    # plain reader in an engine got the tile transposed without an error)
+    hn = np.ascontiguousarray(Hh.T[::-1], np.float32)
     np.save(out / "heightmaps" / f"height_{i}_{j}.npy", hn)
     hr = cfg["_hrange"]
     q = np.round((hn - hr[0]) / (hr[1] - hr[0]) * 65535).clip(0, 65535).astype(np.uint16)

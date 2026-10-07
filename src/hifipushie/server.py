@@ -1618,8 +1618,11 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
       sleeve_length, options, measurements (a fixed size instead of made to measure), alterations), or own pieces +
       seams (a tablecloth is one piece wrapped "flat"), fabric (preset: shirting, jersey, linen, denim, wool_coating,
       or {"preset", overrides}), color, roughness, state, quality, resolution (final triangle size, 0.01), coarse
-      (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep} or false), detail (seam/stitch/hem maps:
-      {seam, topstitch, stitch, hem, buttons, thread} or false).
+      (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep, seams (welded seams pressed flat)} or false),
+      detail (seam/stitch/hem maps: {seam, topstitch, stitch, hem, buttons, thread} or false), closures (how its
+      openings are fastened AND worn: an entry of a name is laid over the design's own key by key, so
+      [{"name": "collar", "state": "open"}] is a shirt with the top button undone, [{"name": "front", "state":
+      "open"}] a jacket hanging open, {"open_above": mark} undoes the fastenings above a mark; see the guide).
     state: "worn" (default: sewn on the body and settled), "draped" (laid flat and dropped on the model's surface: a
       tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or "hung" (dressed first, a hanger put inside
       it under the shoulders with its hook through the neck opening, the body taken away: it settles onto the hanger,
@@ -2271,7 +2274,8 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     spec's "export". tiles=True writes 3D mesh tiles instead (default workspace/terrain/<name>/tiles/): the ground
     and its volumes (arches, caves, overhangs) as seamless glTF tiles with LODs, skirts, collision, heightmap and
     splat tiles and a manifest.json, tuned by the spec's "export": {"tiles": {...}}; a seam check runs on every
-    export and fails loudly."""
+    export; when it (or a tile's triangle budget) fails the reply starts with CHECKS FAILED and lists each failure
+    with its tiles: the files are still written, complete and loadable."""
     from . import terrain_tools as tt
     from .terrain_world import Questions
     try:
@@ -2281,7 +2285,11 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     cfg = T.spec.get("export") or {}
     if tiles:
         from . import terrain_mesh
-        r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+        try:
+            r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+        except terrain_mesh.TilesCheckFailed as e:
+            # (the export is written and complete: the report, with what failed on top, not a traceback)
+            r = e.result
         return terrain_mesh.summary(r)
     path = T.export(Path(out_dir).expanduser() if out_dir else tt._dir(name) / "export",
                     size=size or cfg.get("size"), engine=engine or cfg.get("engine"))
@@ -2591,10 +2599,20 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     A plant with a `style` exports in its style with the same node, mesh and material names (wood / foliage; bark /
     foliage), LODs, wind channels, variants and collision: its foliage is closed untextured geometry (colour = the
     material's baseColorFactor per season x COLOR_0), `triangles` defaults to the style sheet's budget, and the reply
-    says what was simplified (also in extras.hifipushie_plant.style).
+    says what was simplified (also in extras.hifipushie_plant.style). A styled deciduous tree's wood has a second
+    primitive, slot `bark_forks` (hidden unless the season is bare); a styled small plant's foliage has one, slot
+    `heads` (flower / seed heads, hidden out of their seasons).
+    The impostor is lit by the engine: albedo (unlit, with the shade of what stands above baked in) + a tangent-space
+    normal map, a picture per season; its material must not receive shadows (the quads shadow each other).
+    <name>_seasons.json leads with `contract` (version: bumped whenever a slot or vertex channel changes) and
+    `slot_list` (every slot: its mesh / primitive, the seasons that hide it, its channels): an engine should refuse a
+    version or slot it doesn't know. Small plants (clumps) export their seasons as variants too (colour; layers out
+    of season hidden); their lying down in winter is in the looks only.
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
     materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
     from . import veg_tools as vt
+    from . import veg_export as _ve
+    vt_contract = lambda: _ve.CONTRACT
     if set:
         c = vt.export_set(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet)
         return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all (LOD 0), "
@@ -2614,7 +2632,10 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     ground += ("\nfor engines without MSFT_lod / KHR_materials_variants (Godot 4.7 keeps only LOD 0 of the combined file, drops "
                "nodes outside the scene and drops variants): use the _LOD<k>.glb files (lod_files=True)"
                + (f", {Path(c['collision_file']).name} (its node is named ...-colonly: Godot makes a static body of it)" if c.get("collision_file") else "")
-               + (f", {Path(c['seasons_file']).name} (each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
+               + (f", {Path(c['seasons_file']).name} (contract version {vt_contract()} + the slot list, then each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
+    if impostor:
+        ground += ("\nimpostor: albedo + normal map per season, lit by the engine like the mesh LODs; ENGINE: its material must not receive "
+                   "shadows (Godot: disable_receive_shadows), or the two quads shadow each other into a dark wedge")
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))
