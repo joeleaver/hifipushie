@@ -3126,6 +3126,73 @@ regresses, bisect by building one spec at each commit and diffing heights.
       budget it can't reach) reaches PRE 32 x its budget in one pyfqmr pass first, then the same budget search with the
       dense mesh's tolerance (`_decimate(pre=)`). Replayed (HIFIPUSHIE_DECIMATE_DUMP) on the alps block's 12 fallbacks:
       85 -> 37 s, faces <= before in every case, summed error p99 6.2 -> 5.7 m; 4x/8x were faster but further off.
+  - First consumer export (2026-10-07, "tiles" agent, branch worktree-agent-aa0a9fde6c2eee6d8; pushieworld's slice_a,
+    512 m of sheer coast with a sea cave: /home/joe/dev/pushieworld/docs/hifipushie-notes.md 19-30; our copy is terrain
+    `tl_slice_a`; scratch DURABLE in /mnt/data/hifipushie/tiles: run.sh <script> (this worktree's code on the main
+    workspace), exp.py <terrain | spec.json> <tag> ['<cfg json>'] (export into out/<tag>, summary + heaviest tiles),
+    diag1.py <terrain> i j (one tile's marching cubes: triangles by depth, visible / buried, open edges; 60 s, no
+    heavy slot), diag2.py (the dense mesh's own error), dec.py (pyfqmr at several counts), shards.py <tag> <lod>
+    (where shard faces are), recheck.py <tag> (the seam check alone on an export), queue.sh (slice, pebble, alps one
+    after another), tests.sh, val.mjs <dir> (Khronos over a directory), man.py <manifest> (heaviest tiles)).
+    The failure: tile (4,1) at 495,898 / 495,622 / 495,475 triangles against 12000 / 3000 / 800 (three more tiles
+    at 100-313k), 748 s for that tile, 44 open edges at z -94.9, a traceback instead of a report.
+    - ROOT CAUSE (not the cave): the cliff shell's back was `thick` behind the COLUMN's own plane, (z - h) x cos(slope)
+      > -thick. On an even slope that is a shell `thick` thick; under a sheer face's columns (84 deg sea cliffs on
+      0.64 m cells: cos 0.04-0.1) it is thick / cos = 50-100 m straight down: a buried sheet thinner than a voxel under
+      every cliff, and behind the face a slab only as thick as the face is wide in plan. `_tile_mc` sized the lattice as
+      ground - zpad / max(cos, 0.15) (88 m), which cut the sheet open (the open edges). Tile (4,1)'s marching cubes:
+      439k triangles, 262k of them more than 10 m under their column's ground, none of those visible. pyfqmr folds a
+      sub-voxel two-sided sheet into fins at any count, `valid` rejects every candidate, `_decimate` hands back the
+      dense mesh after 5 aggressiveness retries per count on 500k faces (the 200 s a LOD). Capping the sheet's depth
+      alone was not enough (238k triangles, and pyfqmr still non-manifold above ~1,300): the slab behind the face had
+      to go too.
+    - FIX: `Region.back` = the ground eroded by a ball of radius `thick` (ndimage.grey_erosion with a spherical
+      structure, smoothed 0.7 cell; a terrain-frame grid, so the incremental fingerprint windows it), read like the
+      ground (`back_at` -> height, slope factor); the shell is {front < 0} and {z above the back}. Identical on an
+      even slope. `CliffField.zlow` (the lattice's bottom) is that back - 1 m. (4,1): 233k marching-cubes triangles,
+      zmin -7.8, LODs 11,996 / 2,989 / 633, 12.5 s.
+    - `_decimate`'s error on a cliff shell is measured on faces with every corner on the visible rock, by
+      `field.front` (the buried back's field values are not metres: the dense mesh's own p99 was 0.59 "m", and that
+      was the tolerance: once decimation worked, LOD 0 of the cave tile came out at 1,132 triangles).
+    - Budgets fail loudly: `budget_check` -> manifest `budget_check.over` (tile, lod, triangles, budget, why), an
+      "OVER BUDGET" log line and a check failure per tile LOD over `OVER_BUDGET` 2 x its budget. Collision:
+      `collision_budget` (default 2 x its LOD's budget): `_collision_mesh` decimates for collision alone when the LOD
+      is heavier; tiles[].collision_triangles. tiles[].seconds; the summary lists the slowest tiles over 60 s.
+    - Failed checks are a report: `TilesCheckFailed(RuntimeError)` carries the result; `summary(result)` leads with
+      "CHECKS FAILED (n). The export is COMPLETE on disk ..." and each failure with its tiles (shards: most-affected
+      tiles; map seams: the worst borders and the limit); `export_terrain` and terrain_run.py return / print that.
+      manifest seam_check.failed repeats the list.
+    - Tried and taken back: border vertices on a crease taking a normal from a 1-voxel stencil (72 of slice_a's 77
+      LOD 0 shard faces have a border vertex: border normals are never split, and one side's exact normal at a sheer
+      lip is square to the other side's faces). It made shards WORSE (slice_a LOD 0 0.012 -> 0.043%, pebble 0.005 ->
+      0.05%) and the lod1 map seams too. The idea may be right, the wide stencil is not.
+    - Small ones: heightmap .npy in C order (`.T` had saved fortran_order True: a plain reader got the tile
+      transposed); the buried primitive's material is `terrain_buried` (Godot drops extras and saw a second skirt);
+      guide + manifest: holes PNGs are heightmaps/holes_<i>_<j>.png and only for tiles with holes, texel_density
+      default [8, 4, 2], primitive roles / materials, the two collision files. Report: a spec with `caves` /
+      `volumes` says "3D rock: ... built in the mesh tiles only" instead of CAN'T BUILD YET; a cover LIST is named
+      by type (meadow, conifer; was cover_1..6: file names of exported masks change with it); the "no coast" error
+      gives the sea level and each edge's lowest ground; a route to a cove says to route to a site at it; a hollow
+      behind sea cliffs says the raised cliff tops dam it (slice_a: top 18.8 m where the tilt alone gives 3.3).
+    - tests/test_tiles.py (a 128 m synthetic sheer coast, "cell" 0.64, 32 m tiles; ~60 s, no heavy slot): shell
+      depth and closed, budget holds from the dense mesh, budget_check, a failing export comes back as a report with
+      its files on disk, C-order heightmap.
+    - Results (cold, loaded machine). slice_a: 161-230 s wall (was 1050), every tile within budget (LOD 0 per tile
+      2,514-12,000, LOD 1 561-3,000, LOD 2 147-800; the cave tile 11,996 / 2,989 / 633), 0 open edges, 0 floating, 3.9
+      GB. It still FAILS three checks, now as a report, none of them the curtain: LOD 0 shards 0.012% (limit 0.01;
+      77 faces, 72 with a border vertex, most in tiles 7,1 / 4,1), cliff-map normals across borders at LOD 1 p95
+      17.1 deg (limit 15; worst borders 2,3|3,3 37, 5,0|5,1 29), LOD 0 vs LOD 2 weights1 p95 0.284 (limit 0.25).
+      Pebble (examples/pebble_disc.json, 208 tiles): 245 s, shards 0.005 / 0.023 / 0.198%, floating 0, Khronos 1044
+      files 0 / 0, but the LOD 1 map-normal seam is p95 15.55 against the limit of 15 (main: 14.2, already noted as
+      thin margin): it FAILS by that. Alps 3x3: 133 s, 0 failures, shards 0 / 0.003 / 0.004%, Khronos 72 files 0 / 0.
+      test_fieldjit, test_level_look, test_swatch, test_tooling, test_tiles pass.
+    - OPEN, in order: (1) the LOD 1 map-normal seam (pebble 15.55, slice_a 17.1): find what the worst borders have in
+      common (recheck.py prints them; a few borders at 30-60 deg carry the p95: likely a cliff piece's edge texels at
+      4 texels/m, or the two tiles' charts across a crease), fix or re-set the limit with main; (2) shards at border
+      vertices on sheer lips (a per-face split that both tiles make alike, or a crease-aware border normal that is
+      not a wide stencil); (3) weights1 across LOD 0 / LOD 2 on slice_a; (4) the Khronos validator needs an
+      externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
+      (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
