@@ -6683,7 +6683,7 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
     tmp = store._dir(name) / "_cloth_look"
     tmp.mkdir(exist_ok=True)
     for gn, g, res in results:
-        o = {"name": f"g_{gn}", "V": res["V"], "F": res["mesh"]["F"], "color": g.get("color", "#8fb3d9"),
+        o = {"name": f"g_{gn}", "V": res["V"], "F": res["mesh"]["F"], "color": g.get("color", "#8fb3d9"), "roughness": float(g.get("roughness", 0.85)),
              "thickness": max(0.0006, fabric(g).get("thickness", 0.0008))}
         Fw, Fc = welded_faces(res["mesh"], res["V"], body=res["body"], corners=True)
         o["F"] = Fw  # (one surface: the seams' vertices shared, the pieces wound alike)
