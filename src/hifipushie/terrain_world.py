@@ -392,6 +392,14 @@ def report(T) -> list[str]:
     if K.get("shape") in SHAPES:
         out.append(f"world: the designer's shape, {K['shape']}, is built as {SHAPES[K['shape']]}")
     cant = limits(W["kind"], *map(str, (K.get("answers") or {}).values()), T.spec.get("story", ""))
+    # (a spec with `caves` / `volumes` builds them, in the mesh tiles: "CAN'T BUILD YET ... no caves (you said cave)"
+    # read as "your cave was dropped" to the first designer who had one)
+    three_d = [f"{k} {n!r}" for k in ("caves", "volumes") for n in (T.spec.get(k) or {})]
+    if three_d:
+        cant = [c for c in cant if not c.startswith("the ground is a height field")]
+        out.append("3D rock: " + ", ".join(three_d) + " are built in the mesh tiles only (export_terrain(tiles=True): "
+                   "its reply says where each landed and walks a person through every cave); this report, the map and "
+                   "the views show the height field without them")
     for c in cant:
         out.append(f"world: CAN'T BUILD YET: {c}")
         w = f"can't build yet (tell the designer): {c}"

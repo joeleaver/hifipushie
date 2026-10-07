@@ -156,8 +156,15 @@ def apply(T):
         edge_ids = np.unique(np.r_[lab[0], lab[-1], lab[:, 0], lab[:, -1]])
         land = ~np.isin(lab, edge_ids[edge_ids > 0])
     if not land.any() or land.all():
-        raise ValueError("sea: there's no coast (the land is everywhere or nowhere): give \"land\" a zone, or leave "
-                         "ground below the level reaching the frame's edge")
+        # (with the numbers: the first designer to meet this did the tilt's arithmetic by hand)
+        H = T.H
+        ed = {"north": H[-1], "south": H[0], "west": H[:, 0], "east": H[:, -1]}
+        lows = ", ".join(f"{nm} {float(np.nanmin(e)):+.0f} m" for nm, e in ed.items())
+        raise ValueError(f"sea: there's no coast (the land is {'everywhere' if land.all() else 'nowhere'}): the sea is "
+                         f"at {level:g} m and the ground runs {float(np.nanmin(H)):+.0f} to {float(np.nanmax(H)):+.0f} m, "
+                         f"lowest on each edge: {lows}. Give \"land\" a zone, or leave ground below the level reaching "
+                         "the frame's edge (lower world.base, or tilt more steeply: the tilt pivots on the frame's "
+                         "middle, so an edge drops by grade x half the frame)")
     # the coastline wanders: headlands and bights a few hundred metres apart (a zone's circle read as a compass drawing)
     # the coastline is a continuous field (signed distance), never re-cut from cells: a coast rethresholded to cells
     # built its cliffs as a staircase of blocks
