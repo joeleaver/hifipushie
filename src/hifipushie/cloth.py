@@ -5293,6 +5293,27 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
             X[bad] = body.push_out(X[bad], o["clear"])
             if o["weld"] and len(M["sew"]):  # (the push moved one side of a seam and not the other)
                 weld()
+        # the FACES clear too, at their centres and edge midpoints: a 2 cm triangle over a buttock's curve dips
+        # between its vertices, and the body showed through as pale specks on tr_11's seat (0.27 mm off at an edge
+        # midpoint, the vertices 2-3 mm off)
+        F_ = np.asarray(M["F"])
+        need = np.zeros(len(X))
+        for _ in range(4):
+            Pf = np.concatenate([X[F_].mean(1), 0.5 * (X[F_[:, 0]] + X[F_[:, 1]]), 0.5 * (X[F_[:, 1]] + X[F_[:, 2]]),
+                                 0.5 * (X[F_[:, 2]] + X[F_[:, 0]])])
+            cl_ = body.clearance(Pf)
+            short = 0.5 * o["clear"] - cl_
+            if short.max() <= 1e-4:
+                break
+            fi = np.tile(np.arange(len(F_)), 4)
+            add = np.zeros(len(X))
+            for c in range(3):
+                np.maximum.at(add, F_[fi, c], np.maximum(short, 0.0))
+            need += add
+            mv = need > 0
+            X[mv] = body.push_out(X[mv], o["clear"] + need[mv])
+            if o["weld"] and len(M["sew"]):
+                weld()
     moved = np.linalg.norm(X - V, axis=1)
     return X, {"passes": n, **({"press": press_info} if press_info else {}), "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
                "moved_max_mm": round(float(moved.max() * 1000), 2)}

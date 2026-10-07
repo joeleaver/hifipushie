@@ -112,7 +112,7 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
                 folds.append({"name": f"{c['name']} band {piece}", "piece": piece, "line": {"edge": edge[side], "offset": float(w)},
                               "angle": 180, "kind": "press", "strength": 0.0, "in_wrap": True, "band": True})
         out.append({"name": c["name"], "kind": kind, "over": over, "under": under, "pairs": pairs, "closed": closed,
-                    "edge": edge, "band": band, "size": float(c.get("size", 0.011)), "lift": float(c.get("lift", 0.0008)),
+                    "edge": edge, "band": band, **({"seam": list(c["seam"])} if c.get("seam") else {}), "size": float(c.get("size", 0.011)), "lift": float(c.get("lift", 0.0008)),
                     "state": state})
     return stitches, folds, seams, out
 
