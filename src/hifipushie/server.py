@@ -2288,7 +2288,11 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
     A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
     "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
-    "bark": {...}, "season", "decay"}. The same spec always grows the same plant. Every version is kept
+    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" (more sheets to come), or
+    {"sheet": "blobby", "crown": {"masses": 6}, ...} to override a sheet's numbers: the SAME grown plant (skeleton,
+    height, crown extent, lean) dressed another way (few fat limbs, a crown of smooth closed masses, flat colours); the
+    report says what was simplified and the outline IoU against the realistic tree. Looks and exports follow the style.
+    "season": summer | spring | autumn | winter. The same spec always grows the same plant. Every version is kept
     (plant_history). Returns the report: size, form measured on its own silhouettes, limbs, foliage, guides, the
     reference match if it has one, WARNINGS last, and (for a patch) every changed value old -> new with what the tree
     did. In a patch, lists REPLACE (give the whole per-order list; `"prune": null` removes every prune: use
@@ -2553,10 +2557,14 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     (MSFT_lod) and are listed in extras with the screen height to switch at; lod_files=True also writes each LOD as
     its own <name>_LOD<k>.glb (Unreal, Unity, Godot take LODs as separate meshes).
     Wind is always written: TEXCOORD_1 = (trunk, branch) sway weights, TEXCOORD_2 = (phase, flutter), the same four in
-    _WIND; the shader recipe is in extras. seasons: any of "summer", "autumn", "winter", "snow" as material variants
+    _WIND; the shader recipe is in extras. seasons: any of "spring", "summer", "autumn", "winter", "snow" as material variants
     (KHR_materials_variants; a deciduous winter hides the foliage; "snow" frosts the foliage picture, snow on wood is
     an engine shader: recipe in extras); wet=True adds a "wet" variant. Collision: capsules for the trunk and main
     limbs in extras + a low `<name>_collision` mesh node outside the scene.
+    A plant with a `style` exports in its style with the same node, mesh and material names (wood / foliage; bark /
+    foliage), LODs, wind channels, variants and collision: its foliage is closed untextured geometry (colour = the
+    material's baseColorFactor per season x COLOR_0), `triangles` defaults to the style sheet's budget, and the reply
+    says what was simplified (also in extras.hifipushie_plant.style).
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
     materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
     from . import veg_tools as vt
@@ -2576,6 +2584,9 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                       f"median {g_['p50_mm']} mm)")
     ground = ("\nground: in the file, " + ("nothing but the trunk's foot is under it" if not gl else "geometry is under it")
               + "".join("\n" + l_ for l_ in gl)) if c.get("ground") else ""
+    if c.get("style"):
+        from . import veg_style
+        ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))
     return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
             + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
             + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")

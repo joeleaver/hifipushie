@@ -174,6 +174,9 @@ def describe(name: str | None = None, species: str | None = None) -> dict:
     out = {"own": own, "resolved": full, "habit_ranges": vegetation.HABIT_INFO,
            "leaf_twig_ranges": TWIG_INFO, "growth": {"steps": vegetation.steps_of(full),
                                                      "note": "steps = age / habit.years_per_step, 2-80"}}
+    from . import veg_style
+    out["style"] = {"resolved": veg_style.sheet(full) or "realistic", "styles": veg_style.names(),
+                    "note": 'spec "style": a sheet\'s name, or {"sheet": name, "wood": {...}, "crown": {...}} to override its numbers'}
     if name:
         out["version"] = len(history(name))
     return out
@@ -317,6 +320,13 @@ def report(name: str) -> str:
            f"branch orders to {st['max_order']}" + (f", {st['pruned_nodes']} nodes cut by prunes" if st.get("pruned_nodes") else "")]
     out_g, warn_g = ground_lines(T)
     out += out_g
+    from . import veg_style
+    sty = veg_style.sheet(s)
+    if sty:  # what the style drew of this plant, and whether it is still the same tree from afar
+        inf_ = veg_style.dress(T, sty)["info"]
+        out += veg_style.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles (wood {inf_['wood_triangles']}, crown {inf_['crown_triangles']}); "
+                                        f"sheet numbers: get_plant shows them under `style`"]
+        warn_g = warn_g + veg_style.warnings(inf_)
     if st.get("dead_stubs"):
         P_, d_ = T["pos"], T["dead"]
         seg_ = np.linalg.norm(P_ - P_[T["parent"]], axis=1)
@@ -503,6 +513,8 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
     from . import veg_look
     import math
     has_leaves = len(veg_look.veg_leaf_place(T)) > 0
+    from . import veg_style
+    styled = veg_style.sheet(T["spec"]) is not None
     H = T["height"]
     c_, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
     toward = np.array([-s_, -c_, 0.0])
@@ -523,7 +535,7 @@ def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, l
             raise ValueError(f"unknown view {x!r}: {list(VIEWS)} or a camera {{'eye', 'look', 'fov'}}")
         j = {"out": stem(x), "size": sz, "sun": [azimuth + 235, 40]}
         if x == "clay":
-            j.update(azimuth=azimuth, leaves=False, clay=True, ruler=True)
+            j.update(azimuth=azimuth, leaves=styled, clay=True, ruler=True)  # (a style's crown is its structure: clay shows it)
         elif x == "bare":
             j.update(azimuth=azimuth, elevation=4, leaves=False, ruler=True)
         elif x == "leaf":
@@ -701,7 +713,7 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
         from . import veg_ground
         c["ground"] = veg_ground.audit_glb(c["path"], T["spec"], float(T["radius"][1]))
     if lod_files and len(c["lods"]) > 1:
-        base = triangles or c["lods"][0]["triangles"]
+        base = triangles or (c["style"]["budget"] if c.get("style") else c["lods"][0]["triangles"])
         for li, L in enumerate(c["lods"]):
             if L.get("impostor"):
                 f = veg_export.write_impostor(T, str(out / f"{stem}_LOD{li}.glb"), stem, imp)

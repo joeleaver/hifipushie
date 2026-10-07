@@ -444,9 +444,9 @@ lod_files=True)`:
   trunk, 1 at the limb's end), a phase per limb, and leaf flutter (0 at a card's foot, 1 at its tip): TEXCOORD_1 =
   (trunk, branch), TEXCOORD_2 = (phase, flutter), and all four in `_WIND`. The shader recipe is in the file's extras.
   `wind_plant(name)` renders the export swaying by that recipe: look at it (the foot still, limbs out of step).
-- **Seasons** are states of the plant (`"season": "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
+- **Seasons** are states of the plant (`"season": "spring" | "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
   `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
-  material variants in the export (KHR_materials_variants: summer / autumn / winter / snow / wet). Snow lying on wood
+  material variants in the export (KHR_materials_variants: spring / summer / autumn / winter / snow / wet). Snow lying on wood
   is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
 - **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
@@ -504,9 +504,71 @@ shorter, flatter cards); a rosette that floats (lean 70+, `sink`); one picture r
 Not built: scattering on terrain, grass as GPU blades, ivy and creepers that follow a surface, fan palms, bamboo,
 reeds in water, mushrooms, per-plant colour maps from a terrain, bent/trampled states.
 
+## Styles: the same plant dressed another way
+
+`"style": "realistic" | "blobby"` on the spec (grow_plant, a set's plants; anime, cartoon and pixar sheets are not
+built yet). A style NEVER changes the growth: species, seed, skeleton, height, crown extent and lean are the realistic
+tree's, node for node, so an engine can swap styles on one placement and the outline at 200 m is the same tree. The
+report says what was simplified and measures that claim:
+
+    style blobby: 4 limbs kept of 5 first-order (5 of 12125 axes drawn, 54 of 4451 m of wood; no twigs); 8 crown masses for 17840 twigs, 3 tones
+    same individual: outline IoU 0.859 against the realistic tree in leaf (true scale, feet together; azimuths 0/60/120: ...); height 20.2 m (realistic 19.8), crown width 23.8 m (realistic 25.7)
+
+(IoU of the row-filled side outlines, both in the same metric frame: under 0.8, or a height off by 6%, is a WARNING.)
+
+How artists make these (what the operations copy):
+- Blob / low-poly trees are a trunk and a handful of smooth-shaded lumps, built from spheres or metaballs joined and
+  remeshed; the shading comes from smooth normals over each lump, the colour from one flat tone per lump
+  (https://www.blendernation.com/2016/09/26/make-low-poly-stylized-trees/,
+  https://blenderartists.org/t/what-are-the-tips-and-tricks-to-make-stylized-low-poly-creations/1510574).
+- Soft "Ghibli" foliage is leaf cards whose normals are TRANSFERRED from a rounded proxy hull round each clump (Blender's
+  Data Transfer / Normal Edit modifier), so a clump shades as one soft volume and the cards only cut its edge
+  (https://www.blendernation.com/2020/08/20/creating-ghibli-trees-in-3d/,
+  https://trungduyng.substack.com/p/tutorial-blender-anime-foliage-pipeline, https://simonschreibt.de/gat/airborn-trees).
+  The blobby crown below IS that proxy; later styles will put cards on it and take its normals.
+
+A style is a sheet of ordinary numbers (`src/hifipushie/vegetation_styles/<name>.json`; get_plant shows the resolved
+sheet under `style`) over a few general operations. Override any of them in the spec:
+`"style": {"sheet": "blobby", "crown": {"masses": 5, "blend": 2.0}, "wood": {"limbs": 3}, "budget": 4000}`.
+- `wood`: `limbs` [fewest, most] of the stoutest first-order limbs drawn (those at least 0.4 x the stoutest's girth),
+  `radius` (x the grown radius), `taper_floor` (never thinner than this share of the limb's base), `limb_min` (a limb's
+  base at least this share of the trunk's), `reach` / `bury` (a limb ends `bury` m inside the first crown mass it
+  enters, else at `reach` of its length), `trunk_reach`, `smooth` (bend smoothing passes), `round_ends`, `sides`,
+  `flat` (bark = one colour, no texture), `share` (of the triangle budget).
+- `crown` kind "masses": the twigs' positions are clustered (k-means, no randomness), each cluster becomes an
+  ellipsoid (principal axes x `spread` + `pad` twig lengths; no semi-axis under 0.75 x `min_feature` or under
+  `roundness` x its longest: flat clusters read as lily pads; a mass never stands taller than the tree), the
+  ellipsoids are joined by a smooth union (`blend` m) and meshed once (marching cubes on the field), then decimated per
+  LOD and put back on the field. Closed, no leaves, no alpha. `masses` [lo, hi]: the fewest whose outline is within
+  0.01 IoU of the best (the report lists the IoU per count), or one number. `normals`: 0 = the field's own gradient
+  (smooth over each mass and its blends) .. 1 = straight out of the crown's middle. `tones` steps of `tone` [dark,
+  light] by each mass's height (top lighter; `warm_top`), one tone per mass.
+- `colour`: saturation / value on the species' leaf and bark colours. `wind`: `mass` = the least branch sway a mass
+  has (it moves as a whole with the limb it sits on, in that limb's phase), `squash` (top vs bottom of a mass).
+  `seasons`: what spring and snow mix the colour toward. `budget`: LOD 0's triangles when export_plant gets none.
+
+The export keeps the realistic contract: nodes / meshes `wood` + `foliage` (LOD<k>_ prefixed), materials `bark` +
+`foliage`, LODs at 100 / 45 / 18% + impostor, TEXCOORD_1 / TEXCOORD_2 / _WIND, KHR_materials_variants per season,
+collision (capsules + mesh, of the wood that is DRAWN: fat trunk, kept limbs). What differs, for the engine's shader:
+the foliage is opaque untextured geometry; albedo = the material's baseColorFactor (one per season variant; a
+deciduous winter hides the mesh by an alpha cut-off above 1) x COLOR_0 (each mass's tone, <= 1); NORMAL is the smooth
+mass normal; TEXCOORD_0 = (height within its mass 0..1, (mass index + 0.5) / masses) for ramps and per-mass ids.
+No lighting is baked: cel bands and outlines are the engine's. extras.hifipushie_plant.style carries the sheet, the
+"simplified" lines and every season's colour (sRGB).
+
+Seasons in a style: spring (fresh yellow-green), summer, autumn (`leaves.autumn`), winter (deciduous: the bare drawn
+limbs; evergreen: its crown), snow (pale). Read: a blobby deciduous tree in winter is a trunk with 2-4 bare fat
+sticks: thin for a toy tree. The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
+variant = `leaves.spring` colour (else the summer colour toward yellow-green) and leaves `leaves.spring_size` (0.75)
+of their length. Blossom and catkins are not built; clumps (grass, ferns, flowers) have no seasons of their own yet.
+
+What goes wrong: an IoU under ~0.85 usually means the realistic crown is ragged or hollow on one side (raise
+`crown.masses`' upper end, or lower `spread`); masses like separate balloons = `blend` too small for their size;
+a limb ending in the air = raise `wood.bury` or lower `reach`.
+
 ## Not built yet
 
 Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
-proxies; style sheets (blob to photoreal); a multi-stem base, exposed roots, burrs,
+proxies; styles other than blobby (anime, cartoon, pixar), styles for clumps and stands, blossom; a multi-stem base, exposed roots, burrs,
 fluted trunks, surface roots running out over the ground, hollows and cavities; thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
 water level); a tree that sees the other plants you made (use `setting`/`neighbours`).
