@@ -428,13 +428,25 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
   Head-only nod still drives the chin into the chest or collar and pushes the nape back against a collar's stand:
   animate a head move as riggers and mocap do, shared between Neck and Head (about 40 / 60).
 - **Clothes follow the skin under them.** On a base body every part reads the body's weights at the nearest point
-  of its surface, then the weights are evened over the garment's own mesh. A part that only reaches up beside the
+  of its surface (cloth from both its faces: a collar's under side reads the shoulder it lies on). Layers that lie
+  on each other (a jacket over trousers, a cuff over a shirt) so get the same weights where they overlap and stay
+  in order when posed; that is why a garment's weights are NOT smoothed over its own mesh by default: smoothed,
+  each layer drifts its own way (the jacket's hem toward the pelvis, the trousers on down the thigh) and seated
+  they cross in a zigzag. `parts.<p>.rig_weights = "surface"` (the default) | `"around"` (an average of the skin
+  round the nearest point, wider the farther the cloth hangs from the skin: for a loose cape or skirt worn alone,
+  not for layers) | `"distance"` (the part's own distance weights to the rig's bones, whatever the body has).
+  A part that only reaches up beside the
   jaw (a collar, a scarf, a strap) is worn on the body: it keeps the neck's weights and does not turn with the
   head; a part that is mostly on the head (a cap, glasses) is all head. `parts.<p>.rig_head = true | false` says
   so outright (a hood that should turn with the head: true); `parts.<p>.rig_bone` binds a prop to one joint, and
   `parts.<p>.rig_attach = "<bound part>"` hands a part over to that prop's joint where it comes within
   `rig_attach_length` (8 cm) of it: a strap's end goes with its bag, the rest of it with the body.
-  `parts.<p>.rig_smooth = rounds` (6) evens a garment's weights more or less.
+  `parts.<p>.rig_smooth = rounds` (0) evens a garment's weights over its own mesh (a garment worn alone whose
+  weights read ragged; never one layer of several: give the layers the same number, or none).
+  **Characters sit.** `rig(pose="seated")` (hips and knees at 90) and the audit's `layers` lines: for each pair of
+  parts, the vertices of one that lie on the other at rest and are more than 3 mm under it posed. Over 12 is BAD:
+  the two parts cross there, and the line where two coarse meshes cross is a sawtooth. The per-joint audit turns a
+  thigh 60 deg and doesn't see it.
   `parts.<p>.rig_drop = [joints]` prunes a garment's influences, as a rigger does after a weight transfer: the
   garment never follows those joints, and their weight goes up the chain to the nearest joint it keeps. Shorts that
   end at the knee: `["Leg"]` (the shin bent their hem 17-27 mm; with it the hem stays a tube on the thigh and the
@@ -445,8 +457,8 @@ is a separate, standard skeleton, and the `rig` tool fits it and skins the model
 - **Hems.** Shorts, a shirt's hem, a skirt are sheets hanging off the body, and skinning can only bend them with
   the limb under them: past ~45 deg of thigh the crotch of a pair of shorts and a loose hem fold. What game riggers
   do, in order of cost: delete the skin under the garment (the export does: hidden faces are dropped, so nothing
-  pokes through), smooth the garment's weights so the hem takes some of the pelvis and of both thighs (done:
-  raise `rig_smooth` on a long hem), and for skirts, coats and anything that must swing, extra bones (a ring of
+  pokes through), smooth the garment's weights so the hem takes some of the pelvis and of both thighs
+  (`rig_smooth` on a long hem worn over nothing, or `rig_drop` shares), and for skirts, coats and anything that must swing, extra bones (a ring of
   short chains from the waist, driven by the thighs or by a spring / cloth solver in the engine: Unity's cloth and
   dynamic-bone components, Unreal's Chaos cloth and its RBAN skirt chains, VRM spring bones). This rig has no hem
   bones: a skirt will follow the thighs and fold between them. Judge with `rig(pose={"LeftUpLeg": [[1, 0, 0],

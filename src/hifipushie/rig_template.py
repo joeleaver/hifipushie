@@ -255,10 +255,14 @@ def _closest_on_triangles(P: np.ndarray, A: np.ndarray, B: np.ndarray, C: np.nda
 AGAINST = 0.03  # m: what a candidate point pays for facing away from the vertex (another finger's side, 1-3 mm off)
 
 
-def from_surface(Vq: np.ndarray, Tq: np.ndarray, Dq: np.ndarray, V: np.ndarray, N: np.ndarray | None, k: int = 16):
+def from_surface(Vq: np.ndarray, Tq: np.ndarray, Dq: np.ndarray, V: np.ndarray, N: np.ndarray | None, k: int = 16,
+                 two_sided: bool = False):
     """Dense weights for points V (normals N, or None) read off a weighted surface (vertices Vq, triangles Tq, dense
     weights Dq): at each point's closest point of the surface, among the k triangles with the nearest centres,
-    preferring one that faces the way the point does. Barycentric, so weights vary smoothly over the surface."""
+    preferring one that faces the way the point does. Barycentric, so weights vary smoothly over the surface.
+    two_sided (cloth): a point may also face the skin squarely. A sheet of cloth has an inside: a collar's under
+    face looks AT the shoulder it lies on, and "facing the same way" sent it to skin somewhere else, so the
+    collar's two faces read two places."""
     from scipy.spatial import cKDTree
     V = np.asarray(V, np.float64)
     A, B, C = Vq[Tq[:, 0]], Vq[Tq[:, 1]], Vq[Tq[:, 2]]
@@ -277,6 +281,8 @@ def from_surface(Vq: np.ndarray, Tq: np.ndarray, Dq: np.ndarray, V: np.ndarray, 
         bary, d = _closest_on_triangles(Pp, A[t], B[t], C[t])
         if N is not None:
             facing = (fn[t] * np.repeat(np.asarray(N, float)[s:s + step], k, 0)).sum(1)
+            if two_sided:
+                facing = np.abs(facing)
             d = d + AGAINST * np.clip(0.3 - facing, 0, 1)
         best = d.reshape(n, k).argmin(1)
         pick = np.arange(n) * k + best
@@ -284,4 +290,50 @@ def from_surface(Vq: np.ndarray, Tq: np.ndarray, Dq: np.ndarray, V: np.ndarray, 
         bw = bary[pick]
         for j in range(3):
             out[s:s + n] += bw[:, j:j + 1] * Dq[tri[:, j]]
+    return out
+
+
+SOFT = 0.6        # a worn vertex reads the skin within this x its own distance from the skin (the kernel's width)
+SOFT_MIN = 0.008  # m: and never narrower than this
+SOFT_MAX = 0.08   # m: nor wider
+SOFT_FACING = (-0.1, 0.5)  # skin facing the way the vertex does counts fully (dot >= 0.5), across it (<= -0.1) not
+
+
+def around_surface(Vq: np.ndarray, Tq: np.ndarray, Dq: np.ndarray, V: np.ndarray, N: np.ndarray | None,
+                   soft: float = SOFT):
+    """Dense weights for points V (normals N) read off a weighted surface as an AVERAGE of the skin round each
+    point's nearest skin: every triangle counts by its area x a Gaussian of how much farther it is than the nearest
+    one, as wide as `soft` x that nearest distance (SOFT_MIN..SOFT_MAX) x how far it faces the way the point does.
+    A continuous function of where the point is: cloth close on the skin reads the skin under it (a sleeve, a
+    trouser leg), cloth hanging away from it reads everything about as near (a jacket's hem between the thighs:
+    both thighs; the crotch seam: both thighs and the pelvis). The closest point alone (`from_surface`) jumps
+    wherever two bits of skin are equally near: s0urc3's seated Garrett, whose jacket hem and trouser front
+    alternated between thigh and pelvis from vertex to vertex and folded into a sawtooth at 90 deg of hip.
+    A point whose normal faces the skin (a shell's inner face) is read with the normal turned."""
+    from scipy.spatial import cKDTree
+    V = np.asarray(V, np.float64)
+    A, B, C = Vq[Tq[:, 0]], Vq[Tq[:, 1]], Vq[Tq[:, 2]]
+    fn = np.cross(B - A, C - A)
+    area = 0.5 * np.linalg.norm(fn, axis=1)
+    fn /= np.maximum(2 * area[:, None], 1e-30)
+    cen = (A + B + C) / 3
+    Dt = (Dq[Tq[:, 0]] + Dq[Tq[:, 1]] + Dq[Tq[:, 2]]) / 3
+    tree = cKDTree(cen)
+    d0, _ = tree.query(V)
+    sig = np.clip(soft * d0, SOFT_MIN, SOFT_MAX)
+    near = tree.query_ball_point(V, d0 + 3.0 * sig)
+    out = np.zeros((len(V), Dq.shape[1]))
+    lo, hi = SOFT_FACING
+    for i, idx in enumerate(near):
+        idx = np.asarray(idx, int)
+        ex = np.linalg.norm(cen[idx] - V[i], axis=1) - d0[i]
+        w = area[idx] * np.exp(-0.5 * (ex / sig[i]) ** 2)
+        if N is not None:
+            dot = fn[idx] @ N[i]
+            wp = w * np.clip((dot - lo) / (hi - lo), 0.0, 1.0)
+            wm = w * np.clip((-dot - lo) / (hi - lo), 0.0, 1.0)
+            w = wp if wp.sum() >= wm.sum() else wm
+            if w.sum() < 1e-12:  # nothing faces either way: by distance alone
+                w = area[idx] * np.exp(-0.5 * (ex / sig[i]) ** 2)
+        out[i] = w @ Dt[idx] / max(w.sum(), 1e-30)
     return out

@@ -263,7 +263,9 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
         sheet.save(save)
     text = [f"rendered {', '.join(views)} in {time.time() - t0:.0f} s" + ("; " + "; ".join(log) if log else "")]
     sk = spec.get("skin")
-    if sk:
+    if sk and not skin.shaded(spec):
+        text.append(f"skin only {skin.params(spec)['only']}: the skin part keeps its own paint and shading")
+    elif sk:
         p = skin.params(spec)
         base = skin.part_base(spec)[1]
         n = sum(1 for k in paint.layers(spec) if k.startswith("skin:"))

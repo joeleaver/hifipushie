@@ -29,7 +29,10 @@ from .spec import compile_prims, expand_mirror, resolve_point
 ROOTS = ("pelvis", "hips", "root", "hip")
 FALLOFF = 0.5  # weight falls by e over this fraction of a bone's radius past the nearest bone
 SMOOTH = 10  # rounds of averaging weights with neighbouring vertices
-WORN_SMOOTH = 6  # the same over a worn part's own mesh, after it read the skin's weights (`skin_parts`)
+WORN_SMOOTH = 0  # rounds of the same over a worn part's own mesh after it read the skin's weights (parts.<p>.rig_smooth). 0 since
+# 2026-10-07: layers smoothed each over its own mesh drift apart (a jacket's hem toward the pelvis, the trousers under it
+# on down the thigh) and cross when posed: s0urc3's seated Garrett. What 6 rounds were for (a collar's two faces reading
+# two places) is cured at the lookup (rig_template.from_surface two_sided).
 
 
 def skeleton(spec: dict) -> list[dict]:
@@ -623,6 +626,24 @@ def test_pose(bones: list[dict]) -> dict:
     return {b["name"]: ([1, 0, 0], 35) for b in bones if b["name"].endswith("_02")}
 
 
+PART_WEIGHTS = ("surface", "around", "distance")
+TWO_SIDED = True  # worn parts read the skin they lie on from both their faces (rig_template.from_surface)
+WORN_WEIGHTS = "surface"  # what a worn part reads without parts.<p>.rig_weights
+
+
+def part_weights(spec: dict, pn: str, is_skin: bool) -> str:
+    """How a part of a character with a base body gets its weights: parts.<p>.rig_weights, else "surface" for the
+    skin and WORN_WEIGHTS for what is worn. "surface": the base's weights at the closest point of its surface
+    facing the same way; "around": an average of the base's weights round that point, wider the farther the cloth
+    is from the skin (rig_template.around_surface); "distance": the part's own distance weights to the rig's bones."""
+    how = ((spec.get("parts") or {}).get(pn) or {}).get("rig_weights")
+    if how is None:
+        return "surface" if is_skin else WORN_WEIGHTS
+    if how not in PART_WEIGHTS:
+        raise ValueError(f"parts.{pn}.rig_weights: {how!r} (one of {', '.join(PART_WEIGHTS)})")
+    return how
+
+
 def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -> dict:
     """Weights for every part {name: (verts, tris)} -> {name: (J, W)}. parts.<p>.rig_bone (a rig bone, the prefix
     optional) binds a part rigidly (a bag on the hip, a disc in the hand: split between bones they tore); with a base
@@ -667,6 +688,8 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             W = np.zeros((len(V), 4))
             W[:, 0] = 1.0
             out[pn] = (J, W)
+        elif ref is not None and part_weights(spec, pn, pn in skin) == "distance":
+            out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)  # this part on its own, whatever the base has
         elif ref is not None:
             # read off the base's SURFACE where it faces the way the vertex does (rig_template.from_surface): the
             # nearest base VERTICES of a finger's side are as often the next finger's (weights bled 0.4-0.57 across)
@@ -678,7 +701,11 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
                 for c in range(3):
                     np.add.at(N, F[:, c], fn)
                 N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
-            D = rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None)
+            if part_weights(spec, pn, pn in skin) == "around":
+                D = rig_template.around_surface(Wq, Tq, ref, V, N if len(F) else None)
+            else:
+                D = rig_template.from_surface(Wq, Tq, ref, V, N if len(F) else None,
+                                              two_sided=pn not in skin and TWO_SIDED)
             rounds = int((defs.get(pn) or {}).get("rig_smooth", 0 if pn in skin else WORN_SMOOTH))
             if len(F) and rounds:
                 # cloth is a sheet of its own: the weights it read off the skin are evened over ITS mesh, as a rigger
