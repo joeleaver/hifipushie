@@ -35,10 +35,14 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-CONTRACT = 1
+CONTRACT = 2
 CONTRACT_LOG = {
     1: "styles: materials/<style>/<layer>_albedo (sRGB) / _normal / _height (+ _overlay_*), styles/<style>_sd.png and "
        "styles/weights<g>.png, manifest `styles` (list, zones, layers, seasons, snow, tiles, recipe)",
+    2: "projection: layers with projection 'top' (grass, turf, scrub, forest_floor, sand, earth, snow) are ALWAYS laid "
+       "from the top, also on steep faces (side planes at v = world height turned their tone patches into terraces up "
+       "a slope); only projection 'triplanar' layers (rock, wet_rock) use side planes. Triplanar layers carry "
+       "`v_jitter_m` (strata wander along the strike, so a band texture doesn't repeat straight up a cliff)",
 }
 DIR = Path(__file__).parent / "terrain_styles"
 STYLE_LAYERS = ("grass", "turf", "scrub", "forest_floor", "sand", "earth", "rock", "wet_rock", "snow")
@@ -261,6 +265,39 @@ def op_strokes(n, L, o, seed):
     return np.clip(tone, -1, 1), hgt - hgt.mean()
 
 
+def op_tufts(n, L, o, seed):
+    """Hand-drawn tufts: `per_m2` marks, each `blades` short tapered strokes fanning up from one base point (`length`,
+    `width` m, `fan` deg either side), in a dark ink `tone`: cartoon grass, Wind Waker's tick marks."""
+    rng = np.random.default_rng(seed)
+    px = n / L
+    N = int(float(o.get("per_m2", 1.0)) * L * L)
+    tone = np.zeros((n, n))
+    alpha = np.zeros((n, n))
+    lo, hi = o.get("blades", [2, 4])
+    fan = math.radians(float(o.get("fan", 30)))
+    lm, wm = float(o.get("length", 0.15)), float(o.get("width", 0.02))
+    tv = float(o.get("tone", -1.0))
+    for _ in range(N):
+        bx, by = rng.random(2) * n
+        k = int(rng.integers(lo, hi + 1))
+        for b in range(k):
+            a = math.pi / 2 + (b - (k - 1) / 2) / max((k - 1) / 2, 1) * fan + rng.normal(0, 0.1)
+            ln = lm * rng.uniform(0.7, 1.2) * px / 2
+            wd = wm * px / 2
+            cx, cy = bx + math.cos(a) * ln, by + math.sin(a) * ln  # (the stroke's middle: it starts at the base)
+            r = int(ln + wd + 2)
+            ii, jj = np.mgrid[int(cy) - r:int(cy) + r + 1, int(cx) - r:int(cx) + r + 1]
+            dx, dy = jj - cx, ii - cy
+            u = (dx * math.cos(a) + dy * math.sin(a)) / max(ln, 1e-6)
+            v = (-dx * math.sin(a) + dy * math.cos(a)) / max(wd, 1e-6)
+            w_ = np.clip(1 - (u + 1) / 2 * 0.9, 0.1, 1)  # (full at the base, a point at the tip)
+            m = np.clip((1 - u * u - (v / w_) ** 2) * 3, 0, 1) * (np.abs(u) <= 1)
+            sl = (ii % n, jj % n)
+            alpha[sl] = np.maximum(alpha[sl], m)
+    tone = tv * alpha
+    return tone, alpha - alpha.mean()
+
+
 def op_bands(n, L, o, seed):
     """Horizontal strata (rows = up): bands `thickness` [lo, hi] m filling the texture's height exactly, tones cycling
     through `tones`, edges `edge` m soft, rows wavering `wave` m; each band proud or set back by its tone (height)."""
@@ -275,7 +312,8 @@ def op_bands(n, L, o, seed):
     bt = np.array([tones[i % len(tones)] for i in range(len(th))]) + rng.normal(0, float(o.get("jitter", 0.1)), len(th))
     t = (np.arange(n) + 0.5) * (L / n)
     wave = band_noise(n, max(1.0, L / float(o.get("wave_len", 3.0))), seed + 1)[0] * float(o.get("wave", 0.08))
-    V = (t[:, None] + wave[None, :]) % L  # (rows: v up; columns: u)
+    # (rows: v up; columns: u. Shifted half the first band: an edge on the wrap row was a seam line every tile)
+    V = (t[:, None] + wave[None, :] + 0.5 * th[0]) % L
     e = max(float(o.get("edge", 0.02)), 1e-4)
     tone = np.zeros((n, n))
     hgt = np.zeros((n, n))
@@ -362,7 +400,7 @@ def op_facets(n, L, o, seed):
     return tone, h / max(float(np.abs(h).max()), 1e-9)  # (-1..1: `height` is the planes' amplitude in m)
 
 
-OPS = {"blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "bands": op_bands, "ripples": op_ripples,
+OPS = {"blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "tufts": op_tufts, "bands": op_bands, "ripples": op_ripples,
        "dots": op_dots, "grain": op_grain, "cracks": op_cracks, "facets": op_facets}
 
 
@@ -569,12 +607,13 @@ def _hash3(c, seed):
     return np.stack(out, -1)
 
 
-def pillow_carve(p, size=3.0, depth=0.8, round_=0.4, seed=11):
-    """Pillow-rounded rock as a field offset (+ carves): 3D cells about `size` m across (a jittered lattice), each a
-    cushion; grooves `depth` m deep where two cells meet, rounding over `round_` x size (smoothstep^2: no crease at
-    the groove's bottom, flat-ish cushion tops). Pointwise and deterministic (tiles agree)."""
+def pillow_carve(p, size=3.0, depth=0.8, round_=0.4, seed=11, stretch=1.0):
+    """Pillow-rounded rock as a field offset (+ carves): 3D cells about `size` m across (a jittered lattice; `stretch`
+    x taller than wide, so the seams run mostly up the face and few cut under a cushion), each a cushion; grooves
+    `depth` m deep where two cells meet, rounding over `round_` x size (smoothstep^2: no crease at the groove's bottom,
+    flat-ish cushion tops). Pointwise and deterministic (tiles agree)."""
     p = np.asarray(p, float)
-    q = p / float(size)
+    q = p / (float(size) * np.array([1.0, 1.0, float(stretch)]))
     base = np.floor(q).astype(np.int64)
     f1 = np.full(len(p), np.inf)
     f2 = np.full(len(p), np.inf)
@@ -623,8 +662,11 @@ def tileable(img: np.ndarray) -> float:
     a = np.asarray(img, float)
     a = a if a.ndim == 3 else a[..., None]
     seam = np.abs(a[0] - a[-1]).mean() + np.abs(a[:, 0] - a[:, -1]).mean()
-    beside = np.abs(a[1] - a[0]).mean() + np.abs(a[:, 1] - a[:, 0]).mean()
-    return round(float(seam / max(beside, 1e-9)), 3)
+    # (against the mean step between ALL neighbouring rows / columns: against the one row beside it, a sparse texture
+    # with a pebble on the seam read 4x)
+    beside = np.abs(np.diff(a, axis=0)).mean() + np.abs(np.diff(a, axis=1)).mean()
+    q = 1.0 / 255  # (steps under an 8-bit level are invisible: a flat blobby swatch's 1e-4 steps read 1.7 as noise)
+    return round(float((seam + q) / (beside + q)), 3)
 
 
 def write_layers(out: Path, st: dict, refs: dict, layers, px: int = PX) -> dict:
@@ -669,6 +711,7 @@ def write_layers(out: Path, st: dict, refs: dict, layers, px: int = PX) -> dict:
                    "color": [round(float(x), 4) for x in col],
                    "color_linear": [round(float(x), 4) for x in _srgb_lin(col)],
                    "roughness": meta["roughness"], "normal_strength": float(Ls.get("normal_strength", 1.0)),
+                   "v_jitter_m": float(Ls.get("v_jitter_m", 0.0)) if meta["projection"] == "triplanar" else 0.0,
                    "seasons": season_colours(st, nm, col), "wrap_seam": meta["wrap_seam"]}
     return res
 
@@ -712,8 +755,12 @@ RECIPE = (
     "smoothstep(-band/2, band/2, sd + ragged noise), normalised so the weights sum to 1; realistic takes the rest) and "
     "each ground layer l with weight wl (the tiles' layer weights: maps/<tile>_weights<g>.png / splats / _WEIGHTS):\n"
     "1. A_s = sum_l wl x texture(materials/<s>/<l>_albedo, uv_l) (sRGB -> linear), uv_l = world (x, y) / size_m on the "
-    "ground (projection top; image +x east, +y north), triplanar for projection 'triplanar' and on faces steeper than "
-    "~35 deg (side planes: u along the face, v = world z / size_m, so painted strata stay level). Height-blend the "
+    "ground (projection top; image +x east, +y north). Layers with projection 'top' are laid from the top EVERYWHERE, "
+    "also on steep ground (what artists do: ground is top-down, rock is triplanar; side planes turned soft layers' tone "
+    "patches into terraces up a slope). Layers with projection 'triplanar' (rock): top plane + side planes blended by "
+    "|n|^4 (side planes: u along the face, v = (world z + v_jitter_m x (2 n(u / 23 m) - 1)) / size_m, n = a smooth 1D "
+    "value noise 0..1, so painted strata stay level but wander along the strike and don't repeat straight up a "
+    "cliff every size_m). Height-blend the "
     "layers with <l>_height for crisper layer edges if you like. Anti-tiling as the detail recipe: a second sampling "
     "at uv / 1.618 + (0.37, 0.71), CHOSEN between by a smooth noise mask over ~3 x size_m patches (not mixed 50/50); "
     "keep strata textures (projection triplanar on rock) unrotated so the bands stay level.\n"

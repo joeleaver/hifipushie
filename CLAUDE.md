@@ -3451,7 +3451,7 @@ regresses, bisect by building one spec at each commit and diffing heights.
       externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
       (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
-  - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-a5c847e94d5c52d32`; consumer brief:
+  - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
     strips, no terrain), mk_slice.py (terrain `ts_slice_a` = tl_slice_a + zones dumpling_downs west / painted_east
@@ -3486,7 +3486,27 @@ regresses, bisect by building one spec at each commit and diffing heights.
       nearly blank (a first "pillow" texture read as flagstone paving: pillows belong in geometry); anime grass reads as
       painted dabs, anime rock as crisp painted bands; cartoon tufts are blobs, not ink ticks; pixar blades too subtle.
       ts_06_top_border (styled recipe, old geometry): flatter and paler than the baked look, faint contour-like lines on
-      the blobby grass slopes (the blotch's tone steps at grazing angles, or box-projection seams: not isolated).
+      the blobby grass slopes (not the bump: still there without it; likely the turf-lip risers' geometry, which the
+      baked colour hides: not isolated).
+    - Styled GEOMETRY seen once (ts_04_*: preview_tiles, 9 tiles round [240, 90], one LOD, no checks): blobby cliffs are
+      rounded pillow lumps (read as melted / pillowy, not yet "pebble-smooth"), anime cliffs carry strong painted strata
+      with bedding ledges, the two meet at the zone line as different rock (the brief allows it). NOT RUN YET (the heavy
+      slot was held for another session): a full ts_slice_a export with styled geometry and its seam / shard / floating
+      checks, and the pebble / alps 3x3 regressions (no styles: the field code path is unchanged when no style shapes
+      rock, so they should be byte-identical; verify).
+    - Round 2 (consumer notes 71-75, Godot): CONTRACT 2 = soft layers always top-projected (side planes at v = world
+      height turned their tone patches into ~0.5-1 m terraces up slopes: the "contour lines"), rock triplanar with
+      `v_jitter_m` (strata wander along the strike; anime rock 12 m, 3 m jitter: its 8 m repeat up a cliff). `tileable`
+      compares the seam with ALL neighbouring rows' mean step + one 8-bit level (one row beside it: a pebble on the
+      seam read 4.04 for cartoon sand; flat blobby swatches read 1.7 on 1e-4 steps); `bands` are shifted half a band
+      off the wrap row (an edge on it was a real seam line). Blobby rock by measure (rockform.py: horizontal sections
+      of the south cliffs x 20-120, band-passed 0.5-8 m): pillows 3.5 m / soften 1.5 -> 6 m, stretch 1.8 (cells taller
+      than wide: seams run up the face), depth 1.0, round 0.5, soften 3: undercut share 0.078 -> 0.001 (unstyled
+      0.041), convex share 0.512 -> 0.534, lobes / 10 m 1.33 -> 1.22. NOT yet rendered.
+    - Open, in order: (1) those exports + checks; (2) the tufts op for cartoon (done) vs dab size of pixar blades (too
+      subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
+      fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
+      height / hollows (numbers only today).
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

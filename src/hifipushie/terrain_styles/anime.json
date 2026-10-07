@@ -14,7 +14,7 @@
             "ops": [{"op": "blotch", "size": 2.2, "steps": 3, "soft": 0.2, "albedo": 0.24, "height": 0.0},
                     {"op": "strokes", "per_m2": 45, "length": [0.35, 0.8], "width": [0.08, 0.16], "angle": 80, "spread": 16, "taper": 0.75,
                      "tones": [-0.5, 0.8], "gap": -0.5, "cluster": 1.2, "cluster_tone": 0.5, "albedo": 0.26, "height": 0.004}]},
-  "rock": {"scale_m": 8.0, "projection": "triplanar", "roughness": 0.85, "warm": [1.1, 1.04, 0.88], "cool": [0.84, 0.9, 1.12],
+  "rock": {"scale_m": 12.0, "v_jitter_m": 3.0, "projection": "triplanar", "roughness": 0.85, "warm": [1.1, 1.04, 0.88], "cool": [0.84, 0.9, 1.12],
            "ops": [{"op": "bands", "thickness": [0.25, 1.8], "tones": [-0.75, 0.15, 0.75, -0.3], "edge": 0.015, "wave": 0.05, "wave_len": 2.5,
                     "jitter": 0.08, "step": 1.0, "albedo": 0.36, "height": 0.03},
                    {"op": "strokes", "per_m2": 14, "length": 0.7, "width": 0.05, "angle": 0, "spread": 5, "tones": [-0.6, 0.6], "gap": 0.0, "albedo": 0.1, "height": 0.0}]},

@@ -204,14 +204,14 @@ def _styled(m, S):
             nt.links.new(geo.outputs["Position"], mp.inputs[0])
             ta = L("ShaderNodeTexImage")
             ta.image = image(T["albedo"], True)
-            ta.projection = "BOX"
+            ta.projection = "BOX" if T.get("projection") == "triplanar" else "FLAT"  # (soft layers top-down)
             ta.projection_blend = 0.3
             nt.links.new(mp.outputs["Vector"], ta.inputs["Vector"])
             t = mixc("MIX", [0, 0, 0], ta.outputs["Color"], wts[lay])
             A = t if A is None else mixc("ADD", A, t)
             th = L("ShaderNodeTexImage")
             th.image = image(T["height"], False)
-            th.projection = "BOX"
+            th.projection = "BOX" if T.get("projection") == "triplanar" else "FLAT"  # (soft layers top-down)
             th.projection_blend = 0.3
             nt.links.new(mp.outputs["Vector"], th.inputs["Vector"])
             h = math("MULTIPLY", math("SUBTRACT", th.outputs["Color"], 0.5), 2 * T["height_m"])
@@ -240,14 +240,14 @@ def _styled(m, S):
         nt.links.new(nrm_in, nmix.inputs[5])
     else:
         nt.links.new(geo.outputs["Normal"], nmix.inputs[5])
-    bump = L("ShaderNodeBump")
-    bump.inputs["Distance"].default_value = 1.0
-    bump.inputs["Strength"].default_value = 1.0
-    if "Filter Width" in bump.inputs:
-        bump.inputs["Filter Width"].default_value = 1.0
-    nt.links.new(hgt, bump.inputs["Height"])
-    nt.links.new(nmix.outputs[1], bump.inputs["Normal"])
-    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    if S.get("bump", False):  # (the style layers' heights as a bump: off by default, Blender's bump over box-projected
+        bump = L("ShaderNodeBump")  # textures drew thin contour-like lines on slopes; an engine uses the normal maps)
+        bump.inputs["Distance"].default_value = 1.0
+        nt.links.new(hgt, bump.inputs["Height"])
+        nt.links.new(nmix.outputs[1], bump.inputs["Normal"])
+        nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    else:
+        nt.links.new(nmix.outputs[1], bsdf.inputs["Normal"])
 
 
 def _img(path):

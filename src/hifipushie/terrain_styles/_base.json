@@ -10,6 +10,7 @@
   "turf": {"like": "grass", "roughness": 0.85},
   "scrub": {"like": "grass"},
   "earth": {"like": "sand", "roughness": 0.95},
+  "rock": {"projection": "triplanar", "v_jitter_m": 2.0},
   "wet_rock": {"like": "rock", "roughness": 0.55},
   "forest_floor": {"roughness": 0.95},
   "snow": {"roughness": 0.7, "ops": [{"op": "blotch", "size": 3.0, "albedo": 0.04, "height": 0.02}]}

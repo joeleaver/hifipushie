@@ -1471,7 +1471,8 @@ class Field:
             pl = Rk.get("pillow")
             if pl:
                 rs += terrain_style.pillow_carve(p[i], pl.get("size", 3.0), pl.get("depth", 0.8),
-                                                 pl.get("round", 0.4), int(self.rock.get("seed", 0)) + 101)
+                                                 pl.get("round", 0.4), int(self.rock.get("seed", 0)) + 101,
+                                                 pl.get("stretch", 1.0))
             R[i] += a[i] * rs
             mic[i] += a[i] * float(Rk.get("micro", 1.0))
         return R, mic
@@ -4907,7 +4908,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             "styles": [{"name": s["name"], "macro": s["macro"], "macro_normal": s["macro_normal"],
                         "layers": {k: {"albedo": str((out / v["albedo"]).resolve()),
                                        "height": str((out / v["height"]).resolve()), "size": v["size_m"],
-                                       "height_m": v["height_m"]} for k, v in s["layers"].items()}}
+                                       "height_m": v["height_m"], "projection": v.get("projection", "top")}
+                                   for k, v in s["layers"].items()}}
                        for s in SM["styles"]]}
         grass = False
     if textured == "detail":  # the tiling rock detail (terrain_swatch) over the baked macro maps

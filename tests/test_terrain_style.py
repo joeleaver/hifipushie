@@ -49,15 +49,17 @@ def test_sheets():
 
 
 def test_textures_tile_and_keep_their_colour():
-    for nm in ("blobby", "anime", "realistic"):
+    for nm in ("blobby", "anime", "realistic", "cartoon", "pixar"):
         st = ts.sheet(nm)
-        for lay in ("grass", "rock", "sand"):
+        for lay in ("grass", "rock", "sand", "earth"):
+            # (contract 2: soft layers are laid from the top only; rock is triplanar)
+            assert ts.layer_sheet(st, lay).get("projection", "top") == ("triplanar" if lay == "rock" else "top"), (nm, lay)
             col = ts.layer_colour(st, lay, REFS)
             S = ts.texture(st, lay, col, 256)
             mean = S["albedo_linear"].reshape(-1, 3).mean(0)
             assert np.allclose(mean, ts._srgb_lin(col), atol=0.01), (nm, lay, mean)
             seam = ts.tileable(S["albedo"])
-            assert seam < 2.0, (nm, lay, seam)
+            assert seam < 1.5, (nm, lay, seam)  # (the manifest's 'shows' limit)
             assert np.isfinite(S["normal"]).all() and (S["normal"][..., 2] > 0).all()
 
 
