@@ -565,10 +565,22 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   manifest `styles` (also `styles.json`): `contract`, `order`, per style its zones, numbers, per layer files, size,
   colour (sRGB + linear), roughness, `seasons` (colour + `tint_linear` per season), `snow`, and `tiles` (which styles
   reach each tile), `recipe` (the per-pixel blend: style weights x layer weights x textures, macro, normals, seasons).
+- Sheets shipped: `realistic`, `blobby` (flat soft colour fields, pillow rock), `anime` (painted dabs, painted strata),
+  `cartoon` (two hard tones, ink tufts / cracks / pebbles, big flat rock facets), `pixar` (realistic forms cleaned,
+  saturated, soft blades at 4-8x size).
+- Rock shape (3D tiles only; the heightmap export, map and report are style-blind): a sheet's `rock` = `relief`
+  (multipliers on this terrain's own rock character: `facets`, `bedding`, `size`; `blocks: false` drops the jointed
+  blocks), `pillow` (`size`, `depth`, `round`: rock carved into rounded cushions), `soften_m` (the ground grid
+  Gaussian-smoothed in the zone: rounded lips and forms; the heightmap tiles follow), `fallen` (share of fallen blocks),
+  `micro` (share of the bake-only fine relief), `band_m` (default 10: the hand-over between zones, in the field, so
+  tiles and LODs agree and the seam checks hold). blobby: pillows, softened 1.5 m, no facets / beds / blocks / fallen;
+  anime: facets x0.5, beds x1.5, no blocks; cartoon: facets x1.4 at 2.5x size, no beds / blocks; pixar: facets x0.7,
+  beds x0.6, no blocks, softened 0.6 m. The realistic zones' field is unchanged bit for bit.
 - The per-tile baked maps stay the realistic look; a styled pixel takes from them only what its `macro` /
   `macro_normal` say. No lighting is baked into any style's textures (AO is the baked map's).
 - Look: `look_terrain(name, styles=True)` writes a swatch sheet (each style x layer: tiled albedo, lit, normal) and
-  a transition strip per layer.
+  a season sheet and a transition strip per layer; with `tiles=True, views=[...]` it renders the last tiles export with
+  each zone in its style (the recipe built in Blender: a reference for the engine's shader).
 
 ## Running
 Through the MCP tools (a terrain lives in `workspace/terrain/<name>/`, every version kept):

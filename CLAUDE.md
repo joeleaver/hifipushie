@@ -3307,6 +3307,43 @@ regresses, bisect by building one spec at each commit and diffing heights.
       externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
       (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
+  - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-a5c847e94d5c52d32`; consumer brief:
+    /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
+    DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
+    strips, no terrain), mk_slice.py (terrain `ts_slice_a` = tl_slice_a + zones dumpling_downs west / painted_east
+    east + styles blobby / anime; writes the styles alone into ts_slice_a_styles/), exp.py (tiles export into out/),
+    prev.py <terrain> <tag> x y r '<views>' (preview_tiles + styled renders), rend.py (renders of an existing export,
+    textured styles | baked), diffield.py / diff2.py / diff3.py (which Field grids differ outside a styled zone)).
+    - `terrain_style.py` + `terrain_styles/<name>.json` over `_base.json` (realistic, blobby, anime, cartoon, pixar):
+      spec `"styles": {style: zone | [addresses] | {"in", "band", "sheet"}}`, everywhere else realistic; zones are a
+      PARTITION (a later style wins overlaps; realistic = no zone), weights = smoothstep over each style's band of the
+      signed distance to its own piece, normalised (two adjacent zones meet 50/50, no realistic between them). Layer
+      textures = op stacks (blotch, strokes, bands, ripples, dots, grain, cracks, facets, pillow: periodic on the torus,
+      tone -1..1 x albedo with warm / cool tints, height m), mean = the layer colour (the terrain's realistic colour turned
+      by the sheet's saturation / value = the plant style's numbers). Written PNGs are cached by their inputs + this
+      module's code ($HIFIPUSHIE_STYLE_CACHE): a cached write is byte-identical (test). `write` / `export_styles` /
+      manifest `styles` (contract 1, order, styles[].layers[l] files / size / colour / roughness / seasons tint_linear,
+      snow numbers, tiles[].styles, maps sd + weights, recipe); in every tiles export of a spec with styles, or alone:
+      `export_terrain(name, styles_only=True)` (seconds, updates manifest.json). `look_terrain(styles=True)`: swatch,
+      season and transition sheets; with tiles=True the views with the recipe (`render_tiles(textured="styles")`,
+      `blender_tiles._styled`). "styles" is in terrain_cache.THREE_D (the 2.5D build never sees it).
+    - Rock shape in the field (`Field.styles` from `terrain_style.rock_styles`, weights on the terrain grid with the
+      sheet's `rock.band_m`, default 10 m): `relief` multipliers on the realistic rock numbers (`rock_variant`), `pillow`
+      (`pillow_carve`: 3D jittered cells, grooves smoothstep^2, C1), `soften_m` (Gaussian on Field.H in the zone, also
+      takes the heightfield's facet_delta out there), `fallen`, `micro`. `_styled_relief` mixes realistic's and each
+      style's relief by weight. INVARIANT kept: with no rock-shaping style the field is the old code path; with one, the
+      realistic zone is bit-identical (test_rock_shape_by_zone) because `_structure_grain` (a GLOBAL percentile) and
+      `_local_thickness` (thin pieces span zones; per-piece height levels) read the UNSOFTENED ground. Any new global
+      statistic in Field must do the same.
+    - First delivery: /mnt/data/hifipushie/terrainstyle/ts_slice_a_styles/ (materials/<style>/..., styles/, styles.json,
+      swatches.png, seasons.png); full export with styles (OLD geometry: before the rock shapes) out/ts_slice_a: same 3
+      known check failures as main (LOD 0 shards 0.012%, ...).
+    - Read so far: textures tile (wrap seam <= 1.4 on every layer); blobby = flat soft fields (good), its rock texture is
+      nearly blank (a first "pillow" texture read as flagstone paving: pillows belong in geometry); anime grass reads as
+      painted dabs, anime rock as crisp painted bands; cartoon tufts are blobs, not ink ticks; pixar blades too subtle.
+      ts_06_top_border (styled recipe, old geometry): flatter and paler than the baked look, faint contour-like lines on
+      the blobby grass slopes (the blotch's tone steps at grazing angles, or box-projection seams: not isolated).
+
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
 basin walls came out 9 deg steeper than asked (sized from the floor's high end: now per stretch from where the floor
