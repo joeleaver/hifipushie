@@ -196,21 +196,27 @@ def generate(pcs: dict, entry: dict) -> tuple[dict, list, list, list]:
     h = float(entry.get("height", 0.035))
     L = Lc * ratio + lap
     x0, x1 = -L / 2, L / 2
+    at_end = lap > 0 and entry.get("extension") == "end"  # the underlap runs on past the chain's END (default: its start)
     pts = [("sw", [x0, 0.0])]
-    if lap > 0:
+    if lap > 0 and not at_end:
         pts.append(("lapStart", [x0 + lap, 0.0]))
-    pts += [("s", [0.0, 0.0]), ("se", [x1, 0.0]), ("ne", [x1, h]), ("n", [0.0, h]), ("nw", [x0, h])]
+    pts += [("s", [0.0, 0.0])]
+    if at_end:
+        pts.append(("lapEnd", [x1 - lap, 0.0]))
+    pts += [("se", [x1, 0.0]), ("ne", [x1, h]), ("n", [0.0, h]), ("nw", [x0, h])]
     d = {"outline": _outline(pts), "grain": 0 if entry.get("grain") is None else entry["grain"]}
     marks, lines = {}, {}
     if lap > 0:  # the ends lap: a button on the underlap, its hole on the other end, `L - lap` apart (the chain)
         marks = {"button1": [x0 + lap / 2, h / 2], "buttonhole1": [x1 - lap / 2, h / 2]}
+        if at_end:
+            marks = {"button1": [x1 - lap / 2, h / 2], "buttonhole1": [x0 + lap / 2, h / 2]}
     if entry.get("fold"):
         lines["fold"] = [[x0, h / 2], [x1, h / 2]]
     d["marks"], d["lines"] = marks, lines
     pc = pattern.from_spec(nm, d)
     pc["wrap"] = dict(entry.get("wrap") or {"to": "torso"})
     pc["role"] = entry.get("role", nm)
-    seams = [[f"{nm}:{'lapStart' if lap > 0 else 'sw'}>s>se", along]]
+    seams = [[f"{nm}:sw>s>lapEnd" if at_end else f"{nm}:{'lapStart' if lap > 0 else 'sw'}>s>se", along]]
     if entry.get("ring"):
         seams.append([f"{nm}:sw>nw", f"{nm}:se>ne"])
     stitches = [[f"{nm}:button1", f"{nm}:buttonhole1"]] if lap > 0 else []

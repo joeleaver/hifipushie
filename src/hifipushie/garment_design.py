@@ -33,7 +33,8 @@ from . import pattern
 
 KB_PATH = Path(__file__).with_name("garment_kb.json")
 DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", "waistband", "fly", "skirt_closure",
-                "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch")
+                "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch",
+                "crease", "belt_loops")
 SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
               "block_options", "ops", "over", "support", "layer_gap", "open"}
 METHODS = ("simulate", "settle")
@@ -75,9 +76,10 @@ def validate(sheet: dict, where: str = "design") -> None:
         raise ClothError(f"{where}: design kind {kind!r} unknown (have {', '.join(kinds)})")
     designs = [d for d in K["designs"] if not d.startswith("_")]
     fr = sheet.get("from")
-    if fr == "draft" or (fr is None and sheet.get("block")):
+    kdraft = K["kinds"][kind].get("draft") or {}  # a kind that drafts itself: block + options + its details' ops
+    if fr == "draft" or (fr is None and (sheet.get("block") or kdraft)):
         from . import pattern_blocks, pattern_draft
-        if sheet.get("block") not in ("bodice", "knit", "trouser", "skirt"):
+        if (sheet.get("block") or kdraft.get("block")) not in ("bodice", "knit", "trouser", "skirt"):
             raise ClothError(f"{where}: a drafted design needs \"block\": bodice | knit | trouser | skirt, then "
                              "\"ops\": [pattern operations]")
         for k_, op in enumerate(sheet.get("ops") or []):
@@ -122,7 +124,7 @@ def resolve(sheet: dict) -> dict:
     K = kb()
     kind = sheet["kind"]
     kd = K["kinds"][kind]
-    fr = sheet.get("from") or ("draft" if sheet.get("block") else None)
+    fr = sheet.get("from") or ("draft" if (sheet.get("block") or kd.get("draft")) else None)
     rec = K["designs"].get(fr) if (fr and fr != "draft") else None  # a drafted design is judged by evidence alone
     fit = sheet.get("fit") or (next(iter(kd.get("fit", {})), None))
     problems = []
@@ -193,19 +195,32 @@ def compile_sheet(sheet: dict) -> dict:
     rec = r["recipe"] or {}
     out: dict = {}
     if r["from"] == "draft":
-        bo = dict(sheet.get("block_options") or {})
+        # a kind may draft itself (kinds.<k>.draft: block, block_options, fit_options per fit): the sheet's own block
+        # options lie on top, and every chosen detail that knows its operation (details.<d>.<choice>.draft.ops) adds
+        # it unless the sheet's ops already hold an op of that name
+        kdr = r["kind_kb"].get("draft") or {}
+        block = sheet.get("block") or kdr.get("block")
+        bo = _merge(_merge(kdr.get("block_options") or {}, (kdr.get("fit_options") or {}).get(r["fit"]) or {}),
+                    sheet.get("block_options") or {})
         band = r["fit_bands"].get("chest")
-        if band and "chest_ease" not in bo and sheet["block"] in ("bodice", "knit"):
+        if band and "chest_ease" not in bo and block in ("bodice", "knit"):
             bo["chest_ease"] = round(0.5 * (band[0] + band[1]), 3)  # ease by garment category: the fit's middle
-        out["pattern"] = {"from": "draft", "block": sheet["block"], "block_options": bo, "ops": list(sheet.get("ops") or [])}
+        ops = list(sheet.get("ops") or [])
+        have = {o_.get("op") for o_ in ops}
+        for info in r["details"].values():
+            for op in (info["kb"].get("draft") or {}).get("ops", []):
+                if op["op"] not in have:
+                    ops.append(_merge(op, info["params"].get("op") or {}))
+        out["pattern"] = {"from": "draft", "block": block, "block_options": bo, "ops": ops}
     elif r["from"]:
         pat = {"from": rec.get("pattern_from", r["from"])}
         fo = (rec.get("fit_options") or {}).get(r["fit"]) or {}
         pat = _merge(pat, fo)
         out["pattern"] = pat
-    detail, drop, folds, gen = {}, [], [], []
+    detail, drop, folds, gen, trims = {}, [], [], [], []
     for d, info in r["details"].items():
         rc = info["recipe"] or {}
+        trims += [_merge(t_, info["params"].get("trim") or {}) for t_ in info["kb"].get("trims", [])]
         if "options" in rc and "pattern" in out:
             out["pattern"] = _merge(out["pattern"], {"options": rc["options"]})
         if "pattern" in rc and "pattern" in out:
@@ -232,6 +247,8 @@ def compile_sheet(sheet: dict) -> dict:
         out["generate"] = gen
     if detail:
         out["detail"] = detail
+    if trims:
+        out["trims"] = trims
     return out
 
 
@@ -477,6 +494,16 @@ def _check(ev: dict, Bp: dict, R: dict, D: dict, entry: dict, lap: str | None) -
         if hole_side and outer not in hole_side:
             return False, f"{outer} laps over ({conv}) but the buttonholes are on {', '.join(sorted(hole_side))}"
         return True, f"{outer} laps over ({conv})"
+    if "closure" in ev:  # a closure of that kind (closures.py) whose over piece has the role `on`
+        k, r = ev["closure"], ev.get("on")
+        hit = [c for c in Bp.get("closures") or [] if c.get("kind") == k and (r is None or role_of(c["over"], pcs.get(c["over"])) == r)]
+        return bool(hit), (f"a {k} closure" + (f" on {r}" if r else "") + ": " + ", ".join(
+            f"{c['name']} ({c['over']} over {c['under']}, worn {c.get('state', 'closed')})" for c in hit)) if hit else \
+            f"no {k} closure" + (f" on {r}" if r else "") + " in the pattern"
+    if "trim" in ev:  # a trim of that kind (cloth_trims.py) on the garment
+        hit = [t for t in Bp.get("trims") or [] if t.get("kind") == ev["trim"]]
+        return bool(hit), (f"trim {ev['trim']}" + (f" x{hit[0].get('count')}" if hit and hit[0].get("count") else "")
+                           if hit else f"no {ev['trim']} trim on the garment (key trims)")
     if "darts" in ev:
         n = 0
         for a, b in Bp["seams"]:

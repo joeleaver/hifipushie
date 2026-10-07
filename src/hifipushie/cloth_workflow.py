@@ -212,10 +212,18 @@ def leg_ease(c: Ctx, bands: dict) -> list:
     width = lambda y: sum(cloth._piece_width_at(pcs[n]["P"], y) for n in legs)
     out = []
     if "seat_z" in at:
-        g = 2 * width(float(at["seat_z"]) - zw) * 1000
+        # from the centre seam's line out to the side seam: what runs on past the centre line is the fork (the crotch
+        # curve's extension), which lies BETWEEN the legs, not round the seat (a body whose seat is level with its
+        # crotch read +13% for a 5% draft)
+        def outer(n, y):
+            P = pcs[n]["P"]
+            xs = [a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0]) for a, b in zip(P, np.roll(P, -1, axis=0))
+                  if (a[1] - y) * (b[1] - y) <= 0 and a[1] != b[1]]
+            return max(max(xs), 0.0) - max(min(xs), 0.0) if len(xs) >= 2 else 0.0
+        g = 2 * sum(outer(n, float(at["seat_z"]) - zw) for n in legs) * 1000
         ease = g / c.meas["seat"] - 1
         band = (bands or {}).get("seat")
-        line = f"ease at seat (the legs' pieces across the seat line): {ease * 100:+.1f}% (pattern {g:.0f} mm; body {c.meas['seat']:.0f} mm)"
+        line = f"ease at seat (the legs' pieces from the centre seam's line to the side seam, at the seat line): {ease * 100:+.1f}% (pattern {g:.0f} mm; body {c.meas['seat']:.0f} mm)"
         ok = True
         if band:
             line += f", {c.res['fit'] if c.res else 'kind'} band {band[0] * 100:+.0f}..{band[1] * 100:+.0f}%"
@@ -242,6 +250,14 @@ def leg_ease(c: Ctx, bands: dict) -> list:
             continue
         body_g = max(tailor.girth(L, Z) for L in loops) * 1000
         g = width(y) * 1000
+        if name == "hem" and "ankle.L" in c.body.J and zw + y < float(c.body.J["ankle.L"][2]) + 0.03 and c.meas.get("heel"):
+            # a hem that ends on the foot hangs over it, it doesn't go round it: what it must do is pass the heel
+            heel = float(c.meas["heel"])
+            parts.append(f"hem {g:.0f} mm round (it ends on the foot; it must pass the heel and instep: {heel:.0f} mm)")
+            if g < heel + 10 and c.fabric_class() != "knit":
+                out.append((f"the hem is TOO SMALL to pull on: {g:.0f} mm round for a heel-and-instep girth of {heel:.0f} mm "
+                            "(+ 20 mm is as slim as a hem without a zip goes)", False))
+            continue
         e = g / body_g - 1
         parts.append(f"{name} {e * 100:+.0f}% ({g:.0f} mm round a {body_g:.0f} mm leg)")
         if e < -0.01 and c.fabric_class() != "knit":
