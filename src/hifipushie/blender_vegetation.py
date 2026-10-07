@@ -665,7 +665,7 @@ def add_plant(pj, tag, clay):
             twig_obs.append(pts)
     solid = solid_mat = None
     if "solid_V" in d:  # a style's crown: one closed mesh, a colour per vertex (linear), its own smooth normals
-        solid = _mesh(f"crown{tag}", d["solid_V"], d["solid_F"])
+        solid = _mesh(f"crown{tag}", d["solid_V"], d["solid_F"], d["solid_uv"] if "solid_uv" in d else None)
         ca = solid.data.color_attributes.new("col", "FLOAT_COLOR", "POINT")
         ca.data.foreach_set("color", np.c_[d["solid_col"], np.ones(len(d["solid_col"]))].astype(np.float32).ravel())
         solid.data.polygons.foreach_set("use_smooth", np.ones(len(solid.data.polygons), bool))
@@ -675,10 +675,34 @@ def add_plant(pj, tag, clay):
         N_, L_ = solid_mat.node_tree.nodes, solid_mat.node_tree.links
         an = N_.new("ShaderNodeAttribute")
         an.attribute_name = "col"
-        L_.new(an.outputs["Color"], N_["Principled BSDF"].inputs["Base Color"])
-        N_["Principled BSDF"].inputs["Roughness"].default_value = float((pj.get("solid") or {}).get("roughness", 0.85))
-        _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
-        _haze_out(solid_mat)
+        sj_ = pj.get("solid") or {}
+        N_["Principled BSDF"].inputs["Roughness"].default_value = float(sj_.get("roughness", 0.85))
+        if sj_.get("atlas"):  # leaf clouds: the dab atlas's tone x the vertex colour, cut out by its alpha (both sides drawn)
+            tx = _image(N_, sj_["atlas"], True)  # (sRGB, as an engine reads a glTF base colour texture)
+            mu = N_.new("ShaderNodeVectorMath")
+            mu.operation = "MULTIPLY"
+            L_.new(an.outputs["Color"], mu.inputs[0])
+            L_.new(tx.outputs["Color"], mu.inputs[1])
+            L_.new(mu.outputs[0], N_["Principled BSDF"].inputs["Base Color"])
+            _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
+            out_ = N_["Material Output"]
+            last = _hazed(N_, L_, out_.inputs["Surface"].links[0].from_socket)
+            tp = N_.new("ShaderNodeBsdfTransparent")
+            am = N_.new("ShaderNodeMixShader")
+            L_.new(_math(N_, L_, "GREATER_THAN", tx.outputs["Alpha"], float(sj_.get("alpha_cut", 0.5))), am.inputs[0])
+            L_.new(tp.outputs[0], am.inputs[1])
+            L_.new(last, am.inputs[2])
+            L_.new(am.outputs[0], out_.inputs["Surface"])
+            for attr, val in (("surface_render_method", "DITHERED"), ("use_transparent_shadow", True), ("blend_method", "HASHED")):
+                try:
+                    setattr(solid_mat, attr, val)
+                except Exception:
+                    pass
+            solid_mat.use_backface_culling = False
+        else:
+            L_.new(an.outputs["Color"], N_["Principled BSDF"].inputs["Base Color"])
+            _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
+            _haze_out(solid_mat)
         solid.data.materials.append(solid_mat)
         solid.location, solid.rotation_euler, solid.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
         solid["hp_solid"] = 1

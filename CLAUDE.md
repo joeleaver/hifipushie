@@ -2228,6 +2228,94 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     points 65-75 mm, spread for an open collar) through Simon's options, the 12 mm front gape and the "waist
     strain 17.8%" at +23% ease by numbers, then worn with `{"name": "collar", "state": "open"}`; (5) trims in the
     scene / export, a hem's break as a stage 5 target, the back crease ending at the seat.
+- Suit 3 (2026-10-07, "collar" agent, branch `worktree-agent-a5c847e94d5c52d32`; renders `cloth_renders/su_30..32_*`;
+  scratch DURABLE in /mnt/data/hifipushie/collar/: env.sh, run.sh, q.sh + run.py (renders now draw seams WELDED),
+  p.sh <tag> [-o] (blazer alone, collar made, place only; `-o` = the open start; collar numbers, CB column, notched-lay
+  info, worst edges), pl.sh (the same layered), pv.sh (p.sh + close-up), plb.py, cu.py (welds closed seams unless
+  `raw`), clr.py (collar neck edge vs partners: clearance off the body), fg.py (a seam's pairs: sim / final gap),
+  gapgeo.py, zig.py (a seam's line vs itself smoothed), hps.py (where collar / front / back put the neck point),
+  unmade.py, tests.sh (the nine + test_collar)).
+  - THE NOTCHED COLLAR'S MADE LAY (`cloth._notched_lay`, wrap `lay: "notched"`, set by `op_collar` type tailored
+    when the lapel's roll line meets the neck edge): two parts meeting where the roll line comes down to the neck edge.
+    The band: the stand runs up the body from the WORN neckline at the seam's clearance (`hug`), the fall turns about
+    the roll line station by station as far as clears what is under it (172 deg at CB, ~150 at the neck's side). The
+    end: FLAT in one plane through the lapel's roll line (as worn), turned about that line until it rests on the
+    chest (a board bridges hollows), isometric (edges 1.00). Stations share position / tangent map / normal / turn,
+    smoothed along the line; the sewn edge is a spline (laid per sample, the stand jumped 12-15 mm at every sample);
+    the end's plane takes every point past the meeting point ALONG THE NECK EDGE (by foot on the roll line the outer
+    end fanned 2-3x), eased over `NOTCH_BLEND` 4 cm; nothing turned stands over `NOTCH_BRIDGE` 12 mm off the body
+    (the plane run on past the shoulder's ridge stood up as a wing); a relax pass draws in long edges (`lay_limit`).
+    In `_on_seam`: `worn_pt` keeps to the body's own back / front (at the nape the nearest vertex in x, z was the
+    throat's: the back neckline charted 9 cm forward) and past the outline sits on the shoulder's top; the worn
+    neckline is a CHAIN at the pattern's lengths pulled toward the chart with a fading pull (`lay notched`; smoothing
+    the chart and snapping it out walked it 1-2 cm up the slope). Start (blazer alone): collar max 1.15x (p99 1.06),
+    0 collar crossings; layered over the pressed shirt 1.10x (9.6x in su_08). LAY_INFO[piece] keeps the lay's numbers.
+    The worn neckline rides 1.5-2.5 cm higher than the chart (the chain keeps the pattern's length, the neck narrows
+    upward): the jacket's neckline is cut to sit there, and the sim's back sews up to it.
+  - SEWN ON OPEN, THEN ROLLED (`_open_start`, method settle): the sim starts with the fall standing open
+    (`NOTCH_OPEN_DEG` 40 from the stand, eased in over `NOTCH_OPEN_FADE` 8 cm from the meeting points) and the
+    carried poses turn it down (`NOTCH_OPEN_STEPS` 1 / .75 / .5 / .25, last pose closed). Laid down from the start
+    (su_30) the fall was a LID over the seam: the draped back came to rest on top of it, 14 mm off the neck, the
+    neck seam open at 13 of 13 pairs. build's arrays X = `Xstart`; rest stays the closed lay.
+  - su_31 (blazer alone, ZOZO settle 2 cm, 443 s): reads as a tailored jacket, fits, 0 crossings, strain 0.6%; the
+    collar hugs the neck and lies on the back (stand off the neck at CB 7 mm, fall 157 deg over the seam, no roll).
+    Left: neck seam 10 of 13 pairs open (back neck pairs overlap 5-7 mm, 3 of 5 weld; the NECK POINT: front.L's hps
+    sits 16 mm forward of the collar's along the seam and 7 mm further out, shoulder seam open ~10 mm there: front,
+    back and collar disagree on hps; gorge 1-11 mm). Not fixed.
+  - The "CB zigzag" was never in the garment: the scratch renders drew raw faces (two rows of vertices per closed
+    seam, each with its own normal). look_cloth welds (`welded_faces`); the seam line is smooth (zig.py: su_31 final
+    max 3.6 mm). `test_cloth::test_cleaned_seam_is_a_smooth_line`.
+  - `_collider` drops the under garment's sliver faces (`UNDER_SLIVER`): ZOZO refused the layered job ("degenerate
+    shell face" in the pressed shirt).
+  - ga_suit / su_garrett: the jacket's `made: {collar: draped}` override is gone (that is why su_10's layered job had
+    no carried collar).
+  - su_32 (blazer OVER the shirt, first finished layered sim, 2 cm): BAD. The jacket collar stands high round the
+    shirt collar (collar_show -19 mm: the jacket covers the shirt collar; collar_hug 27 mm), shirt shows through
+    at the armholes / shoulders / back side seams (seams 0-11 open 22-63 mm), cuffs hidden (-29 / -33). The armhole
+    and side seams open is NOT the collar: alone (su_31) they close; under `over` the draped jacket is placed on the
+    padded body and its seams don't close. Diagnose that first (plb.py layered: start gaps / start stretch by seam vs
+    su_31's; padded_body thickness at the armholes), then lay the jacket collar on the shirt collar's OUTSIDE at
+    the jacket's own neckline height (the shirt collar 10-20 mm above it at CB): today `worn_pt` reads the padded
+    body, whose neck is the shirt collar's cylinder.
+  - Tests: the nine cloth / pattern files + test_collar pass (main 17ee597 merged in); merged to main at 2aea2ac.
+  - NEXT, in order: (1) su_32's open seams under `over`; (2) the jacket collar against the shirt collar (layer tells);
+    (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
+    settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
+    and su_garrett.
+- Seams (2026-10-07, "seams" agent, branch `worktree-agent-ae98ecda411a37796`; the user on the suits: "seams look huge
+  and structural"; renders `cloth_renders/sm_01..08` (before = main 2aea2ac / after, the SAME cached sims: su_31
+  blazer, su_05 shirt; sm_05 = raking light across the blazer's side panel seam); scratch DURABLE in
+  /mnt/data/hifipushie/seams/: run.sh / runb.sh (this branch / main 2aea2ac's src in orig/), prof.py (load a cached
+  result: `load(model, garment, patches)`; cross profiles, too few points at 2 cm to trust), m2.py (per stage the
+  angle between a seam's two sides' normals vs the cloth's own: THE measure), orient2.py (winding per seam), rs.py
+  (clay + textured sheets + close-ups of a cached sim), rk.py (raking-light close-up of one seam), cmp.py).
+  Three causes, by measure:
+  - WINDING: the pattern mesh winds each piece as its pattern lies; on the blazer back.L/R, top.L, under.L faced IN,
+    the rest out (side seams' two normals at 160 deg). Welded, the shared normal cancelled into a pale / dark line;
+    Solidify (offset 1) grew one side out and one in; the export's single global flip kept it, its inner shell went
+    out on those pieces. `piece_flips` / `oriented_faces` (seam votes, max spanning tree over pieces, then out from
+    the body) in every look (`welded_faces` orients; textured looks now weld too, with per-corner uv `uv_corner`),
+    the scene's faces and the export (`shared_normals`: a closed seam's vertices one normal). A body-majority rule
+    per piece was wrong for folded pieces (the collar's fall outweighs its stand). M["F"] (the sim's) is unchanged.
+  - The FREE HINGE: a solver stitch passes no bending, so each side's last rows tilt alone: after the weld the sides'
+    normals met at 29 deg median (side seams 20, CB 45, sleeve 30-37) against the cloth's own 10.
+    `cleanup.press` (`_seam_press`, PRESS reach 3 cm, 40 Taubin passes, cap 0.4 h; welded groups move as one, ALONG
+    THE NORMAL only: a uniform Laplacian slid seam vertices 6 mm in plan, a zigzag; interfaced cloth and "welt" seams
+    stay): blazer 29 -> 14 deg (side seams 6-12), shirt 26 -> 14 (yoke 19 -> 7). The shirt's side seams stay 22-31 (a
+    deep fin from the sim, not cap-limited). What's left on sleeves is mostly the 2 cm tube's own curvature.
+  - The MAPS: a 1.2 mm groove 2.5 mm half width with 0.6 mm ridges 5.5 mm out each side, darkened 45% in the base
+    colour, topstitching 6 mm in on EVERY edge. Now seam finishes (garment_kb.json `seam_finishes`, `seam_kinds`,
+    detail `seam_finish` / `seam_finishes`; kind default `kinds.<k>.seam_finish`): pressed_open 0.3 mm x 0.7 mm, a
+    0.12 mm rise over the allowances, no rows; felled two rows on one side (shirts); welt = the old look, not pressed.
+    Hem topstitching from the kind's hem (`hem_topstitch`: blind hems none). Cavity 1 + H / 4 mm, floor 0.7.
+  - Before was rendered with main's textured look on RAW faces: every seam was also an open boundary with Solidify
+    rims (the stair-stepped pale beads in sm_05).
+  - Tests `tests/test_seams.py` (winding, press, finishes in the maps, export normals) + the ten cloth files green.
+  - Open: the shirt's side seams (a fin the press can't flatten: look at why the sim folds there), sleeve seams at
+    2 cm, a "toward" side per seam for pressed_to_side / felled (today the seam's second piece), seam finishes in the
+    pattern sheet, closures / collar seams were not judged one by one (made pieces are interfaced: untouched).
+    Careful: `cloth.export_part` / `garments(simulate=True)` STARTS SIMS for uncached garments (an orphaned ZOZO job
+    of mine had to be killed): test exports on cached models only.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -3295,6 +3383,73 @@ regresses, bisect by building one spec at each commit and diffing heights.
       budget it can't reach) reaches PRE 32 x its budget in one pyfqmr pass first, then the same budget search with the
       dense mesh's tolerance (`_decimate(pre=)`). Replayed (HIFIPUSHIE_DECIMATE_DUMP) on the alps block's 12 fallbacks:
       85 -> 37 s, faces <= before in every case, summed error p99 6.2 -> 5.7 m; 4x/8x were faster but further off.
+  - First consumer export (2026-10-07, "tiles" agent, branch worktree-agent-aa0a9fde6c2eee6d8; pushieworld's slice_a,
+    512 m of sheer coast with a sea cave: /home/joe/dev/pushieworld/docs/hifipushie-notes.md 19-30; our copy is terrain
+    `tl_slice_a`; scratch DURABLE in /mnt/data/hifipushie/tiles: run.sh <script> (this worktree's code on the main
+    workspace), exp.py <terrain | spec.json> <tag> ['<cfg json>'] (export into out/<tag>, summary + heaviest tiles),
+    diag1.py <terrain> i j (one tile's marching cubes: triangles by depth, visible / buried, open edges; 60 s, no
+    heavy slot), diag2.py (the dense mesh's own error), dec.py (pyfqmr at several counts), shards.py <tag> <lod>
+    (where shard faces are), recheck.py <tag> (the seam check alone on an export), queue.sh (slice, pebble, alps one
+    after another), tests.sh, val.mjs <dir> (Khronos over a directory), man.py <manifest> (heaviest tiles)).
+    The failure: tile (4,1) at 495,898 / 495,622 / 495,475 triangles against 12000 / 3000 / 800 (three more tiles
+    at 100-313k), 748 s for that tile, 44 open edges at z -94.9, a traceback instead of a report.
+    - ROOT CAUSE (not the cave): the cliff shell's back was `thick` behind the COLUMN's own plane, (z - h) x cos(slope)
+      > -thick. On an even slope that is a shell `thick` thick; under a sheer face's columns (84 deg sea cliffs on
+      0.64 m cells: cos 0.04-0.1) it is thick / cos = 50-100 m straight down: a buried sheet thinner than a voxel under
+      every cliff, and behind the face a slab only as thick as the face is wide in plan. `_tile_mc` sized the lattice as
+      ground - zpad / max(cos, 0.15) (88 m), which cut the sheet open (the open edges). Tile (4,1)'s marching cubes:
+      439k triangles, 262k of them more than 10 m under their column's ground, none of those visible. pyfqmr folds a
+      sub-voxel two-sided sheet into fins at any count, `valid` rejects every candidate, `_decimate` hands back the
+      dense mesh after 5 aggressiveness retries per count on 500k faces (the 200 s a LOD). Capping the sheet's depth
+      alone was not enough (238k triangles, and pyfqmr still non-manifold above ~1,300): the slab behind the face had
+      to go too.
+    - FIX: `Region.back` = the ground eroded by a ball of radius `thick` (ndimage.grey_erosion with a spherical
+      structure, smoothed 0.7 cell; a terrain-frame grid, so the incremental fingerprint windows it), read like the
+      ground (`back_at` -> height, slope factor); the shell is {front < 0} and {z above the back}. Identical on an
+      even slope. `CliffField.zlow` (the lattice's bottom) is that back - 1 m. (4,1): 233k marching-cubes triangles,
+      zmin -7.8, LODs 11,996 / 2,989 / 633, 12.5 s.
+    - `_decimate`'s error on a cliff shell is measured on faces with every corner on the visible rock, by
+      `field.front` (the buried back's field values are not metres: the dense mesh's own p99 was 0.59 "m", and that
+      was the tolerance: once decimation worked, LOD 0 of the cave tile came out at 1,132 triangles).
+    - Budgets fail loudly: `budget_check` -> manifest `budget_check.over` (tile, lod, triangles, budget, why), an
+      "OVER BUDGET" log line and a check failure per tile LOD over `OVER_BUDGET` 2 x its budget. Collision:
+      `collision_budget` (default 2 x its LOD's budget): `_collision_mesh` decimates for collision alone when the LOD
+      is heavier; tiles[].collision_triangles. tiles[].seconds; the summary lists the slowest tiles over 60 s.
+    - Failed checks are a report: `TilesCheckFailed(RuntimeError)` carries the result; `summary(result)` leads with
+      "CHECKS FAILED (n). The export is COMPLETE on disk ..." and each failure with its tiles (shards: most-affected
+      tiles; map seams: the worst borders and the limit); `export_terrain` and terrain_run.py return / print that.
+      manifest seam_check.failed repeats the list.
+    - Tried and taken back: border vertices on a crease taking a normal from a 1-voxel stencil (72 of slice_a's 77
+      LOD 0 shard faces have a border vertex: border normals are never split, and one side's exact normal at a sheer
+      lip is square to the other side's faces). It made shards WORSE (slice_a LOD 0 0.012 -> 0.043%, pebble 0.005 ->
+      0.05%) and the lod1 map seams too. The idea may be right, the wide stencil is not.
+    - Small ones: heightmap .npy in C order (`.T` had saved fortran_order True: a plain reader got the tile
+      transposed); the buried primitive's material is `terrain_buried` (Godot drops extras and saw a second skirt);
+      guide + manifest: holes PNGs are heightmaps/holes_<i>_<j>.png and only for tiles with holes, texel_density
+      default [8, 4, 2], primitive roles / materials, the two collision files. Report: a spec with `caves` /
+      `volumes` says "3D rock: ... built in the mesh tiles only" instead of CAN'T BUILD YET; a cover LIST is named
+      by type (meadow, conifer; was cover_1..6: file names of exported masks change with it); the "no coast" error
+      gives the sea level and each edge's lowest ground; a route to a cove says to route to a site at it; a hollow
+      behind sea cliffs says the raised cliff tops dam it (slice_a: top 18.8 m where the tilt alone gives 3.3).
+    - tests/test_tiles.py (a 128 m synthetic sheer coast, "cell" 0.64, 32 m tiles; ~60 s, no heavy slot): shell
+      depth and closed, budget holds from the dense mesh, budget_check, a failing export comes back as a report with
+      its files on disk, C-order heightmap.
+    - Results (cold, loaded machine). slice_a: 161-230 s wall (was 1050), every tile within budget (LOD 0 per tile
+      2,514-12,000, LOD 1 561-3,000, LOD 2 147-800; the cave tile 11,996 / 2,989 / 633), 0 open edges, 0 floating, 3.9
+      GB. It still FAILS three checks, now as a report, none of them the curtain: LOD 0 shards 0.012% (limit 0.01;
+      77 faces, 72 with a border vertex, most in tiles 7,1 / 4,1), cliff-map normals across borders at LOD 1 p95
+      17.1 deg (limit 15; worst borders 2,3|3,3 37, 5,0|5,1 29), LOD 0 vs LOD 2 weights1 p95 0.284 (limit 0.25).
+      Pebble (examples/pebble_disc.json, 208 tiles): 245 s, shards 0.005 / 0.023 / 0.198%, floating 0, Khronos 1044
+      files 0 / 0, but the LOD 1 map-normal seam is p95 15.55 against the limit of 15 (main: 14.2, already noted as
+      thin margin): it FAILS by that. Alps 3x3: 133 s, 0 failures, shards 0 / 0.003 / 0.004%, Khronos 72 files 0 / 0.
+      test_fieldjit, test_level_look, test_swatch, test_tooling, test_tiles pass.
+    - OPEN, in order: (1) the LOD 1 map-normal seam (pebble 15.55, slice_a 17.1): find what the worst borders have in
+      common (recheck.py prints them; a few borders at 30-60 deg carry the p95: likely a cliff piece's edge texels at
+      4 texels/m, or the two tiles' charts across a crease), fix or re-set the limit with main; (2) shards at border
+      vertices on sheer lips (a per-face split that both tiles make alike, or a crease-aware border normal that is
+      not a wide stencil); (3) weights1 across LOD 0 / LOD 2 on slice_a; (4) the Khronos validator needs an
+      externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
+      (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
@@ -3869,6 +4024,55 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       fern / daisy / clover judged (the clump path runs on any clump; nobody looked). (3) Clump impostors, flatten in
       the export (a morph target or a second mesh), stands / sets with a style, `wind_plant` on a styled plant,
       blossom. (4) Blender's importer on the new impostor; an engine fade of each quad by how edge-on it is.
+  - Vegetation styles 3 (2026-10-07, "vegstyle3" agent, branch `worktree-agent-ac910597cf0676b73`, round 1 merged as
+    main 78cb0ad; sheets vs_20..vs_28; deliveries /mnt/data/hifipushie/vegstyle/{anime_oak, anime_spruce, anime_grass}
+    + the blobby / real ones re-exported at contract 5; Godot measures /mnt/data/hifipushie/vegstyle3/gd/; scratch in
+    the worktree's untracked `scratchpad/`: run.sh, sheet.py, seasons.py, clump_sheet.py, q.py <species> <style name or
+    json> <out> [season] [triangles] (styled panels only, ~1 min), a1.py (dress numbers + atlas + silhouette, no
+    Blender), tsweep.py <species> '<list of conifer.crown overrides>' [sheet] (tier IoU sweep), setstyle.py, gdc.sh
+    <tag> <height> <mode> <dir> <stem> (Godot card check at the LOD switch distances), r1-r4.sh (queues), t_one.py
+    <test module> <test names>).
+    - ANIME (`vegetation_styles/anime.json`, `veg_cloud.py`; crown kind "clouds"): the style's masses are the clumps
+      (the proxy artists transfer normals from); every clump gets `layers` shells (0.6 / 0.8 / 1.0 / 1.12 of its
+      ellipsoid) of alpha cards facing out of it (tilt, roll, cup), sized `card` x the clump's radius (lower LODs: fewer,
+      larger cards, `lod_grow`), cards buried in another clump dropped; picture = a generated grey DAB atlas
+      (`dab_atlas`: the species' leaf outline fattened, `count` dabs per tile, ragged rim; needle trees a pointed
+      spray stroke); NORMAL = out of its clump's middle (`normals` toward the crown's middle); COLOR_0 = a 3-step painted
+      gradient per clump, one step per CARD (inner layers darker by `depth_dark`, top warmer); TEXCOORD_3 = (gradient 0
+      base .. 1 top, clump id) (Godot: CUSTOM0.zw, checked). Two sizes of cloud (`edge_share` 0.35 of the foliage
+      furthest out of the crown's middle clustered into `edge_count` x more, smaller clouds): one size of cloud read as
+      one layer. Wood: true radii, more forks (`stubs` 14) in ONE mesh (`wood.forks_in_leaf`: no bark_forks slot) and
+      `wood.feed` (new, general): a clump with no drawn wood within feed x its radius gets the grown tree's own path to
+      it (floating outer clumps). Bark `colour.bark_mix` toward a dark warm neutral. Conifer block: clouds on TIERS
+      (`masses_kind: "tiers"`), `under` 0.25 (cards facing the ground left out under each bough: the tier shadow),
+      `clump_min_cards` 80 (small top tiers were confetti). Clump block: `fan` 3 (each chosen card gives 3 blades,
+      +-`fan_angle`: one blade per card was a sparse tuft), long thin sweeping blades.
+    - Numbers: oak IoU 0.91 (height 20.1 vs 19.8: cards are held under the tree's height), 12k / 5.4k / 2.2k + impostor, alpha fill 0.69 (overdraw ~1.45x); spruce IoU 0.80 (12.7k:
+      clump_min_cards pushes it over the budget a little), fill 0.56; grass 27 blades, height 0.57 (0.55), spread 0.56
+      (0.45). Godot 4.7.2 (`spikes/godot_veg/cards.gd` + `measure_cards.py`: each LOD at its switch distance,
+      alpha scissor): covered area 0.94-1.0 of LOD0 at every switch (spruce 0.87-0.97, impostor 0.78), pixels flipping
+      on a half-pixel move = an outline's worth only (no interior shimmer). Khronos 0 / 0.
+    - THE BUG it caught: `veg_export._png` multiplies by 255, and the dab atlas is uint8: it wrapped into noise and the
+      first anime delivery's foliage vanished under alpha scissor in Godot (test: the GLB's atlas equals the made one).
+    - SNOW = THE WINTER STATE UNDER SNOW (consumer note 52; contract 5): a leaf-dropping plant (realistic or styled) has
+      its foliage hidden and forks shown in the `snow` variant (it was the tree in full leaf painted white); evergreens
+      keep their crown; the snow impostor is the bare tree under snow (`veg_tools.impostor` sets season winter);
+      `season_color` / `season_atlas` return None for a deciduous snow. Test `test_snow_is_winter_under_snow`.
+    - Seasons json (contract 4): `snow` = numbers our looks use (linear colour, coverage, by_normal from / to, the
+      formula) and `style` {name, foliage}. Impostor albedo: the baked shade is eased on bright colours
+      (`IMPOSTOR.shade_bright`: autumn's brown patches; consumer: gone). Clump roots are a 1 cm stub (the tree's 0.3 m
+      foot was the grass "stalk" under every tuft; consumer: gone). Blobby spruce: 6 tiers, IoU 0.75 -> 0.805.
+    - Read: oak = a painted (Ghibli-ish) oak, big inner clouds, small outer ones, dark limbs in the gaps; winter a
+      spreading bare tree (sparser than the realistic one). Spruce = layered bough clouds with tier shadows; the near view
+      is big palm-frond strokes. Grass = a sweeping tuft; flowers are still small balls on stalks (the brief: colour
+      dabs), snow turns the blades white.
+    - NOT DONE (my list, in order): anime flowers as dabs (a dab card instead of a ball); blobby blades with a rounder
+      section and winter blades that curl / shorten IN THE EXPORT (decide: a morph target per season vs a second
+      primitive per season hidden by slot_list); the impostor's diagonal line (3 quads at 60 deg vs a camera-facing
+      card with 8 baked views + an engine recipe: measure in Godot, pick one); cartoon sheet (oak: chunky faceted clumps,
+      scalloped edge, big single leaves on the silhouette, per-clump id, S-bend trunk); the anime spruce over budget;
+      spruce near-view strokes too big; the guide's "Styles" section does not yet describe anime / clouds / feed /
+      edge clouds / fan (add it).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

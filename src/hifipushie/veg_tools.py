@@ -702,7 +702,7 @@ def impostor(name: str, px: int = 512, season: str | None = None, **over) -> dic
     from . import veg_export, veg_look
     T = grown(name)
     if season:  # the same grown plant shown in another season ("snow" = as it stands, under snow)
-        T = {**T, "spec": {**T["spec"], **({"snow": 0.8} if season == "snow" else {"season": season})}}
+        T = {**T, "spec": {**T["spec"], **({"snow": 0.8, "season": "winter"} if season == "snow" else {"season": season})}}
     H = T["height"]
     R = float(np.percentile(np.linalg.norm(T["pos"][:, :2], axis=1), 99.5))
     S = float(max(H, 2 * R) * 1.06)

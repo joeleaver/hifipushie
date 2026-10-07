@@ -979,6 +979,7 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
             pc["wrap"]["turn"] = dict(pc["wrap"]["turn"], line=[[-float(q[0]), float(q[1])] for q in Lw[:0:-1]]
                                       + [[float(q[0]), float(q[1])] for q in Lw])
             D["meta"]["collar_roll_end"] = float(sx)
+            pc["wrap"].setdefault("lay", "notched")  # (cloth._notched_lay: a band on the neck + a flat end in the lapel's plane)
     D["pieces"][name] = pc
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"

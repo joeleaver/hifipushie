@@ -1,0 +1,249 @@
+{
+ "about": "Painted-background trees (Ghibli, Genshin, BotW): leaf clouds of dab-cut cards in depth layers on each clump, a 3-step painted gradient per clump, thin dark wood showing in the gaps",
+ "budget": 12000,
+ "wood": {
+  "limbs": [
+   4,
+   8
+  ],
+  "radius": 1.0,
+  "taper_floor": 0.3,
+  "reach": 0.9,
+  "trunk_reach": 0.85,
+  "smooth": 6,
+  "share": 0.25,
+  "flat": true,
+  "roughness": 0.95,
+  "limb_min": 0.0,
+  "limb_mass": 0.0,
+  "trunk_mass": 0.0,
+  "trunk_floor": 0.3,
+  "foot": 1.6,
+  "bury": 0.8,
+  "keep_in": 0.3,
+  "reach_in": 0.95,
+  "stubs": 14,
+  "stub_reach": 1.0,
+  "stub_min": 0.8,
+  "stub_apart": 1.0,
+  "stub_radius": 0.0,
+  "blend": 0.5,
+  "voxel": 0.0,
+  "sides": [
+   6,
+   10
+  ],
+  "forks_in_leaf": true,
+  "forks_share": 0.0,
+  "feed": 0.9,
+  "feed_radius": 0.0
+ },
+ "crown": {
+  "kind": "clouds",
+  "masses": [
+   6,
+   12
+  ],
+  "spread": 1.5,
+  "pad": 0.4,
+  "min_feature": 0.6,
+  "roundness": 0.55,
+  "core": 0,
+  "blend": 0.3,
+  "blend_share": 0.15,
+  "voxel": 0.0,
+  "layers": [
+   0.6,
+   0.8,
+   1.0,
+   1.12
+  ],
+  "layer_weight": [
+   0.8,
+   1.0,
+   1.2,
+   0.5
+  ],
+  "card": 0.5,
+  "card_max": 1000000000.0,
+  "tilt": 40,
+  "roll": 35,
+  "cup": 0.1,
+  "bury": 0.3,
+  "under": 1.0,
+  "lod_grow": 1.9,
+  "normals": 0.25,
+  "tone": [
+   0.55,
+   0.88,
+   1.25
+  ],
+  "grad_range": [
+   0.3,
+   0.72
+  ],
+  "grad_jitter": 0.14,
+  "depth_dark": 0.3,
+  "warm_top": 0.1,
+  "roughness": 0.9,
+  "alpha_cut": 0.5,
+  "dab": {
+   "variants": 4,
+   "size": 256,
+   "count": 34,
+   "length": 0.42,
+   "width": 0.5,
+   "shape": "leaf",
+   "ragged": 0.5,
+   "core": 0.35,
+   "tone": [
+    0.84,
+    1.0
+   ],
+   "droop": 0.0,
+   "out": 0.6,
+   "verts": 6
+  },
+  "masses_step": 2,
+  "masses_kind": "masses",
+  "tier_power": 1.0,
+  "tier_seat": 0.4,
+  "tier_height": 0.75,
+  "trunk_show": 0.0,
+  "tier_uneven": 0.0,
+  "tier_cap": 0.0,
+  "tier_under": null,
+  "clump_min_cards": 0,
+  "edge_share": 0.35,
+  "edge_count": 2.0
+ },
+ "colour": {
+  "saturation": 1.2,
+  "value": 1.1,
+  "bark_saturation": 0.5,
+  "bark_value": 0.8,
+  "bark_mix": [
+   0.27,
+   0.24,
+   0.22
+  ],
+  "bark_mix_amount": 0.5
+ },
+ "wind": {
+  "mass": 0.35,
+  "squash": 0.2,
+  "flutter": 0.6
+ },
+ "seasons": {
+  "spring": {
+   "mix": [
+    0.6,
+    0.8,
+    0.3
+   ],
+   "amount": 0.45
+  },
+  "snow": {
+   "mix": [
+    0.93,
+    0.95,
+    0.98
+   ],
+   "amount": 0.7
+  }
+ },
+ "conifer": {
+  "wood": {
+   "limbs": [
+    0,
+    0
+   ],
+   "stubs": 0,
+   "trunk_reach": 0.92,
+   "share": 0.06,
+   "forks_in_leaf": false,
+   "feed": 0
+  },
+  "crown": {
+   "masses_kind": "tiers",
+   "masses": [
+    9,
+    9
+   ],
+   "masses_step": 1,
+   "spread": 1.65,
+   "pad": 0.3,
+   "roundness": 0.3,
+   "trunk_show": 0.6,
+   "tier_seat": 0.3,
+   "tier_height": 0.8,
+   "tier_under": 0.25,
+   "tier_uneven": 0.3,
+   "tier_cap": 0.5,
+   "tier_power": 0.85,
+   "layers": [
+    0.7,
+    0.88,
+    1.0,
+    1.08
+   ],
+   "layer_weight": [
+    0.7,
+    1.0,
+    1.2,
+    0.5
+   ],
+   "card": 0.4,
+   "card_max": 1.1,
+   "under": 0.25,
+   "bury": 0.15,
+   "tilt": 30,
+   "roll": 15,
+   "depth_dark": 0.45,
+   "grad_range": [
+    0.3,
+    0.8
+   ],
+   "tone": [
+    0.45,
+    0.85,
+    1.3
+   ],
+   "dab": {
+    "shape": "spray",
+    "droop": 0.9,
+    "out": 0.35,
+    "count": 40,
+    "length": 0.5,
+    "width": 0.5,
+    "core": 0.3
+   },
+   "clump_min_cards": 80
+  },
+  "colour": {
+   "value": 1.35
+  }
+ },
+ "clump": {
+  "blades": [
+   8,
+   10
+  ],
+  "width": 0.08,
+  "thick": 0.45,
+  "curl": 0.55,
+  "heads": 3,
+  "ball": 0.035,
+  "stalk": 0.008,
+  "normals_up": 0.5,
+  "tones": 3,
+  "tone": [
+   0.7,
+   1.2
+  ],
+  "budget": 1500,
+  "roughness": 0.9,
+  "fan": 3,
+  "fan_angle": 16
+ }
+}
