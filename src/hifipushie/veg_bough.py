@@ -16,6 +16,7 @@ from .vegetation import _child, _u
 BOUGH = {"variants": 4, "size": 384, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
 TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles a bough card costs (a fan per card)
 DEAD_SHARE, DEAD_MIN = 0.08, 12  # of a budget's bough cards, the most that draw dead wood (and the fewest a tree with dead wood keeps)
+LEADER = 1.2  # m: the most of the trunk's own top one bough card stands for
 DEAD_THIN = 0.5  # the share of a dead bough's twigs its picture is baked from (real alpha gaps)
 _CACHE: dict = {}
 
@@ -50,7 +51,12 @@ def roots(tree: dict, size: float) -> np.ndarray:
     """The nodes where boughs no longer than `size` m begin: together they carry every twig once."""
     st = subtrees(tree)
     r, par = st["reach"], tree["parent"]
-    m = (r >= 0) & (r <= size) & ((r[par] > size) | (np.arange(len(r)) <= 1))
+    # the trunk's own top is never one big bough (its picture was some limb's, stood upright on the leader: a flag):
+    # limbs off the trunk start their own boughs, and the leader's tip is a small one of its own
+    o = tree["order"]
+    lead = min(size, LEADER)
+    m = (r >= 0) & (r <= size) & ((r[par] > size) | (np.arange(len(r)) <= 1) | (o[par] == 0)) & (o > 0)
+    m |= (o == 0) & (r >= 0) & (r <= lead) & (r[par] > lead)
     m[0] = False
     return np.flatnonzero(m)
 
@@ -224,6 +230,16 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     key = json.dumps([tree["spec"], leaves, list(wood_color), round(pl["size"], 2)], sort_keys=True, default=float)
     if key in _CACHE:
         return _CACHE[key]
+    # on disk too, by the tree itself and this module's source (a stand look bakes a dozen of these: half an hour)
+    import hashlib
+    from pathlib import Path
+    dkey = "bough" + hashlib.sha1(np.ascontiguousarray(tree["pos"]).tobytes() + Path(__file__).read_bytes() + key.encode()).hexdigest()
+    got = veg_leaf._disk_get(dkey)
+    if got is not None:
+        if len(_CACHE) > 8:
+            _CACHE.pop(next(iter(_CACHE)))
+        _CACHE[key] = got
+        return got
     Fr, ext, cnt = _frames(tree, pl)
     nv, size = BOUGH["variants"], BOUGH["size"]
     order = np.argsort(cnt * (0.5 + ext / max(ext.max(), 1e-9)), kind="stable")
@@ -273,9 +289,11 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
                     A["color"][r * size:(r + 1) * size, c * size:(c + 1) * size, :3] = np.clip(A["color"][r * size:(r + 1) * size, c * size:(c + 1) * size, :3] * k_, 0, 1)
     if len(_CACHE) > 8:
         _CACHE.pop(next(iter(_CACHE)))
+    A = {k_: np.clip(v_ * 255 + 0.5, 0, 255).astype(np.uint8).astype(np.float32) / 255.0 for k_, v_ in A.items()}  # (as the disk keeps it)
     _CACHE[key] = {**A, "cards": out_cards, "fill": float(np.mean(fills)) if fills else 0.0, "grid": g, "size": size,
                    "triangles": int(np.mean([len(c["F"]) for c in out_cards])) if out_cards else TRIS,
                    "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick]}
+    veg_leaf._disk_put(dkey, _CACHE[key])
     return _CACHE[key]
 
 
@@ -299,7 +317,7 @@ def place(tree: dict, cards: int, at: dict) -> dict:
     pick_ = (_u(key, 3) * near.shape[1]).astype(int) % near.shape[1]
     pick_ = np.where(cost[np.arange(k), near[np.arange(k), pick_]] >= 100.0, 0, pick_)  # (never the other kind when its own exists)
     card = near[np.arange(k), pick_]
-    scale = np.clip(ext / np.maximum(E[card], 1e-6), 0.45, 1.35)
+    scale = np.clip(ext / np.maximum(E[card], 1e-6), 0.2, 1.35)  # (0.45 at least: a short bough drew a card twice its size)
     return {"pos": tree["pos"][pl["roots"]], "frame": Fr, "scale": scale, "variant": card.astype(int), "node": pl["roots"].astype(int),
             "key": key, "card": card.astype(int), "size_m": pl["size"]}
 

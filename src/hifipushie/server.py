@@ -2146,6 +2146,111 @@ def look_plants(names: list[str], at: list | None = None, spacing: float | None 
 
 
 @mcp.tool(structured_output=False)
+def grow_stand(name: str, spec: dict | None = None, patch: dict | None = None) -> str:
+    """A forest stand as a game builds one: a few grown trees per species and role, stood many times at a spacing,
+    with a floor. spec (or a merge `patch`; null deletes): {"species": "norway_spruce" or [{"species", "share",
+    "patch": plant spec patch}], "age": years, "ages": +- spread over the variants, "spacing": m between stems,
+    "size": [m, m] (the plot; x across, y deep), "variants": interior trees grown per species (3), "edge": any of
+    "n", "s", "e", "w" = sides open to the light (their outer rank is edge trees: foliage down the open side, turned
+    to face out), "rows": true = planting rows along y (a plantation's aisles), "jitter": 0-0.5 x spacing,
+    "scale": [0.9, 1.1] per-tree size, "clearings": [{"at": [x, y], "r"}], "paths": [{"points": [[x, y], ...],
+    "width"}], "floor": {"brash": fallen branches per m2 (0.35), "stumps" per m2, "ferns" per m2 (they stand where
+    light reaches: clearings, paths, open edges, a few patches), "fern": a clump preset, "moss": 0-1, "litter": 0-1},
+    "lod": {"near": m, "mid": m, "budgets": [null, 10000, 1500]}, "haze": {"distance": m, "color"}, "light":
+    {"ambient", "bounce", "sun_energy"}}. Interior trees are grown with environment.setting "forest" at this spacing
+    (bare stems, dead branches kept by the species' dead_keep, a small high live crown; their girth capped by the
+    stocking, habit.sdi_max), edge trees with "edge". Returns the forester's numbers (stems / ha, height, dbh, basal
+    area, live crown ratio, canopy cover, each variant) with warnings. No arguments but a name: the stored stand."""
+    from . import veg_stand
+    if spec is not None or patch:
+        veg_stand.save(name, spec, patch)
+    st = veg_stand.grow(veg_stand.load(name))
+    return f"stand {name}\n" + veg_stand.report(st)
+
+
+@mcp.tool(structured_output=False)
+def look_stand(name: str, views: list | None = None, size: int = 720, max_full: int = 25):
+    """Pictures of a stand (Blender; 2-8 min: every variant is meshed at up to three levels of detail). views, any
+    of "inside" (default: eye 1.7 m among the stems), "aisle" (down a row), "edge" (from outside an open side),
+    "above" (a high oblique), "canopy" (from the floor, straight up), or a camera {"eye": [x, y, z], "look", "fov"}
+    in the plot's metres (0, 0 = its middle). Each tree is drawn at the level its distance from the nearest eye
+    gives (the stand's `lod`), at most `max_full` at full detail (GPU memory: a laptop holds a few dozen full
+    trees; hundreds at budgets). Distance haze and the canopy's diffuse light are the stand's `haze` / `light`.
+    The reply counts what was drawn."""
+    from . import veg_stand
+    from . import veg_tools as vt
+    st = veg_stand.grow(veg_stand.load(name))
+    stem = str(veg_stand.home() / name / "look")
+    r = veg_stand.look(st, tuple(views or ("inside",)), stem, size=size, max_full=max_full)
+    out = [_out(PILImage.open(p), None) for _, p in r["files"]]
+    out.append("\n".join(f"{k}: {p}" for k, p in r["files"]) + f"\ndrawn: {r['near']} trees at full detail, {r['mid']} mid, {r['far']} far "
+               f"({r['meshed']} meshes, {r['triangles_instanced']} triangles instanced), floor {r['floor']}; mesh {r['mesh_s']} s, Blender {r['blender_s']} s\n"
+               + veg_stand.report(st, [j["eye"] for j in veg_stand.view_jobs(st, tuple(views or ("inside",)))]))
+    return out
+
+
+@mcp.tool(structured_output=False)
+def export_stand(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 3, impostor: bool = True) -> str:
+    """Export the stand as a forest kit (workspace/stands/<name>/export unless out_dir): one GLB per variant with
+    `lods` mesh LODs from `triangles` (default 2 x the stand's mid budget) + an impostor, wind and collision as
+    export_plant writes them; the floor's meshes (brash0-3.obj, stump0-1.obj, the fern's GLB); layout.json = every
+    tree (x, y, yaw, scale, variant) and floor thing, the LOD distances, the haze. A heavy job (minutes per variant;
+    one at a time on the machine)."""
+    from . import veg_stand
+    st = veg_stand.grow(veg_stand.load(name))
+    out = out_dir or str(veg_stand.home() / name / "export")
+    c = veg_stand.export(st, out, triangles, lods, impostor)
+    return (f"exported {len(c['variants'])} variants for {c['trees']} trees to {out}\n"
+            + "\n".join(f"  {v['name']}: " + "; ".join(f"LOD{q['lod']} {q['triangles']}" for q in v["lods"]) for v in c["variants"])
+            + "\nfiles: " + ", ".join(Path(f).name for f in c["files"]))
+
+
+@mcp.tool(structured_output=False)
+def plant_form(name: str = "", species: str = "", cases: list[dict] | None = None, fit: dict | None = None,
+               iters: int = 30, seeds: int = 2) -> str:
+    """A tree's form ACROSS AGES AND SETTINGS, measured the way foresters do, and optionally fitted: the habit that
+    looks right at one age is often a bare pole at half that age and a monster at twice. Each case grows the plant
+    (or a species preset) at {"age": years, "environment"?: {"setting": "open" | "edge" | "forest", "spacing": m,
+    "open_side": [x, y]}, "name"?} and measures height (m), width_over_height (crown width / height), crown_ratio
+    (live crown / height), widest_at (height of the widest level / height), dbh_cm, top_off (m the top stands off
+    the foot), nodes. A case may carry target bands for any of them, e.g. "crown_ratio": [0.3, 0.45] (from yield
+    tables, crown-ratio studies or boxes read off whole-tree photographs); the reply marks every miss.
+    Default cases: the plant at 0.2 / 0.45 / 1 / 2 x its age in the open, and at its age on a stand's edge and
+    inside a stand 4 m apart. fit = {habit path: [lo, hi]} (as plant_reference's) searches those numbers for the
+    least miss over ALL cases (`iters` rounds x `seeds`; minutes) and, for a stored plant, saves them."""
+    from . import vegetation
+    from . import veg_tools as vt
+    spec = vt.load(name) if name else {"species": species}
+    if not name and not species:
+        raise ValueError("give a plant's name or species=<preset>")
+    age = float(vegetation.resolve(spec)["age"])
+    if not cases:
+        cases = [{"name": f"open, {round(age * k)} y", "age": round(age * k)} for k in (0.2, 0.45, 1.0, 2.0)]
+        cases += [{"name": f"stand edge, {round(age)} y", "age": age, "environment": {"setting": "edge", "spacing": 4.0, "open_side": [-1, 0]}},
+                  {"name": f"stand interior, {round(age)} y", "age": age, "environment": {"setting": "forest", "spacing": 4.0}}]
+    msg = ""
+    sd = tuple(range(1, int(seeds) + 1))
+    if fit:
+        r = vegetation.fit_form(spec, cases, fit, iters=int(iters), seeds=sd)
+        if name:
+            v = vt.save(name, patch={"habit": r["habit"]}, note="fit to form targets")
+            msg = f"fitted v{v}: "
+        msg += f"miss {r['miss']} with habit {json.dumps(r['habit'])}\n"
+        cs = r["cases"]
+    else:
+        cs = vegetation.form_cases(spec, cases, sd)
+    L = []
+    for c in cs:
+        m = c["measures"]
+        cells = []
+        for k in vegetation.FORM_KEYS:
+            t = c.get(k)
+            cells.append(f"{k} {m[k]:g}" + ("" if t is None else (f" (in {t})" if t[0] <= m[k] <= t[1] else f" MISS {t}")))
+        L.append(f"{c.get('name', str(c['age']) + ' y')}: " + ", ".join(cells) + f"; living limbs {m['limbs']:g}; over seeds width +-{c['spread']['width_over_height'] / 2:.2f}, crown +-{c['spread']['crown_ratio'] / 2:.2f}")
+    return msg + "\n".join(L) + f"\ntotal miss {vegetation.form_miss(cs):.2f} (0 = every target met)"
+
+
+@mcp.tool(structured_output=False)
 def get_plant(name: str = "", species: str = "") -> str:
     """A plant's spec as stored ("own"), what it RESOLVES to once its species preset and the defaults are under it
     ("resolved": every habit, leaf, twig and bark value actually in force), what each number usually is

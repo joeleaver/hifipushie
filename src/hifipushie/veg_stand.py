@@ -24,7 +24,7 @@ from .vegetation import _child, _u
 
 STAND = {"species": "norway_spruce", "age": 55, "ages": 8, "spacing": 3.0, "size": [60.0, 60.0], "variants": 3,
          "edge": [], "rows": False, "jitter": 0.3, "seed": 1, "scale": [0.9, 1.1], "clearings": [], "paths": [],
-         "floor": {"brash": 0.12, "stumps": 0.004, "ferns": 0.0, "fern": "fern", "moss": 0.35, "litter": 0.6},
+         "floor": {"brash": 0.35, "stumps": 0.004, "ferns": 0.02, "fern": "fern", "moss": 0.35, "litter": 0.6},
          "lod": {"near": 14.0, "mid": 45.0, "budgets": [None, 10000, 1500]},
          "haze": {"distance": 85.0, "color": [0.7, 0.75, 0.74], "strength": 0.8},
          "light": {"ambient": 1.1, "bounce": 0.5, "sun_energy": 4.5}}
@@ -144,7 +144,7 @@ def grow(stand: dict, log=None) -> dict:
 
 def brash_mesh(variant: int = 0, length: float = 1.8) -> dict:
     """A fallen dead branch lying on the ground: a dead twig's tangle at a branch's size, pressed flat."""
-    m = veg_leaf.dead_twig_mesh({"twig": {"length": length, "radius": 0.012 + 0.004 * (variant % 3), "droop": 0.0, "forks": 3.5,
+    m = veg_leaf.dead_twig_mesh({"twig": {"length": length, "radius": 0.018 + 0.006 * (variant % 3), "droop": 0.0, "forks": 3.5,
                                           "depth": 3, "crook": 0.3, "broken": 0.35, "flat": 0.12, "lichen": 0.0}}, 40 + variant)
     V = m["V"].copy()
     V[:, 2] = np.abs(V[:, 2]) * 0.6 + 0.012
@@ -373,14 +373,14 @@ def look(st: dict, views=("inside",), out_stem: str = "stand", size: int = 720, 
             q = m_ & (fl["brash"]["variant"] == k)
             if q.any():
                 bm = brash_mesh(k)
-                scatter.append({**bm, "colors": [[0.36, 0.33, 0.29]], "pos": np.c_[fl["brash"]["xy"][q], np.zeros(q.sum())],
+                scatter.append({**bm, "colors": [[0.47, 0.44, 0.4]], "pos": np.c_[fl["brash"]["xy"][q], np.zeros(q.sum())],
                                 "yaw": fl["brash"]["yaw"][q], "scale": fl["brash"]["scale"][q]})
     if "stumps" in fl:
         m_ = close(fl["stumps"]) | True
         for k in range(2):
             q = fl["stumps"]["variant"] == k
             if q.any():
-                scatter.append({**stump_mesh(k), "colors": [[0.3, 0.26, 0.22], [0.62, 0.52, 0.38]], "pos": np.c_[fl["stumps"]["xy"][q], np.zeros(q.sum())],
+                scatter.append({**stump_mesh(k), "colors": [[0.3, 0.26, 0.22], [0.5, 0.42, 0.31]], "pos": np.c_[fl["stumps"]["xy"][q], np.zeros(q.sum())],
                                 "yaw": fl["stumps"]["yaw"][q], "scale": fl["stumps"]["scale"][q]})
     if "ferns" in fl and len(fl["ferns"]["xy"]):
         fern = _fern(s["floor"].get("fern", "fern"))
@@ -401,3 +401,100 @@ def _fern(name: str) -> dict:
     if k not in _CACHE:
         _CACHE[k] = vegetation.grow({"species": name})
     return _CACHE[k]
+
+
+# ---------------------------------------------------------------- stored stands, export
+
+def home():
+    from . import veg_tools
+    d = veg_tools.home().parent / "stands"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def load(name: str) -> dict:
+    p = home() / name / "stand.json"
+    if not p.exists():
+        raise ValueError(f"no stand {name!r}; stands: {sorted(q.name for q in home().iterdir() if (q / 'stand.json').exists())}")
+    return vegetation.json.loads(p.read_text())
+
+
+def save(name: str, spec: dict | None = None, patch: dict | None = None) -> dict:
+    """Store a stand's spec (or merge a patch into the stored one; a null in a patch deletes the key)."""
+    d = home() / name
+    cur = load(name) if spec is None else {}
+    new = copy.deepcopy(spec) if spec is not None else cur
+    if patch:
+        def merge(a, b):
+            for k, v in b.items():
+                if v is None:
+                    a.pop(k, None)
+                elif isinstance(v, dict) and isinstance(a.get(k), dict):
+                    merge(a[k], v)
+                else:
+                    a[k] = v
+        merge(new, patch)
+    resolve(new)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "stand.json").write_text(vegetation.json.dumps(new, indent=1))
+    return new
+
+
+def _obj(mesh: dict, path) -> None:
+    with open(path, "w") as f:
+        for v in mesh["V"]:
+            f.write(f"v {v[0]:.5f} {v[2]:.5f} {-v[1]:.5f}\n")  # (Y up, as the GLBs)
+        for m in sorted(set(int(q) for q in mesh["mat"])):
+            f.write(f"usemtl m{m}\n")
+            for tri in mesh["F"][mesh["mat"] == m]:
+                f.write(f"f {tri[0] + 1} {tri[1] + 1} {tri[2] + 1}\n")
+
+
+def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, impostor: bool = True, log=None) -> dict:
+    """The stand as a forest kit: one GLB per variant (LOD 0 at `triangles`, default the stand's mid budget x 2;
+    `lods` mesh LODs + an impostor), the floor's meshes (brash and stumps as OBJ, the fern as a GLB) and layout.json
+    (every tree's and floor thing's place, the LOD distances). A heavy job: one at a time on the machine."""
+    from pathlib import Path
+    from . import resources, veg_export, veg_tools
+    s = st["spec"]
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    tri = int(triangles or 2 * (s["lod"]["budgets"][1] or 10000))
+    files, rows = [], []
+    with resources.heavy("stand export"):
+        for v in st["variants"]:
+            imp = None
+            if impostor:
+                imp = _impostor(v["tree"], out / f"{v['name']}_impostor.png")
+            c = veg_export.write_glb(v["tree"], str(out / f"{v['name']}.glb"), v["name"], triangles=tri, lods=lods, impostor=imp)
+            files.append(c["path"])
+            rows.append({"name": v["name"], "lods": [{"lod": q["lod"], "triangles": q["triangles"]} for q in c["lods"]]})
+            if log:
+                log(f"{v['name']}: " + "; ".join(f"LOD{q['lod']} {q['triangles']}" for q in c["lods"]))
+        for k in range(4):
+            _obj(brash_mesh(k), out / f"brash{k}.obj")
+            files.append(str(out / f"brash{k}.obj"))
+        for k in range(2):
+            _obj(stump_mesh(k), out / f"stump{k}.obj")
+            files.append(str(out / f"stump{k}.obj"))
+        if "ferns" in st["floor"] and len(st["floor"]["ferns"]["xy"]):
+            nm = s["floor"].get("fern", "fern")
+            c = veg_export.write_glb(_fern(nm), str(out / f"{nm}.glb"), nm)
+            files.append(c["path"])
+    lj = layout_json(st)
+    lj["kit"] = rows
+    (out / "layout.json").write_text(vegetation.json.dumps(lj))
+    files.append(str(out / "layout.json"))
+    return {"files": files, "variants": rows, "trees": len(st["xy"])}
+
+
+def _impostor(tree: dict, path) -> dict:
+    """A tree's picture for its last LOD (transparent, from the side), as veg_tools.impostor makes a stored plant's."""
+    from PIL import Image
+    from . import veg_look
+    H = float(tree["height"])
+    R = float(np.percentile(np.linalg.norm(tree["pos"][:, :2], axis=1), 99)) + 0.5
+    side = max(H * 1.04, 2 * R)
+    veg_look.render(tree, [{"name": "imp", "azimuth": 0, "focus": [0, 0, side / 2], "span": side, "out": str(path), "size": [512, 512],
+                            "transparent": True, "no_ground": True}], triangles=20000)
+    return {"image": np.asarray(Image.open(path).convert("RGBA")), "size": side, "height": side}
