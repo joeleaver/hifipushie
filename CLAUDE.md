@@ -551,6 +551,49 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       work as exported; nothing needed changing. Not checked: a Mixamo clip retargeted, Unity, Unreal.
     - 15k smile (`wc_gnm15k_smile_distances.png`): fine at full-figure distance, the corners kink from a bust
       shot inward; 36k (`wc_talk_smile.png`) is fine. Blink at 36k: closed, a clean line.
+  - Regen round (2026-10-07, "regen" agent, branch `worktree-agent-a9a6d594238eb9139`; s0urc3 hand-patched every
+    export of Garrett with keep_weights.py + fix_blink.py; renders `rig_renders/rg_*`; export
+    /mnt/data/hifipushie/regen/exp_garrett; model `workspace/rg_garrett` = garrett_v20's spec with skin.only ["eyes"];
+    scratch DURABLE in /mnt/data/hifipushie/regen/: run.sh <script> (worktree code, main workspace), seatlib.py
+    (`game_pose`: s0urc3's seated_pose.json on a GLB's bones; clay rows coloured by part), rs.py + r.sh / g.sh
+    (re-skin a GLB's meshes with the code as it is, audit, layers, sheet; RS_SMOOTH / RS_TWO = the old behaviour),
+    proof.py (rows of (GLB, weights) with the SAME cameras), blink.py (Garrett's blink on v23's body mesh: under-eye
+    measure, rays reaching the eyeball), blinksheet.py, final.py, chk.py / chk2.py / chk3.py (export vs v23), tests.sh).
+    - Clothes seated: the cards' diagnosis (lookups alternating thigh / pelvis) was wrong, and so were a kernel
+      lookup and a harmonic solve I tried first. Per part NOTHING was wrong (weight steps, stretch, folds read the
+      same as the good export). The fault was BETWEEN parts: `WORN_SMOOTH` smoothed each garment over its OWN mesh, so
+      two layers 2 mm apart drift (a jacket's hem toward the pelvis above it, the trousers on down the thigh); at 90
+      deg of hip the jacket sinks into the trousers where it has less thigh, and the line where two coarse meshes
+      cross is the sawtooth. Now `WORN_SMOOTH` 0 (`parts.<p>.rig_smooth` still there) and cloth reads the skin from
+      both its faces (`rig_template.from_surface(two_sided=)`, `rig.TWO_SIDED`: what the smoothing papered over on
+      collars). `parts.<p>.rig_weights` "surface" | "around" (`rig_template.around_surface`, a kernel average: worse
+      for layers, each layer's kernel differs; kept for loose single garments) | "distance".
+    - `rig_audit.layers` + `seated` + `layers_text`: vertices of one part lying on another at rest and > 3 mm under
+      the same spot posed, per pair, with where; over `LAYER_BAD` 12 is BAD. In the rig tool's text (always, seated),
+      `rig(pose="seated")`, the export log (WARNING) and json `rig.layers_seated`. Garrett seated, v23's meshes: old
+      code jacket through trousers 18 (20 mm), new 0; weights audit 15 BAD -> 6 (the smoothing was also the leak at
+      knees / elbows / feet). Golfer re-skinned: 7 -> 7 BAD, arm leak 18 -> 14 mm, thigh flips 41 / 30 -> 27 / 24.
+    - Blink: on a 20k low poly most of the seal's 14 bins hold no margin vertex, so a bin's "highest lower-lid
+      vertex" was a cheek vertex 13 mm under the eye, lifted to the lid line. `GnmFace._lid_edge` finds margins by
+      their lid's posed envelope (`LID_EDGE`), `_lid_share` fades the correction by distance from the margin
+      (`LID_REACH` 9 / 4 mm). `spec.face_shapes.lid_seal` false | amount | {amount, over, band, reach}.
+      `faceshapes.unevenness` (a vertex's move outside its edge neighbours' range, per m of edge; tears and the
+      blink's own margins left out) in the export log, WARNING over 0.2 for non-mouth shapes (the kit's mouth shapes
+      read 0.2-1.6 at the slit's ends by design); json `parts.<p>.face_shape_unevenness`. A gradient or Laplacian
+      measure does not separate the fault (a closing lid is steep). s0urc3's under-eye measure on the fresh
+      export: 0.18 / 0.25 and 0.16 / 0.26 (faulty 0.41 / 0.73, their repair 0.15 / 0.20).
+    - `skin.only` = [groups] (eyes, eye_rims, zones, lips, roughness, micro, features, shading); without "shading"
+      `skin.part_base` is None, `_pre` is stripped (ordinary layers) and the part's shading is untouched.
+    - Posing with s0urc3's seated_pose.json: twist joints REST ROTATED (+Y along the segment): take the rest
+      rotation out of model quats, or thighs collapse to planks (cost me an hour of wrong diagnosis).
+    - Found on the way, NOT fixed (main's state, not these cards): (1) a fresh export's meshes are no longer vertex
+      for vertex v23's (hidden-face pruning changed since: `_deep_hidden`), so s0urc3's patches could not even be
+      applied to it; (2) rig3's long head falloff makes Garrett's neck skin Head 0.70 on average 12-16 cm under the
+      Head joint (v23: 0.16), out to |x| 12 cm: in the game's idle and at head 33 the audit reads "body through
+      jacket_trim 52-73, body through shirt 40" (v23: 0), and Head 33 leaks 72 mm onto 300 shoulder-owned vertices;
+      in clay it is modest (skin at the neckline); (3) this export's low poly has "TORN OR TANGLED at eye_front.L
+      (12)": the left upper lid is a few big triangles with a hard vertical edge, a dark crease up the lid in every
+      blink (v23's lid is smoother); the right eye has a small dark notch at the outer corner in a full blink.
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
