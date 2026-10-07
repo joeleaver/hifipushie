@@ -4269,9 +4269,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             cu = {"smooth": 3, "keep": 0.002}
     # (the REAL body: layered, `body` is padded out over the garment underneath, and pushing the finished jacket
     # off that pad moved it 7 mm at p95 and through its own collar: 88 crossings the sim didn't have)
+    cu = dict(cu if isinstance(cu, dict) else {"smooth": 0} if cu is False else {})
+    cu.setdefault("pressed", seam_press_mask(M, g))  # (seam kinds: a "welt" seam isn't pressed)
     res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body_real,  # hung: the body is gone
-                                       cu if isinstance(cu, dict) else {"smooth": 0}
-                                       if cu is False else {}, stiff=interfacing(Bp, M))
+                                       cu, stiff=interfacing(Bp, M))
     if construct and not res["constructed"].get("fine_settle"):  # (the smoothing can bring cloth back out through a
         # made flap)
         held_ = np.isin(M["piece"], [M["names"].index(nm) for nm in res["constructed"]["pieces"]])
@@ -4477,7 +4478,7 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
 
 
 SEAM_JOIN = 0.15  # x h: a fold line ending this near a seam sample ends ON it (no sliver edge on the seam)
-CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True}
+CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True, "seams": True, "press": True}
 
 
 SEAM_GAP_MM = 0.5  # a finished seam's two sides further apart than this at p95 shows as an open seam
@@ -4562,16 +4563,181 @@ def _seam_relax(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, keep
     return X
 
 
+def _welded_roots(M: dict, X: np.ndarray, tol: float = 1e-6) -> np.ndarray:
+    """Per vertex the id of its welded group (the vertices of closed sewn pairs as one; others themselves)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    sw = sw[np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1) <= tol] if len(sw) else sw
+    n = len(X)
+    A = coo_matrix((np.ones(len(sw)), (sw[:, 0], sw[:, 1])), shape=(n, n))
+    _, lab = connected_components(A, directed=False)
+    return lab
+
+
+_KB = {}
+
+
+def _kb() -> dict:
+    if not _KB:
+        _KB.update(json.loads((Path(__file__).with_name("garment_kb.json")).read_text()))
+    return _KB
+
+
+def seam_finishes() -> dict:
+    """The seam finishes (garment_kb.json seam_finishes): name -> numbers."""
+    return {k: v for k, v in _kb()["seam_finishes"].items() if not k.startswith("_")}
+
+
+def garment_kind(g: dict) -> str | None:
+    """The garment's kind (garment_kb.json kinds): its design sheet's, else its draft design's."""
+    d = g.get("design")
+    if isinstance(d, dict) and d.get("kind"):
+        return d["kind"]
+    e = expanded(g)
+    fr = (e.get("pattern") or {}).get("from") if isinstance(e.get("pattern"), dict) else None
+    d = _kb()["designs"].get(fr) if isinstance(fr, str) else None
+    if isinstance(d, dict):
+        return d.get("kind") or (d.get("kinds") or [None])[0]
+    return None
+
+
+def seam_kinds(M: dict, g: dict) -> dict:
+    """{seam index: seam finish name} (garment_kb.json seam_finishes). detail "seam_finish" = the
+    garment's default (else its kind's `seam_finish`, else pressed_open); detail "seam_finishes" = {seam index,
+    "pieceA/pieceB" or a piece name (".L"/".R" may be left off: both sides): finish} for single seams."""
+    det = expanded(g).get("detail") or {}
+    kd = _kb()["kinds"].get(garment_kind(g) or "", {})
+    base = det.get("seam_finish") or kd.get("seam_finish") or "pressed_open"
+    over = det.get("seam_finishes") or {}
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    ss = np.asarray(M["sew_seam"])
+    strip = lambda n: n[:-2] if n[-2:] in (".L", ".R") else n
+    out = {}
+    for si in np.unique(ss):
+        r = np.where(ss == si)[0][0]
+        nm = {M["names"][M["piece"][sw[r, 0]]], M["names"][M["piece"][sw[r, 1]]]}
+        k = base
+        for key, v in over.items():
+            ks = str(key)
+            if ks == str(int(si)):
+                k = v
+            elif "/" in ks:
+                a, b = ks.split("/", 1)
+                names = list(nm) * (2 if len(nm) == 1 else 1)
+                if ({a, b} == set(nm)) or ({a, b} == {strip(n) for n in nm} and len({strip(n) for n in nm}) == 2) \
+                        or (a == b and {strip(n) for n in names} == {a}):
+                    k = v
+            elif ks in nm or ks in {strip(n) for n in nm}:
+                k = v
+        if k not in seam_finishes():
+            raise ClothError(f"seam finish {k!r} unknown (have {', '.join(seam_finishes())})")
+        out[int(si)] = k
+    return out
+
+
+PRESS = {"reach": 0.03, "passes": 16, "cap": 0.4}  # m out from the seam either side; Taubin passes; max move x h
+
+
+def seam_press_mask(M: dict, g: dict | None) -> np.ndarray:
+    """Per sewn pair: is its seam pressed (a pressed seam reads as a fine line, the cloth runs smooth across it)? From
+    the garment's seam kinds (`seam_kinds`): every kind but "welt" (a seam made to stand: a corded or piped seam)."""
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    out = np.ones(len(sw), bool)
+    if g is None or not len(sw):
+        return out
+    kinds = seam_kinds(M, g)
+    ss = np.asarray(M["sew_seam"])
+    for si, k in kinds.items():
+        if not seam_finishes().get(k, {}).get("press", True):
+            out[ss == si] = False
+    return out
+
+
+def _seam_press(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, opts: dict | None = None,
+                pressed: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
+    """Seams PRESSED: the surface made smooth ACROSS each closed seam, as a tailor's iron leaves it (and as garment
+    artists model it: nearly flat geometry, the line itself in the normal map). A solver's stitch is a free hinge (no
+    bending is passed across it), so each side's last row of triangles tilts on its own and the welded seam stands as
+    a crease, a ridge with a valley beside it read from across the room: on a 2 cm blazer the two sides' normals met
+    at 20-45 deg (side seams 20, centre back 45; the cloth's own neighbouring normals 10). Here the welded mesh's
+    vertices within `reach` of a seam (rings, fading out) are Taubin-smoothed (lambda/mu: no shrinking), each welded
+    group moved as one, never more than `cap` x h; interfaced vertices (a made collar's edge) stay. `pressed` (per
+    sewn pair): seams left out are kept as they are (kind "welt")."""
+    o = dict(PRESS, **(opts or {}))
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    if not len(sw):
+        return X, {}
+    root = _welded_roots(M, X)
+    closed = root[sw[:, 0]] == root[sw[:, 1]]
+    use = closed if pressed is None else closed & np.asarray(pressed, bool)
+    if not use.any():
+        return X, {}
+    hard = np.zeros(len(X), bool) if stiff is None else np.asarray(stiff) > 0.5
+    ur, inv = np.unique(root, return_inverse=True)  # groups 0..G-1
+    G = len(ur)
+    P = np.zeros((G, 3))
+    np.add.at(P, inv, X)
+    P /= np.bincount(inv, minlength=G)[:, None]
+    hardg = np.zeros(G, bool)
+    hardg[inv[hard]] = True
+    F = np.asarray(M["F"])
+    E = inv[np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]]
+    E = np.unique(np.sort(E[E[:, 0] != E[:, 1]], 1), axis=0)
+    a, b = E[:, 0], E[:, 1]
+    deg = np.bincount(a, minlength=G) + np.bincount(b, minlength=G)
+    rings = int(np.clip(np.ceil(o["reach"] / max(h, 1e-4)), 1, 6))
+    dist = np.full(G, 99)
+    dist[inv[sw[use].ravel()]] = 0
+    for r in range(1, rings + 1):
+        cur = dist == r - 1
+        nb = np.zeros(G, bool)
+        nb[a[cur[b]]] = True
+        nb[b[cur[a]]] = True
+        dist[nb & (dist > r)] = r
+    w = np.where(dist <= rings, 1.0 - dist / (rings + 1.0), 0.0)
+    w[hardg] = 0.0
+    # a vertex on a free edge (a hem's end at the seam) keeps its place across the edge: smoothing it pulls the edge in
+    if "border" in M:
+        bg = np.zeros(G, bool)
+        bg[inv[np.asarray(M["border"], bool)]] = True
+        bg[inv[sw.ravel()]] &= False  # (seam vertices are borders of their pieces: they're what moves)
+        w[bg] *= 0.3
+    if not (w > 0).any():
+        return X, {}
+    P0 = P.copy()
+    cap = float(o["cap"]) * h
+
+    def lap(Q):
+        S = np.zeros_like(Q)
+        np.add.at(S, a, Q[b])
+        np.add.at(S, b, Q[a])
+        return S / np.maximum(deg, 1)[:, None] - Q
+    for _ in range(int(o["passes"])):
+        P = P + (0.5 * w)[:, None] * lap(P)
+        P = P - (0.53 * w)[:, None] * lap(P)
+        D = P - P0
+        L = np.linalg.norm(D, axis=1)
+        P = P0 + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
+    mv = np.linalg.norm(P - P0, axis=1)
+    Xn = X + (P - P0)[inv]
+    return Xn, {"moved_p95_mm": round(float(np.percentile(mv[w > 0], 95) * 1000), 2), "rings": rings,
+                "seams": int(len(np.unique(np.asarray(M["sew_seam"])[use])))}
+
+
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """The pass artists make after the sim: the fine crinkle (frozen buckles a triangle or two across) smoothed away by
     Taubin passes (a band-limited smoothing that doesn't shrink the cloth: the folds, many triangles across, stay),
     seams welded (both sides at their midpoint), and anything the smoothing pulled toward the body pushed back out to
     `clear`. opts: {"smooth": passes (0 = off), "weld": bool, "clear": m, "keep": m, "seams": bool (welded seams
-    pressed flat, _seam_relax; default on)}. stiff (per vertex 0..1, the
+    smoothed along their line, _seam_relax; default on), "press": bool | {"reach", "passes", "cap"} (the surface made
+    smooth ACROSS each seam, _seam_press; default on), "pressed": per sewn pair, which seams are pressed (build
+    passes seam_press_mask: kind "welt" isn't)}. stiff (per vertex 0..1, the
     interfacing): interfaced pieces (collars, cuffs, plackets) aren't smoothed: they don't crinkle, and smoothing
     their tight folds and overlaps crumpled them (a cuff 2 -> 6%)."""
     o = dict(CLEANUP, **(opts or {}))
     X = np.asarray(V, float).copy()
+    press_info = {}
     # passes are for 1 cm triangles: a smoothing's reach grows with the edge length times sqrt(passes)
     h = float(np.median(np.linalg.norm(X[M["F"][:, 0]] - X[M["F"][:, 1]], axis=1)))
     n = int(round(float(o["smooth"]) * min(1.0, (0.01 / max(h, 1e-4)) ** 2)))
@@ -4605,6 +4771,9 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         weld()
         if o.get("seams", True):
             X = _seam_relax(X, M, h, stiff, float(o["keep"]))
+        if o.get("press", True):
+            X, press_info = _seam_press(X, M, h, stiff, o["press"] if isinstance(o.get("press"), dict) else None,
+                                        pressed=o.get("pressed"))
     if o["clear"] and body is not None and len(body.V):
         vn, tree = body.normals()
         _, i = tree.query(X)
@@ -4616,7 +4785,7 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
             if o["weld"] and len(M["sew"]):  # (the push moved one side of a seam and not the other)
                 weld()
     moved = np.linalg.norm(X - V, axis=1)
-    return X, {"passes": n, "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
+    return X, {"passes": n, **({"press": press_info} if press_info else {}), "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
                "moved_max_mm": round(float(moved.max() * 1000), 2)}
 
 
@@ -5375,9 +5544,22 @@ def report(gname: str, res: dict) -> str:
 
 # ---------------------------------------------------------------- detail: seams, topstitching, hems, buttons
 
-DETAIL = {"thread": None, "button": None, "seam": 0.0012, "seam_width": 0.0025, "allowance": 0.0006, "topstitch": 0.006, "stitch": 0.003,
+DETAIL = {"thread": None, "button": None, "seam_finish": None, "seam_finishes": None,
+          "seam": None, "seam_width": None, "allowance": None, "topstitch": None, "stitch": 0.003,
           "stitch_gap": 0.0015, "stitch_depth": 0.0003, "hem": 0.02, "hem_height": 0.0007, "buttons": True,
           "texture": 2048, "folds": None, "fold_gain": 1.0, "fold_opts": None}
+# seam_finish / seam_finishes: how seams are finished (garment_kb.json seam_finishes; seam_kinds); seam, seam_width,
+# allowance: override every finish's groove depth, groove half width, allowance rise (m; None = the finish's own);
+# topstitch: the row on free edges (hems), None = the garment kind's hem default (hem_topstitch)
+
+
+def hem_topstitch(g: dict) -> float:
+    """The topstitching row's distance in from a free edge (m) the garment's kind hems with: 0 for blind-stitched
+    hems (tailored jackets, coats, suit trousers, skirts), else 6 mm."""
+    kd = _kb()["kinds"].get(garment_kind(g) or "", {})
+    ch = (kd.get("details") or {}).get("hem")
+    det = ((_kb()["details"].get("hem") or {}).get(ch) or {}).get("detail") or {}
+    return float(det.get("topstitch", 0.006))
 
 
 def fine_folds(res: dict, g: dict, uv: np.ndarray, side: float, texture: int | None = None):
@@ -5419,9 +5601,22 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     sewn = np.zeros(len(M["uv"]), bool)
     if len(M["sew"]):
         sewn[M["sew"].ravel()] = True
+    # per sewn vertex its seam and side (0: the seam's first piece, 1: its second, the side a seam pressed to one side
+    # lies toward), and each seam's finish (seam_kinds: garment_kb.json seam_finishes)
+    sw_ = np.asarray(M["sew"]).reshape(-1, 2)
+    vseam = np.full(len(M["uv"]), -1)
+    vside = np.zeros(len(M["uv"]), int)
+    if len(sw_):
+        ss_ = np.asarray(M["sew_seam"])
+        vseam[sw_[:, 0]], vside[sw_[:, 0]] = ss_, 0
+        vseam[sw_[:, 1]], vside[sw_[:, 1]] = ss_, 1
+    kinds = seam_kinds(M, g) if len(sw_) else {}
+    fin_all = seam_finishes()
+    codes = [None, None]  # L code -> (finish numbers, side); 0 none, 1 free edge
     inside = Image.new("L", (T, T), 0)
     di = ImageDraw.Draw(inside)
-    L = np.zeros((T, T), np.uint8)  # 1 seam edge, 2 free edge
+    L = np.zeros((T, T), np.int32)  # 1 free edge, 2+ a seam edge (codes: its finish and side)
+    code_of = {}
     A = np.zeros((T, T), np.float32)  # arc length along the piece's outline (m): stitches are dashes along it
     for k in range(len(M["names"])):
         ring = np.where((M["piece"] == k) & M["border"])[0]
@@ -5430,7 +5625,15 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         di.polygon([px(uv[i]) for i in ring], fill=255)
         arc = 0.0
         for a, b in zip(ring, np.roll(ring, -1)):
-            kind = 1 if (sewn[a] and sewn[b]) else 2
+            if sewn[a] and sewn[b]:
+                si_ = int(vseam[a] if vseam[a] >= 0 else vseam[b])
+                ck = (kinds.get(si_, "pressed_open"), int(vside[a]))
+                if ck not in code_of:
+                    code_of[ck] = len(codes)
+                    codes.append((fin_all[ck[0]], ck[1]))
+                kind = code_of[ck]
+            else:
+                kind = 1
             pa, pb = np.array(px(uv[a])), np.array(px(uv[b]))
             n = int(np.ceil(np.linalg.norm(pb - pa) * 2)) + 1
             f = np.linspace(0, 1, n)
@@ -5446,25 +5649,46 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     d = dist * mpt  # metres to the nearest edge
     kind = L[iy, ix]
     H = np.zeros((T, T), np.float32)
-    seam = kind == 1
-    free = kind == 2
-    # a sewn edge: the groove where the two pieces meet, the allowance folded under beside it
-    H -= np.where(seam, o["seam"] * np.exp(-(d / o["seam_width"]) ** 2), 0)
-    H += np.where(seam, o["allowance"] * np.exp(-((d - 2.2 * o["seam_width"]) / (1.2 * o["seam_width"])) ** 2), 0)
+    free = kind == 1
+    # dashes along the outline (topstitching): each stitch a small dent
+    per = o["stitch"] + o["stitch_gap"]
+    s_ = A[iy, ix] % per  # along the outline at the nearest edge point
+    dash = np.clip((o["stitch"] - np.abs(2 * s_ - o["stitch"])) / (1.5 * mpt + 1e-9), 0, 1).astype(np.float32)
+    row = lambda at: np.exp(-((d - at) / max(0.0004, 1.2 * mpt)) ** 2)
+    thread = np.zeros((T, T), np.float32)
+    # a sewn edge, by its finish (garment_kb.json seam_finishes): a fine groove where the two pieces meet, the
+    # allowances under the cloth a faint broad rise (both sides when pressed open, the toward side when pressed to one
+    # side), its rows of topstitching. A groove narrower than a texel can't be drawn: it is held to 0.8 texel (the
+    # normal map would alias it into dashes). detail seam / seam_width / allowance set override every finish.
+    for c in range(2, len(codes)):
+        m = kind == c
+        if not m.any():
+            continue
+        fin, sd = codes[c]
+        gr = o["seam"] if o["seam"] is not None else fin["groove"]
+        gw = max(o["seam_width"] if o["seam_width"] is not None else fin["groove_width"], 0.8 * mpt)
+        al = o["allowance"] if o["allowance"] is not None else fin["allowance"]
+        mine = fin["sides"] == "both" or sd == 1
+        H -= np.where(m, gr * np.exp(-(d / gw) ** 2), 0)
+        if mine and al:
+            aw = max(fin["allowance_width"], 1.5 * mpt)
+            H += np.where(m, al * np.exp(-((d - fin["allowance_at"]) / aw) ** 2), 0)
+        if mine:
+            for r_ in fin["rows"]:
+                t_ = np.where(m, row(r_) * dash, 0).astype(np.float32)
+                thread = np.maximum(thread, t_)
+                H -= o["stitch_depth"] * t_
     # a free edge: a turned hem, the doubled cloth proud up to `hem` in, its fold rounded at the edge
     if o["hem"]:
         hem = np.clip((o["hem"] - d) / (0.15 * o["hem"]), 0, 1) * np.clip(d / 0.0015, 0, 1)
         H += np.where(free, o["hem_height"] * hem, 0)
-    # topstitching: a dashed line `topstitch` in from each edge, each stitch a small dent
-    thread = np.zeros((T, T), np.float32)
-    if o["topstitch"]:
-        per = o["stitch"] + o["stitch_gap"]
-        s = A[iy, ix] % per  # along the outline at the nearest edge point
-        dash = np.clip((o["stitch"] - np.abs(2 * s - o["stitch"])) / (1.5 * mpt + 1e-9), 0, 1)
-        dash = np.minimum(dash, 1.0).astype(np.float32)
-        band = np.exp(-((d - o["topstitch"]) / max(0.0004, 1.2 * mpt)) ** 2)
-        thread = band * dash
-        H -= o["stitch_depth"] * thread
+    # topstitching on free edges (hems, a collar's or a cuff's edge): a dashed line `topstitch` in (a blind-stitched
+    # hem, a tailored jacket's or trousers', shows none: the kind's hem default says 0)
+    ts = o["topstitch"] if o["topstitch"] is not None else hem_topstitch(g)
+    if ts:
+        t_ = np.where(free, row(ts) * dash, 0).astype(np.float32)
+        thread = np.maximum(thread, t_)
+        H -= o["stitch_depth"] * t_
     # stitch lines drawn on a piece (its pattern lines named *_stitch: a fly's J, a pocket's outline): dashes along them
     for key_, Ls in (M.get("stitch_lines") or {}).items():
         k_ = M["names"].index(key_.split(":", 1)[0]) if key_.split(":", 1)[0] in M["names"] else None
@@ -5523,7 +5747,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     n /= np.linalg.norm(n, axis=2, keepdims=True)
     N = ((n * 0.5 + 0.5) * 255).round().astype(np.uint8)
     Hc = H - (np.asarray(extra, np.float32) * inside if extra is not None else 0)  # (folds don't darken like grooves)
-    cav = np.clip(1 + Hc / 0.0015, 0.55, 1.0).astype(np.float32)
+    cav = np.clip(1 + Hc / 0.004, 0.7, 1.0).astype(np.float32)
     btn *= inside
     return {"height": H, "normal": N, "cavity": cav, "thread": thread.astype(np.float32), "button": btn, "inside": inside,
             "texels_per_m": T / side}
@@ -5590,7 +5814,10 @@ def scene_job(name: str, spec: dict, log: list | None = None) -> list:
     for gname, g, res in garments(name, spec, say):
         uv, side = atlas_uv(res["mesh"])
         path = store._dir(name) / f"cloth_{gname}.npz"
-        np.savez(path, verts=res["V"].astype(np.float32), faces=res["mesh"]["F"].astype(np.int32),
+        # (the pieces wound alike, facing out: Solidify grows every piece the same way; vertex ids stay the mesh's, so a
+        # sculpt pulls back per vertex)
+        np.savez(path, verts=res["V"].astype(np.float32),
+                 faces=oriented_faces(res["mesh"], res["V"], body=res["body"]).astype(np.int32),
                  uv=uv.astype(np.float32), base=(res["V"] - _sculpt_offset(res)).astype(np.float32))
         e = {"name": f"cloth:{gname}", "garment": gname, "key": res["key"] + _detail_key(g, res), "npz": str(path),
              "color": g.get("color", "#8fb3d9"), "thickness": fabric(g).get("thickness", 0.0008),
@@ -5701,19 +5928,15 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         if hide.any():
             log(f"cloth {gname}: {int(hide.sum())} of {len(F)} triangles hidden under another garment, left out")
             F = F[~hide]
-        # vertex normals (area weighted)
-        fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
-        vn = np.zeros_like(V)
-        for k in range(3):
-            np.add.at(vn, F[:, k], fn)
-        vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
-        # which way is out: away from the body
+        # every piece wound to face out (a garment's pieces come out of the pattern either way: one global flip left
+        # half a jacket facing in), normals shared across closed seams (each side its own normal shaded every seam
+        # as a line, and pushed the inner shell apart there)
         body = res["body"]
-        _, ni = cKDTree(body.V).query(V)
-        flip = np.sum(vn * (V - body.V[ni]), 1) < 0
-        if np.mean(flip) > 0.5:
-            F = F[:, [0, 2, 1]]
-            vn = -vn
+        fl = piece_flips(M, V, body)
+        pf_ = np.asarray(M["piece"])[F[:, 0]]
+        F = F.copy()
+        F[fl[pf_]] = F[fl[pf_]][:, [0, 2, 1]]
+        vn = shared_normals(M, V, F)
         th = float(fabric(g).get("thickness", 0.0008))
         Vin = V - vn * th
         Vall = np.r_[V, Vin]
@@ -5727,6 +5950,13 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             UVall = np.r_[UVall, uv[bt["at"]]]
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
+        # the shared normals (outer shell; the inner shell the opposite), tangents made orthogonal to them again
+        nv = np.r_[vn, -vn, np.zeros((len(Vall) - 2 * len(V), 3))]
+        cw = Fall.ravel()
+        own = cw < 2 * len(V)  # (buttons keep their own)
+        n[own] = nv[cw[own]]
+        tt = tt - np.sum(tt * n, 1, keepdims=True) * n
+        tt /= np.linalg.norm(tt, axis=1, keepdims=True) + 1e-12
         part = {"verts": Vall.astype(np.float32), "corner_vert": Fall.ravel().astype(np.int64),
                 "uv": UVc.astype(np.float32),
                 "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32)}
@@ -5820,12 +6050,12 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
     for gn, g, res in results:
         o = {"name": f"g_{gn}", "V": res["V"], "F": res["mesh"]["F"], "color": g.get("color", "#8fb3d9"),
              "thickness": max(0.0006, fabric(g).get("thickness", 0.0008))}
+        Fw, Fc = welded_faces(res["mesh"], res["V"], body=res["body"], corners=True)
+        o["F"] = Fw  # (one surface: the seams' vertices shared, the pieces wound alike)
         if textured and g.get("detail", {}) is not False:
             uv, side = atlas_uv(res["mesh"])
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g, extra=fine_folds(res, g, uv, side))
-            o.update(uv=uv, maps={k: str(v) for k, v in maps.items() if k != "texels_per_m"})
-        else:
-            o["F"] = welded_faces(res["mesh"], res["V"])
+            o.update(uv_corner=uv[Fc.ravel()], maps={k: str(v) for k, v in maps.items() if k != "texels_per_m"})
         objs.append(o)
         if res.get("buttons"):
             objs.append({"name": f"buttons_{gn}", "V": res["buttons"]["V"], "F": res["buttons"]["F"],
@@ -5888,13 +6118,95 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
 # ---------------------------------------------------------------- views
 
 
-def welded_faces(M: dict, V: np.ndarray, tol: float = 0.0006) -> np.ndarray:
+def piece_flips(M: dict, V: np.ndarray, body=None, tol: float = 0.0006) -> np.ndarray:
+    """Per piece: must its faces be turned over so the garment is ONE consistently wound surface facing out? The
+    pattern mesh winds each piece as its pattern lies (a mirrored piece, a piece flipped in placement, a turned
+    collar all come out either way): on the suit's blazer the backs, the left sleeve's two pieces faced IN and the
+    rest out. Welded (clay looks) the normals of a seam's two sides then cancel into a pale or dark line, Solidify
+    grows one side out and the other in (a step at every such seam), and the export's inner shell is pushed out on
+    those pieces. Consistency comes from the seams (closed sewn pairs: the two sides' vertex normals, as wound, agree
+    or oppose; a maximum spanning tree over the pieces by that vote), then the whole is turned to face away from
+    the body (or the garment's own vertical axis) by area."""
+    F = np.asarray(M["F"])
+    P = len(M["names"])
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    vn = np.zeros_like(V)
+    for k in range(3):
+        np.add.at(vn, F[:, k], fn)
+    vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+    pf = np.asarray(M["piece"])[F[:, 0]]
+    W = np.zeros((P, P))
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    if len(sw):
+        sw = sw[np.linalg.norm(V[sw[:, 0]] - V[sw[:, 1]], axis=1) <= tol]
+        pa, pb = np.asarray(M["piece"])[sw[:, 0]], np.asarray(M["piece"])[sw[:, 1]]
+        d = np.sum(vn[sw[:, 0]] * vn[sw[:, 1]], 1)
+        k = pa != pb
+        np.add.at(W, (pa[k], pb[k]), d[k])
+        np.add.at(W, (pb[k], pa[k]), d[k])
+    area = np.bincount(pf, weights=0.5 * np.linalg.norm(fn, axis=1), minlength=P)
+    sgn = np.zeros(P)
+    for start in np.argsort(-area):  # (each connected group of pieces from its largest)
+        if sgn[start] or area[start] == 0:
+            continue
+        sgn[start] = 1
+        while True:  # Prim: the strongest vote from a placed piece to an unplaced one
+            placed = sgn != 0
+            S = np.abs(W) * placed[:, None] * (~placed)[None, :]
+            i, j = np.unravel_index(int(np.argmax(S)), S.shape)
+            if S[i, j] <= 1e-9:
+                break
+            sgn[j] = sgn[i] * (1 if W[i, j] > 0 else -1)
+    sgn[sgn == 0] = 1
+    # which way is out
+    c = V.mean(0)
+    if body is not None and len(getattr(body, "V", [])):
+        _, ni = cKDTree(body.V).query(V[F].mean(1))
+        outv = V[F].mean(1) - body.V[ni]
+    else:
+        outv = V[F].mean(1) - c
+        outv[:, 2] = 0
+    face_out = np.sum(fn * outv, 1) * sgn[pf]
+    if np.sum(np.sign(face_out) * 0.5 * np.linalg.norm(fn, axis=1)) < 0:
+        sgn = -sgn
+    return sgn < 0
+
+
+def oriented_faces(M: dict, V: np.ndarray, F: np.ndarray | None = None, body=None) -> np.ndarray:
+    """F (default the mesh's) with each piece's faces wound so the garment is one surface facing out (piece_flips).
+    F may be welded (vertex ids of M's vertices, as welded_faces returns)."""
+    F = np.asarray(M["F"] if F is None else F)
+    fl = piece_flips(M, V, body)
+    pf = np.asarray(M["piece"])[F[:, 0]]
+    out = F.copy()
+    out[fl[pf]] = out[fl[pf]][:, [0, 2, 1]]
+    return out
+
+
+def shared_normals(M: dict, V: np.ndarray, F: np.ndarray, tol: float = 0.0006) -> np.ndarray:
+    """Vertex normals of the (oriented) faces with every closed seam's vertices sharing one normal: a sewn seam is
+    one surface, so it shades as one (each side's own normal drew every seam as a shading line)."""
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    vn = np.zeros_like(V)
+    for k in range(3):
+        np.add.at(vn, F[:, k], fn)
+    root = _welded_roots(M, V, tol)
+    acc = np.zeros((root.max() + 1, 3))
+    np.add.at(acc, root, vn)
+    vn = acc[root]
+    return vn / (np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12)
+
+
+def welded_faces(M: dict, V: np.ndarray, tol: float = 0.0006, body=None, orient: bool = True,
+                 corners: bool = False):
     """The mesh's faces with the two vertices of every CLOSED seam pair made one (the clay look: a sewn seam is one
     surface. As two rows of vertices at the same place, each with its own normal, every seam rendered as a pale
-    line, read as visible stitching or a gap)."""
-    F, sew = np.asarray(M["F"]), np.asarray(M["sew"]).reshape(-1, 2)
+    line, read as visible stitching or a gap), each piece wound so the whole faces out (oriented_faces; `orient`).
+    corners: also the same faces in M's own vertex ids (per-corner uv for a textured look)."""
+    F = oriented_faces(M, V, body=body) if orient else np.asarray(M["F"])
+    sew = np.asarray(M["sew"]).reshape(-1, 2)
     if not len(sew):
-        return F
+        return (F, F) if corners else F
     root = np.arange(len(V))
 
     def find(i):
@@ -5908,7 +6220,12 @@ def welded_faces(M: dict, V: np.ndarray, tol: float = 0.0006) -> np.ndarray:
             root[max(ra, rb)] = min(ra, rb)
     rm = np.array([find(i) for i in range(len(V))])
     Fw = rm[F]
-    return Fw[(Fw[:, 0] != Fw[:, 1]) & (Fw[:, 1] != Fw[:, 2]) & (Fw[:, 0] != Fw[:, 2])]
+    ok = (Fw[:, 0] != Fw[:, 1]) & (Fw[:, 1] != Fw[:, 2]) & (Fw[:, 0] != Fw[:, 2])
+    _, first = np.unique(np.sort(Fw, 1), axis=0, return_index=True)  # (two faces made one by the weld: Blender's
+    dup = np.ones(len(Fw), bool)  # validate would drop one and a per-corner uv would no longer line up)
+    dup[first] = False
+    ok &= ~dup
+    return (Fw[ok], F[ok]) if corners else Fw[ok]
 
 
 def strain_colors(strain: np.ndarray, limit: float) -> np.ndarray:
@@ -5937,6 +6254,9 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
             data[o["name"] + "_C"] = np.asarray(o["C"], np.float32)
         if o.get("uv") is not None:
             data[o["name"] + "_UV"] = np.asarray(o["uv"], np.float32)
+        if o.get("uv_corner") is not None:  # (per corner: welded faces whose seam vertices are shared keep each
+            # side's own uv)
+            data[o["name"] + "_UVC"] = np.asarray(o["uv_corner"], np.float32)
         objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "maps")})
     tag = Path(prefix).name
     np.savez(d / f"_{tag}_render.npz", **data)

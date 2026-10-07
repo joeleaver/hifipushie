@@ -605,7 +605,10 @@ def _render_textured(job, d):
         ob = _mesh(nm, V, F)
         for p in ob.data.polygons:
             p.use_smooth = True
-        if nm + "_UV" in d.files:
+        if nm + "_UVC" in d.files:  # per corner (welded faces: a seam vertex has each side's own uv)
+            uvl = ob.data.uv_layers.new(name="pattern")
+            uvl.data.foreach_set("uv", d[nm + "_UVC"].astype(np.float32).ravel())
+        elif nm + "_UV" in d.files:
             UV = d[nm + "_UV"]
             uvl = ob.data.uv_layers.new(name="pattern")
             uvl.data.foreach_set("uv", UV[np.asarray(F).ravel()].astype(np.float32).ravel())
