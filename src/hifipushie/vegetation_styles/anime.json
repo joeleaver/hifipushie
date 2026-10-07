@@ -234,7 +234,8 @@
     "width": 0.55,
     "core": 0.4
    },
-   "clump_min_cards": 80
+   "clump_min_cards": 80,
+   "lod_grow": 2.4
   },
   "colour": {
    "value": 1.35
