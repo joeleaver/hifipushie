@@ -64,6 +64,22 @@ def _attach(T, spec: dict):
     return T
 
 
+def _register_kind(T):
+    """A mixture ("crater + coast") or a saved kind lives only in the building process's KINDS table: a terrain loaded
+    from the cache in a fresh process must put it back, or its report fails (KeyError 'crater+coast')."""
+    from . import terrain_world as tw
+    k = (getattr(T, "world", None) or {}).get("kind")
+    if not k or k in tw.KINDS:
+        return
+    parts = k.split("+")
+    if len(parts) > 1:
+        keys = [tw.kind_of(p) for p in parts]
+        if all(keys):
+            tw.mix(keys)
+    else:
+        tw.kind_of(k, (T.spec or {}).get("kinds"))
+
+
 def build(spec: dict, log=None):
     """The Terrain for `spec`: from the disk cache when this spec (minus its 3D sections) was built by this code
     before, else built and cached. Raises terrain_world.Questions like Terrain()."""
@@ -84,6 +100,7 @@ def build(spec: dict, log=None):
                               "load_s": round(time.time() - t0, 2)}
             if log:
                 log(f"terrain build from the cache ({_STATS['last']['mb']} MB, {_STATS['last']['load_s']} s)")
+            _register_kind(T)
             return _attach(T, spec)
         except Exception as e:  # (a truncated or foreign file: rebuilt)
             if log:
