@@ -64,6 +64,45 @@ def test_measure_and_buttons():
     assert 0.005 < rad < 0.0075  # an 11 mm button
 
 
+def _grid(x0, x1, n=21, m=61):
+    xs, ys = np.meshgrid(np.linspace(x0, x1, n), np.linspace(0, -0.6, m))
+    uv = np.c_[xs.ravel(), ys.ravel()]
+    i = np.arange(n * m).reshape(m, n)
+    q = np.c_[i[:-1, :-1].ravel(), i[:-1, 1:].ravel(), i[1:, 1:].ravel(), i[1:, :-1].ravel()]
+    return uv, np.r_[q[:, [0, 1, 2]], q[:, [0, 2, 3]]]
+
+
+def test_a_closed_lap_is_laid_closed():
+    """The solver leaves a lap its contact gap proud (5 mm here) and the buttons a few mm apart in the surface: seat
+    lays the over band 1.2 mm off the under layer between the fastenings and brings each fastening's sides together;
+    away from the band and beyond the last button the cloth stays where the sim left it."""
+    pcs = _pieces()
+    _, _, _, out = closures.expand([ENTRY], pcs)
+    uo, Fo = _grid(0.0, 0.2)
+    uu, Fu = _grid(-0.2, 0.0)
+    uv = np.r_[uo, uu]
+    F = np.r_[Fo, Fu + len(uo)]
+    piece = np.r_[np.zeros(len(uo), int), np.ones(len(uu), int)]
+    # world: x across, z down the front, y = depth (out = -y). The under front shifted 3 cm under the over front
+    V = np.c_[uv[:, 0], np.zeros(len(uv)), uv[:, 1]]
+    V[piece == 1, 0] += 0.03
+    V[piece == 0, 1] -= 0.005
+    near = lambda k, p: int(np.where(piece == k)[0][np.argmin(np.linalg.norm(uv[piece == k] - p, axis=1))])
+    marks = {f"front.L:buttonhole{n}": near(0, pcs["front.L"]["marks"][f"buttonhole{n}"]) for n in (1, 2, 3)}
+    marks.update({f"front.R:button{n}": near(1, pcs["front.R"]["marks"][f"button{n}"]) for n in (1, 2, 3)})
+    M = {"closures": closures.resolve(out, marks, {}), "F": F, "piece": piece, "uv": uv, "names": ["front.L", "front.R"]}
+    before = closures.measure(V, M)[0]
+    X, rows = closures.seat(V, M, pcs, None)
+    after = closures.measure(X, M)[0]
+    assert before["gap_max_mm"] > 6 and after["gap_max_mm"] < 2.5 and after["ok"], (before, after)
+    band = (piece == 0) & (uv[:, 0] < 0.028) & (uv[:, 1] < -0.1) & (uv[:, 1] > -0.3)
+    assert np.abs(np.abs(X[band, 1]) - closures.LAY).max() < 4e-4  # the band lies 1.2 mm off the under front
+    far = (piece == 0) & (uv[:, 0] > 0.12)
+    below = (piece == 0) & (uv[:, 1] < -0.4)
+    assert np.abs(X[far] - V[far]).max() < 1e-4 and np.abs(X[below] - V[below]).max() < 1e-4
+    assert rows[0]["laid"] > 50 and rows[0]["fastenings_left_mm"] == [0.0, 0.0, 0.0]
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

@@ -242,7 +242,7 @@ def test_tailored_collar():
     outer = pd.edge_length(D, D["edges"]["collar_outer"])
     assert outer > neck + 0.02, (outer, neck)  # (Jaeger's is 16 mm SHORTER: its fall can't lie on the shoulders)
     assert abs(np.linalg.norm(c["P"][c["names"]["cbRoll"]] - c["P"][c["names"]["cbNeck"]]) - 0.03) < 1e-6
-    assert any(f["piece"] == "collar" and f["kind"] == "roll" for f in D["folds"])
+    assert any(f["piece"] == "collar" and f["kind"] == "press" and f.get("in_wrap") for f in D["folds"])
     _ok(D)
 
 

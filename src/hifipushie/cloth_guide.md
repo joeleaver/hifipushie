@@ -387,6 +387,24 @@ look_cloth(name, focus="shirt:collar", zoom=0.35, textured=True, views=["front",
 ```
 The same maps go into `scene.blend` and the export.
 
+#### Closures and bands (what holds a garment shut)
+
+- A closed lap is CONSTRUCTED closed. A contact solver holds two layers its contact gap apart (3-5 mm at 1-2 cm
+  triangles), so a buttoned placket comes out of the sim standing off the shirt. After the clean-up the over band of
+  every closed `closures` entry is laid 1.2 mm off the under piece between its first and last closed fastening, and
+  each fastening's two sides are brought together (up to 12 mm; further apart is the sim's failure and is reported).
+  The report says what moved ("lap front laid closed after the sim: ...") and what the sim itself left
+  (`closures_sim`). Above an open collar and below the last button the fronts part, as worn. `cleanup.seat: false`
+  shows the raw sim.
+- A band buttoned to itself (waistband, cuff, collar stand) is a MADE piece: the sim holds it as placed, so it must
+  START closed. Stage 4 fails "<band> starts with its fastening N mm open" on any band that doesn't (every
+  placement path). The band is then smaller than the body where it sits plus its clearance: 2.5 mm round the torso
+  (a waistband grips), 4 mm on a wrist or neck. Give it more ease (2-3% at the waist is enough now), or seat it
+  where the body is smaller. A wrap `out` on a self-closed torso band is ignored: 4 mm out is 25 mm of girth.
+- A shirt collar on a short neck (under ~4 cm between the trapezius and the jaw) can't be buttoned with the solver's
+  standoff: leave the stand without a closure (worn open) rather than adding ease until it closes: more ease only
+  seats it lower, where the neck is wider.
+
 #### States
 
 - `"worn"`: sewn on the body and settled.

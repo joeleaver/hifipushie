@@ -190,6 +190,137 @@ def band_mask(M: dict, pcs: dict, c: dict, side: str) -> np.ndarray:
     return mask
 
 
+LAY = 0.002  # m: how far a closed lap's over layer lies off the under layer (at 1.2 mm 1 cm facets cut through each other)
+SEAT_REACH = 0.03  # m past the band's inner line over which the over layer eases back to where the sim left it
+SEAT_MAX = 0.008  # m: a lap further open than this isn't a lap lying a little proud (the fronts parting above the
+# top button were 2-5 cm apart and at 20 mm some of that was "laid" 18 mm): left as the sim has it
+
+
+def _edge_dist(M: dict, pcs: dict, piece: str, arc: str) -> tuple[np.ndarray, np.ndarray]:
+    """(vertex ids of `piece`, their pattern distance from its outline arc)."""
+    from . import pattern
+    pc = pcs[piece]
+    L = pc["P"][pattern.arc_indices(pc, arc)]
+    sel = np.where(M["piece"] == M["names"].index(piece))[0]
+    P = M["uv"][sel]
+    seg = L[1:] - L[:-1]
+    L2 = np.maximum((seg * seg).sum(1), 1e-18)
+    f = np.clip(((P[:, None] - L[None, :-1]) * seg[None]).sum(2) / L2[None], 0, 1)
+    return sel, np.linalg.norm(P[:, None] - (L[None, :-1] + seg[None] * f[..., None]), axis=2).min(1)
+
+
+def _closest_on(P: np.ndarray, V: np.ndarray, F: np.ndarray, k: int = 12) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(closest point on the triangles F of V, that triangle's unit normal, whether the point projects inside a
+    triangle: not clamped onto the mesh's edge) for each P; the k triangles with the nearest centres are tried."""
+    from scipy.spatial import cKDTree
+    A_, B_, C_ = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+    _, idx = cKDTree((A_ + B_ + C_) / 3).query(P, k=min(k, len(F)))
+    idx = idx.reshape(len(P), -1)
+    best = np.full(len(P), np.inf)
+    Q, N, inside = np.zeros((len(P), 3)), np.zeros((len(P), 3)), np.zeros(len(P), bool)
+    for j in range(idx.shape[1]):
+        A, B, C = A_[idx[:, j]], B_[idx[:, j]], C_[idx[:, j]]
+        ab, ac, ap = B - A, C - A, P - A
+        d1, d2 = (ab * ap).sum(1), (ac * ap).sum(1)
+        d00, d01, d11 = (ab * ab).sum(1), (ab * ac).sum(1), (ac * ac).sum(1)
+        den = d00 * d11 - d01 * d01
+        den = np.where(np.abs(den) > 1e-18, den, 1e-18)
+        v0, w0 = (d11 * d1 - d01 * d2) / den, (d00 * d2 - d01 * d1) / den
+        ins = (v0 >= -1e-6) & (w0 >= -1e-6) & (v0 + w0 <= 1 + 1e-6)
+        v, w = np.clip(v0, 0, 1), np.clip(w0, 0, 1)
+        sm = np.maximum(v + w, 1.0)
+        v, w = v / sm, w / sm
+        q = A + v[:, None] * ab + w[:, None] * ac
+        d = np.linalg.norm(P - q, axis=1)
+        m = d < best
+        n = np.cross(ab, ac)
+        n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+        best[m], Q[m], N[m], inside[m] = d[m], q[m], n[m], ins[m]
+    return Q, N, inside
+
+
+def seat(V: np.ndarray, M: dict, pcs: dict, body, fixed: np.ndarray | None = None) -> tuple[np.ndarray, list]:
+    """A closed lap lies closed: construction, not a solve. Between the first and last closed fastening of a lap of
+    two pieces, the over piece's band is laid `LAY` off the under piece's surface along that surface's normal
+    (a contact solver holds two layers its contact gap apart, 3-7 mm at 1-2 cm triangles: a placket stood off the
+    shirt like a board), easing back to the sim's surface over `SEAT_REACH` past the band; then each closed
+    fastening's two sides are brought together in the surface (half the way each, falling off over ~2.5 cm) where
+    the solver's stitch left them a few mm apart. Laps open more than `SEAT_MAX`, self-closures (a cuff) and
+    `fixed` vertices (made pieces) are left alone. Returns (V, rows: per closure what it moved and what it left)."""
+    X = np.array(V, float)
+    rows = []
+    bn_ = tree = None
+    if body is not None and len(body.V):
+        bn_, tree = body.normals()
+    fx = None if fixed is None else np.asarray(fixed, bool)
+    for c in M.get("closures") or []:
+        if c["over"] == c["under"] or c["kind"] not in ("buttons", "hooks", "zip") or not len(c["v"]):
+            continue
+        band, edge = c.get("band"), c.get("edge") or {}
+        w_o = band.get("over") if isinstance(band, dict) else band
+        vv = np.asarray(c["v"], np.int64).reshape(-1, 2)
+        cl = np.asarray(c["closed"], bool)
+        if not w_o or not edge.get("over") or not cl.any():
+            continue
+        ku = M["names"].index(c["under"])
+        Fu = M["F"][(M["piece"][M["F"]] == ku).all(1)]
+        sel, d = _edge_dist(M, pcs, c["over"], edge["over"])
+        # along the lap only between the closed fastenings (+ 2 cm): above an open collar and below the last button
+        # the fronts part, as worn
+        yb = M["uv"][vv[cl, 0], 1]
+        y = M["uv"][sel, 1]
+        along = np.clip((y - (yb.min() - 0.025)) / 0.02, 0, 1) * np.clip(((yb.max() + 0.025) - y) / 0.02, 0, 1)
+        t = np.clip((d - float(w_o)) / SEAT_REACH, 0, 1)
+        wgt = along * (1 - t * t * (3 - 2 * t))
+        act = wgt > 1e-3
+        if fx is not None:
+            act &= ~fx[sel]
+        if not act.any() or not len(Fu):
+            continue
+        ids = sel[act]
+        moved = np.zeros(len(ids))
+        N = np.zeros((len(ids), 3))
+        for _ in range(2):  # (the nearest point of the under layer shifts as the over layer comes down: twice)
+            Q, N, ins = _closest_on(X[ids], X, Fu)
+            if bn_ is not None:
+                flip = (N * bn_[tree.query(Q)[1]]).sum(1) < 0
+                N[flip] *= -1
+            gap = ((X[ids] - Q) * N).sum(1)
+            ok = ins & (np.abs(gap) < SEAT_MAX) & (np.linalg.norm(X[ids] - Q, axis=1) < SEAT_MAX)
+            mv = np.where(ok, (LAY - gap) * wgt[act], 0.0)
+            X[ids] += N * mv[:, None]
+            moved = moved + np.abs(mv)
+        # the fastenings themselves: each side half the way, within its own piece (pattern distance)
+        left = []
+        pos = {int(v): i for i, v in enumerate(ids)}
+        for (va, vb), is_cl in zip(vv, cl):
+            if not is_cl:
+                continue
+            # the button's own two sides: the over side LAY off the under side along the body's normal there (the
+            # band's lay above doesn't reach a top button whose sides the sim left 10 mm apart)
+            n_ = N[pos[int(va)]] if int(va) in pos else np.zeros(3)
+            if bn_ is not None:
+                n_ = bn_[tree.query(X[vb])[1]]
+            dv_t = X[vb] + n_ * LAY - X[va]
+            g_ = float(np.linalg.norm(dv_t))
+            if g_ < 3e-4:
+                left.append(0.0)
+                continue
+            if g_ > 0.012:
+                left.append(round(g_ * 1000, 1))
+                continue
+            for v0, sgn in ((va, 0.5), (vb, -0.5)):
+                s_ = np.where(M["piece"] == M["piece"][v0])[0]
+                if fx is not None:
+                    s_ = s_[~fx[s_]]
+                r_ = np.linalg.norm(M["uv"][s_] - M["uv"][v0], axis=1)
+                X[s_] += sgn * dv_t[None] * np.exp(-0.5 * (r_ / 0.025) ** 2)[:, None]
+            left.append(0.0)
+        rows.append({"name": c["name"], "laid": int(act.sum()), "moved_p50_mm": round(float(np.median(moved)) * 1000, 2),
+                     "moved_max_mm": round(float(moved.max()) * 1000, 2), "fastenings_left_mm": left})
+    return X, rows
+
+
 def relief(V: np.ndarray, M: dict, pcs: dict, body) -> np.ndarray:
     """The finished surface with every closure's bands `lift` proud (a placket is the cloth turned twice and stitched:
     three layers where the front is one). The band's inner line is a vertex row (expand's fold row), so the step is
