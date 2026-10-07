@@ -60,13 +60,21 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
             sv, sn = np.vstack([sv, Hd["V"]]), np.vstack([sn, Hd["N"]])
             scol = np.vstack([scol, np.tile(veg_style.lin(Hd["color"]), (len(Hd["V"]), 1))])
         arrays.update(solid_V=sv, solid_F=sf, solid_N=sn, solid_col=scol)
+        if C.get("atlas") is not None:  # leaf clouds: cards cut by the dab atlas's alpha
+            from PIL import Image
+            arrays["solid_uv"] = C["uv"]
+            Image.fromarray(C["atlas"]["color"]).save(tmp / f"dabs{tag}.png")
     npz = tmp / f"plant{tag}.npz"
     np.savez(npz, **arrays)
     info = {"triangles": int(len(arrays["F"])), "twigs": 0, "foliage": "masses", "leaf_triangles": int(len(C["F"])) if C is not None else 0,
             "style": D["info"]}
     pj = {"npz": str(npz), "bark": {"flat": veg_style.bark_color(s, st), "roughness": float(st["wood"].get("roughness", 0.9))},
           "leaf": {}, "cards": None, "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0),
-          "solid": {"roughness": float(st["crown"].get("roughness", 0.85))}}
+          "solid": {"roughness": float(st["crown"].get("roughness", 0.85)),
+                    **({"atlas": str(tmp / f"dabs{tag}.png"), "alpha_cut": float(st["crown"].get("alpha_cut", 0.5))}
+                       if C is not None and C.get("atlas") is not None else {})}}
+    if C is not None and C.get("atlas") is not None:
+        info.update(foliage="clouds", card_fill=round(C["atlas"]["fill"], 2))
     if tree.get("clump"):
         info["leaf_triangles"] += int(len(D["heads"]["F"])) if D.get("heads") is not None else 0
     return pj, info
