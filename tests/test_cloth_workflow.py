@@ -26,7 +26,7 @@ def test_kb_is_consistent():
                 assert need in K["details"], (d, c, need)
             for ev in e.get("evidence", []):
                 assert set(ev) & {"piece", "no_piece", "seam", "fold", "not_made", "interfaced", "closed", "stitches",
-                                  "lap", "darts", "dim"}, (d, c, ev)
+                                  "lap", "darts", "dim", "closure", "trim"}, (d, c, ev)
                 if "dim" in ev:
                     assert ev["dim"] in e.get("dims", {}), (d, c, ev)
     for src, rec in K["designs"].items():

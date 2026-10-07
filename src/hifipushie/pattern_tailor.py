@@ -542,4 +542,68 @@ def op_lining(D: dict, pieces: list | None = None, attach: list | None = None, s
                     f"between them, sewn to the shell along {', '.join(did) or 'nothing'}; each lies inside its shell")
 
 
-pd.OPS.update({"lining": op_lining, "pocket": op_pocket, "contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})
+def op_crease(D: dict, pieces: list | None = None, angle: float = 205.0, strength: float = 0.6, **o) -> None:
+    """A pressed crease down a piece's `crease` line (a trouser leg's grain line: through the middle of knee and hem,
+    front and back), as a press fold from hem to waist: a ridge standing OUT (angle > 180 on the outside; 205 = 25
+    deg of turn left in the cloth), laid by the wrap (nothing is turned at placement), held by the fold row's rest
+    angle and bending. Tailors press the front crease up to the waistband (or into the first pleat) and the back
+    crease up to the seat; a fold line here must cross its piece, so the back's runs to the waist too (the seat
+    stretches it flat there)."""
+    names = pieces or [n for n, pc in D["pieces"].items() if "crease" in (pc.get("lines") or {})]
+    if not names:
+        raise DraftError("crease: no piece has a crease line (a trouser block's front / back)")
+    for nm in names:
+        pc = D["pieces"][nm]
+        if "crease" not in (pc.get("lines") or {}):
+            raise DraftError(f"crease: {nm} has no crease line (has {', '.join(sorted(pc.get('lines') or {})) or 'no lines'})")
+        L = np.asarray(pc["lines"]["crease"], float)
+        D["folds"].append({"piece": nm, "line": L.tolist(), "angle": float(angle), "kind": "press", "strength": float(strength),
+                           "name": f"crease {nm}", "in_wrap": True, "reach": 0.05})
+    D["log"].append(f"crease pressed on {', '.join(names)}: a ridge of {angle - 180:.0f} deg down the grain line "
+                    f"(strength {strength:g})")
+
+
+def op_fly(D: dict, piece: str = "front", length: float = 0.18, width: float = 0.035, state="closed", name: str = "fly",
+           **o) -> None:
+    """A fly: the centre front seam from the waist down `length` m is an OPENING closed by a zip (a closure, kind
+    zip: sewn when worn closed, left over right; `state` "open" leaves it unsewn), the seam below it stays a seam.
+    `width` = the fly facing's width (where the J of topstitching runs on the over side: detail maps)."""
+    pc = D["pieces"][piece]
+    ce = [e for e in D["edges"].get("centre_front") or [] if e.split(":")[0] == piece]
+    if not ce or D["centre"].get(piece) != "seam":
+        raise DraftError(f"fly: {piece} has no centre front seam (a trouser block's front; a skirt takes a cb_zip)")
+    arc = ce[0].split(":", 1)[1]
+    pts = arc.split(">")
+    full = pb_edge_length(pc, arc)
+    seat = pb_edge_length(pc, ">".join(pts[:2])) if len(pts) > 2 else full
+    length = float(min(length, 0.92 * seat))  # it ends on the straight part, above where the crotch curve turns
+    pd._point(D, pc, {"edge": ">".join(pts[:2]), "dist": length}, f"{name}End")
+    D["edges"]["centre_front"] = [f"{piece}:{name}End>" + ">".join(pts[1:])] + [e for e in D["edges"]["centre_front"] if e != ce[0]]
+    D["edges"][name] = [f"{piece}:{pts[0]}>{name}End"]
+    pc["lines"][f"{name}_stitch"] = _fly_j(pc, pts[0], f"{name}End", width)
+    D.setdefault("pair_closures", []).append({"name": name, "kind": "zip", "piece": piece, "arc": f"{pts[0]}>{name}End",
+                                              "state": state, "width": float(width)})
+    D["log"].append(f"fly on {piece}: {length * 1000:.0f} mm from the waist, a zip closure (left over right), facing "
+                    f"{width * 1000:.0f} mm; the centre seam runs on from its end to the fork")
+
+
+def _fly_j(pc: dict, top: str, end: str, width: float) -> np.ndarray:
+    """The fly's topstitching: down from the waist `width` in from the centre edge, curving in to the edge at the
+    fly's end (a J)."""
+    A, B = pc["P"][pc["names"][top]], pc["P"][pc["names"][end]]
+    d = (B - A) / (np.linalg.norm(B - A) + 1e-12)
+    n = np.array([-d[1], d[0]])
+    if pattern._poly_inside(pc["P"], (0.5 * (A + B) + 0.004 * n)[None]).mean() < 0.5:
+        n = -n
+    Ln = float(np.linalg.norm(B - A))
+    r = min(width, 0.45 * Ln)
+    th = np.linspace(0, np.pi / 2, 9)
+    arc = np.array([A + d * (Ln + 0.012 - r + r * np.sin(t)) + n * (width - r + r * np.cos(t)) for t in th])
+    return np.r_[(A + n * width)[None], arc]
+
+
+def pb_edge_length(pc: dict, arc: str) -> float:
+    return pattern.length(pc["P"][pattern.arc_indices(pc, arc)])
+
+
+pd.OPS.update({"crease": op_crease, "fly": op_fly, "lining": op_lining, "pocket": op_pocket, "contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})

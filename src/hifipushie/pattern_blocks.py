@@ -398,7 +398,34 @@ def skirt(m: dict, opts: dict | None = None) -> dict:
 # pools on the foot), "cropped", "calf"; "knee" and "shorts" are set from the knee and the rise
 TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None, "shorts": None}
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
-                    "length": None, "back_dart": 0.02}
+                    "length": None, "back_dart": 0.02, "leg": None, "dart_length": None, "dart_taper": 0.0}
+# the cut of the leg, from the leg itself (tailor.measure: knee, calf, heel girths). Knee and hem are finished
+# circumferences: knee = the knee girth x (1 + knee ease), never under the calf x (1 + calf ease) (the leg must hang
+# clear of the calf or it catches there); hem = the knee's x `hem` share, never under heel + `heel` (the heel-and-
+# instep girth is what the hem must pass over; + 20 mm is as slim as a hem without a zip goes).
+# Men's ready-to-wear on a 38 cm knee / 34 cm heel: slim suit trousers knee 42-44, hem 36-38 cm; classic 48 / 42-44
+# (Aldrich's men's trouser block: bottom width 25 cm flat classic, 20-22 slim; Cabrera: knee 19-20", bottom 17-18").
+LEG_CUTS = {"skinny": {"knee": 0.10, "calf": 0.03, "hem": 0.84, "heel": 0.015},
+            "slim": {"knee": 0.20, "calf": 0.08, "hem": 0.88, "heel": 0.02},
+            "tapered": {"knee": 0.30, "calf": 0.14, "hem": 0.80, "heel": 0.02},
+            "straight": {"knee": 0.32, "calf": 0.16, "hem": 0.92, "heel": 0.04},
+            "wide": {"knee": 0.60, "calf": 0.40, "hem": 1.0, "heel": 0.10}}
+
+
+def leg_cut(m: dict, cut: str) -> tuple[float, float, str]:
+    """(knee, hem) as the block takes them (the mean flat width = half the finished circumference, m) for a named
+    cut of the leg, and the rule as text."""
+    if cut not in LEG_CUTS:
+        raise ValueError(f"trouser leg {cut!r}: one of {', '.join(LEG_CUTS)} (or give knee / hem in metres)")
+    c = LEG_CUTS[cut]
+    kg = float(m.get("knee", 0.47 * float(m["waist"]))) / 1000.0  # (no leg scan: a knee from the waist's proportion)
+    cg = float(m.get("calf", 1.07 * kg * 1000)) / 1000.0
+    hg = float(m.get("heel", 0.95 * kg * 1000)) / 1000.0
+    knee = max(kg * (1 + c["knee"]), cg * (1 + c["calf"]))
+    hem = min(max(knee * c["hem"], hg + c["heel"]), knee)
+    return knee / 2, hem / 2, (f"leg {cut}: knee {knee * 1000:.0f} mm round (knee girth {kg * 1000:.0f} + {c['knee'] * 100:.0f}%, "
+                               f"calf {cg * 1000:.0f} + {c['calf'] * 100:.0f}% at least), hem {hem * 1000:.0f} mm round "
+                               f"({c['hem'] * 100:.0f}% of the knee, heel {hg * 1000:.0f} + {c['heel'] * 1000:.0f} mm at least)")
 
 
 def trouser(m: dict, opts: dict | None = None) -> dict:
@@ -426,9 +453,12 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     wq = waist * (1 + o["waist_ease"]) / 4
     fork_f = seat / 16 + 0.005
     fork_b = 1.5 * fork_f + 0.005  # Aldrich: the front's + half of it + 5 mm
-    hem = float(o["hem"]) if o["hem"] else 0.22
-    knee = float(o["knee"]) if o["knee"] else hem + 0.03
-    log = [f"trouser length {L * 1000:.0f} mm from the waist ({lw or ('given' if o['length'] else 'ankle: the default')})",
+    cut_rule = None
+    if o["leg"]:
+        knee_c, hem_c, cut_rule = leg_cut(m, o["leg"])
+    hem = float(o["hem"]) if o["hem"] else hem_c if o["leg"] else 0.22
+    knee = float(o["knee"]) if o["knee"] else knee_c if o["leg"] else hem + 0.03
+    log = ([cut_rule] if cut_rule else []) + [f"trouser length {L * 1000:.0f} mm from the waist ({lw or ('given' if o['length'] else 'ankle: the default')})",
            f"trouser: seat quarter {sq * 1000:.0f} (front -10, back +10 mm), body rise {rise * 1000:.0f} mm "
            f"({'given' if o['rise'] else 'measured: waist to the crotch + ease' if measured else 'estimated 0.175 x waist + 154 mm'}), forks front "
            f"{fork_f * 1000:.0f} / back {fork_b * 1000:.0f} mm, knee {knee * 1000:.0f}, hem {hem * 1000:.0f} mm"]
@@ -457,7 +487,18 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         pts = [("cWaist", [cin, Y(-up)])]
         if dart > 0:
             dx = cin + 0.5 * wq
-            pts += [("dartA", [dx, Y(-up * 0.5)]), ("dartTip", [dx + dart / 2, Y(0.11)]), ("dartB", [dx + dart, Y(-up * 0.5)])]
+            dl = float(o["dart_length"]) if o["dart_length"] else 0.11
+            tp = float(o["dart_taper"])
+            A_, T_, B_ = np.array([dx, Y(-up * 0.5)]), np.array([dx + dart / 2, Y(dl)]), np.array([dx + dart, Y(-up * 0.5)])
+            pts += [("dartA", A_.tolist())]
+            if tp > 0:
+                # a shaped dart: its legs run in toward the fold over the last third, so the tip dies away to nothing
+                # (straight legs meet at the full angle: a poke at the dart's point); both legs alike = equal lengths
+                mid = lambda P_: (T_ + (P_ - T_) * 0.35 - np.array([(P_ - T_)[0] * 0.35 * tp, 0.0])).tolist()
+                pts += [(None, mid(A_)), ("dartTip", T_.tolist()), (None, mid(B_))]
+            else:
+                pts += [("dartTip", T_.tolist())]
+            pts += [("dartB", B_.tolist())]
         pts += [("sideWaist", [min(side_w, w + 0.01), Y(0.0)])]
         pts += _curve_pts(bez([min(side_w, w + 0.01), 0], [w, Y(0.4 * wts)], [w, Y(0.8 * wts)], [w, Y(wts)]))
         pts += [("sideSeat", [w, Y(wts)])]

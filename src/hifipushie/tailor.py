@@ -134,6 +134,36 @@ def length(P: np.ndarray) -> float:
     return float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1))) if len(P) > 1 else 0.0
 
 
+def _leg_girths(V: np.ndarray, T: np.ndarray, J: dict, at: dict, zmin: float) -> dict:
+    """The left leg's girths (m), FreeSewing's names: upperLeg (5 cm under the crotch), knee (at the joint), calf (the
+    fullest level between knee and ankle), ankle (the slimmest above the ankle joint), heel (round heel and instep:
+    what a trouser hem must pass; a plane through the ankle tilted 45 deg)."""
+    Z = np.array([0, 0, 1.0])
+    kn, an = np.asarray(J["knee.L"], float), np.asarray(J["ankle.L"], float)
+
+    def leg(z):
+        Ls = [L for L in slice_loops(V, T, [0, 0, z], Z) if L[:, 0].mean() > 0.02 and
+              np.hypot(L[:, 0].mean() - kn[0], L[:, 1].mean() - kn[1]) < 0.2]
+        return max((girth(L, Z) for L in Ls), default=0.0)
+    out = {}
+    if "crotch_z" in at:
+        out["upperLeg"] = leg(float(at["crotch_z"]) - 0.05)
+    out["knee"] = leg(float(kn[2]))
+    zs = np.arange(an[2] + 0.02, kn[2] - 0.04, 0.01)
+    gs = np.array([leg(float(z)) for z in zs])
+    if len(gs):
+        k = int(np.argmax(gs))
+        out["calf"] = float(gs[k])
+        lo = gs[:k + 1][gs[:k + 1] > 0]
+        if len(lo):
+            out["ankle"] = float(lo.min())
+    n = np.array([0.0, 1.0, 1.0]) / np.sqrt(2.0)  # heel (back, low) -> instep (front, up) lies in this plane
+    Ls = [L for L in slice_loops(V, T, an, n) if L[:, 0].mean() > 0.02 and np.linalg.norm(L.mean(0) - an) < 0.12]
+    if Ls:
+        out["heel"] = max(girth(L, n) for L in Ls)
+    return {k: v for k, v in out.items() if v > 0}
+
+
 def measure(V: np.ndarray, faces, J: dict) -> dict:
     V = np.asarray(V, float)
     T = triangles(faces) if not isinstance(faces, np.ndarray) or faces.shape[1] != 3 else faces
@@ -337,6 +367,10 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
             mm["waistToUpperLeg"] = W - zc
             mm["inseam"] = zc - zmin
     except Exception:  # a body the scan can't read keeps the estimate (pattern_blocks.trouser)
+        pass
+    try:
+        mm.update(_leg_girths(V, T, J, at, zmin))
+    except Exception:  # (a body without legs the scan can read: trouser drafts fall back to their proportions)
         pass
     mm["height"] = float(V[:, 2].max() - zmin)
     out = {k: (round(v * 1000.0, 1) if k != "shoulderSlope" else round(v, 2)) for k, v in mm.items()}
