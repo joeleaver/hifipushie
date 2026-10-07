@@ -2092,7 +2092,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     gaps = np.full(len(X), gap)
     for k, nm in enumerate(names):
         wto = B["pieces"][nm]["wrap"].get("to", "")
-        if (wto.startswith("arm.") and _closed_girth(M, nm)) or wto == "neck":  # bands hugging the body
+        # (a piece laid from its seam too, a jacket's collar: pushed the draped cloth's 12 mm off the body, its neck
+        # edge was held 8 mm outside the back neck it is sewn to and the seam stayed open all round, 11-14 mm)
+        if (wto.startswith("arm.") and _closed_girth(M, nm)) or wto in ("neck", "seam"):  # bands hugging the body
             # outside the collision zone (cloth + body distance): inside it, Blender's impulses launched the torso
             # 15 cm up. ZOZO's zone is its contact offset + gap (3 mm): Blender's 8 mm (+ h/4) pushed a 183 mm cuff
             # 14 mm off a 149 mm wrist and a collar 8 mm off the neck, and these made pieces rest as placed: a cuff

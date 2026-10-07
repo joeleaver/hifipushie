@@ -247,6 +247,15 @@ The plan lists:
   collar's stand on the jacket's neckline, a collar on its stand), along the body, at the pattern's lengths; `"turn":
   {"at": m, "deg": 172, "gap": m}` lays its fall over. List the piece after the pieces it is sewn to. Use it where a
   ring round the neck (`"to": "neck"`) is wrong: a neckline that lies on the shoulders and runs down to a lapel.
+  `"worn": true` lays it on the edge as that edge will lie WORN (each torso piece's point at its pattern x and height
+  on the front / back of the body), not where the pieces start: a made piece is held where it is placed, and torso
+  pieces start apart. `"turn": {"line": [[x, y], ...]}` turns it about a LINE in its own pattern instead of a
+  constant distance from the edge. The draft op `collar` type `tailored` sets all of it after a `lapel`: a notched
+  collar's roll line stands `stand_height` at centre back and comes down to the neck edge where the lapel's roll line
+  crosses the neckline; past that point the whole collar lies turned, where the turned lapel will lie, sewn to the
+  gorge (`"roll": "parallel"` keeps the old constant stand).
+- **Made pieces sewn to each other are one construction** (a collar on its stand): they ride the body and are set
+  on the fine mesh as one group, by the piece with the most seam to draped cloth. Nothing to declare.
 - **The simulation's stages** as they will run.
 
 ### 4. Arrange (`check_garment(stages=["place"])`)
