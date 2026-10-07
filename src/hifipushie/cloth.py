@@ -1389,6 +1389,43 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
     return out
 
 
+def _true_lengths(X: np.ndarray, M: dict, sel: np.ndarray, held: np.ndarray, body: "Body", clear: float,
+                  iters: int = 400) -> np.ndarray:
+    """X with the edges of the vertices `sel` at their pattern lengths (position based, both ways: long edges drawn
+    in, short ones out; Jacobi), the vertices `held` nearly fixed and nothing under `clear` off the body. A start
+    near the answer is assumed (it keeps the lay's folds: nothing here knows about bending)."""
+    F, uv = M["F"], M["uv"]
+    Fs = F[sel[F].all(1)]
+    E = np.unique(np.sort(np.r_[Fs[:, [0, 1]], Fs[:, [1, 2]], Fs[:, [2, 0]]], 1), axis=0)
+    if not len(E):
+        return X
+    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
+    V = X.copy()
+    w = np.where(held, 0.05, 1.0)
+    wa, wb = w[E[:, 0]], w[E[:, 1]]
+    ws = wa + wb
+    vn, tree = body.normals()
+    idx = np.where(sel)[0]
+    for it in range(iters):
+        d = V[E[:, 1]] - V[E[:, 0]]
+        L = np.maximum(np.linalg.norm(d, axis=1), 1e-12)
+        if np.abs(L / L0 - 1).max() < 0.01:
+            break
+        c = ((L - L0) / L)[:, None] * d
+        acc, cnt = np.zeros_like(V), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], c * (wa / ws)[:, None])
+        np.add.at(acc, E[:, 1], -c * (wb / ws)[:, None])
+        np.add.at(cnt, E[:, 0], 1.0)
+        np.add.at(cnt, E[:, 1], 1.0)
+        V[idx] += 1.4 * (acc / np.maximum(cnt, 1.0)[:, None])[idx]
+        if it % 10 == 9:
+            short = clear - body.clearance(V[idx])
+            lo = short > 0
+            if lo.any():
+                V[idx[lo]] += vn[tree.query(V[idx[lo]])[1]] * short[lo, None]
+    return V
+
+
 def _closed_girth(M: dict, nm: str) -> float:
     """A piece stitched to itself (a cuff's button and buttonhole): its girth when closed, the distance across it
     between the stitched vertices in the flat (0 if it doesn't close on itself)."""
@@ -2170,6 +2207,14 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             X[sel] = np.c_[q, hps[2] + U[:, 1] + float(w.get("lift", 0.0))]
         elif to == "seam":
             X[sel] = _on_seam(M, X, uv, pid, k, nm, w, body, pcs)
+            if w.get("worn") and w.get("true", False):
+                # a piece laid by frames along a curved edge, turned about a line and carried across a seam is the
+                # right SHAPE but not the pattern's lengths (a notched collar's front ends: 36 triangles up to 3.6x
+                # at 2 cm, spikes at the throat); a made piece rests as placed, so its lay is trued: every edge
+                # drawn to its pattern length, the sewn edge held where it lies
+                sewn_ = np.zeros(len(X), bool)
+                sewn_[np.r_[M["sew"][(pid[M["sew"][:, 0]] == k), 0], M["sew"][(pid[M["sew"][:, 1]] == k), 1]]] = True
+                X[sel] = _true_lengths(X, M, sel, sewn_ & sel, body, SMOOTH_CLEAR if smooth else CLEAR)[sel]
         elif to == "flat":  # laid flat at a height (a tablecloth, a blanket): pattern x, y -> world x, y
             o = np.asarray(w.get("at", [0, 0, 1.0]), float)
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
@@ -4035,43 +4080,63 @@ def seam_gaps(V_sim: np.ndarray, V: np.ndarray, M: dict) -> dict:
     return out
 
 
-def _seam_relax(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, keep: float, iters: int = 4) -> np.ndarray:
-    """Welded seams pressed flat: each closed seam vertex (its sides as one) eased toward the mean of its neighbours
-    on both sides and along the seam, never more than `keep` from where the weld left it. A solver's stitches leave a
-    seam between two soft pieces puckered (a jacket's centre back seam at 2 cm: its vertices alternately 4 mm sunk
-    and 5-9 mm proud of the cloth beside them: the pale zigzag down the back); a sewn seam is pressed, and stiffer
-    than the cloth (its allowances). Interfaced vertices stay (a made edge is where it was made)."""
-    from scipy.sparse import coo_matrix
-    from scipy.sparse.csgraph import connected_components
-    s_ = np.asarray(M["sew"]).reshape(-1, 2)
-    s_ = s_[np.linalg.norm(X[s_[:, 0]] - X[s_[:, 1]], axis=1) < 1e-6]
-    if not len(s_):
+def _seam_relax(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, keep: float, passes: int = 6) -> np.ndarray:
+    """Welded seams pressed: a sewn seam is a smooth line. Each closed seam's vertices (its two sides as one) are
+    smoothed ALONG the seam's own polyline (Laplacian over its neighbours on the seam only, ends kept), never more
+    than 2 x `keep` from where the weld left them, and the first ring of cloth beside it follows by half. A solver's
+    stitches leave a seam between two soft pieces puckered: a jacket's centre back seam at 2 cm had its vertices
+    alternately 4 mm sunk and 5-9 mm proud of the cloth beside them (the pale zigzag down the back). The two sides
+    share their samples, so it is not an offset along the seam. Easing each vertex toward its neighbours on all sides
+    (the first version) took the median 2.0 -> 0.86 mm and still read as a zigzag. Seams with an interfaced side
+    stay (a made edge is where it was made)."""
+    sw_all = np.asarray(M["sew"]).reshape(-1, 2)
+    ss = np.asarray(M["sew_seam"])
+    closed = np.linalg.norm(X[sw_all[:, 0]] - X[sw_all[:, 1]], axis=1) < 1e-6
+    if not closed.any():
         return X
-    _, lab = connected_components(coo_matrix((np.ones(len(s_)), (s_[:, 0], s_[:, 1])), shape=(len(X), len(X))), directed=False)
-    seam = np.zeros(len(X), bool)
-    seam[s_.ravel()] = True
-    if stiff is not None:  # a group with an interfaced member stays
-        hard = np.zeros(lab.max() + 1, bool)
-        hard[lab[np.asarray(stiff) > 0.5]] = True
-        seam &= ~hard[lab]
-    if not seam.any():
-        return X
-    A_, B_ = _graph(M)
-    a = np.r_[A_, B_]
-    b = np.r_[B_, A_]
-    k = seam[a] & (lab[a] != lab[b])
-    a, b = a[k], b[k]
+    hard = np.zeros(len(X), bool) if stiff is None else np.asarray(stiff) > 0.5
     X0, X = X, X.copy()
-    for _ in range(iters):
-        acc, cnt = np.zeros((lab.max() + 1, 3)), np.zeros(lab.max() + 1)
-        np.add.at(acc, lab[a], X[b])
-        np.add.at(cnt, lab[a], 1.0)
-        tgt = acc[lab] / np.maximum(cnt[lab], 1)[:, None]
-        mv = seam & (cnt[lab] > 0)
-        X[mv] = 0.5 * X[mv] + 0.5 * tgt[mv]
-        D = X[mv] - X0[mv]
-        L = np.linalg.norm(D, axis=1)
-        X[mv] = X0[mv] + D * np.minimum(1.0, keep / np.maximum(L, 1e-12))[:, None]
+    cap = 2.0 * keep
+    A_, B_ = _graph(M)
+    on_seam = np.zeros(len(X), bool)
+    on_seam[sw_all.ravel()] = True
+    for si in np.unique(ss):
+        rows = np.where(ss == si)[0]
+        p = sw_all[rows]  # (in sample order along the seam)
+        ok = closed[rows] & ~hard[p].any(1)
+        # runs of consecutive closed pairs
+        i = 0
+        while i < len(p):
+            if not ok[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(p) and ok[j + 1]:
+                j += 1
+            if j - i >= 3:
+                q = p[i:j + 1]
+                keep_i = np.r_[0, np.where(np.any(q[1:] != q[:-1], axis=1))[0] + 1]  # (a chain's junction: one row)
+                q = q[keep_i]
+                C = X[q[:, 0]].copy()
+                C0 = C.copy()
+                for _ in range(passes):
+                    C[1:-1] = 0.25 * C[:-2] + 0.5 * C[1:-1] + 0.25 * C[2:]
+                    D = C - C0
+                    L = np.linalg.norm(D, axis=1)
+                    C = C0 + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
+                X[q[:, 0]] = C
+                X[q[:, 1]] = C
+            i = j + 1
+    moved = X - X0
+    mv = np.linalg.norm(moved, axis=1) > 1e-9
+    if mv.any():  # the first ring beside the seam follows by half the mean move of the seam vertices it touches
+        acc, cnt = np.zeros_like(X), np.zeros(len(X))
+        for a_, b_ in ((A_, B_), (B_, A_)):
+            k = mv[b_] & ~on_seam[a_] & ~hard[a_]
+            np.add.at(acc, a_[k], moved[b_[k]])
+            np.add.at(cnt, a_[k], 1.0)
+        r1 = cnt > 0
+        X[r1] += 0.5 * acc[r1] / cnt[r1][:, None]
     return X
 
 
