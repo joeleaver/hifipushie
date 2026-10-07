@@ -133,6 +133,52 @@ def test_fine_folds_follow_the_compression():
     assert D["big"].any() and dz.max() > 3e-4 and np.abs(dz[M["border"]]).max() < 1e-9 and dz.min() > -dz.max()
 
 
+def _along(P, q):
+    """A point's arc length along a polyline."""
+    seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+    ab = P[1:] - P[:-1]
+    t = np.clip(np.sum((q - P[:-1]) * ab, 1) / seg ** 2, 0, 1)
+    i = int(np.argmin(np.linalg.norm(P[:-1] + t[:, None] * ab - q, axis=1)))
+    return float(seg[:i].sum() + t[i] * seg[i])
+
+
+def test_fold_ending_on_a_seam_keeps_the_seam_paired():
+    # a fold line (and a roll's further rows) ending on a sewn edge: both sides of the seam get a sample there. The
+    # row's end used to move the outline's nearest vertex along the seam on its own side: pairs up to 13-16 mm apart
+    # along the seam (a jacket's gorge beside the roll line never closed)
+    for h in (0.02, 0.01):
+        for kind in ("press", "roll"):
+            f = {"piece": "a", "line": [[-0.113, -0.06], [0.0537, 0.06]], "angle": 0, "name": "f", "flap": "nw",
+                 "kind": kind, **({"radius": 0.004} if kind == "roll" else {})}
+            g = {"pieces": {"a": {"rect": [0.3, 0.12], "wrap": {"to": "flat", "at": [0, 0, 1.0]}},
+                            "b": {"rect": [0.33, 0.1], "wrap": {"to": "flat", "at": [0, 0.2, 1.0]}},  # (10% ease)
+                            "c": {"rect": [0.3, 0.1], "wrap": {"to": "flat", "at": [0, 0.4, 1.0]}}},
+                 "seams": [["a:nw>n>ne", "b:sw>s>se"], ["b:nw>n>ne", "c:sw>s>se"]], "folds": [f]}
+            Bp = cloth.pieces(g, {})
+            M = cloth.mesh(Bp, h)
+            pcs, uv = Bp["pieces"], M["uv"]
+            for si, (A, B_) in enumerate(Bp["seams"]):
+                Ls = [pcs[e.split(":")[0]]["P"][cloth._edge(pcs, e)[1]] for e in (A, B_)]
+                tot = [pattern.length(L) for L in Ls]
+                na = M["names"].index(A.split(":")[0])
+                for a, b in M["sew"][M["sew_seam"] == si]:
+                    a, b = (a, b) if M["piece"][a] == na else (b, a)
+                    assert abs(_along(Ls[0], uv[a]) / tot[0] - _along(Ls[1], uv[b]) / tot[1]) * max(tot) < 1e-6, (h, kind, si)
+            fd = M["folds"][0]
+            assert fd["missing_edges"] == 0
+            ends = {int(r[-1]) for r in fd["rows"]} | {int(r[0]) for r in fd["rows"]}
+            sewn = set(M["sew"].ravel().tolist())
+            assert len(ends & sewn) >= 1  # the fold ends on a sewn vertex ...
+            for r in fd["rows"]:  # ... which lies on the fold's line (not bent to a neighbour) or within SEAM_JOIN h
+                L = folds.rows(pcs, folds.entries(Bp)[0], h)["lines"]
+                d = min(np.linalg.norm(Lr[-1] - uv[r[-1]]) for Lr in L)
+                d0 = min(np.linalg.norm(Lr[0] - uv[r[0]]) for Lr in L)
+                assert min(d, d0) < 1.5 * cloth.SEAM_JOIN * h + 1e-9, (h, kind, d, d0)
+            # no sliver edges on the seam
+            E = np.r_[M["F"][:, [0, 1]], M["F"][:, [1, 2]], M["F"][:, [2, 0]]]
+            assert np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1).min() > 0.1 * h, (h, kind)
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

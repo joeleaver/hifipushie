@@ -103,6 +103,30 @@ def test_a_closed_lap_is_laid_closed():
     assert rows[0]["laid"] > 50 and rows[0]["fastenings_left_mm"] == [0.0, 0.0, 0.0]
 
 
+def test_drafted_buttons_are_a_closure_with_a_wear_state():
+    # the draft op `buttons` writes a closures entry (it wrote bare stitches: no state, no buttons, nothing measured);
+    # a jacket worn open has its buttons and no stitches
+    from hifipushie import cloth, pattern_draft as pd
+    mm = {"neck": 370.5, "shoulderSlope": 29.0, "shoulderToShoulder": 463.9, "chest": 994.0, "waist": 776.3,
+          "hips": 920.6, "seat": 972.2, "biceps": 340.2, "wrist": 148.6, "shoulderToElbow": 300.3,
+          "shoulderToWrist": 570.0, "hpsToWaistBack": 545.0, "hpsToBust": 331.1, "highBust": 994.0,
+          "waistToArmpit": 230.7, "waistToHips": 145.2, "waistToSeat": 245.2, "waistToFloor": 1109.3,
+          "waistToKnee": 585.4, "head": 560.0, "waistToUpperLeg": 251.1, "inseam": 858.2}
+    for state, n_st in (("closed", 2), ("open", 0), ({"open_above": "button2"}, 1)):
+        ops = [{"op": "style_line", "piece": "front", "name": "pf", "from": {"edge": "hps>shoulder", "t": 0.5},
+                "to": {"edge": "hem>cfHem", "t": 0.45}, "via": ["bust"], "names": ["front", "side_front"]},
+               {"op": "lapel", "break_y": 0.4}, {"op": "buttons", "piece": "front", "n": 2, "state": state, "size": 0.02}]
+        blk = pd.build(mm, {"block": "bodice", "block_options": {"fitted": True}, "ops": ops})
+        cl = blk["closures"]
+        assert len(cl) == 1 and cl[0]["over"] == "front.L" and cl[0]["under"] == "front.R" and cl[0]["state"] == state
+        assert not any("button" in a for a, b in blk["stitches"])
+        st, _, _, out = closures.expand(cl, blk["pieces"])
+        assert len(st) == n_st and len(out[0]["pairs"]) == 2 and out[0]["size"] == 0.02, (state, st)
+        Bp = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "block_options": {"fitted": True}, "ops": ops}}, mm)
+        assert Bp["closures"] and Bp["closures"][0]["state"] == state
+        assert sum("button" in a for a, b in Bp["stitches"]) == n_st
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

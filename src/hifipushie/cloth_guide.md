@@ -236,6 +236,13 @@ The plan lists:
   and the Blender scene) and a line in the report per closure: fastenings closed, how far apart their two sides
   ended (closed is <= 6 mm). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure entry fails
   here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]` (sewn when closed).
+  **How it is worn** is the closure's `state`, set on the garment without repeating the entry: a garment's
+  `closures` entry of a name is laid over the design table's (or the draft's) key by key, so
+  `"closures": [{"name": "collar", "state": "open"}]` is a shirt with its top button undone and
+  `[{"name": "front", "state": "open"}]` a jacket hanging open (its buttons stay on the under front, no stitches;
+  stage 3 lists it as "worn open", not as a missing closure). In a drafted garment the op
+  `{"op": "buttons", "piece": "front", "n": 2, "state": "open", "size": 0.02}` writes the closure itself (left
+  front over right, a fastening per mark; it used to write bare stitches).
 - **Layers.** `"over": "<garment>"` wears this garment over another of the model (dress that one first). The one
   underneath is frozen and pressed to 8 mm off the body where it is loose (`under_cap`), and is what this garment
   is placed on and collides with. `"support": ["shoulder_pad", "sleeve_head"]` are pads on the body, not cloth.

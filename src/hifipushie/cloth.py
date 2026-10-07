@@ -116,6 +116,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         draft_info = blk["draft"]
         gen = list(blk.get("generate") or [])
         folds_tbl += blk.get("folds") or []
+        closures_in += [dict(c) for c in blk.get("closures") or []]
         seam_notes = dict(blk.get("seam_notes") or {})
         pat = None
     if pat:
@@ -197,10 +198,13 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches += st_
         interfaced += i_
     interfaced = interfaced + [e for e in g.get("interfaced", []) if e not in interfaced]
-    # closures (closures.py): a lap held by fastenings; the garment's entry replaces the table's of that name
+    # closures (closures.py): a lap held by fastenings; the garment's entry of a name is laid over the table's /
+    # the draft's key by key (so {"name": "collar", "state": "open"} is how a garment is WORN: top button undone;
+    # {"name": "front", "state": "open"}: a jacket hanging open), a new name is a new closure
     from . import closures as closuremod
     for c in g.get("closures") or []:
-        closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(c)]
+        base = next((o for o in closures_in if o.get("name") == c.get("name")), {})
+        closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(base, **c)]
     closuremod.validate(closures_in)
     st_c, folds_c, seams_c, closures_out = closuremod.expand(closures_in, out)
     stitches += [s_ for s_ in st_c if s_ not in stitches]
@@ -331,40 +335,110 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     # piece's). Finer collars and cuffs (7 mm) crumpled MORE: Blender's bending springs are per edge, so the same
     # settings on a finer mesh are a softer cloth
     ph = {nm: h for nm in names}
-    sew_keys = []
-    for si, (A, Bs) in enumerate(B["seams"]):
+    from . import folds as foldmod
+    fold_entries = foldmod.entries(B)
+    seam_sides = []
+    for A, Bs in B["seams"]:
         sides = []
         for side in (A, Bs):
             chain = [side] if isinstance(side, str) else list(side)
             arcs = [_edge(pcs, e) for e in chain]
             lens = np.array([pattern.length(pcs[nm]["P"][ix]) for nm, ix in arcs])
-            sides.append((arcs, np.r_[0, np.cumsum(lens)] / lens.sum()))
-        hs = min(ph[nm] for s in sides for nm, _ in s[0])
-        n = max(2, int(math.ceil(max(sum(pattern.length(pcs[nm]["P"][ix]) for nm, ix in s[0]) for s in sides) / hs)))
-        U = np.unique(np.round(np.r_[sides[0][1], sides[1][1]], 9))
-        G = [0.0]
-        for u0, u1 in zip(U[:-1], U[1:]):
-            c = max(1, int(round(n * (u1 - u0))))
-            G += list(np.linspace(u0, u1, c + 1)[1:])
-        G = np.asarray(G)
-        at = [[[] for _ in G] for _ in range(2)]  # per side, per global sample: its keys
-        for k, (arcs, cum) in enumerate(sides):
+            sides.append((arcs, np.r_[0, np.cumsum(lens)] / lens.sum(), float(lens.sum())))
+        seam_sides.append(sides)
+
+    def sample(extra):
+        """Every seam's samples (extra: {seam: fractions that must be samples of both sides})."""
+        for nm in names:
+            fixed[nm].clear()
+        keys = []
+        for si, sides in enumerate(seam_sides):
+            hs = min(ph[nm] for s in sides for nm, _ in s[0])
+            Lmax = max(s[2] for s in sides)
+            n = max(2, int(math.ceil(Lmax / hs)))
+            U = list(np.unique(np.round(np.r_[sides[0][1], sides[1][1]], 9)))
+            tol = SEAM_JOIN * hs / max(Lmax, 1e-9)
+            for u in sorted(extra.get(si) or []):  # (closer to a sample than SEAM_JOIN h: that sample serves)
+                if min(abs(u - v) for v in U) > tol:
+                    U.append(float(u))
+            U = np.sort(np.asarray(U))
+            G = [0.0]
+            for u0, u1 in zip(U[:-1], U[1:]):
+                c = max(1, int(round(n * (u1 - u0))))
+                G += list(np.linspace(u0, u1, c + 1)[1:])
+            G = np.asarray(G)
+            at = [[[] for _ in G] for _ in range(2)]  # per side, per global sample: its keys
+            for k, (arcs, cum, _) in enumerate(sides):
+                for j, (nm, ix) in enumerate(arcs):
+                    s0, s1 = cum[j], cum[j + 1]
+                    sel = np.where((G >= s0 - 1e-9) & (G <= s1 + 1e-9))[0]
+                    f = np.clip((G[sel] - s0) / max(s1 - s0, 1e-12), 0, 1)
+                    kk_ = put(nm, ix, _resample(pcs[nm]["P"][ix], f))
+                    for g, kk in zip(sel, kk_):
+                        at[k][g].append(kk)
+            for g in range(len(G)):
+                for ka in at[0][g]:
+                    for kb in at[1][g]:
+                        keys.append((si, ka, kb))
+        return keys
+
+    def on_seams(nm, q):
+        """[(seam, fraction)] for a pattern point of piece nm that lies on sewn edges."""
+        out = []
+        for si, sides in enumerate(seam_sides):
+            for arcs, cum, _ in sides:
+                for j, (nm2, ix) in enumerate(arcs):
+                    if nm2 != nm:
+                        continue
+                    L = pcs[nm]["P"][ix]
+                    seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
+                    if len(L) < 2 or seg.sum() < 1e-9:
+                        continue
+                    ab = L[1:] - L[:-1]
+                    tt = np.clip(np.sum((q - L[:-1]) * ab, 1) / np.maximum(seg ** 2, 1e-18), 0, 1)
+                    d = np.linalg.norm(L[:-1] + tt[:, None] * ab - q, axis=1)
+                    i = int(np.argmin(d))
+                    if d[i] < 1e-3:
+                        f = (seg[:i].sum() + tt[i] * seg[i]) / seg.sum()
+                        out.append((si, float(cum[j] + f * (cum[j + 1] - cum[j]))))
+        return out
+
+    def at_fraction(si, u):
+        """The pattern points (piece, point) of a seam's two sides at fraction u."""
+        out = []
+        for arcs, cum, _ in seam_sides[si]:
             for j, (nm, ix) in enumerate(arcs):
-                s0, s1 = cum[j], cum[j + 1]
-                sel = np.where((G >= s0 - 1e-9) & (G <= s1 + 1e-9))[0]
-                f = np.clip((G[sel] - s0) / max(s1 - s0, 1e-12), 0, 1)
-                keys = put(nm, ix, _resample(pcs[nm]["P"][ix], f))
-                for g, kk in zip(sel, keys):
-                    at[k][g].append(kk)
-        for g in range(len(G)):
-            for ka in at[0][g]:
-                for kb in at[1][g]:
-                    sew_keys.append((si, ka, kb))
+                if cum[j] - 1e-9 <= u <= cum[j + 1] + 1e-9 and cum[j + 1] > cum[j]:
+                    f = float(np.clip((u - cum[j]) / (cum[j + 1] - cum[j]), 0, 1))
+                    out.append((nm, _resample(pcs[nm]["P"][ix], np.array([f]))[0]))
+        return out
+
+    sew_keys = sample({})
+    # A fold line that ends on a sewn edge: its end is a sample of the seam on BOTH sides (and of every other seam
+    # the points it lands on belong to). The row's end used to take the outline's nearest vertex and move it onto the
+    # line (up to 0.6 h along the seam, 1.3 h for a roll's further rows), on its own side only: the seam's two sides
+    # were then paired up to 13 mm apart along it, and that pair never closed (a jacket's gorge beside the roll line)
+    if fold_entries and seam_sides:
+        extra, todo, seen = {}, [], []
+        for f in fold_entries:
+            nm = f["piece"]
+            sewn = np.concatenate(list(fixed[nm].values())) if fixed[nm] else None
+            for Lr in foldmod.rows(pcs, f, ph[nm], sewn, fold_width)["lines"]:
+                todo += [(nm, Lr[0]), (nm, Lr[-1])]
+        while todo:
+            nm, q = todo.pop()
+            if any(n_ == nm and np.linalg.norm(q - p_) < 1e-6 for n_, p_ in seen):
+                continue
+            seen.append((nm, q))
+            for si, u in on_seams(nm, q):
+                if 1e-6 < u < 1 - 1e-6 and all(abs(u - v) > 1e-7 for v in extra.get(si, [])):
+                    extra.setdefault(si, []).append(u)
+                    todo += at_fraction(si, u)
+        if extra:
+            sew_keys = sample(extra)
     uv, piece_of, F, border = [], [], [], []
     key_vid, points, marks = {}, {}, {}
-    from . import folds as foldmod
     fold_recs = []
-    fold_entries = foldmod.entries(B)
     folded = {f["piece"] for f in fold_entries}
     for pi, nm in enumerate(names):
         h = ph[nm]
@@ -417,6 +491,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             for pk in pending:
                 key_vid[pk] = len(uv)
             pending.clear()
+        sewn_ring = {v - len(uv) for k_, v in key_vid.items() if k_[0] == nm}
         ring = np.asarray(ring)
         # interior: a hex lattice clear of the outline, plus marks (buttons, pins) inside the piece
         lo, hi = ring.min(0), ring.max(0)
@@ -458,6 +533,12 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
                         dq = np.linalg.norm(ring - q, axis=1)
                         i = int(np.argmin(dq))
                         ok = dq[i] < 0.6 * h
+                        if ok and i in sewn_ring and dq[i] < 1.5 * SEAM_JOIN * h:
+                            # a seam sample made for this end (or one within SEAM_JOIN h of it): the row ends on
+                            # it where it is; moving it would unpair the seam's two sides
+                            taken.add(i)
+                            ids.append(("ring", i))
+                            continue
                         if ok and i in taken and dq[i] > 1e-4:
                             # the next free vertex beside it, on the row end's side of it (else the rows share one)
                             for i2 in ((i + 1) % len(ring), (i - 1) % len(ring)):
@@ -1308,6 +1389,43 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
     return out
 
 
+def _true_lengths(X: np.ndarray, M: dict, sel: np.ndarray, held: np.ndarray, body: "Body", clear: float,
+                  iters: int = 400) -> np.ndarray:
+    """X with the edges of the vertices `sel` at their pattern lengths (position based, both ways: long edges drawn
+    in, short ones out; Jacobi), the vertices `held` nearly fixed and nothing under `clear` off the body. A start
+    near the answer is assumed (it keeps the lay's folds: nothing here knows about bending)."""
+    F, uv = M["F"], M["uv"]
+    Fs = F[sel[F].all(1)]
+    E = np.unique(np.sort(np.r_[Fs[:, [0, 1]], Fs[:, [1, 2]], Fs[:, [2, 0]]], 1), axis=0)
+    if not len(E):
+        return X
+    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
+    V = X.copy()
+    w = np.where(held, 0.05, 1.0)
+    wa, wb = w[E[:, 0]], w[E[:, 1]]
+    ws = wa + wb
+    vn, tree = body.normals()
+    idx = np.where(sel)[0]
+    for it in range(iters):
+        d = V[E[:, 1]] - V[E[:, 0]]
+        L = np.maximum(np.linalg.norm(d, axis=1), 1e-12)
+        if np.abs(L / L0 - 1).max() < 0.01:
+            break
+        c = ((L - L0) / L)[:, None] * d
+        acc, cnt = np.zeros_like(V), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], c * (wa / ws)[:, None])
+        np.add.at(acc, E[:, 1], -c * (wb / ws)[:, None])
+        np.add.at(cnt, E[:, 0], 1.0)
+        np.add.at(cnt, E[:, 1], 1.0)
+        V[idx] += 1.4 * (acc / np.maximum(cnt, 1.0)[:, None])[idx]
+        if it % 10 == 9:
+            short = clear - body.clearance(V[idx])
+            lo = short > 0
+            if lo.any():
+                V[idx[lo]] += vn[tree.query(V[idx[lo]])[1]] * short[lo, None]
+    return V
+
+
 def _closed_girth(M: dict, nm: str) -> float:
     """A piece stitched to itself (a cuff's button and buttonhole): its girth when closed, the distance across it
     between the stitched vertices in the flat (0 if it doesn't close on itself)."""
@@ -2089,6 +2207,14 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             X[sel] = np.c_[q, hps[2] + U[:, 1] + float(w.get("lift", 0.0))]
         elif to == "seam":
             X[sel] = _on_seam(M, X, uv, pid, k, nm, w, body, pcs)
+            if w.get("worn") and w.get("true", False):
+                # a piece laid by frames along a curved edge, turned about a line and carried across a seam is the
+                # right SHAPE but not the pattern's lengths (a notched collar's front ends: 36 triangles up to 3.6x
+                # at 2 cm, spikes at the throat); a made piece rests as placed, so its lay is trued: every edge
+                # drawn to its pattern length, the sewn edge held where it lies
+                sewn_ = np.zeros(len(X), bool)
+                sewn_[np.r_[M["sew"][(pid[M["sew"][:, 0]] == k), 0], M["sew"][(pid[M["sew"][:, 1]] == k), 1]]] = True
+                X[sel] = _true_lengths(X, M, sel, sewn_ & sel, body, SMOOTH_CLEAR if smooth else CLEAR)[sel]
         elif to == "flat":  # laid flat at a height (a tablecloth, a blanket): pattern x, y -> world x, y
             o = np.asarray(w.get("at", [0, 0, 1.0]), float)
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
@@ -2834,6 +2960,75 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
 def _crossing_verts(X: np.ndarray, M: dict) -> np.ndarray:
     """Vertices of the edges and triangles that pass through each other in X (pairs joined by a seam or stitch
     vertex left out). Bool per vertex."""
+    Eh, Th = _crossing_hits(X, M)
+    out = np.zeros(len(X), bool)
+    out[Eh.ravel()] = True
+    out[Th.ravel()] = True
+    return out
+
+
+def _weld_clear(V: np.ndarray, V_sim: np.ndarray, M: dict, stiff: np.ndarray | None, rounds: int = 4) -> tuple[np.ndarray, int]:
+    """The clean-up's surface with the crossings its weld made taken out WITHOUT undoing the weld. A solver leaves
+    layers a contact gap apart (a made collar's fall on the back neck, a turned lapel on its front: 0.5-1.6 mm), and a
+    seam vertex welded 1-5 mm to its partner went through the layer lying on it by a fraction of a mm; sending those
+    places back to the sim's surface (the old answer, two rings wide) reopened every seam beside a collar: its neck
+    and gorge seam, the shoulder seams' ends, the top of the centre back seam ("stitches super visible"). Here each
+    vertex whose move made a crossing loses the part of its move ALONG THE NORMAL of the layer it went through (its
+    height over that layer is the sim's again; the closing in the cloth's plane stays), together with the draped
+    vertices welded to it. Returns (V, crossing vertices it could not clear: for the caller's revert)."""
+    V = V.copy()
+    moved = np.linalg.norm(V - V_sim, axis=1) > 1e-7
+    if not moved.any():
+        return V, 0
+    soft = np.ones(len(V), bool) if stiff is None else np.asarray(stiff) < 0.5
+    grp = np.arange(len(V))  # weld groups (closed seam pairs)
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    sw = sw[np.linalg.norm(V[sw[:, 0]] - V[sw[:, 1]], axis=1) < 1e-6] if len(sw) else sw
+    for _ in range(6):
+        if not len(sw):
+            break
+        m_ = np.minimum(grp[sw[:, 0]], grp[sw[:, 1]])
+        np.minimum.at(grp, sw[:, 0], m_)
+        np.minimum.at(grp, sw[:, 1], m_)
+    Es, Ts = _crossing_hits(V_sim, M)
+    was = set(map(tuple, np.c_[Es, Ts].tolist()))
+    left = 0
+    for _ in range(rounds):
+        Eh, Th = _crossing_hits(V, M)
+        new = np.array([tuple(r) not in was for r in np.c_[Eh, Th].tolist()], bool) if len(Eh) else np.zeros(0, bool)
+        Eh, Th = Eh[new], Th[new]
+        left = len(Eh)
+        if not left:
+            break
+        corr, cnt = np.zeros_like(V), np.zeros(len(V))
+        for e, tr in zip(Eh, Th):
+            n = np.cross(V_sim[tr[1]] - V_sim[tr[0]], V_sim[tr[2]] - V_sim[tr[0]])
+            n /= np.linalg.norm(n) + 1e-12
+            for v in list(e) + list(tr):
+                if moved[v] and soft[v]:
+                    corr[v] -= ((V[v] - V_sim[v]) @ n) * n
+                    cnt[v] += 1
+        hit = cnt > 0
+        if not hit.any():
+            break
+        corr[hit] /= cnt[hit][:, None]
+        # one correction per weld group (its draped members stay together)
+        g_ = grp[hit]
+        acc = {}
+        for v, g in zip(np.where(hit)[0], g_):
+            acc.setdefault(int(g), []).append(corr[v])
+        for g, cs in acc.items():
+            mem = np.where((grp == g) & soft & moved)[0]
+            V[mem] += np.mean(cs, axis=0)
+    if left:
+        Eh, Th = _crossing_hits(V, M)
+        left = int(sum(tuple(r) not in was for r in np.c_[Eh, Th].tolist()))
+    return V, left
+
+
+def _crossing_hits(X: np.ndarray, M: dict) -> tuple[np.ndarray, np.ndarray]:
+    """(edges (k, 2), triangles (k, 3)) of X that pass through each other (pairs joined by a seam or stitch vertex
+    left out)."""
     F = M["F"]
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
     cen = X[F].mean(1)
@@ -2856,10 +3051,7 @@ def _crossing_verts(X: np.ndarray, M: dict) -> np.ndarray:
     ei, ti = ei[keep], ti[keep]
     T = F[ti]
     hit = _seg_tri(X[E[ei, 0]], X[E[ei, 1]], X[T[:, 0]], X[T[:, 1]], X[T[:, 2]])
-    out = np.zeros(len(X), bool)
-    out[E[ei[hit]].ravel()] = True
-    out[T[hit].ravel()] = True
-    return out
+    return E[ei[hit]], T[hit]
 
 
 def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10) -> tuple[np.ndarray, list]:
@@ -3304,7 +3496,7 @@ def placement_of(g: dict) -> str:
 
 def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int | None = None,
           render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None,
-          result: str | Path | None = None) -> dict | None:
+          result: str | Path | None = None, place_only: bool = False) -> dict | None:
     """Draft, mesh, place and simulate one garment on one body, then clean it up. Returns {"V" final verts, "V_sim"
     the sim's own, "mesh", "fit", "integrity", "sizing", "shape", ...}; the sim is cached by content (keys that only
     change the look or the clean-up never re-simulate). cached_only: None when it hasn't been simulated.
@@ -3312,7 +3504,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     settled there (refine): the coarse-then-fine particle distance artists use. "draft": the coarse sim alone.
     Backend "zozo" sims once at `resolution` (its contact holds at 1 cm; "draft" = at `coarse`).
     result: an out.npz (a job folder's, from any solver) applied instead of the cached/simulated one, for judging a
-    result whose key has moved; it isn't cached."""
+    result whose key has moved; it isn't cached.
+    place_only: stop before the sim and return the start as the sim would get it (on the padded body when layered):
+    res + {"Xs" the sim mesh's start, "coarse" its mesh, "carry", "placed_on" the body it was placed on}."""
     progress = progress or (lambda s: None)
     if body_src.get("under_missing"):
         if cached_only:
@@ -3446,6 +3640,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
            "fabric": fab, "key": key, "refined": refine,
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not (refine or construct) else None),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
+    if place_only:
+        return dict(res, Xs=Xs, coarse=Ms, carry=carry, placed_on=body_p, rest_s=rest_s)
     if result is not None:
         from . import cloth_job as cj
         d, lines = cj.read_out(Path(result))
@@ -3678,17 +3874,21 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # (only crossings the clean-up MADE: where the sim itself is crossed, a made collar's ends, going back to the
         # sim's surface mends nothing, and each round grew the reverted patch by two rings: its welds were undone and
         # the seams round it stayed open, 66 of 502 sewn pairs on the shirt)
+        if len(M["sew"]):
+            res["V"], res["weld_left"] = _weld_clear(res["V"], res["V_sim"], M, interfacing(Bp, M))
         sim_bad = _crossing_verts(res["V_sim"], M)
         for _r in range(2):
             gr = sim_bad.copy()
             gr[A_[sim_bad[B_]]] = True
             gr[B_[sim_bad[A_]]] = True
             sim_bad = gr
-        for _ in range(4):
+        for it_ in range(8):
             bad = _crossing_verts(res["V"], M) & ~sim_bad
             if not bad.any():
                 break
-            for _r in range(2):
+            # (the crossing vertices alone first, then a ring, then two: two rings at once reopened every seam
+            # within 4 cm of one stubborn crossing at a collar's end, the shoulder seams with it)
+            for _r in range(min(it_, 2)):
                 gr = bad.copy()
                 gr[A_[bad[B_]]] = True
                 gr[B_[bad[A_]]] = True
@@ -3854,6 +4054,7 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
             "folds_mm": round(float(np.sqrt(np.mean(d_lo ** 2)) * 1000), 1)}
 
 
+SEAM_JOIN = 0.15  # x h: a fold line ending this near a seam sample ends ON it (no sliver edge on the seam)
 CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True}
 
 
@@ -3879,11 +4080,72 @@ def seam_gaps(V_sim: np.ndarray, V: np.ndarray, M: dict) -> dict:
     return out
 
 
+def _seam_relax(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, keep: float, passes: int = 6) -> np.ndarray:
+    """Welded seams pressed: a sewn seam is a smooth line. Each closed seam's vertices (its two sides as one) are
+    smoothed ALONG the seam's own polyline (Laplacian over its neighbours on the seam only, ends kept), never more
+    than 2 x `keep` from where the weld left them, and the first ring of cloth beside it follows by half. A solver's
+    stitches leave a seam between two soft pieces puckered: a jacket's centre back seam at 2 cm had its vertices
+    alternately 4 mm sunk and 5-9 mm proud of the cloth beside them (the pale zigzag down the back). The two sides
+    share their samples, so it is not an offset along the seam. Easing each vertex toward its neighbours on all sides
+    (the first version) took the median 2.0 -> 0.86 mm and still read as a zigzag. Seams with an interfaced side
+    stay (a made edge is where it was made)."""
+    sw_all = np.asarray(M["sew"]).reshape(-1, 2)
+    ss = np.asarray(M["sew_seam"])
+    closed = np.linalg.norm(X[sw_all[:, 0]] - X[sw_all[:, 1]], axis=1) < 1e-6
+    if not closed.any():
+        return X
+    hard = np.zeros(len(X), bool) if stiff is None else np.asarray(stiff) > 0.5
+    X0, X = X, X.copy()
+    cap = 2.0 * keep
+    A_, B_ = _graph(M)
+    on_seam = np.zeros(len(X), bool)
+    on_seam[sw_all.ravel()] = True
+    for si in np.unique(ss):
+        rows = np.where(ss == si)[0]
+        p = sw_all[rows]  # (in sample order along the seam)
+        ok = closed[rows] & ~hard[p].any(1)
+        # runs of consecutive closed pairs
+        i = 0
+        while i < len(p):
+            if not ok[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(p) and ok[j + 1]:
+                j += 1
+            if j - i >= 3:
+                q = p[i:j + 1]
+                keep_i = np.r_[0, np.where(np.any(q[1:] != q[:-1], axis=1))[0] + 1]  # (a chain's junction: one row)
+                q = q[keep_i]
+                C = X[q[:, 0]].copy()
+                C0 = C.copy()
+                for _ in range(passes):
+                    C[1:-1] = 0.25 * C[:-2] + 0.5 * C[1:-1] + 0.25 * C[2:]
+                    D = C - C0
+                    L = np.linalg.norm(D, axis=1)
+                    C = C0 + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
+                X[q[:, 0]] = C
+                X[q[:, 1]] = C
+            i = j + 1
+    moved = X - X0
+    mv = np.linalg.norm(moved, axis=1) > 1e-9
+    if mv.any():  # the first ring beside the seam follows by half the mean move of the seam vertices it touches
+        acc, cnt = np.zeros_like(X), np.zeros(len(X))
+        for a_, b_ in ((A_, B_), (B_, A_)):
+            k = mv[b_] & ~on_seam[a_] & ~hard[a_]
+            np.add.at(acc, a_[k], moved[b_[k]])
+            np.add.at(cnt, a_[k], 1.0)
+        r1 = cnt > 0
+        X[r1] += 0.5 * acc[r1] / cnt[r1][:, None]
+    return X
+
+
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """The pass artists make after the sim: the fine crinkle (frozen buckles a triangle or two across) smoothed away by
     Taubin passes (a band-limited smoothing that doesn't shrink the cloth: the folds, many triangles across, stay),
     seams welded (both sides at their midpoint), and anything the smoothing pulled toward the body pushed back out to
-    `clear`. opts: {"smooth": passes (0 = off), "weld": bool, "clear": m, "keep": m}. stiff (per vertex 0..1, the
+    `clear`. opts: {"smooth": passes (0 = off), "weld": bool, "clear": m, "keep": m, "seams": bool (welded seams
+    pressed flat, _seam_relax; default on)}. stiff (per vertex 0..1, the
     interfacing): interfaced pieces (collars, cuffs, plackets) aren't smoothed: they don't crinkle, and smoothing
     their tight folds and overlaps crumpled them (a cuff 2 -> 6%)."""
     o = dict(CLEANUP, **(opts or {}))
@@ -3919,6 +4181,8 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         X[vs] = (acc / np.bincount(gi, weights=wv)[:, None])[gi]
     if o["weld"] and len(M["sew"]):
         weld()
+        if o.get("seams", True):
+            X = _seam_relax(X, M, h, stiff, float(o["keep"]))
     if o["clear"] and body is not None and len(body.V):
         vn, tree = body.normals()
         _, i = tree.query(X)

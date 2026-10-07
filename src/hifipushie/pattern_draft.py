@@ -1307,6 +1307,9 @@ def _rename_piece(D: dict, old: str, new: str) -> None:
     for key in ("pair_seams", "pair_stitches"):
         if key in D:
             D[key] = [ren(e) for e in D[key]]
+    for c_ in D.get("pair_closures") or []:
+        if c_["piece"] == old:
+            c_["piece"] = new
     D["stitches"] = [[ren(a), ren(b)] for a, b in D["stitches"]]
     D["interfaced"] = [new if e == old else e for e in D["interfaced"]]
     if old in D["centre"]:
@@ -1445,6 +1448,9 @@ def apply_hinges(D: dict) -> None:
                 return f"{fname}:{x_}"
             for key in ("pair_seams", "pair_stitches"):
                 D[key] = [owner(e) for e in D.get(key) or []]
+            for c_ in D.get("pair_closures") or []:  # (to the part that holds its first mark)
+                if c_["piece"] == nm and c_["marks"]:
+                    c_["piece"] = owner(f"{nm}:{c_['marks'][0]}").split(":")[0]
             D["stitches"] = [[owner(x), owner(y)] for x, y in D["stitches"]]
             if nm in D["interfaced"]:
                 D["interfaced"].append(fname)
@@ -1638,6 +1644,13 @@ def unfold(D: dict) -> dict:
     for e in D.get("pair_stitches") or []:  # buttons: the right front's mark to the left front's
         if kind.get(e.split(":")[0]) == "pair":
             stitches.append([side_spec(e, "R"), side_spec(e, "L")])
+    # buttons down a pair's centre: a closure (closures.py), left over right; a fold piece buttons to nothing
+    D["closures"] = list(D.get("closures") or [])
+    for c in D.get("pair_closures") or []:
+        if kind.get(c["piece"]) == "pair":
+            D["closures"].append({"name": c["name"], "kind": "buttons", "over": f"{c['piece']}.L", "under": f"{c['piece']}.R",
+                                  "at": [[m_, m_] for m_ in c["marks"]], "state": c.get("state", "closed"),
+                                  **({"size": c["size"]} if c.get("size") else {})})
     def side_pt(e, S):  # a point or mark of a half piece, on side S of the garment
         nm, pt = e.split(":", 1)
         k = kind[nm]
@@ -1723,6 +1736,7 @@ def build(meas_mm: dict, pat: dict) -> dict:
         pc.setdefault("wrap", {})
     return {"pieces": D["pieces"], "seams": D["seams"], "stitches": D["stitches"], "interfaced": D["interfaced"],
             "folds": D["folds"], "generate": D["generate"], "seam_notes": D["notes"],
+            "closures": D.get("closures") or [],
             "draft": {"design": "draft", "block": D["block"], "options": pat.get("block_options") or {},
                       "measurements": dict(meas_mm), "log": D["log"], "meta": {k: v for k, v in D["meta"].items()
                                                                                if k != "measurements"}},

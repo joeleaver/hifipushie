@@ -304,6 +304,14 @@ def openings(c: Ctx) -> list:
         P = pcs[L]["P"]
         if float(np.abs(P[:, 0]).min()) > 0.03 and not st:
             continue
+        cl = [c_ for c_ in Bp.get("closures") or [] if {c_["over"], c_.get("under", c_["over"])} == {L, R}]
+        if cl and not all(cl[0].get("closed") or [False]):
+            # a closure worn open (or partly): the fastenings are there, the wearer left them undone
+            n_c = sum(bool(v) for v in cl[0].get("closed") or [])
+            out.append((f"opening between {L} and {R}: closure {cl[0]['name']!r} ({cl[0]['kind']}) worn "
+                        + ("open" if not n_c else f"with {n_c} of {len(cl[0]['closed'])} fastened")
+                        + f" (state {json.dumps(cl[0].get('state'))})", True))
+            continue
         if st:
             out.append((f"opening between {L} and {R}: closed by {len(st)} stitch(es) (buttons / tie)", True))
             continue
