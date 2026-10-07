@@ -103,6 +103,36 @@ def test_seam_finish_in_the_maps_is_a_fine_line():
     assert cloth.seam_kinds(M, {"design": {"kind": "shirt"}, **g})[0] == "felled"
 
 
+def test_export_shares_normals_across_seams(tmp_path=None):
+    import tempfile
+    from pathlib import Path
+    g, M, V, ia, ib = _two()
+    M = dict(M, F=M["F"].copy())
+    pf = M["piece"][M["F"][:, 0]]
+    fb = pf == M["names"].index("b")
+    M["F"][fb] = M["F"][fb][:, [0, 2, 1]]
+    V[:, 2] = 0.02 * np.cos(V[:, 0] * 6)  # a gentle wave: normals that differ along the cloth
+    body = _Body(np.c_[np.random.default_rng(0).uniform(-0.2, 0.6, (400, 2)), np.full(400, -0.05)])
+    res = {"mesh": M, "V": V, "body": body}
+    old = cloth.garments
+    cloth.garments = lambda *a, **k: [("sheet", dict(g, detail={"texture": 256}), res)]
+    try:
+        out = Path(tmp_path or tempfile.mkdtemp())
+        parts = cloth.export_part("x", {}, out, texture=256, log=lambda *a: None)
+    finally:
+        cloth.garments = old
+    p = parts[0][1]
+    cv, n = p["corner_vert"], p["normal"]
+    nv = len(V)
+    outer = cv < nv
+    assert (n[outer][:, 2] > 0.9).all()  # every piece faces out
+    sw = M["sew"]
+    for a, b in sw:  # a seam's two sides: one normal
+        na, nb = n[cv == a], n[cv == b]
+        if len(na) and len(nb):
+            assert np.allclose(na[0], nb[0], atol=1e-5)
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
