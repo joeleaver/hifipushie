@@ -202,7 +202,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     # the draft's key by key (so {"name": "collar", "state": "open"} is how a garment is WORN: top button undone;
     # {"name": "front", "state": "open"}: a jacket hanging open), a new name is a new closure
     from . import closures as closuremod
-    for c in g.get("closures") or []:
+    from . import garment_design as gdmod
+    for c in gdmod.wear(g) + list(g.get("closures") or []):  # how the kind is worn (no tie: collar open), then the garment's own
+        if not any(o.get("name") == c.get("name") for o in closures_in) and not c.get("over"):
+            continue  # (a wear rule for a closure this pattern hasn't got)
         base = next((o for o in closures_in if o.get("name") == c.get("name")), {})
         closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(base, **c)]
     closuremod.validate(closures_in)
@@ -4872,7 +4875,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 

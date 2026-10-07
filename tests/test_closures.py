@@ -29,6 +29,18 @@ def test_states():
     assert not st and out[0]["closed"] == [False] * 3  # open: nothing sewn, the buttons still exist
     st, _, _, out = closures.expand([dict(ENTRY, state={"open_above": "buttonhole2"})], _pieces())
     assert len(st) == 2 and out[0]["closed"] == [False, True, True]  # the top button undone
+    st, _, _, out = closures.expand([dict(ENTRY, state={"open_top": 1})], _pieces())
+    assert len(st) == 2 and out[0]["closed"] == [False, True, True]  # the highest fastening, by its mark
+
+
+def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
+    # garment_kb kinds.shirt.wear: no tie (the default) -> collar open + the top front button undone; a tie closes both
+    from hifipushie import cloth, garment_design
+    g = {"pattern": {"from": "simon"}}
+    assert {c["name"]: c["state"] for c in garment_design.wear(g)} == {"collar": "open", "front": {"open_top": 1}}
+    assert {c["name"]: c["state"] for c in garment_design.wear(dict(g, tie=True))} == {"collar": "closed", "front": "closed"}
+    assert garment_design.wear({"pattern": {"from": "carlton"}}) == []  # a coat: as its pattern says
+    assert "tie" in garment_design.SHEET_KEYS
 
 
 def test_a_chosen_closure_must_be_in_the_pattern():
