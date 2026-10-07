@@ -1087,7 +1087,12 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
             dxz = np.hypot(body.V[:, 0] - x0, body.V[:, 2] - z0)
             near_ = np.where(dxz <= dxz.min() + 0.006)[0]
             yy = body.V[near_, 1]
-            return body.V[near_[np.argmax(yy) if back else np.argmin(yy)]]
+            pv = body.V[near_[np.argmax(yy) if back else np.argmin(yy)]]
+            # the point itself at the body's depth there, not the body's vertex (two points given one vertex made
+            # triangles of no size in a made piece's rest: "1652% stretched", the layered start failed); past the
+            # body's outline (over the shoulder's top) part of the way out from the vertex, so points stay apart
+            f_ = 1.0 if dxz.min() < 0.008 else 0.3
+            return np.array([pv[0] + f_ * (x0 - pv[0]), pv[1], pv[2] + f_ * (z0 - pv[2])])
         Wb = np.full((len(b), 3), np.nan)
         for i_, vb in enumerate(b):
             wb_ = pcs[M["names"][pid[vb]]]["wrap"]
