@@ -64,7 +64,8 @@ def test_shawl_collar_on_the_roll_line():
     assert any(fd["piece"] == "front_facing.L" for fd in D["folds"])  # the facing turns with its front
     assert 0.006 < D["pieces"]["front.L"]["wrap"]["out"] <= 0.016  # the lap: as little as holds the layers apart
     assert D["pieces"]["front_facing.L"]["wrap"]["fused"] == "front.L"  # one cloth with its front in the sim
-    assert len(D["stitches"]) == 1  # the one button, right front to left
+    # the one button: a closure, left front over right (closures.py makes its stitch)
+    assert len(D["closures"]) == 1 and D["closures"][0]["over"].endswith(".L") and len(D["closures"][0]["at"]) == 1
     # the right front's roll line is the left's mirrored
     L = next(fd for fd in D["folds"] if fd["piece"] == "front.L")["line"]
     R = next(fd for fd in D["folds"] if fd["piece"] == "front.R")["line"]
