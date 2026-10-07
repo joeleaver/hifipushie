@@ -122,6 +122,7 @@ def smoothstep(e0, e1, x):
 # ---------------------------------------------------------------- volumes
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
+BORDER_CREASE_H, BORDER_CREASE_DEG = 1.0, 30.0  # (voxels, deg) border vertices on a crease: see _export_tiles
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
 
 
@@ -2920,6 +2921,15 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
         tt = Fa / (Fa - Fb)
         CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
+        # a border vertex ON a crease (a sheer cliff's lip, a turf step) takes a normal from across it: border normals
+        # are never split (both tiles carry the same one), and the exact normal of one side there is square to the
+        # other side's faces, which then shade as shards (slice_a, 84 deg sea cliffs: 72 of LOD 0's 77 shard faces
+        # had a border vertex)
+        _, gw = field.value_gradient(CP, BORDER_CREASE_H * v0)
+        Nw = gw / np.maximum(np.linalg.norm(gw, axis=1, keepdims=True), 1e-12)
+        on_crease = ((CN * Nw).sum(1) < math.cos(math.radians(BORDER_CREASE_DEG))) & np.isfinite(Nw).all(1) \
+            & (np.linalg.norm(gw, axis=1) > 1e-6)
+        CN[on_crease] = Nw[on_crease]
         CW, CC = mats.weights(CP, CN)
     pos = {tuple(p): r for r, p in enumerate(CP)}
     timing["marching cubes + border vertices"] = time.time() - t0
@@ -4377,8 +4387,14 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
         summary["map_seams"] = ms
         for key, r in ms.items():
             if not r["ok"]:
+                lim_ = MAP_SEAM[min(int(key[-1]), len(MAP_SEAM) - 1)]
                 failures.append(f"{key}: baked maps differ across tile borders in {r['bad']}: "
-                                + ", ".join(f"{c} p50/p95 {r[c]}" for c in r["bad"]))
+                                + ", ".join(f"{c} p50/p95 {r[c]} (limit "
+                                            f"{lim_[c] if c in lim_ else lim_['weights']}); worst borders "
+                                            + ", ".join(f"{a[0]},{a[1]}|{b[0]},{b[1]} {p}"
+                                                        for p, a, b in r.get("worst", {}).get(c, [])[:3])
+                                            for c in r["bad"])
+                                + " (a visible seam in shading / ground layers along those borders at that LOD)")
     summary["failures"] = len(failures)
     (out / "seam_check.json").write_text(json.dumps({"summary": summary, "failures": failures}, indent=1))
     return {"summary": summary, "failures": failures}
@@ -4541,7 +4557,7 @@ def map_seams(out, tiles, lods, kind="tiles", memo=None):
         return cache[e["i"], e["j"], k, ax, lim]
 
     for ka, kb in pairs:
-        diffs = {}
+        diffs, per = {}, {}
         for (i, j), e in by.items():
             for di, dj, ax in ((1, 0, 0), (0, 1, 1)):
                 o = by.get((i + di, j + dj))
@@ -4563,6 +4579,8 @@ def map_seams(out, tiles, lods, kind="tiles", memo=None):
                     else:
                         v = np.abs(va - vb).max(1)
                     diffs.setdefault(c, []).append(v)
+                    if len(v) >= 20:  # (which border: a failure names its tiles)
+                        per.setdefault(c, []).append((round(float(np.percentile(v, 95)), 3), [i, j], [i + di, j + dj]))
         if not diffs:
             continue
         name = f"lod{ka}" if ka == kb else f"lod{ka}_vs_lod{kb}"
@@ -4581,6 +4599,8 @@ def map_seams(out, tiles, lods, kind="tiles", memo=None):
                 bad.append(c)
         r["ok"] = not bad
         r["bad"] = bad
+        if bad:  # the borders it is worst on, per failing channel: [p95, tile, tile]
+            r["worst"] = {c: [list(w) for w in sorted(per.get(c, []), reverse=True)[:4]] for c in bad}
         res[name] = r
     return res
 
