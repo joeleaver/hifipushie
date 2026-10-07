@@ -2611,6 +2611,10 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                       f"median {g_['p50_mm']} mm)")
     ground = ("\nground: in the file, " + ("nothing but the trunk's foot is under it" if not gl else "geometry is under it")
               + "".join("\n" + l_ for l_ in gl)) if c.get("ground") else ""
+    ground += ("\nfor engines without MSFT_lod / KHR_materials_variants (Godot 4.7 keeps only LOD 0 of the combined file, drops "
+               "nodes outside the scene and drops variants): use the _LOD<k>.glb files (lod_files=True)"
+               + (f", {Path(c['collision_file']).name} (its node is named ...-colonly: Godot makes a static body of it)" if c.get("collision_file") else "")
+               + (f", {Path(c['seasons_file']).name} (each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))

@@ -448,11 +448,26 @@ lod_files=True)`:
   `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
   material variants in the export (KHR_materials_variants: spring / summer / autumn / winter / snow / wet). Snow lying on wood
   is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
-- **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh.
+- **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh node (outside the
+  scene), and `<name>_collision.glb`: the same mesh as a file, its node IN the scene and named `<name>_collision-colonly`
+  (Godot's importer makes a static body of a node so named and drops the mesh).
+- **The impostor** is an UNLIT albedo picture (rendered under an even white world: a lit picture, lit again by the
+  engine, was paler than LOD 2 and popped at the switch; measured on the blobby oak: foliage 0.49 / 0.63 / 0.27 against
+  the mesh's 0.47 / 0.63 / 0.20 sRGB). Its material is single sided and each quad's back is a face of its own (8
+  triangles), all with normals up and leaning out: on a double-sided material the back's normal flipped and one quad
+  rendered black from the sun's side. It carries the summer picture only (no season variants yet).
+- **`<name>_seasons.json`** beside the GLB (written whenever there are variants): variant -> per material slot (the
+  default material's name: bark, foliage, foliage_boughs<k>) its baseColorFactor, roughness, alpha mode and cut-off,
+  `hidden`, and the base colour picture (image index in the GLB + the same PNG written beside it). For engines that
+  drop KHR_materials_variants.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
   1 - uv2.v; `_WIND` arrives unflipped as an attribute) and reads the variants. Godot imports the scene's nodes only
-  (LOD 0; use the LOD files), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`.
+  (LOD 0 of the combined file: use the `_LOD<k>.glb` files; a node outside the scene, the collision mesh, never
+  arrives: use `<name>_collision.glb`), keeps TEXCOORD_1 as UV2 unflipped and TEXCOORD_2 as CUSTOM0, drops `_WIND`,
+  drops KHR_materials_variants entirely (only the default season's materials arrive: read `<name>_seasons.json`), and
+  its default material ignores COLOR_0 (switch vertex colour on: a style's mass tones live there). Checked by the
+  pushieworld demo in Godot 4.7.2.
 
 ## Small plants: grass, ferns, flowers, groundcover, palms (assembled, not grown)
 
@@ -511,8 +526,8 @@ built yet). A style NEVER changes the growth: species, seed, skeleton, height, c
 tree's, node for node, so an engine can swap styles on one placement and the outline at 200 m is the same tree. The
 report says what was simplified and measures that claim:
 
-    style blobby: 4 limbs kept of 5 first-order (5 of 12125 axes drawn, 54 of 4451 m of wood; no twigs); 8 crown masses for 17840 twigs, 3 tones
-    same individual: outline IoU 0.859 against the realistic tree in leaf (true scale, feet together; azimuths 0/60/120: ...); height 20.2 m (realistic 19.8), crown width 23.8 m (realistic 25.7)
+    style blobby: 4 limbs kept of 5 first-order + 10 of their forks (15 of 12125 axes drawn, 138 of 4451 m of wood; no twigs); 8 crown masses + a core joined over 3.55 m, for 17840 twigs, 3 tones
+    same individual: outline IoU 0.86 against the realistic tree in leaf (true scale, feet together; azimuths 0/60/120: ...); height 20.2 m (realistic 19.8), crown width 23.8 m (realistic 25.7)
 
 (IoU of the row-filled side outlines, both in the same metric frame: under 0.8, or a height off by 6%, is a WARNING.)
 
@@ -530,41 +545,54 @@ How artists make these (what the operations copy):
 A style is a sheet of ordinary numbers (`src/hifipushie/vegetation_styles/<name>.json`; get_plant shows the resolved
 sheet under `style`) over a few general operations. Override any of them in the spec:
 `"style": {"sheet": "blobby", "crown": {"masses": 5, "blend": 2.0}, "wood": {"limbs": 3}, "budget": 4000}`.
-- `wood`: `limbs` [fewest, most] of the stoutest first-order limbs drawn (those at least 0.4 x the stoutest's girth),
-  `radius` (x the grown radius), `taper_floor` (never thinner than this share of the limb's base), `limb_min` (a limb's
-  base at least this share of the trunk's), `reach` / `bury` (a limb ends `bury` m inside the first crown mass it
-  enters, else at `reach` of its length), `trunk_reach`, `smooth` (bend smoothing passes), `round_ends`, `sides`,
-  `flat` (bark = one colour, no texture), `share` (of the triangle budget).
+- `wood`: `limbs` [fewest, most] of the stoutest first-order limbs drawn (those at least 0.4 x the stoutest's girth)
+  and `stubs` of each limb's stoutest forks (`stub_apart` m apart, at least `stub_min` m long, `stub_radius` x their
+  limb): what carries the crown in leaf and what is left standing in winter (limbs alone were four bare noodles).
+  Girth is TOY girth: `radius` x the grown radius, but a limb's base at least `limb_mass` x the crown masses' mean
+  radius and the trunk `trunk_mass` x it (the pipe model's limbs read as wires under 4 m lumps); never thinner than
+  `taper_floor` (trunk: `trunk_floor`) of the base; `foot` caps the root flare (the grown flare made the trunk a
+  cone). Every limb and fork runs INTO the crown and ends there: it is drawn while its axis stays `keep_in` m + its own
+  girth under the surface (to `reach_in` / `stub_reach` of its length), stops for good where it first comes out
+  again, and a fork that never gets in is not drawn. `smooth` = bend smoothing passes. The wood is ONE field (each
+  axis a chain of round cones, axes joined by a smooth union of `blend` x the branch's girth) meshed like the crown:
+  forks are fillets, ends are round, normals are the field's. `flat` (bark = one colour), `share` (of the budget).
 - `crown` kind "masses": the twigs' positions are clustered (k-means, no randomness), each cluster becomes an
   ellipsoid (principal axes x `spread` + `pad` twig lengths; no semi-axis under 0.75 x `min_feature` or under
-  `roundness` x its longest: flat clusters read as lily pads; a mass never stands taller than the tree), the
-  ellipsoids are joined by a smooth union (`blend` m) and meshed once (marching cubes on the field), then decimated per
-  LOD and put back on the field. Closed, no leaves, no alpha. `masses` [lo, hi]: the fewest whose outline is within
-  0.01 IoU of the best (the report lists the IoU per count), or one number. `normals`: 0 = the field's own gradient
-  (smooth over each mass and its blends) .. 1 = straight out of the crown's middle. `tones` steps of `tone` [dark,
-  light] by each mass's height (top lighter; `warm_top`), one tone per mass.
+  `roundness` x its longest: flat clusters read as lily pads; a mass never stands taller than the tree), plus a
+  `core` mass in the middle (x the whole foliage's spread: foliage is a hollow shell, and masses fitted to a shell are
+  a ring of balloons). They are joined by a smooth union over `blend_share` x their mean radius (at least `blend` m:
+  1 m between 4 m masses left eight balloons; 0.9 gives one bumpy cloud) and meshed once (marching cubes on the
+  field), then decimated per LOD and put back on the field. Closed, no leaves, no alpha. `masses` [lo, hi]: the
+  fewest whose outline is within 0.01 IoU of the best (the report lists the IoU per count), or one number.
+  `normals`: 0 = the field's own gradient (smooth over each mass and its blends) .. 1 = straight out of the crown's
+  middle. `tones` steps of `tone` [dark, light] by each mass's height (top lighter; `warm_top`), one tone per mass.
+  The fit is always made on the plant in leaf, whatever `season` it is shown in.
 - `colour`: saturation / value on the species' leaf and bark colours. `wind`: `mass` = the least branch sway a mass
   has (it moves as a whole with the limb it sits on, in that limb's phase), `squash` (top vs bottom of a mass).
   `seasons`: what spring and snow mix the colour toward. `budget`: LOD 0's triangles when export_plant gets none.
 
 The export keeps the realistic contract: nodes / meshes `wood` + `foliage` (LOD<k>_ prefixed), materials `bark` +
 `foliage`, LODs at 100 / 45 / 18% + impostor, TEXCOORD_1 / TEXCOORD_2 / _WIND, KHR_materials_variants per season,
-collision (capsules + mesh, of the wood that is DRAWN: fat trunk, kept limbs). What differs, for the engine's shader:
-the foliage is opaque untextured geometry; albedo = the material's baseColorFactor (one per season variant; a
-deciduous winter hides the mesh by an alpha cut-off above 1) x COLOR_0 (each mass's tone, <= 1); NORMAL is the smooth
+collision (capsules + mesh: the GROWN tree's, identical to the realistic export's: swapping styles must not change
+gameplay). What differs, for the engine's shader:
+the foliage is opaque untextured geometry; albedo = the material's baseColorFactor (one per season variant) x COLOR_0
+(each mass's tone, <= 1: an engine's default imported material ignores vertex colour, switch it on; without it every
+mass is one green). A season in which the plant is bare has `extras.hidden` on its foliage material and `hidden: true`
+in the seasons json (the alpha cut-off above 1 is only there so viewers that read variants hide it); NORMAL is the smooth
 mass normal; TEXCOORD_0 = (height within its mass 0..1, (mass index + 0.5) / masses) for ramps and per-mass ids.
 No lighting is baked: cel bands and outlines are the engine's. extras.hifipushie_plant.style carries the sheet, the
 "simplified" lines and every season's colour (sRGB).
 
 Seasons in a style: spring (fresh yellow-green), summer, autumn (`leaves.autumn`), winter (deciduous: the bare drawn
-limbs; evergreen: its crown), snow (pale). Read: a blobby deciduous tree in winter is a trunk with 2-4 bare fat
-sticks: thin for a toy tree. The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
+limbs and forks; evergreen: its crown), snow (pale). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
 variant = `leaves.spring` colour (else the summer colour toward yellow-green) and leaves `leaves.spring_size` (0.75)
 of their length. Blossom and catkins are not built; clumps (grass, ferns, flowers) have no seasons of their own yet.
 
 What goes wrong: an IoU under ~0.85 usually means the realistic crown is ragged or hollow on one side (raise
-`crown.masses`' upper end, or lower `spread`); masses like separate balloons = `blend` too small for their size;
-a limb ending in the air = raise `wood.bury` or lower `reach`.
+`crown.masses`' upper end, or lower `spread`); masses like separate balloons = `blend_share` too small or no `core`;
+limbs like wires = `limb_mass` / `trunk_mass`; a stick showing through a mass = raise `wood.keep_in`; a bare winter
+tree of a few noodles = more `stubs`. Known: at 5k the fork's fillet shades in angular patches from close (the wood
+gets 40% of the budget); LOD 2 can come out ~25% over its share (the masses and axes each keep a minimum).
 
 ## Not built yet
 

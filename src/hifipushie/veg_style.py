@@ -122,12 +122,16 @@ def bark_color(spec: dict, st: dict) -> list:
 
 
 # ---------------------------------------------------------------- wood: the limbs that are drawn
-def wood(tree: dict, st: dict, inside=None) -> dict:
-    """A small tree of the drawn wood only: the trunk's axis and the stoutest first-order limbs, each to `reach` of its
-    length along its stoutest wood, fattened, bends smoothed, ends rounded. The same keys veg_mesh.tubes and
-    veg_export.wind_nodes read; `src` = each node's node in the grown tree; `info` = what was left out.
-    inside: points -> depth inside the crown (m, positive inside): a limb then ends `bury` m inside the first mass it
-    enters (no later than `reach`), so no limb ends in the air or pokes out the far side."""
+def wood(tree: dict, st: dict, inside=None, size: float = 0.0) -> dict:
+    """A small tree of the drawn wood only: the trunk's axis, the stoutest first-order limbs and, INSIDE the crown, a
+    few branches off each (`stubs`: the stoutest forks, `stub_apart` m apart; each runs into the crown and ends in a
+    mass like a limb: what is left standing when the plant is bare). Fattened, bends smoothed.
+    The same keys veg_mesh.tubes and veg_export.wind_nodes read; `src` = each node's node in the grown tree; `info` =
+    what was left out.
+    inside: points -> depth inside the crown (m, positive inside): a limb runs on inside the crown while it stays
+    `keep_in` m deep (to `reach_in` of its length), so it ends in a mass, never in the air or out the far side; one
+    that never gets `bury` m deep ends where it is deepest. size: the crown masses' mean radius (m): a limb's base
+    is at least `limb_mass` x it (toy proportions: a limb as fat as what it carries, not as the pipe model says)."""
     w = st["wood"]
     P, par, rad, ax = tree["pos"], tree["parent"], tree["radius"], tree["axis"]
     kids: dict = {}
@@ -145,16 +149,44 @@ def wood(tree: dict, st: dict, inside=None) -> dict:
     kept = cand[:n_keep]
     fat, floor = float(w.get("radius", 1.0)), float(w.get("taper_floor", 0.0))
 
+    def length(nodes):
+        return np.cumsum(np.linalg.norm(np.diff(np.vstack([P[par[nodes[0]]], P[nodes]]), axis=0), axis=1))
+
     def cut(nodes, share, least=0):
-        pts = np.vstack([P[par[nodes[0]]], P[nodes]])
-        cum = np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))
+        cum = length(nodes)
         k = int(np.searchsorted(cum, share * cum[-1])) + 1
         return nodes[: max(min(k, len(nodes)), least, 2)]
+
+    def within(full, share, entered=False, keep=None, must=False):
+        """The part of a path drawn: to where it leaves the crown again after entering it."""
+        if inside is None:
+            return cut(full, float(w.get("reach", 1.0)))
+        dep = inside(P[full])
+        cum = length(full)
+        ins = np.flatnonzero(dep > 0)
+        if len(ins) and not entered:  # it stops for good where it first comes out of the crown again (a limb that
+            out_ = np.flatnonzero(dep[ins[0]:] < 0)  # crossed a shallow lobe and went on showed as a stick in the air between two masses)
+            if len(out_):
+                full, dep, cum = full[: ins[0] + out_[0]], dep[: ins[0] + out_[0]], cum[: ins[0] + out_[0]]
+        deep = np.flatnonzero(dep >= float(w.get("bury", 0.8)))
+        if not len(deep) and not entered:
+            if must and float(dep.max()) < float(w.get("keep_in", 0.5)):
+                return full[:0]  # (a fork that never gets into the crown is not drawn: its end would stand in the air)
+            return full[: max(int(np.argmax(dep)) + 1, 2)]
+        i = 0 if entered else int(deep[0])
+        end = i
+        while end + 1 < len(full) and dep[end + 1] >= (float(w.get("keep_in", 0.5)) if keep is None else keep) and cum[end + 1] <= share * cum[-1]:
+            end += 1
+        return full[: max(end + 1, 2)]
 
     top_base = max([tpos[int(par[tree["axes"][L["axis"]]["node"]])] for L in kept], default=0)
     tn = cut(trunk, float(w.get("trunk_reach", 1.0)), top_base + 2)
     r_ref = float(rad[tn[min(len(tn) - 1, max(1, len(tn) // 5))]])
-    pos, parent, radius, axis, order, src = [P[0]], [0], [fat * max(float(rad[0]), floor * r_ref)], [0], [0], [0]
+    r_ref = max(r_ref, float(w.get("trunk_mass", 0.0)) * size / fat)  # (a trunk as stout as the crown it carries)
+    tfloor = float(w.get("trunk_floor", floor))
+    foot = float(w.get("foot", 1.25))  # the root flare, at most this x the trunk (the grown flare made the trunk a cone)
+    trad = lambda r_: fat * np.clip(r_, tfloor * r_ref, foot * r_ref)
+    pos, parent, radius, axis, order, src = [P[0]], [0], [float(trad(rad[0]))], [0], [0], [0]
     index = {}
 
     def smooth(pts):
@@ -165,7 +197,6 @@ def wood(tree: dict, st: dict, inside=None) -> dict:
 
     def add(nodes, root, pts, rr, ai, od):
         prev = root
-        first = len(pos)
         for n, p_, r_ in zip(nodes, pts, rr):
             index[int(n)] = len(pos)
             pos.append(p_)
@@ -175,52 +206,163 @@ def wood(tree: dict, st: dict, inside=None) -> dict:
             order.append(od)
             src.append(int(n))
             prev = len(pos) - 1
-        if w.get("round_ends", True) and len(pts) > 1:  # a hemisphere: rings at 35, 62 and 82 deg round the end
-            d = pts[-1] - pts[-2]
-            d = d / max(float(np.linalg.norm(d)), 1e-9)
-            for th in (35, 62, 82):
-                pos.append(pts[-1] + d * rr[-1] * math.sin(math.radians(th)))
-                parent.append(prev)
-                radius.append(float(rr[-1] * math.cos(math.radians(th))))
-                axis.append(ai)
-                order.append(od)
-                src.append(int(nodes[-1]))
-                prev = len(pos) - 1
-        return first
 
     tp = smooth(np.vstack([P[0], P[tn]]))[1:]
-    add(tn, 0, tp, fat * np.maximum(rad[tn], floor * r_ref), 0, 0)
-    drawn_len = float(np.linalg.norm(np.diff(np.vstack([P[0], P[tn]]), axis=0), axis=1).sum())
-    for j, L in enumerate(kept):
+    add(tn, 0, tp, trad(rad[tn]), 0, 0)
+    drawn = [np.vstack([P[0], P[tn]])]
+    n_ax, n_stub = 1, 0
+    for L in kept:
         n0 = tree["axes"][L["axis"]]["node"]
         full = vegetation.stout_path(tree, n0, kids)
-        nodes = cut(full, float(w.get("reach", 1.0)))
-        if inside is not None:
-            dep = inside(P[full])
-            deep = np.flatnonzero(dep >= float(w.get("bury", 0.8)))
-            nodes = full[: max(int(deep[0]) + 1, 2)] if len(deep) else full[: max(int(np.argmax(dep)) + 1, 2)]
         root = index[int(par[n0])]
+        r0 = max(fat * float(rad[n0]), float(w.get("limb_min", 0.0)) * fat * r_ref, float(w.get("limb_mass", 0.0)) * size)
+        r0 = min(r0, 0.8 * radius[root])
+        # (inside the crown its axis stays its own girth + keep_in under the surface: 0.5 m down, a 0.5 m limb showed through)
+        nodes = within(full, float(w.get("reach_in", 0.9)), keep=float(w.get("keep_in", 0.5)) + floor * r0)
         pts = smooth(np.vstack([pos[root], P[nodes]]))[1:]
-        r0 = max(fat * float(rad[n0]), float(w.get("limb_min", 0.0)) * fat * r_ref)
-        rr = np.minimum(np.maximum(fat * rad[nodes], floor * r0), 0.8 * radius[root])
-        add(nodes, root, pts, rr, j + 1, 1)
-        drawn_len += float(np.linalg.norm(np.diff(np.vstack([pos[root], pts]), axis=0), axis=1).sum())
+        rr = np.maximum(r0 * rad[nodes] / max(float(rad[n0]), 1e-9), floor * r0)
+        add(nodes, root, pts, rr, n_ax, 1)
+        n_ax += 1
+        drawn.append(np.vstack([pos[root], pts]))
+        if inside is None or not w.get("stubs"):
+            continue
+        # stubby branches off this limb, inside the crown: the stoutest side branches whose foot is in a mass
+        on = set(int(q) for q in nodes)
+        sides = []
+        for q in nodes[1:]:
+            for c in kids.get(int(q), ()):
+                if c not in on and rad[c] >= 0.15 * rad[q]:
+                    sides.append((float(rad[c]), int(c)))
+        sides.sort(reverse=True)
+        took = []
+        for _, c in sides:
+            if len(took) >= int(w["stubs"]):
+                break
+            if any(np.linalg.norm(P[c] - P[t_]) < float(w.get("stub_apart", 1.5)) for t_ in took):
+                continue
+            sroot = index[int(par[c])]
+            sr0 = min(max(fat * float(rad[c]), float(w.get("stub_radius", 0.6)) * radius[sroot]), 0.8 * radius[sroot])
+            sn = within(vegetation.stout_path(tree, c, kids), float(w.get("stub_reach", 0.6)), must=True,
+                        keep=float(w.get("keep_in", 0.5)) + floor * sr0)  # (as a limb: on into the crown, ending in a mass)
+            if len(sn) < 2 or length(sn)[-1] < float(w.get("stub_min", 1.0)):
+                continue
+            took.append(c)
+            spts = smooth(np.vstack([pos[sroot], P[sn]]))[1:]
+            add(sn, sroot, spts, np.maximum(sr0 * rad[sn] / max(float(rad[c]), 1e-9), floor * sr0), n_ax, 2)
+            n_ax += 1
+            n_stub += 1
+            drawn.append(np.vstack([pos[sroot], spts]))
     src = np.array(src)
-    n = len(pos)
+    drawn_len = float(sum(np.linalg.norm(np.diff(d_, axis=0), axis=1).sum() for d_ in drawn))
     total_len = float(np.linalg.norm(P - P[par], axis=1).sum())
     return {"pos": np.array(pos), "parent": np.array(parent), "radius": np.array(radius), "axis": np.array(axis),
-            "order": np.array(order), "ends": np.zeros(n, bool), "key": tree["key"][src], "height": tree["height"],
+            "order": np.array(order), "ends": np.zeros(len(pos), bool), "key": tree["key"][src], "height": tree["height"],
             "spec": tree["spec"], "dead": None, "src": src,
-            "info": {"limbs_kept": len(kept), "limbs": len(allL), "axes": int(len(tree["axes"])), "axes_kept": 1 + len(kept),
+            "info": {"limbs_kept": len(kept), "limbs": len(allL), "axes": int(len(tree["axes"])), "axes_kept": n_ax, "stubs": n_stub,
                      "wood_m": round(drawn_len, 1), "wood_m_grown": round(total_len, 1),
                      "limb_names": [L["name"] for L in kept]}}
 
 
-def wood_mesh(mini: dict, st: dict, f: float = 1.0) -> dict:
-    """The drawn wood as tubes; f < 1 = a lower LOD (fewer sides and rings)."""
+def wood_tubes(mini: dict, st: dict, f: float = 1.0) -> dict:
+    """The drawn wood as plain tubes (quick: what the fit's silhouettes use)."""
     lo, hi = st["wood"].get("sides", [6, 12])
     sides = (max(3, int(round(lo * f))), max(4, int(round(hi * f))))
     return veg_mesh.tubes(mini, sides=sides, simplify=0.25 / max(f, 0.2), tip=1.0, tile=(0.5, 1.0))
+
+
+def _segments(mini: dict) -> list:
+    """Per axis: (a, b, ra, rb, node of b) for its segments, with the foot run 0.3 m into the ground."""
+    out = []
+    for ai in np.unique(mini["axis"]):
+        nodes = np.flatnonzero(mini["axis"] == ai)
+        nodes = nodes[nodes >= 1]
+        par = mini["parent"][nodes]
+        a, b = mini["pos"][par].copy(), mini["pos"][nodes]
+        ra, rb = mini["radius"][par].copy(), mini["radius"][nodes]
+        if ai != mini["axis"][1]:
+            ra[0] = rb[0]  # (a branch starts at its own girth, on its parent's axis: the union makes the fork)
+        else:
+            a[0] = a[0] - [0, 0, 0.3]
+        out.append((a, b, ra, rb, nodes))
+    return out
+
+
+def wood_field(segs: list, p: np.ndarray, blend: float, node: bool = False):
+    """The drawn wood as one field: each axis a chain of round cones (hard union along it: a smooth one bulged at every
+    joint), the axes joined by a smooth union of `blend` x the branch's girth: forks are fillets, ends are round.
+    node=True also returns the nearest segment's end node per point."""
+    d = np.full(len(p), 1e3)
+    nn = np.zeros(len(p), np.int64)
+    for a, b, ra, rb, nodes in segs:
+        k = blend * float(rb[0])
+        lo, hi = np.minimum(a, b).min(0) - ra.max() - k - 0.3, np.maximum(a, b).max(0) + ra.max() + k + 0.3
+        m = np.flatnonzero(((p >= lo) & (p <= hi)).all(1))
+        if not len(m):
+            continue
+        da = np.full(len(m), 1e3)
+        na = np.zeros(len(m), np.int64)
+        for i in range(len(a)):
+            ab = b[i] - a[i]
+            t = np.clip((p[m] - a[i]) @ ab / max(float(ab @ ab), 1e-12), 0, 1)
+            di = np.linalg.norm(p[m] - (a[i] + t[:, None] * ab), axis=1) - (ra[i] + t * (rb[i] - ra[i]))
+            better = di < da
+            da = np.where(better, di, da)
+            na = np.where(better, nodes[i], na)
+        nn[m] = np.where(da < d[m], na, nn[m])
+        d[m] = sdf.smin(d[m], da, k)
+    return (d, nn) if node else d
+
+
+def mesh_field(fn, lo, hi, voxel: float) -> tuple:
+    """Marching cubes of a field over a box: (V, F) with faces outward (the field is negative inside)."""
+    from skimage import measure
+    C = 4  # a coarse pass first: the field is only evaluated exactly in coarse cells the surface can reach
+    nc = [int(np.ceil((hi[i] - lo[i] + 3 * voxel) / (C * voxel))) + 1 for i in range(3)]
+    cax = [lo[i] - voxel + (np.arange(nc[i]) + 0.5) * C * voxel - 0.5 * voxel for i in range(3)]
+    Gc = np.stack(np.meshgrid(*cax, indexing="ij"), -1).reshape(-1, 3)
+    vc = np.concatenate([fn(Gc[i: i + 400000]) for i in range(0, len(Gc), 400000)]).reshape(nc)
+    vol = np.repeat(np.repeat(np.repeat(vc, C, 0), C, 1), C, 2)
+    ax = [lo[i] - voxel + np.arange(nc[i] * C) * voxel for i in range(3)]
+    near = np.argwhere(np.abs(vol) < 1.6 * C * voxel)  # (fields here are steeper than a distance by at most ~1.3)
+    Gn = np.stack([ax[i][near[:, i]] for i in range(3)], 1)
+    vol[near[:, 0], near[:, 1], near[:, 2]] = np.concatenate([fn(Gn[i: i + 400000]) for i in range(0, len(Gn), 400000)]) if len(Gn) else []
+    V, F, _, _ = measure.marching_cubes(vol, 0.0, spacing=(voxel,) * 3)
+    V = V + [ax[0][0], ax[1][0], ax[2][0]]
+    pick = np.arange(0, len(F), max(1, len(F) // 500))
+    fn_ = np.cross(V[F[pick, 1]] - V[F[pick, 0]], V[F[pick, 2]] - V[F[pick, 0]])
+    if (np.einsum("ij,ij->i", fn_, grad(fn, V[F[pick]].mean(1))) < 0).mean() > 0.5:
+        F = F[:, ::-1]
+    return V, np.ascontiguousarray(F)
+
+
+def grad(fn, p, h=0.02):
+    g = np.empty_like(p)
+    for a in range(3):
+        e = np.zeros(3)
+        e[a] = h
+        g[:, a] = fn(p + e) - fn(p - e)
+    return g / (2 * h)
+
+
+def onto(fn, V, steps: int = 2):
+    """Vertices back onto a field's surface (decimation pulls a rounded surface in), and its normals there."""
+    for _ in range(steps):
+        g = grad(fn, V)
+        V = V - g * (fn(V) / np.maximum((g * g).sum(1), 1e-9))[:, None]
+    g = grad(fn, V)
+    return V, g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
+
+
+def wood_dense(mini: dict, st: dict) -> dict:
+    """The drawn wood meshed from its field, at full resolution."""
+    segs = _segments(mini)
+    blend = float(st["wood"].get("blend", 0.6))
+    fn = lambda q: np.maximum(wood_field(segs, q, blend), -0.3 - q[:, 2])  # (cut flat 0.3 m under the foot)
+    rmin = float(min(rb.min() for _, _, _, rb, _ in segs))
+    voxel = float(st["wood"].get("voxel") or np.clip(0.4 * rmin, 0.05, 0.12))
+    r = float(mini["radius"].max())
+    V, F = mesh_field(fn, mini["pos"].min(0) - r - 0.4, mini["pos"].max(0) + r + 0.2, voxel)
+    return {"V": V, "F": F, "segs": segs, "blend": blend, "voxel": voxel}
 
 
 def capsules(mini: dict, limit: int = 24) -> list[dict]:
@@ -240,8 +382,17 @@ def capsules(mini: dict, limit: int = 24) -> list[dict]:
 
 
 # ---------------------------------------------------------------- crown masses
+def in_leaf(tree: dict) -> dict:
+    """The same tree in summer: a style is fitted to the plant in leaf whatever season it is shown in (a winter tree
+    has no twigs to fit masses to, and its limbs must still be the summer tree's)."""
+    if tree["spec"].get("season", "summer") == "summer":
+        return tree
+    return {**tree, "spec": {**tree["spec"], "season": "summer"}}
+
+
 def leaf_points(tree: dict) -> tuple[np.ndarray, float]:
     """Where the foliage is: the middle of every living twig, and the twig's length (m)."""
+    tree = in_leaf(tree)
     tw = veg_leaf.place_live(tree)
     tl = float({**veg_leaf.TWIG, **(tree["spec"]["leaves"].get("twig") or {})}["length"])
     if not len(tw["pos"]):
@@ -291,7 +442,23 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float) -> list[dict]:
         c[2] -= max(0.0, c[2] + ez - ztop)  # never taller than the tree: a rounded-up top mass sinks to the tree's own height
         out.append({"c": c, "R": U.T.copy(), "r": r, "n": int(len(Q))})
     out.sort(key=lambda e: float(e["c"][2]))
+    if cr.get("core") and len(out) > 1:  # the foliage is a shell: a mass in its hollow makes the crown one body with lobes
+        c = X.mean(0)
+        ev, U = np.linalg.eigh(np.cov((X - c).T) + np.eye(3) * 1e-6)
+        r = float(cr["core"]) * np.sqrt(np.maximum(ev, 0))
+        r = np.maximum(r, float(cr.get("roundness", 0.0)) * r.max())
+        ez = math.sqrt(float(((U.T[:, 2] * r) ** 2).sum()))
+        c[2] -= max(0.0, c[2] + ez - ztop)
+        out.append({"c": c, "R": U.T.copy(), "r": r, "n": 0, "core": True})
     return out
+
+
+def blend_of(ells: list[dict], st: dict) -> float:
+    """The crown union's smoothing radius (m): `blend`, or `blend_share` x the masses' mean radius when that is more
+    (a fixed 1 m between 5 m masses left eight balloons)."""
+    cr = st["crown"]
+    size = float(np.mean([e["r"].mean() for e in ells if not e.get("core")])) if ells else 0.0
+    return max(float(cr.get("blend", 0.5)), float(cr.get("blend_share", 0.0)) * size)
 
 
 def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, floor: float | None = None):
@@ -311,7 +478,7 @@ def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, flo
     return (d, D) if each else d
 
 
-def _gradient(ells, p, blend, floor, h=0.02):
+def _gradient_old(ells, p, blend, floor, h=0.02):
     g = np.empty_like(p)
     for a in range(3):
         e = np.zeros(3)
@@ -322,23 +489,13 @@ def _gradient(ells, p, blend, floor, h=0.02):
 
 def crown_mesh(ells: list[dict], st: dict, voxel: float | None = None, floor: float | None = None) -> dict:
     """The masses as one closed surface: marching cubes of the field ({"V", "F"}, outward)."""
-    from skimage import measure
     cr = st["crown"]
-    blend = float(cr.get("blend", 0.5))
+    blend = blend_of(ells, st)
     lo = np.min([e["c"] - e["r"].max() for e in ells], axis=0) - blend
     hi = np.max([e["c"] + e["r"].max() for e in ells], axis=0) + blend
     voxel = voxel or float(cr.get("voxel") or 0) or float(np.clip((hi - lo).max() / 80, 0.06, 0.3))
-    ax = [np.arange(lo[i] - voxel, hi[i] + 2 * voxel, voxel) for i in range(3)]
-    G = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
-    vol = np.concatenate([field(ells, G[i: i + 200000], blend, floor=floor) for i in range(0, len(G), 200000)])
-    vol = vol.reshape(len(ax[0]), len(ax[1]), len(ax[2]))
-    V, F, _, _ = measure.marching_cubes(vol, 0.0, spacing=(voxel,) * 3)
-    V = V + [ax[0][0], ax[1][0], ax[2][0]]
-    pick = np.arange(0, len(F), max(1, len(F) // 500))
-    fn = np.cross(V[F[pick, 1]] - V[F[pick, 0]], V[F[pick, 2]] - V[F[pick, 0]])
-    if (np.einsum("ij,ij->i", fn, _gradient(ells, V[F[pick]].mean(1), blend, floor)) < 0).mean() > 0.5:
-        F = F[:, ::-1]
-    return {"V": V, "F": np.ascontiguousarray(F), "voxel": voxel}
+    V, F = mesh_field(lambda q: field(ells, q, blend, floor=floor), lo, hi, voxel)
+    return {"V": V, "F": F, "voxel": voxel, "blend": blend}
 
 
 def color_gain(st: dict) -> float:
@@ -384,7 +541,7 @@ def mesh_mask(meshes: list, azimuth: float, x0: float, z1: float, px: float, sha
 
 def reference(tree: dict, azimuths=AZIMUTHS, px: float = 10.0) -> list:
     """The realistic tree's silhouettes in leaf (mask, frame) per azimuth: what every style is held against."""
-    return [vegetation.silhouette(tree, az, px, leaves=True, pad=3.0) for az in azimuths]
+    return [vegetation.silhouette(in_leaf(tree), az, px, leaves=True, pad=3.0) for az in azimuths]
 
 
 def compare(tree: dict, meshes: list, azimuths=AZIMUTHS, px: float = 10.0, refs: list | None = None) -> dict:
@@ -406,17 +563,18 @@ def compare(tree: dict, meshes: list, azimuths=AZIMUTHS, px: float = 10.0, refs:
 
 # ---------------------------------------------------------------- the fit (once per tree and sheet) and the dress (per LOD)
 def fit(tree: dict, st: dict) -> dict:
-    """The styled plant's parts before any budget: {"mini": the drawn wood, "ells": the crown's masses (or []),
-    "dense": the crown at full resolution, "match": compare()'s numbers, "tried": IoU per number of masses}."""
+    """The styled plant's parts before any budget: {"mini": the drawn wood, "wood": its dense mesh, "ells": the
+    crown's masses (or []), "dense": the crown at full resolution, "match": compare()'s numbers, "tried": IoU per
+    number of masses}."""
     key = hashlib.sha1(json.dumps(st, sort_keys=True).encode()).hexdigest()
     hit = _FIT.get(id(tree))
     if hit is not None and hit[0] is tree and hit[1] == key:
         return hit[2]
     mini = wood(tree, st)
-    Wm = wood_mesh(mini, st)
+    Wm = wood_tubes(mini, st)
     wm = (Wm["V"], Wm["F"])
     X, tl = leaf_points(tree)
-    out = {"mini": mini, "ells": [], "dense": None, "tried": {}, "twigs": int(len(X))}
+    out = {"mini": mini, "ells": [], "dense": None, "tried": {}, "twigs": int(len(X)), "blend": 0.0}
     floor = float(tree["spec"]["leaves"].get("clear", 0.03)) + 0.02
     refs = reference(tree)
     cr = st.get("crown") or {}
@@ -425,20 +583,22 @@ def fit(tree: dict, st: dict) -> dict:
         cands = {}
         for k in range(int(lo), int(hi) + 1):
             ells = masses(X, k, st, tl)
-            if not ells or len(ells) in cands:
+            n_ = sum(not e.get("core") for e in ells)
+            if not ells or n_ in cands:
                 continue
             cm = crown_mesh(ells, st, voxel=None if lo == hi else 0.3, floor=floor)
-            cands[len(ells)] = (ells, compare(tree, [wm, (cm["V"], cm["F"])], refs=refs)["iou"])
+            cands[n_] = (ells, compare(tree, [wm, (cm["V"], cm["F"])], refs=refs)["iou"])
         best = max(v[1] for v in cands.values())
         k = min(k_ for k_, v in cands.items() if v[1] >= best - 0.01)
         out["tried"] = {k_: v[1] for k_, v in cands.items()}
-        out["ells"] = cands[k][0]
-        out["dense"] = crown_mesh(out["ells"], st, floor=floor)
+        ells = out["ells"] = cands[k][0]
+        out["dense"] = crown_mesh(ells, st, floor=floor)
         out["floor"] = floor
-        mini = out["mini"] = wood(tree, st, lambda q: -field(out["ells"], q, float(cr.get("blend", 0.5)), floor=floor))
-        Wm = wood_mesh(mini, st)
-        wm = (Wm["V"], Wm["F"])
-    out["match"] = compare(tree, [wm] + ([(out["dense"]["V"], out["dense"]["F"])] if out["dense"] else []), refs=refs)
+        out["blend"] = bl = out["dense"]["blend"]
+        size = float(np.mean([e["r"].mean() for e in ells if not e.get("core")]))
+        mini = out["mini"] = wood(tree, st, lambda q: -field(ells, q, bl, floor=floor), size)
+    out["wood"] = wood_dense(mini, st)
+    out["match"] = compare(tree, [(out["wood"]["V"], out["wood"]["F"])] + ([(out["dense"]["V"], out["dense"]["F"])] if out["dense"] else []), refs=refs)
     if len(_FIT) > 6:
         _FIT.clear()
     _FIT[id(tree)] = (tree, key, out)
@@ -446,38 +606,37 @@ def fit(tree: dict, st: dict) -> dict:
 
 
 def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "summer") -> dict:
-    """The plant in its style within a triangle count (default the sheet's `budget`): {"wood": tubes, "wood_wind":
-    (trunk, branch, phase, flutter) per wood vertex, "crown": None | {"V", "F", "N", "uv", "col" (n, 3 multiplier),
-    "wind", "mass"}, "mini", "info"}. A lower count takes sides and rings off the wood and triangles off the same
-    crown: the masses themselves never change with the LOD."""
+    """The plant in its style within a triangle count (default the sheet's `budget`): {"wood": {"V", "F", "N", "uv",
+    "node"...}, "wood_wind": (trunk, branch, phase, flutter) per wood vertex, "crown": None | {"V", "F", "N", "uv",
+    "col" (n, 3 multiplier), "wind", "mass"}, "mini", "info"}. A lower count takes triangles off the same two
+    surfaces: the masses and the limbs themselves never change with the LOD."""
     from . import veg_export
     ft = fit(tree, st)
     full = int(st.get("budget", 5000))
     triangles = int(triangles or full)
-    f = float(np.clip(math.sqrt(triangles / full), 0.3, 1.4))
     mini = ft["mini"]
-    share = float(st["wood"].get("share", 0.25))
-    W = wood_mesh(mini, st, f)
-    while len(W["F"]) > max(share * triangles, 60) * (1.0 if ft["ells"] else 4.0) and f > 0.2:
-        f *= 0.85
-        W = wood_mesh(mini, st, f)
+    share = float(st["wood"].get("share", 0.25)) if ft["ells"] else 1.0
+    wd_ = ft["wood"]
+    wfn = lambda q: np.maximum(wood_field(wd_["segs"], q, wd_["blend"]), -0.3 - q[:, 2])
+    Vw, Fw = _decimate(wd_["V"], wd_["F"], max(int(share * triangles), 24 * int(mini["axis"].max() + 1)))
+    Vw, Nw = onto(wfn, Vw)
+    nd = wood_field(wd_["segs"], Vw, wd_["blend"], node=True)[1]
+    z = np.zeros(len(Vw))
+    W = {"V": Vw, "F": Fw, "N": Nw, "uv": np.zeros((len(Vw), 2)), "node": nd, "tan": np.tile([0, 0, 1.0], (len(Vw), 1)),
+         "radius": mini["radius"][nd], "dead": z}
     wn = veg_export.wind_nodes(mini)
-    nd = W["node"]
-    out = {"wood": W, "wood_wind": (wn["trunk"][nd], wn["branch"][nd], wn["phase"][nd], np.zeros(len(nd))), "crown": None, "mini": mini}
-    info = {"style": st["name"], **mini["info"], "masses": len(ft["ells"]), "twigs": ft["twigs"], "match": ft["match"],
-            "masses_tried": ft["tried"], "wood_triangles": int(len(W["F"])), "crown_triangles": 0, "budget": triangles}
+    out = {"wood": W, "wood_wind": (np.clip(Vw[:, 2] / max(tree["height"], 1e-6), 0, 1) ** 1.5, wn["branch"][nd], wn["phase"][nd], z), "crown": None, "mini": mini}
+    info = {"style": st["name"], **mini["info"], "masses": sum(not e.get("core") for e in ft["ells"]), "core": any(e.get("core") for e in ft["ells"]),
+            "blend_m": round(ft["blend"], 2), "twigs": ft["twigs"], "match": ft["match"],
+            "masses_tried": ft["tried"], "wood_triangles": int(len(Fw)), "crown_triangles": 0, "budget": triangles}
     if ft["ells"] and season_color(tree["spec"], season, st) is not None:
         cr, ells = st["crown"], ft["ells"]
-        blend = float(cr.get("blend", 0.5))
-        V, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(triangles - len(W["F"]), 40 * len(ells)))
-        for _ in range(2):  # back onto the field (decimation pulls a rounded surface in)
-            d = field(ells, V, blend, floor=ft["floor"])
-            g = _gradient(ells, V, blend, ft["floor"])
-            V = V - g * (d / np.maximum((g * g).sum(1), 1e-9))[:, None]
+        blend = ft["blend"]
+        cfn = lambda q: field(ells, q, blend, floor=ft["floor"])
+        V, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(triangles - len(Fw), 40 * len(ells)))
+        V, N = onto(cfn, V)
         d, D = field(ells, V, blend, each=True, floor=ft["floor"])
-        g = _gradient(ells, V, blend, ft["floor"])
-        N = g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
-        cen = np.average([e["c"] for e in ells], axis=0, weights=[e["n"] for e in ells])
+        cen = np.mean([e["c"] for e in ells], axis=0)
         o = V - cen
         o /= np.maximum(np.linalg.norm(o, axis=1, keepdims=True), 1e-9)
         wN = float(cr.get("normals", 0.0))
@@ -513,8 +672,8 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
                         "wind": (trunk_w, np.clip(branch_w, 0, 1), sw @ ph_m, np.full(len(V), float(wd.get("flutter", 0.0))))}
         info["crown_triangles"] = int(len(F))
         info["tones"] = int(len(np.unique(ti)))
-        info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist(), "tone": int(ti[j])}
-                             for j, e in enumerate(ells)]
+        info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist(), "tone": int(ti[j]),
+                              **({"core": True} if e.get("core") else {})} for j, e in enumerate(ells)]
     info["triangles"] = info["wood_triangles"] + info["crown_triangles"]
     out["info"] = info
     return out
@@ -523,9 +682,10 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
 def lines(info: dict) -> list[str]:
     """What the style did to this plant, in words (the report, the export's reply, GLB extras)."""
     m = info["match"]
-    out = [f"style {info['style']}: {info['limbs_kept']} limbs kept of {info['limbs']} first-order ({info['axes_kept']} of "
-           f"{info['axes']} axes drawn, {info['wood_m']} of {info['wood_m_grown']} m of wood; no twigs)"
-           + (f"; {info['masses']} crown masses for {info['twigs']} twigs" if info["masses"] else "; no crown masses")
+    out = [f"style {info['style']}: {info['limbs_kept']} limbs kept of {info['limbs']} first-order + {info.get('stubs', 0)} of their forks "
+           f"({info['axes_kept']} of {info['axes']} axes drawn, {info['wood_m']} of {info['wood_m_grown']} m of wood; no twigs)"
+           + (f"; {info['masses']} crown masses" + (" + a core" if info.get("core") else "") + f" joined over {info.get('blend_m', 0)} m, for {info['twigs']} twigs"
+              if info["masses"] else "; no crown masses")
            + (f", {info.get('tones', 0)} tones" if info.get("tones") else "")]
     out.append(f"same individual: outline IoU {m['iou']} against the realistic tree in leaf (true scale, feet together; azimuths "
                f"{'/'.join(str(a) for a in m['azimuths'])}: {'/'.join(f'{v:.2f}' for v in m['iou_by_azimuth'])}); height "

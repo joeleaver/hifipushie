@@ -51,7 +51,21 @@ def test_blobby_dress():
     D = vs.dress(T, st)
     i = D["info"]
     lo, hi = st["wood"]["limbs"]
-    assert lo <= i["limbs_kept"] <= hi and i["axes_kept"] == 1 + i["limbs_kept"] < i["axes"]
+    assert lo <= i["limbs_kept"] <= hi and i["axes_kept"] == 1 + i["limbs_kept"] + i["stubs"] < i["axes"]
+    assert i["stubs"] <= st["wood"]["stubs"] * i["limbs_kept"] and i["core"] and i["blend_m"] >= st["crown"]["blend"]
+    # the wood is one closed smooth surface too (forks are fillets), and every drawn limb ends inside the crown
+    W = D["wood"]
+    ew = np.sort(np.vstack([W["F"][:, [0, 1]], W["F"][:, [1, 2]], W["F"][:, [2, 0]]]), axis=1)
+    assert (np.unique(ew, axis=0, return_counts=True)[1] == 2).mean() > 0.99
+    ft = vs.fit(T, st)
+    mini = ft["mini"]
+    ends = [np.flatnonzero(mini["axis"] == a)[-1] for a in np.unique(mini["axis"]) if a > 0]
+    dep = -vs.field(ft["ells"], mini["pos"][ends], ft["blend"])
+    assert (dep > 0).all(), dep
+    # toy proportions: limbs as stout as what they carry
+    size = np.mean([e["r"].mean() for e in ft["ells"] if not e.get("core")])
+    first = [np.flatnonzero(mini["axis"] == a)[0] for a in np.unique(mini["axis"][mini["order"] == 1])]
+    assert min(mini["radius"][first]) >= 0.6 * st["wood"]["limb_mass"] * size
     assert st["crown"]["masses"][0] <= i["masses"] <= st["crown"]["masses"][1]
     assert i["triangles"] <= st["budget"] * 1.02, i["triangles"]
     C = D["crown"]
@@ -103,7 +117,10 @@ def test_seasons():
     assert cols["autumn"][0] > cols["autumn"][2] and cols["spring"][1] > cols["summer"][1]
     P = v.grow({"species": "norway_spruce", "age": 12})
     assert vs.season_color(P["spec"], "winter", st) is not None  # an evergreen keeps its crown
-    assert vs.dress(v.grow({**BASE, "style": "blobby", "season": "winter"}), st, season="winter")["crown"] is None
+    Wn = vs.dress(v.grow({**BASE, "style": "blobby", "season": "winter"}), st, season="winter")
+    assert Wn["crown"] is None
+    # a bare tree keeps the summer tree's limbs and forks (it is fitted in leaf whatever the season)
+    assert Wn["info"]["axes_kept"] == vs.dress(T, st)["info"]["axes_kept"] > 1 + Wn["info"]["limbs_kept"]
     # the realistic tree has a spring too: smaller, fresher leaves
     sp = veg_export.spring_leaves(T["spec"])
     assert sp["length"] < T["spec"]["leaves"].get("length", 0.07) and sp["color"] != T["spec"]["leaves"]["color"]
@@ -140,6 +157,27 @@ def test_export_contract():
         ex = G["extras"]["hifipushie_plant"]
         assert ex["style"]["name"] == "blobby" and ex["style"]["simplified"] and ex["collision"][0]["capsules"]
         assert any(n.get("extras", {}).get("collision") for n in G["nodes"])
+        # collision is the grown tree's, whatever the style
+        assert ex["collision"] == Gr["extras"]["hifipushie_plant"]["collision"]
+        assert winter["extras"]["hidden"] is True
+        # for engines without variants / out-of-scene nodes: a seasons json and a collision file
+        sj = veg_export.seasons_json(c["path"])
+        assert sj["variants"] == list(seasons) and set(sj["slots"]) == {"bark", "foliage"}
+        assert sj["seasons"]["winter"]["foliage"]["hidden"] and not sj["seasons"]["autumn"]["foliage"]["hidden"]
+        assert sj["seasons"]["autumn"]["foliage"]["baseColorFactor"] != sj["seasons"]["summer"]["foliage"]["baseColorFactor"]
+        assert json.loads(Path(sj["path"]).read_text())["default"] == "summer"
+        sr = veg_export.seasons_json(str(Path(tmp) / "r.glb"))
+        fs = [k for k in sr["slots"] if k.startswith("foliage")]  # (a budgeted tree's LODs may each have their own bough picture)
+        assert fs and all(Path(tmp, sr["seasons"]["autumn"][k]["baseColorTexture"]["file"]).exists() for k in fs)
+        assert all(sr["seasons"]["winter"][k]["hidden"] for k in fs)
+        Gc, _ = _glb(veg_export.write_collision(T, str(Path(tmp) / "c.glb"), "b"))
+        assert Gc["nodes"][Gc["scenes"][0]["nodes"][0]]["name"] == "b_collision-colonly" and Gc["extras"]["hifipushie_collision"]["capsules"]
+        # the impostor: single sided, each quad drawn from both sides, normals up and out
+        img = {"image": np.ones((8, 16, 4), np.float32), "size": 6.0, "height": 3.0}
+        Gi, arr_i = _glb(veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img))
+        pi = Gi["meshes"][0]["primitives"][0]
+        assert not Gi["materials"][pi["material"]].get("doubleSided") and len(arr_i(pi["indices"])) == 24
+        assert arr_i(pi["attributes"]["NORMAL"])[:, 1].min() > 0.5  # (glTF is Y up)
 
 
 if __name__ == "__main__":

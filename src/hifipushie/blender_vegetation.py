@@ -623,6 +623,8 @@ def add_plant(pj, tag, clay):
     a.data.foreach_set("value", d["radius"].astype(np.float32))
     wood.data.materials.append(bark)
     wood.data.polygons.foreach_set("use_smooth", np.ones(len(wood.data.polygons), bool))
+    if "wood_N" in d:  # (a style's wood is meshed from a field: its own normals)
+        wood.data.normals_split_custom_set_from_vertices(d["wood_N"].astype(np.float32).tolist())
     twig_obs = []
     pts_all = [V]
     if has_tw:
@@ -881,6 +883,7 @@ def build(job):
             cam.data.ortho_scale = need
             cam.data.clip_start, cam.data.clip_end = 0.1, 20 * R + 50
         isclay = bool(v.get("clay"))
+        isflat = bool(v.get("flat"))  # albedo only: no sun, an even white world (an impostor's picture: the engine lights it)
         if v.get("sun"):
             aim_sun(*v["sun"])
         fill.data.energy = 0.0 if isclay else job.get("bounce", 1.1)
@@ -903,7 +906,14 @@ def build(job):
             if p_.get("solid") is not None:
                 p_["solid"].data.materials[0] = clay if isclay else p_["solid_mat"]
         sun.data.energy = 7.0 if isclay else job.get("sun_energy", 3.6)
-        sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "Khronos PBR Neutral")
+        if isflat:
+            for l in list(w.node_tree.links):
+                if l.to_socket == bg.inputs[0]:
+                    w.node_tree.links.remove(l)
+            bg.inputs[0].default_value = (1, 1, 1, 1)
+            bg.inputs[1].default_value = 1.0
+            sun.data.energy = fill.data.energy = amb.data.energy = 0.0
+        sc.view_settings.view_transform = "Standard" if isclay or isflat else job.get("view_transform", "Khronos PBR Neutral")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)
         ground.hide_render = bool(v.get("no_ground"))
         for o in rulers:

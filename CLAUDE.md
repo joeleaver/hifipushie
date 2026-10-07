@@ -3498,12 +3498,36 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     under so much crown and shade with a hard crease near the fork, winter = four bare noodles.
   - Spring: `season_color` / `veg_export.spring_leaves` (colour + smaller leaves; realistic and styled; export
     variant "spring"). No blossom, no catkins; clumps have no seasons (consumer notes 14, 15).
-  - NEXT, in the consumer's order: blobby spruce (stacked rounded tiers: likely crown kind "tiers" = masses fitted per
-    height band, or k-means on z only), blobby meadow grass (a clump: veg_small has no style path at all: fat rounded
-    tufts need geometry instead of cards), then anime / cartoon / pixar sheets (cards on the masses with normals
-    taken from the field: `veg_style.field` + `_gradient` at each card vertex), sets and stands (write_glb takes the
-    first tree's sheet for a set: untested; veg_stand ignores styles), `wind_plant` on a styled plant untested
-    (imp.py did the same check by hand), tests/test_veg_style.py.
+  - Round 2 (the coordinator on vs_03: "balloons on wires"; the consumer in Godot 4.7.2 agreed: notes 32-38; sheets
+    vs_05 / vs_06, delivery re-exported in place). (1) One cloud: a `core` mass in the shell's hollow + the union's k =
+    `blend_share` 0.9 x the masses' mean radius (3.55 m; at 0.4 x they were still eight lumps with creases). The "hard
+    crease" was two ellipsoids meeting with k 1.2 m; no normal seam. (2) Wood is a field too (`wood_field`: hard min
+    along an axis, smin between axes; `mesh_field` with a coarse pass first: evaluating every voxel took 150 s, the
+    narrow band 5 s), girth from the crown (`limb_mass`, `trunk_mass`), limbs AND their stoutest forks (`stubs`) run
+    into the crown and end `keep_in` + their girth under its surface, stopping at the first exit (a limb crossing a
+    shallow lobe showed as a stick in the air). Forks can't be chosen "inside the crown": an oak's limbs fork 2-3 m
+    BELOW its foliage shell (measured), so forks are taken along the whole limb. (3) Winter: the forks are that second
+    order; and the fit is made `in_leaf` whatever the season (a winter spec had no twigs: no masses, no forks, four
+    noodles). (4) Collision is the grown tree's again. IoU 0.859 -> 0.860 (masses unchanged; only blend, core, wood).
+    (5) Export, all plants: impostor picture unlit (`"flat": true` views in blender_vegetation), single sided with
+    back faces and up-and-out normals (8 triangles: test_vegetation's count changed); `<name>_collision.glb` (node
+    `-colonly`, in the scene); `<name>_seasons.json` (`veg_export.seasons_json`, read back from the GLB) + the variant
+    pictures as PNGs; `extras.hidden` on bare-season materials. Realistic birch impostor vs its atlas: 0.60 / 0.69 /
+    0.39 vs 0.65 / 0.78 / 0.39.
+  - Read of vs_05 / vs_06: a toy oak: one bumpy crown on a stout trunk with forking limbs, winter a stubby armature.
+    Still weak: the fork's fillet shades in angular patches from 5 m at 5k; the crown's underside is one dark flat
+    green; autumn's factor clips at pure orange; LOD 2 is 1,134 for a share of 900; impostor has summer only.
+  - Clumps in a style (not built; what it takes): veg_small's plants are cards from an atlas, so "fat rounded tufts"
+    need geometry instead: a `clump` style op that replaces each layer's cards by a few capsule / paddle blades
+    (5-9 a tuft; `wood_field`-style round cones, or a swept lens) with vertex tones, through the same `dress` ->
+    `write_glb` / `_styled_job` path (the `tree["clump"]` branch in dress), wind from the card's own phase / flutter
+    as now. Clump SEASONS need states first (veg_small has none): per layer a colour per season + `hidden` + a
+    `flatten` (winter grass lies down), flowers only in their months; then both realistic (atlas tint per season)
+    and styled (factor per season) can read them. About a day; the spruce first.
+  - NEXT: blobby spruce (crown kind "tiers": masses per height band; evergreen winter keeps its crown), blobby
+    meadow grass (above), then anime / cartoon / pixar sheets (cards on the masses, normals from `veg_style.field`),
+    sets and stands with a style (write_glb takes the first tree's sheet for a set: untested; veg_stand ignores
+    styles), `wind_plant` on a styled plant (untested; scratchpad/imp.py does the check), impostor season variants.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
