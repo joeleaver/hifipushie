@@ -122,7 +122,6 @@ def smoothstep(e0, e1, x):
 # ---------------------------------------------------------------- volumes
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
-BORDER_CREASE_H, BORDER_CREASE_DEG = 1.0, 30.0  # (voxels, deg) border vertices on a crease: see _export_tiles
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
 
 
@@ -2921,15 +2920,6 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
         tt = Fa / (Fa - Fb)
         CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
-        # a border vertex ON a crease (a sheer cliff's lip, a turf step) takes a normal from across it: border normals
-        # are never split (both tiles carry the same one), and the exact normal of one side there is square to the
-        # other side's faces, which then shade as shards (slice_a, 84 deg sea cliffs: 72 of LOD 0's 77 shard faces
-        # had a border vertex)
-        _, gw = field.value_gradient(CP, BORDER_CREASE_H * v0)
-        Nw = gw / np.maximum(np.linalg.norm(gw, axis=1, keepdims=True), 1e-12)
-        on_crease = ((CN * Nw).sum(1) < math.cos(math.radians(BORDER_CREASE_DEG))) & np.isfinite(Nw).all(1) \
-            & (np.linalg.norm(gw, axis=1) > 1e-6)
-        CN[on_crease] = Nw[on_crease]
         CW, CC = mats.weights(CP, CN)
     pos = {tuple(p): r for r, p in enumerate(CP)}
     timing["marching cubes + border vertices"] = time.time() - t0
