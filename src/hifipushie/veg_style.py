@@ -1065,6 +1065,8 @@ def _slab(poly, origin, ex, ey, ez, thick: float, cup: float = 0.0):
     """A closed thin plate: a 2D outline (k, 2; in metres, counter-clockwise) laid in the plane (ex, ey) at origin,
     `thick` through along ez, its rim lifted `cup` x its distance squared toward ez (a cupped petal). (V, F, N)."""
     poly = np.asarray(poly, float)
+    if poly[:, 0] @ np.roll(poly[:, 1], -1) - poly[:, 1] @ np.roll(poly[:, 0], -1) < 0:
+        poly = poly[::-1]  # (counter-clockwise, or the top faces look down: culled from above)
     k = len(poly)
     lift = cup * (poly ** 2).sum(1)
     mid = origin + poly[:, :1] * ex + poly[:, 1:] * ey + lift[:, None] * ez
@@ -1267,7 +1269,11 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                 r_ = vegetation._u(tw["key"][ci] + np.atleast_1d(np.asarray(x)).astype(np.uint64), 70)
                 return r_ if np.ndim(x) else float(r_[0])
             hd = d - up * d[2] * (1 - float(cs.get("head_up", 0.6)))  # (a flower faces up and a little out along its stalk)
-            Vb, Fb, Nb, Pb = _head(hk, path[-1], hd, float(cs["ball"]) * L, cs, su, max(5, sides + 2))
+            r_head = float(cs["ball"]) * L
+            fl_ = ((parts[owner[int(tw["card"][ci])]].get("twig") or {}).get("flower") or {})
+            if hk in ("petals", "dab") and fl_.get("radius"):  # (a flower: sized from the realistic flower, x `petal_size`)
+                r_head = max(r_head, float(cs.get("petal_size", 1.0)) * float(fl_["radius"]))
+            Vb, Fb, Nb, Pb = _head(hk, path[-1], hd, r_head, cs, su, max(5, sides + 2))
             head_part.append(Pb)
             ph = float(vegetation._u(tw["key"][ci: ci + 1], 57)[0])
             for V_, F_, N_, t_ in ((V, F, N, tt), (Vb, Fb, Nb, np.ones(len(Vb)))):
