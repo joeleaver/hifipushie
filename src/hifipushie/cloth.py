@@ -3868,6 +3868,9 @@ def pressed(under: dict, body: "Body", cap: float = UNDER_CAP) -> np.ndarray:
     return V - n * move[:, None]
 
 
+UNDER_SLIVER = 0.01  # a collider face thinner than this share of its longest edge squared (x2 area) is left out
+
+
 def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
     """The sim's collider arrays (cloth_job: bodyV / bodyT, and for a smooth placement bodyV0 + bodyPoses: straight
     arms bending back): the body, and with it the garment worn under this one, one mesh. The under garment rides the
@@ -3885,7 +3888,17 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
     w = 1.0 / np.maximum(d, 1e-4) ** 2
     w /= w.sum(1, keepdims=True)
     carry = lambda P: U + np.einsum("nk,nkd->nd", w, (P - V)[i])
-    out = {"bodyV": np.r_[V, U], "bodyT": np.r_[T, np.asarray(under["F"], np.int64) + len(V)]}
+    # the under garment's degenerate faces left out: a welded seam's two vertices at one place make slivers, and a
+    # contact solver building a shell from them stops ("degenerate shell face": su_32, the blazer over the shirt)
+    FU = np.asarray(under["F"], np.int64)
+    keep = np.ones(len(FU), bool)
+    for P in [U] + ([carry(poses[0])] if smooth else []):
+        e1, e2 = P[FU[:, 1]] - P[FU[:, 0]], P[FU[:, 2]] - P[FU[:, 0]]
+        a2 = np.linalg.norm(np.cross(e1, e2), axis=1)
+        lmax = np.max([np.linalg.norm(e1, axis=1), np.linalg.norm(e2, axis=1), np.linalg.norm(e2 - e1, axis=1)], axis=0)
+        keep &= (a2 > 1e-10) & (a2 > UNDER_SLIVER * lmax ** 2)
+    FU = FU[keep]
+    out = {"bodyV": np.r_[V, U], "bodyT": np.r_[T, FU + len(V)]}
     if smooth:
         out.update(bodyV0=np.r_[poses[0], carry(poses[0])],
                    bodyPoses=np.stack([np.r_[P, carry(P)] for P in poses[1:]] + [out["bodyV"]]))
