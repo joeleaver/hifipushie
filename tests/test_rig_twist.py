@@ -254,3 +254,36 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             f()
             print("ok", k)
+
+
+def _tube(r, z0, z1, n=48, m=24):
+    a = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    zs = np.linspace(z0, z1, m)
+    V = np.array([[r * np.cos(t), r * np.sin(t), z] for z in zs for t in a])
+    F = []
+    for j in range(m - 1):
+        for i in range(n):
+            p, q = j * n + i, j * n + (i + 1) % n
+            F += [[p, q, q + n], [p, q + n, p + n]]
+    return V, np.array(F)
+
+
+def test_skin_under_a_collar_follows_the_collar():
+    """2026-10-07 (s0urc3's Garrett): the head's long falloff down the neck (HEAD_FALL inside HEAD_COLUMN) left the
+    neck skin under his collar Head 0.70 while the collar, worn, takes no head rule: 52 skin vertices came through
+    the jacket's collar in the game's idle, 73 at a 33 deg head turn. `skin_cover`: skin a worn part covers (a ray
+    out along its normal meets it within COVER_REACH) gets none of the head rule, handing over on the visible side
+    within COVER_EASE. A neck as a tube, a collar as a wider tube round its lower half."""
+    neck = _tube(0.05, 0.0, 0.12)
+    collar = _tube(0.058, -0.01, 0.06)
+    meshes = {"body": neck, "collar": collar}
+    hf = {"h": lambda V: np.ones(len(V)), "part": lambda V: np.where(np.asarray(V)[:, 2] > 0.1, 1.0, 0.0), "bone": 0}
+    cov = rig.skin_cover({"parts": {}}, [], meshes, hf)
+    assert set(cov) == {"body"}
+    z, c = neck[0][:, 2], cov["body"]
+    assert (c[z < 0.055] == 1.0).all()  # under the collar: all of it follows the collar
+    assert (c[z > 0.06 + rig.COVER_EASE + 0.006] == 0.0).all()  # visible skin above the hand-over: the head rule
+    mid = (z > 0.062) & (z < 0.06 + rig.COVER_EASE)
+    assert ((c[mid] > 0) & (c[mid] < 1)).any()  # eased between
+    off = rig.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": False}}}, [], meshes, hf)
+    assert off == {}

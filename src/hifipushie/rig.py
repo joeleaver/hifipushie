@@ -721,21 +721,21 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             out[pn] = _spread_twist(rb, V, J, W) if spread else (J, W)
         else:
             out[pn] = rig_weights(spec, rb, V, F, smooth=smooth)
+    cov = skin_cover(spec, rb, meshes, hf, skin) if hf is not None else {}
+    for pn, (V, F) in meshes.items():
+        bone = (defs.get(pn) or {}).get("rig_bone")
         if hf is not None and not bone and len(V):  # the head is rigid: the falloff to the neck is on the throat
             h = hf["h"](V)
-            share = float(hf.get("part", hf["h"])(V).mean())
-            worn = (defs.get(pn) or {}).get("rig_head")
-            if worn is None:  # anything but the skin (and what moves with the face) is worn
-                worn = not (pn in skin or share >= HEAD_WORN)
-            else:
-                worn = not worn
-            if share >= HEAD_PART:  # a part of the head (teeth, tongue, eyes, lashes): all of it
+            kind = _head_kind(spec, hf, pn, V, skin)
+            if kind == "head":  # a part of the head (teeth, tongue, eyes, lashes): all of it
                 h = np.ones(len(V))
-            elif worn:
+            elif kind == "worn":
                 # a collar, a scarf, a strap over the shoulder: it sits on the body and reaches up beside the jaw.
                 # It keeps the weights of the neck under it (the golfer's collar top, 1-2 cm above the floor at the
                 # nape, was Head 1.0 and turned with the face: 47 mm off the shirt, 299 triangles inside out)
                 continue
+            elif pn in cov:  # skin under what is worn follows its cover (which takes no head rule): see skin_cover
+                h = h * (1.0 - cov[pn])
             out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h, hf["bone"])
     # parts.<p>.rig_drop = [joints]: a garment never follows these joints; their weight goes up the chain to the
     # nearest joint it keeps. What a rigger does after a weight transfer: prune the influences a garment has no
@@ -794,6 +794,99 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
             h = 1.0 - _ss(np.where(np.isfinite(dist), dist, reach) / reach)
             out[pn] = _rigid_head(np.asarray(out[pn][0]), np.asarray(out[pn][1], np.float64), h,
                                   names.index(ob if ob in names else PREFIX + ob))
+    return out
+
+
+def _head_kind(spec: dict, hf: dict, pn: str, V: np.ndarray, skin: set) -> str:
+    """What the head rule makes of a part: "head" (all of it rigid: teeth, eyes), "worn" (no head rule: a collar) or
+    "skin" (the falloff). parts.<p>.rig_head = true | false overrides worn."""
+    share = float(hf.get("part", hf["h"])(V).mean())
+    worn = ((spec.get("parts") or {}).get(pn) or {}).get("rig_head")
+    worn = (not (pn in skin or share >= HEAD_WORN)) if worn is None else not worn
+    return "head" if share >= HEAD_PART else "worn" if worn else "skin"
+
+
+COVER_REACH = 0.03  # m: skin with a worn part's surface this near, outward of it, is covered by it
+COVER_OUT = True    # the hand-over lies on the visible skin beside the cover (else on the covered skin under it)
+COVER_EASE = 0.02   # m in from where the cover starts over which covered skin hands over to its cover's weights
+
+
+def skin_cover(spec: dict, rb: list[dict], meshes: dict, hf: dict | None = None, skin: set | None = None) -> dict:
+    """{skin part: 0..1 per vertex}: how much a vertex of the skin lies UNDER something worn (a collar, a jacket's
+    neck; parts the head rule leaves alone). Skin hidden under clothing follows what covers it, as a rigger has it
+    (or deletes it): worn parts take no head rule, so the neck's long head falloff (HEAD_FALL, rigid_near's band) on
+    skin under a collar turned and nodded that skin through the collar (Garrett: neck skin 12-16 cm under the Head
+    joint Head 0.70, his collar there 0.16; 52 skin vertices through the jacket's collar in the game's idle, 73 at a
+    33 deg head turn). 0 on visible skin and COVER_EASE in from the cover's edge 1: there the head rule doesn't
+    apply. A vertex is covered when a ray out along its normal meets a worn part's surface within COVER_REACH. spec.rig.rigid_head.cover = false turns it off, {"reach", "ease"} set it."""
+    from scipy.spatial import cKDTree
+
+    from .rig_template import _closest_on_triangles
+    hf = hf or head_field(spec, rb)
+    opts = (spec.get("rig") or {}).get("rigid_head", True)
+    opts = opts if isinstance(opts, dict) else {}
+    co = opts.get("cover", True)
+    if hf is None or co is False:
+        return {}
+    co = co if isinstance(co, dict) else {}
+    reach, ease = float(co.get("reach", COVER_REACH)), float(co.get("ease", COVER_EASE))
+    defs = spec.get("parts") or {}
+    if skin is None:
+        sp = (spec.get("rig") or {}).get("skin_part") or ("body" if "body" in meshes else None)
+        skin = {sp} | set((spec.get("face_shapes") or {}).get("parts") or ())
+    kinds = {pn: _head_kind(spec, hf, pn, np.asarray(V, float), skin) for pn, (V, F) in meshes.items()
+             if len(V) and len(F) and not (defs.get(pn) or {}).get("rig_bone")}
+    worn = [pn for pn, k in kinds.items() if k == "worn"]
+    if not worn:
+        return {}
+    A, B, C = (np.concatenate([np.asarray(meshes[pn][0], float)[np.asarray(meshes[pn][1])[:, j]] for pn in worn])
+               for j in range(3))
+    tree = cKDTree((A + B + C) / 3)
+    out = {}
+    for pn, k in kinds.items():
+        if k != "skin":
+            continue
+        V, F = np.asarray(meshes[pn][0], float), np.asarray(meshes[pn][1])
+        todo = np.flatnonzero(hf["h"](V) > 0)  # only where the head rule would act
+        if not len(todo):
+            continue
+        # normals of the welded mesh (uv seams split vertices)
+        _, inv = np.unique(np.round(V / 1e-5).astype(np.int64), axis=0, return_inverse=True)
+        inv = inv.ravel()
+        fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+        N = np.zeros((inv.max() + 1, 3))
+        for j in range(3):
+            np.add.at(N, inv[F[:, j]], fn)
+        N = (N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30))[inv]
+        kk = min(12, len(A))
+        covered = np.zeros(len(V), bool)
+        # a ray out along the normal, as points every 4 mm: covered when one of them lies on a worn surface (the
+        # nearest point of the cover alone is its EDGE for skin just under a neckline, and off to the side)
+        for t in np.arange(0.0, reach + 1e-9, 0.004):
+            ia = todo[~covered[todo]]
+            if not len(ia):
+                break
+            X = V[ia] + t * N[ia]
+            d, c = tree.query(X, k=kk, distance_upper_bound=0.06)
+            d, c = d.reshape(len(ia), kk), c.reshape(len(ia), kk)
+            near = np.isfinite(d[:, 0])
+            if not near.any():
+                continue
+            ia, X = ia[near], X[near]
+            c = np.where(np.isfinite(d[near]), c[near], c[near][:, :1]).ravel()
+            _, dist = _closest_on_triangles(np.repeat(X, kk, 0), A[c], B[c], C[c])
+            covered[ia] = dist.reshape(len(ia), kk).min(1) < 0.003
+        if not covered.any():
+            continue
+        w = covered.astype(float)
+        if COVER_OUT and (~covered).any():  # the hand-over on the visible side: the skin at a neckline's edge stays
+            # with the cloth it disappears under, and the long falloff starts `ease` above it
+            dd, _ = cKDTree(V[covered]).query(V[~covered])
+            w[~covered] = 1.0 - _ss(dd / max(ease, 1e-6))
+        elif (~covered).any():
+            dd, _ = cKDTree(V[~covered]).query(V[covered])
+            w[covered] = _ss(dd / max(ease, 1e-6))
+        out[pn] = w
     return out
 
 
@@ -978,7 +1071,8 @@ def _rigid_head(J: np.ndarray, W: np.ndarray, h: np.ndarray, bone: int):
     return Jk, Wk
 
 
-def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: float | None = None) -> dict:
+def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: float | None = None,
+               cover: dict | None = None) -> dict:
     """Everything a face shape moves is head too: {part: (J, W)} with every vertex some shape moves MOVED[1] or more
     (`moved`: {part: the largest move per vertex, m}) weighted 1.0 to Head, the vertices within `band` of one
     blended toward it, and vertices moved less (down to MOVED[0]) in proportion (the export, after the face shapes
@@ -1004,6 +1098,8 @@ def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: floa
         if tree is not None:
             d, _ = tree.query(np.asarray(verts[pn], np.float64), distance_upper_bound=band)
             h = 1.0 - _ss(np.where(np.isfinite(d), d, band) / band)
+            if cover and pn in cover:  # skin under a collar follows the collar (`skin_cover`), not the face near it
+                h = h * (1.0 - cover[pn])
         if pn in moved:  # moved a little (skin sliding on the throat, a chest a big jaw's field reaches): a little
             h = np.maximum(h, _ss((np.asarray(moved[pn], np.float64) - lo) / (hi_ - lo)))
         if (h > 0).any():

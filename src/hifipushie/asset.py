@@ -107,7 +107,7 @@ def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel
     # what the decimation depends on (not the atlases): a regroup for other atlas sizes re-unwraps only
     key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, int(triangles), float(voxel),
                                    {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()},
-                                  tri_focus or []],
+                                  tri_focus or [], "flipfit 1"],
                                   sort_keys=True, default=str).encode()).hexdigest()
     if tri_focus:  # decimate a magnified copy (its own file: flatten and the decimation cache key on the path)
         from . import focuswarp
@@ -1034,12 +1034,22 @@ def defect_regions(spots: np.ndarray, spec: dict) -> list[tuple[str, int]]:
         s = expand_mirror(spec)
         names = [k for k in s.get("joints", {}) if not k.startswith("lm_")]
         J = np.array([resolve_point(s, k) for k in names], float)
+        lms = [k for k in s.get("joints", {}) if k.startswith("lm_")]
+        L = np.array([resolve_point(s, k) for k in lms], float).reshape(-1, 3)
     except Exception:  # noqa: BLE001
-        names, J = [], np.zeros((0, 3))
+        names, J, lms, L = [], np.zeros((0, 3)), [], np.zeros((0, 3))
     if len(names):
         from scipy.spatial import cKDTree
         near = cKDTree(J).query(spots)[1]
         lab = [names[i] for i in near]
+        if len(lms):  # clusters are counted by modelling joint (landmarks are many and close: they'd split one tear
+            # into several small counts), but NAMED by a face landmark where one is nearer their middle: a GNM head
+            # has no mouth joint, and the mouth's cluster read "TORN at eye_front.L", 8 cm away
+            for nm in set(lab):
+                mid = spots[[x == nm for x in lab]].mean(0)
+                d, i = cKDTree(L).query(mid)
+                if d < np.linalg.norm(mid - J[names.index(nm)]):
+                    lab = [f"{lms[i]} (by {nm})" if x == nm else x for x in lab]
     else:
         lab = ["[%.1f, %.1f, %.1f]" % tuple(np.round(q / 0.1) * 0.1) for q in spots]
     u, cnt = np.unique(lab, return_counts=True)
@@ -1586,6 +1596,13 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         for other, st in ctx["streams"].items():  # what lies inside another part is never seen (the skin running
             if other != pn and len(spots):       # on into the socket behind an eyeball, a tooth's root)
                 spots = spots[sdf.field_at(st, spots, clip=False) > 0]
+        if face_shapes and len(spots) and ctx["origin"][pn] == fface.slit_part:
+            # the mouth's interior (slit walls, the bag's corners) folds at a game budget and is behind the lips:
+            # counted, not part of the tear alarm (Garrett's bag read "TORN OR TANGLED at eye_front.L (12)")
+            inm = fface.inside_mouth(spots, ctx["streams"][pn])
+            if inm.any():
+                q["inside_mouth"] = int(inm.sum())
+                spots = spots[~inm]
         where = defect_regions(spots, spec)
         if (defs.get(ctx["origin"][pn]) or {}).get("folds"):  # parts.<p>.folds = true: folded by design (a turned
             where = []                                         # collar, a cuff, pleats): counts stay, no alarm
@@ -1604,6 +1621,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 if bad]
         log.append(f"  {pn} quality: error p50/p99/max {q['err_mm_p50']}/{q['err_mm_p99']}/{q['err_mm_max']} mm, "
                    f"{q['slivers']} slivers, {q['open_edges']} open edges"
+                   + (f" ({q['inside_mouth']} of the folds / turned faces are inside the mouth)" if q.get("inside_mouth") else "")
                    + (f": WARNING {'; '.join(warn)}" if warn else ""))
     for ai, an in enumerate(names):
         fill_a = sum(tsz[pn]["uv_fill"] for pn, p in parts.items() if p["atlas"] == ai)
@@ -1771,7 +1789,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 if d and pn in skin_at and len(d[0]) == len(skin_at[pn]):
                     moved[pn] = np.max(d, 0)
             before = {pn: _head_share(rigged, pn, hf["bone"]) for pn in moved}
-            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"])
+            cover = rigmod.skin_cover(rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3))
+                                                     for pn in skin_at}, hf)
+            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"], cover)
             for pn, mv in moved.items():
                 m = mv >= rigmod.MOVED[1]
                 if m.any():
