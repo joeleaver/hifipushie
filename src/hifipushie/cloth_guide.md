@@ -232,7 +232,7 @@ The plan lists:
   a cuff or a waistband). Fastenings are the marks `buttonhole<n>` on `over` paired with `button<n>` on `under`
   (other prefixes: `holes`, `buttons`; or `"at": [[over mark, under mark], ...]`). `band` + `edge` give the placket
   its own edge in the mesh and raise it by its extra layers; `state` is "closed", "open" or `{"open_above": mark}`
-  (the top button undone). The entry makes the button stitches, the buttons as small geometry (also in the export
+  (the top button undone) or `{"open_top": n}`. The entry makes the button stitches, the buttons as small geometry (also in the export
   and the Blender scene) and a line in the report per closure: fastenings closed, how far apart their two sides
   ended (closed is <= 6 mm). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure entry fails
   here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]` (sewn when closed).
@@ -243,6 +243,10 @@ The plan lists:
   stage 3 lists it as "worn open", not as a missing closure). In a drafted garment the op
   `{"op": "buttons", "piece": "front", "n": 2, "state": "open", "size": 0.02}` writes the closure itself (left
   front over right, a fastening per mark; it used to write bare stitches).
+  `{"open_top": n}` undoes the n highest fastenings whatever their marks are called. **A shirt is worn the way its
+  kind is** (garment_kb.json `kinds.shirt.wear`): without a tie (garment / sheet key `"tie"`, default false) the
+  collar button AND the top front button are undone, so the stand parts at the throat and the fall lies open in a
+  V; `"tie": true` closes both. The garment's own `closures` entries still win.
 - **Layers.** `"over": "<garment>"` wears this garment over another of the model (dress that one first). The one
   underneath is frozen and pressed to 8 mm off the body where it is loose (`under_cap`), and is what this garment
   is placed on and collides with. `"support": ["shoulder_pad", "sleeve_head"]` are pads on the body, not cloth.

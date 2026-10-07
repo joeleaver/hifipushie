@@ -185,6 +185,29 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     L = section(V, T, no, nd, no)
     mm["neck"] = girth(L, nd)
     loops["neck"] = L
+    # neckHeight: how long the neck is up its axis, the run of sections within 8% of its narrowest girth (above it
+    # the plane cuts the jaw, below it the trapezius; cloth.Body.neck_rows reads it the same way). A shirt's stand
+    # can be no taller than this less a finger's room under the jaw (garment_kb kinds.shirt.collar)
+    gs = []
+    for h in np.arange(-0.04, 0.125, 0.005):
+        o_ = neck_j + nd * h
+        L_ = section(V, T, o_, nd, o_)
+        if L_ is not None and _encloses(L_, o_, nd):
+            gs.append((float(h), float(girth(L_, nd))))
+    if gs:
+        hs_, g_ = np.array([a for a, _ in gs]), np.array([b for _, b in gs])
+        i0, lo_, hi_ = int(np.argmin(g_)), int(np.argmin(g_)), int(np.argmin(g_))
+        while lo_ > 0 and g_[lo_ - 1] <= 1.08 * g_[i0]:
+            lo_ -= 1
+        while hi_ < len(g_) - 1 and g_[hi_ + 1] <= 1.08 * g_[i0]:
+            hi_ += 1
+        top_ = float(hs_[hi_] + 0.005)
+        # where a face's landmarks say where the jaw is, the neck ends under it (on a grafted head the sections up
+        # the neck's axis held one girth to 12 cm and never met the jaw)
+        jaw = [np.asarray(J[k], float) for k in J if k == "lm_chin" or k.startswith("lm_jaw_")]
+        if jaw:
+            top_ = min(top_, min(float((p - neck_j) @ nd) for p in jaw))
+        mm["neckHeight"] = max(top_ - float(hs_[lo_]), 0.0)
     at["hps.L"] = L[np.argmax(L[:, 0])]
     at["cf_neck"] = L[np.argmin(L[:, 1])]
     at["cb_neck"] = L[np.argmax(L[:, 1])]

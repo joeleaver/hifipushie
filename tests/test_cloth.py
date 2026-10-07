@@ -242,6 +242,91 @@ def test_weld_beside_a_layer_stays_welded():
     assert np.allclose(C[ib | ic], V[ib | ic], atol=2e-4)          # the made pieces stayed
 
 
+def _grid(nx=12, ny=20, h=0.02):
+    u, v = np.meshgrid(np.arange(nx) * h, np.arange(ny) * h)
+    uv = np.c_[u.ravel(), v.ravel()]
+    F = []
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            a = j * nx + i
+            F += [[a, a + 1, a + nx + 1], [a, a + nx + 1, a + nx]]
+    return uv, np.array(F)
+
+
+def test_relax_strain_takes_out_shear():
+    # a sheet laid with its columns leaning 0.2 against its rows: every edge within 2%, the triangles ~10% along the
+    # diagonal; the relaxation brings every triangle under the limit (compression is left alone)
+    from hifipushie import cloth_zozo
+    uv, F = _grid()
+    V = np.c_[uv[:, 0] + 0.2 * uv[:, 1], uv[:, 1], np.zeros(len(uv))]
+    M = {"uv": uv, "F": F}
+    s0 = cloth_zozo._start_stretch(np.c_[uv, np.zeros(len(uv))], V, F)
+    assert s0.max() > 1.09
+    R = cloth._relax_strain(V, M, np.ones(len(uv), bool), 0.03, iters=400)
+    s1 = cloth_zozo._start_stretch(np.c_[uv, np.zeros(len(uv))], R, F)
+    assert s1.max() < 1.035, s1.max()
+
+
+def test_collar_from_the_neck():
+    # garment_kb kinds.shirt.collar through Simon's options: the stand as tall as the neck allows (less 13 mm under
+    # the jaw) within 20-35 mm, the fall 12 mm deeper at centre back
+    tbl = {"kind": "shirt", "collar_rule": "simon"}
+    o = {"collarEase": 0.115, "collarGap": 0}
+    short = cloth.collar_options(tbl, o, {"neck": 400.0, "neckHeight": 29.0})
+    tall = cloth.collar_options(tbl, o, {"neck": 400.0, "neckHeight": 60.0})
+    assert np.isclose(short["collarStandWidth"] * 400, 20.0, atol=0.05)  # 16 mm of room: the 20 mm floor
+    assert np.isclose(tall["collarStandWidth"] * 400, 35.0, atol=0.05)   # capped at 35
+    for r, s in ((short, 20.0), (tall, 35.0)):
+        assert np.isclose(s * r["collarWidth"] * 1.03, s + 12.0, atol=0.1)  # fall = stand + 12 (collarRoll 3%)
+        assert 0.0 < r["collarBend"] < 0.1
+    assert cloth.collar_options({"kind": "shirt"}, o, {"neck": 400.0, "neckHeight": 29.0}) == {}  # no rule: as drafted
+
+
+def test_leg_tube_follows_the_leg():
+    # two splayed tapered legs; a front and a back trouser piece (pattern x from the centre line, the side seam at
+    # +x, y down from the waist): under the crotch both lie round the leg off it by at least LEG_CLEAR, the side
+    # seams and inseams a few mm apart, the front's crease on the leg's front
+    zs = np.linspace(0.08, 0.86, 40)
+    n = 32
+    V, T = [], []
+    for sgn in (1.0, -1.0):
+        o = len(V)
+        for z in zs:
+            r = 0.05 + 0.04 * (z - 0.08) / 0.78
+            cx = sgn * (0.10 + 0.05 * (0.86 - z) / 0.78)
+            for a in np.linspace(0, 2 * np.pi, n, endpoint=False):
+                V.append([cx + r * np.cos(a), 1.2 * r * np.sin(a), z])
+        for j in range(len(zs) - 1):
+            for i in range(n):
+                a_, b_ = o + j * n + i, o + j * n + (i + 1) % n
+                T += [[a_, b_, b_ + n], [a_, b_ + n, a_ + n]]
+    V, T = np.array(V), np.array(T)
+    J = {"knee.L": np.array([0.13, 0.0, 0.48]), "ankle.L": np.array([0.15, 0.0, 0.08])}
+    body = cloth.Body({"V": V, "F": T, "J": J})
+    body._m = {"mm": {}, "at": {"crotch_z": 0.9, "waist_z": 1.1}}
+    # a front 30 cm wide narrowing to 22, a back 36 narrowing to 24 (side seams at +x), 1 m long under the waist
+    Pf = np.array([[-0.08, 0.0], [0.22, 0.0], [0.19, -1.0], [-0.03, -1.0]])
+    Pb = np.array([[-0.13, 0.0], [0.23, 0.0], [0.19, -1.0], [-0.05, -1.0]])
+    pcs = {"front.L": {"P": Pf, "wrap": {"to": "leg.L", "side": "front"}},
+           "back.L": {"P": Pb, "wrap": {"to": "leg.L", "side": "back"}}}
+    names = list(pcs)
+    cache = {}
+    ys = np.linspace(-0.45, -0.95, 11)
+    out = {}
+    for nm, P in (("front.L", Pf), ("back.L", Pb)):
+        xs = [cloth._piece_xs_at(P, y) for y in ys]
+        U = np.array([[x[k], y] for x, y in zip(xs, ys) for k in (np.argmin(x), np.argmax(x))])
+        X, t = cloth._leg_tube(body, pcs, names, "leg.L", nm, U, 1.1, 0.012, cache)
+        assert (t == 1).all()
+        out[nm] = X.reshape(len(ys), 2, 3)
+    inseam = np.linalg.norm(out["front.L"][:, 0] - out["back.L"][:, 0], axis=1)
+    side = np.linalg.norm(out["front.L"][:, 1] - out["back.L"][:, 1], axis=1)
+    assert inseam.max() < 0.02 and side.max() < 0.02, (inseam, side)
+    allp = np.concatenate([out["front.L"].reshape(-1, 3), out["back.L"].reshape(-1, 3)])
+    assert body.clearance(allp).min() > cloth.LEG_CLEAR - 0.002
+    assert (out["front.L"][:, 1, 0] > out["front.L"][:, 0, 0]).all()  # the side seam outside, the inseam inside
+
+
 def test_cleaned_seam_is_a_smooth_line():
     # The pale zigzag down a jacket's centre back (su_25 / su_31): the sim leaves a sewn seam puckered (its vertices
     # alternately sunk and proud); the clean-up must leave it a smooth line once welded, and the clay look must draw

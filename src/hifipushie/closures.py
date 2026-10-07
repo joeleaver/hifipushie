@@ -13,7 +13,8 @@ A closure is a lap held by fastenings, not a seam: the `over` piece runs `band` 
                                                   surface stands `lift` proud there (the placket's extra layers)
    "seam": [arc a, arc b], "from", "to"           a zip: the part of a seam it closes (sewn when closed)
    "size": m (button diameter, default 0.011), "lift": m (default 0.0008),
-   "state": "closed" | "open" | {"open_above": mark of `over`}}
+   "state": "closed" | "open" | {"open_above": mark of `over`} | {"open_top": n} (the n highest fastenings undone:
+            a shirt worn without a tie has its top front button open, whatever its marks are called)}
 
 `expand` turns the entries into stitches (one per fastening that is closed), fold-line rows for the bands and seams
 for closed zips; `cloth.mesh` records each closure's vertex pairs (`M["closures"]`); after the sim `measure` says per
@@ -58,8 +59,8 @@ def validate(entries, where: str = "closures") -> None:
         if c.get("kind", "buttons") not in KINDS:
             raise ClosureError(f"{where} {c['name']!r}: kind is one of {', '.join(KINDS)}")
         st = c.get("state", "closed")
-        if not (st in ("closed", "open") or (isinstance(st, dict) and set(st) == {"open_above"})):
-            raise ClosureError(f'{where} {c["name"]!r}: state is "closed", "open" or {{"open_above": mark}}')
+        if not (st in ("closed", "open") or (isinstance(st, dict) and set(st) in ({"open_above"}, {"open_top"}))):
+            raise ClosureError(f'{where} {c["name"]!r}: state is "closed", "open", {{"open_above": mark}} or {{"open_top": n}}')
         if c["name"] in seen:
             raise ClosureError(f"{where}: two closures named {c['name']!r}")
         seen.add(c["name"])
@@ -91,8 +92,13 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
             raise ClosureError(f"closure {c['name']!r}: no fastenings found (marks {c.get('holes', 'buttonhole')}<n> on "
                                f"{over} with {c.get('buttons', 'button')}<n> on {under}, or 'at': [[over mark, under mark]])")
         closed = []
+        top_open = set()
+        if isinstance(state, dict) and "open_top" in state:  # the n highest fastenings (by their mark on `over`)
+            top_open = set(sorted(pairs, key=lambda p_: -_y(pcs[over], p_[0]))[:int(state["open_top"])])
         for a, b in pairs:
-            is_closed = state == "closed" or (isinstance(state, dict) and _y(pcs[over], a) <= _y(pcs[over], state["open_above"]) + 1e-9)
+            is_closed = state == "closed" or (isinstance(state, dict) and (
+                (a, b) not in top_open if "open_top" in state else
+                _y(pcs[over], a) <= _y(pcs[over], state["open_above"]) + 1e-9))
             closed.append(bool(is_closed))
             if is_closed:
                 stitches.append([f"{over}:{a}", f"{under}:{b}"])
