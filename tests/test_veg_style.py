@@ -340,10 +340,13 @@ def test_blobby_clump():
         assert "textures" not in G and [l["triangles"] for l in c["lods"]] == sorted([l["triangles"] for l in c["lods"]], reverse=True)
         sj = veg_export.seasons_json(c["path"])
         sl = {e_["slot"]: e_ for e_ in sj["slot_list"]}
-        assert set(sl) == {"bark", "foliage", "heads"} and sl["heads"]["hidden_in"] == ["spring", "winter", "snow"]
-        assert sl["heads"]["on"][0]["primitive"] == 1 and not sl["foliage"]["hidden_in"]
-        cols = {se: sj["seasons"][se]["foliage"]["baseColorFactor"] for se in seasons}
-        assert len({tuple(np.round(c_, 3)) for c_ in cols.values()}) == 5
+        # contract 6: the blades lying down in winter are their own slot (foliage_winter), the upright ones hidden then
+        assert set(sl) == {"bark", "foliage", "heads", "foliage_winter"} and sl["heads"]["hidden_in"] == ["spring", "winter", "snow"]
+        assert sl["heads"]["on"][0]["primitive"] == 1 and sl["foliage"]["hidden_in"] == ["winter", "snow"]
+        assert sl["foliage_winter"]["on"][0]["primitive"] == 2 and sl["foliage_winter"]["hidden_in"] == ["summer", "spring", "autumn"]
+        cols = [sj["seasons"][se]["foliage"]["baseColorFactor"] for se in ("summer", "spring", "autumn")]
+        cols += [sj["seasons"][se]["foliage_winter"]["baseColorFactor"] for se in ("winter", "snow")]
+        assert len({tuple(np.round(c_, 3)) for c_ in cols}) == 5
 
 def test_anime_clouds():
     """Leaf clouds: the same tree, its masses dressed in layered alpha cards with a dab atlas; the export's contract."""
