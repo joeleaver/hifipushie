@@ -3807,6 +3807,68 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     (untested); blossom / catkins; the spruce's top tier (try `tier_power` 0.8 so upper bands are shorter).
     The guide's "Styles" section does NOT yet describe round 3 (conifer block, tiers keys, bark_forks slot, impostor
     per season, `forks_share`): add it.
+  - Vegetation styles 2 (2026-10-07, "vegstyle2" agent, branch `worktree-agent-a76bb94fddaac769e`; sheets vs_11 spruce,
+    vs_12 oak, vs_13 spruce seasons, vs_14 meadow grass seasons; deliveries re-exported in place in
+    /mnt/data/hifipushie/vegstyle/blobby_oak, blobby_spruce + new blobby_grass, real_grass; scratch in the worktree's
+    untracked `scratchpad/`: run.sh, sheet.py, seasons.py, clump_sheet.py <species> <style> <out>, tiers.py (a conifer's
+    tiers as numbers + silhouette, 10 s), setstyle.py <sheet> '<json>' (merge numbers into a style sheet), imp1.py (an
+    impostor's maps as a picture), impvar.py (impostor-only GLBs with other numbers), gd.sh <tag> <height> <mesh.glb>
+    <impostor.glb> (Godot check + measure), export.py / export_clump.py / export_real.py, round4.sh / round5.sh).
+    - THE IMPOSTOR (consumer notes 38 / 42 / 45; all plants, realistic too). Three causes, found by measuring in the
+      consumer's own engine (`spikes/godot_veg/check.gd` + `measure.py`: Godot 4.7.2 loads LOD 2 and the impostor with
+      its own importer, each alone on magenta, 4 views x 3 suns; mean luma of foliage / wood pixels, impostor / mesh):
+      (1) the "unlit" picture was a Principled surface under a white world: sky reflected in it (pale, blue 0.28 vs
+      0.20) and no shade; (2) up-and-out vertex normals lit it as a flat card; (3) the DARK WEDGE was one quad's
+      SHADOW on the other (alpha-scissored, the sun's elevation makes it a triangle), not mips, not normals.
+      Now `blender_vegetation._pass_material` (view key `"pass"`: "albedo" = emission of what feeds the Principled's
+      Base Color, "normal" = the shading normal x 0.5 + 0.5 in Raw, "shade" = Cycles' AO node with the normal forced up
+      = how much sky straight above reaches the point; cut out by the material's own alpha mix), `veg_export.
+      impostor_maps` (albedo x (1 - 0.5 + 0.5 x shade); world normal -> each quad's tangent frame, `depth` scales the
+      toward-camera share: 1.0 styles, 0.5 card foliage; everything bled under the alpha), quads with front and back
+      as their own vertices (16), opposite normals, TANGENT w = -1 behind; the second picture was MIRRORED on its quad
+      (r_ = +y for a camera whose right is -y): fixed (`impostor_frames`). The material's extras + the seasons json say
+      `receive_shadows: false` (Godot `disable_receive_shadows`): that is what removes the wedge, and it is the
+      ENGINE's switch. Blobby oak: foliage 1.20 (0.99-1.51) / wood 1.42 before -> foliage 0.95 (0.85-1.03) / wood 1.08 (0.95-1.23). Blobby spruce: foliage 0.98 (0.94-1.01), wood 0.98 (0.73-1.48: its trunk is a few pixels).
+      Realistic birch (20k): foliage 0.94 (0.81-1.01), wood 0.97 (0.85-1.06); lowest with the sun behind (a picture's
+      normals face its camera; a real crown lets light through). Left: from a diagonal the two quads meet in a visible
+      vertical line; the realistic birch's impostor shows the look's black foot (bark `base_color`), the GLB's bark
+      texture doesn't. Blender's importer was NOT checked on the new impostor (it computes its own tangents).
+    - Contract (consumer note 46): `veg_export.CONTRACT` 3 + `CONTRACT_LOG`; `<name>_seasons.json` leads with
+      `contract` and `slot_list` (slot -> mesh / primitive, hidden_in, channels); normal PNGs written too; textures
+      with the same bytes are stored once in the GLB. Bump the number with any slot / channel change (guide: "The
+      export contract").
+    - LOD 2's creases: gone in the consumer's last import and never Godot's. `test_lod_normals_are_the_fields` holds
+      every LOD's NORMAL (dress and the file) to the field's gradient.
+    - Spruce (consumer note 44): tiers are EGGS (`e["down"]`: a shorter semi-axis below the middle, read in `field`):
+      round above, flat below, seated low, the dome closing under the next tier's wider foot = overhang + undercut;
+      sheet keys trunk_show, tier_under, tier_uneven, tier_cap, tier_power (conifer block), blend 0.1 x; conifer tones
+      [0.72, 1.3] and value 1.35; trunk fat (trunk_mass 0.45) but ending at 45% (at 85% and floor 0.85 it poked out
+      between the top tiers). IoU 0.85 -> 0.75 (bare foot + notches: the report warns; lower trunk_show to get it
+      back). With undercuts `onto` could put a decimated vertex on the other sheet (holes / turned faces in LOD 2 in
+      Godot): faces turned by the move, or moved > half the blend, go back to where the decimation left them.
+      First tries that failed: tier_height 1.0 (each dome swallowed the next tier: a bell with a nipple), band jitter
+      x the smallest band (bands of 9 / 3 / 9 / 3 m), 4 tiers.
+    - Oak: limb_mass 0.3, trunk_mass 0.32, taper_floor 0.8, wood blend 1.0, share 0.35. The "notch at the fork" from
+      5 m is a ragged SHADOW edge (EEVEE's terminator on big smooth triangles; clay shows nothing).
+    - Small plants: `veg_small.SEASONS` / `clump.seasons` (colour, flatten, scale per season), a layer's `seasons`
+      list, `season_state`, `hidden_parts`; realistic export = the season's atlas recoloured with out-of-season
+      pictures blanked; `veg_style.dress_clump` (sheet block `clump`): leaf cards -> 5-9 fat closed blades chosen by
+      farthest tips, flowering cards -> balls on stalks in slot `heads` (the foliage mesh's 2nd primitive, hidden out
+      of season). Meadow grass: 9 blades for 18 cards, 3 heads, height 0.58 (0.55), spread 0.53 (0.45). Read of vs_14:
+      a toy tuft, clearly the same plant through the year; blades are flat-ish paddles more than "fat rounded" ones,
+      winter is a starfish of nine blades, the snow column's blades stay brown (snow lies by the normal's up share
+      and the blades lie on edge).
+    - HANDOVER (vegstyle2, 2026-10-07). NOT DONE: (1) ANIME oak (the consumer's next style). Design: reuse the blobby
+      fit's masses as the clumps (they are the proxy the guide's sources transfer normals from); per mass 3-5 depth
+      layers of alpha cards facing out of the mass (shells at 0.6 / 0.8 / 1.0 of its radii, cut into `veg_leaf.
+      card_mesh`-style polygons), pictures = a new atlas of painted leaf-DAB clusters (rasterise a few dozen big
+      leaves per tile with `veg_leaf.rasterize`; edges are the dabs), NORMAL = out of the mass's centre, TEXCOORD_0 =
+      (gradient 0 base .. 1 top of the clump, clump id), COLOR_0 = the 3-step gradient; wood = blobby's `wood` with
+      radius 1.0 and a dark cool bark. `veg_bough.place` is NOT reusable (it stands cards on bough roots); the card
+      material / season-atlas / export path of the realistic foliage is (foliage_material, with_variants). (2) Blobby
+      fern / daisy / clover judged (the clump path runs on any clump; nobody looked). (3) Clump impostors, flatten in
+      the export (a morph target or a second mesh), stands / sets with a style, `wind_plant` on a styled plant,
+      blossom. (4) Blender's importer on the new impostor; an engine fade of each quad by how edge-on it is.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
