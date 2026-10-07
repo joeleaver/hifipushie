@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver import Context, Image, MCPServer
 from PIL import Image as PILImage
 
 from . import compare as cmp
@@ -2287,9 +2287,37 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     return out + ["\n".join(notes)]
 
 
+def _progress_log(ctx, path: Path):
+    """A log for a long job run by a tool: each line appended to `path` (tail it while it runs) and sent to the client
+    as an MCP progress notification (when the call carries a progress token; never fails the job)."""
+    import re
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("")
+    n = [0]
+
+    def log(*a):
+        line = " ".join(str(x) for x in a)
+        with open(path, "a") as f:
+            f.write(line + "\n")
+        if ctx is None:
+            return
+        n[0] += 1
+        m = re.search(r"(\d+) / (\d+) done", line)
+        try:
+            import anyio.from_thread
+            first = line.splitlines()[0][:300] if line else ""
+            if m:
+                anyio.from_thread.run(ctx.report_progress, float(m.group(1)), float(m.group(2)), first)
+            else:
+                anyio.from_thread.run(ctx.report_progress, float(n[0]), None, first)
+        except Exception:
+            pass
+    return log
+
+
 @mcp.tool(structured_output=False)
 def export_terrain(name: str, size: int | None = None, engine: str | None = None, out_dir: str | None = None,
-                   tiles: bool = False, styles_only: bool = False) -> str:
+                   tiles: bool = False, styles_only: bool = False, ctx: Context | None = None) -> str:
     """Write the terrain for an engine (default workspace/terrain/<name>/export/): height (.npy float32 absolute,
     16-bit .png and Unity .raw offset to 0), masks per cover layer plus water, roads, sites, playable and walls,
     splat weights for the ground layers, trees.csv, and meta.json (heights, the Unity terrain size and position,
@@ -2299,7 +2327,8 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     and its volumes (arches, caves, overhangs) as seamless glTF tiles with LODs, skirts, collision, heightmap and
     splat tiles and a manifest.json, tuned by the spec's "export": {"tiles": {...}}; a seam check runs on every
     export; when it (or a tile's triangle budget) fails the reply starts with CHECKS FAILED and lists each failure
-    with its tiles: the files are still written, complete and loadable. A spec with "styles" adds the per-style
+    with its tiles: the files are still written, complete and loadable. While it runs, each stage's start and a tile
+    counter (done / total, elapsed, ETA, every 30 s) go to <tiles dir>/export_log.txt and out as MCP progress. A spec with "styles" adds the per-style
     layer textures, zone maps and the manifest's `styles` section (guide, "Styles"); styles_only=True writes ONLY
     those (seconds, no meshing) into out_dir or beside the last tiles export, updating its manifest.json."""
     from . import terrain_tools as tt
@@ -2317,8 +2346,9 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
             terrain_style.summary(sec)
     if tiles:
         from . import terrain_mesh
+        out = Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles"
         try:
-            r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+            r = terrain_mesh.export_tiles(T, out, log=_progress_log(ctx, out / "export_log.txt"))
         except terrain_mesh.TilesCheckFailed as e:
             # (the export is written and complete: the report, with what failed on top, not a traceback)
             r = e.result

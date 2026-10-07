@@ -2903,7 +2903,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _CTX.clear()
     _CTX["work"] = workdir
     timing = {}
-    prof = profiling.Report()  # per stage: wall, workers' busy share, stragglers; spans, field counts (manifest "profile")
+    prof = profiling.Report(progress=log)  # per stage: wall, workers' busy share, stragglers; spans, field counts (manifest "profile")
     tile_key = lambda ij: f"{ij[0]},{ij[1]}"
     t0 = time.time()
     _st = prof.stage("setup (parent)")
