@@ -112,6 +112,8 @@ def template_weights(spec: dict, rb: list[dict], surf: dict) -> np.ndarray | Non
     names = [b["name"] for b in rb]
     if (spec.get("rig") or {}).get("weights", "template") == "distance" or PREFIX + "Hips" not in names:
         return None
+    if surf.get("template") == "human" and surf.get("src") is not None:
+        return _one_mesh(spec, rb, surf, names)
     if surf.get("template") != "makehuman" or surf.get("src") is None:
         return None
     from . import base as basemod
@@ -155,6 +157,46 @@ def template_weights(spec: dict, rb: list[dict], surf: dict) -> np.ndarray | Non
             neck = np.zeros(len(rb))
             neck[names.index(PREFIX + "Neck")] = 1.0
             out[~have] = (1 - t) * out[~have] + t * neck
+    return out
+
+
+def _one_mesh(spec: dict, rb: list[dict], surf: dict, names: list[str]) -> np.ndarray:
+    """One human mesh (onemesh.py): every vertex has hand-made weights of its own in the asset (MakeHuman's by index
+    on the body, through the head's binding above the stitch), folded onto the rig's joints as below. Above the
+    stitch the arm's side of the weights (clavicle, shoulder: MakeHuman runs them a little way up the neck's side)
+    is handed to the Neck joint within GRAFT_REACH, as a grafted neck's was: an arm must not pull the neck."""
+    from scipy.spatial import cKDTree
+
+    from . import base as basemod
+    from . import onemesh
+    tpl = basemod.source(spec["base"])
+    bones, idx, w = onemesh.weights(tpl)
+    central = _central(tpl, names)
+    D = np.zeros((len(idx), len(rb)))
+    rows = np.arange(len(idx))
+    for k, mh in enumerate(bones):
+        to = central.get(mh) if _mixamo(mh) is None else {PREFIX + _mixamo(mh): 1.0}
+        wk = np.where(idx == k, w, 0.0).sum(1)
+        if not to or not wk.any():
+            continue
+        for nm, share in to.items():
+            if nm not in names:
+                nm = _fallback(nm, names)
+            D[rows, names.index(nm)] += share * wk
+    src = np.asarray(surf["src"])
+    out = D[src] / np.maximum(D[src].sum(1, keepdims=True), 1e-12)
+    if PREFIX + "Neck" in names:
+        Wq = np.asarray(surf["quads"][0], float)
+        up = src >= tpl["n_mh"]  # the bridge and the head
+        side = np.array([any(s in n for s in ("Shoulder", "Arm", "ForeArm", "Hand")) for n in names])
+        if up.any() and side.any():
+            d, _ = cKDTree(Wq[~up]).query(Wq[up])
+            t = np.clip(d / GRAFT_REACH, 0.0, 1.0)
+            t = t * t * (3 - 2 * t)
+            moved = out[np.ix_(np.flatnonzero(up), np.flatnonzero(side))] * t[:, None]
+            rws = np.flatnonzero(up)
+            out[np.ix_(rws, np.flatnonzero(side))] -= moved
+            out[rws, names.index(PREFIX + "Neck")] += moved.sum(1)
     return out
 
 

@@ -1,0 +1,24 @@
+{
+ "name": "human_lowpoly",
+ "about": "low-poly (plain planes and simple features; the faceting itself is an export decision: un-subdivided levels with flat shading, not built yet). ROUND 0: hand-set starting values, NOT yet fitted to references (the reference rounds with fit_human / human_reference are the next step). For base.body.source \"human\" (the one mesh).",
+ "rules": {},
+ "spec": {
+  "base": {
+   "style": {
+    "eyes": 1.15,
+    "simplify": 3.0,
+    "shape": {
+     "planes": 3.2,
+     "planes_hold_eyes": 0.5
+    },
+    "human": {
+     "head_size": 1.1,
+     "nose": 0.3,
+     "exaggerate": 0.8,
+     "limbs": 0.95,
+     "hands": 1.08
+    }
+   }
+  }
+ }
+}

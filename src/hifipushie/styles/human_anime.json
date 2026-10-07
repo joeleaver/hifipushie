@@ -1,0 +1,33 @@
+{
+ "name": "human_anime",
+ "about": "anime (large low eyes, a nose reduced toward a point, a small low mouth, a narrow jaw and pointed chin, long legs, slender limbs). Shape only: the cel look, the eye picture and face normals are not in this sheet yet. ROUND 0: hand-set starting values, NOT yet fitted to references (the reference rounds with fit_human / human_reference are the next step). For base.body.source \"human\" (the one mesh).",
+ "rules": {},
+ "spec": {
+  "base": {
+   "style": {
+    "eyes": 1.5,
+    "simplify": 2.5,
+    "human": {
+     "head_size": 1.12,
+     "cranium": 1.1,
+     "eye_spacing": 0.05,
+     "eye_height": -0.12,
+     "nose": 0.8,
+     "nose_width": 0.7,
+     "jaw": 0.5,
+     "chin": 0.45,
+     "cheeks": -0.2,
+     "mouth": 0.68,
+     "mouth_height": -0.04,
+     "face_flat": 0.2,
+     "exaggerate": 0.6,
+     "legs": 1.12,
+     "limbs": 0.8,
+     "shoulders": 0.9,
+     "hands": 0.92,
+     "waist": 0.9
+    }
+   }
+  }
+ }
+}

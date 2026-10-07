@@ -1125,6 +1125,8 @@ class GnmFace(Face):
         cols = []
         for dV in dVs:
             d = dV * c["esc"][:, None]
+            if c.get("fade") is not None:  # (onemesh.py) one human mesh: nothing moves at the neck's stitch
+                d = d * np.asarray(c["fade"], float)[:, None]
             d[:, 0] *= c["narrow"]
             dW = c["s"] * d[c["skin"]] @ c["R"].T
             if c["skin_index"] is not None:  # (zipped lips: never with face shapes, they need the lips apart)
