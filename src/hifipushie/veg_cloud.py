@@ -197,6 +197,11 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
     T, B = T * np.cos(roll)[:, None] + B * np.sin(roll)[:, None], B * np.cos(roll)[:, None] - T * np.sin(roll)[:, None]
     half = float(cr.get("card", 0.45)) * size[M] * (0.8 + 0.4 * u(36)) * grow
     half = np.minimum(half, float(cr.get("card_max", 1e9)) * grow)
+    # never taller than the tree: a card on an outer shell over the top clump stood a metre over it (the same
+    # individual's height). Cards whose top would pass it sit down by the difference.
+    ztop = float(tree["height"]) * 1.01
+    P0 = P0.copy()
+    P0[:, 2] -= np.maximum(P0[:, 2] + half * np.abs(B[:, 2]) - ztop, 0.0)
     var = (u(37) * len(at["cards"])).astype(int) % len(at["cards"])
     cup = float(cr.get("cup", 0.25))
     Vs, Fs, UVs, own, rim, n0 = [], [], [], [], [], 0
