@@ -473,7 +473,7 @@ def test_slab_faces_out():
     """Petals, dabs and big leaves are closed plates whose faces look outward whichever way the outline was drawn
     (a clockwise petal outline showed its underside from above: culled in an engine)."""
     for poly in (np.array([[0, 0], [1, 0.3], [2, 0], [1, -0.3]], float), np.array([[0, 0], [1, -0.3], [2, 0], [1, 0.3]], float)):
-        V, F, N = vs._slab(poly, np.zeros(3), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]), 0.1, cup=0.1)
+        V, F, N = vs._slab(poly, np.zeros(3), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]), 0.1)
         fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
         top = V[F].mean(1)[:, 2] > 0.04
         assert (fn[top, 2] > 0).all() and (fn[V[F].mean(1)[:, 2] < -0.04, 2] < 0).all()
