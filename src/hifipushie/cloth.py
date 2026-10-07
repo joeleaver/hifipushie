@@ -1030,6 +1030,250 @@ def _arc_point(H: np.ndarray, start: np.ndarray, s: np.ndarray, sign: float) -> 
     return np.c_[np.interp(ss, cum, Hc[:, 0]), np.interp(ss, cum, Hc[:, 1])]
 
 
+LEG_BLEND = 0.15  # m under the crotch over which a trouser leg hands over from the seat's cylinder to the leg's tube
+LEG_TOP = 0.01  # m under the crotch line where the hand-over starts
+LEG_APART = 0.004  # m a trouser leg's side seam and inseam start apart at least
+LEG_CLEAR = 0.005  # m a trouser leg starts off the leg at least (the 12 mm of draped cloth is more than a slim leg's ease)
+LEG_SMOOTH = 0.04  # m (sigma) a leg tube's sections are smoothed over up and down the leg
+LEG_DRIFT = 0.05  # the most a leg tube's crease line drifts round the leg per m down it (a drift is a shear)
+LEG_TAPER = 5.0  # m of girth a leg tube may lose per m down the leg (5: as fast as the cloth; slower starts the seams apart)
+LEG_EASE = 0.35  # m over the ankle's level from which a leg is compressed to start its hem clear of the foot
+
+
+def _leg_section(body, sgn: float, z: float):
+    """The leg's own section (its convex hull in plan) at height z, the side sgn: the loop under the crotch nearest the
+    knee's plan position (a hanging hand is further off it), or None."""
+    J = body.J
+    kn = np.asarray(J["knee.L"], float) if "knee.L" in J else None
+    if kn is None:
+        return None
+    kx, ky = sgn * kn[0], kn[1]
+    best, bd = None, 0.2
+    for L_ in tailor.slice_loops(body.V, body.T, [0, 0, float(z)], [0, 0, 1.0]):
+        if len(L_) < 3:
+            continue
+        c_ = L_[:, :2].mean(0)
+        if sgn * c_[0] < 0.01:
+            continue
+        d_ = float(np.hypot(c_[0] - kx, c_[1] - ky))
+        if d_ < bd:
+            best, bd = L_[:, :2], d_
+    if best is None:
+        return None
+    return best[ConvexHull(best).vertices]
+
+
+def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w: float, gap: float,
+              cache: dict) -> tuple | None:
+    """Start positions of a trouser leg's piece on a tube round the LEG (as a sleeve lies on the arm), and the share
+    of them to use (0 at the crotch, 1 from LEG_BLEND under it; above, the seat's cylinder). None when the leg isn't
+    one front and one back piece; wrap "follow": false keeps the seat's cylinder all the way down.
+
+    The tube: a smooth axis through the leg's sections' plan middles (quadratic in height); round it, in the plane
+    SQUARE to the axis, the leg's section (its radius per direction, smoothed LEG_SMOOTH up and down the leg) pushed
+    out to the cloth's girth at that row (+ LEG_APART for each seam, at least LEG_CLEAR off the leg). Pattern y runs
+    down the axis (length along the leg, not plumb). The front piece's crease line on the section's front, the back
+    piece's half the girth round, each row by arc length to either side (the crease line drifts at most LEG_DRIFT
+    per m: the rows' middles run out toward the fork). Below LEG_EASE over the ankle the leg is compressed along its
+    length until the hem clears the foot.
+    A narrowing tube still SHEARS the cloth (a column a quarter girth from the crease leans by about a quarter of the
+    narrowing rate; a slim leg narrows ~0.8 m per m down the thigh), as does the hand-over from the seat: place()'s
+    start relaxation (_relax_strain: every triangle's singular values clamped) takes that out, the crease rows free.
+    Start on su_garrett: seams 15 / 8 mm apart (p50, side / inseam), every triangle within 5% of the pattern.
+    What it took: on the seat's one cylinder a slim leg's front and back started as slabs (side seams 174 / inseams
+    213 mm apart); rows following each section's own hull put the leg's taper and every slice's jitter into the
+    columns; horizontal rows on a leg that splays 11 deg in an A-pose are a shear of that slope; the back laid on
+    from the front's side seam drifted with the side seam's slope; an edge-length relaxation can't see shear (every
+    edge within 5%, the triangles 9-12% along the diagonal); fixed crease rows held a leaning column's shear."""
+    at = body.at
+    if "crotch_z" not in at or "knee.L" not in body.J:
+        return None
+    sgn = 1.0 if to.endswith("L") else -1.0
+    mine = [o for o in names if pcs[o]["wrap"].get("to") == to and not pcs[o]["wrap"].get("lies_on")]
+    fr = [o for o in mine if pcs[o]["wrap"].get("side", "front") == "front"]
+    bk = [o for o in mine if pcs[o]["wrap"].get("side", "front") == "back"]
+    if len(fr) != 1 or len(bk) != 1 or nm not in (fr[0], bk[0]):
+        return None
+    zc = float(at["crotch_z"])
+    z_foot = float(body.J["ankle.L"][2]) + 0.04 if "ankle.L" in body.J else 0.05
+    Pf, Pb = pcs[fr[0]]["P"] * [sgn, 1.0], pcs[bk[0]]["P"] * [sgn, 1.0]
+    zt = zc - LEG_TOP  # the tube's top level (above it, both legs are one loop)
+    if (to, "axis") not in cache:
+        zs_ = np.arange(z_foot, zt - 0.004, 0.01)
+        Hs = [(z_, H_) for z_ in zs_ if (H_ := _leg_section(body, sgn, float(z_))) is not None]
+        if len(Hs) < 8:
+            return None
+        zh = np.array([z_ for z_, _ in Hs])
+        mx = np.array([0.5 * (H_[:, 0].min() + H_[:, 0].max()) for _, H_ in Hs])
+        my = np.array([0.5 * (H_[:, 1].min() + H_[:, 1].max()) for _, H_ in Hs])
+        px, py = np.polyfit(zh, mx, 2), np.polyfit(zh, my, 2)
+        # each section round the axis as a radius per direction, smoothed up and down the leg (a section's hull
+        # changes by the slice: the front point stepped 5 mm a cm at the knee, a shear past the strain limit)
+        th = np.linspace(0, 2 * np.pi, 180, endpoint=False)
+        dirs = np.c_[np.cos(th), np.sin(th)]
+        R = np.zeros((len(Hs), len(th)))
+        for j, (z_, H_) in enumerate(Hs):
+            Q = H_ - [np.polyval(px, z_), np.polyval(py, z_)]
+            Q2 = np.roll(Q, -1, axis=0)
+            # ray from the axis along each direction against each hull edge
+            e_ = Q2 - Q
+            for i_, d_ in enumerate(dirs):
+                den = d_[0] * e_[:, 1] - d_[1] * e_[:, 0]
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    tt = (Q[:, 0] * e_[:, 1] - Q[:, 1] * e_[:, 0]) / den
+                    uu = (Q[:, 0] * d_[1] - Q[:, 1] * d_[0]) / den
+                hit = (uu >= -1e-9) & (uu <= 1 + 1e-9) & (tt > 0)
+                R[j, i_] = tt[hit].max() if hit.any() else np.linalg.norm(Q, axis=1).max()
+        wz = np.exp(-0.5 * ((zh[:, None] - zh[None, :]) / LEG_SMOOTH) ** 2)
+        R = (wz @ R) / wz.sum(1, keepdims=True)
+        ab = [R[j][:, None] * dirs for j in range(len(Hs))]  # each section round the axis, smoothed
+        # height <-> length down the axis from the tube's top
+        zg = np.linspace(zt, min(z_foot, z_w - 1.3), 600)
+        sl = np.sqrt(1 + np.polyval(np.polyder(px), zg) ** 2 + np.polyval(np.polyder(py), zg) ** 2)
+        along = np.r_[0, np.cumsum(0.5 * (sl[1:] + sl[:-1]) * -np.diff(zg))]
+        cache[(to, "axis")] = (px, py, zh, ab, zg, along)
+    px, py, zh, ab, zg, along = cache[(to, "axis")]
+
+    Lk = float(np.interp(z_foot + LEG_EASE, zg[::-1], along[::-1]))
+
+    def eased(L):
+        """Length down the axis of the pattern's row L down (the leg under Lk compressed by the leg's ease)."""
+        f_ = cache.get((to, "ease"), 1.0)
+        return np.where(L > Lk, Lk + (L - Lk) * f_, L)
+
+    def frame(z):
+        """The axis point at height z and the plan-x / plan-y directions square to the axis there."""
+        T = np.array([np.polyval(np.polyder(px), z), np.polyval(np.polyder(py), z), 1.0])
+        T /= np.linalg.norm(T)
+        ux = np.array([1.0, 0, 0]) - T[0] * T
+        ux /= np.linalg.norm(ux)
+        uy = np.array([0, 1.0, 0]) - T[1] * T
+        uy -= (uy @ ux) * ux
+        uy /= np.linalg.norm(uy)
+        return np.array([np.polyval(px, z), np.polyval(py, z), z]), ux, uy
+
+    ymin = min(Pf[:, 1].min(), Pb[:, 1].min()) + 0.001
+
+    if (to, "girth") not in cache:
+        # the tube's girth down the leg: the cloth's (+ the seams' LEG_APART) and enough to clear the leg, but never
+        # shrinking faster than LEG_TAPER per m. On a tube that narrows, a column a quarter girth from the crease
+        # leans by a quarter of the narrowing rate (a shear: about an eighth of it in stretch), and a slim leg's
+        # pattern narrows ~0.8 m per m between the crotch and the knee: there the seams start apart instead
+        Lg = np.arange(0.0, zt - z_w - ymin + 0.01, 0.005)
+        Wg = np.full(len(Lg), np.nan)
+        for j, L_ in enumerate(Lg):
+            y_ = max(zt - L_ - z_w, ymin)
+            xf_, xb_ = _piece_xs_at(Pf, y_), _piece_xs_at(Pb, y_)
+            if len(xf_) >= 2 and len(xb_) >= 2:
+                Wg[j] = (max(xf_) - min(xf_)) + (max(xb_) - min(xb_))
+        okg = np.isfinite(Wg)
+        Lg, Wg = Lg[okg], Wg[okg]
+        need_ = np.array([pattern.length(ab[int(np.argmin(np.abs(zh - min(max(float(np.interp(L_, along, zg)), z_foot),
+                                                                                 zt - 0.005))))], closed=True)
+                          for L_ in Lg]) + 2 * np.pi * LEG_CLEAR
+        G = np.maximum(Wg + 2 * LEG_APART, need_)
+        for j in range(1, len(G)):
+            G[j] = max(G[j], G[j - 1] - LEG_TAPER * (Lg[j] - Lg[j - 1]))
+        cache[(to, "girth")] = (Lg, G)
+    Lg, G = cache[(to, "girth")]
+
+    def level(L):
+        """(ellipse polygon round 0 in its own plane, its front point, the girth past the cloth) for the row L down
+        the pattern from the tube's top (by the cm), laid at its eased length down the axis."""
+        key = (to, int(round(L * 100)))
+        if key in cache:
+            return cache[key]
+        Lq = key[1] / 100.0
+        zz = float(np.interp(eased(Lq), along, zg))
+        zs = min(max(zz, z_foot), zt - 0.005)
+        y = max(zt - Lq - z_w, ymin)
+        xf, xb = _piece_xs_at(Pf, y), _piece_xs_at(Pb, y)
+        if len(xf) < 2 or len(xb) < 2:
+            cache[key] = None
+            return None
+        W = (max(xf) - min(xf)) + (max(xb) - min(xb))
+        H = ab[int(np.argmin(np.abs(zh - zs)))]
+        # the section pushed out to the cloth's girth (at least LEG_CLEAR off the leg; the seams start at least
+        # LEG_APART apart: edge on edge they read as crossings)
+        Gq = float(np.interp(Lq, Lg, G))
+        m_ = float(np.clip((Gq - pattern.length(H, closed=True)) / (2 * np.pi), LEG_CLEAR, 0.15))
+        E = _densify(_offset_hull(H, m_), 0.002)
+        E = E * max(1.0, Gq / pattern.length(E, closed=True))
+        fr_ = E[E[:, 1] < 0]
+        cache[key] = (E, fr_[np.argmin(np.abs(fr_[:, 0]))], pattern.length(E, closed=True) - W)
+        return cache[key]
+
+    z0 = z_w + U[:, 1]
+    t = np.clip((zt - z0) / LEG_BLEND, 0.0, 1.0)
+    ok = t > 0
+    front = nm == fr[0]
+    s = np.zeros(len(U))
+    Lr = np.maximum(zt - z0, 0.0)  # the pattern's length under the tube's top
+    if (to, nm, "anchor") not in cache:
+        # each row's arc is measured from the piece's crease line: its row's middle, but drifting at most
+        # LEG_DRIFT per m of length (from the hem up): a column's sideways drift is shear, and the rows' middles run
+        # out toward the fork near the crotch (8% at the top of the thigh)
+        P_ = Pf if front else Pb
+        yg = np.arange(P_[:, 1].min() + 0.002, zt - z_w - 0.004, 0.005)
+        mg = np.array([0.5 * (max(x_) + min(x_)) if len(x_ := _piece_xs_at(P_, float(y_))) >= 2 else np.nan for y_ in yg])
+        ok_ = np.isfinite(mg)
+        yg, mg = yg[ok_], mg[ok_]
+        an = mg.copy()
+        for j in range(1, len(an)):
+            an[j] = an[j - 1] + np.clip(mg[j] - an[j - 1], -LEG_DRIFT * (yg[j] - yg[j - 1]), LEG_DRIFT * (yg[j] - yg[j - 1]))
+        cache[(to, nm, "anchor")] = (yg, an)
+    yg, an = cache[(to, nm, "anchor")]
+    for i in np.where(ok)[0]:
+        y = float(zt - z_w - max(Lr[i], 0.005))
+        if not len(yg) or y < yg[0] - 0.01:
+            ok[i] = False
+            continue
+        # arc from the piece's crease toward the outside; the back's from half the girth round
+        s[i] = sgn * U[i, 0] - float(np.interp(y, yg, an))
+    # a hem cut for a shoe ends under the ankle, where the foot runs forward: the leg from LEG_EASE over the ankle
+    # down is compressed along its length (evenly, so the rows stay apart and square) until the hem clears the
+    # foot's top (the instep) by the clearance. Compression a strain-limited solver can start from; squeezed into the
+    # room over the instep alone the hem's rows lay mm apart and crossed, turned out over it they stretched 1.8x
+    if (to, "ease") not in cache:  # one compression for the leg (both pieces: their seams stay level)
+        f = 1.0
+        L_hem = zt - (z_w + min(Pf[:, 1].min(), Pb[:, 1].min()))
+        z_hem = float(np.interp(L_hem, along, zg))
+        Vb = body.V[(body.V[:, 2] < z_foot + 0.02) & (sgn * body.V[:, 0] > 0)]
+        lv = level(L_hem)
+        if lv is not None and len(Vb) and L_hem > Lk:
+            from scipy.spatial import cKDTree
+            A_, ux_, uy_ = frame(z_hem)
+            ring = A_[:2] + lv[0][:, :1] * ux_[:2] + lv[0][:, 1:] * uy_[:2]
+            d_, _ = cKDTree(ring).query(Vb[:, :2])
+            under = Vb[d_ < gap + 0.012]  # the foot under the hem's line, and just round it
+            if len(under):
+                L_ok = float(np.interp(under[:, 2].max() + gap, zg[::-1], along[::-1]))
+                f = float(np.clip((L_ok - Lk) / (L_hem - Lk), 0.5, 1.0))
+        for k_ in [k_ for k_ in cache if k_[0] == to and isinstance(k_[1], int)]:
+            del cache[k_]  # (levels made before the ease was known)
+        cache[(to, "ease")] = f
+    L = eased(Lr)
+    out = np.zeros((len(U), 3))
+    Lq = np.floor(Lr * 100)
+    for lq in np.unique(Lq[ok]):
+        sel_ = ok & (Lq == lq)
+        lv0, lv1 = level(lq / 100.0), level((lq + 1) / 100.0)
+        if lv0 is None or lv1 is None:
+            ok &= ~sel_
+            continue
+        # the back's crease half the girth round, its outside back the way the front's came
+        arc = (lambda lv: s[sel_]) if front else (lambda lv: 0.5 * pattern.length(lv[0], closed=True) - s[sel_])
+        q0 = _arc_point(lv0[0], lv0[1], arc(lv0), sgn)
+        q1 = _arc_point(lv1[0], lv1[1], arc(lv1), sgn)
+        f_ = np.clip(Lr[sel_] * 100 - lq, 0.0, 1.0)[:, None]
+        q = (1 - f_) * q0 + f_ * q1
+        for j, i in enumerate(np.where(sel_)[0]):
+            A_, ux_, uy_ = frame(float(np.interp(L[i], along, zg)))
+            out[i] = A_ + q[j, 0] * ux_ + q[j, 1] * uy_
+    t[~ok] = 0.0
+    return out, t
+
+
 def _piece_xs_at(P: np.ndarray, y: float) -> list:
     """Where the outline P crosses the level y (x values)."""
     xs = []
@@ -1652,6 +1896,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     neck_hug, neck_drift = False, None  # a buttoned stand held closed inside the contact standoff; its sections' drift
     arm_ang = {}  # vertex -> its angle round its arm (pieces placed so far)
     leg_curve = {}  # "leg.L" -> (its plan curve, the flat's x, the waist's z)
+    leg_levels = {}  # the leg tubes' sections by (leg, cm)
+    leg_t = {}  # piece index -> each vertex's share on its leg's tube
     head_curve = None  # the plan curve round the head (hoods)
     placed_neck = []
     for k, nm in enumerate(names):
@@ -1703,10 +1949,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # (each layer leaves the one under it as a wedge over 2 cm (4 mm over 6 was a 20% stretch), and the top one eases back down over 8 cm)
                 lay_ = np.maximum(lay_, np.clip(t_ / min(0.02, 0.7 * d_), 0, 1) + np.clip((t_ - d_) / min(0.02, 0.7 * d_), 0, 1)
                                   - 2.0 * np.clip((t_ - 2 * d_) / 0.08, 0, 1))
-            q = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0), 1.0)
+            q = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0), float(w.get("dir", 1.0)))  # wrap "dir" -1: pattern +x runs round toward -x from the start (a band whose chain starts on the left front, laid from the back)
             if lay_.any():
                 # out along the curve's own normal (out from its middle sheared the layers 11% on the flat front)
-                tg_ = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) + 0.003, 1.0) - _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) - 0.003, 1.0)
+                tg_ = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) + 0.003, float(w.get("dir", 1.0))) - _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) - 0.003, float(w.get("dir", 1.0)))
                 nr_ = np.c_[tg_[:, 1], -tg_[:, 0]]
                 nr_ /= np.maximum(np.linalg.norm(nr_, axis=1, keepdims=True), 1e-9)
                 nr_ *= np.sign(np.sum(nr_ * (q - Cw.mean(0)), 1))[:, None]
@@ -2131,6 +2377,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # (the foot is left out: a hem cut for a shoe ends below the ankle, and with the foot's sections in
                 # the hull the leg's cylinder was as long as the foot: front and back started 20 cm apart as slabs)
                 z_foot = float(body.J["ankle.L"][2]) + 0.04 if "ankle.L" in body.J else 0.05
+                if w.get("follow", True) and "crotch_z" in at:  # the legs below go on their own tubes (_leg_tube):
+                    # the seat's cylinder only reaches down the hand-over
+                    z_foot = max(z_foot, float(at["crotch_z"]) - LEG_TOP - LEG_BLEND - 0.04)
                 for z in np.arange(max(z_w + ylo_, z_foot, 0.05), z_w + yhi_ + 0.02, 0.02):
                     # every loop that isn't a hand (Body.hull drops loops wider than the shoulders as arms: an
                     # A-pose's calves stand out past them and the leg pieces started inside the legs)
@@ -2192,6 +2441,11 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 ramp = np.clip(-sgn * U[:, 0] / 0.02, 0.0, 1.0)
                 zz = zz - np.maximum(zz - zc, 0.0) * ramp
             X[sel] = np.c_[sgn * q[:, 0], q[:, 1], zz]
+            tube = _leg_tube(body, pcs, names, to, nm, U, z_w, gap, leg_levels) if w.get("follow", True) else None
+            if tube is not None:
+                Xt, tt = tube
+                X[sel] = (1 - tt[:, None]) * X[sel] + tt[:, None] * Xt
+                leg_t[k] = tt
         elif to == "head":
             # A hood's sides (pattern x = 0 at centre back, the face edge at +-x, y = 0 at the neck point's height):
             # on ONE vertical generalized cylinder round the head, the hull of the head's and neck's sections from
@@ -2249,6 +2503,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # two clearances: pushed a full gap off one thigh it lands in the other (37-52 mm of rest stretch)
             inner = (pid == k) & ((1.0 if wto.endswith("L") else -1.0) * uv[:, 0] < 0)
             gaps[inner] = 0.002
+            if k in leg_t:  # on the leg's tube: as far off the leg as the tube was laid
+                ix = np.where(pid == k)[0]
+                g_ = gaps[ix]
+                gaps[ix] = np.where(leg_t[k] > 0.5, np.minimum(g_, LEG_CLEAR), g_)
     if shifts and _blouse is None:
         return place(B, M, body, gap, _blouse=shifts, smooth=smooth, _out=_out, _down=_down)
     # the made pieces' (cuff, collar) shape before the push: their rest (the push only clears the start)
@@ -2340,14 +2598,18 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             made_v = np.isin(pid, [names.index(nm) for nm in made_pieces(M, interfacing(B, M))])
             for fd in M.get("folds") or []:  # (a fold's rows and flap are constructed: left as laid)
                 from . import folds as foldmod
+                if fd.get("in_wrap") and fd.get("kind", "press") == "press" and \
+                        pcs.get(fd.get("piece"), {}).get("wrap", {}).get("to", "").startswith("leg."):
+                    continue  # (a trouser crease lies flat in the wrap: fixed, it held a leaning column's shear)
                 made_v[foldmod._geom(M, fd)["rows"][0]["v"]] = True
                 for row in fd["rows"]:
                     made_v[row] = True
-            for _ in range(3):
+            for _ in range(6):
                 _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
                 if hi_[~made_v[M["F"]].any(1)].max() <= 1.04:
                     break
                 Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
+                Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=300)
                 Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
@@ -3117,6 +3379,48 @@ def _relax_stretch(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.02
         np.add.at(cnt, E[on, 0], 1.0)
         np.add.at(cnt, E[on, 1], 1.0)
         V += acc / np.maximum(cnt, 1.0)[:, None]
+    return V
+
+
+def _relax_strain(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.03, iters: int = 80) -> np.ndarray:
+    """V with every triangle of its `free` vertices stretched at most (1 + limit) in ANY direction from the pattern:
+    each over-stretched triangle's deformation has its singular values clamped (compression left alone) and its
+    vertices are drawn toward that shape about their centroid (Jacobi-averaged, other vertices fixed). An edge-length
+    limit can't see shear: a tube that narrows down a leg leaned its columns 0.1-0.2 against its rows, every edge
+    within 5% and the triangles 9-12% stretched along the diagonal (a strain-limited solver starts under 5%)."""
+    F, uv = M["F"], M["uv"]
+    F = F[free[F].any(1)]
+    if not len(F):
+        return V
+    V = V.copy()
+    a, b, c = uv[F[:, 0]], uv[F[:, 1]], uv[F[:, 2]]
+    Dm = np.stack([b - a, c - a], -1)
+    det = Dm[:, 0, 0] * Dm[:, 1, 1] - Dm[:, 0, 1] * Dm[:, 1, 0]
+    ok = np.abs(det) > 1e-14
+    F, Dm, det = F[ok], Dm[ok], det[ok]
+    inv = np.empty_like(Dm)
+    inv[:, 0, 0], inv[:, 0, 1] = Dm[:, 1, 1] / det, -Dm[:, 0, 1] / det
+    inv[:, 1, 0], inv[:, 1, 1] = -Dm[:, 1, 0] / det, Dm[:, 0, 0] / det
+    U3 = np.stack([uv[F[:, 0]], uv[F[:, 1]], uv[F[:, 2]]], 1)
+    U3 = U3 - U3.mean(1, keepdims=True)  # (f, 3, 2) the pattern triangle about its centroid
+    wv = free.astype(float)
+    for _ in range(iters):
+        Ds = np.stack([V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]], -1)
+        G = Ds @ inv  # (f, 3, 2)
+        Uq, S, Vt = np.linalg.svd(G, full_matrices=False)
+        hot = S[:, 0] > 1 + limit
+        if not hot.any():
+            break
+        S2 = np.minimum(S[hot], 1 + limit)
+        G2 = Uq[hot] @ (S2[:, :, None] * Vt[hot])
+        X3 = V[F[hot]]
+        tgt = X3.mean(1, keepdims=True) + np.einsum("fij,fkj->fki", G2, U3[hot])
+        acc = np.zeros_like(V)
+        cnt = np.zeros(len(V))
+        for k in range(3):
+            np.add.at(acc, F[hot, k], tgt[:, k] - X3[:, k])
+            np.add.at(cnt, F[hot, k], 1.0)
+        V += wv[:, None] * acc / np.maximum(cnt, 1.0)[:, None]
     return V
 
 
