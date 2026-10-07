@@ -95,7 +95,9 @@ def test_made_lay():
     cb = cb[np.argsort(uv[cb, 1])]
     z = X[cb, 2] - X[cb[0], 2]
     top = int(np.argmax(z))
-    assert 0.02 < z[top] < 0.035 and abs(uv[cb[top], 1] - 0.03) < 0.006, (z[top], uv[cb[top]])  # the stand stands
+    from hifipushie import store
+    sh = next(o for o in store.load("ga_suit")["cloth"]["jacket"]["design"]["ops"] if o["op"] == "collar")["stand_height"]
+    assert 0.8 * sh < z[top] < sh + 0.005 and abs(uv[cb[top], 1] - sh) < 0.006, (z[top], uv[cb[top]], sh)  # the stand stands
     assert z[-1] < -0.005, z[-1]  # the fall's edge hangs below the neck seam: it covers it
     assert float(body.clearance(X[cb]).max()) < 0.02  # ... and lies on the neck and the back, not off them
     assert not [p for p in cloth._piece_crossings(X, M) if "collar" in p]
@@ -115,7 +117,8 @@ def test_made_lay():
     dm, jm = cKDTree(uv[vc]).query(uv[vc] * [-1, 1])
     ok = dm < 1e-4  # vertices whose mirror in the pattern is a vertex too
     asym = np.linalg.norm(X[vc[ok]] - X[vc[jm[ok]]] * [-1, 1, 1], axis=1)
-    assert ok.sum() > 20 and np.percentile(asym, 95) < 0.003, (ok.sum(), np.percentile(asym, 95))
+    # (3.8 mm p95 with ga_suit's 24 mm stand at 2 cm triangles, 3 mm with the old 30 mm one)
+    assert ok.sum() > 20 and np.percentile(asym, 95) < 0.0045, (ok.sum(), np.percentile(asym, 95))
 
 
 if __name__ == "__main__":

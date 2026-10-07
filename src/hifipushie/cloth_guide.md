@@ -250,6 +250,16 @@ The plan lists:
   collar at centre back (10-20 mm), the under cuff past this sleeve (10-15 mm), lapels lying on the fronts, this
   collar hugging the one under it, and no crossings between the layers. The export leaves out what this garment
   hides of the one underneath.
+  A garment worn over another is DRAFTED over it, as a tailor measures for a jacket over the shirt: its neck is the
+  under garment's neckline (its collar size) plus the collar's thickness round, and its armhole is lowered by the
+  under garment's thickness in the armpit (the draft log says "drafted over <garment>"). Drafted from the bare body,
+  a jacket's collar was shorter than the shirt collar it goes round and climbed it (the shirt collar hidden), and
+  its armhole sat 12 mm under the shirt's, so its underarm seams stood open over the shirt. Body girths (chest,
+  waist, seat) stay the bare body's: give the design's ease for what goes under it. Proportions are still yours:
+  the outer collar's stand at centre back is about the under collar's stand less what should show (10-15 mm), so a
+  short neck with a 20 mm shirt band takes a ~24 mm jacket stand; the outer sleeve ends 10-15 mm short of the
+  under cuff (a jacket sleeve near the wrist bone: `length_bonus` about -0.03 over a shirt that reaches the hand).
+  Pressing the under garment harder (`under_cap` 0.004) keeps the outer one's girth for itself.
 - **A piece laid from its seam.** Wrap `{"to": "seam"}` places a piece from the edge it is sewn to (a tailored
   collar's stand on the jacket's neckline, a collar on its stand), along the body, at the pattern's lengths; `"turn":
   {"at": m, "deg": 172, "gap": m}` lays its fall over. List the piece after the pieces it is sewn to. Use it where a
