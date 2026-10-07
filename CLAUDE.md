@@ -594,6 +594,33 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       in clay it is modest (skin at the neckline); (3) this export's low poly has "TORN OR TANGLED at eye_front.L
       (12)": the left upper lid is a few big triangles with a hard vertical edge, a dark crease up the lid in every
       blink (v23's lid is smoother); the right eye has a small dark notch at the outer corner in a full blink.
+  - Regen round 2 (2026-10-07, "regen2" then "regen3" agents, branch `regen3`; goal: a plain export of Garrett that
+    is a drop-in for the game's hand-patched v23; export /mnt/data/hifipushie/regen/exp_garrett2; renders
+    `rig_renders/rg3_*`; scratch DURABLE in /mnt/data/hifipushie/regen2/ and regen3/: run.sh <script> (worktree
+    code, main workspace), rsq.py model glb tag (re-skin an export's meshes as the export does, Head / Neck audit,
+    layers head33 / nod / game, neck fold numbers; COV_SMOOTH=0 NEAR_FIELD=0 = the old rules), fl.py (which
+    triangles flip when a joint turns, with their Head weights), lk.py / mv.py / hf.py (Head weight, face-shape
+    move and head field along the throat), au.py (audit + layers of any GLB), proof.py (same-camera rows, poses
+    game / seated / head33 / nod / arm60), blinksheet.py out.png 'label|glb' ..., contract.py ref new (joint names
+    in order, targets, rigid parts), rename.py (rg_garrett_* -> garrett_* names, for s0urc3's fix_blink.py
+    --report, which looks for garrett_body), exp.py (the recipe's export), cmp.sh (old vs new on Garrett and
+    wb_dg_talk)).
+    - regen2: `flipfit.py` (after decimation an edge whose two triangles meet sharply and misfit the dense mesh is
+      turned when both then fit: the dark crease up the left upper lid in blinks was a 14 mm edge across the lid
+      fold); the lid seal's 0.3 mm overlap fades toward the eye corners (`LID_FADE`); the quality line leaves the
+      mouth bag's folds out of the TORN alarm (`Face.inside_mouth`) and names clusters by the nearest landmark;
+      `rig.skin_cover`: skin a worn part covers (a ray out along the normal meets it within 3 cm) takes no head rule
+      (Garrett's neck skin under the collar was Head 0.70: through the jacket's collar in the idle and at head 33).
+    - regen3: that cover share was a per-vertex ray test, so at the collar's top edge (nape, throat sides) on the
+      20k low poly it stepped 0 -> 1 inside one triangle, plus single grazing-ray vertices: 38 triangles inside out
+      at a 33 deg head turn, each with a Head ~0 and a Head ~1 corner. Now smoothed `COVER_SMOOTH` 4 rounds over
+      the welded mesh: 38 -> 2 (v23 12). And the open collar's throat notch was Head 0.80 (v23 0.16, the field 0.38):
+      `rigid_near`'s 8 cm band reached down from the throat skin jawOpen moves 3 mm+ (to the Adam's apple), and it
+      blended Head over the head rule's own share (0.38 twice = 0.62). On base bodies (`field=` the head field)
+      past `NEAR_SHORT` 0.375 of the band the share is no more than the field's, and h is the share wanted: notch
+      0.37, a head turn drags it 11 mm instead of 25. Re-skinned previous meshes: head33 collar through body 13 ->
+      1 (v23 8), nod 13 -> 2 (v23 109), neck fold p99 head33 121 -> 22 deg, nod 100 -> 48; wb_dg_talk Head flipped
+      41 -> 16, head33 collar through body 79 -> 5. Kit characters unchanged (no field passed).
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
