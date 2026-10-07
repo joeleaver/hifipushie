@@ -30,6 +30,7 @@
 
  "kinds": {
   "_doc": "Garment kinds. fit: ease bands per girth (fraction of the body girth, from the flat pattern). details: the default choice per detail (garment_design fills these in when the sheet leaves them out). required: details every garment of the kind must state or take by default. cap_ease: the sleeve cap's ease into the armhole. lap: which front laps over at a closure (the buttonhole side is the outer one). sewing_order: roles in the order a maker joins them (the construction plan follows it). region: upper (shoulders carry it), lower (waist carries it), whole.",
+  "shirt": {"region": "upper", "seam_finish": "felled", "fabric": "cotton_shirting", "lap": "left_over_right", "cap_ease": [-0.01, 0.03],
             "wear": {"_doc": "How it is worn, by the garment / sheet key tie (default false): closure states laid over the pattern's by name (cloth.pieces via garment_design.wear). Without a tie a dress shirt's collar button AND its top front button are undone: the stand parts at the throat, the points spread, the fall lies open on the collarbones in a soft V. Closed to the top only under a tie.",
                      "no_tie": {"closures": [{"name": "collar", "state": "open"}, {"name": "front", "state": {"open_top": 1}}]},
                      "tie": {"closures": [{"name": "collar", "state": "closed"}, {"name": "front", "state": "closed"}]}},
