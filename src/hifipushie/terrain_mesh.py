@@ -123,6 +123,7 @@ def smoothstep(e0, e1, x):
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
 
 
 class Tube:
@@ -202,7 +203,7 @@ class Tube:
 
 
 STACK = {"radius": 0.75, "bed": 1.6, "beds": 0.4, "notch": 0.7, "ramp": 1.0, "lean": 10.0, "lobes": 0.55,
-         "twist": 6.0}
+         "twist": 6.0, "core": 0.4}
 # a solid sea stack: its radius x the sea's stack radius, bed thickness m, how far beds stand out / sit back (x r,
 # +-half), the outline's lobes (x r) and how fast they change up the stack (m), its sides' lean (deg),
 # the waterline notch (x min(0.3 r, 1.6 m)), each bed handing over to the next across `ramp` m (2 voxels: shards)
@@ -258,10 +259,16 @@ class Stack:
         notch = STACK["notch"] * min(self.r * 0.3, 1.6) * np.exp(-((z - sea - 0.9) / 1.2) ** 2)
         R = self.r * (1 + STACK["lobes"] * (lob - 0.5) + grooves + STACK["beds"] * bed) + (self.top - z) * self.lean \
             - notch
+        # a core the lobes and beds never cut into (a low lobe and a set-back bed took a section to nothing: the stack
+        # above stood on a neck or on air, pieces of it floating 12-32 m up off the island's Kaze cliffs)
+        core = STACK["core"] * self.r
+        R = smax(R, core, 0.5 * core)
         side = (d - R) * 0.92
         along = q[:, 0] * math.cos(self.tdir) + q[:, 1] * math.sin(self.tdir)
+        # (the broken top is lowered toward the rim only: lowered by direction at the axis too, the sectors' tops
+        # stood apart as separate pieces joined at a line)
         topz = self.top - self.tilt * np.clip(along + self.r, 0, 2 * self.r) * 0.5 \
-            - 0.22 * (self.top - self.base) * np.clip(lob - 0.55, 0, None) / 0.45
+            - 0.22 * (self.top - self.base) * np.clip(lob - 0.55, 0, None) / 0.45 * smoothstep(core, 2 * core, d)
         f = smax(side, p[:, 2] - topz, 0.35)
         f = smax(f, (self.base - 1.0) - p[:, 2], 0.3)
         if detail:
@@ -1376,8 +1383,13 @@ class Field:
             if len(kf):
                 from . import terrain_blocks
                 with _span("field.fallen", leaf=True):
-                    sd = terrain_blocks.fallen_sd(p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0],
-                                                  lambda xy: self.fall_at(xy[:, 0], xy[:, 1]), self.rock["blocks"])
+                    # (the ground a block sits on: the column's, less what the rock relief carves there at most:
+                    # seated on the column alone a block hung 0.7 m over relief-carved rock)
+                    carve = FALL_SEAT * self.rock["reach"]
+                    sd = terrain_blocks.fallen_sd(
+                        p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0]
+                        - carve * np.clip(self.relief_at(xy[:, 0], xy[:, 1]), 0, 1),
+                        lambda xy: self.fall_at(xy[:, 0], xy[:, 1]), self.rock["blocks"])
                     F[kf] = smin(F[kf], sd, 0.3)  # (a fillet ~a voxel: a razor contact crease made slivers)
         if self.rock is not None:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
@@ -4376,15 +4388,21 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                     if (A is None) != (B is None):
                         failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: one side has no mesh")
                     continue
-                ca, na = _on_plane(A["surface"], ax, lim)
-                cb, nb = _on_plane(B["surface"], ax, lim)
+                # (the chains along the plane, by position, without edges ON a tile corner's vertical line: such an
+                # edge's other face may be in the third or fourth tile at that corner (the island's 21,6 / 22,6 at
+                # LOD 2: its partner was 21,7), and the watertight check above covers them. Vertices: only those on a
+                # chain: marching cubes at a lattice node within a hair of the surface left a 0.4 mm sliver face lying
+                # IN the plane (11,8 / 12,8), its third vertex on the plane but on no chain, a vertex of one side)
+                oth = 1 - ax
+                cl = (np.array(tiles[i, j]["min"])[oth], np.array(tiles[i, j]["max"])[oth])
+                ca, na, ea = _plane_chain(A["surface"], ax, lim, cl)
+                cb, nb, eb = _plane_chain(B["surface"], ax, lim, cl)
                 sa = {tuple(p): r for r, p in enumerate(ca)}
                 sb = {tuple(p): r for r, p in enumerate(cb)}
                 if set(sa) != set(sb):
                     failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: border vertices differ "
                                     f"({len(set(sa) - set(sb))} / {len(set(sb) - set(sa))} unmatched)")
                     continue
-                ea, eb = _plane_edges(A["surface"], ax, lim), _plane_edges(B["surface"], ax, lim)
                 if ea != eb:
                     failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: border edges differ")
                 common = list(sa)
@@ -4715,6 +4733,26 @@ def _on_plane(surf, ax, lim):
     P, N, _ = surf
     k = P[:, ax] == lim
     return P[k], N[k]
+
+
+def _plane_chain(surf, ax, lim, corners):
+    """A tile's border chain on one plane, by position: (vertices, their normals, edges as sets of two positions).
+    Boundary edges of the mesh welded by position (split normals duplicate vertices) lying in the plane, except edges
+    along a tile corner's vertical line (`corners`: the plane's two ends on the other axis); vertices = their ends."""
+    P, N, F = surf
+    if not len(F):
+        return np.zeros((0, 3)), np.zeros((0, 3)), set()
+    Pu, first, uid = np.unique(P, axis=0, return_index=True, return_inverse=True)
+    Fw = uid.ravel()[F]
+    Fw = Fw[(Fw[:, 0] != Fw[:, 1]) & (Fw[:, 1] != Fw[:, 2]) & (Fw[:, 0] != Fw[:, 2])]
+    be = _boundary_edges(Fw)
+    on = (Pu[be[:, 0], ax] == lim) & (Pu[be[:, 1], ax] == lim)
+    oth = 1 - ax
+    cor = lambda v: np.isin(Pu[v, oth], corners)
+    on &= ~(cor(be[:, 0]) & cor(be[:, 1]))
+    be = be[on]
+    vs = np.unique(be.ravel())
+    return Pu[vs], N[first[vs]], {frozenset((tuple(Pu[a]), tuple(Pu[b]))) for a, b in be}
 
 
 def _plane_edges(surf, ax, lim):
