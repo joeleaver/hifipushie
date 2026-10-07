@@ -593,7 +593,7 @@ def _render_textured(job, d):
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.32, 0.33, 0.35, 1)
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
     sc.world = world
-    for k, (rot, en) in enumerate((((50, 10, -35), 3.0), ((70, 0, 150), 1.0))):
+    for k, (rot, en) in enumerate(job.get("suns") or (((50, 10, -35), 3.0), ((70, 0, 150), 1.0))):
         ld = bpy.data.lights.new(f"sun{k}", "SUN")
         ld.energy = en
         lo = bpy.data.objects.new(f"sun{k}", ld)

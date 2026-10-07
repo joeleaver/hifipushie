@@ -4636,7 +4636,7 @@ def seam_kinds(M: dict, g: dict) -> dict:
     return out
 
 
-PRESS = {"reach": 0.03, "passes": 16, "cap": 0.4}  # m out from the seam either side; Taubin passes; max move x h
+PRESS = {"reach": 0.03, "passes": 40, "cap": 0.4}  # m out from the seam either side; Taubin passes; max move x h
 
 
 def seam_press_mask(M: dict, g: dict | None) -> np.ndarray:
@@ -4713,9 +4713,19 @@ def _seam_press(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, opts
         np.add.at(S, a, Q[b])
         np.add.at(S, b, Q[a])
         return S / np.maximum(deg, 1)[:, None] - Q
+    # moves along the surface's normal only: a uniform Laplacian on an irregular mesh also slides vertices along the
+    # cloth (6 mm along a test seam: a zigzag in plan); a normal's sign doesn't matter in n n^T, but the pieces'
+    # windings must agree for the normals not to cancel at the seam (oriented_faces)
+    Fo = inv[oriented_faces(M, X)]
+    fn = np.cross(P[Fo[:, 1]] - P[Fo[:, 0]], P[Fo[:, 2]] - P[Fo[:, 0]])
+    nrm = np.zeros_like(P)
+    for k in range(3):
+        np.add.at(nrm, Fo[:, k], fn)
+    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
+    along = lambda D: nrm * np.sum(D * nrm, 1, keepdims=True)
     for _ in range(int(o["passes"])):
-        P = P + (0.5 * w)[:, None] * lap(P)
-        P = P - (0.53 * w)[:, None] * lap(P)
+        P = P + along((0.5 * w)[:, None] * lap(P))
+        P = P - along((0.53 * w)[:, None] * lap(P))
         D = P - P0
         L = np.linalg.norm(D, axis=1)
         P = P0 + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
@@ -6239,7 +6249,7 @@ def strain_colors(strain: np.ndarray, limit: float) -> np.ndarray:
 
 
 def render(objects: list, prefix: str, views=("front", "side", "back"), resolution: int = 700, box=None,
-           aspect: float = 0.62, textured: bool = False) -> list:
+           aspect: float = 0.62, textured: bool = False, suns=None) -> list:
     """objects: [{"name", "V", "F", "color" | "C" (linear RGB per vertex), "thickness", "uv"?, "maps"?}] -> PNG paths.
     textured: EEVEE with each object's maps (basecolor, normal) on its uv; else workbench clay."""
     from . import render as rmod
@@ -6261,7 +6271,7 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
     tag = Path(prefix).name
     np.savez(d / f"_{tag}_render.npz", **data)
     job = {"mode": "render", "data": f"_{tag}_render.npz", "objects": objs, "out_prefix": prefix,
-           "views": list(views), "resolution": resolution, "aspect": aspect, "textured": bool(textured),
+           "views": list(views), "resolution": resolution, "aspect": aspect, "textured": bool(textured), "suns": suns,
            "box": [list(map(float, box[0])), list(map(float, box[1]))] if box is not None else None}
     jp = d / f"_{tag}_render.json"
     jp.write_text(json.dumps(job))
