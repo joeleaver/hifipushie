@@ -2226,6 +2226,40 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
     settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
     and su_garrett.
+- Seams (2026-10-07, "seams" agent, branch `worktree-agent-ae98ecda411a37796`; the user on the suits: "seams look huge
+  and structural"; renders `cloth_renders/sm_01..08` (before = main 2aea2ac / after, the SAME cached sims: su_31
+  blazer, su_05 shirt; sm_05 = raking light across the blazer's side panel seam); scratch DURABLE in
+  /mnt/data/hifipushie/seams/: run.sh / runb.sh (this branch / main 2aea2ac's src in orig/), prof.py (load a cached
+  result: `load(model, garment, patches)`; cross profiles, too few points at 2 cm to trust), m2.py (per stage the
+  angle between a seam's two sides' normals vs the cloth's own: THE measure), orient2.py (winding per seam), rs.py
+  (clay + textured sheets + close-ups of a cached sim), rk.py (raking-light close-up of one seam), cmp.py).
+  Three causes, by measure:
+  - WINDING: the pattern mesh winds each piece as its pattern lies; on the blazer back.L/R, top.L, under.L faced IN,
+    the rest out (side seams' two normals at 160 deg). Welded, the shared normal cancelled into a pale / dark line;
+    Solidify (offset 1) grew one side out and one in; the export's single global flip kept it, its inner shell went
+    out on those pieces. `piece_flips` / `oriented_faces` (seam votes, max spanning tree over pieces, then out from
+    the body) in every look (`welded_faces` orients; textured looks now weld too, with per-corner uv `uv_corner`),
+    the scene's faces and the export (`shared_normals`: a closed seam's vertices one normal). A body-majority rule
+    per piece was wrong for folded pieces (the collar's fall outweighs its stand). M["F"] (the sim's) is unchanged.
+  - The FREE HINGE: a solver stitch passes no bending, so each side's last rows tilt alone: after the weld the sides'
+    normals met at 29 deg median (side seams 20, CB 45, sleeve 30-37) against the cloth's own 10.
+    `cleanup.press` (`_seam_press`, PRESS reach 3 cm, 40 Taubin passes, cap 0.4 h; welded groups move as one, ALONG
+    THE NORMAL only: a uniform Laplacian slid seam vertices 6 mm in plan, a zigzag; interfaced cloth and "welt" seams
+    stay): blazer 29 -> 14 deg (side seams 6-12), shirt 26 -> 14 (yoke 19 -> 7). The shirt's side seams stay 22-31 (a
+    deep fin from the sim, not cap-limited). What's left on sleeves is mostly the 2 cm tube's own curvature.
+  - The MAPS: a 1.2 mm groove 2.5 mm half width with 0.6 mm ridges 5.5 mm out each side, darkened 45% in the base
+    colour, topstitching 6 mm in on EVERY edge. Now seam finishes (garment_kb.json `seam_finishes`, `seam_kinds`,
+    detail `seam_finish` / `seam_finishes`; kind default `kinds.<k>.seam_finish`): pressed_open 0.3 mm x 0.7 mm, a
+    0.12 mm rise over the allowances, no rows; felled two rows on one side (shirts); welt = the old look, not pressed.
+    Hem topstitching from the kind's hem (`hem_topstitch`: blind hems none). Cavity 1 + H / 4 mm, floor 0.7.
+  - Before was rendered with main's textured look on RAW faces: every seam was also an open boundary with Solidify
+    rims (the stair-stepped pale beads in sm_05).
+  - Tests `tests/test_seams.py` (winding, press, finishes in the maps, export normals) + the ten cloth files green.
+  - Open: the shirt's side seams (a fin the press can't flatten: look at why the sim folds there), sleeve seams at
+    2 cm, a "toward" side per seam for pressed_to_side / felled (today the seam's second piece), seam finishes in the
+    pattern sheet, closures / collar seams were not judged one by one (made pieces are interfaced: untouched).
+    Careful: `cloth.export_part` / `garments(simulate=True)` STARTS SIMS for uncached garments (an orphaned ZOZO job
+    of mine had to be killed): test exports on cached models only.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -3934,6 +3968,55 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       fern / daisy / clover judged (the clump path runs on any clump; nobody looked). (3) Clump impostors, flatten in
       the export (a morph target or a second mesh), stands / sets with a style, `wind_plant` on a styled plant,
       blossom. (4) Blender's importer on the new impostor; an engine fade of each quad by how edge-on it is.
+  - Vegetation styles 3 (2026-10-07, "vegstyle3" agent, branch `worktree-agent-ac910597cf0676b73`, round 1 merged as
+    main 78cb0ad; sheets vs_20..vs_28; deliveries /mnt/data/hifipushie/vegstyle/{anime_oak, anime_spruce, anime_grass}
+    + the blobby / real ones re-exported at contract 5; Godot measures /mnt/data/hifipushie/vegstyle3/gd/; scratch in
+    the worktree's untracked `scratchpad/`: run.sh, sheet.py, seasons.py, clump_sheet.py, q.py <species> <style name or
+    json> <out> [season] [triangles] (styled panels only, ~1 min), a1.py (dress numbers + atlas + silhouette, no
+    Blender), tsweep.py <species> '<list of conifer.crown overrides>' [sheet] (tier IoU sweep), setstyle.py, gdc.sh
+    <tag> <height> <mode> <dir> <stem> (Godot card check at the LOD switch distances), r1-r4.sh (queues), t_one.py
+    <test module> <test names>).
+    - ANIME (`vegetation_styles/anime.json`, `veg_cloud.py`; crown kind "clouds"): the style's masses are the clumps
+      (the proxy artists transfer normals from); every clump gets `layers` shells (0.6 / 0.8 / 1.0 / 1.12 of its
+      ellipsoid) of alpha cards facing out of it (tilt, roll, cup), sized `card` x the clump's radius (lower LODs: fewer,
+      larger cards, `lod_grow`), cards buried in another clump dropped; picture = a generated grey DAB atlas
+      (`dab_atlas`: the species' leaf outline fattened, `count` dabs per tile, ragged rim; needle trees a pointed
+      spray stroke); NORMAL = out of its clump's middle (`normals` toward the crown's middle); COLOR_0 = a 3-step painted
+      gradient per clump, one step per CARD (inner layers darker by `depth_dark`, top warmer); TEXCOORD_3 = (gradient 0
+      base .. 1 top, clump id) (Godot: CUSTOM0.zw, checked). Two sizes of cloud (`edge_share` 0.35 of the foliage
+      furthest out of the crown's middle clustered into `edge_count` x more, smaller clouds): one size of cloud read as
+      one layer. Wood: true radii, more forks (`stubs` 14) in ONE mesh (`wood.forks_in_leaf`: no bark_forks slot) and
+      `wood.feed` (new, general): a clump with no drawn wood within feed x its radius gets the grown tree's own path to
+      it (floating outer clumps). Bark `colour.bark_mix` toward a dark warm neutral. Conifer block: clouds on TIERS
+      (`masses_kind: "tiers"`), `under` 0.25 (cards facing the ground left out under each bough: the tier shadow),
+      `clump_min_cards` 80 (small top tiers were confetti). Clump block: `fan` 3 (each chosen card gives 3 blades,
+      +-`fan_angle`: one blade per card was a sparse tuft), long thin sweeping blades.
+    - Numbers: oak IoU 0.91 (height 20.1 vs 19.8: cards are held under the tree's height), 12k / 5.4k / 2.2k + impostor, alpha fill 0.69 (overdraw ~1.45x); spruce IoU 0.80 (12.7k:
+      clump_min_cards pushes it over the budget a little), fill 0.56; grass 27 blades, height 0.57 (0.55), spread 0.56
+      (0.45). Godot 4.7.2 (`spikes/godot_veg/cards.gd` + `measure_cards.py`: each LOD at its switch distance,
+      alpha scissor): covered area 0.94-1.0 of LOD0 at every switch (spruce 0.87-0.97, impostor 0.78), pixels flipping
+      on a half-pixel move = an outline's worth only (no interior shimmer). Khronos 0 / 0.
+    - THE BUG it caught: `veg_export._png` multiplies by 255, and the dab atlas is uint8: it wrapped into noise and the
+      first anime delivery's foliage vanished under alpha scissor in Godot (test: the GLB's atlas equals the made one).
+    - SNOW = THE WINTER STATE UNDER SNOW (consumer note 52; contract 5): a leaf-dropping plant (realistic or styled) has
+      its foliage hidden and forks shown in the `snow` variant (it was the tree in full leaf painted white); evergreens
+      keep their crown; the snow impostor is the bare tree under snow (`veg_tools.impostor` sets season winter);
+      `season_color` / `season_atlas` return None for a deciduous snow. Test `test_snow_is_winter_under_snow`.
+    - Seasons json (contract 4): `snow` = numbers our looks use (linear colour, coverage, by_normal from / to, the
+      formula) and `style` {name, foliage}. Impostor albedo: the baked shade is eased on bright colours
+      (`IMPOSTOR.shade_bright`: autumn's brown patches; consumer: gone). Clump roots are a 1 cm stub (the tree's 0.3 m
+      foot was the grass "stalk" under every tuft; consumer: gone). Blobby spruce: 6 tiers, IoU 0.75 -> 0.805.
+    - Read: oak = a painted (Ghibli-ish) oak, big inner clouds, small outer ones, dark limbs in the gaps; winter a
+      spreading bare tree (sparser than the realistic one). Spruce = layered bough clouds with tier shadows; the near view
+      is big palm-frond strokes. Grass = a sweeping tuft; flowers are still small balls on stalks (the brief: colour
+      dabs), snow turns the blades white.
+    - NOT DONE (my list, in order): anime flowers as dabs (a dab card instead of a ball); blobby blades with a rounder
+      section and winter blades that curl / shorten IN THE EXPORT (decide: a morph target per season vs a second
+      primitive per season hidden by slot_list); the impostor's diagonal line (3 quads at 60 deg vs a camera-facing
+      card with 8 baked views + an engine recipe: measure in Godot, pick one); cartoon sheet (oak: chunky faceted clumps,
+      scalloped edge, big single leaves on the silhouette, per-clump id, S-bend trunk); the anime spruce over budget;
+      spruce near-view strokes too big; the guide's "Styles" section does not yet describe anime / clouds / feed /
+      edge clouds / fan (add it).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

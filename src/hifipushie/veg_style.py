@@ -537,11 +537,24 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         return out
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
         X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
-    lab = _kmeans(X, k)
+    es = float(cr.get("edge_share", 0.0))
+    if es > 0:
+        # two sizes of cloud: k big ones over the crown's inner foliage, `edge_count` x k small ones over the outer
+        # `edge_share` of it (by its distance out of the crown's middle, in the crown's own proportions); all clouds
+        # of one size read as one layer
+        r_ = np.linalg.norm((X - X.mean(0)) / np.maximum(X.std(0), 1e-6), axis=1)
+        outer = r_ >= np.quantile(r_, 1 - es)
+        ke = max(int(round(float(cr.get("edge_count", 1.5)) * k)), 1)
+        lab = np.empty(len(X), int)
+        lab[~outer] = _kmeans(X[~outer], k)
+        lab[outer] = k + _kmeans(X[outer], ke)
+        k = k + ke
+    else:
+        lab = _kmeans(X, k)
     out = []
     for j in range(k):
         Q = X[lab == j]
-        if len(Q) < max(4, 0.01 * len(X)):
+        if len(Q) < max(4, (0.003 if es > 0 else 0.01) * len(X)):
             continue
         c = Q.mean(0)
         ev, U = np.linalg.eigh(np.cov((Q - c).T) + np.eye(3) * 1e-6)
@@ -958,6 +971,18 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                 j = int(np.argmax(d))
                 pick.append(int(main[j]))
                 d = np.minimum(d, np.linalg.norm(tips[main] - tips[main[j]], axis=1))
+        # `fan` blades from each chosen card (a card is a picture of a clump: one blade per card left a sparse tuft),
+        # turned +-`fan_angle` deg about the vertical and each a little shorter
+        fan, fa = max(int(cs.get("fan", 1)), 1), math.radians(float(cs.get("fan_angle", 18.0)))
+        yaw = [0.0] * len(pick)
+        shrink = [1.0] * len(pick)
+        base_pick = list(pick)
+        for k in range(1, fan):
+            sgn = 1 if k % 2 else -1
+            for ci in base_pick:
+                pick.append(ci)
+                yaw.append(sgn * fa * ((k + 1) // 2) * (0.7 + 0.6 * float(vegetation._u(tw["key"][ci: ci + 1], 60 + k)[0])))
+                shrink.append(1.0 - 0.12 * ((k + 1) // 2))
         n_obj = len(pick) + len(heads)
         def cost(a_, b_):  # triangles of every blade, stalk and ball at that many sides and rings
             hs_, hr_, bs_, br_ = max(3, a_ // 2), max(b_, 2), max(5, a_ + 2), max(3, b_ // 2 + 2)
@@ -966,15 +991,17 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                              if cost(a_, b_) <= triangles - len(W["F"])), (3, 2))
         tones = int(max(1, cs["tones"]))
         Vs, Fs, Ns, uvs, cols, winds, n0 = [], [], [], [], [], [], 0
-        zs = tips[pick, 2] if pick else np.zeros(0)
+        zs = tips[pick, 2] * np.array(shrink) if pick else np.zeros(0)
         for bi, ci in enumerate(pick):
-            L = float(tw["reach"][ci])
-            d, zf = tw["frame"][ci][:, 1], tw["frame"][ci][:, 2]
+            L = float(tw["reach"][ci]) * shrink[bi]
+            cy, sy = math.cos(yaw[bi]), math.sin(yaw[bi])
+            Rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1.0]])
+            d, zf = Rz @ tw["frame"][ci][:, 1], Rz @ tw["frame"][ci][:, 2]
             o = d - up * d[2]
             o = o / np.linalg.norm(o) if np.linalg.norm(o) > 1e-3 else zf
             t = np.linspace(0, 1, rings + 1)
             path = tw["pos"][ci] + L * (d[None] * t[:, None] + float(cs["curl"]) * (t ** 2)[:, None] * (o - 0.45 * up)[None])
-            path[:, 2] += (tips[ci, 2] - path[-1, 2]) * t  # (the curl must not shorten the tuft)
+            path[:, 2] += (tw["pos"][ci][2] + (tips[ci, 2] - tw["pos"][ci][2]) * shrink[bi] - path[-1, 2]) * t  # (the curl must not shorten the tuft)
             prof = np.where(t < 0.4, 0.62 + 0.38 * t / 0.4, np.sqrt(np.clip(1 - ((t - 0.4) / 0.6) ** 2, 0, 1)))
             hw = np.maximum(0.5 * float(cs["width"]) * L * prof, 1e-4)
             face = np.tile(np.cross(np.cross(d, o if abs(d @ o) < 0.99 else zf), d), (len(t), 1)) if abs(d[2]) < 0.999 else np.tile(zf, (len(t), 1))
