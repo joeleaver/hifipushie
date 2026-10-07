@@ -3831,26 +3831,50 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
     return b
 
 
-def over_measures(body: "Body", U: np.ndarray) -> tuple[dict, dict]:
+UNDER_COLLAR_T = 0.003  # m: a shirt collar as it lies under a jacket's (stand, interfacing, fall over it: pressed)
+
+
+def under_neckline(res: dict) -> float:
+    """The neckline of a finished garment as the next garment goes round it (mm): its neck pieces' (wrap "neck":
+    a collar stand, a neckband) edge sewn to its torso pieces, in the pattern; 0 if it has none."""
+    M, pcs = res["mesh"], res["pieces"]["pieces"]
+    names = M["names"]
+    neck = [k for k, nm in enumerate(names) if (pcs.get(nm, {}).get("wrap") or {}).get("to") == "neck"]
+    torso = [k for k, nm in enumerate(names) if (pcs.get(nm, {}).get("wrap") or {}).get("to", "torso") == "torso"]
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    best = 0.0
+    for k in neck:
+        a = np.r_[sw[np.isin(M["piece"][sw[:, 0]], [k]) & np.isin(M["piece"][sw[:, 1]], torso), 0],
+                  sw[np.isin(M["piece"][sw[:, 1]], [k]) & np.isin(M["piece"][sw[:, 0]], torso), 1]]
+        a = np.unique(a)
+        if len(a) < 3:
+            continue
+        q = M["uv"][a]
+        q = q[np.argsort(q[:, 0])]
+        best = max(best, float(np.linalg.norm(np.diff(q, axis=0), axis=1).sum()) * 1000.0)
+    return best
+
+
+def over_measures(body: "Body", U: np.ndarray, res: dict | None = None) -> tuple[dict, dict]:
     """The tailor's measures for a garment worn OVER another (garment key "over"), U = the under garment as it lies
-    under it (pressed): a tailor measures for a jacket over the shirt. Taken over the under garment: `neck` (the
-    tape at the neck goes round the shirt collar; drafted from the bare neck, a jacket's neckline was 8 cm shorter
-    than the shirt collar it must go round at its height, and the made jacket collar climbed the shirt collar to
-    where it was narrow enough: su_32, 23 mm high, the shirt collar hidden); the armhole is lowered by the under
-    garment's thickness in the armpit (`waistToArmpit`; drafted for the bare pit, the jacket's armhole sat 12 mm
-    under the shirt's own and its underarm seams stood 20-60 mm open over the shirt in the pit). Girths of the body
-    (chest, waist, hips, seat) stay the bare body's: the design's ease bands (and the fit report) are against the
-    body. Returns (mm, info)."""
+    under it (pressed), res its result: a jacket is drafted to go round the shirt. `neck` = the under garment's own
+    neckline (its collar size: under_neckline) + its collar's thickness (UNDER_COLLAR_T) round, when more than the
+    bare neck (drafted from the bare neck, a jacket's collar was shorter than the shirt collar it must go round, and the
+    made jacket collar climbed the shirt collar to where it was narrow enough: su_32, 23 mm high, the shirt collar
+    hidden. The tape taken round the pressed shirt collar read +123 mm: its fall stands off the stand, and a 108 mm
+    neck width followed, against a tailor's ~87 for this collar size); the armhole is lowered by the under garment's
+    thickness in the armpit (`waistToArmpit`; drafted for the bare pit the jacket's armhole sat 12 mm under the shirt's
+    own and its underarm seams stood 20-60 mm open over the shirt in the pit). The body's girths (chest, waist, hips,
+    seat) stay the bare body's: the design's ease bands (and the fit report) are against the body. (mm, info)."""
     mm = dict(body.m["mm"])
     pb = padded_body(body, {}, U, 0.0)
     info = {}
-    try:
-        nk = float(pb.m["mm"].get("neck", 0.0))
-    except Exception:
-        nk = 0.0
-    if nk > mm.get("neck", 0.0):
-        info["neck"] = [round(mm["neck"], 1), round(nk, 1)]
-        mm["neck"] = nk
+    nl = under_neckline(res) if res is not None else 0.0
+    if nl > 0:
+        nk = nl + 2 * np.pi * UNDER_COLLAR_T * 1000.0
+        if nk > mm.get("neck", 0.0):
+            info["neck"] = [round(mm["neck"], 1), round(nk, 1)]
+            mm["neck"] = nk
     at = body.at
     if "armpit_z" in at and "shoulder.L" in body.J and "waistToArmpit" in mm:
         sh = np.asarray(body.J["shoulder.L"], float)
@@ -3876,7 +3900,7 @@ def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple
     if under is None or under.get("res") is None:
         return dict(body.m["mm"]), ({"over_missing": body_src["under_missing"]} if body_src.get("under_missing") else {})
     U = pressed(under, body, float(g.get("under_cap", UNDER_CAP)))
-    mm, info = over_measures(body, U)
+    mm, info = over_measures(body, U, under["res"])
     return mm, dict(info, over=under.get("name"))
 
 
@@ -4015,7 +4039,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # drafted from the tape; over another garment, from the tape taken over it (neck, armhole: over_measures)
     meas_info = {}
     if g.get("pattern"):
-        meas, meas_info = (over_measures(body_real, under["V"]) if under is not None and under.get("res") is not None
+        meas, meas_info = (over_measures(body_real, under["V"], under["res"]) if under is not None and under.get("res") is not None
                            else (body_real.m["mm"], {}))
     Bp = pieces(g, meas if g.get("pattern") else {})
     if meas_info:
