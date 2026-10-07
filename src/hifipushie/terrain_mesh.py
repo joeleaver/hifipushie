@@ -1161,6 +1161,13 @@ class Field:
         if gcfg is None:  # (no ground character: sand traps dug into the grid, as 2-cell blurs)
             for m, depth, *_ in bunkers or ():
                 self.H = dig_bunker(T, self.H, m, depth)
+        self.styles = []  # terrain styles that shape the rock (terrain_style.rock_styles): weight grids + numbers
+        H_unstyled = self.H
+        if rock is not None and T.spec.get("styles"):
+            from . import terrain_style
+            self.styles = terrain_style.rock_styles(T)
+            if self.styles:  # (a style's softened ground: blobby lips and forms; the heightmap tiles read it too)
+                self.H = terrain_style.soften_height(self.H, self.c, self.styles)
         if rock is not None:
             # where the rock character goes: steep ground (45-62 deg), as a smooth mask on the grid (~2 cells). From
             # each point's own column slope it switched on within 0.2 m at a cliff's lip (the B-spline's slope turns
@@ -1176,6 +1183,8 @@ class Field:
             disc = (xx * xx + yy * yy) <= r_open * r_open
             thin = smoothstep(0.5, 2.5, self.H - ndimage.grey_opening(self.H, footprint=disc))
             self.thin = ndimage.gaussian_filter(thin, 1.0)
+            thin_u = self.thin if H_unstyled is self.H else ndimage.gaussian_filter(
+                smoothstep(0.5, 2.5, H_unstyled - ndimage.grey_opening(H_unstyled, footprint=disc)), 1.0)
             # The relief's own weight keeps thin rock (an arch's fin, slim stacks, narrow headlands): bounded there by
             # the rock's local half-thickness at the point's height (`thin_cap`), so it can't carve through or cut a
             # top off. Field.steep (the cliff region, fallen blocks, the heightfield facets' removal) stays as before.
@@ -1184,14 +1193,22 @@ class Field:
             if THIN_RELIEF <= 0:
                 self.relief_w = self.steep
             else:
-                self.thin_parts = _local_thickness(self.H, self.c, r_open, self.thin)
-            self.grain = _structure_grain(T, self.H, self.c)
+                # (on the ground before any style softened it: a thin piece runs along a coast across zones and its
+                # height levels are the whole piece's, so softening one zone re-sliced the others)
+                self.thin_parts = _local_thickness(H_unstyled, self.c, r_open, thin_u)
+            # (from the ground before any style softened it: its percentile is global, so softening one zone moved
+            # every other zone's facet sizes)
+            self.grain = _structure_grain(T, H_unstyled, self.c)
             # the heightfield's own facets (terrain_rock: tipped planes on jittered ~5-17 m cells) taken back out where
             # the solid rock gets its own: two facet systems on one face made a moire of lozenges
             fdel = (getattr(T, "rock", None) or {}).get("facet_delta") if isinstance(getattr(T, "rock", None), dict) \
                 else None
             if fdel is not None and np.shape(fdel) == self.H.shape:
-                self.H = self.H - np.clip(self.steep, 0, 1) * fdel
+                wr = np.clip(self.steep, 0, 1)
+                for s in self.styles:  # (a softened style takes the heightfield's facets out everywhere in its zone)
+                    if float(s["rock"].get("soften_m", 0) or 0) > 0:
+                        wr = np.maximum(wr, s["w"])
+                self.H = self.H - wr * fdel
             # the faces' horizontal normal (downhill), smoothed over ~3 cells: which joint families cross a face
             sy, sx = np.gradient(ndimage.gaussian_filter(self.H, 3.0), self.c)
             self._fdx, self._fdy = -sx, -sy
@@ -1199,6 +1216,8 @@ class Field:
                 # where blocks that fell off the faces lie (terrain_blocks.fall_zone): at their feet, on gentler ground
                 from . import terrain_blocks
                 self.fall = terrain_blocks.fall_zone(self.H, self.c, self.steep) * float(rock["blocks"]["fallen"])
+                for s in self.styles:  # (a style's share of fallen blocks: blobby none)
+                    self.fall = self.fall * (1 - s["w"] * (1 - float(s["rock"].get("fallen", 1.0))))
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
         self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg) if gcfg is not None else None
@@ -1396,13 +1415,66 @@ class Field:
                 if nv is not None and tw is not None:  # (none of thin rock's rules near a void: see above)
                     tw = tw * (1.0 - nv[k])
                 ts = tw
+                jw = smoothstep(4.0, 1.5, depth[k])
                 with _span("field.rock_relief", leaf=True):
-                    R = w[k] * rock_relief(p[k], self.rock, g, smoothstep(4.0, 1.5, depth[k]), fd, u, blk, thin=ts)
+                    if not self.styles:
+                        R = w[k] * rock_relief(p[k], self.rock, g, jw, fd, u, blk, thin=ts)
+                        mic = None
+                    else:
+                        R, mic = self._styled_relief(p[k], g, jw, fd, u, blk, ts)
+                        R = w[k] * R
                     F[k] = F[k] + (R if tw is None else self.thin_cap(R, hw, tw))
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
-                        F[k] = F[k] + w[k] * self.micro(p[k], fd, u, g, I)
+                        F[k] = F[k] + w[k] * (1.0 if mic is None else mic) * self.micro(p[k], fd, u, g, I)
         return F
+
+    def style_w(self, x, y):
+        """Per rock-shaping style its weight at columns (cubic B-spline on the grid, as steep_at), and realistic's."""
+        ws = []
+        for s in self.styles:
+            if fieldjit.ON:
+                a = fieldjit.grid_at(s["w"], _f64(x), _f64(y), self.x0, self.y0, self.c)
+            else:
+                a = ndimage.map_coordinates(s["w"], [(np.asarray(y, float) - self.y0) / self.c,
+                                                     (np.asarray(x, float) - self.x0) / self.c],
+                                            order=3, prefilter=False, mode="nearest")
+            ws.append(np.clip(a, 0, 1))
+        real = np.clip(1.0 - np.sum(ws, axis=0), 0, 1) if ws else np.ones(np.shape(x))
+        return ws, real
+
+    def _styled_relief(self, p, g, jw, fd, u, blk, ts):
+        """The rock relief where terrain styles shape the rock: realistic's where it weighs, each style's own (its
+        `relief` multipliers on the realistic numbers, `pillow` grooves) where it does, mixed by their weights (smooth
+        on the grid: continuous across zones and tiles). Also each point's share of the bake-only micro relief."""
+        from . import terrain_style
+        ws, wr = self.style_w(p[:, 0], p[:, 1])
+        R = np.zeros(len(p))
+        mic = wr.copy()
+        sub = lambda a, i: None if a is None else (a[i] if np.ndim(a) else a)
+
+        def rel(i, rock):
+            return rock_relief(p[i], rock, sub(g, i), sub(jw, i), sub(fd, i), sub(u, i),
+                               sub(blk, i) if rock.get("blocks") is not None else None, thin=sub(ts, i))
+        i = np.flatnonzero(wr > 1e-4)
+        if len(i):
+            R[i] += wr[i] * rel(i, self.rock)
+        for s, a in zip(self.styles, ws):
+            i = np.flatnonzero(a > 1e-4)
+            if not len(i):
+                continue
+            Rk = s["rock"]
+            rs = np.zeros(len(i))
+            rv = terrain_style.rock_variant(self.rock, Rk.get("relief"))
+            if rv.get("facets", 0) > 0 or rv.get("bedding", 0) > 0 or rv.get("blocks"):
+                rs += rel(i, rv)
+            pl = Rk.get("pillow")
+            if pl:
+                rs += terrain_style.pillow_carve(p[i], pl.get("size", 3.0), pl.get("depth", 0.8),
+                                                 pl.get("round", 0.4), int(self.rock.get("seed", 0)) + 101)
+            R[i] += a[i] * rs
+            mic[i] += a[i] * float(Rk.get("micro", 1.0))
+        return R, mic
 
     def value(self, p):
         p = np.asarray(p, float)
@@ -4759,7 +4831,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     [x1, y1]]: only tiles (and trees) inside. lod: a level, or
     "checker" (LOD 0 and the coarsest alternating, to see the skirts at work). parts (cliffs mode): "all", "ground"
     (the heightmap alone: what a game shows without the overlay) or "cliffs". textured: True (the baked material),
-    "layered" (the engine recipe: tiling layers over the baked maps), "detail" (the tiling rock detail over the baked
+    "layered" (the engine recipe: tiling layers over the baked maps), "styles" (the terrain styles recipe:
+    terrain_style.RECIPE, each zone in its style), "detail" (the tiling rock detail over the baked
     macro maps, as the manifest's detail recipe draws it: needs an export with cfg detail) or False (vertex colour). channel: one baked
     channel alone ("base", "ao": unlit; "normal": the normal map on flat grey; "clay": geometry only). ids: also an id
     pass per view (<out>_ids.npy: glb index + 1, chart, view distance) for `terrain_seams.measure`; the job's "glbs"
@@ -4819,6 +4892,24 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
                           "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}
                          for L in M["materials"]["layers"] if "textures" in L]
+    if textured == "styles":  # the terrain styles' recipe (terrain_style.RECIPE) over the baked maps
+        SM = M.get("styles")
+        if not SM:
+            raise ValueError("textured='styles' needs an export of a spec with \"styles\"")
+        from . import terrain_style
+        lin = lambda c: [float(x) for x in terrain_style._srgb_lin(c)]
+        real = next(s for s in SM["styles"] if s["name"] == "realistic")
+        wl = {L["name"]: (L["weights"], L["channel"]) for L in M["materials"]["layers"]}
+        maps = [(str((out / fn).resolve()), SM["order"][4 * g:4 * g + 4]) for g, fn in enumerate(SM["maps"]["weights"])]
+        job["styles"] = {
+            "weights": wl, "ref": {k: lin(v["color"]) for k, v in real["layers"].items()},
+            "extent": SM["maps"]["extent"], "maps": maps,
+            "styles": [{"name": s["name"], "macro": s["macro"], "macro_normal": s["macro_normal"],
+                        "layers": {k: {"albedo": str((out / v["albedo"]).resolve()),
+                                       "height": str((out / v["height"]).resolve()), "size": v["size_m"],
+                                       "height_m": v["height_m"]} for k, v in s["layers"].items()}}
+                       for s in SM["styles"]]}
+        grass = False
     if textured == "detail":  # the tiling rock detail (terrain_swatch) over the baked macro maps
         D = M.get("detail")
         if not D:

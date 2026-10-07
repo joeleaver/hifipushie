@@ -142,6 +142,68 @@ def test_resolve_errors():
             raise AssertionError(bad)
 
 
+COAST = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [128, 128]], "cell": 0.64,
+         "tilt": {"down": "south", "grade": 0.25},
+         "sea": {"level": 0, "shore": "cliffs", "cliffs": {"height": [14, 20]}},
+         "cover": [{"type": "meadow", "in": "everywhere"}, {"type": "rock", "in": "cliffs"}],
+         "export": {"tiles": {"tile": 32}}}
+
+
+def _field(styles=None):
+    import copy
+    from hifipushie import terrain
+    d = Path(tempfile.mkdtemp())
+    sp = copy.deepcopy(COAST)
+    (d / "spec.json").write_text(json.dumps(sp))
+    T = terrain.load(d / "spec.json")
+    if styles:
+        T.spec["zones"] = {"downs": "west", "paint": "east"}
+        T.zones = dict(T.spec["zones"])
+        T.spec["styles"] = styles
+    cfg = {**tm.DEFAULTS, **T.spec["export"]["tiles"]}
+    return T, tm.build_field(T, cfg)[0]
+
+
+def test_rock_shape_by_zone():
+    """A style's rock shape is in the field only in its zone (+ its band): the realistic zone's field is unchanged
+    bit for bit; blobby's cliffs lose the facets / bedding / blocks and get pillow grooves; the field is continuous
+    across the band."""
+    T0, f0 = _field()
+    T1, f1 = _field({"blobby": "downs"})  # (blobby in the west; east realistic)
+    assert f1.styles and not f0.styles
+    # cliff points (sheer, south) on a few columns each side
+    xs = np.linspace(4, 124, 61)
+    ys = np.linspace(0, 40, 81)
+    X, Y = np.meshgrid(xs, ys)
+    h, s = f0.column(X.ravel(), Y.ravel())
+    P = np.c_[X.ravel(), Y.ravel(), h - 0.2]
+    a, b = f0.value(P), f1.value(P)
+    east = P[:, 0] > 64 + 20  # (past the 10 m rock band, the smoothing and the grid filters)
+    assert np.array_equal(a[east], b[east]), np.abs(a[east] - b[east]).max()
+    west = P[:, 0] < 50
+    assert np.abs(a[west] - b[west]).max() > 0.05  # (the blobby side changed)
+    # continuity across the band: neighbouring points 0.1 m apart along x differ by little
+    xl = np.arange(40, 90, 0.1)
+    yl = np.full_like(xl, float(ys[np.argmin(np.abs(s.reshape(X.shape).min(1) - s.min()))]))
+    hl, _ = f1.column(xl, yl)
+    Fl = f1.value(np.c_[xl, yl, hl])
+    h0l, _ = f0.column(xl, yl)
+    F0l = f0.value(np.c_[xl, yl, h0l])
+    step, step0 = np.abs(np.diff(Fl)).max(), np.abs(np.diff(F0l)).max()
+    print("  steps along the band (styled, realistic):", round(float(step), 3), round(float(step0), 3))
+    assert step < max(2.0 * step0, 0.15), (step, step0)  # (no jump where the styles hand over)
+
+
+def test_pillow_is_smooth_and_bounded():
+    rng = np.random.default_rng(1)
+    p = rng.random((20000, 3)) * 20
+    c = ts.pillow_carve(p, 3.0, 0.8, 0.4, 5)
+    assert c.min() >= 0 and c.max() <= 0.8 + 1e-9 and c.mean() > 0.02
+    assert np.array_equal(c, ts.pillow_carve(p, 3.0, 0.8, 0.4, 5))
+    q = p + np.array([0.01, 0, 0])
+    assert np.abs(ts.pillow_carve(q, 3.0, 0.8, 0.4, 5) - c).max() < 0.05
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_") and callable(f):

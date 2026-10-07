@@ -508,6 +508,96 @@ def style_fields(T, styles: list[dict]) -> dict:
     return {"sd": sd, "w": w, "order": order}
 
 
+# ------------------------------------------------------------------------------------------------ rock shape (geometry)
+
+ROCK_BAND = 10.0  # m: the default band over which one style's rock shape hands over to the next (in the field)
+ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind"}
+
+
+def rock_styles(T) -> list[dict]:
+    """The styles whose sheet shapes the rock (`rock` with any of relief / pillow / soften_m / fallen / micro), each
+    {"name", "w": weight grid on the terrain's cells (the zone partition with the rock's band, 0..1), "rock": the
+    numbers}. [] when no style shapes rock: the field is then exactly the unstyled one."""
+    styles = resolve(T.spec)
+    shaped = []
+    for s in styles:
+        R = s["sheet"].get("rock") or {}
+        bad = set(R) - ROCK_KEYS
+        if bad:
+            raise ValueError(f"style {s['name']}: rock keys {sorted(bad)} unknown ({', '.join(sorted(ROCK_KEYS))})")
+        if set(R) - {"kind", "band_m"}:
+            shaped.append(s)
+    if not shaped:
+        return []
+    geo = [{**s, "band": float((s["sheet"].get("rock") or {}).get("band_m", ROCK_BAND))} for s in styles]
+    F = style_fields(T, geo)
+    return [{"name": s["name"], "w": np.ascontiguousarray(F["w"][s["name"]], float), "rock": s["sheet"]["rock"]}
+            for s in shaped]
+
+
+def rock_variant(rock: dict, relief: dict | None) -> dict:
+    """The realistic rock numbers with a style's `relief` multipliers: facets, bedding, size (x), blocks (false =
+    none)."""
+    out = dict(rock)
+    for k in ("facets", "bedding", "size"):
+        if relief and k in relief:
+            out[k] = rock[k] * float(relief[k])
+    if relief and relief.get("blocks") is False:
+        out["blocks"] = None
+    return out
+
+
+def _hash3(c, seed):
+    """Per integer cell (n, 3) three uniform numbers in [0, 1) (a splitmix-style hash: the same everywhere)."""
+    c = np.asarray(c, np.int64).astype(np.uint64)
+    h = (c[:, 0] * np.uint64(0x9E3779B97F4A7C15)) ^ (c[:, 1] * np.uint64(0xC2B2AE3D27D4EB4F)) ^ \
+        (c[:, 2] * np.uint64(0x165667B19E3779F9)) ^ np.uint64(seed * 0x27D4EB2F165667C5 & 0xFFFFFFFFFFFFFFFF)
+    out = []
+    for k in range(3):
+        h = h ^ (h >> np.uint64(31))
+        h = h * np.uint64(0x7FB5D329728EA185)
+        h = h ^ (h >> np.uint64(27))
+        h = h * np.uint64(0x81DADEF4BC2DD44D)
+        h = h ^ (h >> np.uint64(33))
+        out.append((h >> np.uint64(11)).astype(np.float64) / float(1 << 53))
+        h = h + np.uint64(0x9E3779B97F4A7C15)
+    return np.stack(out, -1)
+
+
+def pillow_carve(p, size=3.0, depth=0.8, round_=0.4, seed=11):
+    """Pillow-rounded rock as a field offset (+ carves): 3D cells about `size` m across (a jittered lattice), each a
+    cushion; grooves `depth` m deep where two cells meet, rounding over `round_` x size (smoothstep^2: no crease at
+    the groove's bottom, flat-ish cushion tops). Pointwise and deterministic (tiles agree)."""
+    p = np.asarray(p, float)
+    q = p / float(size)
+    base = np.floor(q).astype(np.int64)
+    f1 = np.full(len(p), np.inf)
+    f2 = np.full(len(p), np.inf)
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                c = base + np.array([dx, dy, dz])
+                s = c + 0.1 + 0.8 * _hash3(c, seed)
+                d = np.sqrt(((q - s) ** 2).sum(1))
+                f2 = np.where(d < f1, f1, np.minimum(f2, d))
+                f1 = np.minimum(f1, d)
+    e = np.clip((f2 - f1) / max(float(round_), 1e-3), 0, 1)
+    sm = e * e * (3 - 2 * e)
+    return float(depth) * (1 - sm) ** 2
+
+
+def soften_height(H, cell, styles) -> np.ndarray:
+    """The ground grid with each style's `soften_m` Gaussian applied in its zone (blobby: rounded lips and forms)."""
+    out = H
+    for s in styles:
+        sg = float(s["rock"].get("soften_m", 0) or 0)
+        if sg <= 0:
+            continue
+        sm = ndimage.gaussian_filter(H, sg / cell)
+        out = out + s["w"] * (sm - H)
+    return out
+
+
 # ------------------------------------------------------------------------------------------------ files
 
 def _png(path, a, mode=None):

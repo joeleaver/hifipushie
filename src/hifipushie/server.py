@@ -2215,7 +2215,8 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     aerial haze: `haze` m for 63%, None off; `light`: "clear" = a deep blue clear sky and a strong sun, as in a sunny
     photo, default the hazy sky); a view may add "lamp": watts (a headlamp, inside caves). styles=True: the spec's
     terrain styles (and realistic) as a swatch sheet (per style x layer: albedo tiled 2 x 2, lit, normal) and a
-    transition strip per layer, as the recipe blends them. Files are also
+    transition strip per layer, as the recipe blends them; with tiles=True the views are drawn with each zone in its
+    style (the manifest's styles recipe in Blender: a reference for an engine's shader). Files are also
     written to workspace/terrain/<name>/. Read the images, not just the report."""
     from . import terrain, terrain_tools as tt
     from .terrain_world import Questions
@@ -2270,7 +2271,8 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
                     v["eye"] = [*v["eye"], float(T.height(np.array(v["eye"], float))) + v.get("lift", 1.7)]
                 v.setdefault("look", v["eye"])
             (d / "views").mkdir(parents=True, exist_ok=True)
-            for pth in terrain_mesh.render_tiles(T, td, vs, haze=haze, light=light):
+            for pth in terrain_mesh.render_tiles(T, td, vs, haze=haze, light=light,
+                                                 textured="styles" if styles else True):
                 out.append(_out(PILImage.open(pth), None))
                 notes.append(f"view: {pth}")
             notes += json.loads((td / "render_job.json").read_text()).get("notes", [])
