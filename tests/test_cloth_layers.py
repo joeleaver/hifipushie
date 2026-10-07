@@ -65,6 +65,21 @@ def test_support_kinds_are_checked():
     assert cloth.supports(body, None) is None and cloth.supports(body, ["shoulder_pad"]) is None  # no shoulders: none
 
 
+def test_under_neckline_is_the_neck_pieces_sewn_edge():
+    # a stand (wrap "neck") 400 mm along its neck edge, sewn to a torso piece; a garment over it is drafted to go round
+    # that collar, not the bare neck (over_measures)
+    n = 21
+    x = np.linspace(-0.2, 0.2, n)
+    uv = np.r_[np.c_[x, np.zeros(n)], np.c_[x, np.full(n, 0.03)], np.c_[x, np.zeros(n)]]
+    piece = np.r_[np.zeros(2 * n, int), np.ones(n, int)]  # 0 the stand (two rows), 1 the shirt's body
+    sew = np.c_[np.arange(n), 2 * n + np.arange(n)]
+    res = {"mesh": {"names": ["stand", "front"], "piece": piece, "uv": uv, "sew": sew},
+           "pieces": {"pieces": {"stand": {"wrap": {"to": "neck"}}, "front": {"wrap": {}}}}}
+    assert abs(cloth.under_neckline(res) - 400.0) < 1e-6
+    res["pieces"]["pieces"]["stand"]["wrap"] = {}  # no neck piece: nothing to go round
+    assert cloth.under_neckline(res) == 0.0
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

@@ -60,12 +60,19 @@ class Ctx:
     @property
     def body(self) -> "cloth.Body":
         if self._body is None:
-            self._body = cloth.Body(cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True)))
+            self._src = cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True))
+            self._body = cloth.Body(self._src)
         return self._body
 
     @property
     def meas(self) -> dict:
-        return self.body.m["mm"] if (self.gx.get("pattern") or {}) else {}
+        if not (self.gx.get("pattern") or {}):
+            return {}
+        if not hasattr(self, "_meas"):
+            # over another garment: the tape over it (cloth.draft_measures), as the sim drafts it
+            body = self.body
+            self._meas, self.meas_info = cloth.draft_measures(self._src, self.gx, body)
+        return self._meas
 
     @property
     def Bp(self) -> dict:
