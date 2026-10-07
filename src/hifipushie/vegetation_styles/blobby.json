@@ -64,7 +64,9 @@
   "trunk_show": 0.0,
   "tier_uneven": 0.0,
   "tier_cap": 0.0,
-  "tier_under": null
+  "tier_under": null,
+  "edge_share": 0.0,
+  "edge_count": 1.5
  },
  "colour": {
   "saturation": 1.3,

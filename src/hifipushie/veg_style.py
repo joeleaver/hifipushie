@@ -537,11 +537,24 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         return out
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
         X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
-    lab = _kmeans(X, k)
+    es = float(cr.get("edge_share", 0.0))
+    if es > 0:
+        # two sizes of cloud: k big ones over the crown's inner foliage, `edge_count` x k small ones over the outer
+        # `edge_share` of it (by its distance out of the crown's middle, in the crown's own proportions); all clouds
+        # of one size read as one layer
+        r_ = np.linalg.norm((X - X.mean(0)) / np.maximum(X.std(0), 1e-6), axis=1)
+        outer = r_ >= np.quantile(r_, 1 - es)
+        ke = max(int(round(float(cr.get("edge_count", 1.5)) * k)), 1)
+        lab = np.empty(len(X), int)
+        lab[~outer] = _kmeans(X[~outer], k)
+        lab[outer] = k + _kmeans(X[outer], ke)
+        k = k + ke
+    else:
+        lab = _kmeans(X, k)
     out = []
     for j in range(k):
         Q = X[lab == j]
-        if len(Q) < max(4, 0.01 * len(X)):
+        if len(Q) < max(4, (0.003 if es > 0 else 0.01) * len(X)):
             continue
         c = Q.mean(0)
         ev, U = np.linalg.eigh(np.cov((Q - c).T) + np.eye(3) * 1e-6)

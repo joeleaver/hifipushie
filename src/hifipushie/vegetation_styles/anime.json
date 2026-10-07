@@ -41,8 +41,8 @@
  "crown": {
   "kind": "clouds",
   "masses": [
-   20,
-   36
+   6,
+   12
   ],
   "spread": 1.5,
   "pad": 0.4,
@@ -104,7 +104,7 @@
    "out": 0.6,
    "verts": 6
   },
-  "masses_step": 4,
+  "masses_step": 2,
   "masses_kind": "masses",
   "tier_power": 1.0,
   "tier_seat": 0.4,
@@ -113,17 +113,19 @@
   "tier_uneven": 0.0,
   "tier_cap": 0.0,
   "tier_under": null,
-  "clump_min_cards": 0
+  "clump_min_cards": 0,
+  "edge_share": 0.35,
+  "edge_count": 2.0
  },
  "colour": {
   "saturation": 1.2,
   "value": 1.1,
-  "bark_saturation": 0.6,
-  "bark_value": 1.15,
+  "bark_saturation": 0.5,
+  "bark_value": 0.8,
   "bark_mix": [
-   0.3,
-   0.32,
-   0.42
+   0.27,
+   0.24,
+   0.22
   ],
   "bark_mix_amount": 0.5
  },
