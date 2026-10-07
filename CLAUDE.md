@@ -2172,6 +2172,62 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     "open": do the fronts hang straight or spread? shirt collar "open"); (5) trousers (slim straight leg, crease
     folds, fly, loops / belt); (6) shirt collar proportions as a KB rule from `Body.neck_rows`, the 12 mm front gape
     and the 17.8% waist strain by numbers; (7) all three on su_garrett against the concept. Not touched: 4-7.
+- Suit 3 (trousers, shirt) (2026-10-07, "trousers" agent, branch `worktree-agent-a5aa4e100572bcb0c`; scratch DURABLE
+  in /mnt/data/hifipushie/trousers/: env.sh, run.sh <script>, tests.sh, q.sh <queue file> + run.py (one sim: report,
+  renders incl. trims, `_waist`, `_waist_tex`, `_hem` close-ups for trousers), plr.sh <model> <garment> <tag> (the
+  START: plb.py + a clay render out/<tag>.png, log <tag>.log), st.py (stages with patches), psheet.py (pattern sheet
+  image), meas.py (tailor measures), parts.py (a model's shell parts), mk.py [garrett] (model `tr_trousers` = the
+  test body + suit trousers; su_garrett's cloth.trousers replaced by the same sheet)). PATTERN WORK ONLY: NO SIM RAN
+  (root disk under the sims' 20 GB floor: 14 GB free, /tmp/claude-1000 = 41 GB).
+  - A kind that drafts itself: `kinds.<k>.draft` {block, block_options, fit_options per fit}, and a detail choice's
+    `draft.ops` (its operation, added unless the sheet's own ops hold one of that name; `{"choice", "op": {...}}`
+    patches it) and `trims` (`garment_design.compile_sheet`). `{"kind": "suit_trousers", "fit": "tailored"}` alone
+    -> trouser block + waistband (opening front) + fly + crease + belt / loops. Evidence types `closure` (kind, on
+    role) and `trim`. Sheet -> garment key `trims` (NOT_SIM).
+  - Block (`pattern_blocks.trouser`): `leg` = LEG_CUTS skinny / slim / tapered / straight / wide (`leg_cut`: knee =
+    knee girth x (1 + ease), never under calf x (1 + ease); hem = a share of the knee, never under heel + 20 mm);
+    `tailor.measure` has upperLeg, knee, calf, ankle, heel (`_leg_girths`; heel = a 45 deg plane through the
+    ankle). `dart_taper` (a shaping point on each dart leg 35% from the tip: the tip's angle under half), `dart_length`.
+    Garrett tailored: knee 428 mm round, hem 377 (heel 342), seat +4.7%, thigh +17%.
+  - Ops (pattern_tailor): `crease` (press fold on the piece's `crease` line, angle 205 = a ridge OUT, strength 0.6,
+    `in_wrap`, `reach` 5 cm; a fold must cross its piece so the back's runs to the waist too), `fly` (point flyEnd on
+    the centre front; `edges.centre_front` becomes the part below it; `pair_closures` kind zip -> at unfold a
+    closure {zip, front.L over front.R, seam = the opening}; line `fly_stitch` (a J) kept on the over piece only;
+    `cloth.mesh` carries lines named *_stitch as `M["stitch_lines"]`, `detail_maps` draws them as dashes: NOT yet
+    seen in a render). `waistband` `opening: "front"`: chain front.L -> back -> front.R, `garment_blocks.generate`
+    `extension: "end"` (lapEnd; button on the extension at the high-x end), wrap side "back" + `over: "low"` (the
+    lap ramp in `cloth.place` on the low-x end). No band row for the fly's facing: an offset line would end inside
+    the piece (folds must cross).
+  - `cloth_trims.py` (`validate`, `check`, `meshes(res, g)`): belt (a strap of rectangular section on the band's
+    middle line, the over end a thickness out, a buckle box at the buttonhole mark) and belt_loops (strips from the
+    band's top over the belt to its bottom) built from the finished band's chart (pattern uv -> position / normal);
+    in `cloth.look` and run.py; tested on a synthetic band only (test_trims_ride_a_band), NEVER seen on a sim.
+  - Stage 2 (`cloth_workflow.leg_ease`): seat ease from the centre seam's line to the side seam (the forks lie
+    between the legs: a 5% draft read +13% on the test body, whose seat line is 6 mm above its crotch); a hem that
+    ends on the foot is judged against the heel girth (it read TOO SMALL against the foot's section).
+  - Start (`plr.sh su_garrett trousers pl_g2`, out/pl_g2.png): band closed, 0 crossings, but the leg wrap is ONE
+    vertical cylinder per leg as deep as the seat: a slim leg's front and back start as slabs, side seams 174 /
+    inseams 213 mm apart (p50), the front hem pushed 32 mm off the foot (2 triangles 2.25x), waistband seam p50 223
+    mm (the fronts / backs are far from the band, not a mis-ordered chain: check it once the legs start closer).
+    Stage 4 fails on it (start past the strain limit on 0.8% of the triangles). The fix to build if the sim can't
+    sew it: below the crotch lay each leg's pieces on the leg's own sections (a tube on the hip -> knee -> ankle
+    axis, as sleeves on the arm), blended into the torso cylinder over ~10 cm at the crotch. The foot is left out
+    of the leg hull (z under ankle + 4 cm).
+  - Shoes: his `shoes` part is an 8 mm shell of the foot and the soles lie inside z 0..15 mm: the bare foot stands
+    in for the shoe; length "shoe" (hem 30 mm over the floor) is cut for it. Not added to the collider.
+  - Darts as "open tucks" in su_01: argued, not measured: pucker of the welded seam (suit2's `_seam_relax` came
+    after su_01), the unshaped tip, 10% seat ease. Verify on the first sim's back close-up.
+  - Tests: the nine files green at 9b66b6f (tests.log); new in test_pattern_tailor: leg cut, shaped dart, crease /
+    fly / front waistband, the kind drafting itself, trims.
+  - NEXT, in order: (1) free the disk, then `bash q.sh q1.txt` (tr_01_trousers su_garrett trousers, 2 cm ZOZO
+    draft); judge 4 views + _waist / _waist_tex / _hem against the concept (stays at the waist, crease a line,
+    one break on the foot, no puff, darts, fly J, belt + loops sitting on the band); (2) if the legs don't sew or
+    crumple: the leg-following start above; (3) pattern sheet tr_00_trousers_pattern.png is judged (reads as a
+    tailored trouser); in-seam / slant pockets exist as `pocket` type in_seam, not added to the kind; (4) the
+    SHIRT, untouched: collar rule from `Body.neck_rows` (stand from the neck's height, fall = stand + 10-15 mm,
+    points 65-75 mm, spread for an open collar) through Simon's options, the 12 mm front gape and the "waist
+    strain 17.8%" at +23% ease by numbers, then worn with `{"name": "collar", "state": "open"}`; (5) trims in the
+    scene / export, a hem's break as a stage 5 target, the back crease ending at the seat.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
