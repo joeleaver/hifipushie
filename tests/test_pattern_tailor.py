@@ -246,6 +246,133 @@ def test_tailored_collar():
     _ok(D)
 
 
+LEG = dict(MM, knee=361.5, calf=381.8, heel=337.1, ankle=225.4, upperLeg=559.3)
+
+
+def test_leg_cut_comes_from_the_leg():
+    from hifipushie import pattern_blocks as pb
+    knee, hem, rule = pb.leg_cut(LEG, "slim")
+    assert abs(2 * knee - 0.3615 * 1.20) < 1e-6 and 2 * knee > 0.3818 * 1.08  # knee girth + 20%, clear of the calf
+    assert 2 * hem >= 0.3371 + 0.02 - 1e-9 and hem <= knee  # the hem passes the heel, never wider than the knee
+    assert "heel" in rule
+    wide = pb.leg_cut(LEG, "wide")
+    assert wide[0] > knee and abs(wide[1] - wide[0]) < 1e-9
+    T = pd.start("trouser", LEG, {"leg": "slim"})
+    fr, bk = T["pieces"]["front"], T["pieces"]["back"]
+    kw = lambda pc: np.linalg.norm(pc["P"][pc["names"]["sideKnee"]] - pc["P"][pc["names"]["inKnee"]])
+    assert abs(kw(fr) + kw(bk) - 2 * knee) < 1e-6
+    # the crease is the grain line: through the middle of knee and hem on both pieces
+    for pc in (fr, bk):
+        cx = pc["lines"]["crease"][0][0]
+        for a, b in (("sideKnee", "inKnee"), ("sideHem", "inHem")):
+            assert abs(0.5 * (pc["P"][pc["names"][a]][0] + pc["P"][pc["names"][b]][0]) - cx) < 1e-9
+    try:
+        pb.leg_cut(LEG, "bootcut")
+        assert False
+    except ValueError:
+        pass
+
+
+def test_shaped_dart_keeps_its_legs_equal():
+    T = pd.start("trouser", LEG, {"dart_taper": 0.6})
+    _ok(T)
+    bk = T["pieces"]["back"]
+    ia, it, ib = (bk["names"][k] for k in ("dartA", "dartTip", "dartB"))
+    assert it - ia == 2 and ib - it == 2  # a shaping point on each leg
+    P = bk["P"]
+    full = np.degrees(np.arctan2(abs(P[ib, 0] - P[ia, 0]), abs(P[ia, 1] - P[it, 1])))
+    tip = np.degrees(np.arctan2(abs(P[it + 1, 0] - P[it - 1, 0]), abs(P[it + 1, 1] - P[it, 1])))
+    assert tip < 0.5 * full, (tip, full)  # the tip dies away: under half the straight dart's angle
+
+
+def test_crease_fly_and_front_waistband():
+    D = pd.start("trouser", LEG, {"leg": "slim", "length": "shoe"})
+    pd.apply(D, [{"op": "fly"}, {"op": "crease"}, {"op": "waistband", "opening": "front", "overlap": 0.04}])
+    _ok(D)
+    fr = D["pieces"]["front"]
+    assert "flyEnd" in fr["names"] and D["edges"]["centre_front"] == ["front:flyEnd>cSeat>fork"]
+    assert abs(pd.edge_length(D, "front:cWaist>flyEnd") - min(0.18, 0.92 * pd.edge_length(D, "front:cWaist>cSeat"))) < 1e-6
+    assert len(fr["lines"]["fly_stitch"]) > 5
+    cr = [f for f in D["folds"] if f["name"].startswith("crease")]
+    assert {f["piece"] for f in cr} == {"front", "back"} and all(f["angle"] > 180 and f["in_wrap"] for f in cr)
+    pd.unfold(D)
+    # the fly: a zip closure, left over right, its seam only the opening; the centre seam runs on below it
+    c = next(c for c in D["closures"] if c["name"] == "fly")
+    assert (c["kind"], c["over"], c["under"]) == ("zip", "front.L", "front.R")
+    assert c["seam"] == ["front.L:cWaist>flyEnd", "front.R:cWaist>flyEnd"]
+    assert ["front.L:flyEnd>cSeat>fork", "front.R:flyEnd>cSeat>fork"] in D["seams"]
+    assert "fly_stitch" in D["pieces"]["front.L"]["lines"] and "fly_stitch" not in D["pieces"]["front.R"]["lines"]
+    assert sum(1 for f in D["folds"] if f["name"].startswith("crease")) == 4
+    # the waistband opens at the centre front: from the left front round the back to the right front, the left end
+    # over, the extension with the button at the right end
+    gen = D["generate"][0]
+    assert gen["along"][0] == "front.L:cWaist>sideWaist" and gen["along"][-1] == "front.R:sideWaist>cWaist"
+    assert gen["extension"] == "end" and gen["wrap"]["side"] == "back" and gen["wrap"]["over"] == "low"
+    from hifipushie import garment_blocks
+    pcs, seams, st, inter = garment_blocks.generate(D["pieces"], gen)
+    wb = pcs["waistband"]
+    assert seams[0][0] == "waistband:sw>s>lapEnd" and st == [["waistband:button1", "waistband:buttonhole1"]]
+    assert wb["marks"]["button1"][0] > wb["marks"]["buttonhole1"][0]  # the button on the extension at the high end
+    chain = abs(wb["marks"]["button1"][0] - wb["marks"]["buttonhole1"][0])
+    assert abs(chain - garment_blocks._chain_length(D["pieces"], gen["along"])) < 1e-6
+    # worn open: the zip's seam isn't sewn
+    from hifipushie import closures
+    D2 = pd.start("trouser", LEG, {})
+    pd.apply(D2, [{"op": "fly", "state": "open"}])
+    pd.unfold(D2)
+    assert closures.expand(D2["closures"], D2["pieces"])[2] == []
+    assert closures.expand(D["closures"], D["pieces"])[2] == [c["seam"]]
+
+
+def test_suit_trousers_kind_drafts_itself():
+    from hifipushie import garment_design as gd
+    sheet = {"kind": "suit_trousers"}
+    gd.validate(sheet)
+    out = gd.compile_sheet(sheet)
+    pat = out["pattern"]
+    assert pat["block"] == "trouser" and pat["block_options"]["leg"] == "slim" and pat["block_options"]["length"] == "shoe"
+    assert [o["op"] for o in pat["ops"]] == ["waistband", "fly", "crease"], pat["ops"]
+    assert {t["kind"] for t in out["trims"]} == {"belt", "belt_loops"}
+    # the sheet's own op of a name wins over the detail's; a fit changes the leg
+    out2 = gd.compile_sheet({"kind": "suit_trousers", "fit": "classic", "ops": [{"op": "crease", "angle": 195}]})
+    assert [o for o in out2["pattern"]["ops"] if o["op"] == "crease"] == [{"op": "crease", "angle": 195}]
+    assert out2["pattern"]["block_options"]["leg"] == "straight"
+    D = pd.build(LEG, pat)
+    assert any(c["name"] == "fly" for c in D["closures"])
+
+
+def test_trims_ride_a_band():
+    from hifipushie import cloth_trims
+    cloth_trims.validate([{"kind": "belt"}, {"kind": "belt_loops", "count": 7}])
+    try:
+        cloth_trims.validate([{"kind": "buckle"}])
+        assert False
+    except cloth_trims.TrimError:
+        pass
+    # a band round a cylinder as a finished result: the belt lies outside it, loops stand over the belt
+    n, h, R = 80, 0.04, 0.13
+    xs = np.linspace(-0.41, 0.41, n)
+    uv = np.array([[x, y] for x in xs for y in (0.0, h / 2, h)])
+    th = uv[:, 0] / R
+    V = np.c_[R * np.sin(th), -R * np.cos(th), 1.0 + uv[:, 1]]
+    F = []
+    for i in range(n - 1):
+        for j in range(2):
+            a = 3 * i + j
+            F += [[a, a + 3, a + 4], [a, a + 4, a + 1]]
+    pc = {"P": np.array([[-0.41, 0], [0.41, 0], [0.41, h], [-0.41, h]]), "role": "waistband", "marks": {}, "wrap": {}}
+    res = {"V": V, "mesh": {"names": ["waistband"], "piece": np.zeros(len(V), int), "F": np.array(F), "uv": uv},
+           "pieces": {"pieces": {"waistband": pc}}}
+    trims = [{"kind": "belt", "buckle": False}, {"kind": "belt_loops", "count": 5}]
+    assert all(ok for ok, _ in cloth_trims.check(trims, res["pieces"]["pieces"]))
+    out = {m["kind"]: m for m in cloth_trims.meshes(res, {"trims": trims, "color": "#333333"})}
+    rb = np.hypot(out["belt"]["V"][:, 0], out["belt"]["V"][:, 1])
+    assert rb.min() > R + 0.0005 and rb.max() < R + 0.012, (rb.min(), rb.max())
+    rl = np.hypot(out["belt_loops"]["V"][:, 0], out["belt_loops"]["V"][:, 1])
+    assert rl.max() > rb.max() - 0.004 and out["belt_loops"]["color"] == "#333333"
+    assert out["belt"]["F"].max() < len(out["belt"]["V"])
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

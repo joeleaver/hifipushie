@@ -1648,6 +1648,15 @@ def unfold(D: dict) -> dict:
     # buttons down a pair's centre: a closure (closures.py), left over right; a fold piece buttons to nothing
     D["closures"] = list(D.get("closures") or [])
     for c in D.get("pair_closures") or []:
+        if kind.get(c["piece"]) == "pair" and c.get("kind") == "zip":
+            # a zip in a centre seam (a fly): that part of the seam is the closure's (sewn when worn closed); its
+            # topstitching (`<name>_stitch`) shows on the over side only
+            L_, R_ = f"{c['piece']}.L", f"{c['piece']}.R"
+            D["closures"].append({"name": c["name"], "kind": "zip", "over": L_, "under": R_,
+                                  "seam": [f"{L_}:{c['arc']}", f"{R_}:{c['arc']}"],
+                                  "edge": {"over": c["arc"], "under": c["arc"]}, "state": c.get("state", "closed")})
+            out[R_]["lines"].pop(f"{c['name']}_stitch", None)
+            continue
         if kind.get(c["piece"]) == "pair":
             D["closures"].append({"name": c["name"], "kind": "buttons", "over": f"{c['piece']}.L", "under": f"{c['piece']}.R",
                                   "at": [[m_, m_] for m_ in c["marks"]], "state": c.get("state", "closed"),
@@ -1712,14 +1721,23 @@ def unfold(D: dict) -> dict:
         # the waistband's chain round the waist from the centre back: the right back out to the side, the right front
         # in to the centre, the left front out, the left back in (each half's waist edges run centre -> side)
         rv = lambda ch: [_rev(e) for e in reversed(ch)]
-        chain = list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", [])) + \
-            list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", []))
+        front = wb.get("opening", "back") == "front"
+        if front:
+            # opening at the centre front (over a fly): from the left front's centre round the back to the right
+            # front's; the left end laps OVER (men's lap), the extension with the button runs on under it from the right
+            chain = list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", [])) + \
+                list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", []))
+        else:
+            chain = list(edges.get("waist_back.R", [])) + rv(edges.get("waist_front.R", [])) + \
+                list(edges.get("waist_front.L", [])) + rv(edges.get("waist_back.L", []))
         if not chain:
             raise DraftError("waistband: the draft has no waist edges (waist_front / waist_back: a trouser or skirt block)")
         D["generate"].append({"band": wb.get("name", "waistband"), "role": "waistband", "along": chain,
                               "ratio": float(wb.get("ratio", 1.0)), "height": float(wb.get("height", 0.04)),
                               "overlap": float(wb.get("overlap", 0.035)), "interfaced": True,
-                              "wrap": {"to": "torso", "side": "front", "level": "waist", "out": 0.004}})
+                              **({"extension": "end"} if front else {}),
+                              "wrap": {"to": "torso", "side": "back" if front else "front", "level": "waist", "out": 0.004,
+                                       **({"over": "low"} if front else {})}})
     D.update(pieces=out, seams=seams, notes=notes, edges=edges, folds=folds, interfaced=inter, unfolded=True)
     D["log"].append(f"unfold: {', '.join(out)}")
     return D

@@ -239,7 +239,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
         folds = [f for f in folds if f.get("piece") in keep]
         seam_notes = {k: v for k, v in seam_notes.items() if not any(f'"{nm}:' in k for nm in fused)}
-    return {"closures": closures_out, "fused": {"pieces": fused, "seams": fused_seams},
+    return {"closures": closures_out, "trims": list(g.get("trims") or []), "fused": {"pieces": fused, "seams": fused_seams},
             "pieces": out, "seams": seams, "stitches": stitches, "interfaced": [p for p in interfaced
                                                                                     if (p if isinstance(p, str) else p["piece"]) in keep],
             "draft": draft_info, "folds": folds, "seam_notes": seam_notes, "made": made_own,
@@ -666,7 +666,10 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             "made": [nm for nm in names if mod[nm][0] == "made"],
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
             "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n),
-            "points": pts_n, "border": border_n}
+            "points": pts_n, "border": border_n,
+            # lines drawn as stitching in the detail maps (pattern coordinates; a fly's J)
+            "stitch_lines": {f"{nm}:{k_}": np.asarray(L_, float) for nm in names
+                             for k_, L_ in (B["pieces"][nm].get("lines") or {}).items() if k_.endswith("_stitch")}}
 
 
 def _edge(pcs, spec: str):
@@ -2077,6 +2080,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             if cg_:  # a band closed on itself: its overlapping end a layer outside the end under it
                 lap_ = max(float(np.ptp(U[:, 0])) - cg_, 1e-6)
                 ramp_ = np.clip((U[:, 0] - (U[:, 0].max() - 2.0 * lap_)) / lap_, 0, 1)
+                if w.get("over") == "low":  # the low-x end laps over (a trouser band opening at the front, left over right)
+                    ramp_ = np.clip(((U[:, 0].min() + 2.0 * lap_) - U[:, 0]) / lap_, 0, 1)
                 rd_ = q - Cw.mean(0)
                 q = q + rd_ / np.maximum(np.linalg.norm(rd_, axis=1, keepdims=True), 1e-9) * (LAYER * ramp_)[:, None]
             X[sel] = np.c_[q, hps[2] + ys_ + dzs.get(nm, 0.0)]
@@ -2488,7 +2493,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 yhi_ = max(pcs[o]["P"][:, 1].max() for o in mine_)
                 x0 = float(w.get("mid", 0.004))  # the flat's distance from the body's middle plane
                 pts_ = []
-                for z in np.arange(max(z_w + ylo_, 0.05), z_w + yhi_ + 0.02, 0.02):
+                # (the foot is left out: a hem cut for a shoe ends below the ankle, and with the foot's sections in
+                # the hull the leg's cylinder was as long as the foot: front and back started 20 cm apart as slabs)
+                z_foot = float(body.J["ankle.L"][2]) + 0.04 if "ankle.L" in body.J else 0.05
+                for z in np.arange(max(z_w + ylo_, z_foot, 0.05), z_w + yhi_ + 0.02, 0.02):
                     # every loop that isn't a hand (Body.hull drops loops wider than the shoulders as arms: an
                     # A-pose's calves stand out past them and the leg pieces started inside the legs)
                     lim_ = abs(float(at["shoulder.L"][0])) + 0.09
@@ -2997,7 +3005,7 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
     return stiff
 
 
-NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note", "design", "_design")  # never change the sim
+NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note", "design", "_design", "trims")  # never change the sim
 # (a design sheet changes the sim only through the keys it compiles into)
 
 
@@ -4974,7 +4982,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -5088,6 +5096,12 @@ def validate(spec: dict) -> None:
             try:
                 closuremod.validate(g["closures"], f"{where} closures")
             except closuremod.ClosureError as e:
+                raise ClothError(str(e))
+        if g.get("trims") is not None:
+            from . import cloth_trims
+            try:
+                cloth_trims.validate(g["trims"], f"{where} trims")
+            except cloth_trims.TrimError as e:
                 raise ClothError(str(e))
         if "layer_gap" in g and not (isinstance(g["layer_gap"], (int, float)) and 0 <= g["layer_gap"] <= 0.03):
             raise ClothError(f"{where}: layer_gap is the air between the layers at the start in m (0..0.03)")
@@ -5451,6 +5465,25 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         band = np.exp(-((d - o["topstitch"]) / max(0.0004, 1.2 * mpt)) ** 2)
         thread = band * dash
         H -= o["stitch_depth"] * thread
+    # stitch lines drawn on a piece (its pattern lines named *_stitch: a fly's J, a pocket's outline): dashes along them
+    for key_, Ls in (M.get("stitch_lines") or {}).items():
+        k_ = M["names"].index(key_.split(":", 1)[0]) if key_.split(":", 1)[0] in M["names"] else None
+        vs_ = np.where(M["piece"] == k_)[0] if k_ is not None else []
+        if not len(vs_):
+            continue
+        off_ = uv[vs_[0]] * side - M["uv"][vs_[0]]  # the piece's place in the atlas (one scale, no turn)
+        Q = (np.asarray(Ls, float) + off_) / side
+        seg_ = np.linalg.norm(np.diff(Q * side, axis=0), axis=1)
+        cum_ = np.r_[0, np.cumsum(seg_)]
+        per = o["stitch"] + o["stitch_gap"]
+        im_ = Image.new("L", (T, T), 0)
+        dr_ = ImageDraw.Draw(im_)
+        for s0 in np.arange(0, cum_[-1], per):
+            pa, pb = (np.array([np.interp(s_, cum_, Q[:, 0]), np.interp(s_, cum_, Q[:, 1])]) for s_ in (s0, min(s0 + o["stitch"], cum_[-1])))
+            dr_.line([px(pa), px(pb)], fill=255, width=max(1, int(round(0.0009 / mpt))))
+        st_ = np.asarray(im_, np.float32) / 255.0
+        thread = np.maximum(thread, st_)
+        H -= o["stitch_depth"] * st_
     # buttons and buttonholes on the pieces' marks
     btn = np.zeros((T, T), np.float32)
     if o["buttons"]:
@@ -5797,6 +5830,9 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         if res.get("buttons"):
             objs.append({"name": f"buttons_{gn}", "V": res["buttons"]["V"], "F": res["buttons"]["F"],
                          "color": (g.get("detail") or {}).get("button") or "#ebe6dc"})
+        from . import cloth_trims  # belts, loops: built on the finished surface (cloth_trims.py)
+        for tm_ in cloth_trims.meshes(res, expanded(g)):
+            objs.append({"name": f"{tm_['name']}_{gn}", "V": tm_["V"], "F": tm_["F"], "color": tm_["color"]})
     allV = np.concatenate([o["V"] for o in objs if not o["name"].startswith("rail_")])  # the rail runs out of frame
     box = (allV.min(0) - 0.05, allV.max(0) + 0.05)
     if focus is not None:
