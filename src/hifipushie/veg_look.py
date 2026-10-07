@@ -41,13 +41,38 @@ def ground_z(spec: dict, at) -> float:
     return float(-math.tan(math.radians(g["slope"])) * (np.asarray(at, float)[:2] @ t))
 
 
+def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None) -> tuple[dict, dict]:
+    """A plant in a style (veg_style.dress): its drawn wood, flat bark, and the crown as one coloured closed mesh."""
+    from . import veg_style
+    s = tree["spec"]
+    D = veg_style.dress(tree, st, triangles, s.get("season", "summer"))
+    W, C = D["wood"], D["crown"]
+    arrays = {"V": W["V"], "F": W["F"], "tan": W["tan"], "radius": W["radius"], "uv": W["uv"], "dead": W["dead"]}
+    if C is not None:
+        col = np.array(veg_style.lin(veg_style.season_color(s, s.get("season", "summer"), st)))
+        arrays.update(solid_V=C["V"], solid_F=C["F"], solid_N=C["N"], solid_col=np.clip(col[None] * C["col"] * C["gain"], 0, 1))
+    npz = tmp / f"plant{tag}.npz"
+    np.savez(npz, **arrays)
+    info = {"triangles": int(len(W["F"])), "twigs": 0, "foliage": "masses", "leaf_triangles": int(len(C["F"])) if C is not None else 0,
+            "style": D["info"]}
+    pj = {"npz": str(npz), "bark": {"flat": veg_style.bark_color(s, st), "roughness": float(st["wood"].get("roughness", 0.9))},
+          "leaf": {}, "cards": None, "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0),
+          "solid": {"roughness": float(st["crown"].get("roughness", 0.85))}}
+    return pj, info
+
+
 def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, triangles: int | None = None) -> tuple[dict, dict]:
     """One plant's arrays (an npz) and its part of the Blender job; also its counts."""
-    from . import veg_bark, veg_leaf
+    from . import veg_bark, veg_export, veg_leaf, veg_style
     s = tree["spec"]
+    st = veg_style.sheet(s)
+    if st:
+        return _styled_job(tree, st, tmp, tag, triangles)
     lf = s["leaves"]
     if s.get("season") == "autumn" and not lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")):
         lf = {**lf, "color": lf.get("autumn", [0.78, 0.56, 0.16])}  # (veg_export.AUTUMN)
+    if s.get("season") == "spring":
+        lf = veg_export.spring_leaves(s)
     foliage = foliage or lf.get("foliage", "cards")
     bark = dict(s.get("bark") or {})
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))

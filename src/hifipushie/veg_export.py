@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import veg_bark, veg_bough, veg_ground, veg_leaf, veg_mesh, vegetation
+from . import veg_bark, veg_bough, veg_ground, veg_leaf, veg_mesh, veg_style, vegetation
 
 
 def _normals(V, F):
@@ -294,6 +294,17 @@ def evergreen(spec: dict) -> bool:
     return bool(lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")))
 
 
+def spring_leaves(spec: dict) -> dict:
+    """The leaves spec in spring: fresh colour (`leaves.spring`, else the summer colour toward yellow-green; an
+    evergreen only a little: its new shoots) and, on a deciduous plant, leaves `leaves.spring_size` (0.75) of their
+    length: a thinner crown. Blossom and catkins are not built."""
+    lf = spec["leaves"]
+    out = {**lf, "color": veg_style.season_color(spec, "spring")}
+    if not evergreen(spec):
+        out["length"] = float(lf.get("length", veg_leaf.LEAF["length"])) * float(lf.get("spring_size", 0.75))
+    return {k_: v_ for k_, v_ in out.items() if k_ not in ("spring", "spring_size")}
+
+
 def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
     """The foliage atlas in a season: summer as specified; autumn = the same leaves in `leaves.autumn` (deciduous only;
     an evergreen keeps its colour); snow = the summer picture frosted. None = no leaves then (a deciduous winter)."""
@@ -303,6 +314,8 @@ def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
         return None
     if season == "autumn" and not evergreen(spec):
         return make({**lf, "color": lf.get("autumn", AUTUMN)}, twig_color)
+    if season == "spring":
+        return make(spring_leaves(spec), twig_color)
     at = make(lf, twig_color)
     if season == "snow":
         rng = np.random.default_rng(5)
@@ -360,13 +373,16 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     names = name if isinstance(name, list) else [name]
     tree = trees[0]
     s = tree["spec"]
+    st = veg_style.sheet(s)  # a style: the same plant dressed another way (veg_style)
+    if st and triangles is None:
+        triangles = int(st.get("budget", 5000))
     bark = s.get("bark") or {}
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
     sc = float(bark.get("scale", 1.0))
     tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
     twc = bark.get("twig_color") or [0.45, 0.4, 0.35]
     has_leaves = any(len(veg_leaf.place(t)["pos"]) for t in trees)
-    at = veg_leaf.atlas(s["leaves"], twc) if has_leaves else None
+    at = veg_leaf.atlas(s["leaves"], twc) if has_leaves and not st else None
     buf = bytearray()
     views, accessors, images, textures, materials, meshes, nodes = [], [], [], [], [], [], []
     ext_used = set()
@@ -405,17 +421,32 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                "_WIND": acc(w4, "VEC4", 5126, 34962)}
         if colour is not None:
             c = np.clip(colour, 0, 1)
-            at_["COLOR_0"] = acc(np.c_[c, c, c, np.ones(len(c))].astype(np.float32), "VEC4", 5126, 34962)
+            c = np.c_[c, c, c] if c.ndim == 1 else c
+            at_["COLOR_0"] = acc(np.c_[c, np.ones(len(c))].astype(np.float32), "VEC4", 5126, 34962)
         return {"attributes": at_, "indices": acc(F.astype(np.uint32).ravel(), "SCALAR", 5125, 34963), "material": material}
 
     col = np.asarray(bark.get("color", [0.5, 0.45, 0.4]), float)
     base = np.clip(bm["albedo"][..., None] * col[None, None], 0, 1)  # (sRGB colour x a multiplier: near enough)
     orm = np.stack([np.ones_like(bm["rough"]), bm["rough"], np.zeros_like(bm["rough"])], -1)
-    materials.append({"name": "bark", "pbrMetallicRoughness": {
-        "baseColorTexture": {"index": tex(_png(base), True)},
-        "metallicRoughnessTexture": {"index": tex(_png(orm), True)}},
-        "normalTexture": {"index": tex(_png(bm["normal"]), True)}})
+    if st and st["wood"].get("flat", True):  # a style's bark: one colour
+        materials.append({"name": "bark", "pbrMetallicRoughness": {
+            "baseColorFactor": [*veg_style.lin(veg_style.bark_color(s, st)), 1.0], "metallicFactor": 0.0,
+            "roughnessFactor": float(st["wood"].get("roughness", 0.9))}})
+    else:
+        materials.append({"name": "bark", "pbrMetallicRoughness": {
+            "baseColorTexture": {"index": tex(_png(base), True)},
+            "metallicRoughnessTexture": {"index": tex(_png(orm), True)}},
+            "normalTexture": {"index": tex(_png(bm["normal"]), True)}})
     M_BARK = 0
+
+    def solid_material(nm, rgb):  # a style's closed crown: one colour (x COLOR_0, the tone of each mass); None = bare then
+        g_ = veg_style.color_gain(st)
+        m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*[min(c_ * g_, 1.0) for c_ in veg_style.lin(rgb or [0.5, 0.5, 0.5])], 1.0], "metallicFactor": 0.0,
+                                                    "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
+        if rgb is None:
+            m_.update(alphaMode="MASK", alphaCutoff=1.01)
+        materials.append(m_)
+        return len(materials) - 1
 
     def foliage_material(a_, nm, hidden=False):
         m = a_["mask"]
@@ -433,6 +464,18 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     seasons = list(seasons or ["summer"])
     variants, var_fol, var_bark = [], {}, {}
     M_FOL = None
+    if st and has_leaves:
+        se0 = s.get("season", "summer") if s.get("season") in seasons else seasons[0]
+        M_FOL = solid_material("foliage", veg_style.season_color(s, se0, st))
+        for se in seasons:
+            var_fol[se] = M_FOL if se == se0 else solid_material(f"foliage_{se}", veg_style.season_color(s, se, st))
+        if wet:
+            mw = json.loads(json.dumps(materials[M_FOL]))
+            mw["name"] = "foliage_wet"
+            mw["pbrMetallicRoughness"]["baseColorFactor"] = [0.7 * c_ for c_ in mw["pbrMetallicRoughness"]["baseColorFactor"][:3]] + [1.0]
+            mw["pbrMetallicRoughness"]["roughnessFactor"] = 0.4
+            materials.append(mw)
+            var_fol["wet"] = len(materials) - 1
     if at is not None:
         M_FOL = foliage_material(at, "foliage")
         for se in seasons:
@@ -456,7 +499,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     if wet:
         mw = json.loads(json.dumps(materials[M_BARK]))
         mw["name"] = "bark_wet"
-        mw["pbrMetallicRoughness"].update(baseColorFactor=[0.55, 0.53, 0.5, 1.0], roughnessFactor=0.5)
+        f0 = mw["pbrMetallicRoughness"].get("baseColorFactor", [1, 1, 1, 1])
+        mw["pbrMetallicRoughness"].update(baseColorFactor=[0.55 * f0[0], 0.53 * f0[1], 0.5 * f0[2], 1.0], roughnessFactor=0.5)
         materials.append(mw)
         var_bark["wet"] = len(materials) - 1
     variants = [v_ for v_ in seasons + (["wet"] if wet else []) if len(seasons) + bool(wet) > 1]
@@ -487,6 +531,33 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         for li in range(0 if only_impostor else n_lod):
             share, cap_ = LODS[li]
             cap_i = cap_ if n_lod > 1 or cap is None else cap
+            if st:
+                D = veg_style.dress(t, st, int(triangles * share), se0 if has_leaves else "summer")
+                if has_leaves and D["crown"] is None:  # (the file's default season is a bare one: the masses are still in it, hidden)
+                    D = veg_style.dress(t, st, int(triangles * share), "summer")
+                pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
+                W = D["wood"]
+                kids = []
+                meshes.append({"name": pre + "wood", "primitives": [with_variants(prim(W["V"], W["F"], W["uv"], M_BARK, D["wood_wind"]), var_bark, M_BARK)]})
+                nodes.append({"name": pre + "wood", "mesh": len(meshes) - 1})
+                kids.append(len(nodes) - 1)
+                c = {"name": nm, "lod": li, "height_m": round(t["height"], 2), "wood_triangles": int(len(W["F"])), "foliage_triangles": 0,
+                     "twigs_kept": 1.0, "wood_min_radius_m": 0.0, "floating": 0.0, "style": D["info"]}
+                C_ = D["crown"]
+                if C_ is not None:
+                    p_ = prim(C_["V"], C_["F"], C_["uv"], M_FOL, C_["wind"], C_["col"], C_["N"])
+                    meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, var_fol, M_FOL)]})
+                    nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
+                    kids.append(len(nodes) - 1)
+                    c["foliage_triangles"] = int(len(C_["F"]))
+                c["triangles"] = c["wood_triangles"] + c["foliage_triangles"]
+                lod_info.append(c)
+                if n_lod == 1 and impostor is None and len(trees) == 1:
+                    lod_nodes.append(kids)
+                else:
+                    nodes.append({"name": f"{nm}_LOD{li}", "children": kids})
+                    lod_nodes.append([len(nodes) - 1])
+                continue
             bud = budget(t, int(triangles * share) if triangles else None, tile, at["triangles"] if at else 0, cap_i)
             if li and not triangles:  # no budget asked: lower LODs still step down from the full tree
                 full = lod_info[0]["triangles"]
@@ -591,12 +662,12 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         c0 = {"wood_triangles": 0, "foliage_triangles": 0, "twigs_kept": 1.0, "wood_min_radius_m": 0.0, "floating": 0.0,
               **lod_info[0]}
         c0["lods"] = lod_info
-        caps = [] if only_impostor else collision(t)
+        caps = [] if only_impostor else veg_style.capsules(veg_style.fit(t, st)["mini"]) if st else collision(t)
         c0["collision"] = [{"a": _yup(np.array([q["a"]]))[0].tolist(), "b": _yup(np.array([q["b"]]))[0].tolist(), "ra": q["ra"], "rb": q["rb"]}
                            for q in caps]
         if caps:
             thr = max(0.05, 0.3 * float(t["radius"][1]))
-            C = veg_mesh.tubes(t, sides=(4, 5), min_radius=thr, simplify=1.5, collar=0, tile=tile)
+            C = veg_mesh.tubes(veg_style.fit(t, st)["mini"] if st else t, sides=(4, 5), min_radius=0.0 if st else thr, simplify=1.5, collar=0, tile=tile)
             z4 = np.zeros(len(C["V"]))
             if len(C["F"]):  # (a shrub's stems can be thinner than anything a player bumps into)
                 meshes.append({"name": f"{nm}_collision", "primitives": [prim(C["V"], C["F"], C["uv"], M_BARK, (z4, z4, z4, z4))]})
@@ -608,6 +679,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
               "twigs_kept": per[0]["twigs_kept"], "wood_min_radius_m": per[0]["wood_min_radius_m"], "budget": triangles,
               "floating": max(c["floating"] for c in per), "lods": per[0]["lods"], "variants": variants,
               "collision_capsules": len(per[0]["collision"]), "collision_triangles": per[0].get("collision_triangles", 0)}
+    if st and per[0]["lods"] and per[0]["lods"][0].get("style"):
+        counts["style"] = per[0]["lods"][0]["style"]
     if at is not None:
         counts["atlas_px"] = int(at["color"].shape[0])
     if len(trees) > 1:
@@ -617,7 +690,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         buf.append(0)
     gltf = {"asset": {"version": "2.0", "generator": "hifipushie vegetation"},
             "scene": 0, "scenes": [{"nodes": roots}], "nodes": nodes, "meshes": meshes,
-            "materials": materials, "textures": textures, "images": images,
+            "materials": materials, **({"textures": textures, "images": images} if textures else {}),
             "samplers": [{"wrapS": 10497, "wrapT": 10497, "magFilter": 9729, "minFilter": 9987},
                          {"wrapS": 33071, "wrapT": 33071, "magFilter": 9729, "minFilter": 9987}],
             "accessors": accessors, "bufferViews": views, "buffers": [{"byteLength": len(buf)}],
@@ -626,6 +699,13 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                                             "set": len(trees) if len(trees) > 1 else None, "bark_tile_m": bm["tile"],
                                             "lods": [[{k_: v_ for k_, v_ in c.items()} for c in p_["lods"]] for p_ in per],
                                             "wind": WIND_RECIPE, "variants": variants,
+                                            "style": None if not st else {
+                                                "name": st["name"], "sheet": {k_: v_ for k_, v_ in st.items() if k_ != "about"},
+                                                "simplified": veg_style.lines(per[0]["lods"][0]["style"]) if per[0]["lods"] and per[0]["lods"][0].get("style") else [],
+                                                "foliage": "closed masses, no texture: albedo = the `foliage` material's baseColorFactor "
+                                                           "(one per season variant) x COLOR_0 (each mass's tone); NORMAL = smooth over each "
+                                                           "mass; TEXCOORD_0 = (height within its mass 0..1, (mass index + 0.5) / masses)",
+                                                "season_colors_srgb": {se: veg_style.season_color(s, se, st) for se in veg_style.SEASONS}},
                                             "snow": "engine shader: lerp base colour to snow by saturate(worldNormal.up * 2 - 0.6); "
                                                     "the `snow` variant only frosts the foliage picture",
                                             "collision": [{"plant": p_["name"], "capsules": p_["collision"],

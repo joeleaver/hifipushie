@@ -601,14 +601,15 @@ def add_plant(pj, tag, clay):
             o2 = o.copy()
             col.objects.link(o2)
             o2.location, o2.rotation_euler, o2.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
-            o2.modifiers["twigs"][o["hp_yaw_id"]] = float(yaw)
+            if not o.get("hp_solid"):
+                o2.modifiers["twigs"][o["hp_yaw_id"]] = float(yaw)
             twigs.append(o2)
-        return {"wood": wood, "bark": b["bark"], "twigs": twigs, "points": place(b["local"])}
+        return {"wood": wood, "bark": b["bark"], "twigs": twigs, "points": place(b["local"]), "solid": b.get("solid"), "solid_mat": b.get("solid_mat")}
     d = np.load(pj["npz"])
     V = d["V"]
     has_tw = "tw_pos" in d and len(d["tw_pos"])
     bk = pj.get("bark") or {}
-    bark = bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
+    bark = _flat(f"bark{tag}", lin(bk["flat"]), float(bk.get("roughness", 0.9))) if bk.get("flat") else bark_material(f"bark{tag}", bk, float(V[:, 2].max()))
     _weather(bark, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
     _haze_out(bark)
     twig_wood = _flat(f"twig_wood{tag}", lin(bk.get("twig_color") or [0.45, 0.4, 0.35]), 0.8)
@@ -660,9 +661,30 @@ def add_plant(pj, tag, clay):
             pts.rotation_euler = (0, 0, yaw)
             pts.scale = (k_sc,) * 3
             twig_obs.append(pts)
+    solid = solid_mat = None
+    if "solid_V" in d:  # a style's crown: one closed mesh, a colour per vertex (linear), its own smooth normals
+        solid = _mesh(f"crown{tag}", d["solid_V"], d["solid_F"])
+        ca = solid.data.color_attributes.new("col", "FLOAT_COLOR", "POINT")
+        ca.data.foreach_set("color", np.c_[d["solid_col"], np.ones(len(d["solid_col"]))].astype(np.float32).ravel())
+        solid.data.polygons.foreach_set("use_smooth", np.ones(len(solid.data.polygons), bool))
+        solid.data.normals_split_custom_set_from_vertices(d["solid_N"].astype(np.float32).tolist())
+        solid_mat = bpy.data.materials.new(f"crown{tag}")
+        solid_mat.use_nodes = True
+        N_, L_ = solid_mat.node_tree.nodes, solid_mat.node_tree.links
+        an = N_.new("ShaderNodeAttribute")
+        an.attribute_name = "col"
+        L_.new(an.outputs["Color"], N_["Principled BSDF"].inputs["Base Color"])
+        N_["Principled BSDF"].inputs["Roughness"].default_value = float((pj.get("solid") or {}).get("roughness", 0.85))
+        _weather(solid_mat, float(pj.get("snow", 0.0)), float(pj.get("wet", 0.0)))
+        _haze_out(solid_mat)
+        solid.data.materials.append(solid_mat)
+        solid.location, solid.rotation_euler, solid.scale = at.tolist(), (0, 0, yaw), (k_sc,) * 3
+        solid["hp_solid"] = 1
+        twig_obs.append(solid)
+        pts_all.append(d["solid_V"])
     local = np.vstack(pts_all)
-    _BUILT[pj["npz"]] = {"wood": wood, "bark": bark, "twigs": twig_obs, "local": local}
-    return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": place(local)}
+    _BUILT[pj["npz"]] = {"wood": wood, "bark": bark, "twigs": twig_obs, "local": local, "solid": solid, "solid_mat": solid_mat}
+    return {"wood": wood, "bark": bark, "twigs": twig_obs, "points": place(local), "solid": solid, "solid_mat": solid_mat}
 
 
 def add_scatter(sj, tag):
@@ -878,6 +900,8 @@ def build(job):
         ground.data.materials[0] = clay_ground if isclay else ground_mat
         for p_ in plants:
             p_["wood"].data.materials[0] = clay if isclay else p_["bark"]
+            if p_.get("solid") is not None:
+                p_["solid"].data.materials[0] = clay if isclay else p_["solid_mat"]
         sun.data.energy = 7.0 if isclay else job.get("sun_energy", 3.6)
         sc.view_settings.view_transform = "Standard" if isclay else job.get("view_transform", "Khronos PBR Neutral")
         sc.view_settings.exposure = 0.0 if isclay else job.get("exposure", 0.0)

@@ -3469,6 +3469,41 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     alpha cut on cards); an `ambient` shadowless light from above (under a closed canopy EEVEE rendered night);
     ground `moss` patches and `litter` flecks. `veg_look.render(others=[(tree, at, yaw, triangles, scale)],
     scatter=, job=, scale=, yaw=)`.
+- Vegetation styles, stage 5 start (2026-10-07, "vegstyle" agent, branch `worktree-agent-af611e5c1af1d81a5`; consumer brief:
+  /home/joe/dev/pushieworld/docs/hifipushie-notes.md "Vegetation style brief"; sheets `workspace/veg_renders/vs_*`;
+  deliveries /mnt/data/hifipushie/vegstyle/; scratch in the worktree's untracked `scratchpad/`: run.sh <script>
+  (worktree code on the main workspace), sheet.py <species> <style> <out.png> [season] (realistic | styled: far, far
+  90 deg round, near, clay + the numbers), seasons.py, export.py <name> <species> <style> <out dir> (through
+  server.grow_plant / export_plant), imp.py (Blender's importer + wind displacement), t1.py; Khronos:
+  `node /mnt/data/hifipushie/vegstyle/v.mjs x.glb`).
+  - `veg_style.py` + `vegetation_styles/<name>.json`: spec `"style": "blobby"` | {"sheet", ...overrides}. A style is a
+    sheet of numbers over general operations (`wood` = which limbs are drawn / how fat / how far, `crown` kind
+    "masses" = k-means of the twig positions -> ellipsoids -> smooth union (`sdf.smin`) -> marching cubes -> pyfqmr
+    per LOD -> back onto the field, normals = the field's gradient, one tone per mass in COLOR_0, wind = a mass moves
+    with its limb). Growth never reads it (`test_same_individual`). `fit` (once per tree + sheet, cached by id) picks
+    the number of masses by outline IoU against the realistic tree (`compare`: row-filled side outlines in ONE metric
+    frame, 3 azimuths; `vegetation.outline_iou` normalises height, so it can't see a tree that grew), `dress(tree, st,
+    triangles, season)` = one LOD. `veg_export.write_glb`, `veg_look._plant_job` (`_styled_job`), `blender_vegetation`
+    (`solid_*` arrays: one closed mesh with a colour attribute and custom normals; flat bark), `veg_tools.report` /
+    `describe`, the server's grow_plant / export_plant docs follow the style. Guide section "Styles".
+  - Blobby oak (vs_03, vs_04 seasons): 4 limbs of 5, 8 masses for 17,840 twigs, IoU 0.859 (0.87 / 0.83 / 0.88), height
+    20.16 vs 19.83 m, width 23.8 vs 25.7 m; LODs 4,999 / 2,250 / 1,036 + impostor; Khronos 0 errors 0 warnings on all
+    five files; Blender's importer reads the variants and wind (limb ends 12 cm mean / 58 cm most, foot 0).
+  - What it took: PCA ellipsoids of flat clusters were lily pads (`roundness`: no semi-axis under 0.6 x the longest),
+    which then stood 1.3 m over the tree (masses sink to the tree's own top); COLOR_0 over 1 is a glTF ERROR (tones
+    are divided by `color_gain`, the material's factor carries it); empty `textures` / `images` arrays are errors too;
+    limbs ended in the air until they were cut `bury` m inside the first mass they enter.
+  - Read: a toy tree of balloon lumps on fat-ish limbs, plainly the same crown from 70 m. Weak: masses read as
+    separate balloons more than one bumpy cloud (the oak's foliage is a shell, the middle is hollow), limbs look thin
+    under so much crown and shade with a hard crease near the fork, winter = four bare noodles.
+  - Spring: `season_color` / `veg_export.spring_leaves` (colour + smaller leaves; realistic and styled; export
+    variant "spring"). No blossom, no catkins; clumps have no seasons (consumer notes 14, 15).
+  - NEXT, in the consumer's order: blobby spruce (stacked rounded tiers: likely crown kind "tiers" = masses fitted per
+    height band, or k-means on z only), blobby meadow grass (a clump: veg_small has no style path at all: fat rounded
+    tufts need geometry instead of cards), then anime / cartoon / pixar sheets (cards on the masses with normals
+    taken from the field: `veg_style.field` + `_gradient` at each card vertex), sets and stands (write_glb takes the
+    first tree's sheet for a set: untested; veg_stand ignores styles), `wind_plant` on a styled plant untested
+    (imp.py did the same check by hand), tests/test_veg_style.py.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
