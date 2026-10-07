@@ -1984,6 +1984,81 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     past that point the whole collar lies on the turned side, in the lapel's plane, sewn to the gorge. To build:
     the op's fold line from cbRoll to that point; placement of the part past it AFTER the lapel flap is turned, as
     a continuation of the flap (`lies_on` the turned lapel's plane), the part behind it as now.
+- Suit (2026-10-07, "suit" agent, branch `worktree-agent-a79355cc3032d8bee`; renders `cloth_renders/su_*`; target =
+  Garrett's concept `workspace/garrett_v20/concept_v8_front_apose.png`: charcoal two-button notched jacket worn OPEN,
+  pale shirt with the top button open, flat-front trousers with a crease; he is seated in the game. Scratch DURABLE in
+  /mnt/data/hifipushie/suit/: env.sh, run.sh <script>, q.sh <queue file> + run.py (one sim: report, OPEN SEAM lines,
+  renders; `over=null` runs a layered garment alone; logs <tag>.log, arrays out/<tag>.npz), pl.py (place only),
+  cu.py (close-up of a saved start / result: piece or x,y,z, half size, front | back | collar), seamdiag.py (one
+  seam's gaps in X0 / V_sim / V along the seam), fs_dbg.py + fs_dbg2.py (where a fine settle's start is stretched,
+  from the job's in.npz), pairs.py (a piece's sewn pairs in pattern coordinates), lap_geo.py (lapel / roll line
+  numbers of a draft), ro_dbg*.py, gates.py, mk_garrett.py (model `su_garrett` = garrett_v20 COPY + ga_suit's shirt
+  and blazer + pd trousers), tests.sh.)
+  - VERIFIED BY SIM (first time for all three): trousers pd_trousers 2 cm (su_01: fits, band closed at CB, stays at
+    the waist, seams 0.5 / 1.3 / 3.2 mm in the sim at stitch stiffness 8, 0 crossings; but a wide cropped pyjama
+    cut, no fly / crease / loops); shirt zz_shirt 2 cm + 1 cm fine settle (su_05: 0 crossings, seams p95 0.24 mm,
+    collar closed with the fall turned 155 deg and covering the stand seam 11 mm; "STRAINED at waist" 17.8%, front
+    closure sides 12.1 mm apart, collar closure 8.1 mm; reads tall / tight / small points); blazer from our blocks
+    alone, 2 cm (su_06: reads as a tailored jacket, 0 crossings, strain 0.4%; neck / gorge seam OPEN 12 of 12 pairs
+    to 14.5 mm, shoulder seams 5-6 mm, CB seam 2.7 mm showing as a pale zigzag, back collar a fat roll, fall 108
+    deg); Jaeger alone on the new measures (su_07: no longer a bomber in length, but CORRUPT: side seams open 17-34
+    mm, armholes 30-36 mm, 165 of 336 pairs open at stitch stiffness 1, side panels crumpled, collar a band: legacy,
+    the drafted blazer is the base).
+  - Made pieces sewn to each other are ONE construction (`cloth._carry` groups them by seams, root = the piece with
+    the most seam to draped cloth; `carry["roots"]`; `_constructed` and `_press_plan` fit the fine placement onto
+    the coarse one on the root). Each fitted by itself, the shirt's collar landed 16-25 mm off its stand at all 43
+    pairs and the fine settle died ("ccd failed", made pieces 277% stretched at the start): the shirt as merged by
+    the garments round could not finish.
+  - Notched collar (`op_collar` type tailored after a `lapel`; `_roll_meets_neck`): the roll line is a polyline from
+    `stand_height` at CB down to the neck edge where the lapel's roll line crosses the neckline (profile exponent
+    from the crossing angle so the two lines meet as one), given as the fold's points and as wrap `turn.line` (run
+    on 16 cm as the lapel's roll line). `"roll": "parallel"` = the old constant stand.
+  - Wrap "seam" (`cloth._on_seam`): `"worn": true` = the edge it lies on is each torso partner's point at its
+    pattern x / height (y = 0 at hps) on the body's front / back (`worn_pt`), at the pattern's lengths from the
+    middle: the old march headed for where the fronts START (15 cm ahead on their cylinder) and hugged the neck
+    like a shirt band. Frames along the edge come from the body's normals 12 mm above the seam, smoothed (nearest-
+    vertex normals in the neck / shoulder crease swung 60 deg), the piece's side of its edge from ONE handedness
+    read at the edge's middle (per point by the centroid it flipped along the collar's slanting front: this was in
+    the old code too). `turn.line`: points beyond the line are laid as their foot + distance in the turned
+    direction; where the line has left the piece (and blended in over its last 5 cm) the point is reflected about
+    the line in the pattern, carried into the PARTNER's pattern by the two exact seam pairs (the pairs between are
+    off by up to 13 mm along the seam: fold rows on either side: a mesh fault, not fixed) and laid with `worn_pt`.
+    Dead end: laying the collar's front as a continuation of the turned lapel where the lapel STARTS (the fronts
+    start on a cylinder, the collar is made and held: 3.8x stretch).
+  - Seam-wrapped pieces take the bands' clearance (SMOOTH_CLEAR), not the draped 12 mm (the collar's neck edge was
+    held 8 mm outside the back neck). Blazer alone re-simulated with it (seamdiag.py, no render): neck / gorge
+    seam 6 in the sim 2.1-5.6 mm (was 9-15) with ONE pair at 14.8 mm: the pair beside the roll rows, where the
+    mesh pairs the seam's two sides up to 13 mm apart ALONG the seam (pairs.py: collar 0.132 <-> front 0.046; fold
+    rows inserted on each side shift the pairing): fix that pairing in `cloth.mesh` next. The clean-up left all 12
+    pairs as the sim had them (V = V_sim): the weld did not act on a seam between the made collar and draped
+    cloth: not understood (same for the CB seam's 4 pairs at 2.7 mm: the pale zigzag).
+  - Layered run (blazer over the shirt, su_08 / su_10): the GPU did NOT crash; ZOZO stops at frame 0, "ccd
+    failed", start 1650-1750% stretched. From the job's in.npz (fs_dbg.py): only the COLLAR, 24 triangles to 9.6x
+    at pattern |x| 0.09-0.13 (the roll's end / the blend into the front part), and in the layered job the collar
+    is not carried (carryIdx empty) and rests on the flat pattern, i.e. it is not treated as made there. pl.py's
+    start on `Ctx.body` shows only 1.58x: `build` places on `padded_body` (the pressed shirt, its collar round the
+    neck), where the worn chart and the seam frames meet the shirt collar's surface. Next: place with build's own
+    body (run.py's res["X0"] is saved in out/<tag>.npz only when the sim finishes: add a place-only path through
+    `cloth.build`), find why the collar is not made / carried when `over` is set, and lay the jacket collar over
+    the shirt collar (its stand OUTSIDE the shirt's, the "layer_collar" tell 10-20 mm).
+  - `worn_pt` returns the point at the body's depth (not a body vertex: two points on one vertex = a rest triangle
+    of no size).
+  - Garrett: stages 1-3 PASS for shirt, blazer, trousers on `su_garrett`; never placed or simulated on him.
+  - Tests: test_pattern_draft, _styles, _tailor, test_folds, test_cloth_workflow, test_cloth, test_cloth_layers,
+    test_closures, test_cloth_check pass at 86629f8 (the worn_pt change after it: only the pattern / folds /
+    workflow set re-run). No test yet for the notched collar's roll line, wrap worn / turn.line or made groups.
+  - NEXT, the coordinator's order: (1) the blazer's neck / gorge seam by construction: re-run `q.sh` with
+    "su_09 ga_suit jacket over=null" on the clearance change and read seam 6 / 7 with seamdiag.py (if still open:
+    where does the collar's neck edge start against the worn neckline, and does the front's turned gorge reach it:
+    the worn chart lifts the collar off_ + 6 mm), then the back fall (108 deg) with the shirt under; (2) CB seam
+    zigzag: 2.7 mm should weld (limit 1.5 h): check `cleanup`'s weld on a seam between two draped pieces whose
+    vertices were left by `seat` / the crossings revert, or whether the look's `welded_faces` draws it; (3) wear
+    state: jacket `closures` state open (the `buttons` op makes stitches, no closures entry: CLOSURES [] in su_06),
+    shirt collar open_above; (4) shirt collar proportions as a KB rule from `Body.neck_rows` (stand from neck
+    height, fall = stand + 10-15 mm, points 65-75 mm), the 12 mm front gape and the waist strain (stage 2 ease says
+    +23% at the waist: so the strain is the lap / buttons, not size: unexplained); (5) trousers: slim straight leg
+    to a slight break, crease folds, fly, loops; first place + sim on su_garrett. su_08 (blazer over the shirt,
+    the job that crashed the 890M in ccd_collision_edge_edge) fails at its start now: see above.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

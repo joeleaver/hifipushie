@@ -814,6 +814,36 @@ def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None 
                     f"long, {width * 1000:.0f} mm deep; sewn 1:1 and turned in")
 
 
+def _roll_meets_neck(D: dict, nf: list, lb: float) -> tuple | None:
+    """Where a lapel's roll line (a fold named "lapel roll" on the front) crosses the front neckline: (the distance
+    round the neckline from centre back (the back neck `lb` + along the front neck from the neck point), the angle
+    between the two there, rad). None without a lapel or when the line misses the neckline."""
+    if len(nf) != 1:
+        return None
+    fpn, farc = nf[0].split(":", 1)
+    fd = next((f for f in D["folds"] if f.get("piece") == fpn and f.get("name") == "lapel roll"
+               and isinstance(f.get("line"), list)), None)
+    if fd is None:
+        return None
+    pc = D["pieces"][fpn]
+    a, b = np.asarray(fd["line"][0], float), np.asarray(fd["line"][-1], float)
+    u = (b - a) / max(np.linalg.norm(b - a), 1e-12)
+    ix = list(pattern.arc_indices(pc, farc))
+    P = pc["P"]
+    hps = P[pc["names"]["hps"]]
+    if np.linalg.norm(P[ix[0]] - hps) > np.linalg.norm(P[ix[-1]] - hps):
+        ix = ix[::-1]
+    sd = (P[ix] - a) @ np.array([-u[1], u[0]])
+    s = 0.0
+    for k in range(len(ix) - 1):
+        seg = float(np.linalg.norm(P[ix[k + 1]] - P[ix[k]]))
+        if sd[k] == 0 or sd[k] * sd[k + 1] < 0:
+            g = (P[ix[k + 1]] - P[ix[k]]) / max(seg, 1e-12)
+            return lb + s + seg * abs(sd[k]) / max(abs(sd[k]) + abs(sd[k + 1]), 1e-12), math.acos(min(abs(float(g @ u)), 1.0))
+        s += seg
+    return None
+
+
 def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "collar", **o) -> None:
     """A collar drafted from the neckline as it is now (edges neck_back + neck_front), as a half cut on the fold at
     centre back. "band": a stand: a strip the neckline's length, its sewn edge slightly convex (it then leans in to
@@ -914,7 +944,41 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
     if tailored:
         # laid from the neckline it is sewn to (wrap "seam"), not as a ring round the neck: a jacket's neckline lies
         # on the shoulders and runs down to the gorge; the fall is turned over in the wrap at the roll line
-        pc["wrap"] = dict({"to": "seam", "out": 0.004, "turn": {"at": sh_, "deg": 172, "gap": 0.004}}, **(o.get("wrap") or {}))
+        pc["wrap"] = dict({"to": "seam", "worn": True, "out": 0.004, "turn": {"at": sh_, "deg": 172, "gap": 0.004}}, **(o.get("wrap") or {}))
+        # A notched collar's roll line is not parallel to its neck edge: it stands `stand_height` at centre back and
+        # comes down to the neck edge where the LAPEL's roll line crosses the neckline (the two are one line when
+        # worn). Past that point the whole collar lies on the turned side, in the lapel's plane, sewn to the gorge.
+        # With a constant stand to the collar's end it was a band round the back of the neck that stopped at the
+        # neck's sides, its gorge seam 156 mm away and turned 54 deg (ga_suit's start).
+        met = _roll_meets_neck(D, nf, lb) if o.get("roll", "lapel") == "lapel" else None
+        roll_pts = None
+        E = pattern._resampled(pc["P"][pattern.arc_indices(pc, "cb>shoulderNotch>cf")], 0.004)
+        if met is not None and met[0] < pattern.length(E) - 0.02:
+            sx, phi = met
+            se = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))]
+            te = np.gradient(E, axis=0)
+            te /= np.linalg.norm(te, axis=1, keepdims=True) + 1e-12
+            ne = np.c_[-te[:, 1], te[:, 0]]
+            if ne[0] @ (pc["P"][pc["names"]["cbTop"]] - E[0]) < 0:
+                ne = -ne
+            # (the line meets the neck edge at the angle the lapel's roll line crosses the neckline: one line)
+            pw = float(np.clip(math.tan(phi) * sx / sh_, 1.5, 6.0))
+            prof = lambda s_: sh_ * np.clip(1 - (np.asarray(s_, float) / sx) ** pw, 0, None)
+            keep = se < sx - 1e-6
+            Lh = E[keep] + ne[keep] * prof(se[keep])[:, None]
+            k1 = int(keep.sum())
+            k2 = min(k1, len(E) - 1)
+            end = E[k1 - 1] + (E[k2] - E[k1 - 1]) * (sx - se[k1 - 1]) / max(se[k2] - se[k1 - 1], 1e-9)
+            Lh = np.r_[Lh, [end]]
+            Lh[0, 0] = 0.0
+            roll_pts = [[-float(q[0]), float(q[1])] for q in Lh[:0:-1]] + [[float(q[0]), float(q[1])] for q in Lh]
+            # the wrap turns the collar about this line run on as the lapel's roll line (down the front, outside the
+            # collar's own outline): what lies past the meeting point is all on the turned side
+            run = end + (math.cos(phi) * te[k2] - math.sin(phi) * ne[k2]) * 0.16
+            Lw = np.r_[Lh, [run]]
+            pc["wrap"]["turn"] = dict(pc["wrap"]["turn"], line=[[-float(q[0]), float(q[1])] for q in Lw[:0:-1]]
+                                      + [[float(q[0]), float(q[1])] for q in Lw])
+            D["meta"]["collar_roll_end"] = float(sx)
     D["pieces"][name] = pc
     D["centre"][name] = "fold"
     seam_edge = f"{name}:cb>shoulderNotch>{'cf' if True else 'front'}" if ext == 0 else f"{name}:cb>shoulderNotch>cf"
@@ -925,8 +989,12 @@ def op_collar(D: dict, type: str = "band", height: float = 0.035, name: str = "c
             "why": f"{name} is cut {ratio:.2f} x the neckline and stretched on (a rib band hugs the neck)"}
     D["interfaced"].append(name)
     if tailored:
-        D["folds"].append({"piece": name, "line": {"edge": seam_edge, "offset": sh_}, "angle": 20,
+        D["folds"].append({"piece": name, "line": roll_pts or {"edge": seam_edge, "offset": sh_}, "angle": 20,
                            "kind": "press", "strength": 0.6, "in_wrap": True, "reach": 0.08, "name": f"{name} roll"})
+        if roll_pts:
+            D["log"].append(f"collar {name}: roll line from {sh_ * 1000:.0f} mm at centre back down to the neck edge "
+                            f"{D['meta']['collar_roll_end'] * 1000:.0f} mm round from it, where the lapel's roll line "
+                            "crosses the neckline; past it the collar lies with the turned lapel")
         D["log"].append(f"collar {name} (tailored): stand {sh_ * 1000:.0f} + fall {fl_ * 1000:.0f} mm, spring "
                         f"{spring * 1000:.0f} mm: outer edge {edge_length(D, D['edges'][name + '_outer']) * 1000:.0f} mm for a "
                         f"neck edge of {edge_length(D, seam_edge) * 1000:.0f} (half)")
