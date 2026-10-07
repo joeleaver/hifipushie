@@ -3831,6 +3831,55 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
     return b
 
 
+def over_measures(body: "Body", U: np.ndarray) -> tuple[dict, dict]:
+    """The tailor's measures for a garment worn OVER another (garment key "over"), U = the under garment as it lies
+    under it (pressed): a tailor measures for a jacket over the shirt. Taken over the under garment: `neck` (the
+    tape at the neck goes round the shirt collar; drafted from the bare neck, a jacket's neckline was 8 cm shorter
+    than the shirt collar it must go round at its height, and the made jacket collar climbed the shirt collar to
+    where it was narrow enough: su_32, 23 mm high, the shirt collar hidden); the armhole is lowered by the under
+    garment's thickness in the armpit (`waistToArmpit`; drafted for the bare pit, the jacket's armhole sat 12 mm
+    under the shirt's own and its underarm seams stood 20-60 mm open over the shirt in the pit). Girths of the body
+    (chest, waist, hips, seat) stay the bare body's: the design's ease bands (and the fit report) are against the
+    body. Returns (mm, info)."""
+    mm = dict(body.m["mm"])
+    pb = padded_body(body, {}, U, 0.0)
+    info = {}
+    try:
+        nk = float(pb.m["mm"].get("neck", 0.0))
+    except Exception:
+        nk = 0.0
+    if nk > mm.get("neck", 0.0):
+        info["neck"] = [round(mm["neck"], 1), round(nk, 1)]
+        mm["neck"] = nk
+    at = body.at
+    if "armpit_z" in at and "shoulder.L" in body.J and "waistToArmpit" in mm:
+        sh = np.asarray(body.J["shoulder.L"], float)
+        pits = []
+        for sx in (1.0, -1.0):
+            p = np.array([sx * sh[0], sh[1], float(at["armpit_z"])])
+            near = np.linalg.norm(body.V - p, axis=1) < 0.04
+            if near.any():
+                pits.append(float(np.median(pb.pad[near])))
+        if pits:
+            t = 1000.0 * float(np.mean(pits))
+            info["armpit_mm"] = round(t, 1)
+            mm["waistToArmpit"] = mm["waistToArmpit"] - t
+    return mm, info
+
+
+def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple[dict, dict]:
+    """The measures a garment's pattern is drafted from: the body's tape, or over the garment under it (`over`,
+    over_measures) when that garment is finished. (mm, info); info["over"] names the under garment, or
+    info["over_missing"] when it isn't dressed yet (the bare body's then)."""
+    body = body or Body(body_src)
+    under = body_src.get("under")
+    if under is None or under.get("res") is None:
+        return dict(body.m["mm"]), ({"over_missing": body_src["under_missing"]} if body_src.get("under_missing") else {})
+    U = pressed(under, body, float(g.get("under_cap", UNDER_CAP)))
+    mm, info = over_measures(body, U)
+    return mm, dict(info, over=under.get("name"))
+
+
 UNDER_CAP = 0.008  # m off the body: how far a garment's loose cloth stands under another worn over it
 
 
@@ -3963,7 +4012,14 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             under = dict(under, V=pressed(under, body_real, float(g.get("under_cap", UNDER_CAP))))
         body = padded_body(body_real, body_src, under["V"], float(g.get("layer_gap", 0.003)))
         body._m = body_real.m
-    Bp = pieces(g, body_real.m["mm"] if g.get("pattern") else {})
+    # drafted from the tape; over another garment, from the tape taken over it (neck, armhole: over_measures)
+    meas_info = {}
+    if g.get("pattern"):
+        meas, meas_info = (over_measures(body_real, under["V"]) if under is not None and under.get("res") is not None
+                           else (body_real.m["mm"], {}))
+    Bp = pieces(g, meas if g.get("pattern") else {})
+    if meas_info:
+        log(f"drafted over {under.get('name')}: {json.dumps(meas_info)}")
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     quality = g.get("quality", "final")
     hc = float(g.get("coarse", 0.02))
