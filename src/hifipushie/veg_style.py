@@ -154,7 +154,7 @@ def bark_color(spec: dict, st: dict) -> list:
 
 
 # ---------------------------------------------------------------- wood: the limbs that are drawn
-def wood(tree: dict, st: dict, inside=None, size: float = 0.0) -> dict:
+def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dict:
     """A small tree of the drawn wood only: the trunk's axis, the stoutest first-order limbs and, INSIDE the crown, a
     few branches off each (`stubs`: the stoutest forks, `stub_apart` m apart; each runs into the crown and ends in a
     mass like a limb: what is left standing when the plant is bare). Fattened, bends smoothed.
@@ -297,13 +297,39 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0) -> dict:
             n_ax += 1
             n_stub += 1
             drawn.append(np.vstack([pos[sroot], spts]))
+    n_fed = 0
+    if feed is not None and len(feed) and w.get("feed"):
+        # every clump is carried: a clump with no drawn wood within `feed` x its radius gets the grown tree's own path
+        # to it (from the nearest grown node in it back down to the drawn wood). Without it outer clumps floated.
+        fr = float(w["feed"])
+        for c, rc in feed:
+            if np.linalg.norm(np.array(pos) - c, axis=1).min() <= fr * rc:
+                continue
+            near = np.flatnonzero(np.linalg.norm(P - c, axis=1) < 0.7 * rc)
+            if not len(near):
+                continue
+            n = int(near[np.argmax(rad[near])])  # (its stoutest wood: the branch that carries it)
+            path = []
+            while n not in index and n > 0:
+                path.append(n)
+                n = int(par[n])
+            if n not in index or not path:
+                continue
+            path = np.array(path[::-1])
+            root = index[n]
+            fr0 = min(max(fat * float(rad[path[0]]), float(w.get("feed_radius", 0.0)) * radius[root]), 0.8 * radius[root])
+            fpts = smooth(np.vstack([pos[root], P[path]]))[1:]
+            add(path, root, fpts, np.maximum(fr0 * rad[path] / max(float(rad[path[0]]), 1e-9), floor * fr0), n_ax, 2)
+            n_ax += 1
+            n_fed += 1
+            drawn.append(np.vstack([pos[root], fpts]))
     src = np.array(src)
     drawn_len = float(sum(np.linalg.norm(np.diff(d_, axis=0), axis=1).sum() for d_ in drawn))
     total_len = float(np.linalg.norm(P - P[par], axis=1).sum())
     return {"pos": np.array(pos), "parent": np.array(parent), "radius": np.array(radius), "axis": np.array(axis),
             "order": np.array(order), "ends": np.zeros(len(pos), bool), "key": tree["key"][src], "height": tree["height"],
             "spec": tree["spec"], "dead": None, "src": src,
-            "info": {"limbs_kept": len(kept), "limbs": len(allL), "axes": int(len(tree["axes"])), "axes_kept": n_ax, "stubs": n_stub,
+            "info": {"limbs_kept": len(kept), "limbs": len(allL), "axes": int(len(tree["axes"])), "axes_kept": n_ax, "stubs": n_stub, "fed": n_fed,
                      "wood_m": round(drawn_len, 1), "wood_m_grown": round(total_len, 1),
                      "limb_names": [L["name"] for L in kept]}}
 
@@ -690,7 +716,8 @@ def fit(tree: dict, st: dict) -> dict:
         out["floor"] = floor
         out["blend"] = bl = out["dense"]["blend"]
         size = float(np.mean([e["r"].mean() for e in ells if not e.get("core")]))
-        mini = out["mini"] = wood(tree, st, lambda q: -field(ells, q, bl, floor=floor), size)
+        mini = out["mini"] = wood(tree, st, lambda q: -field(ells, q, bl, floor=floor), size,
+                                    feed=[(e["c"], float(e["r"].mean())) for e in ells if not e.get("core")])
     in_leaf_forks = bool(st["wood"].get("forks_in_leaf"))  # (a style whose crown has gaps: the forks show in leaf too, one wood mesh)
     out["wood"] = wood_dense(mini, st, (0, 1, 2) if in_leaf_forks else (0, 1))
     out["forks"] = None if in_leaf_forks else wood_dense(mini, st, (2,))

@@ -11,7 +11,7 @@
   "reach": 0.9,
   "trunk_reach": 0.85,
   "smooth": 6,
-  "share": 0.2,
+  "share": 0.25,
   "flat": true,
   "roughness": 0.95,
   "limb_min": 0.0,
@@ -22,10 +22,10 @@
   "bury": 0.8,
   "keep_in": 0.3,
   "reach_in": 0.95,
-  "stubs": 8,
+  "stubs": 14,
   "stub_reach": 1.0,
-  "stub_min": 1.0,
-  "stub_apart": 1.2,
+  "stub_min": 0.8,
+  "stub_apart": 1.0,
   "stub_radius": 0.0,
   "blend": 0.5,
   "voxel": 0.0,
@@ -34,7 +34,9 @@
    10
   ],
   "forks_in_leaf": true,
-  "forks_share": 0.0
+  "forks_share": 0.0,
+  "feed": 0.9,
+  "feed_radius": 0.0
  },
  "crown": {
   "kind": "clouds",
@@ -157,7 +159,8 @@
    "stubs": 0,
    "trunk_reach": 0.92,
    "share": 0.06,
-   "forks_in_leaf": false
+   "forks_in_leaf": false,
+   "feed": 0
   },
   "crown": {
    "masses_kind": "tiers",
@@ -166,7 +169,7 @@
     9
    ],
    "masses_step": 1,
-   "spread": 1.55,
+   "spread": 1.65,
    "pad": 0.3,
    "roundness": 0.3,
    "trunk_show": 0.6,

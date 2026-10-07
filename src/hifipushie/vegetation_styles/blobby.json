@@ -32,7 +32,9 @@
   "trunk_mass": 0.32,
   "trunk_floor": 0.8,
   "foot": 1.25,
-  "forks_share": 0.3
+  "forks_share": 0.3,
+  "feed": 0,
+  "feed_radius": 0.0
  },
  "crown": {
   "kind": "masses",
