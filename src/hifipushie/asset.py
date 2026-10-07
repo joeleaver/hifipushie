@@ -1736,6 +1736,22 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         from . import rig_template as _rt
         if _rt.weights_note(rspec):
             log.append(_rt.weights_note(rspec))
+        from . import rig_audit as _ra
+        sit = _ra.seated(bones)
+        if sit and len(skin_at) > 1:  # do the layers stay in order when the character sits (rig_audit.layers)
+            pn_s = list(skin_at)
+            Vs = np.concatenate([skin_at[pn] for pn in pn_s])
+            off = np.cumsum([0] + [len(skin_at[pn]) for pn in pn_s])
+            Fs_ = np.concatenate([parts[pn]["corner_vert"].reshape(-1, 3) + off[i] for i, pn in enumerate(pn_s)])
+            Js = np.concatenate([np.asarray(rigged["weights"][pn][0]) for pn in pn_s])
+            Ws = np.concatenate([np.asarray(rigged["weights"][pn][1], np.float64) for pn in pn_s])
+            rows = _ra.layers(Vs, Fs_, np.repeat(np.arange(len(pn_s)), np.diff(off)), pn_s,
+                              rigmod.pose(bones, Vs, Js, Ws, rigmod.drive_twist(bones, sit)),
+                              skip=[pn for pn in pn_s if (defs.get(origin[pn]) or {}).get("rig_bone")])
+            bad = [r for r in rows if r["through"] > _ra.LAYER_BAD]
+            log += [("WARNING rig: " if bad else "rig: ") + ln.strip() if i == 0 else ln
+                    for i, ln in enumerate(_ra.layers_text(rows, top=4))]
+            rigged["layers_seated"] = rows[:8]
     shapes = {}
     if face_shapes:  # after the bake and the skin: both use the meshed (open-mouthed) low poly
         from . import faceshapes
@@ -1744,6 +1760,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                                          if pn not in pf_of and not report[pn].get("curves")}, face_shapes, log)
         for pn, nms in shapes.items():
             report[pn]["face_shapes"] = nms
+            if parts[pn].get("shape_unevenness"):  # (faceshapes.unevenness: shapes over UNEVEN_COUNT, worst vertex)
+                report[pn]["face_shape_unevenness"] = parts[pn].pop("shape_unevenness")
         log.append(f"face shapes: {len(faceshapes.names_of(face_shapes))} on {len(shapes)} parts in "
                    f"{time.time() - tf:.1f}s")
         if rigged and hf is not None:  # whatever a face shape moves is head: it must not also bend with the neck
@@ -1798,6 +1816,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             "parts": report, "prefabs": prefabs, **({"skin": skin_recipe} if skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
                         "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
+                        "layers_seated": rigged.get("layers_seated", []),
                         "rest": "every base joint unrotated at its head, pose as modelled; twist joints rotated so "
                                 "local +Y runs along their segment",
                         "twist": rigmod.twist_table(rigged["bones"]),

@@ -131,6 +131,13 @@ is fibres running out from the pupil with a paler collarette and a dark limbal r
 toward the corners, a few vessels), the upper lid shades the top of the eye, and the inner corner has a pink wet
 caruncle. A flat coloured disc with a black dot is the toy-eye tell.
 
+**Only part of it** (`"only": [groups]`): a character whose skin is already painted by hand can take just some groups
+of the description and nothing else: `"eyes"` (the painted eyeballs), `"eye_rims"` (caruncle and waterline),
+`"zones"`, `"lips"`, `"roughness"`, `"micro"`, `"features"`, `"shading"` (the skin part's base colour, roughness,
+scattering and coat). `skin(name, {"only": ["eyes"], "eyes": {"iris": "#56666e"}})` gives him the irises and leaves
+his skin, its paint and its shading exactly as they are (delete his old flat iris / pupil paint layers so the picture
+shows). Without `"shading"` the layers are ordinary paint layers under the model's own.
+
 ### 6. Micro detail: tiling, never painted per character
 The skin's microrelief is polygonal plateaus between furrows (primary lines 20-100 um deep, the only ones the eye
 sees) with pores at crossings; facial pores are 0.2-0.5 mm across, 10-90 per cm2 [15][16]. No unique texture can hold

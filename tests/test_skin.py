@@ -87,6 +87,41 @@ def test_zones_and_layers():
     assert paint.layers(plain) == {}
 
 
+def test_only_some_groups():
+    """2026-10-07 (s0urc3's Garrett): the description was all or nothing on the skin part; to take only its eye
+    pictures on a hand-painted character they pointed it at the tongue. skin.only lays the groups asked for and
+    nothing else, and without "shading" leaves the part's own shading alone."""
+    full = head_spec(tone={"fitzpatrick": 2}, age=52, eyes={"iris": "#56666e"})
+    spec = head_spec(tone={"fitzpatrick": 2}, age=52, only=["eyes"], eyes={"iris": "#56666e"})
+    spec["blobs"]["eye.L"]["part"] = "eyes"
+    full["blobs"]["eye.L"]["part"] = "eyes"
+    L = paint.layers(spec)
+    assert L and all(skin.group_of(k) == "eyes" for k in L), list(L)
+    assert {"skin:eye_L", "skin:eye_R"} <= set(L) and all(v["part"] == "eyes" for v in L.values())
+    assert skin.part_base(spec) is None and not skin.shaded(spec) and skin.shaded(full)
+    assert L["skin:eye_L"] == paint.layers(full)["skin:eye_L"]  # the same picture as the whole description's
+    paint.validate(spec)
+    # the rims are on the skin: ordinary layers (nothing is composited into a base that isn't the description's)
+    rims = paint.layers(head_spec(only=["eyes", "eye_rims"]))
+    assert "skin:caruncle" in rims and not any(v.get("_pre") for v in rims.values())
+    assert paint.layers(full)["skin:caruncle"].get("_pre")
+    # every layer of a full description belongs to a group, and the groups add up to it
+    names = set(paint.layers(full))
+    got = set()
+    for g in skin.GROUPS:
+        if g != "shading":
+            got |= set(paint.layers(head_spec(tone={"fitzpatrick": 2}, age=52, only=[g])))
+    assert got == names, (names - got, got - names)
+    both = head_spec(only=["shading", "lips"])
+    assert skin.part_base(both) is not None and all(skin.group_of(k) == "lips" for k in paint.layers(both))
+    for bad in (["iris"], [], "skin"):
+        try:
+            paint.layers(head_spec(only=bad))
+            assert False, bad
+        except SpecError as e:
+            assert "eye_rims" in str(e)
+
+
 def test_description_drives_layers():
     def col(spec, name):
         return np.array(paint.layers(spec)[name]["color"])

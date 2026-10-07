@@ -871,7 +871,7 @@ def _closed(sil: dict, radius: float) -> dict:
 
 
 @mcp.tool(structured_output=False)
-def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 640, save: str | None = None,
+def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: int = 640, save: str | None = None,
         drive_twist: bool = True, glb: str | None = None, focus: str | None = None, zoom: float = 1.0,
         views: list[str] | None = None, shapes: dict | None = None, engine: bool = True):
     """The export rig, a separate step over the modelling skeleton (spec bones stay for modelling): fits it,
@@ -890,14 +890,18 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     spec["rig"]["twist"] = false | count | {"arm": 2, "forearm": 3, "upleg": 1, "leg": 1} (the default; up to 4).
     The head is rigid: skull, face, jaw, teeth, tongue and eyes are Head 1.0, the falloff to the neck is on the
     throat (spec["rig"]["rigid_head"] = false | {"band": m, "under": m}).
-    pose: {rig bone: [[axis x, y, z] or "roll", degrees]} instead of the default test pose ("roll" = about the
+    pose: "seated" (hips and knees at 90 degrees: characters sit, and clothes that cross each other show there), or
+    {rig bone: [[axis x, y, z] or "roll", degrees]} instead of the default test pose ("roll" = about the
     bone's limb: the forearm for a Hand, its own length for an Arm); drive_twist=False leaves the twist bones still
     (what an engine without drivers shows). The text reports each twist chain's test (hand rolled 75 and 105 deg:
     twist by station along the forearm, what is left at the wrist, the worst cross-section's area against rest:
     a candy wrapper is a dip under ~0.8), the head's weights by height, and the WEIGHTS AUDIT: every joint turned
     alone through its usual range, with how far its own skin ends from a rigid turn, how far other bones' skin moved
     (and whose), flipped triangles, weight one digit's bones hold on another digit, left / right asymmetry, sums and
-    influence counts; lines ending "<- BAD" are what to fix.
+    influence counts; lines ending "<- BAD" are what to fix. Then LAYERS, seated: for each pair of parts, how many
+    vertices of one lie on the other at rest and are under it posed (clothes crossing each other or the skin: a
+    jagged line). Clothes read the skin's weights under them, so layers agree; parts.<p>.rig_weights ("surface" |
+    "around" | "distance") and rig_smooth (rounds over the part's own mesh, 0) change that per part (guide: rigging).
     glb: an exported <name>.glb to judge INSTEAD of this tool's own build: the real low poly with the weights and
     joints an engine gets. Do this for hands and faces: the look build here is coarse (the text says when its voxel
     is too big for the fingers: they fuse at rest and no pose of them means anything). focus: a rig bone to centre
@@ -917,7 +921,8 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     if glb:  # the export itself: its mesh, joints and weights
         g = rig_audit.read_glb(Path(glb).expanduser())
         bones = g["bones"]
-        V, Fs, J, W, _, _ = rig_audit.joined(g["meshes"], shapes)
+        V, Fs, J, W, lpart, lnames = rig_audit.joined(g["meshes"], shapes)
+        lskip = [k for k, m in g["meshes"].items() if len(np.unique(m["J"][m["W"] > 1e-6])) <= 1]
         rep, F = rig_audit.weld(V, Fs)  # (seam-split vertices as one surface, for normals and the audit)
         skip = rig_audit.bound(g["meshes"])
         note = [f"judging {Path(glb).name}: {len(V)} vertices, {len(Fs)} triangles, the export's own joints and weights"]
@@ -928,6 +933,8 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
         Fs, rep, skip = F, np.arange(len(V)), None
         J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
         extra = {k: z[k] for k in ("part", "part_names", "part_colors")}
+        lpart, lnames = z["part"], [str(n) for n in z["part_names"]]
+        lskip = [pn for pn in lnames if ((spec.get("parts") or {}).get(pn) or {}).get("rig_bone")]
         note = []
         _, girth, _, _ = rig_audit.owners(bones, V)
         thin = [girth[i] for i, b in enumerate(bones) if i in girth and "Hand" in b["name"]
@@ -937,7 +944,13 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
                         f"~{2e3 * float(np.median(thin)):.0f} mm thick: they are fused or lumpy in this build AT REST. "
                         "Don't judge hands here: export and pass glb=<the .glb> (the real mesh and weights)")
     names = [b["name"] for b in bones]
-    if pose is not None and not pose:
+    if pose == "seated":
+        turns = rig_audit.seated(bones)
+        if not turns:
+            return "pose: \"seated\" needs a humanoid rig (UpLeg and Leg joints)"
+    elif isinstance(pose, str):
+        return f"pose: {pose!r} is not a pose (\"seated\", or {{rig bone: [[axis] or \"roll\", degrees]}})"
+    elif pose is not None and not pose:
         turns = {}
     elif pose:
         bad = [k for k in pose if k not in names and rigmod.PREFIX + k not in names]
@@ -1014,6 +1027,10 @@ def rig(name: str, pose: dict | None = None, resolution: int = 160, size: int = 
     except Exception:
         flesh = None
     text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W, skip=skip, flesh=flesh))
+    sit = rig_audit.seated(bones)
+    if sit and len(lnames) > 1:  # clothes over clothes over skin: do they stay in order when the character sits
+        Ps = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, sit))
+        text += rig_audit.layers_text(rig_audit.layers(V, Fs, lpart, lnames, Ps, skip=lskip))
     return [_out(img, save), "\n".join(text)]
 
 
@@ -1164,8 +1181,10 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     alone only seals the lips (Audio2Face drives it with the jaw shut). On every part that moves (the head's part,
     teeth, tongue, eyeballs), the same vertices as the neutral (mouth closed), each shape its full extent at weight
     1, additive; names in glTF mesh.extras.targetNames, FBX blend shapes, and the json's face_shapes. Tune amounts /
-    the jaw in
+    the jaw / the blink's lid seal (`lid_seal`: false | amount | {amount, over, band, reach}) in
     spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
+    The log lists each skin part's most uneven shapes (a vertex moving outside its neighbours' range; smooth ~0) and
+    WARNs over 0.2: a sawtooth in whatever is painted there. Check blinks posed: rig(glb=, shapes={"eyeBlinkLeft": 1}).
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
@@ -1727,7 +1746,11 @@ def skin(name: str, skin: dict | None = None, replace: bool = False, note: str =
        "tattoos": [{"image": {"file" | "text": {...}, "at", "size", "dir", "wrap"}, "age": years}],
        "makeup": {"foundation": {"amount", "finish"}, "blush", "contour", "highlight", "eyeshadow": {"color", "finish"},
                   "eyeliner": {"wing"}, "mascara", "brows", "lipstick": {"color", "finish": "matte" | "satin" | "gloss"}, "nails"},
-       "zones": {built-in zone layer: strength}, "lips": {...}, "shading": {...}, "part": "body"}
+       "zones": {built-in zone layer: strength}, "lips": {...}, "shading": {...}, "part": "body",
+       "only": ["eyes"]}   only these groups are laid and nothing else: "eyes" (the painted eyeballs), "eye_rims",
+                           "zones", "lips", "roughness", "micro", "features", "shading" (the part's base colour and
+                           scattering). ["eyes"] puts the skin tool's irises on a character whose skin is painted by
+                           hand, and leaves that skin and its shading alone.
     Any layer of the model's own paint can use the same anatomy: {"zone": "cheekbone.L"} in edit_model paint ops.
     Then look_skin (fast cropped close-ups + measurements), or sync + look for the whole model.
     Returns the tone's colours and the layers the description made."""
@@ -1741,8 +1764,12 @@ def skin(name: str, skin: dict | None = None, replace: bool = False, note: str =
     p = skinmod.params(new_spec)
     layers = [k[5:] for k in paint.layers(new_spec) if k.startswith("skin:")]
     v = store.save(name, new_spec, note=note or "skin")
-    base = skinmod.part_base(new_spec)[1]
     hx = lambda c: "#" + "".join(f"{int(round(x * 255)):02x}" for x in c)  # noqa: E731
+    if not skinmod.shaded(new_spec):  # skin.only without "shading": some layers, the part's own shading untouched
+        return (f"saved {name} v{v}: skin only {p['only']}: the skin part's shading and everything else are left as "
+                f"they are\n{len(layers)} layers: {', '.join(layers)}\n"
+                "sync + look (or look(paint_layer=\"skin:<layer>\")) to see them")
+    base = skinmod.part_base(new_spec)[1]
     t = new.get("tone")
     return (f"saved {name} v{v}: skin on part {p['part']!r}, melanin {p['tone']['melanin']:.2f} blood {p['tone']['blood']:.2f} "
             f"undertone {p['tone']['undertone']:+.1f}, age {p['age']:.0f}\n"

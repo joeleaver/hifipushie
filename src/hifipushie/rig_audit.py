@@ -468,3 +468,89 @@ def audit_text(a: dict, top: int = 12) -> list[str]:
                    f"{r['leak_max']:.1f} mm" + (f" on {r['leak_on'].replace(PREFIX, '')}" if r.get("leak_on") else "")
                    + f"){vol}, flipped {r['flipped']}" + (" <- BAD" if is_bad(r) else ""))
     return out
+
+
+# ---- layers: clothes over clothes over skin, posed -----------------------------------------------------------------
+# s0urc3's Garrett sits. His jacket's hem and his trouser front came out as a sawtooth at the hip, and no per-joint
+# number saw it: nothing was torn or flipped, each part alone was smooth. The fault was BETWEEN parts: the jacket and
+# the trousers under it, 2 mm apart at rest, had each been smoothed over its own mesh (the jacket's hem toward the
+# pelvis above it, the trousers on down the thigh), so at 90 degrees of hip the jacket sank into the trousers
+# wherever it had a little less thigh, and the line where two coarse meshes cross is a zigzag. `layers` counts it.
+LAYER_REACH = 0.025  # m: a vertex this near another part's surface at rest lies on it
+LAYER_DEPTH = 0.003  # m under that surface, posed, is through it
+LAYER_SLIDE = 0.03   # m it may have slid along it and still be judged against the same spot
+LAYER_BAD = 12       # vertices of one part through another in one pose
+
+
+def seated(bones: list[dict]) -> dict:
+    """The seated pose's turns (hips and knees at 90 degrees), or {} for a rig without Mixamo's legs."""
+    names = {b["name"] for b in bones}
+    want = {"LeftUpLeg": ([1, 0, 0], -90), "RightUpLeg": ([1, 0, 0], -90),
+            "LeftLeg": ([1, 0, 0], 90), "RightLeg": ([1, 0, 0], 90)}
+    if not all(PREFIX + k in names for k in want):
+        return {}
+    return {PREFIX + k: v for k, v in want.items()}
+
+
+def layers(V: np.ndarray, F: np.ndarray, part: np.ndarray, names: list[str], P: np.ndarray, skip=()) -> list[dict]:
+    """Parts that pass through each other when posed. For every pair of parts: the vertices of one (the outer) that
+    lie just outside the other's surface at rest (within LAYER_REACH of it), and how many of them are under that same
+    spot of the surface as posed (P), by more than LAYER_DEPTH. Rows {"outer", "inner", "through", "of", "worst_mm"},
+    most first; only pairs with something through. skip: part names left out (rigid props)."""
+    from scipy.spatial import cKDTree
+
+    from .rig_template import _closest_on_triangles
+    V, P = np.asarray(V, np.float64), np.asarray(P, np.float64)
+    part = np.asarray(part)
+    fpart = part[F[:, 0]]
+    rows = []
+    geo = {}
+    for b, nb in enumerate(names):
+        Fb = F[fpart == b]
+        if nb in skip or not len(Fb):
+            continue
+        geo[b] = (Fb, cKDTree((V[Fb[:, 0]] + V[Fb[:, 1]] + V[Fb[:, 2]]) / 3))
+    for b, (Fb, tree) in geo.items():
+        k = min(8, len(Fb))
+        for a, na in enumerate(names):
+            ia = np.flatnonzero(part == a)
+            if a == b or na in skip or not len(ia):
+                continue
+            d, c = tree.query(V[ia], k=k, distance_upper_bound=2 * LAYER_REACH)
+            d, c = d.reshape(len(ia), k), c.reshape(len(ia), k)
+            near = np.isfinite(d[:, 0])
+            if not near.any():
+                continue
+            ia, c = ia[near], np.where(np.isfinite(d[near]), c[near], c[near][:, :1])
+            n = len(ia)
+            t = Fb[c.ravel()]
+            bary, dist = _closest_on_triangles(np.repeat(V[ia], k, 0), V[t[:, 0]], V[t[:, 1]], V[t[:, 2]])
+            best = np.arange(n) * k + dist.reshape(n, k).argmin(1)
+            t, bary = t[best], bary[best]
+
+            def signed(Q):
+                q = bary[:, :1] * Q[t[:, 0]] + bary[:, 1:2] * Q[t[:, 1]] + bary[:, 2:] * Q[t[:, 2]]
+                nrm = np.cross(Q[t[:, 1]] - Q[t[:, 0]], Q[t[:, 2]] - Q[t[:, 0]])
+                nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-30)
+                off = Q[ia] - q
+                s = (off * nrm).sum(1)
+                return s, np.linalg.norm(off - s[:, None] * nrm, axis=1)
+            s0, l0 = signed(V)
+            s1, l1 = signed(P)
+            on = (s0 > 5e-4) & (s0 < LAYER_REACH) & (l0 < 0.004)
+            thru = on & (s1 < -LAYER_DEPTH) & (l1 < LAYER_SLIDE)
+            if thru.any():
+                rows.append({"outer": na, "inner": names[b], "through": int(thru.sum()), "of": int(on.sum()),
+                             "worst_mm": float(-s1[thru].min() * 1e3)})
+    return sorted(rows, key=lambda r: -r["through"])
+
+
+def layers_text(rows: list[dict], what: str = "seated (hips and knees 90 deg)", top: int = 6) -> list[str]:
+    """`layers` as lines to read."""
+    if not rows:
+        return [f"  layers, {what}: no part passes through another"]
+    out = [f"  layers, {what}: vertices of one part that lie on another at rest and are more than "
+           f"{LAYER_DEPTH * 1e3:g} mm under it posed (the parts cross there: a jagged line; over {LAYER_BAD} is BAD):"]
+    out += [f"    {r['outer']} through {r['inner']}: {r['through']} of {r['of']} vertices, worst {r['worst_mm']:.1f} mm"
+            + (" <- BAD" if r["through"] > LAYER_BAD else "") for r in rows[:top]]
+    return out

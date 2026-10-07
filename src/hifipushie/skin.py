@@ -32,6 +32,13 @@ spec["skin"] = {
   "makeup": {"foundation", "concealer", "blush", "contour", "highlight", "eyeshadow", "eyeliner", "mascara",
              "brows", "lipstick", "nails"}                                                         (see MAKEUP)
   "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1}
+  "only": [groups]                lay only these groups of the description and nothing else, for a character whose skin
+                                  is already painted by hand: "eyes" (the eyeball pictures, on the eyes part),
+                                  "eye_rims" (caruncle and waterline, on the skin), "zones" (colour zones, mottling,
+                                  nails), "lips", "roughness", "micro" (pores and lines), "features" (freckles ..
+                                  wrinkles, hair, scars, tattoos, make-up), "shading" (the skin part's base colour,
+                                  roughness, subsurface, coat: without it the part's own shading is untouched).
+                                  ["eyes"] = just the painted irises on a hand-painted character.
 }
 Anatomical zones (`zone` paint generator, for any layer of the model's own too): ZONES below, placed from the GNM
 head's lm_* landmarks and the body's joints, sized in interocular distances on the face and joint radii on the body.
@@ -410,7 +417,26 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only"}
+GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", "eye_rims")
+
+
+def group_of(layer: str) -> str:
+    """Which group of the description (skin.only) a layer "skin:<name>" belongs to."""
+    n = layer[5:] if layer.startswith("skin:") else layer
+    if n.startswith(("eye_L", "eye_R", "eye_shade", "eye_tear")):
+        return "eyes"
+    if n in ("caruncle", "waterline"):
+        return "eye_rims"
+    if n.startswith(("lips_", "lip_")) or n == "micro_lip_lines":
+        return "lips"
+    if n.startswith("rough_"):
+        return "roughness"
+    if n.startswith("micro_"):
+        return "micro"
+    if n in ZONE_LAYERS or n.startswith("mottle_"):
+        return "zones"
+    return "features"
 ZONE_LAYERS = {"forehead_yellow": 1.0, "midface_red": 1.0, "nose_red": 1.0, "ears_red": 1.0, "lower_cool": 1.0,
                "under_eye": 1.0, "eyelids": 1.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
                "elbows_knees": 1.0, "fingertips": 1.0, "nails": 1.0}
@@ -467,13 +493,26 @@ def params(spec: dict) -> dict:
         p[k] = sk.get(k) or []
         if not isinstance(p[k], list):
             raise SpecError(f"skin {k} is a list")
+    only = sk.get("only")
+    if only is not None:
+        only = [only] if isinstance(only, str) else list(only)
+        bad = [g for g in only if g not in GROUPS]
+        if bad or not only:
+            raise SpecError(f"skin only: a list of groups to lay, of {', '.join(GROUPS)} (got {sk.get('only')!r})")
+    p["only"] = only
     return p
+
+
+def shaded(spec: dict) -> bool:
+    """Whether the description sets the skin part's shading (not with skin.only lacking "shading")."""
+    only = (spec.get("skin") or {}).get("only")
+    return bool(spec.get("skin")) and (only is None or "shading" in ([only] if isinstance(only, str) else only))
 
 
 def part_base(spec: dict) -> tuple[str, dict] | None:
     """(the skin part, its base channels): the tone's colour, roughness, specular and subsurface. Values the part's
     own definition gives win."""
-    if not spec.get("skin"):
+    if not spec.get("skin") or not shaded(spec):
         return None
     p = params(spec)
     t, sh = p["tone"], p["shading"]
@@ -643,6 +682,11 @@ def _build(spec: dict, J: dict) -> dict:
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
                                          "opacity": round(min((0.45 if name in ("pores", "lip_lines") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
+    if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base
+        out = {k: v for k, v in out.items() if group_of(k) in p["only"]}
+        if "shading" not in p["only"]:
+            for v in out.values():
+                v.pop("_pre", None)
     return out
 
 
@@ -652,7 +696,7 @@ def export_recipe(spec: dict, out_dir, stem: str) -> dict | None:
     coat and sheen numbers. Goes into the skin material's extras ("hifipushie_skin") and the export's json."""
     from pathlib import Path
     from . import paint, skin_swatch
-    if not spec.get("skin"):
+    if not spec.get("skin") or not shaded(spec):
         return None
     base = part_base(spec)[1]
     details = []

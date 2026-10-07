@@ -275,6 +275,65 @@ def test_grafted_neck_and_worn_parts():
         assert "UpLeg" in str(e)
 
 
+def test_layers_stay_in_order_seated():
+    """2026-10-07, s0urc3's Garrett: seated, his jacket's hem and trouser front crossed in a sawtooth. Each garment's
+    weights had been smoothed over its own mesh, so two layers 2 mm apart drifted apart (the jacket's hem toward
+    the pelvis above it). Clothes now read the skin and are not smoothed: layers agree where they overlap.
+    `rig_audit.layers` is the number: vertices of one part that lie on another at rest and are under it posed."""
+    h = _human()
+    if h is None:
+        return
+    spec, bones, Wq, Tq, surf = h
+    names = [b["name"] for b in bones]
+    N = np.zeros_like(Wq)
+    fn = np.cross(Wq[Tq[:, 1]] - Wq[Tq[:, 0]], Wq[Tq[:, 2]] - Wq[Tq[:, 0]])
+    for c in range(3):
+        np.add.at(N, Tq[:, c], fn)
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
+    hip = bones[names.index(P + "LeftUpLeg")]["head"][2]
+    knee = bones[names.index(P + "LeftLeg")]["head"][2]
+    arm = np.abs(Wq[:, 0]) > 0.22  # (hands and forearms hang beside the thighs)
+
+    def piece(lo, hi, off):  # the body's own quads between two heights, pushed out: a garment
+        keep = (Wq[:, 2] > lo) & (Wq[:, 2] < hi) & ~arm
+        T = Tq[keep[Tq].all(1)]
+        ids = np.unique(T)
+        slot = -np.ones(len(Wq), int)
+        slot[ids] = np.arange(len(ids))
+        return Wq[ids] + off * N[ids], slot[T]
+    meshes = {"trousers": piece(knee - 0.2, hip + 0.12, 0.010), "jacket": piece(hip - 0.2, hip + 0.45, 0.013)}
+    sit = rig_audit.seated(bones)
+    assert set(sit) == {P + k for k in ("LeftUpLeg", "RightUpLeg", "LeftLeg", "RightLeg")}
+
+    def through(sp):
+        sk = rig.skin_parts(sp, bones, meshes)
+        g = {k: {"V": v[0], "F": v[1], "J": np.asarray(sk[k][0]), "W": np.asarray(sk[k][1]), "targets": {}}
+             for k, v in meshes.items()}
+        V, F, J, W, part, pn = rig_audit.joined(g)
+        rows = rig_audit.layers(V, F, part, pn, rig.pose(bones, V, J, W, rig.drive_twist(bones, sit)))
+        return sum(r["through"] for r in rows if {r["outer"], r["inner"]} == {"jacket", "trousers"}), rows
+    n0, rows0 = through(spec)
+    assert n0 <= rig_audit.LAYER_BAD, rows0
+    assert "no part passes" in rig_audit.layers_text([])[0] and (not rows0 or "through" in rig_audit.layers_text(rows0)[1])
+    # each layer smoothed over its own mesh (what the default was): they cross
+    sp = copy.deepcopy(spec)
+    sp.setdefault("parts", {}).update({"jacket": {"rig_smooth": 60}, "trousers": {"rig_smooth": 60}})  # (a dense mesh)
+    n6, rows6 = through(sp)
+    assert n6 > max(3 * n0, rig_audit.LAYER_BAD), (n0, n6)
+    # parts.<p>.rig_weights: the three ways, sums 1; a wrong word is refused
+    for how in rig.PART_WEIGHTS:
+        sp = copy.deepcopy(spec)
+        sp.setdefault("parts", {})["jacket"] = {"rig_weights": how}
+        J, W = rig.skin_parts(sp, bones, {"jacket": meshes["jacket"]})["jacket"]
+        assert np.allclose(np.asarray(W).sum(1), 1, atol=1e-9), how
+    sp["parts"]["jacket"] = {"rig_weights": "harmonic"}
+    try:
+        rig.skin_parts(sp, bones, {"jacket": meshes["jacket"]})
+        raise AssertionError("an unknown rig_weights passed")
+    except ValueError as e:
+        assert "surface" in str(e)
+
+
 def test_bound_parts_do_not_bury_their_neighbours():
     """A rigged export drops faces buried in another part, but not across parts that move apart: the golfer's
     shorts had a hole where the hip bag (rig_bone Hips) sat at rest, shown as soon as the thigh lifted."""
