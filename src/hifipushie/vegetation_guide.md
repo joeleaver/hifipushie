@@ -446,8 +446,12 @@ lod_files=True)`:
   `wind_plant(name)` renders the export swaying by that recipe: look at it (the foot still, limbs out of step).
 - **Seasons** are states of the plant (`"season": "spring" | "summer" | "autumn" | "winter" | "bare" | "dead"`, `"snow": 0-1`,
   `"wet": 0-1`, `leaves.autumn` = the autumn colour; evergreens keep their needles and colour) for the looks, and
-  material variants in the export (KHR_materials_variants: spring / summer / autumn / winter / snow / wet). Snow lying on wood
-  is an engine shader (by the normal's up component; recipe in extras): the "snow" variant only frosts the leaves.
+  material variants in the export (KHR_materials_variants: spring / summer / autumn / winter / snow / wet). SNOW IS THE
+  WINTER STATE WITH SNOW ON IT: the same slots hidden and shown as in winter (a leaf-dropping plant: crown hidden, the
+  bare wood and a style's forks shown; an evergreen keeps its crown, whose `snow` variant is the ready-mixed pale colour /
+  frosted picture; a clump by its own winter state), and the snow impostor is the bare tree under snow. Snow lying on
+  wood (and per pixel on anything) is the engine's shader: `<name>_seasons.json` `snow` gives the numbers our looks use
+  (linear colour, coverage, the normal's up threshold `by_normal.from` / `to` and the formula).
 - **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh node (outside the
   scene), and `<name>_collision.glb`: the same mesh as a file, its node IN the scene and named `<name>_collision-colonly`
   (Godot's importer makes a static body of a node so named and drops the mesh).
@@ -477,10 +481,13 @@ lod_files=True)`:
   colour and normal pictures (image index in the GLB + the same PNG written beside it). For engines that drop
   KHR_materials_variants.
 - **The export contract** (`veg_export.CONTRACT`, in the GLB's extras.hifipushie_plant.contract and the seasons
-  json): version 3. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
+  json): version 5. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
   collision file, seasons json. 2 = styled deciduous plants add slot `bark_forks` (the wood mesh's second primitive:
   hidden except in bare seasons); impostor pictures per season. 3 = impostor normal map + TANGENT + 16 vertices, its
-  second picture no longer mirrored, baked shade; seasons json contract + slot_list + normal PNGs. Whoever adds,
+  second picture no longer mirrored, baked shade; seasons json contract + slot_list + normal PNGs. 4 = style anime
+  (leaf-cloud foliage: alpha-MASK cards with a dab atlas, TEXCOORD_3 = (clump gradient, clump id), Godot CUSTOM0.zw);
+  seasons json `snow` numbers + `style`; impostor shade eased on bright colours. 5 = the `snow` variant of a
+  leaf-dropping plant is its WINTER state (foliage hidden, `bark_forks` shown), not the crown painted white. Whoever adds,
   renames or re-purposes a slot or a vertex channel bumps the number and adds a line to CONTRACT_LOG and here.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
@@ -648,7 +655,8 @@ export the blades are slot `foliage`, the heads the foliage mesh's SECOND primit
 hidden, like `bark_forks`, in the seasons its layer doesn't show in).
 
 Seasons in a style: spring (fresh yellow-green), summer, autumn (`leaves.autumn`), winter (deciduous: the bare drawn
-limbs and forks; evergreen: its crown), snow (pale). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
+limbs and forks; evergreen: its crown), snow (winter's slots + snow: a deciduous tree is bare under snow, an
+evergreen's crown pale). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
 variant = `leaves.spring` colour (else the summer colour toward yellow-green) and leaves `leaves.spring_size` (0.75)
 of their length. Blossom and catkins are not built. Small plants have their own states: see "Small plants".
 

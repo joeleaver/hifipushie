@@ -558,8 +558,10 @@ The shell run writes its outputs beside the spec:
 - **3D mesh tiles** (`export_terrain(name, tiles=True)`, `terrain_run.py --tiles`): the ground and its volumes as a
   grid of seamless glTF tiles in `tiles/`, for any engine. Two modes (`"mode"`):
   - `"cliffs"` (default, how games do it): the ground is the heightmap (`ground_<i>_<j>_lod<k>.glb` grid meshes, the
-    same samples as `heightmaps/height_<i>_<j>.npy`, and `holes_<i>_<j>.png` where a cave mouth, arch or shaft opens
-    through it), and `tile_<i>_<j>_lod<k>.glb` are 3D cliff meshes laid over it wherever the ground is steeper than
+    same samples as `heightmaps/height_<i>_<j>.npy`: float32 metres, C order, row 0 the tile's NORTH edge, column 0
+    its west; and, only for the tiles that have holes, `heightmaps/holes_<i>_<j>.png` (255 = hole, one pixel per
+    heightmap cell, row 0 north; the ground entry's `holes` in the manifest) where a cave mouth, arch or shaft opens
+    through it; the ground GLBs and `ground_collision_<i>_<j>.glb` leave those cells out), and `tile_<i>_<j>_lod<k>.glb` are 3D cliff meshes laid over it wherever the ground is steeper than
     `"cliff_slope": 42` (deg) or a volume opens, reaching `"cliff_margin": 4` m past it. Under a cliff the heightmap is
     pushed a few metres into the rock, so the cliff face covers it; each cliff mesh is a closed shell of rock that
     sinks under the heightmap at its edges (its buried back is primitive `extras.role = "buried"`: skip it if you
@@ -567,8 +569,9 @@ The shell run writes its outputs beside the spec:
   - `"full"`: the whole ground as 3D mesh tiles (no heightmap in the scene).
   Both bake maps per tile per LOD (`"maps": true`): each tile has its own UV atlas and embeds base colour, ORM
   (occlusion, roughness) and a tangent-space normal map from the exact rock (with bake-only fine detail: small facets,
-  cracks, the bedding notch), so detail comes from textures, not triangles. `"texel_density": [16, 6, 2.5]`
-  (texels per metre per LOD), `"texture_max": 2048`, `"ground_density": 4`, `"micro": 1` (fine rock detail; 0 none).
+  cracks, the bedding notch), so detail comes from textures, not triangles. `"texel_density": [8, 4, 2]`
+  (texels per metre per LOD: the unique maps carry the macro look only, the tiling rock detail in `materials/` and
+  the manifest's `detail.recipe` draw what is finer than ~0.5 m), `"texture_max": 2048`, `"ground_density": 4`, `"micro": 1` (fine rock detail; 0 none).
   Beside the GLBs: `maps/<tile>_height.png` (16-bit displacement) and `maps/<tile>_weights<g>.png` (layer weights),
   `materials/<layer>_albedo/_normal/_height.png` (tileable detail textures) and the manifest's `engine_recipe` (how
   an engine blends the layers over the baked maps, triplanar on rock). The ground gets tiling detail too, one swatch
@@ -583,14 +586,21 @@ The shell run writes its outputs beside the spec:
   judge colours against photos in it; the sky as a camera sees it, deeper than the light it casts, and a deep blue sea). Other settings (metres):
   `"tile": 64` (tile size), `"voxel": 0.5` (the meshing voxel, dividing the tile; coarser LODs are LOD0 decimated),
   `"lods": 3`, `"origin": [x, y]` (the grid's origin, default the frame's south-west corner), `"error": [0.04, 0.15,
-  0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD),
+  0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD: a tile LOD over twice its budget FAILS the export's
+  checks, named with its count and why; `"collision_budget"` caps the collision mesh, default twice its LOD's),
   `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
   (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none).
-  - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitive 0
-    the ground, then the skirts (double-sided, `extras.role`); per vertex NORMAL, TANGENT, TEXCOORD_0 (the baked maps),
+  - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitives
+    by `extras.role` and material: "surface" first (what is seen; material `terrain_baked`), then in cliffs mode
+    "buried" (the shell's back under the heightmap: skip it, or draw it; material `terrain_reference`), then "skirt"
+    (double-sided, material `terrain_skirt`). An importer that drops extras (Godot) can go by the material name. Per
+    vertex NORMAL, TANGENT, TEXCOORD_0 (the baked maps),
     TEXCOORD_1 (the splat) and `_WEIGHTS0`, `_WEIGHTS1` (ground layer weights, 4 per attribute, summing to 1); with
     `"maps": false`, COLOR_0 (a display colour) instead of the baked material.
-    `collision_<i>_<j>.glb`: positions only. `heightmaps/`, `splats/` (RGBA = the same layers, a margin into the
+TEXCOORD_2 and `_DETAIL` belong to the tiling
+    rock detail (the manifest's `detail`).
+    `collision_<i>_<j>.glb`: positions only (cliffs mode: the cliff shells, backs included; load them together with
+    `ground_collision_<i>_<j>.glb`, the heightmap grid with its hole cells cut). `heightmaps/`, `splats/` (RGBA = the same layers, a margin into the
     neighbours), `trees.csv`.
   - `manifest.json`: the grid (origin, tile size, count), per tile its bounds, files, triangle counts and the volumes
     it holds, the LODs, the material layers (name, colour, roughness, triplanar scale, which attribute and channel),

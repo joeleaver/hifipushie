@@ -120,7 +120,7 @@ def season_color(spec: dict, season: str, st: dict | None = None):
             c = mix(c, sn["mix"], sn["amount"])
         return [round(float(x), 4) for x in c]
     base = list(lf.get("color", [0.16, 0.3, 0.08]))
-    if season in ("winter", "bare", "dead") and (not eg or season == "dead"):
+    if season in ("winter", "snow", "bare", "dead") and (not eg or season == "dead"):  # (snow = winter + snow laid on it)
         return None
     c = base
     if season == "autumn" and not eg:
@@ -146,11 +146,15 @@ def material_color(rgb, st: dict) -> list:
 
 def bark_color(spec: dict, st: dict) -> list:
     co = st.get("colour") or {}
-    return styled((spec.get("bark") or {}).get("color", [0.5, 0.45, 0.4]), co.get("bark_saturation", 1.0), co.get("bark_value", 1.0))
+    c = styled((spec.get("bark") or {}).get("color", [0.5, 0.45, 0.4]), co.get("bark_saturation", 1.0), co.get("bark_value", 1.0))
+    if co.get("bark_mix"):  # toward one painted colour (anime: flat and cool)
+        a = float(co.get("bark_mix_amount", 0.5))
+        c = [round(c[i] * (1 - a) + float(co["bark_mix"][i]) * a, 4) for i in range(3)]
+    return c
 
 
 # ---------------------------------------------------------------- wood: the limbs that are drawn
-def wood(tree: dict, st: dict, inside=None, size: float = 0.0) -> dict:
+def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dict:
     """A small tree of the drawn wood only: the trunk's axis, the stoutest first-order limbs and, INSIDE the crown, a
     few branches off each (`stubs`: the stoutest forks, `stub_apart` m apart; each runs into the crown and ends in a
     mass like a limb: what is left standing when the plant is bare). Fattened, bends smoothed.
@@ -293,13 +297,39 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0) -> dict:
             n_ax += 1
             n_stub += 1
             drawn.append(np.vstack([pos[sroot], spts]))
+    n_fed = 0
+    if feed is not None and len(feed) and w.get("feed"):
+        # every clump is carried: a clump with no drawn wood within `feed` x its radius gets the grown tree's own path
+        # to it (from the nearest grown node in it back down to the drawn wood). Without it outer clumps floated.
+        fr = float(w["feed"])
+        for c, rc in feed:
+            if np.linalg.norm(np.array(pos) - c, axis=1).min() <= fr * rc:
+                continue
+            near = np.flatnonzero(np.linalg.norm(P - c, axis=1) < 0.7 * rc)
+            if not len(near):
+                continue
+            n = int(near[np.argmax(rad[near])])  # (its stoutest wood: the branch that carries it)
+            path = []
+            while n not in index and n > 0:
+                path.append(n)
+                n = int(par[n])
+            if n not in index or not path:
+                continue
+            path = np.array(path[::-1])
+            root = index[n]
+            fr0 = min(max(fat * float(rad[path[0]]), float(w.get("feed_radius", 0.0)) * radius[root]), 0.8 * radius[root])
+            fpts = smooth(np.vstack([pos[root], P[path]]))[1:]
+            add(path, root, fpts, np.maximum(fr0 * rad[path] / max(float(rad[path[0]]), 1e-9), floor * fr0), n_ax, 2)
+            n_ax += 1
+            n_fed += 1
+            drawn.append(np.vstack([pos[root], fpts]))
     src = np.array(src)
     drawn_len = float(sum(np.linalg.norm(np.diff(d_, axis=0), axis=1).sum() for d_ in drawn))
     total_len = float(np.linalg.norm(P - P[par], axis=1).sum())
     return {"pos": np.array(pos), "parent": np.array(parent), "radius": np.array(radius), "axis": np.array(axis),
             "order": np.array(order), "ends": np.zeros(len(pos), bool), "key": tree["key"][src], "height": tree["height"],
             "spec": tree["spec"], "dead": None, "src": src,
-            "info": {"limbs_kept": len(kept), "limbs": len(allL), "axes": int(len(tree["axes"])), "axes_kept": n_ax, "stubs": n_stub,
+            "info": {"limbs_kept": len(kept), "limbs": len(allL), "axes": int(len(tree["axes"])), "axes_kept": n_ax, "stubs": n_stub, "fed": n_fed,
                      "wood_m": round(drawn_len, 1), "wood_m_grown": round(total_len, 1),
                      "limb_names": [L["name"] for L in kept]}}
 
@@ -471,7 +501,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
     """k ellipsoids over the foliage points: [{"c", "R" (rows = axes), "r" (semi-axes), "n" points}], lowest first."""
     cr = st["crown"]
     ztop = float(X[:, 2].max()) + 0.5 * twig
-    if cr.get("kind") == "tiers":
+    if "tiers" in (cr.get("kind"), cr.get("masses_kind")):  # (`masses_kind`: leaf clouds on tiers)
         # stacked dumplings: one upright egg per height band (round above its widest level, flat below it: `tier_under`
         # x the band), seated low in its band, so each overhangs the narrower top of the one below with an undercut.
         # `trunk_show` m of trunk stay bare under the lowest; bands differ in height by `tier_uneven` (the seed's own
@@ -666,12 +696,12 @@ def fit(tree: dict, st: dict) -> dict:
     floor = float(tree["spec"]["leaves"].get("clear", 0.03)) + 0.02
     refs = reference(tree)
     cr = st.get("crown") or {}
-    if cr.get("kind") == "tiers" and cr.get("trunk_show"):
+    if "tiers" in (cr.get("kind"), cr.get("masses_kind")) and cr.get("trunk_show"):
         floor = max(floor, 0.6 * float(cr["trunk_show"]))  # (the union's blend may sag under the lowest tier: never to the ground)
-    if len(X) >= 8 and cr.get("kind", "masses") in ("masses", "tiers"):
+    if len(X) >= 8 and cr.get("kind", "masses") in ("masses", "tiers", "clouds"):
         lo, hi = (cr["masses"], cr["masses"]) if isinstance(cr["masses"], int) else cr["masses"]
         cands = {}
-        for k in range(int(lo), int(hi) + 1):
+        for k in range(int(lo), int(hi) + 1, max(int(cr.get("masses_step", 1)), 1)):
             ells = masses(X, k, st, tl, int(tree["spec"].get("seed", 1)))
             n_ = sum(not e.get("core") for e in ells)
             if not ells or n_ in cands:
@@ -686,10 +716,17 @@ def fit(tree: dict, st: dict) -> dict:
         out["floor"] = floor
         out["blend"] = bl = out["dense"]["blend"]
         size = float(np.mean([e["r"].mean() for e in ells if not e.get("core")]))
-        mini = out["mini"] = wood(tree, st, lambda q: -field(ells, q, bl, floor=floor), size)
-    out["wood"] = wood_dense(mini, st)
-    out["forks"] = wood_dense(mini, st, (2,))
-    out["match"] = compare(tree, [(out["wood"]["V"], out["wood"]["F"])] + ([(out["dense"]["V"], out["dense"]["F"])] if out["dense"] else []), refs=refs)
+        mini = out["mini"] = wood(tree, st, lambda q: -field(ells, q, bl, floor=floor), size,
+                                    feed=[(e["c"], float(e["r"].mean())) for e in ells if not e.get("core")])
+    in_leaf_forks = bool(st["wood"].get("forks_in_leaf"))  # (a style whose crown has gaps: the forks show in leaf too, one wood mesh)
+    out["wood"] = wood_dense(mini, st, (0, 1, 2) if in_leaf_forks else (0, 1))
+    out["forks"] = None if in_leaf_forks else wood_dense(mini, st, (2,))
+    shown = [(out["dense"]["V"], out["dense"]["F"])] if out["dense"] else []
+    if out["ells"] and cr.get("kind") == "clouds":  # what is drawn is the cards, not the proxy they stand on
+        from . import veg_cloud
+        C_ = veg_cloud.clouds(tree, st, out["ells"], int((1 - float(st["wood"].get("share", 0.25))) * int(st.get("budget", 12000))), floor=floor)
+        shown = [(C_["V"], C_["F"])]
+    out["match"] = compare(tree, [(out["wood"]["V"], out["wood"]["F"])] + shown, refs=refs)
     if len(_FIT) > 6:
         _FIT.clear()
     _FIT[id(tree)] = (tree, key, out)
@@ -734,7 +771,26 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
             "blend_m": round(ft["blend"], 2), "twigs": ft["twigs"], "match": ft["match"],
             "masses_tried": ft["tried"], "wood_triangles": int(len(Fw)), "crown_triangles": 0, "budget": triangles,
             "forks_triangles": int(len(out["forks"]["F"])) if out["forks"] else 0, "kind": (st.get("crown") or {}).get("kind", "masses")}
-    if ft["ells"] and season_color(tree["spec"], season, st) is not None:
+    if ft["ells"] and season_color(tree["spec"], season, st) is not None and st["crown"].get("kind") == "clouds":
+        from . import veg_cloud
+        cr, ells = st["crown"], [e for e in ft["ells"] if not e.get("core")]
+        C_ = veg_cloud.clouds(tree, st, ells, max(triangles - len(Fw), 0), lod=triangles / max(full, 1), floor=ft["floor"])
+        V = C_["V"]
+        wd = st.get("wind") or {}
+        anchor = np.array([int(np.argmin(np.linalg.norm(mini["pos"] - e["c"], axis=1))) for e in ells])
+        b_m = np.maximum(wn["branch"][anchor], float(wd.get("mass", 0.3)))
+        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation._u(np.arange(len(ells)).astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
+        mv = C_["mass"]
+        # a long slow sweep (the clump with its limb, top more than bottom) and the cards' rims fluttering
+        out["crown"] = {**C_, "tone": C_["step"],
+                        "wind": (np.clip(V[:, 2] / max(tree["height"], 1e-6), 0, 1) ** 1.5,
+                                 np.clip(b_m[mv] + float(wd.get("squash", 0.0)) * (C_["grad"][:, 0] - 0.5), 0, 1), ph_m[mv],
+                                 float(wd.get("flutter", 0.5)) * C_["rim"] * (0.5 + 0.5 * np.array(cr.get("layers", [1.0]))[C_["layer"]]))}
+        info["crown_triangles"] = int(len(C_["F"]))
+        info.update(cards=C_["cards"], card_fill=round(C_["atlas"]["fill"], 3), card_m=round(C_["card_m"], 2), layers=len(cr.get("layers", [])),
+                    tones=int(len(np.unique(C_["step"]))), kind="clouds")
+        info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist()} for e in ells]
+    elif ft["ells"] and season_color(tree["spec"], season, st) is not None:
         cr, ells = st["crown"], ft["ells"]
         blend = ft["blend"]
         cfn = lambda q: field(ells, q, blend, floor=ft["floor"])
@@ -983,10 +1039,13 @@ def lines(info: dict) -> list[str]:
         return [f"style {info['style']}: {info['blades']} fat blades for {info['cards']} cards, {info['heads']} flower / seed heads as balls on stalks "
                 f"({info['crown_triangles']} + {info.get('heads_triangles', 0)} triangles; no atlas, no alpha)",
                 f"same individual: height {m['height_m'][1]} m (realistic {m['height_m'][0]}), spread {m['spread_m'][1]} m (realistic {m['spread_m'][0]})"]
-    out = [f"style {info['style']}: {info['limbs_kept']} limbs kept of {info['limbs']} first-order + {info.get('stubs', 0)} of their forks (shown only when bare: {info.get('forks_triangles', 0)} triangles) "
+    out = [f"style {info['style']}: {info['limbs_kept']} limbs kept of {info['limbs']} first-order + {info.get('stubs', 0)} of their forks " + (f"(shown only when bare: {info.get('forks_triangles', 0)} triangles) " if info.get('forks_triangles') else "(in the wood, seen through the gaps) ") +
            f"({info['axes_kept']} of {info['axes']} axes drawn, {info['wood_m']} of {info['wood_m_grown']} m of wood; no twigs)"
            + (f"; {info['masses']} crown {'tiers' if info.get('kind') == 'tiers' else 'masses'}" + (" + a core" if info.get("core") else "") + f" joined over {info.get('blend_m', 0)} m, for {info['twigs']} twigs"
-              if info["masses"] else "; no crown masses")
+              if info["masses"] and info.get("kind") != "clouds" else
+              (f"; {info['masses']} leaf clouds of {info.get('cards', 0)} cards in {info.get('layers', 0)} depth layers ({info.get('card_m', 0)} m across, "
+               f"alpha fill {info.get('card_fill', 0)}: overdraw ~{1 / max(info.get('card_fill', 1), 1e-3):.1f}x the visible leaf), for {info['twigs']} twigs"
+               if info["masses"] else "; no crown masses"))
            + (f", {info.get('tones', 0)} tones" if info.get("tones") else "")]
     out.append(f"same individual: outline IoU {m['iou']} against the realistic tree in leaf (true scale, feet together; azimuths "
                f"{'/'.join(str(a) for a in m['azimuths'])}: {'/'.join(f'{v:.2f}' for v in m['iou_by_azimuth'])}); height "
