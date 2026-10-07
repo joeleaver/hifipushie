@@ -17,6 +17,10 @@ import numpy as np
 
 STAGES = ((1.5, "baby"), (4, "toddler"), (9, "child"), (13, "pre-teen"), (20, "teen"), (60, "adult"), (200, "elder"))
 OUTFITS = ("tee_shorts", "onesie", "underwear", "none")
+# the tee's cloth (adult metres). The tube starts 3 cm under the shoulder joints and stands 6 mm off its hull: from
+# 7.5 cm under them at 12 mm the cloth lay close over the shoulder blades and then stepped 1-2 cm BACK where the tube
+# took over, a hump between the blades in every side view (the body's own back is flat there: measured)
+TEE = {"top": 0.03, "band": 0.08, "ease": 0.004, "tube_ease": 0.006, "hang": 0.7, "folds": 0.6}
 COLORS = {"tee": "#8fa3b5", "shorts": "#5b6470", "onesie": "#d9d2c0", "top": "#b8b0a4", "briefs": "#b8b0a4"}
 
 
@@ -88,8 +92,9 @@ def outfit(base: dict, kind: str, colors: dict | None = None) -> dict:
         # cloth with its own volume (base.garment): closed over the body's dips, hanging from the chest and belly as a
         # tube down to the hem (no navel, no muscles, the bust bridged), the shorts' legs tubes from the thigh
         parts["tee"] = {"shell": "body", "offset": round(0.005 * k, 4), "color": c["tee"], "roughness": 0.85, "blend": 0.004,
-                        "garment": cloth(hang=0.7, tube={"top": round(float(sh[2]) - 0.075 * k, 4), "bottom": round(hem - 0.04 * k, 4),
-                                                         "folds": 0.6, "band": round(0.08 * k, 4), "arms": "taper"})}
+                        "garment": cloth(hang=TEE["hang"], ease=round(TEE["ease"] * k, 4), tube_ease=round(TEE["tube_ease"] * k, 4),
+                                         tube={"top": round(float(sh[2]) - TEE["top"] * k, 4), "bottom": round(hem - 0.04 * k, 4),
+                                               "folds": TEE["folds"], "band": round(TEE["band"] * k, 4), "arms": "taper"})}
         parts["shorts"] = {"shell": "body", "offset": round(0.003 * k, 4), "color": c["shorts"], "roughness": 0.9,
                            "garment": cloth(close=20, ease=round(0.001 * k, 4), tube_ease=round(0.008 * k, 4), legs={"folds": 0.5, "band": round(0.08 * k, 4)})}
         box("tee_torso", "tee", hem, box_top, x=float(sh[0] + 0.012 * H), round=round(0.02 * H, 4))
@@ -174,14 +179,14 @@ def face(age: float, sex: float, seed: int) -> dict:
     fem, child = float(np.clip(1 - sex, 0, 1)), float(np.clip((12 - age) / 8, 0, 1))
     old = float(np.clip((age - 45) / 30, 0, 1))
     u = lambda a: float(rng.uniform(-a, a))  # noqa: E731
-    f = {"nose": u(0.7) - 0.25 * fem - 0.2 * child, "lips": u(0.5) + 0.5 * child + 0.3 * fem * old,
-         "cheeks": u(0.4) + 0.6 * child + 0.15 * fem, "chin": u(0.6) - 0.3 * fem * (0.5 + old),
+    f = {"nose": u(0.7) - 0.25 * fem - 0.2 * child, "lips": u(0.5) + 0.2 * child + 0.3 * fem * old,
+         "cheeks": u(0.4) + 0.25 * child + 0.15 * fem, "chin": u(0.6) - 0.3 * fem * (0.5 + old),
          "jaw": u(0.5) - 0.5 * fem * (0.4 + old) - 0.2 * child, "brow_ridge": u(0.4) - 0.5 * fem * (0.4 + old),
          "eyes": u(0.35) + 0.25 * child + 0.15 * fem}
     lid = 0.0026 + u(0.0006)
     return {"source": "gnm", "follow_body": True, "seed": int(seed), "spread": round(0.6 - 0.15 * max(fem, child), 3),
             "features": {k: round(float(np.clip(v, -1.5, 1.5)), 2) for k, v in f.items()},
-            "expression": {"left_eye_region_000": 0.6, "right_eye_region_000": 0.6}, "mouth_gap": 0.001,
+            "expression": {"left_eye_region_000": 0.6, "right_eye_region_000": 0.6},
             "pose": {"lid_upper": round(-lid, 4), "lid_lower": -0.0008, "smile": round(0.001 + u(0.001), 4),
                      "brow_inner": round(0.0004 + u(0.0006), 4)}}
 
