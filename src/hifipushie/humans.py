@@ -179,14 +179,14 @@ def face(age: float, sex: float, seed: int) -> dict:
     fem, child = float(np.clip(1 - sex, 0, 1)), float(np.clip((12 - age) / 8, 0, 1))
     old = float(np.clip((age - 45) / 30, 0, 1))
     u = lambda a: float(rng.uniform(-a, a))  # noqa: E731
-    f = {"nose": u(0.7) - 0.25 * fem - 0.2 * child, "lips": u(0.5) + 0.5 * child + 0.3 * fem * old,
-         "cheeks": u(0.4) + 0.6 * child + 0.15 * fem, "chin": u(0.6) - 0.3 * fem * (0.5 + old),
+    f = {"nose": u(0.7) - 0.25 * fem - 0.2 * child, "lips": u(0.5) + 0.2 * child + 0.3 * fem * old,
+         "cheeks": u(0.4) + 0.25 * child + 0.15 * fem, "chin": u(0.6) - 0.3 * fem * (0.5 + old),
          "jaw": u(0.5) - 0.5 * fem * (0.4 + old) - 0.2 * child, "brow_ridge": u(0.4) - 0.5 * fem * (0.4 + old),
          "eyes": u(0.35) + 0.25 * child + 0.15 * fem}
     lid = 0.0026 + u(0.0006)
     return {"source": "gnm", "follow_body": True, "seed": int(seed), "spread": round(0.6 - 0.15 * max(fem, child), 3),
             "features": {k: round(float(np.clip(v, -1.5, 1.5)), 2) for k, v in f.items()},
-            "expression": {"left_eye_region_000": 0.6, "right_eye_region_000": 0.6}, "mouth_gap": 0.001,
+            "expression": {"left_eye_region_000": 0.6, "right_eye_region_000": 0.6},
             "pose": {"lid_upper": round(-lid, 4), "lid_lower": -0.0008, "smile": round(0.001 + u(0.001), 4),
                      "brow_inner": round(0.0004 + u(0.0006), 4)}}
 
