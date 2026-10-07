@@ -2087,7 +2087,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     `cloth._seam_relax` (cleanup option `seams`, default on): each closed seam smoothed along its own polyline
     (6 passes, ends kept, <= 2 x keep), the first ring following by half; seams with an interfaced side stay. The
     first version (toward all neighbours, 4 mm cap) took the median 2.0 -> 0.86 mm and still read as a zigzag;
-    the along-seam version was NOT YET JUDGED when this was written (su_25_blazer, out/su_25_back.png): judge it.
+    the along-seam version (su_25_blazer, scratch out/su_25_back.png beside su_21_back / su_23_back): CB, side
+    and sleeve seams read as smooth lines, no welts or zigzag in clay at 2 cm. groove.py's number hardly moved
+    (median 1.7, p10 / p90 -4.8 / 6.8 mm): it reads the first ring's own scatter and the back's curve, not the
+    line: judge seams by render. su_25 also has the front as a closure: 2 of 2 closed, sides 2.8 mm apart.
   - Wear state: op `buttons` writes a closure (`D["pair_closures"]` -> `D["closures"]` at unfold: left over right,
     `state`, `size`; no bare stitches), `pattern_draft.build` returns `closures`, `cloth.pieces` takes them; a
     garment's `closures` entry is laid over the design's of that name key by key ({"name": "collar", "state":
@@ -2121,7 +2124,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     test_cloth_check, test_cloth_workflow, test_pattern_draft / _styles / _tailor passed after the closures commit;
     re-run tests.sh after the along-seam `_seam_relax`. Still no tests for the notched collar's roll line, wrap
     worn / turn.line, made groups (`_carry` roots).
-  - NEXT, in order: (1) judge su_25 (CB seam), tests.sh; (2) the collar's made lay (above); (3) the layered start
+  - NEXT, in order: (1) (done: su_25 judged, tests.sh green); (2) the collar's made lay (above); (3) the layered start
     (collar made + carried under `over`; `cloth_layers.tells`); (4) Garrett's wear state simulated (jacket front
     "open": do the fronts hang straight or spread? shirt collar "open"); (5) trousers (slim straight leg, crease
     folds, fly, loops / belt); (6) shirt collar proportions as a KB rule from `Body.neck_rows`, the 12 mm front gape
