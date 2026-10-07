@@ -507,7 +507,8 @@ lod_files=True)`:
   seasons json `snow` numbers + `style`; impostor shade eased on bright colours. 5 = the `snow` variant of a
   leaf-dropping plant is its WINTER state (foliage hidden, `bark_forks` shown), not the crown painted white. 6 = the impostor
   is hemi-octahedral (one quad turned by the engine's shader, an N x N atlas of views, object-space normal + depth in
-  `extras.hifipushie_impostor`, `impostorNormalTexture` files, the seasons json `impostor`); `impostor="cross"` = 5's quads;
+  `extras.hifipushie_impostor`, `impostorNormalTexture` files, the seasons json `impostor`, null for a plant exported
+  without one: small plants); `impostor="cross"` = 5's quads;
   slot `heads` carries COLOR_0 (each part's colour: petals / dab / ball, the flower's centre, the stalk) under a white
   baseColorFactor. Whoever adds,
   renames or re-purposes a slot or a vertex channel bumps the number and adds a line to CONTRACT_LOG and here.

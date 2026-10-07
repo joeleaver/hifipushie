@@ -201,9 +201,10 @@
    8
   ],
   "petal_length": 1.0,
-  "petal_width": 0.45,
+  "petal_width": 0.6,
   "centre": 0.34,
   "cup": 0.5,
-  "head_up": 0.75
+  "head_up": 0.75,
+  "petal_size": 2.2
  }
 }

@@ -469,6 +469,16 @@ def test_cartoon():
     assert all(e.get("cone") for e in ft["ells"]) and ft["match"]["iou"] > 0.7
 
 
+def test_slab_faces_out():
+    """Petals, dabs and big leaves are closed plates whose faces look outward whichever way the outline was drawn
+    (a clockwise petal outline showed its underside from above: culled in an engine)."""
+    for poly in (np.array([[0, 0], [1, 0.3], [2, 0], [1, -0.3]], float), np.array([[0, 0], [1, -0.3], [2, 0], [1, 0.3]], float)):
+        V, F, N = vs._slab(poly, np.zeros(3), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]), 0.1)
+        fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+        top = V[F].mean(1)[:, 2] > 0.04
+        assert (fn[top, 2] > 0).all() and (fn[V[F].mean(1)[:, 2] < -0.04, 2] < 0).all()
+
+
 def test_head_kinds():
     """Flower heads as balls, colour dabs or petals (cartoon daisies: by the realistic flower's form)."""
     for sp, style, kind in (("meadow_grass", "anime", "dab"), ("daisy", "cartoon", "petals"), ("meadow_grass", "cartoon", "ball")):
