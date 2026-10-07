@@ -56,6 +56,8 @@ DEFAULTS = {
     "budget": [12000, 3000, 800],   # triangle cap per tile per LOD (the border chains are always kept)
     "skirt": 0.3,          # minimum skirt depth, metres
     "collision": 1,        # which LOD the collision mesh is made from
+    "collision_budget": None,  # triangles a tile's collision mesh may have (default 2 x that LOD's budget): a LOD
+                           # that came out heavier is decimated further for collision alone (no seam guarantees)
     "heightmap": 65,       # samples a side per tile heightmap (2^k + 1, edges shared with the neighbours); 0 = none
     "splat": 128,          # splat texels a side per tile (+ a margin into the neighbours); 0 = none
     "splat_margin": 2,
@@ -2033,7 +2035,10 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     ye = G.origin[1] + np.arange(max(b0 - m, 0), min(b1 + m, NY) + 1) * v
     XE, YE = np.meshgrid(xe, ye, indexing="ij")
     h, sce = field.column(XE.ravel(), YE.ravel())
-    zlo, zhi = float(np.min(h - getattr(field, "zpad", 0.0) / np.maximum(sce, 0.15))), h.max()
+    if hasattr(field, "zlow"):  # (a cliff shell: as deep as it goes under these columns, see CliffField.zlow)
+        zlo, zhi = float(np.min(field.zlow(XE.ravel(), YE.ravel()))), h.max()
+    else:
+        zlo, zhi = float(np.min(h - getattr(field, "zpad", 0.0) / np.maximum(sce, 0.15))), h.max()
     lo = np.array([X.min() - v, Y.min() - v, -1e9])
     hi = np.array([X.max() + v, Y.max() + v, 1e9])
     for vol in vols:
@@ -2159,6 +2164,15 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
             return np.inf
         c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
         with _span("decimate.error"):
+            if hasattr(field, "front"):
+                # a cliff shell is judged where it is seen: faces with every corner on the visible rock (the rule
+                # that sorts "surface" from "buried" in _job_tile), by the visible rock's own field. The buried
+                # back's values aren't metres (slice_a's cave tile: |field| p99 0.59 at the dense mesh's own face
+                # centres, all of it 5-25 m under the ground): counted, they were the tolerance
+                thr = max(0.3, 2 * err)
+                vis = (np.abs(field.front(v)) <= thr)[f].all(1)
+                if vis.sum() >= 16:
+                    return float(np.percentile(np.abs(field.front(c[np.r_[vis, vis]])), 99))
             return float(np.percentile(np.abs(field.value(c)), 99))
 
     tol = err + error(P, faces)
@@ -2508,7 +2522,7 @@ def _job_maps(args):
         s = np.linspace(0, G.tile, hm)
         X, Y = np.meshgrid(lo[0] + s, lo[1] + s)
         h, _ = field.column(X.ravel(), Y.ravel())
-        h = h.reshape(hm, hm)[::-1].astype(np.float32)  # north-up rows
+        h = np.ascontiguousarray(h.reshape(hm, hm)[::-1], np.float32)  # north-up rows, C order on disk
         np.save(out / "heightmaps" / f"height_{i}_{j}.npy", h)
         q = np.round((h - hrange[0]) / (hrange[1] - hrange[0]) * 65535).clip(0, 65535).astype(np.uint16)
         Image.fromarray(q).save(out / "heightmaps" / f"height_{i}_{j}.png")
@@ -2755,6 +2769,41 @@ def _fingerprint(T, cfg, base, field, mats, region, G, hrange):
              "config": {k: v for k, v in cfg.items() if k not in ("incremental",)}, "heights range": hrange,
              "grid": G, "sea": _sea(T), "code": codehash.digest("terrain_mesh")}
     return Fingerprint(roots, frames, base.vols, float(cfg["cave_wall"]) + 3.0)
+
+
+class TilesCheckFailed(RuntimeError):
+    """The export's checks failed AFTER everything was written. `result` is what export_tiles would have returned
+    (out, manifest, stats, timing, check): the files and manifest.json are on disk and complete; `summary(result)`
+    is the report with the failures on top."""
+
+    def __init__(self, msg, result):
+        super().__init__(msg)
+        self.result = result
+
+
+OVER_BUDGET = 2.0  # a tile LOD with more than this x its triangle budget fails the export's checks (said per tile)
+
+
+def budget_check(manifest_tiles, cfg, lods):
+    """Tile LODs over OVER_BUDGET x their triangle budget, with what the numbers say about why."""
+    over = []
+    for e in manifest_tiles:
+        for k, L in enumerate(e["lods"]):
+            if not L or k >= lods:
+                continue
+            b = cfg["budget"][min(k, len(cfg["budget"]) - 1)]
+            if L["triangles"] <= OVER_BUDGET * b:
+                continue
+            mc = L.get("marching_cubes_triangles") or 0
+            if mc and L["triangles"] > 0.9 * mc:
+                why = ("decimation removed nothing (every simplification folded the mesh or opened it: rock or shell "
+                       "thinner than the voxel)")
+            else:
+                why = "decimation stalled above it (folds in thin rock, or its border chain alone is this long)"
+            over.append({"tile": [e["i"], e["j"]], "lod": k, "triangles": L["triangles"], "budget": int(b),
+                         "visible_triangles": L.get("visible_triangles"), "marching_cubes_triangles": mc,
+                         "volumes": e.get("volumes", []), "why": why})
+    return over
 
 
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
@@ -3277,7 +3326,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         "skirts": "primitive 1 of each tile (extras.role = skirt, double-sided material): each shared border's chain "
                   "extruded into the rock by how far the neighbours' LOD chains differ there (chains are nested "
                   "subsets, so that's at most their tolerances)",
-        "collision": f"collision_<i>_<j>.glb: LOD {cfg['collision']} surface, no skirts, positions only",
+        "collision": f"collision_<i>_<j>.glb: LOD {cfg['collision']} surface, no skirts, positions only (in cliffs "
+                     "mode: the cliff shells, their buried backs included; load it WITH ground_collision_<i>_<j>.glb, "
+                     "the heightmap's grid with the hole cells left out). A tile's collision is decimated further "
+                     "when its LOD came out over collision_budget (tiles[].collision_triangles)",
         "sea_level": _sea(T),
         "materials": {
             "layers": [{"name": nm, **mats.layer_ref(nm), "weights": f"_WEIGHTS{g}", "channel": c,
@@ -3360,7 +3412,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         }
         manifest["ground"] = ground
         manifest["heightmaps"] = {"samples": int(cfg["heightmap"]), "spacing": region.d,
-                                  "format": "float32 .npy absolute metres, north-up; .png 16-bit over the range",
+                                  "format": "float32 .npy absolute metres, C order, row 0 = the tile's north edge, "
+                                            "column 0 = its west; .png 16-bit over the range",
+                                  "holes": "heightmaps/holes_<i>_<j>.png only for tiles with holes (ground[].holes)",
                                   "range": hrange, "note": "pushed under the cliff meshes; edges shared with "
                                   "neighbours; ground_<i>_<j>_lod<k>.glb are the same samples as grid meshes (stride "
                                   "2^k, hole cells left out, vertical skirts on shared borders)"}
@@ -3370,6 +3424,11 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         with prof.stage("cave walk (parent)"):
             manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T))
         timing["cave walk"] = time.time() - t0
+    over = budget_check(manifest_tiles, cfg, G.lods)
+    manifest["budget_check"] = {"limit": f"{OVER_BUDGET:g} x the LOD's budget", "over": over}
+    for o in over[:12]:
+        log(f"OVER BUDGET: tile {o['tile'][0]},{o['tile'][1]} LOD {o['lod']}: {o['triangles']} triangles against "
+            f"{o['budget']}: {o['why']}")
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     # files no tile names any more (a tile that lost its cliff, a LOD without maps now) go; then the state the next
     # export builds on
@@ -3422,7 +3481,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 from . import terrain_swatch
                 check["failures"].append(f"the detail swatch's wrap seam shows (jump excess {detail['wrap_seam']}, "
                                          f"limit {terrain_swatch.TILE_LIMIT})")
+        for o in over:
+            check["failures"].append(f"tile {o['tile'][0]},{o['tile'][1]} LOD {o['lod']}: {o['triangles']} triangles "
+                                     f"against a budget of {o['budget']}: {o['why']}")
+        check["summary"]["over_budget"] = len(over)
         check["summary"]["failures"] = len(check["failures"])
+        check["summary"]["failed"] = check["failures"][:40]
         memo.save()
         redone["check samples"] = {"reused": memo.hits, "computed": memo.misses}
     else:  # (a preview: `preview_tiles`)
@@ -3441,9 +3505,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if peak is not None:  # (what the job used, sampled every 0.5 s: PSS of the parent and its workers)
         manifest["memory_gb"] = {k: round(v, 2) for k, v in peak.items()}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
+    result = {"out": str(out), "manifest": manifest, "stats": stats, "timing": timing, "check": check}
     if check["failures"]:
-        raise RuntimeError("seam check FAILED:\n" + "\n".join(check["failures"][:30]))
-    return {"out": str(out), "manifest": manifest, "stats": stats, "timing": timing, "check": check}
+        # (everything is written and the manifest is complete: the caller can still report it, see `summary`)
+        raise TilesCheckFailed(f"seam check FAILED (the tiles and manifest.json were written to {out}):\n"
+                               + "\n".join(check["failures"][:30]), result)
+    return result
 
 
 def preview_tiles(T, out_dir, at, radius=40.0, density=6.0, cfg=None, log=print) -> dict:
@@ -3465,8 +3532,18 @@ def summary(r) -> str:
     """A short text report of an export_tiles result."""
     M = r["manifest"]
     what = "cliff mesh tiles" if M.get("mode") == "cliffs" else "3D tiles"
-    lines = [f"{what} in {r['out']}: {M['grid'][0]} x {M['grid'][1]} tiles of {M['tile_size']:g} m"
-             + (f", {len(M['tiles'])} with cliffs" if M.get("mode") == "cliffs" else "")]
+    lines = []
+    fails = (r.get("check") or {}).get("failures") or []
+    if fails:
+        lines += [f"CHECKS FAILED ({len(fails)}). The export is COMPLETE on disk (every tile and manifest.json, whose "
+                  "seam_check.failed repeats this list) and loads in an engine. Each failure names its tiles. Open "
+                  "edges or shards in a \"buried\" primitive are under the heightmap (not seen); in \"surface\" they "
+                  "show (black slivers, holes). A tile over its budget is a valid mesh, only heavy."]
+        lines += [f"  FAILED: {f}" for f in fails[:30]]
+        if len(fails) > 30:
+            lines.append(f"  ... and {len(fails) - 30} more")
+    lines += [f"{what} in {r['out']}: {M['grid'][0]} x {M['grid'][1]} tiles of {M['tile_size']:g} m"
+              + (f", {len(M['tiles'])} with cliffs" if M.get("mode") == "cliffs" else "")]
     for k, L in enumerate(M["lods"]):
         tris = [t["lods"][k]["triangles"] for t in M["tiles"] if t["lods"][k]]
         size = sum(t["lods"][k]["bytes"] for t in M["tiles"] if t["lods"][k])
@@ -3529,6 +3606,7 @@ def _job_tile(ij):
     dense, collapsed, pos, depth, dirn = c["dense"], c["collapsed"], c["pos"], c["depth"], c["dirn"]
     CN, CW, CC, mat = c["CN"], c["CW"], c["CC"], c["mat"]
     stats, t_dec, wanted, wanted_bakes = [], 0.0, set(), []
+    t_tile = time.time()
     lo, hi = G.bounds(i, j)
     trans = _to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
     entry = {"i": i, "j": j, "min": [float(lo[0]), float(lo[1])], "max": [float(hi[0]), float(hi[1])], "lods": []}
@@ -3660,6 +3738,7 @@ def _job_tile(ij):
                 thr = max(0.3, 2 * cfg["error"][k])
                 bur = (np.abs(field.front(Ps[Fs].mean(1))) > thr) & (np.abs(field.front(Ps))[Fs].max(1) > thr)
         stem = f"tile_{i}_{j}_lod{k}"
+        from .terrain_bake import material as terrain_bake_material
         images, binfo, deferred = None, None, None
         if cfg.get("maps") and (~bur).any():
             Pv, Nv, Cv, Wv, Fv = _compact(Ps, Ns, C[src], W[src], Fs[~bur])
@@ -3668,9 +3747,12 @@ def _job_tile(ij):
             prims = [prim]
         else:
             prims = [_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[~bur]), 0, {"role": "surface"}, mats, lo, cfg)]
+        tile_mats = mat + ([terrain_bake_material("terrain_baked")] if (cfg.get("maps") and (~bur).any()) else [])
         if bur.any():
-            prims.append(_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[bur]), 1, {"role": "buried"}, mats,
-                               lo, cfg))
+            # (its own material name: an importer that drops extras, Godot's, saw the back as a second skirt surface)
+            tile_mats = tile_mats + [{**mat[0], "name": "terrain_buried"}]
+            prims.append(_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[bur]), len(tile_mats) - 1,
+                               {"role": "buried"}, mats, lo, cfg))
         if len(sf):
             prims.append(_prim(SP - origin, SN, SC, SW, sf, 1, {"role": "skirt"}, mats, lo, cfg))
         for pr in prims[1:]:  # (custom attributes on every primitive: Blender's importer can't merge them otherwise)
@@ -3678,9 +3760,7 @@ def _job_tile(ij):
                 if key in prims[0]["attrs"] and key not in pr["attrs"]:
                     pr["attrs"][key] = np.zeros((len(pr["attrs"]["POSITION"]), prims[0]["attrs"][key].shape[1]))
         fn = f"{stem}.glb"
-        from . import terrain_bake
-        glb = dict(path=out / fn, name=stem, prims=prims, trans=trans,
-                   mats=mat + ([terrain_bake.material("terrain_baked")] if (images or deferred) else []),
+        glb = dict(path=out / fn, name=stem, prims=prims, trans=trans, mats=tile_mats,
                    extras={"tile": [i, j], "lod": k, "error_m": cfg["error"][k]})
         if deferred:  # (written by _job_finish once its texels are baked)
             import pickle
@@ -3692,10 +3772,12 @@ def _job_tile(ij):
                 write_glb(glb["path"], stem, prims, trans, glb["mats"], extras=glb["extras"], images=images)
         if k == int(cfg["collision"]):
             cf = f"collision_{i}_{j}.glb"
-            write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pd - origin)},
-                                                        "indices": Fd}], trans, None,
+            Pc, Fc = _collision_mesh(Pd, Fd, int(cfg.get("collision_budget") or OVER_BUDGET * cfg["budget"][k]))
+            write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pc - origin)},
+                                                        "indices": Fc}], trans, None,
                       extras={"tile": [i, j], "collision": True, "from_lod": k})
             entry["collision"] = cf
+            entry["collision_triangles"] = int(len(Fc))
         zmin, zmax = min(zmin, float(Pd[:, 2].min())), max(zmax, float(Pd[:, 2].max()))
         size_ = None if deferred else (out / fn).stat().st_size
         entry["lods"].append({"file": fn, "triangles": int(len(Fd)), "skirt_triangles": int(len(sf)),
@@ -3706,10 +3788,27 @@ def _job_tile(ij):
         entry["lods"][-1]["timing_s"] = _since(mark)
         stats.append((i, j, k, len(Fd), len(sf), n_mc, size_))
     entry["zmin"], entry["zmax"] = zmin, zmax
+    entry["seconds"] = round(time.time() - t_tile, 1)
     entry["volumes"] = sorted({vol.name.split(":")[0] for vol in vols
                                if vol.touches(np.array([lo[0], lo[1], -1e9]), np.array([hi[0], hi[1], 1e9]))})
     entry["_bakes"] = wanted_bakes
     return entry, stats, t_dec, wanted
+
+
+def _collision_mesh(P, F, budget):
+    """A LOD's mesh for collision: as it is when within `budget` triangles, else decimated to it (pyfqmr, open borders
+    kept; no fold or seam checks: physics doesn't shade, and a half-million-face trimesh for one 64 m tile is what an
+    engine got when a LOD missed its budget)."""
+    if len(F) <= budget:
+        return P, F
+    import pyfqmr
+    s = pyfqmr.Simplify()
+    s.setMesh(np.ascontiguousarray(P, float), np.ascontiguousarray(F, np.int64))
+    s.simplify_mesh(target_count=int(budget), aggressiveness=7, max_iterations=300, preserve_border=True,
+                    verbose=False)
+    v, f, _ = s.getMesh()
+    v, f = np.asarray(v, float), np.asarray(f, np.int64)
+    return (v, f) if 0 < len(f) < len(F) else (P, F)
 
 
 def _since(mark, min_s=0.05):
@@ -4004,7 +4103,7 @@ def _job_finish(stem):
             images.append(de[key])
             ext[key] = {"index": len(images) - 1, "texCoord": de["texcoord"]}
         glb["mats"] = [dict(m) for m in glb["mats"]]
-        glb["mats"][-1]["extras"] = {"hifipushie_detail": ext}
+        [m for m in glb["mats"] if m["name"] == "terrain_baked"][0]["extras"] = {"hifipushie_detail": ext}
     with _span("maps/write glb"):
         write_glb(glb["path"], glb["name"], glb["prims"], glb["trans"], glb["mats"], extras=glb["extras"],
                   images=images)
@@ -4159,10 +4258,17 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
         # shading: a face whose corner normals point away from it renders as a black shard (a jump in the field
         # under it, or a fold decimation left)
         sh = _shards([data[i, j, k].get("visible", data[i, j, k]["surface"]) for (i, j) in tiles if (i, j, k) in data])
+        if sh["faces"]:  # (which tiles: a designer can't tell a feature from a world point)
+            per = [((i, j), _shards([data[i, j, k].get("visible", data[i, j, k]["surface"])]))
+                   for (i, j) in tiles if (i, j, k) in data]
+            per = sorted(((q["area_m2"], q["faces"], ij) for ij, q in per if q["faces"]), reverse=True)[:6]
+            sh["tiles"] = [{"tile": list(ij), "faces": n_, "area_m2": a_} for a_, n_, ij in per]
         summary[f"lod{k}_shards"] = sh
         if sh["area_pct"] > SHARD_LIMIT[min(k, len(SHARD_LIMIT) - 1)]:
-            failures.append(f"LOD {k}: {sh['faces']} faces ({sh['area_pct']}% of the area) with corner normals "
-                            f"against the face: black shards (e.g. at {sh['at'][:3]})")
+            failures.append(f"LOD {k}: {sh['faces']} faces ({sh['area_pct']}% of the visible area, limit "
+                            f"{SHARD_LIMIT[min(k, len(SHARD_LIMIT) - 1)]}%) with corner normals "
+                            f"against the face: black shards (e.g. at {sh['at'][:3]}; most in tiles "
+                            + ", ".join(f"{q['tile'][0]},{q['tile'][1]} ({q['faces']})" for q in sh["tiles"][:4]) + ")")
         if open_inside or nonman or dup_dir:
             bad = np.r_[a[~at_edge], u[cnt > 2] // nmax, fu[fcnt > 1] // nmax]
             ex = Pu[bad[:3]].round(2).tolist()

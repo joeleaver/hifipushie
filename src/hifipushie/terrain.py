@@ -136,7 +136,11 @@ def _named(spec):
         out = {}
         for i, x in enumerate(v, 1):
             x = dict(x)
-            out[str(x.pop("name", None) or f"{sec.rstrip('s')}_{i}")] = x
+            nm = x.pop("name", None)
+            if not nm and sec == "cover" and isinstance(x.get("type"), str):
+                # (by its type: "cover_1".."cover_6" in the report and the map's legend didn't say which is the meadow)
+                nm = x["type"] if x["type"] not in out else f"{x['type']}_{i}"
+            out[str(nm or f"{sec.rstrip('s')}_{i}")] = x
         spec[sec] = out
     return spec
 

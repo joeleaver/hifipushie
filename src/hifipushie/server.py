@@ -2271,7 +2271,8 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     spec's "export". tiles=True writes 3D mesh tiles instead (default workspace/terrain/<name>/tiles/): the ground
     and its volumes (arches, caves, overhangs) as seamless glTF tiles with LODs, skirts, collision, heightmap and
     splat tiles and a manifest.json, tuned by the spec's "export": {"tiles": {...}}; a seam check runs on every
-    export and fails loudly."""
+    export; when it (or a tile's triangle budget) fails the reply starts with CHECKS FAILED and lists each failure
+    with its tiles: the files are still written, complete and loadable."""
     from . import terrain_tools as tt
     from .terrain_world import Questions
     try:
@@ -2281,7 +2282,11 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     cfg = T.spec.get("export") or {}
     if tiles:
         from . import terrain_mesh
-        r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+        try:
+            r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+        except terrain_mesh.TilesCheckFailed as e:
+            # (the export is written and complete: the report, with what failed on top, not a traceback)
+            r = e.result
         return terrain_mesh.summary(r)
     path = T.export(Path(out_dir).expanduser() if out_dir else tt._dir(name) / "export",
                     size=size or cfg.get("size"), engine=engine or cfg.get("engine"))
