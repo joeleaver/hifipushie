@@ -227,6 +227,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     P = np.zeros((m, n, 3))
     P[:, 0] = P0
     ends = float(p["ends"])
+    rest = np.zeros(m, bool)
     face = float(np.clip(p["face"], 0, 1))
     side0 = np.where(away != 0, away, np.where(rng.uniform(size=m) < 0.5, -1.0, 1.0))
     axis_xy = sc.C[:2] + np.array([0.0, 0.02])
@@ -234,6 +235,14 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         s = ds * k
         t = k / (n - 1)
         d = _unit(d + (kg * ds)[:, None] * DOWN)
+        if rest.any():  # lying on a shoulder: hair slides off it to the front or the back, never out along the arm
+            # (long hair fanned out over both arms to the elbows)
+            sx = np.sign(P[:, k - 1, 0] - sc.C[0])
+            outw = rest & (d[:, 0] * sx > 0)
+            d[outw, 0] *= 0.1
+            sy = np.where(P[:, k - 1, 1] - sc.C[1] > 0.0, 1.0, -1.0)
+            d[rest, 1] += 0.7 * sy[rest]
+            d = _unit(d)
         if ends and t > 0.7:
             rad = np.zeros((m, 3))
             rad[:, :2] = P[:, k - 1, :2] - axis_xy
@@ -254,6 +263,8 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
                 c_, s_ = np.cos(rot), np.sin(rot)
                 q[mv] = sc.C + np.stack([v[:, 0] * c_ - v[:, 1] * s_, v[:, 0] * s_ + v[:, 1] * c_, v[:, 2]], 1)
         if col is not None:
+            low = q[:, 2] < sc.C[2] - 0.12
+            rest = low & (col.at(q) < clear + 0.002) & (col.grad(q)[:, 2] > 0.45) & ~is_fr
             q = col.push(q, clear)
         else:
             a_, e_, h_ = sc.coords(q)
@@ -287,7 +298,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         short = s[-1] < 0.05
         lk = {"tier": "loose", "space": "xyz", "pts": [[round(float(v), 4) for v in q] for q in Q - sc.C],
               "free": 1.0, "width": round(float(w0 * (1 + 0.3 * float(p["uneven"]) * rng.uniform(-1, 1))), 4),
-              "thickness": float(p["thickness"]) * (0.6 if is_fr[i] else 1.0), "taper": 0.3 if lvl is not None else 0.6,
+              "thickness": float(p["thickness"]) * (0.6 if is_fr[i] else 1.0), "taper": 0.2 if lvl is not None else 0.35,
               "belly": 0.4, "root": 0.7, "cup": 0.0}
         if fan is not None:
             lk["radius"] = [round(float(v), 3) for v in fan]

@@ -517,7 +517,21 @@ def material(look: dict):
     oc.target = "CYCLES"
     hb = N.new("ShaderNodeBsdfHairPrincipled")
     hb.parametrization = "COLOR"
-    L.new(col, hb.inputs["Color"])
+    # the hair BSDF's colour is not what a lit mass of strands comes out as (multiple scattering lightens and
+    # warms it: dark brown rendered ginger-blond): the look colour goes through the inverse of a measured fit,
+    # rendered = A x colour^p per linear channel (hair.CYCLES_FIT, spikes/hair_strands/hs4/cal.py)
+    A_, p_ = [float(v) for v in look.get("cycles_fit") or (1.0, 1.0)]
+    gm = N.new("ShaderNodeGamma")
+    gm.inputs["Gamma"].default_value = 1.0 / max(p_, 1e-3)
+    L.new(col, gm.inputs["Color"])
+    sc_ = N.new("ShaderNodeMix")
+    sc_.data_type = "RGBA"
+    sc_.blend_type = "MULTIPLY"
+    sc_.inputs["Factor"].default_value = 1.0
+    k_ = max(A_, 1e-6) ** (-1.0 / max(p_, 1e-3))
+    sc_.inputs["B"].default_value = (k_, k_, k_, 1)
+    L.new(gm.outputs["Color"], sc_.inputs["A"])
+    L.new(sc_.outputs["Result"], hb.inputs["Color"])
     hb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * 0.75
     hb.inputs["Radial Roughness"].default_value = 0.4
     hb.inputs["Random Roughness"].default_value = 0.2

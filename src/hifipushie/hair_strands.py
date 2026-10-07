@@ -138,7 +138,11 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             wl = 1.0 + 1.2 * float(np.clip(1.0 - W / 0.02, 0.0, 1.0))
             A = min(A * ws, 0.3 * lam * wl)  # (never wider than a third of the wavelength: it would fold over)
             # neighbours wave nearly in step (a tail swings as sheets of hair; every lock on its own phase is pasta)
-            ph = rng.uniform(-1, 1) * R * 1.2 + 2 * np.pi * s / (lam * wl)
+            # (up to random 0.6; past it locks fall fully out of step and differ in wavelength: curls, where locks
+            # in step are a crimped sheet with ridges running round the head)
+            Rc = max(R - 0.6, 0.0) / 0.4
+            wl = wl * (1 + 0.35 * Rc * rng.uniform(-1, 1))
+            ph = rng.uniform(-1, 1) * (R * 1.2 + Rc * (np.pi - 1.2)) + 2 * np.pi * s / (lam * wl)
             env = _ss(s / 0.03)
             P = P + B * (A * env * np.sin(ph))[:, None] + N * (A * env * float(Sl["curl"]) * fr * np.cos(ph))[:, None]
             hw = W / 2 * lw
@@ -154,7 +158,8 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             W_.append(W * max(th * float(Sl["flat"]), 0.004 if key == "head" else 0.0015)
                       * (1.0 if key == "head" else 0.9 if thin else 2.5))
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
-            F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W) * (0.3 if gather else 1.0))
+            # (nor further than a quarter of its length: short hair had 4 cm spikes)
+            F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
             R_.append(4.0 if lk.get("at_hairline") else 1.0)
             TS_.append(0.0 if gather else 1.0)
             WS_.append(ws)

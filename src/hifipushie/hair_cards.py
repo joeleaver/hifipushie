@@ -810,6 +810,90 @@ def core_mesh(core: dict, tiles: list, reps: int = 4) -> dict:
             "along": core["along"], "layer": np.full(n, -1.0, np.float32), "card": np.zeros(n, np.int32)}
 
 
+MASS_CELL = 0.007  # m: the voxel the hair's density is counted on
+
+
+def mass_shell(D: dict, locks: list, C, tiles: list, col=None, triangles: int = 3000, tier: str = "loose",
+               level: float = 0.3, reps: int = 10) -> dict | None:
+    """A solid surface INSIDE a loose mass of hair (what tail_cores is for a tied tail): the strands of the `tier`
+    locks counted on a voxel grid, smoothed, meshed where the hair is `level` x as dense as its typical inside, cut
+    down to `triangles`. Cards over it never show air or skin between them, and a far tier is little more than
+    this. Faces turned toward the body close to it are dropped (nobody sees the inside of a head of hair). It
+    wears the dense tile: v = how far along its strands the hair there is (root .. tip, so the tile's ragged end
+    lies at the hair's ends), u round the head. `col`: hair_loose.Collider (the body)."""
+    from scipy import ndimage
+    from skimage import measure
+    names = [str(n) for n in D["names"]]
+    if "hair_guides_free" not in names:
+        return None
+    want = np.array([lk.get("tier") == tier for lk in locks] + [False])
+    lock = np.asarray(D["lock"]).astype(int)
+    sel = (np.asarray(D["obj"]) == names.index("hair_guides_free")) & want[np.clip(lock, 0, len(want) - 1)]
+    if sel.sum() < 50:
+        return None
+    cnt = np.asarray(D["counts"])
+    first = np.r_[0, np.cumsum(cnt)]
+    idx = np.concatenate([np.arange(first[j], first[j + 1]) for j in np.nonzero(sel)[0]])
+    u = np.concatenate([np.linspace(0, 1, cnt[j]) for j in np.nonzero(sel)[0]])
+    P = np.asarray(D["pts"], float)[idx]
+    T = np.gradient(np.asarray(D["pts"], float), axis=0)[idx]
+    h = MASS_CELL
+    lo = P.min(0) - 4 * h
+    n = np.ceil((P.max(0) - lo) / h).astype(int) + 5
+    ijk = np.floor((P - lo) / h).astype(int)
+    flat = np.ravel_multi_index(ijk.T, n)
+    size = int(np.prod(n))
+    den = np.bincount(flat, minlength=size).astype(float).reshape(n)
+    uu = np.bincount(flat, weights=u, minlength=size).reshape(n)
+    tt = np.stack([np.bincount(flat, weights=T[:, k], minlength=size).reshape(n) for k in range(3)], -1)
+    dn = ndimage.gaussian_filter(den, 1.0)
+    us = ndimage.gaussian_filter(uu, 1.5) / np.maximum(ndimage.gaussian_filter(den, 1.5), 1e-9)
+    ts = np.stack([ndimage.gaussian_filter(tt[..., k], 1.5) for k in range(3)], -1)
+    ref = float(np.percentile(dn[den > 0], 60))
+    if not (dn.max() > level * ref > 0):
+        return None
+    V, F, Nn, _ = measure.marching_cubes(dn, level * ref, spacing=(h, h, h))
+    V = V + lo + 0.5 * h
+    Nn = -_unit(Nn)  # (the gradient points into the hair: density rises inward)
+    fn = _unit(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]))
+    if (fn * Nn[F].mean(1)).sum(-1).mean() < 0:
+        F, fn = F[:, ::-1], -fn
+    if col is not None:  # the faces toward the body, near it
+        fc = V[F].mean(1)
+        ph = col.at(fc)
+        F = F[~((ph < 0.03) & ((fn * col.grad(fc)).sum(-1) < -0.2)) & (ph > -0.002)]
+    if len(F) > triangles:
+        import pyfqmr
+        used = np.unique(F)
+        re_ = -np.ones(len(V), int)
+        re_[used] = np.arange(len(used))
+        sm = pyfqmr.Simplify()
+        sm.setMesh(V[used], re_[F])
+        sm.simplify_mesh(target_count=int(triangles), aggressiveness=5, preserve_border=False, verbose=False)
+        V, F, _ = sm.getMesh()
+        V, F = np.asarray(V, float), np.asarray(F, int)
+    if len(F) < 8:
+        return None
+    used = np.unique(F)
+    re_ = -np.ones(len(V), int)
+    re_[used] = np.arange(len(used))
+    V, F = V[used], re_[F]
+    q = ((V - lo - 0.5 * h) / h).T
+    grad = np.stack([ndimage.map_coordinates(g_, q, order=1, mode="nearest") for g_ in np.gradient(dn)], -1)
+    Nn = -_unit(grad)
+    tan = _unit(np.stack([ndimage.map_coordinates(ts[..., k], q, order=1, mode="nearest") for k in range(3)], -1))
+    tan = _unit(tan - (tan * Nn).sum(-1, keepdims=True) * Nn)
+    along = np.clip(ndimage.map_coordinates(us, q, order=1, mode="nearest"), 0.02, 0.98)
+    az = np.arctan2(V[:, 0] - C[0], -(V[:, 1] - C[1])) / (2 * np.pi) + 0.5
+    t = next(t for t in tiles if t["kind"] == "dense")
+    tri = np.abs(((az * reps) % 2.0) - 1.0)
+    m = len(V)
+    return {"verts": V.astype(np.float32), "tris": F.astype(np.int32),
+            "uv": np.stack([t["u0"] + (t["u1"] - t["u0"]) * tri, 1 - 0.85 * along], 1).astype(np.float32),
+            "normal": Nn.astype(np.float32), "tangent": tan.astype(np.float32), "col": np.full((m, 3), 0.8, np.float32),
+            "along": along.astype(np.float32), "layer": np.full(m, -1.0, np.float32), "card": np.zeros(m, np.int32)}
+
+
 def triangles(cards: list, S: dict, segment: float | None = None) -> int:
     seg = float(segment or S["segment"])
     lam = max(float(S["wavelength"]), 0.01)

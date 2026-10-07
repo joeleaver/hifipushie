@@ -1303,7 +1303,14 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
       parting.front, grey, noise, seed.
       tie ({"at": [az, el] deg (az 180 = the back, el up), "out": m off the scalp, "gather": {rows, locks, lift,
       width, uneven}, "tail": {length, fullness, locks, stiff, uneven, taper, coil, plait}, "escape": n wisps the tie
-      missed, "band": m}: hair gathered over the head into a tie and a tail leaving it; set parting.side "none").
+      missed, "band": m}: hair gathered over the head into a tie and a tail leaving it; set parting.side "none"),
+      loose ({"length": m | {front, top, sides, back, nape}, "level": m from the head centre (a one-length cut ends
+      there: about -0.10 the jaw, -0.17 the shoulders), "spacing": m between lock roots, "body": m the mass builds
+      up, "lift": m of root volume, "stiff": 0 hangs .. 1 keeps its root direction, "out": 0 combed along the scalp
+      .. 1 straight out of it, "back": 0..1 combed back over the crown, "messy", "uneven", "ends": + under / - out,
+      "face": 1 = kept off the face, "fringe": {length, span deg, depth, sweep, level, stiff}}: hair grown all over
+      the scalp that FALLS on the neck, shoulders and back (or stands: an afro is out 1 + stiff 1 + curl): a bob,
+      loose waves, long straight hair, a fringe, a crop, tousled hair. guide(topic="hair") has recipes per style).
     style: "locks" (solid sculpted locks: stylised hair, the default), "strands" (the locks become GUIDES of a strand
       groom on Blender's Hair Curves: realistic hair; the game export cuts cards from those strands), "cards".
     strands: a patch of the strand dials (hair.strands; guide(topic="hair"), "Strand grooms"): count, thickness,

@@ -11,12 +11,12 @@ from hifipushie import hair, store, hair_loose
 HR, OUT = os.environ["HR"], os.environ["OUT"]
 BROWN = {"gap": "#1c110c", "lit": "#5c3b28", "sheen": "#8a6044", "vary": 0.45, "root": 0.1}
 BLACK = {"gap": "#050404", "lit": "#17120f", "sheen": "#4a4038", "vary": 0.3, "root": 0.05}
-BLOND = {"gap": "#4a3520", "lit": "#b08a55", "sheen": "#dcc08c", "vary": 0.4, "root": 0.25}
+BLOND = {"gap": "#4a3a26", "lit": "#a88c62", "sheen": "#d8c49c", "vary": 0.3, "root": 0.25}
 DARKB = {"gap": "#0d0806", "lit": "#2e1e15", "sheen": "#5e4636", "vary": 0.35, "root": 0.08}
 HL = {"front": 0.72, "temples": 0.004, "sideburns": 0.02, "nape": 0.0}
 STYLES = {
     "wavy": ("hu_w30", {"parting": {"side": "left", "offset": 0.025}, "hairline": HL,
-                        "loose": {"length": 0.3, "body": 0.024, "lift": 0.008, "stiff": 0.3, "uneven": 0.5}},
+                        "loose": {"length": 0.3, "body": 0.024, "lift": 0.008, "stiff": 0.3, "uneven": 0.5, "spacing": 0.021}},
              {"wave": 0.014, "wavelength": 0.09, "curl": 0.25, "clump": 0.55, "loose": 0.45, "frizz": 0.3,
               "flyaway": 0.3, "tips": 0.6, "under_length": 0.08}, BROWN),
     "bob": ("hu_w30", {"parting": {"side": "none"}, "hairline": HL,
@@ -26,19 +26,19 @@ STYLES = {
             {"wave": 0.002, "wavelength": 0.12, "clump": 0.4, "loose": 0.15, "frizz": 0.12, "flyaway": 0.02,
              "tips": 0.15, "taper": 0.3, "under_length": 0.06}, DARKB),
     "long": ("hu_w26a", {"parting": {"side": "centre"}, "hairline": HL,
-                         "loose": {"length": 0.52, "body": 0.022, "stiff": 0.2, "uneven": 0.3, "messy": 0.05}},
+                         "loose": {"length": 0.52, "body": 0.022, "stiff": 0.2, "uneven": 0.3, "messy": 0.05, "spacing": 0.02}},
              {"wave": 0.003, "wavelength": 0.16, "clump": 0.45, "loose": 0.2, "frizz": 0.15, "flyaway": 0.12,
               "tips": 0.5, "under_length": 0.08}, BLACK),
     "tousled": ("hu_m30", {"parting": {"side": "none"}, "hairline": {**HL, "front": 0.78},
-                           "loose": {"length": {"front": 0.06, "top": 0.065, "sides": 0.035, "back": 0.04, "nape": 0.02},
-                                     "body": 0.006, "lift": 0.004, "stiff": 0.75, "out": 0.45, "messy": 0.7,
-                                     "uneven": 0.8, "back": 0.3, "spacing": 0.02}},
-                {"wave": 0.006, "wavelength": 0.05, "curl": 0.3, "clump": 0.7, "clump_size": 0.006, "loose": 0.6,
-                 "frizz": 0.4, "flyaway": 0.3, "tips": 0.8, "under_length": 0.03}, DARKB),
+                           "loose": {"length": {"front": 0.05, "top": 0.055, "sides": 0.03, "back": 0.035, "nape": 0.018},
+                                     "body": 0.006, "lift": 0.004, "stiff": 0.6, "out": 0.3, "messy": 0.7,
+                                     "uneven": 0.8, "back": 0.3, "spacing": 0.015}},
+                {"wave": 0.006, "wavelength": 0.05, "curl": 0.3, "clump": 0.4, "clump_size": 0.006, "loose": 0.6,
+                 "frizz": 0.4, "flyaway": 0.2, "tips": 0.8, "tip_spread": 0.7, "under_length": 0.03}, DARKB),
     "afro": ("hu_w28d", {"parting": {"side": "none"}, "hairline": {**HL, "front": 0.78},
                          "loose": {"length": 0.085, "body": 0.0, "lift": 0.0, "stiff": 1.0, "out": 1.0, "messy": 0.15,
                                    "uneven": 0.25, "spacing": 0.02}},
-             {"wave": 0.03, "wavelength": 0.012, "curl": 1.0, "random": 1.0, "clump": 0.5, "clump_size": 0.005,
+             {"wave": 0.03, "wavelength": 0.012, "curl": 1.0, "random": 1.0, "clump": 0.3, "clump_size": 0.005,
               "loose": 0.5, "frizz": 0.8, "flyaway": 0.5, "tips": 0.5, "under_length": 0.02, "count": 40000}, BLACK),
     "curls": ("hu_w28d", {"parting": {"side": "left", "offset": 0.02}, "hairline": {**HL, "front": 0.78},
                           "loose": {"length": 0.22, "body": 0.035, "lift": 0.012, "stiff": 0.45, "out": 0.25,
@@ -48,15 +48,15 @@ STYLES = {
               BLACK),
     "short": ("hu_m35a", {"parting": {"side": "left", "offset": 0.035}, "hairline": {**HL, "front": 0.78},
                           "loose": {"length": {"front": 0.045, "top": 0.04, "sides": 0.012, "back": 0.012, "nape": 0.006},
-                                    "body": 0.003, "lift": 0.003, "stiff": 0.6, "out": 0.15, "messy": 0.12,
-                                    "uneven": 0.3, "spacing": 0.018}},
-              {"wave": 0.001, "clump": 0.5, "clump_size": 0.005, "loose": 0.25, "frizz": 0.2, "flyaway": 0.1,
-               "tips": 0.5, "under_length": 0.012, "taper": 0.4}, BLACK),
+                                    "body": 0.003, "lift": 0.002, "stiff": 0.3, "out": 0.03, "messy": 0.1,
+                                    "uneven": 0.3, "spacing": 0.015, "back": 0.35}},
+              {"wave": 0.001, "clump": 0.3, "clump_size": 0.005, "loose": 0.25, "frizz": 0.2, "flyaway": 0.05,
+               "tips": 0.5, "tip_spread": 0.6, "under_length": 0.014, "taper": 0.4}, BLACK),
     "child": ("hu_g7", {"parting": {"side": "none"}, "hairline": {**HL, "front": 0.76},
                         "loose": {"length": 0.24, "body": 0.012, "lift": 0.004, "stiff": 0.2, "uneven": 0.5,
                                   "back": 0.2, "fringe": {"length": 0.05, "span": 42, "depth": 0.04}}},
-              {"wave": 0.005, "wavelength": 0.1, "clump": 0.35, "clump_size": 0.005, "loose": 0.5, "frizz": 0.45,
-               "flyaway": 0.5, "tips": 0.8, "thickness": 0.75, "under_length": 0.05}, BLOND),
+              {"wave": 0.005, "wavelength": 0.1, "clump": 0.2, "clump_size": 0.004, "loose": 0.35, "frizz": 0.4,
+               "flyaway": 0.25, "tips": 0.8, "thickness": 0.6, "under_length": 0.05, "count": 60000}, BLOND),
 }
 
 
@@ -154,7 +154,8 @@ def export(style):
     t = time.time()
     r = hair.export_hair(name, out, tiers=tiers)
     print(style, "export", round(time.time() - t), "s", flush=True)
-    chk = hair.check_tiers(name, r, save=f"{HR}/hu_{style}_tiers.png")
+    chk = hair.check_tiers(name, r, save=f"{HR}/hu_{style}_tiers.png", solid=False,
+                           views=("bust_front", "bust_three_quarter", "bust_back", "close_side"))
     print(hair.tiers_text(chk), flush=True)
 
 
