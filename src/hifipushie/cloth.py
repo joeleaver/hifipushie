@@ -752,6 +752,9 @@ class Body:
         self._faces = b["F"]
         self._m = None
         self._hull = {}
+        # things worn under / round the cloth that it rests on but that aren't the body (garment key "collide": the
+        # model's shoes under a trouser hem): {"V", "F" (triangles), "key"}; colliders only, never measured
+        self.worn = b.get("worn")
 
     @property
     def m(self) -> dict:
@@ -872,7 +875,7 @@ class Body:
                 P = rot(P, el, ax, theta * ws)
             return P
 
-        b = Body({"V": V, "F": self._faces, "J": J})
+        b = Body({"V": V, "F": self._faces, "J": J, "worn": self.worn})
         b._m = self.m  # the tape is the body's own (drafting, landmarks on the torso)
         return b, pose
 
@@ -1279,7 +1282,8 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
         f = 1.0
         L_hem = zt - (z_w + min(Pf[:, 1].min(), Pb[:, 1].min()))
         z_hem = float(np.interp(L_hem, along, zg))
-        Vb = body.V[(body.V[:, 2] < z_foot + 0.02) & (sgn * body.V[:, 0] > 0)]
+        Vall = body.V if not getattr(body, "worn", None) else np.r_[body.V, np.asarray(body.worn["V"], float)]
+        Vb = Vall[(Vall[:, 2] < z_foot + 0.02) & (sgn * Vall[:, 0] > 0)]  # (the shoes too: garment key "collide")
         lv = level(L_hem)
         if lv is not None and len(Vb) and L_hem > Lk:
             from scipy.spatial import cKDTree
@@ -4357,6 +4361,26 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
     own finished shape)."""
     poses = [body.straight_arms(frac=f)[0].V for f in (1.0, 0.75, 0.5, 0.25)] if smooth else []
     V, T = body.V, body.T
+    if getattr(body, "worn", None):  # (garment key "collide": the model's own parts, as an under garment is)
+        wv = dict(body.worn)
+        body = Body({"V": V, "F": body._faces, "J": body.J})
+        body._m = {"mm": {}, "at": {}}
+        out_ = _collider(body, {"V": wv["V"], "F": wv["F"]}, False)
+        if under is None:
+            out = {"bodyV": out_["bodyV"], "bodyT": out_["bodyT"]}
+            if smooth:
+                U = np.asarray(wv["V"], float)
+                d, i = cKDTree(V).query(U, k=4)
+                w = 1.0 / np.maximum(d, 1e-4) ** 2
+                w /= w.sum(1, keepdims=True)
+                carry_ = lambda P: U + np.einsum("nk,nkd->nd", w, (P - V)[i])
+                out.update(bodyV0=np.r_[poses[0], carry_(poses[0])],
+                           bodyPoses=np.stack([np.r_[P, carry_(P)] for P in poses[1:]] + [out["bodyV"]]))
+            return out
+        # with an under garment too: the worn parts join the body first (they ride it)
+        V, T = out_["bodyV"], out_["bodyT"]
+        poses = [np.r_[P, np.asarray(wv["V"], float)] for P in poses]
+        body = Body({"V": V, "F": T, "J": body.J})
     if under is None:
         out = {"bodyV": V, "bodyT": T}
         if smooth:
@@ -4547,6 +4571,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     if construct:  # the sim is the coarse one whatever the fine mesh: its size isn't in the key
         gs.pop("resolution", None)
     keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab_s if construct else fab]
+    if body_src.get("worn"):
+        keyed.append(["worn", body_src["worn"]["key"]])
     if under is not None:  # another under garment (or another drape of it) is another result
         keyed.append(["under", under["key"]])
     if solver != "blender":  # another solver's result is another result (Blender's keys stay as they were); the
@@ -5695,7 +5721,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -5886,6 +5912,8 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
                                                               "name": ug, "res": ures})
             if ures is None:
                 src["under_missing"] = ug
+        if expanded(g).get("collide"):
+            src = dict(src, worn=worn_parts(name, spec, list(expanded(g)["collide"])))
         return src
     from . import spec as specmod, store
     meta = store.build(name, int((st.get("drape") or {}).get("resolution", 192)) if isinstance(st, dict) else 192)
@@ -5893,6 +5921,53 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
     se = specmod.expand_mirror(spec)
     J = {k: np.asarray(v["pos"], float) for k, v in se.get("joints", {}).items() if isinstance(v.get("pos"), list)}
     return {"V": np.asarray(z["verts"], float), "F": np.asarray(z["faces"]), "J": J, "key": f"model:{meta.get('key')}"}
+
+
+WORN_VOXEL = 0.005  # m: the voxel worn parts (garment key "collide") are meshed at for the collider
+
+
+def worn_parts(name: str, spec: dict, parts: list) -> dict:
+    """The model's own parts a garment rests on (garment key "collide": ["shoes", "soles"] under a trouser hem), meshed
+    in a box round their elements (store.build's close-up at WORN_VOXEL), as one triangle mesh {"V", "F", "key"}.
+    A hem that ends on the foot without them stood off the bare foot as a ring: no vamp to break over."""
+    from . import spec as specmod, store
+    se = specmod.expand_mirror(spec)
+    have = set((spec.get("parts") or {}).keys())
+    bad = [p_ for p_ in parts if p_ not in have]
+    if bad:
+        raise ClothError(f"collide: no part {', '.join(bad)} in this model (have {', '.join(sorted(have))})")
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    J = {k: np.asarray(v["pos"], float) for k, v in se.get("joints", {}).items() if isinstance(v.get("pos"), list)}
+    for kind in ("blobs", "bones"):
+        for e in (se.get(kind) or {}).values():
+            if e.get("part") not in parts:
+                continue
+            if kind == "blobs":
+                at = e.get("at")
+                c = np.asarray(at, float) if isinstance(at, list) else J.get(at) if isinstance(at, str) else None
+                if c is None:
+                    continue
+                r = float(np.max(e.get("size", [0.05]))) * 1.8 + float(e.get("blend", 0.0)) + 0.01
+                pts = [c - r, c + r]
+            else:
+                pts = [J[e[j]] + sg * (float(max(e.get("r_a", 0.05), e.get("r_b", 0.05))) + 0.01)
+                       for j in ("a", "b") if e.get(j) in J for sg in (-1, 1)]
+            for q in pts:
+                lo, hi = np.minimum(lo, q), np.maximum(hi, q)
+    if not np.isfinite(lo).all():
+        raise ClothError(f"collide: no elements of {', '.join(parts)} with a position to box them")
+    lo, hi = lo - 0.02, hi + 0.02
+    res = int(np.ceil(float((hi - lo).max()) / WORN_VOXEL))
+    info = store.build(name, res, box=(lo, hi))
+    z = np.load(info["mesh"])
+    names_ = [str(n) for n in z["part_names"]]
+    on = np.isin(z["part"], [names_.index(p_) for p_ in parts if p_ in names_])
+    Fz = np.asarray(z["faces"], np.int64)
+    Fz = Fz[on[Fz].all(1)]
+    keep = np.unique(Fz)
+    remap = np.full(len(on), -1)
+    remap[keep] = np.arange(len(keep))
+    return {"V": np.asarray(z["verts"], float)[keep], "F": remap[Fz], "key": f"{info['key']}:{','.join(parts)}"}
 
 
 def _garment_for_sim(g: dict) -> dict:
@@ -6252,6 +6327,22 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         st_ = np.asarray(im_, np.float32) / 255.0
         thread = np.maximum(thread, st_)
         H -= o["stitch_depth"] * st_
+    # pressed creases (press folds standing OUT past 180 deg, a trouser's crease): the pressed edge itself, a sharp
+    # ridge `crease_width` either side of the fold's row, as high as its angle asks (a mesh at 1-2 cm turns a crease
+    # over a triangle's width: a soft rounded ridge, not the knife edge an iron leaves)
+    cw_ = float((g.get("detail") or {}).get("crease_width", 0.0025))
+    for fd in M.get("folds") or []:
+        if fd.get("kind") != "press" or float(fd.get("angle", 180)) <= 182 or not fd.get("rows"):
+            continue
+        row_ = np.asarray(fd["rows"][0], np.int64)
+        if len(row_) < 2:
+            continue
+        im_ = Image.new("L", (T, T), 0)
+        ImageDraw.Draw(im_).line([px(uv[v]) for v in row_], fill=255, width=1)
+        from scipy.ndimage import distance_transform_edt as _edt
+        dc_ = _edt(np.asarray(im_) == 0) * mpt
+        amp_ = 0.0006 * min(1.0, (float(fd["angle"]) - 180.0) / 25.0) * min(1.0, 0.5 + float(fd.get("strength", 0.6)))
+        H += (amp_ * np.clip(1.0 - dc_ / cw_, 0.0, 1.0) ** 2).astype(H.dtype)
     # buttons and buttonholes on the pieces' marks
     btn = np.zeros((T, T), np.float32)
     if o["buttons"]:
