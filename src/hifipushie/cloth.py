@@ -1164,14 +1164,26 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
         # shirt's band and ended at the throat, climbing the neck's side.
         hz = float(body.at["hps.L"][2])
 
+        vny_ = vn[:, 1]
+        side_ix = {True: np.where(vny_ > -0.3)[0], False: np.where(vny_ < 0.3)[0]}
+
         def worn_pt(x0, z0, back):
-            dxz = np.hypot(body.V[:, 0] - x0, body.V[:, 2] - z0)
-            near_ = np.where(dxz <= dxz.min() + 0.006)[0]
+            # (only the body's own back / front: at the nape the nearest vertex in x, z was one of the throat's)
+            ix_ = side_ix[bool(back)]
+            dxz = np.hypot(body.V[ix_, 0] - x0, body.V[ix_, 2] - z0)
+            if dxz.min() >= 0.008:
+                # past the body's outline at that height (a jacket's neck point lies wider than the neck, on the
+                # slope of the shoulder; the top of the shoulder itself): the cloth lies on the body's top under the
+                # point: the highest vertex at that x below it
+                col = np.where((np.abs(body.V[:, 0] - x0) < 0.006) & (body.V[:, 2] < z0) & (body.V[:, 2] > z0 - 0.12))[0]
+                if len(col):
+                    pv = body.V[col[np.argmax(body.V[col, 2])]]
+                    return np.array([x0, pv[1], pv[2]])
+            near_ = ix_[dxz <= max(dxz.min() + 0.006, 0.012)]
             yy = body.V[near_, 1]
             pv = body.V[near_[np.argmax(yy) if back else np.argmin(yy)]]
             # the point itself at the body's depth there, not the body's vertex (two points given one vertex made
-            # triangles of no size in a made piece's rest: "1652% stretched", the layered start failed); past the
-            # body's outline (over the shoulder's top) part of the way out from the vertex, so points stay apart
+            # triangles of no size in a made piece's rest: "1652% stretched", the layered start failed)
             f_ = 1.0 if dxz.min() < 0.008 else 0.3
             return np.array([pv[0] + f_ * (x0 - pv[0]), pv[1], pv[2] + f_ * (z0 - pv[2])])
         Wb = np.full((len(b), 3), np.nan)
@@ -1191,6 +1203,35 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
             # at the pattern's own lengths from the edge's middle (a neckline's ease stays in the piece)
             at_ = np.clip(sw_[mid] + (sp_ - sp_[mid]), 0.0, sw_[-1])
             Cs = np.stack([snap(np.array([np.interp(a_, sw_, Wp[:, c_]) for c_ in range(3)])) for a_ in at_])
+            if w.get("lay") == "notched":
+                # the worn neckline as a chain: the pattern's lengths between its samples (kept), on the body the
+                # seam's clearance off it (kept), each sample drawn toward where its partners' pattern x and height
+                # put it. The chart alone is not the pattern's lengths: a jacket's neck point lies wider than the
+                # neck, over the ridge of the trapezius from the back neck (the chart's step there was 42 mm for 21),
+                # and smoothing the charted curve and snapping it back out walked it 1-2 cm up the slope
+                Wr = np.zeros((len(ua), 3))
+                np.add.at(Wr, inv, Wb)
+                Wr = np.stack([snap(q_) for q_ in (Wr / np.bincount(inv)[:, None])[o]])
+                wt_ = np.full(len(Cs), 0.25)
+                ln_ = (w.get("turn") or {}).get("line")
+                if ln_ is not None and len(ln_) >= 4:  # (past the point the roll line meets the edge the chart is of the unturned front)
+                    ja, jb = sorted(int(np.argmin(((Q - np.asarray(q_, float)) ** 2).sum(1))) for q_ in (ln_[1], ln_[-2]))
+                    wt_[:ja] = wt_[jb + 1:] = 0.02
+                for it_ in range(80):
+                    Cs += wt_[:, None] * (Wr - Cs)
+                    for _ in range(4):
+                        d_ = Cs[1:] - Cs[:-1]
+                        l_ = np.maximum(np.linalg.norm(d_, axis=1), 1e-9)
+                        c_ = 0.5 * ((l_ - lq) / l_)[:, None] * d_
+                        Cs[:-1] += c_
+                        Cs[1:] -= c_
+                    Cs = np.stack([snap(q_) for q_ in Cs])
+                for _ in range(6):
+                    d_ = Cs[1:] - Cs[:-1]
+                    l_ = np.maximum(np.linalg.norm(d_, axis=1), 1e-9)
+                    c_ = 0.5 * ((l_ - lq) / l_)[:, None] * d_
+                    Cs[:-1] += c_
+                    Cs[1:] -= c_
             worn = round(float(sw_[-1] / max(sp_[-1], 1e-9)), 3)
             whole = True
             # each edge sample's partner: its piece and pattern point (the turned side past a roll line's end is
@@ -1214,7 +1255,7 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
             if ln < 1e-9:
                 dv, ln = Cp[j] - Cp[i], max(np.linalg.norm(Cp[j] - Cp[i]), 1e-9)
             Cs[j] = snap(Cs[i] + dv / ln * lq[min(i, j)])
-    for _ in range(2):
+    for _ in range(0 if (worn is not None and w.get("lay") == "notched") else 2):
         Cs[1:-1] = 0.25 * Cs[:-2] + 0.5 * Cs[1:-1] + 0.25 * Cs[2:]
     inside = uv[mine].mean(0)
     hub = Cs.mean(0)
@@ -1302,6 +1343,9 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
         th = math.radians(float(tr.get("deg", 160.0)))
         lr_len = np.sqrt(lr2)
         lr_cum = np.r_[0, np.cumsum(lr_len)]
+        if worn is not None and w.get("lay") == "notched" and len(Lr) >= 5:
+            return _notched_lay(uv[mine], Q, Lr, side, (Cs, Us, Ns, nu_sign), worn_pt, hz, Bk, Bq, uv, pid, M, pcs, body, w, lay,
+                                info=LAY_INFO.setdefault(nm, {}))
 
     for i, v in enumerate(mine):
         pnt = uv[v]
@@ -1386,6 +1430,301 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
                       + (float(w.get("out", 0.0)) + float(tr.get("gap", 0.004))) * n3)
         else:
             out[i] = c3 + al * T3 + t * U3 + float(w.get("out", 0.0)) * n3
+    return out
+
+
+LAY_INFO: dict = {}  # what the last notched lay of each piece did (numbers for diagnosis)
+NOTCH_STEP = 0.004  # m between the stations along a notched collar's roll line
+NOTCH_BLEND = 0.04  # m of neck edge before the roll line meets it over which the end's plane is eased in
+NOTCH_BRIDGE = 0.012  # m the turned side may stand over the body under it beyond its own clearance
+NOTCH_FALL = 0.0  # the fall lies this far over what the stand's own clearance leaves under it
+
+
+def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edge3, worn_pt, hz: float, Bk, Bq,
+                 uv: np.ndarray, pid: np.ndarray, M: dict, pcs: dict, body: "Body", w: dict, lay: float,
+                 info: dict | None = None) -> np.ndarray:
+    """A notched (tailored) collar as a tailor makes it, laid as two parts that meet where the collar's roll line
+    comes down to the neck edge and runs on as the lapel's roll line (wrap "seam" + "worn" + "lay": "notched";
+    `Lr` = the roll line in the collar's pattern, its first and last segments the run-on into the fronts):
+    (1) between those two points a BAND on the worn neckline: the stand follows the neck up from the seam, its own
+    clearance off it, to the roll line; the fall is turned over about the roll line, station by station as far as
+    clears what is under it (flat down over the stand and the back neck seam at centre back; open over the top of
+    the shoulder at the neck's side, where a fall can't lie folded flat: the crease curves round the neck there);
+    (2) past them the collar's END lies FLAT in the plane of the turned lapel, as the lapel's continuation across
+    the gorge seam: its pattern carried into the front's by the seam's own pairs (a rigid 2D fit), turned about the
+    lapel's roll line, on ONE plane fitted to the body where it lies worn (isometric: the end of a made collar is
+    a flat board).
+    The two share the roll line's stations (position, the pattern's tangent map there, the body's normal, the turn),
+    smoothed along it, so the surface is one. Returns the piece's vertices' positions.
+    The stand is the neck's shape, not the pattern's lengths: a collar cut with spring is longer at its roll line
+    than a neck is 3 cm up (a tailor shrinks the crease in with the iron); a made piece rests as it is laid."""
+    vn, tree = body.normals()
+    btree = cKDTree(body.V)
+    tr = w.get("turn") or {}
+    th_max = math.radians(float(tr.get("deg", 172.0)))
+    gap = float(tr.get("gap", 0.004))
+    c_fall = lay + gap + NOTCH_FALL
+
+    # the sewn edge as ONE smooth curve, in the pattern and worn (splines through the seam's samples): laid segment
+    # by segment of the samples' polyline, the stand jumped 12-15 mm at every sample (the pattern's edge and the
+    # worn one turn by different angles there, and a point 3 cm up the stand sees the difference)
+    from scipy.interpolate import CubicSpline
+    Cs_, Us_, Ns_, nu_sign = edge3
+    sq = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+    nf_ = max(8, int(round(sq[-1] / 0.003)))
+    sf = np.linspace(0, sq[-1], nf_ + 1)
+    Qf, Cf = CubicSpline(sq, Q)(sf), CubicSpline(sq, Cs_)(sf)
+    Uf, Nf = CubicSpline(sq, Us_)(sf), CubicSpline(sq, Ns_)(sf)
+    Tf = np.gradient(Cf, axis=0)
+    Tf /= np.maximum(np.linalg.norm(Tf, axis=1, keepdims=True), 1e-12)
+    tq = np.gradient(Qf, axis=0)
+    tq /= np.maximum(np.linalg.norm(tq, axis=1, keepdims=True), 1e-12)
+    segq = Qf[1:] - Qf[:-1]
+    lq2 = np.maximum((segq * segq).sum(1), 1e-18)
+
+    def frame(pnt):
+        f = np.clip(((pnt - Qf[:-1]) * segq).sum(1) / lq2, 0.0, 1.0)
+        near = Qf[:-1] + segq * f[:, None]
+        j = int(np.argmin(((near - pnt) ** 2).sum(1)))
+        tau = tq[j] + (tq[j + 1] - tq[j]) * f[j]
+        tau = tau / max(np.linalg.norm(tau), 1e-12)
+        nu = nu_sign * np.array([-tau[1], tau[0]])
+        rel = pnt - near[j]
+        inner = 0 < j < len(segq) - 1 or 0.0 < f[j] < 1.0
+        al, t = (0.0 if inner else float(rel @ tau)), (float(np.linalg.norm(rel)) * (1.0 if rel @ nu >= 0 else -1.0) if inner else float(rel @ nu))
+        c3 = Cf[j] + (Cf[j + 1] - Cf[j]) * f[j]
+        T3 = Tf[j] + (Tf[j + 1] - Tf[j]) * f[j]
+        T3 = T3 / max(np.linalg.norm(T3), 1e-12)
+        U3 = Uf[j] + (Uf[j + 1] - Uf[j]) * f[j]
+        U3 = U3 - T3 * (U3 @ T3)
+        U3 = U3 / max(np.linalg.norm(U3), 1e-12)
+        n3 = Nf[j] + (Nf[j + 1] - Nf[j]) * f[j]
+        n3 = n3 - T3 * (n3 @ T3) - U3 * (n3 @ U3)
+        n3 = n3 / max(np.linalg.norm(n3), 1e-12)
+        return c3, al, t, T3, U3, n3, tau, nu
+
+    def bnormal(P):
+        nb_ = btree.query_ball_point(P, 0.015)
+        n = vn[nb_].mean(0) if len(nb_) else vn[tree.query(P)[1]]
+        return n / max(np.linalg.norm(n), 1e-12)
+
+    def hug(pnt):  # a point of the unturned side: up the body from the seam, the seam's own clearance off it
+        c3, al, t, T3, U3, n3, tau, nu = frame(pnt)
+        P = c3 + al * T3
+        if t <= 1e-6:
+            return P + t * U3, (c3, T3, U3, n3, tau, nu)
+        ns = max(1, int(math.ceil(t / 0.006)))
+        for _ in range(ns):
+            nb = bnormal(P)
+            u = U3 - nb * (U3 @ nb)
+            u = u / np.linalg.norm(u) if np.linalg.norm(u) > 0.3 else U3
+            P = P + u * (t / ns)
+            P = P + bnormal(P) * (lay - float(body.clearance(P[None])[0]))
+        return P, (c3, T3, U3, n3, tau, nu)
+
+    # stations along the roll line (run-ons included)
+    seg = np.linalg.norm(np.diff(Lr, axis=0), axis=1)
+    cum = np.r_[0, np.cumsum(seg)]
+    ns_ = max(8, int(round(cum[-1] / NOTCH_STEP)))
+    sd = np.unique(np.r_[np.linspace(0, cum[-1], ns_ + 1), cum[1], cum[-2]])
+    Ld = np.stack([np.interp(sd, cum, Lr[:, c]) for c in range(2)], 1)
+    run = np.where(sd < cum[1] - 1e-9, -1, np.where(sd > cum[-2] + 1e-9, 1, 0))  # -1 / +1: the two run-ons
+    dseg = Ld[1:] - Ld[:-1]
+    dlen = np.maximum(np.linalg.norm(dseg, axis=1), 1e-12)
+    rts = dseg / dlen[:, None]
+    rtv = np.gradient(Ld, axis=0)
+    rtv /= np.maximum(np.linalg.norm(rtv, axis=1, keepdims=True), 1e-12)
+    perp = lambda a: np.stack([-a[..., 1], a[..., 0]], -1)
+    n_st = len(Ld)
+    S, Bm, Nn = np.zeros((n_st, 3)), np.zeros((n_st, 3, 2)), np.zeros((n_st, 3))
+    for k in np.where(run == 0)[0]:
+        S[k], (c3, T3, U3, n3, tau, nu) = hug(Ld[k])
+        nb = bnormal(S[k])
+        Tt = T3 - nb * (T3 @ nb)
+        Tt /= max(np.linalg.norm(Tt), 1e-12)
+        Ut = np.cross(nb, Tt)
+        if Ut @ U3 < 0:
+            Ut = -Ut
+        Bm[k] = np.outer(Tt, tau) + np.outer(Ut, nu)
+        Nn[k] = nb
+    ends = {}
+    for sgn, kx in ((-1, int(np.where(run == 0)[0][0])), (1, int(np.where(run == 0)[0][-1]))):
+        X2 = Ld[kx]  # where the roll line meets the neck edge
+        jx = int(np.argmin(((Q - X2) ** 2).sum(1)))
+        dir_ = Ld[kx] - Ld[kx - sgn]
+        je = 0 if (Q[0] - X2) @ dir_ > (Q[-1] - X2) @ dir_ else len(Q) - 1
+        J = np.arange(min(jx, je), max(jx, je) + 1)
+        J = J[Bk[J] == Bk[je]]
+        if len(J) < 2:
+            raise ClothError("notched collar: its end is sewn to the front by fewer than two pairs past the point its "
+                             "roll line meets the neck edge (no gorge to lie along)")
+        A, Bf = Q[J], Bq[J]
+        ca, cb_ = A.mean(0), Bf.mean(0)
+        fk = uv[pid == Bk[je]]
+
+        def fit2(reflect):
+            A0 = (A - ca) * ([1.0, -1.0] if reflect else [1.0, 1.0])
+            Hm = A0.T @ (Bf - cb_)
+            Uu, _, Vt = np.linalg.svd(Hm)
+            Rm = (Uu @ Vt).T
+            if np.linalg.det(Rm) < 0:
+                Rm = (Uu @ np.diag([1.0, -1.0]) @ Vt).T
+            G_ = Rm @ np.diag([1.0, -1.0] if reflect else [1.0, 1.0])
+            return G_, cb_ - G_ @ ca
+        G, g0 = fit2(False)
+        ed = Bf[-1] - Bf[0]
+        nf = perp(ed / max(np.linalg.norm(ed), 1e-12))
+        inside = frame(0.5 * (A[0] + A[-1]))[7] * 0.02 + 0.5 * (A[0] + A[-1])  # a point of the collar beside the seam
+        if ((G @ inside + g0 - cb_) @ nf) * ((fk.mean(0) - cb_) @ nf) > 0:  # (the collar lies ACROSS the seam from the front)
+            G, g0 = fit2(True)
+        # the turned lapel's plane where the collar's end will lie: the piece's points past the meeting point, turned
+        # about the run-on (the lapel's roll line), in the front's pattern, worn
+        r2 = rts[kx if sgn > 0 else kx - 1] * sgn  # (pointing along the run-on, away from the band)
+        m2 = side * perp(rts[kx if sgn > 0 else kx - 1])
+        rel = P2 - X2
+        sel = (rel @ r2 > -0.01)
+        pts = P2[sel] - 2 * np.outer((P2[sel] - X2) @ m2, m2)
+        pts = np.r_[pts, X2 + np.outer(np.linspace(0, 0.12, 7), r2)]
+        qf = pts @ G.T + g0
+        back_ = pcs[M["names"][Bk[je]]]["wrap"].get("side") == "back"
+        Wp = np.stack([worn_pt(float(q_[0]), hz + float(q_[1]), back_) for q_ in qf])
+        Wp = Wp + np.stack([bnormal(q_) for q_ in Wp]) * lay
+        O = S[kx].copy()
+        # the plane: through the lapel's roll line as it lies worn (from the meeting point toward the break), turned
+        # about that line until the end rests on the body (a board on a chest: it bridges the hollows)
+        n_run = len(pts) - 7
+        r3 = (Wp[-1] - O) / np.linalg.norm(Wp[-1] - O) + (Wp[-3] - O) / np.linalg.norm(Wp[-3] - O)
+        r3 /= np.linalg.norm(r3)
+        n0 = np.mean([bnormal(q_) for q_ in Wp], axis=0)
+        n0 = n0 - r3 * (n0 @ r3)
+        n0 /= max(np.linalg.norm(n0), 1e-12)
+        q0 = np.cross(n0, r3)
+        if n_run and q0 @ (Wp[:n_run].mean(0) - O) < 0:
+            q0 = -q0
+        rel_p = P2[sel] - X2
+        a_p, d_p = rel_p @ r2, np.abs(rel_p @ m2)
+        best = None
+        for ang in np.radians(np.arange(-40.0, 41.0, 2.0)):
+            q3 = math.cos(ang) * q0 + math.sin(ang) * n0
+            n3 = math.cos(ang) * n0 - math.sin(ang) * q0
+            Pp = O + np.outer(a_p, r3) + np.outer(d_p, q3) + gap * n3
+            cl = body.clearance(Pp) if len(Pp) else np.array([c_fall])
+            score = (max(0.0, c_fall - 0.001 - float(cl.min())) * 50.0 + abs(float(np.percentile(cl, 20)) - c_fall))
+            if best is None or score < best[0]:
+                best = (score, q3, n3, float(cl.min()), float(np.median(cl)))
+        _, q3, nrm, clmin, clmed = best
+        Bf3 = np.outer(r3, r2) + np.outer(-q3, m2)  # the collar's pattern -> the plane, unturned (turned flat: -q3 -> q3)
+        ends[sgn] = {"X2": X2, "kx": kx, "fit_mm": [round(clmin * 1000, 1), round(clmed * 1000, 1)], "O": O, "r2": r2, "m2": m2,
+                     "r3": r3, "q3": q3, "n": nrm, "tx": frame(X2)[6] * (1.0 if frame(X2)[6] @ r2 > 0 else -1.0)}
+        for k in np.where(run == sgn)[0]:
+            S[k] = S[kx] + Bf3 @ (Ld[k] - X2)
+            Bm[k], Nn[k] = Bf3, nrm
+    for _ in range(4):  # one surface: the tangent maps and normals eased along the line (the run-ons stay planes)
+        Bm[1:-1] = 0.25 * Bm[:-2] + 0.5 * Bm[1:-1] + 0.25 * Bm[2:]
+        Nn[1:-1] = 0.25 * Nn[:-2] + 0.5 * Nn[1:-1] + 0.25 * Nn[2:]
+    for k in range(n_st):
+        Uu, _, Vt = np.linalg.svd(Bm[k], full_matrices=False)
+        Bm[k] = Uu @ Vt
+        nn = np.cross(Bm[k][:, 0], Bm[k][:, 1])
+        Nn[k] = nn / max(np.linalg.norm(nn), 1e-12) * (1.0 if nn @ Nn[k] >= 0 else -1.0)
+
+    # each point's foot on the line
+    out = np.zeros((len(P2), 3))
+    foot = np.zeros((len(P2), 4))  # station segment, fraction, along, across
+    turned = np.zeros(len(P2), bool)
+    for i, pnt in enumerate(P2):
+        fr = np.clip(((pnt - Ld[:-1]) * dseg).sum(1) / dlen ** 2, 0.0, 1.0)
+        ft = Ld[:-1] + dseg * fr[:, None]
+        j = int(np.argmin(((ft - pnt) ** 2).sum(1)))
+        a_, d_ = float((pnt - ft[j]) @ rts[j]), float((pnt - ft[j]) @ (side * perp(rts[j])))
+        foot[i] = j, fr[j], a_, d_
+        turned[i] = d_ > 0 or run[j] != 0 or run[j + 1] != 0
+        if not turned[i]:
+            out[i] = hug(pnt)[0]
+    # how far the fall turns at each station: as far as asked, or as clears what is under it
+    dmax = np.full(n_st, 0.0)
+    for i in np.where(turned)[0]:
+        j = int(foot[i, 0])
+        dmax[j] = max(dmax[j], foot[i, 3])
+        dmax[j + 1] = max(dmax[j + 1], foot[i, 3])
+    for _ in range(3):
+        dmax[1:-1] = np.maximum(dmax[1:-1], np.maximum(dmax[:-2], dmax[2:]))
+    th = np.full(n_st, th_max)
+    m2v = side * perp(rtv)
+    for k in range(n_st):
+        if dmax[k] <= 0.004:
+            continue
+        p3 = Bm[k] @ m2v[k]
+        ds = np.linspace(0.008, dmax[k], max(2, int(dmax[k] / 0.01)))
+        for t_ in np.arange(th_max if run[k] == 0 else math.pi, math.radians(40.0), -math.radians(4.0)):
+            pts = S[k] + np.outer(ds, math.cos(t_) * p3 + math.sin(t_) * Nn[k]) + gap * Nn[k]
+            th[k] = t_
+            if float(body.clearance(pts).min()) >= c_fall - 0.0015:
+                break
+    thr = th.copy()
+    for _ in range(2):
+        th[1:-1] = np.minimum(th[1:-1], np.minimum(th[:-2], th[2:]))
+    for _ in range(4):
+        th[1:-1] = 0.25 * th[:-2] + 0.5 * th[1:-1] + 0.25 * th[2:]
+    th = np.minimum(th, thr)
+    for i in np.where(turned)[0]:
+        j, f, a_, d_ = int(foot[i, 0]), foot[i, 1], foot[i, 2], foot[i, 3]
+        S_, B_ = S[j] + (S[j + 1] - S[j]) * f, Bm[j] + (Bm[j + 1] - Bm[j]) * f
+        n_ = Nn[j] + (Nn[j + 1] - Nn[j]) * f
+        t_ = th[j] + (th[j + 1] - th[j]) * f
+        r3 = B_ @ rts[j]
+        r3 /= max(np.linalg.norm(r3), 1e-12)
+        p3 = B_ @ (side * perp(rts[j]))
+        p3 = p3 - r3 * (p3 @ r3)
+        p3 /= max(np.linalg.norm(p3), 1e-12)
+        n_ = n_ - r3 * (n_ @ r3) - p3 * (n_ @ p3)
+        n_ /= max(np.linalg.norm(n_), 1e-12)
+        if d_ <= 0:
+            out[i] = S_ + a_ * r3 + d_ * p3
+            continue
+        out[i] = S_ + a_ * r3 + d_ * (math.cos(t_) * p3 + math.sin(t_) * n_) + gap * min(1.0, d_ / 0.008) * n_
+    # the end: every point past the meeting point ALONG THE NECK EDGE lies in the plane (its foot on the roll line is
+    # back on the band's curved part for the outer half of the end: laid from there it fanned, 2-3x), eased in over
+    # NOTCH_BLEND of neck edge before it
+    flat_ = np.zeros(len(P2), bool)
+    for sgn, e_ in ends.items():
+        tx = e_["tx"] / np.linalg.norm(e_["tx"])
+        for i, pnt in enumerate(P2):
+            u_ = float((pnt - e_["X2"]) @ tx)
+            wv = float(np.clip(1.0 + u_ / NOTCH_BLEND, 0.0, 1.0))
+            if wv <= 0 or (pnt - Q.mean(0)) @ tx < 0:
+                continue
+            wv = wv * wv * (3 - 2 * wv)
+            rel = pnt - e_["X2"]
+            a_, d_ = float(rel @ e_["r2"]), float(rel @ e_["m2"])
+            Pl = e_["O"] + a_ * e_["r3"] + d_ * e_["q3"] + gap * min(1.0, max(d_, 0.0) / 0.008) * e_["n"]
+            out[i] = (1 - wv) * out[i] + wv * Pl
+            turned[i] = True
+            flat_[i] = wv >= 1.0
+    # the turned side goes over the ridge of the shoulder between the band and the end: the end's plane run on past
+    # the ridge stands up behind it as a wing, and a fall turned only as far as clears the shoulder's top stands off
+    # the back beyond it. A collar is pressed to lie: nothing of the turned side stays further than NOTCH_BRIDGE over
+    # what is under it (it bridges the hollows of a chest, not the fall of a shoulder)
+    for _ in range(3):
+        for i in np.where(turned)[0]:
+            far = float(body.clearance(out[i][None])[0]) - (c_fall + NOTCH_BRIDGE)
+            if far > 1e-4:
+                out[i] = out[i] - bnormal(out[i]) * far
+                flat_[i] = False
+    tn = np.where(turned)[0]
+    for _ in range(4):  # what still comes too near the body lies on it, a layer off
+        short = c_fall - 0.0015 - body.clearance(out[tn])
+        lo = short > 1e-4
+        if not lo.any():
+            break
+        for i in tn[lo]:
+            out[i] = out[i] + bnormal(out[i]) * (c_fall - 0.0015 - float(body.clearance(out[i][None])[0]))
+    if info is not None:
+        info["flat"] = flat_
+        kb = np.where(run == 0)[0]
+        info["dbg"] = {"P2": P2, "foot": foot, "turned": turned, "run": run, "th": th, "sd": sd, "S": S, "out": out.copy()}
+        info.update({"turn_deg": [round(math.degrees(float(th[kb].min())), 0), round(math.degrees(float(th[kb[len(kb) // 2]])), 0)],
+                     "plane_fit_mm": [ends[-1]["fit_mm"], ends[1]["fit_mm"]], "stations": int(n_st)})
     return out
 
 
@@ -2207,6 +2546,18 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             X[sel] = np.c_[q, hps[2] + U[:, 1] + float(w.get("lift", 0.0))]
         elif to == "seam":
             X[sel] = _on_seam(M, X, uv, pid, k, nm, w, body, pcs)
+            if w.get("lay") == "notched" and "flat" in LAY_INFO.get(nm, {}):
+                # between the band and the flat end the fall goes over the ridge of the shoulder: laid from two
+                # sides it is a little long there (the outer edge fans); its long edges are drawn in, the sewn edge
+                # and the flat end held, clear of the body
+                hold_ = np.zeros(len(X), bool)
+                hold_[np.r_[M["sew"][(pid[M["sew"][:, 0]] == k), 0], M["sew"][(pid[M["sew"][:, 1]] == k), 1]]] = True
+                hold_[np.where(sel)[0][LAY_INFO[nm]["flat"]]] = True
+                X[sel] = _relax_stretch(X, M, sel & ~hold_, float(w.get("lay_limit", 0.03)), iters=200)[sel]
+                off_ = float(w.get("out", 0.0)) + 0.003
+                for _ in range(3):
+                    X[sel] = body.push_out(X[sel], off_)
+                    X[sel] = _relax_stretch(X, M, sel & ~hold_, float(w.get("lay_limit", 0.03)), iters=60)[sel]
             if w.get("worn") and w.get("true", False):
                 # a piece laid by frames along a curved edge, turned about a line and carried across a seam is the
                 # right SHAPE but not the pattern's lengths (a notched collar's front ends: 36 triangles up to 3.6x
