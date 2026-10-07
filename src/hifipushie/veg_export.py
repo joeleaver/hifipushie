@@ -334,7 +334,7 @@ def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
             k_ = 0.55
             col[..., :3] = col[..., :3] * (1 - k_) + np.array([0.93, 0.95, 0.98]) * k_
         return {**at, "color": col}
-    if season in ("winter", "bare") and not evergreen(spec):
+    if season in ("winter", "bare", "snow") and not evergreen(spec):  # (snow = the winter state with snow on it: a leaf-dropping plant is bare)
         return None
     if season == "autumn" and not evergreen(spec):
         return make({**lf, "color": lf.get("autumn", AUTUMN)}, twig_color)
@@ -381,7 +381,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 3
+CONTRACT = 5
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -390,9 +390,33 @@ CONTRACT_LOG = {
     3: "styled small plants: slot heads (the foliage mesh's second primitive: flower / seed heads, hidden out of their seasons); "
        "impostor: normalTexture + TANGENT, 16 vertices (front and back of each quad apart, opposite normals), the second "
        "picture no longer mirrored, albedo with baked shade; seasons json: contract, slot_list, normalTexture files",
+    4: "style anime (leaf clouds): slot foliage is alpha-MASK cards, double sided, with a baseColorTexture (a grey dab atlas: tone x "
+       "baseColorFactor x COLOR_0) and TEXCOORD_0 = the atlas uv (in blobby it is (height in mass, mass id)); new channel TEXCOORD_3 = "
+       "(gradient 0 base .. 1 top of its clump, (clump + 0.5) / clumps) (Godot: CUSTOM0.zw); COLOR_0 = the clump's painted gradient step; "
+       "no bark_forks slot (the forks are in `bark`); seasons json: `snow` numbers (colour, coverage, the normal threshold), "
+       "`style` (name, foliage kind); impostor albedo: baked shade scaled by the season's brightness",
+    5: "the `snow` variant of a leaf-dropping plant (realistic or styled) is its WINTER state under snow: foliage (and a style's "
+       "heads) hidden, bark_forks shown, the snow impostor the bare tree; evergreens keep their crown in snow (as in 4)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
-IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
+IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
+
+
+SNOW = {"color": [0.9, 0.92, 0.95], "coverage": 0.8}  # (the looks' snow: blender_vegetation._weather at season "snow")
+
+
+def snow_numbers(spec: dict, st: dict | None) -> dict:
+    """Snow as numbers for an engine's own shader (the ready-mixed `snow` variant stays): where our looks lay it and how
+    the variant's colour was made."""
+    c = SNOW["coverage"]
+    sn = ((st or {}).get("seasons") or {}).get("snow") or {"mix": [0.93, 0.95, 0.98], "amount": 0.7}
+    return {"color_linear": SNOW["color"], "coverage": c,
+            "by_normal": {"from": round(1.0 - 1.3 * c, 3), "to": round(1.25 - 1.3 * c, 3),
+                          "formula": "snow = saturate((N.up + 0.5 * (noise(6 / m) - 0.5) - from) / (to - from)); albedo = mix(albedo, color, snow); "
+                                     "roughness = max(roughness, 0.6 * snow). N = the vertex NORMAL (a style's mass / clump normal, so a crown "
+                                     "whitens from its top); on realistic card foliage use 0.75 * |face normal.up| + 0.4 * (out of the crown).up"},
+            "variant": ({"mix_srgb": sn["mix"], "amount": sn["amount"], "how": "the snow variant's foliage colour = mix(summer colour, mix_srgb, amount), no normal test"}
+                        if st else {"how": "the snow variant's foliage picture is the summer atlas frosted"})}
 
 
 def impostor_frames() -> list:
@@ -430,7 +454,11 @@ def impostor_maps(albedo: list, normal: list, shade: list, shade_amount: float |
         solid = A[..., 3] > 0.5
         got = Sh[..., 3] > 0.05
         sh = ndimage.gaussian_filter(_bleed(np.where(got, Sh[..., 0], 1.0), got), 1.2)  # (12 samples a pixel: noisy)
-        lin_ = np.where(A[..., :3] <= 0.04045, A[..., :3] / 12.92, ((A[..., :3] + 0.055) / 1.055) ** 2.4) * (1 - k + k * sh)[..., None]
+        # bright colours take less of it: at full strength autumn's clean orange came out with brown patches (shade on
+        # a bright saturated colour reads as dirt; on a dark green as depth). By the pixel's own value (sRGB max).
+        val = np.clip((A[..., :3].max(-1) - 0.35) / 0.5, 0, 1)
+        kk = k * (1 - IMPOSTOR.get("shade_bright", 0.7) * val * val * (3 - 2 * val))
+        lin_ = np.where(A[..., :3] <= 0.04045, A[..., :3] / 12.92, ((A[..., :3] + 0.055) / 1.055) ** 2.4) * (1 - kk + kk * sh)[..., None]
         rgb = np.where(lin_ <= 0.0031308, lin_ * 12.92, 1.055 * np.maximum(lin_, 0) ** (1 / 2.4) - 0.055)
         ims.append(np.dstack([_bleed(rgb, solid), A[..., 3]]))
         n = Nw[..., :3] * 2 - 1
@@ -503,7 +531,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         textures.append({"source": len(images) - 1, "sampler": 0 if repeat else 1})
         return len(textures) - 1
 
-    def prim(V, F, uv, material, wind, colour=None, N=None):
+    def prim(V, F, uv, material, wind, colour=None, N=None, uv3=None):
         N = _normals(V, F) if N is None else N
         w4 = np.stack(wind, 1).astype(np.float32)
         at_ = {"POSITION": acc(_yup(V).astype(np.float32), "VEC3", 5126, 34962, minmax=True),
@@ -516,6 +544,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             c = np.clip(colour, 0, 1)
             c = np.c_[c, c, c] if c.ndim == 1 else c
             at_["COLOR_0"] = acc(np.c_[c, np.ones(len(c))].astype(np.float32), "VEC4", 5126, 34962)
+        if uv3 is not None:  # (a style's own pair of numbers per vertex: Godot reads TEXCOORD_2 + TEXCOORD_3 as CUSTOM0)
+            at_["TEXCOORD_3"] = acc(np.asarray(uv3, np.float32), "VEC2", 5126, 34962)
         return {"attributes": at_, "indices": acc(F.astype(np.uint32).ravel(), "SCALAR", 5125, 34963), "material": material}
 
     col = np.asarray(bark.get("color", [0.5, 0.45, 0.4]), float)
@@ -532,11 +562,20 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             "normalTexture": {"index": tex(_png(bm["normal"]), True)}})
     M_BARK = 0
 
+    dabs = None
+    if st and (st.get("crown") or {}).get("kind") == "clouds" and not tree.get("clump"):
+        from . import veg_cloud
+        dabs = veg_cloud.dab_atlas(s, st)
+
     def solid_material(nm, rgb):  # a style's closed crown: one colour (x COLOR_0, the tone of each mass); None = bare then
         m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*veg_style.material_color(rgb or [0.5, 0.5, 0.5], st), 1.0], "metallicFactor": 0.0,
                                                     "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
+        if dabs is not None:  # leaf clouds: cards cut by the dab atlas's alpha; its grey tone x the colour x COLOR_0
+            m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(dabs["color"] / 255.0), False)}  # (uint8 x 255 wraps round: the atlas must go in as 0..1)
+            m_.update(alphaMode="MASK", alphaCutoff=float(st["crown"].get("alpha_cut", 0.5)), doubleSided=True,
+                      extras={"card_fill": round(dabs["fill"], 3)})
         if rgb is None:
-            m_.update(alphaMode="MASK", alphaCutoff=1.01, extras={"hidden": True})  # (bare then: the cut-off above 1 hides it in viewers that read variants)
+            m_.update(alphaMode="MASK", alphaCutoff=1.01, extras={**m_.get("extras", {}), "hidden": True})  # (bare then: the cut-off above 1 hides it in viewers that read variants)
         materials.append(m_)
         return len(materials) - 1
 
@@ -670,7 +709,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                      "twigs_kept": 1.0, "wood_min_radius_m": 0.0, "floating": 0.0, "style": D["info"]}
                 C_ = D["crown"]
                 if C_ is not None:
-                    p_ = prim(C_["V"], C_["F"], C_["uv"], M_FOL, C_["wind"], C_["col"], C_["N"])
+                    p_ = prim(C_["V"], C_["F"], C_["uv"], M_FOL, C_["wind"], C_["col"], C_["N"], uv3=C_.get("grad"))
                     fp = [with_variants(p_, var_fol, M_FOL)]
                     Hd = D.get("heads")
                     if Hd is not None:  # a small plant's flower / seed heads: the foliage mesh's second primitive, slot `heads`
@@ -848,12 +887,19 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                                             "style": None if not st else {
                                                 "name": st["name"], "sheet": {k_: v_ for k_, v_ in st.items() if k_ != "about"},
                                                 "simplified": veg_style.lines(per[0]["lods"][0]["style"]) if per[0]["lods"] and per[0]["lods"][0].get("style") else [],
-                                                "foliage": "closed masses, no texture: albedo = the `foliage` material's baseColorFactor "
+                                                "kind": "clouds" if dabs is not None else "masses",
+                                                "foliage": ("leaf clouds: alpha-MASK cards, double sided; albedo = the dab atlas's grey tone x the "
+                                                            "`foliage` material's baseColorFactor (one per season variant) x COLOR_0 (the clump's "
+                                                            "painted gradient, one step per card); NORMAL = out of the clump's middle; TEXCOORD_0 = "
+                                                            "the atlas uv; TEXCOORD_3 = (gradient 0 base .. 1 top of its clump, (clump + 0.5) / clumps); "
+                                                            "wind: TEXCOORD_2.y = flutter, 0 at a card's middle .. at its rim") if dabs is not None else
+                                                           "closed masses, no texture: albedo = the `foliage` material's baseColorFactor "
                                                            "(one per season variant) x COLOR_0 (each mass's tone); NORMAL = smooth over each "
                                                            "mass; TEXCOORD_0 = (height within its mass 0..1, (mass index + 0.5) / masses)",
                                                 "season_colors_srgb": {se: veg_style.season_color(s, se, st) for se in veg_style.SEASONS}},
-                                            "snow": "engine shader: lerp base colour to snow by saturate(worldNormal.up * 2 - 0.6); "
-                                                    "the `snow` variant only frosts the foliage picture",
+                                            "snow": "engine shader: see snow_numbers (in <name>_seasons.json as `snow`); "
+                                                    "the `snow` variant is the ready-mixed foliage colour / picture",
+                                            "snow_numbers": snow_numbers(s, st),
                                             "collision": [{"plant": p_["name"], "capsules": p_["collision"],
                                                            "mesh_node": p_.get("collision_node")} for p_ in per]}}}
     if variants and ext_used & {"KHR_materials_variants"}:
@@ -938,9 +984,12 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
                   "channels": sorted({a_ for mesh in G["meshes"] for p_ in mesh["primitives"]
                                       if "material" in p_ and G["materials"][p_["material"]]["name"] == slot for a_ in p_["attributes"]})}
                  for slot in slots]
+    hp = (G.get("extras") or {}).get("hifipushie_plant") or {}
     out = {"contract": {"version": CONTRACT, "changes": {str(k_): v_ for k_, v_ in CONTRACT_LOG.items()},
                         "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
            "slot_list": slot_list,
+           "style": {"name": (hp.get("style") or {}).get("name", "realistic"), "foliage": (hp.get("style") or {}).get("kind", "cards")},
+           "snow": hp.get("snow_numbers"),
            "glb": Path(glb).name, "variants": names, "default": names[0], "slots": slots, "seasons": seasons,
            "note": "colours are linear RGBA factors (x the texture when there is one, x COLOR_0 where the mesh has it); "
                    "hidden = don't draw that slot's meshes in that season"}
