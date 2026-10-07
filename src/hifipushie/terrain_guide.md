@@ -357,6 +357,12 @@ and the `"story"`.
   - Every export walks a person (1.8 m tall, 0.5 m wide) through every passage and reports, in the manifest and the
     summary: floor range, least headroom, least width, the largest step between half-metre samples (0.6 m allowed),
     water depth (wading, or how far you swim), and PASSES or what stops them and where.
+  - The report of set_terrain / check_terrain walks them already (seconds, not the export's hour): the same walk
+    through the height field with the caves cut out, without the rock's relief (the export walks again in the
+    finished rock), plus each passage's climb ("climbs 49 m over 149 m of slope (33%)": a cave floor walks up to 25%,
+    sustained over 10 m), the rock over each passage's roof and each chamber's dome (under 1 m it opens to the sky),
+    and a WARNING with what to change: the chamber's `z` / `depth` that makes the climb walkable, how long the passage
+    would have to be, the stretch of a lava flow gentle enough for a tube (`from` / `to`).
 - **ground**: gentle ground rolls at player scale on its own: field-scale undulation (1-2 m over ~100 m), swales
   (broad shallow hollows where water gathers, down the slope) and hummocks in patches, by the kind (none in dunes).
   Never on sites, routes, passes or water; it doesn't make ponds. `"ground": {"undulation": 0..2, "swales": 0..2,

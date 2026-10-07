@@ -1545,6 +1545,13 @@ class Terrain:
                        f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water"
                        + self._dam_report(name, lk))
         out += design.report(self)
+        if self.spec.get("caves"):  # (walked now: the tile export takes an hour on a big level)
+            from . import terrain_caves
+            cl, cw = terrain_caves.early(self)
+            out += cl
+            for w in cw:
+                if w not in self.warnings:
+                    self.warnings.append(w)
         out += self._highest()
         out += self._drainage()
         out += design.intent(self)

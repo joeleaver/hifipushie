@@ -398,8 +398,10 @@ def report(T) -> list[str]:
     if three_d:
         cant = [c for c in cant if not c.startswith("the ground is a height field")]
         out.append("3D rock: " + ", ".join(three_d) + " are built in the mesh tiles only (export_terrain(tiles=True): "
-                   "its reply says where each landed and walks a person through every cave); this report, the map and "
-                   "the views show the height field without them")
+                   "its reply says where each landed and walks a person through every cave again in the finished "
+                   "rock); the map and the views show the height field without them"
+                   + (". The caves are walked below already (\"caves (walked now ...\")" if T.spec.get("caves")
+                      else ""))
     for c in cant:
         out.append(f"world: CAN'T BUILD YET: {c}")
         w = f"can't build yet (tell the designer): {c}"
