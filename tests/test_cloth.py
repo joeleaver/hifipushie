@@ -211,6 +211,37 @@ def test_coincident_stitches_are_parted_not_dropped():
     assert info5["coincident"] == 0 and len(sew5) == 5 and np.allclose(X5[:20], X[:20])
 
 
+def test_weld_beside_a_layer_stays_welded():
+    # A seam's draped side lies a contact gap under a made layer (a collar's fall on the back neck); its partner, the
+    # made piece's edge, is on the layer's other side. The weld carries the draped edge through the layer; the answer
+    # used to be to send those places (two rings wide) back to the sim's surface: the seam stayed as open as the sim
+    # left it. Now the draped vertices lose only the part of their move across the layer.
+    g = {"pieces": {"a": {"rect": [0.2, 0.1], "wrap": {"to": "flat", "at": [0, 0, 1.0]}},
+                    "b": {"rect": [0.2, 0.1], "wrap": {"to": "flat", "at": [0, 0, 1.0]}},
+                    "c": {"rect": [0.2, 0.1], "wrap": {"to": "flat", "at": [0, 0, 1.0]}}},
+         "seams": [["a:nw>n>ne", "b:sw>s>se"]]}
+    Bp = cloth.pieces(g, {})
+    M = cloth.mesh(Bp, 0.02)
+    uv, pid = M["uv"], M["piece"]
+    V = np.c_[uv, np.zeros(len(uv))]
+    ia, ib, ic = (pid == M["names"].index(n) for n in "abc")
+    V[ia, 1] -= 0.05                       # a: y -0.1 .. 0, z 0 (draped)
+    V[ib, 1] += 0.053; V[ib, 2] = 0.0015   # b: y 0.003 .. 0.103 (the seam 3 mm open in the plane), 1.5 mm up (made)
+    V[ic, 2] = 0.0008                      # c: a made layer between the two, over the seam
+    stiff = (ib | ic).astype(float)
+    sw = M["sew"]
+    gap = lambda X: np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
+    assert gap(V).min() > 0.003 and not cloth._crossing_verts(V, M).any()
+    W, _ = cloth.cleanup(V, M, None, {"smooth": 0}, stiff=stiff)
+    assert gap(W).max() < 1e-9 and cloth._crossing_verts(W, M).any()  # welded, through the layer
+    C, left = cloth._weld_clear(W, V, M, stiff)
+    assert left == 0 and not cloth._crossing_verts(C, M).any()
+    d = C[sw[:, 0]] - C[sw[:, 1]]
+    assert np.abs(d[:, :2]).max() < 2e-4, np.abs(d[:, :2]).max()  # closed in the cloth's plane
+    assert np.abs(d[:, 2]).max() < 0.0016                          # what is left: the layer between them
+    assert np.allclose(C[ib | ic], V[ib | ic], atol=2e-4)          # the made pieces stayed
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
