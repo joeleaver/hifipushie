@@ -3342,7 +3342,18 @@ regresses, bisect by building one spec at each commit and diffing heights.
       nearly blank (a first "pillow" texture read as flagstone paving: pillows belong in geometry); anime grass reads as
       painted dabs, anime rock as crisp painted bands; cartoon tufts are blobs, not ink ticks; pixar blades too subtle.
       ts_06_top_border (styled recipe, old geometry): flatter and paler than the baked look, faint contour-like lines on
-      the blobby grass slopes (the blotch's tone steps at grazing angles, or box-projection seams: not isolated).
+      the blobby grass slopes (not the bump: still there without it; likely the turf-lip risers' geometry, which the
+      baked colour hides: not isolated).
+    - Styled GEOMETRY seen once (ts_04_*: preview_tiles, 9 tiles round [240, 90], one LOD, no checks): blobby cliffs are
+      rounded pillow lumps (read as melted / pillowy, not yet "pebble-smooth"), anime cliffs carry strong painted strata
+      with bedding ledges, the two meet at the zone line as different rock (the brief allows it). NOT RUN YET (the heavy
+      slot was held for another session): a full ts_slice_a export with styled geometry and its seam / shard / floating
+      checks, and the pebble / alps 3x3 regressions (no styles: the field code path is unchanged when no style shapes
+      rock, so they should be byte-identical; verify).
+    - Open, in order: (1) those exports + checks; (2) the tufts op for cartoon (done) vs dab size of pixar blades (too
+      subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
+      fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
+      height / hollows (numbers only today).
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
