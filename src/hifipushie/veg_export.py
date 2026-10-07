@@ -404,7 +404,9 @@ CONTRACT_LOG = {
        "reference Godot shader spikes/godot_veg/impostor_octa.gdshader. impostor=\"cross\" keeps the old two crossed quads. "
        "Slot heads (styled small plants) now carries COLOR_0 = each part's colour (petals / dab / ball, the flower's centre, the "
        "stalk) with a WHITE baseColorFactor: switch vertex colour on for heads as for foliage. A style's clump block takes "
-       "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies)",
+       "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies). Styled small plants whose blades lie down "
+       "in winter: slot foliage_winter (the foliage mesh's next primitive: the blades lying, shown only in winter and snow, "
+       "when foliage is hidden)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -615,6 +617,22 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             mw["pbrMetallicRoughness"]["roughnessFactor"] = 0.4
             materials.append(mw)
             var_fol["wet"] = len(materials) - 1
+    # a styled small plant whose blades lie down in winter (veg_small's winter `flatten`): the lying blades are the
+    # foliage mesh's own primitive, slot `foliage_winter`, shown only in winter and snow (when `foliage` is hidden).
+    # A second primitive rather than a morph target: the engine already hides slots per season from the seasons json,
+    # blades are a few hundred triangles, and it needs no blend weights kept in step with wind and LODs.
+    M_FW, var_fw, lie = None, {}, [se for se in seasons if se in ("winter", "snow")]
+    if st and has_leaves and len(trees) == 1 and trees[0].get("clump") and lie and se0 not in lie:
+        from . import veg_small
+        if float((veg_small.season_state(s, "winter") or {}).get("flatten", 0.0)) > 0:
+            M_FW = solid_material("foliage_winter", None)
+            gone = solid_material("foliage_lying", None)  # (the upright blades' material in winter: hidden)
+            for se in seasons:
+                if se in lie:
+                    var_fw[se] = solid_material(f"foliage_winter_{se}", veg_style.season_color(s, se, st), se)
+                    var_fol[se] = gone
+                else:
+                    var_fw[se] = M_FW
     if at is not None:
         M_FOL = foliage_material(at, "foliage")
         for se in seasons:
@@ -742,6 +760,14 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                         hcol = np.array([veg_style.lin(c_) for c_ in Hd["part_colors"]])[Hd["part"]]  # (COLOR_0 = each part's colour, linear: petals, centre, stalk)
                         fp.append(with_variants(prim(Hd["V"], Hd["F"], Hd["uv"], vh[se0], Hd["wind"], hcol, N=Hd["N"]), vh, vh[se0]))
                         c["heads_triangles"] = int(len(Hd["F"]))
+                    if M_FW is not None:  # the blades lying down (winter, snow): their own primitive
+                        if "_winter_tree" not in t:
+                            t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
+                        Dw = veg_style.dress(t["_winter_tree"], st, int(triangles * share), "winter")
+                        Cw = Dw["crown"]
+                        if Cw is not None:
+                            fp.append(with_variants(prim(Cw["V"], Cw["F"], Cw["uv"], M_FW, Cw["wind"], Cw["col"], Cw["N"], uv3=Cw.get("grad")), var_fw, M_FW))
+                            c["winter_triangles"] = int(len(Cw["F"]))
                     meshes.append({"name": pre + "foliage", "primitives": fp})
                     nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                     kids.append(len(nodes) - 1)

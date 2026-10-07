@@ -694,7 +694,13 @@ becomes a ball (`ball` x its length) on a thin stalk, at most `heads`. One tone 
 foot in its own phase (the realistic card's). `budget` (800): LODs take sides and rings off the same blades. In the
 export the blades are slot `foliage`, the heads the foliage mesh's SECOND primitive, slot `heads` (COLOR_0 = each part's
 colour under a white factor: petals or ball, the flower's centre, the stalk; hidden, like `bark_forks`, in the seasons
-its layer doesn't show in). `heads_kind` "ball" | "dab" | "petals" (see the anime and cartoon notes).
+its layer doesn't show in). `heads_kind` "ball" | "dab" | "petals", or a table by the realistic flower's form
+(`{"ray": "petals", "*": "ball"}`: a daisy's rays become petals, a grass's spike a ball). Winter in the EXPORT: when the
+plant's winter state lays its blades down (veg_small's `flatten`), the lying blades are the foliage mesh's own primitive,
+slot `foliage_winter`, shown only in winter and snow while `foliage` is hidden (contract 6). Chosen over a morph target
+per season: the engine already hides and shows slots per season from the seasons json, a clump is a few hundred
+triangles (the second set costs file size, not draw calls), and nothing has to keep blend weights in step with the
+wind and the LODs.
 
 Seasons in a style: spring (fresh yellow-green; an anime conifer's fresh tips), summer, autumn (`leaves.autumn`),
 winter (deciduous: the bare drawn limbs and forks; evergreen: its crown), snow = THE WINTER STATE UNDER SNOW (contract

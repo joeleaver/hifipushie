@@ -428,6 +428,33 @@ def test_snow_is_winter_under_snow():
         assert s_["seasons"]["snow"]["foliage"]["baseColorFactor"] != s_["seasons"]["winter"]["foliage"]["baseColorFactor"]
 
 
+def test_winter_blades_lie_in_the_export():
+    """A styled small plant's winter is its own primitive (slot foliage_winter: the blades lying down), shown only in
+    winter and snow while the upright blades are hidden; its blades stand lower than the summer ones."""
+    T = v.grow({"species": "meadow_grass", "style": "blobby"})
+    with tempfile.TemporaryDirectory() as tmp:
+        c = veg_export.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=1, seasons=["summer", "winter", "snow"])
+        sj = veg_export.seasons_json(c["path"])
+        sl = {e["slot"]: e for e in sj["slot_list"]}
+        assert sl["foliage_winter"]["hidden_in"] == ["summer"] and sl["foliage"]["hidden_in"] == ["winter", "snow"]
+        G, arr = _glb(c["path"])
+        prims = G["meshes"][[m["name"] for m in G["meshes"]].index("foliage")]["primitives"]
+        tops = {G["materials"][p_["material"]]["name"]: float(arr(p_["attributes"]["POSITION"])[:, 1].max()) for p_ in prims}
+        assert tops["foliage_winter"] < 0.8 * tops["foliage"], tops
+        hp = next(p_ for p_ in prims if G["materials"][p_["material"]]["name"] == "heads")
+        assert "COLOR_0" in hp["attributes"] and G["materials"][hp["material"]]["pbrMetallicRoughness"]["baseColorFactor"][:3] == [1.0, 1.0, 1.0]
+
+
+def test_head_kinds():
+    """Flower heads as balls, colour dabs or petals (cartoon daisies: by the realistic flower's form)."""
+    for sp, style, kind in (("meadow_grass", "anime", "dab"), ("daisy", "cartoon", "petals"), ("meadow_grass", "cartoon", "ball")):
+        T = v.grow({"species": sp, "style": style, "season": "summer"})
+        H = vs.dress(T, vs.sheet(T["spec"]))["heads"]
+        assert H is not None and H["kind"] == kind and len(H["part_colors"]) == 3 and H["part"].max() <= 2, (sp, style, H and H["kind"])
+        if kind == "petals":
+            assert (H["part"] == 1).any()  # (a centre)
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
