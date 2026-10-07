@@ -3,6 +3,7 @@ neckline + a flat end in the turned lapel's plane). The lay test needs a model w
 drafted blazer); without it only the draft is tested.
 Run: uv run python tests/test_collar.py"""
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -52,13 +53,22 @@ def test_roll_line_meets_the_lapels():
     assert "lay" not in D2["pieces"]["collar"]["wrap"]
 
 
-def _placed():
-    from hifipushie import cloth, store
-    try:
-        spec = store.load("ga_suit")
-    except Exception:
-        return None
+FIXTURE = Path(__file__).parent / "data" / "ga_suit_collar.json"  # ga_suit's spec as this test was written (its
+# history 0006): the live workspace model is changed by design work (reading it, this test failed when its collar did)
+
+
+def _placed(stand=None, fall=None):
+    from hifipushie import cloth, stylesheet
+    spec = stylesheet.resolve(json.loads(FIXTURE.read_text()))
     g = json.loads(json.dumps(spec["cloth"]["jacket"]))
+    for o in g["design"]["ops"]:
+        if o["op"] == "collar":
+            o.update({k: v for k, v in (("stand_height", stand), ("fall", fall)) if v is not None})
+    try:
+        cloth.Body(cloth.model_body("ga_suit", spec, dict(g, over=None)))
+    except Exception as e:  # (the base body's template assets aren't installed)
+        print("   (no base body:", repr(e)[:120], ")")
+        return None
     g["over"] = None
     g["made"] = {}
     return cloth, cloth.build(cloth._garment_for_sim(g), cloth.model_body("ga_suit", spec, g), "ga_suit:jacket",
@@ -66,13 +76,22 @@ def _placed():
 
 
 def test_made_lay():
+    _made_lay(None, None, 0.03, 0.003)
+
+
+def test_made_lay_short_stand():
+    # a 24 mm stand (a jacket over a shirt whose band is 20 mm: ga_suit since the layers round)
+    _made_lay(0.024, 0.036, 0.024, 0.0045)
+
+
+def _made_lay(stand, fall, sh, asym_max):
     """The blazer's collar, made, as the sim gets it: no triangle past 1.3 x its pattern, the neck edge the seam's
     clearance off the body all along the band, the stand up the neck, the fall turned down over the neck seam at
     centre back, the end flat (isometric) and resting on the chest, nothing crossing the collar; it is one made
     construction, carried."""
-    got = _placed()
+    got = _placed(stand, fall)
     if got is None:
-        print("   (no model ga_suit in the workspace: the lay is not tested)")
+        print("   (the lay is not tested)")
         return
     cloth, res = got
     M, X, Bp, body = res["coarse"], res["Xs"], res["pieces"], res["placed_on"]
@@ -95,8 +114,6 @@ def test_made_lay():
     cb = cb[np.argsort(uv[cb, 1])]
     z = X[cb, 2] - X[cb[0], 2]
     top = int(np.argmax(z))
-    from hifipushie import store
-    sh = next(o for o in store.load("ga_suit")["cloth"]["jacket"]["design"]["ops"] if o["op"] == "collar")["stand_height"]
     assert 0.8 * sh < z[top] < sh + 0.005 and abs(uv[cb[top], 1] - sh) < 0.006, (z[top], uv[cb[top]], sh)  # the stand stands
     assert z[-1] < -0.005, z[-1]  # the fall's edge hangs below the neck seam: it covers it
     assert float(body.clearance(X[cb]).max()) < 0.02  # ... and lies on the neck and the back, not off them
@@ -117,8 +134,8 @@ def test_made_lay():
     dm, jm = cKDTree(uv[vc]).query(uv[vc] * [-1, 1])
     ok = dm < 1e-4  # vertices whose mirror in the pattern is a vertex too
     asym = np.linalg.norm(X[vc[ok]] - X[vc[jm[ok]]] * [-1, 1, 1], axis=1)
-    # (3.8 mm p95 with ga_suit's 24 mm stand at 2 cm triangles, 3 mm with the old 30 mm one)
-    assert ok.sum() > 20 and np.percentile(asym, 95) < 0.0045, (ok.sum(), np.percentile(asym, 95))
+    # (3.8 mm p95 with a 24 mm stand at 2 cm triangles, under 3 with the 30 mm one)
+    assert ok.sum() > 20 and np.percentile(asym, 95) < asym_max, (ok.sum(), np.percentile(asym, 95))
 
 
 if __name__ == "__main__":

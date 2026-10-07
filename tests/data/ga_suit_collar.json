@@ -1,0 +1,208 @@
+{
+ "symmetry": true,
+ "blend": 0.03,
+ "joints": {},
+ "bones": {},
+ "blobs": {},
+ "base": {
+  "body": {
+   "source": "makehuman",
+   "age": 35,
+   "height": 1.78,
+   "weight": 0.5,
+   "muscle": 0.5
+  }
+ },
+ "parts": {
+  "body": {
+   "color": "#d9b08c"
+  }
+ },
+ "cloth": {
+  "shirt": {
+   "pattern": {
+    "from": "simon",
+    "length": 0.15
+   },
+   "fabric": "shirting",
+   "color": "#8fb3d9",
+   "backend": "zozo",
+   "resolution": 0.01,
+   "coarse": 0.02,
+   "detail": {
+    "texture": 4096
+   }
+  },
+  "jacket": {
+   "design": {
+    "kind": "jacket",
+    "block": "bodice",
+    "fit": "regular",
+    "fabric": "wool_suiting",
+    "block_options": {
+     "fitted": true,
+     "cb": "seam",
+     "chest_ease": 0.1,
+     "length": "hips",
+     "length_bonus": 0.12,
+     "darts": false
+    },
+    "ops": [
+     {
+      "op": "contour",
+      "edge": "centre_back",
+      "at": [
+       [
+        "top",
+        0.0
+       ],
+       [
+        "chest",
+        0.006
+       ],
+       [
+        "waist",
+        0.022
+       ],
+       [
+        "hem",
+        0.004
+       ]
+      ]
+     },
+     {
+      "op": "style_line",
+      "piece": "front",
+      "name": "sideF",
+      "from": {
+       "edge": "armhole>armholePitch",
+       "t": 0.45
+      },
+      "to": {
+       "edge": "hem>cfHem",
+       "t": 0.22
+      },
+      "names": [
+       "front",
+       "side_front"
+      ]
+     },
+     {
+      "op": "style_line",
+      "piece": "back",
+      "name": "sideB",
+      "from": {
+       "edge": "armhole>armholePitch",
+       "t": 0.45
+      },
+      "to": {
+       "edge": "hem>cbHem",
+       "t": 0.22
+      },
+      "names": [
+       "back",
+       "side_back"
+      ]
+     },
+     {
+      "op": "join",
+      "a": "side_front",
+      "b": "side_back",
+      "name": "side"
+     },
+     {
+      "op": "take_in",
+      "line": "sideF",
+      "amount": 0.022
+     },
+     {
+      "op": "take_in",
+      "line": "sideB",
+      "amount": 0.03
+     },
+     {
+      "op": "contour",
+      "edge": [
+       "sideF",
+       "sideB"
+      ],
+      "at": [
+       [
+        "waist",
+        0.0
+       ],
+       [
+        "hem",
+        -0.016
+       ]
+      ]
+     },
+     {
+      "op": "lapel",
+      "break_y": 0.4,
+      "stand": 0.02,
+      "width": 0.085,
+      "gorge": "straight",
+      "gorge_drop": 0.085,
+      "notch": 0.035
+     },
+     {
+      "op": "round_corner",
+      "piece": "front",
+      "corner": "stand.b",
+      "along": [
+       0.09,
+       0.06
+      ]
+     },
+     {
+      "op": "collar",
+      "type": "tailored",
+      "stop": 0.0,
+      "stand_height": 0.03,
+      "fall": 0.045
+     },
+     {
+      "op": "facing",
+      "piece": "front",
+      "edges": [
+       "lapel_edge",
+       "gorge"
+      ],
+      "width": 0.09
+     },
+     {
+      "op": "buttons",
+      "piece": "front",
+      "n": 2
+     },
+     {
+      "op": "sleeve",
+      "cap_ease": 0.045,
+      "hem_width": 0.29,
+      "length_bonus": 0.05
+     },
+     {
+      "op": "two_piece",
+      "elbow": 0.05
+     }
+    ],
+    "details": {
+     "collar": "notched_lapel",
+     "front_closure": "button_stand",
+     "lining": "none",
+     "shoulder": "none",
+     "pockets": "none",
+     "hem": "blind",
+     "cuff": "hemmed"
+    }
+   },
+   "over": "shirt",
+   "color": "#3b4252",
+   "backend": "zozo",
+   "resolution": 0.02,
+   "fine_settle": false,
+   "quality": "draft"
+  }
+ }
+}
