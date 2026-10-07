@@ -157,7 +157,9 @@ class Report:
         got = [None] * len(items)
         left, n_done = set(futs), 0
         while left:
-            done, left = wait(left, return_when=FIRST_COMPLETED, timeout=self.every)
+            done, left = wait(left, return_when=FIRST_COMPLETED, timeout=1.0)
+            from .resources import check_cancel
+            check_cancel(stage)  # (a cancelled tool call stops here)
             for f in done:
                 got[futs[f]] = f.result()
                 n_done += 1
@@ -189,8 +191,10 @@ class Report:
             go(*j)
         self.say(f"{stage}: {n_root} jobs on {n} workers (each unlocks more) ...")
         self._last = t
+        from .resources import check_cancel
         while pending:
-            done, _ = wait(list(pending), return_when=FIRST_COMPLETED, timeout=self.every)
+            done, _ = wait(list(pending), return_when=FIRST_COMPLETED, timeout=1.0)
+            check_cancel(stage)  # a cancelled tool call stops here (its guarded pool is killed too)
             for f in done:
                 fn, arg, label = pending.pop(f)
                 r, snap, t0, t1, pid = f.result()
