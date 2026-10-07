@@ -809,6 +809,7 @@ def _head_kind(spec: dict, hf: dict, pn: str, V: np.ndarray, skin: set) -> str:
 COVER_REACH = 0.03  # m: skin with a worn part's surface this near, outward of it, is covered by it
 COVER_OUT = True    # the hand-over lies on the visible skin beside the cover (else on the covered skin under it)
 COVER_EASE = 0.02   # m in from where the cover starts over which covered skin hands over to its cover's weights
+COVER_SMOOTH = 4    # rounds of smoothing the share over the mesh (spec.rig.rigid_head.cover.smooth)
 
 
 def skin_cover(spec: dict, rb: list[dict], meshes: dict, hf: dict | None = None, skin: set | None = None) -> dict:
@@ -818,7 +819,9 @@ def skin_cover(spec: dict, rb: list[dict], meshes: dict, hf: dict | None = None,
     skin under a collar turned and nodded that skin through the collar (Garrett: neck skin 12-16 cm under the Head
     joint Head 0.70, his collar there 0.16; 52 skin vertices through the jacket's collar in the game's idle, 73 at a
     33 deg head turn). 0 on visible skin and COVER_EASE in from the cover's edge 1: there the head rule doesn't
-    apply. A vertex is covered when a ray out along its normal meets a worn part's surface within COVER_REACH. spec.rig.rigid_head.cover = false turns it off, {"reach", "ease"} set it."""
+    apply. A vertex is covered when a ray out along its normal meets a worn part's surface within COVER_REACH; the share
+    is then smoothed COVER_SMOOTH rounds over the mesh. spec.rig.rigid_head.cover = false turns it off, {"reach",
+    "ease", "smooth"} set it."""
     from scipy.spatial import cKDTree
 
     from .rig_template import _closest_on_triangles
@@ -830,6 +833,7 @@ def skin_cover(spec: dict, rb: list[dict], meshes: dict, hf: dict | None = None,
         return {}
     co = co if isinstance(co, dict) else {}
     reach, ease = float(co.get("reach", COVER_REACH)), float(co.get("ease", COVER_EASE))
+    rounds = int(co.get("smooth", COVER_SMOOTH))
     defs = spec.get("parts") or {}
     if skin is None:
         sp = (spec.get("rig") or {}).get("skin_part") or ("body" if "body" in meshes else None)
@@ -886,6 +890,20 @@ def skin_cover(spec: dict, rb: list[dict], meshes: dict, hf: dict | None = None,
         elif (~covered).any():
             dd, _ = cKDTree(V[~covered]).query(V[covered])
             w[covered] = _ss(dd / max(ease, 1e-6))
+        if rounds > 0:  # smoothed over the welded mesh: the ray test is per vertex, so at a collar's top edge on a
+            # 20k low poly (edges ~1.5 cm) the share stepped 0 -> 1 inside one triangle, and single vertices whose
+            # ray grazed the cover read covered among visible ones. Garrett, Head turned 33 deg: 38 triangles
+            # inside out at the nape and the throat's sides, all with a Head 0 and a Head ~1 corner -> 2.
+            Fw = inv[F]
+            e = np.r_[Fw[:, [0, 1]], Fw[:, [1, 2]], Fw[:, [2, 0]]]
+            e = np.r_[e, e[:, ::-1]]
+            n = int(inv.max()) + 1
+            x = np.zeros(n)
+            np.maximum.at(x, inv, w)
+            deg = np.maximum(np.bincount(e[:, 0], minlength=n), 1)
+            for _ in range(rounds):
+                x = 0.5 * x + 0.5 * np.bincount(e[:, 0], weights=x[e[:, 1]], minlength=n) / deg
+            w = x[inv]
         out[pn] = w
     return out
 
@@ -952,6 +970,7 @@ HEAD_UNDER = 0.04  # the floor's drop under the jaw's border, x the head's size:
 HEAD_PART = 0.9    # a part this much head on average is all head (teeth, tongue, eyes, lashes, brows)
 HEAD_WORN = 0.5    # a part other than the skin and less head than this is worn on the body: no head rule (a collar);
 #                    parts.<p>.rig_head = true | false says so outright, spec.rig.skin_part names the skin ("body")
+NEAR_SHORT = 0.375  # x rigid_near's band: within it the band counts in full, past it no more than the head field
 MOVED = (5e-4, 3e-3)  # m: a vertex a face shape moves this far is a little / wholly the head's (`rigid_near`)
 
 
@@ -1072,7 +1091,7 @@ def _rigid_head(J: np.ndarray, W: np.ndarray, h: np.ndarray, bone: int):
 
 
 def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: float | None = None,
-               cover: dict | None = None) -> dict:
+               cover: dict | None = None, field=None) -> dict:
     """Everything a face shape moves is head too: {part: (J, W)} with every vertex some shape moves MOVED[1] or more
     (`moved`: {part: the largest move per vertex, m}) weighted 1.0 to Head, the vertices within `band` of one
     blended toward it, and vertices moved less (down to MOVED[0]) in proportion (the export, after the face shapes
@@ -1097,11 +1116,21 @@ def rigid_near(rb: list[dict], skins: dict, verts: dict, moved: dict, band: floa
         h = np.zeros(len(verts[pn]))
         if tree is not None:
             d, _ = tree.query(np.asarray(verts[pn], np.float64), distance_upper_bound=band)
-            h = 1.0 - _ss(np.where(np.isfinite(d), d, band) / band)
+            d = np.where(np.isfinite(d), d, band)
+            h = 1.0 - _ss(d / band)
+            if field is not None:  # past NEAR_SHORT of the band the head field's own falloff rules: down the throat
+                # the band reached past it (jawOpen moves throat skin 3 mm+ down to the Adam's apple; Garrett's
+                # notch 2.5 cm under that was Head 0.80, field 0.38, v23 0.16: a 33 deg turn dragged it 25 mm)
+                h = np.maximum(1.0 - _ss(d / (NEAR_SHORT * band)), np.minimum(h, field(verts[pn])))
             if cover and pn in cover:  # skin under a collar follows the collar (`skin_cover`), not the face near it
                 h = h * (1.0 - cover[pn])
         if pn in moved:  # moved a little (skin sliding on the throat, a chest a big jaw's field reaches): a little
             h = np.maximum(h, _ss((np.asarray(moved[pn], np.float64) - lo) / (hi_ - lo)))
+        if field is not None:  # h is the Head share wanted, not a second blend on top of the head rule skin_parts
+            # applied (two blends of 0.38 made 0.62 at Garrett's notch)
+            Wf = np.asarray(W, np.float64)
+            cur = np.where(np.asarray(J) == hi, Wf, 0.0).sum(1)
+            h = np.clip((h - cur) / np.maximum(1.0 - cur, 1e-9), 0.0, 1.0)
         if (h > 0).any():
             out[pn] = _rigid_head(np.asarray(J), np.asarray(W, np.float64), h, hi)
     return out

@@ -1791,7 +1791,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             before = {pn: _head_share(rigged, pn, hf["bone"]) for pn in moved}
             cover = rigmod.skin_cover(rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3))
                                                      for pn in skin_at}, hf)
-            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"], cover)
+            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"], cover,
+                                                     hf["h"] if rspec.get("base") else None)
             for pn, mv in moved.items():
                 m = mv >= rigmod.MOVED[1]
                 if m.any():

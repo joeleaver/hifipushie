@@ -214,6 +214,20 @@ def test_rigid_near_and_export_frames():
     # a part no shape moves (a collar beside the throat) keeps its weights, however near the moved skin it lies
     out = rig.rigid_near(on, {"all": (J, W), "collar": (J, W)}, {"all": m["V"], "collar": m["V"]}, {"all": moved * 0.01})
     assert np.array_equal(out["collar"][0], J) and np.array_equal(out["collar"][1], W)
+    # with the head field (base bodies, regen3): past NEAR_SHORT of the band the Head share is no more than the
+    # field's, and the band sets the share wanted, not a second blend over the head rule's (Garrett's notch, field
+    # 0.38, came out 0.80 with the band and 0.62 by blending twice)
+    band = 0.08
+    d = np.linalg.norm(m["V"] - c, axis=1)
+    fld = lambda V: np.full(len(V), 0.3)
+    J3, W3 = rig._rigid_head(J, np.asarray(W, float), np.full(len(J), 0.3), hi)  # the head rule's share, as skin_parts
+    out = rig.rigid_near(on, {"all": (J3, W3)}, {"all": m["V"]}, {"all": moved * 0.01}, band, None, fld)
+    wh = (out["all"][1] * (out["all"][0] == hi)).sum(1)
+    assert wh[moved].min() > 0.999
+    out_d = d - 0.03  # (at least: the moved patch's radius)
+    past = (out_d > rig.NEAR_SHORT * band + 0.01) & (d < 0.03 + band)
+    wh3 = (W3 * (J3 == hi)).sum(1)
+    assert past.any() and np.allclose(wh[past], wh3[past], atol=1e-6) and (wh3[past] >= 0.3 - 1e-9).all()
     for b in on:
         if b.get("twist"):
             a = asset._Z_TO_Y @ b["twist"]["axis"]
@@ -281,9 +295,15 @@ def test_skin_under_a_collar_follows_the_collar():
     cov = rig.skin_cover({"parts": {}}, [], meshes, hf)
     assert set(cov) == {"body"}
     z, c = neck[0][:, 2], cov["body"]
-    assert (c[z < 0.055] == 1.0).all()  # under the collar: all of it follows the collar
-    assert (c[z > 0.06 + rig.COVER_EASE + 0.006] == 0.0).all()  # visible skin above the hand-over: the head rule
+    assert (c[z < 0.035] > 0.99).all()  # under the collar: all of it follows the collar
+    assert (c[z > 0.1] < 0.01).all()  # visible skin above the hand-over: the head rule
     mid = (z > 0.062) & (z < 0.06 + rig.COVER_EASE)
     assert ((c[mid] > 0) & (c[mid] < 1)).any()  # eased between
+    # 2026-10-07 (regen3): smoothed over the mesh, no step between neighbouring rings (a 0 -> 1 step inside one
+    # triangle turned 38 of Garrett's triangles inside out at a 33 deg head turn)
+    ring = c.reshape(-1, 48)
+    assert np.abs(np.diff(ring, axis=0)).max() < 0.35
+    sharp = rig.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": {"smooth": 0}}}}, [], meshes, hf)["body"]
+    assert (sharp[z < 0.055] == 1.0).all()
     off = rig.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": False}}}, [], meshes, hf)
     assert off == {}
