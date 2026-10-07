@@ -240,14 +240,14 @@ def _styled(m, S):
         nt.links.new(nrm_in, nmix.inputs[5])
     else:
         nt.links.new(geo.outputs["Normal"], nmix.inputs[5])
-    bump = L("ShaderNodeBump")
-    bump.inputs["Distance"].default_value = 1.0
-    bump.inputs["Strength"].default_value = 1.0
-    if "Filter Width" in bump.inputs:
-        bump.inputs["Filter Width"].default_value = 1.0
-    nt.links.new(hgt, bump.inputs["Height"])
-    nt.links.new(nmix.outputs[1], bump.inputs["Normal"])
-    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    if S.get("bump", False):  # (the style layers' heights as a bump: off by default, Blender's bump over box-projected
+        bump = L("ShaderNodeBump")  # textures drew thin contour-like lines on slopes; an engine uses the normal maps)
+        bump.inputs["Distance"].default_value = 1.0
+        nt.links.new(hgt, bump.inputs["Height"])
+        nt.links.new(nmix.outputs[1], bump.inputs["Normal"])
+        nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    else:
+        nt.links.new(nmix.outputs[1], bsdf.inputs["Normal"])
 
 
 def _img(path):

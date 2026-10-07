@@ -261,6 +261,39 @@ def op_strokes(n, L, o, seed):
     return np.clip(tone, -1, 1), hgt - hgt.mean()
 
 
+def op_tufts(n, L, o, seed):
+    """Hand-drawn tufts: `per_m2` marks, each `blades` short tapered strokes fanning up from one base point (`length`,
+    `width` m, `fan` deg either side), in a dark ink `tone`: cartoon grass, Wind Waker's tick marks."""
+    rng = np.random.default_rng(seed)
+    px = n / L
+    N = int(float(o.get("per_m2", 1.0)) * L * L)
+    tone = np.zeros((n, n))
+    alpha = np.zeros((n, n))
+    lo, hi = o.get("blades", [2, 4])
+    fan = math.radians(float(o.get("fan", 30)))
+    lm, wm = float(o.get("length", 0.15)), float(o.get("width", 0.02))
+    tv = float(o.get("tone", -1.0))
+    for _ in range(N):
+        bx, by = rng.random(2) * n
+        k = int(rng.integers(lo, hi + 1))
+        for b in range(k):
+            a = math.pi / 2 + (b - (k - 1) / 2) / max((k - 1) / 2, 1) * fan + rng.normal(0, 0.1)
+            ln = lm * rng.uniform(0.7, 1.2) * px / 2
+            wd = wm * px / 2
+            cx, cy = bx + math.cos(a) * ln, by + math.sin(a) * ln  # (the stroke's middle: it starts at the base)
+            r = int(ln + wd + 2)
+            ii, jj = np.mgrid[int(cy) - r:int(cy) + r + 1, int(cx) - r:int(cx) + r + 1]
+            dx, dy = jj - cx, ii - cy
+            u = (dx * math.cos(a) + dy * math.sin(a)) / max(ln, 1e-6)
+            v = (-dx * math.sin(a) + dy * math.cos(a)) / max(wd, 1e-6)
+            w_ = np.clip(1 - (u + 1) / 2 * 0.9, 0.1, 1)  # (full at the base, a point at the tip)
+            m = np.clip((1 - u * u - (v / w_) ** 2) * 3, 0, 1) * (np.abs(u) <= 1)
+            sl = (ii % n, jj % n)
+            alpha[sl] = np.maximum(alpha[sl], m)
+    tone = tv * alpha
+    return tone, alpha - alpha.mean()
+
+
 def op_bands(n, L, o, seed):
     """Horizontal strata (rows = up): bands `thickness` [lo, hi] m filling the texture's height exactly, tones cycling
     through `tones`, edges `edge` m soft, rows wavering `wave` m; each band proud or set back by its tone (height)."""
@@ -362,7 +395,7 @@ def op_facets(n, L, o, seed):
     return tone, h / max(float(np.abs(h).max()), 1e-9)  # (-1..1: `height` is the planes' amplitude in m)
 
 
-OPS = {"blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "bands": op_bands, "ripples": op_ripples,
+OPS = {"blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "tufts": op_tufts, "bands": op_bands, "ripples": op_ripples,
        "dots": op_dots, "grain": op_grain, "cracks": op_cracks, "facets": op_facets}
 
 
