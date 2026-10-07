@@ -1437,6 +1437,9 @@ LAY_INFO: dict = {}  # what the last notched lay of each piece did (numbers for 
 NOTCH_STEP = 0.004  # m between the stations along a notched collar's roll line
 NOTCH_BLEND = 0.04  # m of neck edge before the roll line meets it over which the end's plane is eased in
 NOTCH_BRIDGE = 0.012  # m the turned side may stand over the body under it beyond its own clearance
+NOTCH_OPEN_DEG = 40.0  # deg the fall stands open (from the stand) while the collar is sewn on
+NOTCH_OPEN_FADE = 0.08  # m of roll line from each end over which the opening eases in
+NOTCH_OPEN_STEPS = (1.0, 0.75, 0.5, 0.25)  # how open the fall is at the start and at each carried pose but the last
 NOTCH_FALL = 0.0  # the fall lies this far over what the stand's own clearance leaves under it
 
 
@@ -1667,60 +1670,83 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
     for _ in range(4):
         th[1:-1] = 0.25 * th[:-2] + 0.5 * th[1:-1] + 0.25 * th[2:]
     th = np.minimum(th, thr)
-    for i in np.where(turned)[0]:
-        j, f, a_, d_ = int(foot[i, 0]), foot[i, 1], foot[i, 2], foot[i, 3]
-        S_, B_ = S[j] + (S[j + 1] - S[j]) * f, Bm[j] + (Bm[j + 1] - Bm[j]) * f
-        n_ = Nn[j] + (Nn[j + 1] - Nn[j]) * f
-        t_ = th[j] + (th[j + 1] - th[j]) * f
-        r3 = B_ @ rts[j]
-        r3 /= max(np.linalg.norm(r3), 1e-12)
-        p3 = B_ @ (side * perp(rts[j]))
-        p3 = p3 - r3 * (p3 @ r3)
-        p3 /= max(np.linalg.norm(p3), 1e-12)
-        n_ = n_ - r3 * (n_ @ r3) - p3 * (n_ @ p3)
-        n_ /= max(np.linalg.norm(n_), 1e-12)
-        if d_ <= 0:
-            out[i] = S_ + a_ * r3 + d_ * p3
-            continue
-        out[i] = S_ + a_ * r3 + d_ * (math.cos(t_) * p3 + math.sin(t_) * n_) + gap * min(1.0, d_ / 0.008) * n_
-    # the end: every point past the meeting point ALONG THE NECK EDGE lies in the plane (its foot on the roll line is
-    # back on the band's curved part for the outer half of the end: laid from there it fanned, 2-3x), eased in over
-    # NOTCH_BLEND of neck edge before it
-    flat_ = np.zeros(len(P2), bool)
-    for sgn, e_ in ends.items():
-        tx = e_["tx"] / np.linalg.norm(e_["tx"])
-        for i, pnt in enumerate(P2):
-            u_ = float((pnt - e_["X2"]) @ tx)
-            wv = float(np.clip(1.0 + u_ / NOTCH_BLEND, 0.0, 1.0))
-            if wv <= 0 or (pnt - Q.mean(0)) @ tx < 0:
-                continue
-            wv = wv * wv * (3 - 2 * wv)
-            rel = pnt - e_["X2"]
-            a_, d_ = float(rel @ e_["r2"]), float(rel @ e_["m2"])
-            Pl = e_["O"] + a_ * e_["r3"] + d_ * e_["q3"] + gap * min(1.0, max(d_, 0.0) / 0.008) * e_["n"]
-            out[i] = (1 - wv) * out[i] + wv * Pl
-            turned[i] = True
-            flat_[i] = wv >= 1.0
-    # the turned side goes over the ridge of the shoulder between the band and the end: the end's plane run on past
-    # the ridge stands up behind it as a wing, and a fall turned only as far as clears the shoulder's top stands off
-    # the back beyond it. A collar is pressed to lie: nothing of the turned side stays further than NOTCH_BRIDGE over
-    # what is under it (it bridges the hollows of a chest, not the fall of a shoulder)
-    for _ in range(3):
+    out0, turned0 = out.copy(), turned.copy()
+
+    def lay_turned(th, open_=0.0):
+        out, turned = out0.copy(), turned0.copy()
         for i in np.where(turned)[0]:
-            far = float(body.clearance(out[i][None])[0]) - (c_fall + NOTCH_BRIDGE)
-            if far > 1e-4:
-                out[i] = out[i] - bnormal(out[i]) * far
-                flat_[i] = False
-    tn = np.where(turned)[0]
-    for _ in range(4):  # what still comes too near the body lies on it, a layer off
-        short = c_fall - 0.0015 - body.clearance(out[tn])
-        lo = short > 1e-4
-        if not lo.any():
-            break
-        for i in tn[lo]:
-            out[i] = out[i] + bnormal(out[i]) * (c_fall - 0.0015 - float(body.clearance(out[i][None])[0]))
+            j, f, a_, d_ = int(foot[i, 0]), foot[i, 1], foot[i, 2], foot[i, 3]
+            S_, B_ = S[j] + (S[j + 1] - S[j]) * f, Bm[j] + (Bm[j + 1] - Bm[j]) * f
+            n_ = Nn[j] + (Nn[j + 1] - Nn[j]) * f
+            t_ = th[j] + (th[j + 1] - th[j]) * f
+            r3 = B_ @ rts[j]
+            r3 /= max(np.linalg.norm(r3), 1e-12)
+            p3 = B_ @ (side * perp(rts[j]))
+            p3 = p3 - r3 * (p3 @ r3)
+            p3 /= max(np.linalg.norm(p3), 1e-12)
+            n_ = n_ - r3 * (n_ @ r3) - p3 * (n_ @ p3)
+            n_ /= max(np.linalg.norm(n_), 1e-12)
+            if d_ <= 0:
+                out[i] = S_ + a_ * r3 + d_ * p3
+                continue
+            out[i] = S_ + a_ * r3 + d_ * (math.cos(t_) * p3 + math.sin(t_) * n_) + gap * min(1.0, d_ / 0.008) * n_
+        # the end: every point past the meeting point ALONG THE NECK EDGE lies in the plane (its foot on the roll line is
+        # back on the band's curved part for the outer half of the end: laid from there it fanned, 2-3x), eased in over
+        # NOTCH_BLEND of neck edge before it
+        flat_ = np.zeros(len(P2), bool)
+        for sgn, e_ in ends.items():
+            tx = e_["tx"] / np.linalg.norm(e_["tx"])
+            for i, pnt in enumerate(P2):
+                u_ = float((pnt - e_["X2"]) @ tx)
+                wv = float(np.clip(1.0 + u_ / NOTCH_BLEND, 0.0, 1.0))
+                if wv <= 0 or (pnt - Q.mean(0)) @ tx < 0:
+                    continue
+                wv = wv * wv * (3 - 2 * wv)
+                rel = pnt - e_["X2"]
+                a_, d_ = float(rel @ e_["r2"]), float(rel @ e_["m2"])
+                Pl = e_["O"] + a_ * e_["r3"] + d_ * e_["q3"] + gap * min(1.0, max(d_, 0.0) / 0.008) * e_["n"]
+                out[i] = (1 - wv) * out[i] + wv * Pl
+                turned[i] = True
+                flat_[i] = wv >= 1.0
+        # the turned side goes over the ridge of the shoulder between the band and the end: the end's plane run on past
+        # the ridge stands up behind it as a wing, and a fall turned only as far as clears the shoulder's top stands off
+        # the back beyond it. A collar is pressed to lie: nothing of the turned side stays further than NOTCH_BRIDGE over
+        # what is under it (it bridges the hollows of a chest, not the fall of a shoulder)
+        for _ in range(3):
+            for i in np.where(turned)[0]:
+                far = float(body.clearance(out[i][None])[0]) - (c_fall + NOTCH_BRIDGE + open_ * 0.2)
+                if far > 1e-4:
+                    out[i] = out[i] - bnormal(out[i]) * far
+                    flat_[i] = False
+        tn = np.where(turned)[0]
+        for _ in range(4):  # what still comes too near the body lies on it, a layer off
+            short = c_fall - 0.0015 - body.clearance(out[tn])
+            lo = short > 1e-4
+            if not lo.any():
+                break
+            for i in tn[lo]:
+                out[i] = out[i] + bnormal(out[i]) * (c_fall - 0.0015 - float(body.clearance(out[i][None])[0]))
+        return out, flat_
+
+    out, flat_ = lay_turned(th)
+    # the fall OPEN (sewing order: the collar is sewn on with its fall standing up, then turned down over the seam):
+    # in the sim the draped back and fronts sew onto the neck edge while the fall is up, and the carried poses turn it
+    # down over them (laid down from the start it was a lid over the seam: the draped back came to rest ON the fall,
+    # 14 mm off the neck, and the neck seam stayed open 9-18 mm at all 13 pairs, su_30). Opened along the band only,
+    # easing back to the turned lapel's plane over NOTCH_OPEN_FADE of roll line from the points it meets the neck edge
+    kb_ = np.where(run == 0)[0]
+    to_end = np.minimum(sd - sd[kb_[0]], sd[kb_[-1]] - sd)
+    w_open = np.where(run == 0, np.clip(to_end / NOTCH_OPEN_FADE, 0.0, 1.0), 0.0)
+    w_open = w_open * w_open * (3 - 2 * w_open)
+    th_open = math.radians(NOTCH_OPEN_DEG)
+    opens = {}
+    for fr_ in NOTCH_OPEN_STEPS:
+        th_f = th - fr_ * w_open * np.maximum(th - th_open, 0.0)
+        opens[fr_] = lay_turned(th_f, fr_)[0]
     if info is not None:
         info["flat"] = flat_
+        info["open"] = opens
+        info["closed"] = out.copy()
         kb = np.where(run == 0)[0]
         info["dbg"] = {"P2": P2, "foot": foot, "turned": turned, "run": run, "th": th, "sd": sd, "S": S, "out": out.copy()}
         info.update({"turn_deg": [round(math.degrees(float(th[kb].min())), 0), round(math.degrees(float(th[kb[len(kb) // 2]])), 0)],
@@ -2558,6 +2584,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 for _ in range(3):
                     X[sel] = body.push_out(X[sel], off_)
                     X[sel] = _relax_stretch(X, M, sel & ~hold_, float(w.get("lay_limit", 0.03)), iters=60)[sel]
+            if w.get("lay") == "notched" and "open" in LAY_INFO.get(nm, {}):
+                # (build: the fall stands open at the sim's start and is turned down through the carried poses)
+                B.setdefault("open_lay", {})[nm] = {"closed": LAY_INFO[nm]["closed"], "open": LAY_INFO[nm]["open"],
+                                                    "laid": X[sel].copy()}
             if w.get("worn") and w.get("true", False):
                 # a piece laid by frames along a curved edge, turned about a line and carried across a seam is the
                 # right SHAPE but not the pattern's lengths (a notched collar's front ends: 36 triangles up to 3.6x
@@ -3197,6 +3227,36 @@ def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: l
         return {"idx": np.zeros(0, np.int64), "poses": np.zeros((len(poses), 0, 3)), "moves": {}, "pieces": []}
     return {"idx": np.concatenate(idx), "poses": np.concatenate(P, axis=1), "moves": moves, "pieces": names,
             "roots": {nm: find(nm) for nm in names}}
+
+
+def _open_start(Bp: dict, M: dict, Xs: np.ndarray, body0: "Body", poses: list, carry: dict) -> tuple:
+    """Method "settle" with a notched collar (place: B["open_lay"]): the sim starts with the collar's fall standing
+    OPEN and the carried poses turn it down, as a tailor sews the collar on and then rolls it over: laid down from
+    the start, the fall was a lid over the neck seam and the draped back came to rest on top of it. Each open lay
+    takes what place did to the closed one afterwards (the relax, the push clear of the body) and is cleared of the
+    body; pose k gets the lay NOTCH_OPEN_STEPS[k + 1] open (the last pose closed), moved with the body as the closed
+    one is. Returns (start positions, carry with its poses replaced for those pieces)."""
+    Xstart = Xs.copy()
+    P = np.array(carry["poses"], copy=True)
+    at = {int(v): i for i, v in enumerate(carry["idx"])}
+    for nm, ol in Bp["open_lay"].items():
+        if nm not in carry["pieces"]:
+            continue
+        sel = np.where(M["piece"] == M["names"].index(nm))[0]
+        delta = Xs[sel] - np.asarray(ol["closed"])
+        lays = {fr: body0.push_out(np.asarray(o) + delta, SMOOTH_CLEAR) for fr, o in ol["open"].items()}
+        Xstart[sel] = lays[NOTCH_OPEN_STEPS[0]]
+        cols = np.array([at[int(v)] for v in sel])
+        for k, Vp in enumerate(poses[:-1]):
+            fr = NOTCH_OPEN_STEPS[k + 1] if k + 1 < len(NOTCH_OPEN_STEPS) else 0.0
+            if fr <= 0:
+                continue
+            Xk = Xs.copy()
+            Xk[sel] = lays[fr]
+            ck = _carry(Bp, M, Xk, body0, [Vp], made=list(carry["pieces"]))
+            atk = {int(v): i for i, v in enumerate(ck["idx"])}
+            P[k][cols] = ck["poses"][0][[atk[int(v)] for v in sel]]
+    return Xstart, dict(carry, poses=P)
 
 
 FINE_REACH = 0.10  # m from a made piece within which the fine settle moves the draped cloth
@@ -3913,8 +3973,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     body_p, pose = body.straight_arms() if smooth else (body, None)
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     push = dict(Bp.get("push") or {})
-    carry = _carry(Bp, Ms, Xs, body_p, [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V]) \
-        if settle else None
+    poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
+    carry = _carry(Bp, Ms, Xs, body_p, poses_c) if settle else None
+    Xstart = Xs
+    if carry is not None and Bp.get("open_lay"):
+        Xstart, carry = _open_start(Bp, Ms, Xs, body_p, poses_c, carry)
     if refine:
         M = mesh(Bp, h, fw_)
         # the fine mesh's rest shape is the coarse one's placement carried onto it (the same surface, sampled finer):
@@ -3968,7 +4031,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         if smooth:
             fold_s["bend_rest"] = foldmod.bend_reference(Ms, np.c_[Ms["uv"], np.zeros(len(Ms["uv"]))], Bp.get("faces"))
     inputs = hashlib.sha1(b"".join(np.ascontiguousarray(a).tobytes() for a in (
-        Xs, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
+        Xstart, Ms["uv"], Ms["F"], Ms["sew"], Ms["stitch"], interfacing(Bp, Ms),
         *((X0, M["uv"], M["F"], M["sew"], M["stitch"]) if refine else ()), *harr.values(), *lower.values(),
         *((rest_s,) if smooth else ()), *fold_s.values(),
         *((carry["idx"], carry["poses"]) if carry else ())))).hexdigest()
@@ -3992,7 +4055,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not (refine or construct) else None),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
     if place_only:
-        return dict(res, Xs=Xs, coarse=Ms, carry=carry, placed_on=body_p, rest_s=rest_s)
+        return dict(res, Xs=Xs, Xstart=Xstart, coarse=Ms, carry=carry, placed_on=body_p, rest_s=rest_s)
     if result is not None:
         from . import cloth_job as cj
         d, lines = cj.read_out(Path(result))
@@ -4043,7 +4106,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             cfg["hook"] = state["hang"].get("hook")
             cfg["rack"] = state["hang"].get("rack")  # [[a, b, radius], ...] colliders (a coat rack's pole, arms)
             cfg["pin_spread"] = state["hang"].get("spread", 0.3)
-        arrays = dict(X=Xs, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
+        arrays = dict(X=Xstart, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
                       piece=Ms["piece"], pins=np.zeros(0, np.int64), **harr, **lower,
                       **fold_s, **({"carryIdx": carry["idx"], "carryPoses": carry["poses"]} if carry else {}),
                       **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in Bp["hug"]]))[0]}
