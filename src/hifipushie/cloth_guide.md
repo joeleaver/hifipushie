@@ -382,15 +382,27 @@ It does what the sculpt pass does first:
 - Interfaced pieces (collar, stand, cuffs, plackets) aren't smoothed: they don't crinkle, and smoothing their tight
   folds crumpled them.
 - Seams the simulation closed are welded.
+- Seams are PRESSED (`press`, default on): the cloth within 3 cm of each welded seam is smoothed across it, as a
+  tailor's iron leaves it. A solver's stitch passes no bending, so each side tilts on its own and the seam stands as
+  a crease. Interfaced cloth and seams with the finish "welt" are left alone.
 - Anything pulled toward the body is pushed back out to `clear`.
+
+Every look, the scene and the export wind each piece to face out (`piece_flips`) and give a seam's two sides one
+shared normal. Pattern pieces come out wound either way, and half the blazer's pieces faced in.
 
 `cleanup: false` shows the raw simulation.
 
 #### Detail: seams, stitching, hems, buttons
 
 These are drawn from the pattern itself into maps on the flat-pattern atlas (`detail`):
-- a groove along every sewn edge, with the seam allowance's ridge beside it (`seam`, `seam_width`, `allowance`);
-- a dashed topstitch `topstitch` m in from every edge (`stitch` length, `stitch_gap`);
+- every seam by its FINISH (`seam_finish` for the garment, `seam_finishes` {seam index | "pieceA/pieceB" | piece:
+  finish} for single seams; the default is the kind's, garment_kb.json `seam_finishes`): `pressed_open` (tailored
+  jackets, coats, trousers, skirts: a 0.3 mm groove about 1 mm wide, a faint rise over the allowances either side,
+  no stitching), `pressed_to_side` (knits, blouses), `topstitched` (one row 6 mm out), `edgestitched`, `felled`
+  (shirts: two rows on one side), `welt` (a seam made to stand: piping, cording; not pressed). `seam`, `seam_width`
+  and `allowance` override every finish's numbers;
+- a dashed topstitch `topstitch` m in from free edges (hems, a collar's edge). The default comes from the kind's hem:
+  none on blind-stitched hems (jackets, coats, suit trousers, skirts), 6 mm otherwise;
 - a turned-up hem `hem` m deep along free edges;
 - buttons (discs with four holes) on marks named `button*`, and stitched slots on `buttonhole*`;
 - the thread colour (`thread`, default a shade lighter than the cloth);
@@ -477,6 +489,7 @@ The same maps go into `scene.blend` and the export.
 | Puffed sleeve caps, a gathered knotted waist, a collar like a funnel, ruffled cuff joins | Construction, not the solver: cap ease, seam lengths that do not match, a missing piece, a fall too short for its stand, no placket | `look_pattern`: fix every failing seam and evidence line before simulating. Never tune stiffness to hide them |
 | A lapel or collar that will not roll | The piece is wholly interfaced, so it rests as made (frozen as placed), or it has no fold line | Interface a band, add a fold line; stage 3 fails on this |
 | A skirt slides down or one side seam gapes | Lower-body pieces start on a cylinder much wider than the waist and the sewing has to close 10+ cm; the body has no hip to hold a waistband | Keep the fit close (straight / a_line), waist ease under 3%; a waist-fitted start is still to do |
+| Every seam a raised welt with a valley beside it, visible across the room ("huge and structural") | Real seams are pressed and barely show. Three causes of ours: (1) pieces wound opposite ways, so welded normals cancelled and Solidify stepped; (2) the solver's free hinge left a 20-45 deg crease at each seam, where the cloth's own neighbouring normals differ by 10; (3) the maps drew a 1.2 mm groove 5 mm wide between 0.6 mm ridges, 45% darker, with topstitching on every seam and hem | Fixed by `piece_flips` with shared normals, the clean-up's `press` and seam finishes. Measure before you tune: the angle between a seam's two sides' normals against the cloth's own, per seam (blazer 29 -> 14 deg, side seams 20 -> 9). A seam that should stand gets `seam_finishes` "welt" |
 | `dress` says NOT simulated | Stages 1-3 fail | Read the failures, fix the sheet or the pattern; `force=True` only to look at the fault |
 
 ## Sources
