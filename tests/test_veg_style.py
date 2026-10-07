@@ -84,6 +84,11 @@ def test_blobby_dress():
         assert len(np.unique(C["col"][C["mass"] == m].round(5), axis=0)) == 1
     top, low = C["col"][C["tone"][C["mass"]] == C["tone"].max()], C["col"][C["tone"][C["mass"]] == C["tone"].min()]
     assert i["tones"] == 1 or top[:, 1].mean() > low[:, 1].mean()  # the top is lighter
+    # ... in every season: the material's colour never clips a channel (autumn went flat orange)
+    for se in ("summer", "spring", "autumn", "snow"):
+        f = np.array(vs.material_color(vs.season_color(T["spec"], se, st), st))
+        assert f.max() <= 1 + 1e-9 and f.min() >= 0
+    assert D["forks"] is not None and i["forks_triangles"] > 0  # (a deciduous tree's forks: there for the bare season)
     # the same tree from afar
     m = i["match"]
     assert m["iou"] > 0.7, m
@@ -99,6 +104,22 @@ def test_blobby_dress():
     D2 = vs.dress(T, st, int(st["budget"] * 0.18))
     assert D2["info"]["masses"] == i["masses"] and D2["info"]["triangles"] < 0.3 * i["triangles"]
     assert abs(D2["crown"]["V"][:, 2].max() - V[:, 2].max()) < 0.3
+
+
+def test_conifer_tiers():
+    """A needle tree takes the sheet's `conifer` numbers: stacked tiers on a bare pole, a crown all year."""
+    T = v.grow({"species": "norway_spruce", "age": 30, "style": "blobby"})
+    st = vs.sheet(T["spec"])
+    assert st["crown"]["kind"] == "tiers" and "conifer" not in st and vs.sheet({"style": "blobby"})["crown"]["kind"] == "masses"
+    D = vs.dress(T, st)
+    i = D["info"]
+    assert 3 <= i["masses"] <= 5 and i["limbs_kept"] == 0 and D["forks"] is None and not i["core"]
+    cz = [m["center"][2] for m in i["mass_list"]]
+    assert cz == sorted(cz) and max(abs(m["center"][0]) + abs(m["center"][1]) for m in i["mass_list"]) < 0.15 * T["height"]  # stacked on the stem
+    assert i["match"]["iou"] > 0.75 and i["triangles"] <= st["budget"] * 1.02
+    assert vs.dress(T, st, season="winter")["crown"] is not None
+    st2 = vs.sheet({**T["spec"], "style": {"sheet": "blobby", "conifer": {"crown": {"masses": 3}}}})
+    assert st2["crown"]["masses"] == 3 and st2["crown"]["kind"] == "tiers"
 
 
 def test_deterministic():
@@ -162,7 +183,10 @@ def test_export_contract():
         assert winter["extras"]["hidden"] is True
         # for engines without variants / out-of-scene nodes: a seasons json and a collision file
         sj = veg_export.seasons_json(c["path"])
-        assert sj["variants"] == list(seasons) and set(sj["slots"]) == {"bark", "foliage"}
+        assert sj["variants"] == list(seasons) and set(sj["slots"]) == {"bark", "foliage", "bark_forks"}
+        # the forks: a second wood primitive, hidden except in the bare season
+        assert sj["seasons"]["summer"]["bark_forks"]["hidden"] and not sj["seasons"]["winter"]["bark_forks"]["hidden"]
+        assert len(G["meshes"][0]["primitives"]) == 2
         assert sj["seasons"]["winter"]["foliage"]["hidden"] and not sj["seasons"]["autumn"]["foliage"]["hidden"]
         assert sj["seasons"]["autumn"]["foliage"]["baseColorFactor"] != sj["seasons"]["summer"]["foliage"]["baseColorFactor"]
         assert json.loads(Path(sj["path"]).read_text())["default"] == "summer"

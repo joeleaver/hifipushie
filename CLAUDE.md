@@ -3524,10 +3524,45 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     as now. Clump SEASONS need states first (veg_small has none): per layer a colour per season + `hidden` + a
     `flatten` (winter grass lies down), flowers only in their months; then both realistic (atlas tint per season)
     and styled (factor per season) can read them. About a day; the spruce first.
-  - NEXT: blobby spruce (crown kind "tiers": masses per height band; evergreen winter keeps its crown), blobby
-    meadow grass (above), then anime / cartoon / pixar sheets (cards on the masses, normals from `veg_style.field`),
-    sets and stands with a style (write_glb takes the first tree's sheet for a set: untested; veg_stand ignores
-    styles), `wind_plant` on a styled plant (untested; scratchpad/imp.py does the check), impostor season variants.
+  - Round 3 (spruce + the oak's leftovers as general ops; sheets vs_07 spruce, vs_08 spruce seasons, vs_09 / vs_10
+    the oak again; deliveries /mnt/data/hifipushie/vegstyle/blobby_spruce, blobby_oak; scratchpad/round3.sh runs the
+    lot, logs r3_*.log).
+    - Conifers: a sheet's `conifer` block is merged over it for needle trees (`veg_style.conifer`): crown kind
+      "tiers" (`masses`: one upright ellipsoid per height band, seated low in its band: `tier_seat`, `tier_height`,
+      `tier_power`; no core, blend 0.3 x), wood = the trunk alone. Norway spruce: 5 tiers, IoU 0.851 (0.85 / 0.84 /
+      0.86), height 26.3 vs 26.0 m, width 14.8 vs 14.7 m. Read: a stacked-dumpling chess piece, plainly the same cone;
+      the top tier is a long finger; the skirt hides the trunk (as on the realistic tree).
+    - Forks only when bare: the wood is two meshes (`fit`: "wood" = trunk + limbs, "forks" = order 2), `dress` returns
+      "forks" for deciduous trees; looks append them when the crown is hidden; the GLB's wood mesh has a SECOND
+      primitive with material slot `bark_forks` (hidden: MASK cut-off + extras.hidden) switched to `bark_forks_bare`
+      by the bare seasons' variants (in the seasons json too; only written when a bare season is exported).
+    - Limb ends are pulled under the crown's surface by their girth + `keep_in` (the last 40% of the path bends).
+    - `material_color`: the season colour x the tones' gain, scaled as a whole under 1 (autumn clipped to flat orange).
+    - `_decimate` retries with more aggressiveness (a pole stalled at 2.4x its target); minimums lowered (LOD 2's
+      over-share).
+    - Impostor: a picture per season (`veg_tools.impostor(season=)`, materials `impostor_<se>` as variants, in the
+      seasons json with PNGs), and the flat (unlit) view's world now fades to 0.35 from below: a little shade under
+      crowns baked into the albedo.
+  - HANDOVER (vegstyle, context full, 2026-10-07). Check `scratchpad/r3_*.log` first: if `r3_done` exists the run
+    finished; r3_test_style / r3_test_veg must show no FAIL, r3_val 0 errors on every GLB. NOT DONE, in order:
+    (1) the consumer's impostor pop (their notes 39-42, picture pushieworld/docs/img/blobby_oak_lods.png): a NORMAL
+    MAP for the impostor. Design: a third kind of view in blender_vegetation (`"normal": true`: view-layer material
+    override, emission = world normal x 0.5 + 0.5, Standard / Raw), rendered from the same two views as the albedo;
+    converted to each quad's tangent frame (right = the view's right, up = z, out = toward that camera) and written
+    as normalTexture. For that the quads' vertex normals must be their FACE normals (today: up-and-out, which was
+    the fix for the black quad) and the back faces need their own vertices with the opposite normal and the x of the
+    normal map mirrored (or TANGENT written explicitly with w = -1): get that right in Blender's importer and ask the
+    consumer to check Godot. For realistic card foliage the true geometry normal is noise: mix toward the direction
+    out of the crown's middle (`leaves.round`), as the leaf shader does. Not attempted here.
+    (2) LOD 2's crown "faceted creases" in Godot (note from the coordinator): the export already writes the field's
+    gradient as NORMAL at every LOD (`dress` -> `onto`), so this is unexplained: read LOD2's NORMAL back and compare
+    with face normals; suspect Godot regenerating normals / tangents on import, or 300-500 triangles being too few.
+    (3) Clump style path + clump seasons (design in the note above: a geometry op replacing a layer's cards by 5-9
+    capsule blades through `dress`; per-layer season states in veg_small first), meadow grass first.
+    (4) anime / cartoon / pixar sheets; sets and stands with a style (untested); `wind_plant` on a styled plant
+    (untested); blossom / catkins; the spruce's top tier (try `tier_power` 0.8 so upper bands are shorter).
+    The guide's "Styles" section does NOT yet describe round 3 (conifer block, tiers keys, bark_forks slot, impostor
+    per season, `forks_share`): add it.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

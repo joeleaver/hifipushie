@@ -678,13 +678,15 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
     return got
 
 
-def impostor(name: str, px: int = 512) -> dict:
+def impostor(name: str, px: int = 512, season: str | None = None) -> dict:
     """The plant from two sides (along +y and along -x) as one RGBA picture, for the last LOD's crossed quads:
     {"image" (h, 2w, 4) 0..1, "size": the square each view covers (m), "height": its middle's height (m)}."""
     from PIL import Image
     import tempfile
     from . import veg_look
     T = grown(name)
+    if season:  # the same grown plant shown in another season ("snow" = as it stands, under snow)
+        T = {**T, "spec": {**T["spec"], **({"snow": 0.8} if season == "snow" else {"season": season})}}
     H = T["height"]
     R = float(np.percentile(np.linalg.norm(T["pos"][:, :2], axis=1), 99.5))
     S = float(max(H, 2 * R) * 1.06)
@@ -703,7 +705,9 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
     from . import veg_export
     T = grown(name)
     out = Path(out_dir) if out_dir else _dir(name) / "export"
-    imp = impostor(name) if impostor_lod else None
+    imp = impostor(name, season=seasons[0] if seasons and seasons[0] != T["spec"].get("season", "summer") else None) if impostor_lod else None
+    if imp is not None and len(seasons) > 1:  # a picture per season: the last LOD changes with the year like the others
+        imp["seasons"] = {se: impostor(name, season=se)["image"] for se in seasons[1:]}
     stem = name.replace("#", "_")
     c = veg_export.write_glb(T, str(out / f"{stem}.glb"), stem, triangles=triangles, lods=lods, seasons=seasons, wet=wet, impostor=imp)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
@@ -716,7 +720,7 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
         base = triangles or (c["style"]["budget"] if c.get("style") else c["lods"][0]["triangles"])
         for li, L in enumerate(c["lods"]):
             if L.get("impostor"):
-                f = veg_export.write_impostor(T, str(out / f"{stem}_LOD{li}.glb"), stem, imp)
+                f = veg_export.write_impostor(T, str(out / f"{stem}_LOD{li}.glb"), stem, imp, seasons)
             else:
                 f = veg_export.write_glb(T, str(out / f"{stem}_LOD{li}.glb"), stem, triangles=int(base * veg_export.LODS[li][0]),
                                          seasons=seasons, wet=wet, cap=veg_export.LODS[li][1])["path"]
