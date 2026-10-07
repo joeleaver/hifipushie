@@ -401,7 +401,7 @@ CONTRACT_LOG = {
        "to the camera, slot impostor's baseColorTexture = an N x N atlas of views over the upper hemisphere (sRGB + alpha), its "
        "object-space normal map (+ depth in alpha) in extras.hifipushie_impostor.normal_texture_index (NOT normalTexture), "
        "frames / size / centre / recipe there and in the seasons json `impostor` (+ impostorNormalTexture files per season); "
-       "reference Godot shader spikes/godot_veg/impostor_octa.gdshader. impostor=\"cross\" keeps the old two crossed quads. "
+       "reference Godot shader spikes/godot_veg/impostor_octa.gdshader. impostor=\"cross\" keeps the old two crossed quads. A plant exported without an impostor (small plants, clumps) carries \"impostor\": null in the seasons json. "
        "Slot heads (styled small plants) now carries COLOR_0 = each part's colour (petals / dab / ball, the flower's centre, the "
        "stalk) with a WHITE baseColorFactor: switch vertex colour on for heads as for foliage. A style's clump block takes "
        "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies). Styled small plants whose blades lie down "
