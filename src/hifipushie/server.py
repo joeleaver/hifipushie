@@ -2580,15 +2580,18 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 
 @mcp.tool(structured_output=False)
 def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False,
-                 lods: int = 1, impostor: bool = False, seasons: list[str] | None = None, wet: bool = False,
+                 lods: int = 1, impostor: bool | str = False, seasons: list[str] | None = None, wet: bool = False,
                  lod_files: bool = False) -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
     twig atlas with alpha MASK, double sided, normals bent out from the crown, COLOR_0 = a per-twig tint).
     triangles: LOD 0's budget (a game tree: 10-40k; without it everything grown is written, often 100-400k):
     branches get fewer rings and sides, the thinnest wood is left out (marked wood stays), twigs are thinned and the
-    rest drawn larger. lods: 1-3 mesh LODs (100 / 45 / 18% of the budget); impostor=True adds two crossed quads with
-    the plant's picture as the last LOD (a Blender render: +10-30 s). LOD 0 is the scene, the others hang on it
+    rest drawn larger. lods: 1-3 mesh LODs (100 / 45 / 18% of the budget); impostor=True adds a HEMI-OCTAHEDRAL impostor as
+    the last LOD: one quad the engine's shader turns to the camera, drawing the nearest of 8 x 8 views baked over the
+    upper hemisphere (holds from the horizon to straight down: trees seen from a hill; recipe in the material's extras,
+    reference Godot shader spikes/godot_veg/impostor_octa.gdshader; ~2-3 min of Blender per shape of the plant, ~40 s
+    per further season); impostor="cross" = the old two crossed quads (any viewer draws them; read as a cross from above). LOD 0 is the scene, the others hang on it
     (MSFT_lod) and are listed in extras with the screen height to switch at; lod_files=True also writes each LOD as
     its own <name>_LOD<k>.glb (Unreal, Unity, Godot take LODs as separate meshes).
     Wind is always written: TEXCOORD_1 = (trunk, branch) sway weights, TEXCOORD_2 = (phase, flutter), the same four in
@@ -2633,9 +2636,13 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                "nodes outside the scene and drops variants): use the _LOD<k>.glb files (lod_files=True)"
                + (f", {Path(c['collision_file']).name} (its node is named ...-colonly: Godot makes a static body of it)" if c.get("collision_file") else "")
                + (f", {Path(c['seasons_file']).name} (contract version {vt_contract()} + the slot list, then each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
-    if impostor:
-        ground += ("\nimpostor: albedo + normal map per season, lit by the engine like the mesh LODs; ENGINE: its material must not receive "
+    if impostor == "cross":
+        ground += ("\nimpostor: two crossed quads, albedo + normal map per season, lit by the engine like the mesh LODs; ENGINE: its material must not receive "
                    "shadows (Godot: disable_receive_shadows), or the two quads shadow each other into a dark wedge")
+    elif impostor:
+        ground += ("\nimpostor: hemi-octahedral (one quad + an 8 x 8 atlas of views over the upper hemisphere, object-space normals + depth): it NEEDS "
+                   "the engine's impostor shader (recipe in the impostor material's extras.hifipushie_impostor and the seasons json `impostor`; "
+                   "Godot: spikes/godot_veg/impostor_octa.gdshader, extra_cull_margin = size / 2); no shadows received on it")
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))

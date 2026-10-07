@@ -17,7 +17,7 @@ import sys
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 
 def lin(c):
@@ -830,6 +830,13 @@ def _pass_material(m, kind):
         ma.inputs[1].default_value, ma.inputs[2].default_value = (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)
         L.new(nsrc, ma.inputs[0])
         L.new(ma.outputs[0], em.inputs["Color"])
+    elif kind == "depth":  # distance behind the view's middle plane, 0 = `near` .. 1 = `far` (set per view: hp_depth)
+        cd = N.new("ShaderNodeCameraData")
+        mr = N.new("ShaderNodeMapRange")
+        mr.name = "hp_depth"
+        mr.clamp = True
+        L.new(cd.outputs["View Z Depth"], mr.inputs["Value"])
+        L.new(mr.outputs[0], em.inputs["Color"])
     else:
         ao = N.new("ShaderNodeAmbientOcclusion")
         ao.samples = 16
@@ -886,7 +893,6 @@ def build(job):
     if gj.get("slope"):  # a hillside: the ground falls toward `toward` at `slope` deg (the plant's foot stays put)
         tw_ = Vector(list(gj.get("toward", [1, 0])) + [0]).normalized()
         axis = Vector((0, 0, 1)).cross(tw_)
-        from mathutils import Matrix
         ground.rotation_euler = Matrix.Rotation(math.radians(gj["slope"]), 4, axis).to_euler()
     ground_mat = ground_material("ground", job.get("ground") or {})
     # the weather lies on the ground too (a snowy tree stood on a summer lawn)
@@ -976,6 +982,11 @@ def build(job):
                 cen = Vector(right) * float((xs.min() + xs.max()) / 2) + Vector((0, 0, hi[2] / 2))
                 need = max(float(xs.max() - xs.min()) * big / wpx, float(hi[2]) * big / hpx) * 1.08
             cam.location = cen + back * (4 * R + 10)
+            if v.get("basis") is not None:  # an exact camera frame (an impostor's view): image right, image up, toward the camera
+                bs = v["basis"]
+                rt, up_, bk = Vector(bs["right"]), Vector(bs["up"]), Vector(bs["back"])
+                cam.matrix_world = Matrix(((rt.x, up_.x, bk.x, 0), (rt.y, up_.y, bk.y, 0), (rt.z, up_.z, bk.z, 0), (0, 0, 0, 1)))
+                cam.location = Vector(bs["centre"]) + bk * float(bs.get("dist", 4 * R + 10))
             cam.data.type = "ORTHO"
             cam.data.ortho_scale = need
             cam.data.clip_start, cam.data.clip_end = 0.1, 20 * R + 50
@@ -1036,6 +1047,11 @@ def build(job):
         swapped = None
         if v.get("pass"):  # one unlit thing per pixel (see _pass_material); "shade" needs rays: Cycles
             swapped = _pass_swap(v["pass"])
+            if v["pass"] == "depth":
+                for m_ in bpy.data.materials:
+                    if m_.use_nodes and "hp_depth" in m_.node_tree.nodes:
+                        mr_ = m_.node_tree.nodes["hp_depth"]
+                        mr_.inputs["From Min"].default_value, mr_.inputs["From Max"].default_value = v["depth_range"]
             sc.view_settings.view_transform = "Standard" if v["pass"] == "albedo" else "Raw"
             sun.data.energy = fill.data.energy = amb.data.energy = 0.0
             if v["pass"] == "shade":

@@ -1,0 +1,203 @@
+{
+ "about": "Cartoon trees (Wind Waker, Animal Crossing): a tapering S-bent trunk on a flared foot with its first limbs, a crown of 5-15 chunky clumps with scalloped edges and clear notches between them, a few big single leaves on the outline, flat-ish shading per clump, two leaf tones whose hue moves a little per clump",
+ "budget": 7000,
+ "wood": {
+  "limbs": [
+   3,
+   6
+  ],
+  "radius": 1.3,
+  "taper_floor": 0.35,
+  "reach": 0.85,
+  "trunk_reach": 0.7,
+  "smooth": 16,
+  "share": 0.25,
+  "flat": true,
+  "limb_min": 0.3,
+  "bury": 1.0,
+  "limb_mass": 0.18,
+  "keep_in": 0.4,
+  "reach_in": 0.9,
+  "stubs": 2,
+  "stub_reach": 0.85,
+  "stub_min": 1.5,
+  "stub_apart": 2.5,
+  "stub_radius": 0.6,
+  "blend": 0.8,
+  "voxel": 0.0,
+  "sides": [
+   9,
+   12
+  ],
+  "trunk_mass": 0.16,
+  "trunk_floor": 0.35,
+  "foot": 1.4,
+  "forks_share": 0.3,
+  "feed": 0,
+  "feed_radius": 0.0,
+  "s_bend": 0.07,
+  "taper": 0.7,
+  "flare": 0.6
+ },
+ "crown": {
+  "kind": "masses",
+  "masses": [
+   5,
+   15
+  ],
+  "spread": 1.5,
+  "pad": 0.4,
+  "min_feature": 0.3,
+  "blend": 0.25,
+  "voxel": 0.0,
+  "normals": 0.0,
+  "tones": 2,
+  "tone": [
+   0.82,
+   1.12
+  ],
+  "warm_top": 0.06,
+  "roughness": 0.9,
+  "roundness": 0.6,
+  "core": 0.85,
+  "blend_share": 0.22,
+  "tier_power": 1.0,
+  "tier_seat": 0.4,
+  "tier_height": 0.75,
+  "trunk_show": 0.0,
+  "tier_uneven": 0.0,
+  "tier_cap": 0.0,
+  "tier_under": null,
+  "edge_share": 0.0,
+  "edge_count": 1.5,
+  "normals_clump": 0.85,
+  "hue_jitter": 0.07,
+  "scallop": 7,
+  "scallop_size": 0.36,
+  "scallop_sink": 0.45,
+  "big_leaves": 10,
+  "big_leaf": 4.5,
+  "big_leaf_sink": 0.3,
+  "big_leaf_cup": 0.15,
+  "tier_shape": "egg",
+  "teeth": 9,
+  "zig": 0.12,
+  "cone_height": 1.6,
+  "masses_step": 2
+ },
+ "colour": {
+  "saturation": 1.25,
+  "value": 1.12,
+  "bark_saturation": 1.1,
+  "bark_value": 1.05
+ },
+ "wind": {
+  "mass": 0.3,
+  "squash": 0.05,
+  "flutter": 0.0
+ },
+ "seasons": {
+  "spring": {
+   "mix": [
+    0.55,
+    0.78,
+    0.25
+   ],
+   "amount": 0.45
+  },
+  "snow": {
+   "mix": [
+    0.93,
+    0.95,
+    0.98
+   ],
+   "amount": 0.7
+  }
+ },
+ "conifer": {
+  "wood": {
+   "limbs": [
+    0,
+    0
+   ],
+   "stubs": 0,
+   "trunk_reach": 0.5,
+   "trunk_mass": 0.3,
+   "share": 0.1,
+   "trunk_floor": 0.4,
+   "s_bend": 0.0,
+   "taper": 0.5,
+   "flare": 0.4
+  },
+  "crown": {
+   "kind": "tiers",
+   "masses": [
+    5,
+    5
+   ],
+   "core": 0,
+   "blend_share": 0.05,
+   "spread": 1.8,
+   "roundness": 0.3,
+   "tones": 2,
+   "trunk_show": 1.0,
+   "tier_seat": 0.3,
+   "tier_height": 0.9,
+   "tier_under": null,
+   "tier_uneven": 0.2,
+   "tier_cap": 0.3,
+   "tier_power": 0.85,
+   "blend": 0.12,
+   "tone": [
+    0.8,
+    1.2
+   ],
+   "warm_top": 0.08,
+   "tier_shape": "cone",
+   "teeth": 9,
+   "zig": 0.13,
+   "cone_height": 1.75,
+   "scallop": 0,
+   "big_leaves": 0,
+   "normals_clump": 0.6,
+   "hue_jitter": 0.04
+  },
+  "colour": {
+   "value": 1.3
+  }
+ },
+ "clump": {
+  "blades": [
+   5,
+   7
+  ],
+  "width": 0.3,
+  "thick": 0.3,
+  "curl": 0.3,
+  "heads": 3,
+  "ball": 0.09,
+  "stalk": 0.014,
+  "normals_up": 0.4,
+  "tones": 2,
+  "tone": [
+   0.85,
+   1.12
+  ],
+  "budget": 900,
+  "roughness": 0.85,
+  "fan": 1,
+  "fan_angle": 18,
+  "heads_kind": "petals",
+  "dabs": 2,
+  "ragged": 0.35,
+  "petals": [
+   5,
+   8
+  ],
+  "petal_length": 1.0,
+  "petal_width": 0.45,
+  "centre": 0.34,
+  "cup": 0.5,
+  "head_up": 0.75
+ }
+}

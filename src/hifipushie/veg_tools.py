@@ -691,7 +691,7 @@ def look_group(names: list[str], at: list | None = None, spacing: float | None =
     return got
 
 
-def impostor(name: str, px: int = 512, season: str | None = None, **over) -> dict:
+def impostor(name: str, px: int = 512, season: str | None = None, kind: str = "octahedral", **over) -> dict:
     """The plant from two sides (looking along +y, then along +x) for the last LOD's crossed quads: {"image" (h, 2w, 4)
     0..1 = albedo with the shade of what stands above baked in, "normal" (h, 2w, 3) = its tangent-space normal map
     (each half in its own quad's frame), "size": the square each view covers (m), "height": its middle's height (m)}.
@@ -703,6 +703,11 @@ def impostor(name: str, px: int = 512, season: str | None = None, **over) -> dic
     T = grown(name)
     if season:  # the same grown plant shown in another season ("snow" = as it stands, under snow)
         T = {**T, "spec": {**T["spec"], **({"snow": 0.8, "season": "winter"} if season == "snow" else {"season": season})}}
+    if kind in ("octahedral", "hemi_octahedral", True):  # one quad, N x N views over the upper hemisphere (veg_impostor)
+        from . import veg_impostor
+        over = dict(over)
+        return veg_impostor.bake(T, int(over.pop("frames", veg_impostor.FRAMES)), int(over.pop("frame_px", veg_impostor.FRAME_PX)),
+                                 geometry=over.pop("geometry", None), **{k_: v_ for k_, v_ in over.items() if k_ in ("shade_amount", "shade_bright")})
     H = T["height"]
     R = float(np.percentile(np.linalg.norm(T["pos"][:, :2], axis=1), 99.5))
     S = float(max(H, 2 * R) * 1.06)
@@ -720,15 +725,26 @@ def impostor(name: str, px: int = 512, season: str | None = None, **over) -> dic
 
 
 def export(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1, seasons=("summer",),
-           wet: bool = False, impostor_lod: bool = False, lod_files: bool = False) -> dict:
+           wet: bool = False, impostor_lod: bool | str = False, lod_files: bool = False) -> dict:
     """The plant's GLB (see veg_export.write_glb). lods 1-3 mesh LODs (+ impostor_lod: crossed quads with its picture
     as the last); lod_files also writes each LOD as <name>_LOD<k>.glb for engines without MSFT_lod."""
     from . import veg_export
     T = grown(name)
     out = Path(out_dir) if out_dir else _dir(name) / "export"
-    imp = impostor(name, season=seasons[0] if seasons and seasons[0] != T["spec"].get("season", "summer") else None) if impostor_lod else None
+    kind = "cross" if impostor_lod == "cross" else "octahedral"
+    imp = impostor(name, season=seasons[0] if seasons and seasons[0] != T["spec"].get("season", "summer") else None, kind=kind) if impostor_lod else None
     if imp is not None and len(seasons) > 1:  # a picture per season: the last LOD changes with the year like the others
-        imp["seasons"] = {se: {k_: v_ for k_, v_ in impostor(name, season=se).items() if k_ in ("image", "normal")} for se in seasons[1:]}
+        geo = {}  # (seasons with the same geometry share their normal / depth / shade frames: only the albedo is rendered again)
+        if kind == "octahedral":
+            from . import veg_impostor
+            geo[veg_impostor.geometry_key(T["spec"], seasons[0])] = imp.get("passes")
+        imp["seasons"] = {}
+        for se in seasons[1:]:
+            gk = veg_impostor.geometry_key(T["spec"], se) if kind == "octahedral" else None
+            r_ = impostor(name, season=se, kind=kind, **({"geometry": geo.get(gk)} if kind == "octahedral" else {}))
+            if gk is not None:
+                geo.setdefault(gk, r_.get("passes"))
+            imp["seasons"][se] = {k_: v_ for k_, v_ in r_.items() if k_ in ("image", "normal")}
     stem = name.replace("#", "_")
     c = veg_export.write_glb(T, str(out / f"{stem}.glb"), stem, triangles=triangles, lods=lods, seasons=seasons, wet=wet, impostor=imp)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
