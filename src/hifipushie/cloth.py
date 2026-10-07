@@ -1306,7 +1306,13 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
     # piece's centroid, it flipped along a collar's slanting front part: the centroid lies on that part's own line)
     jm = min(max(mid, 0), len(seg) - 1)
     tm = seg[jm] / math.sqrt(L2[jm])
-    nu_sign = 1.0 if np.array([-tm[1], tm[0]]) @ (inside - 0.5 * (Q[jm] + Q[jm + 1])) >= 0 else -1.0
+    # (by the piece's own cloth NEXT TO that middle: the whole piece's centroid lay on the other side when a notched
+    # collar's ends run far down past its neck edge: a collar drafted round a shirt collar, its stand laid downward)
+    qm_ = 0.5 * (Q[jm] + Q[jm + 1])
+    dq_ = np.linalg.norm(uv[mine] - qm_, axis=1)
+    loc_ = uv[mine][(dq_ < 0.06) & (dq_ > 0.003)]
+    inside_m = loc_.mean(0) if len(loc_) >= 3 else inside
+    nu_sign = 1.0 if np.array([-tm[1], tm[0]]) @ (inside_m - qm_) >= 0 else -1.0
 
     def frame(pnt):  # a pattern point laid unturned: where, along the edge / off it, and the frame there
         f = np.clip(((pnt - Q[:-1]) * seg).sum(1) / L2, 0.0, 1.0)
@@ -3800,24 +3806,48 @@ def supports(body: "Body", spec: list | None) -> "Body | None":
     return b
 
 
+PAD_LATERAL = 0.008  # m: a garment point pads a body vertex when it lies this close to the vertex's normal line
+PAD_SLOPE = 1.0  # the padded surface's steepest fall-off (m of pad per m along the body): no overhangs
+
+
 def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "Body":
     """The body grown along its normals to cover the points U (a garment worn on it) plus `air`: what the next
     garment's pieces are placed on and kept clear of. A closed body again, so the tape, the sections and the arm axes
     work on it as on the bare one."""
     vn, tree = body.normals()
-    _, i = tree.query(U)
-    h = ((U - body.V[i]) * vn[i]).sum(1)
+    # each body vertex is padded by how far out along ITS OWN normal the garment lies: the garment's points within
+    # PAD_LATERAL of the normal's line (by the nearest vertex instead, a shirt collar's fall standing 25 mm off the
+    # neck padded the vertices below its edge, a 3 cm shelf at the back neck under the collar the jacket's collar was
+    # laid on: su_32, its stand 27 mm off the shirt), then the vertices between those even out
     pad = np.zeros(len(body.V))
-    np.maximum.at(pad, i, np.clip(h, 0.0, 0.08))
     T = body.T
     E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
+    U = np.asarray(U, float)
+    if len(U):
+        d, i = tree.query(U, k=48, distance_upper_bound=0.08)
+        ok = np.isfinite(d)
+        iu = np.broadcast_to(np.arange(len(U))[:, None], i.shape)[ok]
+        iv = i[ok]
+        rel = U[iu] - body.V[iv]
+        h = (rel * vn[iv]).sum(1)
+        lat = np.linalg.norm(rel - h[:, None] * vn[iv], axis=1)
+        # (and only what lies over that part of the body: the torso's side under a hanging arm is not padded by the
+        # sleeve 6 cm off it along its normal: no farther than 1.5x the point's own distance to the body)
+        dn = np.broadcast_to(d[:, :1], d.shape)[ok]
+        s = (h > 0) & (lat < PAD_LATERAL) & (h < 1.5 * dn + 0.005)
+        np.maximum.at(pad, iv[s], np.clip(h[s], 0.0, 0.08))
+    # no overhangs: the pad falls off no steeper than PAD_SLOPE from any vertex (under a shirt collar's fall, whose edge
+    # stands 25 mm off the neck, the padded surface turned under the lip: the normals there point down, and a jacket
+    # stand laid "up the body" from below the lip went down and out, 24 mm off it). What goes over a step bridges it
+    Ev = np.linalg.norm(body.V[E[:, 0]] - body.V[E[:, 1]], axis=1) * PAD_SLOPE
+    for _ in range(60):
+        m_ = pad.copy()
+        np.maximum.at(m_, E[:, 0], pad[E[:, 1]] - Ev)
+        np.maximum.at(m_, E[:, 1], pad[E[:, 0]] - Ev)
+        if np.allclose(m_, pad):
+            break
+        pad = m_
     covered = pad > 0
-    for _ in range(1):  # spread onto the vertices between the garment's own (max: one ring; three rings carried
-        # every fold's crest 3 cm round, a pad of 29 mm at the median over a shirt 8-16 mm off the body), then even out
-        m = pad.copy()
-        np.maximum.at(m, E[:, 0], pad[E[:, 1]])
-        np.maximum.at(m, E[:, 1], pad[E[:, 0]])
-        pad = m
     for _ in range(3):
         acc, wt = np.zeros(len(pad)), np.zeros(len(pad))
         np.add.at(acc, E[:, 0], pad[E[:, 1]])
