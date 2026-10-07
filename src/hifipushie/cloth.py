@@ -5296,12 +5296,21 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         # the FACES clear too, at their centres and edge midpoints: a 2 cm triangle over a buttock's curve dips
         # between its vertices, and the body showed through as pale specks on tr_11's seat (0.27 mm off at an edge
         # midpoint, the vertices 2-3 mm off)
+        # (measured EXACTLY against the body's triangles: Body.clearance, the mean of the 4 nearest vertices along
+        # their normal, reads 2.5-3 mm too much on a convex body: tr_11 read 1.5 mm where the cloth was 0.5 mm inside
+        # the body at the knee's side and on the seat, the specks)
+        from .closures import _closest_on
         F_ = np.asarray(M["F"])
-        need = np.zeros(len(X))
+        vnb, treeb = body.normals()
         for _ in range(4):
             Pf = np.concatenate([X[F_].mean(1), 0.5 * (X[F_[:, 0]] + X[F_[:, 1]]), 0.5 * (X[F_[:, 1]] + X[F_[:, 2]]),
                                  0.5 * (X[F_[:, 2]] + X[F_[:, 0]])])
-            cl_ = body.clearance(Pf)
+            nearb = treeb.query(Pf)[0] < 0.05
+            cl_ = np.full(len(Pf), np.inf)
+            if nearb.any():
+                Qb, _, _ = _closest_on(Pf[nearb], body.V, body.T, k=16)
+                sg = np.sign(np.sum((Pf[nearb] - Qb) * vnb[treeb.query(Qb)[1]], 1))
+                cl_[nearb] = np.linalg.norm(Pf[nearb] - Qb, axis=1) * np.where(sg == 0, 1.0, sg)
             short = 0.5 * o["clear"] - cl_
             if short.max() <= 1e-4:
                 break
@@ -5309,9 +5318,8 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
             add = np.zeros(len(X))
             for c in range(3):
                 np.maximum.at(add, F_[fi, c], np.maximum(short, 0.0))
-            need += add
-            mv = need > 0
-            X[mv] = body.push_out(X[mv], o["clear"] + need[mv])
+            mv = add > 0  # out along the body's normal by the shortfall (push_out reads the biased measure)
+            X[mv] += vnb[treeb.query(X[mv])[1]] * add[mv, None]
             if o["weld"] and len(M["sew"]):
                 weld()
     moved = np.linalg.norm(X - V, axis=1)
