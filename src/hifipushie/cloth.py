@@ -2059,6 +2059,26 @@ def _closure(M: dict, nm: str) -> tuple[float, float]:
     return best, xlo
 
 
+NECK_OPEN = 0.035  # m an UNBUTTONED stand's two ends start apart at the throat (a collar worn open)
+
+
+def _open_closure(M: dict, nm: str) -> tuple[float, float]:
+    """(girth it would close at, x of the fastening's point nearer the low x) of a piece fastened to itself whose
+    closure is worn OPEN (a shirt's stand without a tie: the button and buttonhole exist, nothing stitches them);
+    (0, 0) otherwise."""
+    k = M["names"].index(nm)
+    best, xlo = 0.0, 0.0
+    for c in M.get("closures") or []:
+        if c.get("over") != nm or c.get("under", nm) != nm or any(c.get("closed") or []):
+            continue
+        for a, b in np.asarray(c.get("v") or [], np.int64).reshape(-1, 2):
+            if M["piece"][a] == k and M["piece"][b] == k:
+                d = float(abs(M["uv"][a, 0] - M["uv"][b, 0]))
+                if d > best:
+                    best, xlo = d, float(min(M["uv"][a, 0], M["uv"][b, 0]))
+    return best, xlo
+
+
 def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo: float, lay: float, cx: float,
                  sgn: float, turn: float, frame_t, m_min: float | None = None, recentre: bool = False) -> tuple | None:
     """A piece closed on itself round an arm (a cuff) laid on a spiral that follows the arm's sections: the radial
@@ -2546,6 +2566,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # spiral, so a fall turned down over a stand lies on it (each at its own length / 2 pi, a stand that only
             # met at its ends stood 4 mm outside its collar: the folded fall landed inside it)
             closed_n = _closed_girth(M, nm) if neck_R is None else 0.0
+            # a stand whose button is UNDONE (worn without a tie): seated and laid like a buttoned one, round the
+            # neck at its own girth, but its ends parted NECK_OPEN at the throat (by its pattern length round a hull
+            # of its pattern heights it started as a ring 114 mm open, its collar 2.2x stretched)
+            open_n, open_x = _open_closure(M, nm) if (neck_R is None and not closed_n and smooth) else (0.0, 0.0)
             first_neck = neck_R0 is None
             # (wrap "girth": the whole circle a piece is part of, when it is only part of a band: a cut-on collar's
             # half round the back of the neck)
@@ -2555,7 +2579,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 w = dict(w, girth=width * 360.0 / float(w["span"]))
             # (a band buttoned to itself is as big as its CLOSED girth, not its length with the button extensions:
             # by its length a stand was seated 3 cm of girth too low on the neck's flare and started 7 cm open)
-            R = float(w.get("girth", closed_n or width)) / (2 * np.pi)
+            R = float(w.get("girth", closed_n or open_n or width)) / (2 * np.pi)
             d0_ = d.copy()
             flip = -1.0 if w.get("flip") else 1.0  # pattern +x toward the body's right (a piece whose outside is
             # its pattern face: the neck's own bands are laid face in at the back, like back pieces)
@@ -2667,12 +2691,19 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 bh_ = abs(pattern.area(P)) / max(width, 1e-9)
                 lo_n_ = min(max(neck_base + above, min(r_["h"] for r_ in body.neck_rows() if r_["neck"])), top_n_ - 0.01)
                 # (only for a buttoned band: an open stand keeps the hull over its pattern heights, as it was tuned)
-                rng_ = np.array([lo_n_, min(lo_n_ + bh_ + 0.008, top_n_)]) if closed_n else np.array([hts.min(), hts.max() + 0.008])
-                neck_sp = _cuff_spiral(body, rng_, None, closed_n,
-                                       (_closure(M, nm)[1] - e[0]) if closed_n else 0.0, neck_lay, 0.0, 1.0, 0.0,
-                                       lambda ti: (nb + d * ti, back, side, d),
-                                       m_min=HUG_CLEAR if closed_n else (SMOOTH_CLEAR if smooth else CLEAR) + 0.0005,
-                                       recentre=bool(closed_n))
+                rng_ = np.array([lo_n_, min(lo_n_ + bh_ + 0.008, top_n_)]) if (closed_n or open_n) else np.array([hts.min(), hts.max() + 0.008])
+                if open_n:  # its fastening's points a turn less NECK_OPEN apart: the gap at the front, no lap
+                    neck_sp = _cuff_spiral(body, rng_, None, open_n + NECK_OPEN, open_x - e[0], 0.0, 0.0, 1.0, 0.0,
+                                           lambda ti: (nb + d * ti, back, side, d),
+                                           m_min=(SMOOTH_CLEAR if smooth else CLEAR) + 0.0005, recentre=True)
+                    if neck_sp is not None:
+                        neck_drift = neck_sp.drift
+                else:
+                    neck_sp = _cuff_spiral(body, rng_, None, closed_n,
+                                           (_closure(M, nm)[1] - e[0]) if closed_n else 0.0, neck_lay, 0.0, 1.0, 0.0,
+                                           lambda ti: (nb + d * ti, back, side, d),
+                                           m_min=HUG_CLEAR if closed_n else (SMOOTH_CLEAR if smooth else CLEAR) + 0.0005,
+                                           recentre=bool(closed_n))
                 if neck_sp is not None and closed_n:
                     neck_hug = True
                     neck_drift = neck_sp.drift

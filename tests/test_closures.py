@@ -41,6 +41,12 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     assert {c["name"]: c["state"] for c in garment_design.wear(dict(g, tie=True))} == {"collar": "closed", "front": "closed"}
     assert garment_design.wear({"pattern": {"from": "carlton"}}) == []  # a coat: as its pattern says
     assert "tie" in garment_design.SHEET_KEYS
+    # an unbuttoned stand is laid by the girth it would close at (its fastening's points), not by its length
+    M = {"names": ["stand"], "piece": np.zeros(3, int), "uv": np.array([[0.02, 0.0], [0.40, 0.0], [0.2, 0.01]]),
+         "closures": [{"name": "collar", "over": "stand", "under": "stand", "closed": [False], "v": [[0, 1]]}]}
+    assert np.isclose(cloth._open_closure(M, "stand")[0], 0.38) and cloth._open_closure(M, "stand")[1] == 0.02
+    M["closures"][0]["closed"] = [True]
+    assert cloth._open_closure(M, "stand") == (0.0, 0.0)  # buttoned: the stitched path
 
 
 def test_a_chosen_closure_must_be_in_the_pattern():
