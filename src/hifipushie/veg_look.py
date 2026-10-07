@@ -219,8 +219,9 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(jb))
         t1 = time.perf_counter()
-        r = subprocess.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python",
-                            str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
+        from . import resources
+        r = resources.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python",
+                           str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
     info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2), plants=len(plants), meshed=len(made),
