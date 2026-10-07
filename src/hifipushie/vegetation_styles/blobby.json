@@ -100,10 +100,10 @@
     0
    ],
    "stubs": 0,
-   "trunk_reach": 0.85,
+   "trunk_reach": 0.45,
    "trunk_mass": 0.45,
    "share": 0.12,
-   "trunk_floor": 0.85
+   "trunk_floor": 0.5
   },
   "crown": {
    "kind": "tiers",
@@ -133,5 +133,25 @@
   "colour": {
    "value": 1.35
   }
+ },
+ "clump": {
+  "blades": [
+   5,
+   9
+  ],
+  "width": 0.2,
+  "thick": 0.6,
+  "curl": 0.35,
+  "heads": 3,
+  "ball": 0.06,
+  "stalk": 0.012,
+  "normals_up": 0.35,
+  "tones": 3,
+  "tone": [
+   0.8,
+   1.15
+  ],
+  "budget": 800,
+  "roughness": 0.8
  }
 }

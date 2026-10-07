@@ -301,6 +301,19 @@ def _report_clump(name: str, T: dict) -> str:
         warn.append(f"WARNING: card fill {at['fill']:.2f}: the cards are mostly empty (overdraw); `card.strips` for long thin pictures, or fuller pictures")
     if m["height_m"] > 0 and tw["pos"][:, 2].min() < -0.06:
         warn.append("WARNING: cards start more than 6 cm under the ground")
+    se = s.get("season", "summer")
+    stt = veg_small.season_state(s, se)
+    hid = veg_small.hidden_parts(s, se)
+    out.append(f"season {se}: " + ("died back to its foot (not evergreen; give clump.seasons.winter a state to keep it)" if stt is None else
+                                   f"leaf colour {stt['color']}, cards laid down {stt['flatten']:.1f}, size x{stt['scale']:.2f}"
+                                   + (f"; layers out of season: {', '.join(hid)}" if hid else ""))
+               + " (clump.seasons; a layer's own `seasons` list)")
+    from . import veg_style
+    sty = veg_style.sheet(s)
+    if sty:  # what the style drew instead of the cards
+        inf_ = veg_style.dress(T, sty, season=se)["info"]
+        out += veg_style.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles; sheet numbers: get_plant shows them under `style` (block `clump`)"]
+        warn += veg_style.warnings(inf_)
     return "\n".join(out + warn)
 
 

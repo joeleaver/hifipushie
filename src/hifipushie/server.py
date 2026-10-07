@@ -2591,10 +2591,20 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     A plant with a `style` exports in its style with the same node, mesh and material names (wood / foliage; bark /
     foliage), LODs, wind channels, variants and collision: its foliage is closed untextured geometry (colour = the
     material's baseColorFactor per season x COLOR_0), `triangles` defaults to the style sheet's budget, and the reply
-    says what was simplified (also in extras.hifipushie_plant.style).
+    says what was simplified (also in extras.hifipushie_plant.style). A styled deciduous tree's wood has a second
+    primitive, slot `bark_forks` (hidden unless the season is bare); a styled small plant's foliage has one, slot
+    `heads` (flower / seed heads, hidden out of their seasons).
+    The impostor is lit by the engine: albedo (unlit, with the shade of what stands above baked in) + a tangent-space
+    normal map, a picture per season; its material must not receive shadows (the quads shadow each other).
+    <name>_seasons.json leads with `contract` (version: bumped whenever a slot or vertex channel changes) and
+    `slot_list` (every slot: its mesh / primitive, the seasons that hide it, its channels): an engine should refuse a
+    version or slot it doesn't know. Small plants (clumps) export their seasons as variants too (colour; layers out
+    of season hidden); their lying down in winter is in the looks only.
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
     materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
     from . import veg_tools as vt
+    from . import veg_export as _ve
+    vt_contract = lambda: _ve.CONTRACT
     if set:
         c = vt.export_set(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet)
         return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all (LOD 0), "
@@ -2614,7 +2624,10 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     ground += ("\nfor engines without MSFT_lod / KHR_materials_variants (Godot 4.7 keeps only LOD 0 of the combined file, drops "
                "nodes outside the scene and drops variants): use the _LOD<k>.glb files (lod_files=True)"
                + (f", {Path(c['collision_file']).name} (its node is named ...-colonly: Godot makes a static body of it)" if c.get("collision_file") else "")
-               + (f", {Path(c['seasons_file']).name} (each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
+               + (f", {Path(c['seasons_file']).name} (contract version {vt_contract()} + the slot list, then each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
+    if impostor:
+        ground += ("\nimpostor: albedo + normal map per season, lit by the engine like the mesh LODs; ENGINE: its material must not receive "
+                   "shadows (Godot: disable_receive_shadows), or the two quads shadow each other into a dark wedge")
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))

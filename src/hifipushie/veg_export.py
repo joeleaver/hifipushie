@@ -311,6 +311,29 @@ def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
     an evergreen keeps its colour); snow = the summer picture frosted. None = no leaves then (a deciduous winter)."""
     lf = spec["leaves"]
     make = make or veg_leaf.atlas  # (bough cards: veg_bough.atlas of the tree)
+    if spec.get("plant") == "clump":  # a small plant: its own states (veg_small.SEASONS); layers out of season = their pictures blanked
+        from . import veg_small
+        stt = veg_small.season_state(spec, season)
+        if stt is None:
+            return None
+        if season == "summer" and not veg_small.hidden_parts(spec, season):
+            return make(lf, twig_color)
+        at = make({**lf, "color": stt["color"]}, twig_color)
+        hid = veg_small.hidden_parts(spec, season)
+        col = at["color"].copy()
+        if hid:
+            pc = veg_leaf.part_cards(lf)
+            h, w = col.shape[:2]
+            for p_ in hid:
+                for ci in pc.get(p_, ()):
+                    uv = at["cards"][ci]["uv"]
+                    x0, x1 = int(np.floor(uv[:, 0].min() * w)), int(np.ceil(uv[:, 0].max() * w))
+                    y0, y1 = int(np.floor((1 - uv[:, 1].max()) * h)), int(np.ceil((1 - uv[:, 1].min()) * h))
+                    col[max(y0, 0): y1, max(x0, 0): x1, 3] = 0.0
+        if season == "snow":
+            k_ = 0.55
+            col[..., :3] = col[..., :3] * (1 - k_) + np.array([0.93, 0.95, 0.98]) * k_
+        return {**at, "color": col}
     if season in ("winter", "bare") and not evergreen(spec):
         return None
     if season == "autumn" and not evergreen(spec):
@@ -364,7 +387,8 @@ CONTRACT_LOG = {
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
     2: "styled deciduous plants: slot bark_forks (the wood mesh's second primitive, hidden except in bare seasons); "
        "impostor_<season> pictures",
-    3: "impostor: normalTexture + TANGENT, 16 vertices (front and back of each quad apart, opposite normals), the second "
+    3: "styled small plants: slot heads (the foliage mesh's second primitive: flower / seed heads, hidden out of their seasons); "
+       "impostor: normalTexture + TANGENT, 16 vertices (front and back of each quad apart, opposite normals), the second "
        "picture no longer mirrored, albedo with baked shade; seasons json: contract, slot_list, normalTexture files",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
@@ -438,7 +462,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     s = tree["spec"]
     st = veg_style.sheet(s)  # a style: the same plant dressed another way (veg_style)
     if st and triangles is None:
-        triangles = int(st.get("budget", 5000))
+        triangles = int(({**veg_style.CLUMP, **(st.get("clump") or {})})["budget"] if tree.get("clump") else st.get("budget", 5000))
     bark = s.get("bark") or {}
     bm = veg_bark.bark_maps(bark.get("kind", "furrowed"), 256, seed=int(s.get("seed", 1)))
     sc = float(bark.get("scale", 1.0))
@@ -618,6 +642,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 var_imp[se] = imp_material(f"impostor_{se}", im_["image"], im_.get("normal"))
     per, roots = [], []
     cluster_mats = {}
+    head_mats = {}
     if spacing is None:
         spacing = 0.0 if len(trees) == 1 else 1.2 * max(float(np.percentile(np.linalg.norm(t["pos"][:, :2], axis=1), 98)) for t in trees) * 2
     n_lod = int(np.clip(lods, 1, len(LODS)))
@@ -646,10 +671,25 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 C_ = D["crown"]
                 if C_ is not None:
                     p_ = prim(C_["V"], C_["F"], C_["uv"], M_FOL, C_["wind"], C_["col"], C_["N"])
-                    meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, var_fol, M_FOL)]})
+                    fp = [with_variants(p_, var_fol, M_FOL)]
+                    Hd = D.get("heads")
+                    if Hd is not None:  # a small plant's flower / seed heads: the foliage mesh's second primitive, slot `heads`
+                        if "heads" not in head_mats:
+                            shown = {"name": "heads", "pbrMetallicRoughness": {"baseColorFactor": [*veg_style.lin(Hd["color"]), 1.0], "metallicFactor": 0.0,
+                                                                                "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
+                            hid_ = {**json.loads(json.dumps(shown)), "alphaMode": "MASK", "alphaCutoff": 1.01, "extras": {"hidden": True}}
+                            d_show = se0 in Hd["seasons"]
+                            (hid_ if d_show else shown)["name"] = "heads_hidden" if d_show else "heads_shown"
+                            (shown if d_show else hid_)["name"] = "heads"
+                            materials.extend([shown, hid_])
+                            head_mats["heads"] = {se: len(materials) - (2 if se in Hd["seasons"] else 1) for se in seasons}
+                        vh = head_mats["heads"]
+                        fp.append(with_variants(prim(Hd["V"], Hd["F"], Hd["uv"], vh[se0], Hd["wind"], N=Hd["N"]), vh, vh[se0]))
+                        c["heads_triangles"] = int(len(Hd["F"]))
+                    meshes.append({"name": pre + "foliage", "primitives": fp})
                     nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                     kids.append(len(nodes) - 1)
-                    c["foliage_triangles"] = int(len(C_["F"]))
+                    c["foliage_triangles"] = int(len(C_["F"])) + c.get("heads_triangles", 0)
                 c["triangles"] = c["wood_triangles"] + c["foliage_triangles"]
                 lod_info.append(c)
                 if n_lod == 1 and impostor is None and len(trees) == 1:

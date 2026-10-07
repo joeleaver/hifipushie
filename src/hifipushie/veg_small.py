@@ -19,7 +19,18 @@ from .vegetation import _child, _mix, _u
 
 LAYER = {"part": "main", "count": 12, "ring": [0.0, 0.1], "lean": [0, 25], "scale": [0.8, 1.2], "stem": [0.0, 0.0],
          "stem_radius": 0.004, "bend": 0.3, "facing": "auto", "on": None, "along": [1.0, 1.0], "turn": 0.0,
-         "trunk": False, "segments": 0, "sink": 0.02, "tilt": 0.0}
+         "trunk": False, "segments": 0, "sink": 0.02, "tilt": 0.0, "seasons": None}
+# A clump through the year (`clump.seasons`: {season: {"color": [r, g, b] | {"mix": [r, g, b], "amount": 0..1}, "flatten":
+# 0..1, "scale": x}}, merged over these): what its leaf colour goes to, how far its cards lie down (flatten 1 = on the
+# ground) and how big they are. A layer shows only in its own `seasons` list (flowers in their months; default: all).
+# A plant that isn't `leaves.evergreen` has died back to its foot in winter, as before, unless it sets a winter state.
+SEASONS = {
+    "spring": {"color": {"mix": [0.5, 0.75, 0.22], "amount": 0.4}, "flatten": 0.0, "scale": 0.8},
+    "summer": {"color": None, "flatten": 0.0, "scale": 1.0},
+    "autumn": {"color": {"mix": [0.74, 0.66, 0.36], "amount": 0.55}, "flatten": 0.1, "scale": 1.0},
+    "winter": {"color": {"mix": [0.58, 0.5, 0.32], "amount": 0.8}, "flatten": 0.6, "scale": 0.85},
+}
+SEASONS["snow"] = SEASONS["winter"]
 LAYER_INFO = {
     "part": '"main" (the plant\'s `leaves`) or a name in `leaves.parts`: which picture this layer\'s cards show',
     "count": "cards (and stalks) in the layer",
@@ -34,7 +45,40 @@ LAYER_INFO = {
     "tilt": "deg the card is tipped over from its stalk's direction: 90 = it lies across the stalk's top, its face along the stalk (a daisy's head, a clover leaf, a lily pad)",
     "trunk": "true: the stalk is the plant's trunk (stout, barked, never sways at its foot): a palm, a tree fern, a yucca",
     "segments": "rings along a stalk (0 = by its height)", "sink": "m the card's foot sits under the ground (no gap on a slope)",
+    "seasons": 'the seasons this layer shows in, e.g. ["summer", "autumn"] (seed heads, flowers in their months); default: every season',
 }
+
+
+def season_state(spec: dict, season: str | None = None) -> dict | None:
+    """The clump's state in a season: {"color": sRGB leaf colour, "flatten", "scale"}; None = died back (a plant that
+    isn't evergreen, in winter, with no winter state of its own; "bare" / "dead" always)."""
+    season = season or spec.get("season", "summer")
+    lf = spec["leaves"]
+    own = (spec.get("clump") or {}).get("seasons") or {}
+    if season in ("bare", "dead") or (season in ("winter", "snow") and not lf.get("evergreen") and season not in own and "winter" not in own):
+        return None
+    st = {**SEASONS.get(season, SEASONS["summer"]), **(own.get("winter") or {} if season == "snow" else {}), **(own.get(season) or {})}
+    base = list(lf.get("color", [0.3, 0.45, 0.15]))
+    c = st.get("color")
+    if c is None:
+        col = base
+    elif isinstance(c, dict):
+        col = [base[i] * (1 - c["amount"]) + c["mix"][i] * c["amount"] for i in range(3)]
+    else:
+        col = list(c)
+    return {"color": [round(float(x), 4) for x in col], "flatten": float(st.get("flatten", 0.0)), "scale": float(st.get("scale", 1.0))}
+
+
+def layer_shown(L: dict, season: str) -> bool:
+    return not L.get("seasons") or ("winter" if season == "snow" else season) in L["seasons"] or season in L["seasons"]
+
+
+def hidden_parts(spec: dict, season: str) -> list:
+    """The pictures (parts) no layer shows in that season."""
+    layers = [{**LAYER, **L} for L in spec["clump"]["layers"]]
+    used = {L["part"] for L in layers if L["part"] is not None}
+    shown = {L["part"] for L in layers if L["part"] is not None and layer_shown(L, season)}
+    return sorted(used - shown)
 
 
 def _norm(v):
@@ -54,9 +98,15 @@ def validate(s: dict):
     if not layers:
         raise ValueError('a clump needs layers: "clump": {"layers": [{"part": "main", "count": 20, "ring": [0, 0.1], "lean": [0, 30]}]}; '
                          f"layer keys: {sorted(LAYER)}")
+    for se, d in (cl.get("seasons") or {}).items():
+        if se not in ("spring", "summer", "autumn", "winter", "snow") or set(d) - {"color", "flatten", "scale"}:
+            raise ValueError(f'clump.seasons: {{"spring" | "summer" | "autumn" | "winter" | "snow": {{"color", "flatten", "scale"}}}}; got {se!r}: {sorted(d)}')
     parts = veg_leaf.part_specs(s["leaves"])
     names = {str(i) for i in range(len(layers))} | {L.get("name") for L in layers if L.get("name")}
     for i, L in enumerate(layers):
+        bad_se = set(L.get("seasons") or ()) - {"spring", "summer", "autumn", "winter", "snow"}
+        if bad_se:
+            raise ValueError(f"clump layer {i}: seasons {sorted(bad_se)}? spring, summer, autumn, winter, snow")
         bad = set(L) - set(LAYER) - {"name"}
         if bad:
             raise ValueError(f"clump layer {i}: unknown keys {sorted(bad)}; it takes {sorted(LAYER) + ['name']}")
@@ -75,6 +125,8 @@ def grow(s: dict) -> dict:
     cards_of = veg_leaf.part_cards(lf)
     layers = [{**LAYER, **L} for L in s["clump"]["layers"]]
     size = float(s["clump"].get("size", 1.0))  # the whole plant's scale (a set varies it)
+    season = s.get("season", "summer") if not s.get("snow") else s.get("season", "summer")
+    state = season_state(s, season) or {"flatten": 0.0, "scale": 1.0}
     up = np.array([0.0, 0.0, 1.0])
     # skeleton: node 0 under the ground, node 1 at the foot; then one chain per stalk
     pos, par, rad, order, axis, key, pin = [[0, 0, -0.05], [0, 0, 0.0]], [0, 0], [0.002, 0.002], [0, 0], [0, 0], [seed, _child(seed, 1)], [False, False]
@@ -99,8 +151,11 @@ def grow(s: dict) -> dict:
             r = lambda q: float(_u(_child(kj, q), 3))
             az = 2.399963 * j + 6.283 * float(_u(k0, 5)) + 0.5 * (r(1) - 0.5)
             out = np.array([math.cos(az), math.sin(az), 0.0])
-            lean = math.radians(L["lean"][0] + (L["lean"][1] - L["lean"][0]) * r(2))
-            sc = (L["scale"][0] + (L["scale"][1] - L["scale"][0]) * r(3)) * size
+            lean_d = L["lean"][0] + (L["lean"][1] - L["lean"][0]) * r(2)
+            if state["flatten"] and lean_d < 84:  # the season lays it down (winter grass), each card by its own share
+                lean_d += state["flatten"] * (0.7 + 0.3 * r(8)) * (84 - lean_d)
+            lean = math.radians(lean_d)
+            sc = (L["scale"][0] + (L["scale"][1] - L["scale"][0]) * r(3)) * size * state["scale"]
             if hosts is not None:  # on a stalk of the host layer
                 nodes, P = hosts[j % len(hosts)]
                 a = L["along"][0] + (L["along"][1] - L["along"][0]) * r(4)
@@ -149,7 +204,7 @@ def grow(s: dict) -> dict:
                     ids.append(prev)
                 tops[li].append((ids, P))
                 base, node, d = P[-1], prev, dirs[-1]
-            if L["part"] is None or not cards_of.get(L["part"]):
+            if L["part"] is None or not cards_of.get(L["part"]) or not layer_shown(L, season):
                 continue
             if L["tilt"]:  # tipped over from the stalk: its run turns outward, its face follows the stalk
                 tl_ = math.radians(float(L["tilt"]))
@@ -192,7 +247,7 @@ def grow(s: dict) -> dict:
     tw = {"pos": np.asarray(T["pos"], float).reshape(-1, 3), "frame": np.asarray(T["frame"], float).reshape(-1, 3, 3),
           "scale": np.asarray(T["scale"], float), "variant": np.zeros(len(T["pos"]), int), "node": np.asarray(T["node"], int),
           "key": np.asarray(T["key"], np.uint64), "card": np.asarray(T["card"], int)}
-    if s.get("season") in ("bare", "dead") or (s.get("season") == "winter" and not lf.get("evergreen")):
+    if season_state(s, season) is None:
         tw = {k: v[:0] for k, v in tw.items()}  # a herb in winter has died back to its foot
     tips = [P[:, 2].max()]
     if len(tw["pos"]):  # the plant's height: its stalks and the tips of its cards
