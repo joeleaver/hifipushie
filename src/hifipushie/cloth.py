@@ -706,7 +706,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "made": [nm for nm in names if mod[nm][0] == "made"],
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
-            "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n),
+            "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n, B.get("seams"), sew, sew_seam),
             "points": pts_n, "border": border_n,
             # lines drawn as stitching in the detail maps (pattern coordinates; a fly's J)
             "stitch_lines": {f"{nm}:{k_}": np.asarray(L_, float) for nm in names

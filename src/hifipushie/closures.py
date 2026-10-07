@@ -117,12 +117,20 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
     return stitches, folds, seams, out
 
 
-def resolve(closures: list, marks: dict, points: dict) -> list:
+def resolve(closures: list, marks: dict, points: dict, seams: list | None = None, sew=None, sew_seam=None) -> list:
     """Each closure with its fastenings' vertex pairs (`v`: [[over vertex, under vertex], ...]; a mark the mesh
-    dropped is left out and counted in `lost`)."""
+    dropped is left out and counted in `lost`). A closed zip's fastenings are its seam's sewn pairs (it is sewn
+    shut: without them the report read "0 of 0 closed" and never checked the fly)."""
     out = []
     for c in closures or []:
         v, ok, lost = [], [], 0
+        if c.get("kind") == "zip" and c.get("seam") and c.get("state", "closed") == "closed" and seams is not None \
+                and sew is not None and len(sew):
+            si = [i for i, sd in enumerate(seams) if list(sd) == list(c["seam"])]
+            if si:
+                pr = np.asarray(sew, np.int64).reshape(-1, 2)[np.isin(np.asarray(sew_seam), si)]
+                out.append(dict(c, v=pr.tolist(), closed=[True] * len(pr), lost=0))
+                continue
         for (a, b), cl in zip(c["pairs"], c["closed"]):
             va = marks.get(f"{c['over']}:{a}", points.get(f"{c['over']}:{a}"))
             vb = marks.get(f"{c['under']}:{b}", points.get(f"{c['under']}:{b}"))
