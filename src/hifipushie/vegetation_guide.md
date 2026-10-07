@@ -476,7 +476,20 @@ lod_files=True)`:
   views x albedo, normal, Cycles shade, depth), ~1 min for each further season. `impostor="cross"` keeps the old two
   crossed quads (any viewer draws them without a shader; from the side only): albedo + tangent-space normal map,
   front and back faces of their own, and the engine must not let the quads RECEIVE shadows (a dark wedge).
-  Measured: see "Impostors from above" below.
+  Installing it in Godot 4 (what `spikes/godot_veg/octa.gd` does): (1) copy `impostor_octa.gdshader` into the project;
+  (2) import `<name>_LOD3.glb` (the impostor LOD file) and read `<name>_seasons.json`: `impostor` = {frames, size,
+  centre}, `seasons.<season>.impostor` = the season's `baseColorTexture.file` (albedo atlas) and
+  `impostorNormalTexture.file` (object-space normal + depth); (3) make a ShaderMaterial with that shader and set
+  `albedo_atlas`, `normal_atlas` (load the PNGs; generate mipmaps), `frames`, `size`, `centre`; (4) on the impostor's
+  MeshInstance3D set `material_override` to it and `extra_cull_margin = size / 2` (REQUIRED: the stored quad is a
+  vertical square, the drawn one turns to the camera and leaves that box from above, so without the margin Godot culls
+  it while it is on screen); (5) leave casting shadows on, receiving off (the shader's render_mode already has
+  `shadows_disabled`); (6) per season swap the two textures. `impostor="cross"` (export_plant) writes the old two crossed
+  quads instead: any viewer draws them with no shader, from the side only.
+  Measured in Godot 4.7.2 (blobby oak, impostor vs LOD 2, three azimuths, orthographic, one sun; octa.gd +
+  octa_measure.py): elevation 0 / 20 / 45 deg: coverage 1.01 / 1.01 / 1.02, luma 0.99 / 0.98 / 0.98, outline IoU 0.975 /
+  0.939 / 0.910. The crossed quads on the same tree: coverage 0.96 / 0.92 / 0.66, luma 1.01 / 0.89 / 0.74, IoU 0.89 /
+  0.84 / 0.63 (from a hill they read as a cross).
 - **`<name>_seasons.json`** beside the GLB (written whenever there are variants). It LEADS with `contract`
   {"version", "changes" per version, "rule"} and `slot_list` [{"slot", "on": [{"mesh", "primitive"}], "hidden_in":
   [seasons], "channels": the vertex attributes on it}]: an engine that maps materials by slot name should refuse a
