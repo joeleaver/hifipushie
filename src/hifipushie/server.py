@@ -2323,7 +2323,7 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
     A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
     "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
-    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" (more sheets to come), or
+    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" | "anime" | "cartoon", or
     {"sheet": "blobby", "crown": {"masses": 6}, ...} to override a sheet's numbers: the SAME grown plant (skeleton,
     height, crown extent, lean) dressed another way (few fat limbs, a crown of smooth closed masses, flat colours); the
     report says what was simplified and the outline IoU against the realistic tree. Looks and exports follow the style.

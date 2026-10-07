@@ -583,7 +583,7 @@ of season blanked in that season's atlas (styled: the `heads` slot hidden); flat
 
 ## Styles: the same plant dressed another way
 
-`"style": "realistic" | "blobby" | "anime"` on the spec (grow_plant, a set's plants; cartoon and pixar sheets are not
+`"style": "realistic" | "blobby" | "anime" | "cartoon"` on the spec (grow_plant, a set's plants; a pixar sheet is not
 built yet). A style NEVER changes the growth: species, seed, skeleton, height, crown extent and lean are the realistic
 tree's, node for node, so an engine can swap styles on one placement and the outline at 200 m is the same tree. The
 report says what was simplified and measures that claim:
@@ -692,6 +692,24 @@ fat flat petals, `petal_length` / `petal_width`, cupped `cup`, round a `centre` 
 Numbers (vegstyle3, Godot 4.7.2 at each LOD's switch distance, alpha scissor): oak IoU 0.91, covered area 0.94-1.0 of
 LOD 0 at every switch, no interior shimmer; spruce IoU 0.80.
 
+CARTOON (`vegetation_styles/cartoon.json`: Wind Waker, Animal Crossing) is the blobby crown made chunky, each operation
+a number: `crown.scallop` small round bumps on every clump's sides and top (`scallop_size` x its radius, sunk
+`scallop_sink`, joined crisper than the clumps by `scallop_join`: the scalloped edge), clumps joined over a small
+`blend_share` (clear notches between them), `normals_clump` (the normal mostly straight out of its own clump's middle:
+flat-ish shading per clump, the brief's "clump-centre normals"), 2 `tones` with `hue_jitter` (the hue moves a little
+per clump), `big_leaves` single oversized leaves (`big_leaf` x the species' leaf length, the species' outline fattened,
+thin closed plates rooted `big_leaf_sink` into the crown at its outermost points, pointing out and up by `big_leaf_up`;
+fewer at lower LODs; each takes its clump's colour, id and wind, its tip flutters). The clump id is TEXCOORD_0.y as in
+blobby. Wood: first-order limbs, `wood.taper` (girth at the foot x (1 + taper), easing to the top), `wood.flare` (a root
+flare over the first ~12% of the bare trunk) and `wood.s_bend` (one S along the bare trunk, `s_bend` x its height out and
+back, nothing moves above the crown's base: the crown stays where the realistic one is).
+Cartoon conifers: tiers of `tier_shape` "cone": each tier a cone standing on its band's foot, `cone_height` x the band
+tall (it reaches into the band above: the saw-tooth outline), its rim cut into `teeth` points `zig` x its radius in and
+out (a zigzag outline from above and the side). The cones' triangles cover less of the realistic outline than its
+parallel-sided bands: IoU ~0.8 is the style's price (wider `spread` buys IoU and costs width).
+Cartoon small plants: few big wide blades, `heads_kind` {"ray": "petals", ...}: a daisy's flower as 5-8 fat flat petals
+cupped round a centre disc (COLOR_0: white petals, yellow centre, green stalk), a grass's seed spike as a ball.
+
 Forks only when bare: a deciduous styled tree's wood is two primitives: slot `bark` (trunk + limbs, always drawn) and
 slot `bark_forks` (the limbs' forks: hidden while the crown is there, where they cluttered its underside; shown in
 the bare seasons through the variant `bark_forks_bare`, within `wood.forks_share` of the budget). Looks draw the
@@ -734,6 +752,6 @@ applied to its cards (paddles and balls): not yet judged.
 ## Not built yet
 
 Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
-proxies; cartoon and pixar styles, styles for stands, blossom; a multi-stem base, exposed roots, burrs,
+proxies; a pixar style, styles for stands, blossom; a multi-stem base, exposed roots, burrs,
 fluted trunks, surface roots running out over the ground, hollows and cavities; thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
 water level); a tree that sees the other plants you made (use `setting`/`neighbours`).
