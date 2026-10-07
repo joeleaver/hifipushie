@@ -21,7 +21,10 @@ base.pose_expression does), carried from the head's skin vertices onto the expor
 nearest few; the bag, teeth and tongue, away from the skin, take the jaw's rigid motion fitted to the jaw line). It
 needs base.head.interior (the kit's slit/bag/teeth/tongue behind the head's lips, base.mouth_interior) and
 base.head.mouth_gap >= 0.002 (lips parted while modelling; closed ones are zipped into one seam). The neutral
-closes the lips through the basis too. Blinks are pushed out of the eyeball.
+closes the lips through the basis too. Blinks are pushed out of the eyeball, and sealed on the low poly
+(`GnmFace._lid_seal`): both lids' margins are brought onto one smooth line (the basis closes the eye, but each
+low-poly margin vertex lands at its own height: a ragged line with dark slots). Only the lids move: a vertex takes the
+correction by its distance from its lid's margin (none from 9 mm above / 4 mm below it), so cheek and brow stay.
 
 Either way the neutral's last step is `Face.seal` on the low poly itself: the gap the close left between the lips
 (measured across the mouth and a little back from its front, corners included) closed, the lips pressed 0.2 mm past
@@ -36,7 +39,15 @@ move; those come on top of the export's budget, the other parts keep what they'd
 spec["face_shapes"] (optional, stripped from geometry): {"amount": {name: scale (1 = default, 0 = flat)},
   "parts": [part names besides the face's own skin that take the skin's shapes],
   "jaw": {"pivot": joint | [x, y, z], "open": deg at jawOpen 1.0 (18; GNM 14, about the ears' landmarks), "depth": m
-  below the parting line where the jaw stops (0.75 x head radius)}}
+  below the parting line where the jaw stops (0.75 x head radius)},
+  "lid_seal": false | amount 0..1 | {"amount", "over": m the upper margin goes past the line (0.0003), "band": m
+  either side of the line drawn onto it (0.0015), "reach": [upper, lower] m of lid skin that follows (0.009, 0.004)}
+  (GNM heads' blinks; false = the basis's own blink: softer skin, a thin slit of eyeball on a low poly)}
+
+The export log gives each skin part's most uneven shapes (`unevenness`: how far a vertex's move lies outside the
+range of its edge neighbours' moves, per metre of edge; a smooth shape reads ~0 however steep) and a WARNING over
+0.2: neighbouring vertices going different ways shear painted detail into a sawtooth (a blink's under-eye shadow).
+The json has them per part as face_shape_unevenness.
 """
 
 from __future__ import annotations
@@ -172,6 +183,7 @@ class Face:
         self.nose_bone = [p for n, p in prims.items() if n.startswith(f"{fb}_nose") and p.op == "add"
                           and "_wing" not in n and "nostril" not in n]
         jaw = opts.get("jaw") or {}
+        self.lid_seal = lid_seal_options(opts.get("lid_seal"))  # (GNM heads; validated here too)
         self.eyes = {}
         for s, sfx in (("Left", ".L"), ("Right", ".R")):
             lp = prims.get(f"{fb}_lids{sfx}")
@@ -347,6 +359,15 @@ class Face:
         o = 0.5 * self.SEAL_OVERLAP
         dz = np.where(up, np.maximum(dz, np.minimum(zm - h0c - o, 0.0)), np.minimum(dz, np.maximum(zm - h0c + o, 0.0)))
         return dz[:, None] * self.up
+
+    def off_margins(self, name: str, X: np.ndarray) -> np.ndarray | None:
+        """Where `unevenness` judges a shape: everywhere, except a blink's own lid margins (the skin within 3 mm
+        of the eyeball). There a blink is uneven on purpose: each margin vertex is brought to the lid line from
+        its own height."""
+        if not name.startswith("eyeBlink") or not self.eyes:
+            return None
+        return np.min([np.linalg.norm(X - np.asarray(ev["c"], float), axis=1) - float(ev["r"])
+                       for ev in self.eyes.values()], axis=0) > 0.003
 
     def owns(self, part: str) -> bool:
         """Whether a part takes the skin's face shapes: the face's own skin (the part the lips are in) and any listed
@@ -682,6 +703,49 @@ def vertex_normals(V: np.ndarray, T: np.ndarray) -> np.ndarray:
     return N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
 
 
+UNEVEN_LIMIT = 0.2   # worst `unevenness` over which the export log warns (the lid seal's sawtooth read 0.21 / 0.38,
+#                      the same blinks unsealed and repaired 0.05-0.09)
+UNEVEN_COUNT = 0.05  # vertices over this are counted
+
+
+def unevenness(V: np.ndarray, T: np.ndarray, d: np.ndarray, sel: np.ndarray | None = None) -> tuple[float, int, int]:
+    """How jagged a shape's move is over the mesh: per vertex, how far its move lies OUTSIDE the range of its edge
+    neighbours' moves (per axis; 0 for any vertex between its neighbours, however steep the field), per metre of
+    its mean edge: (worst, vertices over UNEVEN_COUNT, vertices with 4+ neighbours). A smooth field reads ~0 (a lid
+    travelling 8 mm over 5 mm of skin is steep, not jagged); a vertex that goes further than everything round it
+    is a spike, and several of them a sawtooth in whatever is painted there. V, T welded (no uv-seam duplicates:
+    `weld`); sel limits the count to those vertices."""
+    e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]])
+    e = np.unique(np.sort(e, 1), axis=0)
+    e = e[e[:, 0] != e[:, 1]]
+    L = np.linalg.norm(V[e[:, 0]] - V[e[:, 1]], axis=1)
+    n = len(V)
+    lo, hi = np.full((n, 3), np.inf), np.full((n, 3), -np.inf)
+    ls, cnt = np.zeros(n), np.zeros(n)
+    for a, b in ((0, 1), (1, 0)):
+        np.minimum.at(lo, e[:, a], d[e[:, b]])
+        np.maximum.at(hi, e[:, a], d[e[:, b]])
+        np.add.at(ls, e[:, a], L)
+        np.add.at(cnt, e[:, a], 1)
+    ok = cnt >= 4
+    if sel is not None:
+        ok &= sel
+    if not ok.any():
+        return 0.0, 0, 0
+    r = np.maximum(np.maximum(lo[ok] - d[ok], d[ok] - hi[ok]), 0.0)
+    q = np.linalg.norm(r, axis=1) / np.maximum(ls[ok] / cnt[ok], 1e-5)
+    return float(q.max()), int((q > UNEVEN_COUNT).sum()), int(ok.sum())
+
+
+def weld(V: np.ndarray, T: np.ndarray, tol: float = 1e-6):
+    """(index of each welded vertex's first copy, triangles on welded indices, welded index of every vertex)."""
+    key = np.round(np.asarray(V, float) / tol).astype(np.int64)
+    _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    inv = inv.ravel()
+    Tw = inv[T]
+    return first, Tw[(Tw[:, 0] != Tw[:, 1]) & (Tw[:, 1] != Tw[:, 2]) & (Tw[:, 0] != Tw[:, 2])], inv
+
+
 def turn(vecs: np.ndarray, n0: np.ndarray, n1: np.ndarray) -> np.ndarray:
     """vecs (m, 3) turned by the rotation taking unit n0 to unit n1 (per row), the least rotation."""
     axis = np.cross(n0, n1)
@@ -759,6 +823,18 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
         moved = sum(int((np.linalg.norm(d, axis=1) > 1e-6).any()) for d in D.values())
         log.append(f"face shapes: {pn} ({kind}) {len(D)} targets ({moved} move it), max "
                    f"{max(np.linalg.norm(d, axis=1).max() for d in D.values()) * 1000:.1f} mm")
+        if kind == "skin":  # a shape whose move jumps from vertex to vertex shears whatever is painted there
+            first, Tw, _ = weld(Xn, T)
+            un = {nm: unevenness(Xn[first], Tw, d[first], face.off_margins(nm, Xn[first])) for nm, d in D.items()}
+            p["shape_unevenness"] = {nm: round(u[0], 3) for nm, u in un.items() if u[0] > UNEVEN_COUNT}
+            top = sorted(un, key=lambda nm: -un[nm][0])[:3]
+            log.append(f"face shapes: {pn} unevenness (a vertex's move outside its neighbours', per m of edge; "
+                       f"smooth ~0, limit {UNEVEN_LIMIT}): " + ", ".join(f"{nm} {un[nm][0]:.2f}" for nm in top))
+            for nm in un:
+                if un[nm][0] > UNEVEN_LIMIT:
+                    log.append(f"WARNING face shapes: {pn} {nm} moves unevenly ({un[nm][0]:.2f}, {un[nm][1]} "
+                               f"vertices over {UNEVEN_COUNT}): neighbouring vertices go different ways, which "
+                               "shears painted detail into a sawtooth. Look at it posed (rig(glb=, shapes=))")
     return got
 
 
@@ -822,8 +898,31 @@ HOLD = 0.5   # the weight of holding a landmark a shape doesn't move
 LID_SEAL = True   # blinks: both lids' margins brought onto one smooth line on the low poly (GnmFace._lid_seal)
 LID_OVER = 0.0003  # m the upper lid's margin goes past that line
 LID_BAND = 0.0015  # m either side of the line squeezed onto each lid's own side
+LID_REACH = (0.009, 0.004)  # m from its margin (as posed) over which a lid's skin takes the seal: upper, lower
+LID_EDGE = (0.0025, 0.0015)  # m from its lid's posed edge within which a vertex counts as margin: upper, lower
 LID_PINCH = 3     # how hard that band is drawn to the line: linear (1) parked the margins ~0.5 mm either side of it, a 1.2 mm slit
 GNM_OPEN = 14.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16)
+
+
+def lid_seal_options(v) -> dict:
+    """spec.face_shapes.lid_seal -> {"amount" 0..1, "over", "band", "reach": (upper, lower)} (m). None / True: the
+    defaults; False or 0: no seal; a number: that share of it; a dict: any of the four."""
+    o = {"amount": 1.0, "over": LID_OVER, "band": LID_BAND, "reach": LID_REACH}
+    if v is None or v is True:
+        return o
+    if v is False:
+        return {**o, "amount": 0.0}
+    if isinstance(v, (int, float)):
+        v = {"amount": v}
+    if not isinstance(v, dict) or set(v) - set(o):
+        raise SpecError("face_shapes.lid_seal: false, an amount 0..1, or {\"amount\", \"over\", \"band\", "
+                        f"\"reach\": [upper, lower]}} in metres (got {v!r})")
+    o.update(v)
+    r = o["reach"]
+    o["reach"] = (float(r), float(r)) if isinstance(r, (int, float)) else (float(r[0]), float(r[1]))
+    o["amount"] = float(np.clip(o["amount"], 0.0, 1.0))
+    o["over"], o["band"] = float(o["over"]), max(float(o["band"]), 1e-5)
+    return o
 
 
 def _mirror_ids(ids, side):
@@ -885,6 +984,7 @@ class GnmFace(Face):
                   else 0.5 * (lm[0] + lm[16]))
         self.open = np.radians(float(jaw.get("open", GNM_OPEN)))
         self.depth = float(jaw.get("depth", 0.75 * self.R))
+        self.lid_seal = lid_seal_options(opts.get("lid_seal"))
         self._gnm = {}
 
     # ---- GNM's frame, the solve, the carry ---------------------------------------------------------------------
@@ -1182,8 +1282,14 @@ class GnmFace(Face):
         """A blink's lids brought onto ONE smooth line, on the low poly. The basis closes the eye (no ball shows), but
         each low-poly vertex of a lid's margin lands at its own height: a wavy line with dark slots between the
         margins. Across the eye in bins: the upper lid's lowest and the lower lid's highest front vertex as posed; the
-        line = a parabola through the lower lid's; each lid is moved onto it (the upper LID_OVER past it), every
-        vertex by its own share of its margin's blink travel, so the brow and cheek stay."""
+        line = a parabola through the lower lid's; each lid is moved onto it (the upper LID_OVER past it). How much
+        of that a vertex takes falls off with its posed DISTANCE from its lid's margin (`_lid_share`): a field that
+        is smooth over the skin and zero on the cheek and the brow. (It was the vertex's share of its margin's blink
+        travel: the lower lid travels ~1 mm, so on the cheek under it that ratio was noise, 0 on one vertex and 1
+        on the next: s0urc3's sawtooth in the under-eye shadow, 7-22 mm below the eye.)
+        spec.face_shapes.lid_seal: false | amount 0..1 | {"amount", "over", "band", "reach": [upper, lower] m}."""
+        o = self.lid_seal
+        amount, over, band = o["amount"], o["over"], o["band"]
         ev = self.eyes[s]
         c, r = np.asarray(ev["c"], float), float(ev["r"])
         lm = np.asarray(self.head["lm68"], float)
@@ -1214,45 +1320,70 @@ class GnmFace(Face):
         edges = np.linspace(-0.5 * width, 0.5 * width, nb + 1)
         bc = 0.5 * (edges[1:] + edges[:-1])
         bi = np.clip(np.searchsorted(edges, u) - 1, 0, nb - 1)
-        lo_u, hi_l, tr_u, tr_l = (np.full(nb, np.nan) for _ in range(4))
+        lo_u, hi_l = (np.full(nb, np.nan) for _ in range(2))
+        # which vertices ARE a margin: those within a little of their lid's edge as posed (`_lid_edge`). A coarse
+        # low poly has a few dozen vertices round the eye and most bins hold no margin vertex: the "highest lower-lid
+        # vertex" of such a bin was a cheek vertex 13 mm under the eye, which was then lifted to the line.
+        inside = np.abs(u) < 0.5 * width
+        cu, cl = front & upper & (dh < -5e-4), front & ~upper
+        mu_all = cu & self._lid_edge(u, hp, cu & inside, -1.0, LID_EDGE[0])
+        ml_all = cl & self._lid_edge(u, hp, cl & inside, 1.0, LID_EDGE[1])
         for k in range(nb):
-            mu = np.flatnonzero(front & upper & (bi == k) & (dh < -5e-4))
-            ml = np.flatnonzero(front & ~upper & (bi == k))
+            mu = np.flatnonzero(mu_all & (bi == k))
+            ml = np.flatnonzero(ml_all & (bi == k))
             if len(mu):
-                j = mu[np.argmin(hp[mu])]
-                lo_u[k], tr_u[k] = hp[j], -dh[j]
+                lo_u[k] = hp[mu].min()
             if len(ml):
-                j = ml[np.argmax(hp[ml])]
-                hi_l[k], tr_l[k] = hp[j], dh[j]
+                hi_l[k] = hp[ml].max()
         ok = np.isfinite(lo_u) & np.isfinite(hi_l)
         if ok.sum() < 4:
             return d
 
         def fill(a_):
             return np.interp(bc, bc[np.isfinite(a_)], a_[np.isfinite(a_)])
-        lo_u, hi_l, tr_u, tr_l = fill(lo_u), fill(hi_l), fill(tr_u), fill(tr_l)
+        lo_u, hi_l = fill(lo_u), fill(hi_l)
         line = np.polyval(np.polyfit(bc, hi_l, 2), bc)
-        ends = _bump(np.abs(u), 0.5 * width, 0.62 * width)  # (fades out past the corners)
+        ends = _bump(np.abs(u), 0.5 * width, 0.62 * width) * amount  # (fades out past the corners)
         d = d.copy()
-        for sel, cur, tgt, trav, sgn in ((zone & upper, lo_u, line - LID_OVER, tr_u, -1.0),
-                                         (zone & ~upper, hi_l, line, tr_l, 1.0)):
+        for sel, cur, tgt, reach, sgn in ((zone & upper, lo_u, line - over, o["reach"][0], 1.0),
+                                          (zone & ~upper, hi_l, line, o["reach"][1], -1.0)):
             if not sel.any():
                 continue
             shift = np.interp(u[sel], bc, np.convolve(np.pad(tgt - cur, 1, mode="edge"), [0.25, 0.5, 0.25], "valid"))
-            travel = np.maximum(np.interp(u[sel], bc, trav), 1e-3)
-            share = np.clip(sgn * dh[sel] / travel, 0.0, 1.0)
-            d[sel] += (np.clip(shift, -0.004, 0.004) * share * ends[sel])[:, None] * up
-        # then no vertex of a lid is left across the line: the band LID_BAND either side of it is squeezed onto its
-        # own lid's side (bins put each margin NEAR the line; its vertices still sat a little over and under it,
+            away = sgn * (hp[sel] - np.interp(u[sel], bc, cur))  # how far from its lid's margin, as posed
+            d[sel] += (np.clip(shift, -0.004, 0.004) * self._lid_share(away, reach) * ends[sel])[:, None] * up
+        # then no vertex of a lid is left across the line: the band either side of it is squeezed onto its own
+        # lid's side (bins put each margin NEAR the line; its vertices still sat a little over and under it,
         # which is the wavy edge)
         ln = np.interp(u, bc, line)
         hp = h0 + d @ up
-        t = np.clip((hp - (ln - LID_BAND)) / (2 * LID_BAND), 0.0, 1.0)
-        for sel, new in ((zone & upper & (hp < ln + LID_BAND), ln - LID_OVER + t ** LID_PINCH * (LID_BAND + LID_OVER)),
-                         (zone & ~upper & (hp > ln - LID_BAND), ln - LID_BAND * (1 - t) ** LID_PINCH)):
+        t = np.clip((hp - (ln - band)) / (2 * band), 0.0, 1.0)
+        for sel, new in ((zone & upper & (hp < ln + band), ln - over + t ** LID_PINCH * (band + over)),
+                         (zone & ~upper & (hp > ln - band), ln - band * (1 - t) ** LID_PINCH)):
             if sel.any():
                 d[sel] += ((new[sel] - hp[sel]) * ends[sel])[:, None] * up
         return d
+
+    @staticmethod
+    def _lid_edge(u: np.ndarray, h: np.ndarray, cand: np.ndarray, sgn: float, tol: float) -> np.ndarray:
+        """Which vertices lie on a lid's edge: within `tol` m of the candidates' envelope across the eye (sgn +1:
+        their upper envelope, the lower lid's margin; -1: the lower one), a parabola fitted with the points on the
+        far side of it counting 2%."""
+        idx = np.flatnonzero(cand)
+        if len(idx) < 4:
+            return np.zeros(len(u), bool)
+        x, y = u[idx], sgn * h[idx]
+        w = np.ones(len(idx))
+        for _ in range(20):
+            co = np.polyfit(x, y, 2, w=np.sqrt(w))
+            w = np.where(y >= np.polyval(co, x), 1.0, 0.02)
+        return sgn * h >= np.polyval(co, u) - tol
+
+    @staticmethod
+    def _lid_share(away: np.ndarray, reach: float) -> np.ndarray:
+        """How much of its margin's correction a lid vertex takes: all of it at the margin (and past it), none
+        from `reach` m away, eased between."""
+        return 1.0 - _ss(np.clip(away / max(reach, 1e-6), 0.0, 1.0))
 
     @staticmethod
     def _idw(d):
@@ -1337,7 +1468,7 @@ class GnmFace(Face):
                     d *= mouth_mask[:, None]
                 elif fam == "eye":
                     d *= eye_mask[:, None]
-                if name.startswith("eyeBlink") and LID_SEAL:
+                if name.startswith("eyeBlink") and LID_SEAL and self.lid_seal["amount"] > 0:
                     for sd in self.eyes:
                         if name.endswith(sd):
                             d = self._lid_seal(sd, Xn, d)

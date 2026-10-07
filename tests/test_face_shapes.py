@@ -462,6 +462,75 @@ def test_blink_lids_meet():
         faceshapes.LID_SEAL = keep
 
 
+def test_blink_seal_leaves_the_cheek():
+    """2026-10-07 (s0urc3's Garrett, 20k export): the lid seal sheared the skin UNDER each eye into a sawtooth:
+    neighbouring cheek vertices 7-22 mm below the eye rose 0.25, -0.13, 2.40, 0.43, ... 5.24 mm. On a coarse low
+    poly most of the seal's bins across the eye hold no margin vertex, so a bin's "highest lower-lid vertex" was a
+    cheek vertex, lifted to the lid line; and every vertex's share was its blink travel over its margin's (~1 mm
+    on a lower lid: noise). Now margins are found by their lid's edge and the share falls off with distance from
+    the margin. On the head mesh decimated to a game face's density: nothing under the lower lid's reach moves,
+    and the sealed blink is no more uneven (`faceshapes.unevenness`) than the unsealed one. Also the spec switch."""
+    got = _gnm()
+    if got is None:
+        print("skip: no GNM asset pack ($HIFIPUSHIE_ASSETS)")
+        return
+    import pyfqmr
+    spec, face = got
+    h = face.head
+    V = np.asarray(h["verts"], float)
+    T = np.array([(f[0], f[j], f[j + 1]) for f in h["faces"] for j in range(1, len(f) - 1)])
+    names = ["eyeBlinkLeft", "eyeBlinkRight"]
+    keep, opts = faceshapes.LID_SEAL, face.lid_seal
+    try:
+        for share in (0.3, 0.1, 0.05):
+            sp = pyfqmr.Simplify()
+            sp.setMesh(V, T)
+            sp.simplify_mesh(target_count=int(len(T) * share), aggressiveness=5, preserve_border=True, verbose=False)
+            v2, f2, _ = sp.getMesh()
+            X, F = np.asarray(v2, float), np.asarray(f2)
+            n0 = faceshapes.vertex_normals(X, F)
+            faceshapes.LID_SEAL = False
+            raw = face.displacements(X, X, n0, "skin", names)
+            faceshapes.LID_SEAL = True
+            D = face.displacements(X, X, n0, "skin", names)
+            first, Fw, _ = faceshapes.weld(X, F)
+            for s in ("Left", "Right"):
+                nm = f"eyeBlink{s}"
+                ev = face.eyes[s]
+                below = (X - ev["c"]) @ face.up < -0.012
+                ch = np.linalg.norm(D[nm] - raw[nm], axis=1)
+                assert ch.max() > 2e-4, (share, s, "the seal did nothing")
+                assert ch[below].max() < 1e-4, (share, s, "the seal moved the cheek", ch[below].max())
+                # (at the margins themselves the seal is steep on purpose: the band drawn onto the line; s0urc3's
+                # region is the skin from 6.5 mm under the eye's centre)
+                under = (((X - ev["c"]) @ face.up < -0.0065) & (np.linalg.norm(X - ev["c"], axis=1) < 0.045))[first]
+                u0 = faceshapes.unevenness(X[first], Fw, raw[nm][first], under)
+                u1 = faceshapes.unevenness(X[first], Fw, D[nm][first], under)
+                assert u1[0] < max(u0[0] + 0.06, 0.12), (share, s, "the sealed blink is jagged under the eye", u1, u0)
+                if share < 0.3:  # (a game face's density: the whole shape under the export log's limit)
+                    off = face.off_margins(nm, X[first])
+                    assert faceshapes.unevenness(X[first], Fw, D[nm][first], off)[0] < 0.75 * faceshapes.UNEVEN_LIMIT, (share, s)
+        # a spike reads as one: one vertex moved 3 mm alone
+        d = np.zeros_like(X)
+        d[np.argmin(np.linalg.norm(X - face.eyes["Left"]["c"] + 0.02 * face.up, axis=1))] = 0.003 * face.up
+        assert faceshapes.unevenness(X[first], Fw, d[first])[0] > faceshapes.UNEVEN_LIMIT
+        # spec.face_shapes.lid_seal: false = the basis's own blink; a wrong key is refused
+        face.lid_seal = faceshapes.lid_seal_options(False)
+        off = face.displacements(X, X, n0, "skin", names)
+        assert np.abs(off["eyeBlinkLeft"] - raw["eyeBlinkLeft"]).max() < 1e-12
+        face.lid_seal = faceshapes.lid_seal_options(0.5)
+        half = face.displacements(X, X, n0, "skin", names)
+        a = np.linalg.norm(half["eyeBlinkLeft"] - raw["eyeBlinkLeft"], axis=1).max()
+        assert 0 < a < np.linalg.norm(D["eyeBlinkLeft"] - raw["eyeBlinkLeft"], axis=1).max()
+        try:
+            faceshapes.lid_seal_options({"amont": 1})
+            raise AssertionError("a misspelt lid_seal key passed")
+        except SpecError:
+            pass
+    finally:
+        faceshapes.LID_SEAL, face.lid_seal = keep, opts
+
+
 GNM_EXAMPLE = EXAMPLE.with_name("gnm_talk.json")
 
 

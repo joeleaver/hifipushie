@@ -1164,8 +1164,10 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     alone only seals the lips (Audio2Face drives it with the jaw shut). On every part that moves (the head's part,
     teeth, tongue, eyeballs), the same vertices as the neutral (mouth closed), each shape its full extent at weight
     1, additive; names in glTF mesh.extras.targetNames, FBX blend shapes, and the json's face_shapes. Tune amounts /
-    the jaw in
+    the jaw / the blink's lid seal (`lid_seal`: false | amount | {amount, over, band, reach}) in
     spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
+    The log lists each skin part's most uneven shapes (a vertex moving outside its neighbours' range; smooth ~0) and
+    WARNs over 0.2: a sawtooth in whatever is painted there. Check blinks posed: rig(glb=, shapes={"eyeBlinkLeft": 1}).
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset

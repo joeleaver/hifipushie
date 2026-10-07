@@ -1744,6 +1744,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                                          if pn not in pf_of and not report[pn].get("curves")}, face_shapes, log)
         for pn, nms in shapes.items():
             report[pn]["face_shapes"] = nms
+            if parts[pn].get("shape_unevenness"):  # (faceshapes.unevenness: shapes over UNEVEN_COUNT, worst vertex)
+                report[pn]["face_shape_unevenness"] = parts[pn].pop("shape_unevenness")
         log.append(f"face shapes: {len(faceshapes.names_of(face_shapes))} on {len(shapes)} parts in "
                    f"{time.time() - tf:.1f}s")
         if rigged and hf is not None:  # whatever a face shape moves is head: it must not also bend with the neck
