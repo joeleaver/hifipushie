@@ -715,7 +715,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
 
     def surface(dn, target):
         fn_ = wfn if dn is wd_ else (lambda q: wood_field(dn["segs"], q, dn["blend"]))
-        V_, F_ = _decimate(dn["V"], dn["F"], max(int(target), 12 * dn["axes"]))
+        V_, F_ = _decimate(dn["V"], dn["F"], max(int(target), 12 * dn["axes"], 64))  # (under ~60 a lone pole became a spike)
         V_, N_ = onto(fn_, V_)
         nd_ = wood_field(dn["segs"], V_, dn["blend"], node=True)[1]
         z_ = np.zeros(len(V_))
