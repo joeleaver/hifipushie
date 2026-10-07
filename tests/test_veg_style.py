@@ -445,6 +445,27 @@ def test_winter_blades_lie_in_the_export():
         assert "COLOR_0" in hp["attributes"] and G["materials"][hp["material"]]["pbrMetallicRoughness"]["baseColorFactor"][:3] == [1.0, 1.0, 1.0]
 
 
+def test_cartoon():
+    """Cartoon: scalloped clumps (bumps that belong to their clump: ids stay one per clump), big single leaves on the
+    outline, an S-bent tapering trunk that leaves the crown where it is; conifers as saw-tooth cone tiers; still the
+    same individual (IoU), within the budget."""
+    T = v.grow({**BASE, "style": "cartoon"})
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    i = D["info"]
+    assert i["triangles"] <= st["budget"] * 1.05 and i.get("big_leaves", 0) >= 3 and i["match"]["iou"] > 0.75, i
+    ids = np.unique(D["crown"]["uv"][:, 1])
+    assert len(ids) == i["masses"] + (1 if i["core"] else 0) and ids.max() < 1, (len(ids), i["masses"])
+    assert any(m.get("bumps") for m in i["mass_list"])
+    plain = vs.wood(T, {**st, "wood": {**st["wood"], "s_bend": 0.0}})
+    bent = D["mini"]
+    tr = np.flatnonzero(bent["axis"] == bent["axis"][1])
+    assert np.abs(bent["pos"][tr, :2] - plain["pos"][tr, :2]).max() > 0.05  # (the trunk bends)
+    S = v.grow({"species": "norway_spruce", "age": 30, "style": "cartoon"})
+    ft = vs.fit(S, vs.sheet(S["spec"]))
+    assert all(e.get("cone") for e in ft["ells"]) and ft["match"]["iou"] > 0.7
+
+
 def test_head_kinds():
     """Flower heads as balls, colour dabs or petals (cartoon daisies: by the realistic flower's form)."""
     for sp, style, kind in (("meadow_grass", "anime", "dab"), ("daisy", "cartoon", "petals"), ("meadow_grass", "cartoon", "ball")):
