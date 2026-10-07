@@ -248,7 +248,8 @@ def zozo_command(job_dir: Path, args: list | None = None) -> tuple[list, dict]:
 def _stream(cmd: list, progress, timeout: float, env: dict | None = None, what: str = "cloth job") -> list:
     """Run cmd, passing its "cloth:" lines to progress. Returns its lines; raises on failure or timeout (killed)."""
     t = time.time()
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    from . import resources
+    p = resources.track(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env))
     lines = []
     try:
         for line in p.stdout:
@@ -277,7 +278,9 @@ def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -
     from . import resources
     cmd, env = zozo_command(job_dir)
     progress(f"zozo ({env['CARGO_TARGET_DIR'].rsplit('/', 1)[-1]}): waiting for the heavy-job slot")
-    with resources.heavy(f"zozo cloth {job_dir.parent.name}", log=log):
+    both = lambda m: (log(m), progress(m))  # noqa: E731  (the wait is shown where the sim reports)
+    with resources.heavy(f"zozo cloth {job_dir.parent.name}", log=both, kind="cloth_zozo", gpu=True,
+                         model=job_dir.parent.name):
         progress("zozo started")
         _stream(cmd, progress, timeout, env, "zozo cloth job")
     return read_out(job_dir / "out.npz")

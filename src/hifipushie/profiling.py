@@ -121,6 +121,9 @@ class Report:
         res, jobs = [], []
         for idx, (r, snap, t0, t1, pid) in enumerate(ex.map(_call, [(fn, it, stage, m) for m, it in enumerate(items)])):
             res.append(r)
+            if idx % 16 == 0:
+                from .resources import check_cancel
+                check_cancel(stage)
             merge(self.workers.setdefault(stage, {}), snap)
             jobs.append((t0, t1, key(items[idx]) if key else idx))
         self._record(stage, time.time() - t, getattr(ex, "_max_workers", 1), jobs)
@@ -141,8 +144,10 @@ class Report:
             count[0] += 1
         for j in jobs:
             go(*j)
+        from .resources import check_cancel
         while pending:
-            done, _ = wait(list(pending), return_when=FIRST_COMPLETED)
+            done, _ = wait(list(pending), return_when=FIRST_COMPLETED, timeout=1.0)
+            check_cancel(stage)  # a cancelled tool call stops here (its guarded pool is killed too)
             for f in done:
                 fn, arg, label = pending.pop(f)
                 r, snap, t0, t1, pid = f.result()

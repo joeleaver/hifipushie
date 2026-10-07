@@ -114,6 +114,7 @@
    },
    {
     "name": "stalks",
+    "seasons": ["spring", "summer"],
     "part": "head",
     "count": 4,
     "ring": [

@@ -179,14 +179,28 @@ def _tool_with_errors(_register=mcp.tool):
                     except Exception as e:
                         raise ToolError(_error_text(e)) from e
             else:
+                def call(ev, a, k):
+                    from . import resources
+                    with resources.cancel_scope(ev):
+                        try:
+                            return fn(*a, **k)
+                        except ToolError:
+                            raise
+                        except Exception as e:
+                            raise ToolError(_error_text(e)) from e
+
+                # A sync tool runs on a worker thread under a cancel event: when the call is cancelled or the client
+                # goes away, the event is set and the tool's heavy job stops and releases its memory grant
+                # (`resources.cancel_scope`); before, the thread ran on and held the machine's slot for an hour.
                 @functools.wraps(fn)
-                def run(*a, **k):
+                async def run(*a, **k):
+                    import threading
+                    import anyio.to_thread
+                    ev = threading.Event()
                     try:
-                        return fn(*a, **k)
-                    except ToolError:
-                        raise
-                    except Exception as e:
-                        raise ToolError(_error_text(e)) from e
+                        return await anyio.to_thread.run_sync(call, ev, a, k, abandon_on_cancel=True)
+                    finally:
+                        ev.set()  # (after a normal return the thread is done: a no-op)
             register(run)
             return fn  # module-level name stays the plain function (tests and scripts call it directly)
         return deco
@@ -1195,6 +1209,10 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"
             + "\n".join(info["log"])
             + "\nmaps: " + ", ".join(Path(v).name for a in info["atlases"].values() for v in a["maps"].values()))
+    from . import resources
+    w = resources.last_wait()
+    if w and w[0] > 5:
+        text += f"\nwaited {w[0]:.0f} s for heavy-job memory ({w[1] or 'queue'})"
     if not preview:
         return text
     im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide,
@@ -2355,7 +2373,7 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
     A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
     "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
-    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" (more sheets to come), or
+    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" | "anime" | "cartoon", or
     {"sheet": "blobby", "crown": {"masses": 6}, ...} to override a sheet's numbers: the SAME grown plant (skeleton,
     height, crown extent, lean) dressed another way (few fat limbs, a crown of smooth closed masses, flat colours); the
     report says what was simplified and the outline IoU against the realistic tree. Looks and exports follow the style.
@@ -2612,15 +2630,18 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 
 @mcp.tool(structured_output=False)
 def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False,
-                 lods: int = 1, impostor: bool = False, seasons: list[str] | None = None, wet: bool = False,
+                 lods: int = 1, impostor: bool | str = False, seasons: list[str] | None = None, wet: bool = False,
                  lod_files: bool = False) -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
     twig atlas with alpha MASK, double sided, normals bent out from the crown, COLOR_0 = a per-twig tint).
     triangles: LOD 0's budget (a game tree: 10-40k; without it everything grown is written, often 100-400k):
     branches get fewer rings and sides, the thinnest wood is left out (marked wood stays), twigs are thinned and the
-    rest drawn larger. lods: 1-3 mesh LODs (100 / 45 / 18% of the budget); impostor=True adds two crossed quads with
-    the plant's picture as the last LOD (a Blender render: +10-30 s). LOD 0 is the scene, the others hang on it
+    rest drawn larger. lods: 1-3 mesh LODs (100 / 45 / 18% of the budget); impostor=True adds a HEMI-OCTAHEDRAL impostor as
+    the last LOD: one quad the engine's shader turns to the camera, drawing the nearest of 8 x 8 views baked over the
+    upper hemisphere (holds from the horizon to straight down: trees seen from a hill; recipe in the material's extras,
+    reference Godot shader spikes/godot_veg/impostor_octa.gdshader; ~2-3 min of Blender per shape of the plant, ~40 s
+    per further season); impostor="cross" = the old two crossed quads (any viewer draws them; read as a cross from above). LOD 0 is the scene, the others hang on it
     (MSFT_lod) and are listed in extras with the screen height to switch at; lod_files=True also writes each LOD as
     its own <name>_LOD<k>.glb (Unreal, Unity, Godot take LODs as separate meshes).
     Wind is always written: TEXCOORD_1 = (trunk, branch) sway weights, TEXCOORD_2 = (phase, flutter), the same four in
@@ -2665,9 +2686,13 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                "nodes outside the scene and drops variants): use the _LOD<k>.glb files (lod_files=True)"
                + (f", {Path(c['collision_file']).name} (its node is named ...-colonly: Godot makes a static body of it)" if c.get("collision_file") else "")
                + (f", {Path(c['seasons_file']).name} (contract version {vt_contract()} + the slot list, then each season's material parameters per slot; `hidden` = don't draw)" if c.get("seasons_file") else ""))
-    if impostor:
-        ground += ("\nimpostor: albedo + normal map per season, lit by the engine like the mesh LODs; ENGINE: its material must not receive "
+    if impostor == "cross":
+        ground += ("\nimpostor: two crossed quads, albedo + normal map per season, lit by the engine like the mesh LODs; ENGINE: its material must not receive "
                    "shadows (Godot: disable_receive_shadows), or the two quads shadow each other into a dark wedge")
+    elif impostor:
+        ground += ("\nimpostor: hemi-octahedral (one quad + an 8 x 8 atlas of views over the upper hemisphere, object-space normals + depth): it NEEDS "
+                   "the engine's impostor shader (recipe in the impostor material's extras.hifipushie_impostor and the seasons json `impostor`; "
+                   "Godot: spikes/godot_veg/impostor_octa.gdshader, extra_cull_margin = size / 2); no shadows received on it")
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))
@@ -2769,6 +2794,18 @@ def plant_history(name: str, revert_to: int | None = None) -> str:
         v = vt.revert(name, revert_to)
         return f"plant {name} v{v} = v{revert_to}\n" + vt.report(name)
     return "\n".join(f"v{h['version']}  {h['note']}" for h in vt.history(name))
+
+
+@mcp.tool(structured_output=False)
+def heavy_status() -> str:
+    """Who holds the machine's heavy-job memory and who is waiting, across every session and agent on this machine:
+    each running heavy job (export_asset, export_terrain tiles, cloth sims, stand exports, Cycles hair looks) with
+    its declared peak GB, pid, start time and working directory; the waiting queue in the order it will be served
+    and why each waits (memory, the GPU, behind older jobs). Jobs are admitted by a memory budget in FIFO order;
+    small jobs may pass one that waits for memory a few times; one GPU job at a time. A cancelled tool call
+    releases its job."""
+    from . import resources
+    return resources.status_text()
 
 
 def main():

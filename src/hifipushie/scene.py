@@ -95,11 +95,13 @@ def _blender(job: dict, timeout: float = 900, progress=None) -> str:
         p.write_text(json.dumps(job))
         cmd = [render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(SCRIPT), "--", str(p)]
         if progress is None:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            from . import resources  # killed with a heavy job whose tool call is cancelled
+            r = resources.run(cmd, capture_output=True, text=True, timeout=timeout)
             out, err, code = r.stdout, r.stderr, r.returncode
         else:
             import threading
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            from . import resources
+            proc = resources.track(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
             errs = []
             t = threading.Thread(target=lambda: errs.append(proc.stderr.read()), daemon=True)
             t.start()

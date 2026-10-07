@@ -3382,11 +3382,13 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
         return cloth_job.run_external(jd, backend, progress)
     cloth_job.write(job_dir, cfg, arrays, names)
     progress(f"waiting for the heavy-job slot ({cfg.get('mode', 'sim')})")
-    with resources.heavy(f"cloth {name}", log=log):
+    both = lambda m: (log(m), progress(m))  # noqa: E731
+    with resources.heavy(f"cloth {name}", log=both, kind="cloth_blender", model=name):
         progress(f"started {cfg.get('mode', 'sim')}")
         t = time.time()
         p = subprocess.Popen([rmod.BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--",
                               str(job_dir / "job.json")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        resources.track(p)
         lines = []
         try:
             for line in p.stdout:

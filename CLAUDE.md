@@ -2448,6 +2448,34 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   workers and raises MemoryGuardError if free memory falls under half the reserve. Wired into terrain_mesh
   (`_pool`, `export_tiles`), asset (`export`, `flatten_parts`) and blender_asset's worker Blenders. Any new pool or
   batch job must use them, and agents must not run sweeps/exports in parallel with each other.
+  Admission by memory (2026-10-07, "slot" agent; the one slot cost hours of hand coordination between sessions, a
+  waiting export said "running", the lock wasn't FIFO, and a cancelled export_terrain held it for an hour):
+  `resources.heavy(name, log, gb=, kind=, gpu=, model=)` declares a peak (GB; else `estimate(kind, model)` = the
+  `KIND_GB` default, RAISED by peaks measured on earlier runs in ~/.cache/hifipushie/heavy_peaks.json, never lowered:
+  a pool sized from its grant would measure less each run and shrink itself). Admitted when the running jobs'
+  declared peaks + its own fit the budget ($HIFIPUSHIE_HEAVY_GB, default RAM - max(8, RAM/3): 40 GB on this 60 GB
+  laptop) and, if others run, what's really free (MemAvailable - reserve - what running jobs declared but don't use
+  yet); a lone job always runs. The rule, in order: FIFO by when a job started waiting; a waiting job that doesn't
+  fit blocks every younger one, except SMALL ones (<= 25% of the budget) that fit now, and each blocked job can be
+  passed at most PASS_LIMIT 3 times (no starvation). GPU jobs (`gpu=True`: local ZOZO; `gpu_claim()` for a GPU
+  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory. Pools inside a job
+  size from its GRANT (`workers()` = min(grant - 1 GB, free memory) / per worker): two jobs both seeing "free" memory
+  is how the desktop died. $HIFIPUSHIE_HEAVY_SLOTS=1 brings the one-at-a-time behaviour back.
+  State in $HIFIPUSHIE_HEAVY_DIR (default $XDG_RUNTIME_DIR/hifipushie): jobs/<id>.json + jobs/<id>.lock (flocked by
+  its owner while alive; a lock anyone can take = a dead owner, swept), all decisions under queue.lock, polled every
+  ~1 s (no CPU). Old code's slot heavy0.lock: every new job holds it SHARED (old code's LOCK_EX waits), an old job
+  holding it is counted as LEGACY_GB 12. A waiting job logs "waiting for memory: needs X GB, Y of Z declared; held by
+  <name (pid, GB, since)>; N ahead of you" (cloth also into its progress); export_asset's reply says how long it
+  waited; `resources.status()` / `status_text()` / MCP tool `heavy_status` show running + queue + why.
+  Fork safety: every state fd is closed in forked children (`os.register_at_fork`, never LOCK_UN there: the lock
+  belongs to the parent's open file description) and is O_CLOEXEC; a forked child of a holder passes through
+  `heavy`. Cancellation: server.py runs every sync tool via `anyio.to_thread.run_sync(abandon_on_cancel=True)` under
+  `resources.cancel_scope(event)`, set when the call is cancelled or the client goes; then a waiting job leaves the
+  queue, and a running one has its `track`ed subprocesses (process groups: `resources.run` replaces subprocess.run
+  for Blender in asset / scene / veg_look; cloth Popens tracked) and `guarded` pools killed, `Cancelled` raised IN its
+  thread (PyThreadState_SetAsyncExc, once; cleared if the job ends first; `cancel_scope` releases a grant left
+  behind), and `profiling.run_jobs/pool_map` check between jobs. `dress`'s background sim thread is not under a cancel
+  scope on purpose. Tests: tests/test_heavy.py (+ heavy_job.py), own state dir, ~10 s.
 - `tests/test_tooling.py`: reproductions of the tooling cards' incidents (`uv run python tests/test_tooling.py`).
 
 ## Performance (keep these properties when changing things)
@@ -4180,6 +4208,55 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       scalloped edge, big single leaves on the silhouette, per-clump id, S-bend trunk); the anime spruce over budget;
       spruce near-view strokes too big; the guide's "Styles" section does not yet describe anime / clouds / feed /
       edge clouds / fan (add it).
+  - Vegetation styles 4 (2026-10-07, "vegstyle4" agent, branch `worktree-agent-a4adb8908a498b15c`; sheets vs_30..vs_39;
+    deliveries re-exported in place at contract 6 in /mnt/data/hifipushie/vegstyle/{blobby,anime}_{oak,spruce,grass} + new
+    cartoon_{oak,spruce,grass,daisy}; Godot checks /mnt/data/hifipushie/vegstyle4/gd/ (`*_sheet.png`: pairs mesh LOD2 |
+    impostor, 3 elevations x 3 azimuths; `octa_vs_cross_oak_blobby.png`); scratch in the worktree's untracked `scratchpad/`:
+    run.sh, export.py / export_clump.py / oe.py (export through the tools), gdo.sh <tag> <height> <dir> <stem> [season]
+    (octa impostor vs LOD2 in Godot + numbers), gdc.sh (cards at the LOD switches), q.py / sheet.py / seasons.py /
+    clump_sheet.py / close.py (looks), sil.py / csweep.py (styled vs realistic silhouettes, conifer sweeps, no Blender),
+    a1.py (dress numbers, no Blender), hk.py (head kinds), setmany.py / setjson.py (sheet numbers, indent 1), q4-q8.sh
+    (queues), oc1.py (octa bake vs direct renders)).
+    - HEMI-OCTAHEDRAL IMPOSTORS (`veg_impostor.py`, contract 6; the consumer: crossed quads from a 330 m volcano read as
+      crosses / an orange bird). 8 x 8 views on a hemi-oct grid (border = horizon; frames on the grid's corners so the
+      horizon is baked exactly), 256 px each, orthographic through the bake sphere's centre (`bounds`), camera frame
+      from `basis(d)` (right = cross(+Y, d); Blender gets an exact camera matrix: view key `basis` in
+      blender_vegetation), passes albedo / normal / Cycles shade / depth (new pass "depth": Camera Data view Z mapped by
+      the view's `depth_range`); atlas = albedo with half the shade baked in + OBJECT-space normal map with depth in
+      alpha. Seasons with the same shape share normal / depth / shade (`geometry_key`): ~4 min a shape, ~1 min a season.
+      One quad in the GLB (uv = corners), turned by the engine's shader: `spikes/godot_veg/impostor_octa.gdshader` (4
+      nearest frames bilinear, weights ^ `blend_sharp` 2, one depth-parallax step; orthographic shadow pass uses the
+      light's axis); `veg_impostor.view` = the same in numpy (tests). extras.hifipushie_impostor {kind, frames, size,
+      centre, normal_texture_index, recipe, shader}; seasons json top-level `impostor` (null without one) + per season
+      `impostorNormalTexture`. `impostor="cross"` keeps the old quads. Godot: MeshInstance3D.extra_cull_margin = size / 2
+      (required). Measured (impostor / LOD2 at elevation 0 / 20 / 45; coverage, IoU): blobby oak 1.01-1.02, 0.976 /
+      0.938 / 0.902 (crossed: 0.96 / 0.92 / 0.66, IoU 0.89 / 0.84 / 0.63); blobby spruce 0.984 / 0.968 / 0.923; anime oak
+      0.857 / 0.840 / 0.819 (the impostor fuller than LOD2's ragged cards); anime spruce 0.733 / 0.751 / 0.760 (LOD2 is
+      the weak one); cartoon oak 0.929 / 0.888 / 0.863; cartoon spruce 0.987 / 0.972 / 0.918. Consumer: in the game,
+      shader unchanged, impostors from above read as trees.
+    - Anime spruce: budget within 12k (`clump_min_cards` now traded inside the budget: 11,988 / 5,406 / 2,160), cards
+      0.36 x clump (max 0.9 m), 110 finer strokes a tile, conifer `lod_grow` 2.4 (LOD2 covered 0.70 of LOD0 at its
+      switch -> 0.85), spring = `seasons.spring.tips` (the spring dab picture paints stroke tips lighter / yellower;
+      `veg_cloud.dab_atlas(season=)`, the export's foliage_spring has its own texture). IoU 0.796.
+    - Heads: `_head` kinds ball | dab | petals (`_slab`: closed plates, ALWAYS counter-clockwise: a clockwise petal
+      showed its underside), `heads_kind` may be a table by the realistic flower's form, `petal_size` x the realistic
+      flower's radius; heads carry COLOR_0 per part (petals / centre / stalk) under a white factor (contract 6). Daisy
+      preset: flowers spring + summer only.
+    - Small plants' winter IN THE EXPORT: slot `foliage_winter` (the blades lying, the plant regrown at season winter
+      and dressed; shown in winter / snow while foliage is hidden). Second primitive, not a morph target (reasons in the
+      guide). Blobby blades rounder (thick 0.85).
+    - CARTOON (`vegetation_styles/cartoon.json`): crown `scallop` bumps per clump (`of` = their clump; `join` crisper),
+      `normals_clump`, `hue_jitter`, 2 tones, `big_leaves` (`_big_leaves`: leaf-outline plates on the outermost points);
+      wood `taper`, `flare`, `s_bend` (below the crown's base only); conifers `tier_shape` "cone" (`_cone_d`: a cone on a
+      flat foot, `teeth` zigzag rim, `cone_height`); clumps: few big blades, daisies as petals. Oak IoU 0.861 (7k), spruce
+      0.81 (cones lose area against the realistic bands), grass / daisy heights within 2%. Read: a toy cartoon oak of
+      scalloped clumps with leaf tufts on the outline on an S-bent flared trunk; a saw-tooth fir with pleated tiers;
+      fat-bladed tuft with seed balls; white-petalled daisies with yellow eyes.
+    - NOT DONE: PIXAR (brief: sculpted canopy shells per branch cluster + a layer of real leaf cards on the outer 20-30
+      cm: the blobby masses + veg_cloud cards with species leaves at 1.5x, canopy-centre normals 0.5, a thickness
+      channel); cartoon conifer spring is barely distinct; cartoon oak winter is a few fat limbs (more stubs?); anime
+      grass dabs read as flat coins on sticks from the side; realistic small plants' winter primitive; impostor depth
+      parallax beyond one step; the guide's styles table for stands / sets.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

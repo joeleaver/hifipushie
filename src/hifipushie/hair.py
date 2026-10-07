@@ -2047,7 +2047,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
                      samples=samples or 96)
         if engine == "cycles":  # path-traced strands: minutes of every core, one such job at a time on the machine
             from . import resources
-            with resources.heavy(f"hair look {name} (cycles)"):
+            with resources.heavy(f"hair look {name} (cycles)", kind="hair_cycles", model=name):
                 out = _blender(j, timeout=3600)
         else:
             out = _blender(j)
