@@ -2248,6 +2248,9 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
         p = terrain_style.swatch_sheet(sheets, refs, lays, d / f"styles_v{ver}.png")
         out.append(_out(PILImage.open(p), None))
         notes.append(f"styles sheet: {p}")
+        p = terrain_style.season_sheet(sheets, refs, lays, d / f"styles_seasons_v{ver}.png")
+        out.append(_out(PILImage.open(p), None))
+        notes.append(f"seasons sheet (spring, summer, autumn, winter, snow by the snow numbers): {p}")
         for nm in lays:
             q = terrain_style.transition_strip(sheets, refs, nm, d / f"styles_strip_{nm}_v{ver}.png")
             out.append(_out(PILImage.open(q), None))

@@ -358,7 +358,8 @@ def op_facets(n, L, o, seed):
     h = tilt[cid, 0] * X + tilt[cid, 1] * Y
     h = h - ndimage.uniform_filter(h, n // 4, mode="wrap")  # (the planes as local tilts, not a staircase)
     tone = rng.uniform(-1, 1, k)[cid]
-    return tone, h * float(o.get("size", 1.0))
+    h = h - h.mean()
+    return tone, h / max(float(np.abs(h).max()), 1e-9)  # (-1..1: `height` is the planes' amplitude in m)
 
 
 OPS = {"blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "bands": op_bands, "ripples": op_ripples,
@@ -438,7 +439,11 @@ def season_colours(st: dict, layer: str, colour_srgb) -> dict:
         m = S.get(layer) or S.get("*") or {}
         if layer in (S.get("skip") or []):
             m = {}
-        c = base * (1 - float(m.get("amount", 0))) + np.array(m.get("mix", base), float) * float(m.get("amount", 0))
+        mix = m.get("mix", base)
+        if m.get("mix") is not None and m.get("turn", True):  # (the season's colour in the style's palette too)
+            cc = st.get("colour") or {}
+            mix = _hsv(mix, cc.get("saturation", 1.0), cc.get("value", 1.0))
+        c = base * (1 - float(m.get("amount", 0))) + np.array(mix, float) * float(m.get("amount", 0))
         tint = _srgb_lin(c) / np.maximum(_srgb_lin(base), 1e-6)
         out[se] = {"color": [round(float(x), 4) for x in c], "tint_linear": [round(float(x), 4) for x in tint]}
     return out
@@ -879,6 +884,43 @@ def swatch_sheet(styles: list[dict], refs: dict, layers, path, px: int = 384, ti
                 im.paste(pim, (x + k * (cell + 4), y))
             dr.text((x + 2, y + cell + 2), f"{S['size_m']:g} m a tile ({tiled * S['size_m']:g} m shown)",
                     fill=(200, 200, 200))
+    path = Path(path)
+    im.save(path)
+    return path
+
+
+def season_sheet(styles: list[dict], refs: dict, layers, path, px: int = 160) -> Path:
+    """Rows: style x layer; columns: spring, summer, autumn, winter, snow (by the snow numbers on a flat ground: the
+    coverage's share of the texture whitened where its own normal faces up most). Lit with a low sun."""
+    from PIL import Image, ImageDraw
+    cols = list(SEASONS) + ["snow"]
+    rows = [(st, nm) for st in styles for nm in layers]
+    W, H = 200 + len(cols) * (px + 4), 24 + len(rows) * (px + 4)
+    im = Image.new("RGB", (W, H), (32, 32, 34))
+    dr = ImageDraw.Draw(im)
+    for c, se in enumerate(cols):
+        dr.text((200 + c * (px + 4) + 4, 6), se, fill=(230, 230, 230))
+    for r, (st, nm) in enumerate(rows):
+        y = 24 + r * (px + 4)
+        dr.text((8, y + px // 2), f"{st['name']} {nm}", fill=(240, 240, 240))
+        col = layer_colour(st, nm, refs)
+        S = texture(st, nm, col, 256)
+        sc = season_colours(st, nm, col)
+        sn = snow_numbers(st)
+        for c, se in enumerate(cols):
+            lin = S["albedo_linear"] * np.array(sc[se if se != "snow" else "winter"]["tint_linear"])
+            if se == "snow":
+                up = S["normal"][..., 2]
+                b = sn["by_normal"]
+                f = np.clip((up - (1 - sn["coverage"] * 0.3) - b["from"]) / max(b["to"] - b["from"], 1e-6), 0, 1)
+                f = np.clip(sn["coverage"] + 0.5 * (f - 0.5), 0, 1) * float((sn["layers"] or {}).get(nm, 1.0))
+                lin = lin * (1 - f[..., None]) + np.array(sn["color_linear"]) * f[..., None]
+            l = np.array([-0.5, 0.45, 0.75])
+            l /= np.linalg.norm(l)
+            ndl = np.clip((S["normal"] * l).sum(-1), 0, 1)
+            img = _lin_srgb(lin * (0.25 + 0.75 * ndl)[..., None])
+            pim = Image.fromarray(_q8(img[::-1])).resize((px, px), Image.LANCZOS)
+            im.paste(pim, (200 + c * (px + 4), y))
     path = Path(path)
     im.save(path)
     return path
