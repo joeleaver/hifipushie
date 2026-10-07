@@ -253,7 +253,19 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
             prev = len(pos) - 1
 
     tp = smooth(np.vstack([P[0], P[tn]]))[1:]
-    add(tn, 0, tp, trad(rad[tn]), 0, 0)
+    tr = trad(rad[tn])
+    zc = float(P[trunk[top_base], 2]) if kept else 0.35 * float(tree["height"])  # the crown's base on the trunk
+    zt = max(float(tp[-1, 2]), 1e-3)
+    if w.get("s_bend"):  # cartoon: one S along the bare trunk, `s_bend` x its height out and back (0 at the foot and the crown)
+        ang = 2 * math.pi * float(vegetation._u(np.array([int(tree["spec"].get("seed", 1)) + 11], np.uint64), 99)[0])
+        dvec = np.array([math.cos(ang), math.sin(ang), 0.0])
+        zz = np.clip(tp[:, 2] / max(zc, 1e-3), 0, 1)
+        tp = tp + (float(w["s_bend"]) * zc * np.sin(2 * math.pi * zz))[:, None] * dvec[None]
+    if w.get("taper") or w.get("flare"):  # cartoon: thick at the foot, thin at the top, a flared root foot
+        z_ = np.clip(tp[:, 2], 0, None)
+        tr = tr * (1 + float(w.get("taper", 0.0)) * (1 - z_ / zt)) * (1 + float(w.get("flare", 0.0)) * np.exp(-z_ / max(0.12 * zc, 0.2)))
+    add(tn, 0, tp, tr, 0, 0)
+    radius[0] = float(radius[0] * (1 + float(w.get("taper", 0.0))) * (1 + float(w.get("flare", 0.0))))
     drawn = [np.vstack([P[0], P[tn]])]
     n_ax, n_stub = 1, 0
     for L in kept:
@@ -533,8 +545,19 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
             e = {"c": c, "R": np.eye(3), "r": r, "n": int(len(Q))}
             if cr.get("tier_under") is not None:
                 e["down"] = float(np.clip(float(cr["tier_under"]) * hgt, 0.3 * float(cr.get("min_feature", 0.6)), max(c[2] - show, 0.05) if j == 0 else 1e9))
+            if cr.get("tier_shape") == "cone":
+                # a saw-tooth tier (cartoon firs): a cone standing on its band's foot, `cone_height` x the band tall (it
+                # reaches into the next band: the outline steps in and out), its rim cut into `teeth` points in plan
+                # (`zig` x its radius in and out): the zigzag outline
+                z0 = max(edges[j] - 0.15 * hgt, show) if j else max(edges[0], show)
+                Hc = float(cr.get("cone_height", 1.6)) * hgt if j < k - 1 else max(ztop - z0, hgt)
+                e["cone"] = {"z0": float(z0), "h": float(min(Hc, ztop - z0)), "teeth": int(cr.get("teeth", 9)), "zig": float(cr.get("zig", 0.12)),
+                             "phase": float(vegetation._u(np.array([j + 7 * (seed + 1)], np.uint64), 93)[0])}
+                e["c"] = np.array([c[0], c[1], z0 + 0.3 * e["cone"]["h"]])
+                e["r"] = np.array([rx, ry, 0.5 * e["cone"]["h"]])
+                e.pop("down", None)
             out.append(e)
-        return out
+        return _scallops(out, cr, seed)
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
         X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
     es = float(cr.get("edge_share", 0.0))
@@ -565,6 +588,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         c[2] -= max(0.0, c[2] + ez - ztop)  # never taller than the tree: a rounded-up top mass sinks to the tree's own height
         out.append({"c": c, "R": U.T.copy(), "r": r, "n": int(len(Q))})
     out.sort(key=lambda e: float(e["c"][2]))
+    out = _scallops(out, cr, seed)
     if cr.get("core") and len(out) > 1:  # the foliage is a shell: a mass in its hollow makes the crown one body with lobes
         c = X.mean(0)
         ev, U = np.linalg.eigh(np.cov((X - c).T) + np.eye(3) * 1e-6)
@@ -576,11 +600,60 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
     return out
 
 
+def _scallops(out: list, cr: dict, seed: int) -> list:
+    """`scallop` small round bumps standing on each mass's surface (cartoon clumps: a scalloped edge), each bump an
+    ellipsoid of `scallop_size` x its mass's mean radius, `of` = its mass's index (one clump for tone, id and wind).
+    Placed on the sides and top (a clump's underside stays plain), sunk `scallop_sink` of their radius."""
+    n = int(cr.get("scallop", 0) or 0)
+    if n <= 0:
+        return out
+    base = list(out)
+    for j, e in enumerate(base):
+        if e.get("core") or e.get("cone"):
+            continue
+        rm = float(e["r"].mean())
+        rb = float(cr.get("scallop_size", 0.4)) * rm
+        U = _fibonacci(3 * n)
+        U = U[U[:, 2] > -0.25][:n] if (U[:, 2] > -0.25).sum() >= n else U[:n]
+        ph = 2 * math.pi * float(vegetation._u(np.array([j + 1000 * (seed + 1)], np.uint64), 95)[0])
+        Rz = np.array([[math.cos(ph), -math.sin(ph), 0], [math.sin(ph), math.cos(ph), 0], [0, 0, 1.0]])
+        U = U @ Rz.T
+        nn = U / e["r"]
+        nn /= np.linalg.norm(nn, axis=1, keepdims=True)
+        for u, nv in zip(U, nn):
+            p = e["c"] + (e["r"] * u) @ e["R"] - float(cr.get("scallop_sink", 0.45)) * rb * (nv @ e["R"])
+            out.append({"c": p, "R": np.eye(3), "r": np.full(3, rb), "n": 0, "of": j, "join": float(cr.get("scallop_join", 0.35))})
+    return out
+
+
+def _fibonacci(n: int) -> np.ndarray:
+    i = np.arange(n) + 0.5
+    z = 1 - 2 * i / n
+    a = i * math.pi * (3 - math.sqrt(5))
+    r = np.sqrt(np.maximum(1 - z * z, 0))
+    return np.c_[r * np.cos(a), r * np.sin(a), z]
+
+
+def _cone_d(e: dict, p: np.ndarray) -> np.ndarray:
+    """A saw-tooth tier's (approximate) distance: a cone on a flat foot with a zigzag rim in plan."""
+    cn = e["cone"]
+    q = p - np.array([e["c"][0], e["c"][1], cn["z0"]])
+    rho = np.linalg.norm(q[:, :2], axis=1)
+    th = np.arctan2(q[:, 1], q[:, 0]) / (2 * math.pi) * cn["teeth"] + cn["phase"]
+    tri = 4 * np.abs(th - np.floor(th) - 0.5) - 1  # (-1 .. 1, a point at every whole tooth)
+    ang = np.arctan2(q[:, 1], q[:, 0])
+    R0 = np.sqrt((e["r"][0] * np.cos(ang)) ** 2 + (e["r"][1] * np.sin(ang)) ** 2) * (1 + cn["zig"] * tri)
+    H = max(cn["h"], 1e-3)
+    Rh = R0 * (1 - np.clip(q[:, 2], 0, None) / H)
+    side = (rho - Rh) / np.sqrt(1 + (R0 / H) ** 2)
+    return np.maximum(side, -q[:, 2])
+
+
 def blend_of(ells: list[dict], st: dict) -> float:
     """The crown union's smoothing radius (m): `blend`, or `blend_share` x the masses' mean radius when that is more
     (a fixed 1 m between 5 m masses left eight balloons)."""
     cr = st["crown"]
-    size = float(np.mean([e["r"].mean() for e in ells if not e.get("core")])) if ells else 0.0
+    size = float(np.mean([e["r"].mean() for e in ells if not e.get("core") and "of" not in e])) if ells else 0.0
     return max(float(cr.get("blend", 0.5)), float(cr.get("blend_share", 0.0)) * size)
 
 
@@ -589,6 +662,9 @@ def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, flo
     each=True also returns the (n, k) distances. floor: nothing under this height."""
     D = np.empty((len(p), len(ells)))
     for j, e in enumerate(ells):
+        if e.get("cone"):
+            D[:, j] = _cone_d(e, p)
+            continue
         q = (p - e["c"]) @ e["R"].T
         r_ = e["r"]
         if e.get("down") is not None:  # an egg: its own (shorter) semi-axis below the middle
@@ -599,7 +675,7 @@ def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, flo
         D[:, j] = np.where(k1 > 1e-9, k0 * (k0 - 1.0) / np.maximum(k1, 1e-9), -float(e["r"].min()))
     d = D[:, 0].copy()
     for j in range(1, len(ells)):
-        d = sdf.smin(d, D[:, j], blend)
+        d = sdf.smin(d, D[:, j], blend * float(ells[j].get("join", 1.0)))  # (a scallop bump joins its clump crisper: `join`)
     if floor is not None:
         d = np.maximum(d, floor - p[:, 2])
     return (d, D) if each else d
@@ -716,7 +792,7 @@ def fit(tree: dict, st: dict) -> dict:
         cands = {}
         for k in range(int(lo), int(hi) + 1, max(int(cr.get("masses_step", 1)), 1)):
             ells = masses(X, k, st, tl, int(tree["spec"].get("seed", 1)))
-            n_ = sum(not e.get("core") for e in ells)
+            n_ = sum(not e.get("core") and "of" not in e for e in ells)
             if not ells or n_ in cands:
                 continue
             cm = crown_mesh(ells, st, voxel=None if lo == hi else 0.3, floor=floor)
@@ -728,9 +804,9 @@ def fit(tree: dict, st: dict) -> dict:
         out["dense"] = crown_mesh(ells, st, floor=floor)
         out["floor"] = floor
         out["blend"] = bl = out["dense"]["blend"]
-        size = float(np.mean([e["r"].mean() for e in ells if not e.get("core")]))
+        size = float(np.mean([e["r"].mean() for e in ells if not e.get("core") and "of" not in e]))
         mini = out["mini"] = wood(tree, st, lambda q: -field(ells, q, bl, floor=floor), size,
-                                    feed=[(e["c"], float(e["r"].mean())) for e in ells if not e.get("core")])
+                                    feed=[(e["c"], float(e["r"].mean())) for e in ells if not e.get("core") and "of" not in e])
     in_leaf_forks = bool(st["wood"].get("forks_in_leaf"))  # (a style whose crown has gaps: the forks show in leaf too, one wood mesh)
     out["wood"] = wood_dense(mini, st, (0, 1, 2) if in_leaf_forks else (0, 1))
     out["forks"] = None if in_leaf_forks else wood_dense(mini, st, (2,))
@@ -780,13 +856,13 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         # the limbs' forks: drawn only when the plant is bare (in leaf they cluttered the crown's underside), within
         # what the hidden crown's triangles would have cost
         out["forks"] = surface(ft["forks"], float(st["wood"].get("forks_share", 0.3)) * triangles)
-    info = {"style": st["name"], **mini["info"], "masses": sum(not e.get("core") for e in ft["ells"]), "core": any(e.get("core") for e in ft["ells"]),
+    info = {"style": st["name"], **mini["info"], "masses": sum(not e.get("core") and "of" not in e for e in ft["ells"]), "core": any(e.get("core") for e in ft["ells"]),
             "blend_m": round(ft["blend"], 2), "twigs": ft["twigs"], "match": ft["match"],
             "masses_tried": ft["tried"], "wood_triangles": int(len(Fw)), "crown_triangles": 0, "budget": triangles,
             "forks_triangles": int(len(out["forks"]["F"])) if out["forks"] else 0, "kind": (st.get("crown") or {}).get("kind", "masses")}
     if ft["ells"] and season_color(tree["spec"], season, st) is not None and st["crown"].get("kind") == "clouds":
         from . import veg_cloud
-        cr, ells = st["crown"], [e for e in ft["ells"] if not e.get("core")]
+        cr, ells = st["crown"], [e for e in ft["ells"] if not e.get("core") and "of" not in e]
         C_ = veg_cloud.clouds(tree, st, ells, max(triangles - len(Fw), 0), lod=triangles / max(full, 1), floor=ft["floor"])
         V = C_["V"]
         wd = st.get("wind") or {}
@@ -807,7 +883,9 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         cr, ells = st["crown"], ft["ells"]
         blend = ft["blend"]
         cfn = lambda q: field(ells, q, blend, floor=ft["floor"])
-        V0, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(triangles - len(Fw), 16 * len(ells)))
+        n_big = int(round(int(cr.get("big_leaves", 0) or 0) * min(1.0, triangles / max(full, 1)) ** 0.7))  # (fewer at lower LODs)
+        n_base = sum("of" not in e for e in ells)
+        V0, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(triangles - len(Fw) - 64 * n_big, 16 * n_base))
         V, N = onto(cfn, V0)
         # a vertex beside an undercut can land on the other sheet (a tier's underside and the dome below it are a few
         # decimetres apart): faces turned over by the move get their vertices back where the decimation left them
@@ -831,42 +909,124 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         wN = float(cr.get("normals", 0.0))
         N = (1 - wN) * N + wN * o
         N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9)
-        mass = D.argmin(1)
-        k = len(ells)
+        own = np.array([int(e.get("of", j)) for j, e in enumerate(ells)])  # (a scallop bump belongs to its clump)
+        bases = np.flatnonzero(own == np.arange(len(ells)))
+        rank = np.zeros(len(ells), int)
+        rank[bases] = np.arange(len(bases))
+        mass = own[D.argmin(1)]
+        k = len(bases)
+        wc = float(cr.get("normals_clump", 0.0))
+        if wc:  # cartoon: flat-ish shading per clump, the normal straight out of its clump's middle
+            oc = V - np.array([e["c"] for e in ells])[mass]
+            oc /= np.maximum(np.linalg.norm(oc, axis=1, keepdims=True), 1e-9)
+            N = (1 - wc) * N + wc * oc
+            N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9)
         # one tone per mass, in steps by the mass's height
-        cz = np.array([e["c"][2] for e in ells])
+        cz = np.array([e["c"][2] for e in ells])[own]
         tones = int(max(1, cr.get("tones", 3)))
         t = (cz - cz.min()) / max(float(np.ptp(cz)), 1e-6)
-        ti = np.minimum((t * tones).astype(int), tones - 1) if k > 1 else np.zeros(k, int)
+        ti = np.minimum((t * tones).astype(int), tones - 1) if k > 1 else np.zeros(len(cz), int)
         tf = ti / max(tones - 1, 1)
         t0, t1 = cr.get("tone", [0.85, 1.15])
         warm = float(cr.get("warm_top", 0.0))
         mcol = np.stack([(t0 + (t1 - t0) * tf) * (1 + warm * (tf - 0.5) * 2), t0 + (t1 - t0) * tf, (t0 + (t1 - t0) * tf) * (1 - warm * (tf - 0.5) * 2)], 1)
-        gain = float(max(t0, t1) * (1 + abs(warm)))  # COLOR_0 must stay within 0..1 (glTF): the material's colour carries the rest
+        hj = float(cr.get("hue_jitter", 0.0))
+        if hj:  # cartoon: the hue moves a little per clump (toward yellow or blue-green), the tone steps stay
+            sd = int(tree["spec"].get("seed", 1))
+            hu = (vegetation._u(own.astype(np.uint64) + np.uint64(1000 * (sd + 1)), 97) - 0.5) * 2 * hj
+            mcol = mcol * np.stack([1 + hu, np.ones_like(hu), 1 - hu], 1)
+        gain = float(max(t0, t1) * (1 + abs(warm)) * (1 + abs(hj)))  # COLOR_0 must stay within 0..1 (glTF): the material's colour carries the rest
         mcol = mcol / gain
         ez = np.array([math.sqrt(float(((e["R"][:, 2] * e["r"]) ** 2).sum())) for e in ells])
         ed = np.array([e["down"] if e.get("down") is not None else ez[j] for j, e in enumerate(ells)])
+        ez, ed = np.maximum(ez, ez[own]), np.maximum(ed, ed[own])
         u = np.clip((V[:, 2] - (cz[mass] - ed[mass])) / (ez[mass] + ed[mass]), 0, 1)
-        uv = np.stack([u, (mass + 0.5) / k], 1)
+        uv = np.stack([u, (rank[mass] + 0.5) / k], 1)
         # wind: a mass goes with the wood it sits on, as a whole; soft between masses so nothing tears
         wd = st.get("wind") or {}
         mp = mini["pos"]
-        anchor = np.array([int(np.argmin(np.linalg.norm(mp - e["c"], axis=1))) for e in ells])
+        anchor = np.array([int(np.argmin(np.linalg.norm(mp - ells[own[j]]["c"], axis=1))) for j in range(len(ells))])
         b_m = np.maximum(wn["branch"][anchor], float(wd.get("mass", 0.3)))
-        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation._u(np.arange(k).astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
+        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation._u(own.astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
         sw = np.exp(-(D - D.min(1, keepdims=True)) / max(0.5 * blend, 1e-3))
         sw /= sw.sum(1, keepdims=True)
         trunk_w = np.clip(V[:, 2] / max(tree["height"], 1e-6), 0, 1) ** 1.5
         branch_w = sw @ b_m + float(wd.get("squash", 0.0)) * (u - 0.5)
         out["crown"] = {"V": V, "F": F, "N": N, "uv": uv, "col": mcol[mass], "gain": gain, "mass": mass, "tone": ti,
                         "wind": (trunk_w, np.clip(branch_w, 0, 1), sw @ ph_m, np.full(len(V), float(wd.get("flutter", 0.0))))}
+        if n_big > 0:
+            bl = _big_leaves(tree, cr, out["crown"], ells, n_big)
+            if bl is not None:
+                C0 = out["crown"]
+                n0 = len(C0["V"])
+                out["crown"] = {**C0, "V": np.vstack([C0["V"], bl["V"]]), "F": np.vstack([C0["F"], bl["F"] + n0]), "N": np.vstack([C0["N"], bl["N"]]),
+                                "uv": np.vstack([C0["uv"], bl["uv"]]), "col": np.vstack([C0["col"], bl["col"]]), "mass": np.r_[C0["mass"], bl["mass"]],
+                                "wind": tuple(np.r_[C0["wind"][i], bl["wind"][i]] for i in range(4))}
+                info["big_leaves"] = bl["n"]
+                F = out["crown"]["F"]
         info["crown_triangles"] = int(len(F))
         info["tones"] = int(len(np.unique(ti)))
         info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist(), "tone": int(ti[j]),
-                              **({"core": True} if e.get("core") else {})} for j, e in enumerate(ells)]
+                              **({"bumps": int((own == j).sum() - 1)} if (own == j).sum() > 1 else {}),
+                              **({"core": True} if e.get("core") else {})} for j, e in enumerate(ells) if "of" not in e]
     info["triangles"] = info["wood_triangles"] + info["crown_triangles"]
     out["info"] = info
     return out
+
+
+def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | None:
+    """A few BIG single leaves standing out of the crown's silhouette (cartoon: Wind Waker / Animal Crossing trees carry
+    a handful of oversized leaves on their outline): the species' leaf outline, `big_leaf` x its length, as thin closed
+    plates rooted `big_leaf_sink` of their length inside the crown at its outermost points (sides and top, farthest
+    apart), pointing out and up. Each takes the colour, clump id, gradient and wind of the crown where it is rooted
+    (its tip flutters)."""
+    lf = tree["spec"]["leaves"]
+    V, N = C["V"], C["N"]
+    if len(V) < 10:
+        return None
+    L = float(cr.get("big_leaf", 4.0)) * float(lf.get("length", 0.1))
+    W = L * float(lf.get("width", 0.5 * float(lf.get("length", 0.1)))) / max(float(lf.get("length", 0.1)), 1e-6)
+    cen = 0.5 * (V.min(0) + V.max(0))
+    half = np.maximum(0.5 * (V.max(0) - V.min(0)), 1e-6)
+    out_ = np.linalg.norm((V - cen) / half, axis=1)  # (out of the crown's middle in its own proportions: sides and top alike)
+    cand = np.flatnonzero((out_ >= np.quantile(out_, 0.7)) & (N[:, 2] > -0.2))
+    if not len(cand):
+        return None
+    pick = [int(cand[np.argmax(out_[cand])])]
+    d = np.linalg.norm(V[cand] - V[pick[0]], axis=1)
+    while len(pick) < min(n, len(cand)):
+        j = int(np.argmax(d))
+        pick.append(int(cand[j]))
+        d = np.minimum(d, np.linalg.norm(V[cand] - V[cand[j]], axis=1))
+    from . import veg_leaf
+    t = np.linspace(0, 1, 9)
+    prof = veg_leaf._profile(str(lf.get("shape", "ovate")) if str(lf.get("shape", "ovate")) in ("ovate", "triangular", "lanceolate", "lobed", "round") else "ovate",
+                             t, int(lf.get("lobes", 4)))
+    prof = np.maximum(prof, 0.35 * np.sin(np.pi * t))  # (a fat cartoon leaf)
+    poly = np.vstack([np.c_[t * L, 0.5 * W * prof], np.c_[t[::-1][1:-1] * L, -0.5 * W * prof[::-1][1:-1]]])
+    up = np.array([0, 0, 1.0])
+    Vs, Fs, Ns, uvs, cols, ms, ws, n0 = [], [], [], [], [], [], [], 0
+    for q, i in enumerate(pick):
+        nrm = N[i] / max(float(np.linalg.norm(N[i])), 1e-9)
+        ex = nrm + float(cr.get("big_leaf_up", 0.25)) * up
+        ex /= np.linalg.norm(ex)
+        ez = up - ex * (up @ ex)
+        ez = ez / np.linalg.norm(ez) if np.linalg.norm(ez) > 1e-3 else np.cross(ex, [1.0, 0, 0])
+        ey = np.cross(ez, ex)
+        roll = (float(vegetation._u(np.array([i + 31], np.uint64), 98)[0]) - 0.5) * 0.8
+        ey, ez = ey * math.cos(roll) + ez * math.sin(roll), ez * math.cos(roll) - ey * math.sin(roll)
+        o = V[i] - float(cr.get("big_leaf_sink", 0.3)) * L * ex
+        Vl, Fl, Nl = _slab(poly, o, ex, ey, ez, 0.04 * L, cup=float(cr.get("big_leaf_cup", 0.15)) / max(L, 1e-6))
+        Nl = Nl * 0.5 + nrm * 0.5  # (shaded with its clump, a little of its own face)
+        Nl /= np.linalg.norm(Nl, axis=1, keepdims=True)
+        along = np.clip((Vl - o) @ ex / L, 0, 1)
+        Vs.append(Vl); Fs.append(Fl + n0); Ns.append(Nl)
+        uvs.append(np.tile(C["uv"][i], (len(Vl), 1))); cols.append(np.tile(C["col"][i], (len(Vl), 1))); ms.append(np.full(len(Vl), C["mass"][i]))
+        ws.append(np.c_[np.full(len(Vl), C["wind"][0][i]), np.full(len(Vl), C["wind"][1][i]), np.full(len(Vl), C["wind"][2][i]), 0.6 * along])
+        n0 += len(Vl)
+    w = np.vstack(ws)
+    return {"V": np.vstack(Vs), "F": np.vstack(Fs), "N": np.vstack(Ns), "uv": np.vstack(uvs), "col": np.vstack(cols), "mass": np.concatenate(ms),
+            "wind": tuple(w[:, i] for i in range(4)), "n": len(pick)}
 
 
 # ---------------------------------------------------------------- small plants (veg_small clumps) in a style
@@ -899,6 +1059,69 @@ def _sweep(path, half_w, half_t, face, sides: int):
         F.append([last + j, last + (j + 1) % sides, tip])
         F.append([(j + 1) % sides, j, foot])
     return V, np.array(F)[:, ::-1], Nn, t  # (the ring runs clockwise about the path: turned so faces look outward)
+
+
+def _slab(poly, origin, ex, ey, ez, thick: float, cup: float = 0.0):
+    """A closed thin plate: a 2D outline (k, 2; in metres, counter-clockwise) laid in the plane (ex, ey) at origin,
+    `thick` through along ez, its rim lifted `cup` x its distance squared toward ez (a cupped petal). (V, F, N)."""
+    poly = np.asarray(poly, float)
+    k = len(poly)
+    lift = cup * (poly ** 2).sum(1)
+    mid = origin + poly[:, :1] * ex + poly[:, 1:] * ey + lift[:, None] * ez
+    c0 = origin + poly.mean(0)[0] * ex + poly.mean(0)[1] * ey
+    top, bot = mid + 0.5 * thick * ez, mid - 0.5 * thick * ez
+    V = np.vstack([c0 + 0.5 * thick * ez, top, c0 - 0.5 * thick * ez, bot])
+    N = np.vstack([np.tile(ez, (k + 1, 1)), np.tile(-ez, (k + 1, 1))])
+    F = []
+    for i in range(k):
+        j = (i + 1) % k
+        F.append([0, 1 + i, 1 + j])
+        F.append([k + 1, k + 2 + j, k + 2 + i])
+        F += [[1 + i, k + 2 + i, k + 2 + j], [1 + i, k + 2 + j, 1 + j]]
+    return V, np.array(F), N
+
+
+def _head(kind: str, c, up, r: float, cs: dict, seed_u, sides: int):
+    """A flower / seed head of `kind`: "ball" (a sphere of radius r), "dab" (`dabs` flat ragged blobs of paint, ~r
+    across, facing up and out: anime's colour dabs), "petals" (`petals` [fewest, most] fat flat petals round a centre
+    disc, cupped up: a cartoon daisy). (V, F, N, part) with part 0 = petal / dab / ball, 1 = the flower's centre."""
+    if kind == "ball":
+        V, F, N = _ball(c, r, max(3, sides // 2 + 1), max(5, sides + 2))
+        return V, F, N, np.zeros(len(V), int)
+    up = np.asarray(up, float) / max(float(np.linalg.norm(up)), 1e-9)
+    ex = np.cross(up, [0.31, 0.73, 0.61])
+    ex /= max(float(np.linalg.norm(ex)), 1e-9)
+    ey = np.cross(up, ex)
+    Vs, Fs, Ns, Ps, n0 = [], [], [], [], 0
+    if kind == "dab":
+        for k in range(int(cs.get("dabs", 2))):
+            a = np.linspace(0, 2 * math.pi, 10, endpoint=False)
+            rr = r * (0.7 + 0.3 * k / max(int(cs.get("dabs", 2)) - 1, 1)) * (1 + float(cs.get("ragged", 0.35)) * (seed_u(10 + k * 16 + np.arange(10)) - 0.5))
+            sq = 0.75 + 0.25 * seed_u(200 + k)  # (a dab is a little longer one way)
+            poly = np.c_[rr * np.cos(a), sq * rr * np.sin(a)]
+            off = (seed_u(300 + k) - 0.5) * r * 0.6 * ex + (seed_u(400 + k) - 0.5) * r * 0.6 * ey + k * 0.25 * r * up
+            V, F, N = _slab(poly, c + off, ex, ey, up, 0.12 * r, cup=0.0)
+            Vs.append(V); Fs.append(F + n0); Ns.append(N); Ps.append(np.zeros(len(V), int)); n0 += len(V)
+    else:  # petals round a centre
+        lo, hi = cs.get("petals", [5, 8])
+        n = int(lo + round((hi - lo) * seed_u(7)))
+        L = r * float(cs.get("petal_length", 1.0))
+        W = L * float(cs.get("petal_width", 0.42))
+        t = np.linspace(0, 1, max(3, sides // 4) + 1)
+        side = W * 0.5 * np.sin(np.pi * np.clip(t, 0, 1)) ** 0.6
+        out_ = np.vstack([np.c_[t * L, side], np.c_[t[::-1][1:-1] * L, -side[::-1][1:-1]]])
+        cen_r = r * float(cs.get("centre", 0.32))
+        for k in range(n):
+            a = 2 * math.pi * (k + 0.3 * seed_u(500 + k)) / n
+            dx, dy = math.cos(a), math.sin(a)
+            R2 = np.array([[dx, -dy], [dy, dx]])
+            poly = (out_ + [0.6 * cen_r, 0]) @ R2.T
+            V, F, N = _slab(poly, c, ex, ey, up, 0.08 * L, cup=float(cs.get("cup", 0.6)) / max(L, 1e-6))
+            Vs.append(V); Fs.append(F + n0); Ns.append(N); Ps.append(np.zeros(len(V), int)); n0 += len(V)
+        V, F, N = _ball(c + 0.04 * L * up, cen_r, 3, max(6, sides))
+        V = c + (V - c) * [1, 1, 1] - np.outer((V - c) @ up, up) * 0.5  # (a flattened dome)
+        Vs.append(V); Fs.append(F + n0); Ns.append(N); Ps.append(np.ones(len(V), int)); n0 += len(V)
+    return np.vstack(Vs), np.vstack(Fs), np.vstack(Ns), np.concatenate(Ps)
 
 
 def _ball(c, r, rings: int, sides: int):
@@ -984,9 +1207,17 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                 yaw.append(sgn * fa * ((k + 1) // 2) * (0.7 + 0.6 * float(vegetation._u(tw["key"][ci: ci + 1], 60 + k)[0])))
                 shrink.append(1.0 - 0.12 * ((k + 1) // 2))
         n_obj = len(pick) + len(heads)
-        def cost(a_, b_):  # triangles of every blade, stalk and ball at that many sides and rings
+        hk = cs.get("heads_kind", "ball")
+        if isinstance(hk, dict):  # by the realistic flower's form: {"ray": "petals", "*": "ball"} (a daisy's rays, a grass's spike)
+            form = str(((parts[owner[int(tw["card"][heads[0]])]].get("twig") or {}).get("flower") or {}).get("form", "")) if len(heads) else ""
+            hk = hk.get(form, hk.get("*", "ball"))
+        hk = str(hk)
+
+        def cost(a_, b_):  # triangles of every blade, stalk and head at that many sides and rings
             hs_, hr_, bs_, br_ = max(3, a_ // 2), max(b_, 2), max(5, a_ + 2), max(3, b_ // 2 + 2)
-            return len(pick) * 2 * a_ * b_ + len(heads) * (2 * hs_ * hr_ + 2 * bs_ * (br_ - 1))
+            head = {"ball": 2 * bs_ * (br_ - 1), "dab": int(cs.get("dabs", 2)) * 40,
+                    "petals": int(np.mean(cs.get("petals", [5, 8]))) * 4 * (2 * (max(3, a_ // 2) + 1) - 2) + 2 * bs_ * 2}.get(hk, 2 * bs_ * (br_ - 1))
+            return len(pick) * 2 * a_ * b_ + len(heads) * (2 * hs_ * hr_ + head)
         sides, rings = next(((a_, b_) for a_, b_ in ((8, 8), (7, 7), (6, 6), (5, 5), (4, 4), (4, 3), (3, 3), (3, 2))
                              if cost(a_, b_) <= triangles - len(W["F"])), (3, 2))
         tones = int(max(1, cs["tones"]))
@@ -1024,6 +1255,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                             "mass": np.repeat(np.arange(len(pick)), [len(v_) for v_ in Vs]), "wind": tuple(wd[:, i] for i in range(4))}
             info.update(blades=len(pick), crown_triangles=int(len(F)), tones=tones)
         Vs, Fs, Ns, uvs, winds, n0 = [], [], [], [], [], 0
+        head_part = []
         for hi_, ci in enumerate(heads):
             L = float(tw["reach"][ci])
             d = tw["frame"][ci][:, 1]
@@ -1031,7 +1263,12 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             path = tw["pos"][ci] + L * d[None] * t[:, None]
             r = np.full(len(t), max(float(cs["stalk"]) * L, 0.003))
             V, F, N, tt = _sweep(path, r, r, np.tile(tw["frame"][ci][:, 2], (len(t), 1)), max(3, sides // 2))
-            Vb, Fb, Nb = _ball(path[-1], float(cs["ball"]) * L, max(3, rings // 2 + 2), max(5, sides + 2))
+            def su(x, ci=ci):  # the head's own random numbers (array or scalar in, the same out)
+                r_ = vegetation._u(tw["key"][ci] + np.atleast_1d(np.asarray(x)).astype(np.uint64), 70)
+                return r_ if np.ndim(x) else float(r_[0])
+            hd = d - up * d[2] * (1 - float(cs.get("head_up", 0.6)))  # (a flower faces up and a little out along its stalk)
+            Vb, Fb, Nb, Pb = _head(hk, path[-1], hd, float(cs["ball"]) * L, cs, su, max(5, sides + 2))
+            head_part.append(Pb)
             ph = float(vegetation._u(tw["key"][ci: ci + 1], 57)[0])
             for V_, F_, N_, t_ in ((V, F, N, tt), (Vb, Fb, Nb, np.ones(len(Vb)))):
                 Vs.append(V_); Fs.append(F_ + n0); Ns.append(N_)
@@ -1043,12 +1280,18 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             hp = next(owner[int(tw["card"][c_])] for c_ in heads)
             fl = (parts[hp].get("twig") or {}).get("flower") or {}
             co = st.get("colour") or {}
-            out["heads"] = {"V": np.vstack(Vs), "F": np.vstack(Fs), "N": np.vstack(Ns), "uv": np.vstack(uvs),
+            hpart = np.concatenate([np.r_[np.full(len(Vs[2 * q_]), 2), head_part[q_]] for q_ in range(len(head_part))])  # (stalk = 2, then the head: 0 petal / dab / ball, 1 its centre)
+            out["heads"] = {"V": np.vstack(Vs), "F": np.vstack(Fs), "N": np.vstack(Ns), "uv": np.vstack(uvs), "part": hpart,
+                            "kind": hk,
                             "wind": tuple(wd[:, i] for i in range(4)),
                             "color": styled(fl.get("color") or parts[hp].get("color") or [0.8, 0.75, 0.4], co.get("saturation", 1.0), co.get("value", 1.0)),
+                            # each part's own colour (sRGB): the petals / dab / ball, the flower's centre, the stalk (the summer leaf)
+                            "part_colors": [styled(fl.get("color") or parts[hp].get("color") or [0.8, 0.75, 0.4], co.get("saturation", 1.0), co.get("value", 1.0)),
+                                            styled(fl.get("center") or [0.93, 0.74, 0.12], co.get("saturation", 1.0), co.get("value", 1.0)),
+                                            styled((veg_small.season_state(s, "summer") or {}).get("color") or [0.3, 0.45, 0.15], co.get("saturation", 1.0), co.get("value", 1.0))],
                             "seasons": [se for se in SEASONS if any(veg_small.layer_shown({**veg_small.LAYER, **L_}, se) for L_ in s["clump"]["layers"]
                                                                     if L_.get("part", "main") in flowery) and veg_small.season_state(s, se) is not None]}
-            info.update(heads=len(heads), heads_triangles=int(len(out["heads"]["F"])))
+            info.update(heads=len(heads), heads_triangles=int(len(out["heads"]["F"])), heads_kind=out["heads"]["kind"])
     real = veg_small.measures(tree)
     top = max([float(out[k_]["V"][:, 2].max()) for k_ in ("crown", "heads") if out[k_] is not None], default=0.0)
     allv = np.vstack([out[k_]["V"] for k_ in ("crown", "heads") if out[k_] is not None]) if (out["crown"] or out["heads"]) else np.zeros((1, 3))
@@ -1063,7 +1306,7 @@ def lines(info: dict) -> list[str]:
     """What the style did to this plant, in words (the report, the export's reply, GLB extras)."""
     m = info["match"]
     if info.get("clump"):
-        return [f"style {info['style']}: {info['blades']} fat blades for {info['cards']} cards, {info['heads']} flower / seed heads as balls on stalks "
+        return [f"style {info['style']}: {info['blades']} fat blades for {info['cards']} cards, {info['heads']} flower / seed heads as {dict(ball='balls', dab='colour dabs', petals='petalled flowers').get(info.get('heads_kind', 'ball'), 'balls')} on stalks "
                 f"({info['crown_triangles']} + {info.get('heads_triangles', 0)} triangles; no atlas, no alpha)",
                 f"same individual: height {m['height_m'][1]} m (realistic {m['height_m'][0]}), spread {m['spread_m'][1]} m (realistic {m['spread_m'][0]})"]
     out = [f"style {info['style']}: {info['limbs_kept']} limbs kept of {info['limbs']} first-order + {info.get('stubs', 0)} of their forks " + (f"(shown only when bare: {info.get('forks_triangles', 0)} triangles) " if info.get('forks_triangles') else "(in the wood, seen through the gaps) ") +

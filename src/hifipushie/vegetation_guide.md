@@ -455,23 +455,41 @@ lod_files=True)`:
 - **Collision**: capsules along the trunk and main limbs (extras) and a low `<name>_collision` mesh node (outside the
   scene), and `<name>_collision.glb`: the same mesh as a file, its node IN the scene and named `<name>_collision-colonly`
   (Godot's importer makes a static body of a node so named and drops the mesh).
-- **The impostor** is lit by the engine like any mesh: an albedo picture (unlit; the shade of what stands above each
-  point baked in at half strength, since an engine casts no shadow inside a picture: limbs under a crown were as
-  bright as its top) and a tangent-space NORMAL MAP baked from the same two views (the shading normal the mesh LODs
-  use: a style's smooth mass normals, a leaf card's normal bent out of the crown). A picture per season, as variants
-  and in the seasons json (with the PNGs, `..._normal.png` too). The mesh: two crossed quads, each picture on the
-  quad that faced its camera; front and back are faces of their own (16 vertices, 8 triangles, single sided) with
-  opposite normals and their own TANGENT (w = -1 behind), so the one normal map reads mirrored through the quad from
-  behind. ENGINE: the impostor's material must not RECEIVE shadows (`receive_shadows: false` in its extras and in the
-  seasons json; Godot: `disable_receive_shadows`): the two quads shadow each other, a dark wedge down the middle.
-  Colour under the alpha is bled out from the plant (black there darkened every mip level: an edge-on quad is all low
-  mips). Measured in Godot 4.7.2 (`spikes/godot_veg/check.gd` + `measure.py`: LOD 2 and the impostor alone, 4 views x
-  3 suns, mean luma of foliage / wood pixels, impostor / mesh): blobby spruce foliage 0.98 (0.94-1.01); blobby oak foliage 0.95 (0.85-1.03), wood 1.08
-  (0.95-1.23); it was 1.20 (0.99-1.51) and 1.42 (1.15-1.73) with the unlit picture and up-and-out normals. Realistic
-  birch: foliage 0.94 (0.81-1.01), wood 0.97 (0.85-1.06). Lowest when the sun is behind the tree: a real crown lets
-  light through, a picture's normals face its camera (`depth` 0.5 for card foliage softens it; 1.0 for closed
-  styles). What stays: from a diagonal the two quads meet in a visible vertical line (each lit by its own normals);
-  an engine can fade each quad by how edge-on it is.
+- **The impostor** (`impostor=True`) is HEMI-OCTAHEDRAL: the plant baked from 8 x 8 directions spread over the upper
+  hemisphere (an octahedral grid: the border of the atlas is the horizon, its middle straight down) into one atlas, and
+  drawn as ONE quad that the engine's shader turns to the camera, blending the four baked views nearest the camera's
+  direction (one parallax step by a depth map, so neighbouring views line up). It holds from the horizon to looking
+  straight down: two crossed quads read as a cross or a bird from a hill (the consumer's island has a 330 m volcano).
+  What engines do (Ryan Brucks' octahedral impostors for UE, https://shaderbits.com/blog/octahedral-impostors; Amplify
+  Impostors, https://amplify.pt/_AI; the Godot port https://github.com/SIsilicon/Godot-Octahedral-Impostors): the
+  hemisphere variant for things never seen from below (twice the resolution of the full sphere), frame blending.
+  Maps: albedo (unlit, the shade of what stands above each point baked in at half strength: an engine casts no shadow
+  inside a picture) with alpha; an OBJECT-SPACE normal map (glTF axes, rgb * 2 - 1: the quad turns, so tangent space
+  means nothing) with the depth behind each view's middle plane in its alpha (not a glTF normalTexture: it is in the
+  impostor material's `extras.hifipushie_impostor.normal_texture_index`, and as `impostorNormalTexture` files in the
+  seasons json). A picture per season (seasons with the same shape share the normal / depth / shade frames: only the
+  albedo is rendered again). extras / the seasons json `impostor`: `frames`, `size` (each view's square, m), `centre`
+  (glTF), `recipe` (the shader in words) and `shader`: `spikes/godot_veg/impostor_octa.gdshader` is a reference
+  Godot 4 shader to drop in (uniforms from those numbers; MeshInstance3D.extra_cull_margin = size / 2, since the
+  stored quad is a vertical square; no shadows received). `veg_impostor.view(atlas, direction)` draws in numpy what
+  the shader draws (the tests hold the bake to it). Cost: ~4 min of Blender for the first shape of the plant (64
+  views x albedo, normal, Cycles shade, depth), ~1 min for each further season. `impostor="cross"` keeps the old two
+  crossed quads (any viewer draws them without a shader; from the side only): albedo + tangent-space normal map,
+  front and back faces of their own, and the engine must not let the quads RECEIVE shadows (a dark wedge).
+  Installing it in Godot 4 (what `spikes/godot_veg/octa.gd` does): (1) copy `impostor_octa.gdshader` into the project;
+  (2) import `<name>_LOD3.glb` (the impostor LOD file) and read `<name>_seasons.json`: `impostor` = {frames, size,
+  centre}, `seasons.<season>.impostor` = the season's `baseColorTexture.file` (albedo atlas) and
+  `impostorNormalTexture.file` (object-space normal + depth); (3) make a ShaderMaterial with that shader and set
+  `albedo_atlas`, `normal_atlas` (load the PNGs; generate mipmaps), `frames`, `size`, `centre`; (4) on the impostor's
+  MeshInstance3D set `material_override` to it and `extra_cull_margin = size / 2` (REQUIRED: the stored quad is a
+  vertical square, the drawn one turns to the camera and leaves that box from above, so without the margin Godot culls
+  it while it is on screen); (5) leave casting shadows on, receiving off (the shader's render_mode already has
+  `shadows_disabled`); (6) per season swap the two textures. `impostor="cross"` (export_plant) writes the old two crossed
+  quads instead: any viewer draws them with no shader, from the side only.
+  Measured in Godot 4.7.2 (blobby oak, impostor vs LOD 2, three azimuths, orthographic, one sun; octa.gd +
+  octa_measure.py): elevation 0 / 20 / 45 deg: coverage 1.01 / 1.01 / 1.02, luma 0.99 / 0.98 / 0.98, outline IoU 0.975 /
+  0.939 / 0.910. The crossed quads on the same tree: coverage 0.96 / 0.92 / 0.66, luma 1.01 / 0.89 / 0.74, IoU 0.89 /
+  0.84 / 0.63 (from a hill they read as a cross).
 - **`<name>_seasons.json`** beside the GLB (written whenever there are variants). It LEADS with `contract`
   {"version", "changes" per version, "rule"} and `slot_list` [{"slot", "on": [{"mesh", "primitive"}], "hidden_in":
   [seasons], "channels": the vertex attributes on it}]: an engine that maps materials by slot name should refuse a
@@ -481,13 +499,17 @@ lod_files=True)`:
   colour and normal pictures (image index in the GLB + the same PNG written beside it). For engines that drop
   KHR_materials_variants.
 - **The export contract** (`veg_export.CONTRACT`, in the GLB's extras.hifipushie_plant.contract and the seasons
-  json): version 5. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
+  json): version 6. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
   collision file, seasons json. 2 = styled deciduous plants add slot `bark_forks` (the wood mesh's second primitive:
   hidden except in bare seasons); impostor pictures per season. 3 = impostor normal map + TANGENT + 16 vertices, its
   second picture no longer mirrored, baked shade; seasons json contract + slot_list + normal PNGs. 4 = style anime
   (leaf-cloud foliage: alpha-MASK cards with a dab atlas, TEXCOORD_3 = (clump gradient, clump id), Godot CUSTOM0.zw);
   seasons json `snow` numbers + `style`; impostor shade eased on bright colours. 5 = the `snow` variant of a
-  leaf-dropping plant is its WINTER state (foliage hidden, `bark_forks` shown), not the crown painted white. Whoever adds,
+  leaf-dropping plant is its WINTER state (foliage hidden, `bark_forks` shown), not the crown painted white. 6 = the impostor
+  is hemi-octahedral (one quad turned by the engine's shader, an N x N atlas of views, object-space normal + depth in
+  `extras.hifipushie_impostor`, `impostorNormalTexture` files, the seasons json `impostor`); `impostor="cross"` = 5's quads;
+  slot `heads` carries COLOR_0 (each part's colour: petals / dab / ball, the flower's centre, the stalk) under a white
+  baseColorFactor. Whoever adds,
   renames or re-purposes a slot or a vertex channel bumps the number and adds a line to CONTRACT_LOG and here.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
@@ -561,7 +583,7 @@ of season blanked in that season's atlas (styled: the `heads` slot hidden); flat
 
 ## Styles: the same plant dressed another way
 
-`"style": "realistic" | "blobby"` on the spec (grow_plant, a set's plants; anime, cartoon and pixar sheets are not
+`"style": "realistic" | "blobby" | "anime" | "cartoon"` on the spec (grow_plant, a set's plants; a pixar sheet is not
 built yet). A style NEVER changes the growth: species, seed, skeleton, height, crown extent and lean are the realistic
 tree's, node for node, so an engine can swap styles on one placement and the outline at 200 m is the same tree. The
 report says what was simplified and measures that claim:
@@ -638,6 +660,56 @@ bottom). Cost: the Norway spruce's IoU falls from 0.85 (smooth tiers down to the
 tree's skirt sweeps the ground and the toy has a bare foot and notches; the report warns under 0.8. Lower
 `trunk_show` to get it back.
 
+ANIME (`vegetation_styles/anime.json`, painted backgrounds: Ghibli, Genshin, BotW) is crown kind "clouds" (`veg_cloud.py`):
+the same masses as the blobby crown, but they are the PROXY, not what is drawn. Every mass (clump) gets `layers` shells
+(0.6 / 0.8 / 1.0 / 1.12 of its ellipsoid, weighted by `layer_weight`) of alpha cards facing out of it (tilted up to
+`tilt` deg, rolled `roll`, cupped `cup`), `card` x the clump's radius across (at most `card_max`; lower LODs take
+fewer, larger cards, up to `lod_grow` x); cards buried more than `bury` x a radius inside another clump are left out.
+The picture is a generated grey DAB atlas (`crown.dab`: `count` brush dabs per tile, each the species' leaf outline
+fattened, `length` x the tile, pointing out by `out` and down by `droop`, a solid `core`, a `ragged` rim; needle trees
+a pointed spray stroke, shape "spray"); the material's colour and COLOR_0 multiply it. NORMAL = out of the card's own
+clump's middle, mixed `normals` toward out of the crown's middle (artists transfer a proxy's normals onto the cards:
+the clump shades as one soft volume and the cards only cut its edge). COLOR_0 = a 3-step painted gradient per clump,
+one step per CARD (`tone` per step, `grad_range` of the clump's height, `grad_jitter`, inner layers darker by
+`depth_dark`, the top warmer by `warm_top`); TEXCOORD_3 = (gradient 0 base .. 1 top of its clump, (clump + 0.5) /
+clumps) for an engine's own ramp (Godot reads it as CUSTOM0.zw). Two sizes of cloud: `edge_share` of the foliage
+furthest out of the crown's middle is clustered into `edge_count` x more, smaller clouds (one size read as one layer).
+The cards are held under the realistic tree's height. Budget: what the triangle count buys, shared by area between
+clumps and by `layer_weight` between layers; `clump_min_cards` raises small clumps (small top tiers were confetti)
+and the big clumps give up what they gained, so LOD 0 stays within the sheet's `budget`.
+Wood in anime: true radii, thin and dark (`colour.bark_mix` toward a dark warm neutral), with its forks (`stubs`) in
+the ONE wood mesh (`wood.forks_in_leaf`: seen through the gaps, no `bark_forks` slot), and `wood.feed`: a clump with no
+drawn wood within feed x its radius gets the grown tree's own path to it (outer clumps floated).
+Anime conifers: clouds on TIERS (`masses_kind` "tiers", the blobby tier numbers), `under` 0.25 = cards facing the ground
+under each bough are left out (the strong tier shadow), smaller softer spray strokes (110 a tile, a quarter of it long:
+from 5 m half-tile strokes read as palm fronds) and spring = `seasons.spring.tips`: the spring picture paints the tip
+`share` of every stroke `light` x lighter and `tint`ed (new growth), the rest `body` x (same alpha, same cards: only the
+spring material's picture differs; the export's foliage_spring has its own baseColorTexture).
+Anime small plants (`clump`): `fan` blades from each chosen card +-`fan_angle` (long thin sweeping blades), flowers as
+colour DABS (`heads_kind` "dab": `dabs` flat ragged blobs of paint ~`ball` x the stalk long, facing up by `head_up`).
+Every style's clump block takes `heads_kind`: "ball" (blobby: a ball on a stalk), "dab", "petals" (`petals` [fewest, most]
+fat flat petals, `petal_length` / `petal_width`, cupped `cup`, round a `centre` disc).
+Numbers (vegstyle3, Godot 4.7.2 at each LOD's switch distance, alpha scissor): oak IoU 0.91, covered area 0.94-1.0 of
+LOD 0 at every switch, no interior shimmer; spruce IoU 0.80.
+
+CARTOON (`vegetation_styles/cartoon.json`: Wind Waker, Animal Crossing) is the blobby crown made chunky, each operation
+a number: `crown.scallop` small round bumps on every clump's sides and top (`scallop_size` x its radius, sunk
+`scallop_sink`, joined crisper than the clumps by `scallop_join`: the scalloped edge), clumps joined over a small
+`blend_share` (clear notches between them), `normals_clump` (the normal mostly straight out of its own clump's middle:
+flat-ish shading per clump, the brief's "clump-centre normals"), 2 `tones` with `hue_jitter` (the hue moves a little
+per clump), `big_leaves` single oversized leaves (`big_leaf` x the species' leaf length, the species' outline fattened,
+thin closed plates rooted `big_leaf_sink` into the crown at its outermost points, pointing out and up by `big_leaf_up`;
+fewer at lower LODs; each takes its clump's colour, id and wind, its tip flutters). The clump id is TEXCOORD_0.y as in
+blobby. Wood: first-order limbs, `wood.taper` (girth at the foot x (1 + taper), easing to the top), `wood.flare` (a root
+flare over the first ~12% of the bare trunk) and `wood.s_bend` (one S along the bare trunk, `s_bend` x its height out and
+back, nothing moves above the crown's base: the crown stays where the realistic one is).
+Cartoon conifers: tiers of `tier_shape` "cone": each tier a cone standing on its band's foot, `cone_height` x the band
+tall (it reaches into the band above: the saw-tooth outline), its rim cut into `teeth` points `zig` x its radius in and
+out (a zigzag outline from above and the side). The cones' triangles cover less of the realistic outline than its
+parallel-sided bands: IoU ~0.8 is the style's price (wider `spread` buys IoU and costs width).
+Cartoon small plants: few big wide blades, `heads_kind` {"ray": "petals", ...}: a daisy's flower as 5-8 fat flat petals
+cupped round a centre disc (COLOR_0: white petals, yellow centre, green stalk), a grass's seed spike as a ball.
+
 Forks only when bare: a deciduous styled tree's wood is two primitives: slot `bark` (trunk + limbs, always drawn) and
 slot `bark_forks` (the limbs' forks: hidden while the crown is there, where they cluttered its underside; shown in
 the bare seasons through the variant `bark_forks_bare`, within `wood.forks_share` of the budget). Looks draw the
@@ -651,12 +723,20 @@ spread (the report gives both against the realistic plant); every flowering pict
 becomes a ball (`ball` x its length) on a thin stalk, at most `heads`. One tone per blade in `tones` steps of `tone`
 (COLOR_0), normals leaned to the sky by `normals_up` so the tuft shades as one clump, wind = each blade bends from its
 foot in its own phase (the realistic card's). `budget` (800): LODs take sides and rings off the same blades. In the
-export the blades are slot `foliage`, the heads the foliage mesh's SECOND primitive, slot `heads` (its own colour;
-hidden, like `bark_forks`, in the seasons its layer doesn't show in).
+export the blades are slot `foliage`, the heads the foliage mesh's SECOND primitive, slot `heads` (COLOR_0 = each part's
+colour under a white factor: petals or ball, the flower's centre, the stalk; hidden, like `bark_forks`, in the seasons
+its layer doesn't show in). `heads_kind` "ball" | "dab" | "petals", or a table by the realistic flower's form
+(`{"ray": "petals", "*": "ball"}`: a daisy's rays become petals, a grass's spike a ball). Winter in the EXPORT: when the
+plant's winter state lays its blades down (veg_small's `flatten`), the lying blades are the foliage mesh's own primitive,
+slot `foliage_winter`, shown only in winter and snow while `foliage` is hidden (contract 6). Chosen over a morph target
+per season: the engine already hides and shows slots per season from the seasons json, a clump is a few hundred
+triangles (the second set costs file size, not draw calls), and nothing has to keep blend weights in step with the
+wind and the LODs.
 
-Seasons in a style: spring (fresh yellow-green), summer, autumn (`leaves.autumn`), winter (deciduous: the bare drawn
-limbs and forks; evergreen: its crown), snow (winter's slots + snow: a deciduous tree is bare under snow, an
-evergreen's crown pale). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
+Seasons in a style: spring (fresh yellow-green; an anime conifer's fresh tips), summer, autumn (`leaves.autumn`),
+winter (deciduous: the bare drawn limbs and forks; evergreen: its crown), snow = THE WINTER STATE UNDER SNOW (contract
+5: a deciduous tree is bare under snow, its forks shown, the snow impostor the bare tree; an evergreen's crown pale;
+snow ON wood is the engine's shader from the seasons json's `snow` numbers). The realistic tree has spring too now: `"season": "spring"` / the export's "spring"
 variant = `leaves.spring` colour (else the summer colour toward yellow-green) and leaves `leaves.spring_size` (0.75)
 of their length. Blossom and catkins are not built. Small plants have their own states: see "Small plants".
 
@@ -672,6 +752,6 @@ applied to its cards (paddles and balls): not yet judged.
 ## Not built yet
 
 Say so in your report instead of faking it: LODs, wind animation data, autumn/snow/wet variants, collision
-proxies; styles other than blobby (anime, cartoon, pixar), styles for clumps and stands, blossom; a multi-stem base, exposed roots, burrs,
+proxies; a pixar style, styles for stands, blossom; a multi-stem base, exposed roots, burrs,
 fluted trunks, surface roots running out over the ground, hollows and cavities; thorns, flowers and fruit on twigs; banks, ditches and shorelines (only a slope and a
 water level); a tree that sees the other plants you made (use `setting`/`neighbours`).
