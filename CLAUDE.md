@@ -3501,6 +3501,63 @@ regresses, bisect by building one spec at each commit and diffing heights.
       externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
       (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
+  - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
+    /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
+    DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
+    strips, no terrain), mk_slice.py (terrain `ts_slice_a` = tl_slice_a + zones dumpling_downs west / painted_east
+    east + styles blobby / anime; writes the styles alone into ts_slice_a_styles/), exp.py (tiles export into out/),
+    prev.py <terrain> <tag> x y r '<views>' (preview_tiles + styled renders), rend.py (renders of an existing export,
+    textured styles | baked), diffield.py / diff2.py / diff3.py (which Field grids differ outside a styled zone)).
+    - `terrain_style.py` + `terrain_styles/<name>.json` over `_base.json` (realistic, blobby, anime, cartoon, pixar):
+      spec `"styles": {style: zone | [addresses] | {"in", "band", "sheet"}}`, everywhere else realistic; zones are a
+      PARTITION (a later style wins overlaps; realistic = no zone), weights = smoothstep over each style's band of the
+      signed distance to its own piece, normalised (two adjacent zones meet 50/50, no realistic between them). Layer
+      textures = op stacks (blotch, strokes, bands, ripples, dots, grain, cracks, facets, pillow: periodic on the torus,
+      tone -1..1 x albedo with warm / cool tints, height m), mean = the layer colour (the terrain's realistic colour turned
+      by the sheet's saturation / value = the plant style's numbers). Written PNGs are cached by their inputs + this
+      module's code ($HIFIPUSHIE_STYLE_CACHE): a cached write is byte-identical (test). `write` / `export_styles` /
+      manifest `styles` (contract 1, order, styles[].layers[l] files / size / colour / roughness / seasons tint_linear,
+      snow numbers, tiles[].styles, maps sd + weights, recipe); in every tiles export of a spec with styles, or alone:
+      `export_terrain(name, styles_only=True)` (seconds, updates manifest.json). `look_terrain(styles=True)`: swatch,
+      season and transition sheets; with tiles=True the views with the recipe (`render_tiles(textured="styles")`,
+      `blender_tiles._styled`). "styles" is in terrain_cache.THREE_D (the 2.5D build never sees it).
+    - Rock shape in the field (`Field.styles` from `terrain_style.rock_styles`, weights on the terrain grid with the
+      sheet's `rock.band_m`, default 10 m): `relief` multipliers on the realistic rock numbers (`rock_variant`), `pillow`
+      (`pillow_carve`: 3D jittered cells, grooves smoothstep^2, C1), `soften_m` (Gaussian on Field.H in the zone, also
+      takes the heightfield's facet_delta out there), `fallen`, `micro`. `_styled_relief` mixes realistic's and each
+      style's relief by weight. INVARIANT kept: with no rock-shaping style the field is the old code path; with one, the
+      realistic zone is bit-identical (test_rock_shape_by_zone) because `_structure_grain` (a GLOBAL percentile) and
+      `_local_thickness` (thin pieces span zones; per-piece height levels) read the UNSOFTENED ground. Any new global
+      statistic in Field must do the same.
+    - First delivery: /mnt/data/hifipushie/terrainstyle/ts_slice_a_styles/ (materials/<style>/..., styles/, styles.json,
+      swatches.png, seasons.png); full export with styles (OLD geometry: before the rock shapes) out/ts_slice_a: same 3
+      known check failures as main (LOD 0 shards 0.012%, ...).
+    - Read so far: textures tile (wrap seam <= 1.4 on every layer); blobby = flat soft fields (good), its rock texture is
+      nearly blank (a first "pillow" texture read as flagstone paving: pillows belong in geometry); anime grass reads as
+      painted dabs, anime rock as crisp painted bands; cartoon tufts are blobs, not ink ticks; pixar blades too subtle.
+      ts_06_top_border (styled recipe, old geometry): flatter and paler than the baked look, faint contour-like lines on
+      the blobby grass slopes (not the bump: still there without it; likely the turf-lip risers' geometry, which the
+      baked colour hides: not isolated).
+    - Styled GEOMETRY seen once (ts_04_*: preview_tiles, 9 tiles round [240, 90], one LOD, no checks): blobby cliffs are
+      rounded pillow lumps (read as melted / pillowy, not yet "pebble-smooth"), anime cliffs carry strong painted strata
+      with bedding ledges, the two meet at the zone line as different rock (the brief allows it). NOT RUN YET (the heavy
+      slot was held for another session): a full ts_slice_a export with styled geometry and its seam / shard / floating
+      checks, and the pebble / alps 3x3 regressions (no styles: the field code path is unchanged when no style shapes
+      rock, so they should be byte-identical; verify).
+    - Round 2 (consumer notes 71-75, Godot): CONTRACT 2 = soft layers always top-projected (side planes at v = world
+      height turned their tone patches into ~0.5-1 m terraces up slopes: the "contour lines"), rock triplanar with
+      `v_jitter_m` (strata wander along the strike; anime rock 12 m, 3 m jitter: its 8 m repeat up a cliff). `tileable`
+      compares the seam with ALL neighbouring rows' mean step + one 8-bit level (one row beside it: a pebble on the
+      seam read 4.04 for cartoon sand; flat blobby swatches read 1.7 on 1e-4 steps); `bands` are shifted half a band
+      off the wrap row (an edge on it was a real seam line). Blobby rock by measure (rockform.py: horizontal sections
+      of the south cliffs x 20-120, band-passed 0.5-8 m): pillows 3.5 m / soften 1.5 -> 6 m, stretch 1.8 (cells taller
+      than wide: seams run up the face), depth 1.0, round 0.5, soften 3: undercut share 0.078 -> 0.001 (unstyled
+      0.041), convex share 0.512 -> 0.534, lobes / 10 m 1.33 -> 1.22. NOT yet rendered.
+    - Open, in order: (1) those exports + checks; (2) the tufts op for cartoon (done) vs dab size of pixar blades (too
+      subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
+      fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
+      height / hollows (numbers only today).
+
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
 basin walls came out 9 deg steeper than asked (sized from the floor's high end: now per stretch from where the floor

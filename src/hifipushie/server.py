@@ -2176,6 +2176,9 @@ def set_terrain(name: str, spec: dict | None = None, patch: dict | None = None, 
         raise ValueError('a terrain needs "extent": [[x0, y0], [x1, y1]] (see guide(topic="terrain"))')
     from . import terrain
     terrain.normalise(new)  # cheap checks (units, named sections) before saving
+    if new.get("styles"):
+        from . import terrain_style
+        terrain_style.resolve(new)  # (style names, keys, sheet overrides: zones are checked when the styles are written)
     prev = tt.load(name) if (tt._dir(name) / "spec.json").exists() else None
     if prev is not None and prev == new:  # (an empty or no-op patch made a new version each time)
         return f"terrain {name}: nothing changed (still v{len(tt.history(name))})\n" + tt.report(name)
@@ -2201,7 +2204,7 @@ def check_terrain(name: str) -> str:
 @mcp.tool(structured_output=False)
 def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[dict] | None = None,
                  spec_views: bool = False, size: int = 1100, tiles: bool = False, haze: float | None = 5000.0,
-                 light: str | None = None):
+                 light: str | None = None, styles: bool = False):
     """Images of a terrain. map: north-up hillshade with cover colours, contours, rivers, ridges, routes, sites,
     walls (red where climbable), names and a scale bar. masks: each cover mask alone (white = dense). views:
     perspective renders (Cycles, with trees and water; ~30 s + ~10 s a view): [{"name", "eye": address | [x, y, z],
@@ -2210,7 +2213,10 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     tiles of the last export_terrain(name, tiles=True) instead (the way an engine shows them: baked maps, tiling rock
     detail, arches and caves, the ground's character, trees, the sites' props as stand-ins for scale, a raking sun and
     aerial haze: `haze` m for 63%, None off; `light`: "clear" = a deep blue clear sky and a strong sun, as in a sunny
-    photo, default the hazy sky); a view may add "lamp": watts (a headlamp, inside caves). Files are also
+    photo, default the hazy sky); a view may add "lamp": watts (a headlamp, inside caves). styles=True: the spec's
+    terrain styles (and realistic) as a swatch sheet (per style x layer: albedo tiled 2 x 2, lit, normal) and a
+    transition strip per layer, as the recipe blends them; with tiles=True the views are drawn with each zone in its
+    style (the manifest's styles recipe in Blender: a reference for an engine's shader). Files are also
     written to workspace/terrain/<name>/. Read the images, not just the report."""
     from . import terrain, terrain_tools as tt
     from .terrain_world import Questions
@@ -2232,6 +2238,23 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
         else:
             out.append(_out(sheet, str(d / f"masks_v{ver}.png")))
             notes.append(f"masks: {d / f'masks_v{ver}.png'}")
+    if styles:
+        from . import terrain_style
+        sts = terrain_style.resolve(T.spec)
+        sheets = [s["sheet"] for s in sts] + ([] if any(s["name"] == "realistic" for s in sts)
+                                              else [terrain_style.sheet("realistic")])
+        refs = terrain_style.refs_of(T)
+        lays = [nm for nm in ("grass", "rock", "sand") if nm in refs]
+        p = terrain_style.swatch_sheet(sheets, refs, lays, d / f"styles_v{ver}.png")
+        out.append(_out(PILImage.open(p), None))
+        notes.append(f"styles sheet: {p}")
+        p = terrain_style.season_sheet(sheets, refs, lays, d / f"styles_seasons_v{ver}.png")
+        out.append(_out(PILImage.open(p), None))
+        notes.append(f"seasons sheet (spring, summer, autumn, winter, snow by the snow numbers): {p}")
+        for nm in lays:
+            q = terrain_style.transition_strip(sheets, refs, nm, d / f"styles_strip_{nm}_v{ver}.png")
+            out.append(_out(PILImage.open(q), None))
+            notes.append(f"transition ({nm}, {' -> '.join(st['name'] for st in sheets)}): {q}")
     vs = list(views or []) + (list(T.spec.get("views") or []) if spec_views else [])
     if vs:
         for i, v in enumerate(vs):
@@ -2251,7 +2274,8 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
                     v["eye"] = [*v["eye"], float(T.height(np.array(v["eye"], float))) + v.get("lift", 1.7)]
                 v.setdefault("look", v["eye"])
             (d / "views").mkdir(parents=True, exist_ok=True)
-            for pth in terrain_mesh.render_tiles(T, td, vs, haze=haze, light=light):
+            for pth in terrain_mesh.render_tiles(T, td, vs, haze=haze, light=light,
+                                                 textured="styles" if styles else True):
                 out.append(_out(PILImage.open(pth), None))
                 notes.append(f"view: {pth}")
             notes += json.loads((td / "render_job.json").read_text()).get("notes", [])
@@ -2265,7 +2289,7 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
 
 @mcp.tool(structured_output=False)
 def export_terrain(name: str, size: int | None = None, engine: str | None = None, out_dir: str | None = None,
-                   tiles: bool = False) -> str:
+                   tiles: bool = False, styles_only: bool = False) -> str:
     """Write the terrain for an engine (default workspace/terrain/<name>/export/): height (.npy float32 absolute,
     16-bit .png and Unity .raw offset to 0), masks per cover layer plus water, roads, sites, playable and walls,
     splat weights for the ground layers, trees.csv, and meta.json (heights, the Unity terrain size and position,
@@ -2275,7 +2299,9 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     and its volumes (arches, caves, overhangs) as seamless glTF tiles with LODs, skirts, collision, heightmap and
     splat tiles and a manifest.json, tuned by the spec's "export": {"tiles": {...}}; a seam check runs on every
     export; when it (or a tile's triangle budget) fails the reply starts with CHECKS FAILED and lists each failure
-    with its tiles: the files are still written, complete and loadable."""
+    with its tiles: the files are still written, complete and loadable. A spec with "styles" adds the per-style
+    layer textures, zone maps and the manifest's `styles` section (guide, "Styles"); styles_only=True writes ONLY
+    those (seconds, no meshing) into out_dir or beside the last tiles export, updating its manifest.json."""
     from . import terrain_tools as tt
     from .terrain_world import Questions
     try:
@@ -2283,6 +2309,12 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     except Questions as q:
         return tt.questions_data(q)
     cfg = T.spec.get("export") or {}
+    if styles_only:
+        from . import terrain_style
+        out = Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles"
+        sec = terrain_style.export_styles(T, out)
+        return f"styles written to {out} (styles.json + manifest.json's \"styles\" if it exists)\n" + \
+            terrain_style.summary(sec)
     if tiles:
         from . import terrain_mesh
         try:
