@@ -454,25 +454,43 @@ def _kmeans(X: np.ndarray, k: int, iters: int = 30) -> np.ndarray:
     return lab
 
 
-def masses(X: np.ndarray, k: int, st: dict, twig: float) -> list[dict]:
+def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[dict]:
     """k ellipsoids over the foliage points: [{"c", "R" (rows = axes), "r" (semi-axes), "n" points}], lowest first."""
     cr = st["crown"]
     ztop = float(X[:, 2].max()) + 0.5 * twig
-    if cr.get("kind") == "tiers":  # stacked dumplings: one upright ellipsoid per height band, widest low in its band
-        z0, z1 = float(np.percentile(X[:, 2], 1)), float(X[:, 2].max())
-        edges = z0 + (z1 - z0) * (np.arange(k + 1) / k) ** float(cr.get("tier_power", 1.0))
+    if cr.get("kind") == "tiers":
+        # stacked dumplings: one upright egg per height band (round above its widest level, flat below it: `tier_under`
+        # x the band), seated low in its band, so each overhangs the narrower top of the one below with an undercut.
+        # `trunk_show` m of trunk stay bare under the lowest; bands differ in height by `tier_uneven` (the seed's own
+        # numbers); the top one is a cap no slimmer than `tier_cap` x its height.
+        show = float(cr.get("trunk_show", 0.0))
+        z0, z1 = max(float(np.percentile(X[:, 2], 1)), show), float(X[:, 2].max())
+        un = float(cr.get("tier_uneven", 0.0))
+        jit = (vegetation._u(np.arange(3 * k + 3).astype(np.uint64) + np.uint64(1000 * (seed + 1)), 91) - 0.5) * 2 if un else np.zeros(3 * k + 3)
+        frac = (np.arange(k + 1) / k) ** float(cr.get("tier_power", 1.0))
+        frac[1:-1] += 0.5 * un * jit[1:k] * np.diff(frac).min()
+        edges = z0 + (z1 - z0) * frac
         out = []
         for j in range(k):
-            Q = X[(X[:, 2] >= edges[j] - 1e-9) & (X[:, 2] <= edges[j + 1] + (0.25 * (edges[j + 1] - edges[j]) if j < k - 1 else 1e-9))]
+            hgt = edges[j + 1] - edges[j]
+            Q = X[(X[:, 2] >= edges[j] - 1e-9) & (X[:, 2] <= edges[j] + 0.6 * hgt)]  # (its width is its lower part's: the band's top is the next one's business)
+            if len(Q) < 4:
+                Q = X[(X[:, 2] >= edges[j] - 1e-9) & (X[:, 2] <= edges[j + 1] + 1e-9)]
             if len(Q) < 4:
                 continue
-            hgt = edges[j + 1] - edges[j]
             c = np.array([Q[:, 0].mean(), Q[:, 1].mean(), edges[j] + float(cr.get("tier_seat", 0.4)) * hgt])
-            rx, ry = [float(cr.get("spread", 1.75)) * float(Q[:, i].std()) + float(cr.get("pad", 0.5)) * twig for i in (0, 1)]
+            wj = 1.0 + 0.35 * un * jit[k + 1 + j]
+            rx, ry = [wj * float(cr.get("spread", 1.75)) * float(Q[:, i].std()) + float(cr.get("pad", 0.5)) * twig for i in (0, 1)]
             rz = max(float(cr.get("tier_height", 0.75)) * hgt, float(cr.get("roundness", 0.0)) * max(rx, ry) * 0.5)
+            if j == k - 1:
+                rz = max(ztop - c[2], 0.3 * hgt)
+                rx, ry = [max(v, float(cr.get("tier_cap", 0.0)) * rz) for v in (rx, ry)]
             r = np.maximum(np.array([rx, ry, rz]), 0.75 * float(cr.get("min_feature", 0.6)))
             c[2] -= max(0.0, c[2] + r[2] - ztop)
-            out.append({"c": c, "R": np.eye(3), "r": r, "n": int(len(Q))})
+            e = {"c": c, "R": np.eye(3), "r": r, "n": int(len(Q))}
+            if cr.get("tier_under") is not None:
+                e["down"] = float(np.clip(float(cr["tier_under"]) * hgt, 0.3 * float(cr.get("min_feature", 0.6)), max(c[2] - show, 0.05) if j == 0 else 1e9))
+            out.append(e)
         return out
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
         X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
@@ -516,8 +534,12 @@ def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, flo
     D = np.empty((len(p), len(ells)))
     for j, e in enumerate(ells):
         q = (p - e["c"]) @ e["R"].T
-        k0 = np.linalg.norm(q / e["r"], axis=1)
-        k1 = np.linalg.norm(q / (e["r"] ** 2), axis=1)
+        r_ = e["r"]
+        if e.get("down") is not None:  # an egg: its own (shorter) semi-axis below the middle
+            r_ = np.tile(e["r"], (len(q), 1))
+            r_[q[:, 2] < 0, 2] = e["down"]
+        k0 = np.linalg.norm(q / r_, axis=1)
+        k1 = np.linalg.norm(q / (r_ ** 2), axis=1)
         D[:, j] = np.where(k1 > 1e-9, k0 * (k0 - 1.0) / np.maximum(k1, 1e-9), -float(e["r"].min()))
     d = D[:, 0].copy()
     for j in range(1, len(ells)):
@@ -631,11 +653,13 @@ def fit(tree: dict, st: dict) -> dict:
     floor = float(tree["spec"]["leaves"].get("clear", 0.03)) + 0.02
     refs = reference(tree)
     cr = st.get("crown") or {}
+    if cr.get("kind") == "tiers" and cr.get("trunk_show"):
+        floor = max(floor, 0.6 * float(cr["trunk_show"]))  # (the union's blend may sag under the lowest tier: never to the ground)
     if len(X) >= 8 and cr.get("kind", "masses") in ("masses", "tiers"):
         lo, hi = (cr["masses"], cr["masses"]) if isinstance(cr["masses"], int) else cr["masses"]
         cands = {}
         for k in range(int(lo), int(hi) + 1):
-            ells = masses(X, k, st, tl)
+            ells = masses(X, k, st, tl, int(tree["spec"].get("seed", 1)))
             n_ = sum(not e.get("core") for e in ells)
             if not ells or n_ in cands:
                 continue
@@ -722,7 +746,8 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         gain = float(max(t0, t1) * (1 + abs(warm)))  # COLOR_0 must stay within 0..1 (glTF): the material's colour carries the rest
         mcol = mcol / gain
         ez = np.array([math.sqrt(float(((e["R"][:, 2] * e["r"]) ** 2).sum())) for e in ells])
-        u = np.clip((V[:, 2] - (cz[mass] - ez[mass])) / (2 * ez[mass]), 0, 1)
+        ed = np.array([e["down"] if e.get("down") is not None else ez[j] for j, e in enumerate(ells)])
+        u = np.clip((V[:, 2] - (cz[mass] - ed[mass])) / (ez[mass] + ed[mass]), 0, 1)
         uv = np.stack([u, (mass + 0.5) / k], 1)
         # wind: a mass goes with the wood it sits on, as a whole; soft between masses so nothing tears
         wd = st.get("wind") or {}

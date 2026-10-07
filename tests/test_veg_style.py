@@ -196,13 +196,94 @@ def test_export_contract():
         assert all(sr["seasons"]["winter"][k]["hidden"] for k in fs)
         Gc, _ = _glb(veg_export.write_collision(T, str(Path(tmp) / "c.glb"), "b"))
         assert Gc["nodes"][Gc["scenes"][0]["nodes"][0]]["name"] == "b_collision-colonly" and Gc["extras"]["hifipushie_collision"]["capsules"]
-        # the impostor: single sided, each quad drawn from both sides, normals up and out
-        img = {"image": np.ones((8, 16, 4), np.float32), "size": 6.0, "height": 3.0}
-        Gi, arr_i = _glb(veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img))
+        # contract version and the full slot list lead the seasons json (an engine can refuse what it doesn't know)
+        raw = json.loads(Path(sj["path"]).read_text())
+        assert list(raw)[:2] == ["contract", "slot_list"] and raw["contract"]["version"] == veg_export.CONTRACT == max(veg_export.CONTRACT_LOG)
+        sl = {e["slot"]: e for e in raw["slot_list"]}
+        assert set(sl) == set(sj["slots"]) and sl["bark_forks"]["hidden_in"] == ["summer", "spring", "autumn", "snow"]
+        assert sl["bark_forks"]["on"][0]["primitive"] == 1 and sl["foliage"]["hidden_in"] == ["winter"] and "COLOR_0" in sl["foliage"]["channels"]
+        # the impostor: single sided; front and back of each quad are faces of their own with opposite normals and
+        # their own tangent (w = -1 behind), so one normal map lights both; pictures face the cameras that made them
+        img = {"image": np.ones((8, 16, 4), np.float32), "normal": np.full((8, 16, 3), 0.5, np.float32), "size": 6.0, "height": 3.0,
+               "seasons": {"winter": {"image": np.zeros((8, 16, 4), np.float32), "normal": np.full((8, 16, 3), 0.5, np.float32)}}}
+        Gi, arr_i = _glb(veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img, ("summer", "winter")))
         pi = Gi["meshes"][0]["primitives"][0]
-        assert not Gi["materials"][pi["material"]].get("doubleSided") and len(arr_i(pi["indices"])) == 24
-        assert arr_i(pi["attributes"]["NORMAL"])[:, 1].min() > 0.5  # (glTF is Y up)
+        mi = Gi["materials"][pi["material"]]
+        assert not mi.get("doubleSided") and len(arr_i(pi["indices"])) == 24 and "normalTexture" in mi and mi["extras"]["receive_shadows"] is False
+        assert len(Gi["images"]) == 3  # (two pictures, one normal map shared by both seasons)
+        P, N, Tg, I = arr_i(pi["attributes"]["POSITION"]), arr_i(pi["attributes"]["NORMAL"]), arr_i(pi["attributes"]["TANGENT"]), arr_i(pi["indices"]).reshape(-1, 3)
+        fn = np.cross(P[I[:, 1]] - P[I[:, 0]], P[I[:, 2]] - P[I[:, 0]])
+        fn /= np.linalg.norm(fn, axis=1, keepdims=True)
+        assert np.allclose(fn, N[I[:, 0]], atol=1e-5) and len(P) == 16
+        assert np.allclose(np.cross(N, Tg[:, :3]) * Tg[:, 3:], [0, 1, 0], atol=1e-6)  # bitangent = up (glTF is Y up) on every face
+        assert np.allclose(N[:4], [0, 0, 1]) and np.allclose(N[8:12], [-1, 0, 0])  # picture 1 faces Blender -y, picture 2 Blender -x
+        si = veg_export.seasons_json(str(Path(tmp) / "i.glb"))
+        assert si["slots"]["impostor"]["receive_shadows"] is False and Path(tmp, si["slots"]["impostor"]["normalTexture"]["file"]).exists()
 
+
+def test_impostor_maps():
+    """World normals from each view land in that quad's tangent frame; albedo is shaded and bled under the alpha."""
+    h = 6
+    A = np.zeros((h, h, 4), np.float32)
+    A[2:4, 2:4] = [0.5, 0.5, 0.5, 1]
+    sh = np.ones((h, h, 4), np.float32)
+    sh[2:4, 2:4, 0] = 0.0
+    out = []
+    for right, front in veg_export.impostor_frames():
+        n = 0.6 * front + 0.8 * np.array([0, 0, 1.0])  # facing the camera and up
+        Nw = np.zeros((h, h, 4), np.float32)
+        Nw[2:4, 2:4] = [*(n * 0.5 + 0.5), 1]
+        out.append(Nw)
+    m = veg_export.impostor_maps([A, A], out, [sh, sh], shade_amount=0.5, depth=1.0)
+    assert m["image"].shape == (h, 2 * h, 4) and m["normal"].shape == (h, 2 * h, 3)
+    for j in (0, 1):
+        ts = m["normal"][2, 2 + h * j] * 2 - 1
+        assert np.allclose(ts, [0, 0.8, 0.6], atol=0.02), ts
+    assert np.allclose(m["normal"][0, 0] * 2 - 1, [0, 0.8, 0.6], atol=0.02)  # bled: no flat normal under the alpha
+    assert m["image"][0, 0, 3] == 0 and 0.2 < m["image"][0, 0, 0] < 0.5 and m["image"][2, 2, 0] < 0.5  # albedo darkened by the shade, bled
+
+
+def test_lod_normals_are_the_fields():
+    """Every LOD's NORMAL is the field's gradient at its vertex (mixed `normals` toward out of the crown), never the
+    low mesh's own face normals: a low LOD shades as smooth as the full one (the consumer once saw faceted creases)."""
+    for sp in ({**BASE, "style": "blobby"}, {"species": "norway_spruce", "age": 30, "style": "blobby"}):
+        T = v.grow(sp)
+        st = vs.sheet(T["spec"])
+        ft = vs.fit(T, st)
+        ells, bl = ft["ells"], ft["blend"]
+        cfn = lambda q: vs.field(ells, q, bl, floor=ft["floor"])
+        wfn = lambda q: np.maximum(vs.wood_field(ft["wood"]["segs"], q, ft["wood"]["blend"]), -0.3 - q[:, 2])
+        for share in (1.0, 0.45, 0.18):
+            D = vs.dress(T, st, int(st["budget"] * share))
+            C, W = D["crown"], D["wood"]
+            g = vs.grad(cfn, C["V"])
+            g /= np.linalg.norm(g, axis=1, keepdims=True)
+            o = C["V"] - np.mean([e["c"] for e in ells], axis=0)
+            o /= np.linalg.norm(o, axis=1, keepdims=True)
+            w = float(st["crown"].get("normals", 0.0))
+            n = (1 - w) * g + w * o
+            n /= np.linalg.norm(n, axis=1, keepdims=True)
+            assert (np.einsum("ij,ij->i", n, C["N"]) > 0.9999).all() and np.abs(cfn(C["V"])).max() < 0.02, share
+            gw = vs.grad(wfn, W["V"])
+            gw /= np.linalg.norm(gw, axis=1, keepdims=True)
+            assert (np.einsum("ij,ij->i", gw, W["N"]) > 0.9999).all(), share
+        # and that is what the file holds
+        with tempfile.TemporaryDirectory() as tmp:
+            c = veg_export.write_glb(T, str(Path(tmp) / "b.glb"), "b", lods=3)
+            G, arr = _glb(c["path"])
+            for m in G["meshes"]:
+                if not m["name"].endswith("foliage"):
+                    continue
+                at = m["primitives"][0]["attributes"]
+                P, N = arr(at["POSITION"]).astype(float), arr(at["NORMAL"]).astype(float)
+                Pb, Nb = np.stack([P[:, 0], -P[:, 2], P[:, 1]], 1), np.stack([N[:, 0], -N[:, 2], N[:, 1]], 1)  # back to Z up
+                g = vs.grad(cfn, Pb)
+                g /= np.linalg.norm(g, axis=1, keepdims=True)
+                o = Pb - np.mean([e["c"] for e in ells], axis=0)
+                o /= np.linalg.norm(o, axis=1, keepdims=True)
+                n = (1 - w) * g + w * o
+                n /= np.linalg.norm(n, axis=1, keepdims=True)
+                assert (np.einsum("ij,ij->i", n, Nb) > 0.999).all(), m["name"]
 
 if __name__ == "__main__":
     for k, f in list(globals().items()):
