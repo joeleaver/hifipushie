@@ -3732,9 +3732,17 @@ regresses, bisect by building one spec at each commit and diffing heights.
       0.5 m: a voxel touching only by a corner is what marching cubes cuts loose), continuous (|grad| < 3), vertical
       and planar walls, deterministic, overrides checked, every sheet's keys known.
     - Sea cliff talus (terrain_sea): the smooth 13 m domes between the island's stacks were the apron at 0.3 x the
-      cliff's height; now `TALUS_SHARE` 0.08 x height + `TALUS_BASE` 2 m (<= 0.3 x) at `TALUS_SLOPE` 32 deg out from
+      cliff's height; now `TALUS_SHARE` 0.08 x height + `TALUS_BASE` 4 m (<= 0.3 x) at `TALUS_SLOPE` 36 deg out from
       the foot, its blocks the 3D tiles' fallen blocks (fall_zone finds it). Changes every cliffed coast's heightfield.
-    - Open: turf / bird lime on the tops (colour); the anime bands on stacks; the pebble_disc tile regression (see below).
+      With 2 m / 32 deg the low apron lay in the splash band and its fallen blocks flipped rock / wet rock / sand
+      between LOD 0 and LOD 2 (pebble lod0_vs_lod2 orm p95 0.213 > 0.15); 4 m / 36 deg passes.
+    - pebble_disc tiles (this branch vs main, same machine): the only failure is main's own (lod1 map normals p95
+      15.78 vs main 15.55, limit 15); shards LOD 0/1/2 0.0082 / 0.0252 / 0.230% (main 0.005 / 0.023 / 0.198);
+      floating 0; Khronos 1044 files 0 / 0 (round 3 export). Tests also: no sealed air in a column at 0.2 m, no recess
+      narrower than ~1 m (thin air 0.07-0.22% of the solid: bevel corners), test_level_look, test_terrain_style,
+      test_tiles pass.
+    - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
+      cliff shell on these stacks.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);

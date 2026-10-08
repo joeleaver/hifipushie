@@ -103,3 +103,34 @@ def test_style_sheets_stack_keys_are_known():
         st = (json.loads(f.read_text()).get("rock") or {}).get("stack")
         if st:
             form(st)
+
+
+@pytest.mark.parametrize("seed", [3000, 3002, 4001, 4003, 4006])
+def test_no_sealed_air(seed):
+    """No air enclosed in a column (tiles2: a sealed sub-voxel pocket at the old stack's notch broke the decimator
+    wherever the cliff shell followed it): sampled at 0.2 m, every air component reaches the box's boundary."""
+    h, r = (42.0, 7.6) if seed < 4000 else (30.0, 6.0)
+    c = Column((0.0, 0.0), -2.0, h, r, seed, sea=0.0)
+    ax, G, V = _grid(c, vox=0.2)
+    lab, n = ndimage.label(V > 0)
+    edge = set(np.unique(np.concatenate([lab[0].ravel(), lab[-1].ravel(), lab[:, 0].ravel(), lab[:, -1].ravel(),
+                                         lab[:, :, 0].ravel(), lab[:, :, -1].ravel()])))
+    sealed = [i for i in range(1, n + 1) if i not in edge]
+    assert not sealed, f"{len(sealed)} sealed pockets, the biggest {max(int((lab == i).sum()) for i in sealed)} cells"
+
+
+@pytest.mark.parametrize("seed", [3000, 3002, 4001, 4003, 4006])
+def test_no_thin_slots(seed):
+    """Every recess a voxel pair wide at least: no air cell at 0.2 m that a 0.5 m ball can't reach from outside
+    (an opening of the air by a 1 m wide structure removes nothing but sub-voxel slots and pockets)."""
+    h, r = (42.0, 7.6) if seed < 4000 else (30.0, 6.0)
+    c = Column((0.0, 0.0), -2.0, h, r, seed, sea=0.0)
+    ax, G, V = _grid(c, vox=0.2)
+    air = V > 0
+    ball = ndimage.generate_binary_structure(3, 1)
+    opened = ndimage.binary_opening(air, ball, iterations=2, border_value=1)  # (a ~1 m wide ball at 0.2 m cells)
+    thin = air & ~opened
+    # (a recess narrower than the ball shows as thin air; the arrises' bevel leaves a few cells in corners: allowed)
+    frac = thin.sum() / max((V < 0).sum(), 1)
+    print(seed, "thin", round(float(frac), 5))
+    assert frac < 0.004, f"thin air {frac:.4f} of the solid ({int(thin.sum())} cells)"

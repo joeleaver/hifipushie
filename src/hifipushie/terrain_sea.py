@@ -36,7 +36,7 @@ from . import noise
 from .terrain import compass, smoothstep
 
 CLIFF = math.radians(70)
-TALUS_SHARE, TALUS_BASE, TALUS_SLOPE = 0.08, 2.0, 32.0  # a sea cliff's rubble apron: m tall = share x the cliff + base
+TALUS_SHARE, TALUS_BASE, TALUS_SLOPE = 0.08, 4.0, 36.0  # a sea cliff's rubble apron: m tall = share x the cliff + base
 # (at most 0.3 x), its slope (deg) out from the foot
 STACK_CORE = 0.45  # a stack's heightfield core: its radius x this, sheer (the solid stack in the 3D tiles is the form)
 
