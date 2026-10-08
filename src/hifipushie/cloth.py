@@ -1183,6 +1183,9 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
     ln = ytop - y0
     Lr = jr * WORN_STEP
     ok = crossed & (ln > 0.05) & (Lr > 0.5 * ln) & (Lr < 1.6 * ln + 0.02)
+    if neck_x:  # (the shoulder's own ridge: by the neck the ridge climbs the neck, or an under garment's collar, and
+        # slid onto it the jacket rode 27 mm high: its collar stood 33 mm over the shirt's, its cuffs showed 21-29 mm)
+        ok &= np.abs(S[:, 0, 0]) > neck_x + WORN_NECK_CLEAR
     # ONE slide for the piece (the median over the columns that cross the ridge): a draft's shoulder slope puts every
     # column's top on the ridge when the piece hangs level; a slide per column sheared the piece (26-100 mm across
     # the front) and its neck columns, which never cross, climbed the neck
@@ -1284,6 +1287,9 @@ def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed:
 
 
 WORN_SLIDE = 0.10
+WORN_CLEAR = 0.005  # m a worn top starts off the body under it: it RESTS on the shoulders (at the draped 12 mm the jacket
+# started 19 mm over the shirt at the shoulder, and its made collar, carried where it started, held it 27 mm high)
+WORN_NECK_CLEAR = 0.02  # m out from the neck point (world x) from which a column's ridge is the shoulder's
 WORN_NECK = 0.05  # m under the neck point from which a column in front of / behind the neck stops following the body  # m a worn column may slide along its path to put the piece's top on the shoulder's ridge
 
 
@@ -2657,7 +2663,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 y0_ = float(at["armpit_z"]) - float(hps[2])
                 wi_ = {}
                 X[sel] = _worn_top(body, Cw, start, float(w.get("dir", 1.0)), xs_ + dxs.get(nm, 0.0),
-                                   ys_ + dzs.get(nm, 0.0), float(hps[2]), y0_, gap + float(w.get("out", 0.0)), wi_,
+                                   ys_ + dzs.get(nm, 0.0), float(hps[2]), y0_, WORN_CLEAR + 0.25 * float(w.get("out", 0.0)), wi_,
                                    neck_x=abs(float(hps[0])))
                 B.setdefault("worn_top_pieces", {})[nm] = wi_
                 if wi_.get("ridge_columns"):
