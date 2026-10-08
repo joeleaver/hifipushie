@@ -7517,11 +7517,15 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         H += (amp_ * np.clip(1.0 - dc_ / cw_, 0.0, 1.0) ** 2).astype(H.dtype)
     # buttons and buttonholes on the pieces' marks
     btn = np.zeros((T, T), np.float32)
+    # (a closure's HOLE marks are not buttons, whatever they are called: a jacket's fronts both carry "button<n>",
+    # and the over front got a button drawn on its own buttonhole)
+    hole_marks = {f"{c_['over']}:{a_}" for c_ in (M.get("closures") or []) if c_.get("under") != c_.get("over")
+                  for a_, _b in (c_.get("pairs") or [])}
     if o["buttons"]:
         for nm, v in M["marks"].items():
             mk = nm.split(":", 1)[1]
             cx, cy = px(uv[v])
-            if mk.startswith("button") and not mk.startswith("buttonhole"):
+            if mk.startswith("button") and not mk.startswith("buttonhole") and nm not in hole_marks:
                 r = 0.0055 / mpt
                 yy, xx = np.ogrid[:T, :T]
                 x0, x1, y0, y1 = int(cx - r - 2), int(cx + r + 3), int(cy - r - 2), int(cy + r + 3)
