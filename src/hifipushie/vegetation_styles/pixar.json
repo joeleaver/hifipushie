@@ -158,12 +158,12 @@
   "crown": {
    "kind": "tiers",
    "masses": [
-    9,
-    9
+    7,
+    7
    ],
    "core": 0,
    "blend_share": 0.15,
-   "spread": 1.8,
+   "spread": 2.0,
    "roundness": 0.35,
    "trunk_show": 0.6,
    "tier_seat": 0.3,
@@ -201,7 +201,7 @@
    "tier_shape": "cone",
    "teeth": 16,
    "zig": 0.05,
-   "cone_height": 1.6
+   "cone_height": 1.9
   },
   "colour": {
    "value": 1.1

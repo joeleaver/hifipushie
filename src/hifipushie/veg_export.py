@@ -19,6 +19,11 @@ import numpy as np
 from . import veg_bark, veg_bough, veg_cloud, veg_ground, veg_impostor, veg_leaf, veg_mesh, veg_style, vegetation
 
 
+def veg_small_state(spec: dict, season: str):
+    from . import veg_small
+    return veg_small.season_state(spec, season)
+
+
 def _normals(V, F):
     fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
     N = np.zeros_like(V)
@@ -426,7 +431,8 @@ CONTRACT_LOG = {
        "the shell's under the card; TEXCOORD_0 = the atlas uv), its own material per season variant (hidden when the plant "
        "is bare). On both: TEXCOORD_3 = (gradient 0 base / inside .. 1 tip, THICKNESS = metres of canopy behind the point "
        "along -NORMAL, capped 4 m; cards 0.02) for the engine's subsurface / back light; material extras.translucency = "
-       "{color sRGB, amount}. Wood: every structural limb in one mesh (no bark_forks slot)",
+       "{color sRGB, amount}. Wood: every structural limb in one mesh (no bark_forks slot). REALISTIC small plants whose blades "
+       "lie down in winter now carry slot foliage_winter too (their cards regrown lying; the atlas the season's own)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -891,16 +897,45 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                  "twigs_kept": round(bud["keep"], 3), "wood_min_radius_m": round(bud["min_radius"], 4),
                  "floating": round(bud["floating"], 3)}
             if L is not None and len(L["F"]):
-                fn = L["node"]
-                wch = (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"])
-                if t.get("clump"):  # a small plant's card bends as a whole from its foot, each in its own phase; long
-                    # cards swing further (the recipe's limb amplitude is 0.25 m: a 30 cm tuft's tip moves ~5 cm)
-                    own = L["flutter"] ** 1.5 * np.clip(L["reach"] / 1.2, 0.08, 1.0)
-                    wch = (wn["trunk"][fn], np.maximum(wn["branch"][fn], own), np.where(wn["branch"][fn] > own, wn["phase"][fn], L["phase"]),
-                           0.5 * L["flutter"])
-                p_ = prim(L["V"], L["F"], L["uv"], m_c, wch,
+                def card_wind(L, wn):
+                    fn = L["node"]
+                    wch = (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"])
+                    if t.get("clump"):  # a small plant's card bends as a whole from its foot, each in its own phase; long
+                        # cards swing further (the recipe's limb amplitude is 0.25 m: a 30 cm tuft's tip moves ~5 cm)
+                        own = L["flutter"] ** 1.5 * np.clip(L["reach"] / 1.2, 0.08, 1.0)
+                        wch = (wn["trunk"][fn], np.maximum(wn["branch"][fn], own), np.where(wn["branch"][fn] > own, wn["phase"][fn], L["phase"]),
+                               0.5 * L["flutter"])
+                    return wch
+                p_ = prim(L["V"], L["F"], L["uv"], m_c, card_wind(L, wn),
                           L["tint"], L["N"])
-                meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, vf_c, m_c)]})
+                fprims = [p_]
+                lie_r = [se for se in seasons if se in ("winter", "snow")]
+                if (t.get("clump") and len(trees) == 1 and lie_r and seasons[0] not in lie_r
+                        and float((veg_small_state(s, "winter") or {}).get("flatten", 0.0)) > 0):
+                    # a realistic small plant whose blades lie down in winter: as the styled ones, slot foliage_winter =
+                    # the cards of the plant regrown at season winter, shown in winter / snow while foliage is hidden
+                    if "_winter_tree" not in t:
+                        t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
+                    tw_ = t["_winter_tree"]
+                    Lw = foliage_mesh(tw_, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c)
+                    if len(Lw["F"]):
+                        hk = ("lie", m_c)
+                        if hk not in cluster_mats:
+                            hid = [{**json.loads(json.dumps(materials[m_c])), "name": f"{materials[m_c]['name']}_{sfx}", "alphaCutoff": 1.01}
+                                   for sfx in ("winter", "lying")]
+                            for h_ in hid:
+                                h_["extras"] = {**h_.get("extras", {}), "hidden": True}
+                            materials.extend(hid)
+                            cluster_mats[hk] = (len(materials) - 2, len(materials) - 1)
+                        m_w, m_l = cluster_mats[hk]
+                        tab_main = {se: (m_l if se in lie_r else vf_c.get(se, m_c)) for se in seasons}
+                        tab_w = {se: (vf_c.get(se, m_c) if se in lie_r else m_w) for se in seasons}
+                        fprims = [with_variants(p_, tab_main, m_c),
+                                  with_variants(prim(Lw["V"], Lw["F"], Lw["uv"], m_w, card_wind(Lw, wind_nodes(tw_)), Lw["tint"], Lw["N"]), tab_w, m_w)]
+                        c["winter_triangles"] = int(len(Lw["F"]))
+                if len(fprims) == 1:
+                    fprims = [with_variants(p_, vf_c, m_c)]
+                meshes.append({"name": pre + "foliage", "primitives": fprims})
                 c["boughs"] = at_c is not at
                 nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                 kids.append(len(nodes) - 1)

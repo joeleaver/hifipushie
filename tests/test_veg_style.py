@@ -446,6 +446,17 @@ def test_winter_blades_lie_in_the_export():
         assert tops["foliage_winter"] < 0.8 * tops["foliage"], tops
         hp = next(p_ for p_ in prims if G["materials"][p_["material"]]["name"] == "heads")
         assert "COLOR_0" in hp["attributes"] and G["materials"][hp["material"]]["pbrMetallicRoughness"]["baseColorFactor"][:3] == [1.0, 1.0, 1.0]
+    # the realistic small plant the same way (its cards lying in slot foliage_winter)
+    R = v.grow({"species": "meadow_grass"})
+    with tempfile.TemporaryDirectory() as tmp:
+        c = veg_export.write_glb(R, str(Path(tmp) / "r.glb"), "r", lods=1, seasons=["summer", "winter", "snow"])
+        sj = veg_export.seasons_json(c["path"])
+        sl = {e["slot"]: e for e in sj["slot_list"]}
+        assert sl["foliage_winter"]["hidden_in"] == ["summer"] and sl["foliage"]["hidden_in"] == ["winter", "snow"], sl
+        G, arr = _glb(c["path"])
+        prims = G["meshes"][[m["name"] for m in G["meshes"]].index("foliage")]["primitives"]
+        tops = {G["materials"][p_["material"]]["name"]: float(arr(p_["attributes"]["POSITION"])[:, 1].max()) for p_ in prims}
+        assert tops["foliage_winter"] < 0.8 * tops["foliage"], tops
 
 
 def test_cartoon():
