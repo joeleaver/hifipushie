@@ -223,6 +223,11 @@ class Edits:
         out = np.zeros(len(x))
         if self.lip_cfg["turf"] > 0:
             b, *_ = self.bare(P, riser)
+            ls = getattr(self, "lip_scale", None)
+            if ls is not None:  # (a terrain style's share of the turf step: blobby none; realistic cells exactly 1)
+                k = ndimage.map_coordinates(ls, [(P[:, 1] - self.y0) / self.c, (P[:, 0] - self.x0) / self.c],
+                                            order=1, mode="nearest")
+                b = b * k
             out -= self.lip_cfg["turf"] * b
         bc = self.bunker_cfg
         for parts, depth in self.bunkers:

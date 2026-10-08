@@ -255,6 +255,16 @@ def _measure(spec: dict) -> Scalp:
         raise HairError(f"hair: the head centre {np.round(C, 3).tolist()} isn't inside the head")
     out = F >= 0
     i = np.argmax(out, 1)
+    if ((spec.get("base") or {}).get("body") or {}).get("source") == "human":  # (one mesh) GNM's ear canals and
+        # inner surfaces are pockets inside the head: a ray from the centre came out into one 4 cm in (behind the
+        # ear), and the locks rooted there hung down the neck. The first crossing into air that STAYS air for
+        # POCKET m (the outermost crossing instead sent rays under the ear on to the shoulders: curtains of hair)
+        k = max(1, int(round(POCKET / (ts[1] - ts[0]))))
+        pad = np.concatenate([out, np.ones((len(out), k), bool)], 1)
+        run = np.ones_like(out)
+        for j in range(k + 1):
+            run &= pad[:, j:j + out.shape[1]]
+        i = np.where(run.any(1), np.argmax(run, 1), i)
     miss = ~out.any(1)
     lo, hi = ts[np.maximum(i - 1, 0)], ts[i]
     for _ in range(10):
@@ -294,6 +304,7 @@ def groom_params(spec: dict) -> dict:
     return _merge(GROOM, g)
 
 
+POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the head, not a pocket in it (an ear canal)
 HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
 
 

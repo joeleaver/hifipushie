@@ -557,7 +557,19 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   the style keeps: 1 realistic, 0 blobby), `macro_normal` (share of the baked normal kept), `detail` (the realistic
   tiling detail swatches), `overlay` (the style's own close-up swatch: anime brush dabs), `seasons` (per season per
   layer `{"mix": sRGB, "amount"}`, as the plants'), `snow` (numbers for the engine's snow, as the plants'), `rock`
-  (the zone's rock shape: geometry, see below).
+  (the zone's rock shape: geometry, see below). Op keys worth knowing: `blotch` `share` (with 2 steps: the share of
+  ground in the second tone, patches on a ground colour instead of a 50/50 camouflage) and `width` (spread of sizes);
+  `strokes` `levels` (a painter's few mixed tones instead of a continuum); `dots` `clusters` [per m2, radius m]
+  (flowers in clumps); any op's `paint` (an sRGB colour laid where it marks: white and yellow flower dots); `bands`
+  `pinch` / `breaks` / `vary` (strata swell, wedge out as lenses and fade along the strike instead of ruled stripes);
+  any op's `fade_small` (it gives way on small or thin rock: the layer then ships a plain texture, and the map
+  `styles/rock_scale.png` says where: sea stacks and fins lose the anime strata). Sheet `layer_edge` {height,
+  depth}: where two layers meet, their height maps decide a crisp painted edge (cartoon, anime) instead of a
+  cross-fade. Contract 3.
+- Cartoon and anime under hard-band cel light (the game's): any soft gradient in a texture or in the baked macro colour
+  reads as a smudge, not as paint. Cartoon soft layers are flat fields in two crisp tones with a few marks (ink tufts,
+  pale ticks, flower dots, pebbles) and `macro` 0; anime keeps 3 crisp value steps and 3-level dabs, `macro` 0.15.
+  Judge with `look_terrain(styles=True)`'s ground view (eye level and 25 m up, mipmapped, anti-tiled, flat cel light).
 - What artists do, and why it is built this way: stylised ground in games is a few tiling layer textures blended by
   weights (slope, height, painted masks), height-blended at layer edges, triplanar on cliffs, with anti-tiling
   ([Unity terrain height blend](https://github.com/unitycoder/TerrainHeightBlend-Shader), [stochastic
@@ -566,7 +578,7 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   (fewer, bigger planes, softened edges: [polycount](https://polycount.com/discussion/comment/2147949)). So a style's
   texture is an op stack with few, big shapes; its rock shape is geometry in the zone's tiles.
 - Files (in every tiles export of a spec with styles, or alone with `export_terrain(name, styles_only=True)`, seconds,
-  beside the last export): `materials/<style>/<layer>_albedo.png` (sRGB, mean = the layer colour), `_normal.png`
+  beside the last export): `materials/<style>/<layer>_albedo.png` (RGB sRGB, mean = the layer colour; ALPHA = the height, 8-bit linear, contract 4), `_normal.png`
   (tangent, glTF: +x east / along the face, +y north / up), `_height.png` (16-bit, 0.5 = 0, +- height_m),
   `materials/<style>/overlay_*`; `styles/<style>_sd.png` (signed distance to the style's zone edge, 16-bit,
   +- range_m, + inside) for a band of your own (ragged, moving), `styles/weights<g>.png` (the weights with `band`);
@@ -580,7 +592,7 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   (multipliers on this terrain's own rock character: `facets`, `bedding`, `size`; `blocks: false` drops the jointed
   blocks), `pillow` (`size`, `depth`, `round`: rock carved into rounded cushions), `soften_m` (the ground grid
   Gaussian-smoothed in the zone: rounded lips and forms; the heightmap tiles follow), `fallen` (share of fallen blocks),
-  `micro` (share of the bake-only fine relief), `band_m` (default 10: the hand-over between zones, in the field, so
+  `micro` (share of the bake-only fine relief), `lip` (share of the turf's step at cliff lips; blobby 0), `band_m` (default 10: the hand-over between zones, in the field, so
   tiles and LODs agree and the seam checks hold). blobby: pillows, softened 1.5 m, no facets / beds / blocks / fallen;
   anime: facets x0.5, beds x1.5, no blocks; cartoon: facets x1.4 at 2.5x size, no beds / blocks; pixar: facets x0.7,
   beds x0.6, no blocks, softened 0.6 m. The realistic zones' field is unchanged bit for bit.

@@ -170,8 +170,11 @@ def head_ops(V, J, st: dict, g: dict, fade, lm_rows) -> tuple:
         apply(fn)
     if st.get("head_size", 1.0) != 1.0:  # last: everything above scaled about the top of the neck
         k = st["head_size"]
-        ring = (f > 0.4) & (f < 0.6)
-        pv = V[ring].mean(0) if ring.any() else V[f > 0.99].min(0)
+        # the fade's middle rings (its levels are 0.39 and 0.61: a 0.4..0.6 band was empty and the pivot fell back
+        # to the bounding box's corner, which moved the face 10 mm sideways and 2 cm forward), on the centre line
+        ring = (f > 0.3) & (f < 0.7)
+        pv = V[ring].mean(0) if ring.any() else V[f > 0].mean(0)
+        pv[0] = mid_x
 
         V = pv + (V - pv) * (1 + (k - 1) * f[:, None])
         J[1:4] = pv + (J[1:4] - pv) * k

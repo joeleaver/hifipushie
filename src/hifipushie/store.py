@@ -259,11 +259,13 @@ def build(name: str, resolution: int = 160, box=None) -> dict:
     that goes to its own cache files and has no silhouettes."""
     spec = load(name)
     from . import base as basemod
+    from . import onemesh
     tag = "" if box is None else json.dumps([np.round(b, 4).tolist() for b in box])
     # keyed on the kit-expanded spec, so changes to kit code (or what a face is seated on) rebuild
     key = hashlib.sha1((json.dumps(specmod.expand_mirror(spec), sort_keys=True, default=float)
                         + f"@{resolution}/{BUILD_VERSION}{tag}"
-                        + (f"/base{basemod.VERSION}" if spec.get("base") else "")).encode()).hexdigest()[:12]
+                        + (f"/base{basemod.VERSION}" if spec.get("base") else "")
+                        + (f"/one{onemesh.VERSION}" if onemesh.applies(spec.get("base")) else "")).encode()).hexdigest()[:12]
     bd = _dir(name) / "build"
     bd.mkdir(exist_ok=True)
     mesh_p, sil_p, meta_p = ((bd / "mesh.npz", bd / "sil.npz", bd / "meta.json") if box is None else
