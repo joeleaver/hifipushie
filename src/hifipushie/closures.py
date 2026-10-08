@@ -396,13 +396,72 @@ def relief(V: np.ndarray, M: dict, pcs: dict, body) -> np.ndarray:
     cs = [c for c in M.get("closures") or [] if c.get("band")]
     if not cs:
         return X
+    for c in cs:  # a box band is interfaced and pressed: it lies flat across, it doesn't sink between its edges
+        if (c.get("finish") or {"over": "box"}).get("over") == "box" and c["over"] != c["under"]:
+            X = press_band(X, M, pcs, c)
     vn = _out_normals(X, M["F"], body)
     for c in cs:
+        box = (c.get("finish") or {"over": "box"}).get("over") == "box"
         for side in ("over", "under"):
             if side == "under" and c["under"] == c["over"]:
                 continue
             m = band_mask(M, pcs, c, side)
-            X[m] += vn[m] * c["lift"] * (1.0 if side == "over" else 0.5)
+            X[m] += vn[m] * c["lift"] * (1.0 if side == "over" else 0.5) * (BOX_LIFT if box and side == "over" else 1.0)
+    return X
+
+
+BOX_LIFT = 1.5  # a box placket stands its lift x this (three layers + interfacing: ~1.2 mm on shirting)
+
+
+def press_band(V: np.ndarray, M: dict, pcs: dict, c: dict) -> np.ndarray:
+    """The over band laid flat across: each band vertex on the straight line between the band's edge and its inner
+    row at its own place along the band (a solver's lap sank 3-4 mm between them, deeper than the band's step: the
+    band read as a groove), never closer than LAY to the under layer under it. The ends (beyond the closed fastenings
+    + 2 cm: the open top, the hem) are left as the sim has them."""
+    X = np.array(V, float)
+    band = c.get("band")
+    w = band.get("over") if isinstance(band, dict) else band
+    arc = (c.get("edge") or {}).get("over")
+    if not w or not arc or c["over"] not in M["names"] or not len(c.get("v") or []):
+        return X
+    sel, d = _edge_dist(M, pcs, c["over"], arc)
+    from . import pattern
+    L = pcs[c["over"]]["P"][pattern.arc_indices(pcs[c["over"]], arc)]
+    ax = L[-1] - L[0]
+    ax = ax / np.linalg.norm(ax)
+    s = M["uv"][sel] @ ax
+    vv = np.asarray(c["v"], np.int64).reshape(-1, 2)
+    cl = np.asarray(c["closed"], bool)
+    if not cl.any():
+        return X
+    yb = M["uv"][vv[cl, 0]] @ ax
+    lo, hi = yb.min() - 0.02, yb.max() + 0.02
+    edge = d < 5e-4
+    row = np.abs(d - float(w)) < 5e-4
+    inb = (d > 5e-4) & (d < float(w) - 5e-4) & (s > lo) & (s < hi)
+    if edge.sum() < 2 or row.sum() < 2 or not inb.any():
+        return X
+    oe, orw = np.argsort(s[edge]), np.argsort(s[row])
+    se, sr = s[edge][oe], s[row][orw]
+    Pe, Pr = X[sel[edge][oe]], X[sel[row][orw]]
+    at = lambda S, P, q: np.c_[[np.interp(q, S, P[:, k]) for k in range(3)]].T
+    q = s[inb]
+    f = (d[inb] / float(w))[:, None]
+    T = (1 - f) * at(se, Pe, q) + f * at(sr, Pr, q)
+    ids = sel[inb]
+    # (eased in over the last 1.5 cm at either end of the pressed stretch)
+    e_ = np.clip(np.minimum(q - lo, hi - q) / 0.015, 0, 1)[:, None]
+    # not through the under layer: at least LAY over it
+    ku = M["names"].index(c["under"])
+    Fu = M["F"][(M["piece"][M["F"]] == ku).all(1)]
+    if len(Fu):
+        Q, N, ins = _closest_on(T, X, Fu)
+        nrm = _out_normals(X, M["F"], None)[ids]
+        N = np.where(((N * nrm).sum(1) < 0)[:, None], -N, N)
+        gap = ((T - Q) * N).sum(1)
+        near = ins & (np.linalg.norm(T - Q, axis=1) < SEAT_MAX)
+        T = T + np.where((near & (gap < LAY))[:, None], N * (LAY - gap)[:, None], 0)
+    X[ids] = X[ids] + e_ * (T - X[ids])
     return X
 
 
@@ -572,3 +631,109 @@ def buttons_mesh(V: np.ndarray, M: dict, body, segs: int = 28) -> dict | None:
             n0 += len(Vb)
     return {"V": np.concatenate(Vs), "F": np.concatenate(Fs), "at": np.asarray(at, np.int64), "mark": np.asarray(mark, np.int64),
             "color": color, "roughness": float(rough if rough is not None else BUTTON["roughness"])}
+
+
+EDGE_ROW = 0.0015  # m: the box band's step is cut this far outside its inner fold row (split_band_edges)
+
+
+def split_band_edges(M: dict, pcs: dict, delta: float = EDGE_ROW) -> dict | None:
+    """A crisp band edge in the MESH: every closure side finished "box" gets a vertex row `delta` outside its band's
+    inner line (the inner line is already a row: expand's fold), by splitting the triangles that line crosses (in the
+    pattern; interior edges only, so outlines and seams keep their vertices). `relief` lifts the band to its inner
+    row and not this one, so the step is `delta` wide instead of a 1 cm triangle (invisible at outfit distance and in
+    clay). New vertices are APPENDED (every vertex id stays: closures, marks, seams, fold rows); M's per-vertex
+    arrays (uv, piece, border, ...) and its faces are updated in place. Returns {"a", "b", "t"} (each new vertex =
+    (1 - t) a + t b, for the caller's other per-vertex arrays: `extend`) or None when nothing was split."""
+    lines = []
+    for c in M.get("closures") or []:
+        fin = c.get("finish") or {"over": "box", "under": "french"}
+        band = c.get("band")
+        for sd in ("over", "under"):
+            if fin.get(sd) != "box" or (sd == "under" and c["under"] == c["over"]):
+                continue
+            w = band.get(sd) if isinstance(band, dict) else band
+            arc = (c.get("edge") or {}).get(sd)
+            if not w or not arc or c[sd] not in M["names"] or c[sd] not in pcs:
+                continue
+            lines.append((c[sd], arc, float(w) + delta))
+    if not lines:
+        return None
+    nV = len(M["uv"])
+    F = np.asarray(M["F"], np.int64)
+    f = np.full(nV, np.nan)
+    for piece, arc, at in lines:
+        sel, d = _edge_dist(M, pcs, piece, arc)
+        f[sel] = d - at
+    E = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1)
+    E = np.unique(E, axis=0)
+    border = np.asarray(M.get("border", np.zeros(nV, bool)), bool)
+    fa, fb = f[E[:, 0]], f[E[:, 1]]
+    cross = np.isfinite(fa) & np.isfinite(fb) & (np.sign(fa) * np.sign(fb) < 0) & ~(border[E[:, 0]] & border[E[:, 1]])
+    cross &= np.asarray(M["piece"])[E[:, 0]] == np.asarray(M["piece"])[E[:, 1]]
+    if not cross.any():
+        return None
+    Ec = E[cross]
+    t = fa[cross] / (fa[cross] - fb[cross])
+    L = np.linalg.norm(M["uv"][Ec[:, 1]] - M["uv"][Ec[:, 0]], axis=1)
+    # (a crossing next to a vertex: that vertex is the row's, no sliver)
+    keep = (t > 0.08) & (t < 0.92) & (t * L > 0.0008) & ((1 - t) * L > 0.0008)
+    Ec, t = Ec[keep], t[keep]
+    if not len(Ec):
+        return None
+    newid = {(int(a), int(b)): nV + i for i, (a, b) in enumerate(Ec)}
+    out = []
+    for tri in F:
+        sp = [newid.get(tuple(sorted((int(tri[k]), int(tri[(k + 1) % 3]))))) for k in range(3)]
+        n = sum(s is not None for s in sp)
+        if n == 0:
+            out.append(tuple(tri))
+            continue
+        a, b, c_ = (int(x) for x in tri)
+        if n == 1:
+            k = next(i for i in range(3) if sp[i] is not None)
+            v0, v1, v2 = (int(tri[k]), int(tri[(k + 1) % 3]), int(tri[(k + 2) % 3]))
+            m = sp[k]
+            out += [(v0, m, v2), (m, v1, v2)]
+        elif n == 2:
+            k = next(i for i in range(3) if sp[i] is None)  # the edge not split: (v_k, v_k+1)
+            v0, v1, v2 = (int(tri[k]), int(tri[(k + 1) % 3]), int(tri[(k + 2) % 3]))
+            m12, m20 = sp[(k + 1) % 3], sp[(k + 2) % 3]
+            out += [(m12, v2, m20), (v0, v1, m12), (v0, m12, m20)]
+        else:
+            m01, m12, m20 = sp
+            out += [(a, m01, m20), (m01, b, m12), (m20, m12, c_), (m01, m12, m20)]
+    M["F"] = np.asarray(out, np.int64)
+    sp_ = {"a": Ec[:, 0], "b": Ec[:, 1], "t": t}
+    for k in list(M):
+        v = M[k]
+        if k in ("F", "sew", "stitch", "sew_seam") or not isinstance(v, np.ndarray) or v.ndim < 1 or len(v) != nV:
+            continue
+        M[k] = extend(v, sp_)
+    if "border" in M:
+        M["border"][nV:] = False
+
+    def walk(o):  # per-vertex arrays kept inside records (a fold's flap masks)
+        if isinstance(o, dict):
+            for k_, v_ in o.items():
+                if isinstance(v_, np.ndarray) and v_.ndim >= 1 and len(v_) == nV and k_ not in ("rows",):
+                    o[k_] = extend(v_, sp_)
+                elif isinstance(v_, (dict, list)):
+                    walk(v_)
+        elif isinstance(o, list):
+            for v_ in o:
+                if isinstance(v_, (dict, list)):
+                    walk(v_)
+    walk(M.get("folds") or [])
+    return sp_
+
+
+def extend(arr: np.ndarray, sp: dict) -> np.ndarray:
+    """A per-vertex array with split_band_edges' new vertices appended: floats interpolated along their edge, other
+    types (piece ids, flags) taken from the edge's first end."""
+    arr = np.asarray(arr)
+    if np.issubdtype(arr.dtype, np.floating):
+        tt = sp["t"].reshape((-1,) + (1,) * (arr.ndim - 1))
+        add = (1 - tt) * arr[sp["a"]] + tt * arr[sp["b"]]
+    else:
+        add = arr[sp["a"]]
+    return np.concatenate([arr, add.astype(arr.dtype)])

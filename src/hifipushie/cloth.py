@@ -3764,7 +3764,12 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
     bn, _ = body.normals() if len(body.V) else (np.zeros((0, 3)), None)
     # the neck pieces' folds first (a collar's fall), then the body pieces' (a front rolled back under it)
     fds = sorted(fds, key=lambda f_: pcs[f_["piece"]]["wrap"].get("to", "torso") not in ("neck", "seam"))
+    spread_done = False
     for fd in fds:
+        if not spread_done and pcs[fd["piece"]]["wrap"].get("to", "torso") not in ("neck", "seam"):
+            # the neck pieces' folds are made: an open collar spreads before the fronts roll back under it
+            X = _spread_open_collar(B, M, body, X, smooth)
+            spread_done = True
         if fd.get("in_wrap"):  # a pleat's folds are laid by the wrap itself (place: wrap "pleats")
             continue
         nm = fd["piece"]
@@ -3804,8 +3809,82 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
                                             wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08,
                                             max_stretch=0.30)  # (made pieces start up to that far past their flat lengths: the solver lifts their limit)
         info[fd["name"]].pop("_tv", None)
+    if not spread_done:
+        X = _spread_open_collar(B, M, body, X, smooth)
     B["fold_info"] = info
     return X
+
+
+COLLAR_SPREAD = (40.0, 20.0, 70.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
+# collarbones, from this far round from the nape (0) toward the front (180)
+
+
+def _spread_open_collar(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) -> np.ndarray:
+    """A collar worn OPEN (its stand's own closure undone) lies spread, as worn without a tie: the stand still hugs
+    the back and sides of the neck, but in front of the neck's sides it swings OUT (about a hinge up the neck's side)
+    and tips DOWN, so its ends and the collar's points lie on the collarbones with the fronts rolled back under them
+    (the user on su_77: our collar stood up round the neck like a ring; the concept's lies spread inside the
+    lapels). Laid ring-like and carried as made, it ended as it started. Every neck piece turns with its stand,
+    smoothly by its angle round the neck; garment key `collar_spread` [out deg, down deg, from deg] (or false)."""
+    spread = B.get("collar_spread", COLLAR_SPREAD)
+    if not spread:
+        return X
+    out_deg, down_deg, from_deg = (float(v) for v in spread)
+    pcs, names, pid = B["pieces"], M["names"], M["piece"]
+    neck = [n for n in names if pcs[n]["wrap"].get("to") == "neck"]
+    opened = [c for c in M.get("closures") or [] if c.get("over") in neck and c["over"] == c.get("under")
+              and len(c.get("closed") or []) and not any(c["closed"])]
+    if not opened or not len(body.V):
+        return X
+    st = names.index(opened[0]["over"])
+    ids = np.where(np.isin(pid, [names.index(n) for n in neck]))[0]
+    S = X[pid == st]
+    cen = S.mean(0)
+    _, _, vt = np.linalg.svd(S - cen)
+    d = vt[2] if vt[2][2] > 0 else -vt[2]  # the ring's axis, up
+    back = np.array([0, 1.0, 0]) - d * d[1]
+    back /= np.linalg.norm(back)
+    side = np.cross(d, back)
+    Q = X[ids] - cen
+    phi = np.arctan2(Q @ side, Q @ back)
+    R = float(np.median(np.linalg.norm(S - cen - np.outer((S - cen) @ d, d), axis=1)))
+    f0 = math.radians(from_deg)
+    t = np.clip((np.abs(phi) - f0) / (np.pi - f0), 0, 1)
+    t = t * t * (3 - 2 * t)
+    out = np.zeros_like(Q)
+    for sg in (-1.0, 1.0):
+        m = (np.sign(phi) == sg) | ((phi == 0) & (sg > 0))
+        if not m.any():
+            continue
+        H = R * (math.cos(f0) * back + sg * math.sin(f0) * side)  # the hinge up the neck's side
+        tang = -math.sin(f0) * back + sg * math.cos(f0) * side  # round the ring toward the front
+        tang /= np.linalg.norm(tang)
+        radial = H / np.linalg.norm(H)
+        for i in np.where(m)[0]:
+            q = Q[i] - H
+            a = math.radians(out_deg) * t[i]
+            # out: about the hinge's vertical, the side that takes the front away from the neck
+            r1 = _rot(d, a * (1 if np.dot(np.cross(d, tang), radial) > 0 else -1))
+            q = r1 @ q
+            # down: about the ring's radial direction at the hinge, front end toward the chest
+            b = math.radians(down_deg) * t[i]
+            r2 = _rot(radial, b)
+            q2 = r2 @ q
+            r3 = _rot(radial, -b)
+            q3 = r3 @ q
+            q = q2 if (q2 @ d) < (q3 @ d) else q3
+            out[i] = H + q
+    Xn = X.copy()
+    Xn[ids] = cen + out
+    Xn[ids] = body.push_out(Xn[ids], HUG_CLEAR if smooth else CLEAR)
+    B["collar_spread_info"] = {"pieces": neck, "moved_max_mm": round(float(np.linalg.norm(Xn[ids] - X[ids], axis=1).max()) * 1000, 1)}
+    return Xn
+
+
+def _rot(axis: np.ndarray, ang: float) -> np.ndarray:
+    a = np.asarray(axis, float) / np.linalg.norm(axis)
+    K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+    return np.eye(3) + math.sin(ang) * K + (1 - math.cos(ang)) * K @ K
 
 
 def _piece_crossings(X: np.ndarray, M: dict) -> set:
@@ -5388,7 +5467,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
     # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
     # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope"):
+    for k_ in ("press_lay", "worn_envelope", "collar_spread"):
         if g.get(k_) is not None:
             Bp[k_] = g[k_]
     if Bp["worn_top"] and under is not None and under.get("res") is not None:
@@ -5870,6 +5949,18 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             else:
                 res["closures_seat"] = [dict(r_, reverted="it crossed the cloth") for r_ in res["closures_seat"]]
         res["closures"] = closuremod.measure(res["V"], M)
+        # a box band's edge as a crisp step in the mesh: a row 1.5 mm outside its inner fold (new vertices appended to
+        # every per-vertex array: the sim's own arrays too, so later steps see one mesh)
+        if not hang and (g.get("cleanup") or {}).get("band_edges", True) is not False:
+            nV_ = len(M["uv"])
+            sp_ = closuremod.split_band_edges(M, Bp["pieces"])
+            if sp_ is not None:
+                for k_ in list(res):
+                    a_ = res[k_]
+                    if k_ != "mesh" and isinstance(a_, np.ndarray) and a_.ndim >= 1 and len(a_) == nV_:
+                        res[k_] = closuremod.extend(a_, sp_)
+                X0 = closuremod.extend(X0, sp_) if len(X0) == nV_ else X0
+                res["band_edges"] = int(len(sp_["t"]))
         res["V_closed"] = res["V"]  # (before the bands' relief: what relief / buttons_mesh are applied to)
         res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
@@ -6786,7 +6877,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top", "press_lay", "worn_envelope"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -7308,7 +7399,7 @@ def _closure_bands(M: dict, uv: np.ndarray, side: float, T: int, px, inside: np.
             sub = (slice(max(ys.min() - pad, 0), min(ys.max() + pad + 1, T)), slice(max(xs.min() - pad, 0), min(xs.max() + pad + 1, T)))
             db = np.full((T, T), 1.0, np.float32)
             db[sub] = ndimage.distance_transform_edt(np.asarray(em)[sub] == 0) * mpt
-            zone = pm & inside & (db <= float(w) + 0.002)
+            zone = pm & inside & (db <= float(w) + 0.004)
             bands.append((zone, db, float(w), fin.get(sd, "plain"), ts))
         if c.get("kind") == "buttons":
             for va, vb in c.get("v") or []:
@@ -7452,13 +7543,15 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
             rows_ = [ts]
         H += np.where(z_, h_, 0).astype(H.dtype)
         if fin == "box":  # the tuck under the inner fold throws a thin shadow on the front beside it
-            shadow *= np.where(z_ | (db < w + 0.003), 1 - 0.14 * np.exp(-((db - w - 0.0006) / 0.0007) ** 2), 1).astype(np.float32)
+            # (wide enough to survive the mip levels at outfit distance: the concept reads the band by its two edges)
+            shadow *= np.where(z_, 1 - 0.22 * np.exp(-((db - w - 0.0008) / 0.0011) ** 2), 1).astype(np.float32)
+            shadow *= np.where(z_, 1 - 0.1 * np.exp(-((db - 0.0006) / 0.0008) ** 2), 1).astype(np.float32)  # the folded edge's shoulder
         for r_ in rows_:
             t_ = np.where(z_, rowb(db, r_) * dash_b, 0).astype(np.float32)
             thread = np.maximum(thread, t_)
             H -= o["stitch_depth"] * t_
             # the row pulls the layers together: a fine shadowed line either side of the stitches
-            shadow *= np.where(z_, 1 - 0.1 * np.exp(-((db - r_) / max(0.0007, 2 * mpt)) ** 2), 1).astype(np.float32)
+            shadow *= np.where(z_, 1 - 0.12 * np.exp(-((db - r_) / max(0.0008, 2 * mpt)) ** 2), 1).astype(np.float32)
     # buttonholes, from the closures: a slit cut through, satin-stitched both sides (a bead ~1 mm wide) with a bar tack
     # at each end, `size` + 3 mm long, along the hole's axis (closures.hole_axis: down a placket, along a cuff)
     for hx_, hy_, ax_, ln_, _v in holes_done:
