@@ -84,7 +84,10 @@ def test_nudge_moves_one_landmark():
     assert np.linalg.norm(L1[:68] - L0[:68], axis=1)[far].max() < 0.0015
     assert rep["integrity"]["ok"]
     # past what the sliders can do: the rest is a correction layer, said so, and it survives a later change
+    # (3 cm squeezes the face's edges past the limit: refused, the input handed back, unless forced)
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03])
+    assert nb2 is b and "refused" in rep2
+    nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
     assert rep2["by_correction_mm"] > 1.0 and abs(rep2["got_mm"][2] + 30) < 1.5
     assert nb2["head"]["shape"]["push_more"]
     nb3, _ = hf.solve(nb2, {"nose_width": "+1"})
@@ -184,6 +187,58 @@ def test_outline_fit_is_symmetric_and_holds_features():
     assert rep["integrity"]["numbers"]["asymmetry_mm"] < st0_asym(b) + 0.5
 
 
+def test_hollow_cheeks_read_on_the_section():
+    """base.head.shape.hollow dents the outer cheek under the cheekbone on both sides, and cheek_hollow (horizontal
+    sections, the outer cheek's contour against its hull) reads it; a plain head reads ~0 there."""
+    b = base()
+    st0 = hf.state(b)
+    h0 = hf.cheek_hollow(st0)
+    assert max(h0.values()) < 1.0, h0
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["hollow"] = 0.005
+    st1 = hf.state(b1)
+    h1 = hf.cheek_hollow(st1)
+    assert min(h1.values()) > max(h0.values()) + 1.0 and abs(h1["left"] - h1["right"]) < 0.8, (h0, h1)
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] == 0, it
+
+
+def test_jaw_angle_is_a_symmetric_bony_corner():
+    """base.head.shape.jaw_angle stands the jaw's angle out (behind and under GNM's lm 3 / 13) and tucks the
+    under-jaw: both sides alike, nothing folded, the face's landmarks above the jaw line held."""
+    b = base()
+    st0 = hf.state(b)
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["jaw_angle"] = 0.004
+    st1 = hf.state(b1)
+    P0, P1 = np.asarray(st0["tpl"]["P"]), np.asarray(st1["tpl"]["P"])
+    d = np.linalg.norm(P1 - P0, axis=1)
+    side = {}
+    for nm, sg in (("right", -1), ("left", 1)):
+        sel = (np.sign(P0[:, 0]) == sg) & (np.abs(P0[:, 0]) > 0.03)
+        side[nm] = d[sel].max()
+    assert 0.003 < min(side.values()) and abs(side["left"] - side["right"]) < 0.0008, side
+    L0, L1 = st0["L"], st1["L"]
+    assert np.linalg.norm(L1[17:48] - L0[17:48], axis=1).max() < 0.0005
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
+
+
+def test_a_broken_solve_is_refused():
+    """A mouth widened until lip faces fold: solve hands back the base it was given (rep["refused"] says why, the
+    broken result's integrity is reported), and returns the broken one only with force=True."""
+    b = base()
+    m0 = hf.state(b)["measures"]["mouth_width"]
+    nb, rep = hf.solve(b, {"mouth_width": m0 * 1.35})
+    if rep["integrity"]["ok"]:  # (if this face can take it, nothing to refuse: the guard is tested below directly)
+        nb2, rep2 = hf._guarded(b, {"x": 1}, {"integrity": {"ok": False, "broken": ["test"], "warnings": []}}, False)
+        assert nb2 is b and "refused" in rep2
+        return
+    assert nb is b and "refused" in rep and "BROKEN" in hf.report_text(rep)
+    nbf, repf = hf.solve(b, {"mouth_width": m0 * 1.35}, force=True)
+    assert nbf is not b and "refused" not in repf
+
+
 def st0_asym(b):
     return hf.integrity(b)["numbers"]["asymmetry_mm"]
 
@@ -192,6 +247,8 @@ if __name__ == "__main__":
     if have():
         for fn in (test_measures_and_integrity, test_a_measure_is_met_and_the_rest_holds, test_adversarial_requests_come_back_honest,
                    test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
-                   test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features):
+                   test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features,
+                   test_hollow_cheeks_read_on_the_section, test_jaw_angle_is_a_symmetric_bony_corner,
+                   test_a_broken_solve_is_refused):
             fn()
             print("ok", fn.__name__)

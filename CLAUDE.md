@@ -4871,6 +4871,84 @@ model".
       hair's silhouette (no crown / hairline evidence); asymmetric pictures are made symmetric by design.
     Tests: test_humanfit test_neck_girth_ignores_the_face, test_hooded_lids_fitted_from_a_picture,
     test_outline_fit_is_symmetric_and_holds_features.
+  - Reference pass 3 (2026-10-08; the coordinator on pass 2: "matches by measure but bloated and jowly, pear-shaped";
+    scratch pass4.py om_garrett om2_gref4 <hollow mm> 1, sheet human_renders/om2_r3_pass3.png = per view a clay row
+    (reference | before | pass 2 | pass 3 | blend | landmarks) and a LIT row (key from the upper left, smooth normals:
+    refsheet3.py), model `om2_gref4`; NOT applied to om_garrett).
+    - Measure first: `humanfit.cheek_hollow` = horizontal sections from the nose's base to the mouth's corners, the
+      OUTER cheek's contour (from 0.4 of the way nose wing -> jaw contour, `HOLLOW_FROM`: nearer the nose the deepest
+      point is the nasolabial fold, 3-4 mm on every head) against its convex hull. before 0.3, pass 2 0.35, pass 3
+      2.2 / 2.6 mm. (A vertical section at fixed x read the muzzle's side, and a section through the jaw's underside
+      read every face as a 12 mm bulge: both dropped.) The points step (identity) is what made the cheeks full: on a
+      vertical profile -3 -> -8 mm, the outline only -8 -> -10.7.
+    - `fit_outline(structure=True)` (default): outline targets on GNM's cheek regions count `STRUCTURE_SOFT` 0.25 and
+      the cheeks' front (cheek regions, normal forward) is HELD (`STRUCTURE_HOLD`), so the warp widens the head's sides
+      (zygoma, jaw angles) instead of filling cheeks; ear vertices are left out of the silhouette (`skip_ears`). Per
+      view `outline_axis: "y"` (heights only: the desk painting's near-side jaw / cheekbone heights, weight 0.7; its
+      miss 9.9 -> 4.2 mm) and `outline_weight`. Widths still within 2.5% of the photo at all eight levels.
+    - `base.head.shape.hollow` (m | {amount, radius, at, share}): a dent under the cheekbone, centred where a ray from
+      the jaw/mouth landmarks' mean, 37 deg out from straight ahead, meets the cheek (the mean of two landmarks across
+      a convex cheek is INSIDE it: the first try dented half its amount at the face's side; the frontmost point dented
+      the lips' corner). 5 mm on a plain head: hollow 0 -> ~2 mm both sides, no folds. Pass 3 used 2.5 mm.
+    - MediaPipe's oval on the front photo (overlay oval_front.png in scratch): runs on the face's edge from the ear's
+      root down; its top (temples, 127 / 356, and the forehead) is the hairline: those points are left out now.
+    - Honest read of om2_r3: in the lit rows pass 3 has shading under the cheekbones on both views and reads closer
+      to the photo than pass 2; but the lower face is still broad and soft, the jaw corners rounded (no bony angle),
+      a lump at the subject's left jaw in the front view, and the bald clay head reads small against the hair's
+      outline. Next: a jaw-angle control (bony corner + the under-jaw tucked), the points step held off the cheeks.
+  - Reference pass 4 (2026-10-08; scratch pass5.py om_garrett om2_gref5 2.5 4 1, sheet human_renders/om2_r4_pass4.png:
+    per view clay | lit | lit WITH the groom's volume (hair.cap_mesh mass=True on each model's own scalp: a stand-in
+    for the locks), columns before | pass 3 | pass 4; model `om2_gref5`; NOT applied to om_garrett).
+    - `fit_views(hold_cheeks=True)` (default): the cheeks' fronts held by `_cheek_basis` (GNM cheek-region vertices
+      facing forward, d/d identity), `HOLD_CHEEK` 0.25 / mm. Points step: cheek hollow 0.26 -> 0.23 (pass 3's
+      points step: -> full), points rms 3.35 -> 3.63 mm. The outline then widens the jaw more (jaw_width 136.7).
+    - `base.head.shape.jaw_angle` (m | {amount, tuck, radius, tuck_radius}): a bump at the jaw's angle, which on the
+      bound head lies ~33 mm behind and 20 mm under GNM's lm 3 (GNM's jaw-contour landmarks are on the cheek's side;
+      measured: section at lm 3's x, the jaw's underside drops to the neck at y ~ -45 mm), plus the under-jaw (under
+      lm 5-6) tucked in, snapped onto the surface in its own x. W-level pushes in gnm_head act on the BOUND head
+      (onemesh.hook returns it before placement), so world offsets measured on the final head are valid there.
+    - The front view's "left-jaw lump" is not asymmetry: the head is symmetric to 3.6 mm at the jaw (asym.py; same
+      before any fit). Straight on (frontal.py) it is both jaw corners standing out past the neck; the fitted
+      camera's roll (-7 deg) and pitch (15 deg) show one of them.
+    - The "8% pupils" is a definition: MediaPipe's eye points are the irises; ours the eyeballs' centres. The outer
+      eye corners are 6% WIDER on the model than the photo (80 vs 75 px). Real miss found: the MOUTH is 15% narrow
+      (lm48-54 38.8 vs 45.9 px); the fit took mouth_width 56 -> 52.5 mm.
+    - Read: inside the hair stand-in, pass 4 is a pear again: the groom's volume is thin at the temples (it was
+      groomed on v23's head) and the jaw now carries the outline's width. The photo's hair outline is clearly wider
+      than its jaw. Next: the cranium / temples and the groom's sides against the HAIR outline (not the face oval),
+      the mouth's width, then the jaw's width re-judged.
+  - Reference pass 5 (2026-10-08; scratch pass6.py om2_gref5 om2_gref6 57 1, sheet human_renders/om2_r5_pass5.png:
+    v23 likeness | pass 4 | pass 5, the hair rows with his REAL locks; model `om2_gref6`; NOT applied).
+    - `hair.lock_meshes(sc, locks)`: the locks as numpy lens tubes (lock_extents' construction, outer + cupped inner
+      face) for quick renders and silhouettes without Blender. His 624 locks are all hand locks in [az, el, h]: they
+      re-seat on any head's scalp by themselves (lock_world); no re-seat step was needed (round 1's trouble was the
+      scalp rays entering the ear canal, fixed then).
+    - The photo's head outline (head + hair against its plain background, scratch hairfit.py) vs the model with his
+      locks, levels from the top of the hair to the ears' top: the bare cranium is about right at the temples' skin;
+      the HAIR is 15-23 mm per side thinner than the photo's (his groom: volume.sides 6 mm).
+    - `hair.lift(spec, sc, {region: m})`: the whole groom fuller by region (lock points' h + groom.volume by the
+      volume's own region weights), eased in from the hairline over `LIFT_RAMP` 3 cm (lifted at the line it stood off
+      the temples as a shelf). Fitted: sides +22 mm, top -1.4: widths within 3 mm at every level, but the outline sits
+      ~11 mm to his left (the photo's sweep is the other way round from the groom's parting side).
+    - Mouth: solve mouth_width 62 folded 7 lip faces (BROKEN; `solve` reports, it doesn't refuse: pass6.py saved it
+      once, re-run since); 59 squeezes the lip corners past 0.25; 57 is the most that holds (mouthtry.py).
+    - Read: with the lift the hair matches the photo's outline and reads as a stiff helmet with flared sides: lock
+      shapes made for 6 mm of side volume, pushed out 22 mm. A fuller cut needs regrooming the sides (the hair
+      thread's tools), not a lift. The face in pass 4/5 is broader and squarer than v23; v23 keeps the long lean face
+      the director approved. Tests tests/test_hair_lift.py.
+  - Reference pass 6 = APPLIED (2026-10-08; the coordinator: "v23 is the one that reads as the photo's man"):
+    v23 (om_garrett v15) + base.head.shape hood 0.0035, hollow 0.005 (measured hollow 0.27 -> 1.95 / 2.24 mm),
+    jaw_angle 0.0025, mouth 56.0 -> 56.5 mm by solve (57 squeezed v23's already-broken lip corners 0.24 -> 0.22:
+    refused); no outline warp, no hair lift. om2_gref7 -> om_garrett v16 (scratch pass7.py, applybase.py).
+    Cameras for the sheets fitted to v23's own landmarks with no identity (camfit.py; 4.6 / 5.9 mm rms).
+    Sheet human_renders/om2_r6_pass6.png (v23 | pass 6, front + desk, clay / lit / his locks). Export
+    /mnt/data/hifipushie/onemesh2/exp_garrett6 (30k / 2048, rig + face shapes, Khronos 0 / 0, body quality 16 folded
+    edges / 11 turned (v23's export: 13 / 11), unevenness <= 0.13, height range +-6.7 mm); blink vs v23's export
+    (om2_r6_blink_v23_vs_pass6.png): same clean closed line, lid jag p95 0.95 / 0.88 (v23 0.91 / 0.85).
+  - humanfit's fits (solve, nudge, fit_views, fit_outline, fit_hood) REFUSE a result the edit broke: the input
+    comes back with rep["refused"] (`_guarded`), unless force=True. A region already broken in the input (v23's lip
+    corners squeezed x0.24 against the plain head) counts only if it got `GUARD_WORSE` 8% worse (`_newly_broken`).
+    A 3 cm chin nudge is now refused (test_nudge updated: forced, it still makes its correction layer).
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 

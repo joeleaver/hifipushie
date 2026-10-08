@@ -1420,6 +1420,97 @@ def fins(sc: Scalp, g: dict, locks: list, n: int = 60) -> dict:
     return dict(sorted(out.items(), key=lambda kv: -kv[1][0]))
 
 
+LIFT_RAMP = 0.03  # m: a lift grows to its full height this far in from the hairline
+
+
+def lift(spec: dict, sc: Scalp, by: dict) -> tuple:
+    """(new spec, report): the whole groom made fuller (or closer) by region, as a barber's "more at the sides":
+    by = {region: m} (REGIONS: front, top, sides, back, nape). Every lock point on the head ([az, el, h] locks; their
+    handles too) rises by the region weights there (`weights`, the volume's own) x those metres, and groom.volume
+    takes the same amounts, so the underlayer stays under the locks. Hand locks stay hand locks (their shapes are
+    kept, only lifted); locks in "xyz" space are left alone and listed."""
+    import copy as _copy
+    bad = set(by) - set(REGIONS)
+    if bad:
+        raise HairError(f"hair lift: unknown regions {sorted(bad)} (have {', '.join(REGIONS)})")
+    out = _copy.deepcopy(spec)
+    hs = out.setdefault("hair", {})
+    g = groom_params(out)
+    line = hairline(sc, g)
+    vals = np.array([float(by.get(r, 0.0)) for r in REGIONS])
+
+    def dh(az, el):
+        az, el = np.asarray(az, float), np.asarray(el, float)
+        d_in = inside(sc, line, az, el)
+        # eased in from the hairline (LIFT_RAMP): lifted at the line itself, the hair's edge stood off the skin as
+        # a shelf with a dark gap under it at the temples
+        return (weights(az, el, d_in) @ vals) * _ss(d_in / LIFT_RAMP)
+
+    moved, skipped, mx = 0, [], 0.0
+    for n, lk in (hs.get("locks") or {}).items():
+        if lk.get("space") == "xyz":
+            skipped.append(n)
+            continue
+        P = np.asarray(lk["pts"], float).reshape(-1, 3)
+        d_ = dh(P[:, 0], P[:, 1])
+        P[:, 2] += d_
+        lk["pts"] = [[round(float(a), 2), round(float(e), 2), round(float(h), 4)] for a, e, h in P]
+        mx = max(mx, float(np.abs(d_).max()))
+        if lk.get("handles"):
+            nh = []
+            for hd in lk["handles"]:
+                if hd:
+                    q = np.asarray(hd, float).reshape(2, 3)
+                    q[:, 2] += dh(q[:, 0], q[:, 1])
+                    nh.append([round(float(v), 4) for v in q.ravel()])
+                else:
+                    nh.append(hd)
+            lk["handles"] = nh
+        moved += 1
+    gr = hs.setdefault("groom", {})
+    vol = gr.setdefault("volume", {})
+    for r, v in zip(REGIONS, vals):
+        if v:
+            vol[r] = round(float(vol.get(r, GROOM["volume"][r])) + float(v), 5)
+    return out, {"locks": moved, "skipped_xyz": skipped, "max_lift_mm": round(mx * 1000, 2),
+                 "volume": {r: vol.get(r) for r in REGIONS}}
+
+
+def lock_meshes(sc: Scalp, locks: list, n: int = 40, across: int = 7) -> tuple:
+    """(V, F): every lock as a closed lens-section tube in numpy (its spine as Blender curves it, the lens across it
+    sized and turned like the node group: lock_extents' outer face plus the cupped inner face). For quick renders and
+    silhouettes without Blender; the material, flips and twists of the node group are not reproduced."""
+    Vs, Fs, k = [], [], 0
+    cs = np.linspace(-1, 1, across)
+    for lk in locks:
+        S = _catmull(lk["pts"], n)
+        u = np.linspace(0, 1, n)
+        tg = _unit(np.gradient(S, axis=0))
+        nr = _unit(S - sc.C)
+        nr = _unit(nr - (nr * tg).sum(1, keepdims=True) * tg)
+        if lk.get("tilt"):
+            ti = np.interp(u, np.linspace(0, 1, len(lk["tilt"])), lk["tilt"])[:, None]
+            nr = nr * np.cos(ti) + np.cross(tg, nr) * np.sin(ti)
+        b = _unit(np.cross(nr, tg))
+        inp = lk["inputs"]
+        f = lock_width(inp, u)[:, None]
+        ring = []  # round the lens: the outer face from one edge to the other, then the inner face back
+        for side in (1.0, -1.0):
+            for c in (cs if side > 0 else cs[::-1][1:-1]):
+                sy = side * np.sqrt(max(1 - c * c, 0.0)) ** 0.8
+                ring.append(S + f * (c * 0.5 * inp["Width"] * b + (sy * 0.5 * inp["Thickness"] - inp.get("Cup", 0.0) * c * c) * nr))
+        R = np.stack(ring, 1)  # (n, m, 3)
+        m = R.shape[1]
+        idx = k + np.arange(n * m).reshape(n, m)
+        a, b_, c_, d_ = idx[:-1, :], idx[1:, :], np.roll(idx[1:, :], -1, 1), np.roll(idx[:-1, :], -1, 1)
+        Fs.append(np.stack([a, b_, c_, d_], -1).reshape(-1, 4))
+        Vs.append(R.reshape(-1, 3))
+        k += n * m
+    if not Vs:
+        return np.zeros((0, 3)), np.zeros((0, 4), int)
+    return np.concatenate(Vs), np.concatenate(Fs)
+
+
 def lock_extents(sc: Scalp, locks: list, n: int = 40):
     """Points on every lock's outer face (the spine as Blender curves it, the lens across it at 7 places, pushed
     out by half the thickness less the cup, sized along the lock like the node group): what the locks add to the

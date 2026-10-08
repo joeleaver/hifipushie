@@ -1196,6 +1196,9 @@ def fit_identity(target: dict, n: int = 80, lam: float = 2e-6) -> dict:
     return out
 
 
+HOLLOW_RADIUS = 0.016  # m: a hollow cheek's reach
+JAW_RADIUS = 0.009     # m: a bony jaw corner's reach (crisp: a soft one is a jowl)
+JAW_TUCK_RADIUS = 0.014  # m: the tucked under-jaw's reach
 HOOD_FORWARD = 0.4  # a hooded lid's fold comes down and this share of that forward, over the lid
 HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance (and its centre 0.45 of the way up)
 
@@ -1512,9 +1515,49 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             dn = np.min([np.linalg.norm(W - lm[i], axis=1) for i in (31, 32, 33, 34, 35)], axis=0)
             wv = 1 - _sstep((dn - 0.006 * s) / (0.006 * s))
             W = _local_smooth(W, E, deg, wv, 12 * float(shape["nostrils"]))
-    if shape.get("push_late"):  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
+    late = list(shape.get("push_late") or [])
+    if shape.get("hollow"):  # hollow cheeks: a dent under the cheekbone, between the jaw contour and the mouth's
+        # corner (the buccal hollow of a lean face), mirrored. m | {"amount", "radius", "at": [jaw lm, mouth lm], "share"}
+        hc = shape["hollow"] if isinstance(shape["hollow"], dict) else {"amount": shape["hollow"]}
+        a_, b_ = hc.get("at", [2, 48])
+        sh_ = float(hc.get("share", 0.3))
+        ids_ = [a_] * int(round(10 * (1 - sh_))) + [b_] * int(round(10 * sh_))
+        c0 = np.mean([lm[int(i)] for i in ids_], axis=0)
+        # the mean of two landmarks across a convex cheek lies INSIDE it: the dent is centred where a ray from it,
+        # out at 37 deg from straight ahead toward its side, meets the cheek (straight ahead it met the lips' corner,
+        # the nearest surface point was the side of the face)
+        sx_ = np.sign(c0[0] - float(eye_mid[0])) or 1.0
+        dr_ = np.array([0.6 * sx_, -0.8, 0.0])
+        rel = W - c0
+        t_ = rel @ dr_
+        pp = np.linalg.norm(rel - t_[:, None] * dr_, axis=1)
+        okr = (t_ > 0) & (pp < 0.004 * s)
+        off_ = (W[okr][np.argmin(t_[okr])] - c0).tolist() if okr.any() else (W[np.argmin(np.linalg.norm(rel, axis=1))] - c0).tolist()
+        late.append({"lm": ids_, "offset": off_, "radius": float(hc.get("radius", HOLLOW_RADIUS)) * s / 1.12,
+                     "amount": -float(hc["amount"])})
+    if shape.get("jaw_angle"):  # a bony jaw corner: the gonial angle (between lm 3 and 4) stands out, crisp, and the
+        # soft under-jaw from the corner toward the chin is tucked up behind the jaw line, so the line reads as an edge.
+        # m | {"amount", "tuck", "radius", "tuck_radius"}
+        ja = shape["jaw_angle"] if isinstance(shape["jaw_angle"], dict) else {"amount": shape["jaw_angle"]}
+        amt = float(ja["amount"])
+        # GNM's jaw-contour landmarks lie on the cheek's side: the jaw's angle itself is ~33 mm behind lm 3 and 20 mm
+        # lower (where the jaw's underside meets the neck on a section at lm 3's x; measured on Garrett's head)
+        cg = lm[3] + np.array([0.0, 0.033, -0.020]) * s / 1.12
+        late.append({"lm": [3], "offset": (W[np.argmin(np.linalg.norm(W - cg, axis=1))] - lm[3]).tolist(),
+                     "radius": float(ja.get("radius", JAW_RADIUS)) * s / 1.12, "amount": amt})
+        tk = float(ja.get("tuck", 1.2 * amt))
+        if tk:
+            ct = 0.5 * (lm[5] + lm[6])
+            below = ct + np.array([0.0, 0.010, -0.010]) * s / 1.12  # under the jaw line and behind it (the head faces -y)
+            # snapped onto the surface in its own x (the nearest vertex overall slid along the jaw toward the chin, and
+            # the mirrored dent, which isn't snapped, came out at half the depth)
+            band = np.abs(W[:, 0] - below[0]) < 0.002 * s
+            cand = W[band] if band.any() else W
+            late.append({"lm": [5, 6], "offset": (cand[np.argmin(np.linalg.norm(cand - below, axis=1))] - ct).tolist(),
+                         "radius": float(ja.get("tuck_radius", JAW_TUCK_RADIUS)) * s / 1.12, "amount": -tk})
+    if late:  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
         # lifted upper cheek under the lower lid, filling the socket hollow that shaded as a dark ring)
-        W, lm = _pushes(W, lm, list(shape["push_late"]))
+        W, lm = _pushes(W, lm, late)
     if shape.get("hood"):
         W, lm = _hood(W, lm, shape["hood"])
     skin_index, zipped = None, 0
