@@ -7,6 +7,18 @@ from hifipushie import cloth, cloth_check, garment_blocks, garment_design as gd,
 MEAS = {"waist": 776.0, "seat": 972.0, "hips": 920.0, "waistToSeat": 245.0, "waistToKnee": 585.0, "wrist": 150.0}
 
 
+def test_sloped_hem_is_the_whole_leg():
+    # a trouser leg whose hem is shaped for a break (the back 3 cm lower than the front, dipping in its middle) is
+    # measured piece by piece just over its own hem's corners: read at one level the front was missed and the leg
+    # failed "TOO SMALL to pull on"
+    from hifipushie import cloth_workflow
+    front = np.array([[0.0, 0.0], [0.2, 0.0], [0.19, -0.8], [0.02, -0.8]])
+    back = np.array([[0.0, 0.0], [0.24, 0.0], [0.23, -0.83], [0.12, -0.842], [0.01, -0.83]])  # (dips at its middle)
+    pcs = {"front.L": {"P": front}, "back.L": {"P": back}}
+    w = cloth_workflow.hem_width(pcs, ["front.L", "back.L"])
+    assert 0.385 < w < 0.395, w  # front 170 + back 220 mm
+
+
 def test_kb_is_consistent():
     K = gd.kb()
     for kind, kd in K["kinds"].items():
