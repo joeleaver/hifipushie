@@ -1630,7 +1630,10 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
         zz = float(np.interp(eased(Lq), along, zg))
         zs = min(max(zz, z_foot), zt - 0.005)
         y = max(zt - Lq - z_w, ymin)
-        xf, xb = _piece_xs_at(Pf, y), _piece_xs_at(Pb, y)
+        # (each piece read no lower than its own hem: cut to a break the back is 12 mm longer, and the front's last
+        # rows, rounded to a cm level under its own hem, had no width: they fell back to the seat's cylinder, the
+        # front hem's vertices at centre front between the feet, 27 cm triangles in the start: tr_22 .. tr_24)
+        xf, xb = _piece_xs_at(Pf, max(y, float(Pf[:, 1].min()) + 0.001)), _piece_xs_at(Pb, max(y, float(Pb[:, 1].min()) + 0.001))
         if len(xf) < 2 or len(xb) < 2:
             cache[key] = None
             return None
@@ -1813,14 +1816,27 @@ def _clear_of_worn(X: np.ndarray, free: np.ndarray, body, gap: float, rounds: in
     if not len(idx):
         return X
     X = X.copy()
+    X0 = X[idx].copy()
     for _ in range(rounds):
         q_, n_, _i = _closest_on(X[idx], W_, F_)
         sd_ = np.sum((X[idx] - q_) * n_, 1) * orient
         bad_ = sd_ < gap
         if not bad_.any():
             break
-        X[idx[bad_]] += ((gap - sd_[bad_]) * orient)[:, None] * n_[bad_]
+        # (a step no longer than WORN_STEP, the whole move no longer than WORN_REACH: a vertex deep inside a shell
+        # (a shoe is a hollow shell round the foot: its inner wall's normal points into the cavity) was sent on
+        # through the far wall round after round: a trouser hem's centre-front vertices ended 11 cm away between the
+        # toes, 27 cm triangles, and the crossing search over them took 17 GB)
+        X[idx[bad_]] += (np.minimum(gap - sd_[bad_], WORN_STEP) * orient)[:, None] * n_[bad_]
+        mv_ = X[idx] - X0
+        ln_ = np.linalg.norm(mv_, axis=1)
+        far_ = ln_ > WORN_REACH
+        X[idx[far_]] = X0[far_] + mv_[far_] * (WORN_REACH / ln_[far_])[:, None]
     return X
+
+
+WORN_STEP = 0.012  # m: the most one round of _clear_of_worn moves a vertex
+WORN_REACH = 0.03  # m: the most _clear_of_worn moves a vertex in all
 
 
 LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
@@ -3789,6 +3805,9 @@ def _pair_crossing_verts(X: np.ndarray, F: np.ndarray, pid: np.ndarray, ka: int,
         rad = np.max(np.linalg.norm(X[Ft] - cen[:, None], axis=2), axis=1)
         mid = 0.5 * (X[E[:, 0]] + X[E[:, 1]])
         half = 0.5 * np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1)
+        if not np.isfinite(X[Ft]).all() or not np.isfinite(X[Fe]).all() or float(rad.max()) > 8.0 * float(np.median(rad)) + 0.05:
+            raise ClothError(f"the start is broken: pieces {ka} / {kb} have a triangle {float(np.nanmax(rad)) * 2:.2f} m "
+                             "across or not finite (a placement that failed; searched as it is, every edge pairs with it)")
         cand = cKDTree(cen).query_ball_point(mid, r=half + float(rad.max()), return_sorted=False)
         ei = np.repeat(np.arange(len(E)), [len(c) for c in cand])
         ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
@@ -3893,6 +3912,13 @@ def _piece_crossings(X: np.ndarray, M: dict) -> set:
     rad = np.max(np.linalg.norm(X[F] - cen[:, None], axis=2), axis=1)
     mid = 0.5 * (X[E[:, 0]] + X[E[:, 1]])
     half = 0.5 * np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1)
+    # (one search radius for all: a placement that flung vertices away, or left them NaN, made every edge a candidate
+    # for every triangle: 17 GB of pairs, the machine's OOM of 2026-10-08. Such a start is not a start.)
+    r_ok = 8.0 * max(float(np.median(rad)), 1e-4) + 0.05
+    if not np.isfinite(X).all() or float(rad.max()) > r_ok:
+        bad = int(np.argmax(np.where(np.isfinite(rad), rad, np.inf)))
+        raise ClothError(f"the start is broken: a triangle of {names[pid[F[bad, 0]]]} is {float(rad[bad]) * 2:.2f} m across "
+                         f"(the mesh's are ~{float(np.median(rad)) * 2000:.0f} mm) or not finite: its placement failed")
     cand = cKDTree(cen).query_ball_point(mid, r=half + float(rad.max()), return_sorted=False)
     ei = np.repeat(np.arange(len(E)), [len(c) for c in cand])
     ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
@@ -4878,6 +4904,79 @@ def _start_separation(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bT: np.ndarr
     return float(best)
 
 
+EXACT_GAP = 0.003  # m: a smooth (contact-solver) start's cloth stands at least this far off the collider's triangles
+
+
+def _clear_exact(X: np.ndarray, F: np.ndarray, free: np.ndarray, bV: np.ndarray, bT: np.ndarray, gap: float = EXACT_GAP,
+                 rounds: int = 6, signed: int | None = None) -> tuple[np.ndarray, int]:
+    """A start's free cloth moved off the collider EXACTLY: the cloth's vertices and three points along each of its
+    edges against the collider's triangles (nearest centres), each one closer than `gap` moved out along the
+    triangle's outward normal (its vertices sharing the move), a few rounds. Body.clearance (nearest vertices'
+    planes) over-reads by up to 5 mm where the collider is coarse or turns (an elbow under a pressed shirt sleeve): a
+    top sleeve's seam edge there started 1.8 mm from a collider edge and ZOZO stopped at frame 0, "contact starts
+    overlapping" (ga_suit su_80). The first `signed` triangles (default all) are a closed body's, wound outward: a
+    point under one is moved out through it; the rest (an under garment's cloth, wound as its pattern lies) push a
+    point away on the side it is on. (X, how many vertices moved)."""
+    bV, bT = np.asarray(bV, float), np.asarray(bT, np.int64)
+    if not len(bT) or not free.any():
+        return X, 0
+    from .rig_template import _closest_on_triangles
+    X = X.copy()
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    E = E[free[E].any(1)]
+    fn = np.cross(bV[bT[:, 1]] - bV[bT[:, 0]], bV[bT[:, 2]] - bV[bT[:, 0]])
+    fn /= np.maximum(np.linalg.norm(fn, axis=1), 1e-12)[:, None]
+    cen = bV[bT].mean(1)
+    tree = cKDTree(cen)
+    r_t = float(np.percentile(np.linalg.norm(bV[bT[:, 0]] - cen, axis=1), 95))
+    vi = np.where(free)[0]
+    ia = np.r_[vi, E[:, 0], E[:, 0], E[:, 0]]
+    ib = np.r_[vi, E[:, 1], E[:, 1], E[:, 1]]
+    tt = np.r_[np.zeros(len(vi)), np.full(len(E), 0.25), np.full(len(E), 0.5), np.full(len(E), 0.75)]
+    moved = np.zeros(len(X), bool)
+    for _ in range(rounds):
+        P = X[ia] * (1 - tt)[:, None] + X[ib] * tt[:, None]
+        d0, _ = tree.query(P)
+        near = np.where(d0 < gap + r_t)[0]
+        if not len(near):
+            break
+        _, nb = tree.query(P[near], k=min(12, len(bT)))
+        nb = nb.reshape(len(near), -1)
+        best = np.full(len(near), np.inf)
+        push = np.zeros((len(near), 3))
+        for k in range(nb.shape[1]):
+            T = bT[nb[:, k]]
+            bary, d = _closest_on_triangles(P[near], bV[T[:, 0]], bV[T[:, 1]], bV[T[:, 2]])
+            Q = bary[:, :1] * bV[T[:, 0]] + bary[:, 1:2] * bV[T[:, 1]] + bary[:, 2:] * bV[T[:, 2]]
+            n = fn[nb[:, k]]
+            sd = ((P[near] - Q) * n).sum(1)
+            if signed is not None:  # (cloth triangles: away on the point's own side)
+                two = nb[:, k] >= signed
+                away = (P[near] - Q) / np.maximum(d, 1e-9)[:, None]
+                n = np.where((two & (d > 3e-4))[:, None], away, np.where((two & (sd < 0))[:, None], -n, n))
+                sd = np.where(two, np.abs(sd), sd)
+            # (under the triangle's plane = inside the collider: out through it and the gap beyond)
+            need = np.where(sd >= 0, gap - d, gap + d)
+            better = d < best
+            best = np.where(better, d, best)
+            push = np.where(better[:, None], n * np.maximum(need, 0.0)[:, None], push)
+        hit = best < gap
+        if not hit.any():
+            break
+        mv = np.zeros_like(X)
+        # (each vertex takes the largest move any of its samples asks for)
+        idx = np.r_[ia[near][hit], ib[near][hit]]
+        cand = np.r_[push[hit], push[hit]]
+        order = np.argsort(np.linalg.norm(cand, axis=1))
+        mv[idx[order]] = cand[order]
+        mv[~free] = 0.0
+        if not np.linalg.norm(mv, axis=1).max() > 1e-6:
+            break
+        moved |= np.linalg.norm(mv, axis=1) > 1e-6
+        X += mv * 1.05
+    return X, int(moved.sum())
+
+
 def _pt_tri(P: np.ndarray, A: np.ndarray, B: np.ndarray, C: np.ndarray) -> np.ndarray:
     """Distances from points P to triangles (A, B, C), row by row (clamped barycentric: exact inside, close at the
     edges)."""
@@ -5224,7 +5323,14 @@ def under_neckline(res: dict) -> float:
     return best
 
 
-def over_measures(body: "Body", U: np.ndarray, res: dict | None = None) -> tuple[dict, dict]:
+def waist_hung(g: dict) -> bool:
+    """A garment that hangs from the waist by a band (trousers, a skirt): its waist is taped over what is tucked
+    into it."""
+    pt = (g.get("pattern") or {}) if isinstance(g.get("pattern"), dict) else {}
+    return pt.get("block") in ("trouser", "skirt") or pt.get("from") == "skirt_block"
+
+
+def over_measures(body: "Body", U: np.ndarray, res: dict | None = None, waist: float | None = None) -> tuple[dict, dict]:
     """The tailor's measures for a garment worn OVER another (garment key "over"), U = the under garment as it lies
     under it (pressed), res its result: a jacket is drafted to go round the shirt. `neck` = the under garment's own
     neckline (its collar size: under_neckline) + its collar's thickness (UNDER_COLLAR_T) round, when more than the
@@ -5257,6 +5363,18 @@ def over_measures(body: "Body", U: np.ndarray, res: dict | None = None) -> tuple
             t = 1000.0 * float(np.mean(pits))
             info["armpit_mm"] = round(t, 1)
             mm["waistToArmpit"] = mm["waistToArmpit"] - t
+    if waist is not None and "waist_z" in at and "waist" in mm:
+        # a garment hung from the waist over a tucked-in shirt: its band goes round the shirt. Drafted from the bare
+        # waist the made band (laid at its closed girth) lay UNDER the pressed shirt tail and the draped back's top
+        # was cleared over it: 103 triangles 1.6-4.4x at the fine settle's start (tr_22). `waist` = the air the
+        # garment is placed off the under one (layer_gap): without it the band started 13.6 mm short of closing
+        zw = float(at["waist_z"])
+        near = np.abs(body.V[:, 2] - zw) < 0.02
+        if near.any():
+            t = 1000.0 * (float(np.median(pb.pad[near])) + float(waist))
+            if t > 0.2:
+                info["waist"] = [round(mm["waist"], 1), round(mm["waist"] + 2 * np.pi * t, 1)]
+                mm["waist"] = mm["waist"] + 2 * np.pi * t
     return mm, info
 
 
@@ -5269,7 +5387,7 @@ def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple
     if under is None or under.get("res") is None:
         return dict(body.m["mm"]), ({"over_missing": body_src["under_missing"]} if body_src.get("under_missing") else {})
     U = pressed(under, body, float(g.get("under_cap", UNDER_CAP)))
-    mm, info = over_measures(body, U, under["res"])
+    mm, info = over_measures(body, U, under["res"], waist=float(g.get("layer_gap", 0.003)) if waist_hung(g) else None)
     return mm, dict(info, over=under.get("name"))
 
 
@@ -5428,7 +5546,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # drafted from the tape; over another garment, from the tape taken over it (neck, armhole: over_measures)
     meas_info = {}
     if g.get("pattern"):
-        meas, meas_info = (over_measures(body_real, under["V"], under["res"]) if under is not None and under.get("res") is not None
+        meas, meas_info = (over_measures(body_real, under["V"], under["res"], waist=float(g.get("layer_gap", 0.003)) if waist_hung(g) else None) if under is not None and under.get("res") is not None
                            else (body_real.m["mm"], {}))
     Bp = pieces(g, meas if g.get("pattern") else {})
     if meas_info:
@@ -5478,6 +5596,15 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             Bp["_worn_body"] = wb.straight_arms()[0] if smooth else wb
             Bp["_worn_body"].under_top = wb.under_top
     Xs = place(Bp, Ms, body_p, smooth=smooth)
+    if smooth and under is not None:
+        # placed on the PADDED body; the sim's collider is the body + the under garment's own mesh, and where that
+        # stands proud of the pad (a pressed sleeve's fold at the elbow) draped cloth started on it
+        c0_ = _collider(body_real, under, smooth)
+        free_ = ~np.isin(Ms["piece"], [Ms["names"].index(nm) for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in Ms["names"]])
+        Xs, n_ex = _clear_exact(Xs, Ms["F"], free_, c0_.get("bodyV0", c0_["bodyV"]), c0_["bodyT"],
+                                signed=len(c0_["bodyT"]) - int((c0_["bodyT"] >= len(c0_["bodyV"]) - len(under["V"])).all(1).sum()))
+        if n_ex:
+            log(f"   start: {n_ex} vertices moved off the collider's own triangles (exact, {EXACT_GAP * 1000:.0f} mm)")
     push = dict(Bp.get("push") or {})
     poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
     carry = _carry(Bp, Ms, Xs, body_p, poses_c, flaps=made_flaps(g, Ms)) if settle else None
