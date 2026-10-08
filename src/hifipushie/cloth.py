@@ -1422,10 +1422,41 @@ def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: floa
         d_hem = U[sel, 1] - U[sel, 1].min()
         w = np.clip(1.0 - d_hem / LEG_BREAK, 0.0, 1.0)
         out[sel, 2] += ds[c] * w
-    return out
+    # and nothing inside the worn parts: what hangs beside a shoe (its sides, the counter at the back) is pushed out
+    # of it along its surface (resting only on what faces up, the sides of the hem went through the shoe's walls)
+    return _clear_of_worn(out, ok & (out[:, 2] < z_foot + 0.12), body, max(gap, WORN_CLEAR))
+
+
+def _clear_of_worn(X: np.ndarray, free: np.ndarray, body, gap: float, rounds: int = 4) -> np.ndarray:
+    """X with its `free` vertices at least `gap` outside the body's worn parts (garment key "collide": shoes under a
+    hem), pushed along the worn surface's normal. Body.push_out / clearance see the body alone."""
+    wn = getattr(body, "worn", None)
+    idx = np.where(free)[0]
+    if wn is None or not len(wn.get("F", [])) or not len(idx):
+        return X
+    from .closures import _closest_on
+    W_ = np.asarray(wn["V"], float)
+    F_ = np.asarray(wn["F"], np.int64)
+    fn_ = np.cross(W_[F_[:, 1]] - W_[F_[:, 0]], W_[F_[:, 2]] - W_[F_[:, 0]])
+    orient = 1.0 if float(np.sum(fn_ * (W_[F_].mean(1) - W_.mean(0)))) >= 0 else -1.0  # (a shell may face in)
+    lo, hi = W_.min(0) - 0.03, W_.max(0) + 0.03
+    idx = idx[np.all((X[idx] > lo) & (X[idx] < hi), 1)]
+    if not len(idx):
+        return X
+    X = X.copy()
+    for _ in range(rounds):
+        q_, n_, _i = _closest_on(X[idx], W_, F_)
+        sd_ = np.sum((X[idx] - q_) * n_, 1) * orient
+        bad_ = sd_ < gap
+        if not bad_.any():
+            break
+        X[idx[bad_]] += ((gap - sd_[bad_]) * orient)[:, None] * n_[bad_]
+    return X
 
 
 LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
+WORN_CLEAR = 0.005  # m a start is kept off the worn parts (vertices: a 2 cm triangle's chord dips ~3 mm between them;
+# the solver's contact offset is 1-2 mm)
 HEM_REST_NZ = 0.5  # a surface a hem rests on faces up at least this much (|normal z|)
 LEG_FOOT_R = 0.012  # m: the foot or shoe within this of a leg column (in plan) stands under it
 
@@ -3195,6 +3226,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
                 Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=300)
                 Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
+                Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
+            Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
         B["start_crossings"] = sorted(_piece_crossings(Xp, M))
