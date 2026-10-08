@@ -4568,6 +4568,46 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       13.3 -> 6.2, LOD2 10.3 -> 5.9 (front; LOD0 13.6 untouched: the next lever if the vale is still slow); Godot card
       coverage at the switches 0.96 / 0.91, 0.89 / 0.85, 0.86 / 0.99 ([0.45, 0.35] / 0.35 gave LOD2 0.82). Spruce [0.45,
       0.35] / 0.35: LOD1 3.0 -> 1.4, LOD2 3.0 -> 0.9; Godot 0.96 / 0.94, 0.91 / 0.89. Both re-exported, Khronos 0 / 0.
+  - Impostor pixel cost (2026-10-08, "impostor" agent, branch `worktree-agent-a4a49e9b179132f6a`; consumer note 89: impostors
+    ~13 ms of the vale probe, crater rim worst). Scratch DURABLE in /mnt/data/hifipushie/impostor/: bench.sh <cfg> (waits for
+    gpu_busy < 15%, runs spikes/godot_veg/bench.gd), q.sh <tag> <cfgs> (queue), mkcfg.py <tag> <set> (field configs b1 / b2),
+    mkpath.py + path.py (pop test: camera arc 420 -> 80 m round a small wood, frame-to-frame change), report.py <out prefix>
+    (gpu ms med / min, minus the no-impostor run, coverage / IoU / colour diff vs a reference variant), octagon.py (tightest
+    45 deg octagon in the quad's uv over every view cell), octa.sh (octa.gd + octa_measure vs LOD2), old.gdshader (the
+    contract-9 reference + the consumer's `cheap` mode), and pw/ = a COPY of the pushieworld project (never their repo):
+    imports.py <mips 0|1> <compress mode> sets the impostor atlases' import options there, port.py ports the reference
+    shader's new parts into the copy's own impostor shader (pw_old_ / pw_new_impostor.gdshader), pw/tools/dev/imp_probe.gd
+    = GPU ms with / without impostors at crown_rim, vale, crown_camp, overview (logs g_*.log, shots_old / shots_new_mips).
+    - ROOT CAUSE: the consumer imports every impostor atlas with `mipmaps/generate=false` (and lossless), so a far impostor
+      (a 2048 atlas, 256 px frames, drawn 30-90 px) misses the texture cache on all 12 fetches a pixel; and the reference
+      shader read the parallax depth at `textureLod(..., 0.0)`, which stays level 0 even with mips. Our own octa.gd always
+      generated mipmaps, so no check of ours ever saw it.
+    - Reference shader (spikes/godot_veg/impostor_octa.gdshader; same uniforms, new ones with defaults, so contract 6-9
+      files work unchanged; GLB and contract NOT changed): one mip level per fragment from its footprint on the bake square
+      (`lod`, + `mip_bias`, <= `max_lod` 5), the bake square's size on screen from the same footprint (frame_tex / foot px;
+      VIEWPORT_SIZE in vertex() read 0 in 4.7) -> t = 0 at >= `near_px` 160 .. 1 at <= `far_px` 64: blend power
+      blend_sharp -> `sharp_far` 16 (by t^2), parallax faded by 1 - t and skipped at t = 1, frames under `min_weight` 0.02
+      skipped (renormalised), coverage summed from the albedo fetches and `discard` before any normal fetch. Continuous: the
+      pop test shows no spike (largest step / its neighbours x1.17, as the full blend's x1.19); far mode differs from the full
+      blend by 0.13e-3 mean per frame (the consumer's `cheap` mode: 0.37e-3, max 2.7e-3).
+    - Bench (spikes/godot_veg/bench.gd, 1280x720 MSAA 2x, 508 trees at 150-256 m + 2273 at 256-640 m thinned from 320 m,
+      camera 120 m up, gpu_busy 1-2% before each run; impostors' own ms = minus the no-impostor run 1.0 ms), pixar spruce /
+      oak: consumer now (old shader, no mips, cheap far) 19.9 / 23.1; old shader + mips 10.9 / 13.0; new shader no mips 11.1
+      / 13.7; NEW + MIPS 2.2 / 3.1 (coverage 0.999 / 0.998 vs now, IoU 0.997 / 0.993); new full blend everywhere + mips
+      4.1 / 5.4; + S3TC (DXT5) 1.6 / 1.9; mip_bias 1 1.6 / 2.0; thresholds 256 / 128 1.7 / 2.1, 96 / 32 3.0 / 4.7;
+      octagon mesh (area 0.89 of the cropped rectangle) 2.2 / 3.3 = no gain: dropped.
+    - IN THE GAME (pw copy, island, imp_probe GPU median, impostors on minus off): crown_rim 14.6 ms (now) -> old shader +
+      mips 5.8 -> new shader no mips 5.6 -> NEW + MIPS 0.34; vale 4.5 -> 1.6 -> 2.1 -> 1.1; overview 0.6 -> ~0 -> 0.4 -> 0.2.
+      island_shots frame median crown_rim 25.2 -> 8.5 ms, vale 18.8 -> 12.5, downs 12.5 -> 8.9. Pictures side by side
+      (cmp_island_crown_rim.png, cmp_rim_zoom.png): the same forest, a touch softer and without the no-mip sparkle.
+    - octa.gd (orthographic, so t = 0: the full path) vs LOD2: identical to the old shader to 0.001 (spruce coverage 1.05-1.09
+      IoU 0.90-0.93; oak 1.06-1.09 / 0.86-0.90).
+    - For the consumer: (1) set `mipmaps/generate=true` on every *impostor*.png import (both atlases; keep the normal atlas'
+      compress/normal_map off: RGTC would drop its alpha = depth); (2) take the fragment of the new reference shader into
+      game/style/plant_impostor_octa.gdshader (port.py shows the splice: uniforms + fragment up to ROUGHNESS); (3) `cheap`
+      can go (t reaches 1 by itself at ring 4 distances; keeping it maps cheap -> t = 1); thinning is theirs to keep;
+      (4) optional: compress/mode=2 (VRAM, DXT5) for another ~0.5 ms in the bench and 4x less VRAM (53 atlases x 21 MB with
+      mips uncompressed). Tests: test_veg_impostor (+ far mode lands the plant, shader keeps its uniforms).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
