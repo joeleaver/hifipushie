@@ -3819,6 +3819,32 @@ def _crossing_hits(X: np.ndarray, M: dict) -> tuple[np.ndarray, np.ndarray]:
     return E[ei[hit]], T[hit]
 
 
+def _layer_crossing_verts(X: np.ndarray, F: np.ndarray, U: np.ndarray, FU: np.ndarray) -> np.ndarray:
+    """Vertices of X (faces F) in a crossing with another mesh U (faces FU): ends of X's edges through U's triangles
+    and corners of X's triangles that U's edges pass through (a garment against the one worn under it)."""
+    out = np.zeros(len(X), bool)
+    if not len(FU):
+        return out
+    for (V1, F1), (V2, F2), mine in (((X, F), (U, FU), "edge"), ((U, FU), (X, F), "tri")):
+        E = np.unique(np.sort(np.r_[F1[:, [0, 1]], F1[:, [1, 2]], F1[:, [2, 0]]], 1), axis=0)
+        cen = V2[F2].mean(1)
+        rad = np.max(np.linalg.norm(V2[F2] - cen[:, None], axis=2), axis=1)
+        mid = 0.5 * (V1[E[:, 0]] + V1[E[:, 1]])
+        half = 0.5 * np.linalg.norm(V1[E[:, 0]] - V1[E[:, 1]], axis=1)
+        cand = cKDTree(cen).query_ball_point(mid, r=half + float(np.percentile(rad, 99)), return_sorted=False)
+        ei = np.repeat(np.arange(len(E)), [len(c) for c in cand])
+        ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
+        if not len(ei):
+            continue
+        T = F2[ti]
+        hit = _seg_tri(V1[E[ei, 0]], V1[E[ei, 1]], V2[T[:, 0]], V2[T[:, 1]], V2[T[:, 2]])
+        if mine == "edge":
+            out[E[ei[hit]].ravel()] = True
+        else:
+            out[T[hit].ravel()] = True
+    return out
+
+
 def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10) -> tuple[np.ndarray, list]:
     """V with the places where its cloth passes through itself smoothed out: the crossing edges' and triangles' free
     vertices and a ring round them relaxed toward their neighbours, until nothing crosses (or `rounds`). A carried
@@ -4826,14 +4852,25 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # the seams round it stayed open, 66 of 502 sewn pairs on the shirt)
         if len(M["sew"]):
             res["V"], res["weld_left"] = _weld_clear(res["V"], res["V_sim"], M, interfacing(Bp, M))
-        sim_bad = _crossing_verts(res["V_sim"], M)
+        # layered: the clean-up knows the body only, so its push and welds took the jacket's sleeves and armholes 4-9 mm
+        # into the shirt (su_41: 16 crossings between the layers in the sim, 247 after the clean-up: the white flecks of
+        # shirt through the jacket); crossings with the garment under this one count as the clean-up's too
+        uV_ = np.asarray(under["V"], float) if (under is not None and under.get("res") is not None) else None
+        uF_ = np.asarray(under["res"]["mesh"]["F"]) if uV_ is not None else None
+
+        def crossed(X_):
+            c_ = _crossing_verts(X_, M)
+            if uV_ is not None:
+                c_ = c_ | _layer_crossing_verts(X_, M["F"], uV_, uF_)
+            return c_
+        sim_bad = crossed(res["V_sim"])
         for _r in range(2):
             gr = sim_bad.copy()
             gr[A_[sim_bad[B_]]] = True
             gr[B_[sim_bad[A_]]] = True
             sim_bad = gr
         for it_ in range(8):
-            bad = _crossing_verts(res["V"], M) & ~sim_bad
+            bad = crossed(res["V"]) & ~sim_bad
             if not bad.any():
                 break
             # (the crossing vertices alone first, then a ring, then two: two rings at once reopened every seam
