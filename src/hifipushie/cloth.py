@@ -3712,10 +3712,11 @@ FINE_REACH = 0.10  # m from a made piece within which the fine settle moves the 
 FINE_FREE = 40.0  # deg a made flap starts open when it is free in the fine settle (it closes by its own stiff fold)
 FINE_OPEN = 55.0  # deg a made flap starts open in the fine settle (clear of the cloth it then presses down)
 MADE_SHAPE = 0.008  # m (p90): a made piece laid this differently at the fine size keeps the coarse sim's shape
+HELD_STEP = 0.003  # m the most _clear_of_held moves a vertex
 HELD_GAP = 0.0015  # m the draped cloth is kept off a made piece's surface at the fine settle's start (_clear_of_held)
 
 
-def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, reach: float = 0.03,
+def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, reach: float = 0.008,
                    gap: float = HELD_GAP, rounds: int = 3, movable: np.ndarray | None = None) -> np.ndarray:
     """The draped cloth near a made piece put back on the side of it it lies on in the coarse drape Vd (the coarse
     sim carried onto the fine mesh, where both lie as the sim left them), at least `gap` off it. The made pieces are
@@ -3748,7 +3749,9 @@ def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, rea
         bad = s_ < gap
         if not bad.any():
             break
-        V[near[bad]] += ((gap - s_[bad]) * side[bad])[:, None] * n[bad]
+        # (at most HELD_STEP a vertex: a front rolled open under a collar, pushed by the full shortfall vertex by
+        # vertex, came out 5x stretched)
+        V[near[bad]] += (np.minimum(gap - s_[bad], HELD_STEP) * side[bad])[:, None] * n[bad]
     return V
 
 
