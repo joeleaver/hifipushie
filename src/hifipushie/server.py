@@ -1189,7 +1189,10 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
-    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). True
+    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). On
+    the one human mesh with its own quads (base.body.source "human", parts.body.topology "wrap") the head's vertices
+    ARE GNM's: shapes go by vertex index (no projection), GNM's mouth sock closes the mouth, the lips close on GNM's
+    contact ring, and mouth_gap is best left out (GNM's own lips; the export closes them). True
     = all 52 ARKit names (mouth and jaw, lids, brows, cheeks, nose, and eyeLook*, which turn the eyeballs' own part)
     plus the corrective jawOpen_mouthClose, which a player sets to min(jawOpen, mouthClose) each frame: mouthClose
     alone only seals the lips (Audio2Face drives it with the jaw shut). On every part that moves (the head's part,

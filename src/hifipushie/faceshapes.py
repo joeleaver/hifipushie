@@ -276,7 +276,7 @@ class Face:
             idx = idx[~hit]
         return out
 
-    def neutral(self, Xm: np.ndarray, kind: str) -> np.ndarray:
+    def neutral(self, Xm: np.ndarray, kind: str, index=None) -> np.ndarray:
         """The neutral's move for a part's meshed vertices: the slit closed (the lips only)."""
         return self.close(self.local(Xm)) if kind == "skin" else np.zeros_like(Xm)
 
@@ -430,7 +430,8 @@ class Face:
     def voxels(self) -> dict:
         """{part: voxel}: the export meshes the slit's part at least this fine, so the slit (2+ voxels across) and
         the lips' inner faces are real surfaces."""
-        out = {self.slit_part: round(self.slit / 2.2, 5)}
+        out = {} if getattr(self, "own_quads", False) else {self.slit_part: round(self.slit / 2.2, 5)}
+        # (one mesh on its own quads: GNM's lips and sock are the mouth's surfaces, the field's slit isn't meshed)
         for pn in self.parts_teeth:  # a tooth row's thickness 3 voxels across (at a big body's scene voxel the
             # lower row came out in shreds)
             out[pn] = min(out.get(pn, 1.0), round(self.teeth_t / 3, 5))
@@ -502,7 +503,7 @@ class Face:
         return wj[:, None] * (_rodrigues(axis, np.full(len(Xn), ang), rel) - rel)
 
     def displacements(self, Xm: np.ndarray, Xn: np.ndarray, nrm: np.ndarray, kind: str, names,
-                      lower: np.ndarray | None = None) -> dict:
+                      lower: np.ndarray | None = None, index=None) -> dict:
         """{shape: (n, 3) move} for one part's vertices: Xm where they were meshed (weights), Xn the neutral
         (geometry), nrm its vertex normals. kind: "skin" (a part with the face), "teeth" (`lower`: the vertices of
         the lower row), "tongue"."""
@@ -826,8 +827,9 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             if not near.any():
                 continue
         T = p["corner_vert"].reshape(-1, 3)
-        Xn = Xm + face.neutral(Xm, kind)
-        if kind == "skin" and base == face.slit_part:
+        idx = p.get("gnm_index") if kind == "skin" else None  # (one mesh, own quads: GNM's vertices by index)
+        Xn = Xm + face.neutral(Xm, kind, idx)
+        if kind == "skin" and base == face.slit_part and idx is None:
             Xn = Xn + face.seal(Xm, Xn, T)
         n0m, n0 = vertex_normals(Xm, T), vertex_normals(Xn, T)
         if kind == "skin":  # the close turns the corners' normals and tangents with it
@@ -844,7 +846,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             h0 = face.local(Xm)["h0"]
             mid = np.bincount(lab, h0) / np.maximum(np.bincount(lab), 1)
             lower = mid[lab] < 0
-        D = face.displacements(Xm, Xn, n0, kind, names, lower)
+        D = face.displacements(Xm, Xn, n0, kind, names, lower, idx)
         if not any(np.abs(d).max() > 1e-7 for d in D.values()):
             continue
         p["verts"] = Xn.astype(p["verts"].dtype)
@@ -970,6 +972,17 @@ def _mirror_ids(ids, side):
     return [pairs[i] for i in ids]
 
 
+LIP_MEET = 0.0002  # m: (one mesh, own quads) the lips' contact vertices pass the halfway point by this: they touch
+LIPS_MEET = True  # (one mesh, own quads) close the neutral's lips on GNM's contact ring (else the landmark close)
+
+
+def basemod_lip_ring() -> int:
+    from . import base as basemod
+    return basemod.LIP_RING
+CORNER_CLOSE, LIP_CORNER = 1.0, 0.2  # (one mesh) the rings in front of the contact ring close at the corners
+LIP_TAPER = 0.04  # share of the mouth's width over which the close tapers to nothing at each corner
+LIP_HOLD, LIP_FADE = 2, 4  # rings past the contact ring that ride with it fully (the lip's front), then fade out over
+
 class GnmFace(Face):
     """A grafted GNM head (base.py): its mouth from the landmarks (base.mouth_lips), its interior from
     base.head.interior (kits._interior), its shapes from GNM's expression basis carried onto the export."""
@@ -982,7 +995,9 @@ class GnmFace(Face):
             raise SpecError("face_shapes on a GNM head needs a mouth that can open: base.head.interior (true, or "
                             "{\"teeth\": true, \"tongue\": true}) and base.head.mouth_gap >= 0.002 (the lips parted "
                             "while modelling; the export closes them)")
-        if float(hd.get("mouth_gap") or 0) < 0.0015:
+        one = (b.get("body") or {}).get("source") == "human"  # (one mesh: GNM's own lips, never zipped unasked)
+        self.own_quads = one and ((spec.get("parts") or {}).get("body") or {}).get("topology") == "wrap"
+        if (float(hd.get("mouth_gap") or 0) < 0.0015) and not (one and hd.get("mouth_gap") is None):
             raise SpecError("face_shapes on a GNM head: base.head.mouth_gap must part the lips (>= 0.002 m): closed "
                             "lips are zipped into one seam and can't open")
         opts = spec.get("face_shapes") or {}
@@ -1446,7 +1461,7 @@ class GnmFace(Face):
             Rr = (U @ Vt).T
         return Rr, a, b
 
-    def neutral(self, Xm: np.ndarray, kind: str) -> np.ndarray:
+    def neutral(self, Xm: np.ndarray, kind: str, index=None) -> np.ndarray:
         """The lips closed: the inner lips' landmarks moved half the gap each, solved in the basis and carried."""
         if kind != "skin":
             return np.zeros_like(Xm)
@@ -1457,17 +1472,250 @@ class GnmFace(Face):
             for u, l in ((61, 67), (62, 66), (63, 65)):
                 gap = (X0[l] - X0[u]) / G["wg"]
                 mv[u], mv[l] = 0.5 * gap, -0.5 * gap
-            dW, = self._carried(self._solve(mv, "mouth", hold=0.2))
+            dV = self._solve(mv, "mouth", hold=0.2)
+            dW, = self._carried(dV)
             # the basis gets most of the way (holding the outer lips); scaled so the inner lips' midpoints meet
             lm = self.head["lm68"]
             D, _ = self._onto(lm[[62, 66]], dW)
             want = float((lm[66] - lm[62]) @ self.up)
             got = float((D[0] - D[1]) @ self.up)
-            self._gnm["close"] = dW * float(np.clip(-want / got, 1.0, 2.0) if got * want < 0 else 1.0)
+            k = float(np.clip(-want / got, 1.0, 2.0) if got * want < 0 else 1.0)
+            self._gnm["close"] = dW * k
+            self._gnm["close_dV"] = dV * k
         D, a = self._onto(Xm, self._gnm["close"])
-        return D * a[:, None]
+        D = D * a[:, None]
+        if index is not None:  # (one mesh, own quads) GNM's own vertices take GNM's own offsets
+            D = self._indexed(D, index, self._gnm["close_dV"])
+            if LIPS_MEET:  # what the basis leaves between the lips closed on GNM's own contact ring
+                M = self._lips_meet(Xm + D, index)
+                self._gnm["meet"] = (Xm.shape, M)  # (a shape that parts the lips takes it back: displacements)
+                D = D + M
+                D = D + self._corners_meet(Xm + D, index)  # (kept by every shape: the commissure stays sealed)
+        return D
 
-    def displacements(self, Xm, Xn, nrm, kind, names, lower=None) -> dict:
+    def _lip_rings(self) -> dict:
+        """GNM's lips as rings (its index space): the skin's open mouth loop (where the sock joins), ring k out
+        from it; the contact ring (base.LIP_RING out: the inner-lip landmarks sit on it) split in an upper and a
+        lower half by its corners."""
+        if "rings" in self._gnm:
+            return self._gnm["rings"]
+        import collections
+        from . import base as basemod
+        G = self._setup()
+        g = G["g"]
+        skin = np.asarray(g["skin"], bool)
+        Q = np.asarray(g["quads"])
+        Q = Q[skin[Q].all(1)]
+        cnt = collections.Counter()
+        adj = collections.defaultdict(set)
+        for q in Q:
+            for k in range(4):
+                a, b = int(q[k]), int(q[(k + 1) % 4])
+                cnt[(min(a, b), max(a, b))] += 1
+                adj[a].add(b)
+                adj[b].add(a)
+        V = np.asarray(G["c"]["V"], float)
+        X0 = G["X0"]
+        seam = 0.5 * (X0[62] + X0[66])
+        reach = 3.0 * float(np.linalg.norm(X0[54] - X0[48]))
+        loop = {v for (a, b), c in cnt.items() if c == 1 for v in (a, b)
+                if np.linalg.norm(V[a] - seam) < reach and np.linalg.norm(V[b] - seam) < reach}
+        lev = {v: 0 for v in loop}
+        dq = collections.deque(lev)
+        while dq:
+            v = dq.popleft()
+            if lev[v] >= basemod.LIP_RING + LIP_HOLD + LIP_FADE:
+                continue
+            for w in adj[v]:
+                if w not in lev:
+                    lev[w] = lev[v] + 1
+                    dq.append(w)
+        ring = basemod.LIP_RING
+        def halves(k):
+            """Ring k as an (upper, lower) pair of vertex lists from corner to corner, or None."""
+            rv = [v for v, lv in lev.items() if lv == k]
+            rs = set(rv)
+            nb = {v: [w for w in adj[v] if w in rs] for v in rv}
+            if not rv or any(len(n) != 2 for n in nb.values()):
+                return None
+            lp, prev = [rv[0]], None
+            while True:
+                nx = [w for w in nb[lp[-1]] if w != prev]
+                prev = lp[-1]
+                if nx[0] == lp[0]:
+                    break
+                lp.append(nx[0])
+            if len(lp) != len(rv):
+                return None
+            x = V[lp, 0]
+            i0, i1, m = int(np.argmin(x)), int(np.argmax(x)), len(lp)
+            a = [lp[(i0 + j) % m] for j in range((i1 - i0) % m + 1)]
+            b = [lp[(i1 + j) % m] for j in range((i0 - i1) % m + 1)][::-1]
+            return (a, b) if V[a, 1].mean() > V[b, 1].mean() else (b, a)  # (GNM's frame: Y up)
+        out = {"lev": lev, "ok": False}
+        h = halves(ring)
+        if h:
+            out.update(ok=True, up=h[0], lo=h[1])
+            out["outer"] = {k: halves(k) for k in range(ring + 1, ring + LIP_HOLD + 2)}
+        # the mouth sock, ring by ring in from the loop (negative levels): it rides with the lips' close, fading
+        # (left still, the loop's ring stretched against it in every shape that takes the close back)
+        sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
+        sadj = collections.defaultdict(set)
+        for q in np.asarray(g["quads"]):
+            if (sock[q] | skin[q]).all() and sock[q].any():
+                for k in range(4):
+                    a, b = int(q[k]), int(q[(k + 1) % 4])
+                    sadj[a].add(b)
+                    sadj[b].add(a)
+        dq = collections.deque(v for v in loop)
+        sl = {v: 0 for v in loop}
+        while dq:
+            v = dq.popleft()
+            if sl[v] >= LIP_FADE:
+                continue
+            for w in sadj[v]:
+                if w not in sl and sock[w] and not skin[w]:
+                    sl[w] = sl[v] + 1
+                    dq.append(w)
+        for v, k in sl.items():
+            if k > 0:
+                lev[v] = -k
+        if out["ok"]:  # which lip each ring vertex belongs to: GNM's own lip groups, else the nearer half of the
+            # contact ring (by distance alone an inner-roll vertex at a corner went to the other lip: a 3 mm spike)
+            cu, cl = V[out["up"]], V[out["lo"]]
+            gu, gl = np.asarray(g["groups"]["upper_lip"], float), np.asarray(g["groups"]["lower_lip"], float)
+            out["side"] = {v: (gu[v] > gl[v]) if max(gu[v], gl[v]) > 0.3 else
+                           (np.linalg.norm(cu - V[v], axis=1).min() <= np.linalg.norm(cl - V[v], axis=1).min())
+                           for v in lev}
+            for v in out["up"]:
+                out["side"][v] = True
+            for v in out["lo"]:
+                out["side"][v] = False
+        self._gnm["rings"] = out
+        return out
+
+    def _corners_meet(self, X: np.ndarray, index) -> np.ndarray:
+        """(one mesh, own quads) The rings in front of the contact ring drawn together at the mouth's corners (the
+        commissure): each ring's upper and lower halves, by CORNER_CLOSE of the way at the corner, fading to nothing
+        over LIP_CORNER of the mouth's width and over the rings outward. Left open, every corner was a pocket with
+        the rolls showing; taken back with the lips' close in shapes, it tore jawOpen's rolls (so it stays)."""
+        R = self._lip_rings()
+        D = np.zeros_like(X)
+        if not R["ok"]:
+            return D
+        from . import base as basemod
+        ring = basemod.LIP_RING
+        row = {int(v): i for i, v in enumerate(np.asarray(index, int)) if v >= 0}
+        for k, hk in (R.get("outer") or {}).items():
+            if not hk or not all(v in row for v in hk[0] + hk[1]):
+                continue
+            u, l = hk
+            Pu, Pl = X[[row[v] for v in u]], X[[row[v] for v in l]]
+
+            def arc(P):
+                d = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+                return d / max(float(d[-1]), 1e-12)
+            su, sl = arc(Pu), arc(Pl)
+            span = max(float(Pu[:, 0].max() - Pu[:, 0].min()), 1e-9)
+            wk = 1 - (k - ring - 1) / (LIP_HOLD + 1)
+            for P, s, Q, sq, verts in ((Pu, su, Pl, sl, u), (Pl, sl, Pu, su, l)):
+                other = np.column_stack([np.interp(s, sq, Q[:, j]) for j in range(3)])
+                edge = np.minimum(P[:, 0] - P[:, 0].min(), P[:, 0].max() - P[:, 0])
+                wc = CORNER_CLOSE * wk * (1 - _ss(np.clip(edge / (LIP_CORNER * span), 0, 1)))
+                for j, v in enumerate(verts):
+                    D[row[v]] += wc[j] * 0.5 * (other[j] - P[j])
+        return D
+
+    def _meet_share(self, D: np.ndarray, M: np.ndarray, index) -> float:
+        """How much of the neutral's lip close a shape takes back: 0 if it keeps the lips together, 1 once it parts
+        them by the gap that was closed (the contact ring's halves, along the close's own direction)."""
+        R = self._lip_rings()
+        if not R["ok"]:
+            return 0.0
+        row = {int(v): i for i, v in enumerate(np.asarray(index, int)) if v >= 0}
+        up = [row[v] for v in R["up"] if v in row]
+        lo = [row[v] for v in R["lo"] if v in row]
+        closed = float(np.mean(M[up] @ self.up) - np.mean(M[lo] @ self.up))  # how far the close drew them together
+        if closed > -1e-5:
+            return 0.0
+        opened = float(np.mean(D[up] @ self.up) - np.mean(D[lo] @ self.up))
+        return float(np.clip(opened / -closed, 0.0, 1.0))
+
+    def _lips_meet(self, X: np.ndarray, index) -> np.ndarray:
+        """(one mesh, own quads) What the basis's close leaves between the lips, closed on GNM's own rings: each
+        contact-ring vertex moved to halfway between its lip and the other lip at the same arc length (LIP_MEET past
+        it: they touch), the rings inside the lips (the rolls, the loop) riding with their contact vertex, the rings
+        outside fading over three. The decimated path's Face.seal does this on bins; here the topology is GNM's."""
+        R = self._lip_rings()
+        D = np.zeros_like(X)
+        if not R["ok"]:
+            return D
+        from . import base as basemod
+        idx = np.asarray(index, int)
+        row = {int(v): i for i, v in enumerate(idx) if v >= 0}
+        up = [v for v in R["up"] if v in row]
+        lo = [v for v in R["lo"] if v in row]
+        if len(up) < 3 or len(lo) < 3:
+            return D
+
+        def arc(P):
+            d = np.r_[0, np.cumsum(np.linalg.norm(np.diff(X[[row[v] for v in P]], axis=0), axis=1))]
+            return d / max(float(d[-1]), 1e-12)
+        su, sl = arc(up), arc(lo)
+        Pu, Pl = X[[row[v] for v in up]], X[[row[v] for v in lo]]
+        mv = {}
+        for P, s, Q, sq, verts, sgn in ((Pu, su, Pl, sl, up, 1.0), (Pl, sl, Pu, su, lo, -1.0)):
+            other = np.column_stack([np.interp(s, sq, Q[:, j]) for j in range(3)])
+            mid = 0.5 * (P + other)
+            gap = other - P
+            n = np.linalg.norm(gap, axis=1, keepdims=True)
+            push = np.where(n > 1e-9, gap / np.maximum(n, 1e-9), 0.0) * LIP_MEET
+            for k, v in enumerate(verts):
+                mv[v] = mid[k] + push[k] - P[k]
+        ring = basemod.LIP_RING
+        # the close as a SMOOTH function of x along each lip (per vertex pairs, it stepped between the columns of
+        # the rolls: a sawtooth in every shape that takes it back), tapered to nothing at the corners
+        fx = {}
+        for half, verts in ((True, up), (False, lo)):
+            P = X[[row[v] for v in verts]]
+            o = np.argsort(P[:, 0])
+            xs = P[o, 0]
+            M = np.array([mv[verts[k]] for k in o])
+            for _ in range(3):
+                M[1:-1] = 0.25 * M[:-2] + 0.5 * M[1:-1] + 0.25 * M[2:]
+            span = max(float(xs[-1] - xs[0]), 1e-9)
+            fx[half] = (xs, M, span)
+        for v, lv in R["lev"].items():
+            if v not in row:
+                continue
+            fw = (1.0 if lv <= ring + LIP_HOLD else max(0.0, 1.0 - (lv - ring - LIP_HOLD) / LIP_FADE)) if lv >= 0 \
+                else max(0.0, 1.0 + lv / (LIP_FADE + 1.0))  # (in the sock: fading toward the throat)
+            if fw <= 0:
+                continue
+            xs, M, span = fx[bool(R["side"][v])]
+            x = float(X[row[v], 0])
+            taper = float(_ss(np.clip((min(x - xs[0], xs[-1] - x)) / (LIP_TAPER * span), 0, 1)))
+            D[row[v]] = fw * taper * np.array([np.interp(x, xs, M[:, j]) for j in range(3)])
+        return D
+
+    def _by_index(self, dV: np.ndarray) -> np.ndarray:
+        """GNM offsets (its frame, every GNM vertex) -> world offsets of every GNM vertex, as the head places them
+        (the one mesh: no subdivision, the stitch's fade)."""
+        c = self._setup()["c"]
+        d = dV * np.asarray(c["esc"], float)[:, None]
+        if c.get("fade") is not None:
+            d = d * np.asarray(c["fade"], float)[:, None]
+        d[:, 0] *= c["narrow"]
+        return c["s"] * d @ np.asarray(c["R"], float).T
+
+    def _indexed(self, D: np.ndarray, index, dV: np.ndarray) -> np.ndarray:
+        idx = np.asarray(index, int)
+        own = idx >= 0
+        D = np.array(D, float)
+        D[own] = self._by_index(dV)[idx[own]]
+        return D
+
+    def displacements(self, Xm, Xn, nrm, kind, names, lower=None, index=None) -> dict:
         if kind == "eyes":
             return self.eye_part(Xm, names)
         G = self._setup()
@@ -1483,6 +1731,7 @@ class GnmFace(Face):
                 mv, region = self._gnm_moves(name)
                 dVs.append(mv if region is None else self._solve(mv, region))
             G["dW"].update(zip(todo, self._carried(*dVs)))
+            G.setdefault("dV", {}).update(zip(todo, dVs))
         # regions: the basis's lower-face components reach up to the lids and its eye components down the cheek;
         # each family fades out past its own region (jawOpen moved the forehead, brows tugged the cheek)
         lm = self.head["lm68"]
@@ -1503,13 +1752,23 @@ class GnmFace(Face):
                 rigid = np.zeros_like(Xn)
             if kind == "skin":
                 D, near = self._onto(Xm, dW)
+                if index is not None:  # (one mesh, own quads) GNM's vertices move as GNM moves them: no projection
+                    # (the lips' inner rolls and the mouth sock are its own; nearest-six mixed the parted lips)
+                    D = self._indexed(D, index, G["dV"][name])
+                    near = np.where(np.asarray(index) >= 0, 1.0, near)
+                    mt = self._gnm.get("meet")
+                    if mt is not None and mt[0] == Xm.shape:  # the neutral's lips were closed past GNM's own (its
+                        # basis leaves them parted): a shape that parts them takes that close back in proportion
+                        # (left in, jawOpen tore the inner rolls into shards against the closed contact ring)
+                        D = D - self._meet_share(D, mt[1], index) * mt[1]
                 d = D * near[:, None] + rigid * ((1 - near) * wj)[:, None]
                 fam = family(name)
                 if fam == "mouth":
                     d *= mouth_mask[:, None]
                 elif fam == "eye":
                     d *= eye_mask[:, None]
-                if name.startswith("eyeBlink") and LID_SEAL and self.lid_seal["amount"] > 0:
+                if name.startswith("eyeBlink") and LID_SEAL and self.lid_seal["amount"] > 0 and index is None:
+                    # (by index the lids are GNM's own, which close: the seal is for a decimated low poly's margins)
                     for sd in self.eyes:
                         if name.endswith(sd):
                             d = self._lid_seal(sd, Xn, d)

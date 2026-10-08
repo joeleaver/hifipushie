@@ -530,6 +530,10 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"],
                              ctx.get("apart")) > 0.5
         hid = _deep_hidden(np.asarray(V, np.float64), hid, np.zeros(len(V), int))
+        if r.get("gnm") is not None:  # (one mesh) GNM's head is all kept: its lids' insides lie in the eyeballs and
+            # its mouth round the teeth, and a blink or a jaw drags them out (dropped, the left lid's margin was a row
+            # of spikes with the eyeball showing through: the eyes look a little apart, so one side lost more)
+            hid &= np.asarray(r["gnm"]) < 0
         st = np.r_[0, np.cumsum(S)[:-1]]
         faces = [L[a:a + k] for a, k in zip(st, S)]
         kept = [f for f in faces if not hid[f].all()]
@@ -538,7 +542,9 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         rm[used] = np.arange(len(used))
         Vk, Lk, Sk = V[used], rm[np.concatenate(kept)], np.array([len(f) for f in kept])
         path = out_dir / f"topology_{pn}.npz"
-        np.savez(path, verts=Vk, loops=Lk, sizes=Sk)
+        extra = {"gnm": np.asarray(r["gnm"])[used]} if r.get("gnm") is not None else {}  # (one mesh: GNM vertex ids,
+        # face shapes go by index)
+        np.savez(path, verts=Vk, loops=Lk, sizes=Sk, **extra)
         out[pn] = (str(path), hashlib.sha1(Vk.tobytes() + Lk.tobytes()).hexdigest()[:12])
         log.append(f"{pn}: wrapped topology, {len(Sk)} faces ({(Sk == 4).mean():.0%} quads, "
                    f"{int((Sk - 2).sum())} triangles), {len(faces) - len(kept)} faces under other parts dropped; "
@@ -965,11 +971,37 @@ def seam_steps(p: dict, img: np.ndarray, per_texel: int = 2) -> dict | None:
             "p95": round(float(np.percentile(across[busy] / beside[busy], 95)), 2) if busy.sum() > 20 else None}
 
 
-def mesh_quality(verts: np.ndarray, tris: np.ndarray, prims=None) -> dict:
+def _designed_interior(topo, verts) -> np.ndarray | None:
+    """(one mesh, own quads) per low-poly vertex: GNM's own interior surfaces (the lids' insides, the inner lip
+    rolls, nostrils' depths, the mouth sock): modelled to roll back under the skin, so they fold against the field
+    and stand off it by design. None when the part isn't that topology."""
+    if not topo:
+        return None
+    z = np.load(topo[0])
+    if "gnm" not in z.files or len(z["verts"]) != len(verts) or not np.allclose(np.asarray(verts, float), z["verts"],
+                                                                                   atol=1e-5):
+        return None
+    from . import base as basemod
+    g = basemod._gnm_data()
+    gid = np.asarray(z["gnm"], int)
+    gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
+    # (+ the lips and the lid margins: closed in the neutral, their seams are creases by design; measured on the
+    # adult's export they were the rest of the TORN clusters at both eyes and the mouth)
+    ins = ~gr["skin_exterior"] | gr["mouth_sock"] | gr["upper_lip"] | gr["lower_lip"] | gr["eye_sockets"]
+    return (gid >= 0) & ins[np.maximum(gid, 0)]
+
+
+def mesh_quality(verts: np.ndarray, tris: np.ndarray, prims=None, designed: np.ndarray | None = None) -> dict:
     """A triangle mesh's own quality report: distance to the exact field (mm; p50/p99/max over face centres and
     edge midpoints, where a low poly strays between its vertices) when `prims` are given, and counts of
     non-manifold edges (3+ faces), open edges, folds (neighbouring faces turned > 120 deg) and slivers (smallest
-    angle < 2 deg)."""
+    angle < 2 deg). designed: per vertex, surfaces modelled to fold back (a one-mesh head's lid insides, lip rolls
+    and mouth sock): triangles touching them are left out of the distance, folds and turned faces."""
+    if designed is not None and designed.any():
+        keep = ~np.asarray(designed, bool)[np.asarray(tris)].any(1)  # (and their rims: a lid's margin folds back)
+        q = mesh_quality(verts, np.asarray(tris)[keep], prims)
+        q["designed_triangles"] = int((~keep).sum())
+        return q
     P = np.asarray(verts, np.float64)
     key = np.round(P / 1e-6).astype(np.int64)  # weld split vertices (uv seams) by position
     _, weld = np.unique(key, axis=0, return_inverse=True)
@@ -1602,7 +1634,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             report[pn]["prefab"] = pf_of[pn]
         if "focus_mm_per_texel" in tsz[pn]:
             report[pn]["focus_mm_per_texel"] = tsz[pn]["focus_mm_per_texel"]
-        q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn])
+        q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn],
+                         designed=_designed_interior(topo.get(pn), p["verts"]))
         spots = q.pop("spots")
         for other, st in ctx["streams"].items():  # what lies inside another part is never seen (the skin running
             if other != pn and len(spots):       # on into the socket behind an eyeball, a tooth's root)
@@ -1785,6 +1818,14 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     if face_shapes:  # after the bake and the skin: both use the meshed (open-mouthed) low poly
         from . import faceshapes
         tf = time.time()
+        for pn, (tp, _) in topo.items():  # (one mesh, own quads) each low-poly vertex's GNM vertex: face shapes
+            # by index. Only when the low poly is still the topology's vertices as they were written
+            z = np.load(tp)
+            if pn in parts and "gnm" in z.files and len(z["verts"]) == len(parts[pn]["verts"]) and \
+                    np.allclose(np.asarray(parts[pn]["verts"], float), z["verts"], atol=1e-5):
+                parts[pn]["gnm_index"] = z["gnm"]
+            elif pn in parts and "gnm" in z.files:
+                log.append(f"WARNING face shapes: {pn}'s low poly isn't its topology's vertices: shapes by projection")
         shapes = faceshapes.apply(spec, {pn: p for pn, p in parts.items()
                                          if pn not in pf_of and not report[pn].get("curves")}, face_shapes, log)
         for pn, nms in shapes.items():
