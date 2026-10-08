@@ -592,7 +592,7 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   (multipliers on this terrain's own rock character: `facets`, `bedding`, `size`; `blocks: false` drops the jointed
   blocks), `pillow` (`size`, `depth`, `round`: rock carved into rounded cushions), `soften_m` (the ground grid
   Gaussian-smoothed in the zone: rounded lips and forms; the heightmap tiles follow), `fallen` (share of fallen blocks),
-  `micro` (share of the bake-only fine relief), `band_m` (default 10: the hand-over between zones, in the field, so
+  `micro` (share of the bake-only fine relief), `lip` (share of the turf's step at cliff lips; blobby 0), `band_m` (default 10: the hand-over between zones, in the field, so
   tiles and LODs agree and the seam checks hold). blobby: pillows, softened 1.5 m, no facets / beds / blocks / fallen;
   anime: facets x0.5, beds x1.5, no blocks; cartoon: facets x1.4 at 2.5x size, no beds / blocks; pixar: facets x0.7,
   beds x0.6, no blocks, softened 0.6 m. The realistic zones' field is unchanged bit for bit.
