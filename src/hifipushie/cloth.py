@@ -1117,8 +1117,8 @@ def _envelope(body: "Body", rounds: int = ENVELOPE_ROUNDS) -> "Body":
     taking the smoothed surface only where it stands further out along the normal. What a stiff forepart lies on: laid
     on the padded body itself, its columns followed every edge of an open shirt collar under it and neighbours 4 mm
     apart ended 2-6 cm apart (Garrett's gorge)."""
-    if getattr(body, "_env", None) is not None:
-        return body._env
+    if (getattr(body, "_env_by", None) or {}).get(rounds) is not None:
+        return body._env_by[rounds]
     vn, _ = body.normals()
     T = body.T
     E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
@@ -1135,17 +1135,20 @@ def _envelope(body: "Body", rounds: int = ENVELOPE_ROUNDS) -> "Body":
     import copy as _copy
     env = _copy.copy(body)
     env.V = V
-    for a_ in ("_vn", "_tree", "_env"):
+    for a_ in ("_vn", "_tree", "_env", "_env_by"):
         if hasattr(env, a_):
             delattr(env, a_)
     env._hull = {}
-    env._env = env
-    body._env = env
+    env._env_by = {rounds: env}
+    if not isinstance(getattr(body, "_env_by", None), dict):
+        body._env_by = {}
+    body._env_by[rounds] = env
     return env
 
 
 def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: np.ndarray, ys: np.ndarray,
-              hz: float, y0: float, target: float, info: dict | None = None, neck_x: float = 0.0) -> np.ndarray:
+              hz: float, y0: float, target: float, info: dict | None = None, neck_x: float = 0.0,
+              envelope: int | None = None) -> np.ndarray:
     """A torso piece laid as it is WORN, hanging from the top of the shoulder, as a tailor builds a forepart on a
     form. Each column (fixed pattern x) is laid up the body from the torso cylinder at the armpit's level (pattern
     height y0), along the body's surface in a near-vertical plane facing the piece's side (a front column runs up
@@ -1158,7 +1161,7 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
     trues them), columns do. On the cylinder alone a jacket's shoulder seams started 23-25 cm apart (front on the
     front of the cylinder, back on its back) and its notched collar, laid where it is worn, 13-25 cm from the
     neckline it is sewn to. Returns every point's position."""
-    body = _envelope(body)  # (laid over what it bridges: an under garment's collar points, the hollows above the collarbone)
+    body = _envelope(body, ENVELOPE_ROUNDS if envelope is None else int(envelope))  # (laid over what it bridges: an under garment's collar points, the hollows above the collarbone)
     vn, tree = body.normals()
     gx = np.arange(xs.min() - WORN_COL, xs.max() + 2 * WORN_COL, WORN_COL)
     smax = max(float(ys.max() - y0) + 0.10, 0.36)
@@ -1325,7 +1328,7 @@ def _repress(X: np.ndarray, B: dict, M: dict, smooth: bool) -> np.ndarray:
     hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
     for fd in M.get("folds") or []:
         if _pressed(B, M, fd):
-            X = foldmod.pressed_flap(X, M, fd, (B.get("faces") or {}).get(fd["piece"], 1.0), PRESS_LAY,
+            X = foldmod.pressed_flap(X, M, fd, (B.get("faces") or {}).get(fd["piece"], 1.0), float(B.get("press_lay") or PRESS_LAY),
                                      wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
     return X
 
@@ -2894,7 +2897,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 wi_ = {}
                 X[sel] = _worn_top(B.get("_worn_body") or body, Cw, start, float(w.get("dir", 1.0)), xs_ + dxs.get(nm, 0.0),
                                    ys_ + dzs.get(nm, 0.0), float(hps[2]), y0_, WORN_CLEAR + 0.25 * float(w.get("out", 0.0)), wi_,
-                                   neck_x=abs(float(hps[0])))
+                                   neck_x=abs(float(hps[0])), envelope=B.get("worn_envelope"))
                 B.setdefault("worn_top_pieces", {})[nm] = wi_
                 if wi_.get("ridge_columns"):
                     B.setdefault("_worn_slides", {})[nm] = wi_["slide_mean"]
@@ -3794,7 +3797,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
             # a forepart laid where it is worn: its lapel is PRESSED onto it (the flap's mirror image across the roll
             # line, on the base): turned rigidly about the roll line over a base that follows the chest and shoulder,
             # the flap stretched past 30% by 50 deg and stood up round the neck
-            X = foldmod.pressed_flap(X, M, fd, faces[nm], PRESS_LAY, wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
+            X = foldmod.pressed_flap(X, M, fd, faces[nm], float(B.get("press_lay") or PRESS_LAY), wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
             info[fd["name"]] = {"pressed": True}
             continue
         X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay,
@@ -5380,6 +5383,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # solver keeps as rest (interfaced pieces)
     body_p, pose = body.straight_arms() if smooth else (body, None)
     Bp["worn_top"] = worn_top(g)
+    # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
+    # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
+    # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
+    for k_ in ("press_lay", "worn_envelope"):
+        if g.get(k_) is not None:
+            Bp[k_] = g[k_]
     if Bp["worn_top"] and under is not None and under.get("res") is not None:
         # a forepart worn over a shirt lies on the shirt's BODY: the open shirt collar sits between the jacket's
         # collar and the neck and doesn't hold the jacket up. The worn tops are laid on the body padded by the under
@@ -6766,7 +6775,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top", "press_lay", "worn_envelope"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
