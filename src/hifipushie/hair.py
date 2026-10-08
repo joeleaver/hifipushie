@@ -1970,6 +1970,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         budget = int(tier["triangles"])
     lk = {**LOOK, **(h.get("look") or {})}
+    # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
+    gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
+    lk["grey_share"] = round(float(np.clip(float(lk.get("grey_amount", 0.0))
+                                           + float(lk.get("grey_locks", 1.0)) * (np.mean(gl) if gl else 0.0), 0, 1)), 3)
     D, e_chart = None, None
     if S.get("source", "groom") == "groom":  # the pictures are the groom's own strands (hair_strands.py)
         from . import hair_strands as hs

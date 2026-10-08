@@ -70,6 +70,27 @@ def test_lock_grey_reaches_the_strands():
     assert np.allclose(G["free"]["gr"], [0.4, 0.0])
 
 
+def test_grey_share_in_the_card_atlas():
+    """The cards' pictures draw the look's share of grey strands (a threshold on the strand id: no speckle), and
+    none without a share."""
+    S = {**hc.strands_of({}), "atlas": 256, "source": "drawn"}
+    look = {"gap": "#201810", "lit": "#402818", "grey": "#c0c0c0", "vary": 0.0}
+    a0 = hc.atlas(S, look)
+    a1 = hc.atlas(S, {**look, "grey_share": 0.5})
+    m = a0["color"][..., 3] > 0.5
+    b0 = a0["color"][..., 2][m]
+    b1 = a1["color"][..., 2][m]
+    assert b1.mean() > b0.mean() + 0.05 and (b1 > b0.max() + 0.1).mean() > 0.1  # grey strands are there
+    assert (b1 <= b0 + 1e-6).mean() > 0.2  # and dark ones stay
+
+
+def test_join_of_nothing_is_an_empty_mesh():
+    """A far tier of a short cut has no cards (no hair off the head): joining nothing gives the empty mesh back."""
+    S = hc.strands_of({})
+    e = hc.mesh([], S, {}, hc.atlas({**S, "atlas": 256, "source": "drawn"}, {})["tiles"])
+    assert len(hc.join(None, e, e)["tris"]) == 0
+
+
 def test_gather_reaches_the_tie():
     assert hs.is_gather({"name": "tg0_12"}) and hs.is_gather({"name": "t1g2_3"})
     assert not hs.is_gather({"name": "tt4"}) and not hs.is_gather({"name": "sweep1"})
