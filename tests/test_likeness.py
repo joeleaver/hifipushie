@@ -222,3 +222,66 @@ def test_stage_wants_pin_earlier_stages():
     assert want == {"eye_width": "-2.50"}                              # asked by the miss, front view only
     assert pins == {"face_height": "+0"}                               # the earlier stage's measure held
     assert any("Canthal tilt" in g for g in gaps)                      # no solver measure: said, not guessed
+
+
+def _synthetic_contour(chin=0.0, nose=0.0):
+    """A far-side contour in picture px (1 mm / px), top to bottom: forehead, brow bump, orbit dip, cheek, a notch
+    between two lips, a chin corner, the under-jaw going back."""
+    v = np.arange(-60.0, 150.0, 1.0)
+    c = 40.0 - 0.15 * np.abs(v + 12)                       # forehead sloping back, brow peak at v = -12
+    c += 6.0 * np.exp(-((v + 12) / 6.0) ** 2) - 5.0 * np.exp(-((v - 10) / 8.0) ** 2)
+    c -= np.clip(v - 40, 0, None) * 0.12                   # the lower face falls in
+    c += 2.0 * np.exp(-((v - 86) / 3.0) ** 2) + 1.5 * np.exp(-((v - 100) / 3.0) ** 2) - 1.0 * np.exp(-((v - 93) / 2.0) ** 2)
+    c += chin * np.exp(-((v - 132) / 10.0) ** 2)
+    c -= np.clip(v - 136, 0, None) * 1.3                   # under the jaw
+    return v, c
+
+
+def test_profile_contour_measures():
+    from hifipushie import likeness_profile as lp
+    lv = {"brow": -14.0, "sn": 68.0, "sto": 94.0, "chin": 138.0, "nasion": 0.0}
+    v, c = _synthetic_contour()
+    kp = lp.keypoints(v, c, lv)
+    assert abs(kp["brow"][0] + 12) <= 1.5 and abs(kp["sto"][0] - 93) <= 1.5      # found on the contour, not at the levels
+    assert 128 <= kp["chin"][0] <= 140                                            # the corner before the under-jaw
+    m0 = lp.measures(kp)
+    assert m0["brow_ridge"] > 4 and m0["upper_lip"] > 1.0 and m0["lower_lip"] > 0.5
+    v2, c2 = _synthetic_contour(chin=6.0)
+    m1 = lp.measures(lp.keypoints(v2, c2, lv))
+    assert 3.0 < m1["chin_projection"] - m0["chin_projection"] < 7.5              # a stronger chin reads stronger
+    # no notch between the lips -> the lip items are not invented
+    vs, cs = v, 40.0 - 0.1 * np.abs(v + 12)
+    assert "upper_lip" not in lp.measures(lp.keypoints(vs, cs, lv))
+    # the nose's own contour: tip, base, bridge bow (a hump reads +)
+    vn = np.arange(0.0, 70.0, 1.0)
+    cn = 5.0 + 0.4 * vn - np.clip(vn - 56, 0, None) * 1.6
+    nk = lp.nose_keypoints(vn, cn, base_v=68.0, nasion_v=0.0)
+    mn = lp.measures({}, nk, (vn, cn), (v, c))
+    assert abs(nk["tip"][0] - 56) <= 1 and mn["nose_tip"] > 10 and abs(mn["bridge_bow"]) < 0.3
+    hump = cn + 2.0 * np.exp(-((vn - 30) / 8.0) ** 2)
+    assert lp.measures({}, lp.nose_keypoints(vn, hump, 68.0, 0.0), (vn, hump))["bridge_bow"] > 1.2
+    assert mn["nose_gap"] > 0
+
+
+def test_profile_snap_and_envelope():
+    from PIL import Image
+    from hifipushie import likeness_profile as lp
+    yy, xx = np.mgrid[0:200, 0:200]
+    edge = 120 + 8 * np.sin(yy / 25.0)                      # a bright face left of a wavy edge, dark background right
+    img = Image.fromarray(np.where(xx < edge, 200, 25).astype(np.uint8)).convert("RGB")
+    anchors = [(120 + 8 * np.sin(y / 25.0) + 2.5 * (-1) ** i, float(y)) for i, y in enumerate(range(20, 181, 20))]   # +-2.5 px off
+    Q = lp.snap_edge(img, anchors)
+    err = np.abs(Q[:, 0] - (120 + 8 * np.sin(Q[:, 1] / 25.0)))
+    assert np.median(err) < 0.8 and err.max() < 2.5
+    fr = (np.array([100.0, 100.0]), np.array([1.0, 0.0]), np.array([0.0, 1.0]))
+    v, c = lp.envelope(Q, fr, 1.0)
+    assert abs(float(np.interp(0.0, v, c)) - (20 + 8 * np.sin(100 / 25.0))) < 1.0
+
+
+def test_contour_items_in_the_checklist():
+    from hifipushie import likeness_profile as lp
+    items = [it for it in lk.checklist() if it["measure"]["kind"] == "contour"]
+    assert len(items) >= 10 and all(it["measure"]["key"] in lp.KEYS for it in items)
+    ids = {it["id"] for it in lk.checklist()}
+    assert all(r in ids for it in items for r in it.get("replaces", []))
+    assert all(i in ids for part in lk.PROFILE_ITEMS.values() for i in part)

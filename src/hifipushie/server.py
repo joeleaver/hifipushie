@@ -2056,9 +2056,18 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
     undo the widths. Integrity-guarded: a result that breaks the mesh is refused, not saved. The reply: the stage's
     items before -> after, items with no solver measure (GAPS: what a person does by hand), earlier stages' items that
     got worse, and the stage's focus panels. Approve each stage (look at the panels) before calling the next.
-    Run likeness(name, targets=True) first for the target sheet and the plan."""
+    Run likeness(name, targets=True) first for the target sheet and the plan.
+    stage "profile": only the nose and the chin, fitted to a turned view's CONTOURS (likeness_points lines "profile" =
+    the far side of the face against the background, "nose" = the nose's own edge): GNM components inside the nose /
+    chin region moved until the model's own contour through that camera lies on the traced one, heights and widths
+    held where the front picture has them. The nose and chin_jaw stages run it too when the lines exist."""
     from . import likeness as lk
     pn = str(store.HOME / "human_renders" / f"lk_{name}_stage_{stage}.png")
+    if stage == "profile":   # the nose and chin on a turned view's contours alone (likeness_points 'profile' / 'nose')
+        base, cmp, log = lk.fit_profile(name, force=force, save=save)
+        rows = [r for r in cmp["rows"] if r.get("kind") == "contour" and r["score"] >= 0]
+        lk.focus_sheet(cmp, pn, rows=rows, cols=3)
+        return [_png(PILImage.open(pn)), "\n".join(log) + "\n" + lk.table_text({**cmp, "rows": rows}) + f"\npanels: {pn}"]
     rep = lk.fit_stage(name, stage, force=force, save=save, panels=pn)
     out = [rep["text"] + f"\npanels: {pn}"]
     if Path(pn).exists():
@@ -2074,7 +2083,9 @@ def likeness_points(name: str, image: str, points: dict | None = None, lines: di
     .R / .L = the subject's right / left. points: {"gonion.R", "ear_lobe.R", "tragus.R", "menton", "pogonion",
     "jaw_notch.R": [u, v]}; lines: {"jaw.R": [[u, v], ...] (from just under the ear lobe DOWN the ramus, round the
     angle, FORWARD along the lower border to the chin), "neck.R": [[u, v], ...] (the neck's contour under that border,
-    top to bottom)}. Merged name by name (null deletes one) unless replace. The jaw items (ramus angle, gonial angle,
+    top to bottom), "profile": the far side of the face against the background in a turned view, forehead down round
+    the chin (snapped to the picture's edge when read), "nose": the nose's own edge in that view, from between the
+    brows down the bridge, round the tip, back to the columella's base}. Merged name by name (null deletes one) unless replace. The jaw items (ramus angle, gonial angle,
     lower border, gonion against the ear lobe and the mouth, the neck's step) read them; the focus panels draw them."""
     from . import likeness_shape as ls
     d = ls.set_points(name, image, points, lines, by=by, replace=replace)

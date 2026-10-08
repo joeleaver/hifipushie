@@ -556,7 +556,7 @@ def photo_sides(refs: dict) -> list:
 REFIT = ("three_quarter", "profile")  # views whose camera is refitted on the detector's points (a loose painting)
 REFIT_ROUNDS = 2
 INFER_TOL = 1.5     # a profile item read from a three-quarter view ("inferred"): its tolerance x this
-SPECIAL = ("shape", "jaw")   # measured in compare (they need the model's render or a trace), not from points alone
+SPECIAL = ("shape", "jaw", "contour")   # measured in compare (they need the model's render or a trace), not from points alone
 
 
 def _refit(mesh, ph, cam):
@@ -747,6 +747,59 @@ def _jaw_rows(it, photos, models, kinds, traces) -> list:
     return rows
 
 
+def profile_read(ph, md, traces):
+    """likeness_profile.read for one picture, kept on the model's entry (None: no "profile" line on that picture)."""
+    from . import likeness_profile as lp
+    if "profile" not in md:
+        lines = traces.get(ph["view"]["image"], {}).get("lines", {})
+        try:
+            md["profile"] = lp.read(ph["img"], lines, md, ph["box"], ph["side"].P) if lines.get("profile") else None
+        except Exception as e:  # noqa: BLE001
+            md["profile"] = None
+            md["profile_error"] = str(e)
+    return md["profile"]
+
+
+CONTOUR_WHY = {"upper_lip": "the lips don't break this contour (no notch between them at this angle)",
+               "lower_lip": "the lips don't break this contour (no notch between them at this angle)",
+               "forehead_slope": "the trace doesn't run 4 cm up the forehead"}
+
+
+def _contour_rows(it, photos, models, kinds, traces) -> list:
+    rows = []
+    key = it["measure"]["key"]
+    nose = key.startswith("nose") or key.startswith("bridge")
+    for vi, (ph, md) in enumerate(zip(photos, models)):
+        ok, inferred = _allowed(it, kinds[vi], kinds)
+        if not ok or kinds[vi] == "front":
+            continue
+        rd = profile_read(ph, md, traces)
+        r = {"vi": vi, "inferred": False}
+        if rd is None:
+            r["why"] = ("needs a trace on this picture: likeness_points line 'profile' (the far side of the face against "
+                        "the background, forehead to under the chin)" + ("; 'nose' (the nose's own edge)" if nose else ""))
+        elif key in rd["photo"]["m"] and key in rd["model"]["m"]:
+            r["photo"], r["model"] = float(rd["photo"]["m"][key]), float(rd["model"]["m"][key])
+            r["traces"] = [(rd["photo"]["line"], rd["model"]["line"], None, None)]
+            if "nose" in rd["photo"]:
+                r["traces"].append((rd["photo"]["nose"]["line"], rd["model"]["nose"]["line"], None, None))
+            o, ex, ey = rd["frame"]
+            names = {"chin_projection": ("chin", "brow"), "cheek_line": ("mouth", "brow"), "chin_height": ("chin", "mouth"),
+                     "brow_ridge": ("brow", "orbit"), "mentolabial": ("sulcus",), "forehead_slope": ("fh1", "fh2"),
+                     "upper_lip": ("ul", "sto"), "lower_lip": ("ll_notch", "sto")}.get(key, ())
+            marks = []
+            for sd_ in ("photo", "model"):
+                kk = {**rd[sd_]["kp"], **rd[sd_]["kn"]} if nose else rd[sd_]["kp"]
+                nm = ("tip", "base", "nasion") if nose else names
+                marks.append([o + ex * kk[n][1] / rd["mmpx"] + ey * kk[n][0] / rd["mmpx"] for n in nm if n in kk])
+            r["marks"] = marks
+        else:
+            r["why"] = CONTOUR_WHY.get(key, "the line 'nose' is not traced on this picture" if nose and "nose" not in rd["photo"]
+                                       else "not found on this contour")
+        rows.append(r)
+    return rows
+
+
 def _jaw_pair(ph, md, tr, sd):
     """The jaw measures on the photo's trace and on the model's contour found along it (picture pixels)."""
     from . import likeness_shape as ls
@@ -819,6 +872,9 @@ def measure_reference(name: str, save: bool = True, photos=None) -> dict:
         rows = {}
         if it["measure"]["kind"] == "shape":
             vals[it["id"]] = {"-": "unmeasurable: shading is read against a model lit like the photo (compare / likeness)"}
+        if it["measure"]["kind"] == "contour":
+            vals[it["id"]] = {"-": "unmeasurable: a contour is read in the model's frame through its camera (compare / likeness); "
+                                   "trace likeness_points 'profile' / 'nose' on a turned view"}
         if it["measure"]["kind"] == "jaw":
             vals[it["id"]] = {}
             for vi, ph in enumerate(photos):
@@ -900,7 +956,8 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     for it in checklist():
         kind = it["measure"]["kind"]
         if kind in SPECIAL:
-            got = _shape_rows(it, photos, models, kinds) if kind == "shape" else _jaw_rows(it, photos, models, kinds, traces)
+            got = (_shape_rows(it, photos, models, kinds) if kind == "shape" else _jaw_rows(it, photos, models, kinds, traces)
+                   if kind == "jaw" else _contour_rows(it, photos, models, kinds, traces))
             if not got:
                 got = [{"vi": "-", "why": " or ".join(it["views"]) + " view needed"}]
             for g in got:
@@ -912,7 +969,8 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
                      "view": kinds[vi] if vi != "-" else "-", "vi": vi, "unit": it["unit"], "tol": tol,
                      "control": it["control"], "reliability": it.get("reliability", ""), "photo": a, "model": b,
                      "points": points_of(it["measure"]), "inferred": g.get("inferred", False), "kind": kind,
-                     "model3d": g.get("model3d"), "regions": g.get("regions"), "traces": g.get("traces")}
+                     "model3d": g.get("model3d"), "regions": g.get("regions"), "traces": g.get("traces"),
+                     "marks": g.get("marks")}
                 if kind == "shape" and r["view"] != "front" and isinstance(a, float):
                     r["score"] = -1.0
                     r["why"] = (f"shading contrast {a:+.1f}% shown in the panel, not scored: a turned / painted view's light "
@@ -921,6 +979,8 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
                     r["miss"] = b - a
                     r["score"] = abs(b - a) / tol
                     r["source"] = "shading" if kind == "shape" else "trace/render contour"
+                    if kind == "contour":
+                        r["source"] = "contour"
                 else:
                     r["score"] = -1.0
                     r["why"] = g.get("why", "")
@@ -953,6 +1013,10 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
                 r["score"] = -1.0
                 r["why"] = (a if isinstance(a, str) else b if isinstance(b, str) else "").split(": ", 1)[-1]
             rows.append(r)
+    # a contour reading replaces the "inferred" detector reading of the same thing on that picture
+    gone = {(i, r["vi"]) for r in rows if r.get("kind") == "contour" and r["score"] >= 0
+            for i in _item(r["id"]).get("replaces", [])}
+    rows = [r for r in rows if not ((r["id"], r["vi"]) in gone and r.get("kind") != "contour")]
     rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] if r["score"] > 1.0 else r["tier"], -r["score"]))
     cmp = {"rows": rows, "photos": photos, "models": models, "name": name, "points_from": points_from}
     cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
@@ -1193,7 +1257,11 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
         pp, mp_ = {}, {}
         for reg, ref, rr, rf in row.get("regions") or []:
             circles += [(reg / k + b0[:2], rr / k, (255, 220, 60)), (ref / k + b0[:2], rf / k, (120, 230, 120))]
-    if row.get("kind") == "jaw":
+    if row.get("kind") == "contour":
+        for pts_, col in zip(row.get("marks") or [], (PHOTO_COL, MODEL_COL)):
+            for g in pts_:
+                circles.append((np.asarray(g), 2.0 / max(md["mmpx"], 1e-6), col))
+    if row.get("kind") in ("jaw", "contour"):
         pp, mp_ = {}, {}
         for Q, Qm, gp, gm in row.get("traces") or []:
             polys.append((Q, PHOTO_COL))
@@ -1203,7 +1271,7 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
                 if g is not None:
                     circles.append((np.asarray(g), 4.0 / max(md["mmpx"], 1e-6), col))
         from . import likeness_shape as ls
-        tr = ls.load_points(cmp.get("points_from") or cmp.get("name", "")).get(ph["view"]["image"], {})
+        tr = ls.load_points(cmp.get("points_from") or cmp.get("name", "")).get(ph["view"]["image"], {}) if row.get("kind") == "jaw" else {}
         for nm_, uv in tr.get("points", {}).items():
             circles.append((np.asarray(uv, float), 2.5 / max(md["mmpx"], 1e-6), (255, 140, 255)))
         for nm_, ln in tr.get("lines", {}).items():
@@ -1224,7 +1292,7 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
         return img.crop(tuple(int(round(v)) for v in ((box[0] - origin[0]) * scale, (box[1] - origin[1]) * scale,
                                                        (box[2] - origin[0]) * scale, (box[3] - origin[1]) * scale))).resize((px, px), Image.LANCZOS)
     a = crop(ph["img"], (0, 0), 1.0)
-    lit = row.get("kind") in ("shape", "jaw", "judge") and md.get("img_lit") is not None
+    lit = row.get("kind") in ("shape", "jaw", "judge", "contour") and md.get("img_lit") is not None
     b = crop(md["img_lit"] if lit else md["img"], (b0[0], b0[1]), k)
     for im in (a, b):
         d = ImageDraw.Draw(im)
@@ -1408,6 +1476,8 @@ LEVERS = {
     "nose_projection": ("nudge:nose_tip:y", -0.002, (-0.006, 0.006), 0.0),
     "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0),
 }
+LEVERS["prof_brow_ridge"] = ("features.brow_ridge", 0.4, (-1.5, 1.5), 0.0)
+LEVERS["prof_cheek_line"] = ("shape.hollow", 0.002, (0.0, 0.008), 0.0)
 LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
 
 
@@ -1588,11 +1658,23 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         lever = lv_of(it["id"])
         ids = [i for i in list(LEVERS) + list(EXPR_LEVERS) if lv_of(i) and lv_of(i)[0] == lever[0] and _item(i)["stage"] == stage]
         ids = list(dict.fromkeys(ids))
+        # a contour reading (mm, geometry) drives the lever alone where there is one: mixed with the shading's % the
+        # mean miss means nothing
+        cids = [i for i in ids if _item(i)["measure"]["kind"] == "contour"
+                and any(r["id"] == i and r["score"] >= 0 for r in cur_cmp["rows"])]
+        ids = cids or [i for i in ids if _item(i)["measure"]["kind"] != "contour"]
+        if not ids:
+            continue
         done.update(ids)
         rep["log"].append(f"  lever {lever[0]} for {ids}:")
         cur_cmp["_base"] = cur
         cur, cur_cmp, note = _lever_fit(name, cur, photos, start, cur_cmp, k, ids, lever, force, rep["log"])
         rep["steps"].append((f"lever {note}", {}))
+    part = {"nose": "nose", "chin_jaw": "chin"}.get(stage)
+    if part and _profile_score(cur_cmp, part) is not None:
+        cur, cur_cmp, plog = fit_profile(name, cur, parts=(part,), force=force, start=start, k=k, photos=photos)
+        rep["log"] += plog
+        rep["steps"].append((f"profile contour ({part})", {}))
     gaps = []
     for r in cur_cmp["rows"]:
         it = _item(r["id"])
@@ -1621,6 +1703,125 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         rep["saved"] = v
         rep["text"] += f"\nsaved {name} v{v}"
     return rep
+
+
+PROFILE_PARTS = {   # part -> (region group(s), contour, heights it reads (levels, mm either side), landmarks held)
+    "nose": ("nose_region", "nose", None, None),
+    "chin": (["chin_region", "lower_lip_region"], "outer", ("sto", 6.0, "chin", 9.0),
+             [i for i in range(17, 68) if i not in (55, 56, 57, 58, 59, 65, 66, 67)]),
+}
+PROFILE_ITEMS = {"nose": ["prof_nose_tip", "prof_nose_gap", "prof_nose_length", "prof_bridge_bow"],
+                 "chin": ["prof_chin", "prof_chin_height", "prof_mentolabial"]}
+PROFILE_ROUNDS = 5
+PROFILE_DONE = 1.0    # mm rms of the contour's miss at its vertices: done
+
+
+PROFILE_FRONT = {"nose": list(range(27, 36)), "chin": [7, 8, 9, 56, 57, 58]}
+
+
+def _front_holds(cmp, part) -> list:
+    """The part's landmarks held where a FRONT picture has them (fit_region targets at their own projection, twice
+    each): a turned view's contour says how far forward things stand; heights and widths are the front view's, and
+    left free the nose fit dragged the subnasale 3 mm down (philtrum, lower third)."""
+    from scipy.spatial import cKDTree
+    from . import humanfit
+    out = []
+    for vi, (ph, md) in enumerate(zip(cmp["photos"], cmp["models"])):
+        if ph["kind"] != "front":
+            continue
+        V, L = md["mesh"]["V"], md["mesh"]["L"]
+        j = cKDTree(V).query(L[PROFILE_FRONT[part]])[1]
+        uv = humanfit.project(md["cam"], V[j])
+        out += [{"view": vi, "tpl": [int(a)] * 3, "bary": [1.0, 0.0, 0.0], "uv": [float(u[0]), float(u[1])], "hold": True}
+                for a, u in zip(j, uv)] * 2
+    return out
+
+
+def _rms(tg) -> float:
+    return float(np.sqrt(np.mean([t["raw_mm"] ** 2 for t in tg]))) if tg else 1e9
+
+
+def _profile_targets(cmp, traces, part) -> list:
+    from . import likeness_profile as lp
+    group, contour, rng, hold = PROFILE_PARTS[part]
+    tg = []
+    for vi, (ph, md) in enumerate(zip(cmp["photos"], cmp["models"])):
+        rd = profile_read(ph, md, traces)
+        if rd is None:
+            continue
+        vr = None
+        if rng:
+            lv = rd["model_levels"]
+            vr = (lv[rng[0]] + rng[1], lv[rng[2]] + rng[3])
+        tg += lp.targets(rd, md["mesh"], md["cam"], vi, contour, v_range=vr)
+    return tg
+
+
+def _profile_score(cmp, part):
+    v = [r["score"] for r in cmp["rows"] if r["id"] in PROFILE_ITEMS[part] and r["score"] >= 0]
+    return float(np.sum(np.square(v))) if v else None
+
+
+def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), force: bool = False, save: bool = False,
+                start: dict | None = None, k: int | None = None, photos=None) -> tuple:
+    """(base, cmp, log): the nose and the chin fitted to a turned view's contours. Each round: the contour's miss at
+    the model vertices that MAKE its contour (likeness_profile.targets, the camera's offset on the bony upper face
+    taken out) -> humanfit.fit_region (GNM identity components inside the nose / chin + lower lip region, the other
+    landmarks held, integrity-guarded). A round is kept only if the part's contour items score better and (in a staged
+    fit: start, k) no earlier stage's pinned item is undone."""
+    from . import humanfit, store
+    from . import likeness_profile as lp
+    from . import likeness_shape as ls
+    sp = store.load(name)
+    base = base or sp["base"]
+    photos = photos or _photos(_refs(name))
+    cur = base
+    cmp = compare(name, cur, photos=photos)
+    cams0 = [m["cam"] for m in cmp["models"]]   # ONE camera per picture through the whole fit: refitted per candidate
+    # (as compare does for turned views) the camera follows the nose it is meant to judge
+    traces = ls.load_points(name)
+    log = []
+    for part in parts:
+        group, contour, rng, hold = PROFILE_PARTS[part]
+        for rnd in range(PROFILE_ROUNDS):
+            s0 = _profile_score(cmp, part)
+            if s0 is None:
+                log.append(f"  {part}: no contour on the references (likeness_points 'profile'" + (" / 'nose'" if part == "nose" else "") + ")")
+                break
+            if not any(r["score"] > 1.0 for r in cmp["rows"] if r["id"] in PROFILE_ITEMS[part]):
+                log.append(f"  {part}: within tolerance")
+                break
+            tg = _profile_targets(cmp, traces, part)
+            if len(tg) < 4:
+                log.append(f"  {part}: {len(tg)} contour vertices: too few")
+                break
+            miss = _rms(tg)
+            if miss < PROFILE_DONE:
+                log.append(f"  {part}: contour within {miss:.1f} mm rms")
+                break
+            nb, r = humanfit.fit_region(cur, cams0, tg + _front_holds(cmp, part), group, hold=hold, force=force,
+                                        name=f"likeness_{part}")
+            if r.get("refused"):
+                log.append(f"  {part} round {rnd + 1}: REFUSED ({r['refused'][:90]})")
+                break
+            c = compare(name, nb, photos=photos, cameras=cams0)
+            s1 = _profile_score(c, part)
+            tg1 = _profile_targets(c, traces, part)
+            miss1 = _rms(tg1)
+            und = _undone(start, c, k) if start is not None else []
+            note = (f"{len(tg)} contour vertices, contour rms {miss:.1f} -> {miss1:.1f} mm, share {r.get('share')}, largest "
+                    f"{r.get('largest_sigma')} sigma; items' score {s0:.1f} -> {s1 if s1 is None else round(s1, 1)}")
+            # judged on the contour itself (the items are a few numbers read off it: one of them worse while the line
+            # as a whole comes closer stopped the first runs after one round, the bridge left scooped)
+            if (miss1 > 0.97 * miss or und) and not force:
+                log.append(f"  {part} round {rnd + 1}: not taken ({note}" + (f"; undoes {[u[1]['id'] for u in und]}" if und else "") + ")")
+                break
+            log.append(f"  {part} round {rnd + 1}: fit_region {group} ({note})")
+            cur, cmp = nb, c
+    if save and cur is not base:
+        v = store.save(name, {**sp, "base": cur}, "likeness profile contour fit")
+        log.append(f"saved {name} v{v}")
+    return cur, cmp, log
 
 
 def stage_text(rep: dict) -> str:
