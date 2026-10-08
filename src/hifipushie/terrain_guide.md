@@ -347,8 +347,16 @@ and the `"story"`.
       always collapse pits (the roof fallen in, a low cone of blocks to climb down), as wide as the tube.
       `{"kind": "lava", "flow": "<flow name>", "from": 0.25, "to": 0.85}` runs a tube down a volcano's lava flow
       between those shares of its length, a collapse pit at each end (no entrances or passages needed).
+      A flow down a steep cone falls faster than anyone walks. `"grade": 0.2` makes the tube walkable: it
+      switchbacks across the flow (legs along the slope's contours, up to `"swing"` m either side of the flow's
+      line, default 30), a level landing at each turn and under each pit's pile of blocks, never steeper than the
+      grade, and never higher than its depth under the ground (where the ground falls faster it runs deeper, and
+      its pits get deeper). The report says how many switchbacks, how wide, how deep the pits are, and when the
+      swing is too narrow for the grade ("needs switchbacks 54 m either side ... Give it "swing": 54").
   - An entrance is where a passage meets the open: at a cliff or hillside along the way in, or a shaft straight down
-    from the ground with `"shaft": true` (a blowhole, a sinkhole).
+    from the ground with `"shaft": true` (a blowhole, a sinkhole). A hillside mouth's floor is the ground where the
+    door opens (no higher: at a cliff foot, a geo's floor), and a karst floor leaves it on the passage's plain grade,
+    taking on its bedding planes over the first ~20 m. `"z": m` on the entrance sets the door's floor yourself.
   - A chamber's floor is `depth` metres under the ground over it (karst 18 m, lava 7.5 m) or at height `z`; a sea
     cave's chambers sit at the water. `"in": m` puts a chamber that far into the rock from an address with a
     direction: `{"at": "cliff_foot:<address>", "in": 30}` is 30 m in from the foot of that cliff.
@@ -362,7 +370,10 @@ and the `"story"`.
     finished rock), plus each passage's climb ("climbs 49 m over 149 m of slope (33%)": a cave floor walks up to 25%,
     sustained over 10 m), the rock over each passage's roof and each chamber's dome (under 1 m it opens to the sky),
     and a WARNING with what to change: the chamber's `z` / `depth` that makes the climb walkable, how long the passage
-    would have to be, the stretch of a lava flow gentle enough for a tube (`from` / `to`).
+    would have to be, the stretch of a lava flow gentle enough for a tube (`from` / `to`) or its `grade`. A walk that
+    fails names what stops it by kind: a step by a mouth is where the passage's floor meets the ground outside (the
+    entrance's `z` or `at`), a step further in is the floor rising faster than it runs (a longer passage, closer
+    floors), only blocked / tight / low passages change with `width` / `height`.
 - **ground**: gentle ground rolls at player scale on its own: field-scale undulation (1-2 m over ~100 m), swales
   (broad shallow hollows where water gathers, down the slope) and hummocks in patches, by the kind (none in dunes).
   Never on sites, routes, passes or water; it doesn't make ponds. `"ground": {"undulation": 0..2, "swales": 0..2,
