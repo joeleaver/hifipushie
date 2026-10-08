@@ -4502,6 +4502,12 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       0.90 / 0.94), anime_spruce, cartoon / blobby oak + spruce, pixar / anime / real grass, pixar daisy. Realistic
       grass: LOD2's clustered atlas has slot `foliage_boughs2_winter` (lying cards: keep 1.0 when the LOD's keep share
       leaves none).
+    - Pixar LOD overdraw (consumer note 87: the vale's pixar wood at 56 ms): `crown.cards.lod_keep` [share of the cards
+      kept under lod 0.6, under 0.3] + `cards.lod_area` (growth exponent; 0.5 = same area): the shell carries the mass.
+      scratchpad/od2.py = summed card area / covered area (overdraw before alpha) per LOD. Oak [0.5, 0.55] / 0.4: LOD1
+      13.3 -> 6.2, LOD2 10.3 -> 5.9 (front; LOD0 13.6 untouched: the next lever if the vale is still slow); Godot card
+      coverage at the switches 0.96 / 0.91, 0.89 / 0.85, 0.86 / 0.99 ([0.45, 0.35] / 0.35 gave LOD2 0.82). Spruce [0.45,
+      0.35] / 0.35: LOD1 3.0 -> 1.4, LOD2 3.0 -> 0.9; Godot 0.96 / 0.94, 0.91 / 0.89. Both re-exported, Khronos 0 / 0.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
