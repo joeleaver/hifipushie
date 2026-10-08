@@ -18,7 +18,11 @@ import numpy as np
 
 # per fabric: the spacing of its fine folds (m), from photos (cloth_audit.md: shirting 8.6-16 mm, wool coating
 # 38-44 mm) and how sharp its creases are (the profile's exponent: 1 = a sine)
-FOLDS = {"shirting": {"wavelength": (0.008, 0.017), "sharp": 0.75, "length": (0.03, 0.09)},
+# fine_gain / density: how deep and how many the fine (normal map) folds are. Shirting is worn ironed: against a worn
+# shirt photo (cloth_refs/shirt_worn_front.png, chest: band-passed luminance 1-4 mm / 4-15 mm = 0.33-0.44) the full
+# set read as a net of creases (0.60-0.83); 0.45 x 0.6 brings it to the photo's
+FOLDS = {"shirting": {"wavelength": (0.008, 0.017), "sharp": 0.75, "length": (0.03, 0.09), "fine_gain": 0.45,
+                      "density": 0.6},
          "linen": {"wavelength": (0.008, 0.02), "sharp": 0.65, "length": (0.03, 0.10)},
          "jersey": {"wavelength": (0.012, 0.03), "sharp": 1.0, "length": (0.04, 0.12)},
          "denim": {"wavelength": (0.02, 0.045), "sharp": 0.8, "length": (0.05, 0.14)},
@@ -123,7 +127,7 @@ def fold_dabs(M: dict, V: np.ndarray, fabric: str = "shirting", stiff: np.ndarra
         out["d"].append(dd)
         out["lam"].append(lam)
         out["len"].append(ln)
-        out["amp"].append(amp * (0.7 if is_big else 1.0))
+        out["amp"].append(amp * (0.7 if is_big else float(o.get("fine_gain", 1.0))))
         out["ph"].append(rng.choice([0.0, np.pi], n) + rng.normal(0, 0.5, n))
         out["kap"].append(rng.normal(0, 0.35, n) / ln)  # a bow of ~ a third of a wavelength over its length
         out["big"].append(np.full(n, is_big))

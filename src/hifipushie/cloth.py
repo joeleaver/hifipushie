@@ -5210,6 +5210,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # where laying the lap made the cloth cross itself, those vertices (and two rings round them) stay as
             # they were; the rest of the lap is laid
             was_ = _crossing_verts(res["V"], M)
+            # (first each crossing vertex loses the part of its move across the layer it went through, as for the
+            # welds: reverted two rings wide, 230 vertices round su_garrett's 4th and 5th buttons went back and
+            # those fastenings stayed 9 mm open)
+            if (_crossing_verts(Vs_, M) & ~was_).any():
+                Vs_, _ = _weld_clear(Vs_, res["V"], M, interfacing(Bp, M))
             bad_ = _crossing_verts(Vs_, M) & ~was_
             if bad_.any():
                 A2_, B2_ = _graph(M)

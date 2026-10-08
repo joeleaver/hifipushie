@@ -250,6 +250,19 @@ def test_pressed_ridge_is_sharpened_in_the_geometry():
     assert np.allclose(W2[row], X[row])
 
 
+def test_shirting_fine_folds_are_ironed():
+    # against a worn shirt photo the full set of fine folds read as a net of creases on the chest (band-passed
+    # luminance 1-4 mm over 4-15 mm 0.60-0.83, the photo 0.33-0.44): shirting's fine folds are fewer and shallower
+    M = cloth.mesh(cloth.pieces({"pieces": {"a": {"rect": [0.3, 0.3], "wrap": {"to": "flat", "at": [0, 0, 1.0]}}},
+                                 "seams": []}, {}), 0.01)
+    V = np.c_[M["uv"][:, 0], 0.93 * M["uv"][:, 1], np.zeros(len(M["uv"]))]  # 7% compressed down the piece
+    full, _ = cloth_detail.fold_dabs(M, V, "shirting", opts={"fine_gain": 1.0, "density": 1.6})
+    ironed, _ = cloth_detail.fold_dabs(M, V, "shirting")
+    fine = lambda D: D["amp"][~D["big"].astype(bool)]
+    assert cloth_detail.FOLDS["shirting"]["fine_gain"] <= 0.5
+    assert len(fine(ironed)) < 0.5 * len(fine(full)) and fine(ironed).mean() < 0.6 * fine(full).mean()
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):
