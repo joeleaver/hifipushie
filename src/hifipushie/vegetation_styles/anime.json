@@ -242,10 +242,10 @@
    "clump_min_cards": 80,
    "lod_grow": 2.4,
    "lod_layers": [
-    2,
-    2
+    3,
+    3
    ],
-   "lod_area": 0.35
+   "lod_area": 0.45
   },
   "colour": {
    "value": 1.35
