@@ -1105,10 +1105,43 @@ def _arc_point(H: np.ndarray, start: np.ndarray, s: np.ndarray, sign: float) -> 
 
 
 WORN_DBG: list = []  # (columns' pattern x, their samples, start clearance, target) of the last worn tops laid
+ENVELOPE_ROUNDS = 0  # smoothing rounds of the envelope a worn top is laid on (_envelope)
 WORN_STEP = 0.003  # m between a worn top's samples up each column
 WORN_COL = 0.004  # m between its columns (pattern x)
 WORN_RAMP = 0.08  # m of column over which the start's clearance eases from the cylinder's to the worn one
 WORN_NORMAL = 0.04  # m: the body's normal under a column is averaged over this radius (a crease's normals jump)
+
+
+def _envelope(body: "Body", rounds: int = ENVELOPE_ROUNDS) -> "Body":
+    """The body with its hollows and steps filled (never cut into), cached on it: a Laplacian-smoothed copy, each vertex
+    taking the smoothed surface only where it stands further out along the normal. What a stiff forepart lies on: laid
+    on the padded body itself, its columns followed every edge of an open shirt collar under it and neighbours 4 mm
+    apart ended 2-6 cm apart (Garrett's gorge)."""
+    if getattr(body, "_env", None) is not None:
+        return body._env
+    vn, _ = body.normals()
+    T = body.T
+    E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
+    V = body.V.copy()
+    for _ in range(rounds):
+        acc, wt = np.zeros_like(V), np.zeros(len(V))
+        np.add.at(acc, E[:, 0], V[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], V[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        Vs = acc / np.maximum(wt, 1)[:, None]
+        # (only out along the body's own normal: its tangential place kept)
+        V = body.V + vn * np.maximum(((Vs - body.V) * vn).sum(1), 0.0)[:, None]
+    import copy as _copy
+    env = _copy.copy(body)
+    env.V = V
+    for a_ in ("_vn", "_tree", "_env"):
+        if hasattr(env, a_):
+            delattr(env, a_)
+    env._hull = {}
+    env._env = env
+    body._env = env
+    return env
 
 
 def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: np.ndarray, ys: np.ndarray,
@@ -1125,6 +1158,7 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
     trues them), columns do. On the cylinder alone a jacket's shoulder seams started 23-25 cm apart (front on the
     front of the cylinder, back on its back) and its notched collar, laid where it is worn, 13-25 cm from the
     neckline it is sewn to. Returns every point's position."""
+    body = _envelope(body)  # (laid over what it bridges: an under garment's collar points, the hollows above the collarbone)
     vn, tree = body.normals()
     gx = np.arange(xs.min() - WORN_COL, xs.max() + 2 * WORN_COL, WORN_COL)
     smax = max(float(ys.max() - y0) + 0.10, 0.36)
@@ -1154,35 +1188,44 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
         n0 = vn[tree.query(Pq)[1]]
         n = np.where(ok.any(1)[:, None], n, n0)
         return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-    for j in range(1, ns):
-        n = nrm(P)
-        n = n - t3 * np.sum(n * t3, 1, keepdims=True)
-        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-        d = np.cross(t3, n)  # in the plane, along the surface
-        d *= np.where(np.sum(d * D, 1) < 0, -1.0, 1.0)[:, None]
-        d = 0.5 * d + 0.5 * D  # (a little momentum: a crease's normals still turn sharply)
-        d -= t3 * np.sum(d * t3, 1, keepdims=True)
-        d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
-        Pn = P + WORN_STEP * d
-        f = min(1.0, j * WORN_STEP / WORN_RAMP)
-        want = c0 + (target - c0) * (f * f * (3 - 2 * f))
-        for _ in range(2):
-            n2 = nrm(Pn)
-            Pn = Pn + n2 * (want - body.clearance(Pn))[:, None]
-            Pn -= t3 * np.sum((Pn - S[:, 0]) * t3, 1, keepdims=True)
-        st = Pn - P
-        if neck_x:
-            # in front of / behind the neck the cloth doesn't follow the body up the throat or the nape: past the
-            # neck's base it runs on as it was going (a lapel's flap following the neck was turned out into the air)
-            # (eased over WORN_NECK_CLEAR across: a column that stops following beside one that follows tore the
-            # cloth between them, 4.9x at Garrett's neck point)
-            wf = np.clip((neck_x + WORN_NECK_CLEAR - np.abs(S[:, 0, 0])) / WORN_NECK_CLEAR, 0.0, 1.0)
-            wf = (wf * wf * (3 - 2 * wf)) * np.clip((P[:, 2] - (hz - WORN_NECK)) / 0.02 + 0.5, 0.0, 1.0)
-            st = (1 - wf)[:, None] * st + wf[:, None] * WORN_STEP * D
-        st *= (WORN_STEP / np.maximum(np.linalg.norm(st, axis=1), 1e-12))[:, None]  # (arc length kept)
-        D = st / WORN_STEP
-        P = P + st
-        S[:, j] = P
+    def march(free_neck):
+        P_, D_ = P.copy(), D.copy()
+        S_ = S.copy()
+        for j in range(1, ns):
+            n = nrm(P_)
+            n = n - t3 * np.sum(n * t3, 1, keepdims=True)
+            n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+            d = np.cross(t3, n)  # in the plane, along the surface
+            d *= np.where(np.sum(d * D_, 1) < 0, -1.0, 1.0)[:, None]
+            d = 0.5 * d + 0.5 * D_  # (a little momentum: a crease's normals still turn sharply)
+            d -= t3 * np.sum(d * t3, 1, keepdims=True)
+            d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
+            Pn = P_ + WORN_STEP * d
+            f = min(1.0, j * WORN_STEP / WORN_RAMP)
+            want = c0 + (target - c0) * (f * f * (3 - 2 * f))
+            for _ in range(2):
+                n2 = nrm(Pn)
+                Pn = Pn + n2 * (want - body.clearance(Pn))[:, None]
+                Pn -= t3 * np.sum((Pn - S_[:, 0]) * t3, 1, keepdims=True)
+            st = Pn - P_
+            if free_neck:
+                # in front of / behind the neck the cloth doesn't follow the body up the throat or the nape: past the
+                # neck's base it runs on as it was going (a lapel's flap following the neck was turned out in the air)
+                wz = np.clip((P_[:, 2] - (hz - WORN_NECK)) / 0.02 + 0.5, 0.0, 1.0)
+                st = (1 - wz)[:, None] * st + wz[:, None] * WORN_STEP * D_
+            st *= (WORN_STEP / np.maximum(np.linalg.norm(st, axis=1), 1e-12))[:, None]  # (arc length kept)
+            D_ = st / WORN_STEP
+            P_ = P_ + st
+            S_[:, j] = P_
+        return S_
+    S = march(False)
+    if neck_x:
+        # the two lays (following the body, running on past the neck's base) mixed by POSITION across WORN_NECK_BAND
+        # (mixed by direction step by step, two columns 4 mm apart ended 65 mm apart: Garrett's gorge strip 3.5-4.5x)
+        wf = np.clip((neck_x + WORN_NECK_BAND - np.abs(S[:, 0, 0])) / WORN_NECK_BAND, 0.0, 1.0)
+        wf = wf * wf * (3 - 2 * wf)
+        if wf.any():
+            S = (1 - wf)[:, None, None] * S + wf[:, None, None] * march(True)
     # the ridge: where a column's height peaks and falls again (over the shoulder)
     jr = np.argmax(S[:, :, 2], axis=1)
     zr = S[np.arange(len(gx)), jr, 2]
@@ -1315,6 +1358,7 @@ WORN_PULL = 0.2  # share of the way a worn seam to a made piece (the collar) is 
 WORN_OVER = 0.01  # m a worn top may run on past its own column's ridge
 WORN_CLEAR = 0.005  # m a worn top starts off the body under it: it RESTS on the shoulders (at the draped 12 mm the jacket
 # started 19 mm over the shirt at the shoulder, and its made collar, carried where it started, held it 27 mm high)
+WORN_NECK_BAND = 0.04  # m out past the neck point (world x) over which a column hands over from running on to following
 WORN_NECK_CLEAR = 0.02  # m out from the neck point (world x) from which a column's ridge is the shoulder's
 WORN_NECK = 0.05  # m under the neck point from which a column in front of / behind the neck stops following the body  # m a worn column may slide along its path to put the piece's top on the shoulder's ridge
 
@@ -3471,7 +3515,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     if smooth:
         # nothing may start through anything else (a solver that keeps its contacts can't undo it): a sleeve whose cap
         # starts through the bodice round the armhole goes 1 cm further down the arm at a time (the sewing pulls it up)
-        hit = {a for a, b in _piece_crossings(Xp, M) for a in (a, b)
+        _xp = sorted(_piece_crossings(Xp, M))
+        B.setdefault("sleeve_hits", []).append([p_ for p_ in _xp if any(pcs[q_]["wrap"].get("to", "").startswith("arm.") for q_ in p_)])
+        hit = {a for a, b in _xp for a in (a, b)
                if pcs[a]["wrap"].get("to", "").startswith("arm.") and "follow" not in pcs[a]["wrap"]}
         # a sleeve still pushed off the body where it stands out further already (a coat's under sleeve's corner at
         # the armpit: 12% stretch) goes down the arm too
