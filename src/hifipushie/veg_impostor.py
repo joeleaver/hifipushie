@@ -234,7 +234,11 @@ def _recipe(n: int, size: float, centre) -> str:
             "0.5 - dot(P - centre, U(f)) / size), P = the fragment's object-space position, atlas uv = (column + uv) / frames; one "
             "parallax step first: depth = (normal atlas alpha there - 0.5) * size, P <- P - d * depth, uv again; "
             "colour and normal premultiplied by alpha, alpha scissor 0.5; the normal map is OBJECT space (rgb * 2 - 1, glTF axes): "
-            "NORMAL = (VIEW_MATRIX * MODEL_MATRIX * vec4(n, 0)).xyz. Reference Godot 4 shader: " + SHADER + ". Do not receive "
+            "NORMAL = (VIEW_MATRIX * MODEL_MATRIX * vec4(n, 0)).xyz. COST: import both atlases WITH MIPMAPS (the normal atlas as plain RGBA: "
+            "its alpha is the depth) and sample every fetch, the parallax depth too, at one mip level from the pixel's footprint; "
+            "when the bake square is small on screen (under ~160 px) sharpen the blend toward the nearest frame (power up to 16 at "
+            "64 px), fade the parallax step out and skip frames weighing under 0.02; discard on the albedo fetches' alpha "
+            "before any normal fetch (the reference shader does all of it: ~10x cheaper per impostor pixel). Reference Godot 4 shader: " + SHADER + ". Do not receive "
             "shadows on it (cast is fine: in the shadow pass the quad faces the light and draws the view from the sun's side).")
 
 
