@@ -4257,6 +4257,46 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       channel); cartoon conifer spring is barely distinct; cartoon oak winter is a few fat limbs (more stubs?); anime
       grass dabs read as flat coins on sticks from the side; realistic small plants' winter primitive; impostor depth
       parallax beyond one step; the guide's styles table for stands / sets.
+  - Vegetation styles 5 (2026-10-07, "vegstyle5" agent, branch `worktree-agent-a0b734a7496db7e3e`; sheets vs_40..vs_46;
+    deliveries /mnt/data/hifipushie/vegstyle/{pixar_oak, pixar_spruce, pixar_grass, pixar_daisy} new + every tree
+    re-exported in place (contract 9); Godot checks /mnt/data/hifipushie/vegstyle5/gd/; references
+    workspace/veg_refs/stylised/ (fetched.jsonl: BBB forest, Spring, Sprite Fright plants; no whole stylised broadleaf tree
+    found: Commons rate-limits after ~4 fetches); scratch in the worktree's untracked `scratchpad/` (vegstyle4's scripts
+    + p1.py <species> [style json] (pixar numbers per LOD, no Blender), q2.py (far | 25 m | crown edge | clay), iou.py
+    <species> <sheet> '<list of crown overrides>' (IoU sweep), od.py (anime overdraw per LOD), foot.py, tieru.py,
+    inject_crops.py / shrink_crops.py (crops into a delivered seasons json: Godot test), fetch_ref.py, q5.sh / q6.sh
+    (export queues, logs q5_*.log / q6_*.log, *_done files)).
+    - Cartoon fixes: big leaves were `leaves.width` read as metres (5x wide plates, horizontal: green shards edge-on from
+      eye level): now leaf-shaped plates on clump EDGES, face turned sideways (`big_leaf_soft`, `big_leaf_roll`); flare =
+      concave foot `flare_height` trunk diameters tall, foot node under the ground (a sphere on the ground = the mound);
+      `head_up` = how far a flower faces the sky (a head along a leaning stalk showed shaded petal backs), petal normals to
+      the sky; anime `heads_kind` "dab" = clusters of blobs along the head (`dabs`, `dab_length`, `dab_size`, `dab_flat`);
+      `seasons.<se>.tips` {color, band [whole, gone]} = a RAMP texture over TEXCOORD_0.x in that season's material
+      (`veg_style.season_ramp` / `ramp_texture`; cartoon fir spring = lime tier rims; contract 7); `seasons.spring.evergreen`.
+    - Impostor crops (contract 8): `veg_impostor.crop` / `crops` / `drawn_share`; extras `crop`, `crops` (per frame,
+      k = column * n + row), shader `crops[256]` + `has_crops` = the union of the 4 blended frames' crops; octa.gd sets them
+      and now applies a season's factor + baseColorTexture from the json. Frames average ~0.62 of the square (oak): ~35%
+      fewer impostor pixels, coverage / IoU in Godot unchanged; a shrunk-crop test proved the shader reads them.
+    - Anime LOD overdraw: `crown.lod_layers` [kept < lod 0.6, < 0.3] (outer layers) + `lod_area` (card growth exponent).
+      Oak [2, 1] / 0.3, spruce [2, 2] / 0.35. At 0.2 the oak's LOD2 covered 0.83 of LOD0 at its switch in Godot.
+    - PIXAR (`vegetation_styles/pixar.json`): masses (`spread` 1.3) + `crown.sub` secondary clumps (`_subclumps`: each
+      mass's own twigs k-meansed again, `sub_spread`, `sub_min`, `sub_join`), `crown.gradient` + `warm_tip` on the shell
+      (`_shell_and_cards`), `crease_dark` / `crease_width` (AO where two clumps meet: the two nearest elements nearly
+      equally near), `thickness` (ray in along -N, TEXCOORD_3.y), `crown.cards` = `veg_cloud.shell_cards` (+ `shell_atlas`:
+      dab_atlas with `true` species outlines; `leaf`, `count`, `length`, `out`, `cover`, `tilt`, `roll`, `cup`, `under`,
+      `tone`, `warm_tip`, `share`, `verts`, `width`, `size_m` (needles), `rim`, `lod_grow`), slot `foliage_cards`
+      (contract 9), extras.translucency. Conifers: tiers `tier_shape` cone + sub-clumps (bough lobes) + needle sprays.
+      Clumps: lush thin blades (`fan` 6), petals, dab spikes. Oak round 1 (vs_41: 8 balloon shells + confetti, the
+      coordinator: "not Pixar yet") -> round 2 (vs_46): IoU 0.941, LOD0 20,000 (cards 14,450), reads as a leafy canopy at
+      two scales. Godot (round 1 file): impostor/LOD2 coverage 0.98-0.99, card coverage at switches 0.88-0.96.
+    - Realistic small plants: slot foliage_winter too (`veg_export` realistic branch: the plant regrown at winter, its
+      cards lying; main foliage hidden in winter / snow by a hidden copy material). test_winter_blades_lie_in_the_export.
+    - Tests: test_veg_style (+ test_pixar, test_cartoon_fixes), test_veg_impostor (+ crops), test_vegetation: 67 passed.
+    - NOT DONE / open: judge pixar against a real feature-animation tree still (none found under CC yet); pixar spruce
+      tiers blur into one lumpy cone with the sub-clumps; pixar oak's limbs visible only low; thickness is ~4 m nearly
+      everywhere on the oak (the core fills it: a shell-only thickness would vary more); verify q5 / q6 exports
+      (Khronos + gdo.sh / gdc.sh per tree) if this note still lists them as running; impostor octagon instead of a
+      rectangle; cartoon oak winter stubs.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
