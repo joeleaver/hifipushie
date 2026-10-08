@@ -2406,6 +2406,58 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     pattern sheet, closures / collar seams were not judged one by one (made pieces are interfaced: untouched).
     Careful: `cloth.export_part` / `garments(simulate=True)` STARTS SIMS for uncached garments (an orphaned ZOZO job
     of mine had to be killed): test exports on cached models only.
+- Suit 5 (2026-10-08, "suit5" agent, branch `worktree-agent-a7a27cfe57b8650a5`; renders `cloth_renders/su_5*`; scratch
+  DURABLE in /mnt/data/hifipushie/suit5/: the layers agent's scripts retargeted + pl0.py <model> <garment> <tag>
+  (build place_only ONCE, pickle Bp / mesh / placing body to out/<tag>.pkl) and pl1.py <pkl tag> <out tag> (place()
+  again with the CURRENT code in seconds: seam start gaps, start stretch per piece, lapel folds, crossings, worn
+  slides; NORELAX=1 skips the start relaxation; saves out/<out>.npz), shd.py (where the shoulder seam's sides start),
+  wdbg.py (one worn column's trace), worst.py <tag> <pieces> (worst start triangles), xing.py / xing2.py (crossing
+  pairs; a piece's self crossings as flap / row / base), over.py (share of triangles starting past 5%: ZOZO gives a
+  local strain limit only under 3%), gapchk.py <job sim dir | npz> (what ZOZO sees at frame 0: cloth within 1 mm of
+  unjoined cloth, collider within 2 mm: "ccd failed (toi 0)" at newton step 1 is THIS or a start past the strain
+  limit), tent.py <result npz> (open fronts' forward stand by height vs the body, the hem's level by angle), patm.py,
+  run_base.sh (main's code from ./base, a detached checkout), shirtchk.py <model> (the shirt alone)).
+  - THE FOREPART BUILT WHERE IT IS WORN (`cloth._worn_top`, garment key / kind `worn_top`: garment_kb kinds jacket and
+    coat; `cloth.worn_top(g)`). Torso pieces reaching the neck point: each column (fixed pattern x) laid up the body
+    from the torso cylinder at the armpit's level in a plane of constant world x (tilted with the cylinder the
+    columns ran in to the neck and front and back met different ridges), clearance easing to `WORN_CLEAR` 5 mm (at the
+    draped 12 mm the jacket started 19 mm over the shirt and its carried collar held it 27 mm high: collar_show -33,
+    cuffs 21-29), arc length = pattern height; ONE slide per piece (median over the columns that cross the shoulder's
+    ridge, by the neck the ridge climbs the neck) so its top lands on the ridge, the cylinder part below moves with it,
+    side panels with the mean. Columns in front of / behind the neck stop following the body above `WORN_NECK`.
+    `_pin_seams`: seams between worn pieces pinned PIN_GAP 2 mm apart toward each side's own cloth (pinned onto one
+    point the cloth crossed), faded over the pattern (WORN_PIN); seams to a made piece (the collar) pulled half way.
+    The start relaxation (place's final loop) alternates relax + pin + `_repress` for worn pieces, 12 rounds.
+    `folds.pressed_flap`: a lapel (fold >= 150 deg on a worn piece, `_pressed`) is PRESSED onto its forepart: each flap
+    vertex at its mirror image across the first row in the pattern, on the base by the affine map of the triangle
+    holding it, PRESS_LAY 3 mm off, PRESS_WEDGE 0.3 slope by the line (turned rigidly about the roll line over a
+    curving forepart it stretched 30% by 50 deg; at 0.06 slope 88 lapel vertices started within ZOZO's 1 mm contact
+    gap: "ccd failed" at frame 0). A pressed fold's first row relaxes with its base. `_on_seam(placed=)`: the collar
+    lies on the placed partners (`_at_pattern`: a piece's pattern point where the piece lies), not on the body chart.
+    `garment_kind` reads a compiled garment's `_design` (it returned "any": seam finishes by kind never applied).
+    Start (ga_suit jacket over the shirt): shoulder seams 233-249 -> 2 mm, CB 16 -> 2, collar neck seams p50 131-163
+    -> 4 mm, lapels 165 deg + 46 deg (L blocked) -> 176 / 176 pressed, 1.5% of draped triangles past 5%.
+  - su_53 (ga_suit5, 2 cm ZOZO, 736 s): fits, 0 layer crossings, seams ALL closed after the clean-up (sim p95 3.3 mm;
+    su_45: 15 pairs open, front.L neck 56 mm), lapels roll 150 / 161 deg (su_45: L 99), cuff_show 15.3 / 13.5 (was
+    8.4 / 7.2: the jacket now hangs from the shoulders), collar_show 5 (target 10-20: jacket collar still a little
+    high), lapel_gap 13.6 (lapels stand off), collar_hug 24, 2 self crossings at the left gorge. Tent (tent.py): front
+    hem 20-26 mm above the back's (su_45: 19-70), the open fronts 5 cm forward of the chest line at the hem, now
+    symmetric (su_45: L 17 cm off the body at the hip, R 10; su_53 12-13 both).
+  - `front_balance` (bodice block option, m; default 0): the front above the chest line spread upward. 20 mm on ga_suit5
+    (su_54): hem level (back 837, front 839-859) but the sleeves rode up and bunched (cuffs 24 / 40 mm, sleeve seams
+    64 mm open: the raised front armhole), tent unchanged. NOT adopted (ga_suit5 back without it). If tried again,
+    keep the armhole: raise only the neck point / gorge and CF, or redraft the sleeve against the new armhole.
+  - THE SHIRT: ga_suit's shirt fails main's `fine_start_check` (53 triangles over 1.6x, worst 3.0x at front.R pattern
+    [-0.037, -0.103]), checked with main's own code (4fa7cdc): trousers2's. `workspace/ga_suit5` = ga_suit with the
+    shirt's `fine_settle: false`; the jacket work ran on it. Drop it once the shirt builds.
+  - Tests: the ten cloth / pattern files + test_collar (+ test_worn_forepart; the collar lay tests run with
+    worn_top off) + test_seams pass after merging main 4fa7cdc.
+  - NEXT, in order: (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
+    the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
+    suppression; a sim with interfaced [] isolates the canvas); (2) collar_show 5 -> 10-20 (the jacket collar's stand
+    over the shirt's; lower the stand or the worn neck); (3) lapel_gap 13 mm (the pressed lapel's roll rows spring
+    back: made_folds on the lapel is now possible since the forepart starts worn); (4) su_garrett: carry ga_suit's
+    jacket settings + canvas bands, then the layered sim (needs the shirt to build).
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
@@ -3721,6 +3773,74 @@ regresses, bisect by building one spec at each commit and diffing heights.
       subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
       fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
       height / hollows (numbers only today).
+  - Sea stacks (2026-10-07, "stacks" agent, branch `worktree-agent-aeb27454ed1610793`; the user on pushieworld's Kaze
+    coast in Godot: "Seastacks don't look like real seastacks, they're kind of a mess"; references
+    workspace/level_refs/stacks/ (9 CC photos: Old Harry, Twelve Apostles, Duncansby, Yesnaby, Bedruthan, Reynisdrangar,
+    Old Man of Hoy, Risin og Kellingin; README with licences); sheets /mnt/data/hifipushie/stacks/st_sheet3.png (photos |
+    old clay | new clay | each style) and st_island_before_after.png (tl2_island Kaze, anime textured, preview_tiles);
+    scratch DURABLE there: run.sh / run_main.sh <script> (this worktree's / main's code, orig/ = git archive of main),
+    iso.py (one island stack meshed from the export's field: full | real (styles off) | norelief | alone), col.py /
+    variety.py (Columns alone + 3D measures), styles_row.py (stack0 in each style), tune.py '<json list of FORM
+    overrides>' (silhouette + 3D measures over 8 columns), measure.py (photo masks + the same silhouette measures),
+    clay.sh out.png az el meshes.npz... (Blender workbench, an ortho panel per mesh; CROP=m), sheet.py, prev.py <tag>
+    [styles|baked|clay] (preview_tiles round the island's stacks + sea views; ~40 min of it is the heavy queue),
+    exp.py (tiles export with checks), hang.py / slice.py / pieces.py (a column's loose or hanging pieces),
+    oldstack.py (the old Stack, for before / after)).
+    - DIAGNOSIS (iso.py, r00_base.png): the mess was the Stack prism's OWN form, not the style or the field: the full
+      field (anime), styles off, rock relief off and the Stack's sd alone mesh nearly the same pile of tyres (beds
+      1.6 m thick each +-0.2 r proud / set back all round, lobes 0.55 r changing every 6 m, a lowered broken top that
+      cut sections loose: tiles2's floating pieces at z 38-39 over stack0). The dark stripes in Godot are the anime
+      sheet's rock `bands` texture (still there: even painted strata over every face; terrainstyle's call).
+    - Measures (photos vs ours; measure.py, tune.py): silhouette edges over 15-92% of the height: swell (edge minus its
+      25%-height smoothing / width), bulges (outward maxima per height-in-widths), straight (curvature under 1.5% of the
+      width over 3% of the height), top_over_base (width at 85% / 15% of the height); 3D: vertical_nz (side area's
+      median |nz|), planar (side area within 8 deg of six azimuths), top_flat. Photos (4 Apostles + Hoy; the Duncansby
+      and Reynisdrangar masks are unreliable): swell 0.039, bulges 1.75, straight 0.59, top/base 0.61 (0.48-0.80),
+      h/w 1.9. Old: 0.036 / 3.65 / 0.28, vertical 0.29, planar 0.30. New (Column alone, 8 cases): 0.019 / 1.11 /
+      0.56, top/base 0.64 (batter 4.5), h/w 2.6, vertical 0.14, planar 0.56 (the field's facets add the fine breakup on top). Real
+      stacks DO taper (0.6); they don't end in a point.
+    - `terrain_stack.py` (Column, FORM, form): the plan = two joint families' faces (65-115 deg apart, own offsets,
+      chamfered corners, a stray joint slicing one side off), edges a smooth max (`bevel`); CUTS = box windows in
+      (height, position along the face) with soft edges (`ramp`, wider for deep cuts so |grad| stays < 3): steps where
+      blocks fell above OR below a bed over part of a face, soft beds (1.2 per m, 0.3-0.8 m thick) eroded back 0.15-0.35 m on part of 2-4
+      faces at irregular heights (ledges, never rings: all round on every bed was the pile of tyres), open joints as slots,
+      corners gone from a bed up; faces batter in 4.5 deg (capped at 35% of the offset), wander, light warps (`rough` 0.02: at
+      0.08 they read as draped cloth); the top flat and dipping, 1-3 parts of it fallen lower; stage auto: broad,
+      slender, stump, rarely (p_spire 0.12 of slender ones) a spire tapering IN LEDGES to a crest >= 2 m wide at the
+      top (two planes meeting in a knife edge meshed as a comb of slivers; a smooth taper read as a bullet / cathedral
+      spire); the notch deepest on one exposed side, its height per face in the tide band, uneven along the face; 2-5
+      fallen blocks LEANING on the foot (drawn in until they overlap the column: alone in deep water they float). Every
+      section keeps >= 50% of its plan offset and >= max(1 m, 0.18 x offset). Cut depths scale with height / width on
+      squat stacks (a stump cut like a tower read as a carved chair). terrain_mesh.Stack wraps it (same name and
+      interface + `over`, `sea`, `stage`); `stacks(T)` takes each stack's style form from
+      `terrain_style.stack_form` (the `rock.stack` of the style weighing over half at its centre; "stack" is a
+      ROCK_KEYS key that does NOT count as shaping the field, so the realistic-zone invariant is untouched). Sheets:
+      anime crisp (bevel 0.25, bigger steps, more spires), blobby a rounded pebble pillar (bevel 2.2, no slots or
+      spires), cartoon chunky and battered (few thick beds, big steps), pixar soft (many shallow beds, top-heavy).
+      The field is scaled 0.8 (overlapping cuts steepened it to ~3.5).
+    - tests/test_stacks.py: one piece down to the plinth (every section connected below, face + edge connectivity at
+      0.5 m: a voxel touching only by a corner is what marching cubes cuts loose), continuous (|grad| < 3), vertical
+      and planar walls, deterministic, overrides checked, every sheet's keys known.
+    - Sea cliff talus (terrain_sea): the smooth 13 m domes between the island's stacks were the apron at 0.3 x the
+      cliff's height; now `TALUS_SHARE` 0.08 x height + `TALUS_BASE` 4 m (<= 0.3 x) at `TALUS_SLOPE` 36 deg out from
+      the foot, its blocks the 3D tiles' fallen blocks (fall_zone finds it). Changes every cliffed coast's heightfield.
+      With 2 m / 32 deg the low apron lay in the splash band and its fallen blocks flipped rock / wet rock / sand
+      between LOD 0 and LOD 2 (pebble lod0_vs_lod2 orm p95 0.213 > 0.15); 4 m / 36 deg passes.
+    - pebble_disc tiles (this branch vs main, same machine): the only failure is main's own (lod1 map normals p95
+      15.78 vs main 15.55, limit 15); shards LOD 0/1/2 0.0082 / 0.0252 / 0.230% (main 0.005 / 0.023 / 0.198);
+      floating 0; Khronos 1044 files 0 / 0 (round 3 export). Tests also: no sealed air in a column at 0.2 m, no recess
+      narrower than ~1 m (thin air 0.07-0.22% of the solid: bevel corners), test_level_look, test_terrain_style,
+      test_tiles pass.
+    - Detached foot pieces (2026-10-08, branch `stacks-foot`; tiles2: 30 triangles 0.75 m over the heightmap at
+      [228.6, 981, -0.8] by tl2_island stack2): (1) the rock relief BUILT 0.3-0.4 m out from the column over its notch
+      (a lip in the air); a Stack's relief now builds at most `terrain_mesh.STACK_BUILD` 0.05 m (`vol.build`, weighted
+      by the stack's relief share `Field.build_w`: continuous, fields without stacks untouched); (2) the column's rock
+      ended at base - 1 m while the sea floor round it is deeper: its rim hung over the floor and the relief cut it into
+      pieces. `Column(foot=)` = the lowest ground within 2 radii - 1.5 m (`stacks(T)`); (3) fallen blocks seat
+      `BOULDER_SEAT` 1.2 m inside the column. Test: tests/test_stacks.py::test_no_piece_detached_at_the_foot (a
+      synthetic cliff coast with 3 stacks: every solid piece round each foot reaches the ground; failed before).
+    - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
+      cliff shell on these stacks.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
@@ -4442,6 +4562,52 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       0.90 / 0.94), anime_spruce, cartoon / blobby oak + spruce, pixar / anime / real grass, pixar daisy. Realistic
       grass: LOD2's clustered atlas has slot `foliage_boughs2_winter` (lying cards: keep 1.0 when the LOD's keep share
       leaves none).
+    - Pixar LOD overdraw (consumer note 87: the vale's pixar wood at 56 ms): `crown.cards.lod_keep` [share of the cards
+      kept under lod 0.6, under 0.3] + `cards.lod_area` (growth exponent; 0.5 = same area): the shell carries the mass.
+      scratchpad/od2.py = summed card area / covered area (overdraw before alpha) per LOD. Oak [0.5, 0.55] / 0.4: LOD1
+      13.3 -> 6.2, LOD2 10.3 -> 5.9 (front; LOD0 13.6 untouched: the next lever if the vale is still slow); Godot card
+      coverage at the switches 0.96 / 0.91, 0.89 / 0.85, 0.86 / 0.99 ([0.45, 0.35] / 0.35 gave LOD2 0.82). Spruce [0.45,
+      0.35] / 0.35: LOD1 3.0 -> 1.4, LOD2 3.0 -> 0.9; Godot 0.96 / 0.94, 0.91 / 0.89. Both re-exported, Khronos 0 / 0.
+  - Impostor pixel cost (2026-10-08, "impostor" agent, branch `worktree-agent-a4a49e9b179132f6a`; consumer note 89: impostors
+    ~13 ms of the vale probe, crater rim worst). Scratch DURABLE in /mnt/data/hifipushie/impostor/: bench.sh <cfg> (waits for
+    gpu_busy < 15%, runs spikes/godot_veg/bench.gd), q.sh <tag> <cfgs> (queue), mkcfg.py <tag> <set> (field configs b1 / b2),
+    mkpath.py + path.py (pop test: camera arc 420 -> 80 m round a small wood, frame-to-frame change), report.py <out prefix>
+    (gpu ms med / min, minus the no-impostor run, coverage / IoU / colour diff vs a reference variant), octagon.py (tightest
+    45 deg octagon in the quad's uv over every view cell), octa.sh (octa.gd + octa_measure vs LOD2), old.gdshader (the
+    contract-9 reference + the consumer's `cheap` mode), and pw/ = a COPY of the pushieworld project (never their repo):
+    imports.py <mips 0|1> <compress mode> sets the impostor atlases' import options there, port.py ports the reference
+    shader's new parts into the copy's own impostor shader (pw_old_ / pw_new_impostor.gdshader), pw/tools/dev/imp_probe.gd
+    = GPU ms with / without impostors at crown_rim, vale, crown_camp, overview (logs g_*.log, shots_old / shots_new_mips).
+    - ROOT CAUSE: the consumer imports every impostor atlas with `mipmaps/generate=false` (and lossless), so a far impostor
+      (a 2048 atlas, 256 px frames, drawn 30-90 px) misses the texture cache on all 12 fetches a pixel; and the reference
+      shader read the parallax depth at `textureLod(..., 0.0)`, which stays level 0 even with mips. Our own octa.gd always
+      generated mipmaps, so no check of ours ever saw it.
+    - Reference shader (spikes/godot_veg/impostor_octa.gdshader; same uniforms, new ones with defaults, so contract 6-9
+      files work unchanged; GLB and contract NOT changed): one mip level per fragment from its footprint on the bake square
+      (`lod`, + `mip_bias`, <= `max_lod` 5), the bake square's size on screen from the same footprint (frame_tex / foot px;
+      VIEWPORT_SIZE in vertex() read 0 in 4.7) -> t = 0 at >= `near_px` 160 .. 1 at <= `far_px` 64: blend power
+      blend_sharp -> `sharp_far` 16 (by t^2), parallax faded by 1 - t and skipped at t = 1, frames under `min_weight` 0.02
+      skipped (renormalised), coverage summed from the albedo fetches and `discard` before any normal fetch. Continuous: the
+      pop test shows no spike (largest step / its neighbours x1.17, as the full blend's x1.19); far mode differs from the full
+      blend by 0.13e-3 mean per frame (the consumer's `cheap` mode: 0.37e-3, max 2.7e-3).
+    - Bench (spikes/godot_veg/bench.gd, 1280x720 MSAA 2x, 508 trees at 150-256 m + 2273 at 256-640 m thinned from 320 m,
+      camera 120 m up, gpu_busy 1-2% before each run; impostors' own ms = minus the no-impostor run 1.0 ms), pixar spruce /
+      oak: consumer now (old shader, no mips, cheap far) 19.9 / 23.1; old shader + mips 10.9 / 13.0; new shader no mips 11.1
+      / 13.7; NEW + MIPS 2.2 / 3.1 (coverage 0.999 / 0.998 vs now, IoU 0.997 / 0.993); new full blend everywhere + mips
+      4.1 / 5.4; + S3TC (DXT5) 1.6 / 1.9; mip_bias 1 1.6 / 2.0; thresholds 256 / 128 1.7 / 2.1, 96 / 32 3.0 / 4.7;
+      octagon mesh (area 0.89 of the cropped rectangle) 2.2 / 3.3 = no gain: dropped.
+    - IN THE GAME (pw copy, island, imp_probe GPU median, impostors on minus off): crown_rim 14.6 ms (now) -> old shader +
+      mips 5.8 -> new shader no mips 5.6 -> NEW + MIPS 0.34; vale 4.5 -> 1.6 -> 2.1 -> 1.1; overview 0.6 -> ~0 -> 0.4 -> 0.2.
+      island_shots frame median crown_rim 25.2 -> 8.5 ms, vale 18.8 -> 12.5, downs 12.5 -> 8.9. Pictures side by side
+      (cmp_island_crown_rim.png, cmp_rim_zoom.png): the same forest, a touch softer and without the no-mip sparkle.
+    - octa.gd (orthographic, so t = 0: the full path) vs LOD2: identical to the old shader to 0.001 (spruce coverage 1.05-1.09
+      IoU 0.90-0.93; oak 1.06-1.09 / 0.86-0.90).
+    - For the consumer: (1) set `mipmaps/generate=true` on every *impostor*.png import (both atlases; keep the normal atlas'
+      compress/normal_map off: RGTC would drop its alpha = depth); (2) take the fragment of the new reference shader into
+      game/style/plant_impostor_octa.gdshader (port.py shows the splice: uniforms + fragment up to ROUGHNESS); (3) `cheap`
+      can go (t reaches 1 by itself at ring 4 distances; keeping it maps cheap -> t = 1); thinning is theirs to keep;
+      (4) optional: compress/mode=2 (VRAM, DXT5) for another ~0.5 ms in the bench and 4x less VRAM (53 atlases x 21 MB with
+      mips uncompressed). Tests: test_veg_impostor (+ far mode lands the plant, shader keeps its uniforms).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

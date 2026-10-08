@@ -194,12 +194,58 @@ def test_weights_by_index():
     assert "Hand" in names[int(W[tip].argmax())]
 
 
+def test_head_size_scales_about_the_centre_line():
+    """style.human.head_size scales the head about the neck's top ON THE CENTRE LINE: the eyes stay mirror images
+    and the eye midpoint stays at x = 0 (the pivot once fell to a bounding-box corner: the face moved 10 mm sideways)."""
+    from hifipushie import base as basemod
+    from hifipushie.spec import expand_mirror
+    from hifipushie import humans
+    sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human")
+    sp["base"].setdefault("style", {})["human"] = {"head_size": 1.12}
+    h = basemod.head_of(expand_mirror(sp), sp["base"])
+    E = np.asarray(h["eyes"], float)
+    assert abs(E[0, 0] + E[1, 0]) < 1e-4, E
+    assert abs(E[0, 1] - E[1, 1]) < 1e-3 and abs(E[0, 2] - E[1, 2]) < 1e-3, E  # (a seed is a hair asymmetric: 0.2 mm)
+
+
+def test_face_shapes_by_index_on_own_quads():
+    """On the one mesh's own quads (parts.body.topology "wrap") the head's vertices ARE GNM's: face shapes are GNM's
+    offsets by vertex index (no projection), GNM's mouth sock closes the mouth, its interior surfaces aren't snapped
+    onto the field, and the neutral's lips meet on GNM's contact ring. jawOpen moves evenly (the projected path's
+    strands read 3.2 on the same mesh)."""
+    from hifipushie import faceshapes, humans, retopo
+    sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human",
+                     head={"interior": {"teeth": {"show": 0.0035}, "tongue": True}})  # (GNM's own lips: no mouth_gap)
+    sp.setdefault("parts", {}).setdefault("body", {})["topology"] = "wrap"
+    r = retopo.wrap(sp, log=[])
+    V, L, S, gnm = r["verts"], r["loops"], r["sizes"], np.asarray(r["gnm"])
+    assert (gnm >= 0).sum() > 10000 and any(x.startswith("mouth:") for x in r["log"])
+    st = np.r_[0, np.cumsum(S)[:-1]]
+    T = np.array([(L[a], L[a + j], L[a + j + 1]) for a, k in zip(st, S) for j in range(1, k - 1)])
+    face = faceshapes.face_of(sp)
+    Xn = V + face.neutral(V, "skin", gnm)
+    R = face._lip_rings()
+    assert R["ok"]
+    row = {int(v): i for i, v in enumerate(gnm) if v >= 0}
+    from scipy.spatial import cKDTree
+    gap = cKDTree(Xn[[row[v] for v in R["lo"]]]).query(Xn[[row[v] for v in R["up"]]])[0]
+    assert gap.mean() < 0.0012, gap.mean()
+    n0 = faceshapes.vertex_normals(Xn, T)
+    D = face.displacements(V, Xn, n0, "skin", ["jawOpen", "eyeBlinkLeft"], None, gnm)
+    first, Tw, _ = faceshapes.weld(Xn, T)
+    for nm in ("jawOpen", "eyeBlinkLeft"):
+        u = faceshapes.unevenness(Xn[first], Tw, D[nm][first], face.off_margins(nm, Xn[first]))[0]
+        assert u < faceshapes.UNEVEN_LIMIT, (nm, u)
+    assert np.linalg.norm(D["jawOpen"], axis=1).max() > 0.015
+
+
 if __name__ == "__main__":
     test_asset_topology()
     print("ok test_asset_topology")
     if have():
         for fn in (test_the_stitch_follows_every_body, test_template_is_one_closed_mesh_and_deterministic,
                    test_identity_fades_out_at_the_stitch, test_old_paths_never_touch_it,
-                   test_whole_person_builds_and_measures_as_the_old_path, test_weights_by_index):
+                   test_whole_person_builds_and_measures_as_the_old_path, test_weights_by_index,
+                   test_head_size_scales_about_the_centre_line, test_face_shapes_by_index_on_own_quads):
             fn()
             print("ok", fn.__name__)

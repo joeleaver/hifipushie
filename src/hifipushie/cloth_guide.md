@@ -268,6 +268,21 @@ The plan lists:
   the outer collar's stand at centre back is about the under collar's stand less what should show (10-15 mm), so a
   short neck with a 20 mm shirt band takes a ~24 mm jacket stand; the outer sleeve ends 10-15 mm short of the
   under cuff (a jacket sleeve near the wrist bone: `length_bonus` about -0.03 over a shirt that reaches the hand).
+- **Built on the form (jackets, coats).** A tailor builds a forepart on a form, not round a cylinder. Garments whose
+  kind says so (garment_kb.json `kinds.<k>.worn_top`: jacket, coat; garment key `"worn_top"` overrides) start each
+  front and back where it is WORN: below the armpit on the torso cylinder, above it laid up the body column by
+  column (a front up the chest and over the shoulder) and hung so its top lands on the shoulder's ridge; the side
+  panels hang with them. The shoulder and centre back seams are pinned shut, the collar is laid on that neckline
+  and the neckline pinned to it, lapels are PRESSED onto the forepart (the flap's mirror image across the roll
+  line), and the start relaxes with those pins held. On the cylinder a jacket's shoulder seams started 23-25 cm
+  apart and its collar 13-25 cm from its neckline; the sewing could not close that with a made collar held, and the
+  left lapel unrolled (99 deg) with its gorge crumpled. Built on the form: shoulder seams 2 mm, collar seam 4 mm,
+  both lapels rolled (150-165 deg), every seam closed after the sim.
+- **Front balance.** A man's chest stands forward of his neck point, so a jacket's front is longer than its back
+  between the neck point and the chest line (bodice block option `"front_balance"`, metres: the front's neck point
+  and shoulder raised, easing to nothing at the chest line). Cut as long as the back, an open front is pulled up over
+  the chest: its hem rides 2-6 cm above the back's and kicks forward (the "tent" seen from the side). Read it on the
+  sim: the hem's level all round (front vs back) and the open front's edge against a line dropped from the chest.
   Pressing the under garment harder (`under_cap` 0.004) keeps the outer one's girth for itself.
 - **A piece laid from its seam.** Wrap `{"to": "seam"}` places a piece from the edge it is sewn to (a tailored
   collar's stand on the jacket's neckline, a collar on its stand), along the body, at the pattern's lengths; `"turn":

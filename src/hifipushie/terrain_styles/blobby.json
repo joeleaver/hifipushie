@@ -19,6 +19,6 @@
   "forest_floor": {"scale_m": 12.0, "ops": [{"op": "blotch", "size": 2.0, "steps": 3, "soft": 0.4, "albedo": 0.12, "height": 0.02}]}
  },
  "snow": {"color": [0.95, 0.96, 0.98], "coverage": 0.85, "breakup": 0.3, "breakup_m": 8.0, "edge": "soft"},
- "rock": {"kind": "pillow", "pillow": {"size": 6.0, "depth": 1.0, "round": 0.5, "stretch": 1.8}, "relief": {"facets": 0, "bedding": 0, "blocks": false},
+ "rock": {"stack": {"bevel": 2.2, "levels": 0.6, "step": [0.1, 0.22], "slots": 0.0, "corners": 0.15, "p_spire": 0.0, "batter": 4.0, "chamfer": 1.0, "boulder": [0.16, 0.3], "notch": 0.9}, "kind": "pillow", "pillow": {"size": 6.0, "depth": 1.0, "round": 0.5, "stretch": 1.8}, "relief": {"facets": 0, "bedding": 0, "blocks": false},
           "soften_m": 3.0, "fallen": 0, "micro": 0, "lip": 0}
 }

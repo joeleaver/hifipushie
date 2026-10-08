@@ -74,6 +74,37 @@ def test_view_lands_where_the_plant_is():
         assert ious[1] > 0.85 and ious[1] >= ious[0] - 0.01, (el, az, ious)
 
 
+def test_far_mode_still_lands_the_plant():
+    """What the shader draws when the impostor is small on screen (blend sharpened to 16, no parallax step): the ball
+    is still where it is seen from there, and close to the full blend."""
+    A = _ball_atlas()
+    C = np.array(A["centre"])
+    b, r, size, px = C + [2.5, 1.0, 0.0], 1.2, A["size"], 128
+    for el, az in ((0, 25), (20, 140), (45, 300)):
+        e, a = np.radians(el), np.radians(az)
+        d = np.array([np.sin(a) * np.cos(e), np.sin(e), np.cos(a) * np.cos(e)])
+        R, U = vi.basis(d[None])
+        t = (np.arange(px) + 0.5) / px - 0.5
+        X, Y = np.meshgrid(t, -t)
+        P = C + size * (X[..., None] * R[0] + Y[..., None] * U[0])
+        q = P - b
+        true = np.linalg.norm(q - (q @ d)[..., None] * d, axis=-1) < r
+        far = vi.view(A, d, px, parallax=0, sharp=16.0)[..., 3] > 0.5
+        full = vi.view(A, d, px)[..., 3] > 0.5
+        assert (far & true).sum() / max((far | true).sum(), 1) > 0.6, (el, az)  # no parallax: a part 25% of the square off the centre slides up to ~6% of the square (4 px at 64 px)
+        assert (far & full).sum() / max((far | full).sum(), 1) > 0.6, (el, az)
+
+
+def test_reference_shader_keeps_its_uniforms():
+    """Old exports keep working with the reference shader: every uniform an engine sets from the extras is still there
+    (the cost uniforms are new, with defaults), and the parallax depth is no longer read at mip level 0."""
+    sh = (Path(__file__).resolve().parents[1] / vi.SHADER).read_text()
+    for u in ("albedo_atlas", "normal_atlas", "frames", "size", "centre", "alpha_cut", "blend_sharp", "crop", "crops",
+              "has_crops", "near_px", "far_px", "mip_bias"):
+        assert f" {u}" in sh, u
+    assert ", 0.0).a" not in sh
+
+
 def test_export_one_quad_with_its_recipe():
     T = v.grow({"species": "birch", "age": 12, "style": "blobby"})
     A = _ball_atlas(n=4, px=16)
