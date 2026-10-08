@@ -135,12 +135,7 @@ def test_no_thin_slots(seed):
     assert frac < 0.004, f"thin air {frac:.4f} of the solid ({int(thin.sum())} cells)"
 
 
-def test_no_piece_detached_at_the_foot():
-    """In a terrain's field (stack + heightfield + rock relief + fallen blocks), every solid piece round a stack's foot
-    and notch reaches the ground or the box's sides: the island's stack2 had a lip of relief-built rock over its notch,
-    a 30-triangle piece floating 0.75 m over the heightmap in the tiles (tiles2, 2026-10-08); on this coast the column's
-    rim hung over a deeper sea floor and the relief cut two pieces off it. Fixed: stack relief builds at most
-    terrain_mesh.STACK_BUILD, the column runs down into the floor (`foot`), fallen blocks seat BOULDER_SEAT deep."""
+def _coast_field():
     import json
     import tempfile
     from pathlib import Path
@@ -154,14 +149,48 @@ def test_no_piece_detached_at_the_foot():
     (d / "spec.json").write_text(json.dumps(spec))
     T = terrain.load(d / "spec.json")
     field, vols, _, _ = tm.build_field(T)
+    return T, field
+
+
+def _style_forms():
+    import json
+    from pathlib import Path
+    import hifipushie
+    out = {"realistic": None}
+    for f in sorted((Path(hifipushie.__file__).parent / "terrain_styles").glob("*.json")):
+        st = (json.loads(f.read_text()).get("rock") or {}).get("stack")
+        if st:
+            out[f.stem] = st
+    return out
+
+
+@pytest.mark.parametrize("style", list(_style_forms()))
+def test_no_piece_detached(style):
+    """In a terrain's field (stack + heightfield + rock relief + fallen blocks), every solid piece from under a stack's
+    foot to over its top reaches the ground or the box's sides, with every style's stack form. Found: the island's
+    stack2 had a lip of relief-built rock over its notch (30 triangles 0.75 m over the heightmap: stack relief now
+    builds at most terrain_mesh.STACK_BUILD); a column's rim hung over a deeper sea floor and the relief cut pieces off
+    (`foot`: it runs into the floor; fallen blocks seat BOULDER_SEAT deep); ts_slice_a's anime stack stood beside a
+    sliver of the heightfield's lobed core cut loose 5-12 m up by the clip under it (124 triangles 9.6 m up: the core
+    is round now)."""
+    from hifipushie import terrain_mesh as tm
+    T, field = _coast_field()
+    over = _style_forms()[style]
+    vols = []
+    for v in field.vols:  # (each stack again with this style's form, as stacks(T) makes it in that style's zone)
+        if isinstance(v, tm.Stack):
+            v = tm.Stack(v.name, v.xy, v.base, v.top, v.r, v.seed, clip=v.clip[0] if v.clip else None, sea=v.col.sea,
+                         over=over, foot=v.col.foot)
+        vols.append(v)
+    field.vols = vols
     st = [v for v in vols if isinstance(v, tm.Stack)]
     assert st, "the test coast has no stacks"
     s18 = ndimage.generate_binary_structure(3, 2)
     for v in st:
-        vox = 0.25
+        vox = 0.3
         m = v.col.reach + 2
-        lo = np.r_[v.xy - m, v.base - 1.5]
-        hi = np.r_[v.xy + m, v.base + 7.0]  # (from under the plinth to over the notch)
+        lo = np.r_[v.xy - m, v.col.foot - 1.0]
+        hi = np.r_[v.xy + m, v.top + 2.0]
         ax = [np.arange(lo[i], hi[i] + vox, vox) for i in range(3)]
         G = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
         V = np.concatenate([field.value(G[i:i + 200000]) for i in range(0, len(G), 200000)])
@@ -169,4 +198,5 @@ def test_no_piece_detached_at_the_foot():
         edge = set(np.unique(lab[:, :, 0])) | set(np.unique(lab[0])) | set(np.unique(lab[-1])) | \
             set(np.unique(lab[:, 0])) | set(np.unique(lab[:, -1]))
         loose = [i for i in range(1, n + 1) if i not in edge]
-        assert not loose, f"{v.name}: {len(loose)} solid pieces reach neither the ground nor the box's sides"
+        where = [np.argwhere(lab == i).mean(0).round(1).tolist() for i in loose]
+        assert not loose, f"{style} {v.name} ({v.col.stage}): {len(loose)} loose solid pieces (cells {where})"

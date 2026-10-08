@@ -3888,6 +3888,15 @@ regresses, bisect by building one spec at each commit and diffing heights.
       pieces. `Column(foot=)` = the lowest ground within 2 radii - 1.5 m (`stacks(T)`); (3) fallen blocks seat
       `BOULDER_SEAT` 1.2 m inside the column. Test: tests/test_stacks.py::test_no_piece_detached_at_the_foot (a
       synthetic cliff coast with 3 stacks: every solid piece round each foot reaches the ground; failed before).
+    - Styled stacks floating (2026-10-08, branch `stacks-style`; terrainstyle2: ts_slice_a's anime stack, a 124-triangle
+      piece 9.6 m up at [359, 57.5]): it was not the Column but the heightfield's LOBED stack core (terrain_sea): lobes
+      took it to ~1.75 x its radius, past the clip cylinder round it (terrain_mesh.stacks' rc), so a sliver of it stood
+      outside the solid stack, cut loose 5-12 m up by the clip below. The core is round now (the heightfield's stacks
+      change; the random stream is the same). The test over every style's form found two more: cartoon's relief
+      (facets 1.4) carved a fin of a column loose, and the stack's relief cap was weighted by the relief's size share,
+      so it held only partly (an anime top carved 0.46 m). Now relief on a stack is clipped to [-STACK_BUILD 0.05,
+      STACK_CARVE 0.3] m with weight 1 on and in the stack (`Field.build_w` = smoothstep(NEAR, 0, d)). Test:
+      test_stacks.py::test_no_piece_detached[style] (realistic + each sheet's `rock.stack`, foot to top, 0.3 m).
     - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
       cliff shell on these stacks.
 
