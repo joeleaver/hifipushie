@@ -105,7 +105,13 @@ class Region:
     def _grow(self, a, m):
         k = max(1, int(round(m / self.d)))
         g = ndimage.maximum_filter(a, size=2 * k + 1)
-        return np.clip(ndimage.gaussian_filter(g, 0.35 * k), 0, 1) * (g > 0)
+        # (bounded where the blur has died out, 3 sigma past the grown mask: cut at the grown mask itself, S fell from
+        # ~0.6 to 0 in one lattice step. The front there drops from the true ground to `sink` under it and the
+        # heightmap was already pushed (0.6 m round kaze_cave's doline): the front's vertical edge and the shell's
+        # back stood in the open along the region's edge, a dark crack with the buried colour in it)
+        r = int(np.ceil(3 * 0.35 * k))
+        keep = ndimage.maximum_filter(a, size=2 * (k + r) + 1) > 0
+        return np.clip(ndimage.gaussian_filter(g, 0.35 * k), 0, 1) * keep
 
     def _open_rounds(self, X, Y, m):
         if not self.voids:
@@ -134,7 +140,9 @@ class Region:
             node[1:, 1:] = np.maximum(node[1:, 1:], self.holes)
             op = self._grow(node, m)
             self.S = np.maximum(self.steep, op)
-            self.Rg = np.maximum(self.push * self.steep ** PUSH_POW, self.push_open * op)
+            # (round an opening too by op^PUSH_POW: pushed in proportion to op, the heightmap lay 0.3-0.6 m under the
+            # front (the true ground) where the region begins, a step with its shadow round kaze_cave's doline)
+            self.Rg = np.maximum(self.push * self.steep ** PUSH_POW, self.push_open * op ** PUSH_POW)
             if not new.any():
                 break
 

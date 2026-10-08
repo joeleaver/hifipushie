@@ -156,6 +156,7 @@ class Tube:
         # under-reads along its long axis by the aspect ratio, hence the factor.
         aspect = float(np.max(np.maximum(self.rw / self.rh, self.rh / self.rw)))
         r = np.maximum(self.rw, self.rh).max() + (self.blend + rough + NEAR + 0.5) * aspect
+        self.reach = float(r)
         self.lo, self.hi = self.nodes.min(0) - r, self.nodes.max(0) + r
         if self.floor is not None:
             self.lo[2] = max(self.lo[2], float(self.floor.min()) - self.blend - rough - 0.5)
@@ -171,7 +172,38 @@ class Tube:
         if self.beds:
             rough = rough + wall_beds(p, self.beds)
         segs = [(0, 0)] if len(self.nodes) == 1 else [(i, i + 1) for i in range(len(self.nodes) - 1)]
-        for i, j in segs:
+        # (segments in runs of TUBE_RUN, each run only at the points within its reach: every point against every
+        # segment made a 1,088 m switchback lava tube (725 segments) cost 1,500 s of marching cubes a tile. Past the
+        # reach (the box's margin) nothing reads the tube's value but the box test, which is the same)
+        reach = self.reach
+        # (the ellipse's distance under-reads by its aspect: a value under `reach` can lie this far in space)
+        rmax = float(np.maximum(self.rw, self.rh).max())
+        aspect = float(np.max(np.maximum(self.rw / self.rh, self.rh / self.rw)))
+        span = (reach + abs(self.rough) + (1.6 * self.beds["amp"] if self.beds else 0.0)) * aspect + rmax
+        full = np.arange(len(p))
+        for r0 in range(0, len(segs), TUBE_RUN):
+            run = segs[r0:r0 + TUBE_RUN]
+            ns = self.nodes[[run[0][0]] + [j for _, j in run]]
+            lo_, hi_ = ns.min(0) - span, ns.max(0) + span
+            if len(segs) > TUBE_RUN:
+                sel = np.flatnonzero(np.all((p >= lo_) & (p <= hi_), axis=1))
+                if not len(sel):
+                    continue
+            else:
+                sel = full
+            ps = p[sel]
+            rgh = rough[sel] if np.ndim(rough) else rough
+            b_, a_, z_ = best[sel], above[sel], size[sel]
+            for i, j in run:
+                b_, a_, z_ = self._seg(ps, i, j, rgh, b_, a_, z_)
+            best[sel], above[sel], size[sel] = b_, a_, z_
+        if len(segs) > TUBE_RUN:  # (points no run reaches: past the reach, a bound)
+            far = ~np.isfinite(best)
+            best[far] = reach
+        return (best, above, size) if detail else best
+
+    def _seg(self, p, i, j, rough, best, above, size):
+        if True:
             a, b = self.nodes[i], self.nodes[j]
             d = b - a
             L = float(np.linalg.norm(d))
@@ -200,14 +232,16 @@ class Tube:
             best = np.where(m, dd, best)
             above = np.where(m, ab, above)
             size = np.where(m, np.minimum(rw, rh), size)
-        return (best, above, size) if detail else best
+        return best, above, size
 
     def touches(self, lo, hi):
         return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
 
 
+TUBE_RUN = 16  # segments a tube evaluates together, at the points in their run's reach (Tube.sd)
 
-STACK = {"radius": 0.75}
+
+STACK ={"radius": 0.75}
 STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack
 STACK_CARVE = 0.3  # m: ... and carve into it (cartoon facets 1.4 x cut a fin of a stack loose 5 m up: the stack's own
 # form carries its shape, the relief is texture on it)
@@ -1533,6 +1567,16 @@ def _project(field, P, v, fixed=None, iterations=4):
         P[todo[ok]] -= step[ok]
         todo = todo[ok & (n[:, 0] > 1e-4 * v)]
     _, g = field.value_gradient(P, NORMAL_H * v)
+    # (where the field is flat at the scale of the normal's stencil (the cliff shell's back deep under a lip, where
+    # front and back are capped constants), the gradient is zero: a zero normal in the GLB (invalid glTF), and the
+    # seam check read the two tiles' identical zero normals as "differ by 90 deg". Wider stencils, then up)
+    for wide in (1.0, 4.0):
+        flat = np.linalg.norm(g, axis=1) < 1e-6
+        if not flat.any():
+            break
+        g[flat] = field.value_gradient(P[flat], wide * v)[1]
+    flat = np.linalg.norm(g, axis=1) < 1e-6
+    g[flat] = (0.0, 0.0, 1.0)
     N = g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
     return P, N
 
@@ -3120,6 +3164,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             + ", ".join(f"{d['m2']:g} m2 at {d['at']} ({d['clearance_m']:g} m up)" for d in dropped_pieces[:6]))
     dense = set(work)
     _CTX["dense"] = dense
+    timing["dense LOD0"] = time.time() - t0
+    t0 = time.time()
     # one texel density per LOD for every tile: the asked one, or what the tile with the most rock can fit in
     # texture_max (each tile used to lower its own: on the alps' walls tiles came out 11-16 texels/m side by side,
     # sharp rock beside soft in squares of tiles)
@@ -3199,7 +3245,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         for ij in work:
             ns[ij]["col"] = {ck: col_known[ij, ck] for (t, ck) in sorted(col_all) if t == ij}
         depth = [np.minimum(np.maximum(need[k] * 1.25 + 0.05, cfg["skirt"]), thick) for k in range(G.lods)]
-        timing["border collapse + skirts"] = time.time() - t0
+        # (summed over the settle rounds: each round is collapses, then tiles; the labels used to take the last
+        # round's span, from the previous round's tiles on, so the island's tiles read as 4,621 s of collapses)
+        timing["border collapse + skirts"] = timing.get("border collapse + skirts", 0.0) + time.time() - t0
 
         t0 = time.time()
         manifest_tiles = []
@@ -3312,13 +3360,15 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                            "files": inc.sizes(out, inc.entry_files(e))}
         # a vertex a coarse LOD couldn't lose without folding (the dense mesh folded at every count, and an
         # earlier LOD's mesh couldn't drop it either): every LOD keeps it and the tiles are written again
+        timing["tiles (decimate, project, write)"] = timing.get("tiles (decimate, project, write)", 0.0) + \
+            time.time() - t0
+        t0 = time.time()
         if not wanted or rounds >= 2:
             break
         rounds += 1
         for kk in keep:
             kk |= wanted
         log(f"{len(wanted)} border vertices kept for coarse LODs that folded; tiles written again")
-    timing["tiles (decimate, project, write)"] = time.time() - t0
     shutil.rmtree(workdir, ignore_errors=True)
     for ij in tiles:
         ns[ij]["tile"] = tile_state[ij]
@@ -3564,7 +3614,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         t0 = time.time()
         from . import terrain_caves
         with prof.stage("cave walk (parent)"):
-            manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T))
+            manifest["cave_paths"] = []
+            manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T), paths=manifest["cave_paths"])
         timing["cave walk"] = time.time() - t0
     over = budget_check(manifest_tiles, cfg, G.lods)
     manifest["budget_check"] = {"limit": f"{OVER_BUDGET:g} x the LOD's budget", "over": over}
@@ -3721,6 +3772,12 @@ def summary(r) -> str:
     sh = [f"LOD {k} {sc[f'lod{k}_shards']['area_pct']}%" for k in range(len(M["lods"])) if f"lod{k}_shards" in sc]
     if sh:
         lines.append("shards (corner normals against their face, share of the area): " + ", ".join(sh))
+    inc_ = (M.get("profile") or {}).get("incremental")
+    if inc_:  # (always said: cold and why, or what was redone)
+        rd = inc_.get("redone") or {}
+        lines.append(("incremental: reused the previous export; redone " + ", ".join(f"{k} {v}" for k, v in rd.items())
+                      + f" of {inc_.get('tiles')} tiles") if inc_.get("previous export used") else
+                     f"incremental: cold export ({inc_.get('why not') or 'no previous export'})")
     lines.append("timing (s): " + ", ".join(f"{k} {v}" for k, v in M["timing_s"].items()))
     if M.get("memory_gb"):
         m = M["memory_gb"]
@@ -3896,6 +3953,7 @@ def _job_tile(ij):
                     if hasattr(field, "region"):  # (under the pushed heightmap counts as hidden)
                         q = Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn
                         bur[kb] |= q[:, 2] <= field.region.height(q[:, 0], q[:, 1]) + 0.05
+            Ps, Fs, Ns, src = _unflip_corners(Ps, Fs, Ns, src, ~bur, bd[src])
         stem = f"tile_{i}_{j}_lod{k}"
         from .terrain_bake import material as terrain_bake_material
         images, binfo, deferred = None, None, None
@@ -4055,6 +4113,33 @@ def snap_creases(P, F, field, v, movable, angle=25.0, rounds=2):
             back = bad[idx]
             P[idx[back]] = old[back]
     return P
+
+
+def _unflip_corners(P, F, N, src, which, fixed=None):
+    """Face corners (of faces `which`) whose vertex normal points against the face get a vertex of their own with the
+    face's normal. Such a corner shades the face black (a "shard"): a coarse LOD's face bridging air round a stack.
+    Vertices `fixed` (on a tile's border) keep one normal: both tiles must draw the border alike (split there, the
+    two tiles' border normals differed by 96-142 deg). (P, F, N, src)."""
+    k = np.flatnonzero(which)
+    if not len(k):
+        return P, F, N, src
+    fn = np.cross(P[F[k, 1]] - P[F[k, 0]], P[F[k, 2]] - P[F[k, 0]])
+    ln = np.linalg.norm(fn, axis=1)
+    ok = ln > 1e-12
+    fn = fn / np.maximum(ln, 1e-12)[:, None]
+    d = np.einsum("fcj,fj->fc", N[F[k]], fn)
+    bad = (d < 0) & ok[:, None]
+    if fixed is not None:
+        bad &= ~fixed[F[k]]
+    fi, ci = np.nonzero(bad)
+    if not len(fi):
+        return P, F, N, src
+    f = k[fi]
+    v = F[f, ci]
+    n0 = len(P)
+    F = F.copy()
+    F[f, ci] = n0 + np.arange(len(f))
+    return (np.vstack([P, P[v]]), F, np.vstack([N, fn[fi]]), np.r_[src, src[v]])
 
 
 def split_normals(P, F, N, field, keep, h, angle=75.0):
@@ -4494,7 +4579,13 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                 if common:
                     va = na[[sa[p] for p in common]]
                     vb = nb[[sb[p] for p in common]]
-                    ang = np.degrees(np.arccos(np.clip((va * vb).sum(1), -1, 1))).max()
+                    # (a zero normal is its own fault, not a mismatch: both tiles' zero normals read as 90 deg)
+                    z0 = (np.linalg.norm(va, axis=1) < 0.5) | (np.linalg.norm(vb, axis=1) < 0.5)
+                    if z0.any():
+                        failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: {int(z0.sum())} border vertices "
+                                        f"with a zero normal (e.g. at "
+                                        f"{np.round(np.array(common)[z0][:2], 2).tolist()})")
+                    ang = np.degrees(np.arccos(np.clip((va * vb).sum(1)[~z0], -1, 1))).max() if (~z0).any() else 0.0
                     worst_n = max(worst_n, float(ang))
                     if ang > normal_deg:
                         failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: normals differ by {ang:.2f} deg")

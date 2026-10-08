@@ -213,10 +213,77 @@ def test_floating_pieces_dropped():
     assert len(F3) == len(F) and d3 == []
 
 
+def test_region_edge_is_smooth():
+    """The cliff region's weight S fades to 0 without a step (cut at the grown mask, it fell from ~0.6 to 0 in one
+    lattice step: the front's sunk edge and the shell's back stood in the open round kaze_cave's doline)."""
+    from hifipushie import terrain_cliffs as tc
+
+    class R_:
+        d = 1.0
+    a = np.zeros((80, 80))
+    a[38:42, 38:42] = 1.0
+    S = tc.Region._grow(R_(), a, 6.0)
+    assert np.abs(np.diff(S, axis=0)).max() < 0.25 and np.abs(np.diff(S, axis=1)).max() < 0.25, \
+        np.abs(np.diff(S, axis=0)).max()
+    assert S[0, 0] == 0.0 and S[40, 40] > 0.99, (S[0, 0], S[40, 40])
+
+
+def test_projected_normals_never_zero():
+    """A field flat at the normal's stencil (a capped constant) still gives unit normals (zero ones are invalid glTF,
+    and read as "normals differ by 90 deg" across a tile border)."""
+    class Flat:
+        def value_gradient(self, P, h):
+            g = np.zeros((len(P), 3))
+            g[P[:, 0] > 0, 2] = 1.0 if h > 0.6 else 0.0  # (flat at the fine stencil, sloped at the wide one)
+            return np.zeros(len(P)), g
+    P = np.array([[1.0, 0, 0], [-1.0, 0, 0]])
+    _, N = tm._project(Flat(), P, 1.0, iterations=0)
+    assert np.allclose(np.linalg.norm(N, axis=1), 1.0), N
+
+
+def test_unflip_corners():
+    """A corner whose normal points against its face gets its own vertex with the face's normal; the shared vertex
+    keeps its normal for the other face (and stays first: a border chain reads it)."""
+    P = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0.0]])
+    F = np.array([[0, 1, 2], [1, 3, 2]])
+    N = np.array([[0, 0, 1], [0, 0, -1], [0, 0, 1], [0, 0, 1.0]])
+    src = np.arange(4)
+    P2, F2, N2, s2 = tm._unflip_corners(P, F, N, src, np.array([True, False]))
+    assert len(P2) == 5 and F2[0, 1] == 4 and F2[1, 0] == 1, F2
+    assert np.allclose(N2[4], [0, 0, 1]) and np.allclose(N2[1], [0, 0, -1]) and s2[4] == 1
+    fn = np.cross(P2[F2[:, 1]] - P2[F2[:, 0]], P2[F2[:, 2]] - P2[F2[:, 0]])
+    assert (np.einsum("fcj,fj->fc", N2[F2], fn)[0] >= 0).all()
+
+
+def test_long_tube_by_runs():
+    """A long tube evaluates its segments in runs at the points within their reach: the same values (and floor /
+    size details) as every segment at every point, wherever the tube can matter."""
+    rng = np.random.default_rng(3)
+    t_ = np.linspace(0, 1, 120)
+    nodes = np.c_[300 * t_, 40 * np.sin(9 * t_), 50 - 40 * t_]
+    tb = tm.Tube("t", nodes, 3.5, 2.5, nodes[:, 2], rough=0.2, seed=4)
+    P = np.c_[rng.uniform(-10, 310, 20000), rng.uniform(-50, 50, 20000), rng.uniform(0, 60, 20000)]
+    got = tb.sd(P, detail=True)
+    run, tm.TUBE_RUN = tm.TUBE_RUN, 10 ** 6
+    try:
+        ref = tb.sd(P, detail=True)
+    finally:
+        tm.TUBE_RUN = run
+    near = ref[0] < tb.reach - 1.0
+    assert near.sum() > 1000
+    for g, r in zip(got, ref):
+        assert np.array_equal(g[near], r[near])
+    assert (got[0][~near] >= tb.reach - 1.0 - 1e-9).all()
+
+
 if __name__ == "__main__":
     t0 = time.time()
     test_plane_chain()
+    test_long_tube_by_runs()
+    test_unflip_corners()
     test_floating_pieces_dropped()
+    test_region_edge_is_smooth()
+    test_projected_normals_never_zero()
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
     test_cover_named_by_type(T)
