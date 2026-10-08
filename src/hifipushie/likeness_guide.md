@@ -10,6 +10,10 @@ feature, and write down what each one is. This guide is that list for our models
 - `likeness(name, targets=True)`: the target sheet (the references measured once: value, view, tolerance, confidence
   or "unmeasurable") and the stage plan.
 - `fit_likeness(name, stage)`: one stage of the fit, big to small, each through an existing guarded control.
+- `likeness_points(name, image, points, lines)`: hand-placed points and traced lines on a reference, for what no
+  detector finds (the jaw's corner, the ear lobe, the neck's line).
+- `reference_brief(kind, subject)` / `check_references(images, name)`: the shots to ask for, and what a given set of
+  pictures can and can't support.
 
 The checklist itself is data: `src/hifipushie/likeness.json` (items, stages; add items there).
 
@@ -59,53 +63,124 @@ definition errors (where it puts a jaw contour on a soft jaw, iris centres vs ey
 on both sides. The model's own landmarks (GNM's 68) give a second reading: the table's "lm miss"; a '!' where the two
 readings disagree by more than the tolerance means the miss depends on the definition: look at the panel.
 
-What this can't do, and says so:
-- Profile items (columella show, the true nasolabial angle and projection, ear position) need a profile picture; from
-  a three-quarter view a few are read foreshortened (the same camera on both sides, so they still compare).
-- Ears, the hairline, brow thickness, lines and marks, chin shape, neck: no detector points; they are JUDGE items,
-  shown in focus panels, not measured.
-- Resolution: a full-figure concept is ~1.3 mm a pixel at the face; items whose tolerance is about a pixel are marked
-  "low" confidence in the target sheet.
-- The clay render is not the painted model: lid margins on clay read from shading; the iris disc's size is a guess.
+Four kinds of item go beyond points:
+
+- **Shape items** (the planes at temple / cheekbone / jaw, the cheek hollow, the nasolabial fold, the under-eye
+  hollow, the brow ridge). Distances between landmarks can't see them, and a checklist without them rewards soft
+  heads. They are read two ways. On the MODEL in 3D (`likeness_shape.measures3d`, mm: hull deficits of horizontal and
+  vertical sections, the corner radius of the front-to-side turn, the brow in front of the cornea): these compare one
+  model with another. Against the PHOTO by its shading: one light (ambient + a direction) is fitted to the photo's face
+  skin on the model's own normals, the model is rendered lit that way, and the item is the photo's luminance minus
+  that prediction in a region, against a reference region beside it, in % of the face's median. Negative = the photo
+  is darker there than the model's shape explains (a deeper hollow, a sharper turn away from the light). It is
+  confounded by albedo (stubble, brows, make-up) and assumes one light, so: tolerance 8%, scored on FRONT photos only
+  (a turned or painted view shows the number in its panel, unscored), and the panel puts the model LIT LIKE THE PHOTO
+  beside the photo. Trust the direction and the ranking between models, not the percent.
+- **The jaw's L** (ramus angle from vertical, gonial angle, the lower border's straightness, the angle's height
+  against the ear lobe and the mouth line, the neck's step in under the border). No detector finds a gonion, so these
+  need a TRACE on the reference: `likeness_points(name, image, points, lines)` (stored in
+  `<model>/likeness_points.json`; pixels of the full picture; `.R` / `.L` = the subject's right / left; `lines["jaw.R"]`
+  runs from under the ear lobe DOWN the ramus, round the angle and FORWARD along the lower border to the chin;
+  `lines["neck.R"]` is the neck's contour under it; `points["ear_lobe.R"]`). The model's side is its own contour found
+  along the trace in its render: the depth edge where the jaw occludes the neck, else where its surface turns fastest.
+  A model whose jaw is one soft diagonal from ear to chin reads a gonial angle near 160 and a leaning ramus.
+- **Profile items without a profile** (nose projection, nasolabial angle, bridge profile, lips against the nose-chin
+  line, chin projection): read from a three-quarter view when no profile exists, marked INFERRED ('~' in the table),
+  tolerance x1.5. Never blank while a three-quarter picture exists; columella show, forehead slope and ears stay
+  judge items.
+- **Judge items** (hairline, lid fold, brow thickness, chin shape, neck, lines and marks, ears): no number; a focus
+  panel with the model lit like the photo.
+
+Turned views' cameras are REFITTED per model on the detector's points (the photo's 478 against the model's surface
+under the same points of its render, unprojected through the render's depth; pose and focal, two rounds). The
+table's `cam` column is the residual at each item's points in mm (it includes real shape misses) and widens that
+item's tolerance by half of it: a painting's camera is loose, and its items shouldn't outrank a photo's.
+
+The report leads with COVERAGE: how many items these pictures measure, infer, leave to the eye or can't support and
+why, what a true profile would add, and each picture's problems (lens from the fitted focal, expression from the
+detector's blendshapes, how hard the light is and how badly one light explains it, ears / forehead hidden).
+
+What this still can't do: ears and the hairline have no points at all; resolution (a full-figure concept is ~1.3 mm
+a pixel at the face: items whose tolerance is about a pixel are "low" confidence); the clay render is not the painted
+model (lid margins read from shading, the iris disc's size is a guess); a generated or painted reference may squint
+or frown (the coverage line says so) and its picture may not be one consistent face.
 
 ## The checklist (likeness.json), in the order to check it
 
 1. **Proportions** (FISWG: face / head composition): face height (nasion to chin), face index (height / cheekbone
-   width), middle third (nasion to subnasale), lower third (subnasale to chin) and their ratio, the mouth line's
-   height in the lower face, forehead height (judge: hair).
+   width), middle third, lower third and their ratio, the mouth line's height in the lower face, forehead height
+   and slope (judge).
 2. **Widths and outline** (face / head outline, jawline): widths at the temples, cheekbones, nose base, mouth and jaw
    angles, chin width, the taper jaw / cheekbones.
-3. **Eyes**: eye spacing (iris to iris), inner corners apart, eye width, CANTHAL TILT, opening height, shape (height /
+3. **Structure** (planes, hollows, the jaw): temple / cheekbone / jaw planes, cheek hollow, nasolabial fold,
+   under-eye hollow, brow ridge (shading + 3D); ramus angle, gonial angle, lower border, the angle against the ear
+   lobe and the mouth, the neck's step (traced).
+4. **Eyes**: eye spacing (iris to iris), inner corners apart, eye width, CANTHAL TILT, opening height, shape (height /
    width), the upper lid fold / hooding (judge).
-4. **Brows**: height over the eye, arch, slant (head to tail), thickness (judge: paint).
-5. **Nose**: length, alar width, alar / intercanthal, nostril base width (flare), the tip's height over subnasale,
-   projection and nasolabial angle (three-quarter, profile), bridge profile (hump / scoop), columella show (profile).
-6. **Mouth**: width, mouth / nose, philtrum, upper and lower vermilion and their ratio, Cupid's bow, corner tilt.
-7. **Chin and jaw**: chin height, jaw angle height, chin shape (judge), neck under the jaw (judge), lines and folds
-   (judge: shape.hollow, skin).
-8. **Ears**: height and length, protrusion (judge: no control yet).
+5. **Brows**: height over the eye, arch, slant (head to tail), thickness (judge: paint).
+6. **Nose**: length, alar width, alar / intercanthal, nostril base width (flare), the tip's height over subnasale,
+   projection, nasolabial angle and bridge profile (profile; inferred from three-quarter), columella show (judge).
+7. **Mouth**: width, mouth / nose, philtrum, upper and lower vermilion and their ratio, Cupid's bow, corner tilt,
+   lips against the nose-chin line (profile; inferred).
+8. **Chin and jaw**: chin height, chin projection (profile; inferred), the detector's jaw angle height (weak: prefer
+   the traced items), chin shape, neck, lines and folds (judge).
+9. **Ears**: height and length, protrusion (judge: no control yet).
 
 ## Staged fitting from the sheet
 
-The same list drives the first fit, not only the check. `fit_likeness(name, stage)` runs ONE stage:
+The same list drives the first fit, not only the check. `likeness(name, targets=True)` measures the references once
+(the target sheet) and prints the plan; `fit_likeness(name, stage)` runs ONE stage:
 
-| stage | control (wired) | items it moves | gaps (no solver measure: by hand) |
+| stage | controls (wired) | items they move | gaps (no control) |
 |---|---|---|---|
-| proportions | humanfit.solve | face_height, middle third (nose_length) | lower third, mouth line, face index (ratios) |
-| widths | fit_outline (front outline) | every width | the jaw angle's height (shape.jaw_angle) |
-| eyes | humanfit.solve + fit_hood | spacing, intercanthal, eye width; lid opening (hood) | canthal tilt, eye shape |
+| proportions | humanfit.solve | face height, middle third | lower third, mouth line, face index (ratios) |
+| widths | fit_outline (front outline) | every width | - |
+| structure | levers: shape.hollow, shape.planes, shape.jaw_angle, shape.under_eye, features.brow_ridge | cheek hollow, temple / cheekbone / jaw planes, under-eye (fill only), brow ridge, gonial angle and the angle's height | nasolabial fold, ramus angle, lower border, neck step |
+| eyes | humanfit.solve + fit_hood + a nudge of the outer corners | spacing, intercanthal, eye width, lid opening, canthal tilt | eye shape (follows from width and hood) |
 | brows | humanfit.solve | brow height | arch, slant |
-| nose | humanfit.solve | alar width | length to tip, projection, nasolabial angle, bridge (base.head.regions by hand) |
-| mouth | humanfit.solve | mouth width, philtrum, lip heights (summed) | corner tilt, lip ratio |
-| chin_jaw | humanfit.solve | chin height | jaw angle height, chin shape |
+| nose | humanfit.solve + nudges of the tip | alar width, length to the tip, projection | nasolabial angle, bridge profile, nostril base (base.head.regions by hand) |
+| mouth | humanfit.solve + lever pose.smile | mouth width, philtrum, lip heights, corner tilt | lip ratio, lip projection |
+| chin_jaw | humanfit.solve | chin height | chin projection, chin shape, neck |
 | ears | none | - | everything |
 
-Each stage asks the solver only for its items' misses (front view, where a 2D miss in mm is the 3D measure's), with
-the earlier stages' measures pinned; humanfit's integrity gate refuses a result that breaks the mesh. The reply
-lists the stage's items before -> after, items no control reaches, and any EARLIER stage's item that got worse:
-approve the stage on its panels before the next (big to small, approved stages).
+A LEVER is a 1-D fit: the control is stepped once, the item re-measured (a full render + detection), a secant step
+taken, and the best of the tries kept. Each stage is integrity-guarded (humanfit refuses a result that breaks the
+mesh) and PINNED to the earlier stages' checklist items, re-measured: a step that makes one of them worse (by more
+than half its tolerance, and past it) is not taken; a solve is first retried at half its asks. The reply lists the
+stage's items before -> after, each lever's tries, the gaps, and anything earlier that still got worse: approve the
+stage on its panels before the next (big to small, approved stages).
 
-Known limits of the staged fit (2026-10-08, first run on a fresh Garrett): pins are on the solver's landmark
-measures, not on the checklist items, so a later stage can still move an earlier item (the brows stage moved the
-middle third; the reply says so); the checklist measures distances and angles, not SHAPE (cheek planes, hollows,
-folds), so a face can meet every number and still read soft: judge the panels and the whole head.
+What the staged fit is and isn't: it gets a seed head's measured items inside tolerance in a couple of minutes a
+stage, and with the structure stage it no longer leaves a soft head (hollow, planes and jaw corner are set from the
+photo's shading). It does not make a likeness by itself: the shading levers are coarse (one light, albedo in the
+way), the jaw's L and the fold have no control that draws them, and a face is more than its list. Use it for the
+first pass, then judge the panels and the whole head.
+
+## References: what we're handed, and what to ask for
+
+Two modes (Joe: "We don't have any way of predicting what kind of reference photos we'll get, unless hifipushie is
+the one responsible for generating them. But when we are, we can try to get the best ones we can.").
+
+**Handed references.** Everything above is built to degrade honestly: each item says what it was measured from, with
+a confidence, "inferred" from a weaker view, hand-placed points where the detector fails, and the coverage line.
+`check_references(images, name=None)` judges a set before any fitting: views present (the detector's head pose),
+lens (the fitted camera's focal when the model has one: under ~60 mm equivalent swells the nose), expression (smile,
+open mouth, squint, raised or furrowed brows from the detector's blendshapes), the light's evenness, ears and
+forehead covered (a colour heuristic: treat as a hint), and identity consistency between views (vertical proportions
+that don't change with the head's turn should agree within 8%). It ends with the brief's shots to ask for.
+
+**References we generate or ask for.** `reference_brief(kind="head" | "figure", subject)` is the shot list derived
+from the checklist, with what makes each shot usable and prompt wording per shot (one shared identity block, so a
+generator keeps the person):
+
+- front, true left profile, three-quarter (45 deg); the front and three-quarter again under ONE side light (the
+  planes: the shape items read shading); optional back and top; for a figure, full-body A-pose front and side;
+- a long lens (85-135 mm equivalent) at eye height; neutral expression, mouth closed, eyes open to the horizon;
+- soft even frontal light for the measuring shots; a plain background;
+- hair off the ears and the hairline; the neck and jaw uncovered; nothing over the features;
+- the same identity, light, scale and camera height in every view.
+
+The brief's shape ({subject, common: {prompt, negative}, shots: [{id, view, light, purpose, must_show, prompt}],
+text}) is shared with the clothing checklist's (`cloth_reference.reference_brief`), so one generator step can serve
+both.
+
