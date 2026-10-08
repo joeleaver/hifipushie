@@ -40,7 +40,7 @@ from . import pattern
 PRESS = 20.0  # a pressed crease's hinge bending, as a multiple of the cloth's, at strength 1
 REST_TURN = math.radians(170.0)  # the most a hinge's rest angle turns (a full 180 is the two faces in one plane)
 PLACE_TURN = math.radians(178.0)
-PRESS_OFF = 0.01  # m (pattern) past a pressed flap's base over which it hands over to a rigid turn
+PRESS_OFF = 1e3  # m (pattern) past a pressed flap's base over which it hands over to a rigid turn
 PRESS_WEDGE = 0.3  # the least slope of a pressed flap off its base by the line (pressed_flap): a contact solver wants its
 # cloth a contact gap apart where it isn't joined (at 0.06, 88 lapel vertices started within 1 mm of the forepart: ZOZO's CCD failed at frame 0)
 ROLL_RADIUS = 0.003

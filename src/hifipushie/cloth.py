@@ -3401,7 +3401,16 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     if smooth:
         # nothing may start through anything else (a solver that keeps its contacts can't undo it): a sleeve whose cap
         # starts through the bodice round the armhole goes 1 cm further down the arm at a time (the sewing pulls it up)
-        hit = {a for a, b in _piece_crossings(Xp, M) for a in (a, b)
+        _xp = sorted(_piece_crossings(Xp, M))
+        if B.get("worn_top"):
+            # (a sleeve crossing the piece it is sewn to by the armhole stays: a contact solver starting with existing
+            # intersections lets pieces sewn together pass, the sewing pulls them right; sent down the arm 6-12 cm
+            # instead, Garrett's whole left sleeve started with its armhole seam 300 mm open)
+            _sw = np.asarray(M["sew"]).reshape(-1, 2)
+            _sewn = {tuple(sorted((names[pid[a_]], names[pid[b_]]))) for a_, b_ in _sw}
+            _xp = [p_ for p_ in _xp if tuple(sorted(p_)) not in _sewn]
+        B.setdefault("sleeve_hits", []).append([p_ for p_ in _xp if any(pcs[q_]["wrap"].get("to", "").startswith("arm.") for q_ in p_)])
+        hit = {a for a, b in _xp for a in (a, b)
                if pcs[a]["wrap"].get("to", "").startswith("arm.") and "follow" not in pcs[a]["wrap"]}
         # a sleeve still pushed off the body where it stands out further already (a coat's under sleeve's corner at
         # the armpit: 12% stretch) goes down the arm too
