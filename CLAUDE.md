@@ -4112,6 +4112,40 @@ regresses, bisect by building one spec at each commit and diffing heights.
       the tallest riser 0.2 m (60 deg) at [1084.4, 1756.4, 3.2] where the lower pit's pile of blocks meets the tube
       floor; with a 0.4 m body footprint the same. No 0.6 m riser on the path: their controller's 0.6 is either a
       capsule catching the rough pile (Mound rough 0.25 m at 1.5 m scale) or something off the path: asked them where.
+  - Dashed cracks on the grass (2026-10-08, "tiles3" agent, branch `worktree-agent-a2322e8cd3d4f3416`; pushieworld note
+    104, the user saw thin dark dashed "seams" on the crater rim's grass, on the cliff meshes, baked maps only; renders
+    /mnt/data/hifipushie/tiles3/renders/t3_*; scratch DURABLE there: run.sh / run_orig.sh <script> (this worktree /
+    orig/ = the branch point + only the new check, the "before"), exp.py <terrain> <tag> '<cfg>' (OLD=1: the old relief
+    cut), rend.py <terrain> <tiles dir> <prefix> [channel] (rim / close / west views of the rim; env VIEWS, IDS=1,
+    PARTS=ground|cliffs), mirror.py (theirs/ = a symlinked read-only copy of their export, render it like ours),
+    topdown.py + channels.py + comp.py (a top-down raster of which mesh is on top, and the cliff maps decoded there:
+    base, ORM, normal map vs vertex normal), prof2.py (every mesh a vertical line meets along a transect, with its
+    baked colour / AO), rimprof.py (ground / heightmap / S / front along a line), trans.py (the bake field's surface and
+    normal across a line, pieces switched off), px2w.py (render pixel -> world point from the id pass's distance; the
+    id pass's glb index did NOT match render_job.json's list: untrusted), q1.sh (tests + regressions)).
+    Two causes, both in the cliff tiles' maps, neither in any check:
+    (1) THE VISIBLE ONE: the overlay edge. Where the front sinks (S < SINK_EDGE) it dives metres within a metre (S rises
+    0.13/m on the rim: the dive is ~75 deg) and crosses the heightmap a few cm down; the crossing interleaves (heightmap
+    and front 2 cm apart for metres). The texels of the strip that shows were coloured ROCK: the layer weights' 0.4 m
+    normal came from the SUNK front, so on the true ground up to 0.4 m beside the dive it tipped to the horizontal
+    (Gs (-0.70, 0.69, 0.16) at S 0.23), base colour 0.18 vs the grass's 0.43; and the dive's AO was its vertices' (5 m
+    down: 0.04), interpolated up to the strip. Fix: weights from the rock UNSUNK (`weightfield` = base); every texel and
+    AO vertex on the sunk part read the true ground over it (`CliffField.lift`: w = 1 below SINK_EDGE easing out by
+    SINK_EDGE + UNSUNK_BAND 0.05 of S; colour at the lifted point; normal map = the ground's normal, `terrain_bake._unsunk`;
+    AO at the lifted vertex, `terrain_cliffs.lifted`; the tile-border easing to the low poly's normal skipped there).
+    Geometry is unchanged (the dive and the crossing are where they were: the strip just reads as grass now).
+    (2) A real field step, found on the way: `Field._solid` evaluated the rock relief only where its weight > 0.01 and
+    took it at full weight there: 1% of the relief (a 2-3 cm step, up to 22 mm on test_tiles' coast) along the weight's
+    0.01 contour metres out on the grass. Now eased in (RELIEF_CUT / RELIEF_FADE 0.1). Thin rock's strata had the same
+    (sqrt(1e-3) = 3%): eased. Both move field values only where the weight is under 0.1 / 0.02.
+    CHECK `soft_ground_jumps` (seam_check (7), FAILS over JUMP_LIMIT 3 sampled texels per tile LOD): every 7th texel on
+    soft ground (rock layers < JUMP_SOFT 0.2 and rock relief weight < JUMP_RELIEF 0.1) compares the bake normal at 3 cm
+    and 6 cm (`terrain_bake` JUMP_H); a step in the value reads 1/h, a smooth surface or a designed riser the same. On
+    the rim block (tiles 15-16 x 16-18 of tl2_island7): before 270 texels in 17 tile LODs (15,17 LOD 0: 65) -> 0.
+    Without the relief-weight condition it flagged rock structure creases on a 37 deg grassy rock face.
+    Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
+    interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
+    lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
