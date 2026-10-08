@@ -16,10 +16,11 @@ and every blade doubled where the cards cross). Each card is cut to what it draw
 seasons) and split into `cols` x `rows` quads so wind bends it.
 
 Front and back of a card are triangles of their own, single sided: NORMAL leans up and out from the clump's middle
-(the ground's light: a grass card lit by its own face flickers as it turns) and is the SAME on both faces; TANGENT w is
-+1 on the front, -1 on the back, so the one tangent-space normal map (baked from the front: the blades' own normals,
-mirrored through the card when they faced away) reads mirrored from behind. Double-sided materials would flip that
-up-leaning normal to point down on the back (Godot does: dark backs).
+(the ground's light: a grass card lit by its own face flickers as it turns) and a little toward its own face (FACE:
+straight up, a card seen from the side caught the styles' rim light: pale distant clumps), so the two faces' normals
+are mirror images through the card; TANGENT w is +1 on the front, -1 on the back, so the one tangent-space normal map
+(baked from the front: the blades' own normals, mirrored through the card when they faced away) reads mirrored from
+behind. Double-sided materials would flip an up-leaning normal to point down on the back (Godot does: dark backs).
 
 Maps per season: albedo (sRGB, the shade of the clump over each point baked in as the impostors do, alpha = what is
 drawn, colour bled under it) + the normal map, one atlas for all tiers. Seasons are material variants of the one
@@ -47,7 +48,8 @@ TIERS = ({"planes": 8, "cols": 3, "rows": 5, "px": 320, "heads": 12},
          {"planes": 5, "cols": 2, "rows": 4, "px": 224, "heads": 6},
          {"planes": 3, "cols": 1, "rows": 3, "px": 128, "heads": 3})
 HEAD_SPAN = 1.25  # a head card's side, x the head's diameter
-LEAN = 0.6        # card normals: up + LEAN x (where on the card, -1..1) along the card (a dome over the clump)
+LEAN = 0.6        # card normals: up + LEAN x (where on the card, -1..1) along the card (a dome over the clump) ...
+FACE = 0.7        # ... + FACE x the face's own side (front +, back -): mirror images through the card
 SHADE = 0.45      # how much of the baked shade (sky reaching the point from above) goes into the albedo
 SHADE_BRIGHT = 0.7
 ALPHA_CUT = 0.5
@@ -216,12 +218,14 @@ def views(frames: list, tmp: str, tag: str) -> list:
     return out
 
 
-def _card_frame(f: dict, s: np.ndarray, t: np.ndarray, R: float):
+def _card_frame(f: dict, s: np.ndarray, t: np.ndarray, R: float, side: float = 1.0):
     """Per point at (s, t) on the card (m along its right / up from its middle): N (up + LEAN x out from the foot, a
     dome over the clump), T (along the card's right, square to N), B = cross(N, T) (the front's bitangent); Blender axes."""
     P = f["pc"][None] + s[:, None] * f["right"][None] + t[:, None] * f["up"][None]
     hz = np.c_[P[:, :2], np.zeros(len(P))] / R
     N = np.array([0, 0, 1.0])[None] + LEAN * np.clip(hz, -1, 1)
+    if not f["top"]:  # (each face leans toward its own side: a normal straight up is seen edge-on from the side, a pale rim)
+        N = N + side * FACE * f["back"][None]
     N /= np.linalg.norm(N, axis=1, keepdims=True)
     r = f["right"]
     T = r[None] - (N @ r)[:, None] * N
@@ -260,8 +264,8 @@ def compose(f: dict, albedo: np.ndarray, normal: np.ndarray, shade: np.ndarray, 
 
 
 def bake(trees: dict, R: float, H: float, frames: list, timeout: float = 1800) -> dict:
-    """{season: [per frame compose(...)]}: every season's plant rendered through every card's view (Blender, one job a
-    season)."""
+    """{season: [per frame {"albedo", "normal", "shade"} (h, w, 4) uint8]}: every season's plant rendered through every
+    card's view (Blender, one job a season); compose() makes the maps from them."""
     from PIL import Image
     from . import veg_look
     out = {}
@@ -269,8 +273,8 @@ def bake(trees: dict, R: float, H: float, frames: list, timeout: float = 1800) -
         for se, t in trees.items():
             vs = views(frames, tmp, se)
             veg_look.render(t, vs, timeout=timeout)
-            rd = lambda kind, fi: np.asarray(Image.open(f"{tmp}/{se}_{kind}_{fi:02d}.png").convert("RGBA"), np.float32) / 255
-            out[se] = [compose(f, rd("albedo", fi), rd("normal", fi), rd("shade", fi), R) for fi, f in enumerate(frames)]
+            rd = lambda kind, fi: np.asarray(Image.open(f"{tmp}/{se}_{kind}_{fi:02d}.png").convert("RGBA"), np.uint8)
+            out[se] = [{k_: rd(k_, fi) for k_ in ("albedo", "normal", "shade")} for fi in range(len(frames))]
     return out
 
 
@@ -362,7 +366,6 @@ def cards(frames: list, box: list, at: list, W: int, Ht: int, R: float, H: float
         P = f["pc"][None] + S[:, None] * f["right"][None] + Tt[:, None] * f["up"][None]
         u = (x + (S - s0) / (s1 - s0) * (b[1] - b[0])) / W
         v = (y + (t1 - Tt) / (t1 - t0) * (b[3] - b[2])) / Ht
-        N, T, _ = _card_frame(f, S, Tt, R)
         q = np.arange((nr_ + 1) * (nc + 1)).reshape(nr_ + 1, nc + 1)
         a_, b_, c_, d_ = q[:-1, :-1].ravel(), q[:-1, 1:].ravel(), q[1:, 1:].ravel(), q[1:, :-1].ravel()
         front = np.r_[np.c_[a_, b_, c_], np.c_[a_, c_, d_]]  # (right, up, seen from `back`: counter-clockwise)
@@ -373,6 +376,7 @@ def cards(frames: list, box: list, at: list, W: int, Ht: int, R: float, H: float
         bend = hz ** 1.5 * float(np.clip(H / 1.2, 0.08, 1.0))
         wind = np.c_[hz ** 1.5, bend, np.full(n_v, ph), 0.5 * hz]
         for side in ((1.0,) if f["top"] else (1.0, -1.0)):  # front, then back (its own vertices: TANGENT w = -1); a flat card: its top
+            N, T, _ = _card_frame(f, S, Tt, R, side)
             Vs.append(P)
             Us.append(np.c_[u, v])
             Ns.append(N)
@@ -435,8 +439,8 @@ def write_glb(path: str, name: str, tiers: list, maps: dict, seasons: list, info
                                                    "roughnessFactor": float(info.get("roughness", 0.85))},
                           "normalTexture": {"index": tex(_png(Nm))},
                           "alphaMode": "MASK", "alphaCutoff": ALPHA_CUT, "doubleSided": False,
-                          "extras": {"grade": GRADE, "faces": "front and back are their own single-sided triangles: same NORMAL, "
-                                                              "TANGENT w +1 / -1 (the normal map reads mirrored from behind)"}})
+                          "extras": {"grade": GRADE, "faces": "front and back are their own single-sided triangles: NORMALs mirror "
+                                                              "images through the card, TANGENT w +1 / -1 (the normal map reads mirrored from behind)"}})
         var_mat[se] = len(materials) - 1
     variants = list(seasons) if len(seasons) > 1 else []
     ext = {"KHR_materials_variants"} if variants else set()
@@ -533,7 +537,10 @@ def _cache_path(spec: dict, seasons) -> Path:
     return root / "groundcover" / f"{key}.pkl"
 
 
-def _finish(baked: dict, frames: list, R: float, H: float) -> dict:
+def _finish(renders: dict, frames: list, R: float, H: float) -> dict:
+    f32 = lambda a_: np.asarray(a_, np.float32) / 255
+    baked = {se: [compose(f, f32(r_["albedo"]), f32(r_["normal"]), f32(r_["shade"]), R) for f, r_ in zip(frames, fr)]
+             for se, fr in renders.items()}
     box = crops(baked, frames)
     maps, at, W, Ht = atlases(baked, frames, box)
     tiers = [cards(frames, box, at, W, Ht, R, H, ti) for ti in range(len(TIERS))]

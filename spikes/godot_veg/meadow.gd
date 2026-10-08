@@ -100,6 +100,66 @@ func load_plant(dir: String, season: String) -> Dictionary:
 	return {"stem": stem, "lods": lods}
 
 
+## Mode "solo": <distances m,..> <azimuths deg,..> <label>=<plant dir>:<lod> ...: each LOD ALONE on magenta, eye
+## 1.7 m up, in the game's shader and light, named as ground.gd names its pictures (ground_measure.py reads them).
+func solo(prefix: String, season: String, args: Array) -> void:
+	var dists: Array = Array(args[0].split(",")).map(func(x): return float(x))
+	var azs: Array = Array(args[1].split(",")).map(func(x): return float(x))
+	get_root().size = Vector2i(1920, 1080)
+	var items: Array = []
+	var top := 0.0
+	for i in range(2, args.size()):
+		var lab_rest: PackedStringArray = args[i].split("=", true, 1)
+		var dir_lod: PackedStringArray = lab_rest[1].rsplit(":", true, 1)
+		var P := load_plant(dir_lod[0], season)
+		var L: Dictionary = P.lods[clampi(int(dir_lod[1]), 0, P.lods.size() - 1)]
+		var node := Node3D.new()
+		for mesh in L.parts:
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			node.add_child(mi)
+		top = maxf(top, L.top)
+		root.add_child(node)
+		node.visible = false
+		items.append([lab_rest[0], node])
+		print(lab_rest[0], " triangles ", L.tris)
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(1, 0, 1)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.62, 0.68, 0.78)
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var we := WorldEnvironment.new()
+	we.environment = env
+	root.add_child(we)
+	var sun := DirectionalLight3D.new()
+	sun.light_energy = 1.1
+	sun.light_color = Color(1.0, 0.96, 0.88)
+	root.add_child(sun)
+	sun.look_at_from_position(Vector3(-0.5, 0.75, 0.45).normalized() * 100.0, Vector3.ZERO, Vector3.UP)
+	var cam := Camera3D.new()
+	cam.fov = 75.0
+	cam.near = 0.05
+	root.add_child(cam)
+	cam.make_current()
+	await process_frame
+	var at := Vector3(0, 0.45 * top, 0)
+	for d in dists:
+		for az in azs:
+			var r := deg_to_rad(az)
+			cam.look_at_from_position(Vector3(sin(r) * d, 1.7, cos(r) * d), at, Vector3.UP)
+			for e in items:
+				for o in items:
+					o[1].visible = o == e
+				for k in 3:
+					await process_frame
+				await RenderingServer.frame_post_draw
+				root.get_texture().get_image().save_png("%s_%s_d%d_a%d.png" % [prefix, e[0], int(round(d * 10)), int(az)])
+	print("done")
+	quit(0)
+
+
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()
 	var prefix: String = a[0]
@@ -113,6 +173,9 @@ func _initialize() -> void:
 	var w := Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	w.set_pixel(0, 0, Color(1 if style == 1 else 0, 1 if style == 2 else 0, 1 if style == 3 else 0, 1 if style == 4 else 0))
 	RenderingServer.global_shader_parameter_set("style_map", ImageTexture.create_from_image(w))
+	if mode == "solo":
+		await solo(prefix, season, a.slice(4))
+		return
 	var kinds: Array = [load_plant(a[4], season)]
 	if a.size() > 5:
 		kinds.append(load_plant(a[5], season))

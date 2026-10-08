@@ -28,7 +28,8 @@ def _fake_bake(R=0.3, H=0.5, seasons=("summer", "winter")):
             nb[..., :3] = (np.asarray(f["back"]) * 0.5 + 0.5)
             nb[..., 3] = al[..., 3]
             sh = np.ones((h, w, 4), np.float32)
-            fr.append(g.compose(f, al, nb, sh, R))
+            u8 = lambda a_: (a_ * 255 + 0.5).astype(np.uint8)
+            fr.append({"albedo": u8(al), "normal": u8(nb), "shade": u8(sh)})
         out[se] = fr
     return {"R": R, "H": H, "frames": frames, "renders": out}
 
@@ -66,8 +67,13 @@ def test_front_and_back_mirror_the_normal_map():
     C = B["tiers"][0]
     w = C["TAN"][:, 3]
     assert set(np.unique(w)) == {-1.0, 1.0} and (w > 0).sum() == (w < 0).sum()
-    # the same normal on both faces, leaning up; tangents square to the normals
+    # normals lean up, each face's toward its own side (mirror images through the card); tangents square to them
     assert (C["N"][:, 2] > 0.6).all()
+    fr0 = [f for f in g.plane_frames(0.3, 0.5) if f["tier"] == 0 and not f["top"]][0]
+    n_v = (C["V"].shape[0] // 2) // len([f for f in g.plane_frames(0.3, 0.5) if f["tier"] == 0 and not f["top"]])
+    nf, nb_ = C["N"][:n_v], C["N"][n_v:2 * n_v]
+    b = fr0["back"]
+    assert np.allclose(nb_, nf - 2 * (nf @ b)[:, None] * b[None], atol=1e-6)
     assert np.abs((C["N"] * C["TAN"][:, :3]).sum(1)).max() < 1e-6
     # front faces wind counter-clockwise about +back: their geometric normal agrees with the card's front
     V, F = C["V"], C["F"]
