@@ -84,7 +84,10 @@ def test_nudge_moves_one_landmark():
     assert np.linalg.norm(L1[:68] - L0[:68], axis=1)[far].max() < 0.0015
     assert rep["integrity"]["ok"]
     # past what the sliders can do: the rest is a correction layer, said so, and it survives a later change
+    # (3 cm squeezes the face's edges past the limit: refused, the input handed back, unless forced)
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03])
+    assert nb2 is b and "refused" in rep2
+    nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
     assert rep2["by_correction_mm"] > 1.0 and abs(rep2["got_mm"][2] + 30) < 1.5
     assert nb2["head"]["shape"]["push_more"]
     nb3, _ = hf.solve(nb2, {"nose_width": "+1"})
@@ -221,6 +224,21 @@ def test_jaw_angle_is_a_symmetric_bony_corner():
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
 
 
+def test_a_broken_solve_is_refused():
+    """A mouth widened until lip faces fold: solve hands back the base it was given (rep["refused"] says why, the
+    broken result's integrity is reported), and returns the broken one only with force=True."""
+    b = base()
+    m0 = hf.state(b)["measures"]["mouth_width"]
+    nb, rep = hf.solve(b, {"mouth_width": m0 * 1.35})
+    if rep["integrity"]["ok"]:  # (if this face can take it, nothing to refuse: the guard is tested below directly)
+        nb2, rep2 = hf._guarded(b, {"x": 1}, {"integrity": {"ok": False, "broken": ["test"], "warnings": []}}, False)
+        assert nb2 is b and "refused" in rep2
+        return
+    assert nb is b and "refused" in rep and "BROKEN" in hf.report_text(rep)
+    nbf, repf = hf.solve(b, {"mouth_width": m0 * 1.35}, force=True)
+    assert nbf is not b and "refused" not in repf
+
+
 def st0_asym(b):
     return hf.integrity(b)["numbers"]["asymmetry_mm"]
 
@@ -230,6 +248,7 @@ if __name__ == "__main__":
         for fn in (test_measures_and_integrity, test_a_measure_is_met_and_the_rest_holds, test_adversarial_requests_come_back_honest,
                    test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
                    test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features,
-                   test_hollow_cheeks_read_on_the_section, test_jaw_angle_is_a_symmetric_bony_corner):
+                   test_hollow_cheeks_read_on_the_section, test_jaw_angle_is_a_symmetric_bony_corner,
+                   test_a_broken_solve_is_refused):
             fn()
             print("ok", fn.__name__)

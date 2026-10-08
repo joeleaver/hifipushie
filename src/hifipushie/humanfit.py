@@ -431,7 +431,7 @@ def solve(base: dict, want: dict, free=("identity",), hold: bool = True, force: 
     rep = {"asked": resid, "rounds": len(log), "plausibility": plausibility(cur), "held_back": round(held_back, 3),
            "limited": bool(use_id and (np.abs(c) >= clip - 1e-6).any() and not all(r["met"] for r in resid.values())),
            "side_effects": side_effects(st0, st1, asked_parts), "integrity": integrity(cur, st1, st0)}
-    return cur, rep
+    return _guarded(base, cur, rep, force)
 
 
 def nudge(base: dict, landmark: str | int, move=None, to=None, radius: float = 0.015, force: bool = False) -> tuple:
@@ -485,7 +485,7 @@ def nudge(base: dict, landmark: str | int, move=None, to=None, radius: float = 0
            "by_sliders_mm": round(float(np.linalg.norm(mv - rest)) * 1000, 2), "by_correction_mm": round(corr * 1000, 2),
            "plausibility": plausibility(cur), "side_effects": side_effects(st0, st1, set(), near=L0[[i] + ([mir] if mir is not None else [])]),
            "integrity": integrity(cur, st1, st0)}
-    return cur, rep
+    return _guarded(base, cur, rep, force)
 
 
 def side_effects(st0: dict, st1: dict, asked: set, near=None) -> dict:
@@ -643,6 +643,44 @@ def _mirror68() -> np.ndarray:
     return m
 
 
+def _guarded(base: dict, cur: dict, rep: dict, force: bool) -> tuple:
+    """A fit whose result is BROKEN (integrity) hands back the base it was given, not the broken one, unless
+    force=True: rep["refused"] says why and rep["integrity"] is the broken result's (so the caller sees what broke).
+    Reporting alone wasn't enough: a script saved a 62 mm mouth with 7 lip faces folded."""
+    it = rep.get("integrity")
+    if it is None or it["ok"] or force:
+        return cur, rep
+    new = _newly_broken(base, it)
+    if not new:  # (broken already, as the input was: the edit isn't what broke it; it's said in the report)
+        rep["already_broken"] = True
+        return cur, rep
+    rep["refused"] = ("BROKEN result not returned (the input is): " + "; ".join(new)
+                      + ". Ask for less, or force=True to take it anyway.")
+    return base, rep
+
+
+GUARD_WORSE = 0.08  # a region broken in the input too counts as broken BY the edit when its stretch got this much worse
+
+
+def _newly_broken(base: dict, it: dict) -> list:
+    """What in a result's integrity the edit broke: broken lines the input doesn't have, and for an edge-stretch
+    region broken in both, the result's only if it got GUARD_WORSE (relative) further past either limit."""
+    b0 = integrity(base, state(base))
+    if b0["ok"]:
+        return list(it["broken"])
+    s0, s1 = b0["numbers"].get("stretch", {}), it["numbers"].get("stretch", {})
+    out = []
+    for line in it["broken"]:
+        reg = line.split(":")[0]
+        if reg in s1 and reg in s0 and any(l_.startswith(reg + ":") for l_ in b0["broken"]):
+            (lo0, hi0), (lo1, hi1) = s0[reg], s1[reg]
+            if lo1 < lo0 * (1 - GUARD_WORSE) or hi1 > hi0 * (1 + GUARD_WORSE):
+                out.append(line + f" (the input: x{hi0} / x{lo0})")
+        elif line not in b0["broken"]:
+            out.append(line)
+    return out
+
+
 def verdict(integ: dict) -> str:
     lines = ["INTEGRITY: ok" if integ["ok"] else "BROKEN: " + "; ".join(integ["broken"])]
     lines += ["WARNING: " + w for w in integ["warnings"]]
@@ -784,7 +822,7 @@ OUTLINE_HOLD = 0.6      # weight of the features held where they are (eyes, nose
 
 
 def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetric: bool = True,
-                structure: bool = True) -> tuple:
+                structure: bool = True, force: bool = False) -> tuple:
     """(new base, report): the head's silhouette through each fitted camera (`cameras`, from fit_views) pulled onto
     each view's `outline` ([[u, v], ...]: the face's edge in the picture, e.g. jaw and cheeks) by a smooth warp in
     GNM's frame (base.head.warp, appended), the features held (eyes, nose, lips, brows: their landmarks stay, so an
@@ -882,7 +920,7 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
     st1 = state(cur)
     rep["integrity"] = integrity(cur, st1, state(base))
     rep["side_effects"] = side_effects(state(base), st1, set(FACE))
-    return cur, rep
+    return _guarded(base, cur, rep, force)
 
 
 HOOD_MAX = 0.005   # m: the most a hooded fold comes down
@@ -906,7 +944,7 @@ def _with_hood(base: dict, a: float) -> dict:
     return b
 
 
-def fit_hood(base: dict, views: list, cameras: list) -> tuple:
+def fit_hood(base: dict, views: list, cameras: list, force: bool = False) -> tuple:
     """(new base, report): hooded upper lids (base.head.shape.hood) fitted on the upper lids' points (37, 38, 43, 44)
     through each fitted camera (`cameras`, from fit_views): a picture's upper lid line is where the fold hangs over
     the lid, which the identity components can't reach without squeezing the lids. One number, solved linearly
@@ -947,7 +985,7 @@ def fit_hood(base: dict, views: list, cameras: list) -> tuple:
         rep["note"] = f"the picture asks {1000 * (a0 + da):.1f} mm of hood, the most is {1000 * HOOD_MAX:.1f}"
     elif a0 + da < 0:
         rep["note"] = "the picture's upper lids are HIGHER than the hood-free face's: open the eyes (pose lid_upper) instead"
-    return cur, rep
+    return _guarded(base, cur, rep, force)
 
 
 def fit_views(base: dict, views: list, free=("identity",), force: bool = False, rounds: int = 3, focal: float | None = None,
@@ -1032,7 +1070,7 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
                     "worst": [(str(names[i]), round(float(mm[i]), 1)) for i in worst], "focal": round(cam["f"], 1)})
     rep = {"views": per, "cameras": cams, "plausibility": plausibility(cur), "side_effects": side_effects(st0, st1, set(FACE)),
            "integrity": integrity(cur, st1, st0)}
-    return cur, rep
+    return _guarded(base, cur, rep, force)
 
 
 # ---- pictures: before | after | where it moved ------------------------------------------------------------------
@@ -1094,7 +1132,7 @@ def head_sheet(st0: dict, st1: dict | None = None, px: int = 420, focus=None, ti
 def report_text(rep: dict) -> str:
     """A solve / nudge / image-fit report as the tool prints it: integrity first, then what was asked and what came
     of it, then everything else that moved."""
-    lines = [verdict(rep["integrity"])]
+    lines = [verdict(rep["integrity"])] + ([rep["refused"]] if rep.get("refused") else [])
     if "asked" in rep:
         for k, r in rep["asked"].items():
             lines.append(f"{k}: asked {r['asked']:g}, was {r['was']:g}, now {r['got']:g}" + ("" if r["met"] else "  NOT MET"))
