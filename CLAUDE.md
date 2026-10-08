@@ -4020,6 +4020,14 @@ regresses, bisect by building one spec at each commit and diffing heights.
       so it held only partly (an anime top carved 0.46 m). Now relief on a stack is clipped to [-STACK_BUILD 0.05,
       STACK_CARVE 0.3] m with weight 1 on and in the stack (`Field.build_w` = smoothstep(NEAR, 0, d)). Test:
       test_stacks.py::test_no_piece_detached[style] (realistic + each sheet's `rock.stack`, foot to top, 0.3 m).
+    - Not a stack (2026-10-08, branch `stacks-slice`; tiles2's tl2_slice_a regression: 10 triangles floating at
+      [291.3, 103.8, 23], 88 m from the nearest stack): in the CARTOON zone the style's big facets (relief facets 1.4,
+      size 2.5) built a slab 0.46 m out over a sheer lip with a groove carved under it, a 0.4 m thick piece standing
+      clear of the face. In the field before any stack work too (main52); the stack merges only moved the mesh enough
+      to show it. Style sheet key `rock.build` (m, terrain_style.ROCK_KEYS; Field._styled_relief: the style's relief
+      never builds more than that, carving unlimited); cartoon 0.05 (0.15 still left a speck). Unbuilt-from-relief
+      floating slabs could exist elsewhere (anime's proud beds build 1.5 x): not scanned. Test:
+      test_terrain_style.py::test_style_relief_build_cap (without the cap the coast's cartoon cliffs build 0.77 m).
     - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
       cliff shell on these stacks.
 
