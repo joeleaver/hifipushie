@@ -3526,7 +3526,23 @@ def _kabsch(A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return R, cb - ca @ R.T
 
 
-def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: list | None = None) -> dict:
+def made_flaps(g: dict, M: dict) -> list:
+    """[(fold name, flap vertices)] of the folds whose flaps are made (garment key "made_folds": fold names or name
+    prefixes, e.g. ["lapel"]): the cloth past a pressed roll line, held with the construction it is sewn to."""
+    want = g.get("made_folds") or []
+    if not want or not M.get("folds"):
+        return []
+    from . import folds as foldmod
+    out = []
+    for k, fd in enumerate(M["folds"]):
+        nm = fd.get("name") or ""
+        if any(nm == w or nm.startswith(w) for w in want):
+            out.append((f"{nm}:{fd['piece']}", foldmod._geom(M, fd)["rows"][0]["v"]))
+    return out
+
+
+def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: list | None = None,
+           flaps: list | None = None) -> dict:
     """Method "settle": the made pieces (made_pieces, or the garment's "made" list) are held as constructed and ride
     the part of the body they were made on while it moves from `body0` through `poses` (vertex arrays of the same
     body): each piece's rigid move is fitted (Kabsch) to the body vertices near it. Returns {"idx" vertices,
@@ -3577,10 +3593,41 @@ def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: l
         moves[nm] = (R, t)
         idx.append(sel)
         P.append(np.stack(per))
+    # made REGIONS of draped pieces (garment key "made_folds": a lapel's flap past its roll line, pressed with the
+    # chest canvas): held as laid and carried with the made piece they are sewn to (the collar along the gorge), so
+    # collar + lapel + gorge are one pressed unit; the rest of the piece stays draped, joined along the roll line
+    flap_info = {}
+    taken = np.zeros(len(X), bool)
+    for s_ in idx:
+        taken[s_] = True
+    for label, fv in flaps or []:
+        fv = np.asarray(fv, np.int64)
+        fv = fv[~taken[fv]]
+        if not len(fv):
+            continue
+        taken[fv] = True
+        fm = np.zeros(len(X), bool)
+        fm[fv] = True
+        part = [nm for nm in names if (((pid[sw[:, 0]] == ks[nm]) & fm[sw[:, 1]]) | ((pid[sw[:, 1]] == ks[nm]) & fm[sw[:, 0]])).any()]
+        if part:
+            nb = nbs[find(part[0])]
+        else:
+            c = X[fv].mean(0)
+            nb = np.asarray(tree.query_ball_point(c, float(np.linalg.norm(X[fv] - c, axis=1).max()) + 0.01))
+            if len(nb) < 6:
+                nb = tree.query(c, k=30)[1]
+        per = []
+        for Vp in poses:
+            R, t = _kabsch(body0.V[nb], np.asarray(Vp)[nb])
+            per.append(X[fv] @ R.T + t)
+        idx.append(fv)
+        P.append(np.stack(per))
+        flap_info[label] = {"vertices": int(len(fv)), "with": find(part[0]) if part else None}
     if not idx:
         return {"idx": np.zeros(0, np.int64), "poses": np.zeros((len(poses), 0, 3)), "moves": {}, "pieces": []}
+    fi_ = np.where(taken & ~np.isin(pid, list(ks.values())))[0] if flap_info else np.zeros(0, np.int64)
     return {"idx": np.concatenate(idx), "poses": np.concatenate(P, axis=1), "moves": moves, "pieces": names,
-            "roots": {nm: find(nm) for nm in names}}
+            "roots": {nm: find(nm) for nm in names}, "flaps": flap_info, "flap_idx": fi_}
 
 
 def _open_start(Bp: dict, M: dict, Xs: np.ndarray, body0: "Body", poses: list, carry: dict) -> tuple:
@@ -3817,6 +3864,32 @@ def _crossing_hits(X: np.ndarray, M: dict) -> tuple[np.ndarray, np.ndarray]:
     T = F[ti]
     hit = _seg_tri(X[E[ei, 0]], X[E[ei, 1]], X[T[:, 0]], X[T[:, 1]], X[T[:, 2]])
     return E[ei[hit]], T[hit]
+
+
+def _layer_crossing_verts(X: np.ndarray, F: np.ndarray, U: np.ndarray, FU: np.ndarray) -> np.ndarray:
+    """Vertices of X (faces F) in a crossing with another mesh U (faces FU): ends of X's edges through U's triangles
+    and corners of X's triangles that U's edges pass through (a garment against the one worn under it)."""
+    out = np.zeros(len(X), bool)
+    if not len(FU):
+        return out
+    for (V1, F1), (V2, F2), mine in (((X, F), (U, FU), "edge"), ((U, FU), (X, F), "tri")):
+        E = np.unique(np.sort(np.r_[F1[:, [0, 1]], F1[:, [1, 2]], F1[:, [2, 0]]], 1), axis=0)
+        cen = V2[F2].mean(1)
+        rad = np.max(np.linalg.norm(V2[F2] - cen[:, None], axis=2), axis=1)
+        mid = 0.5 * (V1[E[:, 0]] + V1[E[:, 1]])
+        half = 0.5 * np.linalg.norm(V1[E[:, 0]] - V1[E[:, 1]], axis=1)
+        cand = cKDTree(cen).query_ball_point(mid, r=half + float(np.percentile(rad, 99)), return_sorted=False)
+        ei = np.repeat(np.arange(len(E)), [len(c) for c in cand])
+        ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
+        if not len(ei):
+            continue
+        T = F2[ti]
+        hit = _seg_tri(V1[E[ei, 0]], V1[E[ei, 1]], V2[T[:, 0]], V2[T[:, 1]], V2[T[:, 2]])
+        if mine == "edge":
+            out[E[ei[hit]].ravel()] = True
+        else:
+            out[T[hit].ravel()] = True
+    return out
 
 
 def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10) -> tuple[np.ndarray, list]:
@@ -4507,7 +4580,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     push = dict(Bp.get("push") or {})
     poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
-    carry = _carry(Bp, Ms, Xs, body_p, poses_c) if settle else None
+    carry = _carry(Bp, Ms, Xs, body_p, poses_c, flaps=made_flaps(g, Ms)) if settle else None
     Xstart = Xs
     if carry is not None and Bp.get("open_lay"):
         Xstart, carry = _open_start(Bp, Ms, Xs, body_p, poses_c, carry)
@@ -4647,6 +4720,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                       **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in Bp["hug"]]))[0]}
                          if Bp.get("hug") else {}),
                       **coll, **({"rest": rest_s} if smooth else {}))
+        if carry and len(carry.get("flap_idx", ())) and smooth and "bend_rest" in fold_s:
+            # made flaps of draped pieces (made_folds): held like the made pieces, but their rest is the flat pattern
+            # FOLDED at their line (as the draped cloth beside them rests): resting as they start (world positions)
+            # beside cloth resting on the flat pattern, the triangles across the roll line read 332% stretched and the
+            # solver failed at frame 0 (su_44). The runner's restIdx path: carried vertices rest as given here
+            rj_ = np.array(rest_s, float, copy=True)
+            rj_[carry["idx"]] = Xstart[carry["idx"]]  # (the made pieces as before: as they start)
+            fl_ = carry["flap_idx"]
+            rj_[fl_] = np.asarray(fold_s["bend_rest"], float)[fl_]
+            arrays.update(rest=rj_, restIdx=np.asarray(carry["idx"], np.int64))
         if (Bp.get("band_clear") or Bp.get("hug")) and backend == "zozo":
             # a gripping band starts BAND_CLEAR off the body: the body's contact offset + gap must be inside that
             zc_ = cfg.setdefault("zozo", {})
@@ -4826,14 +4909,37 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # the seams round it stayed open, 66 of 502 sewn pairs on the shirt)
         if len(M["sew"]):
             res["V"], res["weld_left"] = _weld_clear(res["V"], res["V_sim"], M, interfacing(Bp, M))
-        sim_bad = _crossing_verts(res["V_sim"], M)
+        # layered: the clean-up knows the body only, so its push and welds took the jacket's sleeves and armholes 4-9 mm
+        # into the shirt (su_41: 16 crossings between the layers in the sim, 247 after the clean-up: the white flecks of
+        # shirt through the jacket); crossings with the garment under this one count as the clean-up's too
+        uV_ = np.asarray(under["V"], float) if (under is not None and under.get("res") is not None) else None
+        uF_ = np.asarray(under["res"]["mesh"]["F"]) if uV_ is not None else None
+
+        def crossed(X_):
+            c_ = _crossing_verts(X_, M)
+            if uV_ is not None:
+                c_ = c_ | _layer_crossing_verts(X_, M["F"], uV_, uF_)
+            return c_
+        sim_bad = crossed(res["V_sim"])
         for _r in range(2):
             gr = sim_bad.copy()
             gr[A_[sim_bad[B_]]] = True
             gr[B_[sim_bad[A_]]] = True
             sim_bad = gr
+        # the welded seam groups as the clean-up left them (sewn pairs closed within 0.5 mm)
+        wgrp_ = wsize_ = None
+        sw_ = np.asarray(M["sew"]).reshape(-1, 2)
+        if len(sw_):
+            sw_ = sw_[np.linalg.norm(res["V"][sw_[:, 0]] - res["V"][sw_[:, 1]], axis=1) < 5e-4]
+            wgrp_ = np.arange(len(res["V"]))
+            for _ in range(8):
+                m2_ = np.minimum(wgrp_[sw_[:, 0]], wgrp_[sw_[:, 1]])
+                np.minimum.at(wgrp_, sw_[:, 0], m2_)
+                np.minimum.at(wgrp_, sw_[:, 1], m2_)
+                wgrp_ = wgrp_[wgrp_]
+            wsize_ = np.bincount(wgrp_, minlength=len(wgrp_))[wgrp_]
         for it_ in range(8):
-            bad = _crossing_verts(res["V"], M) & ~sim_bad
+            bad = crossed(res["V"]) & ~sim_bad
             if not bad.any():
                 break
             # (the crossing vertices alone first, then a ring, then two: two rings at once reopened every seam
@@ -4844,6 +4950,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 gr[B_[bad[A_]]] = True
                 bad = gr
             res["V"][bad] = res["V_sim"][bad]
+            # a welded seam vertex that goes back takes its weld with it: the group moves to the mean of its sides'
+            # sim positions (sent back alone, one side of a closed seam stood at the sim's 3-6 mm gap: pale slits on
+            # both upper sleeves in su_43); the seam stays closed where nothing crosses
+            if wgrp_ is not None and bad.any():
+                gb_ = np.unique(wgrp_[bad & (wsize_ > 1)])
+                if len(gb_):
+                    m_ = np.isin(wgrp_, gb_)
+                    acc_ = np.zeros((len(res["V"]), 3))
+                    np.add.at(acc_, wgrp_[m_], res["V_sim"][m_])
+                    res["V"][m_] = acc_[wgrp_[m_]] / wsize_[m_][:, None]
     sc = g.get("sculpt")
     if sc and sc.get("key") == key:
         f = Path(sc["file"])
@@ -5723,7 +5839,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
