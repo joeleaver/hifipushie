@@ -2406,6 +2406,58 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     pattern sheet, closures / collar seams were not judged one by one (made pieces are interfaced: untouched).
     Careful: `cloth.export_part` / `garments(simulate=True)` STARTS SIMS for uncached garments (an orphaned ZOZO job
     of mine had to be killed): test exports on cached models only.
+- Suit 5 (2026-10-08, "suit5" agent, branch `worktree-agent-a7a27cfe57b8650a5`; renders `cloth_renders/su_5*`; scratch
+  DURABLE in /mnt/data/hifipushie/suit5/: the layers agent's scripts retargeted + pl0.py <model> <garment> <tag>
+  (build place_only ONCE, pickle Bp / mesh / placing body to out/<tag>.pkl) and pl1.py <pkl tag> <out tag> (place()
+  again with the CURRENT code in seconds: seam start gaps, start stretch per piece, lapel folds, crossings, worn
+  slides; NORELAX=1 skips the start relaxation; saves out/<out>.npz), shd.py (where the shoulder seam's sides start),
+  wdbg.py (one worn column's trace), worst.py <tag> <pieces> (worst start triangles), xing.py / xing2.py (crossing
+  pairs; a piece's self crossings as flap / row / base), over.py (share of triangles starting past 5%: ZOZO gives a
+  local strain limit only under 3%), gapchk.py <job sim dir | npz> (what ZOZO sees at frame 0: cloth within 1 mm of
+  unjoined cloth, collider within 2 mm: "ccd failed (toi 0)" at newton step 1 is THIS or a start past the strain
+  limit), tent.py <result npz> (open fronts' forward stand by height vs the body, the hem's level by angle), patm.py,
+  run_base.sh (main's code from ./base, a detached checkout), shirtchk.py <model> (the shirt alone)).
+  - THE FOREPART BUILT WHERE IT IS WORN (`cloth._worn_top`, garment key / kind `worn_top`: garment_kb kinds jacket and
+    coat; `cloth.worn_top(g)`). Torso pieces reaching the neck point: each column (fixed pattern x) laid up the body
+    from the torso cylinder at the armpit's level in a plane of constant world x (tilted with the cylinder the
+    columns ran in to the neck and front and back met different ridges), clearance easing to `WORN_CLEAR` 5 mm (at the
+    draped 12 mm the jacket started 19 mm over the shirt and its carried collar held it 27 mm high: collar_show -33,
+    cuffs 21-29), arc length = pattern height; ONE slide per piece (median over the columns that cross the shoulder's
+    ridge, by the neck the ridge climbs the neck) so its top lands on the ridge, the cylinder part below moves with it,
+    side panels with the mean. Columns in front of / behind the neck stop following the body above `WORN_NECK`.
+    `_pin_seams`: seams between worn pieces pinned PIN_GAP 2 mm apart toward each side's own cloth (pinned onto one
+    point the cloth crossed), faded over the pattern (WORN_PIN); seams to a made piece (the collar) pulled half way.
+    The start relaxation (place's final loop) alternates relax + pin + `_repress` for worn pieces, 12 rounds.
+    `folds.pressed_flap`: a lapel (fold >= 150 deg on a worn piece, `_pressed`) is PRESSED onto its forepart: each flap
+    vertex at its mirror image across the first row in the pattern, on the base by the affine map of the triangle
+    holding it, PRESS_LAY 3 mm off, PRESS_WEDGE 0.3 slope by the line (turned rigidly about the roll line over a
+    curving forepart it stretched 30% by 50 deg; at 0.06 slope 88 lapel vertices started within ZOZO's 1 mm contact
+    gap: "ccd failed" at frame 0). A pressed fold's first row relaxes with its base. `_on_seam(placed=)`: the collar
+    lies on the placed partners (`_at_pattern`: a piece's pattern point where the piece lies), not on the body chart.
+    `garment_kind` reads a compiled garment's `_design` (it returned "any": seam finishes by kind never applied).
+    Start (ga_suit jacket over the shirt): shoulder seams 233-249 -> 2 mm, CB 16 -> 2, collar neck seams p50 131-163
+    -> 4 mm, lapels 165 deg + 46 deg (L blocked) -> 176 / 176 pressed, 1.5% of draped triangles past 5%.
+  - su_53 (ga_suit5, 2 cm ZOZO, 736 s): fits, 0 layer crossings, seams ALL closed after the clean-up (sim p95 3.3 mm;
+    su_45: 15 pairs open, front.L neck 56 mm), lapels roll 150 / 161 deg (su_45: L 99), cuff_show 15.3 / 13.5 (was
+    8.4 / 7.2: the jacket now hangs from the shoulders), collar_show 5 (target 10-20: jacket collar still a little
+    high), lapel_gap 13.6 (lapels stand off), collar_hug 24, 2 self crossings at the left gorge. Tent (tent.py): front
+    hem 20-26 mm above the back's (su_45: 19-70), the open fronts 5 cm forward of the chest line at the hem, now
+    symmetric (su_45: L 17 cm off the body at the hip, R 10; su_53 12-13 both).
+  - `front_balance` (bodice block option, m; default 0): the front above the chest line spread upward. 20 mm on ga_suit5
+    (su_54): hem level (back 837, front 839-859) but the sleeves rode up and bunched (cuffs 24 / 40 mm, sleeve seams
+    64 mm open: the raised front armhole), tent unchanged. NOT adopted (ga_suit5 back without it). If tried again,
+    keep the armhole: raise only the neck point / gorge and CF, or redraft the sleeve against the new armhole.
+  - THE SHIRT: ga_suit's shirt fails main's `fine_start_check` (53 triangles over 1.6x, worst 3.0x at front.R pattern
+    [-0.037, -0.103]), checked with main's own code (4fa7cdc): trousers2's. `workspace/ga_suit5` = ga_suit with the
+    shirt's `fine_settle: false`; the jacket work ran on it. Drop it once the shirt builds.
+  - Tests: the ten cloth / pattern files + test_collar (+ test_worn_forepart; the collar lay tests run with
+    worn_top off) + test_seams pass after merging main 4fa7cdc.
+  - NEXT, in order: (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
+    the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
+    suppression; a sim with interfaced [] isolates the canvas); (2) collar_show 5 -> 10-20 (the jacket collar's stand
+    over the shirt's; lower the stand or the worn neck); (3) lapel_gap 13 mm (the pressed lapel's roll rows spring
+    back: made_folds on the lapel is now possible since the forepart starts worn); (4) su_garrett: carry ga_suit's
+    jacket settings + canvas bands, then the layered sim (needs the shirt to build).
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
