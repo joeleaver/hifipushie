@@ -1233,7 +1233,7 @@ def _repress(X: np.ndarray, B: dict, M: dict, smooth: bool) -> np.ndarray:
     return X
 
 
-def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed: list | None = None) -> np.ndarray:
+def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed: list | None = None, pull: float = 1.0) -> np.ndarray:
     """Seams between pieces laid where they are worn (a jacket's shoulder seams, its centre back) pinned shut as a
     tailor pins them on the form: each sewn pair goes to its middle, and each piece follows its seam's moves, faded
     by pattern distance from the seam (Gaussian `sigma`, Shepard-weighted). Laid separately the front and back met
@@ -1265,6 +1265,10 @@ def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed:
     ga, gb = np.where(fb, 1.0, 0.5) * PIN_GAP, np.where(fa, 1.0, 0.5) * PIN_GAP
     ta, tb = mid + inward[a] * ga[:, None], mid + inward[b] * gb[:, None]
     ta[fa], tb[fb] = X[a[fa]], X[b[fb]]
+    # (`pull` < 1: a side sewn to a fixed piece goes that share of the way: the sewing closes the rest, and a back
+    # held to a made collar while it relaxed started 9.8% of its triangles past 5%)
+    ta[fb] = X[a[fb]] + pull * (ta[fb] - X[a[fb]])
+    tb[fa] = X[b[fa]] + pull * (tb[fa] - X[b[fa]])
     Y = X.copy()
     for k in ks:
         ends = np.r_[a[pid[a] == k], b[pid[b] == k]]
@@ -3332,7 +3336,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 for row in fd["rows"]:
                     made_v[row] = True
             worn_k = [names.index(nm) for nm in (B.get("worn_top_pieces") or {})]
-            for _ in range(6):
+            for _ in range(12 if worn_k else 6):
                 _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
                 if hi_[~made_v[M["F"]].any(1)].max() <= 1.04:
                     break
@@ -3343,7 +3347,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                         Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=4)
                         Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=30)
                         Xp = _pin_seams(Xp, M, worn_k, sigma=WORN_PIN / 4,
-                                        fixed=[j for j in range(len(names)) if made_v[pid == j].all() and j not in worn_k])
+                                        fixed=[j for j in range(len(names)) if made_v[pid == j].all() and j not in worn_k], pull=0.5)
                         Xp = _repress(Xp, B, M, smooth)  # (pressed lapels follow their foreparts)
                 else:
                     Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
