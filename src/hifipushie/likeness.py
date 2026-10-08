@@ -1024,6 +1024,14 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] * r.get("rank", 1.0) if r["score"] > 1.0 else r["tier"], -r["score"]))
     cmp = {"rows": rows, "photos": photos, "models": models, "name": name, "points_from": points_from}
     cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
+    for r in rows:   # a turned picture whose yaw is in doubt: its depth items are judged wider
+        if r.get("kind") == "contour" and r["score"] >= 0 and _item(r["id"])["measure"]["key"] in YAW_ITEMS:
+            d = cmp["pictures"][r["vi"]].get("yaw_doubt")
+            if d:
+                r["tol"] = r["tol"] + YAW_MM * d
+                r["score"] = abs(r["miss"]) / r["tol"]
+                r["reliability"] = f"yaw in doubt by {d:.0f} deg (tolerance widened); " + r.get("reliability", "")
+    rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] * r.get("rank", 1.0) if r["score"] > 1.0 else r["tier"], -r["score"]))
     for r in rows:   # items an expression on that picture biases
         if r["vi"] != "-":
             for nm, v in (cmp["pictures"][r["vi"]].get("expressions") or {}).items():
@@ -1034,6 +1042,9 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
 
 # ---- what a set of pictures can support -----------------------------------------------------------------------------
 
+YAW_DOUBT = 6.0        # deg between the detector's head yaw and the fitted camera's: past it the picture isn't one projection
+YAW_MM = 0.5           # mm of tolerance added per degree of that doubt on a turned view's depth items (1 deg ~ 1 mm of gap)
+YAW_ITEMS = ("nose_gap", "nose_tip", "cheek_line", "chin_projection", "brow_ridge")
 EXPR = {"smile": (("mouthSmileLeft", "mouthSmileRight"), 0.3), "mouth open": (("jawOpen",), 0.15),
         "squint": (("eyeBlinkLeft", "eyeBlinkRight", "eyeSquintLeft", "eyeSquintRight"), 0.45),
         "brows raised": (("browInnerUp", "browOuterUpLeft", "browOuterUpRight"), 0.4),
@@ -1088,6 +1099,12 @@ def picture_notes(ph: dict, md: dict | None = None) -> dict:
     info = ph.get("info") or {}
     out["head_yaw"] = head_yaw(info.get("M"))
     cam = md["cam"] if md else ph["cam"]
+    cy = abs(float(cam.get("yaw", 0.0)))
+    if out["head_yaw"] is not None and ph["kind"] != "front" and abs(abs(out["head_yaw"]) - cy) > YAW_DOUBT:
+        out["yaw_doubt"] = abs(abs(out["head_yaw"]) - cy)
+        out["problems"].append(f"NOT ONE PROJECTION: the detector reads the head turned {abs(out['head_yaw']):.0f} deg, the fitted camera "
+                               f"{cy:.0f} (a painting / generated picture): distances and widths are the FRONT picture's; this one gives "
+                               "character (the contour's shape: bridge, tip, chin, jaw corner), its depth items' tolerances are widened")
     f = lens_mm(cam)
     out["lens_mm"] = round(f, 0)
     if f < 60:
@@ -1656,6 +1673,11 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         if not _undone(start, c, k) and not r.get("refused"):
             cur, cur_cmp = nb, c
         rep["steps"].append(("fit_hood", r))
+    part = {"nose": "nose", "chin_jaw": "chin", "structure": "cheek"}.get(stage)
+    if part and _profile_score(cur_cmp, part) is not None:
+        cur, cur_cmp, plog = fit_profile(name, cur, parts=(part,), force=force, start=start, k=k, photos=photos)
+        rep["log"] += plog
+        rep["steps"].append((f"profile contour ({part})", {}))
     done = set()
     for it in checklist():
         lv_of = lambda i: EXPR_LEVERS[i] if (i in biased and i in EXPR_LEVERS) else LEVERS.get(i)  # noqa: E731
@@ -1676,11 +1698,6 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         cur_cmp["_base"] = cur
         cur, cur_cmp, note = _lever_fit(name, cur, photos, start, cur_cmp, k, ids, lever, force, rep["log"])
         rep["steps"].append((f"lever {note}", {}))
-    part = {"nose": "nose", "chin_jaw": "chin"}.get(stage)
-    if part and _profile_score(cur_cmp, part) is not None:
-        cur, cur_cmp, plog = fit_profile(name, cur, parts=(part,), force=force, start=start, k=k, photos=photos)
-        rep["log"] += plog
-        rep["steps"].append((f"profile contour ({part})", {}))
     gaps = []
     for r in cur_cmp["rows"]:
         it = _item(r["id"])
@@ -1715,31 +1732,49 @@ PROFILE_PARTS = {   # part -> (region group(s), contour, heights it reads (level
     "nose": ("nose_region", "nose", None, None),
     "chin": (["chin_region", "lower_lip_region"], "outer", ("sto", 6.0, "chin", 9.0),
              [i for i in range(17, 68) if i not in (55, 56, 57, 58, 59, 65, 66, 67)]),
+    # the cheek's fullness at the mouth's height (the far cheek's line in a turned view), the front outline held
+    "cheek": (["left_cheek_region", "right_cheek_region"], "outer", ("sn", 2.0, "sto", 10.0), list(range(17, 68))),
 }
-PROFILE_ITEMS = {"nose": ["prof_nose_tip", "prof_nose_gap", "prof_nose_length", "prof_bridge_bow"],
+PROFILE_ITEMS = {"cheek": ["prof_cheek_line"], "nose": ["prof_nose_tip", "prof_nose_gap", "prof_nose_length", "prof_bridge_bow"],
                  "chin": ["prof_chin", "prof_chin_height", "prof_mentolabial"]}
 PROFILE_ROUNDS = 5
-PROFILE_DONE = 1.0    # mm rms of the contour's miss at its vertices: done
+PROFILE_DONE = 1.5    # mm rms of the contour's miss at its vertices: done
 
 
 PROFILE_FRONT = {"nose": list(range(27, 36)), "chin": [7, 8, 9, 56, 57, 58]}
 
 
+PROFILE_HOLD_N = 60     # region vertices held in the front picture's plane
+PROFILE_HOLD_W = 3      # ... each counted this many times against a contour vertex
+PROFILE_GAIN = 0.7      # share of the contour's miss asked a round (to the contour, not past it)
+PROFILE_SIGMA = 1.6     # a round that takes the region's components past this is not taken (plausibility)
+
+
 def _front_holds(cmp, part) -> list:
-    """The part's landmarks held where a FRONT picture has them (fit_region targets at their own projection, twice
-    each): a turned view's contour says how far forward things stand; heights and widths are the front view's, and
-    left free the nose fit dragged the subnasale 3 mm down (philtrum, lower third)."""
-    from scipy.spatial import cKDTree
+    """The part's skin held where a FRONT picture has it (fit_region targets at their own projection): a turned view's
+    contour says how far things stand along the front camera's line of sight; heights and widths are the front
+    picture's. Landmarks alone (round 1) left the subnasale free to slide 3 mm down (philtrum, lower third): now
+    PROFILE_HOLD_N vertices spread over the region, so what is left to the solve is depth."""
     from . import humanfit
+    from . import likeness_profile as lp
     out = []
     for vi, (ph, md) in enumerate(zip(cmp["photos"], cmp["models"])):
         if ph["kind"] != "front":
             continue
         V, L = md["mesh"]["V"], md["mesh"]["L"]
-        j = cKDTree(V).query(L[PROFILE_FRONT[part]])[1]
-        uv = humanfit.project(md["cam"], V[j])
+        if part == "nose":
+            ids = lp.nose_ids(V, L)
+        elif part == "cheek":   # both cheeks, between the mouth's corner and the jaw's side
+            cs = [0.5 * (L[48] + L[4]), 0.5 * (L[54] + L[12])]
+            ids = np.nonzero(np.min([np.linalg.norm(V - c, axis=1) for c in cs], axis=0) < 0.03)[0]
+        else:
+            c = 0.5 * (L[8] + L[57])
+            ids = np.nonzero(np.linalg.norm(V - c, axis=1) < 0.032)[0]
+        if len(ids) > PROFILE_HOLD_N:
+            ids = ids[np.linspace(0, len(ids) - 1, PROFILE_HOLD_N).astype(int)]
+        uv = humanfit.project(md["cam"], V[ids])
         out += [{"view": vi, "tpl": [int(a)] * 3, "bary": [1.0, 0.0, 0.0], "uv": [float(u[0]), float(u[1])], "hold": True}
-                for a, u in zip(j, uv)] * 2
+                for a, u in zip(ids, uv)] * PROFILE_HOLD_W
     return out
 
 
@@ -1759,7 +1794,7 @@ def _profile_targets(cmp, traces, part) -> list:
         if rng:
             lv = rd["model_levels"]
             vr = (lv[rng[0]] + rng[1], lv[rng[2]] + rng[3])
-        tg += lp.targets(rd, md["mesh"], md["cam"], vi, contour, v_range=vr)
+        tg += lp.targets(rd, md["mesh"], md["cam"], vi, contour, v_range=vr, gain=PROFILE_GAIN)
     return tg
 
 
@@ -1783,6 +1818,7 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
     photos = photos or _photos(_refs(name))
     cur = base
     cmp = compare(name, cur, photos=photos)
+    cmp_first = cmp
     cams0 = [m["cam"] for m in cmp["models"]]   # ONE camera per picture through the whole fit: refitted per candidate
     # (as compare does for turned views) the camera follows the nose it is meant to judge
     traces = ls.load_points(name)
@@ -1793,9 +1829,6 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
             s0 = _profile_score(cmp, part)
             if s0 is None:
                 log.append(f"  {part}: no contour on the references (likeness_points 'profile'" + (" / 'nose'" if part == "nose" else "") + ")")
-                break
-            if not any(r["score"] > 1.0 for r in cmp["rows"] if r["id"] in PROFILE_ITEMS[part]):
-                log.append(f"  {part}: within tolerance")
                 break
             tg = _profile_targets(cmp, traces, part)
             if len(tg) < 4:
@@ -1814,7 +1847,11 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
             s1 = _profile_score(c, part)
             tg1 = _profile_targets(c, traces, part)
             miss1 = _rms(tg1)
-            und = _undone(start, c, k) if start is not None else []
+            # pins: every FRONT-view item (any stage) when run alone; the earlier stages' in a staged fit
+            und = _undone(start, c, k) if start is not None else _undone(cmp_first, c, 99)
+            if float(r.get("largest_sigma") or 0) > PROFILE_SIGMA and not force:
+                log.append(f"  {part} round {rnd + 1}: not taken (components at {r.get('largest_sigma')} sigma, limit {PROFILE_SIGMA})")
+                break
             note = (f"{len(tg)} contour vertices, contour rms {miss:.1f} -> {miss1:.1f} mm, share {r.get('share')}, largest "
                     f"{r.get('largest_sigma')} sigma; items' score {s0:.1f} -> {s1 if s1 is None else round(s1, 1)}")
             # judged on the contour itself (the items are a few numbers read off it: one of them worse while the line
