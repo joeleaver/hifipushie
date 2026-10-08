@@ -2254,13 +2254,18 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
                 # the back must stay out of sight: a face off the visible rock whose centre is out in the air (in front
                 # of it) is a buried face pulled through the front, drawn plain in an engine (the island's Kaze stacks
                 # at LOD 1-2: white triangles 10-20 m across). Measured only on the visible faces it went unbounded
-                hid = ~vis & (fv[f].max(1) > -thr)  # (faces near the front: the deep back can't reach the air)
-                if hid.any() and (field.front(v[f[hid]].mean(1)) > thr).any():
+                # (more of it than the undecimated mesh has: the dense mesh's own few such faces set the floor)
+                if exposed[0] is not None and _exposed_back(v, f, fv, vis, field, thr) > exposed[0]:
                     return np.inf
                 if vis.sum() >= 16:
                     return float(np.percentile(np.abs(field.front(c[np.r_[vis, vis]])), 99))
             return float(np.percentile(np.abs(field.value(c)), 99))
 
+    exposed = [None]
+    if hasattr(field, "front") and len(faces):
+        thr0 = max(0.3, 2 * err)
+        fv0 = field.front(P)
+        exposed[0] = 1.0 + 1.2 * _exposed_back(P, faces, fv0, (np.abs(fv0) <= thr0)[faces].all(1), field, thr0)
     tol = err + error(P, faces)
     if pre is not None and len(faces) > 1.5 * pre and len(faces) > budget:
         cand = run(pre)
@@ -2318,6 +2323,18 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
                 break
         break
     return best
+
+
+def _exposed_back(v, f, fv, vis, field, thr):
+    """m2 of a cliff shell's faces off the visible rock (buried) whose centre stands out in front of it, in the air."""
+    hid = np.flatnonzero(~vis & (fv[f].max(1) > -thr))  # (faces near the front: the deep back can't reach the air)
+    if not len(hid):
+        return 0.0
+    out = hid[field.front(v[f[hid]].mean(1)) > thr]
+    if not len(out):
+        return 0.0
+    a = np.linalg.norm(np.cross(v[f[out, 1]] - v[f[out, 0]], v[f[out, 2]] - v[f[out, 0]]), axis=1) / 2
+    return float(a.sum())
 
 
 def _drop_twins(v, f):

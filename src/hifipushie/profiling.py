@@ -127,10 +127,14 @@ class Report:
         if self.progress is None:
             return
         now = time.time()
-        tenth = bool(total and done and (done * 10 // total) != ((done - 1) * 10 // total))
+        # (a tenth only when the count moved past one: polled every second with the count standing still, the old
+        # test said "a tenth" every 5 s)
+        last = getattr(self, "_last_done", {}).get(stage, -1)
+        tenth = bool(total and done > last and (done * 10 // total) != (max(last, 0) * 10 // total))
         if not (force or now - self._last >= self.every or (tenth and now - self._last >= 5.0)):
             return
         self._last = now
+        self.__dict__.setdefault("_last_done", {})[stage] = done
         el = now - t
         eta = f", ETA {self.clock(el / done * (total - done))}" if 0 < done < total else ""
         self.say(f"{stage}: {done} / {total} done, {self.clock(el)} in{eta}{extra}")
