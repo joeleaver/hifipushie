@@ -1388,6 +1388,7 @@ WORN_CLEAR = 0.005  # m a worn top starts off the body under it: it RESTS on the
 WORN_NECK_BAND = 0.04  # m out past the neck point (world x) over which a column hands over from running on to following
 WORN_NECK_CLEAR = 0.02  # m out from the neck point (world x) from which a column's ridge is the shoulder's
 NOTCH_HOLD_CB = 0.04  # m of a notched collar's neck edge either side of CB held to the worn back neck while it is laid
+NOTCH_HOLD_RATIO = 1.2  # ... when the worn neckline is this much longer than the collar's neck edge (ga_suit 1.15, Garrett 1.30)
 WORN_NAPE = 0.0  # m a worn top's back may run on past the under garment's neckline behind the neck
 WORN_RUN = 0.04  # m: a column running on past the neck's base goes the way its last WORN_RUN went
 WORN_NECK = 0.05  # m under the neck point from which a column in front of / behind the neck stops following the body  # m a worn column may slide along its path to put the piece's top on the shoulder's ridge
@@ -1980,7 +1981,8 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
                 # the pattern's (Garrett: 1.30x, his back neck curves round more than the draft's) the chain cut the
                 # corner up the nape and the collar started 20 mm over the jacket's back neck and the shirt collar's top)
                 sp_c = np.abs(sp_ - sp_[mid])
-                hold_ = np.where(sp_c < NOTCH_HOLD_CB, 0.25 * (1.0 - sp_c / NOTCH_HOLD_CB), 0.0)
+                hold_ = np.where(sp_c < NOTCH_HOLD_CB, 0.25 * (1.0 - sp_c / NOTCH_HOLD_CB), 0.0) \
+                    * float(sw_[-1] > NOTCH_HOLD_RATIO * sp_[-1])
                 for it_ in range(160):  # (the pull toward the chart fades out: the lengths and the body decide the end)
                     Cs += np.maximum(wt_ * max(0.0, 1.0 - it_ / 110.0), hold_)[:, None] * (Wr - Cs)
                     for _ in range(4):
