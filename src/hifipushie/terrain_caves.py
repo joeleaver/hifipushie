@@ -659,7 +659,9 @@ def collision_steps(paths, out, tiles, lod) -> list[str]:
                          f"[{xy[k, 0]:.0f}, {xy[k, 1]:.0f}, {cz[k]:.1f}], {0.5 * k:.0f} m along); the tallest riser "
                          f"steeper than {RISER_DEG:g} deg {pth['tallest_riser_collision_m']} m"
                          + (f" at {pth['tallest_riser_at']}" if pth.get("tallest_riser_at") else "")
-                         + ": your character must step at least that high"
+                         + ": your character must step at least that high (a capsule character meets any riser "
+                           "over ~0.1 m steeper than its floor angle, so it needs a step-up; Godot's "
+                           "CharacterBody3D reads such a riser as a wall)"
                          + (f"; {miss} of {len(z)} points have no collision floor under them (the heightmap's, or "
                             f"open)" if miss else ""))
     return lines
