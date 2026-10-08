@@ -2282,6 +2282,53 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
     settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
     and su_garrett.
+- Suit 4 (layers) (2026-10-07, "layers" agent, worktree branch of the seams agent's name `worktree-agent-ae98ecda411a37796`
+  in this worktree; renders `cloth_renders/su_41..45_*`; scratch DURABLE in /mnt/data/hifipushie/layers/: the collar
+  agent's scripts retargeted (env.sh, run.sh, q.sh + run.py, plb.py, cu.py ...) + lay1.py <m> <g> <tag> [k=json] (START:
+  per-seam start gaps, start stretch per piece, pad thickness by region, jacket vs under garment, saves out/<tag>.npz
+  with U/FU), lay2.py <result npz> <start npz> (jacket vertices inside the shirt), lay3.py (open sewn pairs: where,
+  what's under), tape.py / om.py (measures bare vs over the shirt; the draft logs), collarcb.py / prof.py (CB column /
+  CB profiles of body, shirt, pad, collar), laydbg.py (notched lay at CB), fleck.py <result npz> <start npz> [V]
+  (layer crossings + whether the collider dropped those shirt faces), flapchk.py, reststr.py, jobstr.py <job dir>
+  [new] (the runner's rest rebuilt from a job's in.npz: start stretch per triangle: find "ccd failed" before the
+  GPU), setop.py / setkey.py (edit ga_suit's jacket), show.py, wearchk.py, t1.sh <test>, tests.sh).
+  - su_32's open seams were CONSTRUCTION: the jacket was drafted from the bare body. Its armhole sat 12 mm under the
+    shirt's own (underarm seams pinched 20-64 mm open over the shirt in the pit) and its neckline was shorter than the
+    shirt collar it goes round (the made collar climbed it: collar_show -19). `cloth.over_measures` /
+    `draft_measures`: a garment `over` another is drafted from the tape over it: `neck` = the under garment's
+    neckline (`under_neckline`: its neck pieces' sewn edge) + 2 pi `UNDER_COLLAR_T` 3 mm (the raw tape round the
+    pressed shirt collar read +123 mm: its fall stands off), `waistToArmpit` less the under garment's pad in the pit;
+    body girths stay the bare body's (ease bands are against the body). build + the workflow gate (Ctx.meas) use it;
+    log "drafted over shirt: {...}". Guide: cloth_guide.md Layers.
+  - `padded_body`: each vertex padded along its OWN normal line (`PAD_LATERAL` 8 mm, never further than 1.5x the
+    point's own distance), no overhang (`PAD_SLOPE` 1): by nearest vertex the shirt collar's fall made a 3 cm shelf
+    at the back neck and the jacket collar was laid on it 24-27 mm off the shirt.
+  - `_on_seam`: the piece's side of its sewn edge read from its cloth NEXT TO the edge's middle (by the whole piece's
+    centroid, a notched collar drafted round a shirt collar laid its stand DOWNWARD at CB).
+  - Clean-up vs the layer under: the sim had 16 jacket/shirt crossings, the clean-up 247 (white flecks of shirt
+    through sleeves / armholes; NOT the collider's dropped slivers: fleck.py, 2 of 24k faces, far away). Crossings
+    with the under garment now count in build's revert-to-sim (`_layer_crossing_verts`), and a reverted welded seam
+    vertex takes its weld group to the mean of its sides' sim positions (sent back alone: pale slits on the sleeves).
+  - `made_folds` (garment key; `made_flaps`, `_carry(flaps=)`, rest = the folded flat pattern via the runner's restIdx
+    path): the flap past a fold held and carried with the made piece it is sewn to. TRIED on the lapels (su_44b) and
+    WORSE (shoulder seams 131-144 mm, neck 248): held regions stay where they START, and the draped fronts start on
+    the torso cylinder away from the shoulders. Off on ga_suit. A made lapel needs the forepart STARTED where it is
+    worn (next build, below). First attempt failed at frame 0: carried vertices rest as start (world) beside cloth
+    resting on uv: 4.3x stretch across the roll line (jobstr.py found it).
+  - ga_suit jacket now: collar stand 24 / fall 36 (shirt band 20 mm), sleeve length_bonus -0.04, under_cap 0.004,
+    closures front open, interfaced bands (the chest canvas as stiffness) {front.L/R near [break, lapelPoint] within
+    0.1}. su_garrett jacket: the same except the bands (not yet).
+  - su_45 (2 cm, the shirt open-collared by main's no-tie default): fits, 0 crossings, 0 layer crossings, seams p95
+    0.0 (15 of 354 pairs open, all at the collar neck seams: front.L 56 mm, R 16), collar_show 18.3 (ok), cuff_show
+    8.4 / 7.2 (target 10-15), lapel_gap 5.6 / 7.1, collar_hug 23 (jacket collar off the shirt collar; partly the
+    metric: the shirt collar stands open now), left lapel roll ends at 99 deg (half unrolled, the gorge crumpled).
+    Reads as a jacket over a shirt from every side, matte, no flecks, clean back.
+  - OPEN, in order: (1) the forepart started where it is WORN (a worn chart for the fronts' tops, like the collar's:
+    collar, lapel and front start together on the shoulders; then made_folds can hold the lapel) = the gorge and the
+    left lapel; (2) the TENT: from the side the open fronts bow forward from the chest to the hem (suspect front
+    balance / length over the shirt (hpsToBust over the shirt +26 mm, not used by over_measures) or the side panel's
+    hem flare); (3) the shirt collar reads buttoned though its pieces say open (trousers2's neck start); (4) cuff 2-3 mm
+    short of the band; (5) su_garrett (bands, then a sim).
 - Seams (2026-10-07, "seams" agent, branch `worktree-agent-ae98ecda411a37796`; the user on the suits: "seams look huge
   and structural"; renders `cloth_renders/sm_01..08` (before = main 2aea2ac / after, the SAME cached sims: su_31
   blazer, su_05 shirt; sm_05 = raking light across the blazer's side panel seam); scratch DURABLE in
