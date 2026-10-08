@@ -225,6 +225,11 @@ The plan lists:
   cuffs, waistband). Draped pieces are loose cloth shaped by body, gravity and seams (fronts, backs, sleeves, skirt
   panels). The sheet's `"made": {piece or role: "made" | "draped"}` overrides. It fails when draped cloth is wholly
   interfaced (it would be frozen as placed: this is what stopped the coat's lapels rolling).
+  A made REGION of a draped piece: garment key `"made_folds": ["lapel"]` (fold names or prefixes) makes the flap past
+  each such fold line made (method "settle"): a tailored lapel, pad-stitched to the canvas and pressed with its roll,
+  is held as laid and carried with the made piece it is sewn to (the collar along the gorge: collar + lapel + gorge
+  one pressed unit), while the rest of the front stays draped, joined along the roll line. Without it a made collar
+  sewn to a draped lapel crumples at the gorge.
 - **Closures.** How each opening is fastened, as construction and not as a seam: garment / design-table key
   `closures`, one entry per closure:
   `{"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R", "edge": {"over": "a>b", "under":
