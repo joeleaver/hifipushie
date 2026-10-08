@@ -468,6 +468,8 @@ def render(job, d):
     sh.cavity_type = "BOTH"
     sh.show_shadows = True
     sh.shadow_intensity = 0.35
+    # cloth is matte: the studio light's specular highlight made dark wool read as leather (tr_11)
+    sh.show_specular_highlight = bool(job.get("specular", False))
     sc.render.film_transparent = False
     world = bpy.data.worlds.new("w")
     sc.world = world
@@ -616,7 +618,7 @@ def _render_textured(job, d):
             m = ob.modifiers.new("solid", "SOLIDIFY")
             m.thickness = float(o["thickness"])
             m.offset = 1.0
-        ob.data.materials.append(_material(f"m_{nm}", o.get("color", "#cccccc"), 0.85 if o.get("maps") else 0.6,
+        ob.data.materials.append(_material(f"m_{nm}", o.get("color", "#cccccc"), float(o.get("roughness", 0.85 if o.get("maps") else 0.6)),
                                            o.get("maps"), sheen=0.3 if o.get("maps") else 0.0))
     lo = np.min([np.min(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
     hi = np.max([np.max(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)

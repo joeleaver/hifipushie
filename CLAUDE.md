@@ -2316,6 +2316,56 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     pattern sheet, closures / collar seams were not judged one by one (made pieces are interfaced: untouched).
     Careful: `cloth.export_part` / `garments(simulate=True)` STARTS SIMS for uncached garments (an orphaned ZOZO job
     of mine had to be killed): test exports on cached models only.
+- Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
+  /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
+  stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
+  vdiag.py / col.py (one band's triangles: row / column stretch and shear; one piece's column of vertices), legsec.py
+  (the leg's sections), wstrain.py <npz> (a sim result's stretch vs the pattern by piece and direction), marks.py (the
+  closures' fastening pairs, flat and at the start), collm.py <model> (neckHeight, collar options, the drafted collar's
+  stand / fall / points), neckrows.py, t1.py <test file> <tests...>, run_base.sh (code at ./base, a detached checkout
+  of another commit: `git worktree add --detach base <commit>`), patch_*.py (the sandbox refuses heredocs with code)).
+  - Trouser legs START ON THE LEG (`cloth._leg_tube`, wrap "follow": false = the old seat cylinder all the way down):
+    below the crotch each leg's front + back go on a tube square to a smooth leg axis (quadratic through the
+    sections' plan middles), its section the leg's own (radius per direction smoothed `LEG_SMOOTH` up and down)
+    pushed out to the cloth's girth (+ `LEG_APART` per seam, >= `LEG_CLEAR` off the leg; `LEG_TAPER` caps how fast
+    the girth may fall, 5 = off), front crease line on its front, the back's half the girth round, pattern length
+    along the axis, the leg under `LEG_EASE` over the ankle compressed until the hem clears the foot; blended into the
+    seat cylinder over `LEG_BLEND` 15 cm under the crotch (the seat cylinder now stops just under that). su_garrett
+    start: side seams 174 -> 15, inseams 213 -> 8 mm (p50), 0 crossings, every triangle within 5%: stage 4 passes.
+  - THE FIND: a start whose edges are all within 5% can be 9-12% stretched (principal) along the diagonal: a column
+    leaning 0.1 against its rows is already ~5% (shear is first order). A tube that narrows down a leg leans its
+    outer columns by about a quarter of the narrowing rate; horizontal rows on a leg splayed 11 deg are a shear of that
+    slope; a row anchor (the piece's row middle) drifting toward the fork shears the top of the thigh. `_relax_strain`
+    (in place()'s start relaxation, after `_relax_stretch`): per triangle the deformation's singular values clamped to
+    1.03 (compression left), vertices drawn toward that shape, Jacobi, 300 iterations, 6 rounds with the body clearance.
+    It took the trousers from 24-27% of the triangles over 5% to none. Fold rows are held there EXCEPT a trouser leg's
+    in-wrap press folds (the crease: held, it pinned a leaning column's shear). It runs for every smooth (ZOZO) start.
+  - Front-opening waistband laid the wrong way round (seam p50 223 mm, "half a turn"): its chain starts on the left
+    front and runs round the back, laid from the back centre it went to the left first; wrap `"dir": -1` (pattern +x
+    round toward -x from the start), set by op_waistband's front opening. Band seam p50 now 54 mm (the seat cylinder
+    is wider than the band at the waist).
+  - Shirts are WORN as their kind is (the user: "a dress shirt with no tie would have top button unbuttoned and
+    open"): garment_kb `kinds.shirt.wear` {no_tie, tie} closure overlays (garment_design.wear, laid in cloth.pieces
+    before the garment's own), garment / sheet key `tie` (default false): collar "open", front `{"open_top": 1}` (new
+    closure state: the n highest fastenings undone, by their mark's height). Every Simon shirt now starts open.
+  - Unbuttoned stand: `_open_closure` (girth from the open closure's fastening pair) and a branch in place()'s neck
+    code: seated and laid like a buttoned stand (hull of the neck's own sections over the band's height, recentred),
+    no lap, its ends `NECK_OPEN` 35 mm apart at the throat. su_garrett: 114 -> 35 mm open, collar 2.2x -> 1.15x.
+    NOT YET SIMULATED: do the fall and points spread into the concept's soft V? The stand is made / carried rigid, so
+    the start's gap is the worn gap: judge it on the first sim and tune NECK_OPEN.
+  - Collar proportions from the neck: garment_kb `kinds.shirt.collar` + `cloth.collar_options` (design tables with
+    `"collar_rule": "simon"`): stand = tailor `neckHeight` (the neck's base up to the jaw landmarks / the girth run) -
+    13 mm in 20-35 mm, fall at CB = stand + 12, points 70 (Simon's collarBend solved on its own collar geometry).
+    Garrett: neckHeight 29 -> 20 / 32 / 69.6 mm (Simon's table defaults gave 22 / 44 / 57); the test body 40 -> 27 /
+    39 / 76. Every Simon shirt's pattern changed. A garment's own pattern options still win.
+  - "STRAINED at waist 17.8%" (su_05) was not fit: the pieces' interiors stretch p95 1.5-2%; the worst triangles are
+    the fronts' x~0 placket fold rows (0.3x across, 1.5-2.3x along). fit() leaves fold rows out like seam rings. Not
+    yet re-read on a sim. The 12 mm front gape: the fastening pairs match in the flat (dy 0) and start 4 mm apart; read
+    it on the next sim (the folded placket's layers + contact gaps, or closures.seat reverted).
+  - Stage 4: pieces crossing where they are sewn / stitched (or a piece itself) warn instead of fail
+    (`cloth_workflow.sewn_crossings`): ZOZO starts with existing intersections allowed and su_05 simulated clean from
+    them. The shirt's start on su_garrett has back/sleeve, collar/stand, cuff laps crossing: pre-existing (the base
+    17ee597 too), open. Its torso pieces still start as slabs (side seams ~125 mm apart).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
