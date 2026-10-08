@@ -521,6 +521,32 @@ def test_folds_in_geometry_lift_off_the_body_whatever_the_winding():
     assert np.all(r1 > r0 + 0.003), (r1 - r0).min()
 
 
+def test_unkink_smooths_a_spike_not_a_fold():
+    # the clean-up's kink pass: a single vertex buckled out of its neighbours' plane (a triangle or two across) goes
+    # back onto it; a broad fold (its faces turned a little each) and seam vertices stay
+    n = 15
+    xs = np.linspace(0, 0.14, n)
+    uv = np.array([[x, y] for y in xs for x in xs])
+    F = []
+    for j in range(n - 1):
+        for i in range(n - 1):
+            a, b, c, d = j * n + i, j * n + i + 1, (j + 1) * n + i, (j + 1) * n + i + 1
+            F += [[a, b, c], [b, d, c]]
+    M = {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["p"], "sew": np.zeros((0, 2), int),
+         "folds": []}
+    X = np.c_[uv, 0.01 * np.sin(uv[:, 0] / 0.14 * np.pi)]  # a broad fold
+    k = 7 * n + 7
+    Y = X.copy()
+    Y[k, 2] += 0.006
+    W, info = cloth._unkink(Y, M)
+    assert abs(W[k, 2] - X[k, 2]) < 0.0015, (W[k, 2] - X[k, 2], info)
+    W2, _ = cloth._unkink(X, M)
+    assert np.allclose(W2, X)  # the fold alone is left
+    M["sew"] = np.array([[k, k]])
+    W3, _ = cloth._unkink(Y, M)
+    assert np.isclose(W3[k, 2], Y[k, 2])  # a seam vertex stays
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
