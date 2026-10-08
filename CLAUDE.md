@@ -2458,7 +2458,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   yet); a lone job always runs. The rule, in order: FIFO by when a job started waiting; a waiting job that doesn't
   fit blocks every younger one, except SMALL ones (<= 25% of the budget) that fit now, and each blocked job can be
   passed at most PASS_LIMIT 3 times (no starvation). GPU jobs (`gpu=True`: local ZOZO; `gpu_claim()` for a GPU
-  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory. Pools inside a job
+  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory; an old-code holder
+  of heavy0.lock and a job of unknown kind count as holding the GPU (`_holds_gpu`: an old-code ZOZO sim and a new
+  one ran on the GPU together and one crashed, 2026-10-07). Pools inside a job
   size from its GRANT (`workers()` = min(grant - 1 GB, free memory) / per worker): two jobs both seeing "free" memory
   is how the desktop died. $HIFIPUSHIE_HEAVY_SLOTS=1 brings the one-at-a-time behaviour back.
   State in $HIFIPUSHIE_HEAVY_DIR (default $XDG_RUNTIME_DIR/hifipushie): jobs/<id>.json + jobs/<id>.lock (flocked by
