@@ -33,7 +33,6 @@ CLIP = 2.6       # sigma: an identity component past this is outside the plausib
 CLIP_FORCE = 4.0
 TOL_MM = 0.5     # a face measure counts as met within this
 UNINTENDED_MM = 1.0   # a face measure that wasn't asked for and moved more is flagged
-STRETCH_MIN = 0.0008  # m: edges shorter than this on the plain head don't count in the stretch check
 FOLD_LIMIT = 6    # faces an edit may turn over before the mesh counts as broken
 COLLATERAL = 2.0  # a solve stops where a measure that wasn't asked for would move this many times its tolerance
 UNINTENDED_BODY = 0.01  # ... a body measure: 1%
@@ -601,21 +600,35 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
             num["head_scale"] = round(float(np.median(r[hsel])), 3)
             r = np.where(hsel, r / max(float(np.median(r[hsel])), 1e-6), r)
         num["stretch"] = {}
+        rp = None
+        if Pp is not None:  # the same edges in the INPUT (the state before this edit), on the same scale
+            lp = np.linalg.norm(Pp[E[:, 0]] - Pp[E[:, 1]], axis=1)
+            rp = lp / l0
+            if hsel.any():
+                rp = np.where(hsel, rp / max(float(np.median(rp[hsel])), 1e-6), rp)
         for k in ("lids", "lips", "nose", "ears", "neck bridge", "face"):
-            # (edges under STRETCH_MIN on the plain head, or already under it before this edit, are left out: v23's
-            # lip corners had a 1.7 mm edge squeezed to 0.55 mm; 0.12 mm more read as "lips squeezed x0.20, BROKEN"
-            # and refused a face widened 10 mm two cm away. Collapses to nothing are folds: counted above)
-            short = l0 < STRETCH_MIN
-            if Pp is not None:
-                short |= np.linalg.norm(Pp[E[:, 0]] - Pp[E[:, 1]], axis=1) < STRETCH_MIN
-            sel = reg[k][E].all(1) & ~short
-            if sel.any():
-                lo, hi = float(r[sel].min()), float(np.percentile(r[sel], 99.5))
-                num["stretch"][k] = [round(lo, 2), round(hi, 2)]
-                if hi > 3.0 or lo < 0.25:
-                    broken.append(f"{k}: edges stretched x{hi:.1f} / squeezed x{lo:.2f} against the plain head")
-                elif hi > 1.8 or lo < 0.45:
-                    warn.append(f"{k}: edges stretched x{hi:.1f} / squeezed x{lo:.2f}")
+            sel = reg[k][E].all(1)
+            if not sel.any():
+                continue
+            lo, hi = float(r[sel].min()), float(np.percentile(r[sel], 99.5))
+            num["stretch"][k] = [round(lo, 2), round(hi, 2)]
+            past = sel & ((r > 3.0) | (r < 0.25))
+            if rp is not None:
+                # judged against the INPUT: an edge past the limit counts only if this edit made it worse by
+                # GUARD_WORSE (v23's lip corners: a 1.7 mm edge already squeezed to 0.55 mm on the plain head), or
+                # if the edit alone stretched / squeezed it past the limit
+                # and only if its length changed by GUARD_MM or more: v23's lip corner went 0.55 -> 0.47 mm (13%)
+                # under a face widened 10 mm two cm away: the mouth's re-solved closure, below the mesh's own noise
+                moved = np.abs(l1 - lp) >= GUARD_MM
+                worse = ((r < rp * (1 - GUARD_WORSE)) & (r < 1) | (r > rp * (1 + GUARD_WORSE)) & (r > 1)) & moved
+                own = (r / np.maximum(rp, 1e-9) > 3.0) | (r / np.maximum(rp, 1e-9) < 0.25)
+                past = (past & worse) | (sel & own)
+            if past.any():
+                bl, bh = float(r[past].min()), float(r[past].max())
+                broken.append(f"{k}: {int(past.sum())} edges stretched to x{bh:.1f} / squeezed to x{bl:.2f} against the plain "
+                              "head" + (" (worse than before this change)" if rp is not None else ""))
+            elif hi > 1.8 or lo < 0.45:
+                warn.append(f"{k}: edges stretched x{hi:.1f} / squeezed x{lo:.2f}")
     else:
         warn.append("this head's topology differs from the plain head's: stretch and folds not compared")
     L = st["L"]
@@ -666,24 +679,24 @@ def _guarded(base: dict, cur: dict, rep: dict, force: bool) -> tuple:
     return base, rep
 
 
+GUARD_MM = 0.0001  # m: an edge's length change under this is not a change (integrity against the input)
 GUARD_WORSE = 0.08  # a region broken in the input too counts as broken BY the edit when its stretch got this much worse
 
 
 def _newly_broken(base: dict, it: dict) -> list:
-    """What in a result's integrity the edit broke: broken lines the input doesn't have, and for an edge-stretch
-    region broken in both, the result's only if it got GUARD_WORSE (relative) further past either limit."""
-    b0 = integrity(base, state(base))
-    if b0["ok"]:
-        return list(it["broken"])
-    s0, s1 = b0["numbers"].get("stretch", {}), it["numbers"].get("stretch", {})
+    """What in a result's integrity the edit broke. Edge stretch and folds are already judged against the input
+    (integrity(prev=): an edge counts only where this change made it worse); any other broken line (an eyeball through
+    its lids, crossed lips) counts if the input doesn't have it too."""
+    STRETCH = ("lids", "lips", "nose", "ears", "neck bridge", "face")
+    b0 = None
     out = []
     for line in it["broken"]:
-        reg = line.split(":")[0]
-        if reg in s1 and reg in s0 and any(l_.startswith(reg + ":") for l_ in b0["broken"]):
-            (lo0, hi0), (lo1, hi1) = s0[reg], s1[reg]
-            if lo1 < lo0 * (1 - GUARD_WORSE) or hi1 > hi0 * (1 + GUARD_WORSE):
-                out.append(line + f" (the input: x{hi0} / x{lo0})")
-        elif line not in b0["broken"]:
+        if line.split(":")[0] in STRETCH or "folded over by this change" in line:
+            out.append(line)
+            continue
+        if b0 is None:
+            b0 = integrity(base, state(base))
+        if line not in b0["broken"]:
             out.append(line)
     return out
 
@@ -934,6 +947,12 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             lips = lips[np.linspace(0, len(lips) - 1, min(len(lips), 80)).astype(int)] if len(lips) else lips
             hold += list(Vg[lips])
             hw += [STRUCTURE_HOLD] * len(lips)
+            # and the mouth's corners hard (every skin vertex within 8 mm of lm 48 / 54): their edges are the shortest
+            # on the face, so 0.1 mm of drift there reads as a squeeze (Garrett's v23 corner, x0.23 -> x0.20)
+            lmg = np.array([sum(float(wt) * Vg[int(vi)] for vi, wt in zip(row[0::2], row[1::2])) for row in g["lm68"]])
+            cn = skin[np.min(np.linalg.norm(Vg[skin][:, None] - lmg[None, [48, 54]], axis=2), 1) < 0.008]
+            hold += list(Vg[cn])
+            hw += [STRUCTURE_HOLD * 4] * len(cn)
         A = np.r_[np.array(tgt_g), np.array(hold)]
         Dt = np.r_[np.array(tgt_d), np.zeros((len(hold), 3))]
         wt = np.r_[np.array(tgt_w), np.array(hw)]
