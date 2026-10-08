@@ -4415,12 +4415,24 @@ model".
     quads + mouth_gap 0.003 + interior.slit 0.0003, skin.only eyes. Export /mnt/data/hifipushie/onemesh2/exp_garrett3
     (40k, Khronos 0/0, no TORN, shapes <= 0.13, seated clean, audit 7 BAD vs v23's 9). Stature +2.9 cm (head grows
     from the neck's top): body.height 1.771 would give it back (not done).
-  - Open, in order: (1) the neck bridge: a dotted line of pits at ring A on toddlers (om2_20..22): wider IMLS kernels
-    there made it worse (speckle: reverted); rebuild the bridge in make_asset.py with more rows / gentler reductions;
-    (2) reference passes on Garrett's concept images (human_reference, MediaPipe detector); (3) the head's 46 mm leak
-    onto shoulder skin at Head 33 (rig3's long falloff on bare skin); (4) the sock's texels set the height map's range
-    (+-24.6 mm): leave designed faces out of the height range; (5) own quads cost a fixed ~40.7k body triangles; (6)
-    dense_fit as a tool (a GNM head as the target of human_reference).
+  - Round 2 (same agent): the bridge is five rows (COUNTS 110-94-78-66-54-42, SHEAR 0.85: median aspect 2.36 ->
+    1.71, worst corner cos 0.18 -> 0.31; the toddler's ring of pits at ring A gone; wider IMLS kernels there made it
+    WORSE: speckle, reverted). Asset rebuilt: every one-mesh model's topology changed. Garrett v15: body.height 1.7715
+    + head_size 1.138 (stature 180.6, interocular 69.8), dense fit again (cranium weight 1, lips 0.3: face 0.68 /
+    1.30 mm, head 1.45 / 7.7); export exp_garrett5 (Khronos 0/0, no TORN, height range +-7.6: interior texels keep the
+    low poly's surface in the bake). Lip corners: the sock tucked in behind the corners (SOCK_TUCK), inner rolls pushed
+    by the outer skin's normal. Hair: `hair._measure` (one mesh only) skips pockets in the head (POCKET: GNM's ear canal
+    rooted his nape locks 4 cm in). A groom regrow on Garrett grows tiers over / buries his hand locks: don't; the
+    band of bare volume at his front hairline needs a "re-seat hand locks on a changed scalp" step (hair thread).
+  - Reference pass 1 (concept_v8 front crop + concept_v6 desk painting at -45): detect.py (MediaPipe Face Landmarker
+    from /mnt/data/hifipushie/facerefs_venv, MP68 table) -> hrefs.py (human_reference, drop lists) -> refsheet.py
+    (reference | models through the fitted cameras | blend | landmarks). Copy `om2_gref` (om_garrett untouched):
+    front 6.8 -> 3.3 mm, desk 7.3 -> 3.9 mm reprojection; sheet human_renders/om2_r1_pass1.png. Couldn't: jaw
+    contour (MediaPipe's != GNM's: +21 mm jaw, dropped), iris vs eyeball centre in 3/4 (dropped), hooded lids (lids x3.2
+    BROKEN: dropped), neck_circ measured at the chin's height reads -9 cm when the chin moves (measure bug), no ear /
+    hairline / crown evidence. Next: an outline fit (silhouette chamfer through the fitted cameras), pass 2.
+  - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
+    triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
