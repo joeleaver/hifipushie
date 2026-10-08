@@ -386,7 +386,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 9
+CONTRACT = 10
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -433,6 +433,15 @@ CONTRACT_LOG = {
        "along -NORMAL, capped 4 m; cards 0.02) for the engine's subsurface / back light; material extras.translucency = "
        "{color sRGB, amount}. Wood: every structural limb in one mesh (no bark_forks slot). REALISTIC small plants whose blades "
        "lie down in winter now carry slot foliage_winter too (their cards regrown lying; the atlas the season's own)",
+    10: "NEW GRADE for small plants, `groundcover` (export_plant(grade=\"groundcover\"), its own folder): LOD 0..2 = 6 / 4 / 3 "
+        "vertical alpha cards through the clump's foot (+ one lying flat for low plants: clover, ferns), 288 / 96 / 36 triangles "
+        "(+16 / 8 / 2 flat), the full plant in its style BAKED onto them per season. One slot, `foliage`: alpha MASK (cut 0.5), "
+        "SINGLE sided (front and back are triangles of their own with the SAME up-leaning NORMAL; TANGENT is NEW: w = +1 on the "
+        "front, -1 on the back), baseColorTexture (sRGB, shade baked in) + normalTexture (tangent space) per season variant "
+        "(winter = the plant lying, snow = winter under snow); no COLOR_0, no bark / heads / foliage_winter slots (stalks, "
+        "flower heads and the lying winter blades are in the pictures). Wind channels as every plant. Engine: import its "
+        "textures WITH mipmaps (the alpha under the cut round every blade keeps thin blades through the mips) and turn the "
+        "importer's own mesh LOD generation off for these meshes. Full-grade files are unchanged except this version number",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)

@@ -725,11 +725,22 @@ def impostor(name: str, px: int = 512, season: str | None = None, kind: str = "o
 
 
 def export(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1, seasons=("summer",),
-           wet: bool = False, impostor_lod: bool | str = False, lod_files: bool = False) -> dict:
+           wet: bool = False, impostor_lod: bool | str = False, lod_files: bool = False, grade: str = "full") -> dict:
     """The plant's GLB (see veg_export.write_glb). lods 1-3 mesh LODs (+ impostor_lod: crossed quads with its picture
-    as the last); lod_files also writes each LOD as <name>_LOD<k>.glb for engines without MSFT_lod."""
+    as the last); lod_files also writes each LOD as <name>_LOD<k>.glb for engines without MSFT_lod.
+    grade "groundcover" (small plants only): the clump baked onto a few cards per LOD (veg_groundcover), its own folder
+    (default export_groundcover/) of <name>_LOD0..2.glb + <name>.glb + <name>_seasons.json."""
     from . import veg_export
     T = grown(name)
+    if grade == "groundcover":
+        from . import veg_groundcover
+        stem = name.replace("#", "_")
+        c = veg_groundcover.export(T, out_dir or str(_dir(name) / "export_groundcover"), stem,
+                                   seasons=tuple(seasons) if seasons and len(seasons) > 1 else veg_groundcover.SEASONS)
+        c["grade"] = "groundcover"
+        return c
+    if grade != "full":
+        raise ValueError(f"grade must be 'full' or 'groundcover', not {grade!r}")
     out = Path(out_dir) if out_dir else _dir(name) / "export"
     kind = "cross" if impostor_lod == "cross" else "octahedral"
     imp = impostor(name, season=seasons[0] if seasons and seasons[0] != T["spec"].get("season", "summer") else None, kind=kind) if impostor_lod else None

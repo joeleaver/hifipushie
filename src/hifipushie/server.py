@@ -2669,7 +2669,7 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 @mcp.tool(structured_output=False)
 def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False,
                  lods: int = 1, impostor: bool | str = False, seasons: list[str] | None = None, wet: bool = False,
-                 lod_files: bool = False) -> str:
+                 lod_files: bool = False, grade: str = "full") -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
     twig atlas with alpha MASK, double sided, normals bent out from the crown, COLOR_0 = a per-twig tint).
@@ -2700,7 +2700,16 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     version or slot it doesn't know. Small plants (clumps) export their seasons as variants too (colour; layers out
     of season hidden); their lying down in winter is in the looks only.
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
-    materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
+    materials and textures shared (a forest kit); `triangles` is then each plant's own budget.
+    grade="groundcover" (small plants: grass, daisy, clover, fern... in any style) = the SCATTER grade: the clump as it
+    is drawn in full, baked per season onto a few alpha cards: LOD 0 6 cards (288 triangles), LOD 1 4 (96), LOD 2 3 (36).
+    Each card shows the slice of the clump in its own wedge round the foot, so every blade is drawn once. Same slots
+    (foliage; seasons as variants of it, winter = the plant lying, snow = winter under snow), wind channels and seasons
+    json; adds TANGENT + a normalTexture; no bark / heads slots (stalks and flower heads are in the pictures). Written to
+    its own folder (default export_groundcover/) as <name>_LOD0..2.glb, <name>.glb (MSFT_lod) and <name>_seasons.json:
+    point the game's groundcover at that folder. ENGINE: import its PNGs WITH mipmaps (the pictures keep thin blades over
+    the alpha cut through the mips), and turn the importer's own LOD generation off for these meshes. ~5-10 min of
+    Blender the first time (cached by the spec)."""
     from . import veg_tools as vt
     from . import veg_export as _ve
     vt_contract = lambda: _ve.CONTRACT
@@ -2711,6 +2720,13 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                     f"  {q['name']}: {q['height_m']} m, " + "; ".join(f"LOD{l_['lod']} {l_['triangles']}" for l_ in q["lods"]) + " triangles"
                     + (f", {q['floating']:.0%} of the cards floating" if q.get("floating", 0) > 0.2 else "")
                     for q in c["plants"]))
+    if grade == "groundcover":
+        c = vt.export(name, out_dir, seasons=tuple(seasons or ()), grade="groundcover")
+        return (f"exported the groundcover grade of {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
+                + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['planes']} cards)" for l_ in c["lods"])
+                + f"; clump {c['H']:.2f} m tall, {2 * c['R']:.2f} m across; atlas {c['atlas'][0]} x {c['atlas'][1]} per season\n"
+                + "files: " + ", ".join(Path(f).name for f in c["files"])
+                + "\nENGINE: import the PNGs / GLB textures with mipmaps; turn mesh LOD generation off for these files")
     c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
                   lod_files=lod_files)
     gl = []
