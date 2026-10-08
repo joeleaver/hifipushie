@@ -547,6 +547,33 @@ def test_unkink_smooths_a_spike_not_a_fold():
     assert np.isclose(W3[k, 2], Y[k, 2])  # a seam vertex stays
 
 
+def test_hem_stops_on_the_shoe_with_a_break():
+    # _hem_on_shoe: a leg hanging straight down to 3 cm over the floor, a shoe 10 cm high under its front half: those
+    # columns stop gap over the shoe, the length gathered into the bottom LEG_BREAK (the break); the back columns
+    # (no shoe under them) and everything higher up stay as laid
+    xs = np.linspace(-0.03, 0.03, 7)
+    zs = np.linspace(0.03, 0.4, 38)
+    U = np.array([[x, z - 1.0] for z in zs for x in xs])  # pattern: x across the column, y = z - waist
+    out = np.array([[0.15 + x, -0.05 if x < 0 else 0.05, z] for z in zs for x in xs])  # x<0 columns: the front
+    shoe = np.array([[0.15 + a, -0.05 + b, h] for a in np.linspace(-0.04, 0.0, 9) for b in np.linspace(-0.02, 0.02, 9)
+                     for h in (0.0, 0.10)])
+    body = cloth.Body({"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "J": {},
+                       "worn": {"V": shoe, "F": np.zeros((0, 3), int), "key": "s"}})
+    ok = np.ones(len(U), bool)
+    gap = 0.004
+    X = cloth._hem_on_shoe(body, out, U, ok, 1.0, 0.2, gap)
+    hem = U[:, 1] == U[:, 1].min()
+    front = hem & (U[:, 0] < -0.015)
+    back = hem & (U[:, 0] > 0.015)
+    assert (X[front, 2] >= 0.10 + gap - 1e-6).all() and np.allclose(X[back], out[back])
+    high = U[:, 1] - U[:, 1].min() > cloth.LEG_BREAK
+    assert np.allclose(X[high], out[high])  # above the break nothing moves
+    # each front column keeps its order (gathered, not turned inside out)
+    for c in xs[xs < -0.015]:
+        zc = X[np.isclose(U[:, 0], c), 2]
+        assert (np.diff(zc) > 0).all()
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

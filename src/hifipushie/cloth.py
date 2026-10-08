@@ -793,6 +793,8 @@ class Body:
                 self._m = tailor.measure(self.V, self._faces, self.J)
             except Exception:  # no pelvis/neck/limb joints, sections that miss: not a body
                 self._m = {"mm": {}, "at": {}, "body": False}
+            if self.worn is not None and self._m.get("mm") and "ankle.L" in self.J:
+                self._m["mm"].update(shoe_heights(np.asarray(self.worn["V"], float), np.asarray(self.J["ankle.L"], float)))
         return self._m
 
     @property
@@ -1566,6 +1568,8 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
     # down is compressed along its length (evenly, so the rows stay apart and square) until the hem clears the
     # foot's top (the instep) by the clearance. Compression a strain-limited solver can start from; squeezed into the
     # room over the instep alone the hem's rows lay mm apart and crossed, turned out over it they stretched 1.8x
+    if (to, "ease") not in cache and LEG_BREAK > 0:  # the hem stops on the shoe instead (below): no ease up the leg
+        cache[(to, "ease")] = 1.0
     if (to, "ease") not in cache:  # one compression for the leg (both pieces: their seams stay level)
         f = 1.0
         L_hem = zt - (z_w + min(Pf[:, 1].min(), Pb[:, 1].min()))
@@ -1603,8 +1607,118 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
         for j, i in enumerate(np.where(sel_)[0]):
             A_, ux_, uy_ = frame(float(np.interp(L[i], along, zg)))
             out[i] = A_ + q[j, 0] * ux_ + q[j, 1] * uy_
+    if LEG_BREAK > 0 and ok.any():
+        out = _hem_on_shoe(body, out, U, ok, sgn, z_foot, gap)
     t[~ok] = 0.0
     return out, t
+
+
+SHOE_PROBE = 0.055  # m from the ankle joint (in plan) where a trouser hem's front / side / back stands over the shoe
+
+
+def shoe_heights(W: np.ndarray, ankle: np.ndarray, r: float = SHOE_PROBE) -> dict:
+    """The tailor's tape on the shoes (what a trouser's hem is cut to, measured with the shoes on): the height of the
+    worn parts' top (mm) under the hem's front, outside and back, SHOE_PROBE in plan from the ankle (left side)."""
+    out = {}
+    W = W[W[:, 0] > 0]  # (the left shoe)
+    if not len(W):
+        return out
+    for key, d in (("shoeFront", (0.0, -1.0)), ("shoeSide", (1.0, 0.0)), ("shoeBack", (0.0, 1.0))):
+        p = ankle[:2] + r * np.asarray(d)
+        near = np.linalg.norm(W[:, :2] - p, axis=1) < 0.015
+        if near.any():
+            out[key] = round(float(W[near, 2].max()) * 1000, 1)
+    return out if len(out) == 3 else {}
+
+
+def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: float, z_foot: float,
+                 gap: float) -> np.ndarray:
+    """A trouser leg cut to end on the shoe, laid as worn: each column of the leg (pattern x) hangs straight down to
+    the floor less the hem's height, and where the foot or the shoe (garment key "collide") stands under it the
+    column stops `gap` over that, the length it can't use gathered into the bottom LEG_BREAK of the column (pattern
+    distance from its hem, linearly). That gathered length is the BREAK: a fold over the shoe's front, the back
+    hanging lower, as a tailor cuts it. (Compressed evenly from 35 cm over the ankle the leg stored its length as
+    4-5% crinkle all down the shin, the hem's back 4 cm over the floor and no break.)"""
+    # what a hem can rest ON: the body's and the worn parts' surfaces that face up (a shoe's vamp, its counter's top
+    # edge, the instep), not the walls round the ankle (su_garrett's shoe part stands round the ankle to 10 cm: taken
+    # as support, the hems stopped on its collar 3 cm over the shoe's visible top)
+    srcs = [(body.V, body.T)] + ([(np.asarray(body.worn["V"], float), np.asarray(body.worn["F"], np.int64))]
+                                 if getattr(body, "worn", None) else [])
+    Vb = []
+    for V_, T_ in srcs:
+        if not len(V_):
+            continue
+        sel_ = (V_[:, 2] < z_foot + 0.02) & (sgn * V_[:, 0] > 0)
+        if len(T_):
+            fn_ = np.cross(V_[T_[:, 1]] - V_[T_[:, 0]], V_[T_[:, 2]] - V_[T_[:, 0]])
+            vn_ = np.zeros_like(V_)
+            for c_ in range(3):
+                np.add.at(vn_, T_[:, c_], fn_)
+            vn_ /= np.maximum(np.linalg.norm(vn_, axis=1, keepdims=True), 1e-12)
+            sel_ &= np.abs(vn_[:, 2]) > HEM_REST_NZ  # (either winding: a worn shell may face in)
+        Vb.append(V_[sel_])
+    Vb = np.concatenate(Vb) if Vb else np.zeros((0, 3))
+    if not len(Vb):
+        return out
+    from scipy.spatial import cKDTree
+    tree = cKDTree(Vb[:, :2])
+    idx = np.where(ok)[0]
+    floor = np.full(len(out), -np.inf)
+    for j, nb in zip(idx, tree.query_ball_point(out[idx, :2], LEG_FOOT_R)):
+        if nb:
+            floor[j] = float(Vb[nb, 2].max()) + gap
+    deficit = np.where(ok, floor - out[:, 2], -np.inf)
+    col = np.round(U[:, 0] / 0.01).astype(int)
+    cols = np.unique(col[ok])
+    dc = {c: max(0.0, float(deficit[ok & (col == c)].max())) if (ok & (col == c)).any() else 0.0 for c in cols}
+    # (smoothed across neighbouring columns: a step between columns is shear)
+    ds = {c: float(np.mean([dc.get(c + k, dc[c]) for k in range(-2, 3)])) for c in cols}
+    ds = {c: max(ds[c], dc[c]) for c in cols}
+    out = out.copy()
+    for c in cols:
+        if ds[c] <= 0:
+            continue
+        sel = np.where(ok & (col == c))[0]
+        d_hem = U[sel, 1] - U[sel, 1].min()
+        w = np.clip(1.0 - d_hem / LEG_BREAK, 0.0, 1.0)
+        out[sel, 2] += ds[c] * w
+    # and nothing inside the worn parts: what hangs beside a shoe (its sides, the counter at the back) is pushed out
+    # of it along its surface (resting only on what faces up, the sides of the hem went through the shoe's walls)
+    return _clear_of_worn(out, ok & (out[:, 2] < z_foot + 0.12), body, max(gap, WORN_CLEAR))
+
+
+def _clear_of_worn(X: np.ndarray, free: np.ndarray, body, gap: float, rounds: int = 4) -> np.ndarray:
+    """X with its `free` vertices at least `gap` outside the body's worn parts (garment key "collide": shoes under a
+    hem), pushed along the worn surface's normal. Body.push_out / clearance see the body alone."""
+    wn = getattr(body, "worn", None)
+    idx = np.where(free)[0]
+    if wn is None or not len(wn.get("F", [])) or not len(idx):
+        return X
+    from .closures import _closest_on
+    W_ = np.asarray(wn["V"], float)
+    F_ = np.asarray(wn["F"], np.int64)
+    fn_ = np.cross(W_[F_[:, 1]] - W_[F_[:, 0]], W_[F_[:, 2]] - W_[F_[:, 0]])
+    orient = 1.0 if float(np.sum(fn_ * (W_[F_].mean(1) - W_.mean(0)))) >= 0 else -1.0  # (a shell may face in)
+    lo, hi = W_.min(0) - 0.03, W_.max(0) + 0.03
+    idx = idx[np.all((X[idx] > lo) & (X[idx] < hi), 1)]
+    if not len(idx):
+        return X
+    X = X.copy()
+    for _ in range(rounds):
+        q_, n_, _i = _closest_on(X[idx], W_, F_)
+        sd_ = np.sum((X[idx] - q_) * n_, 1) * orient
+        bad_ = sd_ < gap
+        if not bad_.any():
+            break
+        X[idx[bad_]] += ((gap - sd_[bad_]) * orient)[:, None] * n_[bad_]
+    return X
+
+
+LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
+WORN_CLEAR = 0.005  # m a start is kept off the worn parts (vertices: a 2 cm triangle's chord dips ~3 mm between them;
+# the solver's contact offset is 1-2 mm)
+HEM_REST_NZ = 0.5  # a surface a hem rests on faces up at least this much (|normal z|)
+LEG_FOOT_R = 0.012  # m: the foot or shoe within this of a leg column (in plan) stands under it
 
 
 def _piece_xs_at(P: np.ndarray, y: float) -> list:
@@ -3459,8 +3573,10 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                     Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
                     Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=300)
                 Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
+                Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
                 if worn_k:  # (the base moved: its pressed flaps with it)
                     Xp = _repress(Xp, B, M, smooth)
+            Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
         B["start_crossings"] = sorted(_piece_crossings(Xp, M))
@@ -4113,6 +4229,7 @@ def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, rea
     return V
 
 
+START_GAP = 0.0012  # m: the fine settle's start is kept this far off the collider (body + worn parts + under garment)
 FAR_CLEAR = 0.0012  # m the carried far cloth is kept off the body at the fine settle's start
 FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth under it (m)
 
@@ -5359,7 +5476,23 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # round them by contact for a few frames; no geometry is moved by hand
         fs = g.get("fine_settle")
         fr = [int(v) for v in (fs if isinstance(fs, (list, tuple)) else (0, 36))]
+        press_ = fr[0] > 0
         plan = _press_plan(Bp, Ms, Xs, res["V_coarse"], M, X0, carry, body, press=fr[0] > 0)
+        # the start cleared of the WHOLE collider too (the body alone was cleared in the plan: a trouser hem resting on
+        # the shoes, garment key "collide", started 0.5 mm off them, under the settle's least contact offset: "contact
+        # starts overlapping")
+        if len(coll["bodyV"]) > len(body.V) and _start_separation(plan["start"], M["F"], coll["bodyV"], coll["bodyT"]) < START_GAP:
+            cb_ = Body({"V": coll["bodyV"], "F": coll["bodyT"], "J": {}})
+            cb_._m = {"mm": {}, "at": {}}
+            mv_ = np.ones(len(plan["start"]), bool)
+            st_ = plan["start"]
+            for _ in range(3):  # (the exact pass's few rounds leave the worst pairs short: again, from where they got)
+                st_ = _clear_of_body(st_, M["F"], mv_, cb_, START_GAP, START_GAP, CLEAR_GROW)
+                if _start_separation(st_, M["F"], coll["bodyV"], coll["bodyT"]) >= 0.9 * START_GAP:
+                    break
+            plan["start"] = st_
+            if not press_ and len(plan["idx"]):
+                plan["poses"] = st_[plan["idx"]][None]
         stiff_f = interfacing(Bp, M)
         fold_f = {}
         if M.get("folds"):
@@ -5405,7 +5538,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # under a 2 mm offset)
             sep_ = _start_separation(plan["start"], M["F"], coll["bodyV"], coll["bodyT"])
             if sep_ < 0.0022:
-                zz.setdefault("body_offset", float(max(0.0006, 0.7 * sep_)))
+                # (never more than 0.7 of what the start leaves: a 0.6 mm floor over a 0.51 mm start was "contact
+                # starts overlapping")
+                zz.setdefault("body_offset", float(max(0.0003, 0.7 * sep_)))
                 progress(f"fine settle: the start comes within {sep_ * 1000:.2f} mm of the body: its contact offset "
                          f"{zz['body_offset'] * 1000:.2f} mm for this settle")
             fcfg["zozo"] = zz

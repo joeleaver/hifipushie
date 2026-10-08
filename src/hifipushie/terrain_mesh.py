@@ -1479,6 +1479,11 @@ class Field:
                 rs += terrain_style.pillow_carve(p[i], pl.get("size", 3.0), pl.get("depth", 0.8),
                                                  pl.get("round", 0.4), int(self.rock.get("seed", 0)) + 101,
                                                  pl.get("stretch", 1.0))
+            if Rk.get("build") is not None:
+                # (the most this style's relief may build out from the rock, m: cartoon's big facets built a slab out
+                # over a sheer lip with a groove carved under it, a piece floating clear of the face: tl2_slice_a
+                # [291, 104, 23]; carving is not capped)
+                rs = np.maximum(rs, -float(Rk["build"]))
             R[i] += a[i] * rs
             mic[i] += a[i] * float(Rk.get("micro", 1.0))
         return R, mic
