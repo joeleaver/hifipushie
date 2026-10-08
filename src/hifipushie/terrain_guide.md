@@ -557,7 +557,19 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   the style keeps: 1 realistic, 0 blobby), `macro_normal` (share of the baked normal kept), `detail` (the realistic
   tiling detail swatches), `overlay` (the style's own close-up swatch: anime brush dabs), `seasons` (per season per
   layer `{"mix": sRGB, "amount"}`, as the plants'), `snow` (numbers for the engine's snow, as the plants'), `rock`
-  (the zone's rock shape: geometry, see below).
+  (the zone's rock shape: geometry, see below). Op keys worth knowing: `blotch` `share` (with 2 steps: the share of
+  ground in the second tone, patches on a ground colour instead of a 50/50 camouflage) and `width` (spread of sizes);
+  `strokes` `levels` (a painter's few mixed tones instead of a continuum); `dots` `clusters` [per m2, radius m]
+  (flowers in clumps); any op's `paint` (an sRGB colour laid where it marks: white and yellow flower dots); `bands`
+  `pinch` / `breaks` / `vary` (strata swell, wedge out as lenses and fade along the strike instead of ruled stripes);
+  any op's `fade_small` (it gives way on small or thin rock: the layer then ships a plain texture, and the map
+  `styles/rock_scale.png` says where: sea stacks and fins lose the anime strata). Sheet `layer_edge` {height,
+  depth}: where two layers meet, their height maps decide a crisp painted edge (cartoon, anime) instead of a
+  cross-fade. Contract 3.
+- Cartoon and anime under hard-band cel light (the game's): any soft gradient in a texture or in the baked macro colour
+  reads as a smudge, not as paint. Cartoon soft layers are flat fields in two crisp tones with a few marks (ink tufts,
+  pale ticks, flower dots, pebbles) and `macro` 0; anime keeps 3 crisp value steps and 3-level dabs, `macro` 0.15.
+  Judge with `look_terrain(styles=True)`'s ground view (eye level and 25 m up, mipmapped, anti-tiled, flat cel light).
 - What artists do, and why it is built this way: stylised ground in games is a few tiling layer textures blended by
   weights (slope, height, painted masks), height-blended at layer edges, triplanar on cliffs, with anti-tiling
   ([Unity terrain height blend](https://github.com/unitycoder/TerrainHeightBlend-Shader), [stochastic

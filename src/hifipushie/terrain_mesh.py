@@ -4907,10 +4907,14 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         job["styles"] = {
             "weights": wl, "ref": {k: lin(v["color"]) for k, v in real["layers"].items()},
             "extent": SM["maps"]["extent"], "maps": maps,
+            "rock_scale": ({**SM["maps"]["rock_scale"], "file": str((out / SM["maps"]["rock_scale"]["file"]).resolve())}
+                           if SM["maps"].get("rock_scale") else None),
             "styles": [{"name": s["name"], "macro": s["macro"], "macro_normal": s["macro_normal"],
                         "layers": {k: {"albedo": str((out / v["albedo"]).resolve()),
                                        "height": str((out / v["height"]).resolve()), "size": v["size_m"],
-                                       "height_m": v["height_m"], "projection": v.get("projection", "top")}
+                                       "height_m": v["height_m"], "projection": v.get("projection", "top"),
+                                       "small": ({**v["small"], "albedo": str((out / v["small"]["albedo"]).resolve())}
+                                                 if v.get("small") else None)}
                                    for k, v in s["layers"].items()}}
                        for s in SM["styles"]]}
         grass = False
