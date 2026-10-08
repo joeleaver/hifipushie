@@ -184,6 +184,22 @@ def test_outline_fit_is_symmetric_and_holds_features():
     assert rep["integrity"]["numbers"]["asymmetry_mm"] < st0_asym(b) + 0.5
 
 
+def test_hollow_cheeks_read_on_the_section():
+    """base.head.shape.hollow dents the outer cheek under the cheekbone on both sides, and cheek_hollow (horizontal
+    sections, the outer cheek's contour against its hull) reads it; a plain head reads ~0 there."""
+    b = base()
+    st0 = hf.state(b)
+    h0 = hf.cheek_hollow(st0)
+    assert max(h0.values()) < 1.0, h0
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["hollow"] = 0.005
+    st1 = hf.state(b1)
+    h1 = hf.cheek_hollow(st1)
+    assert min(h1.values()) > max(h0.values()) + 1.0 and abs(h1["left"] - h1["right"]) < 0.8, (h0, h1)
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] == 0, it
+
+
 def st0_asym(b):
     return hf.integrity(b)["numbers"]["asymmetry_mm"]
 
@@ -192,6 +208,7 @@ if __name__ == "__main__":
     if have():
         for fn in (test_measures_and_integrity, test_a_measure_is_met_and_the_rest_holds, test_adversarial_requests_come_back_honest,
                    test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
-                   test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features):
+                   test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features,
+                   test_hollow_cheeks_read_on_the_section):
             fn()
             print("ok", fn.__name__)

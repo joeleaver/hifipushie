@@ -4457,6 +4457,31 @@ model".
       hair's silhouette (no crown / hairline evidence); asymmetric pictures are made symmetric by design.
     Tests: test_humanfit test_neck_girth_ignores_the_face, test_hooded_lids_fitted_from_a_picture,
     test_outline_fit_is_symmetric_and_holds_features.
+  - Reference pass 3 (2026-10-08; the coordinator on pass 2: "matches by measure but bloated and jowly, pear-shaped";
+    scratch pass4.py om_garrett om2_gref4 <hollow mm> 1, sheet human_renders/om2_r3_pass3.png = per view a clay row
+    (reference | before | pass 2 | pass 3 | blend | landmarks) and a LIT row (key from the upper left, smooth normals:
+    refsheet3.py), model `om2_gref4`; NOT applied to om_garrett).
+    - Measure first: `humanfit.cheek_hollow` = horizontal sections from the nose's base to the mouth's corners, the
+      OUTER cheek's contour (from 0.4 of the way nose wing -> jaw contour, `HOLLOW_FROM`: nearer the nose the deepest
+      point is the nasolabial fold, 3-4 mm on every head) against its convex hull. before 0.3, pass 2 0.35, pass 3
+      2.2 / 2.6 mm. (A vertical section at fixed x read the muzzle's side, and a section through the jaw's underside
+      read every face as a 12 mm bulge: both dropped.) The points step (identity) is what made the cheeks full: on a
+      vertical profile -3 -> -8 mm, the outline only -8 -> -10.7.
+    - `fit_outline(structure=True)` (default): outline targets on GNM's cheek regions count `STRUCTURE_SOFT` 0.25 and
+      the cheeks' front (cheek regions, normal forward) is HELD (`STRUCTURE_HOLD`), so the warp widens the head's sides
+      (zygoma, jaw angles) instead of filling cheeks; ear vertices are left out of the silhouette (`skip_ears`). Per
+      view `outline_axis: "y"` (heights only: the desk painting's near-side jaw / cheekbone heights, weight 0.7; its
+      miss 9.9 -> 4.2 mm) and `outline_weight`. Widths still within 2.5% of the photo at all eight levels.
+    - `base.head.shape.hollow` (m | {amount, radius, at, share}): a dent under the cheekbone, centred where a ray from
+      the jaw/mouth landmarks' mean, 37 deg out from straight ahead, meets the cheek (the mean of two landmarks across
+      a convex cheek is INSIDE it: the first try dented half its amount at the face's side; the frontmost point dented
+      the lips' corner). 5 mm on a plain head: hollow 0 -> ~2 mm both sides, no folds. Pass 3 used 2.5 mm.
+    - MediaPipe's oval on the front photo (overlay oval_front.png in scratch): runs on the face's edge from the ear's
+      root down; its top (temples, 127 / 356, and the forehead) is the hairline: those points are left out now.
+    - Honest read of om2_r3: in the lit rows pass 3 has shading under the cheekbones on both views and reads closer
+      to the photo than pass 2; but the lower face is still broad and soft, the jaw corners rounded (no bony angle),
+      a lump at the subject's left jaw in the front view, and the bald clay head reads small against the hair's
+      outline. Next: a jaw-angle control (bony corner + the under-jaw tucked), the points step held off the cheeks.
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 

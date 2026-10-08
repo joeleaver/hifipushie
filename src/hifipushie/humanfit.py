@@ -130,6 +130,58 @@ def state(base: dict) -> dict:
     return {"tpl": tpl, "head": ht, "L": L, "measures": {**body, **face_measures(L)}, "base": base}
 
 
+HOLLOW_FROM = 0.4  # the cheek hollow is read from this share of the way from the nose's wing to the jaw contour
+
+
+def cheek_hollow(st: dict) -> dict:
+    """mm per side: the hollow under the cheekbone, read on HORIZONTAL sections of the head (between the nose's base
+    and the mouth's corners, three levels): the face's outer contour on that side (from the nose's wing out to the
+    jaw contour) against its convex hull, the deepest point inside the hull. A lean face with hollow cheeks reads a
+    few mm, a full or jowly one ~0 (its contour is convex). The head faces -y."""
+    from scipy.spatial import ConvexHull
+    P = np.asarray(st["tpl"]["P"], float)
+    T = np.array([(f[0], f[j], f[j + 1]) for f in _faces(st["tpl"]) for j in range(1, len(f) - 1)])
+    L = st["L"]
+    mid = 0.5 * (L[EYE_L] + L[EYE_R])
+    out = {"right": 0.0, "left": 0.0}
+    for zc in np.linspace(L[33, 2], 0.5 * (L[48, 2] + L[54, 2]), 3):
+        dz = P[T, 2] - zc
+        cr = (dz.min(1) < 0) & (dz.max(1) > 0)
+        pts = []
+        for t, d_ in zip(T[cr], dz[cr]):
+            for a_, b_ in ((0, 1), (1, 2), (2, 0)):
+                if (d_[a_] < 0) != (d_[b_] < 0):
+                    u = d_[a_] / (d_[a_] - d_[b_])
+                    pts.append((P[t[a_]] + u * (P[t[b_]] - P[t[a_]]))[:2])
+        S = np.array(pts)
+        if len(S) < 10:
+            continue
+        c = np.array([mid[0], 0.5 * (L[2, 1] + L[14, 1])])  # a centre inside the face, level with the jaw contour
+        ang = np.arctan2(S[:, 0] - c[0], c[1] - S[:, 1])  # 0 = straight ahead (-y): no wrap on either side
+        rad = np.linalg.norm(S - c, axis=1)
+        for side, sgn, wing, jaw in (("right", -1, 31, 2), ("left", 1, 35, 14)):
+            a0 = np.arctan2(L[wing, 0] - c[0], c[1] - L[wing, 1])
+            a1 = np.arctan2(L[jaw, 0] - c[0], c[1] - L[jaw, 1])
+            a0 = a0 + HOLLOW_FROM * (a1 - a0)  # the outer cheek only: nearer the nose the deepest point is the
+            # nasolabial fold, which every face has (3-4 mm on the plain heads)
+            lo, hi = min(a0, a1), max(a0, a1)
+            bins = np.linspace(lo, hi, 40)
+            cont = []
+            for b0, b1 in zip(bins[:-1], bins[1:]):
+                k = (ang >= b0) & (ang < b1)
+                if k.any():
+                    cont.append(S[k][np.argmax(rad[k])])  # the outer contour: the farthest crossing at that angle
+            cont = np.array(cont)
+            if len(cont) < 8:
+                continue
+            h = ConvexHull(np.r_[cont, c[None]])
+            dmin = np.full(len(cont), np.inf)
+            for eq in h.equations:  # distance inside each hull facet's line; the deficit is the least of them
+                dmin = np.minimum(dmin, -(cont @ eq[:2] + eq[2]))
+            out[side] = max(out[side], round(float(dmin.max()) * 1000, 2))
+    return out
+
+
 NECK_AT = 0.35  # the neck's girth is taken this share of the way from the neck joint up to the body's chin
 
 
@@ -637,7 +689,7 @@ def project(cam: dict, X: np.ndarray) -> np.ndarray:
 OUTLINE_W = 0.6  # weight of an outline point against a landmark
 
 
-def _silhouette(st: dict, cam: dict, outline: np.ndarray) -> dict | None:
+def _silhouette(st: dict, cam: dict, outline: np.ndarray, skip_ears: bool = True) -> dict | None:
     """The head's silhouette through a camera matched to a reference outline: for each outline point (pixels) the
     nearest silhouette vertex of the head (edges between faces turned toward and away from the camera; GNM's own
     vertices above the stitch), its world position, how it moves per identity component (as the landmarks:
@@ -650,6 +702,9 @@ def _silhouette(st: dict, cam: dict, outline: np.ndarray) -> dict | None:
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     fade = np.asarray(onemesh.asset()["g_fade"], float)
     head = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
+    if skip_ears:  # an ear's rim is silhouette too, and no face outline follows it
+        ears = np.asarray(basemod._gnm_data()["groups"]["ears"], float) > 0.5
+        head &= ~ears[np.maximum(gid, 0)]
     T = np.array([(f[0], f[j], f[j + 1]) for f in _faces(tpl) for j in range(1, len(f) - 1)])
     T = T[head[T].all(1)]
     Rc = _cam_rot(cam)
@@ -681,17 +736,36 @@ def _silhouette(st: dict, cam: dict, outline: np.ndarray) -> dict | None:
     return {"X": P[vs], "B": Bv, "p": o[ok], "n": nrm[ok]}
 
 
+STRUCTURE_SOFT = 0.25  # weight of an outline target on the soft mid-cheek (structure mode)
+STRUCTURE_HOLD = 1.0   # weight of holding the cheeks' fronts (structure mode)
+
+
+def _gnm_normals(Vg: np.ndarray) -> np.ndarray:
+    """Vertex normals of GNM's mesh at positions Vg (GNM's frame: facing +z, y up)."""
+    from . import base as basemod
+    from . import retopo
+    q = np.asarray(basemod._gnm_data()["quads"])
+    T = np.r_[q[:, [0, 1, 2]], q[:, [0, 2, 3]]]
+    return retopo._vnormals(Vg, T)
+
+
 OUTLINE_SIGMA = 0.022   # GNM units: the outline warp's reach (a jaw, a cheekbone: no single feature)
 OUTLINE_STEP = 0.004    # m: the most an outline point is moved in one round
 OUTLINE_HOLD = 0.6      # weight of the features held where they are (eyes, nose, lips, brows) against the outline
 
 
-def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetric: bool = True) -> tuple:
+def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetric: bool = True,
+                structure: bool = True) -> tuple:
     """(new base, report): the head's silhouette through each fitted camera (`cameras`, from fit_views) pulled onto
     each view's `outline` ([[u, v], ...]: the face's edge in the picture, e.g. jaw and cheeks) by a smooth warp in
     GNM's frame (base.head.warp, appended), the features held (eyes, nose, lips, brows: their landmarks stay, so an
     outline can't drag the mouth). Each silhouette vertex's 2D miss along the outline's normal becomes a 3D move in
-    the camera's image plane at its depth. Identity components are left to fit_views (the points)."""
+    the camera's image plane at its depth. Identity components are left to fit_views (the points).
+    A view may carry "outline_axis": "y" (only the outline's up / down misses count: a painting's camera is too loose
+    for widths, its jaw angle's and cheekbone's heights still read) and "outline_weight".
+    structure: width is BONE (cheekbones, jaw angles, temples, chin): targets on the soft mid-cheek count
+    STRUCTURE_SOFT, and the cheek's front (GNM's cheek regions, facing forward) is held where it is, so the warp
+    widens the head's sides instead of filling the cheeks (pass 2 without it: a pear-shaped, jowly face)."""
     from . import base as basemod
     from . import onemesh
     g = basemod._gnm_data()
@@ -709,7 +783,10 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
         Vg = np.asarray(g["template_vertex_positions"], float) + np.tensordot(call, np.asarray(g["vertex_identity_basis"], float), 1)
         gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
         fade = np.asarray(onemesh.asset()["g_fade"], float)
-        tgt_g, tgt_d, miss = [], [], []
+        tgt_g, tgt_d, tgt_w, miss = [], [], [], []
+        soft = np.zeros(len(Vg))
+        if structure:
+            soft = np.clip(np.asarray(g["groups"]["left_cheek_region"], float) + np.asarray(g["groups"]["right_cheek_region"], float), 0, 1)
         for v, cam in zip(views, cameras):
             if not v.get("outline"):
                 continue
@@ -721,7 +798,11 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             Rc = _cam_rot(cam)
             Xc = (sl["X"] - np.asarray(cam["centre"], float)) @ Rc.T + np.asarray(cam["t"], float)
             m = r * Xc[:, 2] / cam["f"]  # m in the image plane at the vertex's depth
-            w = sl["n"][:, :1] * Rc[0] + sl["n"][:, 1:] * Rc[1]  # the outline's normal as a world direction
+            nn = sl["n"].copy()
+            if v.get("outline_axis") == "y":  # heights only: the miss along the image's vertical
+                m = m * nn[:, 1]
+                nn = np.c_[np.zeros(len(nn)), np.sign(nn[:, 1]) + (nn[:, 1] == 0)]
+            w = nn[:, :1] * Rc[0] + nn[:, 1:] * Rc[1]  # the outline's normal as a world direction
             dW = -np.clip(m, -OUTLINE_STEP, OUTLINE_STEP)[:, None] * w  # (a round moves no point further: a silhouette
             # vertex matched across a gap the first round would throw the warp)
             P = np.asarray(st["tpl"]["P"], float)
@@ -734,6 +815,7 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
                 dg[0] /= float(c["narrow"])
                 tgt_g.append(Vg[gi])
                 tgt_d.append(dg)
+                tgt_w.append(float(v.get("outline_weight", 1.0)) * (1.0 - (1.0 - STRUCTURE_SOFT) * soft[gi]))
             miss.append(float(np.sqrt((m ** 2).mean()) * 1000))
         if not tgt_g:
             break
@@ -741,6 +823,7 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             # view's outline alone warped only its own side, a lump on one jaw
             tgt_g = tgt_g + [x * [-1, 1, 1] for x in tgt_g]
             tgt_d = tgt_d + [x * [-1, 1, 1] for x in tgt_d]
+            tgt_w = tgt_w + tgt_w
         hold = []
         for row in g["lm68"][17:]:  # brows, nose, eyes, lips stay
             hold.append(sum(float(wt) * Vg[int(vi)] for vi, wt in zip(row[0::2], row[1::2])))
@@ -749,9 +832,15 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
         far = skin[np.min(np.linalg.norm(Vg[skin][:, None] - np.array(tgt_g)[None], axis=2), 1) > 2 * OUTLINE_SIGMA]
         far = far[np.linspace(0, len(far) - 1, min(len(far), 160)).astype(int)] if len(far) else far
         hold += list(Vg[far])
+        hw = [OUTLINE_HOLD] * len(hold)
+        if structure:  # the cheeks' fronts stay
+            front = skin[(soft[skin] > 0.5) & (_gnm_normals(Vg)[skin][:, 2] > 0.35)]
+            front = front[np.linspace(0, len(front) - 1, min(len(front), 120)).astype(int)] if len(front) else front
+            hold += list(Vg[front])
+            hw += [STRUCTURE_HOLD] * len(front)
         A = np.r_[np.array(tgt_g), np.array(hold)]
         Dt = np.r_[np.array(tgt_d), np.zeros((len(hold), 3))]
-        wt = np.r_[np.ones(len(tgt_g)), np.full(len(hold), OUTLINE_HOLD)]
+        wt = np.r_[np.array(tgt_w), np.array(hw)]
         sig = float((cur.get("head") or {}).get("warp", {}).get("sigma", OUTLINE_SIGMA))
         K = np.exp(-((A[:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
         coef = np.linalg.solve((K * wt[:, None]).T @ K + 2e-2 * np.eye(len(A)), (K * wt[:, None]).T @ Dt)
