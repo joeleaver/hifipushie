@@ -5478,14 +5478,22 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 Vs_, _ = _weld_clear(Vs_, res["V"], M, interfacing(Bp, M))
             bad_ = _crossing_verts(Vs_, M) & ~was_
             if bad_.any():
+                # (the crossing vertices alone first, then a ring, then two: two rings at once put 229 vertices round
+                # su_garrett's 4th and 5th buttons back and those fastenings stayed 9 mm open)
                 A2_, B2_ = _graph(M)
-                for _r in range(2):
-                    gr_ = bad_.copy()
-                    gr_[A2_[bad_[B2_]]] = True
-                    gr_[B2_[bad_[A2_]]] = True
-                    bad_ = gr_
-                Vs_[bad_] = res["V"][bad_]
-                res["closures_seat"] = [dict(r_, kept_back=int(bad_.sum())) for r_ in res["closures_seat"]]
+                kept_ = np.zeros(len(Vs_), bool)
+                for it_ in range(6):
+                    bad_ = _crossing_verts(Vs_, M) & ~was_
+                    if not bad_.any():
+                        break
+                    for _r in range(min(it_, 2)):
+                        gr_ = bad_.copy()
+                        gr_[A2_[bad_[B2_]]] = True
+                        gr_[B2_[bad_[A2_]]] = True
+                        bad_ = gr_
+                    Vs_[bad_] = res["V"][bad_]
+                    kept_ |= bad_
+                res["closures_seat"] = [dict(r_, kept_back=int(kept_.sum())) for r_ in res["closures_seat"]]
             if int((_crossing_verts(Vs_, M) & ~was_).sum()) == 0:
                 res["V"] = Vs_
             else:

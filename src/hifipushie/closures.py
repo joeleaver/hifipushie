@@ -295,16 +295,20 @@ def seat(V: np.ndarray, M: dict, pcs: dict, body, fixed: np.ndarray | None = Non
         ids = sel[act]
         moved = np.zeros(len(ids))
         N = np.zeros((len(ids), 3))
-        for _ in range(2):  # (the nearest point of the under layer shifts as the over layer comes down: twice)
-            Q, N, ins = _closest_on(X[ids], X, Fu)
-            if bn_ is not None:
-                flip = (N * bn_[tree.query(Q)[1]]).sum(1) < 0
-                N[flip] *= -1
-            gap = ((X[ids] - Q) * N).sum(1)
-            ok = ins & (np.abs(gap) < SEAT_MAX) & (np.linalg.norm(X[ids] - Q, axis=1) < SEAT_MAX)
-            mv = np.where(ok, (LAY - gap) * wgt[act], 0.0)
-            X[ids] += N * mv[:, None]
-            moved = moved + np.abs(mv)
+
+        def lay(rounds):
+            nonlocal N, moved
+            for _ in range(rounds):  # (the nearest point of the under layer shifts as the over layer comes down)
+                Q, N, ins = _closest_on(X[ids], X, Fu)
+                if bn_ is not None:
+                    flip = (N * bn_[tree.query(Q)[1]]).sum(1) < 0
+                    N[flip] *= -1
+                gap = ((X[ids] - Q) * N).sum(1)
+                ok = ins & (np.abs(gap) < SEAT_MAX) & (np.linalg.norm(X[ids] - Q, axis=1) < SEAT_MAX)
+                mv = np.where(ok, (LAY - gap) * wgt[act], 0.0)
+                X[ids] += N * mv[:, None]
+                moved = moved + np.abs(mv)
+        lay(2)
         # the fastenings themselves: each side half the way, within its own piece (pattern distance)
         left = []
         pos = {int(v): i for i, v in enumerate(ids)}
@@ -331,6 +335,10 @@ def seat(V: np.ndarray, M: dict, pcs: dict, body, fixed: np.ndarray | None = Non
                 r_ = np.linalg.norm(M["uv"][s_] - M["uv"][v0], axis=1)
                 X[s_] += sgn * dv_t[None] * np.exp(-0.5 * (r_ / 0.025) ** 2)[:, None]
             left.append(0.0)
+        # the band laid on the under layer again: bringing a fastening's sides together moves both layers round it
+        # (half each, over ~2.5 cm), and laid only before that the over band came out through the under one round
+        # su_garrett's 4th and 5th buttons (96 crossings: the clean-up's revert left those two 9 mm open)
+        lay(2)
         rows.append({"name": c["name"], "laid": int(act.sum()), "moved_p50_mm": round(float(np.median(moved)) * 1000, 2),
                      "moved_max_mm": round(float(moved.max()) * 1000, 2), "fastenings_left_mm": left})
     return X, rows

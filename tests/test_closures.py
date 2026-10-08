@@ -145,6 +145,24 @@ def test_a_closed_lap_is_laid_closed():
     below = (piece == 0) & (uv[:, 1] < -0.4)
     assert np.abs(X[far] - V[far]).max() < 1e-4 and np.abs(X[below] - V[below]).max() < 1e-4
     assert rows[0]["laid"] > 50 and rows[0]["fastenings_left_mm"] == [0.0, 0.0, 0.0]
+    # fastenings apart IN the surface too (4 mm across, and the lap 3 mm under the over front at the bottom button):
+    # bringing them together moves both layers round each button, so the band is laid on the under layer again after
+    # (laid only before, it came out through the under front round su_garrett's 4th and 5th buttons)
+    V2 = V.copy()
+    V2[piece == 1, 0] -= 0.004
+    V2[(piece == 1) & (uv[:, 1] < -0.25), 1] -= 0.003
+    X2, rows2 = closures.seat(V2, M, pcs, None)
+    band2 = band & (np.abs(uv[:, 1] - pcs["front.L"]["marks"]["buttonhole2"][1]) > 0.03)
+    assert closures.measure(X2, M)[0]["ok"], closures.measure(X2, M)[0]
+    under = X2[piece == 1]
+    # every band vertex on one side of the under front, LAY off it: none through it (without a body seat takes the
+    # under front's own normal: which side is the triangles' winding's)
+    side = []
+    for v in np.where(band2)[0]:
+        q = under[np.argmin(np.linalg.norm(under[:, [0, 2]] - X2[v, [0, 2]], axis=1))]
+        side.append(X2[v, 1] - q[1])
+    side = np.asarray(side)
+    assert (np.sign(side) == np.sign(np.median(side))).all() and np.abs(side).min() > 0.0005, side
 
 
 def test_drafted_buttons_are_a_closure_with_a_wear_state():
