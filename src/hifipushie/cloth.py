@@ -1336,6 +1336,17 @@ def _repress(X: np.ndarray, B: dict, M: dict, smooth: bool) -> np.ndarray:
 WORN_LEVELS = True  # place(): a worn top's torso pieces below the armpit laid level by level (_worn_levels)
 WORN_LEVEL_RAMP = 0.03  # m under the armpit over which the level lay takes over from the one cylinder
 WORN_LEVEL_CLEAR = 0.004  # m: the level curves stand at least this far off the body's hull
+OPEN_GAP = 0.16  # m between the front edges at the hem of a worn top whose front closure is worn OPEN (garment key open_gap)
+
+
+def open_gap(B: dict, torso: list) -> float:
+    """How far apart a worn top's fronts start at the hem: its front closure (two different torso pieces) worn open ->
+    garment key `open_gap` or OPEN_GAP; closed, or no such closure -> 0."""
+    for c in B.get("closures") or []:
+        if c.get("state") == "open" and c.get("over") != c.get("under") and c.get("over") in torso and c.get("under") in torso:
+            v = B.get("open_gap")
+            return float(OPEN_GAP if v is None else v)
+    return 0.0
 
 
 def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs: dict, pid: np.ndarray,
@@ -1346,7 +1357,11 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
     On the garment's one cylinder (as big as its widest level) the arc a suppressed waist left over between the front
     and the back all fell into the side panel's back seam: Garrett's jacket's side-back seams started 135-160 mm open
     and the sim left them 67-110 mm open. Eased in over WORN_LEVEL_RAMP under the armpit; above it nothing moves.
-    Shear a level lay brings (the taper spread round, not in the side seams) is the start relaxation's."""
+    Shear a level lay brings (the taper spread round, not in the side seams) is the start relaxation's.
+    A front closure worn OPEN (open_gap): the fronts start APART, the gap growing evenly from the armpit's level to
+    the hem, and every level's curve is that much longer: the jacket starts as the loose tube an open jacket is,
+    standing off the body all round. Started lapped at the centre like a buttoned one, Garrett's fronts stayed lapped
+    15 mm, the sides hugged the hips at 2-8 mm and all the ease stood in front, 5-12 cm off the body (the tent)."""
     names = M["names"]
     slides = B.get("_worn_slides") or {}
     mean_sl = float(np.mean(list(slides.values()))) if slides else 0.0
@@ -1360,6 +1375,7 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
     zlo = float(X[sel_all, 2].min()) - 0.01
     levels = np.arange(np.floor(zlo / 0.01) * 0.01, z_pit + 0.011, 0.01)
     curves = {}
+    G_open = open_gap(B, use)
     for z in levels:
         h = body.hull(float(z))
         if h is None or len(h) < 3:
@@ -1375,8 +1391,9 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
         if len(sp) != 2:
             continue
         span = sum(hi - lo for lo, hi in sp.values())
-        m = float(np.clip((span - P0) / (2 * np.pi), WORN_LEVEL_CLEAR, 0.15))
-        curves[round(float(z), 3)] = (H, m)
+        gz = G_open * float(np.clip((z_pit - z) / max(z_pit - zlo, 1e-6), 0.0, 1.0))
+        m = float(np.clip((span + gz - P0) / (2 * np.pi), WORN_LEVEL_CLEAR, 0.15))
+        curves[round(float(z), 3)] = (H, m, gz)
     if not curves:
         return X
     zk = np.array(sorted(curves))
@@ -1394,8 +1411,9 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
         lev = zk[np.clip(np.searchsorted(zk, z - 0.005), 0, len(zk) - 1)]
         out_ = float(w.get("out", 0.0))
         side = w.get("side", "front")
+        hs = float(np.sign(np.median(M["uv"][idx, 0] + dxs.get(nm, 0.0))) or 1.0)  # which side of the centre it is on
         for L in np.unique(lev[go]):
-            H, m = curves[round(float(L), 3)]
+            H, m, gz = curves[round(float(L), 3)]
             Cz = _densify(_offset_hull(H, m + out_), 0.002)
             cy = 0.5 * (Cz[:, 1].max() + Cz[:, 1].min())
             if side == "front":
@@ -1403,7 +1421,8 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
             else:
                 st = Cz[np.argmin(np.abs(Cz[:, 0]) + 10 * np.maximum(cy - Cz[:, 1], 0))]
             j = np.where(go & (lev == L))[0]
-            q = _arc_point(Cz, st, M["uv"][idx[j], 0] + dxs.get(nm, 0.0), float(w.get("dir", 1.0)))
+            q = _arc_point(Cz, st, M["uv"][idx[j], 0] + dxs.get(nm, 0.0) + (0.5 * gz * hs if side == "front" else 0.0),
+                           float(w.get("dir", 1.0)))
             X[idx[j], :2] = (1 - wt[j])[:, None] * X[idx[j], :2] + wt[j][:, None] * q
     return X
 
@@ -5583,7 +5602,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
     # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
     # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope"):
+    for k_ in ("press_lay", "worn_envelope", "open_gap"):
         if g.get(k_) is not None:
             Bp[k_] = g[k_]
     if Bp["worn_top"] and under is not None and under.get("res") is not None:
@@ -5828,7 +5847,13 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             cb_._m = {"mm": {}, "at": {}}
             mv_ = np.ones(len(plan["start"]), bool)
             st_ = plan["start"]
-            for _ in range(3):  # (the exact pass's few rounds leave the worst pairs short: again, from where they got)
+            if under is not None:
+                # (over another garment the collider holds that garment's own cloth, wound as its pattern lies: read
+                # as a closed body, its normals pushed the trousers' back INTO the tucked shirt's tail: 102 triangles
+                # 1.6-3.9x at the back's waist corner, tr_22 / tr_24. Against its triangles, on the side each point is)
+                st_, _n = _clear_exact(st_, M["F"], mv_, coll["bodyV"], coll["bodyT"], gap=START_GAP, rounds=8,
+                                       signed=len(body_real.T))
+            for _ in range(3 if under is None else 0):  # (the exact pass's few rounds leave the worst pairs short: again, from where they got)
                 st_ = _clear_of_body(st_, M["F"], mv_, cb_, START_GAP, START_GAP, CLEAR_GROW)
                 if _start_separation(st_, M["F"], coll["bodyV"], coll["bodyT"]) >= 0.9 * START_GAP:
                     break
@@ -6990,7 +7015,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top", "press_lay", "worn_envelope"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top", "press_lay", "worn_envelope", "open_gap"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
