@@ -40,6 +40,7 @@ from . import pattern
 PRESS = 20.0  # a pressed crease's hinge bending, as a multiple of the cloth's, at strength 1
 REST_TURN = math.radians(170.0)  # the most a hinge's rest angle turns (a full 180 is the two faces in one plane)
 PLACE_TURN = math.radians(178.0)
+PRESS_OFF = 0.01  # m (pattern) past a pressed flap's base over which it hands over to a rigid turn
 PRESS_WEDGE = 0.3  # the least slope of a pressed flap off its base by the line (pressed_flap): a contact solver wants its
 # cloth a contact gap apart where it isn't joined (at 0.06, 88 lapel vertices started within 1 mm of the forepart: ZOZO's CCD failed at frame 0)
 ROLL_RADIUS = 0.003
@@ -316,7 +317,10 @@ def pressed_flap(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, lay: float
     g = _geom(M, fd)
     rows = g["rows"]
     rm = rows[0]  # (a roll's further rows are mirrored with the flap: a reflection is isometric; the sim rolls them)
-    v = rows[0]["v"]
+    # the flap, and the roll's further rows all along (past the first row's ends they are not in its flap: left where
+    # they lay beside a pressed flap, the roll line's top end tore 4-5x on Garrett)
+    v = np.unique(np.r_[rows[0]["v"], np.concatenate([np.asarray(r_, np.int64) for r_ in fd["rows"][1:]])
+                       if len(fd["rows"]) > 1 else np.zeros(0, np.int64)])
     Bt = g["base_tris"]
     if not len(v) or not len(Bt):
         return X
@@ -354,8 +358,27 @@ def pressed_flap(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, lay: float
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
     over = 1.0 if fd["turn"] >= 0 else -1.0
     off = np.minimum(lay, max(wedge, PRESS_WEDGE) * g["d0"][v])  # (thinner, the roll rows lay in its base near the line)
+    Pn = Pb + (over * face * off)[:, None] * n
+    # where the mirror image falls off the base (past the neckline by the roll line's top end) the base's map is
+    # extrapolated and wrong (4.2x by Garrett's neck point): there the flap is turned rigidly about the row instead,
+    # eased in over PRESS_OFF of pattern past the base's edge
+    miss = np.maximum(np.maximum(-b1, 0) + np.maximum(-b2, 0) + np.maximum(b1 + b2 - 1, 0), 0.0) * \
+        np.sqrt(np.abs(det))
+    wv = np.clip(miss / PRESS_OFF, 0.0, 1.0)
+    if (wv > 0).any():
+        # (one rigid turn about the FIRST row, for the flap and the roll's further rows alike: turn_flap turns each row's
+        # flap about its own row and leaves the further rows' own vertices where they lay)
+        full = min(abs(fd["turn"]) * len(g["rows"]), PLACE_TURN)
+        Pr = X[rm["row"]]
+        T = np.gradient(Pr, axis=0)
+        T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-12)
+        Q = Pr[si] * (1 - fr[:, None]) + Pr[si + 1] * fr[:, None]
+        W = T[si] * (1 - fr[:, None]) + T[si + 1] * fr[:, None]
+        W /= np.maximum(np.linalg.norm(W, axis=1, keepdims=True), 1e-12)
+        Xt = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, np.full(len(v), np.sign(fd["turn"]) * full))
+        Pn = (1 - wv)[:, None] * Pn + wv[:, None] * Xt
     X = X.copy()
-    X[v] = Pb + (over * face * off)[:, None] * n
+    X[v] = Pn
     return X
 
 

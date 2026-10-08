@@ -2452,7 +2452,50 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     shirt's `fine_settle: false`; the jacket work ran on it. Drop it once the shirt builds.
   - Tests: the ten cloth / pattern files + test_collar (+ test_worn_forepart; the collar lay tests run with
     worn_top off) + test_seams pass after merging main 4fa7cdc.
-  - NEXT, in order: (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
+  - Round 2 (main 104b1e9 merged; ga_suit5 DELETED, ga_suit's shirt builds again; sims on ga_suit):
+    - Canvas A/B (su_55, interfaced []): the tent is NOT the canvas (left front 15 cm off the body at the hem without
+      it, 13 with; the canvas keeps the two sides alike). Kept.
+    - The tent was the SIDE PANEL'S HEM SPRING: ga_suit's contour on [sideF, sideB] let each of four edges out 16 mm at
+      the hem (64 mm of flare per side), and an open front swung it forward. su_56 with it 0: right front hangs 4 cm
+      off the body at the hem (was 12), hem level front / back within ~1 cm. ga_suit and su_garrett now have
+      `{"op": "contour", "edge": ["sideF", "sideB"], "at": [["waist", 0], ["hem", 0]]}`. su_58 (final ga_suit): fronts
+      3-6 cm ahead of the bust plane at the hip, left still ~2 cm further out than the right (the over side).
+    - Collar show: a 20 mm stand (su_57) gave collar_show 14.2 but BOTH LAPELS UNROLLED (49 / 113 deg, a funnel round
+      the neck): the roll line comes down from a lower stand and the collar's turn pulls the lapels up. Back to 24 mm:
+      su_58 collar_show 10.3 (in band, just), lapels 157 / 163 deg. Don't lower the stand without re-checking lapels.
+    - Lapel gap: `made_folds: ["lapel roll"]` (su_59) holds the flaps (all over, 160-162 deg) but the gap only goes
+      12-15 -> 10-13 mm and the clean-up makes 8 crossings at the left gorge: reverted. The held flap is carried with
+      the BODY (Kabsch on body vertices) while its forepart drapes away from where it started: a made flap needs to be
+      carried with its own base (the forepart's vertices under it), not the body. Not built.
+    - su_garrett: jacket design + canvas bands copied from ga_suit (carry.py). su_60 stopped before the jacket:
+      su_garrett's SHIRT fails fine_start_check (8 triangles over 1.6x, worst 2.76x, front.L pattern [0.081, -0.023]):
+      trousers2's.
+  - Round 3 (main 6c921d9 merged):
+    - Lapel op options `roll_radius` (0.006) / `roll_strength` (0.5): ga_suit 0.003 / 1.0 (su_61): lapel_gap 12-15 ->
+      9-11 mm, collar_show 15.
+    - THE OPEN SLEEVE SEAM (su_54, su_61: hindarm seam 13, 5 pairs at the hem 40-66 mm open; sim max = final, so the
+      solver left it): its start. (a) The under sleeve was moved down the arm ALONE, 9-11 cm (place's "pushed off the
+      body" rule hit it at the armpit), so it started below its top sleeve; (b) both sleeve pieces lie on ONE cylinder
+      the deltoid's clearance sets: the 298 mm hem on a 610 mm circle, both seams 115-155 mm open at the wrist. Now
+      (`place`): an aligned piece (the under sleeve) is never moved down alone, pieces sharing an arm go down together,
+      and for worn_top garments (jackets, coats; `SLEEVE_TAPER`) each row of a sleeve lies on the radius its own girth
+      needs or the arm's clearance there, whichever is more, smoothed along the arm (a cone). Shirts unchanged (their
+      cache keys too: with the taper on for every smooth garment ga_suit's and su_garrett's shirts re-simulated and
+      failed the fine-start gate). su_64 (ga_suit): ALL seams closed (sim max 14.9 mm, final 0.3), 0 crossings,
+      collar_show 15.0, lapel_gap 10-11, cuffs 15.6 / 8.7, fits. Best ga_suit so far: cloth_renders/su_64_sleeves*.
+    - `folds.pressed_flap`: past the base (the roll line's top end, off the neckline) the flap AND the roll's further
+      rows turn rigidly about the first row (turn_flap left the further rows' own vertices unturned), and every row of
+      a pressed roll is pressed with the flap; place re-presses after `_clear_of_body`; worn neck columns ease in over
+      WORN_NECK_CLEAR; a column is shortened evenly past its own ridge (WORN_OVER), not piled at it.
+    - su_garrett: ga_suit's design + bands carried (carry.py); hip room from the BLOCK (`hips_ease` 0.14), not flare:
+      su_62 without it was "TOO SMALL at hips -18 mm", rode up (collar_show -42, cuffs 38-48), side seams burst 110 mm.
+      su_60 / su_63 failed CCD at frame 0: Garrett's front.R gorge strip (pattern x -0.06..-0.1, y -0.05..-0.1, between
+      the neckline and the roll line's top) starts 2.4-4.5x stretched; front.L is fine. Not solved: the strip lies over
+      Garrett's open shirt collar (the padded body there is the collar's stand and fall). su_65 queued after the fixes
+      above (start: 4.2% of triangles over 5%, front.R 3.6x max, left sleeve moved 11 cm down by crossings at the cap:
+      armhole start 300 mm). Read its log (/mnt/data/hifipushie/suit5/su_65_garrett.log) first.
+  - NEXT, in order: (1) carry made lapel flaps with their forepart (then lapel_gap); (2) su_garrett once its shirt
+    builds; (3) collar_hug 17-26 mm. Old list (tent done as above): (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
     the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
     suppression; a sim with interfaced [] isolates the canvas); (2) collar_show 5 -> 10-20 (the jacket collar's stand
     over the shirt's; lower the stand or the worn neck); (3) lapel_gap 13 mm (the pressed lapel's roll rows spring

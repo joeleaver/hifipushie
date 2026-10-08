@@ -172,7 +172,9 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
              rise: float = 0.02, roll_stand: float = 0.02, **o) -> None:
     """A notched lapel on the front: the centre front extended by `stand`, the lapel's point (the top corner of the
     extension) pushed out to `width` from the roll line and up by `rise`, a roll line from the break point to
-    `roll_stand` inside the neck point. Then {"op": "collar", "type": "roll", "stop": gorge} drafts the collar."""
+    `roll_stand` inside the neck point. Then {"op": "collar", "type": "roll", "stop": gorge} drafts the collar.
+    `roll_radius` (m, 0.006) and `roll_strength` (0.5) are the roll line's fold: the lapel lies about two radii off
+    the forepart at the line (a pressed, canvassed lapel: a smaller radius and more strength)."""
     pc = D["pieces"][piece]
     low = "cfHem" if "cfHem" in pc["names"] else "cfWaist"
     pd.op_extend(D, piece, f"cfNeck>{low}", stand, name="stand")
@@ -217,7 +219,8 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
     D["edges"]["gorge"] = [f"{piece}:lapelPoint>cfNeck"]
     D["centre"][piece] = "open"
     D["folds"].append({"piece": piece, "line": [B.tolist(), (Rp + u * 0.02).tolist()], "angle": 15, "kind": "roll",
-                       "radius": 0.006, "strength": 0.5, "flap": "lapelPoint", "name": "lapel roll"})
+                       "radius": float(o.get("roll_radius", 0.006)), "strength": float(o.get("roll_strength", 0.5)),
+                       "flap": "lapelPoint", "name": "lapel roll"})
     D["meta"]["break"] = [float(B[0]), float(B[1])]
     D["log"].append(f"lapel on {piece}: front edge extended {stand * 1000:.0f} mm, break point {abs(yb) * 1000:.0f} mm "
                     f"below the neck point, lapel point {width * 1000:.0f} mm from the roll line; gorge "
