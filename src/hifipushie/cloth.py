@@ -257,6 +257,12 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
     # fold lines (cloth_guide "Fold lines"): the design table's own, then the garment's
     folds = [dict(f) for f in folds_tbl]
+    # how the kind is worn may roll pieces back (no tie: the fronts above the first closed button roll open in a V)
+    for f in gdmod.wear(g, "folds"):
+        pc_ = out.get(f.get("piece"))
+        if pc_ is not None and all(isinstance(q, str) and (q in pc_["names"] or q in (pc_.get("marks") or {}))
+                                   for q in ([f["line"]] if isinstance(f["line"], str) else f["line"])):
+            folds = [o for o in folds if o.get("name") != f.get("name")] + [dict(f)]
     for f in g.get("folds") or []:  # the garment's folds; one named like a table's replaces it ("off": drops it)
         folds = [o for o in folds if not (f.get("name") and o.get("name") == f["name"])] + [dict(f)]
     folds = [f for f in folds if f.get("piece") in keep and not f.get("off")]
@@ -2110,12 +2116,12 @@ def _closure(M: dict, nm: str) -> tuple[float, float]:
 NECK_OPEN = 0.035  # m an UNBUTTONED stand's two ends start apart at the throat (a collar worn open)
 
 
-def _open_closure(M: dict, nm: str) -> tuple[float, float]:
-    """(girth it would close at, x of the fastening's point nearer the low x) of a piece fastened to itself whose
-    closure is worn OPEN (a shirt's stand without a tie: the button and buttonhole exist, nothing stitches them);
-    (0, 0) otherwise."""
+def _open_closure(M: dict, nm: str) -> tuple[float, float, float]:
+    """(girth it would close at, x of the fastening's point nearer the low x, how far its ends stand apart: the
+    closure's `gap`, else NECK_OPEN) of a piece fastened to itself whose closure is worn OPEN (a shirt's stand
+    without a tie: the button and buttonhole exist, nothing stitches them); (0, 0, 0) otherwise."""
     k = M["names"].index(nm)
-    best, xlo = 0.0, 0.0
+    best, xlo, gap = 0.0, 0.0, 0.0
     for c in M.get("closures") or []:
         if c.get("over") != nm or c.get("under", nm) != nm or any(c.get("closed") or []):
             continue
@@ -2123,8 +2129,8 @@ def _open_closure(M: dict, nm: str) -> tuple[float, float]:
             if M["piece"][a] == k and M["piece"][b] == k:
                 d = float(abs(M["uv"][a, 0] - M["uv"][b, 0]))
                 if d > best:
-                    best, xlo = d, float(min(M["uv"][a, 0], M["uv"][b, 0]))
-    return best, xlo
+                    best, xlo, gap = d, float(min(M["uv"][a, 0], M["uv"][b, 0])), float(c.get("gap", NECK_OPEN))
+    return best, xlo, gap
 
 
 def _cuff_spiral(body: "Body", t: np.ndarray, x: np.ndarray, closed: float, x_lo: float, lay: float, cx: float,
@@ -2386,6 +2392,16 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 lay_ = np.maximum(lay_, np.clip(t_ / min(0.02, 0.7 * d_), 0, 1) + np.clip((t_ - d_) / min(0.02, 0.7 * d_), 0, 1)
                                   - 2.0 * np.clip((t_ - 2 * d_) / 0.08, 0, 1))
             q = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0), float(w.get("dir", 1.0)))  # wrap "dir" -1: pattern +x runs round toward -x from the start (a band whose chain starts on the left front, laid from the back)
+            if w.get("out") and w.get("out_reach") and Cw is not C:
+                # wrap "out_reach" [full, none] m from the centre line: a lap's layer out only where it laps; past it
+                # the piece lies where the pieces it is sewn to lie (the whole left front a layer out started its
+                # side seam and armhole 4 mm off the back's and the sleeve's: tr_12's underarm crossed and its
+                # seams stayed open on the left only)
+                r0, r1 = (float(v_) for v_ in w["out_reach"])
+                st0 = C[np.argmin(np.linalg.norm(C - start, axis=1))]
+                q0 = _arc_point(C, st0, xs_ + dxs.get(nm, 0.0), float(w.get("dir", 1.0)))
+                wo = np.clip((r1 - np.abs(xs_)) / max(r1 - r0, 1e-6), 0.0, 1.0)[:, None]
+                q = wo * q + (1 - wo) * q0
             if lay_.any():
                 # out along the curve's own normal (out from its middle sheared the layers 11% on the flat front)
                 tg_ = _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) + 0.003, float(w.get("dir", 1.0))) - _arc_point(Cw, start, xs_ + dxs.get(nm, 0.0) - 0.003, float(w.get("dir", 1.0)))
@@ -2617,7 +2633,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             # a stand whose button is UNDONE (worn without a tie): seated and laid like a buttoned one, round the
             # neck at its own girth, but its ends parted NECK_OPEN at the throat (by its pattern length round a hull
             # of its pattern heights it started as a ring 114 mm open, its collar 2.2x stretched)
-            open_n, open_x = _open_closure(M, nm) if (neck_R is None and not closed_n and smooth) else (0.0, 0.0)
+            open_n, open_x, open_gap = _open_closure(M, nm) if (neck_R is None and not closed_n and smooth) else (0.0, 0.0, 0.0)
             first_neck = neck_R0 is None
             # (wrap "girth": the whole circle a piece is part of, when it is only part of a band: a cut-on collar's
             # half round the back of the neck)
@@ -2740,8 +2756,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 lo_n_ = min(max(neck_base + above, min(r_["h"] for r_ in body.neck_rows() if r_["neck"])), top_n_ - 0.01)
                 # (only for a buttoned band: an open stand keeps the hull over its pattern heights, as it was tuned)
                 rng_ = np.array([lo_n_, min(lo_n_ + bh_ + 0.008, top_n_)]) if (closed_n or open_n) else np.array([hts.min(), hts.max() + 0.008])
-                if open_n:  # its fastening's points a turn less NECK_OPEN apart: the gap at the front, no lap
-                    neck_sp = _cuff_spiral(body, rng_, None, open_n + NECK_OPEN, open_x - e[0], 0.0, 0.0, 1.0, 0.0,
+                if open_n:  # its fastening's points a turn less the gap apart: the gap at the front, no lap
+                    neck_sp = _cuff_spiral(body, rng_, None, open_n + open_gap, open_x - e[0], 0.0, 0.0, 1.0, 0.0,
                                            lambda ti: (nb + d * ti, back, side, d),
                                            m_min=(SMOOTH_CLEAR if smooth else CLEAR) + 0.0005, recentre=True)
                     if neck_sp is not None:
