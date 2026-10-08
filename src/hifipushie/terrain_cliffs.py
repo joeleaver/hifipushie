@@ -384,6 +384,21 @@ class CliffField:
             def relief_at(self, x, y):
                 """The rock character's weight at columns (terrain_mesh.Field.relief_at)."""
                 return cf.base.relief_at(x, y)
+
+            def designed_step(self, x, y):
+                """True at columns where the ground has designed steps finer than the grid (terrain_ground.Edits'
+                zone: the turf's riser at a lip, a bunker's cut edge and raised lip)."""
+                e = getattr(cf.base, "edits", None)
+                out = np.zeros(len(x), bool)
+                if e is not None and e.any:
+                    out[e._in_zone(np.asarray(x, float), np.asarray(y, float))] = True
+                if getattr(cf.base, "fall", None) is not None:  # (and fallen blocks: chipped boxes on the ground)
+                    out |= np.asarray(cf.base.fall_at(x, y)) > 0
+                return out
+
+            def near_volume(self, p):
+                """True at points within a few metres of a volume (a cave's mouth, a stack's foot: built edges)."""
+                return np.minimum(cf._void(p), cf._adds(p)) < cf.region.wall + 2.0
         return _Front()
 
     def lift(self, p):

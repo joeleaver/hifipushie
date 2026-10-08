@@ -573,6 +573,10 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
         if len(ks) and hasattr(field, "relief_at"):  # (and where the rock character is all but absent: its own creases
             # and block edges are designed and band-limited, and on a rock face they read as steps at 3 cm)
             ks = ks[field.relief_at(X[ks, 0], X[ks, 1]) < JUMP_RELIEF]
+        if len(ks) and hasattr(field, "designed_step"):  # (nor where a step is designed: a turf riser, a bunker's edge)
+            ks = ks[~field.designed_step(X[ks, 0], X[ks, 1])]
+        if len(ks) and hasattr(field, "near_volume"):
+            ks = ks[~field.near_volume(X[ks])]
         if len(ks):
             with _span("bake/jumps"):
                 h1 = JUMP_H
