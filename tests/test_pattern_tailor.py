@@ -330,7 +330,7 @@ def test_suit_trousers_kind_drafts_itself():
     gd.validate(sheet)
     out = gd.compile_sheet(sheet)
     pat = out["pattern"]
-    assert pat["block"] == "trouser" and pat["block_options"]["leg"] == "slim" and pat["block_options"]["length"] == "shoe"
+    assert pat["block"] == "trouser" and pat["block_options"]["leg"] == "slim" and pat["block_options"]["length"] == "break"
     assert [o["op"] for o in pat["ops"]] == ["waistband", "fly", "crease"], pat["ops"]
     assert {t["kind"] for t in out["trims"]} == {"belt", "belt_loops"}
     # the sheet's own op of a name wins over the detail's; a fit changes the leg
@@ -371,6 +371,18 @@ def test_trims_ride_a_band():
     rl = np.hypot(out["belt_loops"]["V"][:, 0], out["belt_loops"]["V"][:, 1])
     assert rl.max() > rb.max() - 0.004 and out["belt_loops"]["color"] == "#333333"
     assert out["belt"]["F"].max() < len(out["belt"]["V"])
+
+
+def test_trousers_cut_to_a_break():
+    # length "break": the sides and front to "shoe", the back BREAK_BACK longer (a sloped hem); the break itself is
+    # the front's length over the shoe, which the start gathers (cloth._hem_on_shoe)
+    from hifipushie import pattern_blocks as pb
+    B = pb.trouser(dict(LEG), {"length": "break", "leg": "slim"})
+    fr, bk = B["pieces"]["front"], B["pieces"]["back"]
+    y = lambda pc, nm: -float(pc["P"][pc["names"][nm], 1])  # length down from the waist
+    L = LEG["waistToFloor"] / 1000 - pb.TROUSER_LENGTHS["shoe"]
+    assert abs(y(fr, "sideHem") - L) < 1e-6 and abs(y(bk, "inHem") - L) < 1e-6
+    assert "creaseHem" not in fr["names"] and abs(y(bk, "creaseHem") - (L + pb.BREAK_BACK)) < 1e-6
 
 
 if __name__ == "__main__":
