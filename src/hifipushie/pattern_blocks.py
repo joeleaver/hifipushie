@@ -80,7 +80,7 @@ def edge_length(pc: dict, arc: str) -> float:
 BODICE_DEFAULTS = {"chest_ease": 0.10, "waist_ease": 0.10, "hips_ease": 0.08, "collar_ease": 0.05,
                    "shoulder_ease": 0.0, "biceps_ease": 0.15, "armhole_depth": 0.02, "length": "hips",
                    "length_bonus": 0.0, "fitted": False, "darts": False, "bust_dart": None, "across_back": 0.98,
-                   "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open"}
+                   "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open", "front_balance": 0.0}
 KNIT_DEFAULTS = dict(BODICE_DEFAULTS, chest_ease=0.0, waist_ease=0.02, hips_ease=0.0, biceps_ease=0.05,
                      armhole_depth=0.0, collar_ease=0.12, cf="fold")
 
@@ -202,6 +202,19 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         marks = {}
         if front and bust is not None:
             marks["bust"] = [bust[0], Y(bust[1])]
+        fb = float(o.get("front_balance", 0.0)) if front else 0.0
+        if fb:
+            # front balance: the front longer between the neck point and the chest line than the back (a man's
+            # chest stands forward of his neck point: cut as long as the back there, an open front is pulled up
+            # over the chest and kicks forward at the hem). The front above the chest line is spread upward: the
+            # neck point and shoulder by the whole amount, easing to nothing at the chest line
+            def _raise(q, fb=fb):
+                q = np.asarray(q, float)
+                return [float(q[0]), float(q[1]) + fb * float(np.clip((ay + q[1]) / max(ay - sy, 1e-6), 0.0, 1.0))]
+            pts = [(n_, _raise(q)) for n_, q in pts]
+            if "bust" in marks:
+                marks["bust"] = _raise(marks["bust"])
+            log.append(f"front balance {fb * 1000:.0f} mm: the front's neck point and shoulder raised over the back's")
         pc = make_piece(which, pts, which, {"to": "torso", "side": which}, sym, marks, lines)
         if "bustDartA" in pc["names"]:
             pc["darts"]["bustDart"] = ("bustDartA", "bustDartTip", "bustDartB")

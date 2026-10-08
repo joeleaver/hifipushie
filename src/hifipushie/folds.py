@@ -40,6 +40,8 @@ from . import pattern
 PRESS = 20.0  # a pressed crease's hinge bending, as a multiple of the cloth's, at strength 1
 REST_TURN = math.radians(170.0)  # the most a hinge's rest angle turns (a full 180 is the two faces in one plane)
 PLACE_TURN = math.radians(178.0)
+PRESS_WEDGE = 0.3  # the least slope of a pressed flap off its base by the line (pressed_flap): a contact solver wants its
+# cloth a contact gap apart where it isn't joined (at 0.06, 88 lapel vertices started within 1 mm of the forepart: ZOZO's CCD failed at frame 0)
 ROLL_RADIUS = 0.003
 
 
@@ -317,7 +319,7 @@ def pressed_flap(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, lay: float
     n = Nv[Bt[best]].mean(1)
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
     over = 1.0 if fd["turn"] >= 0 else -1.0
-    off = np.minimum(lay, wedge * g["d0"][v])
+    off = np.minimum(lay, max(wedge, PRESS_WEDGE) * g["d0"][v])  # (thinner, the roll rows lay in its base near the line)
     X = X.copy()
     X[v] = Pb + (over * face * off)[:, None] * n
     return X

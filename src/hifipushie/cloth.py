@@ -1190,6 +1190,7 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
     if ok.any():
         slide[:] = float(np.clip(np.median((Lr - ln)[ok]), -WORN_SLIDE, WORN_SLIDE))
     WORN_DBG.append((gx, S.copy(), c0, target, slide, ok))
+    del WORN_DBG[:-16]
     if info is not None:
         info.update(ridge_columns=int(ok.sum()), slide_mean=float(np.mean(np.interp(xs, gx, slide))), slide_mm=[round(float(slide.min()) * 1000, 1), round(float(slide.max()) * 1000, 1)])
     for _ in range(4):  # neighbouring columns agree (each was laid alone)
@@ -1210,6 +1211,7 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
     return out
 
 
+PIN_GAP = 0.002  # m a pinned seam's two sides start apart
 WORN_PIN = 0.06  # m (pattern, sigma) over which a pinned seam's move fades into its pieces
 
 
@@ -1226,7 +1228,7 @@ def _repress(X: np.ndarray, B: dict, M: dict, smooth: bool) -> np.ndarray:
     hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
     for fd in M.get("folds") or []:
         if _pressed(B, M, fd):
-            X = foldmod.pressed_flap(X, M, fd, (B.get("faces") or {}).get(fd["piece"], 1.0), FOLD_LAY if smooth else LAYER,
+            X = foldmod.pressed_flap(X, M, fd, (B.get("faces") or {}).get(fd["piece"], 1.0), PRESS_LAY,
                                      wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
     return X
 
@@ -1248,12 +1250,27 @@ def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed:
     mid = 0.5 * (X[a] + X[b])
     fa, fb = np.isin(pid[a], fixed), np.isin(pid[b], fixed)
     mid[fa], mid[fb] = X[a[fa]], X[b[fb]]
+    # each side stops PIN_GAP short of the other, the way it came (pinned onto one point, the cloth either side of the
+    # seam crossed: centre back, shoulders, the collar's neck seam)
+    # (toward each side's own cloth: the direction they came from crossed where they had passed each other)
+    A_, B_ = _graph(M)
+    same = pid[A_] == pid[B_]
+    acc, wt = np.zeros_like(X), np.zeros(len(X))
+    np.add.at(acc, A_[same], X[B_[same]])
+    np.add.at(wt, A_[same], 1.0)
+    np.add.at(acc, B_[same], X[A_[same]])
+    np.add.at(wt, B_[same], 1.0)
+    inward = acc / np.maximum(wt, 1)[:, None] - X
+    inward /= np.maximum(np.linalg.norm(inward, axis=1, keepdims=True), 1e-9)
+    ga, gb = np.where(fb, 1.0, 0.5) * PIN_GAP, np.where(fa, 1.0, 0.5) * PIN_GAP
+    ta, tb = mid + inward[a] * ga[:, None], mid + inward[b] * gb[:, None]
+    ta[fa], tb[fb] = X[a[fa]], X[b[fb]]
     Y = X.copy()
     for k in ks:
         ends = np.r_[a[pid[a] == k], b[pid[b] == k]]
         if not len(ends):
             continue
-        D = mid[np.r_[np.where(pid[a] == k)[0], np.where(pid[b] == k)[0]]] - X[ends]
+        D = np.r_[ta[pid[a] == k], tb[pid[b] == k]] - X[ends]
         sel = np.where(pid == k)[0]
         d2 = ((uv[sel, None, :] - uv[None, ends, :]) ** 2).sum(-1)
         w = np.exp(-d2 / (2 * sigma * sigma))
@@ -3454,6 +3471,7 @@ def piece_faces(M: dict, X: np.ndarray, body: "Body", pcs: dict) -> dict:
 FOLD_WIDTH_FITTED = 0.008  # a fold's U in a "fitted" placement (Blender: its cloth's collision distances apart)
 FOLD_WIDTH_MADE = 0.0016  # a fold's U on a constructed (never simulated) mesh: two layers of cloth nearly touching
 RELAY_OPEN = 40.0  # deg a made flap opens to clear the cloth under it; past that the cloth is tucked under (_tuck)
+PRESS_LAY = 0.003  # how far a pressed lapel lies off its forepart (it bridges a curving chest with 2 cm triangles)
 FOLD_LAY = 0.0015  # how far a placed flap starts off what it lies on (a contact solver's gap, with room for chords)
 
 
@@ -3497,7 +3515,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
             # a forepart laid where it is worn: its lapel is PRESSED onto it (the flap's mirror image across the roll
             # line, on the base): turned rigidly about the roll line over a base that follows the chest and shoulder,
             # the flap stretched past 30% by 50 deg and stood up round the neck
-            X = foldmod.pressed_flap(X, M, fd, faces[nm], lay, wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
+            X = foldmod.pressed_flap(X, M, fd, faces[nm], PRESS_LAY, wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
             info[fd["name"]] = {"pressed": True}
             continue
         X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay,
