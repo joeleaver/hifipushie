@@ -51,12 +51,13 @@ FADE = 7   # rings above A over which GNM's identity / expression components com
 STIFF = 5  # rings above A held hard onto MakeHuman's surface (the stitch must follow the body exactly)
 _g = [0.1, 0.25, 0.4]
 WGRID = [(a_, b_, c_, 1 - a_ - b_ - c_) for a_ in _g for b_ in _g for c_ in _g if 0.08 <= 1 - a_ - b_ - c_ <= 0.45]
-SHEAR = float(__import__("os").environ.get("OM_SHEAR", 0.6))
-GAP = 0.021   # m: ring A above loop C, along the surface, after the slide
+SHEAR = float(__import__("os").environ.get("OM_SHEAR", 0.85))  # (0.6 with 3 rows; 0.85 with 5: worst aspect 7.8 -> 5.5)
+GAP = 0.026   # m: ring A above loop C, along the surface, after the slide
 SLIDE = 8     # rings above A re-spaced with it
-ROW_AT = [0.0, 0.3, 0.65, 1.0]  # where the loops lie between A and C: row heights follow the quads' widths (3.3 mm
+ROW_AT = [0.0, 0.16, 0.34, 0.53, 0.75, 1.0]  # where the loops lie between A and C: row heights follow the quads' widths (3.3 mm
 # at A .. 8.6 mm at C), so quads stay near square
-COUNTS = [110, 82, 58, 42]  # vertices per loop: A, two new rings, C. Each row's reductions (4 edges : 2) number
+COUNTS = [110, 94, 78, 66, 54, 42]  # vertices per loop: A, four new rings, C (2026-10-08; worst corner cos 0.31; was 110, 82, 58, 42: a ripple of
+# pits round a toddler's neck at ring A where three rows took the density down 2.6x). Each row's reductions (4 edges : 2) number
 # (fine - coarse) / 2, an EVEN number, so a palindrome has no reduction on the back centre line (two rows with one
 # there left a 2-edge vertex), and are spread between plain quads by `patterns` (side by side they made 6-edge
 # vertices and slivers)
