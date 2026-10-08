@@ -123,6 +123,7 @@ def smoothstep(e0, e1, x):
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
 BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
 FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
 
@@ -3844,7 +3845,11 @@ def _job_tile(ij):
                 # (and its centre INSIDE the rock: a face whose centre stands out in the open is seen whatever its
                 # corners say; called buried, it was drawn plain: white triangles through the island's cliffs)
                 thr = max(0.3, 2 * cfg["error"][k])
-                bur = (field.front(Ps[Fs].mean(1)) < -thr) & (np.abs(field.front(Ps))[Fs].max(1) > thr)
+                # (deep for its size: a big flat face over rounded rock has its centre a little inside it: a 570 m2
+                # face of a near-empty tile, centre 0.36 m in, was called buried at LOD 0)
+                fa = np.linalg.norm(np.cross(Ps[Fs[:, 1]] - Ps[Fs[:, 0]], Ps[Fs[:, 2]] - Ps[Fs[:, 0]]), axis=1) / 2
+                bur = (field.front(Ps[Fs].mean(1)) < -np.maximum(thr, BURIED_DEEP * np.sqrt(fa))) & \
+                    (np.abs(field.front(Ps))[Fs].max(1) > thr)
         stem = f"tile_{i}_{j}_lod{k}"
         from .terrain_bake import material as terrain_bake_material
         images, binfo, deferred = None, None, None
