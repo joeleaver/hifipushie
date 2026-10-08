@@ -1300,6 +1300,14 @@ def _chin(W, lm, spec, mx, s):
         ht = float(sp.get("height", 0.0)) * k
         if ht:
             D[:, 2] -= ht * np.exp(-(np.linalg.norm(X - c, axis=1) / (0.024 * k)) ** 2)
+        un = float(sp.get("under", 0.0)) * k
+        if un:  # `under`: the submental skin lifted, from behind the chin's bottom edge back to the throat, so the
+            # line from chin to throat runs back level before it turns down into the neck
+            back = (X[:, 1] - c[1]) / (0.045 * k)
+            wu = _sstep(back / 0.25) * np.exp(-(np.maximum(back - 0.55, 0) / 0.45) ** 2)
+            wu = wu * np.exp(-(ax / (0.032 * k)) ** 2) * np.exp(-(np.maximum(X[:, 2] - c[2] - 0.004 * k, 0) / (0.008 * k)) ** 2)
+            wu = wu * np.exp(-(np.maximum(c[2] - 0.045 * k - X[:, 2], 0) / (0.015 * k)) ** 2)
+            D[:, 2] += un * wu
         cl = float(sp.get("cleft", 0.0)) * k
         if cl:
             ln = float(sp.get("cleft_length", 0.014)) * k

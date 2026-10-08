@@ -5439,6 +5439,55 @@ model".
       pushes into the ear's front (tragus edges x0.21-0.24); 100% forced reaches -4 / +4 mm.
     - Integrity: stretch now leaves out edges under `STRETCH_MIN` 0.8 mm on the plain head, or already under it in
       the input (v23's lip corners: a 1.7 mm edge squeezed to 0.55 mm read "lips BROKEN" at any change nearby).
+  - Feature controls round (2026-10-08, om_garrett v17-v22; sheets human_renders/om2_r7_*, om2_r8_*, om2_r9_*; the
+    user judged feature by feature: jaw "isn't anywhere close", "wrong part of the ear got stretched", "still not
+    getting the nose right", then "chunky, handsome, square jaw, cleft chin, cute nose"). Scratch additions in
+    /mnt/data/hifipushie/onemesh2/ (run.sh now goes through /mnt/data/hifipushie/bin/capped): jawtrace.json (hand
+    trace, likeness_points format; also workspace/om_garrett/likeness_points.json), gridcrop.py / drawtrace.py (place
+    and check hand points), jawmeas.py (ramus / gonial angle / gonion vs lobe on trace and on the model's jaw edge =
+    first occluding edge on rays from the nose; UNSTABLE on a crisp L: judge by sideview.py), jawsheet.py, sideview.py
+    (true profile + from below, numpy), jtry2.sh src dst '<shape json>', earmeas.py (auricle height / width / own edge
+    ratios / protrusion top-mid-lobe), earsheet.py, nosebase.py (the nose's base line in the desk view), nosedbg.py,
+    evo.py (eyes / mouth part way in identity), nudge.py, lk/ + lkrun.py + lkstage.py (a scratch copy of the likeness
+    agent's module on this worktree's code), t1.py (tests one by one with peak RSS), r8.sh / r9.sh (all rows + table).
+    - Integrity is judged against the INPUT (`_guarded`, `_newly_broken`, GUARD_WORSE 8%, GUARD_MM 0.1 mm; the
+      STRETCH_MIN rule above is gone): a 3 cm chin drop is refused, the width fit passes.
+    - `fit_outline`: ears ride in two passes (first solve, the mean move over each ear laid on it, holds within
+      EAR_FREE let go, re-solve): 75% of the width miss passes unforced; it still stretches auricle edges ~0.9-1.03.
+      Too wide for the eye: 75% + a moved jaw read as a bulldog. v20+ are built on the 50% head.
+    - `base.head.shape.jawline` {below_lobe, forward, out, tuck, neck, sharp, smooth, top, radius}: on the bound head
+      the mandible's visible edge IS GNM's jaw contour (lm 2-7), one diagonal from the lobe to the chin; the point
+      shape.jaw_angle bumps is neck skin behind that edge. The control carries that LINE onto an L (under the lobe ->
+      ramus -> angle -> straight border to lm 7 / 9), skin following by nearest stretch of line (`sharp` = how far
+      along the line the turn is spread: 4-5 mm crisp, 14 soft), then tucks the band outside it and narrows the
+      neck's sides under the corner. Dead ends: a Gaussian move of the "angle" (hidden: no change), filling skin out to
+      the jaw's side per vertex (a folded flap). Corner height: believe the FRONT PHOTO (31-41 mm under the lobe);
+      the painting's camera is loose (its 63 mm gives a boxy front).
+    - `shape.ears` {out, size, blend}: a RIGID turn of the auricle about its attachment line (lobe's attachment ->
+      top of the front attachment), the attached ring held: the top swings out, the lobe stays. The first version
+      (turn about the root's main axis + scale, wide blend) made fins with a web of skin: auricle edges p95 1.74 vs
+      1.39 now, protrusion 25 / 24 / 20 -> 17 / 13 / 12 mm (pass 6: 10 / 11 / 10).
+    - `shape.nose_tip` deg | {up, reach, round}: the nose's BASE line tilted about the line through the alar bases.
+      Measured in the desk view (alar base -> underside of the tip against the image's horizontal): painting +9.3 deg
+      by my points (likeness reads +3: hand points are +-1.5 px), pass 6 -1.5, up 16 -> +8.9 (+7.1 after `round`).
+      A turn about the mid dorsum only swings the base forward (the tip lies BELOW that pivot): 0.5 deg for 16.
+      MediaPipe on clay renders does not track nose profile changes: don't fit the nose's profile with it.
+      `round` = shrinking smoothing at the tip and supratip (a point with a notch -> a blunt end).
+    - `shape.chin` {width, square, project, height, under, cleft, cleft_length}: mental corners apart, bottom
+      levelled, chin forward, submental skin lifted (the chin-to-throat line runs back level, then down), a mid-line
+      groove. `humanfit.fit_region` (GNM identity inside a feathered region, step cut back until integrity holds)
+      exists; on the nose with MediaPipe targets it held at share 0.4 with little change.
+    - Eyes: the likeness "eyes" stage (solve eye_width / eye_spacing + fit_hood) + nudge eye_outer made v19's sad
+      slits; the photo squints 0.70 / frowns 0.64 (expression). v20+ carry HALF in identity (fissure 32.2 -> ~30,
+      hood 4.2 mm, outer corners -1.3 mm, mouth corners +1.6 mm); the rest belongs in pose and is applied nowhere.
+    - om_garrett: v16 pass 6 (fallback), v17 50% width, v18 75% + old ears, v19 first jaw L + full eyes (worse from
+      the front), v20 rebuilt on 50%, v21 corner at the photo's height + chin + round tip (exported:
+      /mnt/data/hifipushie/onemesh2/exp_garrett7), v22 chin projected 5 mm / under 16 / cleft 3, neck 11, sharp 4,
+      brow ridge +3 mm (push_more), out -6. v22 is NOT exported and NOT judged on likeness's six-view read.
+    - Open: lower lip height -3 mm and mouth width -4 mm (solve refuses past 57: v23's lip corners); the chin's
+      bottom is a small hook in profile after `under`; brow ridge by a push, not judged; face width at the mouth
+      went back to -8 mm on v21 (out -12; v22 uses -6: re-read); the profile-contour fit (likeness.fit_profile,
+      trace in workspace/lk_garrett3/likeness_points.json) not run on om_garrett; squint / frown as pose.
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
