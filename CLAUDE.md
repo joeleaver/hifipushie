@@ -4294,9 +4294,18 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     - Tests: test_veg_style (+ test_pixar, test_cartoon_fixes), test_veg_impostor (+ crops), test_vegetation: 67 passed.
     - NOT DONE / open: judge pixar against a real feature-animation tree still (none found under CC yet); pixar spruce
       tiers blur into one lumpy cone with the sub-clumps; pixar oak's limbs visible only low; thickness is ~4 m nearly
-      everywhere on the oak (the core fills it: a shell-only thickness would vary more); verify q5 / q6 exports
-      (Khronos + gdo.sh / gdc.sh per tree) if this note still lists them as running; impostor octagon instead of a
-      rectangle; cartoon oak winter stubs.
+      everywhere on the oak (the core fills it: a shell-only thickness would vary more); impostor octagon instead of a
+      rectangle; cartoon oak winter stubs; anime spruce LOD2 covers 0.79 of LOD0 at its switch (lod_layers [3, 3] /
+      0.45; [2, 2] / 0.35 gave 0.69).
+    - Round 3 of pixar after the coordinator's read of vs_46 ("broccoli in a blur"): `crown.clump_shade` [dark, 1] =
+      each clump's (sub-clumps included) own vertical gradient, lit top / shadowed underside, on shell and cards;
+      `crease_dark` 0.6 (vs_47_oak_pixar_clumpshade.png).
+    - All deliveries re-exported and checked (Khronos 0 errors 0 warnings on every tree; Godot octa impostor vs LOD2
+      coverage 0.99-1.07 except anime spruce 1.02-1.25 (its LOD2 is the thin one)): pixar_oak (IoU 0.941, card coverage
+      at switches 0.96 / 0.97, 0.94 / 0.89, 0.89 / 0.99), pixar_spruce (0.865), anime_oak (switches 0.96-0.97, 0.93 / 0.91,
+      0.90 / 0.94), anime_spruce, cartoon / blobby oak + spruce, pixar / anime / real grass, pixar daisy. Realistic
+      grass: LOD2's clustered atlas has slot `foliage_boughs2_winter` (lying cards: keep 1.0 when the LOD's keep share
+      leaves none).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
