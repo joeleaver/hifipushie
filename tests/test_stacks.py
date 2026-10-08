@@ -132,5 +132,41 @@ def test_no_thin_slots(seed):
     thin = air & ~opened
     # (a recess narrower than the ball shows as thin air; the arrises' bevel leaves a few cells in corners: allowed)
     frac = thin.sum() / max((V < 0).sum(), 1)
-    print(seed, "thin", round(float(frac), 5))
     assert frac < 0.004, f"thin air {frac:.4f} of the solid ({int(thin.sum())} cells)"
+
+
+def test_no_piece_detached_at_the_foot():
+    """In a terrain's field (stack + heightfield + rock relief + fallen blocks), every solid piece round a stack's foot
+    and notch reaches the ground or the box's sides: the island's stack2 had a lip of relief-built rock over its notch,
+    a 30-triangle piece floating 0.75 m over the heightmap in the tiles (tiles2, 2026-10-08); on this coast the column's
+    rim hung over a deeper sea floor and the relief cut two pieces off it. Fixed: stack relief builds at most
+    terrain_mesh.STACK_BUILD, the column runs down into the floor (`foot`), fallen blocks seat BOULDER_SEAT deep."""
+    import json
+    import tempfile
+    from pathlib import Path
+    from hifipushie import terrain, terrain_mesh as tm
+    spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 1.0,
+            "tilt": {"down": "south", "grade": 0.25},
+            "sea": {"level": 0, "shore": "cliffs", "cliffs": {"height": [22, 30], "stacks": {"count": 3}}},
+            "cover": [{"type": "meadow", "in": "everywhere"}, {"type": "rock", "in": "cliffs"}],
+            "export": {"tiles": {"tile": 32}}}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    field, vols, _, _ = tm.build_field(T)
+    st = [v for v in vols if isinstance(v, tm.Stack)]
+    assert st, "the test coast has no stacks"
+    s18 = ndimage.generate_binary_structure(3, 2)
+    for v in st:
+        vox = 0.25
+        m = v.col.reach + 2
+        lo = np.r_[v.xy - m, v.base - 1.5]
+        hi = np.r_[v.xy + m, v.base + 7.0]  # (from under the plinth to over the notch)
+        ax = [np.arange(lo[i], hi[i] + vox, vox) for i in range(3)]
+        G = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
+        V = np.concatenate([field.value(G[i:i + 200000]) for i in range(0, len(G), 200000)])
+        lab, n = ndimage.label(V.reshape([len(a) for a in ax]) < 0, s18)
+        edge = set(np.unique(lab[:, :, 0])) | set(np.unique(lab[0])) | set(np.unique(lab[-1])) | \
+            set(np.unique(lab[:, 0])) | set(np.unique(lab[:, -1]))
+        loose = [i for i in range(1, n + 1) if i not in edge]
+        assert not loose, f"{v.name}: {len(loose)} solid pieces reach neither the ground nor the box's sides"

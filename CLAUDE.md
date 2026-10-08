@@ -3779,6 +3779,14 @@ regresses, bisect by building one spec at each commit and diffing heights.
       floating 0; Khronos 1044 files 0 / 0 (round 3 export). Tests also: no sealed air in a column at 0.2 m, no recess
       narrower than ~1 m (thin air 0.07-0.22% of the solid: bevel corners), test_level_look, test_terrain_style,
       test_tiles pass.
+    - Detached foot pieces (2026-10-08, branch `stacks-foot`; tiles2: 30 triangles 0.75 m over the heightmap at
+      [228.6, 981, -0.8] by tl2_island stack2): (1) the rock relief BUILT 0.3-0.4 m out from the column over its notch
+      (a lip in the air); a Stack's relief now builds at most `terrain_mesh.STACK_BUILD` 0.05 m (`vol.build`, weighted
+      by the stack's relief share `Field.build_w`: continuous, fields without stacks untouched); (2) the column's rock
+      ended at base - 1 m while the sea floor round it is deeper: its rim hung over the floor and the relief cut it into
+      pieces. `Column(foot=)` = the lowest ground within 2 radii - 1.5 m (`stacks(T)`); (3) fallen blocks seat
+      `BOULDER_SEAT` 1.2 m inside the column. Test: tests/test_stacks.py::test_no_piece_detached_at_the_foot (a
+      synthetic cliff coast with 3 stacks: every solid piece round each foot reaches the ground; failed before).
     - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
       cliff shell on these stacks.
 
