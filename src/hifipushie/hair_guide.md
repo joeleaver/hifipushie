@@ -659,6 +659,33 @@ Cards of loose hair: under the cards lies a solid surface INSIDE the mass (`hair
 density meshed and decimated, faces toward the body dropped), so no air or skin shows between cards and a far tier
 is little more than that surface; card vertices are kept off the whole body, not only the head.
 
+## An existing sculpted groom as strands (a short men's cut)
+
+A head that already has solid locks (hand-shaped or grown) becomes a strand groom without regrooming: the locks are
+the guides. Worked on Garrett (624 thin hand locks, a short combed cut going grey), in this order:
+
+1. `groom_hair(name, style="strands", strands={...})`. A short combed cut: `count` 100000, `clump` 0.3, `clump_size`
+   0.006, `clump_shape` 0.5, `stray` 0.8, `loose` 0.4, `frizz` 0.2, `flyaway` 0.03, `tips` 0.6, `tip_spread` 0.5,
+   `roots` 0.4, `under_length` 0.015, `wave` 0.003. Clump 0.4 with stray 0.6 at 60k strands read as strings.
+2. **Grey.** A lock's own `grey` (0..1) is the SHARE of grey strands it grows, x `look.grey_locks` (default 1), plus
+   `look.grey_amount` everywhere; `look.grey` is their colour. Locks made for the solid look often carry 0.35+
+   everywhere: at grey_locks 1 the head is striped white. 0.6 was salt and pepper. The card tiers draw the same
+   share (the locks' mean) in their pictures.
+3. **Volume by measure.** Solid locks are modelled as thin shells on the volume; strands fill only each lock's own
+   lens. Measure the outline against the reference (per level, mm per side), then `groom_hair(fuller={"sides":
+   0.012})`: the locks rise and grow thicker by twice their lift, so the strands fill from the scalp up. (Lifted
+   without thickening, a shell stands off the head over a short scalp layer; as solid locks the same lift is a
+   stiff helmet.) Raise `count` with it: thicker locks spread the same strands thinner.
+4. **The outline's cut.** Strands run to their lock's end and fan a little past it. A tapered nape is
+   `groom_hair(trim={"below": -0.015, "where": ["nape"]})` (cut 15 mm INSIDE the hairline: the scalp layer carries
+   the edge); with `below` positive it only removes what hangs over the skin.
+5. **Colour in Cycles.** The hair BSDF's colour is not what a lit mass of strands renders as: uncalibrated, a dark
+   grey-brown came out 3.5-4x too light. The look colour goes through a measured inverse (`hair_strands.CYCLES_FIT`;
+   `look.cycles_fit: [1, 1]` turns it off). Mid and light colours land within ~5-40% of `look.lit`; near-black
+   can't go under the highlights' own floor. Judge colour on the Cycles look, shape on the EEVEE one.
+6. Dark slits between layers of locks are the scalp's tint in shadow (`look.scalp_tint`, default 0.85, made for
+   dark hair): on grey or fair hair lower it (0.3-0.5).
+
 ## What went wrong on the way (so you can recognise it)
 
 - Hair painted onto the face and shoulders like a stain: the collision proxy mesh was inside out (Shrinkwrap pulls

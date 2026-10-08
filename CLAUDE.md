@@ -1135,6 +1135,64 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     fail the silhouette gate 4.1 / 6.6 mm vs 1.3 / 1.4; my read: keep stylised hair on locks, no migration), the
     round trip (`blender_strands.read` exists; nothing consumes it), strand measures in
     look_hair beyond the @@strands counts, hair_r3 / golfer card exports re-checked with the new cards.
+  Garrett as strands (2026-10-08, "hairgarrett" agent, branch `worktree-agent-a3e326852c098a6dd`; the user: "one-mesh +
+  new hair + clothes as the new default human path"; model `workspace/hs_garrett` = om_garrett v17's head + his 624 hand
+  locks as guides; sheets `workspace/hair_renders/hg_*` (hg_v4_sheet.png = concept | solid locks | strands in Cycles |
+  hero cards | main cards, front / three-quarter / side, + the four tiers at their distances; hg_v4_tiers.png =
+  check_tiers); export /mnt/data/hifipushie/hairgarrett/exp_v4; scratch DURABLE in /mnt/data/hifipushie/hairgarrett/:
+  run.sh <script> (worktree code, main workspace, through `capped`), mkcopy.py, reseat.py (hs_garrett takes
+  om_garrett's spec for everything but the hair, then scene.sync: 6.5 min), look1.py <tag> <engine> '<strands json,
+  "_look": {...}, "_style">' <views> <save> (a look with patches), fuller.py <tag> '<{region: m}>' <save> '<patch>'
+  '<trim json>' (hair.lift(fill) + trim + look + outline), strandfit.py (the front photo's head + hair outline vs the
+  model's head + the last look's hair points through om_garrett's fitted camera: mm per level and side; needs
+  onemesh2's hairfit.py on PYTHONPATH), cal2.py <model> <engine> [fit=A,p] (rendered vs asked colour over 7 hair
+  colours; also spikes/hair_strands/hs4/cal2.py), haircol.py (hair pixels' sRGB percentiles vs the concept's),
+  exp.py <tag> (hair.export_hair + check_tiers, with a watchdog that dumps stacks past 3 GB), sheet.py <tag> <export
+  dir>, q3.sh <tag> (export then sheet), dbg_job.py <tier> (a tier's cards job step by step with peak memory: 0.53 GB),
+  napeq.py).
+  - His locks ARE the guides: `groom_hair(style="strands")` on the existing hand locks, no regroom. Dials for a short
+    combed cut: count 100000, clump 0.3, clump_size 0.006, clump_shape 0.5, stray 0.8, loose 0.4, frizz 0.2, flyaway
+    0.03, tips 0.6, tip_spread 0.5, roots 0.4, under_length 0.015, wave 0.003 (clump 0.4 / stray 0.6 at 60k: strings).
+    The scalp layer takes 60% of the strands whatever `under` says (its cap in hair_strands.job).
+  - Grey: a lock's `grey` is the SHARE of grey strands it grows (per-curve `hp_gr`; the scalp layer takes the nearest
+    lock's), x `look.grey_locks` (default 1) + `look.grey_amount`. Before, strands ignored the locks' grey. In EEVEE
+    0.37 x 1.0 is striped silver; in Cycles the same share is a faint greying (true-width hairs average).
+    The card atlas draws the same share (the locks' mean: `look.grey_share`, set in cards_job) by a THRESHOLD on the
+    strand id above the base's depth: a hash of the id speckled every anti-aliased pixel and turned the cap's base grey.
+  - Side volume by measure (strandfit.py): his hair was 9-18 mm thinner per side than the photo's outline at the
+    lower levels (mean -8.8). `hair.lift(fill=True)`: locks lifted AND thickened by twice their mean lift, so the
+    strands fill from the scalp (strands live in each lock's lens: lifted alone they are a shell over the short
+    scalp layer). sides +12 mm, back +4: mean side miss +1.0 mm (L -5 / R +6: the photo's sweep is the other way),
+    IoU above the ears 0.874 -> 0.909, top +5 mm. It reads as volume, not a helmet. `hair.trim(spec, sc, below,
+    where)`: locks cut where they run past the hairline; his nape hung as a mullet of strand tips until
+    {"below": -0.015, "where": ["nape"]} (cut 15 mm INSIDE the line: the scalp layer carries the edge).
+    MCP: `groom_hair(fuller=, trim=)` (no regrow when only those are given: a regrow buries hand locks).
+  - Cycles colour: measured (cal2.py: the brighter half of the hair pixels vs the colour asked, linear, 7 colours)
+    rendered = 0.646 x asked^0.307 (rms log 0.024): #55504b came out 3.5-4x too light, black at 0.15. The floor
+    (~0.09 linear) is the white specular lobe + thin strands, not invertible. `hair_strands.CYCLES_FIT` (0.75, 0.307)
+    is now the default inverse (`look.cycles_fit` [1, 1] = off): grey / blond within 5%, #55504b x1.35-1.45 (EEVEE's
+    strand material reads x1.6-1.8 by the same measure). It is applied to the colour's LUMINANCE with the hue kept:
+    per channel (first version) the 1/p power tripled every channel ratio and a faintly warm grey (#5a4f47) rendered
+    light brown (hg_v3_sheet). A Cycles look of 4 views at 100k strands: 330 s; 3 views at 420 px: ~100 s.
+  - `look.scalp_tint` 0.85 (made for dark hair) shows as black slits between layers of grey hair; 0.5 lets skin
+    through at the crown in Cycles; Garrett 0.7.
+  - Card tiers (exp_v4; Khronos 0 errors 0 warnings on all four; 39,998 / 15,486 / 6,000 / 660 triangles; his solid
+    locks in exp_garrett6: 25,803): `hair_cards.join` of nothing raised (a far tier of a short cut has no cards and
+    no baby hairs: the first export died after writing nothing); fixed. check_tiers vs the strands: iou 0.83-0.87
+    hero / main / npc (far 0.75-0.85), bare 4-13%, value 1.06-1.18 x (cards are lighter and more silver than the
+    Cycles strands: two materials, the sat warning reads 1.4 x), stamps 0. "936 card vertices under the skin, deepest
+    64 mm" at hero (baby locks and locks by the ear: moved out by the clearance; not looked into).
+  - BLUNT READ of hg_v4_sheet: the Cycles strands read as a real man's combed greying hair, the best of the three,
+    but darker and more slicked than the concept's lighter, tousled salt-and-pepper, and the denoiser makes it waxy
+    at 420 px. The cards at bust distance are WORSE than his solid locks: a streaky silver thatch, ragged dark
+    patches along the temple hairline and behind the ear, a pale plate at the front of the crown (the cap); from
+    1.6 m they read as short grey hair, at 3 m+ fine. The solid locks stay the cleanest game look up close.
+  - The 13:37 OOM was not this: the 4-tier export + check never passed 3 GB of python (watchdog in exp.py).
+  - NOT DONE: the head is not settled (re-seat + strandfit once it is: `reseat.py`, then `fuller.py`); cards'
+    hairline and colour against the strands (bake the atlas colour from the strand look, a hairline tile that
+    follows his temple); a tousled top (his locks are combed back; the concept's front lifts and breaks); per-region
+    grey in the cards (one share for the whole head today); Godot render of the tiers; the round trip of strands;
+    `under` has no effect past the 60% cap; test_hair_strands' Blender test not re-run.
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
@@ -5578,6 +5636,26 @@ model".
     comes back with rep["refused"] (`_guarded`), unless force=True. A region already broken in the input (v23's lip
     corners squeezed x0.24 against the plain head) counts only if it got `GUARD_WORSE` 8% worse (`_newly_broken`).
     A 3 cm chin nudge is now refused (test_nudge updated: forced, it still makes its correction layer).
+  - Why the photo's face reads wider (2026-10-08; the user's question; scratch widths.py, fovtest.py, contrib.py,
+    pass8.py; sheet human_renders/om2_r7_width.png = photo | v23 | pass 6 | pass 7 50% | 100% FORCED, front + desk,
+    clay / lit / his locks; v23 copy `om2_v23` = om_garrett v15, cameras fitted to its own landmarks):
+    - Half-widths (centre line lm27-lm8 to the face's edge: the photo's MediaPipe oval, the model's visible face
+      silhouette, ears left out), photo vs v23: cheekbone level -11 mm (6.6%), nose base -21 mm (12.6%), upper lip
+      -20 mm, mouth -23 mm (15%); eyes +4 mm; the brow and the jaw/chin levels are wider on ours (the photo's chin
+      tapers to a V, ours is a broad lower jaw: v23's jaw corners sit lower).
+    - FOV: the focal is free in the fit and runs to orthographic (5.8 km); pinned at 35 / 50 / 85 / 135 / 200 mm
+      equivalent the residual is 4.48 / 3.96 / 3.70 / 3.65 / 3.63 px (free 3.62) and the nose-base deficit 40 / 32
+      / 27 / 25 / 23 mm: a wide lens makes the deficit LARGER and fits worse. Not FOV.
+    - Ears stand out 18-27 mm past the face's edge in the photo, 0-9 mm on ours; side hair 15-23 mm per side
+      thinner (pass 5's numbers); light: with the sheets' key from the upper left our far cheek darkens from 68% /
+      80% of its half-width (nose base / mouth), the photo's soft frontal light keeps both sides lit to the edge.
+    - Pass 7 option (pass8.py, om2_p7_50): the outline fit on the oval's cheekbone / masseter points only, targets at
+      50% of the miss, structure mode + lips held + ears riding the side, a second warp of its own reach (sigma
+      0.014; `head.warp` may now be a LIST of warps, base applies each): deficit at nose base 21.9 -> 7.8 mm, mouth
+      23 -> 11.4, cheekbone 11 -> 7.1; cheek hollow 2.0 -> 1.3-1.6. 75% and 100% are REFUSED: the face's side
+      pushes into the ear's front (tragus edges x0.21-0.24); 100% forced reaches -4 / +4 mm.
+    - Integrity: stretch now leaves out edges under `STRETCH_MIN` 0.8 mm on the plain head, or already under it in
+      the input (v23's lip corners: a 1.7 mm edge squeezed to 0.55 mm read "lips BROKEN" at any change nearby).
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 

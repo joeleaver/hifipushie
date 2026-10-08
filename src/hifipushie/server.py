@@ -1337,7 +1337,8 @@ def _hair_gates(look) -> str:
 
 @mcp.tool(structured_output=False)
 def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stage: str | None = None,
-               note: str = "", style: str | None = None, strands: dict | None = None, look: dict | None = None):
+               note: str = "", style: str | None = None, strands: dict | None = None, look: dict | None = None,
+               fuller: dict | None = None, trim: dict | list | None = None):
     """Grow the hair's locks from spec["hair"]["groom"] (the designer's words and numbers) and save them.
     Hair is curve locks (Bezier curves swept with a cupped lens profile) in the model's Blender scene, not part of
     the SDF body; guide(topic="hair") is the workflow. Needs a head with face landmarks (a `base` head) or a
@@ -1371,6 +1372,15 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
       taper, clump, clump_size, clump_shape, stray, tip_spread, loose, wave (m), wavelength (m), curl, random, frizz,
       flyaway, tips, roots, under, under_length, flat, soft, baby. look: a patch of the material (lit, gap, tip,
       tip_amount, vary, root, roughness, light "salon" | "flat").
+      look also: grey_amount (share of grey strands everywhere), grey_locks (x each lock's own "grey": greying
+      temples and sideburns are locks with more grey), grey (its colour), scalp_tint, cycles_fit.
+    fuller: {region: m} (front, top, sides, back, nape): the EXISTING locks made fuller there, as a barber's "more at
+      the sides": every lock point rises by that much (eased in from the hairline) and the lock grows thicker by twice
+      its lift, so a strand groom fills from the scalp up; negative = closer. Measure the outline against the
+      reference first (hair_reference's outline_regions, in mm) and give the miss. Solid sculpted locks ("locks")
+      are only lifted (thickened they'd be slabs). trim: {"below": m, "where": [regions]} (or a list): every lock is
+      cut where it runs more than `below` outside the hairline in those regions (negative = cut that far INSIDE it:
+      a tapered nape is {"below": -0.015, "where": ["nape"]}). With only fuller / trim given nothing is regrown.
     stage: "mass" shows only the groom's volume as one shell (judge the silhouette first), "locks" the locks.
     Locks edited by hand (in Blender and pulled, or by edit_model) carry "hand": true and are kept; locks deleted in
     Blender (hair.removed) aren't grown again; replace=True regrows everything and forgets both.
@@ -1391,9 +1401,25 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
             h["look"] = hair.merge_patch(h.get("look") or {}, _spec_arg(look))
         hair.validate(sp)
         store.save(name, sp, note or "hair: style / strands / look")
+    shaped = ""
+    if fuller or trim:
+        sp = store.load(name)
+        sc = hair.scalp(name, sp)
+        if fuller:
+            fill = (sp.get("hair") or {}).get("style", "locks") != "locks"
+            sp, rep = hair.lift(sp, sc, _spec_arg(fuller), fill=fill)
+            shaped += (f"fuller: {rep['locks']} locks lifted up to {rep['max_lift_mm']} mm"
+                       + (" and thickened to fill" if fill else "") + f"; volume {rep['volume']}\n")
+        for t_ in ([] if not trim else trim if isinstance(trim, list) else [trim]):
+            t_ = _spec_arg(t_)
+            sp, rep = hair.trim(sp, sc, float(t_["below"]), tuple(t_.get("where", ("sides", "back", "nape"))))
+            shaped += f"trim {t_}: {rep['cut']} locks cut, {rep['untouched']} untouched, too short to cut {rep['too_short']}\n"
+        v = store.save(name, sp, note or "hair: fuller / trim")
+        if not (groom or replace or stage):
+            return shaped + f"saved {name} v{v}\n{_hair_counts(sp)}"
     r = hair.groom(name, replace=replace, note=note, patch=_spec_arg(groom) if groom else None, stage=stage)
     spec = store.load(name)
-    return (f"saved {name} v{r['version']}: grew " + (", ".join(f"{t} {n}" for t, n in r["grown"].items()) or "nothing")
+    return (shaped + f"saved {name} v{r['version']}: grew " + (", ".join(f"{t} {n}" for t, n in r["grown"].items()) or "nothing")
             + f"; kept {len(r['kept'])} hand/edited locks" + (f" ({', '.join(r['kept'][:12])}{'...' if len(r['kept']) > 12 else ''})" if r["kept"] else "")
             + (f"; {len(r['not_regrown'])} names not regrown (deleted in Blender: hair.removed; replace=True "
                f"forgets them)" if r["not_regrown"] else "")
