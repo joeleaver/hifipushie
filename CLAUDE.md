@@ -4780,6 +4780,47 @@ model".
      repack; eyes / teeth / tongue / sock of the asset are unused by the field (blobs + the kit interior as before).
   5. `like`, `neck`, follow_body's strength are ignored on this source; humanfit's body solves take minutes (finite
      differences on MakeHuman builds); head_sheet is flat-shaded.
+- Proof + Garrett, round 1 (2026-10-07/08, "onemesh2" agent, branch `worktree-agent-abebc7b0353b5a6fe`; renders
+  `workspace/human_renders/om2_*`, line-up re-rendered `om_10_lineup_*`; scratch DURABLE in /mnt/data/hifipushie/onemesh2/:
+  run.sh <script> (worktree code on the main workspace), run_orig.sh + orig/ + oldhash.py (old paths bit-identical vs
+  main 23b8b9e), exp.py (export), sheets.py (rig poses through rig(glb=); "-" = look build), closes.py (rest / jawOpen /
+  blink / smile close-ups of a GLB), glbz.py + zview.py (z-buffered numpy views of a GLB's or a mesh's triangles, back
+  faces red: what showed the mouth's faults when Blender's clay hid them), idx1.py (face shapes by index on retopo.wrap's
+  quads without an export: unevenness, contact-ring gap, mouth crops; env RAW / NOMEET / NOSOCK / CC / LC), blinkglb.py
+  (lid jag + unevenness from a GLB's own targets), torn.py (where a quality report's folds / turned faces are, by GNM
+  group), facem.py (humanfit's face measures for ANY base, old path too), g_try.py / g_fit.py / dense_fit.py (Garrett's
+  fits), proof.py + seatlib.py (regen's: s0urc3's seated pose, two GLBs, same cameras), bodym.py, mk_garrett.py,
+  variant.py / setbase.py / setkey.py (spec patches), tests.sh).
+  - Fixed: `humanstyle` head_size pivoted on a bounding-box corner (the fade's 0.4-0.6 band is empty: levels 0.39 / 0.61):
+    the face slid 10 mm sideways and 2 cm forward. `onemesh.VERSION` is in store's build key and base.surface's key
+    (bump it for one-mesh field changes; old paths keep their keys).
+  - Phase 1 read: rig on a one-mesh adult is MakeHuman's own (head turn, arm, knee clean; nod: the known nape bump;
+    audit 8 BAD of 51). Decimated export works (Khronos 0/0) but its blink is ragged (no face focus on the test adult).
+  - Own quads (parts.body.topology "wrap") is now THE path for face shapes on the one mesh: `retopo.base_quads` returns
+    `gnm` (each vertex's GNM id, into topology_<p>.npz), does not snap GNM's interior surfaces (non-exterior skin) or
+    ears onto the field (they folded: TORN at both eyes, 60 spots on Garrett's ears), and adds GNM's mouth sock
+    (`_with_mouth_sock`: placed as the skin, carried by the skin's post-placement moves, tucked in by SOCK_TUCK so it
+    can't stand out through the lips' corners). asset attaches `gnm_index` to the low poly when its vertices are still
+    the topology's; `faceshapes.apply` then passes it: GnmFace takes GNM's offsets BY INDEX (`_by_index`), no lid seal,
+    the neutral closes the lips on GNM's contact ring (`_lip_rings`, `_lips_meet`, smooth in x; taken back by a shape in
+    proportion to how far it parts the lips) and at the corners (`_corners_meet`, kept). The kit's slit isn't meshed on
+    this path (`voxels`); give `interior.slit` ~0.0003 so the field has no gash for the bake. mouth_gap may be left out
+    on the one mesh. `asset.mesh_quality(designed=)` leaves the lid margins, lips, interior and sock out of TORN; GNM
+    head faces are never dropped as hidden. Adult: jawOpen unevenness 0.05 (projection on the same mesh: 3.19), blink
+    0.03 (v23 0.15). Test `test_face_shapes_by_index_on_own_quads`.
+  - Garrett: `workspace/om_garrett` (garrett_v20 copy, clothes out; `om2_g23` = the same on the old path). head_size
+    1.12 (v23's head scale: interocular 69.5 mm), fit_human to v23's 17 measures, then dense_fit.py (both are GNM rows:
+    identity by ridge LS on every exterior skin vertex, face weight 1 / cranium 0.3 / ears 0, then an RBF warp in
+    GNM's frame, base.head.warp): face 3.21 -> 0.55 mm mean, 1.09 p95; head 2.85 / 10.6 (cranium under hair). Then own
+    quads + mouth_gap 0.003 + interior.slit 0.0003, skin.only eyes. Export /mnt/data/hifipushie/onemesh2/exp_garrett3
+    (40k, Khronos 0/0, no TORN, shapes <= 0.13, seated clean, audit 7 BAD vs v23's 9). Stature +2.9 cm (head grows
+    from the neck's top): body.height 1.771 would give it back (not done).
+  - Open, in order: (1) the neck bridge: a dotted line of pits at ring A on toddlers (om2_20..22): wider IMLS kernels
+    there made it worse (speckle: reverted); rebuild the bridge in make_asset.py with more rows / gentler reductions;
+    (2) reference passes on Garrett's concept images (human_reference, MediaPipe detector); (3) the head's 46 mm leak
+    onto shoulder skin at Head 33 (rig3's long falloff on bare skin); (4) the sock's texels set the height map's range
+    (+-24.6 mm): leave designed faces out of the height range; (5) own quads cost a fixed ~40.7k body triangles; (6)
+    dense_fit as a tool (a GNM head as the target of human_reference).
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

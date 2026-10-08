@@ -870,6 +870,14 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
             G = _unit(G - du[ys, xs][:, None] * T - dv[ys, xs][:, None] * B)  # B is signed: +v
             log.append(f"painted height from the scene's bake (texel {texel * 1000:.2f} mm)")
 
+    if any(parts[pn].get("designed") is not None for pn in names):  # (one mesh, own quads) GNM's interior
+        # surfaces (sock, lip rolls, lid insides) are its own, not the field's: projected, the sock's texels read
+        # heights of 25 mm and set the whole atlas's height range
+        td = np.concatenate([np.asarray(parts[pn]["designed"], bool)[parts[pn]["corner_vert"].reshape(-1, 3)].all(1)
+                             if parts[pn].get("designed") is not None else
+                             np.zeros(len(parts[pn]["corner_vert"]) // 3, bool) for pn in names])
+        dm = td[tri]
+        X[dm], G[dm] = P[dm], Nl[dm]
     height = ((X - P) * Nl).sum(1)
     tn = np.stack([(G * T).sum(1), (G * B).sum(1), (G * Nl).sum(1)], -1)
     # a normal map can't point below its surface: detail steeper than 90 deg is bent to the horizon
@@ -971,7 +979,7 @@ def seam_steps(p: dict, img: np.ndarray, per_texel: int = 2) -> dict | None:
             "p95": round(float(np.percentile(across[busy] / beside[busy], 95)), 2) if busy.sum() > 20 else None}
 
 
-def _designed_interior(topo, verts) -> np.ndarray | None:
+def _designed_interior(topo, verts, creases: bool = True) -> np.ndarray | None:
     """(one mesh, own quads) per low-poly vertex: GNM's own interior surfaces (the lids' insides, the inner lip
     rolls, nostrils' depths, the mouth sock): modelled to roll back under the skin, so they fold against the field
     and stand off it by design. None when the part isn't that topology."""
@@ -987,7 +995,9 @@ def _designed_interior(topo, verts) -> np.ndarray | None:
     gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
     # (+ the lips and the lid margins: closed in the neutral, their seams are creases by design; measured on the
     # adult's export they were the rest of the TORN clusters at both eyes and the mouth)
-    ins = ~gr["skin_exterior"] | gr["mouth_sock"] | gr["upper_lip"] | gr["lower_lip"] | gr["eye_sockets"]
+    ins = ~gr["skin_exterior"] | gr["mouth_sock"]
+    if creases:
+        ins = ins | gr["upper_lip"] | gr["lower_lip"] | gr["eye_sockets"] | gr["ears"]  # (ears: kept as GNM made them)
     return (gid >= 0) & ins[np.maximum(gid, 0)]
 
 
@@ -1634,8 +1644,10 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             report[pn]["prefab"] = pf_of[pn]
         if "focus_mm_per_texel" in tsz[pn]:
             report[pn]["focus_mm_per_texel"] = tsz[pn]["focus_mm_per_texel"]
-        q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn],
-                         designed=_designed_interior(topo.get(pn), p["verts"]))
+        des = _designed_interior(topo.get(pn), p["verts"])
+        if des is not None:  # (bake: the interior's texels keep the low poly's own surface)
+            p["designed"] = _designed_interior(topo.get(pn), p["verts"], creases=False)
+        q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn], designed=des)
         spots = q.pop("spots")
         for other, st in ctx["streams"].items():  # what lies inside another part is never seen (the skin running
             if other != pn and len(spots):       # on into the socket behind an eyeball, a tooth's root)

@@ -1556,7 +1556,7 @@ class GnmFace(Face):
         h = halves(ring)
         if h:
             out.update(ok=True, up=h[0], lo=h[1])
-            out["outer"] = {k: halves(k) for k in range(ring + 1, ring + LIP_HOLD + 2)}
+            out["outer"] = {k: halves(k) for k in list(range(0, ring)) + list(range(ring + 1, ring + LIP_HOLD + 2))}
         # the mouth sock, ring by ring in from the loop (negative levels): it rides with the lips' close, fading
         # (left still, the loop's ring stretched against it in every shape that takes the close back)
         sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
@@ -1617,7 +1617,7 @@ class GnmFace(Face):
                 return d / max(float(d[-1]), 1e-12)
             su, sl = arc(Pu), arc(Pl)
             span = max(float(Pu[:, 0].max() - Pu[:, 0].min()), 1e-9)
-            wk = 1 - (k - ring - 1) / (LIP_HOLD + 1)
+            wk = 1.0 if k < ring else 1 - (k - ring - 1) / (LIP_HOLD + 1)  # (the rolls inside the contact ring too)
             for P, s, Q, sq, verts in ((Pu, su, Pl, sl, u), (Pl, sl, Pu, su, l)):
                 other = np.column_stack([np.interp(s, sq, Q[:, j]) for j in range(3)])
                 edge = np.minimum(P[:, 0] - P[:, 0].min(), P[:, 0].max() - P[:, 0])
