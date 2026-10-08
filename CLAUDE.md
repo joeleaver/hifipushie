@@ -3769,6 +3769,18 @@ regresses, bisect by building one spec at each commit and diffing heights.
     - slice_a's cave_mouth picture: the consumer's camera [271, 135, 2] is INSIDE rock (base field -1.2 there; the
       passage's axis 4.6 m west); from inside the passage (rend2.py mouth1) the cave reads clean at LOD 0.
     - `render_tiles(buried_color=)` draws the buried backs flat (no glow: it lit a cave magenta).
+    - A face is also buried only if the point `EXPOSED_OFF` 0.5 m out along its normal is still in rock or under the
+      pushed heightmap (pebble's borderline skin faces, centre 0.33 m in, faced open air).
+    - Map-normal seams (the tiles agent's open item 1; pebble lod1 p95 15.6-15.8 > 15, slice_a 17-18): the borders
+      carrying it had triangles of 0.1-2 texels at a sheer crease, each tile's texels reading different rock (decoded
+      tangent normals 40-67 deg apart, vertex normals identical). `terrain_bake.bake_texels(border=)`: every LOD's
+      cliff normal map eased to the low poly's own normal within `BORDER_FLAT` 1.5 texels of the tile's edge
+      (`_bake_border`). Pebble: lod1 p95 15.8 -> 5.0, lod0_vs_lod2 p50 4.2 (eased at LOD 1-2 only it read 7.3 > 6).
+    - `Field.build_w` (the stacks agent's per-call relief weight) was left on the Field: the incremental fingerprint
+      read it as a global input that changed every export (main 6642cf4 never reused a tile). Reset per call.
+      slice_a cave edit: 4 of 64 tiles redone, byte-identical with a cold export.
+    - slice_a's two floating pieces ([359, 57.6, 9] 132-138 triangles, [291.2, 103.9, 23] 8-10) came with main's
+      stacks-foot code (main 6642cf4 alone has them too); after stacks-style: see the last regression below.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
