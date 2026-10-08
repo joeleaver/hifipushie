@@ -1333,6 +1333,81 @@ def _repress(X: np.ndarray, B: dict, M: dict, smooth: bool) -> np.ndarray:
     return X
 
 
+WORN_LEVELS = True  # place(): a worn top's torso pieces below the armpit laid level by level (_worn_levels)
+WORN_LEVEL_RAMP = 0.03  # m under the armpit over which the level lay takes over from the one cylinder
+WORN_LEVEL_CLEAR = 0.004  # m: the level curves stand at least this far off the body's hull
+
+
+def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs: dict, pid: np.ndarray,
+                 dxs: dict, hps: np.ndarray, z_pit: float, lx) -> np.ndarray:
+    """A worn top's torso pieces under the armpit laid round the body LEVEL BY LEVEL: at each 1 cm level the body's
+    own hull pushed out until its perimeter is what the pieces span there (each side's span from its centre line,
+    each piece at its own pattern height after its slide), the front from CF and the back from CB on that curve.
+    On the garment's one cylinder (as big as its widest level) the arc a suppressed waist left over between the front
+    and the back all fell into the side panel's back seam: Garrett's jacket's side-back seams started 135-160 mm open
+    and the sim left them 67-110 mm open. Eased in over WORN_LEVEL_RAMP under the armpit; above it nothing moves.
+    Shear a level lay brings (the taper spread round, not in the side seams) is the start relaxation's."""
+    names = M["names"]
+    slides = B.get("_worn_slides") or {}
+    mean_sl = float(np.mean(list(slides.values()))) if slides else 0.0
+    use = [nm for nm in torso if not pcs[nm]["wrap"].get("lies_on") and not _closed_girth(M, nm)
+           and not pcs[nm]["wrap"].get("pleats") and pcs[nm]["wrap"].get("to", "torso") == "torso"]
+    if not use:
+        return X
+    sl = {nm: slides.get(nm, mean_sl) for nm in use}
+    ks = [names.index(nm) for nm in use]
+    sel_all = np.isin(pid, ks)
+    zlo = float(X[sel_all, 2].min()) - 0.01
+    levels = np.arange(np.floor(zlo / 0.01) * 0.01, z_pit + 0.011, 0.01)
+    curves = {}
+    for z in levels:
+        h = body.hull(float(z))
+        if h is None or len(h) < 3:
+            continue
+        H = h[ConvexHull(h).vertices]
+        P0 = pattern.length(H, closed=True)
+        sp = {}
+        for nm in use:
+            iv = lx(nm, float(z) - float(hps[2]) - sl[nm])
+            if iv:
+                sd = pcs[nm]["wrap"].get("side", "front")
+                sp[sd] = (min(iv[0], sp[sd][0]), max(iv[1], sp[sd][1])) if sd in sp else iv
+        if len(sp) != 2:
+            continue
+        span = sum(hi - lo for lo, hi in sp.values())
+        m = float(np.clip((span - P0) / (2 * np.pi), WORN_LEVEL_CLEAR, 0.15))
+        curves[round(float(z), 3)] = (H, m)
+    if not curves:
+        return X
+    zk = np.array(sorted(curves))
+    X = X.copy()
+    for nm in use:
+        k = names.index(nm)
+        w = pcs[nm]["wrap"]
+        idx = np.where(pid == k)[0]
+        z = X[idx, 2]
+        wt = np.clip((z_pit - z) / WORN_LEVEL_RAMP, 0.0, 1.0)
+        wt = wt * wt * (3 - 2 * wt)
+        go = wt > 0
+        if not go.any():
+            continue
+        lev = zk[np.clip(np.searchsorted(zk, z - 0.005), 0, len(zk) - 1)]
+        out_ = float(w.get("out", 0.0))
+        side = w.get("side", "front")
+        for L in np.unique(lev[go]):
+            H, m = curves[round(float(L), 3)]
+            Cz = _densify(_offset_hull(H, m + out_), 0.002)
+            cy = 0.5 * (Cz[:, 1].max() + Cz[:, 1].min())
+            if side == "front":
+                st = Cz[np.argmin(np.abs(Cz[:, 0]) + 10 * np.maximum(Cz[:, 1] - cy, 0))]
+            else:
+                st = Cz[np.argmin(np.abs(Cz[:, 0]) + 10 * np.maximum(cy - Cz[:, 1], 0))]
+            j = np.where(go & (lev == L))[0]
+            q = _arc_point(Cz, st, M["uv"][idx[j], 0] + dxs.get(nm, 0.0), float(w.get("dir", 1.0)))
+            X[idx[j], :2] = (1 - wt[j])[:, None] * X[idx[j], :2] + wt[j][:, None] * q
+    return X
+
+
 def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed: list | None = None, pull: float = 1.0) -> np.ndarray:
     """Seams between pieces laid where they are worn (a jacket's shoulder seams, its centre back) pinned shut as a
     tailor pins them on the form: each sewn pair goes to its middle, and each piece follows its seam's moves, faded
@@ -3465,6 +3540,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
         else:
             raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, leg.L, leg.R, neck, head, seam, flat)")
+    if smooth and torso and B.get("worn_top_pieces") and WORN_LEVELS and "armpit_z" in at:
+        X = _worn_levels(X, B, M, body, torso, pcs, pid, dxs, hps, float(at["armpit_z"]), _lx)
     if B.get("worn_top_pieces"):
         X = _pin_seams(X, M, [names.index(nm) for nm in B["worn_top_pieces"]])
     gaps = np.full(len(X), gap)
