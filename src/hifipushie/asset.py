@@ -997,7 +997,7 @@ def _designed_interior(topo, verts, creases: bool = True) -> np.ndarray | None:
     # adult's export they were the rest of the TORN clusters at both eyes and the mouth)
     ins = ~gr["skin_exterior"] | gr["mouth_sock"]
     if creases:
-        ins = ins | gr["upper_lip"] | gr["lower_lip"] | gr["eye_sockets"]
+        ins = ins | gr["upper_lip"] | gr["lower_lip"] | gr["eye_sockets"] | gr["ears"]  # (ears: kept as GNM made them)
     return (gid >= 0) & ins[np.maximum(gid, 0)]
 
 
