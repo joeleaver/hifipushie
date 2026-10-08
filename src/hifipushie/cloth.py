@@ -5074,7 +5074,9 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
         pad = np.maximum(pad * covered, 0.5 * pad + 0.5 * acc / np.maximum(wt, 1))
     pad = np.where(pad > 1e-4, pad + air, 0.0)
     P = _unfold_offset(body.V, T, E, vn, pad)
-    b = Body({"V": P, "F": body._faces, "J": body.J})
+    # (with the parts the garment also rests on, garment key "collide": padded for a layer, the trousers lost their
+    # shoes and the hem started inside them: "contact starts overlapping", tr_20)
+    b = Body({"V": P, "F": body._faces, "J": body.J, "worn": getattr(body, "worn", None)})
     b.pad = pad
     return b
 
