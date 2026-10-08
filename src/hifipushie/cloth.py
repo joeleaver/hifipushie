@@ -1379,8 +1379,25 @@ def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: floa
     distance from its hem, linearly). That gathered length is the BREAK: a fold over the shoe's front, the back
     hanging lower, as a tailor cuts it. (Compressed evenly from 35 cm over the ankle the leg stored its length as
     4-5% crinkle all down the shin, the hem's back 4 cm over the floor and no break.)"""
-    Vall = body.V if not getattr(body, "worn", None) else np.r_[body.V, np.asarray(body.worn["V"], float)]
-    Vb = Vall[(Vall[:, 2] < z_foot + 0.02) & (sgn * Vall[:, 0] > 0)]
+    # what a hem can rest ON: the body's and the worn parts' surfaces that face up (a shoe's vamp, its counter's top
+    # edge, the instep), not the walls round the ankle (su_garrett's shoe part stands round the ankle to 10 cm: taken
+    # as support, the hems stopped on its collar 3 cm over the shoe's visible top)
+    srcs = [(body.V, body.T)] + ([(np.asarray(body.worn["V"], float), np.asarray(body.worn["F"], np.int64))]
+                                 if getattr(body, "worn", None) else [])
+    Vb = []
+    for V_, T_ in srcs:
+        if not len(V_):
+            continue
+        sel_ = (V_[:, 2] < z_foot + 0.02) & (sgn * V_[:, 0] > 0)
+        if len(T_):
+            fn_ = np.cross(V_[T_[:, 1]] - V_[T_[:, 0]], V_[T_[:, 2]] - V_[T_[:, 0]])
+            vn_ = np.zeros_like(V_)
+            for c_ in range(3):
+                np.add.at(vn_, T_[:, c_], fn_)
+            vn_ /= np.maximum(np.linalg.norm(vn_, axis=1, keepdims=True), 1e-12)
+            sel_ &= np.abs(vn_[:, 2]) > HEM_REST_NZ  # (either winding: a worn shell may face in)
+        Vb.append(V_[sel_])
+    Vb = np.concatenate(Vb) if Vb else np.zeros((0, 3))
     if not len(Vb):
         return out
     from scipy.spatial import cKDTree
@@ -1409,6 +1426,7 @@ def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: floa
 
 
 LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
+HEM_REST_NZ = 0.5  # a surface a hem rests on faces up at least this much (|normal z|)
 LEG_FOOT_R = 0.012  # m: the foot or shoe within this of a leg column (in plan) stands under it
 
 

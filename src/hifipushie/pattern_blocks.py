@@ -398,10 +398,12 @@ def skirt(m: dict, opts: dict | None = None) -> dict:
 # pools on the foot), "cropped", "calf"; "knee" and "shorts" are set from the knee and the rise
 TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "break": None, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None,
                    "shorts": None}
-# "break": a suit trouser cut to the wearer's shoes (tailor's shoeFront / shoeSide / shoeBack: the shoes' height under
-# the hem's front, side and back, from garment key "collide"): a sloped hem, BREAK longer than where it comes to rest
-# on the shoe at the front and sides (that length is the slight break), the back crease down to the heel counter
-BREAK = 0.015
+# "break": a suit trouser cut for one slight break: the sides and front to "shoe" (30 mm over the floor), the back
+# BREAK_BACK longer (a sloped hem: the back reaches the heel counter), and the front's extra length over the shoe's
+# vamp is the break: the start lays it on the shoe (cloth._hem_on_shoe gathers what the shoe stops into the bottom of
+# the leg). Cut from the shoes' own heights it was wrong both ways: su_garrett's shoe part stands ~10 cm high all round
+# its collar, which cut the leg 5 cm SHORT (the ankle showed between hem and shoe)
+BREAK_BACK = 0.012
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
                     "length": None, "back_dart": 0.02, "leg": None, "dart_length": None, "dart_taper": 0.0}
 # the cut of the leg, from the leg itself (tailor.measure: knee, calf, heel girths). Knee and hem are finished
@@ -447,12 +449,9 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     if lw is not None and lw not in TROUSER_LENGTHS:
         raise ValueError(f"trouser length {lw!r}: metres from the waist, or one of {', '.join(TROUSER_LENGTHS)}")
     dh_crease = {"front": 0.0, "back": 0.0}
-    if lw == "break" and not all(k in m for k in ("shoeFront", "shoeSide", "shoeBack")):
-        lw = "shoe"  # (no shoes measured: the body has none, or no collide parts)
     if lw == "break":
-        sf, ss_, sb = mm("shoeFront"), mm("shoeSide"), mm("shoeBack")
-        L = mm("waistToFloor") - ss_ + BREAK
-        dh_crease = {"front": -(sf - ss_), "back": (ss_ - BREAK) - max(sb, 0.02)}
+        L = mm("waistToFloor") - TROUSER_LENGTHS["shoe"]
+        dh_crease = {"front": 0.0, "back": BREAK_BACK}
     elif lw in ("knee", "shorts"):
         knee_ = mm("waistToKnee") if "waistToKnee" in m else rise + 0.33
         L = knee_ - (0.02 if lw == "knee" else 0.5 * (knee_ - rise))
