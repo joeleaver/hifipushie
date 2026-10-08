@@ -59,6 +59,7 @@ FORM = {
 }
 
 
+BOULDER_SEAT = 1.2  # m: a fallen block's centre line lies at least this deep inside the column, from its foot up
 SPIRE_CREST = 2.0  # m: a spire's crest is never narrower (0.5 m voxels: thinner meshed as loose slivers)
 
 
@@ -101,13 +102,17 @@ def _u(rng, ab):
 
 class Column:
     """A jointed rock column standing at `xy` from `base` to `top` (m), about `r` m in radius. `sea`: the waterline
-    (the notch's height and the boulders; None = neither). `stage`: "auto" | "broad" | "slender" | "spire" |
+    (the notch's height and the boulders; None = neither); `foot`: the z its rock and fallen blocks run down to
+    (below the sea floor round it; default base - 1). `stage`: "auto" | "broad" | "slender" | "spire" |
     "stump" (auto: by height / width)."""
 
-    def __init__(self, xy, base, top, r, seed, sea=None, stage="auto", over=None):
+    def __init__(self, xy, base, top, r, seed, sea=None, stage="auto", over=None, foot=None):
         self.f = F = form(over)
         self.xy, self.base, self.top, self.r = np.asarray(xy, float), float(base), float(top), float(r)
         self.sea = None if sea is None else float(sea)
+        # where the rock ends below: into the sea floor round it (the caller's lowest ground + a margin), never just
+        # under `base` (its rim hung 1.3 m over a deeper floor and the relief cut pieces off it: tl2_island stack2)
+        self.foot = self.base - 1.0 if foot is None else min(float(foot), self.base - 1.0)
         rng = np.random.default_rng(int(seed))
         H = self.top - self.base
         # plan: two joint families, each face at its own offset
@@ -246,7 +251,7 @@ class Column:
                 hs = max(0.7, _u(rng, F["boulder"]) * r) * rng.uniform(0.6, 1.3, 3) * np.array([1, 1, 0.7])
                 c = u * (sup + hs.max() * rng.uniform(-0.2, 0.7))  # (leaning on the foot: never alone in deep water)
                 ztop = self.sea + rng.uniform(-0.6, 1.0) * hs[2]
-                hs[2] = max(0.5 * (ztop - (self.base - 1.0)), hs[2])
+                hs[2] = max(0.5 * (ztop - self.foot), hs[2])
                 zc = ztop - hs[2]
                 R = _rot(rng.uniform(0, math.pi), rng.uniform(-0.35, 0.35), rng.uniform(-0.35, 0.35))
                 chip = rng.normal(size=3)
@@ -258,9 +263,11 @@ class Column:
         for c, hs, R, chip, cf in placed:
             u = c[:2] / max(np.linalg.norm(c[:2]), 1e-9)
             for _ in range(40):
-                zz = np.linspace(self.base - 0.5, c[2], 4)
+                zz = np.linspace(max(c[2], self.base + 2.0), max(c[2], self.base + 2.0) + 0.5, 4)  # (over the cap under the plinth)
                 pts = np.c_[np.repeat((self.xy + c[:2])[None], 4, 0), zz]
-                if float(self.sd(pts).min()) < -0.35 * float(hs.min()):
+                # (deep enough that the rock relief carving the crease between them can't cut it loose: 0.35 x its
+                # size left two blocks of the island's stack2 hanging in the water, 0.5-0.8 m carved round them)
+                if float(self.sd(pts).max()) < -max(0.35 * float(hs.min()), BOULDER_SEAT):
                     break
                 c = np.r_[c[:2] - 0.25 * u, c[2]]
             placed_c = c
@@ -327,7 +334,7 @@ class Column:
             tz = tz - drop * u * u * (3 - 2 * u)
         top = [z - tz]
         f = smax_many([f] + top, k)
-        f = smax_many([f, (self.base - 1.0) - z], 0.3)
+        f = smax_many([f, self.foot - z], 0.3)
         for c, hs, R, chip, cf in self.boulders:
             loc = (p - (np.r_[self.xy, 0] + c)) @ R
             rr = 0.3 * float(hs.min())
