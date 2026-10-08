@@ -2856,6 +2856,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     shading has a faint star in the dish (smooth normals across rim and middle), tests at 2048 texels only.
   - Tests: test_closures (+ test_a_box_placket_in_the_maps, test_flat_sew_through_buttons,
     test_a_cuffs_holes_run_along_the_cuff), the eleven cloth / pattern files + test_seams green.
+- Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
+  similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
+  `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
+  designers (layer-by-layer breakdowns, wear state) and garment artists (silhouette -> fit -> construction -> layers ->
+  fabric -> folds) read a garment, with sources). Scratch DURABLE in /mnt/data/hifipushie/clothlist/: run.sh <script>
+  (this worktree's code, main workspace), cache1.py <model> (which garments have a cached sim with this code),
+  dump.py <model> <garments> (cached results -> light npz + closures json in out/), grid.py / rows.py (read pixel
+  points off a reference: gridded crops, backdrop row scans), garrett_read.py / garrett_check.py <tag> /
+  garrett_brief.py (the Garrett proof).
+  - `cloth_checklist.json`: 43 items, each {stage 1 silhouette+lengths .. 5 fabric+folds, kinds, what, view, region,
+    type length | width | choice | count | bool | colour | level, anchor / points, measure, tolerance, sets}; choices
+    come from garment_kb `details` (one vocabulary). Every hand correction made on Garrett's suit is an item
+    (buttons_done, front_state, placket, collar_show / collar_hug / collar_state, belt, knee_width / leg_opening,
+    sleeve_end / cuff_show, front_hang): `test_every_hand_correction_is_an_item`.
+  - `cloth_reference.py`: `read` (the form, then the design-sheet patch + target table from answers; an orthographic
+    front camera fitted to the model's body landmarks by similarity, `fit_camera`; lengths read ANCHORED: the fraction
+    between two body landmarks, by HEIGHT ONLY when one is a body level (waist, crotch, floor: `_vertical`), carried
+    onto our body; widths in m through the camera's scale; a reading taken on the right side compared on our left),
+    `check` (MEASURES on cached sims or light npz results, never simulates; rows with the miss in tolerances, ranked
+    by severity x stage weight x confidence; items the picture didn't show judged by the tailoring rule where there is
+    one: collar show, cuff show, collar hug, tent), `render_front` (numba z-buffer of body + garments through the
+    reference's camera, outer layers nudged forward by `over`), `focus_sheet`, `reference_brief` (shot list +
+    per-shot prompts; wear state from the READING, never from the model's possibly wrong state) and
+    `check_references` (which items a picture set supports and why not). MCP tools `garment_from_reference`,
+    `check_garment_reference`, `garment_reference_brief`. Format of the brief proposed to the likeness agent.
+  - Garrett proof (su_garrett, read-only; shirt / trousers cached, jacket = suit6's su_79 npz: its key moved with their
+    code): reading `workspace/cloth_renders/cr_garrett_refs.json`, focus sheet `cr_05_focus.png`, whole figure through
+    the concept's camera `cr_05_figure.png` (aligns within the camera's 40 mm landmark residual). Ranked: collar hug 27
+    mm (rule 0-6), trouser rise 12 cm high (belt sits at the hip in the concept), jacket tent 85 mm, jacket 5 cm long,
+    no pockets (concept: flaps + breast welt), belt hidden + shirt untucked (trousers not `over: shirt`), hem sweep
+    -19% and waist -20% (concept's skirt flares over the hips), collar show -12 mm, lapel 95 vs ~71 mm, legs now ~10%
+    NARROWER than the concept. Measure faults to know: chest width at the pit (+28%) reads the side panels round the
+    armhole in A-pose (suspect), rise depends on the projected crotch / waist (hidden under the jacket), colour is lit
+    vs albedo, trouser length depends on an ankle guessed in the shoe.
+  - Missing measures (said in the check): gorge / notch height and button stance need pattern points / button centres
+    a light result lacks; lapel lie needs the full result's fold rows; wear / ageing has no cloth pass; lapel width is
+    the drafted op value, not measured on the sim.
+  - `tests/test_cloth_reference.py` (12 tests, no sim).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
