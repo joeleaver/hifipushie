@@ -1189,7 +1189,10 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
     face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
     character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
-    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). True
+    tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). On
+    the one human mesh with its own quads (base.body.source "human", parts.body.topology "wrap") the head's vertices
+    ARE GNM's: shapes go by vertex index (no projection), GNM's mouth sock closes the mouth, the lips close on GNM's
+    contact ring, and mouth_gap is best left out (GNM's own lips; the export closes them). True
     = all 52 ARKit names (mouth and jaw, lids, brows, cheeks, nose, and eyeLook*, which turn the eyeballs' own part)
     plus the corrective jawOpen_mouthClose, which a player sets to min(jawOpen, mouthClose) each frame: mouthClose
     alone only seals the lips (Audio2Face drives it with the jaw shut). On every part that moves (the head's part,
@@ -2269,6 +2272,11 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
         p = terrain_style.season_sheet(sheets, refs, lays, d / f"styles_seasons_v{ver}.png")
         out.append(_out(PILImage.open(p), None))
         notes.append(f"seasons sheet (spring, summer, autumn, winter, snow by the snow numbers): {p}")
+        gl = [nm for nm in ("grass", "earth") if nm in refs]
+        p = terrain_style.ground_view(sheets, refs, d / f"styles_ground_v{ver}.png", layers=tuple(gl))
+        out.append(_out(PILImage.open(p), None))
+        notes.append(f"ground as the game shows it (flat cel light, mipmaps, anti-tiling, layer edges; eye level and "
+                     f"25 m up): {p}")
         for nm in lays:
             q = terrain_style.transition_strip(sheets, refs, nm, d / f"styles_strip_{nm}_v{ver}.png")
             out.append(_out(PILImage.open(q), None))
@@ -2692,7 +2700,9 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     elif impostor:
         ground += ("\nimpostor: hemi-octahedral (one quad + an 8 x 8 atlas of views over the upper hemisphere, object-space normals + depth): it NEEDS "
                    "the engine's impostor shader (recipe in the impostor material's extras.hifipushie_impostor and the seasons json `impostor`; "
-                   "Godot: spikes/godot_veg/impostor_octa.gdshader, extra_cull_margin = size / 2); no shadows received on it")
+                   "Godot: spikes/godot_veg/impostor_octa.gdshader, extra_cull_margin = size / 2); no shadows received on it. "
+                   "Import the impostor atlases WITH mipmaps (Godot: mipmaps/generate=true; the normal atlas as plain RGBA, "
+                   "not a normal map: its alpha is the depth): without mips a far impostor costs ~40x more GPU time")
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))

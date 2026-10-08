@@ -1196,6 +1196,12 @@ class Field:
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
         self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg) if gcfg is not None else None
+        if self.edits is not None and any("lip" in s["rock"] for s in getattr(self, "styles", [])):
+            # (a style's share of the turf's step at cliff lips: blobby's pillowed ground had crumbs at every lip)
+            ls = np.ones(self.H.shape)
+            for s in self.styles:
+                ls = ls - s["w"] * (1.0 - float(s["rock"].get("lip", 1.0)))
+            self.edits.lip_scale = np.ascontiguousarray(np.clip(ls, 0.0, None))
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns (with the ground edits:
@@ -4892,10 +4898,14 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         job["styles"] = {
             "weights": wl, "ref": {k: lin(v["color"]) for k, v in real["layers"].items()},
             "extent": SM["maps"]["extent"], "maps": maps,
+            "rock_scale": ({**SM["maps"]["rock_scale"], "file": str((out / SM["maps"]["rock_scale"]["file"]).resolve())}
+                           if SM["maps"].get("rock_scale") else None),
             "styles": [{"name": s["name"], "macro": s["macro"], "macro_normal": s["macro_normal"],
                         "layers": {k: {"albedo": str((out / v["albedo"]).resolve()),
                                        "height": str((out / v["height"]).resolve()), "size": v["size_m"],
-                                       "height_m": v["height_m"], "projection": v.get("projection", "top")}
+                                       "height_m": v["height_m"], "projection": v.get("projection", "top"),
+                                       "small": ({**v["small"], "albedo": str((out / v["small"]["albedo"]).resolve())}
+                                                 if v.get("small") else None)}
                                    for k, v in s["layers"].items()}}
                        for s in SM["styles"]]}
         grass = False
