@@ -57,7 +57,7 @@ SD_RANGE = 64.0     # m: the signed distance maps run -SD_RANGE..SD_RANGE
 SEASONS = ("spring", "summer", "autumn", "winter")
 # a layer's `fade_small` ops (e.g. anime strata) give way to its plain texture on small or thin rock: full where the face
 # is over face_m[1] tall AND the rock over thick_m[1] thick (half-thickness in plan), none under the [0]s
-SMALL_FADE = {"face_m": [4.0, 12.0], "thick_m": [2.0, 6.0]}
+SMALL_FADE = {"face_m": [4.0, 12.0], "thick_m": [3.0, 10.0]}
 ROCK_SCALE = {"face_m": 64.0, "thick_m": 32.0}  # (the rock_scale map's full range: R and G = value / range)
 
 
@@ -663,6 +663,16 @@ def rock_scale(T) -> tuple[np.ndarray, np.ndarray]:
     up = (vb > 0.5 * (top2 + foot2)) & (top2 - foot2 > 2.0)
     thick = ndimage.distance_transform_edt(up) * T.cell
     thick = ndimage.maximum_filter(thick, odd(30.0))
+    # sea stacks are solid columns in the 3D tiles (terrain_mesh.stacks): the heightfield holds only a slim core, so
+    # round each one its own size is written in (half-thickness = its radius, its height over the sea)
+    st = (getattr(T, "sea", None) or {}).get("stacks") if isinstance(getattr(T, "sea", None), dict) else None
+    if st:
+        from .terrain_mesh import STACK
+        for a in st:
+            r = STACK["radius"] * float(a["radius"])
+            m = np.hypot(T.X - a["xy"][0], T.Y - a["xy"][1]) < r + 3.0 * T.cell
+            thick[m] = r
+            Hf[m] = np.maximum(Hf[m], float(a["height"]))
     return Hf, thick
 
 
