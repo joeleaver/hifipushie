@@ -194,12 +194,27 @@ def test_weights_by_index():
     assert "Hand" in names[int(W[tip].argmax())]
 
 
+def test_head_size_scales_about_the_centre_line():
+    """style.human.head_size scales the head about the neck's top ON THE CENTRE LINE: the eyes stay mirror images
+    and the eye midpoint stays at x = 0 (the pivot once fell to a bounding-box corner: the face moved 10 mm sideways)."""
+    from hifipushie import base as basemod
+    from hifipushie.spec import expand_mirror
+    from hifipushie import humans
+    sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human")
+    sp["base"].setdefault("style", {})["human"] = {"head_size": 1.12}
+    h = basemod.head_of(expand_mirror(sp), sp["base"])
+    E = np.asarray(h["eyes"], float)
+    assert abs(E[0, 0] + E[1, 0]) < 1e-4, E
+    assert abs(E[0, 1] - E[1, 1]) < 1e-3 and abs(E[0, 2] - E[1, 2]) < 1e-3, E  # (a seed is a hair asymmetric: 0.2 mm)
+
+
 if __name__ == "__main__":
     test_asset_topology()
     print("ok test_asset_topology")
     if have():
         for fn in (test_the_stitch_follows_every_body, test_template_is_one_closed_mesh_and_deterministic,
                    test_identity_fades_out_at_the_stitch, test_old_paths_never_touch_it,
-                   test_whole_person_builds_and_measures_as_the_old_path, test_weights_by_index):
+                   test_whole_person_builds_and_measures_as_the_old_path, test_weights_by_index,
+                   test_head_size_scales_about_the_centre_line):
             fn()
             print("ok", fn.__name__)

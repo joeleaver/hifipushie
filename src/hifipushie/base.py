@@ -284,6 +284,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
                 used[k] = spec_expanded["joints"][n]["pos"]
                 break
     settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push", "body", "style")}
+    if (base.get("body") or {}).get("source") == "human":  # (onemesh.py) its own version: old paths keep their keys
+        from . import onemesh
+        settings["one"] = onemesh.VERSION
     used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
     key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
     if key in _CACHE:
@@ -319,13 +322,17 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
-    if own_neck:  # MakeHuman's neck is rings of long thin quads: with the mean edge as the kernel's width the field
-        # was faceted between the rings (fine level lines down the neck). The longest edge at each vertex instead.
+    if own_neck or (one and tpl.get("n_body")):  # MakeHuman's neck is rings of long thin quads: with the mean edge
+        # as the kernel's width the field was faceted between the rings (fine level lines down the neck). The longest
+        # edge at each vertex instead. (One mesh: on MakeHuman's body and the bridge only, not on GNM's head.)
         E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in F for k in range(len(f))}))
         ln = np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1)
         hm = np.zeros(len(V))
         np.maximum.at(hm, E[:, 0], ln)
         np.maximum.at(hm, E[:, 1], ln)
+        if one:  # each subdivided vertex is body if the nearest template vertex is (the body's rows come first)
+            _, nq = cKDTree(W).query(V)
+            hm = np.where(nq < int(tpl["n_body"]), hm, 0.0)
         h = np.maximum(h, 0.9 * hm)
     h = h * float(base.get("smooth", 1.0))
     if head is not None and not one:  # one point set: the body under the graft plane, the head over it (the tube tapers to the
