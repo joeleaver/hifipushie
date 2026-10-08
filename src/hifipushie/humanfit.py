@@ -600,15 +600,35 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
             num["head_scale"] = round(float(np.median(r[hsel])), 3)
             r = np.where(hsel, r / max(float(np.median(r[hsel])), 1e-6), r)
         num["stretch"] = {}
+        rp = None
+        if Pp is not None:  # the same edges in the INPUT (the state before this edit), on the same scale
+            lp = np.linalg.norm(Pp[E[:, 0]] - Pp[E[:, 1]], axis=1)
+            rp = lp / l0
+            if hsel.any():
+                rp = np.where(hsel, rp / max(float(np.median(rp[hsel])), 1e-6), rp)
         for k in ("lids", "lips", "nose", "ears", "neck bridge", "face"):
             sel = reg[k][E].all(1)
-            if sel.any():
-                lo, hi = float(r[sel].min()), float(np.percentile(r[sel], 99.5))
-                num["stretch"][k] = [round(lo, 2), round(hi, 2)]
-                if hi > 3.0 or lo < 0.25:
-                    broken.append(f"{k}: edges stretched x{hi:.1f} / squeezed x{lo:.2f} against the plain head")
-                elif hi > 1.8 or lo < 0.45:
-                    warn.append(f"{k}: edges stretched x{hi:.1f} / squeezed x{lo:.2f}")
+            if not sel.any():
+                continue
+            lo, hi = float(r[sel].min()), float(np.percentile(r[sel], 99.5))
+            num["stretch"][k] = [round(lo, 2), round(hi, 2)]
+            past = sel & ((r > 3.0) | (r < 0.25))
+            if rp is not None:
+                # judged against the INPUT: an edge past the limit counts only if this edit made it worse by
+                # GUARD_WORSE (v23's lip corners: a 1.7 mm edge already squeezed to 0.55 mm on the plain head), or
+                # if the edit alone stretched / squeezed it past the limit
+                # and only if its length changed by GUARD_MM or more: v23's lip corner went 0.55 -> 0.47 mm (13%)
+                # under a face widened 10 mm two cm away: the mouth's re-solved closure, below the mesh's own noise
+                moved = np.abs(l1 - lp) >= GUARD_MM
+                worse = ((r < rp * (1 - GUARD_WORSE)) & (r < 1) | (r > rp * (1 + GUARD_WORSE)) & (r > 1)) & moved
+                own = (r / np.maximum(rp, 1e-9) > 3.0) | (r / np.maximum(rp, 1e-9) < 0.25)
+                past = (past & worse) | (sel & own)
+            if past.any():
+                bl, bh = float(r[past].min()), float(r[past].max())
+                broken.append(f"{k}: {int(past.sum())} edges stretched to x{bh:.1f} / squeezed to x{bl:.2f} against the plain "
+                              "head" + (" (worse than before this change)" if rp is not None else ""))
+            elif hi > 1.8 or lo < 0.45:
+                warn.append(f"{k}: edges stretched x{hi:.1f} / squeezed x{lo:.2f}")
     else:
         warn.append("this head's topology differs from the plain head's: stretch and folds not compared")
     L = st["L"]
@@ -659,24 +679,24 @@ def _guarded(base: dict, cur: dict, rep: dict, force: bool) -> tuple:
     return base, rep
 
 
+GUARD_MM = 0.0001  # m: an edge's length change under this is not a change (integrity against the input)
 GUARD_WORSE = 0.08  # a region broken in the input too counts as broken BY the edit when its stretch got this much worse
 
 
 def _newly_broken(base: dict, it: dict) -> list:
-    """What in a result's integrity the edit broke: broken lines the input doesn't have, and for an edge-stretch
-    region broken in both, the result's only if it got GUARD_WORSE (relative) further past either limit."""
-    b0 = integrity(base, state(base))
-    if b0["ok"]:
-        return list(it["broken"])
-    s0, s1 = b0["numbers"].get("stretch", {}), it["numbers"].get("stretch", {})
+    """What in a result's integrity the edit broke. Edge stretch and folds are already judged against the input
+    (integrity(prev=): an edge counts only where this change made it worse); any other broken line (an eyeball through
+    its lids, crossed lips) counts if the input doesn't have it too."""
+    STRETCH = ("lids", "lips", "nose", "ears", "neck bridge", "face")
+    b0 = None
     out = []
     for line in it["broken"]:
-        reg = line.split(":")[0]
-        if reg in s1 and reg in s0 and any(l_.startswith(reg + ":") for l_ in b0["broken"]):
-            (lo0, hi0), (lo1, hi1) = s0[reg], s1[reg]
-            if lo1 < lo0 * (1 - GUARD_WORSE) or hi1 > hi0 * (1 + GUARD_WORSE):
-                out.append(line + f" (the input: x{hi0} / x{lo0})")
-        elif line not in b0["broken"]:
+        if line.split(":")[0] in STRETCH or "folded over by this change" in line:
+            out.append(line)
+            continue
+        if b0 is None:
+            b0 = integrity(base, state(base))
+        if line not in b0["broken"]:
             out.append(line)
     return out
 
@@ -822,7 +842,7 @@ OUTLINE_HOLD = 0.6      # weight of the features held where they are (eyes, nose
 
 
 def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetric: bool = True,
-                structure: bool = True, force: bool = False) -> tuple:
+                structure: bool = True, force: bool = False, sigma: float | None = None) -> tuple:
     """(new base, report): the head's silhouette through each fitted camera (`cameras`, from fit_views) pulled onto
     each view's `outline` ([[u, v], ...]: the face's edge in the picture, e.g. jaw and cheeks) by a smooth warp in
     GNM's frame (base.head.warp, appended), the features held (eyes, nose, lips, brows: their landmarks stay, so an
@@ -886,6 +906,21 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             miss.append(float(np.sqrt((m ** 2).mean()) * 1000))
         if not tgt_g:
             break
+        if structure and tgt_g:  # the ears ride their side of the head as a whole (left to the warp, the ear's root
+            # went out with the jaw's side and its rim didn't: ears squeezed x0.20 at the full width)
+            ears = np.flatnonzero((np.asarray(g["groups"]["ears"], float) > 0.5) & np.asarray(g["skin"], bool))
+            TG, TD = np.array(tgt_g), np.array(tgt_d)
+            for sg in (-1.0, 1.0):
+                es = ears[np.sign(Vg[ears, 0]) == sg]
+                ts = np.sign(TG[:, 0]) == sg
+                if not len(es) or not ts.any():
+                    continue
+                es = es[np.linspace(0, len(es) - 1, min(len(es), 40)).astype(int)]
+                mv = TD[ts].mean(0)
+                for e_ in es:
+                    tgt_g.append(Vg[e_])
+                    tgt_d.append(mv)
+                    tgt_w.append(0.5)
         if symmetric:  # each target also on the other side, mirrored (GNM's template is symmetric about x = 0): one
             # view's outline alone warped only its own side, a lump on one jaw
             tgt_g = tgt_g + [x * [-1, 1, 1] for x in tgt_g]
@@ -905,17 +940,37 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             front = front[np.linspace(0, len(front) - 1, min(len(front), 120)).astype(int)] if len(front) else front
             hold += list(Vg[front])
             hw += [STRUCTURE_HOLD] * len(front)
+            # and the lips whole (their landmarks alone held the corners while the rolls beside them were pulled:
+            # widening the jaw at mouth level squeezed the lips' edges past the limit)
+            lips = np.flatnonzero(((np.asarray(g["groups"]["upper_lip"], float) > 0.5)
+                                   | (np.asarray(g["groups"]["lower_lip"], float) > 0.5)) & np.asarray(g["skin"], bool))
+            lips = lips[np.linspace(0, len(lips) - 1, min(len(lips), 80)).astype(int)] if len(lips) else lips
+            hold += list(Vg[lips])
+            hw += [STRUCTURE_HOLD] * len(lips)
+            # and the mouth's corners hard (every skin vertex within 8 mm of lm 48 / 54): their edges are the shortest
+            # on the face, so 0.1 mm of drift there reads as a squeeze (Garrett's v23 corner, x0.23 -> x0.20)
+            lmg = np.array([sum(float(wt) * Vg[int(vi)] for vi, wt in zip(row[0::2], row[1::2])) for row in g["lm68"]])
+            cn = skin[np.min(np.linalg.norm(Vg[skin][:, None] - lmg[None, [48, 54]], axis=2), 1) < 0.008]
+            hold += list(Vg[cn])
+            hw += [STRUCTURE_HOLD * 4] * len(cn)
         A = np.r_[np.array(tgt_g), np.array(hold)]
         Dt = np.r_[np.array(tgt_d), np.zeros((len(hold), 3))]
         wt = np.r_[np.array(tgt_w), np.array(hw)]
-        sig = float((cur.get("head") or {}).get("warp", {}).get("sigma", OUTLINE_SIGMA))
+        ws = (cur.get("head") or {}).get("warp")
+        ws = [] if not ws else (ws if isinstance(ws, list) else [ws])
+        sig = float(sigma if sigma is not None else (ws[-1]["sigma"] if ws else OUTLINE_SIGMA))
         K = np.exp(-((A[:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
         coef = np.linalg.solve((K * wt[:, None]).T @ K + 2e-2 * np.eye(len(A)), (K * wt[:, None]).T @ Dt)
         h = cur.setdefault("head", {})
-        old = h.get("warp")
-        if old:  # (a head has one warp: its centres appended, at its sigma)
-            A, coef = np.r_[np.asarray(old["at"], float), A], np.r_[np.asarray(old["coef"], float), coef]
-        h["warp"] = {"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}
+        # appended to the warp of the same reach (centres added), or a warp of its own (a list of warps)
+        same = [i for i, w in enumerate(ws) if abs(float(w["sigma"]) - sig) < 1e-9]
+        if same:
+            w0 = ws[same[-1]]
+            A, coef = np.r_[np.asarray(w0["at"], float), A], np.r_[np.asarray(w0["coef"], float), coef]
+            ws[same[-1]] = {"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}
+        else:
+            ws = ws + [{"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}]
+        h["warp"] = ws[0] if len(ws) == 1 else ws
         rep["rounds"].append({"miss_mm": [round(x, 2) for x in miss], "targets": len(tgt_g)})
     st1 = state(cur)
     rep["integrity"] = integrity(cur, st1, state(base))

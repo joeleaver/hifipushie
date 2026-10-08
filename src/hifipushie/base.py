@@ -1381,12 +1381,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("field"):  # (headfit.py) MakeHuman's head of an age / sex / weight, as a displacement of the vertices
         from . import headfit
         V = V + headfit.field_vertices(head["field"]) * float(abs(J[2][0] - J[3][0]))
-    if head.get("warp"):  # (headfit.py) what the identity space couldn't make of the body's head, as a smooth warp
-        wp = head["warp"]
-        P_, C_ = np.asarray(wp["at"], float), np.asarray(wp["coef"], float)
-        for a in range(0, len(V), 4096):
-            d2 = ((V[a:a + 4096, None, :] - P_[None, :, :]) ** 2).sum(-1)
-            V[a:a + 4096] += np.exp(-d2 / (2 * wp["sigma"] ** 2)) @ C_
+    if head.get("warp"):  # (headfit.py) what the identity space couldn't make of the body's head, as a smooth warp;
+        # a list = several warps, each with its own reach, applied in order (humanfit.fit_outline adds a shorter one)
+        for wp in (head["warp"] if isinstance(head["warp"], list) else [head["warp"]]):
+            P_, C_ = np.asarray(wp["at"], float), np.asarray(wp["coef"], float)
+            for a in range(0, len(V), 4096):
+                d2 = ((V[a:a + 4096, None, :] - P_[None, :, :]) ** 2).sum(-1)
+                V[a:a + 4096] += np.exp(-d2 / (2 * wp["sigma"] ** 2)) @ C_
     V = V + regional_identity(head.get("regions"))
     if head.get("pose"):  # landmark moves: a smile, lids, brows (least change of the regional expressions)
         V = V + pose_expression(head["pose"], V, float(head.get("scale", 1.4)))

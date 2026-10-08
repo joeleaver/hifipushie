@@ -5419,6 +5419,26 @@ model".
     comes back with rep["refused"] (`_guarded`), unless force=True. A region already broken in the input (v23's lip
     corners squeezed x0.24 against the plain head) counts only if it got `GUARD_WORSE` 8% worse (`_newly_broken`).
     A 3 cm chin nudge is now refused (test_nudge updated: forced, it still makes its correction layer).
+  - Why the photo's face reads wider (2026-10-08; the user's question; scratch widths.py, fovtest.py, contrib.py,
+    pass8.py; sheet human_renders/om2_r7_width.png = photo | v23 | pass 6 | pass 7 50% | 100% FORCED, front + desk,
+    clay / lit / his locks; v23 copy `om2_v23` = om_garrett v15, cameras fitted to its own landmarks):
+    - Half-widths (centre line lm27-lm8 to the face's edge: the photo's MediaPipe oval, the model's visible face
+      silhouette, ears left out), photo vs v23: cheekbone level -11 mm (6.6%), nose base -21 mm (12.6%), upper lip
+      -20 mm, mouth -23 mm (15%); eyes +4 mm; the brow and the jaw/chin levels are wider on ours (the photo's chin
+      tapers to a V, ours is a broad lower jaw: v23's jaw corners sit lower).
+    - FOV: the focal is free in the fit and runs to orthographic (5.8 km); pinned at 35 / 50 / 85 / 135 / 200 mm
+      equivalent the residual is 4.48 / 3.96 / 3.70 / 3.65 / 3.63 px (free 3.62) and the nose-base deficit 40 / 32
+      / 27 / 25 / 23 mm: a wide lens makes the deficit LARGER and fits worse. Not FOV.
+    - Ears stand out 18-27 mm past the face's edge in the photo, 0-9 mm on ours; side hair 15-23 mm per side
+      thinner (pass 5's numbers); light: with the sheets' key from the upper left our far cheek darkens from 68% /
+      80% of its half-width (nose base / mouth), the photo's soft frontal light keeps both sides lit to the edge.
+    - Pass 7 option (pass8.py, om2_p7_50): the outline fit on the oval's cheekbone / masseter points only, targets at
+      50% of the miss, structure mode + lips held + ears riding the side, a second warp of its own reach (sigma
+      0.014; `head.warp` may now be a LIST of warps, base applies each): deficit at nose base 21.9 -> 7.8 mm, mouth
+      23 -> 11.4, cheekbone 11 -> 7.1; cheek hollow 2.0 -> 1.3-1.6. 75% and 100% are REFUSED: the face's side
+      pushes into the ear's front (tragus edges x0.21-0.24); 100% forced reaches -4 / +4 mm.
+    - Integrity: stretch now leaves out edges under `STRETCH_MIN` 0.8 mm on the plain head, or already under it in
+      the input (v23's lip corners: a 1.7 mm edge squeezed to 0.55 mm read "lips BROKEN" at any change nearby).
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
