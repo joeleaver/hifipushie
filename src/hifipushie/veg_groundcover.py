@@ -43,6 +43,7 @@ import numpy as np
 from . import vegetation
 
 GRADE = "groundcover"
+BAKE_VERSION = 1  # bump with any change to what is rendered (frames, views, heads, extents); not for composing
 # per LOD: cards through the foot, quads across x up each card, the bake's pixels along the frame's longer side
 TIERS = ({"planes": 8, "cols": 3, "rows": 5, "px": 448, "heads": 12},
          {"planes": 5, "cols": 2, "rows": 4, "px": 128, "heads": 6},
@@ -52,6 +53,9 @@ LEAN = 0.6        # card normals: up + LEAN x (where on the card, -1..1) along t
 FACE = 0.7        # ... + FACE x the face's own side (front +, back -): mirror images through the card
 SHADE = 0.45      # how much of the baked shade (sky reaching the point from above) goes into the albedo
 SHADE_BRIGHT = 0.7
+FORM = 0.35       # the part's own form painted in: x (1 - FORM) .. 1 from a surface facing down to one facing up (a card
+                  # is lit by its up-leaning normal, and styles that ignore normal maps (blobby, cartoon) drew round flower
+                  # heads as flat discs)
 ALPHA_CUT = 0.5
 MARGIN_PX = 2
 ATLAS_W = 1024
@@ -267,6 +271,9 @@ def compose(f: dict, albedo: np.ndarray, normal: np.ndarray, shade: np.ndarray, 
     val = np.clip((a[..., :3].max(-1) - 0.35) / 0.5, 0, 1)
     kk = SHADE * (1 - SHADE_BRIGHT * val * val * (3 - 2 * val))
     lin = np.where(a[..., :3] <= 0.04045, a[..., :3] / 12.92, ((a[..., :3] + 0.055) / 1.055) ** 2.4) * (1 - kk + kk * s_)[..., None]
+    nw = normal[..., :3] * 2 - 1
+    up = np.clip(nw[..., 2] / np.maximum(np.linalg.norm(nw, axis=-1), 1e-6), -1, 1)
+    lin = lin * (1 - FORM + FORM * (0.5 + 0.5 * up))[..., None]
     rgb = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.maximum(lin, 0) ** (1 / 2.4) - 0.055)
     h, w = a.shape[:2]
     S, Tt = np.meshgrid((np.arange(w) + 0.5) / w * f["span_w"] - f["span_w"] / 2, f["span_h"] / 2 - (np.arange(h) + 0.5) / h * f["span_h"])
@@ -556,8 +563,11 @@ def _cache_path(spec: dict, seasons) -> Path:
     import hashlib
     import os
     code = b"".join((Path(__file__).with_name(f).read_bytes() for f in
-                     ("veg_groundcover.py", "veg_style.py", "veg_small.py", "veg_leaf.py", "blender_vegetation.py", "veg_look.py")))
-    key = hashlib.sha1(json.dumps([spec, list(seasons), vegetation.VERSION, TIERS], sort_keys=True, default=str).encode() + code).hexdigest()[:20]
+                     ("veg_style.py", "veg_small.py", "veg_leaf.py", "blender_vegetation.py", "veg_look.py")))
+    # (this module's own code is in BAKE_VERSION, not its bytes: the maps are composed from the cached renders, so an
+    # edit to composing, cards or files never re-renders)
+    key = hashlib.sha1(json.dumps([spec, list(seasons), vegetation.VERSION, TIERS, BAKE_VERSION, SUPER, FLAT, TOP_AT, TOP_PX, HEAD_SPAN],
+                                  sort_keys=True, default=str).encode() + code).hexdigest()[:20]
     root = Path(os.environ.get("HIFIPUSHIE_VEG_CACHE") or Path.home() / ".cache" / "hifipushie")
     return root / "groundcover" / f"{key}.pkl"
 
