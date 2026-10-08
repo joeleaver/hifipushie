@@ -143,8 +143,17 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
     lw = np.array(([float(x) for x in cr.get("layer_weight", [1.0])] * len(layers))[: len(layers)])
     if lod < 0.6:  # lower LODs: the outer layers carry it
         lw = lw * np.linspace(max(0.0, 2 * lod - 0.3), 1.0, len(layers))
+    # overdraw at a distance (the game, note 84): `lod_layers` = [layers kept under lod 0.6, under 0.3] (the OUTER ones:
+    # what is inside an outer shell of cards is mostly hidden but still drawn); `lod_area` = the exponent of the cards'
+    # growth (0.5: fewer, larger cards cover what all of them did, i.e. as many pixels drawn; less = fewer pixels)
+    kl = cr.get("lod_layers")
+    if kl:
+        n_keep = int(kl[0]) if lod < 0.6 else len(layers)
+        n_keep = int(kl[1]) if lod < 0.3 and len(kl) > 1 else n_keep
+        lw = lw.copy()
+        lw[: max(len(layers) - n_keep, 0)] = 0.0
     n_cards = max(int(foliage_triangles // tri), 4 * len(ells))
-    grow = float(np.clip(1.0 / math.sqrt(max(lod, 1e-3)), 1.0, float(cr.get("lod_grow", 1.9))))
+    grow = float(np.clip(max(lod, 1e-3) ** -float(cr.get("lod_area", 0.5)), 1.0, float(cr.get("lod_grow", 1.9))))
     seed = int(spec.get("seed", 1))
     size = np.array([float(e["r"].mean()) for e in ells])
     area = size ** 2

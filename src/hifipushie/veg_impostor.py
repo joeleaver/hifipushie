@@ -156,7 +156,39 @@ def bake(tree: dict, n: int = FRAMES, px: int = FRAME_PX, geometry: dict | None 
     return {**m, "frames": n, "size": size, "centre": C.tolist(), "kind": KIND, "passes": passes}
 
 
-def recipe(n: int, size: float, centre) -> str:
+def crop(images: list, n: int, margin: float = 0.03) -> list:
+    """The part of a frame any frame of any of these atlases draws: [u0, u1, v0, v1] in frame uv (u right, v down),
+    the union of every frame's alpha box, `margin` of the frame wider each way (views between the baked ones turn the
+    plant a little further), clipped to 0..1. The engine's quad covers only that (the game, note 84: a 24 m crown on a
+    33 m square drew ~2x the pixels it needed; impostors were 10-19 ms of the vale's frame)."""
+    u0 = v0 = 1.0
+    u1 = v1 = 0.0
+    for im in images:
+        a = np.asarray(im)[..., 3]
+        px = a.shape[0] // n
+        for i in range(n):
+            for j in range(n):
+                t = a[j * px:(j + 1) * px, i * px:(i + 1) * px] > 0.05
+                if not t.any():
+                    continue
+                ys, xs = np.flatnonzero(t.any(1)), np.flatnonzero(t.any(0))
+                u0, u1 = min(u0, xs[0] / px), max(u1, (xs[-1] + 1) / px)
+                v0, v1 = min(v0, ys[0] / px), max(v1, (ys[-1] + 1) / px)
+    if u1 <= u0 or v1 <= v0:
+        return [0.0, 1.0, 0.0, 1.0]
+    return [round(float(max(u0 - margin, 0.0)), 4), round(float(min(u1 + margin, 1.0)), 4),
+            round(float(max(v0 - margin, 0.0)), 4), round(float(min(v1 + margin, 1.0)), 4)]
+
+
+def recipe(n: int, size: float, centre, crop_: list | None = None) -> str:
+    c_ = crop_ or [0.0, 1.0, 0.0, 1.0]
+    return (f"hemi-octahedral impostor, {n} x {n} frames, each a {size:.3f} m square orthographic view through the centre "
+            f"{[round(float(c), 3) for c in centre]} (glTF object space, +Y up). CROP {c_} = [u0, u1, v0, v1]: the quad covers only that "
+            "part of a frame (every frame's drawn pixels are inside it): with uv the quad's corners, cu = mix(u0, u1, uv.x), cv = mix(v0, v1, uv.y), "
+            "VERTEX = centre + (cu - 0.5) * size * right + (0.5 - cv) * size * up (below: uv.x / uv.y there read cu / cv). " + _recipe(n, size, centre))
+
+
+def _recipe(n: int, size: float, centre) -> str:
     return (f"hemi-octahedral impostor, {n} x {n} frames, each a {size:.3f} m square orthographic view through the centre "
             f"{[round(float(c), 3) for c in centre]} (glTF object space, +Y up). Vertex: the quad (uv 0..1) is turned to face the camera: "
             "d = normalize(camera position in object space - centre), d.y clamped >= 0; right = normalize(cross(+Y, d)) (+X if ~0), "

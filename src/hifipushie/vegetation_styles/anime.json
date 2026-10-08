@@ -131,7 +131,12 @@
   "tier_shape": "egg",
   "teeth": 9,
   "zig": 0.12,
-  "cone_height": 1.6
+  "cone_height": 1.6,
+  "lod_layers": [
+   2,
+   1
+  ],
+  "lod_area": 0.2
  },
  "colour": {
   "saturation": 1.2,
@@ -235,7 +240,12 @@
     "core": 0.4
    },
    "clump_min_cards": 80,
-   "lod_grow": 2.4
+   "lod_grow": 2.4,
+   "lod_layers": [
+    2,
+    2
+   ],
+   "lod_area": 0.35
   },
   "colour": {
    "value": 1.35
@@ -283,7 +293,7 @@
   "fan": 3,
   "fan_angle": 16,
   "heads_kind": "dab",
-  "dabs": 3,
+  "dabs": 6,
   "ragged": 0.45,
   "petals": [
    5,
@@ -294,6 +304,9 @@
   "centre": 0.32,
   "cup": 0.6,
   "head_up": 0.5,
-  "petal_size": 1.5
+  "petal_size": 1.5,
+  "dab_length": 1.6,
+  "dab_size": 0.45,
+  "dab_flat": 0.6
  }
 }

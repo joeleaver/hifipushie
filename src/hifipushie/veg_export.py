@@ -381,7 +381,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 6
+CONTRACT = 7
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -407,6 +407,12 @@ CONTRACT_LOG = {
        "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies). Styled small plants whose blades lie down "
        "in winter: slot foliage_winter (the foliage mesh's next primitive: the blades lying, shown only in winter and snow, "
        "when foliage is hidden)",
+    7: "a styled closed crown's (blobby / cartoon masses or tiers) season material MAY carry a baseColorTexture: a RAMP over "
+       "TEXCOORD_0.x (0 = a mass's foot / a cone tier's rim .. 1 its top; clamp sampler; v ignored), albedo = baseColorFactor x "
+       "texture x COLOR_0 (cartoon conifers' spring: lime tips on every tier's rim). The seasons json lists it under that "
+       "season's foliage slot as baseColorTexture {file}: an engine that sets season materials from the json must set the "
+       "texture too (or keep the GLB's variant material). Anime seed / flower heads (slot heads, kind dab) are clusters of "
+       "small closed blobs now, not flat discs (same slot, same channels)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -584,6 +590,12 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(da_["color"] / 255.0), False)}  # (uint8 x 255 wraps round: the atlas must go in as 0..1)
             m_.update(alphaMode="MASK", alphaCutoff=float(st["crown"].get("alpha_cut", 0.5)), doubleSided=True,
                       extras={"card_fill": round(dabs["fill"], 3)})
+        rp_ = veg_style.season_ramp(s, season, st) if (season and dabs is None and rgb is not None) else None
+        if rp_ is not None:  # (a season painting the masses' edges: a ramp over TEXCOORD_0.x, factor x texture = the colour)
+            img_, fac_ = veg_style.ramp_texture(rp_)
+            m_["pbrMetallicRoughness"]["baseColorFactor"] = [*fac_, 1.0]
+            m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(img_), False)}
+            m_["extras"] = {**m_.get("extras", {}), "ramp": "baseColorTexture is a ramp over TEXCOORD_0.x (0 = a mass's foot / a tier's rim)"}
         if rgb is None:
             m_.update(alphaMode="MASK", alphaCutoff=1.01, extras={**m_.get("extras", {}), "hidden": True})  # (bare then: the cut-off above 1 hides it in viewers that read variants)
         materials.append(m_)

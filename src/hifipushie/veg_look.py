@@ -53,7 +53,10 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
               "uv": cat("uv"), "dead": cat("dead"), "wood_N": cat("N")}
     if C is not None:
         col = np.array(veg_style.material_color(veg_style.season_color(s, s.get("season", "summer"), st), st))
-        sv, sf, sn, scol = C["V"], C["F"], C["N"], np.clip(col[None] * C["col"], 0, 1)
+        rp = veg_style.season_ramp(s, s.get("season", "summer"), st) if C.get("atlas") is None else None
+        if rp is not None:  # (a season painting the masses' edges: what the export's ramp texture gives)
+            col = rp(C["uv"][:, 0])
+        sv, sf, sn, scol = C["V"], C["F"], C["N"], np.clip((col if col.ndim == 2 else col[None]) * C["col"], 0, 1)
         Hd = D.get("heads")
         if Hd is not None and s.get("season", "summer") in Hd["seasons"]:  # a small plant's flower / seed heads: their own colour
             sf = np.vstack([sf, Hd["F"] + len(sv)])

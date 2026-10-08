@@ -489,6 +489,45 @@ def test_head_kinds():
             assert (H["part"] == 1).any()  # (a centre)
 
 
+def test_cartoon_fixes():
+    """Cartoon round 2: big leaves stand on the outline with their FACE turned sideways (lying flat they were edge-on
+    green shards from eye level); the flared foot is concave and only ~1-1.5 trunk diameters tall (it was a mound);
+    petals shade toward the sky on both faces; anime seed heads are clusters with depth, not flat coins; a conifer's
+    spring paints its tier rims (a ramp texture over TEXCOORD_0.x in that season's material)."""
+    T = v.grow({"species": "oak", "style": "cartoon"})
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    C = D["crown"]
+    n_big = D["info"]["big_leaves"]
+    assert n_big >= 3
+    # the leaves are the crown's last vertices: their face normals (from the triangles) mostly off vertical
+    Vb, Fb = C["V"], C["F"][-n_big * 2 * 28:]
+    fn = np.cross(Vb[Fb[:, 1]] - Vb[Fb[:, 0]], Vb[Fb[:, 2]] - Vb[Fb[:, 0]])
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+    assert np.median(np.abs(fn[:, 2])) < 0.7, np.median(np.abs(fn[:, 2]))
+    m = D["mini"]
+    tr = np.flatnonzero(m["axis"] == 0)
+    z, r = m["pos"][tr, 2], m["radius"][tr]
+    r_bole = float(np.interp(4.0, z, r))
+    assert z[0] < 0 and float(np.interp(0.0, z, r)) < 1.8 * r_bole  # (the foot node under the ground; not a bulb twice the bole)
+    assert float(np.interp(3.0 * r_bole, z, r)) < 1.25 * r_bole  # (the flare is over within ~1.5 diameters)
+    S = v.grow({"species": "daisy", "style": "cartoon", "season": "summer"})
+    H = vs.dress(S, vs.sheet(S["spec"]))["heads"]
+    assert (H["N"][H["part"] == 0][:, 2] > 0.3).all()
+    G = v.grow({"species": "meadow_grass", "style": "anime", "season": "summer"})
+    H = vs.dress(G, vs.sheet(G["spec"]))["heads"]
+    P = H["V"][H["part"] == 0]
+    assert np.ptp(P[:, 2]) > 0.03 and np.ptp(P[:, 0]) > 0.01
+    P = v.grow({"species": "norway_spruce", "age": 30, "style": "cartoon"})
+    sp = vs.sheet(P["spec"])
+    rp = vs.season_ramp(P["spec"], "spring", sp)
+    assert rp is not None and vs.season_ramp(P["spec"], "summer", sp) is None
+    c = rp(np.array([0.0, 1.0]))
+    assert c[0, 1] > c[1, 1] and (c <= 1).all()
+    img, fac = vs.ramp_texture(rp)
+    assert img.max() <= 1 and abs(max(fac) - c.max()) < 1e-6
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
