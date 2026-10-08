@@ -4503,6 +4503,25 @@ model".
       groomed on v23's head) and the jaw now carries the outline's width. The photo's hair outline is clearly wider
       than its jaw. Next: the cranium / temples and the groom's sides against the HAIR outline (not the face oval),
       the mouth's width, then the jaw's width re-judged.
+  - Reference pass 5 (2026-10-08; scratch pass6.py om2_gref5 om2_gref6 57 1, sheet human_renders/om2_r5_pass5.png:
+    v23 likeness | pass 4 | pass 5, the hair rows with his REAL locks; model `om2_gref6`; NOT applied).
+    - `hair.lock_meshes(sc, locks)`: the locks as numpy lens tubes (lock_extents' construction, outer + cupped inner
+      face) for quick renders and silhouettes without Blender. His 624 locks are all hand locks in [az, el, h]: they
+      re-seat on any head's scalp by themselves (lock_world); no re-seat step was needed (round 1's trouble was the
+      scalp rays entering the ear canal, fixed then).
+    - The photo's head outline (head + hair against its plain background, scratch hairfit.py) vs the model with his
+      locks, levels from the top of the hair to the ears' top: the bare cranium is about right at the temples' skin;
+      the HAIR is 15-23 mm per side thinner than the photo's (his groom: volume.sides 6 mm).
+    - `hair.lift(spec, sc, {region: m})`: the whole groom fuller by region (lock points' h + groom.volume by the
+      volume's own region weights), eased in from the hairline over `LIFT_RAMP` 3 cm (lifted at the line it stood off
+      the temples as a shelf). Fitted: sides +22 mm, top -1.4: widths within 3 mm at every level, but the outline sits
+      ~11 mm to his left (the photo's sweep is the other way round from the groom's parting side).
+    - Mouth: solve mouth_width 62 folded 7 lip faces (BROKEN; `solve` reports, it doesn't refuse: pass6.py saved it
+      once, re-run since); 59 squeezes the lip corners past 0.25; 57 is the most that holds (mouthtry.py).
+    - Read: with the lift the hair matches the photo's outline and reads as a stiff helmet with flared sides: lock
+      shapes made for 6 mm of side volume, pushed out 22 mm. A fuller cut needs regrooming the sides (the hair
+      thread's tools), not a lift. The face in pass 4/5 is broader and squarer than v23; v23 keeps the long lean face
+      the director approved. Tests tests/test_hair_lift.py.
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
