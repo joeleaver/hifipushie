@@ -40,6 +40,8 @@ from . import pattern
 PRESS = 20.0  # a pressed crease's hinge bending, as a multiple of the cloth's, at strength 1
 REST_TURN = math.radians(170.0)  # the most a hinge's rest angle turns (a full 180 is the two faces in one plane)
 PLACE_TURN = math.radians(178.0)
+PRESS_WEDGE = 0.3  # the least slope of a pressed flap off its base by the line (pressed_flap): a contact solver wants its
+# cloth a contact gap apart where it isn't joined (at 0.06, 88 lapel vertices started within 1 mm of the forepart: ZOZO's CCD failed at frame 0)
 ROLL_RADIUS = 0.003
 
 
@@ -266,6 +268,60 @@ def turn_flap(X: np.ndarray, M: dict, fd: dict, t, face: float = 1.0) -> np.ndar
         # the flap lies on side `sign` of the row's direction: turning it toward the outside (the pattern face's normal
         # x face) is a rotation about sign x face x the row's direction
         X[v] = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, fd["turn"] * tv[v])
+    return X
+
+
+def pressed_flap(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, lay: float = 0.002,
+                 wedge: float = 0.08) -> np.ndarray:
+    """X with the fold's flap PRESSED onto its base, as a tailor presses a lapel over the forepart: each flap vertex
+    goes where its mirror image across the row (in the pattern) lies on the base, `lay` outside it (a wedge of slope
+    `wedge` near the row: a contact solver's first ring wants a gap), by the affine map of the base triangle that holds
+    that mirror point (the nearest one past the base's edge). Isometric wherever the base is, whatever the base's
+    curvature: turned rigidly about the row, a lapel on a forepart laid over the chest and shoulder stretched past 30%
+    before 50 deg. A roll is pressed as a crease at its first row (the sim rolls it: its rows keep their rest angles)."""
+    g = _geom(M, fd)
+    rows = g["rows"]
+    rm = rows[0]  # (a roll's further rows are mirrored with the flap: a reflection is isometric; the sim rolls them)
+    v = rows[0]["v"]
+    Bt = g["base_tris"]
+    if not len(v) or not len(Bt):
+        return X
+    uv = M["uv"]
+    L = uv[rm["row"]]
+    _, _, si, fr = side_dist(L, uv[v])
+    foot = L[si] * (1 - fr[:, None]) + L[si + 1] * fr[:, None]
+    q2 = 2 * foot - uv[v]
+    A = uv[Bt]  # (t, 3, 2)
+    cen = A.mean(1)
+    tree = cKDTree(cen)
+    _, cand = tree.query(q2, k=min(12, len(Bt)))
+    cand = np.atleast_2d(cand)
+    best = cand[:, 0].copy()
+    for c in range(cand.shape[1] - 1, -1, -1):  # (the first candidate that holds the point wins)
+        T = A[cand[:, c]]
+        e1, e2 = T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+        det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+        w = q2 - T[:, 0]
+        b1 = (w[:, 0] * e2[:, 1] - w[:, 1] * e2[:, 0]) / np.where(np.abs(det) > 1e-14, det, 1e-14)
+        b2 = (e1[:, 0] * w[:, 1] - e1[:, 1] * w[:, 0]) / np.where(np.abs(det) > 1e-14, det, 1e-14)
+        inside = (b1 >= -1e-6) & (b2 >= -1e-6) & (b1 + b2 <= 1 + 1e-6)
+        best[inside] = cand[inside, c]
+    T, P3 = A[best], X[Bt[best]]
+    e1, e2 = T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    det = np.where(np.abs(det) > 1e-14, det, 1e-14)
+    w = q2 - T[:, 0]
+    b1 = (w[:, 0] * e2[:, 1] - w[:, 1] * e2[:, 0]) / det
+    b2 = (e1[:, 0] * w[:, 1] - e1[:, 1] * w[:, 0]) / det
+    Pb = P3[:, 0] + b1[:, None] * (P3[:, 1] - P3[:, 0]) + b2[:, None] * (P3[:, 2] - P3[:, 0])
+    # the base's normal there, smoothed over its vertices (a triangle's own normal steps from one to the next)
+    Nv = _normals(X, Bt, len(X))
+    n = Nv[Bt[best]].mean(1)
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    over = 1.0 if fd["turn"] >= 0 else -1.0
+    off = np.minimum(lay, max(wedge, PRESS_WEDGE) * g["d0"][v])  # (thinner, the roll rows lay in its base near the line)
+    X = X.copy()
+    X[v] = Pb + (over * face * off)[:, None] * n
     return X
 
 

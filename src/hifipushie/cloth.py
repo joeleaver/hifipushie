@@ -1098,6 +1098,202 @@ def _arc_point(H: np.ndarray, start: np.ndarray, s: np.ndarray, sign: float) -> 
     return np.c_[np.interp(ss, cum, Hc[:, 0]), np.interp(ss, cum, Hc[:, 1])]
 
 
+WORN_DBG: list = []  # (columns' pattern x, their samples, start clearance, target) of the last worn tops laid
+WORN_STEP = 0.003  # m between a worn top's samples up each column
+WORN_COL = 0.004  # m between its columns (pattern x)
+WORN_RAMP = 0.08  # m of column over which the start's clearance eases from the cylinder's to the worn one
+WORN_NORMAL = 0.02  # m: the body's normal under a column is averaged over this radius (a crease's normals jump)
+
+
+def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: np.ndarray, ys: np.ndarray,
+              hz: float, y0: float, target: float, info: dict | None = None, neck_x: float = 0.0) -> np.ndarray:
+    """A torso piece laid as it is WORN, hanging from the top of the shoulder, as a tailor builds a forepart on a
+    form. Each column (fixed pattern x) is laid up the body from the torso cylinder at the armpit's level (pattern
+    height y0), along the body's surface in a near-vertical plane facing the piece's side (a front column runs up
+    the chest, over the ridge of the shoulder and down the back), arc length = pattern height. Where a column
+    crosses the shoulder's ridge, the whole column is slid along that path so the piece's top lands ON the ridge
+    (front and back meet there, as their shoulder seam does worn): the cloth below follows on the cylinder, raised or
+    lowered by the same amount (a front long over the bust hangs lower: what the sim then sees is the pattern's
+    balance, not the start's). Columns that don't cross (the neck, under the armhole) take their neighbours' slide.
+    The clearance eases from the cylinder's to `target` over WORN_RAMP. Rows keep no lengths (the start relaxation
+    trues them), columns do. On the cylinder alone a jacket's shoulder seams started 23-25 cm apart (front on the
+    front of the cylinder, back on its back) and its notched collar, laid where it is worn, 13-25 cm from the
+    neckline it is sewn to. Returns every point's position."""
+    vn, tree = body.normals()
+    gx = np.arange(xs.min() - WORN_COL, xs.max() + 2 * WORN_COL, WORN_COL)
+    smax = max(float(ys.max() - y0) + 0.10, 0.36)
+    ns = int(np.ceil(smax / WORN_STEP)) + 1
+    q = _arc_point(Cw, start, gx, sgn)
+    tg = _arc_point(Cw, start, gx + 0.003, sgn) - _arc_point(Cw, start, gx - 0.003, sgn)
+    h = np.c_[tg[:, 1], -tg[:, 0]]
+    h /= np.maximum(np.linalg.norm(h, axis=1, keepdims=True), 1e-12)
+    h *= np.sign(np.sum(h * (q - Cw.mean(0)), 1))[:, None]
+    # the column's plane: up and straight out to the front / back, at the column's own x (tilted with the cylinder,
+    # the columns ran in toward the neck and front and back met different ridges: the front's 25 mm higher)
+    h3 = np.c_[np.zeros(len(h)), np.where(h[:, 1] < 0, -1.0, 1.0), np.zeros(len(h))]
+    h3 /= np.maximum(np.linalg.norm(h3, axis=1, keepdims=True), 1e-12)
+    ez = np.array([0.0, 0.0, 1.0])
+    t3 = np.cross(np.broadcast_to(ez, h3.shape), h3)  # the plane's normal
+    P = np.c_[q, np.full(len(q), hz + y0)]
+    c0 = body.clearance(P)
+    S = np.zeros((len(gx), ns, 3))
+    S[:, 0] = P
+    D = np.broadcast_to(ez, P.shape).copy()
+
+    def nrm(Pq):
+        dd, i = tree.query(Pq, k=12, distance_upper_bound=WORN_NORMAL + 0.03)
+        ok = np.isfinite(dd)
+        i = np.where(ok, i, 0)
+        n = (vn[i] * ok[..., None]).sum(1)
+        n0 = vn[tree.query(Pq)[1]]
+        n = np.where(ok.any(1)[:, None], n, n0)
+        return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    for j in range(1, ns):
+        n = nrm(P)
+        n = n - t3 * np.sum(n * t3, 1, keepdims=True)
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        d = np.cross(t3, n)  # in the plane, along the surface
+        d *= np.where(np.sum(d * D, 1) < 0, -1.0, 1.0)[:, None]
+        d = 0.5 * d + 0.5 * D  # (a little momentum: a crease's normals still turn sharply)
+        d -= t3 * np.sum(d * t3, 1, keepdims=True)
+        d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
+        Pn = P + WORN_STEP * d
+        f = min(1.0, j * WORN_STEP / WORN_RAMP)
+        want = c0 + (target - c0) * (f * f * (3 - 2 * f))
+        for _ in range(2):
+            n2 = nrm(Pn)
+            Pn = Pn + n2 * (want - body.clearance(Pn))[:, None]
+            Pn -= t3 * np.sum((Pn - S[:, 0]) * t3, 1, keepdims=True)
+        st = Pn - P
+        if neck_x:
+            # in front of / behind the neck the cloth doesn't follow the body up the throat or the nape: past the
+            # neck's base it runs on as it was going (a lapel's flap following the neck was turned out into the air)
+            free = (np.abs(S[:, 0, 0]) < neck_x) & (P[:, 2] > hz - WORN_NECK)
+            st[free] = WORN_STEP * D[free]
+        st *= (WORN_STEP / np.maximum(np.linalg.norm(st, axis=1), 1e-12))[:, None]  # (arc length kept)
+        D = st / WORN_STEP
+        P = P + st
+        S[:, j] = P
+    # the ridge: where a column's height peaks and falls again (over the shoulder)
+    jr = np.argmax(S[:, :, 2], axis=1)
+    zr = S[np.arange(len(gx)), jr, 2]
+    crossed = (jr < ns - 4) & (zr - S[:, -1, 2] > 0.006)
+    ci = np.clip(np.round((xs - gx[0]) / WORN_COL).astype(int), 0, len(gx) - 1)
+    ytop = np.full(len(gx), -np.inf)
+    np.maximum.at(ytop, ci, ys)
+    ln = ytop - y0
+    Lr = jr * WORN_STEP
+    ok = crossed & (ln > 0.05) & (Lr > 0.5 * ln) & (Lr < 1.6 * ln + 0.02)
+    if neck_x:  # (the shoulder's own ridge: by the neck the ridge climbs the neck, or an under garment's collar, and
+        # slid onto it the jacket rode 27 mm high: its collar stood 33 mm over the shirt's, its cuffs showed 21-29 mm)
+        ok &= np.abs(S[:, 0, 0]) > neck_x + WORN_NECK_CLEAR
+    # ONE slide for the piece (the median over the columns that cross the ridge): a draft's shoulder slope puts every
+    # column's top on the ridge when the piece hangs level; a slide per column sheared the piece (26-100 mm across
+    # the front) and its neck columns, which never cross, climbed the neck
+    slide = np.zeros(len(gx))
+    if ok.any():
+        slide[:] = float(np.clip(np.median((Lr - ln)[ok]), -WORN_SLIDE, WORN_SLIDE))
+    WORN_DBG.append((gx, S.copy(), c0, target, slide, ok))
+    del WORN_DBG[:-16]
+    if info is not None:
+        info.update(ridge_columns=int(ok.sum()), slide_mean=float(np.mean(np.interp(xs, gx, slide))), slide_mm=[round(float(slide.min()) * 1000, 1), round(float(slide.max()) * 1000, 1)])
+    for _ in range(4):  # neighbouring columns agree (each was laid alone)
+        S[1:-1, 1:] = 0.25 * S[:-2, 1:] + 0.5 * S[1:-1, 1:] + 0.25 * S[2:, 1:]
+    fx = np.clip((xs - gx[0]) / WORN_COL, 0, len(gx) - 1.001)
+    ix = fx.astype(int)
+    ax = fx - ix
+    sl = (1 - ax) * slide[ix] + ax * slide[ix + 1]
+    s_ = ys - y0 + sl  # arc up the column's path (< 0: on the cylinder, under the armpit's level)
+    fs = np.clip(s_ / WORN_STEP, 0, ns - 1.001)
+    js = fs.astype(int)
+    a2, aj = ax[:, None], (fs - js)[:, None]
+    out = ((1 - a2) * (1 - aj) * S[ix, js] + a2 * (1 - aj) * S[ix + 1, js] + (1 - a2) * aj * S[ix, js + 1]
+           + a2 * aj * S[ix + 1, js + 1])
+    low = s_ < 0
+    if low.any():
+        out[low] = np.c_[_arc_point(Cw, start, xs[low], sgn), hz + y0 + s_[low]]
+    return out
+
+
+PIN_GAP = 0.002  # m a pinned seam's two sides start apart
+WORN_PIN = 0.06  # m (pattern, sigma) over which a pinned seam's move fades into its pieces
+
+
+def _pressed(B: dict, M: dict, fd: dict) -> bool:
+    """A fold whose flap is pressed onto its base (place: a forepart laid where it is worn, turned >= 150 deg)."""
+    return fd["piece"] in (B.get("worn_top_pieces") or {}) and fd["turn"] > 0 and not fd.get("in_wrap") \
+        and math.degrees(abs(fd["turn"]) * len(fd["rows"])) >= 150
+
+
+def _repress(X: np.ndarray, B: dict, M: dict, smooth: bool) -> np.ndarray:
+    """The pressed flaps laid again on their bases as they are now."""
+    from . import folds as foldmod
+    F = M["F"]
+    hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
+    for fd in M.get("folds") or []:
+        if _pressed(B, M, fd):
+            X = foldmod.pressed_flap(X, M, fd, (B.get("faces") or {}).get(fd["piece"], 1.0), PRESS_LAY,
+                                     wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
+    return X
+
+
+def _pin_seams(X: np.ndarray, M: dict, ks: list, sigma: float = WORN_PIN, fixed: list | None = None, pull: float = 1.0) -> np.ndarray:
+    """Seams between pieces laid where they are worn (a jacket's shoulder seams, its centre back) pinned shut as a
+    tailor pins them on the form: each sewn pair goes to its middle, and each piece follows its seam's moves, faded
+    by pattern distance from the seam (Gaussian `sigma`, Shepard-weighted). Laid separately the front and back met
+    over the shoulder 3-6 cm apart (the left front stands a lap further out than the back). `fixed` pieces (made ones
+    laid on these, a notched collar) don't move: their seams' worn sides go all the way to them."""
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    pid, uv = M["piece"], M["uv"]
+    fixed = list(fixed or [])
+    both = np.isin(pid[sw[:, 0]], ks + fixed) & np.isin(pid[sw[:, 1]], ks + fixed) & \
+        ~(np.isin(pid[sw[:, 0]], fixed) & np.isin(pid[sw[:, 1]], fixed))
+    if not both.any():
+        return X
+    a, b = sw[both, 0], sw[both, 1]
+    mid = 0.5 * (X[a] + X[b])
+    fa, fb = np.isin(pid[a], fixed), np.isin(pid[b], fixed)
+    mid[fa], mid[fb] = X[a[fa]], X[b[fb]]
+    # each side stops PIN_GAP short of the other, the way it came (pinned onto one point, the cloth either side of the
+    # seam crossed: centre back, shoulders, the collar's neck seam)
+    # (toward each side's own cloth: the direction they came from crossed where they had passed each other)
+    A_, B_ = _graph(M)
+    same = pid[A_] == pid[B_]
+    acc, wt = np.zeros_like(X), np.zeros(len(X))
+    np.add.at(acc, A_[same], X[B_[same]])
+    np.add.at(wt, A_[same], 1.0)
+    np.add.at(acc, B_[same], X[A_[same]])
+    np.add.at(wt, B_[same], 1.0)
+    inward = acc / np.maximum(wt, 1)[:, None] - X
+    inward /= np.maximum(np.linalg.norm(inward, axis=1, keepdims=True), 1e-9)
+    ga, gb = np.where(fb, 1.0, 0.5) * PIN_GAP, np.where(fa, 1.0, 0.5) * PIN_GAP
+    ta, tb = mid + inward[a] * ga[:, None], mid + inward[b] * gb[:, None]
+    ta[fa], tb[fb] = X[a[fa]], X[b[fb]]
+    # (`pull` < 1: a side sewn to a fixed piece goes that share of the way: the sewing closes the rest, and a back
+    # held to a made collar while it relaxed started 9.8% of its triangles past 5%)
+    ta[fb] = X[a[fb]] + pull * (ta[fb] - X[a[fb]])
+    tb[fa] = X[b[fa]] + pull * (tb[fa] - X[b[fa]])
+    Y = X.copy()
+    for k in ks:
+        ends = np.r_[a[pid[a] == k], b[pid[b] == k]]
+        if not len(ends):
+            continue
+        D = np.r_[ta[pid[a] == k], tb[pid[b] == k]] - X[ends]
+        sel = np.where(pid == k)[0]
+        d2 = ((uv[sel, None, :] - uv[None, ends, :]) ** 2).sum(-1)
+        w = np.exp(-d2 / (2 * sigma * sigma))
+        fade = w.max(1)
+        Y[sel] = X[sel] + (w @ D) / np.maximum(w.sum(1), 1e-12)[:, None] * fade[:, None]
+    return Y
+
+
+WORN_SLIDE = 0.10
+WORN_CLEAR = 0.005  # m a worn top starts off the body under it: it RESTS on the shoulders (at the draped 12 mm the jacket
+# started 19 mm over the shirt at the shoulder, and its made collar, carried where it started, held it 27 mm high)
+WORN_NECK_CLEAR = 0.02  # m out from the neck point (world x) from which a column's ridge is the shoulder's
+WORN_NECK = 0.05  # m under the neck point from which a column in front of / behind the neck stops following the body  # m a worn column may slide along its path to put the piece's top on the shoulder's ridge
+
+
 LEG_BLEND = 0.15  # m under the crotch over which a trouser leg hands over from the seat's cylinder to the leg's tube
 LEG_TOP = 0.01  # m under the crotch line where the hand-over starts
 LEG_APART = 0.004  # m a trouser leg's side seam and inseam start apart at least
@@ -1426,8 +1622,30 @@ def _neck_frame(body: "Body", nb: np.ndarray, d: np.ndarray, R: float, band: flo
     return float(base), origin
 
 
+def _at_pattern(X: np.ndarray, M: dict, k: int, q: np.ndarray) -> np.ndarray:
+    """Where piece k's pattern point q lies in X: the affine map of the piece's triangle that holds q (the nearest
+    one past its outline)."""
+    F = M["F"][M["piece"][M["F"][:, 0]] == k]
+    A = M["uv"][F]
+    cen = A.mean(1)
+    q = np.asarray(q, float)
+    best, bd = 0, np.inf
+    for t in np.argsort(((cen - q) ** 2).sum(1))[:12]:
+        e1, e2 = A[t, 1] - A[t, 0], A[t, 2] - A[t, 0]
+        det = e1[0] * e2[1] - e1[1] * e2[0]
+        if abs(det) < 1e-14:
+            continue
+        w_ = q - A[t, 0]
+        b1, b2 = (w_[0] * e2[1] - w_[1] * e2[0]) / det, (e1[0] * w_[1] - e1[1] * w_[0]) / det
+        out = max(0.0, -b1) + max(0.0, -b2) + max(0.0, b1 + b2 - 1)
+        if out < bd:
+            best, bd, bb = t, out, (b1, b2)
+    P = X[F[best]]
+    return P[0] + bb[0] * (P[1] - P[0]) + bb[1] * (P[2] - P[0])
+
+
 def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm: str, w: dict,
-             body: "Body", pcs: dict | None = None) -> np.ndarray:
+             body: "Body", pcs: dict | None = None, placed: set | None = None) -> np.ndarray:
     """Wrap "seam": a piece laid from the edge it is sewn to (a tailored collar's stand on the jacket's neckline, a
     collar on its stand, a band on an edge): its sewn edge lies ON the edge of the pieces already placed that it is
     sewn to (the seam's own vertex pairs), and the piece runs on from there in one direction: `dir` "up" (default;
@@ -1483,7 +1701,10 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
         vny_ = vn[:, 1]
         side_ix = {True: np.where(vny_ > -0.3)[0], False: np.where(vny_ < 0.3)[0]}
 
-        def worn_pt(x0, z0, back):
+        def worn_pt(x0, z0, back, kk=None):
+            if placed and kk is not None and int(kk) in placed:
+                # a piece already laid where it is worn (place: _worn_top): its own point there
+                return _at_pattern(X, M, int(kk), [x0, z0 - hz])
             # (only the body's own back / front: at the nape the nearest vertex in x, z was one of the throat's)
             ix_ = side_ix[bool(back)]
             dxz = np.hypot(body.V[ix_, 0] - x0, body.V[ix_, 2] - z0)
@@ -1507,7 +1728,7 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
             wb_ = pcs[M["names"][pid[vb]]]["wrap"]
             if wb_.get("to", "torso") != "torso":
                 continue
-            Wb[i_] = worn_pt(float(uv[vb, 0]), hz + float(uv[vb, 1]), wb_.get("side") == "back")
+            Wb[i_] = worn_pt(float(uv[vb, 0]), hz + float(uv[vb, 1]), wb_.get("side") == "back", pid[vb])
         if not np.isnan(Wb).any():
             Wp = np.zeros((len(ua), 3))
             np.add.at(Wp, inv, Wb)
@@ -1729,7 +1950,7 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
                     rel2 = q2 - Q[jx]
                     # (the piece lies across the seam from the cloth it is sewn to)
                     qf = Bq[jx] + float(rel2 @ ec) * ef - sc * sf * float(rel2 @ nc) * nf_
-                    Pw = worn_pt(float(qf[0]), hz + float(qf[1]), pcs[M["names"][Bk[js[0]]]]["wrap"].get("side") == "back")
+                    Pw = worn_pt(float(qf[0]), hz + float(qf[1]), pcs[M["names"][Bk[js[0]]]]["wrap"].get("side") == "back", Bk[js[0]])
                     Pw = Pw + vn[tree.query(Pw)[1]] * (off_ + 0.006)  # (over the front and its turned lapel)
                     P_ = (1 - wv) * P_ + wv * Pw
             # turned flat about the line, the far side runs into a body that curves away under it: it lies on the
@@ -1912,7 +2133,7 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
         pts = np.r_[pts, X2 + np.outer(np.linspace(0, 0.12, 7), r2)]
         qf = pts @ G.T + g0
         back_ = pcs[M["names"][Bk[je]]]["wrap"].get("side") == "back"
-        Wp = np.stack([worn_pt(float(q_[0]), hz + float(q_[1]), back_) for q_ in qf])
+        Wp = np.stack([worn_pt(float(q_[0]), hz + float(q_[1]), back_, Bk[je]) for q_ in qf])
         Wp = Wp + np.stack([bnormal(q_) for q_ in Wp]) * lay
         O = S[kx].copy()
         # the plane: through the lapel's roll line as it lies worn (from the meeting point toward the break), turned
@@ -2436,6 +2657,21 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 rd_ = q - Cw.mean(0)
                 q = q + rd_ / np.maximum(np.linalg.norm(rd_, axis=1, keepdims=True), 1e-9) * (LAYER * ramp_)[:, None]
             X[sel] = np.c_[q, hps[2] + ys_ + dzs.get(nm, 0.0)]
+            if B.get("worn_top") and not cg_ and not lay_.any() and "armpit_z" in at \
+                    and float(U[:, 1].max()) + dzs.get(nm, 0.0) > -0.03:
+                # a jacket's / coat's forepart and back are built on the form: their tops start where they are worn
+                # (shoulders, chest, shoulder blades), so collar, lapel and shoulder seams start together
+                y0_ = float(at["armpit_z"]) - float(hps[2])
+                wi_ = {}
+                X[sel] = _worn_top(body, Cw, start, float(w.get("dir", 1.0)), xs_ + dxs.get(nm, 0.0),
+                                   ys_ + dzs.get(nm, 0.0), float(hps[2]), y0_, WORN_CLEAR + 0.25 * float(w.get("out", 0.0)), wi_,
+                                   neck_x=abs(float(hps[0])))
+                B.setdefault("worn_top_pieces", {})[nm] = wi_
+                if wi_.get("ridge_columns"):
+                    B.setdefault("_worn_slides", {})[nm] = wi_["slide_mean"]
+            elif B.get("worn_top") and not cg_ and B.get("_worn_slides"):
+                # a torso piece under the armhole (a side panel) rides with the worn pieces it is sewn between
+                X[np.where(sel)[0], 2] += float(np.mean(list(B["_worn_slides"].values())))
         elif to.startswith("arm."):
             side = to[4:]
             sh, el, wr = (body.J[f"{j}.{side}"] for j in ("shoulder", "elbow", "wrist"))
@@ -2949,7 +3185,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             q = _arc_point(head_curve, start_h, U[:, 0] + xo, 1.0)
             X[sel] = np.c_[q, hps[2] + U[:, 1] + float(w.get("lift", 0.0))]
         elif to == "seam":
-            X[sel] = _on_seam(M, X, uv, pid, k, nm, w, body, pcs)
+            X[sel] = _on_seam(M, X, uv, pid, k, nm, w, body, pcs,
+                              placed={names.index(o) for o in (B.get("worn_top_pieces") or {})})
             if w.get("lay") == "notched" and "flat" in LAY_INFO.get(nm, {}):
                 # between the band and the flat end the fall goes over the ridge of the shoulder: laid from two
                 # sides it is a little long there (the outer edge fans); its long edges are drawn in, the sewn edge
@@ -2979,6 +3216,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             X[sel] = np.c_[U[:, 0] + o[0], U[:, 1] + o[1], np.full(len(U), o[2])]
         else:
             raise ValueError(f"piece {nm}: unknown wrap {to!r} (torso, arm.L, arm.R, leg.L, leg.R, neck, head, seam, flat)")
+    if B.get("worn_top_pieces"):
+        X = _pin_seams(X, M, [names.index(nm) for nm in B["worn_top_pieces"]])
     gaps = np.full(len(X), gap)
     for k, nm in enumerate(names):
         wto = B["pieces"][nm]["wrap"].get("to", "")
@@ -3099,14 +3338,27 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                         pcs.get(fd.get("piece"), {}).get("wrap", {}).get("to", "").startswith("leg."):
                     continue  # (a trouser crease lies flat in the wrap: fixed, it held a leaning column's shear)
                 made_v[foldmod._geom(M, fd)["rows"][0]["v"]] = True
+                if _pressed(B, M, fd):  # (a pressed flap's line relaxes with its base; the flap is pressed again)
+                    continue
                 for row in fd["rows"]:
                     made_v[row] = True
-            for _ in range(6):
+            worn_k = [names.index(nm) for nm in (B.get("worn_top_pieces") or {})]
+            for _ in range(12 if worn_k else 6):
                 _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
                 if hi_[~made_v[M["F"]].any(1)].max() <= 1.04:
                     break
-                Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
-                Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=300)
+                if worn_k:
+                    # pieces laid where they are worn keep their pinned seams shut while they relax (relaxed
+                    # alone, a jacket's shoulder seams opened again to 5-10 cm)
+                    for _ in range(10):
+                        Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=4)
+                        Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=30)
+                        Xp = _pin_seams(Xp, M, worn_k, sigma=WORN_PIN / 4,
+                                        fixed=[j for j in range(len(names)) if made_v[pid == j].all() and j not in worn_k], pull=0.5)
+                        Xp = _repress(Xp, B, M, smooth)  # (pressed lapels follow their foreparts)
+                else:
+                    Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
+                    Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=300)
                 Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
@@ -3230,6 +3482,7 @@ def piece_faces(M: dict, X: np.ndarray, body: "Body", pcs: dict) -> dict:
 FOLD_WIDTH_FITTED = 0.008  # a fold's U in a "fitted" placement (Blender: its cloth's collision distances apart)
 FOLD_WIDTH_MADE = 0.0016  # a fold's U on a constructed (never simulated) mesh: two layers of cloth nearly touching
 RELAY_OPEN = 40.0  # deg a made flap opens to clear the cloth under it; past that the cloth is tucked under (_tuck)
+PRESS_LAY = 0.003  # how far a pressed lapel lies off its forepart (it bridges a curving chest with 2 cm triangles)
 FOLD_LAY = 0.0015  # how far a placed flap starts off what it lies on (a contact solver's gap, with room for chords)
 
 
@@ -3269,6 +3522,13 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
                         pcs[o]["wrap"].get("half", 0) * pcs[nm]["wrap"].get("half", 0) >= 0:
                     obs.append(foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o]))
         hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
+        if _pressed(B, M, fd):
+            # a forepart laid where it is worn: its lapel is PRESSED onto it (the flap's mirror image across the roll
+            # line, on the base): turned rigidly about the roll line over a base that follows the chest and shoulder,
+            # the flap stretched past 30% by 50 deg and stood up round the neck
+            X = foldmod.pressed_flap(X, M, fd, faces[nm], PRESS_LAY, wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08)
+            info[fd["name"]] = {"pressed": True}
+            continue
         X, info[fd["name"]] = foldmod.apply(X, M, fd, faces[nm], obs, lay,
                                             wedge=float(np.clip(0.0012 / hm, 0.04, 0.15)) if smooth else 0.08,
                                             max_stretch=0.30)  # (made pieces start up to that far past their flat lengths: the solver lifts their limit)
@@ -4691,6 +4951,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # smooth: dressed on straight arms (the body bends back in the sim's "pose" stage), nothing folded but what the
     # solver keeps as rest (interfaced pieces)
     body_p, pose = body.straight_arms() if smooth else (body, None)
+    Bp["worn_top"] = worn_top(g)
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     push = dict(Bp.get("push") or {})
     poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
@@ -5352,11 +5613,19 @@ def seam_finishes() -> dict:
     return {k: v for k, v in _kb()["seam_finishes"].items() if not k.startswith("_")}
 
 
+def worn_top(g: dict) -> bool:
+    """Garment key `worn_top` (default: the kind's, garment_kb.json): torso pieces' tops start where they are worn
+    (place(): _worn_top), as tailored garments are built on a form."""
+    if "worn_top" in g:
+        return bool(g["worn_top"])
+    return bool(_kb()["kinds"].get(garment_kind(g) or "", {}).get("worn_top", False))
+
+
 def garment_kind(g: dict) -> str | None:
     """The garment's kind (garment_kb.json kinds): its design sheet's, else its draft design's."""
-    d = g.get("design")
-    if isinstance(d, dict) and d.get("kind"):
-        return d["kind"]
+    for d in (g.get("design"), g.get("_design")):  # (the compiled garment carries its sheet as "_design")
+        if isinstance(d, dict) and d.get("kind"):
+            return d["kind"]
     e = expanded(g)
     fr = (e.get("pattern") or {}).get("from") if isinstance(e.get("pattern"), dict) else None
     d = _kb()["designs"].get(fr) if isinstance(fr, str) else None
@@ -5963,7 +6232,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
