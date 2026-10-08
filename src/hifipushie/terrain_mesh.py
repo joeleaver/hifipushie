@@ -124,6 +124,7 @@ def smoothstep(e0, e1, x):
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
+EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
 BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
 FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
 
@@ -3818,6 +3819,16 @@ def _job_tile(ij):
                 fa = np.linalg.norm(np.cross(Ps[Fs[:, 1]] - Ps[Fs[:, 0]], Ps[Fs[:, 2]] - Ps[Fs[:, 0]]), axis=1) / 2
                 bur = (field.front(Ps[Fs].mean(1)) < -np.maximum(thr, BURIED_DEEP * np.sqrt(fa))) & \
                     (np.abs(field.front(Ps))[Fs].max(1) > thr)
+                # (and still in rock half a metre out along the face's own normal: what faces open air from just under
+                # the surface is seen, as `terrain_cliffs.exposed_buried` judges it)
+                kb = np.flatnonzero(bur)
+                if len(kb):
+                    fn = np.cross(Ps[Fs[kb, 1]] - Ps[Fs[kb, 0]], Ps[Fs[kb, 2]] - Ps[Fs[kb, 0]])
+                    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+                    bur[kb] = field.front(Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn) < 0
+                    if hasattr(field, "region"):  # (under the pushed heightmap counts as hidden)
+                        q = Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn
+                        bur[kb] |= q[:, 2] <= field.region.height(q[:, 0], q[:, 1]) + 0.05
         stem = f"tile_{i}_{j}_lod{k}"
         from .terrain_bake import material as terrain_bake_material
         images, binfo, deferred = None, None, None
