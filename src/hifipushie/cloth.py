@@ -3625,8 +3625,9 @@ def _carry(Bp: dict, M: dict, X: np.ndarray, body0: "Body", poses: list, made: l
         flap_info[label] = {"vertices": int(len(fv)), "with": find(part[0]) if part else None}
     if not idx:
         return {"idx": np.zeros(0, np.int64), "poses": np.zeros((len(poses), 0, 3)), "moves": {}, "pieces": []}
+    fi_ = np.where(taken & ~np.isin(pid, list(ks.values())))[0] if flap_info else np.zeros(0, np.int64)
     return {"idx": np.concatenate(idx), "poses": np.concatenate(P, axis=1), "moves": moves, "pieces": names,
-            "roots": {nm: find(nm) for nm in names}, "flaps": flap_info}
+            "roots": {nm: find(nm) for nm in names}, "flaps": flap_info, "flap_idx": fi_}
 
 
 def _open_start(Bp: dict, M: dict, Xs: np.ndarray, body0: "Body", poses: list, carry: dict) -> tuple:
@@ -4719,6 +4720,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                       **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in Bp["hug"]]))[0]}
                          if Bp.get("hug") else {}),
                       **coll, **({"rest": rest_s} if smooth else {}))
+        if carry and len(carry.get("flap_idx", ())) and smooth and "bend_rest" in fold_s:
+            # made flaps of draped pieces (made_folds): held like the made pieces, but their rest is the flat pattern
+            # FOLDED at their line (as the draped cloth beside them rests): resting as they start (world positions)
+            # beside cloth resting on the flat pattern, the triangles across the roll line read 332% stretched and the
+            # solver failed at frame 0 (su_44). The runner's restIdx path: carried vertices rest as given here
+            rj_ = np.array(rest_s, float, copy=True)
+            rj_[carry["idx"]] = Xstart[carry["idx"]]  # (the made pieces as before: as they start)
+            fl_ = carry["flap_idx"]
+            rj_[fl_] = np.asarray(fold_s["bend_rest"], float)[fl_]
+            arrays.update(rest=rj_, restIdx=np.asarray(carry["idx"], np.int64))
         if (Bp.get("band_clear") or Bp.get("hug")) and backend == "zozo":
             # a gripping band starts BAND_CLEAR off the body: the body's contact offset + gap must be inside that
             zc_ = cfg.setdefault("zozo", {})
