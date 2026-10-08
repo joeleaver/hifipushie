@@ -213,7 +213,7 @@ class Region:
         return bool(self.S[q0:q1, r0:r1].max() > 0)
 
 
-WHOLE_ADDS = False  # (see CliffField._with_adds: off until sea stacks mesh cleanly solid; the decimation's error now
+WHOLE_ADDS = __import__("os").environ.get("HIFIPUSHIE_WHOLE_ADDS") == "1"  # (see CliffField._with_adds: off until sea stacks mesh cleanly solid; the decimation's error now
 # counts faces out in front of the rock, which keeps the hollow's walls inside)
 
 
@@ -651,7 +651,7 @@ def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_ke
         for r in [r for r in ex if r["area_m2"] > EXPOSED_LIMIT][:8]:
             failures.append(f"tile {r['tile'][0]},{r['tile'][1]} LOD {r['lod']}: {r['area_m2']:.1f} m2 of the cliff "
                             f"shell's buried back stands in the open ({r['faces']} faces, the largest at {r['at']}): "
-                            f"drawn plain, flat pale triangles in the cliff")
+                            f"drawn with the plain buried material: flat triangles in the cliff")
     summary["failures"] = len(failures)
     return {"summary": summary, "failures": failures}
 
