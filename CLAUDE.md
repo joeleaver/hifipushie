@@ -3831,6 +3831,14 @@ regresses, bisect by building one spec at each commit and diffing heights.
       floating 0; Khronos 1044 files 0 / 0 (round 3 export). Tests also: no sealed air in a column at 0.2 m, no recess
       narrower than ~1 m (thin air 0.07-0.22% of the solid: bevel corners), test_level_look, test_terrain_style,
       test_tiles pass.
+    - Detached foot pieces (2026-10-08, branch `stacks-foot`; tiles2: 30 triangles 0.75 m over the heightmap at
+      [228.6, 981, -0.8] by tl2_island stack2): (1) the rock relief BUILT 0.3-0.4 m out from the column over its notch
+      (a lip in the air); a Stack's relief now builds at most `terrain_mesh.STACK_BUILD` 0.05 m (`vol.build`, weighted
+      by the stack's relief share `Field.build_w`: continuous, fields without stacks untouched); (2) the column's rock
+      ended at base - 1 m while the sea floor round it is deeper: its rim hung over the floor and the relief cut it into
+      pieces. `Column(foot=)` = the lowest ground within 2 radii - 1.5 m (`stacks(T)`); (3) fallen blocks seat
+      `BOULDER_SEAT` 1.2 m inside the column. Test: tests/test_stacks.py::test_no_piece_detached_at_the_foot (a
+      synthetic cliff coast with 3 stacks: every solid piece round each foot reaches the ground; failed before).
     - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
       cliff shell on these stacks.
 
@@ -4554,6 +4562,12 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       0.90 / 0.94), anime_spruce, cartoon / blobby oak + spruce, pixar / anime / real grass, pixar daisy. Realistic
       grass: LOD2's clustered atlas has slot `foliage_boughs2_winter` (lying cards: keep 1.0 when the LOD's keep share
       leaves none).
+    - Pixar LOD overdraw (consumer note 87: the vale's pixar wood at 56 ms): `crown.cards.lod_keep` [share of the cards
+      kept under lod 0.6, under 0.3] + `cards.lod_area` (growth exponent; 0.5 = same area): the shell carries the mass.
+      scratchpad/od2.py = summed card area / covered area (overdraw before alpha) per LOD. Oak [0.5, 0.55] / 0.4: LOD1
+      13.3 -> 6.2, LOD2 10.3 -> 5.9 (front; LOD0 13.6 untouched: the next lever if the vale is still slow); Godot card
+      coverage at the switches 0.96 / 0.91, 0.89 / 0.85, 0.86 / 0.99 ([0.45, 0.35] / 0.35 gave LOD2 0.82). Spruce [0.45,
+      0.35] / 0.35: LOD1 3.0 -> 1.4, LOD2 3.0 -> 0.9; Godot 0.96 / 0.94, 0.91 / 0.89. Both re-exported, Khronos 0 / 0.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

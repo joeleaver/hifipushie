@@ -206,6 +206,7 @@ class Tube:
 
 
 STACK = {"radius": 0.75}
+STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack (the rest of the relief carves)
 # a solid sea stack's radius x the sea's stack radius; its form is terrain_stack.FORM (a jointed column), a style's
 # sheet may override it (rock.stack)
 
@@ -216,18 +217,20 @@ class Stack:
     waterline notch, fallen blocks at the foot). The heightfield can't hold a 70-90 deg side on 1-2 m cells (its
     stacks came out as rounded loaves); the lobed, bedded prism that stood here before read as a pile of tyres."""
 
-    def __init__(self, name, xy, base, top, r, seed, blend=0.4, clip=None, sea=None, over=None, stage="auto"):
+    def __init__(self, name, xy, base, top, r, seed, blend=0.4, clip=None, sea=None, over=None, stage="auto",
+                 foot=None):
         from .terrain_stack import Column
         self.name, self.op, self.blend, self.relief = name, "add", float(blend), 1.0
+        self.build = STACK_BUILD  # (its rock relief carves; see Field._solid)
         # the heightfield's own stack (a slim core) taken away within `clip` m of the centre above the plinth, so the
         # solid stack alone is the form: two steep surfaces crossing inside its notch meshed as shards
         self.clip = None if clip is None else (float(clip), float(base) + 0.5)
         self.xy, self.base, self.top, self.r, self.seed = np.asarray(xy, float), float(base), float(top), float(r), \
             int(seed)
         self.col = Column(self.xy, self.base, self.top, self.r, self.seed,
-                          sea=(self.base + 2.0) if sea is None else sea, stage=stage, over=over)
+                          sea=(self.base + 2.0) if sea is None else sea, stage=stage, over=over, foot=foot)
         m = max(self.col.reach, self.clip[0] if self.clip else 0.0) + self.blend + NEAR + 1.0
-        self.lo = np.r_[self.xy - m, self.base - 1.0 - NEAR]
+        self.lo = np.r_[self.xy - m, self.col.foot - NEAR]
         self.hi = np.r_[self.xy + m, self.top + 1.0 + NEAR]
 
     def sd(self, p, detail=False):
@@ -252,8 +255,12 @@ def stacks(T):
         from .terrain_sea import STACK_CORE
         rc = STACK_CORE * float(a["radius"]) + 0.11 * float(a["height"]) + 0.8  # (the core, spread at 84 deg, + margin)
         from .terrain_style import stack_form
+        # its rock runs down into the sea floor round it (the lowest ground within twice its radius, 1.5 m in)
+        r2 = 2.0 * STACK["radius"] * float(a["radius"]) + 2.0 * T.cell
+        near = np.hypot(T.X - xy[0], T.Y - xy[1]) < r2
+        foot = float(T.H[near].min()) - 1.5 if near.any() else sea - 3.0
         out.append(Stack(f"stack{i}", xy, sea - 2.0, top, STACK["radius"] * float(a["radius"]), 3000 + i, clip=rc,
-                         sea=sea, over=stack_form(T, xy)))
+                         sea=sea, over=stack_form(T, xy), foot=foot))
     stages = ", ".join(sorted({s.col.stage for s in out}))
     note = (f"stacks: {len(out)} as jointed rock columns ({stages}: joint faces, steps at a few levels, notch, "
             f"fallen blocks), "
@@ -1324,6 +1331,9 @@ class Field:
                 # none on floors (a person walks there)
                 w = smoothstep(NEAR, 0.0, d) * self._relief_cap(size) * smoothstep(0.3, 1.5, above)
                 near[k] = np.maximum(near[k], w * vol.relief)
+                if getattr(vol, "build", None) is not None and getattr(self, "build_w", None) is not None:
+                    # (a volume whose relief may only carve, or build at most `build` m: see Stack)
+                    self.build_w[k] = np.maximum(self.build_w[k], w)
                 if self.floor_guard is not None:
                     self.floor_guard[k] = np.minimum(self.floor_guard[k], np.where(np.isinf(above), 1.0,
                                                                                   smoothstep(0.3, 1.5, above)))
@@ -1338,6 +1348,7 @@ class Field:
     def _solid(self, p, F, s):
         near = np.zeros(len(p))
         self.floor_guard = np.ones(len(p))
+        self.build_w = np.zeros(len(p)) if any(getattr(v, "build", None) is not None for v in self.vols) else None
         depth = -np.asarray(F, float).copy()  # (how far under the open ground: joints are a surface thing)
         dvoid = np.full(len(p), np.inf) if getattr(self, "thin_parts", None) else None
         F = self.volumes(p, F, near, dvoid)
@@ -1400,6 +1411,12 @@ class Field:
                     else:
                         R, mic = self._styled_relief(p[k], g, jw, fd, u, blk, ts)
                         R = w[k] * R
+                    if self.build_w is not None:
+                        # rock relief on a stack carves, building at most STACK_BUILD m: built out over its notch it
+                        # stood a lip of rock in the air (tl2_island stack2, a 30-triangle piece floating 0.75 m over
+                        # the heightmap); blended by the stack's relief weight, so the field stays continuous
+                        bw = self.build_w[k]
+                        R = R + bw * (np.maximum(R, -STACK_BUILD) - R)
                     F[k] = F[k] + (R if tw is None else self.thin_cap(R, hw, tw))
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
