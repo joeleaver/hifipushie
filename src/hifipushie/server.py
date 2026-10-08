@@ -2076,6 +2076,31 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
 
 
 @mcp.tool(structured_output=False)
+def character_read(name: str, tag: str = "", read: dict | None = None, view: str = "", render: bool = False):
+    """Stage 0 of the likeness checklist: the CHARACTER READ (what a person knows from one look: "square jaw, strong
+    chin, straight nose"), as a form of gestalt descriptors, each bound to bands on checklist items in every view.
+    - character_read(name): the form to fill while LOOKING at the reference pictures.
+    - character_read(name, "reference", read={"descriptors": {id: {"confidence": clear|likely|hint, "picture", "note"}},
+      "summary"}): store the references' read (the prior).
+    - character_read(name, render=True): a sheet of the model from each reference camera and from views no reference
+      shows (both profiles, the other three-quarter, low angle). Give that sheet and the form to a reader that has NOT
+      seen the references (a fresh agent), one read per panel, and store each: character_read(name, "<tag>", read, view).
+    - character_read(name, "<tag>"): the diff, reference vs the model's blind reads view by view (kept / CONTRADICTS /
+      missing / adds, and the controls the read needs that we lack). Read it before the millimetres."""
+    from . import likeness_read as lr
+    if render:
+        pn = str(store.HOME / "human_renders" / f"lk_{name}_read_views.png")
+        r = lr.render_views(name, pn)
+        return [_png(PILImage.open(pn)), f"views {r['views']}: {pn}\n\n" + lr.form()]
+    if read is not None:
+        lr.set_read(name, tag or "reference", read, view=view or None)
+        return f"stored read '{tag or 'reference'}'" + (f" view {view}" if view else "")
+    if tag and tag != "reference":
+        return lr.diff(name, tag)
+    return lr.form()
+
+
+@mcp.tool(structured_output=False)
 def likeness_points(name: str, image: str, points: dict | None = None, lines: dict | None = None, by: str = "",
                     replace: bool = False) -> str:
     """Hand-placed points on a reference picture for features the detector can't find (stored in

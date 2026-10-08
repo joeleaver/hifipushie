@@ -5599,9 +5599,27 @@ seed head)).
     - NOT validated: the jawline levers (structure stage on lk_garrett3: misses got worse or unmeasured, nothing
       taken) and the landmark jaw line itself: on a head without `shape.jawline`, lm 2..8 are GNM's diagonal, not the
       visible border (ramus 41 deg where the render search read 17.5).
-    - Designed, not built: stage 0 "character read" (gestalt descriptors bound to item bands in every view, an LLM
-      form on the references as a prior, the same form filled blind on renders of the model, the diff leading the
-      report). See the round-4 report to main.
+    - Round 5 (same day, onemesh2's ddf1a63 merged: nose_tip pivots on the alar bases): shape.nose_tip now moves the
+      base line ~0.5 deg per degree (lk_garrett5: -5.1 -> +1.3 at 14 deg, painting +2.4). Profile fit: holds =
+      60 region vertices x3 in the front picture's plane (`_front_holds`), pins = every front-view item when run
+      alone (`_undone(first, c, 99)`), gain 0.7, components capped at 1.6 sigma, part "cheek" (cheek regions, far
+      cheek contour sn..sto: rms 4.2 -> 1.2 mm in 3 rounds; structure stage). `yaw_doubt` (detector head yaw vs the
+      fitted camera > 6 deg): "NOT ONE PROJECTION" in the coverage line, depth items' tolerance + 0.5 mm / deg
+      (Garrett's painting: +7 mm, so those rows pass trivially: the shape rows, bridge / tip / fold / base, don't).
+      Sheet lk_07_profile_fit_round2.png (lk_garrett2 -> lk_garrett5): tamer than lk_06; the chin took one round
+      (-44 -> -41, painting -36), the second was refused by a front pin (lower lip). Jawline lever NOT re-run.
+    - Stage 0, the CHARACTER READ (`likeness_read.py`, likeness.json `descriptors`: 32 gestalt words, each with
+      bands on checklist items (FIRST VALUES, uncalibrated), `opposite`s and its control or GAP; MCP `character_read`):
+      `form()`, `set_read(name, tag, read, view)` (<model>/likeness_read.json), `bands`, `apply_prior(cmp, read)`
+      (unmeasured rows take the band; measured photo / model values outside it flagged), `render_views` (reference
+      cameras + both profiles, the other three-quarter, low angle), `diff(name, tag)`; `likeness.report` leads with
+      it. Reads are made by FRESH agents (Agent tool: form + pictures only; blind ones get only the render sheet).
+      Garrett (stored on lk_garrett5; sheets + diff in /mnt/data/hifipushie/likeness/read/): reference read = lean,
+      long face, square jaw, strong broad chin, straight nose, heavy brow, deep-set hooded eyes, rugged (the reader
+      said LEAN where Joe said chunky). om_garrett current (v21): kept 33 of 72 descriptor-views; "chunky" in all six
+      views, soft jaw in five, weak chin + flat brow in both profiles. Pass 6 (v16): 46 of 72; lean kept, soft jaw +
+      weak chin in both profiles and the three-quarter. Known: a view that can't show a descriptor (face shape in a
+      profile) counts as "missing"; not blind-tested for repeatability; no stubble stand-in; bands uncalibrated.
     - Memory (capped, /usr/bin/time): staged fit 1.85 GB peak / 15:50, three-model comparison 1.2 GB, report 1.07 GB.
   - Open: a jaw control (ramus / border / neck step), a fold control; shading with albedo handled (a stubble mask, or
     the side-light shot from the brief); ears; the jaw contour finder's noise; `human(..., refs=)`; photo scale uses

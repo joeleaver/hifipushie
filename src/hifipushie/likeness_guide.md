@@ -156,6 +156,31 @@ photo's shading). It does not make a likeness by itself: the shading levers are 
 way), the jaw's L and the fold have no control that draws them, and a face is more than its list. Use it for the
 first pass, then judge the panels and the whole head.
 
+## Stage 0: the character read
+
+Before any millimetre, say who this is: "a lean, weathered man, long face on a square jaw, strong broad chin,
+straight nose, heavy brow". A person knows a three-quarter view is wrong because it doesn't fit that macro; the
+checklist's rows can all pass while the read fails. So:
+
+1. `character_read(name)` gives the form: gestalt descriptors by group (build, face shape, jaw, chin, nose, brow,
+   eyes, cheeks, overall), as portrait artists' head types, casting vocabulary and forensic class descriptors use
+   them. Fill it LOOKING at the references (confidence clear / likely / hint, which picture shows it) and store it:
+   `character_read(name, "reference", read=...)`.
+2. Each descriptor is bound to bands on checklist items in every view, seen or not ("square jaw" = gonial angle
+   <= 122, ramus <= 12 deg from vertical, jaw / cheekbone width >= 0.86, a neck step, a jaw corner in the shading).
+   The stored read is a PRIOR: an item no picture measures takes the band; a measured reference value outside its
+   own read is flagged (suspect that picture's camera or expression); the model outside the band is flagged. The
+   bands are first values, not yet calibrated on real heads.
+3. The round trip is the intuition check: `character_read(name, render=True)` draws the model from each reference
+   camera and from views no reference shows (both profiles, the other three-quarter, low angle). A reader that has
+   NOT seen the references (a fresh agent given only the form and the sheet) fills one form per panel; store each
+   (`character_read(name, "<tag>", read, view)`), then `character_read(name, "<tag>")` is the diff: kept /
+   CONTRADICTS (an opposite read instead) / missing / adds per view, and the controls the read needs that we lack.
+   `likeness(name)` leads with it.
+
+Limits: the renders are bald clay with drawn brows; a profile can't show a face shape (it reads "missing"); two
+readers can disagree (lean vs chunky on one front picture): keep the summary sentence and read the diff by eye too.
+
 ## A profile from a turned view (contours)
 
 A three-quarter picture holds a profile at a known angle: the FAR side of the face against the background (forehead,

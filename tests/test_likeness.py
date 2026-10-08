@@ -285,3 +285,28 @@ def test_contour_items_in_the_checklist():
     ids = {it["id"] for it in lk.checklist()}
     assert all(r in ids for it in items for r in it.get("replaces", []))
     assert all(i in ids for part in lk.PROFILE_ITEMS.values() for i in part)
+
+
+def test_character_read(tmp_path, monkeypatch):
+    from hifipushie import likeness_read as lr, store
+    monkeypatch.setattr(store, "HOME", tmp_path)
+    ds = lr.descriptors()
+    ids = {it["id"] for it in lk.checklist()}
+    assert len(ds) >= 25 and all(m["item"] in ids for d in ds for m in d["implies"])          # bound to real items
+    assert all(o in {d["id"] for d in ds} for d in ds for o in d.get("opposite", []))
+    assert "jaw_square" in lr.form() and "chin_cleft" in lr.form()
+    lr.set_read("m", "reference", {"descriptors": {"jaw_square": {"confidence": "clear"}, "chin_strong": {"confidence": "likely"},
+                                                    "chin_cleft": {"confidence": "hint"}}, "summary": "square-jawed"})
+    lr.set_read("m", "v1", {"descriptors": {"jaw_soft": {"confidence": "likely"}}}, view="profile")
+    lr.set_read("m", "v1", {"descriptors": {"jaw_square": {"confidence": "likely"}, "chin_strong": {"confidence": "hint"}}}, view="front")
+    t = lr.diff("m", "v1")
+    assert "square jaw -> reads soft jaw" in t and "kept 2 of 6" in t and "GAP" in t           # the cleft has no control
+    b = lr.bands(lr.load("m")["reads"]["reference"])
+    assert b["jaw_gonial"][1] <= 122 and b["prof_chin"][0] >= -36
+    rows = [{"id": "jaw_gonial", "name": "Gonial angle", "unit": "deg", "tol": 6.0, "score": 1.0, "photo": 118.0, "model": 136.0, "view": "three_quarter"},
+            {"id": "jaw_ramus", "name": "Ramus", "unit": "deg", "tol": 4.0, "score": -1.0, "view": "-"}]
+    lines = lr.apply_prior({"rows": rows}, lr.load("m")["reads"]["reference"])
+    assert rows[0]["read_flag"] == "model" and "prior" in rows[1] and any("MODEL outside the read" in x for x in lines)
+    import pytest
+    with pytest.raises(ValueError):
+        lr.set_read("m", "reference", {"descriptors": {"nope": {}}})

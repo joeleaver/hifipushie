@@ -1377,7 +1377,21 @@ def report(name: str, base: dict | None = None, top: int = 8, save: str | None =
     cmp = compare(name, base)
     out = save or str(store.HOME / "human_renders" / f"lk_{name}_focus.png")
     focus_sheet(cmp, out, top=top)
-    return table_text(cmp), out, cmp
+    # stage 0, the character read: its diff (reference vs the model's blind reads) and what the read implies lead the
+    # report, above the millimetres
+    from . import likeness_read as lr
+    lead = []
+    reads = lr.load(name)["reads"]
+    if reads.get("reference"):
+        for tag in reads:
+            if tag != "reference":
+                lead.append(lr.diff(name, tag))
+        pr = lr.apply_prior(cmp, reads["reference"])
+        if pr:
+            lead.append("the read as a prior:\n" + "\n".join(pr))
+    else:
+        lead.append("no character read stored (character_read): the report is millimetres only")
+    return "\n\n".join(lead + [table_text(cmp)]), out, cmp
 
 
 # ---- staged fitting from the sheet: big to small, each stage through an existing control, guarded ------------------
