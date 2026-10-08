@@ -159,10 +159,12 @@ def height_at(D: dict, M: dict, big: bool | None = None, fabric: str = "shirting
 
 
 def displace(M: dict, V: np.ndarray, D: dict, fabric: str = "shirting", opts: dict | None = None,
-             stiff: np.ndarray | None = None, edge: float = 0.02) -> tuple:
+             stiff: np.ndarray | None = None, edge: float = 0.02, body=None) -> tuple:
     """V with the big folds in its geometry: each vertex out along its normal by the big dabs' height (outward only: a
     fold lifts off the body), fading to nothing within `edge` of a piece's outline (seams stay shut) and on interfaced
-    cloth. Returns (V, rms mm)."""
+    cloth. "Out" is the garment's outside (cloth.oriented_faces): the pattern mesh winds each piece as its pattern
+    lies, and on su_garrett's trousers the folds of the inward-wound back.L went INTO the thigh (111 faces inside the
+    body after a clean sim). Returns (V, rms mm)."""
     from scipy.spatial import cKDTree
     h = height_at(D, M, True, fabric, opts)
     h = np.maximum(h, 0.0) + 0.35 * np.minimum(h, 0.0)
@@ -173,7 +175,8 @@ def displace(M: dict, V: np.ndarray, D: dict, fabric: str = "shirting", opts: di
     h = h * np.where(same, f * f * (3 - 2 * f), 1.0)
     if stiff is not None:
         h = h * np.clip(1.0 - 1.5 * np.asarray(stiff), 0, 1)
-    F = M["F"]
+    from .cloth import oriented_faces
+    F = oriented_faces(M, V, body=body)
     fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
     N = np.zeros_like(V)
     for c_ in range(3):

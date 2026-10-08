@@ -492,6 +492,35 @@ def test_fine_start_check_fails_loudly():
     assert cloth.fine_start_check(M, dict(plan, rest_idx=np.array([3]))) == ""  # made
 
 
+def test_folds_in_geometry_lift_off_the_body_whatever_the_winding():
+    # cloth_detail.displace moves vertices out along the garment's OUTSIDE (oriented_faces), not the pattern's winding:
+    # on su_garrett's trousers the inward-wound back.L had its folds pushed into the thigh (111 faces inside the body)
+    from hifipushie import cloth_detail
+    V, T = _ball()
+    body = cloth.Body({"V": V, "F": T, "J": {}})
+    body._m = {"mm": {}, "at": {}}
+    th = np.linspace(-0.6, 0.6, 9)
+    zz = np.linspace(-0.04, 0.04, 5)
+    X = np.array([[0.105 * np.cos(t), 0.105 * np.sin(t), z] for z in zz for t in th])
+    uv = np.array([[0.105 * t, z] for z in zz for t in th])
+    F = []
+    for j in range(4):
+        for i in range(8):
+            a, b, c, d = j * 9 + i, j * 9 + i + 1, (j + 1) * 9 + i, (j + 1) * 9 + i + 1
+            F += [[a, c, b], [b, c, d]]  # wound INTO the ball
+    F = np.array(F)
+    M = {"F": F, "uv": uv, "piece": np.zeros(len(X), int), "names": ["p"], "sew": np.zeros((0, 2), int),
+         "border": np.zeros(len(X), bool)}
+    orig = cloth_detail.height_at
+    cloth_detail.height_at = lambda *a, **k: np.full(len(X), 0.004)
+    try:
+        W, _ = cloth_detail.displace(M, X, {}, body=body)
+    finally:
+        cloth_detail.height_at = orig
+    r0, r1 = np.linalg.norm(X, axis=1), np.linalg.norm(W, axis=1)
+    assert np.all(r1 > r0 + 0.003), (r1 - r0).min()
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

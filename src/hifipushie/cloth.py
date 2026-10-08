@@ -260,7 +260,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     # how the kind is worn may roll pieces back (no tie: the fronts above the first closed button roll open in a V)
     for f in gdmod.wear(g, "folds"):
         pc_ = out.get(f.get("piece"))
-        if pc_ is not None and all(isinstance(q, str) and (q in pc_["names"] or q in (pc_.get("marks") or {}))
+        if pc_ is not None and all(isinstance(q, str) and (q.partition("+")[0] in pc_["names"]
+                                                           or q.partition("+")[0] in (pc_.get("marks") or {}))
                                    for q in ([f["line"]] if isinstance(f["line"], str) else f["line"])):
             folds = [o for o in folds if o.get("name") != f.get("name")] + [dict(f)]
     for f in g.get("folds") or []:  # the garment's folds; one named like a table's replaces it ("off": drops it)
@@ -3725,7 +3726,7 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         V = clear(V)
         V = _relax_stretch(V, M, ~held, 0.03, iters=15)
         V = clear(V)
-        V, untangled = _untangle(V, M, ~held)
+        V, untangled = _untangle(V, M, ~held, reshape=True)
         if len(untangled) > 1:
             V = clear(V)
         Bp["untangled"] = untangled + [int(_crossing_verts(V, M).sum())]
@@ -3769,7 +3770,7 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
                                        own_base=True, wedge=0.03)
             info[fd["name"]]["start_open_deg"] = inf["turn_deg"]
         # what still passes through an opened flap (the stations are eased along the line) is smoothed out from under it
-        start, ut = _untangle(start, M, ~held)
+        start, ut = _untangle(start, M, ~held, reshape=True)
         if len(ut) > 1 and len(body.V):
             start = _clear_of_body(start, M["F"], ~held, body, 0.0042, 0.0034, CLEAR_GROW)
         Bp["untangled"] = (Bp.get("untangled") or []) + ["flaps"] + ut + [int(_crossing_verts(start, M).sum())]
@@ -3895,12 +3896,16 @@ def _crossing_hits(X: np.ndarray, M: dict) -> tuple[np.ndarray, np.ndarray]:
     return E[ei[hit]], T[hit]
 
 
-def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10) -> tuple[np.ndarray, list]:
+def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10, reshape: bool = False) -> tuple[np.ndarray, list]:
     """V with the places where its cloth passes through itself smoothed out: the crossing edges' and triangles' free
     vertices and a ring round them relaxed toward their neighbours, until nothing crosses (or `rounds`). A carried
     coarse drape crosses itself in a few places beside folded seams, and a contact solver keeps what it starts with.
+    reshape: the smoothed patch is then drawn back toward its pattern shape (_relax_strain, UNTANGLE_STRAIN) as far as
+    that makes no new crossing: uniform smoothing evens edge lengths, and where fold rows run 2.5 mm apart beside 8 mm
+    edges (a shirt's front band and its open-neck roll) it stretched those triangles 2.7x (the fine settle's start).
     Returns (V, crossing vertices per round)."""
     V = V.copy()
+    V_in = V.copy()
     A_, B_ = _graph(M)
     hist = []
     for r in range(rounds):
@@ -3921,7 +3926,33 @@ def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10) -> tup
             np.add.at(acc, B_, V[A_])
             np.add.at(wt, B_, 1.0)
             V[mv] = 0.5 * V[mv] + 0.5 * (acc[mv] / np.maximum(wt[mv], 1)[:, None])
+    if reshape and len(hist) > 1:
+        touched = (np.linalg.norm(V - V_in, axis=1) > 1e-7) & free
+        g = touched.copy()
+        g[A_[touched[B_]]] = True
+        g[B_[touched[A_]]] = True
+        before = _crossing_verts(V, M)
+        mv_ = g & free
+        W = V
+        for _k in range(5):  # (kept away from the crossings it would make: those vertices held, the rest reshaped again)
+            W = _relax_strain(V, M, mv_, UNTANGLE_STRAIN, iters=200)
+            new_ = _crossing_verts(W, M) & ~before
+            if not new_.any():
+                break
+            for _ in range(1 + _k):
+                gg = new_.copy()
+                gg[A_[new_[B_]]] = True
+                gg[B_[new_[A_]]] = True
+                new_ = gg
+            mv_ = mv_ & ~new_
+        else:
+            W = V
+        V = W
+        hist.append(int(_crossing_verts(V, M).sum()))
     return V, hist
+
+
+UNTANGLE_STRAIN = 0.05  # the stretch an untangled patch is drawn back under (_untangle reshape)
 
 
 def _relax_stretch(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.02, iters: int = 60) -> np.ndarray:
@@ -4901,7 +4932,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         res["fold_dabs"], res["fold_info"] = cloth_detail.fold_dabs(M, Vd_, fabn, interfacing(Bp, M),
                                                                     float(do["fold_gain"]), opts=do["fold_opts"])
         if h <= 0.012 and not hang:
-            res["V"], rms = cloth_detail.displace(M, res["V"], res["fold_dabs"], fabn, do["fold_opts"], interfacing(Bp, M))
+            res["V"], rms = cloth_detail.displace(M, res["V"], res["fold_dabs"], fabn, do["fold_opts"], interfacing(Bp, M),
+                                                  body=body_real)
             res["folds_in_geometry"] = round(rms, 2)
     if not hang:
         # the clean-up (welds, the push off the body) and the folds put into the geometry must not make the cloth
