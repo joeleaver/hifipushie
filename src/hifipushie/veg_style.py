@@ -659,6 +659,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         c[2] -= max(0.0, c[2] + ez - ztop)  # never taller than the tree: a rounded-up top mass sinks to the tree's own height
         out.append({"c": c, "R": U.T.copy(), "r": r, "n": int(len(Q))})
     out.sort(key=lambda e: float(e["c"][2]))
+    out = _subclumps(out, X, cr, twig)
     out = _scallops(out, cr, seed)
     if cr.get("core") and len(out) > 1:  # the foliage is a shell: a mass in its hollow makes the crown one body with lobes
         c = X.mean(0)
@@ -668,6 +669,39 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         ez = math.sqrt(float(((U.T[:, 2] * r) ** 2).sum()))
         c[2] -= max(0.0, c[2] + ez - ztop)
         out.append({"c": c, "R": U.T.copy(), "r": r, "n": 0, "core": True})
+    return out
+
+
+def _subclumps(out: list, X: np.ndarray, cr: dict, twig: float) -> list:
+    """`sub` secondary clumps per mass (pixar: a big canopy shape broken into mid-size leaf clumps with their own volume
+    and shadow): each mass's own twigs clustered again, every sub-cluster an ellipsoid (`sub_spread` x its spread +
+    `pad`, no axis under `sub_min` x its mass's mean radius) standing on it, `of` = its mass (tone, id, wind), joined
+    `sub_join` x the blend (crisper than the masses: the clumps keep their shape and shadow). Sub-clusters sit where
+    the twigs are, so they bulge where the real branch clusters are, not on a regular pattern."""
+    n = int(cr.get("sub", 0) or 0)
+    base = [e for e in out if not e.get("core")]
+    if n <= 0 or not base:
+        return out
+    C = np.array([e["c"] for e in base])
+    dn = np.stack([np.linalg.norm(((X - e["c"]) @ e["R"].T) / e["r"], axis=1) for e in base], 1)
+    own = dn.argmin(1)
+    sp, pad, mn = float(cr.get("sub_spread", 1.6)), float(cr.get("pad", 0.5)), float(cr.get("sub_min", 0.3))
+    for j, e in enumerate(base):
+        Q = X[own == j]
+        k = int(min(n, len(Q) // 12))
+        if k < 2:
+            continue
+        lab = _kmeans(Q, k)
+        rm = float(e["r"].mean())
+        for q in range(k):
+            P = Q[lab == q]
+            if len(P) < 6:
+                continue
+            c = P.mean(0)
+            ev, U = np.linalg.eigh(np.cov((P - c).T) + np.eye(3) * 1e-6)
+            r = np.maximum(sp * np.sqrt(np.maximum(ev, 0)) + pad * twig, mn * rm)
+            r = np.maximum(r, float(cr.get("roundness", 0.0)) * r.max())
+            out.append({"c": c, "R": U.T.copy(), "r": r, "n": int(len(P)), "of": next(i for i, x in enumerate(out) if x is e), "join": float(cr.get("sub_join", 0.5))})
     return out
 
 
@@ -1039,7 +1073,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
                 info["big_leaves"] = bl["n"]
                 F = out["crown"]["F"]
         if cr.get("cards"):
-            _shell_and_cards(tree, st, out, cfn, ft["floor"], max(triangles - len(Fw) - len(F), 0), info, triangles / max(full, 1))
+            _shell_and_cards(tree, st, out, cfn, ft["floor"], max(triangles - len(Fw) - len(F), 0), info, triangles / max(full, 1), ells, blend)
         info["crown_triangles"] = int(len(F)) + (int(len(out["cards"]["F"])) if out.get("cards") else 0)
         info["tones"] = int(len(np.unique(ti)))
         info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist(), "tone": int(ti[j]),
@@ -1065,7 +1099,7 @@ def thickness(fn, V, N, reach: float = 4.0, step: float = 0.2) -> np.ndarray:
     return t
 
 
-def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget: int, info: dict, lod: float = 1.0) -> None:
+def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget: int, info: dict, lod: float = 1.0, ells=None, blend: float = 0.5) -> None:
     """Pixar's crown: the closed shell (the masses) painted with a gradient base-to-tip (sheet `crown.gradient`
     [dark, light], warmer at the tips by `warm_tip`), TEXCOORD_3 = (that gradient, thickness m), and a layer of real
     leaf cards on its outside (veg_cloud.shell_cards) in out["cards"]."""
@@ -1082,6 +1116,17 @@ def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget:
     wt = float(cr.get("warm_tip", 0.1))
     tn = g0 + (g1 - g0) * tg
     col = np.stack([tn * (1 + wt * tg), tn, tn * (1 - wt * tg)], 1) * C["col"] / np.maximum(C["col"].mean(1, keepdims=True), 1e-6)  # (the masses keep only their hue)
+    crease = None
+    if ells is not None and float(cr.get("crease_dark", 0.0)) > 0 and len(ells) > 1:
+        # AO between clumps: where two clumps meet (the two nearest of them almost equally near) the shell darkens,
+        # so each clump keeps its own volume and shadow under the leaves
+        D = field(ells, V, blend, each=True)[1]
+        Ds = np.sort(D, 1)
+        gap = Ds[:, 1] - Ds[:, 0]
+        k_ = max(float(cr.get("crease_width", 0.6)) * blend, 1e-3)
+        crease = np.exp(-np.maximum(gap, 0) / k_)
+        col = col * (1 - float(cr["crease_dark"]) * crease)[:, None]
+        info["crease_share"] = round(float((crease > 0.5).mean()), 3)
     gain = color_gain(st)
     th = thickness(cfn, V, N, float(cr.get("thick_reach", 4.0)))
     out["crown"] = {**C, "col": np.clip(col / gain, 0, 1), "gain": gain, "grad": np.c_[tg, th]}
@@ -1093,8 +1138,10 @@ def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget:
         idx = cKDTree(V).query(K["V"])[1]
         K["wind"] = (C["wind"][0][idx], C["wind"][1][idx], C["wind"][2][idx], float(sw.get("flutter", 0.4)) * K["rim"])
         K["mass"] = C["mass"][idx]
+        if crease is not None:  # (the cards in a crease between clumps darken with it)
+            K["col"] = K["col"] * (1 - 0.8 * float(cr["crease_dark"]) * crease[idx])[:, None]
         out["cards"] = K
-        info.update(cards=K["cards"], card_m=round(K["card_m"], 2), card_fill=round(K["atlas"]["fill"], 3), cards_triangles=int(len(K["F"])),
+        info.update(cards=K["cards"], card_m=round(K["card_m"], 2), leaf_cover=round(K["cover"], 2), card_fill=round(K["atlas"]["fill"], 3), cards_triangles=int(len(K["F"])),
                     thickness_m=[round(float(np.percentile(th, 10)), 2), round(float(np.median(th)), 2), round(float(np.percentile(th, 90)), 2)])
 
 

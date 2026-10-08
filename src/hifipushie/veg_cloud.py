@@ -133,7 +133,7 @@ def shell_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
     lf = spec["leaves"]
     sub = {**st, "crown": {**(st.get("crown") or {}), "dab": {"count": int(cs["count"]), "length": float(cs["length"]), "core": 0.0,
                                                                "ragged": 0.0, "true": True, "width": float(lf.get("width", 0.5)), "out": 0.9,
-                                                               "droop": 0.25, "verts": 7, "variants": 4, "size": 256, "tone": [0.8, 1.0]}}}
+                                                               "droop": 0.25, "verts": int(cs.get("verts", 7)), "variants": 4, "size": 256, "tone": [0.8, 1.0]}}}
     return dab_atlas(spec, sub, season)
 
 
@@ -229,7 +229,8 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     gain = float(max(t0, t1) * (1 + wt))
     return {"V": Vc, "F": Fc, "N": Ns[own], "uv": UV, "col": (ccol / gain)[own], "gain": gain,
             "grad": np.c_[t_[own], np.full(len(own), 0.02)], "rim": rim, "atlas": at, "cards": int(want),
-            "card_m": float(2 * half), "own": own}
+            "card_m": float(2 * half), "own": own,
+            "cover": float(want * card_area * at["fill"] / max(float(area.sum()), 1e-9))}
 
 
 def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float = 1.0, floor: float = 0.05) -> dict | None:
