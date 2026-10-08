@@ -39,7 +39,7 @@ FORM = {
     "slot": [0.15, 0.4],        # x r: their depth (width 1.2-3 m)
     "corners": 0.6,             # per corner: a block missing over a few beds
     "ramp": 1.0,                # m: every cut's soft edge (>= 2 voxels: a sharper one meshes as shards)
-    "batter": 2.0,              # deg: each face leans in
+    "batter": 4.5,              # deg: each face leans in (top / base width 0.66 over 8 cases, the photos 0.61)
     "batter_spread": 1.5,       # deg: +- per face
     "wander": 0.03,             # x r: each face's slow wander over the height
     "rough": 0.02,              # x r: each face warped a little (waves ~0.3-0.8 x the width up it, slanting across):
@@ -50,10 +50,10 @@ FORM = {
     "p_spire": 0.12,            # probability of a spire top for a slender stack (height / width over `slender`)
     "slender": 2.4,
     "notch": 0.9,               # x min(0.3 r, 1.6 m): the waterline notch's depth on the most exposed face
-    "beds_per_m": 0.6,          # soft beds per m of height: each eroded back on part of a face or two (a ledge over it)
-    "bed_thick": [0.5, 1.4],    # m
-    "bed_set": [0.2, 0.5],      # m: how far a soft bed is set back
-    "bed_cover": [0.35, 1.0],   # share of a face's length it is open along
+    "beds_per_m": 1.2,          # soft beds per m of height: each eroded back on part of 2-4 faces (a ledge over it)
+    "bed_thick": [0.3, 0.8],    # m (many thin beds: the photos' fine lines and small ledges all the way up)
+    "bed_set": [0.15, 0.35],    # m: how far a soft bed is set back
+    "bed_cover": [0.5, 1.0],    # share of a face's length it is open along
     "boulders": [2, 5],         # fallen blocks round the foot (count range)
     "boulder": [0.1, 0.22],     # x r, their half size (at least 0.7 m)
 }
@@ -176,7 +176,7 @@ class Column:
         nb = rng.poisson(F["beds_per_m"] * H)
         for zb in rng.uniform(self.base + 1.0, self.top - 1.5, nb):
             th = _u(rng, F["bed_thick"])
-            for i in rng.choice(4, size=int(rng.integers(1, 4)), replace=False):
+            for i in rng.choice(4, size=int(rng.integers(2, 5)), replace=False):
                 L = 2 * half(i) * _u(rng, F["bed_cover"])
                 t0 = rng.uniform(-half(i), half(i) - L)
                 cuts.append((int(i), zb - th / 2, zb + th / 2, t0, t0 + L, _u(rng, F["bed_set"])))
@@ -276,9 +276,12 @@ class Column:
         F = self.f
         d = np.repeat(self.d0[None, :], len(z), 0)
         for i, z0, z1, t0, t1, dep in self.cuts:
-            t = q @ self.tg[i]
             rp = max(F["ramp"], 1.2 * dep)  # (a deep cut hands over as far as it goes in: the field stays distance-like)
-            d[:, i] -= dep * _win(z, z0, z1, rp) * _win(t, t0, t1, rp)
+            k = np.flatnonzero((z > z0 - rp) & (z < z1 + rp))  # (only points in its height: beds are many)
+            if not len(k):
+                continue
+            t = q[k] @ self.tg[i]
+            d[k, i] -= dep * _win(z[k], z0, z1, rp) * _win(t, t0, t1, rp)
         d = np.maximum(d, 0.5 * self.d0[None, :])  # (cuts never eat a section through: it stands on its own rock)
         dz = (z - self.base)[:, None]
         d = d - dz * self.batter[None, :]
@@ -332,7 +335,7 @@ class Column:
             bx = np.linalg.norm(np.maximum(qq, 0), axis=1) + np.minimum(qq.max(1), 0) - rr
             bx = smax_many([bx, loc @ chip - cf * float(np.abs(hs) @ np.abs(chip))], 0.3)  # (a corner knocked off)
             f = _smin(f, bx, 0.4)
-        return f * 0.95
+        return f * 0.8  # (overlapping cuts steepen the field to ~3.5 in places: kept under 3, distance-like enough)
 
 
 def _rot(yaw, a, b):
