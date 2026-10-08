@@ -87,8 +87,8 @@
   "cone_height": 1.6,
   "masses_step": 3,
   "gradient": [
-   0.25,
-   0.62
+   0.35,
+   0.85
   ],
   "warm_tip": 0.12,
   "thick_reach": 4.0,
@@ -118,8 +118,13 @@
   "sub_spread": 1.9,
   "sub_min": 0.25,
   "sub_join": 0.35,
-  "crease_dark": 0.45,
-  "crease_width": 0.6
+  "crease_dark": 0.6,
+  "crease_width": 0.4,
+  "clump_shade": [
+   0.4,
+   1.0
+  ],
+  "clump_shade_power": 0.8
  },
  "colour": {
   "saturation": 1.12,

@@ -1117,6 +1117,18 @@ def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget:
     tn = g0 + (g1 - g0) * tg
     col = np.stack([tn * (1 + wt * tg), tn, tn * (1 - wt * tg)], 1) * C["col"] / np.maximum(C["col"].mean(1, keepdims=True), 1e-6)  # (the masses keep only their hue)
     crease = None
+    shade = None
+    if ells is not None and cr.get("clump_shade") and len(ells) > 1:
+        # every clump (sub-clumps included) lit on its own top and shadowed on its own underside: the clump-level
+        # gradient of feature-animation canopies (a canopy-wide gradient alone read as broccoli in a blur)
+        D_ = field(ells, V, blend, each=True)[1]
+        j_ = D_.argmin(1)
+        cz_ = np.array([e["c"][2] for e in ells])
+        ez_ = np.array([math.sqrt(float(((e["R"][:, 2] * e["r"]) ** 2).sum())) for e in ells])
+        u_ = np.clip((V[:, 2] - (cz_[j_] - ez_[j_])) / np.maximum(2 * ez_[j_], 1e-6), 0, 1)
+        s0, s1 = cr["clump_shade"]
+        shade = s0 + (s1 - s0) * (u_ * u_ * (3 - 2 * u_)) ** float(cr.get("clump_shade_power", 0.8))
+        col = col * shade[:, None]
     if ells is not None and float(cr.get("crease_dark", 0.0)) > 0 and len(ells) > 1:
         # AO between clumps: where two clumps meet (the two nearest of them almost equally near) the shell darkens,
         # so each clump keeps its own volume and shadow under the leaves
@@ -1138,6 +1150,8 @@ def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget:
         idx = cKDTree(V).query(K["V"])[1]
         K["wind"] = (C["wind"][0][idx], C["wind"][1][idx], C["wind"][2][idx], float(sw.get("flutter", 0.4)) * K["rim"])
         K["mass"] = C["mass"][idx]
+        if shade is not None:  # (the cards take their clump's light: lit tops, shadowed undersides)
+            K["col"] = K["col"] * shade[idx][:, None]
         if crease is not None:  # (the cards in a crease between clumps darken with it)
             K["col"] = K["col"] * (1 - 0.8 * float(cr["crease_dark"]) * crease[idx])[:, None]
         out["cards"] = K
