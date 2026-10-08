@@ -3835,6 +3835,28 @@ regresses, bisect by building one spec at each commit and diffing heights.
       of which ~250 m2 more have corner normals against the face (the shard count). Tried: calling faces turned
       against their corners' normals buried (no change: these face the air). OPEN: LOD 2 round stacks (a tighter
       error near add volumes, or interior corners whose normal opposes the face split onto the face normal).
+    - Caves made walkable (2026-10-08, branch `tiles2-caves` from main 667b4a9; pushieworld notes 94-95; our copy of
+      their v7 spec is terrain `tl2_island7`, + their old crown_tube as `tl2_island7_lava`; scratch cave4.py (a
+      passage's planned vs walked floor), cone1.py, lava7.py, fullwalk.py (the walk in the export's field)).
+      kaze_cave's 0.70 m step at the geo door: the door's floor (address ground - 0.3) stood over the geo floor where
+      the door ended up after the pull back (-0.78), and the karst floor took its beds' wander at once (+1.5 m in 6 m);
+      the passage's width / height (the old advice) can't move a step. Now a hillside mouth's floor is no higher than
+      the ground at the door (`"z"` on an entrance sets it), the beds' wander eases in over MOUTH_EASE 20 m and is
+      spread over BED_SPREAD 12 m (taken at once it climbed a 0.6 m staircase: the slot's floor is flat between 3 m
+      nodes). Largest step 0.70 -> 0.26 m. The walk line names its largest step's place, and `_walk_fix` the lever by
+      cause (a step by a mouth: the door's `z` / `at`; inside: the climb; blocked / tight / low: width, height).
+      Lava `"grade"` (+ `"swing"`, default 30 m): `_switchbacks` = corners alternating either side of the flow along
+      the slope's CONTOUR (the ground's broad gradient: a flow is a 14 m ridge of its own), the fewest corners nearest
+      the flow that give the sloping length after a level landing at every turn (as long as the two legs still
+      overlap: without them a walker stood on the next leg's floor, 2 m lower); floor = the highest line no steeper
+      than the grade (landings and pits level) that is nowhere above its depth under the ground sampled across the
+      tube (a min-plus envelope: kept "near its depth" it rode out of the ground where a leg left the flow); a pit's
+      pile no taller than 0.3 x the tube. crown_tube (115 m fall in 180 m, a 35 deg cone) at grade 0.2 needs swing 54
+      (the report says so with 30): 1,088 m of tube, pits 47 / 19 m deep, PASSES (largest step 0.35 m).
+      Floating guard (the coordinator's ask): `_drop_specks` also drops closed cliff pieces off the tile border that
+      never reach the pushed heightmap (+0.15 m) under `float_piece_m2` (FLOAT_PIECE 50 m2), from the dense mesh (so
+      every LOD agrees); logged and listed in manifest `dropped_pieces`. Bigger ones still fail `floating` (a stack's
+      head is a real fault). Pieces on a tile border are never dropped (both tiles would have to agree).
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
