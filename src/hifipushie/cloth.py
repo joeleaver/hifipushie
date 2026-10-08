@@ -3820,6 +3820,7 @@ def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, rea
     return V
 
 
+START_GAP = 0.0012  # m: the fine settle's start is kept this far off the collider (body + worn parts + under garment)
 FAR_CLEAR = 0.0012  # m the carried far cloth is kept off the body at the fine settle's start
 FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth under it (m)
 
@@ -5065,7 +5066,23 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # round them by contact for a few frames; no geometry is moved by hand
         fs = g.get("fine_settle")
         fr = [int(v) for v in (fs if isinstance(fs, (list, tuple)) else (0, 36))]
+        press_ = fr[0] > 0
         plan = _press_plan(Bp, Ms, Xs, res["V_coarse"], M, X0, carry, body, press=fr[0] > 0)
+        # the start cleared of the WHOLE collider too (the body alone was cleared in the plan: a trouser hem resting on
+        # the shoes, garment key "collide", started 0.5 mm off them, under the settle's least contact offset: "contact
+        # starts overlapping")
+        if len(coll["bodyV"]) > len(body.V) and _start_separation(plan["start"], M["F"], coll["bodyV"], coll["bodyT"]) < START_GAP:
+            cb_ = Body({"V": coll["bodyV"], "F": coll["bodyT"], "J": {}})
+            cb_._m = {"mm": {}, "at": {}}
+            mv_ = np.ones(len(plan["start"]), bool)
+            st_ = plan["start"]
+            for _ in range(3):  # (the exact pass's few rounds leave the worst pairs short: again, from where they got)
+                st_ = _clear_of_body(st_, M["F"], mv_, cb_, START_GAP, START_GAP, CLEAR_GROW)
+                if _start_separation(st_, M["F"], coll["bodyV"], coll["bodyT"]) >= 0.9 * START_GAP:
+                    break
+            plan["start"] = st_
+            if not press_ and len(plan["idx"]):
+                plan["poses"] = st_[plan["idx"]][None]
         stiff_f = interfacing(Bp, M)
         fold_f = {}
         if M.get("folds"):
@@ -5111,7 +5128,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # under a 2 mm offset)
             sep_ = _start_separation(plan["start"], M["F"], coll["bodyV"], coll["bodyT"])
             if sep_ < 0.0022:
-                zz.setdefault("body_offset", float(max(0.0006, 0.7 * sep_)))
+                # (never more than 0.7 of what the start leaves: a 0.6 mm floor over a 0.51 mm start was "contact
+                # starts overlapping")
+                zz.setdefault("body_offset", float(max(0.0003, 0.7 * sep_)))
                 progress(f"fine settle: the start comes within {sep_ * 1000:.2f} mm of the body: its contact offset "
                          f"{zz['body_offset'] * 1000:.2f} mm for this settle")
             fcfg["zozo"] = zz
