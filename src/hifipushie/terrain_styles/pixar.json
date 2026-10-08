@@ -19,5 +19,5 @@
                    {"op": "ripples", "spacing": 0.12, "angle": 20, "warp": 0.5, "warp_len": 1.5, "patches": 1.5, "albedo": 0.03, "height": 0.003}]}
  },
  "snow": {"color": [0.95, 0.96, 0.99], "coverage": 0.8, "breakup": 0.5, "breakup_m": 6.0, "edge": "soft"},
- "rock": {"kind": "soft", "relief": {"facets": 0.7, "bedding": 0.6, "blocks": false}, "soften_m": 0.6, "fallen": 0.6, "micro": 0.5}
+ "rock": {"stack": {"bevel": 1.2, "levels": 0.9, "slots": 0.3, "corners": 0.3, "batter": 4.0}, "kind": "soft", "relief": {"facets": 0.7, "bedding": 0.6, "blocks": false}, "soften_m": 0.6, "fallen": 0.6, "micro": 0.5}
 }
