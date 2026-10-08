@@ -2494,6 +2494,40 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       break on the shoes, the open collar V to the 2nd button, points on the collarbones, left seams closed, plackets.
       Not built: the stand's ends turning back with the open collar. Body.clearance's bias: before / after numbers on
       the shirt and blazer starts are owed before changing it.
+    - Round 2 (2026-10-08; sims tr_15..tr_19, renders `cloth_renders/tr_1N_*`; scratch adds pp_dbg.py (+ cached_only),
+      sep_dbg.py (stops at the fine-settle job: start separation), seat_dbg.py (what closures.seat's lap crosses),
+      layergap.py, fleck.py / kink.py / flipped.py (surface defects by piece), foldmeas.py (band-passed luminance vs
+      the worn-shirt photo), hem.py (hem heights front / back / out + along-leg compression), plt.py (trouser start:
+      crossings, worn separation, hem), expshirt.py (one garment exported + asset.preview), lk.py (cloth.look saved)):
+      - Fine-settle start (`_press_plan`): `_clear_of_body(grow=CLEAR_GROW)` (a gap grown round after round in the
+        crotch's hollow sent fork tips 35-106 mm across the body), far cloth only FAR_CLEAR off the body,
+        `_clear_of_held` (draped cloth back on the side of a made piece it lies on in the coarse drape, <= HELD_STEP
+        a round), a made group laid in another shape than the coarse sim's (> MADE_SHAPE) keeps the coarse shape,
+        `_untangle(reshape=True)` and crossings between held pieces ignored; the start cleared of the whole collider
+        (shoes) with START_GAP, body offset <= 0.7 x the start's separation. `fine_start_check` (FINE_START_MAX 0.6)
+        raises before the GPU: it caught tr_14, tr_16 and ga_suit's shirt.
+      - Mesh: fold rows keep their samples except within ROW_END h of their ends (ROW_KEEP); a fold's flap is the
+        cloth REACHED from beside its line (`folds._reached`: a collar's points turn with the fall); a mark next to
+        a fold row is its vertex. Neck-piece folds are laid first; a front's roll goes under the collar's fall.
+      - Shirt worn open (KB `kinds.shirt.wear`): collar gap 10 cm, fronts rolled 85 deg at strength 0.5 to button 2,
+        the under front's roll ending 4 cm above the button (both met there and crossed). tr_16d: a soft V to button
+        2, points on the collarbones.
+      - Shirting fine folds ironed (`cloth_detail.FOLDS` fine_gain 0.45, density 0.6) by measure against
+        cloth_refs/shirt_worn_front.png (1-4 / 4-15 mm luminance 0.33-0.44 photo, ours 0.60-0.83 -> 0.38-0.42).
+      - Closures: seat lays the lap again after drawing the fastenings together, its crossings reverted ring by ring
+        (su_garrett front 9.1 -> 4.8 mm). Clean-up `_unkink` (single-vertex buckles). Folds into the geometry go
+        along `oriented_faces` (back.L wound inward had them pushed into the thigh). `folds.press_ridges`: pressed
+        trouser creases sharpened in the geometry (PRESS_TURN 35 deg, the cloth beside flattened).
+      - Trousers to a break: length "break" (KB default for suit trousers) = 30 mm over the floor, back BREAK_BACK
+        12 mm longer; the start (`_hem_on_shoe`) hangs each column to the floor and stops it on what faces up under
+        it (HEM_REST_NZ; su_garrett's shoe part stands round the ankle to 10 cm), the length gathered into the
+        bottom LEG_BREAK 9 cm, kept WORN_CLEAR off the shoes (`_clear_of_worn`, also in the start relaxation).
+        tr_19: fits, 0 crossings, hem 94 mm front (on the vamp) / 58 back, no ankle showing, one soft break, crease
+        36 deg. Cut from the shoes' own heights it came out 5 cm short (tr_18): dropped.
+      - Look-tool artefact (Overboard tooling card): textured EEVEE looks show pale grainy shards on cloth the
+        exported GLB doesn't have; judge surfaces in clay or through asset.preview.
+      - Left: back.L/R self-crossings in the trouser start where the hem gathers at the heel (the sim cleared them);
+        the shirt's 24 open sewn pairs at the cuffs; suit trousers have no pockets.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
