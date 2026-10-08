@@ -22,29 +22,38 @@ import math
 import numpy as np
 
 FORM = {
-    "size": [1.05, 1.3],        # the first family's half width x r
-    "cross": [75.0, 105.0],     # deg between the two joint families
+    "size": [1.15, 1.45],       # the first family's half width x r
+    "cross": [65.0, 115.0],     # deg between the two joint families
     "aspect": [0.7, 1.0],       # the second family's half width x the first's (oblong plans)
     "chamfer": 0.55,            # probability a corner is cut by the minor (diagonal) family
+    "p_joint": 0.6,             # probability a stray joint at its own angle cuts a big slice off the plan
     "chamfer_cut": [0.72, 0.92],  # where it cuts: x the corner's distance along the diagonal
     "bevel": 0.35,              # m: edges and arrises rounded (smooth max)
     "levels": 2.0,              # beds a face steps back at, per height-in-widths
-    "p_step": 0.5,              # per face per level: a block fell (the face steps back above it)
+    "p_step": 0.5,              # per face per level: a block fell (the face steps back above or below the bed)
+    "p_below": 0.3,             # share of steps where the part BELOW the bed retreated (the top as wide as or wider
+                                # than the foot, as Hoy's and the Apostles' caps; above only = every stack an obelisk)
     "step": [0.05, 0.2],        # x r: how far
     "p_partial": 0.75,          # a step only over part of the face (a ledge ending in a re-entrant corner)
     "slots": 0.8,               # open joints per face (vertical slots over part of the height)
     "slot": [0.15, 0.4],        # x r: their depth (width 1.2-3 m)
     "corners": 0.6,             # per corner: a block missing over a few beds
     "ramp": 1.0,                # m: every cut's soft edge (>= 2 voxels: a sharper one meshes as shards)
-    "batter": 2.5,              # deg: each face leans in
-    "batter_spread": 2.0,       # deg: +- per face
+    "batter": 2.0,              # deg: each face leans in
+    "batter_spread": 1.5,       # deg: +- per face
     "wander": 0.03,             # x r: each face's slow wander over the height
     "rough": 0.02,              # x r: each face warped a little (waves ~0.3-0.8 x the width up it, slanting across):
                                 # at 0.08 the waves read as draped cloth: the breakup is the cuts and the field's facets
     "dip": [1.0, 6.0],          # deg: the top bed's tilt
-    "p_spire": 0.35,            # probability of a spire top for a slender stack (height / width over `slender`)
+    "top_steps": [1, 3],        # parts of the top fallen lower (a half-plane each: a broken, stepped top)
+    "top_drop": [0.04, 0.16],   # x height
+    "p_spire": 0.12,            # probability of a spire top for a slender stack (height / width over `slender`)
     "slender": 2.4,
-    "notch": 0.7,               # x min(0.3 r, 1.6 m): the waterline notch's depth
+    "notch": 0.9,               # x min(0.3 r, 1.6 m): the waterline notch's depth on the most exposed face
+    "beds_per_m": 0.6,          # soft beds per m of height: each eroded back on part of a face or two (a ledge over it)
+    "bed_thick": [0.5, 1.4],    # m
+    "bed_set": [0.2, 0.5],      # m: how far a soft bed is set back
+    "bed_cover": [0.35, 1.0],   # share of a face's length it is open along
     "boulders": [2, 5],         # fallen blocks round the foot (count range)
     "boulder": [0.1, 0.22],     # x r, their half size (at least 0.7 m)
 }
@@ -120,9 +129,16 @@ class Column:
             if rng.uniform() < F["chamfer"]:
                 n = (ni + nj) / np.linalg.norm(ni + nj)
                 P.append([math.atan2(n[1], n[0]), float(c @ n) * _u(rng, F["chamfer_cut"])])
+        if rng.uniform() < F["p_joint"]:  # (a stray joint: a big slice off one side, the plan no longer a box)
+            ang = rng.uniform(0, 2 * math.pi)
+            u = np.array([math.cos(ang), math.sin(ang)])
+            sup = min(planes[i][1] / max(math.cos(ang - planes[i][0]), 1e-3) for i in range(4)
+                      if math.cos(ang - planes[i][0]) > 0.2)
+            P.append([ang, sup * rng.uniform(0.6, 0.85)])
         self.n = np.array([[math.cos(p[0]), math.sin(p[0])] for p in P])
         self.tg = np.c_[-self.n[:, 1], self.n[:, 0]]  # along each face
         self.fam = [0, 1, 0, 1] + [2] * (len(P) - 4)
+        self.expose = rng.uniform(0, 2 * math.pi)  # (where the swell comes from: the notch deepest on that side)
         self.d0 = np.array([p[1] for p in P])
         m = len(P)
         width = da + db
@@ -131,6 +147,7 @@ class Column:
             stage = "spire" if slender > F["slender"] and rng.uniform() < F["p_spire"] else \
                 ("stump" if slender < 0.6 else ("slender" if slender > 1.8 else "broad"))
         self.stage = stage
+        cut_k = min(1.0, max(slender, 0.4))  # (cuts as deep as a tower's on a stump read as a carved chair)
         # cuts: (face, z0, z1, t0, t1, depth) with depth > 0 = the face set back
         z_lo, z_hi = self.base + 0.1 * H + 2.0, self.top - max(0.1 * H, 2.0)
         cuts = []
@@ -146,13 +163,23 @@ class Column:
             for i in range(4):  # (the main faces; chamfers follow their neighbours' cuts through the polygon)
                 if rng.uniform() >= ps:
                     continue
-                dep = _u(rng, F["step"]) * r * (0.75 if zk > self.base + 0.45 * H and stage == "spire" else 1.0)
+                dep = cut_k * _u(rng, F["step"]) * r * (0.75 if zk > self.base + 0.45 * H and stage == "spire" else 1.0)
                 if rng.uniform() < F["p_partial"]:
                     t0 = rng.uniform(-0.5, 0.5) * half(i)
                     t = (t0, np.inf) if rng.uniform() < 0.5 else (-np.inf, t0)
                 else:
                     t = (-np.inf, np.inf)
-                cuts.append((i, zk, np.inf, t[0], t[1], dep))
+                below = stage != "spire" and rng.uniform() < F["p_below"]
+                cuts.append((i, -np.inf, zk, t[0], t[1], dep) if below else (i, zk, np.inf, t[0], t[1], dep))
+        # soft beds: eroded back on part of a face or two, at irregular spacing (a ledge over each; all round on
+        # every bed was the pile of tyres)
+        nb = rng.poisson(F["beds_per_m"] * H)
+        for zb in rng.uniform(self.base + 1.0, self.top - 1.5, nb):
+            th = _u(rng, F["bed_thick"])
+            for i in rng.choice(4, size=int(rng.integers(1, 4)), replace=False):
+                L = 2 * half(i) * _u(rng, F["bed_cover"])
+                t0 = rng.uniform(-half(i), half(i) - L)
+                cuts.append((int(i), zb - th / 2, zb + th / 2, t0, t0 + L, _u(rng, F["bed_set"])))
         for i in range(4):  # open joints: vertical slots over part of the height
             for _ in range(rng.poisson(F["slots"])):
                 w = rng.uniform(0.9, 2.2)
@@ -161,13 +188,14 @@ class Column:
                 # (on a spire the slots stop under the taper: cut into the blade they left slivers)
                 z1 = self.top + 3 if stage != "spire" else self.base + 0.6 * H
                 if z1 > z0 + 3:
-                    cuts.append((i, z0, z1, t0 - w / 2, t0 + w / 2, _u(rng, F["slot"]) * r))
+                    cuts.append((i, z0, z1, t0 - w / 2, t0 + w / 2, cut_k * _u(rng, F["slot"]) * r))
         for i, j, c in corners:  # a block missing at a corner over a few beds: both faces set back by its size
             if rng.uniform() >= F["corners"]:
                 continue
-            s = rng.uniform(0.2, 0.45) * r
+            s = cut_k * rng.uniform(0.2, 0.45) * r
             z0 = rng.uniform(self.base, z_hi)
-            z1 = z0 + rng.uniform(3.0, max(4.0, 0.3 * H))
+            # (mostly the corner gone from a bed up: a short bite out of the middle read as a cave mouth)
+            z1 = np.inf if rng.uniform() < 0.65 else z0 + rng.uniform(3.0, max(4.0, 0.3 * H))
             ti = float(c @ self.tg[i])
             tj = float(c @ self.tg[j])
             cuts.append((i, z0, z1, *((ti - 2.5 * s, np.inf) if ti > 0 else (-np.inf, ti + 2.5 * s)), s))
@@ -186,6 +214,11 @@ class Column:
         dip = math.radians(_u(rng, F["dip"]))
         dd = rng.uniform(0, 2 * math.pi)
         self.tilt = np.array([math.cos(dd), math.sin(dd)]) * math.tan(dip)
+        self.top_cuts = []  # (unit normal in plan, offset, drop m): beyond the line the top is lower
+        for _ in range(int(rng.integers(F["top_steps"][0], F["top_steps"][1] + 1))):
+            ang = rng.uniform(0, 2 * math.pi)
+            self.top_cuts.append((np.array([math.cos(ang), math.sin(ang)]), rng.uniform(-0.2, 0.7) * da,
+                                  max(1.0, _u(rng, F["top_drop"]) * H)))
         self.spire = None
         if stage == "spire":
             # above `z_t` every face leans in, the first family's at `spire` deg, the second's at about half that
@@ -197,7 +230,11 @@ class Column:
             crest = np.maximum(0.5 * SPIRE_CREST, 0.18 * self.d0)
             share = np.array([1.0 if self.fam_of(i) != 1 else rng.uniform(0.35, 0.6) for i in range(m)])
             self.spire = (zt, share, crest)
-        self.notch = F["notch"] * min(0.3 * r, 1.6) * rng.uniform(0.3, 1.2, m)  # (deeper where the swell hits)
+        ex = np.array([math.cos(self.expose), math.sin(self.expose)])
+        self.notch = F["notch"] * min(0.3 * r, 1.6) * (0.15 + 0.85 * np.clip(self.n @ ex, 0, 1)) \
+            * rng.uniform(0.7, 1.2, m)  # (deeper where the swell hits, barely on the lee side)
+        self.notch_z = rng.uniform(0.3, 1.5, m)  # (its height in the tide band, per face)
+        self.notch_ph = rng.uniform(0, 2 * math.pi, (m, 2))
         # boulders: chipped blocks round the foot, tumbled, on the sea floor and awash
         self.boulders = []
         if self.sea is not None:
@@ -256,13 +293,21 @@ class Column:
                 d[:, i] += F["rough"] * self.r * wv / 1.96
         if self.spire is not None:
             zt, share, crest = self.spire
-            u = np.clip((z - zt) / max(self.top - zt, 1.0), 0, 1)
-            u = u * u * (1.6 - 0.6 * u)  # (eased in: no crease where the taper starts; 1 at the top)
+            # (in steps, bed by bed: Duncansby's taper is ledges, a smooth one read as a bullet)
+            nst = max(2, int((self.top - zt) / 4.0))
+            v = np.clip((z - zt) / max(self.top - zt, 1.0), 0, 1) * nst
+            kf = np.minimum(np.floor(v), nst - 1)
+            e = min(0.9, 1.0 / max((self.top - zt) / nst, 1e-6))  # (each step's ramp: 1 m)
+            fr = np.clip((v - kf - (1 - e)) / e, 0, 1)
+            u = (kf + fr * fr * (3 - 2 * fr)) / nst
             w = u[:, None] * share[None, :]
             d = np.where(d > crest[None, :], crest[None, :] + (d - crest[None, :]) * (1 - w), d)
         d = np.maximum(d, self.floor[None, :])
         if self.sea is not None:
-            d = d - np.exp(-((z - self.sea - 0.9) / 1.2) ** 2)[:, None] * self.notch[None, :]
+            for i in range(len(self.n)):
+                t = q @ self.tg[i]
+                along = 0.55 + 0.45 * np.sin(t / 2.3 + self.notch_ph[i, 0]) * np.sin(t / 5.1 + self.notch_ph[i, 1])
+                d[:, i] -= self.notch[i] * along * np.exp(-((z - self.sea - self.notch_z[i]) / 1.0) ** 2)
         return d
 
     def sd(self, p):
@@ -272,7 +317,12 @@ class Column:
         d = self.offsets(q, z)
         k = self.f["bevel"]
         f = smax_many([q @ self.n[i] - d[:, i] for i in range(len(self.n))], k)
-        top = [z - (self.top - q @ self.tilt)]
+        tz = self.top - q @ self.tilt
+        for nn, off, drop in self.top_cuts:
+            rp = max(1.5, 0.8 * drop)  # (eased: a step in the top is a slope two voxels wide at least)
+            u = np.clip((q @ nn - off) / rp + 0.5, 0, 1)
+            tz = tz - drop * u * u * (3 - 2 * u)
+        top = [z - tz]
         f = smax_many([f] + top, k)
         f = smax_many([f, (self.base - 1.0) - z], 0.3)
         for c, hs, R, chip, cf in self.boulders:
