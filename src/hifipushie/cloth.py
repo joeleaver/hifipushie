@@ -5471,6 +5471,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # where laying the lap made the cloth cross itself, those vertices (and two rings round them) stay as
             # they were; the rest of the lap is laid
             was_ = _crossing_verts(res["V"], M)
+            # (first each crossing vertex loses the part of its move across the layer it went through, as for the
+            # welds: reverted two rings wide, 230 vertices round su_garrett's 4th and 5th buttons went back and
+            # those fastenings stayed 9 mm open)
+            if (_crossing_verts(Vs_, M) & ~was_).any():
+                Vs_, _ = _weld_clear(Vs_, res["V"], M, interfacing(Bp, M))
             bad_ = _crossing_verts(Vs_, M) & ~was_
             if bad_.any():
                 A2_, B2_ = _graph(M)
@@ -5610,7 +5615,8 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
 ROW_KEEP = 0.25  # x h: a fold row's inner sample this near the outline (within ROW_END h of the row's ends) is left out
 ROW_END = 2.5  # x h: (ROW_KEEP) how far from a row's ends; a sample near another fold's row is shared
 SEAM_JOIN = 0.15  # x h: a fold line ending this near a seam sample ends ON it (no sliver edge on the seam)
-CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True, "seams": True, "press": True}
+CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True, "seams": True, "press": True,
+           "kinks": True}
 
 
 SEAM_GAP_MM = 0.5  # a finished seam's two sides further apart than this at p95 shows as an open seam
@@ -5875,6 +5881,55 @@ def _seam_press(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, opts
                 "seams": int(len(np.unique(np.asarray(M["sew_seam"])[use])))}
 
 
+KINK = 0.0015  # m: a draped vertex standing this far out of its neighbours' plane, with its faces turned against them
+KINK_TURN = 25.0  # deg: (KINK) a face this far turned from its neighbours' mean normal is a kink, not a fold's slope
+
+
+def _unkink(X: np.ndarray, M: dict, stiff: np.ndarray | None = None, rounds: int = 6) -> tuple[np.ndarray, dict]:
+    """X with the single-vertex kinks of the sim smoothed out: a draped vertex standing out of its neighbours' plane
+    by more than KINK whose triangles are turned more than KINK_TURN from the mean of the triangles round it (a buckle
+    a triangle or two across, frozen by the contact solver's strain limit) moved along its normal onto its neighbours'
+    mean; fold rows, seam vertices and interfaced cloth stay. A broad fold turns its faces a little each: not a kink.
+    The textured look showed them as pale angular shards round a shirt's collar ends (6 mm deep in the sim, 4-5 mm
+    after the clean-up's smoothing, which caps every move at `keep`). Returns (X, {"kinks": [per round]})."""
+    X = X.copy()
+    F = M["F"]
+    fixed = np.zeros(len(X), bool)
+    fixed[np.asarray(M["sew"]).ravel()] = True
+    for fd in M.get("folds") or []:
+        for r in fd["rows"]:
+            fixed[np.asarray(r)] = True
+    if stiff is not None:
+        fixed |= np.asarray(stiff) > 0.5
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    a, b = E[:, 0], E[:, 1]
+    deg = np.bincount(np.r_[a, b], minlength=len(X)).astype(float)
+    hist = []
+    for _ in range(rounds):
+        fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+        fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+        vn = np.zeros_like(X)
+        for c in range(3):
+            np.add.at(vn, F[:, c], fn)
+        vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
+        # a face against the normal of its corners' area (the mean over their faces)
+        ang = np.degrees(np.arccos(np.clip(np.einsum("ij,ij->i", fn, vn[F].mean(1) / np.maximum(
+            np.linalg.norm(vn[F].mean(1), axis=1, keepdims=True), 1e-12)), -1, 1)))
+        turned = np.zeros(len(X), bool)
+        turned[F[ang > KINK_TURN].ravel()] = True
+        acc = np.zeros_like(X)
+        np.add.at(acc, a, X[b])
+        np.add.at(acc, b, X[a])
+        mean = acc / np.maximum(deg, 1)[:, None]
+        off = np.einsum("ij,ij->i", mean - X, vn)
+        k = turned & ~fixed & (np.abs(off) > KINK) & (deg > 0)
+        hist.append(int(k.sum()))
+        if not k.any():
+            break
+        X[k] += off[k, None] * vn[k]
+    return X, {"kinks": hist}
+
+
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """The pass artists make after the sim: the fine crinkle (frozen buckles a triangle or two across) smoothed away by
     Taubin passes (a band-limited smoothing that doesn't shrink the cloth: the folds, many triangles across, stay),
@@ -5898,6 +5953,9 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
         L = np.linalg.norm(D, axis=1)
         cap = float(o["keep"])
         X = X + D * np.minimum(1.0, cap / np.maximum(L, 1e-12))[:, None]
+    kink_info = {}
+    if o.get("kinks", True):
+        X, kink_info = _unkink(X, M, stiff)
     def weld():
         # only seams the sim closed (a gap over 1.5 triangles is a seam it couldn't close: welding it drags cloth).
         # Sewn vertices are welded as GROUPS (a vertex in two seams, three pieces meeting at a point: pair by pair
@@ -5964,7 +6022,7 @@ def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray 
             if o["weld"] and len(M["sew"]):
                 weld()
     moved = np.linalg.norm(X - V, axis=1)
-    return X, {"passes": n, **({"press": press_info} if press_info else {}), "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
+    return X, {"passes": n, **({"press": press_info} if press_info else {}), **kink_info, "moved_p95_mm": round(float(np.percentile(moved, 95) * 1000), 2),
                "moved_max_mm": round(float(moved.max() * 1000), 2)}
 
 
