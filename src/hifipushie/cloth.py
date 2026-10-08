@@ -3971,12 +3971,13 @@ def _open_start(Bp: dict, M: dict, Xs: np.ndarray, body0: "Body", poses: list, c
 FINE_REACH = 0.10  # m from a made piece within which the fine settle moves the draped cloth
 FINE_FREE = 40.0  # deg a made flap starts open when it is free in the fine settle (it closes by its own stiff fold)
 FINE_OPEN = 55.0  # deg a made flap starts open in the fine settle (clear of the cloth it then presses down)
-MADE_SHAPE = 0.008  # m (p90): a made piece laid this differently at the fine size than the coarse is reported
+MADE_SHAPE = 0.008  # m (p90): a made piece laid this differently at the fine size keeps the coarse sim's shape
+HELD_STEP = 0.003  # m the most _clear_of_held moves a vertex
 HELD_GAP = 0.0015  # m the draped cloth is kept off a made piece's surface at the fine settle's start (_clear_of_held)
 
 
 def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, reach: float = 0.008,
-                   gap: float = HELD_GAP, rounds: int = 3) -> np.ndarray:
+                   gap: float = HELD_GAP, rounds: int = 3, movable: np.ndarray | None = None) -> np.ndarray:
     """The draped cloth near a made piece put back on the side of it it lies on in the coarse drape Vd (the coarse
     sim carried onto the fine mesh, where both lie as the sim left them), at least `gap` off it. The made pieces are
     fitted rigidly from their own fine placement onto the coarse ones, the drape is interpolated: layers a few mm apart
@@ -3990,7 +3991,7 @@ def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, rea
     Fh = F[held[F].all(1)]
     if not len(Fh):
         return V
-    free = np.where(~held)[0]
+    free = np.where(~held if movable is None else movable & ~held)[0]
     tree = cKDTree(V[Fh].mean(1))
     near = free[tree.query(V[free], distance_upper_bound=reach + 0.02)[0] < reach + 0.02]
     if not len(near):
@@ -4008,7 +4009,9 @@ def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, rea
         bad = s_ < gap
         if not bad.any():
             break
-        V[near[bad]] += ((gap - s_[bad]) * side[bad])[:, None] * n[bad]
+        # (at most HELD_STEP a vertex: a front rolled open under a collar, pushed by the full shortfall vertex by
+        # vertex, came out 5x stretched)
+        V[near[bad]] += (np.minimum(gap - s_[bad], HELD_STEP) * side[bad])[:, None] * n[bad]
     return V
 
 
@@ -4069,13 +4072,31 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         R1, t1 = carry["moves"][nm]
         V[sel] = (Xf[sel] @ R0.T + t0) @ R1.T + t1
         held[sel] = True
-        # (a made piece laid in another SHAPE at the fine size than at the coarse one puts the cloth the coarse sim
-        # draped round it through it: ga_suit's collar fall stood at 2 cm (its roll row lost its vertices) and lay
-        # down at 1 cm, through both fronts. Reported; the cause is fixed at placement)
         Rs, ts = _kabsch(V[sel], Vd[sel])
         dev = float(np.percentile(np.linalg.norm(V[sel] @ Rs.T + ts - Vd[sel], axis=1), 90))
         if dev > MADE_SHAPE:
             Bp.setdefault("made_reshaped", {})[nm] = round(dev * 1000, 1)
+    # a made piece laid in another SHAPE at the fine size than the coarse sim solved round (su_garrett's collar fall:
+    # 174 deg placed at 1 cm, 160 at 2 cm; its points 15-20 mm lower, into the fronts rolled open under it: a 2.8x start
+    # after the untangle) keeps the coarse sim's shape, carried onto the fine mesh, with the whole group it is made with
+    # (a collar with its stand: one of them alone crossed the other along their seam). Rest stays the fine placement.
+    if Bp.get("made_reshaped"):
+        roots = carry.get("roots") or {}
+        grp = {roots.get(n_, n_) for n_ in Bp["made_reshaped"]}
+        Vp = V.copy()  # (the fine placement: its pieces lie on the right sides of each other)
+        members = [nm for nm in carry["pieces"] if roots.get(nm, nm) in grp]
+        for nm in members:
+            V[M["piece"] == M["names"].index(nm)] = Vd[M["piece"] == M["names"].index(nm)]
+        # the coarse group's own layers through each other (the transfer cuts a 2 cm fall's roll; the coarse sim
+        # already had its collar a few mm into its stand: 147 crossings at the fine size) put back on the sides the
+        # fine placement has them: each piece's vertices off its sewn edges moved off the others
+        sewn_ = np.zeros(len(V), bool)
+        sewn_[np.asarray(M["sew"]).ravel()] = True
+        for nm in members:
+            mine = M["piece"] == M["names"].index(nm)
+            others = np.isin(M["piece"], [M["names"].index(o) for o in members if o != nm])
+            if others.any():
+                V = _clear_of_held(V, Vp, M, others, reach=0.012, gap=0.0008, rounds=4, movable=mine & ~sewn_)
     # the carried drape's overstretched edges taken back (at piece outlines the transfer runs on past the coarse
     # outline, and seams drawn together: a few dozen triangles 5-70% long, which a strain-limited solver can't start
     # from)
