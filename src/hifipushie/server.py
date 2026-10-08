@@ -295,6 +295,9 @@ def guide(topic: str = "") -> str:
     topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
     pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
     check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
+    topic="cloth_reference": reading garments from reference art as tech designers, tailors and garment artists do
+    (the checklist, big to small), with garment_from_reference, check_garment_reference and garment_reference_brief
+    (the shot list for getting good references, and a validator for a set of pictures).
     topic="skin": human skin the way character artists texture it, in stages (base tone, colour zones, large
     features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
     topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then
@@ -314,10 +317,13 @@ def guide(topic: str = "") -> str:
         return (Path(__file__).with_name("vegetation_guide.md")).read_text()
     if topic.strip().lower() == "cloth":
         return (Path(__file__).with_name("cloth_guide.md")).read_text()
+    if topic.strip().lower() in ("cloth_reference", "cloth reference", "garment_reference"):
+        return (Path(__file__).with_name("cloth_reference_guide.md")).read_text()
     if topic.strip().lower() == "skin":
         return (Path(__file__).with_name("skin_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "skin", "human", "terrain" or "vegetation"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "cloth_reference", "skin", "human", '
+                         '"terrain" or "vegetation"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -2096,6 +2102,67 @@ def garment_reference(kind: str | None = None, detail: str | None = None, princi
          + "; derivations " + ", ".join(k for k in K["principles"]["derivations"] if not k.startswith("_")),
          "lessons: " + " | ".join(x["lesson"] for x in K["lessons"])]
     return "\n".join(L)
+
+
+@mcp.tool(structured_output=False)
+def garment_from_reference(name: str, garments: dict, views: list[dict] | str, answers: dict | None = None,
+                           save: bool = True) -> str:
+    """Read reference art of an outfit into design sheets and a target table, item by item, with the garment
+    checklist (guide(topic="cloth_reference"); cloth_checklist.json): silhouette and lengths first, then fit,
+    construction details, wear state and layering, fabric and folds. garments: {garment name: kind} (garment_kb kinds:
+    jacket, shirt, suit_trousers...). views: [{"image": path, "kind": "front" | "side" | "back" | "three" | "other",
+    "points": {body landmark: [u, v]}, "crops": {item id: [u0, v0, u1, v1]}}] (u right, v down; landmarks head_top,
+    chin, neck_base, shoulder.L/R, elbow.L/R, wrist.L/R, knee.L/R, ankle.L/R, floor; 3+ on a near-orthographic front
+    view fit its camera to the model's body). Without `answers`: the FORM to fill (one row per item, what to look for,
+    the view, the choices or the points to mark). With answers ({garment: {item id: {"value" | "points": {name:
+    [u, v]}, "view": i, "confidence": "high" | "medium" | "low", "note"} | "not visible"}}): the design-sheet patch per
+    garment (choices -> details, wear -> closures / tie / over, fabric, colour) and the target table (lengths anchored
+    on body landmarks, widths in metres), stored in <model>/cloth_refs.json. The patch is NOT applied: review it, then
+    design_garment / edit the garment. check_garment_reference judges a sim against it."""
+    from . import cloth_reference as cr
+    vs = json.loads(views) if isinstance(views, str) else views
+    out = cr.read(name, garments, vs, answers, save=(store.HOME / name / "cloth_refs.json") if (save and answers) else None)
+    return out["text"]
+
+
+@mcp.tool(structured_output=False)
+def check_garment_reference(name: str, garments: list[str] | None = None, save: str | None = None, top: int = 9):
+    """Judge the model's simulated garments against its reference reading (<model>/cloth_refs.json, written by
+    garment_from_reference): every checklist item measured on the CACHED sims (never simulates), the misses ranked
+    (misses in tolerances x stage weight x confidence: a wrong length outranks a wrong placket), items the picture
+    didn't show judged against the tailoring rule where there is one (collar show, cuff show, tent), what can't be
+    judged and why; and a focus sheet: per ranked miss the reference crop | our garments drawn through the SAME fitted
+    camera, the reading's points in red, ours in blue. Read the panels before believing a number."""
+    from . import cloth_reference as cr
+    import tempfile
+    path = store.HOME / name / "cloth_refs.json"
+    if not path.exists():
+        return f"no reading for {name}: run garment_from_reference first"
+    tmp = Path(save) if save else Path(tempfile.mkdtemp()) / "cloth_ref_focus.png"
+    out = cr.check(name, garments, path, panels=tmp, top=top)
+    return [_out(PILImage.open(out["panels"]), save), out["text"]]
+
+
+@mcp.tool(structured_output=False)
+def garment_reference_brief(garments: dict, subject: str = "a man", outfit: str = "", name: str | None = None,
+                            views: list[dict] | None = None) -> str:
+    """A shot list for getting the best reference images of a garment or outfit (from an image generator or a
+    shoot), derived from the garment checklist: a turnaround (front, side, back, 3/4) in an A-pose with the arms a
+    little away from the body, the wear state said plainly (which buttons are done up, tucked, belt, collar), detail
+    close-ups (collar and lapel, closure and placket, cuff, pockets, hem and break, back vent), even light plus a
+    raking pass for fabric and folds, a plain background, the same figure and garments in every image; each shot's
+    full prompt. garments: {name: kind}. name: a model whose reading (cloth_refs.json) or, without one, whose garments
+    give the wear state. views: a set of pictures to VALIDATE instead ([{"yaw", "framing": "full" | "bust" |
+    "close:<region>", "light": "even" | "raking" | "warm" | "dramatic", "perspective": "ortho-ish" | "perspective",
+    "posed": "a-pose" | "other", "size": [w, h]}]): which checklist items they can and can't support, and why."""
+    from . import cloth_reference as cr
+    if views:
+        return cr.check_references(views, garments)["text"]
+    refs = (store.HOME / name / "cloth_refs.json") if name else None
+    b = cr.reference_brief(garments, subject=subject, outfit=outfit, model=name,
+                           refs=refs if refs is not None and refs.exists() else None)
+    return (b["text"] + "\n\nPROMPTS:\n" + "\n\n".join(f"[{s['id']}] {s['prompt']}" for s in b["shots"])
+            + "\n\nNEGATIVE: " + b["common"]["negative"])
 
 
 @mcp.tool(structured_output=False)
