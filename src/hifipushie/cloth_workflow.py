@@ -492,7 +492,7 @@ def stage_construction(c: Ctx) -> dict:
             o["warn"].append("detail maps draw 11 mm buttons with vertical holes everywhere; a coat wants 20-25 mm, "
                              "horizontal holes (not configurable yet)")
     det = dict(cloth.DETAIL, **(c.gx.get("detail") or {}))
-    o["info"].append(f"detail maps: hem {det['hem'] * 1000:.0f} mm on free edges, topstitch {det['topstitch'] * 1000:.1f} mm in")
+    o["info"].append(f"detail maps: hem {det['hem'] * 1000:.0f} mm on free edges, " + (f"topstitch {det['topstitch'] * 1000:.1f} mm in" if det.get('topstitch') else "no topstitch row (the kind's hem)"))
     # the sim's schedule
     from . import cloth_job
     st = cloth._state(c.g)
