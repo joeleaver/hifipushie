@@ -3781,6 +3781,17 @@ regresses, bisect by building one spec at each commit and diffing heights.
       slice_a cave edit: 4 of 64 tiles redone, byte-identical with a cold export.
     - slice_a's two floating pieces ([359, 57.6, 9] 132-138 triangles, [291.2, 103.9, 23] 8-10) came with main's
       stacks-foot code (main 6642cf4 alone has them too); after stacks-style: see the last regression below.
+    - `terrain_cache`: a fresh build is handed back through a pickle round trip (as a cache hit would be): a fresh
+      terrain shared T.cover's arrays with the export's Materials cache, and the export after a cache miss reused no tile.
+    - LAST REGRESSION (main 52b6ee3 merged, a3e70d1): the seven terrain test files pass; pebble 0 failures (282 s);
+      alps 3x3 0; slice_a 1 (the [291.3, 103.8, 23] float: main's stacks code); slice_b incremental 4 of 64 tiles,
+      0 files differing from cold. Kaze block (2,15)-(4,17): 1 failure, LOD 2 shards 0.73% (limit 0.5; main alone
+      0.15%). NOT a new fault: LOD 2's decimation bridges air round the stacks (faces with their centre 1-2 m in the
+      open). Main called them buried and drew them in the buried material: 2,997 m2 of buried faces in open air at
+      LOD 2 (the consumer's white plates), 2,024 m2 more as surface. Here 0 buried in the air, 2,598 m2 as surface,
+      of which ~250 m2 more have corner normals against the face (the shard count). Tried: calling faces turned
+      against their corners' normals buried (no change: these face the air). OPEN: LOD 2 round stacks (a tighter
+      error near add volumes, or interior corners whose normal opposes the face split onto the face normal).
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
