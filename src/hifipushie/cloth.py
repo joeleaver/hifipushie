@@ -1282,6 +1282,7 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
 
 
 PIN_GAP = 0.002  # m a pinned seam's two sides start apart
+WORN_STAND = 0.02  # m out from the neck point's radius: an under garment's neck pieces there are its stand (worn_body)
 WORN_PIN = 0.06  # m (pattern, sigma) over which a pinned seam's move fades into its pieces
 
 
@@ -2845,7 +2846,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 # (shoulders, chest, shoulder blades), so collar, lapel and shoulder seams start together
                 y0_ = float(at["armpit_z"]) - float(hps[2])
                 wi_ = {}
-                X[sel] = _worn_top(body, Cw, start, float(w.get("dir", 1.0)), xs_ + dxs.get(nm, 0.0),
+                X[sel] = _worn_top(B.get("_worn_body") or body, Cw, start, float(w.get("dir", 1.0)), xs_ + dxs.get(nm, 0.0),
                                    ys_ + dzs.get(nm, 0.0), float(hps[2]), y0_, WORN_CLEAR + 0.25 * float(w.get("out", 0.0)), wi_,
                                    neck_x=abs(float(hps[0])))
                 B.setdefault("worn_top_pieces", {})[nm] = wi_
@@ -4943,6 +4944,35 @@ PAD_LATERAL = 0.008  # m: a garment point pads a body vertex when it lies this c
 PAD_SLOPE = 1.0  # the padded surface's steepest fall-off (m of pad per m along the body): no overhangs
 
 
+def worn_body(body: "Body", src: dict, under: dict, air: float = 0.003) -> "Body | None":
+    """The body padded by an under garment WITHOUT its neck pieces (pieces wrapped round the neck or laid from a seam:
+    a shirt's collar and stand): what a worn top (_worn_top) is laid on. None when the under garment has no such
+    pieces."""
+    res = under.get("res") or {}
+    Mu, Bu = res.get("mesh"), (res.get("pieces") or {}).get("pieces")
+    if Mu is None or not Bu:
+        return None
+    neck = [k for k, nm in enumerate(Mu["names"]) if (Bu.get(nm) or {}).get("wrap", {}).get("to") in ("neck", "seam")]
+    if not neck:
+        return None
+    U = np.asarray(under["V"], float)
+    if len(U) != len(Mu["piece"]):
+        return None
+    # (only what stands round the neck: an open collar's points lie on the chest, under the lapels, and a forepart
+    # laid without them landed inside them and was pushed out 11x)
+    at = body.at
+    if "cf_neck" in at and "cb_neck" in at and "hps.L" in at:
+        c = 0.5 * (np.asarray(at["cf_neck"], float) + np.asarray(at["cb_neck"], float))
+        rn = abs(float(at["hps.L"][0] - c[0]))
+        near = np.hypot(U[:, 0] - c[0], U[:, 1] - c[1]) < rn + WORN_STAND
+    else:
+        near = np.ones(len(U), bool)
+    keep = ~(np.isin(np.asarray(Mu["piece"]), neck) & near)
+    b = padded_body(body, src, U[keep], air)
+    b._m = body.m
+    return b
+
+
 def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "Body":
     """The body grown along its normals to cover the points U (a garment worn on it) plus `air`: what the next
     garment's pieces are placed on and kept clear of. A closed body again, so the tape, the sections and the arm axes
@@ -5256,6 +5286,14 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # solver keeps as rest (interfaced pieces)
     body_p, pose = body.straight_arms() if smooth else (body, None)
     Bp["worn_top"] = worn_top(g)
+    if Bp["worn_top"] and under is not None and under.get("res") is not None:
+        # a forepart worn over a shirt lies on the shirt's BODY: the open shirt collar sits between the jacket's
+        # collar and the neck and doesn't hold the jacket up. The worn tops are laid on the body padded by the under
+        # garment without its neck pieces (collar, stand), then cleared against the whole collider as everything is
+        # (laid on the collar stand too, Garrett's gorge climbed the open stand and folded back: 4x, "ccd failed")
+        wb = worn_body(body_real, body_src, under, float(g.get("layer_gap", 0.003)))
+        if wb is not None:
+            Bp["_worn_body"] = wb.straight_arms()[0] if smooth else wb
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     push = dict(Bp.get("push") or {})
     poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
@@ -5337,6 +5375,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     coll = _collider(body_real, under, smooth)
+    Bp.pop("_worn_body", None)  # (a Body: not part of the result)
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body_real, "collider": body, "under": under,
            "fabric": fab, "key": key, "refined": refine,
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not (refine or construct) else None),

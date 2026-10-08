@@ -2540,6 +2540,29 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       cloth_renders/su_69_suit*): fits, all seams closed, 0 crossings, collar_show 13.4, cuffs 12.6 / 10.3 (in band),
       lapel_gap 9.5-11, under sleeves 2% crumpled. The pressed-lapel change (PRESS_OFF 1e3) is in it. Best ga_suit.
       Garrett's left sleeve still goes down the arm on the side.L / under.L crossing (open).
+  - Round 6 (the coordinator's idea: the forepart lies on the shirt's BODY, the open collar between the jacket collar
+    and the neck): `worn_body` = the body padded by the under garment WITHOUT its neck pieces' standing part (pieces
+    wrapped "neck"; only their vertices within the neck point's radius + WORN_STAND 2 cm of the neck's axis: excluding
+    the whole collar put Garrett's front.L inside the open collar's points on his chest, pushed out 11x), set as
+    Bp["_worn_body"] in build for worn_top garments over another, used only by `_worn_top`; everything else (push,
+    relax, sim collider) keeps the full padded body. Measured on the BUILD's start (lay1.py + worst.py / over.py, not
+    pl1.py: pl0's pickle drops `_worn_body`): Garrett front.R 4.24 -> 3.61x max (front.L 2.54), draped triangles over
+    5% ~4.7% (ZOZO's local limit wants <= 3%), collar max 1.7 (made: raised limit). ga_suit start: fronts 1.10-1.11, 2.7%
+    over 5%, collar 1.81 (was 1.26): NOT yet simulated with this. So: it helps Garrett's right gorge but not enough
+    to start; no Garrett sim run with it.
+  - HANDOVER (suit5, 2026-10-08). Branch worktree-agent-a7a27cfe57b8650a5, last commit has round 6; main merged.
+    Best result: ga_suit su_69 (cloth_renders/su_69_suit*): fits, all seams closed, collar_show 13.4, cuffs in band,
+    lapel gap 9.5-11. Garrett: never simulated through (su_60, 63, 65, 66 CCD at frame 0; su_62 finished on older
+    code: too small at the hips, since fixed with hips_ease 0.14). Open, in order: (1) Garrett's right gorge: run the
+    build start (lay1.py su_garrett jacket <tag>; worst.py <tag> front.R; over.py <tag>) and get front.R under ~1.6x
+    and draped over-5% under 3%; the stretched triangles are base cloth at pattern (-0.10..-0.12, -0.05..-0.075)
+    between the neck point and the lapel roll's top; wdbg3.py shows the columns there (re-run pl1 only with a fresh
+    pickle, and note pl1 lacks `_worn_body`); untried: let the worn columns end where the surface rises > ~60 deg
+    (compressing the pattern), or widen the drafted neck over his open stand; (2) his left sleeve: under.L starts through
+    side.L in the pit and the sleeve goes 11-12 cm down the arm (exempting sewn pairs opened ga_suit's seams: don't);
+    try moving the side panel's top in at the pit instead; (3) lapel gap ~10 mm: a made flap carried with its own
+    forepart (Kabsch on the forepart's vertices under it, not the body's); (4) collar_hug 24-26 mm.
+    Re-check ga_suit with a sim after (1) / round 6 (su_69 predates worn_body).
   - NEXT, in order: (1) carry made lapel flaps with their forepart (then lapel_gap); (2) su_garrett once its shirt
     builds; (3) collar_hug 17-26 mm. Old list (tent done as above): (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
     the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
